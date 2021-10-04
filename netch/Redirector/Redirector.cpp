@@ -3,18 +3,29 @@
 #include "IPEventHandler.h"
 #include "Utils.h"
 
-extern BOOL filterLoopback;
-extern BOOL filterIntranet;
-extern BOOL filterICMP;
-extern BOOL filterTCP;
-extern BOOL filterUDP;
+extern bool filterLoopback;
+extern bool filterIntranet;
+extern bool filterParent;
+extern bool filterICMP;
+extern bool filterTCP;
+extern bool filterUDP;
+extern bool filterDNS;
+
 extern DWORD icmping;
+
+extern string dnsHost;
+extern USHORT dnsPort;
+
 extern wstring tgtHost;
 extern wstring tgtPort;
 extern string tgtUsername;
 extern string tgtPassword;
+
 extern vector<wstring> bypassList;
 extern vector<wstring> handleList;
+
+extern atomic_ullong UP;
+extern atomic_ullong DL;
 
 NF_EventHandler EventHandler = {
 	threadStart,
@@ -50,7 +61,17 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 }
 
 extern "C" {
-	__declspec(dllexport) BOOL __cdecl aio_dial(INT name, LPWSTR value)
+	__declspec(dllexport) BOOL __cdecl aio_register(LPWSTR value)
+	{
+		return nf_registerDriver(ws2s(value).c_str()) == NF_STATUS_SUCCESS;
+	}
+
+	__declspec(dllexport) BOOL __cdecl aio_unregister(LPWSTR value)
+	{
+		return nf_unRegisterDriver(ws2s(value).c_str()) == NF_STATUS_SUCCESS;
+	}
+
+	__declspec(dllexport) BOOL __cdecl aio_dial(int name, LPWSTR value)
 	{
 		switch (name)
 		{
@@ -59,6 +80,9 @@ extern "C" {
 			break;
 		case AIO_FILTERINTRANET:
 			filterIntranet = (wstring(value).find(L"false") == string::npos);
+			break;
+		case AIO_FILTERPARENT:
+			filterParent = (wstring(value).find(L"false") == string::npos);
 			break;
 		case AIO_FILTERICMP:
 			filterICMP = (wstring(value).find(L"false") == string::npos);
@@ -69,8 +93,17 @@ extern "C" {
 		case AIO_FILTERUDP:
 			filterUDP = (wstring(value).find(L"false") == string::npos);
 			break;
+		case AIO_FILTERDNS:
+			filterDNS = (wstring(value).find(L"false") == string::npos);
+			break;
 		case AIO_ICMPING:
 			icmping = atoi(ws2s(value).c_str());
+			break;
+		case AIO_DNSHOST:
+			dnsHost = ws2s(value);
+			break;
+		case AIO_DNSPORT:
+			dnsPort = (USHORT)atoi(ws2s(value).c_str());
 			break;
 		case AIO_TGTHOST:
 			tgtHost = wstring(value);
@@ -245,7 +278,7 @@ extern "C" {
 			nf_addRule(&rule, FALSE);
 		}
 
-		if (filterUDP)
+		if (filterUDP || filterDNS)
 		{
 			memset(&rule, 0, sizeof(NF_RULE));
 			rule.ip_family = AF_INET;
@@ -271,5 +304,15 @@ extern "C" {
 
 		WSACleanup();
 		return;
+	}
+
+	__declspec(dllexport) ULONG64 __cdecl aio_getUP()
+	{
+		return UP;
+	}
+
+	__declspec(dllexport) ULONG64 __cdecl aio_getDL()
+	{
+		return DL;
 	}
 }

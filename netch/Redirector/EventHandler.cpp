@@ -1,16 +1,25 @@
 #include "EventHandler.h"
 
+#include "DNSHandler.h"
 #include "TCPHandler.h"
 
-extern BOOL filterTCP;
-extern BOOL filterUDP;
+extern bool filterParent;
+extern bool filterTCP;
+extern bool filterUDP;
+extern bool filterDNS;
+
 extern vector<wstring> bypassList;
 extern vector<wstring> handleList;
 
 extern USHORT tcpListen;
 
+DWORD CurrentID = 0;
+
 mutex udpContextLock;
 map<ENDPOINT_ID, SocksHelper::PUDP> udpContext;
+
+atomic_ullong UP = { 0 };
+atomic_ullong DL = { 0 };
 
 wstring ConvertIP(PSOCKADDR addr)
 {
@@ -76,14 +85,53 @@ bool checkBypassName(DWORD id)
 
 bool checkHandleName(DWORD id)
 {
-	auto name = GetProcessName(id);
-
-	for (size_t i = 0; i < handleList.size(); i++)
 	{
-		if (regex_search(name, wregex(handleList[i])))
+		auto name = GetProcessName(id);
+
+		for (size_t i = 0; i < handleList.size(); i++)
 		{
-			return true;
+			if (regex_search(name, wregex(handleList[i])))
+			{
+				return true;
+			}
 		}
+	}
+
+	if (filterParent)
+	{
+		PROCESSENTRY32W PE;
+		memset(&PE, 0, sizeof(PROCESSENTRY32W));
+		PE.dwSize = sizeof(PROCESSENTRY32W);
+
+		auto hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+		if (hSnapshot == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		if (!Process32FirstW(hSnapshot, &PE))
+		{
+			CloseHandle(hSnapshot);
+			return false;
+		}
+
+		do {
+			if (PE.th32ProcessID == id)
+			{
+				auto name = GetProcessName(PE.th32ParentProcessID);
+
+				for (size_t i = 0; i < handleList.size(); i++)
+				{
+					if (regex_search(name, wregex(handleList[i])))
+					{
+						CloseHandle(hSnapshot);
+						return true;
+					}
+				}
+			}
+		} while (Process32NextW(hSnapshot, &PE));
+
+		CloseHandle(hSnapshot);
 	}
 
 	return false;
@@ -91,12 +139,22 @@ bool checkHandleName(DWORD id)
 
 bool eh_init()
 {
+	CurrentID = GetCurrentProcessId();
+
+	if (!DNSHandler::Init())
+	{
+		return false;
+	}
+
 	return TCPHandler::Init();
 }
 
 void eh_free()
 {
 	TCPHandler::Free();
+
+	UP = 0;
+	DL = 0;
 }
 
 void threadStart()
@@ -111,6 +169,12 @@ void threadEnd()
 
 void tcpConnectRequest(ENDPOINT_ID id, PNF_TCP_CONN_INFO info)
 {
+	if (CurrentID == info->processId)
+	{
+		nf_tcpDisableFiltering(id);
+		return;
+	}
+
 	if (!filterTCP)
 	{
 		nf_tcpDisableFiltering(id);
@@ -165,7 +229,6 @@ void tcpConnectRequest(ENDPOINT_ID id, PNF_TCP_CONN_INFO info)
 	}
 
 	TCPHandler::CreateHandler(client, remote);
-
 	wcout << "[Redirector][EventHandler][tcpConnectRequest][" << id << "][" << info->processId << "] " << ConvertIP((PSOCKADDR)&client) << " -> " << ConvertIP((PSOCKADDR)&remote) << endl;
 }
 
@@ -181,6 +244,8 @@ void tcpCanSend(ENDPOINT_ID id)
 
 void tcpSend(ENDPOINT_ID id, const char* buffer, int length)
 {
+	UP += length;
+
 	nf_tcpPostSend(id, buffer, length);
 }
 
@@ -191,6 +256,8 @@ void tcpCanReceive(ENDPOINT_ID id)
 
 void tcpReceive(ENDPOINT_ID id, const char* buffer, int length)
 {
+	DL += length;
+
 	nf_tcpPostReceive(id, buffer, length);
 }
 
@@ -206,26 +273,26 @@ void tcpClosed(ENDPOINT_ID id, PNF_TCP_CONN_INFO info)
 
 void udpCreated(ENDPOINT_ID id, PNF_UDP_CONN_INFO info)
 {
-	if (!filterUDP)
+	if (CurrentID == info->processId)
 	{
 		nf_udpDisableFiltering(id);
+		return;
+	}
 
+	if (!filterUDP)
+	{
 		wcout << "[Redirector][EventHandler][udpCreated][" << id << "][" << info->processId << "][!filterUDP] " << GetProcessName(info->processId) << endl;
 		return;
 	}
 
 	if (checkBypassName(info->processId))
 	{
-		nf_udpDisableFiltering(id);
-
 		wcout << "[Redirector][EventHandler][udpCreated][" << id << "][" << info->processId << "][checkBypassName] " << GetProcessName(info->processId) << endl;
 		return;
 	}
 
 	if (!checkHandleName(info->processId))
 	{
-		nf_udpDisableFiltering(id);
-
 		wcout << "[Redirector][EventHandler][udpCreated][" << id << "][" << info->processId << "][!checkHandleName] " << GetProcessName(info->processId) << endl;
 		return;
 	}
@@ -247,6 +314,15 @@ void udpCanSend(ENDPOINT_ID id)
 
 void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, int length, PNF_UDP_OPTIONS options)
 {
+	if (filterDNS && DNSHandler::IsDNS((PSOCKADDR_IN6)target))
+	{
+		UP += length;
+		DNSHandler::CreateHandler(id, (PSOCKADDR_IN6)target, buffer, length, options);
+
+		wcout << "[Redirector][EventHandler][udpSend][" << id << "] DNS to " << ConvertIP((PSOCKADDR)target) << endl;
+		return;
+	}
+
 	udpContextLock.lock();
 	if (udpContext.find(id) == udpContext.end())
 	{
@@ -255,11 +331,12 @@ void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, in
 		nf_udpPostSend(id, target, buffer, length, options);
 		return;
 	}
-
-	auto conn = udpContext[id];
+	auto udpConn = udpContext[id];
 	udpContextLock.unlock();
 
-	if (conn->tcpSocket == INVALID_SOCKET)
+	UP += length;
+
+	if (udpConn->tcpSocket == INVALID_SOCKET)
 	{
 		auto tcpSocket = SocksHelper::Utils::Connect();
 		if (tcpSocket == INVALID_SOCKET)
@@ -276,45 +353,44 @@ void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, in
 			return;
 		}
 
-		conn->tcpSocket = tcpSocket;
+		udpConn->tcpSocket = tcpSocket;
 	}
 
-	if (conn->udpSocket == INVALID_SOCKET)
+	if (udpConn->udpSocket == INVALID_SOCKET)
 	{
-		if (!conn->Associate())
+		if (!udpConn->Associate())
 		{
-			closesocket(conn->tcpSocket);
-			conn->tcpSocket = INVALID_SOCKET;
+			closesocket(udpConn->tcpSocket);
+			udpConn->tcpSocket = INVALID_SOCKET;
 
 			printf("[Redirector][EventHandler][udpSend][%llu] UDP Associate failed\n", id);
 			return;
 		}
 
-		if (!conn->CreateUDP())
+		if (!udpConn->CreateUDP())
 		{
-			closesocket(conn->tcpSocket);
-			conn->tcpSocket = INVALID_SOCKET;
+			closesocket(udpConn->tcpSocket);
+			udpConn->tcpSocket = INVALID_SOCKET;
 
 			printf("[Redirector][EventHandler][udpSend][%llu] Create UDP socket failed\n", id);
 			return;
 		}
 
-		auto data = (PNF_UDP_OPTIONS)new char[sizeof(NF_UDP_OPTIONS) + options->optionsLength];
+		auto data = (PNF_UDP_OPTIONS)new char[sizeof(NF_UDP_OPTIONS) + options->optionsLength]();
 		memcpy(data, options, sizeof(NF_UDP_OPTIONS) + options->optionsLength - 1);
 
-		thread(udpBeginReceive, id, conn, data).detach();
+		thread(udpBeginReceive, id, udpConn, data).detach();
 	}
 
-	if (conn->Send((PSOCKADDR_IN6)target, buffer, length) == SOCKET_ERROR)
+	if (udpConn->Send((PSOCKADDR_IN6)target, buffer, length) != length)
 	{
-		closesocket(conn->tcpSocket);
-		closesocket(conn->udpSocket);
+		closesocket(udpConn->tcpSocket);
+		closesocket(udpConn->udpSocket);
 
-		conn->tcpSocket = INVALID_SOCKET;
-		conn->udpSocket = INVALID_SOCKET;
+		udpConn->tcpSocket = INVALID_SOCKET;
+		udpConn->udpSocket = INVALID_SOCKET;
 
 		printf("[Redirector][EventHandler][udpSend][%llu] Send data failed\n", id);
-		return;
 	}
 }
 
@@ -343,22 +419,24 @@ void udpClosed(ENDPOINT_ID id, PNF_UDP_CONN_INFO info)
 	}
 }
 
-void udpBeginReceive(ENDPOINT_ID id, SocksHelper::PUDP conn, PNF_UDP_OPTIONS data)
+void udpBeginReceive(ENDPOINT_ID id, SocksHelper::PUDP udpConn, PNF_UDP_OPTIONS options)
 {
 	char buffer[1458];
 
-	while (conn->udpSocket != INVALID_SOCKET)
+	while (udpConn->udpSocket != INVALID_SOCKET)
 	{
 		SOCKADDR_IN6 target;
 
-		int length = conn->Read(&target, buffer, 1458);
+		int length = udpConn->Read(&target, buffer, sizeof(buffer));
 		if (length == 0 || length == SOCKET_ERROR)
 		{
 			break;
 		}
 
-		nf_udpPostReceive(id, (unsigned char*)&target, buffer, length, data);
+		DL += length;
+
+		nf_udpPostReceive(id, (unsigned char*)&target, buffer, length, options);
 	}
 
-	delete data;
+	delete[] options;
 }

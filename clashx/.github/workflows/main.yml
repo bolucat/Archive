@@ -4,10 +4,11 @@ on: [push]
 
 env:
   FASTLANE_SKIP_UPDATE_CHECK: true
+  DEVELOPER_DIR: /Applications/Xcode_13.0.app/Contents/Developer
 
 jobs:
   build:
-    runs-on: macOS-latest
+    runs-on: macos-11
     steps:
     - uses: actions/checkout@v2
     - name: import certs
@@ -59,6 +60,7 @@ jobs:
       env:
         FASTLANE_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
         FASTLANE_USER: ${{ secrets.FASTLANE_USER }}
+        FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.FASTLANE_PASSWORD }}
       run: |
         bundle exec fastlane run notarize package:"./ClashX.dmg" bundle_id:"com.west2online.ClashX" asc_provider:MEWHFZ92DY
 

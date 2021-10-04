@@ -62,7 +62,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGPIPE, SIG_IGN)
         // crash recorder
         failLaunchProtect()
-        registCrashLogger()
+        NSAppleEventManager.shared()
+            .setEventHandler(self,
+                             andSelector: #selector(handleURL(event:reply:)),
+                             forEventClass: AEEventClass(kInternetEventClass),
+                             andEventID: AEEventID(kAEGetURL))
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -71,11 +75,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ProcessInfo.processInfo.disableSuddenTermination()
         // setup menu item first
         statusItem = NSStatusBar.system.statusItem(withLength: statusItemLengthWithSpeed)
-
         statusItemView = StatusItemView.create(statusItem: statusItem)
         statusItemView.frame = CGRect(x: 0, y: 0, width: statusItemLengthWithSpeed, height: 22)
         statusMenu.delegate = self
-        startAnrDetect()
+        registCrashLogger()
         DispatchQueue.main.async {
             self.postFinishLaunching()
         }
@@ -118,11 +121,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         RemoteConfigManager.shared.autoUpdateCheck()
 
-        NSAppleEventManager.shared()
-            .setEventHandler(self,
-                             andSelector: #selector(handleURL(event:reply:)),
-                             forEventClass: AEEventClass(kInternetEventClass),
-                             andEventID: AEEventID(kAEGetURL))
+
         setupNetworkNotifier()
     }
 
@@ -460,7 +459,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             if let error = err {
                 NSUserNotificationCenter.default
-                    .post(title: NSLocalizedString("Reload Config Fail", comment: ""),
+                    .postNotificationAlert(title: NSLocalizedString("Reload Config Fail", comment: ""),
                           info: error)
             } else {
                 self.syncConfig()
@@ -728,6 +727,10 @@ extension AppDelegate {
     @IBAction func actionUpdateRemoteConfig(_ sender: Any) {
         RemoteConfigManager.shared.updateCheck(ignoreTimeLimit: true, showNotification: true)
     }
+    
+    @IBAction func actionSetUpdateInterval(_ sender: Any) {
+        RemoteConfigManager.showAdd()
+    }
 
     @IBAction func actionSetUseApiMode(_ sender: Any) {
         let alert = NSAlert()
@@ -806,17 +809,6 @@ extension AppDelegate {
             DispatchQueue.global().asyncAfter(deadline: DispatchTime.now() + Double(Int64(5 * Double(NSEC_PER_SEC))) / Double(NSEC_PER_SEC), execute: {
                 x.set(0, forKey: "launch_fail_times")
             })
-        #endif
-    }
-}
-
-// MARK: ANR
-extension AppDelegate {
-    private func startAnrDetect() {
-        #if DEBUG
-        return
-        #else
-        AnrDetectUtil.shared.start()
         #endif
     }
 }
