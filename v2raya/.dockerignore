@@ -1,0 +1,6 @@
+**/v2rayA_*
+**/.idea
+**/.vscode
+**/*.test.go
+**/.tr
+**/node_modules/**

@@ -1,0 +1,53 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+
+  build:
+    name: Build and release
+    runs-on: ubuntu-latest
+    env:
+      ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+
+    steps:
+
+      - name: Check out
+        uses: actions/checkout@v2.3.4
+
+      - name: Get tag
+        uses: olegtarasov/get-tag@v2
+        id: tagName
+
+      - name: Get time
+        uses: gerred/actions/current-time@master
+        id: current-time
+
+      - name: Build
+        uses: tobyxdd/go-cross-build@25e1ba1da2fb42ed9787b615f0e89235569c58fa
+        env:
+          TIME: "${{ steps.current-time.outputs.time }}"
+          CGO_ENABLED: "0"
+        with:
+          name: hysteria-notun
+          dest: ./dist/
+          ldflags: -w -s -X main.appVersion=${{ env.GIT_TAG_NAME }} -X main.appCommit=${{ github.sha }} -X main.appDate=${{ env.TIME }}
+          platforms: 'linux/amd64, linux/386, linux/arm, linux/arm64, linux/mipsle, darwin/amd64, darwin/arm64, windows/amd64, windows/386'
+          package: ./cmd
+          compress: false
+
+      - name: Upload
+        uses: meeDamian/github-release@v2.0.3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          gzip: false
+          allow_override: true
+          files: >
+            ./dist/hysteria-notun-linux-amd64
+            ./dist/hysteria-notun-linux-386
+            ./dist/hysteria-notun-linux-arm
+            ./dist/hysteria-notun-linux-arm64
+            ./dist/hysteria-notun-linux-mipsle

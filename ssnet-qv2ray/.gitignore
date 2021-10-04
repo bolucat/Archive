@@ -1,0 +1,26 @@
+# Compilation Database
+compile_commands.json
+
+# macOS
+.DS_Store
+
+# Qt / Qt Creator
+*.user
+*.qm
+
+# Visual Studio
+.vs/
+CMakeSettings.json
+out/
+build**/
+*build/
+
+# IntelliJ-based IDE Trash
+.idea/
+*.iml
+cmake-build-debug/
+cmake-build-release/
+
+# OSS VSCode
+.vscode/
+.cache

@@ -1,0 +1,80 @@
+# Make sure to check the documentation at http://goreleaser.com
+
+# release:
+# git tag -a v0.1.0 -m "v0.1.0"
+# git push origin v0.1.0
+# goreleaser release --skip-publish --rm-dist
+
+# #git tag -d v0.1.0
+# #git push origin --delete tag v0.1.0
+
+# snapshot:
+# goreleaser --snapshot --rm-dist
+
+# https://goreleaser.com/customization/
+
+before:
+  hooks:
+    - go mod tidy
+
+# https://goreleaser.com/customization/build/
+builds:
+  - id: default
+    env:
+      - CGO_ENABLED=0
+    # GOOS list to build for.
+    # For more info refer to: https://golang.org/doc/install/source#environment
+    # Defaults are darwin and linux.
+    goos:
+      - windows
+      - linux
+      - darwin
+      - freebsd
+    goarch:
+      - 386
+      - amd64
+      - arm
+      - arm64
+      - mips
+      - mipsle
+      - mips64
+      - mips64le
+    goarm:
+      - 6
+      - 7
+    gomips:
+      - hardfloat
+      - softfloat
+
+# https://goreleaser.com/customization/archive/
+archives:
+  - id: default
+    builds:
+      - default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}{{ if .Mips }}_{{ .Mips }}{{ end }}"
+    replacements:
+      darwin: mac
+    wrap_in_directory: true
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+      - config/**/*
+      - systemd/*
+
+# https://goreleaser.com/customization/snapshots/
+snapshot:
+  name_template: "dev@{{.ShortCommit}}"
+
+# https://goreleaser.com/customization/checksum/
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+
+# https://goreleaser.com/customization/release/
+release:
+  prerelease: true
+  draft: true
+  

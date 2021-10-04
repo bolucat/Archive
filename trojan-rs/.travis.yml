@@ -1,0 +1,9 @@
+sudo: false
+language: rust
+jobs:
+  include:
+    - os: linux
+      rust: stable
+
+env:
+  - RUSTFLAGS="-Ctarget-feature=+aes,+ssse3" RUSTDOCFLAGS="-Ctarget-feature=+aes,+ssse3" RUST_BACKTRACE=1

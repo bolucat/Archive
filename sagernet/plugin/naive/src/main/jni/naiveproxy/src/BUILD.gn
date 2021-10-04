@@ -1,0 +1,98 @@
+# Copyright (c) 2013 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This is the root build file for GN. GN will start processing by loading this
+# file, and recursively load all dependencies until all dependencies are either
+# resolved or known not to exist (which will cause the build to fail). So if
+# you add a new build file, there must be some path of dependencies from this
+# file to your new one or GN won't know about it.
+
+import("//build/config/compiler/compiler.gni")
+import("//build/config/dcheck_always_on.gni")
+import("//build/config/features.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/ui.gni")
+import("//build/gn_logs.gni")
+
+if (is_android) {
+  import("//build/config/android/config.gni")
+}
+
+if (is_linux) {
+  import("build/config/linux/gtk/gtk.gni")
+}
+
+declare_args() {
+  # A list of extra dependencies to add to the root target. This allows a
+  # checkout to add additional targets without explicitly changing any checked-
+  # in files.
+  root_extra_deps = []
+}
+
+if (is_official_build) {
+  # An official (maximally optimized!) component (optimized for build times)
+  # build doesn't make sense and usually doesn't work.
+  assert(!is_component_build)
+}
+
+# This file defines the following two main targets:
+#
+# "gn_all" is used to create explicit dependencies from the root BUILD.gn to
+# each top-level component that we wish to include when building everything via
+# "all". This is required since the set of targets built by "all" is determined
+# automatically based on reachability from the root BUILD.gn (for details, see
+# crbug.com/503241). Builders should typically use "all", or list targets
+# explicitly, rather than relying on "gn_all".
+#
+# "gn_visibility": targets that are normally not visible to top-level targets,
+# but are built anyway by "all". Since we don't want any such targets, we have
+# this placeholder to make sure hidden targets that aren't otherwise depended
+# on yet are accounted for.
+
+group("gn_all") {
+  testonly = true
+
+  deps = [
+    ":gn_visibility",
+    "//net",
+  ]
+}
+
+group("gn_visibility") {
+  deps = [
+    "//build/config/sanitizers:options_sources",
+    # "//third_party/pdfium:pdfium_embeddertests",  # TODO(GYP): visibility?
+    # "//third_party/pdfium:pdfium_unittests",  # TODO(GYP): visibility?
+  ]
+}
+
+if (is_android) {
+  group("optimize_gn_gen") {
+    deps = [
+      # These run expensive scripts in non-default toolchains. Generally, host
+      # toolchain targets are loaded in the later part of the run, and the
+      # result is they push out the end of generation. By preloading these, the
+      # scripts can be parallelized with the rest of the load.
+      "//build/config/linux(//build/toolchain/linux:clang_x64)",
+      "//build/config/posix(//build/toolchain/linux:clang_x64)",
+
+      # Include x86 toolchains as well since V8 uses them for 32-bit snapshot
+      # generation.
+      "//build/config/linux(//build/toolchain/linux:clang_x86)",
+      "//build/config/posix(//build/toolchain/linux:clang_x86)",
+    ]
+  }
+}
+
+# Write debug logs to gn_logs.txt.
+_lines = [
+           "Generated during 'gn gen' by //BUILD.gn.",
+           "",
+         ] + build_gn_logs
+
+# GN evaluates each .gn file once per toolchain, so restricting to default
+# toolchain will ensure write_file() is called only once.
+assert(current_toolchain == default_toolchain)
+
+write_file("$root_build_dir/gn_logs.txt", _lines)

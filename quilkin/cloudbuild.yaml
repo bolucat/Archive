@@ -1,0 +1,59 @@
+# Copyright 2020 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+steps:
+  - name: gcr.io/cloud-builders/git
+    args: [ submodule, update, --init, --recursive ]
+    id: fetch-git-submodules
+  - name: gcr.io/cloud-builders/docker
+    args: [ pull, "${_BUILD_IMAGE_TAG}" ]
+    id: pull-build-image
+  - name: us-docker.pkg.dev/$PROJECT_ID/ci/make-docker
+    dir: ./build
+    args:
+      - BUILD_IMAGE_TAG=${_BUILD_IMAGE_TAG}
+      - BUILD_IMAGE_ARG=--cache-from ${_BUILD_IMAGE_TAG}
+      - test
+    id: test
+  - name: us-docker.pkg.dev/$PROJECT_ID/ci/make-docker
+    dir: ./build
+    args:
+      - BUILD_IMAGE_TAG=${_BUILD_IMAGE_TAG}
+      - BUILD_IMAGE_ARG=--cache-from ${_BUILD_IMAGE_TAG}
+      - build
+    id: build
+  # Run the built images for 5 seconds to make sure that the entrypoint and default config works out of the box
+  - name: gcr.io/cloud-builders/docker
+    dir: ./build
+    entrypoint: bash
+    args:
+      - '-c'
+      - 'timeout --signal=INT --preserve-status 5s docker run --rm quilkin:$(make version)'
+    id: test-quilkin-debug
+  - name: gcr.io/cloud-builders/docker
+    dir: ./build
+    entrypoint: bash
+    args:
+      - '-c'
+      - 'timeout --signal=INT --preserve-status 5s docker run --rm quilkin:$(make version)-debug'
+    id: test-quilkin-release
+options:
+  env:
+    - "CARGO_HOME=/workspace/.cargo"
+  machineType: E2_HIGHCPU_32
+  dynamic_substitutions: true
+timeout: 1800s
+substitutions:
+  _BUILD_IMAGE_TAG: us-docker.pkg.dev/${PROJECT_ID}/ci/build-image
+logsBucket: "gs://quilkin-build-logs"

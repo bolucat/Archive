@@ -1,0 +1,39 @@
+cmake_minimum_required(VERSION 3.10.0)
+project(QvPluginInterface VERSION 2)
+
+include(GNUInstallDirs)
+
+add_library(${PROJECT_NAME} INTERFACE)
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+
+target_include_directories(${PROJECT_NAME} INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+
+file(GLOB HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
+
+include(CMakePackageConfigHelpers)
+
+set(CONFIG_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/cmake)
+
+configure_package_config_file(QvPluginInterfaceConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/QvPluginInterfaceConfig.cmake
+    INSTALL_DESTINATION ${CONFIG_INSTALL_DIR}
+    PATH_VARS CMAKE_INSTALL_INCLUDEDIR
+)
+
+install(TARGETS ${PROJECT_NAME}
+	EXPORT QvPluginInterfaceTargets
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(EXPORT QvPluginInterfaceTargets
+	NAMESPACE ${PROJECT_NAME}::
+	DESTINATION ${CONFIG_INSTALL_DIR}
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/QvPluginInterfaceConfig.cmake DESTINATION ${CONFIG_INSTALL_DIR})
+
+install(FILES ${HEADERS} DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

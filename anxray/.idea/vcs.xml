@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GitSharedSettings">
+    <option name="FORCE_PUSH_PROHIBITED_PATTERNS">
+      <list />
+    </option>
+  </component>
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/Xray-core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/editorkit" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/preferencex" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/termux-view" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/libancillary" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/libev" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/libevent" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/libsodium" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/mbedtls" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/pcre" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/shadowsocks-libev" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/shadowsocks-libev/libbloom" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/shadowsocks-libev/libcork" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks-libev/src/main/jni/shadowsocks-libev/libipset" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/shadowsocks/src/main/rust/shadowsocks-rust" vcs="Git" />
+  </component>
+</project>

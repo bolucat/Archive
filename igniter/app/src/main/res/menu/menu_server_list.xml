@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_scan_qr_code"
+        android:title="@string/scan_qr_code"
+        android:icon="@drawable/qr_code"
+        app:showAsAction="ifRoom" />
+
+    <item android:id="@+id/action_import_from_file"
+        android:title="@string/server_list_menu_import_from_file"
+        app:showAsAction="never" />
+
+    <item android:id="@+id/action_export_to_file"
+        android:title="@string/server_list_menu_export_to_file"
+        app:showAsAction="never" />
+
+    <item android:id="@+id/action_enter_batch_mode"
+        android:title="@string/action_server_list_enter_batch_mode"
+        app:showAsAction="never"
+         />
+
+    <item android:id="@+id/action_subscribe_servers"
+        android:title="@string/action_subscribe_server_list"
+        app:showAsAction="never" />
+
+    <item android:id="@+id/action_subscribe_settings"
+        android:title="@string/action_subscribe_settings"
+        app:showAsAction="never" />
+
+    <item android:id="@+id/action_exit_batch_operation"
+        android:title="@string/common_exit"
+        android:visible="false"
+        app:showAsAction="always" />
+
+    <item android:id="@+id/action_select_all_servers"
+        android:title="@string/action_server_list_select_all"
+        app:showAsAction="always"
+        android:visible="false" />
+
+    <item android:id="@+id/action_deselect_all_servers"
+        android:title="@string/action_server_list_deselect_all"
+        app:showAsAction="always"
+        android:visible="false" />
+
+    <item android:id="@+id/action_batch_delete_servers"
+        android:title="@string/common_delete"
+        app:showAsAction="always"
+        android:visible="false" />
+
+    <item android:id="@+id/action_test_all_proxy_server"
+        android:title="@string/server_list_menu_test_all_proxy_server"
+        app:showAsAction="never"
+        android:visible="true"/>
+
+</menu>

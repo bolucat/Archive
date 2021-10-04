@@ -1,0 +1,87 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        name: [
+            linux,
+            windows,
+            macos
+        ]
+
+        include:
+          - name: linux
+            os: ubuntu-latest
+            artifact_name: target/release/trojan-rust
+            asset_name: trojan-rust-linux
+          - name: windows
+            os: windows-latest
+            artifact_name: target/release/trojan-rust.exe
+            asset_name: trojan-rust-windows
+          - name: macos
+            os: macos-latest
+            artifact_name: target/release/trojan-rust
+            asset_name: trojan-rust-macos
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Rust Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+
+    - name: Build
+      run: cargo build --release --locked
+
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ matrix.asset_name }}
+        path: ${{ matrix.artifact_name }}
+  
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan-rust-windows
+          path: ~/windows/
+      
+      - name: Download Ubuntu Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan-rust-linux
+          path: ~/linux/
+          
+      - name: Download MacOS Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan-rust-macos
+          path: ~/macos/
+      
+      - name: Rename
+        run: |
+          mv ~/windows/trojan-rust.exe ./trojan-rust-windows.exe
+          mv ~/linux/trojan-rust ./trojan-rust-linux
+          mv ~/macos/trojan-rust ./trojan-rust-macos
+        
+      - name: Release
+        uses: softprops/action-gh-release@v0.1.7
+        with: 
+          files: |
+            trojan-rust-windows.exe
+            trojan-rust-linux
+            trojan-rust-macos

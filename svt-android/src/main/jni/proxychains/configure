@@ -1,0 +1,179 @@
+#!/bin/sh
+
+prefix=/usr/local
+OUR_CPPFLAGS=
+
+# Get a temporary filename
+i=0
+set -C
+while : ; do i=$(($i+1))
+tmpc="./conf$$-$PPID-$i.c"
+2>|/dev/null > "$tmpc" && break
+test "$i" -gt 50 && fail "$0: cannot create temporary file $tmpc"
+done
+set +C
+trap 'rm "$tmpc"' EXIT INT QUIT TERM HUP
+
+ismac() {
+	uname -s | grep Darwin >/dev/null
+}
+
+isx86_64() {
+	uname -m | grep -i X86_64 >/dev/null
+}
+
+isbsd() {
+	uname -s | grep BSD >/dev/null
+}
+
+isopenbsd() {
+	uname -s | grep OpenBSD >/dev/null
+}
+
+check_compile() {
+	printf "checking %s ... " "$1"
+	printf "$3" > "$tmpc"
+	local res=0
+	$CC $OUR_CPPFLAGS $CPPFLAGS $2 $CFLAGS -c "$tmpc" -o /dev/null >/dev/null 2>&1 \
+	|| res=1
+	test x$res = x0 && \
+	{ printf "yes\n" ; test x"$2" = x || OUR_CPPFLAGS="$OUR_CPPFLAGS $2" ; } \
+	|| printf "no\n"
+	return $res
+}
+
+check_define() {
+	printf "checking whether \$CC defines %s ... " "$1"
+	local res=1
+	$CC $OUR_CPPFLAGS $CPPFLAGS $CFLAGS -dM -E - </dev/null | grep "$1" >/dev/null && res=0
+	test x$res = x0 && printf "yes\n" || printf "no\n"
+	return $res
+}
+
+check_compile_run() {
+	printf "checking %s ... " "$1"
+	printf "$2" > "$tmpc"
+	local res=0
+	$CC $OUR_CPPFLAGS $CPPFLAGS $CFLAGS "$tmpc" -o "$tmpc".out >/dev/null 2>&1 \
+	|| res=1
+	test x$res = x0 && { "$tmpc".out || res=1 ; }
+	rm -f "$tmpc".out
+	test x$res = x0 && printf "yes\n" || printf "no\n"
+	return $res
+}
+
+usage() {
+	echo "supported arguments"
+	echo "--prefix=/path            default: $prefix"
+	echo "--exec_prefix=/path       default: $prefix/bin"
+	echo "--bindir=/path            default: $prefix/bin"
+	echo "--libdir=/path            default: $prefix/lib"
+	echo "--includedir=/path        default: $prefix/include"
+	echo "--sysconfdir=/path        default: $prefix/etc"
+	echo "--ignore-cve              default: no"
+	echo "	if set to yes ignores CVE-2015-3887 and makes it possible"
+	echo "	to preload from current dir (insecure)"
+	ismac && isx86_64 && echo "--fat-binary : build for both i386 and x86_64 architectures on 64-bit Macs"
+	echo "--help : show this text"
+	exit 1
+}
+
+spliteq() {
+	arg=$1
+	echo "${arg#*=}"
+	#alternatives echo "$arg" | cut -d= -f2-
+	# or echo "$arg" | sed 's/[^=]*=//'
+}
+
+fat_binary=
+ignore_cve=no
+parsearg() {
+	case "$1" in
+	--prefix=*) prefix=`spliteq $1`;;
+	--exec_prefix=*) exec_prefix=`spliteq $1`;;
+	--bindir=*) bindir=`spliteq $1`;;
+	--libdir=*) libdir=`spliteq $1`;;
+	--includedir=*) includedir=`spliteq $1`;;
+	--sysconfdir=*) sysconfdir=`spliteq $1`;;
+	--ignore-cve) ignore_cve=1;;
+	--ignore-cve=*) ignore_cve=`spliteq $1`;;
+	--fat-binary) fat_binary=1;;
+	--help) usage;;
+	esac
+}
+
+while true ; do
+	case $1 in
+	-*) parsearg "$1"; shift;;
+	*) break ;;
+	esac
+done
+
+if [ -z "$exec_prefix" ] ; then
+	exec_prefix=$prefix
+fi
+
+if [ -z "$libdir" ] ; then
+	libdir=$prefix/lib
+fi
+
+if [ -z "$includedir" ] ; then
+	includedir=$prefix/include
+fi
+
+if [ -z "$sysconfdir" ] ; then
+	sysconfdir=$prefix/etc
+fi
+
+if [ -z "$bindir" ] ; then
+	bindir=$exec_prefix/bin
+fi
+
+if [ -z "$CC" ] ; then
+	CC=cc
+fi
+
+check_compile 'whether netinet/in.h defines s6_addr16' "" \
+'#include <netinet/in.h>\nint main(int a, char**c){struct in6_addr x={.s6_addr32[0]=a};return x.s6_addr16[0]; }' \
+|| {
+check_compile 'whether netinet/in.h defines __u6_addr.__u6_addr16' \
+'-Ds6_addr16=__u6_addr.__u6_addr16 -Ds6_addr32=__u6_addr.__u6_addr32' \
+'#include <netinet/in.h>\nint main(int a, char**c){struct in6_addr x={.s6_addr32[0]=a};return x.s6_addr16[0]; }'
+}
+
+check_define __OpenBSD__ && \
+check_compile_run 'whether OpenBSDs fclose() (illegally) calls close()' \
+'#include <stdio.h>\n#include<stdlib.h>\nint close(int x){exit(0);}int main(){fclose(stdin);return 1;}' && \
+OUR_CPPFLAGS="$OUR_CPPFLAGS -DBROKEN_FCLOSE"
+
+echo "CC=$CC">config.mak
+[ -z "$CPPFLAGS" ] || echo "CPPFLAGS=$CPPFLAGS">>config.mak
+[ -z "$CFLAGS" ] || echo "USER_CFLAGS=$CFLAGS">>config.mak
+[ -z "$LDFLAGS" ] || echo "USER_LDFLAGS=$LDFLAGS">>config.mak
+echo prefix=$prefix>>config.mak
+echo exec_prefix=$exec_prefix>>config.mak
+echo bindir=$bindir>>config.mak
+echo libdir=$libdir>>config.mak
+echo includedir=$includedir>>config.mak
+echo sysconfdir=$sysconfdir>>config.mak
+[ "$ignore_cve" = "no" ] && echo "CPPFLAGS+= -DSUPER_SECURE">>config.mak
+[ -z "$OUR_CPPFLAGS" ] || echo "CPPFLAGS+= $OUR_CPPFLAGS" >>config.mak
+make_cmd=make
+if ismac ; then
+	echo NO_AS_NEEDED=>>config.mak
+	echo LDSO_SUFFIX=dylib>>config.mak
+	echo MAC_CFLAGS+=-DIS_MAC=1>>config.mak
+	if isx86_64 && [ "$fat_binary" = 1 ] ; then
+		echo "Configuring a fat binary for i386 and x86_64"
+		echo MAC_CFLAGS+=-arch i386 -arch x86_64>>config.mak
+		echo LDFLAGS+=-arch i386 -arch x86_64>>config.mak
+	fi
+	echo LD_SET_SONAME=-Wl,-install_name,>>config.mak
+elif isbsd ; then
+	echo LIBDL=>>config.mak
+	echo "CFLAGS+=-DIS_BSD">>config.mak
+	isopenbsd && echo "CFLAGS+=-DIS_OPENBSD">>config.mak
+	make_cmd=gmake
+fi
+
+echo "Done, now run $make_cmd && $make_cmd install"
