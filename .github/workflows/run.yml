@@ -76,6 +76,7 @@ jobs:
           ${GCRS} https://github.com/esrrhs/pingtunnel pingtunnel
           ${GCRS} https://github.com/AdguardTeam/dnsproxy dnsproxy
           ${GCRS} https://github.com/googleforgames/quilkin quilkin
+          ${GCRS} https://github.com/Ehco1996/ehco echo
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -321,6 +322,7 @@ jobs:
           ${Z9R} pingtunnel.zip pingtunnel
           ${Z9R} dnsproxy.zip dnsproxy
           ${Z9R} quilkin.zip quilkin
+          ${Z9R} echo.zip echo
           ${Z9R} netch.zip netch
           ${Z9R} bbdown.zip bbdown
           ${Z9R} youtube-dl.zip youtube-dl
