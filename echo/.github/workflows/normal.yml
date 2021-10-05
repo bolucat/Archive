@@ -1,0 +1,69 @@
+name: normal
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go 1.16
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.17
+        id: go
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v1
+
+      - name: Get dependencies
+        run: go mod download
+
+      - uses: actions/cache@v2
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Test
+        run: go test ./test
+
+      - name: Build
+        run: make build
+
+      - name: Run UPX
+        uses: crazy-max/ghaction-upx@v1
+        with:
+          version: latest
+          files: .dist/ehco
+
+      - uses: actions/upload-artifact@master
+        with:
+          name: my-artifact
+          path: .dist/ehco
+
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@master
+      - name: Build x86 image
+        uses: elgohr/Publish-Docker-Github-Action@master
+        with:
+          name: ehco1996/ehco
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          tags: "latest"
+          dockerfile: build/Dockerfile
+
+      - uses: actions/checkout@master
+      - name: Build arm image
+        uses: elgohr/Publish-Docker-Github-Action@master
+        with:
+          name: ehco1996/ehco
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          tags: "arm64"
+          dockerfile: build/arm.Dockerfile
