@@ -20,7 +20,7 @@
 
 #if defined(OS_BSD) || defined(OS_APPLE) || defined(OS_NACL) ||             \
     defined(OS_FUCHSIA) || (defined(OS_ANDROID) && __ANDROID_API__ < 21) || \
-    defined(__UCLIBC__)
+    defined(__MUSL__)
 struct stat;
 namespace base {
 typedef struct stat stat_wrapper_t;

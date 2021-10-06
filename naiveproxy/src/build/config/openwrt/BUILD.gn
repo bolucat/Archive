@@ -26,6 +26,7 @@ config("compiler") {
   defines = [
     "_LIBCPP_HAS_MUSL_LIBC",
     "__UCLIBC__",
+    "__MUSL__",
   ]
 
   if (build_static) {
