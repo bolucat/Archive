@@ -77,6 +77,8 @@ jobs:
           ${GCRS} https://github.com/AdguardTeam/dnsproxy dnsproxy
           ${GCRS} https://github.com/googleforgames/quilkin quilkin
           ${GCRS} https://github.com/Ehco1996/ehco echo
+          ${GCRS} https://github.com/Loyalsoldier/v2ray-rules-dat v2ray-rules-dat
+          ${GCRS} https://github.com/Loyalsoldier/geoip geoip
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -221,6 +223,16 @@ jobs:
           pushd svt-android/Clients || exit 1
           wget -qO- https://api.github.com/repos/xxf098/shadowsocksr-v2ray-trojan-android/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # v2ray-rules-dat
+          mkdir -p v2ray-rules-dat/Clients
+          pushd v2ray-rules-dat/Clients || exit 1
+          wget -qO- https://api.github.com/repos/Loyalsoldier/v2ray-rules-dat/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
+          # geoip
+          mkdir -p geoip/Clients
+          pushd geoip/Clients || exit 1
+          wget -qO- https://api.github.com/repos/Loyalsoldier/geoip/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
           # udp2raw
           mkdir -p udp2raw/Clients
           pushd udp2raw/Clients || exit 1
@@ -294,6 +306,8 @@ jobs:
           ${Z9R} sagernet.zip sagernet
           ${Z9R} anxray.zip anxray
           ${Z9R} svt-android.zip svt-android
+          ${Z9R} v2ray-rules-dat.zip v2ray-rules-dat
+          ${Z9R} geoip.zip geoip
           ${Z9R} udp2raw.zip udp2raw
           ${Z9R} udp2raw-multi.zip udp2raw-multi
           ${Z9R} brook.zip brook
