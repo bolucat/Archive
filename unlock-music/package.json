@@ -1,0 +1,48 @@
+{
+  "name": "unlock-music",
+  "version": "v1.9.1",
+  "updateInfo": "新增写入本地文件系统; 优化.kwm解锁; 支持.acc嗅探; 使用Typescript重构",
+  "license": "MIT",
+  "description": "Unlock encrypted music file in browser.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ix64/unlock-music"
+  },
+  "private": true,
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "fix-compatibility": "node ./src/fix-compatibility.js",
+    "make-extension": "node ./make-extension.js"
+  },
+  "dependencies": {
+    "base64-js": "^1.5.1",
+    "browser-id3-writer": "^4.4.0",
+    "core-js": "^3.16.0",
+    "crypto-js": "^4.1.1",
+    "element-ui": "^2.15.5",
+    "iconv-lite": "^0.6.3",
+    "jimp": "^0.16.1",
+    "metaflac-js": "^1.0.5",
+    "music-metadata": "7.9.0",
+    "music-metadata-browser": "2.2.7",
+    "register-service-worker": "^1.7.2",
+    "threads": "^1.6.5",
+    "vue": "^2.6.14"
+  },
+  "devDependencies": {
+    "@types/crypto-js": "^4.0.2",
+    "@vue/cli-plugin-babel": "^4.5.13",
+    "@vue/cli-plugin-pwa": "^4.5.13",
+    "@vue/cli-plugin-typescript": "^4.5.13",
+    "@vue/cli-service": "^4.5.13",
+    "babel-plugin-component": "^1.1.1",
+    "sass": "^1.38.1",
+    "sass-loader": "^10.2.0",
+    "semver": "^7.3.5",
+    "threads-plugin": "^1.4.0",
+    "typescript": "~4.1.6",
+    "vue-cli-plugin-element": "^1.0.1",
+    "vue-template-compiler": "^2.6.14"
+  }
+}
