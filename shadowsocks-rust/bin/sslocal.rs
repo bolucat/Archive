@@ -562,7 +562,7 @@ fn launch_reload_server_task(config_path: PathBuf, balancer: PingBalancer) {
     tokio::spawn(async move {
         let mut sigusr1 = signal(SignalKind::user_defined1()).expect("signal");
 
-        while let Some(_) = sigusr1.recv().await {
+        while sigusr1.recv().await.is_some() {
             let config = match Config::load_from_file(&config_path, ConfigType::Local) {
                 Ok(c) => c,
                 Err(err) => {
@@ -574,7 +574,9 @@ fn launch_reload_server_task(config_path: PathBuf, balancer: PingBalancer) {
             let servers = config.server;
             info!("auto-reload {} with {} servers", config_path.display(), servers.len());
 
-            balancer.reset_servers(servers).await;
+            if let Err(err) = balancer.reset_servers(servers).await {
+                error!("auto-reload {} but found error: {}", config_path.display(), err);
+            }
         }
     });
 }
