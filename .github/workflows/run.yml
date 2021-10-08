@@ -163,7 +163,7 @@ jobs:
           # ssnet-qv2ray plugins
           mkdir -p ssnet-qv2ray/Clients/plugins
           pushd ssnet-qv2ray/Clients/plugins || exit 1
-          wget -qO- https://api.github.com/repos/bolucat/Archive/releases/tags/ss-net-qvplugin | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          wget -qO- https://api.github.com/repos/bolucat/peace/releases/tags/qvplugin | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # clashx
           mkdir -p clashx/Clients
@@ -371,6 +371,14 @@ jobs:
           prerelease: false
           files: |
             ./release/*
+            
+      - name: Delete Older Release
+        uses: dev-drprasad/delete-older-releases@v0.2.0
+        with:
+          repo: bolucat/Archive
+          keep_latest: 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             
       - name: Healthy Check
         if: (!cancelled())
