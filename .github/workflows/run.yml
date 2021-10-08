@@ -87,6 +87,7 @@ jobs:
           ${GCRS} https://github.com/rachpt/lanzou-gui lanzou-gui
           ${GCRS} https://github.com/liupan1890/aliyunpan aliyunpan
           ${GCRS} https://github.com/unlock-music/unlock-music unlock-music
+          ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
@@ -289,6 +290,11 @@ jobs:
           pushd unlock-music/Clients || exit 1
           wget -qO- https://api.github.com/repos/unlock-music/unlock-music/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # filebrowser
+          mkdir -p filebrowser/Clients
+          pushd filebrowser/Clients || exit 1
+          wget -qO- https://api.github.com/repos/filebrowser/filebrowser/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
 
       - name: Compress to packages
         run: |
@@ -350,6 +356,7 @@ jobs:
           ${Z9R} lanzou-gui.zip lanzou-gui
           ${Z9R} aliyunpan.zip aliyunpan
           ${Z9R} unlock-music.zip unlock-music
+          ${Z9R} filebrowser.zip filebrowser
           # Move to Release
           mv *.zip release
 
