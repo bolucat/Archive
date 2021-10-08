@@ -377,6 +377,7 @@ jobs:
         with:
           repo: bolucat/Archive
           keep_latest: 1
+          delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             
