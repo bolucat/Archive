@@ -7809,7 +7809,7 @@ namespace Nikse.SubtitleEdit.Forms
                         if (result == DialogResult.No)
                         {
                             _spellCheckForm.Dispose();
-                            _spellCheckForm = new SpellCheck();
+                            _spellCheckForm = new SpellCheck(GetCurrentSubtitleFormat());
                             _spellCheckForm.DoSpellCheck(autoDetect, _subtitle, dictionaryFolder, this, startFromLine);
                         }
                         else
@@ -7819,7 +7819,7 @@ namespace Nikse.SubtitleEdit.Forms
                     }
                     else
                     {
-                        _spellCheckForm = new SpellCheck();
+                        _spellCheckForm = new SpellCheck(GetCurrentSubtitleFormat());
                         _spellCheckForm.DoSpellCheck(autoDetect, _subtitle, dictionaryFolder, this, startFromLine);
                     }
                 }
@@ -14450,13 +14450,34 @@ namespace Nikse.SubtitleEdit.Forms
                         }
                     }
                 }
-                else if (ext == ".mp4" || ext == ".m4v" || ext == ".3gp")
+                if (ext == ".ismt" || ext == ".mp4" || ext == ".m4v" || ext == ".3gp")
                 {
                     var mp4Parser = new MP4Parser(fileName);
                     var mp4SubtitleTracks = mp4Parser.GetSubtitleTracks();
                     if (mp4SubtitleTracks.Count > 0)
                     {
                         ImportSubtitleFromMp4(fileName);
+                        return;
+                    }
+
+                    var f = new IsmtDfxp();
+                    if (f.IsMine(null, fileName))
+                    {
+                        f.LoadSubtitle(_subtitle, null, fileName);
+                        SetEncoding(Configuration.Settings.General.DefaultEncoding);
+                        _fileName = Utilities.GetPathAndFileNameWithoutExtension(fileName) + GetCurrentSubtitleFormat().Extension;
+                        SetTitle();
+                        ShowStatus(string.Format(_language.LoadedSubtitleX, _fileName));
+                        _sourceViewChange = false;
+                        _changeSubtitleHash = GetFastSubtitleHash();
+                        ResetHistory();
+                        SetUndockedWindowsTitle();
+                        _converted = true;
+                        UpdateSourceView();
+                        SubtitleListview1.Fill(_subtitle, _subtitleOriginal);
+                        _subtitleListViewIndex = -1;
+                        SubtitleListview1.FirstVisibleIndex = -1;
+                        SubtitleListview1.SelectIndexAndEnsureVisible(0, true);
                         return;
                     }
 
@@ -16863,7 +16884,6 @@ namespace Nikse.SubtitleEdit.Forms
             var p = _subtitle.GetParagraphOrDefault(index - 1);
             if (p == null || p.StartTime.TotalMilliseconds < p.StartTime.TotalMilliseconds - 9000)
             {
-                MakeHistoryForUndoOnlyIfNotRecent(string.Format(_language.VideoControls.BeforeChangingTimeInWaveformX, "#" + p.Number + " " + p.Text));
                 SetStartTime(false, positionInSeconds);
                 return;
             }
@@ -16890,15 +16910,20 @@ namespace Nikse.SubtitleEdit.Forms
                 p.StartTime.TotalMilliseconds = p.EndTime.TotalMilliseconds - Utilities.GetOptimalDisplayMilliseconds(p.Text);
             }
 
+            UpdateOriginalTimeCodes(oldParagraph);
             SubtitleListview1.SetStartTimeAndDuration(index, current, _subtitle.GetParagraphOrDefault(index + 1), _subtitle.GetParagraphOrDefault(index - 1));
             SubtitleListview1.SetStartTimeAndDuration(index - 1, p, current, _subtitle.GetParagraphOrDefault(index - 2));
-            UpdateOriginalTimeCodes(oldParagraph);
             UpdateSourceView();
             var next = _subtitle.GetParagraphOrDefault(index - 1);
             if (goToNext && next != null)
             {
                 _subtitleListViewIndex = -1;
                 SubtitleListview1.SelectIndexAndEnsureVisible(index + 1, true);
+            }
+            else
+            {
+                p = _subtitle.GetParagraphOrDefault(index);
+                InitializeListViewEditBox(p);
             }
         }
 
