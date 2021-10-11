@@ -2,6 +2,7 @@ package libcore
 
 import (
 	"github.com/sagernet/libping"
+	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"os"
 )
@@ -24,6 +25,8 @@ func closeIgnore(closer ...interface{}) {
 			_ = ca.Close()
 		} else if ia, ok := c.(common.Interruptible); ok {
 			ia.Interrupt()
+		} else {
+			logrus.Debug("unable to close ", c)
 		}
 	}
 }

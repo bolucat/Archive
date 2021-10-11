@@ -1,6 +1,5 @@
 /******************************************************************************
- *                                                                            *
- * Copyright (C) 2021 by nekohasekai <contact-sagernet@sekai.icu>             *
+ * Copyright (C) 2021 by nekohasekai <contact-git@sekai.icu>                  *
  *                                                                            *
  * This program is free software: you can redistribute it and/or modify       *
  * it under the terms of the GNU General Public License as published by       *
@@ -17,39 +16,21 @@
  *                                                                            *
  ******************************************************************************/
 
-package io.nekohasekai.sagernet.bg.proto
+package io.nekohasekai.sagernet.bg.test
 
-import android.os.Build
-import android.provider.Settings
 import io.nekohasekai.sagernet.bg.AbstractInstance
-import io.nekohasekai.sagernet.database.DataStore
-import io.nekohasekai.sagernet.ktx.app
-import kotlinx.coroutines.CoroutineScope
-import libcore.ApiInstance
+//import libcore.DebugInstance
+import libcore.Libcore
 
-class ApiInstance : AbstractInstance {
+class DebugInstance : AbstractInstance {
 
-    lateinit var point: ApiInstance
+//    lateinit var instance: DebugInstance
 
     override fun launch() {
-        var deviceName = Settings.Secure.getString(app.contentResolver, "bluetooth_name")
-        if (deviceName.isNullOrBlank()) {
-            deviceName = Build.DEVICE
-            if (!deviceName.startsWith(Build.MANUFACTURER)) {
-                deviceName = Build.MANUFACTURER + " " + deviceName
-            }
-        }
-        point = ApiInstance(
-            deviceName,
-            DataStore.socksPort,
-            DataStore.localDNSPort,
-            DataStore.enableLog,
-            DataStore.bypassLan
-        )
-        point.start()
+//        instance = Libcore.newDebugInstance()
     }
 
     override fun close() {
-        if (::point.isInitialized) point.close()
+//        if (::instance.isInitialized) instance.close()
     }
 }

@@ -2,7 +2,6 @@ package libcore
 
 import (
 	"context"
-	"github.com/Dreamacro/clash/common/pool"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -374,7 +373,7 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		})
 	}
 
-	conn, err := t.v2ray.dialUDP(ctx)
+	conn, err := t.v2ray.dialUDP(ctx, destination, time.Minute*5)
 
 	if err != nil {
 		logrus.Errorf("[UDP] dial failed: %s", err.Error())
@@ -407,10 +406,8 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 
 	go sendTo()
 
-	buffer := pool.Get(pool.RelayBufferSize)
-
 	for {
-		n, addr, err := conn.ReadFrom(buffer)
+		buffer, addr, err := conn.readFrom()
 		if err != nil {
 			break
 		}
@@ -418,18 +415,15 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 			addr = nil
 		}
 		if addr, ok := addr.(*net.UDPAddr); ok {
-			_, err = writeBack(buffer[:n], addr)
+			_, err = writeBack(buffer, addr)
 		} else {
-			_, err = writeBack(buffer[:n], nil)
+			_, err = writeBack(buffer, nil)
 		}
 		if err != nil {
 			break
 		}
 	}
-
 	// close
-
-	_ = pool.Put(buffer)
 	closeIgnore(conn, closer)
 	t.udpTable.Delete(natKey)
 }

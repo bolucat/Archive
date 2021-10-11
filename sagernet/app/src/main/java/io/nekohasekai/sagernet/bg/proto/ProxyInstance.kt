@@ -32,6 +32,8 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.onMainDispatcher
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.utils.DirectBoot
+//import io.nekohasekai.sagernet.BuildConfig
+//import io.nekohasekai.sagernet.bg.test.DebugInstance
 import kotlinx.coroutines.*
 import libcore.Libcore
 import java.io.IOException
@@ -81,10 +83,20 @@ class ProxyInstance(profile: ProxyEntity, val service: BaseService.Interface) : 
         }
 
         if (DataStore.allowAccess) {
-            externalInstances[11451] = ApiInstance().apply {
-                launch()
+            val api = ApiInstance()
+            try {
+                api.launch()
+                externalInstances[11451] = api
+            } catch (e: Exception) {
+                Logs.w("Failed to start api server", e)
             }
         }
+
+       /* if (BuildConfig.DEBUG && DataStore.enableLog) {
+            externalInstances[9999] = DebugInstance().apply {
+                launch()
+            }
+        }*/
 
         SagerNet.started = true
     }

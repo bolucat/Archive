@@ -494,6 +494,9 @@ public class V2RayConfig {
         public String address;
         public Integer port;
 
+        // SagerNet private
+        public Integer userLevel;
+
     }
 
     public static class FreedomOutboundConfigurationObject implements OutboundConfigurationObject {
