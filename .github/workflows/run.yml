@@ -79,6 +79,7 @@ jobs:
           ${GCRS} https://github.com/Ehco1996/ehco echo
           ${GCRS} https://github.com/Loyalsoldier/v2ray-rules-dat v2ray-rules-dat
           ${GCRS} https://github.com/Loyalsoldier/geoip geoip
+          ${GCRS} https://github.com/17mon/china_ip_list china-ip
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -320,6 +321,7 @@ jobs:
           ${Z9R} svt-android.zip svt-android
           ${Z9R} v2ray-rules-dat.zip v2ray-rules-dat
           ${Z9R} geoip.zip geoip
+          ${Z9R} china-ip.zip china-ip
           ${Z9R} udp2raw.zip udp2raw
           ${Z9R} udp2raw-multi.zip udp2raw-multi
           ${Z9R} brook.zip brook
