@@ -15,6 +15,10 @@ namespace BBDown
     {
         public static int RunExe(string app, string parms)
         {
+            if (File.Exists(Path.Combine(Program.APP_DIR, $"{app}")))
+                app = Path.Combine(Program.APP_DIR, $"{app}");
+            if (File.Exists(Path.Combine(Program.APP_DIR, $"{app}.exe")))
+                app = Path.Combine(Program.APP_DIR, $"{app}.exe");
             int code = 0;
             Process p = new Process();
             p.StartInfo.FileName = app;
@@ -64,7 +68,7 @@ namespace BBDown
                 {
                     if (File.Exists(subs[i].path) && File.ReadAllText(subs[i].path) != "")
                     {
-                        inputArg.Append($" -add \"{subs[i].path}#trackID=1:name={SubDescDic[subs[i].lan]}:lang={SubLangDic[subs[i].lan]}\" ");
+                        inputArg.Append($" -add \"{subs[i].path}#trackID=1:name={GetSubtitleCode(subs[i].lan).Item2}:lang={GetSubtitleCode(subs[i].lan).Item1}\" ");
                     }
                 }
             }
@@ -104,7 +108,7 @@ namespace BBDown
                     if(File.Exists(subs[i].path) && File.ReadAllText(subs[i].path) != "")
                     {
                         inputArg.Append($" -i \"{subs[i].path}\" ");
-                        metaArg.Append($" -metadata:s:s:{i} handler_name=\"{SubDescDic[subs[i].lan]}\" -metadata:s:s:{i} language={SubLangDic[subs[i].lan]} ");
+                        metaArg.Append($" -metadata:s:s:{i} handler_name=\"{GetSubtitleCode(subs[i].lan).Item2}\" -metadata:s:s:{i} language={GetSubtitleCode(subs[i].lan).Item1} ");
                     }
                 }
             }

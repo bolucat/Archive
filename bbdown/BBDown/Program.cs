@@ -72,6 +72,8 @@ namespace BBDown
             public string Cookie { get; set; } = "";
             public string AccessToken { get; set; } = "";
             public string Aria2cProxy { get; set; } = "";
+            public string WorkDir { get; set; } = "";
+            public string DelayPerPage { get; set; } = "0";
         }
 
         public static async Task<int> Main(params string[] args)
@@ -161,7 +163,13 @@ namespace BBDown
                     "设置字符串cookie用以下载网页接口的会员内容"),
                 new Option<string>(
                     new string[]{ "--access-token" ,"-token"},
-                    "设置access_token用以下载TV/APP接口的会员内容")
+                    "设置access_token用以下载TV/APP接口的会员内容"),
+                new Option<string>(
+                    new string[]{ "--work-dir"},
+                    "设置程序的工作目录"),
+                new Option<string>(
+                    new string[]{ "--delay-per-page"},
+                    "设置下载合集分P之间的下载间隔时间(单位: 秒, 默认无间隔)")
             };
 
             Command loginCommand = new Command(
@@ -332,8 +340,21 @@ namespace BBDown
                 string lang = myOption.Language;
                 string selectPage = myOption.SelectPage.ToUpper();
                 string aidOri = ""; //原始aid
+                int delay = Convert.ToInt32(myOption.DelayPerPage);
                 COOKIE = myOption.Cookie;
                 TOKEN = myOption.AccessToken.Replace("access_token=", "");
+
+                if (!string.IsNullOrEmpty(myOption.WorkDir))
+                {
+                    var dir = Path.GetFullPath(myOption.WorkDir);
+                    if (!Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    //设置工作目录
+                    Environment.CurrentDirectory = dir;
+                    LogDebug("切换工作目录至：{0}", dir);
+                }
 
                 //audioOnly和videoOnly同时开启则全部忽视
                 if (audioOnly && videoOnly)
@@ -475,6 +496,12 @@ namespace BBDown
 
                 foreach (Page p in pagesInfo)
                 {
+                    if (pagesInfo.Count > 1 && delay > 0)
+                    {
+                        Log($"停顿{delay}秒...");
+                        Thread.Sleep(delay * 1000);
+                    }
+
                     Log($"开始解析P{p.index}...");
 
                     string webJsonStr = "";
@@ -522,7 +549,7 @@ namespace BBDown
                             subtitleInfo = await BBDownSubUtil.GetSubtitlesAsync(p.aid, p.cid, p.epid, intlApi);
                             foreach (Subtitle s in subtitleInfo)
                             {
-                                Log($"下载字幕 {s.lan} => {BBDownSubUtil.SubDescDic[s.lan]}...");
+                                Log($"下载字幕 {s.lan} => {BBDownSubUtil.GetSubtitleCode(s.lan).Item2}...");
                                 LogDebug("下载：{0}", s.url);
                                 await BBDownSubUtil.SaveSubtitleAsync(s.url, s.path);
                                 if (subOnly && File.Exists(s.path) && File.ReadAllText(s.path) != "")
@@ -530,7 +557,7 @@ namespace BBDown
                                     string _indexStr = p.index.ToString("0".PadRight(pagesInfo.OrderByDescending(_p => _p.index).First().index.ToString().Length, '0'));
                                     //处理文件夹以.结尾导致的异常情况
                                     if (title.EndsWith(".")) title += "_fix";
-                                    string _outSubPath = GetValidFileName(title) + (pagesInfo.Count > 1 ? $"/[P{_indexStr}]{GetValidFileName(p.title)}" : (vInfo.PagesInfo.Count > 1 ? $"[P{_indexStr}]{GetValidFileName(p.title)}" : "")) + $"_{BBDownSubUtil.SubDescDic[s.lan]}.srt";
+                                    string _outSubPath = GetValidFileName(title) + (pagesInfo.Count > 1 ? $"/[P{_indexStr}]{GetValidFileName(p.title)}" : (vInfo.PagesInfo.Count > 1 ? $"[P{_indexStr}]{GetValidFileName(p.title)}" : "")) + $"_{BBDownSubUtil.GetSubtitleCode(s.lan).Item2}.srt";
                                     if (_outSubPath.Contains("/"))
                                     {
                                         if (!Directory.Exists(Path.GetDirectoryName(_outSubPath)))
@@ -719,9 +746,9 @@ namespace BBDown
                             if (vIndex > dfns.Count || vIndex < 0) vIndex = 0;
                             Console.ResetColor();
                             //重新解析
+                            videoTracks.Clear();
                             (webJsonStr, videoTracks, audioTracks, clips, dfns) = await ExtractTracksAsync(onlyHevc, onlyAvc, aidOri, p.aid, p.cid, p.epid, tvApi, intlApi, appApi, dfns[vIndex]);
                             flag = true;
-                            videoTracks.Clear();
                             goto reParse;
                         }
 

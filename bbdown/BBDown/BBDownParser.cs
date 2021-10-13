@@ -24,7 +24,7 @@ namespace BBDown
             bool bangumi = cheese || aidOri.StartsWith("ep:");
             LogDebug("bangumi={0},cheese={1}", bangumi, cheese);
 
-            if (appApi) return await BBDownAppHelper.DoReqAsync(aid, cid, qn, bangumi, onlyAvc, Program.TOKEN);
+            if (appApi) return await BBDownAppHelper.DoReqAsync(aid, cid, epId, qn, bangumi, onlyAvc, Program.TOKEN);
 
             string prefix = tvApi ? (bangumi ? "api.snm0516.aisee.tv/pgc/player/api/playurltv" : "api.snm0516.aisee.tv/x/tv/ugc/playurl")
                         : (bangumi ? "api.bilibili.com/pgc/player/web/playurl" : "api.bilibili.com/x/player/playurl");
@@ -76,7 +76,7 @@ namespace BBDown
             List<string> dfns = new List<string>();
 
             //调用解析
-            string webJsonStr = await GetPlayJsonAsync(onlyAvc, aidOri, aid, cid, epId, tvApi, intlApi, appApi);
+            string webJsonStr = await GetPlayJsonAsync(onlyAvc, aidOri, aid, cid, epId, tvApi, intlApi, appApi, qn);
 
             var respJson = JsonDocument.Parse(webJsonStr);
             var data = respJson.RootElement;
@@ -198,12 +198,15 @@ namespace BBDown
                 string url = "";
                 double size = 0;
                 double length = 0;
-                if (webJsonStr.Contains("\"data\":{"))
+                var nodeName = "data";
+            flvParse:
+                if (webJsonStr.Contains($"\"{nodeName}\":{{"))
                 {
-                    quality = respJson.RootElement.GetProperty("data").GetProperty("quality").ToString();
-                    videoCodecid = respJson.RootElement.GetProperty("data").GetProperty("video_codecid").ToString();
+                    var dataNode = respJson.RootElement.GetProperty(nodeName);
+                    quality = dataNode.GetProperty("quality").ToString();
+                    videoCodecid = dataNode.GetProperty("video_codecid").ToString();
                     //获取所有分段
-                    foreach (var node in respJson.RootElement.GetProperty("data").GetProperty("durl").EnumerateArray().ToList())
+                    foreach (var node in dataNode.GetProperty("durl").EnumerateArray().ToList())
                     {
                         clips.Add(node.GetProperty("url").ToString());
                         size += node.GetProperty("size").GetDouble();
@@ -212,14 +215,14 @@ namespace BBDown
                     //TV模式可用清晰度
                     JsonElement qnExtras;
                     JsonElement acceptQuality;
-                    if (respJson.RootElement.GetProperty("data").TryGetProperty("qn_extras", out qnExtras)) 
+                    if (dataNode.TryGetProperty("qn_extras", out qnExtras)) 
                     {
                         foreach (var node in qnExtras.EnumerateArray())
                         {
                             dfns.Add(node.GetProperty("qn").ToString());
                         }
                     }
-                    else if (respJson.RootElement.GetProperty("data").TryGetProperty("accept_quality", out acceptQuality)) //非tv模式可用清晰度
+                    else if (dataNode.TryGetProperty("accept_quality", out acceptQuality)) //非tv模式可用清晰度
                     {
                         foreach (var node in acceptQuality.EnumerateArray())
                         {
@@ -229,10 +232,15 @@ namespace BBDown
                         }
                     }
                 }
+                else if (webJsonStr.Contains("\"result\":{"))
+                {
+                    nodeName = "result";
+                    goto flvParse;
+                }
                 else
                 {
                     //如果获取数据失败，尝试从根路径获取数据
-                    string nodeinfo = respJson.ToString();
+                    string nodeinfo = respJson.RootElement.ToString();
                     var nodeJson = JsonDocument.Parse(nodeinfo).RootElement;
                     quality = nodeJson.GetProperty("quality").ToString();
                     videoCodecid = nodeJson.GetProperty("video_codecid").ToString();
