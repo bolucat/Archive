@@ -1,0 +1,5 @@
+name: 'build-deb'
+description: 'Create deb packages'
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

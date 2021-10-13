@@ -1,0 +1,26 @@
+[Unit]
+Description=VpnCloud network '%I'
+After=network-online.target
+Wants=network-online.target
+PartOf=vpncloud.target
+Documentation=man:vpncloud(1)
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/vpncloud --config /etc/vpncloud/%i.net --log-file /var/log/vpncloud-%i.log --stats-file /var/log/vpncloud-%i.stats --daemon --pid-file /run/vpncloud-%i.pid
+PIDFile=/run/vpncloud-%i.pid
+WorkingDirectory=/etc/vpncloud
+RestartSec=5s
+Restart=on-failure
+TasksMax=10
+MemoryMax=50M
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log /run
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_CHROOT
+DeviceAllow=/dev/null rw
+DeviceAllow=/dev/net/tun rw
+
+[Install]
+WantedBy=multi-user.target

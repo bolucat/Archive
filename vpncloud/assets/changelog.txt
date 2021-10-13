@@ -1,0 +1,323 @@
+vpncloud (2.2.0) stable; urgency=medium
+
+ * [added] Service target file (thanks to mnhauke)
+ * [added] Added interactive configuration wizard
+ * [added] Support for (un-)installation
+ * [added] Building static binaries
+ * [added] Building i686 rpm
+ * [changed] Restructured example config
+ * [changed] Changed Rust version to 1.51.0
+ * [changed] Updated dependencies
+ * [changed] Change permissions of /etc/vpncloud
+
+ -- Dennis Schwerdel <schwerdel+vpncloud@googlemail.com>  Tue, 06 Apr 2021 12:27:00 +0200
+
+vpncloud (2.1.0) stable; urgency=medium
+
+  * [added] Support for websocket proxy mode
+  * [added] Support for hook scripts to handle certain situations
+  * [added] Support for creating shell completions
+  * [removed] Removed dummy device type
+  * [changed] Updated dependencies
+  * [changed] Changed Rust version to 1.49.0
+  * [fixed] Added missing peer address propagation
+  * [fixed] Fixed problem with peer addresses without port
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Sat, 06 Feb 2021 13:13:00 +0100
+
+vpncloud (2.0.1) stable; urgency=medium
+
+  * [changed] Changed documentation
+  * [changed] Updated dependencies
+  * [changed] Retrying connections for 120 secs
+  * [changed] Resetting own addresses periodically
+  * [changed] Using smallvec everywhere
+  * [changed] Assume default port for peers without port
+  * [fixed] Fixed corner case with lost init message
+  * [fixed] Do not reconnect to timed out pending connections
+  * [fixed] Most specific claims beat less specific claims
+  * [fixed] Count all invalid protocol traffic
+  * [fixed] Fixed compile with musl
+  * [fixed] Fixed time format in logs
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Sat, 07 Nov 2020 12:28:00 +0100
+
+vpncloud (2.0.0) stable; urgency=medium
+
+  * [added] **Add strong crypto, complete rewrite of crypto system**
+  * [added] Automatically claim addresses based on interface addresses (disable with --no-auto-claim)
+  * [added] Allow to give --ip instead of ifup cmd
+  * [added] Automatically set optimal MTU on interface
+  * [added] Warning for disabled or loose rp_filter setting
+  * [added] Add --fix-rp-filter to fix rp filter settings
+  * [added] Offer to migrate old configs
+  * [changed] **Complete change of network protocol**
+  * [changed] Negotiate crypto method per peer, select best method
+  * [changed] Make encryption the default, no encryption must be stated explicitly
+  * [changed] Changed default device type to TUN
+  * [changed] Rename subnet to claim
+  * [changed] Set peer exchange interval to 5 minutes
+  * [changed] Periodically send claims with peer list
+  * [changed] Changed Rust version to 1.47.0
+  * [removed] Remove network-id parameter
+  * [removed] Remove port config option in favor of --listen
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Fri, 30 Oct 2020 22:07:00 +0100
+
+vpncloud (1.4.0) stable; urgency=medium
+
+  * [added] Added option to listen on specified IP
+  * [added] Added support for statsd monitoring
+  * [changed] No longer using two sockets for ipv4 and ipv6
+  * [changed] Warning for missing router is now info
+  * [changed] New warning on claimed addresses in learning mode
+  * [changed] Rewrote argument parsing
+  * [changed] Changed stats file format to YAML
+  * [changed] Using asciidoc for manpage
+  * [changed] Updated dependencies
+  * [fixed] Fixed problem that could lead to 100% cpu consumption
+  * [fixed] Fixed startup race condition
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Wed, 03 Jun 2020 17:46:00 +0200
+
+vpncloud (1.3.0) stable; urgency=medium
+
+  * [added] Building for aarch64 aka arm64 (thanks to Ivan)
+  * [added] Added feature to disable special NAT support
+  * [changed] Improved port forwarding on quirky routers
+  * [changed] Reduced peer timeout to 5min to work better with NAT
+  * [changed] Improved builder scripts
+  * [changed] Updated dependencies
+  * [fixed] Fixed problem with growing stats file
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Sat, 25 Jan 2020 13:49:34 +0100
+
+vpncloud (1.2.1) stable; urgency=medium
+
+  * [fixed] Fixed a problem with service restrictions
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Sun, 22 Dec 2019 16:47:38 +0100
+
+vpncloud (1.2.0) stable; urgency=medium
+
+  * [added] Added service restrictions to systemd
+  * [changed] Rust version 1.40.0
+  * [changed] Also drop privileges in foreground mode
+  * [changed] Set builders to Ubuntu 16.04 and CentOS 7
+  * [changed] Set keepalive to 120 secs when NAT is detected
+  * [changed] Deleting beacon file at shutdown
+  * [changed] Updated dependencies
+  * [fixed] Added parameter keepalive to manpage
+  * [fixed] Fixed problems on stats file when dropping permissions
+  * [fixed] Deleting files before overwriting them
+  * [fixed] Fixed duplicate port bindings
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Fri, 20 Dec 2019 16:31:07 +0100
+
+vpncloud (1.1.0) stable; urgency=medium
+  
+  * [added] Exchange peer timeout and adapt keepalive accordingly
+  * [added] Reducing published peer timeout to 5 min when NAT is detected
+  * [added] Added more tests
+  * [changed] Rust version 1.41.0
+  * [changed] Updated dependencies
+  * [fixed] Fixed potential startup dependency issue
+  * [fixed] Fixed wrong base62 encoding
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Thu, 04 Dec 2019 19:01:34 +0100
+
+vpncloud (1.0.0) stable; urgency=medium
+
+  * [added] Added ability to publish small beacons for rendezvous
+  * [added] Added build chain for packages
+  * [added] Added more tests
+  * [changed] Allow to build binary without manpage
+  * [changed] Rust edition 2018
+  * [changed] Rust version 1.33.0
+  * [changed] Updated dependencies
+  * [fixed] Fixed bug that could cause repeated initialization messages
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Thu, 21 Mar 2019 18:06:19 +0100
+
+vpncloud (0.9.1) stable; urgency=medium
+
+  * [fixed] Fixed bug in new hex secret key functionality
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Sat, 16 Jan 2019 15:21:32 +0100
+
+vpncloud (0.9.0) stable; urgency=medium
+
+  * [added] Added support for cross-compilation
+  * [added] Added keepalive option for nodes behind NAT
+  * [added] Added ability to write out statistics file with peers and traffic info
+  * [added] Added dummy device type that does not allocate an interface
+  * [added] Added ability to change /dev/tun path
+  * [changed] Using ring instead of libsodium
+  * [changed] Using PBKDF2 for shared keys (**incompatible**)
+  * [changed] Updated dependencies
+  * [fixed] Hashed magics now also consider first character (**incompatible**)
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Fri, 15 Jan 2019 23:44:54 +0100
+
+vpncloud (0.8.2) stable; urgency=medium
+
+  * [changed] Using serde instead of rustc_serialize
+  * [changed] Updated libsodium to 1.0.16
+  * [changed] Updated dependencies
+  * [changed] Making clippy happy
+  * [fixed] Fixed wrong address
+
+ -- Dennis Schwerdel <schwerdel@googlemail.com>  Wed, 02 Jan 2019 19:09:20 +0100
+
+vpncloud (0.8.1) stable; urgency=medium
+
+  * [added] Added more tests
+  * [changed] Updated dependencies
+  * [changed] Updated libsodium to 1.0.12
+  * [changed] Small fixes to make clippy happy
+  * [changed] Removed a layer of indirection from inner loop
+  * [fixed] Fixed two problems with routing table
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 09 May 2017 09:16:31 +0200
+
+vpncloud (0.8.0) stable; urgency=medium
+
+  * [added] Support for automatic port forwarding via UPnP
+  * [added] Added `-s` shorthand for `--subnet`
+  * [added] Support for YAML config file via `--config`
+  * [added] Support for running in the background
+  * [added] Support for dropping permissions
+  * [added] Support for writing a pid file
+  * [added] Support for writing logs to logfile
+  * [changed] Not overriding recently learnt addresses in switch mode
+  * [changed] Caching resolved addresses to increase performance
+  * [changed] Configurable magic header is now used instead of Network-ID (**incompatible**)
+  * [changed] Clarified documentation on TUN netmasks
+  * [changed] Added timestamps to output
+  * [changed] Using new YAML config instead of old config files (**incompatible**)
+  * [changed] Prefer IPv4 over IPv6 when possible
+  * [fixed] Fixed documentation of listen parameter
+  * [fixed] Fixed problem with multiple subnets
+  * [fixed] Fixed problem with interrupted poll after suspend to ram
+  * [fixed] Forgot to extend peer timeout on peer exchange
+  * [fixed] No longer broadcasting to additional addresses
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Fri, 25 Nov 2016 07:30:17 +0100
+
+vpncloud (0.7.0) stable; urgency=medium
+
+  * [added] Added more tests
+  * [added] Added pluggable polling system
+  * [added] Added documentation
+  * [changed] Code cleanup
+  * [changed] Updated dependencies
+  * [changed] Turned some clippy warnings off
+  * [changed] Cross-compiling for ARM
+  * [changed] Updated libsodium to 1.0.11
+  * [removed] Removed Address remove code for prefix table
+  * [fixed] Reconnecting to lost peers when receiving from them or sending to them
+  * [fixed] Sending peer list more often to prevent timeouts
+  * [fixed] Removing learnt addresses of lost peers
+  * [fixed] Fixed possible crash in message decoding
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Fri, 05 Aug 2016 08:47:06 +0200
+
+vpncloud (0.6.0) stable; urgency=medium
+
+  * [added] Exponential backoff for reconnect timeouts
+  * [added] Systemd compatible startup scripts
+  * [changed] Repeatedly resolving connect addresses to allow DynDNS
+  * [changed] Listening on IPv4 and IPv6
+  * [changed] Using SO_REUSEADDR to allow frequent rebinding
+  * [changed] Building and using local libsodium library automatically
+  * [changed] Updated dependencies
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Thu, 02 Jun 2016 09:33:01 +0200
+
+vpncloud (0.5.0) stable; urgency=medium
+
+  * [added] Added license and copyright information
+  * [added] Added documentation for daemon config files
+  * [added] Script for performance measurements
+  * [added] Added more tests and benchmarks
+  * [changed] Daemon now detects network config files on its own
+  * [changed] Using display format for addresses
+  * [changed] Updated dependencies
+  * [changed] New measurements
+  * [changed] Only calling crypto_init once
+  * [changed] Passing listen address as &str
+  * [changed] Using FNV hash for better performance
+  * [changed] Using slice operations instead of loops
+  * [changed] Updated libsodium to  1.0.10
+  * [changed] Renamed default.net to example.net
+  * [fixed] Fixed wrong hex address formatting
+  * [fixed] Fixed peer exchange for more than 65000 peers
+  * [fixed] Initializing crypto for benchmarks
+  * [fixed] Removing learned addresses of lost peers
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 05 Apr 2016 15:33:20 +0200
+
+vpncloud (0.4.3) stable; urgency=medium
+
+  * [changed] Updated libsodium to 1.0.8
+  * [fixed] Fixed problem with nodes broadcasting to themselves
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 02 Feb 2016 11:27:04 +0100
+
+vpncloud (0.4.2) stable; urgency=medium
+
+  * [changed] Updated dependencies
+  * [changed] New measurements
+  * [changed] Using copy trait more often
+  * [fixed] Fixed deb changelog
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 19 Jan 2016 21:56:12 +0100
+
+vpncloud (0.4.1) stable; urgency=medium
+
+  * [changed] Logging more verbosely
+  * [fixed] Removing NULL-bytes from interface name
+  * [fixed] Supporting hostnames as peers
+  * [fixed] No longer encrypting multiple times
+  * [fixed] Properly decoding protocol header when sending
+  * [fixed] Corrected size of read data
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 22 Dec 2015 22:51:30 +0100
+
+vpncloud (0.4) stable; urgency=medium
+
+  * [added] Init script
+  * [changed] Removed last payload memcopy
+  * [changed] Using RNG to select peers for peers list exchange
+  * [changed] Updated dependency versions
+  * [changed] Updated documentation
+  * [fixed] Printing errors instead of panics in some cases
+  * [fixed] Build script for Debian packages
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 22 Dec 2015 19:23:26 +0100
+
+vpncloud (0.3.1) stable; urgency=medium
+
+  * Preventing nodes from connecting to themselves
+  * Flushing TAP/TUN device after writing to it
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Thu, 03 Dec 2015 21:53:43 +0100
+
+vpncloud (0.3.0) stable; urgency=medium
+
+  * Inluding libsodium-1.0.7
+  * Support for AES256
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 01 Dec 2015 16:12:16 +0100
+
+vpncloud (0.2.0) stable; urgency=medium
+
+  * More stable release
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Thu, 26 Nov 2015 17:41:40 +0100
+
+vpncloud (0.1.0) stable; urgency=medium
+
+  * Initial release
+
+ -- Dennis Schwerdel <schwerdel@informatik.uni-kl.de>  Tue, 24 Nov 2015 09:31:47 +0100

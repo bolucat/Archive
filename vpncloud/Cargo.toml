@@ -1,0 +1,96 @@
+[package]
+name = "vpncloud"
+version = "2.2.0"
+authors = ["Dennis Schwerdel <schwerdel@googlemail.com>"]
+build = "build.rs"
+license = "GPL-3.0"
+description = "Peer-to-peer VPN"
+homepage = "https://vpncloud.ddswd.de"
+repository = "https://github.com/dswd/vpncloud"
+keywords = ["vpn", "p2p", "tun", "tap", "network"]
+readme = "README.md"
+edition = "2018"
+
+[package.metadata]
+toolchain = "1.51.0"
+upx_version = "3.96"
+
+[dependencies]
+chrono = { version = "0.4", features = ["std", "clock"], default_features = false}
+structopt = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.8"
+log = { version = "0.4", features = ["std"] }
+signal = "0.7"
+libc = "0.2"
+rand = "0.8"
+fnv = "1"
+yaml-rust = "0.4"
+daemonize = "0.4"
+ring = "0.16"
+privdrop = "0.5"
+byteorder = "1.4"
+thiserror = "1.0"
+smallvec = "1.6"
+dialoguer = { version = "0.8", optional = true }
+tungstenite = { version = "0.14", optional = true, default-features = false }
+url = { version = "2.2", optional = true }
+igd = { version = "0.12", optional = true }
+
+
+[dev-dependencies]
+tempfile = "3"
+criterion = { version = "0.3", features = ["html_reports"] }
+iai = "0.1"
+
+[features]
+default = ["nat", "websocket", "wizard"]
+nat = ["igd"]
+websocket = ["tungstenite", "url"]
+wizard = ["dialoguer"]
+installer = []
+
+[[bench]]
+name = "criterion"
+harness = false
+
+[[bench]]
+name = "valgrind"
+harness = false
+
+[profile.release]
+lto = true
+
+[profile.dev]
+lto = false
+
+[profile.test]
+lto = false
+
+[package.metadata.deb]
+extended-description = """\
+ VpnCloud is a high performance peer-to-peer mesh VPN over UDP supporting strong encryption, 
+ NAT traversal and a simple configuration. It establishes a fully-meshed self-healing VPN
+ network in a peer-to-peer manner with strong end-to-end encryption based on elliptic curve
+ keys and AES-256. VpnCloud creates a virtual network interface on the host and forwards all
+ received data via UDP to the destination. It can work on TUN devices (IP based) and TAP 
+ devices (Ethernet based)."""
+license-file = ["LICENSE.md", "1"]
+changelog = "assets/changelog.txt"
+section = "net"
+depends = "libc6 (>= 2.23), libgcc1 (>= 1:6.0.1)"
+maintainer-scripts = "assets/deb-scripts"
+assets = [
+  ["target/release/vpncloud", "/usr/bin/vpncloud", "755"],
+  ["assets/example.net.disabled", "/etc/vpncloud/example.net.disabled", "600"],
+  ["assets/vpncloud@.service", "/lib/systemd/system/vpncloud@.service", "644"],
+  ["assets/vpncloud.target", "/lib/systemd/system/vpncloud.target", "644"],
+  ["assets/vpncloud-wsproxy.service", "/lib/systemd/system/vpncloud-wsproxy.service", "644"],
+  ["target/vpncloud.1.gz", "/usr/share/man/man1/vpncloud.1.gz", "644"]
+]
+
+[package.metadata.rpm.cargo]
+buildflags = ["--release"]
+
+[package.metadata.rpm.targets]
+vpncloud = { path = "/usr/bin/vpncloud" }

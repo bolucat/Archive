@@ -1,0 +1,14 @@
+target
+vpncloud-oldnodes
+._*
+.~*
+deb/vpncloud/vpncloud
+deb/vpncloud/vpncloud.1*
+Stats.ods
+dist
+builder/cache
+.idea
+release.sh
+__pycache__
+*.pem
+.vscode
