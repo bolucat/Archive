@@ -197,7 +197,7 @@ impl ServerConfig {
             plugin_addr: None,
             remarks: None,
             id: None,
-            mode: Mode::TcpOnly,
+            mode: Mode::TcpAndUdp, // Server serves TCP & UDP by default
             weight: ServerWeight::new(),
         }
     }
@@ -236,12 +236,12 @@ impl ServerConfig {
 
     /// Get encryption key
     pub fn key(&self) -> &[u8] {
-        &self.enc_key.as_ref()
+        self.enc_key.as_ref()
     }
 
     /// Get password
     pub fn password(&self) -> &str {
-        &self.password.as_str()
+        self.password.as_str()
     }
 
     /// Get method
@@ -687,5 +687,49 @@ impl From<(String, u16)> for ManagerAddr {
 impl From<PathBuf> for ManagerAddr {
     fn from(p: PathBuf) -> ManagerAddr {
         ManagerAddr::UnixSocketAddr(p)
+    }
+}
+
+/// Policy for handling replay attack requests
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ReplayAttackPolicy {
+    /// Ignore it completely
+    Ignore,
+    /// Try to detect replay attack and warn about it
+    Detect,
+    /// Try to detect replay attack and reject the request
+    Reject,
+}
+
+impl Default for ReplayAttackPolicy {
+    fn default() -> ReplayAttackPolicy {
+        ReplayAttackPolicy::Ignore
+    }
+}
+
+impl Display for ReplayAttackPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ReplayAttackPolicy::Ignore => f.write_str("ignore"),
+            ReplayAttackPolicy::Detect => f.write_str("detect"),
+            ReplayAttackPolicy::Reject => f.write_str("reject"),
+        }
+    }
+}
+
+/// Error while parsing ReplayAttackPolicy from string
+#[derive(Debug, Clone, Copy)]
+pub struct ReplayAttackPolicyError;
+
+impl FromStr for ReplayAttackPolicy {
+    type Err = ReplayAttackPolicyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ignore" => Ok(ReplayAttackPolicy::Ignore),
+            "detect" => Ok(ReplayAttackPolicy::Detect),
+            "reject" => Ok(ReplayAttackPolicy::Reject),
+            _ => Err(ReplayAttackPolicyError),
+        }
     }
 }

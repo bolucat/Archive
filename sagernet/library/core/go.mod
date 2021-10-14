@@ -19,10 +19,10 @@ require (
 )
 
 //replace gvisor.dev/gvisor v0.0.0 => ../gvisor
-replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211011120942-2afb69eb05d4
+replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211014042916-8fb70a9d30b7
 
 //replace github.com/v2fly/v2ray-core/v4 v4.43.0 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.43.1-0.20211010070211-2a537dda2cdc
+replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.43.1-0.20211013060939-df4aaece7b7a
 
 replace github.com/Dreamacro/clash v1.6.5 => github.com/sagernet/clash v1.6.5-0.20210913182617-681dd3780179
 

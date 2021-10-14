@@ -55,7 +55,7 @@ func (s *sshClient) connect() (*ssh.Client, error) {
 		HostKeyCallback: s.hostKeyCallback,
 	}
 
-	logrus.Debug("SSH dial to %s", s.Addr())
+	logrus.Debugf("SSH dial to %s", s.Addr())
 
 	client, err := ssh.Dial("tcp", s.Addr(), config)
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *sshClient) connect() (*ssh.Client, error) {
 
 	go func() {
 		err := client.Wait()
-		logrus.Debug("SSH connection closed: %v", err)
+		logrus.Debugf("SSH connection closed: %v", err)
 		s.client = nil
 	}()
 

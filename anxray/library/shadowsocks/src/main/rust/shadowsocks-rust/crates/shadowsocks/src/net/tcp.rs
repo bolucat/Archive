@@ -13,7 +13,7 @@ use std::{
 };
 
 use futures::{future, ready};
-use log::{debug, warn};
+use log::warn;
 use pin_project::pin_project;
 use socket2::{Socket, TcpKeepalive};
 use tokio::{
@@ -49,7 +49,7 @@ impl TcpStream {
         let stream = match *addr {
             ServerAddr::SocketAddr(ref addr) => SysTcpStream::connect(*addr, opts).await?,
             ServerAddr::DomainName(ref domain, port) => {
-                lookup_then!(&context, &domain, port, |addr| {
+                lookup_then_connect!(context, domain, port, |addr| {
                     SysTcpStream::connect(addr, opts).await
                 })?
                 .1
@@ -68,7 +68,7 @@ impl TcpStream {
         let stream = match *addr {
             Address::SocketAddress(ref addr) => SysTcpStream::connect(*addr, opts).await?,
             Address::DomainNameAddress(ref domain, port) => {
-                lookup_then!(&context, &domain, port, |addr| {
+                lookup_then_connect!(context, domain, port, |addr| {
                     SysTcpStream::connect(addr, opts).await
                 })?
                 .1
@@ -173,7 +173,7 @@ impl TcpListener {
                 Ok(..) => {}
                 Err(ref err) if err.kind() == ErrorKind::AddrInUse => {
                     // This is probably 0.0.0.0 with the same port has already been occupied
-                    debug!(
+                    warn!(
                         "0.0.0.0:{} may have already been occupied, retry with IPV6_V6ONLY",
                         addr.port()
                     );

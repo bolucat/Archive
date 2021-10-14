@@ -73,6 +73,10 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		return nil, errors.New("protect failed")
 	}
 
+	if sockopt != nil {
+		internet.ApplySockopt(sockopt, destination, uintptr(fd), ctx)
+	}
+
 	var sockaddr unix.Sockaddr
 	if !ipv6 {
 		socketAddress := &unix.SockaddrInet4{

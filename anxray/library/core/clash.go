@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/Dreamacro/clash/adapter/inbound"
 	"github.com/Dreamacro/clash/adapter/outbound"
+	"github.com/Dreamacro/clash/common/pool"
+	"github.com/Dreamacro/clash/component/nat"
 	"github.com/Dreamacro/clash/constant"
 	clashC "github.com/Dreamacro/clash/constant"
 	"github.com/Dreamacro/clash/listener/socks"
@@ -22,7 +25,10 @@ type ClashBasedInstance struct {
 	socksPort int32
 	ctx       chan constant.ConnContext
 	in        *socks.Listener
+	udpIn     *socks.UDPListener
+	udpCtx    chan *inbound.PacketAdapter
 	out       clashC.ProxyAdapter
+	nat       nat.Table
 	started   bool
 }
 
@@ -38,7 +44,8 @@ func (s *ClashBasedInstance) DialContext(ctx context.Context, network, address s
 func newClashBasedInstance(socksPort int32, out clashC.ProxyAdapter) *ClashBasedInstance {
 	return &ClashBasedInstance{
 		socksPort: socksPort,
-		ctx:       make(chan constant.ConnContext, 100),
+		ctx:       make(chan constant.ConnContext, 64),
+		udpCtx:    make(chan *inbound.PacketAdapter, 64),
 		out:       out,
 	}
 }
@@ -51,13 +58,21 @@ func (s *ClashBasedInstance) Start() error {
 		return errors.New("already started")
 	}
 
-	in, err := socks.New(fmt.Sprintf("127.0.0.1:%d", s.socksPort), s.ctx)
+	addr := fmt.Sprintf("127.0.0.1:%d", s.socksPort)
+
+	in, err := socks.New(addr, s.ctx)
 	if err != nil {
 		return errors.WithMessage(err, "create socks inbound")
 	}
+	udpIn, err := socks.NewUDP(addr, s.udpCtx)
+	if err != nil {
+		return errors.WithMessage(err, "create socks udp inbound")
+	}
 	s.in = in
+	s.udpIn = udpIn
 	s.started = true
 	go s.loop()
+	go s.loopUdp()
 	return nil
 }
 
@@ -69,7 +84,7 @@ func (s *ClashBasedInstance) Close() error {
 		return errors.New("not started")
 	}
 
-	closeIgnore(s.in, s.out, s.ctx)
+	closeIgnore(s.in, s.udpIn, s.out, s.ctx, s.udpCtx)
 	return nil
 }
 
@@ -95,6 +110,79 @@ func (s *ClashBasedInstance) loop() {
 
 			_ = remote.Close()
 			_ = conn.Conn().Close()
+		}()
+	}
+}
+
+var udpTimeout = 60 * time.Second
+
+func (s *ClashBasedInstance) loopUdp() {
+	for packet := range s.udpCtx {
+		metadata := packet.Metadata()
+		if !metadata.Valid() {
+			logrus.Warnln("[Metadata] not valid: ", metadata)
+			continue
+		}
+
+		packet := packet
+		go func() {
+			key := packet.LocalAddr().String()
+
+			handle := func() bool {
+				pc := s.nat.Get(key)
+				if pc != nil {
+					_, err := pc.WriteTo(packet.Data(), metadata.UDPAddr())
+					if err != nil {
+						packet.Drop()
+						_ = pc.Close()
+					}
+					return true
+				}
+				return false
+			}
+
+			if handle() {
+				packet.Drop()
+				return
+			}
+
+			lockKey := key + "-lock"
+			cond, loaded := s.nat.GetOrCreateLock(lockKey)
+
+			if loaded {
+				cond.L.Lock()
+				cond.Wait()
+				handle()
+				cond.L.Unlock()
+				return
+			}
+
+			ctx := context.Background()
+			remote, err := s.out.DialUDP(metadata)
+			if err != nil {
+				fmt.Printf("Dial UDP error: %s\n", err.Error())
+				return
+			}
+			s.nat.Set(key, remote)
+			go handle()
+			buf := pool.Get(pool.RelayBufferSize)
+			_ = task.Run(ctx, func() error {
+				for {
+					_ = remote.SetReadDeadline(time.Now().Add(udpTimeout))
+					n, from, err := remote.ReadFrom(buf)
+					if err == nil {
+						_, err = packet.WriteBack(buf[:n], from)
+					}
+					if err != nil {
+						return err
+					}
+				}
+			})
+			_ = pool.Put(buf)
+			_ = remote.Close()
+			packet.Drop()
+			s.nat.Delete(lockKey)
+			cond.Broadcast()
 		}()
 	}
 }

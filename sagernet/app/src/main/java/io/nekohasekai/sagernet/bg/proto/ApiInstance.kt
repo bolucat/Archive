@@ -24,7 +24,6 @@ import android.provider.Settings
 import io.nekohasekai.sagernet.bg.AbstractInstance
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.app
-import kotlinx.coroutines.CoroutineScope
 import libcore.ApiInstance
 
 class ApiInstance : AbstractInstance {

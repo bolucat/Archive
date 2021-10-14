@@ -141,17 +141,15 @@ bool eh_init()
 {
 	CurrentID = GetCurrentProcessId();
 
-	if (!DNSHandler::Init())
-	{
+	if (!DNSHandler::INIT())
 		return false;
-	}
 
-	return TCPHandler::Init();
+	return TCPHandler::INIT();
 }
 
 void eh_free()
 {
-	TCPHandler::Free();
+	TCPHandler::FREE();
 
 	UP = 0;
 	DL = 0;
@@ -331,66 +329,38 @@ void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, in
 		nf_udpPostSend(id, target, buffer, length, options);
 		return;
 	}
-	auto udpConn = udpContext[id];
+	auto remote = udpContext[id];
 	udpContextLock.unlock();
 
 	UP += length;
 
-	if (udpConn->tcpSocket == INVALID_SOCKET)
+	if (remote->tcpSocket == INVALID_SOCKET || remote->udpSocket == INVALID_SOCKET)
 	{
-		auto tcpSocket = SocksHelper::Utils::Connect();
-		if (tcpSocket == INVALID_SOCKET)
-		{
-			printf("[Redirector][EventHandler][udpSend][%llu] Connect to remote server failed\n", id);
+		if (remote->tcpSocket) closesocket(remote->tcpSocket);
+		if (remote->udpSocket) closesocket(remote->udpSocket);
+
+		remote->tcpSocket = INVALID_SOCKET;
+		remote->udpSocket = INVALID_SOCKET;
+
+		if (!remote->Associate())
 			return;
-		}
 
-		if (!SocksHelper::Utils::Handshake(tcpSocket))
-		{
-			closesocket(tcpSocket);
-
-			printf("[Redirector][EventHandler][udpSend][%llu] Handshake failed\n", id);
+		if (!remote->CreateUDP())
 			return;
-		}
 
-		udpConn->tcpSocket = tcpSocket;
+		auto option = (PNF_UDP_OPTIONS)new char[sizeof(NF_UDP_OPTIONS) + options->optionsLength]();
+		memcpy(option, options, sizeof(NF_UDP_OPTIONS) + options->optionsLength - 1);
+
+		thread(udpReceiveHandler, id, remote, option).detach();
 	}
 
-	if (udpConn->udpSocket == INVALID_SOCKET)
+	if (remote->Send((PSOCKADDR_IN6)target, buffer, length) != length)
 	{
-		if (!udpConn->Associate())
-		{
-			closesocket(udpConn->tcpSocket);
-			udpConn->tcpSocket = INVALID_SOCKET;
+		if (remote->tcpSocket) closesocket(remote->tcpSocket);
+		if (remote->udpSocket) closesocket(remote->udpSocket);
 
-			printf("[Redirector][EventHandler][udpSend][%llu] UDP Associate failed\n", id);
-			return;
-		}
-
-		if (!udpConn->CreateUDP())
-		{
-			closesocket(udpConn->tcpSocket);
-			udpConn->tcpSocket = INVALID_SOCKET;
-
-			printf("[Redirector][EventHandler][udpSend][%llu] Create UDP socket failed\n", id);
-			return;
-		}
-
-		auto data = (PNF_UDP_OPTIONS)new char[sizeof(NF_UDP_OPTIONS) + options->optionsLength]();
-		memcpy(data, options, sizeof(NF_UDP_OPTIONS) + options->optionsLength - 1);
-
-		thread(udpBeginReceive, id, udpConn, data).detach();
-	}
-
-	if (udpConn->Send((PSOCKADDR_IN6)target, buffer, length) != length)
-	{
-		closesocket(udpConn->tcpSocket);
-		closesocket(udpConn->udpSocket);
-
-		udpConn->tcpSocket = INVALID_SOCKET;
-		udpConn->udpSocket = INVALID_SOCKET;
-
-		printf("[Redirector][EventHandler][udpSend][%llu] Send data failed\n", id);
+		remote->tcpSocket = INVALID_SOCKET;
+		remote->udpSocket = INVALID_SOCKET;
 	}
 }
 
@@ -419,19 +389,17 @@ void udpClosed(ENDPOINT_ID id, PNF_UDP_CONN_INFO info)
 	}
 }
 
-void udpBeginReceive(ENDPOINT_ID id, SocksHelper::PUDP udpConn, PNF_UDP_OPTIONS options)
+void udpReceiveHandler(ENDPOINT_ID id, SocksHelper::PUDP remote, PNF_UDP_OPTIONS options)
 {
 	char buffer[1458];
 
-	while (udpConn->udpSocket != INVALID_SOCKET)
+	while (remote->tcpSocket != INVALID_SOCKET && remote->udpSocket != INVALID_SOCKET)
 	{
 		SOCKADDR_IN6 target;
 
-		int length = udpConn->Read(&target, buffer, sizeof(buffer));
+		int length = remote->Read(&target, buffer, sizeof(buffer), NULL);
 		if (length == 0 || length == SOCKET_ERROR)
-		{
 			break;
-		}
 
 		DL += length;
 

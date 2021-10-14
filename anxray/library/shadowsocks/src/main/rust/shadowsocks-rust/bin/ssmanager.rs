@@ -21,6 +21,7 @@ use shadowsocks_service::{
     shadowsocks::{
         config::{ManagerAddr, Mode},
         crypto::v1::{available_ciphers, CipherKind},
+        plugin::PluginConfig,
     },
 };
 
@@ -48,12 +49,15 @@ fn main() {
                     the only required fields are \"manager_address\" and \"manager_port\". \
                     Servers defined will be created when process is started.")
 
-            (@arg BIND_ADDR: -b --("bind-addr") +takes_value {validator::validate_ip_addr} "Bind address, outbound socket will bind this address")
+            (@arg OUTBOUND_BIND_ADDR: -b --("outbound-bind-addr") +takes_value alias("bind-addr") {validator::validate_ip_addr} "Bind address, outbound socket will bind this address")
             (@arg SERVER_HOST: -s --("server-host") +takes_value "Host name or IP address of your remote server")
 
             (@arg MANAGER_ADDR: --("manager-addr") +takes_value alias("manager-address") {validator::validate_manager_addr} "ShadowSocks Manager (ssmgr) address, could be ip:port, domain:port or /path/to/unix.sock")
             (@arg ENCRYPT_METHOD: -m --("encrypt-method") +takes_value possible_values(available_ciphers()) "Default encryption method")
             (@arg TIMEOUT: --timeout +takes_value {validator::validate_u64} "Default timeout seconds for TCP relay")
+
+            (@arg PLUGIN: --plugin +takes_value requires[SERVER_ADDR] "Default SIP003 (https://shadowsocks.org/en/spec/Plugin.html) plugin")
+            (@arg PLUGIN_OPT: --("plugin-opts") +takes_value requires[PLUGIN] "Default SIP003 plugin options")
 
             (@arg ACL: --acl +takes_value "Path to ACL (Access Control List)")
             (@arg DNS: --dns +takes_value "DNS nameservers, formatted like [(tcp|udp)://]host[:port][,host[:port]]..., or unix:///path/to/dns, or predefined keys like \"google\", \"cloudflare\"")
@@ -147,9 +151,9 @@ fn main() {
             None => Config::new(ConfigType::Manager),
         };
 
-        if let Some(bind_addr) = matches.value_of("BIND_ADDR") {
-            let bind_addr = bind_addr.parse::<IpAddr>().expect("bind-addr");
-            config.local_addr = Some(bind_addr);
+        if let Some(bind_addr) = matches.value_of("OUTBOUND_BIND_ADDR") {
+            let bind_addr = bind_addr.parse::<IpAddr>().expect("outbound-bind-addr");
+            config.outbound_bind_addr = Some(bind_addr);
         }
 
         if matches.is_present("TCP_NO_DELAY") {
@@ -197,6 +201,14 @@ fn main() {
 
             if let Some(sh) = matches.value_of("SERVER_HOST") {
                 manager_config.server_host = sh.parse::<ManagerServerHost>().unwrap();
+            }
+
+            if let Some(p) = matches.value_of("PLUGIN") {
+                manager_config.plugin = Some(PluginConfig {
+                    plugin: p.to_owned(),
+                    plugin_opts: matches.value_of("PLUGIN_OPT").map(ToOwned::to_owned),
+                    plugin_args: Vec::new(),
+                });
             }
         }
 
@@ -281,7 +293,7 @@ fn main() {
             daemonize::daemonize(matches.value_of("DAEMONIZE_PID_PATH"));
         }
 
-        info!("shadowsocks {}", VERSION);
+        info!("shadowsocks manager {} build {}", VERSION, common::BUILD_TIME);
 
         #[cfg(feature = "multi-threaded")]
         let mut builder = if matches.is_present("SINGLE_THREADED") {

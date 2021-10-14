@@ -12,15 +12,16 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/ulikunitz/xz v0.5.10
 	github.com/xtls/xray-core v1.4.5
-	golang.org/x/crypto v0.0.0-20210920023735-84f357641f63
-	golang.org/x/sys v0.0.0-20210917161153-d61c044b1678
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+	golang.org/x/sys v0.0.0-20211007075335-d3039528d8ac
 	gvisor.dev/gvisor v0.0.0
 )
 
-replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20210925041908-687b7905dba0
+//replace gvisor.dev/gvisor v0.0.0 => ../gvisor
+replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211014042916-8fb70a9d30b7
 
 //replace github.com/xtls/xray-core v1.4.5 => ../Xray-core
-replace github.com/xtls/xray-core v1.4.5 => github.com/sagernet/xray-core v1.4.6-0.20210926233017-dba63bc71072
+replace github.com/xtls/xray-core v1.4.5 => github.com/sagernet/xray-core v1.4.6-0.20211014053443-b80c2ece6675
 
 replace github.com/Dreamacro/clash v1.6.5 => github.com/sagernet/clash v1.6.5-0.20210913182617-681dd3780179
 
@@ -50,14 +51,14 @@ require (
 	github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c // indirect
 	github.com/xtls/go v0.0.0-20210920065950-d4af136d3672 // indirect
 	go.starlark.net v0.0.0-20210901212718-87f333178d59 // indirect
-	golang.org/x/mod v0.5.0 // indirect
-	golang.org/x/net v0.0.0-20210917221730-978cfadd31cf // indirect
+	golang.org/x/mod v0.5.1 // indirect
+	golang.org/x/net v0.0.0-20211007125505-59d4e928ea9d // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
-	golang.org/x/tools v0.1.6 // indirect
+	golang.org/x/tools v0.1.7 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20210917145530-b395a37504d4 // indirect
-	google.golang.org/grpc v1.40.0 // indirect
+	google.golang.org/genproto v0.0.0-20211005153810-c76a74d43a8e // indirect
+	google.golang.org/grpc v1.41.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )

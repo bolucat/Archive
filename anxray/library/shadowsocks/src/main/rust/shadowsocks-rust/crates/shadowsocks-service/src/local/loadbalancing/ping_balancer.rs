@@ -3,6 +3,7 @@
 use std::{
     fmt::{self, Debug, Display},
     io,
+    iter::Iterator,
     net::{Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -13,7 +14,7 @@ use std::{
 
 use byte_string::ByteStr;
 use futures::future;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use shadowsocks::{
     config::Mode,
     relay::{
@@ -75,10 +76,59 @@ impl PingBalancerBuilder {
     pub async fn build(self) -> PingBalancer {
         assert!(!self.servers.is_empty(), "build PingBalancer without any servers");
 
+        let mut best_tcp_idx = 0;
+        let mut best_udp_idx = 0;
+
+        if self.mode.enable_tcp() {
+            let mut found_tcp_idx = false;
+            for (idx, server) in self.servers.iter().enumerate() {
+                if PingBalancerContext::check_server_tcp_enabled(server.server_config()) {
+                    best_tcp_idx = idx;
+                    found_tcp_idx = true;
+                    break;
+                }
+            }
+
+            if !found_tcp_idx {
+                warn!(
+                    "no valid TCP server serving for TCP clients, consider disable TCP with \"mode\": \"udp_only\", currently chose {}",
+                    ServerConfigFormatter::new(self.servers[best_tcp_idx].server_config())
+                );
+            } else {
+                trace!(
+                    "init chose TCP server {}",
+                    ServerConfigFormatter::new(self.servers[best_tcp_idx].server_config())
+                );
+            }
+        }
+
+        if self.mode.enable_udp() {
+            let mut found_udp_idx = false;
+            for (idx, server) in self.servers.iter().enumerate() {
+                if PingBalancerContext::check_server_udp_enabled(server.server_config()) {
+                    best_udp_idx = idx;
+                    found_udp_idx = true;
+                    break;
+                }
+            }
+
+            if !found_udp_idx {
+                warn!(
+                    "no valid UDP server serving for UDP clients, consider disable UDP with \"mode\": \"tcp_only\", currently chose {}",
+                    ServerConfigFormatter::new(self.servers[best_udp_idx].server_config())
+                );
+            } else {
+                trace!(
+                    "init chose UDP server {}",
+                    ServerConfigFormatter::new(self.servers[best_udp_idx].server_config())
+                );
+            }
+        }
+
         let balancer_context = PingBalancerContext {
             servers: self.servers,
-            best_tcp_idx: AtomicUsize::new(0),
-            best_udp_idx: AtomicUsize::new(0),
+            best_tcp_idx: AtomicUsize::new(best_tcp_idx),
+            best_udp_idx: AtomicUsize::new(best_udp_idx),
             context: self.context,
             mode: self.mode,
         };
@@ -92,13 +142,12 @@ impl PingBalancerBuilder {
             tokio::spawn(async move { shared_context.checker_task().await })
         };
 
-        let balancer = PingBalancer {
+        PingBalancer {
             inner: Arc::new(PingBalancerInner {
                 context: shared_context,
                 abortable,
             }),
-        };
-        balancer
+        }
     }
 }
 
@@ -124,15 +173,40 @@ impl PingBalancerContext {
     async fn init_score(&self) {
         assert!(!self.servers.is_empty(), "check PingBalancer without any servers");
 
-        if self.servers.len() > 1 {
+        if self.probing_required() {
             self.check_once(true).await;
         }
+    }
+
+    fn check_server_tcp_enabled(svr_cfg: &ServerConfig) -> bool {
+        svr_cfg.mode().enable_tcp() && svr_cfg.weight().tcp_weight() > 0.0
+    }
+
+    fn check_server_udp_enabled(svr_cfg: &ServerConfig) -> bool {
+        svr_cfg.mode().enable_udp() && svr_cfg.weight().udp_weight() > 0.0
+    }
+
+    fn probing_required(&self) -> bool {
+        let mut tcp_count = 0;
+        let mut udp_count = 0;
+
+        for server in self.servers.iter() {
+            let svr_cfg = server.server_config();
+            if self.mode.enable_tcp() && PingBalancerContext::check_server_tcp_enabled(svr_cfg) {
+                tcp_count += 1;
+            }
+            if self.mode.enable_udp() && PingBalancerContext::check_server_udp_enabled(svr_cfg) {
+                udp_count += 1;
+            }
+        }
+
+        tcp_count > 1 || udp_count > 1
     }
 
     async fn checker_task(self: Arc<Self>) {
         assert!(!self.servers.is_empty(), "check PingBalancer without any servers");
 
-        if self.servers.len() == 1 {
+        if !self.probing_required() {
             self.checker_task_dummy().await
         } else {
             self.checker_task_real().await
@@ -146,34 +220,50 @@ impl PingBalancerContext {
 
     /// Check each servers' score and update the best server's index
     async fn check_once(&self, first_run: bool) {
-        let mut vfut = match self.mode {
-            Mode::TcpAndUdp => Vec::with_capacity(self.servers.len() * 2),
-            Mode::TcpOnly | Mode::UdpOnly => Vec::with_capacity(self.servers.len()),
-        };
+        let mut vfut_tcp = Vec::with_capacity(self.servers.len());
+        let mut vfut_udp = Vec::with_capacity(self.servers.len());
 
         for server in self.servers.iter() {
-            if self.mode.enable_tcp() {
+            let svr_cfg = server.server_config();
+
+            if self.mode.enable_tcp() && PingBalancerContext::check_server_tcp_enabled(svr_cfg) {
                 let checker = PingChecker {
                     server: server.clone(),
                     server_type: ServerType::Tcp,
                     context: self.context.clone(),
                 };
-                vfut.push(checker.check_update_score());
+                vfut_tcp.push(checker.check_update_score());
             }
 
-            if self.mode.enable_udp() {
+            if self.mode.enable_udp() && PingBalancerContext::check_server_udp_enabled(svr_cfg) {
                 let checker = PingChecker {
                     server: server.clone(),
                     server_type: ServerType::Udp,
                     context: self.context.clone(),
                 };
-                vfut.push(checker.check_update_score());
+                vfut_udp.push(checker.check_update_score());
             }
         }
 
+        let check_tcp = vfut_tcp.len() > 1;
+        let check_udp = vfut_udp.len() > 1;
+
+        if !check_tcp && !check_udp {
+            return;
+        }
+
+        let vfut = if !check_tcp {
+            vfut_udp
+        } else if !check_udp {
+            vfut_tcp
+        } else {
+            vfut_tcp.append(&mut vfut_udp);
+            vfut_tcp
+        };
+
         future::join_all(vfut).await;
 
-        if self.mode.enable_tcp() {
+        if self.mode.enable_tcp() && check_tcp {
             let old_best_idx = self.best_tcp_idx.load(Ordering::Acquire);
 
             let mut best_idx = 0;
@@ -208,7 +298,7 @@ impl PingBalancerContext {
             }
         }
 
-        if self.mode.enable_udp() {
+        if self.mode.enable_udp() && check_udp {
             let old_best_idx = self.best_udp_idx.load(Ordering::Acquire);
 
             let mut best_idx = 0;
@@ -453,7 +543,7 @@ impl PingChecker {
         if dns_answer.len() < 12 || &dns_answer[0..2] != b"\x12\x34" {
             use std::io::{Error, ErrorKind};
 
-            debug!("unexpected response from 8.8.8.8:53, {:?}", ByteStr::new(&dns_answer));
+            debug!("unexpected response from 8.8.8.8:53, {:?}", ByteStr::new(dns_answer));
 
             let err = Error::new(ErrorKind::InvalidData, "unexpected response from 8.8.8.8:53");
             return Err(err);

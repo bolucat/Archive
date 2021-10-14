@@ -31,7 +31,6 @@ import java.util.Set;
 
 import io.nekohasekai.sagernet.fmt.gson.JsonLazyInterface;
 import io.nekohasekai.sagernet.fmt.gson.JsonOr;
-import kotlin.text.StringsKt;
 
 @SuppressWarnings({"SpellCheckingInspection", "unused", "RedundantSuppression"})
 public class V2RayConfig {

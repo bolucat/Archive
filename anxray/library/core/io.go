@@ -3,8 +3,14 @@ package libcore
 import (
 	"github.com/ulikunitz/xz"
 	"io"
+	"net"
 	"os"
 )
+
+type packetConn interface {
+	net.PacketConn
+	readFrom() (p []byte, addr net.Addr, err error)
+}
 
 func Unxz(archive string, path string) error {
 	i, err := os.Open(archive)
