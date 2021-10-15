@@ -13,14 +13,12 @@ import (
 	D "github.com/miekg/dns"
 )
 
-var (
-	// EnhancedModeMapping is a mapping for EnhancedMode enum
-	EnhancedModeMapping = map[string]EnhancedMode{
-		NORMAL.String():  NORMAL,
-		FAKEIP.String():  FAKEIP,
-		MAPPING.String(): MAPPING,
-	}
-)
+// EnhancedModeMapping is a mapping for EnhancedMode enum
+var EnhancedModeMapping = map[string]EnhancedMode{
+	NORMAL.String():  NORMAL,
+	FAKEIP.String():  FAKEIP,
+	MAPPING.String(): MAPPING,
+}
 
 const (
 	NORMAL EnhancedMode = iota
@@ -138,9 +136,10 @@ func transform(servers []NameServer, resolver *Resolver) []dnsClient {
 				UDPSize: 4096,
 				Timeout: 5 * time.Second,
 			},
-			port: port,
-			host: host,
-			r:    resolver,
+			port:  port,
+			host:  host,
+			iface: s.Interface,
+			r:     resolver,
 		})
 	}
 	return ret

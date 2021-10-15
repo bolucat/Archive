@@ -38,6 +38,13 @@ SOCKET SocksHelper::Connect()
 		return INVALID_SOCKET;
 	}
 
+	{
+		DWORD returned = 0;
+
+		tcp_keepalive data = { 1, 120000, 10000 };
+		WSAIoctl(client, SIO_KEEPALIVE_VALS, &data, sizeof(data), NULL, 0, &returned, NULL, NULL);
+	}
+
 	return client;
 }
 
@@ -286,19 +293,8 @@ void SocksHelper::UDP::Run(SOCKET tcpSocket, SOCKET udpSocket)
 			break;
 	}
 
-	if (tcpSocket != INVALID_SOCKET)
-	{
-		closesocket(tcpSocket);
-
-		tcpSocket = INVALID_SOCKET;
-	}
-
-	if (udpSocket != INVALID_SOCKET)
-	{
-		closesocket(udpSocket);
-
-		udpSocket = INVALID_SOCKET;
-	}
+	if (tcpSocket != INVALID_SOCKET) closesocket(tcpSocket);
+	if (udpSocket != INVALID_SOCKET) closesocket(udpSocket);
 }
 
 bool SocksHelper::UDP::Associate()

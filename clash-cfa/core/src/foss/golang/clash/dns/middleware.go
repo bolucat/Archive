@@ -14,8 +14,10 @@ import (
 	D "github.com/miekg/dns"
 )
 
-type handler func(ctx *context.DNSContext, r *D.Msg) (*D.Msg, error)
-type middleware func(next handler) handler
+type (
+	handler    func(ctx *context.DNSContext, r *D.Msg) (*D.Msg, error)
+	middleware func(next handler) handler
+)
 
 func withHosts(hosts *trie.DomainTrie) middleware {
 	return func(next handler) handler {
@@ -105,7 +107,7 @@ func withFakeIP(fakePool *fakeip.Pool) middleware {
 			q := r.Question[0]
 
 			host := strings.TrimRight(q.Name, ".")
-			if fakePool.LookupHost(host) {
+			if fakePool.ShouldSkipped(host) {
 				return next(ctx, r)
 			}
 

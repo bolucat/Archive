@@ -8,7 +8,7 @@ use std::{net::IpAddr, path::PathBuf, process, time::Duration};
 
 use clap::{clap_app, Arg, Error as ClapError, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
-use log::{error, info};
+use log::info;
 use tokio::{self, runtime::Builder};
 
 #[cfg(feature = "local-redir")]
@@ -498,7 +498,7 @@ fn main() {
         }
 
         #[cfg(unix)]
-        if matches.is_present("DAEMONIZE") {
+        if matches.is_present("DAEMONIZE") || matches.is_present("DAEMONIZE_PID_PATH") {
             use self::common::daemonize;
             daemonize::daemonize(matches.value_of("DAEMONIZE_PID_PATH"));
         }
@@ -557,6 +557,7 @@ fn main() {
 
 #[cfg(unix)]
 fn launch_reload_server_task(config_path: PathBuf, balancer: PingBalancer) {
+    use log::error;
     use tokio::signal::unix::{signal, SignalKind};
 
     tokio::spawn(async move {

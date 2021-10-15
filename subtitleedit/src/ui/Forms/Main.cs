@@ -4075,10 +4075,16 @@ namespace Nikse.SubtitleEdit.Forms
                 }
             }
 
-            Configuration.Settings.General.CurrentVideoIsSmpte = rfe.VideoIsSmpte;
             if (rfe.VideoIsSmpte)
             {
-                SmpteTimeModedropFrameToolStripMenuItem_Click(null, null);
+                if (!smpteTimeModedropFrameToolStripMenuItem.Checked)
+                {
+                    SmpteTimeModedropFrameToolStripMenuItem_Click(null, null);
+                }
+                else
+                {
+                    Configuration.Settings.General.CurrentVideoIsSmpte = true;
+                }
             }
         }
 
@@ -7037,6 +7043,19 @@ namespace Nikse.SubtitleEdit.Forms
         private void AdjustDisplayTimeToolStripMenuItemClick(object sender, EventArgs e)
         {
             AdjustDisplayTime(false);
+        }
+
+        private void RecalcCurrentDuration(bool onlyOptimal = false)
+        {
+            if (SubtitleListview1.SelectedItems.Count >= 1)
+            {
+                MakeHistoryForUndo(_language.BeforeDisplayTimeAdjustment);
+                _makeHistoryPaused = true;
+                var idx = SubtitleListview1.SelectedItems[0].Index;
+                _subtitle.RecalculateDisplayTime(Configuration.Settings.General.SubtitleMaximumCharactersPerSeconds, idx, Configuration.Settings.General.SubtitleOptimalCharactersPerSeconds, onlyOptimal: onlyOptimal);
+                SetDurationInSeconds(_subtitle.Paragraphs[idx].Duration.TotalSeconds);
+                _makeHistoryPaused = false;
+            }
         }
 
         private void AdjustDisplayTime(bool onlySelectedLines)
@@ -16425,16 +16444,13 @@ namespace Nikse.SubtitleEdit.Forms
             }
             else if (_shortcuts.MainAutoCalcCurrentDuration == e.KeyData)
             {
+                RecalcCurrentDuration();
                 e.SuppressKeyPress = true;
-                if (SubtitleListview1.SelectedItems.Count >= 1)
-                {
-                    MakeHistoryForUndo(_language.BeforeDisplayTimeAdjustment);
-                    _makeHistoryPaused = true;
-                    var idx = SubtitleListview1.SelectedItems[0].Index;
-                    _subtitle.RecalculateDisplayTime(Configuration.Settings.General.SubtitleMaximumCharactersPerSeconds, idx, Configuration.Settings.General.SubtitleOptimalCharactersPerSeconds);
-                    SetDurationInSeconds(_subtitle.Paragraphs[idx].Duration.TotalSeconds);
-                    _makeHistoryPaused = false;
-                }
+            }
+            else if (_shortcuts.MainAutoCalcCurrentDurationByOptimalReadingSpeed == e.KeyData)
+            {
+                RecalcCurrentDuration(true);
+                e.SuppressKeyPress = true;
             }
             else if (e.KeyCode == Keys.F3 && e.Modifiers == Keys.Shift)
             {
@@ -20410,6 +20426,11 @@ namespace Nikse.SubtitleEdit.Forms
                     audioVisualizer.SceneChanges = SceneChangeHelper.FromDisk(VideoFileName);
                     SetWaveformPosition(0, 0, 0);
                     timerWaveform.Start();
+
+                    if (smpteTimeModedropFrameToolStripMenuItem.Checked)
+                    {
+                        audioVisualizer.UseSmpteDropFrameTime();
+                    }
                 }
                 else if (audioVisualizer.WavePeaks != null)
                 {
@@ -25975,7 +25996,7 @@ namespace Nikse.SubtitleEdit.Forms
                     setVideoOffsetToolStripMenuItem.Text = _language.Menu.Video.SetVideoOffset;
                 }
 
-                smpteTimeModedropFrameToolStripMenuItem.Checked = mediaPlayer.SmpteMode;
+                smpteTimeModedropFrameToolStripMenuItem.Checked = Configuration.Settings.General.CurrentVideoIsSmpte;
             }
 
             toolStripMenuItemOpenVideoFromUrl.Enabled = Configuration.Settings.General.VideoPlayer.Trim().Equals("MPV", StringComparison.OrdinalIgnoreCase) &&
@@ -30529,7 +30550,6 @@ namespace Nikse.SubtitleEdit.Forms
         private void SmpteTimeModedropFrameToolStripMenuItem_Click(object sender, EventArgs e)
         {
             smpteTimeModedropFrameToolStripMenuItem.Checked = !smpteTimeModedropFrameToolStripMenuItem.Checked;
-            mediaPlayer.SmpteMode = smpteTimeModedropFrameToolStripMenuItem.Checked;
             Configuration.Settings.General.CurrentVideoIsSmpte = smpteTimeModedropFrameToolStripMenuItem.Checked;
             if (audioVisualizer.WavePeaks != null)
             {
