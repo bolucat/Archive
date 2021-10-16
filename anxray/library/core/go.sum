@@ -588,8 +588,10 @@ github.com/sagernet/libping v0.1.1 h1:uNMN/02fQmRbsgJ0EuxuM/Upq8FrVP4Xj2+LlYviIO
 github.com/sagernet/libping v0.1.1/go.mod h1:FhmyYM8L32JaKI08noqoS5cK+Gw/Q+4VDnI9WvP6Sp8=
 github.com/sagernet/sagerconnect v0.1.7 h1:VWNx8NJ2C52b7Mbpty/JMiYERK/nvXyHaUkX5yFRAk4=
 github.com/sagernet/sagerconnect v0.1.7/go.mod h1:BJo2SIUnKPyS7iG1xrFBhGlneYNKURT55YbsyTlu9MU=
-github.com/sagernet/xray-core v1.4.6-0.20211014053443-b80c2ece6675 h1:RoZHKWkAezFL9lvqFWDQqsK/ImmLlfX7hdGPlPTjvEo=
-github.com/sagernet/xray-core v1.4.6-0.20211014053443-b80c2ece6675/go.mod h1:X20xgLe2QaIQkpK5Vm5fg7c1URypXXjCt9k/XYt+8iQ=
+github.com/sagernet/xray-core v1.4.6-0.20211016043434-f4bc889e3b9c h1:cUpSdauKhFlNYpSU3pFNheN7yZ+NMuc/4C9zhosCw8A=
+github.com/sagernet/xray-core v1.4.6-0.20211016043434-f4bc889e3b9c/go.mod h1:X20xgLe2QaIQkpK5Vm5fg7c1URypXXjCt9k/XYt+8iQ=
+github.com/sagernet/xray-core v1.4.6-0.20211016053710-ad58e5718366/go.mod h1:X20xgLe2QaIQkpK5Vm5fg7c1URypXXjCt9k/XYt+8iQ=
+github.com/sagernet/xray-core v1.4.6-0.20211016054235-72df782ca653/go.mod h1:X20xgLe2QaIQkpK5Vm5fg7c1URypXXjCt9k/XYt+8iQ=
 github.com/satori/go.uuid v1.2.0/go.mod h1:dA0hQrYB0VpLJoorglMZABFdXlWrHn1NEOzdhQKdks0=
 github.com/seccomp/libseccomp-golang v0.9.1/go.mod h1:GbW5+tmTXfcxTToHLXlScSlAvWlF4P2Ca7zGrPiEpWo=
 github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c h1:pqy40B3MQWYrza7YZXOXgl0Nf0QGFqrOC0BKae1UNAA=

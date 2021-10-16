@@ -8,6 +8,7 @@ import (
 
 	"github.com/xtls/xray-core/common/signal/done"
 
+	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol/udp"
@@ -27,15 +28,26 @@ type connEntry struct {
 
 type Dispatcher struct {
 	sync.RWMutex
-	conn       *connEntry
+	conns      map[net.Destination]*connEntry
 	dispatcher routing.Dispatcher
 	callback   ResponseCallback
 }
 
 func NewDispatcher(dispatcher routing.Dispatcher, callback ResponseCallback) *Dispatcher {
 	return &Dispatcher{
+		conns:      make(map[net.Destination]*connEntry),
 		dispatcher: dispatcher,
 		callback:   callback,
+	}
+}
+
+func (v *Dispatcher) RemoveRay(dest net.Destination) {
+	v.Lock()
+	defer v.Unlock()
+	if conn, found := v.conns[dest]; found {
+		common.Close(conn.link.Reader)
+		common.Close(conn.link.Writer)
+		delete(v.conns, dest)
 	}
 }
 
@@ -43,21 +55,25 @@ func (v *Dispatcher) getInboundRay(ctx context.Context, dest net.Destination) *c
 	v.Lock()
 	defer v.Unlock()
 
-	if v.conn != nil {
-		return v.conn
+	if entry, found := v.conns[dest]; found {
+		return entry
 	}
 
 	newError("establishing new connection for ", dest).WriteToLog()
 
 	ctx, cancel := context.WithCancel(ctx)
-	timer := signal.CancelAfterInactivity(ctx, cancel, time.Minute)
+	removeRay := func() {
+		cancel()
+		v.RemoveRay(dest)
+	}
+	timer := signal.CancelAfterInactivity(ctx, removeRay, time.Minute)
 	link, _ := v.dispatcher.Dispatch(ctx, dest)
 	entry := &connEntry{
 		link:   link,
 		timer:  timer,
-		cancel: cancel,
+		cancel: removeRay,
 	}
-	v.conn = entry
+	v.conns[dest] = entry
 	go handleInput(ctx, entry, dest, v.callback)
 	return entry
 }
@@ -97,21 +113,15 @@ func handleInput(ctx context.Context, conn *connEntry, dest net.Destination, cal
 		}
 		timer.Update()
 		for _, b := range mb {
-			p := &udp.Packet{
+			callback(ctx, &udp.Packet{
 				Payload: b,
-			}
-			if b.UDP == nil {
-				p.Source = dest
-			} else {
-				p.Source = *b.UDP
-			}
-			callback(ctx, p)
+				Source:  dest,
+			})
 		}
 	}
 }
 
 type dispatcherConn struct {
-	ctx        context.Context
 	dispatcher *Dispatcher
 	cache      chan *udp.Packet
 	done       *done.Instance
@@ -119,7 +129,6 @@ type dispatcherConn struct {
 
 func DialDispatcher(ctx context.Context, dispatcher routing.Dispatcher) (net.PacketConn, error) {
 	c := &dispatcherConn{
-		ctx:   ctx,
 		cache: make(chan *udp.Packet, 16),
 		done:  done.New(),
 	}
@@ -159,9 +168,9 @@ func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	raw := buffer.Extend(buf.Size)
 	n := copy(raw, p)
 	buffer.Resize(0, int32(n))
-	dest := net.DestinationFromAddr(addr)
-	buffer.UDP = &dest
-	c.dispatcher.Dispatch(c.ctx, dest, buffer)
+
+	ctx := context.Background()
+	c.dispatcher.Dispatch(ctx, net.DestinationFromAddr(addr), buffer)
 	return n, nil
 }
 

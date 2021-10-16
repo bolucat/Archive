@@ -15,7 +15,7 @@ param (
 
 	[Parameter()]
 	[bool]
-	$PublishReadyToRun = $False,
+	$PublishReadyToRun = $True,
 
 	[Parameter()]
 	[bool]
@@ -24,51 +24,69 @@ param (
 
 Push-Location (Split-Path $MyInvocation.MyCommand.Path -Parent)
 
-if ( Test-Path -Path "$OutputPath" ) {
-    rm -Recurse -Force "$OutputPath"
+if ( Test-Path -Path $OutputPath ) {
+    rm -Recurse -Force $OutputPath
 }
-New-Item -ItemType Directory -Name "$OutputPath" | Out-Null
+New-Item -ItemType Directory -Name $OutputPath | Out-Null
 
-.\deps.ps1 "$OutputPath"
-if ( -Not $? ) { exit $lastExitCode }
+Push-Location $OutputPath
+New-Item -ItemType Directory -Name 'bin'  | Out-Null
+New-Item -ItemType Directory -Name 'mode' | Out-Null
+New-Item -ItemType Directory -Name 'i18n' | Out-Null
+Pop-Location
 
-.\other\build.ps1
-if ( -Not $? ) { exit $lastExitCode }
+if ( -Not ( Test-Path '.\Other\release' ) ) {
+	.\Other\build.ps1
+	if ( -Not $? ) {
+		exit $lastExitCode
+	}
+}
+cp -Force '.\Other\release\*.bin' "$OutputPath\bin"
+cp -Force '.\Other\release\*.dll' "$OutputPath\bin"
+cp -Force '.\Other\release\*.exe' "$OutputPath\bin"
 
-Write-Host
-Write-Host 'Building Netch'
-dotnet publish `
-	-c "$Configuration" `
-	-r 'win-x64' `
-	-p:Platform='x64' `
-	-p:SelfContained="$SelfContained" `
-	-p:PublishTrimmed="$SelfContained" `
-	-p:PublishReadyToRun="$PublishReadyToRun" `
-	-p:PublishSingleFile="$PublishSingleFile" `
-	-p:IncludeNativeLibrariesForSelfExtract="$SelfContained" `
-	-o "$OutputPath" `
-	'.\Netch\Netch.csproj'
-if ( -Not $? ) { exit $lastExitCode }
+if ( -Not ( Test-Path ".\Netch\bin\$Configuration" ) ) {
+	Write-Host
+	Write-Host 'Building Netch'
 
-Write-Host
-Write-Host 'Building Redirector'
-msbuild `
-	-property:Configuration="$Configuration" `
-	-property:Platform=x64 `
-	'.\Redirector\Redirector.vcxproj'
-if ( -Not $? ) { exit $lastExitCode }
+	dotnet publish `
+		-c $Configuration `
+		-r 'win-x64' `
+		-p:Platform='x64' `
+		-p:SelfContained=$SelfContained `
+		-p:PublishTrimmed=$SelfContained `
+		-p:PublishReadyToRun=$PublishReadyToRun `
+		-p:PublishSingleFile=$PublishSingleFile `
+		-p:IncludeNativeLibrariesForSelfExtract=$SelfContained `
+		-o ".\Netch\bin\$Configuration" `
+		'.\Netch\Netch.csproj'
+	if ( -Not $? ) { exit $lastExitCode }
+}
+cp -Force ".\Netch\bin\$Configuration\Netch.exe" $OutputPath
 
-Write-Host
-Write-Host 'Building RouteHelper'
-msbuild `
-	-property:Configuration="$Configuration" `
-	-property:Platform=x64 `
-	'.\RouteHelper\RouteHelper.vcxproj'
-if ( -Not $? ) { exit $lastExitCode }
+if ( -Not ( Test-Path ".\Redirector\bin\$Configuration" ) ) {
+	Write-Host
+	Write-Host 'Building Redirector'
 
-cp -Force '.\other\release\*.bin'                            "$OutputPath\bin"
-cp -Force '.\other\release\*.exe'                            "$OutputPath\bin"
-cp -Force ".\Redirector\bin\$Configuration\Redirector.bin"   "$OutputPath\bin"
+	msbuild `
+		-property:Configuration=$Configuration `
+		-property:Platform=x64 `
+		'.\Redirector\Redirector.vcxproj'
+	if ( -Not $? ) { exit $lastExitCode }
+}
+cp -Force ".\Redirector\bin\$Configuration\nfapi.dll"      "$OutputPath\bin"
+cp -Force ".\Redirector\bin\$Configuration\Redirector.bin" "$OutputPath\bin"
+
+if ( -Not ( Test-Path ".\RouteHelper\bin\$Configuration" ) ) {
+	Write-Host
+	Write-Host 'Building RouteHelper'
+
+	msbuild `
+		-property:Configuration=$Configuration `
+		-property:Platform=x64 `
+		'.\RouteHelper\RouteHelper.vcxproj'
+	if ( -Not $? ) { exit $lastExitCode }
+}
 cp -Force ".\RouteHelper\bin\$Configuration\RouteHelper.bin" "$OutputPath\bin"
 
 if ( $Configuration.Equals('Release') ) {
