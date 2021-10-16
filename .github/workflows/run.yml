@@ -92,6 +92,7 @@ jobs:
           ${GCRS} https://github.com/liupan1890/aliyunpan aliyunpan
           ${GCRS} https://github.com/unlock-music/unlock-music unlock-music
           ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
+          ${GCRS} https://github.com/aria2/aria2 aria2
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
@@ -299,6 +300,11 @@ jobs:
           pushd filebrowser/Clients || exit 1
           wget -qO- https://api.github.com/repos/filebrowser/filebrowser/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # aria2
+          mkdir -p aria2/Clients
+          pushd aria2/Clients || exit 1
+          wget -qO- https://api.github.com/repos/aria2/aria2/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
 
       - name: Compress to packages
         run: |
@@ -365,6 +371,7 @@ jobs:
           ${Z9R} tinyproxy.zip tinyproxy
           ${Z9R} vpncloud.zip vpncloud
           ${Z9R} proxychains-ng.zip proxychains-ng
+          ${Z9R} aria2.zip aria2
           # Move to Release
           mv *.zip release
 
