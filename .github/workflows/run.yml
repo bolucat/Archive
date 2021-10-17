@@ -86,6 +86,7 @@ jobs:
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
+          ${GCRS} https://github.com/yt-dlp/yt-dlp yt-dlp
           ${GCRS} https://github.com/the1812/Bilibili-Evolved bb-evolved
           ${GCRS} https://github.com/SubtitleEdit/subtitleedit subtitleedit
           ${GCRS} https://github.com/rachpt/lanzou-gui lanzou-gui
@@ -276,6 +277,11 @@ jobs:
           pushd youtube-dl/Clients || exit 1
           wget -qO- https://api.github.com/repos/ytdl-org/youtube-dl/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # yt-dlp
+          mkdir -p yt-dlp/Clients
+          pushd yt-dlp/Clients || exit 1
+          wget -qO- https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
           # subtitleedit
           mkdir -p subtitleedit/Clients
           pushd subtitleedit/Clients || exit 1
@@ -369,6 +375,7 @@ jobs:
           ${Z9R} netch.zip netch
           ${Z9R} bbdown.zip bbdown
           ${Z9R} youtube-dl.zip youtube-dl
+          ${Z9R} yt-dlp.zip yt-dlp
           ${Z9R} subtitleedit.zip subtitleedit
           ${Z9R} lanzou-gui.zip lanzou-gui
           ${Z9R} aliyunpan.zip aliyunpan
