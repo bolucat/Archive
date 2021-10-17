@@ -93,6 +93,7 @@ jobs:
           ${GCRS} https://github.com/unlock-music/unlock-music unlock-music
           ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
           ${GCRS} https://github.com/aria2/aria2 aria2
+          ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
@@ -305,6 +306,11 @@ jobs:
           pushd aria2/Clients || exit 1
           wget -qO- https://api.github.com/repos/aria2/aria2/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # m3u8-cli
+          mkdir -p m3u8-cli/Clients
+          pushd m3u8-cli/Clients || exit 1
+          wget -qO- https://api.github.com/repos/nilaoda/N_m3u8DL-CLI/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
 
       - name: Compress to packages
         run: |
@@ -372,6 +378,7 @@ jobs:
           ${Z9R} vpncloud.zip vpncloud
           ${Z9R} proxychains-ng.zip proxychains-ng
           ${Z9R} aria2.zip aria2
+          ${Z9R} m3u8-cli.zip m3u8-cli
           # Move to Release
           mv *.zip release
 
