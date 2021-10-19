@@ -146,12 +146,21 @@ bool eh_init()
 	if (!DNSHandler::INIT())
 		return false;
 
-	return TCPHandler::INIT();
+	if (!TCPHandler::INIT())
+		return false;
+
+	return true;
 }
 
 void eh_free()
 {
+	lock_guard<mutex> lg(udpContextLock);
+
 	TCPHandler::FREE();
+
+	for (auto i : udpContext)
+		delete i.second;
+	udpContext.clear();
 
 	UP = 0;
 	DL = 0;
@@ -322,13 +331,23 @@ void udpCanSend(ENDPOINT_ID id)
 
 void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, int length, PNF_UDP_OPTIONS options)
 {
-	if (filterDNS && DNSHandler::IsDNS((PSOCKADDR_IN6)target))
+	if (DNSHandler::IsDNS((PSOCKADDR_IN6)target))
 	{
-		UP += length;
-		DNSHandler::CreateHandler(id, (PSOCKADDR_IN6)target, buffer, length, options);
+		if (!filterDNS)
+		{
+			nf_udpPostSend(id, target, buffer, length, options);
 
-		wcout << "[Redirector][EventHandler][udpSend][" << id << "] DNS to " << ConvertIP((PSOCKADDR)target) << endl;
-		return;
+			wcout << "[Redirector][EventHandler][udpSend][" << id << "] B DNS to " << ConvertIP((PSOCKADDR)target) << endl;
+			return;
+		}
+		else
+		{
+			UP += length;
+			DNSHandler::CreateHandler(id, (PSOCKADDR_IN6)target, buffer, length, options);
+
+			wcout << "[Redirector][EventHandler][udpSend][" << id << "] H DNS to " << ConvertIP((PSOCKADDR)target) << endl;
+			return;
+		}
 	}
 
 	udpContextLock.lock();
@@ -342,19 +361,11 @@ void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, in
 	auto remote = udpContext[id];
 	udpContextLock.unlock();
 
-	UP += length;
+	if (remote->tcpSocket == INVALID_SOCKET && !remote->Associate())
+		return;
 
-	if (remote->tcpSocket == INVALID_SOCKET || remote->udpSocket == INVALID_SOCKET)
+	if (remote->udpSocket == INVALID_SOCKET)
 	{
-		if (remote->tcpSocket) closesocket(remote->tcpSocket);
-		if (remote->udpSocket) closesocket(remote->udpSocket);
-
-		remote->tcpSocket = INVALID_SOCKET;
-		remote->udpSocket = INVALID_SOCKET;
-
-		if (!remote->Associate())
-			return;
-
 		if (!remote->CreateUDP())
 			return;
 
@@ -364,14 +375,8 @@ void udpSend(ENDPOINT_ID id, const unsigned char* target, const char* buffer, in
 		thread(udpReceiveHandler, id, remote, option).detach();
 	}
 
-	if (remote->Send((PSOCKADDR_IN6)target, buffer, length) != length)
-	{
-		if (remote->tcpSocket) closesocket(remote->tcpSocket);
-		if (remote->udpSocket) closesocket(remote->udpSocket);
-
-		remote->tcpSocket = INVALID_SOCKET;
-		remote->udpSocket = INVALID_SOCKET;
-	}
+	if (remote->Send((PSOCKADDR_IN6)target, buffer, length) == length)
+		UP += length;
 }
 
 void udpCanReceive(ENDPOINT_ID id)
