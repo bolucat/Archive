@@ -71,7 +71,6 @@ buildflag_header("buildflags") {
   flags = [
     "POSIX_AVOID_MMAP=$posix_avoid_mmap",
     "DISABLE_FILE_SUPPORT=$disable_file_support",
-    "DISABLE_FTP_SUPPORT=$disable_ftp_support",
     "ENABLE_MDNS=$enable_mdns",
     "ENABLE_REPORTING=$enable_reporting",
     "ENABLE_WEBSOCKETS=$enable_websockets",
@@ -769,10 +768,6 @@ component("net") {
     "quic/platform/impl/quic_iovec_impl.h",
     "quic/platform/impl/quic_mem_slice_impl.cc",
     "quic/platform/impl/quic_mem_slice_impl.h",
-    "quic/platform/impl/quic_mem_slice_span_impl.cc",
-    "quic/platform/impl/quic_mem_slice_span_impl.h",
-    "quic/platform/impl/quic_mem_slice_storage_impl.cc",
-    "quic/platform/impl/quic_mem_slice_storage_impl.h",
     "quic/platform/impl/quic_prefetch_impl.h",
     "quic/platform/impl/quic_reference_counted_impl.h",
     "quic/platform/impl/quic_server_stats_impl.h",
@@ -1379,6 +1374,14 @@ component("net") {
       "cert/internal/trust_store_chrome.h",
     ]
     deps += [ "//net/data/ssl/chrome_root_store:gen_root_store_inc" ]
+    if (is_win) {
+      sources += [
+        "cert/internal/trust_store_win.cc",
+        "cert/internal/trust_store_win.h",
+        "third_party/mozilla_win/cert/win_util.cc",
+        "third_party/mozilla_win/cert/win_util.h",
+      ]
+    }
   }
 
   if (use_nss_certs) {
@@ -1485,41 +1488,6 @@ component("net") {
       "base/directory_lister.h",
       "base/directory_listing.cc",
       "base/directory_listing.h",
-    ]
-  }
-
-  if (!disable_ftp_support) {
-    sources += [
-      "ftp/ftp_auth_cache.cc",
-      "ftp/ftp_auth_cache.h",
-      "ftp/ftp_ctrl_response_buffer.cc",
-      "ftp/ftp_ctrl_response_buffer.h",
-      "ftp/ftp_directory_listing_parser.cc",
-      "ftp/ftp_directory_listing_parser.h",
-      "ftp/ftp_directory_listing_parser_ls.cc",
-      "ftp/ftp_directory_listing_parser_ls.h",
-      "ftp/ftp_directory_listing_parser_vms.cc",
-      "ftp/ftp_directory_listing_parser_vms.h",
-      "ftp/ftp_directory_listing_parser_windows.cc",
-      "ftp/ftp_directory_listing_parser_windows.h",
-      "ftp/ftp_network_layer.cc",
-      "ftp/ftp_network_layer.h",
-      "ftp/ftp_network_session.cc",
-      "ftp/ftp_network_session.h",
-      "ftp/ftp_network_transaction.cc",
-      "ftp/ftp_network_transaction.h",
-      "ftp/ftp_request_info.h",
-      "ftp/ftp_response_info.cc",
-      "ftp/ftp_response_info.h",
-      "ftp/ftp_server_type.h",
-      "ftp/ftp_transaction.h",
-      "ftp/ftp_transaction_factory.h",
-      "ftp/ftp_util.cc",
-      "ftp/ftp_util.h",
-      "url_request/ftp_protocol_handler.cc",
-      "url_request/ftp_protocol_handler.h",
-      "url_request/url_request_ftp_job.cc",
-      "url_request/url_request_ftp_job.h",
     ]
   }
 

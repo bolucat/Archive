@@ -376,8 +376,8 @@ class PrintingLogObserver : public NetLog::ThreadSafeObserver {
     base::JSONWriter::Write(params, &params_str);
     params_str.insert(0, ": ");
 
-    LOG(INFO) << source_type << "(" << entry.source.id << "): " << event_type
-              << ": " << event_phase << params_str;
+    VLOG(1) << source_type << "(" << entry.source.id << "): " << event_type
+            << ": " << event_phase << params_str;
   }
 
  private:
@@ -524,9 +524,9 @@ int main(int argc, char* argv[]) {
     observer->StartObserving(net_log);
   }
 
-  // Avoids net log overhead if logging is disabled.
+  // Avoids net log overhead if verbose logging is disabled.
   std::unique_ptr<net::PrintingLogObserver> printing_log_observer;
-  if (params.log_settings.logging_dest != logging::LOG_NONE) {
+  if (params.log_settings.logging_dest != logging::LOG_NONE && VLOG_IS_ON(1)) {
     printing_log_observer = std::make_unique<net::PrintingLogObserver>();
     net_log->AddObserver(printing_log_observer.get(),
                          net::NetLogCaptureMode::kDefault);

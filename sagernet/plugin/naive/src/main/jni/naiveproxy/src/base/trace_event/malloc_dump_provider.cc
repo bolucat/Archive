@@ -135,7 +135,7 @@ void ReportPartitionAllocStats(ProcessMemoryDump* pmd,
     root->DumpStats("nonscannable", is_light_dump, &partition_stats_dumper);
 
   *total_virtual_size += partition_stats_dumper.total_resident_bytes();
-  *resident_size += partition_stats_dumper.total_active_bytes();
+  *resident_size += partition_stats_dumper.total_resident_bytes();
   *allocated_objects_size += partition_stats_dumper.total_active_bytes();
 }
 #endif  // BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
@@ -213,7 +213,7 @@ bool MallocDumpProvider::OnMemoryDump(const MemoryDumpArgs& args,
                      &allocated_objects_count);
 #elif defined(OS_FUCHSIA)
 // TODO(fuchsia): Port, see https://crbug.com/706592.
-#elif defined(__UCLIBC__)
+#elif defined(__MUSL__)
 #else
 #if defined(__GLIBC__) && defined(__GLIBC_PREREQ)
 #if __GLIBC_PREREQ(2, 33)

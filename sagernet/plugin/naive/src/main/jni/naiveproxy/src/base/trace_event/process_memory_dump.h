@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "base/base_export.h"
+#include "base/gtest_prod_util.h"
 #include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/trace_event/heap_profiler_allocation_context.h"

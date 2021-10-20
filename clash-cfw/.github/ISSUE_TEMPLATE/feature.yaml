@@ -1,0 +1,20 @@
+name: 功能建议
+description: 提议新功能
+title: "[Feature Request]: "
+labels: []
+assignees: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 功能描述
+      description: 请具体描述功能及其作用。
+    validations:
+      required: true
+  - type: textarea
+    id: other
+    attributes:
+      label: 其他内容
+      description: 其他相关内容。
+    validations:
+      required: false

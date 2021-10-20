@@ -44,7 +44,6 @@ flags="$flags"'
 
   disable_file_support=true
   enable_websockets=false
-  disable_ftp_support=true
   use_kerberos=false
   enable_mdns=false
   enable_reporting=false

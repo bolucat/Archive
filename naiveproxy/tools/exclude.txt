@@ -9,7 +9,10 @@
 *.golden
 *.javap*
 *.pyc
-net/data
+net/data/[!s]*
+net/data/s[!s]*
+net/data/ssl/[!c]*
+net/data/ssl/c[!h]*
 net/http/transport_security_state_static.json
 net/third_party/nist-pkits
 third_party/boringssl/src/crypto/hpke/test-vectors.json
