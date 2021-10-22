@@ -1,12 +1,10 @@
-//go:build !confonly
-// +build !confonly
-
 package quic
 
 import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/sha256"
+	"github.com/v2fly/v2ray-core/v4/common/serial"
 
 	"golang.org/x/crypto/chacha20poly1305"
 
@@ -42,7 +40,7 @@ func getHeader(config *Config) (internet.PacketHeader, error) {
 		return nil, nil
 	}
 
-	msg, err := config.Header.GetInstance()
+	msg, err := serial.GetInstanceOf(config.Header)
 	if err != nil {
 		return nil, err
 	}

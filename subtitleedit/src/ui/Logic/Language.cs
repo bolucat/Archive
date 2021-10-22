@@ -106,6 +106,7 @@ namespace Nikse.SubtitleEdit.Logic
         public LanguageStructure.SubStationAlphaStyles SubStationAlphaStyles;
         public LanguageStructure.SubStationAlphaStylesCategoriesManager SubStationAlphaStylesCategoriesManager;
         public LanguageStructure.PointSync PointSync;
+        public LanguageStructure.TimedTextSmpteTiming TimedTextSmpteTiming;
         public LanguageStructure.TransportStreamSubtitleChooser TransportStreamSubtitleChooser;
         public LanguageStructure.UnknownSubtitle UnknownSubtitle;
         public LanguageStructure.VisualSync VisualSync;
@@ -1736,7 +1737,7 @@ namespace Nikse.SubtitleEdit.Logic
                         CloseVideo = "Close video file",
                         OpenSecondSubtitle = "Open second subtitle file...",
                         SetVideoOffset = "Set video offset...",
-                        SmptTimeMode = "SMPTE timing (drop frame)",
+                        SmptTimeMode = "SMPTE timing (non integer frame rate)",
                         GenerateTextFromVideo = "Generate text from video...",
                         GenerateBlankVideo = "Generate blank video...",
                         GenerateVideoWithBurnedInSub = "Generate video with burned-in sub...",
@@ -2753,6 +2754,10 @@ can edit in same subtitle file (collaboration)",
                 MergeOriginalAndTranslation = "Merge original and translation",
                 MergeWithNext = "Merge with next",
                 MergeWithPrevious = "Merge with previous",
+                MergeWithNextAndUnbreak = "Merge with next and unbreak",
+                MergeWithPreviousAndUnbreak = "Merge with previous and unbreak",
+                MergeWithNextAndBreak = "Merge with next and auto-break",
+                MergeWithPreviousAndBreak = "Merge with previous and auto-break",
                 ShortcutIsAlreadyDefinedX = "Shortcut already defined: {0}",
                 ToggleTranslationAndOriginalInPreviews = "Toggle translation and original in video/audio preview",
                 ListViewColumnDelete = "Column, delete text",
@@ -3123,6 +3128,15 @@ can edit in same subtitle file (collaboration)",
                 SyncPointsX = "Sync points: {0}",
                 Info = "One sync point will adjust position, two or more sync points will adjust position and speed",
                 ApplySync = "Apply",
+            };
+
+            TimedTextSmpteTiming = new LanguageStructure.TimedTextSmpteTiming
+            {
+                Title = "SMPTE timing",
+                UseSmpteTiming = "Use SMPTE timing for current subtitle?",
+                SmpteTimingInfo = "Note: SMPTE timing can be changed later in the \"Video menu\"",
+                NoNever = "No, never",
+                YesAlways = "Yes, always for non-whole-number frame rates",
             };
 
             TransportStreamSubtitleChooser = new LanguageStructure.TransportStreamSubtitleChooser

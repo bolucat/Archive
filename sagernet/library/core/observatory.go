@@ -17,7 +17,7 @@ func (instance *V2RayInstance) GetObservatoryStatus() ([]byte, error) {
 	return proto.Marshal(resp)
 }
 
-func (instance *V2RayInstance) UpdateStatus(outbound string, status []byte) error {
+func (instance *V2RayInstance) UpdateStatus(status []byte) error {
 	if instance.observatory == nil {
 		return errors.New("observatory unavailable")
 	}
@@ -26,6 +26,21 @@ func (instance *V2RayInstance) UpdateStatus(outbound string, status []byte) erro
 	if err != nil {
 		return err
 	}
-	instance.observatory.UpdateStatus(outbound, s)
+	instance.observatory.UpdateStatus(s)
 	return err
+}
+
+type StatusUpdateListener interface {
+	OnUpdate(status []byte)
+}
+
+func (instance *V2RayInstance) SetStatusUpdateListener(listener StatusUpdateListener) {
+	if listener == nil {
+		instance.observatory.StatusUpdate = nil
+	} else {
+		instance.observatory.StatusUpdate = func(result *observatory.OutboundStatus) {
+			status, _ := proto.Marshal(result)
+			listener.OnUpdate(status)
+		}
+	}
 }

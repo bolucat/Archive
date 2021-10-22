@@ -6658,6 +6658,18 @@ namespace Nikse.SubtitleEdit.Logic
                 case "Settings/MergeWithNext":
                     language.Settings.MergeWithNext = reader.Value;
                     break;
+                case "Settings/MergeWithPreviousAndUnbreak":
+                    language.Settings.MergeWithPreviousAndUnbreak = reader.Value;
+                    break;
+                case "Settings/MergeWithNextAndUnbreak":
+                    language.Settings.MergeWithNextAndUnbreak = reader.Value;
+                    break;
+                case "Settings/MergeWithPreviousAndBreak":
+                    language.Settings.MergeWithPreviousAndBreak = reader.Value;
+                    break;
+                case "Settings/MergeWithNextAndBreak":
+                    language.Settings.MergeWithNextAndBreak = reader.Value;
+                    break;
                 case "Settings/MergeWithPrevious":
                     language.Settings.MergeWithPrevious = reader.Value;
                     break;
@@ -7563,6 +7575,21 @@ namespace Nikse.SubtitleEdit.Logic
                     break;
                 case "PointSync/ApplySync":
                     language.PointSync.ApplySync = reader.Value;
+                    break;
+                case "TimedTextSmpteTiming/Title":
+                    language.TimedTextSmpteTiming.Title = reader.Value;
+                    break;
+                case "TimedTextSmpteTiming/UseSmpteTiming":
+                    language.TimedTextSmpteTiming.UseSmpteTiming = reader.Value;
+                    break;
+                case "TimedTextSmpteTiming/SmpteTimingInfo":
+                    language.TimedTextSmpteTiming.SmpteTimingInfo = reader.Value;
+                    break;
+                case "TimedTextSmpteTiming/YesAlways":
+                    language.TimedTextSmpteTiming.YesAlways = reader.Value;
+                    break;
+                case "TimedTextSmpteTiming/NoNever":
+                    language.TimedTextSmpteTiming.NoNever = reader.Value;
                     break;
                 case "TransportStreamSubtitleChooser/Title":
                     language.TransportStreamSubtitleChooser.Title = reader.Value;

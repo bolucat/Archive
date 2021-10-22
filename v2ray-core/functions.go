@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package core
 
 import (
@@ -27,7 +24,7 @@ func CreateObject(v *Instance, config interface{}) (interface{}, error) {
 //
 // v2ray:api:stable
 func StartInstance(configFormat string, configBytes []byte) (*Instance, error) {
-	config, err := LoadConfig(configFormat, "", bytes.NewReader(configBytes))
+	config, err := LoadConfig(configFormat, bytes.NewReader(configBytes))
 	if err != nil {
 		return nil, err
 	}

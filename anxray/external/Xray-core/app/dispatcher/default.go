@@ -25,9 +25,7 @@ import (
 	"github.com/xtls/xray-core/transport/pipe"
 )
 
-var (
-	errSniffingTimeout = newError("timeout on sniffing")
-)
+var errSniffingTimeout = newError("timeout on sniffing")
 
 type cachedReader struct {
 	sync.Mutex
@@ -199,10 +197,15 @@ func shouldOverride(ctx context.Context, result SniffResult, request session.Sni
 		if strings.HasPrefix(protocolString, p) {
 			return true
 		}
-		if fakeDNSEngine != nil && protocolString != "bittorrent" && p == "fakedns" &&
-			destination.Address.Family().IsIP() && fakeDNSEngine.GetFakeIPRange().Contains(destination.Address.IP()) {
+		if fkr0, ok := fakeDNSEngine.(dns.FakeDNSEngineRev0); ok && protocolString != "bittorrent" && p == "fakedns" &&
+			destination.Address.Family().IsIP() && fkr0.IsIPInIPPool(destination.Address) {
 			newError("Using sniffer ", protocolString, " since the fake DNS missed").WriteToLog(session.ExportIDToError(ctx))
 			return true
+		}
+		if resultSubset, ok := result.(SnifferIsProtoSubsetOf); ok {
+			if resultSubset.IsProtoSubsetOf(p) {
+				return true
+			}
 		}
 	}
 
@@ -396,7 +399,18 @@ func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.
 
 	var handler outbound.Handler
 
-	if d.router != nil {
+	if forcedOutboundTag := session.GetForcedOutboundTagFromContext(ctx); forcedOutboundTag != "" {
+		ctx = session.SetForcedOutboundTagToContext(ctx, "")
+		if h := d.ohm.GetHandler(forcedOutboundTag); h != nil {
+			newError("taking platform initialized detour [", forcedOutboundTag, "] for [", destination, "]").WriteToLog(session.ExportIDToError(ctx))
+			handler = h
+		} else {
+			newError("non existing tag for platform initialized detour: ", forcedOutboundTag).AtError().WriteToLog(session.ExportIDToError(ctx))
+			common.Close(link.Writer)
+			common.Interrupt(link.Reader)
+			return
+		}
+	} else if d.router != nil {
 		if route, err := d.router.PickRoute(routing_session.AsRoutingContext(ctx)); err == nil {
 			tag := route.GetOutboundTag()
 			if h := d.ohm.GetHandler(tag); h != nil {

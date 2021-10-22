@@ -5061,7 +5061,7 @@ namespace Nikse.SubtitleEdit.Forms
         private SubtitleFormat GetCurrentSubtitleFormat()
         {
             if (_currentSubtitleFormat == null)
-            { 
+            {
                 _currentSubtitleFormat = Utilities.GetSubtitleFormatByFriendlyName(comboBoxSubtitleFormats.SelectedItem.ToString());
                 MakeFormatChange(null, _currentSubtitleFormat);
             }
@@ -12399,6 +12399,7 @@ namespace Nikse.SubtitleEdit.Forms
 
                         p.Text = newText;
                         SubtitleListview1.SetText(index, p.Text);
+                        SubtitleListview1.SyntaxColorLine(_subtitle.Paragraphs, index, p);
                     }
 
                     if (_subtitleOriginal != null && SubtitleListview1.IsOriginalTextColumnVisible && Configuration.Settings.General.AllowEditOfOriginalSubtitle)
@@ -12460,6 +12461,8 @@ namespace Nikse.SubtitleEdit.Forms
                     MakeHistoryForUndo(_language.BeforeRemoveLineBreaksInSelectedLines);
                     textBoxListViewText.Text = fixedText;
                 }
+
+                SubtitleListview1.SyntaxColorLine(_subtitle.Paragraphs, _subtitleListViewIndex, _subtitle.GetParagraphOrDefault(_subtitleListViewIndex));
             }
 
             _doAutoBreakOnTextChanged = true;
@@ -15759,6 +15762,74 @@ namespace Nikse.SubtitleEdit.Forms
                     {
                         SubtitleListview1.SelectIndexAndEnsureVisible(idx - 1, true);
                         MergeAfterToolStripMenuItemClick(null, null);
+                        e.SuppressKeyPress = true;
+                    }
+                }
+            }
+            else if (_shortcuts.MainGeneralMergeWithNextAndUnbreak == e.KeyData)
+            {
+                if (SubtitleListview1.SelectedItems.Count >= 1)
+                {
+                    var idx = SubtitleListview1.SelectedItems[0].Index;
+                    if (idx >= 0 && _subtitle.Paragraphs.Count > idx + 1)
+                    {
+                        MakeHistoryForUndo(_language.BeforeMergeLines);
+                        _makeHistoryPaused = true;
+                        SubtitleListview1.SelectIndexAndEnsureVisible(idx, true);
+                        MergeAfterToolStripMenuItemClick(null, null);
+                        ButtonUnBreakClick(null, null);
+                        _makeHistoryPaused = false;
+                        e.SuppressKeyPress = true;
+                    }
+                }
+            }
+            else if (_shortcuts.MainGeneralMergeWithPreviousAndUnbreak == e.KeyData)
+            {
+                if (SubtitleListview1.SelectedItems.Count >= 1)
+                {
+                    var idx = SubtitleListview1.SelectedItems[0].Index;
+                    if (idx > 0)
+                    {
+                        MakeHistoryForUndo(_language.BeforeMergeLines);
+                        _makeHistoryPaused = true;
+                        SubtitleListview1.SelectIndexAndEnsureVisible(idx - 1, true);
+                        MergeAfterToolStripMenuItemClick(null, null);
+                        ButtonUnBreakClick(null, null);
+                        _makeHistoryPaused = false;
+                        e.SuppressKeyPress = true;
+                    }
+                }
+            }
+            else if (_shortcuts.MainGeneralMergeWithNextAndBreak == e.KeyData)
+            {
+                if (SubtitleListview1.SelectedItems.Count >= 1)
+                {
+                    var idx = SubtitleListview1.SelectedItems[0].Index;
+                    if (idx >= 0 && _subtitle.Paragraphs.Count > idx + 1)
+                    {
+                        MakeHistoryForUndo(_language.BeforeMergeLines);
+                        _makeHistoryPaused = true;
+                        SubtitleListview1.SelectIndexAndEnsureVisible(idx, true);
+                        MergeAfterToolStripMenuItemClick(null, null);
+                        AutoBreak();
+                        _makeHistoryPaused = false;
+                        e.SuppressKeyPress = true;
+                    }
+                }
+            }
+            else if (_shortcuts.MainGeneralMergeWithPreviousAndBreak == e.KeyData)
+            {
+                if (SubtitleListview1.SelectedItems.Count >= 1)
+                {
+                    var idx = SubtitleListview1.SelectedItems[0].Index;
+                    if (idx > 0)
+                    {
+                        MakeHistoryForUndo(_language.BeforeMergeLines);
+                        _makeHistoryPaused = true;
+                        SubtitleListview1.SelectIndexAndEnsureVisible(idx - 1, true);
+                        MergeAfterToolStripMenuItemClick(null, null);
+                        AutoBreak();
+                        _makeHistoryPaused = false;
                         e.SuppressKeyPress = true;
                     }
                 }
@@ -20377,102 +20448,104 @@ namespace Nikse.SubtitleEdit.Forms
                 return;
             }
 
-            if (!string.IsNullOrEmpty(fileName) && File.Exists(fileName))
+            if (string.IsNullOrEmpty(fileName) || !File.Exists(fileName))
             {
-                if (_loading)
-                {
-                    VideoFileName = fileName;
-                    return;
-                }
-
-                var fi = new FileInfo(fileName);
-                if (fi.Length < 1000)
-                {
-                    return;
-                }
-
-                CheckSecondSubtitleReset();
-                ShowSubtitleTimer.Stop();
-                Cursor = Cursors.WaitCursor;
-                VideoFileName = fileName;
-                if (mediaPlayer.VideoPlayer != null)
-                {
-                    mediaPlayer.PauseAndDisposePlayer();
-                }
-
-                _endSeconds = -1;
-                _playSelectionIndex = -1;
-
-                _videoInfo = UiUtil.GetVideoInfo(fileName);
-                if (_videoInfo.FramesPerSecond > 0)
-                {
-                    toolStripComboBoxFrameRate.Text = string.Format("{0:0.###}", _videoInfo.FramesPerSecond);
-                }
-
-                string oldVideoPlayer = Configuration.Settings.General.VideoPlayer;
-                var ok = UiUtil.InitializeVideoPlayerAndContainer(fileName, _videoInfo, mediaPlayer, VideoLoaded, VideoEnded);
-                if (!ok && oldVideoPlayer != Configuration.Settings.General.VideoPlayer)
-                {
-                    CloseVideoToolStripMenuItemClick(null, null);
-                    VideoFileName = fileName;
-                    _videoInfo = UiUtil.GetVideoInfo(fileName);
-                    UiUtil.InitializeVideoPlayerAndContainer(fileName, _videoInfo, mediaPlayer, VideoLoaded, VideoEnded);
-                }
-
-                if (!(mediaPlayer.VideoPlayer is LibMpvDynamic))
-                {
-                    mediaPlayer.Volume = 0;
-                }
-                mediaPlayer.ShowFullscreenButton = Configuration.Settings.General.VideoPlayerShowFullscreenButton;
-                mediaPlayer.OnButtonClicked -= MediaPlayer_OnButtonClicked;
-                mediaPlayer.OnButtonClicked += MediaPlayer_OnButtonClicked;
-
-                if (_videoInfo.VideoCodec != null)
-                {
-                    labelVideoInfo.Text = Path.GetFileName(fileName) + " " + _videoInfo.Width + "x" + _videoInfo.Height + " " + _videoInfo.VideoCodec.Trim();
-                }
-                else
-                {
-                    labelVideoInfo.Text = Path.GetFileName(fileName) + " " + _videoInfo.Width + "x" + _videoInfo.Height;
-                }
-
-                if (_videoInfo.FramesPerSecond > 0)
-                {
-                    labelVideoInfo.Text = labelVideoInfo.Text + " " + string.Format("{0:0.0##}", _videoInfo.FramesPerSecond);
-                }
-
-
-                string peakWaveFileName = WavePeakGenerator.GetPeakWaveFileName(fileName);
-                string spectrogramFolder = WavePeakGenerator.SpectrogramDrawer.GetSpectrogramFolder(fileName);
-                if (File.Exists(peakWaveFileName))
-                {
-                    audioVisualizer.ZoomFactor = 1.0;
-                    audioVisualizer.VerticalZoomFactor = 1.0;
-                    SelectZoomTextInComboBox();
-                    audioVisualizer.WavePeaks = WavePeakData.FromDisk(peakWaveFileName);
-                    audioVisualizer.SetSpectrogram(SpectrogramData.FromDisk(spectrogramFolder));
-                    audioVisualizer.SceneChanges = SceneChangeHelper.FromDisk(VideoFileName);
-                    SetWaveformPosition(0, 0, 0);
-                    timerWaveform.Start();
-
-                    if (smpteTimeModedropFrameToolStripMenuItem.Checked)
-                    {
-                        audioVisualizer.UseSmpteDropFrameTime();
-                    }
-                }
-                else if (audioVisualizer.WavePeaks != null)
-                {
-                    audioVisualizer.WavePeaks = null;
-                    audioVisualizer.SetSpectrogram(null);
-                    audioVisualizer.SceneChanges = new List<double>();
-                    audioVisualizer.Chapters = new List<MatroskaChapter>();
-                }
-
-                Cursor = Cursors.Default;
-                SetUndockedWindowsTitle();
-                ShowSubtitleTimer.Start();
-                SetAssaResolutionWithChecks();
+                return;
             }
+
+            if (_loading)
+            {
+                VideoFileName = fileName;
+                return;
+            }
+
+            var fi = new FileInfo(fileName);
+            if (fi.Length < 1000)
+            {
+                return;
+            }
+
+            CheckSecondSubtitleReset();
+            ShowSubtitleTimer.Stop();
+            Cursor = Cursors.WaitCursor;
+            VideoFileName = fileName;
+            if (mediaPlayer.VideoPlayer != null)
+            {
+                mediaPlayer.PauseAndDisposePlayer();
+            }
+
+            _endSeconds = -1;
+            _playSelectionIndex = -1;
+
+            _videoInfo = UiUtil.GetVideoInfo(fileName);
+            if (_videoInfo.FramesPerSecond > 0)
+            {
+                toolStripComboBoxFrameRate.Text = string.Format("{0:0.###}", _videoInfo.FramesPerSecond);
+            }
+
+            string oldVideoPlayer = Configuration.Settings.General.VideoPlayer;
+            var ok = UiUtil.InitializeVideoPlayerAndContainer(fileName, _videoInfo, mediaPlayer, VideoLoaded, VideoEnded);
+            if (!ok && oldVideoPlayer != Configuration.Settings.General.VideoPlayer)
+            {
+                CloseVideoToolStripMenuItemClick(null, null);
+                VideoFileName = fileName;
+                _videoInfo = UiUtil.GetVideoInfo(fileName);
+                UiUtil.InitializeVideoPlayerAndContainer(fileName, _videoInfo, mediaPlayer, VideoLoaded, VideoEnded);
+            }
+
+            if (!(mediaPlayer.VideoPlayer is LibMpvDynamic))
+            {
+                mediaPlayer.Volume = 0;
+            }
+            mediaPlayer.ShowFullscreenButton = Configuration.Settings.General.VideoPlayerShowFullscreenButton;
+            mediaPlayer.OnButtonClicked -= MediaPlayer_OnButtonClicked;
+            mediaPlayer.OnButtonClicked += MediaPlayer_OnButtonClicked;
+
+            if (_videoInfo.VideoCodec != null)
+            {
+                labelVideoInfo.Text = Path.GetFileName(fileName) + " " + _videoInfo.Width + "x" + _videoInfo.Height + " " + _videoInfo.VideoCodec.Trim();
+            }
+            else
+            {
+                labelVideoInfo.Text = Path.GetFileName(fileName) + " " + _videoInfo.Width + "x" + _videoInfo.Height;
+            }
+
+            if (_videoInfo.FramesPerSecond > 0)
+            {
+                labelVideoInfo.Text = labelVideoInfo.Text + " " + string.Format("{0:0.0##}", _videoInfo.FramesPerSecond);
+            }
+
+
+            string peakWaveFileName = WavePeakGenerator.GetPeakWaveFileName(fileName);
+            string spectrogramFolder = WavePeakGenerator.SpectrogramDrawer.GetSpectrogramFolder(fileName);
+            if (File.Exists(peakWaveFileName))
+            {
+                audioVisualizer.ZoomFactor = 1.0;
+                audioVisualizer.VerticalZoomFactor = 1.0;
+                SelectZoomTextInComboBox();
+                audioVisualizer.WavePeaks = WavePeakData.FromDisk(peakWaveFileName);
+                audioVisualizer.SetSpectrogram(SpectrogramData.FromDisk(spectrogramFolder));
+                audioVisualizer.SceneChanges = SceneChangeHelper.FromDisk(VideoFileName);
+                SetWaveformPosition(0, 0, 0);
+                timerWaveform.Start();
+
+                if (smpteTimeModedropFrameToolStripMenuItem.Checked)
+                {
+                    audioVisualizer.UseSmpteDropFrameTime();
+                }
+            }
+            else if (audioVisualizer.WavePeaks != null)
+            {
+                audioVisualizer.WavePeaks = null;
+                audioVisualizer.SetSpectrogram(null);
+                audioVisualizer.SceneChanges = new List<double>();
+                audioVisualizer.Chapters = new List<MatroskaChapter>();
+            }
+
+            Cursor = Cursors.Default;
+            SetUndockedWindowsTitle();
+            ShowSubtitleTimer.Start();
+            SetAssaResolutionWithChecks();
         }
 
         private void SetAssaResolutionWithChecks()
@@ -20608,6 +20681,39 @@ namespace Nikse.SubtitleEdit.Forms
             }
 
             textBoxSource.SelectionLength = 0;
+
+            if (!_loading &&
+                _videoInfo != null &&
+                 ((decimal)_videoInfo.FramesPerSecond) % 1 != 0m &&
+                _subtitle.Header != null &&
+                _subtitle.Header.Contains("frameRateMultiplier=\"1000 1001\"", StringComparison.OrdinalIgnoreCase) &&
+                _subtitle.Header.Contains("timeBase=\"smpte\"", StringComparison.OrdinalIgnoreCase) &&
+                Configuration.Settings.General.AutoSetVideoSmpteForTtml &&
+                !Configuration.Settings.General.CurrentVideoIsSmpte &&
+                (_currentSubtitleFormat?.Name == TimedText10.NameOfFormat ||
+                _currentSubtitleFormat?.Name == NetflixTimedText.NameOfFormat ||
+                _currentSubtitleFormat?.Name == ItunesTimedText.NameOfFormat))
+            {
+                if (!Configuration.Settings.General.AutoSetVideoSmpteForTtmlPrompt)
+                {
+                    SmpteTimeModedropFrameToolStripMenuItem_Click(null, null);
+                    ShowStatus(_language.Menu.Video.SmptTimeMode);
+                    return;
+                }
+
+                using (var form = new TimedTextSmpteTiming())
+                {
+                    if (form.ShowDialog(this) != DialogResult.OK)
+                    {
+                        Configuration.Settings.General.AutoSetVideoSmpteForTtml = !form.Never;
+                        return;
+                    }
+
+                    Configuration.Settings.General.AutoSetVideoSmpteForTtmlPrompt = !form.Always;
+                    SmpteTimeModedropFrameToolStripMenuItem_Click(null, null);
+                    ShowStatus(_language.Menu.Video.SmptTimeMode);
+                }
+            }
         }
 
         private void VideoEnded(object sender, EventArgs e)
@@ -26554,7 +26660,7 @@ namespace Nikse.SubtitleEdit.Forms
 
             UpdateOriginalTimeCodes(oldParagraph, oldNextParagraph);
             SubtitleListview1.SelectIndexAndEnsureVisible(index + 1, true);
-            SubtitleListview1.SetStartTimeAndDuration(index, _subtitle.GetParagraphOrDefault(index-1), _subtitle.GetParagraphOrDefault(index - 2), _subtitle.GetParagraphOrDefault(index));
+            SubtitleListview1.SetStartTimeAndDuration(index, _subtitle.GetParagraphOrDefault(index - 1), _subtitle.GetParagraphOrDefault(index - 2), _subtitle.GetParagraphOrDefault(index));
             SubtitleListview1.SetStartTimeAndDuration(index, _subtitle.GetParagraphOrDefault(index), _subtitle.GetParagraphOrDefault(index - 1), _subtitle.GetParagraphOrDefault(index + 1));
             RefreshSelectedParagraph();
             ShowStatus(string.Format(_language.VideoControls.AdjustedViaEndTime, p.StartTime.ToShortString()));

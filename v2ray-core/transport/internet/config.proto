@@ -6,7 +6,7 @@ option go_package = "github.com/v2fly/v2ray-core/v4/transport/internet";
 option java_package = "com.v2ray.core.transport.internet";
 option java_multiple_files = true;
 
-import "common/serial/typed_message.proto";
+import "google/protobuf/any.proto";
 
 enum TransportProtocol {
   TCP = 0;
@@ -26,7 +26,7 @@ message TransportConfig {
   string protocol_name = 3;
 
   // Specific settings. Must be of the transports.
-  v2ray.core.common.serial.TypedMessage settings = 2;
+  google.protobuf.Any settings = 2;
 }
 
 message StreamConfig {
@@ -42,7 +42,7 @@ message StreamConfig {
   string security_type = 3;
 
   // Settings for transport security. For now the only choice is TLS.
-  repeated v2ray.core.common.serial.TypedMessage security_settings = 4;
+  repeated google.protobuf.Any security_settings = 4;
 
   SocketConfig socket_settings = 6;
 }

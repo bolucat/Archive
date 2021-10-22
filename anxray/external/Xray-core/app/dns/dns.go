@@ -22,7 +22,6 @@ import (
 // DNS is a DNS rely server.
 type DNS struct {
 	sync.Mutex
-	ctx                    context.Context
 	tag                    string
 	disableCache           bool
 	disableFallback        bool
@@ -30,6 +29,7 @@ type DNS struct {
 	ipOption               *dns.IPOption
 	hosts                  *StaticHosts
 	clients                []*Client
+	ctx                    context.Context
 	domainMatcher          strmatcher.IndexMatcher
 	matcherInfos           []*DomainMatcherInfo
 }
@@ -133,11 +133,11 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 	}
 
 	return &DNS{
-		ctx:                    ctx,
 		tag:                    tag,
 		hosts:                  hosts,
 		ipOption:               ipOption,
 		clients:                clients,
+		ctx:                    ctx,
 		domainMatcher:          domainMatcher,
 		matcherInfos:           matcherInfos,
 		disableCache:           config.DisableCache,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/xtls/xray-core/app/observatory"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/net"
@@ -12,6 +13,7 @@ import (
 	"github.com/xtls/xray-core/common/signal"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/dns"
+	"github.com/xtls/xray-core/features/extension"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/infra/conf/serial"
@@ -24,7 +26,7 @@ import (
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-4"
+	return core.Version() + "-ax-6"
 }
 
 type V2RayInstance struct {
@@ -32,9 +34,9 @@ type V2RayInstance struct {
 	started      bool
 	core         *core.Instance
 	statsManager stats.Manager
-	//observatory  *observatory.Observer
-	dispatcher routing.Dispatcher
-	dnsClient  dns.Client
+	observatory  *observatory.Observer
+	dispatcher   routing.Dispatcher
+	dnsClient    dns.Client
 }
 
 func NewV2rayInstance() *V2RayInstance {
@@ -71,10 +73,10 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
 	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.Client)
 
-	/*o := c.GetFeature(extension.ObservatoryType())
+	o := c.GetFeature(extension.ObservatoryType())
 	if o != nil {
 		instance.observatory = o.(*observatory.Observer)
-	}*/
+	}
 	return nil
 }
 

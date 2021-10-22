@@ -1,36 +1,36 @@
 package memconservative
 
 import (
-	"os"
+	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
+	"io/ioutil"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/v2fly/v2ray-core/v4/app/router"
 	"github.com/v2fly/v2ray-core/v4/common/platform"
 )
 
-type GeoIPCache map[string]*router.GeoIP
+type GeoIPCache map[string]*routercommon.GeoIP
 
 func (g GeoIPCache) Has(key string) bool {
 	return !(g.Get(key) == nil)
 }
 
-func (g GeoIPCache) Get(key string) *router.GeoIP {
+func (g GeoIPCache) Get(key string) *routercommon.GeoIP {
 	if g == nil {
 		return nil
 	}
 	return g[key]
 }
 
-func (g GeoIPCache) Set(key string, value *router.GeoIP) {
+func (g GeoIPCache) Set(key string, value *routercommon.GeoIP) {
 	if g == nil {
-		g = make(map[string]*router.GeoIP)
+		g = make(map[string]*routercommon.GeoIP)
 	}
 	g[key] = value
 }
 
-func (g GeoIPCache) Unmarshal(filename, code string) (*router.GeoIP, error) {
+func (g GeoIPCache) Unmarshal(filename, code string) (*routercommon.GeoIP, error) {
 	asset := platform.GetAssetLocation(filename)
 	idx := strings.ToLower(asset + ":" + code)
 	if g.Has(idx) {
@@ -40,7 +40,7 @@ func (g GeoIPCache) Unmarshal(filename, code string) (*router.GeoIP, error) {
 	geoipBytes, err := Decode(asset, code)
 	switch err {
 	case nil:
-		var geoip router.GeoIP
+		var geoip routercommon.GeoIP
 		if err := proto.Unmarshal(geoipBytes, &geoip); err != nil {
 			return nil, err
 		}
@@ -53,11 +53,11 @@ func (g GeoIPCache) Unmarshal(filename, code string) (*router.GeoIP, error) {
 	case errFailedToReadBytes, errFailedToReadExpectedLenBytes,
 		errInvalidGeodataFile, errInvalidGeodataVarintLength:
 		newError("failed to decode geoip file: ", filename, ", fallback to the original ReadFile method")
-		geoipBytes, err = os.ReadFile(asset)
+		geoipBytes, err = ioutil.ReadFile(asset)
 		if err != nil {
 			return nil, err
 		}
-		var geoipList router.GeoIPList
+		var geoipList routercommon.GeoIPList
 		if err := proto.Unmarshal(geoipBytes, &geoipList); err != nil {
 			return nil, err
 		}
@@ -75,27 +75,27 @@ func (g GeoIPCache) Unmarshal(filename, code string) (*router.GeoIP, error) {
 	return nil, newError("country code ", code, " not found in ", filename)
 }
 
-type GeoSiteCache map[string]*router.GeoSite
+type GeoSiteCache map[string]*routercommon.GeoSite
 
 func (g GeoSiteCache) Has(key string) bool {
 	return !(g.Get(key) == nil)
 }
 
-func (g GeoSiteCache) Get(key string) *router.GeoSite {
+func (g GeoSiteCache) Get(key string) *routercommon.GeoSite {
 	if g == nil {
 		return nil
 	}
 	return g[key]
 }
 
-func (g GeoSiteCache) Set(key string, value *router.GeoSite) {
+func (g GeoSiteCache) Set(key string, value *routercommon.GeoSite) {
 	if g == nil {
-		g = make(map[string]*router.GeoSite)
+		g = make(map[string]*routercommon.GeoSite)
 	}
 	g[key] = value
 }
 
-func (g GeoSiteCache) Unmarshal(filename, code string) (*router.GeoSite, error) {
+func (g GeoSiteCache) Unmarshal(filename, code string) (*routercommon.GeoSite, error) {
 	asset := platform.GetAssetLocation(filename)
 	idx := strings.ToLower(asset + ":" + code)
 	if g.Has(idx) {
@@ -105,7 +105,7 @@ func (g GeoSiteCache) Unmarshal(filename, code string) (*router.GeoSite, error) 
 	geositeBytes, err := Decode(asset, code)
 	switch err {
 	case nil:
-		var geosite router.GeoSite
+		var geosite routercommon.GeoSite
 		if err := proto.Unmarshal(geositeBytes, &geosite); err != nil {
 			return nil, err
 		}
@@ -118,11 +118,11 @@ func (g GeoSiteCache) Unmarshal(filename, code string) (*router.GeoSite, error) 
 	case errFailedToReadBytes, errFailedToReadExpectedLenBytes,
 		errInvalidGeodataFile, errInvalidGeodataVarintLength:
 		newError("failed to decode geoip file: ", filename, ", fallback to the original ReadFile method")
-		geositeBytes, err = os.ReadFile(asset)
+		geositeBytes, err = ioutil.ReadFile(asset)
 		if err != nil {
 			return nil, err
 		}
-		var geositeList router.GeoSiteList
+		var geositeList routercommon.GeoSiteList
 		if err := proto.Unmarshal(geositeBytes, &geositeList); err != nil {
 			return nil, err
 		}

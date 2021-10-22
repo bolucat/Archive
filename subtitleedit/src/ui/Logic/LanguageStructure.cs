@@ -2609,6 +2609,10 @@
             public string SwitchOriginalAndTranslation { get; set; }
             public string MergeOriginalAndTranslation { get; set; }
             public string MergeWithNext { get; set; }
+            public string MergeWithPreviousAndUnbreak { get; set; }
+            public string MergeWithNextAndUnbreak { get; set; }
+            public string MergeWithPreviousAndBreak { get; set; }
+            public string MergeWithNextAndBreak { get; set; }
             public string MergeWithPrevious { get; set; }
             public string ShortcutIsAlreadyDefinedX { get; set; }
             public string ToggleTranslationAndOriginalInPreviews { get; set; }
@@ -2975,6 +2979,15 @@
             public string SyncPointsX { get; set; }
             public string Info { get; set; }
             public string ApplySync { get; set; }
+        }
+
+        public class TimedTextSmpteTiming
+        {
+            public string Title { get; set; }
+            public string UseSmpteTiming { get; set; }
+            public string SmpteTimingInfo { get; set; }
+            public string YesAlways { get; set; }
+            public string NoNever { get; set; }
         }
 
         public class TransportStreamSubtitleChooser

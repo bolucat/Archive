@@ -18,6 +18,10 @@ namespace Nikse.SubtitleEdit.Logic
         public Keys MainGeneralMergeTranslationAndOriginal { get; set; }
         public Keys MainGeneralMergeWithNext { get; set; }
         public Keys MainGeneralMergeWithPrevious { get; set; }
+        public Keys MainGeneralMergeWithNextAndUnbreak { get; set; }
+        public Keys MainGeneralMergeWithPreviousAndUnbreak { get; set; }
+        public Keys MainGeneralMergeWithNextAndBreak { get; set; }
+        public Keys MainGeneralMergeWithPreviousAndBreak { get; set; }
         public Keys MainGeneralGoToNextSubtitle { get; set; }
         public Keys MainGeneralGoToNextSubtitlePlayTranslate { get; set; }
         public Keys MainGeneralGoToNextSubtitleCursorAtEnd { get; set; }
@@ -225,6 +229,10 @@ namespace Nikse.SubtitleEdit.Logic
             MainGeneralMergeTranslationAndOriginal = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeOriginalAndTranslation);
             MainGeneralMergeWithNext = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithNext);
             MainGeneralMergeWithPrevious = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithPrevious);
+            MainGeneralMergeWithPreviousAndUnbreak = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithPreviousAndUnbreak);
+            MainGeneralMergeWithNextAndUnbreak = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithNextAndUnbreak);
+            MainGeneralMergeWithPreviousAndBreak = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithPreviousAndBreak);
+            MainGeneralMergeWithNextAndBreak = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralMergeWithNextAndBreak);
             MainGeneralGoToNextSubtitle = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralGoToNextSubtitle);
             MainGeneralGoToNextSubtitlePlayTranslate = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralGoToNextSubtitlePlayTranslate);
             MainGeneralGoToNextSubtitleCursorAtEnd = UiUtil.GetKeys(Configuration.Settings.Shortcuts.GeneralGoToNextSubtitleCursorAtEnd);

@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package freedom
 
 //go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
@@ -33,6 +30,13 @@ func init() {
 			return nil, err
 		}
 		return h, nil
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+		simplifiedServer := config.(*SimplifiedConfig)
+		_ = simplifiedServer
+		fullConfig := &Config{}
+		return common.CreateObject(ctx, fullConfig)
 	}))
 }
 
@@ -67,7 +71,7 @@ func (h *Handler) resolveIP(ctx context.Context, domain string, localAddr net.Ad
 		newError("DNS client doesn't implement ClientWithIPOption")
 	}
 
-	lookupFunc := h.dns.LookupIP
+	var lookupFunc = h.dns.LookupIP
 	if h.config.DomainStrategy == Config_USE_IP4 || (localAddr != nil && localAddr.Family().IsIPv4()) {
 		if lookupIPv4, ok := h.dns.(dns.IPv4Lookup); ok {
 			lookupFunc = lookupIPv4.LookupIPv4

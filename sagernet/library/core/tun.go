@@ -102,7 +102,7 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance,
 			}
 		}
 
-		t.dev, err = gvisor.New(fd, mtu, t, gvisor.DefaultNIC, pcap, pcapFile, math.MaxUint32)
+		t.dev, err = gvisor.New(fd, mtu, t, gvisor.DefaultNIC, pcap, pcapFile, math.MaxUint32, ipv6Mode)
 	} else {
 		dev := os.NewFile(uintptr(fd), "")
 		if dev == nil {
@@ -482,4 +482,10 @@ func (t *natTable) GetOrCreateLock(key string) (*sync.Cond, bool) {
 
 func (t *natTable) Delete(key string) {
 	t.mapping.Delete(key)
+}
+
+var ipv6Mode int32
+
+func SetIPv6Mode(mode int32) {
+	ipv6Mode = mode
 }

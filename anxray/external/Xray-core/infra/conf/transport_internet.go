@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"math"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/domainsocket"
+	httpheader "github.com/xtls/xray-core/transport/internet/headers/http"
 	"github.com/xtls/xray-core/transport/internet/http"
 	"github.com/xtls/xray-core/transport/internet/kcp"
 	"github.com/xtls/xray-core/transport/internet/quic"
@@ -140,7 +142,6 @@ func (c *TCPConfig) Build() (proto.Message, error) {
 
 type WebSocketConfig struct {
 	Path                string            `json:"path"`
-	Path2               string            `json:"Path"` // The key was misspelled. For backward compatibility, we have to keep track the old key.
 	Headers             map[string]string `json:"headers"`
 	AcceptProxyProtocol bool              `json:"acceptProxyProtocol"`
 }
@@ -148,9 +149,6 @@ type WebSocketConfig struct {
 // Build implements Buildable.
 func (c *WebSocketConfig) Build() (proto.Message, error) {
 	path := c.Path
-	if path == "" && c.Path2 != "" {
-		path = c.Path2
-	}
 	header := make([]*websocket.Header, 0, 32)
 	for key, value := range c.Headers {
 		header = append(header, &websocket.Header{
@@ -180,10 +178,12 @@ func (c *WebSocketConfig) Build() (proto.Message, error) {
 }
 
 type HTTPConfig struct {
-	Host               *StringList `json:"host"`
-	Path               string      `json:"path"`
-	ReadIdleTimeout    int32       `json:"read_idle_timeout"`
-	HealthCheckTimeout int32       `json:"health_check_timeout"`
+	Host               *StringList            `json:"host"`
+	Path               string                 `json:"path"`
+	ReadIdleTimeout    int32                  `json:"read_idle_timeout"`
+	HealthCheckTimeout int32                  `json:"health_check_timeout"`
+	Method             string                 `json:"method"`
+	Headers            map[string]*StringList `json:"headers"`
 }
 
 // Build implements Buildable.
@@ -201,6 +201,23 @@ func (c *HTTPConfig) Build() (proto.Message, error) {
 	}
 	if c.Host != nil {
 		config.Host = []string(*c.Host)
+	}
+	if c.Method != "" {
+		config.Method = c.Method
+	}
+	if len(c.Headers) > 0 {
+		config.Header = make([]*httpheader.Header, 0, len(c.Headers))
+		headerNames := sortMapKeys(c.Headers)
+		for _, key := range headerNames {
+			value := c.Headers[key]
+			if value == nil {
+				return nil, newError("empty HTTP header value: " + key).AtError()
+			}
+			config.Header = append(config.Header, &httpheader.Header{
+				Name:  key,
+				Value: append([]string(nil), (*value)...),
+			})
+		}
 	}
 	return config, nil
 }
@@ -322,18 +339,19 @@ func (c *TLSCertConfig) Build() (*tls.Certificate, error) {
 }
 
 type TLSConfig struct {
-	Insecure                 bool             `json:"allowInsecure"`
-	Certs                    []*TLSCertConfig `json:"certificates"`
-	ServerName               string           `json:"serverName"`
-	ALPN                     *StringList      `json:"alpn"`
-	EnableSessionResumption  bool             `json:"enableSessionResumption"`
-	DisableSystemRoot        bool             `json:"disableSystemRoot"`
-	MinVersion               string           `json:"minVersion"`
-	MaxVersion               string           `json:"maxVersion"`
-	CipherSuites             string           `json:"cipherSuites"`
-	PreferServerCipherSuites bool             `json:"preferServerCipherSuites"`
-	Fingerprint              string           `json:"fingerprint"`
-	RejectUnknownSNI         bool             `json:"rejectUnknownSni"`
+	Insecure                         bool             `json:"allowInsecure"`
+	Certs                            []*TLSCertConfig `json:"certificates"`
+	ServerName                       string           `json:"serverName"`
+	ALPN                             *StringList      `json:"alpn"`
+	EnableSessionResumption          bool             `json:"enableSessionResumption"`
+	DisableSystemRoot                bool             `json:"disableSystemRoot"`
+	MinVersion                       string           `json:"minVersion"`
+	MaxVersion                       string           `json:"maxVersion"`
+	CipherSuites                     string           `json:"cipherSuites"`
+	PreferServerCipherSuites         bool             `json:"preferServerCipherSuites"`
+	Fingerprint                      string           `json:"fingerprint"`
+	RejectUnknownSNI                 bool             `json:"rejectUnknownSni"`
+	PinnedPeerCertificateChainSha256 *[]string        `json:"pinnedPeerCertificateChainSha256"`
 }
 
 // Build implements Buildable.
@@ -363,6 +381,18 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 	config.PreferServerCipherSuites = c.PreferServerCipherSuites
 	config.Fingerprint = strings.ToLower(c.Fingerprint)
 	config.RejectUnknownSni = c.RejectUnknownSNI
+
+	if c.PinnedPeerCertificateChainSha256 != nil {
+		config.PinnedPeerCertificateChainSha256 = [][]byte{}
+		for _, v := range *c.PinnedPeerCertificateChainSha256 {
+			hashValue, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				return nil, err
+			}
+			config.PinnedPeerCertificateChainSha256 = append(config.PinnedPeerCertificateChainSha256, hashValue)
+		}
+	}
+
 	return config, nil
 }
 
@@ -416,17 +446,18 @@ func (c *XTLSCertConfig) Build() (*xtls.Certificate, error) {
 }
 
 type XTLSConfig struct {
-	Insecure                 bool              `json:"allowInsecure"`
-	Certs                    []*XTLSCertConfig `json:"certificates"`
-	ServerName               string            `json:"serverName"`
-	ALPN                     *StringList       `json:"alpn"`
-	EnableSessionResumption  bool              `json:"enableSessionResumption"`
-	DisableSystemRoot        bool              `json:"disableSystemRoot"`
-	MinVersion               string            `json:"minVersion"`
-	MaxVersion               string            `json:"maxVersion"`
-	CipherSuites             string            `json:"cipherSuites"`
-	PreferServerCipherSuites bool              `json:"preferServerCipherSuites"`
-	RejectUnknownSNI         bool              `json:"rejectUnknownSni"`
+	Insecure                         bool              `json:"allowInsecure"`
+	Certs                            []*XTLSCertConfig `json:"certificates"`
+	ServerName                       string            `json:"serverName"`
+	ALPN                             *StringList       `json:"alpn"`
+	EnableSessionResumption          bool              `json:"enableSessionResumption"`
+	DisableSystemRoot                bool              `json:"disableSystemRoot"`
+	MinVersion                       string            `json:"minVersion"`
+	MaxVersion                       string            `json:"maxVersion"`
+	CipherSuites                     string            `json:"cipherSuites"`
+	PreferServerCipherSuites         bool              `json:"preferServerCipherSuites"`
+	RejectUnknownSNI                 bool              `json:"rejectUnknownSni"`
+	PinnedPeerCertificateChainSha256 *[]string         `json:"pinnedPeerCertificateChainSha256"`
 }
 
 // Build implements Buildable.
@@ -455,6 +486,18 @@ func (c *XTLSConfig) Build() (proto.Message, error) {
 	config.CipherSuites = c.CipherSuites
 	config.PreferServerCipherSuites = c.PreferServerCipherSuites
 	config.RejectUnknownSni = c.RejectUnknownSNI
+
+	if c.PinnedPeerCertificateChainSha256 != nil {
+		config.PinnedPeerCertificateChainSha256 = [][]byte{}
+		for _, v := range *c.PinnedPeerCertificateChainSha256 {
+			hashValue, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				return nil, err
+			}
+			config.PinnedPeerCertificateChainSha256 = append(config.PinnedPeerCertificateChainSha256, hashValue)
+		}
+	}
+
 	return config, nil
 }
 
@@ -483,12 +526,13 @@ func (p TransportProtocol) Build() (string, error) {
 }
 
 type SocketConfig struct {
-	Mark                int32       `json:"mark"`
-	TFO                 interface{} `json:"tcpFastOpen"`
-	TProxy              string      `json:"tproxy"`
-	AcceptProxyProtocol bool        `json:"acceptProxyProtocol"`
-	DomainStrategy      string      `json:"domainStrategy"`
-	DialerProxy         string      `json:"dialerProxy"`
+	Mark                 int32       `json:"mark"`
+	TFO                  interface{} `json:"tcpFastOpen"`
+	TProxy               string      `json:"tproxy"`
+	AcceptProxyProtocol  bool        `json:"acceptProxyProtocol"`
+	DomainStrategy       string      `json:"domainStrategy"`
+	DialerProxy          string      `json:"dialerProxy"`
+	TCPKeepAliveInterval int32       `json:"tcpKeepAliveInterval"`
 }
 
 // Build implements Buildable.
@@ -518,7 +562,7 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		tproxy = internet.SocketConfig_Off
 	}
 
-	var dStrategy = internet.DomainStrategy_AS_IS
+	dStrategy := internet.DomainStrategy_AS_IS
 	switch strings.ToLower(c.DomainStrategy) {
 	case "useip", "use_ip":
 		dStrategy = internet.DomainStrategy_USE_IP
@@ -529,12 +573,13 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 	}
 
 	return &internet.SocketConfig{
-		Mark:                c.Mark,
-		Tfo:                 tfo,
-		Tproxy:              tproxy,
-		DomainStrategy:      dStrategy,
-		AcceptProxyProtocol: c.AcceptProxyProtocol,
-		DialerProxy:         c.DialerProxy,
+		Mark:                 c.Mark,
+		Tfo:                  tfo,
+		Tproxy:               tproxy,
+		DomainStrategy:       dStrategy,
+		AcceptProxyProtocol:  c.AcceptProxyProtocol,
+		DialerProxy:          c.DialerProxy,
+		TcpKeepAliveInterval: c.TCPKeepAliveInterval,
 	}, nil
 }
 

@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package dns
 
 import (
@@ -34,6 +31,13 @@ func init() {
 			return nil, err
 		}
 		return h, nil
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+		simplifiedServer := config.(*SimplifiedConfig)
+		_ = simplifiedServer
+		fullConfig := &Config{}
+		return common.CreateObject(ctx, fullConfig)
 	}))
 }
 

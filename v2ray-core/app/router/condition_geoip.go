@@ -1,9 +1,7 @@
-//go:build !confonly
-// +build !confonly
-
 package router
 
 import (
+	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"inet.af/netaddr"
 
 	"github.com/v2fly/v2ray-core/v4/common/net"
@@ -16,7 +14,7 @@ type GeoIPMatcher struct {
 	ip6          *netaddr.IPSet
 }
 
-func (m *GeoIPMatcher) Init(cidrs []*CIDR) error {
+func (m *GeoIPMatcher) Init(cidrs []*routercommon.CIDR) error {
 	var builder4, builder6 netaddr.IPSetBuilder
 	for _, cidr := range cidrs {
 		netaddrIP, ok := netaddr.FromStdIP(net.IP(cidr.GetIp()))
@@ -87,10 +85,10 @@ type GeoIPMatcherContainer struct {
 
 // Add adds a new GeoIP set into the container.
 // If the country code of GeoIP is not empty, GeoIPMatcherContainer will try to find an existing one, instead of adding a new one.
-func (c *GeoIPMatcherContainer) Add(geoip *GeoIP) (*GeoIPMatcher, error) {
+func (c *GeoIPMatcherContainer) Add(geoip *routercommon.GeoIP) (*GeoIPMatcher, error) {
 	if geoip.CountryCode != "" {
 		for _, m := range c.matchers {
-			if m.countryCode == geoip.CountryCode && m.reverseMatch == geoip.ReverseMatch {
+			if m.countryCode == geoip.CountryCode && m.reverseMatch == geoip.InverseMatch {
 				return m, nil
 			}
 		}
@@ -98,7 +96,7 @@ func (c *GeoIPMatcherContainer) Add(geoip *GeoIP) (*GeoIPMatcher, error) {
 
 	m := &GeoIPMatcher{
 		countryCode:  geoip.CountryCode,
-		reverseMatch: geoip.ReverseMatch,
+		reverseMatch: geoip.InverseMatch,
 	}
 	if err := m.Init(geoip.Cidr); err != nil {
 		return nil, err

@@ -28,9 +28,7 @@ type Dialer interface {
 // dialFunc is an interface to dial network connection to a specific destination.
 type dialFunc func(ctx context.Context, dest net.Destination, streamSettings *MemoryStreamConfig) (stat.Connection, error)
 
-var (
-	transportDialerCache = make(map[string]dialFunc)
-)
+var transportDialerCache = make(map[string]dialFunc)
 
 // RegisterTransportDialer registers a Dialer with given name.
 func RegisterTransportDialer(protocol string, dialer dialFunc) error {
@@ -81,7 +79,7 @@ func lookupIP(domain string, strategy DomainStrategy, localAddr net.Address) ([]
 		return nil, nil
 	}
 
-	var option = dns.IPOption{
+	option := dns.IPOption{
 		IPv4Enable: true,
 		IPv6Enable: true,
 		FakeEnable: false,
@@ -117,12 +115,12 @@ func canLookupIP(ctx context.Context, dst net.Destination, sockopt *SocketConfig
 func redirect(ctx context.Context, dst net.Destination, obt string) net.Conn {
 	newError("redirecting request " + dst.String() + " to " + obt).WriteToLog(session.ExportIDToError(ctx))
 	h := obm.GetHandler(obt)
-	ctx = session.ContextWithOutbound(ctx, &session.Outbound{Target: dst, RouteTarget: dst})
+	ctx = session.ContextWithOutbound(ctx, &session.Outbound{Target: dst, Gateway: nil})
 	if h != nil {
 		ur, uw := pipe.New(pipe.OptionsFromContext(ctx)...)
 		dr, dw := pipe.New(pipe.OptionsFromContext(ctx)...)
 
-		go h.Dispatch(ctx, &transport.Link{ur, dw})
+		go h.Dispatch(ctx, &transport.Link{Reader: ur, Writer: dw})
 		nc := cnc.NewConnection(
 			cnc.ConnectionInputMulti(uw),
 			cnc.ConnectionOutputMulti(dr),

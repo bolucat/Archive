@@ -15,6 +15,7 @@ import (
 	_ "github.com/v2fly/v2ray-core/v4/app/stats/command"
 
 	// Developer preview services
+	_ "github.com/v2fly/v2ray-core/v4/app/instman/command"
 	_ "github.com/v2fly/v2ray-core/v4/app/observatory/command"
 
 	// Other optional features.
@@ -30,7 +31,9 @@ import (
 	_ "github.com/v2fly/v2ray-core/v4/transport/internet/tagged/taggedimpl"
 
 	// Developer preview features
+	_ "github.com/v2fly/v2ray-core/v4/app/instman"
 	_ "github.com/v2fly/v2ray-core/v4/app/observatory"
+	_ "github.com/v2fly/v2ray-core/v4/app/restful-api"
 
 	// Inbound and outbound proxies.
 	_ "github.com/v2fly/v2ray-core/v4/proxy/blackhole"
@@ -38,7 +41,6 @@ import (
 	_ "github.com/v2fly/v2ray-core/v4/proxy/dokodemo"
 	_ "github.com/v2fly/v2ray-core/v4/proxy/freedom"
 	_ "github.com/v2fly/v2ray-core/v4/proxy/http"
-	_ "github.com/v2fly/v2ray-core/v4/proxy/mtproto"
 	_ "github.com/v2fly/v2ray-core/v4/proxy/shadowsocks"
 	_ "github.com/v2fly/v2ray-core/v4/proxy/socks"
 	_ "github.com/v2fly/v2ray-core/v4/proxy/trojan"
@@ -71,12 +73,24 @@ import (
 	_ "github.com/v2fly/v2ray-core/v4/infra/conf/geodata/memconservative"
 	_ "github.com/v2fly/v2ray-core/v4/infra/conf/geodata/standard"
 
-	// JSON config support. Choose only one from the two below.
-	// The following line loads JSON from v2ctl
-	// _ "github.com/v2fly/v2ray-core/v4/main/json"
-	// The following line loads JSON internally
-	_ "github.com/v2fly/v2ray-core/v4/main/jsonem"
+	// JSON, TOML, YAML config support. (jsonv4) This disable selective compile
+	_ "github.com/v2fly/v2ray-core/v4/main/formats"
 
-	// Load config from file or http(s)
-	_ "github.com/v2fly/v2ray-core/v4/main/confloader/external"
+	// commands
+	_ "github.com/v2fly/v2ray-core/v4/main/commands/all"
+
+	//engineering commands
+	_ "github.com/v2fly/v2ray-core/v4/main/commands/all/engineering"
+
+	// Commands that rely on jsonv4 format This disable selective compile
+	_ "github.com/v2fly/v2ray-core/v4/main/commands/all/api/jsonv4"
+	_ "github.com/v2fly/v2ray-core/v4/main/commands/all/jsonv4"
+
+	// V5 version of json configure file parser
+	_ "github.com/v2fly/v2ray-core/v4/infra/conf/v5cfg"
+
+	_ "github.com/v2fly/v2ray-core/v4/proxy/http/simplified"
+	_ "github.com/v2fly/v2ray-core/v4/proxy/shadowsocks/simplified"
+	_ "github.com/v2fly/v2ray-core/v4/proxy/socks/simplified"
+	_ "github.com/v2fly/v2ray-core/v4/proxy/trojan/simplified"
 )

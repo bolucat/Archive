@@ -34,7 +34,7 @@ func (t *GVisor) Close() error {
 
 const DefaultNIC tcpip.NICID = 0x01
 
-func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool, pcapFile *os.File, snapLen uint32) (*GVisor, error) {
+func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool, pcapFile *os.File, snapLen uint32, ipv6Mode int32) (*GVisor, error) {
 	var endpoint stack.LinkEndpoint
 	endpoint, _ = newRwEndpoint(dev, mtu)
 	if pcap {
@@ -44,18 +44,45 @@ func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool
 		}
 		endpoint = pcapEndpoint
 	}
-	s := stack.New(stack.Options{
-		NetworkProtocols: []stack.NetworkProtocolFactory{
-			ipv4.NewProtocol,
-			ipv6.NewProtocol,
-		},
-		TransportProtocols: []stack.TransportProtocolFactory{
-			tcp.NewProtocol,
-			udp.NewProtocol,
-			icmp.NewProtocol4,
-			icmp.NewProtocol6,
-		},
-	})
+	var o stack.Options
+	switch ipv6Mode {
+	case 0:
+		o = stack.Options{
+			NetworkProtocols: []stack.NetworkProtocolFactory{
+				ipv4.NewProtocol,
+			},
+			TransportProtocols: []stack.TransportProtocolFactory{
+				tcp.NewProtocol,
+				udp.NewProtocol,
+				icmp.NewProtocol4,
+			},
+		}
+	case 3:
+		o = stack.Options{
+			NetworkProtocols: []stack.NetworkProtocolFactory{
+				ipv6.NewProtocol,
+			},
+			TransportProtocols: []stack.TransportProtocolFactory{
+				tcp.NewProtocol,
+				udp.NewProtocol,
+				icmp.NewProtocol6,
+			},
+		}
+	default:
+		o = stack.Options{
+			NetworkProtocols: []stack.NetworkProtocolFactory{
+				ipv4.NewProtocol,
+				ipv6.NewProtocol,
+			},
+			TransportProtocols: []stack.TransportProtocolFactory{
+				tcp.NewProtocol,
+				udp.NewProtocol,
+				icmp.NewProtocol4,
+				icmp.NewProtocol6,
+			},
+		}
+	}
+	s := stack.New(o)
 	s.SetRouteTable([]tcpip.Route{
 		{
 			Destination: header.IPv4EmptySubnet,

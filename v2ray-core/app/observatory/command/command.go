@@ -3,8 +3,12 @@
 
 package command
 
+//go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
+
 import (
 	"context"
+	"github.com/golang/protobuf/proto"
+	"github.com/v2fly/v2ray-core/v4/features"
 
 	"google.golang.org/grpc"
 
@@ -22,11 +26,25 @@ type service struct {
 }
 
 func (s *service) GetOutboundStatus(ctx context.Context, request *GetOutboundStatusRequest) (*GetOutboundStatusResponse, error) {
-	resp, err := s.observatory.GetObservation(ctx)
-	if err != nil {
-		return nil, err
+	var result proto.Message
+	if request.Tag == "" {
+		observeResult, err := s.observatory.GetObservation(ctx)
+		if err != nil {
+			return nil, newError("cannot get observation").Base(err)
+		}
+		result = observeResult
+	} else {
+		fet, err := s.observatory.(features.TaggedFeatures).GetFeaturesByTag(request.Tag)
+		if err != nil {
+			return nil, newError("cannot get tagged observatory").Base(err)
+		}
+		observeResult, err := fet.(extension.Observatory).GetObservation(ctx)
+		if err != nil {
+			return nil, newError("cannot get observation").Base(err)
+		}
+		result = observeResult
 	}
-	retdata := resp.(*observatory.ObservationResult)
+	retdata := result.(*observatory.ObservationResult)
 	return &GetOutboundStatusResponse{
 		Status: retdata,
 	}, nil

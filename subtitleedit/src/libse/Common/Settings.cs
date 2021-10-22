@@ -1259,6 +1259,8 @@ $HorzAlign          =   Center
         public bool ShowFormatRequiresUtf8Warning { get; set; }
         public long CurrentVideoOffsetInMs { get; set; }
         public bool CurrentVideoIsSmpte { get; set; }
+        public bool AutoSetVideoSmpteForTtml { get; set; }
+        public bool AutoSetVideoSmpteForTtmlPrompt { get; set; }
         public string TitleBarAsterisk { get; set; } // Show asteriks "before" or "after" file name (any other value will hide asteriks)
         public bool TitleBarFullFileName { get; set; } // Show full file name with path or just file name
         public bool MeasurementConverterCloseOnInsert { get; set; }
@@ -1402,6 +1404,8 @@ $HorzAlign          =   Center
             DarkThemeBackColor = Color.FromArgb(30, 30, 30);
             UseDarkTheme = false;
             DarkThemeShowListViewGridLines = false;
+            AutoSetVideoSmpteForTtml = true;
+            AutoSetVideoSmpteForTtmlPrompt = true;
             TitleBarAsterisk = "before";
             MeasurementConverterCloseOnInsert = true;
             MeasurementConverterCategories = "Length;Kilometers;Meters";
@@ -1963,6 +1967,10 @@ $HorzAlign          =   Center
         public string GeneralMergeSelectedLinesBilingual { get; set; }
         public string GeneralMergeWithNext { get; set; }
         public string GeneralMergeWithPrevious { get; set; }
+        public string GeneralMergeWithPreviousAndUnbreak { get; set; }
+        public string GeneralMergeWithNextAndUnbreak { get; set; }
+        public string GeneralMergeWithPreviousAndBreak { get; set; }
+        public string GeneralMergeWithNextAndBreak { get; set; }
         public string GeneralToggleTranslationMode { get; set; }
         public string GeneralSwitchOriginalAndTranslation { get; set; }
         public string GeneralMergeOriginalAndTranslation { get; set; }
@@ -3788,6 +3796,18 @@ $HorzAlign          =   Center
             if (subNode != null)
             {
                 settings.General.ShowFormatRequiresUtf8Warning = Convert.ToBoolean(subNode.InnerText.Trim(), CultureInfo.InvariantCulture);
+            }
+
+            subNode = node.SelectSingleNode("AutoSetVideoSmpteForTtml");
+            if (subNode != null)
+            {
+                settings.General.AutoSetVideoSmpteForTtml = Convert.ToBoolean(subNode.InnerText.Trim(), CultureInfo.InvariantCulture);
+            }
+
+            subNode = node.SelectSingleNode("AutoSetVideoSmpteForTtmlPrompt");
+            if (subNode != null)
+            {
+                settings.General.AutoSetVideoSmpteForTtmlPrompt = Convert.ToBoolean(subNode.InnerText.Trim(), CultureInfo.InvariantCulture);
             }
 
             subNode = node.SelectSingleNode("TitleBarAsterisk");
@@ -6944,6 +6964,30 @@ $HorzAlign          =   Center
                     shortcuts.GeneralMergeWithPrevious = subNode.InnerText;
                 }
 
+                subNode = node.SelectSingleNode("GeneralMergeWithPreviousAndUnbreak");
+                if (subNode != null)
+                {
+                    shortcuts.GeneralMergeWithPreviousAndUnbreak = subNode.InnerText;
+                }
+
+                subNode = node.SelectSingleNode("GeneralMergeWithNextAndUnbreak");
+                if (subNode != null)
+                {
+                    shortcuts.GeneralMergeWithNextAndUnbreak = subNode.InnerText;
+                }
+
+                subNode = node.SelectSingleNode("GeneralMergeWithPreviousAndBreak");
+                if (subNode != null)
+                {
+                    shortcuts.GeneralMergeWithPreviousAndBreak = subNode.InnerText;
+                }
+
+                subNode = node.SelectSingleNode("GeneralMergeWithNextAndBreak");
+                if (subNode != null)
+                {
+                    shortcuts.GeneralMergeWithNextAndBreak = subNode.InnerText;
+                }
+
                 subNode = node.SelectSingleNode("GeneralToggleTranslationMode");
                 if (subNode != null)
                 {
@@ -8852,6 +8896,8 @@ $HorzAlign          =   Center
                 textWriter.WriteElementString("ShowProgress", settings.General.ShowProgress.ToString(CultureInfo.InvariantCulture));
                 textWriter.WriteElementString("ShowNegativeDurationInfoOnSave", settings.General.ShowNegativeDurationInfoOnSave.ToString(CultureInfo.InvariantCulture));
                 textWriter.WriteElementString("ShowFormatRequiresUtf8Warning", settings.General.ShowFormatRequiresUtf8Warning.ToString(CultureInfo.InvariantCulture));
+                textWriter.WriteElementString("AutoSetVideoSmpteForTtml", settings.General.AutoSetVideoSmpteForTtml.ToString(CultureInfo.InvariantCulture));
+                textWriter.WriteElementString("AutoSetVideoSmpteForTtmlPrompt", settings.General.AutoSetVideoSmpteForTtmlPrompt.ToString(CultureInfo.InvariantCulture));
                 textWriter.WriteElementString("TitleBarAsterisk", settings.General.TitleBarAsterisk);
                 textWriter.WriteElementString("TitleBarFullFileName", settings.General.TitleBarFullFileName.ToString(CultureInfo.InvariantCulture));
                 textWriter.WriteElementString("MeasurementConverterCloseOnInsert", settings.General.MeasurementConverterCloseOnInsert.ToString(CultureInfo.InvariantCulture));
@@ -9486,6 +9532,10 @@ $HorzAlign          =   Center
             textWriter.WriteElementString("GeneralMergeSelectedLinesBilingual", shortcuts.GeneralMergeSelectedLinesBilingual);
             textWriter.WriteElementString("GeneralMergeWithNext", shortcuts.GeneralMergeWithNext);
             textWriter.WriteElementString("GeneralMergeWithPrevious", shortcuts.GeneralMergeWithPrevious);
+            textWriter.WriteElementString("GeneralMergeWithPreviousAndUnbreak", shortcuts.GeneralMergeWithPreviousAndUnbreak);
+            textWriter.WriteElementString("GeneralMergeWithNextAndUnbreak", shortcuts.GeneralMergeWithNextAndUnbreak);
+            textWriter.WriteElementString("GeneralMergeWithPreviousAndBreak", shortcuts.GeneralMergeWithPreviousAndBreak);
+            textWriter.WriteElementString("GeneralMergeWithNextAndBreak", shortcuts.GeneralMergeWithNextAndBreak);
             textWriter.WriteElementString("GeneralToggleTranslationMode", shortcuts.GeneralToggleTranslationMode);
             textWriter.WriteElementString("GeneralSwitchOriginalAndTranslation", shortcuts.GeneralSwitchOriginalAndTranslation);
             textWriter.WriteElementString("GeneralMergeOriginalAndTranslation", shortcuts.GeneralMergeOriginalAndTranslation);

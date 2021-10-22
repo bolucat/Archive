@@ -1,15 +1,17 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"go/build"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
+
+var directory = flag.String("pwd", "", "Working directory of Xray vformat.")
 
 // envFile returns the name of the Go environment configuration file.
 // Copy from https://github.com/golang/go/blob/c4f2a9788a7be04daf931ac54382fbe2cb754938/src/cmd/go/internal/cfg/cfg.go#L150-L166
@@ -42,7 +44,7 @@ func GetRuntimeEnv(key string) (string, error) {
 	}
 	var data []byte
 	var runtimeEnv string
-	data, readErr := ioutil.ReadFile(file)
+	data, readErr := os.ReadFile(file)
 	if readErr != nil {
 		return "", readErr
 	}
@@ -50,7 +52,7 @@ func GetRuntimeEnv(key string) (string, error) {
 	for _, envItem := range envStrings {
 		envItem = strings.TrimSuffix(envItem, "\r")
 		envKeyValue := strings.Split(envItem, "=")
-		if strings.EqualFold(strings.TrimSpace(envKeyValue[0]), key) {
+		if len(envKeyValue) == 2 && strings.TrimSpace(envKeyValue[0]) == key {
 			runtimeEnv = strings.TrimSpace(envKeyValue[1])
 		}
 	}
@@ -77,41 +79,51 @@ func GetGOBIN() string {
 	return GOBIN
 }
 
-func Run(binary string, args []string) (string, error) {
+func Run(binary string, args []string) ([]byte, error) {
 	cmd := exec.Command(binary, args...)
 	cmd.Env = append(cmd.Env, os.Environ()...)
 	output, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
-		return "", cmdErr
+		return nil, cmdErr
 	}
-	if len(output) > 0 {
-		return string(output), nil
-	}
-	return "", nil
+	return output, nil
 }
 
 func RunMany(binary string, args, files []string) {
 	fmt.Println("Processing...")
+
+	maxTasks := make(chan struct{}, runtime.NumCPU())
 	for _, file := range files {
-		args2 := append(args, file)
-		output, err := Run(binary, args2)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		if len(output) > 0 {
-			fmt.Println(output)
-		}
+		maxTasks <- struct{}{}
+		go func(file string) {
+			output, err := Run(binary, append(args, file))
+			if err != nil {
+				fmt.Println(err)
+			} else if len(output) > 0 {
+				fmt.Println(string(output))
+			}
+			<-maxTasks
+		}(file)
 	}
 }
 
 func main() {
-	pwd, err := os.Getwd()
-	if err != nil {
-		fmt.Println("Can not get current working directory.")
-		os.Exit(1)
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage of vformat:\n")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
+	if !filepath.IsAbs(*directory) {
+		pwd, wdErr := os.Getwd()
+		if wdErr != nil {
+			fmt.Println("Can not get current working directory.")
+			os.Exit(1)
+		}
+		*directory = filepath.Join(pwd, *directory)
 	}
 
+	pwd := *directory
 	GOBIN := GetGOBIN()
 	binPath := os.Getenv("PATH")
 	pathSlice := []string{pwd, GOBIN, binPath}
@@ -123,7 +135,7 @@ func main() {
 		suffix = ".exe"
 	}
 	gofmt := "gofmt" + suffix
-	goimports := "goimports" + suffix
+	goimports := "gci" + suffix
 
 	if gofmtPath, err := exec.LookPath(gofmt); err != nil {
 		fmt.Println("Can not find", gofmt, "in system path or current working directory.")
@@ -139,8 +151,8 @@ func main() {
 		goimports = goimportsPath
 	}
 
-	rawFilesSlice := make([]string, 0)
-	walkErr := filepath.Walk("./", func(path string, info os.FileInfo, err error) error {
+	rawFilesSlice := make([]string, 0, 1000)
+	walkErr := filepath.Walk(pwd, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -154,7 +166,8 @@ func main() {
 		filename := filepath.Base(path)
 		if strings.HasSuffix(filename, ".go") &&
 			!strings.HasSuffix(filename, ".pb.go") &&
-			!strings.Contains(dir, filepath.Join("testing", "mocks")) {
+			!strings.Contains(dir, filepath.Join("testing", "mocks")) &&
+			!strings.Contains(path, filepath.Join("main", "distro", "all", "all.go")) {
 			rawFilesSlice = append(rawFilesSlice, path)
 		}
 
