@@ -95,6 +95,8 @@ jobs:
           ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
           ${GCRS} https://github.com/aria2/aria2 aria2
           ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
+          ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
+          ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
@@ -317,6 +319,11 @@ jobs:
           pushd m3u8-cli/Clients || exit 1
           wget -qO- https://api.github.com/repos/nilaoda/N_m3u8DL-CLI/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
+          # yesplaymusic
+          mkdir -p yesplaymusic/Clients
+          pushd yesplaymusic/Clients || exit 1
+          wget -qO- https://api.github.com/repos/qier222/YesPlayMusic/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
 
       - name: Compress to packages
         run: |
@@ -386,6 +393,8 @@ jobs:
           ${Z9R} proxychains-ng.zip proxychains-ng
           ${Z9R} aria2.zip aria2
           ${Z9R} m3u8-cli.zip m3u8-cli
+          ${Z9R} yesplaymusic.zip yesplaymusic
+          ${Z9R} vue-color-avatar.zip vue-color-avatar
           # Move to Release
           mv *.zip release
 
