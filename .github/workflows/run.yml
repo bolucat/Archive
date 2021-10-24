@@ -335,23 +335,26 @@ jobs:
           ${Z9R} shadowsocksx-ng.zip shadowsocksx-ng
           # shadowsocks-clients-full
           ${Z9R} shadowsocks-clients-full.zip . -i shadowsocks-windows.zip shadowsocks-android.zip shadowsocksx-ng.zip
-          rm -rf shadowsocks-windows.zip shadowsocks-android.zip shadowsocksx-ng.zip
+          rm -rfv shadowsocks-windows.zip shadowsocks-android.zip shadowsocksx-ng.zip
           ${Z9R} v2rayn.zip v2rayn
           ${Z9R} v2rayng.zip v2rayng
           ${Z9R} v2rayu.zip v2rayu
           ${Z9R} v2raya.zip v2raya
           # v2ray-clients-full
           ${Z9R} v2ray-clients-full.zip . -i v2rayn.zip v2rayng.zip v2rayu.zip v2raya.zip
-          rm -rf v2rayn.zip v2rayng.zip v2rayu.zip v2raya.zip
+          rm -rfv v2rayn.zip v2rayng.zip v2rayu.zip v2raya.zip
           ${Z9R} qv2ray-qv2ray.zip qv2ray-qv2ray
           ${Z9R} ssnet-qv2ray.zip ssnet-qv2ray
           # qv2ray-full
           ${Z9R} qv2ray-full.zip . -i qv2ray-qv2ray.zip ssnet-qv2ray.zip
-          rm -rf qv2ray-qv2ray.zip ssnet-qv2ray.zip
+          rm -rfv qv2ray-qv2ray.zip ssnet-qv2ray.zip
           ${Z9R} clashx.zip clashx
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
           ${Z9R} clash-dotnet.zip clash-dotnet
+          # clash
+          ${Z9R} clash.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
+          rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
           ${Z9R} igniter.zip igniter
           ${Z9R} sagernet.zip sagernet
           ${Z9R} anxray.zip anxray
@@ -363,14 +366,14 @@ jobs:
           ${Z9R} udp2raw-multi.zip udp2raw-multi
           # udp2raw-full
           ${Z9R} udp2raw-full.zip . -i udp2raw.zip udp2raw-multi.zip
-          rm -rf udp2raw.zip udp2raw-multi.zip
+          rm -rfv udp2raw.zip udp2raw-multi.zip
           ${Z9R} brook.zip brook
           ${Z9R} clash.zip clash
           ${Z9R} v2ray-core.zip v2ray-core
           ${Z9R} Xray-core.zip Xray-core
           # v2ray–full
           ${Z9R} v2ray–full.zip . -i v2ray–core.zip Xray–core.zip
-          rm -rf v2ray–core.zip Xray–core.zip
+          rm -rfv v2ray–core.zip Xray–core.zip
           ${Z9R} trojan-gfw.zip trojan-gfw
           ${Z9R} trojan-go.zip trojan-go
           ${Z9R} trojan-r.zip trojan-r
@@ -378,19 +381,22 @@ jobs:
           ${Z9R} trojanrust.zip trojanrust
           # trojan–full
           ${Z9R} trojan–full.zip . -i trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
-          rm -rf trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
+          rm -rfv trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
           ${Z9R} shadowsocks-libev.zip shadowsocks-libev
           ${Z9R} go-shadowsocks2.zip go-shadowsocks2
           ${Z9R} shadowsocks-rust.zip shadowsocks-rust
           # shadowsocks–full
           ${Z9R} shadowsocks–full.zip . -i shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
-          rm -rf shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
+          rm -rfv shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
           ${Z9R} naiveproxy.zip naiveproxy
           ${Z9R} lede.zip lede
           ${Z9R} openwrt-passwall.zip openwrt-passwall
           ${Z9R} helloworld.zip helloworld
           ${Z9R} openwrt-packages.zip openwrt-packages
           ${Z9R} small.zip small
+          # openwrt
+          ${Z9R} openwrt.zip . -i lede.zip openwrt-passwall.zip helloworld.zip openwrt-packages.zip small.zip
+          rm -rfv lede.zip openwrt-passwall.zip helloworld.zip openwrt-packages.zip small.zip
           ${Z9R} forwardproxy.zip forwardproxy
           ${Z9R} dns-over-https.zip dns-over-https
           ${Z9R} glider.zip glider
@@ -406,7 +412,7 @@ jobs:
           ${Z9R} yt-dlp.zip yt-dlp
           # youtube-dl-full
           ${Z9R} youtube-dl-full.zip . -i youtube-dl.zip yt-dlp.zip
-          rm -rf youtube-dl.zip yt-dlp.zip
+          rm -rfv youtube-dl.zip yt-dlp.zip
           ${Z9R} subtitleedit.zip subtitleedit
           ${Z9R} lanzou-gui.zip lanzou-gui
           ${Z9R} aliyunpan.zip aliyunpan
@@ -432,10 +438,11 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            ./release/*
+            ./release/*.zip
             
       - name: Delete Older Release
         uses: dev-drprasad/delete-older-releases@v0.2.0
+        if: (!cancelled())
         with:
           repo: bolucat/Archive
           keep_latest: 1
