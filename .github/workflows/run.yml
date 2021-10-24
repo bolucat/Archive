@@ -333,12 +333,21 @@ jobs:
           ${Z9R} shadowsocks-windows.zip shadowsocks-windows
           ${Z9R} shadowsocks-android.zip shadowsocks-android
           ${Z9R} shadowsocksx-ng.zip shadowsocksx-ng
+          # shadowsocks-clients-full
+          ${Z9R} shadowsocks-clients-full.zip . -i shadowsocks-windows.zip shadowsocks-android.zip shadowsocksx-ng.zip
+          rm -rf shadowsocks-windows.zip shadowsocks-android.zip shadowsocksx-ng.zip
           ${Z9R} v2rayn.zip v2rayn
           ${Z9R} v2rayng.zip v2rayng
           ${Z9R} v2rayu.zip v2rayu
           ${Z9R} v2raya.zip v2raya
+          # v2ray-clients-full
+          ${Z9R} v2ray-clients-full.zip . -i v2rayn.zip v2rayng.zip v2rayu.zip v2raya.zip
+          rm -rf v2rayn.zip v2rayng.zip v2rayu.zip v2raya.zip
           ${Z9R} qv2ray-qv2ray.zip qv2ray-qv2ray
           ${Z9R} ssnet-qv2ray.zip ssnet-qv2ray
+          # qv2ray-full
+          ${Z9R} qv2ray-full.zip . -i qv2ray-qv2ray.zip ssnet-qv2ray.zip
+          rm -rf qv2ray-qv2ray.zip ssnet-qv2ray.zip
           ${Z9R} clashx.zip clashx
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
@@ -352,23 +361,29 @@ jobs:
           ${Z9R} china-ip.zip china-ip
           ${Z9R} udp2raw.zip udp2raw
           ${Z9R} udp2raw-multi.zip udp2raw-multi
+          # udp2raw-full
+          ${Z9R} udp2raw-full.zip . -i udp2raw.zip udp2raw-multi.zip
+          rm -rf udp2raw.zip udp2raw-multi.zip
           ${Z9R} brook.zip brook
           ${Z9R} clash.zip clash
           ${Z9R} v2ray-core.zip v2ray-core
           ${Z9R} Xray-core.zip Xray-core
-          ${Z9R} v2ray–full.zip v2ray–core.zip Xray–core.zip
+          # v2ray–full
+          ${Z9R} v2ray–full.zip . -i v2ray–core.zip Xray–core.zip
           rm –rf v2ray–core.zip Xray–core.zip
           ${Z9R} trojan-gfw.zip trojan-gfw
           ${Z9R} trojan-go.zip trojan-go
           ${Z9R} trojan-r.zip trojan-r
           ${Z9R} trojan-rs.zip trojan-rs
           ${Z9R} trojanrust.zip trojanrust
-          ${Z9R} trojan–full.zip trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
+          # trojan–full
+          ${Z9R} trojan–full.zip . -i trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
           rm –rf trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
           ${Z9R} shadowsocks-libev.zip shadowsocks-libev
           ${Z9R} go-shadowsocks2.zip go-shadowsocks2
           ${Z9R} shadowsocks-rust.zip shadowsocks-rust
-          ${Z9R} shadowsocks–full.zip shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
+          # shadowsocks–full
+          ${Z9R} shadowsocks–full.zip . -i shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
           rm –rf shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
           ${Z9R} naiveproxy.zip naiveproxy
           ${Z9R} lede.zip lede
@@ -389,6 +404,9 @@ jobs:
           ${Z9R} bbdown.zip bbdown
           ${Z9R} youtube-dl.zip youtube-dl
           ${Z9R} yt-dlp.zip yt-dlp
+          # youtube-dl-full
+          ${Z9R} youtube-dl-full.zip . -i youtube-dl.zip yt-dlp.zip
+          rm -rf youtube-dl.zip yt-dlp.zip
           ${Z9R} subtitleedit.zip subtitleedit
           ${Z9R} lanzou-gui.zip lanzou-gui
           ${Z9R} aliyunpan.zip aliyunpan
