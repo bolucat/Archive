@@ -356,14 +356,20 @@ jobs:
           ${Z9R} clash.zip clash
           ${Z9R} v2ray-core.zip v2ray-core
           ${Z9R} Xray-core.zip Xray-core
+          ${Z9R} v2ray–full.zip v2ray–core.zip Xray–core.zip
+          rm –rf v2ray–core.zip Xray–core.zip
           ${Z9R} trojan-gfw.zip trojan-gfw
           ${Z9R} trojan-go.zip trojan-go
           ${Z9R} trojan-r.zip trojan-r
           ${Z9R} trojan-rs.zip trojan-rs
           ${Z9R} trojanrust.zip trojanrust
+          ${Z9R} trojan–full.zip trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
+          rm –rf trojan-gfw.zip trojan-go.zip trojan-r.zip trojan-rs.zip trojanrust.zip
           ${Z9R} shadowsocks-libev.zip shadowsocks-libev
           ${Z9R} go-shadowsocks2.zip go-shadowsocks2
           ${Z9R} shadowsocks-rust.zip shadowsocks-rust
+          ${Z9R} shadowsocks–full.zip shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
+          rm –rf shadowsocks-libev.zip go-shadowsocks2.zip shadowsocks-rust.zip
           ${Z9R} naiveproxy.zip naiveproxy
           ${Z9R} lede.zip lede
           ${Z9R} openwrt-passwall.zip openwrt-passwall
