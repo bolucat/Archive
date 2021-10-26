@@ -1,4 +1,0 @@
-#!/bin/bash
-
-systemctl daemon-reload
-chmod 700 /etc/vpncloud

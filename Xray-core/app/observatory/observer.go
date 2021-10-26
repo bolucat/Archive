@@ -66,22 +66,45 @@ func (o *Observer) background() {
 		}
 
 		outbounds := hs.Select(o.config.SubjectSelector)
-		sort.Strings(outbounds)
 
 		o.updateStatus(outbounds)
 
+		sleepTime := time.Second * 10
+		if o.config.ProbeInterval != 0 {
+			sleepTime = time.Duration(o.config.ProbeInterval)
+		}
+
+		if !o.config.EnableConcurrency {
+			sort.Strings(outbounds)
+			for _, v := range outbounds {
+				result := o.probe(v)
+				o.updateStatusForResult(v, &result)
+				if o.finished.Done() {
+					return
+				}
+				time.Sleep(sleepTime)
+			}
+			continue
+		}
+
+		ch := make(chan struct{}, len(outbounds))
+
 		for _, v := range outbounds {
-			result := o.probe(v)
-			o.updateStatusForResult(v, &result)
-			if o.finished.Done() {
+			go func(v string) {
+				result := o.probe(v)
+				o.updateStatusForResult(v, &result)
+				ch <- struct{}{}
+			}(v)
+		}
+
+		for range outbounds {
+			select {
+			case <-ch:
+			case <-o.finished.Wait():
 				return
 			}
-			sleepTime := time.Second * 10
-			if o.config.ProbeInterval != 0 {
-				sleepTime = time.Duration(o.config.ProbeInterval)
-			}
-			time.Sleep(sleepTime)
 		}
+		time.Sleep(sleepTime)
 	}
 }
 
@@ -102,7 +125,7 @@ func (o *Observer) probe(outbound string) ProbeResult {
 		DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
 			var connection net.Conn
 			taskErr := task.Run(ctx, func() error {
-				// MUST use V2Fly's built in context system
+				// MUST use Xray's built in context system
 				dest, err := v2net.ParseDestination(network + ":" + addr)
 				if err != nil {
 					return newError("cannot understand address").Base(err)
@@ -133,7 +156,7 @@ func (o *Observer) probe(outbound string) ProbeResult {
 	var GETTime time.Duration
 	err := task.Run(o.ctx, func() error {
 		startTime := time.Now()
-		probeURL := "https://api.v2fly.org/checkConnection.svgz"
+		probeURL := "https://www.google.com/generate_204"
 		if o.config.ProbeUrl != "" {
 			probeURL = o.config.ProbeUrl
 		}

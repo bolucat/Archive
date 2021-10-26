@@ -619,9 +619,9 @@ checksum = "9a3a5bfb195931eeb336b2a7b4d761daec841b97f947d34394601737a7bba5e4"
 
 [[package]]
 name = "hyper"
-version = "0.14.13"
+version = "0.14.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15d1cfb9e4f68655fa04c01f59edb405b6074a0f7118ea881e5026e4a1cd8593"
+checksum = "2b91bb1f221b6ea1f1e4371216b70f40748774c2fb5971b450c07773fb92d26b"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1939,9 +1939,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-tfo"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b22b79bdd90c351d2f03bfd0d4297e215a2b5a395bb999c69fc7041d1ee5847a"
+checksum = "e145fcaa4c3dc54e42c8877aef0d7fcb1529e2dbba0033757ebd9156e24174b8"
 dependencies = [
  "cfg-if",
  "futures",

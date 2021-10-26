@@ -385,7 +385,7 @@ jobs:
           - arch: arm_cortex-a7
             openwrt: 'target=mediatek subtarget=mt7629'
             target_cpu: arm
-            extra: 'arm_version=0 arm_cpu="cortex-a7" arm_float_abi="soft" arm_use_neon=true'
+            extra: 'arm_version=0 arm_cpu="cortex-a7" arm_float_abi="soft" arm_use_neon=false'
           - arch: arm_cortex-a7_neon-vfpv4
             openwrt: 'target=sunxi subtarget=cortexa7'
             target_cpu: arm
@@ -399,11 +399,11 @@ jobs:
             target_cpu: arm
             extra: 'arm_version=0 arm_cpu="cortex-a8" arm_fpu="vfpv3" arm_float_abi="hard" arm_use_neon=false'
           - arch: arm_cortex-a9
-            openwrt: 'target=bcm53xx'
+            openwrt: 'target=bcm53xx subtarget=generic'
             target_cpu: arm
             extra: 'arm_version=0 arm_cpu="cortex-a9" arm_float_abi="soft" arm_use_neon=false'
           - arch: arm_cortex-a9-static
-            openwrt: 'target=bcm53xx'
+            openwrt: 'target=bcm53xx subtarget=generic'
             target_cpu: arm
             extra: 'arm_version=0 arm_cpu="cortex-a9" arm_float_abi="soft" arm_use_neon=false build_static=true'
           - arch: arm_cortex-a9_neon
