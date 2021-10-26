@@ -329,8 +329,8 @@ jobs:
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
           # clash
-          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
-          rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
+          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip
+          rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip
           ${Z9R} igniter.zip igniter
           ${Z9R} sagernet.zip sagernet
           ${Z9R} anxray.zip anxray
@@ -348,8 +348,8 @@ jobs:
           ${Z9R} v2ray-core.zip v2ray-core
           ${Z9R} Xray-core.zip Xray-core
           # v2ray–full
-          ${Z9R} v2ray–full.zip . -i v2ray–core.zip Xray–core.zip
-          rm -rfv v2ray–core.zip Xray–core.zip
+          ${Z9R} v2ray–full.zip . -i v2ray-core.zip Xray-core.zip
+          rm -rfv v2ray-core.zip Xray-core.zip
           ${Z9R} trojan-gfw.zip trojan-gfw
           ${Z9R} trojan-go.zip trojan-go
           ${Z9R} trojan-r.zip trojan-r
@@ -396,17 +396,365 @@ jobs:
           # Move to Release
           mv *.zip release
 
-      - name: Release
-        uses: softprops/action-gh-release@v1
+      - name: Create a Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: ${{ env.VERSION }}
           tag_name: ${{ env.VERSION }}
+          release_name: ${{ env.VERSION }}
           draft: false
-          prerelease: false
-          files: |
-            ./release/*.zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/shadowsocks-clients-full.zip
+          asset_name: shadowsocks-clients-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/v2ray-clients-full.zip
+          asset_name: v2ray-clients-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/qv2ray-full.zip
+          asset_name: qv2ray-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/clash-clients-full.zip
+          asset_name: clash-clients-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/igniter.zip
+          asset_name: igniter.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/sagernet.zip
+          asset_name: sagernet.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/anxray.zip
+          asset_name: anxray.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/svt-android.zip
+          asset_name: svt-android.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/v2ray-rules-dat.zip
+          asset_name: v2ray-rules-dat.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/geoip.zip
+          asset_name: geoip.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/china-ip.zip
+          asset_name: china-ip.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/udp2raw-full.zip
+          asset_name: udp2raw-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/brook.zip
+          asset_name: brook.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/clash.zip
+          asset_name: clash.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/v2ray–full.zip
+          asset_name: v2ray–full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/trojan–full.zip
+          asset_name: trojan–full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/shadowsocks–full.zip
+          asset_name: shadowsocks–full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/naiveproxy.zip
+          asset_name: naiveproxy.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/openwrt.zip
+          asset_name: openwrt.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/forwardproxy.zip
+          asset_name: forwardproxy.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/glider.zip
+          asset_name: glider.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/gost.zip
+          asset_name: gost.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/hysteria.zip
+          asset_name: hysteria.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/pingtunnel.zip
+          asset_name: pingtunnel.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/echo.zip
+          asset_name: echo.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/netch.zip
+          asset_name: netch.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/bbdown.zip
+          asset_name: bbdown.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/youtube-dl-full.zip
+          asset_name: youtube-dl-full.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/lanzou-gui.zip
+          asset_name: lanzou-gui.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/aliyunpan.zip
+          asset_name: aliyunpan.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/unlock-music.zip
+          asset_name: unlock-music.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/filebrowser.zip
+          asset_name: filebrowser.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/m3u8-cli.zip
+          asset_name: m3u8-cli.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/yesplaymusic.zip
+          asset_name: yesplaymusic.zip
+          asset_content_type: application/zip
+
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/vue-color-avatar.zip
+          asset_name: vue-color-avatar.zip
+          asset_content_type: application/zip
             
       - name: Delete Older Release
         uses: dev-drprasad/delete-older-releases@v0.2.0
