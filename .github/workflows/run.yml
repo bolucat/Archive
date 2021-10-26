@@ -378,7 +378,6 @@ jobs:
           ${Z9R} gost.zip gost
           ${Z9R} hysteria.zip hysteria
           ${Z9R} pingtunnel.zip pingtunnel
-          ${Z9R} dnsproxy.zip dnsproxy
           ${Z9R} echo.zip echo
           ${Z9R} netch.zip netch
           ${Z9R} bbdown.zip bbdown
