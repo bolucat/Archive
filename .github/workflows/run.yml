@@ -329,7 +329,7 @@ jobs:
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
           # clash
-          ${Z9R} clash.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
+          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
           rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
           ${Z9R} igniter.zip igniter
           ${Z9R} sagernet.zip sagernet
