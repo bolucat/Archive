@@ -52,7 +52,6 @@ jobs:
           ${GCRS} https://github.com/yichengchen/clashX clashx
           ${GCRS} https://github.com/Fndroid/clash_for_windows_pkg clash-cfw
           ${GCRS} https://github.com/Kr328/ClashForAndroid clash-cfa
-          ${GCRS} https://github.com/ClashDotNetFramework/ClashDotNetFramework -b main clash-dotnet
           ${GCRS} https://github.com/trojan-gfw/igniter igniter
           ${GCRS} https://github.com/trojan-gfw/igniter-go-libs igniter/app/src/libs/go-libs && rm -rfv igniter/app/src/libs/go-libs/.git
           ${GCRS} https://github.com/SagerNet/SagerNet sagernet
@@ -74,26 +73,19 @@ jobs:
           ${GCRS} https://github.com/ginuerzh/gost gost
           ${GCRS} https://github.com/HyNetwork/hysteria hysteria
           ${GCRS} https://github.com/esrrhs/pingtunnel pingtunnel
-          ${GCRS} https://github.com/AdguardTeam/dnsproxy dnsproxy
-          ${GCRS} https://github.com/googleforgames/quilkin quilkin
           ${GCRS} https://github.com/Ehco1996/ehco echo
           ${GCRS} https://github.com/Loyalsoldier/v2ray-rules-dat v2ray-rules-dat
           ${GCRS} https://github.com/Loyalsoldier/geoip geoip
           ${GCRS} https://github.com/17mon/china_ip_list china-ip
-          ${GCRS} https://github.com/tinyproxy/tinyproxy tinyproxy
-          ${GCRS} https://github.com/dswd/vpncloud vpncloud
-          ${GCRS} https://github.com/rofl0r/proxychains-ng proxychains-ng
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
           ${GCRS} https://github.com/yt-dlp/yt-dlp yt-dlp
           ${GCRS} https://github.com/the1812/Bilibili-Evolved bb-evolved
-          ${GCRS} https://github.com/SubtitleEdit/subtitleedit subtitleedit
           ${GCRS} https://github.com/rachpt/lanzou-gui lanzou-gui
           ${GCRS} https://github.com/liupan1890/aliyunpan aliyunpan
           ${GCRS} https://github.com/unlock-music/unlock-music unlock-music
           ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
-          ${GCRS} https://github.com/aria2/aria2 aria2
           ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
           ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
           ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
@@ -189,11 +181,6 @@ jobs:
           pushd clash-cfa/Clients || exit 1
           wget -qO- https://api.github.com/repos/Kr328/ClashForAndroid/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
-          # clash-dotnet
-          mkdir -p clash-dotnet/Clients
-          pushd clash-dotnet/Clients || exit 1
-          wget -qO- https://api.github.com/repos/ClashDotNetFramework/ClashDotNetFramework/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
-          popd || exit 1
           # igniter
           mkdir -p igniter/Clients
           pushd igniter/Clients || exit 1
@@ -284,11 +271,6 @@ jobs:
           pushd yt-dlp/Clients || exit 1
           wget -qO- https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
-          # subtitleedit
-          mkdir -p subtitleedit/Clients
-          pushd subtitleedit/Clients || exit 1
-          wget -qO- https://api.github.com/repos/SubtitleEdit/subtitleedit/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
-          popd || exit 1
           # lanzou-gui
           mkdir -p lanzou-gui/Clients
           pushd lanzou-gui/Clients || exit 1
@@ -308,11 +290,6 @@ jobs:
           mkdir -p filebrowser/Clients
           pushd filebrowser/Clients || exit 1
           wget -qO- https://api.github.com/repos/filebrowser/filebrowser/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
-          popd || exit 1
-          # aria2
-          mkdir -p aria2/Clients
-          pushd aria2/Clients || exit 1
-          wget -qO- https://api.github.com/repos/aria2/aria2/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # m3u8-cli
           mkdir -p m3u8-cli/Clients
@@ -351,7 +328,6 @@ jobs:
           ${Z9R} clashx.zip clashx
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
-          ${Z9R} clash-dotnet.zip clash-dotnet
           # clash
           ${Z9R} clash.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
           rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip clash-dotnet.zip
@@ -398,13 +374,11 @@ jobs:
           ${Z9R} openwrt.zip . -i lede.zip openwrt-passwall.zip helloworld.zip openwrt-packages.zip small.zip
           rm -rfv lede.zip openwrt-passwall.zip helloworld.zip openwrt-packages.zip small.zip
           ${Z9R} forwardproxy.zip forwardproxy
-          ${Z9R} dns-over-https.zip dns-over-https
           ${Z9R} glider.zip glider
           ${Z9R} gost.zip gost
           ${Z9R} hysteria.zip hysteria
           ${Z9R} pingtunnel.zip pingtunnel
           ${Z9R} dnsproxy.zip dnsproxy
-          ${Z9R} quilkin.zip quilkin
           ${Z9R} echo.zip echo
           ${Z9R} netch.zip netch
           ${Z9R} bbdown.zip bbdown
@@ -413,15 +387,10 @@ jobs:
           # youtube-dl-full
           ${Z9R} youtube-dl-full.zip . -i youtube-dl.zip yt-dlp.zip
           rm -rfv youtube-dl.zip yt-dlp.zip
-          ${Z9R} subtitleedit.zip subtitleedit
           ${Z9R} lanzou-gui.zip lanzou-gui
           ${Z9R} aliyunpan.zip aliyunpan
           ${Z9R} unlock-music.zip unlock-music
           ${Z9R} filebrowser.zip filebrowser
-          ${Z9R} tinyproxy.zip tinyproxy
-          ${Z9R} vpncloud.zip vpncloud
-          ${Z9R} proxychains-ng.zip proxychains-ng
-          ${Z9R} aria2.zip aria2
           ${Z9R} m3u8-cli.zip m3u8-cli
           ${Z9R} yesplaymusic.zip yesplaymusic
           ${Z9R} vue-color-avatar.zip vue-color-avatar
@@ -445,7 +414,7 @@ jobs:
         if: (!cancelled())
         with:
           repo: bolucat/Archive
-          keep_latest: 1
+          keep_latest: 5
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
