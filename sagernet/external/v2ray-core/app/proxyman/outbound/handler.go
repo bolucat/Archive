@@ -154,7 +154,7 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 			domainString = ""
 		}
 
-		if h.senderSettings.DomainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
+		if h.senderSettings != nil && h.senderSettings.DomainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
 			var ips []net.IP
 			var err error
 
