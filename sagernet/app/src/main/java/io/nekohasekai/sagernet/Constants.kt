@@ -72,6 +72,7 @@ object Key {
     const val TRANSPROXY_PORT = "transproxyPort"
 
     const val CONNECTION_TEST_URL = "connectionTestURL"
+    const val PROBE_URL = "probeUrl"
     const val PROBE_INTERVAL = "probeInterval"
 
     const val ENABLE_MUX = "enableMux"
@@ -86,8 +87,6 @@ object Key {
     const val ALWAYS_SHOW_ADDRESS = "alwaysShowAddress"
 
     const val PROVIDER_TROJAN = "providerTrojan"
-    const val PROVIDER_SS_AEAD = "providerShadowsocksAEAD"
-    const val PROVIDER_SS_STREAM = "providerShadowsocksStream"
 
     const val TUN_IMPLEMENTATION = "tunImplementation"
     const val ENABLE_PCAP = "enablePcap"
@@ -205,19 +204,6 @@ object TrojanProvider {
     const val TROJAN_GO = 2
 }
 
-object ShadowsocksProvider {
-    const val V2RAY = 0
-    const val SHADOWSOCKS_RUST = 1
-    const val CLASH = 2
-    const val SHADOWSOCKS_LIBEV = 3
-}
-
-object ShadowsocksStreamProvider {
-    const val SHADOWSOCKS_RUST = 0
-    const val CLASH = 1
-    const val SHADOWSOCKS_LIBEV = 2
-}
-
 object IPv6Mode {
     const val DISABLE = 0
     const val ENABLE = 1
@@ -257,6 +243,10 @@ object GroupOrder {
 object AppStatus {
     const val FOREGROUND = "foreground"
     const val BACKGROUND = "background"
+}
+
+object BalancerStrategy {
+    const val LATEST_PING = "leastPing"
 }
 
 object Action {

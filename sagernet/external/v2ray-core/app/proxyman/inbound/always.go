@@ -10,6 +10,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/errors"
 	"github.com/v2fly/v2ray-core/v4/common/mux"
 	"github.com/v2fly/v2ray-core/v4/common/net"
+	"github.com/v2fly/v2ray-core/v4/features/inbound"
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/features/stats"
 	"github.com/v2fly/v2ray-core/v4/proxy"
@@ -57,16 +58,19 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 	if !ok {
 		return nil, newError("not an inbound proxy.")
 	}
+	return NewAlwaysOnInboundHandlerWithProxy(ctx, tag, receiverConfig, p, false)
+}
 
+func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receiverConfig *proxyman.ReceiverConfig, proxy proxy.Inbound, inject bool) (*AlwaysOnInboundHandler, error) {
 	h := &AlwaysOnInboundHandler{
-		proxy: p,
+		proxy: proxy,
 		mux:   mux.NewServer(ctx),
 		tag:   tag,
 	}
 
 	uplinkCounter, downlinkCounter := getStatCounter(core.MustFromContext(ctx), tag)
 
-	nl := p.Network()
+	nl := proxy.Network()
 	pr := receiverConfig.PortRange
 	address := receiverConfig.Listen.AsAddress()
 	if address == nil {
@@ -93,7 +97,7 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 
 			worker := &dsWorker{
 				address:         address,
-				proxy:           p,
+				proxy:           proxy,
 				stream:          mss,
 				tag:             tag,
 				dispatcher:      h.mux,
@@ -113,7 +117,7 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 				worker := &tcpWorker{
 					address:         address,
 					port:            net.Port(port),
-					proxy:           p,
+					proxy:           proxy,
 					stream:          mss,
 					recvOrigDest:    receiverConfig.ReceiveOriginalDestination,
 					tag:             tag,
@@ -130,7 +134,7 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 				worker := &udpWorker{
 					ctx:             ctx,
 					tag:             tag,
-					proxy:           p,
+					proxy:           proxy,
 					address:         address,
 					port:            net.Port(port),
 					dispatcher:      h.mux,
@@ -141,6 +145,12 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 				}
 				h.workers = append(h.workers, worker)
 			}
+		}
+	}
+
+	if !inject {
+		if i, ok := proxy.(inbound.Initializer); ok {
+			i.Initialize(h)
 		}
 	}
 

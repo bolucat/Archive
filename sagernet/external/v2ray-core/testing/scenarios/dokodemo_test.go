@@ -1,6 +1,7 @@
 package scenarios
 
 import (
+	"google.golang.org/protobuf/types/known/anypb"
 	"testing"
 	"time"
 
@@ -35,10 +36,9 @@ func TestDokodemoTCP(t *testing.T) {
 	userID := protocol.NewID(uuid.New())
 	serverPort := tcp.PickPort()
 	serverConfig := &core.Config{
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&log.Config{
-				ErrorLogLevel: clog.Severity_Debug,
-				ErrorLogType:  log.LogType_Console,
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
 			}),
 		},
 		Inbound: []*core.InboundHandlerConfig{
@@ -68,10 +68,9 @@ func TestDokodemoTCP(t *testing.T) {
 	clientPort := uint32(tcp.PickPort())
 	clientPortRange := uint32(5)
 	clientConfig := &core.Config{
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&log.Config{
-				ErrorLogLevel: clog.Severity_Debug,
-				ErrorLogType:  log.LogType_Console,
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
 			}),
 		},
 		Inbound: []*core.InboundHandlerConfig{

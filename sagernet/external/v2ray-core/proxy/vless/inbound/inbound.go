@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package inbound
 
 //go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
@@ -19,6 +16,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/protocol"
 	"github.com/v2fly/v2ray-core/v4/common/retry"
+	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"github.com/v2fly/v2ray-core/v4/common/session"
 	"github.com/v2fly/v2ray-core/v4/common/signal"
 	"github.com/v2fly/v2ray-core/v4/common/task"
@@ -42,6 +40,24 @@ func init() {
 			return nil, err
 		}
 		return New(ctx, config.(*Config), dc)
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+		simplifiedServer := config.(*SimplifiedConfig)
+		fullConfig := &Config{
+			Clients: func() (users []*protocol.User) {
+				for _, v := range simplifiedServer.Users {
+					account := &vless.Account{Id: v}
+					users = append(users, &protocol.User{
+						Account: serial.ToTypedMessage(account),
+					})
+				}
+				return
+			}(),
+			Decryption: "none",
+		}
+
+		return common.CreateObject(ctx, fullConfig)
 	}))
 }
 

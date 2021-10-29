@@ -2,7 +2,6 @@ package libcore
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/Dreamacro/clash/adapter/inbound"
 	"github.com/Dreamacro/clash/adapter/outbound"
@@ -244,32 +243,6 @@ func safeConnClose(c net.Conn, err error) {
 	if err != nil {
 		_ = c.Close()
 	}
-}
-
-func NewShadowsocksInstance(socksPort int32, server string, port int32, password string, cipher string, plugin string, pluginOpts string) (*ClashBasedInstance, error) {
-	if cipher == "none" {
-		cipher = "dummy"
-	}
-	if plugin == "obfs-local" || plugin == "simple-obfs" {
-		plugin = "obfs"
-	}
-	opts := map[string]interface{}{}
-	err := json.Unmarshal([]byte(pluginOpts), &opts)
-	if err != nil {
-		return nil, err
-	}
-	out, err := outbound.NewShadowSocks(outbound.ShadowSocksOption{
-		Server:     server,
-		Port:       int(port),
-		Password:   password,
-		Cipher:     cipher,
-		Plugin:     plugin,
-		PluginOpts: opts,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return newClashBasedInstance(socksPort, out), nil
 }
 
 func NewShadowsocksRInstance(socksPort int32, server string, port int32, password string, cipher string, obfs string, obfsParam string, protocol string, protocolParam string) (*ClashBasedInstance, error) {

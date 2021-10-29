@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package dokodemo
 
 //go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
@@ -31,6 +28,18 @@ func init() {
 			return d.Init(config.(*Config), pm, session.SockoptFromContext(ctx))
 		})
 		return d, err
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+		simplifiedServer := config.(*SimplifiedConfig)
+		fullConfig := &Config{
+			Address:        simplifiedServer.Address,
+			Port:           simplifiedServer.Port,
+			Networks:       net.ParseNetworks(simplifiedServer.Network),
+			FollowRedirect: simplifiedServer.FollowRedirect,
+		}
+
+		return common.CreateObject(ctx, fullConfig)
 	}))
 }
 

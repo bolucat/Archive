@@ -152,7 +152,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         val transproxyPort = findPreference<EditTextPreference>(Key.TRANSPROXY_PORT)!!
         val transproxyMode = findPreference<SimpleMenuPreference>(Key.TRANSPROXY_MODE)!!
         val enableLog = findPreference<SwitchPreference>(Key.ENABLE_LOG)!!
-        val probeInterval = findPreference<EditTextPreference>(Key.PROBE_INTERVAL)!!
 
         transproxyPort.isEnabled = requireTransproxy.isChecked
         transproxyMode.isEnabled = requireTransproxy.isChecked
@@ -165,14 +164,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         }
 
         val providerTrojan = findPreference<SimpleMenuPreference>(Key.PROVIDER_TROJAN)!!
-        val providerShadowsocksAEAD = findPreference<SimpleMenuPreference>(Key.PROVIDER_SS_AEAD)!!
-        val providerShadowsocksStream = findPreference<SimpleMenuPreference>(Key.PROVIDER_SS_STREAM)!!
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            providerShadowsocksAEAD.setEntries(R.array.ss_aead_provider_api21)
-            providerShadowsocksAEAD.setEntryValues(R.array.ss_aead_provider_api21_values)
-            providerShadowsocksStream.setEntries(R.array.ss_stream_provider_api21)
-            providerShadowsocksStream.setEntryValues(R.array.ss_stream_provider_api21_values)
-        }
 
         if (!isExpert) {
             providerTrojan.setEntries(R.array.trojan_provider)
@@ -245,12 +236,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
 
         enableLog.onPreferenceChangeListener = reloadListener
 
-        probeInterval.setOnBindEditTextListener(EditTextPreferenceModifiers.Number)
-        probeInterval.onPreferenceChangeListener = reloadListener
-
         providerTrojan.onPreferenceChangeListener = reloadListener
-        providerShadowsocksAEAD.onPreferenceChangeListener = reloadListener
-        providerShadowsocksStream.onPreferenceChangeListener = reloadListener
         appTrafficStatistics.onPreferenceChangeListener = reloadListener
         tunImplementation.onPreferenceChangeListener = reloadListener
         destinationOverride.onPreferenceChangeListener = reloadListener

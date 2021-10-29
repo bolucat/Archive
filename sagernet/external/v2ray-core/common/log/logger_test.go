@@ -1,6 +1,7 @@
 package log_test
 
 import (
+	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestFileLogger(t *testing.T) {
-	f, err := os.CreateTemp("", "vtest")
+	f, err := ioutil.TempFile("", "vtest")
 	common.Must(err)
 	path := f.Name()
 	common.Must(f.Close())

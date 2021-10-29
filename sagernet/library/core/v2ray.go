@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	core "github.com/v2fly/v2ray-core/v4"
-	"github.com/v2fly/v2ray-core/v4/app/observatory"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	udpProtocol "github.com/v2fly/v2ray-core/v4/common/protocol/udp"
 	"github.com/v2fly/v2ray-core/v4/common/signal"
+	"github.com/v2fly/v2ray-core/v4/features"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/features/extension"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
@@ -33,7 +33,7 @@ type V2RayInstance struct {
 	started      bool
 	core         *core.Instance
 	statsManager stats.Manager
-	observatory  *observatory.Observer
+	observatory  features.TaggedFeatures
 	dispatcher   routing.Dispatcher
 	dnsClient    dns.Client
 }
@@ -74,7 +74,7 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 
 	o := c.GetFeature(extension.ObservatoryType())
 	if o != nil {
-		instance.observatory = o.(*observatory.Observer)
+		instance.observatory = o.(features.TaggedFeatures)
 	}
 	return nil
 }

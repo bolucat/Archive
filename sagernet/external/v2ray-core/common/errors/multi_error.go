@@ -7,6 +7,9 @@ import (
 type multiError []error
 
 func (e multiError) Error() string {
+	if len(e) == 1 {
+		return e[0].Error()
+	}
 	var r strings.Builder
 	r.WriteString("multierr: ")
 	for _, err := range e {

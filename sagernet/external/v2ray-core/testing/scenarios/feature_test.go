@@ -2,6 +2,7 @@ package scenarios
 
 import (
 	"context"
+	"google.golang.org/protobuf/types/known/anypb"
 	"io"
 	"net/http"
 	"net/url"
@@ -424,7 +425,7 @@ func TestBlackhole(t *testing.T) {
 				ProxySettings: serial.ToTypedMessage(&blackhole.Config{}),
 			},
 		},
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&router.Config{
 				Rule: []*router.RoutingRule{
 					{
@@ -599,7 +600,7 @@ func TestDomainSniffing(t *testing.T) {
 				ProxySettings: serial.ToTypedMessage(&freedom.Config{}),
 			},
 		},
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&router.Config{
 				Rule: []*router.RoutingRule{
 					{
@@ -616,8 +617,7 @@ func TestDomainSniffing(t *testing.T) {
 				},
 			}),
 			serial.ToTypedMessage(&log.Config{
-				ErrorLogLevel: clog.Severity_Debug,
-				ErrorLogType:  log.LogType_Console,
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
 			}),
 		},
 	}
@@ -658,10 +658,9 @@ func TestDialV2Ray(t *testing.T) {
 	userID := protocol.NewID(uuid.New())
 	serverPort := tcp.PickPort()
 	serverConfig := &core.Config{
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&log.Config{
-				ErrorLogLevel: clog.Severity_Debug,
-				ErrorLogType:  log.LogType_Console,
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
 			}),
 		},
 		Inbound: []*core.InboundHandlerConfig{
@@ -690,7 +689,7 @@ func TestDialV2Ray(t *testing.T) {
 	}
 
 	clientConfig := &core.Config{
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&dispatcher.Config{}),
 			serial.ToTypedMessage(&proxyman.InboundConfig{}),
 			serial.ToTypedMessage(&proxyman.OutboundConfig{}),

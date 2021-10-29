@@ -2,6 +2,8 @@ package net
 
 import (
 	"bytes"
+	"encoding/json"
+	"github.com/golang/protobuf/jsonpb"
 	"net"
 	"strings"
 )
@@ -214,4 +216,14 @@ func NewIPOrDomain(addr Address) *IPOrDomain {
 	default:
 		panic("Unknown Address type.")
 	}
+}
+
+func (d *IPOrDomain) UnmarshalJSONPB(unmarshaler *jsonpb.Unmarshaler, bytes []byte) error {
+	var ipOrDomain string
+	if err := json.Unmarshal(bytes, &ipOrDomain); err != nil {
+		return err
+	}
+	result := NewIPOrDomain(ParseAddress(ipOrDomain))
+	d.Address = result.Address
+	return nil
 }

@@ -1,12 +1,10 @@
-//go:build !confonly
-// +build !confonly
-
 package inbound
 
 //go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
 
 import (
 	"context"
+	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"io"
 	"strings"
 	"sync"
@@ -363,6 +361,23 @@ var (
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		return New(ctx, config.(*Config))
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+		simplifiedServer := config.(*SimplifiedConfig)
+		fullConfig := &Config{
+			User: func() (users []*protocol.User) {
+				for _, v := range simplifiedServer.Users {
+					account := &vmess.Account{Id: v}
+					users = append(users, &protocol.User{
+						Account: serial.ToTypedMessage(account),
+					})
+				}
+				return
+			}(),
+		}
+
+		return common.CreateObject(ctx, fullConfig)
 	}))
 
 	defaultFlagValue := "NOT_DEFINED_AT_ALL"

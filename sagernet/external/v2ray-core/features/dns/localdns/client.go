@@ -8,7 +8,7 @@ import (
 
 // Client is an implementation of dns.Client, which queries localhost for DNS.
 type Client struct {
-	resolver net.Resolver
+	resolver *net.Resolver
 }
 
 // Type implements common.HasType.
@@ -42,7 +42,7 @@ func (c *Client) LookupIPv6(host string) ([]net.IP, error) {
 // New create a new dns.Client that queries localhost for DNS.
 func New() *Client {
 	return &Client{
-		resolver: net.Resolver{
+		resolver: &net.Resolver{
 			PreferGo: false,
 		},
 	}

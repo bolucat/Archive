@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"io"
+	"io/ioutil"
 	"os"
 	"testing"
 
@@ -119,7 +120,7 @@ func TestMultiBufferReadAllToByte(t *testing.T) {
 		common.Must(err)
 		f.Close()
 
-		cnt, err := os.ReadFile(dat)
+		cnt, err := ioutil.ReadFile(dat)
 		common.Must(err)
 
 		if d := cmp.Diff(buf2, cnt); d != "" {

@@ -1,10 +1,8 @@
-//go:build !confonly
-// +build !confonly
-
 package shadowsocks
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v4"
@@ -25,6 +23,9 @@ import (
 type Client struct {
 	serverPicker  protocol.ServerPicker
 	policyManager policy.Manager
+
+	plugin         SIP003Plugin
+	pluginOverride net.Destination
 }
 
 // NewClient create a new Shadowsocks client.
@@ -46,6 +47,33 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 		serverPicker:  protocol.NewRoundRobinServerPicker(serverList),
 		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
+
+	if config.Plugin != "" {
+		s := client.serverPicker.PickServer()
+
+		if PluginCreator == nil {
+			return nil, newError("plugins not registered")
+		}
+
+		plugin := PluginCreator(config.Plugin)
+		port, err := net.GetFreePort()
+		if err != nil {
+			return nil, newError("failed to get free port for shadowsocks plugin").Base(err)
+		}
+
+		client.pluginOverride = net.Destination{
+			Network: net.Network_TCP,
+			Address: net.LocalHostIP,
+			Port:    net.Port(port),
+		}
+
+		if err := plugin.Init(net.LocalHostIP.String(), strconv.Itoa(port), s.Destination().Address.String(), s.Destination().Port.String(), config.PluginOpts, config.PluginArgs); err != nil {
+			return nil, newError("failed to start SIP003 plugin").Base(err)
+		}
+
+		client.plugin = plugin
+	}
+
 	return client, nil
 }
 
@@ -63,8 +91,14 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 
 	err := retry.ExponentialBackoff(2, 100).On(func() error {
 		server = c.serverPicker.PickServer()
-		dest := server.Destination()
-		dest.Network = network
+		var dest net.Destination
+		if network == net.Network_TCP && c.plugin != nil {
+			dest = c.pluginOverride
+		} else {
+			server = c.serverPicker.PickServer()
+			dest = server.Destination()
+			dest.Network = network
+		}
 		rawConn, err := dialer.Dial(ctx, dest)
 		if err != nil {
 			return err
@@ -76,6 +110,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	if err != nil {
 		return newError("failed to find an available destination").AtWarning().Base(err)
 	}
+
 	newError("tunneling request to ", destination, " via ", server.Destination()).WriteToLog(session.ExportIDToError(ctx))
 
 	defer conn.Close()
@@ -103,6 +138,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
 
 	if request.Command == protocol.RequestCommandTCP {
+
 		requestDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))

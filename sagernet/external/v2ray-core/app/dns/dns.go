@@ -9,6 +9,12 @@ package dns
 import (
 	"context"
 	"fmt"
+	"github.com/v2fly/v2ray-core/v4/common/platform"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/geodata"
+	"strings"
+	"sync"
+
 	"github.com/v2fly/v2ray-core/v4/app/router"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/errors"
@@ -17,8 +23,6 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v4/features"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
-	"strings"
-	"sync"
 )
 
 // DNS is a DNS rely server.
@@ -33,7 +37,7 @@ type DNS struct {
 	clients                []*Client
 	ctx                    context.Context
 	domainMatcher          strmatcher.IndexMatcher
-	matcherInfos           []*DomainMatcherInfo
+	matcherInfos           []DomainMatcherInfo
 }
 
 // DomainMatcherInfo contains information attached to index returned by Server.domainMatcher
@@ -93,7 +97,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 	}
 
 	// MatcherInfos is ensured to cover the maximum index domainMatcher could return, where matcher's index starts from 1
-	matcherInfos := make([]*DomainMatcherInfo, domainRuleCount+1)
+	matcherInfos := make([]DomainMatcherInfo, domainRuleCount+1)
 	domainMatcher := &strmatcher.MatcherGroup{}
 	geoipContainer := router.GeoIPMatcherContainer{}
 
@@ -108,9 +112,9 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 
 	for _, ns := range config.NameServer {
 		clientIdx := len(clients)
-		updateDomain := func(domainRule strmatcher.Matcher, originalRuleIdx int, matcherInfos []*DomainMatcherInfo) error {
+		updateDomain := func(domainRule strmatcher.Matcher, originalRuleIdx int, matcherInfos []DomainMatcherInfo) error {
 			midx := domainMatcher.Add(domainRule)
-			matcherInfos[midx] = &DomainMatcherInfo{
+			matcherInfos[midx] = DomainMatcherInfo{
 				clientIdx:     uint16(clientIdx),
 				domainRuleIdx: uint16(originalRuleIdx),
 			}
@@ -375,5 +379,71 @@ func (s *DNS) sortClients(domain string) []*Client {
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		return New(ctx, config.(*Config))
+	}))
+
+	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+
+		ctx = cfgcommon.NewConfigureLoadingContext(context.Background())
+
+		geoloadername := platform.NewEnvFlag("v2ray.conf.geoloader").GetValue(func() string {
+			return "standard"
+		})
+
+		if loader, err := geodata.GetGeoDataLoader(geoloadername); err == nil {
+			cfgcommon.SetGeoDataLoader(ctx, loader)
+		} else {
+			return nil, newError("unable to create geo data loader ").Base(err)
+		}
+
+		cfgEnv := cfgcommon.GetConfigureLoadingEnvironment(ctx)
+		geoLoader := cfgEnv.GetGeoLoader()
+
+		simplifiedConfig := config.(*SimplifiedConfig)
+		for _, v := range simplifiedConfig.NameServer {
+			for _, geo := range v.Geoip {
+				if geo.Code != "" {
+					filepath := "geoip.dat"
+					if geo.FilePath != "" {
+						filepath = geo.FilePath
+					} else {
+						geo.CountryCode = geo.Code
+					}
+					var err error
+					geo.Cidr, err = geoLoader.LoadIP(filepath, geo.Code)
+					if err != nil {
+						return nil, newError("unable to load geoip").Base(err)
+					}
+				}
+			}
+		}
+
+		var nameservers []*NameServer
+
+		for _, v := range simplifiedConfig.NameServer {
+			nameserver := &NameServer{
+				Address:      v.Address,
+				ClientIp:     net.ParseIP(v.ClientIp),
+				SkipFallback: v.SkipFallback,
+				Geoip:        v.Geoip,
+			}
+			for _, prioritizedDomain := range v.PrioritizedDomain {
+				nameserver.PrioritizedDomain = append(nameserver.PrioritizedDomain, &NameServer_PriorityDomain{
+					Type:   prioritizedDomain.Type,
+					Domain: prioritizedDomain.Domain,
+				})
+			}
+			nameservers = append(nameservers, nameserver)
+		}
+
+		fullConfig := &Config{
+			NameServer:      nameservers,
+			ClientIp:        net.ParseIP(simplifiedConfig.ClientIp),
+			StaticHosts:     simplifiedConfig.StaticHosts,
+			Tag:             simplifiedConfig.Tag,
+			DisableCache:    simplifiedConfig.DisableCache,
+			QueryStrategy:   simplifiedConfig.QueryStrategy,
+			DisableFallback: simplifiedConfig.DisableFallback,
+		}
+		return common.CreateObject(ctx, fullConfig)
 	}))
 }

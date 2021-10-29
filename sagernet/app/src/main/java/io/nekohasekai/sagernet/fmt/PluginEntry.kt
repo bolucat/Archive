@@ -35,17 +35,12 @@ enum class PluginEntry(
     RelayBaton("relaybaton-plugin", R.string.action_relay_baton, "io.nekohasekai.sagernet.plugin.relaybaton"),
     Brook("brook-plugin", R.string.action_brook, "io.nekohasekai.sagernet.plugin.brook"),
     Hysteria("hysteria-plugin", R.string.action_hysteria, "io.nekohasekai.sagernet.plugin.hysteria", DownloadSource(fdroid = false)),
-    WireGuard("wireguard-plugin", R.string.action_wireguard, "io.nekohasekai.sagernet.plugin.wireguard", DownloadSource(fdroid = false)),
 
     // shadowsocks plugins
 
     ObfsLocal("shadowsocks-obfs-local", R.string.shadowsocks_plugin_simple_obfs, "com.github.shadowsocks.plugin.obfs_local", DownloadSource(
         fdroid = false,
         downloadLink = "https://github.com/shadowsocks/simple-obfs-android/releases"
-    )),
-
-    V2RayPlugin("shadowsocks-v2ray-plugin", R.string.shadowsocks_plugin_v2ray, "com.github.shadowsocks.plugin.v2ray", DownloadSource(
-        downloadLink = "https://github.com/shadowsocks/v2ray-plugin-android/releases"
     ));
 
     data class DownloadSource(

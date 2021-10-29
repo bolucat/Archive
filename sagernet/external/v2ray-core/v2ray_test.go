@@ -1,9 +1,10 @@
 package core_test
 
 import (
+	"google.golang.org/protobuf/types/known/anypb"
 	"testing"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	. "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/app/dispatcher"
@@ -41,7 +42,7 @@ func TestV2RayClose(t *testing.T) {
 
 	userID := uuid.New()
 	config := &Config{
-		App: []*serial.TypedMessage{
+		App: []*anypb.Any{
 			serial.ToTypedMessage(&dispatcher.Config{}),
 			serial.ToTypedMessage(&proxyman.InboundConfig{}),
 			serial.ToTypedMessage(&proxyman.OutboundConfig{}),
@@ -85,7 +86,7 @@ func TestV2RayClose(t *testing.T) {
 	cfgBytes, err := proto.Marshal(config)
 	common.Must(err)
 
-	server, err := StartInstance("protobuf", cfgBytes)
+	server, err := StartInstance(FormatProtobuf, cfgBytes)
 	common.Must(err)
 	server.Close()
 }

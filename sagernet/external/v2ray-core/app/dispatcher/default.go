@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package dispatcher
 
 //go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
@@ -215,10 +212,12 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, destination net.Destin
 		content = new(session.Content)
 		ctx = session.ContextWithContent(ctx, content)
 	}
+
 	sniffingRequest := content.SniffingRequest
 	switch {
 	case !sniffingRequest.Enabled:
 		go d.routedDispatch(ctx, outbound, destination)
+
 	case destination.Network != net.Network_TCP:
 		// Only metadata sniff will be used for non tcp connection
 		result, err := sniffer(ctx, nil, true)
@@ -368,7 +367,6 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool) (Sni
 	}
 	return contentResult, contentErr
 }
-
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
 	ob := session.OutboundFromContext(ctx)
 	if d.hosts != nil && destination.Address.Family().IsDomain() {
