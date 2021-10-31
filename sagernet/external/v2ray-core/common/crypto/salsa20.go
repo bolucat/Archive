@@ -3,8 +3,10 @@ package crypto
 import (
 	"crypto/cipher"
 	"encoding/binary"
-	"github.com/v2fly/v2ray-core/v4/common"
+
 	"golang.org/x/crypto/salsa20/salsa"
+
+	"github.com/v2fly/v2ray-core/v4/common"
 )
 
 var _ cipher.Stream = (*Salsa20Cipher)(nil)

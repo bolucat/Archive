@@ -2,11 +2,11 @@ package serial
 
 import (
 	"errors"
-	"google.golang.org/protobuf/types/known/anypb"
 	"reflect"
 	"strings"
 
 	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 const V2RayTypeURLHeader = "types.v2fly.org/"
@@ -52,9 +52,11 @@ func GetInstanceOf(v *anypb.Any) (proto.Message, error) {
 func V2Type(v *anypb.Any) string {
 	return V2TypeFromURL(v.TypeUrl)
 }
+
 func V2TypeFromURL(string2 string) string {
 	return strings.TrimPrefix(string2, V2RayTypeURLHeader)
 }
+
 func V2TypeHumanReadable(v *anypb.Any) string {
 	return v.TypeUrl
 }

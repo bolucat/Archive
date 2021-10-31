@@ -5,6 +5,7 @@ package core
 #include "lwip/tcp.h"
 */
 import "C"
+
 import (
 	"errors"
 	"fmt"
@@ -143,9 +144,11 @@ func (conn *tcpConn) LocalAddr() net.Addr {
 func (conn *tcpConn) SetDeadline(t time.Time) error {
 	return nil
 }
+
 func (conn *tcpConn) SetReadDeadline(t time.Time) error {
 	return nil
 }
+
 func (conn *tcpConn) SetWriteDeadline(t time.Time) error {
 	return nil
 }
@@ -278,7 +281,7 @@ func (conn *tcpConn) Write(data []byte) (int, error) {
 				lwipMutex.Unlock()
 				return totalWritten, err
 			}
-			data = data[written:len(data)]
+			data = data[written:]
 		}
 		lwipMutex.Unlock()
 		if len(data) == 0 {

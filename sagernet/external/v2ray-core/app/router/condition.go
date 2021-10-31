@@ -1,12 +1,12 @@
 package router
 
 import (
-	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"strings"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
+	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
@@ -64,44 +64,34 @@ func domainToMatcher(domain *routercommon.Domain) (strmatcher.Matcher, error) {
 }
 
 type DomainMatcher struct {
-	matchers strmatcher.IndexMatcher
+	matcher strmatcher.IndexMatcher
 }
 
-func NewMphMatcherGroup(domains []*routercommon.Domain) (*DomainMatcher, error) {
-	g := strmatcher.NewMphMatcherGroup()
-	for _, d := range domains {
-		matcherType, f := matcherTypeMap[d.Type]
-		if !f {
-			return nil, newError("unsupported domain type", d.Type)
-		}
-		_, err := g.AddPattern(d.Value, matcherType)
+func NewDomainMatcher(matcherType string, domains []*routercommon.Domain) (*DomainMatcher, error) {
+	var indexMatcher strmatcher.IndexMatcher
+	switch matcherType {
+	case "linear":
+		indexMatcher = strmatcher.NewLinearIndexMatcher()
+	case "mph", "hybrid":
+		fallthrough
+	default:
+		indexMatcher = strmatcher.NewMphIndexMatcher()
+	}
+	for _, domain := range domains {
+		matcher, err := domainToMatcher(domain)
 		if err != nil {
 			return nil, err
 		}
+		indexMatcher.Add(matcher)
 	}
-	g.Build()
-	return &DomainMatcher{
-		matchers: g,
-	}, nil
+	if err := indexMatcher.Build(); err != nil {
+		return nil, err
+	}
+	return &DomainMatcher{matcher: indexMatcher}, nil
 }
 
-func NewDomainMatcher(domains []*routercommon.Domain) (*DomainMatcher, error) {
-	g := new(strmatcher.MatcherGroup)
-	for _, d := range domains {
-		m, err := domainToMatcher(d)
-		if err != nil {
-			return nil, err
-		}
-		g.Add(m)
-	}
-
-	return &DomainMatcher{
-		matchers: g,
-	}, nil
-}
-
-func (m *DomainMatcher) ApplyDomain(domain string) bool {
-	return len(m.matchers.Match(strings.ToLower(domain))) > 0
+func (m *DomainMatcher) Match(domain string) bool {
+	return m.matcher.MatchAny(domain)
 }
 
 // Apply implements Condition.
@@ -110,7 +100,7 @@ func (m *DomainMatcher) Apply(ctx routing.Context) bool {
 	if len(domain) == 0 {
 		return false
 	}
-	return m.ApplyDomain(domain)
+	return m.Match(domain)
 }
 
 type MultiGeoIPMatcher struct {

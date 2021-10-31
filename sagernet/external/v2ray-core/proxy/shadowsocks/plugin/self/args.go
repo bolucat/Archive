@@ -23,7 +23,7 @@ func (args Args) Get(key string) (value string, ok bool) {
 	return vals[0], true
 }
 
-// Append value to the list of values for key.
+// Add Append value to the list of values for key.
 func (args Args) Add(key, value string) {
 	args[key] = append(args[key], value)
 }
@@ -52,13 +52,13 @@ func indexUnescaped(s string, term []byte) (int, string, error) {
 	return i, string(unesc), nil
 }
 
-// Parse a name–value mapping as from SS_PLUGIN_OPTIONS.
+// ParsePluginOptions Parse a name–value mapping as from SS_PLUGIN_OPTIONS.
 //
 // "<value> is a k=v string value with options that are to be passed to the
 // transport. semicolons, equal signs and backslashes must be escaped
 // with a backslash."
 // Example: secret=nou;cache=/tmp/cache;secret=yes
-func parsePluginOptions(s string) (opts Args, err error) {
+func ParsePluginOptions(s string) (opts Args, err error) {
 	opts = make(Args)
 	if len(s) == 0 {
 		return

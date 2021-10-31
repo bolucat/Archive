@@ -1,10 +1,11 @@
 package libcore
 
 import (
-	"github.com/ulikunitz/xz"
 	"io"
 	"net"
 	"os"
+
+	"github.com/ulikunitz/xz"
 )
 
 type packetConn interface {

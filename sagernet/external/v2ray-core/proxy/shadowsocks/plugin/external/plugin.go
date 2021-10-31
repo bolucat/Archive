@@ -17,13 +17,19 @@ import (
 
 var _ shadowsocks.SIP003Plugin = (*Plugin)(nil)
 
+func init() {
+	shadowsocks.SetPluginLoader(func(plugin string) shadowsocks.SIP003Plugin {
+		return &Plugin{Plugin: plugin}
+	})
+}
+
 type Plugin struct {
 	Plugin        string
 	pluginProcess *exec.Cmd
 	done          *done.Instance
 }
 
-func (p *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string) error {
+func (p *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, _ *shadowsocks.MemoryAccount) error {
 	p.done = done.New()
 	path, err := exec.LookPath(p.Plugin)
 	if err != nil {

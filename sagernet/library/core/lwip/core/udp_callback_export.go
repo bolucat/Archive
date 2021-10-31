@@ -5,6 +5,7 @@ package core
 #include "lwip/udp.h"
 */
 import "C"
+
 import (
 	"unsafe"
 )
@@ -49,7 +50,7 @@ func udpRecvFn(arg unsafe.Pointer, pcb *C.struct_udp_pcb, p *C.struct_pbuf, addr
 	}
 
 	var buf []byte
-	var totlen = int(p.tot_len)
+	totlen := int(p.tot_len)
 	if p.tot_len == p.len {
 		buf = (*[1 << 30]byte)(unsafe.Pointer(p.payload))[:totlen:totlen]
 	} else {

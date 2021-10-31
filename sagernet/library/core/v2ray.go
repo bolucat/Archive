@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	core "github.com/v2fly/v2ray-core/v4"
+	"io"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	"github.com/v2fly/v2ray-core/v4/common/net"
-	udpProtocol "github.com/v2fly/v2ray-core/v4/common/protocol/udp"
+	"github.com/v2fly/v2ray-core/v4/common/protocol/udp"
 	"github.com/v2fly/v2ray-core/v4/common/signal"
 	"github.com/v2fly/v2ray-core/v4/features"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
@@ -18,14 +23,10 @@ import (
 	"github.com/v2fly/v2ray-core/v4/infra/conf/serial"
 	_ "github.com/v2fly/v2ray-core/v4/main/distro/all"
 	"github.com/v2fly/v2ray-core/v4/transport"
-	"io"
-	"strings"
-	"sync"
-	"time"
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-4"
+	return core.Version() + "-sn-1"
 }
 
 type V2RayInstance struct {
@@ -143,7 +144,7 @@ func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Dest
 		link:   link,
 		ctx:    ctx,
 		cancel: cancel,
-		cache:  make(chan *udpProtocol.Packet, 16),
+		cache:  make(chan *udp.Packet, 16),
 	}
 	c.timer = signal.CancelAfterInactivity(ctx, func() {
 		closeIgnore(c)
@@ -162,7 +163,7 @@ type dispatcherConn struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	cache chan *udpProtocol.Packet
+	cache chan *udp.Packet
 }
 
 func (c *dispatcherConn) handleInput() {
@@ -180,7 +181,7 @@ func (c *dispatcherConn) handleInput() {
 			return
 		}
 		for _, buffer := range mb {
-			packet := udpProtocol.Packet{
+			packet := udp.Packet{
 				Payload: buffer,
 			}
 			if buffer.Endpoint == nil {

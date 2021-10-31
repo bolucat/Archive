@@ -3,16 +3,17 @@ package jsonv4
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/jsonpb"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/v2jsonpb"
 	"os"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	core "github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/jsonpb"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/merge"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/v2jsonpb"
 	"github.com/v2fly/v2ray-core/v4/main/commands/base"
 	"github.com/v2fly/v2ray-core/v4/main/commands/helpers"
-	"google.golang.org/protobuf/proto"
 )
 
 var cmdConvert = &base.Command{
@@ -71,6 +72,7 @@ func setConfArgs(cmd *base.Command) {
 	cmd.Flag.StringVar(&outputFormat, "o", "json", "")
 	cmd.Flag.BoolVar(&confDirRecursively, "r", false, "")
 }
+
 func executeConvert(cmd *base.Command, args []string) {
 	setConfArgs(cmd)
 	cmd.Flag.Parse(args)

@@ -32,11 +32,17 @@ import (
 
 var _ shadowsocks.SIP003Plugin = (*Plugin)(nil)
 
+func init() {
+	shadowsocks.RegisterPlugin("v2ray-plugin", func() shadowsocks.SIP003Plugin {
+		return &Plugin{}
+	})
+}
+
 type Plugin struct {
 	instance *core.Instance
 }
 
-func (v *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string) error {
+func (v *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, _ *shadowsocks.MemoryAccount) error {
 	opts := make(Args)
 
 	opts.Add("localAddr", localHost)
@@ -45,7 +51,7 @@ func (v *Plugin) Init(localHost string, localPort string, remoteHost string, rem
 	opts.Add("remotePort", remotePort)
 
 	if len(pluginOpts) > 0 {
-		otherOpts, err := parsePluginOptions(pluginOpts)
+		otherOpts, err := ParsePluginOptions(pluginOpts)
 		if err != nil {
 			return err
 		}
@@ -78,7 +84,6 @@ func (v *Plugin) Init(localHost string, localPort string, remoteHost string, rem
 func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 	flag := flag.NewFlagSet("v2ray-plugin", flag.ContinueOnError)
 	var (
-		vpn        = flag.Bool("V", false, "Run in VPN mode.")
 		fastOpen   = flag.Bool("fast-open", false, "Enable TCP fast open.")
 		localAddr  = flag.String("localAddr", "127.0.0.1", "local address to listen on.")
 		localPort  = flag.String("localPort", "1984", "local port to listen on.")
@@ -96,7 +101,11 @@ func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 		logLevel   = flag.String("loglevel", "", "loglevel for self: debug, info, warning (default), error, none.")
 		fwmark     = flag.Int("fwmark", 0, "Set SO_MARK option for outbound sockets.")
 	)
-	flag.Parse(pluginArgs)
+
+	if err := flag.Parse(pluginArgs); err != nil {
+		return nil, newError("failed to parse plugin args").Base(err)
+	}
+
 	if c, b := opts.Get("mode"); b {
 		*mode = c
 	}
@@ -162,10 +171,6 @@ func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 
 	if _, b := opts.Get("fastOpen"); b {
 		*fastOpen = true
-	}
-
-	if _, b := opts.Get("__android_vpn"); b {
-		*vpn = true
 	}
 
 	if c, b := opts.Get("fwmark"); b {
@@ -296,7 +301,7 @@ func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 		serial.ToTypedMessage(&dispatcher.Config{}),
 		serial.ToTypedMessage(&proxyman.InboundConfig{}),
 		serial.ToTypedMessage(&proxyman.OutboundConfig{}),
-		serial.ToTypedMessage(logConfig(*logLevel)),
+		serial.ToTypedMessage(LogConfig(*logLevel)),
 	}
 
 	var config *core.Config
@@ -308,7 +313,7 @@ func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 			// dokodemo is not aware of mux connections by itself.
 			proxyAddress = net.ParseAddress("v1.mux.cool")
 		}
-		localAddrs := parseLocalAddr(*localAddr)
+		localAddrs := ParseLocalAddr(*localAddr)
 		inbounds := make([]*core.InboundHandlerConfig, len(localAddrs))
 
 		for i := 0; i < len(localAddrs); i++ {
@@ -359,7 +364,7 @@ func (v *Plugin) init(opts Args, pluginArgs []string) (*core.Config, error) {
 	return config, nil
 }
 
-func logConfig(logLevel string) *vlog.Config {
+func LogConfig(logLevel string) *vlog.Config {
 	config := &vlog.Config{
 		Error: &vlog.LogSpecification{
 			Type:  vlog.LogType_Console,
@@ -385,7 +390,7 @@ func logConfig(logLevel string) *vlog.Config {
 	return config
 }
 
-func parseLocalAddr(localAddr string) []string {
+func ParseLocalAddr(localAddr string) []string {
 	return strings.Split(localAddr, "|")
 }
 

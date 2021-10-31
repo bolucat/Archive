@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"os"
+	"time"
+
 	"github.com/sirupsen/logrus"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"golang.org/x/sys/unix"
-	"net"
-	"os"
-	"time"
 )
 
 var fdProtector Protector

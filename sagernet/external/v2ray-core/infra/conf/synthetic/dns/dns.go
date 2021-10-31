@@ -5,12 +5,12 @@ package dns
 import (
 	"context"
 	"encoding/json"
-	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/v2fly/v2ray-core/v4/app/dns"
+	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/platform"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
@@ -23,7 +23,6 @@ type NameServerConfig struct {
 	ClientIP     *cfgcommon.Address
 	Port         uint16
 	SkipFallback bool
-	Concurrent   bool
 	Domains      []string
 	ExpectIPs    cfgcommon.StringList
 
@@ -36,20 +35,20 @@ func (c *NameServerConfig) UnmarshalJSON(data []byte) (err error) {
 		c.Address = &address
 	} else {
 		var advanced struct {
-			Address      *cfgcommon.Address   `json:"address"`
-			ClientIP     *cfgcommon.Address   `json:"clientIp"`
-			Port         uint16               `json:"port"`
-			SkipFallback bool                 `json:"skipFallback"`
-			Concurrent   bool                 `json:"concurrent"`
-			Domains      []string             `json:"domains"`
-			ExpectIPs    cfgcommon.StringList `json:"expectIps"`
+			Address      *cfgcommon.Address `json:"address"`
+			ClientIP     *cfgcommon.Address `json:"clientIp"`
+			Port         uint16             `json:"port"`
+			SkipFallback bool               `json:"skipFallback"`
+
+			Domains   []string             `json:"domains"`
+			ExpectIPs cfgcommon.StringList `json:"expectIps"`
 		}
 		if err = json.Unmarshal(data, &advanced); err == nil {
 			c.Address = advanced.Address
 			c.ClientIP = advanced.ClientIP
 			c.Port = advanced.Port
 			c.SkipFallback = advanced.SkipFallback
-			c.Concurrent = advanced.Concurrent
+
 			c.Domains = advanced.Domains
 			c.ExpectIPs = advanced.ExpectIPs
 		}
@@ -140,7 +139,6 @@ func (c *NameServerConfig) Build() (*dns.NameServer, error) {
 		},
 		ClientIp:          myClientIP,
 		SkipFallback:      c.SkipFallback,
-		Concurrent:        c.Concurrent,
 		PrioritizedDomain: domains,
 		Geoip:             geoipList,
 		OriginalRules:     originalRules,
@@ -164,7 +162,7 @@ type DNSConfig struct {
 	DisableCache           bool                    `json:"disableCache"`
 	DisableFallback        bool                    `json:"disableFallback"`
 	DisableFallbackIfMatch bool                    `json:"disableFallbackIfMatch"`
-	cfgctx context.Context
+	cfgctx                 context.Context
 }
 
 type HostAddress struct {
@@ -220,7 +218,6 @@ func (c *DNSConfig) BuildV5(ctx context.Context) (*dns.Config, error) {
 
 // Build implements Buildable
 func (c *DNSConfig) Build() (*dns.Config, error) {
-
 	if c.cfgctx == nil {
 		c.cfgctx = cfgcommon.NewConfigureLoadingContext(context.Background())
 

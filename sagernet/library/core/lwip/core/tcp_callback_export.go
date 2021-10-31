@@ -5,6 +5,7 @@ package core
 #include "lwip/tcp.h"
 */
 import "C"
+
 import (
 	"errors"
 	"fmt"
@@ -77,7 +78,7 @@ func tcpRecvFn(arg unsafe.Pointer, tpcb *C.struct_tcp_pcb, p *C.struct_pbuf, err
 	}
 
 	var buf []byte
-	var totlen = int(p.tot_len)
+	totlen := int(p.tot_len)
 	if p.tot_len == p.len {
 		buf = (*[1 << 30]byte)(unsafe.Pointer(p.payload))[:totlen:totlen]
 	} else {

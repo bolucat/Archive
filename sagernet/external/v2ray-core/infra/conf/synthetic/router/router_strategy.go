@@ -2,11 +2,11 @@ package router
 
 import (
 	"github.com/golang/protobuf/proto"
+
 	"github.com/v2fly/v2ray-core/v4/app/observatory/burst"
+	"github.com/v2fly/v2ray-core/v4/app/router"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/duration"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/loader"
-
-	"github.com/v2fly/v2ray-core/v4/app/router"
 )
 
 const (
@@ -15,16 +15,13 @@ const (
 	strategyLeastPing string = "leastping"
 )
 
-var (
-	strategyConfigLoader = loader.NewJSONConfigLoader(loader.ConfigCreatorCache{
-		strategyRandom:    func() interface{} { return new(strategyEmptyConfig) },
-		strategyLeastLoad: func() interface{} { return new(strategyLeastLoadConfig) },
-		strategyLeastPing: func() interface{} { return new(strategyLeastPingConfig) },
-	}, "type", "settings")
-)
+var strategyConfigLoader = loader.NewJSONConfigLoader(loader.ConfigCreatorCache{
+	strategyRandom:    func() interface{} { return new(strategyEmptyConfig) },
+	strategyLeastLoad: func() interface{} { return new(strategyLeastLoadConfig) },
+	strategyLeastPing: func() interface{} { return new(strategyLeastPingConfig) },
+}, "type", "settings")
 
-type strategyEmptyConfig struct {
-}
+type strategyEmptyConfig struct{}
 
 func (v *strategyEmptyConfig) Build() (proto.Message, error) {
 	return nil, nil

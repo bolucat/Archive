@@ -6,7 +6,7 @@
       class="menu-item"
       :class="{ disabled: ac.disabled }"
       :title="ac.tip"
-      @click="emit('actionHandler', ac.type)"
+      @click="emit('action', ac.type)"
     >
       <img :src="ac.icon" :alt="ac.tip" />
     </div>
@@ -25,7 +25,7 @@ import { ActionType } from '@/enums'
 import { useStore } from '@/store'
 
 const emit = defineEmits<{
-  (e: 'actionHandler', actionType: ActionType): void
+  (e: 'action', actionType: ActionType): void
 }>()
 
 const { t } = useI18n()
@@ -62,12 +62,14 @@ const actions = computed(() => [
 </script>
 
 <style lang="scss" scoped>
+@use 'src/styles/var';
+
 .action-menu {
   display: flex;
   align-items: center;
   margin-top: 5rem;
   padding: 0.5rem;
-  background-color: $color-gray;
+  background-color: var.$color-gray;
   border-radius: 2rem;
 
   .menu-item {
@@ -77,7 +79,7 @@ const actions = computed(() => [
     width: 2.5rem;
     height: 2.5rem;
     margin: 0 0.5rem;
-    background-color: lighten($color-gray, 10);
+    background-color: lighten(var.$color-gray, 10);
     border-radius: 50%;
     cursor: pointer;
     transition: opacity 0.2s;

@@ -5,6 +5,7 @@ package core
 #include "lwip/udp.h"
 */
 import "C"
+
 import (
 	"errors"
 	"fmt"

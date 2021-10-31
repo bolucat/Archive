@@ -6,7 +6,9 @@ package router
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/golang/protobuf/jsonpb"
+
 	"github.com/v2fly/v2ray-core/v4/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/serial"
@@ -37,23 +39,11 @@ func (rr *RoutingRule) BuildCondition() (Condition, error) {
 	conds := NewConditionChan()
 
 	if len(rr.Domain) > 0 {
-		switch rr.DomainMatcher {
-		case "linear":
-			matcher, err := NewDomainMatcher(rr.Domain)
-			if err != nil {
-				return nil, newError("failed to build domain condition").Base(err)
-			}
-			conds.Add(matcher)
-		case "mph", "hybrid":
-			fallthrough
-		default:
-			matcher, err := NewMphMatcherGroup(rr.Domain)
-			if err != nil {
-				return nil, newError("failed to build domain condition with MphDomainMatcher").Base(err)
-			}
-			newError("MphDomainMatcher is enabled for ", len(rr.Domain), " domain rule(s)").AtDebug().WriteToLog()
-			conds.Add(matcher)
+		cond, err := NewDomainMatcher(rr.DomainMatcher, rr.Domain)
+		if err != nil {
+			return nil, newError("failed to build domain condition").Base(err)
 		}
+		conds.Add(cond)
 	}
 
 	if len(rr.UserEmail) > 0 {

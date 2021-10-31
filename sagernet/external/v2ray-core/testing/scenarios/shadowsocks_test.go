@@ -1,11 +1,11 @@
 package scenarios
 
 import (
-	"google.golang.org/protobuf/types/known/anypb"
 	"testing"
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	core "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/app/log"
@@ -396,8 +396,9 @@ func TestShadowsocksAES128GCMUDPMux(t *testing.T) {
 }
 
 func TestShadowsocksCiphers(t *testing.T) {
-	testShadowsocksWithCipher(t, shadowsocks.CipherType_NONE)
-	testShadowsocksWithCipher(t, shadowsocks.CipherType_AES_192_CTR)
+	for i := 1; i <= int(shadowsocks.CipherType_XCHACHA20); i++ {
+		testShadowsocksWithCipher(t, shadowsocks.CipherType(i))
+	}
 }
 
 func testShadowsocksWithCipher(t *testing.T, cipher shadowsocks.CipherType) {
@@ -479,11 +480,11 @@ func testShadowsocksWithCipher(t *testing.T, cipher shadowsocks.CipherType) {
 
 	var errGroup errgroup.Group
 	for i := 0; i < 10; i++ {
-		errGroup.Go(testTCPConn(clientPort, 10240*1024, time.Second*20))
+		errGroup.Go(testTCPConn(clientPort, 256, time.Second*20))
 	}
 
 	if err := errGroup.Wait(); err != nil {
-		t.Fatal(err)
+		t.Fatal(err, cipher.String())
 	}
 }
 
@@ -503,6 +504,11 @@ func TestShadowsocksV2RayPlugin(t *testing.T) {
 
 	serverPort := tcp.PickPort()
 	serverConfig := &core.Config{
+		App: []*anypb.Any{
+			serial.ToTypedMessage(&log.Config{
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
+			}),
+		},
 		Inbound: []*core.InboundHandlerConfig{
 			{
 				Tag: "in",
@@ -530,6 +536,11 @@ func TestShadowsocksV2RayPlugin(t *testing.T) {
 
 	clientPort := tcp.PickPort()
 	clientConfig := &core.Config{
+		App: []*anypb.Any{
+			serial.ToTypedMessage(&log.Config{
+				Error: &log.LogSpecification{Level: clog.Severity_Debug, Type: log.LogType_Console},
+			}),
+		},
 		Inbound: []*core.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{

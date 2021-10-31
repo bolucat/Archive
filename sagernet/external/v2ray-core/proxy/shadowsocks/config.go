@@ -8,8 +8,6 @@ import (
 	"crypto/md5"
 	"crypto/rc4"
 	"crypto/sha1"
-	"golang.org/x/crypto/blowfish"
-	"golang.org/x/crypto/cast5"
 	"io"
 	"strings"
 
@@ -18,11 +16,13 @@ import (
 	"github.com/dgryski/go-camellia"
 	"github.com/dgryski/go-idea"
 	"github.com/dgryski/go-rc2"
+	"github.com/geeksbaek/seed"
 	"github.com/kierdavis/cfb8"
+	"golang.org/x/crypto/blowfish"
+	"golang.org/x/crypto/cast5"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/hkdf"
 
-	"github.com/geeksbaek/seed"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/antireplay"
 	"github.com/v2fly/v2ray-core/v4/common/buf"

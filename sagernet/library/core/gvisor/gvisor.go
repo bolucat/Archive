@@ -1,6 +1,9 @@
 package gvisor
 
 import (
+	"io"
+	"os"
+
 	"github.com/sirupsen/logrus"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -11,9 +14,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-	"io"
 	"libcore/tun"
-	"os"
 )
 
 var _ tun.Tun = (*GVisor)(nil)

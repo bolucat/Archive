@@ -172,3 +172,14 @@ func (r *PacketReader) ReadMultiBuffer() (MultiBuffer, error) {
 	}
 	return MultiBuffer{b}, nil
 }
+
+type NOPReader struct{}
+
+// ReadMultiBuffer implements Reader.
+func (r *NOPReader) ReadMultiBuffer() (MultiBuffer, error) {
+	return nil, io.EOF
+}
+
+func NewPinned(buffer MultiBuffer) *BufferedReader {
+	return &BufferedReader{Buffer: buffer, Reader: (*NOPReader)(nil)}
+}

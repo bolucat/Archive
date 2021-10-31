@@ -9,9 +9,6 @@ package dns
 import (
 	"context"
 	"fmt"
-	"github.com/v2fly/v2ray-core/v4/common/platform"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/geodata"
 	"strings"
 	"sync"
 
@@ -19,10 +16,13 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/errors"
 	"github.com/v2fly/v2ray-core/v4/common/net"
+	"github.com/v2fly/v2ray-core/v4/common/platform"
 	"github.com/v2fly/v2ray-core/v4/common/session"
 	"github.com/v2fly/v2ray-core/v4/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v4/features"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/geodata"
 )
 
 // DNS is a DNS rely server.
@@ -98,7 +98,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 
 	// MatcherInfos is ensured to cover the maximum index domainMatcher could return, where matcher's index starts from 1
 	matcherInfos := make([]DomainMatcherInfo, domainRuleCount+1)
-	domainMatcher := &strmatcher.MatcherGroup{}
+	domainMatcher := &strmatcher.LinearIndexMatcher{}
 	geoipContainer := router.GeoIPMatcherContainer{}
 
 	for _, endpoint := range config.NameServers {
@@ -214,7 +214,7 @@ func (s *DNS) LookupHosts(domain string) *net.Address {
 	return nil
 }
 
-func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) (result []net.IP, reterr error) {
+func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) ([]net.IP, error) {
 	if domain == "" {
 		return nil, newError("empty domain name")
 	}
@@ -237,74 +237,24 @@ func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) (result []net
 	}
 
 	// Name servers lookup
-	var errs []error
+	errs := []error{}
 	ctx := session.ContextWithInbound(s.ctx, &session.Inbound{Tag: s.tag})
-	done, cancel := context.WithCancel(context.Background())
-	var access sync.Mutex
-	result = nil
-	remain := 0
 	for _, client := range s.sortClients(domain) {
-		client := client
-		access.Lock()
-		remain++
-		access.Unlock()
-
-		query := func() (ret bool) {
-			if !option.FakeEnable && strings.EqualFold(client.Name(), "FakeDNS") {
-				newError("skip DNS resolution for domain ", domain, " at server ", client.Name()).AtDebug().WriteToLog()
-				return
-			}
-			ips, err := client.QueryIP(ctx, domain, option, s.disableCache)
-			access.Lock()
-			defer access.Unlock()
-
-			select {
-			case <-done.Done():
-				return
-			default:
-			}
-
-			remain--
-			if len(ips) > 0 {
-				result = ips
-				ret = true
-			} else if err != nil {
-				newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
-				errs = append(errs, err)
-				if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
-					reterr = err
-					ret = true
-				}
-			}
-
-			if remain == 0 {
-				ret = true
-			}
-
-			if ret {
-				cancel()
-			}
-			return
+		if !option.FakeEnable && strings.EqualFold(client.Name(), "FakeDNS") {
+			newError("skip DNS resolution for domain ", domain, " at server ", client.Name()).AtDebug().WriteToLog()
+			continue
 		}
-
-		if client.concurrent {
-			go query()
-		} else {
-			if query() {
-				return result, reterr
-			}
+		ips, err := client.QueryIP(ctx, domain, option, s.disableCache)
+		if len(ips) > 0 {
+			return ips, nil
 		}
-	}
-
-	select {
-	case <-done.Done():
-	case <-ctx.Done():
-	}
-
-	cancel()
-
-	if result != nil || reterr != nil {
-		return result, reterr
+		if err != nil {
+			newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
+			errs = append(errs, err)
+		}
+		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
+			return nil, err
+		}
 	}
 
 	return nil, newError("returning nil for domain ", domain).Base(errors.Combine(errs...))
@@ -382,7 +332,6 @@ func init() {
 	}))
 
 	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
-
 		ctx = cfgcommon.NewConfigureLoadingContext(context.Background())
 
 		geoloadername := platform.NewEnvFlag("v2ray.conf.geoloader").GetValue(func() string {

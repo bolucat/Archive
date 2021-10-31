@@ -3,7 +3,6 @@ package browserforwarder
 import (
 	"bytes"
 	"context"
-	"github.com/v2fly/v2ray-core/v4/common/platform"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/net"
+	"github.com/v2fly/v2ray-core/v4/common/platform"
 	"github.com/v2fly/v2ray-core/v4/common/platform/filesystem"
 	"github.com/v2fly/v2ray-core/v4/features/extension"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
@@ -113,7 +113,6 @@ func BridgeResource(rw http.ResponseWriter, r *http.Request, path string) {
 
 	platformFileName := filepath.FromSlash("browserforwarder/" + content)
 	data, err := filesystem.ReadFile(platform.GetAssetLocation(platformFileName))
-
 	if err != nil {
 		err = newError("cannot load necessary resources").Base(err)
 		http.Error(rw, err.Error(), http.StatusForbidden)

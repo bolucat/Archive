@@ -4,7 +4,6 @@ package dispatcher
 
 import (
 	"context"
-	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/protocol"
 	"github.com/v2fly/v2ray-core/v4/common/session"
+	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/features/outbound"
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
@@ -367,6 +367,7 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool) (Sni
 	}
 	return contentResult, contentErr
 }
+
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
 	ob := session.OutboundFromContext(ctx)
 	if d.hosts != nil && destination.Address.Family().IsDomain() {

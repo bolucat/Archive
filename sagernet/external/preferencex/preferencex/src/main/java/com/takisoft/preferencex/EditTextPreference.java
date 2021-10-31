@@ -112,7 +112,7 @@ public class EditTextPreference extends androidx.preference.EditTextPreference {
                     ViewGroup.MarginLayoutParams marginLayoutParams = (ViewGroup.MarginLayoutParams) layoutParams;
 
                     marginLayoutParams.topMargin = (int) Math.ceil(Resources.getSystem().getDisplayMetrics().density * 16);
-                    marginLayoutParams.bottomMargin = 0;
+                    marginLayoutParams.bottomMargin = marginLayoutParams.topMargin;
                     msgView.setLayoutParams(marginLayoutParams);
                 }
             }

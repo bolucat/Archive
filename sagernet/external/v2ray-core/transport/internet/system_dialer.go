@@ -9,8 +9,10 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/session"
 )
 
-var effectiveSystemDialer SystemDialer = &DefaultSystemDialer{}
-var effectiveSystemDNSDialer SystemDialer = &DefaultSystemDialer{}
+var (
+	effectiveSystemDialer    SystemDialer = &DefaultSystemDialer{}
+	effectiveSystemDNSDialer SystemDialer = &DefaultSystemDialer{}
+)
 
 type SystemDialer interface {
 	Dial(ctx context.Context, source net.Address, destination net.Destination, sockopt *SocketConfig) (net.Conn, error)

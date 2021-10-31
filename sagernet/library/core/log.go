@@ -11,13 +11,14 @@ package libcore
    #include <stdlib.h>
 */
 import "C"
+
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"log"
 	"strings"
 	"unsafe"
 
+	"github.com/sirupsen/logrus"
 	appLog "github.com/v2fly/v2ray-core/v4/app/log"
 	commonLog "github.com/v2fly/v2ray-core/v4/common/log"
 )
@@ -36,13 +37,11 @@ var levels = []logrus.Level{
 	logrus.DebugLevel,
 }
 
-type androidHook struct {
-}
+type androidHook struct{}
 
 type androidFormatter struct{}
 
 func (f *androidFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-
 	msgWithLevel := fmt.Sprint("[", strings.Title(entry.Level.String()), "] ", entry.Message)
 	return []byte(msgWithLevel), nil
 }
@@ -78,11 +77,9 @@ func (hook *androidHook) Fire(e *logrus.Entry) error {
 	return nil
 }
 
-type v2rayLogWriter struct {
-}
+type v2rayLogWriter struct{}
 
 func (w *v2rayLogWriter) Write(s string) error {
-
 	var priority C.int
 	if strings.Contains(s, "[Debug]") {
 		s = strings.Replace(s, "[Debug]", "", 1)

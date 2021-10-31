@@ -2,6 +2,9 @@ package gvisor
 
 import (
 	"fmt"
+	"net"
+	"strconv"
+
 	"github.com/sirupsen/logrus"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -10,8 +13,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
 	"libcore/tun"
-	"net"
-	"strconv"
 )
 
 func gUdpHandler(s *stack.Stack, handler tun.Handler) {

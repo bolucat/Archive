@@ -2,7 +2,7 @@ package v4
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
+
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
 	"github.com/v2fly/v2ray-core/v4/proxy/wireguard"
 )
@@ -20,11 +20,9 @@ type WireGuardClientConfig struct {
 }
 
 func (v *WireGuardClientConfig) Build() (proto.Message, error) {
-	config := &wireguard.Config{
-		Server: &protocol.ServerEndpoint{
-			Address: v.Address.Build(),
-			Port:    uint32(v.Port),
-		},
+	return &wireguard.Config{
+		Address:       v.Address.Build(),
+		Port:          uint32(v.Port),
 		Network:       v.Network.Build(),
 		LocalAddress:  v.LocalAddresses,
 		PrivateKey:    v.PrivateKey,
@@ -32,6 +30,5 @@ func (v *WireGuardClientConfig) Build() (proto.Message, error) {
 		PreSharedKey:  v.PreSharedKey,
 		Mtu:           v.MTU,
 		UserLevel:     v.UserLevel,
-	}
-	return config, nil
+	}, nil
 }

@@ -2,9 +2,10 @@ package outbound_test
 
 import (
 	"context"
-	"google.golang.org/protobuf/types/known/anypb"
 	"testing"
 	_ "unsafe"
+
+	"google.golang.org/protobuf/types/known/anypb"
 
 	core "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/app/policy"
@@ -22,9 +23,6 @@ func TestInterfaces(t *testing.T) {
 	_ = (outbound.Manager)(new(Manager))
 }
 
-//go:linkname toContext github.com/v2fly/v2ray-core/v4.toContext
-func toContext(ctx context.Context, v *core.Instance) context.Context
-
 func TestOutboundWithoutStatCounter(t *testing.T) {
 	config := &core.Config{
 		App: []*anypb.Any{
@@ -41,7 +39,7 @@ func TestOutboundWithoutStatCounter(t *testing.T) {
 
 	v, _ := core.New(config)
 	v.AddFeature((outbound.Manager)(new(Manager)))
-	ctx := toContext(context.Background(), v)
+	ctx := core.WithContext(context.Background(), v)
 	h, _ := NewHandler(ctx, &core.OutboundHandlerConfig{
 		Tag:           "tag",
 		ProxySettings: serial.ToTypedMessage(&freedom.Config{}),
@@ -70,7 +68,7 @@ func TestOutboundWithStatCounter(t *testing.T) {
 
 	v, _ := core.New(config)
 	v.AddFeature((outbound.Manager)(new(Manager)))
-	ctx := toContext(context.Background(), v)
+	ctx := core.WithContext(context.Background(), v)
 	h, _ := NewHandler(ctx, &core.OutboundHandlerConfig{
 		Tag:           "tag",
 		ProxySettings: serial.ToTypedMessage(&freedom.Config{}),

@@ -26,6 +26,10 @@ func ReadAllToBytes(reader io.Reader) ([]byte, error) {
 // MultiBuffer is a list of Buffers. The order of Buffer matters.
 type MultiBuffer []*Buffer
 
+func AsMulti(data []byte) MultiBuffer {
+	return MultiBuffer{As(data)}
+}
+
 // MergeMulti merges content from src to dest, and returns the new address of dest and src
 func MergeMulti(dest MultiBuffer, src MultiBuffer) (MultiBuffer, MultiBuffer) {
 	dest = append(dest, src...)
@@ -73,6 +77,27 @@ func (mb MultiBuffer) Copy(b []byte) int {
 		}
 	}
 	return total
+}
+
+func (mb MultiBuffer) Require(l int32) (*Buffer, error) {
+	if mb.Len() < l {
+		return nil, io.ErrUnexpectedEOF
+	}
+	if mb[0].Len() > l {
+		return mb[0], nil
+	}
+	rr := Get(l)
+	mb.Copy(rr.Bytes())
+	return rr, nil
+}
+
+func (mb MultiBuffer) Bytes() []byte {
+	if len(mb) == 1 {
+		return mb[0].Bytes()
+	}
+	b := make([]byte, mb.Len())
+	mb.Copy(b)
+	return b
 }
 
 // ReadFrom reads all content from reader until EOF.

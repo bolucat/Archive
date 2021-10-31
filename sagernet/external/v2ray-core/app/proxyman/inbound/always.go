@@ -61,16 +61,16 @@ func NewAlwaysOnInboundHandler(ctx context.Context, tag string, receiverConfig *
 	return NewAlwaysOnInboundHandlerWithProxy(ctx, tag, receiverConfig, p, false)
 }
 
-func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receiverConfig *proxyman.ReceiverConfig, proxy proxy.Inbound, inject bool) (*AlwaysOnInboundHandler, error) {
+func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receiverConfig *proxyman.ReceiverConfig, p proxy.Inbound, inject bool) (*AlwaysOnInboundHandler, error) {
 	h := &AlwaysOnInboundHandler{
-		proxy: proxy,
+		proxy: p,
 		mux:   mux.NewServer(ctx),
 		tag:   tag,
 	}
 
 	uplinkCounter, downlinkCounter := getStatCounter(core.MustFromContext(ctx), tag)
 
-	nl := proxy.Network()
+	nl := p.Network()
 	pr := receiverConfig.PortRange
 	address := receiverConfig.Listen.AsAddress()
 	if address == nil {
@@ -97,7 +97,7 @@ func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receive
 
 			worker := &dsWorker{
 				address:         address,
-				proxy:           proxy,
+				proxy:           p,
 				stream:          mss,
 				tag:             tag,
 				dispatcher:      h.mux,
@@ -117,7 +117,7 @@ func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receive
 				worker := &tcpWorker{
 					address:         address,
 					port:            net.Port(port),
-					proxy:           proxy,
+					proxy:           p,
 					stream:          mss,
 					recvOrigDest:    receiverConfig.ReceiveOriginalDestination,
 					tag:             tag,
@@ -134,7 +134,7 @@ func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receive
 				worker := &udpWorker{
 					ctx:             ctx,
 					tag:             tag,
-					proxy:           proxy,
+					proxy:           p,
 					address:         address,
 					port:            net.Port(port),
 					dispatcher:      h.mux,
@@ -149,7 +149,7 @@ func NewAlwaysOnInboundHandlerWithProxy(ctx context.Context, tag string, receive
 	}
 
 	if !inject {
-		if i, ok := proxy.(inbound.Initializer); ok {
+		if i, ok := p.(inbound.Initializer); ok {
 			i.Initialize(h)
 		}
 	}

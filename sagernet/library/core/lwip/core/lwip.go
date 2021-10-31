@@ -7,6 +7,7 @@ package core
 #include "lwip/timeouts.h"
 */
 import "C"
+
 import (
 	"context"
 	"errors"
@@ -15,8 +16,10 @@ import (
 	"unsafe"
 )
 
-const CHECK_TIMEOUTS_INTERVAL = 250 // in millisecond
-const TCP_POLL_INTERVAL = 8         // poll every 4 seconds
+const (
+	CHECK_TIMEOUTS_INTERVAL = 250 // in millisecond
+	TCP_POLL_INTERVAL       = 8   // poll every 4 seconds
+)
 
 type LWIPStack interface {
 	Write([]byte) (int, error)

@@ -3,10 +3,10 @@ package wireguard
 import (
 	"context"
 	"fmt"
-	"golang.zx2c4.com/wireguard/tun"
 	"net"
 	"os"
 
+	"golang.zx2c4.com/wireguard/tun"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"

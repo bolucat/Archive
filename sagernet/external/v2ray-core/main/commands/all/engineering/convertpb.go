@@ -3,12 +3,14 @@ package engineering
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"os"
+
+	"google.golang.org/protobuf/proto"
+
 	core "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/common/cmdarg"
 	"github.com/v2fly/v2ray-core/v4/main/commands/base"
-	"google.golang.org/protobuf/proto"
-	"io"
-	"os"
 )
 
 var (
@@ -44,7 +46,6 @@ var cmdConvertPb = &base.Command{
 				base.Fatalf("%s", newError(fmt.Sprintf("failed to load config: %s", configFiles)).Base(err))
 				return
 			}
-
 		}
 		bytew, err := proto.Marshal(config)
 		if err != nil {
@@ -52,6 +53,5 @@ var cmdConvertPb = &base.Command{
 			return
 		}
 		io.Copy(os.Stdout, bytes.NewReader(bytew))
-
 	},
 }

@@ -20,7 +20,7 @@ func init() {
 					CipherType: shadowsocks.CipherFromString(simplifiedServer.Method),
 				}),
 			},
-			Network: net.ParseNetworks(simplifiedServer.Network),
+			Network:    net.ParseNetworks(simplifiedServer.Network),
 			Plugin:     simplifiedServer.Plugin,
 			PluginOpts: simplifiedServer.PluginOpts,
 			PluginArgs: simplifiedServer.PluginArgs,

@@ -2,6 +2,7 @@ package buf
 
 import (
 	"io"
+	"runtime"
 
 	"github.com/v2fly/v2ray-core/v4/common/bytespool"
 	"github.com/v2fly/v2ray-core/v4/common/net"
@@ -21,6 +22,7 @@ type Buffer struct {
 	v        []byte
 	start    int32
 	end      int32
+	out      bool
 	Endpoint *net.Destination
 }
 
@@ -28,6 +30,30 @@ type Buffer struct {
 func New() *Buffer {
 	return &Buffer{
 		v: pool.Get().([]byte),
+	}
+}
+
+func As(data []byte) *Buffer {
+	return &Buffer{
+		v:   data,
+		out: true,
+	}
+}
+
+func From(data []byte) *Buffer {
+	buffer := Get(int32(len(data)))
+	buffer.Write(data)
+	return buffer
+}
+
+func Get(size int32) *Buffer {
+	if size <= Size {
+		return New()
+	} else {
+		return &Buffer{
+			v:   make([]byte, size),
+			out: true,
+		}
 	}
 }
 
@@ -41,7 +67,7 @@ func StackNew() Buffer {
 
 // Release recycles the buffer into an internal buffer pool.
 func (b *Buffer) Release() {
-	if b == nil || b.v == nil {
+	if b == nil || b.v == nil || b.out {
 		return
 	}
 
@@ -73,13 +99,28 @@ func (b *Buffer) Bytes() []byte {
 	return b.v[b.start:b.end]
 }
 
+func (b *Buffer) Require(requiredLength int32) {
+	if int32(len(b.v)) >= requiredLength {
+		return
+	}
+	nb := make([]byte, requiredLength)
+	copy(b.v[b.start:b.end], nb[b.start:b.end])
+	if !b.out {
+		stack := make([]byte, 16384)
+		n := int32(runtime.Stack(stack, false))
+		newError("buffer out of pool, required ", requiredLength, ", buffer size ", len(b.v), "\n", string(stack[:n])).WriteToLog()
+
+		b.out = true
+		pool.Put(b.v)
+	}
+	b.v = nb
+}
+
 // Extend increases the buffer size by n bytes, and returns the extended part.
 // It panics if result size is larger than buf.Size.
 func (b *Buffer) Extend(n int32) []byte {
 	end := b.end + n
-	if end > int32(len(b.v)) {
-		panic("extending out of bound")
-	}
+	b.Require(end)
 	ext := b.v[b.end:end]
 	b.end = end
 	return ext
@@ -155,6 +196,7 @@ func (b *Buffer) IsFull() bool {
 
 // Write implements Write method in io.Writer.
 func (b *Buffer) Write(data []byte) (int, error) {
+	b.Require(b.end + int32(len(data)))
 	nBytes := copy(b.v[b.end:], data)
 	b.end += int32(nBytes)
 	return nBytes, nil
@@ -199,10 +241,7 @@ func (b *Buffer) ReadFrom(reader io.Reader) (int64, error) {
 // ReadFullFrom reads exact size of bytes from given reader, or until error occurs.
 func (b *Buffer) ReadFullFrom(reader io.Reader, size int32) (int64, error) {
 	end := b.end + size
-	if end > int32(len(b.v)) {
-		v := end
-		return 0, newError("out of bound: ", v)
-	}
+	b.Require(end)
 	n, err := io.ReadFull(reader, b.v[b.end:end])
 	b.end += int32(n)
 	return int64(n), err

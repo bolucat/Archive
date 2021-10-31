@@ -20,6 +20,10 @@ type TestDispatcher struct {
 	OnDispatch func(ctx context.Context, dest net.Destination) (*transport.Link, error)
 }
 
+func (d *TestDispatcher) DispatchLink(ctx context.Context, dest net.Destination, link *transport.Link) error {
+	return nil
+}
+
 func (d *TestDispatcher) Dispatch(ctx context.Context, dest net.Destination) (*transport.Link, error) {
 	return d.OnDispatch(ctx, dest)
 }

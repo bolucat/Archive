@@ -2,11 +2,12 @@ package libcore
 
 import (
 	"errors"
-	"github.com/sagernet/sagerconnect/api"
-	"github.com/sirupsen/logrus"
 	"net"
 	"strings"
 	"sync"
+
+	"github.com/sagernet/sagerconnect/api"
+	"github.com/sirupsen/logrus"
 )
 
 type ApiInstance struct {

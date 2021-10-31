@@ -2,10 +2,18 @@ package libcore
 
 import (
 	"context"
+	"io"
+	"math"
+	"net"
+	"os"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"time"
+
 	"github.com/miekg/dns"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	core "github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/session"
@@ -14,17 +22,9 @@ import (
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
-	"io"
 	"libcore/gvisor"
 	"libcore/lwip"
 	"libcore/tun"
-	"math"
-	"net"
-	"os"
-	"path/filepath"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
 var _ tun.Handler = (*Tun2ray)(nil)
@@ -92,13 +92,13 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance,
 		if pcap {
 			path := time.Now().UTC().String()
 			path = externalAssetsPath + "/pcap/" + path + ".pcap"
-			err = os.MkdirAll(filepath.Dir(path), 0755)
+			err = os.MkdirAll(filepath.Dir(path), 0o755)
 			if err != nil {
-				return nil, errors.WithMessage(err, "unable to create pcap dir")
+				return nil, newError("unable to create pcap dir").Base(err)
 			}
 			pcapFile, err = os.Create(path)
 			if err != nil {
-				return nil, errors.WithMessage(err, "unable to create pcap file")
+				return nil, newError("unable to create pcap file").Base(err)
 			}
 		}
 
@@ -106,7 +106,7 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance,
 	} else {
 		dev := os.NewFile(uintptr(fd), "")
 		if dev == nil {
-			return nil, errors.New("failed to open TUN file descriptor")
+			return nil, newError("failed to open TUN file descriptor")
 		}
 		t.dev, err = lwip.New(dev, mtu, t)
 	}
@@ -374,7 +374,6 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	}
 
 	conn, err := t.v2ray.dialUDP(ctx, destination, time.Minute*5)
-
 	if err != nil {
 		logrus.Errorf("[UDP] dial failed: %s", err.Error())
 		return

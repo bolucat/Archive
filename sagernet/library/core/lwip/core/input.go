@@ -12,6 +12,7 @@ input(struct pbuf *p)
 }
 */
 import "C"
+
 import (
 	"encoding/binary"
 	"errors"

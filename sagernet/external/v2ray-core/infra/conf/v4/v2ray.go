@@ -2,15 +2,9 @@ package v4
 
 import (
 	"encoding/json"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/loader"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/muxcfg"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/proxycfg"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/sniffer"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/dns"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/log"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/router"
-	"google.golang.org/protobuf/types/known/anypb"
 	"strings"
+
+	"google.golang.org/protobuf/types/known/anypb"
 
 	core "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/app/dispatcher"
@@ -18,6 +12,13 @@ import (
 	"github.com/v2fly/v2ray-core/v4/app/stats"
 	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/loader"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/muxcfg"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/proxycfg"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/sniffer"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/dns"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/log"
+	"github.com/v2fly/v2ray-core/v4/infra/conf/synthetic/router"
 )
 
 var (
@@ -43,6 +44,7 @@ var (
 		"dns":         func() interface{} { return new(DNSOutboundConfig) },
 		"loopback":    func() interface{} { return new(LoopbackConfig) },
 		"wireguard":   func() interface{} { return new(WireGuardClientConfig) },
+		"ssh":         func() interface{} { return new(SSHClientConfig) },
 	}, "protocol", "settings")
 )
 

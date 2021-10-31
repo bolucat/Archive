@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"hash/crc64"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/platform"
 	"github.com/v2fly/v2ray-core/v4/common/protocol"
 	"github.com/v2fly/v2ray-core/v4/common/retry"
+	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"github.com/v2fly/v2ray-core/v4/common/session"
 	"github.com/v2fly/v2ray-core/v4/common/signal"
 	"github.com/v2fly/v2ray-core/v4/common/task"
@@ -60,7 +60,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	var rec *protocol.ServerSpec
 	var conn internet.Connection
 
-	err := retry.ExponentialBackoff(2, 200).On(func() error {
+	err := retry.ExponentialBackoff(5, 200).On(func() error {
 		rec = h.serverPicker.PickServer()
 		rawConn, err := dialer.Dial(ctx, rec.Destination())
 		if err != nil {
