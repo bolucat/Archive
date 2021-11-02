@@ -362,14 +362,23 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 
 	ctx := session.ContextWithInbound(context.Background(), inbound)
 
-	if !isDns && t.fakedns {
+	if !isDns && (t.sniffing || t.fakedns) {
+		req := session.SniffingRequest{
+			Enabled:      true,
+			MetadataOnly: t.fakedns && !t.sniffing,
+			RouteOnly:    !t.overrideDestination,
+		}
+		if t.sniffing && t.fakedns {
+			req.OverrideDestinationForProtocol = []string{"fakedns", "quic"}
+		}
+		if t.sniffing && !t.fakedns {
+			req.OverrideDestinationForProtocol = []string{"quic"}
+		}
+		if !t.sniffing && t.fakedns {
+			req.OverrideDestinationForProtocol = []string{"fakedns"}
+		}
 		ctx = session.ContextWithContent(ctx, &session.Content{
-			SniffingRequest: session.SniffingRequest{
-				Enabled:                        true,
-				MetadataOnly:                   t.fakedns && !t.sniffing,
-				OverrideDestinationForProtocol: []string{"fakedns"},
-				RouteOnly:                      !t.overrideDestination,
-			},
+			SniffingRequest: req,
 		})
 	}
 

@@ -10,7 +10,7 @@ import (
 
 const (
 	// Size of a regular buffer.
-	Size = 20 * 1024
+	Size = 8192
 )
 
 var pool = bytespool.GetPool(Size)
@@ -33,9 +33,11 @@ func New() *Buffer {
 	}
 }
 
+// As creates a Buffer with an existed bytearray
 func As(data []byte) *Buffer {
 	return &Buffer{
 		v:   data,
+		end: int32(len(data)),
 		out: true,
 	}
 }
@@ -215,6 +217,28 @@ func (b *Buffer) WriteByte(v byte) error {
 // WriteString implements io.StringWriter.
 func (b *Buffer) WriteString(s string) (int, error) {
 	return b.Write([]byte(s))
+}
+
+// ReadByte implements io.ByteReader
+func (b *Buffer) ReadByte() (byte, error) {
+	if b.start == b.end {
+		return 0, io.EOF
+	}
+
+	nb := b.v[b.start]
+	b.start++
+	return nb, nil
+}
+
+// ReadBytes implements bufio.Reader.ReadBytes
+func (b *Buffer) ReadBytes(length int32) ([]byte, error) {
+	if b.end-b.start < length {
+		return nil, io.EOF
+	}
+
+	nb := b.v[b.start : b.start+length]
+	b.start += length
+	return nb, nil
 }
 
 // Read implements io.Reader.Read().
