@@ -47,7 +47,7 @@ func (t *Tun2ray) ResetAppTraffics() {
 		return
 	}
 
-	t.access.Lock()
+	t.access.RLock()
 	var toDel []uint16
 	for uid, stat := range t.appStats {
 		atomic.StoreUint64(&stat.uplink, 0)
@@ -58,10 +58,15 @@ func (t *Tun2ray) ResetAppTraffics() {
 			toDel = append(toDel, uid)
 		}
 	}
-	for _, uid := range toDel {
-		delete(t.appStats, uid)
+	t.access.RUnlock()
+	if len(toDel) > 0 {
+		t.access.Lock()
+		for _, uid := range toDel {
+			delete(t.appStats, uid)
+		}
+		t.access.Unlock()
 	}
-	t.access.Unlock()
+
 }
 
 func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
@@ -70,7 +75,7 @@ func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
 	}
 
 	var stats []*AppStats
-	t.access.Lock()
+	t.access.RLock()
 	for uid, stat := range t.appStats {
 		export := &AppStats{
 			Uid:          int32(uid),
@@ -93,7 +98,7 @@ func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
 
 		stats = append(stats, export)
 	}
-	t.access.Unlock()
+	t.access.RUnlock()
 
 	for _, stat := range stats {
 		listener.UpdateStats(stat)

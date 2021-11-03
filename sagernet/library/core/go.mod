@@ -5,7 +5,6 @@ go 1.17
 require (
 	github.com/Dreamacro/clash v1.7.1
 	github.com/golang/protobuf v1.5.2
-	github.com/miekg/dns v1.1.43
 	github.com/sagernet/gomobile v0.0.0-20210905032500-701a995ff844
 	github.com/sagernet/libping v0.1.1
 	github.com/sagernet/sagerconnect v0.1.7
@@ -20,7 +19,7 @@ require (
 replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211031111606-5e4a1bc5779f
 
 //replace github.com/v2fly/v2ray-core/v4 v4.43.0 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.41.2-0.20211102123209-41cadb870653
+replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.41.2-0.20211103125849-3bf9b052d8c2
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect

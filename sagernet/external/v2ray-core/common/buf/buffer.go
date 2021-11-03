@@ -13,7 +13,10 @@ const (
 	Size = 8192
 )
 
-var pool = bytespool.GetPool(Size)
+var (
+	pool          = bytespool.GetPool(Size)
+	errOutOfBound = newError("out of bound")
+)
 
 // Buffer is a recyclable allocation of a byte array. Buffer.Release() recycles
 // the buffer into an internal buffer pool, in order to recreate a buffer more
@@ -198,7 +201,6 @@ func (b *Buffer) IsFull() bool {
 
 // Write implements Write method in io.Writer.
 func (b *Buffer) Write(data []byte) (int, error) {
-	b.Require(b.end + int32(len(data)))
 	nBytes := copy(b.v[b.end:], data)
 	b.end += int32(nBytes)
 	return nBytes, nil
@@ -207,7 +209,7 @@ func (b *Buffer) Write(data []byte) (int, error) {
 // WriteByte writes a single byte into the buffer.
 func (b *Buffer) WriteByte(v byte) error {
 	if b.IsFull() {
-		return newError("buffer full")
+		return errOutOfBound
 	}
 	b.v[b.end] = v
 	b.end++
@@ -265,7 +267,9 @@ func (b *Buffer) ReadFrom(reader io.Reader) (int64, error) {
 // ReadFullFrom reads exact size of bytes from given reader, or until error occurs.
 func (b *Buffer) ReadFullFrom(reader io.Reader, size int32) (int64, error) {
 	end := b.end + size
-	b.Require(end)
+	if end > int32(len(b.v)) {
+		return 0, errOutOfBound
+	}
 	n, err := io.ReadFull(reader, b.v[b.end:end])
 	b.end += int32(n)
 	return int64(n), err
