@@ -1,3 +1,33 @@
+shadowsocks-rust (1.12.0) unstable; urgency=medium
+
+  ## Features
+
+  - TCP connects with Happy Eyeballs (RFC6555, RFC8305) strategy
+  - Local 
+    - #586 Basic support of `tun` interface in `sslocal` (Experimental) Tested on macOS and Linux
+    - #620 Local server will choose remote servers based on their `"mode"`
+    - Local Balancer
+      - Configurable `max_server_rtt` and `check_interval`
+      - Reload configuration `"servers"` in runtime when receiving `SIGUSR1` signal
+  - Manager
+    - #421 `ssmanager` support `--plugin` and `--plugin-opts` as default plugin configurations
+    - #648 `ssmanager` support starting `ssserver` in standalone (independent process) mode.
+  - #627 ACL support `|` and `||` hash-set and domain-tree mode
+  - Support `--outbound-bind-interface` on Windows.
+
+  ## Bug Fixed
+
+  - #579 UDP server reply target address should be received source address
+  - TFO socket on Windows should bind to `SOCKADDR_IN6` for IPv6 targets
+  - #640 `--daemonize` will set `chdir` to current working directory
+    - [BREAKING] In the previous version `--daemonize` will call `chdir` to `/` by default, so it may change the behavior if users using relative paths in `"plugin"` or `"plugin_opts"`
+
+  ## Miscellaneous
+
+  - #596 Support Snapcraft https://snapcraft.io/shadowsocks-rust
+  - TFO on Linux queue length set to 1024 to match backlogs
+  - Completely remove Replay Attack Protection with Ping-Pong bloom filter in default build configuration
+
 shadowsocks-rust (1.11.2) unstable; urgency=medium
 
   ## Features
@@ -16,7 +46,7 @@ shadowsocks-rust (1.11.2) unstable; urgency=medium
 
   ## Security
 
-  - #556 Remove slient dropping when replay was detected
+  - #556 Remove silent dropping when replay was detected
 
  -- ty <zonyitoo@gmail.com>  Sat, 24 July 2021 11:50:00 +0800
 
@@ -345,7 +375,7 @@ shadowsocks-rust (1.8.17) unstable; urgency=medium
 
   ## BUG Fixed
 
-  * [#292](https://github.com/shadowsocks/shadowsocks-rust/pull/292) Hold the TCP connection if it failed to decrypt the first packet for preventing activing probing.
+  * [#292](https://github.com/shadowsocks/shadowsocks-rust/pull/292) Hold the TCP connection if it failed to decrypt the first packet for preventing active probing.
   * [#293](https://github.com/shadowsocks/shadowsocks-rust/pull/293) Keep server running if it fails to create UDP associations.
 
  -- ty <zonyitoo@gmail.com>  Tue, 8 Sep 2020 23:31:20 +0800
@@ -410,7 +440,7 @@ shadowsocks-rust (1.8.12) unstable; urgency=medium
   * [#233](https://github.com/shadowsocks/shadowsocks-rust/issues/233) sslocal supports socks4 protocol (SOCKS4/4a)
   * Options for LRU cache in UDP relay:
       * udp_timeout: UDP Association will be kept up to this duration (in seconds)
-      * udp_max_associations: Maximum number of UDP Associations will be kept simutanously
+      * udp_max_associations: Maximum number of UDP Associations will be kept simultaneously
 
   ## BUG Fixed
 
@@ -432,7 +462,7 @@ shadowsocks-rust (1.8.11) unstable; urgency=medium
 
   * [#232](https://github.com/shadowsocks/shadowsocks-rust/issues/232) Send data along with handshake (LOCAL -> REMOTE)
   * HTTP server supports https target with both native-tls and rustls
-      * For rustls, https connections will try to negociate h2 with ALPN
+      * For rustls, https connections will try to negotiate h2 with ALPN
   * shadowsocks/shadowsocks-org#161 Support none as dummy cipher's name
   * Adding local-tunnel feature for controlling tunnel protocol
   * [#252](https://github.com/shadowsocks/shadowsocks-rust/issues/252) Support udp_max_associations configuration option
@@ -524,7 +554,7 @@ shadowsocks-rust (1.8.8) unstable; urgency=medium
       * Eliminated those connection failures while sslocal server just started
   * [#191](https://github.com/shadowsocks/shadowsocks-rust/issues/191) Skip IV/nonce duplication check for plain cipher
 
-  ## Miscelleous
+  ## Miscellaneous
 
   * Nightly builds on CircleCI: https://circleci.com/gh/shadowsocks/shadowsocks-rust
       * Obtain release binaries in #Artifacts, for example:
@@ -626,7 +656,7 @@ shadowsocks-rust (1.8.0) unstable; urgency=medium
       * `trust-dns-resolver` - `v0.18`
       * `libsodium-sys` (switched from `libsodium-ffi` for better build process)
   * Ping balancer
-      * Calculate scores not only with servers' latency, but also availablity
+      * Calculate scores not only with servers' latency, but also availability
       * Supports UDP relay
   * Retry 3 times if it connects failed to remote proxy server automatically
 
