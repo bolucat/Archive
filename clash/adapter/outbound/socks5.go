@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"strconv"
 
@@ -25,6 +24,7 @@ type Socks5 struct {
 }
 
 type Socks5Option struct {
+	BasicOption
 	Name           string `proxy:"name"`
 	Server         string `proxy:"server"`
 	Port           int    `proxy:"port"`
@@ -60,8 +60,8 @@ func (ss *Socks5) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error)
 }
 
 // DialContext implements C.ProxyAdapter
-func (ss *Socks5) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
-	c, err := dialer.DialContext(ctx, "tcp", ss.addr)
+func (ss *Socks5) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
+	c, err := dialer.DialContext(ctx, "tcp", ss.addr, ss.Base.DialOptions(opts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %w", ss.addr, err)
 	}
@@ -77,11 +77,9 @@ func (ss *Socks5) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Co
 	return NewConn(c, ss), nil
 }
 
-// DialUDP implements C.ProxyAdapter
-func (ss *Socks5) DialUDP(metadata *C.Metadata) (_ C.PacketConn, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
-	defer cancel()
-	c, err := dialer.DialContext(ctx, "tcp", ss.addr)
+// ListenPacketContext implements C.ProxyAdapter
+func (ss *Socks5) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+	c, err := dialer.DialContext(ctx, "tcp", ss.addr, ss.Base.DialOptions(opts...)...)
 	if err != nil {
 		err = fmt.Errorf("%s connect error: %w", ss.addr, err)
 		return
@@ -110,13 +108,13 @@ func (ss *Socks5) DialUDP(metadata *C.Metadata) (_ C.PacketConn, err error) {
 		return
 	}
 
-	pc, err := dialer.ListenPacket(context.Background(), "udp", "")
+	pc, err := dialer.ListenPacket(ctx, "udp", "", ss.Base.DialOptions(opts...)...)
 	if err != nil {
 		return
 	}
 
 	go func() {
-		io.Copy(ioutil.Discard, c)
+		io.Copy(io.Discard, c)
 		c.Close()
 		// A UDP association terminates when the TCP connection that the UDP
 		// ASSOCIATE request arrived on terminates. RFC1928
@@ -151,10 +149,11 @@ func NewSocks5(option Socks5Option) *Socks5 {
 
 	return &Socks5{
 		Base: &Base{
-			name: option.Name,
-			addr: net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
-			tp:   C.Socks5,
-			udp:  option.UDP,
+			name:  option.Name,
+			addr:  net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
+			tp:    C.Socks5,
+			udp:   option.UDP,
+			iface: option.Interface,
 		},
 		user:           option.UserName,
 		pass:           option.Password,

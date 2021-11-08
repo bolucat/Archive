@@ -2,7 +2,6 @@ package executor
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 
@@ -25,15 +24,13 @@ import (
 	"github.com/Dreamacro/clash/tunnel"
 )
 
-var (
-	mux sync.Mutex
-)
+var mux sync.Mutex
 
 func readConfig(path string) ([]byte, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, err
 	}
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -171,11 +168,7 @@ func updateGeneral(general *config.General, force bool) {
 	tunnel.SetMode(general.Mode)
 	resolver.DisableIPv6 = !general.IPv6
 
-	if general.Interface != "" {
-		dialer.DefaultOptions = []dialer.Option{dialer.WithInterface(general.Interface)}
-	} else {
-		dialer.DefaultOptions = nil
-	}
+	dialer.DefaultInterface.Store(general.Interface)
 
 	iface.FlushCache()
 

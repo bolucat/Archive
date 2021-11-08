@@ -180,6 +180,7 @@ func (c *dispatcherConn) handleInput() {
 			buf.ReleaseMulti(mb)
 			return
 		}
+		c.timer.Update()
 		for _, buffer := range mb {
 			packet := udp.Packet{
 				Payload: buffer,
@@ -235,6 +236,9 @@ func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	buffer.Endpoint = &endpoint
 
 	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
+	if err == nil {
+		c.timer.Update()
+	}
 	return
 }
 
