@@ -12,7 +12,6 @@ use mio::{
 };
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use webpki::{DNSNameRef, DnsNameRef};
 
 use crate::{
     config::Opts,
@@ -47,7 +46,7 @@ const CHANNEL_UDP: usize = 1;
 /// channel index for client tcp connection
 const CHANNEL_CLIENT: usize = 2;
 /// channel index for remote tcp connection
-const CHANNEL_TCP: usize = 3;
+const CHANNEL_REMOTE: usize = 3;
 
 /// Returns next index based on the current one.
 /// If the next index overflows (larger than [`MAX_INDEX`]),
@@ -132,7 +131,7 @@ pub fn run(opts: &'static Opts) {
             ta.name_constraints,
         )
     }));
-    let mut config = ClientConfig::builder()
+    let config = ClientConfig::builder()
         .with_safe_default_cipher_suites()
         .with_safe_default_kx_groups()
         .with_safe_default_protocol_versions()
