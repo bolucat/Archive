@@ -66,7 +66,6 @@ func (t *Tun2ray) ResetAppTraffics() {
 		}
 		t.access.Unlock()
 	}
-
 }
 
 func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {

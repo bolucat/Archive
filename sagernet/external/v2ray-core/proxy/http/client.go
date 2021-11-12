@@ -88,7 +88,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	buf.ReleaseMulti(mbuf)
 	defer bytespool.Free(firstPayload)
 
-	if err := retry.ExponentialBackoff(2, 100).On(func() error {
+	if err := retry.ExponentialBackoff(5, 100).On(func() error {
 		server := c.serverPicker.PickServer()
 		dest := server.Destination()
 		user = server.PickUser()

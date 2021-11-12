@@ -57,7 +57,6 @@ type TCPConn interface {
 
 	// Abort aborts the connection by sending a RST segment.
 	Abort()
-
 	SetDeadline(t time.Time) error
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error

@@ -4,10 +4,8 @@
 
 package merge
 
-const (
-	priorityKey string = "_priority"
-	tagKey      string = "_tag"
-)
+const priorityKey string = "_priority"
+const tagKey string = "_tag"
 
 // ApplyRules applies merge rules according to _tag, _priority fields, and remove them
 func ApplyRules(m map[string]interface{}) error {

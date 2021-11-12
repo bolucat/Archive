@@ -25,6 +25,7 @@ type bindingInstance struct {
 var binding bindingInstance
 
 func (b *bindingInstance) startAPIInstance() {
+
 	bindConfig := &core.Config{
 		App: []*anypb.Any{
 			serial.ToTypedMessage(&instman.Config{}),

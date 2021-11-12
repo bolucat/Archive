@@ -79,7 +79,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	var rec *protocol.ServerSpec
 	var conn internet.Connection
 
-	if err := retry.ExponentialBackoff(2, 200).On(func() error {
+	if err := retry.ExponentialBackoff(5, 200).On(func() error {
 		rec = h.serverPicker.PickServer()
 		var err error
 		conn, err = dialer.Dial(ctx, rec.Destination())

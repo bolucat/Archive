@@ -22,15 +22,8 @@ import (
 	"github.com/v2fly/v2ray-core/v4/features/inbound"
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
-	"github.com/v2fly/v2ray-core/v4/proxy"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/udp"
-)
-
-var (
-	_ proxy.Inbound       = (*Server)(nil)
-	_ inbound.Initializer = (*Server)(nil)
-	_ common.Closable     = (*Server)(nil)
 )
 
 type Server struct {

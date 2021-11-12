@@ -100,7 +100,7 @@ func (p *shadowsocksrPlugin) EncodePacket(buffer *buf.Buffer) (*buf.Buffer, erro
 		buffer.Release()
 		return nil, err
 	}
-	return buf.As(packet.Bytes()), nil
+	return buf.FromBytes(packet.Bytes()), nil
 }
 
 func (p *shadowsocksrPlugin) DecodePacket(buffer *buf.Buffer) (*buf.Buffer, error) {
@@ -109,5 +109,5 @@ func (p *shadowsocksrPlugin) DecodePacket(buffer *buf.Buffer) (*buf.Buffer, erro
 	if err != nil {
 		return nil, err
 	}
-	return buf.As(packet), nil
+	return buf.FromBytes(packet), nil
 }

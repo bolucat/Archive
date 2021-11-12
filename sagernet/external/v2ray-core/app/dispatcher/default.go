@@ -115,6 +115,8 @@ func (d *DefaultDispatcher) Init(config *Config, om outbound.Manager, router rou
 	d.stats = sm
 	if hosts, ok := dc.(dns.HostsLookup); ok {
 		d.hosts = hosts
+	} else {
+		d.hosts = &dns.NoOpHostsLookup{}
 	}
 	return nil
 }
@@ -336,7 +338,7 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
 	ob := session.OutboundFromContext(ctx)
-	if d.hosts != nil && destination.Address.Family().IsDomain() {
+	if destination.Address.Family().IsDomain() {
 		proxied := d.hosts.LookupHosts(ob.Target.String())
 		if proxied != nil {
 			ro := ob.RouteTarget == destination

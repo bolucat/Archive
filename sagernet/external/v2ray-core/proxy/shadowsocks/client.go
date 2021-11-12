@@ -15,14 +15,8 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/signal"
 	"github.com/v2fly/v2ray-core/v4/common/task"
 	"github.com/v2fly/v2ray-core/v4/features/policy"
-	"github.com/v2fly/v2ray-core/v4/proxy"
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
-)
-
-var (
-	_ proxy.Outbound  = (*Client)(nil)
-	_ common.Closable = (*Client)(nil)
 )
 
 // Client is a inbound handler for Shadowsocks protocol
@@ -58,13 +52,13 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	}
 
 	v := core.MustFromContext(ctx)
-	c := &Client{
+	client := &Client{
 		serverPicker:  protocol.NewRoundRobinServerPicker(serverList),
 		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
 
 	if config.Plugin != "" {
-		s := c.serverPicker.PickServer()
+		s := client.serverPicker.PickServer()
 
 		var plugin SIP003Plugin
 
@@ -77,14 +71,14 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 			plugin = pluginLoader(config.Plugin)
 		}
 		if sp, ok := plugin.(StreamPlugin); ok {
-			c.stream = sp
+			client.stream = sp
 
 			if err := plugin.Init("", "", s.Destination().Address.String(), s.Destination().Port.String(), config.PluginOpts, config.PluginArgs, s.PickUser().Account.(*MemoryAccount)); err != nil {
 				return nil, newError("failed to start plugin").Base(err)
 			}
 
 			if pp, ok := plugin.(ProtocolPlugin); ok {
-				c.protocol = pp
+				client.protocol = pp
 			}
 		} else {
 			port, err := net.GetFreePort()
@@ -92,7 +86,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 				return nil, newError("failed to get free port for shadowsocks plugin").Base(err)
 			}
 
-			c.pluginOverride = net.Destination{
+			client.pluginOverride = net.Destination{
 				Network: net.Network_TCP,
 				Address: net.LocalHostIP,
 				Port:    net.Port(port),
@@ -102,10 +96,10 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 				return nil, newError("failed to start plugin").Base(err)
 			}
 
-			c.plugin = plugin
+			client.plugin = plugin
 		}
 	}
-	return c, nil
+	return client, nil
 }
 
 // Process implements OutboundHandler.Process().

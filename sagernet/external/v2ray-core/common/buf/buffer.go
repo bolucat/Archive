@@ -2,7 +2,6 @@ package buf
 
 import (
 	"io"
-	"runtime"
 
 	"github.com/v2fly/v2ray-core/v4/common/bytespool"
 	"github.com/v2fly/v2ray-core/v4/common/net"
@@ -13,20 +12,17 @@ const (
 	Size = 8192
 )
 
-var (
-	pool          = bytespool.GetPool(Size)
-	errOutOfBound = newError("out of bound")
-)
+var pool = bytespool.GetPool(Size)
 
 // Buffer is a recyclable allocation of a byte array. Buffer.Release() recycles
 // the buffer into an internal buffer pool, in order to recreate a buffer more
 // quickly.
 type Buffer struct {
-	v        []byte
-	start    int32
-	end      int32
-	out      bool
-	Endpoint *net.Destination
+	v         []byte
+	start     int32
+	end       int32
+	unmanaged bool
+	Endpoint  *net.Destination
 }
 
 // New creates a Buffer with 0 length and 2K capacity.
@@ -36,29 +32,12 @@ func New() *Buffer {
 	}
 }
 
-// As creates a Buffer with an existed bytearray
-func As(data []byte) *Buffer {
+// FromBytes creates a Buffer with an existed bytearray
+func FromBytes(data []byte) *Buffer {
 	return &Buffer{
-		v:   data,
-		end: int32(len(data)),
-		out: true,
-	}
-}
-
-func From(data []byte) *Buffer {
-	buffer := Get(int32(len(data)))
-	buffer.Write(data)
-	return buffer
-}
-
-func Get(size int32) *Buffer {
-	if size <= Size {
-		return New()
-	} else {
-		return &Buffer{
-			v:   make([]byte, size),
-			out: true,
-		}
+		v:         data,
+		end:       int32(len(data)),
+		unmanaged: true,
 	}
 }
 
@@ -72,7 +51,7 @@ func StackNew() Buffer {
 
 // Release recycles the buffer into an internal buffer pool.
 func (b *Buffer) Release() {
-	if b == nil || b.v == nil || b.out {
+	if b == nil || b.v == nil || b.unmanaged {
 		return
 	}
 
@@ -104,28 +83,13 @@ func (b *Buffer) Bytes() []byte {
 	return b.v[b.start:b.end]
 }
 
-func (b *Buffer) Require(requiredLength int32) {
-	if int32(len(b.v)) >= requiredLength {
-		return
-	}
-	nb := make([]byte, requiredLength)
-	copy(b.v[b.start:b.end], nb[b.start:b.end])
-	if !b.out {
-		stack := make([]byte, 16384)
-		n := int32(runtime.Stack(stack, false))
-		newError("buffer out of pool, required ", requiredLength, ", buffer size ", len(b.v), "\n", string(stack[:n])).WriteToLog()
-
-		b.out = true
-		pool.Put(b.v)
-	}
-	b.v = nb
-}
-
 // Extend increases the buffer size by n bytes, and returns the extended part.
 // It panics if result size is larger than buf.Size.
 func (b *Buffer) Extend(n int32) []byte {
 	end := b.end + n
-	b.Require(end)
+	if end > int32(len(b.v)) {
+		panic("extending out of bound")
+	}
 	ext := b.v[b.end:end]
 	b.end = end
 	return ext
@@ -209,7 +173,7 @@ func (b *Buffer) Write(data []byte) (int, error) {
 // WriteByte writes a single byte into the buffer.
 func (b *Buffer) WriteByte(v byte) error {
 	if b.IsFull() {
-		return errOutOfBound
+		return newError("buffer full")
 	}
 	b.v[b.end] = v
 	b.end++
@@ -268,7 +232,8 @@ func (b *Buffer) ReadFrom(reader io.Reader) (int64, error) {
 func (b *Buffer) ReadFullFrom(reader io.Reader, size int32) (int64, error) {
 	end := b.end + size
 	if end > int32(len(b.v)) {
-		return 0, errOutOfBound
+		v := end
+		return 0, newError("out of bound: ", v)
 	}
 	n, err := io.ReadFull(reader, b.v[b.end:end])
 	b.end += int32(n)

@@ -6,7 +6,8 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/platform/filesystem/fsifce"
 )
 
-type fileSystemDefaultImpl struct{}
+type fileSystemDefaultImpl struct {
+}
 
 func (f fileSystemDefaultImpl) OpenFileForReadSeek() fsifce.FileSeekerFunc {
 	return filesystem.NewFileSeeker

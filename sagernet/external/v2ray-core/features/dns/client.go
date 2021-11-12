@@ -42,6 +42,13 @@ type HostsLookup interface {
 	LookupHosts(domain string) *net.Address
 }
 
+type NoOpHostsLookup struct {
+}
+
+func (n *NoOpHostsLookup) LookupHosts(string) *net.Address {
+	return nil
+}
+
 // ClientWithIPOption is an optional feature for querying DNS information.
 //
 // v2ray:api:beta

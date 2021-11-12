@@ -70,7 +70,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	// Connection to the outbound server.
 	var conn internet.Connection
 
-	if err := retry.ExponentialBackoff(2, 100).On(func() error {
+	if err := retry.ExponentialBackoff(5, 100).On(func() error {
 		server = c.serverPicker.PickServer()
 		dest = server.Destination()
 		rawConn, err := dialer.Dial(ctx, dest)

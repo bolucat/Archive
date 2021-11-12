@@ -3,9 +3,6 @@ package libcore
 import (
 	"context"
 	"io"
-	"libcore/gvisor"
-	"libcore/lwip"
-	"libcore/tun"
 	"math"
 	"net"
 	"os"
@@ -23,6 +20,9 @@ import (
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
+	"libcore/gvisor"
+	"libcore/lwip"
+	"libcore/tun"
 )
 
 var _ tun.Handler = (*Tun2ray)(nil)

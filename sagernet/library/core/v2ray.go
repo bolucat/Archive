@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4/app/dispatcher"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	"github.com/v2fly/v2ray-core/v4/common/net"
@@ -33,9 +34,9 @@ type V2RayInstance struct {
 	access       sync.Mutex
 	started      bool
 	core         *core.Instance
+	dispatcher   *dispatcher.DefaultDispatcher
 	statsManager stats.Manager
 	observatory  features.TaggedFeatures
-	dispatcher   routing.Dispatcher
 	dnsClient    dns.Client
 }
 
@@ -70,7 +71,7 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	}
 	instance.core = c
 	instance.statsManager = c.GetFeature(stats.ManagerType()).(stats.Manager)
-	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
+	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher).(*dispatcher.DefaultDispatcher)
 	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.Client)
 
 	o := c.GetFeature(extension.ObservatoryType())

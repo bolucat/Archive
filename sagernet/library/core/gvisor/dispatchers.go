@@ -135,6 +135,7 @@ func (d *readVDispatcher) dispatch() (bool, tcpip.Error) {
 	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 		Data: d.buf.pullViews(n),
 	})
+	// defer pkt.DecRef()
 
 	var (
 		p             tcpip.NetworkProtocolNumber

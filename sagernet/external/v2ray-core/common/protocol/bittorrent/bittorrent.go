@@ -6,8 +6,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
+
+	"github.com/v2fly/v2ray-core/v4/common"
 )
 
 type SniffHeader struct{}
@@ -39,17 +40,13 @@ func SniffUTP(b []byte) (*SniffHeader, error) {
 		return nil, common.ErrNoClue
 	}
 
-	buffer := buf.As(b)
+	buffer := buf.FromBytes(b)
 
 	var typeAndVersion uint8
 
 	if binary.Read(buffer, binary.BigEndian, &typeAndVersion) != nil {
 		return nil, common.ErrNoClue
-	}
-	typ := b[0] >> 4 & 0xF
-	ver := b[0] & 0xF
-
-	if typ < 0 || typ > 4 || ver != 1 {
+	} else if b[0]>>4&0xF > 4 || b[0]&0xF != 1 {
 		return nil, errNotBittorrent
 	}
 
@@ -62,25 +59,20 @@ func SniffUTP(b []byte) (*SniffHeader, error) {
 	}
 
 	for extension != 0 {
-
 		if extension != 1 {
 			return nil, errNotBittorrent
 		}
-
 		if binary.Read(buffer, binary.BigEndian, &extension) != nil {
 			return nil, common.ErrNoClue
 		}
 
 		var length uint8
-
 		if err := binary.Read(buffer, binary.BigEndian, &length); err != nil {
 			return nil, common.ErrNoClue
 		}
-
 		if common.Error2(buffer.ReadBytes(int32(length))) != nil {
 			return nil, common.ErrNoClue
 		}
-
 	}
 
 	if common.Error2(buffer.ReadBytes(2)) != nil {
@@ -88,11 +80,9 @@ func SniffUTP(b []byte) (*SniffHeader, error) {
 	}
 
 	var timestamp uint32
-
 	if err := binary.Read(buffer, binary.BigEndian, &timestamp); err != nil {
 		return nil, common.ErrNoClue
 	}
-
 	if math.Abs(float64(time.Now().UnixMicro()-int64(timestamp))) > float64(24*time.Hour) {
 		return nil, errNotBittorrent
 	}

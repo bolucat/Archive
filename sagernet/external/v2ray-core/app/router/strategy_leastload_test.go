@@ -85,7 +85,6 @@ func TestSelectLeastExpected(t *testing.T) {
 		t.Errorf("expected: %v, actual: %v", expected, len(ns))
 	}
 }
-
 func TestSelectLeastExpected2(t *testing.T) {
 	strategy := &LeastLoadStrategy{
 		settings: &StrategyLeastLoadConfig{
@@ -103,7 +102,6 @@ func TestSelectLeastExpected2(t *testing.T) {
 		t.Errorf("expected: %v, actual: %v", expected, len(ns))
 	}
 }
-
 func TestSelectLeastExpectedAndBaselines(t *testing.T) {
 	strategy := &LeastLoadStrategy{
 		settings: &StrategyLeastLoadConfig{
@@ -124,7 +122,6 @@ func TestSelectLeastExpectedAndBaselines(t *testing.T) {
 		t.Errorf("expected: %v, actual: %v", expected, len(ns))
 	}
 }
-
 func TestSelectLeastExpectedAndBaselines2(t *testing.T) {
 	strategy := &LeastLoadStrategy{
 		settings: &StrategyLeastLoadConfig{
@@ -145,7 +142,6 @@ func TestSelectLeastExpectedAndBaselines2(t *testing.T) {
 		t.Errorf("expected: %v, actual: %v", expected, len(ns))
 	}
 }
-
 func TestSelectLeastLoadBaselines(t *testing.T) {
 	strategy := &LeastLoadStrategy{
 		settings: &StrategyLeastLoadConfig{
@@ -164,7 +160,6 @@ func TestSelectLeastLoadBaselines(t *testing.T) {
 		t.Errorf("expected: %v, actual: %v", expected, len(ns))
 	}
 }
-
 func TestSelectLeastLoadBaselinesNoQualified(t *testing.T) {
 	strategy := &LeastLoadStrategy{
 		settings: &StrategyLeastLoadConfig{

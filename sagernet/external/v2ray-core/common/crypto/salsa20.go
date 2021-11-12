@@ -26,7 +26,7 @@ func (s *Salsa20Cipher) XORKeyStream(dst, src []byte) {
 
 	var subNonce [16]byte
 	copy(subNonce[:], s.nonce)
-	binary.LittleEndian.PutUint64(subNonce[8:], uint64(s.counter/64))
+	binary.LittleEndian.PutUint64(subNonce[8:], s.counter/64)
 
 	// It's difficult to avoid data copy here. src or dst maybe slice from
 	// Conn.Read/Write, which can't have padding.

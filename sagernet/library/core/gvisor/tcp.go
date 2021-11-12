@@ -5,7 +5,6 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/sirupsen/logrus"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -20,6 +19,7 @@ func gTcpHandler(s *stack.Stack, handler tun.Handler) {
 		waitQueue := new(waiter.Queue)
 		endpoint, errT := request.CreateEndpoint(waitQueue)
 		if errT != nil {
+			newError("failed to create TCP connection").Base(tcpipErr(errT)).WriteToLog()
 			// prevent potential half-open TCP connection leak.
 			request.Complete(true)
 			return
@@ -28,13 +28,13 @@ func gTcpHandler(s *stack.Stack, handler tun.Handler) {
 		srcAddr := net.JoinHostPort(id.RemoteAddress.String(), strconv.Itoa(int(id.RemotePort)))
 		src, err := v2rayNet.ParseDestination(fmt.Sprint("tcp:", srcAddr))
 		if err != nil {
-			logrus.Warn("[TCP] parse source address ", srcAddr, " failed: ", err)
+			newError("[TCP] parse source address ", srcAddr, " failed: ", err).AtWarning().WriteToLog()
 			return
 		}
 		dstAddr := net.JoinHostPort(id.LocalAddress.String(), strconv.Itoa(int(id.LocalPort)))
 		dst, err := v2rayNet.ParseDestination(fmt.Sprint("tcp:", dstAddr))
 		if err != nil {
-			logrus.Warn("[TCP] parse destination address ", dstAddr, " failed: ", err)
+			newError("[TCP] parse destination address ", dstAddr, " failed: ", err).AtWarning().WriteToLog()
 			return
 		}
 		go handler.NewConnection(src, dst, gonet.NewTCPConn(waitQueue, endpoint))

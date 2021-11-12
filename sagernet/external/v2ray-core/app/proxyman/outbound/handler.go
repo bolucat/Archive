@@ -148,11 +148,12 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 		outbound := session.OutboundFromContext(ctx)
 		destination := outbound.Target
 		var domainString string
-		if destination.Address.Family().IsDomain() {
+		switch {
+		case destination.Address.Family().IsDomain():
 			domainString = destination.Address.Domain()
-		} else if outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain() {
+		case outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain():
 			domainString = outbound.RouteTarget.Address.Domain()
-		} else {
+		default:
 			domainString = ""
 		}
 

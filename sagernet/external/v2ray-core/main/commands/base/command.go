@@ -113,10 +113,8 @@ func ExitIfErrors() {
 	}
 }
 
-var (
-	exitStatus = 0
-	exitMu     sync.Mutex
-)
+var exitStatus = 0
+var exitMu sync.Mutex
 
 // SetExitStatus set exit status code
 func SetExitStatus(n int) {

@@ -46,6 +46,7 @@ var cmdConvertPb = &base.Command{
 				base.Fatalf("%s", newError(fmt.Sprintf("failed to load config: %s", configFiles)).Base(err))
 				return
 			}
+
 		}
 		bytew, err := proto.Marshal(config)
 		if err != nil {
@@ -53,5 +54,6 @@ var cmdConvertPb = &base.Command{
 			return
 		}
 		io.Copy(os.Stdout, bytes.NewReader(bytew))
+
 	},
 }

@@ -7,13 +7,14 @@ import (
 	"encoding/binary"
 	"io"
 
+	"github.com/v2fly/v2ray-core/v4/common/errors"
+
 	"github.com/lucas-clemente/quic-go/quicvarint"
 	"github.com/marten-seemann/qtls-go1-17"
 	"golang.org/x/crypto/hkdf"
 
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
-	"github.com/v2fly/v2ray-core/v4/common/errors"
 	ptls "github.com/v2fly/v2ray-core/v4/common/protocol/tls"
 )
 
@@ -48,7 +49,7 @@ var (
 )
 
 func SniffQUIC(b []byte) (*SniffHeader, error) {
-	buffer := buf.As(b)
+	buffer := buf.FromBytes(b)
 	typeByte, err := buffer.ReadByte()
 	if err != nil {
 		return nil, errNotQuic
@@ -160,7 +161,7 @@ func SniffQUIC(b []byte) (*SniffHeader, error) {
 	if err != nil {
 		return nil, err
 	}
-	buffer = buf.As(decrypted)
+	buffer = buf.FromBytes(decrypted)
 	frameType, err := buffer.ReadByte()
 	if err != nil {
 		return nil, io.ErrUnexpectedEOF

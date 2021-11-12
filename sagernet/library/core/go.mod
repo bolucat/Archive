@@ -16,10 +16,10 @@ require (
 )
 
 //replace gvisor.dev/gvisor v0.0.0 => ../gvisor
-replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211031111606-5e4a1bc5779f
+replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211111093733-436c20060cc1
 
 //replace github.com/v2fly/v2ray-core/v4 v4.43.0 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.41.2-0.20211109072938-3bdeaef36c4f
+replace github.com/v2fly/v2ray-core/v4 v4.43.0 => github.com/sagernet/v2ray-core/v4 v4.41.2-0.20211112072235-e097799209dd
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect
@@ -67,9 +67,9 @@ require (
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	golang.org/x/tools v0.1.7 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	golang.zx2c4.com/wireguard v0.0.0-20211017052713-f87e87af0d9a // indirect
+	golang.zx2c4.com/wireguard v0.0.0-20211026125340-e42c6c4bc2d0 // indirect
 	google.golang.org/genproto v0.0.0-20211029142109-e255c875f7c7 // indirect
-	google.golang.org/grpc v1.42.0-dev.0.20211020220737-f00baa6c3c84 // indirect
+	google.golang.org/grpc v1.42.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6 // indirect

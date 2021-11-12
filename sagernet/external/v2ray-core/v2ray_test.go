@@ -1,9 +1,8 @@
 package core_test
 
 import (
-	"testing"
-
 	"google.golang.org/protobuf/types/known/anypb"
+	"testing"
 
 	"google.golang.org/protobuf/proto"
 

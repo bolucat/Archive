@@ -7,7 +7,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/errors"
 )
 
-var errNotDns = errors.New("not dns")
+var errNotDNS = errors.New("not dns")
 
 type SniffHeader struct {
 	domain string
@@ -24,11 +24,11 @@ func (s *SniffHeader) Domain() string {
 func SniffDNS(b []byte) (*SniffHeader, error) {
 	var parser dnsmessage.Parser
 	if common.Error2(parser.Start(b)) != nil {
-		return nil, errNotDns
+		return nil, errNotDNS
 	}
 	question, err := parser.Question()
 	if err != nil {
-		return nil, errNotDns
+		return nil, errNotDNS
 	}
 	return &SniffHeader{domain: question.Name.String()}, nil
 }

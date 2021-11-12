@@ -395,13 +395,7 @@ func TestShadowsocksAES128GCMUDPMux(t *testing.T) {
 	}
 }
 
-func TestShadowsocksCiphers(t *testing.T) {
-	for i := 1; i <= int(shadowsocks.CipherType_XCHACHA20); i++ {
-		testShadowsocksWithCipher(t, shadowsocks.CipherType(i))
-	}
-}
-
-func testShadowsocksWithCipher(t *testing.T, cipher shadowsocks.CipherType) {
+func TestShadowsocksNone(t *testing.T) {
 	tcpServer := tcp.Server{
 		MsgProcessor: xor,
 	}
@@ -412,7 +406,7 @@ func testShadowsocksWithCipher(t *testing.T, cipher shadowsocks.CipherType) {
 
 	account := serial.ToTypedMessage(&shadowsocks.Account{
 		Password:   "shadowsocks-password",
-		CipherType: cipher,
+		CipherType: shadowsocks.CipherType_NONE,
 	})
 
 	serverPort := tcp.PickPort()
@@ -480,11 +474,11 @@ func testShadowsocksWithCipher(t *testing.T, cipher shadowsocks.CipherType) {
 
 	var errGroup errgroup.Group
 	for i := 0; i < 10; i++ {
-		errGroup.Go(testTCPConn(clientPort, 256, time.Second*20))
+		errGroup.Go(testTCPConn(clientPort, 10240*1024, time.Second*20))
 	}
 
 	if err := errGroup.Wait(); err != nil {
-		t.Fatal(err, cipher.String())
+		t.Fatal(err)
 	}
 }
 

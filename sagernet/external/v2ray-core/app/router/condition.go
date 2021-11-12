@@ -72,8 +72,8 @@ func NewDomainMatcher(matcherType string, domains []*routercommon.Domain) (*Doma
 	switch matcherType {
 	case "linear":
 		indexMatcher = strmatcher.NewLinearIndexMatcher()
-	case "mph", "hybrid":
-		fallthrough
+		/*	case "mph", "hybrid":
+			fallthrough*/
 	default:
 		indexMatcher = strmatcher.NewMphIndexMatcher()
 	}

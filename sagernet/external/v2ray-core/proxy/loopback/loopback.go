@@ -36,7 +36,7 @@ func (l *Loopback) Process(ctx context.Context, link *transport.Link, _ internet
 	output := link.Writer
 
 	var conn internet.Connection
-	err := retry.ExponentialBackoff(2, 100).On(func() error {
+	err := retry.ExponentialBackoff(5, 100).On(func() error {
 		dialDest := destination
 
 		content := new(session.Content)

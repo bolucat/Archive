@@ -66,6 +66,7 @@ func (o *Observer) Start() error {
 		o.hp.StartScheduler(func() ([]string, error) {
 			hs, ok := o.ohm.(outbound.HandlerSelector)
 			if !ok {
+
 				return nil, newError("outbound.Manager is not a HandlerSelector")
 			}
 

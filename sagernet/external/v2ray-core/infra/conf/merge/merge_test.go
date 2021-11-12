@@ -193,7 +193,6 @@ func TestMergeTagDeep(t *testing.T) {
 	}
 	assertResult(t, m, expected)
 }
-
 func assertResult(t *testing.T, value []byte, expected string) {
 	v := make(map[string]interface{})
 	err := serial.DecodeJSON(bytes.NewReader(value), &v)

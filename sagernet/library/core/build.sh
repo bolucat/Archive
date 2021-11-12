@@ -2,12 +2,14 @@
 
 source .github/env.sh
 
-rm -rf build/android \
-  build/java \
-  build/javac-output \
-  build/srcd
+BUILD="../libcore_build"
 
-gomobile bind -v -cache $(realpath build) -trimpath -ldflags='-s -w' . || exit 1
+rm -rf $BUILD/android \
+  $BUILD/java \
+  $BUILD/javac-output \
+  $BUILD/src
+
+gomobile bind -v -cache $(realpath $BUILD) -trimpath -ldflags='-s -w' . || exit 1
 rm -r libcore-sources.jar
 
 proj=../SagerNet/app/libs

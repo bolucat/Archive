@@ -72,7 +72,7 @@ func (h *Handler) resolveIP(ctx context.Context, domain string, localAddr net.Ad
 		newError("DNS client doesn't implement ClientWithIPOption")
 	}
 
-	lookupFunc := h.dns.LookupIP
+	var lookupFunc = h.dns.LookupIP
 	if h.config.DomainStrategy == Config_USE_IP4 || (localAddr != nil && localAddr.Family().IsIPv4()) {
 		if lookupIPv4, ok := h.dns.(dns.IPv4Lookup); ok {
 			lookupFunc = lookupIPv4.LookupIPv4
@@ -124,7 +124,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	output := link.Writer
 
 	var conn internet.Connection
-	err := retry.ExponentialBackoff(2, 100).On(func() error {
+	err := retry.ExponentialBackoff(5, 100).On(func() error {
 		dialDest := destination
 		if h.config.useIP() && dialDest.Address.Family().IsDomain() {
 			ip := h.resolveIP(ctx, dialDest.Address.Domain(), dialer.Address())

@@ -7,10 +7,8 @@ import (
 	"unicode"
 )
 
-var (
-	errInvalidSize = errors.New("invalid size")
-	errInvalidUnit = errors.New("invalid or unsupported unit")
-)
+var errInvalidSize = errors.New("invalid size")
+var errInvalidUnit = errors.New("invalid or unsupported unit")
 
 // ByteSize is the size of bytes
 type ByteSize uint64

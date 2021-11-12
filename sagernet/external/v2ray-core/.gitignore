@@ -26,4 +26,3 @@ vprotogen
 errorgen
 !common/errors/errorgen/
 *.dat
-config.json

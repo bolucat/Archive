@@ -332,6 +332,7 @@ func init() {
 	}))
 
 	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
+
 		ctx = cfgcommon.NewConfigureLoadingContext(context.Background())
 
 		geoloadername := platform.NewEnvFlag("v2ray.conf.geoloader").GetValue(func() string {
