@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Dreamacro/clash/common/cache"
+	"github.com/Dreamacro/clash/component/dialer"
 	C "github.com/Dreamacro/clash/constant"
 )
 
@@ -21,7 +22,7 @@ type Reject struct {
 }
 
 // DialContext implements C.ProxyAdapter
-func (r *Reject) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+func (r *Reject) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
 	key := metadata.RemoteAddress()
 
 	count, existed := rejectCounter.Get(key)
@@ -44,8 +45,8 @@ func (r *Reject) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 	return NewConn(&NopConn{}, r), nil
 }
 
-// DialUDP implements C.ProxyAdapter
-func (r *Reject) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
+// ListenPacketContext implements C.ProxyAdapter
+func (r *Reject) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
 	return nil, errors.New("match reject rule")
 }
 

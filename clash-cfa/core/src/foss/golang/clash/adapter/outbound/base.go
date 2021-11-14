@@ -1,18 +1,22 @@
 package outbound
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
 
+	"github.com/Dreamacro/clash/component/dialer"
 	C "github.com/Dreamacro/clash/constant"
 )
 
 type Base struct {
-	name string
-	addr string
-	tp   C.AdapterType
-	udp  bool
+	name  string
+	addr  string
+	iface string
+	tp    C.AdapterType
+	udp   bool
+	rmark int
 }
 
 // Name implements C.ProxyAdapter
@@ -30,8 +34,8 @@ func (b *Base) StreamConn(c net.Conn, metadata *C.Metadata) (net.Conn, error) {
 	return c, errors.New("no support")
 }
 
-// DialUDP implements C.ProxyAdapter
-func (b *Base) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
+// ListenPacketContext implements C.ProxyAdapter
+func (b *Base) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
 	return nil, errors.New("no support")
 }
 
@@ -57,8 +61,42 @@ func (b *Base) Unwrap(metadata *C.Metadata) C.Proxy {
 	return nil
 }
 
-func NewBase(name string, addr string, tp C.AdapterType, udp bool) *Base {
-	return &Base{name, addr, tp, udp}
+// DialOptions return []dialer.Option from struct
+func (b *Base) DialOptions(opts ...dialer.Option) []dialer.Option {
+	if b.iface != "" {
+		opts = append(opts, dialer.WithInterface(b.iface))
+	}
+
+	if b.rmark != 0 {
+		opts = append(opts, dialer.WithRoutingMark(b.rmark))
+	}
+
+	return opts
+}
+
+type BasicOption struct {
+	Interface   string `proxy:"interface-name,omitempty" group:"interface-name,omitempty"`
+	RoutingMark int    `proxy:"routing-mark,omitempty" group:"routing-mark,omitempty"`
+}
+
+type BaseOption struct {
+	Name        string
+	Addr        string
+	Type        C.AdapterType
+	UDP         bool
+	Interface   string
+	RoutingMark int
+}
+
+func NewBase(opt BaseOption) *Base {
+	return &Base{
+		name:  opt.Name,
+		addr:  opt.Addr,
+		tp:    opt.Type,
+		udp:   opt.UDP,
+		iface: opt.Interface,
+		rmark: opt.RoutingMark,
+	}
 }
 
 type conn struct {

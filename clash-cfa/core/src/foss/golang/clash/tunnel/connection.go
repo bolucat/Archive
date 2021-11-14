@@ -44,7 +44,7 @@ func handleUDPToRemote(packet C.UDPPacket, pc net.PacketConn, metadata *C.Metada
 func handleUDPToLocal(packet C.UDPPacket, pc net.PacketConn, key string, fAddr net.Addr) {
 	pc = unwrapPacket(pc)
 
-	buf := pool.Get(pool.RelayBufferSize)
+	buf := pool.Get(pool.UDPBufferSize)
 	defer pool.Put(buf)
 	defer natTable.Delete(key)
 	defer pc.Close()

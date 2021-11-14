@@ -62,7 +62,7 @@ type DNS struct {
 	Fallback          []dns.NameServer `yaml:"fallback"`
 	FallbackFilter    FallbackFilter   `yaml:"fallback-filter"`
 	Listen            string           `yaml:"listen"`
-	EnhancedMode      dns.EnhancedMode `yaml:"enhanced-mode"`
+	EnhancedMode      C.DNSMode        `yaml:"enhanced-mode"`
 	DefaultNameserver []dns.NameServer `yaml:"default-nameserver"`
 	FakeIPRange       *fakeip.Pool
 	Hosts             *trie.DomainTrie
@@ -80,7 +80,7 @@ type FallbackFilter struct {
 // Profile config
 type Profile struct {
 	StoreSelected bool `yaml:"store-selected"`
-	StoreFakeIP   bool `yaml:"store-fakeip"`
+	StoreFakeIP   bool `yaml:"store-fake-ip"`
 }
 
 // Experimental config
@@ -107,7 +107,7 @@ type RawDNS struct {
 	Fallback          []string          `yaml:"fallback" json:"fallback"`
 	FallbackFilter    RawFallbackFilter `yaml:"fallback-filter" json:"fallback-filter"`
 	Listen            string            `yaml:"listen" json:"listen"`
-	EnhancedMode      dns.EnhancedMode  `yaml:"enhanced-mode" json:"enhanced-mode"`
+	EnhancedMode      C.DNSMode         `yaml:"enhanced-mode" json:"enhanced-mode"`
 	FakeIPRange       string            `yaml:"fake-ip-range" json:"fake-ip-range"`
 	FakeIPFilter      []string          `yaml:"fake-ip-filter" json:"fake-ip-filter"`
 	DefaultNameserver []string          `yaml:"default-nameserver" json:"default-nameserver"`
@@ -591,7 +591,7 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie) (*DNS, error) {
 		}
 	}
 
-	if cfg.EnhancedMode == dns.FAKEIP {
+	if cfg.EnhancedMode == C.DNSFakeIP {
 		_, ipnet, err := net.ParseCIDR(cfg.FakeIPRange)
 		if err != nil {
 			return nil, err

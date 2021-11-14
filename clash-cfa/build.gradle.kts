@@ -35,9 +35,9 @@ subprojects {
 
     extensions.configure<BaseExtension> {
         val minSdkVersion = 21
-        val targetSdkVersion = 30
-        val buildVersionCode = 204014
-        val buildVersionName = "2.4.14"
+        val targetSdkVersion = 31
+        val buildVersionCode = 205001
+        val buildVersionName = "2.5.1"
         val defaultDimension = "feature"
 
         ndkVersion = "23.0.7599858"
@@ -81,6 +81,7 @@ subprojects {
             flavorDimensions(defaultDimension)
 
             create("foss") {
+                isDefault = true
                 dimension = defaultDimension
                 versionNameSuffix = ".foss"
 
