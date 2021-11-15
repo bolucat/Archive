@@ -254,7 +254,8 @@ jobs:
           # netch
           mkdir -p netch/Clients
           pushd netch/Clients || exit 1
-          wget -qO- https://api.github.com/repos/netchx/netch/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          export NETCH_VER=$(wget -qO- https://api.github.com/repos/netchx/netch/tags | grep 'name' | cut -d\" -f4 | sort -hr | sed $'/\//d' | head -1)
+          wget -qO- https://api.github.com/repos/netchx/netch/releases/tags/${NETCH_VER} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # bbdown
           mkdir -p bbdown/Clients
