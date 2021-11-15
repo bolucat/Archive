@@ -214,6 +214,8 @@ component("net") {
     "base/proxy_delegate.h",
     "base/proxy_server.cc",
     "base/proxy_server.h",
+    "base/proxy_string_util.cc",
+    "base/proxy_string_util.h",
     "base/rand_callback.h",
     "base/registry_controlled_domains/registry_controlled_domain.cc",
     "base/registry_controlled_domains/registry_controlled_domain.h",
@@ -409,6 +411,8 @@ component("net") {
     "cookies/cookie_options.h",
     "cookies/cookie_partition_key.cc",
     "cookies/cookie_partition_key.h",
+    "cookies/cookie_partition_keychain.cc",
+    "cookies/cookie_partition_keychain.h",
     "cookies/cookie_store.cc",
     "cookies/cookie_store.h",
     "cookies/cookie_util.cc",
@@ -821,8 +825,6 @@ component("net") {
     "quic/quic_session_key.h",
     "quic/quic_stream_factory.cc",
     "quic/quic_stream_factory.h",
-    "quic/quic_transport_client.cc",
-    "quic/quic_transport_client.h",
     "quic/web_transport_client.cc",
     "quic/web_transport_client.h",
     "quic/web_transport_error.cc",
@@ -1134,7 +1136,6 @@ component("net") {
 
   if (is_android) {
     sources += [
-      "android/cellular_signal_strength.h",
       "android/cert_verify_result_android.h",
       "android/http_auth_negotiate_android.h",
       "android/keystore.h",
@@ -1227,7 +1228,7 @@ component("net") {
       "base/network_config_watcher_mac.cc",
       "base/network_config_watcher_mac.h",
       "base/platform_mime_util_mac.mm",
-      "base/proxy_server_mac.cc",
+      "base/proxy_string_util_mac.cc",
       "cert/test_root_certs_mac.cc",
       "cert/x509_util_ios_and_mac.cc",
       "cert/x509_util_ios_and_mac.h",
@@ -1279,12 +1280,8 @@ component("net") {
       "proxy_resolution/win/windows_system_proxy_resolution_request.h",
       "proxy_resolution/win/windows_system_proxy_resolution_service.cc",
       "proxy_resolution/win/windows_system_proxy_resolution_service.h",
-      "proxy_resolution/win/windows_system_proxy_resolver.cc",
       "proxy_resolution/win/windows_system_proxy_resolver.h",
-      "proxy_resolution/win/winhttp_api_wrapper.cc",
-      "proxy_resolution/win/winhttp_api_wrapper.h",
-      "proxy_resolution/win/winhttp_proxy_resolver_functions.cc",
-      "proxy_resolution/win/winhttp_proxy_resolver_functions.h",
+      "proxy_resolution/win/winhttp_status.h",
       "socket/tcp_socket_win.cc",
       "socket/tcp_socket_win.h",
       "socket/udp_socket_win.cc",
@@ -1607,6 +1604,7 @@ source_set("net_deps") {
 
   public_deps = [
     ":constants",
+    ":isolation_info_proto",
     ":net_export_header",
     ":preload_decoder",
     "//base",
@@ -1700,6 +1698,10 @@ proto_library("net_nqe_proto") {
   defines = [ "NET_IMPLEMENTATION" ]
 
   extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
+}
+
+proto_library("isolation_info_proto") {
+  sources = [ "base/isolation_info.proto" ]
 }
 
 static_library("preload_decoder") {

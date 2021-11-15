@@ -7,6 +7,7 @@
 
 #include "base/logging.h"
 #include "base/rand_util.h"
+#include "net/base/proxy_string_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
 #include "net/third_party/quiche/src/spdy/core/hpack/hpack_constants.h"
@@ -82,7 +83,7 @@ Error NaiveProxyDelegate::OnTunnelHeadersReceived(
       padding ? PaddingSupport::kCapable : PaddingSupport::kIncapable;
   auto& padding_state = padding_state_by_server_[proxy_server];
   if (padding_state == PaddingSupport::kUnknown || padding_state != new_state) {
-    LOG(INFO) << "Padding capability of " << proxy_server.ToURI()
+    LOG(INFO) << "Padding capability of " << ProxyServerToProxyUri(proxy_server)
               << (padding ? " detected" : " undetected");
   }
   padding_state = new_state;
