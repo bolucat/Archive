@@ -25,7 +25,16 @@ func dialContextHooked(ctx context.Context, network string, destination net.IP, 
 		Control: DefaultSocketHook,
 	}
 
-	return dialer.DialContext(ctx, network, net.JoinHostPort(destination.String(), port))
+	conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(destination.String(), port))
+	if err != nil {
+		return nil, err
+	}
+
+	if t, ok := conn.(*net.TCPConn); ok {
+		t.SetKeepAlive(false)
+	}
+
+	return conn, nil
 }
 
 func listenPacketHooked(ctx context.Context, network, address string) (net.PacketConn, error) {

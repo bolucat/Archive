@@ -2,6 +2,7 @@ package libcore
 
 import (
 	"net"
+	"sync"
 	"sync/atomic"
 )
 
@@ -21,6 +22,8 @@ type AppStats struct {
 }
 
 type appStats struct {
+	sync.Mutex
+
 	tcpConn      int32
 	udpConn      int32
 	tcpConnTotal uint32
@@ -47,24 +50,17 @@ func (t *Tun2ray) ResetAppTraffics() {
 		return
 	}
 
-	t.access.RLock()
 	var toDel []uint16
-	for uid, stat := range t.appStats {
-		atomic.StoreUint64(&stat.uplink, 0)
-		atomic.StoreUint64(&stat.downlink, 0)
-		atomic.StoreUint64(&stat.uplinkTotal, 0)
-		atomic.StoreUint64(&stat.downlinkTotal, 0)
-		if stat.tcpConn+stat.udpConn == 0 {
-			toDel = append(toDel, uid)
-		}
-	}
-	t.access.RUnlock()
-	if len(toDel) > 0 {
-		t.access.Lock()
-		for _, uid := range toDel {
-			delete(t.appStats, uid)
-		}
-		t.access.Unlock()
+	t.appStats.Range(func(key, value interface{}) bool {
+		uid := key.(uint16)
+		toDel = append(toDel, uid)
+
+		stats := value.(*appStats)
+		stats.Lock()
+		return true
+	})
+	for _, uid := range toDel {
+		t.appStats.Delete(uid)
 	}
 }
 
@@ -74,8 +70,10 @@ func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
 	}
 
 	var stats []*AppStats
-	t.access.RLock()
-	for uid, stat := range t.appStats {
+
+	t.appStats.Range(func(key, value interface{}) bool {
+		uid := key.(uint16)
+		stat := value.(*appStats)
 		export := &AppStats{
 			Uid:          int32(uid),
 			TcpConn:      stat.tcpConn,
@@ -96,8 +94,8 @@ func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
 		export.DownlinkTotal = int64(downlinkTotal)
 
 		stats = append(stats, export)
-	}
-	t.access.RUnlock()
+		return true
+	})
 
 	for _, stat := range stats {
 		listener.UpdateStats(stat)

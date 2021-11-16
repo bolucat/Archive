@@ -21,6 +21,13 @@ func (s *SniffHeader) Domain() string {
 	return s.domain
 }
 
+func SniffTCPDNS(b []byte) (*SniffHeader, error) {
+	if len(b) < 2 {
+		return nil, common.ErrNoClue
+	}
+	return SniffDNS(b[2:])
+}
+
 func SniffDNS(b []byte) (*SniffHeader, error) {
 	var parser dnsmessage.Parser
 	if common.Error2(parser.Start(b)) != nil {

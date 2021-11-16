@@ -287,10 +287,12 @@ o:depends("obfs_vmess", "websocket")
 
 o = s:option(Value, "max_early_data", translate("max-early-data"))
 o.rmempty = true
+o.placeholder = translate("2048")
 o:depends("obfs_vmess", "websocket")
 
 o = s:option(Value, "early_data_header_name", translate("early-data-header-name"))
 o.rmempty = true
+o.placeholder = translate("Sec-WebSocket-Protocol")
 o:depends("obfs_vmess", "websocket")
 
 -- [[ skip-cert-verify ]]--
@@ -390,6 +392,16 @@ o = s:option(DynamicList, "trojan_ws_headers", translate("Headers"))
 o.rmempty = true
 o.placeholder = translate("Host: v2ray.com")
 o:depends("obfs_trojan", "ws")
+
+-- [[ interface-name ]]--
+o = s:option(Value, "interface_name", translate("interface-name"))
+o.rmempty = true
+o.placeholder = translate("eth0")
+
+-- [[ interface-name ]]--
+o = s:option(Value, "routing_mark", translate("routing-mark"))
+o.rmempty = true
+o.placeholder = translate("2333")
 
 o = s:option(DynamicList, "groups", translate("Proxy Group"))
 o.description = font_red..bold_on..translate("No Need Set when Config Create, The added Proxy Groups Must Exist")..bold_off..font_off

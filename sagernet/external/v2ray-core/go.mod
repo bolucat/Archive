@@ -8,7 +8,7 @@ require (
 	github.com/dgryski/go-idea v0.0.0-20170306091226-d2fb45a411fb
 	github.com/dgryski/go-rc2 v0.0.0-20150621095337-8a9021637152
 	github.com/geeksbaek/seed v0.0.0-20180909040025-2a7f5fb92e22
-	github.com/go-chi/chi/v5 v5.0.5
+	github.com/go-chi/chi/v5 v5.0.6
 	github.com/go-chi/render v1.0.1
 	github.com/go-playground/validator/v10 v10.9.0
 	github.com/golang/mock v1.6.0
@@ -26,17 +26,17 @@ require (
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08
 	github.com/v2fly/VSign v0.0.0-20201108000810-e2adc24bf848
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
-	go.starlark.net v0.0.0-20210901212718-87f333178d59
-	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
-	golang.org/x/net v0.0.0-20211020060615-d418f374d309
+	go.starlark.net v0.0.0-20211013185944-b0039bd2cfe3
+	golang.org/x/crypto v0.0.0-20211115234514-b4de73f9ece8
+	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20211020174200-9d6173849985
-	golang.zx2c4.com/wireguard v0.0.0-20211026125340-e42c6c4bc2d0
+	golang.org/x/sys v0.0.0-20211113001501-0c823b97ae02
+	golang.zx2c4.com/wireguard v0.0.0-20211115224047-8298ff376e19
 	google.golang.org/grpc v1.42.0
 	google.golang.org/protobuf v1.27.1
 	gvisor.dev/gvisor v0.0.0
 	h12.io/socks v1.0.3
-	inet.af/netaddr v0.0.0-20210903134321-85fa6c94624e
+	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 )
 
 replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211111093733-436c20060cc1
@@ -44,10 +44,10 @@ replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-2021111109
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgryski/go-metro v0.0.0-20200812162917-85c65e2d0165 // indirect
+	github.com/dgryski/go-metro v0.0.0-20211015221634-2661b20a2446 // indirect
 	github.com/ebfe/bcrypt_pbkdf v0.0.0-20140212075826-3c8d2dcb253a // indirect
 	github.com/ebfe/rc2 v0.0.0-20131011165748-24b9757f5521 // indirect
-	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
@@ -56,18 +56,20 @@ require (
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.4 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/onsi/ginkgo v1.16.4 // indirect
+	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
-	github.com/xtaci/smux v1.5.15 // indirect
-	go4.org/intern v0.0.0-20210108033219-3eb7198706b2 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063 // indirect
-	golang.org/x/mod v0.4.2 // indirect
-	golang.org/x/text v0.3.6 // indirect
-	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
-	golang.org/x/tools v0.1.5 // indirect
+	github.com/xtaci/smux v1.5.16 // indirect
+	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
+	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
+	golang.org/x/mod v0.5.1 // indirect
+	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
+	golang.org/x/tools v0.1.7 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20210722135532-667f2b7c528f // indirect
+	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d // indirect
+	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
+	google.golang.org/genproto v0.0.0-20211115160612-a5da7257a6f7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

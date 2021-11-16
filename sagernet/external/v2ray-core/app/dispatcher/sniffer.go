@@ -40,7 +40,8 @@ func NewSniffer(ctx context.Context) *Sniffer {
 			{func(c context.Context, b []byte) (SniffResult, error) { return quic.SniffQUIC(b) }, false, net.Network_UDP},
 			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffBittorrent(b) }, false, net.Network_TCP},
 			{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffUTP(b) }, false, net.Network_UDP},
-			{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffDNS(b) }, false, net.Network_Unknown},
+			{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffDNS(b) }, false, net.Network_UDP},
+			{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffTCPDNS(b) }, false, net.Network_TCP},
 		},
 	}
 	if sniffer, err := newFakeDNSSniffer(ctx); err == nil {
@@ -63,7 +64,7 @@ func (s *Sniffer) Sniff(c context.Context, payload []byte, network net.Network) 
 		if si.metadataSniffer {
 			continue
 		}
-		if si.network != network && si.network != net.Network_Unknown {
+		if si.network != network {
 			continue
 		}
 		result, err := s(c, payload)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"net"
 	"strconv"
-	"time"
 
 	"github.com/Dreamacro/clash/component/resolver"
 	C "github.com/Dreamacro/clash/constant"
@@ -12,10 +11,10 @@ import (
 )
 
 func tcpKeepAlive(c net.Conn) {
-	if tcp, ok := c.(*net.TCPConn); ok {
-		tcp.SetKeepAlive(true)
-		tcp.SetKeepAlivePeriod(20 * time.Minute)
-	}
+	//if tcp, ok := c.(*net.TCPConn); ok {
+	//	tcp.SetKeepAlive(true)
+	//	tcp.SetKeepAlivePeriod(20 * time.Minute)
+	//}
 }
 
 func serializesSocksAddr(metadata *C.Metadata) []byte {

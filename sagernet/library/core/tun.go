@@ -1,6 +1,7 @@
 package libcore
 
 import (
+	"container/list"
 	"context"
 	"io"
 	"math"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/session"
@@ -28,11 +30,9 @@ import (
 var _ tun.Handler = (*Tun2ray)(nil)
 
 type Tun2ray struct {
-	access              sync.RWMutex
 	dev                 tun.Tun
 	router              string
 	v2ray               *V2RayInstance
-	udpTable            *natTable
 	fakedns             bool
 	sniffing            bool
 	overrideDestination bool
@@ -40,8 +40,14 @@ type Tun2ray struct {
 
 	dumpUid      bool
 	trafficStats bool
-	appStats     map[uint16]*appStats
 	pcap         bool
+
+	udpTable  sync.Map
+	appStats  sync.Map
+	lockTable sync.Map
+
+	connectionsLock sync.Mutex
+	connections     list.List
 }
 
 const (
@@ -58,7 +64,6 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance, router string, gVisor
 	t := &Tun2ray{
 		router:              router,
 		v2ray:               v2ray,
-		udpTable:            &natTable{},
 		sniffing:            sniffing,
 		overrideDestination: overrideDestination,
 		fakedns:             fakedns,
@@ -67,9 +72,6 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance, router string, gVisor
 		trafficStats:        trafficStats,
 	}
 
-	if trafficStats {
-		t.appStats = map[uint16]*appStats{}
-	}
 	var err error
 	if gVisor {
 		var pcapFile *os.File
@@ -131,11 +133,13 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance, router string, gVisor
 }
 
 func (t *Tun2ray) Close() {
-	t.access.Lock()
-	defer t.access.Unlock()
-
 	net.DefaultResolver.Dial = nil
 	closeIgnore(t.dev)
+	t.connectionsLock.Lock()
+	for item := t.connections.Front(); item != nil; item = item.Next() {
+		common.Close(item.Value)
+	}
+	t.connectionsLock.Unlock()
 }
 
 func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNet.Destination, conn net.Conn) {
@@ -203,18 +207,28 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 		})
 	}
 
+	var stats *appStats
 	if t.trafficStats && !self && !isDns {
-		t.access.RLock()
-		stats := t.appStats[uid]
-		t.access.RUnlock()
-		if stats == nil {
-			t.access.Lock()
-			stats = t.appStats[uid]
-			if stats == nil {
+		if iStats, exists := t.appStats.Load(uid); exists {
+			stats = iStats.(*appStats)
+		} else {
+			iCond, loaded := t.lockTable.LoadOrStore(uid, sync.NewCond(&sync.Mutex{}))
+			cond := iCond.(*sync.Cond)
+			if loaded {
+				cond.L.Lock()
+				cond.Wait()
+				iStats, exists = t.appStats.Load(uid)
+				if !exists {
+					panic("unexpected sync read failed")
+				}
+				stats = iStats.(*appStats)
+				cond.L.Unlock()
+			} else {
 				stats = &appStats{}
-				t.appStats[uid] = stats
+				t.appStats.Store(uid, stats)
+				t.lockTable.Delete(uid)
+				cond.Broadcast()
 			}
-			t.access.Unlock()
 		}
 		atomic.AddInt32(&stats.tcpConn, 1)
 		atomic.AddUint32(&stats.tcpConnTotal, 1)
@@ -227,6 +241,10 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 		conn = &statsConn{conn, &stats.uplink, &stats.downlink}
 	}
 
+	t.connectionsLock.Lock()
+	element := t.connections.PushBack(conn)
+	t.connectionsLock.Unlock()
+
 	reader, input := pipe.New()
 	link := &transport.Link{Reader: reader, Writer: connWriter{conn, buf.NewWriter(conn)}}
 	err := t.v2ray.dispatcher.DispatchLink(ctx, destination, link)
@@ -235,6 +253,10 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	} else {
 		buf.Copy(buf.NewReader(conn), input)
 	}
+
+	t.connectionsLock.Lock()
+	t.connections.Remove(element)
+	t.connectionsLock.Unlock()
 
 	closeIgnore(conn, link.Reader, link.Writer)
 }
@@ -248,10 +270,11 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	natKey := source.NetAddr()
 
 	sendTo := func() bool {
-		conn := t.udpTable.Get(natKey)
-		if conn == nil {
+		iConn, ok := t.udpTable.Load(natKey)
+		if !ok {
 			return false
 		}
+		conn := iConn.(net.PacketConn)
 		_, err := conn.WriteTo(data, &net.UDPAddr{
 			IP:   destination.Address.IP(),
 			Port: int(destination.Port),
@@ -264,20 +287,19 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 
 	if sendTo() {
 		return
+	} else {
+		iCond, loaded := t.lockTable.LoadOrStore(natKey, sync.NewCond(&sync.Mutex{}))
+		cond := iCond.(*sync.Cond)
+		if loaded {
+			cond.L.Lock()
+			cond.Wait()
+			sendTo()
+			cond.L.Unlock()
+			return
+		}
+		t.lockTable.Delete(natKey)
+		cond.Broadcast()
 	}
-
-	lockKey := natKey + "-lock"
-	cond, loaded := t.udpTable.GetOrCreateLock(lockKey)
-	if loaded {
-		cond.L.Lock()
-		cond.Wait()
-		sendTo()
-		cond.L.Unlock()
-		return
-	}
-
-	t.udpTable.Delete(lockKey)
-	cond.Broadcast()
 
 	inbound := &session.Inbound{
 		Source: source,
@@ -358,18 +380,28 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		return
 	}
 
+	var stats *appStats
 	if t.trafficStats && !self && !isDns {
-		t.access.RLock()
-		stats := t.appStats[uid]
-		t.access.RUnlock()
-		if stats == nil {
-			t.access.Lock()
-			stats = t.appStats[uid]
-			if stats == nil {
+		if iStats, exists := t.appStats.Load(uid); exists {
+			stats = iStats.(*appStats)
+		} else {
+			iCond, loaded := t.lockTable.LoadOrStore(uid, sync.NewCond(&sync.Mutex{}))
+			cond := iCond.(*sync.Cond)
+			if loaded {
+				cond.L.Lock()
+				cond.Wait()
+				iStats, exists = t.appStats.Load(uid)
+				if !exists {
+					panic("unexpected sync read failed")
+				}
+				stats = iStats.(*appStats)
+				cond.L.Unlock()
+			} else {
 				stats = &appStats{}
-				t.appStats[uid] = stats
+				t.appStats.Store(uid, stats)
+				t.lockTable.Delete(uid)
+				cond.Broadcast()
 			}
-			t.access.Unlock()
 		}
 		atomic.AddInt32(&stats.udpConn, 1)
 		atomic.AddUint32(&stats.udpConnTotal, 1)
@@ -382,7 +414,11 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		conn = &statsPacketConn{conn, &stats.uplink, &stats.downlink}
 	}
 
-	t.udpTable.Set(natKey, conn)
+	t.connectionsLock.Lock()
+	element := t.connections.PushBack(conn)
+	t.connectionsLock.Unlock()
+
+	t.udpTable.Store(natKey, conn)
 
 	go sendTo()
 
@@ -406,6 +442,10 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	// close
 	closeIgnore(conn, closer)
 	t.udpTable.Delete(natKey)
+
+	t.connectionsLock.Lock()
+	t.connections.Remove(element)
+	t.connectionsLock.Unlock()
 }
 
 func (t *Tun2ray) dialDNS(ctx context.Context, _, _ string) (conn net.Conn, err error) {
@@ -437,31 +477,6 @@ func (c wrappedConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 
 func (c wrappedConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
 	return c.Conn.Write(p)
-}
-
-type natTable struct {
-	mapping sync.Map
-}
-
-func (t *natTable) Set(key string, pc net.PacketConn) {
-	t.mapping.Store(key, pc)
-}
-
-func (t *natTable) Get(key string) net.PacketConn {
-	item, exist := t.mapping.Load(key)
-	if !exist {
-		return nil
-	}
-	return item.(net.PacketConn)
-}
-
-func (t *natTable) GetOrCreateLock(key string) (*sync.Cond, bool) {
-	item, loaded := t.mapping.LoadOrStore(key, sync.NewCond(&sync.Mutex{}))
-	return item.(*sync.Cond), loaded
-}
-
-func (t *natTable) Delete(key string) {
-	t.mapping.Delete(key)
 }
 
 var ipv6Mode int32

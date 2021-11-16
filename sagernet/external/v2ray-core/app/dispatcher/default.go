@@ -15,7 +15,6 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/protocol"
 	"github.com/v2fly/v2ray-core/v4/common/session"
-	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/features/outbound"
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
@@ -92,14 +91,13 @@ type DefaultDispatcher struct {
 	router routing.Router
 	policy policy.Manager
 	stats  stats.Manager
-	hosts  dns.HostsLookup
 }
 
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		d := new(DefaultDispatcher)
-		if err := core.RequireFeatures(ctx, func(om outbound.Manager, router routing.Router, pm policy.Manager, sm stats.Manager, dc dns.Client) error {
-			return d.Init(config.(*Config), om, router, pm, sm, dc)
+		if err := core.RequireFeatures(ctx, func(om outbound.Manager, router routing.Router, pm policy.Manager, sm stats.Manager) error {
+			return d.Init(config.(*Config), om, router, pm, sm)
 		}); err != nil {
 			return nil, err
 		}
@@ -108,16 +106,11 @@ func init() {
 }
 
 // Init initializes DefaultDispatcher.
-func (d *DefaultDispatcher) Init(config *Config, om outbound.Manager, router routing.Router, pm policy.Manager, sm stats.Manager, dc dns.Client) error {
+func (d *DefaultDispatcher) Init(config *Config, om outbound.Manager, router routing.Router, pm policy.Manager, sm stats.Manager) error {
 	d.ohm = om
 	d.router = router
 	d.policy = pm
 	d.stats = sm
-	if hosts, ok := dc.(dns.HostsLookup); ok {
-		d.hosts = hosts
-	} else {
-		d.hosts = &dns.NoOpHostsLookup{}
-	}
 	return nil
 }
 
@@ -230,6 +223,9 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, destination net.Destin
 			if err == nil {
 				content.Protocol = result.Protocol()
 			}
+			if sniffingRequest.Callback != nil {
+				sniffingRequest.Callback(result.Protocol(), result.Domain())
+			}
 			if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
 				domain := result.Domain()
 				newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
@@ -273,6 +269,9 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 			result, err := sniffer(ctx, cReader, sniffingRequest.MetadataOnly, destination.Network)
 			if err == nil {
 				content.Protocol = result.Protocol()
+			}
+			if sniffingRequest.Callback != nil {
+				sniffingRequest.Callback(result.Protocol(), result.Domain())
 			}
 			if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
 				domain := result.Domain()
@@ -337,20 +336,6 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 }
 
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
-	ob := session.OutboundFromContext(ctx)
-	if destination.Address.Family().IsDomain() {
-		proxied := d.hosts.LookupHosts(ob.Target.String())
-		if proxied != nil {
-			ro := ob.RouteTarget == destination
-			destination.Address = *proxied
-			if ro {
-				ob.RouteTarget = destination
-			} else {
-				ob.Target = destination
-			}
-		}
-	}
-
 	var handler outbound.Handler
 
 	if forcedOutboundTag := session.GetForcedOutboundTagFromContext(ctx); forcedOutboundTag != "" {

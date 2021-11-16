@@ -66,6 +66,7 @@ type SniffingRequest struct {
 	Enabled                        bool
 	MetadataOnly                   bool
 	RouteOnly                      bool
+	Callback                       func(protocol string, domain string)
 }
 
 // Content is the metadata of the connection content.
