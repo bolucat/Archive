@@ -525,7 +525,7 @@ var _ Cipher = (*NoneCipher)(nil)
 
 type NoneCipher struct{}
 
-func (NoneCipher) KeySize() int32 { return 0 }
+func (NoneCipher) KeySize() int32 { return 16 }
 func (NoneCipher) IVSize() int32  { return 0 }
 func (NoneCipher) IsAEAD() bool {
 	return false
@@ -560,31 +560,17 @@ func CipherFromString(c string) CipherType {
 }
 
 func passwordToCipherKey(password []byte, keySize int32) []byte {
-	const md5Len = 16
-
-	cnt := (int(keySize)-1)/md5Len + 1
-	m := make([]byte, cnt*md5Len)
-	copy(m, md5sum(password))
-
-	// Repeatedly call md5 until bytes generated is enough.
-	// Each call to md5 uses data: prev md5 sum + password.
-	d := make([]byte, md5Len+len(password))
-	start := 0
-	for i := 1; i < cnt; i++ {
-		start += md5Len
-		copy(d, m[start-md5Len:start])
-		copy(d[md5Len:], password)
-		copy(m[start:], md5sum(d))
-	}
-	return m[:keySize]
-}
-
-func md5sum(d []byte) []byte {
+	var b, prev []byte
 	h := md5.New()
-	h.Write(d)
-	return h.Sum(nil)
+	for int32(len(b)) < keySize {
+		h.Write(prev)
+		h.Write(password)
+		b = h.Sum(b)
+		prev = b[len(b)-h.Size():]
+		h.Reset()
+	}
+	return b[:keySize]
 }
-
 func hkdfSHA1(secret, salt, outKey []byte) {
 	r := hkdf.New(sha1.New, secret, salt, []byte("ss-subkey"))
 	common.Must2(io.ReadFull(r, outKey))

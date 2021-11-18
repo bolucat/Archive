@@ -27,7 +27,7 @@ import (
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-2"
+	return core.Version() + "-sn-3"
 }
 
 type V2RayInstance struct {
@@ -228,14 +228,9 @@ func (c *dispatcherConn) readFrom() (p []byte, addr net.Addr, err error) {
 }
 
 func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	buffer := buf.New()
-	raw := buffer.Extend(buf.Size)
-	n = copy(raw, p)
-	buffer.Resize(0, int32(n))
-
+	buffer := buf.FromBytes(p)
 	endpoint := net.DestinationFromAddr(addr)
 	buffer.Endpoint = &endpoint
-
 	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
 	if err == nil {
 		c.timer.Update()
