@@ -31,13 +31,6 @@ func SniffTCPDNS(b []byte) (*SniffHeader, error) {
 	return SniffDNS(b[2:])
 }
 
-func SniffTCPDNSStrict(b []byte) (*SniffHeader, error) {
-	if len(b) < 2 {
-		return nil, common.ErrNoClue
-	}
-	return SniffDNSStrict(b[2:])
-}
-
 func SniffDNS(b []byte) (*SniffHeader, error) {
 	var parser dnsmessage.Parser
 	if common.Error2(parser.Start(b)) != nil {
@@ -47,24 +40,11 @@ func SniffDNS(b []byte) (*SniffHeader, error) {
 	if err != nil {
 		return nil, errNotDNS
 	}
-	return &SniffHeader{"dns", question.Name.String()}, nil
-}
-
-func SniffDNSStrict(b []byte) (*SniffHeader, error) {
-	var parser dnsmessage.Parser
-	if common.Error2(parser.Start(b)) != nil {
-		return nil, errNotDNS
-	}
-	question, err := parser.Question()
-	if err != nil {
-		return nil, errNotDNS
-	}
-	if question.Class != dnsmessage.ClassINET || question.Type != dnsmessage.TypeA && question.Type != dnsmessage.TypeAAAA {
-		return nil, errNotWanted
-	}
 	domain := question.Name.String()
-	if !protocol.IsValidDomain(domain) {
-		return nil, errNotWanted
+	if question.Class == dnsmessage.ClassINET && question.Type == dnsmessage.TypeA || question.Type != dnsmessage.TypeAAAA {
+		if protocol.IsValidDomain(domain) {
+			return &SniffHeader{"dns.strict", domain}, nil
+		}
 	}
-	return &SniffHeader{"dns.strict", domain}, nil
+	return &SniffHeader{"dns", domain}, nil
 }
