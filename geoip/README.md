@@ -151,6 +151,8 @@ These two concepts are notable: `input` and `output`. The `input` is the data so
 
 - **text**：纯文本 IP 和 CIDR（例如：`1.1.1.1` 或 `1.0.0.0/24`）
 - **private**：局域网和私有网络 CIDR（例如：`192.168.0.0/16` 和 `127.0.0.0/8`）
+- **cutter**：用于裁剪前置步骤中的数据
+- **v2rayGeoIPDat**：V2Ray GeoIP dat 格式（`geoip.dat`）
 - **maxmindGeoLite2CountryCSV**：MaxMind GeoLite2 country CSV 数据（`GeoLite2-Country-CSV.zip`）
 - **clashRuleSetClassical**：[classical 类型的 Clash RuleSet](https://github.com/Dreamacro/clash/wiki/premium-core-features#classical)
 - **clashRuleSet**：[ipcidr 类型的 Clash RuleSet](https://github.com/Dreamacro/clash/wiki/premium-core-features#ipcidr)
@@ -194,12 +196,14 @@ $ ./geoip -c config.json
 
 $ ./geoip -l
 All available input formats:
+  - v2rayGeoIPDat (Convert V2Ray GeoIP dat to other formats)
   - maxmindGeoLite2CountryCSV (Convert MaxMind GeoLite2 country CSV data to other formats)
   - private (Convert LAN and private network CIDR to other formats)
   - text (Convert plaintext IP & CIDR to other formats)
   - clashRuleSetClassical (Convert classical type of Clash RuleSet to other formats (just processing IP & CIDR lines))
   - clashRuleSet (Convert ipcidr type of Clash RuleSet to other formats)
   - surgeRuleSet (Convert Surge RuleSet to other formats (just processing IP & CIDR lines))
+  - cutter (Remove data from previous steps)
   - test (Convert specific CIDR to other formats (for test only))
 All available output formats:
   - v2rayGeoIPDat (Convert data to V2Ray GeoIP dat format)
