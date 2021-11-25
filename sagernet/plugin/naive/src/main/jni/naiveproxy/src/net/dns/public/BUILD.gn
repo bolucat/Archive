@@ -44,6 +44,13 @@ source_set("public") {
     ]
   }
 
+  if (is_win) {
+    sources += [
+      "win_dns_system_settings.cc",
+      "win_dns_system_settings.h",
+    ]
+  }
+
   deps = [ "//net:net_deps" ]
 
   public_deps = [ "//net:net_public_deps" ]

@@ -7,16 +7,16 @@
 //! *It should be notice that the extended configuration file is not suitable for the server
 //! side.*
 
-use std::{net::IpAddr, process, time::Duration};
+use std::{net::IpAddr, path::PathBuf, process, time::Duration};
 
-use clap::{clap_app, Arg};
+use clap::{clap_app, Arg, ErrorKind as ClapErrorKind};
 use futures::future::{self, Either};
 use log::info;
 use tokio::{self, runtime::Builder};
 
 use shadowsocks_service::{
     acl::AccessControl,
-    config::{Config, ConfigType, ManagerConfig},
+    config::{read_variable_field_value, Config, ConfigType, ManagerConfig},
     run_server,
     shadowsocks::{
         config::{ManagerAddr, Mode, ServerAddr, ServerConfig},
@@ -41,12 +41,12 @@ fn main() {
             (version: VERSION)
             (about: "A fast tunnel proxy that helps you bypass firewalls.")
 
-            (@arg CONFIG: -c --config +takes_value required_unless("SERVER_ADDR") "Shadowsocks configuration file (https://shadowsocks.org/en/config/quick-guide.html)")
+            (@arg CONFIG: -c --config +takes_value "Shadowsocks configuration file (https://shadowsocks.org/en/config/quick-guide.html)")
 
             (@arg OUTBOUND_BIND_ADDR: -b --("outbound-bind-addr") +takes_value alias("bind-addr") {validator::validate_ip_addr} "Bind address, outbound socket will bind this address")
             (@arg OUTBOUND_BIND_INTERFACE: --("outbound-bind-interface") +takes_value "Set SO_BINDTODEVICE / IP_BOUND_IF / IP_UNICAST_IF option for outbound socket")
 
-            (@arg SERVER_ADDR: -s --("server-addr") +takes_value {validator::validate_server_addr} requires[PASSWORD ENCRYPT_METHOD] "Server address")
+            (@arg SERVER_ADDR: -s --("server-addr") +takes_value {validator::validate_server_addr} requires[ENCRYPT_METHOD] "Server address")
             (@arg PASSWORD: -k --password +takes_value requires[SERVER_ADDR] "Server's password")
             (@arg ENCRYPT_METHOD: -m --("encrypt-method") +takes_value requires[SERVER_ADDR] possible_values(available_ciphers()) "Server's encryption method")
             (@arg TIMEOUT: --timeout +takes_value {validator::validate_u64} requires[SERVER_ADDR] "Server's timeout seconds for TCP relay")
@@ -131,11 +131,19 @@ fn main() {
             }
         }
 
-        let mut config = match matches.value_of("CONFIG") {
-            Some(cpath) => match Config::load_from_file(cpath, ConfigType::Server) {
+        let config_path_opt = matches.value_of("CONFIG").map(PathBuf::from).or_else(|| {
+            if !matches.is_present("SERVER_ADDR") {
+                common::config::get_default_config_path()
+            } else {
+                None
+            }
+        });
+
+        let mut config = match config_path_opt {
+            Some(cpath) => match Config::load_from_file(&cpath, ConfigType::Server) {
                 Ok(cfg) => cfg,
                 Err(err) => {
-                    eprintln!("loading config \"{}\", {}", cpath, err);
+                    eprintln!("loading config \"{}\", {}", cpath.display(), err);
                     process::exit(common::EXIT_CODE_LOAD_CONFIG_FAILURE);
                 }
             },
@@ -143,19 +151,26 @@ fn main() {
         };
 
         if let Some(svr_addr) = matches.value_of("SERVER_ADDR") {
-            let password = matches.value_of("PASSWORD").expect("password");
-            let method = matches
-                .value_of("ENCRYPT_METHOD")
-                .expect("encrypt-method")
-                .parse::<CipherKind>()
-                .expect("encryption method");
-            let svr_addr = svr_addr.parse::<ServerAddr>().expect("server-addr");
-            let timeout = matches
-                .value_of("TIMEOUT")
-                .map(|t| t.parse::<u64>().expect("timeout"))
-                .map(Duration::from_secs);
+            let password = match clap::value_t!(matches.value_of("PASSWORD"), String) {
+                Ok(pwd) => read_variable_field_value(&pwd).into(),
+                Err(err) => {
+                    // NOTE: svr_addr should have been checked by common::validator
+                    match common::password::read_server_password(svr_addr) {
+                        Ok(pwd) => pwd,
+                        Err(..) => err.exit(),
+                    }
+                }
+            };
 
-            let mut sc = ServerConfig::new(svr_addr, password.to_owned(), method);
+            let method = clap::value_t_or_exit!(matches.value_of("ENCRYPT_METHOD"), CipherKind);
+            let svr_addr = svr_addr.parse::<ServerAddr>().expect("server-addr");
+            let timeout = match clap::value_t!(matches.value_of("TIMEOUT"), u64) {
+                Ok(t) => Some(Duration::from_secs(t)),
+                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => None,
+                Err(err) => err.exit(),
+            };
+
+            let mut sc = ServerConfig::new(svr_addr, password, method);
             if let Some(timeout) = timeout {
                 sc.set_timeout(timeout);
             }
@@ -184,11 +199,6 @@ fn main() {
             config.server.push(sc);
         }
 
-        if let Some(bind_addr) = matches.value_of("OUTBOUND_BIND_ADDR") {
-            let bind_addr = bind_addr.parse::<IpAddr>().expect("outbound-bind-addr");
-            config.outbound_bind_addr = Some(bind_addr);
-        }
-
         if matches.is_present("TCP_NO_DELAY") {
             config.no_delay = true;
         }
@@ -197,30 +207,42 @@ fn main() {
             config.fast_open = true;
         }
 
-        if let Some(keep_alive) = matches.value_of("TCP_KEEP_ALIVE") {
-            config.keep_alive = Some(Duration::from_secs(
-                keep_alive
-                    .parse::<u64>()
-                    .expect("`tcp-keep-alive` is expecting an integer"),
-            ));
+        match clap::value_t!(matches.value_of("TCP_KEEP_ALIVE"), u64) {
+            Ok(keep_alive) => config.keep_alive = Some(Duration::from_secs(keep_alive)),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if let Some(mark) = matches.value_of("OUTBOUND_FWMARK") {
-            config.outbound_fwmark = Some(mark.parse::<u32>().expect("an unsigned integer for `outbound-fwmark`"));
+        match clap::value_t!(matches.value_of("OUTBOUND_FWMARK"), u32) {
+            Ok(mark) => config.outbound_fwmark = Some(mark),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
-        if let Some(iface) = matches.value_of("OUTBOUND_BIND_INTERFACE") {
-            config.outbound_bind_interface = Some(iface.to_owned());
+        match clap::value_t!(matches.value_of("OUTBOUND_BIND_INTERFACE"), String) {
+            Ok(iface) => config.outbound_bind_interface = Some(iface),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
-        if let Some(m) = matches.value_of("MANAGER_ADDR") {
-            config.manager = Some(ManagerConfig::new(m.parse::<ManagerAddr>().expect("manager address")));
+        match clap::value_t!(matches.value_of("MANAGER_ADDR"), ManagerAddr) {
+            Ok(addr) => {
+                if let Some(ref mut manager_config) = config.manager {
+                    manager_config.addr = addr;
+                } else {
+                    config.manager = Some(ManagerConfig::new(addr));
+                }
+            }
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
         #[cfg(all(unix, not(target_os = "android")))]
-        if let Some(nofile) = matches.value_of("NOFILE") {
-            config.nofile = Some(nofile.parse::<u64>().expect("an unsigned integer for `nofile`"));
+        match clap::value_t!(matches.value_of("NOFILE"), u64) {
+            Ok(nofile) => config.nofile = Some(nofile),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
         if let Some(acl_file) = matches.value_of("ACL") {
@@ -242,25 +264,43 @@ fn main() {
             config.ipv6_first = true;
         }
 
-        if let Some(udp_timeout) = matches.value_of("UDP_TIMEOUT") {
-            config.udp_timeout = Some(Duration::from_secs(udp_timeout.parse::<u64>().expect("udp-timeout")));
+        match clap::value_t!(matches.value_of("UDP_TIMEOUT"), u64) {
+            Ok(udp_timeout) => config.udp_timeout = Some(Duration::from_secs(udp_timeout)),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
-        if let Some(udp_max_assoc) = matches.value_of("UDP_MAX_ASSOCIATIONS") {
-            config.udp_max_associations = Some(udp_max_assoc.parse::<usize>().expect("udp-max-associations"));
+        match clap::value_t!(matches.value_of("UDP_MAX_ASSOCIATIONS"), usize) {
+            Ok(udp_max_assoc) => config.udp_max_associations = Some(udp_max_assoc),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
-        if let Some(bs) = matches.value_of("INBOUND_SEND_BUFFER_SIZE") {
-            config.inbound_send_buffer_size = Some(bs.parse::<u32>().expect("inbound-send-buffer-size"));
+        match clap::value_t!(matches.value_of("INBOUND_SEND_BUFFER_SIZE"), u32) {
+            Ok(bs) => config.inbound_send_buffer_size = Some(bs),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
-        if let Some(bs) = matches.value_of("INBOUND_RECV_BUFFER_SIZE") {
-            config.inbound_recv_buffer_size = Some(bs.parse::<u32>().expect("inbound-recv-buffer-size"));
+        match clap::value_t!(matches.value_of("INBOUND_RECV_BUFFER_SIZE"), u32) {
+            Ok(bs) => config.inbound_recv_buffer_size = Some(bs),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
-        if let Some(bs) = matches.value_of("OUTBOUND_SEND_BUFFER_SIZE") {
-            config.outbound_send_buffer_size = Some(bs.parse::<u32>().expect("outbound-send-buffer-size"));
+        match clap::value_t!(matches.value_of("OUTBOUND_SEND_BUFFER_SIZE"), u32) {
+            Ok(bs) => config.outbound_send_buffer_size = Some(bs),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
-        if let Some(bs) = matches.value_of("OUTBOUND_RECV_BUFFER_SIZE") {
-            config.outbound_recv_buffer_size = Some(bs.parse::<u32>().expect("outbound-recv-buffer-size"));
+        match clap::value_t!(matches.value_of("OUTBOUND_RECV_BUFFER_SIZE"), u32) {
+            Ok(bs) => config.outbound_recv_buffer_size = Some(bs),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
+        }
+
+        match clap::value_t!(matches.value_of("OUTBOUND_BIND_ADDR"), IpAddr) {
+            Ok(bind_addr) => config.outbound_bind_addr = Some(bind_addr),
+            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(err) => err.exit(),
         }
 
         // DONE READING options
@@ -294,9 +334,15 @@ fn main() {
             Builder::new_current_thread()
         } else {
             let mut builder = Builder::new_multi_thread();
-            if let Some(worker_threads) = matches.value_of("WORKER_THREADS") {
-                builder.worker_threads(worker_threads.parse::<usize>().expect("worker-threads"));
+
+            match clap::value_t!(matches.value_of("WORKER_THREADS"), usize) {
+                Ok(worker_threads) => {
+                    builder.worker_threads(worker_threads);
+                }
+                Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+                Err(err) => err.exit(),
             }
+
             builder
         };
         #[cfg(not(feature = "multi-threaded"))]
