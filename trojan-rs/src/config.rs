@@ -9,7 +9,7 @@ use crypto::{digest::Digest, sha2::Sha224};
 
 #[derive(Parser)]
 #[clap(
-    version = "0.7.3",
+    version,
     author = "Hoping White",
     about = "A trojan implementation using rust"
 )]
@@ -33,8 +33,6 @@ pub struct Opts {
         about = "log level, 0 for trace, 1 for debug, 2 for info, 3 for warning, 4 for error, 5 for off"
     )]
     pub log_level: u8,
-    #[clap(short, long, default_value = "1", about = "set marker used by tproxy")]
-    pub marker: u8,
     #[clap(
         short,
         long,
@@ -68,9 +66,9 @@ pub struct Opts {
 
 #[derive(Parser)]
 pub enum Mode {
-    #[clap(name = "proxy", about = "run in proxy mode")]
+    #[clap(version, name = "proxy", about = "run in proxy mode")]
     Proxy(ProxyArgs),
-    #[clap(name = "server", about = "run in server mode")]
+    #[clap(version, name = "server", about = "run in server mode")]
     Server(ServerArgs),
 }
 
@@ -247,4 +245,12 @@ pub fn setup_logger(logfile: &Option<String>, level: u8) {
         builder = builder.chain(std::io::stdout());
     }
     builder.apply().unwrap();
+}
+
+lazy_static::lazy_static! {
+    pub static ref OPTIONS:Opts = {
+        let mut opts = Opts::parse();
+        opts.setup();
+        opts
+    };
 }

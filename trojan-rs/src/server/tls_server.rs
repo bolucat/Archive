@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    net::IpAddr,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -9,12 +8,12 @@ use mio::{event::Event, net::TcpListener, Poll, Token};
 use rustls::{ServerConfig, ServerConnection};
 
 use crate::{
-    config::Opts,
     resolver::DnsResolver,
     server::{connection::Connection, CHANNEL_CNT, CHANNEL_PROXY, MAX_INDEX, MIN_INDEX},
-    sys,
-    tls_conn::{ConnStatus, TlsConn},
+    status::StatusProvider,
+    tls_conn::TlsConn,
 };
+use std::net::IpAddr;
 
 pub enum PollEvent<'a> {
     Network(&'a Event),
@@ -35,37 +34,25 @@ pub struct TlsServer {
     config: Arc<ServerConfig>,
     next_id: usize,
     conns: HashMap<usize, Connection>,
-    opts: &'static Opts,
 }
 
-pub trait Backend {
-    fn ready(&mut self, event: &Event, conn: &mut TlsConn<ServerConnection>);
+pub trait Backend: StatusProvider {
     fn dispatch(&mut self, data: &[u8]);
-    fn reregister(&mut self, poll: &Poll, readable: bool);
-    fn check_close(&mut self, poll: &Poll);
-    fn closing(&self) -> bool {
-        matches!(self.status(), ConnStatus::Closing)
-    }
-    fn closed(&self) -> bool {
-        matches!(self.status(), ConnStatus::Closed)
-    }
     fn timeout(&self, t1: Instant, t2: Instant) -> bool {
         t2 - t1 > self.get_timeout()
     }
     fn get_timeout(&self) -> Duration;
-    fn status(&self) -> ConnStatus;
-    fn shutdown(&mut self, poll: &Poll);
     fn writable(&self) -> bool;
+    fn do_read(&mut self, conn: &mut TlsConn);
 }
 
 impl TlsServer {
-    pub fn new(listener: TcpListener, config: Arc<ServerConfig>, opts: &'static Opts) -> TlsServer {
+    pub fn new(listener: TcpListener, config: Arc<ServerConfig>) -> TlsServer {
         TlsServer {
             listener,
             config,
             next_id: MIN_INDEX,
             conns: HashMap::new(),
-            opts,
         }
     }
 
@@ -78,35 +65,24 @@ impl TlsServer {
                         self.next_id,
                         addr
                     );
-                    if let Err(err) = sys::set_mark(&stream, self.opts.marker) {
-                        log::error!("set mark failed:{}", err);
-                        continue;
-                    } else if let Err(err) = stream.set_nodelay(true) {
+                    if let Err(err) = stream.set_nodelay(true) {
                         log::error!("set nodelay failed:{}", err);
                         continue;
                     }
-                    let session = match ServerConnection::new(self.config.clone()) {
-                        Ok(session) => session,
-                        Err(err) => {
-                            log::error!("create server connection failed:{}", err);
-                            continue;
-                        }
-                    };
+                    let session = ServerConnection::new(self.config.clone()).unwrap();
                     let index = self.next_index();
-                    let mut conn = Connection::new(
+                    let mut tls_conn = TlsConn::new(
                         index,
-                        TlsConn::<ServerConnection>::new(
-                            index,
-                            Token(index * CHANNEL_CNT + CHANNEL_PROXY),
-                            session,
-                            stream,
-                        ),
-                        self.opts,
+                        Token(index * CHANNEL_CNT + CHANNEL_PROXY),
+                        rustls::Connection::Server(session),
+                        stream,
                     );
-                    if conn.setup(poll) {
+                    if tls_conn.register(poll) {
+                        let conn = Connection::new(index, tls_conn);
                         self.conns.insert(index, conn);
                     } else {
-                        conn.close_now(poll);
+                        tls_conn.shutdown();
+                        tls_conn.check_status(poll);
                     }
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
@@ -159,7 +135,7 @@ impl TlsServer {
             if conn.timeout(check_active_time) {
                 list.push(*index);
                 log::warn!("connection:{} timeout, close now", index);
-                conn.close_now(poll)
+                conn.destroy(poll)
             }
         }
 

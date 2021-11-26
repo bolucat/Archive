@@ -34,13 +34,17 @@ currently has the following features: (still growing!)
   - Linux builds are available as `hysteria` (with tun support) and `hysteria-notun` (without tun support). Builds 
     without tun support are statically linked and do not depend on glibc. **If you use a non-standard distribution that 
     can't run `hysteria` properly, try `hysteria-notun` instead.**
-- Pull the image from Docker Hub: https://hub.docker.com/r/tobyxdd/hysteria
+- Use Docker or Docker Compose: https://github.com/HyNetwork/hysteria/blob/master/Docker.md
 - Use our Arch Linux AUR: https://aur.archlinux.org/packages/hysteria/
 - Build from source with `go build ./cmd`
 
+### OpenWrt LuCI app
+
+- [openwrt-passwall](https://github.com/xiaorouji/openwrt-passwall)
+
 ### Android
 
-- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.8.3)
+- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.8.5)
 
 ### iOS
 
@@ -175,6 +179,7 @@ encryption. If you need a proxy, just use our proxy modes.
       "password": "yubiyubi"
     }
   },
+  "alpn": "ayaya", // QUIC TLS ALPN
   "prometheus_listen": ":8080", // Prometheus HTTP metrics server listen address (at /metrics)
   "recv_window_conn": 15728640, // QUIC stream receive window
   "recv_window_client": 67108864, // QUIC connection receive window
@@ -297,6 +302,7 @@ hysteria_traffic_uplink_bytes_total{auth="aGFja2VyISE="} 37452
   "obfs": "AMOGUS", // Obfuscation password
   "auth": "[BASE64]", // Authentication payload in Base64
   "auth_str": "yubiyubi", // Authentication payload in string, mutually exclusive with the option above
+  "alpn": "ayaya", // QUIC TLS ALPN
   "server_name": "real.name.com", // TLS hostname used to verify the server certificate
   "insecure": false, // Ignore all certificate errors 
   "ca": "my.ca", // Custom CA file
@@ -342,6 +348,10 @@ recommended.
 ## ACL
 
 [ACL File Format](ACL.md)
+
+ACL is available on both client & server. On the server side it can be used to restrict what the clients can access, and
+is valid for any mode on the client side. On the client side, it's only supported in SOCKS5 & HTTP proxy modes, and has
+no effect in other modes (all traffic will go through the proxy)
 
 ## Logging
 

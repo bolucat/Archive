@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 
 use bytes::{BufMut, BytesMut};
 
-use crate::config::Opts;
+use crate::config::OPTIONS;
 
 /// protocol code for CONNECT command
 pub const CONNECT: u8 = 0x01;
@@ -10,8 +10,6 @@ pub const CONNECT: u8 = 0x01;
 pub const UDP_ASSOCIATE: u8 = 0x03;
 /// max packet size for udp, MTU = 1500 minus IP head size
 pub const MAX_PACKET_SIZE: usize = 1450;
-/// buffer size for connections
-pub const MAX_BUFFER_SIZE: usize = 1024 * 1024;
 /// protocol code for IPV4 type
 const IPV4: u8 = 0x01;
 /// protocol code for DOMAIN type
@@ -36,8 +34,8 @@ pub struct TrojanRequest<'a> {
 }
 
 impl<'a> TrojanRequest<'a> {
-    pub fn parse(mut buffer: &'a [u8], opts: &Opts) -> Option<TrojanRequest<'a>> {
-        if buffer.len() < opts.pass_len {
+    pub fn parse(mut buffer: &'a [u8]) -> Option<TrojanRequest<'a>> {
+        if buffer.len() < OPTIONS.pass_len {
             log::debug!(
                 "data length:{} is too short for a trojan request",
                 buffer.len()
@@ -45,15 +43,15 @@ impl<'a> TrojanRequest<'a> {
             return None;
         }
 
-        let pass = String::from_utf8_lossy(&buffer[..opts.pass_len]);
-        if let Some(orig) = opts.check_pass(&pass) {
+        let pass = String::from_utf8_lossy(&buffer[..OPTIONS.pass_len]);
+        if let Some(orig) = OPTIONS.check_pass(&pass) {
             log::debug!("request using password:{}", &orig);
         } else {
             log::debug!("request didn't find matched password");
             return None;
         }
 
-        buffer = &buffer[opts.pass_len..];
+        buffer = &buffer[OPTIONS.pass_len..];
         if buffer.len() < 2 || buffer[0] != b'\r' || buffer[1] != b'\n' {
             log::error!(
                 "unknown protocol, expected CRLF, {:#X}{:#X}",
@@ -95,8 +93,8 @@ impl<'a> TrojanRequest<'a> {
         }
     }
 
-    pub fn generate(buffer: &mut BytesMut, cmd: u8, addr: &SocketAddr, opts: &Opts) {
-        buffer.extend_from_slice(opts.get_pass().as_bytes());
+    pub fn generate(buffer: &mut BytesMut, cmd: u8, addr: &SocketAddr) {
+        buffer.extend_from_slice(OPTIONS.get_pass().as_bytes());
         buffer.put_u8(b'\r');
         buffer.put_u8(b'\n');
         buffer.put_u8(cmd);
