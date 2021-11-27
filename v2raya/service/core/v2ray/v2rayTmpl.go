@@ -328,24 +328,13 @@ func (t *Template) setDNS(outbounds []serverInfo, supportUDP map[string]bool) (r
 	}
 
 	// fakedns
-	if t.FakeDns != nil {
-		ds := coreObj.DnsServer{
-			Address: "fakedns",
-			Domains: []string{
-				"domain:use-fakedns.com",
+	if specialMode.ShouldUseFakeDns() {
+		t.DNS.Servers = append([]interface{}{
+			"fakedns",
+			coreObj.DnsServer{
+				Address: "fakedns", Domains: []string{"geosite:cn"},
 			},
-		}
-		if asset.LoyalsoldierSiteDatExists() {
-			// use more accurate list to avoid misadventure
-			ds.Domains = append(ds.Domains, "ext:LoyalsoldierSite.dat:gfw")
-		} else {
-			ds.Domains = append(ds.Domains, "geosite:geolocation-!cn")
-		}
-		if len(t.DNS.Servers) == 0 {
-			log.Error("[Fakedns]: NOT REASONABLE. Please report your config.")
-			t.DNS.Servers = append(t.DNS.Servers, "localhost")
-		}
-		t.DNS.Servers = append(t.DNS.Servers, ds)
+		}, t.DNS.Servers...)
 	}
 
 	if t.DNS.Servers == nil {
@@ -473,15 +462,6 @@ func (t *Template) setDNSRouting(routing []coreObj.RoutingRule, supportUDP map[s
 			}
 		}
 		t.Routing.Rules = append(t.Routing.Rules, dnsOut)
-	}
-	if specialMode.ShouldUseSupervisor() || specialMode.ShouldUseFakeDns() {
-		t.Routing.Rules = append(t.Routing.Rules,
-			coreObj.RoutingRule{
-				Type:        "field",
-				IP:          []string{"198.18.0.0/15"},
-				OutboundTag: firstOutboundTag,
-			},
-		)
 	}
 	if !supportUDP[firstOutboundTag] {
 		// find a outbound that supports UDP and redirect all leaky UDP traffic to it
@@ -967,14 +947,14 @@ func (t *Template) setDualStack() {
 	}
 }
 func (t *Template) setInboundFakeDnsDestOverride() {
-	if t.FakeDns == nil {
+	if !specialMode.ShouldUseFakeDns() {
 		return
 	}
 	for i := range t.Inbounds {
 		if t.Inbounds[i].Sniffing.Enabled == false {
 			continue
 		}
-		t.Inbounds[i].Sniffing.DestOverride = append(t.Inbounds[i].Sniffing.DestOverride, "fakedns")
+		t.Inbounds[i].Sniffing.DestOverride = []string{"fakedns"}
 	}
 }
 
