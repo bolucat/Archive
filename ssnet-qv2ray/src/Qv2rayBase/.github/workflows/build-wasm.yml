@@ -41,18 +41,16 @@ jobs:
           ccache -s
 
       - name: Install Host Qt
-        uses: jurplel/install-qt-action@v2.13.2
+        uses: jurplel/install-qt-action@v2
         with:
-          version: 6.2.0
-          aqtversion: ==1.2.0 # optional, default is ==1.1.3
+          version: 6.2.1
           set-env: false
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v2.13.2
+        uses: jurplel/install-qt-action@v2
         with:
-          version: 6.2.0
+          version: 6.2.1
           arch: wasm_32
-          aqtversion: ==1.2.0 # optional, default is ==1.1.3
           set-env: true
 
       - name: Setup emscripten

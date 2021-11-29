@@ -1,6 +1,6 @@
 # Qv2ray Base Library (libQv2rayBase)
 
-[![Build for Android](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-android.yml/badge.svg)](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-android.yml) [![Build for Desktop](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-desktop.yml) [![Build for WASM](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/Shadowsocks-NET/Qv2rayBase/actions/workflows/build-wasm.yml)
+[![Build for Android](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-android.yml/badge.svg)](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-android.yml) [![Build for Desktop](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-desktop.yml) [![Build for WASM](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-wasm.yml/badge.svg)](https://github.com/moodyhunter/Qv2rayBase/actions/workflows/build-wasm.yml)
 
 ## Description
 
