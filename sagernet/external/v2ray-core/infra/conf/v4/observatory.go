@@ -8,7 +8,7 @@ import (
 
 	"github.com/v2fly/v2ray-core/v4/app/observatory"
 	"github.com/v2fly/v2ray-core/v4/app/observatory/burst"
-	"github.com/v2fly/v2ray-core/v4/app/observatory/multiObservatory"
+	"github.com/v2fly/v2ray-core/v4/app/observatory/multiobservatory"
 	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"github.com/v2fly/v2ray-core/v4/common/taggedfeatures"
 	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/duration"
@@ -38,11 +38,11 @@ type BurstObservatoryConfig struct {
 }
 
 func (b BurstObservatoryConfig) Build() (proto.Message, error) {
-	if result, err := b.HealthCheck.Build(); err == nil {
+	result, err := b.HealthCheck.Build()
+	if err == nil {
 		return &burst.Config{SubjectSelector: b.SubjectSelector, PingConfig: result.(*burst.HealthPingConfig)}, nil
-	} else {
-		return nil, err
 	}
+	return nil, err
 }
 
 type MultiObservatoryItem struct {
@@ -56,7 +56,7 @@ type MultiObservatoryConfig struct {
 }
 
 func (o *MultiObservatoryConfig) Build() (proto.Message, error) {
-	ret := &multiObservatory.Config{Holders: &taggedfeatures.Config{Features: make(map[string]*anypb.Any)}}
+	ret := &multiobservatory.Config{Holders: &taggedfeatures.Config{Features: make(map[string]*anypb.Any)}}
 	for _, v := range o.Observers {
 		switch v.MemberType {
 		case "burst":
@@ -70,7 +70,6 @@ func (o *MultiObservatoryConfig) Build() (proto.Message, error) {
 				return nil, err
 			}
 			ret.Holders.Features[v.Tag] = serial.ToTypedMessage(burstObservatoryConfigPb)
-			break
 		case "default":
 			fallthrough
 		default:

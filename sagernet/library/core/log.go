@@ -87,8 +87,8 @@ func (w *v2rayLogWriter) Write(s string) error {
 	} else if strings.Contains(s, "[Info]") {
 		s = strings.Replace(s, "[Info]", "", 1)
 		priority = C.ANDROID_LOG_INFO
-	} else if strings.Contains(s, "[Warn]") {
-		s = strings.Replace(s, "[Warn]", "", 1)
+	} else if strings.Contains(s, "[Warning]") {
+		s = strings.Replace(s, "[Warning]", "", 1)
 		priority = C.ANDROID_LOG_WARN
 	} else if strings.Contains(s, "[Error]") {
 		s = strings.Replace(s, "[Error]", "", 1)

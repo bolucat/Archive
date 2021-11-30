@@ -12,12 +12,11 @@ var errNotDNS = errors.New("not dns")
 var errNotWanted = errors.New("not wanted")
 
 type SniffHeader struct {
-	protocol string
-	domain   string
+	domain string
 }
 
 func (s *SniffHeader) Protocol() string {
-	return s.protocol
+	return "dns"
 }
 
 func (s *SniffHeader) Domain() string {
@@ -41,10 +40,8 @@ func SniffDNS(b []byte) (*SniffHeader, error) {
 		return nil, errNotDNS
 	}
 	domain := question.Name.String()
-	if question.Class == dnsmessage.ClassINET && question.Type == dnsmessage.TypeA || question.Type != dnsmessage.TypeAAAA {
-		if protocol.IsValidDomain(domain) {
-			return &SniffHeader{"dns.strict", domain}, nil
-		}
+	if question.Class != dnsmessage.ClassINET && (question.Type == dnsmessage.TypeA || question.Type == dnsmessage.TypeAAAA) && protocol.IsValidDomain(domain) {
+		return &SniffHeader{domain}, nil
 	}
-	return &SniffHeader{"dns", domain}, nil
+	return nil, errNotWanted
 }

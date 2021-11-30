@@ -44,7 +44,7 @@ jobs:
             goarch: arm
             goarm: 5
           # END Linux ARM 5 6 7
-          # Windows ARM 7
+          # BEGIN Windows ARM 7
           - goos: windows
             goarch: arm
             goarm: 7
@@ -57,6 +57,12 @@ jobs:
             goarch: riscv64
           - goos: windows
             goarch: arm64
+          - goos: android
+            goarch: arm64
+          - goos: freebsd
+            goarch: arm64
+          - goos: openbsd
+            goarch: arm64
           # BEGIN MIPS
           - goos: linux
             goarch: mips64
@@ -67,10 +73,6 @@ jobs:
           - goos: linux
             goarch: mips
           # END MIPS
-          # BEGIN Android
-          - goos: android
-            goarch: arm64
-          # END Android
           # END Other architectures
       fail-fast: false
 
@@ -98,7 +100,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: ^1.17.2
+          go-version: ^1.17.3
 
       - name: Get project dependencies
         run: go mod download
@@ -166,7 +168,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: ^1.17.2
+          go-version: ^1.17.3
 
       - uses: actions/download-artifact@v2
         with:

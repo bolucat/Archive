@@ -72,6 +72,7 @@ func setConfArgs(cmd *base.Command) {
 	cmd.Flag.StringVar(&outputFormat, "o", "json", "")
 	cmd.Flag.BoolVar(&confDirRecursively, "r", false, "")
 }
+
 func executeConvert(cmd *base.Command, args []string) {
 	setConfArgs(cmd)
 	cmd.Flag.Parse(args)
@@ -123,7 +124,7 @@ func executeConvert(cmd *base.Command, args []string) {
 			base.Fatalf(err.Error())
 		}
 		w := bytes.NewBuffer(nil)
-		err = jsonpb.DumpJsonPb(pbConfig, w)
+		err = jsonpb.DumpJSONPb(pbConfig, w)
 		if err != nil {
 			base.Fatalf(err.Error())
 		}

@@ -161,7 +161,7 @@ func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, plugin Protoco
 		iv = make([]byte, account.Cipher.IVSize())
 		if n, err := io.ReadFull(reader, iv); err != nil {
 			return nil, newError("failed to read IV").Base(err)
-		} else { // nolint: golint
+		} else { // nolint: revive
 			drainer.AcknowledgeReceive(n)
 		}
 	}

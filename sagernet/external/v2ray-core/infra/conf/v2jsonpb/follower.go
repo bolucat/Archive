@@ -33,7 +33,6 @@ func (v *V2JsonProtobufFollower) Range(f func(protoreflect.FieldDescriptor, prot
 		name := descriptor.FullName()
 		fullname := v.Message.Descriptor().FullName()
 		if fullname == "google.protobuf.Any" {
-
 			switch name {
 			case "google.protobuf.Any.type_url":
 				fd := V2JsonProtobufAnyTypeFieldDescriptor{descriptor}
@@ -58,7 +57,6 @@ func (v *V2JsonProtobufFollower) Range(f func(protoreflect.FieldDescriptor, prot
 			default:
 				panic("unexpected any value")
 			}
-
 		}
 		return followValue(descriptor, value, f)
 	})
@@ -91,22 +89,21 @@ func (v *V2JsonProtobufFollower) Clear(descriptor protoreflect.FieldDescriptor) 
 }
 
 func (v *V2JsonProtobufFollower) Set(descriptor protoreflect.FieldDescriptor, value protoreflect.Value) {
-	switch descriptor.(type) {
+	switch descriptor := descriptor.(type) {
 	case V2JsonProtobufFollowerFieldDescriptor:
-		v.Message.Set(descriptor.(V2JsonProtobufFollowerFieldDescriptor).FieldDescriptor, value)
+		v.Message.Set(descriptor.FieldDescriptor, value)
 	case *V2JsonProtobufFollowerFieldDescriptor:
-		v.Message.Set(descriptor.(*V2JsonProtobufFollowerFieldDescriptor).FieldDescriptor, value)
+		v.Message.Set(descriptor.FieldDescriptor, value)
 	case *V2JsonProtobufAnyValueField:
 		protodata := value.Message()
 		bytesw, err := proto.MarshalOptions{AllowPartial: true}.Marshal(&V2JsonProtobufAnyValueFieldReturn{protodata})
 		if err != nil {
 			panic(err)
 		}
-		v.Message.Set(descriptor.(*V2JsonProtobufAnyValueField).FieldDescriptor, protoreflect.ValueOfBytes(bytesw))
+		v.Message.Set(descriptor.FieldDescriptor, protoreflect.ValueOfBytes(bytesw))
 	default:
 		v.Message.Set(descriptor, value)
 	}
-
 }
 
 func (v *V2JsonProtobufFollower) Mutable(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
@@ -124,11 +121,8 @@ func (v *V2JsonProtobufFollower) Mutable(descriptor protoreflect.FieldDescriptor
 }
 
 func (v *V2JsonProtobufFollower) NewField(descriptor protoreflect.FieldDescriptor) protoreflect.Value {
-
 	if _, ok := descriptor.(*V2JsonProtobufAnyValueField); ok {
-
 		url := v.Message.Get(v.Message.Descriptor().Fields().ByName("type_url")).String()
-
 		v2type := serial.V2TypeFromURL(url)
 		instance, err := serial.GetInstance(v2type)
 		if err != nil {
