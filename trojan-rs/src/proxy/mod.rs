@@ -15,9 +15,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 use crate::{
     config::OPTIONS,
-    proxy::{
-        idle_pool::IdlePool, tcp_server::TcpServer, udp_cache::UdpSvrCache, udp_server::UdpServer,
-    },
+    proxy::{tcp_server::TcpServer, udp_cache::UdpSvrCache, udp_server::UdpServer},
     resolver::DnsResolver,
     sys,
     types::Result,
@@ -27,6 +25,8 @@ mod idle_pool;
 mod tcp_server;
 mod udp_cache;
 mod udp_server;
+
+pub use idle_pool::IdlePool;
 
 /// minimal index used in `IdlePool`, `TcpServer` and `UdpServer`
 const MIN_INDEX: usize = 2;
@@ -83,27 +83,19 @@ pub fn new_socket(addr: SocketAddr, is_udp: bool) -> Result<Socket> {
     Ok(socket)
 }
 
-pub fn run() {
-    let addr: SocketAddr = OPTIONS.local_addr.parse().unwrap();
-    let mut tcp_listener = TcpListener::from_std(new_socket(addr, false).unwrap().into());
-    let mut udp_listener = UdpSocket::from_std(new_socket(addr, true).unwrap().into());
-    /*
-    if let Err(err) = sys::set_mark(&udp_listener, OPTIONS.marker) {
-        log::error!("udp socket set mark failed:{}", err);
-        return;
-    }
-     */
+pub fn run() -> Result<()> {
+    let addr: SocketAddr = OPTIONS.local_addr.parse()?;
+    let mut tcp_listener = TcpListener::from_std(new_socket(addr, false)?.into());
+    let mut udp_listener = UdpSocket::from_std(new_socket(addr, true)?.into());
     let mut udp_cache = UdpSvrCache::new();
-    let mut poll = Poll::new().unwrap();
+    let mut poll = Poll::new()?;
     let mut resolver = DnsResolver::new(&poll, Token(RESOLVER));
     poll.registry()
-        .register(&mut tcp_listener, Token(TCP_LISTENER), Interest::READABLE)
-        .unwrap();
+        .register(&mut tcp_listener, Token(TCP_LISTENER), Interest::READABLE)?;
     poll.registry()
-        .register(&mut udp_listener, Token(UDP_LISTENER), Interest::READABLE)
-        .unwrap();
+        .register(&mut udp_listener, Token(UDP_LISTENER), Interest::READABLE)?;
 
-    let hostname = OPTIONS.proxy_args().hostname.as_str().try_into().unwrap();
+    let hostname = OPTIONS.proxy_args().hostname.as_str().try_into()?;
 
     let mut root_store = RootCertStore::empty();
     root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
@@ -134,7 +126,7 @@ pub fn run() {
     pool.init(&poll, &resolver);
 
     loop {
-        poll.poll(&mut events, Some(check_duration)).unwrap();
+        poll.poll(&mut events, Some(check_duration))?;
         for event in &events {
             log::trace!("dispatch token:{}", event.token().0);
             match event.token() {
