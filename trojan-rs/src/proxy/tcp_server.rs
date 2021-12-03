@@ -14,8 +14,9 @@ use mio::{
 
 use crate::{
     config::OPTIONS,
+    idle_pool::IdlePool,
     proto::{TrojanRequest, CONNECT, MAX_PACKET_SIZE},
-    proxy::{idle_pool::IdlePool, next_index, CHANNEL_CLIENT, CHANNEL_CNT, CHANNEL_TCP, MIN_INDEX},
+    proxy::{next_index, CHANNEL_CLIENT, CHANNEL_CNT, CHANNEL_TCP, MIN_INDEX},
     resolver::DnsResolver,
     status::{ConnStatus, StatusProvider},
     sys, tcp_util,
@@ -127,7 +128,7 @@ impl Connection {
             dst_addr,
             client,
             server_conn,
-            status: ConnStatus::Established,
+            status: ConnStatus::Connecting,
             send_buffer: BytesMut::new(),
             recv_buffer: vec![0u8; MAX_PACKET_SIZE],
             last_active_time: Instant::now(),
@@ -198,6 +199,7 @@ impl Connection {
                 }
 
                 if event.is_writable() {
+                    self.established();
                     self.try_send_client(&[]);
                     if self.writable() && self.read_server {
                         log::trace!(
@@ -223,6 +225,7 @@ impl Connection {
                 }
 
                 if event.is_writable() {
+                    self.server_conn.established();
                     self.try_send_server();
                     if self.server_conn.writable() && self.read_client {
                         log::trace!(
@@ -267,7 +270,9 @@ impl Connection {
     }
 
     fn try_send_client(&mut self, buffer: &[u8]) {
-        if self.send_buffer.is_empty() {
+        if self.is_connecting() {
+            self.send_buffer.extend_from_slice(buffer);
+        } else if self.send_buffer.is_empty() {
             self.do_send_client(buffer);
         } else {
             self.send_buffer.extend_from_slice(buffer);

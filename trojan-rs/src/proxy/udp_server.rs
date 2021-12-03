@@ -5,11 +5,9 @@ use mio::{event::Event, net::UdpSocket, Poll, Token};
 
 use crate::{
     config::OPTIONS,
+    idle_pool::IdlePool,
     proto::{TrojanRequest, UdpAssociate, UdpParseResult, MAX_PACKET_SIZE, UDP_ASSOCIATE},
-    proxy::{
-        idle_pool::IdlePool, next_index, udp_cache::UdpSvrCache, CHANNEL_CNT, CHANNEL_UDP,
-        MIN_INDEX,
-    },
+    proxy::{next_index, udp_cache::UdpSvrCache, CHANNEL_CNT, CHANNEL_UDP, MIN_INDEX},
     resolver::DnsResolver,
     status::{ConnStatus, StatusProvider},
     sys,
@@ -193,7 +191,7 @@ impl Connection {
     }
 
     fn send_request(&mut self, payload: &[u8], dst_addr: &SocketAddr, poll: &Poll) {
-        if !self.server_conn.writable() {
+        if !self.server_conn.is_connecting() && !self.server_conn.writable() {
             log::warn!("udp packet is too fast, ignore now");
             return;
         }
@@ -224,6 +222,7 @@ impl Connection {
             self.try_read_server(udp_cache);
         }
         if event.is_writable() {
+            self.server_conn.established();
             self.try_send_server();
         }
         self.do_status(poll);

@@ -1,6 +1,9 @@
+#![feature(ip)]
+
 use crate::config::{Mode, OPTIONS};
 
 mod config;
+mod idle_pool;
 mod proto;
 mod proxy;
 mod resolver;
@@ -10,10 +13,10 @@ mod sys;
 mod tcp_util;
 mod tls_conn;
 mod types;
+#[cfg(target_os = "windows")]
 mod wintun;
 
-#[tokio::main]
-async fn main() {
+fn main() {
     config::setup_logger(&OPTIONS.log_file, OPTIONS.log_level);
     if let Err(err) = match OPTIONS.mode {
         Mode::Proxy(_) => {
@@ -27,7 +30,7 @@ async fn main() {
         #[cfg(target_os = "windows")]
         Mode::Wintun(_) => {
             log::warn!("trojan started in wintun mode");
-            wintun::run().await
+            wintun::run()
         }
         #[cfg(not(target_os = "windows"))]
         Mode::Wintun(_) => {
