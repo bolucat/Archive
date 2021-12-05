@@ -21,8 +21,11 @@
 
 
 + [或者xiaorouji新库地址](https://github.com/xiaorouji/openwrt-passwall.git)
+
+
  
 + 谢谢 **kiddin9珠玉在前**[openwrt固件与插件下载](https://op.dllkids.xyz/op/firmware/)
+
 
 
 1、 lede/package$下运行,或者openwrt/package$下运行
@@ -58,12 +61,13 @@ src-git kenzo https://github.com/kenzok8/openwrt-packages
 - luci-app-adguardhome     ------------------去广告 
 - luci-app-smartdns        ------------------smartdns防污染
 - luci-app-passwall        ------------------Lienol大神 
-- luci-theme-argon_new     ------------------二合蓝 紫主题
+- luci-theme-argonne       ------------------修改老竭力主题名
+- luci-app-argonne-config  ------------------argonne主题设置
 - luci-app-ssr-plus        ------------------Lean大神 
-- luci-theme-opentomcat    ------------------修复主机名错误（适配18.06）  
-- luci-theme-opentomato    ------------------修复主机名错误（适配18.06）
+- luci-theme-mcat          ------------------修改主题名  
+- luci-theme-tomato        ------------------修改主题名
 
-* Lean大近期修改源码后，主题适配！
+* 修改argon为argonne，包括argonne-config，为防止同名argon，而影响编译
 
 ![暗黄主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-9.jpg)
 ![暗黄主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-10.jpg)
@@ -77,8 +81,6 @@ src-git kenzo https://github.com/kenzok8/openwrt-packages
 ![抹茶绿主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-14.jpg)
 ![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-1.png)
 ![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-2.png)
-![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-3.png)
-![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-4.png)
 * 修复opentomato 与opentomcat修改主机名无效的bug
 ![修复tomto不能修改主机名的bug](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/%E5%B0%8F%E7%8C%AA%E5%AE%B6-719.png)
 ![修复tomto不能修改主机名的bug](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/%E5%B0%8F%E7%8C%AA%E5%AE%B6-722.png)
