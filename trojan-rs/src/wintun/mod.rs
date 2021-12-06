@@ -1,12 +1,15 @@
-use std::{convert::TryInto, net::SocketAddr, process::Command, sync::Arc};
-
-use crossbeam::channel::{Receiver, Sender};
-use mio::{Events, Poll, Token, Waker};
-use pnet::{
-    ipnetwork::{IpNetwork, IpNetworkIterator},
-    packet::{ip::IpNextHeaderProtocols, udp::UdpPacket, Packet as _, Packet},
+use std::{
+    convert::TryInto,
+    net::{Ipv4Addr, SocketAddr},
+    process::Command,
+    sync::Arc,
 };
+
+use crossbeam::channel::Sender;
+use mio::{Events, Poll, Token, Waker};
+
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
+use smoltcp::wire::{IpProtocol, Ipv4Packet, UdpPacket};
 use wintun::{Adapter, Session};
 
 use crate::{
@@ -14,9 +17,9 @@ use crate::{
     resolver::DnsResolver,
     types::Result,
     wintun::{
-        ip::IpPacket,
-        tcp::{TcpRequest, TcpResponse},
-        udp::{UdpRequest, UdpResponse, UdpServer},
+        ip::is_private,
+        tcp::TcpRequest,
+        udp::{UdpRequest, UdpServer},
     },
     OPTIONS,
 };
@@ -39,29 +42,24 @@ const CHANNEL_TCP: usize = 2;
 
 pub fn run() -> Result<()> {
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
-    let mut adapter = match Adapter::open(&wintun, "trojan", OPTIONS.wintun_args().name.as_str()) {
+    let adapter = match Adapter::open(&wintun, OPTIONS.wintun_args().name.as_str()) {
         Ok(a) => a,
-        Err(_) => {
-            Adapter::create(
-                &wintun,
-                "trojan",
-                OPTIONS.wintun_args().name.as_str(),
-                OPTIONS.wintun_args().guid,
-            )?
-            .adapter
-        }
+        Err(_) => Adapter::create(
+            &wintun,
+            "trojan",
+            OPTIONS.wintun_args().name.as_str(),
+            OPTIONS.wintun_args().guid,
+        )?,
     };
 
     if OPTIONS.wintun_args().delete {
-        adapter.delete(true)?;
+        if let Ok(adapter) = Arc::try_unwrap(adapter) {
+            adapter.delete()?;
+        }
         return Ok(());
     }
 
-    if let Some(guid) = OPTIONS.wintun_args().guid {
-        adapter.set_guid(guid);
-    }
-
-    let index = adapter.get_adapter_index()?;
+    let index = adapter.get_adapter_index(OPTIONS.wintun_args().guid)?;
 
     if let Err(err) = Command::new("route")
         .args([
@@ -113,25 +111,16 @@ pub fn run() -> Result<()> {
 
     let (udp_req_sender, udp_req_receiver) =
         crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
-    let (udp_resp_sender, udp_resp_receiver) =
-        crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
     let (tcp_req_sender, _tcp_req_receiver) =
         crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
-    let (tcp_resp_sender, tcp_resp_receiver) =
-        crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
-
-    let udp_server = UdpServer::new(udp_req_receiver, udp_resp_sender);
 
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
 
-    let waker = resolver.get_waker();
-    let read_session = session.clone();
-    rayon::spawn(|| {
-        do_tun_read(read_session, waker, udp_req_sender, tcp_req_sender).unwrap();
-    });
+    let udp_server = UdpServer::new(udp_req_receiver, session.clone());
 
+    let waker = resolver.get_waker();
     rayon::spawn(|| {
-        do_tun_send(session, tcp_resp_receiver, udp_resp_receiver).unwrap();
+        do_tun_read(session, waker, udp_req_sender, tcp_req_sender).unwrap();
     });
 
     do_network(poll, resolver, pool, udp_server)
@@ -141,92 +130,49 @@ fn do_tun_read(
     session: Arc<Session>,
     waker: Arc<Waker>,
     udp_sender: Sender<UdpRequest>,
-    _tcp_sender: Sender<TcpRequest>,
+    tcp_sender: Sender<TcpRequest>,
 ) -> Result<()> {
     log::warn!("do_tun_read started");
-    let private = IpNetwork::new("224.0.0.0".parse()?, 4)?;
     loop {
         let packet = session.receive_blocking()?;
-        if let Some(packet) = IpPacket::new(packet.bytes()) {
-            let source_addr = packet.get_source();
-            let target_addr = packet.get_destination();
-            if !target_addr.is_global() || private.contains(target_addr) {
-                log::debug!("ignore private ip:{}", target_addr);
+        let version = packet.bytes()[0] >> 4;
+        if version == 4 {
+            let packet = Ipv4Packet::new_checked(packet.bytes())?;
+            let source_addr = packet.src_addr();
+            let target_addr = packet.dst_addr();
+            if is_private(target_addr) {
+                log::debug!("[{}->{}]skip packet", source_addr, target_addr);
                 continue;
             }
-            if let IpPacket::V4(p) = &packet {
-                log::info!(
-                    "version:{}, ttl:{}, dscp:{}, ecn:{}, flags:{}, offset:{}, id:{}, total:{}, header:{}, options:{:?}",
-                    p.get_version(),
-                    p.get_ttl(),
-                    p.get_dscp(),
-                    p.get_ecn(),
-                    p.get_flags(),
-                    p.get_fragment_offset(),
-                    p.get_identification(),
-                    p.get_total_length(),
-                    p.get_header_length(),
-                    p.get_options_raw(),
-                );
-            }
-            match packet.get_next_level_protocol() {
-                IpNextHeaderProtocols::Udp => {
-                    if let Some(packet) = UdpPacket::new(packet.payload()) {
-                        let source = SocketAddr::new(source_addr, packet.get_source());
-                        let target = SocketAddr::new(target_addr, packet.get_destination());
-                        if let Err(_err) = udp_sender.try_send(UdpRequest {
+            match packet.protocol() {
+                IpProtocol::Udp => {
+                    let packet = UdpPacket::new_checked(packet.payload())?;
+                    let source =
+                        SocketAddr::new(Ipv4Addr::from(source_addr).into(), packet.src_port());
+                    let target =
+                        SocketAddr::new(Ipv4Addr::from(target_addr).into(), packet.dst_port());
+                    if let Ok(()) = udp_sender.try_send(UdpRequest {
+                        source,
+                        target,
+                        payload: Vec::from(packet.payload()),
+                    }) {
+                        log::info!(
+                            "[{}->{}]receive udp packet size:{}",
                             source,
                             target,
-                            payload: Vec::from(packet.payload()),
-                        }) {
-                            log::warn!("udp send buffer is full, drop packet now");
-                        } else {
-                            log::debug!(
-                                "[{}->{}]udp packet size:{}",
-                                source,
-                                target,
-                                packet.payload().len()
-                            );
-                        }
+                            packet.payload().len()
+                        );
                     } else {
-                        log::error!("parse udp packet failed");
+                        log::warn!("udp buffer is full, skip packet");
                     }
                 }
-                IpNextHeaderProtocols::Tcp => {}
+                IpProtocol::Tcp => {}
                 _ => {}
             }
-            waker.wake()?;
         } else {
-            log::error!("invalid ip packet");
         }
-    }
-}
 
-fn do_tun_send(
-    session: Arc<Session>,
-    tcp_receiver: Receiver<TcpResponse>,
-    udp_receiver: Receiver<UdpResponse>,
-) -> Result<()> {
-    log::warn!("do_tun_send started");
-    let mut id: u16 = 1;
-    loop {
-        crossbeam::select! {
-            recv(udp_receiver) -> packet => {
-                let mut packet = packet?;
-                if let ip::MutableIpPacket::V4(p) = &mut packet {
-                   p.set_identification(id);
-                    id +=1;
-                }
-                let packet = packet.into_immutable();
-                let mut send = session.allocate_send_packet(packet.packet().len() as u16)?;
-                send.bytes_mut().copy_from_slice(packet.packet());
-                session.send_packet(send);
-                log::info!("send {} bytes through tunnel", packet.packet().len());
-            },
-            recv(tcp_receiver) -> _packet => {
-
-            }
-        }
+        waker.wake()?;
     }
 }
 
