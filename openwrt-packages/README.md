@@ -10,42 +10,31 @@
 
 #### 说明
 
-* 软件不定期同步大神库更新，适合一键下载到package目录下，用于openwrt编译
+* 喜欢追新的可以去下载small-package，该仓库每天自动同步更新
 
-* 作为搬运工，passwall的依赖一并找齐了
+* [small-package仓库地址](https://github.com/kenzok8/small-package) 
+
+* 软件不定期同步大神库更新，适合一键下载用于openwrt编译
+
 
 ##### 插件每日更新下载:
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/kenzok8/compile-package?style=for-the-badge&label=插件更新下载)](https://github.com/kenzok8/compile-package/releases/latest)
 
-+ [passwall依赖库下载链接](https://github.com/kenzok8/small.git)
++ [passwall依赖](https://github.com/kenzok8/small)
 
++ [xiaorouji仓库](https://github.com/xiaorouji/openwrt-passwall)
 
-+ [或者xiaorouji新库地址](https://github.com/xiaorouji/openwrt-passwall.git)
-
-
- 
 + 谢谢 **kiddin9珠玉在前**[openwrt固件与插件下载](https://op.dllkids.xyz/op/firmware/)
 
-
-
-1、 lede/package$下运行,或者openwrt/package$下运行
-
-
-```bash
- git clone https://github.com/kenzok8/openwrt-packages
+#### 使用
+一键命令
+```yaml
+sed -i '$a src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+sed -i '$a src-git small https://github.com/kenzok8/small' feeds.conf.default
+./scripts/feeds update -a
+./scripts/feeds install -a
+make menuconfig
 ```
-
- 2、 或者添加下面代码到openwrt或lede源码根目录feeds.conf.default文件
- 
-```bash
-src-git kenzo https://github.com/kenzok8/openwrt-packages
-```
-
- 3、 passwall依赖
- 
- ```bash
- src-git small https://github.com/kenzok8/small
- ```
 
 - openwrt 固件编译自定义主题与软件
 - luci-app-vssr            ------------------vssr老竭力
