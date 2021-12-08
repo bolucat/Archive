@@ -23,10 +23,35 @@ import android.graphics.Rect
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import io.nekohasekai.sagernet.ui.MainActivity
 
-class FixedLinearLayoutManager(val recyclerView: RecyclerView) :
-    LinearLayoutManager(recyclerView.context, RecyclerView.VERTICAL, false) {
+val viewPagerRecyclerView by lazy {
+    ViewPager2::class.java.getDeclaredField("mRecyclerView").apply {
+        isAccessible = true
+    }
+}
+
+val viewPagerLayoutManager by lazy {
+    ViewPager2::class.java.getDeclaredField("mLayoutManager").apply {
+        isAccessible = true
+    }
+}
+
+fun fixViewPager2(viewPager: ViewPager2) {
+    runCatching {
+        val recyclerView = viewPagerRecyclerView.get(viewPager) as RecyclerView
+        val layoutManager = FixedLinearLayoutManager(recyclerView)
+        recyclerView.layoutManager = layoutManager
+        viewPagerLayoutManager.set(viewPager, layoutManager)
+    }.onFailure {
+        Logs.w(it)
+    }
+}
+
+class FixedLinearLayoutManager(val recyclerView: RecyclerView) : LinearLayoutManager(
+    recyclerView.context, RecyclerView.VERTICAL, false
+) {
 
     override fun onLayoutChildren(recycler: RecyclerView.Recycler?, state: RecyclerView.State?) {
         try {
@@ -38,8 +63,7 @@ class FixedLinearLayoutManager(val recyclerView: RecyclerView) :
     private var listenerDisabled = false
 
     override fun scrollVerticallyBy(
-        dx: Int, recycler: RecyclerView.Recycler,
-        state: RecyclerView.State
+        dx: Int, recycler: RecyclerView.Recycler, state: RecyclerView.State
     ): Int {
         val scrollRange = super.scrollVerticallyBy(dx, recycler, state)
         if (listenerDisabled) return scrollRange
@@ -51,12 +75,14 @@ class FixedLinearLayoutManager(val recyclerView: RecyclerView) :
 
         val overscroll = dx - scrollRange
         if (overscroll > 0) {
-            val view =
-                (recyclerView.findViewHolderForAdapterPosition(findLastVisibleItemPosition())
-                    ?: return scrollRange).itemView
+            val view = (recyclerView.findViewHolderForAdapterPosition(findLastVisibleItemPosition())
+                ?: return scrollRange).itemView
             val itemLocation = Rect().also { view.getGlobalVisibleRect(it) }
             val fabLocation = Rect().also { activity.binding.fab.getGlobalVisibleRect(it) }
-            if (!itemLocation.contains(fabLocation.left, fabLocation.top) && !itemLocation.contains(fabLocation.right, fabLocation.bottom)) {
+            if (!itemLocation.contains(fabLocation.left, fabLocation.top) && !itemLocation.contains(
+                    fabLocation.right, fabLocation.bottom
+                )
+            ) {
                 return scrollRange
             }
             activity.binding.fab.apply {
@@ -84,8 +110,9 @@ class FixedLinearLayoutManager(val recyclerView: RecyclerView) :
 
 }
 
-class FixedGridLayoutManager(val recyclerView: RecyclerView, spanCount: Int) :
-    GridLayoutManager(recyclerView.context, spanCount) {
+class FixedGridLayoutManager(val recyclerView: RecyclerView, spanCount: Int) : GridLayoutManager(
+    recyclerView.context, spanCount
+) {
 
     override fun onLayoutChildren(recycler: RecyclerView.Recycler?, state: RecyclerView.State?) {
         try {
@@ -97,8 +124,7 @@ class FixedGridLayoutManager(val recyclerView: RecyclerView, spanCount: Int) :
     private var listenerDisabled = false
 
     override fun scrollVerticallyBy(
-        dx: Int, recycler: RecyclerView.Recycler,
-        state: RecyclerView.State
+        dx: Int, recycler: RecyclerView.Recycler, state: RecyclerView.State
     ): Int {
         val scrollRange = super.scrollVerticallyBy(dx, recycler, state)
         if (listenerDisabled) return scrollRange
@@ -110,12 +136,14 @@ class FixedGridLayoutManager(val recyclerView: RecyclerView, spanCount: Int) :
 
         val overscroll = dx - scrollRange
         if (overscroll > 0) {
-            val view =
-                (recyclerView.findViewHolderForAdapterPosition(findLastVisibleItemPosition())
-                    ?: return scrollRange).itemView
+            val view = (recyclerView.findViewHolderForAdapterPosition(findLastVisibleItemPosition())
+                ?: return scrollRange).itemView
             val itemLocation = Rect().also { view.getGlobalVisibleRect(it) }
             val fabLocation = Rect().also { activity.binding.fab.getGlobalVisibleRect(it) }
-            if (!itemLocation.contains(fabLocation.left, fabLocation.top) && !itemLocation.contains(fabLocation.right, fabLocation.bottom)) {
+            if (!itemLocation.contains(fabLocation.left, fabLocation.top) && !itemLocation.contains(
+                    fabLocation.right, fabLocation.bottom
+                )
+            ) {
                 return scrollRange
             }
             activity.binding.fab.apply {

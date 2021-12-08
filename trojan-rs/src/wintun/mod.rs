@@ -6,8 +6,8 @@ use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use smoltcp::{
     iface::{InterfaceBuilder, Routes},
     socket::{
-        AnySocket, SocketHandle, SocketSet, TcpSocket, TcpSocketBuffer, UdpPacketMetadata,
-        UdpSocket, UdpSocketBuffer,
+        Socket, SocketHandle, SocketSet, TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket,
+        UdpSocketBuffer,
     },
     time::{Duration, Instant},
     wire::{
@@ -45,6 +45,25 @@ const CHANNEL_UDP: usize = 1;
 /// channel index for remote tcp connection
 const CHANNEL_TCP: usize = 2;
 
+fn add_route(address: &str, netmask: &str, index: u32) {
+    if let Err(err) = Command::new("route")
+        .args([
+            "add",
+            address,
+            "mask",
+            netmask,
+            "0.0.0.0",
+            "METRIC",
+            "1",
+            "IF",
+            index.to_string().as_str(),
+        ])
+        .output()
+    {
+        log::error!("route add {} failed:{}", address, err);
+    }
+}
+
 pub fn run() -> Result<()> {
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
     let adapter = match Adapter::open(&wintun, OPTIONS.wintun_args().name.as_str()) {
@@ -65,23 +84,7 @@ pub fn run() -> Result<()> {
     }
 
     let index = adapter.get_adapter_index(OPTIONS.wintun_args().guid)?;
-
-    if let Err(err) = Command::new("route")
-        .args([
-            "add",
-            "8.8.8.8",
-            "mask",
-            "255.255.255.255",
-            "0.0.0.0",
-            "METRIC",
-            "1",
-            "IF",
-            index.to_string().as_str(),
-        ])
-        .output()
-    {
-        log::error!("route add 8.8.8.8 failed:{}", err);
-    }
+    add_route("8.8.8.8", "255.255.255.255", index);
 
     let hostname = OPTIONS.wintun_args().hostname.as_str().try_into()?;
 
@@ -104,7 +107,7 @@ pub fn run() -> Result<()> {
 
     let mut poll = Poll::new()?;
     let waker = Arc::new(Waker::new(poll.registry(), Token(RESOLVER))?);
-    let mut resolver = DnsResolver::new(&poll, waker.clone(), Token(RESOLVER));
+    let mut resolver = DnsResolver::new(waker, Token(RESOLVER));
     let mut pool = IdlePool::new(
         config,
         hostname,
@@ -140,6 +143,11 @@ pub fn run() -> Result<()> {
     let timeout = Some(Duration::from_millis(1));
     let mut udp_server = UdpServer::new();
     let mut tcp_server = TcpServer::new();
+
+    let mut last_udp_check_time = std::time::Instant::now();
+    let mut last_tcp_check_time = std::time::Instant::now();
+    let check_duration = std::time::Duration::new(1, 0);
+
     loop {
         let now = Instant::now();
         let timeout = interface.poll_delay(&sockets, now).or(timeout);
@@ -160,7 +168,9 @@ pub fn run() -> Result<()> {
                 i if i % CHANNEL_CNT == CHANNEL_UDP => {
                     udp_server.do_remote(event, &poll, &mut sockets);
                 }
-                _ => {}
+                _ => {
+                    tcp_server.do_remote(event, &poll, &mut sockets);
+                }
             }
         }
         let (udp_handles, tcp_handles) = do_tun_read(&session, &sender, &mut sockets)?;
@@ -169,6 +179,17 @@ pub fn run() -> Result<()> {
         }
         udp_server.do_local(&mut pool, &poll, &resolver, udp_handles, &mut sockets);
         tcp_server.do_local(&mut pool, &poll, &resolver, tcp_handles, &mut sockets);
+
+        let now = std::time::Instant::now();
+        if now - last_tcp_check_time > check_duration {
+            tcp_server.check_timeout(&poll, now, &mut sockets);
+            last_tcp_check_time = now;
+        }
+
+        if now - last_udp_check_time > OPTIONS.udp_idle_duration {
+            udp_server.check_timeout(now);
+            last_udp_check_time = now;
+        }
     }
 }
 
@@ -211,14 +232,19 @@ fn do_tun_read(
                 }
                 _ => continue,
             };
-        let (src_port, dst_port, syn) = match protocol {
+        let (src_port, dst_port, notify, connect) = match protocol {
             IpProtocol::Udp => {
                 let packet = UdpPacket::new_checked(payload).unwrap();
-                (packet.src_port(), packet.dst_port(), None)
+                (packet.src_port(), packet.dst_port(), true, None)
             }
             IpProtocol::Tcp => {
                 let packet = TcpPacket::new_checked(payload).unwrap();
-                (packet.src_port(), packet.dst_port(), Some(packet.syn()))
+                (
+                    packet.src_port(),
+                    packet.dst_port(),
+                    !packet.payload().is_empty() || packet.fin(),
+                    Some(packet.syn() && !packet.ack()),
+                )
             }
             _ => continue,
         };
@@ -229,42 +255,39 @@ fn do_tun_read(
             continue;
         }
 
-        if let Some(syn) = syn {
-            let handle = if syn {
+        if let Some(connect) = connect {
+            if let Some(handle) = if connect {
                 let mut socket = TcpSocket::new(
                     TcpSocketBuffer::new(vec![0; 10240]),
                     TcpSocketBuffer::new(vec![0; 10240]),
                 );
-                socket.connect(src_endpoint, dst_endpoint)?;
-                sockets.add(socket)
+                socket.listen(dst_endpoint).unwrap();
+                Some(sockets.add(socket))
             } else {
-                let mut handle = None;
-                for socket in sockets.iter_mut().filter_map(TcpSocket::downcast) {
-                    if socket.local_endpoint() == src_endpoint
-                        && socket.remote_endpoint() == dst_endpoint
+                sockets.iter().find_map(|socket| match socket {
+                    Socket::Tcp(socket)
+                        if socket.local_endpoint() == dst_endpoint
+                            && socket.remote_endpoint() == src_endpoint =>
                     {
-                        handle = Some(socket.handle());
-                        break;
+                        Some(socket.handle())
                     }
-                }
-                handle.unwrap()
-            };
-            tcp_handles.push(handle);
-        } else {
-            log::info!("[udp][{}->{}]", src_endpoint, dst_endpoint);
-            let mut handle = None;
-            for socket in sockets.iter_mut().filter_map(UdpSocket::downcast) {
-                if socket.endpoint() == dst_endpoint {
-                    handle = Some(socket.handle());
-                    break;
+                    _ => None,
+                })
+            } {
+                if notify {
+                    tcp_handles.push(handle);
                 }
             }
+        } else {
+            let handle = sockets.iter().find_map(|socket| match socket {
+                Socket::Udp(socket) if socket.endpoint() == dst_endpoint => Some(socket.handle()),
+                _ => None,
+            });
             let handle = match handle {
                 None => {
-                    log::info!("socket not found, create a new one");
                     let mut socket = UdpSocket::new(
-                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 10240]),
-                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 10240]),
+                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 1500]),
+                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 1500]),
                     );
                     socket.bind(dst_endpoint)?;
                     sockets.add(socket)
@@ -275,14 +298,7 @@ fn do_tun_read(
         }
 
         if let Err(err) = sender.try_send(packet.bytes().into()) {
-            log::warn!("sender buffer is full");
-        } else {
-            log::info!(
-                "[{}->{}][{}]send packet to device",
-                src_endpoint,
-                dst_endpoint,
-                protocol
-            );
+            log::warn!("sender buffer is full:{}", err);
         }
     }
 

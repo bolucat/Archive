@@ -117,6 +117,8 @@ class ConfigurationFragment @JvmOverloads constructor(
         }
 
         groupPager = view.findViewById(R.id.group_pager)
+        fixViewPager2(groupPager)
+
         tabLayout = view.findViewById(R.id.group_tab)
         adapter = GroupPagerAdapter()
         ProfileManager.addListener(adapter)
