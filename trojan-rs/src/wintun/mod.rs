@@ -1,14 +1,18 @@
-use std::{collections::BTreeMap, convert::TryInto, process::Command, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    convert::TryInto,
+    fs::File,
+    io::{BufRead, BufReader},
+    process::Command,
+    sync::Arc,
+};
 
 use crossbeam::channel::Sender;
 use mio::{Events, Poll, Token, Waker};
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use smoltcp::{
-    iface::{InterfaceBuilder, Routes},
-    socket::{
-        Socket, SocketHandle, SocketSet, TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket,
-        UdpSocketBuffer,
-    },
+    iface::{Interface, InterfaceBuilder, Routes, SocketHandle},
+    socket::{Socket, TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
     time::{Duration, Instant},
     wire::{
         IpAddress, IpCidr, IpEndpoint, IpProtocol, IpVersion, Ipv4Address, Ipv4Packet, Ipv6Packet,
@@ -33,6 +37,8 @@ mod ip;
 mod tcp;
 mod udp;
 
+pub(crate) type SocketSet<'a> = Interface<'a, TunInterface>;
+
 /// Token used for dns resolver
 const RESOLVER: usize = 1;
 const MIN_INDEX: usize = 2;
@@ -45,7 +51,7 @@ const CHANNEL_UDP: usize = 1;
 /// channel index for remote tcp connection
 const CHANNEL_TCP: usize = 2;
 
-fn add_route(address: &str, netmask: &str, index: u32) {
+fn add_route_with_if(address: &str, netmask: &str, index: u32) {
     if let Err(err) = Command::new("route")
         .args([
             "add",
@@ -64,27 +70,21 @@ fn add_route(address: &str, netmask: &str, index: u32) {
     }
 }
 
+fn add_route_with_gw(address: &str, netmask: &str, gateway: &str) {
+    if let Err(err) = Command::new("route")
+        .args(["add", address, "mask", netmask, gateway, "METRIC", "1"])
+        .output()
+    {
+        log::error!("route add {} failed:{}", address, err);
+    }
+}
+
 pub fn run() -> Result<()> {
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
     let adapter = match Adapter::open(&wintun, OPTIONS.wintun_args().name.as_str()) {
         Ok(a) => a,
-        Err(_) => Adapter::create(
-            &wintun,
-            "trojan",
-            OPTIONS.wintun_args().name.as_str(),
-            OPTIONS.wintun_args().guid,
-        )?,
+        Err(_) => Adapter::create(&wintun, "trojan", OPTIONS.wintun_args().name.as_str(), None)?,
     };
-
-    if OPTIONS.wintun_args().delete {
-        if let Ok(adapter) = Arc::try_unwrap(adapter) {
-            adapter.delete()?;
-        }
-        return Ok(());
-    }
-
-    let index = adapter.get_adapter_index(OPTIONS.wintun_args().guid)?;
-    add_route("8.8.8.8", "255.255.255.255", index);
 
     let hostname = OPTIONS.wintun_args().hostname.as_str().try_into()?;
 
@@ -128,17 +128,15 @@ pub fn run() -> Result<()> {
     routes
         .add_default_ipv4_route(Ipv4Address::new(0, 0, 0, 1))
         .unwrap();
-    let mut interface = InterfaceBuilder::new(TunInterface::new(
-        session.clone(),
-        receiver,
-        OPTIONS.wintun_args().mtu,
-    ))
+    let mut interface = InterfaceBuilder::new(
+        TunInterface::new(session.clone(), receiver, OPTIONS.wintun_args().mtu),
+        [],
+    )
     .any_ip(true)
     .ip_addrs(ip_addrs)
     .routes(routes)
     .finalize();
 
-    let mut sockets = SocketSet::new([]);
     let mut events = Events::with_capacity(1024);
     let timeout = Some(Duration::from_millis(1));
     let mut udp_server = UdpServer::new();
@@ -146,11 +144,29 @@ pub fn run() -> Result<()> {
 
     let mut last_udp_check_time = std::time::Instant::now();
     let mut last_tcp_check_time = std::time::Instant::now();
-    let check_duration = std::time::Duration::new(1, 0);
+    let check_duration = std::time::Duration::new(10, 0);
 
+    let index = adapter.get_adapter_index()?;
+    add_route_with_if("0.0.0.0", "0.0.0.0", index);
+    if OPTIONS.wintun_args().add_white_list {
+        add_ipset(
+            OPTIONS.wintun_args().white_ip_list.as_str(),
+            OPTIONS.wintun_args().default_gateway.as_str(),
+        )?;
+        log::warn!("white list added");
+    }
+
+    let mut now = Instant::now();
     loop {
-        let now = Instant::now();
-        let timeout = interface.poll_delay(&sockets, now).or(timeout);
+        let (udp_handles, tcp_handles) = do_tun_read(&session, &sender, &mut interface)?;
+        if let Err(err) = interface.poll(now) {
+            log::info!("interface error:{}", err);
+        }
+        udp_server.do_local(&mut pool, &poll, &resolver, udp_handles, &mut interface);
+        tcp_server.do_local(&mut pool, &poll, &resolver, tcp_handles, &mut interface);
+
+        now = Instant::now();
+        let timeout = interface.poll_delay(now).or(timeout);
         poll.poll(
             &mut events,
             timeout.map(|d| std::time::Duration::from_millis(d.total_millis())),
@@ -166,28 +182,22 @@ pub fn run() -> Result<()> {
                     pool.ready(event, &poll);
                 }
                 i if i % CHANNEL_CNT == CHANNEL_UDP => {
-                    udp_server.do_remote(event, &poll, &mut sockets);
+                    udp_server.do_remote(event, &poll, &mut interface);
                 }
                 _ => {
-                    tcp_server.do_remote(event, &poll, &mut sockets);
+                    tcp_server.do_remote(event, &poll, &mut interface);
                 }
             }
         }
-        let (udp_handles, tcp_handles) = do_tun_read(&session, &sender, &mut sockets)?;
-        if let Err(err) = interface.poll(&mut sockets, now) {
-            log::info!("interface error:{}", err);
-        }
-        udp_server.do_local(&mut pool, &poll, &resolver, udp_handles, &mut sockets);
-        tcp_server.do_local(&mut pool, &poll, &resolver, tcp_handles, &mut sockets);
 
         let now = std::time::Instant::now();
         if now - last_tcp_check_time > check_duration {
-            tcp_server.check_timeout(&poll, now, &mut sockets);
+            tcp_server.check_timeout(&poll, now, &mut interface);
             last_tcp_check_time = now;
         }
 
         if now - last_udp_check_time > OPTIONS.udp_idle_duration {
-            udp_server.check_timeout(now);
+            udp_server.check_timeout(now, &mut interface);
             last_udp_check_time = now;
         }
     }
@@ -258,18 +268,18 @@ fn do_tun_read(
         if let Some(connect) = connect {
             if let Some(handle) = if connect {
                 let mut socket = TcpSocket::new(
-                    TcpSocketBuffer::new(vec![0; 10240]),
-                    TcpSocketBuffer::new(vec![0; 10240]),
+                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_rx_buffer_size]),
+                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_tx_buffer_size]),
                 );
                 socket.listen(dst_endpoint).unwrap();
-                Some(sockets.add(socket))
+                Some(sockets.add_socket(socket))
             } else {
-                sockets.iter().find_map(|socket| match socket {
+                sockets.sockets().find_map(|(handle, socket)| match socket {
                     Socket::Tcp(socket)
                         if socket.local_endpoint() == dst_endpoint
                             && socket.remote_endpoint() == src_endpoint =>
                     {
-                        Some(socket.handle())
+                        Some(handle)
                     }
                     _ => None,
                 })
@@ -279,18 +289,24 @@ fn do_tun_read(
                 }
             }
         } else {
-            let handle = sockets.iter().find_map(|socket| match socket {
-                Socket::Udp(socket) if socket.endpoint() == dst_endpoint => Some(socket.handle()),
+            let handle = sockets.sockets().find_map(|(handle, socket)| match socket {
+                Socket::Udp(socket) if socket.endpoint() == dst_endpoint => Some(handle),
                 _ => None,
             });
             let handle = match handle {
                 None => {
                     let mut socket = UdpSocket::new(
-                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 1500]),
-                        UdpSocketBuffer::new(vec![UdpPacketMetadata::EMPTY], vec![0; 1500]),
+                        UdpSocketBuffer::new(
+                            vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                            vec![0; OPTIONS.wintun_args().udp_rx_buffer_size],
+                        ),
+                        UdpSocketBuffer::new(
+                            vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                            vec![0; OPTIONS.wintun_args().udp_tx_buffer_size],
+                        ),
                     );
                     socket.bind(dst_endpoint)?;
-                    sockets.add(socket)
+                    sockets.add_socket(socket)
                 }
                 Some(handle) => handle,
             };
@@ -303,4 +319,16 @@ fn do_tun_read(
     }
 
     Ok((udp_handles, tcp_handles))
+}
+
+fn add_ipset(config: &str, gw: &str) -> Result<()> {
+    let file = File::open(config)?;
+    let buffer = BufReader::new(file);
+    buffer.lines().for_each(|line| {
+        let line = line.unwrap();
+        let line: Vec<_> = line.split('/').collect();
+        log::warn!("route add {} mask {}", line[0], line[1]);
+        add_route_with_gw(line[0], line[1], gw);
+    });
+    Ok(())
 }

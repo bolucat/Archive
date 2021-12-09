@@ -4,15 +4,12 @@ use crate::{
     resolver::DnsResolver,
     status::StatusProvider,
     tls_conn::TlsConn,
-    wintun::{CHANNEL_CNT, CHANNEL_UDP, MAX_INDEX, MIN_INDEX},
+    wintun::{SocketSet, CHANNEL_CNT, CHANNEL_UDP, MAX_INDEX, MIN_INDEX},
     OPTIONS,
 };
 use bytes::BytesMut;
 use mio::{event::Event, Poll, Token};
-use smoltcp::{
-    socket::{SocketHandle, SocketRef, SocketSet, UdpSocket},
-    wire::IpEndpoint,
-};
+use smoltcp::{iface::SocketHandle, socket::UdpSocket, wire::IpEndpoint};
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 pub struct UdpServer {
@@ -60,15 +57,18 @@ impl UdpServer {
             let listener = if let Some(listener) = self.src_map.get_mut(&handle) {
                 listener
             } else {
-                let endpoint = sockets.get::<UdpSocket>(handle).endpoint();
+                let endpoint = sockets.get_socket::<UdpSocket>(handle).endpoint();
                 let listener = Arc::new(UdpListener::new(handle, endpoint));
                 self.src_map.insert(handle, listener);
                 self.src_map.get_mut(&handle).unwrap()
             };
             let mut_listener = unsafe { Arc::get_mut_unchecked(listener) };
-            let indexes = mut_listener.do_local(pool, poll, resolver, sockets);
-            for index in indexes {
+            let (inserts, removes) = mut_listener.do_local(pool, poll, resolver, sockets);
+            for index in inserts {
                 self.conns.insert(index, listener.clone());
+            }
+            for index in &removes {
+                self.conns.remove(index);
             }
         }
     }
@@ -86,7 +86,7 @@ impl UdpServer {
         }
     }
 
-    pub fn check_timeout(&mut self, now: Instant) {
+    pub fn check_timeout(&mut self, now: Instant, sockets: &mut SocketSet) {
         let timeouts: Vec<_> = self
             .conns
             .iter_mut()
@@ -100,7 +100,7 @@ impl UdpServer {
         }
 
         let timeouts: Vec<_> = self
-            .conns
+            .src_map
             .iter()
             .filter_map(|(_, conn)| {
                 if conn.is_empty() {
@@ -114,6 +114,7 @@ impl UdpServer {
         for handle in timeouts {
             log::info!("udp socket:{} removed", handle);
             let _ = self.src_map.remove(&handle);
+            let _ = sockets.remove_socket(handle);
         }
     }
 }
@@ -141,9 +142,10 @@ impl UdpListener {
         poll: &Poll,
         resolver: &DnsResolver,
         sockets: &mut SocketSet,
-    ) -> Vec<usize> {
-        let mut socket = sockets.get::<UdpSocket>(self.handle);
-        let mut indexes = Vec::new();
+    ) -> (Vec<usize>, Vec<usize>) {
+        let socket = sockets.get_socket::<UdpSocket>(self.handle);
+        let mut inserts = Vec::new();
+        let mut removes = Vec::new();
         while socket.can_recv() {
             match socket.recv() {
                 Ok((payload, src)) => {
@@ -163,7 +165,7 @@ impl UdpListener {
                             let conn = Arc::new(conn);
                             let _ = self.src_map.insert(src, conn.clone());
                             let _ = self.conns.insert(index, conn.clone());
-                            indexes.push(index);
+                            inserts.push(index);
                             self.conns.get_mut(&index).unwrap()
                         } else {
                             conn.conn.check_status(poll);
@@ -174,7 +176,13 @@ impl UdpListener {
                         continue;
                     };
                     let conn = unsafe { Arc::get_mut_unchecked(conn) };
-                    conn.send_request(payload, self.endpoint);
+                    conn.send_request(payload, self.endpoint, poll);
+                    if conn.destroyed() {
+                        let index = conn.index;
+                        let endpoint = conn.src_endpoint;
+                        self.remove_conn(&index, &endpoint);
+                        removes.push(index);
+                    }
                 }
                 Err(err) => {
                     log::info!("read from udp socket failed:{}", err);
@@ -182,7 +190,7 @@ impl UdpListener {
                 }
             }
         }
-        indexes
+        (inserts, removes)
     }
 
     fn remove_conn(&mut self, index: &usize, endpoint: &IpEndpoint) {
@@ -267,7 +275,7 @@ impl Connection {
         self.conn.deregistered()
     }
 
-    fn send_request(&mut self, payload: &[u8], target: IpEndpoint) {
+    fn send_request(&mut self, payload: &[u8], target: IpEndpoint, poll: &Poll) {
         self.last_active_time = Instant::now();
         if !self.conn.is_connecting() && !self.conn.writable() {
             log::warn!("udp packet is too fast, ignore now");
@@ -281,6 +289,7 @@ impl Connection {
         }
 
         self.conn.do_send();
+        self.conn.check_status(poll);
     }
 
     fn ready(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) {
@@ -321,7 +330,7 @@ impl Connection {
     }
 
     fn do_send_tun(&mut self, mut buffer: &[u8], sockets: &mut SocketSet) {
-        let mut socket = sockets.get::<UdpSocket>(self.handle);
+        let socket = sockets.get_socket::<UdpSocket>(self.handle);
         loop {
             match UdpAssociate::parse_endpoint(buffer) {
                 UdpParseResultEndpoint::Continued => {
@@ -330,9 +339,12 @@ impl Connection {
                 }
                 UdpParseResultEndpoint::Packet(packet) => {
                     let payload = &packet.payload[..packet.length];
-                    self.do_send_udp(self.src_endpoint, payload, &mut socket);
-                    //self.do_send_udp(packet.address, payload);
-                    buffer = &packet.payload[packet.length..];
+                    if self.do_send_udp(self.src_endpoint, payload, socket) {
+                        buffer = &packet.payload[packet.length..];
+                    } else {
+                        self.send_buffer.extend_from_slice(buffer);
+                        return;
+                    }
                 }
                 UdpParseResultEndpoint::InvalidProtocol => {
                     log::error!("connection:{} got invalid protocol", self.index);
@@ -343,19 +355,17 @@ impl Connection {
         }
     }
 
-    fn do_send_udp(
-        &mut self,
-        endpoint: IpEndpoint,
-        data: &[u8],
-        socket: &mut SocketRef<UdpSocket>,
-    ) {
+    fn do_send_udp(&mut self, endpoint: IpEndpoint, data: &[u8], socket: &mut UdpSocket) -> bool {
         log::info!("send response to:{}", endpoint);
         if socket.can_send() {
             if let Err(err) = socket.send_slice(data, endpoint) {
                 log::error!("send to local failed:{}", err);
+            } else {
+                return true;
             }
         } else {
-            log::warn!("udp socket buffer is full");
+            log::warn!("udp socket buffer is full to:{}", endpoint);
         }
+        false
     }
 }

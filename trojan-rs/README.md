@@ -142,6 +142,17 @@ ip route flush cache
 
 You can get more about iptables rules in [PRINCIPLE.md](https://github.com/lazytiger/trojan-rs/blob/master/PRINCIPLE.md)
 
+## Windows
+For Windows users, wintun mode may supply a virtual device operating on ip layer base on Wintun and Smoltcp library.  
+You can check ```trojan help wintun``` for more parameter detail.
+
+Assuming your virtual device number is 3, which can be got by ```route print```
+The following command can route all traffic to 8.8.8.8 into this device.
+```bash
+route ADD 8.8.8.8 MASK 255.255.255.255 0.0.0.0 METRIC 1 IF 3
+```
+
+
 ## Special Thanks for ![Jetbrains](https://github.com/lazytiger/trojan-rs/blob/master/jetbrains.png?raw=true)
 
 Thanks [Jetbrains](https://www.jetbrains.com/?from=trojan-rs) open source license project. Clion is a great IDE which
