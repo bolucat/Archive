@@ -216,11 +216,12 @@ fun Project.setupPlay() {
 private fun Project.setupPlayInternal(): PlayPublisherExtension {
     apply(plugin = "com.github.triplet.play")
     return (extensions.getByName("play") as PlayPublisherExtension).apply {
-        if (android.defaultConfig.versionName?.contains("beta") == true) {
+        /*if (android.defaultConfig.versionName?.contains("beta") == true) {
             track.set("beta")
         } else {
             track.set("production")
-        }
+        }*/
+        track.set("production")
         defaultToAppBundles.set(true)
     }
 }
@@ -512,6 +513,8 @@ fun Project.setupApp() {
     }
 
     dependencies {
+
+        add("implementation", kotlin("stdlib", "${rootProject.extra["kotlinVersion"]}"))
         add("implementation", project(":plugin:api"))
         add("testImplementation", "junit:junit:4.13.2")
         add("androidTestImplementation", "androidx.test.ext:junit:1.1.3")

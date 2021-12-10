@@ -27,7 +27,7 @@ import (
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-5"
+	return core.Version() + "-sn-6"
 }
 
 type V2RayInstance struct {

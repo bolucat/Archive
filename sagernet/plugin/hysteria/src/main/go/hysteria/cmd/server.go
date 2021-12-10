@@ -38,7 +38,7 @@ func server(config *serverConfig) {
 		tlsConfig = tc
 	} else {
 		// Local cert mode
-		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
+		kpl, err := newKeypairLoader(config.CertFile, config.KeyFile)
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"error": err,
@@ -47,8 +47,8 @@ func server(config *serverConfig) {
 			}).Fatal("Failed to load the certificate")
 		}
 		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS13,
+			GetCertificate: kpl.GetCertificateFunc(),
+			MinVersion:     tls.VersionTLS13,
 		}
 	}
 	if config.ALPN != "" {
@@ -127,6 +127,10 @@ func server(config *serverConfig) {
 	var obfuscator core.Obfuscator
 	if len(config.Obfs) > 0 {
 		obfuscator = obfs.NewXPlusObfuscator([]byte(config.Obfs))
+	}
+	// IPv6 only mode
+	if config.IPv6Only {
+		transport.DefaultTransport = transport.IPv6OnlyTransport
 	}
 	// ACL
 	var aclEngine *acl.Engine

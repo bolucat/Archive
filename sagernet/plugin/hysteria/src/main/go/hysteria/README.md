@@ -44,11 +44,11 @@ currently has the following features: (still growing!)
 
 ### Android
 
-- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.8.5)
+- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.8.6)
 
 ### iOS
 
-- Feel free to contribute!
+- [Shadowrocket](https://apps.apple.com/us/app/shadowrocket/id932747118)
 
 ## Quick Start
 
@@ -184,7 +184,8 @@ encryption. If you need a proxy, just use our proxy modes.
   "recv_window_conn": 15728640, // QUIC stream receive window
   "recv_window_client": 67108864, // QUIC connection receive window
   "max_conn_client": 4096, // Max concurrent connections per client
-  "disable_mtu_discovery": false // Disable Path MTU Discovery (RFC 8899)
+  "disable_mtu_discovery": false, // Disable Path MTU Discovery (RFC 8899)
+  "ipv6_only": false // Only resolve domains to IPv6 address
 }
 ```
 
@@ -280,16 +281,30 @@ hysteria_traffic_uplink_bytes_total{auth="aGFja2VyISE="} 37452
     "dns": [ "8.8.8.8", "8.8.4.4" ], // TUN interface DNS, only applicable for Windows
     "persist": false // Persist TUN interface after exit, only applicable for Linux
   },
-  "relay_tcp": {
-    "listen": "127.0.0.1:2222", // TCP relay listen address
-    "remote": "123.123.123.123:22", // TCP relay remote address
-    "timeout": 300 // TCP timeout in seconds
-  },
-  "relay_udp": {
-    "listen": "127.0.0.1:5333", // UDP relay listen address
-    "remote": "8.8.8.8:53", // UDP relay remote address
-    "timeout": 60 // UDP session timeout in seconds
-  },
+  "relay_tcps": [
+    {
+      "listen": "127.0.0.1:2222", // TCP relay listen address
+      "remote": "123.123.123.123:22", // TCP relay remote address
+      "timeout": 300 // TCP timeout in seconds
+    },
+    {
+      "listen": "127.0.0.1:13389", // TCP relay listen address
+      "remote": "124.124.124.124:3389", // TCP relay remote address
+      "timeout": 300 // TCP timeout in seconds
+    }
+  ],
+  "relay_udps": [
+    {
+      "listen": "127.0.0.1:5333", // UDP relay listen address
+      "remote": "8.8.8.8:53", // UDP relay remote address
+      "timeout": 60 // UDP session timeout in seconds
+    },
+    {
+      "listen": "127.0.0.1:11080", // UDP relay listen address
+      "remote": "9.9.9.9.9:1080", // UDP relay remote address
+      "timeout": 60 // UDP session timeout in seconds
+    }
+  ],
   "tproxy_tcp": {
     "listen": "127.0.0.1:9000", // TCP TProxy listen address
     "timeout": 300 // TCP timeout in seconds
@@ -363,3 +378,75 @@ To change the logging level, use `LOGGING_LEVEL` environment variable. The avail
 To print JSON instead, set `LOGGING_FORMATTER` to `json`
 
 To change the logging timestamp format, set `LOGGING_TIMESTAMP_FORMAT`
+
+ ## Hysteria custom CA
+
+  1. Suppose the server address is `123.123.123.123`, UDP port `5678` is not blocked by firewall
+  2. openssl is already installed
+  3. hysteria is already installed in `/root/hysteria/` directory
+<details>
+  <summary>4. Generate custom CA certificate</summary>
+
+- Run below shell in `/root/hysteria/` folder
+
+``` shell
+#!/usr/bin/env bash
+
+domain=$(openssl rand -hex 8)
+password=$(openssl rand -hex 16)
+obfs=$(openssl rand -hex 6)
+path="/root/hysteria"
+
+openssl genrsa -out hysteria.ca.key 2048
+
+openssl req -new -x509 -days 3650 -key hysteria.ca.key -subj "/C=CN/ST=GD/L=SZ/O=Hysteria, Inc./CN=Hysteria Root CA" -out hysteria.ca.crt
+
+openssl req -newkey rsa:2048 -nodes -keyout hysteria.server.key -subj "/C=CN/ST=GD/L=SZ/O=Hysteria, Inc./CN=*.${domain}.com" -out hysteria.server.csr
+
+openssl x509 -req -extfile <(printf "subjectAltName=DNS:${domain}.com,DNS:www.${domain}.com") -days 3650 -in hysteria.server.csr -CA hysteria.ca.crt -CAkey hysteria.ca.key -CAcreateserial -out hysteria.server.crt
+
+cat > ./client.json <<EOF
+{
+    "server": "123.123.123.123:5678",
+    "alpn": "h3",
+    "obfs": "${obfs}",
+    "auth_str": "${password}",
+    "up_mbps": 30,
+    "down_mbps": 30,
+    "socks5": {
+        "listen": "0.0.0.0:1080"
+    },
+    "http": {
+        "listen": "0.0.0.0:8080"
+    },
+    "server_name": "www.${domain}.com",
+    "ca": "${path}/hysteria.ca.crt"
+}
+EOF
+
+
+cat > ./server.json <<EOF
+{
+    "listen": ":5678",
+    "alpn": "h3",
+    "obfs": "${obfs}",
+    "cert": "${path}/hysteria.server.crt",
+    "key": "${path}/hysteria.server.key" ,
+    "auth": {
+        "mode": "password",
+        "config": {
+            "password": "${password}"
+        }
+    }
+}
+EOF
+```
+</details>
+
+5. Server side: copy `server.json`、 `hysteria.server.crt`、 `hysteria.server.key` to `/root/hysteria/` directory, run `/root/hysteria/hysteria -c /root/hysteria/server.json server` command
+
+6. Client side: Assuming that the client directory is also`/root/hysteria`, copy `client.json`、`hysteria.ca.crt` to `/root/hysteria/` directory, run `/root/hysteria/hysteria -c /root/hysteria/client.json` cmmand
+
+7. After generating CA certificate, modify the server address, port and certificate file path according to your own situation, add obfs and alpn to prevent the first time to be walled in some environment, after the first test passed in full parameters, you can remove the unnecessary parameters such as obfs and alpn in your own network environment.
+
+8. If you are using shadowrocket on IOS, you can airdrop the file `hysteria.ca.crt` to your iPhone and install it, then you can use custom CA certificate.
