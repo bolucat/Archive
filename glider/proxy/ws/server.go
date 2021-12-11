@@ -69,7 +69,7 @@ func NewWSSServer(s string, p proxy.Proxy) (proxy.Server, error) {
 func (s *WS) ListenAndServe() {
 	l, err := net.Listen("tcp", s.addr)
 	if err != nil {
-		log.F("[ws] failed to listen on %s: %v", s.addr, err)
+		log.Fatalf("[ws] failed to listen on %s: %v", s.addr, err)
 		return
 	}
 	defer l.Close()
@@ -91,8 +91,8 @@ func (s *WS) ListenAndServe() {
 func (s *WS) Serve(cc net.Conn) {
 	if s.withTLS {
 		tlsConn := tls.Server(cc, s.tlsConfig)
-		err := tlsConn.Handshake()
-		if err != nil {
+		if err := tlsConn.Handshake(); err != nil {
+			tlsConn.Close()
 			log.F("[ws] error in tls handshake: %s", err)
 			return
 		}
@@ -101,6 +101,7 @@ func (s *WS) Serve(cc net.Conn) {
 
 	c, err := s.NewServerConn(cc)
 	if err != nil {
+		c.Close()
 		log.F("[ws] handshake error: %s", err)
 		return
 	}
@@ -143,8 +144,7 @@ type ServerConn struct {
 // NewServerConn creates a new ws server connection.
 func (s *WS) NewServerConn(rc net.Conn) (*ServerConn, error) {
 	sc := &ServerConn{Conn: rc}
-	err := sc.Handshake(s.host, s.path)
-	return sc, err
+	return sc, sc.Handshake(s.host, s.path)
 }
 
 // Handshake handshakes with the client.

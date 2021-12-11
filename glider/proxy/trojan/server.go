@@ -56,7 +56,7 @@ func NewTrojanServer(s string, p proxy.Proxy) (proxy.Server, error) {
 func (s *Trojan) ListenAndServe() {
 	l, err := net.Listen("tcp", s.addr)
 	if err != nil {
-		log.F("[trojan] failed to listen on %s: %v", s.addr, err)
+		log.Fatalf("[trojan] failed to listen on %s: %v", s.addr, err)
 		return
 	}
 	defer l.Close()
@@ -76,22 +76,20 @@ func (s *Trojan) ListenAndServe() {
 
 // Serve serves a connection.
 func (s *Trojan) Serve(c net.Conn) {
-	defer c.Close()
-
 	if c, ok := c.(*net.TCPConn); ok {
 		c.SetKeepAlive(true)
 	}
 
 	if s.withTLS {
 		tlsConn := tls.Server(c, s.tlsConfig)
-		defer tlsConn.Close()
-		err := tlsConn.Handshake()
-		if err != nil {
+		if err := tlsConn.Handshake(); err != nil {
+			tlsConn.Close()
 			log.F("[trojan] error in tls handshake: %s", err)
 			return
 		}
 		c = tlsConn
 	}
+	defer c.Close()
 
 	headBuf := pool.GetBytesBuffer()
 	defer pool.PutBytesBuffer(headBuf)

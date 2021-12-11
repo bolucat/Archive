@@ -96,10 +96,7 @@ fn add_route_with_gw(address: &str, netmask: &str, gateway: &str) {
 
 pub fn run() -> Result<()> {
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
-    let adapter = match Adapter::open(&wintun, OPTIONS.wintun_args().name.as_str()) {
-        Ok(a) => a,
-        Err(_) => Adapter::create(&wintun, "trojan", OPTIONS.wintun_args().name.as_str(), None)?,
-    };
+    let adapter = Adapter::create(&wintun, "trojan", OPTIONS.wintun_args().name.as_str(), None)?;
 
     let hostname = OPTIONS.wintun_args().hostname.as_str().try_into()?;
 
@@ -211,7 +208,7 @@ pub fn run() -> Result<()> {
                     });
                 }
                 i if i < 5 => {
-                    dns_server.ready(event);
+                    dns_server.ready(event, &poll);
                 }
                 i if i % CHANNEL_CNT == CHANNEL_IDLE => {
                     pool.ready(event, &poll);
