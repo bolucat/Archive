@@ -1,6 +1,7 @@
 package stun
 
 import (
+	"context"
 	"errors"
 	"net"
 	"time"
@@ -23,7 +24,7 @@ func (c *stunServerConn) Close() error {
 	return c.conn.Close()
 }
 
-var timeout = 3
+var timeout = 5
 
 const (
 	messageHeaderSize = 20
@@ -247,12 +248,18 @@ func parse(msg *stun.Message) (ret struct {
 // Given an address string, returns a StunServerConn
 func connect(addrStr string) (*stunServerConn, error) {
 	newError("connecting to STUN server: ", addrStr).AtInfo().WriteToLog()
-	addr, err := net.ResolveUDPAddr("udp4", addrStr)
+	host, port, err := net.SplitHostPort(addrStr)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(5)*time.Second)
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	cancel()
 	if err != nil {
 		newError("error resolving address").Base(err).WriteToLog()
 		return nil, err
 	}
-
+	addr, _ := net.ResolveUDPAddr("udp", net.JoinHostPort(addrs[0].IP.String(), port))
 	c, err := net.ListenUDP("udp4", nil)
 	if err != nil {
 		return nil, err
