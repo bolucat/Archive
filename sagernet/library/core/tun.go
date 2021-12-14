@@ -23,7 +23,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
 	"libcore/gvisor"
-	"libcore/lwip"
+	"libcore/nat"
 	"libcore/tun"
 )
 
@@ -54,26 +54,51 @@ const (
 	appStatusBackground = "background"
 )
 
-func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance, router string, gVisor bool, sniffing bool, overrideDestination bool, debug bool, dumpUid bool, trafficStats bool, pcap bool) (*Tun2ray, error) {
-	if debug {
+const (
+	TunImplementationGVisor = iota
+	TunImplementationSystem
+)
+
+type TunConfig struct {
+	FileDescriptor      int32
+	MTU                 int32
+	V2Ray               *V2RayInstance
+	VLAN4Router         string
+	Implementation      int32
+	Sniffing            bool
+	OverrideDestination bool
+	Debug               bool
+	DumpUID             bool
+	TrafficStats        bool
+	PCap                bool
+	ErrorHandler        ErrorHandler
+}
+
+type ErrorHandler interface {
+	HandleError(err string)
+}
+
+func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
+	if config.Debug {
 		logrus.SetLevel(logrus.DebugLevel)
 	} else {
 		logrus.SetLevel(logrus.WarnLevel)
 	}
 	t := &Tun2ray{
-		router:              router,
-		v2ray:               v2ray,
-		sniffing:            sniffing,
-		overrideDestination: overrideDestination,
-		debug:               debug,
-		dumpUid:             dumpUid,
-		trafficStats:        trafficStats,
+		router:              config.VLAN4Router,
+		v2ray:               config.V2Ray,
+		sniffing:            config.Sniffing,
+		overrideDestination: config.OverrideDestination,
+		debug:               config.Debug,
+		dumpUid:             config.DumpUID,
+		trafficStats:        config.TrafficStats,
 	}
 
 	var err error
-	if gVisor {
+	switch config.Implementation {
+	case TunImplementationGVisor:
 		var pcapFile *os.File
-		if pcap {
+		if config.PCap {
 			path := time.Now().UTC().String()
 			path = externalAssetsPath + "/pcap/" + path + ".pcap"
 			err = os.MkdirAll(filepath.Dir(path), 0o755)
@@ -86,19 +111,16 @@ func NewTun2ray(fd int32, mtu int32, v2ray *V2RayInstance, router string, gVisor
 			}
 		}
 
-		t.dev, err = gvisor.New(fd, mtu, t, gvisor.DefaultNIC, pcap, pcapFile, math.MaxUint32, ipv6Mode)
-	} else {
-		dev := os.NewFile(uintptr(fd), "")
-		if dev == nil {
-			return nil, newError("failed to open TUN file descriptor")
-		}
-		t.dev, err = lwip.New(dev, mtu, t)
+		t.dev, err = gvisor.New(config.FileDescriptor, config.MTU, t, gvisor.DefaultNIC, config.PCap, pcapFile, math.MaxUint32, ipv6Mode)
+	case TunImplementationSystem:
+		t.dev, err = nat.New(config.FileDescriptor, config.MTU, t, ipv6Mode, config.ErrorHandler.HandleError)
 	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	dc := v2ray.dnsClient
+	dc := config.V2Ray.dnsClient
 	internet.UseAlternativeSystemDialer(&protectedDialer{
 		resolver: func(domain string) ([]net.IP, error) {
 			return dc.LookupIP(domain)
@@ -270,20 +292,23 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		return true
 	}
 
+	var cond *sync.Cond
+
 	if sendTo() {
+		closeIgnore(closer)
 		return
 	} else {
 		iCond, loaded := t.lockTable.LoadOrStore(natKey, sync.NewCond(&sync.Mutex{}))
-		cond := iCond.(*sync.Cond)
+		cond = iCond.(*sync.Cond)
 		if loaded {
 			cond.L.Lock()
 			cond.Wait()
 			sendTo()
 			cond.L.Unlock()
+
+			closeIgnore(closer)
 			return
 		}
-		t.lockTable.Delete(natKey)
-		cond.Broadcast()
 	}
 
 	inbound := &session.Inbound{
@@ -402,6 +427,9 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	t.udpTable.Store(natKey, conn)
 
 	go sendTo()
+
+	t.lockTable.Delete(natKey)
+	cond.Broadcast()
 
 	for {
 		buffer, addr, err := conn.readFrom()
