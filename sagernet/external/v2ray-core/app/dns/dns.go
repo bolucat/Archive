@@ -38,6 +38,7 @@ type DNS struct {
 	ctx                    context.Context
 	domainMatcher          strmatcher.IndexMatcher
 	matcherInfos           []DomainMatcherInfo
+	continueOnError        bool
 }
 
 // DomainMatcherInfo contains information attached to index returned by Server.domainMatcher
@@ -84,6 +85,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 			FakeEnable: false,
 		}
 	}
+	ipOption.DisableExpire = config.DisableExpire
 
 	hosts, err := NewStaticHosts(config.StaticHosts, config.Hosts)
 	if err != nil {
@@ -149,6 +151,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 		disableCache:           config.DisableCache,
 		disableFallback:        config.DisableFallback,
 		disableFallbackIfMatch: config.DisableFallbackIfMatch,
+		continueOnError:        config.ContinueOnError,
 	}, nil
 }
 
@@ -236,7 +239,7 @@ func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) ([]net.IP, er
 			newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
 			errs = append(errs, err)
 		}
-		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
+		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch && !s.continueOnError {
 			return nil, err
 		}
 	}

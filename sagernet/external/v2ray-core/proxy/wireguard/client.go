@@ -194,9 +194,6 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	destination := outbound.Target
 
 	if destination.Address.Family().IsDomain() {
-		if c, ok := o.dnsClient.(dns.ClientWithIPOption); ok {
-			c.SetFakeDNSOption(false)
-		}
 		ips, err := o.dnsClient.LookupIP(destination.Address.Domain())
 		if err != nil {
 			return newError("failed to lookup ip addresses for domain ", destination.Address.Domain()).Base(err)

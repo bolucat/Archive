@@ -32,9 +32,15 @@ type StreamPlugin interface {
 	StreamConn(conn internet.Connection) internet.Connection
 }
 
+type ProtocolConn struct {
+	buf.Reader
+	buf.Writer
+	ProtocolReader buf.Reader
+	ProtocolWriter buf.Writer
+}
+
 type ProtocolPlugin interface {
-	StreamReader(reader buf.Reader, iv []byte) (buf.Reader, error)
-	StreamWriter(writer buf.Writer, iv []byte) (buf.Writer, error)
+	ProtocolConn(conn *ProtocolConn, iv []byte)
 	EncodePacket(buffer *buf.Buffer) (*buf.Buffer, error)
 	DecodePacket(buffer *buf.Buffer) (*buf.Buffer, error)
 }

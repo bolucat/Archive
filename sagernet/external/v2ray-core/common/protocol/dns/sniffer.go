@@ -1,11 +1,11 @@
 package dns
 
 import (
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
 	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/errors"
+	"github.com/v2fly/v2ray-core/v4/common/protocol"
 )
 
 var errNotDNS = errors.New("not dns")
@@ -40,7 +40,7 @@ func SniffDNS(b []byte) (*SniffHeader, error) {
 		return nil, errNotDNS
 	}
 	domain := question.Name.String()
-	if question.Class != dnsmessage.ClassINET && (question.Type == dnsmessage.TypeA || question.Type == dnsmessage.TypeAAAA) && protocol.IsValidDomain(domain) {
+	if question.Class == dnsmessage.ClassINET && (question.Type == dnsmessage.TypeA || question.Type == dnsmessage.TypeAAAA) && protocol.IsValidDomain(domain) {
 		return &SniffHeader{domain}, nil
 	}
 	return nil, errNotWanted

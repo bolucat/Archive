@@ -15,18 +15,21 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var fdProtector Protector
-
 type Protector interface {
 	Protect(fd int32) bool
 }
 
-func SetProtector(protector Protector) {
-	fdProtector = protector
+var noopProtectorInstance = &noopProtector{}
+
+type noopProtector struct{}
+
+func (n *noopProtector) Protect(int32) bool {
+	return true
 }
 
 type protectedDialer struct {
-	resolver func(domain string) ([]net.IP, error)
+	protector Protector
+	resolver  func(domain string) ([]net.IP, error)
 }
 
 func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address, destination v2rayNet.Destination, sockopt *internet.SocketConfig) (conn net.Conn, err error) {
@@ -49,7 +52,6 @@ func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address,
 				break
 			} else {
 				logrus.Warn("dial system failed: ", err)
-				time.Sleep(time.Millisecond * 200)
 			}
 			logrus.Debug("trying next address: ", ip.String())
 		}
@@ -70,7 +72,7 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		return nil, err
 	}
 
-	if !fdProtector.Protect(int32(fd)) {
+	if !dialer.protector.Protect(int32(fd)) {
 		return nil, errors.New("protect failed")
 	}
 

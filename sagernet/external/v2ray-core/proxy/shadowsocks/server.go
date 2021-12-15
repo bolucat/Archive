@@ -2,6 +2,7 @@ package shadowsocks
 
 import (
 	"context"
+	"crypto/rand"
 	"io"
 	"strconv"
 	"time"
@@ -270,8 +271,24 @@ func (s *Server) handleConnection(ctx context.Context, conn internet.Connection,
 	sessionPolicy := s.policyManager.ForLevel(s.user.Level)
 	conn.SetReadDeadline(time.Now().Add(sessionPolicy.Timeouts.Handshake))
 
+	var protocolConn *ProtocolConn
+	var iv []byte
+	account := s.user.Account.(*MemoryAccount)
+	if account.Cipher.IVSize() > 0 {
+		iv = make([]byte, account.Cipher.IVSize())
+		common.Must2(rand.Read(iv))
+		if ivError := account.CheckIV(iv); ivError != nil {
+			return newError("failed to mark outgoing iv").Base(ivError)
+		}
+	}
+
+	if s.protocol != nil {
+		protocolConn = &ProtocolConn{}
+		s.protocol.ProtocolConn(protocolConn, iv)
+	}
+
 	bufferedReader := buf.BufferedReader{Reader: buf.NewReader(conn)}
-	request, bodyReader, err := ReadTCPSession(s.user, &bufferedReader, s.protocol)
+	request, bodyReader, err := ReadTCPSession(s.user, &bufferedReader, protocolConn)
 	if err != nil {
 		log.Record(&log.AccessMessage{
 			From:   conn.RemoteAddr(),
@@ -308,7 +325,7 @@ func (s *Server) handleConnection(ctx context.Context, conn internet.Connection,
 		defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
 
 		bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-		responseWriter, err := WriteTCPResponse(request, bufferedWriter, s.protocol)
+		responseWriter, err := WriteTCPResponse(request, bufferedWriter, iv, protocolConn)
 		if err != nil {
 			return newError("failed to write response").Base(err)
 		}

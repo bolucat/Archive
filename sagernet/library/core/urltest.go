@@ -3,6 +3,7 @@ package libcore
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -18,7 +19,7 @@ func urlTest(dialContext func(ctx context.Context, network, addr string) (net.Co
 		DialContext:         dialContext,
 	}
 	req, err := http.NewRequestWithContext(context.Background(), "GET", link, nil)
-	req.Header.Set("User-Agent", "curl/7.74.0")
+	req.Header.Set("User-Agent", fmt.Sprintf("curl/7.%d.%d", rand.Int()%54, rand.Int()%2))
 	if err != nil {
 		return 0, newError("create get request").Base(err)
 	}
@@ -36,7 +37,7 @@ func urlTest(dialContext func(ctx context.Context, network, addr string) (net.Co
 	return int32(time.Since(start).Milliseconds()), nil
 }
 
-func UrlTestV2ray(instance *V2RayInstance, inbound string, link string, timeout int32) (int32, error) {
+func UrlTest(instance *V2RayInstance, inbound string, link string, timeout int32) (int32, error) {
 	return urlTest(func(ctx context.Context, network, addr string) (net.Conn, error) {
 		dest, err := net.ParseDestination(fmt.Sprintf("%s:%s", network, addr))
 		if err != nil {

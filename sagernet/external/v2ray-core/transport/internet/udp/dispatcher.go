@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/protocol/udp"
@@ -52,7 +53,8 @@ func (v *Dispatcher) getInboundRay(ctx context.Context, dest net.Destination) *c
 	newError("establishing new connection for ", dest).WriteToLog()
 
 	ctx, cancel := context.WithCancel(ctx)
-	link, _ := v.dispatcher.Dispatch(ctx, dest)
+	link, err := v.dispatcher.Dispatch(ctx, dest)
+	common.Must(err)
 	entry := &connEntry{
 		link:   link,
 		ctx:    ctx,

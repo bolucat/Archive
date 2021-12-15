@@ -5,6 +5,7 @@ package dns
 
 import (
 	"context"
+	gonet "net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -39,10 +40,15 @@ type ClassicNameServer struct {
 }
 
 // NewClassicNameServer creates udp server object for remote resolving.
-func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher) *ClassicNameServer {
+func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher, name string) *ClassicNameServer {
 	// default to 53 if unspecific
 	if address.Port == 0 {
 		address.Port = net.Port(53)
+	}
+
+	netAddr := address.Address.String()
+	if address.Port != 53 {
+		netAddr = gonet.JoinHostPort(netAddr, address.Port.String())
 	}
 
 	s := &ClassicNameServer{
@@ -50,14 +56,14 @@ func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher
 		ips:      make(map[string]record),
 		requests: make(map[uint16]dnsRequest),
 		pub:      pubsub.NewService(),
-		name:     strings.ToUpper(address.String()),
+		name:     name + "//" + strings.ToUpper(netAddr),
 	}
 	s.cleanup = &task.Periodic{
 		Interval: time.Minute,
 		Execute:  s.Cleanup,
 	}
 	s.udpServer = udp.NewDispatcher(dispatcher, s.HandleResponse)
-	newError("DNS: created UDP client initialized for ", address.NetAddr()).AtInfo().WriteToLog()
+	newError("DNS: created ", name, " client initialized for ", netAddr).AtInfo().WriteToLog()
 	return s
 }
 
@@ -217,7 +223,7 @@ func (s *ClassicNameServer) findIPsForDomain(domain string, option dns_feature.I
 	var ips []net.Address
 	var lastErr error
 	if option.IPv4Enable {
-		a, err := record.A.getIPs()
+		a, err := record.A.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}
@@ -225,7 +231,7 @@ func (s *ClassicNameServer) findIPsForDomain(domain string, option dns_feature.I
 	}
 
 	if option.IPv6Enable {
-		aaaa, err := record.AAAA.getIPs()
+		aaaa, err := record.AAAA.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}

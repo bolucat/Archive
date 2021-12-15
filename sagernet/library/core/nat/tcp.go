@@ -2,30 +2,25 @@ package nat
 
 import (
 	"net"
-	"sync"
+	"time"
 
+	"github.com/Dreamacro/clash/common/cache"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"gvisor.dev/gvisor/pkg/tcpip"
+	"libcore/constant"
 )
 
 type tcpForwarder struct {
 	tun      *SystemTun
 	port     uint16
 	listener *net.TCPListener
-	sessions sync.Map
-}
-
-type tcpSession struct {
-	sourceAddress      tcpip.Address
-	destinationAddress tcpip.Address
-	sourcePort         uint16
-	destinationPort    uint16
+	sessions *cache.LruCache
 }
 
 func newTcpForwarder(tun *SystemTun) (*tcpForwarder, error) {
 	var network string
 	address := &net.TCPAddr{}
-	if tun.ipv6Mode == 0 {
+	if tun.ipv6Mode == constant.IPv6Disable {
 		network = "tcp4"
 		address.IP = vlanClient4
 	} else {
@@ -39,7 +34,10 @@ func newTcpForwarder(tun *SystemTun) (*tcpForwarder, error) {
 	addr := listener.Addr().(*net.TCPAddr)
 	port := uint16(addr.Port)
 	newError("tcp forwarder started at ", addr).AtDebug().WriteToLog()
-	return &tcpForwarder{tun, port, listener, sync.Map{}}, nil
+	return &tcpForwarder{tun, port, listener, cache.NewLRUCache(
+		cache.WithAge(300),
+		cache.WithUpdateAgeOnGet(),
+	)}, nil
 }
 
 func (t *tcpForwarder) dispatch() (bool, error) {
@@ -47,37 +45,37 @@ func (t *tcpForwarder) dispatch() (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	newError("accepted tcp connection: ", conn.RemoteAddr()).AtDebug().WriteToLog()
 	addr := conn.RemoteAddr().(*net.TCPAddr)
-	sourcePort := uint16(addr.Port)
-
-	var session *tcpSession
-	iSession, ok := t.sessions.Load(sourcePort)
+	if ip4 := addr.IP.To4(); ip4 != nil {
+		addr.IP = ip4
+	}
+	key := peerKey{tcpip.Address(addr.IP), uint16(addr.Port)}
+	var session *peerValue
+	iSession, ok := t.sessions.Get(peerKey{key.destinationAddress, key.sourcePort})
 	if ok {
-		session = iSession.(*tcpSession)
+		session = iSession.(*peerValue)
 	} else {
 		conn.Close()
-		return false, newError("dropped unknown tcp session with source port ", sourcePort)
+		return false, newError("dropped unknown tcp session with source port ", key.sourcePort, " to destination address ", key.destinationAddress)
 	}
 
 	source := v2rayNet.Destination{
 		Address: v2rayNet.IPAddress([]byte(session.sourceAddress)),
-		Port:    v2rayNet.Port(session.sourcePort),
+		Port:    v2rayNet.Port(key.sourcePort),
 		Network: v2rayNet.Network_TCP,
 	}
 	destination := v2rayNet.Destination{
-		Address: v2rayNet.IPAddress([]byte(session.destinationAddress)),
+		Address: v2rayNet.IPAddress([]byte(key.destinationAddress)),
 		Port:    v2rayNet.Port(session.destinationPort),
 		Network: v2rayNet.Network_TCP,
 	}
 
-	newError("create connection: ", source, " => ", destination).AtDebug().WriteToLog()
-
 	go func() {
 		t.tun.handler.NewConnection(source, destination, conn)
-		t.sessions.Delete(sourcePort)
+		t.sessions.SetWithExpire(key, session, time.Now().Add(time.Second*10))
 	}()
-	return false, newError()
+
+	return false, nil
 }
 
 func (t *tcpForwarder) dispatchLoop() {
@@ -101,18 +99,20 @@ func (t *tcpForwarder) process(hdr *TCPHeader) error {
 	sourcePort := hdr.SourcePort()
 	destinationPort := hdr.DestinationPort()
 
-	var session *tcpSession
+	var session *peerValue
 
 	if sourcePort != t.port {
-		iSession, ok := t.sessions.Load(sourcePort)
+
+		key := peerKey{destinationAddress, sourcePort}
+		iSession, ok := t.sessions.Get(key)
 		if ok {
-			session = iSession.(*tcpSession)
+			session = iSession.(*peerValue)
 		} else {
 			/*if hdr.Flags() != header.TCPFlagSyn {
 				return newError("unable to create session: not tcp syn flag")
 			}*/
-			session = &tcpSession{sourceAddress, destinationAddress, sourcePort, destinationPort}
-			t.sessions.Store(sourcePort, session)
+			session = &peerValue{sourceAddress, destinationPort}
+			t.sessions.Set(key, session)
 		}
 
 		hdr.SetSourceAddress(destinationAddress)
@@ -121,14 +121,15 @@ func (t *tcpForwarder) process(hdr *TCPHeader) error {
 		hdr.UpdateChecksum()
 
 		// destinationAddress:sourcePort -> device:tcpServerPort
-	} else {
-		// device:tcpServerPort -> destinationAddress:sourcePort
 
-		iSession, ok := t.sessions.Load(destinationPort)
+	} else {
+
+		// device:tcpServerPort -> destinationAddress:sourcePort
+		iSession, ok := t.sessions.Get(peerKey{destinationAddress, destinationPort})
 		if ok {
-			session = iSession.(*tcpSession)
+			session = iSession.(*peerValue)
 		} else {
-			return newError("unknown tcp session with source port ", destinationPort)
+			return newError("unknown tcp session with source port ", destinationPort, " to destination address ", destinationAddress)
 		}
 		hdr.SetSourceAddress(destinationAddress)
 		hdr.SetSourcePort(session.destinationPort)

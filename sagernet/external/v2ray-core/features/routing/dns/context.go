@@ -28,13 +28,6 @@ func (ctx *ResolvableContext) GetTargetIPs() []net.IP {
 			IPv6Enable: true,
 		}
 
-		if c, ok := ctx.dnsClient.(dns.ClientWithIPOption); ok {
-			ipOption = c.GetIPOption()
-			c.SetFakeDNSOption(false) // Skip FakeDNS.
-		} else {
-			newError("ctx.dnsClient doesn't implement ClientWithIPOption").AtDebug().WriteToLog()
-		}
-
 		switch {
 		case ipOption.IPv4Enable && !ipOption.IPv6Enable:
 			if lookupIPv4, ok := ctx.dnsClient.(dns.IPv4Lookup); ok {

@@ -82,14 +82,16 @@ func (p *shadowsocksrPlugin) StreamConn(conn internet.Connection) internet.Conne
 	return p.o.StreamConn(conn)
 }
 
-func (p *shadowsocksrPlugin) StreamReader(reader buf.Reader, iv []byte) (buf.Reader, error) {
-	conn := p.p.StreamConn(buf.NewConnection(buf.ConnectionOutputMulti(reader)), iv)
-	return buf.NewReader(conn), nil
-}
-
-func (p *shadowsocksrPlugin) StreamWriter(writer buf.Writer, iv []byte) (buf.Writer, error) {
-	conn := p.p.StreamConn(buf.NewConnection(buf.ConnectionInputMulti(writer)), iv)
-	return buf.NewWriter(conn), nil
+func (p *shadowsocksrPlugin) ProtocolConn(conn *shadowsocks.ProtocolConn, iv []byte) {
+	upstream := buf.NewConnection(buf.ConnectionOutputMulti(conn), buf.ConnectionInputMulti(conn))
+	downstream := p.p.StreamConn(upstream, iv)
+	if upstream == downstream {
+		conn.ProtocolReader = conn
+		conn.ProtocolWriter = conn
+	} else {
+		conn.ProtocolReader = buf.NewReader(downstream)
+		conn.ProtocolWriter = buf.NewWriter(downstream)
+	}
 }
 
 func (p *shadowsocksrPlugin) EncodePacket(buffer *buf.Buffer) (*buf.Buffer, error) {

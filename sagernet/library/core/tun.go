@@ -14,14 +14,17 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v4"
+	"github.com/v2fly/v2ray-core/v4/app/dns"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/session"
 	"github.com/v2fly/v2ray-core/v4/common/task"
+	"github.com/v2fly/v2ray-core/v4/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
+	"libcore/constant"
 	"libcore/gvisor"
 	"libcore/nat"
 	"libcore/tun"
@@ -49,21 +52,15 @@ type Tun2ray struct {
 	connections     list.List
 }
 
-const (
-	appStatusForeground = "foreground"
-	appStatusBackground = "background"
-)
-
-const (
-	TunImplementationGVisor = iota
-	TunImplementationSystem
-)
-
 type TunConfig struct {
 	FileDescriptor      int32
+	Protect             bool
+	Protector           Protector
+	SystemDNS           string
 	MTU                 int32
 	V2Ray               *V2RayInstance
 	VLAN4Router         string
+	IPv6Mode            int32
 	Implementation      int32
 	Sniffing            bool
 	OverrideDestination bool
@@ -96,7 +93,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 	var err error
 	switch config.Implementation {
-	case TunImplementationGVisor:
+	case constant.TunImplementationGVisor:
 		var pcapFile *os.File
 		if config.PCap {
 			path := time.Now().UTC().String()
@@ -111,26 +108,75 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 			}
 		}
 
-		t.dev, err = gvisor.New(config.FileDescriptor, config.MTU, t, gvisor.DefaultNIC, config.PCap, pcapFile, math.MaxUint32, ipv6Mode)
-	case TunImplementationSystem:
-		t.dev, err = nat.New(config.FileDescriptor, config.MTU, t, ipv6Mode, config.ErrorHandler.HandleError)
+		t.dev, err = gvisor.New(config.FileDescriptor, config.MTU, t, gvisor.DefaultNIC, config.PCap, pcapFile, math.MaxUint32, config.IPv6Mode)
+	case constant.TunImplementationSystem:
+		t.dev, err = nat.New(config.FileDescriptor, config.MTU, t, config.IPv6Mode, config.ErrorHandler.HandleError)
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
+	if !config.Protect {
+		config.Protector = noopProtectorInstance
+	}
+
 	dc := config.V2Ray.dnsClient
 	internet.UseAlternativeSystemDialer(&protectedDialer{
+		protector: config.Protector,
 		resolver: func(domain string) ([]net.IP, error) {
 			return dc.LookupIP(domain)
 		},
 	})
 
-	nc := &net.Resolver{PreferGo: false}
+	ctx := core.WithContext(context.Background(), config.V2Ray.core)
+
+	if !config.Protect {
+		localdns.SetLookupFunc(nil)
+	} else if config.SystemDNS != "" {
+		systemDns := v2rayNet.Destination{
+			Address: v2rayNet.ParseAddress(config.SystemDNS),
+			Port:    53,
+			Network: v2rayNet.Network_UDP,
+		}
+		resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			conn, err := internet.DialSystem(ctx, systemDns, nil)
+			if err != nil {
+				return nil, err
+			}
+			if _, ok := conn.(net.PacketConn); !ok {
+				conn = &wrappedConn{conn}
+			}
+			return conn, nil
+		}}
+		localdns.SetLookupFunc(func(network, host string) ([]v2rayNet.IP, error) {
+			return resolver.LookupIP(context.Background(), network, host)
+		})
+	}
+
+	dnsConfig := &dns.Config{
+		NameServer: []*dns.NameServer{
+			{Address: &v2rayNet.Endpoint{Address: v2rayNet.NewIPOrDomain(v2rayNet.DomainAddress("localhost"))}},
+			{Address: &v2rayNet.Endpoint{Address: v2rayNet.NewIPOrDomain(v2rayNet.DomainAddress("https+local://dns.alidns.com/dns-query"))}},
+		},
+		DisableExpire:   true,
+		ContinueOnError: true,
+	}
+	bootstrapDns, err := dns.New(ctx, dnsConfig)
+	common.Must(err)
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
+		protector: config.Protector,
 		resolver: func(domain string) ([]net.IP, error) {
-			return nc.LookupIP(context.Background(), "ip", domain)
+			switch domain {
+			case "dns.alidns.com":
+				return []net.IP{
+					{223, 5, 5, 5},
+					{223, 6, 6, 6},
+					{0x24, 0, 0x32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1},
+					{0x24, 0, 0x32, 0, 0xba, 0xba, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1},
+				}, nil
+			}
+			return bootstrapDns.LookupIP(domain)
 		},
 	})
 
@@ -140,6 +186,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 func (t *Tun2ray) Close() {
 	net.DefaultResolver.Dial = nil
+	localdns.SetLookupFunc(nil)
+
 	closeIgnore(t.dev)
 	t.connectionsLock.Lock()
 	for item := t.connections.Front(); item != nil; item = item.Next() {
@@ -184,12 +232,6 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 			}
 
 			inbound.Uid = uint32(uid)
-
-			if uid == foregroundUid || uid == foregroundImeUid {
-				inbound.AppStatus = append(inbound.AppStatus, appStatusForeground)
-			} else {
-				inbound.AppStatus = append(inbound.AppStatus, appStatusBackground)
-			}
 		}
 	}
 
@@ -258,10 +300,11 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	if err = task.Run(ctx, func() error {
 		return buf.Copy(buf.NewReader(conn), input)
 	}); err != nil {
+		closeIgnore(conn, link.Reader, link.Writer)
 		newError("connection finished: ", err).AtDebug().WriteToLog()
+	} else {
+		closeIgnore(conn, link.Writer, link.Reader)
 	}
-
-	closeIgnore(conn, link.Reader, link.Writer)
 
 	t.connectionsLock.Lock()
 	t.connections.Remove(element)
@@ -355,12 +398,6 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 			}
 
 			inbound.Uid = uint32(uid)
-			if uid == foregroundUid || uid == foregroundImeUid {
-				inbound.AppStatus = append(inbound.AppStatus, appStatusForeground)
-			} else {
-				inbound.AppStatus = append(inbound.AppStatus, appStatusBackground)
-			}
-
 		}
 
 	}
@@ -463,11 +500,11 @@ func (t *Tun2ray) dialDNS(ctx context.Context, _, _ string) (conn net.Conn, err 
 		SkipFakeDNS: true,
 	}), v2rayNet.Destination{
 		Network: v2rayNet.Network_UDP,
-		Address: v2rayNet.ParseAddress("1.0.0.1"),
+		Address: v2rayNet.ParseAddress(t.router),
 		Port:    53,
 	})
 	if err == nil {
-		conn = wrappedConn{conn}
+		conn = &wrappedConn{conn}
 	}
 	return
 }
@@ -476,7 +513,7 @@ type wrappedConn struct {
 	net.Conn
 }
 
-func (c wrappedConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+func (c *wrappedConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	n, err = c.Conn.Read(p)
 	if err == nil {
 		addr = c.Conn.RemoteAddr()
@@ -484,12 +521,6 @@ func (c wrappedConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-func (c wrappedConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
+func (c *wrappedConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
 	return c.Conn.Write(p)
-}
-
-var ipv6Mode int32
-
-func SetIPv6Mode(mode int32) {
-	ipv6Mode = mode
 }

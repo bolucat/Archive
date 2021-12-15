@@ -233,7 +233,7 @@ func (s *QUICNameServer) findIPsForDomain(domain string, option dns_feature.IPOp
 	var ips []net.Address
 	var lastErr error
 	if option.IPv6Enable && record.AAAA != nil && record.AAAA.RCode == dnsmessage.RCodeSuccess {
-		aaaa, err := record.AAAA.getIPs()
+		aaaa, err := record.AAAA.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}
@@ -241,7 +241,7 @@ func (s *QUICNameServer) findIPsForDomain(domain string, option dns_feature.IPOp
 	}
 
 	if option.IPv4Enable && record.A != nil && record.A.RCode == dnsmessage.RCodeSuccess {
-		a, err := record.A.getIPs()
+		a, err := record.A.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}

@@ -278,7 +278,7 @@ func (s *TCPNameServer) findIPsForDomain(domain string, option dns_feature.IPOpt
 	var ips []net.Address
 	var lastErr error
 	if option.IPv4Enable {
-		a, err := record.A.getIPs()
+		a, err := record.A.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}
@@ -286,7 +286,7 @@ func (s *TCPNameServer) findIPsForDomain(domain string, option dns_feature.IPOpt
 	}
 
 	if option.IPv6Enable {
-		aaaa, err := record.AAAA.getIPs()
+		aaaa, err := record.AAAA.getIPs(option.DisableExpire)
 		if err != nil {
 			lastErr = err
 		}

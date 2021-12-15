@@ -2,6 +2,7 @@ package shadowsocks
 
 import (
 	"context"
+	"crypto/rand"
 	"strconv"
 	"time"
 
@@ -167,12 +168,28 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	ctx, cancel := context.WithCancel(ctx)
 	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
 
+	var protocolConn *ProtocolConn
+	var iv []byte
+	account := user.Account.(*MemoryAccount)
+	if account.Cipher.IVSize() > 0 {
+		iv = make([]byte, account.Cipher.IVSize())
+		common.Must2(rand.Read(iv))
+		if ivError := account.CheckIV(iv); ivError != nil {
+			return newError("failed to mark outgoing iv").Base(ivError)
+		}
+	}
+
+	if c.protocol != nil {
+		protocolConn = &ProtocolConn{}
+		c.protocol.ProtocolConn(protocolConn, iv)
+	}
+
 	if request.Command == protocol.RequestCommandTCP {
 
 		requestDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, c.protocol)
+			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, protocolConn)
 			if err != nil {
 				return newError("failed to write request").Base(err)
 			}
@@ -191,7 +208,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		responseDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
 
-			responseReader, err := ReadTCPResponse(user, conn, c.protocol)
+			responseReader, err := ReadTCPResponse(user, conn, protocolConn)
 			if err != nil {
 				return err
 			}

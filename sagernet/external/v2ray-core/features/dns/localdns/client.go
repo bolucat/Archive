@@ -7,9 +7,28 @@ import (
 	"github.com/v2fly/v2ray-core/v4/features/dns"
 )
 
+var (
+	Instance   = &Client{}
+	LookupFunc func(network string, host string) ([]net.IP, error)
+)
+
+func init() {
+	SetLookupFunc(nil)
+}
+
+func SetLookupFunc(lookupFunc func(network, host string) ([]net.IP, error)) {
+	if lookupFunc == nil {
+		resolver := &net.Resolver{PreferGo: false}
+		LookupFunc = func(network string, host string) ([]net.IP, error) {
+			return resolver.LookupIP(context.Background(), network, host)
+		}
+	} else {
+		LookupFunc = lookupFunc
+	}
+}
+
 // Client is an implementation of dns.Client, which queries localhost for DNS.
 type Client struct {
-	resolver *net.Resolver
 }
 
 // Type implements common.HasType.
@@ -27,24 +46,20 @@ func (*Client) Close() error { return nil }
 
 // LookupIP implements Client.
 func (c *Client) LookupIP(host string) ([]net.IP, error) {
-	return c.resolver.LookupIP(context.Background(), "ip", host)
+	return LookupFunc("ip", host)
 }
 
 // LookupIPv4 implements IPv4Lookup.
 func (c *Client) LookupIPv4(host string) ([]net.IP, error) {
-	return c.resolver.LookupIP(context.Background(), "ip4", host)
+	return LookupFunc("ip4", host)
 }
 
 // LookupIPv6 implements IPv6Lookup.
 func (c *Client) LookupIPv6(host string) ([]net.IP, error) {
-	return c.resolver.LookupIP(context.Background(), "ip6", host)
+	return LookupFunc("ip6", host)
 }
 
 // New create a new dns.Client that queries localhost for DNS.
 func New() *Client {
-	return &Client{
-		resolver: &net.Resolver{
-			PreferGo: false,
-		},
-	}
+	return Instance
 }

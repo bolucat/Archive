@@ -9,9 +9,10 @@ import (
 
 // IPOption is an object for IP query options.
 type IPOption struct {
-	IPv4Enable bool
-	IPv6Enable bool
-	FakeEnable bool
+	IPv4Enable    bool
+	IPv6Enable    bool
+	FakeEnable    bool
+	DisableExpire bool
 }
 
 // Client is a V2Ray feature for querying DNS information.

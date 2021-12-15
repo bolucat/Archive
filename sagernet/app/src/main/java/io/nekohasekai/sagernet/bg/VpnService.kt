@@ -26,12 +26,12 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.ProxyInfo
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.system.ErrnoException
 import android.system.Os
-import androidx.annotation.RequiresApi
 import io.nekohasekai.sagernet.*
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
@@ -181,9 +181,9 @@ class VpnService : BaseVpnService(),
 
         val packageName = packageName
         val proxyApps = DataStore.proxyApps
-        val needBypassRootUid = data.proxy!!.config.outboundTagsAll.values.any { it.ptBean != null }
         val tunImplementation = DataStore.tunImplementation
         val needIncludeSelf = tunImplementation == TunImplementation.SYSTEM /*data.proxy!!.config.index.any { !it.isBalancer && it.chain.size > 1 }*/
+        val needBypassRootUid = needIncludeSelf || data.proxy!!.config.outboundTagsAll.values.any { it.ptBean != null }
         if (proxyApps || needBypassRootUid) {
             var bypass = DataStore.bypass
             val individual = mutableSetOf<String>()
@@ -240,13 +240,27 @@ class VpnService : BaseVpnService(),
         metered = DataStore.meteredNetwork
         active = true   // possible race condition here?
         if (Build.VERSION.SDK_INT >= 29) builder.setMetered(metered)
+
+        val systemDns = try {
+            getSystemDnsServer().also {
+                Logs.d("System DNS: $it")
+            }
+        } catch (e: Exception) {
+            Logs.w(e)
+            null
+        }
+
         conn = builder.establish() ?: throw NullConnectionException()
 
         val config = TunConfig().apply {
             fileDescriptor = conn.fd
+            protect = needIncludeSelf
+            protector = Protector { protect(it) }
+            systemDNS = systemDns
             mtu = VPN_MTU
             v2Ray = data.proxy!!.v2rayPoint
             vlaN4Router = PRIVATE_VLAN4_ROUTER
+            iPv6Mode = ipv6Mode
             implementation = tunImplementation
             sniffing = DataStore.trafficSniffing
             overrideDestination = DataStore.destinationOverride
@@ -260,6 +274,27 @@ class VpnService : BaseVpnService(),
         }
 
         tun = Libcore.newTun2ray(config)
+    }
+
+    private var systemDns: String? = null
+    fun getSystemDnsServer(): String? {
+        val network = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            SagerNet.connectivity.activeNetwork
+        } else {
+            SagerNet.connectivity.allNetworks.find {
+                SagerNet.connectivity.getNetworkInfo(it)?.isConnected == true
+            }
+        } ?: return systemDns
+        if (SagerNet.connectivity.getNetworkCapabilities(network)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        ) {
+            return systemDns
+        }
+        val systemDnsServer = network.let { SagerNet.connectivity.getLinkProperties(it) }?.dnsServers?.firstOrNull()?.hostAddress
+        if (!systemDnsServer.isNullOrBlank()) {
+            systemDns = systemDnsServer
+        }
+        return systemDns
     }
 
     val appStats = mutableListOf<AppStats>()

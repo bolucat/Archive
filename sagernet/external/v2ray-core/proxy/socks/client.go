@@ -102,12 +102,6 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	switch c.version {
 	case Version_SOCKS4:
 		if request.Address.Family().IsDomain() {
-			if d, ok := c.dns.(dns.ClientWithIPOption); ok {
-				d.SetFakeDNSOption(false) // Skip FakeDNS
-			} else {
-				newError("DNS client doesn't implement ClientWithIPOption")
-			}
-
 			lookupFunc := c.dns.LookupIP
 			if lookupIPv4, ok := c.dns.(dns.IPv4Lookup); ok {
 				lookupFunc = lookupIPv4.LookupIPv4

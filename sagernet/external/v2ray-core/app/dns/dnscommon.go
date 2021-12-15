@@ -34,8 +34,8 @@ type IPRecord struct {
 	RCode  dnsmessage.RCode
 }
 
-func (r *IPRecord) getIPs() ([]net.Address, error) {
-	if r == nil || r.Expire.Before(time.Now()) {
+func (r *IPRecord) getIPs(disableExpire bool) ([]net.Address, error) {
+	if r == nil || !disableExpire && r.Expire.Before(time.Now()) {
 		return nil, errRecordNotFound
 	}
 	if r.RCode != dnsmessage.RCodeSuccess {

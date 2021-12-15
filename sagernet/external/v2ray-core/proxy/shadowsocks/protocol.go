@@ -28,7 +28,7 @@ var addrParser = protocol.NewAddressParser(
 )
 
 // ReadTCPSession reads a Shadowsocks TCP session from the given reader, returns its header and remaining parts.
-func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, plugin ProtocolPlugin) (*protocol.RequestHeader, buf.Reader, error) {
+func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, conn *ProtocolConn) (*protocol.RequestHeader, buf.Reader, error) {
 	account := user.Account.(*MemoryAccount)
 
 	hashkdf := hmac.New(sha256.New, []byte("SSBSKDF"))
@@ -61,12 +61,9 @@ func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, plugin Protocol
 		return nil, nil, drain.WithError(drainer, reader, newError("failed to initialize decoding stream").Base(err).AtError())
 	}
 
-	if plugin != nil {
-		r, err = plugin.StreamReader(r, iv)
-		if err != nil {
-			drainer.AcknowledgeReceive(int(buffer.Len()))
-			return nil, nil, drain.WithError(drainer, reader, newError("failed to initialize protocol decoding stream").Base(err).AtError())
-		}
+	if conn != nil {
+		conn.Reader = r
+		r = conn.ProtocolReader
 	}
 
 	br := &buf.BufferedReader{Reader: r}
@@ -103,17 +100,11 @@ func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, plugin Protocol
 }
 
 // WriteTCPRequest writes Shadowsocks request into the given writer, and returns a writer for body.
-func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, plugin ProtocolPlugin) (buf.Writer, error) {
+func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byte, conn *ProtocolConn) (buf.Writer, error) {
 	user := request.User
 	account := user.Account.(*MemoryAccount)
 
-	var iv []byte
-	if account.Cipher.IVSize() > 0 {
-		iv = make([]byte, account.Cipher.IVSize())
-		common.Must2(rand.Read(iv))
-		if ivError := account.CheckIV(iv); ivError != nil {
-			return nil, newError("failed to mark outgoing iv").Base(ivError)
-		}
+	if len(iv) > 0 {
 		if err := buf.WriteAllBytes(writer, iv); err != nil {
 			return nil, newError("failed to write IV")
 		}
@@ -124,10 +115,9 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, plugin P
 		return nil, newError("failed to create encoding stream").Base(err).AtError()
 	}
 
-	if plugin != nil {
-		if w, err = plugin.StreamWriter(w, iv); err != nil {
-			return nil, newError("failed to create protocol encoding stream").Base(err).AtError()
-		}
+	if conn != nil {
+		conn.Writer = w
+		w = conn.ProtocolWriter
 	}
 
 	header := buf.New()
@@ -143,7 +133,7 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, plugin P
 	return w, nil
 }
 
-func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, plugin ProtocolPlugin) (buf.Reader, error) {
+func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, conn *ProtocolConn) (buf.Reader, error) {
 	account := user.Account.(*MemoryAccount)
 
 	hashkdf := hmac.New(sha256.New, []byte("SSBSKDF"))
@@ -172,33 +162,31 @@ func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, plugin Protoco
 
 	r, err := account.Cipher.NewDecryptionReader(account.Key, iv, reader)
 
-	if err == nil && plugin != nil {
-		r, err = plugin.StreamReader(r, iv)
+	if conn != nil {
+		conn.Reader = r
+		r = conn.ProtocolReader
 	}
 
 	return r, err
 }
 
-func WriteTCPResponse(request *protocol.RequestHeader, writer io.Writer, plugin ProtocolPlugin) (buf.Writer, error) {
+func WriteTCPResponse(request *protocol.RequestHeader, writer io.Writer, iv []byte, conn *ProtocolConn) (buf.Writer, error) {
 	user := request.User
 	account := user.Account.(*MemoryAccount)
 
-	var iv []byte
-	if account.Cipher.IVSize() > 0 {
-		iv = make([]byte, account.Cipher.IVSize())
-		common.Must2(rand.Read(iv))
-		if ivError := account.CheckIV(iv); ivError != nil {
-			return nil, newError("failed to mark outgoing iv").Base(ivError)
-		}
+	if len(iv) > 0 {
 		if err := buf.WriteAllBytes(writer, iv); err != nil {
 			return nil, newError("failed to write IV.").Base(err)
 		}
 	}
 
 	w, err := account.Cipher.NewEncryptionWriter(account.Key, iv, writer)
-	if err == nil && plugin != nil {
-		w, err = plugin.StreamWriter(w, iv)
+
+	if err == nil && conn != nil {
+		conn.Writer = w
+		w = conn.ProtocolWriter
 	}
+
 	return w, err
 }
 
