@@ -21,6 +21,7 @@ package io.nekohasekai.sagernet.fmt.hysteria
 
 import cn.hutool.core.util.NumberUtil
 import cn.hutool.json.JSONObject
+import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.fmt.LOCALHOST
 import io.nekohasekai.sagernet.ktx.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -106,6 +107,13 @@ fun JSONObject.parseHysteria(): HysteriaBean {
             authPayloadType = HysteriaBean.TYPE_STRING
             authPayload = it
         }
+        getStr("protocol")?.also {
+            when (it) {
+                "faketcp" -> {
+                    protocol = HysteriaBean.PROTOCOL_FAKETCP
+                }
+            }
+        }
         sni = getStr("server_name")
         alpn = getStr("alpn")
         allowInsecure = getBool("insecure")
@@ -119,6 +127,9 @@ fun JSONObject.parseHysteria(): HysteriaBean {
 fun HysteriaBean.buildHysteriaConfig(port: Int, cacheFile: (() -> File)?): String {
     return JSONObject().also {
         it["server"] = wrapUri()
+        if (protocol == HysteriaBean.PROTOCOL_FAKETCP) {
+            it["protocol"] = "faketcp"
+        }
         it["up_mbps"] = uploadMbps
         it["down_mbps"] = downloadMbps
         it["socks5"] = JSONObject(mapOf("listen" to "$LOCALHOST:$port"))
@@ -144,5 +155,7 @@ fun HysteriaBean.buildHysteriaConfig(port: Int, cacheFile: (() -> File)?): Strin
         if (streamReceiveWindow > 0) it["recv_window_conn"] = streamReceiveWindow
         if (connectionReceiveWindow > 0) it["recv_window"] = connectionReceiveWindow
         if (disableMtuDiscovery) it["disable_mtu_discovery"] = true
+
+        it["resolver"] = "127.0.0.1:" + DataStore.localDNSPort
     }.toStringPretty()
 }

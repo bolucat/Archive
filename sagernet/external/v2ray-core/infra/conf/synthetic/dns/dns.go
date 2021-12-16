@@ -160,6 +160,8 @@ type DNSConfig struct { // nolint: revive
 	DisableCache           bool                    `json:"disableCache"`
 	DisableFallback        bool                    `json:"disableFallback"`
 	DisableFallbackIfMatch bool                    `json:"disableFallbackIfMatch"`
+	DisableExpire          bool                    `json:"disableExpire"`
+	ContinueOnError        bool                    `json:"continueOnError"`
 	cfgctx                 context.Context
 }
 
@@ -238,6 +240,8 @@ func (c *DNSConfig) Build() (*dns.Config, error) {
 		DisableCache:           c.DisableCache,
 		DisableFallback:        c.DisableFallback,
 		DisableFallbackIfMatch: c.DisableFallbackIfMatch,
+		DisableExpire:          c.DisableExpire,
+		ContinueOnError:        c.ContinueOnError,
 	}
 
 	if c.ClientIP != nil {

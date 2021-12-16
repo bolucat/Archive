@@ -1,6 +1,7 @@
 {
   "name": "unlock-music",
-  "version": "v1.9.1",
+  "version": "v1.10.0-beta.1",
+  "ext_build": 0,
   "updateInfo": "新增写入本地文件系统; 优化.kwm解锁; 支持.acc嗅探; 使用Typescript重构",
   "license": "MIT",
   "description": "Unlock encrypted music file in browser.",
@@ -10,14 +11,15 @@
   },
   "private": true,
   "scripts": {
+    "postinstall": "patch-package",
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "test": "jest",
-    "fix-compatibility": "node ./src/fix-compatibility.js",
     "make-extension": "node ./make-extension.js"
   },
   "dependencies": {
     "@babel/preset-typescript": "^7.16.5",
+    "@jixun/qmc2-crypto": "^0.0.5-R4",
     "base64-js": "^1.5.1",
     "browser-id3-writer": "^4.4.0",
     "core-js": "^3.16.0",
@@ -41,6 +43,7 @@
     "@vue/cli-service": "^4.5.13",
     "babel-plugin-component": "^1.1.1",
     "jest": "^27.4.5",
+    "patch-package": "^6.4.7",
     "sass": "^1.38.1",
     "sass-loader": "^10.2.0",
     "semver": "^7.3.5",

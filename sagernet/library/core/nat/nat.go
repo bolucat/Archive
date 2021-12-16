@@ -104,6 +104,20 @@ func (n *SystemTun) deliverPacket(pkt *stack.PacketBuffer) {
 			return
 		}
 		n.processUDP(&UDPHeader{ipHeader, header.UDP(pkt.TransportHeader().View())})
+	case header.ICMPv4ProtocolNumber:
+		log += "icmp4: "
+		if !parse.ICMPv4(pkt) {
+			newError(log, "unable to parse").AtWarning().WriteToLog()
+			return
+		}
+		n.processICMPv4(&ICMPv4Header{ipHeader, header.ICMPv4(pkt.TransportHeader().View())})
+	case header.ICMPv6ProtocolNumber:
+		log += "icmp6: "
+		if !parse.ICMPv6(pkt) {
+			newError(log, "unable to parse").AtWarning().WriteToLog()
+			return
+		}
+		n.processICMPv6(&ICMPv6Header{ipHeader, header.ICMPv6(pkt.TransportHeader().View())})
 	}
 }
 
@@ -181,6 +195,33 @@ func (n *SystemTun) processUDP(hdr *UDPHeader) {
 
 		return len(bytes), nil
 	}, hdr)
+}
+
+func (n *SystemTun) processICMPv4(hdr *ICMPv4Header) {
+	if hdr.Type() != header.ICMPv4Echo || hdr.Code() != header.ICMPv4UnusedCode {
+		return
+	}
+
+	hdr.SetType(header.ICMPv4EchoReply)
+	sourceAddress := hdr.SourceAddress()
+	hdr.SetSourceAddress(hdr.DestinationAddress())
+	hdr.SetDestinationAddress(sourceAddress)
+	hdr.UpdateChecksum()
+
+	n.dispatcher.writePacket(hdr.Packet())
+}
+
+func (n *SystemTun) processICMPv6(hdr *ICMPv6Header) {
+	if hdr.Type() != header.ICMPv6EchoRequest {
+		return
+	}
+	hdr.SetType(header.ICMPv6EchoReply)
+	sourceAddress := hdr.SourceAddress()
+	hdr.SetSourceAddress(hdr.DestinationAddress())
+	hdr.SetDestinationAddress(sourceAddress)
+	hdr.UpdateChecksum()
+
+	n.dispatcher.writePacket(hdr.Packet())
 }
 
 func (n *SystemTun) Close() error {

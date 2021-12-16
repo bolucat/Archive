@@ -95,3 +95,32 @@ func (h *UDPHeader) Close() error {
 	h.Packet().DecRef()
 	return nil
 }
+
+type ICMPv4Header struct {
+	IPHeader
+	header.ICMPv4
+}
+
+func (h *ICMPv4Header) UpdateChecksum() {
+	h.IPHeader.UpdateChecksum()
+	h.ICMPv4.SetChecksum(0)
+	h.ICMPv4.SetChecksum(header.ICMPv4Checksum(h.ICMPv4, h.Packet().Data().AsRange().Checksum()))
+}
+
+type ICMPv6Header struct {
+	IPHeader
+	header.ICMPv6
+}
+
+func (h *ICMPv6Header) UpdateChecksum() {
+	h.IPHeader.UpdateChecksum()
+	h.ICMPv6.SetChecksum(0)
+	payload := h.Packet().Data()
+	h.ICMPv6.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{
+		Header:      h.ICMPv6,
+		Src:         h.SourceAddress(),
+		Dst:         h.DestinationAddress(),
+		PayloadCsum: payload.AsRange().Checksum(),
+		PayloadLen:  payload.Size(),
+	}))
+}
