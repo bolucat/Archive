@@ -29,17 +29,18 @@ import (
 // TCPNameServer implemented DNS over TCP (RFC7766).
 type TCPNameServer struct {
 	sync.RWMutex
-	name        string
-	destination net.Destination
-	ips         map[string]record
-	pub         *pubsub.Service
-	cleanup     *task.Periodic
-	reqID       uint32
-	dial        func(context.Context) (net.Conn, error)
+	name          string
+	destination   net.Destination
+	ips           map[string]record
+	pub           *pubsub.Service
+	cleanup       *task.Periodic
+	reqID         uint32
+	dial          func(context.Context) (net.Conn, error)
+	disableExpire bool
 }
 
 // NewTCPNameServer creates DNS over TCP server object for remote resolving.
-func NewTCPNameServer(url *url.URL, dispatcher routing.Dispatcher) (*TCPNameServer, error) {
+func NewTCPNameServer(url *url.URL, dispatcher routing.Dispatcher, disableExpire bool) (*TCPNameServer, error) {
 	s, err := baseTCPNameServer(url, "TCP")
 	if err != nil {
 		return nil, err
@@ -56,12 +57,13 @@ func NewTCPNameServer(url *url.URL, dispatcher routing.Dispatcher) (*TCPNameServ
 			buf.ConnectionOutputMulti(link.Reader),
 		), nil
 	}
+	s.disableExpire = disableExpire
 
 	return s, nil
 }
 
 // NewTCPLocalNameServer creates DNS over TCP client object for local resolving
-func NewTCPLocalNameServer(url *url.URL) (*TCPNameServer, error) {
+func NewTCPLocalNameServer(url *url.URL, disableExpire bool) (*TCPNameServer, error) {
 	s, err := baseTCPNameServer(url, "TCPL")
 	if err != nil {
 		return nil, err
@@ -70,6 +72,7 @@ func NewTCPLocalNameServer(url *url.URL) (*TCPNameServer, error) {
 	s.dial = func(ctx context.Context) (net.Conn, error) {
 		return internet.DialSystemDNS(ctx, s.destination, nil)
 	}
+	s.disableExpire = disableExpire
 
 	return s, nil
 }
@@ -113,20 +116,21 @@ func (s *TCPNameServer) Cleanup() error {
 	if len(s.ips) == 0 {
 		return newError("nothing to do. stopping...")
 	}
+	if !s.disableExpire {
+		for domain, record := range s.ips {
+			if record.A != nil && record.A.Expire.Before(now) {
+				record.A = nil
+			}
+			if record.AAAA != nil && record.AAAA.Expire.Before(now) {
+				record.AAAA = nil
+			}
 
-	for domain, record := range s.ips {
-		if record.A != nil && record.A.Expire.Before(now) {
-			record.A = nil
-		}
-		if record.AAAA != nil && record.AAAA.Expire.Before(now) {
-			record.AAAA = nil
-		}
-
-		if record.A == nil && record.AAAA == nil {
-			newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
-			delete(s.ips, domain)
-		} else {
-			s.ips[domain] = record
+			if record.A == nil && record.AAAA == nil {
+				newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
+				delete(s.ips, domain)
+			} else {
+				s.ips[domain] = record
+			}
 		}
 	}
 

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryInto, sync::Arc};
+use std::{collections::BTreeMap, convert::TryInto, process::Command, sync::Arc, thread};
 
 use crossbeam::channel::Sender;
 use mio::{Events, Poll, Token, Waker};
@@ -15,6 +15,7 @@ use smoltcp::{
 use wintun::{Adapter, Session};
 
 use crate::{
+    dns::{add_route_with_if, get_adapter_ip},
     proxy::IdlePool,
     resolver::DnsResolver,
     types::Result,
@@ -48,9 +49,70 @@ const CHANNEL_UDP: usize = 1;
 const CHANNEL_TCP: usize = 2;
 
 pub fn run() -> Result<()> {
+    log::info!("dll:{}", OPTIONS.wintun_args().wintun);
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
     let adapter = Adapter::create(&wintun, "trojan", OPTIONS.wintun_args().name.as_str(), None)?;
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+
+    log::error!(
+        "program {} started",
+        std::env::current_exe().unwrap().display()
+    );
+
+    while get_adapter_ip(OPTIONS.wintun_args().name.as_str()).is_none() {
+        thread::sleep(std::time::Duration::new(1, 0));
+    }
+
+    if OPTIONS.wintun_args().with_dns {
+        add_route_with_if(
+            OPTIONS.wintun_args().trusted_dns.as_str(),
+            "255.255.255.255",
+            adapter.get_adapter_index().unwrap(),
+        );
+
+        let _ = thread::spawn(|| {
+            let program = std::env::current_exe().unwrap();
+            let args = OPTIONS.wintun_args();
+            let log_file = if !OPTIONS.log_file.is_empty() {
+                OPTIONS.log_file.clone() + ".dns"
+            } else {
+                "".into()
+            };
+            if let Err(err) = Command::new(program.clone())
+                .args([
+                    "--log-file",
+                    log_file.as_str(),
+                    "--local-addr",
+                    OPTIONS.local_addr.as_str(),
+                    "--password",
+                    OPTIONS.password.as_str(),
+                    "--log-level",
+                    OPTIONS.log_level.to_string().as_str(),
+                    "--udp-idle-timeout",
+                    OPTIONS.udp_idle_timeout.to_string().as_str(),
+                    "--tcp-idle-timeout",
+                    OPTIONS.tcp_idle_timeout.to_string().as_str(),
+                    "dns",
+                    "-n",
+                    args.name.as_str(),
+                    "--blocked-domain-list",
+                    args.blocked_domain_list.as_str(),
+                    "--dns-listen-address",
+                    args.dns_listen_address.as_str(),
+                    "--trusted-dns",
+                    args.trusted_dns.as_str(),
+                    "--poisoned-dns",
+                    args.poisoned_dns.as_str(),
+                ])
+                .output()
+            {
+                log::error!("{:?} exit with error:{}", program, err);
+            } else {
+                log::error!("{:?} exit", program);
+            }
+            std::process::exit(-1);
+        });
+    }
 
     let hostname = OPTIONS.wintun_args().hostname.as_str().try_into()?;
     let mut root_store = RootCertStore::empty();

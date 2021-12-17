@@ -33,17 +33,18 @@ import (
 // thus most of the DOH implementation is copied from udpns.go
 type DoHNameServer struct {
 	sync.RWMutex
-	ips        map[string]record
-	pub        *pubsub.Service
-	cleanup    *task.Periodic
-	reqID      uint32
-	httpClient *http.Client
-	dohURL     string
-	name       string
+	ips           map[string]record
+	pub           *pubsub.Service
+	cleanup       *task.Periodic
+	reqID         uint32
+	httpClient    *http.Client
+	dohURL        string
+	name          string
+	disableExpire bool
 }
 
 // NewDoHNameServer creates DOH server object for remote resolving.
-func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher) (*DoHNameServer, error) {
+func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher, disableExpire bool) (*DoHNameServer, error) {
 	newError("DNS: created Remote DOH client for ", url.String()).AtInfo().WriteToLog()
 	s := baseDOHNameServer(url, "DOH")
 
@@ -81,11 +82,12 @@ func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher) (*DoHNameServ
 	}
 
 	s.httpClient = dispatchedClient
+	s.disableExpire = disableExpire
 	return s, nil
 }
 
 // NewDoHLocalNameServer creates DOH client object for local resolving
-func NewDoHLocalNameServer(url *url.URL) *DoHNameServer {
+func NewDoHLocalNameServer(url *url.URL, disableExpire bool) *DoHNameServer {
 	url.Scheme = "https"
 	s := baseDOHNameServer(url, "DOHL")
 	tr := &http.Transport{
@@ -107,6 +109,7 @@ func NewDoHLocalNameServer(url *url.URL) *DoHNameServer {
 		Timeout:   time.Second * 180,
 		Transport: tr,
 	}
+	s.disableExpire = disableExpire
 	newError("DNS: created Local DOH client for ", url.String()).AtInfo().WriteToLog()
 	return s
 }
@@ -140,19 +143,21 @@ func (s *DoHNameServer) Cleanup() error {
 		return newError("nothing to do. stopping...")
 	}
 
-	for domain, record := range s.ips {
-		if record.A != nil && record.A.Expire.Before(now) {
-			record.A = nil
-		}
-		if record.AAAA != nil && record.AAAA.Expire.Before(now) {
-			record.AAAA = nil
-		}
+	if !s.disableExpire {
+		for domain, record := range s.ips {
+			if record.A != nil && record.A.Expire.Before(now) {
+				record.A = nil
+			}
+			if record.AAAA != nil && record.AAAA.Expire.Before(now) {
+				record.AAAA = nil
+			}
 
-		if record.A == nil && record.AAAA == nil {
-			newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
-			delete(s.ips, domain)
-		} else {
-			s.ips[domain] = record
+			if record.A == nil && record.AAAA == nil {
+				newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
+				delete(s.ips, domain)
+			} else {
+				s.ips[domain] = record
+			}
 		}
 	}
 

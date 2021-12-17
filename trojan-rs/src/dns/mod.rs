@@ -9,11 +9,9 @@ use std::{
 use mio::{Events, Poll};
 use server::DnsServer;
 
-use crate::{
-    dns::adapter::{get_adapter_ip, get_main_adapter_ip},
-    types::Result,
-    OPTIONS,
-};
+use crate::{dns::adapter::get_main_adapter_ip, types::Result, OPTIONS};
+
+pub use crate::dns::adapter::get_adapter_ip;
 
 mod adapter;
 mod domain;
@@ -27,7 +25,7 @@ const DNS_POISONED: usize = 3;
 const DNS_LOCAL: usize = 4;
 
 #[allow(dead_code)]
-fn add_route_with_if(address: &str, netmask: &str, index: u32) {
+pub fn add_route_with_if(address: &str, netmask: &str, index: u32) {
     if let Err(err) = Command::new("route")
         .args([
             "add",
@@ -43,6 +41,13 @@ fn add_route_with_if(address: &str, netmask: &str, index: u32) {
         .output()
     {
         log::error!("route add {} failed:{}", address, err);
+    } else {
+        log::info!(
+            "route add {} mask {} 0.0.0.0 metric 1 if {}",
+            address,
+            netmask,
+            index
+        );
     }
 }
 
@@ -53,6 +58,13 @@ fn add_route_with_gw(address: &str, netmask: &str, gateway: &str) {
         .output()
     {
         log::error!("route add {} failed:{}", address, err);
+    } else {
+        log::info!(
+            "route add {} mask {} {} metric 1",
+            address,
+            netmask,
+            gateway
+        );
     }
 }
 
@@ -66,8 +78,6 @@ pub fn run() -> Result<()> {
         thread::sleep(Duration::new(1, 0));
     }
     let gateway = get_adapter_ip(OPTIONS.dns_args().tun_name.as_str()).unwrap();
-    log::error!("gateway is:{}", gateway);
-
     add_route_with_gw(
         OPTIONS.dns_args().trusted_dns.as_str(),
         "255.255.255.255",

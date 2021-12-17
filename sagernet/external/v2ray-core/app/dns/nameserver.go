@@ -27,17 +27,18 @@ type Server interface {
 
 // Client is the interface for DNS client.
 type Client struct {
-	server       Server
-	clientIP     net.IP
-	skipFallback bool
-	domains      []string
-	expectIPs    []*router.GeoIPMatcher
+	server        Server
+	clientIP      net.IP
+	skipFallback  bool
+	domains       []string
+	expectIPs     []*router.GeoIPMatcher
+	disableExpire bool
 }
 
 var errExpectedIPNonMatch = errors.New("expectIPs not match")
 
 // NewServer creates a name server object according to the network destination url.
-func NewServer(dest net.Destination, dispatcher routing.Dispatcher) (Server, error) {
+func NewServer(dest net.Destination, dispatcher routing.Dispatcher, disableExpire bool) (Server, error) {
 	if address := dest.Address; address.Family().IsDomain() {
 		u, err := url.Parse(address.Domain())
 		if err != nil {
@@ -47,15 +48,15 @@ func NewServer(dest net.Destination, dispatcher routing.Dispatcher) (Server, err
 		case strings.EqualFold(u.String(), "localhost"):
 			return NewLocalNameServer(), nil
 		case strings.EqualFold(u.Scheme, "https"): // DOH Remote mode
-			return NewDoHNameServer(u, dispatcher)
+			return NewDoHNameServer(u, dispatcher, disableExpire)
 		case strings.EqualFold(u.Scheme, "https+local"): // DOH Local mode
-			return NewDoHLocalNameServer(u), nil
+			return NewDoHLocalNameServer(u, disableExpire), nil
 		case strings.EqualFold(u.Scheme, "quic+local"): // DNS-over-QUIC Local mode
-			return NewQUICNameServer(u)
+			return NewQUICNameServer(u, disableExpire)
 		case strings.EqualFold(u.Scheme, "tcp"): // DNS-over-TCP Remote mode
-			return NewTCPNameServer(u, dispatcher)
+			return NewTCPNameServer(u, dispatcher, disableExpire)
 		case strings.EqualFold(u.Scheme, "tcp+local"): // DNS-over-TCP Local mode
-			return NewTCPLocalNameServer(u)
+			return NewTCPLocalNameServer(u, disableExpire)
 		case strings.EqualFold(u.String(), "fakedns"):
 			return NewFakeDNSServer(), nil
 		case strings.EqualFold(u.Scheme, "udp+local"):
@@ -68,25 +69,25 @@ func NewServer(dest net.Destination, dispatcher routing.Dispatcher) (Server, err
 				}
 				dest.Port = net.Port(prt)
 			}
-			return NewClassicNameServer(dest, app_dispatcher.SystemInstance, "UDPL"), nil
+			return NewClassicNameServer(dest, app_dispatcher.SystemInstance, "UDPL", disableExpire), nil
 		}
 	}
 	if dest.Network == net.Network_Unknown {
 		dest.Network = net.Network_UDP
 	}
 	if dest.Network == net.Network_UDP { // UDP classic DNS mode
-		return NewClassicNameServer(dest, dispatcher, "UDP"), nil
+		return NewClassicNameServer(dest, dispatcher, "UDP", disableExpire), nil
 	}
 	return nil, newError("No available name server could be created from ", dest).AtWarning()
 }
 
 // NewClient creates a DNS client managing a name server with client IP, domain rules and expected IPs.
-func NewClient(ctx context.Context, ns *NameServer, clientIP net.IP, container router.GeoIPMatcherContainer, matcherInfos *[]DomainMatcherInfo, updateDomainRule func(strmatcher.Matcher, int, []DomainMatcherInfo) error) (*Client, error) {
+func NewClient(ctx context.Context, ns *NameServer, clientIP net.IP, container router.GeoIPMatcherContainer, matcherInfos *[]DomainMatcherInfo, updateDomainRule func(strmatcher.Matcher, int, []DomainMatcherInfo) error, disableExpire bool) (*Client, error) {
 	client := &Client{}
 
 	err := core.RequireFeatures(ctx, func(dispatcher routing.Dispatcher) error {
 		// Create a new server for each client for now
-		server, err := NewServer(ns.Address.AsDestination(), dispatcher)
+		server, err := NewServer(ns.Address.AsDestination(), dispatcher, disableExpire)
 		if err != nil {
 			return newError("failed to create nameserver").Base(err).AtWarning()
 		}
@@ -170,10 +171,10 @@ func NewClient(ctx context.Context, ns *NameServer, clientIP net.IP, container r
 }
 
 // NewSimpleClient creates a DNS client with a simple destination.
-func NewSimpleClient(ctx context.Context, endpoint *net.Endpoint, clientIP net.IP) (*Client, error) {
+func NewSimpleClient(ctx context.Context, endpoint *net.Endpoint, clientIP net.IP, disableExpire bool) (*Client, error) {
 	client := &Client{}
 	err := core.RequireFeatures(ctx, func(dispatcher routing.Dispatcher) error {
-		server, err := NewServer(endpoint.AsDestination(), dispatcher)
+		server, err := NewServer(endpoint.AsDestination(), dispatcher, disableExpire)
 		if err != nil {
 			return newError("failed to create nameserver").Base(err).AtWarning()
 		}

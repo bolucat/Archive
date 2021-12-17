@@ -1,8 +1,6 @@
 name: 功能建议
 description: 提议新功能
 title: "[Feature Request]: "
-labels: []
-assignees: []
 body:
   - type: textarea
     id: description

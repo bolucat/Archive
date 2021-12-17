@@ -29,18 +29,19 @@ import (
 // ClassicNameServer implemented traditional UDP DNS.
 type ClassicNameServer struct {
 	sync.RWMutex
-	name      string
-	address   net.Destination
-	ips       map[string]record
-	requests  map[uint16]dnsRequest
-	pub       *pubsub.Service
-	udpServer *udp.Dispatcher
-	cleanup   *task.Periodic
-	reqID     uint32
+	name          string
+	address       net.Destination
+	ips           map[string]record
+	requests      map[uint16]dnsRequest
+	pub           *pubsub.Service
+	udpServer     *udp.Dispatcher
+	cleanup       *task.Periodic
+	reqID         uint32
+	disableExpire bool
 }
 
 // NewClassicNameServer creates udp server object for remote resolving.
-func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher, name string) *ClassicNameServer {
+func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher, name string, disableExpire bool) *ClassicNameServer {
 	// default to 53 if unspecific
 	if address.Port == 0 {
 		address.Port = net.Port(53)
@@ -63,6 +64,7 @@ func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher
 		Execute:  s.Cleanup,
 	}
 	s.udpServer = udp.NewDispatcher(dispatcher, s.HandleResponse)
+	s.disableExpire = disableExpire
 	newError("DNS: created ", name, " client initialized for ", netAddr).AtInfo().WriteToLog()
 	return s
 }
@@ -82,18 +84,20 @@ func (s *ClassicNameServer) Cleanup() error {
 		return newError(s.name, " nothing to do. stopping...")
 	}
 
-	for domain, record := range s.ips {
-		if record.A != nil && record.A.Expire.Before(now) {
-			record.A = nil
-		}
-		if record.AAAA != nil && record.AAAA.Expire.Before(now) {
-			record.AAAA = nil
-		}
+	if !s.disableExpire {
+		for domain, record := range s.ips {
+			if record.A != nil && record.A.Expire.Before(now) {
+				record.A = nil
+			}
+			if record.AAAA != nil && record.AAAA.Expire.Before(now) {
+				record.AAAA = nil
+			}
 
-		if record.A == nil && record.AAAA == nil {
-			delete(s.ips, domain)
-		} else {
-			s.ips[domain] = record
+			if record.A == nil && record.AAAA == nil {
+				delete(s.ips, domain)
+			} else {
+				s.ips[domain] = record
+			}
 		}
 	}
 

@@ -216,7 +216,7 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, destination net.Destin
 		ctx = session.ContextWithContent(ctx, content)
 	}
 	sniffingRequest := content.SniffingRequest
-	if destination.Network == net.Network_TCP && !sniffingRequest.Enabled {
+	if (destination.Network == net.Network_TCP || content.Protocol != "") && !sniffingRequest.Enabled {
 		go d.routedDispatch(ctx, outbound, destination)
 	} else {
 		go func() {

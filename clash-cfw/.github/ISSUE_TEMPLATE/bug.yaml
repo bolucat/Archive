@@ -1,11 +1,8 @@
 name: BUG反馈
 description: 提交问题
 title: "[Bug]: "
-labels: []
-assignees: []
 body:
   - type: markdown
-    id: hint
     attributes:
       value: |
         请务必认真填写，足够的信息能帮助我们快速定位问题并及时修复。
@@ -24,7 +21,7 @@ body:
     attributes:
       label: 软件版本
       description: 可从General界面获知。
-      placeholder: 如：0.18.0
+      placeholder: "如: 0.18.0"
     validations:
       required: true
   - type: dropdown
@@ -76,4 +73,4 @@ body:
     id: other
     attributes:
       label: 其他补充
-      description: 有其他内容补充请在下方填写。
+      description: "有其他内容补充请在下方填写。如: mixin 配置内容，tun 配置内容，system proxy 对应配置内容，parser 配置内容，或者 diff 配置内容等。"

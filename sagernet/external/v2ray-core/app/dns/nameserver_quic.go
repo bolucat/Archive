@@ -31,17 +31,18 @@ const handshakeIdleTimeout = time.Second * 8
 // QUICNameServer implemented DNS over QUIC
 type QUICNameServer struct {
 	sync.RWMutex
-	ips         map[string]record
-	pub         *pubsub.Service
-	cleanup     *task.Periodic
-	reqID       uint32
-	name        string
-	destination net.Destination
-	session     quic.Session
+	ips           map[string]record
+	pub           *pubsub.Service
+	cleanup       *task.Periodic
+	reqID         uint32
+	name          string
+	destination   net.Destination
+	session       quic.Session
+	disableExpire bool
 }
 
 // NewQUICNameServer creates DNS-over-QUIC client object for local resolving
-func NewQUICNameServer(url *url.URL) (*QUICNameServer, error) {
+func NewQUICNameServer(url *url.URL, disableExpire bool) (*QUICNameServer, error) {
 	newError("DNS: created Local DNS-over-QUIC client for ", url.String()).AtInfo().WriteToLog()
 
 	var err error
@@ -64,6 +65,7 @@ func NewQUICNameServer(url *url.URL) (*QUICNameServer, error) {
 		Interval: time.Minute,
 		Execute:  s.Cleanup,
 	}
+	s.disableExpire = disableExpire
 
 	return s, nil
 }
@@ -83,19 +85,21 @@ func (s *QUICNameServer) Cleanup() error {
 		return newError("nothing to do. stopping...")
 	}
 
-	for domain, record := range s.ips {
-		if record.A != nil && record.A.Expire.Before(now) {
-			record.A = nil
-		}
-		if record.AAAA != nil && record.AAAA.Expire.Before(now) {
-			record.AAAA = nil
-		}
+	if !s.disableExpire {
+		for domain, record := range s.ips {
+			if record.A != nil && record.A.Expire.Before(now) {
+				record.A = nil
+			}
+			if record.AAAA != nil && record.AAAA.Expire.Before(now) {
+				record.AAAA = nil
+			}
 
-		if record.A == nil && record.AAAA == nil {
-			newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
-			delete(s.ips, domain)
-		} else {
-			s.ips[domain] = record
+			if record.A == nil && record.AAAA == nil {
+				newError(s.name, " cleanup ", domain).AtDebug().WriteToLog()
+				delete(s.ips, domain)
+			} else {
+				s.ips[domain] = record
+			}
 		}
 	}
 

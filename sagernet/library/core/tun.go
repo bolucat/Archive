@@ -14,7 +14,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v4"
-	"github.com/v2fly/v2ray-core/v4/app/dns"
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
@@ -129,8 +128,6 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		},
 	})
 
-	ctx := core.WithContext(context.Background(), config.V2Ray.core)
-
 	if !config.Protect {
 		localdns.SetLookupFunc(nil)
 	} else if config.SystemDNS != "" {
@@ -154,29 +151,10 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		})
 	}
 
-	dnsConfig := &dns.Config{
-		NameServer: []*dns.NameServer{
-			{Address: &v2rayNet.Endpoint{Address: v2rayNet.NewIPOrDomain(v2rayNet.DomainAddress("localhost"))}},
-			{Address: &v2rayNet.Endpoint{Address: v2rayNet.NewIPOrDomain(v2rayNet.DomainAddress("https+local://dns.alidns.com/dns-query"))}},
-		},
-		DisableExpire:   true,
-		ContinueOnError: true,
-	}
-	bootstrapDns, err := dns.New(ctx, dnsConfig)
-	common.Must(err)
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
 		protector: config.Protector,
 		resolver: func(domain string) ([]net.IP, error) {
-			switch domain {
-			case "dns.alidns.com":
-				return []net.IP{
-					{223, 5, 5, 5},
-					{223, 6, 6, 6},
-					{0x24, 0, 0x32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1},
-					{0x24, 0, 0x32, 0, 0xba, 0xba, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1},
-				}, nil
-			}
-			return bootstrapDns.LookupIP(domain)
+			return localdns.Instance.LookupIP(domain)
 		},
 	})
 

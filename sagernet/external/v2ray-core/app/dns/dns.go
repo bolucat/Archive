@@ -39,6 +39,7 @@ type DNS struct {
 	domainMatcher          strmatcher.IndexMatcher
 	matcherInfos           []DomainMatcherInfo
 	continueOnError        bool
+	disableTimeout         bool
 }
 
 // DomainMatcherInfo contains information attached to index returned by Server.domainMatcher
@@ -105,7 +106,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 
 	for _, endpoint := range config.NameServers {
 		features.PrintDeprecatedFeatureWarning("simple DNS server")
-		client, err := NewSimpleClient(ctx, endpoint, clientIP)
+		client, err := NewSimpleClient(ctx, endpoint, clientIP, config.DisableExpire)
 		if err != nil {
 			return nil, newError("failed to create client").Base(err)
 		}
@@ -128,7 +129,7 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 		case net.IPv4len, net.IPv6len:
 			myClientIP = net.IP(ns.ClientIp)
 		}
-		client, err := NewClient(ctx, ns, myClientIP, geoipContainer, &matcherInfos, updateDomain)
+		client, err := NewClient(ctx, ns, myClientIP, geoipContainer, &matcherInfos, updateDomain, config.DisableExpire)
 		if err != nil {
 			return nil, newError("failed to create client").Base(err)
 		}
@@ -151,7 +152,6 @@ func New(ctx context.Context, config *Config) (*DNS, error) {
 		disableCache:           config.DisableCache,
 		disableFallback:        config.DisableFallback,
 		disableFallbackIfMatch: config.DisableFallbackIfMatch,
-		continueOnError:        config.ContinueOnError,
 	}, nil
 }
 
