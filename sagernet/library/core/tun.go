@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,7 +56,6 @@ type TunConfig struct {
 	FileDescriptor      int32
 	Protect             bool
 	Protector           Protector
-	SystemDNS           string
 	MTU                 int32
 	V2Ray               *V2RayInstance
 	VLAN4Router         string
@@ -68,10 +68,15 @@ type TunConfig struct {
 	TrafficStats        bool
 	PCap                bool
 	ErrorHandler        ErrorHandler
+	LocalResolver       LocalResolver
 }
 
 type ErrorHandler interface {
 	HandleError(err string)
+}
+
+type LocalResolver interface {
+	LookupIP(network string, domain string) (string, error)
 }
 
 func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
@@ -130,24 +135,18 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 	if !config.Protect {
 		localdns.SetLookupFunc(nil)
-	} else if config.SystemDNS != "" {
-		systemDns := v2rayNet.Destination{
-			Address: v2rayNet.ParseAddress(config.SystemDNS),
-			Port:    53,
-			Network: v2rayNet.Network_UDP,
-		}
-		resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			conn, err := internet.DialSystem(ctx, systemDns, nil)
+	} else {
+		localdns.SetLookupFunc(func(network, host string) ([]v2rayNet.IP, error) {
+			response, err := config.LocalResolver.LookupIP(network, host)
 			if err != nil {
 				return nil, err
 			}
-			if _, ok := conn.(net.PacketConn); !ok {
-				conn = &wrappedConn{conn}
+			addrs := strings.Split(response, ",")
+			ips := make([]v2rayNet.IP, len(addrs))
+			for i, addr := range addrs {
+				ips[i] = net.ParseIP(addr)
 			}
-			return conn, nil
-		}}
-		localdns.SetLookupFunc(func(network, host string) ([]v2rayNet.IP, error) {
-			return resolver.LookupIP(context.Background(), network, host)
+			return ips, nil
 		})
 	}
 
