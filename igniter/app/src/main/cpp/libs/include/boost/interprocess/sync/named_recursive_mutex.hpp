@@ -22,7 +22,6 @@
 #include <boost/interprocess/detail/config_begin.hpp>
 #include <boost/interprocess/detail/workaround.hpp>
 #include <boost/interprocess/creation_tags.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 #include <boost/interprocess/permissions.hpp>
 
 #if !defined(BOOST_INTERPROCESS_FORCE_GENERIC_EMULATION) && defined (BOOST_INTERPROCESS_WINDOWS)
@@ -135,7 +134,18 @@ class named_recursive_mutex
    //! 
    //!Note: A program shall not deadlock if the thread that has ownership calls 
    //!   this function. 
-   bool timed_lock(const boost::posix_time::ptime &abs_time);
+   template<class TimePoint>
+   bool timed_lock(const TimePoint &abs_time);
+
+   //!Same as `timed_lock`, but this function is modeled after the
+   //!standard library interface.
+   template<class TimePoint> bool try_lock_until(const TimePoint &abs_time)
+   {  return this->timed_lock(abs_time);  }
+
+   //!Same as `timed_lock`, but this function is modeled after the
+   //!standard library interface.
+   template<class Duration>  bool try_lock_for(const Duration &dur)
+   {  return this->timed_lock(ipcdetail::duration_to_ustime(dur)); }
 
    //!Erases a named recursive mutex
    //!from the system
@@ -210,7 +220,8 @@ inline void named_recursive_mutex::unlock()
 inline bool named_recursive_mutex::try_lock()
 {  return m_mut.try_lock();  }
 
-inline bool named_recursive_mutex::timed_lock(const boost::posix_time::ptime &abs_time)
+template<class TimePoint>
+inline bool named_recursive_mutex::timed_lock(const TimePoint &abs_time)
 {  return m_mut.timed_lock(abs_time);  }
 
 inline bool named_recursive_mutex::remove(const char *name)

@@ -9,12 +9,12 @@
 #include <boost/multiprecision/number.hpp>
 #include <boost/multiprecision/debug_adaptor.hpp>
 #include <boost/multiprecision/detail/integer_ops.hpp>
-#include <boost/multiprecision/detail/big_lanczos.hpp>
 #include <boost/multiprecision/detail/digits.hpp>
 #include <boost/multiprecision/detail/atomic.hpp>
+#include <boost/multiprecision/detail/hash.hpp>
 #include <boost/math/special_functions/fpclassify.hpp>
 #include <cstdint>
-#include <boost/functional/hash_fwd.hpp>
+
 //
 // Some includes we need from Boost.Math, since we rely on that library to provide these functions:
 //
@@ -96,6 +96,7 @@ struct gmp_float_imp
    gmp_float_imp() noexcept
    {
       m_data[0]._mp_d = 0; // uninitialized m_data
+      m_data[0]._mp_prec = 1;
    }
 
    gmp_float_imp(const gmp_float_imp& o)
@@ -106,22 +107,33 @@ struct gmp_float_imp
       // to get the right value, but if it's then used in further calculations
       // things go badly wrong!!
       //
-      mpf_init2(m_data, mpf_get_prec(o.data()));
+      mpf_init2(m_data, preserve_source_precision() ? mpf_get_prec(o.data()) : boost::multiprecision::detail::digits10_2_2(get_default_precision()));
       if (o.m_data[0]._mp_d)
          mpf_set(m_data, o.m_data);
    }
    // rvalue copy
    gmp_float_imp(gmp_float_imp&& o) noexcept
    {
-      m_data[0]         = o.m_data[0];
-      o.m_data[0]._mp_d = 0;
+      if ((this->get_default_options() == variable_precision_options::preserve_target_precision) && (mpf_get_prec(o.data()) != boost::multiprecision::detail::digits10_2_2(get_default_precision())))
+      {
+         mpf_init2(m_data, boost::multiprecision::detail::digits10_2_2(get_default_precision()));
+         *this = static_cast<const gmp_float_imp&>(o);
+      }
+      else
+      {
+         m_data[0] = o.m_data[0];
+         o.m_data[0]._mp_d = 0;
+      }
    }
 
    gmp_float_imp& operator=(const gmp_float_imp& o)
    {
       if (m_data[0]._mp_d == 0)
-         mpf_init2(m_data, mpf_get_prec(o.data()));
-      if (mpf_get_prec(data()) != mpf_get_prec(o.data()))
+      {
+         mpf_init2(m_data, preserve_source_precision() ? mpf_get_prec(o.data()) : boost::multiprecision::detail::digits10_2_2(get_default_precision()));
+         mpf_set(m_data, o.m_data);
+      }
+      else if (preserve_source_precision() && (mpf_get_prec(data()) != mpf_get_prec(o.data())))
       {
          mpf_t t;
          mpf_init2(t, mpf_get_prec(o.data()));
@@ -131,15 +143,19 @@ struct gmp_float_imp
       }
       else
       {
-         if (o.m_data[0]._mp_d)
-            mpf_set(m_data, o.m_data);
+         mpf_set(m_data, o.m_data);
       }
       return *this;
    }
    // rvalue assign
    gmp_float_imp& operator=(gmp_float_imp&& o) noexcept
    {
-      mpf_swap(m_data, o.m_data);
+      if ((this->get_default_options() == variable_precision_options::preserve_target_precision) && (mpf_get_prec(o.data()) != mpf_get_prec(data())))
+         *this = static_cast<const gmp_float_imp&>(o);
+      else
+      {
+         mpf_swap(m_data, o.m_data);
+      }
       return *this;
    }
 
@@ -154,7 +170,9 @@ struct gmp_float_imp
    gmp_float_imp& operator=(boost::ulong_long_type i)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       boost::ulong_long_type mask  = ((((1uLL << (std::numeric_limits<unsigned long>::digits - 1)) - 1) << 1) | 1uLL);
       unsigned               shift = 0;
       mpf_t                  t;
@@ -176,7 +194,9 @@ struct gmp_float_imp
    gmp_float_imp& operator=(boost::long_long_type i)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       bool neg = i < 0;
       *this    = static_cast<boost::ulong_long_type>(boost::multiprecision::detail::unsigned_abs(i));
       if (neg)
@@ -187,21 +207,27 @@ struct gmp_float_imp
    gmp_float_imp& operator=(unsigned long i)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       mpf_set_ui(m_data, i);
       return *this;
    }
    gmp_float_imp& operator=(long i)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       mpf_set_si(m_data, i);
       return *this;
    }
    gmp_float_imp& operator=(double d)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       mpf_set_d(m_data, d);
       return *this;
    }
@@ -212,7 +238,9 @@ struct gmp_float_imp
       using std::ldexp;
 
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
 
       if (a == 0)
       {
@@ -259,7 +287,9 @@ struct gmp_float_imp
    gmp_float_imp& operator=(const char* s)
    {
       if (m_data[0]._mp_d == 0)
+      {
          mpf_init2(m_data, multiprecision::detail::digits10_2_2(digits10 ? digits10 : (unsigned)get_default_precision()));
+      }
       if (s && (*s == '+'))
          ++s;  // Leading "+" sign not supported by mpf_set_str:
       if (0 != mpf_set_str(m_data, s, 10))
@@ -383,7 +413,9 @@ struct gmp_float_imp
    ~gmp_float_imp() noexcept
    {
       if (m_data[0]._mp_d)
+      {
          mpf_clear(m_data);
+      }
    }
    void negate() noexcept
    {
@@ -425,10 +457,37 @@ struct gmp_float_imp
 
  protected:
    mpf_t            m_data;
-   static boost::multiprecision::detail::precision_type& get_default_precision() noexcept
+   static unsigned& get_default_precision() noexcept
+   {
+      static BOOST_MP_THREAD_LOCAL unsigned val(get_global_default_precision());
+      return val;
+   }
+   static boost::multiprecision::detail::precision_type& get_global_default_precision() noexcept
    {
       static boost::multiprecision::detail::precision_type val(50);
       return val;
+   }
+#ifndef BOOST_MT_NO_ATOMIC_INT
+   static std::atomic<variable_precision_options>& get_global_default_options() noexcept
+#else
+   static variable_precision_options& get_global_default_options() noexcept
+#endif
+   {
+#ifndef BOOST_MT_NO_ATOMIC_INT
+      static std::atomic<variable_precision_options> val{variable_precision_options::preserve_related_precision};
+#else
+      static variable_precision_options val{variable_precision_options::preserve_related_precision};
+#endif
+      return val;
+   }
+   static variable_precision_options& get_default_options()noexcept
+   {
+      static BOOST_MP_THREAD_LOCAL variable_precision_options val(get_global_default_options());
+      return val;
+   }
+   static bool preserve_source_precision() noexcept
+   {
+      return get_default_options() >= variable_precision_options::preserve_source_precision;
    }
 };
 
@@ -548,16 +607,16 @@ struct gmp_float<0> : public detail::gmp_float_imp<0>
       mpf_init2(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
       mpf_set_q(this->m_data, val);
    }
-   gmp_float(const gmp_float& o) : detail::gmp_float_imp<0>(o), requested_precision(o.requested_precision) {}
+   gmp_float(const gmp_float& o) : detail::gmp_float_imp<0>(o), requested_precision(preserve_source_precision() ? o.requested_precision : get_default_precision()) {}
    template <unsigned D>
    gmp_float(const gmp_float<D>& o)
    {
-      mpf_init2(this->m_data, mpf_get_prec(o.data()));
+      mpf_init2(this->m_data, preserve_related_precision() ? mpf_get_prec(o.data()) : multiprecision::detail::digits10_2_2(get_default_precision()));
       mpf_set(this->m_data, o.data());
-      requested_precision = D;
+      requested_precision = preserve_related_precision() ? D : get_default_precision();
    }
    // rvalue copy
-   gmp_float(gmp_float&& o) noexcept : detail::gmp_float_imp<0>(static_cast<detail::gmp_float_imp<0>&&>(o)), requested_precision(o.requested_precision)
+   gmp_float(gmp_float&& o) noexcept : detail::gmp_float_imp<0>(static_cast<detail::gmp_float_imp<0>&&>(o)), requested_precision((this->get_default_options() != variable_precision_options::preserve_target_precision) ? o.requested_precision : get_default_precision())
    {}
    gmp_float(const gmp_int& o);
    gmp_float(const gmp_rational& o);
@@ -588,14 +647,16 @@ struct gmp_float<0> : public detail::gmp_float_imp<0>
    gmp_float& operator=(const gmp_float& o)
    {
       *static_cast<detail::gmp_float_imp<0>*>(this) = static_cast<detail::gmp_float_imp<0> const&>(o);
-      requested_precision                           = o.requested_precision;
+      if(preserve_source_precision())
+         requested_precision = o.requested_precision;
       return *this;
    }
    // rvalue copy
    gmp_float& operator=(gmp_float&& o) noexcept
    {
       *static_cast<detail::gmp_float_imp<0>*>(this) = static_cast<detail::gmp_float_imp<0>&&>(o);
-      requested_precision                           = o.requested_precision;
+      if ((this->get_default_options() != variable_precision_options::preserve_target_precision))
+         requested_precision = o.requested_precision;
       return *this;
    }
    template <unsigned D>
@@ -603,14 +664,15 @@ struct gmp_float<0> : public detail::gmp_float_imp<0>
    {
       if (this->m_data[0]._mp_d == 0)
       {
-         mpf_init2(this->m_data, mpf_get_prec(o.data()));
+         mpf_init2(this->m_data, preserve_related_precision() ? mpf_get_prec(o.data()) : multiprecision::detail::digits10_2_2(get_default_precision()));
       }
-      else
+      else if(preserve_related_precision())
       {
          mpf_set_prec(this->m_data, mpf_get_prec(o.data()));
       }
       mpf_set(this->m_data, o.data());
-      requested_precision = D;
+      if (preserve_related_precision())
+         requested_precision = D;
       return *this;
    }
    gmp_float& operator=(const gmp_int& o);
@@ -648,14 +710,28 @@ struct gmp_float<0> : public detail::gmp_float_imp<0>
    template <class V>
    gmp_float& operator=(const V& v)
    {
+      constexpr unsigned d10 = std::is_floating_point<V>::value ?
+         std::numeric_limits<V>::digits10 :
+         std::numeric_limits<V>::digits10 ? 1 + std::numeric_limits<V>::digits10 :
+         1 + boost::multiprecision::detail::digits2_2_10(std::numeric_limits<V>::digits);
+      if((thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision) && (precision() < d10))
+         this->precision(d10);
       *static_cast<detail::gmp_float_imp<0>*>(this) = v;
       return *this;
    }
    static unsigned default_precision() noexcept
    {
-      return get_default_precision();
+      return get_global_default_precision();
    }
    static void default_precision(unsigned v) noexcept
+   {
+      get_global_default_precision() = v;
+   }
+   static unsigned thread_default_precision() noexcept
+   {
+      return get_default_precision();
+   }
+   static void thread_default_precision(unsigned v) noexcept
    {
       get_default_precision() = v;
    }
@@ -668,6 +744,40 @@ struct gmp_float<0> : public detail::gmp_float_imp<0>
       requested_precision = digits10;
       mpf_set_prec(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
    }
+   //
+   // Variable precision options:
+   // 
+   static variable_precision_options default_variable_precision_options()noexcept
+   {
+      return get_global_default_options();
+   }
+   static variable_precision_options thread_default_variable_precision_options()noexcept
+   {
+      return get_default_options();
+   }
+   static void default_variable_precision_options(variable_precision_options opts)
+   {
+      get_global_default_options() = opts;
+   }
+   static void thread_default_variable_precision_options(variable_precision_options opts)
+   {
+      get_default_options() = opts;
+   }
+   static bool preserve_source_precision()
+   {
+      return get_default_options() >= variable_precision_options::preserve_source_precision;
+   }
+   static bool preserve_related_precision()
+   {
+      return get_default_options() >= variable_precision_options::preserve_related_precision;
+   }
+   static bool preserve_all_precision()
+   {
+      return get_default_options() >= variable_precision_options::preserve_all_precision;
+   }
+   //
+   // swap:
+   //
    void swap(gmp_float& o)
    {
       std::swap(requested_precision, o.requested_precision);
@@ -1103,9 +1213,8 @@ inline std::size_t hash_value(const gmp_float<Digits10>& val)
 {
    std::size_t result = 0;
    for (int i = 0; i < std::abs(val.data()[0]._mp_size); ++i)
-      boost::hash_combine(result, val.data()[0]._mp_d[i]);
-   boost::hash_combine(result, val.data()[0]._mp_exp);
-   boost::hash_combine(result, val.data()[0]._mp_size);
+      boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_d[i]);
+   boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_exp, val.data()[0]._mp_size);
    return result;
 }
 
@@ -1145,6 +1254,14 @@ struct gmp_int
    gmp_int(const mpz_t val)
    {
       mpz_init_set(this->m_data, val);
+   }
+   gmp_int(long i)
+   {
+      mpz_init_set_si(this->m_data, i);
+   }
+   gmp_int(unsigned long i)
+   {
+      mpz_init_set_ui(this->m_data, i);
    }
    explicit gmp_int(const mpq_t val)
    {
@@ -2007,8 +2124,8 @@ inline std::size_t hash_value(const gmp_int& val)
    // We should really use mpz_limbs_read here, but that's unsupported on older versions:
    std::size_t result = 0;
    for (int i = 0; i < std::abs(val.data()[0]._mp_size); ++i)
-      boost::hash_combine(result, val.data()[0]._mp_d[i]);
-   boost::hash_combine(result, val.data()[0]._mp_size);
+      boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_d[i]);
+   boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_size);
    return result;
 }
 
@@ -2038,8 +2155,99 @@ struct gmp_rational
    }
    gmp_rational(const gmp_int& o)
    {
-      mpq_init(m_data);
-      mpq_set_z(m_data, o.data());
+      mpz_init_set(&m_data[0]._mp_num, o.data());
+      mpz_init_set_ui(&m_data[0]._mp_den, 1u);
+   }
+   gmp_rational(long i)
+   {
+      mpz_init_set_si(&m_data[0]._mp_num, i);
+      mpz_init_set_ui(&m_data[0]._mp_den, 1u);
+   }
+   gmp_rational(unsigned long ui)
+   {
+      mpz_init_set_ui(&m_data[0]._mp_num, ui);
+      mpz_init_set_ui(&m_data[0]._mp_den, 1u);
+   }
+   // 2-arg constructors:
+   template <class T, class U>
+   gmp_rational(const T& a, const U& b, typename std::enable_if<std::is_constructible<gmp_int, T>::value && std::is_constructible<gmp_int, U>::value>::type* = nullptr)
+   {
+      gmp_int i(a), j(b);
+      m_data[0]._mp_num = i.data()[0];
+      m_data[0]._mp_den = j.data()[0];
+      mpq_canonicalize(m_data);
+      i.data()[0]._mp_d = nullptr;
+      j.data()[0]._mp_d = nullptr;
+   }
+   template <class U>
+   gmp_rational(const gmp_int& a, const U& b, typename std::enable_if<std::is_constructible<gmp_int, U>::value>::type* = nullptr)
+   {
+      gmp_int j(b);
+      mpz_init_set(&m_data[0]._mp_num, a.data());
+      m_data[0]._mp_den = j.data()[0];
+      if (boost::multiprecision::detail::unsigned_abs(b) > 1)
+         mpq_canonicalize(m_data);
+      j.data()[0]._mp_d = nullptr;
+   }
+   template <class U>
+   gmp_rational(gmp_int&& a, const U& b, typename std::enable_if<std::is_constructible<gmp_int, U>::value>::type* = nullptr)
+   {
+      gmp_int j(b);
+      m_data[0]._mp_num = a.data()[0];
+      m_data[0]._mp_den = j.data()[0];
+      if (boost::multiprecision::detail::unsigned_abs(b) > 1)
+         mpq_canonicalize(m_data);
+      a.data()[0]._mp_d = nullptr;
+      j.data()[0]._mp_d = nullptr;
+   }
+   template <class T>
+   gmp_rational(const T& a, const gmp_int& b, typename std::enable_if<std::is_constructible<gmp_int, T>::value>::type* = nullptr)
+   {
+      gmp_int i(a);
+      m_data[0]._mp_num = i.data()[0];
+      mpz_init_set(&m_data[0]._mp_den, b.data());
+      if(boost::multiprecision::detail::unsigned_abs(a) > 1)
+         mpq_canonicalize(m_data);
+      i.data()[0]._mp_d = nullptr;
+   }
+   template <class T>
+   gmp_rational(const T& a, gmp_int&& b, typename std::enable_if<std::is_constructible<gmp_int, T>::value>::type* = nullptr)
+   {
+      gmp_int i(a);
+      m_data[0]._mp_num = i.data()[0];
+      m_data[0]._mp_den = b.data()[0];
+      if(boost::multiprecision::detail::unsigned_abs(a) > 1)
+         mpq_canonicalize(m_data);
+      i.data()[0]._mp_d = nullptr;
+      b.data()[0]._mp_d = nullptr;
+   }
+   gmp_rational(const gmp_int& a, const gmp_int& b)
+   {
+      mpz_init_set(&m_data[0]._mp_num, a.data());
+      mpz_init_set(&m_data[0]._mp_den, b.data());
+      mpq_canonicalize(m_data);
+   }
+   gmp_rational(const gmp_int& a, gmp_int&& b)
+   {
+      mpz_init_set(&m_data[0]._mp_num, a.data());
+      m_data[0]._mp_den = b.data()[0];
+      mpq_canonicalize(m_data);
+      b.data()[0]._mp_d = nullptr;
+   }
+   gmp_rational(gmp_int&& a, const gmp_int& b)
+   {
+      m_data[0]._mp_num = a.data()[0];
+      mpz_init_set(&m_data[0]._mp_den, b.data());
+      mpq_canonicalize(m_data);
+      a.data()[0]._mp_d = nullptr;
+   }
+   gmp_rational(gmp_int&& a, gmp_int&& b)
+   {
+      m_data[0]._mp_num = a.data()[0];
+      m_data[0]._mp_den = b.data()[0];
+      mpq_canonicalize(m_data);
+      a.data()[0]._mp_d = nullptr;
+      b.data()[0]._mp_d = nullptr;
    }
    // rvalue copy
    gmp_rational(gmp_rational&& o) noexcept
@@ -2174,6 +2382,20 @@ struct gmp_rational
          mpq_div_2exp(m_data, m_data, -e);
       return *this;
    }
+#ifdef BOOST_HAS_INT128
+   gmp_rational& operator=(unsigned __int128 i)
+   {
+      gmp_int gi;
+      gi = i;
+      return *this = gi;
+   }
+   gmp_rational& operator=(__int128 i)
+   {
+      gmp_int gi;
+      gi = i;
+      return *this = gi;
+   }
+#endif
    gmp_rational& operator=(const char* s)
    {
       if (m_data[0]._mp_den._mp_d == 0)
@@ -2323,6 +2545,174 @@ inline void eval_divide(gmp_rational& t, const gmp_rational& p, const gmp_ration
       BOOST_THROW_EXCEPTION(std::overflow_error("Division by zero."));
    mpq_div(t.data(), p.data(), o.data());
 }
+//
+// operator with scalars:
+//
+inline void eval_add(gmp_rational& result, gmp_rational const& a, gmp_int const& b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   mpz_addmul(mpq_numref(result.data()), mpq_denref(a.data()), b.data());
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+inline void eval_add(gmp_rational& result, gmp_rational const& a, unsigned long b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   mpz_addmul_ui(mpq_numref(result.data()), mpq_denref(a.data()), b);
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+inline void eval_add(gmp_rational& result, gmp_rational const& a, long b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   if(b > 0)
+      mpz_addmul_ui(mpq_numref(result.data()), mpq_denref(a.data()), b);
+   else
+      mpz_submul_ui(mpq_numref(result.data()), mpq_denref(a.data()), boost::multiprecision::detail::unsigned_abs(b));
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+template <class T>
+inline void eval_add(gmp_rational& result, gmp_rational const& a, const T& b)
+{
+   gmp_int t;
+   t = b;
+   eval_add(result, a, t);
+}
+template <class T>
+inline void eval_add(gmp_rational& result, const T& b, gmp_rational const& a)
+{
+   eval_add(result, a, b);
+}
+template <class T>
+inline void eval_add(gmp_rational& result, const T& b)
+{
+   eval_add(result, result, b);
+}
+inline void eval_subtract(gmp_rational& result, gmp_rational const& a, gmp_int const& b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   mpz_submul(mpq_numref(result.data()), mpq_denref(a.data()), b.data());
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+inline void eval_subtract(gmp_rational& result, gmp_rational const& a, unsigned long b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   mpz_submul_ui(mpq_numref(result.data()), mpq_denref(a.data()), b);
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+inline void eval_subtract(gmp_rational& result, gmp_rational const& a, long b)
+{
+   // we allow result and a to be the same object here:
+   if (&a != &result)
+   {
+      mpz_set(mpq_numref(result.data()), mpq_numref(a.data()));
+      mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+   if(b > 0)
+      mpz_submul_ui(mpq_numref(result.data()), mpq_denref(a.data()), b);
+   else
+      mpz_addmul_ui(mpq_numref(result.data()), mpq_denref(a.data()), boost::multiprecision::detail::unsigned_abs(b));
+   // no need to normalize, there can be no common divisor as long as a is already normalized.
+}
+template <class T>
+inline void eval_subtract(gmp_rational& result, gmp_rational const& a, const T& b)
+{
+   gmp_int t;
+   t = b;
+   eval_subtract(result, a, t);
+}
+template <class T>
+inline void eval_subtract(gmp_rational& result, const T& b, gmp_rational const& a)
+{
+   eval_subtract(result, a, b);
+   result.negate();
+}
+template <class T>
+inline void eval_subtract(gmp_rational& result, const T& b)
+{
+   eval_subtract(result, result, b);
+}
+
+inline void eval_multiply(gmp_rational& result, gmp_rational const& a, gmp_int const& b)
+{
+   gmp_int g, t;
+   mpz_gcd(g.data(), mpq_denref(a.data()), b.data());
+   if (!mpz_fits_uint_p(g.data()) || (mpz_get_ui(g.data()) != 1))
+   {
+      eval_divide(t, b, g);
+      mpz_mul(mpq_numref(result.data()), t.data(), mpq_numref(a.data()));
+      mpz_div(mpq_denref(result.data()), mpq_denref(a.data()), g.data());
+   }
+   else
+   {
+      mpz_mul(mpq_numref(result.data()), mpq_numref(a.data()), b.data());
+      if (&result != &a)
+         mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+}
+inline void eval_multiply(gmp_rational& result, gmp_rational const& a, unsigned long b)
+{
+   gmp_int g;
+   mpz_gcd_ui(g.data(), mpq_denref(a.data()), b);
+   if (!mpz_fits_uint_p(g.data()) || (mpz_get_ui(g.data()) != 1))
+   {
+      b /= mpz_get_ui(g.data());
+      mpz_mul_ui(mpq_numref(result.data()), mpq_numref(a.data()), b);
+      mpz_div(mpq_denref(result.data()), mpq_denref(a.data()), g.data());
+   }
+   else
+   {
+      mpz_mul_ui(mpq_numref(result.data()), mpq_numref(a.data()), b);
+      if (&result != &a)
+         mpz_set(mpq_denref(result.data()), mpq_denref(a.data()));
+   }
+}
+inline void eval_multiply(gmp_rational& result, gmp_rational const& a, long b)
+{
+   eval_multiply(result, a, boost::multiprecision::detail::unsigned_abs(b));
+   if (b < 0)
+      result.negate();
+}
+template <class T>
+inline void eval_multiply(gmp_rational& result, gmp_rational const& a, const T& b)
+{
+   gmp_int t;
+   t = b;
+   eval_multiply(result, a, t);
+}
+template <class T>
+inline void eval_multiply(gmp_rational& result, const T& b, gmp_rational const& a)
+{
+   eval_multiply(result, a, b);
+}
+template <class T>
+inline void eval_multiply(gmp_rational& result, const T& b)
+{
+   eval_multiply(result, result, b);
+}
 
 inline int eval_get_sign(const gmp_rational& val)
 {
@@ -2359,18 +2749,15 @@ inline void eval_convert_to(__float128* result, const gmp_rational& val)
 }
 #endif
 
-inline void eval_convert_to(long* result, const gmp_rational& val)
+template <class R>
+inline typename std::enable_if<number_category<R>::value == number_kind_integer>::type eval_convert_to(R* result, const gmp_rational& backend)
 {
-   double r;
-   eval_convert_to(&r, val);
-   *result = static_cast<long>(r);
-}
-
-inline void eval_convert_to(unsigned long* result, const gmp_rational& val)
-{
-   double r;
-   eval_convert_to(&r, val);
-   *result = static_cast<long>(r);
+   gmp_int n(mpq_numref(backend.data()));
+   gmp_int d(mpq_denref(backend.data()));
+   using default_ops::eval_divide;
+   eval_divide(n, d);
+   using default_ops::eval_convert_to;
+   eval_convert_to(result, n);
 }
 
 inline void eval_abs(gmp_rational& result, const gmp_rational& val)
@@ -2394,16 +2781,59 @@ inline void assign_components(gmp_rational& result, gmp_int const& v1, gmp_int c
    mpz_set(mpq_denref(result.data()), v2.data());
    mpq_canonicalize(result.data());
 }
+template <class T, class U>
+void assign_components(gmp_rational& result, const T& a, const U& b)
+{
+   gmp_int x, y;
+   x = a;
+   y = b;
+   std::swap(result.data()[0]._mp_num, x.data()[0]);
+   std::swap(result.data()[0]._mp_den, y.data()[0]);
+   mpq_canonicalize(result.data());
+}
+template <class U>
+void assign_components(gmp_rational& result, const gmp_int& a, const U& b)
+{
+   gmp_int y;
+   y = b;
+   mpz_set(&result.data()[0]._mp_num, a.data());
+   std::swap(result.data()[0]._mp_den, y.data()[0]);
+   mpq_canonicalize(result.data());
+}
+template <class T>
+void assign_components(gmp_rational& result, const T& a, const gmp_int& b)
+{
+   gmp_int x;
+   x = a;
+   std::swap(result.data()[0]._mp_num, x.data()[0]);
+   mpz_set(&result.data()[0]._mp_den, b.data());
+   mpq_canonicalize(result.data());
+}
+
 
 inline std::size_t hash_value(const gmp_rational& val)
 {
    std::size_t result = 0;
    for (int i = 0; i < std::abs(val.data()[0]._mp_num._mp_size); ++i)
-      boost::hash_combine(result, val.data()[0]._mp_num._mp_d[i]);
+      boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_num._mp_d[i]);
    for (int i = 0; i < std::abs(val.data()[0]._mp_den._mp_size); ++i)
-      boost::hash_combine(result, val.data()[0]._mp_den._mp_d[i]);
-   boost::hash_combine(result, val.data()[0]._mp_num._mp_size);
+      boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_den._mp_d[i]);
+   boost::multiprecision::detail::hash_combine(result, val.data()[0]._mp_num._mp_size);
    return result;
+}
+
+//
+// Some useful helpers:
+//
+inline unsigned used_gmp_int_bits(const gmp_int& val)
+{
+   return eval_msb(val) - eval_lsb(val) + 1;
+}
+inline unsigned used_gmp_rational_bits(const gmp_rational& val)
+{
+   unsigned d2_d = static_cast<unsigned>(mpz_sizeinbase(mpq_denref(val.data()), 2) - mpz_scan1(mpq_denref(val.data()), 0));
+   unsigned d2_n = static_cast<unsigned>(mpz_sizeinbase(mpq_numref(val.data()), 2) - mpz_scan1(mpq_numref(val.data()), 0));
+   return (std::max)(d2_d, d2_n);
 }
 
 //
@@ -2462,11 +2892,24 @@ inline gmp_float<Digits10>& gmp_float<Digits10>::operator=(const gmp_rational& o
 }
 inline gmp_float<0>::gmp_float(const gmp_int& o) : requested_precision(get_default_precision())
 {
+   if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+   {
+      unsigned d2 = used_gmp_int_bits(o);
+      unsigned d10 = 1 + multiprecision::detail::digits2_2_10(d2);
+      if (d10 > requested_precision)
+         requested_precision = d10;
+   }
    mpf_init2(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
    mpf_set_z(this->data(), o.data());
 }
 inline gmp_float<0>::gmp_float(const gmp_rational& o) : requested_precision(get_default_precision())
 {
+   if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+   {
+      unsigned d10 = 1 + multiprecision::detail::digits2_2_10(used_gmp_rational_bits(o));
+      if (d10 > requested_precision)
+         requested_precision = d10;
+   }
    mpf_init2(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
    mpf_set_q(this->data(), o.data());
 }
@@ -2475,7 +2918,21 @@ inline gmp_float<0>& gmp_float<0>::operator=(const gmp_int& o)
    if (this->m_data[0]._mp_d == 0)
    {
       requested_precision = this->get_default_precision();
+      if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+      {
+         unsigned d2 = used_gmp_int_bits(o);
+         unsigned d10 = 1 + multiprecision::detail::digits2_2_10(d2);
+         if (d10 > requested_precision)
+            requested_precision = d10;
+      }
       mpf_init2(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
+   }
+   else if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+   {
+      unsigned d2 = used_gmp_int_bits(o);
+      unsigned d10 = 1 + multiprecision::detail::digits2_2_10(d2);
+      if (d10 > requested_precision)
+         this->precision(d10);
    }
    mpf_set_z(this->data(), o.data());
    return *this;
@@ -2485,7 +2942,19 @@ inline gmp_float<0>& gmp_float<0>::operator=(const gmp_rational& o)
    if (this->m_data[0]._mp_d == 0)
    {
       requested_precision = this->get_default_precision();
+      if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+      {
+         unsigned d10 = 1 + multiprecision::detail::digits2_2_10(used_gmp_rational_bits(o));
+         if (d10 > requested_precision)
+            requested_precision = d10;
+      }
       mpf_init2(this->m_data, multiprecision::detail::digits10_2_2(requested_precision));
+   }
+   else if (thread_default_variable_precision_options() >= variable_precision_options::preserve_all_precision)
+   {
+      unsigned d10 = 1 + multiprecision::detail::digits2_2_10(used_gmp_rational_bits(o));
+      if (d10 > requested_precision)
+         this->precision(d10);
    }
    mpf_set_q(this->data(), o.data());
    return *this;
@@ -2537,7 +3006,7 @@ struct digits2<number<gmp_float<0>, et_on> >
 {
    static long value()
    {
-      return multiprecision::detail::digits10_2_2(gmp_float<0>::default_precision());
+      return multiprecision::detail::digits10_2_2(gmp_float<0>::thread_default_precision());
    }
 };
 
@@ -2546,7 +3015,7 @@ struct digits2<number<gmp_float<0>, et_off> >
 {
    static long value()
    {
-      return multiprecision::detail::digits10_2_2(gmp_float<0>::default_precision());
+      return multiprecision::detail::digits10_2_2(gmp_float<0>::thread_default_precision());
    }
 };
 
@@ -2555,7 +3024,7 @@ struct digits2<number<debug_adaptor<gmp_float<0> >, et_on> >
 {
    static long value()
    {
-      return multiprecision::detail::digits10_2_2(gmp_float<0>::default_precision());
+      return multiprecision::detail::digits10_2_2(gmp_float<0>::thread_default_precision());
    }
 };
 
@@ -2564,7 +3033,7 @@ struct digits2<number<debug_adaptor<gmp_float<0> >, et_off> >
 {
    static long value()
    {
-      return multiprecision::detail::digits10_2_2(gmp_float<0>::default_precision());
+      return multiprecision::detail::digits10_2_2(gmp_float<0>::thread_default_precision());
    }
 };
 
@@ -2625,7 +3094,7 @@ inline int digits<boost::multiprecision::mpf_float>()
     noexcept
 #endif
 {
-   return multiprecision::detail::digits10_2_2(boost::multiprecision::mpf_float::default_precision());
+   return multiprecision::detail::digits10_2_2(boost::multiprecision::mpf_float::thread_default_precision());
 }
 template <>
 inline int digits<boost::multiprecision::number<boost::multiprecision::gmp_float<0>, boost::multiprecision::et_off> >()
@@ -2633,7 +3102,7 @@ inline int digits<boost::multiprecision::number<boost::multiprecision::gmp_float
     noexcept
 #endif
 {
-   return multiprecision::detail::digits10_2_2(boost::multiprecision::mpf_float::default_precision());
+   return multiprecision::detail::digits10_2_2(boost::multiprecision::mpf_float::thread_default_precision());
 }
 
 template <>
@@ -2678,7 +3147,7 @@ inline int digits<boost::multiprecision::number<boost::multiprecision::debug_ada
     noexcept
 #endif
 {
-   return multiprecision::detail::digits10_2_2(boost::multiprecision::number<boost::multiprecision::debug_adaptor<boost::multiprecision::mpf_float::backend_type> >::default_precision());
+   return multiprecision::detail::digits10_2_2(boost::multiprecision::number<boost::multiprecision::debug_adaptor<boost::multiprecision::mpf_float::backend_type> >::thread_default_precision());
 }
 template <>
 inline int digits<boost::multiprecision::number<boost::multiprecision::debug_adaptor<boost::multiprecision::gmp_float<0> >, boost::multiprecision::et_off> >()
@@ -2686,7 +3155,7 @@ inline int digits<boost::multiprecision::number<boost::multiprecision::debug_ada
     noexcept
 #endif
 {
-   return multiprecision::detail::digits10_2_2(boost::multiprecision::number<boost::multiprecision::debug_adaptor<boost::multiprecision::mpf_float::backend_type> >::default_precision());
+   return multiprecision::detail::digits10_2_2(boost::multiprecision::number<boost::multiprecision::debug_adaptor<boost::multiprecision::mpf_float::backend_type> >::thread_default_precision());
 }
 
 template <>
@@ -2731,34 +3200,43 @@ class numeric_limits<boost::multiprecision::number<boost::multiprecision::gmp_fl
 {
    using number_type = boost::multiprecision::number<boost::multiprecision::gmp_float<Digits10>, ExpressionTemplates>;
 
- public:
-   static constexpr bool is_specialized = true;
    //
    // min and max values chosen so as to not cause segfaults when calling
    // mpf_get_str on 64-bit Linux builds.  Possibly we could use larger
    // exponent values elsewhere.
    //
+   static number_type calc_min()
+   {
+      number_type result(1);
+      mpf_div_2exp(result.backend().data(), result.backend().data(), (std::numeric_limits<mp_exp_t>::max)() / 64 + 1);
+      return result;
+   }
+   static number_type calc_max()
+   {
+      number_type result(1);
+      mpf_mul_2exp(result.backend().data(), result.backend().data(), (std::numeric_limits<mp_exp_t>::max)() / 64 + 1);
+      return result;
+   }
+   static number_type calc_epsilon()
+   {
+      number_type result(1);
+      mpf_div_2exp(result.backend().data(), result.backend().data(), std::numeric_limits<number_type>::digits - 1);
+      return result;
+   }
+
+
+ public:
+   static constexpr bool is_specialized = true;
    static number_type(min)()
    {
-      static std::pair<bool, number_type> value;
-      if (!value.first)
-      {
-         value.first  = true;
-         value.second = 1;
-         mpf_div_2exp(value.second.backend().data(), value.second.backend().data(), (std::numeric_limits<mp_exp_t>::max)() / 64 + 1);
-      }
-      return value.second;
+      // rely on C++11 thread safe initialization of statics:
+      static const number_type value{calc_min()};
+      return value;
    }
    static number_type(max)()
    {
-      static std::pair<bool, number_type> value;
-      if (!value.first)
-      {
-         value.first  = true;
-         value.second = 1;
-         mpf_mul_2exp(value.second.backend().data(), value.second.backend().data(), (std::numeric_limits<mp_exp_t>::max)() / 64 + 1);
-      }
-      return value.second;
+      static number_type value{calc_max()};
+      return value;
    }
    static constexpr number_type lowest()
    {
@@ -2774,26 +3252,13 @@ class numeric_limits<boost::multiprecision::number<boost::multiprecision::gmp_fl
    static constexpr int  radix        = 2;
    static number_type          epsilon()
    {
-      static std::pair<bool, number_type> value;
-      if (!value.first)
-      {
-         value.first  = true;
-         value.second = 1;
-         mpf_div_2exp(value.second.backend().data(), value.second.backend().data(), std::numeric_limits<number_type>::digits - 1);
-      }
-      return value.second;
+      static const number_type value{calc_epsilon()};
+      return value;
    }
    // What value should this be????
    static number_type round_error()
    {
-      // returns epsilon/2
-      static std::pair<bool, number_type> value;
-      if (!value.first)
-      {
-         value.first  = true;
-         value.second = 1;
-      }
-      return value.second;
+      return 1;
    }
    static constexpr long               min_exponent      = LONG_MIN;
    static constexpr long               min_exponent10    = (LONG_MIN / 1000) * 301L;

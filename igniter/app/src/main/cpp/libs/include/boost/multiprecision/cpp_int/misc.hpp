@@ -12,8 +12,8 @@
 
 #include <boost/multiprecision/detail/constexpr.hpp>
 #include <boost/multiprecision/detail/bitscan.hpp> // lsb etc
+#include <boost/multiprecision/detail/hash.hpp>
 #include <boost/integer/common_factor_rt.hpp>      // gcd/lcm
-#include <boost/functional/hash_fwd.hpp>
 #include <numeric> // std::gcd
 
 #ifdef BOOST_MSVC
@@ -419,6 +419,9 @@ inline BOOST_MP_CXX14_CONSTEXPR double_limb_type eval_gcd(double_limb_type u, do
 #if (__cpp_lib_gcd_lcm >= 201606L) && (!defined(BOOST_HAS_INT128) || !defined(__STRICT_ANSI__))
    return std::gcd(u, v);
 #else
+   if (u == 0)
+      return v;
+
    unsigned shift = boost::multiprecision::detail::find_lsb(u | v);
    u >>= boost::multiprecision::detail::find_lsb(u);
    do
@@ -732,12 +735,10 @@ void eval_gcd_lehmer(cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Al
 // but that division is very slow.
 //
 // We begin with a specialized routine for division.
-// We know that u > v > ~limb_type(0), and therefore
-// that the result will fit into a single limb_type.
-// We also know that most of the time this is called the result will be 1.
+// We know that most of the time this is called the result will be 1.
 // For small limb counts, this almost doubles the performance of Lehmer's routine!
 //
-BOOST_FORCEINLINE void divide_subtract(limb_type& q, double_limb_type& u, const double_limb_type& v)
+BOOST_FORCEINLINE void divide_subtract(double_limb_type& q, double_limb_type& u, const double_limb_type& v)
 {
    BOOST_ASSERT(q == 1); // precondition on entry.
    u -= v;
@@ -746,7 +747,7 @@ BOOST_FORCEINLINE void divide_subtract(limb_type& q, double_limb_type& u, const 
       u -= v;
       if (++q > 30)
       {
-         limb_type t = u / v;
+         double_limb_type t = u / v;
          u -= t * v;
          q += t;
       }
@@ -818,15 +819,19 @@ void eval_gcd_lehmer(cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Al
       }
       v = tu - t;
       ++i;
+      BOOST_ASSERT((u <= v) || (t / q == old_v));
+      if (u <= v)
+      {
+         // We've gone terribly wrong, probably numeric overflow:
+         break;
+      }
       if ((i & 1u) == 0)
       {
-         BOOST_ASSERT(u > v);
          if ((static_cast<limb_type>(v >> bits_per_limb) < x[2]) || ((static_cast<limb_type>(u >> bits_per_limb) - static_cast<limb_type>(v >> bits_per_limb)) < (y[2] + y[1])))
             break;
       }
       else
       {
-         BOOST_ASSERT(u > v);
          if ((static_cast<limb_type>(v >> bits_per_limb) < y[2]) || ((static_cast<limb_type>(u >> bits_per_limb) - static_cast<limb_type>(v >> bits_per_limb)) < (x[2] + x[1])))
             break;
       }
@@ -851,7 +856,7 @@ void eval_gcd_lehmer(cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Al
    //
    while (true)
    {
-      limb_type q = 1;
+      double_limb_type q = 1;
       double_limb_type tt = u;
       divide_subtract(q, u, v);
       std::swap(u, v);
@@ -1106,6 +1111,7 @@ BOOST_MP_FORCEINLINE BOOST_MP_CXX14_CONSTEXPR typename std::enable_if<is_trivial
 eval_gcd(cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Allocator1>& result, const cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Allocator1>& a, const cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Allocator1>& b) noexcept
 {
    *result.limbs() = boost::integer::gcd(*a.limbs(), *b.limbs());
+   result.sign(false);
 }
 // This one is only enabled for unchecked cpp_int's, for checked int's we need the checking in the default version:
 template <unsigned MinBits1, unsigned MaxBits1, cpp_integer_type SignType1, cpp_int_check_type Checked1, class Allocator1>
@@ -1114,6 +1120,7 @@ eval_lcm(cpp_int_backend<MinBits1, MaxBits1, SignType1, Checked1, Allocator1>& r
 {
    *result.limbs() = boost::integer::lcm(*a.limbs(), *b.limbs());
    result.normalize(); // result may overflow the specified number of bits
+   result.sign(false);
 }
 
 inline void conversion_overflow(const std::integral_constant<int, checked>&)
@@ -1278,9 +1285,9 @@ inline BOOST_MP_CXX14_CONSTEXPR std::size_t hash_value(const cpp_int_backend<Min
    std::size_t result = 0;
    for (unsigned i = 0; i < val.size(); ++i)
    {
-      boost::hash_combine(result, val.limbs()[i]);
+      boost::multiprecision::detail::hash_combine(result, val.limbs()[i]);
    }
-   boost::hash_combine(result, val.sign());
+   boost::multiprecision::detail::hash_combine(result, val.sign());
    return result;
 }
 

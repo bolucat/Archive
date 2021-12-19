@@ -48,7 +48,7 @@ template <typename, typename> class awaitable_frame;
 
 /// The return type of a coroutine or asynchronous operation.
 template <typename T, typename Executor = any_io_executor>
-class awaitable
+class BOOST_ASIO_NODISCARD awaitable
 {
 public:
   /// The type of the awaited value.
@@ -74,6 +74,14 @@ public:
   {
     if (frame_)
       frame_->destroy();
+  }
+
+  /// Move assignment.
+  awaitable& operator=(awaitable&& other) noexcept
+  {
+    if (this != &other)
+      frame_ = std::exchange(other.frame_, nullptr);
+    return *this;
   }
 
   /// Checks if the awaitable refers to a future result.

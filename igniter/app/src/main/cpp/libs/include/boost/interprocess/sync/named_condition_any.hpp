@@ -21,11 +21,12 @@
 
 #include <boost/interprocess/detail/config_begin.hpp>
 #include <boost/interprocess/detail/workaround.hpp>
+
+#include <boost/interprocess/sync/cv_status.hpp>
 #include <boost/interprocess/creation_tags.hpp>
 #include <boost/interprocess/exceptions.hpp>
 #include <boost/interprocess/detail/interprocess_tester.hpp>
 #include <boost/interprocess/permissions.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 #include <boost/interprocess/sync/detail/locks.hpp>
 #if !defined(BOOST_INTERPROCESS_FORCE_GENERIC_EMULATION) && defined (BOOST_INTERPROCESS_WINDOWS)
    #include <boost/interprocess/sync/windows/named_condition_any.hpp>
@@ -153,16 +154,40 @@ class named_condition_any
    //!this->notify_one() or this->notify_all(), or until time abs_time is reached,
    //!and then reacquires the lock.
    //!Returns: false if time abs_time is reached, otherwise true.
-   template <typename L>
-   bool timed_wait(L& lock, const boost::posix_time::ptime &abs_time)
+   template <typename L, typename TimePoint>
+   bool timed_wait(L& lock, const TimePoint &abs_time)
    {  return m_cond.timed_wait(lock, abs_time); }
 
    //!The same as:   while (!pred()) {
    //!                  if (!timed_wait(lock, abs_time)) return pred();
    //!               } return true;
-   template <typename L, typename Pr>
-   bool timed_wait(L& lock, const boost::posix_time::ptime &abs_time, Pr pred)
+   template <typename L, typename TimePoint, typename Pr>
+   bool timed_wait(L& lock, const TimePoint &abs_time, Pr pred)
    {  return m_cond.timed_wait(lock, abs_time, pred); }
+
+   //!Same as `timed_wait`, but this function is modeled after the
+   //!standard library interface.
+   template <typename L, class TimePoint>
+   cv_status wait_until(L& lock, const TimePoint &abs_time)
+   {  return this->timed_wait(lock, abs_time) ? cv_status::no_timeout : cv_status::timeout; }
+
+   //!Same as `timed_wait`, but this function is modeled after the
+   //!standard library interface.
+   template <typename L, class TimePoint, typename Pr>
+   bool wait_until(L& lock, const TimePoint &abs_time, Pr pred)
+   {  return this->timed_wait(lock, abs_time, pred); }
+
+   //!Same as `timed_wait`, but this function is modeled after the
+   //!standard library interface and uses relative timeouts.
+   template <typename L, class Duration>
+   cv_status wait_for(L& lock, const Duration &dur)
+   {  return this->wait_until(lock, ipcdetail::duration_to_ustime(dur)); }
+
+   //!Same as `timed_wait`, but this function is modeled after the
+   //!standard library interface and uses relative timeouts
+   template <typename L, class Duration, typename Pr>
+   bool wait_for(L& lock, const Duration &dur, Pr pred)
+   {  return this->wait_until(lock, ipcdetail::duration_to_ustime(dur), pred); }
 
    //!Erases a named condition from the system.
    //!Returns false on error. Never throws.

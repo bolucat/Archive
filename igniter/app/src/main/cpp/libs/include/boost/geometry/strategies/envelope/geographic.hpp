@@ -1,6 +1,6 @@
 // Boost.Geometry
 
-// Copyright (c) 2020, Oracle and/or its affiliates.
+// Copyright (c) 2020-2021, Oracle and/or its affiliates.
 
 // Contributed and/or modified by Adam Wulkiewicz, on behalf of Oracle
 
@@ -40,9 +40,7 @@ class geographic
     using base_t = strategies::expand::geographic<FormulaPolicy, Spheroid, CalculationType>;
 
 public:
-    geographic()
-        : base_t()
-    {}
+    geographic() = default;
 
     explicit geographic(Spheroid const& spheroid)
         : base_t(spheroid)
@@ -82,6 +80,16 @@ public:
     template <typename Geometry, typename Box>
     auto envelope(Geometry const&, Box const&,
                   typename util::enable_if_polysegmental_t<Geometry> * = nullptr) const
+    {
+        return strategy::envelope::geographic
+            <
+                FormulaPolicy, Spheroid, CalculationType
+            >(base_t::m_spheroid);
+    }
+
+    template <typename Geometry, typename Box>
+    auto envelope(Geometry const&, Box const&,
+                  typename util::enable_if_geometry_collection_t<Geometry> * = nullptr) const
     {
         return strategy::envelope::geographic
             <

@@ -33,7 +33,6 @@
 #include <boost/interprocess/detail/type_traits.hpp>
 #include <boost/interprocess/detail/simple_swap.hpp>
 #include <boost/move/utility_core.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 
 //!\file
 //!Describes the upgradable_lock class that serves to acquire the upgradable
@@ -117,7 +116,8 @@ class sharable_lock
    //!   handles recursive locking depends upon the mutex. If the mutex_type
    //!   does not support timed_lock_sharable, this constructor will fail at
    //!   compile time if instantiated, but otherwise have no effect.
-   sharable_lock(mutex_type& m, const boost::posix_time::ptime& abs_time)
+   template<class TimePoint>
+   sharable_lock(mutex_type& m, const TimePoint& abs_time)
       : mp_mutex(&m), m_locked(false)
    {  m_locked = mp_mutex->timed_lock_sharable(abs_time);  }
 
@@ -182,10 +182,10 @@ class sharable_lock
    //!Notes: The destructor behavior ensures that the mutex lock is not leaked.
    ~sharable_lock()
    {
-      try{
+      BOOST_TRY{
          if(m_locked && mp_mutex)   mp_mutex->unlock_sharable();
       }
-      catch(...){}
+      BOOST_CATCH(...){} BOOST_CATCH_END
    }
 
    //!Effects: If owns() before the call, then unlock_sharable() is called on mutex().
@@ -240,11 +240,52 @@ class sharable_lock
    //!   specified time interval. If the mutex_type does not support
    //!   timed_lock_sharable(), this function will fail at compile time if
    //!   instantiated, but otherwise have no effect.
-   bool timed_lock(const boost::posix_time::ptime& abs_time)
+   template<class TimePoint>
+   bool timed_lock(const TimePoint& abs_time)
    {
       if(!mp_mutex || m_locked)
          throw lock_exception();
       m_locked = mp_mutex->timed_lock_sharable(abs_time);
+      return m_locked;
+   }
+
+   //!Effects: If mutex() == 0 or already locked, throws a lock_exception()
+   //!   exception. Calls try_lock_shared_until(abs_time) on the referenced mutex.
+   //!Postconditions: owns() == the value returned from
+   //!   mutex()->timed_lock_sharable(elps_time).
+   //!Notes: The sharable_lock changes from a state of not owning the mutex,
+   //!   to owning the mutex, but only if it can obtain ownership within the
+   //!   specified time interval. If the mutex_type does not support
+   //!   timed_lock_sharable(), this function will fail at compile time if
+   //!   instantiated, but otherwise have no effect.
+   //!
+   //!Note: Similar to timed_lock, but with a std-like interface
+   template<class TimePoint>
+   bool try_lock_until(const TimePoint& abs_time)
+   {
+      if(!mp_mutex || m_locked)
+         throw lock_exception();
+      m_locked = mp_mutex->try_lock_shared_until(abs_time);
+      return m_locked;
+   }
+
+   //!Effects: If mutex() == 0 or already locked, throws a lock_exception()
+   //!   exception. Calls try_lock_shared_until(abs_time) on the referenced mutex.
+   //!Postconditions: owns() == the value returned from
+   //!   mutex()->timed_lock_sharable(elps_time).
+   //!Notes: The sharable_lock changes from a state of not owning the mutex,
+   //!   to owning the mutex, but only if it can obtain ownership within the
+   //!   specified time interval. If the mutex_type does not support
+   //!   timed_lock_sharable(), this function will fail at compile time if
+   //!   instantiated, but otherwise have no effect.
+   //!
+   //!Note: Similar to timed_lock, but with a std-like interface
+   template<class Duration>
+   bool try_lock_for(const Duration& dur)
+   {
+      if(!mp_mutex || m_locked)
+         throw lock_exception();
+      m_locked = mp_mutex->try_lock_shared_for(dur);
       return m_locked;
    }
 

@@ -24,7 +24,6 @@
 #include <boost/interprocess/exceptions.hpp>
 #include <boost/interprocess/detail/os_file_functions.hpp>
 #include <boost/interprocess/detail/os_thread_functions.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 #include <boost/interprocess/sync/detail/common_algorithms.hpp>
 #include <boost/interprocess/sync/detail/locks.hpp>
 #include <boost/move/utility_core.hpp>
@@ -136,7 +135,18 @@ class file_lock
    //!Note: A program may deadlock if the thread that has ownership calls 
    //!   this function. If the implementation can detect the deadlock,
    //!   an exception could be thrown.
-   bool timed_lock(const boost::posix_time::ptime &abs_time);
+   template<class TimePoint>
+   bool timed_lock(const TimePoint &abs_time);
+
+   //!Same as `timed_lock`, but this function is modeled after the
+   //!standard library interface.
+   template<class TimePoint> bool try_lock_until(const TimePoint &abs_time)
+   {  return this->timed_lock(abs_time);  }
+
+   //!Same as `timed_lock`, but this function is modeled after the
+   //!standard library interface.
+   template<class Duration>  bool try_lock_for(const Duration &dur)
+   {  return this->timed_lock(ipcdetail::duration_to_ustime(dur)); }
 
    //!Precondition: The thread must have exclusive ownership of the mutex.
    //!Effects: The calling thread releases the exclusive ownership of the mutex.
@@ -157,6 +167,11 @@ class file_lock
    //!   an exception could be thrown.
    void lock_sharable();
 
+   //!Same as `lock_sharable` but with a std-compatible interface
+   //! 
+   void lock_shared()
+   {  this->lock_sharable();  }
+
    //!Effects: The calling thread tries to acquire sharable ownership of the mutex
    //!   without waiting. If no other thread has exclusive ownership of the
    //!   mutex this succeeds.
@@ -165,17 +180,39 @@ class file_lock
    //!Throws: interprocess_exception on error.
    bool try_lock_sharable();
 
+   //!Same as `try_lock_sharable` but with a std-compatible interface
+   //! 
+   bool try_lock_shared()
+   {  return this->try_lock_sharable();  }
+
    //!Effects: The calling thread tries to acquire sharable ownership of the mutex
    //!   waiting if necessary until no other thread has exclusive ownership of
    //!   the mutex or abs_time is reached.
    //!Returns: If acquires sharable ownership, returns true. Otherwise returns false.
    //!Throws: interprocess_exception on error.
-   bool timed_lock_sharable(const boost::posix_time::ptime &abs_time);
+   template<class TimePoint>
+   bool timed_lock_sharable(const TimePoint &abs_time);
+
+   //!Same as `timed_lock_sharable`, but this function is modeled after the
+   //!standard library interface.
+   template<class TimePoint> bool try_lock_shared_until(const TimePoint &abs_time)
+   {  return this->timed_lock_sharable(abs_time);  }
+
+   //!Same as `timed_lock_sharable`, but this function is modeled after the
+   //!standard library interface.
+   template<class Duration>  bool try_lock_shared_for(const Duration &dur)
+   {  return this->timed_lock_sharable(ipcdetail::duration_to_ustime(dur)); }
 
    //!Precondition: The thread must have sharable ownership of the mutex.
    //!Effects: The calling thread releases the sharable ownership of the mutex.
    //!Throws: An exception derived from interprocess_exception on error.
    void unlock_sharable();
+
+   //!Same as `unlock_sharable` but with a std-compatible interface
+   //! 
+   void unlock_shared()
+   {  this->unlock_sharable();  }
+
    #if !defined(BOOST_INTERPROCESS_DOXYGEN_INVOKED)
    private:
    file_handle_t m_file_hnd;
@@ -233,7 +270,8 @@ inline bool file_lock::try_lock()
    return result;
 }
 
-inline bool file_lock::timed_lock(const boost::posix_time::ptime &abs_time)
+template<class TimePoint>
+inline bool file_lock::timed_lock(const TimePoint &abs_time)
 {  return ipcdetail::try_based_timed_lock(*this, abs_time);   }
 
 inline void file_lock::unlock()
@@ -262,7 +300,8 @@ inline bool file_lock::try_lock_sharable()
    return result;
 }
 
-inline bool file_lock::timed_lock_sharable(const boost::posix_time::ptime &abs_time)
+template<class TimePoint>
+inline bool file_lock::timed_lock_sharable(const TimePoint &abs_time)
 {
    ipcdetail::lock_to_sharable<file_lock> lsh(*this);
    return ipcdetail::try_based_timed_lock(lsh, abs_time);

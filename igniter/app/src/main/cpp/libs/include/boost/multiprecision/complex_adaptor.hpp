@@ -9,7 +9,7 @@
 #include <boost/multiprecision/number.hpp>
 #include <cstdint>
 #include <boost/multiprecision/detail/digits.hpp>
-#include <boost/functional/hash_fwd.hpp>
+#include <boost/multiprecision/detail/hash.hpp>
 #include <cmath>
 #include <algorithm>
 #include <complex>
@@ -17,6 +17,12 @@
 namespace boost {
 namespace multiprecision {
 namespace backends {
+
+template <class Backend>
+struct debug_adaptor;
+
+template <class Backend>
+struct logged_adaptor;
 
 template <class Backend>
 struct complex_adaptor
@@ -71,6 +77,18 @@ struct complex_adaptor
       m_real = val.real();
       m_imag = val.imag();
    }
+   template <class T, class U>
+   complex_adaptor(const T& a, const U& b, typename std::enable_if<std::is_constructible<Backend, T const&>::value&& std::is_constructible<Backend, U const&>::value>::type const* = nullptr)
+      : m_real(a), m_imag(b) {}
+   template <class T, class U>
+   complex_adaptor(T&& a, const U& b, typename std::enable_if<std::is_constructible<Backend, T>::value&& std::is_constructible<Backend, U>::value>::type const* = nullptr)
+      : m_real(static_cast<T&&>(a)), m_imag(b) {}
+   template <class T, class U>
+   complex_adaptor(T&& a, U&& b, typename std::enable_if<std::is_constructible<Backend, T>::value&& std::is_constructible<Backend, U>::value>::type const* = nullptr)
+      : m_real(static_cast<T&&>(a)), m_imag(static_cast<U&&>(b)) {}
+   template <class T, class U>
+   complex_adaptor(const T& a, U&& b, typename std::enable_if<std::is_constructible<Backend, T>::value&& std::is_constructible<Backend, U>::value>::type const* = nullptr)
+      : m_real(a), m_imag(static_cast<U&&>(b)) {}
 
    complex_adaptor& operator=(const complex_adaptor& o)
    {
@@ -881,7 +899,7 @@ inline std::size_t hash_value(const complex_adaptor<Backend>& val)
 {
    std::size_t result  = hash_value(val.real_data());
    std::size_t result2 = hash_value(val.imag_data());
-   boost::hash_combine(result, result2);
+   boost::multiprecision::detail::hash_combine(result, result2);
    return result;
 }
 
@@ -903,6 +921,26 @@ template <class Backend, expression_template_option ExpressionTemplates>
 struct complex_result_from_scalar<number<Backend, ExpressionTemplates> >
 {
    using type = number<complex_adaptor<Backend>, ExpressionTemplates>;
+};
+
+namespace detail {
+   template <class Backend>
+   struct is_variable_precision<complex_adaptor<Backend> > : public is_variable_precision<Backend>
+   {};
+} // namespace detail
+
+
+
+template <class Backend, expression_template_option ExpressionTemplates>
+struct complex_result_from_scalar<number<backends::debug_adaptor<Backend>, ExpressionTemplates> >
+{
+   using type = number<backends::debug_adaptor<complex_adaptor<Backend> >, ExpressionTemplates>;
+};
+
+template <class Backend, expression_template_option ExpressionTemplates>
+struct complex_result_from_scalar<number<backends::logged_adaptor<Backend>, ExpressionTemplates> >
+{
+   using type = number<backends::logged_adaptor<complex_adaptor<Backend> >, ExpressionTemplates>;
 };
 
 }

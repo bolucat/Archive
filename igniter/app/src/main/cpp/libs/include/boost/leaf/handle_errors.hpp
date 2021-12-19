@@ -427,13 +427,48 @@ namespace leaf_detail
 
 #endif
 
+    template <class E, bool = does_not_participate_in_context_deduction<E>::value>
+    struct peek_tuple;
+
+    template <class E>
+    struct peek_tuple<E, true>
+    {
+        template <class SlotsTuple>
+        BOOST_LEAF_CONSTEXPR static E const * peek( SlotsTuple const &, error_id const & ) noexcept
+        {
+            return 0;
+        }
+        
+        template <class SlotsTuple>
+        BOOST_LEAF_CONSTEXPR static E * peek( SlotsTuple &, error_id const & ) noexcept
+        {
+            return 0;
+        }
+    };
+
+    template <class E>
+    struct peek_tuple<E, false>
+    {
+        template <class SlotsTuple>
+        BOOST_LEAF_CONSTEXPR static E const * peek( SlotsTuple const & tup, error_id const & err ) noexcept
+        {
+            return std::get<tuple_type_index<slot<E>,SlotsTuple>::value>(tup).has_value(err.value());
+        }
+
+        template <class SlotsTuple>
+        BOOST_LEAF_CONSTEXPR static E * peek( SlotsTuple & tup, error_id const & err ) noexcept
+        {
+            return std::get<tuple_type_index<slot<E>,SlotsTuple>::value>(tup).has_value(err.value());
+        }
+    };
+
     template <class E, class SlotsTuple>
     BOOST_LEAF_CONSTEXPR inline
     E const *
     peek( SlotsTuple const & tup, error_info const & ei ) noexcept
     {
         if( error_id err = ei.error() )
-            if( E const * e = std::get<tuple_type_index<slot<E>,SlotsTuple>::value>(tup).has_value(err.value()) )
+            if( E const * e = peek_tuple<E>::peek(tup, err) )
                 return e;
 #ifndef BOOST_LEAF_NO_EXCEPTIONS
             else
@@ -448,7 +483,7 @@ namespace leaf_detail
     peek( SlotsTuple & tup, error_info const & ei ) noexcept
     {
         if( error_id err = ei.error() )
-            if( E * e = std::get<tuple_type_index<slot<E>,SlotsTuple>::value>(tup).has_value(err.value()) )
+            if( E * e = peek_tuple<E>::peek(tup, err) )
                 return e;
 #ifndef BOOST_LEAF_NO_EXCEPTIONS
             else
@@ -578,7 +613,7 @@ namespace leaf_detail
 
     template <class R, class Tup, class H>
     BOOST_LEAF_CONSTEXPR inline
-    typename std::enable_if<!is_tuple<H>::value, R>::type
+    typename std::enable_if<!is_tuple<typename std::decay<H>::type>::value, R>::type
     handle_error_( Tup & tup, error_info const & ei, H && h )
     {
         static_assert( handler_matches_any_error<fn_mp_args<H>>::value, "The last handler passed to handle_all must match any error." );
@@ -587,7 +622,7 @@ namespace leaf_detail
 
     template <class R, class Tup, class Car, class... Cdr>
     BOOST_LEAF_CONSTEXPR inline
-    typename std::enable_if<!is_tuple<Car>::value, R>::type
+    typename std::enable_if<!is_tuple<typename std::decay<Car>::type>::value, R>::type
     handle_error_( Tup & tup, error_info const & ei, Car && car, Cdr && ... cdr )
     {
         if( handler_matches_any_error<fn_mp_args<Car>>::value || check_handler_( tup, ei, fn_mp_args<Car>{ } ) )
@@ -614,7 +649,7 @@ namespace leaf_detail
 
     template <class R, class Tup, class H>
     BOOST_LEAF_CONSTEXPR inline
-    typename std::enable_if<is_tuple<H>::value, R>::type
+    typename std::enable_if<is_tuple<typename std::decay<H>::type>::value, R>::type
     handle_error_( Tup & tup, error_info const & ei, H && h )
     {
         return handle_error_tuple_<R>(
@@ -626,7 +661,7 @@ namespace leaf_detail
 
     template <class R, class Tup, class Car, class... Cdr>
     BOOST_LEAF_CONSTEXPR inline
-    typename std::enable_if<is_tuple<Car>::value, R>::type
+    typename std::enable_if<is_tuple<typename std::decay<Car>::type>::value, R>::type
     handle_error_( Tup & tup, error_info const & ei, Car && car, Cdr && ... cdr )
     {
         return handle_error_tuple_<R>(

@@ -5,8 +5,8 @@
 //
 // Copyright (c) 2011-2015 Adam Wulkiewicz, Lodz, Poland.
 //
-// This file was modified by Oracle on 2019-2020.
-// Modifications copyright (c) 2019-2020 Oracle and/or its affiliates.
+// This file was modified by Oracle on 2019-2021.
+// Modifications copyright (c) 2019-2021 Oracle and/or its affiliates.
 // Contributed and/or modified by Adam Wulkiewicz, on behalf of Oracle
 //
 // Use, modification and distribution is subject to the Boost Software License,
@@ -22,7 +22,7 @@
 #include <boost/geometry/index/detail/algorithms/comparable_distance_far.hpp>
 #include <boost/geometry/index/detail/algorithms/comparable_distance_centroid.hpp>
 #include <boost/geometry/index/detail/algorithms/path_intersection.hpp>
-
+#include <boost/geometry/index/detail/predicates.hpp>
 #include <boost/geometry/index/detail/tags.hpp>
 
 namespace boost { namespace geometry { namespace index { namespace detail {
@@ -108,14 +108,12 @@ struct comparable_distance_call
 {
     typedef typename geometry::comparable_distance_result
         <
-            G1, G2,
-            decltype(std::declval<Strategy>().comparable_distance(std::declval<G1>(),
-                                                                  std::declval<G2>()))
+            G1, G2, Strategy
         >::type result_type;
 
     static inline result_type apply(G1 const& g1, G2 const& g2, Strategy const& s)
     {
-        return geometry::comparable_distance(g1, g2, s.comparable_distance(g1, g2));
+        return geometry::comparable_distance(g1, g2, s);
     }
 };
 

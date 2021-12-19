@@ -23,7 +23,6 @@
 #include <boost/interprocess/detail/workaround.hpp>
 #include <boost/interprocess/creation_tags.hpp>
 #include <boost/interprocess/exceptions.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 #include <boost/interprocess/detail/managed_open_or_create_impl.hpp>
 #include <boost/interprocess/sync/interprocess_recursive_mutex.hpp>
@@ -113,7 +112,14 @@ class shm_named_recursive_mutex
    //!Tries to lock the shm_named_recursive_mutex until time abs_time,
    //!Returns false when timeout expires, returns true when locks.
    //!Throws interprocess_exception if a severe error is found
-   bool timed_lock(const boost::posix_time::ptime &abs_time);
+   template<class TimePoint>
+   bool timed_lock(const TimePoint &abs_time);
+
+   template<class TimePoint> bool try_lock_until(const TimePoint &abs_time)
+   {  return this->timed_lock(abs_time);  }
+
+   template<class Duration>  bool try_lock_for(const Duration &dur)
+   {  return this->timed_lock(duration_to_ustime(dur)); }
 
    //!Erases a named recursive mutex
    //!from the system
@@ -219,7 +225,8 @@ inline void shm_named_recursive_mutex::unlock()
 inline bool shm_named_recursive_mutex::try_lock()
 {  return this->mutex()->try_lock();  }
 
-inline bool shm_named_recursive_mutex::timed_lock(const boost::posix_time::ptime &abs_time)
+template<class TimePoint>
+inline bool shm_named_recursive_mutex::timed_lock(const TimePoint &abs_time)
 {  return this->mutex()->timed_lock(abs_time);  }
 
 inline bool shm_named_recursive_mutex::remove(const char *name)

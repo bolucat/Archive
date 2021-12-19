@@ -21,10 +21,11 @@
 
 #include <boost/interprocess/detail/config_begin.hpp>
 #include <boost/interprocess/detail/workaround.hpp>
+
+#include <boost/interprocess/sync/cv_status.hpp>
 #include <boost/interprocess/creation_tags.hpp>
 #include <boost/interprocess/permissions.hpp>
 #include <boost/interprocess/detail/interprocess_tester.hpp>
-#include <boost/interprocess/detail/posix_time_types_wrk.hpp>
 #include <boost/interprocess/sync/windows/named_sync.hpp>
 #include <boost/interprocess/sync/windows/winapi_semaphore_wrapper.hpp>
 #include <boost/interprocess/sync/detail/condition_algorithm_8a.hpp>
@@ -141,12 +142,12 @@ class winapi_named_condition_any
    void notify_all()
    {  m_condition_data.notify_all();   }
 
-   template <typename L>
-   bool timed_wait(L& lock, const boost::posix_time::ptime &abs_time)
+   template <typename L, typename TimePoint>
+   bool timed_wait(L& lock, const TimePoint &abs_time)
    {  return m_condition_data.timed_wait(lock, abs_time);   }
 
-   template <typename L, typename Pr>
-   bool timed_wait(L& lock, const boost::posix_time::ptime &abs_time, Pr pred)
+   template <typename L, typename TimePoint, typename Pr>
+   bool timed_wait(L& lock, const TimePoint &abs_time, Pr pred)
    {  return m_condition_data.timed_wait(lock, abs_time, pred);   }
 
    template <typename L>
@@ -156,6 +157,22 @@ class winapi_named_condition_any
    template <typename L, typename Pr>
    void wait(L& lock, Pr pred)
    {  m_condition_data.wait(lock, pred);   }
+
+   template <typename L, class TimePoint>
+   cv_status wait_until(L& lock, const TimePoint &abs_time)
+   {  return this->timed_wait(lock, abs_time) ? cv_status::no_timeout : cv_status::timeout; }
+
+   template <typename L, class TimePoint, typename Pr>
+   bool wait_until(L& lock, const TimePoint &abs_time, Pr pred)
+   {  return this->timed_wait(lock, abs_time, pred); }
+
+   template <typename L, class Duration>
+   cv_status wait_for(L& lock, const Duration &dur)
+   {  return this->wait_until(lock, ipcdetail::duration_to_ustime(dur)); }
+
+   template <typename L, class Duration, typename Pr>
+   bool wait_for(L& lock, const Duration &dur, Pr pred)
+   {  return this->wait_until(lock, ipcdetail::duration_to_ustime(dur), pred); }
 
    static bool remove(const char *name)
    {  return windows_named_sync::remove(name);  }
@@ -277,7 +294,7 @@ class winapi_named_condition_any
          winapi_semaphore_wrapper sem_block_queue;
          bool created;
          if(!sem_block_queue.open_or_create
-            (aux_str.c_str(), sem_counts[0], winapi_semaphore_wrapper::MaxCount, perm, created))
+            (aux_str.c_str(), static_cast<long>(sem_counts[0]), winapi_semaphore_wrapper::MaxCount, perm, created))
             return false;
          aux_str.erase(pos);
 
@@ -285,7 +302,7 @@ class winapi_named_condition_any
          aux_str += str_t::bl();
          winapi_semaphore_wrapper sem_block_lock;
          if(!sem_block_lock.open_or_create
-            (aux_str.c_str(), sem_counts[1], winapi_semaphore_wrapper::MaxCount, perm, created))
+            (aux_str.c_str(), static_cast<long>(sem_counts[1]), winapi_semaphore_wrapper::MaxCount, perm, created))
             return false;
          aux_str.erase(pos);
 
