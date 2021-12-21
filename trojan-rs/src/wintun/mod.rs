@@ -20,15 +20,17 @@ use crate::{
     resolver::DnsResolver,
     types::Result,
     wintun::{
-        ip::{is_private, TunInterface},
+        ipset::IPSet,
         tcp::TcpServer,
+        tun::{is_private, TunInterface},
         udp::UdpServer,
     },
     OPTIONS,
 };
 
-mod ip;
+mod ipset;
 mod tcp;
+mod tun;
 mod udp;
 
 pub(crate) type SocketSet<'a> = Interface<'a, TunInterface>;
@@ -53,23 +55,30 @@ pub fn run() -> Result<()> {
     let wintun = unsafe { wintun::load_from_path(&OPTIONS.wintun_args().wintun)? };
     let adapter = Adapter::create(&wintun, "trojan", OPTIONS.wintun_args().name.as_str(), None)?;
     let session = Arc::new(adapter.start_session(wintun::MAX_RING_CAPACITY)?);
+    let index = adapter.get_adapter_index()?;
 
-    log::error!(
-        "program {} started",
-        std::env::current_exe().unwrap().display()
-    );
+    if let Some(file) = &OPTIONS.wintun_args().route_ipset {
+        let mut ipset = IPSet::with_file(file.as_str())?;
+        if OPTIONS.wintun_args().inverse_route {
+            ipset = !ipset;
+        }
+        let _ = thread::spawn(move || {
+            ipset.add_route(index);
+            log::warn!("adding route finished");
+        });
+    }
 
     while get_adapter_ip(OPTIONS.wintun_args().name.as_str()).is_none() {
         thread::sleep(std::time::Duration::new(1, 0));
     }
+    log::warn!("wintun is ready");
 
     if OPTIONS.wintun_args().with_dns {
         add_route_with_if(
             OPTIONS.wintun_args().trusted_dns.as_str(),
             "255.255.255.255",
-            adapter.get_adapter_index().unwrap(),
+            index,
         );
-
         let _ = thread::spawn(|| {
             let program = std::env::current_exe().unwrap();
             let args = OPTIONS.wintun_args();
@@ -78,7 +87,7 @@ pub fn run() -> Result<()> {
             } else {
                 "".into()
             };
-            if let Err(err) = Command::new(program.clone())
+            let message = match Command::new(program.clone())
                 .args([
                     "--log-file",
                     log_file.as_str(),
@@ -106,10 +115,16 @@ pub fn run() -> Result<()> {
                 ])
                 .output()
             {
-                log::error!("{:?} exit with error:{}", program, err);
-            } else {
-                log::error!("{:?} exit", program);
-            }
+                Ok(output) => {
+                    if output.status.success() {
+                        "success".into()
+                    } else {
+                        String::from_utf8(output.stderr).unwrap()
+                    }
+                }
+                Err(err) => err.to_string(),
+            };
+            log::error!("trojan dns exit with message:{}", message);
             std::process::exit(-1);
         });
     }

@@ -6,7 +6,7 @@ namespace BBDown
 {
     class BBDownEntity
     {
-        public struct Page
+        public class Page
         {
             public int index;
             public string aid;
@@ -15,6 +15,7 @@ namespace BBDown
             public string title;
             public int dur;
             public string res;
+            public List<ViewPoint> points = new List<ViewPoint>();
 
             public Page(int index, string aid, string cid, string epid, string title, int dur, string res)
             {
@@ -28,7 +29,14 @@ namespace BBDown
             }
         }
 
-        public struct Video
+        public class ViewPoint
+        {
+            public string title;
+            public int start;
+            public int end;
+        }
+
+        public class Video
         {
             public string id;
             public string dfn;
@@ -58,7 +66,7 @@ namespace BBDown
             }
         }
 
-        public struct Audio
+        public class Audio
         {
             public string id;
             public string dfn;
@@ -83,14 +91,14 @@ namespace BBDown
             }
         }
 
-        public struct Subtitle
+        public class Subtitle
         {
             public string lan;
             public string url;
             public string path;
         }
 
-        public struct Clip
+        public class Clip
         {
             public int index;
             public long from;
