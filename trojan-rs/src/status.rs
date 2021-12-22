@@ -32,56 +32,43 @@ pub trait StatusProvider {
             ConnStatus::Established | ConnStatus::Connecting => {
                 self.set_status(ConnStatus::PeerClosed);
             }
-            ConnStatus::PeerClosed => {}
-            _ => {
-                log::warn!(
-                    "invalid status change from:{:?} to {:?}",
-                    self.get_status(),
-                    ConnStatus::PeerClosed
-                );
-            }
+            _ => {}
         }
     }
     fn established(&mut self) {
-        match self.get_status() {
-            ConnStatus::Connecting => {
-                self.set_status(ConnStatus::Established);
-            }
-            ConnStatus::Established | ConnStatus::PeerClosed => {}
-            _ => {
-                log::warn!(
-                    "invalid status change from:{:?} to {:?}",
-                    self.get_status(),
-                    ConnStatus::PeerClosed
-                );
-            }
+        if matches!(self.get_status(), ConnStatus::Connecting) {
+            self.set_status(ConnStatus::Established);
         }
     }
-    fn close_conn(&mut self);
-    fn shutdown(&mut self) {
+    fn close_conn(&mut self) -> bool;
+    fn shutdown(&mut self) -> bool {
         match self.get_status() {
             ConnStatus::Established | ConnStatus::PeerClosed | ConnStatus::Connecting => {
-                self.close_conn();
-                self.set_status(ConnStatus::Shutdown);
+                if self.close_conn() {
+                    self.set_status(ConnStatus::Shutdown);
+                } else {
+                    return false;
+                }
             }
             ConnStatus::Shutdown | ConnStatus::Deregistered => {}
         }
+        true
     }
-    fn deregister(&mut self, poll: &Poll);
+    fn deregister(&mut self, poll: &Poll) -> bool;
     fn finish_send(&mut self) -> bool;
     fn check_status(&mut self, poll: &Poll) {
         loop {
             match self.get_status() {
                 ConnStatus::Established | ConnStatus::Connecting => {}
                 ConnStatus::PeerClosed => {
-                    if self.finish_send() {
-                        self.shutdown();
+                    if self.finish_send() && self.shutdown() {
                         continue;
                     }
                 }
                 ConnStatus::Shutdown => {
-                    self.deregister(poll);
-                    self.set_status(ConnStatus::Deregistered);
+                    if self.deregister(poll) {
+                        self.set_status(ConnStatus::Deregistered);
+                    }
                 }
                 ConnStatus::Deregistered => {}
             }

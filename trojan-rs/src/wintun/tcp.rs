@@ -14,7 +14,7 @@ use crate::{
     resolver::DnsResolver,
     status::{ConnStatus, StatusProvider},
     tls_conn::TlsConn,
-    wintun::{SocketSet, CHANNEL_CNT, CHANNEL_TCP, MAX_INDEX, MIN_INDEX},
+    wintun::{waker::Wakers, SocketSet, CHANNEL_CNT, CHANNEL_TCP, MAX_INDEX, MIN_INDEX},
     OPTIONS,
 };
 
@@ -75,11 +75,13 @@ impl TcpServer {
         pool: &mut IdlePool,
         poll: &Poll,
         resolver: &DnsResolver,
-        handles: Vec<SocketHandle>,
+        wakers: &mut Wakers,
         sockets: &mut SocketSet,
     ) {
         let mut destroyed = Vec::new();
-        for handle in handles {
+        for (handle, event) in wakers.get_tcp_handles().iter() {
+            let handle = *handle;
+            log::info!("handle:{}, event:{:?}", handle, event);
             let conn = if let Some(conn) = self.src_map.get_mut(&handle) {
                 conn
             } else if let Some(mut conn) = pool.get(poll, resolver) {
@@ -103,9 +105,18 @@ impl TcpServer {
                 continue;
             };
             let conn = unsafe { Arc::get_mut_unchecked(conn) };
-            conn.do_local(poll, sockets);
+            conn.do_local(event, poll, sockets);
             if conn.destroyed() {
                 destroyed.push((conn.handle, conn.index));
+            } else {
+                let socket = sockets.get_socket::<TcpSocket>(handle);
+                let (rx, tx) = wakers.get_tcp_wakers(handle);
+                if event.readable() {
+                    socket.register_recv_waker(rx);
+                }
+                if event.writable() {
+                    socket.register_send_waker(tx);
+                }
             }
         }
         for (handle, index) in destroyed {
@@ -147,9 +158,10 @@ pub struct Connection {
     send_buffer: BytesMut,
     status: ConnStatus,
     last_active_time: Instant,
-    closing: bool,
+    closed: Option<bool>,
     read_client: bool,
     read_server: bool,
+    socket_state: TcpState,
 }
 
 impl Connection {}
@@ -162,10 +174,11 @@ impl Connection {
             endpoint,
             index,
             last_active_time: Instant::now(),
-            closing: false,
+            closed: None,
             read_server: false,
             read_client: false,
             status: ConnStatus::Connecting,
+            socket_state: TcpState::Established,
             recv_buffer: vec![0; MAX_PACKET_SIZE],
             send_buffer: BytesMut::new(),
         }
@@ -195,46 +208,61 @@ impl Connection {
 
     fn try_close(&mut self, sockets: &mut SocketSet) {
         let socket = sockets.get_socket::<TcpSocket>(self.handle);
-        if self.closing || matches!(socket.state(), TcpState::CloseWait) {
-            log::info!("client is closed:{}", socket.state());
-            self.shutdown();
-            socket.close();
-            self.closing = false;
+        if let Some(closed) = self.closed {
+            if !closed {
+                socket.close();
+                self.socket_state = socket.state();
+                self.closed.replace(true);
+            } else {
+                log::info!("socket already closed");
+            }
         }
     }
 
     fn do_check_status(&mut self, poll: &Poll, sockets: &mut SocketSet) {
-        self.try_close(sockets);
+        let socket = sockets.get_socket::<TcpSocket>(self.handle);
+        self.socket_state = socket.state();
         if self.is_shutdown() {
             self.conn.peer_closed();
         }
         if self.conn.is_shutdown() {
             self.peer_closed();
+            self.check_status(poll);
+            self.try_close(sockets);
         }
         self.check_status(poll);
-        self.conn.check_status(poll);
         self.try_close(sockets);
+        self.conn.check_status(poll);
     }
 
     fn destroyed(&self) -> bool {
         self.deregistered() && self.conn.deregistered()
     }
 
-    fn do_local(&mut self, poll: &Poll, sockets: &mut SocketSet) {
+    fn do_local(
+        &mut self,
+        event: &crate::wintun::waker::Event,
+        poll: &Poll,
+        sockets: &mut SocketSet,
+    ) {
         self.last_active_time = Instant::now();
         let socket = sockets.get_socket::<TcpSocket>(self.handle);
-        if self.conn.writable() {
-            self.try_recv_client(socket);
-        } else {
-            self.read_client = true;
+        if event.readable() {
+            if self.conn.writable() {
+                self.try_recv_client(socket);
+            } else {
+                self.read_client = true;
+            }
         }
 
-        self.try_send_client(socket, &[]);
-
-        if self.writable() && self.read_server {
-            self.do_recv_server(sockets);
-            self.read_server = false;
+        if event.writable() {
+            self.try_send_client(socket, &[]);
+            if self.writable() && self.read_server {
+                self.do_recv_server(sockets);
+                self.read_server = false;
+            }
         }
+
         self.do_check_status(poll, sockets);
     }
 
@@ -253,6 +281,12 @@ impl Connection {
                     break;
                 }
             }
+        }
+        if matches!(socket.state(), TcpState::CloseWait) {
+            log::info!("client shutdown now");
+            socket.close();
+            self.closed = Some(true);
+            self.shutdown();
         }
         self.do_send_server();
     }
@@ -278,7 +312,12 @@ impl Connection {
         }
         match socket.send_slice(data) {
             Ok(size) => {
-                log::info!("send {}:{} bytes to client", size, data.len());
+                log::info!(
+                    "connection:{} send {}:{} bytes to client",
+                    self.index,
+                    size,
+                    data.len()
+                );
                 if size != data.len() {
                     self.send_buffer.extend_from_slice(&data[size..])
                 }
@@ -333,11 +372,18 @@ impl StatusProvider for Connection {
         self.status
     }
 
-    fn close_conn(&mut self) {
-        self.closing = true;
+    fn close_conn(&mut self) -> bool {
+        if self.closed.is_none() {
+            self.closed = Some(false);
+            false
+        } else {
+            self.closed.unwrap()
+        }
     }
 
-    fn deregister(&mut self, _poll: &Poll) {}
+    fn deregister(&mut self, _poll: &Poll) -> bool {
+        matches!(self.socket_state, TcpState::Closed | TcpState::TimeWait)
+    }
 
     fn finish_send(&mut self) -> bool {
         self.send_buffer.is_empty()

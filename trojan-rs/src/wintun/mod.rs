@@ -4,7 +4,7 @@ use crossbeam::channel::Sender;
 use mio::{Events, Poll, Token, Waker};
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use smoltcp::{
-    iface::{Interface, InterfaceBuilder, Routes, SocketHandle},
+    iface::{Interface, InterfaceBuilder, Routes},
     socket::{Socket, TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
     time::{Duration, Instant},
     wire::{
@@ -20,10 +20,11 @@ use crate::{
     resolver::DnsResolver,
     types::Result,
     wintun::{
-        ipset::IPSet,
+        ipset::{is_private, IPSet},
         tcp::TcpServer,
-        tun::{is_private, TunInterface},
+        tun::TunInterface,
         udp::UdpServer,
+        waker::Wakers,
     },
     OPTIONS,
 };
@@ -32,6 +33,7 @@ mod ipset;
 mod tcp;
 mod tun;
 mod udp;
+mod waker;
 
 pub(crate) type SocketSet<'a> = Interface<'a, TunInterface>;
 
@@ -62,6 +64,7 @@ pub fn run() -> Result<()> {
         if OPTIONS.wintun_args().inverse_route {
             ipset = !ipset;
         }
+        //add_route_with_if("45.33.39.39", "255.255.255.255", index);
         let _ = thread::spawn(move || {
             ipset.add_route(index);
             log::warn!("adding route finished");
@@ -160,7 +163,8 @@ pub fn run() -> Result<()> {
     pool.init(&poll, &resolver);
     pool.init_index(CHANNEL_CNT, CHANNEL_IDLE, MIN_INDEX, MAX_INDEX);
 
-    let (sender, receiver) = crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
+    let (rx_sender, rx_receiver) = crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
+    let (tx_sender, tx_receiver) = crossbeam::channel::bounded(OPTIONS.wintun_args().buffer_size);
 
     let ip_addrs = [IpCidr::new(IpAddress::v4(0, 0, 0, 1), 0)];
 
@@ -169,7 +173,7 @@ pub fn run() -> Result<()> {
         .add_default_ipv4_route(Ipv4Address::new(0, 0, 0, 1))
         .unwrap();
     let mut interface = InterfaceBuilder::new(
-        TunInterface::new(session.clone(), receiver, OPTIONS.wintun_args().mtu),
+        TunInterface::new(tx_sender, rx_receiver, OPTIONS.wintun_args().mtu),
         [],
     )
     .any_ip(true)
@@ -186,14 +190,31 @@ pub fn run() -> Result<()> {
     let mut last_tcp_check_time = std::time::Instant::now();
     let check_duration = std::time::Duration::new(10, 0);
 
+    let tx_session = session.clone();
+    let _ = thread::spawn(move || {
+        while let Ok(data) = tx_receiver.recv() {
+            match tx_session.allocate_send_packet(data.len() as u16) {
+                Ok(mut packet) => {
+                    packet.bytes_mut().copy_from_slice(data.as_slice());
+                    tx_session.send_packet(packet);
+                }
+                Err(err) => {
+                    log::error!("allocate send packet failed:{:?}", err);
+                }
+            }
+        }
+    });
+
     let mut now = Instant::now();
+    let mut wakers = Wakers::new();
     loop {
-        let (udp_handles, tcp_handles) = do_tun_read(&session, &sender, &mut interface)?;
+        wakers.clear();
+        do_tun_read(&session, &rx_sender, &mut interface, &mut wakers)?;
         if let Err(err) = interface.poll(now) {
             log::info!("interface error:{}", err);
         }
-        udp_server.do_local(&mut pool, &poll, &resolver, udp_handles, &mut interface);
-        tcp_server.do_local(&mut pool, &poll, &resolver, tcp_handles, &mut interface);
+        udp_server.do_local(&mut pool, &poll, &resolver, &mut wakers, &mut interface);
+        tcp_server.do_local(&mut pool, &poll, &resolver, &mut wakers, &mut interface);
 
         now = Instant::now();
         let timeout = interface.poll_delay(now).or(timeout);
@@ -237,116 +258,93 @@ fn do_tun_read(
     session: &Arc<Session>,
     sender: &Sender<Vec<u8>>,
     sockets: &mut SocketSet,
-) -> Result<(Vec<SocketHandle>, Vec<SocketHandle>)> {
-    let mut udp_handles = Vec::new();
-    let mut tcp_handles = Vec::new();
-    loop {
+    wakers: &mut Wakers,
+) -> Result<()> {
+    for _ in 0..1024 {
         let packet = session.try_receive()?;
         if packet.is_none() {
             break;
         }
         let packet = packet.unwrap();
-        let (src_addr, dst_addr, payload, protocol) =
-            match IpVersion::of_packet(packet.bytes()).unwrap() {
-                IpVersion::Ipv4 => {
-                    let packet = Ipv4Packet::new_checked(packet.bytes()).unwrap();
-                    let src_addr = packet.src_addr();
-                    let dst_addr = packet.dst_addr();
-                    (
-                        IpAddress::Ipv4(src_addr),
-                        IpAddress::Ipv4(dst_addr),
-                        packet.payload(),
-                        packet.protocol(),
-                    )
-                }
-                IpVersion::Ipv6 => {
-                    let packet = Ipv6Packet::new_checked(packet.bytes()).unwrap();
-                    let src_addr = packet.src_addr();
-                    let dst_addr = packet.dst_addr();
-                    (
-                        IpAddress::Ipv6(src_addr),
-                        IpAddress::Ipv6(dst_addr),
-                        packet.payload(),
-                        packet.next_header(),
-                    )
-                }
-                _ => continue,
-            };
-        let (src_port, dst_port, notify, connect) = match protocol {
-            IpProtocol::Udp => {
-                let packet = UdpPacket::new_checked(payload).unwrap();
-                (packet.src_port(), packet.dst_port(), true, None)
-            }
-            IpProtocol::Tcp => {
-                let packet = TcpPacket::new_checked(payload).unwrap();
+        let (dst_addr, payload, protocol) = match IpVersion::of_packet(packet.bytes()).unwrap() {
+            IpVersion::Ipv4 => {
+                let packet = Ipv4Packet::new_checked(packet.bytes()).unwrap();
+                let dst_addr = packet.dst_addr();
                 (
-                    packet.src_port(),
-                    packet.dst_port(),
-                    !packet.payload().is_empty() || packet.fin(),
-                    Some(packet.syn() && !packet.ack()),
+                    IpAddress::Ipv4(dst_addr),
+                    packet.payload(),
+                    packet.protocol(),
+                )
+            }
+            IpVersion::Ipv6 => {
+                let packet = Ipv6Packet::new_checked(packet.bytes()).unwrap();
+                let dst_addr = packet.dst_addr();
+                (
+                    IpAddress::Ipv6(dst_addr),
+                    packet.payload(),
+                    packet.next_header(),
                 )
             }
             _ => continue,
         };
+        let (dst_port, connect) = match protocol {
+            IpProtocol::Udp => {
+                let packet = UdpPacket::new_checked(payload).unwrap();
+                (packet.dst_port(), None)
+            }
+            IpProtocol::Tcp => {
+                let packet = TcpPacket::new_checked(payload).unwrap();
+                (packet.dst_port(), Some(packet.syn() && !packet.ack()))
+            }
+            _ => continue,
+        };
 
-        let src_endpoint = IpEndpoint::new(src_addr, src_port);
         let dst_endpoint = IpEndpoint::new(dst_addr, dst_port);
         if is_private(dst_endpoint) {
             continue;
         }
 
-        if let Some(connect) = connect {
-            if let Some(handle) = if connect {
-                let mut socket = TcpSocket::new(
-                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_rx_buffer_size]),
-                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_tx_buffer_size]),
-                );
-                socket.listen(dst_endpoint).unwrap();
-                Some(sockets.add_socket(socket))
+        if connect.is_some() && connect.unwrap() {
+            let socket = TcpSocket::new(
+                TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_rx_buffer_size]),
+                TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_tx_buffer_size]),
+            );
+            let handle = sockets.add_socket(socket);
+            let socket = sockets.get_socket::<TcpSocket>(handle);
+            socket.listen(dst_endpoint).unwrap();
+            socket.set_nagle_enabled(false);
+            socket.set_ack_delay(None);
+            let (rx, tx) = wakers.get_tcp_wakers(handle);
+            socket.register_recv_waker(rx);
+            socket.register_send_waker(tx);
+        } else if !sockets.sockets().any(|(_, socket)| {
+            if let Socket::Udp(socket) = socket {
+                socket.endpoint() == dst_endpoint
             } else {
-                sockets.sockets().find_map(|(handle, socket)| match socket {
-                    Socket::Tcp(socket)
-                        if socket.local_endpoint() == dst_endpoint
-                            && socket.remote_endpoint() == src_endpoint =>
-                    {
-                        Some(handle)
-                    }
-                    _ => None,
-                })
-            } {
-                if notify {
-                    tcp_handles.push(handle);
-                }
+                false
             }
-        } else {
-            let handle = sockets.sockets().find_map(|(handle, socket)| match socket {
-                Socket::Udp(socket) if socket.endpoint() == dst_endpoint => Some(handle),
-                _ => None,
-            });
-            let handle = match handle {
-                None => {
-                    let mut socket = UdpSocket::new(
-                        UdpSocketBuffer::new(
-                            vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
-                            vec![0; OPTIONS.wintun_args().udp_rx_buffer_size],
-                        ),
-                        UdpSocketBuffer::new(
-                            vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
-                            vec![0; OPTIONS.wintun_args().udp_tx_buffer_size],
-                        ),
-                    );
-                    socket.bind(dst_endpoint)?;
-                    sockets.add_socket(socket)
-                }
-                Some(handle) => handle,
-            };
-            udp_handles.push(handle);
+        }) {
+            let mut socket = UdpSocket::new(
+                UdpSocketBuffer::new(
+                    vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                    vec![0; OPTIONS.wintun_args().udp_rx_buffer_size],
+                ),
+                UdpSocketBuffer::new(
+                    vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                    vec![0; OPTIONS.wintun_args().udp_tx_buffer_size],
+                ),
+            );
+            socket.bind(dst_endpoint)?;
+            let handle = sockets.add_socket(socket);
+            let socket = sockets.get_socket::<UdpSocket>(handle);
+            let (rx, tx) = wakers.get_udp_wakers(handle);
+            socket.register_recv_waker(rx);
+            socket.register_send_waker(tx);
         }
 
         if let Err(err) = sender.try_send(packet.bytes().into()) {
-            log::warn!("sender buffer is full:{}", err);
+            log::error!("tun read channel is full:{}", err);
         }
     }
-
-    Ok((udp_handles, tcp_handles))
+    Ok(())
 }

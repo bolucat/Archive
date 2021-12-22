@@ -4,7 +4,7 @@ use crate::{
     resolver::DnsResolver,
     status::StatusProvider,
     tls_conn::TlsConn,
-    wintun::{SocketSet, CHANNEL_CNT, CHANNEL_UDP, MAX_INDEX, MIN_INDEX},
+    wintun::{waker::Wakers, SocketSet, CHANNEL_CNT, CHANNEL_UDP, MAX_INDEX, MIN_INDEX},
     OPTIONS,
 };
 use bytes::BytesMut;
@@ -50,10 +50,11 @@ impl UdpServer {
         pool: &mut IdlePool,
         poll: &Poll,
         resolver: &DnsResolver,
-        handles: Vec<SocketHandle>,
+        wakers: &mut Wakers,
         sockets: &mut SocketSet,
     ) {
-        for handle in handles {
+        for (handle, event) in wakers.get_udp_handles().iter() {
+            let handle = *handle;
             let listener = if let Some(listener) = self.src_map.get_mut(&handle) {
                 listener
             } else {
@@ -63,12 +64,20 @@ impl UdpServer {
                 self.src_map.get_mut(&handle).unwrap()
             };
             let mut_listener = unsafe { Arc::get_mut_unchecked(listener) };
-            let (inserts, removes) = mut_listener.do_local(pool, poll, resolver, sockets);
+            let (inserts, removes) = mut_listener.do_local(pool, poll, event, resolver, sockets);
             for index in inserts {
                 self.conns.insert(index, listener.clone());
             }
             for index in &removes {
                 self.conns.remove(index);
+            }
+            let (rx, tx) = wakers.get_udp_wakers(handle);
+            let socket = sockets.get_socket::<UdpSocket>(handle);
+            if event.readable() {
+                socket.register_recv_waker(rx);
+            }
+            if event.writable() {
+                socket.register_send_waker(tx);
             }
         }
     }
@@ -140,12 +149,38 @@ impl UdpListener {
         &mut self,
         pool: &mut IdlePool,
         poll: &Poll,
+        event: &crate::wintun::waker::Event,
         resolver: &DnsResolver,
         sockets: &mut SocketSet,
     ) -> (Vec<usize>, Vec<usize>) {
         let socket = sockets.get_socket::<UdpSocket>(self.handle);
         let mut inserts = Vec::new();
         let mut removes = Vec::new();
+        if event.readable() {
+            self.do_read_client(socket, pool, poll, resolver, &mut inserts, &mut removes);
+        }
+        if event.writable() {
+            self.do_send_client(sockets);
+        }
+
+        (inserts, removes)
+    }
+
+    fn do_send_client(&mut self, sockets: &mut SocketSet) {
+        for (_, conn) in &mut self.conns {
+            unsafe { Arc::get_mut_unchecked(conn) }.send_tun(&[], sockets)
+        }
+    }
+
+    fn do_read_client(
+        &mut self,
+        socket: &mut UdpSocket,
+        pool: &mut IdlePool,
+        poll: &Poll,
+        resolver: &DnsResolver,
+        inserts: &mut Vec<usize>,
+        removes: &mut Vec<usize>,
+    ) {
         while socket.can_recv() {
             match socket.recv() {
                 Ok((payload, src)) => {
@@ -190,7 +225,6 @@ impl UdpListener {
                 }
             }
         }
-        (inserts, removes)
     }
 
     fn remove_conn(&mut self, index: &usize, endpoint: &IpEndpoint) {
@@ -330,6 +364,9 @@ impl Connection {
     }
 
     fn do_send_tun(&mut self, mut buffer: &[u8], sockets: &mut SocketSet) {
+        if buffer.is_empty() {
+            return;
+        }
         let socket = sockets.get_socket::<UdpSocket>(self.handle);
         loop {
             match UdpAssociate::parse_endpoint(buffer) {
