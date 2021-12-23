@@ -5,7 +5,7 @@ use mio::{Events, Poll, Token, Waker};
 use rustls::{ClientConfig, OwnedTrustAnchor, RootCertStore};
 use smoltcp::{
     iface::{Interface, InterfaceBuilder, Routes},
-    socket::{Socket, TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
+    socket::{TcpSocket, TcpSocketBuffer, UdpPacketMetadata, UdpSocket, UdpSocketBuffer},
     time::{Duration, Instant},
     wire::{
         IpAddress, IpCidr, IpEndpoint, IpProtocol, IpVersion, Ipv4Address, Ipv4Packet, Ipv6Packet,
@@ -15,7 +15,7 @@ use smoltcp::{
 use wintun::{Adapter, Session};
 
 use crate::{
-    dns::{add_route_with_if, get_adapter_ip},
+    dns::get_adapter_ip,
     proxy::IdlePool,
     resolver::DnsResolver,
     types::Result,
@@ -28,8 +28,10 @@ use crate::{
     },
     OPTIONS,
 };
+pub use route::route_add_with_if;
 
 mod ipset;
+mod route;
 mod tcp;
 mod tun;
 mod udp;
@@ -64,24 +66,19 @@ pub fn run() -> Result<()> {
         if OPTIONS.wintun_args().inverse_route {
             ipset = !ipset;
         }
-        //add_route_with_if("45.33.39.39", "255.255.255.255", index);
-        let _ = thread::spawn(move || {
-            ipset.add_route(index);
-            log::warn!("adding route finished");
-        });
+        //route_add_with_if(757147431, !0, index)?;
+        //route_add_with_if(794538172, !0, index)?;
+        ipset.add_route(index)?;
+        log::warn!("route add completed");
     }
 
     while get_adapter_ip(OPTIONS.wintun_args().name.as_str()).is_none() {
         thread::sleep(std::time::Duration::new(1, 0));
     }
-    log::warn!("wintun is ready");
+    let gateway = get_adapter_ip(OPTIONS.wintun_args().name.as_str()).unwrap();
+    log::warn!("wintun is ready at:{}", gateway);
 
     if OPTIONS.wintun_args().with_dns {
-        add_route_with_if(
-            OPTIONS.wintun_args().trusted_dns.as_str(),
-            "255.255.255.255",
-            index,
-        );
         let _ = thread::spawn(|| {
             let program = std::env::current_exe().unwrap();
             let args = OPTIONS.wintun_args();
@@ -209,7 +206,13 @@ pub fn run() -> Result<()> {
     let mut wakers = Wakers::new();
     loop {
         wakers.clear();
-        do_tun_read(&session, &rx_sender, &mut interface, &mut wakers)?;
+        do_tun_read(
+            &session,
+            &rx_sender,
+            &mut interface,
+            &udp_server,
+            &mut wakers,
+        )?;
         if let Err(err) = interface.poll(now) {
             log::info!("interface error:{}", err);
         }
@@ -233,10 +236,10 @@ pub fn run() -> Result<()> {
                     pool.ready(event, &poll);
                 }
                 i if i % CHANNEL_CNT == CHANNEL_UDP => {
-                    udp_server.do_remote(event, &poll, &mut interface);
+                    udp_server.do_remote(event, &poll, &mut interface, &mut wakers);
                 }
                 _ => {
-                    tcp_server.do_remote(event, &poll, &mut interface);
+                    tcp_server.do_remote(event, &poll, &mut interface, &mut wakers);
                 }
             }
         }
@@ -258,6 +261,7 @@ fn do_tun_read(
     session: &Arc<Session>,
     sender: &Sender<Vec<u8>>,
     sockets: &mut SocketSet,
+    udp_server: &UdpServer,
     wakers: &mut Wakers,
 ) -> Result<()> {
     for _ in 0..1024 {
@@ -304,42 +308,42 @@ fn do_tun_read(
             continue;
         }
 
-        if connect.is_some() && connect.unwrap() {
-            let socket = TcpSocket::new(
-                TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_rx_buffer_size]),
-                TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_tx_buffer_size]),
-            );
-            let handle = sockets.add_socket(socket);
-            let socket = sockets.get_socket::<TcpSocket>(handle);
-            socket.listen(dst_endpoint).unwrap();
-            socket.set_nagle_enabled(false);
-            socket.set_ack_delay(None);
-            let (rx, tx) = wakers.get_tcp_wakers(handle);
-            socket.register_recv_waker(rx);
-            socket.register_send_waker(tx);
-        } else if !sockets.sockets().any(|(_, socket)| {
-            if let Socket::Udp(socket) = socket {
-                socket.endpoint() == dst_endpoint
-            } else {
-                false
+        match connect {
+            Some(true) => {
+                let socket = TcpSocket::new(
+                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_rx_buffer_size]),
+                    TcpSocketBuffer::new(vec![0; OPTIONS.wintun_args().tcp_tx_buffer_size]),
+                );
+                let handle = sockets.add_socket(socket);
+                let socket = sockets.get_socket::<TcpSocket>(handle);
+                socket.listen(dst_endpoint).unwrap();
+                socket.set_nagle_enabled(false);
+                socket.set_ack_delay(None);
+                let (rx, tx) = wakers.get_tcp_wakers(handle);
+                socket.register_recv_waker(rx);
+                socket.register_send_waker(tx);
+                log::info!("handle:{} is tcp", handle);
             }
-        }) {
-            let mut socket = UdpSocket::new(
-                UdpSocketBuffer::new(
-                    vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
-                    vec![0; OPTIONS.wintun_args().udp_rx_buffer_size],
-                ),
-                UdpSocketBuffer::new(
-                    vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
-                    vec![0; OPTIONS.wintun_args().udp_tx_buffer_size],
-                ),
-            );
-            socket.bind(dst_endpoint)?;
-            let handle = sockets.add_socket(socket);
-            let socket = sockets.get_socket::<UdpSocket>(handle);
-            let (rx, tx) = wakers.get_udp_wakers(handle);
-            socket.register_recv_waker(rx);
-            socket.register_send_waker(tx);
+            None if udp_server.has_socket(&dst_endpoint) => {
+                let mut socket = UdpSocket::new(
+                    UdpSocketBuffer::new(
+                        vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                        vec![0; OPTIONS.wintun_args().udp_rx_buffer_size],
+                    ),
+                    UdpSocketBuffer::new(
+                        vec![UdpPacketMetadata::EMPTY; OPTIONS.wintun_args().udp_rx_meta_size],
+                        vec![0; OPTIONS.wintun_args().udp_tx_buffer_size],
+                    ),
+                );
+                socket.bind(dst_endpoint)?;
+                let handle = sockets.add_socket(socket);
+                log::info!("handle:{} is udp", handle);
+                let socket = sockets.get_socket::<UdpSocket>(handle);
+                let (rx, tx) = wakers.get_udp_wakers(handle);
+                socket.register_recv_waker(rx);
+                socket.register_send_waker(tx);
+            }
+            _ => {}
         }
 
         if let Err(err) = sender.try_send(packet.bytes().into()) {

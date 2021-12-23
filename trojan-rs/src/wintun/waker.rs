@@ -17,11 +17,11 @@ impl Event {
         Event(2)
     }
 
-    pub fn readable(&self) -> bool {
+    pub fn is_readable(&self) -> bool {
         self.0 & Self::rx().0 != 0
     }
 
-    pub fn writable(&self) -> bool {
+    pub fn is_writable(&self) -> bool {
         self.0 & Self::tx().0 != 0
     }
 
@@ -39,7 +39,6 @@ struct TunWaker {
 
 impl Wake for TunWaker {
     fn wake(self: Arc<Self>) {
-        log::info!("handle:{} waked", self.handle);
         let mut handles = self.handles.clone();
         let handles = unsafe { Arc::get_mut_unchecked(&mut handles) };
         handles
@@ -88,6 +87,7 @@ impl Wakers {
         }
         let (rx, tx) = self.wakers.get_mut(&handle).unwrap();
         if !Arc::ptr_eq(&rx.handles, &self.udp_handles) {
+            log::info!("handle:{} type changed to udp", handle);
             unsafe { Arc::get_mut_unchecked(rx) }.handles = self.udp_handles.clone();
             unsafe { Arc::get_mut_unchecked(tx) }.handles = self.udp_handles.clone();
         }
@@ -102,6 +102,7 @@ impl Wakers {
         }
         let (rx, tx) = self.wakers.get_mut(&handle).unwrap();
         if !Arc::ptr_eq(&rx.handles, &self.tcp_handles) {
+            log::info!("handle:{} type changed to tcp", handle);
             unsafe { Arc::get_mut_unchecked(rx) }.handles = self.tcp_handles.clone();
             unsafe { Arc::get_mut_unchecked(tx) }.handles = self.tcp_handles.clone();
         }

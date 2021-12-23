@@ -98,7 +98,7 @@ impl TcpServer {
                 }
                 let conn = Arc::new(conn);
                 let _ = self.src_map.insert(handle, conn.clone());
-                let _ = self.conns.insert(index, conn);
+                let _ = self.conns.insert(index, conn.clone());
                 self.conns.get_mut(&index).unwrap()
             } else {
                 log::error!("get from idle pool failed");
@@ -111,10 +111,10 @@ impl TcpServer {
             } else {
                 let socket = sockets.get_socket::<TcpSocket>(handle);
                 let (rx, tx) = wakers.get_tcp_wakers(handle);
-                if event.readable() {
+                if event.is_readable() {
                     socket.register_recv_waker(rx);
                 }
-                if event.writable() {
+                if !conn.send_buffer.is_empty() {
                     socket.register_send_waker(tx);
                 }
             }
@@ -124,11 +124,17 @@ impl TcpServer {
         }
     }
 
-    pub(crate) fn do_remote(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) {
+    pub(crate) fn do_remote(
+        &mut self,
+        event: &Event,
+        poll: &Poll,
+        sockets: &mut SocketSet,
+        wakers: &mut Wakers,
+    ) {
         let index = Self::token2index(event.token());
         if let Some(conn) = self.conns.get_mut(&index) {
             let conn = unsafe { Arc::get_mut_unchecked(conn) };
-            conn.ready(event, poll, sockets);
+            conn.ready(event, poll, sockets, wakers);
             if conn.destroyed() {
                 let handle = conn.handle;
                 let index = conn.index;
@@ -203,6 +209,7 @@ impl Connection {
     fn setup(&mut self) -> bool {
         let mut request = BytesMut::new();
         TrojanRequest::generate_endpoint(&mut request, CONNECT, &self.endpoint);
+        log::info!("send trojan request {} bytes", request.len());
         self.conn.write_session(request.as_ref())
     }
 
@@ -247,7 +254,7 @@ impl Connection {
     ) {
         self.last_active_time = Instant::now();
         let socket = sockets.get_socket::<TcpSocket>(self.handle);
-        if event.readable() {
+        if event.is_readable() {
             if self.conn.writable() {
                 self.try_recv_client(socket);
             } else {
@@ -255,7 +262,8 @@ impl Connection {
             }
         }
 
-        if event.writable() {
+        if event.is_writable() {
+            self.established();
             self.try_send_client(socket, &[]);
             if self.writable() && self.read_server {
                 self.do_recv_server(sockets);
@@ -271,10 +279,10 @@ impl Connection {
         while socket.may_recv() {
             match socket.recv_slice(buffer) {
                 Ok(size) => {
+                    log::info!("receive {} bytes from client", size);
                     if size == 0 || !self.conn.write_session(&buffer[..size]) {
                         break;
                     }
-                    log::info!("receive {} bytes from client", size);
                 }
                 Err(err) => {
                     log::error!("read from socket failed:{}", err);
@@ -293,7 +301,6 @@ impl Connection {
 
     fn try_send_client(&mut self, socket: &mut TcpSocket, data: &[u8]) {
         if socket.may_send() {
-            self.established();
             if self.send_buffer.is_empty() {
                 self.do_send_client(socket, data);
             } else {
@@ -328,7 +335,13 @@ impl Connection {
         }
     }
 
-    pub(crate) fn ready(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) {
+    pub(crate) fn ready(
+        &mut self,
+        event: &Event,
+        poll: &Poll,
+        sockets: &mut SocketSet,
+        wakers: &mut Wakers,
+    ) {
         self.last_active_time = Instant::now();
         if event.is_readable() {
             if self.writable() {
@@ -346,6 +359,12 @@ impl Connection {
                 self.try_recv_client(socket);
                 self.read_client = false;
             }
+        }
+
+        if !self.send_buffer.is_empty() {
+            let socket = sockets.get_socket::<TcpSocket>(self.handle);
+            let (_, tx) = wakers.get_tcp_wakers(self.handle);
+            socket.register_send_waker(tx);
         }
 
         self.do_check_status(poll, sockets);

@@ -10,10 +10,15 @@ use crate::{
 use bytes::BytesMut;
 use mio::{event::Event, Poll, Token};
 use smoltcp::{iface::SocketHandle, socket::UdpSocket, wire::IpEndpoint};
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+    time::Instant,
+};
 
 pub struct UdpServer {
     src_map: HashMap<SocketHandle, Arc<UdpListener>>,
+    sockets: HashSet<IpEndpoint>,
     conns: HashMap<usize, Arc<UdpListener>>,
 }
 
@@ -34,6 +39,7 @@ impl UdpServer {
         UdpServer {
             src_map: Default::default(),
             conns: Default::default(),
+            sockets: Default::default(),
         }
     }
 
@@ -43,6 +49,10 @@ impl UdpServer {
 
     pub fn token2index(token: Token) -> usize {
         token.0 / CHANNEL_CNT
+    }
+
+    pub fn has_socket(&self, endpoint: &IpEndpoint) -> bool {
+        self.sockets.contains(&endpoint)
     }
 
     pub fn do_local(
@@ -61,6 +71,7 @@ impl UdpServer {
                 let endpoint = sockets.get_socket::<UdpSocket>(handle).endpoint();
                 let listener = Arc::new(UdpListener::new(handle, endpoint));
                 self.src_map.insert(handle, listener);
+                self.sockets.insert(endpoint);
                 self.src_map.get_mut(&handle).unwrap()
             };
             let mut_listener = unsafe { Arc::get_mut_unchecked(listener) };
@@ -73,21 +84,27 @@ impl UdpServer {
             }
             let (rx, tx) = wakers.get_udp_wakers(handle);
             let socket = sockets.get_socket::<UdpSocket>(handle);
-            if event.readable() {
+            if event.is_readable() {
                 socket.register_recv_waker(rx);
             }
-            if event.writable() {
+            if listener.has_data() {
                 socket.register_send_waker(tx);
             }
         }
     }
 
-    pub fn do_remote(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) {
+    pub fn do_remote(
+        &mut self,
+        event: &Event,
+        poll: &Poll,
+        sockets: &mut SocketSet,
+        wakers: &mut Wakers,
+    ) {
         log::debug!("remote event for token:{}", event.token().0);
         let index = Self::token2index(event.token());
         if let Some(listener) = self.conns.get_mut(&index) {
             let listener = unsafe { Arc::get_mut_unchecked(listener) };
-            if let Some(index) = listener.ready(event, poll, sockets) {
+            if let Some(index) = listener.ready(event, poll, sockets, wakers) {
                 let _ = self.conns.remove(&index);
             }
         } else {
@@ -113,16 +130,17 @@ impl UdpServer {
             .iter()
             .filter_map(|(_, conn)| {
                 if conn.is_empty() {
-                    Some(conn.handle)
+                    Some((conn.handle, conn.endpoint))
                 } else {
                     None
                 }
             })
             .collect();
 
-        for handle in timeouts {
+        for (handle, endpoint) in timeouts {
             log::info!("udp socket:{} removed", handle);
             let _ = self.src_map.remove(&handle);
+            let _ = self.sockets.remove(&endpoint);
             let _ = sockets.remove_socket(handle);
         }
     }
@@ -156,10 +174,10 @@ impl UdpListener {
         let socket = sockets.get_socket::<UdpSocket>(self.handle);
         let mut inserts = Vec::new();
         let mut removes = Vec::new();
-        if event.readable() {
+        if event.is_readable() {
             self.do_read_client(socket, pool, poll, resolver, &mut inserts, &mut removes);
         }
-        if event.writable() {
+        if event.is_writable() {
             self.do_send_client(sockets);
         }
 
@@ -167,9 +185,15 @@ impl UdpListener {
     }
 
     fn do_send_client(&mut self, sockets: &mut SocketSet) {
-        for (_, conn) in &mut self.conns {
+        for conn in &mut self.conns.values_mut() {
             unsafe { Arc::get_mut_unchecked(conn) }.send_tun(&[], sockets)
         }
+    }
+
+    fn has_data(&self) -> bool {
+        self.conns
+            .iter()
+            .any(|(_, conn)| !conn.send_buffer.is_empty())
     }
 
     fn do_read_client(
@@ -237,11 +261,17 @@ impl UdpListener {
         self.conns.is_empty()
     }
 
-    fn ready(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) -> Option<usize> {
+    fn ready(
+        &mut self,
+        event: &Event,
+        poll: &Poll,
+        sockets: &mut SocketSet,
+        wakers: &mut Wakers,
+    ) -> Option<usize> {
         let index = UdpServer::token2index(event.token());
         if let Some(conn) = self.conns.get_mut(&index) {
             let conn = unsafe { Arc::get_mut_unchecked(conn) };
-            conn.ready(event, poll, sockets);
+            conn.ready(event, poll, sockets, wakers);
             if conn.destroyed() {
                 let index = conn.index;
                 let endpoint = conn.src_endpoint;
@@ -326,14 +356,23 @@ impl Connection {
         self.conn.check_status(poll);
     }
 
-    fn ready(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet) {
+    fn ready(&mut self, event: &Event, poll: &Poll, sockets: &mut SocketSet, wakers: &mut Wakers) {
         self.last_active_time = Instant::now();
         if event.is_readable() {
             self.send_response(sockets);
-        } else {
+        }
+
+        if event.is_writable() {
             self.conn.established();
             self.conn.do_send();
         }
+
+        if !self.send_buffer.is_empty() {
+            let socket = sockets.get_socket::<UdpSocket>(self.handle);
+            let (_, tx) = wakers.get_udp_wakers(self.handle);
+            socket.register_send_waker(tx);
+        }
+
         self.conn.check_status(poll);
     }
 
