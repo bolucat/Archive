@@ -100,10 +100,11 @@ glider -h
 <summary>click to see details</summary>
 
 ```bash
-glider 0.15.1 usage:
+glider 0.15.2 usage:
   -check string
     	check=tcp[://HOST:PORT]: tcp port connect check
-    	check=http://HOST[:PORT][/URI][#expect=STRING_IN_RESP_LINE]
+    	check=http://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
+    	check=https://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
     	check=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR
     	check=disable: disable health check (default "http://www.msftconnecttest.com/connecttest.txt#expect=200")
   -checkdisabledonly
@@ -212,6 +213,9 @@ VMess scheme:
   vmess://[security:]uuid@host:port[?alterID=num]
     if alterID=0 or not set, VMessAEAD will be enabled
 
+Available securities for vmess:
+  none, aes-128-gcm, chacha20-poly1305
+  
 VLESS scheme:
   vless://uuid@host:port[?fallback=127.0.0.1:80]
 
@@ -223,8 +227,6 @@ Trojan server scheme:
   trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]
   trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)
 
-Available securities for vmess:
-  none, aes-128-gcm, chacha20-poly1305
 
 TLS client scheme:
   tls://host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&alpn=proto1][&alpn=proto2]

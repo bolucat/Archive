@@ -79,55 +79,59 @@ func AEADReader(r io.Reader, aead cipher.AEAD, iv []byte, chunkSizeDecoder Chunk
 	return ar
 }
 
-func (r *aeadReader) readChunkPool() ([]byte, error) {
-	bSize := pool.GetBuffer(int(r.chunkSizeDecoder.SizeBytes()))
-	defer pool.PutBuffer(bSize)
-	if _, err := io.ReadFull(r.Reader, bSize); err != nil {
-		return nil, err
+func (r *aeadReader) read(p []byte) (int, error) {
+	if _, err := io.ReadFull(r.Reader, p[:r.chunkSizeDecoder.SizeBytes()]); err != nil {
+		return 0, err
 	}
 
-	size, err := r.chunkSizeDecoder.Decode(bSize)
-	if err != nil {
-		return nil, err
-	}
-	chunk := pool.GetBuffer(int(size))
-	if _, err := io.ReadFull(r.Reader, chunk); err != nil {
-		pool.PutBuffer(chunk)
-		return nil, err
-	}
-
-	binary.BigEndian.PutUint16(r.nonce[:2], r.count)
-	_, err = r.Open(chunk[:0], r.nonce[:r.NonceSize()], chunk, nil)
-	r.count++
-
-	if err != nil {
-		pool.PutBuffer(chunk)
-		return nil, err
-	}
-
-	return chunk[:int(size)-r.Overhead()], nil
-}
-
-func (r *aeadReader) Read(p []byte) (int, error) {
-	if r.buf != nil {
-		n := copy(p, r.buf[r.offset:])
-		r.offset += n
-		if r.offset >= len(r.buf) {
-			pool.PutBuffer(r.buf)
-			r.buf = nil
-		}
-		return n, nil
-	}
-	chunk, err := r.readChunkPool()
+	size, err := r.chunkSizeDecoder.Decode(p[:r.chunkSizeDecoder.SizeBytes()])
 	if err != nil {
 		return 0, err
 	}
-	n := copy(p, chunk)
-	if len(chunk) > len(p) {
-		r.buf = chunk
-		r.offset = len(p)
-	} else {
-		pool.PutBuffer(chunk)
+
+	if int(size) <= r.Overhead() || int(size) > len(p) {
+		return 0, io.EOF
 	}
+
+	p = p[:size]
+	if _, err := io.ReadFull(r.Reader, p); err != nil {
+		return 0, err
+	}
+
+	binary.BigEndian.PutUint16(r.nonce[:2], r.count)
+	_, err = r.Open(p[:0], r.nonce[:r.NonceSize()], p, nil)
+	r.count++
+
+	if err != nil {
+		return 0, err
+	}
+
+	return int(size) - r.Overhead(), nil
+}
+
+func (r *aeadReader) Read(p []byte) (int, error) {
+	if r.buf == nil {
+		if len(p) >= chunkSize {
+			return r.read(p)
+		}
+
+		buf := pool.GetBuffer(chunkSize)
+		n, err := r.read(buf)
+		if err != nil || n == 0 {
+			pool.PutBuffer(buf)
+			return 0, err
+		}
+
+		r.buf = buf[:n]
+		r.offset = 0
+	}
+
+	n := copy(p, r.buf[r.offset:])
+	r.offset += n
+	if r.offset == len(r.buf) {
+		pool.PutBuffer(r.buf)
+		r.buf = nil
+	}
+
 	return n, nil
 }

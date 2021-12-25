@@ -15,3 +15,13 @@
 - SOCKS5 listen address no longer needs a specific IP
 - Multi-relay support
 - IPv6 only mode for server
+
+## 0.9.1
+
+- faketcp implementation
+- DNS `resolver` option in config
+
+## 0.9.2
+
+- Updated quic-go to v0.24.0
+- Reduced obfs overhead by reusing buffers

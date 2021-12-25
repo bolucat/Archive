@@ -51,7 +51,7 @@ func parseConfig() *Config {
 
 	flag.StringSliceVar(&conf.Forwards, "forward", nil, "forward url, format: SCHEME://[USER|METHOD:PASSWORD@][HOST]:PORT?PARAMS[,SCHEME://[USER|METHOD:PASSWORD@][HOST]:PORT?PARAMS]")
 	flag.StringVar(&conf.Strategy.Strategy, "strategy", "rr", "forward strategy, default: rr")
-	flag.StringVar(&conf.Strategy.Check, "check", "http://www.msftconnecttest.com/connecttest.txt#expect=200", "check=tcp[://HOST:PORT]: tcp port connect check\ncheck=http://HOST[:PORT][/URI][#expect=STRING_IN_RESP_LINE]\ncheck=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR\ncheck=disable: disable health check")
+	flag.StringVar(&conf.Strategy.Check, "check", "http://www.msftconnecttest.com/connecttest.txt#expect=200", "check=tcp[://HOST:PORT]: tcp port connect check\ncheck=http://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]\ncheck=https://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]\ncheck=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR\ncheck=disable: disable health check")
 	flag.IntVar(&conf.Strategy.CheckInterval, "checkinterval", 30, "fowarder check interval(seconds)")
 	flag.IntVar(&conf.Strategy.CheckTimeout, "checktimeout", 10, "fowarder check timeout(seconds)")
 	flag.IntVar(&conf.Strategy.CheckTolerance, "checktolerance", 0, "fowarder check tolerance(ms), switch only when new_latency < old_latency - tolerance, only used in lha mode")
@@ -186,6 +186,10 @@ func usage() {
 	fmt.Fprintf(w, "    if alterID=0 or not set, VMessAEAD will be enabled\n")
 	fmt.Fprintf(w, "\n")
 
+	fmt.Fprintf(w, "Available securities for vmess:\n")
+	fmt.Fprintf(w, "  none, aes-128-gcm, chacha20-poly1305\n")
+	fmt.Fprintf(w, "\n")
+
 	fmt.Fprintf(w, "VLESS scheme:\n")
 	fmt.Fprintf(w, "  vless://uuid@host:port[?fallback=127.0.0.1:80]\n")
 	fmt.Fprintf(w, "\n")
@@ -198,10 +202,6 @@ func usage() {
 	fmt.Fprintf(w, "Trojan server scheme:\n")
 	fmt.Fprintf(w, "  trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]\n")
 	fmt.Fprintf(w, "  trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)\n")
-	fmt.Fprintf(w, "\n")
-
-	fmt.Fprintf(w, "Available securities for vmess:\n")
-	fmt.Fprintf(w, "  none, aes-128-gcm, chacha20-poly1305\n")
 	fmt.Fprintf(w, "\n")
 
 	fmt.Fprintf(w, "TLS client scheme:\n")
