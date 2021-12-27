@@ -204,19 +204,20 @@ func toCidrList(ctx context.Context, ips cfgcommon.StringList) ([]*routercommon.
 func parseFieldRule(ctx context.Context, msg json.RawMessage) (*router.RoutingRule, error) {
 	type RawFieldRule struct {
 		RouterRule
-		Domain     *cfgcommon.StringList  `json:"domain"`
-		Domains    *cfgcommon.StringList  `json:"domains"`
-		IP         *cfgcommon.StringList  `json:"ip"`
-		Port       *cfgcommon.PortList    `json:"port"`
-		Network    *cfgcommon.NetworkList `json:"network"`
-		SourceIP   *cfgcommon.StringList  `json:"source"`
-		SourcePort *cfgcommon.PortList    `json:"sourcePort"`
-		User       *cfgcommon.StringList  `json:"user"`
-		InboundTag *cfgcommon.StringList  `json:"inboundTag"`
-		Protocols  *cfgcommon.StringList  `json:"protocol"`
-		Attributes string                 `json:"attrs"`
-		UidList    *cfgcommon.UidList     `json:"uidList"`
-		AppStatus  *cfgcommon.StringList  `json:"appStatus"`
+		Domain       *cfgcommon.StringList  `json:"domain"`
+		Domains      *cfgcommon.StringList  `json:"domains"`
+		IP           *cfgcommon.StringList  `json:"ip"`
+		Port         *cfgcommon.PortList    `json:"port"`
+		Network      *cfgcommon.NetworkList `json:"network"`
+		SourceIP     *cfgcommon.StringList  `json:"source"`
+		SourcePort   *cfgcommon.PortList    `json:"sourcePort"`
+		User         *cfgcommon.StringList  `json:"user"`
+		InboundTag   *cfgcommon.StringList  `json:"inboundTag"`
+		Protocols    *cfgcommon.StringList  `json:"protocol"`
+		Attributes   string                 `json:"attrs"`
+		UidList      *cfgcommon.UidList     `json:"uidList"`
+		WifiSSIDList *cfgcommon.StringList  `json:"ssidList"`
+		NetworkType  string                 `json:"networkType"`
 	}
 	rawFieldRule := new(RawFieldRule)
 	err := json.Unmarshal(msg, rawFieldRule)
@@ -316,10 +317,8 @@ func parseFieldRule(ctx context.Context, msg json.RawMessage) (*router.RoutingRu
 		rule.UidList = rawFieldRule.UidList.Build()
 	}
 
-	if rawFieldRule.AppStatus != nil && rawFieldRule.AppStatus.Len() > 0 {
-		for _, s := range *rawFieldRule.AppStatus {
-			rule.AppStatus = append(rule.AppStatus, s)
-		}
+	if rawFieldRule.WifiSSIDList != nil && rawFieldRule.WifiSSIDList.Len() > 0 {
+		rule.WifiSsidList = *rawFieldRule.WifiSSIDList
 	}
 
 	return rule, nil

@@ -175,8 +175,10 @@ func (t *Tun2ray) Close() {
 
 func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNet.Destination, conn net.Conn) {
 	inbound := &session.Inbound{
-		Source: source,
-		Tag:    "socks",
+		Source:      source,
+		Tag:         "socks",
+		NetworkType: networkType,
+		WifiSSID:    wifiSSID,
 	}
 
 	isDns := destination.Address.String() == t.router
@@ -332,8 +334,10 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	}
 
 	inbound := &session.Inbound{
-		Source: source,
-		Tag:    "socks",
+		Source:      source,
+		Tag:         "socks",
+		NetworkType: networkType,
+		WifiSSID:    wifiSSID,
 	}
 	isDns := destination.Address.String() == t.router
 

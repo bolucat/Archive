@@ -130,11 +130,18 @@ func (ctx *Context) GetUid() uint32 {
 	return ctx.Inbound.Uid
 }
 
-func (ctx *Context) GetAppStatus() []string {
+func (ctx *Context) GetWifiSsid() string {
 	if ctx.Inbound == nil {
-		return nil
+		return ""
 	}
-	return ctx.Inbound.AppStatus
+	return ctx.Inbound.WifiSSID
+}
+
+func (ctx *Context) GetNetworkType() string {
+	if ctx.Inbound == nil {
+		return ""
+	}
+	return ctx.Inbound.NetworkType
 }
 
 func (ctx Context) GetSkipFakeDNS() bool {

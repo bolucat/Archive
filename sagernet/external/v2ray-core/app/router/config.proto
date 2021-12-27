@@ -68,7 +68,7 @@ message RoutingRule {
   string domain_matcher = 17;
 
   v2ray.core.common.net.UidList uid_list = 18;
-  repeated string app_status = 19;
+  repeated string wifi_ssid_list = 19;
 
   // geo_domain instruct simplified config loader to load geo domain rule and fill in domain field.
   repeated v2ray.core.app.router.routercommon.GeoSite geo_domain = 68001;

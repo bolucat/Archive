@@ -18,7 +18,7 @@ func TestDoHLocalNameServer(t *testing.T) {
 	url, err := url.Parse("https+local://1.1.1.1/dns-query")
 	common.Must(err)
 
-	s := NewDoHLocalNameServer(url)
+	s := NewDoHLocalNameServer(url, false)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	ips, err := s.QueryIP(ctx, "google.com", net.IP(nil), dns_feature.IPOption{
 		IPv4Enable: true,
@@ -35,7 +35,7 @@ func TestDoHLocalNameServerWithCache(t *testing.T) {
 	url, err := url.Parse("https+local://1.1.1.1/dns-query")
 	common.Must(err)
 
-	s := NewDoHLocalNameServer(url)
+	s := NewDoHLocalNameServer(url, false)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	ips, err := s.QueryIP(ctx, "google.com", net.IP(nil), dns_feature.IPOption{
 		IPv4Enable: true,

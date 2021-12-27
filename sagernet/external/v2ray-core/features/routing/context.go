@@ -43,5 +43,7 @@ type Context interface {
 
 	GetUid() uint32
 
-	GetAppStatus() []string
+	GetWifiSsid() string
+
+	GetNetworkType() string
 }

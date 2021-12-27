@@ -13,7 +13,6 @@ package libcore
 import "C"
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"unsafe"
@@ -42,8 +41,7 @@ type androidHook struct{}
 type androidFormatter struct{}
 
 func (f *androidFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	msgWithLevel := fmt.Sprint("[", strings.Title(entry.Level.String()), "] ", entry.Message)
-	return []byte(msgWithLevel), nil
+	return []byte(entry.Message), nil
 }
 
 func (hook *androidHook) Levels() []logrus.Level {

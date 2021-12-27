@@ -26,7 +26,8 @@ message RoutingContext {
   repeated string OutboundGroupTags = 11;
   string OutboundTag = 12;
   uint32 uid = 13;
-  repeated string app_status = 14;
+  string wifi_ssid = 14;
+  string network_type = 15;
 }
 
 // SubscribeRoutingStatsRequest subscribes to routing statistics channel if

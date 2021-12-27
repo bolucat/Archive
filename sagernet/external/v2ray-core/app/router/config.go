@@ -114,8 +114,8 @@ func (rr *RoutingRule) BuildCondition() (Condition, error) {
 		conds.Add(NewUidMatcher(rr.UidList))
 	}
 
-	if len(rr.AppStatus) > 0 {
-		conds.Add(NewAppStatusMatcher(rr.AppStatus))
+	if len(rr.WifiSsidList) > 0 {
+		conds.Add(NewWifiSSIDMatcher(rr.WifiSsidList))
 	}
 
 	if conds.Len() == 0 {

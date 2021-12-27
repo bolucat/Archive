@@ -19,7 +19,7 @@ require (
 	github.com/kierdavis/cfb8 v0.0.0-20180105024805-3a17c36ee2f8
 	github.com/lucas-clemente/quic-go v0.24.0
 	github.com/marten-seemann/qtls-go1-17 v0.1.0
-	github.com/miekg/dns v1.1.43
+	github.com/miekg/dns v1.1.45
 	github.com/pires/go-proxyproto v0.6.1
 	github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c
 	github.com/stretchr/testify v1.7.0
@@ -27,10 +27,10 @@ require (
 	github.com/v2fly/VSign v0.0.0-20201108000810-e2adc24bf848
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
 	go.starlark.net v0.0.0-20211203141949-70c0e40ae128
-	golang.org/x/crypto v0.0.0-20211209193657-4570a0811e8b
-	golang.org/x/net v0.0.0-20211215060638-4ddde0e984e9
+	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
+	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20211214234402-4825e8c3871d
+	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
 	golang.zx2c4.com/wireguard v0.0.0-20211209221555-9c9e7e272434
 	google.golang.org/grpc v1.43.0
 	google.golang.org/protobuf v1.27.1
@@ -39,12 +39,12 @@ require (
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 )
 
-replace gvisor.dev/gvisor v0.0.0 => github.com/sagernet/gvisor v0.0.0-20211215094502-bfd411401682
+replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20211227140739-33ed11d8e732
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgryski/go-metro v0.0.0-20211015221634-2661b20a2446 // indirect
+	github.com/dgryski/go-metro v0.0.0-20211217172704-adc40b04c140 // indirect
 	github.com/ebfe/bcrypt_pbkdf v0.0.0-20140212075826-3c8d2dcb253a // indirect
 	github.com/ebfe/rc2 v0.0.0-20131011165748-24b9757f5521 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
@@ -69,7 +69,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
-	google.golang.org/genproto v0.0.0-20211208223120-3a66f561d7aa // indirect
+	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
