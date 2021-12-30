@@ -774,3 +774,22 @@ jobs:
           df -hT
           echo "Check memory usage"
           free -m
+
+  fuchsia:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Busingen
+    steps:
+      
+      - name: Checkout
+        uses: actions/checkout@v2.3.4
+        
+      - name: Sync
+        run: |
+          rm -rf *
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          git clone --bare https://fuchsia.googlesource.com/fuchsia.git
+          cd fuchsia.git
+          git push --mirror git@github.com:bolucat/Fuchsia.git
