@@ -35,8 +35,8 @@ type StunResult struct {
 	NatFiltering int32
 }
 
-func StunTest(serverAddress string) (*StunResult, error) {
-	natMapping, natFiltering, err := stun.Test(serverAddress)
+func StunTest(serverAddress string, socksPort int32) (*StunResult, error) {
+	natMapping, natFiltering, err := stun.Test(serverAddress, int(socksPort))
 	if err != nil {
 		return nil, err
 	}
