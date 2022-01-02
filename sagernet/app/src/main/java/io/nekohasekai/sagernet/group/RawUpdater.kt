@@ -288,13 +288,7 @@ object RawUpdater : GroupUpdater() {
                                     "cipher" -> bean.encryption = opt.value as String
                                     "network" -> bean.type = opt.value as String
                                     "tls" -> bean.security = if (opt.value?.toString() == "true") "tls" else ""
-                                    "skip-cert-verify" -> bean.allowInsecure = opt.value == "true"
-                                    "ws-path" -> bean.path = opt.value as String
-                                    "ws-headers" -> for (wsHeader in (opt.value as Map<String, Any>)) {
-                                        when (wsHeader.key.lowercase()) {
-                                            "host" -> bean.host = wsHeader.value as String
-                                        }
-                                    }
+                                    "skip-cert-verify" -> if (isExpert) bean.allowInsecure = opt.value == "true"
                                     "ws-opts" -> for (wsOpt in (opt.value as Map<String, Any>)) {
                                         when (wsOpt.key.lowercase()) {
                                             "max-early-data" -> {
@@ -335,7 +329,7 @@ object RawUpdater : GroupUpdater() {
                                     "port" -> bean.serverPort = opt.value.toString().toInt()
                                     "password" -> bean.password = opt.value as String
                                     "sni" -> bean.sni = opt.value as String?
-                                    "skip-cert-verify" -> bean.allowInsecure = opt.value == "true"
+                                    "skip-cert-verify" -> if (isExpert) bean.allowInsecure = opt.value == "true"
                                 }
                             }
                             proxies.add(bean)

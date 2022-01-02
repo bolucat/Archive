@@ -3,7 +3,7 @@ module libcore
 go 1.17
 
 require (
-	github.com/Dreamacro/clash v1.8.0
+	github.com/Dreamacro/clash v1.9.0
 	github.com/golang/protobuf v1.5.2
 	github.com/pion/stun v0.3.6-0.20211201014640-159901e761c9
 	github.com/sagernet/gomobile v0.0.0-20210905032500-701a995ff844

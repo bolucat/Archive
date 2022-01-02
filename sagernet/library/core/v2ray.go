@@ -66,41 +66,43 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 		}
 	}
 
-	for _, outbound := range config.Outbound {
-		if outbound.ProxySettings == nil {
-			continue
-		}
-		proxyConfig, err := commonSerial.GetInstanceOf(outbound.ProxySettings)
-		if err != nil {
-			continue
-		}
-		proxy, ok := proxyConfig.(*vmessOutbound.Config)
-		if !ok {
-			continue
-		}
-		var reset bool
-		for _, endpoint := range proxy.Receiver {
-			for _, user := range endpoint.User {
-				if user.Account == nil {
-					continue
-				}
-				accountConfig, err := commonSerial.GetInstanceOf(user.Account)
-				if err != nil {
-					continue
-				}
-				account, ok := accountConfig.(*vmess.Account)
-				if !ok {
-					continue
-				}
-				if account.AlterId > 0 {
-					account.AlterId = 0
-					user.Account = commonSerial.ToTypedMessage(account)
-					reset = true
+	if config.Outbound != nil {
+		for _, outbound := range config.Outbound {
+			if outbound.ProxySettings == nil {
+				continue
+			}
+			proxyConfig, err := commonSerial.GetInstanceOf(outbound.ProxySettings)
+			if err != nil {
+				continue
+			}
+			proxy, ok := proxyConfig.(*vmessOutbound.Config)
+			if !ok {
+				continue
+			}
+			var reset bool
+			for _, endpoint := range proxy.Receiver {
+				for _, user := range endpoint.User {
+					if user.Account == nil {
+						continue
+					}
+					accountConfig, err := commonSerial.GetInstanceOf(user.Account)
+					if err != nil {
+						continue
+					}
+					account, ok := accountConfig.(*vmess.Account)
+					if !ok {
+						continue
+					}
+					if account.AlterId > 0 {
+						account.AlterId = 0
+						user.Account = commonSerial.ToTypedMessage(account)
+						reset = true
+					}
 				}
 			}
-		}
-		if reset {
-			outbound.ProxySettings = commonSerial.ToTypedMessage(proxy)
+			if reset {
+				outbound.ProxySettings = commonSerial.ToTypedMessage(proxy)
+			}
 		}
 	}
 
