@@ -10,7 +10,7 @@ PKG_RELEASE:=$(AUTORELEASE)
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/v2fly/v2ray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=d9973bafd3020f60a51fa3495b24ab417b08b3c8f9539a3748d00da6c68d0103
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -105,7 +105,7 @@ config V2RAY_CORE_COMPRESS_GOPROXY
 config V2RAY_CORE_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	depends on !mips64
-	default y
+	default n
 endmenu
 endef
 
@@ -120,7 +120,7 @@ config V2RAY_CTL_COMPRESS_GOPROXY
 config V2RAY_CTL_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	depends on !mips64
-	default y
+	default n
 endmenu
 endef
 

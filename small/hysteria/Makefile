@@ -10,7 +10,7 @@ PKG_RELEASE:=$(AUTORELEASE)
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/HyNetwork/hysteria/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=dd8ae6b6c6239a53e53f4d318a5f5842b584a0e2cc024b12d3b6ba8ee17395ee
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILE:=LICENSE
@@ -55,7 +55,7 @@ config HYSTERIA_COMPRESS_GOPROXY
 config HYSTERIA_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	depends on !mips64
-	default y	
+	default n	
 endef
 
 ifeq ($(CONFIG_HYSTERIA_COMPRESS_GOPROXY),y)

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,7 @@ import (
 	v2rayNet "github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/session"
 	"github.com/v2fly/v2ray-core/v4/common/task"
+	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
@@ -139,6 +141,11 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		localdns.SetLookupFunc(func(network, host string) ([]v2rayNet.IP, error) {
 			response, err := config.LocalResolver.LookupIP(network, host)
 			if err != nil {
+				errStr := err.Error()
+				if strings.HasPrefix(errStr, "rcode") {
+					r, _ := strconv.Atoi(strings.Split(errStr, " ")[1])
+					return nil, dns.RCodeError(r)
+				}
 				return nil, err
 			}
 			addrs := strings.Split(response, ",")
@@ -146,7 +153,11 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 			for i, addr := range addrs {
 				ips[i] = net.ParseIP(addr)
 			}
-			return ips, nil
+			if len(ips) == 0 {
+				return nil, dns.ErrEmptyResponse
+			} else {
+				return ips, nil
+			}
 		})
 	}
 

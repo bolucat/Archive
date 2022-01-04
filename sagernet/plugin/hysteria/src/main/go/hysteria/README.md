@@ -44,7 +44,7 @@ currently has the following features: (still growing!)
 
 ### Android
 
-- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.9.1)
+- [SagerNet](https://github.com/SagerNet/SagerNet) with [hysteria-plugin](https://github.com/SagerNet/SagerNet/releases/tag/hysteria-plugin-0.9.2)
 
 ### iOS
 
@@ -155,7 +155,7 @@ encryption. If you need a proxy, just use our proxy modes.
 ```json5
 {
   "listen": ":36712", // Listen address
-  "protocol": "faketcp", // Blank or "udp" for UDP mode, "faketcp" for TCP "masquerade", see below for details
+  "protocol": "faketcp", // Blank, "udp", "wechat-video", "faketcp"
   "acme": {
     "domains": [
       "your.domain.com",
@@ -257,7 +257,7 @@ hysteria_traffic_uplink_bytes_total{auth="aGFja2VyISE="} 37452
 ```json5
 {
   "server": "example.com:36712", // Server address
-  "protocol": "faketcp", // Blank or "udp" for UDP mode, "faketcp" for TCP "masquerade", see below for details
+  "protocol": "faketcp", // Blank, "udp", "wechat-video", "faketcp"
   "up_mbps": 10, // Max upload Mbps
   "down_mbps": 50, // Max download Mbps
   "socks5": {
@@ -392,7 +392,7 @@ Third party clients looking to implement a "share by link" feature are advised t
 
     - host: hostname or IP address of the server to connect to (required)
     - port: port of the server to connect to (required)
-    - protocol: protocol to use ("udp" or "faketcp") (optional, default: "udp")
+    - protocol: protocol to use ("udp", "wechat-video", "faketcp") (optional, default: "udp")
     - auth: authentication payload (string) (optional)
     - peer: SNI for TLS (optional)
     - insecure: ignore certificate errors (optional)
@@ -418,11 +418,11 @@ To change the logging timestamp format, set `LOGGING_TIMESTAMP_FORMAT`
 
   1. Suppose the server address is `123.123.123.123`, UDP port `5678` is not blocked by firewall
   2. openssl is already installed
-  3. hysteria is already installed in `/root/hysteria/` directory
+  3. hysteria is already installed in `/root/hysteria/`
 <details>
   <summary>4. Generate custom CA certificate</summary>
 
-- Run below shell in `/root/hysteria/` folder
+- Run the script below in `/root/hysteria/`
 
 ``` shell
 #!/usr/bin/env bash
@@ -478,10 +478,12 @@ EOF
 ```
 </details>
 
-5. Server side: copy `server.json`、 `hysteria.server.crt`、 `hysteria.server.key` to `/root/hysteria/` directory, run `/root/hysteria/hysteria -c /root/hysteria/server.json server` command
+5. On the server side, copy `server.json`, `hysteria.server.crt`, `hysteria.server.key` to `/root/hysteria/`,
+   run `/root/hysteria/hysteria -c /root/hysteria/server.json server`
 
-6. Client side: Assuming that the client directory is also`/root/hysteria`, copy `client.json`、`hysteria.ca.crt` to `/root/hysteria/` directory, run `/root/hysteria/hysteria -c /root/hysteria/client.json` cmmand
+6. On the client side, assuming that the client is also in `/root/hysteria`, copy `client.json`, `hysteria.ca.crt`
+   to `/root/hysteria/`, run `/root/hysteria/hysteria -c /root/hysteria/client.json`
 
-7. After generating CA certificate, modify the server address, port and certificate file path according to your own situation, add obfs and alpn to prevent the first time to be walled in some environment, after the first test passed in full parameters, you can remove the unnecessary parameters such as obfs and alpn in your own network environment.
+7. After getting your certificate, modify the server address, port, certificate path, etc. according to your needs
 
-8. If you are using shadowrocket on IOS, you can airdrop the file `hysteria.ca.crt` to your iPhone and install it, then you can use custom CA certificate.
+8. If you are using Shadowrocket on iOS, you can airdrop the file `hysteria.ca.crt` to your device and install it

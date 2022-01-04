@@ -11,7 +11,7 @@ PKG_RELEASE:=$(AUTORELEASE)
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/teddysun/v2ray-plugin/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=skip
+PKG_HASH:=f94e8efe879a5300871dd01faec7d6635baaef4dbd39d83f4362802f716d386e
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -40,7 +40,7 @@ config V2RAY_PLUGIN_INCLUDE_GOPROXY
 config V2RAY_PLUGIN_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	depends on !mips64
-	default y
+	default n
 endef
 
 ifeq ($(CONFIG_V2RAY_PLUGIN_INCLUDE_GOPROXY),y)

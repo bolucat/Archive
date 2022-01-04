@@ -228,6 +228,9 @@ func (c *dispatcherConn) handleInput() {
 		}
 		c.timer.Update()
 		for _, buffer := range mb {
+			if buffer.Len() <= 0 {
+				continue
+			}
 			packet := udp.Packet{
 				Payload: buffer,
 			}

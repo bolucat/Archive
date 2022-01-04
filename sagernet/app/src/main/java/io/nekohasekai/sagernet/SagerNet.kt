@@ -231,18 +231,14 @@ class SagerNet : Application(),
                 when (val transportInfo = connectivity.getNetworkCapabilities(network)?.transportInfo) {
                     is WifiInfo -> {
                         ssid = transportInfo.ssid
-                        Logs.d("Updated Wi-Fi SSID from transportInfo: ${transportInfo.ssid}")
-                    }
-                    else -> {
-                        Logs.d("transportInfo is ${transportInfo?.javaClass?.simpleName}")
                     }
                 }
             } else {
                 val wifiInfo = wifi.connectionInfo
                 ssid = wifiInfo?.ssid
-                Logs.d("Updated Wi-Fi SSID from WifiManager: ${wifiInfo.ssid}")
             }
-            Libcore.setWifiSSID(ssid?.trim { it == '"' } ?: "")
+            ssid = ssid?.trim { it == '"' } ?: ""
+            Libcore.setWifiSSID(ssid)
         }
 
         fun startService() = ContextCompat.startForegroundService(
