@@ -13,7 +13,6 @@
 #include "base/base_export.h"
 #include "base/check.h"
 #include "base/memory/ref_counted.h"
-#include "base/single_thread_task_runner.h"
 #include "base/strings/string_piece.h"
 #include "base/trace_event/common/trace_event_common.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
@@ -44,7 +43,6 @@ struct IgnoredValue {
 #define INTERNAL_TRACE_EVENT_ADD(...) INTERNAL_TRACE_IGNORE(__VA_ARGS__)
 #define INTERNAL_TRACE_EVENT_ADD_SCOPED(...) INTERNAL_TRACE_IGNORE(__VA_ARGS__)
 #define INTERNAL_TRACE_EVENT_ADD_WITH_ID(...) INTERNAL_TRACE_IGNORE(__VA_ARGS__)
-#define INTERNAL_TRACE_TASK_EXECUTION(...) INTERNAL_TRACE_IGNORE(__VA_ARGS__)
 #define INTERNAL_TRACE_LOG_MESSAGE(...) INTERNAL_TRACE_IGNORE(__VA_ARGS__)
 #define INTERNAL_TRACE_EVENT_ADD_SCOPED_WITH_FLOW(...) \
   INTERNAL_TRACE_IGNORE(__VA_ARGS__)
@@ -215,12 +213,6 @@ class BASE_EXPORT MemoryDumpManager {
  public:
   static constexpr const char* const kTraceCategory =
       TRACE_DISABLED_BY_DEFAULT("memory-infra");
-  static MemoryDumpManager* GetInstance();
-  void RegisterDumpProvider(MemoryDumpProvider* mdp,
-                            const char* name,
-                            scoped_refptr<SingleThreadTaskRunner> task_runner) {
-  }
-  void UnregisterDumpProvider(MemoryDumpProvider* mdp) {}
 };
 
 }  // namespace trace_event
@@ -232,6 +224,7 @@ namespace perfetto {
 
 class TracedArray;
 class TracedDictionary;
+class EventContext;
 
 class StaticString {
  public:

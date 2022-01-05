@@ -429,7 +429,7 @@
     <string name="ssh_public_key">Public Key</string>
     <string name="ssh_private_key">Private Key</string>
     <string name="ssh_private_key_passphrase">Private Key Passphrase</string>
-    <string name="translate_platform">Translate Platform</string>
+    <string name="translate_platform">Translation Platform</string>
     <string name="menu_tools">Tools</string>
     <string name="menu_log">Logs</string>
     <string name="clear_logcat">Clear Logcat</string>
@@ -479,7 +479,6 @@
     <string name="network_bt">Bluetooth</string>
     <string name="network_eth">Ethernet</string>
     <string name="tools_network">Network</string>
-
     <string name="backup">Backup</string>
     <string name="backup_groups_and_configurations">Groups and configurations</string>
     <string name="backup_rules">Routing rules</string>
@@ -492,4 +491,10 @@
     <string name="backup_importing">Importing…</string>
     <string name="use_local_dns_as_direct_dns">Use Local DNS as Direct DNS</string>
 
+    <string name="tasker_settings">Tasker Settings</string>
+    <string name="tasker_action">Action</string>
+    <string name="tasker_action_start_service">Start service</string>
+    <string name="tasker_action_stop_service">Stop service</string>
+    <string name="tasker_start_current_profile">Current profile</string>
+    <string name="tasker_blurb_start_profile">Start profile %s</string>
 </resources>

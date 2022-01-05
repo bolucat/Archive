@@ -51,6 +51,15 @@ TlsClientHandshaker::TlsClientHandshaker(
     SSL_set1_sigalgs_list(ssl(),
                           crypto_config->tls_signature_algorithms()->c_str());
   }
+  if (crypto_config->proof_source() != nullptr) {
+    const ClientProofSource::CertAndKey* cert_and_key =
+        crypto_config->proof_source()->GetCertAndKey(server_id.host());
+    if (cert_and_key != nullptr) {
+      QUIC_DVLOG(1) << "Setting client cert and key for " << server_id.host();
+      tls_connection_.SetCertChain(cert_and_key->chain->ToCryptoBuffers().value,
+                                   cert_and_key->private_key.private_key());
+    }
+  }
 }
 
 TlsClientHandshaker::~TlsClientHandshaker() {}
@@ -212,8 +221,14 @@ bool TlsClientHandshaker::SetAlpn() {
 bool TlsClientHandshaker::SetTransportParameters() {
   TransportParameters params;
   params.perspective = Perspective::IS_CLIENT;
-  params.version =
+  params.legacy_version_information =
+      TransportParameters::LegacyVersionInformation();
+  params.legacy_version_information.value().version =
       CreateQuicVersionLabel(session()->supported_versions().front());
+  params.version_information = TransportParameters::VersionInformation();
+  const QuicVersionLabel version = CreateQuicVersionLabel(session()->version());
+  params.version_information.value().chosen_version = version;
+  params.version_information.value().other_versions.push_back(version);
 
   if (!handshaker_delegate()->FillTransportParameters(&params)) {
     return false;
@@ -257,27 +272,41 @@ bool TlsClientHandshaker::ProcessTransportParameters(
   session()->connection()->OnTransportParametersReceived(
       *received_transport_params_);
 
-  // When interoperating with non-Google implementations that do not send
-  // the version extension, set it to what we expect.
-  if (received_transport_params_->version == 0) {
-    received_transport_params_->version =
-        CreateQuicVersionLabel(session()->connection()->version());
+  if (received_transport_params_->legacy_version_information.has_value()) {
+    if (received_transport_params_->legacy_version_information.value()
+            .version !=
+        CreateQuicVersionLabel(session()->connection()->version())) {
+      *error_details = "Version mismatch detected";
+      return false;
+    }
+    if (CryptoUtils::ValidateServerHelloVersions(
+            received_transport_params_->legacy_version_information.value()
+                .supported_versions,
+            session()->connection()->server_supported_versions(),
+            error_details) != QUIC_NO_ERROR) {
+      QUICHE_DCHECK(!error_details->empty());
+      return false;
+    }
   }
-  if (received_transport_params_->supported_versions.empty()) {
-    received_transport_params_->supported_versions.push_back(
-        received_transport_params_->version);
+  if (received_transport_params_->version_information.has_value()) {
+    if (!CryptoUtils::ValidateChosenVersion(
+            received_transport_params_->version_information.value()
+                .chosen_version,
+            session()->version(), error_details)) {
+      QUICHE_DCHECK(!error_details->empty());
+      return false;
+    }
+    if (!CryptoUtils::CryptoUtils::ValidateServerVersions(
+            received_transport_params_->version_information.value()
+                .other_versions,
+            session()->version(),
+            session()->client_original_supported_versions(), error_details)) {
+      QUICHE_DCHECK(!error_details->empty());
+      return false;
+    }
   }
 
-  if (received_transport_params_->version !=
-      CreateQuicVersionLabel(session()->connection()->version())) {
-    *error_details = "Version mismatch detected";
-    return false;
-  }
-  if (CryptoUtils::ValidateServerHelloVersions(
-          received_transport_params_->supported_versions,
-          session()->connection()->server_supported_versions(),
-          error_details) != QUIC_NO_ERROR ||
-      handshaker_delegate()->ProcessTransportParameters(
+  if (handshaker_delegate()->ProcessTransportParameters(
           *received_transport_params_, /* is_resumption = */ false,
           error_details) != QUIC_NO_ERROR) {
     QUICHE_DCHECK(!error_details->empty());

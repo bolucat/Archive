@@ -179,6 +179,8 @@ int OnHeader(nghttp2_session* /* session */, const nghttp2_frame* frame,
     case Http2VisitorInterface::HEADER_RST_STREAM:
       return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
   }
+  // Unexpected value.
+  return NGHTTP2_ERR_TEMPORAL_CALLBACK_FAILURE;
 }
 
 int OnBeforeFrameSent(nghttp2_session* /* session */,
@@ -209,8 +211,8 @@ int OnInvalidFrameReceived(nghttp2_session* /* session */,
                            void* user_data) {
   QUICHE_CHECK_NE(user_data, nullptr);
   auto* visitor = static_cast<Http2VisitorInterface*>(user_data);
-  const bool result =
-      visitor->OnInvalidFrame(frame->hd.stream_id, lib_error_code);
+  const bool result = visitor->OnInvalidFrame(
+      frame->hd.stream_id, ToInvalidFrameError(lib_error_code));
   return result ? 0 : NGHTTP2_ERR_CALLBACK_FAILURE;
 }
 

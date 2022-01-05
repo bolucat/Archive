@@ -19,6 +19,7 @@
 ^buildtools/third_party/libc++abi/cxa_demangle_stub.cc
 ^buildtools/third_party/libc++abi/trunk/include
 ^buildtools/third_party/libc++abi/trunk/src
+^buildtools/third_party/libunwind
 ^chrome/VERSION
 ^chrome/android/profiles/newest.txt
 ^chrome/app/theme/chromium/BRANDING

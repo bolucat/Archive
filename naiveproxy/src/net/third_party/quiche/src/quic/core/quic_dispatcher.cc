@@ -266,16 +266,15 @@ bool MaybeHandleLegacyVersionEncapsulation(
   QuicVersionLabel version_label;
   ParsedQuicVersion parsed_version = ParsedQuicVersion::Unsupported();
   QuicConnectionId destination_connection_id, source_connection_id;
-  bool retry_token_present;
-  absl::string_view retry_token;
+  absl::optional<absl::string_view> retry_token;
   std::string detailed_error;
   const QuicErrorCode error = QuicFramer::ParsePublicHeaderDispatcher(
       QuicEncryptedPacket(legacy_version_encapsulation_inner_packet.data(),
                           legacy_version_encapsulation_inner_packet.length()),
       kQuicDefaultConnectionIdLength, &format, &long_packet_type,
       &version_present, &has_length_prefix, &version_label, &parsed_version,
-      &destination_connection_id, &source_connection_id, &retry_token_present,
-      &retry_token, &detailed_error);
+      &destination_connection_id, &source_connection_id, &retry_token,
+      &detailed_error);
   if (error != QUIC_NO_ERROR) {
     QUIC_DLOG(ERROR)
         << "Failed to parse Legacy Version Encapsulation inner packet:"
@@ -389,14 +388,12 @@ void QuicDispatcher::ProcessPacket(const QuicSocketAddress& self_address,
                        absl::string_view(packet.data(), packet.length()));
   ReceivedPacketInfo packet_info(self_address, peer_address, packet);
   std::string detailed_error;
-  bool retry_token_present;
-  absl::string_view retry_token;
   const QuicErrorCode error = QuicFramer::ParsePublicHeaderDispatcher(
       packet, expected_server_connection_id_length_, &packet_info.form,
       &packet_info.long_packet_type, &packet_info.version_flag,
       &packet_info.use_length_prefix, &packet_info.version_label,
       &packet_info.version, &packet_info.destination_connection_id,
-      &packet_info.source_connection_id, &retry_token_present, &retry_token,
+      &packet_info.source_connection_id, &packet_info.retry_token,
       &detailed_error);
   if (error != QUIC_NO_ERROR) {
     // Packet has framing error.
@@ -547,6 +544,7 @@ bool QuicDispatcher::MaybeDispatchPacket(
     const ReceivedPacketInfo& packet_info) {
   if (IsSourceUdpPortBlocked(packet_info.peer_address.port())) {
     // Silently drop the received packet.
+    QUIC_CODE_COUNT(quic_dropped_blocked_port);
     return true;
   }
 
@@ -719,27 +717,27 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
   QuicPacketFate fate = ValidityChecks(*packet_info);
 
   if (fate == kFateProcess) {
-    std::string sni, uaid, legacy_version_encapsulation_inner_packet;
-    std::vector<std::string> alpns;
-    if (!TryExtractChloOrBufferEarlyPacket(
-            *packet_info, &sni, &uaid, &alpns,
-            &legacy_version_encapsulation_inner_packet)) {
+    absl::optional<ParsedClientHello> parsed_chlo =
+        TryExtractChloOrBufferEarlyPacket(*packet_info);
+    if (!parsed_chlo.has_value()) {
       // Client Hello incomplete. Packet has been buffered or (rarely) dropped.
       return;
     }
 
     // Client Hello fully received.
-    fate = ValidityChecksOnFullChlo(*packet_info, sni, uaid, alpns);
+    fate = ValidityChecksOnFullChlo(*packet_info, *parsed_chlo);
 
     if (fate == kFateProcess) {
-      QUICHE_DCHECK(legacy_version_encapsulation_inner_packet.empty() ||
-                    !packet_info->version.UsesTls());
+      QUICHE_DCHECK(
+          parsed_chlo->legacy_version_encapsulation_inner_packet.empty() ||
+          !packet_info->version.UsesTls());
       if (MaybeHandleLegacyVersionEncapsulation(
-              this, legacy_version_encapsulation_inner_packet, *packet_info)) {
+              this, parsed_chlo->legacy_version_encapsulation_inner_packet,
+              *packet_info)) {
         return;
       }
 
-      ProcessChlo(alpns, sni, packet_info);
+      ProcessChlo(*std::move(parsed_chlo), packet_info);
       return;
     }
   }
@@ -775,26 +773,22 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
   }
 }
 
-bool QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
-    const ReceivedPacketInfo& packet_info,
-    std::string* sni,
-    std::string* uaid,
-    std::vector<std::string>* alpns,
-    std::string* legacy_version_encapsulation_inner_packet) {
-  sni->clear();
-  uaid->clear();
-  alpns->clear();
-  legacy_version_encapsulation_inner_packet->clear();
-
+absl::optional<ParsedClientHello>
+QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
+    const ReceivedPacketInfo& packet_info) {
   if (packet_info.version.UsesTls()) {
     bool has_full_tls_chlo = false;
+    std::string sni;
+    std::vector<std::string> alpns;
+    bool resumption_attempted = false, early_data_attempted = false;
     if (buffered_packets_.HasBufferedPackets(
             packet_info.destination_connection_id)) {
       // If we already have buffered packets for this connection ID,
       // use the associated TlsChloExtractor to parse this packet.
       has_full_tls_chlo = buffered_packets_.IngestPacketForTlsChloExtraction(
           packet_info.destination_connection_id, packet_info.version,
-          packet_info.packet, alpns, sni);
+          packet_info.packet, &alpns, &sni, &resumption_attempted,
+          &early_data_attempted);
     } else {
       // If we do not have a BufferedPacketList for this connection ID,
       // create a single-use one to check whether this packet contains a
@@ -804,8 +798,10 @@ bool QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
       if (tls_chlo_extractor.HasParsedFullChlo()) {
         // This packet contains a full single-packet CHLO.
         has_full_tls_chlo = true;
-        *alpns = tls_chlo_extractor.alpns();
-        *sni = tls_chlo_extractor.server_name();
+        alpns = tls_chlo_extractor.alpns();
+        sni = tls_chlo_extractor.server_name();
+        resumption_attempted = tls_chlo_extractor.resumption_attempted();
+        early_data_attempted = tls_chlo_extractor.early_data_attempted();
       }
     }
     if (!has_full_tls_chlo) {
@@ -813,9 +809,18 @@ bool QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
       // packet that arrived before the CHLO (due to loss or reordering),
       // or it could be a fragment of a multi-packet CHLO.
       BufferEarlyPacket(packet_info);
+      return absl::nullopt;
     }
 
-    return has_full_tls_chlo;
+    ParsedClientHello parsed_chlo;
+    parsed_chlo.sni = std::move(sni);
+    parsed_chlo.alpns = std::move(alpns);
+    if (packet_info.retry_token.has_value()) {
+      parsed_chlo.retry_token = std::string(*packet_info.retry_token);
+    }
+    parsed_chlo.resumption_attempted = resumption_attempted;
+    parsed_chlo.early_data_attempted = early_data_attempted;
+    return parsed_chlo;
   }
 
   ChloAlpnSniExtractor alpn_extractor;
@@ -826,7 +831,7 @@ bool QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
                               packet_info.destination_connection_id.length())) {
     // Buffer non-CHLO packets.
     BufferEarlyPacket(packet_info);
-    return false;
+    return absl::nullopt;
   }
 
   // We only apply this check for versions that do not use the IETF
@@ -839,15 +844,16 @@ bool QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
     QUIC_DVLOG(1) << "Dropping CHLO packet which is too short, length: "
                   << packet_info.packet.length();
     QUIC_CODE_COUNT(quic_drop_small_chlo_packets);
-    return false;
+    return absl::nullopt;
   }
 
-  *legacy_version_encapsulation_inner_packet =
+  ParsedClientHello parsed_chlo;
+  parsed_chlo.legacy_version_encapsulation_inner_packet =
       alpn_extractor.ConsumeLegacyVersionEncapsulationInnerPacket();
-  *sni = alpn_extractor.ConsumeSni();
-  *uaid = alpn_extractor.ConsumeUaid();
-  *alpns = {alpn_extractor.ConsumeAlpn()};
-  return true;
+  parsed_chlo.sni = alpn_extractor.ConsumeSni();
+  parsed_chlo.uaid = alpn_extractor.ConsumeUaid();
+  parsed_chlo.alpns = {alpn_extractor.ConsumeAlpn()};
+  return parsed_chlo;
 }
 
 std::string QuicDispatcher::SelectAlpn(const std::vector<std::string>& alpns) {
@@ -1237,14 +1243,20 @@ void QuicDispatcher::ProcessBufferedChlos(size_t max_connections_to_create) {
     if (packets.empty()) {
       return;
     }
+    if (!packet_list.parsed_chlo.has_value()) {
+      QUIC_BUG(quic_dispatcher_no_parsed_chlo_in_buffered_packets)
+          << "Buffered connection has no CHLO. connection_id:"
+          << server_connection_id;
+      continue;
+    }
+    const ParsedClientHello& parsed_chlo = *packet_list.parsed_chlo;
     QuicConnectionId original_connection_id = server_connection_id;
     server_connection_id = MaybeReplaceServerConnectionId(server_connection_id,
                                                           packet_list.version);
-    std::string alpn = SelectAlpn(packet_list.alpns);
-    std::unique_ptr<QuicSession> session =
-        CreateQuicSession(server_connection_id, packets.front().self_address,
-                          packets.front().peer_address, alpn,
-                          packet_list.version, packet_list.sni);
+    std::string alpn = SelectAlpn(parsed_chlo.alpns);
+    std::unique_ptr<QuicSession> session = CreateQuicSession(
+        server_connection_id, packets.front().self_address,
+        packets.front().peer_address, alpn, packet_list.version, parsed_chlo);
     if (original_connection_id != server_connection_id) {
       session->connection()->SetOriginalDestinationConnectionId(
           original_connection_id);
@@ -1305,15 +1317,14 @@ void QuicDispatcher::BufferEarlyPacket(const ReceivedPacketInfo& packet_info) {
   EnqueuePacketResult rs = buffered_packets_.EnqueuePacket(
       packet_info.destination_connection_id,
       packet_info.form != GOOGLE_QUIC_PACKET, packet_info.packet,
-      packet_info.self_address, packet_info.peer_address, /*is_chlo=*/false,
-      /*alpns=*/{}, /*sni=*/absl::string_view(), packet_info.version);
+      packet_info.self_address, packet_info.peer_address, packet_info.version,
+      /*parsed_chlo=*/absl::nullopt);
   if (rs != EnqueuePacketResult::SUCCESS) {
     OnBufferPacketFailure(rs, packet_info.destination_connection_id);
   }
 }
 
-void QuicDispatcher::ProcessChlo(const std::vector<std::string>& alpns,
-                                 absl::string_view sni,
+void QuicDispatcher::ProcessChlo(ParsedClientHello parsed_chlo,
                                  ReceivedPacketInfo* packet_info) {
   if (!buffered_packets_.HasBufferedPackets(
           packet_info->destination_connection_id) &&
@@ -1329,7 +1340,7 @@ void QuicDispatcher::ProcessChlo(const std::vector<std::string>& alpns,
         packet_info->destination_connection_id,
         packet_info->form != GOOGLE_QUIC_PACKET, packet_info->packet,
         packet_info->self_address, packet_info->peer_address,
-        /*is_chlo=*/true, alpns, sni, packet_info->version);
+        packet_info->version, std::move(parsed_chlo));
     if (rs != EnqueuePacketResult::SUCCESS) {
       OnBufferPacketFailure(rs, packet_info->destination_connection_id);
     }
@@ -1341,10 +1352,10 @@ void QuicDispatcher::ProcessChlo(const std::vector<std::string>& alpns,
   packet_info->destination_connection_id = MaybeReplaceServerConnectionId(
       original_connection_id, packet_info->version);
   // Creates a new session and process all buffered packets for this connection.
-  std::string alpn = SelectAlpn(alpns);
+  std::string alpn = SelectAlpn(parsed_chlo.alpns);
   std::unique_ptr<QuicSession> session = CreateQuicSession(
       packet_info->destination_connection_id, packet_info->self_address,
-      packet_info->peer_address, alpn, packet_info->version, sni);
+      packet_info->peer_address, alpn, packet_info->version, parsed_chlo);
   if (QUIC_PREDICT_FALSE(session == nullptr)) {
     QUIC_BUG(quic_bug_10287_8)
         << "CreateQuicSession returned nullptr for "

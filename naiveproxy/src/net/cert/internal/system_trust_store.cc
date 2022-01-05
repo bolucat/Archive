@@ -213,7 +213,7 @@ class SystemTrustStoreMac : public SystemTrustStore {
       case 2:
         return TrustStoreMac::TrustImplType::kSimple;
       case 3:
-        return TrustStoreMac::TrustImplType::kMruCache;
+        return TrustStoreMac::TrustImplType::kLruCache;
       default:
         return kDefaultTrustImpl;
     }

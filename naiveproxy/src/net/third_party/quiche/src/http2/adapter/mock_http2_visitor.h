@@ -30,7 +30,7 @@ class QUICHE_NO_EXPORT MockHttp2Visitor : public Http2VisitorInterface {
 
   MOCK_METHOD(int64_t, OnReadyToSend, (absl::string_view serialized),
               (override));
-  MOCK_METHOD(void, OnConnectionError, (), (override));
+  MOCK_METHOD(void, OnConnectionError, (ConnectionError error), (override));
   MOCK_METHOD(bool, OnFrameHeader,
               (Http2StreamId stream_id, size_t length, uint8_t type,
                uint8_t flags),
@@ -103,8 +103,8 @@ class QUICHE_NO_EXPORT MockHttp2Visitor : public Http2VisitorInterface {
                uint8_t flags, uint32_t error_code),
               (override));
 
-  MOCK_METHOD(bool, OnInvalidFrame, (Http2StreamId stream_id, int error_code),
-              (override));
+  MOCK_METHOD(bool, OnInvalidFrame,
+              (Http2StreamId stream_id, InvalidFrameError error), (override));
 
   MOCK_METHOD(void,
               OnBeginMetadataForStream,

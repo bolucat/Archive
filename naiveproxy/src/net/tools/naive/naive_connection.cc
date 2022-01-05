@@ -14,6 +14,7 @@
 #include "base/rand_util.h"
 #include "base/strings/strcat.h"
 #include "base/threading/thread_task_runner_handle.h"
+#include "base/time/time.h"
 #include "net/base/io_buffer.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
@@ -286,8 +287,7 @@ int NaiveConnection::Run(CompletionOnceCallback callback) {
   bytes_passed_without_yielding_[kServer] = 0;
 
   yield_after_time_[kClient] =
-      time_func_() +
-      base::TimeDelta::FromMilliseconds(kYieldAfterDurationMilliseconds);
+      time_func_() + base::Milliseconds(kYieldAfterDurationMilliseconds);
   yield_after_time_[kServer] = yield_after_time_[kClient];
 
   can_push_to_server_ = true;
@@ -538,8 +538,7 @@ void NaiveConnection::OnPushComplete(Direction from, Direction to, int result) {
       time_func_() > yield_after_time_[from]) {
     bytes_passed_without_yielding_[from] = 0;
     yield_after_time_[from] =
-        time_func_() +
-        base::TimeDelta::FromMilliseconds(kYieldAfterDurationMilliseconds);
+        time_func_() + base::Milliseconds(kYieldAfterDurationMilliseconds);
     base::ThreadTaskRunnerHandle::Get()->PostTask(
         FROM_HERE,
         base::BindRepeating(&NaiveConnection::Pull,

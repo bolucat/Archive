@@ -291,6 +291,14 @@ object RawUpdater : GroupUpdater() {
                                     "skip-cert-verify" -> if (isExpert) bean.allowInsecure = opt.value == "true"
                                     "ws-opts" -> for (wsOpt in (opt.value as Map<String, Any>)) {
                                         when (wsOpt.key.lowercase()) {
+                                            "headers" -> for (wsHeader in (opt.value as Map<String, Any>)) {
+                                                when (wsHeader.key.lowercase()) {
+                                                    "host" -> bean.host = wsHeader.value as String
+                                                }
+                                            }
+                                            "path" -> {
+                                                bean.path = opt.value?.toString()
+                                            }
                                             "max-early-data" -> {
                                                 bean.wsMaxEarlyData = wsOpt.value.toString().toInt()
                                             }
