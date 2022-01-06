@@ -1,44 +1,269 @@
-<div>
-  <img width="190" height="210" align="left" src="https://raw.githubusercontent.com/v2fly/v2fly-github-io/master/docs/.vuepress/public/readme-logo.png" alt="V2Ray"/>
-  <br>
-  <h1>Project V</h1>
-  <p>Project V is a set of network tools that helps you to build your own computer network. It secures your network connections and thus protects your privacy.</p>
-</div>
+# Project V for SagerNet
 
-[![GitHub Test Badge](https://github.com/v2fly/v2ray-core/workflows/Test/badge.svg)](https://github.com/v2fly/v2ray-core/actions)
-[![codecov.io](https://codecov.io/gh/v2fly/v2ray-core/branch/master/graph/badge.svg?branch=master)](https://codecov.io/gh/v2fly/v2ray-core?branch=master)
-[![codebeat](https://goreportcard.com/badge/github.com/v2fly/v2ray-core)](https://goreportcard.com/report/github.com/v2fly/v2ray-core)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e150b7ede2114388921943bf23d95161)](https://www.codacy.com/gh/v2fly/v2ray-core/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=v2fly/v2ray-core&amp;utm_campaign=Badge_Grade)
-[![Downloads](https://img.shields.io/github/downloads/v2fly/v2ray-core/total.svg)](https://github.com/v2fly/v2ray-core/releases/latest)
+### Important changes
 
-## Related Links
+- concurrency option for outbound observation
 
-- [Documentation](https://www.v2fly.org) and [Newcomer's Instructions](https://www.v2fly.org/guide/start.html)
-- Welcome to translate V2Ray documents via [Transifex](https://www.transifex.com/v2fly/public/)
+```json
+{
+  "observatory": {
+    "enableConcurrency": true
+  }
+}
+```
 
-## Packaging Status
+- DNS sniffer
 
-> If you are willing to package V2Ray for other distros/platforms, please let us know or seek for help via [GitHub issues](https://github.com/v2fly/v2ray-core/issues).
+```json
+{
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "protocol": "dns",
+        "outbound": "dns-out"
+      }
+    ]
+  }
+}
+```
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/v2ray.svg)](https://repology.org/project/v2ray/versions)
+- disableExpire dns option
 
-## License
+```json
+{
+  "dns": {
+    "disableExpire": true
+  }
+}
+```
 
-[The MIT License (MIT)](https://raw.githubusercontent.com/v2fly/v2ray-core/master/LICENSE)
+- udp+local dns server
 
-## Credits
+```json
+{
+  "dns": {
+    "servers": [
+      "udp+local://8.8.8.8"
+      // without routing rule
+    ]
+  }
+}
+```
 
-This repo relies on the following third-party projects:
+- removed FakeDNS
 
-- In production:
-  - [gorilla/websocket](https://github.com/gorilla/websocket)
-  - [lucas-clemente/quic-go](https://github.com/lucas-clemente/quic-go)
-  - [pires/go-proxyproto](https://github.com/pires/go-proxyproto)
-  - [seiflotfy/cuckoofilter](https://github.com/seiflotfy/cuckoofilter)
-  - [google/starlark-go](https://github.com/google/starlark-go)
-  - [jhump/protoreflect](https://github.com/jhump/protoreflect)
-  - [inetaf/netaddr](https://github.com/inetaf/netaddr)
+```
+FakeDNS is a bad idea, and v2ray's current implementation
+causes memory leaks, whether enabled or not.
+```
 
-- For testing only:
-  - [miekg/dns](https://github.com/miekg/dns)
-  - [h12w/socks](https://github.com/h12w/socks)
+- wireguard outbound
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "wireguard",
+      "settings": {
+        "address": "engage.cloudflareclient.com",
+        "localAddresses": [
+          "<ipv4 address>",
+          "<ipv6 address>"
+        ],
+        "peerPublicKey": "<public key>",
+        "port": 2408,
+        "preSharedKey": "<psk>",
+        "privateKey": "<private key>",
+        "mtu": 1500,
+        "userLevel": 0
+      }
+    }
+  ]
+}
+```
+
+- ssh outbound
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "ssh",
+      "settings": {
+        "address": "<your ip>",
+        "port": 22,
+        "user": "root",
+        "password": "<password or passphrase of private key>",
+        "privateKey": "<x509 private key>",
+        "publicKey": "<public key to verify server>",
+        "clientVersion": "SSH-2.0-OpenSSH_114514 (random if empty)",
+        "hostKeyAlgorithms": [
+          "ssh-ed25519",
+          "any u want"
+        ],
+        "userLevel": 0
+      }
+    }
+  ]
+}
+```
+
+- Add domainStrategy to outbound & Add preferIPv4/6 to domainStrategy
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks",
+      "settings": {
+        ...
+      },
+      "domainStrategy": "AsIs/UseIP/UseIPv[4/6]/PreferIPv[4/6]"
+    }
+  ]
+}
+```
+
+- shadowsocks stream ciphers and xchacha-ietf-poly1305
+
+```
+supported cipher list:
+
+none
+aes-128-gcm
+aes-192-gcm
+aes-256-gcm
+chacha20-ietf-poly1305
+xchacha20-ietf-poly1305
+rc4
+rc4-md5
+aes-128-ctr
+aes-192-ctr
+aes-256-ctr
+aes-128-cfb
+aes-192-cfb
+aes-256-cfb
+aes-128-cfb8
+aes-192-cfb8
+aes-256-cfb8
+aes-128-ofb
+aes-192-ofb
+aes-256-ofb
+bf-cfb
+cast5-cfb
+des-cfb
+idea-cfb
+rc2-cfb
+seed-cfb
+camellia-128-cfb
+camellia-192-cfb
+camellia-256-cfb
+camellia-128-cfb8
+camellia-192-cfb8
+camellia-256-cfb8
+salsa20
+chacha20
+chacha20-ietf
+xchacha20
+```
+
+- shadowsocks SIP008 plugin
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks",
+      "settings": {
+        ...
+        "plugin": "path to plugin",
+        "pluginOpts": "args;args2",
+        "pluginArgs": [
+          "--arg1=true"
+        ]
+      }
+    }
+  ]
+}
+```
+
+- embed v2ray-plugin for shadowsocks
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks",
+      "settings": {
+        ...
+        "plugin": "v2ray-plugin",
+        "pluginOpts": "host=shadow.v2fly.org"
+      }
+    }
+  ]
+}
+```
+
+- route only sniffing option
+
+```
+Allows the sniffed domain to be used for routing only, 
+without overriding the destination address. 
+This improves the routing accuracy of AsIs, 
+and provides the expected connection behavior of the client 
+(not resolving the domain name again on the server side)
+```
+
+```json
+{
+  "inbounds": [
+    {
+      ...
+      "sniffing": {
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "enabled": true,
+        "routeOnly": true
+      },
+      "tag": "socks"
+    }
+  ]
+}
+```
+
+- endpoint independent mapping support (aka full cone NAT)
+
+`for protocols other than v*ess, no configuration is required.`
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "v[m/l]ess",
+      "settings": {
+        "vnext": ...,
+        "packetEncoding": "[none/packet/xudp]"
+        // none: disabled
+        // packet: require v2ray/v2ray-core v5.0.2+ or SagerNet/v2ray-core
+        // xudp: require XTLS/Xray-core or SagerNet/v2ray-core
+      }
+    }
+  ]
+}
+```
+
+### License
+
+[GPL v3](https://raw.githubusercontent.com/SagerNet/v2ray-core/main/LICENSE)
+
+### Credits
+
+This repo relies on the following projects:
+
+- [v2fly/v2ray-core](https://github.com/v2fly/v2ray-core)
+- [XTLS/Xray-core](https://github.com/XTLS/Xray-core)
+- [Shadowsocks-NET/v2ray-go](https://github.com/Shadowsocks-NET/v2ray-go)

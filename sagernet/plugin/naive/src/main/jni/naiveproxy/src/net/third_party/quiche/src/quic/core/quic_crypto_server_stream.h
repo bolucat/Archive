@@ -48,7 +48,8 @@ class QUIC_EXPORT_PRIVATE QuicCryptoServerStream
                           ConnectionCloseSource /*source*/) override {}
   void OnHandshakeDoneReceived() override;
   void OnNewTokenReceived(absl::string_view token) override;
-  std::string GetAddressToken() const override;
+  std::string GetAddressToken(
+      const CachedNetworkParameters* /*cached_network_params*/) const override;
   bool ValidateAddressToken(absl::string_view token) const override;
   bool ShouldSendExpectCTHeader() const override;
   bool DidCertMatchSni() const override;
@@ -254,6 +255,8 @@ class QUIC_EXPORT_PRIVATE QuicCryptoServerStream
   bool encryption_established_;
   bool one_rtt_keys_available_;
   bool one_rtt_packet_decrypted_;
+  const bool noop_if_disconnected_after_process_chlo_ = GetQuicReloadableFlag(
+      quic_crypto_noop_if_disconnected_after_process_chlo);
   QuicReferenceCountedPointer<QuicCryptoNegotiatedParameters>
       crypto_negotiated_params_;
 };

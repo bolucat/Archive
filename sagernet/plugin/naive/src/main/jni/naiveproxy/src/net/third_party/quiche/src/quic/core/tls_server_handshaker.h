@@ -58,7 +58,8 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   void OnConnectionClosed(QuicErrorCode error,
                           ConnectionCloseSource source) override;
   void OnHandshakeDoneReceived() override;
-  std::string GetAddressToken() const override;
+  std::string GetAddressToken(
+      const CachedNetworkParameters* cached_network_params) const override;
   bool ValidateAddressToken(absl::string_view token) const override;
   void OnNewTokenReceived(absl::string_view token) override;
   bool ShouldSendExpectCTHeader() const override;
@@ -91,6 +92,11 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   // sent in an ACCEPT_CH frame in the TLS ALPS extension, unless empty.
   virtual std::string GetAcceptChValueForHostname(
       const std::string& hostname) const;
+
+  // Get the ClientCertMode that is currently in effect on this handshaker.
+  ClientCertMode client_cert_mode() const {
+    return tls_connection_.ssl_config().client_cert_mode;
+  }
 
  protected:
   // Override for tracing.
@@ -173,11 +179,11 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   bool HasValidSignature(size_t max_signature_size) const;
 
   // ProofSourceHandleCallback implementation:
-  void OnSelectCertificateDone(bool ok, bool is_sync,
-                               const ProofSource::Chain* chain,
-                               absl::string_view handshake_hints,
-                               absl::string_view ticket_encryption_key,
-                               bool cert_matched_sni) override;
+  void OnSelectCertificateDone(
+      bool ok, bool is_sync, const ProofSource::Chain* chain,
+      absl::string_view handshake_hints,
+      absl::string_view ticket_encryption_key, bool cert_matched_sni,
+      QuicDelayedSSLConfig delayed_ssl_config) override;
 
   void OnComputeSignatureDone(
       bool ok,
@@ -319,7 +325,6 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
   QuicTime now() const { return session()->GetClock()->Now(); }
 
   QuicConnectionContext* connection_context() {
-    QUICHE_DCHECK(restore_connection_context_in_callbacks_);
     return session()->connection()->context();
   }
 
@@ -367,8 +372,9 @@ class QUIC_EXPORT_PRIVATE TlsServerHandshaker
       crypto_negotiated_params_;
   TlsServerConnection tls_connection_;
   const QuicCryptoServerConfig* crypto_config_;  // Unowned.
-  const bool restore_connection_context_in_callbacks_ =
-      GetQuicReloadableFlag(quic_tls_restore_connection_context_in_callbacks);
+  // The last received CachedNetworkParameters from a validated address token.
+  mutable std::unique_ptr<CachedNetworkParameters>
+      last_received_cached_network_params_;
 
   bool cert_matched_sni_ = false;
 };

@@ -5,12 +5,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/session"
 )
 
-var effectiveSystemDialer SystemDialer = &DefaultSystemDialer{}
-var effectiveSystemDNSDialer SystemDialer = &DefaultSystemDialer{}
+var (
+	effectiveSystemDialer    SystemDialer = &DefaultSystemDialer{}
+	effectiveSystemDNSDialer SystemDialer = &DefaultSystemDialer{}
+)
 
 type SystemDialer interface {
 	Dial(ctx context.Context, source net.Address, destination net.Destination, sockopt *SocketConfig) (net.Conn, error)

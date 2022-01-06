@@ -8,13 +8,14 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
-	"github.com/v2fly/v2ray-core/v4/proxy/vless"
-	"github.com/v2fly/v2ray-core/v4/proxy/vless/inbound"
-	"github.com/v2fly/v2ray-core/v4/proxy/vless/outbound"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless/inbound"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless/outbound"
 )
 
 type VLessInboundFallback struct {
@@ -127,7 +128,8 @@ type VLessOutboundVnext struct {
 }
 
 type VLessOutboundConfig struct {
-	Vnext []*VLessOutboundVnext `json:"vnext"`
+	Vnext          []*VLessOutboundVnext `json:"vnext"`
+	PacketEncoding string                `json:"packetEncoding"`
 }
 
 // Build implements Buildable
@@ -169,6 +171,11 @@ func (c *VLessOutboundConfig) Build() (proto.Message, error) {
 		}
 		config.Vnext[idx] = spec
 	}
-
+	switch c.PacketEncoding {
+	case "packet":
+		config.PacketEncoding = packetaddr.PacketAddrType_Packet
+	case "xudp":
+		config.PacketEncoding = packetaddr.PacketAddrType_XUDP
+	}
 	return config, nil
 }

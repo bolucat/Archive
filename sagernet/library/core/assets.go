@@ -10,16 +10,17 @@ import (
 
 	"github.com/sagernet/gomobile/asset"
 	"github.com/sirupsen/logrus"
-	"github.com/v2fly/v2ray-core/v4/common/platform/filesystem"
+	"github.com/v2fly/v2ray-core/v5/common/platform/filesystem"
 )
 
 const (
-	geoipDat         = "geoip.dat"
-	geositeDat       = "geosite.dat"
-	browserForwarder = "index.js"
-	geoipVersion     = "geoip.version.txt"
-	geositeVersion   = "geosite.version.txt"
-	coreVersion      = "core.version.txt"
+	geoipDat           = "geoip.dat"
+	geositeDat         = "geosite.dat"
+	browserForwarder   = "index.js"
+	geoipVersion       = "geoip.version.txt"
+	geositeVersion     = "geosite.version.txt"
+	coreVersion        = "core.version.txt"
+	mozillaIncludedPem = "mozilla_included.pem"
 )
 
 var (
@@ -34,11 +35,15 @@ var (
 	assetsAccess      *sync.Mutex
 )
 
+type Func interface {
+	Invoke() error
+}
+
 type BoolFunc interface {
 	Invoke() bool
 }
 
-func InitializeV2Ray(internalAssets string, externalAssets string, prefix string, useOfficial BoolFunc) error {
+func InitializeV2Ray(internalAssets string, externalAssets string, prefix string, useOfficial BoolFunc, useSystemCerts BoolFunc) error {
 	assetsAccess = new(sync.Mutex)
 	assetsAccess.Lock()
 	extracted = make(map[string]bool)
@@ -113,6 +118,14 @@ func InitializeV2Ray(internalAssets string, externalAssets string, prefix string
 		extract(geoipDat)
 		extract(geositeDat)
 		extract(browserForwarder)
+
+		err := extractRootCACertsPem()
+		if err != nil {
+			logrus.Warn(newError("failed to extract root ca certs from assets").Base(err))
+			return
+		}
+
+		UpdateSystemRoots(useSystemCerts.Invoke())
 	}()
 
 	return nil
@@ -208,6 +221,44 @@ func extractAssetName(name string, force bool) error {
 	_, err = io.WriteString(o, assetVersion)
 	closeIgnore(o)
 	return err
+}
+
+func extractRootCACertsPem() error {
+	path := internalAssetsPath + mozillaIncludedPem
+	sumPath := path + ".sha256sum"
+	sumInternal, err := asset.Open(mozillaIncludedPem + ".sha256sum")
+	if err != nil {
+		return newError("open pem version in assets").Base(err)
+	}
+	defer sumInternal.Close()
+	sumBytes, err := ioutil.ReadAll(sumInternal)
+	if err != nil {
+		return newError("read internal version").Base(err)
+	}
+	_, pemSha256sumNotExists := os.Stat(sumPath)
+	if pemSha256sumNotExists == nil {
+		sumExternal, err := ioutil.ReadFile(sumPath)
+		if err == nil {
+			if string(sumBytes) == string(sumExternal) {
+				return nil
+			}
+		}
+	}
+	pemFile, err := os.Create(path)
+	if err != nil {
+		return newError("create pem file").Base(err)
+	}
+	defer pemFile.Close()
+	pem, err := asset.Open(mozillaIncludedPem)
+	if err != nil {
+		return newError("open pem in assets").Base(err)
+	}
+	defer pem.Close()
+	_, err = io.Copy(pemFile, pem)
+	if err != nil {
+		return newError("write pem file")
+	}
+	return ioutil.WriteFile(sumPath, sumBytes, 0o644)
 }
 
 func extractAsset(assetPath string, path string) error {

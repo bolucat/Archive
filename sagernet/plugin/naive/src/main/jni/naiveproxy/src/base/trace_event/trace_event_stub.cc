@@ -21,11 +21,6 @@ MemoryDumpProvider::~MemoryDumpProvider() = default;
 // static
 constexpr const char* const MemoryDumpManager::kTraceCategory;
 
-MemoryDumpManager g_stub_memory_dump_manager;
-MemoryDumpManager* MemoryDumpManager::GetInstance() {
-  return &g_stub_memory_dump_manager;
-}
-
 template size_t EstimateMemoryUsage(const std::string&);
 template size_t EstimateMemoryUsage(const std::u16string&);
 

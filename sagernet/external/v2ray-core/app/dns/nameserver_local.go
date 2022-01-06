@@ -7,10 +7,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/task"
-	"github.com/v2fly/v2ray-core/v4/features/dns"
-	"github.com/v2fly/v2ray-core/v4/features/dns/localdns"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/task"
+	"github.com/v2fly/v2ray-core/v5/features/dns"
+	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 )
 
 // LocalNameServer is an wrapper over local DNS feature.
@@ -36,6 +36,10 @@ func (s *LocalNameServer) QueryIP(ctx context.Context, domain string, _ net.IP, 
 		}
 		return nil
 	})
+
+	if err != nil && strings.HasSuffix(err.Error(), errEmptyResponse) {
+		err = dns.ErrEmptyResponse
+	}
 
 	if err != nil && strings.HasSuffix(err.Error(), errEmptyResponse) {
 		err = dns.ErrEmptyResponse

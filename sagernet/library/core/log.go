@@ -18,8 +18,8 @@ import (
 	"unsafe"
 
 	"github.com/sirupsen/logrus"
-	appLog "github.com/v2fly/v2ray-core/v4/app/log"
-	commonLog "github.com/v2fly/v2ray-core/v4/common/log"
+	appLog "github.com/v2fly/v2ray-core/v5/app/log"
+	commonLog "github.com/v2fly/v2ray-core/v5/common/log"
 )
 
 var (

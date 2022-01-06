@@ -3,8 +3,8 @@ package buf
 import (
 	"io"
 
-	"github.com/v2fly/v2ray-core/v4/common/bytespool"
-	"github.com/v2fly/v2ray-core/v4/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/bytespool"
+	"github.com/v2fly/v2ray-core/v5/common/net"
 )
 
 const (
@@ -224,6 +224,19 @@ func (b *Buffer) Read(data []byte) (int, error) {
 // ReadFrom implements io.ReaderFrom.
 func (b *Buffer) ReadFrom(reader io.Reader) (int64, error) {
 	n, err := reader.Read(b.v[b.end:])
+	b.end += int32(n)
+	return int64(n), err
+}
+
+func (b *Buffer) ReadFromPacketConn(reader net.PacketConn) (int64, error) {
+	n, addr, err := reader.ReadFrom(b.v[b.end:])
+	if udpAddr, ok := addr.(*net.UDPAddr); ok {
+		b.Endpoint = &net.Destination{
+			Network: net.Network_UDP,
+			Address: net.IPAddress(udpAddr.IP),
+			Port:    net.Port(udpAddr.Port),
+		}
+	}
 	b.end += int32(n)
 	return int64(n), err
 }

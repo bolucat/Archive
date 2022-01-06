@@ -3,9 +3,9 @@ package session
 import (
 	"context"
 
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/session"
-	"github.com/v2fly/v2ray-core/v4/features/routing"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/features/routing"
 )
 
 // Context is an implementation of routing.Context, which is a wrapper of context.context with session info.
@@ -142,13 +142,6 @@ func (ctx *Context) GetNetworkType() string {
 		return ""
 	}
 	return ctx.Inbound.NetworkType
-}
-
-func (ctx Context) GetSkipFakeDNS() bool {
-	if ctx.Inbound == nil {
-		return false
-	}
-	return ctx.Inbound.SkipFakeDNS
 }
 
 // AsRoutingContext creates a context from context.context with session info.

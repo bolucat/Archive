@@ -5,7 +5,7 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/v2fly/v2ray-core/v4/common"
+	"github.com/v2fly/v2ray-core/v5/common"
 )
 
 // Port represents a network port in TCP and UDP protocol.

@@ -3,13 +3,13 @@ package stun
 import (
 	"errors"
 	"fmt"
-	"github.com/Dreamacro/clash/transport/socks5"
-	"github.com/sirupsen/logrus"
 	"net"
 	"time"
 
+	"github.com/Dreamacro/clash/transport/socks5"
 	"github.com/pion/stun"
-	"github.com/v2fly/v2ray-core/v4/common/buf"
+	"github.com/sirupsen/logrus"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 )
 
 //go:generate go run ../errorgen

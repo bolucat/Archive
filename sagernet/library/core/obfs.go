@@ -2,9 +2,9 @@ package libcore
 
 import (
 	"github.com/Dreamacro/clash/transport/simple-obfs"
-	"github.com/v2fly/v2ray-core/v4/proxy/shadowsocks"
-	"github.com/v2fly/v2ray-core/v4/proxy/shadowsocks/plugin/self"
-	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/proxy/shadowsocks"
+	"github.com/v2fly/v2ray-core/v5/proxy/shadowsocks/plugin/self"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
 var _ shadowsocks.StreamPlugin = (*obfsLocalPlugin)(nil)

@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/crypto/salsa20/salsa"
 
-	"github.com/v2fly/v2ray-core/v4/common"
+	"github.com/v2fly/v2ray-core/v5/common"
 )
 
 var _ cipher.Stream = (*Salsa20Cipher)(nil)

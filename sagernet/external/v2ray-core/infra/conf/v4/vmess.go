@@ -6,12 +6,13 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
-	"github.com/v2fly/v2ray-core/v4/proxy/vmess"
-	"github.com/v2fly/v2ray-core/v4/proxy/vmess/inbound"
-	"github.com/v2fly/v2ray-core/v4/proxy/vmess/outbound"
+	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v5/proxy/vmess"
+	"github.com/v2fly/v2ray-core/v5/proxy/vmess/inbound"
+	"github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 )
 
 type VMessAccount struct {
@@ -124,7 +125,8 @@ type VMessOutboundTarget struct {
 }
 
 type VMessOutboundConfig struct {
-	Receivers []*VMessOutboundTarget `json:"vnext"`
+	Receivers      []*VMessOutboundTarget `json:"vnext"`
+	PacketEncoding string                 `json:"packetEncoding"`
 }
 
 // Build implements Buildable
@@ -161,5 +163,11 @@ func (c *VMessOutboundConfig) Build() (proto.Message, error) {
 		serverSpecs[idx] = spec
 	}
 	config.Receiver = serverSpecs
+	switch c.PacketEncoding {
+	case "packet":
+		config.PacketEncoding = packetaddr.PacketAddrType_Packet
+	case "xudp":
+		config.PacketEncoding = packetaddr.PacketAddrType_XUDP
+	}
 	return config, nil
 }

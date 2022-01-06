@@ -9,7 +9,7 @@ use std::{
 };
 
 use cfg_if::cfg_if;
-use clap::{ArgMatches, ErrorKind as ClapErrorKind};
+use clap::ArgMatches;
 use directories::ProjectDirs;
 use serde::Deserialize;
 
@@ -183,7 +183,7 @@ impl Config {
         #[cfg(feature = "multi-threaded")]
         match matches.value_of_t::<usize>("WORKER_THREADS") {
             Ok(worker_count) => self.runtime.worker_count = Some(worker_count),
-            Err(ref err) if err.kind == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind == clap::ErrorKind::ArgumentNotFound => {}
             Err(err) => err.exit(),
         }
 
@@ -193,7 +193,7 @@ impl Config {
 
 /// Logger configuration
 #[cfg(feature = "logging")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LogConfig {
     /// Default logger log level, [0, 3]
     pub level: u32,
@@ -203,29 +203,11 @@ pub struct LogConfig {
     pub config_path: Option<PathBuf>,
 }
 
-#[cfg(feature = "logging")]
-impl Default for LogConfig {
-    fn default() -> LogConfig {
-        LogConfig {
-            level: 0,
-            format: LogFormatConfig::default(),
-            config_path: None,
-        }
-    }
-}
-
 /// Logger format configuration
 #[cfg(feature = "logging")]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LogFormatConfig {
     pub without_time: bool,
-}
-
-#[cfg(feature = "logging")]
-impl Default for LogFormatConfig {
-    fn default() -> LogFormatConfig {
-        LogFormatConfig { without_time: false }
-    }
 }
 
 /// Runtime mode (Tokio)

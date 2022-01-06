@@ -5,14 +5,29 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	core "github.com/v2fly/v2ray-core/v4"
-	"github.com/v2fly/v2ray-core/v4/app/proxyman"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
-	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
 func (c OutboundConfig) BuildV5(ctx context.Context) (proto.Message, error) {
 	senderSettings := &proxyman.SenderConfig{}
+
+	switch c.DomainStrategy {
+	case "UseIP":
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_USE_IP
+	case "UseIPv4":
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_USE_IP4
+	case "UseIPv6":
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_USE_IP6
+	case "PreferIPv4":
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_PREFER_IP4
+	case "PreferIPv6":
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_PREFER_IP6
+	default:
+		senderSettings.DomainStrategy = proxyman.DomainStrategy_AS_IS
+	}
 
 	if c.SendThrough != nil {
 		address := c.SendThrough

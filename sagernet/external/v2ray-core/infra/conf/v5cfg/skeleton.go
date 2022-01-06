@@ -3,11 +3,11 @@ package v5cfg
 import (
 	"encoding/json"
 
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/muxcfg"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/proxycfg"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/sniffer"
-	"github.com/v2fly/v2ray-core/v4/infra/conf/cfgcommon/socketcfg"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/muxcfg"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/proxycfg"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/sniffer"
+	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/socketcfg"
 )
 
 type RootConfig struct {
@@ -31,13 +31,14 @@ type InboundConfig struct {
 }
 
 type OutboundConfig struct {
-	Protocol      string                `json:"protocol"`
-	SendThrough   *cfgcommon.Address    `json:"sendThrough"`
-	Tag           string                `json:"tag"`
-	Settings      json.RawMessage       `json:"settings"`
-	StreamSetting *StreamConfig         `json:"streamSettings"`
-	ProxySettings *proxycfg.ProxyConfig `json:"proxySettings"`
-	MuxSettings   *muxcfg.MuxConfig     `json:"mux"`
+	Protocol       string                `json:"protocol"`
+	SendThrough    *cfgcommon.Address    `json:"sendThrough"`
+	Tag            string                `json:"tag"`
+	Settings       json.RawMessage       `json:"settings"`
+	StreamSetting  *StreamConfig         `json:"streamSettings"`
+	ProxySettings  *proxycfg.ProxyConfig `json:"proxySettings"`
+	MuxSettings    *muxcfg.MuxConfig     `json:"mux"`
+	DomainStrategy string                `json:"domainStrategy"`
 }
 
 type StreamConfig struct {

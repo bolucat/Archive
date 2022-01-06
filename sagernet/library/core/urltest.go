@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/v2fly/v2ray-core/v4"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/session"
+	"github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/session"
 )
 
 func urlTest(dialContext func(ctx context.Context, network, addr string) (net.Conn, error), link string, timeout int32) (int32, error) {

@@ -6,12 +6,13 @@ import (
 	"crypto/sha256"
 	"hash/crc32"
 	"io"
+	gonet "net"
 
-	"github.com/v2fly/v2ray-core/v4/common"
-	"github.com/v2fly/v2ray-core/v4/common/buf"
-	"github.com/v2fly/v2ray-core/v4/common/drain"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/drain"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
 )
 
 const (
@@ -277,6 +278,23 @@ func (v *UDPReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 	return buf.MultiBuffer{payload}, nil
 }
 
+func (v *UDPReader) ReadFrom(p []byte) (n int, addr gonet.Addr, err error) {
+	buffer := buf.New()
+	_, err = buffer.ReadFrom(v.Reader)
+	if err != nil {
+		buffer.Release()
+		return 0, nil, err
+	}
+	vaddr, payload, err := DecodeUDPPacket(v.User, buffer)
+	if err != nil {
+		buffer.Release()
+		return 0, nil, err
+	}
+	n = copy(p, payload.Bytes())
+	payload.Release()
+	return n, &gonet.UDPAddr{IP: vaddr.Address.IP(), Port: int(vaddr.Port)}, nil
+}
+
 type UDPWriter struct {
 	Writer  io.Writer
 	Request *protocol.RequestHeader
@@ -317,4 +335,37 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 		}
 	}
 	return nil
+}
+
+// Write implements io.Writer.
+func (w *UDPWriter) Write(payload []byte) (int, error) {
+	packet, err := EncodeUDPPacket(w.Request, payload)
+	if err != nil {
+		return 0, err
+	}
+	if w.Plugin != nil {
+		newBuffer, err := w.Plugin.EncodePacket(packet)
+		if err != nil {
+			return 0, err
+		}
+		packet = newBuffer
+	}
+	_, err = w.Writer.Write(packet.Bytes())
+	packet.Release()
+	return len(payload), err
+}
+
+func (w *UDPWriter) WriteTo(payload []byte, addr gonet.Addr) (n int, err error) {
+	request := *w.Request
+	udpAddr := addr.(*gonet.UDPAddr)
+	request.Command = protocol.RequestCommandUDP
+	request.Address = net.IPAddress(udpAddr.IP)
+	request.Port = net.Port(udpAddr.Port)
+	packet, err := EncodeUDPPacket(&request, payload)
+	if err != nil {
+		return 0, err
+	}
+	_, err = w.Writer.Write(packet.Bytes())
+	packet.Release()
+	return len(payload), err
 }

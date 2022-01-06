@@ -3,22 +3,25 @@ package mux
 import (
 	"io"
 
-	"github.com/v2fly/v2ray-core/v4/common/buf"
-	"github.com/v2fly/v2ray-core/v4/common/crypto"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/crypto"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
 )
 
 // PacketReader is an io.Reader that reads whole chunk of Mux frames every time.
 type PacketReader struct {
 	reader io.Reader
 	eof    bool
+	dest   *net.Destination
 }
 
 // NewPacketReader creates a new PacketReader.
-func NewPacketReader(reader io.Reader) *PacketReader {
+func NewPacketReader(reader io.Reader, dest *net.Destination) *PacketReader {
 	return &PacketReader{
 		reader: reader,
 		eof:    false,
+		dest:   dest,
 	}
 }
 
@@ -43,6 +46,9 @@ func (r *PacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		return nil, err
 	}
 	r.eof = true
+	if r.dest != nil && r.dest.Network == net.Network_UDP {
+		b.Endpoint = r.dest
+	}
 	return buf.MultiBuffer{b}, nil
 }
 

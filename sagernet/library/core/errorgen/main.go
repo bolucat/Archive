@@ -28,7 +28,7 @@ func main() {
 
 import (
 	"fmt"
-	"github.com/v2fly/v2ray-core/v4/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 )
 
 type errPathObjHolder struct{}

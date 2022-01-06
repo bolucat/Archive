@@ -93,6 +93,7 @@ bool HeaderValidator::FinishHeaderBlock(HeaderType type) {
     case HeaderType::RESPONSE_TRAILER:
       return ValidateResponseTrailers(pseudo_headers_);
   }
+  return false;
 }
 
 }  // namespace adapter

@@ -5,9 +5,9 @@ import (
 	"context"
 	"math/rand"
 
-	"github.com/v2fly/v2ray-core/v4/common/errors"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
 )
 
 // ID of a session.
@@ -47,10 +47,7 @@ type Inbound struct {
 	// SagerNet private
 	Uid         uint32
 	NetworkType string
-	WifiSSID    string
-
-	// SagerNet private
-	SkipFakeDNS bool
+	WifiSSID string
 }
 
 // Outbound is the metadata of an outbound connection.

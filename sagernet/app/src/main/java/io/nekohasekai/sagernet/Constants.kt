@@ -88,6 +88,7 @@ object Key {
     const val ALWAYS_SHOW_ADDRESS = "alwaysShowAddress"
 
     const val PROVIDER_TROJAN = "providerTrojan"
+    const val PROVIDER_ROOT_CA = "providerRootCA"
 
     const val TUN_IMPLEMENTATION = "tunImplementation"
     const val ENABLE_PCAP = "enablePcap"
@@ -133,6 +134,7 @@ object Key {
     const val SERVER_WS_BROWSER_FORWARDING = "serverWsBrowserForwarding"
     const val SERVER_EARLY_DATA_HEADER_NAME = "serverEarlyDataHeaderName"
     const val SERVER_CONFIG = "serverConfig"
+    const val SERVER_PACKET_ENCODING = "serverPacketEncoding"
 
     const val SERVER_SECURITY_CATEGORY = "serverSecurityCategory"
     const val SERVER_WS_CATEGORY = "serverWsCategory"
@@ -207,6 +209,11 @@ object TrojanProvider {
     const val V2RAY = 0
     const val TROJAN = 1
     const val TROJAN_GO = 2
+}
+
+object RootCAProvider {
+    const val MOZILLA = 0
+    const val SYSTEM = 1
 }
 
 object IPv6Mode {

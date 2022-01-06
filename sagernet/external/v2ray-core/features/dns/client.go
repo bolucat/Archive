@@ -1,17 +1,16 @@
 package dns
 
 import (
-	"github.com/v2fly/v2ray-core/v4/common/errors"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
-	"github.com/v2fly/v2ray-core/v4/features"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"github.com/v2fly/v2ray-core/v5/features"
 )
 
 // IPOption is an object for IP query options.
 type IPOption struct {
 	IPv4Enable    bool
 	IPv6Enable    bool
-	FakeEnable    bool
 	DisableExpire bool
 }
 
@@ -48,9 +47,6 @@ type ClientWithIPOption interface {
 
 	// SetQueryOption sets IPv4Enable and IPv6Enable for the DNS client.
 	SetQueryOption(isIPv4Enable, isIPv6Enable bool)
-
-	// SetFakeDNSOption sets FakeEnable option for DNS client.
-	SetFakeDNSOption(isFakeEnable bool)
 }
 
 // ClientType returns the type of Client interface. Can be used for implementing common.HasType.

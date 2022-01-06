@@ -638,4 +638,15 @@
         <item>@string/route_profile</item>
     </string-array>
 
+    <string-array name="root_ca_provider_entry">
+        <item>@string/root_ca_mozilla</item>
+        <item>@string/root_ca_system</item>
+    </string-array>
+
+    <string-array name="packet_encoding_entry">
+        <item>None</item>
+        <item>Packet</item>
+        <item>XUDP</item>
+    </string-array>
+
 </resources>

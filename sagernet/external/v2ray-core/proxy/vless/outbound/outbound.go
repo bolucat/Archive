@@ -1,26 +1,28 @@
 package outbound
 
-//go:generate go run github.com/v2fly/v2ray-core/v4/common/errors/errorgen
+//go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
 
 import (
 	"context"
 	"time"
 
-	core "github.com/v2fly/v2ray-core/v4"
-	"github.com/v2fly/v2ray-core/v4/common"
-	"github.com/v2fly/v2ray-core/v4/common/buf"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
-	"github.com/v2fly/v2ray-core/v4/common/retry"
-	"github.com/v2fly/v2ray-core/v4/common/serial"
-	"github.com/v2fly/v2ray-core/v4/common/session"
-	"github.com/v2fly/v2ray-core/v4/common/signal"
-	"github.com/v2fly/v2ray-core/v4/common/task"
-	"github.com/v2fly/v2ray-core/v4/features/policy"
-	"github.com/v2fly/v2ray-core/v4/proxy/vless"
-	"github.com/v2fly/v2ray-core/v4/proxy/vless/encoding"
-	"github.com/v2fly/v2ray-core/v4/transport"
-	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/retry"
+	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/signal"
+	"github.com/v2fly/v2ray-core/v5/common/task"
+	"github.com/v2fly/v2ray-core/v5/common/xudp"
+	"github.com/v2fly/v2ray-core/v5/features/policy"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless/encoding"
+	"github.com/v2fly/v2ray-core/v5/transport"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
 func init() {
@@ -30,17 +32,20 @@ func init() {
 
 	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		simplifiedClient := config.(*SimplifiedConfig)
-		fullClient := &Config{Vnext: []*protocol.ServerEndpoint{
-			{
-				Address: simplifiedClient.Address,
-				Port:    simplifiedClient.Port,
-				User: []*protocol.User{
-					{
-						Account: serial.ToTypedMessage(&vless.Account{Id: simplifiedClient.Uuid, Encryption: "none"}),
+		fullClient := &Config{
+			Vnext: []*protocol.ServerEndpoint{
+				{
+					Address: simplifiedClient.Address,
+					Port:    simplifiedClient.Port,
+					User: []*protocol.User{
+						{
+							Account: serial.ToTypedMessage(&vless.Account{Id: simplifiedClient.Uuid, Encryption: "none"}),
+						},
 					},
 				},
 			},
-		}}
+			PacketEncoding: simplifiedClient.PacketEncoding,
+		}
 
 		return common.CreateObject(ctx, fullClient)
 	}))
@@ -48,9 +53,10 @@ func init() {
 
 // Handler is an outbound connection handler for VLess protocol.
 type Handler struct {
-	serverList    *protocol.ServerList
-	serverPicker  protocol.ServerPicker
-	policyManager policy.Manager
+	serverList     *protocol.ServerList
+	serverPicker   protocol.ServerPicker
+	policyManager  policy.Manager
+	packetEncoding packetaddr.PacketAddrType
 }
 
 // New creates a new VLess outbound handler.
@@ -66,9 +72,10 @@ func New(ctx context.Context, config *Config) (*Handler, error) {
 
 	v := core.MustFromContext(ctx)
 	handler := &Handler{
-		serverList:    serverList,
-		serverPicker:  protocol.NewRoundRobinServerPicker(serverList),
-		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
+		serverList:     serverList,
+		serverPicker:   protocol.NewRoundRobinServerPicker(serverList),
+		policyManager:  v.GetFeature(policy.ManagerType()).(policy.Manager),
+		packetEncoding: config.PacketEncoding,
 	}
 
 	return handler, nil
@@ -129,6 +136,20 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	clientReader := link.Reader // .(*pipe.Reader)
 	clientWriter := link.Writer // .(*pipe.Writer)
 
+	packetEncoding := packetaddr.PacketAddrType_None
+	if command == protocol.RequestCommandUDP && request.Port != 53 && request.Port != 443 {
+		packetEncoding = h.packetEncoding
+		switch packetEncoding {
+		case packetaddr.PacketAddrType_Packet:
+			request.Address = net.DomainAddress(packetaddr.SeqPacketMagicAddress)
+			request.Port = 0
+		case packetaddr.PacketAddrType_XUDP:
+			request.Command = protocol.RequestCommandMux
+			request.Address = net.DomainAddress("v1.mux.cool")
+			request.Port = 0
+		}
+	}
+
 	postRequest := func() error {
 		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 
@@ -139,16 +160,23 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 		// default: serverWriter := bufferWriter
 		serverWriter := encoding.EncodeBodyAddons(bufferWriter, request, requestAddons)
+		switch packetEncoding {
+		case packetaddr.PacketAddrType_Packet:
+			serverWriter = packetaddr.NewPacketWriter(serverWriter, target)
+		case packetaddr.PacketAddrType_XUDP:
+			serverWriter = xudp.NewPacketWriter(serverWriter, target)
+		}
+
 		if err := buf.CopyOnceTimeout(clientReader, serverWriter, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 			return err // ...
 		}
 
-		// Flush; bufferWriter.WriteMultiBufer now is bufferWriter.writer.WriteMultiBuffer
+		// Flush; bufferWriter.WriteMultiBuffer now is bufferWriter.writer.WriteMultiBuffer
 		if err := bufferWriter.SetBuffered(false); err != nil {
 			return newError("failed to write A request payload").Base(err).AtWarning()
 		}
 
-		// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBufer
+		// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBuffer
 		if err := buf.Copy(clientReader, serverWriter, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to transfer request payload").Base(err).AtInfo()
 		}
@@ -166,8 +194,14 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 		// default: serverReader := buf.NewReader(conn)
 		serverReader := encoding.DecodeBodyAddons(conn, request, responseAddons)
+		switch packetEncoding {
+		case packetaddr.PacketAddrType_Packet:
+			serverReader = packetaddr.NewPacketReader(serverReader)
+		case packetaddr.PacketAddrType_XUDP:
+			serverReader = xudp.NewPacketReader(&buf.BufferedReader{Reader: serverReader})
+		}
 
-		// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBufer
+		// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBuffer
 		if err := buf.Copy(serverReader, clientWriter, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to transfer response payload").Base(err).AtInfo()
 		}

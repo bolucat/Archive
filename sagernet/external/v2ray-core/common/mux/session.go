@@ -3,9 +3,11 @@ package mux
 import (
 	"sync"
 
-	"github.com/v2fly/v2ray-core/v4/common"
-	"github.com/v2fly/v2ray-core/v4/common/buf"
-	"github.com/v2fly/v2ray-core/v4/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+
+	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
 )
 
 type SessionManager struct {
@@ -152,9 +154,9 @@ func (s *Session) Close() error {
 }
 
 // NewReader creates a buf.Reader based on the transfer type of this Session.
-func (s *Session) NewReader(reader *buf.BufferedReader) buf.Reader {
+func (s *Session) NewReader(reader *buf.BufferedReader, dest *net.Destination) buf.Reader {
 	if s.transferType == protocol.TransferTypeStream {
 		return NewStreamReader(reader)
 	}
-	return NewPacketReader(reader)
+	return NewPacketReader(reader, dest)
 }

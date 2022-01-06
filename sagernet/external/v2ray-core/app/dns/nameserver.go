@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	core "github.com/v2fly/v2ray-core/v4"
-	app_dispatcher "github.com/v2fly/v2ray-core/v4/app/dispatcher"
-	"github.com/v2fly/v2ray-core/v4/app/router"
-	"github.com/v2fly/v2ray-core/v4/common/errors"
-	"github.com/v2fly/v2ray-core/v4/common/net"
-	"github.com/v2fly/v2ray-core/v4/common/strmatcher"
-	"github.com/v2fly/v2ray-core/v4/features/dns"
-	"github.com/v2fly/v2ray-core/v4/features/routing"
+	core "github.com/v2fly/v2ray-core/v5"
+	app_dispatcher "github.com/v2fly/v2ray-core/v5/app/dispatcher"
+	"github.com/v2fly/v2ray-core/v5/app/router"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
+	"github.com/v2fly/v2ray-core/v5/features/dns"
+	"github.com/v2fly/v2ray-core/v5/features/routing"
 )
 
 // Server is the interface for Name Server.
@@ -57,8 +57,6 @@ func NewServer(dest net.Destination, dispatcher routing.Dispatcher, disableExpir
 			return NewTCPNameServer(u, dispatcher, disableExpire)
 		case strings.EqualFold(u.Scheme, "tcp+local"): // DNS-over-TCP Local mode
 			return NewTCPLocalNameServer(u, disableExpire)
-		case strings.EqualFold(u.String(), "fakedns"):
-			return NewFakeDNSServer(), nil
 		case strings.EqualFold(u.Scheme, "udp+local"):
 			dest.Network = net.Network_UDP
 			dest.Address = net.ParseAddress(u.Hostname())
@@ -69,14 +67,14 @@ func NewServer(dest net.Destination, dispatcher routing.Dispatcher, disableExpir
 				}
 				dest.Port = net.Port(prt)
 			}
-			return NewClassicNameServer(dest, app_dispatcher.SystemInstance, "UDPL", disableExpire), nil
+			return NewClassicNameServer(dest, app_dispatcher.SystemInstance, disableExpire, "UDPL"), nil
 		}
 	}
 	if dest.Network == net.Network_Unknown {
 		dest.Network = net.Network_UDP
 	}
 	if dest.Network == net.Network_UDP { // UDP classic DNS mode
-		return NewClassicNameServer(dest, dispatcher, "UDP", disableExpire), nil
+		return NewClassicNameServer(dest, dispatcher, disableExpire, "UDP"), nil
 	}
 	return nil, newError("No available name server could be created from ", dest).AtWarning()
 }

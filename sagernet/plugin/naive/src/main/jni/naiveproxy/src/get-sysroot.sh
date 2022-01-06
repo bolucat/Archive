@@ -1,6 +1,6 @@
 ARCH=$(uname)
 
-PYTHON=$(which python2 2>/dev/null || which python 2>/dev/null)
+PYTHON=$(which python3 2>/dev/null || which python 2>/dev/null)
 CLANG_REVISION=$($PYTHON tools/clang/scripts/update.py --print-revision)
 
 eval "$EXTRA_FLAGS"
