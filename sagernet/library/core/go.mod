@@ -20,7 +20,7 @@ require (
 replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20211227140739-33ed11d8e732
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.3-0.20220106155925-87f43e3c51d3
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.0-20220107065533-473df5defe66
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect
@@ -50,7 +50,6 @@ require (
 	github.com/marten-seemann/qtls-go1-17 v0.1.0 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
-	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pires/go-proxyproto v0.6.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
@@ -76,6 +75,5 @@ require (
 	google.golang.org/grpc v1.43.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6 // indirect
 )

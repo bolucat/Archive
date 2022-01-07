@@ -4,6 +4,11 @@ package dispatcher
 
 import (
 	"context"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/bittorrent"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/dns"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/http"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/quic"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/tls"
 	"strings"
 	"sync"
 	"time"
@@ -211,31 +216,35 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, destination net.Destin
 		ctx = session.ContextWithContent(ctx, content)
 	}
 	sniffingRequest := content.SniffingRequest
-	if !sniffingRequest.Enabled {
+	sniffer := defaultSniffers
+	if content.Protocol != "" || !sniffingRequest.Enabled && destination.Network != net.Network_UDP {
 		go d.routedDispatch(ctx, outbound, destination)
-	} else {
-		go func() {
-			cReader := &cachedReader{
-				reader: outbound.Reader.(*pipe.Reader),
-			}
-			outbound.Reader = cReader
-			result, err := sniffer(ctx, cReader, sniffingRequest.MetadataOnly, destination.Network)
-			if err == nil {
-				content.Protocol = result.Protocol()
-			}
-			if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
-				domain := result.Domain()
-				newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
-				destination.Address = net.ParseAddress(domain)
-				if sniffingRequest.RouteOnly {
-					ob.RouteTarget = destination
-				} else {
-					ob.Target = destination
-				}
-			}
-			d.routedDispatch(ctx, outbound, destination)
-		}()
+		return inbound, nil
 	}
+	if !sniffingRequest.Enabled {
+		sniffer = udpOnlyDnsSniffers
+	}
+	go func() {
+		cReader := &cachedReader{
+			reader: outbound.Reader.(*pipe.Reader),
+		}
+		outbound.Reader = cReader
+		result, err := sniff(ctx, cReader, destination.Network, sniffer)
+		if err == nil {
+			content.Protocol = result.Protocol()
+		}
+		if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
+			domain := result.Domain()
+			newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
+			destination.Address = net.ParseAddress(domain)
+			if sniffingRequest.RouteOnly {
+				ob.RouteTarget = destination
+			} else {
+				ob.Target = destination
+			}
+		}
+		d.routedDispatch(ctx, outbound, destination)
+	}()
 
 	return inbound, nil
 }
@@ -255,45 +264,61 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		ctx = session.ContextWithContent(ctx, content)
 	}
 	sniffingRequest := content.SniffingRequest
-	if !sniffingRequest.Enabled {
+
+	sniffer := defaultSniffers
+	if content.Protocol != "" || !sniffingRequest.Enabled && destination.Network != net.Network_UDP {
 		go d.routedDispatch(ctx, outbound, destination)
-	} else {
-		go func() {
-			cReader := &cachedReader{
-				reader: outbound.Reader.(*pipe.Reader),
-			}
-			outbound.Reader = cReader
-			result, err := sniffer(ctx, cReader, sniffingRequest.MetadataOnly, destination.Network)
-			if err == nil {
-				content.Protocol = result.Protocol()
-			}
-			if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
-				domain := result.Domain()
-				newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
-				destination.Address = net.ParseAddress(domain)
-				if sniffingRequest.RouteOnly {
-					ob.RouteTarget = destination
-				} else {
-					ob.Target = destination
-				}
-			}
-			d.routedDispatch(ctx, outbound, destination)
-		}()
+		return nil
 	}
+	if !sniffingRequest.Enabled {
+		sniffer = udpOnlyDnsSniffers
+	}
+	go func() {
+		cReader := &cachedReader{
+			reader: outbound.Reader.(*pipe.Reader),
+		}
+		outbound.Reader = cReader
+		result, err := sniff(ctx, cReader, destination.Network, sniffer)
+		if err == nil {
+			content.Protocol = result.Protocol()
+		}
+		if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
+			domain := result.Domain()
+			newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
+			destination.Address = net.ParseAddress(domain)
+			if sniffingRequest.RouteOnly {
+				ob.RouteTarget = destination
+			} else {
+				ob.Target = destination
+			}
+		}
+		d.routedDispatch(ctx, outbound, destination)
+	}()
+
 	return nil
 }
 
-func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, network net.Network) (SniffResult, error) {
+var defaultSniffers = &Sniffer{
+	sniffer: []protocolSnifferWithMetadata{
+		{func(c context.Context, b []byte) (SniffResult, error) { return http.SniffHTTP(b) }, false, net.Network_TCP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return tls.SniffTLS(b) }, false, net.Network_TCP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return quic.SniffQUIC(b) }, false, net.Network_UDP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffBittorrent(b) }, false, net.Network_TCP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return bittorrent.SniffUTP(b) }, false, net.Network_UDP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffDNS(b) }, false, net.Network_UDP},
+		{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffTCPDNS(b) }, false, net.Network_TCP},
+	},
+}
+
+var udpOnlyDnsSniffers = &Sniffer{
+	sniffer: []protocolSnifferWithMetadata{
+		{func(c context.Context, b []byte) (SniffResult, error) { return dns.SniffDNS(b) }, false, net.Network_UDP},
+	},
+}
+
+func sniff(ctx context.Context, cReader *cachedReader, network net.Network, sniffer *Sniffer) (SniffResult, error) {
 	payload := buf.New()
 	defer payload.Release()
-
-	sniffer := NewSniffer(ctx)
-
-	metaresult, metadataErr := sniffer.SniffMetadata(ctx)
-
-	if metadataOnly {
-		return metaresult, metadataErr
-	}
 
 	contentResult, contentErr := func() (SniffResult, error) {
 		totalAttempt := 0
@@ -320,12 +345,6 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 			}
 		}
 	}()
-	if contentErr != nil && metadataErr == nil {
-		return metaresult, nil
-	}
-	if contentErr == nil && metadataErr == nil {
-		return CompositeResult(metaresult, contentResult), nil
-	}
 	return contentResult, contentErr
 }
 

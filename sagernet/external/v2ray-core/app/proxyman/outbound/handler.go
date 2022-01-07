@@ -50,15 +50,16 @@ func getStatCounter(v *core.Instance, tag string) (stats.Counter, stats.Counter)
 
 // Handler is an implements of outbound.Handler.
 type Handler struct {
-	tag             string
-	senderSettings  *proxyman.SenderConfig
-	streamSettings  *internet.MemoryStreamConfig
-	proxy           proxy.Outbound
-	outboundManager outbound.Manager
-	dnsClient       dns.Client
-	mux             *mux.ClientManager
-	uplinkCounter   stats.Counter
-	downlinkCounter stats.Counter
+	tag               string
+	senderSettings    *proxyman.SenderConfig
+	streamSettings    *internet.MemoryStreamConfig
+	proxy             proxy.Outbound
+	outboundManager   outbound.Manager
+	dnsClient         dns.Client
+	mux               *mux.ClientManager
+	uplinkCounter     stats.Counter
+	downlinkCounter   stats.Counter
+	muxPacketEncoding packetaddr.PacketAddrType
 }
 
 // NewHandler create a new Handler based on the given configuration.
@@ -111,6 +112,7 @@ func NewHandler(ctx context.Context, config *core.OutboundHandlerConfig) (outbou
 		if config.Concurrency < 1 || config.Concurrency > 1024 {
 			return nil, newError("invalid mux concurrency: ", config.Concurrency).AtWarning()
 		}
+		h.muxPacketEncoding = h.senderSettings.MultiplexSettings.PacketEncoding
 		h.mux = &mux.ClientManager{
 			Enabled: h.senderSettings.MultiplexSettings.Enabled,
 			Picker: &mux.IncrementalWorkerPicker{
@@ -138,7 +140,26 @@ func (h *Handler) Tag() string {
 
 // Dispatch implements proxy.Outbound.Dispatch.
 func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
+	outbound := session.OutboundFromContext(ctx)
+	destination := outbound.Target
 	if h.mux != nil && (h.mux.Enabled || session.MuxPreferedFromContext(ctx)) {
+		if destination.Network == net.Network_UDP {
+			switch h.muxPacketEncoding {
+			case packetaddr.PacketAddrType_None:
+				link.Reader = &buf.EndpointErasureReader{Reader: link.Reader}
+				link.Writer = &buf.EndpointErasureWriter{Writer: link.Writer}
+			case packetaddr.PacketAddrType_XUDP:
+				break
+			case packetaddr.PacketAddrType_Packet:
+				link.Reader = packetaddr.NewReversePacketReader(link.Reader, destination)
+				link.Writer = packetaddr.NewReversePacketWriter(link.Writer)
+				outbound.Target = net.Destination{
+					Network: net.Network_UDP,
+					Address: net.DomainAddress(packetaddr.SeqPacketMagicAddress),
+					Port:    0,
+				}
+			}
+		}
 		if err := h.mux.Dispatch(ctx, link); err != nil {
 			err := newError("failed to process mux outbound traffic").Base(err)
 			session.SubmitOutboundErrorToOriginator(ctx, err)
@@ -146,8 +167,6 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 			common.Interrupt(link.Writer)
 		}
 	} else {
-		outbound := session.OutboundFromContext(ctx)
-		destination := outbound.Target
 		var domainString string
 		switch {
 		case destination.Address.Family().IsDomain():

@@ -326,6 +326,9 @@ func (o *Client) Close() error {
 	if c != nil {
 		common.Close(c)
 	}
+	o.dev.Close()
+	o.tun.Close()
+	o.wire.stack.Close()
 
 	return nil
 }
@@ -334,7 +337,7 @@ func (o *Client) SetMark(uint32) error {
 	return nil
 }
 
-func (o *Client) Send(b []byte, _ conn.Endpoint) (err error) {
+func (o *Client) Send(b []byte, _k conn.Endpoint) (err error) {
 	var c *remoteConnection
 	c, err = o.connect()
 	if err != nil {

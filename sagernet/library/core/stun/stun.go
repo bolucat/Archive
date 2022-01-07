@@ -19,7 +19,12 @@ type stunServerConn struct {
 	LocalAddr   net.Addr
 	RemoteAddr  *net.UDPAddr
 	OtherAddr   *net.UDPAddr
-	messageChan chan *stun.Message
+	messageChan chan *stunResponse
+}
+
+type stunResponse struct {
+	*stun.Message
+	net.Addr
 }
 
 func (c *stunServerConn) Close() error {
@@ -84,7 +89,7 @@ func mappingTests(mapTestConn *stunServerConn) (int, error) {
 	}
 
 	// Parse response message for XOR-MAPPED-ADDRESS and make sure OTHER-ADDRESS valid
-	resps1 := parse(resp)
+	resps1 := parse(resp.Message)
 	if resps1.xorAddr == nil || resps1.otherAddr == nil {
 		err := newError("NAT discovery feature not supported by this server").Base(errNoOtherAddress)
 		logrus.Warn(err)
@@ -115,7 +120,12 @@ func mappingTests(mapTestConn *stunServerConn) (int, error) {
 	}
 
 	// Assert mapping behavior
-	resps2 := parse(resp)
+	resps2 := parse(resp.Message)
+
+	if resps2.respOrigin.String() != oaddr.String() {
+		return AddressAndPortDependent, nil
+	}
+
 	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps2.xorAddr))
 	if resps2.xorAddr.String() == resps1.xorAddr.String() {
 		logrus.Info(newError("NAT mapping behavior: endpoint independent"))
@@ -130,7 +140,7 @@ func mappingTests(mapTestConn *stunServerConn) (int, error) {
 	}
 
 	// Assert mapping behavior
-	resps3 := parse(resp)
+	resps3 := parse(resp.Message)
 	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps3.xorAddr))
 	if resps3.xorAddr.String() == resps2.xorAddr.String() {
 		logrus.Info(newError("NAT mapping behavior: address dependent"))
@@ -152,7 +162,7 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 	if err != nil || errors.Is(err, errTimedOut) {
 		return NoResult, err
 	}
-	resps := parse(resp)
+	resps := parse(resp.Message)
 	if resps.xorAddr == nil || resps.otherAddr == nil {
 		err := newError("NAT discovery feature not supported by this server").Base(errNoOtherAddress)
 		logrus.Warn(err)
@@ -173,9 +183,11 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 
 	resp, err = mapTestConn.roundTrip(request, mapTestConn.RemoteAddr)
 	if err == nil {
-		parse(resp) // just to print out the resp
-		logrus.Info(newError("NAT filtering behavior: endpoint independent"))
-		return EndpointIndependent, nil
+		parse(resp.Message) // just to print out the resp
+		if resp.Addr.String() != mapTestConn.RemoteAddr.String() {
+			logrus.Info(newError("NAT filtering behavior: endpoint independent"))
+			return EndpointIndependent, nil
+		}
 	} else if !errors.Is(err, errTimedOut) {
 		return NoResult, err // something else went wrong
 	}
@@ -187,14 +199,17 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 
 	resp, err = mapTestConn.roundTrip(request, mapTestConn.RemoteAddr)
 	if err == nil {
-		parse(resp) // just to print out the resp
-		logrus.Info(newError("NAT filtering behavior: address dependent"))
-		return AddressDependent, nil
-	} else if errors.Is(err, errTimedOut) {
-		logrus.Info(newError("NAT filtering behavior: address and port dependent"))
-		return AddressAndPortDependent, nil
+		parse(resp.Message) // just to print out the resp
+		if resp.Addr.String() != mapTestConn.RemoteAddr.String() {
+			logrus.Info(newError("NAT filtering behavior: address dependent"))
+			return AddressDependent, nil
+		}
 	}
-	return NoResult, err
+	logrus.Info(newError("NAT filtering behavior: address and port dependent"))
+	if errors.Is(err, errTimedOut) {
+		err = nil
+	}
+	return AddressAndPortDependent, err
 }
 
 // Parse a STUN message
@@ -291,14 +306,14 @@ func connect(addrStr string, socksPort int) (*stunServerConn, error) {
 }
 
 // Send request and wait for response or timeout
-func (c *stunServerConn) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Message, error) {
+func (c *stunServerConn) roundTrip(msg *stun.Message, addr net.Addr) (*stunResponse, error) {
 	_ = msg.NewTransactionID()
 	logrus.Debug(newErrorf("sending to %v: (%v bytes)", addr, msg.Length+messageHeaderSize))
 	logrus.Debug(newError(msg).AtDebug())
 	for _, attr := range msg.Attributes {
 		logrus.Debug(newErrorf("%v (l=%v)", attr, attr.Length))
 	}
-	_, err := c.conn.WriteTo(msg.Raw, c.RemoteAddr)
+	_, err := c.conn.WriteTo(msg.Raw, addr)
 	if err != nil {
 		logrus.Warn(newError("error sending request to ", addr))
 		return nil, err
@@ -306,11 +321,11 @@ func (c *stunServerConn) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Mess
 
 	// Wait for response or timeout
 	select {
-	case m, ok := <-c.messageChan:
+	case r, ok := <-c.messageChan:
 		if !ok {
 			return nil, errResponseMessage
 		}
-		return m, nil
+		return r, nil
 	case <-time.After(time.Duration(timeout) * time.Second):
 		logrus.Info(newError("timed out waiting for response from server ", addr))
 		return nil, errTimedOut
@@ -318,8 +333,8 @@ func (c *stunServerConn) roundTrip(msg *stun.Message, addr net.Addr) (*stun.Mess
 }
 
 // taken from https://github.com/pion/stun/blob/master/cmd/stun-traversal/main.go
-func listen(conn net.PacketConn) (messages chan *stun.Message) {
-	messages = make(chan *stun.Message)
+func listen(conn net.PacketConn) (messages chan *stunResponse) {
+	messages = make(chan *stunResponse)
 	go func() {
 		buffer := buf.New()
 		defer buffer.Release()
@@ -334,17 +349,20 @@ func listen(conn net.PacketConn) (messages chan *stun.Message) {
 			logrus.Info(newErrorf("response from %v: (%d bytes)", addr, n))
 			b = b[:n]
 
-			m := &stun.Message{
-				Raw: b,
+			r := &stunResponse{
+				Message: &stun.Message{
+					Raw: b,
+				},
+				Addr: addr,
 			}
-			err = m.Decode()
+			err = r.Message.Decode()
 			if err != nil {
 				logrus.Warn(newErrorf("error decoding message").Base(err))
 				close(messages)
 				return
 			}
 
-			messages <- m
+			messages <- r
 		}
 	}()
 	return

@@ -6,16 +6,13 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pelletier/go-toml"
-	"google.golang.org/protobuf/proto"
-	"gopkg.in/yaml.v2"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/jsonpb"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/merge"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/v2jsonpb"
 	"github.com/v2fly/v2ray-core/v5/main/commands/base"
 	"github.com/v2fly/v2ray-core/v5/main/commands/helpers"
+	"google.golang.org/protobuf/proto"
 )
 
 var cmdConvert = &base.Command{
@@ -100,16 +97,6 @@ func executeConvert(cmd *base.Command, args []string) {
 		out, err = json.Marshal(m)
 		if err != nil {
 			base.Fatalf("failed to convert to json: %s", err)
-		}
-	case core.FormatTOML:
-		out, err = toml.Marshal(m)
-		if err != nil {
-			base.Fatalf("failed to convert to toml: %s", err)
-		}
-	case core.FormatYAML:
-		out, err = yaml.Marshal(m)
-		if err != nil {
-			base.Fatalf("failed to convert to yaml: %s", err)
 		}
 	case core.FormatProtobuf, core.FormatProtobufShort:
 		data, err := json.Marshal(m)

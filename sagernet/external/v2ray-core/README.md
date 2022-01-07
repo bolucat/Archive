@@ -109,7 +109,7 @@ causes memory leaks, whether enabled or not.
 }
 ```
 
-- Add domainStrategy to outbound & Add preferIPv4/6 to domainStrategy
+- add domainStrategy to outbound & preferIPv4/6 to domainStrategy
 
 ```json
 {
@@ -248,8 +248,12 @@ and provides the expected connection behavior of the client
         "vnext": ...,
         "packetEncoding": "[none/packet/xudp]"
         // none: disabled
-        // packet: require v2ray/v2ray-core v5.0.2+ or SagerNet/v2ray-core
-        // xudp: require XTLS/Xray-core or SagerNet/v2ray-core
+        // packet: requires v2ray/v2ray-core v5.0.2+ or SagerNet/v2ray-core
+        // xudp: requires XTLS/Xray-core or SagerNet/v2ray-core
+      },
+      "mux": {
+        "enabled": true,
+        "packetEncoding": "[none/packet/xudp]" // packetEncoding for mux
       }
     }
   ]

@@ -9,6 +9,8 @@ var _ buf.Reader = (*BufReader)(nil)
 
 type BufReader struct {
 	buf.Reader
+	dest    net.Destination
+	reverse bool
 }
 
 func (r *BufReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
@@ -17,24 +19,48 @@ func (r *BufReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		return nil, err
 	}
 	for index, buffer := range mb {
-		extracted, addr, err := ExtractAddressFromPacket(buffer)
-		if err != nil {
-			return nil, newError("failed to extract address from packet").Base(err)
+		if r.reverse {
+			endpoint := buffer.Endpoint
+			if endpoint == nil {
+				endpoint = &r.dest
+			}
+			packet, err := AttachAddressToPacket(buffer, &net.UDPAddr{
+				IP:   endpoint.Address.IP(),
+				Port: int(endpoint.Port),
+			})
+			if err != nil {
+				return nil, newError("failed to attach address to packet").Base(err)
+			}
+			buffer = packet
+		} else {
+			extracted, addr, err := ExtractAddressFromPacket(buffer)
+			if err != nil {
+				return nil, newError("failed to extract address from packet").Base(err)
+			}
+			udpAddr := addr.(*net.UDPAddr)
+			extracted.Endpoint = &net.Destination{
+				Network: net.Network_UDP,
+				Address: net.IPAddress(udpAddr.IP),
+				Port:    net.Port(udpAddr.Port),
+			}
+			buffer = extracted
 		}
-		udpAddr := addr.(*net.UDPAddr)
-		extracted.Endpoint = &net.Destination{
-			Network: net.Network_UDP,
-			Address: net.IPAddress(udpAddr.IP),
-			Port:    net.Port(udpAddr.Port),
-		}
-		mb[index] = extracted
+		mb[index] = buffer
 	}
 	return mb, nil
 }
 
 func NewPacketReader(reader buf.Reader) *BufReader {
 	return &BufReader{
+		Reader: reader,
+	}
+}
+
+func NewReversePacketReader(reader buf.Reader, dest net.Destination) *BufReader {
+	return &BufReader{
 		reader,
+		dest,
+		true,
 	}
 }
 
@@ -42,30 +68,53 @@ var _ buf.Writer = (*BufWriter)(nil)
 
 type BufWriter struct {
 	buf.Writer
-	dest net.Destination
+	dest    net.Destination
+	reverse bool
 }
 
 func (w *BufWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	for index, buffer := range mb {
-		dest := &w.dest
-		if buffer.Endpoint != nil {
-			dest = buffer.Endpoint
+		if w.reverse {
+			extracted, addr, err := ExtractAddressFromPacket(buffer)
+			if err != nil {
+				return newError("failed to extract address from packet").Base(err)
+			}
+			udpAddr := addr.(*net.UDPAddr)
+			extracted.Endpoint = &net.Destination{
+				Network: net.Network_UDP,
+				Address: net.IPAddress(udpAddr.IP),
+				Port:    net.Port(udpAddr.Port),
+			}
+			buffer = extracted
+		} else {
+			dest := &w.dest
+			if buffer.Endpoint != nil {
+				dest = buffer.Endpoint
+			}
+			packet, err := AttachAddressToPacket(buffer, &net.UDPAddr{
+				IP:   dest.Address.IP(),
+				Port: int(dest.Port),
+			})
+			if err != nil {
+				return newError("failed to attach address to packet").Base(err)
+			}
+			buffer = packet
 		}
-		packet, err := AttachAddressToPacket(buffer, &net.UDPAddr{
-			IP:   dest.Address.IP(),
-			Port: int(dest.Port),
-		})
-		if err != nil {
-			return newError("failed to attach address to packet").Base(err)
-		}
-		mb[index] = packet
+		mb[index] = buffer
 	}
 	return w.Writer.WriteMultiBuffer(mb)
 }
 
 func NewPacketWriter(writer buf.Writer, dest net.Destination) *BufWriter {
 	return &BufWriter{
-		writer,
-		dest,
+		Writer: writer,
+		dest:   dest,
+	}
+}
+
+func NewReversePacketWriter(writer buf.Writer) *BufWriter {
+	return &BufWriter{
+		Writer:  writer,
+		reverse: true,
 	}
 }
