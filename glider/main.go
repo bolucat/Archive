@@ -11,14 +11,14 @@ import (
 
 	"github.com/nadoo/glider/dns"
 	"github.com/nadoo/glider/ipset"
-	"github.com/nadoo/glider/log"
+	"github.com/nadoo/glider/pkg/log"
 	"github.com/nadoo/glider/proxy"
 	"github.com/nadoo/glider/rule"
 	"github.com/nadoo/glider/service"
 )
 
 var (
-	version = "0.15.2"
+	version = "0.15.3"
 	config  = parseConfig()
 )
 

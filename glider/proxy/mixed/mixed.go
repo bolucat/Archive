@@ -4,7 +4,7 @@ import (
 	"net"
 	"net/url"
 
-	"github.com/nadoo/glider/log"
+	"github.com/nadoo/glider/pkg/log"
 	"github.com/nadoo/glider/proxy"
 	"github.com/nadoo/glider/proxy/http"
 	"github.com/nadoo/glider/proxy/socks5"
@@ -64,7 +64,7 @@ func (m *Mixed) ListenAndServe() {
 		return
 	}
 
-	log.F("[mixed] listening TCP on %s", m.addr)
+	log.F("[mixed] http & socks5 server listening TCP on %s", m.addr)
 
 	for {
 		c, err := l.Accept()

@@ -1,11 +1,13 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"net"
 	"time"
 
-	"github.com/nadoo/glider/log"
+	"github.com/nadoo/glider/pkg/log"
+	"github.com/nadoo/glider/pkg/sockopt"
 )
 
 // Direct proxy.
@@ -33,9 +35,6 @@ func NewDirect(intface string, dialTimeout, relayTimeout time.Duration) (*Direct
 				return nil, errors.New(err.Error() + ": " + intface)
 			}
 			d.iface = iface
-			if ips := d.IFaceIPs(); len(ips) > 0 {
-				d.ip = ips[0]
-			}
 		}
 	}
 
@@ -88,6 +87,10 @@ func (d *Direct) dial(network, addr string, localIP net.IP) (net.Conn, error) {
 	}
 
 	dialer := &net.Dialer{LocalAddr: la, Timeout: d.dialTimeout}
+	if d.iface != nil {
+		dialer.Control = sockopt.BindControl(d.iface)
+	}
+
 	c, err := dialer.Dial(network, addr)
 	if err != nil {
 		return nil, err
@@ -106,13 +109,17 @@ func (d *Direct) dial(network, addr string, localIP net.IP) (net.Conn, error) {
 
 // DialUDP connects to the given address.
 func (d *Direct) DialUDP(network, addr string) (net.PacketConn, net.Addr, error) {
-	// TODO: support specifying local interface
 	var la string
 	if d.ip != nil {
 		la = net.JoinHostPort(d.ip.String(), "0")
 	}
 
-	pc, err := net.ListenPacket(network, la)
+	lc := &net.ListenConfig{}
+	if d.iface != nil {
+		lc.Control = sockopt.BindControl(d.iface)
+	}
+
+	pc, err := lc.ListenPacket(context.Background(), network, la)
 	if err != nil {
 		log.F("ListenPacket error: %s", err)
 		return nil, nil, err
@@ -124,14 +131,12 @@ func (d *Direct) DialUDP(network, addr string) (net.PacketConn, net.Addr, error)
 
 // IFaceIPs returns ip addresses according to the specified interface.
 func (d *Direct) IFaceIPs() (ips []net.IP) {
-	ipnets, err := d.iface.Addrs()
+	ipNets, err := d.iface.Addrs()
 	if err != nil {
 		return
 	}
-
-	for _, ipnet := range ipnets {
-		ips = append(ips, ipnet.(*net.IPNet).IP) //!ip.IsLinkLocalUnicast()
+	for _, ipNet := range ipNets {
+		ips = append(ips, ipNet.(*net.IPNet).IP) //!ip.IsLinkLocalUnicast()
 	}
-
 	return
 }
