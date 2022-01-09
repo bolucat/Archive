@@ -14,7 +14,7 @@ import (
 )
 
 func gTcpHandler(s *stack.Stack, handler tun.Handler) {
-	forwarder := tcp.NewForwarder(s, 0, 2<<10, func(request *tcp.ForwarderRequest) {
+	forwarder := tcp.NewForwarder(s, 0, 1024, func(request *tcp.ForwarderRequest) {
 		id := request.ID()
 		waitQueue := new(waiter.Queue)
 		endpoint, errT := request.CreateEndpoint(waitQueue)

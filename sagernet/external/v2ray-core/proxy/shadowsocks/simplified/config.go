@@ -22,9 +22,9 @@ func init() {
 			},
 			Network:        net.ParseNetworks(simplifiedServer.Network),
 			PacketEncoding: simplifiedServer.PacketEncoding,
-			Plugin:     simplifiedServer.Plugin,
-			PluginOpts: simplifiedServer.PluginOpts,
-			PluginArgs: simplifiedServer.PluginArgs,
+			Plugin:         simplifiedServer.Plugin,
+			PluginOpts:     simplifiedServer.PluginOpts,
+			PluginArgs:     simplifiedServer.PluginArgs,
 		}
 
 		return common.CreateObject(ctx, fullServer)

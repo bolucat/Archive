@@ -10,10 +10,12 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/mux"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
+	"github.com/v2fly/v2ray-core/v5/features/ping"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/proxy"
@@ -60,6 +62,7 @@ type Handler struct {
 	uplinkCounter     stats.Counter
 	downlinkCounter   stats.Counter
 	muxPacketEncoding packetaddr.PacketAddrType
+	pingManager       ping.Manager
 }
 
 // NewHandler create a new Handler based on the given configuration.
@@ -72,6 +75,9 @@ func NewHandler(ctx context.Context, config *core.OutboundHandlerConfig) (outbou
 		dnsClient:       v.GetFeature(dns.ClientType()).(dns.Client),
 		uplinkCounter:   uplinkCounter,
 		downlinkCounter: downlinkCounter,
+	}
+	if pingManager := v.GetFeature(ping.ManagerType()); pingManager != nil {
+		h.pingManager = pingManager.(ping.Manager)
 	}
 
 	if config.SenderSettings != nil {
@@ -288,6 +294,17 @@ func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Conn
 		}
 		conn := packetaddr.ToPacketAddrConnWrapper(packetConn, isStream)
 		return h.getStatCouterConnection(conn), nil
+	}
+
+	if pingproto.GetDestinationIsSubsetOf(dest) {
+		if h.pingManager == nil {
+			return nil, newError("ping support not enabled")
+		}
+		pingConn, err := h.pingManager.Dial(dest)
+		if err != nil {
+			return nil, newError("failed to listen icmp connection").Base(err)
+		}
+		return h.getStatCouterConnection(pingConn), nil
 	}
 
 	conn, err := internet.Dial(ctx, dest, h.streamSettings)

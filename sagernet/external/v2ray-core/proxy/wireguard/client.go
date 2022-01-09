@@ -11,6 +11,7 @@ import (
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
+	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -214,10 +215,12 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 				Port: int(destination.Port),
 			})
 		case net.Network_UDP:
-			conn, err = o.wire.DialUDP(nil, &net.UDPAddr{
+			var wireConn *gonet.UDPConn
+			wireConn, err = o.wire.DialUDP(nil, &net.UDPAddr{
 				IP:   destination.Address.IP(),
 				Port: int(destination.Port),
 			})
+			conn = &udpConn{wireConn}
 		}
 
 		if err != nil {

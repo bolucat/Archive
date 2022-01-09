@@ -20,6 +20,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/extension"
+	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/serial"
@@ -27,20 +28,24 @@ import (
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess"
 	vmessOutbound "github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 	"github.com/v2fly/v2ray-core/v5/transport"
+	"github.com/v2fly/v2ray-core/v5/transport/pipe"
+	"libcore/comm"
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-2"
+	return core.Version() + "-sn-3"
 }
 
 type V2RayInstance struct {
-	access       sync.Mutex
-	started      bool
-	core         *core.Instance
-	dispatcher   *dispatcher.DefaultDispatcher
-	statsManager stats.Manager
-	observatory  features.TaggedFeatures
-	dnsClient    dns.Client
+	access          sync.Mutex
+	started         bool
+	core            *core.Instance
+	dispatcher      *dispatcher.DefaultDispatcher
+	router          routing.Router
+	outboundManager outbound.Manager
+	statsManager    stats.Manager
+	observatory     features.TaggedFeatures
+	dnsClient       dns.Client
 }
 
 func NewV2rayInstance() *V2RayInstance {
@@ -115,6 +120,8 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	}
 	instance.core = c
 	instance.statsManager = c.GetFeature(stats.ManagerType()).(stats.Manager)
+	instance.router = c.GetFeature(routing.RouterType()).(routing.Router)
+	instance.outboundManager = c.GetFeature(outbound.ManagerType()).(outbound.Manager)
 	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher).(*dispatcher.DefaultDispatcher)
 	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.Client)
 
@@ -162,6 +169,23 @@ func (instance *V2RayInstance) Close() error {
 	return nil
 }
 
+func getLink(ctx context.Context) (*transport.Link, *transport.Link) {
+	opt := pipe.OptionsFromContext(ctx)
+	uplinkReader, uplinkWriter := pipe.New(opt...)
+	downlinkReader, downlinkWriter := pipe.New(opt...)
+
+	inboundLink := &transport.Link{
+		Reader: downlinkReader,
+		Writer: uplinkWriter,
+	}
+
+	outboundLink := &transport.Link{
+		Reader: uplinkReader,
+		Writer: downlinkWriter,
+	}
+	return inboundLink, outboundLink
+}
+
 func (instance *V2RayInstance) dialContext(ctx context.Context, destination net.Destination) (net.Conn, error) {
 	ctx = core.WithContext(ctx, instance.core)
 	r, err := instance.dispatcher.Dispatch(ctx, destination)
@@ -178,7 +202,7 @@ func (instance *V2RayInstance) dialContext(ctx context.Context, destination net.
 }
 
 func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Destination, timeout time.Duration) (packetConn, error) {
-	ctx, cancel := context.WithCancel(core.WithContext(ctx, instance.core))
+	ctx, cancel := context.WithCancel(ctx)
 	link, err := instance.dispatcher.Dispatch(ctx, destination)
 	if err != nil {
 		cancel()
@@ -192,10 +216,28 @@ func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Dest
 		cache:  make(chan *udp.Packet, 16),
 	}
 	c.timer = signal.CancelAfterInactivity(ctx, func() {
-		closeIgnore(c)
+		comm.CloseIgnore(c)
 	}, timeout)
 	go c.handleInput()
 	return c, nil
+}
+
+func (instance *V2RayInstance) handleUDP(ctx context.Context, handler outbound.Handler, destination net.Destination, timeout time.Duration) packetConn {
+	ctx, cancel := context.WithCancel(ctx)
+	inboundLink, outboundLink := getLink(ctx)
+	go handler.Dispatch(ctx, outboundLink)
+	c := &dispatcherConn{
+		dest:   destination,
+		link:   inboundLink,
+		ctx:    ctx,
+		cancel: cancel,
+		cache:  make(chan *udp.Packet, 16),
+	}
+	c.timer = signal.CancelAfterInactivity(ctx, func() {
+		comm.CloseIgnore(c)
+	}, timeout)
+	go c.handleInput()
+	return c
 }
 
 var _ packetConn = (*dispatcherConn)(nil)
@@ -213,7 +255,7 @@ type dispatcherConn struct {
 }
 
 func (c *dispatcherConn) handleInput() {
-	defer closeIgnore(c)
+	defer comm.CloseIgnore(c)
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -281,6 +323,7 @@ func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	buffer.Endpoint = &endpoint
 	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
 	if err == nil {
+		n = len(p)
 		c.timer.Update()
 	}
 	return

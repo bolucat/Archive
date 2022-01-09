@@ -113,7 +113,6 @@ func BridgeResource(rw http.ResponseWriter, r *http.Request, path string) {
 
 	platformFileName := filepath.FromSlash("browserforwarder/" + content)
 	data, err := filesystem.ReadFile(platform.GetAssetLocation(platformFileName))
-
 	if err != nil {
 		err = newError("cannot load necessary resources").Base(err)
 		http.Error(rw, err.Error(), http.StatusForbidden)

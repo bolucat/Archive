@@ -109,7 +109,7 @@ func (a *Account) getCipher() (Cipher, error) {
 			AEADAuthCreator: createXChaCha20Poly1305,
 		}, nil
 	case CipherType_NONE:
-		return NoneCipher{}, nil
+		return &NoneCipher{}, nil
 
 	case CipherType_AES_128_CTR:
 		return &StreamCipher{
@@ -525,25 +525,25 @@ var _ Cipher = (*NoneCipher)(nil)
 
 type NoneCipher struct{}
 
-func (NoneCipher) KeySize() int32 { return 16 }
-func (NoneCipher) IVSize() int32  { return 0 }
-func (NoneCipher) IsAEAD() bool {
+func (*NoneCipher) KeySize() int32 { return 16 }
+func (*NoneCipher) IVSize() int32  { return 0 }
+func (*NoneCipher) IsAEAD() bool {
 	return false
 }
 
-func (NoneCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
+func (*NoneCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
 	return buf.NewReader(reader), nil
 }
 
-func (NoneCipher) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
+func (*NoneCipher) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
 	return buf.NewWriter(writer), nil
 }
 
-func (NoneCipher) EncodePacket(key []byte, b *buf.Buffer) error {
+func (*NoneCipher) EncodePacket(key []byte, b *buf.Buffer) error {
 	return nil
 }
 
-func (NoneCipher) DecodePacket(key []byte, b *buf.Buffer) error {
+func (*NoneCipher) DecodePacket(key []byte, b *buf.Buffer) error {
 	return nil
 }
 

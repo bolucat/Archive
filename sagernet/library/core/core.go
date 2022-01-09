@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/sagernet/libping"
-	"github.com/v2fly/v2ray-core/v5/common"
 	"libcore/stun"
 )
 
@@ -44,14 +43,4 @@ func StunTest(serverAddress string, socksPort int32) (*StunResult, error) {
 		NatMapping:   int32(natMapping),
 		NatFiltering: int32(natFiltering),
 	}, nil
-}
-
-func closeIgnore(closer ...interface{}) {
-	for _, c := range closer {
-		if ca, ok := c.(common.Closable); ok {
-			_ = ca.Close()
-		} else if ia, ok := c.(common.Interruptible); ok {
-			ia.Interrupt()
-		}
-	}
 }

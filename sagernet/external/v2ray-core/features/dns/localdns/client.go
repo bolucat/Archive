@@ -2,6 +2,7 @@ package localdns
 
 import (
 	"context"
+
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 )
@@ -27,8 +28,7 @@ func SetLookupFunc(lookupFunc func(network, host string) ([]net.IP, error)) {
 }
 
 // Client is an implementation of dns.Client, which queries localhost for DNS.
-type Client struct {
-}
+type Client struct{}
 
 // Type implements common.HasType.
 func (*Client) Type() interface{} {

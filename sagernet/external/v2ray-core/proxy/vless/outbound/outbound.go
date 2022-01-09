@@ -137,7 +137,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	clientWriter := link.Writer // .(*pipe.Writer)
 
 	packetEncoding := packetaddr.PacketAddrType_None
-	if command == protocol.RequestCommandUDP && request.Port != 53 && request.Port != 443 {
+	if command == protocol.RequestCommandUDP && target.Port > 0 && request.Port != 53 && request.Port != 443 {
 		packetEncoding = h.packetEncoding
 		switch packetEncoding {
 		case packetaddr.PacketAddrType_Packet:

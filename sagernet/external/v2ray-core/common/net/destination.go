@@ -118,6 +118,26 @@ func (d Destination) IsValid() bool {
 	return d.Network != Network_Unknown
 }
 
+func (d Destination) IPAddr() *net.IPAddr {
+	return &net.IPAddr{
+		IP: d.Address.IP(),
+	}
+}
+
+func (d Destination) TCPAddr() *net.TCPAddr {
+	return &net.TCPAddr{
+		IP:   d.Address.IP(),
+		Port: int(d.Port),
+	}
+}
+
+func (d Destination) UDPAddr() *net.UDPAddr {
+	return &net.UDPAddr{
+		IP:   d.Address.IP(),
+		Port: int(d.Port),
+	}
+}
+
 // AsDestination converts current Endpoint into Destination.
 func (p *Endpoint) AsDestination() Destination {
 	return Destination{

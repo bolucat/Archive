@@ -23,6 +23,9 @@ var (
 	ResolveUDPAddr  = net.ResolveUDPAddr
 	ResolveUnixAddr = net.ResolveUnixAddr
 	SplitHostPort   = net.SplitHostPort
+	FileListener    = net.FileListener
+	FilePacketConn  = net.FilePacketConn
+	InterfaceByName = net.InterfaceByName
 )
 
 type (
@@ -32,6 +35,7 @@ type (
 	Dialer       = net.Dialer
 	Error        = net.Error
 	IP           = net.IP
+	IPAddr       = net.IPAddr
 	IPMask       = net.IPMask
 	IPNet        = net.IPNet
 	ListenConfig = net.ListenConfig

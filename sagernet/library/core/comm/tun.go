@@ -1,4 +1,4 @@
-package constant
+package comm
 
 const (
 	TunImplementationGVisor = iota

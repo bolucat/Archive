@@ -3,7 +3,6 @@ package wireguard
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 
 	"golang.zx2c4.com/wireguard/tun"
@@ -16,6 +15,9 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
+
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/net"
 )
 
 type netTun struct {
@@ -255,4 +257,36 @@ func (net *Net) DialUDP(laddr, raddr *net.UDPAddr) (*gonet.UDPConn, error) {
 		rfa = &addr
 	}
 	return gonet.DialUDP(net.stack, lfa, rfa, pn)
+}
+
+type udpConn struct {
+	*gonet.UDPConn
+}
+
+func (c *udpConn) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	buffer := buf.New()
+	n, addr, err := c.ReadFrom(buffer.Extend(buf.Size))
+	if err != nil {
+		return nil, err
+	}
+	if addr != nil {
+		endpoint := net.DestinationFromAddr(addr)
+		buffer.Endpoint = &endpoint
+	}
+	buffer.Resize(0, int32(n))
+	return buf.MultiBuffer{buffer}, nil
+}
+
+func (c *udpConn) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	defer buf.ReleaseMulti(mb)
+	for _, buffer := range mb {
+		var addr net.Addr
+		if buffer.Endpoint != nil {
+			addr = buffer.Endpoint.UDPAddr()
+		}
+		if _, err := c.WriteTo(buffer.Bytes(), addr); err != nil {
+			return err
+		}
+	}
+	return nil
 }

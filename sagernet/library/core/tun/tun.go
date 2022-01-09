@@ -13,4 +13,5 @@ type Tun interface {
 type Handler interface {
 	NewConnection(source net.Destination, destination net.Destination, conn net.Conn)
 	NewPacket(source net.Destination, destination net.Destination, data []byte, writeBack func([]byte, *net.UDPAddr) (int, error), closer io.Closer)
+	NewPingPacket(source net.Destination, destination net.Destination, message []byte, writeBack func([]byte) error) bool
 }

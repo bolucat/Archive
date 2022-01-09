@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/gomobile/asset"
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v5/common/platform/filesystem"
+	"libcore/comm"
 )
 
 const (
@@ -157,7 +158,7 @@ func extractAssetName(name string, force bool) error {
 			return newError("open version in assets").Base(err)
 		}
 		b, err := ioutil.ReadAll(av)
-		closeIgnore(av)
+		comm.CloseIgnore(av)
 		if err != nil {
 			return newError("read internal version").Base(err)
 		}
@@ -219,7 +220,7 @@ func extractAssetName(name string, force bool) error {
 		return err
 	}
 	_, err = io.WriteString(o, assetVersion)
-	closeIgnore(o)
+	comm.CloseIgnore(o)
 	return err
 }
 
@@ -266,12 +267,12 @@ func extractAsset(assetPath string, path string) error {
 	if err != nil {
 		return err
 	}
-	defer closeIgnore(i)
+	defer comm.CloseIgnore(i)
 	o, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	defer closeIgnore(o)
+	defer comm.CloseIgnore(o)
 	_, err = io.Copy(o, i)
 	if err == nil {
 		logrus.Debugf("Extract >> %s", path)

@@ -168,7 +168,7 @@ chacha20-ietf
 xchacha20
 ```
 
-- shadowsocks SIP008 plugin
+- shadowsocks SIP003 plugin
 
 ```json
 {
@@ -253,11 +253,29 @@ and provides the expected connection behavior of the client
       },
       "mux": {
         "enabled": true,
-        "packetEncoding": "[none/packet/xudp]" // packetEncoding for mux
+        "packetEncoding": "[none/packet/xudp]"
+        // packetEncoding for mux
       }
     }
   ]
 }
+```
+
+- ping proxy support
+
+```json
+{
+  "ping": {
+    "protocol": "<default/unprivileged>",
+    "gateway4": "<0.0.0.0>",
+    "gateway6": "<::>",
+    "disableIPv6": true
+  }
+}
+```
+
+```
+protocol: udp connection with port 7
 ```
 
 ### License

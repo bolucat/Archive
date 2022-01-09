@@ -13,6 +13,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"golang.org/x/sys/unix"
+	"libcore/comm"
 )
 
 type Protector interface {
@@ -126,7 +127,7 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		return nil, err
 	}
 
-	closeIgnore(file)
+	comm.CloseIgnore(file)
 	return conn, nil
 }
 

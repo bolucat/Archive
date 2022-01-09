@@ -15,7 +15,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-	"libcore/constant"
+	"libcore/comm"
 	"libcore/tun"
 )
 
@@ -51,7 +51,7 @@ func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool
 	}
 	var o stack.Options
 	switch ipv6Mode {
-	case constant.IPv6Disable:
+	case comm.IPv6Disable:
 		o = stack.Options{
 			NetworkProtocols: []stack.NetworkProtocolFactory{
 				ipv4.NewProtocol,
@@ -62,7 +62,7 @@ func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool
 				icmp.NewProtocol4,
 			},
 		}
-	case constant.IPv6Only:
+	case comm.IPv6Only:
 		o = stack.Options{
 			NetworkProtocols: []stack.NetworkProtocolFactory{
 				ipv6.NewProtocol,
@@ -100,6 +100,7 @@ func New(dev int32, mtu int32, handler tun.Handler, nicId tcpip.NICID, pcap bool
 	})
 	gTcpHandler(s, handler)
 	gUdpHandler(s, handler)
+	gIcmpHandler(s, endpoint, handler)
 	gMust(s.CreateNIC(nicId, endpoint))
 	gMust(s.SetSpoofing(nicId, true))
 	gMust(s.SetPromiscuousMode(nicId, true))

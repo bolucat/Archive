@@ -28,7 +28,7 @@ require (
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
 	go.starlark.net v0.0.0-20211203141949-70c0e40ae128
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
-	golang.org/x/net v0.0.0-20220105145211-5b0dc2dfae98
+	golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
 	golang.zx2c4.com/wireguard v0.0.0-20211209221555-9c9e7e272434
@@ -39,7 +39,8 @@ require (
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 )
 
-replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20211227140739-33ed11d8e732
+// https://github.com/google/gvisor/releases/tag/release-20220103.0
+replace gvisor.dev/gvisor => github.com/google/gvisor v0.0.0-20220101053744-1d5a116c5b1d
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect
@@ -69,7 +70,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
-	google.golang.org/genproto v0.0.0-20211223182754-3ac035c7e7cb // indirect
+	google.golang.org/genproto v0.0.0-20220107163113-42d7afdf6368 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )

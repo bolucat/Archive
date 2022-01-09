@@ -59,6 +59,7 @@ func (b *Buffer) Release() {
 	b.v = nil
 	b.Clear()
 	pool.Put(p) // nolint: staticcheck
+	b.Endpoint = nil
 }
 
 // Clear clears the content of the buffer, results an empty buffer with
@@ -230,11 +231,30 @@ func (b *Buffer) ReadFrom(reader io.Reader) (int64, error) {
 
 func (b *Buffer) ReadFromPacketConn(reader net.PacketConn) (int64, error) {
 	n, addr, err := reader.ReadFrom(b.v[b.end:])
-	if udpAddr, ok := addr.(*net.UDPAddr); ok {
-		b.Endpoint = &net.Destination{
-			Network: net.Network_UDP,
-			Address: net.IPAddress(udpAddr.IP),
-			Port:    net.Port(udpAddr.Port),
+	if addr != nil {
+		switch address := addr.(type) {
+		case *net.UDPAddr:
+			b.Endpoint = &net.Destination{
+				Network: net.Network_UDP,
+				Address: net.IPAddress(address.IP),
+				Port:    net.Port(address.Port),
+			}
+		case *net.TCPAddr:
+			b.Endpoint = &net.Destination{
+				Network: net.Network_TCP,
+				Address: net.IPAddress(address.IP),
+				Port:    net.Port(address.Port),
+			}
+		case *net.UnixAddr:
+			b.Endpoint = &net.Destination{
+				Network: net.Network_UNIX,
+				Address: net.DomainAddress(address.Name),
+			}
+		case *net.IPAddr:
+			b.Endpoint = &net.Destination{
+				Network: net.Network_UDP,
+				Address: net.IPAddress(address.IP),
+			}
 		}
 	}
 	b.end += int32(n)

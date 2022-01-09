@@ -3,6 +3,7 @@ package libcore
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -19,14 +20,17 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
+	"github.com/v2fly/v2ray-core/v5/features/outbound"
+	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
-	"libcore/constant"
+	"libcore/comm"
 	"libcore/gvisor"
 	"libcore/nat"
 	"libcore/tun"
@@ -60,7 +64,9 @@ type TunConfig struct {
 	Protector           Protector
 	MTU                 int32
 	V2Ray               *V2RayInstance
-	VLAN4Router         string
+	Gateway4            string
+	Gateway6            string
+	BindUpstream        Protector
 	IPv6Mode            int32
 	Implementation      int32
 	Sniffing            bool
@@ -88,7 +94,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		logrus.SetLevel(logrus.WarnLevel)
 	}
 	t := &Tun2ray{
-		router:              config.VLAN4Router,
+		router:              config.Gateway4,
 		v2ray:               config.V2Ray,
 		sniffing:            config.Sniffing,
 		overrideDestination: config.OverrideDestination,
@@ -99,7 +105,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 	var err error
 	switch config.Implementation {
-	case constant.TunImplementationGVisor:
+	case comm.TunImplementationGVisor:
 		var pcapFile *os.File
 		if config.PCap {
 			path := time.Now().UTC().String()
@@ -115,7 +121,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		}
 
 		t.dev, err = gvisor.New(config.FileDescriptor, config.MTU, t, gvisor.DefaultNIC, config.PCap, pcapFile, math.MaxUint32, config.IPv6Mode)
-	case constant.TunImplementationSystem:
+	case comm.TunImplementationSystem:
 		t.dev, err = nat.New(config.FileDescriptor, config.MTU, t, config.IPv6Mode, config.ErrorHandler.HandleError)
 	}
 
@@ -134,7 +140,16 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 			return dc.LookupIP(domain)
 		},
 	})
-
+	if config.BindUpstream != nil {
+		pingproto.ControlFunc = func(fd uintptr) {
+			config.BindUpstream.Protect(int32(fd))
+		}
+	} else {
+		pingproto.ControlFunc = func(fd uintptr) {
+			config.Protector.Protect(int32(fd))
+			bindToUpstream(fd)
+		}
+	}
 	if !config.Protect {
 		localdns.SetLookupFunc(nil)
 	} else {
@@ -174,9 +189,10 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 func (t *Tun2ray) Close() {
 	net.DefaultResolver.Dial = nil
+	pingproto.ControlFunc = nil
 	localdns.SetLookupFunc(nil)
 
-	closeIgnore(t.dev)
+	comm.CloseIgnore(t.dev)
 	t.connectionsLock.Lock()
 	for item := t.connections.Front(); item != nil; item = item.Next() {
 		common.Close(item.Value)
@@ -187,7 +203,7 @@ func (t *Tun2ray) Close() {
 func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNet.Destination, conn net.Conn) {
 	inbound := &session.Inbound{
 		Source:      source,
-		Tag:         "socks",
+		Tag:         "tun",
 		NetworkType: networkType,
 		WifiSSID:    wifiSSID,
 	}
@@ -290,10 +306,10 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	if err = task.Run(ctx, func() error {
 		return buf.Copy(buf.NewReader(conn), input)
 	}); err != nil {
-		closeIgnore(conn, link.Reader, link.Writer)
+		comm.CloseIgnore(conn, link.Reader, link.Writer)
 		newError("connection finished: ", err).AtDebug().WriteToLog()
 	} else {
-		closeIgnore(conn, link.Writer, link.Reader)
+		comm.CloseIgnore(conn, link.Writer, link.Reader)
 	}
 
 	t.connectionsLock.Lock()
@@ -328,7 +344,7 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	var cond *sync.Cond
 
 	if sendTo() {
-		closeIgnore(closer)
+		comm.CloseIgnore(closer)
 		return
 	} else {
 		iCond, loaded := t.lockTable.LoadOrStore(natKey, sync.NewCond(&sync.Mutex{}))
@@ -339,14 +355,14 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 			sendTo()
 			cond.L.Unlock()
 
-			closeIgnore(closer)
+			comm.CloseIgnore(closer)
 			return
 		}
 	}
 
 	inbound := &session.Inbound{
 		Source:      source,
-		Tag:         "socks",
+		Tag:         "tun",
 		NetworkType: networkType,
 		WifiSSID:    wifiSSID,
 	}
@@ -394,7 +410,8 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 
 	}
 
-	ctx := session.ContextWithInbound(context.Background(), inbound)
+	ctx := core.WithContext(context.Background(), t.v2ray.core)
+	ctx = session.ContextWithInbound(ctx, inbound)
 
 	if !isDns && t.sniffing {
 		req := session.SniffingRequest{
@@ -478,12 +495,113 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		}
 	}
 	// close
-	closeIgnore(conn, closer)
+	comm.CloseIgnore(conn, closer)
 	t.udpTable.Delete(natKey)
 
 	t.connectionsLock.Lock()
 	t.connections.Remove(element)
 	t.connectionsLock.Unlock()
+}
+
+func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message []byte, writeBack func([]byte) error) bool {
+	natKey := fmt.Sprint(source.Address, "-", destination.Address)
+
+	sendTo := func() bool {
+		iConn, ok := t.udpTable.Load(natKey)
+		if !ok {
+			return false
+		}
+		conn := iConn.(net.PacketConn)
+		_, err := conn.WriteTo(message, &net.UDPAddr{
+			IP:   destination.Address.IP(),
+			Port: int(destination.Port),
+		})
+		if err != nil {
+			_ = conn.Close()
+			newError("failed to write ping request to ", destination.Address).Base(err).WriteToLog()
+		}
+		return true
+	}
+
+	var cond *sync.Cond
+
+	if sendTo() {
+		return true
+	} else {
+		iCond, loaded := t.lockTable.LoadOrStore(natKey, sync.NewCond(&sync.Mutex{}))
+		cond = iCond.(*sync.Cond)
+		if loaded {
+			cond.L.Lock()
+			cond.Wait()
+			sendTo()
+			cond.L.Unlock()
+
+			return true
+		}
+	}
+
+	defer func() {
+		t.lockTable.Delete(natKey)
+		cond.Broadcast()
+	}()
+
+	ctx := core.WithContext(context.Background(), t.v2ray.core)
+	ctx = session.ContextWithInbound(ctx, &session.Inbound{
+		Source:      source,
+		Tag:         "tun",
+		NetworkType: networkType,
+		WifiSSID:    wifiSSID,
+	})
+	ctx = session.ContextWithOutbound(ctx, &session.Outbound{Target: destination})
+	ctx = session.ContextWithContent(ctx, &session.Content{Protocol: "ping"})
+
+	var handler outbound.Handler
+	if route, err := t.v2ray.router.PickRoute(routing_session.AsRoutingContext(ctx)); err == nil {
+		tag := route.GetOutboundTag()
+		handler = t.v2ray.outboundManager.GetHandler(tag)
+		if handler != nil {
+			newError("taking detour [", tag, "] for [", destination.Address, "]").WriteToLog()
+		} else {
+			newError("non existing tag: ", tag).AtWarning().WriteToLog()
+			return false
+		}
+	} else {
+		return false
+	}
+
+	conn := t.v2ray.handleUDP(ctx, handler, destination, time.Second*30)
+
+	t.connectionsLock.Lock()
+	element := t.connections.PushBack(conn)
+	t.connectionsLock.Unlock()
+
+	t.udpTable.Store(natKey, conn)
+
+	go sendTo()
+
+	go func() {
+		for {
+			buffer, _, err := conn.readFrom()
+			if err != nil {
+				newError("failed to read ping response from ", destination.Address).Base(err).WriteToLog()
+				break
+			}
+			err = writeBack(buffer)
+			if err != nil {
+				newError("failed to write ping response back").Base(err).WriteToLog()
+				break
+			}
+		}
+		// close
+		comm.CloseIgnore(conn)
+		t.udpTable.Delete(natKey)
+
+		t.connectionsLock.Lock()
+		t.connections.Remove(element)
+		t.connectionsLock.Unlock()
+	}()
+
+	return true
 }
 
 func (t *Tun2ray) dialDNS(ctx context.Context, _, _ string) (conn net.Conn, err error) {

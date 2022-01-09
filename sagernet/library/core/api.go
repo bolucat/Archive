@@ -8,6 +8,7 @@ import (
 
 	"github.com/sagernet/sagerconnect/api"
 	"github.com/sirupsen/logrus"
+	"libcore/comm"
 )
 
 type ApiInstance struct {
@@ -60,7 +61,7 @@ func (i *ApiInstance) Close() {
 
 	if i.started {
 		i.started = false
-		closeIgnore(i.conn)
+		comm.CloseIgnore(i.conn)
 	}
 }
 

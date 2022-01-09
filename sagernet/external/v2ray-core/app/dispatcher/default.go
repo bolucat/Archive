@@ -4,11 +4,6 @@ package dispatcher
 
 import (
 	"context"
-	"github.com/v2fly/v2ray-core/v5/common/protocol/bittorrent"
-	"github.com/v2fly/v2ray-core/v5/common/protocol/dns"
-	"github.com/v2fly/v2ray-core/v5/common/protocol/http"
-	"github.com/v2fly/v2ray-core/v5/common/protocol/quic"
-	"github.com/v2fly/v2ray-core/v5/common/protocol/tls"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +14,11 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/log"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/bittorrent"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/dns"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/http"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/quic"
+	"github.com/v2fly/v2ray-core/v5/common/protocol/tls"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	"github.com/v2fly/v2ray-core/v5/features/policy"

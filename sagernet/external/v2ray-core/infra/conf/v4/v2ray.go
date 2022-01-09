@@ -324,6 +324,7 @@ type Config struct {
 	Observatory      *ObservatoryConfig      `json:"observatory"`
 	BurstObservatory *BurstObservatoryConfig `json:"burstObservatory"`
 	MultiObservatory *MultiObservatoryConfig `json:"multiObservatory"`
+	Ping             *PingConfig             `json:"ping"`
 
 	Services map[string]*json.RawMessage `json:"services"`
 }
@@ -466,6 +467,14 @@ func (c *Config) Build() (*core.Config, error) {
 
 	if c.MultiObservatory != nil {
 		r, err := c.MultiObservatory.Build()
+		if err != nil {
+			return nil, err
+		}
+		config.App = append(config.App, serial.ToTypedMessage(r))
+	}
+
+	if c.Ping != nil {
+		r, err := c.Ping.Build()
 		if err != nil {
 			return nil, err
 		}

@@ -1,15 +1,17 @@
 package dns
 
 import (
-	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/protocol"
 )
 
-var errNotDNS = errors.New("not dns")
-var errNotWanted = errors.New("not wanted")
+var (
+	errNotDNS    = errors.New("not dns")
+	errNotWanted = errors.New("not wanted")
+)
 
 type SniffHeader struct {
 	domain string

@@ -47,7 +47,7 @@ type Inbound struct {
 	// SagerNet private
 	Uid         uint32
 	NetworkType string
-	WifiSSID string
+	WifiSSID    string
 }
 
 // Outbound is the metadata of an outbound connection.

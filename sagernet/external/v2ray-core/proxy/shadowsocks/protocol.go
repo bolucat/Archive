@@ -267,7 +267,6 @@ func (v *UDPReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		}
 		buffer = newBuffer
 	}
-
 	header, payload, err := DecodeUDPPacket(v.User, buffer)
 	if err != nil {
 		buffer.Release()
@@ -284,6 +283,13 @@ func (v *UDPReader) ReadFrom(p []byte) (n int, addr gonet.Addr, err error) {
 	if err != nil {
 		buffer.Release()
 		return 0, nil, err
+	}
+	if v.Plugin != nil {
+		newBuffer, err := v.Plugin.DecodePacket(buffer)
+		if err != nil {
+			return 0, nil, err
+		}
+		buffer = newBuffer
 	}
 	vaddr, payload, err := DecodeUDPPacket(v.User, buffer)
 	if err != nil {
@@ -321,11 +327,11 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 			return err
 		}
 		if w.Plugin != nil {
-			newBuffer, err := w.Plugin.EncodePacket(buffer)
+			newBuffer, err := w.Plugin.EncodePacket(packet)
 			if err != nil {
 				return err
 			}
-			buffer = newBuffer
+			packet = newBuffer
 		}
 		_, err = w.Writer.Write(packet.Bytes())
 		packet.Release()
@@ -364,6 +370,13 @@ func (w *UDPWriter) WriteTo(payload []byte, addr gonet.Addr) (n int, err error) 
 	packet, err := EncodeUDPPacket(&request, payload)
 	if err != nil {
 		return 0, err
+	}
+	if w.Plugin != nil {
+		newBuffer, err := w.Plugin.EncodePacket(packet)
+		if err != nil {
+			return 0, err
+		}
+		packet = newBuffer
 	}
 	_, err = w.Writer.Write(packet.Bytes())
 	packet.Release()
