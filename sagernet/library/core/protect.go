@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"net"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,6 +36,15 @@ type protectedDialer struct {
 }
 
 func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address, destination v2rayNet.Destination, sockopt *internet.SocketConfig) (conn net.Conn, err error) {
+	if destination.Network == v2rayNet.Network_Unknown || destination.Address == nil {
+		buffer := buf.StackNew()
+		buffer.Resize(0, int32(runtime.Stack(buffer.Extend(buf.Size), false)))
+		logrus.Warn("connect to invalid destination:\n", buffer.String())
+		buffer.Release()
+
+		return nil, newError("invalid destination")
+	}
+
 	var ips []net.IP
 	if destination.Address.Family().IsDomain() {
 		ips, err = dialer.resolver(destination.Address.Domain())

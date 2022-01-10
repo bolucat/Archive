@@ -133,7 +133,8 @@ func (d *readVDispatcher) dispatch() (bool, tcpip.Error) {
 	}
 
 	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
-		Data: d.buf.pullViews(n),
+		Data:              d.buf.pullViews(n),
+		IsForwardedPacket: true,
 	})
 	defer pkt.DecRef()
 

@@ -10,13 +10,15 @@ import (
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
+	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/signal"
 	"github.com/v2fly/v2ray-core/v5/common/signal/done"
@@ -44,9 +46,9 @@ func init() {
 }
 
 var (
-	_ proxy.Outbound  = (*Client)(nil)
-	_ conn.Bind       = (*Client)(nil)
-	_ common.Closable = (*Client)(nil)
+	_ proxy.Outbound          = (*Client)(nil)
+	_ pingproto.ICMPInterface = (*Client)(nil)
+	_ common.Closable         = (*Client)(nil)
 )
 
 type Client struct {
@@ -57,38 +59,55 @@ type Client struct {
 	sessionPolicy policy.Session
 	dnsClient     dns.Client
 
-	tun    tun.Device
+	tun    *wireDevice
 	dev    *device.Device
-	wire   *Net
 	dialer internet.Dialer
 
 	init        *done.Instance
 	destination net.Destination
 	endpoint    *conn.StdNetEndpoint
 	connection  *remoteConnection
+
+	pingConn4   *pingConnWrapper
+	pingConn6   *pingConnWrapper
+	pingManager *pingproto.ClientManager
 }
 
-func (o *Client) Init(config *Config, policyManager policy.Manager) error {
-	o.sessionPolicy = policyManager.ForLevel(config.UserLevel)
-	o.destination = net.Destination{
+func (c *Client) Reset4() error {
+	return nil
+}
+
+func (c *Client) Reset6() error {
+	return nil
+}
+
+func (c *Client) Close() error {
+	c.tun.Close()
+	c.dev.Close()
+	return nil
+}
+
+func (c *Client) Init(config *Config, policyManager policy.Manager) error {
+	c.sessionPolicy = policyManager.ForLevel(config.UserLevel)
+	c.destination = net.Destination{
 		Network: config.Network,
 		Address: config.Address.AsAddress(),
 		Port:    net.Port(config.Port),
 	}
-	o.destination.Network = config.Network
+	c.destination.Network = config.Network
 
-	if o.destination.Network == net.Network_Unknown {
-		o.destination.Network = net.Network_UDP
+	if c.destination.Network == net.Network_Unknown {
+		c.destination.Network = net.Network_UDP
 	}
 
-	o.endpoint = &conn.StdNetEndpoint{
-		Port: int(o.destination.Port),
+	c.endpoint = &conn.StdNetEndpoint{
+		Port: int(c.destination.Port),
 	}
 
-	if o.destination.Address.Family().IsDomain() {
-		o.endpoint.IP = []byte{1, 0, 0, 1}
+	if c.destination.Address.Family().IsDomain() {
+		c.endpoint.IP = []byte{1, 0, 0, 1}
 	} else {
-		o.endpoint.IP = o.destination.Address.IP()
+		c.endpoint.IP = c.destination.Address.IP()
 	}
 
 	localAddress := make([]net.IP, len(config.LocalAddress))
@@ -126,7 +145,7 @@ func (o *Client) Init(config *Config, policyManager policy.Manager) error {
 	}
 	ipcConf := "private_key=" + privateKey
 	ipcConf += "\npublic_key=" + peerPublicKey
-	ipcConf += "\nendpoint=" + o.endpoint.DstToString()
+	ipcConf += "\nendpoint=" + c.endpoint.DstToString()
 
 	if preSharedKey != "" {
 		ipcConf += "\npreshared_key=" + preSharedKey
@@ -154,12 +173,15 @@ func (o *Client) Init(config *Config, policyManager policy.Manager) error {
 	if mtu == 0 {
 		mtu = 1450
 	}
-	tun, wire, err := CreateNetTUN(localAddress, mtu)
+
+	c.pingManager = pingproto.NewClientManager(c)
+	tun, err := newDevice(localAddress, mtu, c.pingManager)
 	if err != nil {
 		return newError("failed to create wireguard device").Base(err)
 	}
 
-	dev := device.NewDevice(tun, o, &device.Logger{
+	bind := &clientBind{c}
+	dev := device.NewDevice(tun, bind, &device.Logger{
 		Verbosef: func(format string, args ...interface{}) {
 			newError(fmt.Sprintf(format, args...)).AtDebug().WriteToLog()
 		},
@@ -175,18 +197,20 @@ func (o *Client) Init(config *Config, policyManager policy.Manager) error {
 		return newError("failed to set wireguard ipc conf").Base(err)
 	}
 
-	o.tun = tun
-	o.dev = dev
-	o.wire = wire
+	c.tun = tun
+	c.dev = dev
+
+	c.pingConn4 = &pingConnWrapper{c.tun.writePing4}
+	c.pingConn6 = &pingConnWrapper{c.tun.writePing6}
 
 	return nil
 }
 
-func (o *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
-	if o.dialer == nil {
-		o.dialer = dialer
+func (c *Client) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
+	if c.dialer == nil {
+		c.dialer = dialer
 	}
-	o.init.Close()
+	c.init.Close()
 
 	outbound := session.OutboundFromContext(ctx)
 	if outbound == nil || !outbound.Target.IsValid() {
@@ -195,7 +219,7 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	destination := outbound.Target
 
 	if destination.Address.Family().IsDomain() {
-		ips, err := o.dnsClient.LookupIP(destination.Address.Domain())
+		ips, err := c.dnsClient.LookupIP(destination.Address.Domain())
 		if err != nil {
 			return newError("failed to lookup ip addresses for domain ", destination.Address.Domain()).Base(err)
 		}
@@ -203,26 +227,39 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	var conn internet.Connection
-	{
-		ctx := core.ToBackgroundDetachedContext(ctx)
 
-		var err error
-
-		switch destination.Network {
-		case net.Network_TCP:
-			conn, err = o.wire.DialContextTCP(ctx, &net.TCPAddr{
-				IP:   destination.Address.IP(),
-				Port: int(destination.Port),
-			})
-		case net.Network_UDP:
-			var wireConn *gonet.UDPConn
-			wireConn, err = o.wire.DialUDP(nil, &net.UDPAddr{
-				IP:   destination.Address.IP(),
-				Port: int(destination.Port),
-			})
-			conn = &udpConn{wireConn}
+	if destination.Network == net.Network_UDP && destination.Port == 7 {
+		conn = c.pingManager.GetClient(destination).CreateConnection()
+	} else {
+		bind := tcpip.FullAddress{
+			NIC: defaultNIC,
+		}
+		address := tcpip.FullAddress{
+			NIC:  defaultNIC,
+			Addr: tcpip.Address(destination.Address.IP()),
+			Port: uint16(destination.Port),
 		}
 
+		var network tcpip.NetworkProtocolNumber
+		if destination.Address.Family().IsIPv4() {
+			network = header.IPv4ProtocolNumber
+			bind.Addr = c.tun.addr4
+		} else {
+			network = header.IPv6ProtocolNumber
+			bind.Addr = c.tun.addr6
+		}
+
+		var err error
+		switch destination.Network {
+		case net.Network_TCP:
+			conn, err = gonet.DialTCPWithBind(ctx, c.tun.stack, bind, address, network)
+		case net.Network_UDP:
+			var wireConn *gonet.UDPConn
+			wireConn, err = gonet.DialUDP(c.tun.stack, &bind, &address, network)
+			if err == nil {
+				conn = &udpConn{wireConn}
+			}
+		}
 		if err != nil {
 			return newError("failed to dial to virtual device").Base(err)
 		}
@@ -231,27 +268,17 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	defer conn.Close()
 
 	ctx, cancel := context.WithCancel(ctx)
-	timer := signal.CancelAfterInactivity(ctx, cancel, o.sessionPolicy.Timeouts.ConnectionIdle)
-	ctx = policy.ContextWithBufferPolicy(ctx, o.sessionPolicy.Buffer)
+	timer := signal.CancelAfterInactivity(ctx, cancel, c.sessionPolicy.Timeouts.ConnectionIdle)
+	ctx = policy.ContextWithBufferPolicy(ctx, c.sessionPolicy.Buffer)
 
 	uplink := func() error {
-		defer timer.SetTimeout(o.sessionPolicy.Timeouts.UplinkOnly)
-
-		if err := buf.Copy(link.Reader, buf.NewWriter(conn), buf.UpdateActivity(timer)); err != nil {
-			return newError("failed to transport all TCP response").Base(err)
-		}
-
-		return nil
+		defer timer.SetTimeout(c.sessionPolicy.Timeouts.UplinkOnly)
+		return buf.Copy(link.Reader, buf.NewWriter(conn), buf.UpdateActivity(timer))
 	}
 
 	downlink := func() error {
-		defer timer.SetTimeout(o.sessionPolicy.Timeouts.DownlinkOnly)
-
-		if err := buf.Copy(buf.NewReader(conn), link.Writer, buf.UpdateActivity(timer)); err != nil {
-			return newError("failed to transport all TCP request").Base(err)
-		}
-
-		return nil
+		defer timer.SetTimeout(c.sessionPolicy.Timeouts.DownlinkOnly)
+		return buf.Copy(buf.NewReader(conn), link.Writer, buf.UpdateActivity(timer))
 	}
 
 	if err := task.Run(ctx, uplink, downlink); err != nil {
@@ -261,6 +288,18 @@ func (o *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	return nil
+}
+
+func (c *Client) IPv4Connection() net.PacketConn {
+	return c.pingConn4
+}
+
+func (c *Client) IPv6Connection() net.PacketConn {
+	return c.pingConn6
+}
+
+func (c *Client) NeedChecksum() bool {
+	return false
 }
 
 type remoteConnection struct {
@@ -275,38 +314,44 @@ func (r remoteConnection) Close() error {
 	return r.Connection.Close()
 }
 
-func (o *Client) connect() (*remoteConnection, error) {
-	if o.dialer == nil {
-		<-o.init.Wait()
+func (c *Client) connect() (*remoteConnection, error) {
+	if c.dialer == nil {
+		<-c.init.Wait()
 	}
 
-	if c := o.connection; c != nil && !c.done.Done() {
+	if c := c.connection; c != nil && !c.done.Done() {
 		return c, nil
 	}
 
-	o.Lock()
-	defer o.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
-	if c := o.connection; c != nil && !c.done.Done() {
+	if c := c.connection; c != nil && !c.done.Done() {
 		return c, nil
 	}
 
-	conn, err := o.dialer.Dial(core.ToBackgroundDetachedContext(o.ctx), o.destination)
+	conn, err := c.dialer.Dial(core.ToBackgroundDetachedContext(c.ctx), c.destination)
 	if err == nil {
-		o.connection = &remoteConnection{
+		c.connection = &remoteConnection{
 			conn,
 			done.New(),
 		}
 	}
 
-	return o.connection, err
+	return c.connection, err
 }
 
-func (o *Client) Open(uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
+var _ conn.Bind = (*clientBind)(nil)
+
+type clientBind struct {
+	*Client
+}
+
+func (o *clientBind) Open(uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
 	return []conn.ReceiveFunc{o.Receive}, 0, nil
 }
 
-func (o *Client) Receive(b []byte) (n int, ep conn.Endpoint, err error) {
+func (o *clientBind) Receive(b []byte) (n int, ep conn.Endpoint, err error) {
 	var c *remoteConnection
 	c, err = o.connect()
 	if err != nil {
@@ -321,7 +366,7 @@ func (o *Client) Receive(b []byte) (n int, ep conn.Endpoint, err error) {
 	return
 }
 
-func (o *Client) Close() error {
+func (o *clientBind) Close() error {
 	o.Lock()
 	defer o.Unlock()
 
@@ -329,18 +374,15 @@ func (o *Client) Close() error {
 	if c != nil {
 		common.Close(c)
 	}
-	o.dev.Close()
-	o.tun.Close()
-	o.wire.stack.Close()
 
 	return nil
 }
 
-func (o *Client) SetMark(uint32) error {
+func (o *clientBind) SetMark(uint32) error {
 	return nil
 }
 
-func (o *Client) Send(b []byte, _k conn.Endpoint) (err error) {
+func (o *clientBind) Send(b []byte, _ conn.Endpoint) (err error) {
 	var c *remoteConnection
 	c, err = o.connect()
 	if err != nil {
@@ -353,6 +395,38 @@ func (o *Client) Send(b []byte, _k conn.Endpoint) (err error) {
 	return err
 }
 
-func (o *Client) ParseEndpoint(string) (conn.Endpoint, error) {
+func (o *clientBind) ParseEndpoint(string) (conn.Endpoint, error) {
 	return o.endpoint, nil
+}
+
+type udpConn struct {
+	*gonet.UDPConn
+}
+
+func (c *udpConn) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	buffer := buf.New()
+	n, addr, err := c.ReadFrom(buffer.Extend(buf.Size))
+	if err != nil {
+		return nil, err
+	}
+	if addr != nil {
+		endpoint := net.DestinationFromAddr(addr)
+		buffer.Endpoint = &endpoint
+	}
+	buffer.Resize(0, int32(n))
+	return buf.MultiBuffer{buffer}, nil
+}
+
+func (c *udpConn) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	defer buf.ReleaseMulti(mb)
+	for _, buffer := range mb {
+		var addr net.Addr
+		if buffer.Endpoint != nil {
+			addr = buffer.Endpoint.UDPAddr()
+		}
+		if _, err := c.WriteTo(buffer.Bytes(), addr); err != nil {
+			return err
+		}
+	}
+	return nil
 }

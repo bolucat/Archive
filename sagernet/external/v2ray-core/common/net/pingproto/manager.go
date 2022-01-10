@@ -46,20 +46,38 @@ func init() {
 var _ ping.Manager = (*PingManager)(nil)
 
 type PingManager struct {
-	access       sync.Mutex
-	disableIPv6  bool
-	unprivileged bool
-	network4     string
-	network6     string
-	listen4      string
-	listen6      string
-	protocol4    string
-	protocol6    string
-	icmp4Conn    net.PacketConn
-	icmp6Conn    net.PacketConn
-	clientTable  sync.Map
-	lockTable    sync.Map
-	id           uint16
+	access        sync.Mutex
+	disableIPv6   bool
+	unprivileged  bool
+	network4      string
+	network6      string
+	listen4       string
+	listen6       string
+	protocol4     string
+	protocol6     string
+	icmp4Conn     net.PacketConn
+	icmp6Conn     net.PacketConn
+	clientManager *ClientManager
+}
+
+func (m *PingManager) Reset4() error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	if m.icmp4Conn != nil {
+		m.icmp4Conn.Close()
+		m.icmp4Conn = nil
+	}
+	return nil
+}
+
+func (m *PingManager) Reset6() error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	if m.icmp6Conn != nil {
+		m.icmp6Conn.Close()
+		m.icmp6Conn = nil
+	}
+	return nil
 }
 
 func (m *PingManager) Init(config *Config) error {
@@ -80,6 +98,7 @@ func (m *PingManager) Init(config *Config) error {
 	if m.listen6 == "" {
 		m.listen6 = "::"
 	}
+	m.clientManager = NewClientManager(m)
 
 	return nil
 }
@@ -110,7 +129,7 @@ func (m *PingManager) Dial(destination net.Destination) (internet.Connection, er
 					return nil, newError("failed to listen icmp on ", m.listen4).Base(err)
 				}
 				m.icmp4Conn = conn
-				go m.loop4()
+				go m.clientManager.Loop4()
 				newError("icmpv4 connection created").AtDebug().WriteToLog()
 			}
 			m.access.Unlock()
@@ -126,18 +145,31 @@ func (m *PingManager) Dial(destination net.Destination) (internet.Connection, er
 				return nil, newError("failed to listen icmp6 on ", m.listen6).Base(err)
 			}
 			m.icmp6Conn = conn
-			go m.loop6()
+			go m.clientManager.Loop6()
 			newError("icmpv6 connection created").AtDebug().WriteToLog()
 		}
 		m.access.Unlock()
 	}
-	return m.getClient(destination).createConnection(), nil
+	return m.clientManager.GetClient(destination).CreateConnection(), nil
 }
 
-func (m *PingManager) getClient(destination net.Destination) *pingClient {
+type ClientManager struct {
+	ifc         ICMPInterface
+	clientTable sync.Map
+	lockTable   sync.Map
+	id          uint16
+}
+
+func NewClientManager(ifc ICMPInterface) *ClientManager {
+	return &ClientManager{
+		ifc: ifc,
+	}
+}
+
+func (m *ClientManager) GetClient(destination net.Destination) *PingClient {
 	key := destination.Address.String()
 	if clientI, loaded := m.clientTable.Load(key); loaded {
-		return clientI.(*pingClient)
+		return clientI.(*PingClient)
 	}
 	var cond *sync.Cond
 	iCond, loaded := m.lockTable.LoadOrStore(key, sync.NewCond(&sync.Mutex{}))
@@ -148,39 +180,30 @@ func (m *PingManager) getClient(destination net.Destination) *pingClient {
 		defer cond.L.Unlock()
 
 		if clientI, loaded := m.clientTable.Load(key); loaded {
-			return clientI.(*pingClient)
+			return clientI.(*PingClient)
 		} else {
 			panic("unable to load connection from ping manager")
 		}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	m.id++
-	client := &pingClient{
-		PingManager: m,
-		ctx:         ctx,
-		id:          m.id,
-		timer: signal.CancelAfterInactivity(ctx, func() {
-			cancel()
-			m.clientTable.Delete(key)
-		}, 30*time.Second),
-		dest: destination,
-	}
+	client := NewClient(m.ifc, context.Background(), m.id, destination, func() {
+		m.clientTable.Delete(key)
+	})
 	m.clientTable.Store(key, client)
 	m.lockTable.Delete(key)
 	cond.Broadcast()
 	return client
 }
 
-func (m *PingManager) loop4() {
+func (m *ClientManager) Loop4() {
 	buffer := buf.StackNew()
 	defer buffer.Release()
 	for {
 		buffer.Clear()
-		_, err := buffer.ReadFromPacketConn(m.icmp4Conn)
+		_, err := buffer.ReadFromPacketConn(m.ifc.IPv4Connection())
 		if err != nil {
 			if err != os.ErrClosed {
-				newError("icmp4 receive failed").Base(err)
-				m.Close()
+				newError("icmp4 receive failed").Base(err).WriteToLog()
 			}
 			break
 		}
@@ -188,31 +211,20 @@ func (m *PingManager) loop4() {
 			newError("nil icmp4 endpoint").WriteToLog()
 			continue
 		}
-		client := m.getClient(*buffer.Endpoint)
-		hdr := header.ICMPv4(buffer.Bytes())
-		callbackI, loaded := client.callbacks.LoadAndDelete(hdr.Sequence())
-		if !loaded {
-			continue
-		}
-		callback := callbackI.(*pingCallback)
-		callback.data = hdr
-		callback.conn.WriteBack(callback)
+		m.GetClient(*buffer.Endpoint).WriteBack4(buffer.Bytes())
 	}
-	m.access.Lock()
-	m.icmp4Conn = nil
-	m.access.Unlock()
+	m.ifc.Reset4()
 }
 
-func (m *PingManager) loop6() {
+func (m *ClientManager) Loop6() {
 	buffer := buf.StackNew()
 	defer buffer.Release()
 	for {
 		buffer.Clear()
-		_, err := buffer.ReadFromPacketConn(m.icmp6Conn)
+		_, err := buffer.ReadFromPacketConn(m.ifc.IPv6Connection())
 		if err != nil {
 			if err != os.ErrClosed {
-				newError("icmp6 receive failed").Base(err)
-				m.Close()
+				newError("icmp6 receive failed").Base(err).WriteToLog()
 			}
 			break
 		}
@@ -220,19 +232,24 @@ func (m *PingManager) loop6() {
 			newError("nil icmp6 endpoint").WriteToLog()
 			continue
 		}
-		client := m.getClient(*buffer.Endpoint)
-		hdr := header.ICMPv6(buffer.Bytes())
-		callbackI, loaded := client.callbacks.LoadAndDelete(hdr.Sequence())
-		if !loaded {
-			continue
-		}
-		callback := callbackI.(*pingCallback)
-		callback.data = hdr
-		callback.conn.WriteBack(callback)
+		m.GetClient(*buffer.Endpoint).WriteBack6(buffer.Bytes())
 	}
+	m.ifc.Reset6()
 }
 
-func (c *pingClient) nextSequence() uint16 {
+func (m *PingManager) IPv4Connection() net.PacketConn {
+	return m.icmp4Conn
+}
+
+func (m *PingManager) IPv6Connection() net.PacketConn {
+	return m.icmp6Conn
+}
+
+func (m *PingManager) NeedChecksum() bool {
+	return !m.unprivileged
+}
+
+func (c *PingClient) nextSequence() uint16 {
 	c.access.Lock()
 	defer c.access.Unlock()
 	c.sequence++
@@ -242,8 +259,22 @@ func (c *pingClient) nextSequence() uint16 {
 	return c.sequence
 }
 
-type pingClient struct {
-	*PingManager
+func NewClient(ifc ICMPInterface, ctx context.Context, id uint16, destination net.Destination, onCancel context.CancelFunc) *PingClient {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &PingClient{
+		ifc: ifc,
+		ctx: ctx,
+		id:  id,
+		timer: signal.CancelAfterInactivity(ctx, func() {
+			cancel()
+			onCancel()
+		}, 30*time.Second),
+		dest: destination,
+	}
+}
+
+type PingClient struct {
+	ifc       ICMPInterface
 	ctx       context.Context
 	timer     *signal.ActivityTimer
 	dest      net.Destination
@@ -253,9 +284,9 @@ type pingClient struct {
 	callbacks sync.Map
 }
 
-func (c *pingClient) createConnection() internet.Connection {
+func (c *PingClient) CreateConnection() internet.Connection {
 	ctx, cancel := context.WithCancel(c.ctx)
-	base := &pingConnBase{pingClient: c, channel: make(chan *pingCallback), ctx: ctx, cancel: cancel}
+	base := &pingConnBase{PingClient: c, channel: make(chan *pingCallback), ctx: ctx, cancel: cancel}
 	if c.dest.Address.Family().IsIPv4() {
 		return &pingConn4{base}
 	} else {
@@ -263,15 +294,37 @@ func (c *pingClient) createConnection() internet.Connection {
 	}
 }
 
+func (c *PingClient) WriteBack4(message []byte) {
+	hdr := header.ICMPv4(message)
+	callbackI, loaded := c.callbacks.LoadAndDelete(hdr.Sequence())
+	if !loaded {
+		return
+	}
+	callback := callbackI.(*pingCallback)
+	callback.data = hdr
+	callback.conn.writeBack(callback)
+}
+
+func (c *PingClient) WriteBack6(message []byte) {
+	hdr := header.ICMPv6(message)
+	callbackI, loaded := c.callbacks.LoadAndDelete(hdr.Sequence())
+	if !loaded {
+		return
+	}
+	callback := callbackI.(*pingCallback)
+	callback.data = hdr
+	callback.conn.writeBack(callback)
+}
+
 type pingConnBase struct {
-	*pingClient
+	*PingClient
 	sync.Mutex
 	ctx     context.Context
 	cancel  context.CancelFunc
 	channel chan *pingCallback
 }
 
-func (p *pingConnBase) WriteBack(callback *pingCallback) error {
+func (p *pingConnBase) writeBack(callback *pingCallback) error {
 	select {
 	case <-p.ctx.Done():
 		return io.ErrClosedPipe
@@ -304,7 +357,7 @@ func (p *pingConnBase) LocalAddr() net.Addr {
 }
 
 func (p *pingConnBase) RemoteAddr() net.Addr {
-	if p.unprivileged {
+	if !p.ifc.NeedChecksum() {
 		return p.dest.UDPAddr()
 	} else {
 		return p.dest.IPAddr()
@@ -361,7 +414,7 @@ func (c *pingConn4) Write(b []byte) (n int, err error) {
 	}
 	c.timer.Update()
 
-	conn := c.icmp4Conn
+	conn := c.ifc.IPv4Connection()
 	if conn == nil {
 		return 0, io.ErrClosedPipe
 	}
@@ -376,13 +429,18 @@ func (c *pingConn4) Write(b []byte) (n int, err error) {
 	if callback.sequence != sequence {
 		hdr.SetSequence(sequence)
 	}
-	newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
 	hdr.SetIdent(0)
-	if !c.unprivileged {
+	if c.ifc.NeedChecksum() {
 		hdr.SetChecksum(0)
 		hdr.SetChecksum(header.ICMPv4Checksum(hdr, 0))
 	}
-	return conn.WriteTo(hdr, c.RemoteAddr())
+	n, err = conn.WriteTo(hdr, c.RemoteAddr())
+	if err == nil {
+		newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
+	} else {
+		newError("failed to write ping request to ", c.dest.Address).Base(err).WriteToLog()
+	}
+	return
 }
 
 type pingConn6 struct {
@@ -414,7 +472,7 @@ func (c *pingConn6) Write(b []byte) (n int, err error) {
 	}
 	c.timer.Update()
 
-	conn := c.icmp6Conn
+	conn := c.ifc.IPv6Connection()
 	if conn == nil {
 		return 0, io.ErrClosedPipe
 	}
@@ -429,12 +487,17 @@ func (c *pingConn6) Write(b []byte) (n int, err error) {
 	if callback.sequence != sequence {
 		hdr.SetSequence(sequence)
 	}
-	newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
 	hdr.SetIdent(0)
-	if !c.unprivileged {
+	if c.ifc.NeedChecksum() {
 		hdr.SetChecksum(0)
 	}
-	return conn.WriteTo(hdr, c.RemoteAddr())
+	n, err = conn.WriteTo(hdr, c.RemoteAddr())
+	if err == nil {
+		newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
+	} else {
+		newError("failed to write ping request to ", c.dest.Address).Base(err).WriteToLog()
+	}
+	return
 }
 
 func GetDestinationIsSubsetOf(dest net.Destination) bool {

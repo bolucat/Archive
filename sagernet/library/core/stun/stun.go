@@ -89,23 +89,23 @@ func mappingTests(mapTestConn *stunServerConn) (int, error) {
 	}
 
 	// Parse response message for XOR-MAPPED-ADDRESS and make sure OTHER-ADDRESS valid
-	resps1 := parse(resp.Message)
-	if resps1.xorAddr == nil || resps1.otherAddr == nil {
+	resps := parse(resp.Message)
+	if resps.xorAddr == nil || resps.otherAddr == nil {
 		err := newError("NAT discovery feature not supported by this server").Base(errNoOtherAddress)
 		logrus.Warn(err)
 		return NoResult, err
 	}
-	addr, err := net.ResolveUDPAddr("udp4", resps1.otherAddr.String())
+	addr, err := net.ResolveUDPAddr("udp4", resps.otherAddr.String())
 	if err != nil {
-		err := newError("failed resolving OTHER-ADDRESS: ", resps1.otherAddr)
+		err := newError("failed resolving OTHER-ADDRESS: ", resps.otherAddr)
 		logrus.Warn(err)
 		return NoResult, err
 	}
 	mapTestConn.OtherAddr = addr
-	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps1.xorAddr))
+	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps.xorAddr))
 
 	// Assert mapping behavior
-	if resps1.xorAddr.String() == mapTestConn.LocalAddr.String() {
+	if resps.xorAddr.String() == mapTestConn.LocalAddr.String() {
 		logrus.Info(newError("NAT mapping behavior: endpoint independent (no NAT)"))
 		return EndpointIndependentNoNAT, err
 	}
@@ -116,39 +116,44 @@ func mappingTests(mapTestConn *stunServerConn) (int, error) {
 	oaddr.Port = mapTestConn.RemoteAddr.Port
 	resp, err = mapTestConn.roundTrip(request, &oaddr)
 	if err != nil {
-		return NoResult, err
-	}
+		if !errors.Is(err, errTimedOut) {
+			return NoResult, err
+		}
+	} else {
+		// Assert mapping behavior
+		resps2 := parse(resp.Message)
 
-	// Assert mapping behavior
-	resps2 := parse(resp.Message)
+		if resps2.respOrigin.String() != oaddr.String() {
+			return AddressAndPortDependent, nil
+		}
 
-	if resps2.respOrigin.String() != oaddr.String() {
-		return AddressAndPortDependent, nil
-	}
+		logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps2.xorAddr))
+		if resps2.xorAddr.String() == resps.xorAddr.String() {
+			logrus.Info(newError("NAT mapping behavior: endpoint independent"))
+			return EndpointIndependent, nil
+		}
 
-	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps2.xorAddr))
-	if resps2.xorAddr.String() == resps1.xorAddr.String() {
-		logrus.Info(newError("NAT mapping behavior: endpoint independent"))
-		return EndpointIndependent, nil
+		resps = resps2
 	}
 
 	// Test III: Send binding request to the other address and port
 	logrus.Info(newError("mapping test III: Send binding request to the other address and port"))
 	resp, err = mapTestConn.roundTrip(request, mapTestConn.OtherAddr)
 	if err != nil {
-		return NoResult, err
+		if !errors.Is(err, errTimedOut) {
+			return NoResult, err
+		}
+	} else {
+		resps3 := parse(resp.Message)
+		logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps3.xorAddr))
+		if resps3.xorAddr.String() == resps.xorAddr.String() {
+			logrus.Info(newError("NAT mapping behavior: address dependent"))
+			return AddressDependent, nil
+		}
 	}
 
-	// Assert mapping behavior
-	resps3 := parse(resp.Message)
-	logrus.Info(newError("received XOR-MAPPED-ADDRESS: ", resps3.xorAddr))
-	if resps3.xorAddr.String() == resps2.xorAddr.String() {
-		logrus.Info(newError("NAT mapping behavior: address dependent"))
-		return AddressDependent, nil
-	} else {
-		logrus.Info(newError("NAT mapping behavior: address and port dependent"))
-		return AddressAndPortDependent, nil
-	}
+	logrus.Info(newError("NAT mapping behavior: address and port dependent"))
+	return AddressAndPortDependent, nil
 }
 
 // RFC5780: 4.4.  Determining NAT Filtering Behavior
@@ -159,7 +164,7 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 	request := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
 
 	resp, err := mapTestConn.roundTrip(request, mapTestConn.RemoteAddr)
-	if err != nil || errors.Is(err, errTimedOut) {
+	if err != nil {
 		return NoResult, err
 	}
 	resps := parse(resp.Message)
@@ -206,10 +211,10 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 		}
 	}
 	logrus.Info(newError("NAT filtering behavior: address and port dependent"))
-	if errors.Is(err, errTimedOut) {
-		err = nil
+	if !errors.Is(err, errTimedOut) {
+		return NoResult, err
 	}
-	return AddressAndPortDependent, err
+	return AddressAndPortDependent, nil
 }
 
 // Parse a STUN message

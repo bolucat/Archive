@@ -60,6 +60,10 @@ causes memory leaks, whether enabled or not.
 
 - wireguard outbound
 
+```
+WireGuard outbound supports proxy ping requests.
+```
+
 ```json
 {
   "outbounds": [
@@ -274,9 +278,7 @@ and provides the expected connection behavior of the client
 }
 ```
 
-```
-protocol: udp connection with port 7
-```
+`protocol: udp connection with port 7.`
 
 ### License
 

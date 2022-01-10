@@ -180,7 +180,7 @@ func main() {
 		if strings.HasSuffix(filename, ".go") &&
 			!strings.HasSuffix(filename, ".pb.go") &&
 			!strings.Contains(dir, filepath.Join("testing", "mocks")) &&
-			!strings.Contains(path, filepath.Join("main", "distro", "all", "all.go")) {
+			!strings.Contains(path, filepath.Join("main", "distro", "all", "all.go", "minimal.go")) {
 
 			if changedFiles != nil && !changedFiles[path] {
 				return nil

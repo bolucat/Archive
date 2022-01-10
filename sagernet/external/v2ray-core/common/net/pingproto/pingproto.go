@@ -1,12 +1,12 @@
 package pingproto
 
 import (
-	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"os"
 	"strings"
 	"syscall"
 
 	"golang.org/x/net/icmp"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 
 	"github.com/v2fly/v2ray-core/v5/common/net"
 )
@@ -19,6 +19,14 @@ const (
 	IPPROTO_ICMP   = int(header.ICMPv4ProtocolNumber)
 	IPPROTO_ICMPV6 = int(header.ICMPv6ProtocolNumber)
 )
+
+type ICMPInterface interface {
+	IPv4Connection() net.PacketConn
+	Reset4() error
+	IPv6Connection() net.PacketConn
+	Reset6() error
+	NeedChecksum() bool
+}
 
 func ListenPacket(network, address string) (conn net.PacketConn, err error) {
 	if strings.HasPrefix(network, "udp") && ControlFunc != nil {

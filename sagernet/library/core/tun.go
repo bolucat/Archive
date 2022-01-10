@@ -17,6 +17,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v5"
+	appOutbound "github.com/v2fly/v2ray-core/v5/app/proxyman/outbound"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
@@ -27,6 +28,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
+	"github.com/v2fly/v2ray-core/v5/proxy/wireguard"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
@@ -56,6 +58,8 @@ type Tun2ray struct {
 
 	connectionsLock sync.Mutex
 	connections     list.List
+
+	defaultOutboundForPing outbound.Handler
 }
 
 type TunConfig struct {
@@ -150,6 +154,12 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 			bindToUpstream(fd)
 		}
 	}
+	if defaultOutbound, ok := t.v2ray.outboundManager.GetDefaultHandler().(*appOutbound.Handler); ok {
+		if _, isWireGuard := defaultOutbound.GetOutbound().(*wireguard.Client); isWireGuard {
+			t.defaultOutboundForPing = defaultOutbound
+		}
+	}
+
 	if !config.Protect {
 		localdns.SetLookupFunc(nil)
 	} else {
@@ -565,6 +575,10 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 			newError("non existing tag: ", tag).AtWarning().WriteToLog()
 			return false
 		}
+	} else if t.defaultOutboundForPing != nil {
+		handler = t.defaultOutboundForPing
+		newError("default route for ", destination.Address).AtWarning().WriteToLog()
+
 	} else {
 		return false
 	}
