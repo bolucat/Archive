@@ -43,10 +43,10 @@ func TestUDPEncoding(t *testing.T) {
 
 	data := buf.New()
 	common.Must2(data.WriteString("test string"))
-	encodedData, err := EncodeUDPPacket(request, data.Bytes())
+	encodedData, err := EncodeUDPPacket(request, data.Bytes(), nil)
 	common.Must(err)
 
-	decodedRequest, decodedData, err := DecodeUDPPacket(request.User, encodedData)
+	decodedRequest, decodedData, err := DecodeUDPPacket(request.User, encodedData, nil)
 	common.Must(err)
 
 	if r := cmp.Diff(decodedData.Bytes(), data.Bytes()); r != "" {

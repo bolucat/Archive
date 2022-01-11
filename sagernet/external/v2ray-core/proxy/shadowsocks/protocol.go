@@ -191,7 +191,7 @@ func WriteTCPResponse(request *protocol.RequestHeader, writer io.Writer, iv []by
 	return w, err
 }
 
-func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte) (*buf.Buffer, error) {
+func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte, plugin ProtocolPlugin) (*buf.Buffer, error) {
 	user := request.User
 	account := user.Account.(*MemoryAccount)
 
@@ -202,19 +202,29 @@ func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte) (*buf.Buff
 	}
 
 	if err := addrParser.WriteAddressPort(buffer, request.Address, request.Port); err != nil {
+		buffer.Release()
 		return nil, newError("failed to write address").Base(err)
 	}
 
 	buffer.Write(payload)
 
+	if plugin != nil {
+		if newBuffer, err := plugin.EncodePacket(buffer); err == nil {
+			buffer = newBuffer
+		} else {
+			return nil, newError("failed to encode UDP payload").Base(err)
+		}
+	}
+
 	if err := account.Cipher.EncodePacket(account.Key, buffer); err != nil {
+		buffer.Release()
 		return nil, newError("failed to encrypt UDP payload").Base(err)
 	}
 
 	return buffer, nil
 }
 
-func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer) (*protocol.RequestHeader, *buf.Buffer, error) {
+func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer, plugin ProtocolPlugin) (*protocol.RequestHeader, *buf.Buffer, error) {
 	account := user.Account.(*MemoryAccount)
 
 	var iv []byte
@@ -226,6 +236,14 @@ func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer) (*protocol.
 
 	if err := account.Cipher.DecodePacket(account.Key, payload); err != nil {
 		return nil, nil, newError("failed to decrypt UDP payload").Base(err)
+	}
+
+	if plugin != nil {
+		if newBuffer, err := plugin.DecodePacket(payload); err == nil {
+			payload = newBuffer
+		} else {
+			return nil, nil, newError("failed to decode UDP payload").Base(err)
+		}
 	}
 
 	request := &protocol.RequestHeader{
@@ -260,14 +278,7 @@ func (v *UDPReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		buffer.Release()
 		return nil, err
 	}
-	if v.Plugin != nil {
-		newBuffer, err := v.Plugin.DecodePacket(buffer)
-		if err != nil {
-			return nil, err
-		}
-		buffer = newBuffer
-	}
-	header, payload, err := DecodeUDPPacket(v.User, buffer)
+	header, payload, err := DecodeUDPPacket(v.User, buffer, v.Plugin)
 	if err != nil {
 		buffer.Release()
 		return nil, err
@@ -284,14 +295,7 @@ func (v *UDPReader) ReadFrom(p []byte) (n int, addr gonet.Addr, err error) {
 		buffer.Release()
 		return 0, nil, err
 	}
-	if v.Plugin != nil {
-		newBuffer, err := v.Plugin.DecodePacket(buffer)
-		if err != nil {
-			return 0, nil, err
-		}
-		buffer = newBuffer
-	}
-	vaddr, payload, err := DecodeUDPPacket(v.User, buffer)
+	vaddr, payload, err := DecodeUDPPacket(v.User, buffer, v.Plugin)
 	if err != nil {
 		buffer.Release()
 		return 0, nil, err
@@ -320,18 +324,11 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 				Port:    buffer.Endpoint.Port,
 			}
 		}
-		packet, err := EncodeUDPPacket(request, buffer.Bytes())
+		packet, err := EncodeUDPPacket(request, buffer.Bytes(), w.Plugin)
 		buffer.Release()
 		if err != nil {
 			buf.ReleaseMulti(mb)
 			return err
-		}
-		if w.Plugin != nil {
-			newBuffer, err := w.Plugin.EncodePacket(packet)
-			if err != nil {
-				return err
-			}
-			packet = newBuffer
 		}
 		_, err = w.Writer.Write(packet.Bytes())
 		packet.Release()
@@ -345,16 +342,9 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 
 // Write implements io.Writer.
 func (w *UDPWriter) Write(payload []byte) (int, error) {
-	packet, err := EncodeUDPPacket(w.Request, payload)
+	packet, err := EncodeUDPPacket(w.Request, payload, w.Plugin)
 	if err != nil {
 		return 0, err
-	}
-	if w.Plugin != nil {
-		newBuffer, err := w.Plugin.EncodePacket(packet)
-		if err != nil {
-			return 0, err
-		}
-		packet = newBuffer
 	}
 	_, err = w.Writer.Write(packet.Bytes())
 	packet.Release()
@@ -367,16 +357,9 @@ func (w *UDPWriter) WriteTo(payload []byte, addr gonet.Addr) (n int, err error) 
 	request.Command = protocol.RequestCommandUDP
 	request.Address = net.IPAddress(udpAddr.IP)
 	request.Port = net.Port(udpAddr.Port)
-	packet, err := EncodeUDPPacket(&request, payload)
+	packet, err := EncodeUDPPacket(&request, payload, w.Plugin)
 	if err != nil {
 		return 0, err
-	}
-	if w.Plugin != nil {
-		newBuffer, err := w.Plugin.EncodePacket(packet)
-		if err != nil {
-			return 0, err
-		}
-		packet = newBuffer
 	}
 	_, err = w.Writer.Write(packet.Bytes())
 	packet.Release()

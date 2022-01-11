@@ -110,7 +110,8 @@ func (p *shadowsocksrPlugin) DecodePacket(buffer *buf.Buffer) (*buf.Buffer, erro
 	if err != nil {
 		return nil, err
 	}
-	newBuf := buf.New()
-	newBuf.Write(packet)
-	return newBuf, nil
+	newBuffer := buf.New()
+	newBuffer.Write(packet)
+	newBuffer.Endpoint = buffer.Endpoint
+	return newBuffer, nil
 }

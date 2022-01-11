@@ -3,7 +3,6 @@ package nat
 import (
 	"net"
 
-	"github.com/v2fly/v2ray-core/v5/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -146,20 +145,8 @@ func (n *SystemTun) processUDP(hdr *UDPHeader) {
 
 	data := hdr.Packet().Data().ExtractVV()
 	go n.handler.NewPacket(source, destination, data.ToView(), func(bytes []byte, addr *v2rayNet.UDPAddr) (int, error) {
-		buffer := buf.New()
-		defer buffer.Release()
-
-		var hdrLen int
-		switch ipHdr := hdr.IPHeader.(type) {
-		case *IPv4Header:
-			hdrLen = int(ipHdr.IPv4.HeaderLength())
-			buffer.Write(ipHdr.IPv4[:hdrLen])
-		case *IPv6Header:
-			hdrLen = len(ipHdr.IPv6) - int(ipHdr.IPv6.PayloadLength())
-			buffer.Write(ipHdr.IPv6[:hdrLen])
-		}
-		buffer.Write(hdr.UDP[:header.UDPMinimumSize])
-		buffer.Write(bytes)
+		ipData := stack.PayloadSince(hdr.Packet().NetworkHeader())
+		udpData := stack.PayloadSince(hdr.Packet().TransportHeader())[:header.UDPMinimumSize]
 
 		var newSourceAddress tcpip.Address
 		var newSourcePort uint16
@@ -174,24 +161,31 @@ func (n *SystemTun) processUDP(hdr *UDPHeader) {
 
 		switch hdr.IPHeader.(type) {
 		case *IPv4Header:
-			ipHdr := header.IPv4(buffer.Bytes())
+			ipHdr := header.IPv4(ipData)
+			ipData = ipData[:ipHdr.HeaderLength()]
 			ipHdr.SetSourceAddress(newSourceAddress)
-			ipHdr.SetTotalLength(uint16(buffer.Len()))
+			ipHdr.SetTotalLength(uint16(len(ipData) + len(udpData) + len(bytes)))
 			ipHdr.SetChecksum(0)
 			ipHdr.SetChecksum(^ipHdr.CalculateChecksum())
 		case *IPv6Header:
-			ipHdr := header.IPv6(buffer.Bytes())
+			ipHdr := header.IPv6(ipData)
+			ipData = ipData[:ipData.Size()-int(ipHdr.PayloadLength())]
 			ipHdr.SetSourceAddress(newSourceAddress)
-			ipHdr.SetPayloadLength(uint16(buffer.Len() - int32(hdrLen)))
+			ipHdr.SetPayloadLength(uint16(len(udpData) + len(bytes)))
 		}
 
-		udpHdr := header.UDP(buffer.BytesFrom(int32(hdrLen)))
+		udpHdr := header.UDP(udpData)
 		udpHdr.SetSourcePort(newSourcePort)
-		udpHdr.SetLength(uint16(buffer.Len() - int32(hdrLen)))
+		udpHdr.SetLength(uint16(len(udpData) + len(bytes)))
 		udpHdr.SetChecksum(0)
-		udpHdr.SetChecksum(^udpHdr.CalculateChecksum(header.Checksum(bytes, header.PseudoHeaderChecksum(header.UDPProtocolNumber, newSourceAddress, sourceAddress, udpHdr.Length()))))
+		udpHdr.SetChecksum(^udpHdr.CalculateChecksum(header.Checksum(bytes, header.PseudoHeaderChecksum(header.UDPProtocolNumber, newSourceAddress, sourceAddress, uint16(len(udpData)+len(bytes))))))
 
-		if err := n.dispatcher.writeBuffer(buffer.Bytes()); err != nil {
+		replyVV := buffer.VectorisedView{}
+		replyVV.AppendView(ipData)
+		replyVV.AppendView(udpData)
+		replyVV.AppendView(bytes)
+
+		if err := n.dispatcher.writeRawPacket(replyVV); err != nil {
 			return 0, newError(err.String())
 		}
 
@@ -221,9 +215,9 @@ func (n *SystemTun) processICMPv4(hdr *ICMPv4Header) {
 	netHdr := hdr.Packet().NetworkHeader().View()
 
 	if n.handler.NewPingPacket(source, destination, data, func(message []byte) error {
-		backData := buffer.VectorisedView{}
-		backData.AppendView(netHdr)
-		backData.AppendView(message)
+		replyVV := buffer.VectorisedView{}
+		replyVV.AppendView(netHdr)
+		replyVV.AppendView(message)
 
 		if len(message) != messageLen {
 			ipHdr := header.IPv4(netHdr)
@@ -232,9 +226,7 @@ func (n *SystemTun) processICMPv4(hdr *ICMPv4Header) {
 			ipHdr.SetChecksum(^header.ChecksumCombine(^ipHdr.Checksum(), header.ChecksumCombine(ipHdr.TotalLength(), ^oldLen)))
 		}
 
-		packet := stack.NewPacketBuffer(stack.PacketBufferOptions{Data: backData})
-		defer packet.DecRef()
-		err := n.dispatcher.writePacket(packet)
+		err := n.dispatcher.writeRawPacket(replyVV)
 		if err != nil {
 			return newError("failed to write packet to device: ", err.String())
 		}
@@ -267,9 +259,9 @@ func (n *SystemTun) processICMPv6(hdr *ICMPv6Header) {
 
 	netHdr := hdr.Packet().NetworkHeader().View()
 	if n.handler.NewPingPacket(source, destination, data.ToView(), func(message []byte) error {
-		backData := buffer.VectorisedView{}
-		backData.AppendView(netHdr)
-		backData.AppendView(message)
+		replyVV := buffer.VectorisedView{}
+		replyVV.AppendView(netHdr)
+		replyVV.AppendView(message)
 
 		icmpHdr := header.ICMPv6(message)
 		icmpHdr.SetChecksum(0)
@@ -279,9 +271,7 @@ func (n *SystemTun) processICMPv6(hdr *ICMPv6Header) {
 			Dst:    hdr.DestinationAddress(),
 		}))
 
-		packet := stack.NewPacketBuffer(stack.PacketBufferOptions{Data: backData})
-		defer packet.DecRef()
-		err := n.dispatcher.writePacket(packet)
+		err := n.dispatcher.writeRawPacket(replyVV)
 		if err != nil {
 			return newError("failed to write packet to device: ", err.String())
 		}

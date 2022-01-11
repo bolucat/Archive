@@ -24,7 +24,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/serial"
-	_ "github.com/v2fly/v2ray-core/v5/main/distro/mimimal"
+	_ "github.com/v2fly/v2ray-core/v5/main/distro/minimal"
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess"
 	vmessOutbound "github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 	"github.com/v2fly/v2ray-core/v5/transport"

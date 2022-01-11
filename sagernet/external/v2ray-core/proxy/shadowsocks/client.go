@@ -137,7 +137,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		if err != nil {
 			return err
 		}
-		if c.stream != nil {
+		if network == net.Network_TCP && c.stream != nil {
 			conn = c.stream.StreamConn(rawConn)
 		} else {
 			conn = rawConn
@@ -191,6 +191,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			protocolWriter := &UDPWriter{
 				Writer:  conn,
 				Request: request,
+				Plugin:  c.protocol,
 			}
 			return udp.CopyPacketConn(protocolWriter, packetConn, udp.UpdateActivity(timer))
 		}
@@ -198,6 +199,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			protocolReader := &UDPReader{
 				Reader: conn,
 				User:   user,
+				Plugin: c.protocol,
 			}
 			return udp.CopyPacketConn(packetConn, protocolReader, udp.UpdateActivity(timer))
 		}

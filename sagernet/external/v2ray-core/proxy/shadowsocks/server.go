@@ -185,7 +185,7 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 		}
 
 		payload := packet.Payload
-		data, err := EncodeUDPPacket(request, payload.Bytes())
+		data, err := EncodeUDPPacket(request, payload.Bytes(), s.protocol)
 		payload.Release()
 
 		if s.protocol != nil {
@@ -223,7 +223,7 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 				payload, err = s.protocol.DecodePacket(payload)
 			}
 			if err == nil {
-				request, data, err = DecodeUDPPacket(s.user, payload)
+				request, data, err = DecodeUDPPacket(s.user, payload, s.protocol)
 			}
 			if err != nil {
 				if inbound := session.InboundFromContext(ctx); inbound != nil && inbound.Source.IsValid() {
