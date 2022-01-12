@@ -15,6 +15,7 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 
 	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -330,7 +331,9 @@ func (c *Client) connect() (*remoteConnection, error) {
 		return c, nil
 	}
 
-	conn, err := c.dialer.Dial(core.ToBackgroundDetachedContext(c.ctx), c.destination)
+	ctx := core.ToBackgroundDetachedContext(c.ctx)
+	ctx = proxyman.SetPreferUseIP(ctx)
+	conn, err := c.dialer.Dial(ctx, c.destination)
 	if err == nil {
 		c.connection = &remoteConnection{
 			conn,

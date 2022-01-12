@@ -21,7 +21,7 @@ require (
 replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220109124627-f8f67dadd776
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.0-20220111103653-b7a87864e7da
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.0-20220112092520-3fcc8ed61bb9
 
 // for go1.18 support
 replace github.com/lucas-clemente/quic-go => github.com/lucas-clemente/quic-go v0.24.1-0.20220109162842-f34eddae41f4

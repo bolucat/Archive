@@ -183,11 +183,20 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 			domainString = ""
 		}
 
-		if h.senderSettings != nil && h.senderSettings.DomainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
+		var domainStrategy proxyman.DomainStrategy
+		if h.senderSettings != nil {
+			domainStrategy = h.senderSettings.DomainStrategy
+		}
+
+		if domainStrategy == proxyman.DomainStrategy_AS_IS && proxyman.PreferUseIPFromContext(ctx) {
+			domainStrategy = proxyman.DomainStrategy_USE_IP
+		}
+
+		if domainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
 			var ips []net.IP
 			var err error
 
-			switch h.senderSettings.DomainStrategy {
+			switch domainStrategy {
 			case proxyman.DomainStrategy_USE_IP4:
 				ips, err = h.dnsClient.(dns.IPv4Lookup).LookupIPv4(domainString)
 			case proxyman.DomainStrategy_USE_IP6:
@@ -196,7 +205,7 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 				ips, err = h.dnsClient.LookupIP(domainString)
 			}
 			if err == nil {
-				switch h.senderSettings.DomainStrategy {
+				switch domainStrategy {
 				case proxyman.DomainStrategy_PREFER_IP4:
 					ips = reorderAddresses(ips, false)
 				case proxyman.DomainStrategy_PREFER_IP6:
@@ -244,6 +253,7 @@ func (h *Handler) Address() net.Address {
 func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Connection, error) {
 	if h.senderSettings != nil {
 		if h.senderSettings.ProxySettings.HasTag() && !h.senderSettings.ProxySettings.TransportLayerProxy {
+			ctx = proxyman.SetPreferUseIP(ctx)
 			tag := h.senderSettings.ProxySettings.Tag
 			handler := h.outboundManager.GetHandler(tag)
 			if handler != nil {
@@ -284,6 +294,7 @@ func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Conn
 		tag := h.senderSettings.ProxySettings.Tag
 		newError("transport layer proxying to ", tag, " for dest ", dest).AtDebug().WriteToLog(session.ExportIDToError(ctx))
 		ctx = session.SetTransportLayerProxyTagToContext(ctx, tag)
+		ctx = proxyman.SetPreferUseIP(ctx)
 		enablePacketAddrCapture = false
 	}
 

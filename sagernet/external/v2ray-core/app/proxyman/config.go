@@ -1,5 +1,7 @@
 package proxyman
 
+import "context"
+
 func (s *AllocationStrategy) GetConcurrencyValue() uint32 {
 	if s == nil || s.Concurrency == nil {
 		return 3
@@ -36,4 +38,17 @@ func (c *ReceiverConfig) GetEffectiveSniffingSettings() *SniffingConfig {
 	}
 
 	return nil
+}
+
+const useIPKey = "preferUseIP"
+
+func SetPreferUseIP(ctx context.Context) context.Context {
+	return context.WithValue(ctx, useIPKey, true)
+}
+
+func PreferUseIPFromContext(ctx context.Context) bool {
+	if _, ok := ctx.Value(useIPKey).(bool); ok {
+		return true
+	}
+	return false
 }
