@@ -41,8 +41,9 @@ type netURL struct {
 }
 
 func NewURL(scheme string) URL {
-	u := &netURL{}
+	u := new(netURL)
 	u.Scheme = scheme
+	u.Values = make(url.Values)
 	return u
 }
 
@@ -139,6 +140,9 @@ func ParseURL(rawURL string) (URL, error) {
 	}
 	u.URL = *uu
 	u.Values = u.Query()
+	if u.Values == nil {
+		u.Values = make(url.Values)
+	}
 	if frag == "" {
 		return u, nil
 	}

@@ -27,7 +27,7 @@ class QSyntaxStyle : public QObject
      * @param fl Style.
      * @return Success.
      */
-    bool load(QString fl);
+    bool load(const QString &fl);
 
     /**
      * @brief Method for getting style name.
@@ -47,7 +47,7 @@ class QSyntaxStyle : public QObject
      * @param name Property name.
      * @return Text char format.
      */
-    QTextCharFormat getFormat(QString name) const;
+    QTextCharFormat getFormat(const QString &name) const;
 
     /**
      * @brief Static method for getting default style.

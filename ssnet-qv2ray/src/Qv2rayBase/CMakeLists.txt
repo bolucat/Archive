@@ -6,6 +6,10 @@ project(Qv2rayBase
     LANGUAGES CXX
     DESCRIPTION "Base library for Qv2ray")
 
+if (NOT DEFINED BUILD_SHARED_LIBS)
+    set(BUILD_SHARED_LIBS ON)
+endif()
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -26,7 +30,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 option(USE_SYSTEM_PLUGIN_INTERFACE "Use system provided plugin interface headers." OFF)
 
 if(USE_SYSTEM_PLUGIN_INTERFACE)
-    find_package(QvPluginInterface 4.0 REQUIRED)
+    find_package(QvPluginInterface 5.0 REQUIRED)
 else()
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/PluginInterface)
     install(TARGETS QvPluginInterface)
@@ -140,7 +144,7 @@ target_link_libraries(Qv2rayBase
 if(WASM)
     target_compile_definitions(Qv2rayBase PUBLIC "-DQV2RAYBASE_NO_LIBUV")
 else()
-    target_link_libraries(Qv2rayBase PRIVATE Qv2ray::libuvw)
+    target_link_libraries(Qv2rayBase PRIVATE Qv2ray::libuvw Qv2ray::libuv)
 endif()
 
 include(CTest)

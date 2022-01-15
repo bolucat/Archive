@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.6)
 project(QCodeEditor)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 option(BUILD_EXAMPLE "Example building required" Off)
 
 if (${BUILD_EXAMPLE})
-   message(STATUS "QCodeEditor example will be built.")
-   add_subdirectory(example)
+    message(STATUS "QCodeEditor example will be built.")
+    add_subdirectory(example)
 endif()
 
 set(RESOURCES_FILE
@@ -77,6 +77,9 @@ set(CMAKE_AUTOMOC On)
 # Create code from resource files
 set(CMAKE_AUTORCC ON)
 
+# Generate compile_commands.json in build/ for analyzers like clang-tidy.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Find includes in corresponding build directories
 find_package(Qt5Core    CONFIG REQUIRED)
 find_package(Qt5Widgets CONFIG REQUIRED)
@@ -94,16 +97,16 @@ target_include_directories(QCodeEditor PUBLIC
 
 if(CMAKE_COMPILER_IS_GNUCXX)
     target_compile_options(QCodeEditor
-		PRIVATE
-		-ansi
-		-pedantic
-		-Wall
-		-Wextra
-		-Weffc++
-		-Woverloaded-virtual
-		-Winit-self
-		-Wunreachable-code
-	)
+        PRIVATE
+        -ansi
+        -pedantic
+        -Wall
+        -Wextra
+        -Weffc++
+        -Woverloaded-virtual
+        -Winit-self
+        -Wunreachable-code
+    )
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
 target_link_libraries(QCodeEditor

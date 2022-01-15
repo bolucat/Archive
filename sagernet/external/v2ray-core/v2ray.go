@@ -5,11 +5,12 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
+
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
-	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/inbound"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
@@ -206,7 +207,7 @@ func initInstanceWithConfig(config *Config, server *Instance) (bool, error) {
 		Type     interface{}
 		Instance features.Feature
 	}{
-		{dns.ClientType(), localdns.New()},
+		{dns.ClientType(), localdns.NewClient()},
 		{policy.ManagerType(), policy.DefaultManager{}},
 		{routing.RouterType(), routing.DefaultRouter{}},
 		{stats.ManagerType(), stats.NoopManager{}},

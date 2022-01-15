@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"hash/crc32"
 	"io"
+	mrand "math/rand"
 	gonet "net"
 
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -364,4 +365,12 @@ func (w *UDPWriter) WriteTo(payload []byte, addr gonet.Addr) (n int, err error) 
 	_, err = w.Writer.Write(packet.Bytes())
 	packet.Release()
 	return len(payload), err
+}
+
+func remapToPrintable(input []byte) {
+	const charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\\\""
+	seed := mrand.New(mrand.NewSource(int64(crc32.ChecksumIEEE(input))))
+	for i := range input {
+		input[i] = charSet[seed.Intn(len(charSet))]
+	}
 }

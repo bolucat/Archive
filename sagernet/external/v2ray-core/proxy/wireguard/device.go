@@ -39,7 +39,7 @@ type wireDevice struct {
 	addr6       tcpip.Address
 }
 
-func newDevice(localAddresses []net.IP, mtu int, icmpManager *pingproto.ClientManager) (device *wireDevice, err error) {
+func newDevice(localAddresses []tcpip.AddressWithPrefix, mtu int, icmpManager *pingproto.ClientManager) (device *wireDevice, err error) {
 	opts := stack.Options{
 		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
 		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol4, icmp.NewProtocol6},
@@ -59,19 +59,17 @@ func newDevice(localAddresses []net.IP, mtu int, icmpManager *pingproto.ClientMa
 	}
 	for _, ip := range localAddresses {
 		var protoAddr tcpip.ProtocolAddress
-		if ip4 := ip.To4(); ip4 != nil {
-			addr := tcpip.Address(ip4)
-			device.addr4 = addr
+		if len(ip.Address) == net.IPv4len {
+			device.addr4 = ip.Address
 			protoAddr = tcpip.ProtocolAddress{
 				Protocol:          ipv4.ProtocolNumber,
-				AddressWithPrefix: addr.WithPrefix(),
+				AddressWithPrefix: ip,
 			}
 		} else {
-			addr := tcpip.Address(ip)
-			device.addr6 = addr
+			device.addr6 = ip.Address
 			protoAddr = tcpip.ProtocolAddress{
 				Protocol:          ipv6.ProtocolNumber,
-				AddressWithPrefix: addr.WithPrefix(),
+				AddressWithPrefix: ip,
 			}
 		}
 		if err := s.AddProtocolAddress(defaultNIC, protoAddr, stack.AddressProperties{}); err != nil {

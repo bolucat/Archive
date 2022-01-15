@@ -1,373 +1,626 @@
-//go:build !confonly
-// +build !confonly
-
-// Package dns is an implementation of core.DNS feature.
 package dns
-
-//go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
 
 import (
 	"context"
-	"fmt"
+	"encoding/binary"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/net/dns/dnsmessage"
+	"net/netip"
 
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
-	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
-	"github.com/v2fly/v2ray-core/v5/features"
+	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
-	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon"
-	"github.com/v2fly/v2ray-core/v5/infra/conf/geodata"
 )
 
-// DNS is a DNS rely server.
-type DNS struct {
-	sync.Mutex
-	tag                    string
+//go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
+
+var _ dns.NewClient = (*Client)(nil)
+
+type Client struct {
+	access sync.Mutex
+	ctx    context.Context
+
+	tag                  string
+	clientIP             net.IP
+	domainMatcher        strmatcher.IndexMatcher
+	matcherInfos         []DomainMatcherInfo
+	defaultQueryStrategy dns.QueryStrategy
+	hosts                *StaticHosts
+	servers              []*Server
+
 	disableCache           bool
 	disableFallback        bool
 	disableFallbackIfMatch bool
-	ipOption               *dns.IPOption
-	hosts                  *StaticHosts
-	clients                []*Client
-	ctx                    context.Context
-	domainMatcher          strmatcher.IndexMatcher
-	matcherInfos           []DomainMatcherInfo
-	continueOnError        bool
-	disableTimeout         bool
+	disableExpire          bool
+
+	requestId int32
+	callbacks sync.Map
+	cache     sync.Map
 }
 
-// DomainMatcherInfo contains information attached to index returned by Server.domainMatcher
-type DomainMatcherInfo struct {
-	clientIdx     uint16
-	domainRuleIdx uint16
+type Server struct {
+	name         string
+	transport    dns.Transport
+	clientIP     net.IP
+	skipFallback bool
+	domains      []string
+	expectIPs    []*router.GeoIPMatcher
+	concurrency  bool
+	access       sync.Mutex
 }
 
-// New creates a new DNS server with given configuration.
-func New(ctx context.Context, config *Config) (*DNS, error) {
-	var tag string
-	if len(config.Tag) > 0 {
-		tag = config.Tag
-	} else {
-		tag = generateRandomTag()
+type transportContext struct {
+	ctx         context.Context
+	client      *Client
+	server      *Server
+	destination net.Destination
+
+	cache   *buf.Buffer
+	missing int32
+}
+
+type queryCallback struct {
+	parseIPs bool
+	domain   string
+	strategy dns.QueryStrategy
+
+	wg *sync.WaitGroup
+
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	access   sync.Mutex
+	response *serverQueryCallback
+}
+
+type serverQueryCallback struct {
+	*queryCallback
+
+	ctx              context.Context
+	cancel           context.CancelFunc
+	finish4, finish6 bool
+
+	queryType sync.Map
+	access    sync.Mutex
+	response  *dnsmessage.Message
+	ips       []net.IP
+	errors    []error
+}
+
+type ipCacheEntire struct {
+	cached4, cached6 bool
+	cache4, cache6   []net.IP
+	expire4, expire6 time.Time
+}
+
+func (c *Client) nextRequestId() uint16 {
+	requestId := atomic.AddInt32(&c.requestId, 1)
+	if requestId > 65535 {
+		requestId = 1
+		atomic.AddInt32(&c.requestId, -65534)
+	}
+	return uint16(requestId)
+}
+
+func (c *Client) LookupDefault(ctx context.Context, domain string) ([]net.IP, error) {
+	return c.Lookup(ctx, domain, c.defaultQueryStrategy)
+}
+
+func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+	if strings.HasSuffix(domain, ".") {
+		domain = domain[:len(domain)-1]
 	}
 
-	var clientIP net.IP
-	switch len(config.ClientIp) {
-	case 0, net.IPv4len, net.IPv6len:
-		clientIP = net.IP(config.ClientIp)
-	default:
-		return nil, newError("unexpected client IP length ", len(config.ClientIp))
-	}
+	var ips []net.IP
+	var cached4, cached6 bool
+	now := time.Now()
 
-	var ipOption *dns.IPOption
-	switch config.QueryStrategy {
-	case QueryStrategy_USE_IP:
-		ipOption = &dns.IPOption{
-			IPv4Enable: true,
-			IPv6Enable: true,
-		}
-	case QueryStrategy_USE_IP4:
-		ipOption = &dns.IPOption{
-			IPv4Enable: true,
-			IPv6Enable: false,
-		}
-	case QueryStrategy_USE_IP6:
-		ipOption = &dns.IPOption{
-			IPv4Enable: false,
-			IPv6Enable: true,
-		}
-	}
-	ipOption.DisableExpire = config.DisableExpire
-
-	hosts, err := NewStaticHosts(config.StaticHosts, config.Hosts)
-	if err != nil {
-		return nil, newError("failed to create hosts").Base(err)
-	}
-
-	clients := []*Client{}
-	domainRuleCount := 0
-	for _, ns := range config.NameServer {
-		domainRuleCount += len(ns.PrioritizedDomain)
-	}
-
-	// MatcherInfos is ensured to cover the maximum index domainMatcher could return, where matcher's index starts from 1
-	matcherInfos := make([]DomainMatcherInfo, domainRuleCount+1)
-	domainMatcher := &strmatcher.LinearIndexMatcher{}
-	geoipContainer := router.GeoIPMatcherContainer{}
-
-	for _, endpoint := range config.NameServers {
-		features.PrintDeprecatedFeatureWarning("simple DNS server")
-		client, err := NewSimpleClient(ctx, endpoint, clientIP, config.DisableExpire)
-		if err != nil {
-			return nil, newError("failed to create client").Base(err)
-		}
-		clients = append(clients, client)
-	}
-
-	for _, ns := range config.NameServer {
-		clientIdx := len(clients)
-		updateDomain := func(domainRule strmatcher.Matcher, originalRuleIdx int, matcherInfos []DomainMatcherInfo) error {
-			midx := domainMatcher.Add(domainRule)
-			matcherInfos[midx] = DomainMatcherInfo{
-				clientIdx:     uint16(clientIdx),
-				domainRuleIdx: uint16(originalRuleIdx),
+	cacheI, cachedHit := c.cache.Load(domain)
+	if cachedHit {
+		cache := cacheI.(*ipCacheEntire)
+		if strategy != dns.QueryStrategy_USE_IP6 {
+			if cache.cached4 && (c.disableExpire || now.Before(cache.expire4)) {
+				ips = append(ips, cache.cache4...)
+				cached4 = true
 			}
-			return nil
 		}
+		if strategy != dns.QueryStrategy_USE_IP4 {
+			if cache.cached6 && (c.disableExpire || now.Before(cache.expire6)) {
+				ips = append(ips, cache.cache6...)
+				cached6 = true
+			}
+		}
+	}
 
-		myClientIP := clientIP
-		switch len(ns.ClientIp) {
-		case net.IPv4len, net.IPv6len:
-			myClientIP = net.IP(ns.ClientIp)
+	if len(ips) > 0 {
+		newError("dns cache HIT ", domain, " -> ", ips).AtDebug().WriteToLog()
+	}
+
+	var query bool
+	switch strategy {
+	case dns.QueryStrategy_USE_IP4:
+		query = !cached4
+	case dns.QueryStrategy_USE_IP6:
+		query = !cached6
+	default:
+		query = !cached4 || !cached6
+	}
+
+	newStrategy := strategy
+	if query {
+		if cached4 {
+			newStrategy = dns.QueryStrategy_USE_IP6
 		}
-		client, err := NewClient(ctx, ns, myClientIP, geoipContainer, &matcherInfos, updateDomain, config.DisableExpire)
+		if cached6 {
+			newStrategy = dns.QueryStrategy_USE_IP4
+		}
+	} else if len(ips) == 0 {
+		return nil, dns.ErrEmptyResponse
+	}
+
+	if query {
+		queried, err := c.lookup(ctx, domain, newStrategy)
 		if err != nil {
-			return nil, newError("failed to create client").Base(err)
+			return nil, err
 		}
-		clients = append(clients, client)
+		ips = append(ips, queried...)
 	}
 
-	// If there is no DNS client in config, add a `localhost` DNS client
-	if len(clients) == 0 {
-		clients = append(clients, NewLocalDNSClient())
+	if strategy == dns.QueryStrategy_PREFER_IP4 {
+		var newIPs []net.IP
+		for _, ip := range ips {
+			if len(ip) == net.IPv4len {
+				newIPs = append(newIPs, ip)
+			}
+		}
+		for _, ip := range ips {
+			if len(ip) == net.IPv6len {
+				newIPs = append(newIPs, ip)
+			}
+		}
+	} else if strategy == dns.QueryStrategy_PREFER_IP6 {
+		var newIPs []net.IP
+		for _, ip := range ips {
+			if len(ip) == net.IPv6len {
+				newIPs = append(newIPs, ip)
+			}
+		}
+		for _, ip := range ips {
+			if len(ip) == net.IPv4len {
+				newIPs = append(newIPs, ip)
+			}
+		}
 	}
 
-	return &DNS{
-		tag:                    tag,
-		hosts:                  hosts,
-		ipOption:               ipOption,
-		clients:                clients,
-		ctx:                    ctx,
-		domainMatcher:          domainMatcher,
-		matcherInfos:           matcherInfos,
-		disableCache:           config.DisableCache,
-		disableFallback:        config.DisableFallback,
-		disableFallbackIfMatch: config.DisableFallbackIfMatch,
-	}, nil
+	return ips, nil
 }
 
-// Type implements common.HasType.
-func (*DNS) Type() interface{} {
+func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+	servers := c.sortServers(domain)
+	var messages []*dnsmessage.Message
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	name, err := dnsmessage.NewName(Fqdn(domain))
+	if err != nil {
+		return nil, newError("failed to create domain query").Base(err)
+	}
+
+	{
+		message := new(dnsmessage.Message)
+		message.Header.ID = c.nextRequestId()
+		message.Header.RecursionDesired = true
+		if strategy != dns.QueryStrategy_USE_IP6 {
+			message4 := *message
+			messages = append(messages, &message4)
+			message4.Questions = append(message.Questions, dnsmessage.Question{
+				Name:  name,
+				Type:  dnsmessage.TypeA,
+				Class: dnsmessage.ClassINET,
+			})
+		}
+		if strategy != dns.QueryStrategy_USE_IP4 {
+			message6 := *message
+			messages = append(messages, &message6)
+			message6.Questions = append(message.Questions, dnsmessage.Question{
+				Name:  name,
+				Type:  dnsmessage.TypeAAAA,
+				Class: dnsmessage.ClassINET,
+			})
+		}
+	}
+
+	q := &queryCallback{
+		wg:     new(sync.WaitGroup),
+		ctx:    ctx,
+		cancel: cancel,
+
+		parseIPs: true,
+		domain:   domain,
+		strategy: strategy,
+	}
+
+	q.wg.Add(len(servers))
+
+	var reqIds []uint16
+	var requests []*serverQueryCallback
+
+	for _, server := range servers {
+		ctx, cancel := context.WithCancel(ctx)
+		r := &serverQueryCallback{
+			queryCallback: q,
+			ctx:           ctx,
+			cancel:        cancel,
+		}
+		go func() {
+			<-ctx.Done()
+			r.wg.Done()
+		}()
+		requests = append(requests, r)
+		if server.transport.SupportRaw() {
+			for index := range messages {
+				message := messages[index]
+				message.ID = c.nextRequestId()
+				reqIds = append(reqIds, message.ID)
+				r.queryType.Store(message.ID, message.Questions[0].Type)
+				c.callbacks.Store(message.ID, r)
+				go func() {
+					if err := server.transport.WriteMessage(ctx, message); err != nil {
+						r.errors = append(r.errors, newError("failed to query at dns server ", server.name).Base(err))
+						cancel()
+					}
+				}()
+			}
+		} else {
+			go func() {
+				ips, err := server.transport.Lookup(ctx, domain, strategy)
+				q.access.Lock()
+				defer q.access.Unlock()
+				if err != nil {
+					r.errors = append(r.errors, err)
+				} else if !common.Done(ctx) {
+					matched, err := server.matchExpectedIPs(r.domain, ips)
+					if err != nil {
+						r.errors = append(r.errors, err)
+						return
+					}
+					newError(server.name, " got answer: ", r.domain, " -> ", ips).AtDebug().WriteToLog(session.ExportIDToError(ctx))
+					r.ips = matched
+					q.response = r
+					q.cancel()
+				}
+				cancel()
+			}()
+		}
+		if !server.concurrency {
+			r.wg.Wait()
+			if common.Done(r.ctx) {
+				break
+			}
+		}
+	}
+
+	task.Run(ctx, func() error {
+		q.wg.Wait()
+		return nil
+	})
+
+	cancel()
+
+	for _, reqId := range reqIds {
+		c.callbacks.Delete(reqId)
+	}
+
+	response := q.response
+	if response != nil {
+		ips := q.response.ips
+		if len(ips) == 0 {
+			newError("return empty response for domain ", domain).AtDebug().WriteToLog(session.ExportIDToError(ctx))
+			return nil, dns.ErrEmptyResponse
+		}
+		return ips, nil
+	}
+
+	var errs []error
+	for _, request := range requests {
+		errs = append(errs, request.errors...)
+	}
+	err = errors.Combine(errs...)
+
+	if err == nil {
+		err = context.Canceled
+	}
+	newError("return errors for domain ", domain).Base(err).AtWarning().WriteToLog(session.ExportIDToError(ctx))
+	return nil, err
+}
+
+func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer, error) {
+	message := &dnsmessage.Message{}
+	if err := message.Unpack(buffer.Bytes()); err != nil {
+		buffer.Release()
+		return nil, newError("failed to parse dns request").Base(err)
+	}
+	panic("implementation it")
+}
+
+func (c *transportContext) writeBack(message *dnsmessage.Message) {
+	c.client.writeBack(c.server, message)
+}
+
+func (c *transportContext) writeBackRaw(buffer *buf.Buffer) {
+	c.client.writeBackRaw(c.server, buffer)
+}
+
+func (c *transportContext) writeBackRawTCP(message *buf.Buffer) {
+	if c.missing == 0 {
+		if message.Len() < 2 {
+			c.cache = message
+			c.missing = message.Len() - 2
+			return
+		}
+
+		messageLen := int32(binary.BigEndian.Uint16(message.BytesTo(2)))
+		message.Advance(2)
+		missing := messageLen - message.Len()
+		if missing == 0 {
+			c.writeBackRaw(message)
+			return
+		}
+		if missing < 0 {
+			c.writeBackRaw(buf.FromBytes(message.BytesTo(messageLen)))
+			message.Advance(messageLen)
+			c.writeBackRawTCP(message)
+			return
+		}
+		c.cache = message
+		c.missing = missing
+	} else if c.missing < 0 {
+		missing := -c.missing
+		if message.Len() < missing {
+			c.cache.Write(message.Bytes())
+			c.missing -= message.Len()
+			message.Release()
+			return
+		}
+		message.Advance(missing)
+		messageLen := int32(binary.BigEndian.Uint16(c.cache.BytesTo(2)))
+		c.cache.Release()
+
+		missing = messageLen - message.Len()
+		if missing == 0 {
+			c.cache = nil
+			c.missing = 0
+			c.writeBackRaw(message)
+			return
+		}
+		if missing < 0 {
+			c.cache = nil
+			c.missing = 0
+			c.writeBackRaw(buf.FromBytes(message.BytesTo(messageLen)))
+			message.Advance(messageLen)
+			c.writeBackRawTCP(message)
+			return
+		}
+
+		c.cache = message
+		c.missing = missing
+	} else {
+		if c.missing > message.Len() {
+			c.missing -= message.Len()
+			c.cache.Write(message.Bytes())
+			message.Release()
+			return
+		}
+		if c.missing == message.Len() {
+			c.cache.Write(message.Bytes())
+			c.writeBackRaw(c.cache)
+			c.missing = 0
+			c.cache = nil
+			message.Release()
+			return
+		}
+
+		c.cache.Write(message.BytesTo(c.missing))
+		message.Advance(c.missing)
+		c.writeBackRaw(c.cache)
+		c.missing = 0
+		c.cache = nil
+		c.writeBackRawTCP(message)
+	}
+}
+
+func (c *Client) writeBackRaw(server *Server, buffer *buf.Buffer) {
+	defer buffer.Release()
+	message := new(dnsmessage.Message)
+	if err := message.Unpack(buffer.Bytes()); err != nil {
+		newError("failed to parse DNS response at server ", server.name).Base(err).WriteToLog()
+		return
+	}
+	c.writeBack(server, message)
+}
+
+func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
+	callbackI, loaded := c.callbacks.LoadAndDelete(message.ID)
+	if !loaded {
+		newError("no callback for response ", message.ID).AtDebug().WriteToLog()
+		return
+	}
+
+	d := callbackI.(*serverQueryCallback)
+	typeI, _ := d.queryType.LoadAndDelete(message.ID)
+	queryType := typeI.(dnsmessage.Type)
+
+	if common.Done(d.ctx) {
+		return
+	}
+
+	d.access.Lock()
+	defer d.access.Unlock()
+
+	if message.RCode != dnsmessage.RCodeSuccess {
+		err := dns.RCodeError(message.RCode)
+		d.errors = append(d.errors, err)
+		d.cancel()
+		newError("failed to lookup ip for domain ", d.domain, " at server ", server.name).Base(err).AtDebug().WriteToLog(session.ExportIDToError(d.ctx))
+		return
+	}
+
+	if !d.parseIPs {
+		d.queryCallback.access.Lock()
+		defer d.queryCallback.access.Unlock()
+
+		if common.Done(d.ctx) {
+			return
+		}
+
+		newError(server.name, " got answer for raw query ", message.ID).AtDebug().WriteToLog(session.ExportIDToError(d.ctx))
+
+		d.response = message
+		d.queryCallback.response = d
+		d.queryCallback.cancel()
+		d.cancel()
+		return
+	}
+
+	now := time.Now()
+
+	var has4, has6 bool
+	var addr4, addr6 []netip.Addr
+	var ttl4, ttl6 uint32
+
+	for _, answer := range message.Answers {
+		switch resource := answer.Body.(type) {
+		case *dnsmessage.AResource:
+			addr4 = append(addr4, netip.AddrFrom4(resource.A))
+			if answer.Header.TTL > 0 && (ttl4 == 0 || ttl4 > answer.Header.TTL) {
+				ttl4 = answer.Header.TTL
+			}
+			has4 = true
+		case *dnsmessage.AAAAResource:
+			addr6 = append(addr6, netip.AddrFrom16(resource.AAAA))
+			if answer.Header.TTL > 0 && (ttl6 == 0 || ttl6 > answer.Header.TTL) {
+				ttl6 = answer.Header.TTL
+			}
+			has6 = true
+		}
+	}
+
+	cache := new(ipCacheEntire)
+	if has4 && d.strategy != dns.QueryStrategy_USE_IP6 || queryType == dnsmessage.TypeA {
+		cache.cache4 = common.Map(addr4, func(it netip.Addr) net.IP {
+			return it.AsSlice()
+		})
+		cache.cached4 = true
+		if ttl4 == 0 {
+			ttl4 = 6 * 60
+		}
+		cache.expire4 = now.Add(time.Duration(ttl4) * time.Second)
+		d.finish4 = true
+	}
+	if has6 && d.strategy != dns.QueryStrategy_USE_IP4 || queryType == dnsmessage.TypeAAAA {
+		cache.cache6 = common.Map(addr6, func(it netip.Addr) net.IP {
+			return it.AsSlice()
+		})
+		cache.cached6 = true
+		if ttl6 == 0 {
+			ttl6 = 6 * 60
+		}
+		cache.expire6 = now.Add(time.Duration(ttl6) * time.Second)
+		d.finish6 = true
+	}
+	cacheI, cacheExists := c.cache.LoadOrStore(d.domain, cache)
+	if cacheExists {
+		acCache := cacheI.(*ipCacheEntire)
+		if cache.cached4 {
+			acCache.cache4, acCache.cached4, acCache.expire4 = cache.cache4, cache.cached4, cache.expire4
+		}
+		if cache.cached6 {
+			acCache.cache6, acCache.cached6, acCache.expire6 = cache.cache6, cache.cached6, cache.expire6
+		}
+	}
+	var ips []net.IP
+	if len(addr4) > 0 {
+		ips = append(ips, cache.cache4...)
+	}
+	if len(addr6) > 0 {
+		ips = append(ips, cache.cache6...)
+	}
+	matched, err := server.matchExpectedIPs(d.domain, ips)
+	if err != nil {
+		return
+	}
+	d.ips = append(d.ips, matched...)
+
+	var finish bool
+	switch d.strategy {
+	case dns.QueryStrategy_USE_IP4:
+		finish = d.finish4
+	case dns.QueryStrategy_USE_IP6:
+		finish = d.finish6
+	default:
+		finish = d.finish4 && d.finish6
+	}
+
+	if finish {
+		d.queryCallback.access.Lock()
+		defer d.queryCallback.access.Unlock()
+
+		if common.Done(d.ctx) {
+			return
+		}
+
+		newError(server.name, " got answer: ", d.domain, " -> ", queryType, " ", d.ips).AtDebug().WriteToLog(session.ExportIDToError(d.ctx))
+
+		d.queryCallback.response = d
+		d.queryCallback.cancel()
+		d.cancel()
+	}
+}
+
+func (c *Client) Type() interface{} {
 	return dns.ClientType()
 }
 
-// Start implements common.Runnable.
-func (s *DNS) Start() error {
+func (c *Client) Start() error {
 	return nil
 }
 
-// Close implements common.Closable.
-func (s *DNS) Close() error {
+func (c *Client) Close() error {
 	return nil
 }
 
-// IsOwnLink implements proxy.dns.ownLinkVerifier
-func (s *DNS) IsOwnLink(ctx context.Context) bool {
+func (c *Client) IsOwnLink(ctx context.Context) bool {
 	inbound := session.InboundFromContext(ctx)
-	return inbound != nil && inbound.Tag == s.tag
+	return inbound != nil && inbound.Tag == c.tag
 }
 
-// LookupIP implements dns.Client.
-func (s *DNS) LookupIP(domain string) ([]net.IP, error) {
-	return s.lookupIPInternal(domain, *s.ipOption)
+// old interface
+
+func (c *Client) LookupIP(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
+	defer cancel()
+	return c.LookupDefault(ctx, domain)
 }
 
-// LookupIPv4 implements dns.IPv4Lookup.
-func (s *DNS) LookupIPv4(domain string) ([]net.IP, error) {
-	if !s.ipOption.IPv4Enable {
-		return nil, dns.ErrEmptyResponse
-	}
-	o := *s.ipOption
-	o.IPv6Enable = false
-	return s.lookupIPInternal(domain, o)
+func (c *Client) LookupIPv4(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
+	defer cancel()
+	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
 }
 
-// LookupIPv6 implements dns.IPv6Lookup.
-func (s *DNS) LookupIPv6(domain string) ([]net.IP, error) {
-	if !s.ipOption.IPv6Enable {
-		return nil, dns.ErrEmptyResponse
-	}
-	o := *s.ipOption
-	o.IPv4Enable = false
-	return s.lookupIPInternal(domain, o)
-}
-
-func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) ([]net.IP, error) {
-	if domain == "" {
-		return nil, newError("empty domain name")
-	}
-
-	// Normalize the FQDN form query
-	domain = strings.TrimSuffix(domain, ".")
-
-	// Static host lookup
-	switch addrs := s.hosts.Lookup(domain, option); {
-	case addrs == nil: // Domain not recorded in static host
-		break
-	case len(addrs) == 0: // Domain recorded, but no valid IP returned (e.g. IPv4 address with only IPv6 enabled)
-		return nil, dns.ErrEmptyResponse
-	case len(addrs) == 1 && addrs[0].Family().IsDomain(): // Domain replacement
-		newError("domain replaced: ", domain, " -> ", addrs[0].Domain()).WriteToLog()
-		domain = addrs[0].Domain()
-	default: // Successfully found ip records in static host
-		newError("returning ", len(addrs), " IP(s) for domain ", domain, " -> ", addrs).WriteToLog()
-		return toNetIP(addrs)
-	}
-
-	// Name servers lookup
-	errs := []error{}
-	ctx := session.ContextWithInbound(s.ctx, &session.Inbound{Tag: s.tag})
-	for _, client := range s.sortClients(domain) {
-		ips, err := client.QueryIP(ctx, domain, option, s.disableCache)
-		if len(ips) > 0 {
-			return ips, nil
-		}
-		if err != nil {
-			newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
-			errs = append(errs, err)
-		}
-		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch && !s.continueOnError {
-			return nil, err
-		}
-	}
-
-	return nil, newError("returning nil for domain ", domain).Base(errors.Combine(errs...))
-}
-
-// GetIPOption implements ClientWithIPOption.
-func (s *DNS) GetIPOption() *dns.IPOption {
-	return s.ipOption
-}
-
-// SetQueryOption implements ClientWithIPOption.
-func (s *DNS) SetQueryOption(isIPv4Enable, isIPv6Enable bool) {
-	s.ipOption.IPv4Enable = isIPv4Enable
-	s.ipOption.IPv6Enable = isIPv6Enable
-}
-
-func (s *DNS) sortClients(domain string) []*Client {
-	clients := make([]*Client, 0, len(s.clients))
-	clientUsed := make([]bool, len(s.clients))
-	clientNames := make([]string, 0, len(s.clients))
-	domainRules := []string{}
-
-	// Priority domain matching
-	hasMatch := false
-	for _, match := range s.domainMatcher.Match(domain) {
-		info := s.matcherInfos[match]
-		client := s.clients[info.clientIdx]
-		domainRule := client.domains[info.domainRuleIdx]
-		domainRules = append(domainRules, fmt.Sprintf("%s(DNS idx:%d)", domainRule, info.clientIdx))
-		if clientUsed[info.clientIdx] {
-			continue
-		}
-		clientUsed[info.clientIdx] = true
-		clients = append(clients, client)
-		clientNames = append(clientNames, client.Name())
-		hasMatch = true
-	}
-
-	if !(s.disableFallback || s.disableFallbackIfMatch && hasMatch) {
-		// Default round-robin query
-		for idx, client := range s.clients {
-			if clientUsed[idx] || client.skipFallback {
-				continue
-			}
-			clientUsed[idx] = true
-			clients = append(clients, client)
-			clientNames = append(clientNames, client.Name())
-		}
-	}
-
-	if len(domainRules) > 0 {
-		newError("domain ", domain, " matches following rules: ", domainRules).AtDebug().WriteToLog()
-	}
-	if len(clientNames) > 0 {
-		newError("domain ", domain, " will use DNS in order: ", clientNames).AtDebug().WriteToLog()
-	}
-
-	if len(clients) == 0 {
-		clients = append(clients, s.clients[0])
-		clientNames = append(clientNames, s.clients[0].Name())
-		newError("domain ", domain, " will use the first DNS: ", clientNames).AtDebug().WriteToLog()
-	}
-
-	return clients
-}
-
-func init() {
-	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
-		return New(ctx, config.(*Config))
-	}))
-
-	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) { // nolint: staticcheck
-		ctx = cfgcommon.NewConfigureLoadingContext(context.Background()) // nolint: staticcheck
-
-		geoloadername := platform.NewEnvFlag("v2ray.conf.geoloader").GetValue(func() string {
-			return "standard"
-		})
-
-		if loader, err := geodata.GetGeoDataLoader(geoloadername); err == nil {
-			cfgcommon.SetGeoDataLoader(ctx, loader)
-		} else {
-			return nil, newError("unable to create geo data loader ").Base(err)
-		}
-
-		cfgEnv := cfgcommon.GetConfigureLoadingEnvironment(ctx)
-		geoLoader := cfgEnv.GetGeoLoader()
-
-		simplifiedConfig := config.(*SimplifiedConfig)
-		for _, v := range simplifiedConfig.NameServer {
-			for _, geo := range v.Geoip {
-				if geo.Code != "" {
-					filepath := "geoip.dat"
-					if geo.FilePath != "" {
-						filepath = geo.FilePath
-					} else {
-						geo.CountryCode = geo.Code
-					}
-					var err error
-					geo.Cidr, err = geoLoader.LoadIP(filepath, geo.Code)
-					if err != nil {
-						return nil, newError("unable to load geoip").Base(err)
-					}
-				}
-			}
-		}
-
-		var nameservers []*NameServer
-
-		for _, v := range simplifiedConfig.NameServer {
-			nameserver := &NameServer{
-				Address:      v.Address,
-				ClientIp:     net.ParseIP(v.ClientIp),
-				SkipFallback: v.SkipFallback,
-				Geoip:        v.Geoip,
-			}
-			for _, prioritizedDomain := range v.PrioritizedDomain {
-				nameserver.PrioritizedDomain = append(nameserver.PrioritizedDomain, &NameServer_PriorityDomain{
-					Type:   prioritizedDomain.Type,
-					Domain: prioritizedDomain.Domain,
-				})
-			}
-			nameservers = append(nameservers, nameserver)
-		}
-
-		fullConfig := &Config{
-			NameServer:      nameservers,
-			ClientIp:        net.ParseIP(simplifiedConfig.ClientIp),
-			StaticHosts:     simplifiedConfig.StaticHosts,
-			Tag:             simplifiedConfig.Tag,
-			DisableCache:    simplifiedConfig.DisableCache,
-			QueryStrategy:   simplifiedConfig.QueryStrategy,
-			DisableFallback: simplifiedConfig.DisableFallback,
-		}
-		return common.CreateObject(ctx, fullConfig)
-	}))
+func (c *Client) LookupIPv6(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
+	defer cancel()
+	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
 }

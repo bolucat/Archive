@@ -11,6 +11,8 @@ class QSyntaxStyle;
  */
 class QStyleSyntaxHighlighter : public QSyntaxHighlighter
 {
+    Q_OBJECT
+
   public:
     /**
      * @brief Constructor.

@@ -161,9 +161,9 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	}
 
 	if !config.Protect {
-		localdns.SetLookupFunc(nil)
+		localdns.SetLocalLookupFunc(nil)
 	} else {
-		localdns.SetLookupFunc(func(network, host string) ([]v2rayNet.IP, error) {
+		localdns.SetLocalLookupFunc(func(ctx context.Context, network, host string) ([]v2rayNet.IP, error) {
 			response, err := config.LocalResolver.LookupIP(network, host)
 			if err != nil {
 				errStr := err.Error()
@@ -180,16 +180,19 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 			}
 			if len(ips) == 0 {
 				return nil, dns.ErrEmptyResponse
-			} else {
-				return ips, nil
 			}
+
+			return ips, nil
 		})
 	}
 
+	localTransport := localdns.NewLocalTransport()
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
 		protector: config.Protector,
 		resolver: func(domain string) ([]net.IP, error) {
-			return localdns.Instance.LookupIP(domain)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			return localTransport.Lookup(ctx, domain, dns.QueryStrategy_USE_IP)
 		},
 	})
 
@@ -200,7 +203,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 func (t *Tun2ray) Close() {
 	net.DefaultResolver.Dial = nil
 	pingproto.ControlFunc = nil
-	localdns.SetLookupFunc(nil)
+	localdns.SetLocalLookupFunc(nil)
 
 	comm.CloseIgnore(t.dev)
 	t.connectionsLock.Lock()

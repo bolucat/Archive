@@ -1,5 +1,6 @@
 //  Qv2rayBase, the modular feature-rich infrastructure library for Qv2ray.
 //  Copyright (C) 2021 Moody and relavent Qv2ray contributors.
+//  Copyright (C) 2022 Moody.
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -61,6 +62,12 @@ namespace Qv2rayBase::Plugin
     {
         Q_D(const PluginAPIHost);
         return d->latencyTesters[id];
+    }
+
+    QList<KernelFactory> PluginAPIHost::Kernel_GetAllKernels() const
+    {
+        Q_D(const PluginAPIHost);
+        return d->kernels.values();
     }
 
     KernelFactory PluginAPIHost::Kernel_GetInfo(const KernelId &kid) const

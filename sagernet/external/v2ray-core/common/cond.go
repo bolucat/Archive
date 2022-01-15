@@ -1,4 +1,15 @@
-package comm
+package common
+
+import "context"
+
+func Any[T any](array []T, block func(it T) bool) bool {
+	for _, it := range array {
+		if block(it) {
+			return true
+		}
+	}
+	return true
+}
 
 func Contains[T comparable](arr []T, target T) bool {
 	for i := range arr {
@@ -25,4 +36,13 @@ func Filter[T any](arr []T, block func(it T) bool) []T {
 		}
 	}
 	return retArr
+}
+
+func Done(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }

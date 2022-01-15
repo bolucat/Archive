@@ -176,6 +176,9 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	if account.Cipher.IVSize() > 0 {
 		iv = make([]byte, account.Cipher.IVSize())
 		common.Must2(rand.Read(iv))
+		if account.ReducedIVEntropy && len(iv) > 6 {
+			remapToPrintable(iv[:6])
+		}
 		if ivError := account.CheckIV(iv); ivError != nil {
 			return newError("failed to mark outgoing iv").Base(ivError)
 		}

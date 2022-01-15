@@ -34,8 +34,7 @@ class QCodeEditor : public QTextEdit
         QChar left, right;
         bool autoComplete, autoRemove, tabJumpOut;
 
-        Parenthesis(const QChar &l = '(', const QChar &r = ')', bool complete = true, bool remove = true,
-                    bool jumpout = true)
+        Parenthesis(QChar l = '(', QChar r = ')', bool complete = true, bool remove = true, bool jumpout = true)
             : left(l), right(r), autoComplete(complete), autoRemove(remove), tabJumpOut(jumpout)
         {
         }
@@ -136,7 +135,7 @@ class QCodeEditor : public QTextEdit
      * @note QPair<int, int>: first -> Line number in 1-based indexing
      *                        second -> Character number in 0-based indexing
      */
-    void squiggle(SeverityLevel level, QPair<int, int>, QPair<int, int>, QString tooltipMessage);
+    void squiggle(SeverityLevel level, QPair<int, int>, QPair<int, int>, const QString &tooltipMessage);
 
     /**
      * @brief clearSquiggle, Clears complete squiggle from editor
@@ -156,7 +155,7 @@ class QCodeEditor : public QTextEdit
      * completion info into code.
      * @param s Data.
      */
-    void insertCompletion(QString s);
+    void insertCompletion(const QString &s);
 
     /**
      * @brief Slot, that performs update of
@@ -170,7 +169,7 @@ class QCodeEditor : public QTextEdit
      * part of line number area.
      * @param rect Area that has to be updated.
      */
-    void updateLineNumberArea(const QRect &rect);
+    void updateLineNumberArea(QRect rect);
 
     /**
      * @brief Slot, that will proceed extra selection
@@ -366,7 +365,7 @@ class QCodeEditor : public QTextEdit
     {
         SquiggleInformation() = default;
 
-        SquiggleInformation(QPair<int, int> start, QPair<int, int> stop, QString text)
+        SquiggleInformation(QPair<int, int> start, QPair<int, int> stop, const QString &text)
             : m_startPos(start), m_stopPos(stop), m_tooltipText(text)
         {
         }

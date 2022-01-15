@@ -3,62 +3,60 @@ package localdns
 import (
 	"context"
 
+	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 )
 
-var (
-	Instance   = &Client{}
-	LookupFunc func(network string, host string) ([]net.IP, error)
-)
+var _ dns.NewClient = (*Client)(nil)
 
-func init() {
-	SetLookupFunc(nil)
-}
+var instance dns.NewClient = &Client{}
 
-func SetLookupFunc(lookupFunc func(network, host string) ([]net.IP, error)) {
-	if lookupFunc == nil {
-		resolver := &net.Resolver{PreferGo: false}
-		LookupFunc = func(network string, host string) ([]net.IP, error) {
-			return resolver.LookupIP(context.Background(), network, host)
-		}
-	} else {
-		LookupFunc = lookupFunc
-	}
-}
-
-// Client is an implementation of dns.Client, which queries localhost for DNS.
 type Client struct{}
 
-// Type implements common.HasType.
-func (*Client) Type() interface{} {
+func NewClient() dns.NewClient {
+	return instance
+}
+
+func (c Client) Type() interface{} {
 	return dns.ClientType()
 }
 
-// Start implements common.Runnable.
-func (*Client) Start() error {
+func (c Client) Start() error {
 	return nil
 }
 
-// Close implements common.Closable.
-func (*Client) Close() error { return nil }
-
-// LookupIP implements Client.
-func (c *Client) LookupIP(host string) ([]net.IP, error) {
-	return LookupFunc("ip", host)
+func (c Client) Close() error {
+	return nil
 }
 
-// LookupIPv4 implements IPv4Lookup.
-func (c *Client) LookupIPv4(host string) ([]net.IP, error) {
-	return LookupFunc("ip4", host)
+func (c *Client) LookupIP(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
+	defer cancel()
+	return c.LookupDefault(ctx, domain)
 }
 
-// LookupIPv6 implements IPv6Lookup.
-func (c *Client) LookupIPv6(host string) ([]net.IP, error) {
-	return LookupFunc("ip6", host)
+func (c *Client) LookupIPv4(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
+	defer cancel()
+	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
 }
 
-// New create a new dns.Client that queries localhost for DNS.
-func New() *Client {
-	return Instance
+func (c *Client) LookupIPv6(domain string) ([]net.IP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
+	defer cancel()
+	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+}
+
+func (c Client) LookupDefault(ctx context.Context, domain string) ([]net.IP, error) {
+	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP)
+}
+
+func (c Client) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+	return transportInstance.Lookup(ctx, domain, strategy)
+}
+
+func (c Client) QueryRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
+	return nil, common.ErrNoClue
 }

@@ -8,6 +8,7 @@ import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
+import android.widget.TextView;
 
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.preference.PreferenceViewHolder;
@@ -139,6 +140,8 @@ public class SwitchPreferenceCompat extends androidx.preference.SwitchPreference
 
             typedArray.recycle();
         }
+
+        ((TextView) holder.findViewById(android.R.id.summary)).setMaxLines(Integer.MAX_VALUE);
 
         holder.itemView.setClickable(!withSeparator);
         holder.itemView.setFocusable(!withSeparator);

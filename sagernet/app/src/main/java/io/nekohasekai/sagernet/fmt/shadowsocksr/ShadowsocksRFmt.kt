@@ -19,13 +19,14 @@
 
 package io.nekohasekai.sagernet.fmt.shadowsocksr
 
-import android.net.Uri
 import cn.hutool.core.codec.Base64
 import cn.hutool.json.JSONObject
 import io.nekohasekai.sagernet.IPv6Mode
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.ktx.applyDefaultValues
 import io.nekohasekai.sagernet.ktx.decodeBase64UrlSafe
+import io.nekohasekai.sagernet.ktx.queryParameter
+import libcore.Libcore
 import java.util.*
 
 fun parseShadowsocksR(url: String): ShadowsocksRBean {
@@ -41,17 +42,17 @@ fun parseShadowsocksR(url: String): ShadowsocksRBean {
         password = params[5].substringBefore("/").decodeBase64UrlSafe()
     }
 
-    val httpUrl = Uri.parse("https://localhost" + params[5].substringAfter("/"))
+    val httpUrl = Libcore.parseURL("https://localhost" + params[5].substringAfter("/"))
 
-    httpUrl.getQueryParameter("obfsparam")?.let {
+    httpUrl.queryParameter("obfsparam")?.let {
         bean.obfsParam = it.decodeBase64UrlSafe()
     }
 
-    httpUrl.getQueryParameter("protoparam")?.let {
+    httpUrl.queryParameter("protoparam")?.let {
         bean.protocolParam = it.decodeBase64UrlSafe()
     }
 
-    httpUrl.getQueryParameter("remarks")?.let {
+    httpUrl.queryParameter("remarks")?.let {
         bean.name = it.decodeBase64UrlSafe()
     }
 

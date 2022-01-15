@@ -113,8 +113,8 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var speedInterval by configurationStore.stringToInt(Key.SPEED_INTERVAL)
 
     // https://github.com/SagerNet/SagerNet/issues/180
-    var remoteDns by configurationStore.stringNotBlack(Key.REMOTE_DNS) { "https://dns.google/dns-query" }
-    var directDns by configurationStore.stringNotBlack(Key.DIRECT_DNS) { "https+local://doh.pub/dns-query" }
+    var remoteDns by configurationStore.stringNotBlack(Key.REMOTE_DNS) { "tls://dns.google" }
+    var directDns by configurationStore.stringNotBlack(Key.DIRECT_DNS) { "tls+local://dot.pub" }
     var useLocalDnsAsDirectDns by configurationStore.boolean(Key.USE_LOCAL_DNS_AS_DIRECT_DNS)
     var hosts by configurationStore.string(Key.DNS_HOSTS)
     var enableDnsRouting by configurationStore.boolean(Key.ENABLE_DNS_ROUTING)
@@ -202,6 +202,8 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var alwaysShowAddress by configurationStore.boolean(Key.ALWAYS_SHOW_ADDRESS)
 
     var tunImplementation by configurationStore.stringToInt(Key.TUN_IMPLEMENTATION) { TunImplementation.GVISOR }
+
+    var useUpstreamInterfaceMTU by configurationStore.boolean(Key.USE_UPSTREAM_INTERFACE_MTU) { true }
     var mtu by configurationStore.stringToInt(Key.MTU) { VpnService.DEFAULT_MTU }
 
     var appTrafficStatistics by configurationStore.boolean(Key.APP_TRAFFIC_STATISTICS)
@@ -266,6 +268,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var serverLocalAddress by profileCacheStore.string(Key.SERVER_LOCAL_ADDRESS)
     var serverInsecureConcurrency by profileCacheStore.stringToInt(Key.SERVER_INSECURE_CONCURRENCY)
     var serverMTU by profileCacheStore.stringToInt(Key.SERVER_MTU)
+    var serverReducedIvHeadEntropy by profileCacheStore.boolean(Key.SERVER_REDUCED_IV_HEAD_ENTROPY)
 
     var balancerType by profileCacheStore.stringToInt(Key.BALANCER_TYPE)
     var balancerGroup by profileCacheStore.stringToLong(Key.BALANCER_GROUP)

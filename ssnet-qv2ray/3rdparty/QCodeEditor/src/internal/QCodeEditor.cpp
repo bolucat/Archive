@@ -51,7 +51,7 @@ void QCodeEditor::performConnections()
     connect(document(), &QTextDocument::blockCountChanged, this, &QCodeEditor::updateLineNumberAreaWidth);
     connect(document(), &QTextDocument::blockCountChanged, this, &QCodeEditor::updateBottomMargin);
 
-    connect(verticalScrollBar(), &QScrollBar::valueChanged, [this](int) { m_lineNumberArea->update(); });
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int) { m_lineNumberArea->update(); });
 
     connect(this, &QTextEdit::cursorPositionChanged, this, &QCodeEditor::updateExtraSelection1);
     connect(this, &QTextEdit::selectionChanged, this, &QCodeEditor::updateExtraSelection2);
@@ -101,9 +101,7 @@ void QCodeEditor::updateStyle()
         QString selectionBackground = m_syntaxStyle->getFormat("Selection").background().color().name();
 
         setStyleSheet(QString("QTextEdit { background-color: %1; selection-background-color: %2; color: %3; }")
-                          .arg(backgroundColor)
-                          .arg(selectionBackground)
-                          .arg(textColor));
+                          .arg(backgroundColor, selectionBackground, textColor));
     }
 
     updateExtraSelection1();
@@ -183,7 +181,7 @@ void QCodeEditor::updateLineNumberAreaWidth(int)
     setViewportMargins(m_lineNumberArea->sizeHint().width(), 0, 0, 0);
 }
 
-void QCodeEditor::updateLineNumberArea(const QRect &rect)
+void QCodeEditor::updateLineNumberArea(QRect rect)
 {
     m_lineNumberArea->update(0, rect.y(), m_lineNumberArea->sizeHint().width(), rect.height());
     updateLineGeometry();
@@ -684,7 +682,7 @@ void QCodeEditor::keyPressEvent(QKeyEvent *e)
             }
 
             auto c = charUnderCursor();
-            for (auto p : m_parentheses)
+            for (auto p : qAsConst(m_parentheses))
             {
                 if (p.tabJumpOut && c == p.right)
                 {
@@ -744,7 +742,7 @@ void QCodeEditor::keyPressEvent(QKeyEvent *e)
         {
             auto pre = charUnderCursor(-1);
             auto nxt = charUnderCursor();
-            for (auto p : m_parentheses)
+            for (auto p : qAsConst(m_parentheses))
             {
                 if (p.autoRemove && p.left == pre && p.right == nxt)
                 {
@@ -784,7 +782,7 @@ void QCodeEditor::keyPressEvent(QKeyEvent *e)
             }
         }
 
-        for (auto p : m_parentheses)
+        for (auto p : qAsConst(m_parentheses))
         {
             if (p.autoComplete)
             {
@@ -890,7 +888,13 @@ bool QCodeEditor::tabReplace() const
 void QCodeEditor::setTabReplaceSize(int val)
 {
     m_tabReplace.fill(' ', val);
+#if QT_VERSION >= 0x050B00
     setTabStopDistance(fontMetrics().horizontalAdvance(QString(val * 1000, ' ')) / 1000.0);
+#elif QT_VERSION == 0x050A00
+    setTabStopDistance(fontMetrics().width(QString(val * 1000, ' ')) / 1000.0);
+#else
+    setTabStopWidth(fontMetrics().width(QString(val * 1000, ' ')) / 1000.0);
+#endif
 }
 
 int QCodeEditor::tabReplaceSize() const
@@ -946,7 +950,7 @@ bool QCodeEditor::event(QEvent *event)
         QPair<int, int> positionOfTooltip{lineNumber, blockPositionStart};
 
         QString text;
-        for (auto const &e : m_squiggler)
+        for (auto const &e : qAsConst(m_squiggler))
         {
             if (e.m_startPos <= positionOfTooltip && e.m_stopPos >= positionOfTooltip)
             {
@@ -967,7 +971,7 @@ bool QCodeEditor::event(QEvent *event)
     return QTextEdit::event(event);
 }
 
-void QCodeEditor::insertCompletion(QString s)
+void QCodeEditor::insertCompletion(const QString &s)
 {
     if (m_completer->widget() != this)
     {
@@ -985,7 +989,8 @@ QCompleter *QCodeEditor::completer() const
     return m_completer;
 }
 
-void QCodeEditor::squiggle(SeverityLevel level, QPair<int, int> start, QPair<int, int> stop, QString tooltipMessage)
+void QCodeEditor::squiggle(SeverityLevel level, QPair<int, int> start, QPair<int, int> stop,
+                           const QString &tooltipMessage)
 {
     if (stop < start)
         return;

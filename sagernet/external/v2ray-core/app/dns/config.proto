@@ -30,6 +30,7 @@ message NameServer {
   repeated PriorityDomain prioritized_domain = 2;
   repeated v2ray.core.app.router.routercommon.GeoIP geoip = 3;
   repeated OriginalRule original_rules = 4;
+  bool concurrency = 7;
 }
 
 enum DomainMatchingType {
@@ -162,4 +163,5 @@ message SimplifiedNameServer {
   repeated PriorityDomain prioritized_domain = 2;
   repeated v2ray.core.app.router.routercommon.GeoIP geoip = 3;
   repeated OriginalRule original_rules = 4;
+  bool concurrency = 7;
 }

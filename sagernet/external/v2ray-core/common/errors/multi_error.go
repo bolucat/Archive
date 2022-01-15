@@ -4,9 +4,9 @@ import (
 	"strings"
 )
 
-type multiError []error
+type MultiError []error
 
-func (e multiError) Error() string {
+func (e MultiError) Error() string {
 	if len(e) == 1 {
 		return e[0].Error()
 	}
@@ -20,7 +20,7 @@ func (e multiError) Error() string {
 }
 
 func Combine(maybeError ...error) error {
-	var errs multiError
+	var errs MultiError
 	for _, err := range maybeError {
 		if err != nil {
 			errs = append(errs, err)

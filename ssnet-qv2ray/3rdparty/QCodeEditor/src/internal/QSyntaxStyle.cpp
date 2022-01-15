@@ -10,7 +10,7 @@ QSyntaxStyle::QSyntaxStyle(QObject *parent) : QObject(parent), m_name(), m_data(
 {
 }
 
-bool QSyntaxStyle::load(QString fl)
+bool QSyntaxStyle::load(const QString &fl)
 {
     QXmlStreamReader reader(fl);
 
@@ -119,7 +119,7 @@ QString QSyntaxStyle::name() const
     return m_name;
 }
 
-QTextCharFormat QSyntaxStyle::getFormat(QString name) const
+QTextCharFormat QSyntaxStyle::getFormat(const QString &name) const
 {
     auto result = m_data.find(name);
 

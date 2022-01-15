@@ -42,13 +42,13 @@ func (c *ReceiverConfig) GetEffectiveSniffingSettings() *SniffingConfig {
 
 const useIPKey = "preferUseIP"
 
-func SetPreferUseIP(ctx context.Context) context.Context {
-	return context.WithValue(ctx, useIPKey, true)
+func SetPreferUseIP(ctx context.Context, prefer bool) context.Context {
+	return context.WithValue(ctx, useIPKey, prefer)
 }
 
 func PreferUseIPFromContext(ctx context.Context) bool {
-	if _, ok := ctx.Value(useIPKey).(bool); ok {
-		return true
+	if val, ok := ctx.Value(useIPKey).(bool); ok {
+		return val
 	}
 	return false
 }

@@ -46,29 +46,15 @@ type ownLinkVerifier interface {
 }
 
 type Handler struct {
-	client          dns.Client
-	ipv4Lookup      dns.IPv4Lookup
-	ipv6Lookup      dns.IPv6Lookup
+	client          dns.NewClient
 	ownLinkVerifier ownLinkVerifier
 	server          net.Destination
 	timeout         time.Duration
 }
 
 func (h *Handler) Init(config *Config, dnsClient dns.Client, policyManager policy.Manager) error {
-	h.client = dnsClient
+	h.client = dnsClient.(dns.NewClient)
 	h.timeout = policyManager.ForLevel(config.UserLevel).Timeouts.ConnectionIdle
-
-	if ipv4lookup, ok := dnsClient.(dns.IPv4Lookup); ok {
-		h.ipv4Lookup = ipv4lookup
-	} else {
-		return newError("dns.Client doesn't implement IPv4Lookup")
-	}
-
-	if ipv6lookup, ok := dnsClient.(dns.IPv6Lookup); ok {
-		h.ipv6Lookup = ipv6lookup
-	} else {
-		return newError("dns.Client doesn't implement IPv6Lookup")
-	}
 
 	if v, ok := dnsClient.(ownLinkVerifier); ok {
 		h.ownLinkVerifier = v
@@ -190,7 +176,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, d internet.
 			if !h.isOwnLink(ctx) {
 				isIPQuery, domain, id, qType := parseIPQuery(b.Bytes())
 				if isIPQuery {
-					go h.handleIPQuery(id, qType, domain, writer)
+					go h.handleIPQuery(ctx, id, qType, domain, writer)
 					continue
 				}
 			}
@@ -227,7 +213,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, d internet.
 	return nil
 }
 
-func (h *Handler) handleIPQuery(id uint16, qType dnsmessage.Type, domain string, writer dns_proto.MessageWriter) {
+func (h *Handler) handleIPQuery(ctx context.Context, id uint16, qType dnsmessage.Type, domain string, writer dns_proto.MessageWriter) {
 	var ips []net.IP
 	var err error
 
@@ -235,9 +221,9 @@ func (h *Handler) handleIPQuery(id uint16, qType dnsmessage.Type, domain string,
 
 	switch qType {
 	case dnsmessage.TypeA:
-		ips, err = h.ipv4Lookup.LookupIPv4(domain)
+		ips, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
 	case dnsmessage.TypeAAAA:
-		ips, err = h.ipv6Lookup.LookupIPv6(domain)
+		ips, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
 	}
 
 	rcode := dns.RCodeFromError(err)

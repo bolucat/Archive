@@ -20,8 +20,8 @@ import (
 	"sync"
 
 	"github.com/Dreamacro/clash/transport/socks5"
+	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
-	"libcore/comm"
 )
 
 type HTTPClient interface {
@@ -74,13 +74,13 @@ func NewHttpClient() HTTPClient {
 
 func (c *httpClient) ModernTLS() {
 	c.tls.MinVersion = tls.VersionTLS12
-	c.tls.CipherSuites = comm.Map(tls.CipherSuites(), func(it *tls.CipherSuite) uint16 { return it.ID })
+	c.tls.CipherSuites = common.Map(tls.CipherSuites(), func(it *tls.CipherSuite) uint16 { return it.ID })
 }
 
 func (c *httpClient) RestrictedTLS() {
 	c.tls.MinVersion = tls.VersionTLS13
-	c.tls.CipherSuites = comm.Map(comm.Filter(tls.CipherSuites(), func(it *tls.CipherSuite) bool {
-		return comm.Contains(it.SupportedVersions, uint16(tls.VersionTLS13))
+	c.tls.CipherSuites = common.Map(common.Filter(tls.CipherSuites(), func(it *tls.CipherSuite) bool {
+		return common.Contains(it.SupportedVersions, uint16(tls.VersionTLS13))
 	}), func(it *tls.CipherSuite) uint16 {
 		return it.ID
 	})

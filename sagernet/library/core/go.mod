@@ -12,7 +12,8 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/ulikunitz/xz v0.5.10
 	github.com/v2fly/v2ray-core/v5 v5.0.2
-	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e
+	golang.org/x/net v0.0.0-20220114011407-0dd24b26b47d
+	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
 	gvisor.dev/gvisor v0.0.0
 )
 
@@ -21,10 +22,7 @@ require (
 replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220109124627-f8f67dadd776
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.0-20220112092520-3fcc8ed61bb9
-
-// for go1.18 support
-replace github.com/lucas-clemente/quic-go => github.com/lucas-clemente/quic-go v0.24.1-0.20220109162842-f34eddae41f4
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.0-20220115115826-f8bbbd17c0cc
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect
@@ -41,7 +39,7 @@ require (
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jhump/protoreflect v1.10.1 // indirect
 	github.com/kierdavis/cfb8 v0.0.0-20180105024805-3a17c36ee2f8 // indirect
-	github.com/lucas-clemente/quic-go v0.24.0 // indirect
+	github.com/lucas-clemente/quic-go v0.24.1-0.20220109162842-f34eddae41f4 // indirect
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.4 // indirect
 	github.com/marten-seemann/qtls-go1-17 v0.1.0 // indirect
@@ -58,17 +56,16 @@ require (
 	go.starlark.net v0.0.0-20211203141949-70c0e40ae128 // indirect
 	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3 // indirect
+	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
 	golang.org/x/mod v0.5.1 // indirect
-	golang.org/x/net v0.0.0-20220107192237-5cfca573fb4d // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11 // indirect
 	golang.org/x/tools v0.1.8 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	golang.zx2c4.com/go118/netip v0.0.0-20211111135330-a4a02eeacf9d // indirect
 	golang.zx2c4.com/wintun v0.0.0-20211104114900-415007cec224 // indirect
-	golang.zx2c4.com/wireguard v0.0.0-20211209221555-9c9e7e272434 // indirect
-	google.golang.org/genproto v0.0.0-20220107163113-42d7afdf6368 // indirect
+	golang.zx2c4.com/wireguard v0.0.0-20220114151043-114a3db91850 // indirect
+	google.golang.org/genproto v0.0.0-20220114231437-d2e6a121cae0 // indirect
 	google.golang.org/grpc v1.43.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect

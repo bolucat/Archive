@@ -36,6 +36,8 @@ type MemoryAccount struct {
 	Key    []byte
 
 	replayFilter antireplay.GeneralizedReplayFilter
+
+	ReducedIVEntropy bool
 }
 
 // Equals implements protocol.Account.Equals().
@@ -367,6 +369,7 @@ func (a *Account) AsAccount() (protocol.Account, error) {
 			}
 			return nil
 		}(),
+		ReducedIVEntropy: a.ExperimentReducedIvHeadEntropy,
 	}, nil
 }
 

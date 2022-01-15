@@ -72,7 +72,12 @@ namespace RoutingA::_details
         const static QList<char> reserved{ ',', '\'', '"', '(', ')', ':', '&', '-', '>', '=' };
 
         if (c.isPunct())
-            return reserved.contains(c) ? char_header_map.value(c) : RA_Symbol::_n;
+        {
+            if (c == '_')
+                return RA_Symbol::_k;
+            else
+                return reserved.contains(c) ? char_header_map.value(c) : RA_Symbol::_n;
+        }
         else if (c.isDigit())
             return RA_Symbol::digit;
         else if (c == '\n')

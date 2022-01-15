@@ -160,6 +160,7 @@ TEST_DECLARE   (udp_alloc_cb_fail)
 TEST_DECLARE   (udp_bind)
 TEST_DECLARE   (udp_bind_reuseaddr)
 TEST_DECLARE   (udp_connect)
+TEST_DECLARE   (udp_connect6)
 TEST_DECLARE   (udp_create_early)
 TEST_DECLARE   (udp_create_early_bad_bind)
 TEST_DECLARE   (udp_create_early_bad_domain)
@@ -460,6 +461,7 @@ TEST_DECLARE   (poll_multiple_handles)
 
 TEST_DECLARE   (ip4_addr)
 TEST_DECLARE   (ip6_addr_link_local)
+TEST_DECLARE   (ip_name)
 
 TEST_DECLARE   (poll_close_doesnt_corrupt_stack)
 TEST_DECLARE   (poll_closesocket)
@@ -509,7 +511,7 @@ TEST_DECLARE   (getters_setters)
 
 TEST_DECLARE   (not_writable_after_shutdown)
 TEST_DECLARE   (not_readable_nor_writable_on_read_error)
-TEST_DECLARE   (not_readable_on_eof)
+TEST_DECLARE   (readable_on_eof)
 
 #ifndef _WIN32
 TEST_DECLARE  (fork_timer)
@@ -736,6 +738,7 @@ TASK_LIST_START
   TEST_ENTRY  (udp_bind)
   TEST_ENTRY  (udp_bind_reuseaddr)
   TEST_ENTRY  (udp_connect)
+  TEST_ENTRY  (udp_connect6)
   TEST_ENTRY  (udp_create_early)
   TEST_ENTRY  (udp_create_early_bad_bind)
   TEST_ENTRY  (udp_create_early_bad_domain)
@@ -1106,6 +1109,7 @@ TASK_LIST_START
   TEST_ENTRY  (dlerror)
   TEST_ENTRY  (ip4_addr)
   TEST_ENTRY  (ip6_addr_link_local)
+  TEST_ENTRY  (ip_name)
 
   TEST_ENTRY  (queue_foreach_delete)
 
@@ -1145,8 +1149,8 @@ TASK_LIST_START
   TEST_HELPER   (not_writable_after_shutdown, tcp4_echo_server)
   TEST_ENTRY    (not_readable_nor_writable_on_read_error)
   TEST_HELPER   (not_readable_nor_writable_on_read_error, tcp4_echo_server)
-  TEST_ENTRY    (not_readable_on_eof)
-  TEST_HELPER   (not_readable_on_eof, tcp4_echo_server)
+  TEST_ENTRY    (readable_on_eof)
+  TEST_HELPER   (readable_on_eof, tcp4_echo_server)
 
   TEST_ENTRY  (metrics_idle_time)
   TEST_ENTRY  (metrics_idle_time_thread)

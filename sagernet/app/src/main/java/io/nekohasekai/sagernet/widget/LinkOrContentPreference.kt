@@ -56,14 +56,18 @@ class LinkOrContentPreference : EditTextPreference {
                 }
 
                 try {
-                    if (Uri.parse(link.toString()).scheme == "content") {
+                    val uri = Uri.parse(link.toString())
+
+                    if (uri.scheme.isNullOrBlank()) {
+                        error("Missing scheme in url")
+                    } else if (uri.scheme == "content") {
                         linkLayout.isErrorEnabled = false
                         return
-                    }
-                    val url = Libcore.parseURL(link.toString())
-                    if ("http".equals(url.scheme, true)) {
+                    } else if (uri.scheme == "http") {
                         linkLayout.error = app.getString(R.string.cleartext_http_warning)
                         linkLayout.isErrorEnabled = true
+                    } else if (uri.scheme != "https") {
+                        error("Invalid scheme ${uri.scheme}")
                     } else {
                         linkLayout.isErrorEnabled = false
                     }

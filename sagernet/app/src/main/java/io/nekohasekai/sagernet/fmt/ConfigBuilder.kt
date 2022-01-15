@@ -196,6 +196,7 @@ fun buildV2RayConfig(
                 DnsObject.StringOrServerObject().apply {
                     valueY = DnsObject.ServerObject().apply {
                         address = it
+                        concurrency = true
                     }
                 }
             })
@@ -706,6 +707,7 @@ fun buildV2RayConfig(
                                                     is ShadowsocksBean -> {
                                                         method = bean.method
                                                         password = bean.password
+                                                        experimentReducedIvHeadEntropy = bean.experimentReducedIvHeadEntropy
                                                     }
                                                     is ShadowsocksRBean -> {
                                                         method = bean.method
@@ -803,6 +805,9 @@ fun buildV2RayConfig(
                                         }
                                     }
                                 }
+                                if (currentDomainStrategy == "AsIs") {
+                                    currentDomainStrategy = "UseIP"
+                                }
                             } else if (bean is SSHBean) {
                                 protocol = "ssh"
                                 settings = LazyOutboundConfigurationObject(this,
@@ -864,7 +869,7 @@ fun buildV2RayConfig(
                             type = "field"
                             inboundTag = listOf(pastInboundTag)
                             outboundTag = tagIn
-                            if (currentOutbound.domainStrategy == "AsIS") {
+                            if (currentOutbound.domainStrategy == "AsIs") {
                                 currentOutbound.domainStrategy = "UseIP"
                             }
                         })
@@ -1238,6 +1243,7 @@ fun buildV2RayConfig(
                         address = if (!it.contains("://") && it != "localhost") "udp+local://$it" else it
                         domains = bypassDomain.toList()
                         skipFallback = true
+                        concurrency = true
                     }
                 }
             })

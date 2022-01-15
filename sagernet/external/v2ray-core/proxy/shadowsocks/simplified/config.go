@@ -40,8 +40,9 @@ func init() {
 					User: []*protocol.User{
 						{
 							Account: serial.ToTypedMessage(&shadowsocks.Account{
-								Password:   simplifiedClient.Password,
-								CipherType: shadowsocks.CipherFromString(simplifiedClient.Method),
+								Password:                       simplifiedClient.Password,
+								CipherType:                     shadowsocks.CipherFromString(simplifiedClient.Method),
+								ExperimentReducedIvHeadEntropy: simplifiedClient.ExperimentReducedIvHeadEntropy,
 							}),
 						},
 					},

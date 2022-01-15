@@ -1,0 +1,50 @@
+package dns
+
+import (
+	"context"
+
+	"golang.org/x/net/dns/dnsmessage"
+
+	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/task"
+	"github.com/v2fly/v2ray-core/v5/features/dns"
+	"github.com/v2fly/v2ray-core/v5/features/routing"
+)
+
+var _ dns.Transport = (*UDPTransport)(nil)
+
+type UDPTransport struct {
+	dispatcher *messageDispatcher
+}
+
+func NewUDPTransport(ctx *transportContext, dispatcher routing.Dispatcher) *UDPTransport {
+	return &UDPTransport{
+		NewDispatcher(ctx.ctx, dispatcher, ctx.destination, ctx.writeBackRaw),
+	}
+}
+
+func NewUDPLocalTransport(ctx *transportContext) *UDPTransport {
+	return &UDPTransport{
+		NewLocalDispatcher(ctx.ctx, ctx.destination, ctx.writeBackRaw),
+	}
+}
+
+func (t *UDPTransport) SupportRaw() bool {
+	return true
+}
+
+func (t *UDPTransport) WriteMessage(ctx context.Context, message *dnsmessage.Message) error {
+	packed, err := message.Pack()
+	if err != nil {
+		return newError("failed to pack dns query").Base(err)
+	}
+	return task.Run(ctx, func() error {
+		return t.dispatcher.Write(buf.FromBytes(packed))
+	})
+}
+
+func (t *UDPTransport) Lookup(context.Context, string, dns.QueryStrategy) ([]net.IP, error) {
+	return nil, common.ErrNoClue
+}
