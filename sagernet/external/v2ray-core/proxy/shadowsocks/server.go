@@ -180,17 +180,15 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 		} else {
 			request = protocol.RequestHeaderFromContext(ctx)
 			if request == nil {
-				request = &protocol.RequestHeader{}
+				request = &protocol.RequestHeader{
+					User: s.user,
+				}
 			}
 		}
 
 		payload := packet.Payload
 		data, err := EncodeUDPPacket(request, payload.Bytes(), s.protocol)
 		payload.Release()
-
-		if s.protocol != nil {
-			data, err = s.protocol.EncodePacket(data)
-		}
 
 		if err != nil {
 			newError("failed to encode UDP packet").Base(err).AtWarning().WriteToLog(session.ExportIDToError(ctx))
@@ -219,9 +217,6 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 				request *protocol.RequestHeader
 				data    *buf.Buffer
 			)
-			if s.protocol != nil {
-				payload, err = s.protocol.DecodePacket(payload)
-			}
 			if err == nil {
 				request, data, err = DecodeUDPPacket(s.user, payload, s.protocol)
 			}

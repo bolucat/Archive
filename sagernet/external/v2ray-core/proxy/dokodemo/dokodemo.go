@@ -8,6 +8,7 @@ import (
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/log"
@@ -130,8 +131,8 @@ func (d *Door) Process(ctx context.Context, network net.Network, conn internet.C
 	plcy := d.policy()
 	ctx, cancel := context.WithCancel(ctx)
 	timer := signal.CancelAfterInactivity(ctx, cancel, plcy.Timeouts.ConnectionIdle)
-
 	ctx = policy.ContextWithBufferPolicy(ctx, plcy.Buffer)
+	ctx = proxyman.SetPreferUseIP(ctx, true)
 	link, err := dispatcher.Dispatch(ctx, dest)
 	if err != nil {
 		return newError("failed to dispatch request").Base(err)

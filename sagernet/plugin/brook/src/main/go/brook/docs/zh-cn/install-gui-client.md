@@ -4,31 +4,19 @@ GUI(图形用户界面), Brook 图形客户端.
 
 [Brook.dmg](https://github.com/txthinking/brook/releases/latest/download/Brook.dmg)
 
-or
-
-```
-$ brew install --cask brook
-```
-
-[BrookLite.dmg](https://github.com/txthinking/brook/releases/latest/download/BrookLite.dmg)
-
-or
-
-```
-$ brew install --cask brooklite
-```
-
 ## Windows
 
 [Brook.exe](https://github.com/txthinking/brook/releases/latest/download/Brook.exe)
 
-[BrookLite.exe](https://github.com/txthinking/brook/releases/latest/download/BrookLite.exe)
+或
+
+[BrookLite.exe](https://github.com/txthinking/brook/releases/latest/download/BrookLite.exe) (BrookLite需要你已经安装了最新版(基于chromium的那款)的Edge浏览器)
 
 ## Android
 
 [Brook.apk](https://github.com/txthinking/brook/releases/latest/download/Brook.apk)
 
-## iOS
+## iOS & M1 Mac
 
 [Brook on App Store](https://apps.apple.com/us/app/brook-a-cross-platform-proxy/id1216002642)
 

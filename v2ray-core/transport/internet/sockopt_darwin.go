@@ -24,10 +24,18 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 			}
 		}
 
-		if config.TcpKeepAliveInterval > 0 {
-			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
+		if config.TcpKeepAliveIdle > 0 {
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPALIVE, int(config.TcpKeepAliveInterval)); err != nil {
 				return newError("failed to set TCP_KEEPINTVL", err)
 			}
+		}
+		if config.TcpKeepAliveInterval > 0 {
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPINTVL, int(config.TcpKeepAliveIdle)); err != nil {
+				return newError("failed to set TCP_KEEPIDLE", err)
+			}
+		}
+
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_KEEPALIVE, 1); err != nil {
 				return newError("failed to set SO_KEEPALIVE", err)
 			}
@@ -49,10 +57,17 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 				return err
 			}
 		}
-		if config.TcpKeepAliveInterval > 0 {
-			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPINTVL, int(config.TcpKeepAliveInterval)); err != nil {
+		if config.TcpKeepAliveIdle > 0 {
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_KEEPALIVE, int(config.TcpKeepAliveInterval)); err != nil {
 				return newError("failed to set TCP_KEEPINTVL", err)
 			}
+		}
+		if config.TcpKeepAliveInterval > 0 {
+			if err := unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.SO_KEEPALIVE, int(config.TcpKeepAliveIdle)); err != nil {
+				return newError("failed to set TCP_KEEPIDLE", err)
+			}
+		}
+		if config.TcpKeepAliveIdle > 0 || config.TcpKeepAliveInterval > 0 {
 			if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_KEEPALIVE, 1); err != nil {
 				return newError("failed to set SO_KEEPALIVE", err)
 			}

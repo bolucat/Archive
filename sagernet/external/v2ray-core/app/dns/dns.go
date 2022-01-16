@@ -351,7 +351,7 @@ func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer,
 		buffer.Release()
 		return nil, newError("failed to parse dns request").Base(err)
 	}
-	panic("implementation it")
+	panic("implement it")
 }
 
 func (c *transportContext) writeBack(message *dnsmessage.Message) {

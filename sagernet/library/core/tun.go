@@ -196,12 +196,10 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		},
 	})
 
-	net.DefaultResolver.Dial = t.dialDNS
 	return t, nil
 }
 
 func (t *Tun2ray) Close() {
-	net.DefaultResolver.Dial = nil
 	pingproto.ControlFunc = nil
 	localdns.SetLocalLookupFunc(nil)
 
@@ -619,34 +617,4 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 	}()
 
 	return true
-}
-
-func (t *Tun2ray) dialDNS(ctx context.Context, _, _ string) (conn net.Conn, err error) {
-	conn, err = t.v2ray.dialContext(session.ContextWithInbound(ctx, &session.Inbound{
-		Tag: "dns-in",
-	}), v2rayNet.Destination{
-		Network: v2rayNet.Network_UDP,
-		Address: v2rayNet.ParseAddress(t.router),
-		Port:    53,
-	})
-	if err == nil {
-		conn = &wrappedConn{conn}
-	}
-	return
-}
-
-type wrappedConn struct {
-	net.Conn
-}
-
-func (c *wrappedConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, err = c.Conn.Read(p)
-	if err == nil {
-		addr = c.Conn.RemoteAddr()
-	}
-	return
-}
-
-func (c *wrappedConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
-	return c.Conn.Write(p)
 }

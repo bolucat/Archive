@@ -210,7 +210,7 @@ func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte, plugin Pro
 	buffer.Write(payload)
 
 	if plugin != nil {
-		if newBuffer, err := plugin.EncodePacket(buffer); err == nil {
+		if newBuffer, err := plugin.EncodePacket(buffer, ivLen); err == nil {
 			buffer = newBuffer
 		} else {
 			return nil, newError("failed to encode UDP payload").Base(err)

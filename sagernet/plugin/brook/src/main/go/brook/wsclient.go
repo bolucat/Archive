@@ -27,7 +27,6 @@ import (
 	"log"
 	"net"
 	"net/url"
-	"strings"
 	"time"
 
 	cache "github.com/patrickmn/go-cache"
@@ -53,6 +52,10 @@ type WSClient struct {
 
 // NewWSClient.
 func NewWSClient(addr, ip, server, password string, tcpTimeout, udpTimeout int) (*WSClient, error) {
+	return NewWSClientWithServerAddress(addr, ip, server, password, tcpTimeout, udpTimeout, "")
+}
+
+func NewWSClientWithServerAddress(addr, ip, server, password string, tcpTimeout, udpTimeout int, serverAddress string) (*WSClient, error) {
 	s5, err := socks5.NewClassicServer(addr, ip, "", "", tcpTimeout, udpTimeout)
 	if err != nil {
 		return nil, err
@@ -70,13 +73,14 @@ func NewWSClient(addr, ip, server, password string, tcpTimeout, udpTimeout int) 
 	}
 	cs := cache.New(cache.NoExpiration, cache.NoExpiration)
 	x := &WSClient{
-		ServerHost:   u.Host,
-		Server:       s5,
-		Password:     []byte(password),
-		TCPTimeout:   tcpTimeout,
-		UDPTimeout:   udpTimeout,
-		Path:         path,
-		UDPExchanges: cs,
+		ServerHost:    u.Host,
+		ServerAddress: serverAddress,
+		Server:        s5,
+		Password:      []byte(password),
+		TCPTimeout:    tcpTimeout,
+		UDPTimeout:    udpTimeout,
+		Path:          path,
+		UDPExchanges:  cs,
 	}
 	if u.Scheme == "wss" {
 		h, _, err := net.SplitHostPort(u.Host)
@@ -255,10 +259,6 @@ func (x *WSClient) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Data
 	}
 	rc, err := x.DialWebsocket(la)
 	if err != nil {
-		if strings.Contains(err.Error(), "address already in use") {
-			// we dont choose lock, so ignore this error
-			return nil
-		}
 		return err
 	}
 	defer rc.Close()

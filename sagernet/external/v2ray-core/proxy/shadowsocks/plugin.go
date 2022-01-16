@@ -41,6 +41,6 @@ type ProtocolConn struct {
 
 type ProtocolPlugin interface {
 	ProtocolConn(conn *ProtocolConn, iv []byte)
-	EncodePacket(buffer *buf.Buffer) (*buf.Buffer, error)
+	EncodePacket(buffer *buf.Buffer, ivLen int32) (*buf.Buffer, error)
 	DecodePacket(buffer *buf.Buffer) (*buf.Buffer, error)
 }

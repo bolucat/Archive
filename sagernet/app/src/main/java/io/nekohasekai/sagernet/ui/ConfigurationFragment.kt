@@ -102,6 +102,18 @@ class ConfigurationFragment @JvmOverloads constructor(
         }
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        if (savedInstanceState != null) {
+            parentFragmentManager.beginTransaction()
+                .setReorderingAllowed(false)
+                .detach(this)
+                .attach(this)
+                .commit()
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         if (!select) {
@@ -1422,9 +1434,7 @@ class ConfigurationFragment @JvmOverloads constructor(
                             if (update) {
                                 ProfileManager.postUpdate(lastSelected)
                                 if (pa.state.canStop && reloadAccess.tryLock()) {
-                                    SagerNet.stopService()
-                                    delay(1000L)
-                                    SagerNet.startService()
+                                    SagerNet.reloadService()
                                     reloadAccess.unlock()
                                 }
                             } else if (SagerNet.isTv) {

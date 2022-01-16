@@ -46,3 +46,11 @@ func Done(ctx context.Context) bool {
 		return false
 	}
 }
+
+func IsEmpty[T any](array []T) bool {
+	return len(array) == 0
+}
+
+func IsNotEmpty[T any](array []T) bool {
+	return len(array) >= 0
+}

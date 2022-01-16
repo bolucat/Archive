@@ -20,7 +20,7 @@
 
     -   The Brook CLI file is an **independent command file**, it can be said that there is no concept of installation, just download this file to your computer, **run it after granting it executable permissions in the command line interface**
     -   Brook CLI file has both **server function** and **client function**, Brook CLI file also has **many other independent functions**
-    -   If you are under Linux and you are not very familiar with Linux, **It is strongly recommended to use the ubuntu system and root user** to run commands. The command to switch to the root user is `$ sudo su`
+    -   If you are under Linux and you are not very familiar with Linux, **It is strongly recommended to use the ubuntu system and root user** to run commands. The command to switch to the root user is `sudo su`
     -   **Each function of Brook requires only one command, no configuration is required**
 
 -   Brook GUI file
@@ -60,8 +60,6 @@
 | Brook.dmg                          | GUI     | macOS 64 bit                     |
 | Brook.exe                          | GUI     | Windows 64 bit                   |
 | Brook.apk                          | GUI     | Android                          |
-| BrookLite.dmg                      | GUI     | macOS 64 bit                     |
-| BrookLite.exe                      | GUI     | Windows 64 bit                   |
 | brook_linux_amd64.ipk              | GUI     | OpenWrt Linux 64 bit             |
 | brook_linux_386.ipk                | GUI     | OpenWrt Linux 32 bit             |
 | brook_linux_arm64.ipk              | GUI     | OpenWrt Linux arm64              |

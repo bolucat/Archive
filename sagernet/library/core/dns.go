@@ -1,12 +1,61 @@
 package libcore
 
 import (
+	"context"
+	"net"
 	"strings"
 
+	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/session"
 	"golang.org/x/net/dns/dnsmessage"
 	"libcore/comm"
 	"net/netip"
 )
+
+func init() {
+	SetCurrentDomainNameSystemQueryInstance(nil)
+}
+
+func SetCurrentDomainNameSystemQueryInstance(instance *V2RayInstance) {
+	if instance == nil {
+		net.DefaultResolver = &net.Resolver{
+			PreferGo: false,
+		}
+	} else {
+		dnsAdress := v2rayNet.IPAddress([]byte{1, 0, 0, 1})
+		net.DefaultResolver = &net.Resolver{
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				conn, err := instance.dialContext(session.ContextWithInbound(ctx, &session.Inbound{
+					Tag: "dns-in",
+				}), v2rayNet.Destination{
+					Network: v2rayNet.Network_UDP,
+					Address: dnsAdress,
+					Port:    53,
+				})
+				if err == nil {
+					conn = &pinnedPacketConn{conn}
+				}
+				return conn, err
+			},
+		}
+	}
+}
+
+type pinnedPacketConn struct {
+	net.Conn
+}
+
+func (c *pinnedPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	n, err = c.Conn.Read(p)
+	if err == nil {
+		addr = c.Conn.RemoteAddr()
+	}
+	return
+}
+
+func (c *pinnedPacketConn) WriteTo(p []byte, _ net.Addr) (n int, err error) {
+	return c.Conn.Write(p)
+}
 
 func EncodeDomainNameSystemQuery(id int32, domain string, ipv6Mode int32) ([]byte, error) {
 	if !strings.HasSuffix(domain, ".") {

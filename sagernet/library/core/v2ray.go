@@ -70,7 +70,9 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 			config, err = serial.LoadJSONConfig(strings.NewReader(content))
 		}
 	}
-
+	if err != nil {
+		return err
+	}
 	if config.Outbound != nil {
 		for _, outbound := range config.Outbound {
 			if outbound.ProxySettings == nil {
@@ -111,9 +113,6 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 		}
 	}
 
-	if err != nil {
-		return err
-	}
 	c, err := core.New(config)
 	if err != nil {
 		return err
@@ -280,6 +279,9 @@ func (c *dispatcherConn) handleInput() {
 				packet.Source = c.dest
 			} else {
 				packet.Source = *buffer.Endpoint
+			}
+			if packet.Source.Address.Family().IsDomain() {
+				packet.Source.Address = net.AnyIP
 			}
 			select {
 			case c.cache <- &packet:
