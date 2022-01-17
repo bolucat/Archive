@@ -32,6 +32,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
+	"golang.org/x/sys/unix"
 	"libcore/comm"
 	"libcore/gvisor"
 	"libcore/nat"
@@ -140,8 +141,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	dc := config.V2Ray.dnsClient
 	internet.UseAlternativeSystemDialer(&protectedDialer{
 		protector: config.Protector,
-		resolver: func(domain string) ([]net.IP, error) {
-			return dc.LookupIP(domain)
+		resolver: func(ctx context.Context, domain string) ([]net.IP, error) {
+			return dc.LookupDefault(ctx, domain)
 		},
 	})
 	if config.BindUpstream != nil {
@@ -163,7 +164,7 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	if !config.Protect {
 		localdns.SetLocalLookupFunc(nil)
 	} else {
-		localdns.SetLocalLookupFunc(func(ctx context.Context, network, host string) ([]v2rayNet.IP, error) {
+		localdns.SetLocalLookupFunc(func(ctx context.Context, network, host string) ([]net.IP, error) {
 			response, err := config.LocalResolver.LookupIP(network, host)
 			if err != nil {
 				errStr := err.Error()
@@ -173,8 +174,10 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 				}
 				return nil, err
 			}
-			addrs := strings.Split(response, ",")
-			ips := make([]v2rayNet.IP, len(addrs))
+			addrs := common.Filter(strings.Split(response, ","), func(it string) bool {
+				return common.IsNotBlank(it)
+			})
+			ips := make([]net.IP, len(addrs))
 			for i, addr := range addrs {
 				ips[i] = net.ParseIP(addr)
 			}
@@ -189,8 +192,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	localTransport := localdns.NewLocalTransport()
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
 		protector: config.Protector,
-		resolver: func(domain string) ([]net.IP, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		resolver: func(ctx context.Context, domain string) ([]net.IP, error) {
+			ctx, cancel := context.WithTimeout(ctx, dns.DefaultTimeout)
 			defer cancel()
 			return localTransport.Lookup(ctx, domain, dns.QueryStrategy_USE_IP)
 		},
@@ -603,7 +606,9 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 			}
 			err = writeBack(buffer)
 			if err != nil {
-				newError("failed to write ping response back").Base(err).WriteToLog()
+				if err != unix.ENETUNREACH {
+					newError("failed to write ping response back").Base(err).WriteToLog()
+				}
 				break
 			}
 		}

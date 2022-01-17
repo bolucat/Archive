@@ -32,7 +32,7 @@ func (n *noopProtector) Protect(int32) bool {
 
 type protectedDialer struct {
 	protector Protector
-	resolver  func(domain string) ([]net.IP, error)
+	resolver  func(ctx context.Context, domain string) ([]net.IP, error)
 }
 
 func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address, destination v2rayNet.Destination, sockopt *internet.SocketConfig) (conn net.Conn, err error) {
@@ -47,7 +47,7 @@ func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address,
 
 	var ips []net.IP
 	if destination.Address.Family().IsDomain() {
-		ips, err = dialer.resolver(destination.Address.Domain())
+		ips, err = dialer.resolver(ctx, destination.Address.Domain())
 		if err == nil && len(ips) == 0 {
 			err = dns.ErrEmptyResponse
 		}

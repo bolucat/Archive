@@ -263,6 +263,12 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 		content = new(session.Content)
 		ctx = session.ContextWithContent(ctx, content)
 	}
+
+	if _, loopLink := outbound.Reader.(*cachedReader); loopLink {
+		go d.routedDispatch(ctx, outbound, destination)
+		return nil
+	}
+
 	sniffingRequest := content.SniffingRequest
 
 	sniffer := defaultSniffers

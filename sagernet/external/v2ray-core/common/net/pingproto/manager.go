@@ -4,9 +4,11 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"gvisor.dev/gvisor/pkg/tcpip/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -164,6 +166,14 @@ func NewClientManager(ifc ICMPInterface) *ClientManager {
 	return &ClientManager{
 		ifc: ifc,
 	}
+}
+
+func (m *ClientManager) TryGetClient(destination net.Destination) *PingClient {
+	key := destination.Address.String()
+	if clientI, loaded := m.clientTable.Load(key); loaded {
+		return clientI.(*PingClient)
+	}
+	return nil
 }
 
 func (m *ClientManager) GetClient(destination net.Destination) *PingClient {
@@ -396,13 +406,15 @@ func (c *pingConn4) Read(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 	hdr := header.ICMPv4(callback.data)
-	sequence := hdr.Sequence()
-	if sequence != callback.sequence {
-		hdr.SetSequence(callback.sequence)
-		hdr.SetChecksum(^header.ChecksumCombine(^hdr.Checksum(), header.ChecksumCombine(callback.sequence, ^sequence)))
+	if hdr.Type() == header.ICMPv4EchoReply {
+		sequence := hdr.Sequence()
+		if sequence != callback.sequence {
+			hdr.SetSequence(callback.sequence)
+			hdr.SetChecksum(^header.ChecksumCombine(^hdr.Checksum(), header.ChecksumCombine(callback.sequence, ^sequence)))
+		}
+		newError("read ping request from ", c.dest.Address, " seq ", callback.sequence).AtDebug().WriteToLog()
+		hdr.SetIdentWithChecksumUpdate(callback.id)
 	}
-	newError("read ping request from ", c.dest.Address, " seq ", callback.sequence).AtDebug().WriteToLog()
-	hdr.SetIdentWithChecksumUpdate(callback.id)
 	return copy(b, hdr), nil
 }
 
@@ -420,12 +432,12 @@ func (c *pingConn4) Write(b []byte) (n int, err error) {
 	}
 	sequence := c.nextSequence()
 	hdr := header.ICMPv4(b)
-	callback := pingCallback{
+	callback := &pingCallback{
 		conn:     c.pingConnBase,
 		id:       hdr.Ident(),
 		sequence: hdr.Sequence(),
 	}
-	c.callbacks.Store(sequence, &callback)
+	c.callbacks.Store(sequence, callback)
 	if callback.sequence != sequence {
 		hdr.SetSequence(sequence)
 	}
@@ -439,8 +451,27 @@ func (c *pingConn4) Write(b []byte) (n int, err error) {
 		newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
 	} else {
 		newError("failed to write ping request to ", c.dest.Address).Base(err).WriteToLog()
+		errorMessage := err.Error()
+		if strings.Contains(errorMessage, "unreachable") {
+			c.writeUnreachable(callback, errorMessage)
+			n, err = len(hdr), nil
+		} else {
+			c.callbacks.Delete(sequence)
+		}
 	}
 	return
+}
+
+func (c *pingConn4) writeUnreachable(callback *pingCallback, message string) {
+	hdr := header.ICMPv4(buffer.NewView(header.ICMPv4MinimumSize))
+	hdr.SetType(header.ICMPv4DstUnreachable)
+	if strings.Contains(message, "network is unreachable") {
+		hdr.SetCode(header.ICMPv4NetUnreachable)
+	} else {
+		hdr.SetCode(header.ICMPv4HostUnreachable)
+	}
+	callback.data = hdr
+	c.writeBack(callback)
 }
 
 type pingConn6 struct {
@@ -456,11 +487,13 @@ func (c *pingConn6) Read(b []byte) (n int, err error) {
 		return 0, io.ErrClosedPipe
 	}
 	hdr := header.ICMPv6(callback.data)
-	if hdr.Sequence() != callback.sequence {
-		hdr.SetSequence(callback.sequence)
+	if hdr.Type() == header.ICMPv6EchoReply {
+		if hdr.Sequence() != callback.sequence {
+			hdr.SetSequence(callback.sequence)
+		}
+		newError("read ping request from ", c.dest.Address, " seq ", callback.sequence).AtDebug().WriteToLog()
+		hdr.SetIdent(callback.id)
 	}
-	newError("read ping request from ", c.dest.Address, " seq ", callback.sequence).AtDebug().WriteToLog()
-	hdr.SetIdent(callback.id)
 	return copy(b, hdr), nil
 }
 
@@ -478,12 +511,12 @@ func (c *pingConn6) Write(b []byte) (n int, err error) {
 	}
 	sequence := c.nextSequence()
 	hdr := header.ICMPv6(b)
-	callback := pingCallback{
+	callback := &pingCallback{
 		conn:     c.pingConnBase,
 		id:       hdr.Ident(),
 		sequence: hdr.Sequence(),
 	}
-	c.callbacks.Store(sequence, &callback)
+	c.callbacks.Store(sequence, callback)
 	if callback.sequence != sequence {
 		hdr.SetSequence(sequence)
 	}
@@ -496,8 +529,27 @@ func (c *pingConn6) Write(b []byte) (n int, err error) {
 		newError("write ping request to ", c.dest.Address, " seq ", sequence).AtDebug().WriteToLog()
 	} else {
 		newError("failed to write ping request to ", c.dest.Address).Base(err).WriteToLog()
+		errorMessage := err.Error()
+		if strings.Contains(errorMessage, "unreachable") {
+			c.writeUnreachable(callback, errorMessage)
+			n, err = len(hdr), nil
+		} else {
+			c.callbacks.Delete(sequence)
+		}
 	}
 	return
+}
+
+func (c *pingConn6) writeUnreachable(callback *pingCallback, message string) {
+	replyHdr := header.ICMPv6(buffer.NewView(header.ICMPv6DstUnreachableMinimumSize))
+	replyHdr.SetType(header.ICMPv6DstUnreachable)
+	if strings.Contains(message, "network is unreachable") {
+		replyHdr.SetCode(header.ICMPv6NetworkUnreachable)
+	} else {
+		replyHdr.SetCode(header.ICMPv6AddressUnreachable)
+	}
+	callback.data = replyHdr
+	c.writeBack(callback)
 }
 
 func GetDestinationIsSubsetOf(dest net.Destination) bool {

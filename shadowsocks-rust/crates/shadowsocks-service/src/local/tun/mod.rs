@@ -13,7 +13,7 @@ use byte_string::ByteStr;
 use ipnet::IpNet;
 use log::{debug, error, info, trace, warn};
 use shadowsocks::config::Mode;
-use smoltcp::wire::{IpProtocol, TcpPacket, UdpPacket};
+use smoltcp::wire::{Icmpv4Packet, Icmpv6Packet, IpProtocol, TcpPacket, UdpPacket};
 use tokio::io::AsyncReadExt;
 use tun::{AsyncDevice, Configuration as TunConfiguration, Device as TunDevice, Error as TunError, Layer};
 
@@ -168,6 +168,8 @@ impl Tun {
                 packet = self.udp.recv_packet() => {
                     if let Err(err) = write_packet_with_pi(&mut self.device, &packet).await {
                         error!("[TUN] failed to set packet information, error: {}, {:?}", err, ByteStr::new(&packet));
+                    } else {
+                        trace!("[TUN] sent IP packet (UDP) {:?}", ByteStr::new(&packet));
                     }
                 }
 
@@ -175,6 +177,8 @@ impl Tun {
                 packet = self.tcp.recv_packet() => {
                     if let Err(err) = write_packet_with_pi(&mut self.device, &packet).await {
                         error!("[TUN] failed to set packet information, error: {}, {:?}", err, ByteStr::new(&packet));
+                    } else {
+                        trace!("[TUN] sent IP packet (TCP) {:?}", ByteStr::new(&packet));
                     }
                 }
             }
@@ -182,7 +186,7 @@ impl Tun {
     }
 
     async fn handle_tun_frame(&mut self, frame: &[u8]) -> smoltcp::Result<()> {
-        let packet = match IpPacket::new_checked(frame) {
+        let packet = match IpPacket::new_checked(frame)? {
             Some(packet) => packet,
             None => {
                 warn!("unrecognized IP packet {:?}", ByteStr::new(frame));
@@ -262,10 +266,27 @@ impl Tun {
                     error!("handle UDP packet failed, err: {}, packet: {:?}", err, udp_packet);
                 }
             }
-            IpProtocol::Icmp => {}
+            IpProtocol::Icmp => {
+                self.handle_icmp_packet(&packet).await?;
+            }
             _ => {
                 debug!("IP packet ignored (protocol: {:?})", packet.protocol());
                 return Ok(());
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_icmp_packet(&self, packet: &IpPacket<&[u8]>) -> smoltcp::Result<()> {
+        match *packet {
+            IpPacket::Ipv4(ref ipv4) => {
+                let icmp = Icmpv4Packet::new_checked(ipv4.payload())?;
+                debug!("[TUN] received {}", icmp);
+            }
+            IpPacket::Ipv6(ref ipv6) => {
+                let _icmp = Icmpv6Packet::new_checked(ipv6.payload())?;
+                debug!("[TUN] received ICMPv6");
             }
         }
 

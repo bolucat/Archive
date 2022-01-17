@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	version  = "5.0.2"
-	build    = "Custom"
+	version  = "5.0.4"
+	build    = "SagerNet"
 	codename = "V2Fly, a community-driven edition of V2Ray."
 	intro    = "A unified platform for anti-censorship."
 )

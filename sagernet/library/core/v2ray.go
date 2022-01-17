@@ -33,7 +33,7 @@ import (
 )
 
 func GetV2RayVersion() string {
-	return core.Version() + "-sn-3"
+	return core.Version()
 }
 
 type V2RayInstance struct {
@@ -45,7 +45,7 @@ type V2RayInstance struct {
 	outboundManager outbound.Manager
 	statsManager    stats.Manager
 	observatory     features.TaggedFeatures
-	dnsClient       dns.Client
+	dnsClient       dns.NewClient
 }
 
 func NewV2rayInstance() *V2RayInstance {
@@ -122,7 +122,7 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	instance.router = c.GetFeature(routing.RouterType()).(routing.Router)
 	instance.outboundManager = c.GetFeature(outbound.ManagerType()).(outbound.Manager)
 	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher).(*dispatcher.DefaultDispatcher)
-	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.Client)
+	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.NewClient)
 
 	o := c.GetFeature(extension.ObservatoryType())
 	if o != nil {
@@ -311,7 +311,10 @@ func (c *dispatcherConn) readFrom() (p []byte, addr net.Addr, err error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, nil, io.EOF
-	case packet := <-c.cache:
+	case packet, ok := <-c.cache:
+		if !ok {
+			return nil, nil, io.EOF
+		}
 		return packet.Payload.Bytes(), &net.UDPAddr{
 			IP:   packet.Source.Address.IP(),
 			Port: int(packet.Source.Port),

@@ -1,6 +1,3 @@
-//go:build !confonly
-// +build !confonly
-
 package loopback
 
 import (
@@ -8,19 +5,15 @@ import (
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
-	"github.com/v2fly/v2ray-core/v5/common/buf"
-	"github.com/v2fly/v2ray-core/v5/common/net"
-	"github.com/v2fly/v2ray-core/v5/common/retry"
 	"github.com/v2fly/v2ray-core/v5/common/session"
-	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
 type Loopback struct {
-	config             *Config
-	dispatcherInstance routing.Dispatcher
+	inboundTag string
+	dispatcher routing.Dispatcher
 }
 
 func (l *Loopback) Process(ctx context.Context, link *transport.Link, _ internet.Dialer) error {
@@ -29,94 +22,36 @@ func (l *Loopback) Process(ctx context.Context, link *transport.Link, _ internet
 		return newError("target not specified.")
 	}
 	destination := outbound.Target
-
 	newError("opening connection to ", destination).WriteToLog(session.ExportIDToError(ctx))
 
-	input := link.Reader
-	output := link.Writer
-
-	var conn internet.Connection
-	err := retry.ExponentialBackoff(5, 100).On(func() error {
-		dialDest := destination
-
-		content := new(session.Content)
-		content.SkipDNSResolve = true
-
-		ctx = session.ContextWithContent(ctx, content)
-
-		inbound := session.InboundFromContext(ctx)
-
-		inbound.Tag = l.config.InboundTag
-
+	inbound := session.InboundFromContext(ctx)
+	if inbound == nil {
+		inbound = new(session.Inbound)
 		ctx = session.ContextWithInbound(ctx, inbound)
-
-		rawConn, err := l.dispatcherInstance.Dispatch(ctx, dialDest)
-		if err != nil {
-			return err
-		}
-
-		var readerOpt buf.ConnectionOption
-		if dialDest.Network == net.Network_TCP {
-			readerOpt = buf.ConnectionOutputMulti(rawConn.Reader)
-		} else {
-			readerOpt = buf.ConnectionOutputMultiUDP(rawConn.Reader)
-		}
-
-		conn = buf.NewConnection(buf.ConnectionInputMulti(rawConn.Writer), readerOpt)
-		return nil
-	})
-	if err != nil {
-		return newError("failed to open connection to ", destination).Base(err)
 	}
-	defer conn.Close()
-
-	requestDone := func() error {
-		var writer buf.Writer
-		if destination.Network == net.Network_TCP {
-			writer = buf.NewWriter(conn)
-		} else {
-			writer = &buf.SequentialWriter{Writer: conn}
-		}
-
-		if err := buf.Copy(input, writer); err != nil {
-			return newError("failed to process request").Base(err)
-		}
-
-		return nil
+	inbound.Tag = l.inboundTag
+	content := session.ContentFromContext(ctx)
+	if content == nil {
+		content = new(session.Content)
+		ctx = session.ContextWithContent(ctx, content)
 	}
-
-	responseDone := func() error {
-		var reader buf.Reader
-		if destination.Network == net.Network_TCP {
-			reader = buf.NewReader(conn)
-		} else {
-			reader = buf.NewPacketReader(conn)
-		}
-		if err := buf.Copy(reader, output); err != nil {
-			return newError("failed to process response").Base(err)
-		}
-
-		return nil
-	}
-
-	if err := task.Run(ctx, requestDone, task.OnSuccess(responseDone, task.Close(output))); err != nil {
-		return newError("connection ends").Base(err)
-	}
-
-	return nil
+	content.SkipDNSResolve = true
+	l.dispatcher.DispatchLink(ctx, destination, link)
+	<-ctx.Done()
+	return ctx.Err()
 }
 
-func (l *Loopback) init(config *Config, dispatcherInstance routing.Dispatcher) error {
-	l.dispatcherInstance = dispatcherInstance
-	l.config = config
+func (l *Loopback) init(config *Config, dispatcher routing.Dispatcher) error {
+	l.dispatcher = dispatcher
+	l.inboundTag = config.InboundTag
 	return nil
 }
 
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		l := new(Loopback)
-		err := core.RequireFeatures(ctx, func(dispatcherInstance routing.Dispatcher) error {
-			return l.init(config.(*Config), dispatcherInstance)
+		err := core.RequireFeatures(ctx, func(dispatcher routing.Dispatcher) error {
+			return l.init(config.(*Config), dispatcher)
 		})
 		return l, err
 	}))

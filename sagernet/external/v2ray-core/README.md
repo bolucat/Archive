@@ -2,6 +2,48 @@
 
 ### Important changes
 
+#### Rewritten DNS
+
+- added DNS Over TLS and QUIC support
+
+example:
+
+```
+tls://dns.google
+quic://dns.adguard.com
+```
+
+All available DNS schemes:
+
+```
+tcp
+tcp+local
+udp
+udp+local
+tls
+tls+local
+https
+https+local
+quic
+quic+local
+```
+
+- multiple DNS now share the cache.
+- concurrent query support
+
+```json
+{
+  "dns": [
+    {
+      "address": "tls://1.0.0.1",
+      "concurrency": true
+    }
+  ]
+}
+```
+
+#### Other
+
 - concurrency option for outbound observation
 
 ```json
@@ -34,19 +76,6 @@
 {
   "dns": {
     "disableExpire": true
-  }
-}
-```
-
-- udp+local dns server
-
-```json
-{
-  "dns": {
-    "servers": [
-      "udp+local://8.8.8.8"
-      // without routing rule
-    ]
   }
 }
 ```

@@ -1,6 +1,9 @@
 package common
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 func Any[T any](array []T, block func(it T) bool) bool {
 	for _, it := range array {
@@ -53,4 +56,12 @@ func IsEmpty[T any](array []T) bool {
 
 func IsNotEmpty[T any](array []T) bool {
 	return len(array) >= 0
+}
+
+func IsBlank(str string) bool {
+	return len(strings.TrimSpace(str)) == 0
+}
+
+func IsNotBlank(str string) bool {
+	return len(strings.TrimSpace(str)) >= 0
 }

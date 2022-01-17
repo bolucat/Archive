@@ -171,6 +171,11 @@ type SingleReader struct {
 	io.Reader
 }
 
+// Upstream implements ReaderWrapper.
+func (r *SingleReader) Upstream() io.Reader {
+	return r.Reader
+}
+
 // ReadMultiBuffer implements Reader.
 func (r *SingleReader) ReadMultiBuffer() (MultiBuffer, error) {
 	b, err := ReadBuffer(r.Reader)
@@ -180,6 +185,11 @@ func (r *SingleReader) ReadMultiBuffer() (MultiBuffer, error) {
 // PacketReader is a Reader that read one Buffer every time.
 type PacketReader struct {
 	io.Reader
+}
+
+// Upstream implements ReaderWrapper.
+func (r *PacketReader) Upstream() io.Reader {
+	return r.Reader
 }
 
 // ReadMultiBuffer implements Reader.
@@ -193,6 +203,11 @@ func (r *PacketReader) ReadMultiBuffer() (MultiBuffer, error) {
 
 type PacketConnReader struct {
 	net.PacketConn
+}
+
+// Upstream implements PacketWrapper.
+func (r *PacketConnReader) Upstream() net.PacketConn {
+	return r.PacketConn
 }
 
 // ReadMultiBuffer implements Reader.

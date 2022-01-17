@@ -5,6 +5,7 @@ import (
 
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
@@ -35,4 +36,17 @@ func (s *SystemDispatcher) Dispatch(ctx context.Context, dest net.Destination) (
 		return nil, err
 	}
 	return &transport.Link{Reader: buf.NewReader(conn), Writer: buf.NewWriter(conn)}, nil
+}
+
+func (s *SystemDispatcher) DispatchLink(ctx context.Context, dest net.Destination, outbound *transport.Link) error {
+	conn, err := internet.DialSystem(ctx, dest, nil)
+	if err != nil {
+		return err
+	}
+	go task.Run(ctx, func() error {
+		return buf.Copy(buf.NewReader(conn), outbound.Writer)
+	}, func() error {
+		return buf.Copy(outbound.Reader, buf.NewWriter(conn))
+	})
+	return nil
 }

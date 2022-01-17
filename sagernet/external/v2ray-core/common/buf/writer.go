@@ -16,6 +16,11 @@ type BufferToBytesWriter struct {
 	cache [][]byte
 }
 
+// Upstream implements WriterWrapper.
+func (w *BufferToBytesWriter) Upstream() io.Writer {
+	return w.Writer
+}
+
 // WriteMultiBuffer implements Writer. This method takes ownership of the given buffer.
 func (w *BufferToBytesWriter) WriteMultiBuffer(mb MultiBuffer) error {
 	defer ReleaseMulti(mb)
@@ -215,6 +220,11 @@ func (w *BufferedWriter) Close() error {
 // SequentialWriter is a Writer that writes MultiBuffer sequentially into the underlying io.Writer.
 type SequentialWriter struct {
 	io.Writer
+}
+
+// Upstream implements WriterWrapper.
+func (w *SequentialWriter) Upstream() io.Writer {
+	return w.Writer
 }
 
 // WriteMultiBuffer implements Writer.

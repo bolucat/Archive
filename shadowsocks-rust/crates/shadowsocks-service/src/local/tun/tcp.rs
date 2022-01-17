@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     io::{self, ErrorKind},
+    mem,
     net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
@@ -55,8 +56,7 @@ struct TcpConnection {
 impl Drop for TcpConnection {
     fn drop(&mut self) {
         let mut manager = self.manager.lock();
-        let socket = manager.iface.get_socket::<TcpSocket>(self.socket_handle);
-        socket.close();
+        manager.iface.remove_socket(self.socket_handle);
     }
 }
 
@@ -81,7 +81,7 @@ impl AsyncRead for TcpConnection {
             }
 
             if socket.can_recv() {
-                let recv_buf = buf.initialize_unfilled();
+                let recv_buf = unsafe { mem::transmute::<_, &mut [u8]>(buf.unfilled_mut()) };
                 let n = match socket.recv_slice(recv_buf) {
                     Ok(n) => n,
                     Err(err) => return Err(io::Error::new(ErrorKind::Other, err)).into(),
@@ -200,13 +200,24 @@ impl TcpTun {
                     let next_duration = {
                         let mut manager = manager.lock();
 
-                        if let Err(err) = manager.iface.poll(Instant::now()) {
-                            error!("virtual device error: {}", err);
+                        let before_poll = Instant::now();
+                        let updated_sockets = match manager.iface.poll(before_poll) {
+                            Ok(u) => u,
+                            Err(err) => {
+                                error!("VirtDevice::poll error: {}", err);
+                                false
+                            }
+                        };
+
+                        let after_poll = Instant::now();
+
+                        if updated_sockets {
+                            trace!("VirtDevice::poll costed {}", after_poll - before_poll);
                         }
 
                         let next_duration = manager
                             .iface
-                            .poll_delay(Instant::now())
+                            .poll_delay(after_poll)
                             .unwrap_or(Duration::from_millis(50));
 
                         next_duration
@@ -240,14 +251,18 @@ impl TcpTun {
         // TCP first handshake packet, create a new Connection
         if tcp_packet.syn() && !tcp_packet.ack() {
             let accept_opts = self.context.accept_opts();
-            let send_buffer_size = accept_opts.tcp.send_buffer_size.unwrap_or(4096);
-            let recv_buffer_size = accept_opts.tcp.recv_buffer_size.unwrap_or(4096);
+            // NOTE: Default value is taken from Linux
+            // recv: /proc/sys/net/ipv4/tcp_rmem 87380 bytes
+            // send: /proc/sys/net/ipv4/tcp_wmem 16384 bytes
+            let send_buffer_size = accept_opts.tcp.send_buffer_size.unwrap_or(16384);
+            let recv_buffer_size = accept_opts.tcp.recv_buffer_size.unwrap_or(87380);
 
             let mut socket = TcpSocket::new(
                 TcpSocketBuffer::new(vec![0u8; recv_buffer_size as usize]),
                 TcpSocketBuffer::new(vec![0u8; send_buffer_size as usize]),
             );
-            socket.set_ack_delay(None);
+            socket.set_keep_alive(accept_opts.tcp.keepalive.map(From::from));
+
             if let Err(err) = socket.listen(dst_addr) {
                 return Err(io::Error::new(ErrorKind::Other, err));
             }

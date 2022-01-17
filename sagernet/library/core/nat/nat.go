@@ -4,6 +4,7 @@ import (
 	"net"
 
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
+	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -201,6 +202,15 @@ func (n *SystemTun) processICMPv4(hdr *ICMPv4Header) {
 	source := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(hdr.SourceAddress())), Network: v2rayNet.Network_UDP}
 	destination := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(hdr.DestinationAddress())), Port: 7, Network: v2rayNet.Network_UDP}
 
+	originVV := buffer.VectorisedView{}
+	originVV.AppendView(hdr.Packet().NetworkHeader().View())
+	transportData := hdr.Packet().TransportHeader().View()
+	if transportData.Size() > 8 {
+		transportData = transportData[:8]
+	}
+	originVV.AppendView(transportData)
+	originHdr := originVV.ToOwnedView()
+
 	sourceAddress := hdr.SourceAddress()
 	hdr.SetSourceAddress(hdr.DestinationAddress())
 	hdr.SetDestinationAddress(sourceAddress)
@@ -215,20 +225,34 @@ func (n *SystemTun) processICMPv4(hdr *ICMPv4Header) {
 	netHdr := hdr.Packet().NetworkHeader().View()
 
 	if n.handler.NewPingPacket(source, destination, data, func(message []byte) error {
-		replyVV := buffer.VectorisedView{}
-		replyVV.AppendView(netHdr)
-		replyVV.AppendView(message)
-
-		if len(message) != messageLen {
-			ipHdr := header.IPv4(netHdr)
-			oldLen := ipHdr.TotalLength()
-			ipHdr.SetTotalLength(uint16(len(netHdr) + len(message)))
-			ipHdr.SetChecksum(^header.ChecksumCombine(^ipHdr.Checksum(), header.ChecksumCombine(ipHdr.TotalLength(), ^oldLen)))
+		icmpHdr := header.ICMPv4(message)
+		if icmpHdr.Type() == header.ICMPv4DstUnreachable {
+			const ICMPv4HeaderSize = 4
+			unreachableHdr := header.ICMPv4(buffer.NewView(header.ICMPv4MinimumErrorPayloadSize + len(originHdr)))
+			copy(unreachableHdr[:ICMPv4HeaderSize], message)
+			copy(unreachableHdr[header.ICMPv4MinimumErrorPayloadSize:], originHdr)
+			icmpHdr = unreachableHdr
 		}
 
-		err := n.dispatcher.writeRawPacket(replyVV)
+		backData := buffer.VectorisedView{}
+
+		if len(icmpHdr) != messageLen {
+			backIpHdr := header.IPv4(buffer.NewViewFromBytes(netHdr))
+			oldLen := backIpHdr.TotalLength()
+			backIpHdr.SetTotalLength(uint16(len(netHdr) + len(message)))
+			backIpHdr.SetChecksum(^header.ChecksumCombine(^backIpHdr.Checksum(), header.ChecksumCombine(backIpHdr.TotalLength(), ^oldLen)))
+			backData.AppendView(buffer.View(backIpHdr))
+		} else {
+			backData.AppendView(netHdr)
+		}
+
+		backData.AppendView(buffer.View(icmpHdr))
+		err := n.dispatcher.writeRawPacket(backData)
 		if err != nil {
 			return newError("failed to write packet to device: ", err.String())
+		}
+		if icmpHdr.Type() == header.ICMPv4DstUnreachable {
+			return unix.ENETUNREACH
 		}
 		return nil
 	}) {
@@ -249,21 +273,47 @@ func (n *SystemTun) processICMPv6(hdr *ICMPv6Header) {
 	source := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(hdr.SourceAddress())), Network: v2rayNet.Network_UDP}
 	destination := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(hdr.DestinationAddress())), Port: 7, Network: v2rayNet.Network_UDP}
 
+	originVV := buffer.VectorisedView{}
+	originVV.AppendView(hdr.Packet().NetworkHeader().View())
+	transportData := hdr.Packet().TransportHeader().View()
+	if transportData.Size() > 8 {
+		transportData = transportData[:8]
+	}
+	originVV.AppendView(transportData)
+	originHdr := originVV.ToOwnedView()
+
 	sourceAddress := hdr.SourceAddress()
 	hdr.SetSourceAddress(hdr.DestinationAddress())
 	hdr.SetDestinationAddress(sourceAddress)
 
-	data := buffer.VectorisedView{}
-	data.AppendView(hdr.Packet().TransportHeader().View())
-	data.Append(hdr.Packet().Data().ExtractVV())
+	dataVV := buffer.VectorisedView{}
+	dataVV.AppendView(hdr.Packet().TransportHeader().View())
+	dataVV.Append(hdr.Packet().Data().ExtractVV())
+	data := dataVV.ToView()
+	messageLen := len(data)
 
 	netHdr := hdr.Packet().NetworkHeader().View()
-	if n.handler.NewPingPacket(source, destination, data.ToView(), func(message []byte) error {
-		replyVV := buffer.VectorisedView{}
-		replyVV.AppendView(netHdr)
-		replyVV.AppendView(message)
-
+	if n.handler.NewPingPacket(source, destination, data, func(message []byte) error {
 		icmpHdr := header.ICMPv6(message)
+		if icmpHdr.Type() == header.ICMPv6DstUnreachable {
+			unreachableHdr := header.ICMPv6(buffer.NewView(header.ICMPv6DstUnreachableMinimumSize + len(originHdr)))
+			copy(unreachableHdr[:header.ICMPv6HeaderSize], message)
+			copy(unreachableHdr[header.ICMPv6DstUnreachableMinimumSize:], originHdr)
+			icmpHdr = unreachableHdr
+		}
+
+		backData := buffer.VectorisedView{}
+
+		if len(icmpHdr) != messageLen {
+			backIpHdr := header.IPv6(buffer.NewViewFromBytes(netHdr))
+			backIpHdr.SetPayloadLength(uint16(len(icmpHdr)))
+			backData.AppendView(buffer.View(backIpHdr))
+		} else {
+			backData.AppendView(netHdr)
+		}
+
+		backData.AppendView(buffer.View(icmpHdr))
+
 		icmpHdr.SetChecksum(0)
 		icmpHdr.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{
 			Header: icmpHdr,
@@ -271,9 +321,13 @@ func (n *SystemTun) processICMPv6(hdr *ICMPv6Header) {
 			Dst:    hdr.DestinationAddress(),
 		}))
 
-		err := n.dispatcher.writeRawPacket(replyVV)
+		err := n.dispatcher.writeRawPacket(backData)
 		if err != nil {
 			return newError("failed to write packet to device: ", err.String())
+		}
+
+		if icmpHdr.Type() == header.ICMPv6DstUnreachable {
+			return unix.ENETUNREACH
 		}
 		return nil
 	}) {

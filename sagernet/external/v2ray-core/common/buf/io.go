@@ -14,6 +14,18 @@ type Reader interface {
 	ReadMultiBuffer() (MultiBuffer, error)
 }
 
+type ReaderWrapper interface {
+	Upstream() io.Reader
+}
+
+type WriterWrapper interface {
+	Upstream() io.Writer
+}
+
+type PacketWrapper interface {
+	Upstream() net.PacketConn
+}
+
 // ErrReadTimeout is an error that happens with IO timeout.
 var ErrReadTimeout = newError("IO timeout")
 

@@ -192,3 +192,16 @@ func (w *BridgeWorker) Dispatch(ctx context.Context, dest net.Destination) (*tra
 		Writer: downlinkWriter,
 	}, nil
 }
+
+func (w *BridgeWorker) DispatchLink(ctx context.Context, dest net.Destination, outbound *transport.Link) error {
+	if !isInternalDomain(dest) {
+		ctx = session.ContextWithInbound(ctx, &session.Inbound{
+			Tag: w.tag,
+		})
+		return w.dispatcher.DispatchLink(ctx, dest, outbound)
+	}
+
+	w.handleInternalConn(*outbound)
+
+	return nil
+}
