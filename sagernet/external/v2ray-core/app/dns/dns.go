@@ -92,7 +92,7 @@ type serverQueryCallback struct {
 
 	queryType sync.Map
 	access    sync.Mutex
-	response  *dnsmessage.Message
+	message   *dnsmessage.Message
 	ips       []net.IP
 	errors    []error
 }
@@ -257,6 +257,7 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	var requests []*serverQueryCallback
 
 	for _, server := range servers {
+		server := server
 		ctx, cancel := context.WithCancel(ctx)
 		r := &serverQueryCallback{
 			queryCallback: q,
@@ -268,7 +269,8 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 			r.wg.Done()
 		}()
 		requests = append(requests, r)
-		if server.transport.SupportRaw() {
+		switch server.transport.Type() {
+		case dns.TransportTypeDefault:
 			for index := range messages {
 				message := messages[index]
 				message.ID = c.nextRequestId()
@@ -276,13 +278,53 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 				r.queryType.Store(message.ID, message.Questions[0].Type)
 				c.callbacks.Store(message.ID, r)
 				go func() {
-					if err := server.transport.WriteMessage(ctx, message); err != nil {
-						r.errors = append(r.errors, newError("failed to query at dns server ", server.name).Base(err))
+					if err := server.transport.Write(ctx, message); err != nil {
+						r.errors = append(r.errors, newError("failed write query to dns server ", server.name).Base(err))
 						cancel()
 					}
 				}()
 			}
-		} else {
+		case dns.TransportTypeExchange:
+			for index := range messages {
+				message := messages[index]
+				message.ID = c.nextRequestId()
+				reqIds = append(reqIds, message.ID)
+				r.queryType.Store(message.ID, message.Questions[0].Type)
+				c.callbacks.Store(message.ID, r)
+				go func() {
+					response, err := server.transport.Exchange(ctx, message)
+					if err != nil {
+						r.errors = append(r.errors, err)
+						cancel()
+						return
+					}
+					c.writeBack(server, response)
+				}()
+			}
+		case dns.TransportTypeExchangeRaw:
+			for index := range messages {
+				message := messages[index]
+				message.ID = c.nextRequestId()
+				packed, err := message.Pack()
+				if err != nil {
+					r.errors = append(r.errors, newError("failed to pack dns query").Base(err))
+					cancel()
+					continue
+				}
+				reqIds = append(reqIds, message.ID)
+				r.queryType.Store(message.ID, message.Questions[0].Type)
+				c.callbacks.Store(message.ID, r)
+				go func() {
+					response, err := server.transport.ExchangeRaw(ctx, buf.FromBytes(packed))
+					if err != nil {
+						r.errors = append(r.errors, err)
+						cancel()
+						return
+					}
+					c.writeBackRaw(server, response)
+				}()
+			}
+		case dns.TransportTypeLookup:
 			go func() {
 				ips, err := server.transport.Lookup(ctx, domain, strategy)
 				q.access.Lock()
@@ -326,10 +368,17 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	if response != nil {
 		ips := q.response.ips
 		if len(ips) == 0 {
-			newError("return empty response for domain ", domain).AtDebug().WriteToLog(session.ExportIDToError(ctx))
 			return nil, dns.ErrEmptyResponse
 		}
 		return ips, nil
+	}
+
+	for _, request := range requests {
+		for _, err := range request.errors {
+			if _, code := err.(dns.RCodeError); code {
+				return nil, err
+			}
+		}
 	}
 
 	var errs []error
@@ -341,7 +390,6 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	if err == nil {
 		err = context.Canceled
 	}
-	newError("return errors for domain ", domain).Base(err).AtWarning().WriteToLog(session.ExportIDToError(ctx))
 	return nil, err
 }
 
@@ -351,7 +399,207 @@ func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer,
 		buffer.Release()
 		return nil, newError("failed to parse dns request").Base(err)
 	}
-	panic("implement it")
+	messageID := message.ID
+	if common.IsEmpty(message.Questions) {
+		return packMessage(&dnsmessage.Message{
+			Header: dnsmessage.Header{
+				ID:            messageID,
+				Response:      true,
+				RCode:         dnsmessage.RCodeFormatError,
+				Authoritative: true,
+			},
+		})
+	}
+	message.Questions = message.Questions[:1]
+	domain := message.Questions[0].Name.String()
+	if strings.HasSuffix(domain, ".") {
+		domain = domain[:len(domain)-1]
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	servers := c.sortServers(domain)
+
+	q := &queryCallback{
+		wg:     new(sync.WaitGroup),
+		ctx:    ctx,
+		cancel: cancel,
+		domain: domain,
+	}
+	q.wg.Add(len(servers))
+	var reqIds []uint16
+	var requests []*serverQueryCallback
+	for _, server := range servers {
+		server := server
+		ctx, cancel := context.WithCancel(ctx)
+		r := &serverQueryCallback{
+			queryCallback: q,
+			ctx:           ctx,
+			cancel:        cancel,
+		}
+		go func() {
+			<-ctx.Done()
+			r.wg.Done()
+		}()
+		switch server.transport.Type() {
+		case dns.TransportTypeDefault:
+			message.ID = c.nextRequestId()
+			r.queryType.Store(message.ID, message.Questions[0].Type)
+			c.callbacks.Store(message.ID, r)
+			reqIds = append(reqIds, message.ID)
+			go func() {
+				if err := server.transport.Write(ctx, message); err != nil {
+					r.errors = append(r.errors, newError("failed write query to dns server ", server.name).Base(err))
+					cancel()
+				}
+			}()
+		case dns.TransportTypeExchange:
+			message.ID = c.nextRequestId()
+			r.queryType.Store(message.ID, message.Questions[0].Type)
+			c.callbacks.Store(message.ID, r)
+			reqIds = append(reqIds, message.ID)
+			go func() {
+				response, err := server.transport.Exchange(ctx, message)
+				if err != nil {
+					r.errors = append(r.errors, err)
+					cancel()
+					return
+				}
+				c.writeBack(server, response)
+			}()
+		case dns.TransportTypeExchangeRaw:
+			message.ID = c.nextRequestId()
+			packed, err := message.Pack()
+			if err != nil {
+				r.errors = append(r.errors, newError("failed to pack dns query").Base(err))
+				cancel()
+				continue
+			}
+			r.queryType.Store(message.ID, message.Questions[0].Type)
+			c.callbacks.Store(message.ID, r)
+			reqIds = append(reqIds, message.ID)
+			go func() {
+				response, err := server.transport.ExchangeRaw(ctx, buf.FromBytes(packed))
+				if err != nil {
+					r.errors = append(r.errors, err)
+					cancel()
+					return
+				}
+				c.writeBackRaw(server, response)
+			}()
+		case dns.TransportTypeLookup:
+			var strategy dns.QueryStrategy
+			if message.Questions[0].Class == dnsmessage.ClassINET {
+				switch message.Questions[0].Type {
+				case dnsmessage.TypeA:
+					strategy = dns.QueryStrategy_USE_IP4
+				case dnsmessage.TypeAAAA:
+					strategy = dns.QueryStrategy_USE_IP6
+				}
+			}
+			if strategy == dns.QueryStrategy_USE_IP {
+				r.errors = append(r.errors, common.ErrNoClue)
+				cancel()
+				continue
+			}
+			go func() {
+				ips, err := server.transport.Lookup(ctx, domain, strategy)
+				q.access.Lock()
+				defer q.access.Unlock()
+				if err != nil {
+					r.errors = append(r.errors, err)
+				} else if !common.Done(ctx) {
+					matched, err := server.matchExpectedIPs(r.domain, ips)
+					if err != nil {
+						r.errors = append(r.errors, err)
+						return
+					}
+					newError(server.name, " got answer: ", r.domain, " -> ", ips).AtDebug().WriteToLog(session.ExportIDToError(ctx))
+					r.ips = matched
+					q.response = r
+					q.cancel()
+				}
+				cancel()
+			}()
+		}
+
+		if !server.concurrency {
+			r.wg.Wait()
+			if common.Done(r.ctx) {
+				break
+			}
+		}
+	}
+
+	task.Run(ctx, func() error {
+		q.wg.Wait()
+		return nil
+	})
+
+	cancel()
+
+	for _, reqId := range reqIds {
+		c.callbacks.Delete(reqId)
+	}
+
+	response := q.response
+	if response != nil && response.message != nil {
+		responseMessage := response.message
+		responseMessage.ID = messageID
+		return packMessage(responseMessage)
+	}
+
+	for _, request := range requests {
+		if request.message != nil {
+			responseMessage := response.message
+			responseMessage.ID = messageID
+			return packMessage(responseMessage)
+		}
+	}
+
+	for _, request := range requests {
+		for _, err := range request.errors {
+			if rErr, is := err.(dns.RCodeError); is {
+				return packMessage(&dnsmessage.Message{
+					Header: dnsmessage.Header{
+						ID:            messageID,
+						Response:      true,
+						RCode:         dnsmessage.RCode(rErr),
+						Authoritative: true,
+					},
+				})
+			}
+		}
+	}
+
+	var errs []error
+	for _, request := range requests {
+		errs = append(errs, request.errors...)
+	}
+	err := errors.Combine(errs...)
+	if err == nil {
+		err = context.Canceled
+	}
+
+	newError("failed to process raw dns query for domain ", domain).Base(err).AtWarning().WriteToLog(session.ExportIDToError(ctx))
+
+	return packMessage(&dnsmessage.Message{
+		Header: dnsmessage.Header{
+			ID:            messageID,
+			Response:      true,
+			RCode:         dnsmessage.RCodeServerFailure,
+			Authoritative: true,
+		},
+	})
+}
+
+func packMessage(message *dnsmessage.Message) (*buf.Buffer, error) {
+	packed, err := message.Pack()
+	if err != nil {
+		return nil, err
+	}
+	return buf.FromBytes(packed), nil
 }
 
 func (c *transportContext) writeBack(message *dnsmessage.Message) {
@@ -486,7 +734,7 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 
 		newError(server.name, " got answer for raw query ", message.ID).AtDebug().WriteToLog(session.ExportIDToError(d.ctx))
 
-		d.response = message
+		d.message = message
 		d.queryCallback.response = d
 		d.queryCallback.cancel()
 		d.cancel()

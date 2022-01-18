@@ -9,8 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,7 +22,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/task"
-	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
@@ -81,15 +78,10 @@ type TunConfig struct {
 	TrafficStats        bool
 	PCap                bool
 	ErrorHandler        ErrorHandler
-	LocalResolver       LocalResolver
 }
 
 type ErrorHandler interface {
 	HandleError(err string)
-}
-
-type LocalResolver interface {
-	LookupIP(network string, domain string) (string, error)
 }
 
 func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
@@ -161,41 +153,10 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 		}
 	}
 
-	if !config.Protect {
-		localdns.SetLocalLookupFunc(nil)
-	} else {
-		localdns.SetLocalLookupFunc(func(ctx context.Context, network, host string) ([]net.IP, error) {
-			response, err := config.LocalResolver.LookupIP(network, host)
-			if err != nil {
-				errStr := err.Error()
-				if strings.HasPrefix(errStr, "rcode") {
-					r, _ := strconv.Atoi(strings.Split(errStr, " ")[1])
-					return nil, dns.RCodeError(r)
-				}
-				return nil, err
-			}
-			addrs := common.Filter(strings.Split(response, ","), func(it string) bool {
-				return common.IsNotBlank(it)
-			})
-			ips := make([]net.IP, len(addrs))
-			for i, addr := range addrs {
-				ips[i] = net.ParseIP(addr)
-			}
-			if len(ips) == 0 {
-				return nil, dns.ErrEmptyResponse
-			}
-
-			return ips, nil
-		})
-	}
-
-	localTransport := localdns.NewLocalTransport()
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
 		protector: config.Protector,
 		resolver: func(ctx context.Context, domain string) ([]net.IP, error) {
-			ctx, cancel := context.WithTimeout(ctx, dns.DefaultTimeout)
-			defer cancel()
-			return localTransport.Lookup(ctx, domain, dns.QueryStrategy_USE_IP)
+			return localdns.Client().LookupDefault(ctx, domain)
 		},
 	})
 
@@ -204,7 +165,6 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 func (t *Tun2ray) Close() {
 	pingproto.ControlFunc = nil
-	localdns.SetLocalLookupFunc(nil)
 
 	comm.CloseIgnore(t.dev)
 	t.connectionsLock.Lock()

@@ -70,26 +70,22 @@ func newHTTPSTransport(ctx *transportContext, dialContext func(ctx context.Conte
 	}
 }
 
-func (t *HTTPSTransport) SupportRaw() bool {
-	return true
+func (t *HTTPSTransport) Type() dns.TransportType {
+	return dns.TransportTypeExchangeRaw
 }
 
-func (t *HTTPSTransport) WriteMessage(ctx context.Context, message *dnsmessage.Message) error {
-	packed, err := message.Pack()
-	if err != nil {
-		return newError("failed to pack dns query").Base(err)
-	}
-
-	body := bytes.NewBuffer(packed)
+func (t *HTTPSTransport) ExchangeRaw(ctx context.Context, message *buf.Buffer) (*buf.Buffer, error) {
+	body := bytes.NewBuffer(message.Bytes())
 	req, err := http.NewRequest("POST", t.url, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header.Add("Accept", "application/dns-message")
 	req.Header.Add("Content-Type", "application/dns-message")
 
-	return task.Run(ctx, func() error {
+	var response *buf.Buffer
+	return response, task.Run(ctx, func() error {
 		resp, err := t.httpClient.Do(req.WithContext(t.ctx))
 		if err != nil {
 			return err
@@ -105,10 +101,17 @@ func (t *HTTPSTransport) WriteMessage(ctx context.Context, message *dnsmessage.M
 		if err != nil {
 			return newError("failed to read DOH response").Base(err)
 		}
-
-		t.writeBackRaw(buf.FromBytes(data))
+		response = buf.FromBytes(data)
 		return nil
 	})
+}
+
+func (t *HTTPSTransport) Write(ctx context.Context, message *dnsmessage.Message) error {
+	return common.ErrNoClue
+}
+
+func (t *HTTPSTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
+	return nil, common.ErrNoClue
 }
 
 func (t *HTTPSTransport) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {

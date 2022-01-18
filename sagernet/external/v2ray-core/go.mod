@@ -17,7 +17,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/jhump/protoreflect v1.10.1
 	github.com/kierdavis/cfb8 v0.0.0-20180105024805-3a17c36ee2f8
-	github.com/lucas-clemente/quic-go v0.24.1-0.20220109162842-f34eddae41f4
+	github.com/lucas-clemente/quic-go v0.25.0
 	github.com/marten-seemann/qtls-go1-17 v0.1.0
 	github.com/miekg/dns v1.1.45
 	github.com/pires/go-proxyproto v0.6.1
@@ -31,7 +31,7 @@ require (
 	golang.org/x/net v0.0.0-20220114011407-0dd24b26b47d
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9
-	golang.zx2c4.com/wireguard v0.0.0-20220114151043-114a3db91850
+	golang.zx2c4.com/wireguard v0.0.0-20220117163742-e0b8f11489c5
 	google.golang.org/grpc v1.43.0
 	google.golang.org/protobuf v1.27.1
 	gvisor.dev/gvisor v0.0.0

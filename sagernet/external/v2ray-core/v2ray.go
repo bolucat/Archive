@@ -207,7 +207,7 @@ func initInstanceWithConfig(config *Config, server *Instance) (bool, error) {
 		Type     interface{}
 		Instance features.Feature
 	}{
-		{dns.ClientType(), localdns.NewClient()},
+		{dns.ClientType(), localdns.Client()},
 		{policy.ManagerType(), policy.DefaultManager{}},
 		{routing.RouterType(), routing.DefaultRouter{}},
 		{stats.ManagerType(), stats.NoopManager{}},

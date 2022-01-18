@@ -179,7 +179,7 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 	if len(servers) == 0 {
 		servers = append(servers, &Server{
 			name:      "localhost",
-			transport: localdns.NewLocalTransport(),
+			transport: localdns.Transport(),
 		})
 	}
 
@@ -443,7 +443,7 @@ func newServer(
 			switch link.String() {
 			case "localhost":
 				name = "localhost"
-				transport = localdns.NewLocalTransport()
+				transport = localdns.Transport()
 			default:
 				return nil, newError("failed to create dns server: ", link.String())
 			}
@@ -454,7 +454,7 @@ func newServer(
 	server.name = name
 	server.transport = transport
 
-	if _, isLocalNameServer := transport.(*localdns.LocalTransport); isLocalNameServer {
+	if _, isLocalNameServer := transport.(localdns.LocalTransport); isLocalNameServer {
 		ns.PrioritizedDomain = append(ns.PrioritizedDomain, LocalTLDsAndDotlessDomains...)
 		ns.OriginalRules = append(ns.OriginalRules, LocalTLDsAndDotlessDomainsRule)
 		// The following lines is a solution to avoid core panics（rule index out of range） when setting `localhost` DNS client in config.

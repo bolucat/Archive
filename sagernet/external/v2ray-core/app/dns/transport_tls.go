@@ -43,11 +43,11 @@ func NewTLSLocalTransport(ctx *transportContext) *TLSTransport {
 	}
 }
 
-func (t *TLSTransport) SupportRaw() bool {
-	return true
+func (t *TLSTransport) Type() dns.TransportType {
+	return dns.TransportTypeDefault
 }
 
-func (t *TLSTransport) WriteMessage(ctx context.Context, message *dnsmessage.Message) error {
+func (t *TLSTransport) Write(ctx context.Context, message *dnsmessage.Message) error {
 	packed, err := message.Pack()
 	if err != nil {
 		return newError("failed to pack dns query").Base(err)
@@ -58,6 +58,14 @@ func (t *TLSTransport) WriteMessage(ctx context.Context, message *dnsmessage.Mes
 	return task.Run(ctx, func() error {
 		return t.dispatcher.Write(buffer)
 	})
+}
+
+func (t *TLSTransport) Exchange(context.Context, *dnsmessage.Message) (*dnsmessage.Message, error) {
+	return nil, common.ErrNoClue
+}
+
+func (t *TLSTransport) ExchangeRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
+	return nil, common.ErrNoClue
 }
 
 func (t *TLSTransport) Lookup(context.Context, string, dns.QueryStrategy) ([]net.IP, error) {

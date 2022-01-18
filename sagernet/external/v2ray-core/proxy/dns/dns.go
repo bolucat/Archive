@@ -178,6 +178,9 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, d internet.
 				if isIPQuery {
 					go h.handleIPQuery(ctx, id, qType, domain, writer)
 					continue
+				} else {
+					go h.handleQuery(ctx, b, writer)
+					continue
 				}
 			}
 
@@ -283,6 +286,15 @@ func (h *Handler) handleIPQuery(ctx context.Context, id uint16, qType dnsmessage
 
 	if err := writer.WriteMessage(b); err != nil {
 		newError("write IP answer").Base(err).WriteToLog()
+	}
+}
+
+func (h *Handler) handleQuery(ctx context.Context, buffer *buf.Buffer, writer dns_proto.MessageWriter) {
+	response, err := h.client.QueryRaw(ctx, buffer)
+	if err == nil {
+		writer.WriteMessage(response)
+	} else {
+		newError("failed to process raw dns request").Base(err).AtWarning().WriteToLog()
 	}
 }
 

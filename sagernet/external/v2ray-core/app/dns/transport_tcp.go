@@ -32,11 +32,11 @@ func NewTCPLocalTransport(ctx *transportContext) *TCPTransport {
 	}
 }
 
-func (t *TCPTransport) SupportRaw() bool {
-	return true
+func (t *TCPTransport) Type() dns.TransportType {
+	return dns.TransportTypeDefault
 }
 
-func (t *TCPTransport) WriteMessage(ctx context.Context, message *dnsmessage.Message) error {
+func (t *TCPTransport) Write(ctx context.Context, message *dnsmessage.Message) error {
 	packed, err := message.Pack()
 	if err != nil {
 		return newError("failed to pack dns query").Base(err)
@@ -48,6 +48,14 @@ func (t *TCPTransport) WriteMessage(ctx context.Context, message *dnsmessage.Mes
 	return task.Run(ctx, func() error {
 		return t.dispatcher.Write(buffer)
 	})
+}
+
+func (t *TCPTransport) Exchange(context.Context, *dnsmessage.Message) (*dnsmessage.Message, error) {
+	return nil, common.ErrNoClue
+}
+
+func (t *TCPTransport) ExchangeRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
+	return nil, common.ErrNoClue
 }
 
 func (t *TCPTransport) Lookup(context.Context, string, dns.QueryStrategy) ([]net.IP, error) {

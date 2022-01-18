@@ -21,8 +21,19 @@ type NewClient interface {
 	QueryRaw(ctx context.Context, message *buf.Buffer) (*buf.Buffer, error)
 }
 
+type TransportType uint8
+
+const (
+	TransportTypeDefault TransportType = iota
+	TransportTypeExchange
+	TransportTypeExchangeRaw
+	TransportTypeLookup
+)
+
 type Transport interface {
-	SupportRaw() bool
-	WriteMessage(ctx context.Context, message *dnsmessage.Message) error
+	Type() TransportType
+	Write(ctx context.Context, message *dnsmessage.Message) error
+	Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error)
+	ExchangeRaw(ctx context.Context, message *buf.Buffer) (*buf.Buffer, error)
 	Lookup(ctx context.Context, domain string, strategy QueryStrategy) ([]net.IP, error)
 }

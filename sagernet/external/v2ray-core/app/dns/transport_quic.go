@@ -21,7 +21,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
-var _ dns.Transport = (*UDPTransport)(nil)
+var _ dns.Transport = (*QUICTransport)(nil)
 
 // NextProtoDQ - During connection establishment, DNS/QUIC support is indicated
 // by selecting the ALPN token "dq" in the crypto handshake.
@@ -35,6 +35,10 @@ type QUICTransport struct {
 	session quic.Session
 }
 
+func (t *QUICTransport) Type() dns.TransportType {
+	return dns.TransportTypeExchange
+}
+
 func NewQUICTransport(ctx *transportContext, dispatcher routing.Dispatcher) *QUICTransport {
 	return &QUICTransport{
 		transportContext: ctx,
@@ -46,10 +50,6 @@ func NewQUICLocalTransport(ctx *transportContext) *QUICTransport {
 	return &QUICTransport{
 		transportContext: ctx,
 	}
-}
-
-func (t *QUICTransport) SupportRaw() bool {
-	return true
 }
 
 func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error) {
@@ -89,7 +89,7 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 		destination := destinations[index]
 		var packetConn net.PacketConn
 		if t.dispatcher != nil {
-			link, err := t.dispatcher.Dispatch(ctx, destination)
+			link, err := t.dispatcher.Dispatch(t.ctx, destination)
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 				destination.UDPAddr(),
 			}
 		} else {
-			conn, err := internet.ListenSystemPacket(ctx, &net.UDPAddr{IP: net.AnyIP.IP(), Port: 0}, nil)
+			conn, err := internet.ListenSystemPacket(t.ctx, &net.UDPAddr{IP: net.AnyIP.IP(), Port: 0}, nil)
 			if err != nil {
 				return err
 			}
@@ -125,10 +125,10 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 	return session, nil
 }
 
-func (t *QUICTransport) WriteMessage(ctx context.Context, message *dnsmessage.Message) error {
+func (t *QUICTransport) Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error) {
 	session, err := t.getConnection(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	requestId := message.ID
@@ -136,19 +136,21 @@ func (t *QUICTransport) WriteMessage(ctx context.Context, message *dnsmessage.Me
 
 	stream, err := session.OpenStreamSync(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	packed, err := message.Pack()
-	if err != nil {
-		return err
-	}
+	var response *dnsmessage.Message
+	return response, task.Run(ctx, func() error {
+		packed, err := message.Pack()
+		if err != nil {
+			return err
+		}
 
-	return task.Run(ctx, func() error {
 		_, err = stream.Write(packed)
 		if err != nil {
 			return err
 		}
+
 		buffer := buf.New()
 		n, err := stream.Read(buffer.Extend(buf.Size))
 		if err != nil && err != io.EOF {
@@ -158,15 +160,22 @@ func (t *QUICTransport) WriteMessage(ctx context.Context, message *dnsmessage.Me
 		buffer.Resize(0, int32(n))
 		stream.Close()
 
-		*message = dnsmessage.Message{}
-		err = message.Unpack(buffer.Bytes())
+		response = new(dnsmessage.Message)
+		err = response.Unpack(buffer.Bytes())
 		if err != nil {
 			return err
 		}
-		message.ID = requestId
-		t.client.writeBack(t.server, message)
+		response.ID = requestId
 		return nil
 	})
+}
+
+func (t *QUICTransport) Write(context.Context, *dnsmessage.Message) error {
+	return common.ErrNoClue
+}
+
+func (t *QUICTransport) ExchangeRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
+	return nil, common.ErrNoClue
 }
 
 func (t *QUICTransport) Lookup(context.Context, string, dns.QueryStrategy) ([]net.IP, error) {

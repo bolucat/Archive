@@ -6,40 +6,52 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 )
 
-type LookupFunc func(ctx context.Context, network string, host string) ([]net.IP, error)
+type LocalTransport interface {
+	dns.Transport
+	IsLocalTransport()
+}
 
-var LocalLookupFunc LookupFunc
+var transportInstance LocalTransport
 
 func init() {
-	SetLocalLookupFunc(nil)
+	SetTransport(nil)
 }
 
-func SetLocalLookupFunc(lookupFunc func(ctx context.Context, network string, host string) ([]net.IP, error)) {
-	if lookupFunc == nil {
-		resolver := &net.Resolver{PreferGo: false}
-		LocalLookupFunc = resolver.LookupIP
-	} else {
-		LocalLookupFunc = lookupFunc
+func SetTransport(transport LocalTransport) {
+	if transport == nil {
+		transport = &DefaultTransport{
+			&net.Resolver{
+				PreferGo: false,
+			},
+		}
 	}
+	transportInstance = transport
 }
 
-var transportInstance dns.Transport = &LocalTransport{}
-
-type LocalTransport struct{}
-
-func NewLocalTransport() dns.Transport {
-	return transportInstance
+type transportWrapper struct {
+	LocalTransport
 }
 
-func (t *LocalTransport) SupportRaw() bool {
-	return false
+func Transport() dns.Transport {
+	return &transportWrapper{transportInstance}
 }
 
-func (t *LocalTransport) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+var _ dns.Transport = (*DefaultTransport)(nil)
+
+type DefaultTransport struct {
+	*net.Resolver
+}
+
+func (t *DefaultTransport) Type() dns.TransportType {
+	return dns.TransportTypeLookup
+}
+
+func (t *DefaultTransport) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
 	var network string
 	switch strategy {
 	case dns.QueryStrategy_USE_IP4:
@@ -49,9 +61,20 @@ func (t *LocalTransport) Lookup(ctx context.Context, domain string, strategy dns
 	default:
 		network = "ip"
 	}
-	return LocalLookupFunc(ctx, network, domain)
+	return t.LookupIP(ctx, network, domain)
 }
 
-func (t *LocalTransport) WriteMessage(context.Context, *dnsmessage.Message) error {
+func (t *DefaultTransport) Write(context.Context, *dnsmessage.Message) error {
 	return common.ErrNoClue
+}
+
+func (t *DefaultTransport) Exchange(context.Context, *dnsmessage.Message) (*dnsmessage.Message, error) {
+	return nil, common.ErrNoClue
+}
+
+func (t *DefaultTransport) ExchangeRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
+	return nil, common.ErrNoClue
+}
+
+func (t *DefaultTransport) IsLocalTransport() {
 }

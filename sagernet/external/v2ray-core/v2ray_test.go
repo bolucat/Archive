@@ -33,7 +33,7 @@ func TestV2RayDependency(t *testing.T) {
 		}
 		wait <- true
 	})
-	instance.AddFeature(localdns.NewClient())
+	instance.AddFeature(localdns.Client())
 	<-wait
 }
 
