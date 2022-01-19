@@ -706,7 +706,7 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 	}
 
 	d := callbackI.(*serverQueryCallback)
-	typeI, _ := d.queryType.LoadAndDelete(message.ID)
+	typeI, _ := d.queryType.Load(message.ID)
 	queryType := typeI.(dnsmessage.Type)
 
 	if common.Done(d.ctx) {
