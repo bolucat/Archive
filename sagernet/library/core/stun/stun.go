@@ -209,11 +209,11 @@ func filteringTests(mapTestConn *stunServerConn) (int, error) {
 			logrus.Info(newError("NAT filtering behavior: address dependent"))
 			return AddressDependent, nil
 		}
-	}
-	logrus.Info(newError("NAT filtering behavior: address and port dependent"))
-	if !errors.Is(err, errTimedOut) {
+	} else if !errors.Is(err, errTimedOut) {
 		return NoResult, err
 	}
+	logrus.Info(newError("NAT filtering behavior: address and port dependent"))
+
 	return AddressAndPortDependent, nil
 }
 

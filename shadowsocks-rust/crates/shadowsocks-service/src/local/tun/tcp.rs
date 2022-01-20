@@ -112,7 +112,9 @@ impl AsyncRead for TcpConnection {
         if control.recv_buffer.is_empty() {
             // Nothing could be read. Wait for notify.
             if let Some(old_waker) = control.recv_waker.replace(cx.waker().clone()) {
-                old_waker.wake();
+                if !old_waker.will_wake(cx.waker()) {
+                    old_waker.wake();
+                }
             }
 
             return Poll::Pending;
@@ -138,7 +140,9 @@ impl AsyncWrite for TcpConnection {
 
         if control.send_buffer.is_full() {
             if let Some(old_waker) = control.send_waker.replace(cx.waker().clone()) {
-                old_waker.wake();
+                if !old_waker.will_wake(cx.waker()) {
+                    old_waker.wake();
+                }
             }
 
             return Poll::Pending;
@@ -163,7 +167,9 @@ impl AsyncWrite for TcpConnection {
 
         control.is_closed = true;
         if let Some(old_waker) = control.send_waker.replace(cx.waker().clone()) {
-            old_waker.wake();
+            if !old_waker.will_wake(cx.waker()) {
+                old_waker.wake();
+            }
         }
 
         Poll::Pending
@@ -280,7 +286,8 @@ impl TcpTun {
                             }
 
                             // Check if readable
-                            if socket.can_recv() && !control.recv_buffer.is_full() {
+                            let mut has_received = false;
+                            while socket.can_recv() && !control.recv_buffer.is_full() {
                                 let result = socket.recv(|buffer| {
                                     let n = control.recv_buffer.enqueue_slice(buffer);
                                     (n, ())
@@ -288,20 +295,26 @@ impl TcpTun {
 
                                 match result {
                                     Ok(..) => {
-                                        if let Some(waker) = control.recv_waker.take() {
-                                            waker.wake();
-                                        }
+                                        has_received = true;
                                     }
                                     Err(err) => {
                                         error!("socket recv error: {}", err);
                                         sockets_to_remove.push(socket_handle);
                                         close_socket_control(&mut *control);
+                                        break;
                                     }
                                 }
                             }
 
+                            if has_received {
+                                if let Some(waker) = control.recv_waker.take() {
+                                    waker.wake();
+                                }
+                            }
+
                             // Check if writable
-                            if socket.can_send() && !control.send_buffer.is_empty() {
+                            let mut has_sent = false;
+                            while socket.can_send() && !control.send_buffer.is_empty() {
                                 let result = socket.send(|buffer| {
                                     let n = control.send_buffer.dequeue_slice(buffer);
                                     (n, ())
@@ -309,15 +322,20 @@ impl TcpTun {
 
                                 match result {
                                     Ok(..) => {
-                                        if let Some(waker) = control.send_waker.take() {
-                                            waker.wake();
-                                        }
+                                        has_sent = true;
                                     }
                                     Err(err) => {
                                         error!("socket send error: {}", err);
                                         sockets_to_remove.push(socket_handle);
                                         close_socket_control(&mut *control);
+                                        break;
                                     }
+                                }
+                            }
+
+                            if has_sent {
+                                if let Some(waker) = control.send_waker.take() {
+                                    waker.wake();
                                 }
                             }
                         }
@@ -369,6 +387,8 @@ impl TcpTun {
                 TcpSocketBuffer::new(vec![0u8; send_buffer_size as usize]),
             );
             socket.set_keep_alive(accept_opts.tcp.keepalive.map(From::from));
+            // FIXME: This should follows system's setting. 7200 is Linux's default.
+            socket.set_timeout(Some(Duration::from_secs(7200)));
 
             if let Err(err) = socket.listen(dst_addr) {
                 return Err(io::Error::new(ErrorKind::Other, err));
