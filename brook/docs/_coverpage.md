@@ -2,12 +2,11 @@
 
 # Brook
 
-> Brook is a cross-platform strong encryption and not detectable proxy.<br/>
-> Brook's goal is to keep it **simple**, **stupid** and **not detectable**.<br/>
-<br/>
-[🇨🇳中文](https://txthinking.github.io/brook/#/zh-cn/)
+```
+bash <(curl -s https://bash.ooo/brook.sh)
+```
 
 [GitHub](https://github.com/txthinking/brook)
-[Get Started](#cli-and-gui)
+[Get Started](#brook)
 
 ![color](#ffffff)

@@ -64,15 +64,10 @@
 
     -   [IPv6](ipv6.md)
 
--   Resources
-
-    -   [Bypass Rule](bypass.md)
-    -   [Blog and Video](blogvideo.md)
-    -   [Community](community.md)
-    -   [Telegram](telegram.md)
-
 -   Protocol
 
     -   [brook server](brook-server-protocol.md)
     -   [brook wsserver](brook-wsserver-protocol.md)
     -   [brook wssserver](brook-wssserver-protocol.md)
+
+-   [**Resources**](resources.md)

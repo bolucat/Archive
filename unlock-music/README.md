@@ -29,7 +29,8 @@
 - [x] <ruby>QQ 音乐海外版<rt>JOOX Music</rt></ruby> (.ofl_en)
 - [x] 虾米音乐格式 (.xm)
 - [x] 酷我音乐格式 (.kwm)
-- [x] 酷狗音乐格式 (.kgm/.vpr) ([CLI 版本][kgm_cli])
+- [x] (由于 DMCA 已移除) ~~网易云音乐格式 (.ncm)~~
+- [x] (由于 DMCA 已移除) ~~酷狗音乐格式 (.kgm/.vpr) ([CLI 版本][kgm_cli])~~
 
 [kgm_cli]: https://github.com/unlock-music/unlock-music/wiki/其他音乐格式工具#酷狗音乐-kgmvpr解锁工具
 

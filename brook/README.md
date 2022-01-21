@@ -30,7 +30,7 @@ brook server --listen :9999 --password hello
 
 > Then, your `brook server` is `YOUR_SERVER_IP:9999`, password is `hello`
 
-### OR install CLI and [joker](https://github.com/txthinking/joker) via curl, and run `brook server` with [joker](https://github.com/txthinking/joker)
+### Install CLI and [joker](https://github.com/txthinking/joker) via curl, and run `brook server` with [joker](https://github.com/txthinking/joker)
 
 ```
 curl -L https://github.com/txthinking/joker/releases/latest/download/joker_linux_amd64 -o /usr/bin/joker
@@ -42,15 +42,21 @@ joker brook server --listen :9999 --password hello
 
 > Then, your `brook server` is `YOUR_SERVER_IP:9999`, password is `hello`
 
-### OR install CLI via [nami](https://github.com/txthinking/nami), and run `brook server` with [joker](https://github.com/txthinking/joker)
+### Install CLI via [nami](https://github.com/txthinking/nami), and run `brook server` with [joker](https://github.com/txthinking/joker)
 
 ```
-curl -L https://raw.githubusercontent.com/txthinking/nami/master/install.sh | bash && sleep 3 && exec -l $SHELL
+bash <(curl -s https://bash.ooo/nami.sh)
 nami install joker brook
 joker brook server --listen :9999 --password hello
 ```
 
 > Then, your `brook server` is `YOUR_SERVER_IP:9999`, password is `hello`
+
+### Install via script
+
+```
+bash <(curl -s https://bash.ooo/brook.sh)
+```
 
 [Read Document](https://txthinking.github.io/brook/#/install-cli)
 

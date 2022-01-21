@@ -19,7 +19,7 @@ chmod +x /usr/bin/brook
 安装 nami
 
 ```
-curl -L https://raw.githubusercontent.com/txthinking/nami/master/install.sh | bash && sleep 3 && exec -l $SHELL
+bash <(curl -s https://bash.ooo/nami.sh)
 ```
 
 使用 nami 安装 brook, 她会自动帮你下载适用你系统的最新版 Brook CLI 文件, 并赋予可执行权限
@@ -42,7 +42,15 @@ nami install jinbe
 
 ---
 
-## Package manager
+## 通过一键脚本安装
+
+```
+bash <(curl -s https://bash.ooo/brook.sh)
+```
+
+---
+
+## 通过包管理器
 
 Archlinux
 

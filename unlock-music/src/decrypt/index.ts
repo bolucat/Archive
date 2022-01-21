@@ -1,7 +1,6 @@
 import { Decrypt as XmDecrypt } from '@/decrypt/xm';
 import { Decrypt as QmcDecrypt } from '@/decrypt/qmc';
 import { Decrypt as QmcCacheDecrypt } from '@/decrypt/qmccache';
-import { Decrypt as KgmDecrypt } from '@/decrypt/kgm';
 import { Decrypt as KwmDecrypt } from '@/decrypt/kwm';
 import { Decrypt as RawDecrypt } from '@/decrypt/raw';
 import { Decrypt as TmDecrypt } from '@/decrypt/tm';
@@ -57,6 +56,7 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
     case 'mflac0': //QQ Music New Flac
     case 'mgg': //QQ Music New Ogg
     case 'mgg1': //QQ Music New Ogg
+    case 'mgg0':
     case '666c6163': //QQ Music Weiyun Flac
     case '6d7033': //QQ Music Weiyun Mp3
     case '6f6767': //QQ Music Weiyun Ogg
@@ -70,11 +70,6 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
       break;
     case 'cache': //QQ Music Cache
       rt_data = await QmcCacheDecrypt(file.raw, raw.name, raw.ext);
-      break;
-    case 'vpr':
-    case 'kgm':
-    case 'kgma':
-      rt_data = await KgmDecrypt(file.raw, raw.name, raw.ext);
       break;
     case 'ofl_en':
       rt_data = await JooxDecrypt(file.raw, raw.name, raw.ext);

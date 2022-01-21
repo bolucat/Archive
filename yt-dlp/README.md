@@ -3,17 +3,17 @@
 
 [![YT-DLP](https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/.github/banner.svg)](#readme)
 
-[![Release version](https://img.shields.io/github/v/release/yt-dlp/yt-dlp?color=blue&label=&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/releases/latest)
-[![CI Status](https://img.shields.io/github/workflow/status/yt-dlp/yt-dlp/Core%20Tests/master?label=&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/actions)
-[![License: Unlicense](https://img.shields.io/badge/-Unlicense-blue.svg?style=for-the-badge)](LICENSE)
-[![Donate](https://img.shields.io/badge/_-Donate-red.svg?logo=githubsponsors&labelColor=555555&style=for-the-badge)](Collaborators.md#collaborators)
-[![Supported Sites](https://img.shields.io/badge/-Supported_Sites-brightgreen.svg?style=for-the-badge)](supportedsites.md)
-[![Discord](https://img.shields.io/discord/807245652072857610?color=blue&label=​&logo=discord&style=for-the-badge)](https://discord.gg/H5MNcFW63r)
-[![Doc Status](https://readthedocs.org/projects/yt-dlp/badge/?version=latest&style=for-the-badge)](https://yt-dlp.readthedocs.io)
-[![Commits](https://img.shields.io/github/commit-activity/m/yt-dlp/yt-dlp?label=commits&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/commits)
-[![Last Commit](https://img.shields.io/github/last-commit/yt-dlp/yt-dlp/master?label=&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/commits)
-[![Downloads](https://img.shields.io/github/downloads/yt-dlp/yt-dlp/total?style=for-the-badge&color=blue)](https://github.com/yt-dlp/yt-dlp/releases/latest)
-[![PyPi Downloads](https://img.shields.io/pypi/dm/yt-dlp?label=PyPi&style=for-the-badge)](https://pypi.org/project/yt-dlp)
+[![Release version](https://img.shields.io/github/v/release/yt-dlp/yt-dlp?color=blue&label=Download&style=for-the-badge)](#release-files "Release")
+[![License: Unlicense](https://img.shields.io/badge/-Unlicense-brightgreen.svg?style=for-the-badge)](LICENSE "License")
+[![Donate](https://img.shields.io/badge/_-Donate-red.svg?logo=githubsponsors&labelColor=555555&style=for-the-badge)](Collaborators.md#collaborators "Donate")
+[![Docs](https://img.shields.io/badge/-Docs-blue.svg?color=blue&style=for-the-badge)](https://readthedocs.org/projects/yt-dlp/ "Docs")
+[![Supported Sites](https://img.shields.io/badge/-Supported_Sites-brightgreen.svg?style=for-the-badge)](supportedsites.md "Supported Sites")
+[![PyPi](https://img.shields.io/badge/-PyPi-blue.svg?logo=pypi&labelColor=555555&style=for-the-badge)](https://pypi.org/project/yt-dlp "PyPi")
+[![CI Status](https://img.shields.io/github/workflow/status/yt-dlp/yt-dlp/Core%20Tests/master?label=Tests&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/actions "CI Status")
+[![Discord](https://img.shields.io/discord/807245652072857610?color=blue&labelColor=555555&label=&logo=discord&style=for-the-badge)](https://discord.gg/H5MNcFW63r "Discord")
+[![Matrix](https://img.shields.io/matrix/yt-dlp:matrix.org?color=brightgreen&labelColor=555555&label=&logo=element&style=for-the-badge)](https://matrix.to/#/#yt-dlp:matrix.org "Matrix")
+[![Commits](https://img.shields.io/github/commit-activity/m/yt-dlp/yt-dlp?label=commits&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/commits "Commit History")
+[![Last Commit](https://img.shields.io/github/last-commit/yt-dlp/yt-dlp/master?label=&style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/commits "Commit History")
 
 </div>
 <!-- MANPAGE: END EXCLUDED SECTION -->
@@ -88,7 +88,7 @@ yt-dlp is a [youtube-dl](https://github.com/ytdl-org/youtube-dl) fork based on t
     * Redirect channel's home URL automatically to `/video` to preserve the old behaviour
     * `255kbps` audio is extracted (if available) from youtube music when premium cookies are given
     * Youtube music Albums, channels etc can be downloaded ([except self-uploaded music](https://github.com/yt-dlp/yt-dlp/issues/723))
-    * Download livestreams from the start using `--live-from-start`
+    * Download livestreams from the start using `--live-from-start` (experimental)
 
 * **Cookies from browser**: Cookies can be automatically extracted from all major web browsers using `--cookies-from-browser BROWSER[+KEYRING][:PROFILE]`
 
@@ -110,9 +110,9 @@ yt-dlp is a [youtube-dl](https://github.com/ytdl-org/youtube-dl) fork based on t
 
 * **Output template improvements**: Output templates can now have date-time formatting, numeric offsets, object traversal etc. See [output template](#output-template) for details. Even more advanced operations can also be done with the help of `--parse-metadata` and `--replace-in-metadata`
 
-* **Other new options**: Many new options have been added such as `--print`, `--wait-for-video`, `--sleep-requests`, `--convert-thumbnails`, `--write-link`, `--force-download-archive`, `--force-overwrites`, `--break-on-reject` etc
+* **Other new options**: Many new options have been added such as `--concat-playlist`, `--print`, `--wait-for-video`, `--sleep-requests`, `--convert-thumbnails`, `--write-link`, `--force-download-archive`, `--force-overwrites`, `--break-on-reject` etc
 
-* **Improvements**: Regex and other operators in `--match-filter`, multiple `--postprocessor-args` and `--downloader-args`, faster archive checking, more [format selection options](#format-selection), merge multi-video/audio, multiple `--config-locations`, etc
+* **Improvements**: Regex and other operators in `--match-filter`, multiple `--postprocessor-args` and `--downloader-args`, faster archive checking, more [format selection options](#format-selection), merge multi-video/audio, multiple `--config-locations`, `--exec` at different stages, etc
 
 * **Plugins**: Extractors and PostProcessors can be loaded from an external file. See [plugins](#plugins) for details
 
@@ -157,8 +157,19 @@ You can install yt-dlp using one of the following methods:
 
 ### Using the release binary
 
-You can simply download the [correct binary file](#release-files) for your OS: **[[Windows](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)] [[UNIX-like](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp)]**
+You can simply download the [correct binary file](#release-files) for your OS
 
+<!-- MANPAGE: BEGIN EXCLUDED SECTION -->
+[![Windows](https://img.shields.io/badge/-Windows_x64-blue.svg?style=for-the-badge&logo=windows)](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe)
+[![Linux](https://img.shields.io/badge/-Linux/MacOS/BSD-red.svg?style=for-the-badge&logo=linux)](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp)
+[![Source Tarball](https://img.shields.io/badge/-Source_tar-green.svg?style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.tar.gz)
+[![Other variants](https://img.shields.io/badge/-Other-grey.svg?style=for-the-badge)](#release-files)
+[![ALl versions](https://img.shields.io/badge/-All_Versions-lightgrey.svg?style=for-the-badge)](https://github.com/yt-dlp/yt-dlp/releases)
+<!-- MANPAGE: END EXCLUDED SECTION -->
+
+Note: The manpages, shell completion files etc. are available in the [source tarball](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.tar.gz)
+
+<!-- TODO: Move to Wiki -->
 In UNIX-like OSes (MacOS, Linux, BSD), you can also install the same in one of the following ways:
 
 ```
@@ -176,7 +187,6 @@ sudo aria2c https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp --d
 sudo chmod a+rx /usr/local/bin/yt-dlp
 ```
 
-PS: The manpages, shell completion files etc. are available in [yt-dlp.tar.gz](https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.tar.gz)
 
 ### With [PIP](https://pypi.org/project/pip)
 
@@ -197,6 +207,7 @@ python3 -m pip install --force-reinstall https://github.com/yt-dlp/yt-dlp/archiv
 
 Note that on some systems, you may need to use `py` or `python` instead of `python3`
 
+<!-- TODO: Add to Wiki, Remove Taps -->
 ### With [Homebrew](https://brew.sh)
 
 macOS or Linux users that are using Homebrew can also install it by:
@@ -267,7 +278,7 @@ To use or redistribute the dependencies, you must agree to their respective lice
 
 The Windows and MacOS standalone release binaries are already built with the python interpreter, mutagen, pycryptodomex and websockets included.
 
-**Note**: There are some regressions in newer ffmpeg versions that causes various issues when used alongside yt-dlp. Since ffmpeg is such an important dependency, we provide [custom builds](https://github.com/yt-dlp/FFmpeg-Builds/wiki/Latest#latest-autobuilds) with patches for these issues at [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds). See [the readme](https://github.com/yt-dlp/FFmpeg-Builds#patches-applied) for details on the specific issues solved by these builds
+**Note**: There are some regressions in newer ffmpeg versions that causes various issues when used alongside yt-dlp. Since ffmpeg is such an important dependency, we provide [custom builds](https://github.com/yt-dlp/FFmpeg-Builds#ffmpeg-static-auto-builds) with patches for these issues at [yt-dlp/FFmpeg-Builds](https://github.com/yt-dlp/FFmpeg-Builds). See [the readme](https://github.com/yt-dlp/FFmpeg-Builds#patches-applied) for details on the specific issues solved by these builds
 
 
 ## COMPILE
@@ -331,7 +342,8 @@ You can also fork the project on github and run your fork's [build workflow](.gi
                                      except those given by --config-locations.
                                      For backward compatibility, if this option
                                      is found inside the system configuration
-                                     file, the user configuration is not loaded
+                                     file, the user configuration is not loaded.
+                                     (Alias: --no-config)
     --no-config-locations            Do not load any custom configuration files
                                      (default). When given inside a
                                      configuration file, ignore all previous
@@ -518,8 +530,8 @@ You can also fork the project on github and run your fork's [build workflow](.gi
                                      example, --downloader aria2c --downloader
                                      "dash,m3u8:native" will use aria2c for
                                      http/ftp downloads, and the native
-                                     downloader for dash/m3u8 downloads
-                                     (Alias: --external-downloader)
+                                     downloader for dash/m3u8 downloads (Alias:
+                                     --external-downloader)
     --downloader-args NAME:ARGS      Give these arguments to the external
                                      downloader. Specify the downloader name and
                                      the arguments separated by a colon ":". For
@@ -527,8 +539,8 @@ You can also fork the project on github and run your fork's [build workflow](.gi
                                      different positions using the same syntax
                                      as --postprocessor-args. You can use this
                                      option multiple times to give different
-                                     arguments to different downloaders
-                                     (Alias: --external-downloader-args)
+                                     arguments to different downloaders (Alias:
+                                     --external-downloader-args)
 
 ## Filesystem Options:
     -a, --batch-file FILE            File containing URLs to download ("-" for
@@ -602,8 +614,8 @@ You can also fork the project on github and run your fork's [build workflow](.gi
                                      without this option if the extraction is
                                      known to be quick (Alias: --get-comments)
     --no-write-comments              Do not retrieve video comments unless the
-                                     extraction is known to be quick
-                                     (Alias: --no-get-comments)
+                                     extraction is known to be quick (Alias:
+                                     --no-get-comments)
     --load-info-json FILE            JSON file containing the video information
                                      (created with the "--write-info-json"
                                      option)
@@ -711,6 +723,9 @@ You can also fork the project on github and run your fork's [build workflow](.gi
 
 ## Workarounds:
     --encoding ENCODING              Force the specified encoding (experimental)
+    --legacy-server-connect          Explicitly allow HTTPS connection to
+                                     servers that do not support RFC 5746 secure
+                                     renegotiation
     --no-check-certificates          Suppress HTTPS certificate validation
     --prefer-insecure                Use an unencrypted connection to retrieve
                                      information about the video (Currently
@@ -789,9 +804,9 @@ You can also fork the project on github and run your fork's [build workflow](.gi
                                      be regex) or "all" separated by commas.
                                      (Eg: --sub-langs "en.*,ja") You can prefix
                                      the language code with a "-" to exempt it
-                                     from the requested languages. (Eg: --sub-
-                                     langs all,-live_chat) Use --list-subs for a
-                                     list of available language tags
+                                     from the requested languages. (Eg:
+                                     --sub-langs all,-live_chat) Use --list-subs
+                                     for a list of available language tags
 
 ## Authentication Options:
     -u, --username USERNAME          Login with this account ID
@@ -894,8 +909,8 @@ You can also fork the project on github and run your fork's [build workflow](.gi
     --xattrs                         Write metadata to the video file's xattrs
                                      (using dublin core and xdg standards)
     --concat-playlist POLICY         Concatenate videos in a playlist. One of
-                                     "never" (default), "always", or
-                                     "multi_video" (only when the videos form a
+                                     "never", "always", or "multi_video"
+                                     (default; only when the videos form a
                                      single show). All the video files must have
                                      same codecs and number of streams to be
                                      concatable. The "pl_video:" prefix can be
@@ -1138,6 +1153,7 @@ The available fields are:
  - `uploader_id` (string): Nickname or id of the video uploader
  - `channel` (string): Full name of the channel the video is uploaded on
  - `channel_id` (string): Id of the channel
+ - `channel_follower_count` (numeric): Number of followers of the channel
  - `location` (string): Physical location where the video was filmed
  - `duration` (numeric): Length of the video in seconds
  - `duration_string` (string): Length of the video (HH:mm:ss)
@@ -1807,7 +1823,7 @@ While these options are almost the same as their new counterparts, there are som
 
     -j, --dump-json                  --print "%()j"
     -F, --list-formats               --print formats_table
-    --list-thumbnails                --print thumbnails_table
+    --list-thumbnails                --print thumbnails_table --print playlist:thumbnails_table
     --list-subs                      --print automatic_captions_table --print subtitles_table
 
 #### Redundant options
