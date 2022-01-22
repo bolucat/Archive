@@ -175,7 +175,8 @@ pub struct Connection {
     send_buffer: BytesMut,
     status: ConnStatus,
     last_active_time: Instant,
-    closed: Option<bool>, //None for ok, false for closing, true for closed
+    closed: Option<bool>,
+    //None for ok, false for closing, true for closed
     read_client: bool,
     read_server: bool,
     socket_state: TcpState,
@@ -291,10 +292,6 @@ impl Connection {
         if event.is_writable() {
             self.established();
             self.try_send_client(sockets, &[]);
-            if self.writable() && self.read_server {
-                self.do_recv_server(sockets);
-                self.read_server = false;
-            }
         }
 
         self.do_check_status(poll, sockets);
@@ -324,7 +321,7 @@ impl Connection {
             self.try_close(poll, sockets);
         }
 
-        self.do_send_server();
+        self.do_send_server(poll, sockets);
     }
 
     fn try_send_client(&mut self, sockets: &mut SocketSet, data: &[u8]) {
@@ -339,6 +336,10 @@ impl Connection {
             }
         } else if !data.is_empty() {
             self.send_buffer.extend_from_slice(data);
+        }
+        if self.writable() && self.read_server {
+            self.do_recv_server(sockets);
+            self.read_server = false;
         }
     }
 
@@ -382,11 +383,7 @@ impl Connection {
 
         if event.is_writable() {
             self.conn.established();
-            self.do_send_server();
-            if self.conn.writable() && self.read_client {
-                self.try_recv_client(poll, sockets);
-                self.read_client = false;
-            }
+            self.do_send_server(poll, sockets);
         }
 
         if !self.send_buffer.is_empty() {
@@ -404,8 +401,12 @@ impl Connection {
         }
     }
 
-    fn do_send_server(&mut self) {
+    fn do_send_server(&mut self, poll: &Poll, sockets: &mut SocketSet) {
         self.conn.do_send();
+        if self.conn.writable() && self.read_client {
+            self.try_recv_client(poll, sockets);
+            self.read_client = false;
+        }
     }
 }
 
