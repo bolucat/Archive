@@ -477,6 +477,14 @@ namespace BBDown
                 {
                     fetcher = new BBDownSpaceVideoFetcher();
                 }
+                else if (aidOri.StartsWith("listBizId"))
+                {
+                    fetcher = new BBDownMediaListFetcher();
+                }
+                else if (aidOri.StartsWith("seriesBizId"))
+                {
+                    fetcher = new BBDownSeriesListFetcher();
+                }
                 var vInfo = await fetcher.FetchAsync(aidOri);
                 string title = vInfo.Title;
                 string desc = vInfo.Desc;
@@ -564,8 +572,9 @@ namespace BBDown
                         if (!skipCover && !subOnly && !File.Exists($"{p.aid}/{p.aid}.jpg")) 
                         {
                             Log("下载封面...");
-                            LogDebug("下载：{0}", pic);
-                            await using var response = await AppHttpClient.GetStreamAsync(pic);
+                            var cover = pic == "" ? p.cover : pic;
+                            LogDebug("下载：{0}", cover);
+                            await using var response = await AppHttpClient.GetStreamAsync(cover);
                             await using var fs = new FileStream($"{p.aid}/{p.aid}.jpg", FileMode.OpenOrCreate);
                             await response.CopyToAsync(fs);
                         }
@@ -688,10 +697,10 @@ namespace BBDown
 
                         if (videoTracks.Count > 0)
                         {
-                            //杜比视界，使用mp4box封装
-                            if (videoTracks[vIndex].dfn == qualitys["126"] && !useMp4box)
+                            //杜比视界，若ffmpeg版本小于5.0，使用mp4box封装
+                            if (videoTracks[vIndex].dfn == qualitys["126"] && !useMp4box && !CheckFFmpegDOVI())
                             {
-                                LogError($"检测到杜比视界清晰度,将强制使用mp4box混流...");
+                                LogError($"检测到杜比视界清晰度且您的ffmpeg版本小于5.0,将使用mp4box混流...");
                                 useMp4box = true;
                             }
                             if (multiThread && !videoTracks[vIndex].baseUrl.Contains("-cmcc-"))
