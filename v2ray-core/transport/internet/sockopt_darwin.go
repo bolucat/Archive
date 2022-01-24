@@ -42,6 +42,18 @@ func applyOutboundSocketOptions(network string, address string, fd uintptr, conf
 		}
 	}
 
+	if config.TxBufSize != 0 {
+		if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, int(config.TxBufSize)); err != nil {
+			return newError("failed to set SO_SNDBUF").Base(err)
+		}
+	}
+
+	if config.RxBufSize != 0 {
+		if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, int(config.RxBufSize)); err != nil {
+			return newError("failed to set SO_RCVBUF").Base(err)
+		}
+	}
+
 	return nil
 }
 
@@ -74,6 +86,17 @@ func applyInboundSocketOptions(network string, fd uintptr, config *SocketConfig)
 		}
 	}
 
+	if config.TxBufSize != 0 {
+		if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, int(config.TxBufSize)); err != nil {
+			return newError("failed to set SO_SNDBUF/SO_SNDBUFFORCE").Base(err)
+		}
+	}
+
+	if config.RxBufSize != 0 {
+		if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_RCVBUF, int(config.RxBufSize)); err != nil {
+			return newError("failed to set SO_RCVBUF/SO_RCVBUFFORCE").Base(err)
+		}
+	}
 	return nil
 }
 
