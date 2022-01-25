@@ -2,13 +2,15 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/lucas-clemente/quic-go/congestion"
+	"github.com/oschwald/geoip2-golang"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"github.com/tobyxdd/hysteria/cmd/auth"
 	"github.com/tobyxdd/hysteria/pkg/acl"
-	"github.com/tobyxdd/hysteria/pkg/auth"
 	hyCongestion "github.com/tobyxdd/hysteria/pkg/congestion"
 	"github.com/tobyxdd/hysteria/pkg/core"
 	"github.com/tobyxdd/hysteria/pkg/obfs"
@@ -83,49 +85,51 @@ func server(config *serverConfig) {
 		quicConfig.MaxIncomingStreams = DefaultMaxIncomingStreams
 	}
 	// Auth
-	var authFunc func(addr net.Addr, auth []byte, sSend uint64, sRecv uint64) (bool, string)
+	var authFunc core.ConnectFunc
 	var err error
 	switch authMode := config.Auth.Mode; authMode {
 	case "", "none":
-		logrus.Warn("No authentication configured")
+		if len(config.Obfs) == 0 {
+			logrus.Warn("No authentication or obfuscation enabled. " +
+				"Your server could be accessed by anyone! Are you sure this is what you intended?")
+		}
 		authFunc = func(addr net.Addr, auth []byte, sSend uint64, sRecv uint64) (bool, string) {
 			return true, "Welcome"
 		}
-	case "password":
-		logrus.Info("Password authentication enabled")
-		var pwdConfig map[string]string
-		err = json5.Unmarshal(config.Auth.Config, &pwdConfig)
-		if err != nil || len(pwdConfig["password"]) == 0 {
+	case "password", "passwords":
+		authFunc, err = passwordAuthFunc(config.Auth.Config)
+		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"error": err,
-			}).Fatal("Invalid password authentication config")
-		}
-		pwd := pwdConfig["password"]
-		authFunc = func(addr net.Addr, auth []byte, sSend uint64, sRecv uint64) (bool, string) {
-			if string(auth) == pwd {
-				return true, "Welcome"
-			} else {
-				return false, "Wrong password"
-			}
+			}).Fatal("Failed to enable password authentication")
+		} else {
+			logrus.Info("Password authentication enabled")
 		}
 	case "external":
-		logrus.Info("External authentication enabled")
-		var extConfig map[string]string
-		err = json5.Unmarshal(config.Auth.Config, &extConfig)
-		if err != nil || len(extConfig["http"]) == 0 {
+		authFunc, err = externalAuthFunc(config.Auth.Config)
+		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"error": err,
-			}).Fatal("Invalid external authentication config")
+			}).Fatal("Failed to enable external authentication")
+		} else {
+			logrus.Info("External authentication enabled")
 		}
-		provider := &auth.HTTPAuthProvider{
-			Client: &http.Client{
-				Timeout: 10 * time.Second,
-			},
-			URL: extConfig["http"],
-		}
-		authFunc = provider.Auth
 	default:
 		logrus.WithField("mode", config.Auth.Mode).Fatal("Unsupported authentication mode")
+	}
+	connectFunc := func(addr net.Addr, auth []byte, sSend uint64, sRecv uint64) (bool, string) {
+		ok, msg := authFunc(addr, auth, sSend, sRecv)
+		if !ok {
+			logrus.WithFields(logrus.Fields{
+				"src": addr,
+				"msg": msg,
+			}).Info("Authentication failed, client rejected")
+		} else {
+			logrus.WithFields(logrus.Fields{
+				"src": addr,
+			}).Info("Client connected")
+		}
+		return ok, msg
 	}
 	// Obfuscator
 	var obfuscator obfs.Obfuscator
@@ -134,12 +138,19 @@ func server(config *serverConfig) {
 	}
 	// IPv6 only mode
 	if config.IPv6Only {
-		transport.DefaultTransport = transport.IPv6OnlyTransport
+		transport.DefaultServerTransport.IPv6Only = true
 	}
 	// ACL
 	var aclEngine *acl.Engine
 	if len(config.ACL) > 0 {
-		aclEngine, err = acl.LoadFromFile(config.ACL, transport.DefaultTransport)
+		aclEngine, err = acl.LoadFromFile(config.ACL, transport.DefaultServerTransport.ResolveIPAddr,
+			func() (*geoip2.Reader, error) {
+				if len(config.MMDB) > 0 {
+					return loadMMDBReader(config.MMDB)
+				} else {
+					return loadMMDBReader(DefaultMMDBFilename)
+				}
+			})
 		if err != nil {
 			logrus.WithFields(logrus.Fields{
 				"error": err,
@@ -158,11 +169,11 @@ func server(config *serverConfig) {
 			logrus.WithField("error", err).Fatal("Prometheus HTTP server error")
 		}()
 	}
-	server, err := core.NewServer(config.Listen, config.Protocol, tlsConfig, quicConfig, transport.DefaultTransport,
+	server, err := core.NewServer(config.Listen, config.Protocol, tlsConfig, quicConfig, transport.DefaultServerTransport,
 		uint64(config.UpMbps)*mbpsToBps, uint64(config.DownMbps)*mbpsToBps,
 		func(refBPS uint64) congestion.CongestionControl {
 			return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
-		}, config.DisableUDP, aclEngine, obfuscator, authFunc,
+		}, config.DisableUDP, aclEngine, obfuscator, connectFunc, disconnectFunc,
 		tcpRequestFunc, tcpErrorFunc, udpRequestFunc, udpErrorFunc, promReg)
 	if err != nil {
 		logrus.WithField("error", err).Fatal("Failed to initialize server")
@@ -172,6 +183,61 @@ func server(config *serverConfig) {
 
 	err = server.Serve()
 	logrus.WithField("error", err).Fatal("Server shutdown")
+}
+
+func passwordAuthFunc(rawMsg json5.RawMessage) (core.ConnectFunc, error) {
+	var pwds []string
+	err := json5.Unmarshal(rawMsg, &pwds)
+	if err != nil {
+		// not a string list, legacy format?
+		var pwdConfig map[string]string
+		err = json5.Unmarshal(rawMsg, &pwdConfig)
+		if err != nil || len(pwdConfig["password"]) == 0 {
+			// still no, invalid config
+			return nil, errors.New("invalid config")
+		}
+		// yes it is
+		pwds = []string{pwdConfig["password"]}
+	}
+	return func(addr net.Addr, auth []byte, sSend uint64, sRecv uint64) (bool, string) {
+		for _, pwd := range pwds {
+			if string(auth) == pwd {
+				return true, "Welcome"
+			}
+		}
+		return false, "Wrong password"
+	}, nil
+}
+
+func externalAuthFunc(rawMsg json5.RawMessage) (core.ConnectFunc, error) {
+	var extConfig map[string]string
+	err := json5.Unmarshal(rawMsg, &extConfig)
+	if err != nil {
+		return nil, errors.New("invalid config")
+	}
+	if len(extConfig["http"]) != 0 {
+		hp := &auth.HTTPAuthProvider{
+			Client: &http.Client{
+				Timeout: 10 * time.Second,
+			},
+			URL: extConfig["http"],
+		}
+		return hp.Auth, nil
+	} else if len(extConfig["cmd"]) != 0 {
+		cp := &auth.CmdAuthProvider{
+			Cmd: extConfig["cmd"],
+		}
+		return cp.Auth, nil
+	} else {
+		return nil, errors.New("invalid config")
+	}
+}
+
+func disconnectFunc(addr net.Addr, auth []byte, err error) {
+	logrus.WithFields(logrus.Fields{
+		"src":   addr,
+		"error": err,
+	}).Info("Client disconnected")
 }
 
 func tcpRequestFunc(addr net.Addr, auth []byte, reqAddr string, action acl.Action, arg string) {

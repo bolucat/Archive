@@ -3,7 +3,7 @@ package acl
 import (
 	"bufio"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/tobyxdd/hysteria/pkg/transport"
+	"github.com/oschwald/geoip2-golang"
 	"net"
 	"os"
 	"strings"
@@ -15,7 +15,8 @@ type Engine struct {
 	DefaultAction Action
 	Entries       []Entry
 	Cache         *lru.ARCCache
-	Transport     transport.Transport
+	ResolveIPAddr func(string) (*net.IPAddr, error)
+	GeoIPReader   *geoip2.Reader
 }
 
 type cacheEntry struct {
@@ -23,7 +24,7 @@ type cacheEntry struct {
 	Arg    string
 }
 
-func LoadFromFile(filename string, transport transport.Transport) (*Engine, error) {
+func LoadFromFile(filename string, resolveIPAddr func(string) (*net.IPAddr, error), geoIPLoadFunc func() (*geoip2.Reader, error)) (*Engine, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -31,6 +32,7 @@ func LoadFromFile(filename string, transport transport.Transport) (*Engine, erro
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	entries := make([]Entry, 0, 1024)
+	var geoIPReader *geoip2.Reader
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if len(line) == 0 || strings.HasPrefix(line, "#") {
@@ -40,6 +42,12 @@ func LoadFromFile(filename string, transport transport.Transport) (*Engine, erro
 		entry, err := ParseEntry(line)
 		if err != nil {
 			return nil, err
+		}
+		if len(entry.Country) > 0 && geoIPReader == nil {
+			geoIPReader, err = geoIPLoadFunc() // lazy load GeoIP reader only when needed
+			if err != nil {
+				return nil, err
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -51,7 +59,8 @@ func LoadFromFile(filename string, transport transport.Transport) (*Engine, erro
 		DefaultAction: ActionProxy,
 		Entries:       entries,
 		Cache:         cache,
-		Transport:     transport,
+		ResolveIPAddr: resolveIPAddr,
+		GeoIPReader:   geoIPReader,
 	}, nil
 }
 
@@ -59,14 +68,14 @@ func (e *Engine) ResolveAndMatch(host string) (Action, string, *net.IPAddr, erro
 	ip, zone := parseIPZone(host)
 	if ip == nil {
 		// Domain
-		ipAddr, err := e.Transport.LocalResolveIPAddr(host)
+		ipAddr, err := e.ResolveIPAddr(host)
 		if v, ok := e.Cache.Get(host); ok {
 			// Cache hit
 			ce := v.(cacheEntry)
 			return ce.Action, ce.Arg, ipAddr, err
 		}
 		for _, entry := range e.Entries {
-			if entry.MatchDomain(host) || (ipAddr != nil && entry.MatchIP(ipAddr.IP)) {
+			if entry.MatchDomain(host) || (ipAddr != nil && entry.MatchIP(ipAddr.IP, e.GeoIPReader)) {
 				e.Cache.Add(host, cacheEntry{entry.Action, entry.ActionArg})
 				return entry.Action, entry.ActionArg, ipAddr, err
 			}
@@ -84,7 +93,7 @@ func (e *Engine) ResolveAndMatch(host string) (Action, string, *net.IPAddr, erro
 			}, nil
 		}
 		for _, entry := range e.Entries {
-			if entry.MatchIP(ip) {
+			if entry.MatchIP(ip, e.GeoIPReader) {
 				e.Cache.Add(ip.String(), cacheEntry{entry.Action, entry.ActionArg})
 				return entry.Action, entry.ActionArg, &net.IPAddr{
 					IP:   ip,

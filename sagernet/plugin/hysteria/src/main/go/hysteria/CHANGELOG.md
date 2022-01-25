@@ -31,3 +31,14 @@
 - CC optimizations
 - Set buffer correctly for faketcp mode
 - "wechat-video" protocol
+
+## 0.9.4
+
+- fsnotify-based auto keypair reloading
+- ACL country code support
+
+## 0.9.5
+
+- Client connect & disconnect log
+- Warning when no auth or obfs is set
+- Multi-password & cmd auth support
