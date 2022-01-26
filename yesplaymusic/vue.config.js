@@ -114,11 +114,11 @@ module.exports = {
             },
             {
               target: 'tar.gz',
-              arch: ['x64'],
+              arch: ['x64', 'arm64'],
             },
             {
               target: 'deb',
-              arch: ['x64', 'armv7l'],
+              arch: ['x64', 'armv7l', 'arm64'],
             },
             {
               target: 'rpm',
@@ -164,7 +164,7 @@ module.exports = {
       },
       // 主入口文件
       // mainProcessFile: 'src/main.js',
-      mainProcessWatch: ['../netease_api/routes.js'],
+      // mainProcessWatch: ['../netease_api/routes.js'],
       // mainProcessArgs: []
     },
   },

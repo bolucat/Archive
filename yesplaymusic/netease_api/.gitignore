@@ -3,3 +3,5 @@ node_modules
 *.log
 .idea
 .vscode
+.history
+examples/moddef.json

@@ -105,6 +105,12 @@ namespace BBDown
                     string bizId = GetQueryString("sid", input);
                     avid = $"seriesBizId:{bizId}:{mid}";
                 }
+                else if (input.Contains("/space.bilibili.com/") && input.Contains("/favlist"))
+                {
+                    string mid = Regex.Match(input, "space.bilibili.com/(\\d{1,})").Groups[1].Value;
+                    string fid = GetQueryString("fid", input);
+                    avid = $"favId:{fid}:{mid}";
+                }
                 else if (input.Contains("/space.bilibili.com/"))
                 {
                     string mid = Regex.Match(input, "space.bilibili.com/(\\d{1,})").Groups[1].Value;
@@ -373,6 +379,7 @@ namespace BBDown
 
         public static async Task MultiThreadDownloadFileAsync(string url, string path, bool aria2c, string aria2cProxy)
         {
+            LogDebug("Start downloading: {0}", url);
             if (aria2c)
             {
                 await BBDownAria2c.DownloadFileByAria2cAsync(url, path, aria2cProxy);
@@ -383,6 +390,12 @@ namespace BBDown
             }
             long fileSize = await GetFileSizeAsync(url);
             LogDebug("文件大小：{0} bytes", fileSize);
+            //已下载过, 跳过下载
+            if (File.Exists(path) && new FileInfo(path).Length == fileSize)
+            {
+                LogDebug("文件已下载过, 跳过下载");
+                return;
+            }
             List<Clip> allClips = GetAllClips(url, fileSize);
             int total = allClips.Count;
             LogDebug("分段数量：{0}", total);
@@ -803,7 +816,7 @@ namespace BBDown
                 "13" => "AV1",
                 "12" => "HEVC",
                 "7" => "AVC",
-                _ => "UNKNOW"
+                _ => "UNKNOWN"
             };
         }
     }

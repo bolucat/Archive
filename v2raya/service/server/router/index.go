@@ -45,7 +45,7 @@ func cachedHTML(html []byte) func(ctx *gin.Context) {
 			return
 		}
 		ctx.Header("Content-Type", "text/html; charset=utf-8")
-		ctx.Header("Cache-Control", "public, max-age=31536000")
+		ctx.Header("Cache-Control", "public, must-revalidate")
 		ctx.Header("ETag", etag)
 		if match := ctx.GetHeader("If-None-Match"); match != "" {
 			if strings.Contains(match, etag) {
@@ -192,7 +192,7 @@ func Run() error {
 		auth.POST("outbound", controller.PostOutbound)
 		auth.DELETE("outbound", controller.DeleteOutbound)
 		auth.GET("message", controller.WsMessage)
-		auth.GET("log", controller.GetLog)
+		auth.GET("logger", controller.GetLogger)
 	}
 
 	ServeGUI(engine)
