@@ -32,6 +32,15 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          target: ${{ matrix.target }}
+          toolchain: nightly
+          default: true
+          override: true
+
       - name: Install cross
         run: cargo install cross
 
@@ -51,6 +60,10 @@ jobs:
             fi
           fi
 
+          if [[ "$compile_target" == "aarch64-"* ]]; then
+            compile_features="$compile_features -f armv8 -f neon"
+          fi
+
           cd build
           ./build-release -t ${{ matrix.target }} $compile_features $compile_compress
 
@@ -65,7 +78,7 @@ jobs:
   build-unix:
     runs-on: ${{ matrix.os }}
     env:
-      BUILD_EXTRA_FEATURES: "local-redir local-tun"
+      BUILD_EXTRA_FEATURES: "local-redir local-tun armv8 neon"
       RUST_BACKTRACE: full
     strategy:
       matrix:
@@ -84,12 +97,12 @@ jobs:
           # echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
 
-      - name: Install Rust Nightly
+      - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
           target: ${{ matrix.target }}
+          toolchain: nightly
           default: true
           override: true
 
@@ -120,7 +133,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install Rust Nightly
+      - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal

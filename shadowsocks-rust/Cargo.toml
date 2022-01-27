@@ -50,7 +50,7 @@ lto = "fat"
 codegen-units = 1
 incremental = false
 panic = "abort"
-strip = true
+#strip = true
 
 [features]
 default = [
@@ -131,6 +131,11 @@ security-replay-attack-detect = ["shadowsocks-service/security-replay-attack-det
 replay-attack-detect = ["security-replay-attack-detect"] # Backward compatibility. DO NOT USE.
 # Enable IV printable prefix
 security-iv-printable-prefix = ["shadowsocks-service/security-iv-printable-prefix"]
+
+# Enable ARMv8 related optimizations
+armv8 = ["shadowsocks-service/armv8"]
+# Enable NEON releated optimizations
+neon = ["shadowsocks-service/neon"]
 
 [dependencies]
 log = "0.4"
