@@ -19,16 +19,12 @@
     "postinstall": "electron-builder install-app-deps",
     "postuninstall": "electron-builder install-app-deps",
     "prettier": "npx prettier --write ./src",
-    "netease_api:run": "cd ./netease_api && npm run start",
-    "netease_api:init": "git submodule init && git submodule update",
-    "netease_api:pull": "cd ./netease_api && git pull",
-    "netease_api:install": "yarn",
-    "netease_api:setup": "yarn netease_api:init && yarn netease_api:pull && yarn netease_api:install"
+    "netease_api:run": "npx NeteaseCloudMusicApi"
   },
   "main": "background.js",
   "dependencies": {
     "@unblockneteasemusic/server": "v0.27.0-rc.4",
-    "NeteaseCloudMusicApi": "file:./netease_api/",
+    "NeteaseCloudMusicApi": "^4.5.2",
     "axios": "^0.21.0",
     "change-case": "^4.1.2",
     "cli-color": "^2.0.0",
@@ -54,8 +50,10 @@
     "extract-zip": "^2.0.1",
     "howler": "^2.2.3",
     "js-cookie": "^2.2.1",
+    "jsbi": "^4.1.0",
     "lodash": "^4.17.20",
     "md5": "^2.3.0",
+    "mpris-service": "^2.1.2",
     "music-metadata": "^7.5.3",
     "node-vibrant": "^3.1.6",
     "nprogress": "^0.2.0",
@@ -73,7 +71,8 @@
     "vue-i18n": "^8.22.0",
     "vue-router": "^3.4.3",
     "vue-slider-component": "^3.2.5",
-    "vuex": "^3.4.0"
+    "vuex": "^3.4.0",
+    "x11": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^17.0.0",

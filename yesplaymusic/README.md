@@ -37,6 +37,7 @@
 - 🟥 支持 Last.fm Scrobble
 - ☁️ 支持音乐云盘
 - ⌨️ 自定义快捷键和全局快捷键
+- 🎧 支持Mpris
 - 🛠 更多特性开发中
 
 ## 📦️ 安装
@@ -159,7 +160,7 @@ YesPlayMusic 地址为 `http://localhost`
 
 ## :computer: 配置开发环境
 
-本项目由 [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) 提供 API，已经包含在本项目的`netease_api`目录。
+本项目由 [NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi) 提供 API。
 
 运行本项目
 
@@ -180,9 +181,6 @@ yarn electron:serve
 本地运行 NeteaseCloudMusicApi，或者将 API [部署至 Vercel](#%EF%B8%8F-部署至-vercel)
 
 ```shell
-# 安装依赖
-yarn netease_api:install
-
 # 运行 API （默认 3000 端口）
 yarn netease_api:run
 ```
