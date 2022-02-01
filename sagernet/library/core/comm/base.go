@@ -24,10 +24,10 @@ func CloseIgnore(closer ...interface{}) {
 		if c == nil {
 			continue
 		}
-		if ca, ok := c.(common.Closable); ok {
-			_ = ca.Close()
-		} else if ia, ok := c.(common.Interruptible); ok {
+		if ia, ok := c.(common.Interruptible); ok {
 			ia.Interrupt()
+		} else if ca, ok := c.(common.Closable); ok {
+			_ = ca.Close()
 		}
 	}
 }

@@ -602,6 +602,10 @@ func packMessage(message *dnsmessage.Message) (*buf.Buffer, error) {
 	return buf.FromBytes(packed), nil
 }
 
+func (c *transportContext) newContext() context.Context {
+	return session.ContextWithContent(c.ctx, &session.Content{Protocol: "v2ray.dns"})
+}
+
 func (c *transportContext) writeBack(message *dnsmessage.Message) {
 	c.client.writeBack(c.server, message)
 }

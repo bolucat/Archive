@@ -23,8 +23,8 @@ type TLSTransport struct {
 
 func NewTLSTransport(ctx *transportContext, dispatcher routing.Dispatcher) *TLSTransport {
 	return &TLSTransport{
-		dispatcher: NewRawDispatcher(ctx.ctx, func() (net.Conn, error) {
-			link, _ := dispatcher.Dispatch(ctx.ctx, ctx.destination)
+		NewRawDispatcher(func() (net.Conn, error) {
+			link, _ := dispatcher.Dispatch(ctx.newContext(), ctx.destination)
 			conn := buf.NewConnection(buf.ConnectionOutputMulti(link.Reader), buf.ConnectionInputMulti(link.Writer))
 			return tls.Client(conn, &tls.Config{
 				ServerName: ctx.destination.Address.String(),
@@ -35,7 +35,7 @@ func NewTLSTransport(ctx *transportContext, dispatcher routing.Dispatcher) *TLST
 
 func NewTLSLocalTransport(ctx *transportContext) *TLSTransport {
 	return &TLSTransport{
-		dispatcher: NewRawLocalDispatcher(ctx.ctx, func(conn net.Conn) (net.Conn, error) {
+		NewRawLocalDispatcher(ctx, func(conn net.Conn) (net.Conn, error) {
 			return tls.Client(conn, &tls.Config{
 				ServerName: ctx.destination.Address.String(),
 			}), nil

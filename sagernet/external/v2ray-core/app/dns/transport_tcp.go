@@ -22,13 +22,13 @@ type TCPTransport struct {
 
 func NewTCPTransport(ctx *transportContext, dispatcher routing.Dispatcher) *TCPTransport {
 	return &TCPTransport{
-		NewDispatcher(ctx.ctx, dispatcher, ctx.destination, ctx.writeBackRawTCP),
+		NewDispatcher(ctx, dispatcher, ctx.destination, ctx.writeBackRawTCP),
 	}
 }
 
 func NewTCPLocalTransport(ctx *transportContext) *TCPTransport {
 	return &TCPTransport{
-		NewLocalDispatcher(ctx.ctx, ctx.destination, ctx.writeBackRawTCP),
+		NewLocalDispatcher(ctx, ctx.destination, ctx.writeBackRawTCP),
 	}
 }
 

@@ -21,13 +21,13 @@ type UDPTransport struct {
 
 func NewUDPTransport(ctx *transportContext, dispatcher routing.Dispatcher) *UDPTransport {
 	return &UDPTransport{
-		NewDispatcher(ctx.ctx, dispatcher, ctx.destination, ctx.writeBackRaw),
+		NewDispatcher(ctx, dispatcher, ctx.destination, ctx.writeBackRaw),
 	}
 }
 
 func NewUDPLocalTransport(ctx *transportContext) *UDPTransport {
 	return &UDPTransport{
-		NewLocalDispatcher(ctx.ctx, ctx.destination, ctx.writeBackRaw),
+		NewLocalDispatcher(ctx, ctx.destination, ctx.writeBackRaw),
 	}
 }
 

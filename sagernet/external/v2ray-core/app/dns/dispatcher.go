@@ -23,7 +23,6 @@ type (
 )
 
 type messageDispatcher struct {
-	ctx         context.Context
 	dialer      dialerFunc
 	destination net.Destination
 	writeBack   writeBackFunc
@@ -32,11 +31,10 @@ type messageDispatcher struct {
 	connection *dispatcherConnection
 }
 
-func NewDispatcher(ctx context.Context, dispatcher routing.Dispatcher, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
+func NewDispatcher(ctx *transportContext, dispatcher routing.Dispatcher, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
 	return &messageDispatcher{
-		ctx: ctx,
 		dialer: func() (net.Conn, error) {
-			link, err := dispatcher.Dispatch(ctx, destination)
+			link, err := dispatcher.Dispatch(ctx.newContext(), destination)
 			common.Must(err)
 			return buf.NewConnection(buf.ConnectionInputMulti(link.Writer), buf.ConnectionOutputMulti(link.Reader)), nil
 		},
@@ -45,41 +43,38 @@ func NewDispatcher(ctx context.Context, dispatcher routing.Dispatcher, destinati
 	}
 }
 
-func NewLocalDispatcher(ctx context.Context, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
+func NewLocalDispatcher(ctx *transportContext, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
 	return &messageDispatcher{
-		ctx: ctx,
 		dialer: func() (net.Conn, error) {
 			var sockopt internet.SocketConfig
 			if destination.Network == net.Network_TCP {
 				sockopt.Tfo = internet.SocketConfig_Enable
 				sockopt.TcpKeepAliveInterval = 15
 			}
-			return internet.DialSystemDNS(ctx, destination, &sockopt)
+			return internet.DialSystemDNS(ctx.newContext(), destination, &sockopt)
 		},
 		destination: destination,
 		writeBack:   writeBack,
 	}
 }
 
-func NewRawDispatcher(ctx context.Context, dialer dialerFunc, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
+func NewRawDispatcher(dialer dialerFunc, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
 	return &messageDispatcher{
-		ctx:         ctx,
 		dialer:      dialer,
 		destination: destination,
 		writeBack:   writeBack,
 	}
 }
 
-func NewRawLocalDispatcher(ctx context.Context, convertor convertFunc, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
+func NewRawLocalDispatcher(ctx *transportContext, convertor convertFunc, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
 	return &messageDispatcher{
-		ctx: ctx,
 		dialer: func() (net.Conn, error) {
 			var sockopt internet.SocketConfig
 			if destination.Network == net.Network_TCP {
 				sockopt.Tfo = internet.SocketConfig_Enable
 				sockopt.TcpKeepAliveInterval = 15
 			}
-			conn, err := internet.DialSystemDNS(ctx, destination, &sockopt)
+			conn, err := internet.DialSystemDNS(ctx.newContext(), destination, &sockopt)
 			if err != nil {
 				return nil, err
 			}
@@ -110,7 +105,7 @@ func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {
 		return d.connection, nil
 	}
 
-	ctx, cancel := context.WithCancel(d.ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	timer := signal.CancelAfterInactivity(ctx, cancel, 5*time.Minute)
 	newError("establishing new connection for ", d.destination).WriteToLog()
 	link, err := d.dialer()

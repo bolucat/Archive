@@ -270,21 +270,20 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	t.connectionsLock.Unlock()
 
 	reader, input := pipe.New()
-	link := &transport.Link{Reader: reader, Writer: connWriter{conn, buf.NewWriter(conn)}}
+	defer comm.CloseIgnore(conn, input)
+	link := &transport.Link{
+		Reader: reader,
+		Writer: connWriter{conn, buf.NewWriter(conn)},
+	}
 	err := t.v2ray.dispatcher.DispatchLink(ctx, destination, link)
 	if err != nil {
 		newError("[TCP] dispatchLink failed: ", err).WriteToLog()
 		return
 	}
 
-	if err = task.Run(ctx, func() error {
+	task.Run(ctx, func() error {
 		return buf.Copy(buf.NewReader(conn), input)
-	}); err != nil {
-		comm.CloseIgnore(conn, link.Reader, link.Writer)
-		newError("connection finished: ", err).AtDebug().WriteToLog()
-	} else {
-		comm.CloseIgnore(conn, link.Writer, link.Reader)
-	}
+	})
 
 	t.connectionsLock.Lock()
 	t.connections.Remove(element)

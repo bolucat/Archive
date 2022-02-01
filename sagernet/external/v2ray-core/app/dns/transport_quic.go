@@ -89,7 +89,7 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 		destination := destinations[index]
 		var packetConn net.PacketConn
 		if t.dispatcher != nil {
-			link, err := t.dispatcher.Dispatch(t.ctx, destination)
+			link, err := t.dispatcher.Dispatch(t.newContext(), destination)
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 				destination.UDPAddr(),
 			}
 		} else {
-			conn, err := internet.ListenSystemPacket(t.ctx, &net.UDPAddr{IP: net.AnyIP.IP(), Port: 0}, nil)
+			conn, err := internet.ListenSystemPacket(t.newContext(), &net.UDPAddr{IP: net.AnyIP.IP(), Port: 0}, nil)
 			if err != nil {
 				return err
 			}

@@ -27,13 +27,13 @@ type HTTPSTransport struct {
 	httpClient *http.Client
 }
 
-func NewHTTPSTransport(ctx *transportContext, dispatcher routing.Dispatcher) *HTTPSTransport {
-	return newHTTPSTransport(ctx, func(ctx context.Context, network, addr string) (net.Conn, error) {
+func NewHTTPSTransport(trans *transportContext, dispatcher routing.Dispatcher) *HTTPSTransport {
+	return newHTTPSTransport(trans, func(ctx context.Context, network, addr string) (net.Conn, error) {
 		dest, err := net.ParseDestination(network + ":" + addr)
 		if err != nil {
 			return nil, err
 		}
-		link, err := dispatcher.Dispatch(ctx, dest)
+		link, err := dispatcher.Dispatch(trans.newContext(), dest)
 		if err != nil {
 			return nil, err
 		}
@@ -41,13 +41,13 @@ func NewHTTPSTransport(ctx *transportContext, dispatcher routing.Dispatcher) *HT
 	})
 }
 
-func NewHTTPSLocalTransport(ctx *transportContext) *HTTPSTransport {
-	return newHTTPSTransport(ctx, func(ctx context.Context, network, addr string) (net.Conn, error) {
+func NewHTTPSLocalTransport(trans *transportContext) *HTTPSTransport {
+	return newHTTPSTransport(trans, func(ctx context.Context, network, addr string) (net.Conn, error) {
 		dest, err := net.ParseDestination(network + ":" + addr)
 		if err != nil {
 			return nil, err
 		}
-		return internet.DialSystemDNS(ctx, dest, nil)
+		return internet.DialSystemDNS(trans.newContext(), dest, nil)
 	})
 }
 

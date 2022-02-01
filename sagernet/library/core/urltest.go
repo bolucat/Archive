@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 )
@@ -46,6 +45,6 @@ func UrlTest(instance *V2RayInstance, inbound string, link string, timeout int32
 		if inbound != "" {
 			ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: inbound})
 		}
-		return core.Dial(ctx, instance.core, dest)
+		return instance.dialContext(ctx, dest)
 	}, link, timeout)
 }

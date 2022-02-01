@@ -180,22 +180,22 @@ func (a *Account) getCipher() (Cipher, error) {
 		return &StreamCipher{
 			KeyBytes:       16,
 			IVBytes:        aes.BlockSize,
-			EncryptCreator: blockStream(aes.NewCipher, cfb8.NewEncrypter),
-			DecryptCreator: blockStream(aes.NewCipher, cfb8.NewDecrypter),
+			EncryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
+			DecryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
 		}, nil
 	case CipherType_AES_192_OFB:
 		return &StreamCipher{
 			KeyBytes:       24,
 			IVBytes:        aes.BlockSize,
-			EncryptCreator: blockStream(aes.NewCipher, cfb8.NewEncrypter),
-			DecryptCreator: blockStream(aes.NewCipher, cfb8.NewDecrypter),
+			EncryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
+			DecryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
 		}, nil
 	case CipherType_AES_256_OFB:
 		return &StreamCipher{
 			KeyBytes:       32,
 			IVBytes:        aes.BlockSize,
-			EncryptCreator: blockStream(aes.NewCipher, cfb8.NewEncrypter),
-			DecryptCreator: blockStream(aes.NewCipher, cfb8.NewDecrypter),
+			EncryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
+			DecryptCreator: blockStream(aes.NewCipher, cipher.NewOFB),
 		}, nil
 	case CipherType_RC4:
 		return &StreamCipher{

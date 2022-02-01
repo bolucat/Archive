@@ -28,6 +28,7 @@ from ..utils import (
     dict_get,
     float_or_none,
     int_or_none,
+    js_to_json,
     mimetype2ext,
     parse_codecs,
     parse_duration,
@@ -416,6 +417,7 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
                          (?:.*?\#/)?                                          # handle anchor (#/) redirect urls
                          (?:                                                  # the various things that can precede the ID:
                              (?:(?:v|embed|e)/(?!videoseries))                # v/ or embed/ or e/
+                             |shorts/
                              |(?:                                             # or the v= param in all its forms
                                  (?:(?:watch|movie)(?:_popup)?(?:\.php)?/?)?  # preceding watch(_popup|.php) or nothing (like /?v=xxxx)
                                  (?:\?|\#!?)                                  # the params delimiter ? or # or #!
@@ -1118,6 +1120,22 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
                 'skip_download': True,
             },
         },
+        {
+            # YT 'Shorts'
+            'url': 'https://youtube.com/shorts/4L2J27mJ3Dc',
+            'info_dict': {
+                'id': '4L2J27mJ3Dc',
+                'ext': 'mp4',
+                'upload_date': '20211025',
+                'uploader': 'Charlie Berens',
+                'description': 'md5:976512b8a29269b93bbd8a61edc45a6d',
+                'uploader_id': 'fivedlrmilkshake',
+                'title': 'Midwest Squid Game #Shorts',
+            },
+            'params': {
+                'skip_download': True,
+            },
+        },
     ]
     _formats = {
         '5': {'ext': 'flv', 'width': 400, 'height': 240, 'acodec': 'mp3', 'abr': 64, 'vcodec': 'h263'},
@@ -1391,9 +1409,16 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
     # 2. https://code.videolan.org/videolan/vlc/-/blob/4fb284e5af69aa9ac2100ccbdd3b88debec9987f/share/lua/playlist/youtube.lua#L116
     # 3. https://github.com/ytdl-org/youtube-dl/issues/30097#issuecomment-950157377
     def _extract_n_function_name(self, jscode):
-        return self._search_regex(
-            (r'\.get\("n"\)\)&&\(b=(?P<nfunc>[a-zA-Z0-9$]{3})\([a-zA-Z0-9]\)',),
-            jscode, 'Initial JS player n function name', group='nfunc')
+        target = r'(?P<nfunc>[a-zA-Z0-9$]{3})(?:\[(?P<idx>\d+)\])?'
+        nfunc_and_idx = self._search_regex(
+            r'\.get\("n"\)\)&&\(b=(%s)\([a-zA-Z0-9]\)' % (target, ),
+            jscode, 'Initial JS player n function name')
+        nfunc, idx = re.match(target, nfunc_and_idx).group('nfunc', 'idx')
+        if not idx:
+            return nfunc
+        return self._parse_json(self._search_regex(
+            r'var %s\s*=\s*(\[.+?\]);' % (nfunc, ), jscode,
+            'Initial JS player n function list ({nfunc}[{idx}])'.format(**locals())), nfunc, transform_source=js_to_json)[int(idx)]
 
     def _extract_n_function(self, video_id, player_url):
         player_id = self._extract_player_info(player_url)

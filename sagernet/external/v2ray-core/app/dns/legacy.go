@@ -15,7 +15,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/platform"
-	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v5/common/uuid"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
@@ -252,8 +251,6 @@ func newServer(
 		expectIPs:    matchers,
 		concurrency:  ns.Concurrency,
 	}
-
-	ctx = session.ContextWithContent(ctx, &session.Content{Protocol: "v2ray.dns"})
 
 	var name string
 	var transport dns.Transport

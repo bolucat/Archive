@@ -1137,7 +1137,7 @@ To summarize, the general syntax for a field is:
 %(name[.keys][addition][>strf][,alternate][&replacement][|default])[flags][width][.precision][length]type
 ```
 
-Additionally, you can set different output templates for the various metadata files separately from the general output template by specifying the type of file followed by the template separated by a colon `:`. The different file types supported are `subtitle`, `thumbnail`, `description`, `annotation` (deprecated), `infojson`, `link`, `pl_thumbnail`, `pl_description`, `pl_infojson`, `chapter`, `pl_video`. For example, `-o "%(title)s.%(ext)s" -o "thumbnail:%(title)s\%(title)s.%(ext)s"`  will put the thumbnails in a folder with the same name as the video. If any of the templates (except default) is empty, that type of file will not be written. Eg: `--write-thumbnail -o "thumbnail:"` will write thumbnails only for playlists and not for video.
+Additionally, you can set different output templates for the various metadata files separately from the general output template by specifying the type of file followed by the template separated by a colon `:`. The different file types supported are `subtitle`, `thumbnail`, `description`, `annotation` (deprecated), `infojson`, `link`, `pl_thumbnail`, `pl_description`, `pl_infojson`, `chapter`, `pl_video`. For example, `-o "%(title)s.%(ext)s" -o "thumbnail:%(title)s\%(title)s.%(ext)s"`  will put the thumbnails in a folder with the same name as the video. If any of the templates is empty, that type of file will not be written. Eg: `--write-thumbnail -o "thumbnail:"` will write thumbnails only for playlists and not for video.
 
 The available fields are:
 
@@ -1688,6 +1688,10 @@ The following extractors use this feature:
 * `res`: resolution to ignore - one or more of `sd`, `hd`, `fhd`
 * `vcodec`: vcodec to ignore - one or more of `h264`, `h265`, `dvh265`
 * `dr`: dynamic range to ignore - one or more of `sdr`, `hdr10`, `dv`
+
+#### tiktok
+* `app_version`: App version to call mobile APIs with - should be set along with `manifest_app_version`. (e.g. `20.2.1`)
+* `manifest_app_version`: Numeric app version to call mobile APIs with. (e.g. `221`)
 
 NOTE: These options may be changed/removed in the future without concern for backward compatibility
 
