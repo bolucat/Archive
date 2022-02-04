@@ -118,7 +118,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var directDns by configurationStore.stringNotBlack(Key.DIRECT_DNS) { "tls+local://dot.pub" }
     var useLocalDnsAsDirectDns by configurationStore.boolean(Key.USE_LOCAL_DNS_AS_DIRECT_DNS)
     var hosts by configurationStore.string(Key.DNS_HOSTS)
-    var enableDnsRouting by configurationStore.boolean(Key.ENABLE_DNS_ROUTING)
+    var enableDnsRouting by configurationStore.boolean(Key.ENABLE_DNS_ROUTING) { true }
     var disableDnsExpire by configurationStore.boolean(Key.DISABLE_DNS_EXPIRE)
 
     var securityAdvisory by configurationStore.boolean(Key.SECURITY_ADVISORY) { true }
@@ -262,7 +262,6 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var serverDownloadSpeed by profileCacheStore.stringToInt(Key.SERVER_DOWNLOAD_SPEED)
     var serverStreamReceiveWindow by profileCacheStore.stringToIntIfExists(Key.SERVER_STREAM_RECEIVE_WINDOW)
     var serverConnectionReceiveWindow by profileCacheStore.stringToIntIfExists(Key.SERVER_CONNECTION_RECEIVE_WINDOW)
-    var serverDisableMtuDiscovery by profileCacheStore.boolean(Key.SERVER_DISABLE_MTU_DISCOVERY)
 
     var serverProtocolVersion by profileCacheStore.stringToInt(Key.SERVER_PROTOCOL)
     var serverPrivateKey by profileCacheStore.string(Key.SERVER_PRIVATE_KEY)
