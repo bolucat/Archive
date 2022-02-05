@@ -76,7 +76,7 @@ func NewRelay(cfg *config.RelayConfig) (*Relay, error) {
 			lb.NewRoundRobin(udpNodeList),
 		),
 	}
-	r.Name = fmt.Sprintf("[At=%s Over=%s TCP-To=%s UDP-To=%s Through=%s]",
+	r.Name = fmt.Sprintf("<At=%s Over=%s TCP-To=%s UDP-To=%s Through=%s>",
 		r.LocalTCPAddr, r.ListenType, r.cfg.TCPRemotes, r.cfg.UDPRemotes, r.TransportType)
 	return r, nil
 }
@@ -146,8 +146,11 @@ func (r *Relay) RunLocalTCPServer() error {
 			return err
 		}
 		go func(c *net.TCPConn) {
-			if err := r.TP.HandleTCPConn(c); err != nil {
-				logger.Errorf("HandleTCPConn err=%s name=%s", err, r.Name)
+			remote := r.TP.GetRemote()
+			web.CurConnectionCount.WithLabelValues(remote.Label, web.METRIC_CONN_TCP).Inc()
+			defer web.CurConnectionCount.WithLabelValues(remote.Label, web.METRIC_CONN_TCP).Dec()
+			if err := r.TP.HandleTCPConn(c, remote); err != nil {
+				logger.Errorf("HandleTCPConn meet error from:%s to:%s err:%s", c.RemoteAddr(), remote.Address, err)
 			}
 		}(c)
 	}
@@ -184,7 +187,7 @@ func (r *Relay) RunLocalWSServer() error {
 	tp := r.TP.(*transporter.Raw)
 	mux := mux.NewRouter()
 	mux.HandleFunc("/", web.Index)
-	mux.HandleFunc("/ws/", tp.HandleWsRequset)
+	mux.HandleFunc("/ws/", tp.HandleWsRequest)
 	server := &http.Server{
 		Addr:              r.LocalTCPAddr.String(),
 		ReadHeaderTimeout: 30 * time.Second,
@@ -198,6 +201,7 @@ func (r *Relay) RunLocalWSServer() error {
 	r.closeTcpF = func() error {
 		return lis.Close()
 	}
+	logger.Infof("[relay] Start WS relay %s", r.Name)
 	return server.Serve(lis)
 }
 
@@ -205,7 +209,7 @@ func (r *Relay) RunLocalWSSServer() error {
 	tp := r.TP.(*transporter.Raw)
 	mux := mux.NewRouter()
 	mux.HandleFunc("/", web.Index)
-	mux.HandleFunc("/wss/", tp.HandleWssRequset)
+	mux.HandleFunc("/wss/", tp.HandleWssRequest)
 
 	server := &http.Server{
 		Addr:              r.LocalTCPAddr.String(),
@@ -221,6 +225,7 @@ func (r *Relay) RunLocalWSSServer() error {
 	r.closeTcpF = func() error {
 		return lis.Close()
 	}
+	logger.Infof("[relay] Start WSS relay %s", r.Name)
 	return server.Serve(tls.NewListener(lis, server.TLSConfig))
 }
 
@@ -246,6 +251,7 @@ func (r *Relay) RunLocalMWSSServer() error {
 	r.closeTcpF = func() error {
 		return lis.Close()
 	}
+	logger.Infof("[relay] Start MWSS relay %s", r.Name)
 	go func() {
 		err := httpServer.Serve(tls.NewListener(lis, httpServer.TLSConfig))
 		if err != nil {
@@ -274,6 +280,6 @@ func (r *Relay) RunLocalMWSSServer() error {
 			return e
 		}
 		tempDelay = 0
-		go tp.HandleMWssRequset(conn)
+		go tp.HandleMWssRequest(conn)
 	}
 }
