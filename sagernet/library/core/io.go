@@ -12,6 +12,7 @@ import (
 type packetConn interface {
 	net.PacketConn
 	readFrom() (p []byte, addr net.Addr, err error)
+	io.Closer
 }
 
 func Unxz(archive string, path string) error {

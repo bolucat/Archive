@@ -15,7 +15,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"golang.org/x/sys/unix"
-	"libcore/comm"
 )
 
 type Protector interface {
@@ -85,6 +84,7 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 	}
 
 	if !dialer.protector.Protect(int32(fd)) {
+		unix.Close(fd)
 		return nil, errors.New("protect failed")
 	}
 
@@ -109,6 +109,7 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 
 	err = unix.Connect(fd, sockaddr)
 	if err != nil {
+		unix.Close(fd)
 		return nil, err
 	}
 
@@ -116,6 +117,7 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 	if file == nil {
 		return nil, errors.New("failed to connect to fd")
 	}
+	defer file.Close()
 
 	switch destination.Network {
 	case v2rayNet.Network_UDP:
@@ -138,7 +140,6 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		return nil, err
 	}
 
-	comm.CloseIgnore(file)
 	return conn, nil
 }
 

@@ -206,11 +206,9 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 			err := newError("failed to process outbound traffic").Base(err)
 			session.SubmitOutboundErrorToOriginator(ctx, err)
 			err.WriteToLog(session.ExportIDToError(ctx))
-			common.Interrupt(link.Writer)
-		} else {
-			common.Must(common.Close(link.Writer))
 		}
 		common.Interrupt(link.Reader)
+		common.Interrupt(link.Writer)
 	}
 }
 

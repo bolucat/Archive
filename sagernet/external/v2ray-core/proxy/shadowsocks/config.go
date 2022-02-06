@@ -200,7 +200,7 @@ func (a *Account) getCipher() (Cipher, error) {
 	case CipherType_RC4:
 		return &StreamCipher{
 			KeyBytes: 16,
-			IVBytes:  16,
+			IVBytes:  0,
 			EncryptCreator: func(key []byte, iv []byte) (cipher.Stream, error) {
 				return rc4.NewCipher(key)
 			},
