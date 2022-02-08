@@ -16,7 +16,6 @@
 #include "base/json/json_file_value_serializer.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/rand_util.h"
 #include "base/run_loop.h"
 #include "base/strings/escape.h"
@@ -349,6 +348,8 @@ namespace {
 class PrintingLogObserver : public NetLog::ThreadSafeObserver {
  public:
   PrintingLogObserver() = default;
+  PrintingLogObserver(const PrintingLogObserver&) = delete;
+  PrintingLogObserver& operator=(const PrintingLogObserver&) = delete;
 
   ~PrintingLogObserver() override {
     // This is guaranteed to be safe as this program is single threaded.
@@ -379,9 +380,6 @@ class PrintingLogObserver : public NetLog::ThreadSafeObserver {
     VLOG(1) << source_type << "(" << entry.source.id << "): " << event_type
             << ": " << event_phase << params_str;
   }
-
- private:
-  DISALLOW_COPY_AND_ASSIGN(PrintingLogObserver);
 };
 }  // namespace
 
@@ -442,14 +440,15 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
     auto* session = context->http_transaction_factory()->GetSession();
     auto* auth_cache = session->http_auth_cache();
     std::string proxy_url = params.proxy_url;
+    GURL proxy_gurl(proxy_url);
     if (proxy_url.compare(0, 7, "quic://") == 0) {
       proxy_url.replace(0, 4, "https");
       auto* quic = context->quic_context()->params();
       quic->supported_versions = {quic::ParsedQuicVersion::RFCv1()};
       quic->origins_to_force_quic_on.insert(
-          net::HostPortPair::FromURL(GURL(proxy_url)));
+          net::HostPortPair::FromURL(proxy_gurl));
     }
-    GURL auth_origin(proxy_url);
+    url::SchemeHostPort auth_origin(proxy_gurl);
     AuthCredentials credentials(params.proxy_user, params.proxy_pass);
     auth_cache->Add(auth_origin, HttpAuth::AUTH_PROXY,
                     /*realm=*/{}, HttpAuth::AUTH_SCHEME_BASIC, {},

@@ -11,7 +11,6 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/completion_repeating_callback.h"
@@ -38,6 +37,9 @@ class Socks5ServerSocket : public StreamSocket {
 
   // On destruction Disconnect() is called.
   ~Socks5ServerSocket() override;
+
+  Socks5ServerSocket(const Socks5ServerSocket&) = delete;
+  Socks5ServerSocket& operator=(const Socks5ServerSocket&) = delete;
 
   const HostPortPair& request_endpoint() const;
 
@@ -161,8 +163,6 @@ class Socks5ServerSocket : public StreamSocket {
 
   // Traffic annotation for socket control.
   const NetworkTrafficAnnotationTag& traffic_annotation_;
-
-  DISALLOW_COPY_AND_ASSIGN(Socks5ServerSocket);
 };
 
 }  // namespace net

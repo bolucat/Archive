@@ -9,7 +9,6 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -50,6 +49,8 @@ class NaiveConnection {
       std::unique_ptr<StreamSocket> accepted_socket,
       const NetworkTrafficAnnotationTag& traffic_annotation);
   ~NaiveConnection();
+  NaiveConnection(const NaiveConnection&) = delete;
+  NaiveConnection& operator=(const NaiveConnection&) = delete;
 
   unsigned int id() const { return id_; }
   int Connect(CompletionOnceCallback callback);
@@ -135,8 +136,6 @@ class NaiveConnection {
   const NetworkTrafficAnnotationTag& traffic_annotation_;
 
   base::WeakPtrFactory<NaiveConnection> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(NaiveConnection);
 };
 
 }  // namespace net

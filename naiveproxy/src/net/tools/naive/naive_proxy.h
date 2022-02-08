@@ -10,7 +10,6 @@
 #include <memory>
 #include <vector>
 
-#include "base/macros.h"
 #include "base/memory/weak_ptr.h"
 #include "net/base/completion_repeating_callback.h"
 #include "net/base/network_isolation_key.h"
@@ -41,6 +40,8 @@ class NaiveProxy {
              HttpNetworkSession* session,
              const NetworkTrafficAnnotationTag& traffic_annotation);
   ~NaiveProxy();
+  NaiveProxy(const NaiveProxy&) = delete;
+  NaiveProxy& operator=(const NaiveProxy&) = delete;
 
  private:
   void DoAcceptLoop();
@@ -82,8 +83,6 @@ class NaiveProxy {
   const NetworkTrafficAnnotationTag& traffic_annotation_;
 
   base::WeakPtrFactory<NaiveProxy> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(NaiveProxy);
 };
 
 }  // namespace net
