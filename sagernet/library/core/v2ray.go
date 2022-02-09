@@ -29,7 +29,6 @@ import (
 	vmessOutbound "github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
-	"libcore/comm"
 )
 
 func GetV2RayVersion() string {
@@ -215,7 +214,7 @@ func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Dest
 		cache:  make(chan *udp.Packet, 16),
 	}
 	c.timer = signal.CancelAfterInactivity(ctx, func() {
-		comm.CloseIgnore(c)
+		c.Close()
 	}, timeout)
 	go c.handleInput()
 	return c, nil
@@ -233,7 +232,7 @@ func (instance *V2RayInstance) handleUDP(ctx context.Context, handler outbound.H
 		cache:  make(chan *udp.Packet, 16),
 	}
 	c.timer = signal.CancelAfterInactivity(ctx, func() {
-		comm.CloseIgnore(c)
+		c.Close()
 	}, timeout)
 	go c.handleInput()
 	return c
@@ -249,12 +248,12 @@ type dispatcherConn struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
-
-	cache chan *udp.Packet
+	closed bool
+	cache  chan *udp.Packet
 }
 
 func (c *dispatcherConn) handleInput() {
-	defer comm.CloseIgnore(c)
+	defer c.Close()
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -327,10 +326,12 @@ func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	endpoint := net.DestinationFromAddr(addr)
 	buffer.Endpoint = &endpoint
 	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
-	if err == nil {
-		n = len(p)
-		c.timer.Update()
+	if err != nil {
+		c.Close()
+		return 0, err
 	}
+	n = len(p)
+	c.timer.Update()
 	return
 }
 
@@ -345,11 +346,10 @@ func (c *dispatcherConn) Close() error {
 	c.access.Lock()
 	defer c.access.Unlock()
 
-	select {
-	case <-c.ctx.Done():
+	if c.closed {
 		return nil
-	default:
 	}
+	c.closed = true
 
 	c.cancel()
 	_ = common.Interrupt(c.link.Reader)

@@ -11,7 +11,6 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/completion_repeating_callback.h"
@@ -34,6 +33,8 @@ class HttpProxySocket : public StreamSocket {
   HttpProxySocket(std::unique_ptr<StreamSocket> transport_socket,
                   ClientPaddingDetectorDelegate* padding_detector_delegate,
                   const NetworkTrafficAnnotationTag& traffic_annotation);
+  HttpProxySocket(const HttpProxySocket&) = delete;
+  HttpProxySocket& operator=(const HttpProxySocket&) = delete;
 
   // On destruction Disconnect() is called.
   ~HttpProxySocket() override;
@@ -118,8 +119,6 @@ class HttpProxySocket : public StreamSocket {
 
   // Traffic annotation for socket control.
   const NetworkTrafficAnnotationTag& traffic_annotation_;
-
-  DISALLOW_COPY_AND_ASSIGN(HttpProxySocket);
 };
 
 }  // namespace net

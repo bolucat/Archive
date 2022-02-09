@@ -13,6 +13,8 @@ config("quiche_config") {
     "src/common/platform/default",
     "src",
   ]
+
+  cflags = [ "-Wno-shadow" ]
 }
 
 # Since //net and //net/third_party/quiche have a circular dependency on each
@@ -276,6 +278,8 @@ source_set("quiche") {
     "src/quic/core/crypto/proof_source.cc",
     "src/quic/core/crypto/proof_source.h",
     "src/quic/core/crypto/proof_verifier.h",
+    "src/quic/core/crypto/quic_client_session_cache.cc",
+    "src/quic/core/crypto/quic_client_session_cache.h",
     "src/quic/core/crypto/quic_compressed_certs_cache.cc",
     "src/quic/core/crypto/quic_compressed_certs_cache.h",
     "src/quic/core/crypto/quic_crypter.cc",
@@ -294,7 +298,6 @@ source_set("quiche") {
     "src/quic/core/crypto/quic_hkdf.h",
     "src/quic/core/crypto/quic_random.cc",
     "src/quic/core/crypto/quic_random.h",
-    "src/quic/core/crypto/server_proof_verifier.h",
     "src/quic/core/crypto/tls_client_connection.cc",
     "src/quic/core/crypto/tls_client_connection.h",
     "src/quic/core/crypto/tls_connection.cc",

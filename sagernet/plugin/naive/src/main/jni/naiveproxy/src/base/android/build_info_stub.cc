@@ -58,7 +58,8 @@ BuildInfo::BuildInfo(const std::vector<std::string>& params)
       target_sdk_version_(0),
       is_debug_android_(false),
       is_tv_(false),
-      version_incremental_("") {
+      version_incremental_(""),
+      hardware_("") {
 }
 
 // static

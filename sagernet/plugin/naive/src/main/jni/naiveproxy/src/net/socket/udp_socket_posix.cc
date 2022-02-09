@@ -55,6 +55,7 @@
 #include "base/android/build_info.h"
 #include "base/native_library.h"
 #include "base/strings/utf_string_conversions.h"
+#include "net/android/radio_activity_tracker.h"
 #endif  // defined(OS_ANDROID)
 
 #if defined(OS_MAC)
@@ -290,12 +291,19 @@ void UDPSocketPosix::Close() {
 #if defined(OS_MAC)
   // Attempt to clear errors on the socket so that they are not returned by
   // close(). See https://crbug.com/1151048.
-  // TODO(ricea): Remove this if it doesn't work, or when the OS bug is fixed.
   int value = 0;
   socklen_t value_len = sizeof(value);
   HANDLE_EINTR(getsockopt(socket_, SOL_SOCKET, SO_ERROR, &value, &value_len));
 
-  PCHECK(IGNORE_EINTR(guarded_close_np(socket_, &kSocketFdGuard)) == 0);
+  if (IGNORE_EINTR(guarded_close_np(socket_, &kSocketFdGuard)) != 0) {
+    // There is a bug in the Mac OS kernel that it can return an
+    // ENOTCONN error. In this case we don't know whether the file
+    // descriptor is still allocated or not. We cannot safely close the
+    // file descriptor because it may have been reused by another
+    // thread in the meantime. We may leak file handles here and cause
+    // a crash indirectly later. See https://crbug.com/1151048.
+    PCHECK(errno == ENOTCONN);
+  }
 #else
   PCHECK(IGNORE_EINTR(close(socket_)) == 0);
 #endif  // defined(OS_MAC)
@@ -394,6 +402,9 @@ int UDPSocketPosix::Write(
     int buf_len,
     CompletionOnceCallback callback,
     const NetworkTrafficAnnotationTag& traffic_annotation) {
+#if defined(OS_ANDROID)
+  android::MaybeRecordUDPWriteForWakeupTrigger(traffic_annotation);
+#endif  // defined(OS_ANDROID)
   return SendToOrWrite(buf, buf_len, nullptr, std::move(callback));
 }
 

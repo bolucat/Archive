@@ -352,13 +352,22 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 
 		u, err := dumpUid(source, destination)
 		if err == nil {
+			if u > 19999 {
+				logrus.Debug("bad connection owner ", u, ", reset to android.")
+				u = 1000
+			}
+
 			uid = uint16(u)
 			var info *UidInfo
 			self = uid > 0 && int(uid) == os.Getuid()
 
 			if t.debug && !self && uid >= 1000 {
 				if err == nil {
-					info, _ = uidDumper.GetUidInfo(int32(uid))
+					info, err = uidDumper.GetUidInfo(int32(uid))
+					if err != nil {
+						uid = 1000
+						info, err = uidDumper.GetUidInfo(int32(uid))
+					}
 				}
 				var tag string
 				if !isDns {

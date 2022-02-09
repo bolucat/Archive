@@ -11,7 +11,6 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -40,6 +39,8 @@ class RedirectResolver {
                    const IPAddress& range,
                    size_t prefix);
   ~RedirectResolver();
+  RedirectResolver(const RedirectResolver&) = delete;
+  RedirectResolver& operator=(const RedirectResolver&) = delete;
 
   bool IsInResolvedRange(const IPAddress& address) const;
   std::string FindNameByAddress(const IPAddress& address) const;
@@ -62,8 +63,6 @@ class RedirectResolver {
   std::list<Resolution> resolutions_;
 
   base::WeakPtrFactory<RedirectResolver> weak_ptr_factory_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(RedirectResolver);
 };
 
 }  // namespace net

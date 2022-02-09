@@ -22,7 +22,7 @@ require (
 replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220109124627-f8f67dadd776
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.7-0.20220206145955-6a79d920f29c
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.7
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect
