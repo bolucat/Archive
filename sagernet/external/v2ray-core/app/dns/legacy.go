@@ -128,7 +128,7 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 	}
 
 	matcherInfos := make([]DomainMatcherInfo, domainRuleCount+1)
-	domainMatcher := strmatcher.NewMphIndexMatcher()
+	domainMatcher := strmatcher.NewMixedIndexMatcher()
 	geoipContainer := router.GeoIPMatcherContainer{}
 
 	core := core.MustFromContext(ctx)
@@ -182,6 +182,10 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 		})
 	}
 
+	err = domainMatcher.Build()
+	if err != nil {
+		return nil, err
+	}
 	client.servers = servers
 	return client, nil
 }

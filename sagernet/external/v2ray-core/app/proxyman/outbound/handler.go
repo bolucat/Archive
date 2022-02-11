@@ -2,11 +2,13 @@ package outbound
 
 import (
 	"context"
+	"io"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/mux"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
@@ -148,7 +150,36 @@ func (h *Handler) Tag() string {
 func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 	outbound := session.OutboundFromContext(ctx)
 	destination := outbound.Target
-	if h.mux != nil && (h.mux.Enabled || session.MuxPreferedFromContext(ctx)) {
+
+	var domainString string
+	switch {
+	case destination.Address.Family().IsDomain():
+		domainString = destination.Address.Domain()
+	case outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain():
+		domainString = outbound.RouteTarget.Address.Domain()
+	default:
+		domainString = ""
+	}
+
+	var domainStrategy proxyman.DomainStrategy
+	if h.senderSettings != nil {
+		domainStrategy = h.senderSettings.DomainStrategy
+	}
+
+	if domainStrategy == proxyman.DomainStrategy_AS_IS && proxyman.PreferUseIPFromContext(ctx) {
+		domainStrategy = proxyman.DomainStrategy_USE_IP
+		ctx = proxyman.SetPreferUseIP(ctx, false)
+	}
+
+	if domainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
+		ips, err := h.dnsClient.Lookup(ctx, domainString, dns.QueryStrategy(domainStrategy-1))
+		if err == nil {
+			destination.Address = net.IPAddress(ips[0])
+			outbound.Target = destination
+		}
+	}
+
+	if h.mux != nil && h.mux.Enabled {
 		if destination.Network == net.Network_UDP {
 			switch h.muxPacketEncoding {
 			case packetaddr.PacketAddrType_None:
@@ -167,45 +198,23 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 			}
 		}
 		if err := h.mux.Dispatch(ctx, link); err != nil {
-			err := newError("failed to process mux outbound traffic").Base(err)
+			cause := errors.Cause(err)
+			if !(cause == io.EOF || cause == context.Canceled || cause == io.ErrClosedPipe) {
+				err := newError("failed to process mux outbound traffic").Base(err)
+				err.WriteToLog(session.ExportIDToError(ctx))
+			}
 			session.SubmitOutboundErrorToOriginator(ctx, err)
-			err.WriteToLog(session.ExportIDToError(ctx))
 			common.Interrupt(link.Writer)
 		}
 	} else {
-		var domainString string
-		switch {
-		case destination.Address.Family().IsDomain():
-			domainString = destination.Address.Domain()
-		case outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain():
-			domainString = outbound.RouteTarget.Address.Domain()
-		default:
-			domainString = ""
-		}
-
-		var domainStrategy proxyman.DomainStrategy
-		if h.senderSettings != nil {
-			domainStrategy = h.senderSettings.DomainStrategy
-		}
-
-		if domainStrategy == proxyman.DomainStrategy_AS_IS && proxyman.PreferUseIPFromContext(ctx) {
-			domainStrategy = proxyman.DomainStrategy_USE_IP
-			ctx = proxyman.SetPreferUseIP(ctx, false)
-		}
-
-		if domainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
-			ips, err := h.dnsClient.Lookup(ctx, domainString, dns.QueryStrategy(domainStrategy-1))
-			if err == nil {
-				destination.Address = net.IPAddress(ips[0])
-				outbound.Target = destination
-			}
-		}
 		err := h.proxy.Process(ctx, link, h)
 		if err != nil {
-			// Ensure outbound ray is properly closed.
-			err := newError("failed to process outbound traffic").Base(err)
+			cause := errors.Cause(err)
+			if !(cause == io.EOF || cause == context.Canceled || cause == io.ErrClosedPipe) {
+				err := newError("failed to process outbound traffic").Base(err)
+				err.WriteToLog(session.ExportIDToError(ctx))
+			}
 			session.SubmitOutboundErrorToOriginator(ctx, err)
-			err.WriteToLog(session.ExportIDToError(ctx))
 		}
 		common.Interrupt(link.Reader)
 		common.Interrupt(link.Writer)

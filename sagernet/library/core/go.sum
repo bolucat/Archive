@@ -494,8 +494,9 @@ github.com/sagernet/libping v0.1.1 h1:uNMN/02fQmRbsgJ0EuxuM/Upq8FrVP4Xj2+LlYviIO
 github.com/sagernet/libping v0.1.1/go.mod h1:FhmyYM8L32JaKI08noqoS5cK+Gw/Q+4VDnI9WvP6Sp8=
 github.com/sagernet/sagerconnect v0.1.7 h1:VWNx8NJ2C52b7Mbpty/JMiYERK/nvXyHaUkX5yFRAk4=
 github.com/sagernet/sagerconnect v0.1.7/go.mod h1:BJo2SIUnKPyS7iG1xrFBhGlneYNKURT55YbsyTlu9MU=
-github.com/sagernet/v2ray-core/v5 v5.0.7 h1:QjmVgOUklau3V8MQXW6tdlAej7qUWGxLLJC4AC3K+kU=
-github.com/sagernet/v2ray-core/v5 v5.0.7/go.mod h1:H19ZxkAxtoRZQG/K0O1Vk0TXpRMMd9lbXDFZmTBJ1cc=
+github.com/sagernet/v2ray-core/v5 v5.0.7-0.20220211061123-49a45b46f969 h1:u36Ixo76XCbL7uwhRW1XLDMp9jn/X3LxR6BXgPyoOMY=
+github.com/sagernet/v2ray-core/v5 v5.0.7-0.20220211061123-49a45b46f969/go.mod h1:H19ZxkAxtoRZQG/K0O1Vk0TXpRMMd9lbXDFZmTBJ1cc=
+github.com/sagernet/v2ray-core/v5 v5.0.7-0.20220211061603-8ed013063134/go.mod h1:H19ZxkAxtoRZQG/K0O1Vk0TXpRMMd9lbXDFZmTBJ1cc=
 github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529/go.mod h1:DxrIzT+xaE7yg65j358z/aeFdxmN0P9QXhEzd20vsDc=
 github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c h1:pqy40B3MQWYrza7YZXOXgl0Nf0QGFqrOC0BKae1UNAA=
 github.com/seiflotfy/cuckoofilter v0.0.0-20201222105146-bc6005554a0c/go.mod h1:bR6DqgcAl1zTcOX8/pE2Qkj9XO00eCNqmKb7lXP8EAg=

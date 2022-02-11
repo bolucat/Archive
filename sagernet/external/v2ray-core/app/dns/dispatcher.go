@@ -148,7 +148,9 @@ func (c *dispatcherConnection) handleInput() {
 
 		mb, err := input.ReadMultiBuffer()
 		if err != nil {
-			newError("dns connection closed").Base(err).WriteToLog(session.ExportIDToError(c.ctx))
+			if err != io.EOF {
+				newError("dns connection closed").Base(err).WriteToLog(session.ExportIDToError(c.ctx))
+			}
 			return
 		}
 		timer.Update()
