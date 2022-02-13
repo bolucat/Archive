@@ -1,3 +1,0 @@
-// +build !confonly
-
-package outbound

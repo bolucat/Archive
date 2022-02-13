@@ -31,7 +31,7 @@ if(WIN32)
         VERSION_PATCH      ${CMAKE_PROJECT_VERSION_PATCH}
         VERSION_REVISION   "0"
         COMPANY_NAME       "Moody"
-        COMPANY_COPYRIGHT  "Qv2ray Workgroup 2021, Moodyhunter 2021"
+        COMPANY_COPYRIGHT  "Qv2ray Workgroup 2021, Shadowsocks-NET 2021, Moody 2022"
         FILE_DESCRIPTION   "Qv2ray 3.0"
         )
     add_definitions(-DUNICODE -D_UNICODE -DNOMINMAX)
@@ -83,6 +83,12 @@ cmake_policy(SET CMP0071 NEW)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
+
+option(QV2RAY_CHECK_DEPRECATED OFF)
+
+if (QV2RAY_CHECK_DEPRECATED)
+    add_compile_definitions(QT_DISABLE_DEPRECATED_BEFORE=0x070000)
+endif()
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -186,7 +192,7 @@ target_link_libraries(qv2ray PRIVATE
     Qv2ray::AllPlugins
     OpenSSL::SSL
     OpenSSL::Crypto
-    SingleApplication
+    SingleApplication::SingleApplication
     )
 
 # BEGIN SPECIAL CASE
