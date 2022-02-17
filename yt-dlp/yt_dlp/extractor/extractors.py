@@ -316,7 +316,7 @@ from .crunchyroll import (
     CrunchyrollBetaIE,
     CrunchyrollBetaShowIE,
 )
-from .cspan import CSpanIE
+from .cspan import CSpanIE, CSpanCongressIE
 from .ctsnews import CtsNewsIE
 from .ctv import CTVIE
 from .ctvnews import CTVNewsIE
@@ -1162,6 +1162,7 @@ from .periscope import (
 from .philharmoniedeparis import PhilharmonieDeParisIE
 from .phoenix import PhoenixIE
 from .photobucket import PhotobucketIE
+from .piapro import PiaproIE
 from .picarto import (
     PicartoIE,
     PicartoVodIE,
