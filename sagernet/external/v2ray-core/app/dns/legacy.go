@@ -134,8 +134,10 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 	core := core.MustFromContext(ctx)
 	dispatcher, _ := core.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
 
+	ctx, cancel := context.WithCancel(ctx)
 	client := &Client{
 		ctx:      ctx,
+		cancel:   cancel,
 		tag:      tag,
 		clientIP: clientIP,
 

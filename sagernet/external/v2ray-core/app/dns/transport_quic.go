@@ -35,6 +35,10 @@ type QUICTransport struct {
 	session quic.Session
 }
 
+func (t *QUICTransport) Close() error {
+	return t.session.CloseWithError(0, "")
+}
+
 func (t *QUICTransport) Type() dns.TransportType {
 	return dns.TransportTypeExchange
 }
@@ -68,7 +72,7 @@ func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error)
 	domain := t.destination.Address.String()
 	addr, err := netip.ParseAddr(domain)
 	if err != nil {
-		ips, err := t.client.LookupDefault(ctx, domain)
+		ips, _, err := t.client.LookupDefault(ctx, domain)
 		if err != nil {
 			return nil, newError("failed to lookup server address").Base(err)
 		}

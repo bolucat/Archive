@@ -29,6 +29,7 @@ var _ dns.NewClient = (*Client)(nil)
 type Client struct {
 	access sync.Mutex
 	ctx    context.Context
+	cancel context.CancelFunc
 
 	tag                  string
 	clientIP             net.IP
@@ -90,6 +91,7 @@ type serverQueryCallback struct {
 	cancel           context.CancelFunc
 	finish4, finish6 bool
 
+	ttl       uint32
 	queryType sync.Map
 	access    sync.Mutex
 	message   *dnsmessage.Message
@@ -98,6 +100,7 @@ type serverQueryCallback struct {
 }
 
 type ipCacheEntire struct {
+	ttl              uint32
 	cached4, cached6 bool
 	cache4, cache6   []net.IP
 	expire4, expire6 time.Time
@@ -112,11 +115,12 @@ func (c *Client) nextRequestId() uint16 {
 	return uint16(requestId)
 }
 
-func (c *Client) LookupDefault(ctx context.Context, domain string) ([]net.IP, error) {
+func (c *Client) LookupDefault(ctx context.Context, domain string) ([]net.IP, uint32, error) {
 	return c.Lookup(ctx, domain, c.defaultQueryStrategy)
 }
 
-func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, uint32, error) {
+	var ttl uint32
 	if strings.HasSuffix(domain, ".") {
 		domain = domain[:len(domain)-1]
 	}
@@ -128,6 +132,7 @@ func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	cacheI, cachedHit := c.cache.Load(domain)
 	if cachedHit {
 		cache := cacheI.(*ipCacheEntire)
+		ttl = cache.ttl
 		if strategy != dns.QueryStrategy_USE_IP6 {
 			if cache.cached4 && (c.disableExpire || now.Before(cache.expire4)) {
 				ips = append(ips, cache.cache4...)
@@ -165,13 +170,13 @@ func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QuerySt
 			newStrategy = dns.QueryStrategy_USE_IP4
 		}
 	} else if len(ips) == 0 {
-		return nil, dns.ErrEmptyResponse
+		return nil, ttl, dns.ErrEmptyResponse
 	}
 
 	if query {
-		queried, err := c.lookup(ctx, domain, newStrategy)
+		queried, ttl, err := c.lookup(ctx, domain, newStrategy)
 		if err != nil {
-			return nil, err
+			return nil, ttl, err
 		}
 		ips = append(ips, queried...)
 	}
@@ -202,10 +207,10 @@ func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QuerySt
 		}
 	}
 
-	return ips, nil
+	return ips, ttl, nil
 }
 
-func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
+func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, uint32, error) {
 	servers := c.sortServers(domain)
 	var messages []*dnsmessage.Message
 
@@ -214,7 +219,7 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 
 	name, err := dnsmessage.NewName(Fqdn(domain))
 	if err != nil {
-		return nil, newError("failed to create domain query").Base(err)
+		return nil, 0, newError("failed to create domain query").Base(err)
 	}
 
 	{
@@ -367,16 +372,17 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	response := q.response
 	if response != nil {
 		ips := q.response.ips
+		ttl := response.ttl
 		if len(ips) == 0 {
-			return nil, dns.ErrEmptyResponse
+			return nil, ttl, dns.ErrEmptyResponse
 		}
-		return ips, nil
+		return ips, ttl, nil
 	}
 
 	for _, request := range requests {
 		for _, err := range request.errors {
 			if _, code := err.(dns.RCodeError); code {
-				return nil, err
+				return nil, 0, err
 			}
 		}
 	}
@@ -390,7 +396,7 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 	if err == nil {
 		err = context.Canceled
 	}
-	return nil, err
+	return nil, 0, err
 }
 
 func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer, error) {
@@ -777,6 +783,7 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 		if ttl4 == 0 {
 			ttl4 = 6 * 60
 		}
+		cache.ttl = ttl4
 		cache.expire4 = now.Add(time.Duration(ttl4) * time.Second)
 		d.finish4 = true
 	}
@@ -787,6 +794,9 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 		cache.cached6 = true
 		if ttl6 == 0 {
 			ttl6 = 6 * 60
+		}
+		if cache.ttl == 0 || ttl6 < cache.ttl {
+			cache.ttl = ttl6
 		}
 		cache.expire6 = now.Add(time.Duration(ttl6) * time.Second)
 		d.finish6 = true
@@ -799,6 +809,9 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 		}
 		if cache.cached6 {
 			acCache.cache6, acCache.cached6, acCache.expire6 = cache.cache6, cache.cached6, cache.expire6
+		}
+		if acCache.ttl == 0 || cache.ttl < acCache.ttl {
+			acCache.ttl = cache.ttl
 		}
 	}
 	var ips []net.IP
@@ -813,6 +826,7 @@ func (c *Client) writeBack(server *Server, message *dnsmessage.Message) {
 		return
 	}
 	d.ips = append(d.ips, matched...)
+	d.ttl = cache.ttl
 
 	var finish bool
 	switch d.strategy {
@@ -849,6 +863,17 @@ func (c *Client) Start() error {
 }
 
 func (c *Client) Close() error {
+	c.cancel()
+	for _, server := range c.servers {
+		server.transport.Close()
+	}
+	// TODO: fix domain matcher leak
+	c.servers = nil
+	c.domainMatcher = nil
+	c.hosts = nil
+	c.matcherInfos = nil
+	c.callbacks = sync.Map{}
+	c.cache = sync.Map{}
 	return nil
 }
 
@@ -862,17 +887,20 @@ func (c *Client) IsOwnLink(ctx context.Context) bool {
 func (c *Client) LookupIP(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
 	defer cancel()
-	return c.LookupDefault(ctx, domain)
+	ips, _, err := c.LookupDefault(ctx, domain)
+	return ips, err
 }
 
 func (c *Client) LookupIPv4(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
 	defer cancel()
-	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
+	ips, _, err := c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
+	return ips, err
 }
 
 func (c *Client) LookupIPv6(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, dns.DefaultTimeout)
 	defer cancel()
-	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+	ips, _, err := c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+	return ips, err
 }

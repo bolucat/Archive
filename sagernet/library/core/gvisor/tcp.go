@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
+	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
@@ -37,7 +39,18 @@ func gTcpHandler(s *stack.Stack, handler tun.Handler) {
 			newError("[TCP] parse destination address ", dstAddr, " failed: ", err).AtWarning().WriteToLog()
 			return
 		}
-		go handler.NewConnection(src, dst, gonet.NewTCPConn(waitQueue, endpoint))
+		go handler.NewConnection(src, dst, gTcpConn{endpoint, gonet.NewTCPConn(waitQueue, endpoint)})
 	})
 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, forwarder.HandlePacket)
+}
+
+type gTcpConn struct {
+	ep tcpip.Endpoint
+	*gonet.TCPConn
+}
+
+func (g gTcpConn) Close() error {
+	g.ep.Close()
+	g.TCPConn.SetDeadline(time.Now().Add(-1))
+	return g.TCPConn.Close()
 }

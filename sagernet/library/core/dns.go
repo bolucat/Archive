@@ -132,6 +132,10 @@ func (l *localTransport) Lookup(ctx context.Context, domain string, strategy dns
 func (l *localTransport) IsLocalTransport() {
 }
 
+func (l *localTransport) Close() error {
+	return nil
+}
+
 func SetLocalhostResolver(local LocalResolver) {
 	if local == nil {
 		localdns.SetTransport(nil)

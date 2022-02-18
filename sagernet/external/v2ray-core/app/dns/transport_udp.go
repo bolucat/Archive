@@ -19,6 +19,10 @@ type UDPTransport struct {
 	dispatcher *messageDispatcher
 }
 
+func (t *UDPTransport) Close() error {
+	return t.dispatcher.Close()
+}
+
 func NewUDPTransport(ctx *transportContext, dispatcher routing.Dispatcher) *UDPTransport {
 	return &UDPTransport{
 		NewDispatcher(ctx, dispatcher, ctx.destination, ctx.writeBackRaw),
@@ -41,7 +45,7 @@ func (t *UDPTransport) Write(ctx context.Context, message *dnsmessage.Message) e
 		return newError("failed to pack dns query").Base(err)
 	}
 	return task.Run(ctx, func() error {
-		return t.dispatcher.Write(buf.FromBytes(packed))
+		return t.dispatcher.Write(ctx, buf.FromBytes(packed))
 	})
 }
 

@@ -20,6 +20,10 @@ type TCPTransport struct {
 	dispatcher *messageDispatcher
 }
 
+func (t *TCPTransport) Close() error {
+	return t.dispatcher.Close()
+}
+
 func NewTCPTransport(ctx *transportContext, dispatcher routing.Dispatcher) *TCPTransport {
 	return &TCPTransport{
 		NewDispatcher(ctx, dispatcher, ctx.destination, ctx.writeBackRawTCP),
@@ -46,7 +50,7 @@ func (t *TCPTransport) Write(ctx context.Context, message *dnsmessage.Message) e
 	binary.Write(buffer, binary.BigEndian, uint16(len(packed)))
 	buffer.Write(packed)
 	return task.Run(ctx, func() error {
-		return t.dispatcher.Write(buffer)
+		return t.dispatcher.Write(ctx, buffer)
 	})
 }
 

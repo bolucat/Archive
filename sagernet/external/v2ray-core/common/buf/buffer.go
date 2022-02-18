@@ -277,3 +277,14 @@ func (b *Buffer) ReadFullFrom(reader io.Reader, size int32) (int64, error) {
 func (b *Buffer) String() string {
 	return string(b.Bytes())
 }
+
+func (b *Buffer) ExtendCopy(data []byte) []byte {
+	end := b.end + int32(len(data))
+	if end > int32(len(b.v)) {
+		panic("extending out of bound")
+	}
+	ext := b.v[b.end:end]
+	b.end = end
+	copy(ext, data)
+	return ext
+}

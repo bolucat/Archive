@@ -5,8 +5,10 @@ import (
 	"time"
 
 	"github.com/Dreamacro/clash/common/cache"
+	"github.com/sirupsen/logrus"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
 	"gvisor.dev/gvisor/pkg/tcpip"
+	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"libcore/comm"
 )
 
@@ -22,7 +24,7 @@ func newTcpForwarder(tun *SystemTun) (*tcpForwarder, error) {
 	address := &net.TCPAddr{}
 	if tun.ipv6Mode == comm.IPv6Disable {
 		network = "tcp4"
-		address.IP = vlanClient4
+		address.IP = net.IP(vlanClient4)
 	} else {
 		network = "tcp"
 		address.IP = net.IPv6zero
@@ -72,7 +74,8 @@ func (t *tcpForwarder) dispatch() (bool, error) {
 
 	go func() {
 		t.tun.handler.NewConnection(source, destination, conn)
-		t.sessions.SetWithExpire(key, session, time.Now().Add(time.Second*10))
+		time.Sleep(time.Second * 5)
+		t.sessions.Delete(key)
 	}()
 
 	return false, nil
@@ -93,11 +96,11 @@ func (t *tcpForwarder) dispatchLoop() {
 	}
 }
 
-func (t *tcpForwarder) process(hdr *TCPHeader) error {
-	sourceAddress := hdr.SourceAddress()
-	destinationAddress := hdr.DestinationAddress()
-	sourcePort := hdr.SourcePort()
-	destinationPort := hdr.DestinationPort()
+func (t *tcpForwarder) processIPv4(ipHdr header.IPv4, tcpHdr header.TCP) {
+	sourceAddress := ipHdr.SourceAddress()
+	destinationAddress := ipHdr.DestinationAddress()
+	sourcePort := tcpHdr.SourcePort()
+	destinationPort := tcpHdr.DestinationPort()
 
 	var session *peerValue
 
@@ -108,36 +111,84 @@ func (t *tcpForwarder) process(hdr *TCPHeader) error {
 		if ok {
 			session = iSession.(*peerValue)
 		} else {
-			/*if hdr.Flags() != header.TCPFlagSyn {
-				return newError("unable to create session: not tcp syn flag")
-			}*/
 			session = &peerValue{sourceAddress, destinationPort}
 			t.sessions.Set(key, session)
 		}
 
-		hdr.SetSourceAddress(destinationAddress)
-		hdr.SetDestinationAddress(hdr.Device())
-		hdr.SetDestinationPort(t.port)
-		hdr.UpdateChecksum()
-
-		// destinationAddress:sourcePort -> device:tcpServerPort
+		ipHdr.SetSourceAddress(destinationAddress)
+		ipHdr.SetDestinationAddress(vlanClient4)
+		tcpHdr.SetDestinationPort(t.port)
 
 	} else {
 
-		// device:tcpServerPort -> destinationAddress:sourcePort
 		iSession, ok := t.sessions.Get(peerKey{destinationAddress, destinationPort})
 		if ok {
 			session = iSession.(*peerValue)
 		} else {
-			return newError("unknown tcp session with source port ", destinationPort, " to destination address ", destinationAddress)
+			logrus.Warn("unknown tcp session with source port ", destinationPort, " to destination address ", destinationAddress)
+			return
 		}
-		hdr.SetSourceAddress(destinationAddress)
-		hdr.SetSourcePort(session.destinationPort)
-		hdr.SetDestinationAddress(session.sourceAddress)
-		hdr.UpdateChecksum()
+		ipHdr.SetSourceAddress(destinationAddress)
+		tcpHdr.SetSourcePort(session.destinationPort)
+		ipHdr.SetDestinationAddress(session.sourceAddress)
 	}
 
-	return nil
+	ipHdr.SetChecksum(0)
+	ipHdr.SetChecksum(^ipHdr.CalculateChecksum())
+	tcpHdr.SetChecksum(0)
+	tcpHdr.SetChecksum(^tcpHdr.CalculateChecksum(header.ChecksumCombine(
+		header.PseudoHeaderChecksum(header.TCPProtocolNumber, ipHdr.SourceAddress(), ipHdr.DestinationAddress(), uint16(len(tcpHdr))),
+		header.Checksum(tcpHdr.Payload(), 0),
+	)))
+
+	t.tun.writeBuffer(ipHdr)
+}
+
+func (t *tcpForwarder) processIPv6(ipHdr header.IPv6, tcpHdr header.TCP) {
+	sourceAddress := ipHdr.SourceAddress()
+	destinationAddress := ipHdr.DestinationAddress()
+	sourcePort := tcpHdr.SourcePort()
+	destinationPort := tcpHdr.DestinationPort()
+
+	var session *peerValue
+
+	if sourcePort != t.port {
+
+		key := peerKey{destinationAddress, sourcePort}
+		iSession, ok := t.sessions.Get(key)
+		if ok {
+			session = iSession.(*peerValue)
+		} else {
+			session = &peerValue{sourceAddress, destinationPort}
+			t.sessions.Set(key, session)
+		}
+
+		ipHdr.SetSourceAddress(destinationAddress)
+		ipHdr.SetDestinationAddress(vlanClient6)
+		tcpHdr.SetDestinationPort(t.port)
+
+	} else {
+
+		iSession, ok := t.sessions.Get(peerKey{destinationAddress, destinationPort})
+		if ok {
+			session = iSession.(*peerValue)
+		} else {
+			logrus.Warn("unknown tcp session with source port ", destinationPort, " to destination address ", destinationAddress)
+			return
+		}
+
+		ipHdr.SetSourceAddress(destinationAddress)
+		tcpHdr.SetSourcePort(session.destinationPort)
+		ipHdr.SetDestinationAddress(session.sourceAddress)
+	}
+
+	tcpHdr.SetChecksum(0)
+	tcpHdr.SetChecksum(^tcpHdr.CalculateChecksum(header.ChecksumCombine(
+		header.PseudoHeaderChecksum(header.TCPProtocolNumber, ipHdr.SourceAddress(), ipHdr.DestinationAddress(), uint16(len(tcpHdr))),
+		header.Checksum(tcpHdr.Payload(), 0),
+	)))
+
+	t.tun.writeBuffer(ipHdr)
 }
 
 func (t *tcpForwarder) Close() error {

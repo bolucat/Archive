@@ -123,6 +123,10 @@ func (r *Router) Start() error {
 
 // Close implements common.Closable.
 func (r *Router) Close() error {
+	// TODO: fix router leak
+	r.balancers = nil
+	r.dns = nil
+	r.rules = nil
 	return nil
 }
 

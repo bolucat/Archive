@@ -1,3 +1,5 @@
+//go:build !disable_debug
+
 package libcore
 
 import (

@@ -222,11 +222,17 @@ func (h *Handler) handleIPQuery(ctx context.Context, id uint16, qType dnsmessage
 
 	var ttl uint32 = 600
 
+	ctx, cancel := context.WithTimeout(ctx, dns.DefaultTimeout)
+	defer cancel()
+
 	switch qType {
 	case dnsmessage.TypeA:
-		ips, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
+		ips, ttl, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
 	case dnsmessage.TypeAAAA:
-		ips, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+		ips, ttl, err = h.client.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+	}
+	if ttl == 0 {
+		ttl = 600
 	}
 
 	rcode := dns.RCodeFromError(err)
@@ -290,6 +296,8 @@ func (h *Handler) handleIPQuery(ctx context.Context, id uint16, qType dnsmessage
 }
 
 func (h *Handler) handleQuery(ctx context.Context, buffer *buf.Buffer, writer dns_proto.MessageWriter) {
+	ctx, cancel := context.WithTimeout(ctx, dns.DefaultTimeout)
+	defer cancel()
 	response, err := h.client.QueryRaw(ctx, buffer)
 	if err == nil {
 		writer.WriteMessage(response)

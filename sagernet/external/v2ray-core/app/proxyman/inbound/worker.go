@@ -410,6 +410,10 @@ func (w *udpWorker) Close() error {
 		errors = append(errors, err)
 	}
 
+	for _, conn := range w.activeConn {
+		common.Close(conn)
+	}
+
 	if len(errors) > 0 {
 		return newError("failed to close all resources").Base(newError(serial.Concat(errors...)))
 	}

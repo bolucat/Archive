@@ -40,7 +40,7 @@ require (
 )
 
 // https://github.com/google/gvisor/releases/tag/release-20220103.0
-replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220109124627-f8f67dadd776
+replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220213143053-df431bee78e3
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect

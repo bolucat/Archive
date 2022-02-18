@@ -36,7 +36,6 @@ func GetV2RayVersion() string {
 }
 
 type V2RayInstance struct {
-	access          sync.Mutex
 	started         bool
 	core            *core.Instance
 	dispatcher      *dispatcher.DefaultDispatcher
@@ -52,8 +51,6 @@ func NewV2rayInstance() *V2RayInstance {
 }
 
 func (instance *V2RayInstance) LoadConfig(content string) error {
-	instance.access.Lock()
-	defer instance.access.Unlock()
 	config, err := serial.LoadJSONConfig(strings.NewReader(content))
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "geoip.dat: no such file or directory") {
@@ -131,8 +128,6 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 }
 
 func (instance *V2RayInstance) Start() error {
-	instance.access.Lock()
-	defer instance.access.Unlock()
 	if instance.started {
 		return errors.New("already started")
 	}
@@ -159,10 +154,12 @@ func (instance *V2RayInstance) QueryStats(tag string, direct string) int64 {
 }
 
 func (instance *V2RayInstance) Close() error {
-	instance.access.Lock()
-	defer instance.access.Unlock()
 	if instance.started {
-		return instance.core.Close()
+		err := instance.core.Close()
+		if err == nil {
+			*instance = V2RayInstance{}
+		}
+		return err
 	}
 	return nil
 }
@@ -343,6 +340,10 @@ func (c *dispatcherConn) LocalAddr() net.Addr {
 }
 
 func (c *dispatcherConn) Close() error {
+	if c.closed {
+		return nil
+	}
+
 	c.access.Lock()
 	defer c.access.Unlock()
 
@@ -351,6 +352,7 @@ func (c *dispatcherConn) Close() error {
 	}
 	c.closed = true
 
+	c.timer.SetTimeout(0)
 	c.cancel()
 	_ = common.Interrupt(c.link.Reader)
 	_ = common.Interrupt(c.link.Writer)

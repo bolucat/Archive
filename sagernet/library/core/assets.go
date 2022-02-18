@@ -44,7 +44,7 @@ type BoolFunc interface {
 	Invoke() bool
 }
 
-func InitializeV2Ray(internalAssets string, externalAssets string, prefix string, useOfficial BoolFunc, useSystemCerts BoolFunc) error {
+func InitializeV2Ray(internalAssets string, externalAssets string, prefix string, useOfficial BoolFunc, useSystemCerts BoolFunc, skipExtract bool) error {
 	assetsAccess = new(sync.Mutex)
 	assetsAccess.Lock()
 	extracted = make(map[string]bool)
@@ -101,6 +101,11 @@ func InitializeV2Ray(internalAssets string, externalAssets string, prefix string
 
 	filesystem.NewFileReader = func(path string) (io.ReadCloser, error) {
 		return filesystem.NewFileSeeker(path)
+	}
+
+	if skipExtract {
+		assetsAccess.Unlock()
+		return nil
 	}
 
 	extract := func(name string) {

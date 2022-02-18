@@ -10,6 +10,7 @@ import (
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -168,6 +169,7 @@ func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *buf
 	timer := signal.CancelAfterInactivity(ctx, cancel, plcy.Timeouts.ConnectionIdle)
 
 	ctx = policy.ContextWithBufferPolicy(ctx, plcy.Buffer)
+	ctx = proxyman.SetPreferUseIP(ctx, true)
 	link, err := dispatcher.Dispatch(ctx, dest)
 	if err != nil {
 		return err

@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
@@ -16,8 +17,8 @@ type NewClient interface {
 	Client
 	IPv4Lookup
 	IPv6Lookup
-	LookupDefault(ctx context.Context, domain string) ([]net.IP, error)
-	Lookup(ctx context.Context, domain string, strategy QueryStrategy) ([]net.IP, error)
+	LookupDefault(ctx context.Context, domain string) ([]net.IP, uint32, error)
+	Lookup(ctx context.Context, domain string, strategy QueryStrategy) ([]net.IP, uint32, error)
 	QueryRaw(ctx context.Context, message *buf.Buffer) (*buf.Buffer, error)
 }
 
@@ -36,4 +37,5 @@ type Transport interface {
 	Exchange(ctx context.Context, message *dnsmessage.Message) (*dnsmessage.Message, error)
 	ExchangeRaw(ctx context.Context, message *buf.Buffer) (*buf.Buffer, error)
 	Lookup(ctx context.Context, domain string, strategy QueryStrategy) ([]net.IP, error)
+	io.Closer
 }

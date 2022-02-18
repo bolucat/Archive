@@ -21,6 +21,10 @@ type TLSTransport struct {
 	dispatcher *messageDispatcher
 }
 
+func (t *TLSTransport) Close() error {
+	return t.dispatcher.Close()
+}
+
 func NewTLSTransport(ctx *transportContext, dispatcher routing.Dispatcher) *TLSTransport {
 	return &TLSTransport{
 		NewRawDispatcher(func() (net.Conn, error) {
@@ -56,7 +60,7 @@ func (t *TLSTransport) Write(ctx context.Context, message *dnsmessage.Message) e
 	binary.Write(buffer, binary.BigEndian, uint16(len(packed)))
 	buffer.Write(packed)
 	return task.Run(ctx, func() error {
-		return t.dispatcher.Write(buffer)
+		return t.dispatcher.Write(ctx, buffer)
 	})
 }
 

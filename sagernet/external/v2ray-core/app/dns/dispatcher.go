@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"sync"
 	time "time"
@@ -29,6 +30,17 @@ type messageDispatcher struct {
 
 	access     sync.Mutex
 	connection *dispatcherConnection
+}
+
+func (d *messageDispatcher) Close() error {
+	connection := d.connection
+	if connection != nil {
+		connection.cancel()
+		common.Interrupt(connection.link.Reader)
+		common.Interrupt(connection.link.Writer)
+		d.connection = nil
+	}
+	return nil
 }
 
 func NewDispatcher(ctx *transportContext, dispatcher routing.Dispatcher, destination net.Destination, writeBack writeBackFunc) *messageDispatcher {
@@ -85,13 +97,20 @@ func NewRawLocalDispatcher(ctx *transportContext, convertor convertFunc, destina
 	}
 }
 
-func (d *messageDispatcher) Write(message *buf.Buffer) error {
+func (d *messageDispatcher) Write(ctx context.Context, message *buf.Buffer) error {
 	conn, err := d.getConnection()
 	if err != nil {
 		return err
 	}
+	if conn.tlsConn != nil {
+		err = conn.tlsConn.HandshakeContext(ctx)
+		if err != nil {
+			return err
+		}
+	}
 	outputStream := conn.link.Writer
 	if outputStream == nil {
+		conn.cancel()
 		return io.ErrClosedPipe
 	}
 	return outputStream.WriteMultiBuffer(buf.MultiBuffer{message})
@@ -122,12 +141,16 @@ func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {
 		timer:     timer,
 		writeBack: d.writeBack,
 	}
+	if tlsConn, ok := link.(*tls.Conn); ok {
+		conn.tlsConn = tlsConn
+	}
 	d.connection = conn
 	go conn.handleInput()
 	return conn, nil
 }
 
 type dispatcherConnection struct {
+	tlsConn   *tls.Conn
 	ctx       context.Context
 	link      *transport.Link
 	timer     signal.ActivityUpdater

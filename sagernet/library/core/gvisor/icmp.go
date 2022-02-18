@@ -78,7 +78,7 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 			}
 
 			return nil
-		}) {
+		}, nil) {
 			hdr.SetType(header.ICMPv4EchoReply)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(header.ICMPv4Checksum(hdr, packet.Data().AsRange().Checksum()))
@@ -161,7 +161,7 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 			}
 
 			return nil
-		}) {
+		}, nil) {
 			hdr.SetType(header.ICMPv6EchoReply)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{

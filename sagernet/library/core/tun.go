@@ -134,7 +134,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	internet.UseAlternativeSystemDialer(&protectedDialer{
 		protector: config.Protector,
 		resolver: func(ctx context.Context, domain string) ([]net.IP, error) {
-			return dc.LookupDefault(ctx, domain)
+			ips, _, err := dc.LookupDefault(ctx, domain)
+			return ips, err
 		},
 	})
 	if config.BindUpstream != nil {
@@ -156,7 +157,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	internet.UseAlternativeSystemDNSDialer(&protectedDialer{
 		protector: config.Protector,
 		resolver: func(ctx context.Context, domain string) ([]net.IP, error) {
-			return localdns.Client().LookupDefault(ctx, domain)
+			ips, _, err := localdns.Client().LookupDefault(ctx, domain)
+			return ips, err
 		},
 	})
 
@@ -165,7 +167,8 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 
 func (t *Tun2ray) Close() {
 	pingproto.ControlFunc = nil
-
+	internet.UseAlternativeSystemDialer(nil)
+	internet.UseAlternativeSystemDNSDialer(nil)
 	comm.CloseIgnore(t.dev)
 	t.connectionsLock.Lock()
 	for item := t.connections.Front(); item != nil; item = item.Next() {
@@ -485,7 +488,7 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	t.connectionsLock.Unlock()
 }
 
-func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message []byte, writeBack func([]byte) error) bool {
+func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message []byte, writeBack func([]byte) error, closer io.Closer) bool {
 	natKey := fmt.Sprint(source.Address, "-", destination.Address)
 
 	sendTo := func() bool {
@@ -508,6 +511,7 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 	var cond *sync.Cond
 
 	if sendTo() {
+		comm.CloseIgnore(closer)
 		return true
 	} else {
 		iCond, loaded := t.lockTable.LoadOrStore(natKey, sync.NewCond(&sync.Mutex{}))
@@ -518,6 +522,7 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 			sendTo()
 			cond.L.Unlock()
 
+			comm.CloseIgnore(closer)
 			return true
 		}
 	}
@@ -581,7 +586,7 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 			}
 		}
 		// close
-		comm.CloseIgnore(conn)
+		comm.CloseIgnore(conn, closer)
 		t.udpTable.Delete(natKey)
 
 		t.connectionsLock.Lock()

@@ -78,3 +78,7 @@ func (t *DefaultTransport) ExchangeRaw(context.Context, *buf.Buffer) (*buf.Buffe
 
 func (t *DefaultTransport) IsLocalTransport() {
 }
+
+func (t *DefaultTransport) Close() error {
+	return nil
+}

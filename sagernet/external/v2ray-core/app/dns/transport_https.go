@@ -27,6 +27,14 @@ type HTTPSTransport struct {
 	httpClient *http.Client
 }
 
+func (t *HTTPSTransport) Close() error {
+	if t.cache != nil {
+		t.cache.Release()
+	}
+	t.httpClient.CloseIdleConnections()
+	return nil
+}
+
 func NewHTTPSTransport(trans *transportContext, dispatcher routing.Dispatcher) *HTTPSTransport {
 	return newHTTPSTransport(trans, func(ctx context.Context, network, addr string) (net.Conn, error) {
 		dest, err := net.ParseDestination(network + ":" + addr)

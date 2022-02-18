@@ -172,7 +172,9 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 	}
 
 	if domainStrategy != proxyman.DomainStrategy_AS_IS && domainString != "" {
-		ips, err := h.dnsClient.Lookup(ctx, domainString, dns.QueryStrategy(domainStrategy-1))
+		ctx, cancel := context.WithTimeout(ctx, dns.DefaultTimeout)
+		defer cancel()
+		ips, _, err := h.dnsClient.Lookup(ctx, domainString, dns.QueryStrategy(domainStrategy-1))
 		if err == nil {
 			destination.Address = net.IPAddress(ips[0])
 			outbound.Target = destination

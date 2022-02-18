@@ -34,27 +34,31 @@ func (c LocalClient) Close() error {
 func (c *LocalClient) LookupIP(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
 	defer cancel()
-	return c.LookupDefault(ctx, domain)
+	ips, _, err := c.LookupDefault(ctx, domain)
+	return ips, err
 }
 
 func (c *LocalClient) LookupIPv4(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
 	defer cancel()
-	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
+	ips, _, err := c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP4)
+	return ips, err
 }
 
 func (c *LocalClient) LookupIPv6(domain string) ([]net.IP, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), dns.DefaultTimeout)
 	defer cancel()
-	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+	ips, _, err := c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP6)
+	return ips, err
 }
 
-func (c LocalClient) LookupDefault(ctx context.Context, domain string) ([]net.IP, error) {
+func (c LocalClient) LookupDefault(ctx context.Context, domain string) ([]net.IP, uint32, error) {
 	return c.Lookup(ctx, domain, dns.QueryStrategy_USE_IP)
 }
 
-func (c LocalClient) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, error) {
-	return transportInstance.Lookup(ctx, domain, strategy)
+func (c LocalClient) Lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, uint32, error) {
+	ips, err := transportInstance.Lookup(ctx, domain, strategy)
+	return ips, 0, err
 }
 
 func (c LocalClient) QueryRaw(context.Context, *buf.Buffer) (*buf.Buffer, error) {
