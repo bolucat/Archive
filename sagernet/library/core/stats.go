@@ -4,6 +4,8 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 )
 
 type AppStats struct {
@@ -110,13 +112,13 @@ type statsConn struct {
 	downlink *uint64
 }
 
-func (c *statsConn) Read(b []byte) (n int, err error) {
+func (c statsConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
 	defer atomic.AddUint64(c.uplink, uint64(n))
 	return
 }
 
-func (c *statsConn) Write(b []byte) (n int, err error) {
+func (c statsConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
 	defer atomic.AddUint64(c.downlink, uint64(n))
 	return
@@ -128,14 +130,6 @@ type statsPacketConn struct {
 	downlink *uint64
 }
 
-func (c statsPacketConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	n, addr, err = c.packetConn.ReadFrom(p)
-	if err == nil {
-		atomic.AddUint64(c.downlink, uint64(n))
-	}
-	return
-}
-
 func (c statsPacketConn) readFrom() (p []byte, addr net.Addr, err error) {
 	p, addr, err = c.packetConn.readFrom()
 	if err == nil {
@@ -144,10 +138,11 @@ func (c statsPacketConn) readFrom() (p []byte, addr net.Addr, err error) {
 	return
 }
 
-func (c statsPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	n, err = c.packetConn.WriteTo(p, addr)
+func (c statsPacketConn) writeTo(buffer *buf.Buffer, addr net.Addr) (err error) {
+	length := buffer.Len()
+	err = c.packetConn.writeTo(buffer, addr)
 	if err == nil {
-		atomic.AddUint64(c.uplink, uint64(n))
+		atomic.AddUint64(c.downlink, uint64(length))
 	}
 	return
 }

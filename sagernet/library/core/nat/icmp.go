@@ -9,9 +9,9 @@ import (
 	"libcore/comm"
 )
 
-func (t *SystemTun) processICMPv4(ipHdr header.IPv4, hdr header.ICMPv4) {
+func (t *SystemTun) processICMPv4(cache *buf.Buffer, ipHdr header.IPv4, hdr header.ICMPv4) bool {
 	if hdr.Type() != header.ICMPv4Echo || hdr.Code() != header.ICMPv4UnusedCode {
-		return
+		return false
 	}
 
 	source := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(ipHdr.SourceAddress())), Network: v2rayNet.Network_UDP}
@@ -23,28 +23,27 @@ func (t *SystemTun) processICMPv4(ipHdr header.IPv4, hdr header.ICMPv4) {
 	ipHdr.SetChecksum(0)
 	ipHdr.SetChecksum(^ipHdr.CalculateChecksum())
 
-	cache := buf.New()
-
-	netHdr := cache.ExtendCopy(ipHdr[:ipHdr.HeaderLength()])
+	headerCache := buf.New()
+	netHdr := headerCache.ExtendCopy(ipHdr[:ipHdr.HeaderLength()])
 	transportDataLen := len(hdr)
 	if transportDataLen > 8 {
 		transportDataLen = 8
 	}
-	cache.ExtendCopy(hdr[:transportDataLen])
-	originHdr := cache.Bytes()
-	cache.Advance(cache.Len())
-
-	cache.Write(hdr)
+	originHdr := headerCache.ExtendCopy(ipHdr[:int(ipHdr.HeaderLength())+transportDataLen])
 	messageLen := len(hdr)
 
-	if t.handler.NewPingPacket(source, destination, cache.Bytes(), func(message []byte) error {
-		replyCache := buf.New()
-		defer replyCache.Release()
+	cache.Resize(int32(ipHdr.HeaderLength()), cache.Len())
+	if t.handler.NewPingPacket(source, destination, cache, func(message []byte) error {
+		index := headerCache.Len()
+		defer func() {
+			headerCache.Clear()
+			headerCache.Resize(0, index)
+		}()
 
 		icmpHdr := header.ICMPv4(message)
 		if icmpHdr.Type() == header.ICMPv4DstUnreachable {
 			const ICMPv4HeaderSize = 4
-			unreachableHdr := header.ICMPv4(replyCache.Extend(int32(header.ICMPv4MinimumErrorPayloadSize + len(originHdr))))
+			unreachableHdr := header.ICMPv4(headerCache.Extend(int32(header.ICMPv4MinimumErrorPayloadSize + len(originHdr))))
 			copy(unreachableHdr[:ICMPv4HeaderSize], message)
 			copy(unreachableHdr[header.ICMPv4MinimumErrorPayloadSize:], originHdr)
 			icmpHdr = unreachableHdr
@@ -53,7 +52,7 @@ func (t *SystemTun) processICMPv4(ipHdr header.IPv4, hdr header.ICMPv4) {
 		backData := buffer.VectorisedView{}
 
 		if len(icmpHdr) != messageLen {
-			backIpHdr := header.IPv4(replyCache.ExtendCopy(netHdr))
+			backIpHdr := header.IPv4(headerCache.ExtendCopy(netHdr))
 			oldLen := backIpHdr.TotalLength()
 			backIpHdr.SetTotalLength(uint16(len(netHdr) + len(message)))
 			backIpHdr.SetChecksum(^header.ChecksumCombine(^backIpHdr.Checksum(), header.ChecksumCombine(backIpHdr.TotalLength(), ^oldLen)))
@@ -71,20 +70,20 @@ func (t *SystemTun) processICMPv4(ipHdr header.IPv4, hdr header.ICMPv4) {
 			return unix.ENETUNREACH
 		}
 		return nil
-	}, comm.Closer(cache.Release)) {
-		return
+	}, comm.Closer(headerCache.Release)) {
+		return true
 	}
-
 	hdr.SetType(header.ICMPv4EchoReply)
 	hdr.SetChecksum(0)
 	hdr.SetChecksum(header.ICMPv4Checksum(hdr, 0))
-
 	t.writeBuffer(ipHdr)
+	headerCache.Release()
+	return false
 }
 
-func (t *SystemTun) processICMPv6(ipHdr header.IPv6, hdr header.ICMPv6) {
+func (t *SystemTun) processICMPv6(cache *buf.Buffer, ipHdr header.IPv6, hdr header.ICMPv6) bool {
 	if hdr.Type() != header.ICMPv6EchoRequest || hdr.Code() != header.ICMPv6UnusedCode {
-		return
+		return false
 	}
 
 	source := v2rayNet.Destination{Address: v2rayNet.IPAddress([]byte(ipHdr.SourceAddress())), Network: v2rayNet.Network_UDP}
@@ -94,27 +93,27 @@ func (t *SystemTun) processICMPv6(ipHdr header.IPv6, hdr header.ICMPv6) {
 	ipHdr.SetSourceAddress(ipHdr.DestinationAddress())
 	ipHdr.SetDestinationAddress(sourceAddress)
 
-	cache := buf.New()
-
-	netHdr := cache.ExtendCopy(ipHdr[:len(ipHdr)-int(ipHdr.PayloadLength())])
+	headerLength := len(ipHdr) - int(ipHdr.PayloadLength())
+	headerCache := buf.New()
+	netHdr := headerCache.ExtendCopy(ipHdr[:headerLength])
 	transportDataLen := len(hdr)
 	if transportDataLen > 8 {
 		transportDataLen = 8
 	}
-	cache.ExtendCopy(hdr[:transportDataLen])
-	originHdr := cache.Bytes()
-	cache.Advance(cache.Len())
-
-	cache.Write(hdr)
+	originHdr := headerCache.ExtendCopy(ipHdr[:headerLength+transportDataLen])
 	messageLen := len(hdr)
 
-	if t.handler.NewPingPacket(source, destination, cache.Bytes(), func(message []byte) error {
-		replyCache := buf.New()
-		defer replyCache.Release()
+	cache.Resize(int32(headerLength), cache.Len())
+	if t.handler.NewPingPacket(source, destination, cache, func(message []byte) error {
+		index := headerCache.Len()
+		defer func() {
+			headerCache.Clear()
+			headerCache.Resize(0, index)
+		}()
 
 		icmpHdr := header.ICMPv6(message)
 		if icmpHdr.Type() == header.ICMPv6DstUnreachable {
-			unreachableHdr := header.ICMPv6(replyCache.Extend(int32(header.ICMPv6DstUnreachableMinimumSize + len(originHdr))))
+			unreachableHdr := header.ICMPv6(headerCache.Extend(int32(header.ICMPv6DstUnreachableMinimumSize + len(originHdr))))
 			copy(unreachableHdr[:header.ICMPv6HeaderSize], message)
 			copy(unreachableHdr[header.ICMPv6DstUnreachableMinimumSize:], originHdr)
 			icmpHdr = unreachableHdr
@@ -123,7 +122,7 @@ func (t *SystemTun) processICMPv6(ipHdr header.IPv6, hdr header.ICMPv6) {
 		backData := buffer.VectorisedView{}
 
 		if len(icmpHdr) != messageLen {
-			backIpHdr := header.IPv6(replyCache.ExtendCopy(netHdr))
+			backIpHdr := header.IPv6(headerCache.ExtendCopy(netHdr))
 			backIpHdr.SetPayloadLength(uint16(len(icmpHdr)))
 			backData.AppendView(buffer.View(backIpHdr))
 		} else {
@@ -146,10 +145,9 @@ func (t *SystemTun) processICMPv6(ipHdr header.IPv6, hdr header.ICMPv6) {
 			return unix.ENETUNREACH
 		}
 		return nil
-	}, comm.Closer(cache.Release)) {
-		return
+	}, comm.Closer(headerCache.Release)) {
+		return true
 	}
-
 	hdr.SetType(header.ICMPv6EchoReply)
 	hdr.SetChecksum(0)
 	hdr.SetChecksum(header.ICMPv6Checksum(header.ICMPv6ChecksumParams{
@@ -157,6 +155,7 @@ func (t *SystemTun) processICMPv6(ipHdr header.IPv6, hdr header.ICMPv6) {
 		Src:    ipHdr.SourceAddress(),
 		Dst:    ipHdr.DestinationAddress(),
 	}))
-
 	t.writeBuffer(ipHdr)
+	headerCache.Release()
+	return false
 }

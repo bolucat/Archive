@@ -319,16 +319,32 @@ func (c *dispatcherConn) readFrom() (p []byte, addr net.Addr, err error) {
 }
 
 func (c *dispatcherConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	buffer := buf.FromBytes(p)
+	buffer := buf.New()
+	buffer.Write(p)
 	endpoint := net.DestinationFromAddr(addr)
 	buffer.Endpoint = &endpoint
 	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
 	if err != nil {
+		buffer.Release()
 		c.Close()
 		return 0, err
+	} else {
+		c.timer.Update()
+		n = len(p)
 	}
-	n = len(p)
-	c.timer.Update()
+	return
+}
+
+func (c *dispatcherConn) writeTo(buffer *buf.Buffer, addr net.Addr) (err error) {
+	endpoint := net.DestinationFromAddr(addr)
+	buffer.Endpoint = &endpoint
+	err = c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{buffer})
+	if err != nil {
+		buffer.Release()
+		c.Close()
+	} else {
+		c.timer.Update()
+	}
 	return
 }
 

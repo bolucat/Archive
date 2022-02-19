@@ -6,12 +6,13 @@ import (
 	"os"
 
 	"github.com/ulikunitz/xz"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"libcore/comm"
 )
 
 type packetConn interface {
-	net.PacketConn
 	readFrom() (p []byte, addr net.Addr, err error)
+	writeTo(buffer *buf.Buffer, addr net.Addr) (err error)
 	io.Closer
 }
 

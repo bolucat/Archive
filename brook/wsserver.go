@@ -21,6 +21,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -35,21 +36,24 @@ import (
 
 // WSServer.
 type WSServer struct {
-	Password    []byte
-	Domain      string
-	TCPAddr     *net.TCPAddr
-	HTTPServer  *http.Server
-	HTTPSServer *http.Server
-	TCPTimeout  int
-	UDPTimeout  int
-	Path        string
-	UDPSrc      *cache.Cache
-	BlockDomain map[string]byte
-	BlockCIDR4  []*net.IPNet
-	BlockCIDR6  []*net.IPNet
-	BlockCache  *cache.Cache
-	BlockLock   *sync.RWMutex
-	Done        chan byte
+	Password      []byte
+	Domain        string
+	TCPAddr       *net.TCPAddr
+	HTTPServer    *http.Server
+	HTTPSServer   *http.Server
+	TCPTimeout    int
+	UDPTimeout    int
+	Path          string
+	UDPSrc        *cache.Cache
+	BlockDomain   map[string]byte
+	BlockCIDR4    []*net.IPNet
+	BlockCIDR6    []*net.IPNet
+	BlockCache    *cache.Cache
+	BlockLock     *sync.RWMutex
+	Done          chan byte
+	WSSServerPort int64
+	Cert          []byte
+	CertKey       []byte
 }
 
 // NewWSServer.
@@ -187,20 +191,33 @@ func (s *WSServer) ListenAndServe() error {
 		}
 		return s.HTTPServer.ListenAndServe()
 	}
-	m := autocert.Manager{
-		Cache:      autocert.DirCache(".letsencrypt"),
-		Prompt:     autocert.AcceptTOS,
-		HostPolicy: autocert.HostWhitelist(s.Domain),
-		Email:      "cloud@txthinking.com",
+	var t *tls.Config
+	if s.Cert == nil || s.CertKey == nil {
+		m := autocert.Manager{
+			Cache:      autocert.DirCache(".letsencrypt"),
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(s.Domain),
+			Email:      "cloud@txthinking.com",
+		}
+		go func() {
+			log.Println(http.ListenAndServe(":80", m.HTTPHandler(nil)))
+		}()
+		t = &tls.Config{GetCertificate: m.GetCertificate}
 	}
-	go http.ListenAndServe(":80", m.HTTPHandler(nil))
+	if s.Cert != nil && s.CertKey != nil {
+		ct, err := tls.X509KeyPair(s.Cert, s.CertKey)
+		if err != nil {
+			return err
+		}
+		t = &tls.Config{Certificates: []tls.Certificate{ct}, ServerName: s.Domain}
+	}
 	s.HTTPSServer = &http.Server{
-		Addr:         ":443",
+		Addr:         ":" + strconv.FormatInt(s.WSSServerPort, 10),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
 		Handler:      n,
-		TLSConfig:    &tls.Config{GetCertificate: m.GetCertificate},
+		TLSConfig:    t,
 	}
 	go func() {
 		time.Sleep(1 * time.Second)

@@ -1,6 +1,7 @@
 package gvisor
 
 import (
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -43,7 +44,7 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 		messageLen := len(data)
 
 		netHdr := packet.NetworkHeader().View()
-		if !handler.NewPingPacket(source, destination, data, func(message []byte) error {
+		if !handler.NewPingPacket(source, destination, buf.FromBytes(data), func(message []byte) error {
 			icmpHdr := header.ICMPv4(message)
 			if icmpHdr.Type() == header.ICMPv4DstUnreachable {
 				const ICMPv4HeaderSize = 4
@@ -121,7 +122,7 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 		messageLen := len(data)
 
 		netHdr := packet.NetworkHeader().View()
-		if !handler.NewPingPacket(source, destination, dataVV.ToView(), func(message []byte) error {
+		if !handler.NewPingPacket(source, destination, buf.FromBytes(data), func(message []byte) error {
 			icmpHdr := header.ICMPv6(message)
 			if icmpHdr.Type() == header.ICMPv6DstUnreachable {
 				unreachableHdr := header.ICMPv6(buffer.NewView(header.ICMPv6DstUnreachableMinimumSize + len(originHdr)))

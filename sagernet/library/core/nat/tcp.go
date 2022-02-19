@@ -1,6 +1,7 @@
 package nat
 
 import (
+	"errors"
 	"net"
 	"time"
 
@@ -88,8 +89,10 @@ func (t *tcpForwarder) dispatchLoop() {
 			e := newError("dispatch tcp conn failed").Base(err)
 			e.WriteToLog()
 			if stop {
-				t.Close()
-				t.tun.errorHandler(e.String())
+				if !errors.Is(err, net.ErrClosed) {
+					t.Close()
+					t.tun.errorHandler(e.String())
+				}
 				return
 			}
 		}

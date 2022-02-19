@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 )
@@ -45,6 +46,7 @@ func UrlTest(instance *V2RayInstance, inbound string, link string, timeout int32
 		if inbound != "" {
 			ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: inbound})
 		}
+		ctx = proxyman.SetPreferUseIP(ctx, true)
 		return instance.dialContext(ctx, dest)
 	}, link, timeout)
 }

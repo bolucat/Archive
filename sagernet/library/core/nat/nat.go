@@ -1,10 +1,8 @@
 package nat
 
 import (
-	"errors"
 	"os"
 
-	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -63,14 +61,15 @@ func (t *SystemTun) dispatchLoop() {
 	for {
 		n, err := device.Read(data)
 		if err != nil {
-			if !errors.Is(err, os.ErrClosed) {
-				logrus.Warn("failed to read device packet: ", err)
-				t.errorHandler(err.Error())
-			}
 			break
 		}
+		cache.Clear()
+		cache.Resize(0, int32(n))
 		packet := data[:n]
-		t.deliverPacket(packet)
+		if t.deliverPacket(cache, packet) {
+			cache = buf.New()
+			data = cache.Extend(buf.Size)
+		}
 	}
 }
 
@@ -96,7 +95,7 @@ func (t *SystemTun) writeBuffer(bytes []byte) tcpip.Error {
 	return rawfile.NonBlockingWrite(t.dev, bytes)
 }
 
-func (t *SystemTun) deliverPacket(packet []byte) {
+func (t *SystemTun) deliverPacket(cache *buf.Buffer, packet []byte) bool {
 	switch header.IPVersion(packet) {
 	case header.IPv4Version:
 		ipHdr := header.IPv4(packet)
@@ -104,9 +103,10 @@ func (t *SystemTun) deliverPacket(packet []byte) {
 		case header.TCPProtocolNumber:
 			t.tcpForwarder.processIPv4(ipHdr, ipHdr.Payload())
 		case header.UDPProtocolNumber:
-			t.processIPv4UDP(ipHdr, ipHdr.Payload())
+			t.processIPv4UDP(cache, ipHdr, ipHdr.Payload())
+			return true
 		case header.ICMPv4ProtocolNumber:
-			t.processICMPv4(ipHdr, ipHdr.Payload())
+			return t.processICMPv4(cache, ipHdr, ipHdr.Payload())
 		}
 	case header.IPv6Version:
 		pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
@@ -115,20 +115,20 @@ func (t *SystemTun) deliverPacket(packet []byte) {
 		proto, _, _, _, ok := parse.IPv6(pkt)
 		pkt.DecRef()
 		if !ok {
-			return
+			return false
 		}
 		ipHdr := header.IPv6(packet)
 		switch proto {
 		case header.TCPProtocolNumber:
 			t.tcpForwarder.processIPv6(ipHdr, ipHdr.Payload())
 		case header.UDPProtocolNumber:
-			t.processIPv6UDP(ipHdr, ipHdr.Payload())
+			t.processIPv6UDP(cache, ipHdr, ipHdr.Payload())
+			return true
 		case header.ICMPv6ProtocolNumber:
-			t.processICMPv6(ipHdr, ipHdr.Payload())
+			return t.processICMPv6(cache, ipHdr, ipHdr.Payload())
 		}
-	default:
-		return
 	}
+	return false
 }
 
 func (t *SystemTun) Close() error {

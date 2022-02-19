@@ -265,7 +265,7 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 				atomic.StoreInt64(&stats.deactivateAt, time.Now().Unix())
 			}
 		}()
-		conn = &statsConn{conn, &stats.uplink, &stats.downlink}
+		conn = statsConn{conn, &stats.uplink, &stats.downlink}
 	}
 
 	t.connectionsLock.Lock()
@@ -298,7 +298,7 @@ type connWriter struct {
 	buf.Writer
 }
 
-func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.Destination, data []byte, writeBack func([]byte, *net.UDPAddr) (int, error), closer io.Closer) {
+func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.Destination, data *buf.Buffer, writeBack func([]byte, *net.UDPAddr) (int, error), closer io.Closer) {
 	natKey := source.NetAddr()
 
 	sendTo := func() bool {
@@ -306,8 +306,8 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		if !ok {
 			return false
 		}
-		conn := iConn.(net.PacketConn)
-		_, err := conn.WriteTo(data, &net.UDPAddr{
+		conn := iConn.(packetConn)
+		err := conn.writeTo(data, &net.UDPAddr{
 			IP:   destination.Address.IP(),
 			Port: int(destination.Port),
 		})
@@ -448,7 +448,7 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 				atomic.StoreInt64(&stats.deactivateAt, time.Now().Unix())
 			}
 		}()
-		conn = &statsPacketConn{conn, &stats.uplink, &stats.downlink}
+		conn = statsPacketConn{conn, &stats.uplink, &stats.downlink}
 	}
 
 	t.connectionsLock.Lock()
@@ -488,7 +488,7 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 	t.connectionsLock.Unlock()
 }
 
-func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message []byte, writeBack func([]byte) error, closer io.Closer) bool {
+func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message *buf.Buffer, writeBack func([]byte) error, closer io.Closer) bool {
 	natKey := fmt.Sprint(source.Address, "-", destination.Address)
 
 	sendTo := func() bool {
@@ -496,8 +496,8 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 		if !ok {
 			return false
 		}
-		conn := iConn.(net.PacketConn)
-		_, err := conn.WriteTo(message, &net.UDPAddr{
+		conn := iConn.(packetConn)
+		err := conn.writeTo(message, &net.UDPAddr{
 			IP:   destination.Address.IP(),
 			Port: int(destination.Port),
 		})
