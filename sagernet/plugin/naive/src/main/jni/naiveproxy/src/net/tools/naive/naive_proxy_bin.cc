@@ -443,6 +443,7 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
     GURL proxy_gurl(proxy_url);
     if (proxy_url.compare(0, 7, "quic://") == 0) {
       proxy_url.replace(0, 4, "https");
+      proxy_gurl = GURL(proxy_url);
       auto* quic = context->quic_context()->params();
       quic->supported_versions = {quic::ParsedQuicVersion::RFCv1()};
       quic->origins_to_force_quic_on.insert(
@@ -533,7 +534,10 @@ int main(int argc, char* argv[]) {
 
   auto cert_context = net::BuildCertURLRequestContext(net_log);
   scoped_refptr<net::CertNetFetcherURLRequest> cert_net_fetcher;
-#if defined(OS_LINUX) || defined(OS_MAC) || defined(OS_ANDROID)
+  // The builtin verifier is supported but not enabled by default on Mac,
+  // falling back to CreateSystemVerifyProc() which drops the net fetcher.
+  // Skips defined(OS_MAC) for now, until it is enabled by default.
+#if defined(OS_LINUX) || defined(OS_ANDROID)
   cert_net_fetcher = base::MakeRefCounted<net::CertNetFetcherURLRequest>();
   cert_net_fetcher->SetURLRequestContext(cert_context.get());
 #endif

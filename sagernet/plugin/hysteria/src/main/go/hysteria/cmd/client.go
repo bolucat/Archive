@@ -3,11 +3,15 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"github.com/oschwald/geoip2-golang"
+	"github.com/tobyxdd/hysteria/pkg/pmtud_fix"
+	"github.com/yosuke-furukawa/json5/encoding/json5"
 	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -67,7 +71,7 @@ func client(config *clientConfig) {
 		InitialConnectionReceiveWindow: config.ReceiveWindow,
 		MaxConnectionReceiveWindow:     config.ReceiveWindow,
 		KeepAlive:                      true,
-		DisablePathMTUDiscovery:        true, // Ref: https://github.com/lucas-clemente/quic-go/issues/3327
+		DisablePathMTUDiscovery:        config.DisableMTUDiscovery,
 		EnableDatagrams:                true,
 	}
 	if config.ReceiveWindowConn == 0 {
@@ -77,6 +81,9 @@ func client(config *clientConfig) {
 	if config.ReceiveWindow == 0 {
 		quicConfig.InitialConnectionReceiveWindow = DefaultConnectionReceiveWindow
 		quicConfig.MaxConnectionReceiveWindow = DefaultConnectionReceiveWindow
+	}
+	if !quicConfig.DisablePathMTUDiscovery && pmtud_fix.DisablePathMTUDiscovery {
+		logrus.Info("Path MTU Discovery is not yet supported on this platform")
 	}
 	// Auth
 	var auth []byte
@@ -387,20 +394,23 @@ func client(config *clientConfig) {
 		go func() {
 			rl, err := tproxy.NewUDPTProxy(client, config.UDPTProxy.Listen,
 				time.Duration(config.UDPTProxy.Timeout)*time.Second,
-				func(addr net.Addr) {
+				func(addr, reqAddr net.Addr) {
 					logrus.WithFields(logrus.Fields{
 						"src": addr.String(),
+						"dst": reqAddr.String(),
 					}).Debug("UDP TProxy request")
 				},
-				func(addr net.Addr, err error) {
-					if err != tproxy.ErrTimeout {
+				func(addr, reqAddr net.Addr, err error) {
+					if !errors.Is(err, os.ErrDeadlineExceeded) {
 						logrus.WithFields(logrus.Fields{
 							"error": err,
 							"src":   addr.String(),
+							"dst":   reqAddr.String(),
 						}).Info("UDP TProxy error")
 					} else {
 						logrus.WithFields(logrus.Fields{
 							"src": addr.String(),
+							"dst": reqAddr.String(),
 						}).Debug("UDP TProxy session closed")
 					}
 				})
@@ -414,4 +424,13 @@ func client(config *clientConfig) {
 
 	err := <-errChan
 	logrus.WithField("error", err).Fatal("Client shutdown")
+}
+
+func parseClientConfig(cb []byte) (*clientConfig, error) {
+	var c clientConfig
+	err := json5.Unmarshal(cb, &c)
+	if err != nil {
+		return nil, err
+	}
+	return &c, c.Check()
 }
