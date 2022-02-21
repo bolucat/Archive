@@ -42,6 +42,7 @@ func ListenPacket(ctx context.Context, network, address string, options ...Optio
 
 	cfg := &option{
 		interfaceName: DefaultInterface.Load(),
+		routingMark:   int(DefaultRoutingMark.Load()),
 	}
 
 	for _, o := range DefaultOptions {
@@ -77,6 +78,7 @@ func dialContext(ctx context.Context, network string, destination net.IP, port s
 
 	opt := &option{
 		interfaceName: DefaultInterface.Load(),
+		routingMark:   int(DefaultRoutingMark.Load()),
 	}
 
 	for _, o := range DefaultOptions {
