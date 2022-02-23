@@ -121,7 +121,10 @@ namespace v2rayN.Handler
             }
             if (config.uiItem == null)
             {
-                config.uiItem = new UIItem();
+                config.uiItem = new UIItem()
+                {
+                    enableAutoAdjustMainLvColWidth = true
+                };
             }
             if (config.uiItem.mainLvColWidth == null)
             {
@@ -995,6 +998,10 @@ namespace v2rayN.Handler
             if (Utils.IsNullOrEmpty(vmessItem.allowInsecure))
             {
                 vmessItem.allowInsecure = config.defAllowInsecure.ToString();
+            }
+            if (!Utils.IsNullOrEmpty(vmessItem.network) && !Global.networks.Contains(vmessItem.network))
+            {
+                vmessItem.network = Global.DefaultNetwork;
             }
 
             config.vmess.Add(vmessItem);

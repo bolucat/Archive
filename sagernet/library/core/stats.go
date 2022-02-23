@@ -114,13 +114,17 @@ type statsConn struct {
 
 func (c statsConn) Read(b []byte) (n int, err error) {
 	n, err = c.Conn.Read(b)
-	defer atomic.AddUint64(c.uplink, uint64(n))
+	if err == nil {
+		atomic.AddUint64(c.uplink, uint64(n))
+	}
 	return
 }
 
 func (c statsConn) Write(b []byte) (n int, err error) {
 	n, err = c.Conn.Write(b)
-	defer atomic.AddUint64(c.downlink, uint64(n))
+	if err == nil {
+		atomic.AddUint64(c.downlink, uint64(n))
+	}
 	return
 }
 
@@ -142,7 +146,7 @@ func (c statsPacketConn) writeTo(buffer *buf.Buffer, addr net.Addr) (err error) 
 	length := buffer.Len()
 	err = c.packetConn.writeTo(buffer, addr)
 	if err == nil {
-		atomic.AddUint64(c.downlink, uint64(length))
+		atomic.AddUint64(c.uplink, uint64(length))
 	}
 	return
 }
