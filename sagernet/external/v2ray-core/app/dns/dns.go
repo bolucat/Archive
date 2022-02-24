@@ -317,6 +317,7 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 					continue
 				}
 				reqIds = append(reqIds, message.ID)
+				r.queryType.Store(message.ID, message.Questions[0].Type)
 				c.callbacks.Store(message.ID, r)
 				go func() {
 					response, err := server.transport.ExchangeRaw(ctx, buf.FromBytes(packed))

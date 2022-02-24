@@ -1,13 +1,11 @@
-import { Decrypt as XmDecrypt } from '@/decrypt/xm';
-import { Decrypt as QmcDecrypt } from '@/decrypt/qmc';
-import { Decrypt as QmcCacheDecrypt } from '@/decrypt/qmccache';
-import { Decrypt as KwmDecrypt } from '@/decrypt/kwm';
-import { Decrypt as RawDecrypt } from '@/decrypt/raw';
-import { Decrypt as TmDecrypt } from '@/decrypt/tm';
-import { Decrypt as JooxDecrypt } from '@/decrypt/joox';
-import { DecryptResult, FileInfo } from '@/decrypt/entity';
-import { SplitFilename } from '@/decrypt/utils';
-import { storage } from '@/utils/storage';
+import {Decrypt as XmDecrypt} from '@/decrypt/xm';
+import {Decrypt as KwmDecrypt} from '@/decrypt/kwm';
+import {Decrypt as RawDecrypt} from '@/decrypt/raw';
+import {Decrypt as TmDecrypt} from '@/decrypt/tm';
+import {Decrypt as JooxDecrypt} from '@/decrypt/joox';
+import {DecryptResult, FileInfo} from '@/decrypt/entity';
+import {SplitFilename} from '@/decrypt/utils';
+import {storage} from '@/utils/storage';
 import InMemoryStorage from '@/utils/storage/InMemoryStorage';
 
 export async function Decrypt(file: FileInfo, config: Record<string, any>): Promise<DecryptResult> {
@@ -32,44 +30,13 @@ export async function Decrypt(file: FileInfo, config: Record<string, any>): Prom
     case 'ogg': // Raw Ogg
       rt_data = await RawDecrypt(file.raw, raw.name, raw.ext);
       break;
-    case 'tm0': // QQ Music IOS Mp3
-    case 'tm3': // QQ Music IOS Mp3
+    case 'tm0':
+    case 'tm3':
       rt_data = await RawDecrypt(file.raw, raw.name, 'mp3');
       break;
-    case 'qmc3': //QQ Music Android Mp3
-    case 'qmc2': //QQ Music Android Ogg
-    case 'qmc0': //QQ Music Android Mp3
-    case 'qmcflac': //QQ Music Android Flac
-    case 'qmcogg': //QQ Music Android Ogg
-    case 'tkm': //QQ Music Accompaniment M4a
-    // Moo Music
-    case 'bkcmp3':
-    case 'bkcm4a':
-    case 'bkcflac':
-    case 'bkcwav':
-    case 'bkcape':
-    case 'bkcogg':
-    case 'bkcwma':
-    // QQ Music v2
-    case 'mggl': //QQ Music Mac
-    case 'mflac': //QQ Music New Flac
-    case 'mflac0': //QQ Music New Flac
-    case 'mgg': //QQ Music New Ogg
-    case 'mgg1': //QQ Music New Ogg
-    case 'mgg0':
-    case '666c6163': //QQ Music Weiyun Flac
-    case '6d7033': //QQ Music Weiyun Mp3
-    case '6f6767': //QQ Music Weiyun Ogg
-    case '6d3461': //QQ Music Weiyun M4a
-    case '776176': //QQ Music Weiyun Wav
-      rt_data = await QmcDecrypt(file.raw, raw.name, raw.ext);
-      break;
-    case 'tm2': // QQ Music IOS M4a
-    case 'tm6': // QQ Music IOS M4a
+    case 'tm2':
+    case 'tm6':
       rt_data = await TmDecrypt(file.raw, raw.name);
-      break;
-    case 'cache': //QQ Music Cache
-      rt_data = await QmcCacheDecrypt(file.raw, raw.name, raw.ext);
       break;
     case 'ofl_en':
       rt_data = await JooxDecrypt(file.raw, raw.name, raw.ext);
