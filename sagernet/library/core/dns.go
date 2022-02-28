@@ -150,20 +150,22 @@ func init() {
 	SetCurrentDomainNameSystemQueryInstance(nil)
 }
 
+var dnsAddress = v2rayNet.IPAddress([]byte{1, 0, 0, 1})
+
 func SetCurrentDomainNameSystemQueryInstance(instance *V2RayInstance) {
 	if instance == nil {
 		net.DefaultResolver = &net.Resolver{
 			PreferGo: false,
 		}
 	} else {
-		dnsAdress := v2rayNet.IPAddress([]byte{1, 0, 0, 1})
 		net.DefaultResolver = &net.Resolver{
+			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
 				conn, err := instance.dialContext(session.ContextWithInbound(ctx, &session.Inbound{
 					Tag: "dns-in",
 				}), v2rayNet.Destination{
 					Network: v2rayNet.Network_UDP,
-					Address: dnsAdress,
+					Address: dnsAddress,
 					Port:    53,
 				})
 				if err == nil {

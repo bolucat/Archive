@@ -236,7 +236,7 @@ func (s *Server) RunUDPServer() error {
 
 // TCPHandle handles request.
 func (s *Server) TCPHandle(c *net.TCPConn) error {
-	ss, dst, err := NewStreamServer(s.Password, c, s.TCPTimeout)
+	ss, dst, err := MakeStreamServer(s.Password, c, s.TCPTimeout, false)
 	if err != nil {
 		return err
 	}
@@ -324,6 +324,11 @@ func (s *Server) UDPHandle(addr *net.UDPAddr, b []byte) error {
 		return err
 	}
 	defer rc.Close()
+	if s.UDPTimeout != 0 {
+		if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+			return err
+		}
+	}
 	if laddr == nil {
 		s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 	}

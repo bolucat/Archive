@@ -47,11 +47,6 @@ func NewStreamClient(network string, password, dst []byte, server net.Conn, time
 	if len(dst) > 2048-2-16-4-16 {
 		return nil, errors.New("dst too long")
 	}
-	if timeout != 0 {
-		if err := server.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
-			return nil, err
-		}
-	}
 	c := &StreamClient{Network: network, Server: server, Timeout: timeout, Cache: make([]byte, 0)}
 
 	c.cn = x.BP12.Get().([]byte)
@@ -219,4 +214,10 @@ func (c *StreamClient) Clean() {
 		x.BP65507.Put(c.WB)
 		x.BP65507.Put(c.RB)
 	}
+}
+func (s *StreamClient) NetworkName() string {
+	return s.Network
+}
+func (s *StreamClient) SetTimeout(i int) {
+	s.Timeout = i
 }

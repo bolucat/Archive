@@ -9,7 +9,10 @@ import (
 
 const (
 	// Size of a regular buffer.
-	Size = 8192
+	// io.Copy: 32K
+	// outline-ss-server/go-ss2: 16K + tag size for TCP, 64K for UDP
+	// clash: 20K
+	Size = 20 * 1024
 )
 
 var pool = bytespool.GetPool(Size)

@@ -217,7 +217,7 @@ func (s *DNS) TCPHandle(c *net.TCPConn) error {
 	has := false
 	for _, v := range m.Question {
 		if Debug {
-			log.Println("dns query", "udp", v.Qtype, v.Name)
+			log.Println("dns query", "tcp", v.Qtype, v.Name)
 		}
 		if (v.Qtype == dns.TypeAAAA || v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS) && len(v.Name) > 0 && ListHasDomain(s.BlockDomain, v.Name[0:len(v.Name)-1], s.BlockCache) {
 			if v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS {
@@ -348,14 +348,27 @@ func (s *DNS) TCPHandle(c *net.TCPConn) error {
 	dst = append(dst, a)
 	dst = append(dst, h...)
 	dst = append(dst, p...)
-	sc, err := NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	var sc Exchanger
+	if s.WSClient == nil || !s.WSClient.WithoutBrook {
+		sc, err = NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("tcp", s.WSClient.PasswordSha256, dst, rc, s.TCPTimeout)
+	}
 	if err != nil {
 		return err
 	}
 	defer sc.Clean()
-	i := copy(sc.WB[2+16:], mb)
-	if err := sc.WriteL(i); err != nil {
-		return err
+	if v, ok := sc.(*StreamClient); ok {
+		i := copy(v.WB[2+16:], mb)
+		if err := v.WriteL(i); err != nil {
+			return err
+		}
+	}
+	if _, ok := sc.(*SimpleStreamClient); ok {
+		if _, err := rc.Write(mb); err != nil {
+			return err
+		}
 	}
 	if err := sc.Exchange(c); err != nil {
 		return nil
@@ -468,6 +481,11 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 			return err
 		}
 		defer rc.Close()
+		if s.UDPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if laddr == nil {
 			s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 		}
@@ -543,7 +561,13 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 	dstb = append(dstb, a)
 	dstb = append(dstb, h...)
 	dstb = append(dstb, p...)
-	sc, err := NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	var sc Exchanger
+	if !s.WSClient.WithoutBrook {
+		sc, err = NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	}
+	if s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("udp", s.WSClient.PasswordSha256, dstb, rc, s.UDPTimeout)
+	}
 	if err != nil {
 		return err
 	}

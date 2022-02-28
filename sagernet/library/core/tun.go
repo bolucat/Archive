@@ -165,6 +165,15 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	return t, nil
 }
 
+func (t *Tun2ray) ResetNetwork() {
+	t.connectionsLock.Lock()
+	for item := t.connections.Front(); item != nil; item = item.Next() {
+		common.Close(item.Value)
+	}
+	t.connections.Init()
+	t.connectionsLock.Unlock()
+}
+
 func (t *Tun2ray) Close() {
 	pingproto.ControlFunc = nil
 	internet.UseAlternativeSystemDialer(nil)

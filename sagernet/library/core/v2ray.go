@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/v2fly/v2ray-core/v5"
-	"github.com/v2fly/v2ray-core/v5/app/dispatcher"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -38,7 +38,7 @@ func GetV2RayVersion() string {
 type V2RayInstance struct {
 	started         bool
 	core            *core.Instance
-	dispatcher      *dispatcher.DefaultDispatcher
+	dispatcher      routing.Dispatcher
 	router          routing.Router
 	outboundManager outbound.Manager
 	statsManager    stats.Manager
@@ -117,7 +117,7 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	instance.statsManager = c.GetFeature(stats.ManagerType()).(stats.Manager)
 	instance.router = c.GetFeature(routing.RouterType()).(routing.Router)
 	instance.outboundManager = c.GetFeature(outbound.ManagerType()).(outbound.Manager)
-	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher).(*dispatcher.DefaultDispatcher)
+	instance.dispatcher = c.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
 	instance.dnsClient = c.GetFeature(dns.ClientType()).(dns.NewClient)
 
 	o := c.GetFeature(extension.ObservatoryType())
@@ -182,6 +182,9 @@ func getLink(ctx context.Context) (*transport.Link, *transport.Link) {
 }
 
 func (instance *V2RayInstance) dialContext(ctx context.Context, destination net.Destination) (net.Conn, error) {
+	if !instance.started {
+		return nil, os.ErrInvalid
+	}
 	ctx = core.WithContext(ctx, instance.core)
 	r, err := instance.dispatcher.Dispatch(ctx, destination)
 	if err != nil {
@@ -197,6 +200,9 @@ func (instance *V2RayInstance) dialContext(ctx context.Context, destination net.
 }
 
 func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Destination, timeout time.Duration) (packetConn, error) {
+	if !instance.started {
+		return nil, os.ErrInvalid
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	link, err := instance.dispatcher.Dispatch(ctx, destination)
 	if err != nil {
