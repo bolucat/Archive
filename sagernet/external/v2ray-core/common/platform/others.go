@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 func ExpandEnv(s string) string {
@@ -45,4 +46,8 @@ func GetAssetLocation(file string) string {
 
 	// asset not found, let the caller throw out the error
 	return defPath
+}
+
+func CheckChildProcess(proc *os.Process) error {
+	return proc.Signal(syscall.Signal(0))
 }

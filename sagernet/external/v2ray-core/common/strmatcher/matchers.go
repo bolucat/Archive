@@ -90,6 +90,14 @@ func (m *RegexMatcher) Match(s string) bool {
 
 // New creates a new Matcher based on the given pattern.
 func (t Type) New(pattern string) (Matcher, error) {
+	if t == Regex {
+		regex, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, err
+		}
+		return &RegexMatcher{pattern: regex}, nil
+	}
+	pattern = strings.ToLower(pattern)
 	switch t {
 	case Full:
 		return FullMatcher(pattern), nil
@@ -97,12 +105,6 @@ func (t Type) New(pattern string) (Matcher, error) {
 		return SubstrMatcher(pattern), nil
 	case Domain:
 		return DomainMatcher(pattern), nil
-	case Regex: // 1. regex matching is case-sensitive
-		regex, err := regexp.Compile(pattern)
-		if err != nil {
-			return nil, err
-		}
-		return &RegexMatcher{pattern: regex}, nil
 	default:
 		panic("Unknown type")
 	}

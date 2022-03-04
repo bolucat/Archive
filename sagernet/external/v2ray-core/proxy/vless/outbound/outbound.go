@@ -97,7 +97,9 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	}); err != nil {
 		return newError("failed to find an available destination").Base(err).AtWarning()
 	}
-	defer conn.Close()
+
+	connElem := net.AddConnection(conn)
+	defer net.RemoveConnection(connElem)
 
 	outbound := session.OutboundFromContext(ctx)
 	if outbound == nil || !outbound.Target.IsValid() {

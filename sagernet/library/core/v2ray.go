@@ -127,13 +127,16 @@ func (instance *V2RayInstance) LoadConfig(content string) error {
 	return nil
 }
 
-func (instance *V2RayInstance) Start() error {
+func (instance *V2RayInstance) Start(errorHandler ErrorHandler) error {
 	if instance.started {
 		return errors.New("already started")
 	}
 	if instance.core == nil {
 		return errors.New("not initialized")
 	}
+	instance.core.SetErrorHandler(func(err error) {
+		errorHandler.HandleError(err.Error())
+	})
 	err := instance.core.Start()
 	if err != nil {
 		return err

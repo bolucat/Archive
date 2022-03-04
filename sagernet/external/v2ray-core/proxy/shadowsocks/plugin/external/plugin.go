@@ -1,14 +1,16 @@
 package external
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
+	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/common/signal/done"
 	"github.com/v2fly/v2ray-core/v5/proxy/shadowsocks"
 )
@@ -29,7 +31,7 @@ type Plugin struct {
 	done          *done.Instance
 }
 
-func (p *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, _ *shadowsocks.MemoryAccount) error {
+func (p *Plugin) Init(ctx context.Context, localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, account *shadowsocks.MemoryAccount) error {
 	p.done = done.New()
 	path, err := exec.LookPath(p.Plugin)
 	if err != nil {
@@ -57,16 +59,14 @@ func (p *Plugin) Init(localHost string, localPort string, remoteHost string, rem
 	}
 	proc.Env = append(proc.Env, os.Environ()...)
 
-	if err := p.startPlugin(proc); err != nil {
+	if err := p.startPlugin(ctx, proc); err != nil {
 		return err
 	}
-
-	go p.waitPlugin()
 
 	return nil
 }
 
-func (p *Plugin) startPlugin(oldProc *exec.Cmd) *errors.Error {
+func (p *Plugin) startPlugin(ctx context.Context, oldProc *exec.Cmd) *errors.Error {
 	if p.done.Done() {
 		return newError("closed")
 	}
@@ -86,15 +86,21 @@ func (p *Plugin) startPlugin(oldProc *exec.Cmd) *errors.Error {
 		return newError("failed to start shadowsocks plugin ", proc.Path).Base(err)
 	}
 
-	time.Sleep(time.Millisecond * 100)
-
-	err = proc.Process.Signal(syscall.Signal(0))
-	if err != nil && err != syscall.EPERM {
-		return newError("shadowsocks plugin ", proc.Path, " exits too fast").Base(err)
-	}
-
 	p.pluginProcess = proc
 
+	if ctx != nil {
+		go func() {
+			time.Sleep(time.Second)
+			err = platform.CheckChildProcess(proc.Process)
+			if err != nil {
+				core.Fatal(ctx, newError("shadowsocks plugin ", proc.Path, " exits too fast").Base(err))
+				return
+			}
+			go p.waitPlugin()
+		}()
+	} else {
+		go p.waitPlugin()
+	}
 	return nil
 }
 
@@ -113,7 +119,7 @@ func (p *Plugin) waitPlugin() {
 
 	time.Sleep(time.Second)
 
-	if restartErr := p.startPlugin(p.pluginProcess); restartErr != nil {
+	if restartErr := p.startPlugin(nil, p.pluginProcess); restartErr != nil {
 		restartErr.WriteToLog()
 	} else {
 		go p.waitPlugin()

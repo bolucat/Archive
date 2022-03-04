@@ -1,10 +1,12 @@
 package libcore
 
 import (
+	"container/list"
 	"net"
 	"sync"
 	"sync/atomic"
 
+	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 )
 
@@ -37,6 +39,8 @@ type appStats struct {
 	downlinkTotal uint64
 
 	deactivateAt int64
+
+	connections list.List
 }
 
 type TrafficListener interface {
@@ -56,13 +60,26 @@ func (t *Tun2ray) ResetAppTraffics() {
 	t.appStats.Range(func(key, value interface{}) bool {
 		uid := key.(uint16)
 		toDel = append(toDel, uid)
-
-		stats := value.(*appStats)
-		stats.Lock()
 		return true
 	})
 	for _, uid := range toDel {
 		t.appStats.Delete(uid)
+	}
+}
+
+func (t *Tun2ray) CloseConnections(uid int32) {
+	if !t.trafficStats {
+		return
+	}
+	statsI, ok := t.appStats.Load(uint16(uid))
+	if !ok {
+		return
+	}
+	stats := statsI.(*appStats)
+	stats.Lock()
+	defer stats.Unlock()
+	for element := stats.connections.Front(); element != nil; element = element.Next() {
+		common.Close(element.Value)
 	}
 }
 

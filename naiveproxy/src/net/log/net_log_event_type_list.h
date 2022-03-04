@@ -87,6 +87,13 @@ EVENT_TYPE(HOST_RESOLVER_MANAGER_CACHE_HIT)
 //   }
 EVENT_TYPE(HOST_RESOLVER_MANAGER_HOSTS_HIT)
 
+// This event is logged when a bootstrap request matches a config preset entry.
+// It contains the following parameter:
+//   {
+//     "results": <HostCache::Entry of results>,
+//   }
+EVENT_TYPE(HOST_RESOLVER_MANAGER_CONFIG_PRESET_MATCH)
+
 // This event is created when a new HostResolverManager::Job is about to be
 // created for a request.
 EVENT_TYPE(HOST_RESOLVER_MANAGER_CREATE_JOB)
@@ -886,7 +893,6 @@ EVENT_TYPE(SOCKET_POOL_CLOSING_SOCKET)
 //      "initiator": <Initiator origin of the request, if any, or else "not an
 //                    origin">,
 //      "load_flags": <Numeric value of the combined load flags>,
-//      "privacy_mode": <Privacy mode associated with the request>,
 //      "network_isolation_key": <NIK associated with the request>,
 //      "request_type": <Type of the request, which is "main frame", "subframe",
 //                       or "other">,
@@ -920,6 +926,12 @@ EVENT_TYPE(URL_REQUEST_DELEGATE_CERTIFICATE_REQUESTED)
 EVENT_TYPE(URL_REQUEST_DELEGATE_RECEIVED_REDIRECT)
 EVENT_TYPE(URL_REQUEST_DELEGATE_RESPONSE_STARTED)
 EVENT_TYPE(URL_REQUEST_DELEGATE_SSL_CERTIFICATE_ERROR)
+
+// Like the above events, but the END phase also has the following parameter:
+//   {
+//     "net_error": <Network error code. Only present on error.
+//   }
+EVENT_TYPE(URL_REQUEST_DELEGATE_CONNECTED)
 
 // Logged when a delegate informs the URL_REQUEST of what's currently blocking
 // the request. The parameters attached to the begin event are:
@@ -1170,9 +1182,7 @@ EVENT_TYPE(HTTP_STREAM_JOB_BOUND_TO_REQUEST)
 
 // Logs the protocol negotiated with the server. The event parameters are:
 //   {
-//      "status": <The NPN status ("negotiated", "unsupported", "no-overlap")>,
-//      "proto": <The NPN protocol negotiated>,
-//      "server_protos": <The list of server advertised protocols>,
+//      "proto": <The ALPN protocol negotiated>,
 //   }
 EVENT_TYPE(HTTP_STREAM_REQUEST_PROTO)
 
@@ -1482,6 +1492,14 @@ EVENT_TYPE(HTTP2_SESSION_SEND_SETTINGS)
 
 // On sending an HTTP/2 SETTINGS frame with ACK flag.
 EVENT_TYPE(HTTP2_SESSION_SEND_SETTINGS_ACK)
+
+// Receipt of an HTTP/2 ACCEPT_CH frame.
+// The following parameters are attached:
+//   {
+//     "origin": <The origin associated with the settings>,
+//     "accept_ch":  <the raw ACCEPT_CH setting for that origin>,
+//   }
+EVENT_TYPE(HTTP2_SESSION_RECV_ACCEPT_CH)
 
 // Receipt of an HTTP/2 SETTINGS frame without ACK flag.
 EVENT_TYPE(HTTP2_SESSION_RECV_SETTINGS)
@@ -2298,6 +2316,13 @@ EVENT_TYPE(QUIC_SESSION_MESSAGE_FRAME_RECEIVED)
 
 // Session received a HANDSHAKE_DONE frame.
 EVENT_TYPE(QUIC_SESSION_HANDSHAKE_DONE_FRAME_RECEIVED)
+
+// Session received an ACCEPT_CH frame
+// {
+//   "origin": <the origin the accept_ch settings apply to>
+//   "accept_ch": <the raw ACCEPT_CH data>
+// }
+EVENT_TYPE(QUIC_ACCEPT_CH_FRAME_RECEIVED)
 
 // Session sent a coalesced QUIC packet.
 // {
@@ -4054,3 +4079,10 @@ EVENT_TYPE(CORS_PREFLIGHT_CACHED_RESULT)
 //     "source_dependency": <Source identifier for the attached event>
 //   }
 EVENT_TYPE(CREATED_BY)
+
+// This event is logged when a URLRequestHttpJob's privacy mode is computed. It
+// contains the following parameter:
+// {
+//    "privacy_mode": <Privacy mode associated with the request>,
+// }
+EVENT_TYPE(COMPUTED_PRIVACY_MODE)

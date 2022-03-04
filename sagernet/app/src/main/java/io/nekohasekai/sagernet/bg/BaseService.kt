@@ -46,6 +46,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import libcore.AppStats
+import libcore.ErrorHandler
 import libcore.Libcore
 import libcore.TrafficListener
 import java.net.UnknownHostException
@@ -146,7 +147,7 @@ class BaseService {
                 if (delayMs == 0L) return
                 val queryTime = System.currentTimeMillis()
                 val sinceLastQueryInSeconds = (queryTime - lastQueryTime).toDouble() / 1000L
-                val proxy = data?.proxy ?: continue
+                val proxy = data?.proxy ?: return
                 lastQueryTime = queryTime
                 val (statsOut, outs) = proxy.outboundStats()
                 val stats = TrafficStats(
@@ -184,7 +185,7 @@ class BaseService {
 
         private suspend fun loopStats() {
             var lastQueryTime = 0L
-            val tun = (data?.proxy?.service as? VpnService)?.tun ?: return
+            var tun = (data?.proxy?.service as? VpnService)?.tun ?: return
             if (!tun.trafficStatsEnabled) return
 
             while (true) {
@@ -195,6 +196,7 @@ class BaseService {
                 lastQueryTime = queryTime
 
                 appStats.clear()
+                tun = (data?.proxy?.service as? VpnService)?.tun ?: return
                 tun.readAppTraffics(this)
 
                 val statsList = AppStatsList(appStats.map {
@@ -240,7 +242,10 @@ class BaseService {
                     ) == null)
                 ) {
                     check(looper == null)
-                    looper = launch { loop() }
+                    looper = launch {
+                        loop()
+                        looper = null
+                    }
                 }
                 if (data?.state != State.Connected) return@launch
                 val data = data
@@ -252,7 +257,7 @@ class BaseService {
 
         override fun stopListeningForBandwidth(cb: ISagerNetServiceCallback) {
             launch {
-                if (bandwidthListeners.remove(cb.asBinder()) != null && bandwidthListeners.isEmpty()) {
+                if (bandwidthListeners.remove(cb.asBinder()) != null && bandwidthListeners.isEmpty() && looper != null) {
                     looper!!.cancel()
                     looper = null
                 }
@@ -299,14 +304,33 @@ class BaseService {
                     ) == null)
                 ) {
                     check(statsLooper == null)
-                    statsLooper = launch { loopStats() }
+                    statsLooper = launch {
+                        loopStats()
+                        statsLooper = null
+                    }
+                }
+            }
+        }
+
+        fun checkLoop() {
+            if (bandwidthListeners.isNotEmpty() && looper == null) {
+                looper = launch {
+                    loop()
+                    looper = null
+                }
+            }
+            if (statsListeners.isNotEmpty() && statsLooper == null) {
+                statsLooper = launch {
+                    loopStats()
+                    statsListeners.clear()
+                    statsLooper = null
                 }
             }
         }
 
         override fun stopListeningForStats(cb: ISagerNetServiceCallback) {
             launch {
-                if (statsListeners.remove(cb.asBinder()) != null && statsListeners.isEmpty()) {
+                if (statsListeners.remove(cb.asBinder()) != null && statsListeners.isEmpty() && statsLooper != null) {
                     statsLooper!!.cancel()
                     statsLooper = null
                 }
@@ -350,6 +374,10 @@ class BaseService {
             Libcore.updateSystemRoots(useSystem)
         }
 
+        override fun closeConnections(uid: Int) {
+            (data?.proxy?.service as? VpnService)?.tun?.closeConnections(uid)
+        }
+
         override fun close() {
             callbacks.kill()
             cancel()
@@ -357,7 +385,7 @@ class BaseService {
         }
     }
 
-    interface Interface {
+    interface Interface : ErrorHandler {
         val data: Data
         val tag: String
         fun createNotification(profileName: String): ServiceNotification
@@ -424,11 +452,18 @@ class BaseService {
                 data.changeState(State.Stopped, msg)
                 DataStore.startedProfile = 0L
                 if (!keepState) DataStore.currentProfile = 0L
+                onDefaultDispatcher {
+                    Libcore.disableConnectionPool()
+                }
                 // stop the service if nothing has bound to it
                 if (restart) startRunner() else { //   BootReceiver.enabled = false
                     stopSelf()
                 }
             }
+        }
+
+        override fun handleError(err: String) {
+            stopRunner(false, err)
         }
 
         fun persistStats() {
@@ -518,8 +553,10 @@ class BaseService {
                     }
                     DataStore.currentProfile = profile.id
                     DataStore.startedProfile = profile.id
+                    Libcore.enableConnectionPool()
                     startProcesses()
                     data.changeState(State.Connected)
+                    data.binder.checkLoop()
 
                     for ((type, routeName) in proxy.config.alerts) {
                         data.binder.broadcast {

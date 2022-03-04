@@ -142,7 +142,9 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	if err != nil {
 		return newError("failed to open connection to ", destination).Base(err)
 	}
-	defer conn.Close()
+
+	connElem := net.AddConnection(conn)
+	defer net.RemoveConnection(connElem)
 
 	plcy := h.policy()
 	ctx, cancel := context.WithCancel(ctx)

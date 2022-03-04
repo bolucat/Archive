@@ -73,7 +73,8 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 	newError("tunneling request to ", destination, " via ", server.Destination()).WriteToLog(session.ExportIDToError(ctx))
 
-	defer conn.Close()
+	connElem := net.AddConnection(conn)
+	defer net.RemoveConnection(connElem)
 
 	user := server.PickUser()
 	account, ok := user.Account.(*MemoryAccount)

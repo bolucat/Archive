@@ -148,6 +148,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			if err != nil {
 				return err
 			}
+			connElem := net.AddConnection(client)
 			go func() {
 				err = client.Wait()
 				if err != nil {
@@ -156,6 +157,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 				c.Lock()
 				c.client = nil
 				c.Unlock()
+				net.RemoveConnection(connElem)
 			}()
 			sc = client
 		}

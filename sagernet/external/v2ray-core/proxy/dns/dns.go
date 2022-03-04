@@ -123,6 +123,9 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, d internet.
 		connReady: make(chan struct{}, 1),
 	}
 
+	connElem := net.AddConnection(conn)
+	defer net.RemoveConnection(connElem)
+
 	var reader dns_proto.MessageReader
 	var writer dns_proto.MessageWriter
 	if srcNetwork == net.Network_TCP {
@@ -159,8 +162,6 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, d internet.
 	timer := signal.CancelAfterInactivity(ctx, cancel, h.timeout)
 
 	request := func() error {
-		defer conn.Close()
-
 		for {
 			b, err := reader.ReadMessage()
 			if err == io.EOF {

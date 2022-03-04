@@ -1,5 +1,7 @@
 # Unlock Music 音乐解锁
+**由于DMCA Takedown，暂时移除仓库所有代码以及Commits**
 
+- 项目新域名：[unlock-music.dev](https://unlock-music.dev)
 - 获取更多信息，欢迎加入 Telegram 群组 [`@unlock_music_chat`][tg_group]！
 - Unlock Music 项目是以学习和技术研究的初衷创建的，修改、再分发时请遵循 [License][license]
 - Unlock Music 的 CLI 版本可以在 [unlock-music/cli][repo_cli] 找到，大批量转换建议使用 CLI 版本。

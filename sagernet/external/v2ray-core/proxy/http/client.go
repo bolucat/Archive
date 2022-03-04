@@ -108,11 +108,8 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		return newError("failed to find an available destination").Base(err)
 	}
 
-	defer func() {
-		if err := conn.Close(); err != nil {
-			newError("failed to closed connection").Base(err).WriteToLog(session.ExportIDToError(ctx))
-		}
-	}()
+	connElem := net.AddConnection(conn)
+	defer net.RemoveConnection(connElem)
 
 	p := c.policyManager.ForLevel(0)
 	if user != nil {

@@ -118,13 +118,15 @@ class VpnService : BaseVpnService(),
         Libcore.setLocalhostResolver(null)
         tun?.apply {
             close()
-            Seq.destroyRef(refnum)
-            tun = null
         }
         if (::conn.isInitialized) conn.close()
         super.killProcesses()
         persistAppStats()
         active = false
+        tun?.apply {
+            tun = null
+            Seq.destroyRef(refnum)
+        }
         GlobalScope.launch(Dispatchers.Default) { DefaultNetworkListener.stop(this) }
     }
 
@@ -176,7 +178,7 @@ class VpnService : BaseVpnService(),
                     upstreamInterfaceName = link.interfaceName
                 }
                 if (oldName != null && upstreamInterfaceName != null && oldName != upstreamInterfaceName) {
-                    tun?.resetNetwork()
+                    Libcore.resetConnections()
                 }
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
                     Libcore.bindNetworkName(link.interfaceName)
@@ -371,9 +373,6 @@ class VpnService : BaseVpnService(),
             dumpUID = data.proxy!!.config.dumpUid
             trafficStats = DataStore.appTrafficStatistics
             pCap = DataStore.enablePcap
-            errorHandler = ErrorHandler {
-                stopRunner(false, it)
-            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 bindUpstream = Protector {
                     protect(it)
@@ -388,6 +387,7 @@ class VpnService : BaseVpnService(),
                 }
             }
 
+            errorHandler = this@VpnService
             protector = this@VpnService
         }
 
@@ -431,10 +431,9 @@ class VpnService : BaseVpnService(),
                 entity.downlink += stats.downlinkTotal
                 toUpdate.add(entity)
             }
-            if (toUpdate.isNotEmpty()) {
-                SagerDatabase.statsDao.update(toUpdate)
-            }
-
+        }
+        if (toUpdate.isNotEmpty()) {
+            SagerDatabase.statsDao.update(toUpdate)
         }
     }
 

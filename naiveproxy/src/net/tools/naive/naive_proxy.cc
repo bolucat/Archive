@@ -56,8 +56,18 @@ NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
   proxy_info_.set_traffic_annotation(
       net::MutableNetworkTrafficAnnotationTag(traffic_annotation_));
 
-  session_->GetSSLConfig(&server_ssl_config_, &proxy_ssl_config_);
+  // See HttpStreamFactory::Job::DoInitConnectionImpl()
   proxy_ssl_config_.disable_cert_verification_network_fetches = true;
+  server_ssl_config_.alpn_protos = session_->GetAlpnProtos();
+  proxy_ssl_config_.alpn_protos = session_->GetAlpnProtos();
+  server_ssl_config_.application_settings = session_->GetApplicationSettings();
+  proxy_ssl_config_.application_settings = session_->GetApplicationSettings();
+  server_ssl_config_.ignore_certificate_errors =
+      session_->params().ignore_certificate_errors;
+  proxy_ssl_config_.ignore_certificate_errors =
+      session_->params().ignore_certificate_errors;
+  // TODO(https://crbug.com/964642): Also enable 0-RTT for TLS proxies.
+  server_ssl_config_.early_data_enabled = session_->params().enable_early_data;
 
   for (int i = 0; i < concurrency_; i++) {
     network_isolation_keys_.push_back(NetworkIsolationKey::CreateTransient());

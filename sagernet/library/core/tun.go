@@ -1,7 +1,6 @@
 package libcore
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"io"
@@ -16,7 +15,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/v2fly/v2ray-core/v5"
 	appOutbound "github.com/v2fly/v2ray-core/v5/app/proxyman/outbound"
-	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
@@ -53,9 +51,6 @@ type Tun2ray struct {
 	udpTable  sync.Map
 	appStats  sync.Map
 	lockTable sync.Map
-
-	connectionsLock sync.Mutex
-	connections     list.List
 
 	defaultOutboundForPing outbound.Handler
 }
@@ -165,25 +160,11 @@ func NewTun2ray(config *TunConfig) (*Tun2ray, error) {
 	return t, nil
 }
 
-func (t *Tun2ray) ResetNetwork() {
-	t.connectionsLock.Lock()
-	for item := t.connections.Front(); item != nil; item = item.Next() {
-		common.Close(item.Value)
-	}
-	t.connections.Init()
-	t.connectionsLock.Unlock()
-}
-
 func (t *Tun2ray) Close() {
 	pingproto.ControlFunc = nil
 	internet.UseAlternativeSystemDialer(nil)
 	internet.UseAlternativeSystemDNSDialer(nil)
 	comm.CloseIgnore(t.dev)
-	t.connectionsLock.Lock()
-	for item := t.connections.Front(); item != nil; item = item.Next() {
-		common.Close(item.Value)
-	}
-	t.connectionsLock.Unlock()
 }
 
 func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNet.Destination, conn net.Conn) {
@@ -269,20 +250,25 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 		atomic.AddInt32(&stats.tcpConn, 1)
 		atomic.AddUint32(&stats.tcpConnTotal, 1)
 		atomic.StoreInt64(&stats.deactivateAt, 0)
+		conn = statsConn{conn, &stats.uplink, &stats.downlink}
+		stats.Lock()
+		statsElement := stats.connections.PushBack(conn)
+		stats.Unlock()
 		defer func() {
 			if atomic.AddInt32(&stats.tcpConn, -1)+atomic.LoadInt32(&stats.udpConn) == 0 {
 				atomic.StoreInt64(&stats.deactivateAt, time.Now().Unix())
 			}
+			stats.Lock()
+			stats.connections.Remove(statsElement)
+			stats.Unlock()
 		}()
-		conn = statsConn{conn, &stats.uplink, &stats.downlink}
 	}
 
-	t.connectionsLock.Lock()
-	element := t.connections.PushBack(conn)
-	t.connectionsLock.Unlock()
+	element := v2rayNet.AddConnection(conn)
+	defer v2rayNet.RemoveConnection(element)
 
 	reader, input := pipe.New()
-	defer comm.CloseIgnore(conn, input)
+	defer comm.CloseIgnore(input)
 	link := &transport.Link{
 		Reader: reader,
 		Writer: connWriter{conn, buf.NewWriter(conn)},
@@ -296,10 +282,6 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	task.Run(ctx, func() error {
 		return buf.Copy(buf.NewReader(conn), input)
 	})
-
-	t.connectionsLock.Lock()
-	t.connections.Remove(element)
-	t.connectionsLock.Unlock()
 }
 
 type connWriter struct {
@@ -452,17 +434,22 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		atomic.AddInt32(&stats.udpConn, 1)
 		atomic.AddUint32(&stats.udpConnTotal, 1)
 		atomic.StoreInt64(&stats.deactivateAt, 0)
+		conn = statsPacketConn{conn, &stats.uplink, &stats.downlink}
+		stats.Lock()
+		statsElement := stats.connections.PushBack(conn)
+		stats.Unlock()
 		defer func() {
 			if atomic.AddInt32(&stats.udpConn, -1)+atomic.LoadInt32(&stats.tcpConn) == 0 {
 				atomic.StoreInt64(&stats.deactivateAt, time.Now().Unix())
 			}
+			stats.Lock()
+			stats.connections.Remove(statsElement)
+			stats.Unlock()
 		}()
-		conn = statsPacketConn{conn, &stats.uplink, &stats.downlink}
 	}
 
-	t.connectionsLock.Lock()
-	element := t.connections.PushBack(conn)
-	t.connectionsLock.Unlock()
+	element := v2rayNet.AddConnection(conn)
+	defer v2rayNet.RemoveConnection(element)
 
 	t.udpTable.Store(natKey, conn)
 
@@ -489,12 +476,8 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		}
 	}
 	// close
-	comm.CloseIgnore(conn, closer)
+	comm.CloseIgnore(closer)
 	t.udpTable.Delete(natKey)
-
-	t.connectionsLock.Lock()
-	t.connections.Remove(element)
-	t.connectionsLock.Unlock()
 }
 
 func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNet.Destination, message *buf.Buffer, writeBack func([]byte) error, closer io.Closer) bool {
@@ -571,9 +554,8 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 
 	conn := t.v2ray.handleUDP(ctx, handler, destination, time.Second*30)
 
-	t.connectionsLock.Lock()
-	element := t.connections.PushBack(conn)
-	t.connectionsLock.Unlock()
+	element := v2rayNet.AddConnection(conn)
+	defer v2rayNet.RemoveConnection(element)
 
 	t.udpTable.Store(natKey, conn)
 
@@ -595,12 +577,8 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 			}
 		}
 		// close
-		comm.CloseIgnore(conn, closer)
+		comm.CloseIgnore(closer)
 		t.udpTable.Delete(natKey)
-
-		t.connectionsLock.Lock()
-		t.connections.Remove(element)
-		t.connectionsLock.Unlock()
 	}()
 
 	return true

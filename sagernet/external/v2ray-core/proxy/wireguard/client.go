@@ -321,10 +321,12 @@ func (c *Client) NeedChecksum() bool {
 
 type remoteConnection struct {
 	internet.Connection
-	done *done.Instance
+	done              *done.Instance
+	connectionElement any
 }
 
 func (r remoteConnection) Close() error {
+	net.RemoveConnection(r.connectionElement)
 	if !r.done.Done() {
 		r.done.Close()
 	}
@@ -354,6 +356,7 @@ func (c *Client) connect() (*remoteConnection, error) {
 		c.connection = &remoteConnection{
 			conn,
 			done.New(),
+			net.AddConnection(conn),
 		}
 	}
 
@@ -393,6 +396,7 @@ func (o *clientBind) Close() error {
 	if c != nil {
 		common.Close(c)
 	}
+	o.connection = nil
 
 	return nil
 }

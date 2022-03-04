@@ -1060,7 +1060,7 @@ class ExtractorError(YoutubeDLError):
         if sys.exc_info()[0] in network_exceptions:
             expected = True
 
-        self.msg = str(msg)
+        self.orig_msg = str(msg)
         self.traceback = tb
         self.expected = expected
         self.cause = cause
@@ -1071,7 +1071,7 @@ class ExtractorError(YoutubeDLError):
         super(ExtractorError, self).__init__(''.join((
             format_field(ie, template='[%s] '),
             format_field(video_id, template='%s: '),
-            self.msg,
+            msg,
             format_field(cause, template=' (caused by %r)'),
             '' if expected else bug_reports_message())))
 
@@ -1372,7 +1372,7 @@ class YoutubeDLHandler(compat_urllib_request.HTTPHandler):
         if url != url_escaped:
             req = update_Request(req, url=url_escaped)
 
-        for h, v in std_headers.items():
+        for h, v in self._params.get('http_headers', std_headers).items():
             # Capitalize is needed because of Python bug 2275: http://bugs.python.org/issue2275
             # The dict keys are capitalized because of this bug by urllib
             if h.capitalize() not in req.headers:
@@ -2122,37 +2122,47 @@ if sys.platform == 'win32':
     whole_low = 0xffffffff
     whole_high = 0x7fffffff
 
-    def _lock_file(f, exclusive, block):  # todo: block unused on win32
+    def _lock_file(f, exclusive, block):
         overlapped = OVERLAPPED()
         overlapped.Offset = 0
         overlapped.OffsetHigh = 0
         overlapped.hEvent = 0
         f._lock_file_overlapped_p = ctypes.pointer(overlapped)
-        handle = msvcrt.get_osfhandle(f.fileno())
-        if not LockFileEx(handle, 0x2 if exclusive else 0x0, 0,
-                          whole_low, whole_high, f._lock_file_overlapped_p):
-            raise OSError('Locking file failed: %r' % ctypes.FormatError())
+
+        if not LockFileEx(msvcrt.get_osfhandle(f.fileno()),
+                          (0x2 if exclusive else 0x0) | (0x0 if block else 0x1),
+                          0, whole_low, whole_high, f._lock_file_overlapped_p):
+            raise BlockingIOError('Locking file failed: %r' % ctypes.FormatError())
 
     def _unlock_file(f):
         assert f._lock_file_overlapped_p
         handle = msvcrt.get_osfhandle(f.fileno())
-        if not UnlockFileEx(handle, 0,
-                            whole_low, whole_high, f._lock_file_overlapped_p):
+        if not UnlockFileEx(handle, 0, whole_low, whole_high, f._lock_file_overlapped_p):
             raise OSError('Unlocking file failed: %r' % ctypes.FormatError())
 
 else:
-    # Some platforms, such as Jython, is missing fcntl
     try:
         import fcntl
 
         def _lock_file(f, exclusive, block):
-            fcntl.flock(f,
-                        fcntl.LOCK_SH if not exclusive
-                        else fcntl.LOCK_EX if block
-                        else fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                fcntl.flock(f,
+                            fcntl.LOCK_SH if not exclusive
+                            else fcntl.LOCK_EX if block
+                            else fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise
+            except OSError:  # AOSP does not have flock()
+                fcntl.lockf(f,
+                            fcntl.LOCK_SH if not exclusive
+                            else fcntl.LOCK_EX if block
+                            else fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         def _unlock_file(f):
-            fcntl.flock(f, fcntl.LOCK_UN)
+            try:
+                fcntl.flock(f, fcntl.LOCK_UN)
+            except OSError:
+                fcntl.lockf(f, fcntl.LOCK_UN)
 
     except ImportError:
         UNSUPPORTED_MSG = 'file locking is not supported on this platform'
@@ -2165,6 +2175,8 @@ else:
 
 
 class locked_file(object):
+    _closed = False
+
     def __init__(self, filename, mode, block=True, encoding=None):
         assert mode in ['r', 'rb', 'a', 'ab', 'w', 'wb']
         self.f = io.open(filename, mode, encoding=encoding)
@@ -2182,9 +2194,11 @@ class locked_file(object):
 
     def __exit__(self, etype, value, traceback):
         try:
-            _unlock_file(self.f)
+            if not self._closed:
+                _unlock_file(self.f)
         finally:
             self.f.close()
+            self._closed = True
 
     def __iter__(self):
         return iter(self.f)
@@ -2243,7 +2257,7 @@ def unsmuggle_url(smug_url, default=None):
 def format_decimal_suffix(num, fmt='%d%s', *, factor=1000):
     """ Formats numbers with decimal sufixes like K, M, etc """
     num, factor = float_or_none(num), float(factor)
-    if num is None:
+    if num is None or num < 0:
         return None
     exponent = 0 if num == 0 else int(math.log(num, factor))
     suffix = ['', *'kMGTPEZY'][exponent]
@@ -2799,13 +2813,14 @@ class PagedList:
     def __init__(self, pagefunc, pagesize, use_cache=True):
         self._pagefunc = pagefunc
         self._pagesize = pagesize
+        self._pagecount = float('inf')
         self._use_cache = use_cache
         self._cache = {}
 
     def getpage(self, pagenum):
         page_results = self._cache.get(pagenum)
         if page_results is None:
-            page_results = list(self._pagefunc(pagenum))
+            page_results = [] if pagenum > self._pagecount else list(self._pagefunc(pagenum))
         if self._use_cache:
             self._cache[pagenum] = page_results
         return page_results
@@ -2817,7 +2832,7 @@ class PagedList:
         raise NotImplementedError('This method must be implemented by subclasses')
 
     def __getitem__(self, idx):
-        # NOTE: cache must be enabled if this is used
+        assert self._use_cache, 'Indexing PagedList requires cache'
         if not isinstance(idx, int) or idx < 0:
             raise TypeError('indices must be non-negative integers')
         entries = self.getslice(idx, idx + 1)
@@ -2843,7 +2858,11 @@ class OnDemandPagedList(PagedList):
                 if (end is not None and firstid <= end <= nextfirstid)
                 else None)
 
-            page_results = self.getpage(pagenum)
+            try:
+                page_results = self.getpage(pagenum)
+            except Exception:
+                self._pagecount = pagenum - 1
+                raise
             if startv != 0 or endv is not None:
                 page_results = page_results[startv:endv]
             yield from page_results
@@ -2863,8 +2882,8 @@ class OnDemandPagedList(PagedList):
 
 class InAdvancePagedList(PagedList):
     def __init__(self, pagefunc, pagecount, pagesize):
-        self._pagecount = pagecount
         PagedList.__init__(self, pagefunc, pagesize, True)
+        self._pagecount = pagecount
 
     def _getslice(self, start, end):
         start_page = start // self._pagesize
@@ -5417,3 +5436,8 @@ class WebSocketsWrapper():
 
 
 has_websockets = bool(compat_websockets)
+
+
+def merge_headers(*dicts):
+    """Merge dicts of network headers case insensitively, prioritizing the latter ones"""
+    return {k.capitalize(): v for k, v in itertools.chain.from_iterable(map(dict.items, dicts))}

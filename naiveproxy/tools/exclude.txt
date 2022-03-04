@@ -11,7 +11,7 @@
 *.pyc
 net/data/[!s]*
 net/data/s[!s]*
-net/data/ssl/[!c]*
+net/data/ssl/[!ce]*
 net/data/ssl/c[!h]*
 net/http/transport_security_state_static.json
 net/third_party/nist-pkits

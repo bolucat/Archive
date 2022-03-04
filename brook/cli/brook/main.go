@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -38,6 +39,7 @@ import (
 
 	"github.com/txthinking/brook"
 	"github.com/txthinking/runnergroup"
+	"github.com/txthinking/socks5"
 	"github.com/urfave/cli/v2"
 )
 
@@ -47,7 +49,7 @@ var debugAddress string
 func main() {
 	app := cli.NewApp()
 	app.Name = "Brook"
-	app.Version = "20220401"
+	app.Version = "20220404"
 	app.Usage = "A cross-platform strong encryption and not detectable proxy"
 	app.Authors = []*cli.Author{
 		{
@@ -112,6 +114,18 @@ func main() {
 					Name:  "updateListInterval",
 					Usage: "Update list interval, second. default 0, only read one time on start",
 				},
+				&cli.StringFlag{
+					Name:  "toSocks5",
+					Usage: "Forward to socks5 server, requires your socks5 supports standard socks5 TCP and UDP, such as 1.2.3.4:1080",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Username",
+					Usage: "Forward to socks5 server, username",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Password",
+					Usage: "Forward to socks5 server, password",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -133,6 +147,15 @@ func main() {
 				s, err := brook.NewServer(c.String("listen"), c.String("password"), c.Int("tcpTimeout"), c.Int("udpTimeout"), c.String("blockDomainList"), c.String("blockCIDR4List"), c.String("blockCIDR6List"), c.Int64("updateListInterval"))
 				if err != nil {
 					return err
+				}
+				if c.String("toSocks5") != "" {
+					c, err := socks5.NewClient(c.String("toSocks5"), c.String("toSocks5Username"), c.String("toSocks5Password"), c.Int("tcpTimeout"), c.Int("udpTimeout"))
+					if err != nil {
+						return err
+					}
+					s.Dial = func(network, laddr, raddr string) (net.Conn, error) {
+						return c.DialWithLocalAddr(network, laddr, raddr, nil)
+					}
 				}
 				g := runnergroup.New()
 				g.Add(&runnergroup.Runner{
@@ -297,6 +320,18 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "The data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "toSocks5",
+					Usage: "Forward to socks5 server, requires your socks5 supports standard socks5 TCP and UDP, such as 1.2.3.4:1080",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Username",
+					Usage: "Forward to socks5 server, username",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Password",
+					Usage: "Forward to socks5 server, password",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -320,6 +355,15 @@ func main() {
 					return err
 				}
 				s.WithoutBrook = c.Bool("withoutBrookProtocol")
+				if c.String("toSocks5") != "" {
+					c, err := socks5.NewClient(c.String("toSocks5"), c.String("toSocks5Username"), c.String("toSocks5Password"), c.Int("tcpTimeout"), c.Int("udpTimeout"))
+					if err != nil {
+						return err
+					}
+					s.Dial = func(network, laddr, raddr string) (net.Conn, error) {
+						return c.DialWithLocalAddr(network, laddr, raddr, nil)
+					}
+				}
 				g := runnergroup.New()
 				g.Add(&runnergroup.Runner{
 					Start: func() error {
@@ -502,6 +546,18 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "The data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "toSocks5",
+					Usage: "Forward to socks5 server, requires your socks5 supports standard socks5 TCP and UDP, such as 1.2.3.4:1080",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Username",
+					Usage: "Forward to socks5 server, username",
+				},
+				&cli.StringFlag{
+					Name:  "toSocks5Password",
+					Usage: "Forward to socks5 server, password",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -533,6 +589,15 @@ func main() {
 				s, err := brook.NewWSServer("", c.String("password"), h, c.String("path"), c.Int("tcpTimeout"), c.Int("udpTimeout"), c.String("blockDomainList"), c.String("blockCIDR4List"), c.String("blockCIDR6List"), c.Int64("updateListInterval"))
 				if err != nil {
 					return err
+				}
+				if c.String("toSocks5") != "" {
+					c, err := socks5.NewClient(c.String("toSocks5"), c.String("toSocks5Username"), c.String("toSocks5Password"), c.Int("tcpTimeout"), c.Int("udpTimeout"))
+					if err != nil {
+						return err
+					}
+					s.Dial = func(network, laddr, raddr string) (net.Conn, error) {
+						return c.DialWithLocalAddr(network, laddr, raddr, nil)
+					}
 				}
 				s.WithoutBrook = c.Bool("withoutBrookProtocol")
 				if c.String("cert") != "" {
@@ -621,6 +686,10 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "The data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "ca",
+					Usage: "When server is brook wssserver, specify ca instead of insecure, such as /path/to/ca.pem",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -654,6 +723,18 @@ func main() {
 				}
 				if c.Bool("insecure") {
 					s.TLSConfig.InsecureSkipVerify = true
+				}
+				if c.String("ca") != "" {
+					b, err := ioutil.ReadFile(c.String("ca"))
+					if err != nil {
+						return err
+					}
+					roots := x509.NewCertPool()
+					ok := roots.AppendCertsFromPEM(b)
+					if !ok {
+						return errors.New("failed to parse root certificate")
+					}
+					s.TLSConfig.RootCAs = roots
 				}
 				g := runnergroup.New()
 				g.Add(&runnergroup.Runner{
@@ -733,6 +814,10 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "When server is brook wsserver or brook wssserver, the data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "ca",
+					Usage: "When server is brook wssserver, specify ca instead of insecure, such as /path/to/ca.pem",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -754,6 +839,18 @@ func main() {
 				}
 				if strings.HasPrefix(c.String("server"), "wss://") && c.Bool("insecure") {
 					s.WSClient.TLSConfig.InsecureSkipVerify = true
+				}
+				if strings.HasPrefix(c.String("server"), "wss://") && c.String("ca") != "" {
+					b, err := ioutil.ReadFile(c.String("ca"))
+					if err != nil {
+						return err
+					}
+					roots := x509.NewCertPool()
+					ok := roots.AppendCertsFromPEM(b)
+					if !ok {
+						return errors.New("failed to parse root certificate")
+					}
+					s.WSClient.TLSConfig.RootCAs = roots
 				}
 				g := runnergroup.New()
 				g.Add(&runnergroup.Runner{
@@ -832,6 +929,10 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "When server is brook wsserver or brook wssserver, the data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "ca",
+					Usage: "When server is brook wssserver, specify ca instead of insecure, such as /path/to/ca.pem",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if debug {
@@ -853,6 +954,18 @@ func main() {
 				}
 				if strings.HasPrefix(c.String("server"), "wss://") && c.Bool("insecure") {
 					s.WSClient.TLSConfig.InsecureSkipVerify = true
+				}
+				if strings.HasPrefix(c.String("server"), "wss://") && c.String("ca") != "" {
+					b, err := ioutil.ReadFile(c.String("ca"))
+					if err != nil {
+						return err
+					}
+					roots := x509.NewCertPool()
+					ok := roots.AppendCertsFromPEM(b)
+					if !ok {
+						return errors.New("failed to parse root certificate")
+					}
+					s.WSClient.TLSConfig.RootCAs = roots
 				}
 				g := runnergroup.New()
 				g.Add(&runnergroup.Runner{
@@ -959,6 +1072,10 @@ func main() {
 				&cli.BoolFlag{
 					Name:  "withoutBrookProtocol",
 					Usage: "When server is brook wsserver or brook wssserver, the data will not be encrypted with brook protocol",
+				},
+				&cli.StringFlag{
+					Name:  "ca",
+					Usage: "When server is brook wssserver, specify ca instead of insecure, such as /path/to/ca.pem",
 				},
 			},
 			Action: func(c *cli.Context) error {
@@ -1075,12 +1192,24 @@ func main() {
 				}
 				var server, password, address string
 				var insecure, withoutbrook bool
+				var roots *x509.CertPool
 				if c.String("link") == "" {
 					server = c.String("server")
 					password = c.String("password")
 					address = c.String("address")
 					insecure = c.Bool("insecure")
 					withoutbrook = c.Bool("withoutBrookProtocol")
+					if c.String("ca") != "" {
+						b, err := ioutil.ReadFile(c.String("ca"))
+						if err != nil {
+							return err
+						}
+						roots = x509.NewCertPool()
+						ok := roots.AppendCertsFromPEM(b)
+						if !ok {
+							return errors.New("failed to parse root certificate")
+						}
+					}
 				}
 				if c.String("link") != "" {
 					var kind string
@@ -1100,8 +1229,15 @@ func main() {
 					if v.Get("withoutBrookProtocol") == "true" {
 						withoutbrook = true
 					}
+					if v.Get("ca") != "" {
+						roots = x509.NewCertPool()
+						ok := roots.AppendCertsFromPEM([]byte(v.Get("ca")))
+						if !ok {
+							return errors.New("failed to parse root certificate")
+						}
+					}
 				}
-				s, err := brook.NewTproxy(c.String("listen"), server, password, c.Bool("enableIPv6"), c.String("bypassCIDR4List"), c.String("bypassCIDR6List"), c.Int("tcpTimeout"), c.Int("udpTimeout"), address, insecure, withoutbrook)
+				s, err := brook.NewTproxy(c.String("listen"), server, password, c.Bool("enableIPv6"), c.String("bypassCIDR4List"), c.String("bypassCIDR6List"), c.Int("tcpTimeout"), c.Int("udpTimeout"), address, insecure, withoutbrook, roots)
 				if err != nil {
 					return err
 				}
@@ -1138,6 +1274,9 @@ func main() {
 					}
 					if strings.HasPrefix(server, "wss://") && insecure {
 						s1.WSClient.TLSConfig.InsecureSkipVerify = true
+					}
+					if strings.HasPrefix(server, "wss://") && roots != nil {
+						s1.WSClient.TLSConfig.RootCAs = roots
 					}
 					g.Add(&runnergroup.Runner{
 						Start: func() error {
@@ -1192,6 +1331,10 @@ func main() {
 					Name:  "withoutBrookProtocol",
 					Usage: "When server is brook wsserver or brook wssserver, the data will not be encrypted with brook protocol",
 				},
+				&cli.StringFlag{
+					Name:  "ca",
+					Usage: "When server is brook wssserver, specify ca instead of insecure, such as /path/to/ca.pem",
+				},
 			},
 			Action: func(c *cli.Context) error {
 				if c.String("server") == "" {
@@ -1221,6 +1364,13 @@ func main() {
 					yn = "true"
 				}
 				v.Set("withoutBrookProtocol", yn)
+				if c.String("ca") != "" {
+					b, err := ioutil.ReadFile(c.String("ca"))
+					if err != nil {
+						return err
+					}
+					v.Set("ca", string(b))
+				}
 				fmt.Println(brook.LinkExtra(s, c.String("s"), c.String("username"), c.String("password"), v))
 				return nil
 			},
@@ -1312,6 +1462,14 @@ func main() {
 					if kind == "wssserver" && v.Get("insecure") == "true" {
 						s.TLSConfig.InsecureSkipVerify = true
 					}
+					if kind == "wssserver" && v.Get("ca") != "" {
+						roots := x509.NewCertPool()
+						ok := roots.AppendCertsFromPEM([]byte(v.Get("ca")))
+						if !ok {
+							return errors.New("failed to parse root certificate")
+						}
+						s.TLSConfig.RootCAs = roots
+					}
 					g.Add(&runnergroup.Runner{
 						Start: func() error {
 							return s.ListenAndServe()
@@ -1339,7 +1497,6 @@ func main() {
 					sigs := make(chan os.Signal, 1)
 					signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 					<-sigs
-					log.Println(11)
 					g.Done()
 				}()
 				return g.Wait()

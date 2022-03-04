@@ -2,15 +2,17 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"reflect"
 	"sync"
 
-	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
-
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
+	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/inbound"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
@@ -85,12 +87,15 @@ func (r *resolution) resolve(allFeatures []features.Feature) (bool, error) {
 	return true, err
 }
 
+type ErrorHandler func(err error)
+
 // Instance combines all functionalities in V2Ray.
 type Instance struct {
 	access             sync.Mutex
 	features           []features.Feature
 	featureResolutions []resolution
 	running            bool
+	errorHandler       ErrorHandler
 
 	ctx context.Context
 }
@@ -341,4 +346,22 @@ func (s *Instance) Start() error {
 	newError("V2Ray ", Version(), " started").AtWarning().WriteToLog()
 
 	return nil
+}
+
+func (s *Instance) SetErrorHandler(handler ErrorHandler) {
+	s.errorHandler = handler
+}
+
+func Fatal(ctx context.Context, err error) {
+	if ex, ok := err.(*errors.Error); ok {
+		ex.WriteToLog()
+	} else {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	instance := MustFromContext(ctx)
+	if instance.errorHandler != nil {
+		instance.errorHandler(err)
+	} else {
+		os.Exit(1)
+	}
 }

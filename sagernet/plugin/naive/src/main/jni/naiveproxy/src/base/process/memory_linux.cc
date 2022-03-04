@@ -18,9 +18,11 @@
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 
-#if BUILDFLAG(USE_TCMALLOC)
-#include "third_party/tcmalloc/chromium/src/config.h"
-#include "third_party/tcmalloc/chromium/src/gperftools/tcmalloc.h"
+#if !BUILDFLAG(USE_ALLOCATOR_SHIM) && defined(LIBC_GLIBC)
+extern "C" {
+void* __libc_malloc(size_t size);
+void __libc_free(void* ptr);
+}  // extern "C"
 #endif
 
 namespace base {
@@ -47,9 +49,6 @@ void EnableTerminationOnOutOfMemory() {
 
 #if BUILDFLAG(USE_ALLOCATOR_SHIM)
   allocator::SetCallNewHandlerOnMallocFailure(true);
-#elif defined(USE_TCMALLOC)
-  // For tcmalloc, we need to tell it to behave like new.
-  tc_set_new_mode(1);
 #endif
 }
 
@@ -116,15 +115,22 @@ bool AdjustOOMScore(ProcessId process, int score) {
 bool UncheckedMalloc(size_t size, void** result) {
 #if BUILDFLAG(USE_ALLOCATOR_SHIM)
   *result = allocator::UncheckedAlloc(size);
-#elif defined(MEMORY_TOOL_REPLACES_ALLOCATOR) || \
-    (!defined(LIBC_GLIBC) && !BUILDFLAG(USE_TCMALLOC))
+#elif defined(MEMORY_TOOL_REPLACES_ALLOCATOR) || !defined(LIBC_GLIBC)
   *result = malloc(size);
-#elif defined(LIBC_GLIBC) && !BUILDFLAG(USE_TCMALLOC)
+#elif defined(LIBC_GLIBC)
   *result = __libc_malloc(size);
-#elif BUILDFLAG(USE_TCMALLOC)
-  *result = tc_malloc_skip_new_handler(size);
 #endif
   return *result != nullptr;
+}
+
+void UncheckedFree(void* ptr) {
+#if BUILDFLAG(USE_ALLOCATOR_SHIM)
+  allocator::UncheckedFree(ptr);
+#elif defined(MEMORY_TOOL_REPLACES_ALLOCATOR) || !defined(LIBC_GLIBC)
+  free(ptr);
+#elif defined(LIBC_GLIBC)
+  __libc_free(ptr);
+#endif
 }
 
 }  // namespace base

@@ -41,11 +41,11 @@ func (instance *V2RayInstance) UpdateStatus(tag string, status []byte) error {
 	return err
 }
 
-type StatusUpdateListener interface {
-	OnUpdate(status []byte) error
+type ObservatoryStatusUpdateListener interface {
+	OnUpdateObservatoryStatus(status []byte) error
 }
 
-func (instance *V2RayInstance) SetStatusUpdateListener(tag string, listener StatusUpdateListener) error {
+func (instance *V2RayInstance) SetStatusUpdateListener(tag string, listener ObservatoryStatusUpdateListener) error {
 	if listener == nil {
 		observer, err := instance.observatory.GetFeaturesByTag(tag)
 		if err != nil {
@@ -59,7 +59,7 @@ func (instance *V2RayInstance) SetStatusUpdateListener(tag string, listener Stat
 		}
 		observer.(*observatory.Observer).StatusUpdate = func(result *observatory.OutboundStatus) {
 			status, _ := proto.Marshal(result)
-			err = listener.OnUpdate(status)
+			err = listener.OnUpdateObservatoryStatus(status)
 			if err != nil {
 				logrus.Warn("failed to send observatory status update: ", err)
 			}

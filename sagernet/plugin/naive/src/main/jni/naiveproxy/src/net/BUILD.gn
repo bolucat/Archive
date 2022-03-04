@@ -6,8 +6,8 @@ import("//build/buildflag_header.gni")
 import("//build/config/chromecast_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
-import("//build/config/crypto.gni")
 import("//build/config/features.gni")
+import("//crypto/features.gni")
 import("//net/features.gni")
 import("//third_party/icu/config.gni")
 import("//third_party/protobuf/proto_library.gni")
@@ -421,6 +421,8 @@ component("net") {
     "cookies/cookie_store.h",
     "cookies/cookie_util.cc",
     "cookies/cookie_util.h",
+    "cookies/first_party_set_metadata.cc",
+    "cookies/first_party_set_metadata.h",
     "cookies/parsed_cookie.cc",
     "cookies/parsed_cookie.h",
     "cookies/same_party_context.cc",
@@ -651,7 +653,6 @@ component("net") {
     "http/url_security_manager.h",
     "http/webfonts_histogram.cc",
     "http/webfonts_histogram.h",
-    "http2/platform/impl/http2_macros_impl.h",
     "log/file_net_log_observer.cc",
     "log/file_net_log_observer.h",
     "log/net_log.cc",
@@ -1067,6 +1068,7 @@ component("net") {
   deps = [
     ":net_deps",
     "//build:chromeos_buildflags",
+    "//net/data/ssl/ev_roots:gen_ev_root_store_inc",
     "//net/http:transport_security_state_generated_files",
   ]
 

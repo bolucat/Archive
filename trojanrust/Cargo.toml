@@ -19,7 +19,7 @@ rustls = { version = "0.20.3", features = ["dangerous_configuration"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 sha2 = { version = "0.10.1" }
-tokio = { version = "1.16.1", features = ["full"] }
+tokio = { version = "1.7.0", features = ["full"] }
 tokio-util = { version = "0.7.0", features = ["full"] }
 tokio-stream = { version = "0.1.8" }
 tokio-rustls = "0.23.2"
@@ -37,6 +37,7 @@ uninit = "0.5.0"
 webpki-roots = "0.22.2"
 rustls-pemfile = "0.3.0"
 mockall = "0.11.0"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 tonic-build = { version = "0.6.2", features = ["compression"] }

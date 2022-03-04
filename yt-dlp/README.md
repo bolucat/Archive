@@ -737,9 +737,6 @@ You can also fork the project on github and run your fork's [build workflow](.gi
     --prefer-insecure                Use an unencrypted connection to retrieve
                                      information about the video (Currently
                                      supported only for YouTube)
-    --user-agent UA                  Specify a custom user agent
-    --referer URL                    Specify a custom referer, use if the video
-                                     access is restricted to one domain
     --add-header FIELD:VALUE         Specify a custom HTTP header and its value,
                                      separated by a colon ":". You can use this
                                      option multiple times
@@ -1698,6 +1695,10 @@ The following extractors use this feature:
 * `app_version`: App version to call mobile APIs with - should be set along with `manifest_app_version`. (e.g. `20.2.1`)
 * `manifest_app_version`: Numeric app version to call mobile APIs with. (e.g. `221`)
 
+#### rokfinchannel
+* `tab`: Which tab to download. One of `new`, `top`, `videos`, `podcasts`, `streams`, `stacks`. (E.g. `rokfinchannel:tab=streams`)
+
+
 NOTE: These options may be changed/removed in the future without concern for backward compatibility
 
 <!-- MANPAGE: MOVE "INSTALLATION" SECTION HERE -->
@@ -1862,6 +1863,8 @@ While these options are redundant, they are still expected to be used due to the
     --reject-title REGEX             --match-filter "title !~= (?i)REGEX"
     --min-views COUNT                --match-filter "view_count >=? COUNT"
     --max-views COUNT                --match-filter "view_count <=? COUNT"
+    --user-agent UA                  --add-header "User-Agent:UA"
+    --referer URL                    --add-header "Referer:URL"
 
 
 #### Not recommended

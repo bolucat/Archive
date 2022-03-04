@@ -1,6 +1,7 @@
 package self
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os/user"
@@ -42,7 +43,7 @@ type Plugin struct {
 	instance *core.Instance
 }
 
-func (v *Plugin) Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, _ *shadowsocks.MemoryAccount) error {
+func (v *Plugin) Init(ctx context.Context, localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, account *shadowsocks.MemoryAccount) error {
 	opts := make(Args)
 
 	opts.Add("localAddr", localHost)

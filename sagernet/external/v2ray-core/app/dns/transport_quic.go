@@ -36,7 +36,11 @@ type QUICTransport struct {
 }
 
 func (t *QUICTransport) Close() error {
-	return t.session.CloseWithError(0, "")
+	session := t.session
+	if session != nil {
+		session.CloseWithError(0, "")
+	}
+	return nil
 }
 
 func (t *QUICTransport) Type() dns.TransportType {

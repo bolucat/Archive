@@ -1,6 +1,8 @@
 package shadowsocks
 
 import (
+	"context"
+
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
@@ -24,7 +26,7 @@ func RegisterPlugin(name string, creator func() SIP003Plugin) {
 }
 
 type SIP003Plugin interface {
-	Init(localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, account *MemoryAccount) error
+	Init(ctx context.Context, localHost string, localPort string, remoteHost string, remotePort string, pluginOpts string, pluginArgs []string, account *MemoryAccount) error
 	common.Closable
 }
 

@@ -86,7 +86,7 @@ func NewServer(ctx context.Context, config *ServerConfig) (*Server, error) {
 		if sp, ok := plugin.(StreamPlugin); ok {
 			s.stream = sp
 
-			if err := plugin.Init("", "", "", "", config.PluginOpts, config.PluginArgs, mUser.Account.(*MemoryAccount)); err != nil {
+			if err := plugin.Init(ctx, "", "", "", "", config.PluginOpts, config.PluginArgs, mUser.Account.(*MemoryAccount)); err != nil {
 				return nil, newError("failed to start plugin").Base(err)
 			}
 			if pp, ok := plugin.(ProtocolPlugin); ok {
@@ -126,7 +126,7 @@ func NewServer(ctx context.Context, config *ServerConfig) (*Server, error) {
 				Port:    net.Port(port),
 			}
 
-			if err := plugin.Init(net.LocalHostIP.String(), strconv.Itoa(s.receiverPort), net.LocalHostIP.String(), strconv.Itoa(port), config.PluginOpts, config.PluginArgs, mUser.Account.(*MemoryAccount)); err != nil {
+			if err := plugin.Init(ctx, net.LocalHostIP.String(), strconv.Itoa(s.receiverPort), net.LocalHostIP.String(), strconv.Itoa(port), config.PluginOpts, config.PluginArgs, mUser.Account.(*MemoryAccount)); err != nil {
 				return nil, newError("failed to start plugin").Base(err)
 			}
 

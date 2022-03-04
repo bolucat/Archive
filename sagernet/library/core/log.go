@@ -118,7 +118,8 @@ func init() {
 	logrus.AddHook(&androidHook{})
 
 	_ = appLog.RegisterHandlerCreator(appLog.LogType_Console, func(lt appLog.LogType,
-		options appLog.HandlerCreatorOptions) (commonLog.Handler, error) {
+		options appLog.HandlerCreatorOptions,
+	) (commonLog.Handler, error) {
 		return commonLog.NewLogger(func() commonLog.Writer {
 			return &v2rayLogWriter{}
 		}), nil
