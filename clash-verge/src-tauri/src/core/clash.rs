@@ -95,7 +95,18 @@ impl Clash {
 
     let server = match clash_config.get(&key_server) {
       Some(value) => match value {
-        Value::String(val_str) => Some(val_str.clone()),
+        Value::String(val_str) => {
+          // `external-controller` could be
+          // "127.0.0.1:9090" or ":9090"
+          // Todo: maybe it could support single port
+          let server = val_str.clone();
+          let server = match server.starts_with(":") {
+            true => format!("127.0.0.1{server}"),
+            false => server,
+          };
+
+          Some(server)
+        }
         _ => None,
       },
       _ => None,
@@ -253,19 +264,13 @@ impl Clash {
   /// activate the profile
   /// generate a new profile to the temp_dir
   /// then put the path to the clash core
-  fn _activate(info: ClashInfo, config: Mapping) -> Result<()> {
+  fn _activate(info: ClashInfo, config: Mapping, window: Option<Window>) -> Result<()> {
     let temp_path = dirs::profiles_temp_path();
     config::save_yaml(temp_path.clone(), &config, Some("# Clash Verge Temp File"))?;
 
     tauri::async_runtime::spawn(async move {
-      // `external-controller` could be
-      // "127.0.0.1:9090" or ":9090"
-      // Todo: maybe it could support single port
       let server = info.server.unwrap();
-      let server = match server.starts_with(":") {
-        true => format!("http://127.0.0.1{server}/configs"),
-        false => format!("http://{server}/configs"),
-      };
+      let server = format!("http://{server}/configs");
 
       let mut headers = HeaderMap::new();
       headers.insert("Content-Type", "application/json".parse().unwrap());
@@ -289,6 +294,12 @@ impl Clash {
                 if resp.status() != 204 {
                   log::error!("failed to activate clash for status \"{}\"", resp.status());
                 }
+
+                // emit the window to update something
+                if let Some(window) = window {
+                  window.emit("verge://refresh-clash-config", "yes").unwrap();
+                }
+
                 // do not retry
                 break;
               }
@@ -320,6 +331,7 @@ impl Clash {
 
     // generate the payload
     let payload = profiles.gen_enhanced(event_name.clone())?;
+    let window = self.window.clone();
 
     win.once(&event_name, move |event| {
       if let Some(result) = event.payload() {
@@ -328,7 +340,7 @@ impl Clash {
         if let Some(data) = result.data {
           // all of these can not be revised by script
           // http/https/socks port should be under control
-          let not_allow: Vec<Value> = vec![
+          let not_allow = vec![
             "port",
             "socks-port",
             "mixed-port",
@@ -337,23 +349,29 @@ impl Clash {
             "external-controller",
             "secret",
             "log-level",
-          ]
-          .iter()
-          .map(|&i| Value::from(i))
-          .collect();
+          ];
 
           for (key, value) in data.into_iter() {
-            if not_allow.iter().find(|&i| i == &key).is_none() {
-              config.insert(key, value);
-            }
+            key.as_str().map(|key_str| {
+              // change to lowercase
+              let mut key_str = String::from(key_str);
+              key_str.make_ascii_lowercase();
+
+              // filter
+              if !not_allow.contains(&&*key_str) {
+                config.insert(Value::String(key_str), value);
+              }
+            });
           }
 
-          Self::_activate(info, config).unwrap();
+          log::info!("profile enhanced status {}", result.status);
+
+          Self::_activate(info, config, window).unwrap();
         }
 
-        log::info!("profile enhanced status {}", result.status);
-
-        result.error.map(|error| log::error!("{error}"));
+        if let Some(error) = result.error {
+          log::error!("{error}");
+        }
       }
     });
 
@@ -379,7 +397,7 @@ impl Clash {
       config.insert(key, value);
     }
 
-    Self::_activate(info, config)?;
+    Self::_activate(info, config, self.window.clone())?;
     self.activate_enhanced(profiles, delay)
   }
 }

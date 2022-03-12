@@ -10,6 +10,7 @@
     "web:build": "tsc && vite build",
     "web:serve": "vite preview",
     "check": "node scripts/check.mjs",
+    "green": "node scripts/green.mjs",
     "publish": "node scripts/publish.mjs",
     "release": "node scripts/release.mjs",
     "prepare": "husky install"
@@ -23,8 +24,10 @@
     "ahooks": "^3.1.13",
     "axios": "^0.26.0",
     "dayjs": "^1.10.8",
+    "i18next": "^21.6.14",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
+    "react-i18next": "^11.15.6",
     "react-router-dom": "^6.2.2",
     "react-virtuoso": "^2.7.0",
     "recoil": "^0.6.1",

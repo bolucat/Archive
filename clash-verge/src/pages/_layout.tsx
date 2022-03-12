@@ -1,5 +1,7 @@
+import i18next from "i18next";
 import useSWR, { SWRConfig, useSWRConfig } from "swr";
 import { useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Route, Routes } from "react-router-dom";
 import { alpha, createTheme, List, Paper, ThemeProvider } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
@@ -16,6 +18,7 @@ import UpdateButton from "../components/layout/update-button";
 const isMacos = navigator.userAgent.includes("Mac OS X");
 
 const Layout = () => {
+  const { t } = useTranslation();
   const { mutate } = useSWRConfig();
   const { data } = useSWR("getVergeConfig", getVergeConfig);
 
@@ -27,15 +30,19 @@ const Layout = () => {
       if (e.key === "Escape") appWindow.hide();
     });
 
-    listen("restart_clash", async () => {
+    listen("verge://refresh-clash-config", async () => {
       // the clash info may be updated
       await getAxios(true);
-      // make sure that the clash is ok
-      setTimeout(() => mutate("getProxies"), 1000);
-      setTimeout(() => mutate("getProxies"), 2000);
+      mutate("getProxies");
       mutate("getClashConfig");
     });
   }, []);
+
+  useEffect(() => {
+    if (data?.language) {
+      i18next.changeLanguage(data.language);
+    }
+  }, [data?.language]);
 
   const theme = useMemo(() => {
     // const background = mode === "light" ? "#f5f5f5" : "#000";
@@ -87,7 +94,7 @@ const Layout = () => {
             <List className="the-menu" data-windrag>
               {routers.map((router) => (
                 <LayoutItem key={router.label} to={router.link}>
-                  {router.label}
+                  {t(router.label)}
                 </LayoutItem>
               ))}
             </List>
