@@ -51,6 +51,7 @@ jobs:
           ${GCRS} https://github.com/Shadowsocks-NET/Qv2ray ssnet-qv2ray
           ${GCRS} https://github.com/yichengchen/clashX clashx
           ${GCRS} https://github.com/Fndroid/clash_for_windows_pkg clash-cfw
+          ${GCRS} https://github.com/zzzgydi/clash-verge clash-verge
           ${GCRS} https://github.com/Kr328/ClashForAndroid clash-cfa
           ${GCRS} https://github.com/trojan-gfw/igniter igniter
           ${GCRS} https://github.com/trojan-gfw/igniter-go-libs igniter/app/src/libs/go-libs && rm -rfv igniter/app/src/libs/go-libs/.git
@@ -77,6 +78,7 @@ jobs:
           ${GCRS} https://github.com/Loyalsoldier/v2ray-rules-dat v2ray-rules-dat
           ${GCRS} https://github.com/Loyalsoldier/geoip geoip
           ${GCRS} https://github.com/17mon/china_ip_list china-ip
+          ${GCRS} https://github.com/ip-scanner/cloudflare ip-scanner
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -180,6 +182,11 @@ jobs:
           mkdir -p clash-cfa/Clients
           pushd clash-cfa/Clients || exit 1
           wget -qO- https://api.github.com/repos/Kr328/ClashForAndroid/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
+          # clash-verge
+          mkdir -p clash-verge/Clients
+          pushd clash-verge/Clients || exit 1
+          wget -qO- https://api.github.com/repos/zzzgydi/clash-verge/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # igniter
           mkdir -p igniter/Clients
@@ -329,8 +336,9 @@ jobs:
           ${Z9R} clashx.zip clashx
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
+          ${Z9R} clash-verge.zip clash-verge
           # clash
-          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip
+          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-verge.zip
           rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip
           ${Z9R} igniter.zip igniter
           ${Z9R} sagernet.zip sagernet
