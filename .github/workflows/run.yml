@@ -770,7 +770,7 @@ jobs:
         if: (!cancelled())
         with:
           repo: bolucat/Archive
-          keep_latest: 5
+          keep_latest: 20
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
