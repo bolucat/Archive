@@ -19,14 +19,14 @@ export const mediaListUrls = [
   ...favoriteListUrls,
   ...upListUrls,
 ]
-/** 拜年纪页面 */
-export const bnjUrls = [
-  /\/\/www\.bilibili\.com\/festival\/(\d+)bnj/,
+/** 拜年纪等类似活动页面 */
+export const festivalUrls = [
+  /\/\/www\.bilibili\.com\/festival\//,
 ]
 /** 含有普通视频的页面 */
 export const videoUrls = [
   '//www.bilibili.com/video/',
-  ...bnjUrls,
+  ...festivalUrls,
   ...mediaListUrls,
 ]
 /** 含有番剧的页面 */
@@ -58,15 +58,6 @@ export const mainSiteUrls = [
 /** 直播间页面 */
 export const liveUrls = [
   /^https:\/\/live\.bilibili\.com\/(blanc\/)?[\d]+/,
-]
-/** 不支持夜间模式的页面 */
-export const darkExcludes = [
-  '//member.bilibili.com/v2',
-  '//member.bilibili.com/video/upload.html',
-  '//member.bilibili.com/article-text/home',
-  '//www.bilibili.com/audio/submit/',
-  '//member.bilibili.com/studio/bs-editor/projects',
-  '//www.bilibili.com/s/video/',
 ]
 /** 除动态详情页以外的含有动态的页面 */
 export const feedsUrlsWithoutDetail = [

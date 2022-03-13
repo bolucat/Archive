@@ -67,7 +67,7 @@
     "type": "component",
     "name": "unfoldFeeds",
     "displayName": "动态反折叠",
-    "description": "自动展开被折叠的动态.",
+    "description": "\n自动展开被折叠的动态.\n\n动态被折叠可能是因为:\n- 短时间内大量更新作品\n- 多人转发同一个作品\n- 被审核折叠\n",
     "fullRelativePath": "../../registry/dist/components/feeds/unfold.js",
     "fullAbsolutePath": "registry/dist/components/feeds/unfold.js"
   },
@@ -246,6 +246,14 @@
     "description": "隐藏视频里鼠标经过时出现在右上角的覆盖层.",
     "fullRelativePath": "../../registry/dist/components/style/hide/video/top-mask.js",
     "fullAbsolutePath": "registry/dist/components/style/hide/video/top-mask.js"
+  },
+  {
+    "type": "component",
+    "name": "freshHome",
+    "displayName": "清爽首页",
+    "description": "使用重新设计的清爽风格首页替换原本的首页.\n\n- 个性化推荐: 启用时展示推荐视频, 禁用时展示热门视频\n- 启用横向滚动: 在可以横向滚动的列表中, 使鼠标滚轮可以做出横向滚动的效果, 请注意这会禁用卡片的边缘吸附效果.",
+    "fullRelativePath": "../../registry/dist/components/style/home-redesign/fresh.js",
+    "fullAbsolutePath": "registry/dist/components/style/home-redesign/fresh.js"
   },
   {
     "type": "component",
@@ -513,6 +521,14 @@
   },
   {
     "type": "component",
+    "name": "videoDefaultLocation",
+    "displayName": "视频页默认定位",
+    "description": "打开视频/番剧时自动定位到指定位置\r\n\r\n<div class=\"video-default-location-desc-detail\">\r\n\r\n位置：距离页面顶部的像素距离\\\r\n默认位置：打开视频时自动定位到此处\\\r\n位置测试：查看、调整当前页面所在位置\r\n\r\n当前版本限制默认位置的最大值为 4000。\\\r\n若有其他希望支持的页面，请提交反馈。\\\r\n脚本不会等待评论完全加载，因此较大的默认位置将无法正确定位。\r\n\r\n</div>\r\n\r\n<style>\r\n.video-default-location-desc-detail.video-default-location-desc-detail p {\r\n  margin-top: 1ex;\r\n}\r\n</style>\r\n",
+    "fullRelativePath": "../../registry/dist/components/video/default-location.js",
+    "fullAbsolutePath": "registry/dist/components/video/default-location.js"
+  },
+  {
+    "type": "component",
     "name": "downloadVideo",
     "displayName": "下载视频",
     "description": "在功能面板中添加下载视频支持. 请注意不能下载超出账号权限的视频, 例如非大会员下载大会员清晰度视频, 或者大陆地区网络下载港澳台地区番剧, 都是不可以的.",
@@ -610,8 +626,8 @@
   {
     "type": "component",
     "name": "rememberVideoSpeed",
-    "displayName": "倍速记忆",
-    "description": "by [@JLoeve](https://github.com/LonelySteve)\n\n记忆上次选择的视频播放速度, 还可以使用更多倍速来扩展原生倍速菜单.",
+    "displayName": "倍速增强",
+    "description": "by [@JLoeve](https://github.com/LonelySteve)\n\n可以记忆上次选择的视频播放速度, 还可以使用更多倍速来扩展原生倍速菜单.",
     "fullRelativePath": "../../registry/dist/components/video/player/remember-speed.js",
     "fullAbsolutePath": "registry/dist/components/video/player/remember-speed.js"
   },

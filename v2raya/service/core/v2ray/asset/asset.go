@@ -2,13 +2,16 @@ package asset
 
 import (
 	"errors"
+	"fmt"
 	"github.com/adrg/xdg"
 	"github.com/muhammadmuzzammil1998/jsonc"
 	"github.com/v2rayA/v2rayA/common/files"
 	"github.com/v2rayA/v2rayA/conf"
 	"github.com/v2rayA/v2rayA/core/v2ray/where"
 	"github.com/v2rayA/v2rayA/pkg/util/log"
+	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -135,4 +138,21 @@ func GetV2rayConfigPath() (p string) {
 
 func GetV2rayConfigDirPath() (p string) {
 	return conf.GetEnvironmentConfig().V2rayConfigDirectory
+}
+
+func Download(url string, to string) (err error) {
+	resp, err := http.Get(url)
+	if err != nil || resp.StatusCode != 200 {
+		if err == nil {
+			defer resp.Body.Close()
+			err = fmt.Errorf("code: %v %v", resp.StatusCode, resp.Status)
+		}
+		return err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(to, b, 0644)
 }
