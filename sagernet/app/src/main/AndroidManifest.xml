@@ -4,7 +4,7 @@
     package="io.nekohasekai.sagernet"
     android:installLocation="internalOnly">
 
-    <uses-sdk tools:overrideLibrary="com.google.zxing.client.android" />
+    <uses-sdk tools:overrideLibrary="com.google.zxing.client.android|rikka.shizuku.api|rikka.shizuku.provider|rikka.shizuku.shared|rikka.shizuku.aidl" />
 
     <permission
         android:name="${applicationId}.SERVICE"
@@ -21,6 +21,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -228,7 +229,7 @@
             android:launchMode="singleTask"
             android:process=":bg"
             android:taskAffinity=""
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            android:theme="@style/Theme.SagerNet.Translucent">
             <intent-filter>
                 <action android:name="android.intent.action.CREATE_SHORTCUT" />
             </intent-filter>
@@ -245,12 +246,6 @@
             android:configChanges="uiMode"
             android:excludeFromRecents="true"
             android:label="@string/add_profile_methods_scan_qr_code"
-            android:launchMode="singleTask"
-            android:parentActivityName="io.nekohasekai.sagernet.ui.MainActivity" />
-        <activity
-            android:name="io.nekohasekai.sagernet.ui.LicenseActivity"
-            android:configChanges="uiMode"
-            android:label="@string/oss_licenses"
             android:launchMode="singleTask"
             android:parentActivityName="io.nekohasekai.sagernet.ui.MainActivity" />
         <activity
@@ -337,10 +332,6 @@
             tools:node="remove" />
 
         <activity
-            android:name="com.mikepenz.aboutlibraries.ui.LibsActivity"
-            tools:node="remove" />
-
-        <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             tools:node="remove" />
 
@@ -361,12 +352,154 @@
 
         <activity
             android:name="io.nekohasekai.sagernet.tasker.TaskerActivity"
+            android:configChanges="uiMode"
+            android:excludeFromRecents="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="io.nekohasekai.sagernet.ui.sai.SplitAPKsInstallerActivity"
+            android:configChanges="uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/sai"
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.SagerNet.Translucent">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\.apks"
+                    android:scheme="file" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\.apks"
+                    android:scheme="file" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="file" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\.apks"
+                    android:scheme="content" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\.apks"
+                    android:scheme="content" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+
+                <data
+                    android:host="*"
+                    android:mimeType="*/*"
+                    android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\..*\\.apks"
+                    android:scheme="content" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".ui.sai.SplitAPKsInstallerService"
+            android:exported="false" />
+
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
     </application>
 
