@@ -82,7 +82,7 @@ namespace v2rayN.Forms
             RefreshRoutingsMenu();
             RestoreUI();
 
-            LoadV2ray();
+            _ = LoadV2ray();
 
             HideForm();
 
@@ -201,7 +201,10 @@ namespace v2rayN.Forms
         /// </summary>
         private void RefreshServers()
         {
-            lstVmess = config.vmess.Where(it => it.groupId == groupId).OrderBy(it => it.sort).ToList();
+            lstVmess = config.vmess
+                .Where(it => Utils.IsNullOrEmpty(groupId) ? true : it.groupId == groupId)
+                .OrderBy(it => it.sort)
+                .ToList();
 
             ConfigHandler.SetDefaultServer(config, lstVmess);
             RefreshServersView();
@@ -469,6 +472,11 @@ namespace v2rayN.Forms
         {
             tabGroup.TabPages.Clear();
 
+            string title = $"  {UIRes.I18N("AllGroupServers")}   ";
+            var tabPage = new TabPage(title);
+            tabPage.Name = "";
+            tabGroup.TabPages.Add(tabPage);
+
             foreach (var item in config.groupItem)
             {
                 var tabPage2 = new TabPage($"   {item.remarks}   ");
@@ -476,12 +484,7 @@ namespace v2rayN.Forms
                 tabGroup.TabPages.Add(tabPage2);
             }
 
-            string title = $"  {UIRes.I18N("UngroupedServers")}   ";
-            var tabPage = new TabPage(title);
-            tabPage.Name = "Ungrouped";
-            tabGroup.TabPages.Add(tabPage);
-
-            tabGroup.SelectedIndex = tabGroup.TabPages.Count - 1;
+            tabGroup.SelectedIndex = 0;
         }
 
         private void tabGroup_SelectedIndexChanged(object sender, EventArgs e)
@@ -491,11 +494,9 @@ namespace v2rayN.Forms
                 return;
             }
             groupId = string.Empty;
-            if (tabGroup.SelectedIndex < config.groupItem.Count)
-            {
-                groupId = config.groupItem[tabGroup.SelectedIndex].id;
-            }
-
+            //groupId = tabGroup.TabPages[tabGroup.SelectedIndex].Name;
+            groupId = tabGroup.SelectedTab.Name;
+            
             RefreshServers();
         }
         #endregion
@@ -602,7 +603,7 @@ namespace v2rayN.Forms
             if (fm.ShowDialog() == DialogResult.OK)
             {
                 RefreshServers();
-                LoadV2ray();
+                _ = LoadV2ray();
             }
         }
 
@@ -691,7 +692,7 @@ namespace v2rayN.Forms
             ConfigHandler.RemoveServer(config, lvSelecteds);
 
             RefreshServers();
-            LoadV2ray();
+            _ = LoadV2ray();
         }
 
         private void menuRemoveDuplicateServer_Click(object sender, EventArgs e)
@@ -700,7 +701,7 @@ namespace v2rayN.Forms
             ConfigHandler.DedupServerList(ref config, ref lstVmess);
             int newCount = lstVmess.Count;
             RefreshServers();
-            LoadV2ray();
+            _ = LoadV2ray();
             UI.Show(string.Format(UIRes.I18N("RemoveDuplicateServerResult"), oldCount, newCount));
         }
 
@@ -847,7 +848,7 @@ namespace v2rayN.Forms
             if (fm.ShowDialog() == DialogResult.OK)
             {
                 RefreshServers();
-                LoadV2ray();
+                _ = LoadV2ray();
             }
         }
 
@@ -858,7 +859,7 @@ namespace v2rayN.Forms
             {
                 RefreshRoutingsMenu();
                 RefreshServers();
-                LoadV2ray();
+                _ = LoadV2ray();
             }
         }
 
@@ -869,7 +870,7 @@ namespace v2rayN.Forms
             {
                 RefreshRoutingsMenu();
                 RefreshServers();
-                LoadV2ray();
+                _ = LoadV2ray();
             }
 
         }
@@ -888,7 +889,7 @@ namespace v2rayN.Forms
         private void tsbReload_Click(object sender, EventArgs e)
         {
             Global.reloadV2ray = true;
-            LoadV2ray();
+            _ = LoadV2ray();
         }
 
         private void tsbClose_Click(object sender, EventArgs e)
@@ -913,7 +914,7 @@ namespace v2rayN.Forms
             if (ConfigHandler.SetDefaultServer(ref config, lstVmess[index]) == 0)
             {
                 RefreshServers();
-                LoadV2ray();
+                _ = LoadV2ray();
             }
             return 0;
         }
@@ -1267,7 +1268,7 @@ namespace v2rayN.Forms
             if (success)
             {
                 Global.reloadV2ray = true;
-                LoadV2ray();
+                _ = LoadV2ray();
             }
         }
         #endregion
@@ -1396,7 +1397,7 @@ namespace v2rayN.Forms
                     AppendText(false, UIRes.I18N("MsgUpdateV2rayCoreSuccessfullyMore"));
 
                     Global.reloadV2ray = true;
-                    LoadV2ray();
+                    _ = LoadV2ray();
 
                     AppendText(false, UIRes.I18N("MsgUpdateV2rayCoreSuccessfully"));
                 }
@@ -1412,7 +1413,7 @@ namespace v2rayN.Forms
                 if (success)
                 {
                     Global.reloadV2ray = true;
-                    LoadV2ray();
+                    _ = LoadV2ray();
                 }
             });
         }
@@ -1425,7 +1426,7 @@ namespace v2rayN.Forms
                 if (success)
                 {
                     Global.reloadV2ray = true;
-                    LoadV2ray();
+                    _ = LoadV2ray();
                 }
             });
         }
@@ -1576,7 +1577,7 @@ namespace v2rayN.Forms
                 if (ConfigHandler.SetDefaultRouting(ref config, index) == 0)
                 {
                     RefreshRoutingsMenu();
-                    LoadV2ray();
+                    _ = LoadV2ray();
                 }
             }
             catch

@@ -285,9 +285,6 @@ pub fn patch_verge_config(
 ) -> Result<(), String> {
   let tun_mode = payload.enable_tun_mode.clone();
 
-  let mut verge = verge_state.0.lock().unwrap();
-  wrap_err!(verge.patch_config(payload))?;
-
   // change tun mode
   if tun_mode.is_some() {
     let mut clash = clash_state.0.lock().unwrap();
@@ -297,6 +294,9 @@ pub fn patch_verge_config(
     clash.update_config();
     wrap_err!(clash.activate(&profiles, false))?;
   }
+
+  let mut verge = verge_state.0.lock().unwrap();
+  wrap_err!(verge.patch_config(payload))?;
 
   Ok(())
 }
@@ -348,24 +348,26 @@ fn open_path_cmd(path: PathBuf, err_str: &str) -> Result<(), String> {
   match result {
     Ok(child) => match child.wait_with_output() {
       Ok(out) => {
+        // 退出码不为0 不一定没有调用成功
+        // 因此仅做warn log且不返回错误
         if let Some(code) = out.status.code() {
           if code != 0 {
-            log::error!(
-              "failed to open path {:?} for {} (code {code})",
-              &path,
+            log::warn!("failed to open {:?} (code {})", &path, code);
+            log::warn!(
+              "open cmd stdout: {}, stderr: {}",
+              String::from_utf8_lossy(&out.stdout),
               String::from_utf8_lossy(&out.stderr),
             );
-            return Err(err_str.into());
           }
         }
       }
       Err(err) => {
-        log::error!("failed to open path {:?} for {err}", &path);
+        log::error!("failed to open {:?} for {err}", &path);
         return Err(err_str.into());
       }
     },
     Err(err) => {
-      log::error!("failed to open path {:?} for {err}", &path);
+      log::error!("failed to open {:?} for {err}", &path);
       return Err(err_str.into());
     }
   }
