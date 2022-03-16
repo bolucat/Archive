@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 )
 
 // AnswerHandler function handles the dns TypeA or TypeAAAA answer.
-type AnswerHandler func(domain, ip string) error
+type AnswerHandler func(domain string, ip netip.Addr) error
 
 // Config for dns.
 type Config struct {
@@ -27,6 +28,7 @@ type Config struct {
 	AlwaysTCP bool
 	CacheSize int
 	CacheLog  bool
+	NoAAAA    bool
 }
 
 // Client is a dns client struct.
@@ -51,7 +53,9 @@ func NewClient(proxy proxy.Proxy, config *Config) (*Client, error) {
 
 	// custom records
 	for _, record := range config.Records {
-		c.AddRecord(record)
+		if err := c.AddRecord(record); err != nil {
+			log.F("[dns] add record '%s' error: %s", record, err)
+		}
 	}
 
 	return c, nil
@@ -63,6 +67,12 @@ func (c *Client) Exchange(reqBytes []byte, clientAddr string, preferTCP bool) ([
 	req, err := UnmarshalMessage(reqBytes)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.config.NoAAAA && req.Question.QTYPE == QTypeAAAA {
+		respBytes := valCopy(reqBytes)
+		respBytes[2] |= uint8(ResponseMsg) << 7
+		return respBytes, nil
 	}
 
 	if req.Question.QTYPE == QTypeA || req.Question.QTYPE == QTypeAAAA {
@@ -131,11 +141,11 @@ func (c *Client) extractAnswer(resp *Message) ([]string, int) {
 	ttl := c.config.MinTTL
 	for _, answer := range resp.Answers {
 		if answer.TYPE == QTypeA || answer.TYPE == QTypeAAAA {
-			for _, h := range c.handlers {
-				h(resp.Question.QNAME, answer.IP)
-			}
-			if answer.IP != "" {
-				ips = append(ips, answer.IP)
+			if answer.IP.IsValid() && !answer.IP.IsUnspecified() {
+				for _, h := range c.handlers {
+					h(resp.Question.QNAME, answer.IP)
+				}
+				ips = append(ips, answer.IP.String())
 			}
 			if answer.TTL != 0 {
 				ttl = int(answer.TTL)
@@ -276,10 +286,13 @@ func (c *Client) AddHandler(h AnswerHandler) {
 // AddRecord adds custom record to dns cache, format:
 // www.example.com/1.2.3.4 or www.example.com/2606:2800:220:1:248:1893:25c8:1946
 func (c *Client) AddRecord(record string) error {
-	r := strings.Split(record, "/")
-	domain, ip := r[0], r[1]
-	m, err := c.MakeResponse(domain, ip, uint32(c.config.MaxTTL))
+	domain, ip, found := strings.Cut(record, "/")
+	if !found {
+		return errors.New("wrong record format, must contain '/'")
+	}
+	m, err := MakeResponse(domain, ip, uint32(c.config.MaxTTL))
 	if err != nil {
+		log.F("[dns] add custom record error: %s", err)
 		return err
 	}
 
@@ -298,27 +311,21 @@ func (c *Client) AddRecord(record string) error {
 
 // MakeResponse makes a dns response message for the given domain and ip address.
 // Note: you should make sure ttl > 0.
-func (c *Client) MakeResponse(domain, ip string, ttl uint32) (*Message, error) {
-	ipb := net.ParseIP(ip)
-	if ipb == nil {
-		return nil, errors.New("MakeResponse: invalid ip format")
+func MakeResponse(domain, ip string, ttl uint32) (*Message, error) {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return nil, err
 	}
 
-	var rdata []byte
-	var qtype, rdlen uint16
-	if rdata = ipb.To4(); rdata != nil {
-		qtype = QTypeA
-		rdlen = net.IPv4len
-	} else {
-		qtype = QTypeAAAA
-		rdlen = net.IPv6len
-		rdata = ipb
+	var qtype, rdlen uint16 = QTypeA, net.IPv4len
+	if addr.Is6() {
+		qtype, rdlen = QTypeAAAA, net.IPv6len
 	}
 
-	m := NewMessage(0, Response)
+	m := NewMessage(0, ResponseMsg)
 	m.SetQuestion(NewQuestion(qtype, domain))
 	rr := &RR{NAME: domain, TYPE: qtype, CLASS: ClassINET,
-		TTL: ttl, RDLENGTH: rdlen, RDATA: rdata}
+		TTL: ttl, RDLENGTH: rdlen, RDATA: addr.AsSlice()}
 	m.AddAnswer(rr)
 
 	return m, nil

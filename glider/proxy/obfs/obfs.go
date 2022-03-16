@@ -106,6 +106,16 @@ func (s *Obfs) Dial(network, addr string) (net.Conn, error) {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (s *Obfs) DialUDP(network, addr string) (net.PacketConn, net.Addr, error) {
-	return nil, nil, proxy.ErrNotSupported
+func (s *Obfs) DialUDP(network, addr string) (net.PacketConn, error) {
+	return nil, proxy.ErrNotSupported
+}
+
+func init() {
+	proxy.AddUsage("simple-obfs", `
+Simple-Obfs scheme:
+  simple-obfs://host:port[?type=TYPE&host=HOST&uri=URI&ua=UA]
+  
+Available types for simple-obfs:
+  http, tls
+`)
 }

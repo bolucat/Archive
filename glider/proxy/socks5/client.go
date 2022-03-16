@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"strconv"
 
 	"github.com/nadoo/glider/pkg/log"
@@ -11,6 +12,10 @@ import (
 	"github.com/nadoo/glider/pkg/socks"
 	"github.com/nadoo/glider/proxy"
 )
+
+func init() {
+	proxy.RegisterDialer("socks5", NewSocks5Dialer)
+}
 
 // NewSocks5Dialer returns a socks5 proxy dialer.
 func NewSocks5Dialer(s string, d proxy.Dialer) (proxy.Dialer, error) {
@@ -58,64 +63,55 @@ func (s *Socks5) dial(network, addr string) (net.Conn, error) {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (s *Socks5) DialUDP(network, addr string) (pc net.PacketConn, writeTo net.Addr, err error) {
+func (s *Socks5) DialUDP(network, addr string) (pc net.PacketConn, err error) {
 	c, err := s.dial("tcp", s.addr)
 	if err != nil {
 		log.F("[socks5] dialudp dial tcp to %s error: %s", s.addr, err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	var uAddr socks.Addr
 	if uAddr, err = s.connect(c, addr, socks.CmdUDPAssociate); err != nil {
 		c.Close()
-		return nil, nil, err
+		return nil, err
 	}
 
 	buf := pool.GetBuffer(socks.MaxAddrLen)
 	defer pool.PutBuffer(buf)
 
-	var uAddress string
-	h, p, _ := net.SplitHostPort(uAddr.String())
+	uAddress := uAddr.String()
+	h, p, _ := net.SplitHostPort(uAddress)
 	// if returned bind ip is unspecified
-	if ip := net.ParseIP(h); ip != nil && ip.IsUnspecified() {
+	if ip, err := netip.ParseAddr(h); err == nil && ip.IsUnspecified() {
 		// indicate using conventional addr
 		h, _, _ = net.SplitHostPort(s.addr)
 		uAddress = net.JoinHostPort(h, p)
-	} else {
-		uAddress = uAddr.String()
 	}
 
-	pc, nextHop, err := s.dialer.DialUDP(network, uAddress)
+	pc, err = s.dialer.DialUDP(network, uAddress)
 	if err != nil {
 		log.F("[socks5] dialudp to %s error: %s", uAddress, err)
-		return nil, nil, err
+		return nil, err
 	}
 
-	pkc := NewPktConn(pc, nextHop, socks.ParseAddr(addr), true, c)
-	return pkc, nextHop, err
+	writeTo, err := net.ResolveUDPAddr("udp", uAddress)
+	if err != nil {
+		log.F("[socks5] resolve addr error: %s", err)
+		return nil, err
+	}
+
+	return NewPktConn(pc, writeTo, socks.ParseAddr(addr), c), err
 }
 
 // connect takes an existing connection to a socks5 proxy server,
 // and commands the server to extend that connection to target,
 // which must be a canonical address with a host and port.
 func (s *Socks5) connect(conn net.Conn, target string, cmd byte) (addr socks.Addr, err error) {
-	host, portStr, err := net.SplitHostPort(target)
-	if err != nil {
-		return
-	}
-
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return addr, errors.New("proxy: failed to parse port number: " + portStr)
-	}
-	if port < 1 || port > 0xffff {
-		return addr, errors.New("proxy: port number out of range: " + portStr)
-	}
-
 	// the size here is just an estimate
-	buf := make([]byte, 0, 6+len(host))
+	buf := pool.GetBuffer(socks.MaxAddrLen)
+	defer pool.PutBuffer(buf)
 
-	buf = append(buf, Version)
+	buf = append(buf[:0], Version)
 	if len(s.user) > 0 && len(s.user) < 256 && len(s.password) < 256 {
 		buf = append(buf, 2 /* num auth methods */, socks.AuthNone, socks.AuthPassword)
 	} else {
@@ -159,24 +155,7 @@ func (s *Socks5) connect(conn net.Conn, target string, cmd byte) (addr socks.Add
 
 	buf = buf[:0]
 	buf = append(buf, Version, cmd, 0 /* reserved */)
-
-	if ip := net.ParseIP(host); ip != nil {
-		if ip4 := ip.To4(); ip4 != nil {
-			buf = append(buf, socks.ATypIP4)
-			ip = ip4
-		} else {
-			buf = append(buf, socks.ATypIP6)
-		}
-		buf = append(buf, ip...)
-	} else {
-		if len(host) > 255 {
-			return addr, errors.New("proxy: destination hostname too long: " + host)
-		}
-		buf = append(buf, socks.ATypDomain)
-		buf = append(buf, byte(len(host)))
-		buf = append(buf, host...)
-	}
-	buf = append(buf, byte(port>>8), byte(port))
+	buf = append(buf, socks.ParseAddr(target)...)
 
 	if _, err := conn.Write(buf); err != nil {
 		return addr, errors.New("proxy: failed to write connect request to SOCKS5 proxy at " + s.addr + ": " + err.Error())

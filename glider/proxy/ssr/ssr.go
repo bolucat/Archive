@@ -31,10 +31,10 @@ type SSR struct {
 	EncryptPassword string
 	Obfs            string
 	ObfsParam       string
-	ObfsData        interface{}
+	ObfsData        any
 	Protocol        string
 	ProtocolParam   string
-	ProtocolData    interface{}
+	ProtocolData    any
 }
 
 // NewSSR returns a shadowsocksr proxy, ssr://method:pass@host:port/query
@@ -152,6 +152,13 @@ func (s *SSR) Dial(network, addr string) (net.Conn, error) {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (s *SSR) DialUDP(network, addr string) (net.PacketConn, net.Addr, error) {
-	return nil, nil, proxy.ErrNotSupported
+func (s *SSR) DialUDP(network, addr string) (net.PacketConn, error) {
+	return nil, proxy.ErrNotSupported
+}
+
+func init() {
+	proxy.AddUsage("ssr", `
+SSR scheme:
+  ssr://method:pass@host:port?protocol=xxx&protocol_param=yyy&obfs=zzz&obfs_param=xyz
+`)
 }

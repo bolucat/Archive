@@ -1,7 +1,7 @@
 package ipset
 
 import (
-	"errors"
+	"net/netip"
 	"strings"
 	"sync"
 
@@ -21,32 +21,30 @@ func NewManager(rules []*rule.Config) (*Manager, error) {
 		return nil, err
 	}
 
-	// create ipset, avoid redundant.
-	sets := make(map[string]struct{})
-	for _, r := range rules {
-		if r.IPSet != "" {
-			sets[r.IPSet] = struct{}{}
-		}
-	}
-
-	for set := range sets {
-		ipset.Create(set)
-		ipset.Flush(set)
-	}
-
-	// init ipset
 	m := &Manager{}
+	sets := make(map[string]struct{})
+
 	for _, r := range rules {
-		if r.IPSet != "" {
-			for _, domain := range r.Domain {
-				m.domainSet.Store(domain, r.IPSet)
-			}
-			for _, ip := range r.IP {
-				ipset.Add(r.IPSet, ip)
-			}
-			for _, cidr := range r.CIDR {
-				ipset.Add(r.IPSet, cidr)
-			}
+		if r.IPSet == "" {
+			continue
+		}
+
+		if _, ok := sets[r.IPSet]; !ok {
+			sets[r.IPSet] = struct{}{}
+			ipset.Create(r.IPSet)
+			ipset.Flush(r.IPSet)
+			ipset.Create(r.IPSet+"6", ipset.OptIPv6())
+			ipset.Flush(r.IPSet + "6")
+		}
+
+		for _, domain := range r.Domain {
+			m.domainSet.Store(domain, r.IPSet)
+		}
+		for _, ip := range r.IP {
+			addToSet(r.IPSet, ip)
+		}
+		for _, cidr := range r.CIDR {
+			addToSet(r.IPSet, cidr)
 		}
 	}
 
@@ -54,18 +52,27 @@ func NewManager(rules []*rule.Config) (*Manager, error) {
 }
 
 // AddDomainIP implements the dns AnswerHandler function, used to update ipset according to domainSet rule.
-func (m *Manager) AddDomainIP(domain, ip string) error {
-	if domain == "" || ip == "" {
-		return errors.New("please specify the domain and ip address")
-	}
-
+func (m *Manager) AddDomainIP(domain string, ip netip.Addr) error {
 	domain = strings.ToLower(domain)
 	for i := len(domain); i != -1; {
 		i = strings.LastIndexByte(domain[:i], '.')
 		if setName, ok := m.domainSet.Load(domain[i+1:]); ok {
-			ipset.Add(setName.(string), ip)
+			addAddrToSet(setName.(string), ip)
 		}
 	}
-
 	return nil
+}
+
+func addToSet(s, item string) error {
+	if strings.IndexByte(item, '.') == -1 {
+		return ipset.Add(s+"6", item)
+	}
+	return ipset.Add(s, item)
+}
+
+func addAddrToSet(s string, ip netip.Addr) error {
+	if ip.Is4() {
+		return ipset.AddAddr(s, ip)
+	}
+	return ipset.AddAddr(s+"6", ip)
 }

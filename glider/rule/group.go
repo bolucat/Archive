@@ -109,10 +109,10 @@ func (p *FwdrGroup) Dial(network, addr string) (net.Conn, proxy.Dialer, error) {
 }
 
 // DialUDP connects to the given address.
-func (p *FwdrGroup) DialUDP(network, addr string) (pc net.PacketConn, dialer proxy.UDPDialer, writeTo net.Addr, err error) {
+func (p *FwdrGroup) DialUDP(network, addr string) (pc net.PacketConn, dialer proxy.UDPDialer, err error) {
 	nd := p.NextDialer(addr)
-	pc, wt, err := nd.DialUDP(network, addr)
-	return pc, nd, wt, err
+	pc, err = nd.DialUDP(network, addr)
+	return pc, nd, err
 }
 
 // NextDialer returns the next dialer.
@@ -266,11 +266,21 @@ func (p *FwdrGroup) check(fwdr *Forwarder, checker Checker) {
 		}
 
 		wait = 1
-		fwdr.SetLatency(int64(elapsed))
-		log.F("[check] %s: %s(%d), SUCCESS. elapsed: %s",
-			p.name, fwdr.Addr(), fwdr.Priority(), elapsed)
+		p.setLatency(fwdr, elapsed)
+		log.F("[check] %s: %s(%d), SUCCESS. Elapsed: %dms, Latency: %dms.",
+			p.name, fwdr.Addr(), fwdr.Priority(), elapsed.Milliseconds(), time.Duration(fwdr.Latency()).Milliseconds())
 		fwdr.Enable()
 	}
+}
+
+func (p *FwdrGroup) setLatency(fwdr *Forwarder, elapsed time.Duration) {
+	newLatency := int64(elapsed)
+	if cnt := p.config.CheckLatencySamples; cnt > 1 {
+		if lastLatency := fwdr.Latency(); lastLatency > 0 {
+			newLatency = (lastLatency*(int64(cnt)-1) + int64(elapsed)) / int64(cnt)
+		}
+	}
+	fwdr.SetLatency(newLatency)
 }
 
 // Round Robin.

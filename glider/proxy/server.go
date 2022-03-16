@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"net"
+	"sort"
 	"strings"
 )
 
@@ -13,6 +14,11 @@ type Server interface {
 
 	// Serve serves a connection
 	Serve(c net.Conn)
+}
+
+// PacketServer interface.
+type PacketServer interface {
+	ServePacket(pc net.PacketConn)
 }
 
 // ServerCreator is a function to create proxy servers.
@@ -45,4 +51,14 @@ func ServerFromURL(s string, proxy Proxy) (Server, error) {
 	}
 
 	return nil, errors.New("unknown scheme '" + scheme + "'")
+}
+
+// ServerSchemes returns the registered server schemes.
+func ServerSchemes() string {
+	s := make([]string, 0, len(serverCreators))
+	for name := range serverCreators {
+		s = append(s, name)
+	}
+	sort.Strings(s)
+	return strings.Join(s, " ")
 }

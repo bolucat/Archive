@@ -58,12 +58,13 @@ func NewTLS(s string, d proxy.Dialer, p proxy.Proxy) (*TLS, error) {
 		alpn:       query["alpn"],
 	}
 
-	if _, port, _ := net.SplitHostPort(t.addr); port == "" {
-		t.addr = net.JoinHostPort(t.addr, "443")
-	}
-
-	if t.serverName == "" {
-		t.serverName = t.addr[:strings.LastIndex(t.addr, ":")]
+	if t.addr != "" {
+		if _, port, _ := net.SplitHostPort(t.addr); port == "" {
+			t.addr = net.JoinHostPort(t.addr, "443")
+		}
+		if t.serverName == "" {
+			t.serverName = t.addr[:strings.LastIndex(t.addr, ":")]
+		}
 	}
 
 	return t, nil
@@ -207,6 +208,28 @@ func (s *TLS) Dial(network, addr string) (net.Conn, error) {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (s *TLS) DialUDP(network, addr string) (net.PacketConn, net.Addr, error) {
-	return nil, nil, proxy.ErrNotSupported
+func (s *TLS) DialUDP(network, addr string) (net.PacketConn, error) {
+	return nil, proxy.ErrNotSupported
+}
+
+func init() {
+	proxy.AddUsage("tls", `
+TLS client scheme:
+  tls://host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&alpn=proto1][&alpn=proto2]
+  
+Proxy over tls client:
+  tls://host:port[?skipVerify=true][&serverName=SERVERNAME],scheme://
+  tls://host:port[?skipVerify=true],http://[user:pass@]
+  tls://host:port[?skipVerify=true],socks5://[user:pass@]
+  tls://host:port[?skipVerify=true],vmess://[security:]uuid@?alterID=num
+  
+TLS server scheme:
+  tls://host:port?cert=PATH&key=PATH[&alpn=proto1][&alpn=proto2]
+  
+Proxy over tls server:
+  tls://host:port?cert=PATH&key=PATH,scheme://
+  tls://host:port?cert=PATH&key=PATH,http://
+  tls://host:port?cert=PATH&key=PATH,socks5://
+  tls://host:port?cert=PATH&key=PATH,ss://method:pass@
+`)
 }

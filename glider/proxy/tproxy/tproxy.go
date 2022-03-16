@@ -32,8 +32,16 @@ func ListenUDP(network string, laddr *net.UDPAddr) (*net.UDPConn, error) {
 		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: IP_TRANSPARENT: %s", err)}
 	}
 
-	if err = syscall.SetsockoptInt(fileDescriptor, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil {
-		return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: IP_RECVORIGDSTADDR: %s", err)}
+	if laddr.IP == nil || laddr.IP.To4() != nil {
+		if err = syscall.SetsockoptInt(fileDescriptor, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil {
+			return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: IP_RECVORIGDSTADDR: %s", err)}
+		}
+	}
+
+	if laddr.IP == nil || laddr.IP.To4() == nil {
+		if err = syscall.SetsockoptInt(fileDescriptor, syscall.SOL_IPV6, unix.IPV6_RECVORIGDSTADDR, 1); err != nil {
+			return nil, &net.OpError{Op: "listen", Net: network, Source: nil, Addr: laddr, Err: fmt.Errorf("set socket option: IPV6_RECVORIGDSTADDR: %s", err)}
+		}
 	}
 
 	return listener, nil

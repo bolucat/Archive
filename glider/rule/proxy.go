@@ -2,9 +2,11 @@ package rule
 
 import (
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 
+	"github.com/nadoo/glider/pkg/log"
 	"github.com/nadoo/glider/proxy"
 )
 
@@ -29,14 +31,22 @@ func NewProxy(mainForwarders []string, mainStrategy *Strategy, rules []*Config) 
 			rd.domainMap.Store(strings.ToLower(domain), group)
 		}
 
-		for _, ip := range r.IP {
+		for _, s := range r.IP {
+			ip, err := netip.ParseAddr(s)
+			if err != nil {
+				log.F("[rule] parse ip error: %s", err)
+				continue
+			}
 			rd.ipMap.Store(ip, group)
 		}
 
 		for _, s := range r.CIDR {
-			if _, cidr, err := net.ParseCIDR(s); err == nil {
-				rd.cidrMap.Store(cidr, group)
+			cidr, err := netip.ParsePrefix(s)
+			if err != nil {
+				log.F("[rule] parse cidr error: %s", err)
+				continue
 			}
+			rd.cidrMap.Store(cidr, group)
 		}
 	}
 
@@ -48,7 +58,7 @@ func NewProxy(mainForwarders []string, mainStrategy *Strategy, rules []*Config) 
 		for _, f := range rd.main.fwdrs {
 			addr := strings.Split(f.addr, ",")[0]
 			host, _, _ := net.SplitHostPort(addr)
-			if ip := net.ParseIP(host); ip == nil {
+			if _, err := netip.ParseAddr(host); err != nil {
 				rd.domainMap.Store(strings.ToLower(host), direct)
 			}
 		}
@@ -63,7 +73,7 @@ func (p *Proxy) Dial(network, addr string) (net.Conn, proxy.Dialer, error) {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (p *Proxy) DialUDP(network, addr string) (pc net.PacketConn, dialer proxy.UDPDialer, writeTo net.Addr, err error) {
+func (p *Proxy) DialUDP(network, addr string) (pc net.PacketConn, dialer proxy.UDPDialer, err error) {
 	return p.findDialer(addr).DialUDP(network, addr)
 }
 
@@ -74,18 +84,16 @@ func (p *Proxy) findDialer(dstAddr string) *FwdrGroup {
 		return p.main
 	}
 
-	// find ip
-	if ip := net.ParseIP(host); ip != nil {
+	if ip, err := netip.ParseAddr(host); err == nil {
 		// check ip
-		if proxy, ok := p.ipMap.Load(ip.String()); ok {
+		if proxy, ok := p.ipMap.Load(ip); ok {
 			return proxy.(*FwdrGroup)
 		}
 
-		var ret *FwdrGroup
 		// check cidr
-		p.cidrMap.Range(func(key, value interface{}) bool {
-			cidr := key.(*net.IPNet)
-			if cidr.Contains(ip) {
+		var ret *FwdrGroup
+		p.cidrMap.Range(func(key, value any) bool {
+			if key.(netip.Prefix).Contains(ip) {
 				ret = value.(*FwdrGroup)
 				return false
 			}
@@ -95,9 +103,9 @@ func (p *Proxy) findDialer(dstAddr string) *FwdrGroup {
 		if ret != nil {
 			return ret
 		}
-
 	}
 
+	// check host
 	host = strings.ToLower(host)
 	for i := len(host); i != -1; {
 		i = strings.LastIndexByte(host[:i], '.')
@@ -126,15 +134,13 @@ func (p *Proxy) Record(dialer proxy.Dialer, success bool) {
 }
 
 // AddDomainIP used to update ipMap rules according to domainMap rule.
-func (p *Proxy) AddDomainIP(domain, ip string) error {
-	if ip != "" {
-		domain = strings.ToLower(domain)
-		for i := len(domain); i != -1; {
-			i = strings.LastIndexByte(domain[:i], '.')
-			if dialer, ok := p.domainMap.Load(domain[i+1:]); ok {
-				p.ipMap.Store(ip, dialer)
-				// log.F("[rule] update map: %s/%s based on rule: domain=%s\n", domain, ip, domain[i+1:])
-			}
+func (p *Proxy) AddDomainIP(domain string, ip netip.Addr) error {
+	domain = strings.ToLower(domain)
+	for i := len(domain); i != -1; {
+		i = strings.LastIndexByte(domain[:i], '.')
+		if dialer, ok := p.domainMap.Load(domain[i+1:]); ok {
+			p.ipMap.Store(ip, dialer)
+			// log.F("[rule] update map: %s/%s based on rule: domain=%s\n", domain, ip, domain[i+1:])
 		}
 	}
 	return nil

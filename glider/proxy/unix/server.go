@@ -52,7 +52,7 @@ func (s *Unix) ListenAndServeTCP() {
 	}
 	defer l.Close()
 
-	log.F("[unix] listening on %s", s.addr)
+	log.F("[unix] Listen on %s", s.addr)
 
 	for {
 		c, err := l.Accept()
@@ -105,9 +105,19 @@ func (s *Unix) ListenAndServeUDP() {
 
 	log.F("[unix] ListenPacket on %s", s.addru)
 
+	s.ServePacket(c)
+}
+
+// ServePacket implements proxy.PacketServer.
+func (s *Unix) ServePacket(pc net.PacketConn) {
+	if server, ok := s.server.(proxy.PacketServer); ok {
+		server.ServePacket(pc)
+		return
+	}
+
 	for {
 		buf := pool.GetBuffer(proxy.UDPBufSize)
-		n, srcAddr, err := c.ReadFrom(buf)
+		n, srcAddr, err := pc.ReadFrom(buf)
 		if err != nil {
 			log.F("[unix] read error: %v", err)
 			continue
@@ -118,7 +128,7 @@ func (s *Unix) ListenAndServeUDP() {
 
 		v, ok := nm.Load(sessionKey)
 		if !ok || v == nil {
-			session = newSession(sessionKey, srcAddr, c)
+			session = newSession(sessionKey, srcAddr, pc)
 			nm.Store(sessionKey, session)
 			go s.serveSession(session)
 		} else {
@@ -127,18 +137,19 @@ func (s *Unix) ListenAndServeUDP() {
 
 		session.msgCh <- buf[:n]
 	}
-
 }
+
 func (s *Unix) serveSession(session *Session) {
-	dstPC, dialer, writeTo, err := s.proxy.DialUDP("udp", "")
+	dstPC, dialer, err := s.proxy.DialUDP("udp", "")
 	if err != nil {
 		log.F("[unix] remote dial error: %v", err)
+		nm.Delete(session.key)
 		return
 	}
 	defer dstPC.Close()
 
 	go func() {
-		proxy.RelayUDP(session.srcPC, session.src, dstPC, 2*time.Minute)
+		proxy.CopyUDP(session.srcPC, session.src, dstPC, 2*time.Minute, 5*time.Second)
 		nm.Delete(session.key)
 		close(session.finCh)
 	}()
@@ -148,9 +159,9 @@ func (s *Unix) serveSession(session *Session) {
 	for {
 		select {
 		case p := <-session.msgCh:
-			_, err = dstPC.WriteTo(p, writeTo)
+			_, err = dstPC.WriteTo(p, nil)
 			if err != nil {
-				log.F("[unix] writeTo %s error: %v", writeTo, err)
+				log.F("[unix] writeTo error: %v", err)
 			}
 			pool.PutBuffer(p)
 		case <-session.finCh:

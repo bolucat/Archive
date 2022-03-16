@@ -16,6 +16,10 @@ import (
 
 var nm sync.Map
 
+func init() {
+	proxy.RegisterServer("socks5", NewSocks5Server)
+}
+
 // NewSocks5Server returns a socks5 proxy server.
 func NewSocks5Server(s string, p proxy.Proxy) (proxy.Server, error) {
 	return NewSocks5(s, nil, p)
@@ -106,11 +110,16 @@ func (s *Socks5) ListenAndServeUDP() {
 
 	log.F("[socks5] listening UDP on %s", s.addr)
 
+	s.ServePacket(lc)
+}
+
+// ServePacket implements proxy.PacketServer.
+func (s *Socks5) ServePacket(pc net.PacketConn) {
 	for {
-		c := NewPktConn(lc, nil, nil, true, nil)
+		c := NewPktConn(pc, nil, nil, nil)
 		buf := pool.GetBuffer(proxy.UDPBufSize)
 
-		n, srcAddr, err := c.ReadFrom(buf)
+		n, srcAddr, dstAddr, err := c.readFrom(buf)
 		if err != nil {
 			log.F("[socks5u] remote read error: %v", err)
 			continue
@@ -121,65 +130,73 @@ func (s *Socks5) ListenAndServeUDP() {
 
 		v, ok := nm.Load(sessionKey)
 		if !ok || v == nil {
-			session = newSession(sessionKey, srcAddr, c)
+			session = newSession(sessionKey, srcAddr, dstAddr, c)
 			nm.Store(sessionKey, session)
 			go s.serveSession(session)
 		} else {
 			session = v.(*Session)
 		}
 
-		session.msgCh <- buf[:n]
+		session.msgCh <- message{dstAddr, buf[:n]}
 	}
 }
 
 func (s *Socks5) serveSession(session *Session) {
-	dstC, dialer, writeTo, err := s.proxy.DialUDP("udp", session.srcPC.tgtAddr.String())
+	dstPC, dialer, err := s.proxy.DialUDP("udp", session.srcPC.target.String())
 	if err != nil {
 		log.F("[socks5u] remote dial error: %v", err)
+		nm.Delete(session.key)
 		return
 	}
-	dstPC := NewPktConn(dstC, writeTo, nil, false, nil)
 	defer dstPC.Close()
 
 	go func() {
-		proxy.RelayUDP(session.srcPC, session.src, dstPC, 2*time.Minute)
+		proxy.CopyUDP(session.srcPC, nil, dstPC, 2*time.Minute, 5*time.Second)
 		nm.Delete(session.key)
 		close(session.finCh)
 	}()
 
-	log.F("[socks5u] %s <-> %s via %s", session.src, session.srcPC.tgtAddr, dialer.Addr())
+	log.F("[socks5u] %s <-> %s via %s", session.src, session.srcPC.target, dialer.Addr())
 
 	for {
 		select {
-		case p := <-session.msgCh:
-			_, err = dstPC.WriteTo(p, writeTo)
+		case msg := <-session.msgCh:
+			_, err = dstPC.WriteTo(msg.msg, msg.dst)
 			if err != nil {
-				log.F("[socks5u] writeTo %s error: %v", writeTo, err)
+				log.F("[socks5u] writeTo %s error: %v", nil, err)
 			}
-			pool.PutBuffer(p)
+			pool.PutBuffer(msg.msg)
+			msg.msg = nil
 		case <-session.finCh:
 			return
 		}
 	}
 }
 
+type message struct {
+	dst net.Addr
+	msg []byte
+}
+
 // Session is a udp session
 type Session struct {
 	key   string
 	src   net.Addr
+	dst   net.Addr
 	srcPC *PktConn
-	msgCh chan []byte
+	msgCh chan message
 	finCh chan struct{}
 }
 
-func newSession(key string, src net.Addr, srcPC *PktConn) *Session {
-	return &Session{key, src, srcPC, make(chan []byte, 32), make(chan struct{})}
+func newSession(key string, src, dst net.Addr, srcPC *PktConn) *Session {
+	return &Session{key, src, dst, srcPC, make(chan message, 32), make(chan struct{})}
 }
 
 // Handshake fast-tracks SOCKS initialization to get target address to connect.
 func (s *Socks5) handshake(c net.Conn) (socks.Addr, error) {
 	// Read RFC 1928 for request and reply structure and sizes
-	buf := make([]byte, socks.MaxAddrLen)
+	buf := pool.GetBuffer(socks.MaxAddrLen)
+	defer pool.PutBuffer(buf)
 
 	// read VER, NMETHODS, METHODS
 	if _, err := io.ReadFull(c, buf[:2]); err != nil {
@@ -257,7 +274,7 @@ func (s *Socks5) handshake(c net.Conn) (socks.Addr, error) {
 		return nil, err
 	}
 	cmd := buf[1]
-	addr, err := socks.ReadAddrBuf(c, buf)
+	addr, err := socks.ReadAddr(c)
 	if err != nil {
 		return nil, err
 	}
@@ -266,6 +283,9 @@ func (s *Socks5) handshake(c net.Conn) (socks.Addr, error) {
 		_, err = c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}) // SOCKS v5, reply succeeded
 	case socks.CmdUDPAssociate:
 		listenAddr := socks.ParseAddr(c.LocalAddr().String())
+		if listenAddr == nil { // maybe it's unix socket
+			listenAddr = socks.ParseAddr("127.0.0.1:0")
+		}
 		_, err = c.Write(append([]byte{5, 0, 0}, listenAddr...)) // SOCKS v5, reply succeeded
 		if err != nil {
 			return nil, socks.Errors[7]

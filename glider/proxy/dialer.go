@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"net"
+	"sort"
 	"strings"
 )
 
@@ -32,7 +33,7 @@ type UDPDialer interface {
 	Addr() string
 
 	// DialUDP connects to the given address
-	DialUDP(network, addr string) (pc net.PacketConn, writeTo net.Addr, err error)
+	DialUDP(network, addr string) (pc net.PacketConn, err error)
 }
 
 // DialerCreator is a function to create dialers.
@@ -65,4 +66,14 @@ func DialerFromURL(s string, dialer Dialer) (Dialer, error) {
 	}
 
 	return nil, errors.New("unknown scheme '" + scheme + "'")
+}
+
+// DialerSchemes returns the registered dialer schemes.
+func DialerSchemes() string {
+	s := make([]string, 0, len(dialerCreators))
+	for name := range dialerCreators {
+		s = append(s, name)
+	}
+	sort.Strings(s)
+	return strings.Join(s, " ")
 }

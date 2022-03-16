@@ -1,5 +1,17 @@
 name: Build
-on: [push]
+on:
+  push:
+    branches:
+      - 'dev'
+    tags:
+      - '*'
+  pull_request:
+
+env:
+  APP_NAME: glider
+  DOCKERHUB_REPO: nadoo/glider
+  GHCR_REPO: ghcr.io/nadoo/glider
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
 
 jobs:
   build:
@@ -7,21 +19,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Get Go version
+
+      - name: Set Vars
         run: |
-          echo "GO_VERSION=$(curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | grep $(grep -P "go \d+\." go.mod | cut -d " " -f2) | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g')" >> $GITHUB_ENV
+          echo "SHA_SHORT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "GO_MOD_VERSION=$(grep -P "go \d+\." go.mod | cut -d " " -f2)" >> $GITHUB_ENV
+
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v3
         with:
-          go-version: ${{ env.GO_VERSION}}
+          check-latest: true
+          go-version: ${{ env.GO_MOD_VERSION}}
+
+      - name: Set up Cache
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Test
         run: go test -v .
+
       - name: Build
-        run: go build -v .
-      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          version: latest
+          args: build --snapshot --rm-dist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact - Linux amd64
+        uses: actions/upload-artifact@v3
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-linux-amd64
+          path: |
+            ./dist/default_linux_amd64/${{ env.APP_NAME }}
+
+      - name: Upload Artifact - Linux arm64
+        uses: actions/upload-artifact@v3
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-linux-arm64
+          path: |
+            ./dist/default_linux_arm64/${{ env.APP_NAME }}
+
+      - name: Upload Artifact - macOS arm64
+        uses: actions/upload-artifact@v3
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-macos-arm64
+          path: |
+            ./dist/default_darwin_arm64/${{ env.APP_NAME }}
+
+      - name: Upload Artifact - Windows amd64
+        uses: actions/upload-artifact@v3
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        with:
+          name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-windows-amd64
+          path: |
+            ./dist/default_windows_amd64/${{ env.APP_NAME }}.exe
+
+      - name: Release
         uses: goreleaser/goreleaser-action@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
@@ -29,3 +96,45 @@ jobs:
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker - Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Docker - Set up Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Docker - Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker - Login to GHCR
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker - Docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: |
+            ${{ env.DOCKERHUB_REPO }}
+            ${{ env.GHCR_REPO }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Docker - Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: .Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          

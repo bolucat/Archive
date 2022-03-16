@@ -31,13 +31,6 @@ type Trojan struct {
 	fallback   string
 }
 
-func init() {
-	proxy.RegisterDialer("trojan", NewTrojanDialer)
-	proxy.RegisterServer("trojan", NewTrojanServer)
-	proxy.RegisterDialer("trojanc", NewClearTextDialer) // cleartext
-	proxy.RegisterServer("trojanc", NewClearTextServer) // cleartext
-}
-
 // NewTrojan returns a trojan proxy.
 func NewTrojan(s string, d proxy.Dialer, p proxy.Proxy) (*Trojan, error) {
 	u, err := url.Parse(s)
@@ -58,12 +51,13 @@ func NewTrojan(s string, d proxy.Dialer, p proxy.Proxy) (*Trojan, error) {
 		fallback:   query.Get("fallback"),
 	}
 
-	if _, port, _ := net.SplitHostPort(t.addr); port == "" {
-		t.addr = net.JoinHostPort(t.addr, "443")
-	}
-
-	if t.serverName == "" {
-		t.serverName = t.addr[:strings.LastIndex(t.addr, ":")]
+	if t.addr != "" {
+		if _, port, _ := net.SplitHostPort(t.addr); port == "" {
+			t.addr = net.JoinHostPort(t.addr, "443")
+		}
+		if t.serverName == "" {
+			t.serverName = t.addr[:strings.LastIndex(t.addr, ":")]
+		}
 	}
 
 	// pass
@@ -77,4 +71,16 @@ func NewTrojan(s string, d proxy.Dialer, p proxy.Proxy) (*Trojan, error) {
 	hex.Encode(t.pass[:], hash.Sum(nil))
 
 	return t, nil
+}
+
+func init() {
+	proxy.AddUsage("trojan", `
+Trojan client scheme:
+  trojan://pass@host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH]
+  trojanc://pass@host:port     (cleartext, without TLS)
+  
+Trojan server scheme:
+  trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]
+  trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)
+`)
 }

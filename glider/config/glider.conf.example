@@ -61,7 +61,7 @@ listen=socks5://:1080
 # listen=tls://:443?cert=crtFilePath&key=keyFilePath,ss://AEAD_CHACHA20_POLY1305:pass@
 
 # socks5 over unix domain socket
-# listen=unix:///tmp/glider.socket,socks5://
+# listen=unix:///dev/shm/socket,socks5://
 
 # socks5 over kcp
 # listen=kcp://aes:key@127.0.0.1:8444?dataShards=10&parityShards=3&mode=fast,socks5://
@@ -152,7 +152,7 @@ listen=socks5://:1080
 # forward=simple-obfs://1.1.1.1:443?type=tls&host=apple.com,ss://AEAD_CHACHA20_POLY1305:pass@
 
 # socks5 over unix domain socket
-# forward=unix:///tmp/glider.socket,socks5://
+# forward=unix:///dev/shm/socket,socks5://
 
 # FORWARDER CHAIN
 # ---------------
@@ -195,7 +195,7 @@ maxfailures=3
 # check=http://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
 # check=https://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
 # e.g. check=https://www.netflix.com/title/81215567#expect=301|404
-# check=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR
+# check=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR,FORWARDER_URL
 # check=disable: disable health check
 check=http://www.msftconnecttest.com/connecttest.txt#expect=200
 
@@ -207,6 +207,9 @@ checktimeout=10
 
 # switch forwarder only when new_latency < old_latency - tolerance, used in lha mode
 checktolerance=100
+
+# use the average latency of the latest N checks
+checklatencysamples=10
 
 # check disabled fowarders only
 checkdisabledonly=false
@@ -242,36 +245,49 @@ dnscachesize=4096
 # show query log of dns cache
 dnscachelog=True
 
+# disable AAAA queries
+# dnsnoaaaa=True
+
 # custom records
 dnsrecord=www.example.com/1.2.3.4
 dnsrecord=www.example.com/2606:2800:220:1:248:1893:25c8:1946
 
 # SERVICES
 # service=dhcpd,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
+# service=dhcpd-failover,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
 # e.g.:
 # service=dhcpd,eth1,192.168.1.100,192.168.1.199,720
 # service=dhcpd,eth2,192.168.2.100,192.168.2.199,720,fc:23:34:9e:25:01=192.168.2.101,fc:23:34:9e:25:02=192.168.2.102
 
 # INTERFACE SPECIFIC
 # ------------------
-# Specify the outbound ip/interface.
+# Specify global outbound ip/interface.
 # 
 # interface=""
 # interface="192.168.1.100"
 # interface="eth0"
+# 
+# Specify interface for a forwarder:
+# forward=socks5://192.168.1.10:1080#priority=100&interface=eth0
+# forward=socks5://192.168.1.10:1080#priority=100&interface=192.168.1.100
 
 # RULE FILES
 # ----------
 # Specify additional forward rules.
-
+#
 # specify rules folder, so all *.rule files under this folder will be parsed as rule file
 rules-dir=rules.d
-
+# 
 # specify a rule file
 #rulefile=office.rule
 #rulefile=home.rule
 
-
-# INCLUDE MORE CONFIG FILES
+# INCLUDE CONFIG FILES
+# ----------
 #include=dnsrecord.inc.conf
 #include=more.conf
+
+# ENVIRONMENT VARIABLES
+# ----------
+# use {$ENV_VAR_NAME} in VALUE to get the Environment Variable value.
+# forwarder=socks5://{$USER_NAME}:{$USER_PASS}@:1080

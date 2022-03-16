@@ -38,7 +38,7 @@ we can set up local listeners as proxy servers, and forward requests to internet
 - Periodical availability checking for forwarders
 - Send requests from specific local ip/interface
 - Services: 
-  - dhcpd: a simple dhcp server that can detect existing dhcp server and avoid conflicts
+  - dhcpd: a simple dhcp server that can run in failover mode
 
 ## Protocols
 
@@ -78,246 +78,276 @@ we can set up local listeners as proxy servers, and forward requests to internet
 
 ## Install
 
-Download:
-- [https://github.com/nadoo/glider/releases](https://github.com/nadoo/glider/releases)
-
-Docker:
-```bash
-docker pull nadoo/glider
-#docker pull ghcr.io/nadoo/glider
-```
-
-ArchLinux:
-```bash
-sudo pacman -S glider
-```
+- Binary: [https://github.com/nadoo/glider/releases](https://github.com/nadoo/glider/releases)
+- Docker: `docker pull nadoo/glider`
+- ArchLinux: `sudo pacman -S glider`
 
 ## Usage
 
-```bash
-glider -h
-```
-<details>
-<summary>click to see details</summary>
+#### Run
 
 ```bash
-glider 0.15.3 usage:
-  -check string
-    	check=tcp[://HOST:PORT]: tcp port connect check
-    	check=http://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
-    	check=https://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
-    	check=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, environment variables: FORWARDER_ADDR
-    	check=disable: disable health check (default "http://www.msftconnecttest.com/connecttest.txt#expect=200")
-  -checkdisabledonly
-    	check disabled fowarders only
-  -checkinterval int
-    	fowarder check interval(seconds) (default 30)
-  -checktimeout int
-    	fowarder check timeout(seconds) (default 10)
-  -checktolerance int
-    	fowarder check tolerance(ms), switch only when new_latency < old_latency - tolerance, only used in lha mode
-  -config string
-    	config file path
-  -dialtimeout int
-    	dial timeout(seconds) (default 3)
-  -dns string
-    	local dns server listen address
-  -dnsalwaystcp
-    	always use tcp to query upstream dns servers no matter there is a forwarder or not
-  -dnscachelog
-    	show query log of dns cache
-  -dnscachesize int
-    	size of CACHE (default 4096)
-  -dnsmaxttl int
-    	maximum TTL value for entries in the CACHE(seconds) (default 1800)
-  -dnsminttl int
-    	minimum TTL value for entries in the CACHE(seconds)
-  -dnsrecord value
-    	custom dns record, format: domain/ip
-  -dnsserver value
-    	remote dns server address
-  -dnstimeout int
-    	timeout value used in multiple dnsservers switch(seconds) (default 3)
-  -forward value
-    	forward url, format: SCHEME://[USER|METHOD:PASSWORD@][HOST]:PORT?PARAMS[,SCHEME://[USER|METHOD:PASSWORD@][HOST]:PORT?PARAMS]
-  -include value
-    	include file
-  -interface string
-    	source ip or source interface
-  -listen value
-    	listen url, format: SCHEME://[USER|METHOD:PASSWORD@][HOST]:PORT?PARAMS
-  -logflags int
-    	log flags, do not change it if you do not know what it is, ref: https://pkg.go.dev/log#pkg-constants (default 19)
-  -maxfailures int
-    	max failures to change forwarder status to disabled (default 3)
-  -relaytimeout int
-    	relay timeout(seconds)
-  -rulefile value
-    	rule file path
-  -rules-dir string
-    	rule file folder
-  -service value
-    	run specified services, format: SERVICE_NAME[,SERVICE_CONFIG]
-  -strategy string
-    	forward strategy, default: rr (default "rr")
-  -tcpbufsize int
-    	tcp buffer size in Bytes (default 32768)
-  -udpbufsize int
-    	udp buffer size in Bytes (default 2048)
-  -verbose
-    	verbose mode
-```
-
-</details>
-
-run:
-```bash
-glider -config CONFIGPATH
+glider -config CONFIG_PATH
 ```
 ```bash
 glider -verbose -listen :8443 -forward SCHEME://HOST:PORT
 ```
 
+#### Help
+
+<details>
+<summary><code>glider -help</code></summary>
+
+```bash
+Usage: glider [-listen URL]... [-forward URL]... [OPTION]...
+
+  e.g. glider -config /etc/glider/glider.conf
+       glider -listen :8443 -forward socks5://serverA:1080 -forward socks5://serverB:1080 -verbose
+
+OPTION:
+  -check string
+        check=tcp[://HOST:PORT]: tcp port connect check
+        check=http://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
+        check=https://HOST[:PORT][/URI][#expect=REGEX_MATCH_IN_RESP_LINE]
+        check=file://SCRIPT_PATH: run a check script, healthy when exitcode=0, env vars: FORWARDER_ADDR,FORWARDER_URL
+        check=disable: disable health check (default "http://www.msftconnecttest.com/connecttest.txt#expect=200")
+  -checkdisabledonly
+        check disabled fowarders only
+  -checkinterval int
+        fowarder check interval(seconds) (default 30)
+  -checklatencysamples int
+        use the average latency of the latest N checks (default 10)
+  -checktimeout int
+        fowarder check timeout(seconds) (default 10)
+  -checktolerance int
+        fowarder check tolerance(ms), switch only when new_latency < old_latency - tolerance, only used in lha mode
+  -config string
+        config file path
+  -dialtimeout int
+        dial timeout(seconds) (default 3)
+  -dns string
+        local dns server listen address
+  -dnsalwaystcp
+        always use tcp to query upstream dns servers no matter there is a forwarder or not
+  -dnscachelog
+        show query log of dns cache
+  -dnscachesize int
+        max number of dns response in CACHE (default 4096)
+  -dnsmaxttl int
+        maximum TTL value for entries in the CACHE(seconds) (default 1800)
+  -dnsminttl int
+        minimum TTL value for entries in the CACHE(seconds)
+  -dnsnoaaaa
+        disable AAAA query
+  -dnsrecord value
+        custom dns record, format: domain/ip
+  -dnsserver value
+        remote dns server address
+  -dnstimeout int
+        timeout value used in multiple dnsservers switch(seconds) (default 3)
+  -example
+        show usage examples
+  -forward value
+        forward url, see the URL section below
+  -include value
+        include file
+  -interface string
+        source ip or source interface
+  -listen value
+        listen url, see the URL section below
+  -logflags int
+        do not change it if you do not know what it is, ref: https://pkg.go.dev/log#pkg-constants (default 19)
+  -maxfailures int
+        max failures to change forwarder status to disabled (default 3)
+  -relaytimeout int
+        relay timeout(seconds)
+  -rulefile value
+        rule file path
+  -rules-dir string
+        rule file folder
+  -scheme string
+        show help message of proxy scheme, use 'all' to see all schemes
+  -service value
+        run specified services, format: SERVICE_NAME[,SERVICE_CONFIG]
+  -strategy string
+        rr: Round Robin mode
+        ha: High Availability mode
+        lha: Latency based High Availability mode
+        dh: Destination Hashing mode (default "rr")
+  -tcpbufsize int
+        tcp buffer size in Bytes (default 32768)
+  -udpbufsize int
+        udp buffer size in Bytes (default 2048)
+  -verbose
+        verbose mode
+
+URL:
+   proxy: SCHEME://[USER:PASS@][HOST]:PORT
+   chain: proxy,proxy[,proxy]...
+
+    e.g. -listen socks5://:1080
+         -listen tls://:443?cert=crtFilePath&key=keyFilePath,http://    (protocol chain)
+
+    e.g. -forward socks5://server:1080
+         -forward tls://server.com:443,http://                          (protocol chain)
+         -forward socks5://serverA:1080,socks5://serverB:1080           (proxy chain)
+
+SCHEME:
+   listen : http kcp mixed pxyproto redir redir6 smux sni socks5 ss tcp tls tproxy trojan trojanc udp unix vless ws wss
+   forward: direct http kcp reject simple-obfs smux socks4 socks4a socks5 ss ssh ssr tcp tls trojan trojanc udp unix vless vmess ws wss
+
+   Note: use 'glider -scheme all' or 'glider -scheme SCHEME' to see help info for the scheme.
+
+--
+Forwarder Options: FORWARD_URL#OPTIONS
+   priority : the priority of that forwarder, the larger the higher, default: 0
+   interface: the local interface or ip address used to connect remote server.
+
+   e.g. -forward socks5://server:1080#priority=100
+        -forward socks5://server:1080#interface=eth0
+        -forward socks5://server:1080#priority=100&interface=192.168.1.99
+
+Services:
+   dhcpd: service=dhcpd,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
+          service=dhcpd-failover,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
+     e.g. service=dhcpd,eth1,192.168.1.100,192.168.1.199,720
+
+--
+Help:
+   glider -help
+   glider -scheme all
+   glider -example
+
+see README.md and glider.conf.example for more details.
+--
+glider 0.16.0, https://github.com/nadoo/glider (glider.proxy@gmail.com)
+```
+
+</details>
+
 #### Schemes
 
 <details>
-<summary>click to see details</summary>
+<summary><code>glider -scheme all</code></summary>
 
 ```bash
-Available schemes:
-  listen: mixed ss socks5 http vless trojan trojanc redir redir6 tproxy tcp udp tls ws wss unix smux kcp pxyproto
-  forward: direct reject ss socks4 socks5 http ssr ssh vless vmess trojan trojanc tcp udp tls ws wss unix smux kcp simple-obfs
+Http scheme:
+  http://[user:pass@]host:port
 
+--
+KCP scheme:
+  kcp://CRYPT:KEY@host:port[?dataShards=NUM&parityShards=NUM&mode=MODE]
+  
+Available crypt types for KCP:
+  none, sm4, tea, xor, aes, aes-128, aes-192, blowfish, twofish, cast5, 3des, xtea, salsa20
+  
+Available modes for KCP:
+  fast, fast2, fast3, normal, default: fast
+
+--
+Simple-Obfs scheme:
+  simple-obfs://host:port[?type=TYPE&host=HOST&uri=URI&ua=UA]
+  
+Available types for simple-obfs:
+  http, tls
+
+--
+Smux scheme:
+  smux://host:port
+
+--
+Socks4 scheme:
+  socks4://host:port
+
+--
 Socks5 scheme:
-  socks://[user:pass@]host:port
+  socks5://[user:pass@]host:port
 
+--
 SS scheme:
   ss://method:pass@host:port
+  
+  Available methods for ss:
+    AEAD Ciphers:
+      AEAD_AES_128_GCM AEAD_AES_192_GCM AEAD_AES_256_GCM AEAD_CHACHA20_POLY1305 AEAD_XCHACHA20_POLY1305
+    Stream Ciphers:
+      AES-128-CFB AES-128-CTR AES-192-CFB AES-192-CTR AES-256-CFB AES-256-CTR CHACHA20-IETF XCHACHA20 CHACHA20 RC4-MD5
+    Alias:
+          chacha20-ietf-poly1305 = AEAD_CHACHA20_POLY1305, xchacha20-ietf-poly1305 = AEAD_XCHACHA20_POLY1305
+    Plain: NONE
 
-Available methods for ss:
-  AEAD Ciphers:
-    AEAD_AES_128_GCM AEAD_AES_192_GCM AEAD_AES_256_GCM AEAD_CHACHA20_POLY1305 AEAD_XCHACHA20_POLY1305
-  Stream Ciphers:
-    AES-128-CFB AES-128-CTR AES-192-CFB AES-192-CTR AES-256-CFB AES-256-CTR CHACHA20-IETF XCHACHA20 CHACHA20 RC4-MD5
-  Alias:
-    chacha20-ietf-poly1305 = AEAD_CHACHA20_POLY1305, xchacha20-ietf-poly1305 = AEAD_XCHACHA20_POLY1305
-  Plain: NONE
-
-SSR scheme:
-  ssr://method:pass@host:port?protocol=xxx&protocol_param=yyy&obfs=zzz&obfs_param=xyz
-
+--
 SSH scheme:
   ssh://user[:pass]@host:port[?key=keypath&timeout=SECONDS]
     timeout: timeout of ssh handshake and channel operation, default: 5
 
-VMess scheme:
-  vmess://[security:]uuid@host:port[?alterID=num]
-    if alterID=0 or not set, VMessAEAD will be enabled
+--
+SSR scheme:
+  ssr://method:pass@host:port?protocol=xxx&protocol_param=yyy&obfs=zzz&obfs_param=xyz
 
-Available security for vmess:
-  zero, none, aes-128-gcm, chacha20-poly1305
-  
-VLESS scheme:
-  vless://uuid@host:port[?fallback=127.0.0.1:80]
-
-Trojan client scheme:
-  trojan://pass@host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH]
-  trojanc://pass@host:port     (cleartext, without TLS)
-
-Trojan server scheme:
-  trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]
-  trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)
-
+--
 TLS client scheme:
   tls://host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&alpn=proto1][&alpn=proto2]
-
+  
 Proxy over tls client:
   tls://host:port[?skipVerify=true][&serverName=SERVERNAME],scheme://
   tls://host:port[?skipVerify=true],http://[user:pass@]
   tls://host:port[?skipVerify=true],socks5://[user:pass@]
   tls://host:port[?skipVerify=true],vmess://[security:]uuid@?alterID=num
-
+  
 TLS server scheme:
   tls://host:port?cert=PATH&key=PATH[&alpn=proto1][&alpn=proto2]
-
+  
 Proxy over tls server:
   tls://host:port?cert=PATH&key=PATH,scheme://
   tls://host:port?cert=PATH&key=PATH,http://
   tls://host:port?cert=PATH&key=PATH,socks5://
   tls://host:port?cert=PATH&key=PATH,ss://method:pass@
 
+--
+Trojan client scheme:
+  trojan://pass@host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH]
+  trojanc://pass@host:port     (cleartext, without TLS)
+  
+Trojan server scheme:
+  trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]
+  trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)
+
+--
+Unix domain socket scheme:
+  unix://path
+
+--
+VLESS scheme:
+  vless://uuid@host:port[?fallback=127.0.0.1:80]
+
+--
+VMess scheme:
+  vmess://[security:]uuid@host:port[?alterID=num]
+    if alterID=0 or not set, VMessAEAD will be enabled
+  
+  Available security for vmess:
+    zero, none, aes-128-gcm, chacha20-poly1305
+
+--
 Websocket client scheme:
   ws://host:port[/path][?host=HOST][&origin=ORIGIN]
   wss://host:port[/path][?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&host=HOST][&origin=ORIGIN]
-
+  
 Websocket server scheme:
   ws://:port[/path][?host=HOST]
   wss://:port[/path]?cert=PATH&key=PATH[?host=HOST]
-
+  
 Websocket with a specified proxy protocol:
   ws://host:port[/path][?host=HOST],scheme://
   ws://host:port[/path][?host=HOST],http://[user:pass@]
   ws://host:port[/path][?host=HOST],socks5://[user:pass@]
-
+  
 TLS and Websocket with a specified proxy protocol:
   tls://host:port[?skipVerify=true][&serverName=SERVERNAME],ws://[@/path[?host=HOST]],scheme://
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],http://[user:pass@]
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],socks5://[user:pass@]
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],vmess://[security:]uuid@?alterID=num
-
-Unix domain socket scheme:
-  unix://path
-
-Smux scheme:
-  smux://host:port
-
-KCP scheme:
-  kcp://CRYPT:KEY@host:port[?dataShards=NUM&parityShards=NUM&mode=MODE]
-
-Available crypt types for KCP:
-  none, sm4, tea, xor, aes, aes-128, aes-192, blowfish, twofish, cast5, 3des, xtea, salsa20
-
-Available modes for KCP:
-  fast, fast2, fast3, normal, default: fast
-
-Simple-Obfs scheme:
-  simple-obfs://host:port[?type=TYPE&host=HOST&uri=URI&ua=UA]
-
-Available types for simple-obfs:
-  http, tls
-
-DNS forwarding server:
-  dns=:53
-  dnsserver=8.8.8.8:53
-  dnsserver=1.1.1.1:53
-  dnsrecord=www.example.com/1.2.3.4
-  dnsrecord=www.example.com/2606:2800:220:1:248:1893:25c8:1946
-
-Available forward strategies:
-  rr: Round Robin mode
-  ha: High Availability mode
-  lha: Latency based High Availability mode
-  dh: Destination Hashing mode
-
-Forwarder option scheme: FORWARD_URL#OPTIONS
-  priority: set the priority of that forwarder, default:0
-  interface: set local interface or ip address used to connect remote server
-  -
-  Examples:
-    socks5://1.1.1.1:1080#priority=100
-    vmess://[security:]uuid@host:port?alterID=num#priority=200
-    vmess://[security:]uuid@host:port?alterID=num#priority=200&interface=192.168.1.99
-    vmess://[security:]uuid@host:port?alterID=num#priority=200&interface=eth0
-
-Services:
-  dhcpd: service=dhcpd,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
-    e.g.,service=dhcpd,eth1,192.168.1.100,192.168.1.199,720
-
-Config file format(see `./glider.conf.example` as an example):
-  # COMMENT LINE
-  KEY=VALUE
-  KEY=VALUE
-  # KEY equals to command line flag name: listen forward strategy...
 ```
 
 </details>
@@ -325,45 +355,43 @@ Config file format(see `./glider.conf.example` as an example):
 #### Examples
 
 <details>
-<summary>click to see details</summary>
+<summary><code>glider -example</code></summary>
 
 ```bash
 Examples:
   glider -config glider.conf
     -run glider with specified config file.
-
+  
   glider -listen :8443 -verbose
     -listen on :8443, serve as http/socks5 proxy on the same port, in verbose mode.
 
-  glider -listen ss://AEAD_AES_128_GCM:pass@:8443 -verbose
-    -listen on 0.0.0.0:8443 as a ss server.
-
+  glider -listen socks5://:1080 -listen http://:8080 -verbose
+    -multiple listeners: listen on :1080 as socks5 proxy server, and on :8080 as http proxy server.
+  
+  glider -listen :8443 -forward direct://#interface=eth0 -forward direct://#interface=eth1
+    -multiple forwarders: listen on 8443 and forward requests via interface eth0 and eth1 in round robin mode.
+  
   glider -listen tls://:443?cert=crtFilePath&key=keyFilePath,http:// -verbose
-    -listen on :443 as a https(http over tls) proxy server.
-
-  glider -listen http://:8080 -forward socks5://127.0.0.1:1080
-    -listen on :8080 as a http proxy server, forward all requests via socks5 server.
-
-  glider -listen socks5://:1080 -forward "tls://abc.com:443,vmess://security:uuid@?alterID=10"
-    -listen on :1080 as a socks5 server, forward all requests via remote tls+vmess server.
-
-  glider -listen socks5://:1080 -forward ss://method:pass@server1:port1 -forward ss://method:pass@server2:port2 -strategy rr
-    -listen on :1080 as socks5 server, forward requests via server1 and server2 in round robin mode.
-
-  glider -listen tcp://:80 -forward tcp://2.2.2.2:80
-    -tcp tunnel: listen on :80 and forward all requests to 2.2.2.2:80.
-
-  glider -listen udp://:53 -forward ss://method:pass@1.1.1.1:8443,udp://8.8.8.8:53
-    -listen on :53 and forward all udp requests to 8.8.8.8:53 via remote ss server.
-
-  glider -listen socks5://:1080 -listen http://:8080 -forward ss://method:pass@1.1.1.1:8443
-    -listen on :1080 as socks5 server, :8080 as http proxy server, forward all requests via remote ss server.
-
-  glider -verbose -listen -dns=:53 -dnsserver=8.8.8.8:53 -forward ss://method:pass@server:port -dnsrecord=www.example.com/1.2.3.4
-    -listen on :53 as dns server, forward to 8.8.8.8:53 via ss server.
+    -protocol chain: listen on :443 as a https(http over tls) proxy server.
+  
+  glider -listen http://:8080 -forward socks5://serverA:1080,socks5://serverB:1080
+    -proxy chain: listen on :8080 as a http proxy server, forward all requests via forward chain.
+  
+  glider -listen :8443 -forward socks5://serverA:1080 -forward socks5://serverB:1080#priority=10 -forward socks5://serverC:1080#priority=10
+    -forwarder priority: serverA will only be used when serverB and serverC are not available.
+  
+  glider -listen tcp://:80 -forward tcp://serverA:80
+    -tcp tunnel: listen on :80 and forward all requests to serverA:80.
+  
+  glider -listen udp://:53 -forward socks5://serverA:1080,udp://8.8.8.8:53
+    -udp tunnel: listen on :53 and forward all udp requests to 8.8.8.8:53 via remote socks5 server.
+  
+  glider -verbose -listen -dns=:53 -dnsserver=8.8.8.8:53 -forward socks5://serverA:1080 -dnsrecord=abc.com/1.2.3.4
+    -dns over proxy: listen on :53 as dns server, forward to 8.8.8.8:53 via socks5 server.
 ```
 
 </details>
+
 
 ## Config
 
@@ -376,15 +404,39 @@ Examples:
 
 ## Service
 
-- dhcpd: 
+- dhcpd / dhcpd-failover:
   - service=dhcpd,INTERFACE,START_IP,END_IP,LEASE_MINUTES[,MAC=IP,MAC=IP...]
-  - e.g.:
-  - service=dhcpd,eth1,192.168.1.100,192.168.1.199,720
-  - service=dhcpd,eth2,192.168.2.100,192.168.2.199,720,fc:23:34:9e:25:01=192.168.2.101
+    - service=dhcpd,eth1,192.168.1.100,192.168.1.199,720,fc:23:34:9e:25:01=192.168.1.101
+    - service=dhcpd-failover,eth2,192.168.2.100,192.168.2.199,720
+  - note: `dhcpd-failover` only serves requests when there's no other dhcp server exists in lan
+    - detect interval: 1min
 
 ## Linux Service
 
 - systemd: [https://github.com/nadoo/glider/blob/master/systemd/](https://github.com/nadoo/glider/blob/master/systemd/)
+
+- <details> <summary>docker: click to see details</summary>
+
+  - run glider (config file path: /etc/glider/glider.conf)
+    ```
+    docker run -d --name glider --net host --restart=always \
+      -v /etc/glider:/etc/glider \
+      nadoo/glider -config=/etc/glider/glider.conf
+    ```
+  - run watchtower (if you need auto update for glider)
+    ```
+    docker run -d --name watchtower --restart=always \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      containrrr/watchtower --interval 21600 --cleanup \
+      glider
+    ```
+  - open udp ports (if you need udp nat fullcone)
+    ```
+    iptables -I INPUT -p udp -m udp --dport 1024:65535 -j ACCEPT
+    ```
+  
+  </details>
+
 
 ## Customize Build
 
@@ -402,12 +454,12 @@ Examples:
   // _ "github.com/nadoo/glider/proxy/kcp"
   ```
 
-3. Build it(requires **Go 1.17+** )
+3. Build it(requires **Go 1.18+** )
   ```bash
   go build -v -ldflags "-s -w"
   ```
 
-  </details>
+</details>
 
 ## Proxy & Protocol Chains
 <details><summary>In glider, you can easily chain several proxy servers or protocols together (click to see details)</summary>

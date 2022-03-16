@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 )
 
 var (
-	version = "0.15.3"
+	version = "0.16.0"
 	config  = parseConfig()
 )
 
@@ -38,8 +37,8 @@ func main() {
 
 		// rules
 		for _, r := range config.rules {
-			for _, domain := range r.Domain {
-				if len(r.DNSServers) > 0 {
+			if len(r.DNSServers) > 0 {
+				for _, domain := range r.Domain {
 					d.SetServers(domain, r.DNSServers)
 				}
 			}
@@ -63,6 +62,10 @@ func main() {
 		}
 	}
 
+	for _, r := range config.rules {
+		r.IP, r.CIDR, r.Domain = nil, nil, nil
+	}
+
 	// enable checkers
 	pxy.Check()
 
@@ -72,14 +75,16 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		go local.ListenAndServe()
 	}
 
 	// run services
 	for _, s := range config.Services {
-		args := strings.Split(s, ",")
-		go service.Run(args[0], args[1:]...)
+		service, err := service.New(s)
+		if err != nil {
+			log.Fatal(err)
+		}
+		go service.Run()
 	}
 
 	sigCh := make(chan os.Signal, 1)

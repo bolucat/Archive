@@ -1,30 +1,11 @@
-# Make sure to check the documentation at http://goreleaser.com
-
-# release:
-# git tag -a v0.1.0 -m "v0.1.0"
-# git push origin v0.1.0
-# goreleaser release --skip-publish --rm-dist
-
-# #git tag -d v0.1.0
-# #git push origin --delete tag v0.1.0
-
-# snapshot:
-# goreleaser --snapshot --rm-dist
-
-# https://goreleaser.com/customization/
-
 before:
   hooks:
     - go mod tidy
 
-# https://goreleaser.com/customization/build/
 builds:
   - id: default
     env:
       - CGO_ENABLED=0
-    # GOOS list to build for.
-    # For more info refer to: https://go.dev/doc/install/source#environment
-    # Defaults are darwin and linux.
     goos:
       - windows
       - linux
@@ -47,7 +28,6 @@ builds:
       - hardfloat
       - softfloat
 
-# https://goreleaser.com/customization/archive/
 archives:
   - id: default
     builds:
@@ -66,16 +46,49 @@ archives:
       - config/**/*
       - systemd/*
 
-# https://goreleaser.com/customization/snapshots/
 snapshot:
-  name_template: "dev@{{.ShortCommit}}"
+  name_template: '{{ incpatch .Version }}-dev-{{.ShortCommit}}'
 
-# https://goreleaser.com/customization/checksum/
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
 
-# https://goreleaser.com/customization/release/
 release:
   prerelease: true
   draft: true
-  
+
+nfpms:
+  - id: glider
+    package_name: glider
+    vendor: nadoo
+    homepage: https://github.com/nadoo/glider
+    maintainer: nadoo
+    description: Glider is a forward proxy with multiple protocols support, and also a dns/dhcp server with ipset management features(like dnsmasq).
+    license: GPL-3.0 License
+    formats:
+      # - apk
+      - deb
+      # - rpm
+    dependencies:
+      - libsystemd0
+    bindir: /usr/bin
+    release: 1
+    epoch: 1
+    version_metadata: git
+    section: default
+    priority: extra
+    contents:
+      - src: systemd/glider@.service
+        dst: /etc/systemd/system/glider@.service
+
+      - src: config/glider.conf.example
+        dst: /etc/glider/glider.conf
+
+    scripts:
+      postinstall: "systemd/postinstall.sh"
+      preremove: "systemd/preremove.sh"
+      postremove: "systemd/postremove.sh"
+
+    deb:
+      triggers:
+        interest_noawait:
+          - /lib/systemd/systemd

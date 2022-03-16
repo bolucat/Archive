@@ -149,8 +149,8 @@ func (s *SSH) initConn() error {
 }
 
 // DialUDP connects to the given address via the proxy.
-func (s *SSH) DialUDP(network, addr string) (pc net.PacketConn, writeTo net.Addr, err error) {
-	return nil, nil, proxy.ErrNotSupported
+func (s *SSH) DialUDP(network, addr string) (pc net.PacketConn, err error) {
+	return nil, proxy.ErrNotSupported
 }
 
 func privateKeyAuth(file string) (ssh.AuthMethod, error) {
@@ -165,4 +165,12 @@ func privateKeyAuth(file string) (ssh.AuthMethod, error) {
 	}
 
 	return ssh.PublicKeys(key), nil
+}
+
+func init() {
+	proxy.AddUsage("ssh", `
+SSH scheme:
+  ssh://user[:pass]@host:port[?key=keypath&timeout=SECONDS]
+    timeout: timeout of ssh handshake and channel operation, default: 5
+`)
 }

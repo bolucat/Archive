@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"time"
 
-	"github.com/nadoo/glider/pkg/log"
 	"github.com/nadoo/glider/pkg/sockopt"
 )
 
@@ -27,8 +27,8 @@ func NewDirect(intface string, dialTimeout, relayTimeout time.Duration) (*Direct
 	d := &Direct{dialTimeout: dialTimeout, relayTimeout: relayTimeout}
 
 	if intface != "" {
-		if ip := net.ParseIP(intface); ip != nil {
-			d.ip = ip
+		if addr, err := netip.ParseAddr(intface); err == nil {
+			d.ip = addr.AsSlice()
 		} else {
 			iface, err := net.InterfaceByName(intface)
 			if err != nil {
@@ -88,7 +88,7 @@ func (d *Direct) dial(network, addr string, localIP net.IP) (net.Conn, error) {
 
 	dialer := &net.Dialer{LocalAddr: la, Timeout: d.dialTimeout}
 	if d.iface != nil {
-		dialer.Control = sockopt.BindControl(d.iface)
+		dialer.Control = sockopt.Control(sockopt.Bind(d.iface))
 	}
 
 	c, err := dialer.Dial(network, addr)
@@ -108,7 +108,7 @@ func (d *Direct) dial(network, addr string, localIP net.IP) (net.Conn, error) {
 }
 
 // DialUDP connects to the given address.
-func (d *Direct) DialUDP(network, addr string) (net.PacketConn, net.Addr, error) {
+func (d *Direct) DialUDP(network, addr string) (net.PacketConn, error) {
 	var la string
 	if d.ip != nil {
 		la = net.JoinHostPort(d.ip.String(), "0")
@@ -116,17 +116,10 @@ func (d *Direct) DialUDP(network, addr string) (net.PacketConn, net.Addr, error)
 
 	lc := &net.ListenConfig{}
 	if d.iface != nil {
-		lc.Control = sockopt.BindControl(d.iface)
+		lc.Control = sockopt.Control(sockopt.Bind(d.iface))
 	}
 
-	pc, err := lc.ListenPacket(context.Background(), network, la)
-	if err != nil {
-		log.F("ListenPacket error: %s", err)
-		return nil, nil, err
-	}
-
-	uAddr, err := net.ResolveUDPAddr("udp", addr)
-	return pc, uAddr, err
+	return lc.ListenPacket(context.Background(), network, la)
 }
 
 // IFaceIPs returns ip addresses according to the specified interface.
