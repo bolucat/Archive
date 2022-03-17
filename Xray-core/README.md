@@ -44,7 +44,7 @@
 - Windows
   - [v2rayN](https://github.com/2dust/v2rayN)
   - [Qv2ray](https://github.com/Qv2ray/Qv2ray)  (This project had been archived and currently inactive)
-  - [Netch (NetFilter & TUN/TAP)](https://github.com/NetchX/Netch)
+  - [Netch (NetFilter & TUN/TAP)](https://github.com/NetchX/Netch) (This project had been archived and currently inactive)
 - Android
   - [v2rayNG](https://github.com/2dust/v2rayNG)
   - [AnXray](https://github.com/XTLS/AnXray)
@@ -53,6 +53,7 @@
   - [Shadowrocket](https://apps.apple.com/app/shadowrocket/id932747118)
 - macOS (Intel chip & M1 chip)
   - [Qv2ray](https://github.com/Qv2ray/Qv2ray) (This project had been archived and currently inactive)
+  - [V2RayXS](https://github.com/tzmax/V2RayXS)
 
 ## Credits
 
