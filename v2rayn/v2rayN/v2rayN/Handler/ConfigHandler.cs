@@ -250,34 +250,16 @@ namespace v2rayN.Handler
         /// <param name="config"></param>
         /// <param name="index"></param>
         /// <returns></returns>
-        public static int CopyServer(ref Config config, VmessItem item)
+        public static int CopyServer(ref Config config, List<VmessItem> indexs)
         {
-            if (item == null)
+            foreach (var item in indexs)
             {
-                return -1;
+                VmessItem vmessItem = Utils.DeepCopy(item);
+                vmessItem.indexId = string.Empty;
+                vmessItem.remarks = string.Format("{0}-clone", item.remarks);
+
+                AddServerCommon(ref config, vmessItem);
             }
-
-            VmessItem vmessItem = new VmessItem
-            {
-                configVersion = item.configVersion,
-                address = item.address,
-                port = item.port,
-                id = item.id,
-                alterId = item.alterId,
-                security = item.security,
-                network = item.network,
-                remarks = string.Format("{0}-clone", item.remarks),
-                headerType = item.headerType,
-                requestHost = item.requestHost,
-                path = item.path,
-                streamSecurity = item.streamSecurity,
-                allowInsecure = item.allowInsecure,
-                configType = item.configType,
-                flow = item.flow,
-                sni = item.sni
-            };
-
-            AddServerCommon(ref config, vmessItem);
 
             ToJsonFile(config);
 
@@ -639,7 +621,7 @@ namespace v2rayN.Handler
         /// <param name="clipboardData"></param>
         /// <param name="subid"></param>
         /// <returns>成功导入的数量</returns>
-        public static int AddBatchServers(ref Config config, string clipboardData, string subid, string groupId)
+        public static int AddBatchServers(ref Config config, string clipboardData, string subid, List<VmessItem> lstOriSub, string groupId)
         {
             if (Utils.IsNullOrEmpty(clipboardData))
             {
@@ -647,10 +629,8 @@ namespace v2rayN.Handler
             }
 
             //copy sub items
-            List<VmessItem> lstOriSub = null;
             if (!Utils.IsNullOrEmpty(subid))
             {
-                lstOriSub = config.vmess.Where(it => it.subid == subid).ToList();
                 RemoveServerViaSubid(ref config, subid);
             }
             //if (clipboardData.IndexOf("vmess") >= 0 && clipboardData.IndexOf("vmess") == clipboardData.LastIndexOf("vmess"))

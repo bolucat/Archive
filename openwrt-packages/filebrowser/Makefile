@@ -7,11 +7,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=filebrowser
-PKG_VERSION:=2.19.0
-PKG_RELEASE:=
+PKG_VERSION:=2.21.1
+PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_VERSION:=a078f0b787de83b58c3e5dd5699387e90f1bf0d6
+PKG_SOURCE_VERSION:=b73d278
 PKG_SOURCE_URL:=https://github.com/filebrowser/filebrowser
 PKG_MIRROR_HASH:=skip
 
@@ -59,12 +59,12 @@ config FILEBROWSER_COMPRESS_GOPROXY
 config FILEBROWSER_COMPRESS_UPX
 	bool "Compress executable files with UPX"
 	depends on !mips64
-	default y if mips||mipsel
+	default n
 endef
 
 ifeq ($(CONFIG_FILEBROWSER_COMPRESS_GOPROXY),y)
 export GO111MODULE=on
-export GOPROXY=https://goproxy.baidu.com
+export GOPROXY=https://goproxy.bj.bcebos.com
 endif
 
 define Build/Compile
