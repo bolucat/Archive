@@ -11,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/log"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	udp_proto "github.com/v2fly/v2ray-core/v5/common/protocol/udp"
 	"github.com/v2fly/v2ray-core/v5/common/session"
@@ -127,6 +128,39 @@ func (s *Server) processTCP(ctx context.Context, conn internet.Connection, dispa
 				Status: log.AccessAccepted,
 				Reason: "",
 			})
+		}
+
+		if udpovertcp.GetDestinationSubsetOf(dest) {
+			udpWriter := udpovertcp.NewWriter(conn, nil)
+			var udpServer udp.DispatcherI
+			udpServer = udp.NewSplitDispatcher(dispatcher, func(ctx context.Context, packet *udp_proto.Packet) {
+				buffer := packet.Payload
+				buffer.Endpoint = &packet.Source
+				err = udpWriter.WriteMultiBuffer(buf.MultiBuffer{buffer})
+				if err != nil {
+					newError("failed to write back udp response").Base(err).AtWarning().WriteToLog()
+					udpServer.Close()
+					conn.Close()
+				}
+			})
+			udpReader := udpovertcp.NewReader(conn)
+			for {
+				mb, err := udpReader.ReadMultiBuffer()
+				if err != nil {
+					newError("failed to read udp packet").Base(err).AtWarning().WriteToLog()
+					break
+				}
+				for _, buffer := range mb {
+					if buffer.Endpoint == nil {
+						buffer.Release()
+						continue
+					}
+					udpServer.Dispatch(ctx, *buffer.Endpoint, buffer)
+				}
+			}
+			udpServer.Close()
+
+			return nil
 		}
 
 		return s.transport(ctx, reader, conn, dest, dispatcher)

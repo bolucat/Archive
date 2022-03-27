@@ -53,7 +53,7 @@ namespace v2rayN.Handler
                     if (!Utils.IsNullOrEmpty(item.customIcon) && File.Exists(item.customIcon))
                     {
                         graphics.FillRectangle(drawBrush, new Rectangle(0, 0, width, height));
-                        graphics.DrawImage(new Bitmap(item.customIcon), 0, 0);
+                        graphics.DrawImage(new Bitmap(item.customIcon), 0, 0, width, height);
                         customIcon = true;
                     }
                 }
@@ -85,8 +85,8 @@ namespace v2rayN.Handler
             {
                 return;
             }
-            if (item.configType != (int)EConfigType.Vmess
-                && item.configType != (int)EConfigType.VLESS)
+            if (item.configType != EConfigType.Vmess
+                && item.configType != EConfigType.VLESS)
             {
                 UI.Show(UIRes.I18N("NonVmessService"));
                 return;
@@ -125,8 +125,8 @@ namespace v2rayN.Handler
             {
                 return;
             }
-            if (item.configType != (int)EConfigType.Vmess
-                && item.configType != (int)EConfigType.VLESS)
+            if (item.configType != EConfigType.Vmess
+                && item.configType != EConfigType.VLESS)
             {
                 UI.Show(UIRes.I18N("NonVmessService"));
                 return;
@@ -159,29 +159,12 @@ namespace v2rayN.Handler
             }
         }
 
-        public int AddBatchServers(Config config, string clipboardData, string subid, string groupId)
-        {
-            List<VmessItem> lstOriSub = null;
-            if (!Utils.IsNullOrEmpty(subid))
-            {
-                lstOriSub = config.vmess.Where(it => it.subid == subid).ToList();
-            }
-
-            int counter = ConfigHandler.AddBatchServers(ref config, clipboardData, subid, lstOriSub, groupId);
-            if (counter < 1)
-            {
-                counter = ConfigHandler.AddBatchServers(ref config, Utils.Base64Decode(clipboardData), subid, lstOriSub, groupId);
-            }
-
-            return counter;
-        }
-
         public void BackupGuiNConfig(Config config, bool auto = false)
         {
             string fileName = $"guiNConfig_{DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss_fff")}.json";
             if (auto)
             {
-                fileName = Utils.GetTempPath(fileName);
+                fileName = Utils.GetBackupPath(fileName);
             }
             else
             {

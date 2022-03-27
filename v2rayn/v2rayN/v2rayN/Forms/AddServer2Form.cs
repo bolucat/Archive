@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Windows.Forms;
 using v2rayN.Handler;
 using v2rayN.Mode;
@@ -16,6 +18,7 @@ namespace v2rayN.Forms
         private void AddServer2Form_Load(object sender, EventArgs e)
         {
             cmbCoreType.Items.AddRange(Global.coreTypes.ToArray());
+            cmbCoreType.Items.Add("clash");
             cmbCoreType.Items.Add(string.Empty);
 
             txtAddress.ReadOnly = true;
@@ -66,6 +69,11 @@ namespace v2rayN.Forms
                 UI.Show(UIRes.I18N("PleaseFillRemarks"));
                 return;
             }
+            if (Utils.IsNullOrEmpty(txtAddress.Text))
+            {
+                UI.Show(UIRes.I18N("FillServerAddressCustom"));
+                return;
+            }
             vmessItem.remarks = remarks;
             if (Utils.IsNullOrEmpty(cmbCoreType.Text))
             {
@@ -105,7 +113,7 @@ namespace v2rayN.Forms
             OpenFileDialog fileDialog = new OpenFileDialog
             {
                 Multiselect = false,
-                Filter = "Config|*.json|All|*.*"
+                Filter = "Config|*.json|YAML|*.yaml|All|*.*"
             };
             if (fileDialog.ShowDialog() != DialogResult.OK)
             {
@@ -120,7 +128,7 @@ namespace v2rayN.Forms
             vmessItem.address = fileName;
             vmessItem.remarks = txtRemarks.Text;
 
-            if (ConfigHandler.AddCustomServer(ref config, vmessItem) == 0)
+            if (ConfigHandler.AddCustomServer(ref config, vmessItem, false) == 0)
             {
                 BindingServer();
                 UI.Show(UIRes.I18N("SuccessfullyImportedCustomServer"));
@@ -129,6 +137,19 @@ namespace v2rayN.Forms
             {
                 UI.ShowWarning(UIRes.I18N("FailedImportedCustomServer"));
             }
+        }
+
+        private void btnEdit_Click(object sender, EventArgs e)
+        {
+            var address = txtAddress.Text;
+            if (Utils.IsNullOrEmpty(address))
+            {
+                UI.Show(UIRes.I18N("FillServerAddressCustom"));
+                return;
+            }
+
+            address = Path.Combine(Utils.GetConfigPath(), address);
+            Process.Start(address);
         }
     }
 }

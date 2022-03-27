@@ -63,6 +63,7 @@ type ShadowsocksServerTarget struct {
 	Ota                            bool               `json:"ota"`
 	Level                          byte               `json:"level"`
 	IVCheck                        bool               `json:"ivCheck"`
+	UoT                            bool               `json:"uot"`
 	ExperimentReducedIvHeadEntropy bool               `json:"experimentReducedIvHeadEntropy"`
 }
 
@@ -93,6 +94,7 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 		}
 		account := &shadowsocks.Account{
 			Password:                       server.Password,
+			UdpOverTcp:                     server.UoT,
 			ExperimentReducedIvHeadEntropy: server.ExperimentReducedIvHeadEntropy,
 		}
 		account.CipherType = shadowsocks.CipherFromString(server.Cipher)

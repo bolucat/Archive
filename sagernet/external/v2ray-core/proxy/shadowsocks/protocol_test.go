@@ -43,7 +43,7 @@ func TestUDPEncoding(t *testing.T) {
 
 	data := buf.New()
 	common.Must2(data.WriteString("test string"))
-	encodedData, err := EncodeUDPPacket(request, data.Bytes(), nil)
+	encodedData, err := EncodeUDPPacket(request, data.Bytes(), nil, nil)
 	common.Must(err)
 
 	decodedRequest, decodedData, err := DecodeUDPPacket(request.User, encodedData, nil)
@@ -131,12 +131,12 @@ func TestTCPRequest(t *testing.T) {
 			}
 		}
 
-		writer, err := WriteTCPRequest(request, cache, iv, nil)
+		writer, err := WriteTCPRequest(request, cache, iv, nil, nil)
 		common.Must(err)
 
 		common.Must(writer.WriteMultiBuffer(buf.MultiBuffer{data}))
 
-		decodedRequest, reader, err := ReadTCPSession(request.User, cache, nil)
+		decodedRequest, _, reader, err := ReadTCPSession(request.User, cache, nil)
 		common.Must(err)
 		if equalRequestHeader(decodedRequest, request) == false {
 			t.Error("different request")

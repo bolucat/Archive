@@ -126,12 +126,39 @@ export namespace CmdType {
     traffic_graph?: boolean;
     enable_tun_mode?: boolean;
     enable_auto_launch?: boolean;
+    enable_silent_start?: boolean;
     enable_system_proxy?: boolean;
     enable_proxy_guard?: boolean;
     system_proxy_bypass?: string;
   }
 
-  export type ProfileMerge = Record<string, any>;
+  type ClashConfigValue = any;
+
+  export interface ProfileMerge {
+    // clash config fields (default supports)
+    rules?: ClashConfigValue;
+    proxies?: ClashConfigValue;
+    "proxy-groups"?: ClashConfigValue;
+    "proxy-providers"?: ClashConfigValue;
+    "rule-providers"?: ClashConfigValue;
+    // clash config fields (use flag)
+    tun?: ClashConfigValue;
+    dns?: ClashConfigValue;
+    hosts?: ClashConfigValue;
+    script?: ClashConfigValue;
+    profile?: ClashConfigValue;
+    payload?: ClashConfigValue;
+    "interface-name"?: ClashConfigValue;
+    "routing-mark"?: ClashConfigValue;
+    // functional fields
+    use?: string[];
+    "prepend-rules"?: any[];
+    "append-rules"?: any[];
+    "prepend-proxies"?: any[];
+    "append-proxies"?: any[];
+    "prepend-proxy-groups"?: any[];
+    "append-proxy-groups"?: any[];
+  }
 
   // partial of the clash config
   export type ProfileData = Partial<{
@@ -140,6 +167,8 @@ export namespace CmdType {
     "proxy-groups": any[];
     "proxy-providers": any[];
     "rule-providers": any[];
+
+    [k: string]: any;
   }>;
 
   export interface ChainItem {

@@ -19,7 +19,12 @@ func HandleConn(c net.Conn, in chan<- C.ConnContext, cache *cache.Cache) {
 	client := newClient(c.RemoteAddr(), in)
 	defer client.CloseIdleConnections()
 
-	conn := N.NewBufferedConn(c)
+	var conn *N.BufferedConn
+	if bufConn, ok := c.(*N.BufferedConn); ok {
+		conn = bufConn
+	} else {
+		conn = N.NewBufferedConn(c)
+	}
 
 	keepAlive := true
 	trusted := cache == nil // disable authenticate if cache is nil
@@ -103,7 +108,7 @@ func authenticate(request *http.Request, cache *cache.Cache) *http.Response {
 			return resp
 		}
 
-		var authed interface{}
+		var authed any
 		if authed = cache.Get(credential); authed == nil {
 			user, pass, err := decodeBasicProxyAuthorization(credential)
 			authed = err == nil && authenticator.Verify(user, pass)

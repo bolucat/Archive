@@ -5,6 +5,7 @@ if [ $# -ne 1 ]; then
     exit
 fi
 
+rm -rf _
 mkdir _
 
 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build                    -ldflags="-w -s" -o _/brook_darwin_amd64 .
@@ -118,6 +119,10 @@ mv brook.ipk ../cli/brook/_/brook_linux_ppc64le.ipk
 
 cd ../cli/brook/
 
-nami release github.com/txthinking/brook $1 _
+if [ "$1" = "dev" ]
+then
+    exit
+fi
 
+nami release github.com/txthinking/brook $1 _
 rm -rf _

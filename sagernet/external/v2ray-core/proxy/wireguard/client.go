@@ -102,15 +102,14 @@ func (c *Client) Init(config *Config, policyManager policy.Manager) error {
 		c.destination.Network = net.Network_UDP
 	}
 
-	c.endpoint = &conn.StdNetEndpoint{
-		Port: int(c.destination.Port),
-	}
-
+	var endpointIp netip.Addr
 	if c.destination.Address.Family().IsDomain() {
-		c.endpoint.IP = []byte{1, 0, 0, 1}
+		endpointIp = netip.AddrFrom4([4]byte{127, 0, 0, 1})
 	} else {
-		c.endpoint.IP = c.destination.Address.IP()
+		endpointIp, _ = netip.AddrFromSlice(c.destination.Address.IP())
 	}
+	endpoint := conn.StdNetEndpoint(netip.AddrPortFrom(endpointIp, uint16(c.destination.Port)))
+	c.endpoint = &endpoint
 
 	localAddress := make([]tcpip.AddressWithPrefix, len(config.LocalAddress))
 	if len(localAddress) == 0 {

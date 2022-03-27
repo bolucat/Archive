@@ -16,6 +16,7 @@ message Account {
   CipherType cipher_type = 2;
 
   bool iv_check = 3;
+  bool udp_over_tcp = 4;
   bool experiment_reduced_iv_head_entropy = 90001;
 }
 
@@ -61,6 +62,10 @@ enum CipherType {
   CHACHA20 = 34;
   CHACHA20_IETF = 35;
   XCHACHA20 = 36;
+
+  BLAKE3_AES_128_GCM_2022 = 37;
+  BLAKE3_AES_256_GCM_2022 = 38;
+  BLAKE3_CHACHA20_POLY1305_2022 = 39;
 
 }
 

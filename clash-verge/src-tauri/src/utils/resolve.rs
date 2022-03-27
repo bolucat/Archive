@@ -4,8 +4,6 @@ use tauri::{App, AppHandle, Manager};
 
 /// handle something when start app
 pub fn resolve_setup(app: &App) {
-  resolve_window(app);
-
   // setup a simple http server for singleton
   server::embed_server(&app.handle());
 
@@ -39,6 +37,15 @@ pub fn resolve_setup(app: &App) {
   }
 
   log_if_err!(verge.init_launch());
+
+  verge.config.enable_system_proxy.map(|enable| {
+    log_if_err!(app
+      .tray_handle()
+      .get_item("system_proxy")
+      .set_selected(enable));
+  });
+
+  resolve_window(app, verge.config.enable_silent_start.clone());
 }
 
 /// reset system proxy
@@ -50,8 +57,15 @@ pub fn resolve_reset(app_handle: &AppHandle) {
 }
 
 /// customize the window theme
-fn resolve_window(app: &App) {
+fn resolve_window(app: &App, hide: Option<bool>) {
   let window = app.get_window("main").unwrap();
+
+  // silent start
+  hide.map(|hide| {
+    if hide {
+      window.hide().unwrap();
+    }
+  });
 
   #[cfg(target_os = "windows")]
   {

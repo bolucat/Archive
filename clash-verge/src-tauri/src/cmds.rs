@@ -6,7 +6,7 @@ use crate::{
 use crate::{ret_err, wrap_err};
 use anyhow::Result;
 use serde_yaml::Mapping;
-use std::{path::PathBuf, process::Command};
+use std::process::Command;
 use tauri::{api, Manager, State};
 
 /// get all profiles from `profiles.yaml`
@@ -43,9 +43,10 @@ pub async fn import_profile(
 #[tauri::command]
 pub async fn create_profile(
   item: PrfItem, // partial
+  file_data: Option<String>,
   profiles_state: State<'_, ProfilesState>,
 ) -> Result<(), String> {
-  let item = wrap_err!(PrfItem::from(item).await)?;
+  let item = wrap_err!(PrfItem::from(item, file_data).await)?;
   let mut profiles = profiles_state.0.lock().unwrap();
 
   wrap_err!(profiles.append_item(item))
@@ -194,21 +195,50 @@ pub fn view_profile(index: String, profiles_state: State<'_, ProfilesState>) -> 
         .arg(path)
         .spawn()
       {
-        log::error!("{err}");
+        log::error!("failed to open file by VScode for {err}");
         return Err("failed to open file by VScode".into());
       }
     }
 
     #[cfg(not(target_os = "windows"))]
     if let Err(err) = Command::new(code).arg(path).spawn() {
-      log::error!("{err}");
+      log::error!("failed to open file by VScode for {err}");
       return Err("failed to open file by VScode".into());
     }
 
     return Ok(());
   }
 
-  open_path_cmd(path, "failed to open file by `open`")
+  wrap_err!(open::that(path))
+}
+
+/// read the profile item file data
+#[tauri::command]
+pub fn read_profile_file(
+  index: String,
+  profiles_state: State<'_, ProfilesState>,
+) -> Result<String, String> {
+  let profiles = profiles_state.0.lock().unwrap();
+  let item = wrap_err!(profiles.get_item(&index))?;
+  let data = wrap_err!(item.read_file())?;
+
+  Ok(data)
+}
+
+/// save the profile item file data
+#[tauri::command]
+pub fn save_profile_file(
+  index: String,
+  file_data: Option<String>,
+  profiles_state: State<'_, ProfilesState>,
+) -> Result<(), String> {
+  if file_data.is_none() {
+    return Ok(());
+  }
+
+  let profiles = profiles_state.0.lock().unwrap();
+  let item = wrap_err!(profiles.get_item(&index))?;
+  wrap_err!(item.save_file(file_data.unwrap()))
 }
 
 /// restart the sidecar
@@ -279,11 +309,13 @@ pub fn get_verge_config(verge_state: State<'_, VergeState>) -> Result<VergeConfi
 #[tauri::command]
 pub fn patch_verge_config(
   payload: VergeConfig,
+  app_handle: tauri::AppHandle,
   clash_state: State<'_, ClashState>,
   verge_state: State<'_, VergeState>,
   profiles_state: State<'_, ProfilesState>,
 ) -> Result<(), String> {
   let tun_mode = payload.enable_tun_mode.clone();
+  let system_proxy = payload.enable_system_proxy.clone();
 
   // change tun mode
   if tun_mode.is_some() {
@@ -298,6 +330,15 @@ pub fn patch_verge_config(
   let mut verge = verge_state.0.lock().unwrap();
   wrap_err!(verge.patch_config(payload))?;
 
+  // change system tray
+  if system_proxy.is_some() {
+    app_handle
+      .tray_handle()
+      .get_item("system_proxy")
+      .set_selected(system_proxy.unwrap())
+      .unwrap();
+  }
+
   Ok(())
 }
 
@@ -311,66 +352,12 @@ pub fn kill_sidecars() {
 #[tauri::command]
 pub fn open_app_dir() -> Result<(), String> {
   let app_dir = dirs::app_home_dir();
-  open_path_cmd(app_dir, "failed to open app dir")
+  wrap_err!(open::that(app_dir))
 }
 
 /// open logs dir
 #[tauri::command]
 pub fn open_logs_dir() -> Result<(), String> {
   let log_dir = dirs::app_logs_dir();
-  open_path_cmd(log_dir, "failed to open logs dir")
-}
-
-/// use the os default open command to open file or dir
-fn open_path_cmd(path: PathBuf, err_str: &str) -> Result<(), String> {
-  let result;
-
-  #[cfg(target_os = "windows")]
-  {
-    use std::os::windows::process::CommandExt;
-
-    result = Command::new("explorer")
-      .creation_flags(0x08000000)
-      .arg(&path)
-      .spawn();
-  }
-
-  #[cfg(target_os = "macos")]
-  {
-    result = Command::new("open").arg(&path).spawn();
-  }
-
-  #[cfg(target_os = "linux")]
-  {
-    result = Command::new("xdg-open").arg(&path).spawn();
-  }
-
-  match result {
-    Ok(child) => match child.wait_with_output() {
-      Ok(out) => {
-        // 退出码不为0 不一定没有调用成功
-        // 因此仅做warn log且不返回错误
-        if let Some(code) = out.status.code() {
-          if code != 0 {
-            log::warn!("failed to open {:?} (code {})", &path, code);
-            log::warn!(
-              "open cmd stdout: {}, stderr: {}",
-              String::from_utf8_lossy(&out.stdout),
-              String::from_utf8_lossy(&out.stderr),
-            );
-          }
-        }
-      }
-      Err(err) => {
-        log::error!("failed to open {:?} for {err}", &path);
-        return Err(err_str.into());
-      }
-    },
-    Err(err) => {
-      log::error!("failed to open {:?} for {err}", &path);
-      return Err(err_str.into());
-    }
-  }
-
-  return Ok(());
+  wrap_err!(open::that(log_dir))
 }

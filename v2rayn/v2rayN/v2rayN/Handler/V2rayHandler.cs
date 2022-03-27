@@ -21,8 +21,9 @@ namespace v2rayN.Handler
     class V2rayHandler
     {
         private static string v2rayConfigRes = Global.v2rayConfigFileName;
-        private List<string> lstV2ray;
+        private List<string> lstCore;
         private string coreUrl;
+        private string coreArguments;
         public event ProcessDelegate ProcessEvent;
         //private int processId = 0;
         private Process _process;
@@ -39,6 +40,12 @@ namespace v2rayN.Handler
             if (Global.reloadV2ray)
             {
                 var item = ConfigHandler.GetDefaultServer(ref config);
+                if (item == null)
+                {
+                    ShowMsg(false, UIRes.I18N("CheckServerSettings"));
+                    return;
+                }
+
                 SetCore(config, item);
                 string fileName = Utils.GetPath(v2rayConfigRes);
                 if (V2rayConfigHandler.GenerateClientConfig(item, fileName, false, out string msg) != 0)
@@ -99,7 +106,7 @@ namespace v2rayN.Handler
                 }
                 else
                 {
-                    foreach (string vName in lstV2ray)
+                    foreach (string vName in lstCore)
                     {
                         Process[] existing = Process.GetProcessesByName(vName);
                         foreach (Process p in existing)
@@ -156,12 +163,10 @@ namespace v2rayN.Handler
             }
         }
 
-        private string V2rayFindexe()
+        private string V2rayFindexe(List<string> lstCoreTemp)
         {
-            //查找v2ray文件是否存在
             string fileName = string.Empty;
-            //lstV2ray.Reverse();
-            foreach (string name in lstV2ray)
+            foreach (string name in lstCoreTemp)
             {
                 string vName = string.Format("{0}.exe", name);
                 vName = Utils.GetPath(vName);
@@ -188,7 +193,7 @@ namespace v2rayN.Handler
 
             try
             {
-                string fileName = V2rayFindexe();
+                string fileName = V2rayFindexe(lstCore);
                 if (fileName == "") return;
 
                 Process p = new Process
@@ -196,6 +201,7 @@ namespace v2rayN.Handler
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = fileName,
+                        Arguments = coreArguments,
                         WorkingDirectory = Utils.StartupPath(),
                         UseShellExecute = false,
                         RedirectStandardOutput = true,
@@ -241,7 +247,8 @@ namespace v2rayN.Handler
 
             try
             {
-                string fileName = V2rayFindexe();
+                coreUrl = Global.xrayCoreUrl;
+                string fileName = V2rayFindexe(new List<string> { "xray" });
                 if (fileName == "") return -1;
 
                 Process p = new Process
@@ -320,28 +327,41 @@ namespace v2rayN.Handler
 
         private void SetCore(Config config, VmessItem item)
         {
-            var coreType = config.GetCoreType((EConfigType)item.configType);
-            if (item.coreType != null)
+            if (item == null)
             {
-                coreType = (ECoreType)item.coreType;
+                return;
             }
+            var coreType = LazyConfig.Instance.GetCoreType(item, item.configType);
 
             if (coreType == ECoreType.v2fly)
             {
-                lstV2ray = new List<string>
+                lstCore = new List<string>
                 {
                     "wv2ray",
                     "v2ray"
                 };
                 coreUrl = Global.v2flyCoreUrl;
+                coreArguments = string.Empty;
             }
-            else
+            else if (coreType == ECoreType.Xray)
             {
-                lstV2ray = new List<string>
+                lstCore = new List<string>
                 {
                     "xray"
                 };
                 coreUrl = Global.xrayCoreUrl;
+                coreArguments = string.Empty;
+            }
+            else if (coreType == ECoreType.clash)
+            {
+                lstCore = new List<string>
+                {
+                    "clash-windows-amd64",
+                    "clash-windows-386",
+                    "clash"
+                };
+                coreUrl = Global.clashCoreUrl;
+                coreArguments = "-f config.json";
             }
         }
     }

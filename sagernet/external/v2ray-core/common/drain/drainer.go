@@ -40,6 +40,9 @@ func drainReadN(reader io.Reader, n int) error {
 }
 
 func WithError(drainer Drainer, reader io.Reader, err error) error {
+	if drainer == nil {
+		return err
+	}
 	drainErr := drainer.Drain(reader)
 	if drainErr == nil {
 		return err

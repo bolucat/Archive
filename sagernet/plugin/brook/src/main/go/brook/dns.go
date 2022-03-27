@@ -15,14 +15,9 @@
 package brook
 
 import (
-	"bytes"
-	"context"
 	"encoding/binary"
-	"errors"
-	"io/ioutil"
 	"log"
 	"net"
-	"net/http"
 	"strings"
 	"time"
 
@@ -51,10 +46,14 @@ type DNS struct {
 	RunnerGroup        *runnergroup.RunnerGroup
 	UDPSrc             *cache.Cache
 	WSClient           *WSClient
+	BlockDomain        map[string]byte
+	BypassCache        *cache.Cache
+	BlockCache         *cache.Cache
+	UDPOverTCP         bool
 }
 
 // NewDNS.
-func NewDNS(addr, server, password, dnsServer, dnsServerForBypass, bypassList string, tcpTimeout, udpTimeout int) (*DNS, error) {
+func NewDNS(addr, server, password, dnsServer, dnsServerForBypass, bypassList string, tcpTimeout, udpTimeout int, blockDomainList string) (*DNS, error) {
 	taddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -82,22 +81,26 @@ func NewDNS(addr, server, password, dnsServer, dnsServerForBypass, bypassList st
 			return nil, err
 		}
 	}
-	ds := make(map[string]byte)
-	ss := make([]string, 0)
+	var ds, ds1 map[string]byte
 	if bypassList != "" {
-		ss, err = ReadList(bypassList)
+		ds, err = ReadDomainList(bypassList)
 		if err != nil {
 			return nil, err
 		}
 	}
-	for _, v := range ss {
-		ds[v] = 0
+	if blockDomainList != "" {
+		ds1, err = ReadDomainList(blockDomainList)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := limits.Raise(); err != nil {
 		log.Println("Try to raise system limits, got", err)
 	}
 	cs := cache.New(cache.NoExpiration, cache.NoExpiration)
 	cs2 := cache.New(cache.NoExpiration, cache.NoExpiration)
+	cs3 := cache.New(cache.NoExpiration, cache.NoExpiration)
+	cs4 := cache.New(cache.NoExpiration, cache.NoExpiration)
 	s := &DNS{
 		TCPAddr:            taddr,
 		UDPAddr:            uaddr,
@@ -106,6 +109,7 @@ func NewDNS(addr, server, password, dnsServer, dnsServerForBypass, bypassList st
 		UDPExchanges:       cs,
 		Password:           []byte(password),
 		BypassDomains:      ds,
+		BlockDomain:        ds1,
 		DNSServer:          dnsServer,
 		DNSServerForBypass: dnsServerForBypass,
 		TCPTimeout:         tcpTimeout,
@@ -113,6 +117,8 @@ func NewDNS(addr, server, password, dnsServer, dnsServerForBypass, bypassList st
 		RunnerGroup:        runnergroup.New(),
 		UDPSrc:             cs2,
 		WSClient:           wsc,
+		BypassCache:        cs3,
+		BlockCache:         cs4,
 	}
 	return s, nil
 }
@@ -211,8 +217,52 @@ func (s *DNS) TCPHandle(c *net.TCPConn) error {
 	}
 	has := false
 	for _, v := range m.Question {
-		debug("dns query", "udp", v.Qtype, v.Name)
-		if len(v.Name) > 0 && s.Has(v.Name[0:len(v.Name)-1]) {
+		if Debug {
+			log.Println("dns query", "tcp", v.Qtype, v.Name)
+		}
+		if (v.Qtype == dns.TypeAAAA || v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS) && len(v.Name) > 0 && ListHasDomain(s.BlockDomain, v.Name[0:len(v.Name)-1], s.BlockCache) {
+			if v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS {
+				m1 := &dns.Msg{}
+				m1.SetReply(m)
+				m1.Authoritative = true
+				m1.Answer = append(m1.Answer, &dns.A{
+					Hdr: dns.RR_Header{Name: v.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+					A:   net.IPv4zero,
+				})
+				m1b, err := m1.PackBuffer(nil)
+				if err != nil {
+					return err
+				}
+				lb := make([]byte, 2)
+				binary.BigEndian.PutUint16(lb, uint16(len(m1b)))
+				m1b = append(lb, m1b...)
+				if _, err := c.Write(m1b); err != nil {
+					return err
+				}
+				return nil
+			}
+			if v.Qtype == dns.TypeAAAA {
+				m1 := &dns.Msg{}
+				m1.SetReply(m)
+				m1.Authoritative = true
+				m1.Answer = append(m1.Answer, &dns.AAAA{
+					Hdr:  dns.RR_Header{Name: v.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 60},
+					AAAA: net.IPv6zero,
+				})
+				m1b, err := m1.PackBuffer(nil)
+				if err != nil {
+					return err
+				}
+				lb := make([]byte, 2)
+				binary.BigEndian.PutUint16(lb, uint16(len(m1b)))
+				m1b = append(lb, m1b...)
+				if _, err := c.Write(m1b); err != nil {
+					return err
+				}
+				return nil
+			}
+		}
+		if len(v.Name) > 0 && ListHasDomain(s.BypassDomains, v.Name[0:len(v.Name)-1], s.BypassCache) {
 			has = true
 			break
 		}
@@ -225,7 +275,9 @@ func (s *DNS) TCPHandle(c *net.TCPConn) error {
 	binary.BigEndian.PutUint16(lb, uint16(len(mb)))
 	mb = append(lb, mb...)
 	if has {
-		debug("in bypass list", "tcp", m.Question[0].Name)
+		if Debug {
+			log.Println("in bypass list", "tcp", m.Question[0].Name)
+		}
 		rc, err := Dial.Dial("tcp", s.DNSServerForBypass)
 		if err != nil {
 			return err
@@ -297,14 +349,27 @@ func (s *DNS) TCPHandle(c *net.TCPConn) error {
 	dst = append(dst, a)
 	dst = append(dst, h...)
 	dst = append(dst, p...)
-	sc, err := NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	var sc Exchanger
+	if s.WSClient == nil || !s.WSClient.WithoutBrook {
+		sc, err = NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("tcp", s.WSClient.PasswordSha256, dst, rc, s.TCPTimeout)
+	}
 	if err != nil {
 		return err
 	}
 	defer sc.Clean()
-	i := copy(sc.WB[2+16:], mb)
-	if err := sc.WriteL(i); err != nil {
-		return err
+	if v, ok := sc.(*StreamClient); ok {
+		i := copy(v.WB[2+16:], mb)
+		if err := v.WriteL(i); err != nil {
+			return err
+		}
+	}
+	if _, ok := sc.(*SimpleStreamClient); ok {
+		if _, err := rc.Write(mb); err != nil {
+			return err
+		}
 	}
 	if err := sc.Exchange(c); err != nil {
 		return nil
@@ -320,14 +385,54 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 	}
 	has := false
 	for _, v := range m.Question {
-		debug("dns query", "udp", v.Qtype, v.Name)
-		if len(v.Name) > 0 && s.Has(v.Name[0:len(v.Name)-1]) {
+		if Debug {
+			log.Println("dns query", "udp", v.Qtype, v.Name)
+		}
+		if (v.Qtype == dns.TypeAAAA || v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS) && len(v.Name) > 0 && ListHasDomain(s.BlockDomain, v.Name[0:len(v.Name)-1], s.BlockCache) {
+			if v.Qtype == dns.TypeA || v.Qtype == dns.TypeHTTPS {
+				m1 := &dns.Msg{}
+				m1.SetReply(m)
+				m1.Authoritative = true
+				m1.Answer = append(m1.Answer, &dns.A{
+					Hdr: dns.RR_Header{Name: v.Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60},
+					A:   net.IPv4zero,
+				})
+				m1b, err := m1.PackBuffer(nil)
+				if err != nil {
+					return err
+				}
+				if _, err := s.UDPConn.WriteToUDP(m1b, addr); err != nil {
+					return err
+				}
+				return nil
+			}
+			if v.Qtype == dns.TypeAAAA {
+				m1 := &dns.Msg{}
+				m1.SetReply(m)
+				m1.Authoritative = true
+				m1.Answer = append(m1.Answer, &dns.AAAA{
+					Hdr:  dns.RR_Header{Name: v.Name, Rrtype: dns.TypeAAAA, Class: dns.ClassINET, Ttl: 60},
+					AAAA: net.IPv6zero,
+				})
+				m1b, err := m1.PackBuffer(nil)
+				if err != nil {
+					return err
+				}
+				if _, err := s.UDPConn.WriteToUDP(m1b, addr); err != nil {
+					return err
+				}
+				return nil
+			}
+		}
+		if len(v.Name) > 0 && ListHasDomain(s.BypassDomains, v.Name[0:len(v.Name)-1], s.BypassCache) {
 			has = true
 			break
 		}
 	}
 	if has {
-		debug("in bypass list", "udp", m.Question[0].Name)
+		if Debug {
+			log.Println("in bypass list", "udp", m.Question[0].Name)
+		}
 		conn, err := Dial.Dial("udp", s.DNSServerForBypass)
 		if err != nil {
 			return err
@@ -358,13 +463,15 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 
 	src := addr.String()
 	dst := s.DNSServer
-	if s.WSClient == nil {
+	if s.WSClient == nil && !s.UDPOverTCP {
 		any, ok := s.UDPExchanges.Get(src + dst)
 		if ok {
 			ue := any.(*UDPExchange)
 			return ue.Any.(*PacketClient).LocalToServer(ue.Dst, b, ue.Conn, s.UDPTimeout)
 		}
-		debug("dial udp", dst)
+		if Debug {
+			log.Println("dial udp", dst)
+		}
 		var laddr *net.UDPAddr
 		any, ok = s.UDPSrc.Get(src + dst)
 		if ok {
@@ -375,6 +482,11 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 			return err
 		}
 		defer rc.Close()
+		if s.UDPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if laddr == nil {
 			s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 		}
@@ -411,17 +523,34 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 		ue := any.(*UDPExchange)
 		return ue.Any.(func(b []byte) error)(b)
 	}
-	debug("dial udp", dst)
+	if Debug {
+		log.Println("dial udp", dst)
+	}
 	var laddr *net.UDPAddr
 	any, ok = s.UDPSrc.Get(src + dst)
 	if ok {
 		laddr = any.(*net.UDPAddr)
 	}
-	la := ""
-	if laddr != nil {
-		la = laddr.String()
+	var rc net.Conn
+	var err error
+	if s.UDPOverTCP {
+		var la *net.TCPAddr
+		if laddr != nil {
+			la = &net.TCPAddr{
+				IP:   laddr.IP,
+				Port: laddr.Port,
+				Zone: laddr.Zone,
+			}
+		}
+		rc, err = Dial.DialTCP("tcp", la, s.ServerTCPAddr)
 	}
-	rc, err := s.WSClient.DialWebsocket(la)
+	if s.WSClient != nil {
+		la := ""
+		if laddr != nil {
+			la = laddr.String()
+		}
+		rc, err = s.WSClient.DialWebsocket(la)
+	}
 	if err != nil {
 		return err
 	}
@@ -448,7 +577,13 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 	dstb = append(dstb, a)
 	dstb = append(dstb, h...)
 	dstb = append(dstb, p...)
-	sc, err := NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	var sc Exchanger
+	if s.UDPOverTCP || (s.WSClient != nil && !s.WSClient.WithoutBrook) {
+		sc, err = NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("udp", s.WSClient.PasswordSha256, dstb, rc, s.UDPTimeout)
+	}
 	if err != nil {
 		return err
 	}
@@ -467,82 +602,4 @@ func (s *DNS) UDPHandle(addr *net.UDPAddr, b []byte) error {
 		return nil
 	}
 	return nil
-}
-
-func (s *DNS) Has(host string) bool {
-	ss := strings.Split(host, ".")
-	var s1 string
-	for i := len(ss) - 1; i >= 0; i-- {
-		if s1 == "" {
-			s1 = ss[i]
-		} else {
-			s1 = ss[i] + "." + s1
-		}
-		if _, ok := s.BypassDomains[s1]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func ReadList(url string) ([]string, error) {
-	var data []byte
-	var err error
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		c := &http.Client{
-			Timeout: 9 * time.Second,
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					r := &net.Resolver{
-						Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-							c, err := net.Dial(network, "8.8.8.8:53")
-							if err != nil {
-								c, err = net.Dial(network, "[2001:4860:4860::8888]:53")
-							}
-							return c, err
-						},
-					}
-					h, p, err := net.SplitHostPort(addr)
-					if err != nil {
-						return nil, err
-					}
-					l, err := r.LookupIP(ctx, "ip4", h)
-					if err == nil && len(l) > 0 {
-						c, err := net.Dial(network, net.JoinHostPort(l[0].String(), p))
-						if err == nil {
-							return c, nil
-						}
-					}
-					l, err = r.LookupIP(ctx, "ip6", h)
-					if err == nil && len(l) > 0 {
-						c, err := net.Dial(network, net.JoinHostPort(l[0].String(), p))
-						if err == nil {
-							return c, nil
-						}
-					}
-					return nil, errors.New("Can not fetch " + addr + ", maybe dns or network error")
-				},
-			},
-		}
-		r, err := c.Get(url)
-		if err != nil {
-			return nil, err
-		}
-		defer r.Body.Close()
-		data, err = ioutil.ReadAll(r.Body)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
-		data, err = ioutil.ReadFile(url)
-		if err != nil {
-			return nil, err
-		}
-	}
-	data = bytes.TrimSpace(data)
-	data = bytes.Replace(data, []byte{0x20}, []byte{}, -1)
-	data = bytes.Replace(data, []byte{0x0d, 0x0a}, []byte{0x0a}, -1)
-	ss := strings.Split(string(data), "\n")
-	return ss, nil
 }

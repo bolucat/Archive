@@ -30,6 +30,7 @@ type Client struct {
 	Password      []byte
 	TCPTimeout    int
 	UDPTimeout    int
+	UDPOverTCP    bool
 }
 
 // NewClient returns a new Client.
@@ -59,7 +60,9 @@ func (x *Client) ListenAndServe() error {
 // TCPHandle handles tcp request.
 func (x *Client) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request) error {
 	if r.Cmd == socks5.CmdConnect {
-		debug("dial tcp", r.Address())
+		if Debug {
+			log.Println("dial tcp", r.Address())
+		}
 		rc, err := Dial.Dial("tcp", x.ServerAddress)
 		if err != nil {
 			return ErrorReply(r, c, err)
@@ -110,6 +113,9 @@ type UDPExchange struct {
 
 // UDPHandle handles udp request.
 func (x *Client) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagram) error {
+	if x.UDPOverTCP {
+		return x.UDPOverTCPHandle(s, addr, d)
+	}
 	src := addr.String()
 	dst := d.Address()
 	any, ok := s.UDPExchanges.Get(src + dst)
@@ -117,7 +123,9 @@ func (x *Client) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagr
 		ue := any.(*UDPExchange)
 		return ue.Any.(*PacketClient).LocalToServer(ue.Dst, d.Data, ue.Conn, x.UDPTimeout)
 	}
-	debug("dial udp", dst)
+	if Debug {
+		log.Println("dial udp", dst)
+	}
 	var laddr *net.UDPAddr
 	any, ok = s.UDPSrc.Get(src + dst)
 	if ok {
@@ -132,6 +140,11 @@ func (x *Client) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagr
 		return err
 	}
 	defer rc.Close()
+	if x.UDPTimeout != 0 {
+		if err := rc.SetDeadline(time.Now().Add(time.Duration(x.UDPTimeout) * time.Second)); err != nil {
+			return err
+		}
+	}
 	if laddr == nil {
 		s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 	}
@@ -156,6 +169,76 @@ func (x *Client) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagr
 		return s.UDPConn.WriteToUDP(d.Bytes(), addr)
 	})
 	if err != nil {
+		return nil
+	}
+	return nil
+}
+
+func (x *Client) UDPOverTCPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Datagram) error {
+	src := addr.String()
+	dst := d.Address()
+	any, ok := s.UDPExchanges.Get(src + dst)
+	if ok {
+		ue := any.(*UDPExchange)
+		return ue.Any.(func(b []byte) error)(d.Data)
+	}
+	if Debug {
+		log.Println("dial udp", dst)
+	}
+	var laddr *net.UDPAddr
+	any, ok = s.UDPSrc.Get(src + dst)
+	if ok {
+		laddr = any.(*net.UDPAddr)
+	}
+	var laddr1 *net.TCPAddr
+	if laddr != nil {
+		laddr1 = &net.TCPAddr{
+			IP:   laddr.IP,
+			Port: laddr.Port,
+			Zone: laddr.Zone,
+		}
+	}
+	raddr1, err := net.ResolveTCPAddr("tcp", x.ServerAddress)
+	if err != nil {
+		return err
+	}
+	rc, err := Dial.DialTCP("tcp", laddr1, raddr1)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	if laddr == nil {
+		laddr = &net.UDPAddr{
+			IP:   rc.LocalAddr().(*net.TCPAddr).IP,
+			Port: rc.LocalAddr().(*net.TCPAddr).Port,
+			Zone: rc.LocalAddr().(*net.TCPAddr).Zone,
+		}
+		s.UDPSrc.Set(src+dst, laddr, -1)
+	}
+	if x.UDPTimeout != 0 {
+		if err := rc.SetDeadline(time.Now().Add(time.Duration(x.UDPTimeout) * time.Second)); err != nil {
+			return err
+		}
+	}
+
+	dstb := make([]byte, 0, 1+len(d.DstAddr)+2)
+	dstb = append(dstb, d.Atyp)
+	dstb = append(dstb, d.DstAddr...)
+	dstb = append(dstb, d.DstPort...)
+	sc, err := NewStreamClient("udp", x.Password, dstb, rc, x.UDPTimeout)
+	defer sc.Clean()
+	ps, pi := NewPacketStream(func(b []byte) (int, error) {
+		d.Data = b
+		return s.UDPConn.WriteToUDP(d.Bytes(), addr)
+	})
+	defer ps.Close()
+	ue := &UDPExchange{
+		Any: pi,
+	}
+	s.UDPExchanges.Set(src+dst, ue, -1)
+	defer s.UDPExchanges.Delete(src + dst)
+	go pi(d.Data)
+	if err := sc.Exchange(ps); err != nil {
 		return nil
 	}
 	return nil

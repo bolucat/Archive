@@ -145,14 +145,14 @@ type RawConfig struct {
 	Interface          string       `yaml:"interface-name" json:"interface-name"`
 	RoutingMark        int          `yaml:"routing-mark" json:"routing-mark"`
 
-	ProxyProvider map[string]map[string]interface{} `yaml:"proxy-providers" json:"proxy-providers"`
-	Hosts         map[string]string                 `yaml:"hosts" json:"hosts"`
-	DNS           RawDNS                            `yaml:"dns" json:"dns"`
-	Experimental  Experimental                      `yaml:"experimental" json:"experimental"`
-	Profile       Profile                           `yaml:"profile" json:"profile"`
-	Proxy         []map[string]interface{}          `yaml:"proxies" json:"proxies"`
-	ProxyGroup    []map[string]interface{}          `yaml:"proxy-groups" json:"proxy-groups"`
-	Rule          []string                          `yaml:"rules" json:"rules"`
+	ProxyProvider map[string]map[string]any `yaml:"proxy-providers" json:"proxy-providers"`
+	Hosts         map[string]string         `yaml:"hosts" json:"hosts"`
+	DNS           RawDNS                    `yaml:"dns" json:"dns"`
+	Experimental  Experimental              `yaml:"experimental" json:"experimental"`
+	Profile       Profile                   `yaml:"profile" json:"profile"`
+	Proxy         []map[string]any          `yaml:"proxies" json:"proxies"`
+	ProxyGroup    []map[string]any          `yaml:"proxy-groups" json:"proxy-groups"`
+	Rule          []string                  `yaml:"rules" json:"rules"`
 
 	ClashForAndroid RawClashForAndroid `yaml:"clash-for-android" json:"clash-for-android"`
 }
@@ -177,8 +177,8 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		LogLevel:       log.INFO,
 		Hosts:          map[string]string{},
 		Rule:           []string{},
-		Proxy:          []map[string]interface{}{},
-		ProxyGroup:     []map[string]interface{}{},
+		Proxy:          []map[string]any{},
+		ProxyGroup:     []map[string]any{},
 		DNS: RawDNS{
 			Enable:      false,
 			UseHosts:    true,
@@ -637,11 +637,10 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie) (*DNS, error) {
 }
 
 func parseAuthentication(rawRecords []string) []auth.AuthUser {
-	users := make([]auth.AuthUser, 0)
+	users := []auth.AuthUser{}
 	for _, line := range rawRecords {
-		userData := strings.SplitN(line, ":", 2)
-		if len(userData) == 2 {
-			users = append(users, auth.AuthUser{User: userData[0], Pass: userData[1]})
+		if user, pass, found := strings.Cut(line, ":"); found {
+			users = append(users, auth.AuthUser{User: user, Pass: pass})
 		}
 	}
 	return users

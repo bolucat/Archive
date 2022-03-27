@@ -76,6 +76,7 @@ type SocksRemoteConfig struct {
 type SocksClientConfig struct {
 	Servers []*SocksRemoteConfig `json:"servers"`
 	Version string               `json:"version"`
+	UoT     bool                 `json:"uot"`
 }
 
 func (v *SocksClientConfig) Build() (proto.Message, error) {
@@ -113,5 +114,6 @@ func (v *SocksClientConfig) Build() (proto.Message, error) {
 		}
 		config.Server[idx] = server
 	}
+	config.UdpOverTcp = v.UoT
 	return config, nil
 }

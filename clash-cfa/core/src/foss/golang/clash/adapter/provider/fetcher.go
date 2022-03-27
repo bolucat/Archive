@@ -20,7 +20,7 @@ var (
 	dirMode  os.FileMode = 0o755
 )
 
-type parser = func([]byte) (interface{}, error)
+type parser = func([]byte) (any, error)
 
 type fetcher struct {
 	name      string
@@ -30,7 +30,7 @@ type fetcher struct {
 	done      chan struct{}
 	hash      [16]byte
 	parser    parser
-	onUpdate  func(interface{})
+	onUpdate  func(any)
 }
 
 func (f *fetcher) Name() string {
@@ -41,7 +41,7 @@ func (f *fetcher) VehicleType() types.VehicleType {
 	return f.vehicle.Type()
 }
 
-func (f *fetcher) Initial() (interface{}, error) {
+func (f *fetcher) Initial() (any, error) {
 	var (
 		buf     []byte
 		err     error
@@ -99,7 +99,7 @@ func (f *fetcher) Initial() (interface{}, error) {
 	return proxies, nil
 }
 
-func (f *fetcher) Update() (interface{}, bool, error) {
+func (f *fetcher) Update() (any, bool, error) {
 	buf, err := f.vehicle.Read()
 	if err != nil {
 		return nil, false, err
@@ -186,7 +186,7 @@ func safeWrite(path string, buf []byte) error {
 	return os.WriteFile(path, buf, fileMode)
 }
 
-func newFetcher(name string, interval time.Duration, vehicle types.Vehicle, parser parser, onUpdate func(interface{})) *fetcher {
+func newFetcher(name string, interval time.Duration, vehicle types.Vehicle, parser parser, onUpdate func(any)) *fetcher {
 	return &fetcher{
 		name:     name,
 		interval: interval,

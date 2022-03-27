@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"encoding/binary"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -211,6 +212,9 @@ func (c *Client) Lookup(ctx context.Context, domain string, strategy dns.QuerySt
 }
 
 func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QueryStrategy) ([]net.IP, uint32, error) {
+	if c.servers == nil {
+		return nil, 0, os.ErrClosed
+	}
 	servers := c.sortServers(domain)
 	var messages []*dnsmessage.Message
 
@@ -400,6 +404,10 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 }
 
 func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer, error) {
+	if c.servers == nil {
+		return nil, os.ErrClosed
+	}
+
 	message := &dnsmessage.Message{}
 	if err := message.Unpack(buffer.Bytes()); err != nil {
 		buffer.Release()

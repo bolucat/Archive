@@ -1,7 +1,8 @@
 import dayjs from "dayjs";
+import { useState } from "react";
 import { useLockFn } from "ahooks";
 import { useSWRConfig } from "swr";
-import { useEffect, useState } from "react";
+import { useRecoilState } from "recoil";
 import { useTranslation } from "react-i18next";
 import {
   alpha,
@@ -16,9 +17,11 @@ import {
 } from "@mui/material";
 import { RefreshRounded } from "@mui/icons-material";
 import { CmdType } from "../../services/types";
+import { atomLoadingCache } from "../../services/states";
 import { updateProfile, deleteProfile, viewProfile } from "../../services/cmds";
 import parseTraffic from "../../utils/parse-traffic";
 import ProfileEdit from "./profile-edit";
+import FileEditor from "./file-editor";
 import Notice from "../base/base-notice";
 
 const Wrapper = styled(Box)(({ theme }) => ({
@@ -37,9 +40,6 @@ const round = keyframes`
   to { transform: rotate(360deg); }
 `;
 
-// save the state of each item loading
-const loadingCache: Record<string, boolean> = {};
-
 interface Props {
   selected: boolean;
   itemData: CmdType.ProfileItem;
@@ -51,11 +51,11 @@ const ProfileItem = (props: Props) => {
 
   const { t } = useTranslation();
   const { mutate } = useSWRConfig();
-  const [loading, setLoading] = useState(loadingCache[itemData.uid] ?? false);
   const [anchorEl, setAnchorEl] = useState<any>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 });
+  const [loadingCache, setLoadingCache] = useRecoilState(atomLoadingCache);
 
-  const { name = "Profile", extra, updated = 0 } = itemData;
+  const { uid, name = "Profile", extra, updated = 0 } = itemData;
   const { upload = 0, download = 0, total = 0 } = extra ?? {};
   const from = parseUrl(itemData.url);
   const expire = parseExpire(extra?.expire);
@@ -68,23 +68,19 @@ const ProfileItem = (props: Props) => {
   const hasUrl = !!itemData.url;
   const hasExtra = !!extra; // only subscription url has extra info
 
-  useEffect(() => {
-    loadingCache[itemData.uid] = loading;
-  }, [itemData, loading]);
+  const loading = loadingCache[itemData.uid] ?? false;
 
   const [editOpen, setEditOpen] = useState(false);
-  const onEdit = () => {
+  const [fileOpen, setFileOpen] = useState(false);
+
+  const onEditInfo = () => {
     setAnchorEl(null);
     setEditOpen(true);
   };
 
-  const onView = async () => {
+  const onEditFile = () => {
     setAnchorEl(null);
-    try {
-      await viewProfile(itemData.uid);
-    } catch (err: any) {
-      Notice.error(err?.message || err.toString());
-    }
+    setFileOpen(true);
   };
 
   const onForceSelect = () => {
@@ -92,19 +88,28 @@ const ProfileItem = (props: Props) => {
     onSelect(true);
   };
 
-  const onUpdateWrapper = (withProxy: boolean) => async () => {
+  const onOpenFile = useLockFn(async () => {
     setAnchorEl(null);
-    if (loading) return;
-    setLoading(true);
     try {
-      await updateProfile(itemData.uid, { with_proxy: withProxy });
-      setLoading(false);
-      mutate("getProfiles");
+      await viewProfile(itemData.uid);
     } catch (err: any) {
-      setLoading(false);
       Notice.error(err?.message || err.toString());
     }
-  };
+  });
+
+  const onUpdate = useLockFn(async (withProxy: boolean) => {
+    setAnchorEl(null);
+    setLoadingCache((cache) => ({ ...cache, [itemData.uid]: true }));
+
+    try {
+      await updateProfile(itemData.uid, { with_proxy: withProxy });
+      mutate("getProfiles");
+    } catch (err: any) {
+      Notice.error(err?.message || err.toString());
+    } finally {
+      setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }));
+    }
+  });
 
   const onDelete = useLockFn(async () => {
     setAnchorEl(null);
@@ -125,16 +130,18 @@ const ProfileItem = (props: Props) => {
 
   const urlModeMenu = [
     { label: "Select", handler: onForceSelect },
-    { label: "Edit", handler: onEdit },
-    { label: "File", handler: onView },
-    { label: "Update", handler: onUpdateWrapper(false) },
-    { label: "Update(Proxy)", handler: onUpdateWrapper(true) },
+    { label: "Edit Info", handler: onEditInfo },
+    { label: "Edit File", handler: onEditFile },
+    { label: "Open File", handler: onOpenFile },
+    { label: "Update", handler: () => onUpdate(false) },
+    { label: "Update(Proxy)", handler: () => onUpdate(true) },
     { label: "Delete", handler: onDelete },
   ];
   const fileModeMenu = [
     { label: "Select", handler: onForceSelect },
-    { label: "Edit", handler: onEdit },
-    { label: "File", handler: onView },
+    { label: "Edit Info", handler: onEditInfo },
+    { label: "Edit File", handler: onEditFile },
+    { label: "Open File", handler: onOpenFile },
     { label: "Delete", handler: onDelete },
   ];
 
@@ -199,7 +206,7 @@ const ProfileItem = (props: Props) => {
               disabled={loading}
               onClick={(e) => {
                 e.stopPropagation();
-                onUpdateWrapper(false)();
+                onUpdate(false);
               }}
             >
               <RefreshRounded />
@@ -259,6 +266,7 @@ const ProfileItem = (props: Props) => {
         onClose={() => setAnchorEl(null)}
         anchorPosition={position}
         anchorReference="anchorPosition"
+        transitionDuration={225}
         onContextMenu={(e) => {
           setAnchorEl(null);
           e.preventDefault();
@@ -280,6 +288,15 @@ const ProfileItem = (props: Props) => {
           open={editOpen}
           itemData={itemData}
           onClose={() => setEditOpen(false)}
+        />
+      )}
+
+      {fileOpen && (
+        <FileEditor
+          uid={uid}
+          open={fileOpen}
+          mode="yaml"
+          onClose={() => setFileOpen(false)}
         />
       )}
     </>

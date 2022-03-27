@@ -29,6 +29,7 @@ func init() {
 					Port:    simplifiedClient.Port,
 				},
 			},
+			UdpOverTcp: simplifiedClient.Uot,
 		}
 		return common.CreateObject(ctx, fullClient)
 	}))

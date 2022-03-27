@@ -42,6 +42,7 @@ type Map struct {
 	RunnerGroup   *runnergroup.RunnerGroup
 	UDPSrc        *cache.Cache
 	WSClient      *WSClient
+	UDPOverTCP    bool
 }
 
 // NewMap.
@@ -207,7 +208,13 @@ func (s *Map) TCPHandle(c *net.TCPConn) error {
 	dst = append(dst, a)
 	dst = append(dst, h...)
 	dst = append(dst, p...)
-	sc, err := NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	var sc Exchanger
+	if s.WSClient == nil || !s.WSClient.WithoutBrook {
+		sc, err = NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("tcp", s.WSClient.PasswordSha256, dst, rc, s.TCPTimeout)
+	}
 	if err != nil {
 		return err
 	}
@@ -222,13 +229,15 @@ func (s *Map) TCPHandle(c *net.TCPConn) error {
 func (s *Map) UDPHandle(addr *net.UDPAddr, b []byte) error {
 	src := addr.String()
 	dst := s.RemoteAddress
-	if s.WSClient == nil {
+	if s.WSClient == nil && !s.UDPOverTCP {
 		any, ok := s.UDPExchanges.Get(src + dst)
 		if ok {
 			ue := any.(*UDPExchange)
 			return ue.Any.(*PacketClient).LocalToServer(ue.Dst, b, ue.Conn, s.UDPTimeout)
 		}
-		debug("dial udp", dst)
+		if Debug {
+			log.Println("dial udp", dst)
+		}
 		var laddr *net.UDPAddr
 		any, ok = s.UDPSrc.Get(src + dst)
 		if ok {
@@ -239,6 +248,11 @@ func (s *Map) UDPHandle(addr *net.UDPAddr, b []byte) error {
 			return err
 		}
 		defer rc.Close()
+		if s.UDPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if laddr == nil {
 			s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 		}
@@ -275,17 +289,34 @@ func (s *Map) UDPHandle(addr *net.UDPAddr, b []byte) error {
 		ue := any.(*UDPExchange)
 		return ue.Any.(func(b []byte) error)(b)
 	}
-	debug("dial udp", dst)
+	if Debug {
+		log.Println("dial udp", dst)
+	}
 	var laddr *net.UDPAddr
 	any, ok = s.UDPSrc.Get(src + dst)
 	if ok {
 		laddr = any.(*net.UDPAddr)
 	}
-	la := ""
-	if laddr != nil {
-		la = laddr.String()
+	var rc net.Conn
+	var err error
+	if s.UDPOverTCP {
+		var la *net.TCPAddr
+		if laddr != nil {
+			la = &net.TCPAddr{
+				IP:   laddr.IP,
+				Port: laddr.Port,
+				Zone: laddr.Zone,
+			}
+		}
+		rc, err = Dial.DialTCP("tcp", la, s.ServerTCPAddr)
 	}
-	rc, err := s.WSClient.DialWebsocket(la)
+	if s.WSClient != nil {
+		la := ""
+		if laddr != nil {
+			la = laddr.String()
+		}
+		rc, err = s.WSClient.DialWebsocket(la)
+	}
 	if err != nil {
 		return err
 	}
@@ -312,7 +343,13 @@ func (s *Map) UDPHandle(addr *net.UDPAddr, b []byte) error {
 	dstb = append(dstb, a)
 	dstb = append(dstb, h...)
 	dstb = append(dstb, p...)
-	sc, err := NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	var sc Exchanger
+	if s.UDPOverTCP || (s.WSClient != nil && !s.WSClient.WithoutBrook) {
+		sc, err = NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("udp", s.WSClient.PasswordSha256, dstb, rc, s.UDPTimeout)
+	}
 	if err != nil {
 		return err
 	}

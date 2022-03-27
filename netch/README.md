@@ -1,4 +1,4 @@
-<p align="center"><img src="https://github.com/NetchX/Netch/blob/master/Netch/Resources/Netch.png?raw=true" width="128" /></p>
+<p align="center"><img src="https://github.com/NetchX/Netch/blob/main/Netch/Resources/Netch.png?raw=true" width="128" /></p>
 
 <div align="center">
 
@@ -31,16 +31,10 @@ Some features may not be implemented in version 1
 
 ### Others
 - UDP NAT FullCone (Limited by your server)
-- .NET 5.0 x64
-
-## Donate
-- `XMR` `48ju3ELNZEa6wwPBMexCJ9G218BGY2XwhH6B6bmkFuJ3QgM4hPw2Pra35jPtuBZSc7SLNWeBpiWJZWjQeMAiLnTx2tH2Efx`
-- `ETH` `0x23dac0a93bcd71fec7a95833ad030338f167f185`
+- .NET 6.0 x64
 
 ## Sponsor
 <a href="https://www.jetbrains.com/?from=Netch"><img src="jetbrains.svg" alt="JetBrains" width="200"/></a>
-
-- [NeroCloud](https://nerocloud.io)
 
 ## License
 Netch is licensed under the [GPLv3](https://raw.githubusercontent.com/netchx/netch/main/LICENSE) license

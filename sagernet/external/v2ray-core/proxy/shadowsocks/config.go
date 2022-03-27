@@ -8,6 +8,7 @@ import (
 	"crypto/md5"
 	"crypto/rc4"
 	"crypto/sha1"
+	"encoding/base64"
 	"io"
 	"strings"
 
@@ -37,6 +38,7 @@ type MemoryAccount struct {
 
 	replayFilter antireplay.GeneralizedReplayFilter
 
+	UoT              bool
 	ReducedIVEntropy bool
 }
 
@@ -56,6 +58,12 @@ func (a *MemoryAccount) CheckIV(iv []byte) error {
 		return nil
 	}
 	return newError("IV is not unique")
+}
+
+func createAes(key []byte) cipher.Block {
+	block, err := aes.NewCipher(key)
+	common.Must(err)
+	return block
 }
 
 func createAesGcm(key []byte) cipher.AEAD {
@@ -109,6 +117,24 @@ func (a *Account) getCipher() (Cipher, error) {
 			KeyBytes:        32,
 			IVBytes:         32,
 			AEADAuthCreator: createXChaCha20Poly1305,
+		}, nil
+	case CipherType_BLAKE3_AES_128_GCM_2022:
+		return &AEAD2022Cipher{
+			KeyBytes:        16,
+			AEADAuthCreator: createAesGcm,
+			UDPBlockCreator: createAes,
+		}, nil
+	case CipherType_BLAKE3_AES_256_GCM_2022:
+		return &AEAD2022Cipher{
+			KeyBytes:        32,
+			AEADAuthCreator: createAesGcm,
+			UDPBlockCreator: createAes,
+		}, nil
+	case CipherType_BLAKE3_CHACHA20_POLY1305_2022:
+		return &AEAD2022Cipher{
+			KeyBytes:           32,
+			AEADAuthCreator:    createChaCha20Poly1305,
+			UDPAEADAuthCreator: createXChaCha20Poly1305,
 		}, nil
 	case CipherType_NONE:
 		return &NoneCipher{}, nil
@@ -356,21 +382,55 @@ func (a *Account) getCipher() (Cipher, error) {
 
 // AsAccount implements protocol.AsAccount.
 func (a *Account) AsAccount() (protocol.Account, error) {
-	Cipher, err := a.getCipher()
+	c, err := a.getCipher()
 	if err != nil {
 		return nil, newError("failed to get cipher").Base(err)
 	}
+	var key []byte
+	if !c.Family().IsSpec2022() {
+		key = passwordToCipherKey([]byte(a.Password), c.KeySize())
+	} else {
+		key, err = base64.StdEncoding.DecodeString(a.Password)
+		if err != nil {
+			return nil, newError("failed to decode password as key").Base(err)
+		}
+		if len(key) != 32 {
+			return nil, newError("bad key")
+		}
+	}
 	return &MemoryAccount{
-		Cipher: Cipher,
-		Key:    passwordToCipherKey([]byte(a.Password), Cipher.KeySize()),
+		Cipher: c,
+		Key:    key,
 		replayFilter: func() antireplay.GeneralizedReplayFilter {
+			if c.Family().IsSpec2022() {
+				return antireplay.NewReplayFilter(30)
+			}
 			if a.IvCheck {
 				return antireplay.NewBloomRing()
 			}
 			return nil
 		}(),
+		UoT:              a.UdpOverTcp,
 		ReducedIVEntropy: a.ExperimentReducedIvHeadEntropy,
 	}, nil
+}
+
+type CipherFamily int
+
+const (
+	CipherFamilyNone CipherFamily = iota
+	CipherFamilyAEAD
+	CipherFamilyStream
+	CipherFamilyAEADSpec2022
+	CipherFamilyAEADSpec2022UDPBlock
+)
+
+func (f CipherFamily) IsAEAD() bool {
+	return f == CipherFamilyAEAD || f == CipherFamilyAEADSpec2022 || f == CipherFamilyAEADSpec2022UDPBlock
+}
+
+func (f CipherFamily) IsSpec2022() bool {
+	return f == CipherFamilyAEADSpec2022 || f == CipherFamilyAEADSpec2022UDPBlock
 }
 
 // Cipher is an interface for all Shadowsocks ciphers.
@@ -379,7 +439,7 @@ type Cipher interface {
 	IVSize() int32
 	NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error)
 	NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error)
-	IsAEAD() bool
+	Family() CipherFamily
 	EncodePacket(key []byte, b *buf.Buffer) error
 	DecodePacket(key []byte, b *buf.Buffer) error
 }
@@ -392,8 +452,8 @@ type AEADCipher struct {
 	AEADAuthCreator func(key []byte) cipher.AEAD
 }
 
-func (*AEADCipher) IsAEAD() bool {
-	return true
+func (*AEADCipher) Family() CipherFamily {
+	return CipherFamilyAEAD
 }
 
 func (c *AEADCipher) KeySize() int32 {
@@ -472,8 +532,8 @@ func blockStream(blockCreator func(key []byte) (cipher.Block, error), streamCrea
 	}
 }
 
-func (*StreamCipher) IsAEAD() bool {
-	return false
+func (*StreamCipher) Family() CipherFamily {
+	return CipherFamilyStream
 }
 
 func (v *StreamCipher) KeySize() int32 {
@@ -530,8 +590,8 @@ type NoneCipher struct{}
 
 func (*NoneCipher) KeySize() int32 { return 16 }
 func (*NoneCipher) IVSize() int32  { return 0 }
-func (*NoneCipher) IsAEAD() bool {
-	return false
+func (*NoneCipher) Family() CipherFamily {
+	return CipherFamilyNone
 }
 
 func (*NoneCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {
@@ -558,6 +618,9 @@ func CipherFromString(c string) CipherType {
 	}
 	if c == "CHACHA20_POLY1305" {
 		c = "CHACHA20_IETF_POLY1305"
+	}
+	if strings.HasPrefix(c, "2022_") {
+		c = c[5:] + "_2022"
 	}
 	return CipherType(CipherType_value[c])
 }

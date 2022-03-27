@@ -15,6 +15,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/log"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	udp_proto "github.com/v2fly/v2ray-core/v5/common/protocol/udp"
 	"github.com/v2fly/v2ray-core/v5/common/session"
@@ -169,6 +170,8 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 		udpDispatcherConstructor = packetAddrDispatcherFactory.NewPacketAddrDispatcher
 	}
 
+	us := newUDPSession(true)
+
 	udpServer := udpDispatcherConstructor(dispatcher, func(ctx context.Context, packet *udp_proto.Packet) {
 		var request *protocol.RequestHeader
 		if packet.Source.IsValid() {
@@ -187,7 +190,7 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 		}
 
 		payload := packet.Payload
-		data, err := EncodeUDPPacket(request, payload.Bytes(), s.protocol)
+		data, err := EncodeUDPPacket(request, payload.Bytes(), us, s.protocol)
 		payload.Release()
 
 		if err != nil {
@@ -302,7 +305,7 @@ func (s *Server) handleConnection(ctx context.Context, conn internet.Connection,
 	}
 
 	bufferedReader := buf.BufferedReader{Reader: buf.NewReader(conn)}
-	request, bodyReader, err := ReadTCPSession(s.user, &bufferedReader, protocolConn)
+	request, requestIV, bodyReader, err := ReadTCPSession(s.user, &bufferedReader, protocolConn)
 	if err != nil {
 		log.Record(&log.AccessMessage{
 			From:   conn.RemoteAddr(),
@@ -326,6 +329,47 @@ func (s *Server) handleConnection(ctx context.Context, conn internet.Connection,
 	})
 	newError("tunnelling request to ", dest).WriteToLog(session.ExportIDToError(ctx))
 
+	if udpovertcp.GetDestinationSubsetOf(dest) {
+		bodyWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
+		responseWriter, err := WriteTCPResponse(request, bodyWriter, requestIV, iv, protocolConn)
+		if err != nil {
+			return newError("failed to write response").Base(err)
+		}
+		err = bodyWriter.SetBuffered(false)
+		if err != nil {
+			return err
+		}
+		udpWriter := udpovertcp.NewBufferedWriter(responseWriter, nil)
+		var udpServer udp.DispatcherI
+		udpServer = udp.NewSplitDispatcher(dispatcher, func(ctx context.Context, packet *udp_proto.Packet) {
+			buffer := packet.Payload
+			buffer.Endpoint = &packet.Source
+			err = udpWriter.WriteMultiBuffer(buf.MultiBuffer{buffer})
+			if err != nil {
+				newError("failed to write back udp response").Base(err).AtWarning().WriteToLog()
+				udpServer.Close()
+				conn.Close()
+			}
+		})
+		udpReader := udpovertcp.NewBufferedReader(bodyReader)
+		for {
+			mb, err := udpReader.ReadMultiBuffer()
+			if err != nil {
+				newError("failed to read udp packet").Base(err).AtWarning().WriteToLog()
+				break
+			}
+			for _, buffer := range mb {
+				if buffer.Endpoint == nil {
+					buffer.Release()
+					continue
+				}
+				udpServer.Dispatch(ctx, *buffer.Endpoint, buffer)
+			}
+		}
+		udpServer.Close()
+		return nil
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
 
@@ -339,7 +383,7 @@ func (s *Server) handleConnection(ctx context.Context, conn internet.Connection,
 		defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
 
 		bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-		responseWriter, err := WriteTCPResponse(request, bufferedWriter, iv, protocolConn)
+		responseWriter, err := WriteTCPResponse(request, bufferedWriter, requestIV, iv, protocolConn)
 		if err != nil {
 			return newError("failed to write response").Base(err)
 		}

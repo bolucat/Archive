@@ -16,10 +16,12 @@ import LayoutItem from "../components/layout/layout-item";
 import LayoutControl from "../components/layout/layout-control";
 import LayoutTraffic from "../components/layout/layout-traffic";
 import UpdateButton from "../components/layout/update-button";
+import getSystem from "../utils/get-system";
 import "dayjs/locale/zh-cn";
 
 dayjs.extend(relativeTime);
-const isMacos = navigator.userAgent.includes("Mac OS X");
+
+const OS = getSystem();
 
 const Layout = () => {
   const { t } = useTranslation();
@@ -40,6 +42,9 @@ const Layout = () => {
       mutate("getProxies");
       mutate("getClashConfig");
     });
+
+    // update the verge config
+    listen("verge://refresh-verge-config", () => mutate("getVergeConfig"));
   }, []);
 
   useEffect(() => {
@@ -81,8 +86,12 @@ const Layout = () => {
         <Paper
           square
           elevation={0}
-          className={`${isMacos ? "macos " : ""}layout`}
+          className={`${OS} layout`}
           onPointerDown={onDragging}
+          onContextMenu={(e) => {
+            // only prevent it on Windows
+            if (OS === "windows") e.preventDefault();
+          }}
           sx={[
             (theme) => ({
               bgcolor: alpha(theme.palette.background.paper, blur ? 0.85 : 1),
@@ -110,7 +119,7 @@ const Layout = () => {
           </div>
 
           <div className="layout__right" data-windrag>
-            {!isMacos && (
+            {OS !== "macos" && (
               <div className="the-bar">
                 <LayoutControl />
               </div>

@@ -119,7 +119,7 @@ impl Default for PrfItem {
 impl PrfItem {
   /// From partial item
   /// must contain `itype`
-  pub async fn from(item: PrfItem) -> Result<PrfItem> {
+  pub async fn from(item: PrfItem, file_data: Option<String>) -> Result<PrfItem> {
     if item.itype.is_none() {
       bail!("type should not be null");
     }
@@ -137,7 +137,7 @@ impl PrfItem {
       "local" => {
         let name = item.name.unwrap_or("Local File".into());
         let desc = item.desc.unwrap_or("".into());
-        PrfItem::from_local(name, desc)
+        PrfItem::from_local(name, desc, file_data)
       }
       "merge" => {
         let name = item.name.unwrap_or("Merge".into());
@@ -155,7 +155,7 @@ impl PrfItem {
 
   /// ## Local type
   /// create a new item from name/desc
-  pub fn from_local(name: String, desc: String) -> Result<PrfItem> {
+  pub fn from_local(name: String, desc: String, file_data: Option<String>) -> Result<PrfItem> {
     let uid = help::get_uid("l");
     let file = format!("{uid}.yaml");
 
@@ -170,7 +170,7 @@ impl PrfItem {
       extra: None,
       option: None,
       updated: Some(help::get_now()),
-      file_data: Some(tmpl::ITEM_LOCAL.into()),
+      file_data: Some(file_data.unwrap_or(tmpl::ITEM_LOCAL.into())),
     })
   }
 
@@ -278,6 +278,28 @@ impl PrfItem {
       updated: Some(help::get_now()),
       file_data: Some(tmpl::ITEM_SCRIPT.into()),
     })
+  }
+
+  /// get the file data
+  pub fn read_file(&self) -> Result<String> {
+    if self.file.is_none() {
+      bail!("could not find the file");
+    }
+
+    let file = self.file.clone().unwrap();
+    let path = dirs::app_profiles_dir().join(file);
+    fs::read_to_string(path).context("failed to read the file")
+  }
+
+  /// save the file data
+  pub fn save_file(&self, data: String) -> Result<()> {
+    if self.file.is_none() {
+      bail!("could not find the file");
+    }
+
+    let file = self.file.clone().unwrap();
+    let path = dirs::app_profiles_dir().join(file);
+    fs::write(path, data.as_bytes()).context("failed to save the file")
   }
 }
 

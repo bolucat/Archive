@@ -42,6 +42,7 @@ func init() {
 							Account: serial.ToTypedMessage(&shadowsocks.Account{
 								Password:                       simplifiedClient.Password,
 								CipherType:                     shadowsocks.CipherFromString(simplifiedClient.Method),
+								UdpOverTcp:                     simplifiedClient.Uot,
 								ExperimentReducedIvHeadEntropy: simplifiedClient.ExperimentReducedIvHeadEntropy,
 							}),
 						},

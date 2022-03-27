@@ -31,23 +31,26 @@ import (
 
 	cache "github.com/patrickmn/go-cache"
 	"github.com/txthinking/brook/limits"
+	crypto1 "github.com/txthinking/crypto"
 	"github.com/txthinking/socks5"
 	x1 "github.com/txthinking/x"
 )
 
 // WSClient.
 type WSClient struct {
-	Server        *socks5.Server
-	ServerHost    string
-	ServerAddress string
-	TLSConfig     *tls.Config
-	Password      []byte
-	TCPTimeout    int
-	UDPTimeout    int
-	TCPListen     *net.TCPListener
-	Path          string
-	UDPExchanges  *cache.Cache
-	DialTCP       func(network, addr string) (net.Conn, error)
+	Server         *socks5.Server
+	ServerHost     string
+	ServerAddress  string
+	TLSConfig      *tls.Config
+	Password       []byte
+	TCPTimeout     int
+	UDPTimeout     int
+	TCPListen      *net.TCPListener
+	Path           string
+	UDPExchanges   *cache.Cache
+	DialTCP        func(network, addr string) (net.Conn, error)
+	WithoutBrook   bool
+	PasswordSha256 []byte
 }
 
 // NewWSClient.
@@ -72,15 +75,19 @@ func NewWSClientWithServerAddress(addr, ip, server, password string, tcpTimeout,
 		path = "/ws"
 	}
 	cs := cache.New(cache.NoExpiration, cache.NoExpiration)
+	b, err := crypto1.SHA256Bytes([]byte(password))
+	if err != nil {
+		return nil, err
+	}
 	x := &WSClient{
 		ServerHost:    u.Host,
-		ServerAddress: serverAddress,
-		Server:        s5,
-		Password:      []byte(password),
-		TCPTimeout:    tcpTimeout,
-		UDPTimeout:    udpTimeout,
-		Path:          path,
-		UDPExchanges:  cs,
+		ServerAddress: serverAddress, Server: s5,
+		Password:       []byte(password),
+		PasswordSha256: b,
+		TCPTimeout:     tcpTimeout,
+		UDPTimeout:     udpTimeout,
+		Path:           path,
+		UDPExchanges:   cs,
 	}
 	if u.Scheme == "wss" {
 		h, _, err := net.SplitHostPort(u.Host)
@@ -132,13 +139,15 @@ func (x *WSClient) DialWebsocket(src string) (net.Conn, error) {
 	}
 	if x.TLSConfig != nil {
 		tc := tls.Client(c, x.TLSConfig)
-		if err := tc.Handshake(); err != nil {
-			tc.Close()
-			return nil, err
-		}
-		if err := tc.VerifyHostname(x.TLSConfig.ServerName); err != nil {
-			tc.Close()
-			return nil, err
+		if !x.TLSConfig.InsecureSkipVerify {
+			if err := tc.Handshake(); err != nil {
+				tc.Close()
+				return nil, err
+			}
+			if err := tc.VerifyHostname(x.TLSConfig.ServerName); err != nil {
+				tc.Close()
+				return nil, err
+			}
 		}
 		c = tc
 	}
@@ -195,7 +204,9 @@ func (x *WSClient) DialWebsocket(src string) (net.Conn, error) {
 // TCPHandle handles tcp request.
 func (x *WSClient) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request) error {
 	if r.Cmd == socks5.CmdConnect {
-		debug("dial tcp", r.Address())
+		if Debug {
+			log.Println("dial tcp", r.Address())
+		}
 		rc, err := x.DialWebsocket("")
 		if err != nil {
 			return ErrorReply(r, c, err)
@@ -210,7 +221,13 @@ func (x *WSClient) TCPHandle(s *socks5.Server, c *net.TCPConn, r *socks5.Request
 		dst = append(dst, r.Atyp)
 		dst = append(dst, r.DstAddr...)
 		dst = append(dst, r.DstPort...)
-		sc, err := NewStreamClient("tcp", x.Password, dst, rc, x.TCPTimeout)
+		var sc Exchanger
+		if !x.WithoutBrook {
+			sc, err = NewStreamClient("tcp", x.Password, dst, rc, x.TCPTimeout)
+		}
+		if x.WithoutBrook {
+			sc, err = NewSimpleStreamClient("tcp", x.PasswordSha256, dst, rc, x.TCPTimeout)
+		}
 		if err != nil {
 			return ErrorReply(r, c, err)
 		}
@@ -247,7 +264,9 @@ func (x *WSClient) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Data
 		ue := any.(*UDPExchange)
 		return ue.Any.(func(b []byte) error)(d.Data)
 	}
-	debug("dial udp", dst)
+	if Debug {
+		log.Println("dial udp", dst)
+	}
 	var laddr *net.UDPAddr
 	any, ok = s.UDPSrc.Get(src + dst)
 	if ok {
@@ -280,9 +299,12 @@ func (x *WSClient) UDPHandle(s *socks5.Server, addr *net.UDPAddr, d *socks5.Data
 	dstb = append(dstb, d.Atyp)
 	dstb = append(dstb, d.DstAddr...)
 	dstb = append(dstb, d.DstPort...)
-	sc, err := NewStreamClient("udp", x.Password, dstb, rc, x.UDPTimeout)
-	if err != nil {
-		return err
+	var sc Exchanger
+	if !x.WithoutBrook {
+		sc, err = NewStreamClient("udp", x.Password, dstb, rc, x.UDPTimeout)
+	}
+	if x.WithoutBrook {
+		sc, err = NewSimpleStreamClient("udp", x.PasswordSha256, dstb, rc, x.UDPTimeout)
 	}
 	defer sc.Clean()
 	ps, pi := NewPacketStream(func(b []byte) (int, error) {

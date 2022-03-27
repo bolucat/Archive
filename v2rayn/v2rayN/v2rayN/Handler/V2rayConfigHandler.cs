@@ -37,7 +37,7 @@ namespace v2rayN.Handler
                 }
 
                 msg = UIRes.I18N("InitialConfiguration");
-                if (node.configType == (int)EConfigType.Custom)
+                if (node.configType == EConfigType.Custom)
                 {
                     return GenerateClientCustomConfig(node, fileName, out msg);
                 }
@@ -334,7 +334,7 @@ namespace v2rayN.Handler
             {
                 var config = LazyConfig.Instance.GetConfig();
                 Outbounds outbound = v2rayConfig.outbounds[0];
-                if (node.configType == (int)EConfigType.Vmess)
+                if (node.configType == EConfigType.Vmess)
                 {
                     VnextItem vnextItem;
                     if (outbound.settings.vnext.Count <= 0)
@@ -384,7 +384,7 @@ namespace v2rayN.Handler
                     outbound.protocol = Global.vmessProtocolLite;
                     outbound.settings.servers = null;
                 }
-                else if (node.configType == (int)EConfigType.Shadowsocks)
+                else if (node.configType == EConfigType.Shadowsocks)
                 {
                     ServersItem serversItem;
                     if (outbound.settings.servers.Count <= 0)
@@ -400,7 +400,7 @@ namespace v2rayN.Handler
                     serversItem.address = node.address;
                     serversItem.port = node.port;
                     serversItem.password = node.id;
-                    if (config.GetShadowsocksSecuritys().Contains(node.security))
+                    if (LazyConfig.Instance.GetShadowsocksSecuritys().Contains(node.security))
                     {
                         serversItem.method = node.security;
                     }
@@ -420,7 +420,7 @@ namespace v2rayN.Handler
                     outbound.protocol = Global.ssProtocolLite;
                     outbound.settings.vnext = null;
                 }
-                else if (node.configType == (int)EConfigType.Socks)
+                else if (node.configType == EConfigType.Socks)
                 {
                     ServersItem serversItem;
                     if (outbound.settings.servers.Count <= 0)
@@ -457,7 +457,7 @@ namespace v2rayN.Handler
                     outbound.protocol = Global.socksProtocolLite;
                     outbound.settings.vnext = null;
                 }
-                else if (node.configType == (int)EConfigType.VLESS)
+                else if (node.configType == EConfigType.VLESS)
                 {
                     VnextItem vnextItem;
                     if (outbound.settings.vnext.Count <= 0)
@@ -516,7 +516,7 @@ namespace v2rayN.Handler
                     outbound.protocol = Global.vlessProtocolLite;
                     outbound.settings.servers = null;
                 }
-                else if (node.configType == (int)EConfigType.Trojan)
+                else if (node.configType == EConfigType.Trojan)
                 {
                     ServersItem serversItem;
                     if (outbound.settings.servers.Count <= 0)
@@ -912,7 +912,7 @@ namespace v2rayN.Handler
                 string addressFileName = node.address;
                 if (!File.Exists(addressFileName))
                 {
-                    addressFileName = Path.Combine(Utils.GetTempPath(), addressFileName);
+                    addressFileName = Path.Combine(Utils.GetConfigPath(), addressFileName);
                 }
                 if (!File.Exists(addressFileName))
                 {
@@ -921,10 +921,33 @@ namespace v2rayN.Handler
                 }
                 File.Copy(addressFileName, fileName);
 
+                //check again
+                if (!File.Exists(fileName))
+                {
+                    msg = UIRes.I18N("FailedGenDefaultConfiguration");
+                    return -1;
+                }
+
+                //overwrite port
+                var fileContent = File.ReadAllLines(fileName).ToList();
+                var coreType = LazyConfig.Instance.GetCoreType(node, node.configType);
+                switch (coreType)
+                {
+                    case ECoreType.v2fly:
+                    case ECoreType.Xray:
+                        break;
+                    case ECoreType.clash:
+                        fileContent.Add($"port: {LazyConfig.Instance.GetConfig().GetLocalPort(Global.InboundHttp)}");
+                        fileContent.Add($"socks-port: {LazyConfig.Instance.GetConfig().GetLocalPort(Global.InboundSocks)}");
+                        break;
+                }
+                File.WriteAllLines(fileName, fileContent);
+
                 msg = string.Format(UIRes.I18N("SuccessfulConfiguration"), $"[{LazyConfig.Instance.GetConfig().GetGroupRemarks(node.groupId)}] {node.GetSummary()}");
             }
-            catch
+            catch (Exception ex)
             {
+                Utils.SaveLog("GenerateClientCustomConfig", ex);
                 msg = UIRes.I18N("FailedGenDefaultConfiguration");
                 return -1;
             }
@@ -1022,13 +1045,13 @@ namespace v2rayN.Handler
                 usersItem.id = node.id;
                 usersItem.email = Global.userEMail;
 
-                if (node.configType == (int)EConfigType.Vmess)
+                if (node.configType == EConfigType.Vmess)
                 {
                     inbound.protocol = Global.vmessProtocolLite;
                     usersItem.alterId = node.alterId;
 
                 }
-                else if (node.configType == (int)EConfigType.VLESS)
+                else if (node.configType == EConfigType.VLESS)
                 {
                     inbound.protocol = Global.vlessProtocolLite;
                     usersItem.flow = node.flow;
@@ -1432,7 +1455,7 @@ namespace v2rayN.Handler
 
                 foreach (var it in selecteds)
                 {
-                    if (it.configType == (int)EConfigType.Custom)
+                    if (it.configType == EConfigType.Custom)
                     {
                         continue;
                     }
@@ -1440,7 +1463,7 @@ namespace v2rayN.Handler
                     {
                         continue;
                     }
-                    if (it.configType == (int)EConfigType.Vmess || it.configType == (int)EConfigType.VLESS)
+                    if (it.configType == EConfigType.Vmess || it.configType == EConfigType.VLESS)
                     {
                         if (!Utils.IsGuidByParse(configCopy.GetVmessItem(it.indexId).id))
                         {

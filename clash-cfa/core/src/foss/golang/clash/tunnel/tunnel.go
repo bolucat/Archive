@@ -10,6 +10,7 @@ import (
 
 	"github.com/Dreamacro/clash/adapter/inbound"
 	"github.com/Dreamacro/clash/component/nat"
+	P "github.com/Dreamacro/clash/component/process"
 	"github.com/Dreamacro/clash/component/resolver"
 	C "github.com/Dreamacro/clash/constant"
 	"github.com/Dreamacro/clash/constant/provider"
@@ -308,6 +309,7 @@ func match(metadata *C.Metadata) (C.Proxy, C.Rule, error) {
 	defer configMux.RUnlock()
 
 	var resolved bool
+	var processFound bool
 
 	if node := resolver.DefaultHosts.Search(metadata.Host); node != nil {
 		ip := node.Data.(net.IP)
@@ -325,6 +327,18 @@ func match(metadata *C.Metadata) (C.Proxy, C.Rule, error) {
 				metadata.DstIP = ip
 			}
 			resolved = true
+		}
+
+		if !processFound && rule.ShouldFindProcess() {
+			processFound = true
+
+			path, err := P.FindPackageName(metadata)
+			if err != nil {
+				log.Debugln("[Process] find process %s: %v", metadata.String(), err)
+			} else {
+				log.Debugln("[Process] %s from process %s", metadata.String(), path)
+				metadata.ProcessPath = path
+			}
 		}
 
 		if rule.Match(metadata) {

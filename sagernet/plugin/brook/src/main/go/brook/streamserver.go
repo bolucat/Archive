@@ -30,24 +30,18 @@ import (
 )
 
 type StreamServer struct {
-	Client   net.Conn
-	cn       []byte
-	ca       cipher.AEAD
-	sn       []byte
-	sa       cipher.AEAD
-	RB       []byte
-	WB       []byte
-	Timeout  int
-	Network  string
-	ConnFunc func(net.Conn) net.Conn
+	Client  net.Conn
+	cn      []byte
+	ca      cipher.AEAD
+	sn      []byte
+	sa      cipher.AEAD
+	RB      []byte
+	WB      []byte
+	Timeout int
+	Network string
 }
 
 func NewStreamServer(password []byte, client net.Conn, timeout int) (*StreamServer, []byte, error) {
-	if timeout != 0 {
-		if err := client.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
-			return nil, nil, err
-		}
-	}
 	s := &StreamServer{Client: client, Timeout: timeout}
 	s.cn = x.BP12.Get().([]byte)
 	if _, err := io.ReadFull(s.Client, s.cn); err != nil {
@@ -143,27 +137,10 @@ func NewStreamServer(password []byte, client net.Conn, timeout int) (*StreamServ
 		s.RB = RB
 		s.WB = x.BP65507.Get().([]byte)
 	}
-	return StreamServerInit(s, l)
-}
-
-var StreamServerInit func(*StreamServer, int) (*StreamServer, []byte, error) = func(s *StreamServer, l int) (*StreamServer, []byte, error) {
-	if s.Timeout != 0 {
-		if err := s.Client.SetDeadline(time.Now().Add(time.Duration(s.Timeout) * time.Second)); err != nil {
-			s.Clean()
-			return nil, nil, err
-		}
-	}
-	s.ConnFunc = func(conn net.Conn) net.Conn {
-		if s.Timeout != 0 {
-			conn.SetDeadline(time.Now().Add(time.Duration(s.Timeout) * time.Second))
-		}
-		return conn
-	}
 	return s, s.RB[2+16+4 : 2+16+l], nil
 }
 
 func (s *StreamServer) Exchange(remote net.Conn) error {
-	remote = s.ConnFunc(remote)
 	defer remote.Close()
 	go func() {
 		for {
@@ -241,4 +218,10 @@ func (s *StreamServer) Clean() {
 		x.BP65507.Put(s.WB)
 		x.BP65507.Put(s.RB)
 	}
+}
+func (s *StreamServer) NetworkName() string {
+	return s.Network
+}
+func (s *StreamServer) SetTimeout(i int) {
+	s.Timeout = i
 }

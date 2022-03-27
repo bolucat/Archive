@@ -200,7 +200,8 @@ func newServer(
 	clientIP net.IP,
 	container router.GeoIPMatcherContainer,
 	matcherInfos *[]DomainMatcherInfo,
-	updateDomainRule func(strmatcher.Matcher, int, []DomainMatcherInfo) error) (*Server, error) {
+	updateDomainRule func(strmatcher.Matcher, int, []DomainMatcherInfo) error,
+) (*Server, error) {
 	// Establish domain rules
 	var rules []string
 	ruleCurr := 0

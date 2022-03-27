@@ -664,7 +664,9 @@ pub fn main(matches: &ArgMatches) {
         #[cfg(all(unix, not(target_os = "android")))]
         match matches.value_of_t::<u64>("NOFILE") {
             Ok(nofile) => config.nofile = Some(nofile),
-            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {}
+            Err(ref err) if err.kind() == ClapErrorKind::ArgumentNotFound => {
+                crate::sys::adjust_nofile();
+            }
             Err(err) => err.exit(),
         }
 
@@ -787,7 +789,7 @@ pub fn main(matches: &ArgMatches) {
         }
 
         let abort_signal = monitor::create_signal_monitor();
-        let server = instance.run();
+        let server = instance.wait_until_exit();
 
         tokio::pin!(abort_signal);
         tokio::pin!(server);

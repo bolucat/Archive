@@ -16,6 +16,7 @@ package brook
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
@@ -52,10 +53,11 @@ type Tproxy struct {
 	Cidr6         []*net.IPNet
 	BypassCache   *cache.Cache
 	WSClient      *WSClient
+	UDPOverTCP    bool
 }
 
 // NewTproxy.
-func NewTproxy(addr, s, password string, enableIPv6 bool, cidr4url, cidr6url string, tcpTimeout, udpTimeout int) (*Tproxy, error) {
+func NewTproxy(addr, s, password string, enableIPv6 bool, cidr4url, cidr6url string, tcpTimeout, udpTimeout int, address string, insecure, withoutbrook bool, roots *x509.CertPool, udpovertcp bool) (*Tproxy, error) {
 	taddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -72,9 +74,19 @@ func NewTproxy(addr, s, password string, enableIPv6 bool, cidr4url, cidr6url str
 			return nil, err
 		}
 		hp = u.Host
+		if address != "" {
+			hp = address
+		}
 		wsc, err = NewWSClient(":1080", "127.0.0.1", s, password, tcpTimeout, udpTimeout)
 		if err != nil {
 			return nil, err
+		}
+		wsc.WithoutBrook = withoutbrook
+		if strings.HasPrefix(s, "wss://") && insecure {
+			wsc.TLSConfig.InsecureSkipVerify = true
+		}
+		if strings.HasPrefix(s, "wss://") && roots != nil {
+			wsc.TLSConfig.RootCAs = roots
 		}
 		wsc.DialTCP = tproxy.DialTCP
 	}
@@ -110,32 +122,18 @@ func NewTproxy(addr, s, password string, enableIPv6 bool, cidr4url, cidr6url str
 	if err != nil {
 		return nil, err
 	}
-	c4 := make([]*net.IPNet, 0)
+	var c4 []*net.IPNet
 	if cidr4url != "" {
-		l, err := ReadList(cidr4url)
+		c4, err = ReadCIDRList(cidr4url)
 		if err != nil {
 			return nil, err
-		}
-		for _, v := range l {
-			_, in, err := net.ParseCIDR(v)
-			if err != nil {
-				continue
-			}
-			c4 = append(c4, in)
 		}
 	}
-	c6 := make([]*net.IPNet, 0)
+	var c6 []*net.IPNet
 	if cidr6url != "" {
-		l, err := ReadList(cidr6url)
+		c6, err = ReadCIDRList(cidr6url)
 		if err != nil {
 			return nil, err
-		}
-		for _, v := range l {
-			_, in, err := net.ParseCIDR(v)
-			if err != nil {
-				continue
-			}
-			c6 = append(c6, in)
 		}
 	}
 	cs := cache.New(cache.NoExpiration, cache.NoExpiration)
@@ -159,6 +157,9 @@ func NewTproxy(addr, s, password string, enableIPv6 bool, cidr4url, cidr6url str
 		Cidr6:         c6,
 		BypassCache:   cache.New(cache.NoExpiration, cache.NoExpiration),
 		WSClient:      wsc,
+	}
+	if !strings.HasPrefix(s, "ws://") && !strings.HasPrefix(s, "wss://") {
+		t.UDPOverTCP = udpovertcp
 	}
 	return t, nil
 }
@@ -384,44 +385,19 @@ func (s *Tproxy) Shutdown() error {
 	return s.RunnerGroup.Done()
 }
 
-func (s *Tproxy) HasIP(i net.IP) bool {
-	if i == nil {
-		return false
-	}
-	any, ok := s.BypassCache.Get(i.String())
-	if ok {
-		return any.(bool)
-	}
-	if i.To4() != nil {
-		ii := i.To4()
-		for _, v := range s.Cidr4 {
-			if v.Contains(ii) {
-				s.BypassCache.Set(i.String(), true, -1)
-				return true
-			}
-		}
-	}
-	if i.To4() == nil {
-		ii := i.To16()
-		for _, v := range s.Cidr6 {
-			if v.Contains(ii) {
-				s.BypassCache.Set(i.String(), true, -1)
-				return true
-			}
-		}
-	}
-	s.BypassCache.Set(i.String(), false, -1)
-	return false
-}
-
 // TCPHandle handles request.
 func (s *Tproxy) TCPHandle(c *net.TCPConn) error {
-	if s.HasIP(c.LocalAddr().(*net.TCPAddr).IP) {
+	if ListHasIP(s.Cidr4, s.Cidr6, c.LocalAddr().(*net.TCPAddr).IP, s.BypassCache) {
 		rc, err := Dial.Dial("tcp", c.LocalAddr().String())
 		if err != nil {
 			return err
 		}
 		defer rc.Close()
+		if s.TCPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.TCPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		go func() {
 			var bf [1024 * 2]byte
 			for {
@@ -483,7 +459,13 @@ func (s *Tproxy) TCPHandle(c *net.TCPConn) error {
 	dst = append(dst, a)
 	dst = append(dst, h...)
 	dst = append(dst, p...)
-	sc, err := NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	var sc Exchanger
+	if s.WSClient == nil || !s.WSClient.WithoutBrook {
+		sc, err = NewStreamClient("tcp", s.Password, dst, rc, s.TCPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("tcp", s.WSClient.PasswordSha256, dst, rc, s.TCPTimeout)
+	}
 	if err != nil {
 		return err
 	}
@@ -519,7 +501,7 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 		}
 	}
 
-	if s.HasIP(daddr.IP) {
+	if ListHasIP(s.Cidr4, s.Cidr6, daddr.IP, s.BypassCache) {
 		any, ok := s.UDPExchanges.Get(src + dst)
 		if ok {
 			ue := any.(*UDPExchange)
@@ -533,6 +515,11 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 			return err
 		}
 		defer rc.Close()
+		if s.UDPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if laddr.Port == 0 {
 			s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 		}
@@ -541,6 +528,11 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 			return errors.New(fmt.Sprintf("src: %s dst: %s %s", daddr.String(), addr.String(), err.Error()))
 		}
 		defer c.Close()
+		if s.UDPTimeout != 0 {
+			if err := c.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if _, err := rc.Write(b); err != nil {
 			return err
 		}
@@ -569,7 +561,7 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 		return nil
 	}
 
-	if s.WSClient == nil {
+	if s.WSClient == nil && !s.UDPOverTCP {
 		any, ok = s.UDPExchanges.Get(src + dst)
 		if ok {
 			ue := any.(*UDPExchange)
@@ -584,6 +576,11 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 			return err
 		}
 		defer rc.Close()
+		if s.UDPTimeout != 0 {
+			if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 		if laddr.Port == 0 {
 			s.UDPSrc.Set(src+dst, rc.LocalAddr().(*net.UDPAddr), -1)
 		}
@@ -592,6 +589,11 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 			return errors.New(fmt.Sprintf("src: %s dst: %s %s", daddr.String(), addr.String(), err.Error()))
 		}
 		defer c.Close()
+		if s.UDPTimeout != 0 {
+			if err := c.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+				return err
+			}
+		}
 
 		a, h, p, err := socks5.ParseAddress(dst)
 		if err != nil {
@@ -626,11 +628,23 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 		ue := any.(*UDPExchange)
 		return ue.Any.(func(b []byte) error)(b)
 	}
-	rc, err := s.WSClient.DialWebsocket(laddr.String())
+	var rc net.Conn
+	var err error
+	if s.UDPOverTCP {
+		rc, err = tproxy.DialTCP("tcp", s.ServerTCPAddr.String())
+	}
+	if s.WSClient != nil {
+		rc, err = s.WSClient.DialWebsocket(laddr.String())
+	}
 	if err != nil {
 		return nil
 	}
 	defer rc.Close()
+	if s.UDPTimeout != 0 {
+		if err := rc.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+			return err
+		}
+	}
 	if laddr.Port == 0 {
 		s.UDPSrc.Set(src+dst, &net.UDPAddr{
 			IP:   rc.LocalAddr().(*net.TCPAddr).IP,
@@ -643,6 +657,11 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 		return errors.New(fmt.Sprintf("src: %s dst: %s %s", daddr.String(), addr.String(), err.Error()))
 	}
 	defer c.Close()
+	if s.UDPTimeout != 0 {
+		if err := c.SetDeadline(time.Now().Add(time.Duration(s.UDPTimeout) * time.Second)); err != nil {
+			return err
+		}
+	}
 
 	a, h, p, err := socks5.ParseAddress(dst)
 	if err != nil {
@@ -652,7 +671,13 @@ func (s *Tproxy) UDPHandle(addr, daddr *net.UDPAddr, b []byte) error {
 	dstb = append(dstb, a)
 	dstb = append(dstb, h...)
 	dstb = append(dstb, p...)
-	sc, err := NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	var sc Exchanger
+	if s.UDPOverTCP || (s.WSClient != nil && !s.WSClient.WithoutBrook) {
+		sc, err = NewStreamClient("udp", s.Password, dstb, rc, s.UDPTimeout)
+	}
+	if s.WSClient != nil && s.WSClient.WithoutBrook {
+		sc, err = NewSimpleStreamClient("udp", s.WSClient.PasswordSha256, dstb, rc, s.UDPTimeout)
+	}
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/retry"
 	"github.com/v2fly/v2ray-core/v5/common/session"
@@ -117,11 +118,12 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	var server *protocol.ServerSpec
 	var conn internet.Connection
 	var user *protocol.MemoryUser
+	var uot bool
 
 	err := retry.ExponentialBackoff(2, 100).On(func() error {
 		server = c.serverPicker.PickServer()
 		user = server.PickUser()
-		_, ok := user.Account.(*MemoryAccount)
+		account, ok := user.Account.(*MemoryAccount)
 		if !ok {
 			return newError("user account is not valid")
 		}
@@ -132,6 +134,10 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			server = c.serverPicker.PickServer()
 			dest = server.Destination()
 			dest.Network = network
+		}
+		if dest.Network == net.Network_UDP && account.UoT {
+			dest.Network = net.Network_TCP
+			uot = true
 		}
 		rawConn, err := dialer.Dial(ctx, dest)
 		if err != nil {
@@ -214,18 +220,60 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		return nil
 	}
 
+	if uot {
+
+		requestDone := func() error {
+			defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
+			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
+			request.Address = net.DomainAddress(udpovertcp.UOTMagicAddress)
+			request.Port = 0
+			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, nil, protocolConn)
+			if err != nil {
+				return newError("failed to write request").Base(err)
+			}
+			writer := udpovertcp.NewBufferedWriter(bodyWriter, &destination)
+			err = buf.CopyOnceTimeout(link.Reader, writer, time.Millisecond*100)
+			if err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
+				return err
+			}
+			err = bufferedWriter.SetBuffered(false)
+			if err != nil {
+				return err
+			}
+			return buf.Copy(link.Reader, writer, buf.UpdateActivity(timer))
+		}
+
+		responseDone := func() error {
+			defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
+
+			connReader := &buf.BufferedReader{
+				Reader: buf.NewReader(conn),
+			}
+			responseReader, err := ReadTCPResponse(user, connReader, iv, protocolConn)
+			if err != nil {
+				return err
+			}
+			reader := udpovertcp.NewBufferedReader(responseReader)
+			return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer))
+		}
+
+		responseDoneAndCloseWriter := task.OnSuccess(responseDone, task.Close(link.Writer))
+		if err := task.Run(ctx, requestDone, responseDoneAndCloseWriter); err != nil {
+			return newError("connection ends").Base(err)
+		}
+
+		return nil
+
+	}
+
 	if request.Command == protocol.RequestCommandTCP {
 
 		requestDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, protocolConn)
+			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, link.Reader, protocolConn)
 			if err != nil {
 				return newError("failed to write request").Base(err)
-			}
-
-			if err = buf.CopyOnceTimeout(link.Reader, bodyWriter, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
-				return newError("failed to write A request payload").Base(err).AtWarning()
 			}
 
 			if err := bufferedWriter.SetBuffered(false); err != nil {
@@ -238,7 +286,10 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		responseDone := func() error {
 			defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
 
-			responseReader, err := ReadTCPResponse(user, conn, protocolConn)
+			connReader := &buf.BufferedReader{
+				Reader: buf.NewReader(conn),
+			}
+			responseReader, err := ReadTCPResponse(user, connReader, iv, protocolConn)
 			if err != nil {
 				return err
 			}
@@ -255,10 +306,13 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	if request.Command == protocol.RequestCommandUDP {
+		us := newUDPSession(false)
+
 		writer := &UDPWriter{
 			Writer:  conn,
 			Request: request,
 			Plugin:  c.protocol,
+			session: us,
 		}
 
 		requestDone := func() error {

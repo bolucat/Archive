@@ -29,14 +29,14 @@ type ShadowSocks struct {
 
 type ShadowSocksOption struct {
 	BasicOption
-	Name       string                 `proxy:"name"`
-	Server     string                 `proxy:"server"`
-	Port       int                    `proxy:"port"`
-	Password   string                 `proxy:"password"`
-	Cipher     string                 `proxy:"cipher"`
-	UDP        bool                   `proxy:"udp,omitempty"`
-	Plugin     string                 `proxy:"plugin,omitempty"`
-	PluginOpts map[string]interface{} `proxy:"plugin-opts,omitempty"`
+	Name       string         `proxy:"name"`
+	Server     string         `proxy:"server"`
+	Port       int            `proxy:"port"`
+	Password   string         `proxy:"password"`
+	Cipher     string         `proxy:"cipher"`
+	UDP        bool           `proxy:"udp,omitempty"`
+	Plugin     string         `proxy:"plugin,omitempty"`
+	PluginOpts map[string]any `proxy:"plugin-opts,omitempty"`
 }
 
 type simpleObfsOption struct {
@@ -160,6 +160,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			tp:    C.Shadowsocks,
 			udp:   option.UDP,
 			iface: option.Interface,
+			rmark: option.RoutingMark,
 		},
 		cipher: ciph,
 
