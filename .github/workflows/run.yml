@@ -24,6 +24,7 @@ jobs:
         run: |
           # Clean Repository
           rm -rf *
+          mv anxray .github
           export GCRS="git clone --recurse-submodules"
           # GFW Projects
           ${GCRS} https://github.com/v2fly/v2ray-core v2ray-core
@@ -56,7 +57,6 @@ jobs:
           ${GCRS} https://github.com/trojan-gfw/igniter igniter
           ${GCRS} https://github.com/trojan-gfw/igniter-go-libs igniter/app/src/libs/go-libs && rm -rfv igniter/app/src/libs/go-libs/.git
           ${GCRS} https://github.com/SagerNet/SagerNet sagernet
-          ${GCRS} https://github.com/XTLS/AnXray anxray
           ${GCRS} https://github.com/xxf098/shadowsocksr-v2ray-trojan-android svt-android
           ${GCRS} https://github.com/netchx/netch netch
           # Openwrt Projects
@@ -94,6 +94,7 @@ jobs:
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
+          mv .github anxray
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
@@ -217,11 +218,6 @@ jobs:
           wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Brook_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Relayboton_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Pingtunnel_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
-          popd || exit 1
-          # anxray
-          mkdir -p anxray/Clients
-          pushd anxray/Clients || exit 1
-          wget -qO- https://api.github.com/repos/XTLS/AnXray/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # svt-android
           mkdir -p svt-android/Clients
