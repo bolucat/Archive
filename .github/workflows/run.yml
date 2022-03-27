@@ -23,8 +23,8 @@ jobs:
       - name: Sync
         run: |
           # Clean Repository
-          rm -rf *
           mv anxray .github
+          rm -rf *
           export GCRS="git clone --recurse-submodules"
           # GFW Projects
           ${GCRS} https://github.com/v2fly/v2ray-core v2ray-core
