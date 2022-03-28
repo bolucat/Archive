@@ -94,7 +94,7 @@ jobs:
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
-          mv .github anxray
+          mv .github/anxray .
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
