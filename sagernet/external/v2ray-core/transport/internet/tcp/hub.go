@@ -6,18 +6,22 @@ import (
 	"strings"
 	"time"
 
+	goxtls "github.com/xtls/go"
+
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
 
 // Listener is an internet.Listener that listens for TCP connections.
 type Listener struct {
 	listener   net.Listener
 	tlsConfig  *gotls.Config
+	xtlsConfig *goxtls.Config
 	authConfig internet.ConnectionAuthenticator
 	config     *Config
 	addConn    internet.ConnHandler
@@ -71,6 +75,8 @@ func ListenTCP(ctx context.Context, address net.Address, port net.Port, streamSe
 
 	if config := tls.ConfigFromStreamSettings(streamSettings); config != nil {
 		l.tlsConfig = config.GetTLSConfig()
+	} else if config := xtls.ConfigFromStreamSettings(streamSettings); config != nil {
+		l.xtlsConfig = config.GetXTLSConfig()
 	}
 
 	if tcpSettings.HeaderSettings != nil {
@@ -106,6 +112,8 @@ func (v *Listener) keepAccepting() {
 
 		if v.tlsConfig != nil {
 			conn = tls.Server(conn, v.tlsConfig)
+		} else if v.xtlsConfig != nil {
+			conn = xtls.Server(conn, v.xtlsConfig)
 		}
 		if v.authConfig != nil {
 			conn = v.authConfig.Server(conn)

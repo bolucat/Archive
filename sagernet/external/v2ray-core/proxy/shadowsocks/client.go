@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"strconv"
-	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -227,20 +226,15 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			bufferedWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
 			request.Address = net.DomainAddress(udpovertcp.UOTMagicAddress)
 			request.Port = 0
-			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, nil, protocolConn)
+			bodyWriter, err := WriteTCPRequest(request, bufferedWriter, iv, udpovertcp.NewTransportReader(link.Reader), protocolConn)
 			if err != nil {
 				return newError("failed to write request").Base(err)
-			}
-			writer := udpovertcp.NewBufferedWriter(bodyWriter, &destination)
-			err = buf.CopyOnceTimeout(link.Reader, writer, time.Millisecond*100)
-			if err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
-				return err
 			}
 			err = bufferedWriter.SetBuffered(false)
 			if err != nil {
 				return err
 			}
-			return buf.Copy(link.Reader, writer, buf.UpdateActivity(timer))
+			return buf.Copy(link.Reader, udpovertcp.NewBufferedWriter(bodyWriter, &destination), buf.UpdateActivity(timer))
 		}
 
 		responseDone := func() error {
@@ -249,12 +243,11 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			connReader := &buf.BufferedReader{
 				Reader: buf.NewReader(conn),
 			}
-			responseReader, err := ReadTCPResponse(user, connReader, iv, protocolConn)
+			responseReader, err := ReadTCPResponse(user, request.Command, connReader, iv, protocolConn)
 			if err != nil {
 				return err
 			}
-			reader := udpovertcp.NewBufferedReader(responseReader)
-			return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer))
+			return buf.Copy(udpovertcp.NewBufferedReader(responseReader), link.Writer, buf.UpdateActivity(timer))
 		}
 
 		responseDoneAndCloseWriter := task.OnSuccess(responseDone, task.Close(link.Writer))
@@ -289,7 +282,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			connReader := &buf.BufferedReader{
 				Reader: buf.NewReader(conn),
 			}
-			responseReader, err := ReadTCPResponse(user, connReader, iv, protocolConn)
+			responseReader, err := ReadTCPResponse(user, request.Command, connReader, iv, protocolConn)
 			if err != nil {
 				return err
 			}
@@ -328,9 +321,10 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
 
 			reader := &UDPReader{
-				Reader: conn,
-				User:   user,
-				Plugin: c.protocol,
+				Reader:  conn,
+				User:    user,
+				Plugin:  c.protocol,
+				session: us,
 			}
 
 			if err := buf.Copy(reader, link.Writer, buf.UpdateActivity(timer)); err != nil {

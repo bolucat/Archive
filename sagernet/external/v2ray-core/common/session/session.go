@@ -44,6 +44,9 @@ type Inbound struct {
 	// User is the user that authencates for the inbound. May be nil if the protocol allows anounymous traffic.
 	User *protocol.MemoryUser
 
+	// Conn is actually internet.Connection. May be nil.
+	Conn net.Conn
+
 	// SagerNet private
 	Uid         uint32
 	NetworkType string

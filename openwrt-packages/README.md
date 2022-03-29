@@ -10,7 +10,9 @@
 
 <img src="https://v2.jinrishici.com/one.svg?font-size=24&spacing=2&color=Black">
 
-#### 说明
+#### 说明 
+
+<br>中文 | [English](README_en.md)
 
 * 喜欢追新的可以去下载small-package，该仓库每天自动同步更新
 
@@ -40,24 +42,32 @@ make menuconfig
 ```
 
 - openwrt 固件编译自定义主题与软件
-- luci-app-vssr            ------------------vssr老竭力
-- luci-app-dnsfilter       ------------------基于DNS的广告过滤
-- luci-app-openclash       ------------------openclash图形         
-- luci-app-advanced       ------------------系统高级设置
-- luci-app-pushbot         ------------------微信/钉钉 推送的插件
-- luci-theme-ifit          ------------------透明主题（适配18.06修复主机名错误）
-- luci-theme-atmaterial_new  ------------------atmaterial 三合一主题（适配18.06）     
-- luci-app-aliddns         ------------------阿里云ddns
-- luci-app-eqos            ------------------依IP地址限速
-- luci-app-gost            ------------------隐蔽的https代理
-- luci-app-adguardhome     ------------------去广告 
-- luci-app-smartdns        ------------------smartdns防污染
-- luci-app-passwall        ------------------Lienol大神 
-- luci-theme-argonne       ------------------修改老竭力主题名
-- luci-app-argonne-config  ------------------argonne主题设置
-- luci-app-ssr-plus        ------------------Lean大神 
-- luci-theme-mcat          ------------------修改主题名  
-- luci-theme-tomato        ------------------修改主题名
+
+| 软件名                       | 说明                   | 中文说明    |
+| -----------------------------|------------------------| ------------|
+| luci-app-vssr                | vssr proxy                 | vssr老竭力代理软件        |
+| luci-app-dnsfilter           | dns ad filtering            | 基于DNS的广告过滤        |
+| luci-app-openclash           | openclash proxy            |  clash的图形代理软件      |
+| luci-app-advanced            | System advanced settings               | 系统高级设置        |
+| luci-app-pushbot             | WeChat/DingTalk Pushed plugins    |   微信/钉钉推送        |
+| luci-theme-atmaterial_new    | atmaterial theme (adapted to luci-18.06) | Atmaterial 三合一主题        |
+| luci-app-aliddns             | aliyunddns         |   阿里云ddns插件      |
+| luci-app-eqos                | Speed ​​limit by IP address       | 依IP地址限速      |
+| luci-app-gost                | https proxy      | 隐蔽的https代理   |
+| luci-app-adguardhome         | Block ads          |  AdG去广告      |
+| luci-app-smartdns            | smartdns dns pollution prevention     |  smartdns DNS防污染       |
+| luci-app-passwall            | passwall proxy      | passwall代理软件        |
+| luci-theme-argonne           | argonne theme           | 修改老竭力主题名     |
+| luci-app-argonne-config      | argonne theme settings            |  argonne主题设置      |
+| luci-app-ssr-plus            | ssr-plus proxy              | ssr-plus 代理软件       |
+| luci-theme-mcat              | Modify topic name          |   mcat主题        |
+| luci-theme-tomato            | Modify topic name             |  tomato主题        |
+| luci-theme-neobird           | neobird theme          | neobird主题        |
+| luci-app-mosdns              | moddns dns offload            |DNS 国内外分流解析与广告过滤        |
+| luci-app-store               | store software repository            |  应用商店   |
+| luci-app-unblockneteasemusic | Unlock NetEase Cloud Music         | 解锁网易云音乐   |
+| luci-app-gpsysupgrade        | kiddin9 custom firmware upgrade plugin           |kiddin9自定义固件升级 |
+| luci-app-aliyundrive-webdav  | Aliyun Disk WebDAV Service            |  阿里云盘 WebDAV 服务   |
 
 * 修改argon为argonne，包括argonne-config，为防止同名argon，而影响编译
 
@@ -73,7 +83,6 @@ make menuconfig
 ![抹茶绿主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-14.jpg)
 ![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-1.png)
 ![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-2.png)
-* 修复opentomato 与opentomcat修改主机名无效的bug
 ![修复tomto不能修改主机名的bug](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/%E5%B0%8F%E7%8C%AA%E5%AE%B6-719.png)
 ![修复tomto不能修改主机名的bug](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/%E5%B0%8F%E7%8C%AA%E5%AE%B6-722.png)
 ![修复cat不能修改主机名的bug](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/%E5%B0%8F%E7%8C%AA%E5%AE%B6-720.png)

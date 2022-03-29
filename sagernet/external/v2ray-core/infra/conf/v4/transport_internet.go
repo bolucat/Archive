@@ -288,6 +288,7 @@ type StreamConfig struct {
 	Network        *TransportProtocol      `json:"network"`
 	Security       string                  `json:"security"`
 	TLSSettings    *tlscfg.TLSConfig       `json:"tlsSettings"`
+	XTLSSettings   *tlscfg.XTLSConfig      `json:"xtlsSettings"`
 	TCPSettings    *TCPConfig              `json:"tcpSettings"`
 	KCPSettings    *KCPConfig              `json:"kcpSettings"`
 	WSSettings     *WebSocketConfig        `json:"wsSettings"`
@@ -319,6 +320,24 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 		ts, err := tlsSettings.Build()
 		if err != nil {
 			return nil, newError("Failed to build TLS config.").Base(err)
+		}
+		tm := serial.ToTypedMessage(ts)
+		config.SecuritySettings = append(config.SecuritySettings, tm)
+		config.SecurityType = serial.V2Type(tm)
+	} else if strings.EqualFold(c.Security, "xtls") {
+		if config.ProtocolName != "tcp" && config.ProtocolName != "mkcp" && config.ProtocolName != "domainsocket" {
+			return nil, newError("XTLS only supports TCP, mKCP and DomainSocket for now.")
+		}
+		xtlsSettings := c.XTLSSettings
+		if xtlsSettings == nil {
+			if c.TLSSettings != nil {
+				return nil, newError(`XTLS: Please use "xtlsSettings" instead of "tlsSettings".`)
+			}
+			xtlsSettings = &tlscfg.XTLSConfig{}
+		}
+		ts, err := xtlsSettings.Build()
+		if err != nil {
+			return nil, newError("Failed to build XTLS config.").Base(err)
 		}
 		tm := serial.ToTypedMessage(ts)
 		config.SecuritySettings = append(config.SecuritySettings, tm)

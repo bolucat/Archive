@@ -33,7 +33,7 @@ const (
 	statusCmdNotSupport = 0x07
 )
 
-var addrParser = protocol.NewAddressParser(
+var AddrParser = protocol.NewAddressParser(
 	protocol.AddressFamilyByte(0x01, net.AddressFamilyIPv4),
 	protocol.AddressFamilyByte(0x04, net.AddressFamilyIPv6),
 	protocol.AddressFamilyByte(0x03, net.AddressFamilyDomain),
@@ -181,7 +181,7 @@ func (s *ServerSession) handshake5(nMethod byte, reader io.Reader, writer io.Wri
 
 	request.Version = socks5Version
 
-	addr, port, err := addrParser.ReadAddressPort(nil, reader)
+	addr, port, err := AddrParser.ReadAddressPort(nil, reader)
 	if err != nil {
 		return nil, newError("failed to read address").Base(err)
 	}
@@ -305,7 +305,7 @@ func writeSocks5Response(writer io.Writer, errCode byte, address net.Address, po
 	defer buffer.Release()
 
 	common.Must2(buffer.Write([]byte{socks5Version, errCode, 0x00 /* reserved */}))
-	if err := addrParser.WriteAddressPort(buffer, address, port); err != nil {
+	if err := AddrParser.WriteAddressPort(buffer, address, port); err != nil {
 		return err
 	}
 
@@ -340,7 +340,7 @@ func DecodeUDPPacket(packet *buf.Buffer) (*protocol.RequestHeader, error) {
 
 	packet.Advance(3)
 
-	addr, port, err := addrParser.ReadAddressPort(nil, packet)
+	addr, port, err := AddrParser.ReadAddressPort(nil, packet)
 	if err != nil {
 		return nil, newError("failed to read UDP header").Base(err)
 	}
@@ -352,7 +352,7 @@ func DecodeUDPPacket(packet *buf.Buffer) (*protocol.RequestHeader, error) {
 func EncodeUDPPacket(request *protocol.RequestHeader, data []byte) (*buf.Buffer, error) {
 	b := buf.New()
 	common.Must2(b.Write([]byte{0, 0, 0 /* Fragment */}))
-	if err := addrParser.WriteAddressPort(b, request.Address, request.Port); err != nil {
+	if err := AddrParser.WriteAddressPort(b, request.Address, request.Port); err != nil {
 		b.Release()
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func EncodeUDPPacket(request *protocol.RequestHeader, data []byte) (*buf.Buffer,
 func EncodeUDPPacketFromAddress(address net.Destination, data []byte) (*buf.Buffer, error) {
 	b := buf.New()
 	common.Must2(b.Write([]byte{0, 0, 0 /* Fragment */}))
-	if err := addrParser.WriteAddressPort(b, address.Address, address.Port); err != nil {
+	if err := AddrParser.WriteAddressPort(b, address.Address, address.Port); err != nil {
 		b.Release()
 		return nil, err
 	}
@@ -520,7 +520,7 @@ func ClientHandshake(request *protocol.RequestHeader, reader io.Reader, writer i
 		command = byte(cmdUDPAssociate)
 	}
 	common.Must2(b.Write([]byte{socks5Version, command, 0x00 /* reserved */}))
-	if err := addrParser.WriteAddressPort(b, request.Address, request.Port); err != nil {
+	if err := AddrParser.WriteAddressPort(b, request.Address, request.Port); err != nil {
 		return nil, err
 	}
 
@@ -540,7 +540,7 @@ func ClientHandshake(request *protocol.RequestHeader, reader io.Reader, writer i
 
 	b.Clear()
 
-	address, port, err := addrParser.ReadAddressPort(b, reader)
+	address, port, err := AddrParser.ReadAddressPort(b, reader)
 	if err != nil {
 		return nil, err
 	}

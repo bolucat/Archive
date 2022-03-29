@@ -477,9 +477,9 @@ func (c *AEADCipher) createAuthenticator(key []byte, iv []byte) *crypto.AEADAuth
 
 func (c *AEADCipher) NewEncryptionWriter(key []byte, iv []byte, writer io.Writer) (buf.Writer, error) {
 	auth := c.createAuthenticator(key, iv)
-	return crypto.NewAuthenticationWriter(auth, &crypto.AEADChunkSizeParser{
+	return crypto.NewLimitedAuthenticationWriter(auth, &crypto.AEADChunkSizeParser{
 		Auth: auth,
-	}, writer, protocol.TransferTypeStream, nil), nil
+	}, writer, protocol.TransferTypeStream, nil, 0x3FFF), nil
 }
 
 func (c *AEADCipher) NewDecryptionReader(key []byte, iv []byte, reader io.Reader) (buf.Reader, error) {

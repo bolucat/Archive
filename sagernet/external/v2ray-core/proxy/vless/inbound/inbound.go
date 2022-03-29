@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
@@ -24,11 +26,15 @@ import (
 	feature_inbound "github.com/v2fly/v2ray-core/v5/features/inbound"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless/encoding"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
+
+var xtls_show = false
 
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
@@ -67,7 +73,7 @@ type Handler struct {
 	policyManager         policy.Manager
 	validator             *vless.Validator
 	dns                   dns.Client
-	fallbacks             map[string]map[string]*Fallback // or nil
+	fallbacks             map[string]map[string]map[string]*Fallback // or nil
 	// regexps               map[string]*regexp.Regexp       // or nil
 }
 
@@ -92,13 +98,16 @@ func New(ctx context.Context, config *Config, dc dns.Client) (*Handler, error) {
 	}
 
 	if config.Fallbacks != nil {
-		handler.fallbacks = make(map[string]map[string]*Fallback)
+		handler.fallbacks = make(map[string]map[string]map[string]*Fallback)
 		// handler.regexps = make(map[string]*regexp.Regexp)
 		for _, fb := range config.Fallbacks {
-			if handler.fallbacks[fb.Alpn] == nil {
-				handler.fallbacks[fb.Alpn] = make(map[string]*Fallback)
+			if handler.fallbacks[fb.Name] == nil {
+				handler.fallbacks[fb.Name] = make(map[string]map[string]*Fallback)
 			}
-			handler.fallbacks[fb.Alpn][fb.Path] = fb
+			if handler.fallbacks[fb.Name][fb.Alpn] == nil {
+				handler.fallbacks[fb.Name][fb.Alpn] = make(map[string]*Fallback)
+			}
+			handler.fallbacks[fb.Name][fb.Alpn][fb.Path] = fb
 			/*
 				if fb.Path != "" {
 					if r, err := regexp.Compile(fb.Path); err != nil {
@@ -110,11 +119,37 @@ func New(ctx context.Context, config *Config, dc dns.Client) (*Handler, error) {
 			*/
 		}
 		if handler.fallbacks[""] != nil {
-			for alpn, pfb := range handler.fallbacks {
-				if alpn != "" { // && alpn != "h2" {
-					for path, fb := range handler.fallbacks[""] {
-						if pfb[path] == nil {
-							pfb[path] = fb
+			for name, apfb := range handler.fallbacks {
+				if name != "" {
+					for alpn := range handler.fallbacks[""] {
+						if apfb[alpn] == nil {
+							apfb[alpn] = make(map[string]*Fallback)
+						}
+					}
+				}
+			}
+		}
+		for _, apfb := range handler.fallbacks {
+			if apfb[""] != nil {
+				for alpn, pfb := range apfb {
+					if alpn != "" { // && alpn != "h2" {
+						for path, fb := range apfb[""] {
+							if pfb[path] == nil {
+								pfb[path] = fb
+							}
+						}
+					}
+				}
+			}
+		}
+		if handler.fallbacks[""] != nil {
+			for name, apfb := range handler.fallbacks {
+				if name != "" {
+					for alpn, pfb := range handler.fallbacks[""] {
+						for path, fb := range pfb {
+							if apfb[alpn][path] == nil {
+								apfb[alpn][path] = fb
+							}
 						}
 					}
 				}
@@ -175,8 +210,8 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 	var requestAddons *encoding.Addons
 	var err error
 
-	apfb := h.fallbacks
-	isfb := apfb != nil
+	napfb := h.fallbacks
+	isfb := napfb != nil
 
 	if isfb && firstLen < 18 {
 		err = newError("fallback directly")
@@ -191,15 +226,46 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 			}
 			newError("fallback starts").Base(err).AtInfo().WriteToLog(sid)
 
+			name := ""
 			alpn := ""
-			if len(apfb) > 1 || apfb[""] == nil {
-				if tlsConn, ok := iConn.(*tls.Conn); ok {
-					alpn = tlsConn.ConnectionState().NegotiatedProtocol
-					newError("realAlpn = " + alpn).AtInfo().WriteToLog(sid)
+			if tlsConn, ok := iConn.(*tls.Conn); ok {
+				cs := tlsConn.ConnectionState()
+				name = cs.ServerName
+				alpn = cs.NegotiatedProtocol
+				newError("realName = " + name).AtInfo().WriteToLog(sid)
+				newError("realAlpn = " + alpn).AtInfo().WriteToLog(sid)
+			} else if xtlsConn, ok := iConn.(*xtls.Conn); ok {
+				cs := xtlsConn.ConnectionState()
+				name = cs.ServerName
+				alpn = cs.NegotiatedProtocol
+				newError("realName = " + name).AtInfo().WriteToLog(sid)
+				newError("realAlpn = " + alpn).AtInfo().WriteToLog(sid)
+			}
+			name = strings.ToLower(name)
+			alpn = strings.ToLower(alpn)
+
+			if len(napfb) > 1 || napfb[""] == nil {
+				if name != "" && napfb[name] == nil {
+					match := ""
+					for n := range napfb {
+						if n != "" && strings.Contains(name, n) && len(n) > len(match) {
+							match = n
+						}
+					}
+					name = match
 				}
-				if apfb[alpn] == nil {
-					alpn = ""
-				}
+			}
+
+			if napfb[name] == nil {
+				name = ""
+			}
+			apfb := napfb[name]
+			if apfb == nil {
+				return newError(`failed to find the default "name" config`).AtWarning()
+			}
+
+			if apfb[alpn] == nil {
+				alpn = ""
 			}
 			pfb := apfb[alpn]
 			if pfb == nil {
@@ -236,7 +302,7 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 								if k == '\r' || k == '\n' { // avoid logging \r or \n
 									break
 								}
-								if k == ' ' {
+								if k == '?' || k == ' ' {
 									path = string(firstBytes[i:j])
 									newError("realPath = " + path).AtInfo().WriteToLog(sid)
 									if pfb[path] == nil {
@@ -278,39 +344,48 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 			postRequest := func() error {
 				defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 				if fb.Xver != 0 {
+					ipType := 4
 					remoteAddr, remotePort, err := net.SplitHostPort(connection.RemoteAddr().String())
 					if err != nil {
-						return err
+						ipType = 0
 					}
 					localAddr, localPort, err := net.SplitHostPort(connection.LocalAddr().String())
 					if err != nil {
-						return err
+						ipType = 0
 					}
-					ipv4 := true
-					for i := 0; i < len(remoteAddr); i++ {
-						if remoteAddr[i] == ':' {
-							ipv4 = false
-							break
+					if ipType == 4 {
+						for i := 0; i < len(remoteAddr); i++ {
+							if remoteAddr[i] == ':' {
+								ipType = 6
+								break
+							}
 						}
 					}
 					pro := buf.New()
 					defer pro.Release()
 					switch fb.Xver {
 					case 1:
-						if ipv4 {
+						if ipType == 0 {
+							pro.Write([]byte("PROXY UNKNOWN\r\n"))
+							break
+						}
+						if ipType == 4 {
 							pro.Write([]byte("PROXY TCP4 " + remoteAddr + " " + localAddr + " " + remotePort + " " + localPort + "\r\n"))
 						} else {
 							pro.Write([]byte("PROXY TCP6 " + remoteAddr + " " + localAddr + " " + remotePort + " " + localPort + "\r\n"))
 						}
-
 					case 2:
-						pro.Write([]byte("\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A\x21")) // signature + v2 + PROXY
-						if ipv4 {
-							pro.Write([]byte("\x11\x00\x0C")) // AF_INET + STREAM + 12 bytes
+						pro.Write([]byte("\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A")) // signature
+						if ipType == 0 {
+							pro.Write([]byte("\x20\x00\x00\x00")) // v2 + LOCAL + UNSPEC + UNSPEC + 0 bytes
+							break
+						}
+						if ipType == 4 {
+							pro.Write([]byte("\x21\x11\x00\x0C")) // v2 + PROXY + AF_INET + STREAM + 12 bytes
 							pro.Write(net.ParseIP(remoteAddr).To4())
 							pro.Write(net.ParseIP(localAddr).To4())
 						} else {
-							pro.Write([]byte("\x21\x00\x24")) // AF_INET6 + STREAM + 36 bytes
+							pro.Write([]byte("\x21\x21\x00\x24")) // v2 + PROXY + AF_INET6 + STREAM + 36 bytes
 							pro.Write(net.ParseIP(remoteAddr).To16())
 							pro.Write(net.ParseIP(localAddr).To16())
 						}
@@ -369,7 +444,44 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 	}
 	inbound.User = request.User
 
-	responseAddons := &encoding.Addons{}
+	account := request.User.Account.(*vless.MemoryAccount)
+
+	responseAddons := &encoding.Addons{
+		// Flow: requestAddons.Flow,
+	}
+
+	var rawConn syscall.RawConn
+
+	switch requestAddons.Flow {
+	case vless.XRO, vless.XRD:
+		if account.Flow == requestAddons.Flow {
+			switch request.Command {
+			case protocol.RequestCommandMux:
+				return newError(requestAddons.Flow + " doesn't support Mux").AtWarning()
+			case protocol.RequestCommandUDP:
+				return newError(requestAddons.Flow + " doesn't support UDP").AtWarning()
+			case protocol.RequestCommandTCP:
+				if xtlsConn, ok := iConn.(*xtls.Conn); ok {
+					xtlsConn.RPRX = true
+					xtlsConn.SHOW = xtls_show
+					xtlsConn.MARK = "XTLS"
+					if requestAddons.Flow == vless.XRD {
+						xtlsConn.DirectMode = true
+						if sc, ok := xtlsConn.Connection.(syscall.Conn); ok {
+							rawConn, _ = sc.SyscallConn()
+						}
+					}
+				} else {
+					return newError(`failed to use ` + requestAddons.Flow + `, maybe "security" is not "xtls"`).AtWarning()
+				}
+			}
+		} else {
+			return newError(account.ID.String() + " is not able to use " + requestAddons.Flow).AtWarning()
+		}
+	case "":
+	default:
+		return newError("unknown request flow " + requestAddons.Flow).AtWarning()
+	}
 
 	if request.Command != protocol.RequestCommandMux {
 		ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
@@ -400,8 +512,20 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 		// default: clientReader := reader
 		clientReader := encoding.DecodeBodyAddons(reader, request, requestAddons)
 
-		// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBuffer
-		if err := buf.Copy(clientReader, serverWriter, buf.UpdateActivity(timer)); err != nil {
+		var err error
+
+		if rawConn != nil {
+			var counter stats.Counter
+			if statConn != nil {
+				counter = statConn.ReadCounter
+			}
+			err = encoding.ReadV(clientReader, serverWriter, timer, iConn.(*xtls.Conn), rawConn, counter, nil)
+		} else {
+			// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBufer
+			err = buf.Copy(clientReader, serverWriter, buf.UpdateActivity(timer))
+		}
+
+		if err != nil {
 			return newError("failed to transfer request payload").Base(err).AtInfo()
 		}
 
@@ -428,14 +552,19 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 			}
 		}
 
-		// Flush; bufferWriter.WriteMultiBuffer now is bufferWriter.writer.WriteMultiBuffer
+		// Flush; bufferWriter.WriteMultiBufer now is bufferWriter.writer.WriteMultiBuffer
 		if err := bufferWriter.SetBuffered(false); err != nil {
 			return newError("failed to write A response payload").Base(err).AtWarning()
 		}
 
-		// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBuffer
+		// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBufer
 		if err := buf.Copy(serverReader, clientWriter, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to transfer response payload").Base(err).AtInfo()
+		}
+
+		// Indicates the end of response payload.
+		switch responseAddons.Flow {
+		default:
 		}
 
 		return nil

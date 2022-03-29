@@ -221,7 +221,7 @@ func (s *Server) handlerUDPPayload(ctx context.Context, conn internet.Connection
 				data    *buf.Buffer
 			)
 			if err == nil {
-				request, data, err = DecodeUDPPacket(s.user, payload, s.protocol)
+				request, data, err = DecodeUDPPacket(s.user, payload, us, s.protocol)
 			}
 			if err != nil {
 				if inbound := session.InboundFromContext(ctx); inbound != nil && inbound.Source.IsValid() {

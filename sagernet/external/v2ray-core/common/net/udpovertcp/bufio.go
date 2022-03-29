@@ -17,7 +17,13 @@ func NewReader(reader io.Reader) *Reader {
 }
 
 func NewBufferedReader(reader buf.Reader) *Reader {
-	return &Reader{Reader: &buf.BufferedReader{Reader: reader}}
+	var bufferedReader *buf.BufferedReader
+	if br, isBuffered := reader.(*buf.BufferedReader); isBuffered {
+		bufferedReader = br
+	} else {
+		bufferedReader = &buf.BufferedReader{Reader: reader}
+	}
+	return &Reader{Reader: bufferedReader}
 }
 
 func (r *Reader) ReadMultiBuffer() (buf.MultiBuffer, error) {
@@ -62,7 +68,12 @@ func NewWriter(writer io.Writer, request *net.Destination) *Writer {
 }
 
 func NewBufferedWriter(writer buf.Writer, request *net.Destination) *Writer {
-	bufferedWriter := buf.NewBufferedWriter(writer)
+	var bufferedWriter *buf.BufferedWriter
+	if bw, isBuffered := writer.(*buf.BufferedWriter); isBuffered {
+		bufferedWriter = bw
+	} else {
+		bufferedWriter = buf.NewBufferedWriter(writer)
+	}
 	return &Writer{
 		Writer:  bufferedWriter,
 		Flusher: bufferedWriter,

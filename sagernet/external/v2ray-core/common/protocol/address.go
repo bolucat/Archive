@@ -27,14 +27,6 @@ func AddressFamilyByte(b byte, f net.AddressFamily) AddressOption {
 	}
 }
 
-type AddressTypeParser func(byte) byte
-
-func WithAddressTypeParser(atp AddressTypeParser) AddressOption {
-	return func(p *option) {
-		p.typeParser = atp
-	}
-}
-
 type AddressSerializer interface {
 	ReadAddressPort(buffer *buf.Buffer, input io.Reader) (net.Address, net.Port, error)
 	WriteAddressPort(writer io.Writer, addr net.Address, port net.Port) error
@@ -46,7 +38,6 @@ type option struct {
 	addrTypeMap [16]net.AddressFamily
 	addrByteMap [16]byte
 	portFirst   bool
-	typeParser  AddressTypeParser
 }
 
 // NewAddressParser creates a new AddressParser
@@ -65,10 +56,6 @@ func NewAddressParser(options ...AddressOption) AddressSerializer {
 	ap := &addressParser{
 		addrByteMap: o.addrByteMap,
 		addrTypeMap: o.addrTypeMap,
-	}
-
-	if o.typeParser != nil {
-		ap.typeParser = o.typeParser
 	}
 
 	if o.portFirst {
@@ -166,7 +153,6 @@ func IsValidDomain(d string) bool {
 type addressParser struct {
 	addrTypeMap [16]net.AddressFamily
 	addrByteMap [16]byte
-	typeParser  AddressTypeParser
 }
 
 func (p *addressParser) readAddress(b *buf.Buffer, reader io.Reader) (net.Address, error) {
@@ -175,9 +161,6 @@ func (p *addressParser) readAddress(b *buf.Buffer, reader io.Reader) (net.Addres
 	}
 
 	addrType := b.Byte(b.Len() - 1)
-	if p.typeParser != nil {
-		addrType = p.typeParser(addrType)
-	}
 
 	if addrType >= 16 {
 		return nil, newError("unknown address type: ", addrType)

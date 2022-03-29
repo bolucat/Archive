@@ -39,7 +39,7 @@ else
 fi
 
 if [[ "$?" != "0" ]]; then
-    exit $?;
+    exit 1;
 fi
 
 if [[ "${BUILD_TARGET}" == "" ]]; then
@@ -51,7 +51,7 @@ if [[ "${BUILD_TARGET}" == *"-windows-"* ]]; then
     TARGET_SUFFIX=".exe"
 fi
 
-TARGETS=("sslocal${TARGET_SUFFIX}" "ssserver${TARGET_SUFFIX}" "ssurl${TARGET_SUFFIX}" "ssmanager${TARGET_SUFFIX}", "ssservice${TARGET_SUFFIX}")
+TARGETS=("sslocal${TARGET_SUFFIX}" "ssserver${TARGET_SUFFIX}" "ssurl${TARGET_SUFFIX}" "ssmanager${TARGET_SUFFIX}" "ssservice${TARGET_SUFFIX}")
 
 RELEASE_FOLDER="${ROOT_DIR}/release"
 RELEASE_PACKAGE_NAME="shadowsocks-v${VERSION}.${BUILD_TARGET}"
@@ -72,6 +72,10 @@ if [[ "${BUILD_TARGET}" == *"-windows-"* ]]; then
     RELEASE_PACKAGE_FILE_PATH="${RELEASE_FOLDER}/${RELEASE_PACKAGE_FILE_NAME}"
     zip "${RELEASE_PACKAGE_FILE_PATH}" "${TARGETS[@]}"
 
+    if [[ $? != "0" ]]; then
+        exit 1
+    fi
+
     # Checksum
     cd "${RELEASE_FOLDER}"
     shasum -a 256 "${RELEASE_PACKAGE_FILE_NAME}" > "${RELEASE_PACKAGE_FILE_NAME}.sha256"
@@ -86,6 +90,10 @@ else
     RELEASE_PACKAGE_FILE_NAME="${RELEASE_PACKAGE_NAME}.tar.xz"
     RELEASE_PACKAGE_FILE_PATH="${RELEASE_FOLDER}/${RELEASE_PACKAGE_FILE_NAME}"
     tar -cJf "${RELEASE_PACKAGE_FILE_PATH}" "${TARGETS[@]}"
+
+    if [[ $? != "0" ]]; then
+        exit 1
+    fi
 
     # Checksum
     cd "${RELEASE_FOLDER}"

@@ -1,23 +1,34 @@
-//go:build !confonly
-// +build !confonly
-
 package encoding
 
 import (
 	"io"
 
-	"google.golang.org/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 
 	"github.com/v2fly/v2ray-core/v5/common/buf"
-	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/proxy/vless"
 )
 
-// EncodeHeaderAddons Add addons byte to the header
 func EncodeHeaderAddons(buffer *buf.Buffer, addons *Addons) error {
-	if err := buffer.WriteByte(0); err != nil {
-		return newError("failed to write addons protobuf length").Base(err)
+	switch addons.Flow {
+	case vless.XRO, vless.XRD:
+		bytes, err := proto.Marshal(addons)
+		if err != nil {
+			return newError("failed to marshal addons protobuf value").Base(err)
+		}
+		if err := buffer.WriteByte(byte(len(bytes))); err != nil {
+			return newError("failed to write addons protobuf length").Base(err)
+		}
+		if _, err := buffer.Write(bytes); err != nil {
+			return newError("failed to write addons protobuf value").Base(err)
+		}
+	default:
+		if err := buffer.WriteByte(0); err != nil {
+			return newError("failed to write addons protobuf length").Base(err)
+		}
 	}
+
 	return nil
 }
 
@@ -37,6 +48,11 @@ func DecodeHeaderAddons(buffer *buf.Buffer, reader io.Reader) (*Addons, error) {
 		if err := proto.Unmarshal(buffer.Bytes(), addons); err != nil {
 			return nil, newError("failed to unmarshal addons protobuf value").Base(err)
 		}
+
+		// Verification.
+		switch addons.Flow {
+		default:
+		}
 	}
 
 	return addons, nil
@@ -44,16 +60,22 @@ func DecodeHeaderAddons(buffer *buf.Buffer, reader io.Reader) (*Addons, error) {
 
 // EncodeBodyAddons returns a Writer that auto-encrypt content written by caller.
 func EncodeBodyAddons(writer io.Writer, request *protocol.RequestHeader, addons *Addons) buf.Writer {
-	if request.Command == protocol.RequestCommandUDP {
-		return NewMultiLengthPacketWriter(writer.(buf.Writer))
+	switch addons.Flow {
+	default:
+		if request.Command == protocol.RequestCommandUDP {
+			return NewMultiLengthPacketWriter(writer.(buf.Writer))
+		}
 	}
 	return buf.NewWriter(writer)
 }
 
 // DecodeBodyAddons returns a Reader from which caller can fetch decrypted body.
 func DecodeBodyAddons(reader io.Reader, request *protocol.RequestHeader, addons *Addons) buf.Reader {
-	if request.Command == protocol.RequestCommandUDP {
-		return NewLengthPacketReader(reader)
+	switch addons.Flow {
+	default:
+		if request.Command == protocol.RequestCommandUDP {
+			return NewLengthPacketReader(reader)
+		}
 	}
 	return buf.NewReader(reader)
 }
@@ -70,12 +92,7 @@ type MultiLengthPacketWriter struct {
 
 func (w *MultiLengthPacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	defer buf.ReleaseMulti(mb)
-
-	if len(mb)+1 > 64*1024*1024 {
-		return errors.New("value too large")
-	}
-	sliceSize := len(mb) + 1
-	mb2Write := make(buf.MultiBuffer, 0, sliceSize)
+	mb2Write := make(buf.MultiBuffer, 0, len(mb)+1)
 	for _, b := range mb {
 		length := b.Len()
 		if length == 0 || length+2 > buf.Size {
@@ -102,6 +119,13 @@ func (w *MultiLengthPacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	return w.Writer.WriteMultiBuffer(mb2Write)
 }
 
+func NewLengthPacketWriter(writer io.Writer) *LengthPacketWriter {
+	return &LengthPacketWriter{
+		Writer: writer,
+		cache:  make([]byte, 0, 65536),
+	}
+}
+
 type LengthPacketWriter struct {
 	io.Writer
 	cache []byte
@@ -109,6 +133,7 @@ type LengthPacketWriter struct {
 
 func (w *LengthPacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	length := mb.Len() // none of mb is nil
+	// fmt.Println("Write", length)
 	if length == 0 {
 		return nil
 	}
@@ -144,6 +169,7 @@ func (r *LengthPacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		return nil, newError("failed to read packet length").Base(err)
 	}
 	length := int32(r.cache[0])<<8 | int32(r.cache[1])
+	// fmt.Println("Read", length)
 	mb := make(buf.MultiBuffer, 0, length/buf.Size+1)
 	for length > 0 {
 		size := length

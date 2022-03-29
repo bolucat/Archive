@@ -24,6 +24,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
 )
 
@@ -212,7 +213,7 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 		err := h.proxy.Process(ctx, link, h)
 		if err != nil {
 			cause := errors.Cause(err)
-			if !(cause == io.EOF || cause == context.Canceled || cause == io.ErrClosedPipe) {
+			if !(cause == context.Canceled || cause == io.ErrClosedPipe) {
 				err := newError("failed to process outbound traffic").Base(err)
 				err.WriteToLog(session.ExportIDToError(ctx))
 			}
@@ -254,6 +255,8 @@ func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Conn
 				if config := tls.ConfigFromStreamSettings(h.streamSettings); config != nil {
 					tlsConfig := config.GetTLSConfig(tls.WithDestination(dest))
 					conn = tls.Client(conn, tlsConfig)
+				} else if config := xtls.ConfigFromStreamSettings(h.streamSettings); config != nil {
+					return xtls.Client(conn, config.GetXTLSConfig(xtls.WithDestination(dest))), nil
 				}
 
 				return h.getStatCouterConnection(conn), nil

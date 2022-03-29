@@ -250,7 +250,7 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 		atomic.AddInt32(&stats.tcpConn, 1)
 		atomic.AddUint32(&stats.tcpConnTotal, 1)
 		atomic.StoreInt64(&stats.deactivateAt, 0)
-		conn = statsConn{conn, &stats.uplink, &stats.downlink}
+		conn = NewStatsCounterConn(conn, &stats.uplink, &stats.downlink)
 		stats.Lock()
 		statsElement := stats.connections.PushBack(conn)
 		stats.Unlock()
@@ -263,7 +263,7 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 			stats.Unlock()
 		}()
 	}
-
+	inbound.Conn = conn
 	element := v2rayNet.AddConnection(conn)
 	defer v2rayNet.RemoveConnection(element)
 

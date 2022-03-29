@@ -1,12 +1,22 @@
 package trojan
 
 import (
+	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"runtime"
+	"syscall"
 
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/signal"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
 
 var (
@@ -17,12 +27,25 @@ var (
 		protocol.AddressFamilyByte(0x04, net.AddressFamilyIPv6),
 		protocol.AddressFamilyByte(0x03, net.AddressFamilyDomain),
 	)
+
+	xtls_show = false
 )
 
 const (
-	maxLength       = 8192
+	maxLength = 8192
+	// XRS is constant for XTLS splice mode
+	XRS = "xtls-rprx-splice"
+	// XRD is constant for XTLS direct mode
+	XRD = "xtls-rprx-direct"
+	// XRO is constant for XTLS origin mode
+	XRO = "xtls-rprx-origin"
+
 	commandTCP byte = 1
 	commandUDP byte = 3
+
+	// for XTLS
+	commandXRD byte = 0xf0 // XTLS direct mode
+	commandXRO byte = 0xf1 // XTLS origin mode
 )
 
 // ConnWriter is TCP Connection Writer Wrapper for trojan protocol
@@ -30,6 +53,7 @@ type ConnWriter struct {
 	io.Writer
 	Target     net.Destination
 	Account    *MemoryAccount
+	Flow       string
 	headerSent bool
 }
 
@@ -66,6 +90,10 @@ func (c *ConnWriter) writeHeader() error {
 	command := commandTCP
 	if c.Target.Network == net.Network_UDP {
 		command = commandUDP
+	} else if c.Flow == XRD {
+		command = commandXRD
+	} else if c.Flow == XRO {
+		command = commandXRO
 	}
 
 	if _, err := buffer.Write(c.Account.Key); err != nil {
@@ -157,6 +185,7 @@ func (w *PacketWriter) writePacket(payload []byte, dest net.Destination) (int, e
 type ConnReader struct {
 	io.Reader
 	Target       net.Destination
+	Flow         string
 	headerParsed bool
 }
 
@@ -180,6 +209,10 @@ func (c *ConnReader) ParseHeader() error {
 	network := net.Network_TCP
 	if command[0] == commandUDP {
 		network = net.Network_UDP
+	} else if command[0] == commandXRD {
+		c.Flow = XRD
+	} else if command[0] == commandXRO {
+		c.Flow = XRO
 	}
 
 	addr, port, err := addrParser.ReadAddressPort(nil, c.Reader)
@@ -277,4 +310,67 @@ func (r *PacketReader) ReadMultiBufferWithMetadata() (*PacketPayload, error) {
 	}
 
 	return &PacketPayload{Target: dest, Buffer: mb}, nil
+}
+
+func ReadV(reader buf.Reader, writer buf.Writer, timer signal.ActivityUpdater, conn *xtls.Conn, rawConn syscall.RawConn, counter stats.Counter, sctx context.Context) error {
+	err := func() error {
+		var ct stats.Counter
+		for {
+			if conn.DirectIn {
+				conn.DirectIn = false
+				if sctx != nil {
+					if inbound := session.InboundFromContext(sctx); inbound != nil && inbound.Conn != nil {
+						iConn := inbound.Conn
+						statConn, ok := iConn.(*internet.StatCouterConnection)
+						if ok {
+							iConn = statConn.Connection
+						}
+						if xc, ok := iConn.(*xtls.Conn); ok {
+							iConn = xc.Connection
+						}
+						if tc, ok := iConn.(*net.TCPConn); ok {
+							if conn.SHOW {
+								fmt.Println(conn.MARK, "Splice")
+							}
+							runtime.Gosched() // necessary
+							w, err := tc.ReadFrom(conn.Connection)
+							if counter != nil {
+								counter.Add(w)
+							}
+							if statConn != nil && statConn.WriteCounter != nil {
+								statConn.WriteCounter.Add(w)
+							}
+							return err
+						} else {
+							panic("XTLS Splice: not TCP inbound")
+						}
+					} else {
+						// panic("XTLS Splice: nil inbound or nil inbound.Conn")
+					}
+				}
+				reader = buf.NewReadVReader(conn.Connection, rawConn)
+				ct = counter
+				if conn.SHOW {
+					fmt.Println(conn.MARK, "ReadV")
+				}
+			}
+			buffer, err := reader.ReadMultiBuffer()
+			if !buffer.IsEmpty() {
+				if ct != nil {
+					ct.Add(int64(buffer.Len()))
+				}
+				timer.Update()
+				if werr := writer.WriteMultiBuffer(buffer); werr != nil {
+					return werr
+				}
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}()
+	if err != nil && errors.Cause(err) != io.EOF {
+		return err
+	}
+	return nil
 }

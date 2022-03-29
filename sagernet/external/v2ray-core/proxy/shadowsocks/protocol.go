@@ -17,20 +17,13 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/drain"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/proxy/socks"
 )
 
 const (
 	Version = 1
-)
-
-var addrParser = protocol.NewAddressParser(
-	protocol.AddressFamilyByte(0x01, net.AddressFamilyIPv4),
-	protocol.AddressFamilyByte(0x04, net.AddressFamilyIPv6),
-	protocol.AddressFamilyByte(0x03, net.AddressFamilyDomain),
-	protocol.WithAddressTypeParser(func(b byte) byte {
-		return b & 0x0F
-	}),
 )
 
 // ReadTCPSession reads a Shadowsocks TCP session from the given reader, returns its header and remaining parts.
@@ -101,7 +94,11 @@ func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, conn *ProtocolC
 		if err != nil {
 			return nil, nil, nil, newError("failed to read response header").Base(err)
 		}
-		if buffer.Byte(0) != HeaderTypeClient {
+		switch buffer.Byte(0) {
+		case HeaderTypeClient:
+		case HeaderTypeClientPacket:
+			request.Command = protocol.RequestCommandUDP
+		default:
 			return nil, nil, nil, newError("bad request type")
 		}
 		epoch := int64(binary.BigEndian.Uint64(buffer.BytesRange(1, 1+8)))
@@ -117,16 +114,21 @@ func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, conn *ProtocolC
 		return nil, nil, nil, drain.WithError(drainer, reader, newError("failed iv check").Base(ivError))
 	}
 
-	addr, port, err := addrParser.ReadAddressPort(buffer, br)
-	if err != nil {
-		if drainer != nil {
-			drainer.AcknowledgeReceive(int(buffer.Len()))
+	if request.Command != protocol.RequestCommandUDP {
+		addr, port, err := socks.AddrParser.ReadAddressPort(buffer, br)
+		if err != nil {
+			if drainer != nil {
+				drainer.AcknowledgeReceive(int(buffer.Len()))
+			}
+			return nil, nil, nil, drain.WithError(drainer, reader, newError("failed to read address").Base(err))
 		}
-		return nil, nil, nil, drain.WithError(drainer, reader, newError("failed to read address").Base(err))
-	}
 
-	request.Address = addr
-	request.Port = port
+		request.Address = addr
+		request.Port = port
+	} else {
+		request.Address = net.DomainAddress(udpovertcp.UOTMagicAddress)
+		request.Port = 443
+	}
 
 	if request.Address == nil {
 		if drainer != nil {
@@ -176,11 +178,17 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byt
 
 	header := buf.New()
 	if cipherFamily.IsSpec2022() {
-		header.WriteByte(HeaderTypeClient)
+		if request.Command != protocol.RequestCommandUDP {
+			header.WriteByte(HeaderTypeClient)
+		} else {
+			header.WriteByte(HeaderTypeClientPacket)
+		}
 		binary.Write(header, binary.BigEndian, uint64(time.Now().Unix()))
 	}
-	if err := addrParser.WriteAddressPort(header, request.Address, request.Port); err != nil {
-		return nil, newError("failed to write address").Base(err)
+	if !cipherFamily.IsSpec2022() || request.Command != protocol.RequestCommandUDP {
+		if err := socks.AddrParser.WriteAddressPort(header, request.Address, request.Port); err != nil {
+			return nil, newError("failed to write address").Base(err)
+		}
 	}
 
 	if cipherFamily.IsSpec2022() {
@@ -194,6 +202,8 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byt
 				} else {
 					return nil, newError("failed to write request payload").Base(err).AtWarning()
 				}
+			} else {
+				binary.BigEndian.PutUint16(paddingLen, uint16(0))
 			}
 		}
 		if err := w.WriteMultiBuffer(buf.MultiBuffer{header}); err != nil {
@@ -211,7 +221,7 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byt
 	return w, nil
 }
 
-func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, requestIv []byte, conn *ProtocolConn) (buf.Reader, error) {
+func ReadTCPResponse(user *protocol.MemoryUser, command protocol.RequestCommand, reader io.Reader, requestIv []byte, conn *ProtocolConn) (buf.Reader, error) {
 	account := user.Account.(*MemoryAccount)
 	cipherFamily := account.Cipher.Family()
 	var iv []byte
@@ -262,7 +272,8 @@ func ReadTCPResponse(user *protocol.MemoryUser, reader io.Reader, requestIv []by
 		if err != nil {
 			return nil, err
 		}
-		if header.Byte(0) != HeaderTypeServer {
+		responseType := header.Byte(0)
+		if command == protocol.RequestCommandTCP && responseType != HeaderTypeServer || command == protocol.RequestCommandUDP && responseType != HeaderTypeServerPacket {
 			return nil, newError("bad response type")
 		}
 		epoch := int64(binary.BigEndian.Uint64(header.BytesRange(1, 1+8)))
@@ -298,7 +309,11 @@ func WriteTCPResponse(request *protocol.RequestHeader, writer io.Writer, request
 
 	if cipherFamily.IsSpec2022() {
 		bw := buf.NewBufferedWriter(w)
-		bw.WriteByte(HeaderTypeServer)
+		if request.Command == protocol.RequestCommandTCP {
+			bw.WriteByte(HeaderTypeServer)
+		} else {
+			bw.WriteByte(HeaderTypeServerPacket)
+		}
 		binary.Write(bw, binary.BigEndian, uint64(time.Now().Unix()))
 		bw.Write(requestIV)
 		bw.SetBuffered(false)
@@ -333,10 +348,13 @@ func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte, session *u
 		binary.Write(buffer, binary.BigEndian, session.nextPacketId())
 		buffer.WriteByte(session.headerType)
 		binary.Write(buffer, binary.BigEndian, uint64(time.Now().Unix()))
+		if session.headerType == HeaderTypeServer {
+			binary.Write(buffer, binary.BigEndian, session.remoteSessionId)
+		}
 		binary.Write(buffer, binary.BigEndian, uint16(0)) // padding length
 	}
 
-	if err := addrParser.WriteAddressPort(buffer, request.Address, request.Port); err != nil {
+	if err := socks.AddrParser.WriteAddressPort(buffer, request.Address, request.Port); err != nil {
 		buffer.Release()
 		return nil, newError("failed to write address").Base(err)
 	}
@@ -359,7 +377,7 @@ func EncodeUDPPacket(request *protocol.RequestHeader, payload []byte, session *u
 	return buffer, nil
 }
 
-func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer, plugin ProtocolPlugin) (*protocol.RequestHeader, *buf.Buffer, error) {
+func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer, session *udpSession, plugin ProtocolPlugin) (*protocol.RequestHeader, *buf.Buffer, error) {
 	account := user.Account.(*MemoryAccount)
 	cipherFamily := account.Cipher.Family()
 
@@ -397,22 +415,67 @@ func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer, plugin Prot
 	}
 
 	if cipherFamily.IsSpec2022() {
-		// TODO: check header
-		_, err := payload.ReadBytes(25)
+		// packetHeader
+		var sessionId uint64
+		err := binary.Read(payload, binary.BigEndian, &sessionId)
 		if err != nil {
 			return nil, nil, err
+		}
+
+		if session.remoteSessionId == 0 {
+			session.remoteSessionId = sessionId
+		} else if sessionId != session.remoteSessionId {
+			session.lastRemoteSessionId = session.remoteSessionId
+			session.remoteSessionId = sessionId
+		}
+
+		var packetId uint64
+		err = binary.Read(payload, binary.BigEndian, &packetId)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		headerType, err := payload.ReadBytes(1)
+		if err != nil {
+			return nil, nil, err
+		}
+		if headerType[0] == session.headerType {
+			return nil, nil, newError("bad header type")
+		}
+
+		var epoch uint64
+		err = binary.Read(payload, binary.BigEndian, &epoch)
+		if err != nil {
+			return nil, nil, err
+		}
+		if math.Abs(float64(uint64(time.Now().Unix())-epoch)) > 30 {
+			return nil, nil, newError("bad timestamp")
+		}
+		if session.headerType == HeaderTypeClient {
+			var clientSessionId uint64
+			err = binary.Read(payload, binary.BigEndian, &clientSessionId)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if clientSessionId != session.sessionId {
+				return nil, nil, newError("bad session id")
+			}
 		}
 		var paddingLength uint16
 		err = binary.Read(payload, binary.BigEndian, &paddingLength)
 		if err != nil {
 			return nil, nil, newError("failed to read padding length").Base(err)
 		}
-		payload.ReadBytes(int32(paddingLength))
+		_, err = payload.ReadBytes(int32(paddingLength))
+		if err != nil {
+			return nil, nil, newError("failed to discard padding")
+		}
 	}
 
 	payload.SetByte(0, payload.Byte(0)&0x0F)
 
-	addr, port, err := addrParser.ReadAddressPort(nil, payload)
+	addr, port, err := socks.AddrParser.ReadAddressPort(nil, payload)
 	if err != nil {
 		return nil, nil, newError("failed to parse address").Base(err)
 	}
@@ -424,9 +487,10 @@ func DecodeUDPPacket(user *protocol.MemoryUser, payload *buf.Buffer, plugin Prot
 }
 
 type UDPReader struct {
-	Reader io.Reader
-	User   *protocol.MemoryUser
-	Plugin ProtocolPlugin
+	Reader  io.Reader
+	User    *protocol.MemoryUser
+	Plugin  ProtocolPlugin
+	session *udpSession
 }
 
 func (v *UDPReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
@@ -436,7 +500,7 @@ func (v *UDPReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		buffer.Release()
 		return nil, err
 	}
-	header, payload, err := DecodeUDPPacket(v.User, buffer, v.Plugin)
+	header, payload, err := DecodeUDPPacket(v.User, buffer, v.session, v.Plugin)
 	if err != nil {
 		buffer.Release()
 		return nil, err
@@ -453,7 +517,7 @@ func (v *UDPReader) ReadFrom(p []byte) (n int, addr gonet.Addr, err error) {
 		buffer.Release()
 		return 0, nil, err
 	}
-	vaddr, payload, err := DecodeUDPPacket(v.User, buffer, v.Plugin)
+	vaddr, payload, err := DecodeUDPPacket(v.User, buffer, v.session, v.Plugin)
 	if err != nil {
 		buffer.Release()
 		return 0, nil, err

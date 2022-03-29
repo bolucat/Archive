@@ -3,12 +3,22 @@ package encoding
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
 
 import (
+	"context"
+	"fmt"
 	"io"
+	"runtime"
+	"syscall"
 
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/signal"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
 
 const (
@@ -164,4 +174,67 @@ func DecodeResponseHeader(reader io.Reader, request *protocol.RequestHeader) (*A
 	}
 
 	return responseAddons, nil
+}
+
+func ReadV(reader buf.Reader, writer buf.Writer, timer signal.ActivityUpdater, conn *xtls.Conn, rawConn syscall.RawConn, counter stats.Counter, sctx context.Context) error {
+	err := func() error {
+		var ct stats.Counter
+		for {
+			if conn.DirectIn {
+				conn.DirectIn = false
+				if sctx != nil {
+					if inbound := session.InboundFromContext(sctx); inbound != nil && inbound.Conn != nil {
+						iConn := inbound.Conn
+						statConn, ok := iConn.(*internet.StatCouterConnection)
+						if ok {
+							iConn = statConn.Connection
+						}
+						if xc, ok := iConn.(*xtls.Conn); ok {
+							iConn = xc.Connection
+						}
+						if tc, ok := iConn.(*net.TCPConn); ok {
+							if conn.SHOW {
+								fmt.Println(conn.MARK, "Splice")
+							}
+							runtime.Gosched() // necessary
+							w, err := tc.ReadFrom(conn.Connection)
+							if counter != nil {
+								counter.Add(w)
+							}
+							if statConn != nil && statConn.WriteCounter != nil {
+								statConn.WriteCounter.Add(w)
+							}
+							return err
+						} else {
+							panic("XTLS Splice: not TCP inbound")
+						}
+					} else {
+						// panic("XTLS Splice: nil inbound or nil inbound.Conn")
+					}
+				}
+				reader = buf.NewReadVReader(conn.Connection, rawConn)
+				ct = counter
+				if conn.SHOW {
+					fmt.Println(conn.MARK, "ReadV")
+				}
+			}
+			buffer, err := reader.ReadMultiBuffer()
+			if !buffer.IsEmpty() {
+				if ct != nil {
+					ct.Add(int64(buffer.Len()))
+				}
+				timer.Update()
+				if werr := writer.WriteMultiBuffer(buffer); werr != nil {
+					return werr
+				}
+			}
+			if err != nil {
+				return err
+			}
+		}
+	}()
+	if err != nil && errors.Cause(err) != io.EOF {
+		return err
+	}
+	return nil
 }

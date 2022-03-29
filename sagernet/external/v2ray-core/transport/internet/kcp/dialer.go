@@ -11,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
 
 var globalConv = uint32(dice.RollUint16())
@@ -85,6 +86,8 @@ func DialKCP(ctx context.Context, dest net.Destination, streamSettings *internet
 
 	if config := tls.ConfigFromStreamSettings(streamSettings); config != nil {
 		iConn = tls.Client(iConn, config.GetTLSConfig(tls.WithDestination(dest)))
+	} else if config := xtls.ConfigFromStreamSettings(streamSettings); config != nil {
+		iConn = xtls.Client(iConn, config.GetXTLSConfig(xtls.WithDestination(dest)))
 	}
 
 	return iConn, nil

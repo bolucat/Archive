@@ -4,6 +4,7 @@ package outbound
 
 import (
 	"context"
+	"syscall"
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/retry"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
@@ -19,16 +21,25 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/common/xudp"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless/encoding"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
+
+var xtls_show = false
 
 func init() {
 	common.Must(common.RegisterConfig((*Config)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		return New(ctx, config.(*Config))
 	}))
+
+	xtlsShow := platform.NewEnvFlag("xray.vless.xtls.show").GetValue(func() string { return "NOT_DEFINED_AT_ALL" })
+	if xtlsShow == "true" {
+		xtls_show = true
+	}
 
 	common.Must(common.RegisterConfig((*SimplifiedConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		simplifiedClient := config.(*SimplifiedConfig)
@@ -46,8 +57,7 @@ func init() {
 			},
 			PacketEncoding: simplifiedClient.PacketEncoding,
 		}
-
-		return common.CreateObject(ctx, fullClient)
+		return New(ctx, fullClient)
 	}))
 }
 
@@ -72,10 +82,9 @@ func New(ctx context.Context, config *Config) (*Handler, error) {
 
 	v := core.MustFromContext(ctx)
 	handler := &Handler{
-		serverList:     serverList,
-		serverPicker:   protocol.NewRoundRobinServerPicker(serverList),
-		policyManager:  v.GetFeature(policy.ManagerType()).(policy.Manager),
-		packetEncoding: config.PacketEncoding,
+		serverList:    serverList,
+		serverPicker:  protocol.NewRoundRobinServerPicker(serverList),
+		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
 
 	return handler, nil
@@ -100,6 +109,12 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 	connElem := net.AddConnection(conn)
 	defer net.RemoveConnection(connElem)
+
+	iConn := conn
+	statConn, ok := iConn.(*internet.StatCouterConnection)
+	if ok {
+		iConn = statConn.Connection
+	}
 
 	outbound := session.OutboundFromContext(ctx)
 	if outbound == nil || !outbound.Target.IsValid() {
@@ -129,6 +144,49 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 	requestAddons := &encoding.Addons{
 		Flow: account.Flow,
+	}
+
+	var rawConn syscall.RawConn
+	var sctx context.Context
+
+	allowUDP443 := false
+	switch requestAddons.Flow {
+	case vless.XRO + "-udp443", vless.XRD + "-udp443", vless.XRS + "-udp443":
+		allowUDP443 = true
+		requestAddons.Flow = requestAddons.Flow[:16]
+		fallthrough
+	case vless.XRO, vless.XRD, vless.XRS:
+		switch request.Command {
+		case protocol.RequestCommandMux:
+			return newError(requestAddons.Flow + " doesn't support Mux").AtWarning()
+		case protocol.RequestCommandUDP:
+			if !allowUDP443 && request.Port == 443 {
+				return newError(requestAddons.Flow + " stopped UDP/443").AtInfo()
+			}
+			requestAddons.Flow = ""
+		case protocol.RequestCommandTCP:
+			if xtlsConn, ok := iConn.(*xtls.Conn); ok {
+				xtlsConn.RPRX = true
+				xtlsConn.SHOW = xtls_show
+				xtlsConn.MARK = "XTLS"
+				if requestAddons.Flow == vless.XRS {
+					sctx = ctx
+					requestAddons.Flow = vless.XRD
+				}
+				if requestAddons.Flow == vless.XRD {
+					xtlsConn.DirectMode = true
+					if sc, ok := xtlsConn.Connection.(syscall.Conn); ok {
+						rawConn, _ = sc.SyscallConn()
+					}
+				}
+			} else {
+				return newError(`failed to use ` + requestAddons.Flow + `, maybe "security" is not "xtls"`).AtWarning()
+			}
+		}
+	default:
+		if _, ok := iConn.(*xtls.Conn); ok {
+			panic(`To avoid misunderstanding, you must fill in VLESS "flow" when using XTLS.`)
+		}
 	}
 
 	sessionPolicy := h.policyManager.ForLevel(request.User.Level)
@@ -173,16 +231,20 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 			return err // ...
 		}
 
-		// Flush; bufferWriter.WriteMultiBuffer now is bufferWriter.writer.WriteMultiBuffer
+		// Flush; bufferWriter.WriteMultiBufer now is bufferWriter.writer.WriteMultiBuffer
 		if err := bufferWriter.SetBuffered(false); err != nil {
 			return newError("failed to write A request payload").Base(err).AtWarning()
 		}
 
-		// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBuffer
+		// from clientReader.ReadMultiBuffer to serverWriter.WriteMultiBufer
 		if err := buf.Copy(clientReader, serverWriter, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to transfer request payload").Base(err).AtInfo()
 		}
 
+		// Indicates the end of request payload.
+		switch requestAddons.Flow {
+		default:
+		}
 		return nil
 	}
 
@@ -203,8 +265,18 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 			serverReader = xudp.NewPacketReader(&buf.BufferedReader{Reader: serverReader})
 		}
 
-		// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBuffer
-		if err := buf.Copy(serverReader, clientWriter, buf.UpdateActivity(timer)); err != nil {
+		if rawConn != nil {
+			var counter stats.Counter
+			if statConn != nil {
+				counter = statConn.ReadCounter
+			}
+			err = encoding.ReadV(serverReader, clientWriter, timer, iConn.(*xtls.Conn), rawConn, counter, sctx)
+		} else {
+			// from serverReader.ReadMultiBuffer to clientWriter.WriteMultiBufer
+			err = buf.Copy(serverReader, clientWriter, buf.UpdateActivity(timer))
+		}
+
+		if err != nil {
 			return newError("failed to transfer response payload").Base(err).AtInfo()
 		}
 

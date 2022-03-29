@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/cipher"
 	"io"
+	"math"
 	"math/rand"
 
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -230,19 +231,25 @@ func (r *AuthenticationReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 }
 
 type AuthenticationWriter struct {
-	auth         Authenticator
-	writer       buf.Writer
-	sizeParser   ChunkSizeEncoder
-	transferType protocol.TransferType
-	padding      PaddingLengthGenerator
+	auth          Authenticator
+	writer        buf.Writer
+	sizeParser    ChunkSizeEncoder
+	transferType  protocol.TransferType
+	padding       PaddingLengthGenerator
+	maxBufferSize int32
 }
 
 func NewAuthenticationWriter(auth Authenticator, sizeParser ChunkSizeEncoder, writer io.Writer, transferType protocol.TransferType, padding PaddingLengthGenerator) *AuthenticationWriter {
+	return NewLimitedAuthenticationWriter(auth, sizeParser, writer, transferType, padding, math.MaxUint16)
+}
+
+func NewLimitedAuthenticationWriter(auth Authenticator, sizeParser ChunkSizeEncoder, writer io.Writer, transferType protocol.TransferType, padding PaddingLengthGenerator, maxBufferSize int32) *AuthenticationWriter {
 	w := &AuthenticationWriter{
-		auth:         auth,
-		writer:       buf.NewWriter(writer),
-		sizeParser:   sizeParser,
-		transferType: transferType,
+		auth:          auth,
+		writer:        buf.NewWriter(writer),
+		sizeParser:    sizeParser,
+		transferType:  transferType,
+		maxBufferSize: maxBufferSize,
 	}
 	if padding != nil {
 		w.padding = padding
@@ -286,7 +293,11 @@ func (w *AuthenticationWriter) writeStream(mb buf.MultiBuffer) error {
 		maxPadding = int32(w.padding.MaxPaddingLen())
 	}
 
-	payloadSize := buf.Size - int32(w.auth.Overhead()) - w.sizeParser.SizeBytes() - maxPadding
+	var maxBufferSize int32 = buf.Size
+	if w.maxBufferSize < maxBufferSize {
+		maxBufferSize = w.maxBufferSize
+	}
+	payloadSize := maxBufferSize - int32(w.auth.Overhead()) - w.sizeParser.SizeBytes() - maxPadding
 	if len(mb)+10 > 64*1024*1024 {
 		return errors.New("value too large")
 	}

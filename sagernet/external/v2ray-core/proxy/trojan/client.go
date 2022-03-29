@@ -2,23 +2,28 @@ package trojan
 
 import (
 	"context"
+	"syscall"
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/retry"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/common/signal"
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
 )
 
-// Client is an inbound handler for trojan protocol
+// Client is a inbound handler for trojan protocol
 type Client struct {
 	serverPicker  protocol.ServerPicker
 	policyManager policy.Manager
@@ -76,10 +81,63 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	connElem := net.AddConnection(conn)
 	defer net.RemoveConnection(connElem)
 
+	iConn := conn
+	statConn, ok := iConn.(*internet.StatCouterConnection)
+	if ok {
+		iConn = statConn.Connection
+	}
+
 	user := server.PickUser()
 	account, ok := user.Account.(*MemoryAccount)
 	if !ok {
 		return newError("user account is not valid")
+	}
+
+	connWriter := &ConnWriter{
+		Flow: account.Flow,
+	}
+
+	var rawConn syscall.RawConn
+	var sctx context.Context
+
+	allowUDP443 := false
+	switch connWriter.Flow {
+	case XRO + "-udp443", XRD + "-udp443", XRS + "-udp443":
+		allowUDP443 = true
+		connWriter.Flow = connWriter.Flow[:16]
+		fallthrough
+	case XRO, XRD, XRS:
+		if destination.Address.Family().IsDomain() && destination.Address.Domain() == "v1.mux.cool" {
+			return newError(connWriter.Flow + " doesn't support Mux").AtWarning()
+		}
+		if destination.Network == net.Network_UDP {
+			if !allowUDP443 && destination.Port == 443 {
+				return newError(connWriter.Flow + " stopped UDP/443").AtInfo()
+			}
+			connWriter.Flow = ""
+		} else { // enable XTLS only if making TCP request
+			if xtlsConn, ok := iConn.(*xtls.Conn); ok {
+				xtlsConn.RPRX = true
+				xtlsConn.SHOW = xtls_show
+				xtlsConn.MARK = "XTLS"
+				if connWriter.Flow == XRS {
+					sctx = ctx
+					connWriter.Flow = XRD
+				}
+				if connWriter.Flow == XRD {
+					xtlsConn.DirectMode = true
+					if sc, ok := xtlsConn.Connection.(syscall.Conn); ok {
+						rawConn, _ = sc.SyscallConn()
+					}
+				}
+			} else {
+				return newError(`failed to use ` + connWriter.Flow + `, maybe "security" is not "xtls"`).AtWarning()
+			}
+		}
+	default:
+		if _, ok := iConn.(*xtls.Conn); ok {
+			panic(`To avoid misunderstanding, you must fill in Trojan "flow" when using XTLS.`)
+		}
 	}
 
 	sessionPolicy := c.policyManager.ForLevel(user.Level)
@@ -89,10 +147,13 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	postRequest := func() error {
 		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
 
-		var bodyWriter buf.Writer
 		bufferWriter := buf.NewBufferedWriter(buf.NewWriter(conn))
-		connWriter := &ConnWriter{Writer: bufferWriter, Target: destination, Account: account}
 
+		connWriter.Writer = bufferWriter
+		connWriter.Target = destination
+		connWriter.Account = account
+
+		var bodyWriter buf.Writer
 		if destination.Network == net.Network_UDP {
 			bodyWriter = &PacketWriter{Writer: connWriter, Target: destination}
 		} else {
@@ -104,9 +165,14 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			return newError("failed to write A request payload").Base(err).AtWarning()
 		}
 
-		// Flush; bufferWriter.WriteMultiBuffer now is bufferWriter.writer.WriteMultiBuffer
+		// Flush; bufferWriter.WriteMultiBufer now is bufferWriter.writer.WriteMultiBuffer
 		if err = bufferWriter.SetBuffered(false); err != nil {
 			return newError("failed to flush payload").Base(err).AtWarning()
+		}
+
+		// Send header if not sent yet
+		if _, err = connWriter.Write([]byte{}); err != nil {
+			return err.(*errors.Error).AtWarning()
 		}
 
 		if err = buf.Copy(link.Reader, bodyWriter, buf.UpdateActivity(timer)); err != nil {
@@ -127,6 +193,13 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		} else {
 			reader = buf.NewReader(conn)
 		}
+		if rawConn != nil {
+			var counter stats.Counter
+			if statConn != nil {
+				counter = statConn.ReadCounter
+			}
+			return ReadV(reader, link.Writer, timer, iConn.(*xtls.Conn), rawConn, counter, sctx)
+		}
 		return buf.Copy(reader, link.Writer, buf.UpdateActivity(timer))
 	}
 
@@ -142,4 +215,11 @@ func init() {
 	common.Must(common.RegisterConfig((*ClientConfig)(nil), func(ctx context.Context, config interface{}) (interface{}, error) {
 		return NewClient(ctx, config.(*ClientConfig))
 	}))
+
+	const defaultFlagValue = "NOT_DEFINED_AT_ALL"
+
+	xtlsShow := platform.NewEnvFlag("xray.trojan.xtls.show").GetValue(func() string { return defaultFlagValue })
+	if xtlsShow == "true" {
+		xtls_show = true
+	}
 }

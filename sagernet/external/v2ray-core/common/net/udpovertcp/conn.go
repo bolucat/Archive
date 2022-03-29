@@ -57,3 +57,34 @@ func (c *ServerConn) loopInput(reader buf.Reader) {
 
 func (c *ServerConn) Interrupt() {
 }
+
+type TransportReader struct {
+	buf.Reader
+}
+
+func NewTransportReader(reader buf.Reader) *TransportReader {
+	return &TransportReader{reader}
+}
+
+func (r *TransportReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	mb, err := r.Reader.ReadMultiBuffer()
+	if err != nil {
+		return nil, err
+	}
+	mbret := make(buf.MultiBuffer, 0, mb.Len()*2)
+	index := 0
+	for _, buffer := range mb {
+		if buffer.Endpoint == nil {
+			buf.ReleaseMulti(mb)
+			buf.ReleaseMulti(mbret)
+			return nil, newError("nil udp enpoint")
+		}
+		header := buf.New()
+		addrParser.WriteAddressPort(header, buffer.Endpoint.Address, buffer.Endpoint.Port)
+		binary.Write(header, binary.BigEndian, uint16(buffer.Len()))
+		mbret[index*2] = header
+		mbret[index*2+1] = buffer
+		index++
+	}
+	return mbret, nil
+}

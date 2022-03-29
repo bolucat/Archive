@@ -8,6 +8,7 @@ import (
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
 type AppStats struct {
@@ -123,26 +124,31 @@ func (t *Tun2ray) ReadAppTraffics(listener TrafficListener) error {
 	return nil
 }
 
-type statsConn struct {
-	net.Conn
-	uplink   *uint64
-	downlink *uint64
+func NewStatsCounterConn(originConn net.Conn, uplink *uint64, downlink *uint64) *internet.StatCouterConnection {
+	conn := new(internet.StatCouterConnection)
+	conn.Connection = originConn
+	conn.ReadCounter = statsConnWrapper{uplink}
+	conn.WriteCounter = statsConnWrapper{downlink}
+	return conn
 }
 
-func (c statsConn) Read(b []byte) (n int, err error) {
-	n, err = c.Conn.Read(b)
-	if err == nil {
-		atomic.AddUint64(c.uplink, uint64(n))
-	}
-	return
+type statsConnWrapper struct {
+	counter *uint64
 }
 
-func (c statsConn) Write(b []byte) (n int, err error) {
-	n, err = c.Conn.Write(b)
-	if err == nil {
-		atomic.AddUint64(c.downlink, uint64(n))
-	}
-	return
+func (w statsConnWrapper) Value() int64 {
+	return int64(atomic.LoadUint64(w.counter))
+}
+
+func (w statsConnWrapper) Set(i int64) int64 {
+	value := w.Value()
+	atomic.StoreUint64(w.counter, uint64(i))
+	return value
+}
+
+func (w statsConnWrapper) Add(i int64) int64 {
+	atomic.AddUint64(w.counter, uint64(i))
+	return 0
 }
 
 type statsPacketConn struct {
