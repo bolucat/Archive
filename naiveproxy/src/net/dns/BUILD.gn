@@ -74,6 +74,8 @@ source_set("dns") {
     "serial_worker.h",
     "system_dns_config_change_notifier.cc",
     "system_dns_config_change_notifier.h",
+    "test_dns_config_service.cc",
+    "test_dns_config_service.h",
   ]
 
   if (is_win) {

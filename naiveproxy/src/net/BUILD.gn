@@ -7,6 +7,7 @@ import("//build/config/chromecast_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/features.gni")
+import("//build/config/ios/config.gni")
 import("//crypto/features.gni")
 import("//net/features.gni")
 import("//third_party/icu/config.gni")
@@ -105,6 +106,12 @@ if (is_linux || is_chromeos) {
 source_set("constants") {
   sources = [ "base/trace_constants.h" ]
   deps = [ "//base" ]
+}
+
+buildflag_header("ios_cronet_buildflags") {
+  header = "ios_cronet_buildflags.h"
+  header_dir = "net/socket"
+  flags = [ "CRONET_BUILD=$is_cronet_build" ]
 }
 
 component("net") {
@@ -537,7 +544,6 @@ component("net") {
     "http/bidirectional_stream_request_info.h",
     "http/broken_alternative_services.cc",
     "http/broken_alternative_services.h",
-    "http/hsts_info.h",
     "http/http_auth.cc",
     "http/http_auth.h",
     "http/http_auth_cache.cc",
@@ -768,8 +774,6 @@ component("net") {
     "quic/platform/impl/quic_containers_impl.h",
     "quic/platform/impl/quic_error_code_wrappers_impl.h",
     "quic/platform/impl/quic_file_utils_impl.h",
-    "quic/platform/impl/quic_flags_impl.cc",
-    "quic/platform/impl/quic_flags_impl.h",
     "quic/platform/impl/quic_hostname_utils_impl.cc",
     "quic/platform/impl/quic_hostname_utils_impl.h",
     "quic/platform/impl/quic_iovec_impl.h",
@@ -830,6 +834,8 @@ component("net") {
     "quic/web_transport_client.h",
     "quic/web_transport_error.cc",
     "quic/web_transport_error.h",
+    "quiche/common/platform/impl/quiche_command_line_flags_impl.cc",
+    "quiche/common/platform/impl/quiche_command_line_flags_impl.h",
     "quiche/common/platform/impl/quiche_flag_utils_impl.h",
     "quiche/common/platform/impl/quiche_flags_impl.cc",
     "quiche/common/platform/impl/quiche_flags_impl.h",
@@ -852,6 +858,8 @@ component("net") {
     "socket/datagram_server_socket.h",
     "socket/datagram_socket.h",
     "socket/diff_serv_code_point.h",
+    "socket/network_binding_client_socket_factory.cc",
+    "socket/network_binding_client_socket_factory.h",
     "socket/next_proto.cc",
     "socket/next_proto.h",
     "socket/server_socket.cc",
@@ -1066,6 +1074,7 @@ component("net") {
   }
 
   deps = [
+    ":ios_cronet_buildflags",
     ":net_deps",
     "//build:chromeos_buildflags",
     "//net/data/ssl/ev_roots:gen_ev_root_store_inc",
@@ -1367,6 +1376,12 @@ component("net") {
       "base/network_interfaces_getifaddrs.cc",
       "base/network_interfaces_getifaddrs.h",
     ]
+    if (is_android) {
+      sources += [
+        "base/network_interfaces_getifaddrs_android.cc",
+        "base/network_interfaces_getifaddrs_android.h",
+      ]
+    }
   }
 
   if (chrome_root_store_supported) {

@@ -85,7 +85,8 @@ jobs:
             src/gn/
             src/tools/clang/dsymutil/
           key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
-      - run: ./get-clang.sh
+      - run: EXTRA_FLAGS='target_cpu="x64"' ./get-clang.sh
+      - run: EXTRA_FLAGS='target_cpu="arm64"' ./get-clang.sh
   linux:
     needs: cache-toolchains-posix
     runs-on: ubuntu-20.04
@@ -436,7 +437,7 @@ jobs:
             extra: 'mips_arch_variant="r1" mips_float_abi="soft" use_lld=false use_gold=false use_thin_lto=false chrome_pgo_phase=0'
     env:
       EXTRA_FLAGS: target_cpu="${{ matrix.target_cpu }}" target_os="openwrt" use_allocator="none" use_allocator_shim=false use_partition_alloc=false ${{ matrix.extra }}
-      OPENWRT_FLAGS: arch=${{ matrix.arch }} release=21.02.0 gcc_ver=8.4.0 ${{ matrix.openwrt }}
+      OPENWRT_FLAGS: arch=${{ matrix.arch }} release=21.02.2 gcc_ver=8.4.0 ${{ matrix.openwrt }}
       BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v2
@@ -456,7 +457,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: src/out/sysroot-build/openwrt
-          key: sysroot-openwrt-21.02.0-${{ matrix.arch }}-v${{ env.CACHE_EPOCH }}
+          key: sysroot-openwrt-21.02.2-${{ matrix.arch }}-v${{ env.CACHE_EPOCH }}
       - id: ccache-timestamp
         run: echo "::set-output name=date::$(date +%s)"
       - name: Cache ccache files
