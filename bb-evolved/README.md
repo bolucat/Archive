@@ -1,179 +1,183 @@
+<div dir="rtl">
+
 <div align="center"><img id="Bilibili-Evolved" width="500" alt="Bilibili Evolved" src="./images/bilibili-evolved-wide-color.svg"></div>
 <br>
 <div align="center">
 
-「 强大的哔哩哔哩增强脚本 」
+」 本脚强增哩哔哩哔的大强 「
 
 </div>
 
-[📦 安装](#安装)
+[装安 📦](#装安)
 
-[⚙ 设置](#设置)
+[置设 ⚙](#置设)
 
-[📚 功能](doc/features/features.md)
+[能功 📚](doc/features/features.md)
 
-[👻 兼容性](#兼容性)
+[性容兼 👻](#性容兼)
 
-[🐛 版本历史与更新日志](CHANGELOG.md)
+[志日新更与史历本版 🐛](CHANGELOG.md)
 
-[📕 文档站点](https://bilibili-evolved-doc.vercel.app/)
-> 文档站点由 [FoundTheWOUT](https://github.com/FoundTheWOUT) 开发, [点此进入 GitHub 仓库](https://github.com/FoundTheWOUT/bilibili-evolved-doc).
+[点站档文 📕](https://bilibili-evolved-doc.vercel.app/)
+> .[库仓 buHtiG 入进此点](https://github.com/FoundTheWOUT/bilibili-evolved-doc) ,发开 [TUOWehTdnuoF](https://github.com/FoundTheWOUT) 由点站档文
 
-[📖 参与开发](CONTRIBUTING.md)
+[发开与参 📖](CONTRIBUTING.md)
 
-[❤ 捐助](doc/donate.md)
+[助捐 ❤](doc/donate.md)
 
-# 安装
-需要浏览器装有 [Tampermonkey](https://tampermonkey.net/) 或 [Violentmonkey](https://violentmonkey.github.io/) 插件, 下方表格中挑一个链接安装.
+# 装安
+.装安接链个一挑中格表方下 [yeknomtneloiV](https://violentmonkey.github.io/) 或 [yeknomrepmaT](https://tampermonkey.net/) 有装器览浏要需
 
-**注意事项**
-- 做好觉悟, 脚本开启后不能使用弹幕点赞和举报, 全景视频不能用鼠标拖拽视角(只能用键盘操作), 对性能也有较大影响.
-- 新版本一旦正式发布, 就不再对旧版本做任何技术支持.
-- 使用外部网站的链接时(如将下载任务发送到自己的服务器 / 使用链接安装组件等)可能会提示"脚本试图访问跨域资源", 请选择"始终允许".
-- 可能无法很好地适应窄屏幕, 请尽量以 1400 x 800 以上的逻辑分辨率使用此脚本.
+**项事意注**
+- .响影大较有也能性对 ,)作操盘键用能只(角视拽拖标鼠用能不频视景全 ,报举和赞点幕弹用使能不后启开本脚 ,悟觉好做
+- .持支术技何任做本版旧对再不就 ,布发式正旦一本版新
+- ."许允终始"择选请 ,"源资域跨问访图试本脚"示提会能可)等件组装安接链用使 / 器务服的己自到送发务任载下将如(时接链的站网部外用使
+- .本脚此用使率辨分辑逻的上以 008 x 0041 以量尽请 ,幕屏窄应适地好很法无能可
 
-|          | 更新延迟 | 正式版 | 预览版                                                                                                   |
-| -------- | -------- | ------ | -------------------------------------------------------------------------------------------------------- |
-| jsDelivr | 24h      | [安装](https://cdn.jsdelivr.net/gh/the1812/Bilibili-Evolved@master/dist/bilibili-evolved.user.js) | [安装](https://cdn.jsdelivr.net/gh/the1812/Bilibili-Evolved@preview/dist/bilibili-evolved.preview.user.js)       |
-| GitHub   | <1h      | [安装](https://raw.githubusercontent.com/the1812/Bilibili-Evolved/master/dist/bilibili-evolved.user.js) | [安装](https://raw.githubusercontent.com/the1812/Bilibili-Evolved/preview/dist/bilibili-evolved.preview.user.js) |
+|          | 迟延新更 | 版式正                                                                                                  | 版览预                                                                                                           |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| rvileDsj | h42      | [装安](https://cdn.jsdelivr.net/gh/the1812/Bilibili-Evolved@master/dist/bilibili-evolved.user.js)       | [装安](https://cdn.jsdelivr.net/gh/the1812/Bilibili-Evolved@preview/dist/bilibili-evolved.preview.user.js)       |
+| buHtiG   | h1<      | [装安](https://raw.githubusercontent.com/the1812/Bilibili-Evolved/master/dist/bilibili-evolved.user.js) | [装安](https://raw.githubusercontent.com/the1812/Bilibili-Evolved/preview/dist/bilibili-evolved.preview.user.js) |
 
-# 设置
-脚本启用后, 在网页左侧中央会有功能面板和设置面板的入口. 功能面板中包含适用于当前页面的一些功能入口, 设置面板中可以管理组件的开启/关闭, 修改组件选项, 以及安装/卸载组件和插件等.
+# 置设
+.等件插和件组载卸/装安及以 ,项选件组改修 ,闭关/启开的件组理管以可中板面置设 ,口入能功些一的面页前当于用适含包中板面能功 .口入的板面置设和板面能功有会央中侧左页网在 ,后用启本脚
 
 ![sidebar](images/v2/side-panel.jpg)
 
 
 <img alt="settings-panel" src="images/v2/settings-panel.jpg" width="600">
 
-全新安装的脚本实际上没有任何功能, 你可以通过多种方式添加功能:
+:能功加添式方种多过通以可你 ,能功何任有没上际实本脚的装安新全
 
-打开设置面板, 进入左下的组件/插件/样式管理, 会有批量, 浏览, 和在线三个按钮, 以及下面还有个输入框可以用链接添加.
-- `批量`: 可以粘贴多个功能的在线链接并一次性安装.
-- `浏览`: 载入本地的功能文件.
-- `在线`: 打开在线仓库窗口.
+.加添接链用以可框入输个有还面下及以 ,钮按个三线在和 ,览浏 ,量批有会 ,理管式样/件插/件组的下左入进 ,板面置设开打
+- `量批`: .装安性次一并接链线在的能功个多贴粘以可
+- `览浏`: .件文能功的地本入载
+- `线在`: .口窗库仓线在开打
 
 <img alt="manage-panel" src="images/v2/manage-panel.jpg" width="400">
 
-> 用链接安装需要对应文件的直链, GitHub Raw 或 jsDelivr 都可以. 批量安装时逐行粘贴链接即可.
+> .可即接链贴粘行逐时装安量批 .以可都 rvileDsj 或 waR buHtiG ,链直的件文应对要需装安接链用
 
-如果你曾经使用过 v1 版, 可以利用 `v1 设置迁移` 组件将旧设置导入到 v2 中, 该工具将自动把里面开启的设置对应的组件下载并安装, 使用方法可以参考[这个文档](./doc/v1-migrate.md).
+.[档文个这](./doc/v1-migrate.md)考参以可法方用使 ,装安并载下件组的应对置设的启开面里把动自将具工该 ,中 2v 到入导置设旧将件组 `移迁置设 1v` 用利以可 ,版 1v 过用使经曾你果如
 
-最后, 在关于面板中, 可以查看脚本的详细版本号, 以及进行设置导入 / 导出等快捷操作.
+.作操捷快等出导 / 入导置设行进及以 ,号本版细详的本脚看查以可 ,中板面于关在 ,后最
 
 <img alt="about-panel" src="images/v2/about-panel.jpg" width="450">
 
-# 推荐配置
-- 操作系统: 64-bit Windows 10+ / macOS 10.15+
-- 分辨率: 2K+ / 192ppi
-- 浏览器: Chrome 84+ / Firefox 80+ / Edge 84+ / Safari 14.1+
-- 处理器: 8代 Intel Core i7+ / Zen 3 架构 AMD Ryzen 5+
-- 内存: 8GB
-- 脚本管理器: Tampermonkey 4.14 / Violentmonkey 2.13
-- 显卡: GeForce GTX 660 / Radeon HD 7870
-- 网络: 10MB/s
+# 置配荐推
+- +51.01 SOcam / +01 swodniW tib-46 :统系作操
+- ipp291 / +K2 :率辨分
+- +1.41 irafaS / +48 egdE / +08 xoferiF / +48 emorhC :器览浏
+- +5 nezyR DMA 构架 3 neZ / +7i eroC letnI 代8 :器理处
+- BG8 :存内
+- 31.2 yeknomtneloiV / 41.4 yeknomrepmaT :器理管本脚
+- 0787 DH noedaR / 066 XTG ecroFeG :卡显
+- s/BM01 :络网
 
-# 兼容性
+# 性容兼
 
-## 脚本管理器
+## 器理管本脚
 
-### [Tampermonkey](https://tampermonkey.net/) / [Violentmonkey](https://violentmonkey.github.io/)
-兼容, 但在较旧的浏览器中 Violentmonkey 可能无法运行此脚本.
+### [yeknomrepmaT](https://tampermonkey.net/) / [yeknomtneloiV](https://violentmonkey.github.io/)
+.本脚此行运法无能可 yeknomtneloiV 中器览浏的旧较在但 ,容兼
 
-> Tampermonkey 版本不能是 4.14.6147 / 6148
+> 8416 / 7416.41.4 是能不本版 yeknomrepmaT
 
-### [Greasemonkey](https://www.greasespot.net/)
-不兼容.
+### [yeknomesaerG](https://www.greasespot.net/)
+.容兼不
 
-### [AdGuard](https://adguard.com/zh_cn/adguard-windows/overview.html)
-未测试.
+### [drauGdA](https://adguard.com/zh_cn/adguard-windows/overview.html)
+.试测未
 
-## 浏览器
+## 器览浏
 
-支持**最新版** Chrome, Edge (Chromium 内核), Firefox, 不保证脚本能在["套壳类浏览器"](https://www.jianshu.com/p/67d790a8f221)或者较长时间没更新的浏览器中完美运行.
+.行运美完中器览浏的新更没间时长较者或["器览浏类壳套"](https://www.jianshu.com/p/67d790a8f221)在能本脚证保不 ,xoferiF ,)核内 muimorhC( egdE ,emorhC **版新最**持支
 
-# 开发者
+# 者发开
 
 <a href="https://github.com/the1812/Bilibili-Evolved/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=the1812/Bilibili-Evolved" />
 </a>
 
-## 文案翻译贡献者
-- [PleiadeSubaru](https://github.com/Etherrrr)
-- [Lets-Halloween](https://github.com/Lets-Halloween)
-- Joshuaふみひる
+## 者献贡译翻案文
+- [urabuSedaielP](https://github.com/Etherrrr)
+- [neewollaH-steL](https://github.com/Lets-Halloween)
+- るひみふauhsoJ
 
-## 参与项目
-欢迎参考[代码贡献指南](CONTRIBUTING.md)来为项目添砖加瓦~
+## 目项与参
+~瓦加砖添目项为来[南指献贡码代](CONTRIBUTING.md)考参迎欢
 
-# 隐私声明
-本脚本以及本仓库中提供的组件/插件, 是完全匿名的. 用户数据的使用均在本地完成, 不会存储到任何服务器, 也不会有所谓的"用户体验改善计划"来收集统计数据.
+# 明声私隐
+.据数计统集收来"划计善改验体户用"的谓所有会不也 ,器务服何任到储存会不 ,成完地本在均用使的据数户用 .的名匿全完是 ,件插/件组的供提中库仓本及以本脚本
 
-但是, 任何组件/插件都对用户数据有着完全的访问能力, 对于其他来源(非本仓库提供)的组件/插件, 请自行甄别其安全性.
+.性全安其别甄行自请 ,件插/件组的)供提库仓本非(源来他其于对 ,力能问访的全完着有据数户用对都件插/件组何任 ,是但
 
-# 第三方开源组件
-👍感谢这些组件帮助我们极大地提升了开发效率.
+# 件组源开方三第
+.率效发开了升提地大极们我助帮件组些这谢感👍
 
-- [Vue.js](https://cn.vuejs.org/index.html)
-- [JSZip](https://stuk.github.io/jszip/)
-- [bilibili API collect](https://github.com/SocialSisterYi/bilibili-API-collect)
-- [popper-core](https://github.com/popperjs/popper-core)
-- [Tippy.js](https://github.com/atomiks/tippyjs)
-- [Sortable](https://github.com/SortableJS/Sortable)
-- [color](https://github.com/Qix-/color)
-- [Lodash](https://lodash.com/)
-- [marked](https://github.com/markedjs/marked)
-- [MDI](https://materialdesignicons.com)
+- [sj.euV](https://cn.vuejs.org/index.html)
+- [piZSJ](https://stuk.github.io/jszip/)
+- [tcelloc IPA ilibilib](https://github.com/SocialSisterYi/bilibili-API-collect)
+- [eroc-reppop](https://github.com/popperjs/popper-core)
+- [sj.yppiT](https://github.com/atomiks/tippyjs)
+- [elbatroS](https://github.com/SortableJS/Sortable)
+- [roloc](https://github.com/Qix-/color)
+- [hsadoL](https://lodash.com/)
+- [dekram](https://github.com/markedjs/marked)
+- [IDM](https://materialdesignicons.com)
 
-# 相关推荐
-这些脚本/插件同样能够改善您在B站的体验, 相同的功能将不会整合到 Bilibili Evolved, 但会尽可能地适配
+# 荐推关相
+配适地能可尽会但 ,devlovE ilibiliB 到合整会不将能功的同相 ,验体的站B在您善改够能样同件插/本脚些这
 
-## bilibili网页端添加APP首页推荐
-作者: [indefined](https://github.com/indefined)
-- [GitHub](https://github.com/indefined/UserScripts/tree/master/bilibiliHome)
-- [GreasyFork](https://greasyfork.org/zh-CN/scripts/368446-bilibili%E7%BD%91%E9%A1%B5%E7%AB%AF%E6%B7%BB%E5%8A%A0app%E9%A6%96%E9%A1%B5%E6%8E%A8%E8%8D%90)
+## 荐推页首PPA加添端页网ilibilib
+[denifedni](https://github.com/indefined) :者作
+- [buHtiG](https://github.com/indefined/UserScripts/tree/master/bilibiliHome)
+- [kroFysaerG](https://greasyfork.org/zh-CN/scripts/368446-bilibili%E7%BD%91%E9%A1%B5%E7%AB%AF%E6%B7%BB%E5%8A%A0app%E9%A6%96%E9%A1%B5%E6%8E%A8%E8%8D%90)
 
-## pakku.js 哔哩哔哩弹幕过滤器
-作者: [xmcp](https://github.com/xmcp)
-- [主页](https://s.xmcp.ml/pakkujs/)
-- [GitHub](https://github.com/xmcp/pakku.js)
+## 器滤过幕弹哩哔哩哔 sj.ukkap
+[pcmx](https://github.com/xmcp) :者作
+- [页主](https://s.xmcp.ml/pakkujs/)
+- [buHtiG](https://github.com/xmcp/pakku.js)
 
-## BLTH - Bilibili Live Tasks Helper
-作者: [andywang425](https://github.com/andywang425)
-- [GitHub](https://github.com/andywang425/BLTH)
-- [GreasyFork](https://greasyfork.org/zh-CN/scripts/406048-b%E7%AB%99%E7%9B%B4%E6%92%AD%E9%97%B4%E6%8C%82%E6%9C%BA%E5%8A%A9%E6%89%8B)
+## repleH sksaT eviL ilibiliB - HTLB
+[524gnawydna](https://github.com/andywang425) :者作
+- [buHtiG](https://github.com/andywang425/BLTH)
+- [kroFysaerG](https://greasyfork.org/zh-CN/scripts/406048-b%E7%AB%99%E7%9B%B4%E6%92%AD%E9%97%B4%E6%8C%82%E6%9C%BA%E5%8A%A9%E6%89%8B)
 
 ----
 
-**喜欢的话就点个⭐Star吧(°∀°)ﾉ**
+**ﾉ)°∀°(吧ratS⭐个点就话的欢喜**
 
-**或者也可以考虑[捐助](https://github.com/the1812/Bilibili-Evolved/blob/preview/doc/donate.md)支持一下哦(｀・ω・´)**
+**)´・ω・｀(哦下一持支[助捐](https://github.com/the1812/Bilibili-Evolved/blob/preview/doc/donate.md)虑考以可也者或**
 
-爱发电
+电发爱
 
-> 之前的支付宝付款码有点问题, 现已弃用 (不必担心, 转账均已收到), 在爱发电中仍然可以选择支付宝作为付款方式.
+> .式方款付为作宝付支择选以可然仍中电发爱在 ,)到收已均账转 ,心担必不( 用弃已现 ,题问点有码款付宝付支的前之
 
 <a href="https://afdian.net/@the1812" target="_blank">
-  <img alt="爱发电" src="./images/compressed/afdian.jpg" width="400">
+  <img alt="电发爱" src="./images/compressed/afdian.jpg" width="400">
 </a>
 
-微信
+信微
 
-<img alt="微信" src="./images/compressed/wechat.jpg" width="400">
+<img alt="信微" src="./images/compressed/wechat.jpg" width="400">
+
+----
+
+# 意玩些一他其的写我
+
+## [reggaT uohuoT](https://github.com/the1812/Touhou-Tagger)
+息信目曲DC乐音人同tcejorP方东写填动自 [ikiWBHT](https://thwiki.cc/) 从 ☯
+
+## [hctaP erawlaM](https://github.com/the1812/Malware-Patch)
+权授员理管的件软氓流国中止阻
+
+## [emeht otua balyzzid](https://github.com/the1812/dizzylab-auto-theme)
+定设暗/亮统系随跟 ,题主 sulytS 应适自 [balyzzid](https://www.dizzylab.net/)
+
+## [SSC maetS](https://github.com/the1812/SteamCSS)
+等体字换更于用 ,SSC 的义定自段一入插器览浏置内和库的 [maetS](https://store.steampowered.com/) 为
 
 ----
 
-# 我写的其他一些玩意
-
-## [Touhou Tagger](https://github.com/the1812/Touhou-Tagger)
-☯ 从 [THBWiki](https://thwiki.cc/) 自动填写东方Project同人音乐CD曲目信息
-
-## [Malware Patch](https://github.com/the1812/Malware-Patch)
-阻止中国流氓软件的管理员授权
-
-## [dizzylab auto theme](https://github.com/the1812/dizzylab-auto-theme)
-[dizzylab](https://www.dizzylab.net/) 自适应 Stylus 主题, 跟随系统亮/暗设定
-
-## [Steam CSS](https://github.com/the1812/SteamCSS)
-为 [Steam](https://store.steampowered.com/) 的库和内置浏览器插入一段自定义的 CSS, 用于更换字体等
-
-----
+</div>
