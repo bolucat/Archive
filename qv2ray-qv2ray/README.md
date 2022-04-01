@@ -10,6 +10,13 @@
 [![GitHub Releases](https://img.shields.io/github/downloads/Qv2ray/Qv2ray/latest/total?style=flat-square&logo=github)](https://github.com/Qv2ray/Qv2ray/releases)
 [![GitHub All Releases](https://img.shields.io/github/downloads/Qv2ray/Qv2ray/total?label=downloads-total&logo=github&style=flat-square)](https://github.com/Qv2ray/Qv2ray/releases)
 
+## Qv2ray 将继续维护（2022/04/01）
+
+Qv2ray v3.0 维护计划请参考以下文档：
+
+- https://pastebin.com/kXbwkV7c
+
+
 ## 本项目已不再维护
 
 > Qv2ray: *2019-03-28 - 2021-08-17*
