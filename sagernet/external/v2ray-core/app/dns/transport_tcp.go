@@ -46,11 +46,10 @@ func (t *TCPTransport) Write(ctx context.Context, message *dnsmessage.Message) e
 		return newError("failed to pack dns query").Base(err)
 	}
 
-	buffer := buf.New()
-	binary.Write(buffer, binary.BigEndian, uint16(len(packed)))
-	buffer.Write(packed)
+	header := make([]byte, 2)
+	binary.BigEndian.PutUint16(header, uint16(len(packed)))
 	return task.Run(ctx, func() error {
-		return t.dispatcher.Write(ctx, buffer)
+		return t.dispatcher.Write(ctx, buf.MultiBuffer{buf.FromBytes(header), buf.FromBytes(packed)})
 	})
 }
 

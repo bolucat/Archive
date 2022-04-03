@@ -29,7 +29,7 @@ require (
 	github.com/xtls/go v0.0.0-20210920065950-d4af136d3672
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd
 	golang.org/x/crypto v0.0.0-20220321153916-2c7772ba3064
-	golang.org/x/net v0.0.0-20220325170049-de3da57026de
+	golang.org/x/net v0.0.0-20220403103023-749bd193bc2b
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220328115105-d36c6a25d886
 	golang.zx2c4.com/wireguard v0.0.0-20220318042302-193cf8d6a5d6
@@ -41,8 +41,8 @@ require (
 	lukechampine.com/blake3 v1.1.7
 )
 
-// https://github.com/google/gvisor/releases/tag/release-20220103.0
-replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220213143053-df431bee78e3
+// https://github.com/google/gvisor/releases/tag/release-20220314.0
+replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220402114650-763d12dc953e
 
 require (
 	github.com/cheekybits/genny v1.0.0 // indirect

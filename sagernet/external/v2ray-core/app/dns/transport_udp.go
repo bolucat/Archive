@@ -45,7 +45,7 @@ func (t *UDPTransport) Write(ctx context.Context, message *dnsmessage.Message) e
 		return newError("failed to pack dns query").Base(err)
 	}
 	return task.Run(ctx, func() error {
-		return t.dispatcher.Write(ctx, buf.FromBytes(packed))
+		return t.dispatcher.Write(ctx, buf.MultiBuffer{buf.FromBytes(packed)})
 	})
 }
 

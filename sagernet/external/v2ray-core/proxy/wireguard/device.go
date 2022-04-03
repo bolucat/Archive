@@ -218,7 +218,7 @@ func (w *wireDevice) Write(buf []byte, offset int) (int, error) {
 	pkb = stack.NewPacketBuffer(stack.PacketBufferOptions{
 		Data: buffer.NewViewFromBytes(packet).ToVectorisedView(),
 	})
-	w.dispatcher.DeliverNetworkPacket("", "", networkProtocol, pkb)
+	w.dispatcher.DeliverNetworkPacket(networkProtocol, pkb)
 	pkb.DecRef()
 	return len(packet), nil
 }

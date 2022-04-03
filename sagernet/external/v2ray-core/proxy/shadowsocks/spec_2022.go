@@ -15,15 +15,13 @@ import (
 )
 
 const (
-	HeaderTypeClient       = 0
-	HeaderTypeServer       = 1
-	HeaderTypeClientPacket = 2
-	HeaderTypeServerPacket = 3
-	MaxPaddingLength       = 900
-	SaltSize               = 32
-	PacketNonceSize        = 24
-	MinRequestHeaderSize   = 1 + 8
-	MinResponseHeaderSize  = MinRequestHeaderSize + SaltSize
+	HeaderTypeClient      = 0
+	HeaderTypeServer      = 1
+	MaxPaddingLength      = 900
+	SaltSize              = 32
+	PacketNonceSize       = 24
+	MinRequestHeaderSize  = 1 + 8
+	MinResponseHeaderSize = MinRequestHeaderSize + SaltSize
 )
 
 var _ Cipher = (*AEAD2022Cipher)(nil)

@@ -69,7 +69,9 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 			backData.AppendView(buffer.View(icmpHdr))
 			backPacket := stack.NewPacketBuffer(stack.PacketBufferOptions{Data: backData})
 			defer backPacket.DecRef()
-			err := ep.WriteRawPacket(backPacket)
+			var packetList stack.PacketBufferList
+			packetList.PushFront(backPacket)
+			_, err := ep.WritePackets(packetList)
 			if err != nil {
 				return newError("failed to write packet to device: ", err.String())
 			}
@@ -83,7 +85,9 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 			hdr.SetType(header.ICMPv4EchoReply)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(header.ICMPv4Checksum(hdr, packet.Data().AsRange().Checksum()))
-			err := ep.WriteRawPacket(packet)
+			var packetList stack.PacketBufferList
+			packetList.PushFront(packet)
+			_, err := ep.WritePackets(packetList)
 			if err != nil {
 				newError("failed to write packet to device: ", err.String()).AtWarning().WriteToLog()
 				return false
@@ -152,7 +156,9 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 
 			backPacket := stack.NewPacketBuffer(stack.PacketBufferOptions{Data: backData})
 			defer backPacket.DecRef()
-			err := ep.WriteRawPacket(backPacket)
+			var packetList stack.PacketBufferList
+			packetList.PushFront(backPacket)
+			_, err := ep.WritePackets(packetList)
 			if err != nil {
 				return newError("failed to write packet to device: ", err.String())
 			}
@@ -172,7 +178,9 @@ func gIcmpHandler(s *stack.Stack, ep stack.LinkEndpoint, handler tun.Handler) {
 				PayloadCsum: packet.Data().AsRange().Checksum(),
 				PayloadLen:  packet.Data().Size(),
 			}))
-			err := ep.WriteRawPacket(packet)
+			var packetList stack.PacketBufferList
+			packetList.PushFront(packet)
+			_, err := ep.WritePackets(packetList)
 			if err != nil {
 				newError("failed to write packet to device: ", err.String()).AtWarning().WriteToLog()
 				return false

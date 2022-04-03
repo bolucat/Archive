@@ -26,6 +26,7 @@ import("//build/config/chromecast_build.gni")
 import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/dcheck_always_on.gni")
+import("//build/config/ios/config.gni")
 import("//build/config/logging.gni")
 import("//build/config/nacl/config.gni")
 import("//build/config/profiling/profiling.gni")
@@ -163,6 +164,12 @@ config("perfetto_config") {
   }
 }
 
+buildflag_header("ios_cronet_buildflags") {
+  header = "ios_cronet_buildflags.h"
+  header_dir = "base/message_loop"
+  flags = [ "CRONET_BUILD=$is_cronet_build" ]
+}
+
 # Base and everything it depends on should be a static library rather than
 # a source set. Base is more of a "library" in the classic sense in that many
 # small parts of it are used in many different contexts. This combined with a
@@ -268,6 +275,8 @@ mixed_component("base") {
     "containers/vector_buffer.h",
     "cpu.cc",
     "cpu.h",
+    "cpu_reduction_experiment.cc",
+    "cpu_reduction_experiment.h",
     "critical_closure.h",
     "cxx17_backports.h",
     "cxx20_to_address.h",
@@ -347,7 +356,6 @@ mixed_component("base") {
     "hash/hash.h",
     "hash/legacy_hash.cc",
     "hash/legacy_hash.h",
-    "ignore_result.h",
     "immediate_crash.h",
     "json/json_common.h",
     "json/json_file_value_serializer.cc",
@@ -416,8 +424,6 @@ mixed_component("base") {
     "memory/shared_memory_tracker.cc",
     "memory/shared_memory_tracker.h",
     "memory/singleton.h",
-    "memory/tagging.cc",
-    "memory/tagging.h",
     "memory/unsafe_shared_memory_pool.cc",
     "memory/unsafe_shared_memory_pool.h",
     "memory/unsafe_shared_memory_region.cc",
@@ -601,6 +607,8 @@ mixed_component("base") {
     "stl_util.h",
     "strings/abseil_string_conversions.cc",
     "strings/abseil_string_conversions.h",
+    "strings/abseil_string_number_conversions.cc",
+    "strings/abseil_string_number_conversions.h",
     "strings/char_traits.h",
     "strings/escape.cc",
     "strings/escape.h",
@@ -702,8 +710,6 @@ mixed_component("base") {
     "task/sequence_manager/lazily_deallocated_deque.h",
     "task/sequence_manager/lazy_now.cc",
     "task/sequence_manager/lazy_now.h",
-    "task/sequence_manager/real_time_domain.cc",
-    "task/sequence_manager/real_time_domain.h",
     "task/sequence_manager/sequence_manager.cc",
     "task/sequence_manager/sequence_manager.h",
     "task/sequence_manager/sequence_manager_impl.cc",
@@ -1249,6 +1255,7 @@ mixed_component("base") {
       "process/port_provider_mac.cc",
       "process/port_provider_mac.h",
       "process/process_handle_mac.cc",
+      "process/process_info_mac.cc",
       "process/process_iterator_mac.cc",
       "process/process_mac.cc",
       "process/process_metrics_mac.cc",
@@ -1280,14 +1287,23 @@ mixed_component("base") {
       "ios/ns_range.h",
       "ios/scoped_critical_action.h",
       "ios/scoped_critical_action.mm",
-      "message_loop/message_pump_io_ios.cc",
-      "message_loop/message_pump_io_ios.h",
       "native_library_ios.mm",
       "process/launch_ios.cc",
       "process/process_metrics_ios.cc",
       "profiler/module_cache_mac.cc",
       "profiler/stack_sampler_ios.cc",
     ]
+    if (is_cronet_build) {
+      sources += [
+        "message_loop/message_pump_io_ios.cc",
+        "message_loop/message_pump_io_ios.h",
+      ]
+    } else {
+      sources += [
+        "message_loop/message_pump_kqueue.cc",
+        "message_loop/message_pump_kqueue.h",
+      ]
+    }
 
     if (ios_stack_profiler_enabled) {
       sources += [
@@ -1393,7 +1409,6 @@ mixed_component("base") {
   ]
 
   deps = [
-    "//base/allocator",
     "//base/allocator:buildflags",
     "//base/third_party/double_conversion",
     "//base/third_party/dynamic_annotations",
@@ -1444,6 +1459,7 @@ mixed_component("base") {
     ":clang_profiling_buildflags",
     ":debugging_buildflags",
     ":feature_list_buildflags",
+    ":ios_cronet_buildflags",
     ":logging_buildflags",
     ":orderfile_buildflags",
     ":parsing_buildflags",
@@ -1502,10 +1518,7 @@ mixed_component("base") {
       ]
     }
 
-    if (use_allocator == "tcmalloc") {
-      sources += [ "allocator/allocator_shim_default_dispatch_to_tcmalloc.cc" ]
-      deps += [ "//base/allocator:tcmalloc" ]
-    } else if (use_allocator == "none") {
+    if (use_allocator == "none") {
       if (is_android) {
         sources += [ "allocator/allocator_shim_default_dispatch_to_linker_wrapped_symbols.cc" ]
       }
@@ -1667,6 +1680,8 @@ mixed_component("base") {
       "files/file_util_fuchsia.cc",
       "files/file_util_posix.cc",
       "files/memory_mapped_file_posix.cc",
+      "fuchsia/build_info.cc",
+      "fuchsia/build_info.h",
       "fuchsia/default_job.cc",
       "fuchsia/default_job.h",
       "fuchsia/file_utils.cc",
@@ -1758,6 +1773,7 @@ mixed_component("base") {
     ]
 
     deps += [
+      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.buildinfo",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.media",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.sys",
       "//third_party/fuchsia-sdk/sdk/pkg/async-default",
@@ -1897,8 +1913,11 @@ mixed_component("base") {
         "allocator/partition_allocator/address_pool_manager_types.h",
         "allocator/partition_allocator/address_space_randomization.cc",
         "allocator/partition_allocator/address_space_randomization.h",
+        "allocator/partition_allocator/address_space_stats.h",
         "allocator/partition_allocator/allocation_guard.cc",
         "allocator/partition_allocator/allocation_guard.h",
+        "allocator/partition_allocator/dangling_raw_ptr_checks.cc",
+        "allocator/partition_allocator/dangling_raw_ptr_checks.h",
         "allocator/partition_allocator/extended_api.cc",
         "allocator/partition_allocator/extended_api.h",
         "allocator/partition_allocator/memory_reclaimer.cc",
@@ -1968,6 +1987,8 @@ mixed_component("base") {
         "allocator/partition_allocator/starscan/stats_reporter.h",
         "allocator/partition_allocator/starscan/write_protector.cc",
         "allocator/partition_allocator/starscan/write_protector.h",
+        "allocator/partition_allocator/tagging.cc",
+        "allocator/partition_allocator/tagging.h",
         "allocator/partition_allocator/thread_cache.cc",
         "allocator/partition_allocator/thread_cache.h",
         "allocator/partition_allocator/yield_processor.h",
@@ -2417,6 +2438,13 @@ mixed_component("base") {
         "trace_event/java_heap_dump_provider_android.cc",
         "trace_event/java_heap_dump_provider_android.h",
         "trace_event/trace_event_android.cc",
+      ]
+    }
+
+    if (use_allocator == "partition") {
+      sources += [
+        "trace_event/address_space_dump_provider.cc",
+        "trace_event/address_space_dump_provider.h",
       ]
     }
   } else {

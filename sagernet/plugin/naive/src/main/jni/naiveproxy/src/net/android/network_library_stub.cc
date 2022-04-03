@@ -4,6 +4,8 @@
 
 #include "net/android/network_library.h"
 
+#include "net/base/net_errors.h"
+
 namespace net {
 namespace android {
 
@@ -70,6 +72,20 @@ bool ReportBadDefaultNetwork() {
 }
 
 void TagSocket(SocketDescriptor socket, uid_t uid, int32_t tag) {
+}
+
+int BindToNetwork(SocketDescriptor socket,
+                  NetworkChangeNotifier::NetworkHandle network) {
+  return ERR_NOT_IMPLEMENTED;
+}
+
+int GetAddrInfoForNetwork(
+    NetworkChangeNotifier::NetworkHandle network,
+    const char* node,
+    const char* service,
+    const struct addrinfo* hints,
+    struct addrinfo** res) {
+  return EAI_SYSTEM;
 }
 
 }  // namespace android

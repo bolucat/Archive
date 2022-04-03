@@ -82,9 +82,10 @@ func New(ctx context.Context, config *Config) (*Handler, error) {
 
 	v := core.MustFromContext(ctx)
 	handler := &Handler{
-		serverList:    serverList,
-		serverPicker:  protocol.NewRoundRobinServerPicker(serverList),
-		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
+		serverList:     serverList,
+		serverPicker:   protocol.NewRoundRobinServerPicker(serverList),
+		policyManager:  v.GetFeature(policy.ManagerType()).(policy.Manager),
+		packetEncoding: config.PacketEncoding,
 	}
 
 	return handler, nil

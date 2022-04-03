@@ -35,6 +35,16 @@ func New() *Buffer {
 	}
 }
 
+func NewSize(size int32) *Buffer {
+	if size <= 128 || size > Size {
+		return &Buffer{
+			v:         make([]byte, size),
+			unmanaged: true,
+		}
+	}
+	return New()
+}
+
 // FromBytes creates a Buffer with an existed bytearray
 func FromBytes(data []byte) *Buffer {
 	return &Buffer{
@@ -155,6 +165,13 @@ func (b *Buffer) Len() int32 {
 		return 0
 	}
 	return b.end - b.start
+}
+
+func (b *Buffer) Use() []byte {
+	end := int32(len(b.v))
+	ext := b.v[b.end:end]
+	b.end = end
+	return ext
 }
 
 // IsEmpty returns true if the buffer is empty.

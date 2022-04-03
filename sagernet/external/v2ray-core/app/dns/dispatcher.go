@@ -97,7 +97,7 @@ func NewRawLocalDispatcher(ctx *transportContext, convertor convertFunc, destina
 	}
 }
 
-func (d *messageDispatcher) Write(ctx context.Context, message *buf.Buffer) error {
+func (d *messageDispatcher) Write(ctx context.Context, message buf.MultiBuffer) error {
 	conn, err := d.getConnection()
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func (d *messageDispatcher) Write(ctx context.Context, message *buf.Buffer) erro
 		conn.cancel()
 		return io.ErrClosedPipe
 	}
-	return outputStream.WriteMultiBuffer(buf.MultiBuffer{message})
+	return outputStream.WriteMultiBuffer(message)
 }
 
 func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {

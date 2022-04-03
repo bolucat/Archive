@@ -94,11 +94,7 @@ func ReadTCPSession(user *protocol.MemoryUser, reader io.Reader, conn *ProtocolC
 		if err != nil {
 			return nil, nil, nil, newError("failed to read response header").Base(err)
 		}
-		switch buffer.Byte(0) {
-		case HeaderTypeClient:
-		case HeaderTypeClientPacket:
-			request.Command = protocol.RequestCommandUDP
-		default:
+		if buffer.Byte(0) != HeaderTypeClient {
 			return nil, nil, nil, newError("bad request type")
 		}
 		epoch := int64(binary.BigEndian.Uint64(buffer.BytesRange(1, 1+8)))
@@ -178,17 +174,12 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byt
 
 	header := buf.New()
 	if cipherFamily.IsSpec2022() {
-		if request.Command != protocol.RequestCommandUDP {
-			header.WriteByte(HeaderTypeClient)
-		} else {
-			header.WriteByte(HeaderTypeClientPacket)
-		}
+		header.WriteByte(HeaderTypeClient)
 		binary.Write(header, binary.BigEndian, uint64(time.Now().Unix()))
 	}
-	if !cipherFamily.IsSpec2022() || request.Command != protocol.RequestCommandUDP {
-		if err := socks.AddrParser.WriteAddressPort(header, request.Address, request.Port); err != nil {
-			return nil, newError("failed to write address").Base(err)
-		}
+
+	if err := socks.AddrParser.WriteAddressPort(header, request.Address, request.Port); err != nil {
+		return nil, newError("failed to write address").Base(err)
 	}
 
 	if cipherFamily.IsSpec2022() {
@@ -273,7 +264,7 @@ func ReadTCPResponse(user *protocol.MemoryUser, command protocol.RequestCommand,
 			return nil, err
 		}
 		responseType := header.Byte(0)
-		if command == protocol.RequestCommandTCP && responseType != HeaderTypeServer || command == protocol.RequestCommandUDP && responseType != HeaderTypeServerPacket {
+		if responseType != HeaderTypeServer {
 			return nil, newError("bad response type")
 		}
 		epoch := int64(binary.BigEndian.Uint64(header.BytesRange(1, 1+8)))
@@ -309,11 +300,7 @@ func WriteTCPResponse(request *protocol.RequestHeader, writer io.Writer, request
 
 	if cipherFamily.IsSpec2022() {
 		bw := buf.NewBufferedWriter(w)
-		if request.Command == protocol.RequestCommandTCP {
-			bw.WriteByte(HeaderTypeServer)
-		} else {
-			bw.WriteByte(HeaderTypeServerPacket)
-		}
+		bw.WriteByte(HeaderTypeServer)
 		binary.Write(bw, binary.BigEndian, uint64(time.Now().Unix()))
 		bw.Write(requestIV)
 		bw.SetBuffered(false)

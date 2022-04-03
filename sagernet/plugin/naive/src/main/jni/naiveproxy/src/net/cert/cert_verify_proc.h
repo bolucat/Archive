@@ -66,6 +66,19 @@ class NET_EXPORT CertVerifyProc
     kMaxValue = kChainLengthOne
   };
 
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  enum class EKUStatus {
+    kInvalid = 0,
+    kNoEKU = 1,
+    kAnyEKU = 2,
+    kServerAuthOnly = 3,
+    kServerAuthAndClientAuthOnly = 4,
+    kServerAuthAndOthers = 5,
+    kOther = 6,
+    kMaxValue = kOther
+  };
+
 #if !(BUILDFLAG(IS_FUCHSIA) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
       BUILDFLAG(IS_ANDROID))
   // Creates and returns a CertVerifyProc that uses the system verifier.

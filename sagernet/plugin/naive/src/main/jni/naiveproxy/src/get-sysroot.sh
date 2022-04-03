@@ -73,8 +73,11 @@ case "$ARCH" in
     fi
     WITH_CLANG=Mac
     USE_DSYMUTIL=y
-    WITH_PGO=mac
     WITH_GN=mac
+    case "$target_cpu" in
+      arm64) WITH_PGO=mac-arm;;
+      *) WITH_PGO=mac;;
+    esac
   ;;
 esac
 if [ "$WITH_PGO" ]; then

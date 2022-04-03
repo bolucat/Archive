@@ -14,7 +14,6 @@ import (
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
-	"github.com/v2fly/v2ray-core/v5/common/bytespool"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/retry"
@@ -81,12 +80,15 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 
 	mbuf, _ := link.Reader.ReadMultiBuffer()
 	len := mbuf.Len()
-	firstPayload := bytespool.Alloc(len)
+
+	cache := buf.NewSize(len)
+	defer cache.Release()
+
+	firstPayload := cache.Use()
 	mbuf, _ = buf.SplitBytes(mbuf, firstPayload)
 	firstPayload = firstPayload[:len]
 
 	buf.ReleaseMulti(mbuf)
-	defer bytespool.Free(firstPayload)
 
 	if err := retry.ExponentialBackoff(5, 100).On(func() error {
 		server := c.serverPicker.PickServer()

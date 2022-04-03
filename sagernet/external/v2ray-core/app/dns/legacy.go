@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 
 	core "github.com/v2fly/v2ray-core/v5"
+	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -134,6 +135,7 @@ func New(ctx context.Context, config *Config) (*Client, error) {
 	core := core.MustFromContext(ctx)
 	dispatcher, _ := core.GetFeature(routing.DispatcherType()).(routing.Dispatcher)
 
+	ctx = proxyman.SetPreferUseIP(ctx, true)
 	ctx, cancel := context.WithCancel(ctx)
 	client := &Client{
 		ctx:      ctx,

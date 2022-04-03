@@ -13,6 +13,9 @@ type wireEndpoint struct {
 	*wireDevice
 }
 
+func (w *wireEndpoint) AddHeader(*stack.PacketBuffer) {
+}
+
 func (w *wireEndpoint) MTU() uint32 {
 	return uint32(w.mtu)
 }
@@ -44,10 +47,7 @@ func (w *wireEndpoint) ARPHardwareType() header.ARPHardwareType {
 	return header.ARPHardwareNone
 }
 
-func (w *wireEndpoint) AddHeader(tcpip.LinkAddress, tcpip.LinkAddress, tcpip.NetworkProtocolNumber, *stack.PacketBuffer) {
-}
-
-func (w *wireEndpoint) WritePackets(_ stack.RouteInfo, pkts stack.PacketBufferList, _ tcpip.NetworkProtocolNumber) (int, tcpip.Error) {
+func (w *wireEndpoint) WritePackets(pkts stack.PacketBufferList) (int, tcpip.Error) {
 	w.access.Lock()
 	defer w.access.Unlock()
 	if w.done.Done() {
@@ -59,16 +59,6 @@ func (w *wireEndpoint) WritePackets(_ stack.RouteInfo, pkts stack.PacketBufferLi
 		n++
 	}
 	return n, nil
-}
-
-func (w *wireEndpoint) WritePacket(_ stack.RouteInfo, _ tcpip.NetworkProtocolNumber, packet *stack.PacketBuffer) tcpip.Error {
-	w.access.Lock()
-	defer w.access.Unlock()
-	if w.done.Done() {
-		return &tcpip.ErrClosedForSend{}
-	}
-	w.outbound <- buffer.NewVectorisedView(packet.Size(), packet.Views())
-	return nil
 }
 
 func (w *wireEndpoint) WriteRawPacket(packet *stack.PacketBuffer) tcpip.Error {

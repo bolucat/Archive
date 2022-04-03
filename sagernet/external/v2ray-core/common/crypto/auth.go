@@ -8,7 +8,6 @@ import (
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
-	"github.com/v2fly/v2ray-core/v5/common/bytespool"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 )
@@ -140,7 +139,7 @@ func (r *AuthenticationReader) readSize() (uint16, uint16, error) {
 var errSoft = newError("waiting for more data")
 
 func (r *AuthenticationReader) readBuffer(size int32, padding int32) (*buf.Buffer, error) {
-	b := buf.New()
+	b := buf.NewSize(size)
 	if _, err := b.ReadFullFrom(r.reader, size); err != nil {
 		b.Release()
 		return nil, err
@@ -181,30 +180,11 @@ func (r *AuthenticationReader) readInternal(soft bool, mb *buf.MultiBuffer) erro
 		return errSoft
 	}
 
-	if size <= buf.Size {
-		b, err := r.readBuffer(int32(size), int32(padding))
-		if err != nil {
-			return nil
-		}
-		*mb = append(*mb, b)
-		return nil
-	}
-
-	payload := bytespool.Alloc(int32(size))
-	defer bytespool.Free(payload)
-
-	if _, err := io.ReadFull(r.reader, payload[:size]); err != nil {
-		return err
-	}
-
-	size -= padding
-
-	rb, err := r.auth.Open(payload[:0], payload[:size])
+	b, err := r.readBuffer(int32(size), int32(padding))
 	if err != nil {
 		return err
 	}
-
-	*mb = buf.MergeBytes(*mb, rb)
+	*mb = append(*mb, b)
 	return nil
 }
 

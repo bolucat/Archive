@@ -12,17 +12,17 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/ulikunitz/xz v0.5.10
 	github.com/v2fly/v2ray-core/v5 v5.0.3
-	golang.org/x/net v0.0.0-20220325170049-de3da57026de
-	golang.org/x/sys v0.0.0-20220328115105-d36c6a25d886
+	golang.org/x/net v0.0.0-20220403103023-749bd193bc2b
+	golang.org/x/sys v0.0.0-20220403020550-483a9cbc67c0
 	gvisor.dev/gvisor v0.0.0
 )
 
 // https://github.com/google/gvisor/releases/tag/release-20211129.0
 //replace gvisor.dev/gvisor => ../gvisor
-replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220213143053-df431bee78e3
+replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220402114650-763d12dc953e
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.9-0.20220329111141-80a44d0106b1
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.9-0.20220403132929-89175c81b459
 
 require (
 	github.com/Dreamacro/go-shadowsocks2 v0.1.7 // indirect

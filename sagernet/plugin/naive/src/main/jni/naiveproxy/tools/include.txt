@@ -52,7 +52,6 @@
 ^third_party/protobuf/BUILD.gn
 ^third_party/protobuf/proto_library.gni
 ^third_party/protobuf/src
-^third_party/tcmalloc
 ^third_party/zlib
 ^tools/cfi
 ^tools/clang/scripts/update.py

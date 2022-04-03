@@ -52,9 +52,9 @@ func New(dev int32, mtu int32, handler tun.Handler, ipv6Mode int32, errorHandler
 }
 
 func (t *SystemTun) dispatchLoop() {
-	cache := buf.New()
+	cache := buf.NewSize(int32(t.mtu))
 	defer cache.Release()
-	data := cache.Extend(buf.Size)
+	data := cache.Use()
 
 	device := os.NewFile(uintptr(t.dev), "tun")
 
@@ -75,15 +75,6 @@ func (t *SystemTun) dispatchLoop() {
 
 func (t *SystemTun) writeRawPacket(vv buffer.VectorisedView) tcpip.Error {
 	views := vv.Views()
-	iovecs := make([]unix.Iovec, len(views))
-	for i, v := range views {
-		iovecs[i] = rawfile.IovecFromBytes(v)
-	}
-	return rawfile.NonBlockingWriteIovec(t.dev, iovecs)
-}
-
-func (t *SystemTun) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
-	views := pkt.Views()
 	iovecs := make([]unix.Iovec, len(views))
 	for i, v := range views {
 		iovecs[i] = rawfile.IovecFromBytes(v)

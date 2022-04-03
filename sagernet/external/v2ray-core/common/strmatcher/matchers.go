@@ -22,7 +22,7 @@ func (m FullMatcher) String() string {
 }
 
 func (m FullMatcher) Match(s string) bool {
-	return string(m) == s
+	return strings.EqualFold(string(m), s)
 }
 
 // DomainMatcher is an implementation of Matcher.
@@ -41,6 +41,7 @@ func (m DomainMatcher) String() string {
 }
 
 func (m DomainMatcher) Match(s string) bool {
+	s = strings.ToLower(s)
 	pattern := m.Pattern()
 	if !strings.HasSuffix(s, pattern) {
 		return false
@@ -64,7 +65,7 @@ func (m SubstrMatcher) String() string {
 }
 
 func (m SubstrMatcher) Match(s string) bool {
-	return strings.Contains(s, m.Pattern())
+	return strings.Contains(strings.ToLower(s), m.Pattern())
 }
 
 // RegexMatcher is an implementation of Matcher.
