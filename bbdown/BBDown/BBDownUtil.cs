@@ -27,7 +27,8 @@ namespace BBDown
         public static readonly HttpClient AppHttpClient = new(new HttpClientHandler
         {
             AllowAutoRedirect = true,
-            AutomaticDecompression = DecompressionMethods.All
+            AutomaticDecompression = DecompressionMethods.All,
+            ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
         })
         { 
             Timeout = TimeSpan.FromMinutes(5) 
@@ -90,10 +91,15 @@ namespace BBDown
                     string epId = Regex.Match(input, "/ep(\\d{1,})").Groups[1].Value;
                     avid = $"ep:{epId}";
                 }
-                else if (input.Contains("/medialist/") && input.Contains("business_id=")) //medialist
+                else if (input.Contains("/medialist/") && input.Contains("business_id=") && input.Contains("business=space_collection")) //列表类型是合集
                 {
                     string bizId = GetQueryString("business_id", input);
                     avid = $"listBizId:{bizId}";
+                }
+                else if (input.Contains("/medialist/") && input.Contains("business_id=") && input.Contains("business=space_series")) //列表类型是系列
+                {
+                    string bizId = GetQueryString("business_id", input);
+                    avid = $"seriesBizId:{bizId}";
                 }
                 else if (input.Contains("/channel/collectiondetail?sid="))
                 {
@@ -102,9 +108,8 @@ namespace BBDown
                 }
                 else if (input.Contains("/channel/seriesdetail?sid="))
                 {
-                    string mid = Regex.Match(input, "space\\.bilibili\\.com/(\\d{1,})").Groups[1].Value;
                     string bizId = GetQueryString("sid", input);
-                    avid = $"seriesBizId:{bizId}:{mid}";
+                    avid = $"seriesBizId:{bizId}";
                 }
                 else if (input.Contains("/space.bilibili.com/") && input.Contains("/favlist"))
                 {
@@ -329,7 +334,7 @@ namespace BBDown
 
         private static async Task RangeDownloadToTmpAsync(int id, string url, string tmpName, long fromPosition, long? toPosition, Action<int, long, long> onProgress, bool failOnRangeNotSupported = false)
         {
-            var lastTime = File.Exists(tmpName) ? new FileInfo(tmpName).LastWriteTimeUtc : DateTimeOffset.MinValue;
+            DateTimeOffset? lastTime = File.Exists(tmpName) ? new FileInfo(tmpName).LastWriteTimeUtc : null;
             using (var fileStream = new FileStream(tmpName, FileMode.OpenOrCreate))
             {
                 fileStream.Seek(0, SeekOrigin.End);
@@ -341,7 +346,7 @@ namespace BBDown
                 httpRequestMessage.Headers.Add("User-Agent", "Mozilla/5.0");
                 httpRequestMessage.Headers.Add("Cookie", Program.COOKIE);
                 httpRequestMessage.Headers.Range = new(downloadedBytes, toPosition);
-                httpRequestMessage.Headers.IfRange = new(lastTime);
+                httpRequestMessage.Headers.IfRange = lastTime != null ? new(lastTime.Value) : null;
                 httpRequestMessage.RequestUri = new(url);
 
                 using var response = (await AppHttpClient.SendAsync(httpRequestMessage, HttpCompletionOption.ResponseHeadersRead)).EnsureSuccessStatusCode();
