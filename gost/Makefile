@@ -2,7 +2,7 @@ NAME=gost
 BINDIR=bin
 VERSION=$(shell cat gost.go | grep 'Version =' | sed 's/.*\"\(.*\)\".*/\1/g')
 GOBUILD=CGO_ENABLED=0 go build --ldflags="-s -w" -v -x -a
-GOFILES=cmd/gost/*
+GOFILES=cmd/gost/*.go
 
 PLATFORM_LIST = \
 	darwin-amd64 \
@@ -19,6 +19,7 @@ PLATFORM_LIST = \
 	linux-mipsle-hardfloat \
 	linux-mips64 \
 	linux-mips64le \
+	linux-s390x \
 	freebsd-386 \
 	freebsd-amd64
 
@@ -69,6 +70,9 @@ linux-mips64:
 
 linux-mips64le:
 	GOARCH=mips64le GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ $(GOFILES)
+
+linux-s390x:
+	GOARCH=s390x GOOS=linux $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ $(GOFILES)
 
 freebsd-386:
 	GOARCH=386 GOOS=freebsd $(GOBUILD) -o $(BINDIR)/$(NAME)-$@ $(GOFILES)

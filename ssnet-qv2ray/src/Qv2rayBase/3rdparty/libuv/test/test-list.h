@@ -91,9 +91,6 @@ TEST_DECLARE   (ipc_send_recv_tcp)
 TEST_DECLARE   (ipc_send_recv_tcp_inprocess)
 TEST_DECLARE   (ipc_tcp_connection)
 TEST_DECLARE   (ipc_send_zero)
-#ifndef _WIN32
-TEST_DECLARE   (ipc_closed_handle)
-#endif
 TEST_DECLARE   (tcp_alloc_cb_fail)
 TEST_DECLARE   (tcp_ping_pong)
 TEST_DECLARE   (tcp_ping_pong_vec)
@@ -320,6 +317,7 @@ TEST_DECLARE   (spawn_reads_child_path)
 TEST_DECLARE   (spawn_inherit_streams)
 TEST_DECLARE   (spawn_quoted_path)
 TEST_DECLARE   (spawn_tcp_server)
+TEST_DECLARE   (spawn_exercise_sigchld_issue)
 TEST_DECLARE   (fs_poll)
 TEST_DECLARE   (fs_poll_getpath)
 TEST_DECLARE   (fs_poll_close_request)
@@ -627,9 +625,6 @@ TASK_LIST_START
   TEST_ENTRY  (ipc_send_recv_tcp_inprocess)
   TEST_ENTRY  (ipc_tcp_connection)
   TEST_ENTRY  (ipc_send_zero)
-#ifndef _WIN32
-  TEST_ENTRY  (ipc_closed_handle)
-#endif
 
   TEST_ENTRY  (tcp_alloc_cb_fail)
 
@@ -950,6 +945,7 @@ TASK_LIST_START
   TEST_ENTRY  (spawn_inherit_streams)
   TEST_ENTRY  (spawn_quoted_path)
   TEST_ENTRY  (spawn_tcp_server)
+  TEST_ENTRY  (spawn_exercise_sigchld_issue)
   TEST_ENTRY  (fs_poll)
   TEST_ENTRY  (fs_poll_getpath)
   TEST_ENTRY  (fs_poll_close_request)
