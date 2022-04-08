@@ -21,23 +21,30 @@ jobs:
     - name: Install ninja-build tool
       uses: seanmiddleditch/gha-setup-ninja@v3
 
+
     - name: Install Qt
-      uses: jurplel/install-qt-action@v2
+      uses: jurplel/install-qt-action@v2.14.0
       with:
-        version: 6.2.1
+        version: 6.3.0
+        py7zrversion: ' '
+        aqtversion: ' '
+        setup-python: false
         target: android
         arch: android_${{ matrix.arch }}
 
     - name: Install Qt Host
-      uses: jurplel/install-qt-action@v2
+      uses: jurplel/install-qt-action@v2.14.0
       with:
-        version: 6.2.1
+        version: 6.3.0
+        py7zrversion: ' '
+        aqtversion: ' '
+        setup-python: false
         target: desktop
         set-env: false
 
     - name: Build
       run: |
-        sed -i "s,/home/qt/work/install,/home/runner/work/Qv2rayBase/Qt/6.2.0/gcc_64,g" $Qt6_DIR/lib/cmake/Qt6/qt.toolchain.cmake
+        sed -i "s,/home/qt/work/install,/home/runner/work/Qv2rayBase/Qt/6.3.0/gcc_64,g" $Qt6_DIR/lib/cmake/Qt6/qt.toolchain.cmake
         mkdir build; cd build
         $Qt6_DIR/bin/qt-cmake .. -GNinja \
           -DCMAKE_BUILD_TYPE=Release \

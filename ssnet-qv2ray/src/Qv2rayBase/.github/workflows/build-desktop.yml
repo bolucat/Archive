@@ -62,10 +62,12 @@ jobs:
       uses: ilammy/msvc-dev-cmd@v1
 
     - name: Install Qt
-      uses: jurplel/install-qt-action@v2
+      uses: jurplel/install-qt-action@v2.14.0
       with:
-        version: 6.2.1
-        arch: ${{ matrix.config.arch }}
+        version: 6.3.0
+        py7zrversion: ' '
+        aqtversion: ' '
+        setup-python: false
 
     - name: Build
       run: |

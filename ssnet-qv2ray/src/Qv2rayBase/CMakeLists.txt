@@ -144,7 +144,7 @@ target_link_libraries(Qv2rayBase
 if(WASM)
     target_compile_definitions(Qv2rayBase PUBLIC "-DQV2RAYBASE_NO_LIBUV")
 else()
-    target_link_libraries(Qv2rayBase PRIVATE Qv2ray::libuvw Qv2ray::libuv)
+    target_link_libraries(Qv2rayBase PRIVATE Qv2ray::libuvw)
 endif()
 
 include(CTest)

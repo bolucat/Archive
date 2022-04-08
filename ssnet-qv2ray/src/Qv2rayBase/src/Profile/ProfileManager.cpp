@@ -739,7 +739,7 @@ namespace Qv2rayBase::Profile
 #else
         try
         {
-            return process_subscription_func(fetch_decode_func(func_select_provider()));
+            return std::get<0>(process_subscription_func(fetch_decode_func(func_select_provider())));
         }
         catch (const std::runtime_error &e)
         {
