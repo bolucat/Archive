@@ -8,6 +8,7 @@ use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{async_runtime::Mutex, utils::platform::current_exe};
+use tauri::{AppHandle, Manager};
 
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -149,7 +150,7 @@ impl Verge {
     if let Some(sysproxy) = self.old_sysproxy.take() {
       match sysproxy.set_sys() {
         Ok(_) => self.cur_sysproxy = None,
-        Err(_) => log::error!("failed to reset proxy for"),
+        Err(_) => log::error!("failed to reset proxy"),
       }
     }
   }
@@ -242,7 +243,6 @@ impl Verge {
         if sysproxy.set_sys().is_err() {
           self.cur_sysproxy = Some(sysproxy);
 
-          log::error!("failed to set system proxy");
           bail!("failed to set system proxy");
         }
         self.cur_sysproxy = Some(sysproxy);
@@ -261,7 +261,6 @@ impl Verge {
           if sysproxy.set_sys().is_err() {
             self.cur_sysproxy = Some(sysproxy);
 
-            log::error!("failed to set system proxy");
             bail!("failed to set system proxy");
           }
         }
@@ -292,6 +291,35 @@ impl Verge {
     }
 
     self.config.save_file()
+  }
+
+  /// update the system tray state
+  pub fn update_systray(&self, app_handle: &AppHandle) -> Result<()> {
+    // system proxy
+    let system_proxy = self.config.enable_system_proxy.as_ref();
+    system_proxy.map(|system_proxy| {
+      app_handle
+        .tray_handle()
+        .get_item("system_proxy")
+        .set_selected(*system_proxy)
+        .unwrap();
+    });
+
+    // tun mode
+    let tun_mode = self.config.enable_tun_mode.as_ref();
+    tun_mode.map(|tun_mode| {
+      app_handle
+        .tray_handle()
+        .get_item("tun_mode")
+        .set_selected(*tun_mode)
+        .unwrap();
+    });
+
+    // update verge config
+    let window = app_handle.get_window("main").unwrap();
+    window.emit("verge://refresh-verge-config", "yes").unwrap();
+
+    Ok(())
   }
 }
 

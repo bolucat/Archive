@@ -1,6 +1,6 @@
 {
   "name": "clash-verge",
-  "version": "0.0.28",
+  "version": "0.0.29",
   "license": "GPL-3.0",
   "scripts": {
     "dev": "tauri dev",
@@ -10,16 +10,16 @@
     "web:build": "tsc && vite build",
     "web:serve": "vite preview",
     "check": "node scripts/check.mjs",
-    "green": "node scripts/green.mjs",
-    "publish": "node scripts/publish.mjs",
     "updater": "node scripts/updater.mjs",
+    "publish": "node scripts/publish.mjs",
+    "portable": "node scripts/portable.mjs",
     "prepare": "husky install"
   },
   "dependencies": {
     "@emotion/react": "^11.8.2",
     "@emotion/styled": "^11.8.1",
-    "@mui/icons-material": "^5.6.0",
-    "@mui/material": "^5.6.0",
+    "@mui/icons-material": "^5.6.1",
+    "@mui/material": "^5.6.1",
     "@tauri-apps/api": "^1.0.0-rc.3",
     "ahooks": "^3.2.0",
     "axios": "^0.26.0",

@@ -880,6 +880,15 @@ namespace v2rayN.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Speed Test... 的本地化字符串。
+        /// </summary>
+        internal static string Speedtesting {
+            get {
+                return ResourceManager.GetString("Speedtesting", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 PAC failed to start. Run it with Admin right. 的本地化字符串。
         /// </summary>
         internal static string StartPacFailed {
@@ -944,11 +953,20 @@ namespace v2rayN.Resx {
         }
         
         /// <summary>
-        ///   查找类似 The ping of current service: {0} 的本地化字符串。
+        ///   查找类似 The ping of current service: {0} ms 的本地化字符串。
         /// </summary>
         internal static string TestMeOutput {
             get {
                 return ResourceManager.GetString("TestMeOutput", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Too many servers, please open the main interface 的本地化字符串。
+        /// </summary>
+        internal static string TooManyServersTip {
+            get {
+                return ResourceManager.GetString("TooManyServersTip", resourceCulture);
             }
         }
         

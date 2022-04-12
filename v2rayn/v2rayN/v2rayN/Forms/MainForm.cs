@@ -83,12 +83,12 @@ namespace v2rayN.Forms
             RefreshRoutingsMenu();
             RestoreUI();
 
-            _ = LoadV2ray();
-
             HideForm();
 
             MainFormHandler.Instance.UpdateTask(config, UpdateTaskHandler);
             MainFormHandler.Instance.RegisterGlobalHotkey(config, OnHotkeyHandler, UpdateTaskHandler);
+
+            _ = LoadV2ray();
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -347,56 +347,32 @@ namespace v2rayN.Forms
         private void RefreshServersMenu()
         {
             menuServers.DropDownItems.Clear();
-            menuServers2.SelectedIndexChanged -= MenuServers2_SelectedIndexChanged;
-            menuServers2.Items.Clear();
-            menuServers.Visible = false;
-            menuServers2.Visible = false;
 
-            if (lstVmess.Count > 20)
+            if (lstVmess.Count > 30)
             {
-                for (int k = 0; k < lstVmess.Count; k++)
-                {
-                    VmessItem item = lstVmess[k];
-                    string name = item.GetSummary();
-
-                    if (config.IsActiveNode(item))
-                    {
-                        name = $"√ {name}";
-                    }
-                    menuServers2.Items.Add(name);
-
-                }
-                menuServers2.SelectedIndex = lstVmess.FindIndex(it => it.indexId == config.indexId);
-                menuServers2.SelectedIndexChanged += MenuServers2_SelectedIndexChanged;
-                menuServers2.Visible = true;
+                menuServers.DropDownItems.Add(new ToolStripMenuItem(ResUI.TooManyServersTip));
+                return;
             }
-            else
+
+            List<ToolStripMenuItem> lst = new List<ToolStripMenuItem>();
+            for (int k = 0; k < lstVmess.Count; k++)
             {
-                List<ToolStripMenuItem> lst = new List<ToolStripMenuItem>();
-                for (int k = 0; k < lstVmess.Count; k++)
+                VmessItem item = lstVmess[k];
+                string name = item.GetSummary();
+
+                ToolStripMenuItem ts = new ToolStripMenuItem(name)
                 {
-                    VmessItem item = lstVmess[k];
-                    string name = item.GetSummary();
-
-                    ToolStripMenuItem ts = new ToolStripMenuItem(name)
-                    {
-                        Tag = k
-                    };
-                    if (config.IsActiveNode(item))
-                    {
-                        ts.Checked = true;
-                    }
-                    ts.Click += new EventHandler(ts_Click);
-                    lst.Add(ts);
+                    Tag = k
+                };
+                if (config.IsActiveNode(item))
+                {
+                    ts.Checked = true;
                 }
-                menuServers.DropDownItems.AddRange(lst.ToArray());
-                menuServers.Visible = true;
+                ts.Click += new EventHandler(ts_Click);
+                lst.Add(ts);
             }
-        }
-
-        private void MenuServers2_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            SetDefaultServer(((ToolStripComboBox)sender).SelectedIndex);
+            menuServers.DropDownItems.AddRange(lst.ToArray());
+            menuServers.Visible = true;
         }
 
         private void ts_Click(object sender, EventArgs e)
@@ -472,7 +448,7 @@ namespace v2rayN.Forms
             tabPage.Name = "";
             tabGroup.TabPages.Add(tabPage);
 
-            foreach (var item in config.groupItem)
+            foreach (var item in config.groupItem.OrderBy(t => t.sort))
             {
                 var tabPage2 = new TabPage($"   {item.remarks}   ");
                 tabPage2.Name = item.id;
@@ -539,13 +515,15 @@ namespace v2rayN.Forms
         #endregion
 
         #region v2ray 操作
-
         /// <summary>
         /// 载入V2ray
         /// </summary>
         async Task LoadV2ray()
         {
-            tsbReload.Enabled = false;
+            this.BeginInvoke(new Action(() =>
+            {
+                tsbReload.Enabled = false;
+            }));
 
             if (Global.reloadV2ray)
             {
@@ -562,7 +540,10 @@ namespace v2rayN.Forms
 
             ChangePACButtonStatus(config.sysProxyType);
 
-            tsbReload.Enabled = true;
+            this.BeginInvoke(new Action(() =>
+            {
+                tsbReload.Enabled = true;
+            }));
         }
 
         /// <summary>
@@ -786,8 +767,8 @@ namespace v2rayN.Forms
 
         private void tsbTestMe_Click(object sender, EventArgs e)
         {
-            string result = (new DownloadHandle()).RunAvailabilityCheck(null) + "ms";
-            AppendText(false, string.Format(ResUI.TestMeOutput, result));
+            var updateHandle = new UpdateHandle();
+            updateHandle.RunAvailabilityCheck(UpdateTaskHandler);
         }
 
         private void menuClearStatistic_Click(object sender, EventArgs e)
@@ -881,9 +862,9 @@ namespace v2rayN.Forms
             var fm = new GlobalHotkeySettingForm();
             if (fm.ShowDialog() == DialogResult.OK)
             {
-                RefreshRoutingsMenu();
-                RefreshServers();
-                _ = LoadV2ray();
+                //RefreshRoutingsMenu();
+                //RefreshServers();
+                //_ = LoadV2ray();
             }
 
         }
@@ -1259,13 +1240,13 @@ namespace v2rayN.Forms
             }
         }
 
-        private void UpdateTaskHandler(bool success, string msg)
+        private async void UpdateTaskHandler(bool success, string msg)
         {
             AppendText(false, msg);
             if (success)
             {
                 Global.reloadV2ray = true;
-                _ = LoadV2ray();
+                await LoadV2ray();
             }
         }
         #endregion
@@ -1385,7 +1366,10 @@ namespace v2rayN.Forms
                     menuExit_Click(null, null);
                 }
             };
-            (new UpdateHandle()).CheckUpdateGuiN(config, _updateUI);
+            Task.Run(() =>
+            {
+                (new UpdateHandle()).CheckUpdateGuiN(config, _updateUI);
+            });
         }
 
         private void tsbCheckUpdateCore_Click(object sender, EventArgs e)
@@ -1418,7 +1402,10 @@ namespace v2rayN.Forms
                     AppendText(false, ResUI.MsgUpdateV2rayCoreSuccessfully);
                 }
             };
-            (new UpdateHandle()).CheckUpdateCore(type, config, _updateUI);
+            Task.Run(() =>
+            {
+                (new UpdateHandle()).CheckUpdateCore(type, config, _updateUI);
+            });
         }
 
         private void tsbCheckUpdateGeo_Click(object sender, EventArgs e)

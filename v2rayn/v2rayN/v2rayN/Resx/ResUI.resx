@@ -356,7 +356,7 @@
     <value>Scan import URL successfully</value>
   </data>
   <data name="TestMeOutput" xml:space="preserve">
-    <value>The ping of current service: {0}</value>
+    <value>The ping of current service: {0} ms</value>
   </data>
   <data name="OperationSuccess" xml:space="preserve">
     <value>Operation success</value>
@@ -456,5 +456,11 @@
   </data>
   <data name="SystemProxy" xml:space="preserve">
     <value>System proxy</value>
+  </data>
+  <data name="Speedtesting" xml:space="preserve">
+    <value>Speed Test...</value>
+  </data>
+  <data name="TooManyServersTip" xml:space="preserve">
+    <value>Too many servers, please open the main interface</value>
   </data>
 </root>
