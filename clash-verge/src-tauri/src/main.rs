@@ -10,7 +10,7 @@ mod utils;
 
 use crate::{
   core::VergeConfig,
-  utils::{dirs, resolve, server},
+  utils::{resolve, server},
 };
 use tauri::{
   api, CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
@@ -24,6 +24,8 @@ fn main() -> std::io::Result<()> {
 
   #[cfg(target_os = "windows")]
   unsafe {
+    use crate::utils::dirs;
+
     dirs::init_portable_flag();
   }
 
@@ -165,6 +167,10 @@ fn main() -> std::io::Result<()> {
         _ => {}
       },
       tauri::RunEvent::ExitRequested { .. } => {
+        resolve::resolve_reset(app_handle);
+        api::process::kill_children();
+      }
+      tauri::RunEvent::Exit => {
         resolve::resolve_reset(app_handle);
         api::process::kill_children();
       }
