@@ -3,9 +3,9 @@ package constant
 import "net"
 
 type WrappedConn interface {
-	RawConn() net.Conn
+	RawConn() (net.Conn, bool)
 }
 
 type WrappedPacketConn interface {
-	RawPacketConn() net.PacketConn
+	RawPacketConn() (net.PacketConn, bool)
 }

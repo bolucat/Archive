@@ -12,7 +12,6 @@ import (
 	C "github.com/Dreamacro/clash/constant"
 )
 
-
 func handleUDPToRemote(packet C.UDPPacket, pc net.PacketConn, metadata *C.Metadata) error {
 	pc = unwrapPacket(pc)
 
@@ -73,7 +72,12 @@ func handleSocket(ctx C.ConnContext, outbound net.Conn) {
 
 // relay copies between left and right bidirectionally.
 func relay(leftConn, rightConn net.Conn) {
+	leftConn = unwrap(leftConn)
 	rightConn = unwrap(rightConn)
+
+	if relayHijack(leftConn, rightConn) {
+		return
+	}
 
 	ch := make(chan error)
 
