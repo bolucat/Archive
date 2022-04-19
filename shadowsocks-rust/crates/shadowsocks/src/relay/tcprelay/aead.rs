@@ -48,7 +48,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{
     context::Context,
-    crypto::v1::{Cipher, CipherKind},
+    crypto::{v1::Cipher, CipherKind},
 };
 
 /// AEAD packet payload must be smaller than 0x3FFF
@@ -91,6 +91,10 @@ impl DecryptedReader {
                 salt: None,
             }
         }
+    }
+
+    pub fn salt(&self) -> Option<&[u8]> {
+        self.salt.as_deref()
     }
 
     /// Attempt to read decrypted data from stream
@@ -219,9 +223,8 @@ impl DecryptedReader {
         }
 
         // Check repeated salt after first successful decryption #442
-        if self.salt.is_some() {
-            let salt = self.salt.take().unwrap();
-            context.check_nonce_replay(&salt)?;
+        if let Some(ref salt) = self.salt {
+            context.check_nonce_replay(self.method, salt)?;
         }
 
         // Remote TAG
@@ -298,6 +301,7 @@ pub struct EncryptedWriter {
     cipher: Cipher,
     buffer: BytesMut,
     state: EncryptWriteState,
+    salt: Bytes,
 }
 
 impl EncryptedWriter {
@@ -311,7 +315,13 @@ impl EncryptedWriter {
             cipher: Cipher::new(method, key, nonce),
             buffer,
             state: EncryptWriteState::AssemblePacket,
+            salt: Bytes::copy_from_slice(nonce),
         }
+    }
+
+    /// Salt (nonce)
+    pub fn salt(&self) -> &[u8] {
+        self.salt.as_ref()
     }
 
     /// Attempt to write encrypted data into the writer

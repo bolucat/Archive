@@ -1,6 +1,5 @@
 use bloomfilter::Bloom;
 use log::debug;
-use spin::Mutex as SpinMutex;
 
 use crate::config::ServerType;
 
@@ -28,7 +27,7 @@ const BF_ERROR_RATE_FOR_CLIENT: f64 = 1e-15;
 //
 // It contains 2 bloom filters and each one holds 1/2 entries.
 // Use them as a ring buffer.
-struct PingPongBloom {
+pub struct PingPongBloom {
     blooms: [Bloom<[u8]>; 2],
     bloom_count: [usize; 2],
     item_count: usize,
@@ -90,34 +89,5 @@ impl PingPongBloom {
         self.bloom_count[self.current] += 1;
 
         false
-    }
-}
-
-/// A Bloom Filter based protector against replay attach
-pub struct ReplayProtector {
-    // Check for duplicated IV/Nonce, for prevent replay attack
-    // https://github.com/shadowsocks/shadowsocks-org/issues/44
-    nonce_ppbloom: SpinMutex<PingPongBloom>,
-}
-
-impl ReplayProtector {
-    /// Create a new ReplayProtector
-    pub fn new(config_type: ServerType) -> ReplayProtector {
-        ReplayProtector {
-            nonce_ppbloom: SpinMutex::new(PingPongBloom::new(config_type)),
-        }
-    }
-
-    /// Check if nonce exist or not
-    #[inline(always)]
-    pub fn check_nonce_and_set(&self, nonce: &[u8]) -> bool {
-        // Plain cipher doesn't have a nonce
-        // Always treated as non-duplicated
-        if nonce.is_empty() {
-            return false;
-        }
-
-        let mut ppbloom = self.nonce_ppbloom.lock();
-        ppbloom.check_and_set(nonce)
     }
 }
