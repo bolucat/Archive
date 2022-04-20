@@ -532,6 +532,13 @@ func (t *Template) AppendRoutingRuleByMode(mode configure.RulePortMode, inbounds
 		t.Routing.Rules = append(t.Routing.Rules,
 			coreObj.RoutingRule{
 				Type:        "field",
+				OutboundTag: "proxy",
+				InboundTag:  deepcopy.Copy(inbounds).([]string),
+				// https://github.com/v2rayA/v2rayA/issues/285
+				Domain: []string{"geosite:google"},
+			},
+			coreObj.RoutingRule{
+				Type:        "field",
 				OutboundTag: "direct",
 				InboundTag:  deepcopy.Copy(inbounds).([]string),
 				Domain:      []string{"geosite:cn"},
@@ -1540,6 +1547,8 @@ func NewTemplate(serverInfos []serverInfo, setting *configure.Setting) (t *Templ
 	if t.API == nil {
 		t.SetAPI()
 	}
+	// set spare tire outbound. Fix: https://github.com/v2rayA/v2rayA/issues/447
+	t.Routing.Rules = append(t.Routing.Rules, coreObj.RoutingRule{Type: "field", Network: "tcp,udp", OutboundTag: "proxy"})
 
 	// set routing whitelist
 	var whitelist []Addr
@@ -1759,7 +1768,7 @@ func (t *Template) InsertMappingOutbound(o serverObj.ServerObj, inboundPort stri
 		Protocol: protocol,
 		Listen:   "0.0.0.0",
 		Sniffing: coreObj.Sniffing{
-			Enabled:      true,
+			Enabled:      false,
 			DestOverride: []string{"http", "tls"},
 		},
 		Settings: &coreObj.InboundSettings{
