@@ -166,7 +166,10 @@ func server(config *serverConfig) {
 	// ACL
 	var aclEngine *acl.Engine
 	if len(config.ACL) > 0 {
-		aclEngine, err = acl.LoadFromFile(config.ACL, transport.DefaultServerTransport.ResolveIPAddr,
+		aclEngine, err = acl.LoadFromFile(config.ACL, func(addr string) (*net.IPAddr, error) {
+			ipAddr, _, err := transport.DefaultServerTransport.ResolveIPAddr(addr)
+			return ipAddr, err
+		},
 			func() (*geoip2.Reader, error) {
 				if len(config.MMDB) > 0 {
 					return loadMMDBReader(config.MMDB)
@@ -192,8 +195,9 @@ func server(config *serverConfig) {
 			logrus.WithField("error", err).Fatal("Prometheus HTTP server error")
 		}()
 	}
+	up, down, _ := config.Speed()
 	server, err := core.NewServer(config.Listen, config.Protocol, tlsConfig, quicConfig, transport.DefaultServerTransport,
-		uint64(config.UpMbps)*mbpsToBps, uint64(config.DownMbps)*mbpsToBps,
+		up, down,
 		func(refBPS uint64) congestion.CongestionControl {
 			return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 		}, config.DisableUDP, aclEngine, obfuscator, connectFunc, disconnectFunc,
