@@ -64,6 +64,7 @@ we can set up local listeners as proxy servers, and forward requests to internet
 |TLS            |√| |√| |transport client & server
 |KCP            | |√|√| |transport client & server
 |Unix           |√|√|√|√|transport client & server
+|VSOCK          |√| |√| |transport client & server
 |Smux           |√| |√| |transport client & server
 |Websocket(WS)  |√| |√| |transport client & server
 |WS Secure      |√| |√| |websocket secure (wss)
@@ -81,6 +82,7 @@ we can set up local listeners as proxy servers, and forward requests to internet
 - Binary: [https://github.com/nadoo/glider/releases](https://github.com/nadoo/glider/releases)
 - Docker: `docker pull nadoo/glider`
 - ArchLinux: `sudo pacman -S glider`
+- Source: `go install github.com/nadoo/glider@latest`
 
 ## Usage
 
@@ -91,6 +93,7 @@ glider -config CONFIG_PATH
 ```
 ```bash
 glider -verbose -listen :8443 -forward SCHEME://HOST:PORT
+# docker run --rm -it nadoo/glider -verbose -listen :8443
 ```
 
 #### Help
@@ -193,8 +196,8 @@ URL:
          -forward socks5://serverA:1080,socks5://serverB:1080           (proxy chain)
 
 SCHEME:
-   listen : http kcp mixed pxyproto redir redir6 smux sni socks5 ss tcp tls tproxy trojan trojanc udp unix vless ws wss
-   forward: direct http kcp reject simple-obfs smux socks4 socks4a socks5 ss ssh ssr tcp tls trojan trojanc udp unix vless vmess ws wss
+   listen : http kcp mixed pxyproto redir redir6 smux sni socks5 ss tcp tls tproxy trojan trojanc udp unix vless vsock ws wss
+   forward: direct http kcp reject simple-obfs smux socks4 socks4a socks5 ss ssh ssr tcp tls trojan trojanc udp unix vless vmess vsock ws wss
 
    Note: use 'glider -scheme all' or 'glider -scheme SCHEME' to see help info for the scheme.
 
@@ -220,7 +223,7 @@ Help:
 
 see README.md and glider.conf.example for more details.
 --
-glider 0.16.0, https://github.com/nadoo/glider (glider.proxy@gmail.com)
+glider 0.16.1, https://github.com/nadoo/glider (glider.proxy@gmail.com)
 ```
 
 </details>
@@ -348,6 +351,12 @@ TLS and Websocket with a specified proxy protocol:
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],http://[user:pass@]
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],socks5://[user:pass@]
   tls://host:port[?skipVerify=true],ws://[@/path[?host=HOST]],vmess://[security:]uuid@?alterID=num
+
+--
+VM socket scheme(linux only):
+  vsock://[CID]:port
+
+  if you want to listen on any address, just set CID to 4294967295.
 ```
 
 </details>
@@ -411,7 +420,7 @@ Examples:
   - note: `dhcpd-failover` only serves requests when there's no other dhcp server exists in lan
     - detect interval: 1min
 
-## Linux Service
+## Linux Daemon
 
 - systemd: [https://github.com/nadoo/glider/blob/master/systemd/](https://github.com/nadoo/glider/blob/master/systemd/)
 
@@ -421,6 +430,7 @@ Examples:
     ```
     docker run -d --name glider --net host --restart=always \
       -v /etc/glider:/etc/glider \
+      -v /etc/localtime:/etc/localtime:ro \
       nadoo/glider -config=/etc/glider/glider.conf
     ```
   - run watchtower (if you need auto update for glider)

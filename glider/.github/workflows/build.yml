@@ -11,7 +11,7 @@ env:
   APP_NAME: glider
   DOCKERHUB_REPO: nadoo/glider
   GHCR_REPO: ghcr.io/nadoo/glider
-  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64
+  PLATFORMS: linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/riscv64
 
 jobs:
   build:
@@ -62,7 +62,7 @@ jobs:
         with:
           name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-linux-amd64
           path: |
-            ./dist/default_linux_amd64/${{ env.APP_NAME }}
+            ./dist/default_linux_amd64_v1/${{ env.APP_NAME }}
 
       - name: Upload Artifact - Linux arm64
         uses: actions/upload-artifact@v3
@@ -86,7 +86,7 @@ jobs:
         with:
           name: ${{ env.APP_NAME }}-dev-${{ env.SHA_SHORT }}-windows-amd64
           path: |
-            ./dist/default_windows_amd64/${{ env.APP_NAME }}.exe
+            ./dist/default_windows_amd64_v1/${{ env.APP_NAME }}.exe
 
       - name: Release
         uses: goreleaser/goreleaser-action@v2
@@ -96,9 +96,6 @@ jobs:
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker - Set up QEMU
-        uses: docker/setup-qemu-action@v1
 
       - name: Docker - Set up Buildx
         id: buildx

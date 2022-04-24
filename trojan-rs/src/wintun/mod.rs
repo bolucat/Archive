@@ -23,9 +23,9 @@ use crate::{
     types::Result,
     wintun::{
         ipset::{is_private, IPSet},
-        tcp::TcpServer,
+        tcp1::TcpServer,
         tun::TunInterface,
-        udp::UdpServer,
+        udp1::UdpServer,
         waker::Wakers,
     },
     OPTIONS,
@@ -33,9 +33,9 @@ use crate::{
 
 mod ipset;
 mod route;
-mod tcp;
+mod tcp1;
 mod tun;
-mod udp;
+mod udp1;
 mod waker;
 
 pub(crate) type SocketSet<'a> = Interface<'a, TunInterface>;
@@ -253,8 +253,7 @@ fn do_tun_read(
                 );
                 let handle = sockets.add_socket(socket);
                 let socket = sockets.get_socket::<TcpSocket>(handle);
-                let (rx, tx) = tcp_wakers.get_wakers(handle);
-                socket.register_recv_waker(rx);
+                let (_, tx) = tcp_wakers.get_wakers(handle);
                 socket.register_send_waker(tx);
                 socket.listen(dst_endpoint).unwrap();
                 socket.set_nagle_enabled(false);
@@ -375,7 +374,7 @@ pub fn run() -> Result<()> {
                     pool.ready(event, &poll);
                 }
                 i if i % CHANNEL_CNT == CHANNEL_UDP => {
-                    udp_server.do_remote(event, &poll, &mut interface, &mut udp_wakers);
+                    udp_server.do_remote(event, &poll, &mut interface);
                 }
                 _ => {
                     tcp_server.do_remote(event, &poll, &mut interface, &mut tcp_wakers);

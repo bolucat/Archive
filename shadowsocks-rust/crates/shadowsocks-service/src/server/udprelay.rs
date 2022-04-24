@@ -86,6 +86,7 @@ pub struct UdpServer {
     keepalive_rx: mpsc::Receiver<NatKey>,
     time_to_live: Duration,
     accept_opts: AcceptOpts,
+    worker_count: usize,
 }
 
 impl UdpServer {
@@ -127,7 +128,13 @@ impl UdpServer {
             keepalive_rx,
             time_to_live,
             accept_opts,
+            worker_count: 1,
         }
+    }
+
+    #[inline]
+    pub fn set_worker_count(&mut self, worker_count: usize) {
+        self.worker_count = worker_count;
     }
 
     pub async fn run(mut self, svr_cfg: &ServerConfig) -> io::Result<()> {
@@ -141,9 +148,76 @@ impl UdpServer {
         let socket = MonProxySocket::from_socket(socket, self.context.flow_stat());
         let listener = Arc::new(socket);
 
-        let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
         let mut cleanup_timer = time::interval(self.time_to_live);
 
+        let mut orx_opt = None;
+
+        let cpus = self.worker_count;
+        let mut other_receivers = Vec::new();
+        if cpus > 1 {
+            let (otx, orx) = mpsc::channel((cpus - 1) * 16);
+            orx_opt = Some(orx);
+
+            other_receivers.reserve(cpus - 1);
+            trace!("udp server starting extra {} recv workers", cpus - 1);
+
+            for _ in 1..cpus {
+                let otx = otx.clone();
+                let listener = listener.clone();
+                let context = self.context.clone();
+
+                other_receivers.push(tokio::spawn(async move {
+                    let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
+
+                    loop {
+                        let (n, peer_addr, target_addr, control) =
+                            match UdpServer::recv_one_packet(&context, &listener, &mut buffer).await {
+                                Some(s) => s,
+                                None => continue,
+                            };
+
+                        if let Err(..) = otx
+                            .send((peer_addr, target_addr, control, Bytes::copy_from_slice(&buffer[..n])))
+                            .await
+                        {
+                            // If Result is error, the channel receiver is closed. We should exit the task.
+                            break;
+                        }
+                    }
+                }));
+            }
+        }
+
+        struct MulticoreTaskGuard<'a> {
+            tasks: &'a mut Vec<JoinHandle<()>>,
+        }
+
+        impl Drop for MulticoreTaskGuard<'_> {
+            fn drop(&mut self) {
+                for task in self.tasks.iter_mut() {
+                    task.abort();
+                }
+            }
+        }
+
+        let _guard = MulticoreTaskGuard {
+            tasks: &mut other_receivers,
+        };
+
+        #[inline]
+        async fn multicore_recv(
+            orx_opt: &mut Option<mpsc::Receiver<(SocketAddr, Address, Option<UdpSocketControlData>, Bytes)>>,
+        ) -> (SocketAddr, Address, Option<UdpSocketControlData>, Bytes) {
+            match orx_opt {
+                None => future::pending().await,
+                Some(ref mut orx) => match orx.recv().await {
+                    Some(t) => t,
+                    None => unreachable!("multicore sender should keep at least 1"),
+                },
+            }
+        }
+
+        let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
         loop {
             tokio::select! {
                 _ = cleanup_timer.tick() => {
@@ -156,41 +230,14 @@ impl UdpServer {
                     self.assoc_map.keep_alive(&peer_addr);
                 }
 
-                recv_result = listener.recv_from_with_ctrl(&mut buffer) => {
+                recv_result = UdpServer::recv_one_packet(&self.context, &listener, &mut buffer) => {
                     let (n, peer_addr, target_addr, control) = match recv_result {
-                        Ok(s) => s,
-                        Err(err) => {
-                            error!("udp server recv_from failed with error: {}", err);
-                            continue;
-                        }
+                        Some(s) => s,
+                        None => continue,
                     };
 
-                    if n == 0 {
-                        // For windows, it will generate a ICMP Port Unreachable Message
-                        // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-recvfrom
-                        // Which will result in recv_from return 0.
-                        //
-                        // It cannot be solved here, because `WSAGetLastError` is already set.
-                        //
-                        // See `relay::udprelay::utils::create_socket` for more detail.
-                        continue;
-                    }
-
-                    if self.context.check_client_blocked(&peer_addr) {
-                        warn!(
-                            "udp client {} outbound {} access denied by ACL rules",
-                            peer_addr, target_addr
-                        );
-                        continue;
-                    }
-
-                    if self.context.check_outbound_blocked(&target_addr).await {
-                        warn!("udp client {} outbound {} blocked by ACL rules", peer_addr, target_addr);
-                        continue;
-                    }
-
                     let data = &buffer[..n];
-                    if let Err(err) = self.send_packet(&listener, peer_addr, target_addr, control, data).await {
+                    if let Err(err) = self.send_packet(&listener, peer_addr, target_addr, control, Bytes::copy_from_slice(data)).await {
                         debug!(
                             "udp packet relay {} with {} bytes failed, error: {}",
                             peer_addr,
@@ -199,8 +246,61 @@ impl UdpServer {
                         );
                     }
                 }
+
+                recv_result = multicore_recv(&mut orx_opt), if orx_opt.is_some() => {
+                    let (peer_addr, target_addr, control, data) = recv_result;
+                    let data_len = data.len();
+                    if let Err(err) = self.send_packet(&listener, peer_addr, target_addr, control, data).await {
+                        debug!(
+                            "udp packet relay {} with {} bytes failed, error: {}",
+                            peer_addr,
+                            data_len,
+                            err
+                        );
+                    }
+                }
             }
         }
+    }
+
+    async fn recv_one_packet(
+        context: &ServiceContext,
+        l: &MonProxySocket,
+        buffer: &mut [u8],
+    ) -> Option<(usize, SocketAddr, Address, Option<UdpSocketControlData>)> {
+        let (n, peer_addr, target_addr, control) = match l.recv_from_with_ctrl(buffer).await {
+            Ok(s) => s,
+            Err(err) => {
+                error!("udp server recv_from failed with error: {}", err);
+                return None;
+            }
+        };
+
+        if n == 0 {
+            // For windows, it will generate a ICMP Port Unreachable Message
+            // https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-recvfrom
+            // Which will result in recv_from return 0.
+            //
+            // It cannot be solved here, because `WSAGetLastError` is already set.
+            //
+            // See `relay::udprelay::utils::create_socket` for more detail.
+            return None;
+        }
+
+        if context.check_client_blocked(&peer_addr) {
+            warn!(
+                "udp client {} outbound {} access denied by ACL rules",
+                peer_addr, target_addr
+            );
+            return None;
+        }
+
+        if context.check_outbound_blocked(&target_addr).await {
+            warn!("udp client {} outbound {} blocked by ACL rules", peer_addr, target_addr);
+            return None;
+        }
+
+        Some((n, peer_addr, target_addr, control))
     }
 
     async fn send_packet(
@@ -209,12 +309,12 @@ impl UdpServer {
         peer_addr: SocketAddr,
         target_addr: Address,
         control: Option<UdpSocketControlData>,
-        data: &[u8],
+        data: Bytes,
     ) -> io::Result<()> {
         match self.assoc_map {
             NatMap::Association(ref mut m) => {
                 if let Some(assoc) = m.get(&peer_addr) {
-                    return assoc.try_send((peer_addr, target_addr, Bytes::copy_from_slice(data), control));
+                    return assoc.try_send((peer_addr, target_addr, data.into(), control));
                 }
 
                 let assoc = UdpAssociation::new_association(
@@ -226,7 +326,7 @@ impl UdpServer {
 
                 debug!("created udp association for {}", peer_addr);
 
-                assoc.try_send((peer_addr, target_addr, Bytes::copy_from_slice(data), control))?;
+                assoc.try_send((peer_addr, target_addr, data.into(), control))?;
                 m.insert(peer_addr, assoc);
             }
             #[cfg(feature = "aead-cipher-2022")]
@@ -242,7 +342,7 @@ impl UdpServer {
                 let client_session_id = xcontrol.client_session_id;
 
                 if let Some(assoc) = m.get(&client_session_id) {
-                    return assoc.try_send((peer_addr, target_addr, Bytes::copy_from_slice(data), control));
+                    return assoc.try_send((peer_addr, target_addr, data.into(), control));
                 }
 
                 let assoc = UdpAssociation::new_session(
@@ -258,7 +358,7 @@ impl UdpServer {
                     peer_addr, client_session_id
                 );
 
-                assoc.try_send((peer_addr, target_addr, Bytes::copy_from_slice(data), control))?;
+                assoc.try_send((peer_addr, target_addr, data.into(), control))?;
                 m.insert(client_session_id, assoc);
             }
         }
@@ -406,7 +506,7 @@ impl UdpAssociationContext {
                     self.dispatch_received_packet(peer_addr, &target_addr, &data, &control).await;
                 }
 
-                received_opt = receive_from_outbound_opt(&self.outbound_ipv4_socket, &mut outbound_ipv4_buffer) => {
+                received_opt = receive_from_outbound_opt(&self.outbound_ipv4_socket, &mut outbound_ipv4_buffer), if self.outbound_ipv4_socket.is_some() => {
                     let (n, addr) = match received_opt {
                         Ok(r) => r,
                         Err(err) => {
@@ -421,7 +521,7 @@ impl UdpAssociationContext {
                     self.send_received_respond_packet(&addr, &outbound_ipv4_buffer[..n]).await;
                 }
 
-                received_opt = receive_from_outbound_opt(&self.outbound_ipv6_socket, &mut outbound_ipv6_buffer) => {
+                received_opt = receive_from_outbound_opt(&self.outbound_ipv6_socket, &mut outbound_ipv6_buffer), if self.outbound_ipv6_socket.is_some() => {
                     let (n, addr) = match received_opt {
                         Ok(r) => r,
                         Err(err) => {

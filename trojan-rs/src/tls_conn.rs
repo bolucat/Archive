@@ -1,11 +1,12 @@
 use std::{
-    io::{ErrorKind, Read, Write},
+    io::{Error, ErrorKind, Read, Write},
     net::Shutdown,
 };
 
-use crate::status::{ConnStatus, StatusProvider};
 use mio::{net::TcpStream, Interest, Poll, Token};
 use rustls::Connection;
+
+use crate::status::{ConnStatus, StatusProvider};
 
 pub struct TlsConn {
     session: Connection,
@@ -14,6 +15,78 @@ pub struct TlsConn {
     token: Token,
     status: ConnStatus,
     writable: bool,
+}
+
+impl TlsConn {
+    pub(crate) fn close(&mut self, poll: &Poll) {
+        let _ = self.stream.shutdown(Shutdown::Both);
+        let _ = poll.registry().deregister(&mut self.stream);
+    }
+}
+
+impl Read for TlsConn {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let ret = self.session.reader().read(buf);
+        log::info!("reader.read return {:?}", ret);
+        match ret {
+            Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                let ret = self.session.read_tls(&mut self.stream);
+                log::info!("session.read_tls return {:?}", err);
+                match ret {
+                    Ok(n) => {
+                        log::info!("read {} byte tls data from stream", n);
+                        if let Err(err) = self.session.process_new_packets() {
+                            Err(Error::new(ErrorKind::InvalidData, err))
+                        } else {
+                            log::info!("process new packets success");
+                            self.read(buf)
+                        }
+                    }
+                    Err(err) if err.kind() == ErrorKind::NotConnected => {
+                        Err(ErrorKind::WouldBlock.into())
+                    }
+                    ret => ret,
+                }
+            }
+            ret => ret,
+        }
+    }
+}
+
+impl Write for TlsConn {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let ret = self.session.writer().write(buf);
+        log::info!("writer.write return {:?}", ret);
+        match ret {
+            Ok(0) => {
+                let ret = self.session.write_tls(&mut self.stream);
+                log::info!("session.write_tls return {:?}", ret);
+                match ret {
+                    Err(err) if err.kind() == ErrorKind::NotConnected => {
+                        Err(ErrorKind::WouldBlock.into())
+                    }
+                    Ok(m) if m > 0 => self.write(buf),
+                    ret => ret,
+                }
+            }
+            ret => ret,
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.session
+            .write_tls(&mut self.stream)
+            .map(|n| {
+                log::info!("flush {} bytes tls data to stream", n);
+            })
+            .map_err(|err| {
+                if err.kind() == ErrorKind::NotConnected {
+                    ErrorKind::WouldBlock.into()
+                } else {
+                    err
+                }
+            })
+    }
 }
 
 impl TlsConn {
@@ -33,6 +106,17 @@ impl TlsConn {
         self.index = index;
         self.token = token;
         self.reregister(poll)
+    }
+
+    pub fn set_token(&mut self, token: Token, poll: &Poll) -> bool {
+        self.token = token;
+        poll.registry()
+            .reregister(
+                &mut self.stream,
+                self.token,
+                Interest::WRITABLE | Interest::READABLE,
+            )
+            .is_ok()
     }
 
     pub fn reregister(&mut self, poll: &Poll) -> bool {
@@ -84,14 +168,18 @@ impl TlsConn {
                         size
                     );
                 }
-                Err(err) if err.kind() == ErrorKind::WouldBlock => {
+                Err(err)
+                    if err.kind() == ErrorKind::WouldBlock
+                        || err.kind() == ErrorKind::NotConnected =>
+                {
                     log::debug!("connection:{} read from server blocked", self.index());
                     break;
                 }
                 Err(err) => {
                     log::info!(
-                        "connection:{} read from server failed:{}",
+                        "connection:{} read from server failed:{}-{}",
                         self.index(),
+                        err.kind(),
                         err
                     );
                     self.shutdown();

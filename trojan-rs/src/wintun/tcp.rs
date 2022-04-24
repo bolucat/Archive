@@ -1,4 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    io::{Error, ErrorKind},
+    sync::Arc,
+    time::Instant,
+};
 
 use bytes::BytesMut;
 use mio::{event::Event, Poll, Token};
@@ -17,6 +22,34 @@ use crate::{
     wintun::{waker::Wakers, SocketSet, CHANNEL_CNT, CHANNEL_TCP, MAX_INDEX, MIN_INDEX},
     OPTIONS,
 };
+
+pub struct TcpStreamRef<'a, 'b> {
+    socket: &'a mut TcpSocket<'b>,
+}
+
+impl<'a, 'b> std::io::Read for TcpStreamRef<'a, 'b> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.socket.recv_slice(buf) {
+            Ok(0) => Err(ErrorKind::WouldBlock.into()),
+            Ok(n) => Ok(n),
+            Err(err) => Err(Error::new(ErrorKind::UnexpectedEof, err)),
+        }
+    }
+}
+
+impl<'a, 'b> std::io::Write for TcpStreamRef<'a, 'b> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self.socket.send_slice(buf) {
+            Ok(0) => Err(ErrorKind::WouldBlock.into()),
+            Ok(n) => Ok(n),
+            Err(err) => Err(Error::new(ErrorKind::UnexpectedEof, err)),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 fn next_index() -> usize {
     static mut NEXT_INDEX: usize = MIN_INDEX;
@@ -300,9 +333,11 @@ impl Connection {
     fn try_recv_client(&mut self, poll: &Poll, sockets: &mut SocketSet) {
         let socket = sockets.get_socket::<TcpSocket>(self.handle);
         let buffer = self.recv_buffer.as_mut_slice();
+        let mut count = 0;
         while socket.may_recv() {
             match socket.recv_slice(buffer) {
                 Ok(size) => {
+                    count += size;
                     log::info!("receive {} bytes from client", size);
                     if size == 0 || !self.conn.write_session(&buffer[..size]) {
                         break;
@@ -321,7 +356,9 @@ impl Connection {
             self.try_close(poll, sockets);
         }
 
-        self.do_send_server(poll, sockets);
+        if count > 0 {
+            self.do_send_server(poll, sockets);
+        }
     }
 
     fn try_send_client(&mut self, sockets: &mut SocketSet, data: &[u8]) {
