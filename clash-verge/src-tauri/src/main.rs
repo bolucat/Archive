@@ -85,8 +85,7 @@ fn main() -> std::io::Result<()> {
         }
         "quit" => {
           resolve::resolve_reset(app_handle);
-          api::process::kill_children();
-          std::process::exit(0);
+          app_handle.exit(0);
         }
         _ => {}
       },
@@ -129,6 +128,7 @@ fn main() -> std::io::Result<()> {
       cmds::save_profile_file,
       // service mode
       cmds::service::start_service,
+      cmds::service::stop_service,
       cmds::service::check_service,
       cmds::service::install_service,
       cmds::service::uninstall_service,
