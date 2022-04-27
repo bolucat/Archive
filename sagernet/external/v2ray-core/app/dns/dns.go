@@ -3,14 +3,12 @@ package dns
 import (
 	"context"
 	"encoding/binary"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/net/dns/dnsmessage"
-	"net/netip"
 
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -21,6 +19,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen

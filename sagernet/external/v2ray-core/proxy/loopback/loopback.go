@@ -36,9 +36,7 @@ func (l *Loopback) Process(ctx context.Context, link *transport.Link, _ internet
 		ctx = session.ContextWithContent(ctx, content)
 	}
 	content.SkipDNSResolve = true
-	l.dispatcher.DispatchLink(ctx, destination, link)
-	<-ctx.Done()
-	return ctx.Err()
+	return l.dispatcher.DispatchLink(ctx, destination, link)
 }
 
 func (l *Loopback) init(config *Config, dispatcher routing.Dispatcher) error {

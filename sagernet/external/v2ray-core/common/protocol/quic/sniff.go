@@ -9,12 +9,11 @@ import (
 
 	"github.com/lucas-clemente/quic-go/quicvarint"
 	"github.com/marten-seemann/qtls-go1-17"
-	"golang.org/x/crypto/hkdf"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	ptls "github.com/v2fly/v2ray-core/v5/common/protocol/tls"
+	"golang.org/x/crypto/hkdf"
 )
 
 type SniffHeader struct {

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::{mem::MaybeUninit, ptr};
+
 use widestring::U16Str;
 use winapi::{
     shared::{
@@ -58,6 +59,18 @@ pub fn get_main_adapter_ip() -> Option<String> {
                 ret = Some(ip);
                 true
             }
+        })
+    }
+    ret
+}
+
+pub fn get_main_adapter_gwif() -> Option<(String, u32)> {
+    let mut ret = None;
+    unsafe {
+        get_adapters(|adapter| {
+            let ip = get_string(&adapter.GatewayList.IpAddress.String);
+            ret = Some((ip.clone(), adapter.Index));
+            !ip.is_empty()
         })
     }
     ret

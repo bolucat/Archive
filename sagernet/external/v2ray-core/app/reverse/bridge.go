@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/v2fly/v2ray-core/v5/common/mux"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/session"
@@ -13,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
+	"google.golang.org/protobuf/proto"
 )
 
 // Bridge is a component in reverse proxy, that relays connections from Portal to local address.

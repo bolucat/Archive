@@ -3,6 +3,7 @@ package libcore
 import (
 	"context"
 	"net"
+	"net/netip"
 	"strings"
 	"syscall"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"golang.org/x/net/dns/dnsmessage"
 	"libcore/comm"
-	"net/netip"
 )
 
 type QueryContext struct {

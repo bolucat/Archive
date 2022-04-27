@@ -25,3 +25,11 @@ func (r *Reader) ReadMultiBufferTimeout(d time.Duration) (buf.MultiBuffer, error
 func (r *Reader) Interrupt() {
 	r.pipe.Interrupt()
 }
+
+func (r *Reader) IsPipe() bool {
+	return true
+}
+
+func (r *Reader) ReadMultiBufferCached() (buf.MultiBuffer, error) {
+	return r.pipe.readMultiBufferInternal()
+}

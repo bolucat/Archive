@@ -6,8 +6,6 @@ package buf
 import (
 	"io"
 	"syscall"
-
-	"github.com/v2fly/v2ray-core/v5/common/platform"
 )
 
 type allocStrategy struct {
@@ -136,11 +134,11 @@ func (r *ReadVReader) ReadMultiBuffer() (MultiBuffer, error) {
 
 var useReadv = false
 
-func init() {
+/*func init() {
 	const defaultFlagValue = "NOT_DEFINED_AT_ALL"
 	value := platform.NewEnvFlag("v2ray.buf.readv").GetValue(func() string { return defaultFlagValue })
 	switch value {
 	case defaultFlagValue, "auto", "enable":
 		useReadv = true
 	}
-}
+}*/

@@ -3,10 +3,9 @@ package commander
 import (
 	"context"
 
+	"github.com/v2fly/v2ray-core/v5/common"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-
-	"github.com/v2fly/v2ray-core/v5/common"
 )
 
 // Service is a Commander service.

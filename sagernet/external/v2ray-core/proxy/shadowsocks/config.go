@@ -19,16 +19,15 @@ import (
 	"github.com/dgryski/go-rc2"
 	"github.com/geeksbaek/seed"
 	"github.com/kierdavis/cfb8"
-	"golang.org/x/crypto/blowfish"
-	"golang.org/x/crypto/cast5"
-	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/crypto/hkdf"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/antireplay"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/crypto"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"golang.org/x/crypto/blowfish"
+	"golang.org/x/crypto/cast5"
+	"golang.org/x/crypto/chacha20poly1305"
+	"golang.org/x/crypto/hkdf"
 )
 
 // MemoryAccount is an account type converted from Account.

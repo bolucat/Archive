@@ -1,9 +1,15 @@
 package libcore
 
+import "C"
 import (
 	"context"
 	"fmt"
+	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
+	"golang.org/x/sys/unix"
 	"io"
+
+	//C "github.com/sagernet/sing/common"
+	E "github.com/sagernet/sing/common/exceptions"
 	"math"
 	"net"
 	"os"
@@ -19,15 +25,11 @@ import (
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
 	"github.com/v2fly/v2ray-core/v5/common/session"
-	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
-	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
 	"github.com/v2fly/v2ray-core/v5/proxy/wireguard"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
-	"github.com/v2fly/v2ray-core/v5/transport/pipe"
-	"golang.org/x/sys/unix"
 	"libcore/comm"
 	"libcore/gvisor"
 	"libcore/nat"
@@ -267,26 +269,84 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	element := v2rayNet.AddConnection(conn)
 	defer v2rayNet.RemoveConnection(element)
 
-	reader, input := pipe.New()
-	defer comm.CloseIgnore(input)
 	link := &transport.Link{
-		Reader: reader,
-		Writer: connWriter{conn, buf.NewWriter(conn)},
+		Reader: &connReader{conn},
+		Writer: &connWriter{conn},
 	}
-	err := t.v2ray.dispatcher.DispatchLink(ctx, destination, link)
-	if err != nil {
-		newError("[TCP] dispatchLink failed: ", err).WriteToLog()
-		return
-	}
+	_ = t.v2ray.dispatcher.DispatchLink(ctx, destination, link)
+}
 
-	task.Run(ctx, func() error {
-		return buf.Copy(buf.NewReader(conn), input)
-	})
+type connReader struct {
+	net.Conn
+}
+
+func (r *connReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	buffer := buf.New()
+	_, err := buffer.ReadFrom(r.Conn)
+	if err != nil {
+		buffer.Release()
+		return nil, err
+	}
+	return buf.MultiBuffer{buffer}, nil
+}
+
+func (r *connReader) ReadMultiBufferTimeout(duration time.Duration) (buf.MultiBuffer, error) {
+	err := r.SetReadDeadline(time.Now().Add(duration))
+	if err != nil {
+		return nil, err
+	}
+	buffer := buf.New()
+	_, err = buffer.ReadFrom(r.Conn)
+	_ = r.SetReadDeadline(time.Time{})
+	if err == nil {
+		return buf.MultiBuffer{buffer}, nil
+	}
+	buffer.Release()
+	if E.IsTimeout(err) {
+		err = buf.ErrReadTimeout
+	}
+	return nil, err
 }
 
 type connWriter struct {
 	net.Conn
-	buf.Writer
+}
+
+func (w *connWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	defer buf.ReleaseMulti(mb)
+	/*if mb.IsEmpty() {
+		return nil
+	}
+	if mb.Len() == 1 {
+		_, err := w.Write(mb[0].Bytes())
+		return err
+	}
+	_payload := B.StackNew()
+	payload := C.Dup(_payload)
+	for {
+		payload.FullReset()
+		nb, n := buf.SplitBytes(mb, payload.FreeBytes())
+		if n > 0 {
+			payload.Truncate(n)
+			_, err := w.Write(payload.Bytes())
+			if err != nil {
+				return err
+			}
+		}
+		if nb.IsEmpty() {
+			break
+		} else {
+			mb = nb
+		}
+	}
+	*/
+	for _, buffer := range mb {
+		_, err := w.Write(buffer.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.Destination, data *buf.Buffer, writeBack func([]byte, *net.UDPAddr) (int, error), closer io.Closer) {

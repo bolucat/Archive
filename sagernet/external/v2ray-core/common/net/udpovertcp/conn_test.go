@@ -3,12 +3,11 @@ package udpovertcp_test
 import (
 	"testing"
 
-	"golang.org/x/net/dns/dnsmessage"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 func TestServerConn(t *testing.T) {

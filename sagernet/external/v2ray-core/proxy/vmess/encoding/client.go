@@ -13,8 +13,6 @@ import (
 	"hash/fnv"
 	"io"
 
-	"golang.org/x/crypto/chacha20poly1305"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/bitmask"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -25,6 +23,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess"
 	vmessaead "github.com/v2fly/v2ray-core/v5/proxy/vmess/aead"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 func hashTimestamp(h hash.Hash, t protocol.Timestamp) []byte {

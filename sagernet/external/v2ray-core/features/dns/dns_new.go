@@ -5,10 +5,9 @@ import (
 	"io"
 	"time"
 
-	"golang.org/x/net/dns/dnsmessage"
-
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 const DefaultTimeout = time.Second * 5

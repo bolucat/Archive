@@ -44,7 +44,8 @@ object SIP008Updater : GroupUpdater() {
         val sip008Response: JSONObject
         if (link.startsWith("content://")) {
             val contentText = app.contentResolver.openInputStream(Uri.parse(link))
-                ?.use { it.bufferedReader().readText() }
+                ?.bufferedReader()
+                ?.readText()
 
             sip008Response = contentText?.let { JSONObject(contentText) }
                 ?: error(app.getString(R.string.no_proxies_found_in_subscription))
@@ -193,9 +194,6 @@ object SIP008Updater : GroupUpdater() {
     fun appendExtraInfo(profile: JSONObject, bean: AbstractBean) {
         bean.extraType = ExtraType.SIP008
         bean.profileId = profile.getStr("id")
-        if (bean.profileId.isNullOrBlank()) {
-            error("bad format: missing server UUID")
-        }
     }
 
 }

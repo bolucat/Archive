@@ -3,14 +3,13 @@ package v2jsonpb
 import (
 	"io"
 
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/cmdarg"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen

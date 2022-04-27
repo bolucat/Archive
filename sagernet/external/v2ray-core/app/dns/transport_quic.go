@@ -4,13 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"net/netip"
 	"sync"
 
 	"github.com/lucas-clemente/quic-go"
-	"golang.org/x/net/dns/dnsmessage"
-	"golang.org/x/net/http2"
-	"net/netip"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -19,6 +16,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"golang.org/x/net/dns/dnsmessage"
+	"golang.org/x/net/http2"
 )
 
 var _ dns.Transport = (*QUICTransport)(nil)
@@ -32,7 +31,7 @@ type QUICTransport struct {
 	dispatcher routing.Dispatcher
 
 	access  sync.RWMutex
-	session quic.Session
+	session quic.Connection
 }
 
 func (t *QUICTransport) Close() error {
@@ -60,7 +59,7 @@ func NewQUICLocalTransport(ctx *transportContext) *QUICTransport {
 	}
 }
 
-func (t *QUICTransport) getConnection(ctx context.Context) (quic.Session, error) {
+func (t *QUICTransport) getConnection(ctx context.Context) (quic.Connection, error) {
 	t.access.RLock()
 	session := t.session
 	t.access.RUnlock()

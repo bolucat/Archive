@@ -20,6 +20,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
+	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/udp"
 )
@@ -163,7 +164,11 @@ func (s *Server) processTCP(ctx context.Context, conn internet.Connection, dispa
 			return nil
 		}
 
-		return s.transport(ctx, reader, conn, dest, dispatcher)
+		return dispatcher.DispatchLink(ctx, dest, &transport.Link{
+			Reader: reader,
+			Writer: buf.NewWriter(conn),
+		})
+		// return s.transport(ctx, reader, conn, dest, dispatcher)
 	}
 
 	if request.Command == protocol.RequestCommandUDP {

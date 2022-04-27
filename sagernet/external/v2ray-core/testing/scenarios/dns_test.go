@@ -5,9 +5,6 @@ import (
 	"testing"
 	"time"
 
-	xproxy "golang.org/x/net/proxy"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/dns"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
@@ -20,6 +17,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/proxy/freedom"
 	"github.com/v2fly/v2ray-core/v5/proxy/socks"
 	"github.com/v2fly/v2ray-core/v5/testing/servers/tcp"
+	xproxy "golang.org/x/net/proxy"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestResolveIP(t *testing.T) {

@@ -5,12 +5,11 @@ import (
 	"io"
 	"net"
 
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
-
 	"github.com/v2fly/v2ray-core/v5/common/environment/envctx"
 	"github.com/v2fly/v2ray-core/v5/common/environment/filesystemcap"
 	"github.com/v2fly/v2ray-core/v5/common/protoext"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen

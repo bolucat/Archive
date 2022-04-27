@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/dispatcher"
 	"github.com/v2fly/v2ray-core/v5/app/log"
@@ -21,7 +19,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/muxcfg"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon/testassist"
-
 	// Geo loaders
 	_ "github.com/v2fly/v2ray-core/v5/infra/conf/geodata/memconservative"
 	_ "github.com/v2fly/v2ray-core/v5/infra/conf/geodata/standard"
@@ -35,6 +32,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport/internet/http"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/websocket"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestV2RayConfig(t *testing.T) {

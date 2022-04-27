@@ -1,9 +1,8 @@
 package xtls
 
 import (
-	xtls "github.com/xtls/go"
-
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	xtls "github.com/xtls/go"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen

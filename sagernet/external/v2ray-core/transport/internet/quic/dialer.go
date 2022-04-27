@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/task"
@@ -16,7 +15,7 @@ import (
 
 type sessionContext struct {
 	rawConn *sysConn
-	session quic.Session
+	session quic.Connection
 }
 
 var errSessionClosed = newError("session closed")
@@ -46,7 +45,7 @@ type clientSessions struct {
 	cleanup  *task.Periodic
 }
 
-func isActive(s quic.Session) bool {
+func isActive(s quic.Connection) bool {
 	select {
 	case <-s.Context().Done():
 		return false

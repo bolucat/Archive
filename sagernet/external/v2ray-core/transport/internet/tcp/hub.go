@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	goxtls "github.com/xtls/go"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
@@ -15,6 +13,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/xtls"
+	goxtls "github.com/xtls/go"
 )
 
 // Listener is an internet.Listener that listens for TCP connections.

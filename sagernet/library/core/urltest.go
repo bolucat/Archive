@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	gonet "net"
 	"net/http"
 	"net/url"
 	"time"
@@ -52,11 +53,13 @@ func UrlTest(instance *V2RayInstance, inbound string, link string, timeout int32
 			if err != nil {
 				return nil, err
 			}
+			inConn, outConn := gonet.Pipe()
 			if inbound != "" {
-				ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: inbound})
+				ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: inbound, Conn: outConn})
 			}
 			ctx = proxyman.SetPreferUseIP(ctx, true)
-			return instance.dialContext(ctx, dest)
+			go instance.dispatchContext(ctx, dest, outConn)
+			return inConn, nil
 		},
 	}
 	req, err := http.NewRequestWithContext(context.Background(), "GET", link, nil)

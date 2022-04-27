@@ -103,9 +103,7 @@ func (w *tcpWorker) callback(conn internet.Connection) {
 		newError("connection ends").Base(err).WriteToLog(session.ExportIDToError(ctx))
 	}
 	cancel()
-	if err := conn.Close(); err != nil {
-		newError("failed to close connection").Base(err).WriteToLog(session.ExportIDToError(ctx))
-	}
+	conn.Close()
 }
 
 func (w *tcpWorker) Proxy() proxy.Inbound {
@@ -475,9 +473,7 @@ func (w *dsWorker) callback(conn internet.Connection) {
 		newError("connection ends").Base(err).WriteToLog(session.ExportIDToError(ctx))
 	}
 	cancel()
-	if err := conn.Close(); err != nil {
-		newError("failed to close connection").Base(err).WriteToLog(session.ExportIDToError(ctx))
-	}
+	conn.Close()
 }
 
 func (w *dsWorker) Proxy() proxy.Inbound {

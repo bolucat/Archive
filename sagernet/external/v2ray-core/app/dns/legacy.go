@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strings"
 
-	"golang.org/x/net/dns/dnsmessage"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/app/router"
@@ -23,6 +21,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/cfgcommon"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/geodata"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 var ErrExpectedIPNonMatch = errors.New("expectIPs not match")

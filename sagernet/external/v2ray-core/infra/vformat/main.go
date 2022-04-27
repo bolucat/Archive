@@ -172,8 +172,8 @@ func main() {
 	}
 
 	goimportsArgs := []string{
-		"-w",
-		"-local", "github.com/v2fly/v2ray-core",
+		"write",
+		//"-local", "github.com/v2fly/v2ray-core",
 	}
 
 	RunMany(gofmt, gofmtArgs, rawFilesSlice)

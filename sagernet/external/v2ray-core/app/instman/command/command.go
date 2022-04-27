@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 
-	"google.golang.org/grpc"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/features/extension"
+	"google.golang.org/grpc"
 )
 
 type service struct {

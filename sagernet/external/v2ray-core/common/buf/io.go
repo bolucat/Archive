@@ -3,7 +3,6 @@ package buf
 import (
 	"io"
 	"net"
-	"os"
 	"syscall"
 	"time"
 )
@@ -31,6 +30,7 @@ var ErrReadTimeout = newError("IO timeout")
 
 // TimeoutReader is a reader that returns error if Read() operation takes longer than the given timeout.
 type TimeoutReader interface {
+	Reader
 	ReadMultiBufferTimeout(time.Duration) (MultiBuffer, error)
 }
 
@@ -74,7 +74,7 @@ func NewReader(reader io.Reader) Reader {
 		}
 	}
 
-	_, isFile := reader.(*os.File)
+	/*_, isFile := reader.(*os.File)
 	if !isFile && useReadv {
 		if sc, ok := reader.(syscall.Conn); ok {
 			rawConn, err := sc.SyscallConn()
@@ -83,6 +83,12 @@ func NewReader(reader io.Reader) Reader {
 			} else {
 				return NewReadVReader(reader, rawConn)
 			}
+		}
+	}*/
+
+	if conn, isConn := reader.(net.Conn); isConn {
+		return &ConnReader{
+			Conn: conn,
 		}
 	}
 

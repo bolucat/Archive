@@ -9,8 +9,6 @@ import (
 	"net/url"
 	"sync"
 
-	"golang.org/x/net/http2"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -24,6 +22,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	"golang.org/x/net/http2"
 )
 
 type Client struct {

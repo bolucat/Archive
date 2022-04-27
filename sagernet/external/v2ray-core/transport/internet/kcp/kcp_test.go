@@ -8,13 +8,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/sync/errgroup"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	. "github.com/v2fly/v2ray-core/v5/transport/internet/kcp"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestDialAndListen(t *testing.T) {

@@ -3,13 +3,12 @@ package router
 import (
 	"strings"
 
-	"go.starlark.net/starlark"
-	"go.starlark.net/syntax"
-
 	"github.com/v2fly/v2ray-core/v5/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
+	"go.starlark.net/starlark"
+	"go.starlark.net/syntax"
 )
 
 type Condition interface {

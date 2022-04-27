@@ -6,14 +6,13 @@ import (
 	"os"
 	"strings"
 
-	"google.golang.org/protobuf/proto"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/jsonpb"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/merge"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/v2jsonpb"
 	"github.com/v2fly/v2ray-core/v5/main/commands/base"
 	"github.com/v2fly/v2ray-core/v5/main/commands/helpers"
+	"google.golang.org/protobuf/proto"
 )
 
 var cmdConvert = &base.Command{

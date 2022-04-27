@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lucas-clemente/quic-go"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol/tls/cert"
@@ -22,7 +21,7 @@ type Listener struct {
 	addConn  internet.ConnHandler
 }
 
-func (l *Listener) acceptStreams(session quic.Session) {
+func (l *Listener) acceptStreams(session quic.Connection) {
 	for {
 		stream, err := session.AcceptStream(context.Background())
 		if err != nil {

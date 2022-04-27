@@ -4,9 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"google.golang.org/protobuf/reflect/protoreflect"
-
 	"github.com/v2fly/v2ray-core/v5/common/protoext"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func TestMessageOpt(t *testing.T) {

@@ -4,9 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/log"
 	"github.com/v2fly/v2ray-core/v5/app/policy"
@@ -27,6 +24,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess/inbound"
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 	"github.com/v2fly/v2ray-core/v5/testing/servers/tcp"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestReverseProxy(t *testing.T) {

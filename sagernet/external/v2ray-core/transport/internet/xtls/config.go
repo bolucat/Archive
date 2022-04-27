@@ -8,14 +8,13 @@ import (
 	"sync"
 	"time"
 
-	xtls "github.com/xtls/go"
-
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/ocsp"
 	"github.com/v2fly/v2ray-core/v5/common/platform/filesystem"
 	"github.com/v2fly/v2ray-core/v5/common/protocol/tls/cert"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
+	xtls "github.com/xtls/go"
 )
 
 var globalSessionCache = xtls.NewLRUClientSessionCache(128)

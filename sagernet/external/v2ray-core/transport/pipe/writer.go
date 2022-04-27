@@ -23,3 +23,7 @@ func (w *Writer) Close() error {
 func (w *Writer) Interrupt() {
 	w.pipe.Interrupt()
 }
+
+func (w *Writer) IsPipe() bool {
+	return true
+}

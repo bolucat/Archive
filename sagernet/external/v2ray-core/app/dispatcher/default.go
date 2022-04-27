@@ -33,7 +33,7 @@ var errSniffingTimeout = newError("timeout on sniffing")
 
 type cachedReader struct {
 	sync.Mutex
-	reader *pipe.Reader
+	reader buf.TimeoutReader
 	cache  buf.MultiBuffer
 }
 
@@ -87,7 +87,15 @@ func (r *cachedReader) Interrupt() {
 		r.cache = buf.ReleaseMulti(r.cache)
 	}
 	r.Unlock()
-	r.reader.Interrupt()
+	common.Interrupt(r.reader)
+}
+
+func (r *cachedReader) IsPipe() bool {
+	return pipe.IsPipe(r.reader)
+}
+
+func (r *cachedReader) ReadMultiBufferCached() (buf.MultiBuffer, error) {
+	return r.readInternal(), nil
 }
 
 // DefaultDispatcher is a default implementation of Dispatcher.
@@ -226,7 +234,7 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, destination net.Destin
 	}
 	go func() {
 		cReader := &cachedReader{
-			reader: outbound.Reader.(*pipe.Reader),
+			reader: outbound.Reader.(buf.TimeoutReader),
 		}
 		outbound.Reader = cReader
 		result, err := sniff(ctx, cReader, destination.Network, sniffer)
@@ -254,6 +262,7 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 	if !destination.IsValid() {
 		return newError("Dispatcher: Invalid destination.")
 	}
+	newError("dispatch link to ", destination).AtDebug().WriteToLog()
 	ob := &session.Outbound{
 		Target: destination,
 	}
@@ -265,7 +274,12 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 	}
 
 	if _, loopLink := outbound.Reader.(*cachedReader); loopLink {
-		go d.routedDispatch(ctx, outbound, destination)
+		d.routedDispatch(ctx, outbound, destination)
+		return nil
+	}
+
+	if _, notDirect := outbound.Reader.(buf.TimeoutReader); !notDirect {
+		d.routedDispatch(ctx, outbound, destination)
 		return nil
 	}
 
@@ -273,34 +287,31 @@ func (d *DefaultDispatcher) DispatchLink(ctx context.Context, destination net.De
 
 	sniffer := defaultSniffers
 	if content.Protocol != "" || !sniffingRequest.Enabled && destination.Network != net.Network_UDP {
-		go d.routedDispatch(ctx, outbound, destination)
+		d.routedDispatch(ctx, outbound, destination)
 		return nil
 	}
 	if !sniffingRequest.Enabled {
 		sniffer = udpOnlyDnsSniffers
 	}
-	go func() {
-		cReader := &cachedReader{
-			reader: outbound.Reader.(*pipe.Reader),
+	cReader := &cachedReader{
+		reader: outbound.Reader.(buf.TimeoutReader),
+	}
+	outbound.Reader = cReader
+	result, err := sniff(ctx, cReader, destination.Network, sniffer)
+	if err == nil {
+		content.Protocol = result.Protocol()
+	}
+	if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
+		domain := result.Domain()
+		newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
+		destination.Address = net.ParseAddress(domain)
+		if sniffingRequest.RouteOnly {
+			ob.RouteTarget = destination
+		} else {
+			ob.Target = destination
 		}
-		outbound.Reader = cReader
-		result, err := sniff(ctx, cReader, destination.Network, sniffer)
-		if err == nil {
-			content.Protocol = result.Protocol()
-		}
-		if err == nil && shouldOverride(result, sniffingRequest.OverrideDestinationForProtocol) {
-			domain := result.Domain()
-			newError("sniffed domain: ", domain).WriteToLog(session.ExportIDToError(ctx))
-			destination.Address = net.ParseAddress(domain)
-			if sniffingRequest.RouteOnly {
-				ob.RouteTarget = destination
-			} else {
-				ob.Target = destination
-			}
-		}
-		d.routedDispatch(ctx, outbound, destination)
-	}()
-
+	}
+	d.routedDispatch(ctx, outbound, destination)
 	return nil
 }
 

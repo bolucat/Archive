@@ -6,9 +6,6 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/any"
-	"golang.org/x/sync/errgroup"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/log"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
@@ -27,6 +24,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/testing/servers/udp"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/kcp"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestVMessDynamicPort(t *testing.T) {

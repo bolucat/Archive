@@ -6,9 +6,8 @@ package encoding
 import (
 	"context"
 
-	"google.golang.org/grpc"
-
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"google.golang.org/grpc"
 )
 
 type ConnHandler interface {

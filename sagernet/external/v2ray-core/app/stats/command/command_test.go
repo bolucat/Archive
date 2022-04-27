@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-
 	"github.com/v2fly/v2ray-core/v5/app/stats"
 	. "github.com/v2fly/v2ray-core/v5/app/stats/command"
 	"github.com/v2fly/v2ray-core/v5/common"

@@ -4,12 +4,11 @@ import (
 	"context"
 	"io"
 
-	"google.golang.org/grpc/encoding"
-
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/bytesgrp"
 	"github.com/v2fly/v2ray-core/v5/common/signal/done"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"google.golang.org/grpc/encoding"
 )
 
 func init() {

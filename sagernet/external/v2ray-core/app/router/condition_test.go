@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -21,6 +19,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
+	"google.golang.org/protobuf/proto"
 )
 
 func init() {

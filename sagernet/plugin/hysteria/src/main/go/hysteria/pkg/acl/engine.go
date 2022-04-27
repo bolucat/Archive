@@ -4,7 +4,6 @@ import (
 	"bufio"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/oschwald/geoip2-golang"
-	"github.com/tobyxdd/hysteria/pkg/utils"
 	"net"
 	"os"
 	"strings"
@@ -65,31 +64,30 @@ func LoadFromFile(filename string, resolveIPAddr func(string) (*net.IPAddr, erro
 	}, nil
 }
 
-// action, arg, isDomain, resolvedIP, error
-func (e *Engine) ResolveAndMatch(host string) (Action, string, bool, *net.IPAddr, error) {
-	ip, zone := utils.ParseIPZone(host)
+func (e *Engine) ResolveAndMatch(host string) (Action, string, *net.IPAddr, error) {
+	ip, zone := parseIPZone(host)
 	if ip == nil {
 		// Domain
 		ipAddr, err := e.ResolveIPAddr(host)
 		if v, ok := e.Cache.Get(host); ok {
 			// Cache hit
 			ce := v.(cacheEntry)
-			return ce.Action, ce.Arg, true, ipAddr, err
+			return ce.Action, ce.Arg, ipAddr, err
 		}
 		for _, entry := range e.Entries {
 			if entry.MatchDomain(host) || (ipAddr != nil && entry.MatchIP(ipAddr.IP, e.GeoIPReader)) {
 				e.Cache.Add(host, cacheEntry{entry.Action, entry.ActionArg})
-				return entry.Action, entry.ActionArg, true, ipAddr, err
+				return entry.Action, entry.ActionArg, ipAddr, err
 			}
 		}
 		e.Cache.Add(host, cacheEntry{e.DefaultAction, ""})
-		return e.DefaultAction, "", true, ipAddr, err
+		return e.DefaultAction, "", ipAddr, err
 	} else {
 		// IP
 		if v, ok := e.Cache.Get(ip.String()); ok {
 			// Cache hit
 			ce := v.(cacheEntry)
-			return ce.Action, ce.Arg, false, &net.IPAddr{
+			return ce.Action, ce.Arg, &net.IPAddr{
 				IP:   ip,
 				Zone: zone,
 			}, nil
@@ -97,14 +95,14 @@ func (e *Engine) ResolveAndMatch(host string) (Action, string, bool, *net.IPAddr
 		for _, entry := range e.Entries {
 			if entry.MatchIP(ip, e.GeoIPReader) {
 				e.Cache.Add(ip.String(), cacheEntry{entry.Action, entry.ActionArg})
-				return entry.Action, entry.ActionArg, false, &net.IPAddr{
+				return entry.Action, entry.ActionArg, &net.IPAddr{
 					IP:   ip,
 					Zone: zone,
 				}, nil
 			}
 		}
 		e.Cache.Add(ip.String(), cacheEntry{e.DefaultAction, ""})
-		return e.DefaultAction, "", false, &net.IPAddr{
+		return e.DefaultAction, "", &net.IPAddr{
 			IP:   ip,
 			Zone: zone,
 		}, nil

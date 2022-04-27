@@ -1,10 +1,9 @@
 package router
 
 import (
-	"inet.af/netaddr"
-
 	"github.com/v2fly/v2ray-core/v5/app/router/routercommon"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"inet.af/netaddr"
 )
 
 type GeoIPMatcher struct {

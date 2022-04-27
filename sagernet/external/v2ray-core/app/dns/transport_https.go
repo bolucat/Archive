@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"golang.org/x/net/dns/dnsmessage"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -17,6 +15,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 var _ dns.Transport = (*HTTPSTransport)(nil)

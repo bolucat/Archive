@@ -161,7 +161,7 @@ Start:
 func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *bufio.Reader, conn internet.Connection, dest net.Destination, dispatcher routing.Dispatcher) error {
 	_, err := conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n"))
 	if err != nil {
-		return newError("failed to write back OK response").Base(err)
+		return newError("failed to writeresponse back OK response").Base(err)
 	}
 
 	plcy := s.policy()

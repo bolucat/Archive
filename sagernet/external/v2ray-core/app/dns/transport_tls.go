@@ -5,14 +5,13 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 
-	"golang.org/x/net/dns/dnsmessage"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 var _ dns.Transport = (*TLSTransport)(nil)

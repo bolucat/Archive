@@ -131,11 +131,10 @@ func client(config *clientConfig) {
 	// Client
 	var client *core.Client
 	try := 0
-	up, down, _ := config.Speed()
 	for {
 		try += 1
 		c, err := core.NewClient(config.Server, config.Protocol, auth, tlsConfig, quicConfig,
-			transport.DefaultClientTransport, up, down,
+			transport.DefaultClientTransport, uint64(config.UpMbps)*mbpsToBps, uint64(config.DownMbps)*mbpsToBps,
 			func(refBPS uint64) congestion.CongestionControl {
 				return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 			}, obfuscator)

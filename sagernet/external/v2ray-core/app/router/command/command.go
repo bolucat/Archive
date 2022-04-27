@@ -6,12 +6,11 @@ import (
 	"context"
 	"time"
 
-	"google.golang.org/grpc"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
+	"google.golang.org/grpc"
 )
 
 // routingServer is an implementation of RoutingService.

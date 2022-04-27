@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/golang/protobuf/proto"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/jsonpb"
 	"github.com/v2fly/v2ray-core/v5/infra/conf/v2jsonpb"

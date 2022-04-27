@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/taggedfeatures"
 	"github.com/v2fly/v2ray-core/v5/features"

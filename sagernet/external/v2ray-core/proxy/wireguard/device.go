@@ -5,6 +5,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
+	"github.com/v2fly/v2ray-core/v5/common/signal/done"
 	"golang.zx2c4.com/wireguard/tun"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -16,10 +19,6 @@ import (
 	"gvisor.dev/gvisor/pkg/tcpip/transport/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/tcp"
 	"gvisor.dev/gvisor/pkg/tcpip/transport/udp"
-
-	"github.com/v2fly/v2ray-core/v5/common/net"
-	"github.com/v2fly/v2ray-core/v5/common/net/pingproto"
-	"github.com/v2fly/v2ray-core/v5/common/signal/done"
 )
 
 var _ tun.Device = (*wireDevice)(nil)

@@ -1,11 +1,10 @@
 package dns
 
 import (
-	"golang.org/x/net/dns/dnsmessage"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 var (

@@ -5,10 +5,9 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/v2fly/v2ray-core/v5/common/net"
 	"golang.org/x/net/icmp"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
-
-	"github.com/v2fly/v2ray-core/v5/common/net"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen

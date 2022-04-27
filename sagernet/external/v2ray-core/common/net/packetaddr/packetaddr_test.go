@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 )
 

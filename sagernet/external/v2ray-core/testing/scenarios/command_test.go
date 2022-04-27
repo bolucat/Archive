@@ -10,9 +10,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/commander"
 	"github.com/v2fly/v2ray-core/v5/app/policy"
@@ -32,6 +29,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess/inbound"
 	"github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 	"github.com/v2fly/v2ray-core/v5/testing/servers/tcp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestCommanderRemoveHandler(t *testing.T) {

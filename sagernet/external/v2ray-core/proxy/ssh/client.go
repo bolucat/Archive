@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/crypto/ssh"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -23,6 +21,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/proxy"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"golang.org/x/crypto/ssh"
 )
 
 func init() {

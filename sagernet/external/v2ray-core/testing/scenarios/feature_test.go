@@ -8,9 +8,6 @@ import (
 	"testing"
 	"time"
 
-	xproxy "golang.org/x/net/proxy"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/dispatcher"
 	"github.com/v2fly/v2ray-core/v5/app/log"
@@ -35,6 +32,8 @@ import (
 	"github.com/v2fly/v2ray-core/v5/testing/servers/tcp"
 	"github.com/v2fly/v2ray-core/v5/testing/servers/udp"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	xproxy "golang.org/x/net/proxy"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestPassiveConnection(t *testing.T) {

@@ -5,8 +5,6 @@ import (
 
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/dynamic"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	"github.com/v2fly/v2ray-core/v5/app/commander"
 	loggerservice "github.com/v2fly/v2ray-core/v5/app/log/command"
 	observatoryservice "github.com/v2fly/v2ray-core/v5/app/observatory/command"
@@ -14,6 +12,7 @@ import (
 	routerservice "github.com/v2fly/v2ray-core/v5/app/router/command"
 	statsservice "github.com/v2fly/v2ray-core/v5/app/stats/command"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type APIConfig struct {

@@ -5,8 +5,6 @@ import (
 	"testing"
 	_ "unsafe"
 
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/policy"
 	. "github.com/v2fly/v2ray-core/v5/app/proxyman/outbound"
@@ -16,6 +14,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
 	"github.com/v2fly/v2ray-core/v5/proxy/freedom"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestInterfaces(t *testing.T) {

@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"google.golang.org/protobuf/testing/protocmp"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -13,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/uuid"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless"
 	. "github.com/v2fly/v2ray-core/v5/proxy/vless/encoding"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func toAccount(a *vless.Account) protocol.Account {

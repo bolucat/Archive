@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	B "github.com/sagernet/sing/common/buf"
+	M "github.com/sagernet/sing/common/metadata"
 	"github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -202,6 +204,17 @@ func (instance *V2RayInstance) dialContext(ctx context.Context, destination net.
 	return buf.NewConnection(buf.ConnectionInputMulti(r.Writer), readerOpt), nil
 }
 
+func (instance *V2RayInstance) dispatchContext(ctx context.Context, destination net.Destination, conn net.Conn) error {
+	if !instance.started {
+		return os.ErrInvalid
+	}
+	ctx = core.WithContext(ctx, instance.core)
+	return instance.dispatcher.DispatchLink(ctx, destination, &transport.Link{
+		Reader: buf.NewReader(conn),
+		Writer: buf.NewWriter(conn),
+	})
+}
+
 func (instance *V2RayInstance) dialUDP(ctx context.Context, destination net.Destination, timeout time.Duration) (packetConn, error) {
 	if !instance.started {
 		return nil, os.ErrInvalid
@@ -355,6 +368,39 @@ func (c *dispatcherConn) writeTo(buffer *buf.Buffer, addr net.Addr) (err error) 
 		c.timer.Update()
 	}
 	return
+}
+
+func (c *dispatcherConn) ReadPacket(buffer *B.Buffer) (*M.AddrPort, error) {
+	select {
+	case <-c.ctx.Done():
+		return nil, io.EOF
+	case packet, ok := <-c.cache:
+		if !ok {
+			return nil, io.EOF
+		}
+		_, err := buffer.Write(packet.Payload.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		return M.AddrPortFrom(M.AddrFromIP(packet.Source.Address.IP()), uint16(packet.Source.Port)), nil
+	}
+}
+
+func (c *dispatcherConn) WritePacket(buffer *B.Buffer, addrPort *M.AddrPort) error {
+	vBuffer := buf.FromBytes(buffer.Bytes())
+	endpoint := net.DestinationFromAddr(addrPort.UDPAddr())
+	vBuffer.Endpoint = &endpoint
+	err := c.link.Writer.WriteMultiBuffer(buf.MultiBuffer{vBuffer})
+	if err != nil {
+		c.Close()
+	} else {
+		c.timer.Update()
+	}
+	return err
+}
+
+func (c *dispatcherConn) RemoteAddr() net.Addr {
+	return nil
 }
 
 func (c *dispatcherConn) LocalAddr() net.Addr {

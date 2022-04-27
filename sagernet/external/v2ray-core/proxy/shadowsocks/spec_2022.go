@@ -7,11 +7,10 @@ import (
 	"math/rand"
 	"sync/atomic"
 
-	"lukechampine.com/blake3"
-
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/crypto"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"lukechampine.com/blake3"
 )
 
 const (

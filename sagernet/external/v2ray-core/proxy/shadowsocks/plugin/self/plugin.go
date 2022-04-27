@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/anypb"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/dispatcher"
 	vlog "github.com/v2fly/v2ray-core/v5/app/log"
@@ -27,6 +25,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport/internet/quic"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tls"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/websocket"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 //go:generate go run github.com/v2fly/self-core/v4/common/errors/errorgen

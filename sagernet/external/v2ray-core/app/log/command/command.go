@@ -6,12 +6,11 @@ import (
 	"context"
 	"time"
 
-	grpc "google.golang.org/grpc"
-
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/log"
 	"github.com/v2fly/v2ray-core/v5/common"
 	cmlog "github.com/v2fly/v2ray-core/v5/common/log"
+	grpc "google.golang.org/grpc"
 )
 
 // LoggerServer is the implemention of LoggerService

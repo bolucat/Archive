@@ -2,6 +2,7 @@ package buf
 
 import (
 	"io"
+	"time"
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -114,6 +115,19 @@ func (r *BufferedReader) ReadMultiBuffer() (MultiBuffer, error) {
 	return r.Reader.ReadMultiBuffer()
 }
 
+func (r *BufferedReader) ReadMultiBufferTimeout(duration time.Duration) (MultiBuffer, error) {
+	if !r.Buffer.IsEmpty() {
+		mb := r.Buffer
+		r.Buffer = nil
+		return mb, nil
+	}
+	reader, ok := r.Reader.(TimeoutReader)
+	if !ok {
+		return nil, ErrNotTimeoutReader
+	}
+	return reader.ReadMultiBufferTimeout(duration)
+}
+
 // ReadAtMost returns a MultiBuffer with at most size.
 func (r *BufferedReader) ReadAtMost(size int32) (MultiBuffer, error) {
 	if r.Buffer.IsEmpty() {
@@ -164,6 +178,10 @@ func (r *BufferedReader) Interrupt() {
 // Close implements io.Closer.
 func (r *BufferedReader) Close() error {
 	return common.Close(r.Reader)
+}
+
+func (r *BufferedReader) ReadMultiBufferCached() (MultiBuffer, error) {
+	return r.Buffer, nil
 }
 
 // SingleReader is a Reader that read one Buffer every time.
@@ -217,4 +235,23 @@ func (r *PacketConnReader) ReadMultiBuffer() (MultiBuffer, error) {
 		return nil, err
 	}
 	return MultiBuffer{b}, nil
+}
+
+type ConnReader struct {
+	net.Conn
+}
+
+func (r *ConnReader) ReadMultiBuffer() (MultiBuffer, error) {
+	b, err := ReadBuffer(r.Conn)
+	return MultiBuffer{b}, err
+}
+
+func (r *ConnReader) ReadMultiBufferTimeout(duration time.Duration) (MultiBuffer, error) {
+	err := r.SetReadDeadline(time.Now().Add(duration))
+	if err != nil {
+		return nil, err
+	}
+	b, err := ReadBuffer(r.Conn)
+	r.SetReadDeadline(time.Time{})
+	return MultiBuffer{b}, err
 }
