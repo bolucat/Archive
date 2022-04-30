@@ -3,7 +3,21 @@ package outbound
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/mustafaturan/bus"
+	"github.com/xiaokangwang/VLite/ass/udpconn2tun"
+	"github.com/xiaokangwang/VLite/interfaces"
+	"github.com/xiaokangwang/VLite/interfaces/ibus"
+	vltransport "github.com/xiaokangwang/VLite/transport"
+	udpsctpserver "github.com/xiaokangwang/VLite/transport/packetsctp/sctprelay"
+	"github.com/xiaokangwang/VLite/transport/packetuni/puniClient"
+	"github.com/xiaokangwang/VLite/transport/udp/udpClient"
+	"github.com/xiaokangwang/VLite/transport/udp/udpuni/udpunic"
+	"github.com/xiaokangwang/VLite/transport/uni/uniclient"
+	client2 "github.com/xiaokangwang/VLite/workers/client"
+
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/environment"
 	"github.com/v2fly/v2ray-core/v5/common/environment/envctx"
@@ -15,19 +29,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/udp"
-	"github.com/xiaokangwang/VLite/ass/udpconn2tun"
-	"github.com/xiaokangwang/VLite/interfaces"
-	"github.com/xiaokangwang/VLite/interfaces/ibus"
-	vltransport "github.com/xiaokangwang/VLite/transport"
-	udpsctpserver "github.com/xiaokangwang/VLite/transport/packetsctp/sctprelay"
-	"github.com/xiaokangwang/VLite/transport/packetuni/puniClient"
-	"github.com/xiaokangwang/VLite/transport/udp/udpClient"
-	"github.com/xiaokangwang/VLite/transport/udp/udpuni/udpunic"
-	"github.com/xiaokangwang/VLite/transport/uni/uniclient"
-	"sync"
-	"time"
-
-	client2 "github.com/xiaokangwang/VLite/workers/client"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
@@ -70,11 +71,9 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 
 	if packetConn, err := packetaddr.ToPacketAddrConn(link, destination); err == nil {
 		requestDone := func() error {
-
 			return udp.CopyPacketConn(packetConnOut, packetConn, udp.UpdateActivity(timer))
 		}
 		responseDone := func() error {
-
 			return udp.CopyPacketConn(packetConn, packetConnOut, udp.UpdateActivity(timer))
 		}
 		responseDoneAndCloseWriter := task.OnSuccess(responseDone, task.Close(link.Writer))
@@ -122,21 +121,21 @@ func createStatusFromConfig(config *UDPProtocolConfig) (*status, error) {
 	ctx := context.Background()
 
 	s.msgbus = ibus.NewMessageBus()
-	ctx = context.WithValue(ctx, interfaces.ExtraOptionsMessageBus, s.msgbus)
+	ctx = context.WithValue(ctx, interfaces.ExtraOptionsMessageBus, s.msgbus) //nolint:revive
 
 	if config.EnableFec {
-		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPFECEnabled, true)
+		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPFECEnabled, true) //nolint:revive
 	}
 
 	if config.ScramblePacket {
-		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPShouldMask, true)
+		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPShouldMask, true) //nolint:revive
 	}
 
-	ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPMask, string(s.password))
+	ctx = context.WithValue(ctx, interfaces.ExtraOptionsUDPMask, string(s.password)) //nolint:revive
 
 	if config.HandshakeMaskingPaddingSize != 0 {
 		ctxv := &interfaces.ExtraOptionsUsePacketArmorValue{PacketArmorPaddingTo: int(config.HandshakeMaskingPaddingSize), UsePacketArmor: true}
-		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUsePacketArmor, ctxv)
+		ctx = context.WithValue(ctx, interfaces.ExtraOptionsUsePacketArmor, ctxv) //nolint:revive
 	}
 
 	destinationString := fmt.Sprintf("%v:%v", config.Address.AsAddress().String(), config.Port)
@@ -156,13 +155,13 @@ func enableInterface(s *status) error {
 		return newError("unable to connect to remote").Base(err)
 	}
 
-	C_C2STraffic := make(chan client2.UDPClientTxToServerTraffic, 8)
-	C_C2SDataTraffic := make(chan client2.UDPClientTxToServerDataTraffic, 8)
-	C_S2CTraffic := make(chan client2.UDPClientRxFromServerTraffic, 8)
+	C_C2STraffic := make(chan client2.UDPClientTxToServerTraffic, 8)         //nolint:revive
+	C_C2SDataTraffic := make(chan client2.UDPClientTxToServerDataTraffic, 8) //nolint:revive
+	C_S2CTraffic := make(chan client2.UDPClientRxFromServerTraffic, 8)       //nolint:revive
 
-	C_C2STraffic2 := make(chan interfaces.TrafficWithChannelTag, 8)
-	C_C2SDataTraffic2 := make(chan interfaces.TrafficWithChannelTag, 8)
-	C_S2CTraffic2 := make(chan interfaces.TrafficWithChannelTag, 8)
+	C_C2STraffic2 := make(chan interfaces.TrafficWithChannelTag, 8)     //nolint:revive
+	C_C2SDataTraffic2 := make(chan interfaces.TrafficWithChannelTag, 8) //nolint:revive
+	C_S2CTraffic2 := make(chan interfaces.TrafficWithChannelTag, 8)     //nolint:revive
 
 	go func(ctx context.Context) {
 		for {
@@ -173,7 +172,6 @@ func enableInterface(s *status) error {
 				return
 			}
 		}
-
 	}(connctx)
 
 	go func(ctx context.Context) {
@@ -185,7 +183,6 @@ func enableInterface(s *status) error {
 				return
 			}
 		}
-
 	}(connctx)
 
 	go func(ctx context.Context) {
@@ -197,7 +194,6 @@ func enableInterface(s *status) error {
 				return
 			}
 		}
-
 	}(connctx)
 
 	TunnelTxToTun := make(chan interfaces.UDPPacket)

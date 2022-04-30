@@ -347,6 +347,10 @@ namespace BBDown
         {
             if (forceHttp) url = ReplaceUrl(url);
             LogDebug("Start downloading: {0}", url);
+            if (!Directory.Exists(Path.GetDirectoryName(Path.GetFullPath(path))))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+            }
             if (aria2c)
             {
                 await BBDownAria2c.DownloadFileByAria2cAsync(url, path, aria2cProxy);
@@ -478,6 +482,7 @@ namespace BBDown
         /// <param name="outputFilePath"></param>
         public static void CombineMultipleFilesIntoSingleFile(string[] files, string outputFilePath)
         {
+            if (files.Length == 0) return;
             if (files.Length == 1)
             {
                 FileInfo fi = new FileInfo(files[0]);

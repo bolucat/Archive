@@ -34,18 +34,18 @@ namespace BBDown
 
         private static int Compare(Video r1, Video r2, Dictionary<string, byte> encodingPriority, Dictionary<string, int> dfnPriority)
         {
+            if (r1.dfn != r2.dfn)
+            {
+                if (!dfnPriority.TryGetValue(r1.dfn, out int r1Priority)) { r1Priority = int.MaxValue; }
+                if (!dfnPriority.TryGetValue(r2.dfn, out int r2Priority)) { r2Priority = int.MaxValue; }
+                if (r1Priority != r2Priority) { return r1Priority < r2Priority ? -1 : 1; }
+            }
             if (r1.codecs != r2.codecs)
             {
                 if (!encodingPriority.TryGetValue(r1.codecs, out byte r1Priority)) { r1Priority = byte.MaxValue; }
                 if (!encodingPriority.TryGetValue(r2.codecs, out byte r2Priority)) { r2Priority = byte.MaxValue; }
                 if (r1Priority != r2Priority) { return r1Priority < r2Priority ? -1 : 1; }
                 
-            }
-            if (r1.dfn != r2.dfn)
-            {
-                if (!dfnPriority.TryGetValue(r1.dfn, out int r1Priority)) { r1Priority = int.MaxValue; }
-                if (!dfnPriority.TryGetValue(r2.dfn, out int r2Priority)) { r2Priority = int.MaxValue; }
-                if (r1Priority != r2Priority) { return r1Priority < r2Priority ? -1 : 1; }
             }
             return (Convert.ToInt32(r1.id) * 100000 + r1.bandwith) > (Convert.ToInt32(r2.id) * 100000 + r2.bandwith) ? -1 : 1;
         }
@@ -80,6 +80,7 @@ namespace BBDown
             public bool ForceHttp { get; set; } = true;
             public bool DownloadDanmaku { get; set; } = false;
             public string FilePattern { get; set; } = "";
+            public string MultiFilePattern { get; set; } = "";
             public string SelectPage { get; set; } = "";
             public string Language { get; set; } = "";
             public string Cookie { get; set; } = "";
@@ -197,8 +198,8 @@ namespace BBDown
                     new string[]{ "--delay-per-page"},
                     "设置下载合集分P之间的下载间隔时间(单位: 秒, 默认无间隔)"),
                 new Option<string>(
-                    new string[]{ "--file-pattern", "-fp"},
-                    $"使用内置变量自定义存储文件名:\r\n\r\n" +
+                    new string[]{ "--file-pattern", "-F"},
+                    $"使用内置变量自定义单P存储文件名:\r\n\r\n" +
                     $"<videoTitle>: 视频主标题\r\n" +
                     $"<pageNumber>: 视频分P序号\r\n" +
                     $"<pageNumberWithZero>: 视频分P序号(前缀补零)\r\n" +
@@ -212,8 +213,11 @@ namespace BBDown
                     $"<videoBandwidth>: 视频码率\r\n" +
                     $"<audioCodecs>: 音频编码\r\n" +
                     $"<audioBandwidth>: 音频码率\r\n\r\n" +
-                    $"多p默认为: {MultiPageDefaultSavePath}\r\n" +
-                    $"单p默认为: {SinglePageDefaultSavePath}"),
+                    $"默认为: {SinglePageDefaultSavePath}\r\n"),
+                new Option<string>(
+                    new string[]{ "--multi-file-pattern", "-M"},
+                    $"使用内置变量自定义多P存储文件名:\r\n\r\n" +
+                    $"默认为: {MultiPageDefaultSavePath}\r\n"),
             };
 
             Command loginCommand = new Command(
@@ -228,115 +232,10 @@ namespace BBDown
             rootCommand.TreatUnmatchedTokensAsErrors = true;
 
             //WEB登录
-            loginCommand.Handler = CommandHandler.Create(async delegate
-            {
-                try
-                {
-                    Log("获取登录地址...");
-                    string loginUrl = "https://passport.bilibili.com/qrcode/getLoginUrl";
-                    string url = JsonDocument.Parse(await HTTPUtil.GetWebSourceAsync(loginUrl)).RootElement.GetProperty("data").GetProperty("url").ToString();
-                    string oauthKey = GetQueryString("oauthKey", url);
-                    //Log(oauthKey);
-                    //Log(url);
-                    bool flag = false;
-                    Log("生成二维码...");
-                    QRCodeGenerator qrGenerator = new QRCodeGenerator();
-                    QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
-                    PngByteQRCode pngByteCode = new PngByteQRCode(qrCodeData);
-                    File.WriteAllBytes("qrcode.png", pngByteCode.GetGraphic(7));
-                    Log("生成二维码成功：qrcode.png, 请打开并扫描, 或扫描打印的二维码");
-                    var consoleQRCode = new ConsoleQRCode(qrCodeData);
-                    consoleQRCode.GetGraphic();
-
-                    while (true)
-                    {
-                        await Task.Delay(1000);
-                        string w = await GetLoginStatusAsync(oauthKey);
-                        string data = JsonDocument.Parse(w).RootElement.GetProperty("data").ToString();
-                        if (data == "-2")
-                        {
-                            LogColor("二维码已过期, 请重新执行登录指令.");
-                            break;
-                        }
-                        else if (data == "-4") //等待扫码
-                        {
-                            continue;
-                        }
-                        else if (data == "-5") //等待确认
-                        {
-                            if (!flag)
-                            {
-                                Log("扫码成功, 请确认...");
-                                flag = !flag;
-                            }
-                        }
-                        else
-                        {
-                            string cc = JsonDocument.Parse(w).RootElement.GetProperty("data").GetProperty("url").ToString();
-                            Log("登录成功: SESSDATA=" + GetQueryString("SESSDATA", cc));
-                            //导出cookie
-                            File.WriteAllText(Path.Combine(APP_DIR, "BBDown.data"), cc.Substring(cc.IndexOf('?') + 1).Replace("&", ";"));
-                            File.Delete("qrcode.png");
-                            break;
-                        }
-                    }
-                }
-                catch (Exception e) { LogError(e.Message); }
-            });
+            loginCommand.Handler = CommandHandler.Create(loginWEB);
 
             //TV登录
-            loginTVCommand.Handler = CommandHandler.Create(async delegate
-            {
-                try
-                {
-                    string loginUrl = "https://passport.snm0516.aisee.tv/x/passport-tv-login/qrcode/auth_code";
-                    string pollUrl = "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll";
-                    var parms = GetTVLoginParms();
-                    Log("获取登录地址...");
-                    byte[] responseArray = await (await HTTPUtil.AppHttpClient.PostAsync(loginUrl, new FormUrlEncodedContent(parms.ToDictionary()))).Content.ReadAsByteArrayAsync();
-                    string web = Encoding.UTF8.GetString(responseArray);
-                    string url = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("url").ToString();
-                    string authCode = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("auth_code").ToString();
-                    Log("生成二维码...");
-                    QRCodeGenerator qrGenerator = new QRCodeGenerator();
-                    QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
-                    PngByteQRCode pngByteCode = new PngByteQRCode(qrCodeData);
-                    File.WriteAllBytes("qrcode.png", pngByteCode.GetGraphic(7));
-                    Log("生成二维码成功：qrcode.png, 请打开并扫描, 或扫描打印的二维码");
-                    var consoleQRCode = new ConsoleQRCode(qrCodeData);
-                    consoleQRCode.GetGraphic();
-                    parms.Set("auth_code", authCode);
-                    parms.Set("ts", GetTimeStamp(true));
-                    parms.Remove("sign");
-                    parms.Add("sign", GetSign(ToQueryString(parms)));
-                    while (true)
-                    {
-                        await Task.Delay(1000);
-                        responseArray = await (await HTTPUtil.AppHttpClient.PostAsync(pollUrl, new FormUrlEncodedContent(parms.ToDictionary()))).Content.ReadAsByteArrayAsync();
-                        web = Encoding.UTF8.GetString(responseArray);
-                        string code = JsonDocument.Parse(web).RootElement.GetProperty("code").ToString();
-                        if (code == "86038")
-                        {
-                            LogColor("二维码已过期, 请重新执行登录指令.");
-                            break;
-                        }
-                        else if (code == "86039") //等待扫码
-                        {
-                            continue;
-                        }
-                        else
-                        {
-                            string cc = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("access_token").ToString();
-                            Log("登录成功: AccessToken=" + cc);
-                            //导出cookie
-                            File.WriteAllText(Path.Combine(APP_DIR, "BBDownTV.data"), "access_token=" + cc);
-                            File.Delete("qrcode.png");
-                            break;
-                        }
-                    }
-                }
-                catch (Exception e) { LogError(e.Message); }
-            });
+            loginTVCommand.Handler = CommandHandler.Create(loginTV);
 
             rootCommand.Handler = CommandHandler.Create<MyOption>(async (myOption) =>
             {
@@ -616,8 +515,19 @@ namespace BBDown
                 if (selectedPages != null)
                     pagesInfo = pagesInfo.Where(p => selectedPages.Contains(p.index.ToString())).ToList();
 
-                // 如果没有设置保存路径，则根据p数选择默认的路径
-                savePathFormat = string.IsNullOrEmpty(savePathFormat) ? (pagesCount == 1) ? SinglePageDefaultSavePath : MultiPageDefaultSavePath : savePathFormat;
+                // 根据p数选择存储路径
+                if (pagesCount == 1)
+                {
+                    savePathFormat = string.IsNullOrEmpty(myOption.FilePattern) ? SinglePageDefaultSavePath : myOption.FilePattern;
+                }
+                else if (pagesCount > 1)
+                {
+                    savePathFormat = string.IsNullOrEmpty(myOption.MultiFilePattern) ? MultiPageDefaultSavePath : myOption.MultiFilePattern;
+                }
+                else
+                {
+                    savePathFormat = SinglePageDefaultSavePath;
+                }
 
                 foreach (Page p in pagesInfo)
                 {
@@ -644,7 +554,7 @@ namespace BBDown
                     var coverPath = $"{p.aid}/{p.aid}.jpg";
 
                     //处理文件夹以.结尾导致的异常情况
-                    //if (title.EndsWith(".")) title += "_fix";
+                    if (title.EndsWith(".")) title += "_fix";
 
                     //处理封面&&字幕
                     if (!infoMode)
@@ -776,7 +686,7 @@ namespace BBDown
                         if (audioTracks.Count > 0)
                             LogColor($"[音频] [{audioTracks[aIndex].codecs}] [{audioTracks[aIndex].bandwith} kbps] [~{FormatFileSize(audioTracks[aIndex].dur * audioTracks[aIndex].bandwith * 1024 / 8)}]", false);
 
-                        //如果是PCDN则若干秒后重新解析……
+                        //处理PCDN
                         var pcdnReg = new Regex("://.*mcdn\\.bilivideo\\.cn:\\d+");
                         if (videoTracks.Count > 0 && pcdnReg.IsMatch(videoTracks[vIndex].baseUrl))
                         {
@@ -793,6 +703,38 @@ namespace BBDown
                         LogDebug("Format Before: " + savePathFormat);
                         savePath = FormatSavePath(savePathFormat, title, videoTracks[vIndex], audioTracks[aIndex], p, pagesCount);
                         LogDebug("Format After: " + savePath);
+
+                        if (downloadDanmaku)
+                        {
+                            var danmakuXmlPath = savePath.Substring(0, savePath.LastIndexOf('.')) + ".xml";
+                            var danmakuAssPath = savePath.Substring(0, savePath.LastIndexOf('.')) + ".ass";
+                            if (!File.Exists(danmakuAssPath))
+                            {
+                                if (File.Exists(danmakuXmlPath)) { Log("弹幕Xml文件已存在，跳过下载..."); }
+                                else
+                                {
+                                    Log("正在下载弹幕Xml文件");
+                                    string danmakuUrl = "https://comment.bilibili.com/" + p.cid + ".xml";
+                                    await DownloadFile(danmakuUrl, danmakuXmlPath, false, aria2cProxy);
+                                }
+
+                                var danmakus = DanmakuUtil.ParseXml(danmakuXmlPath);
+                                if (danmakus != null)
+                                {
+                                    Log("正在保存弹幕Ass文件...");
+                                    await DanmakuUtil.SaveAsAssAsync(danmakus, danmakuAssPath);
+                                }
+                                else
+                                {
+                                    Log("弹幕Xml解析失败, 删除Xml...");
+                                    File.Delete(danmakuXmlPath);
+                                }
+                            }
+                            else
+                            {
+                                Log("弹幕Ass文件已存在，跳过生成");
+                            }
+                        }
 
                         if (videoTracks.Count > 0)
                         {
@@ -811,7 +753,7 @@ namespace BBDown
                             //杜比视界，若ffmpeg版本小于5.0，使用mp4box封装
                             if (videoTracks[vIndex].dfn == Config.qualitys["126"] && !useMp4box && !CheckFFmpegDOVI())
                             {
-                                LogError($"检测到杜比视界清晰度且您的ffmpeg版本小于5.0,将使用mp4box混流...");
+                                LogWarn($"检测到杜比视界清晰度且您的ffmpeg版本小于5.0,将使用mp4box混流...");
                                 useMp4box = true;
                             }
                             if (multiThread && !videoTracks[vIndex].baseUrl.Contains("-cmcc-"))
@@ -826,7 +768,7 @@ namespace BBDown
                             else
                             {
                                 if (multiThread && videoTracks[vIndex].baseUrl.Contains("-cmcc-"))
-                                    LogError("检测到cmcc域名cdn, 已经禁用多线程");
+                                    LogWarn("检测到cmcc域名cdn, 已经禁用多线程");
                                 Log($"开始下载P{p.index}视频...");
                                 await DownloadFile(videoTracks[vIndex].baseUrl, videoPath, useAria2c, aria2cProxy, forceHttp);
                             }
@@ -845,7 +787,7 @@ namespace BBDown
                             else
                             {
                                 if (multiThread && audioTracks[aIndex].baseUrl.Contains("-cmcc-"))
-                                    LogError("检测到cmcc域名cdn, 已经禁用多线程");
+                                    LogWarn("检测到cmcc域名cdn, 已经禁用多线程");
                                 Log($"开始下载P{p.index}音频...");
                                 await DownloadFile(audioTracks[aIndex].baseUrl, audioPath, useAria2c, aria2cProxy, forceHttp);
                             }
@@ -942,7 +884,7 @@ namespace BBDown
                             else
                             {
                                 if (multiThread && link.Contains("-cmcc-"))
-                                    LogError("检测到cmcc域名cdn, 已经禁用多线程");
+                                    LogWarn("检测到cmcc域名cdn, 已经禁用多线程");
                                 if (videoTracks.Count != 0)
                                 {
                                     Log($"开始下载P{p.index}视频, 片段({(i + 1).ToString(pad)}/{clips.Count})...");
@@ -995,38 +937,6 @@ namespace BBDown
                         LogDebug("{0}", webJsonStr);
                         continue;
                     }
-
-                    if (downloadDanmaku)
-                    {
-                        var danmakuXmlPath = savePath.Substring(0, savePath.LastIndexOf('.')) + ".xml";
-                        var danmakuAssPath = savePath.Substring(0, savePath.LastIndexOf('.')) + ".ass";
-                        if (!File.Exists(danmakuAssPath))
-						{
-                            if (File.Exists(danmakuXmlPath)) { Log("弹幕Xml文件已存在，跳过下载..."); }
-                            else
-                            {
-                                Log("正在下载弹幕Xml文件");
-                                string danmakuUrl = "https://comment.bilibili.com/" + p.cid + ".xml";
-                                await DownloadFile(danmakuUrl, danmakuXmlPath, false, aria2cProxy);
-                            }
-
-                            var danmakus = DanmakuUtil.ParseXml(danmakuXmlPath);
-                            if (danmakus != null)
-                            {
-                                Log("正在保存弹幕Ass文件...");
-                                await DanmakuUtil.SaveAsAssAsync(danmakus, danmakuAssPath);
-                            }
-                            else
-                            {
-                                Log("弹幕Xml解析失败, 删除Xml...");
-                                File.Delete(danmakuXmlPath);
-                            }
-                        }
-						else
-						{
-                            Log("弹幕Ass文件已存在，跳过生成");
-						}
-                    }
                 }
                 Log("任务完成");
             }
@@ -1069,6 +979,115 @@ namespace BBDown
             }
             if (!result.EndsWith(".mp4")) { result += ".mp4"; }
             return result;
+        }
+
+        private static async Task loginWEB()
+        {
+            try
+            {
+                Log("获取登录地址...");
+                string loginUrl = "https://passport.bilibili.com/qrcode/getLoginUrl";
+                string url = JsonDocument.Parse(await HTTPUtil.GetWebSourceAsync(loginUrl)).RootElement.GetProperty("data").GetProperty("url").ToString();
+                string oauthKey = GetQueryString("oauthKey", url);
+                //Log(oauthKey);
+                //Log(url);
+                bool flag = false;
+                Log("生成二维码...");
+                QRCodeGenerator qrGenerator = new QRCodeGenerator();
+                QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+                PngByteQRCode pngByteCode = new PngByteQRCode(qrCodeData);
+                File.WriteAllBytes("qrcode.png", pngByteCode.GetGraphic(7));
+                Log("生成二维码成功：qrcode.png, 请打开并扫描, 或扫描打印的二维码");
+                var consoleQRCode = new ConsoleQRCode(qrCodeData);
+                consoleQRCode.GetGraphic();
+
+                while (true)
+                {
+                    await Task.Delay(1000);
+                    string w = await GetLoginStatusAsync(oauthKey);
+                    string data = JsonDocument.Parse(w).RootElement.GetProperty("data").ToString();
+                    if (data == "-2")
+                    {
+                        LogColor("二维码已过期, 请重新执行登录指令.");
+                        break;
+                    }
+                    else if (data == "-4") //等待扫码
+                    {
+                        continue;
+                    }
+                    else if (data == "-5") //等待确认
+                    {
+                        if (!flag)
+                        {
+                            Log("扫码成功, 请确认...");
+                            flag = !flag;
+                        }
+                    }
+                    else
+                    {
+                        string cc = JsonDocument.Parse(w).RootElement.GetProperty("data").GetProperty("url").ToString();
+                        Log("登录成功: SESSDATA=" + GetQueryString("SESSDATA", cc));
+                        //导出cookie
+                        File.WriteAllText(Path.Combine(APP_DIR, "BBDown.data"), cc.Substring(cc.IndexOf('?') + 1).Replace("&", ";"));
+                        File.Delete("qrcode.png");
+                        break;
+                    }
+                }
+            }
+            catch (Exception e) { LogError(e.Message); }
+        }
+
+        private static async Task loginTV()
+        {
+            try
+            {
+                string loginUrl = "https://passport.snm0516.aisee.tv/x/passport-tv-login/qrcode/auth_code";
+                string pollUrl = "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll";
+                var parms = GetTVLoginParms();
+                Log("获取登录地址...");
+                byte[] responseArray = await (await HTTPUtil.AppHttpClient.PostAsync(loginUrl, new FormUrlEncodedContent(parms.ToDictionary()))).Content.ReadAsByteArrayAsync();
+                string web = Encoding.UTF8.GetString(responseArray);
+                string url = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("url").ToString();
+                string authCode = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("auth_code").ToString();
+                Log("生成二维码...");
+                QRCodeGenerator qrGenerator = new QRCodeGenerator();
+                QRCodeData qrCodeData = qrGenerator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
+                PngByteQRCode pngByteCode = new PngByteQRCode(qrCodeData);
+                File.WriteAllBytes("qrcode.png", pngByteCode.GetGraphic(7));
+                Log("生成二维码成功：qrcode.png, 请打开并扫描, 或扫描打印的二维码");
+                var consoleQRCode = new ConsoleQRCode(qrCodeData);
+                consoleQRCode.GetGraphic();
+                parms.Set("auth_code", authCode);
+                parms.Set("ts", GetTimeStamp(true));
+                parms.Remove("sign");
+                parms.Add("sign", GetSign(ToQueryString(parms)));
+                while (true)
+                {
+                    await Task.Delay(1000);
+                    responseArray = await (await HTTPUtil.AppHttpClient.PostAsync(pollUrl, new FormUrlEncodedContent(parms.ToDictionary()))).Content.ReadAsByteArrayAsync();
+                    web = Encoding.UTF8.GetString(responseArray);
+                    string code = JsonDocument.Parse(web).RootElement.GetProperty("code").ToString();
+                    if (code == "86038")
+                    {
+                        LogColor("二维码已过期, 请重新执行登录指令.");
+                        break;
+                    }
+                    else if (code == "86039") //等待扫码
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        string cc = JsonDocument.Parse(web).RootElement.GetProperty("data").GetProperty("access_token").ToString();
+                        Log("登录成功: AccessToken=" + cc);
+                        //导出cookie
+                        File.WriteAllText(Path.Combine(APP_DIR, "BBDownTV.data"), "access_token=" + cc);
+                        File.Delete("qrcode.png");
+                        break;
+                    }
+                }
+            }
+            catch (Exception e) { LogError(e.Message); }
         }
     }
 }

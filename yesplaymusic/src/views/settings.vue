@@ -86,9 +86,10 @@
             <option value="320000">
               {{ $t('settings.musicQuality.high') }} - 320Kbps
             </option>
-            <option value="999000">
+            <option value="flac">
               {{ $t('settings.musicQuality.lossless') }} - FLAC
             </option>
+            <option value="999000">Hi-Res</option>
           </select>
         </div>
       </div>
@@ -223,11 +224,11 @@
       </div>
 
       <section v-if="isElectron" class="unm-configuration">
-        <h3>UnblockNeteaseMusic 设置</h3>
+        <h3>UnblockNeteaseMusic</h3>
         <div class="item">
           <div class="left">
             <div class="title"
-              >激活
+              >{{ $t('settings.unm.enable') }}
               <a
                 href="https://github.com/UnblockNeteaseMusic/server"
                 target="blank"
@@ -250,7 +251,9 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> 备选音源 </div>
+            <div class="title">
+              {{ $t('settings.unm.audioSource.title') }}
+            </div>
             <div class="description">
               音源的具体代号
               <a
@@ -274,8 +277,10 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> 激活无损音质 (FLAC) </div>
-            <div class="description"> 设置后需要清掉快取才能生效。 </div>
+            <div class="title"> {{ $t('settings.unm.enableFlac.title') }} </div>
+            <div class="description">
+              {{ $t('settings.unm.enableFlac.desc') }}
+            </div>
           </div>
           <div class="right">
             <div class="toggle">
@@ -291,26 +296,30 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> 音源搜索模式 </div>
+            <div class="title"> {{ $t('settings.unm.searchMode.title') }} </div>
           </div>
           <div class="right">
             <select v-model="unmSearchMode">
-              <option value="fast-first"> 速度优先，不论顺序 </option>
-              <option value="order-first"> 顺序优先，不论速度 </option>
+              <option value="fast-first">
+                {{ $t('settings.unm.searchMode.fast') }}
+              </option>
+              <option value="order-first">
+                {{ $t('settings.unm.searchMode.order') }}
+              </option>
             </select>
           </div>
         </div>
 
         <div class="item">
           <div class="left">
-            <div class="title"> Joox 引擎的 Cookie </div>
+            <div class="title">{{ $t('settings.unm.cookie.joox') }}</div>
             <div class="description">
               <a
                 href="https://github.com/UnblockNeteaseMusic/server-rust/tree/main/engines#joox-cookie-設定說明"
                 target="_blank"
-                >设置说明请参见此处。</a
-              >
-              留空则不进行相关设置。
+                >{{ $t('settings.unm.cookie.desc1') }}
+              </a>
+              {{ $t('settings.unm.cookie.desc2') }}
             </div>
           </div>
           <div class="right">
@@ -324,14 +333,14 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> QQ 引擎的 Cookie </div>
+            <div class="title"> {{ $t('settings.unm.cookie.qq') }} </div>
             <div class="description">
               <a
                 href="https://github.com/UnblockNeteaseMusic/server-rust/tree/main/engines#qq-cookie-設定說明"
                 target="_blank"
-                >设置说明请参见此处。</a
-              >
-              留空则不进行相关设置。
+                >{{ $t('settings.unm.cookie.desc1') }}
+              </a>
+              {{ $t('settings.unm.cookie.desc2') }}
             </div>
           </div>
           <div class="right">
@@ -345,13 +354,14 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> YtDl 引擎要使用的 youtube-dl 运行档 </div>
+            <div class="title"> {{ $t('settings.unm.ytdl') }} </div>
             <div class="description">
               <a
                 href="https://github.com/UnblockNeteaseMusic/server-rust/tree/main/engines#ytdlexe-設定說明"
                 target="_blank"
-                >设置说明请参见此处。</a
-              >留空则不进行相关设置。
+                >{{ $t('settings.unm.cookie.desc1') }}
+              </a>
+              {{ $t('settings.unm.cookie.desc2') }}
             </div>
           </div>
           <div class="right">
@@ -365,17 +375,17 @@
 
         <div class="item">
           <div class="left">
-            <div class="title"> 用于 UNM 的 Proxy 服务器 </div>
+            <div class="title"> {{ $t('settings.unm.proxy.title') }} </div>
             <div class="description">
-              请求如 YouTube 音源服务时要使用的 Proxy 服务器。<br />
-              留空则不进行相关设置。
+              {{ $t('settings.unm.proxy.desc1') }}<br />
+              {{ $t('settings.unm.proxy.desc2') }}
             </div>
           </div>
           <div class="right">
             <input
               v-model="unmProxyUri"
               class="text-input margin-right-0"
-              placeholder="例 https://192.168.11.45"
+              placeholder="ex. https://192.168.11.45"
             />
           </div>
         </div>
@@ -806,8 +816,7 @@ export default {
     },
     musicQuality: {
       get() {
-        if (this.settings.musicQuality === undefined) return 320000;
-        return this.settings.musicQuality;
+        return this.settings.musicQuality ?? 320000;
       },
       set(value) {
         if (value === this.settings.musicQuality) return;
