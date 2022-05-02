@@ -109,17 +109,17 @@ void GURL::InitializeFromCanonicalSpec() {
       // removed from a "foo:hello #ref" URL (see http://crbug.com/291747).
       GURL test_url(spec_, RETAIN_TRAILING_PATH_WHITEPACE);
 
-      DCHECK(test_url.is_valid_ == is_valid_);
-      DCHECK(test_url.spec_ == spec_);
+      DCHECK_EQ(test_url.is_valid_, is_valid_);
+      DCHECK_EQ(test_url.spec_, spec_);
 
-      DCHECK(test_url.parsed_.scheme == parsed_.scheme);
-      DCHECK(test_url.parsed_.username == parsed_.username);
-      DCHECK(test_url.parsed_.password == parsed_.password);
-      DCHECK(test_url.parsed_.host == parsed_.host);
-      DCHECK(test_url.parsed_.port == parsed_.port);
-      DCHECK(test_url.parsed_.path == parsed_.path);
-      DCHECK(test_url.parsed_.query == parsed_.query);
-      DCHECK(test_url.parsed_.ref == parsed_.ref);
+      DCHECK_EQ(test_url.parsed_.scheme, parsed_.scheme);
+      DCHECK_EQ(test_url.parsed_.username, parsed_.username);
+      DCHECK_EQ(test_url.parsed_.password, parsed_.password);
+      DCHECK_EQ(test_url.parsed_.host, parsed_.host);
+      DCHECK_EQ(test_url.parsed_.port, parsed_.port);
+      DCHECK_EQ(test_url.parsed_.path, parsed_.path);
+      DCHECK_EQ(test_url.parsed_.query, parsed_.query);
+      DCHECK_EQ(test_url.parsed_.ref, parsed_.ref);
     }
   }
 #endif
@@ -222,8 +222,7 @@ GURL GURL::Resolve(base::StringPiece16 relative) const {
 }
 
 // Note: code duplicated below (it's inconvenient to use a template here).
-GURL GURL::ReplaceComponents(
-    const url::Replacements<char>& replacements) const {
+GURL GURL::ReplaceComponents(const Replacements& replacements) const {
   GURL result;
 
   // Not allowed for invalid URLs.
@@ -242,8 +241,7 @@ GURL GURL::ReplaceComponents(
 }
 
 // Note: code duplicated above (it's inconvenient to use a template here).
-GURL GURL::ReplaceComponents(
-    const url::Replacements<char16_t>& replacements) const {
+GURL GURL::ReplaceComponents(const ReplacementsW& replacements) const {
   GURL result;
 
   // Not allowed for invalid URLs.
@@ -280,7 +278,7 @@ GURL GURL::DeprecatedGetOriginAsURL() const {
   if (SchemeIsFileSystem())
     return inner_url_->DeprecatedGetOriginAsURL();
 
-  url::Replacements<char> replacements;
+  Replacements replacements;
   replacements.ClearUsername();
   replacements.ClearPassword();
   replacements.ClearPath();
@@ -297,7 +295,7 @@ GURL GURL::GetAsReferrer() const {
   if (!has_ref() && !has_username() && !has_password())
     return GURL(*this);
 
-  url::Replacements<char> replacements;
+  Replacements replacements;
   replacements.ClearRef();
   replacements.ClearUsername();
   replacements.ClearPassword();

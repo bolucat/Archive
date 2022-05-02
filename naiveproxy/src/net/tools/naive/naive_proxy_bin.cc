@@ -44,6 +44,7 @@
 #include "net/log/net_log.h"
 #include "net/log/net_log_capture_mode.h"
 #include "net/log/net_log_entry.h"
+#include "net/log/net_log_event_type.h"
 #include "net/log/net_log_source.h"
 #include "net/log/net_log_util.h"
 #include "net/proxy_resolution/configured_proxy_resolution_service.h"
@@ -370,7 +371,7 @@ class PrintingLogObserver : public NetLog::ThreadSafeObserver {
         return;
     }
     const char* source_type = NetLog::SourceTypeToString(entry.source.type);
-    const char* event_type = NetLog::EventTypeToString(entry.type);
+    const char* event_type = NetLogEventTypeToString(entry.type);
     const char* event_phase = NetLog::EventPhaseToString(entry.phase);
     base::Value params(entry.ToValue());
     std::string params_str;

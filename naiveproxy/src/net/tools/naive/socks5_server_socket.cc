@@ -371,7 +371,7 @@ int Socks5ServerSocket::DoGreetReadComplete(int result) {
 int Socks5ServerSocket::DoGreetWrite() {
   if (buffer_.empty()) {
     const char write_data[] = {kSOCKS5Version, auth_method_};
-    buffer_ = std::string(write_data, base::size(write_data));
+    buffer_ = std::string(write_data, std::size(write_data));
     bytes_sent_ = 0;
   }
 
@@ -472,7 +472,7 @@ int Socks5ServerSocket::DoAuthReadComplete(int result) {
 int Socks5ServerSocket::DoAuthWrite() {
   if (buffer_.empty()) {
     const char write_data[] = {kSubnegotiationVersion, auth_status_};
-    buffer_ = std::string(write_data, base::size(write_data));
+    buffer_ = std::string(write_data, std::size(write_data));
     bytes_sent_ = 0;
   }
 
@@ -625,7 +625,7 @@ int Socks5ServerSocket::DoHandshakeWrite() {
         0x00, 0x00,  // BND.PORT
         // clang-format on
     };
-    buffer_ = std::string(write_data, base::size(write_data));
+    buffer_ = std::string(write_data, std::size(write_data));
     bytes_sent_ = 0;
   }
 
