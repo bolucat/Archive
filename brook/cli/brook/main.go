@@ -50,7 +50,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "Brook"
 	app.Version = "20220501"
-	app.Usage = "A cross-platform strong encryption and not detectable proxy"
+	app.Usage = "A cross-platform network tool designed for developers"
 	app.Authors = []*cli.Author{
 		{
 			Name:  "Cloud",

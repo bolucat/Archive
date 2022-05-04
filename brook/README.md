@@ -12,7 +12,7 @@
 [🩸 Youtube](https://www.youtube.com/txthinking)
 [❤️ Sponsor](https://github.com/sponsors/txthinking)
 
-Brook is a cross-platform strong encryption and not detectable proxy. Keep it simple, stupid.
+A cross-platform network tool designed for developers.
 
 [🗣 Subscribe Announcement](https://t.me/txthinking_news)
 
