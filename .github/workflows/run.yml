@@ -91,6 +91,7 @@ jobs:
           ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
           ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
           ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
+          ${GCRS} https://github.com/DIGITALCRIMINALS/OnlyFans onlyfans
           # Clean Git Info
           rm -rf */.git
           echo "Update On $(date)" >> .github/update.log
@@ -398,6 +399,7 @@ jobs:
           ${Z9R} m3u8-cli.zip m3u8-cli
           ${Z9R} yesplaymusic.zip yesplaymusic
           ${Z9R} vue-color-avatar.zip vue-color-avatar
+          ${Z9R} onlyfans.zip onlyfans
           # Move to Release
           mv *.zip release
 
@@ -759,6 +761,16 @@ jobs:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: release/vue-color-avatar.zip
           asset_name: vue-color-avatar.zip
+          asset_content_type: application/zip
+          
+      - name: Upload Release Assets
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/onlyfans.zip
+          asset_name: onlyfans.zip
           asset_content_type: application/zip
             
       - name: Delete Older Release
