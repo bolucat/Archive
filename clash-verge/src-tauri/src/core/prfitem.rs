@@ -1,6 +1,7 @@
 use crate::utils::{dirs, help, tmpl};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_yaml::Mapping;
 use std::fs;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -203,7 +204,7 @@ impl PrfItem {
       builder = builder.no_proxy();
     }
 
-    builder = builder.user_agent(user_agent.unwrap_or("clash-verge/v0.1.0".into()));
+    builder = builder.user_agent(user_agent.unwrap_or("clash-verge/v1.0.0".into()));
 
     let resp = builder.build()?.get(url).send().await?;
     let header = resp.headers();
@@ -227,6 +228,11 @@ impl PrfItem {
     let file = format!("{uid}.yaml");
     let name = name.unwrap_or(uid.clone());
     let data = resp.text_with_charset("utf-8").await?;
+
+    // check the data whether the valid yaml format
+    if !serde_yaml::from_str::<Mapping>(&data).is_ok() {
+      bail!("the remote profile data is not valid yaml");
+    }
 
     Ok(PrfItem {
       uid: Some(uid),
