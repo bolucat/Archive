@@ -38,7 +38,7 @@ WINDOWS_ARCH_LIST = \
 all: linux-amd64 darwin-amd64 windows-amd64 # Most used
 
 docker:
-	GOAMD64=v3 $(GOBUILD) -o $(BINDIR)/$(NAME)-$@
+	$(GOBUILD) -o $(BINDIR)/$(NAME)-$@
 
 darwin-amd64:
 	GOARCH=amd64 GOOS=darwin $(GOBUILD) -o $(BINDIR)/$(NAME)-$@
@@ -130,7 +130,11 @@ all-arch: $(PLATFORM_LIST) $(WINDOWS_ARCH_LIST)
 releases: $(gz_releases) $(zip_releases)
 
 lint:
-	golangci-lint run ./...
+	GOOS=darwin golangci-lint run ./...
+	GOOS=windows golangci-lint run ./...
+	GOOS=linux golangci-lint run ./...
+	GOOS=freebsd golangci-lint run ./...
+	GOOS=openbsd golangci-lint run ./...
 
 clean:
 	rm $(BINDIR)/*

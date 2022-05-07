@@ -91,6 +91,8 @@ func (d *Decoder) decodeInt(name string, data any, val reflect.Value) (err error
 	switch {
 	case kind == reflect.Int:
 		val.SetInt(dataVal.Int())
+	case kind == reflect.Float64 && d.option.WeaklyTypedInput:
+		val.SetInt(int64(dataVal.Float()))
 	case kind == reflect.String && d.option.WeaklyTypedInput:
 		var i int64
 		i, err = strconv.ParseInt(dataVal.String(), 0, val.Type().Bits())
@@ -157,9 +159,19 @@ func (d *Decoder) decodeSlice(name string, data any, val reflect.Value) error {
 		for valSlice.Len() <= i {
 			valSlice = reflect.Append(valSlice, reflect.Zero(valElemType))
 		}
-		currentField := valSlice.Index(i)
-
 		fieldName := fmt.Sprintf("%s[%d]", name, i)
+		if currentData == nil {
+			// in weakly type mode, null will convert to zero value
+			if d.option.WeaklyTypedInput {
+				continue
+			}
+			// in non-weakly type mode, null will convert to nil if element's zero value is nil, otherwise return an error
+			if elemKind := valElemType.Kind(); elemKind == reflect.Map || elemKind == reflect.Slice {
+				continue
+			}
+			return fmt.Errorf("'%s' can not be null", fieldName)
+		}
+		currentField := valSlice.Index(i)
 		if err := d.decode(fieldName, currentData, currentField); err != nil {
 			return err
 		}
