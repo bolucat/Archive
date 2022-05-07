@@ -53,6 +53,7 @@ jobs:
           ${GCRS} https://github.com/yichengchen/clashX clashx
           ${GCRS} https://github.com/Fndroid/clash_for_windows_pkg clash-cfw
           ${GCRS} https://github.com/zzzgydi/clash-verge clash-verge
+          ${GCRS} https://github.com/2dust/clashN clashn
           ${GCRS} https://github.com/Kr328/ClashForAndroid clash-cfa
           ${GCRS} https://github.com/trojan-gfw/igniter igniter
           ${GCRS} https://github.com/trojan-gfw/igniter-go-libs igniter/app/src/libs/go-libs && rm -rfv igniter/app/src/libs/go-libs/.git
@@ -189,6 +190,11 @@ jobs:
           mkdir -p clash-verge/Clients
           pushd clash-verge/Clients || exit 1
           wget -qO- https://api.github.com/repos/zzzgydi/clash-verge/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
+          popd || exit 1
+          # clashn
+          mkdir -p clashn/Clients
+          pushd clashn/Clients || exit 1
+          wget -qO- https://api.github.com/repos/2dust/clashN/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | wget -q -i -
           popd || exit 1
           # igniter
           mkdir -p igniter/Clients
@@ -334,8 +340,9 @@ jobs:
           ${Z9R} clash-cfw.zip clash-cfw
           ${Z9R} clash-cfa.zip clash-cfa
           ${Z9R} clash-verge.zip clash-verge
+          ${Z9R} clashn.zip clashn
           # clash
-          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-verge.zip
+          ${Z9R} clash-clients-full.zip . -i clashx.zip clash-cfw.zip clash-cfa.zip clash-verge.zip clashn.zip
           rm -rfv clashx.zip clash-cfw.zip clash-cfa.zip
           ${Z9R} igniter.zip igniter
           ${Z9R} sagernet.zip sagernet
