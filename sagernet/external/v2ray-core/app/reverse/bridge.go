@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/mux"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/session"
@@ -190,6 +191,22 @@ func (w *BridgeWorker) Dispatch(ctx context.Context, dest net.Destination) (*tra
 		Reader: uplinkReader,
 		Writer: downlinkWriter,
 	}, nil
+}
+
+func (w *BridgeWorker) DispatchConn(ctx context.Context, dest net.Destination, conn net.Conn, wait bool) error {
+	if !isInternalDomain(dest) {
+		ctx = session.ContextWithInbound(ctx, &session.Inbound{
+			Tag: w.tag,
+		})
+		return w.dispatcher.DispatchConn(ctx, dest, conn, wait)
+	}
+
+	w.handleInternalConn(transport.Link{
+		Reader: buf.NewReader(conn),
+		Writer: buf.NewWriter(conn),
+	})
+
+	return nil
 }
 
 func (w *BridgeWorker) DispatchLink(ctx context.Context, dest net.Destination, outbound *transport.Link) error {

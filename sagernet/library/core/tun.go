@@ -4,12 +4,7 @@ import "C"
 import (
 	"context"
 	"fmt"
-	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
-	"golang.org/x/sys/unix"
 	"io"
-
-	//C "github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
 	"math"
 	"net"
 	"os"
@@ -27,9 +22,10 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features/dns/localdns"
 	"github.com/v2fly/v2ray-core/v5/features/outbound"
+	routing_session "github.com/v2fly/v2ray-core/v5/features/routing/session"
 	"github.com/v2fly/v2ray-core/v5/proxy/wireguard"
-	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"golang.org/x/sys/unix"
 	"libcore/comm"
 	"libcore/gvisor"
 	"libcore/nat"
@@ -269,84 +265,7 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 	element := v2rayNet.AddConnection(conn)
 	defer v2rayNet.RemoveConnection(element)
 
-	link := &transport.Link{
-		Reader: &connReader{conn},
-		Writer: &connWriter{conn},
-	}
-	_ = t.v2ray.dispatcher.DispatchLink(ctx, destination, link)
-}
-
-type connReader struct {
-	net.Conn
-}
-
-func (r *connReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
-	buffer := buf.New()
-	_, err := buffer.ReadFrom(r.Conn)
-	if err != nil {
-		buffer.Release()
-		return nil, err
-	}
-	return buf.MultiBuffer{buffer}, nil
-}
-
-func (r *connReader) ReadMultiBufferTimeout(duration time.Duration) (buf.MultiBuffer, error) {
-	err := r.SetReadDeadline(time.Now().Add(duration))
-	if err != nil {
-		return nil, err
-	}
-	buffer := buf.New()
-	_, err = buffer.ReadFrom(r.Conn)
-	_ = r.SetReadDeadline(time.Time{})
-	if err == nil {
-		return buf.MultiBuffer{buffer}, nil
-	}
-	buffer.Release()
-	if E.IsTimeout(err) {
-		err = buf.ErrReadTimeout
-	}
-	return nil, err
-}
-
-type connWriter struct {
-	net.Conn
-}
-
-func (w *connWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
-	defer buf.ReleaseMulti(mb)
-	/*if mb.IsEmpty() {
-		return nil
-	}
-	if mb.Len() == 1 {
-		_, err := w.Write(mb[0].Bytes())
-		return err
-	}
-	_payload := B.StackNew()
-	payload := C.Dup(_payload)
-	for {
-		payload.FullReset()
-		nb, n := buf.SplitBytes(mb, payload.FreeBytes())
-		if n > 0 {
-			payload.Truncate(n)
-			_, err := w.Write(payload.Bytes())
-			if err != nil {
-				return err
-			}
-		}
-		if nb.IsEmpty() {
-			break
-		} else {
-			mb = nb
-		}
-	}
-	*/
-	for _, buffer := range mb {
-		_, err := w.Write(buffer.Bytes())
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+	_ = t.v2ray.dispatcher.DispatchConn(ctx, destination, conn, true)
 }
 
 func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.Destination, data *buf.Buffer, writeBack func([]byte, *net.UDPAddr) (int, error), closer io.Closer) {
@@ -527,10 +446,11 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 			addr = nil
 		}
 		if addr, ok := addr.(*net.UDPAddr); ok {
-			_, err = writeBack(buffer, addr)
+			_, err = writeBack(buffer.Bytes(), addr)
 		} else {
-			_, err = writeBack(buffer, nil)
+			_, err = writeBack(buffer.Bytes(), nil)
 		}
+		buffer.Release()
 		if err != nil {
 			break
 		}
@@ -628,7 +548,8 @@ func (t *Tun2ray) NewPingPacket(source v2rayNet.Destination, destination v2rayNe
 				newError("failed to read ping response from ", destination.Address).Base(err).WriteToLog()
 				break
 			}
-			err = writeBack(buffer)
+			err = writeBack(buffer.Bytes())
+			buffer.Release()
 			if err != nil {
 				if err != unix.ENETUNREACH {
 					newError("failed to write ping response back").Base(err).WriteToLog()

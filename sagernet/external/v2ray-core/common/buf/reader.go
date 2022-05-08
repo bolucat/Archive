@@ -4,6 +4,7 @@ import (
 	"io"
 	"time"
 
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -252,6 +253,9 @@ func (r *ConnReader) ReadMultiBufferTimeout(duration time.Duration) (MultiBuffer
 		return nil, err
 	}
 	b, err := ReadBuffer(r.Conn)
+	if E.IsTimeout(err) {
+		err = ErrReadTimeout
+	}
 	r.SetReadDeadline(time.Time{})
 	return MultiBuffer{b}, err
 }

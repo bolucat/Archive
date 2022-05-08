@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"runtime"
 	"strings"
 	"time"
 
 	C "github.com/sagernet/sing/common"
 	B "github.com/sagernet/sing/common/buf"
+	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
-	"github.com/sagernet/sing/protocol/socks"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -57,7 +59,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
 			}
 			key = bKdy
 		}
-		rng := random.Blake3KeyedHash()
+		rng := random.Blake3KeyedHash().Reader
 		if config.ReducedIvHeadEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{
 				Reader: rng,
@@ -75,15 +77,20 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
 		if config.Key == "" {
 			return nil, newError("missing psk")
 		}
-		var pskList [][]byte
-		for _, psk := range strings.Split(config.Key, ":") {
-			bKdy, err := base64.StdEncoding.DecodeString(psk)
+		var pskList [][shadowaead_2022.KeySaltSize]byte
+		for _, ks := range strings.Split(config.Key, ":") {
+			kb, err := base64.StdEncoding.DecodeString(ks)
 			if err != nil {
-				return nil, newError("decode key ", psk).Base(err)
+				return nil, newError("decode key ", ks).Base(err)
 			}
-			pskList = append(pskList, bKdy)
+			if len(kb) != shadowaead_2022.KeySaltSize {
+				return nil, shadowaead.ErrBadKey
+			}
+			var psk [shadowaead_2022.KeySaltSize]byte
+			copy(psk[:], kb)
+			pskList = append(pskList, psk)
 		}
-		rng := random.Blake3KeyedHash()
+		rng := random.Blake3KeyedHash().Reader
 		if config.ReducedIvHeadEntropy {
 			rng = &shadowsocks.ReducedEntropyReader{
 				Reader: rng,
@@ -111,7 +118,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	if outbound == nil || !outbound.Target.IsValid() {
 		return newError("target not specified")
 	}
-	/*if statConn, ok := inboundConn.(*internet.StatCouterConnection); ok {
+	/*if statConn, ok := inboundConn.(*internet.StatCounterConn); ok {
 		inboundConn = statConn.Connection
 	}*/
 	destination := outbound.Target
@@ -130,7 +137,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	defer net.RemoveConnection(connElem)
 
 	if network == net.Network_TCP {
-		serverConn := o.method.DialEarlyConn(connection, singDestination(destination))
+		serverConn := o.method.DialEarlyConn(connection, SingDestination(destination))
 
 		var handshake bool
 		if cachedReader, isCached := link.Reader.(pipe.CachedReader); isCached {
@@ -155,6 +162,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 						cached = nb
 					}
 				}
+				runtime.KeepAlive(_payload)
 			}
 		}
 		if !handshake {
@@ -182,6 +190,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 						mb = nb
 					}
 				}
+				runtime.KeepAlive(_payload)
 			}
 		}
 		if !handshake {
@@ -198,80 +207,150 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 			return rw.CopyConn(ctx, inboundConn, serverConn)
 		}
 
-		conn := &pipeConnWrapper{
-			w:       link.Writer,
-			pipeOut: pipeOut,
+		conn := &PipeConnWrapper{
+			W:       link.Writer,
+			PipeOut: pipeOut,
 			Conn:    inboundConn,
 		}
 		if ir, ok := link.Reader.(io.Reader); ok {
-			conn.r = ir
+			conn.R = ir
 		} else {
-			conn.r = &buf.BufferedReader{Reader: link.Reader}
+			conn.R = &buf.BufferedReader{Reader: link.Reader}
 		}
 
 		return rw.CopyConn(ctx, conn, serverConn)
 	} else {
-		var packetConn socks.PacketConn
-		if pc, isPacketConn := inboundConn.(socks.PacketConn); isPacketConn {
+		var packetConn N.PacketConn
+		if pc, isPacketConn := inboundConn.(N.PacketConn); isPacketConn {
 			packetConn = pc
+		} else if nc, isNetPacket := inboundConn.(net.PacketConn); isNetPacket {
+			packetConn = &N.PacketConnWrapper{PacketConn: nc}
 		} else {
-			packetConn = &packetConnWrapper{
+			packetConn = &PacketConnWrapper{
 				Reader: link.Reader,
 				Writer: link.Writer,
 				Conn:   inboundConn,
-				dest:   destination,
+				Dest:   destination,
 			}
 		}
 
 		serverConn := o.method.DialPacketConn(connection)
-		return socks.CopyPacketConn(ctx, packetConn, serverConn)
+		return N.CopyPacketConn(ctx, packetConn, serverConn)
 	}
 }
 
-func singDestination(destination net.Destination) *M.AddrPort {
-	var addr M.Addr
+func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer internet.Dialer) error {
+	outbound := session.OutboundFromContext(ctx)
+	if outbound == nil || !outbound.Target.IsValid() {
+		return newError("target not specified")
+	}
+	/*if statConn, ok := inboundConn.(*internet.StatCounterConn); ok {
+		inboundConn = statConn.Connection
+	}*/
+	destination := outbound.Target
+	network := destination.Network
+
+	newError("tunneling request to ", destination, " via ", o.server.NetAddr()).WriteToLog(session.ExportIDToError(ctx))
+
+	serverDestination := o.server
+	serverDestination.Network = network
+	connection, err := dialer.Dial(ctx, serverDestination)
+	if err != nil {
+		return newError("failed to connect to server").Base(err)
+	}
+
+	connElem := net.AddConnection(connection)
+	defer net.RemoveConnection(connElem)
+
+	serverConn := o.method.DialEarlyConn(connection, SingDestination(destination))
+
+	if cr, ok := conn.(rw.CachedReader); ok {
+		cached := cr.ReadCached()
+		if cached != nil && !cached.IsEmpty() {
+			_, err = serverConn.Write(cached.Bytes())
+			cached.Release()
+			if err != nil {
+				return newError("client handshake").Base(err)
+			}
+			goto direct
+		}
+	}
+
+	{
+		err = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		if err != nil {
+			return err
+		}
+
+		_request := B.StackNew()
+		request := C.Dup(_request)
+
+		_, err = request.ReadFrom(conn)
+		if err != nil && !E.IsTimeout(err) {
+			return err
+		}
+
+		err = conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			return err
+		}
+
+		_, err = serverConn.Write(request.Bytes())
+		if err != nil {
+			return newError("client handshake").Base(err)
+		}
+		runtime.KeepAlive(_request)
+	}
+
+direct:
+	return rw.CopyConn(ctx, conn, serverConn)
+}
+
+func SingDestination(destination net.Destination) M.Socksaddr {
+	var addr M.Socksaddr
 	switch destination.Address.Family() {
 	case net.AddressFamilyDomain:
-		addr = M.AddrFromFqdn(destination.Address.Domain())
+		addr.Fqdn = destination.Address.Domain()
 	default:
-		addr = M.AddrFromIP(destination.Address.IP())
+		addr.Addr = M.AddrFromIP(destination.Address.IP())
 	}
-	return M.AddrPortFrom(addr, uint16(destination.Port))
+	addr.Port = uint16(destination.Port)
+	return addr
 }
 
-type pipeConnWrapper struct {
-	r       io.Reader
-	w       buf.Writer
-	pipeOut bool
+type PipeConnWrapper struct {
+	R       io.Reader
+	W       buf.Writer
+	PipeOut bool
 	net.Conn
 }
 
-func (w *pipeConnWrapper) Close() error {
-	common.Interrupt(w.r)
-	common.Interrupt(w.w)
+func (w *PipeConnWrapper) Close() error {
+	common.Interrupt(w.R)
+	common.Interrupt(w.W)
 	common.Close(w.Conn)
 	return nil
 }
 
-func (w *pipeConnWrapper) Read(b []byte) (n int, err error) {
-	return w.r.Read(b)
+func (w *PipeConnWrapper) Read(b []byte) (n int, err error) {
+	return w.R.Read(b)
 }
 
-func (w *pipeConnWrapper) Write(p []byte) (n int, err error) {
-	if w.pipeOut {
+func (w *PipeConnWrapper) Write(p []byte) (n int, err error) {
+	if w.PipeOut {
 		// avoid bad usage of stack buffer
 		buffer := buf.New()
 		_, err = buffer.Write(p)
 		if err != nil {
 			return
 		}
-		err = w.w.WriteMultiBuffer(buf.MultiBuffer{buffer})
+		err = w.W.WriteMultiBuffer(buf.MultiBuffer{buffer})
 		if err != nil {
 			buffer.Release()
 			return
 		}
 	} else {
-		err = w.w.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes(p)})
+		err = w.W.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes(p)})
 		if err != nil {
 			return
 		}
@@ -280,56 +359,63 @@ func (w *pipeConnWrapper) Write(p []byte) (n int, err error) {
 	return
 }
 
-type packetConnWrapper struct {
+type PacketConnWrapper struct {
 	buf.Reader
 	buf.Writer
 	net.Conn
-	dest   net.Destination
+	Dest   net.Destination
 	cached buf.MultiBuffer
 }
 
-func (c *packetConnWrapper) ReadPacket(buffer *B.Buffer) (*M.AddrPort, error) {
-	if c.cached != nil {
-		mb, bb := buf.SplitFirst(c.cached)
+func (w *PacketConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
+	if w.cached != nil {
+		mb, bb := buf.SplitFirst(w.cached)
 		if bb == nil {
-			c.cached = nil
+			w.cached = nil
 		} else {
 			buffer.Write(bb.Bytes())
-			bb.Release()
-			c.cached = mb
+			w.cached = mb
 			var destination net.Destination
 			if bb.Endpoint != nil {
 				destination = *bb.Endpoint
 			} else {
-				destination = c.dest
+				destination = w.Dest
 			}
-			return singDestination(destination), nil
+			bb.Release()
+			return SingDestination(destination), nil
 		}
 	}
-	mb, err := c.ReadMultiBuffer()
+	mb, err := w.ReadMultiBuffer()
 	if err != nil {
-		return nil, err
+		return M.Socksaddr{}, err
 	}
 	nb, bb := buf.SplitFirst(mb)
 	if bb == nil {
-		return nil, nil
+		return M.Socksaddr{}, nil
 	} else {
 		buffer.Write(bb.Bytes())
-		bb.Release()
-		c.cached = nb
+		w.cached = nb
 		var destination net.Destination
 		if bb.Endpoint != nil {
 			destination = *bb.Endpoint
 		} else {
-			destination = c.dest
+			destination = w.Dest
 		}
-		return singDestination(destination), nil
+		bb.Release()
+		return SingDestination(destination), nil
 	}
 }
 
-func (c *packetConnWrapper) WritePacket(buffer *B.Buffer, addrPort *M.AddrPort) error {
+func (w *PacketConnWrapper) WritePacket(buffer *B.Buffer, addrPort M.Socksaddr) error {
 	vBuf := buf.FromBytes(buffer.Bytes())
 	endpoint := net.DestinationFromAddr(addrPort.UDPAddr())
 	vBuf.Endpoint = &endpoint
-	return c.Writer.WriteMultiBuffer(buf.MultiBuffer{vBuf})
+	return w.Writer.WriteMultiBuffer(buf.MultiBuffer{vBuf})
+}
+
+func (w *PacketConnWrapper) Close() error {
+	common.Interrupt(w.Reader)
+	common.Close(w.Conn)
+	buf.ReleaseMulti(w.cached)
+	return nil
 }

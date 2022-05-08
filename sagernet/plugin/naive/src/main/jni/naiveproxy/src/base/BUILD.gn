@@ -96,12 +96,23 @@ if (is_fuchsia) {
   import("//third_party/fuchsia-sdk/sdk/build/fidl_library.gni")
 }
 
-# TODO(crbug.com/1280708): Switch to enable_rust after we have NaCl support.
-build_rust_json_parser = toolchain_has_rust
+# TODO(crbug.com/1280708, crbug.com/1304707): Drop toolchain_has_rust after we
+# have support for all our toolchains: NaCl, Linux x86, etc.
+build_rust_json_parser = enable_rust && toolchain_has_rust
 
 buildflag_header("parsing_buildflags") {
   header = "parsing_buildflags.h"
   flags = [ "BUILD_RUST_JSON_PARSER=$build_rust_json_parser" ]
+}
+
+# TODO(crbug.com/1298039): The BUILDFLAG should be used instead. So
+# buildflag_header() should generate a Rust config (and perhaps a Rust crate
+# which depends on said config, so its usage can be expressed via deps).
+config("todo_buildflag_build_rust_json_parser") {
+  rustflags = [
+    "--cfg",
+    "buildflag__build_rust_json_parser",
+  ]
 }
 
 config("memory_tagging") {
@@ -1260,8 +1271,8 @@ mixed_component("base") {
       "process/process_mac.cc",
       "process/process_metrics_mac.cc",
       "profiler/module_cache_mac.cc",
-      "profiler/native_unwinder_mac.cc",
-      "profiler/native_unwinder_mac.h",
+      "profiler/native_unwinder_apple.cc",
+      "profiler/native_unwinder_apple.h",
       "profiler/stack_sampler_mac.cc",
       "profiler/suspendable_thread_delegate_mac.cc",
       "profiler/suspendable_thread_delegate_mac.h",
@@ -1307,8 +1318,8 @@ mixed_component("base") {
 
     if (ios_stack_profiler_enabled) {
       sources += [
-        "profiler/native_unwinder_ios.cc",
-        "profiler/native_unwinder_ios.h",
+        "profiler/native_unwinder_apple.cc",
+        "profiler/native_unwinder_apple.h",
         "profiler/suspendable_thread_delegate_mac.cc",
         "profiler/suspendable_thread_delegate_mac.h",
       ]
@@ -1423,16 +1434,19 @@ mixed_component("base") {
   # module, to avoid increasing Chrome's executable size.
   assert_no_deps = [ ":native_unwinder_android" ]
 
+  rs_crate_root = "base.rs"
+  rs_sources = [ "base.rs" ]
+
   if (build_rust_json_parser) {
-    rs_crate_root = "lib.rs"
+    # TODO(crbug.com/1298039): The BUILDFLAG should be used instead.
+    rs_configs = [ ":todo_buildflag_build_rust_json_parser" ]
     rs_deps = [
       "//third_party/rust/serde/v1:lib",
-      "//third_party/rust/serde_jsonrc/v0_1:lib",
+      "//third_party/rust/serde_json_lenient/v0_1:lib",
     ]
-    rs_sources = [
+    rs_sources += [
       "json/json_parser.rs",
       "json/mod.rs",
-      "lib.rs",
       "rs_glue/mod.rs",
       "values.rs",
       "values_deserialization.rs",
@@ -1475,7 +1489,7 @@ mixed_component("base") {
   # building inside the cros_sdk environment - use host_toolchain as a
   # more robust check for this.
   if (!use_sysroot &&
-      ((is_linux || is_chromeos) && !is_chromecast) &&
+      (is_linux || is_chromeos) && !is_chromecast &&
       host_toolchain != "//build/toolchain/cros:host") {
     libs += [ "atomic" ]
   }
@@ -1559,8 +1573,7 @@ mixed_component("base") {
 
   # Allow more direct string conversions on platforms with native utf8
   # strings
-  # TODO(crbug/1052397): Consider replacing is_ash with is_chromeos once lacros switches to target_os=chromeos
-  if (is_apple || is_chromeos_ash || is_chromecast || is_fuchsia) {
+  if (is_apple || is_chromeos || is_chromecast || is_fuchsia) {
     defines += [ "SYSTEM_NATIVE_UTF8" ]
   }
 

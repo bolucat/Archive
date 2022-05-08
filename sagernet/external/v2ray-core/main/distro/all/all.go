@@ -43,13 +43,19 @@ import (
 	_ "github.com/v2fly/v2ray-core/v5/proxy/shadowsocks"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/shadowsocks/plugin/external"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/shadowsocks/plugin/self"
+	_ "github.com/v2fly/v2ray-core/v5/proxy/shadowsocks_sing"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/socks"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/trojan"
+	_ "github.com/v2fly/v2ray-core/v5/proxy/trojan_sing"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/vless/inbound"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/vless/outbound"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/vmess/inbound"
 	_ "github.com/v2fly/v2ray-core/v5/proxy/vmess/outbound"
 
+/*	// Developer preview proxies
+	_ "github.com/v2fly/v2ray-core/v5/proxy/vlite/inbound"
+	_ "github.com/v2fly/v2ray-core/v5/proxy/vlite/outbound"
+*/
 	// Transports
 	_ "github.com/v2fly/v2ray-core/v5/transport/internet/domainsocket"
 	_ "github.com/v2fly/v2ray-core/v5/transport/internet/grpc"

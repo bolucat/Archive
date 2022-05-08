@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sagernet/sing/common/rw"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -182,6 +183,50 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	return nil
+}
+
+func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet.Dialer) error {
+	outbound := session.OutboundFromContext(ctx)
+	if outbound == nil || !outbound.Target.IsValid() {
+		return newError("target not specified")
+	}
+	destination := outbound.Target
+	network := destination.Network
+	if network != net.Network_TCP {
+		return newError("only TCP is supported in SSH proxy")
+	}
+
+	sc := c.client
+	if sc == nil {
+		c.Lock()
+		sc = c.client
+		if c.client == nil {
+			client, err := c.connect(ctx, dialer)
+			if err != nil {
+				return err
+			}
+			connElem := net.AddConnection(client)
+			go func() {
+				err = client.Wait()
+				if err != nil {
+					newError("ssh client closed").Base(err).AtDebug().WriteToLog()
+				}
+				c.Lock()
+				c.client = nil
+				c.Unlock()
+				net.RemoveConnection(connElem)
+			}()
+			sc = client
+		}
+		c.Unlock()
+	}
+
+	outboundConn, err := sc.Dial("tcp", destination.NetAddr())
+	if err != nil {
+		return newError("failed to open ssh proxy connection").Base(err)
+	}
+
+	return rw.CopyConn(ctx, conn, outboundConn)
 }
 
 func (c *Client) connect(ctx context.Context, dialer internet.Dialer) (*ssh.Client, error) {

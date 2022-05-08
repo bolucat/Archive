@@ -318,6 +318,7 @@ func (c *dispatcherConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		return 0, nil, io.EOF
 	case packet := <-c.cache:
 		n := copy(p, packet.Payload.Bytes())
+		packet.Payload.Release()
 		return n, &net.UDPAddr{
 			IP:   packet.Source.Address.IP(),
 			Port: int(packet.Source.Port),
@@ -325,7 +326,7 @@ func (c *dispatcherConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 }
 
-func (c *dispatcherConn) readFrom() (p []byte, addr net.Addr, err error) {
+func (c *dispatcherConn) readFrom() (buffer *buf.Buffer, addr net.Addr, err error) {
 	select {
 	case <-c.ctx.Done():
 		return nil, nil, io.EOF
@@ -333,7 +334,7 @@ func (c *dispatcherConn) readFrom() (p []byte, addr net.Addr, err error) {
 		if !ok {
 			return nil, nil, io.EOF
 		}
-		return packet.Payload.Bytes(), &net.UDPAddr{
+		return packet.Payload, &net.UDPAddr{
 			IP:   packet.Source.Address.IP(),
 			Port: int(packet.Source.Port),
 		}, nil
@@ -370,23 +371,24 @@ func (c *dispatcherConn) writeTo(buffer *buf.Buffer, addr net.Addr) (err error) 
 	return
 }
 
-func (c *dispatcherConn) ReadPacket(buffer *B.Buffer) (*M.AddrPort, error) {
+func (c *dispatcherConn) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
 	select {
 	case <-c.ctx.Done():
-		return nil, io.EOF
+		return M.Socksaddr{}, io.EOF
 	case packet, ok := <-c.cache:
 		if !ok {
-			return nil, io.EOF
+			return M.Socksaddr{}, io.EOF
 		}
 		_, err := buffer.Write(packet.Payload.Bytes())
 		if err != nil {
-			return nil, err
+			return M.Socksaddr{}, err
 		}
-		return M.AddrPortFrom(M.AddrFromIP(packet.Source.Address.IP()), uint16(packet.Source.Port)), nil
+		packet.Payload.Release()
+		return M.SocksaddrFrom(packet.Source.Address.IP(), uint16(packet.Source.Port)), nil
 	}
 }
 
-func (c *dispatcherConn) WritePacket(buffer *B.Buffer, addrPort *M.AddrPort) error {
+func (c *dispatcherConn) WritePacket(buffer *B.Buffer, addrPort M.Socksaddr) error {
 	vBuffer := buf.FromBytes(buffer.Bytes())
 	endpoint := net.DestinationFromAddr(addrPort.UDPAddr())
 	vBuffer.Endpoint = &endpoint

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/transport"
 )
@@ -15,6 +16,11 @@ type Handler interface {
 	common.Runnable
 	Tag() string
 	Dispatch(ctx context.Context, link *transport.Link)
+}
+
+type ConnHandler interface {
+	IsConnDispatcher() bool
+	DispatchConn(ctx context.Context, conn net.Conn)
 }
 
 type HandlerSelector interface {

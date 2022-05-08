@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/android/build_info.h"
-
 #include <cstdlib>
+
+#include "base/android/build_info.h"
+#include "base/notreached.h"
 
 int __system_property_get(const char* name, char* value);
 
@@ -21,9 +22,7 @@ namespace base {
 namespace android {
 
 struct BuildInfoSingletonTraits {
-  static BuildInfo* New() {
-    return new BuildInfo({});
-  }
+  static BuildInfo* New() { return new BuildInfo({}); }
 
   static void Delete(BuildInfo* x) {
     // We're leaking this type, see kRegisterAtExit.
@@ -59,8 +58,7 @@ BuildInfo::BuildInfo(const std::vector<std::string>& params)
       is_debug_android_(false),
       is_tv_(false),
       version_incremental_(""),
-      hardware_("") {
-}
+      hardware_("") {}
 
 // static
 BuildInfo* BuildInfo::GetInstance() {

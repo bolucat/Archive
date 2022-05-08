@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/sagernet/sing/common/rw"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -303,6 +304,52 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	return nil
+}
+
+func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet.Dialer) error {
+	if c.dialer == nil {
+		c.dialer = dialer
+	}
+	c.init.Close()
+
+	outbound := session.OutboundFromContext(ctx)
+	if outbound == nil || !outbound.Target.IsValid() {
+		return newError("target not specified")
+	}
+	destination := outbound.Target
+
+	if destination.Address.Family().IsDomain() {
+		ips, err := c.dnsClient.LookupIP(destination.Address.Domain())
+		if err != nil {
+			return newError("failed to lookup ip addresses for domain ", destination.Address.Domain()).Base(err)
+		}
+		destination.Address = net.IPAddress(ips[0])
+	}
+
+	bind := tcpip.FullAddress{
+		NIC: defaultNIC,
+	}
+	address := tcpip.FullAddress{
+		NIC:  defaultNIC,
+		Addr: tcpip.Address(destination.Address.IP()),
+		Port: uint16(destination.Port),
+	}
+
+	var network tcpip.NetworkProtocolNumber
+	if destination.Address.Family().IsIPv4() {
+		network = header.IPv4ProtocolNumber
+		bind.Addr = c.tun.addr4
+	} else {
+		network = header.IPv6ProtocolNumber
+		bind.Addr = c.tun.addr6
+	}
+
+	outboundConn, err := gonet.DialTCPWithBind(ctx, c.tun.stack, bind, address, network)
+	if err != nil {
+		return newError("failed to dial to virtual device").Base(err)
+	}
+
+	return rw.CopyConn(ctx, conn, outboundConn)
 }
 
 func (c *Client) IPv4Connection() net.PacketConn {

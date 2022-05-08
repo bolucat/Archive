@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/buf"
+	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
@@ -31,6 +33,15 @@ func New(ctx context.Context, config *Config) (*Handler, error) {
 // Process implements OutboundHandler.Dispatch().
 func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer internet.Dialer) error {
 	nBytes := h.response.WriteTo(link.Writer)
+	if nBytes > 0 {
+		// Sleep a little here to make sure the response is sent to client.
+		time.Sleep(time.Second)
+	}
+	return nil
+}
+
+func (h *Handler) ProcessConn(ctx context.Context, conn net.Conn, dialer internet.Dialer) error {
+	nBytes := h.response.WriteTo(buf.NewWriter(conn))
 	if nBytes > 0 {
 		// Sleep a little here to make sure the response is sent to client.
 		time.Sleep(time.Second)

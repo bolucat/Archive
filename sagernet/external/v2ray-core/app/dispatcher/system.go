@@ -3,6 +3,7 @@ package dispatcher
 import (
 	"context"
 
+	"github.com/sagernet/sing/common/rw"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/task"
@@ -43,10 +44,22 @@ func (s *SystemDispatcher) DispatchLink(ctx context.Context, dest net.Destinatio
 	if err != nil {
 		return err
 	}
-	go task.Run(ctx, func() error {
+	return task.Run(ctx, func() error {
 		return buf.Copy(buf.NewReader(conn), outbound.Writer)
 	}, func() error {
 		return buf.Copy(outbound.Reader, buf.NewWriter(conn))
 	})
-	return nil
+}
+
+func (s *SystemDispatcher) DispatchConn(ctx context.Context, dest net.Destination, conn net.Conn, wait bool) error {
+	destConn, err := internet.DialSystem(ctx, dest, nil)
+	if err != nil {
+		return err
+	}
+	if wait {
+		return rw.CopyConn(ctx, conn, destConn)
+	} else {
+		go rw.CopyConn(ctx, conn, destConn)
+		return nil
+	}
 }

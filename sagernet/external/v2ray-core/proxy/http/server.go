@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	C "github.com/sagernet/sing/common"
+	B "github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/rw"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -19,7 +22,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	http_proto "github.com/v2fly/v2ray-core/v5/common/protocol/http"
 	"github.com/v2fly/v2ray-core/v5/common/session"
-	"github.com/v2fly/v2ray-core/v5/common/signal"
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
@@ -164,53 +166,22 @@ func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *buf
 		return newError("failed to writeresponse back OK response").Base(err)
 	}
 
-	plcy := s.policy()
-	ctx, cancel := context.WithCancel(ctx)
-	timer := signal.CancelAfterInactivity(ctx, cancel, plcy.Timeouts.ConnectionIdle)
-
-	ctx = policy.ContextWithBufferPolicy(ctx, plcy.Buffer)
 	ctx = proxyman.SetPreferUseIP(ctx, true)
-	link, err := dispatcher.Dispatch(ctx, dest)
-	if err != nil {
-		return err
-	}
 
 	if reader.Buffered() > 0 {
-		payload, err := buf.ReadFrom(io.LimitReader(reader, int64(reader.Buffered())))
+		_buffered := B.StackNew()
+		buffered := C.Dup(_buffered)
+		_, err = buffered.ReadFullFrom(reader, reader.Buffered())
 		if err != nil {
 			return err
 		}
-		if err := link.Writer.WriteMultiBuffer(payload); err != nil {
-			return err
+		conn = &rw.BufferedConn{
+			Conn:   conn,
+			Buffer: buffered,
 		}
-		reader = nil
 	}
 
-	requestDone := func() error {
-		defer timer.SetTimeout(plcy.Timeouts.DownlinkOnly)
-
-		return buf.Copy(buf.NewReader(conn), link.Writer, buf.UpdateActivity(timer))
-	}
-
-	responseDone := func() error {
-		defer timer.SetTimeout(plcy.Timeouts.UplinkOnly)
-
-		v2writer := buf.NewWriter(conn)
-		if err := buf.Copy(link.Reader, v2writer, buf.UpdateActivity(timer)); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	closeWriter := task.OnSuccess(requestDone, task.Close(link.Writer))
-	if err := task.Run(ctx, closeWriter, responseDone); err != nil {
-		common.Interrupt(link.Reader)
-		common.Interrupt(link.Writer)
-		return newError("connection ends").Base(err)
-	}
-
-	return nil
+	return dispatcher.DispatchConn(ctx, dest, conn, true)
 }
 
 var errWaitAnother = newError("keep alive")

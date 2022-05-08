@@ -23,6 +23,15 @@ case "$ARCH" in
       mipsel) WITH_QEMU=mipsel;;
       mips64el) WITH_QEMU=mips64el;;
     esac
+    WITH_GOOS=linux
+    case "$target_cpu" in
+      x64) WITH_GOARCH=amd64;;
+      x86) WITH_GOARCH=386;;
+      arm64) WITH_GOARCH=arm64;;
+      arm) WITH_GOARCH=arm;;
+      mipsel) WITH_GOARCH=mipsle;;
+      mips64el) WITH_GOARCH=mips64le;;
+    esac
     if [ "$OPENWRT_FLAGS" ]; then
       eval "$OPENWRT_FLAGS"
       WITH_SYSROOT="out/sysroot-build/openwrt/$release/$arch"
@@ -31,6 +40,7 @@ case "$ARCH" in
       USE_AFDO=y
       USE_ANDROID_NDK=y
       WITH_SYSROOT=
+      WITH_GOOS=android
       case "$target_cpu" in
         x64) WITH_ANDROID_IMG=x86_64-24_r08;;
         x86) WITH_ANDROID_IMG=x86-24_r08;;
@@ -63,6 +73,12 @@ case "$ARCH" in
       x64) WITH_PGO=win64;;
       *) WITH_PGO=win32;;
     esac
+    WITH_GOOS=windows
+    case "$target_cpu" in
+      x64) WITH_GOARCH=amd64;;
+      x86) WITH_GOARCH=386;;
+      arm64) WITH_GOARCH=arm64;;
+    esac
   ;;
   Darwin)
     if which ccache >/dev/null 2>&1; then
@@ -77,6 +93,11 @@ case "$ARCH" in
     case "$target_cpu" in
       arm64) WITH_PGO=mac-arm;;
       *) WITH_PGO=mac;;
+    esac
+    WITH_GOOS=darwin
+    case "$target_cpu" in
+      x64) WITH_GOARCH=amd64;;
+      arm64) WITH_GOARCH=arm64;;
     esac
   ;;
 esac

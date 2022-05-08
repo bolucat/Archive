@@ -29,22 +29,25 @@ var (
 		"vless":         func() interface{} { return new(VLessInboundConfig) },
 		"vmess":         func() interface{} { return new(VMessInboundConfig) },
 		"trojan":        func() interface{} { return new(TrojanServerConfig) },
+		//"vliteu":        func() interface{} { return new(VLiteUDPInboundConfig) },
 	}, "protocol", "settings")
 
 	outboundConfigLoader = loader.NewJSONConfigLoader(loader.ConfigCreatorCache{
-		"blackhole":        func() interface{} { return new(BlackholeConfig) },
-		"freedom":          func() interface{} { return new(FreedomConfig) },
-		"http":             func() interface{} { return new(HTTPClientConfig) },
-		"shadowsocks":      func() interface{} { return new(ShadowsocksClientConfig) },
-		"socks":            func() interface{} { return new(SocksClientConfig) },
-		"vless":            func() interface{} { return new(VLessOutboundConfig) },
-		"vmess":            func() interface{} { return new(VMessOutboundConfig) },
-		"trojan":           func() interface{} { return new(TrojanClientConfig) },
-		"dns":              func() interface{} { return new(DNSOutboundConfig) },
-		"loopback":         func() interface{} { return new(LoopbackConfig) },
-		"wireguard":        func() interface{} { return new(WireGuardClientConfig) },
-		"ssh":              func() interface{} { return new(SSHClientConfig) },
+		"blackhole":   func() interface{} { return new(BlackholeConfig) },
+		"freedom":     func() interface{} { return new(FreedomConfig) },
+		"http":        func() interface{} { return new(HTTPClientConfig) },
+		"shadowsocks": func() interface{} { return new(ShadowsocksClientConfig) },
+		"socks":       func() interface{} { return new(SocksClientConfig) },
+		"vless":       func() interface{} { return new(VLessOutboundConfig) },
+		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
+		"trojan":      func() interface{} { return new(TrojanClientConfig) },
+		"dns":         func() interface{} { return new(DNSOutboundConfig) },
+		"loopback":    func() interface{} { return new(LoopbackConfig) },
+		"wireguard":   func() interface{} { return new(WireGuardClientConfig) },
+		"ssh":         func() interface{} { return new(SSHClientConfig) },
+		//"vliteu":           func() interface{} { return new(VLiteUDPOutboundConfig) },
 		"shadowsocks_sing": func() interface{} { return new(ShadowsocksSingClientConfig) },
+		"trojan_sing":      func() interface{} { return new(TrojanSingClientConfig) },
 	}, "protocol", "settings")
 )
 

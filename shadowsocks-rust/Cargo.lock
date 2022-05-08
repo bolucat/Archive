@@ -342,9 +342,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.16"
+version = "3.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f52d4f8e4a1419219935762e32913b4430f37cb0c0200ad17a89ee18c0188a9f"
+checksum = "47582c09be7c8b32c0ab3a6181825ababb713fde6fff20fc573a3870dd45c6a0"
 dependencies = [
  "atty",
  "bitflags",
@@ -2058,7 +2058,6 @@ dependencies = [
  "libc",
  "log",
  "lru_time_cache",
- "nix",
  "notify",
  "once_cell",
  "pin-project",
@@ -2081,7 +2080,8 @@ dependencies = [
 [[package]]
 name = "shadowsocks-crypto"
 version = "0.4.0"
-source = "git+https://github.com/shadowsocks/shadowsocks-crypto.git#b06dc2bf69ca8d1139e55b7fee8cf16b581fd422"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daff9970653117a16e317197c0e9b81eeaca0d138eb824c3243a6aa8cf61a645"
 dependencies = [
  "aes 0.7.5",
  "aes-gcm",
@@ -2101,7 +2101,7 @@ dependencies = [
 
 [[package]]
 name = "shadowsocks-rust"
-version = "1.15.0"
+version = "1.15.0-alpha.3"
 dependencies = [
  "build-time",
  "byte_string",
@@ -2472,9 +2472,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-tfo"
-version = "0.1.9"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4279aec5ded232170bf39130dd0e0deaed2c9f31cd3b5db1f2021056bcf5f94a"
+checksum = "be94e60e867516c53352c93b4b7762b68464bd24c62588f7f10c22fb9d02b6c9"
 dependencies = [
  "cfg-if",
  "futures",
@@ -2484,7 +2484,7 @@ dependencies = [
  "pin-project",
  "socket2",
  "tokio",
- "winapi",
+ "windows-sys",
 ]
 
 [[package]]

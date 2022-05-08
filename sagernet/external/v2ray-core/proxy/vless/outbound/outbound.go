@@ -112,7 +112,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	defer net.RemoveConnection(connElem)
 
 	iConn := conn
-	statConn, ok := iConn.(*internet.StatCouterConnection)
+	statConn, ok := iConn.(*internet.StatCounterConn)
 	if ok {
 		iConn = statConn.Connection
 	}

@@ -69,7 +69,7 @@ namespace BBDown
             public bool UseAria2c { get; set; }
             public bool Interactive { get; set; }
             public bool HideStreams { get; set; }
-            public bool MultiThread { get; set; }
+            public bool MultiThread { get; set; } = true;
             public bool VideoOnly { get; set; }
             public bool AudioOnly { get; set; }
             public bool SubOnly { get; set; }
@@ -149,7 +149,7 @@ namespace BBDown
                     "调用aria2c进行下载时的代理地址配置"),
                 new Option<bool>(
                     new string[]{ "--multi-thread", "-mt"},
-                    "使用多线程下载"),
+                    "使用多线程下载(默认开启)"),
                 new Option<string>(
                     new string[]{ "--select-page" ,"-p"},
                     "选择指定分p或分p范围：(-p 8 或 -p 1,2 或 -p 3-5 或 -p ALL)"),
@@ -292,14 +292,37 @@ namespace BBDown
                 "https://github.com/nilaoda/BBDown/discussions\r\n");
             Console.WriteLine();
 
+            var newArgsList = new List<string>();
+            var commandLineResult = rootCommand.Parse(args);
+            if (commandLineResult.CommandResult.Command.Name != "BBDown")
+            {
+                newArgsList.Add(commandLineResult.CommandResult.Command.Name);
+                return await rootCommand.InvokeAsync(newArgsList.ToArray());
+            }
+
+            foreach (var item in commandLineResult.CommandResult.Children)
+            {
+                if (item is ArgumentResult)
+                {
+                    var a = (ArgumentResult)item;
+                    newArgsList.Add(a.Tokens.First().Value);
+                }
+                else if (item is OptionResult)
+                {
+                    var o = (OptionResult)item;
+                    newArgsList.Add("--" + o.Option.Name);
+                    newArgsList.AddRange(o.Tokens.Select(t => t.Value));
+                }
+            }
+            if (newArgsList.Contains("--debug")) Config.DEBUG_LOG = true;
+
             //处理配置文件
-            var myArgs = new List<string>(Environment.GetCommandLineArgs());
             try
             {
                 var configPath = "";
-                if (myArgs.Contains("--config-file"))
+                if (newArgsList.Contains("--config-file"))
                 {
-                    configPath = myArgs.ElementAt(myArgs.IndexOf("--config-file") + 1);
+                    configPath = newArgsList.ElementAt(newArgsList.IndexOf("--config-file") + 1);
                 }
                 else
                 {
@@ -310,8 +333,22 @@ namespace BBDown
                 {
                     Log($"加载配置文件: {configPath}");
                     var configArgs = File.ReadAllLines(configPath).Where(s => !string.IsNullOrEmpty(s) && !s.StartsWith("#")).Select(s => s.Trim().Trim('\"'));
-                    LogDebug(string.Join(" ", configArgs));
-                    myArgs.AddRange(configArgs);
+                    var configArgsResult = rootCommand.Parse(configArgs.ToArray());
+                    foreach (var item in configArgsResult.CommandResult.Children)
+                    {
+                        if (item is OptionResult)
+                        {
+                            var o = (OptionResult)item;
+                            if (!newArgsList.Contains("--" + o.Option.Name))
+                            {
+                                newArgsList.Add("--" + o.Option.Name);
+                                newArgsList.AddRange(o.Tokens.Select(t => t.Value));
+                            }
+                        }
+                    }
+
+                    //命令行的优先级>配置文件优先级
+                    LogDebug("新的命令行参数: " + string.Join(" ", newArgsList));
                 }
             }
             catch (Exception)
@@ -319,7 +356,7 @@ namespace BBDown
                 LogError("配置文件读取异常，忽略");
             }
 
-            return await rootCommand.InvokeAsync(myArgs.ToArray());
+            return await rootCommand.InvokeAsync(newArgsList.ToArray());
         }
 
         private static async Task DoWorkAsync(MyOption myOption)
@@ -804,17 +841,17 @@ namespace BBDown
                             LogColor($"[音频] [{audioTracks[aIndex].codecs}] [{audioTracks[aIndex].bandwith} kbps] [~{FormatFileSize(audioTracks[aIndex].dur * audioTracks[aIndex].bandwith * 1024 / 8)}]", false);
 
                         //处理PCDN
-                        var pcdnReg = new Regex("://.*mcdn\\.bilivideo\\.cn:\\d+");
+                        var pcdnReg = new Regex("://.*:\\d+/");
                         if (videoTracks.Count > 0 && pcdnReg.IsMatch(videoTracks[vIndex].baseUrl))
                         {
                             LogWarn($"检测到视频流为PCDN，尝试强制替换为{BACKUP_HOST}……");
-                            videoTracks[vIndex].baseUrl = pcdnReg.Replace(videoTracks[vIndex].baseUrl, $"://{BACKUP_HOST}");
+                            videoTracks[vIndex].baseUrl = pcdnReg.Replace(videoTracks[vIndex].baseUrl, $"://{BACKUP_HOST}/");
                         }
 
                         if (audioTracks.Count > 0 && pcdnReg.IsMatch(audioTracks[aIndex].baseUrl))
                         {
                             LogWarn($"检测到音频流为PCDN，尝试强制替换为{BACKUP_HOST}……");
-                            audioTracks[aIndex].baseUrl = pcdnReg.Replace(audioTracks[aIndex].baseUrl, $"://{BACKUP_HOST}");
+                            audioTracks[aIndex].baseUrl = pcdnReg.Replace(audioTracks[aIndex].baseUrl, $"://{BACKUP_HOST}/");
                         }
 
                         LogDebug("Format Before: " + savePathFormat);

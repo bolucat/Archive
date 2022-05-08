@@ -158,17 +158,45 @@ WireGuard outbound supports proxy ping requests.
 }
 ```
 
+- shadowsocks AEAD 2022 ciphers
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks",
+      "settings": {
+        "servers": [
+          {
+            "address": "127.0.0.1",
+            "port": 1234,
+            "method": "2022-blake3-aes-128-gcm",
+            "password": "<psk>"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 - shadowsocks stream ciphers and xchacha-ietf-poly1305
 
 ```
 supported cipher list:
 
 none
+
+2022-blake3-aes-128-gcm
+2022-blake3-aes-256-gcm
+2022-blake3-chacha20-poly1305
+
 aes-128-gcm
 aes-192-gcm
 aes-256-gcm
 chacha20-ietf-poly1305
 xchacha20-ietf-poly1305
+
 rc4
 rc4-md5
 aes-128-ctr
@@ -199,6 +227,60 @@ salsa20
 chacha20
 chacha20-ietf
 xchacha20
+```
+
+- shadowsocks sing outbound
+
+high performance shadowsocks outbound, with AEAD 2022 Extensible Identity Headers support.
+
+```
+supported cipher list:
+
+none
+
+2022-blake3-aes-128-gcm
+2022-blake3-aes-256-gcm
+2022-blake3-chacha20-poly1305
+
+aes-128-gcm
+aes-192-gcm
+aes-256-gcm
+chacha20-ietf-poly1305
+xchacha20-ietf-poly1305
+```
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks_sing",
+      "settings": {
+        "address": "127.0.0.1",
+        "port": 1234,
+        "method": "aes-128-gcm",
+        "password": "my password"
+      }
+    }
+  ]
+}
+```
+
+for shadowsocks 2022 ciphers
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "shadowsocks_sing",
+      "settings": {
+        "address": "127.0.0.1",
+        "port": 1234,
+        "method": "2022-blake3-aes-128-gcm",
+        "key": "<psk>"
+      }
+    }
+  ]
+}
 ```
 
 - shadowsocks SIP003 plugin
@@ -232,6 +314,29 @@ xchacha20
         ...
         "plugin": "v2ray-plugin",
         "pluginOpts": "host=shadow.v2fly.org"
+      }
+    }
+  ]
+}
+```
+
+- trojan_sing outbound
+
+high performance trojan outbound.
+
+notice: only the origin trojan (tls) protocol is supported.
+
+```json
+{
+  "outbounds": [
+    {
+      "protocol": "trojan_sing",
+      "settings": {
+        "address": "my.address",
+        "serverName": "my.domain",
+        "port": 443,
+        "password": "my password",
+        "insecure": false
       }
     }
   ]
@@ -308,6 +413,10 @@ and provides the expected connection behavior of the client
 ```
 
 `protocol: udp connection with port 7.`
+
+- XTLS protocol compatibility for vless and trojan
+
+- gRPC multi/raw mode
 
 ### License
 

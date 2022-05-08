@@ -20,7 +20,6 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
-	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/udp"
 )
@@ -98,8 +97,7 @@ func (s *Server) processTCP(ctx context.Context, conn internet.Connection, dispa
 		clientAddress: inbound.Source.Address,
 	}
 
-	reader := &buf.BufferedReader{Reader: buf.NewReader(conn)}
-	request, err := svrSession.Handshake(reader, conn)
+	request, err := svrSession.Handshake(conn, conn)
 	if err != nil {
 		if inbound != nil && inbound.Source.IsValid() {
 			log.Record(&log.AccessMessage{
@@ -164,10 +162,7 @@ func (s *Server) processTCP(ctx context.Context, conn internet.Connection, dispa
 			return nil
 		}
 
-		return dispatcher.DispatchLink(ctx, dest, &transport.Link{
-			Reader: reader,
-			Writer: buf.NewWriter(conn),
-		})
+		return dispatcher.DispatchConn(ctx, dest, conn, true)
 		// return s.transport(ctx, reader, conn, dest, dispatcher)
 	}
 

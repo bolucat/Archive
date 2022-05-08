@@ -98,6 +98,11 @@ if (false) {
   _cronet_shared_lib_name = "cronet"
   _cronet_shared_lib_file_name =
       "$shlib_prefix$_cronet_shared_lib_name$shlib_extension"
+  if (is_win) {
+    _cronet_static_lib_file_name = "${_cronet_shared_lib_name}_static.lib"
+  } else {
+    _cronet_static_lib_file_name = "lib${_cronet_shared_lib_name}_static.a"
+  }
 
   static_library("cronet_static") {
     deps = [
@@ -121,6 +126,23 @@ if (false) {
 
     complete_static_lib = true
     configs -= [ "//build/config/compiler:thin_archive" ]
+  }
+
+  executable("cronet_example_external_static") {
+    testonly = true
+    no_default_deps = true
+    sources = [ "native/sample/bidi_example.cc" ]
+    deps = [ ":cronet_static" ]
+    configs += [ "//components/cronet/native:cronet_native_include_config" ]
+  }
+
+  executable("cronet_example_external") {
+    testonly = true
+    no_default_deps = true
+    sources = [ "native/sample/bidi_example.cc" ]
+    deps = [ ":cronet" ]
+    configs += [ "//components/cronet/native:cronet_native_include_config" ]
+    configs += [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
   }
 
   shared_library("cronet") {
@@ -171,10 +193,14 @@ if (false) {
   copy("cronet_package_copy") {
     sources = [
       "${root_out_dir}${shlib_subdir}/${_cronet_shared_lib_file_name}",
+      "$root_out_dir/obj/components/cronet/${_cronet_static_lib_file_name}",
       "//AUTHORS",
       "//chrome/VERSION",
     ]
-    deps = [ ":cronet" ]
+    deps = [
+      ":cronet",
+      ":cronet_static",
+    ]
     outputs = [ "$_package_dir/{{source_file_part}}" ]
   }
 
@@ -182,14 +208,13 @@ if (false) {
   copy("cronet_package_headers") {
     sources = cronet_native_public_headers + grpc_public_headers
 
-    outputs = [ "$_package_dir/include/{{source_file_part}}" ]
+    outputs = [ "$_package_dir/{{source_file_part}}" ]
   }
 
   group("cronet_package") {
     deps = [
       ":cronet_package_copy",
       ":cronet_package_headers",
-      ":generate_license",
     ]
   }
 

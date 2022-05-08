@@ -133,6 +133,11 @@ func (d *Door) Process(ctx context.Context, network net.Network, conn internet.C
 	timer := signal.CancelAfterInactivity(ctx, cancel, plcy.Timeouts.ConnectionIdle)
 	ctx = policy.ContextWithBufferPolicy(ctx, plcy.Buffer)
 	ctx = proxyman.SetPreferUseIP(ctx, true)
+
+	if network == net.Network_TCP {
+		return dispatcher.DispatchConn(ctx, dest, conn, true)
+	}
+
 	link, err := dispatcher.Dispatch(ctx, dest)
 	if err != nil {
 		return newError("failed to dispatch request").Base(err)

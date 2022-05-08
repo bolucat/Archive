@@ -68,9 +68,10 @@ export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 
 ./gn/out/gn gen "$out" --args="$flags $EXTRA_FLAGS" --script-executable=$PYTHON
 
-cronet_targets="cronet cronet_static"
-if echo "$EXTRA_FLAGS" | grep -q "build_static=true"; then
-  cronet_targets=
-fi
+ninja -C "$out" naive
 
-ninja -C "$out" naive $cronet_targets
+if echo "$EXTRA_FLAGS" | grep -vq "build_static=true"; then
+  ninja -C "$out" cronet_package
+  ./make-go-buildflags.sh
+  ../tests/go-external-build.sh
+fi

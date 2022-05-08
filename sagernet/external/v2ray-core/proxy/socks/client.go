@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/sagernet/sing/common/rw"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -57,6 +58,107 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	c.uot = config.UdpOverTcp
 
 	return c, nil
+}
+
+func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet.Dialer) error {
+	outbound := session.OutboundFromContext(ctx)
+	if outbound == nil || !outbound.Target.IsValid() {
+		return newError("target not specified.")
+	}
+	// Destination of the inner request.
+	destination := outbound.Target
+
+	// Outbound server.
+	var server *protocol.ServerSpec
+	// Outbound server's destination.
+	var dest net.Destination
+	// Connection to the outbound server.
+	var outboundConn internet.Connection
+
+	if err := retry.ExponentialBackoff(5, 100).On(func() error {
+		server = c.serverPicker.PickServer()
+		dest = server.Destination()
+		rawConn, err := dialer.Dial(ctx, dest)
+		if err != nil {
+			return err
+		}
+		outboundConn = rawConn
+
+		return nil
+	}); err != nil {
+		return newError("failed to find an available destination").Base(err)
+	}
+
+	connElem := net.AddConnection(outboundConn)
+	defer net.RemoveConnection(connElem)
+
+	request := &protocol.RequestHeader{
+		Version: socks5Version,
+		Command: protocol.RequestCommandTCP,
+		Address: destination.Address,
+		Port:    destination.Port,
+	}
+
+	switch c.version {
+	case Version_SOCKS4:
+		if request.Address.Family().IsDomain() {
+			lookupFunc := c.dns.LookupIP
+			if lookupIPv4, ok := c.dns.(dns.IPv4Lookup); ok {
+				lookupFunc = lookupIPv4.LookupIPv4
+			}
+			ips, err := lookupFunc(request.Address.Domain())
+			if err != nil {
+				return err
+			} else if len(ips) == 0 {
+				return dns.ErrEmptyResponse
+			}
+			request.Address = net.IPAddress(ips[0])
+		}
+		fallthrough
+	case Version_SOCKS4A:
+		request.Version = socks4Version
+
+		if destination.Network == net.Network_UDP && !c.uot {
+			return newError("udp is not supported in socks4")
+		} else if destination.Address.Family().IsIPv6() {
+			return newError("ipv6 is not supported in socks4")
+		}
+	}
+
+	if destination.Network == net.Network_UDP {
+		if !c.uot {
+			request.Command = protocol.RequestCommandUDP
+		} else {
+			request.Address = net.DomainAddress(udpovertcp.UOTMagicAddress)
+			request.Port = 443
+		}
+	}
+
+	p := c.policyManager.ForLevel(0)
+	user := server.PickUser()
+	if user != nil {
+		request.User = user
+		p = c.policyManager.ForLevel(user.Level)
+	}
+
+	if err := outboundConn.SetDeadline(time.Now().Add(p.Timeouts.Handshake)); err != nil {
+		newError("failed to set deadline for handshake").Base(err).WriteToLog(session.ExportIDToError(ctx))
+	}
+	udpRequest, err := ClientHandshake(request, outboundConn, outboundConn)
+	if err != nil {
+		return newError("failed to establish connection to server").AtWarning().Base(err)
+	}
+	if udpRequest != nil {
+		if udpRequest.Address == net.AnyIP || udpRequest.Address == net.AnyIPv6 {
+			udpRequest.Address = dest.Address
+		}
+	}
+
+	if err := outboundConn.SetDeadline(time.Time{}); err != nil {
+		newError("failed to clear deadline after handshake").Base(err).WriteToLog(session.ExportIDToError(ctx))
+	}
+
+	return rw.CopyConn(ctx, conn, outboundConn)
 }
 
 // Process implements proxy.Outbound.Process.
