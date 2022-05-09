@@ -21,9 +21,9 @@ export CGO_LDFLAGS_ALLOW=.*
 cd out/Release/cronet
 
 go build cronet_example.go link_shared.go
-$cronet_example
+#$cronet_example
 rm -f cronet_example
 
 go build cronet_example.go link_static.go
-$cronet_example
+#$cronet_example
 rm -f cronet_example
