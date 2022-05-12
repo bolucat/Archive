@@ -2,10 +2,8 @@ package shadowsocks_sing
 
 import (
 	"context"
-	"encoding/base64"
 	"io"
 	"runtime"
-	"strings"
 	"time"
 
 	C "github.com/sagernet/sing/common"
@@ -16,8 +14,7 @@ import (
 	"github.com/sagernet/sing/common/random"
 	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
-	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead"
-	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
+	"github.com/sagernet/sing/protocol/shadowsocks/shadowimpl"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -48,62 +45,17 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
 			Network: net.Network_TCP,
 		},
 	}
-	if config.Method == shadowsocks.MethodNone {
-		o.method = shadowsocks.NewNone()
-	} else if common.Contains(shadowaead.List, config.Method) {
-		var key []byte
-		if config.Key != "" {
-			bKdy, err := base64.StdEncoding.DecodeString(config.Key)
-			if err != nil {
-				return nil, newError("shadowsocks: decode key ", config.Key).Base(err)
-			}
-			key = bKdy
+	var rng io.Reader = random.Default
+	if config.ReducedIvHeadEntropy {
+		rng = &shadowsocks.ReducedEntropyReader{
+			Reader: rng,
 		}
-		rng := random.Blake3KeyedHash().Reader
-		if config.ReducedIvHeadEntropy {
-			rng = &shadowsocks.ReducedEntropyReader{
-				Reader: rng,
-			}
-		}
-		method, err := shadowaead.New(config.Method, key, []byte(config.Password), rng, false)
-		if err != nil {
-			return nil, newError("create method").Base(err)
-		}
-		o.method = method
-	} else if common.Contains(shadowaead_2022.List, config.Method) {
-		if config.Password != "" {
-			return nil, newError("use psk instead of password")
-		}
-		if config.Key == "" {
-			return nil, newError("missing psk")
-		}
-		var pskList [][shadowaead_2022.KeySaltSize]byte
-		for _, ks := range strings.Split(config.Key, ":") {
-			kb, err := base64.StdEncoding.DecodeString(ks)
-			if err != nil {
-				return nil, newError("decode key ", ks).Base(err)
-			}
-			if len(kb) != shadowaead_2022.KeySaltSize {
-				return nil, shadowaead.ErrBadKey
-			}
-			var psk [shadowaead_2022.KeySaltSize]byte
-			copy(psk[:], kb)
-			pskList = append(pskList, psk)
-		}
-		rng := random.Blake3KeyedHash().Reader
-		if config.ReducedIvHeadEntropy {
-			rng = &shadowsocks.ReducedEntropyReader{
-				Reader: rng,
-			}
-		}
-		method, err := shadowaead_2022.New(config.Method, pskList, rng)
-		if err != nil {
-			return nil, newError("create method").Base(err)
-		}
-		o.method = method
-	} else {
-		return nil, newError("unknown method ", config.Method)
 	}
+	method, err := shadowimpl.FetchMethod(config.Method, config.Key, config.Password, rng)
+	if err != nil {
+		return nil, err
+	}
+	o.method = method
 	return o, nil
 }
 
@@ -227,10 +179,11 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 			packetConn = &N.PacketConnWrapper{PacketConn: nc}
 		} else {
 			packetConn = &PacketConnWrapper{
-				Reader: link.Reader,
-				Writer: link.Writer,
-				Conn:   inboundConn,
-				Dest:   destination,
+				Reader:  link.Reader,
+				Writer:  link.Writer,
+				PipeOut: pipe.IsPipe(link.Writer),
+				Conn:    inboundConn,
+				Dest:    destination,
 			}
 		}
 
@@ -342,6 +295,7 @@ func (w *PipeConnWrapper) Write(p []byte) (n int, err error) {
 		buffer := buf.New()
 		_, err = buffer.Write(p)
 		if err != nil {
+			buffer.Release()
 			return
 		}
 		err = w.W.WriteMultiBuffer(buf.MultiBuffer{buffer})
@@ -363,8 +317,9 @@ type PacketConnWrapper struct {
 	buf.Reader
 	buf.Writer
 	net.Conn
-	Dest   net.Destination
-	cached buf.MultiBuffer
+	PipeOut bool
+	Dest    net.Destination
+	cached  buf.MultiBuffer
 }
 
 func (w *PacketConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
@@ -407,7 +362,13 @@ func (w *PacketConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
 }
 
 func (w *PacketConnWrapper) WritePacket(buffer *B.Buffer, addrPort M.Socksaddr) error {
-	vBuf := buf.FromBytes(buffer.Bytes())
+	var vBuf *buf.Buffer
+	if w.PipeOut {
+		vBuf = buf.New()
+		vBuf.Write(buffer.Bytes())
+	} else {
+		vBuf = buf.FromBytes(buffer.Bytes())
+	}
 	endpoint := net.DestinationFromAddr(addrPort.UDPAddr())
 	vBuf.Endpoint = &endpoint
 	return w.Writer.WriteMultiBuffer(buf.MultiBuffer{vBuf})

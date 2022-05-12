@@ -61,7 +61,8 @@ func (p *pacer) TimeUntilSend() time.Time {
 	}
 	return p.lastSentTime.Add(maxDuration(
 		minPacingDelay,
-		time.Duration(math.Ceil(float64(p.maxDatagramSize-p.budgetAtLastSent)*1e9/float64(p.getBandwidth())))*time.Nanosecond,
+		time.Duration(math.Ceil(float64(p.maxDatagramSize-p.budgetAtLastSent)*1e9/
+			float64(p.getBandwidth())))*time.Nanosecond,
 	))
 }
 

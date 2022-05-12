@@ -131,10 +131,11 @@ func client(config *clientConfig) {
 	// Client
 	var client *core.Client
 	try := 0
+	up, down, _ := config.Speed()
 	for {
 		try += 1
 		c, err := core.NewClient(config.Server, config.Protocol, auth, tlsConfig, quicConfig,
-			transport.DefaultClientTransport, uint64(config.UpMbps)*mbpsToBps, uint64(config.DownMbps)*mbpsToBps,
+			transport.DefaultClientTransport, up, down,
 			func(refBPS uint64) congestion.CongestionControl {
 				return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 			}, obfuscator)
@@ -274,7 +275,7 @@ func client(config *clientConfig) {
 							"src": addr.String(),
 							"dst": reqAddr,
 						}).Debugf("TUN %s closed for timeout", strings.ToUpper(addr.Network()))
-					} else if err.Error() == "deadline exceeded" && strings.HasPrefix(addr.Network(), "tcp") {
+					} else if nErr, ok := err.(net.Error); ok && nErr.Timeout() && strings.HasPrefix(addr.Network(), "tcp") {
 						logrus.WithFields(logrus.Fields{
 							"src": addr.String(),
 							"dst": reqAddr,

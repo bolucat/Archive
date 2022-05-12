@@ -288,10 +288,11 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			packetConn = pc
 		} else {
 			packetConn = &shadowsocks_sing.PacketConnWrapper{
-				Reader: link.Reader,
-				Writer: link.Writer,
-				Conn:   inboundConn,
-				Dest:   destination,
+				Reader:  link.Reader,
+				Writer:  link.Writer,
+				PipeOut: pipe.IsPipe(link.Writer),
+				Conn:    inboundConn,
+				Dest:    destination,
 			}
 		}
 

@@ -20,7 +20,7 @@ const udpBufferSize = 65535
 
 type serverClient struct {
 	V2              bool
-	CS              quic.Session
+	CS              quic.Connection
 	Transport       *transport.ServerTransport
 	Auth            []byte
 	ClientAddr      net.Addr
@@ -40,7 +40,7 @@ type serverClient struct {
 	udpDefragger     defragger
 }
 
-func newServerClient(v2 bool, cs quic.Session, tr *transport.ServerTransport, auth []byte, disableUDP bool, ACLEngine *acl.Engine,
+func newServerClient(v2 bool, cs quic.Connection, tr *transport.ServerTransport, auth []byte, disableUDP bool, ACLEngine *acl.Engine,
 	CTCPRequestFunc TCPRequestFunc, CTCPErrorFunc TCPErrorFunc,
 	CUDPRequestFunc UDPRequestFunc, CUDPErrorFunc UDPErrorFunc,
 	UpCounterVec, DownCounterVec *prometheus.CounterVec,
@@ -154,36 +154,43 @@ func (c *serverClient) handleMessage(msg []byte) {
 	if ok {
 		// Session found, send the message
 		action, arg := acl.ActionDirect, ""
+		var isDomain bool
 		var ipAddr *net.IPAddr
 		var err error
 		if c.ACLEngine != nil {
-			action, arg, ipAddr, err = c.ACLEngine.ResolveAndMatch(dfMsg.Host)
+			action, arg, isDomain, ipAddr, err = c.ACLEngine.ResolveAndMatch(dfMsg.Host, dfMsg.Port, true)
 		} else {
-			ipAddr, err = c.Transport.ResolveIPAddr(dfMsg.Host)
+			ipAddr, isDomain, err = c.Transport.ResolveIPAddr(dfMsg.Host)
 		}
-		if err != nil {
+		if err != nil && !(isDomain && c.Transport.SOCKS5Enabled()) { // Special case for domain requests + SOCKS5 outbound
 			return
 		}
 		switch action {
 		case acl.ActionDirect, acl.ActionProxy: // Treat proxy as direct on server side
-			_, _ = conn.WriteToUDP(dfMsg.Data, &net.UDPAddr{
-				IP:   ipAddr.IP,
-				Port: int(dfMsg.Port),
-				Zone: ipAddr.Zone,
-			})
+			addrEx := &transport.AddrEx{
+				IPAddr: ipAddr,
+				Port:   int(dfMsg.Port),
+			}
+			if isDomain {
+				addrEx.Domain = dfMsg.Host
+			}
+			_, _ = conn.WriteToUDP(dfMsg.Data, addrEx)
 			if c.UpCounter != nil {
 				c.UpCounter.Add(float64(len(dfMsg.Data)))
 			}
 		case acl.ActionBlock:
 			// Do nothing
 		case acl.ActionHijack:
-			hijackIPAddr, err := c.Transport.ResolveIPAddr(arg)
-			if err == nil {
-				_, _ = conn.WriteToUDP(dfMsg.Data, &net.UDPAddr{
-					IP:   hijackIPAddr.IP,
-					Port: int(dfMsg.Port),
-					Zone: hijackIPAddr.Zone,
-				})
+			hijackIPAddr, isDomain, err := c.Transport.ResolveIPAddr(arg)
+			if err == nil || (isDomain && c.Transport.SOCKS5Enabled()) { // Special case for domain requests + SOCKS5 outbound
+				addrEx := &transport.AddrEx{
+					IPAddr: hijackIPAddr,
+					Port:   int(dfMsg.Port),
+				}
+				if isDomain {
+					addrEx.Domain = arg
+				}
+				_, _ = conn.WriteToUDP(dfMsg.Data, addrEx)
 				if c.UpCounter != nil {
 					c.UpCounter.Add(float64(len(dfMsg.Data)))
 				}
@@ -197,14 +204,15 @@ func (c *serverClient) handleMessage(msg []byte) {
 func (c *serverClient) handleTCP(stream quic.Stream, host string, port uint16) {
 	addrStr := net.JoinHostPort(host, strconv.Itoa(int(port)))
 	action, arg := acl.ActionDirect, ""
+	var isDomain bool
 	var ipAddr *net.IPAddr
 	var err error
 	if c.ACLEngine != nil {
-		action, arg, ipAddr, err = c.ACLEngine.ResolveAndMatch(host)
+		action, arg, isDomain, ipAddr, err = c.ACLEngine.ResolveAndMatch(host, port, false)
 	} else {
-		ipAddr, err = c.Transport.ResolveIPAddr(host)
+		ipAddr, isDomain, err = c.Transport.ResolveIPAddr(host)
 	}
-	if err != nil {
+	if err != nil && !(isDomain && c.Transport.SOCKS5Enabled()) { // Special case for domain requests + SOCKS5 outbound
 		_ = struc.Pack(stream, &serverResponse{
 			OK:      false,
 			Message: "host resolution failure",
@@ -217,11 +225,14 @@ func (c *serverClient) handleTCP(stream quic.Stream, host string, port uint16) {
 	var conn net.Conn // Connection to be piped
 	switch action {
 	case acl.ActionDirect, acl.ActionProxy: // Treat proxy as direct on server side
-		conn, err = c.Transport.DialTCP(&net.TCPAddr{
-			IP:   ipAddr.IP,
-			Port: int(port),
-			Zone: ipAddr.Zone,
-		})
+		addrEx := &transport.AddrEx{
+			IPAddr: ipAddr,
+			Port:   int(port),
+		}
+		if isDomain {
+			addrEx.Domain = host
+		}
+		conn, err = c.Transport.DialTCP(addrEx)
 		if err != nil {
 			_ = struc.Pack(stream, &serverResponse{
 				OK:      false,
@@ -237,8 +248,8 @@ func (c *serverClient) handleTCP(stream quic.Stream, host string, port uint16) {
 		})
 		return
 	case acl.ActionHijack:
-		hijackIPAddr, err := c.Transport.ResolveIPAddr(arg)
-		if err != nil {
+		hijackIPAddr, isDomain, err := c.Transport.ResolveIPAddr(arg)
+		if err != nil && !(isDomain && c.Transport.SOCKS5Enabled()) { // Special case for domain requests + SOCKS5 outbound
 			_ = struc.Pack(stream, &serverResponse{
 				OK:      false,
 				Message: err.Error(),
@@ -246,11 +257,14 @@ func (c *serverClient) handleTCP(stream quic.Stream, host string, port uint16) {
 			c.CTCPErrorFunc(c.ClientAddr, c.Auth, addrStr, err)
 			return
 		}
-		conn, err = c.Transport.DialTCP(&net.TCPAddr{
-			IP:   hijackIPAddr.IP,
-			Port: int(port),
-			Zone: hijackIPAddr.Zone,
-		})
+		addrEx := &transport.AddrEx{
+			IPAddr: hijackIPAddr,
+			Port:   int(port),
+		}
+		if isDomain {
+			addrEx.Domain = arg
+		}
+		conn, err = c.Transport.DialTCP(addrEx)
 		if err != nil {
 			_ = struc.Pack(stream, &serverResponse{
 				OK:      false,

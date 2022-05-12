@@ -144,11 +144,11 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 		c.Lock()
 		sc = c.client
 		if c.client == nil {
-			client, err := c.connect(ctx, dialer)
+			conn, client, err := c.connect(ctx, dialer)
 			if err != nil {
 				return err
 			}
-			connElem := net.AddConnection(client)
+			connElem := net.AddConnection(conn)
 			go func() {
 				err = client.Wait()
 				if err != nil {
@@ -168,6 +168,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	if err != nil {
 		return newError("failed to open ssh proxy connection").Base(err)
 	}
+	defer conn.Close()
 
 	ctx, cancel := context.WithCancel(ctx)
 	timer := signal.CancelAfterInactivity(ctx, cancel, c.sessionPolicy.Timeouts.ConnectionIdle)
@@ -201,11 +202,11 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 		c.Lock()
 		sc = c.client
 		if c.client == nil {
-			client, err := c.connect(ctx, dialer)
+			conn, client, err := c.connect(ctx, dialer)
 			if err != nil {
 				return err
 			}
-			connElem := net.AddConnection(client)
+			connElem := net.AddConnection(conn)
 			go func() {
 				err = client.Wait()
 				if err != nil {
@@ -229,7 +230,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 	return rw.CopyConn(ctx, conn, outboundConn)
 }
 
-func (c *Client) connect(ctx context.Context, dialer internet.Dialer) (*ssh.Client, error) {
+func (c *Client) connect(ctx context.Context, dialer internet.Dialer) (net.Conn, *ssh.Client, error) {
 	config := &ssh.ClientConfig{
 		User:              c.config.User,
 		Auth:              c.auth,
@@ -256,17 +257,18 @@ func (c *Client) connect(ctx context.Context, dialer internet.Dialer) (*ssh.Clie
 		return nil
 	})
 	if err != nil {
-		return nil, newError("failed to connect to ssh server").AtWarning().Base(err)
+		return nil, nil, newError("failed to connect to ssh server").AtWarning().Base(err)
 	}
 
 	clientConn, chans, reqs, err := ssh.NewClientConn(conn, c.server.Address.String(), config)
 	if err != nil {
-		return nil, newError("failed to create ssh connection").Base(err)
+		conn.Close()
+		return nil, nil, newError("failed to create ssh connection").Base(err)
 	}
 
 	client := ssh.NewClient(clientConn, chans, reqs)
 	c.client = client
-	return client, nil
+	return conn, client, nil
 }
 
 func (c *Client) Close() error {

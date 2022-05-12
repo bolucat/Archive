@@ -36,6 +36,7 @@ func (d *messageDispatcher) Close() error {
 	connection := d.connection
 	if connection != nil {
 		connection.cancel()
+		connection.conn.Close()
 		common.Interrupt(connection.link.Reader)
 		common.Interrupt(connection.link.Writer)
 		d.connection = nil
@@ -122,6 +123,8 @@ func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {
 
 	if d.connection != nil && !common.Done(d.connection.ctx) {
 		return d.connection, nil
+	} else if d.connection != nil {
+		d.connection.conn.Close()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -132,6 +135,7 @@ func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {
 		return nil, err
 	}
 	conn := &dispatcherConnection{
+		conn: link,
 		link: &transport.Link{
 			Reader: buf.NewReader(link),
 			Writer: buf.NewWriter(link),
@@ -150,6 +154,7 @@ func (d *messageDispatcher) getConnection() (*dispatcherConnection, error) {
 }
 
 type dispatcherConnection struct {
+	conn      net.Conn
 	tlsConn   *tls.Conn
 	ctx       context.Context
 	link      *transport.Link
