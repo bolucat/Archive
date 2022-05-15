@@ -22,7 +22,7 @@ require (
 	github.com/miekg/dns v1.1.49
 	github.com/mustafaturan/bus v1.0.2
 	github.com/pires/go-proxyproto v0.6.2
-	github.com/sagernet/sing v0.0.0-20220512091719-2aae93c5b8a5
+	github.com/sagernet/sing v0.0.0-20220515005650-1cbc30ebc049
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	github.com/stretchr/testify v1.7.1
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08
@@ -31,10 +31,10 @@ require (
 	github.com/xiaokangwang/VLite v0.0.0-20220418190619-cff95160a432
 	github.com/xtls/go v0.0.0-20210920065950-d4af136d3672
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd
-	golang.org/x/crypto v0.0.0-20220511200225-c6db032c6c88
-	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
+	golang.org/x/crypto v0.0.0-20220513210258-46612604a0f9
+	golang.org/x/net v0.0.0-20220513224357-95641704303c
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6
+	golang.org/x/sys v0.0.0-20220513210249-45d2b4557a2a
 	golang.zx2c4.com/wireguard v0.0.0-20220407013110-ef5c587f782d
 	google.golang.org/grpc v1.46.0
 	google.golang.org/protobuf v1.28.0

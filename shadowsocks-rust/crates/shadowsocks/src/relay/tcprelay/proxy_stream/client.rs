@@ -206,15 +206,30 @@ where
                 ProxyClientStreamReadState::CheckRequestNonce => {
                     ready!(this.stream.as_mut().poll_read_decrypted(cx, this.context, buf))?;
 
-                    if Some(this.stream.sent_nonce()) != this.stream.received_request_nonce() {
-                        return Err(io::Error::new(
-                            ErrorKind::Other,
-                            "received TCP response header with unmatched salt",
-                        ))
-                        .into();
+                    // REQUEST_NONCE should be in the respond packet (header) of AEAD-2022.
+                    //
+                    // If received_request_nonce() is None, then:
+                    // 1. method.salt_len() == 0, no checking required.
+                    // 2. TCP stream read() returns EOF before receiving the header, no checking required.
+                    //
+                    // poll_read_decrypted will wait until the first non-zero size data chunk.
+                    let (data_chunk_count, _) = this.stream.current_data_chunk_remaining();
+                    if data_chunk_count > 0 {
+                        // data_chunk_count > 0, so the reader received at least 1 data chunk.
+
+                        let sent_nonce = this.stream.sent_nonce();
+                        let sent_nonce = if sent_nonce.is_empty() { None } else { Some(sent_nonce) };
+                        if sent_nonce != this.stream.received_request_nonce() {
+                            return Err(io::Error::new(
+                                ErrorKind::Other,
+                                "received TCP response header with unmatched salt",
+                            ))
+                            .into();
+                        }
+
+                        *(this.reader_state) = ProxyClientStreamReadState::Established;
                     }
 
-                    *(this.reader_state) = ProxyClientStreamReadState::Established;
                     return Ok(()).into();
                 }
             }
