@@ -1,29 +1,61 @@
 #!/bin/sh
 
-cronet_example="./cronet_example"
-
 . ./get-sysroot.sh
 
 set -ex
 
-if [ "$WITH_SYSROOT" -a "$WITH_QEMU" ]; then
-  cronet_example="qemu-$WITH_QEMU -L $PWD/$WITH_SYSROOT $cronet_example"
-fi
-if [ "$WITH_ANDROID_IMG" -a "$WITH_QEMU" ]; then
-  cronet_example="qemu-$WITH_QEMU -L $PWD/out/sysroot-build/android/$WITH_ANDROID_IMG $cronet_example"
-fi
-
-export CC=$PWD/third_party/llvm-build/Release+Asserts/bin/clang
-[ "$WITH_GOOS" ] && export GOOS="$WITH_GOOS"
-[ "$WITH_GOARCH" ] && export GOARCH="$WITH_GOARCH"
-export CGO_ENABLED=1
-export CGO_LDFLAGS_ALLOW=.*
 cd out/Release/cronet
 
-go build cronet_example.go link_shared.go
-#$cronet_example
-rm -f cronet_example
+run_cronet_example() {
+  if [ "$WITH_QEMU" = "i386" ]; then
+    # qemu-i386 doesn't work with CGO compiled i386 executables for some reason.
+    cp libcronet.so cronet_example ./sysroot
+    sudo LD_LIBRARY_PATH=/ chroot ./sysroot /cronet_example "$@"
+    rm ./sysroot/libcronet.so ./sysroot/cronet_example
+    return
+  fi
+  if [ "$WITH_SYSROOT" -a "$WITH_QEMU" ]; then
+    qemu-$WITH_QEMU-static -L ./sysroot ./cronet_example "$@"
+    return
+  fi
+  if [ "$WITH_ANDROID_IMG" -a "$WITH_QEMU" ]; then
+    qemu-$WITH_QEMU-static -L ./sysroot ./cronet_example "$@"
+    return
+  fi
+  ./cronet_example "$@"
+}
 
-go build cronet_example.go link_static.go
-#$cronet_example
-rm -f cronet_example
+# CGO does not support relative path very well.
+for i in go_env.sh link_shared.go link_static.go; do
+  sed "s#\./sysroot#$PWD/sysroot#g" $i >$i.1
+  mv $i.1 $i
+done
+
+. ./go_env.sh
+
+#strace -o/tmp/trace -f -qq -etrace=execve -s1024 -esignal='!all' \
+go build $buildmode_flag cronet_example.go link_shared.go
+run_cronet_example http://example.com
+if [ "$ARCH" = "Linux" ]; then
+  ./llvm/llvm-strip cronet_example
+fi
+if [ "$WITH_CLANG" = "Win" ]; then
+  ls -l cronet_example.exe
+  rm -f cronet_example.exe
+else
+  ls -l cronet_example
+  rm -f cronet_example
+fi
+
+go build $buildmode_flag cronet_example.go link_static.go
+run_cronet_example http://example.com
+if [ "$ARCH" = "Linux" ]; then
+  ./llvm/llvm-strip cronet_example
+fi
+if [ "$WITH_CLANG" = "Win" ]; then
+  ls -l cronet_example.exe
+  rm -f cronet_example.exe
+else
+  ls -l cronet_example
+  rm -f cronet_example
+fi

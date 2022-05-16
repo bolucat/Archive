@@ -1,17 +1,10 @@
-name: Test CI
+name: Alpha CI
 
 on:
-  workflow_dispatch:
-    inputs:
-      os:
-        description: "Runs on OS"
-        required: true
-        default: windows-latest
-        type: choice
-        options:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
+  push:
+    branches: [alpha]
+  pull_request:
+    branches: [alpha]
 
 env:
   CARGO_INCREMENTAL: 0
@@ -19,7 +12,10 @@ env:
 
 jobs:
   release:
-    runs-on: ${{ github.event.inputs.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     if: startsWith(github.repository, 'zzzgydi')
     steps:
       - name: Checkout repository
@@ -33,7 +29,7 @@ jobs:
           override: true
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@ce325b60658c1b38465c06cc965b79baf32c1e72
 
       - name: Install Node
         uses: actions/setup-node@v1
@@ -41,7 +37,7 @@ jobs:
           node-version: 14
 
       - name: Install Dependencies (ubuntu only)
-        if: github.event.inputs.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget libssl-dev libgtk-3-dev libappindicator3-dev librsvg2-dev libayatana-appindicator3-dev
@@ -64,9 +60,41 @@ jobs:
           yarn install --network-timeout 1000000
           yarn run check --meta
 
-      - name: Tauri build
-        uses: tauri-apps/tauri-action@0e558392ccadcb49bcc89e7df15a400e8f0c954d
+      # - name: Tauri build
+      #   uses: tauri-apps/tauri-action@v0
+      #   # enable cache even though failed
+      #   continue-on-error: true
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+      #     TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+      #   with:
+      #     tagName: alpha
+      #     releaseName: "Clash Verge Alpha"
+      #     releaseBody: "Alpha Version"
+      #     releaseDraft: false
+      #     prerelease: true
+
+      # - name: Green zip bundle
+      #   if: matrix.os == 'windows-latest'
+      #   run: |
+      #     yarn run portable
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tauri build Meta
+        uses: tauri-apps/tauri-action@v0
+        # enable cache even though failed
+        # continue-on-error: true
         env:
+          VITE_MULTI_CORE: 1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: alpha
+          configPath: tauri.meta.json
+          releaseName: "Clash Verge Alpha"
+          releaseBody: "Alpha Version"
+          releaseDraft: false
+          prerelease: true

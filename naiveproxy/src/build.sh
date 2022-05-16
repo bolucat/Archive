@@ -61,6 +61,17 @@ if [ "$USE_AFDO" ]; then
     clang_sample_profile_path="//chrome/android/profiles/afdo.prof"'
 fi
 
+if [ "$ARCH" = "Darwin" ]; then
+  flags="$flags"'
+    enable_dsyms=false'
+fi
+
+if [ "$target_cpu" = "mipsel" -o "$target_cpu" = "mips64el" ]; then
+  flags="$flags"'
+    use_thin_lto=false
+    chrome_pgo_phase=0'
+fi
+
 rm -rf "./$out"
 mkdir -p out
 
@@ -68,10 +79,18 @@ export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 
 ./gn/out/gn gen "$out" --args="$flags $EXTRA_FLAGS" --script-executable=$PYTHON
 
-ninja -C "$out" naive
+#if [ "$WITH_CLANG" = "Win" -o "$WITH_CLANG" = "Mac" ]; then
+#  #verbose=-v
+#fi
+
+ninja $verbose -C "$out" naive
 
 if echo "$EXTRA_FLAGS" | grep -vq "build_static=true"; then
-  ninja -C "$out" cronet_package
-  ./make-go-buildflags.sh
-  ../tests/go-external-build.sh
+  ninja -C "$out" cronet cronet_static
+  if [ "$target_os" != "android" ]; then
+    ./make-go-buildflags.sh
+    ../tests/go-external-build.sh || true
+  else
+    mkdir -p out/Release/cronet
+  fi
 fi

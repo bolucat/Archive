@@ -98,11 +98,6 @@ if (false) {
   _cronet_shared_lib_name = "cronet"
   _cronet_shared_lib_file_name =
       "$shlib_prefix$_cronet_shared_lib_name$shlib_extension"
-  if (is_win) {
-    _cronet_static_lib_file_name = "${_cronet_shared_lib_name}_static.lib"
-  } else {
-    _cronet_static_lib_file_name = "lib${_cronet_shared_lib_name}_static.a"
-  }
 
   static_library("cronet_static") {
     deps = [
@@ -128,23 +123,70 @@ if (false) {
     configs -= [ "//build/config/compiler:thin_archive" ]
   }
 
-  executable("cronet_example_external_static") {
-    testonly = true
-    no_default_deps = true
-    sources = [ "native/sample/bidi_example.cc" ]
-    deps = [ ":cronet_static" ]
-    configs -= [ "//build/config/compiler:runtime_library" ]
-    configs += [ "//components/cronet/native:cronet_native_include_config" ]
-  }
-
   executable("cronet_example_external") {
     testonly = true
     no_default_deps = true
     sources = [ "native/sample/bidi_example.cc" ]
     deps = [ ":cronet" ]
-    configs -= [ "//build/config/compiler:runtime_library" ]
+    configs -= [
+      "//build/config:feature_flags",
+      "//build/config/compiler:afdo",
+      "//build/config/compiler:afdo_optimize_size",
+      "//build/config/compiler:cet_shadow_stack",
+      "//build/config/compiler:chromium_code",
+      "//build/config/compiler:default_include_dirs",
+      "//build/config/compiler:default_init_stack_vars",
+      "//build/config/compiler:default_optimization",
+      "//build/config/compiler:default_stack_frames",
+      "//build/config/compiler:default_symbols",
+      "//build/config/compiler:no_exceptions",
+      "//build/config/compiler:no_rtti",
+      "//build/config/compiler:prevent_unsafe_narrowing",
+      "//build/config/compiler:runtime_library",
+      "//build/config/compiler:thin_archive",
+      "//build/config/compiler/pgo:default_pgo_flags",
+      "//build/config/coverage:default_coverage",
+      "//build/config/sanitizers:default_sanitizer_flags",
+      "//build/config/clang:find_bad_constructs",
+      "//build/config/clang:extra_warnings",
+    ]
     configs += [ "//components/cronet/native:cronet_native_include_config" ]
-    configs += [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
+    if (is_mac) {
+      configs += [ "//build/config/mac:runtime_library" ]
+    }
+  }
+
+  executable("cronet_example_external_static") {
+    testonly = true
+    no_default_deps = true
+    sources = [ "native/sample/bidi_example.cc" ]
+    deps = [ ":cronet_static" ]
+    configs -= [
+      "//build/config:feature_flags",
+      "//build/config/compiler:afdo",
+      "//build/config/compiler:afdo_optimize_size",
+      "//build/config/compiler:cet_shadow_stack",
+      "//build/config/compiler:chromium_code",
+      "//build/config/compiler:default_include_dirs",
+      "//build/config/compiler:default_init_stack_vars",
+      "//build/config/compiler:default_optimization",
+      "//build/config/compiler:default_stack_frames",
+      "//build/config/compiler:default_symbols",
+      "//build/config/compiler:no_exceptions",
+      "//build/config/compiler:no_rtti",
+      "//build/config/compiler:prevent_unsafe_narrowing",
+      "//build/config/compiler:runtime_library",
+      "//build/config/compiler:thin_archive",
+      "//build/config/compiler/pgo:default_pgo_flags",
+      "//build/config/coverage:default_coverage",
+      "//build/config/sanitizers:default_sanitizer_flags",
+      "//build/config/clang:find_bad_constructs",
+      "//build/config/clang:extra_warnings",
+    ]
+    configs += [ "//components/cronet/native:cronet_native_include_config" ]
+    if (is_mac) {
+      configs += [ "//build/config/mac:runtime_library" ]
+    }
   }
 
   shared_library("cronet") {
@@ -195,14 +237,10 @@ if (false) {
   copy("cronet_package_copy") {
     sources = [
       "${root_out_dir}${shlib_subdir}/${_cronet_shared_lib_file_name}",
-      "$root_out_dir/obj/components/cronet/${_cronet_static_lib_file_name}",
       "//AUTHORS",
       "//chrome/VERSION",
     ]
-    deps = [
-      ":cronet",
-      ":cronet_static",
-    ]
+    deps = [ ":cronet" ]
     outputs = [ "$_package_dir/{{source_file_part}}" ]
   }
 
@@ -210,13 +248,14 @@ if (false) {
   copy("cronet_package_headers") {
     sources = cronet_native_public_headers + grpc_public_headers
 
-    outputs = [ "$_package_dir/{{source_file_part}}" ]
+    outputs = [ "$_package_dir/include/{{source_file_part}}" ]
   }
 
   group("cronet_package") {
     deps = [
       ":cronet_package_copy",
       ":cronet_package_headers",
+      ":generate_license",
     ]
   }
 
