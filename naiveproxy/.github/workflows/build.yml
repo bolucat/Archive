@@ -289,6 +289,7 @@ jobs:
       #  # No real or emulated environment is available to test this.
       #  if: ${{ matrix.arch != 'arm64' }}
       - run: mkdir ${{ env.BUNDLE }} && cp out/Release/naive.exe config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
+      - run: rm -rf out/Release/cronet/sysroot out/Release/cronet/llvm out/Release/cronet/c
       - run: cp -r out/Release/cronet ${{ env.BUNDLE }}
       - run: 7z a ../${{ env.BUNDLE }}.zip ${{ env.BUNDLE }}
       - uses: actions/upload-release-asset@v1
@@ -306,65 +307,65 @@ jobs:
         with:
           name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
           path: src/sha256sum.txt
-  mac:
-    needs: cache-toolchains-mac
-    runs-on: macos-11
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x64, arm64]
-    env:
-      EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
-      BUNDLE: 'naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}'
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v3
-        with:
-          go-version: '^1.18.1'
-      - name: Cache toolchains and PGO
-        uses: actions/cache@v2
-        with:
-          path: |
-            src/third_party/llvm-build/Release+Asserts/
-            src/chrome/build/pgo_profiles/chrome-mac-*
-            src/gn/
-            src/tools/clang/dsymutil/
-          key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
-      - id: ccache-timestamp
-        run: echo "::set-output name=date::$(date +%s)"
-      - name: Cache ccache files
-        uses: actions/cache@v2
-        with:
-          path: ~/Library/Caches/ccache
-          key: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
-          restore-keys: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
-      - run: brew install ninja ccache
-      - run: ./get-clang.sh
-      - run: ccache -s
-      - run: ./build.sh
-      - run: ccache -s
-      #- run: ../tests/basic.sh out/Release/naive
-      #  # No real or emulated environment is available to test this.
-      #  if: ${{ matrix.arch != 'arm64' }}
-      - run: mkdir ${{ env.BUNDLE }} && cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
-      - run: rm -f out/Release/sysroot out/Release/llvm
-      - run: cp -r out/Release/cronet ${{ env.BUNDLE }}
-      - run: tar cJf ../${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
-      - uses: actions/upload-release-asset@v1
-        if: ${{ github.event_name == 'release' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: ${{ env.BUNDLE }}.tar.xz
-          asset_name: ${{ env.BUNDLE }}.tar.xz
-          asset_content_type: application/octet-stream
-      - run: openssl sha256 out/Release/naive >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
+  # mac:
+  #   needs: cache-toolchains-mac
+  #   runs-on: macos-11
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       arch: [x64, arm64]
+  #   env:
+  #     EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
+  #     BUNDLE: 'naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}'
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions/setup-go@v3
+  #       with:
+  #         go-version: '^1.18.1'
+  #     - name: Cache toolchains and PGO
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: |
+  #           src/third_party/llvm-build/Release+Asserts/
+  #           src/chrome/build/pgo_profiles/chrome-mac-*
+  #           src/gn/
+  #           src/tools/clang/dsymutil/
+  #         key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+  #     - id: ccache-timestamp
+  #       run: echo "::set-output name=date::$(date +%s)"
+  #     - name: Cache ccache files
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: ~/Library/Caches/ccache
+  #         key: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
+  #         restore-keys: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
+  #     - run: brew install ninja ccache
+  #     - run: ./get-clang.sh
+  #     - run: ccache -s
+  #     - run: ./build.sh
+  #     - run: ccache -s
+  #     #- run: ../tests/basic.sh out/Release/naive
+  #     #  # No real or emulated environment is available to test this.
+  #     #  if: ${{ matrix.arch != 'arm64' }}
+  #     - run: mkdir ${{ env.BUNDLE }} && cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
+  #     - run: rm -f out/Release/cronet/sysroot out/Release/cronet/llvm
+  #     - run: cp -r out/Release/cronet ${{ env.BUNDLE }}
+  #     - run: tar cJf ../${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
+  #     - uses: actions/upload-release-asset@v1
+  #       if: ${{ github.event_name == 'release' }}
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         upload_url: ${{ github.event.release.upload_url }}
+  #         asset_path: ${{ env.BUNDLE }}.tar.xz
+  #         asset_name: ${{ env.BUNDLE }}.tar.xz
+  #         asset_content_type: application/octet-stream
+  #     - run: openssl sha256 out/Release/naive >sha256sum.txt
+  #     - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+  #     - uses: actions/upload-artifact@v2
+  #       with:
+  #         name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
+  #         path: src/sha256sum.txt
   # openwrt:
   #   needs: cache-toolchains-posix
   #   runs-on: ubuntu-20.04

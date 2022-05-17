@@ -79,14 +79,14 @@ export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 
 ./gn/out/gn gen "$out" --args="$flags $EXTRA_FLAGS" --script-executable=$PYTHON
 
-#if [ "$WITH_CLANG" = "Win" -o "$WITH_CLANG" = "Mac" ]; then
-#  #verbose=-v
+#if [ "$WITH_CLANG" = "Win" ]; then
+#  verbose=-v
 #fi
 
 ninja $verbose -C "$out" naive
 
 if echo "$EXTRA_FLAGS" | grep -vq "build_static=true"; then
-  ninja -C "$out" cronet cronet_static
+  ninja -C "$out" cronet cronet_static cronet_example_external cronet_example_external_static
   if [ "$target_os" != "android" ]; then
     ./make-go-buildflags.sh
     ../tests/go-external-build.sh || true

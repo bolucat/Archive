@@ -35,7 +35,7 @@ impl Context {
     pub fn new(config_type: ServerType) -> Context {
         Context {
             replay_protector: ReplayProtector::new(config_type),
-            replay_policy: ReplayAttackPolicy::Reject,
+            replay_policy: ReplayAttackPolicy::Default,
             dns_resolver: Arc::new(DnsResolver::system_resolver()),
             ipv6_first: false,
         }
@@ -100,8 +100,17 @@ impl Context {
             return Ok(());
         }
 
-        match self.replay_policy {
-            ReplayAttackPolicy::Ignore => Ok(()),
+        #[allow(unused_mut)]
+        let mut replay_policy = self.replay_policy;
+
+        #[cfg(feature = "aead-cipher-2022")]
+        if method.is_aead_2022() {
+            // AEAD-2022 can't be ignored.
+            replay_policy = ReplayAttackPolicy::Reject;
+        }
+
+        match replay_policy {
+            ReplayAttackPolicy::Default | ReplayAttackPolicy::Ignore => Ok(()),
             ReplayAttackPolicy::Detect => {
                 if self.replay_protector.check_nonce_and_set(method, nonce) {
                     warn!("detected repeated nonce (iv/salt) {:?}", ByteStr::new(nonce));

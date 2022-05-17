@@ -3,8 +3,6 @@ name: Alpha CI
 on:
   push:
     branches: [alpha]
-  pull_request:
-    branches: [alpha]
 
 env:
   CARGO_INCREMENTAL: 0
@@ -30,6 +28,8 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@ce325b60658c1b38465c06cc965b79baf32c1e72
+        with:
+          working-directory: src-tauri
 
       - name: Install Node
         uses: actions/setup-node@v1
@@ -85,7 +85,7 @@ jobs:
       - name: Tauri build Meta
         uses: tauri-apps/tauri-action@v0
         # enable cache even though failed
-        # continue-on-error: true
+        continue-on-error: true
         env:
           VITE_MULTI_CORE: 1
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,8 +93,15 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           tagName: alpha
-          configPath: tauri.meta.json
+          configPath: src-tauri/tauri.meta.json
           releaseName: "Clash Verge Alpha"
           releaseBody: "Alpha Version"
           releaseDraft: false
           prerelease: true
+
+      - name: Portable Bundle For Meta
+        if: matrix.os == 'windows-latest'
+        run: |
+          yarn run portable --meta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
