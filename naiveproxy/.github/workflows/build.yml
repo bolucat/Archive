@@ -279,9 +279,9 @@ jobs:
           key: ccache-win-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
           restore-keys: ccache-win-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
       - run: ./get-clang.sh
-      #- run: choco upgrade llvm
-      #- run: clang --version
-      #- run: which clang
+      # - run: choco upgrade llvm
+      # - run: clang --version
+      # - run: which clang
       - run: ~/.cargo/bin/sccache -s
       - run: ./build.sh
       - run: ~/.cargo/bin/sccache -s

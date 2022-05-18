@@ -59,7 +59,7 @@ config("compiler") {
       # table specifies for the operating system which exception handlers are
       # valid for the image. Note that /SAFESEH isn't accepted on the command
       # line, only /safeseh. This is only accepted by ml.exe, not ml64.exe.
-      "/safeseh",
+      "/safeseh:no",
     ]
   }
 
@@ -300,7 +300,7 @@ config("winver") {
 config("sdk_link") {
   if (current_cpu == "x86") {
     ldflags = [
-      "/SAFESEH",  # Not compatible with x64 so use only for x86.
+      "/SAFESEH:NO",  # Not compatible with x64 so use only for x86.
       "/largeaddressaware",
     ]
   }

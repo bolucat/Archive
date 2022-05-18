@@ -25,6 +25,9 @@ run_cronet_example() {
   if [ "$target_cpu" = "arm64" -a "$ARCH" = "Darwin" ]; then
     return
   fi
+  if [ "$target_cpu" = "arm64" -a "$ARCH" = "Windows" ]; then
+    return
+  fi
   ./cronet_example "$@"
 }
 
