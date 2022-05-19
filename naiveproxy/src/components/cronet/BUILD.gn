@@ -151,8 +151,12 @@ if (false) {
       "//build/config/clang:extra_warnings",
     ]
     configs += [ "//components/cronet/native:cronet_native_include_config" ]
-    if (is_mac) {
+    if (is_linux) {
+      configs += [ "//build/config/linux:runtime_library" ]
+    } else if (is_mac) {
       configs += [ "//build/config/mac:runtime_library" ]
+    } else if (is_android) {
+      configs += [ "//build/config/android:runtime_library" ]
     }
   }
 
@@ -184,8 +188,12 @@ if (false) {
       "//build/config/clang:extra_warnings",
     ]
     configs += [ "//components/cronet/native:cronet_native_include_config" ]
-    if (is_mac) {
+    if (is_linux) {
+      configs += [ "//build/config/linux:runtime_library" ]
+    } else if (is_mac) {
       configs += [ "//build/config/mac:runtime_library" ]
+    } else if (is_android) {
+      configs += [ "//build/config/android:runtime_library" ]
     }
   }
 
