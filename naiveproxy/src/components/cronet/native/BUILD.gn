@@ -69,4 +69,3 @@ source_set("cronet_native_impl") {
     "generated/cronet.idl_impl_struct.cc",
   ]
 }
-

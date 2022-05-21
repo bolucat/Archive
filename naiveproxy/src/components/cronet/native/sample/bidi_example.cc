@@ -107,6 +107,13 @@ Cronet_EnginePtr CreateCronetEngine() {
   Cronet_EnginePtr cronet_engine = Cronet_Engine_Create();
   Cronet_EngineParamsPtr engine_params = Cronet_EngineParams_Create();
   Cronet_EngineParams_user_agent_set(engine_params, "Cronet");
+  Cronet_EngineParams_experimental_options_set(engine_params, R"({
+  "ssl_key_log_file": "/tmp/keys",
+  "feature_list": {
+    "enable-features": "PartitionConnectionsByNetworkIsolationKey"
+  },
+  "proxy_server": "socks5://127.0.0.1:1080"
+})");
   Cronet_Engine_StartWithParams(cronet_engine, engine_params);
   Cronet_EngineParams_Destroy(engine_params);
   return cronet_engine;
@@ -122,17 +129,26 @@ int main(int argc, const char* argv[]) {
   stream_engine* cronet_stream_engine =
       Cronet_Engine_GetStreamEngine(cronet_engine);
 
+  Cronet_Engine_StartNetLogToFile(cronet_engine, "/tmp/log.json", true);
   BidirectionalStreamCallback stream_callback;
   stream_callback.stream = bidirectional_stream_create(
       cronet_stream_engine, &stream_callback, stream_callback.callback());
-  bidirectional_stream_start(stream_callback.stream, url, 0, "GET", nullptr,
-                             true);
+
+  bidirectional_stream_header headers[] = {
+      {"-network-isolation-key", "http://a"},
+  };
+  const bidirectional_stream_header_array headers_array = {1, 1, headers};
+  if (bidirectional_stream_start(stream_callback.stream, url, 0, "GET",
+                                 &headers_array, true) < 0) {
+    stream_callback.done = true;
+  }
   puts("bidirectional_stream_start");
   while (!stream_callback.done) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
   bidirectional_stream_destroy(stream_callback.stream);
 
+  Cronet_Engine_StopNetLog(cronet_engine);
   Cronet_Engine_Shutdown(cronet_engine);
   Cronet_Engine_Destroy(cronet_engine);
   return 0;

@@ -25,6 +25,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
+            src/qemu-user-static*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v2
@@ -43,6 +44,10 @@ jobs:
           key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - run: ./get-clang.sh
       - run: EXTRA_FLAGS='target_os="android"' ./get-clang.sh
+      - run: |
+          if [ ! -f qemu-user-static*.deb ]; then
+            wget https://snapshot.debian.org/archive/debian/20220515T152741Z/pool/main/q/qemu/qemu-user-static_7.0%2Bdfsg-6_amd64.deb
+          fi
   cache-toolchains-win:
     runs-on: windows-2019
     steps:
@@ -83,7 +88,6 @@ jobs:
             src/third_party/llvm-build/Release+Asserts/
             src/chrome/build/pgo_profiles/chrome-mac-*
             src/gn/
-            src/tools/clang/dsymutil/
           key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - run: EXTRA_FLAGS='target_cpu="x64"' ./get-clang.sh
       - run: EXTRA_FLAGS='target_cpu="arm64"' ./get-clang.sh
@@ -109,6 +113,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
+            src/qemu-user-static*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v2
@@ -128,43 +133,54 @@ jobs:
           path: ~/.ccache
           key: ccache-linux-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
           restore-keys: ccache-linux-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
-      - run: sudo apt update
-      - run: sudo apt install ninja-build pkg-config qemu-user ccache
-      - run: sudo apt remove -y qemu-user-binfmt
-      - run: wget https://snapshot.debian.org/archive/debian/20220515T152741Z/pool/main/q/qemu/qemu-user-static_7.0%2Bdfsg-6_amd64.deb
-      - run: sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
-      # libc6-i386 interferes with x86 build
-      - run: sudo apt remove libc6-i386
+      - name: Install APT packages
+        run: |
+          sudo apt update
+          sudo apt install ninja-build pkg-config qemu-user ccache bubblewrap
+          sudo apt remove -y qemu-user-binfmt
+          sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
+          # libc6-i386 interferes with x86 build
+          sudo apt remove libc6-i386
       - run: ./get-clang.sh
-      - run: ccache -s
+      - run: ccache -z
       - run: ./build.sh
       - run: ccache -s
-      - run: ./go-build.sh
+      - run: CCACHE_DISABLE=1 ./go-build.sh
         working-directory: src/out/Release/cronet
       - run: ../tests/basic.sh out/Release/naive
-      - name: Pack and upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
+      - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
           cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
           tar cJf ${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
-          hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 out/Release/naive >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pack and upload cronet assets
+      - name: Pack cronet assets
         if: ${{ github.event_name == 'release' }}
         run: |
           mv out/Release/cronet ${{ env.CRONET_BUNDLE }}
           tar cJf ${{ env.CRONET_BUNDLE }}.tar.xz ${{ env.CRONET_BUNDLE }}
-          hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 ${{ env.CRONET_BUNDLE }}.tar.xz >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        if: ${{ github.event_name == 'release' }}
+        with:
+          name: ${{ env.CRONET_BUNDLE }}.tar.xz sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload cronet assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: openssl sha256 out/Release/naive >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
   android:
     needs: cache-toolchains-posix
     runs-on: ubuntu-20.04
@@ -187,6 +203,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
+            src/qemu-user-static*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache AFDO (Android)
         uses: actions/cache@v2
@@ -211,44 +228,55 @@ jobs:
           path: ~/.ccache
           key: ccache-android-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
           restore-keys: ccache-android-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
-      - run: sudo apt update
-      - run: sudo apt install ninja-build pkg-config qemu-user ccache
-      - run: sudo apt remove -y qemu-user-binfmt
-      - run: wget https://snapshot.debian.org/archive/debian/20220515T152741Z/pool/main/q/qemu/qemu-user-static_7.0%2Bdfsg-6_amd64.deb
-      - run: sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
-      # libc6-i386 interferes with x86 build
-      - run: sudo apt remove libc6-i386
+      - name: Install APT packages
+        run: |
+          sudo apt update
+          sudo apt install ninja-build pkg-config qemu-user ccache bubblewrap
+          sudo apt remove -y qemu-user-binfmt
+          sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
+          # libc6-i386 interferes with x86 build
+          sudo apt remove libc6-i386
       - run: ./get-clang.sh
-      - run: ccache -s
+      - run: ccache -z
       - run: ./build.sh
       - run: ccache -s
       - run: ./get-android-sys.sh
-      - run: ./go-build.sh
+      - run: CCACHE_DISABLE=1 ./go-build.sh
         working-directory: src/out/Release/cronet
       - run: ../tests/basic.sh out/Release/naive
-      - name: Pack and upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
+      - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
           cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
           tar cJf ${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
-          hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 out/Release/naive >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pack and upload cronet assets
+      - name: Pack cronet assets
         if: ${{ github.event_name == 'release' }}
         run: |
           mv out/Release/cronet ${{ env.CRONET_BUNDLE }}
           tar cJf ${{ env.CRONET_BUNDLE }}.tar.xz ${{ env.CRONET_BUNDLE }}
-          hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 ${{ env.CRONET_BUNDLE }}.tar.xz >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        if: ${{ github.event_name == 'release' }}
+        with:
+          name: ${{ env.CRONET_BUNDLE }}.tar.xz sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload cronet assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: openssl sha256 out/Release/naive >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
   win:
     needs: cache-toolchains-win
     runs-on: windows-2019
@@ -295,37 +323,47 @@ jobs:
           key: ccache-win-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
           restore-keys: ccache-win-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
       - run: ./get-clang.sh
-      - run: ~/.cargo/bin/sccache -s
+      - run: ~/.cargo/bin/sccache -z
       - run: ./build.sh
       - run: ~/.cargo/bin/sccache -s
-      - run: ./go-build.sh
+      - run: CCACHE_DISABLE=1 ./go-build.sh
         working-directory: src/out/Release/cronet
       - run: ../tests/basic.sh out/Release/naive
         # No real or emulated environment is available to test this.
         if: ${{ matrix.arch != 'arm64' }}
-      - name: Pack and upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
+      - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
           cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
           7z a ${{ env.BUNDLE }}.zip ${{ env.BUNDLE }}
-          hub release edit -a ${{ env.BUNDLE }}.zip -m "" "${GITHUB_REF##*/}"
+          openssl sha256 out/Release/naive.exe >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BUNDLE }}.zip naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.BUNDLE }}.zip -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pack and upload cronet assets
+      - name: Pack cronet assets
         if: ${{ github.event_name == 'release' }}
         run: |
           mv out/Release/cronet ${{ env.CRONET_BUNDLE }}
           7z a ${{ env.CRONET_BUNDLE }}.zip ${{ env.CRONET_BUNDLE }}
-          hub release edit -a ${{ env.CRONET_BUNDLE }}.zip -m "" "${GITHUB_REF##*/}"
+          openssl sha256 ${{ env.CRONET_BUNDLE }}.zip >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        if: ${{ github.event_name == 'release' }}
+        with:
+          name: ${{ env.CRONET_BUNDLE }}.zip sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload cronet assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.CRONET_BUNDLE }}.zip -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: openssl sha256 out/Release/naive.exe >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
   mac:
     needs: cache-toolchains-mac
     runs-on: macos-11
@@ -349,7 +387,6 @@ jobs:
             src/third_party/llvm-build/Release+Asserts/
             src/chrome/build/pgo_profiles/chrome-mac-*
             src/gn/
-            src/tools/clang/dsymutil/
           key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - id: ccache-timestamp
         run: echo "::set-output name=date::$(date +%s)"
@@ -361,37 +398,47 @@ jobs:
           restore-keys: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
       - run: brew install ninja ccache
       - run: ./get-clang.sh
-      - run: ccache -s
+      - run: ccache -z
       - run: ./build.sh
       - run: ccache -s
-      - run: ./go-build.sh
+      - run: CCACHE_DISABLE=1 ./go-build.sh
         working-directory: src/out/Release/cronet
       - run: ../tests/basic.sh out/Release/naive
         # No real or emulated environment is available to test this.
         if: ${{ matrix.arch != 'arm64' }}
-      - name: Pack and upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
+      - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
           cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
           tar cJf ${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
-          hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 out/Release/naive >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pack and upload cronet assets
+      - name: Pack cronet assets
         if: ${{ github.event_name == 'release' }}
         run: |
           mv out/Release/cronet ${{ env.CRONET_BUNDLE }}
           tar cJf ${{ env.CRONET_BUNDLE }}.tar.xz ${{ env.CRONET_BUNDLE }}
-          hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 ${{ env.CRONET_BUNDLE }}.tar.xz >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        if: ${{ github.event_name == 'release' }}
+        with:
+          name: ${{ env.CRONET_BUNDLE }}.tar.xz sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload cronet assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: openssl sha256 out/Release/naive >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt
   openwrt:
     needs: cache-toolchains-posix
     runs-on: ubuntu-20.04
@@ -504,6 +551,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
+            src/qemu-user-static*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v2
@@ -523,41 +571,52 @@ jobs:
           path: ~/.ccache
           key: ccache-openwrt-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.date }}
           restore-keys: ccache-openwrt-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
-      - run: sudo apt update
-      - run: sudo apt install ninja-build pkg-config qemu-user ccache
-      - run: sudo apt remove -y qemu-user-binfmt
-      - run: wget https://snapshot.debian.org/archive/debian/20220515T152741Z/pool/main/q/qemu/qemu-user-static_7.0%2Bdfsg-6_amd64.deb
-      - run: sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
-      # libc6-i386 interferes with x86 build
-      - run: sudo apt remove libc6-i386
+      - name: Install APT packages
+        run: |
+          sudo apt update
+          sudo apt install ninja-build pkg-config qemu-user ccache bubblewrap
+          sudo apt remove -y qemu-user-binfmt
+          sudo dpkg -i qemu-user-static_7.0+dfsg-6_amd64.deb
+          # libc6-i386 interferes with x86 build
+          sudo apt remove libc6-i386
       - run: ./get-clang.sh
-      - run: ccache -s
+      - run: ccache -z
       - run: ./build.sh
       - run: ccache -s
-      - run: ./go-build.sh
+      - run: CCACHE_DISABLE=1 ./go-build.sh
         working-directory: src/out/Release/cronet
         if: ${{ ! contains(matrix.extra, 'build_static=true') }}
       - run: ../tests/basic.sh out/Release/naive
-      - name: Pack and upload naiveproxy assets
-        if: ${{ github.event_name == 'release' }}
+      - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
           cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
           tar cJf ${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
-          hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 out/Release/naive >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: hub release edit -a ${{ env.BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Pack and upload cronet assets
+      - name: Pack cronet assets
         if: ${{ github.event_name == 'release' && ! contains(matrix.extra, 'build_static=true') }}
         run: |
           mv out/Release/cronet ${{ env.CRONET_BUNDLE }}
           tar cJf ${{ env.CRONET_BUNDLE }}.tar.xz ${{ env.CRONET_BUNDLE }}
-          hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
+          openssl sha256 ${{ env.CRONET_BUNDLE }}.tar.xz >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v2
+        if: ${{ github.event_name == 'release' && ! contains(matrix.extra, 'build_static=true') }}
+        with:
+          name: ${{ env.CRONET_BUNDLE }}.tar.xz sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload cronet assets
+        if: ${{ github.event_name == 'release' && ! contains(matrix.extra, 'build_static=true') }}
+        run: hub release edit -a ${{ env.CRONET_BUNDLE }}.tar.xz -m "" "${GITHUB_REF##*/}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: openssl sha256 out/Release/naive >sha256sum.txt
-      - run: echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
-      - uses: actions/upload-artifact@v2
-        with:
-          name: ${{ github.job }}-${{ matrix.arch }}-sha256 ${{ env.SHA256SUM }}
-          path: src/sha256sum.txt

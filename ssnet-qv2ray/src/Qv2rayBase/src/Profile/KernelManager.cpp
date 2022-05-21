@@ -81,7 +81,7 @@ namespace Qv2rayBase::Profile
 
         // Leave, nothing can be found.
         if (defaultKernelInfo.Name.isEmpty())
-            return QObject::tr("Cannot find the specified kernel");
+            return QObject::tr("Cannot find the specified kernel: ").append(fullProfile.defaultKernel.toString());
 
         QSet<QString> protocols;
         protocols.reserve(fullProfile.outbounds.size());

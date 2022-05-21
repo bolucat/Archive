@@ -87,18 +87,6 @@ if (false) {
     deps = [ "//components/cronet/ios:cronet_package_ios" ]
   }
 } else {
-  config("shared_library_public_config") {
-    if (is_mac && !is_component_build) {
-      # Executable targets that depend on the shared libraries below need to have
-      # the rpath setup in non-component build configurations.
-      ldflags = [ "-Wl,-rpath,@executable_path/" ]
-    }
-  }
-
-  _cronet_shared_lib_name = "cronet"
-  _cronet_shared_lib_file_name =
-      "$shlib_prefix$_cronet_shared_lib_name$shlib_extension"
-
   static_library("cronet_static") {
     deps = [
       "//base",
@@ -121,6 +109,18 @@ if (false) {
 
     complete_static_lib = true
     configs -= [ "//build/config/compiler:thin_archive" ]
+  }
+
+  executable("cronet_example") {
+    testonly = true
+    sources = [ "native/sample/bidi_example.cc" ]
+    deps = [
+      "//components/cronet",
+      "//components/cronet/native:cronet_native_headers",
+    ]
+    if ((is_linux || is_chromeos) && !is_component_build) {
+      public_configs = [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
+    }
   }
 
   executable("cronet_example_external") {
@@ -196,6 +196,18 @@ if (false) {
       configs += [ "//build/config/android:runtime_library" ]
     }
   }
+
+  config("shared_library_public_config") {
+    if (is_mac && !is_component_build) {
+      # Executable targets that depend on the shared libraries below need to have
+      # the rpath setup in non-component build configurations.
+      ldflags = [ "-Wl,-rpath,@executable_path/" ]
+    }
+  }
+
+  _cronet_shared_lib_name = "cronet"
+  _cronet_shared_lib_file_name =
+      "$shlib_prefix$_cronet_shared_lib_name$shlib_extension"
 
   shared_library("cronet") {
     output_name = _cronet_shared_lib_name

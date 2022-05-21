@@ -357,9 +357,10 @@ CronetContext::NetworkTasks::BuildDefaultURLRequestContext(
   SetSharedURLRequestContextBuilderConfig(&context_builder);
 
   const auto proxy_server_it =
-      context_config_->experimental_options.find("proxy_server");
+      context_config_->effective_experimental_options.find("proxy_server");
   std::string proxy_server_str = "direct://";
-  if (proxy_server_it != context_config_->experimental_options.end()) {
+  if (proxy_server_it !=
+      context_config_->effective_experimental_options.end()) {
     const base::Value& value = proxy_server_it->second;
     if (value.is_string()) {
       proxy_server_str = value.GetString();

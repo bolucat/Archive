@@ -31,13 +31,6 @@ if [ "$WITH_PGO" -a ! -f chrome/build/pgo_profiles/"$PGO_PATH" ]; then
   cd ../../..
 fi
 
-if [ "$USE_DSYMUTIL" -a ! -f tools/clang/dsymutil/bin/dsymutil ]; then
-  mkdir -p tools/clang/dsymutil
-  dsymutil_path="dsymutil-$CLANG_REVISION.tgz"
-  dsymutil_url="https://commondatastorage.googleapis.com/chromium-browser-clang-staging/Mac/$dsymutil_path"
-  curl "$dsymutil_url" | tar xzf - -C tools/clang/dsymutil
-fi
-
 if [ "$USE_SCCACHE" -a ! -f ~/.cargo/bin/sccache.exe ]; then
   sccache_url="https://github.com/mozilla/sccache/releases/download/0.2.12/sccache-0.2.12-x86_64-pc-windows-msvc.tar.gz"
   mkdir -p ~/.cargo/bin

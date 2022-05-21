@@ -83,5 +83,5 @@ ninja -C "$out" naive
 
 if echo "$EXTRA_FLAGS" | grep -vq "build_static=true"; then
   ninja -C "$out" cronet cronet_static
-  ./make-go-buildflags.sh
+  ./make-cronet-cgo-sdk.sh
 fi

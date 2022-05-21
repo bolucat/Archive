@@ -107,15 +107,12 @@ run_cronet_example() {
   if [ "$WITH_QEMU" ]; then
     if [ "$target_cpu" = "x64" -o "$target_cpu" = "x86" ]; then
       cp libcronet.so cronet_example "$rootfs"
-      mkdir -p "$rootfs"/dev "$rootfs"/proc
-      sudo mount --bind /dev "$rootfs"/dev
-      sudo mount -t proc proc "$rootfs"/proc
-      sudo LD_LIBRARY_PATH=/ chroot "$rootfs" /cronet_example "$@"
-      sudo umount "$rootfs"/dev "$rootfs"/proc
-      rm -rf "$rootfs"/dev "$rootfs"/proc
+      bwrap --bind "$rootfs" / --proc /proc --dev /dev --setenv LD_LIBRARY_PATH / /cronet_example "$@"
       rm -f "$rootfs"/libcronet.so "$rootfs"/cronet_example
     else
-      qemu-$WITH_QEMU -L "$rootfs" ./cronet_example "$@"
+      # Older qemu-user cannot run CGO binaries in MIPS, see https://github.com/golang/go/issues/33746.
+      # Newer qemu-user-static can be separately installed.
+      qemu-$WITH_QEMU-static -L "$rootfs" ./cronet_example "$@"
     fi
   elif [ "$target_cpu" = "arm64" -a "$ARCH" = "Darwin" ]; then
     echo 'Skips testing cronet_example'

@@ -93,5 +93,6 @@ namespace Qv2rayPlugin::Subscription
     {
       public:
         virtual QList<SubscriptionProviderInfo> GetInfo() const = 0;
+        virtual ~IPluginSubscriptionInterface() {};
     };
 } // namespace Qv2rayPlugin::Subscription

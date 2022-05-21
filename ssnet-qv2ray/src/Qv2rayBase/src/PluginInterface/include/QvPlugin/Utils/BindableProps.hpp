@@ -138,7 +138,6 @@ struct Bindable : public INotifiable
         ReadBind(target, target_prop, trigger_signal);
     }
 
-    const T defaultvalue;
 
   private:
     T &set(const T &v)
@@ -150,4 +149,5 @@ struct Bindable : public INotifiable
         return value;
     }
     T value;
+    const T defaultvalue;
 };

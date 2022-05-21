@@ -73,7 +73,6 @@ case "$ARCH" in
       CCACHE=ccache
     fi
     WITH_CLANG=Mac
-    USE_DSYMUTIL=y
     WITH_GN=mac
     case "$target_cpu" in
       arm64) WITH_PGO=mac-arm;;
