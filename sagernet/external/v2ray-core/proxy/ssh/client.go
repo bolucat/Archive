@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/bufio"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -227,7 +227,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 		return newError("failed to open ssh proxy connection").Base(err)
 	}
 
-	return rw.CopyConn(ctx, conn, outboundConn)
+	return bufio.CopyConn(ctx, conn, outboundConn)
 }
 
 func (c *Client) connect(ctx context.Context, dialer internet.Dialer) (net.Conn, *ssh.Client, error) {

@@ -287,7 +287,7 @@ func (c *Client) lookup(ctx context.Context, domain string, strategy dns.QuerySt
 				c.callbacks.Store(message.ID, r)
 				go func() {
 					if err := server.transport.Write(ctx, message); err != nil {
-						r.errors = append(r.errors, newError("failed write query to dns server ", server.name).Base(err))
+						r.errors = append(r.errors, err)
 						cancel()
 					}
 				}()
@@ -462,7 +462,7 @@ func (c *Client) QueryRaw(ctx context.Context, buffer *buf.Buffer) (*buf.Buffer,
 			reqIds = append(reqIds, message.ID)
 			go func() {
 				if err := server.transport.Write(ctx, message); err != nil {
-					r.errors = append(r.errors, newError("failed write query to dns server ", server.name).Base(err))
+					r.errors = append(r.errors, err)
 					cancel()
 				}
 			}()

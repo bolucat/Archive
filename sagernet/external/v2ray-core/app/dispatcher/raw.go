@@ -5,8 +5,8 @@ import (
 	"time"
 
 	B "github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/log"
@@ -75,7 +75,7 @@ func (d *DefaultDispatcher) DispatchConn(ctx context.Context, destination net.De
 		return nil
 	}
 
-	conn = &rw.BufferedConn{
+	conn = &bufio.BufferedConn{
 		Conn:   conn,
 		Buffer: header,
 	}

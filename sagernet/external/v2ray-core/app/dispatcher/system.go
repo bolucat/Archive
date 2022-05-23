@@ -3,7 +3,7 @@ package dispatcher
 import (
 	"context"
 
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/bufio"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/task"
@@ -57,9 +57,9 @@ func (s *SystemDispatcher) DispatchConn(ctx context.Context, dest net.Destinatio
 		return err
 	}
 	if wait {
-		return rw.CopyConn(ctx, conn, destConn)
+		return bufio.CopyConn(ctx, conn, destConn)
 	} else {
-		go rw.CopyConn(ctx, conn, destConn)
+		go bufio.CopyConn(ctx, conn, destConn)
 		return nil
 	}
 }

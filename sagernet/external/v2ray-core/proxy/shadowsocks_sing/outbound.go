@@ -8,11 +8,11 @@ import (
 
 	C "github.com/sagernet/sing/common"
 	B "github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/random"
-	"github.com/sagernet/sing/common/rw"
 	"github.com/sagernet/sing/protocol/shadowsocks"
 	"github.com/sagernet/sing/protocol/shadowsocks/shadowimpl"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -156,7 +156,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 		pipeOut := pipe.IsPipe(link.Writer)
 
 		if inboundConn != nil && !pipeIn && !pipeOut {
-			return rw.CopyConn(ctx, inboundConn, serverConn)
+			return bufio.CopyConn(ctx, inboundConn, serverConn)
 		}
 
 		conn := &PipeConnWrapper{
@@ -170,13 +170,13 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 			conn.R = &buf.BufferedReader{Reader: link.Reader}
 		}
 
-		return rw.CopyConn(ctx, conn, serverConn)
+		return bufio.CopyConn(ctx, conn, serverConn)
 	} else {
 		var packetConn N.PacketConn
 		if pc, isPacketConn := inboundConn.(N.PacketConn); isPacketConn {
 			packetConn = pc
 		} else if nc, isNetPacket := inboundConn.(net.PacketConn); isNetPacket {
-			packetConn = &N.PacketConnWrapper{PacketConn: nc}
+			packetConn = &bufio.PacketConnWrapper{PacketConn: nc}
 		} else {
 			packetConn = &PacketConnWrapper{
 				Reader:  link.Reader,
@@ -188,7 +188,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 		}
 
 		serverConn := o.method.DialPacketConn(connection)
-		return N.CopyPacketConn(ctx, packetConn, serverConn)
+		return bufio.CopyPacketConn(ctx, packetConn, serverConn)
 	}
 }
 
@@ -217,7 +217,7 @@ func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer intern
 
 	serverConn := o.method.DialEarlyConn(connection, SingDestination(destination))
 
-	if cr, ok := conn.(rw.CachedReader); ok {
+	if cr, ok := conn.(bufio.CachedReader); ok {
 		cached := cr.ReadCached()
 		if cached != nil && !cached.IsEmpty() {
 			_, err = serverConn.Write(cached.Bytes())
@@ -256,7 +256,7 @@ func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer intern
 	}
 
 direct:
-	return rw.CopyConn(ctx, conn, serverConn)
+	return bufio.CopyConn(ctx, conn, serverConn)
 }
 
 func SingDestination(destination net.Destination) M.Socksaddr {

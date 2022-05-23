@@ -9,7 +9,7 @@ rm -rf $BUILD/android \
   $BUILD/javac-output \
   $BUILD/src
 
-gomobile bind -v -cache $(realpath $BUILD) -trimpath -tags='disable_debug' -ldflags='-s -w' . || exit 1
+gomobile bind -v -cache $(realpath $BUILD) -trimpath -tags='disable_debug' -ldflags='-s -w -buildid=' . || exit 1
 rm -r libcore-sources.jar
 
 proj=../SagerNet/app/libs

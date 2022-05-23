@@ -11,7 +11,7 @@ import (
 
 	C "github.com/sagernet/sing/common"
 	B "github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/rw"
+	I "github.com/sagernet/sing/common/bufio"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -175,7 +175,7 @@ func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *buf
 		if err != nil {
 			return err
 		}
-		conn = &rw.BufferedConn{
+		conn = &I.BufferedConn{
 			Conn:   conn,
 			Buffer: buffered,
 		}

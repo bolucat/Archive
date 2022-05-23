@@ -12,8 +12,8 @@ require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/ulikunitz/xz v0.5.10
 	github.com/v2fly/v2ray-core/v5 v5.0.6
-	golang.org/x/net v0.0.0-20220517181318-183a9ca12b87
-	golang.org/x/sys v0.0.0-20220517195934-5e4e11fc645e
+	golang.org/x/net v0.0.0-20220520000938-2e3eb7b945c2
+	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a
 	gvisor.dev/gvisor v0.0.0
 )
 
@@ -23,7 +23,7 @@ replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220402114650-76
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
 
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.11-0.20220518110122-4bbda6c1351f
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.11-0.20220523030351-22db4a002aaa
 
 //replace github.com/sagernet/sing => ../sing
 
@@ -53,7 +53,7 @@ require (
 	github.com/pires/go-proxyproto v0.6.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
-	github.com/sagernet/sing v0.0.0-20220518100418-678160313e8d // indirect
+	github.com/sagernet/sing v0.0.0-20220523024450-2216901ec429 // indirect
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb // indirect
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08 // indirect
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e // indirect

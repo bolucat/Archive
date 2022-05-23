@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/sagernet/sing/common/rw"
+	"github.com/sagernet/sing/common/bufio"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -349,7 +349,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 		return newError("failed to dial to virtual device").Base(err)
 	}
 
-	return rw.CopyConn(ctx, conn, outboundConn)
+	return bufio.CopyConn(ctx, conn, outboundConn)
 }
 
 func (c *Client) IPv4Connection() net.PacketConn {
