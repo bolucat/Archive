@@ -112,6 +112,11 @@ Cronet_EnginePtr CreateCronetEngine() {
   "feature_list": {
     "enable-features": "PartitionConnectionsByNetworkIsolationKey"
   },
+  "socket_limits": {
+    "max_sockets_per_pool": { "NORMAL_SOCKET_POOL": 1024 },
+    "max_sockets_per_proxy_server": {"NORMAL_SOCKET_POOL": 1024 },
+    "max_sockets_per_group": { "NORMAL_SOCKET_POOL": 1024 }
+  },
   "proxy_server": "socks5://127.0.0.1:1080"
 })");
   Cronet_Engine_StartWithParams(cronet_engine, engine_params);

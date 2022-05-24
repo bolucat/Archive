@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/v2fly/v2ray-core/v5/common/buf"
+	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
 	"golang.org/x/sys/unix"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/buffer"
@@ -57,6 +58,8 @@ func (t *SystemTun) dispatchLoop() {
 	data := cache.Use()
 
 	device := os.NewFile(uintptr(t.dev), "tun")
+	element := v2rayNet.AddConnection(device)
+	defer v2rayNet.RemoveConnection(element)
 
 	for {
 		n, err := device.Read(data)
@@ -123,5 +126,6 @@ func (t *SystemTun) deliverPacket(cache *buf.Buffer, packet []byte) bool {
 }
 
 func (t *SystemTun) Close() error {
+	unix.Close(t.dev)
 	return t.tcpForwarder.Close()
 }

@@ -388,16 +388,8 @@ func (c *dispatcherConn) Close() error {
 	if c.closed {
 		return nil
 	}
-
-	c.access.Lock()
-	defer c.access.Unlock()
-
-	if c.closed {
-		return nil
-	}
 	c.closed = true
 
-	c.timer.SetTimeout(0)
 	c.cancel()
 	_ = common.Interrupt(c.link.Reader)
 	_ = common.Interrupt(c.link.Writer)

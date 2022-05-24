@@ -81,13 +81,15 @@ func (r *cachedReader) ReadMultiBufferTimeout(timeout time.Duration) (buf.MultiB
 	return r.reader.ReadMultiBufferTimeout(timeout)
 }
 
-func (r *cachedReader) Interrupt() {
+func (r *cachedReader) Close() error {
+	common.Interrupt(r.reader)
+
 	r.Lock()
 	if r.cache != nil {
 		r.cache = buf.ReleaseMulti(r.cache)
 	}
 	r.Unlock()
-	common.Interrupt(r.reader)
+	return nil
 }
 
 func (r *cachedReader) IsPipe() bool {

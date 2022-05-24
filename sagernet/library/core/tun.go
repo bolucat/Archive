@@ -166,6 +166,9 @@ func (t *Tun2ray) Close() {
 }
 
 func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNet.Destination, conn net.Conn) {
+	element := v2rayNet.AddConnection(conn)
+	defer v2rayNet.RemoveConnection(element)
+
 	inbound := &session.Inbound{
 		Source:      source,
 		Tag:         "tun",
@@ -262,8 +265,6 @@ func (t *Tun2ray) NewConnection(source v2rayNet.Destination, destination v2rayNe
 		}()
 	}
 	inbound.Conn = conn
-	element := v2rayNet.AddConnection(conn)
-	defer v2rayNet.RemoveConnection(element)
 
 	_ = t.v2ray.dispatcher.DispatchConn(ctx, destination, conn, true)
 }
@@ -386,6 +387,8 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 		logrus.Errorf("[UDP] dial failed: %s", err.Error())
 		return
 	}
+	element := v2rayNet.AddConnection(conn)
+	defer v2rayNet.RemoveConnection(element)
 
 	var stats *appStats
 	if t.trafficStats && !self && !isDns {
@@ -426,9 +429,6 @@ func (t *Tun2ray) NewPacket(source v2rayNet.Destination, destination v2rayNet.De
 			stats.Unlock()
 		}()
 	}
-
-	element := v2rayNet.AddConnection(conn)
-	defer v2rayNet.RemoveConnection(element)
 
 	t.udpTable.Store(natKey, conn)
 

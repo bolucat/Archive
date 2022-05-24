@@ -57,7 +57,7 @@ func ResetConnections() {
 
 func clearConnections() {
 	for element := connectionPool.Front(); element != nil; element = element.Next() {
-		common.Close(element)
+		common.Interrupt(element)
 	}
 	connectionPool.Init()
 }

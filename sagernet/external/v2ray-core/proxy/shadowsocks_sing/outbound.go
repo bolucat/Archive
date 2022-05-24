@@ -84,6 +84,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	if err != nil {
 		return newError("failed to connect to server").Base(err)
 	}
+	defer connection.Close()
 
 	connElem := net.AddConnection(connection)
 	defer net.RemoveConnection(connElem)
@@ -211,6 +212,7 @@ func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer intern
 	if err != nil {
 		return newError("failed to connect to server").Base(err)
 	}
+	defer connection.Close()
 
 	connElem := net.AddConnection(connection)
 	defer net.RemoveConnection(connElem)
@@ -376,7 +378,8 @@ func (w *PacketConnWrapper) WritePacket(buffer *B.Buffer, addrPort M.Socksaddr) 
 
 func (w *PacketConnWrapper) Close() error {
 	common.Interrupt(w.Reader)
-	common.Close(w.Conn)
+	common.Interrupt(w.Writer)
+	common.Interrupt(w.Conn)
 	buf.ReleaseMulti(w.cached)
 	return nil
 }
