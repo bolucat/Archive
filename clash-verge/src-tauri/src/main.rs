@@ -44,10 +44,7 @@ fn main() -> std::io::Result<()> {
     .on_system_tray_event(move |app_handle, event| match event {
       SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
         "open_window" => {
-          let window = app_handle.get_window("main").unwrap();
-          window.unminimize().unwrap();
-          window.show().unwrap();
-          window.set_focus().unwrap();
+          resolve::create_window(app_handle);
         }
         "system_proxy" => {
           let core = app_handle.state::<core::Core>();
@@ -91,10 +88,7 @@ fn main() -> std::io::Result<()> {
       },
       #[cfg(target_os = "windows")]
       SystemTrayEvent::LeftClick { .. } => {
-        let window = app_handle.get_window("main").unwrap();
-        window.unminimize().unwrap();
-        window.show().unwrap();
-        window.set_focus().unwrap();
+        resolve::create_window(app_handle);
       }
       _ => {}
     })
@@ -156,17 +150,8 @@ fn main() -> std::io::Result<()> {
     .build(tauri::generate_context!())
     .expect("error while running tauri application")
     .run(|app_handle, e| match e {
-      tauri::RunEvent::WindowEvent { label, event, .. } => match event {
-        tauri::WindowEvent::CloseRequested { api, .. } => {
-          let app_handle = app_handle.clone();
-          api.prevent_close();
-          app_handle.get_window(&label).unwrap().hide().unwrap();
-        }
-        _ => {}
-      },
-      tauri::RunEvent::ExitRequested { .. } => {
-        resolve::resolve_reset(app_handle);
-        api::process::kill_children();
+      tauri::RunEvent::ExitRequested { api, .. } => {
+        api.prevent_exit();
       }
       tauri::RunEvent::Exit => {
         resolve::resolve_reset(app_handle);

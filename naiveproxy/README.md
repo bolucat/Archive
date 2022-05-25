@@ -154,3 +154,5 @@ The first CONNECT request to a server cannot use "Fast Open" to send payload bef
 - (Cronet) Disable system proxy resolution and use fixed proxy resolution specified by experimental option `proxy_server`
 - (Cronet) Support setting base::FeatureList by experimental option `feature_list`
 - (Cronet) Support setting the network isolation key of a stream with `-network-isolation-key` header
+- (Cronet) Add certificate net fetcher
+- (Cronet) Support setting socket limits by experimental option `socket_limits`

@@ -61,3 +61,54 @@ fn resolve_window(app: &App) {
     }));
   }
 }
+
+/// create main window
+pub fn create_window(app_handle: &AppHandle) {
+  if let Some(window) = app_handle.get_window("main") {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    return;
+  }
+
+  let builder = tauri::window::WindowBuilder::new(
+    app_handle,
+    "main".to_string(),
+    tauri::WindowUrl::App("index.html".into()),
+  )
+  .title("Clash Verge")
+  .center()
+  .fullscreen(false)
+  .transparent(true)
+  .min_inner_size(600.0, 520.0);
+
+  #[cfg(target_os = "windows")]
+  {
+    use crate::utils::winhelp;
+    use window_shadows::set_shadow;
+    use window_vibrancy::apply_blur;
+
+    match builder.decorations(false).inner_size(800.0, 636.0).build() {
+      Ok(_) => {
+        let app_handle = app_handle.clone();
+
+        tauri::async_runtime::spawn(async move {
+          if let Some(window) = app_handle.get_window("main") {
+            let _ = set_shadow(&window, true);
+
+            if !winhelp::is_win11() {
+              let _ = apply_blur(&window, None);
+            }
+          }
+        });
+      }
+      Err(err) => log::error!("{err}"),
+    }
+  }
+
+  #[cfg(target_os = "macos")]
+  crate::log_if_err!(builder.decorations(true).inner_size(800.0, 620.0).build());
+
+  #[cfg(target_os = "linux")]
+  crate::log_if_err!(builder.decorations(false).inner_size(800.0, 636.0).build());
+}

@@ -55,6 +55,10 @@ group("gn_all") {
     "//net",
     "//components/cronet",
   ]
+
+  if (is_ios) {
+    deps -= [ "//components/cronet" ]
+  }
 }
 
 group("gn_visibility") {
