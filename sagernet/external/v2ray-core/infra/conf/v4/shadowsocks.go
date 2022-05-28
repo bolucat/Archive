@@ -2,7 +2,7 @@ package v4
 
 import (
 	"github.com/golang/protobuf/proto"
-	"github.com/sagernet/sing/protocol/shadowsocks/shadowaead_2022"
+	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/serial"
@@ -99,8 +99,7 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 			config.Address = server.Address.Build()
 			config.Port = uint32(server.Port)
 			config.Method = server.Cipher
-			config.Key = server.Password
-			config.ReducedIvHeadEntropy = server.ExperimentReducedIvHeadEntropy
+			config.Password = server.Password
 			return config, nil
 		}
 	}

@@ -3,7 +3,6 @@ package internet
 import (
 	"net"
 
-	C "github.com/sagernet/sing/common"
 	B "github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -92,5 +91,5 @@ func (c *StatCounterPacketConn) WritePacket(buffer *B.Buffer, destination M.Sock
 }
 
 func (c *StatCounterPacketConn) RemoteAddr() net.Addr {
-	return &C.DummyAddr{}
+	return nil
 }

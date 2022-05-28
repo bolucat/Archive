@@ -96,7 +96,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 	tlsConn := tls.Client(outboundConn, tlsConfig)
 
 	if network == net.Network_TCP {
-		serverConn := trojan.NewClientConn(tlsConn, c.key, shadowsocks_sing.SingDestination(destination))
+		serverConn := trojan.NewClientConn(tlsConn, c.key, shadowsocks_sing.ToSocksaddr(destination))
 
 		if cr, ok := conn.(bufio.CachedReader); ok {
 			cached := cr.ReadCached()
@@ -200,7 +200,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	tlsConn := tls.Client(outboundConn, tlsConfig)
 
 	if network == net.Network_TCP {
-		serverConn := trojan.NewClientConn(tlsConn, c.key, shadowsocks_sing.SingDestination(destination))
+		serverConn := trojan.NewClientConn(tlsConn, c.key, shadowsocks_sing.ToSocksaddr(destination))
 
 		var handshake bool
 		if cachedReader, isCached := link.Reader.(pipe.CachedReader); isCached {

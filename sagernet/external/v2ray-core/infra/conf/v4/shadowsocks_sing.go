@@ -7,21 +7,17 @@ import (
 )
 
 type ShadowsocksSingClientConfig struct {
-	Address              *cfgcommon.Address `json:"address"`
-	Port                 uint16             `json:"port"`
-	Cipher               string             `json:"method"`
-	Password             string             `json:"password"`
-	Key                  string             `json:"key"`
-	ReducedIvHeadEntropy bool               `json:"reducedIvHeadEntropy"`
+	Address  *cfgcommon.Address `json:"address"`
+	Port     uint16             `json:"port"`
+	Cipher   string             `json:"method"`
+	Password string             `json:"password"`
 }
 
 func (v *ShadowsocksSingClientConfig) Build() (proto.Message, error) {
 	return &shadowsocks_sing.ClientConfig{
-		Address:              v.Address.Build(),
-		Port:                 uint32(v.Port),
-		Method:               v.Cipher,
-		Password:             v.Password,
-		Key:                  v.Key,
-		ReducedIvHeadEntropy: v.ReducedIvHeadEntropy,
+		Address:  v.Address.Build(),
+		Port:     uint32(v.Port),
+		Method:   v.Cipher,
+		Password: v.Password,
 	}, nil
 }

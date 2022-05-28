@@ -6,15 +6,14 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/sagernet/sing-shadowsocks"
+	"github.com/sagernet/sing-shadowsocks/shadowimpl"
 	C "github.com/sagernet/sing/common"
 	B "github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/random"
-	"github.com/sagernet/sing/protocol/shadowsocks"
-	"github.com/sagernet/sing/protocol/shadowsocks/shadowimpl"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
@@ -45,13 +44,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
 			Network: net.Network_TCP,
 		},
 	}
-	var rng io.Reader = random.Default
-	if config.ReducedIvHeadEntropy {
-		rng = &shadowsocks.ReducedEntropyReader{
-			Reader: rng,
-		}
-	}
-	method, err := shadowimpl.FetchMethod(config.Method, config.Key, config.Password, rng)
+	method, err := shadowimpl.FetchMethod(config.Method, config.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +83,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	defer net.RemoveConnection(connElem)
 
 	if network == net.Network_TCP {
-		serverConn := o.method.DialEarlyConn(connection, SingDestination(destination))
+		serverConn := o.method.DialEarlyConn(connection, ToSocksaddr(destination))
 
 		var handshake bool
 		if cachedReader, isCached := link.Reader.(pipe.CachedReader); isCached {
@@ -217,7 +210,7 @@ func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer intern
 	connElem := net.AddConnection(connection)
 	defer net.RemoveConnection(connElem)
 
-	serverConn := o.method.DialEarlyConn(connection, SingDestination(destination))
+	serverConn := o.method.DialEarlyConn(connection, ToSocksaddr(destination))
 
 	if cr, ok := conn.(bufio.CachedReader); ok {
 		cached := cr.ReadCached()
@@ -261,18 +254,6 @@ direct:
 	return bufio.CopyConn(ctx, conn, serverConn)
 }
 
-func SingDestination(destination net.Destination) M.Socksaddr {
-	var addr M.Socksaddr
-	switch destination.Address.Family() {
-	case net.AddressFamilyDomain:
-		addr.Fqdn = destination.Address.Domain()
-	default:
-		addr.Addr = M.AddrFromIP(destination.Address.IP())
-	}
-	addr.Port = uint16(destination.Port)
-	return addr
-}
-
 type PipeConnWrapper struct {
 	R       io.Reader
 	W       buf.Writer
@@ -294,17 +275,26 @@ func (w *PipeConnWrapper) Read(b []byte) (n int, err error) {
 func (w *PipeConnWrapper) Write(p []byte) (n int, err error) {
 	if w.PipeOut {
 		// avoid bad usage of stack buffer
-		buffer := buf.New()
-		_, err = buffer.Write(p)
-		if err != nil {
-			buffer.Release()
-			return
+		n = len(p)
+		var mb buf.MultiBuffer
+		pLen := len(p)
+		for pLen > 0 {
+			buffer := buf.New()
+			if pLen > buf.Size {
+				_, err = buffer.Write(p[:buf.Size])
+				p = p[buf.Size:]
+			} else {
+				buffer.Write(p)
+			}
+			pLen -= int(buffer.Len())
+			mb = append(mb, buffer)
 		}
-		err = w.W.WriteMultiBuffer(buf.MultiBuffer{buffer})
+		err = w.W.WriteMultiBuffer(mb)
 		if err != nil {
-			buffer.Release()
-			return
+			n = 0
+			buf.ReleaseMulti(mb)
 		}
+		return
 	} else {
 		err = w.W.WriteMultiBuffer(buf.MultiBuffer{buf.FromBytes(p)})
 		if err != nil {
@@ -339,7 +329,7 @@ func (w *PacketConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
 				destination = w.Dest
 			}
 			bb.Release()
-			return SingDestination(destination), nil
+			return ToSocksaddr(destination), nil
 		}
 	}
 	mb, err := w.ReadMultiBuffer()
@@ -359,7 +349,7 @@ func (w *PacketConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
 			destination = w.Dest
 		}
 		bb.Release()
-		return SingDestination(destination), nil
+		return ToSocksaddr(destination), nil
 	}
 }
 

@@ -276,7 +276,7 @@ for shadowsocks 2022 ciphers
         "address": "127.0.0.1",
         "port": 1234,
         "method": "2022-blake3-aes-128-gcm",
-        "key": "<psk>"
+        "password": "<psk>"
       }
     }
   ]
