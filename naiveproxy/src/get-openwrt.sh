@@ -43,12 +43,7 @@ cat >include.txt <<EOF
 ./lib/libresolv.a
 ./lib/librt.a
 ./usr
-*.ld.bin
 EOF
 tar cf - -C $full_root --hard-dereference . | tar xf - -C $sysroot --wildcards --wildcards-match-slash -T include.txt
 rm -rf include.txt $SDK_PATH
 cd $sysroot/*-openwrt-linux-musl*/bin
-case "$arch" in
-mips*) mv .ld.bin ld;;
-*) rm .ld.bin;;
-esac

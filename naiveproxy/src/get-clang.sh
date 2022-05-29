@@ -4,7 +4,7 @@ set -ex
 . ./get-sysroot.sh
 
 if [ "$BUILD_SYSROOT" -a ! -d ./"$WITH_SYSROOT/lib" ]; then
-  ./build/linux/sysroot_scripts/sysroot-creator-sid-naive.sh "$BUILD_SYSROOT"
+  ./build/linux/sysroot_scripts/sysroot-creator-naive.sh "$BUILD_SYSROOT"
 fi
 
 if [ "$OPENWRT_FLAGS" ]; then

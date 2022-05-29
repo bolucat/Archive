@@ -34,7 +34,6 @@
 #include "base/posix/eintr_wrapper.h"
 #include "base/rand_util.h"
 #include "base/task/current_thread.h"
-#include "base/task/post_task.h"
 #include "base/task/task_runner_util.h"
 #include "base/task/thread_pool.h"
 #include "base/trace_event/typed_macros.h"
@@ -315,8 +314,6 @@ void UDPSocketPosix::Close() {
   // trace event for this case so that it can be correlated with jank in traces.
   // Use the "base" category since "net" isn't enabled by default. See
   // https://crbug.com/1194888.
-  TRACE_EVENT("base", "CloseSocketUDP", "connected_to_zero",
-              PeerIsZeroIPv4(*this));
 
   // Attempt to clear errors on the socket so that they are not returned by
   // close(). See https://crbug.com/1151048.

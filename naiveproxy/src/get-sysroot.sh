@@ -47,7 +47,7 @@ case "$ARCH" in
         mips64el) sysroot_path=mips64el BUILD_SYSROOT=BuildSysrootMips64el;;
       esac
       if [ "$sysroot_path" ]; then
-        WITH_SYSROOT="out/sysroot-build/sid/sid_${sysroot_path}_staging"
+        WITH_SYSROOT="out/sysroot-build/bullseye/bullseye_${sysroot_path}_staging"
       fi
     fi
   ;;
