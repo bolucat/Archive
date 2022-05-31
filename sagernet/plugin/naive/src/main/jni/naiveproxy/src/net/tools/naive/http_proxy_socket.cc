@@ -17,7 +17,7 @@
 #include "net/base/net_errors.h"
 #include "net/http/http_request_headers.h"
 #include "net/log/net_log.h"
-#include "net/third_party/quiche/src/spdy/core/hpack/hpack_constants.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/hpack/hpack_constants.h"
 #include "net/tools/naive/naive_proxy_delegate.h"
 
 namespace net {

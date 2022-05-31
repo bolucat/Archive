@@ -93,7 +93,7 @@ source_set("libc++abi") {
 
   # libc++abi depends on libc++ internals.
   include_dirs = [ "../libc++/trunk/src" ]
-  if (!is_mac) {
+  if (!is_apple) {
     sources -= [
       "trunk/src/cxa_exception.cpp",
       "trunk/src/cxa_personality.cpp",

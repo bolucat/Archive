@@ -47,11 +47,12 @@ case "$ARCH" in
         mips64el) sysroot_path=mips64el BUILD_SYSROOT=BuildSysrootMips64el;;
       esac
       if [ "$sysroot_path" ]; then
-        WITH_SYSROOT="out/sysroot-build/sid/sid_${sysroot_path}_staging"
+        WITH_SYSROOT="out/sysroot-build/bullseye/bullseye_${sysroot_path}_staging"
       fi
     fi
   ;;
   MINGW*|MSYS*)
+    ARCH=Windows
     if [ -f "$HOME"/.cargo/bin/sccache* ]; then
       export PATH="$PATH:$HOME/.cargo/bin"
       CCACHE=sccache
@@ -72,7 +73,6 @@ case "$ARCH" in
       CCACHE=ccache
     fi
     WITH_CLANG=Mac
-    USE_DSYMUTIL=y
     WITH_GN=mac
     case "$target_cpu" in
       arm64) WITH_PGO=mac-arm;;

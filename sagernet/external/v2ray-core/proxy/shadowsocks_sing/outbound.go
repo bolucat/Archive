@@ -63,9 +63,6 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	if outbound == nil || !outbound.Target.IsValid() {
 		return newError("target not specified")
 	}
-	/*if statConn, ok := inboundConn.(*internet.StatCounterConn); ok {
-		inboundConn = statConn.Connection
-	}*/
 	destination := outbound.Target
 	network := destination.Network
 
@@ -191,9 +188,6 @@ func (o *Outbound) ProcessConn(ctx context.Context, conn net.Conn, dialer intern
 	if outbound == nil || !outbound.Target.IsValid() {
 		return newError("target not specified")
 	}
-	/*if statConn, ok := inboundConn.(*internet.StatCounterConn); ok {
-		inboundConn = statConn.Connection
-	}*/
 	destination := outbound.Target
 	network := destination.Network
 
@@ -262,9 +256,6 @@ type PipeConnWrapper struct {
 }
 
 func (w *PipeConnWrapper) Close() error {
-	common.Interrupt(w.R)
-	common.Interrupt(w.W)
-	common.Close(w.Conn)
 	return nil
 }
 
@@ -367,9 +358,6 @@ func (w *PacketConnWrapper) WritePacket(buffer *B.Buffer, addrPort M.Socksaddr) 
 }
 
 func (w *PacketConnWrapper) Close() error {
-	common.Interrupt(w.Reader)
-	common.Interrupt(w.Writer)
-	common.Interrupt(w.Conn)
 	buf.ReleaseMulti(w.cached)
 	return nil
 }

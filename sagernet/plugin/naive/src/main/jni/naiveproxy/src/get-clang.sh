@@ -4,7 +4,7 @@ set -ex
 . ./get-sysroot.sh
 
 if [ "$BUILD_SYSROOT" -a ! -d ./"$WITH_SYSROOT/lib" ]; then
-  ./build/linux/sysroot_scripts/sysroot-creator-sid-naive.sh "$BUILD_SYSROOT"
+  ./build/linux/sysroot_scripts/sysroot-creator-naive.sh "$BUILD_SYSROOT"
 fi
 
 if [ "$OPENWRT_FLAGS" ]; then
@@ -29,13 +29,6 @@ if [ "$WITH_PGO" -a ! -f chrome/build/pgo_profiles/"$PGO_PATH" ]; then
   cd chrome/build/pgo_profiles
   curl --limit-rate 10M -LO "https://storage.googleapis.com/chromium-optimization-profiles/pgo_profiles/$PGO_PATH"
   cd ../../..
-fi
-
-if [ "$USE_DSYMUTIL" -a ! -f tools/clang/dsymutil/bin/dsymutil ]; then
-  mkdir -p tools/clang/dsymutil
-  dsymutil_path="dsymutil-$CLANG_REVISION.tgz"
-  dsymutil_url="https://commondatastorage.googleapis.com/chromium-browser-clang-staging/Mac/$dsymutil_path"
-  curl "$dsymutil_url" | tar xzf - -C tools/clang/dsymutil
 fi
 
 if [ "$USE_SCCACHE" -a ! -f ~/.cargo/bin/sccache.exe ]; then

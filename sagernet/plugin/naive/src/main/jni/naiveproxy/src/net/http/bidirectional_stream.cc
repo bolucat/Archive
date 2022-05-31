@@ -29,7 +29,7 @@
 #include "net/spdy/spdy_log_util.h"
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_config.h"
-#include "net/third_party/quiche/src/spdy/core/spdy_header_block.h"
+#include "net/third_party/quiche/src/quiche/spdy/core/spdy_header_block.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "url/gurl.h"
 
@@ -207,6 +207,14 @@ void BidirectionalStream::StartRequest(const SSLConfig& ssl_config) {
   HttpRequestInfo http_request_info;
   http_request_info.url = request_info_->url;
   http_request_info.method = request_info_->method;
+  std::string network_isolation_key_header;
+  if (request_info_->extra_headers.GetHeader("-network-isolation-key",
+                                             &network_isolation_key_header)) {
+    request_info_->extra_headers.RemoveHeader("-network-isolation-key");
+    net::SchemefulSite site(GURL{network_isolation_key_header});
+    CHECK(!site.opaque());
+    http_request_info.network_isolation_key = NetworkIsolationKey(site, site);
+  }
   http_request_info.extra_headers = request_info_->extra_headers;
   http_request_info.socket_tag = request_info_->socket_tag;
   stream_request_ =

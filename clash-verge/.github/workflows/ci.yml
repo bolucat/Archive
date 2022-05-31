@@ -28,6 +28,8 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@ce325b60658c1b38465c06cc965b79baf32c1e72
+        with:
+          working-directory: src-tauri
 
       - name: Install Node
         uses: actions/setup-node@v1
@@ -73,7 +75,7 @@ jobs:
           releaseDraft: false
           prerelease: true
 
-      - name: Green zip bundle
+      - name: Portable Bundle
         if: matrix.os == 'windows-latest'
         run: |
           yarn run portable

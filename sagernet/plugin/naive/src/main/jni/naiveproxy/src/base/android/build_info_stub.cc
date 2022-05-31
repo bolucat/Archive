@@ -58,7 +58,8 @@ BuildInfo::BuildInfo(const std::vector<std::string>& params)
       is_debug_android_(false),
       is_tv_(false),
       version_incremental_(""),
-      hardware_("") {}
+      hardware_(""),
+      is_at_least_t_(false) {}
 
 // static
 BuildInfo* BuildInfo::GetInstance() {
