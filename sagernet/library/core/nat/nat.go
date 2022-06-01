@@ -126,6 +126,5 @@ func (t *SystemTun) deliverPacket(cache *buf.Buffer, packet []byte) bool {
 }
 
 func (t *SystemTun) Close() error {
-	unix.Close(t.dev)
 	return t.tcpForwarder.Close()
 }

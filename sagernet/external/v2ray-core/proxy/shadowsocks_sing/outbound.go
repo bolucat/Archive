@@ -2,6 +2,7 @@ package shadowsocks_sing
 
 import (
 	"context"
+	"github.com/sagernet/sing/common/uot"
 	"io"
 	"runtime"
 	"time"
@@ -33,6 +34,7 @@ type Outbound struct {
 	ctx    context.Context
 	server net.Destination
 	method shadowsocks.Method
+	uot    bool
 }
 
 func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
@@ -43,6 +45,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Outbound, error) {
 			Port:    net.Port(config.Port),
 			Network: net.Network_TCP,
 		},
+		uot: config.Uot,
 	}
 	method, err := shadowimpl.FetchMethod(config.Method, config.Password)
 	if err != nil {
@@ -69,7 +72,11 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 	newError("tunneling request to ", destination, " via ", o.server.NetAddr()).WriteToLog(session.ExportIDToError(ctx))
 
 	serverDestination := o.server
-	serverDestination.Network = network
+	if o.uot {
+		serverDestination.Network = net.Network_TCP
+	} else {
+		serverDestination.Network = network
+	}
 	connection, err := dialer.Dial(ctx, serverDestination)
 	if err != nil {
 		return newError("failed to connect to server").Base(err)
@@ -178,8 +185,13 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 			}
 		}
 
-		serverConn := o.method.DialPacketConn(connection)
-		return bufio.CopyPacketConn(ctx, packetConn, serverConn)
+		if o.uot {
+			serverConn := o.method.DialEarlyConn(connection, M.Socksaddr{Fqdn: uot.UOTMagicAddress})
+			return bufio.CopyPacketConn(ctx, packetConn, uot.NewClientConn(serverConn))
+		} else {
+			serverConn := o.method.DialPacketConn(connection)
+			return bufio.CopyPacketConn(ctx, packetConn, serverConn)
+		}
 	}
 }
 

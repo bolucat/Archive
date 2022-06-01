@@ -17,4 +17,5 @@ message ClientConfig {
   uint32 port = 2;
   string method = 3;
   string password = 4;
+  bool uot = 5;
 }
