@@ -83,6 +83,8 @@ we can set up local listeners as proxy servers, and forward requests to internet
 - Binary: [https://github.com/nadoo/glider/releases](https://github.com/nadoo/glider/releases)
 - Docker: `docker pull nadoo/glider`
 - ArchLinux: `sudo pacman -S glider`
+- Homebrew: `brew install glider`
+- MacPorts: `sudo port install glider`
 - Source: `go install github.com/nadoo/glider@latest`
 
 ## Usage
@@ -407,7 +409,7 @@ Examples:
   glider -listen udp://:53 -forward socks5://serverA:1080,udp://8.8.8.8:53
     -udp tunnel: listen on :53 and forward all udp requests to 8.8.8.8:53 via remote socks5 server.
   
-  glider -verbose -listen -dns=:53 -dnsserver=8.8.8.8:53 -forward socks5://serverA:1080 -dnsrecord=abc.com/1.2.3.4
+  glider -verbose -dns=:53 -dnsserver=8.8.8.8:53 -forward socks5://serverA:1080 -dnsrecord=abc.com/1.2.3.4
     -dns over proxy: listen on :53 as dns server, forward to 8.8.8.8:53 via socks5 server.
 ```
 

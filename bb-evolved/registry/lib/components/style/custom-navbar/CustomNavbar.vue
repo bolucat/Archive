@@ -147,23 +147,29 @@ body.fixed-navbar {
   // &:not(.fill) .custom-navbar-iconfont {
   //   color: var(--theme-color);
   // }
-  path {
-    fill: var(--navbar-foreground);
-  }
-  svg.stroke {
-    &,
+  svg.inherit-color {
     path {
-      fill: transparent;
-      stroke: var(--navbar-foreground);
+      fill: var(--navbar-foreground);
     }
-  }
-  &.fill:not(.transparent) path {
-    fill: var(--foreground-color-d);
-    svg.stroke {
+    &.stroke {
       &,
       path {
         fill: transparent;
-        stroke: var(--navbar-foreground-d);
+        stroke: var(--navbar-foreground);
+      }
+    }
+  }
+  &.fill:not(.transparent) {
+    svg.inherit-color {
+      path {
+        fill: var(--foreground-color-d);
+      }
+      &.stroke {
+        &,
+        path {
+          fill: transparent;
+          stroke: var(--navbar-foreground-d);
+        }
       }
     }
   }
@@ -241,11 +247,16 @@ body.fixed-navbar {
       content: "";
       position: absolute;
       top: 0;
-      left: 0;
       width: 100%;
       height: 100%;
       box-sizing: border-box;
       border: 2px dashed;
+    }
+    &.left-pad::after {
+      left: 0;
+    }
+    &.right-pad::after {
+      right: 0;
     }
   }
 }
