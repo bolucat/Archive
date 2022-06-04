@@ -1,5 +1,5 @@
 import re
-from PyQt5.QtCore import QThread, pyqtSignal, QMutex
+from PyQt6.QtCore import QThread, pyqtSignal, QMutex
 
 from lanzou.api.utils import is_folder_url, is_file_url
 from lanzou.api import LanZouCloud
@@ -22,7 +22,7 @@ class GetSharedInfo(QThread):
         self.is_folder = ""
         self._mutex = QMutex()
         self._is_work = False
-        self._pat = r"(https?://(\w[-\w]*\.)?lanzou[six].com/[a-z]?[-/a-zA-Z0-9]+)[^a-zA-Z0-9]*([a-zA-Z0-9]+\w+)?"
+        self._pat = r"(https?://(\w[-\w]*\.)?lanzou[a-z].com/[a-z]?[-/a-zA-Z0-9]+)[^a-zA-Z0-9]*([a-zA-Z0-9]+\w+)?"
 
     def set_disk(self, disk):
         self._disk = disk
