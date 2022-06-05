@@ -451,6 +451,7 @@ namespace clashN.Forms
             statistics?.SaveToFile();
 
             ChangePACButtonStatus(config.sysProxyType);
+            SetRuleMode(config.ruleMode);
 
             this.BeginInvoke(new Action(() =>
             {
@@ -761,11 +762,11 @@ namespace clashN.Forms
 
         private void menuUpdateSubscriptions_Click(object sender, EventArgs e)
         {
-            UpdateSubscriptionProcess(false);
+            UpdateSubscriptionProcess(false, false);
         }
         private void menuUpdateSubViaProxy_Click(object sender, EventArgs e)
         {
-            UpdateSubscriptionProcess(true);
+            UpdateSubscriptionProcess(true, false);
         }
 
         private void tsbBackupGuiNConfig_Click(object sender, EventArgs e)
@@ -1096,19 +1097,38 @@ namespace clashN.Forms
 
         private void tsbSubUpdate_Click(object sender, EventArgs e)
         {
-            UpdateSubscriptionProcess(false);
+            UpdateSubscriptionProcess(false, false);
+        }
+        private void tsbSubUpdateSelected_Click(object sender, EventArgs e)
+        {
+            UpdateSubscriptionProcess(false, true);
         }
 
         private void tsbSubUpdateViaProxy_Click(object sender, EventArgs e)
         {
-            UpdateSubscriptionProcess(true);
+            UpdateSubscriptionProcess(true, false);
+        }
+        private void tsbSubUpdateViaProxySelected_Click(object sender, EventArgs e)
+        {
+            UpdateSubscriptionProcess(true, true);
         }
 
         /// <summary>
         /// the subscription update process
         /// </summary>
-        private void UpdateSubscriptionProcess(bool blProxy)
+        private void UpdateSubscriptionProcess(bool blProxy, bool blSelected)
         {
+            List<ProfileItem> profileItems = null;
+            if (blSelected)
+            {
+                int index = GetLvSelectedIndex();
+                if (index < 0)
+                {
+                    return;
+                }
+                profileItems = lstSelecteds;
+            }
+
             void _updateUI(bool success, string msg)
             {
                 AppendText(false, msg);
@@ -1118,7 +1138,7 @@ namespace clashN.Forms
                 }
             };
 
-            (new UpdateHandle()).UpdateSubscriptionProcess(config, blProxy, _updateUI);
+            (new UpdateHandle()).UpdateSubscriptionProcess(config, blProxy, profileItems, _updateUI);
         }
 
         private void tsbQRCodeSwitch_CheckedChanged(object sender, EventArgs e)
@@ -1147,5 +1167,48 @@ namespace clashN.Forms
 
         #endregion
 
+        #region Rule mode
+
+        private void menuModeRule_Click(object sender, EventArgs e)
+        {
+            SetRuleMode(ERuleMode.Rule);
+        }
+
+        private void menuModeGlobal_Click(object sender, EventArgs e)
+        {
+            SetRuleMode(ERuleMode.Global);
+        }
+
+        private void menuModeDirect_Click(object sender, EventArgs e)
+        {
+            SetRuleMode(ERuleMode.Direct);
+        }
+
+        private void menuModeKeep_Click(object sender, EventArgs e)
+        {
+            SetRuleMode(ERuleMode.Unchanged);
+        }
+        private void SetRuleMode(ERuleMode mode)
+        {
+            for (int k = 0; k < menuRuleMode.DropDownItems.Count; k++)
+            {
+                ToolStripMenuItem item = ((ToolStripMenuItem)menuRuleMode.DropDownItems[k]);
+                item.Checked = ((int)mode == k);
+            }
+            mainMsgControl.SetToolSslInfo("routing", mode.ToString());
+
+            if (config.ruleMode == mode)
+            {
+                return;
+            }
+            config.ruleMode = mode;
+
+            Global.reloadCore = true;
+            _ = LoadCore();
+
+            ConfigHandler.SaveConfig(ref config, false);
+        }
+
+        #endregion
     }
 }

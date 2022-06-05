@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -167,7 +168,7 @@ namespace clashN.Handler
         }
 
 
-        public void UpdateSubscriptionProcess(Config config, bool blProxy, Action<bool, string> update)
+        public void UpdateSubscriptionProcess(Config config, bool blProxy, List<ProfileItem> profileItems, Action<bool, string> update)
         {
             _config = config;
             _updateFunc = update;
@@ -182,20 +183,20 @@ namespace clashN.Handler
 
             Task.Run(async () =>
             {
-                foreach (var item in config.profileItems)
+                if (profileItems == null)
                 {
-                    if (item.enabled == false)
-                    {
-                        continue;
-                    }
+                    profileItems = config.profileItems;
+                }
+                foreach (var item in profileItems)
+                {
                     string indexId = item.indexId.TrimEx();
                     string url = item.url.TrimEx();
                     string userAgent = item.userAgent.TrimEx();
                     string groupId = item.groupId.TrimEx();
                     string hashCode = $"{item.remarks}->";
-                    if (Utils.IsNullOrEmpty(indexId) || Utils.IsNullOrEmpty(url))
+                    if (item.enabled == false || Utils.IsNullOrEmpty(indexId) || Utils.IsNullOrEmpty(url))
                     {
-                        //_updateFunc(false, $"{hashCode}{ResUI.MsgNoValidSubscription}");
+                        _updateFunc(false, $"{hashCode}{ResUI.MsgSkipSubscriptionUpdate}");
                         continue;
                     }
 
