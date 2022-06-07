@@ -69,10 +69,17 @@ func (s *Server) DispatchConn(ctx context.Context, dest net.Destination, conn ne
 	if dest.Address != muxCoolAddress {
 		return s.dispatcher.DispatchConn(ctx, dest, conn, wait)
 	}
-	_, err := NewServerWorker(ctx, s.dispatcher, &transport.Link{
+	serverWorker, err := newServerWorker(s.dispatcher, &transport.Link{
 		Reader: buf.NewReader(conn),
 		Writer: buf.NewWriter(conn),
 	})
+	if err == nil {
+		if wait {
+			serverWorker.run(ctx)
+		} else {
+			go serverWorker.run(ctx)
+		}
+	}
 	return err
 }
 
@@ -99,6 +106,15 @@ func NewServerWorker(ctx context.Context, d routing.Dispatcher, link *transport.
 		sessionManager: NewSessionManager(),
 	}
 	go worker.run(ctx)
+	return worker, nil
+}
+
+func newServerWorker(d routing.Dispatcher, link *transport.Link) (*ServerWorker, error) {
+	worker := &ServerWorker{
+		dispatcher:     d,
+		link:           link,
+		sessionManager: NewSessionManager(),
+	}
 	return worker, nil
 }
 

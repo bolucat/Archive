@@ -39,6 +39,20 @@ func (m *ClientManager) Dispatch(ctx context.Context, link *transport.Link) erro
 	return newError("unable to find an available mux client").AtWarning()
 }
 
+func (m *ClientManager) DispatchSync(ctx context.Context, link *transport.Link) error {
+	for i := 0; i < 16; i++ {
+		worker, err := m.Picker.PickAvailable()
+		if err != nil {
+			return err
+		}
+		if worker.DispatchSync(ctx, link) {
+			return nil
+		}
+	}
+
+	return newError("unable to find an available mux client").AtWarning()
+}
+
 type WorkerPicker interface {
 	PickAvailable() (*ClientWorker, error)
 }
@@ -311,6 +325,22 @@ func (m *ClientWorker) Dispatch(ctx context.Context, link *transport.Link) bool 
 	s.input = link.Reader
 	s.output = link.Writer
 	go fetchInput(ctx, s, m.link.Writer)
+	return true
+}
+
+func (m *ClientWorker) DispatchSync(ctx context.Context, link *transport.Link) bool {
+	if m.IsFull() || m.Closed() {
+		return false
+	}
+
+	sm := m.sessionManager
+	s := sm.Allocate()
+	if s == nil {
+		return false
+	}
+	s.input = link.Reader
+	s.output = link.Writer
+	fetchInput(ctx, s, m.link.Writer)
 	return true
 }
 

@@ -13,7 +13,6 @@ import (
 	B "github.com/sagernet/sing/common/buf"
 	I "github.com/sagernet/sing/common/bufio"
 	core "github.com/v2fly/v2ray-core/v5"
-	"github.com/v2fly/v2ray-core/v5/app/proxyman"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -165,8 +164,6 @@ func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *buf
 	if err != nil {
 		return newError("failed to writeresponse back OK response").Base(err)
 	}
-
-	ctx = proxyman.SetPreferUseIP(ctx, true)
 
 	if reader.Buffered() > 0 {
 		_buffered := B.StackNew()

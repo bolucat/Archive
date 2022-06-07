@@ -198,7 +198,7 @@ func (h *Handler) Dispatch(ctx context.Context, link *transport.Link) {
 				}
 			}
 		}
-		if err := h.mux.Dispatch(ctx, link); err != nil {
+		if err := h.mux.DispatchSync(ctx, link); err != nil {
 			cause := errors.Cause(err)
 			if !(cause == io.EOF || cause == context.Canceled || cause == io.ErrClosedPipe) {
 				err := newError("failed to process mux outbound traffic").Base(err)
@@ -286,7 +286,7 @@ func (h *Handler) DispatchConn(ctx context.Context, conn net.Conn) {
 				}
 			}
 		}
-		if err := h.mux.Dispatch(ctx, link); err != nil {
+		if err := h.mux.DispatchSync(ctx, link); err != nil {
 			cause := errors.Cause(err)
 			if !(cause == io.EOF || cause == context.Canceled || cause == io.ErrClosedPipe) {
 				err := newError("failed to process mux outbound traffic").Base(err)

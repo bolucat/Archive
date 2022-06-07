@@ -2,7 +2,6 @@ package shadowsocks_sing
 
 import (
 	"context"
-	"github.com/sagernet/sing/common/uot"
 	"io"
 	"runtime"
 	"time"
@@ -15,6 +14,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/uot"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
