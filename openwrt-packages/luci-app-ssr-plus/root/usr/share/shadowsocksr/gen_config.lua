@@ -46,6 +46,11 @@ function trojan_shadowsocks()
 			}
 		}
 	}
+
+	if (not outbound_settings.plugin) and (not server.transport or server.transport == "tcp") and (not server.xtls) then
+		server.v2ray_protocol = server.v2ray_protocol .. "_sing"
+		outbound_settings = outbound_settings.servers[1]
+	end
 end
 function socks_http()
 	outbound_settings = {
@@ -176,11 +181,13 @@ local Xray = {
 			} or nil,
 			wsSettings = (server.transport == "ws") and (server.ws_path or server.ws_host or server.tls_host) and {
 				-- ws
-				path = server.ws_path,
 				headers = (server.ws_host or server.tls_host) and {
 					-- headers
 					Host = server.ws_host or server.tls_host
-				} or nil
+				} or nil,
+				path = server.ws_path,
+				maxEarlyData = tonumber(server.ws_ed) or nil,
+				earlyDataHeaderName = server.ws_ed_header or nil
 			} or nil,
 			httpSettings = (server.transport == "h2") and {
 				-- h2
@@ -198,7 +205,7 @@ local Xray = {
 			grpcSettings = (server.transport == "grpc") and {
 				-- grpc
 				serviceName = server.serviceName or "",
-				multiMode = (server.mux == "1") and true or false,
+				mode = (server.grpc_mode ~= "gun") and server.grpc_mode or nil,
 				idle_timeout = tonumber(server.idle_timeout) or nil,
 				health_check_timeout = tonumber(server.health_check_timeout) or nil,
 				permit_without_stream = (server.permit_without_stream == "1") and true or nil,
@@ -265,6 +272,35 @@ local ss = {
 	fast_open = (server.fast_open == "1") and true or false,
 	reuse_port = true
 }
+local hysteria = {
+	server = server.server .. ":" .. server.server_port,
+	protocol = server.hysteria_protocol,
+	up_mbps = tonumber(server.uplink_capacity),
+	down_mbps = tonumber(server.downlink_capacity),
+	socks5 = (proto:find("tcp") and tonumber(socks_port) and tonumber(socks_port) ~= "0") and {
+		listen = "0.0.0.0:" .. tonumber(socks_port),
+		timeout = 300,
+		disable_udp = false
+	} or nil,
+	redirect_tcp = (proto:find("tcp") and local_port ~= "0") and {
+		listen = "0.0.0.0:" .. tonumber(local_port),
+		timeout = 300
+	} or nil,
+	tproxy_udp = (proto:find("udp") and local_port ~= "0") and {
+		listen = "0.0.0.0:" .. tonumber(local_port),
+		timeout = 60
+	} or nil,
+	obfs = server.seed,
+	auth = (server.auth_type == "1") and server.auth_payload or nil,
+	auth_str = (server.auth_type == "2") and server.auth_payload or nil,
+	alpn = server.quic_tls_alpn,
+	server_name = server.tls_host,
+	insecure = (server.insecure == "1") and true or false,
+	ca = (server.certificate) and server.certpath or nil,
+	recv_window_conn = server.recv_window_conn,
+	recv_window = server.recv_window,
+	disable_mtu_discovery = (server.disable_mtu_discovery == "1") and true or false
+}
 local config = {}
 function config:new(o)
 	o = o or {}
@@ -298,6 +334,9 @@ function config:handleIndex(index)
 		end,
 		naiveproxy = function()
 			print(json.stringify(naiveproxy, 1))
+		end,
+		hysteria = function()
+			print(json.stringify(hysteria, 1))
 		end
 	}
 	if switch[index] then
