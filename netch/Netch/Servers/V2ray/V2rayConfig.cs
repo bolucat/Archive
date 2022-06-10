@@ -40,6 +40,8 @@ public class OutboundConfiguration
 
     public object[] servers { get; set; }
 
+    public string version { get; set; }
+
     public string address { get; set; }
 
     public ushort port { get; set; }
@@ -81,6 +83,8 @@ public class ShadowsocksServerItem
     public string method { get; set; }
 
     public string password { get; set; }
+
+    public string flow { get; set; }
  }
 
 public class Mux

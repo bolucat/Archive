@@ -255,6 +255,9 @@ struct SSLocalExtConfig {
     #[cfg(feature = "local-tun")]
     #[serde(skip_serializing_if = "Option::is_none")]
     tun_interface_address: Option<String>,
+    #[cfg(all(feature = "local-tun", unix))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tun_device_fd_from_path: Option<String>,
 
     /// SOCKS5
     #[cfg(feature = "local")]
@@ -1000,6 +1003,17 @@ pub struct BalancerConfig {
     pub check_best_interval: Option<Duration>,
 }
 
+/// Address for local to report flow statistic data
+#[cfg(feature = "local-flow-stat")]
+#[derive(Debug, Clone)]
+pub enum LocalFlowStatAddress {
+    /// UNIX Domain Socket address
+    #[cfg(unix)]
+    UnixStreamPath(PathBuf),
+    /// TCP Stream Address
+    TcpStreamAddr(SocketAddr),
+}
+
 /// Configuration
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -1079,7 +1093,7 @@ pub struct Config {
 
     /// Flow statistic report Unix socket path (only for Android)
     #[cfg(feature = "local-flow-stat")]
-    pub stat_path: Option<PathBuf>,
+    pub local_stat_addr: Option<LocalFlowStatAddress>,
 
     /// Replay attack policy
     pub security: SecurityConfig,
@@ -1198,7 +1212,7 @@ impl Config {
             acl: None,
 
             #[cfg(feature = "local-flow-stat")]
-            stat_path: None,
+            local_stat_addr: None,
 
             security: SecurityConfig::default(),
 
@@ -1447,6 +1461,11 @@ impl Config {
                         #[cfg(feature = "local-tun")]
                         if let Some(tun_interface_name) = local.tun_interface_name {
                             local_config.tun_interface_name = Some(tun_interface_name);
+                        }
+
+                        #[cfg(all(feature = "local-tun", unix))]
+                        if let Some(tun_device_fd_from_path) = local.tun_device_fd_from_path {
+                            local_config.tun_device_fd_from_path = Some(From::from(tun_device_fd_from_path));
                         }
 
                         #[cfg(feature = "local")]
@@ -2192,6 +2211,11 @@ impl fmt::Display for Config {
                         tun_interface_name: local.tun_interface_name.clone(),
                         #[cfg(feature = "local-tun")]
                         tun_interface_address: local.tun_interface_address.as_ref().map(ToString::to_string),
+                        #[cfg(all(feature = "local-tun", unix))]
+                        tun_device_fd_from_path: local
+                            .tun_device_fd_from_path
+                            .as_ref()
+                            .map(|p| p.to_str().expect("tun_device_fd_from_path is not utf-8").to_owned()),
 
                         #[cfg(feature = "local")]
                         socks5_auth_config_path: None,
