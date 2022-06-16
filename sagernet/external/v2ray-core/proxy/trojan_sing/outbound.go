@@ -98,7 +98,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 	if network == net.Network_TCP {
 		serverConn := trojan.NewClientConn(tlsConn, c.key, shadowsocks_sing.ToSocksaddr(destination))
 
-		if cr, ok := conn.(bufio.CachedReader); ok {
+		if cr, ok := conn.(N.CachedReader); ok {
 			cached := cr.ReadCached()
 			if cached != nil && !cached.IsEmpty() {
 				_, err = serverConn.Write(cached.Bytes())
@@ -143,7 +143,7 @@ func (c *Client) ProcessConn(ctx context.Context, conn net.Conn, dialer internet
 		if sc, isPacketConn := conn.(N.PacketConn); isPacketConn {
 			packetConn = sc
 		} else if nc, isNetPacket := conn.(net.PacketConn); isNetPacket {
-			packetConn = &bufio.PacketConnWrapper{PacketConn: nc}
+			packetConn = bufio.NewPacketConn(nc)
 		} else {
 			packetConn = &shadowsocks_sing.PacketConnWrapper{
 				Reader: buf.NewReader(conn),

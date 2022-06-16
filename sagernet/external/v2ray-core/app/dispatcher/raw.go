@@ -75,10 +75,7 @@ func (d *DefaultDispatcher) DispatchConn(ctx context.Context, destination net.De
 		return nil
 	}
 
-	conn = &bufio.BufferedConn{
-		Conn:   conn,
-		Buffer: header,
-	}
+	conn = bufio.NewCachedConn(conn, header)
 
 	result, err := sniffer.Sniff(ctx, header.Bytes(), net.Network_TCP)
 	if err != nil {

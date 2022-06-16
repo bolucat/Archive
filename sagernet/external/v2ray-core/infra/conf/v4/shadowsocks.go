@@ -67,6 +67,7 @@ type ShadowsocksServerTarget struct {
 	IVCheck                        bool               `json:"ivCheck"`
 	UoT                            bool               `json:"uot"`
 	ExperimentReducedIvHeadEntropy bool               `json:"experimentReducedIvHeadEntropy"`
+	EncryptedProtocolExtension     bool               `json:"encryptedProtocolExtension"`
 }
 
 type ShadowsocksClientConfig struct {
@@ -100,7 +101,8 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 			config.Port = uint32(server.Port)
 			config.Method = server.Cipher
 			config.Password = server.Password
-			config.Uot = server.UoT
+			config.UdpOverTcp = server.UoT
+			config.EncryptedProtocolExtension = server.EncryptedProtocolExtension
 			return config, nil
 		}
 	}

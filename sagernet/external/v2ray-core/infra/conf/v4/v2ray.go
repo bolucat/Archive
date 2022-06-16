@@ -46,8 +46,7 @@ var (
 		"wireguard":   func() interface{} { return new(WireGuardClientConfig) },
 		"ssh":         func() interface{} { return new(SSHClientConfig) },
 		//"vliteu":           func() interface{} { return new(VLiteUDPOutboundConfig) },
-		"shadowsocks_sing": func() interface{} { return new(ShadowsocksSingClientConfig) },
-		"trojan_sing":      func() interface{} { return new(TrojanSingClientConfig) },
+		"trojan_sing": func() interface{} { return new(TrojanSingClientConfig) },
 	}, "protocol", "settings")
 )
 

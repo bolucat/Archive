@@ -172,10 +172,7 @@ func (s *Server) handleConnect(ctx context.Context, _ *http.Request, reader *buf
 		if err != nil {
 			return err
 		}
-		conn = &I.BufferedConn{
-			Conn:   conn,
-			Buffer: buffered,
-		}
+		conn = I.NewCachedConn(conn, buffered)
 	}
 
 	return dispatcher.DispatchConn(ctx, dest, conn, true)

@@ -17,5 +17,6 @@ message ClientConfig {
   uint32 port = 2;
   string method = 3;
   string password = 4;
-  bool uot = 5;
+  bool udp_over_tcp = 5;
+  bool encrypted_protocol_extension = 6;
 }
