@@ -17,13 +17,6 @@ use bytes::{BufMut, BytesMut};
 use futures::future::{self, Either};
 use log::{debug, error, info, trace, warn};
 use rand::{thread_rng, Rng};
-use shadowsocks::{
-    config::Mode,
-    lookup_then,
-    net::{TcpListener, UdpSocket as ShadowUdpSocket},
-    relay::{udprelay::MAXIMUM_UDP_PAYLOAD_SIZE, Address},
-    ServerAddr,
-};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpStream, UdpSocket},
@@ -32,6 +25,14 @@ use tokio::{
 use trust_dns_resolver::proto::{
     op::{header::MessageType, response_code::ResponseCode, Message, OpCode, Query},
     rr::{DNSClass, Name, RData, RecordType},
+};
+
+use shadowsocks::{
+    config::Mode,
+    lookup_then,
+    net::{TcpListener, UdpSocket as ShadowUdpSocket},
+    relay::{udprelay::MAXIMUM_UDP_PAYLOAD_SIZE, Address},
+    ServerAddr,
 };
 
 use crate::{
@@ -193,9 +194,9 @@ impl Dns {
 
     async fn run_udp_server(&self, bind_addr: &ServerAddr, client: Arc<DnsClient>) -> io::Result<()> {
         let socket = match *bind_addr {
-            ServerAddr::SocketAddr(ref saddr) => ShadowUdpSocket::listen(&saddr).await?,
+            ServerAddr::SocketAddr(ref saddr) => ShadowUdpSocket::listen(saddr).await?,
             ServerAddr::DomainName(ref dname, port) => {
-                lookup_then!(&self.context.context_ref(), dname, port, |addr| {
+                lookup_then!(self.context.context_ref(), dname, port, |addr| {
                     ShadowUdpSocket::listen(&addr).await
                 })?
                 .1
@@ -312,10 +313,10 @@ fn should_forward_by_ptr_name(acl: &AccessControl, name: &Name) -> bool {
 
 fn check_name_in_proxy_list(acl: &AccessControl, name: &Name) -> Option<bool> {
     if name.is_fqdn() {
-        // remove the last dot from FQDN
+        // convert to ASCII representation
         let mut name = name.to_ascii();
-        name.pop();
-        acl.check_host_in_proxy_list(&name)
+        name.make_ascii_lowercase();
+        acl.check_ascii_host_in_proxy_list(&name)
     } else {
         // unconditionally use default for PQDNs
         Some(acl.is_default_in_proxy_list())
@@ -324,6 +325,11 @@ fn check_name_in_proxy_list(acl: &AccessControl, name: &Name) -> Option<bool> {
 
 /// given the query, determine whether remote/local query should be used, or inconclusive
 fn should_forward_by_query(context: &ServiceContext, balancer: &PingBalancer, query: &Query) -> Option<bool> {
+    // No server was configured, then always resolve with local
+    if balancer.is_empty() {
+        return Some(false);
+    }
+
     // Check if we are trying to make queries for remote servers
     //
     // This happens normally because VPN or TUN device receives DNS queries from local servers' plugins
@@ -389,7 +395,7 @@ fn should_forward_by_response(
             }
             macro_rules! examine_record {
                 ($rec:ident, $is_answer:expr) => {
-                    if let RData::CNAME(ref name) = $rec.rdata() {
+                    if let Some(RData::CNAME(name)) = $rec.data() {
                         if $is_answer {
                             if let Some(value) = check_name_in_proxy_list(acl, name) {
                                 return value;
@@ -406,14 +412,14 @@ fn should_forward_by_response(
                         );
                         return true;
                     }
-                    let forward = match $rec.rdata() {
-                        RData::A(ref ip) => acl.check_ip_in_proxy_list(&IpAddr::V4(*ip)),
-                        RData::AAAA(ref ip) => acl.check_ip_in_proxy_list(&IpAddr::V6(*ip)),
+                    let forward = match $rec.data() {
+                        Some(RData::A(ip)) => acl.check_ip_in_proxy_list(&IpAddr::V4(*ip)),
+                        Some(RData::AAAA(ip)) => acl.check_ip_in_proxy_list(&IpAddr::V6(*ip)),
                         // MX records cause type A additional section processing for the host specified by EXCHANGE.
-                        RData::MX(ref mx) => examine_name!(mx.exchange(), $is_answer),
+                        Some(RData::MX(mx)) => examine_name!(mx.exchange(), $is_answer),
                         // NS records cause both the usual additional section processing to locate a type A record...
-                        RData::NS(ref name) => examine_name!(name, $is_answer),
-                        RData::PTR(_) => unreachable!(),
+                        Some(RData::NS(name)) => examine_name!(name, $is_answer),
+                        Some(RData::PTR(_)) => unreachable!(),
                         _ => acl.is_default_in_proxy_list(),
                     };
                     if !forward {
@@ -491,9 +497,9 @@ impl DnsClient {
             if let Ok(result) = r {
                 for rec in result.answers() {
                     trace!("dns answer: {:?}", rec);
-                    match *rec.rdata() {
-                        RData::A(ip) => self.context.add_to_reverse_lookup_cache(ip.into(), forward).await,
-                        RData::AAAA(ip) => self.context.add_to_reverse_lookup_cache(ip.into(), forward).await,
+                    match rec.data() {
+                        Some(RData::A(ip)) => self.context.add_to_reverse_lookup_cache((*ip).into(), forward).await,
+                        Some(RData::AAAA(ip)) => self.context.add_to_reverse_lookup_cache((*ip).into(), forward).await,
                         _ => (),
                     }
                 }
@@ -584,48 +590,6 @@ impl DnsClient {
         Err(last_err)
     }
 
-    // async fn lookup_remote_inner(&self, query: &Query, remote_addr: &Address) -> io::Result<Message> {
-    //     let mut message = Message::new();
-    //     message.set_id(thread_rng().gen());
-    //     message.set_recursion_desired(true);
-    //     message.add_query(query.clone());
-
-    //     // Query UDP then TCP
-    //     let mut last_err = io::Error::new(ErrorKind::InvalidData, "resolve empty");
-
-    //     if self.mode.enable_udp() {
-    //         let server = self.balancer.best_udp_server();
-
-    //         match self
-    //             .client_cache
-    //             .lookup_udp_remote(&self.context, server.server_config(), remote_addr, message.clone())
-    //             .await
-    //         {
-    //             Ok(msg) => return Ok(msg),
-    //             Err(err) => {
-    //                 last_err = err.into();
-    //             }
-    //         }
-    //     }
-
-    //     if self.mode.enable_tcp() {
-    //         let server = self.balancer.best_tcp_server();
-
-    //         match self
-    //             .client_cache
-    //             .lookup_tcp_remote(&self.context, server.server_config(), remote_addr, message)
-    //             .await
-    //         {
-    //             Ok(msg) => return Ok(msg),
-    //             Err(err) => {
-    //                 last_err = err.into();
-    //             }
-    //         }
-    //     }
-
-    //     Err(last_err)
-    // }
-
     async fn lookup_remote_inner(&self, query: &Query, remote_addr: &Address) -> io::Result<Message> {
         let mut message = Message::new();
         message.set_id(thread_rng().gen());
@@ -638,14 +602,14 @@ impl DnsClient {
             Mode::TcpOnly => {
                 let server = self.balancer.best_tcp_server();
                 self.client_cache
-                    .lookup_tcp_remote(&self.context, server.server_config(), remote_addr, message)
+                    .lookup_remote(&self.context, server.server_config(), remote_addr, message, false)
                     .await
                     .map_err(From::from)
             }
             Mode::UdpOnly => {
                 let server = self.balancer.best_udp_server();
                 self.client_cache
-                    .lookup_udp_remote(&self.context, server.server_config(), remote_addr, message)
+                    .lookup_remote(&self.context, server.server_config(), remote_addr, message, true)
                     .await
                     .map_err(From::from)
             }
@@ -663,13 +627,13 @@ impl DnsClient {
 
                     let server = self.balancer.best_tcp_server();
                     self.client_cache
-                        .lookup_tcp_remote(&self.context, server.server_config(), remote_addr, message2)
+                        .lookup_remote(&self.context, server.server_config(), remote_addr, message2, false)
                         .await
                 };
                 let udp_fut = async {
                     let server = self.balancer.best_udp_server();
                     self.client_cache
-                        .lookup_udp_remote(&self.context, server.server_config(), remote_addr, message)
+                        .lookup_remote(&self.context, server.server_config(), remote_addr, message, true)
                         .await
                 };
 
@@ -717,13 +681,13 @@ impl DnsClient {
 
                 let udp_query =
                     self.client_cache
-                        .lookup_udp_local(ns, message.clone(), self.context.connect_opts_ref());
+                        .lookup_local(ns, message.clone(), self.context.connect_opts_ref(), true);
                 let tcp_query = async move {
                     // Send TCP query after 500ms, because UDP will always return faster than TCP, there is no need to send queries simutaneously
                     time::sleep(Duration::from_millis(500)).await;
 
                     self.client_cache
-                        .lookup_tcp_local(ns, message, self.context.connect_opts_ref())
+                        .lookup_local(ns, message, self.context.connect_opts_ref(), false)
                         .await
                 };
 

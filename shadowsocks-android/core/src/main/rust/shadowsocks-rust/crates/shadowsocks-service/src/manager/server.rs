@@ -1,13 +1,14 @@
 //! Shadowsocks Manager server
 
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::{collections::HashMap, io, net::SocketAddr, sync::Arc, time::Duration};
 
-use futures::future::{self, AbortHandle};
 use log::{error, info, trace};
 use shadowsocks::{
     config::{Mode, ServerConfig, ServerType},
     context::{Context, SharedContext},
-    crypto::v1::CipherKind,
+    crypto::CipherKind,
     dns_resolver::DnsResolver,
     manager::protocol::{
         self,
@@ -26,24 +27,46 @@ use shadowsocks::{
     ManagerListener,
     ServerAddr,
 };
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 use crate::{
     acl::AccessControl,
-    config::{ManagerConfig, ManagerServerHost},
+    config::{ManagerConfig, ManagerServerHost, ManagerServerMode, SecurityConfig},
     net::FlowStat,
     server::Server,
 };
 
+enum ServerInstanceMode {
+    Builtin {
+        flow_stat: Arc<FlowStat>,
+        abortable: JoinHandle<io::Result<()>>,
+    },
+
+    #[cfg(unix)]
+    Standalone { flow_stat: u64 },
+}
+
 struct ServerInstance {
-    flow_stat: Arc<FlowStat>,
-    abortable: AbortHandle,
+    mode: ServerInstanceMode,
     svr_cfg: ServerConfig,
 }
 
 impl Drop for ServerInstance {
     fn drop(&mut self) {
-        self.abortable.abort();
+        #[allow(irrefutable_let_patterns)]
+        if let ServerInstanceMode::Builtin { ref abortable, .. } = self.mode {
+            abortable.abort();
+        }
+    }
+}
+
+impl ServerInstance {
+    fn flow_stat(&self) -> u64 {
+        match self.mode {
+            ServerInstanceMode::Builtin { ref flow_stat, .. } => flow_stat.tx() + flow_stat.rx(),
+            #[cfg(unix)]
+            ServerInstanceMode::Standalone { flow_stat } => flow_stat,
+        }
     }
 }
 
@@ -57,6 +80,9 @@ pub struct Manager {
     udp_expiry_duration: Option<Duration>,
     udp_capacity: Option<usize>,
     acl: Option<Arc<AccessControl>>,
+    ipv6_first: bool,
+    security: SecurityConfig,
+    worker_count: usize,
 }
 
 impl Manager {
@@ -76,6 +102,9 @@ impl Manager {
             udp_expiry_duration: None,
             udp_capacity: None,
             acl: None,
+            ipv6_first: false,
+            security: SecurityConfig::default(),
+            worker_count: 1,
         }
     }
 
@@ -113,6 +142,24 @@ impl Manager {
     /// Set access control list
     pub fn set_acl(&mut self, acl: Arc<AccessControl>) {
         self.acl = Some(acl);
+    }
+
+    /// Try to connect IPv6 addresses first if hostname could be resolved to both IPv4 and IPv6
+    pub fn set_ipv6_first(&mut self, ipv6_first: bool) {
+        self.ipv6_first = ipv6_first;
+    }
+
+    /// Set security config
+    pub fn set_security_config(&mut self, security: SecurityConfig) {
+        self.security = security;
+    }
+
+    /// Set runtime worker count
+    ///
+    /// Should be replaced with tokio's metric API when it is stablized.
+    /// https://github.com/tokio-rs/tokio/issues/4073
+    pub fn set_worker_count(&mut self, worker_count: usize) {
+        self.worker_count = worker_count;
     }
 
     /// Start serving
@@ -162,6 +209,14 @@ impl Manager {
     }
 
     pub async fn add_server(&self, svr_cfg: ServerConfig) {
+        match self.svr_cfg.server_mode {
+            ManagerServerMode::Builtin => self.add_server_builtin(svr_cfg).await,
+            #[cfg(unix)]
+            ManagerServerMode::Standalone => self.add_server_standalone(svr_cfg).await,
+        }
+    }
+
+    async fn add_server_builtin(&self, svr_cfg: ServerConfig) {
         // Each server should use a separate Context, but shares
         //
         // * AccessControlList
@@ -184,6 +239,14 @@ impl Manager {
             server.set_acl(acl.clone());
         }
 
+        if self.ipv6_first {
+            server.set_ipv6_first(self.ipv6_first);
+        }
+
+        server.set_security_config(&self.security);
+
+        server.set_worker_count(self.worker_count);
+
         let server_port = server.config().addr().port();
 
         let mut servers = self.servers.lock().await;
@@ -198,14 +261,152 @@ impl Manager {
 
         let flow_stat = server.flow_stat();
 
-        let (server_fut, abortable) = future::abortable(async move { server.run().await });
-        tokio::spawn(server_fut);
+        let abortable = tokio::spawn(async move { server.run().await });
 
         servers.insert(
             server_port,
             ServerInstance {
-                flow_stat,
-                abortable,
+                mode: ServerInstanceMode::Builtin { flow_stat, abortable },
+                svr_cfg,
+            },
+        );
+    }
+
+    #[cfg(unix)]
+    fn server_pid_path(&self, port: u16) -> PathBuf {
+        let pid_file_name = format!("shadowsocks-server-{}.pid", port);
+        let mut pid_path = self.svr_cfg.server_working_directory.clone();
+        pid_path.push(&pid_file_name);
+        pid_path
+    }
+
+    #[cfg(unix)]
+    fn server_config_path(&self, port: u16) -> PathBuf {
+        let config_file_name = format!("shadowsocks-server-{}.json", port);
+        let mut config_file_path = self.svr_cfg.server_working_directory.clone();
+        config_file_path.push(&config_file_name);
+        config_file_path
+    }
+
+    #[cfg(unix)]
+    fn kill_standalone_server(&self, port: u16) {
+        use log::{debug, warn};
+        use std::{
+            fs::{self, File},
+            io::Read,
+        };
+
+        let pid_path = self.server_pid_path(port);
+        if pid_path.exists() {
+            if let Ok(mut pid_file) = File::open(&pid_path) {
+                let mut pid_content = String::new();
+                if let Ok(..) = pid_file.read_to_string(&mut pid_content) {
+                    let pid_content = pid_content.trim();
+
+                    match pid_content.parse::<libc::pid_t>() {
+                        Ok(pid) => {
+                            let _ = unsafe { libc::kill(pid, libc::SIGTERM) };
+                            debug!("killed standalone server port {}, pid: {}", port, pid);
+                        }
+                        Err(..) => {
+                            warn!("failed to read pid from {}", pid_path.display());
+                        }
+                    }
+                }
+            }
+        }
+
+        let server_config_path = self.server_config_path(port);
+
+        let _ = fs::remove_file(&pid_path);
+        let _ = fs::remove_file(&server_config_path);
+    }
+
+    #[cfg(unix)]
+    async fn add_server_standalone(&self, svr_cfg: ServerConfig) {
+        use std::{
+            fs::{self, OpenOptions},
+            io::Write,
+        };
+
+        use tokio::process::Command;
+
+        use crate::config::{Config, ConfigType};
+
+        // Lock the map first incase there are multiple requests to create one server instance
+        let mut servers = self.servers.lock().await;
+
+        // Check if working_directory exists
+        if !self.svr_cfg.server_working_directory.exists() {
+            fs::create_dir_all(&self.svr_cfg.server_working_directory).expect("create working_directory");
+        }
+
+        let port = svr_cfg.addr().port();
+
+        // Check if there is already a running process
+        self.kill_standalone_server(port);
+
+        // Create configuration file for server
+        let config_file_path = self.server_config_path(port);
+        let pid_path = self.server_pid_path(port);
+
+        let mut config = Config::new(ConfigType::Server);
+        config.server.push(svr_cfg.clone());
+
+        trace!("created standalone server with config {:?}", config);
+
+        let config_file_content = format!("{}", config);
+
+        match OpenOptions::new().write(true).create(true).open(&config_file_path) {
+            Err(err) => {
+                error!(
+                    "failed to open {} for writing, error: {}",
+                    config_file_path.display(),
+                    err
+                );
+                return;
+            }
+            Ok(mut file) => {
+                if let Err(err) = file.write_all(config_file_content.as_bytes()) {
+                    error!("failed to write {}, error: {}", config_file_path.display(), err);
+                    return;
+                }
+                let _ = file.sync_data();
+            }
+        }
+
+        let manager_addr = self.svr_cfg.addr.to_string();
+
+        // Start server process
+        let mut child_command = Command::new(&self.svr_cfg.server_program);
+        child_command
+            .arg("-c")
+            .arg(&config_file_path)
+            .arg("--daemonize")
+            .arg("--daemonize-pid")
+            .arg(&pid_path)
+            .arg("--manager-addr")
+            .arg(&manager_addr);
+
+        if let Some(ref acl) = self.acl {
+            child_command.arg("--acl").arg(acl.file_path().to_str().expect("acl"));
+        }
+
+        let child_result = child_command.kill_on_drop(false).spawn();
+
+        if let Err(err) = child_result {
+            error!(
+                "failed to spawn process of {}, error: {}",
+                self.svr_cfg.server_program, err
+            );
+            return;
+        }
+
+        // Greate. Record into the map
+        servers.insert(
+            port,
+            ServerInstance {
+                mode: ServerInstanceMode::Standalone { flow_stat: 0 },
                 svr_cfg,
             },
         );
@@ -239,6 +440,8 @@ impl Manager {
                 plugin_args: Vec::new(),
             };
             svr_cfg.set_plugin(p);
+        } else if let Some(ref plugin) = self.svr_cfg.plugin {
+            svr_cfg.set_plugin(plugin.clone());
         }
 
         let mode = match req.mode {
@@ -264,6 +467,12 @@ impl Manager {
     async fn handle_remove(&self, req: &RemoveRequest) -> RemoveResponse {
         let mut servers = self.servers.lock().await;
         servers.remove(&req.server_port);
+
+        #[cfg(unix)]
+        if self.svr_cfg.server_mode == ManagerServerMode::Standalone {
+            self.kill_standalone_server(req.server_port);
+        }
+
         RemoveResponse("ok".to_owned())
     }
 
@@ -295,14 +504,89 @@ impl Manager {
 
         let mut stat = HashMap::new();
         for (port, server) in instances.iter() {
-            let flow_stat = &server.flow_stat;
-            stat.insert(*port, flow_stat.tx() + flow_stat.rx());
+            stat.insert(*port, server.flow_stat());
         }
 
         PingResponse { stat }
     }
 
-    async fn handle_stat(&self, _stat: &StatRequest) {
-        // `stat` is not supported, because all servers are running in the same process of the manager
+    #[cfg(not(unix))]
+    async fn handle_stat(&self, _: &StatRequest) {}
+
+    #[cfg(unix)]
+    async fn handle_stat(&self, stat: &StatRequest) {
+        use log::warn;
+        use std::collections::hash_map::Entry;
+
+        use crate::config::{Config, ConfigType};
+
+        // `stat` is only supported for Standalone mode
+        if self.svr_cfg.server_mode != ManagerServerMode::Standalone {
+            return;
+        }
+
+        let mut instances = self.servers.lock().await;
+
+        // Get or create a new instance then record the data statistic numbers
+        for (port, flow) in stat.stat.iter() {
+            match instances.entry(*port) {
+                Entry::Occupied(mut occ) => match occ.get_mut().mode {
+                    ServerInstanceMode::Builtin { .. } => {
+                        error!("received `stat` for port {} that is running a builtin server", *port)
+                    }
+                    ServerInstanceMode::Standalone { ref mut flow_stat } => *flow_stat = *flow,
+                },
+                Entry::Vacant(vac) => {
+                    // Read config from file
+
+                    let server_config_path = self.server_config_path(*port);
+                    if !server_config_path.exists() {
+                        warn!(
+                            "received `stat` for port {} but file {} doesn't exist",
+                            *port,
+                            server_config_path.display()
+                        );
+                        continue;
+                    }
+
+                    match Config::load_from_file(&server_config_path, ConfigType::Server) {
+                        Err(err) => {
+                            error!(
+                                "failed to load {} for server port {}, error: {}",
+                                server_config_path.display(),
+                                *port,
+                                err
+                            );
+                            continue;
+                        }
+                        Ok(config) => {
+                            trace!(
+                                "loaded {} for server port {}, {:?}",
+                                server_config_path.display(),
+                                *port,
+                                config
+                            );
+
+                            if config.server.len() != 1 {
+                                error!(
+                                    "invalid config {} for server port {}, containing {} servers",
+                                    server_config_path.display(),
+                                    *port,
+                                    config.server.len()
+                                );
+                                continue;
+                            }
+
+                            let svr_cfg = config.server[0].clone();
+
+                            vac.insert(ServerInstance {
+                                mode: ServerInstanceMode::Standalone { flow_stat: *flow },
+                                svr_cfg,
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
 }

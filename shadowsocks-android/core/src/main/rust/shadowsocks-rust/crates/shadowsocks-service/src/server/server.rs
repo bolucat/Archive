@@ -18,7 +18,7 @@ use shadowsocks::{
 };
 use tokio::time;
 
-use crate::{acl::AccessControl, net::FlowStat};
+use crate::{acl::AccessControl, config::SecurityConfig, net::FlowStat};
 
 use super::{context::ServiceContext, tcprelay::TcpServer, udprelay::UdpServer};
 
@@ -30,6 +30,7 @@ pub struct Server {
     udp_capacity: Option<usize>,
     manager_addr: Option<ManagerAddr>,
     accept_opts: AcceptOpts,
+    worker_count: usize,
 }
 
 impl Server {
@@ -47,6 +48,7 @@ impl Server {
             udp_capacity: None,
             manager_addr: None,
             accept_opts: AcceptOpts::default(),
+            worker_count: 1,
         }
     }
 
@@ -81,6 +83,14 @@ impl Server {
         self.manager_addr = Some(manager_addr);
     }
 
+    /// Set runtime worker count
+    ///
+    /// Should be replaced with tokio's metric API when it is stablized.
+    /// https://github.com/tokio-rs/tokio/issues/4073
+    pub fn set_worker_count(&mut self, worker_count: usize) {
+        self.worker_count = worker_count;
+    }
+
     /// Get server's configuration
     pub fn config(&self) -> &ServerConfig {
         &self.svr_cfg
@@ -101,6 +111,18 @@ impl Server {
     /// Set `AcceptOpts` for accepting new connections
     pub fn set_accept_opts(&mut self, opts: AcceptOpts) {
         self.accept_opts = opts;
+    }
+
+    /// Try to connect IPv6 addresses first if hostname could be resolved to both IPv4 and IPv6
+    pub fn set_ipv6_first(&mut self, ipv6_first: bool) {
+        let context = Arc::get_mut(&mut self.context).expect("cannot set ipv6_first on a shared context");
+        context.set_ipv6_first(ipv6_first);
+    }
+
+    /// Set security config
+    pub fn set_security_config(&mut self, security: &SecurityConfig) {
+        let context = Arc::get_mut(&mut self.context).expect("cannot set security on a shared context");
+        context.set_security_config(security)
     }
 
     /// Start serving
@@ -147,7 +169,7 @@ impl Server {
             error!("servers exited with error: {}", err);
         }
 
-        let err = io::Error::new(ErrorKind::Other, "server exited unexpectly");
+        let err = io::Error::new(ErrorKind::Other, "server exited unexpectedly");
         Err(err)
     }
 
@@ -157,7 +179,14 @@ impl Server {
     }
 
     async fn run_udp_server(&self) -> io::Result<()> {
-        let server = UdpServer::new(self.context.clone(), self.udp_expiry_duration, self.udp_capacity);
+        let mut server = UdpServer::new(
+            self.context.clone(),
+            self.svr_cfg.method(),
+            self.udp_expiry_duration,
+            self.udp_capacity,
+            self.accept_opts.clone(),
+        );
+        server.set_worker_count(self.worker_count);
         server.run(&self.svr_cfg).await
     }
 

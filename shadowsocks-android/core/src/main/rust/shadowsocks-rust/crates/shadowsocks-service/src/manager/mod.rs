@@ -40,9 +40,7 @@ pub async fn run(config: Config) -> io::Result<()> {
         #[cfg(target_os = "android")]
         vpn_protect_path: config.outbound_vpn_protect_path,
 
-        bind_local_addr: config.local_addr,
-
-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios"))]
+        bind_local_addr: config.outbound_bind_addr,
         bind_interface: config.outbound_bind_interface,
 
         ..Default::default()
@@ -54,7 +52,10 @@ pub async fn run(config: Config) -> io::Result<()> {
     connect_opts.tcp.fastopen = config.fast_open;
     connect_opts.tcp.keepalive = config.keep_alive.or(Some(SERVER_DEFAULT_KEEPALIVE_TIMEOUT));
 
-    let mut accept_opts = AcceptOpts::default();
+    let mut accept_opts = AcceptOpts {
+        ipv6_only: config.ipv6_only,
+        ..Default::default()
+    };
     accept_opts.tcp.send_buffer_size = config.inbound_send_buffer_size;
     accept_opts.tcp.recv_buffer_size = config.inbound_recv_buffer_size;
     accept_opts.tcp.nodelay = config.no_delay;

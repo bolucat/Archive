@@ -1,10 +1,18 @@
 //! Shadowsocks server
 
-use std::{io, sync::Arc, time::Duration};
+use std::{
+    future::Future,
+    io::{self, ErrorKind},
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Duration,
+};
 
-use futures::{future, FutureExt};
+use futures::{future, ready};
 use log::trace;
 use shadowsocks::net::{AcceptOpts, ConnectOpts};
+use tokio::task::JoinHandle;
 
 use crate::{
     config::{Config, ConfigType},
@@ -57,9 +65,7 @@ pub async fn run(config: Config) -> io::Result<()> {
         #[cfg(target_os = "android")]
         vpn_protect_path: config.outbound_vpn_protect_path,
 
-        bind_local_addr: config.local_addr,
-
-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios"))]
+        bind_local_addr: config.outbound_bind_addr,
         bind_interface: config.outbound_bind_interface,
 
         ..Default::default()
@@ -71,7 +77,10 @@ pub async fn run(config: Config) -> io::Result<()> {
     connect_opts.tcp.fastopen = config.fast_open;
     connect_opts.tcp.keepalive = config.keep_alive.or(Some(SERVER_DEFAULT_KEEPALIVE_TIMEOUT));
 
-    let mut accept_opts = AcceptOpts::default();
+    let mut accept_opts = AcceptOpts {
+        ipv6_only: config.ipv6_only,
+        ..Default::default()
+    };
     accept_opts.tcp.send_buffer_size = config.inbound_send_buffer_size;
     accept_opts.tcp.recv_buffer_size = config.inbound_recv_buffer_size;
     accept_opts.tcp.nodelay = config.no_delay;
@@ -108,14 +117,51 @@ pub async fn run(config: Config) -> io::Result<()> {
             server.set_acl(acl.clone());
         }
 
+        if config.ipv6_first {
+            server.set_ipv6_first(config.ipv6_first);
+        }
+
+        if config.worker_count >= 1 {
+            server.set_worker_count(config.worker_count);
+        }
+
+        server.set_security_config(&config.security);
+
         servers.push(server);
     }
 
+    if servers.len() == 1 {
+        let server = servers.pop().unwrap();
+        return server.run().await;
+    }
+
     let mut vfut = Vec::with_capacity(servers.len());
+
     for server in servers {
-        vfut.push(server.run().boxed());
+        vfut.push(ServerHandle(tokio::spawn(async move { server.run().await })));
     }
 
     let (res, ..) = future::select_all(vfut).await;
     res
+}
+
+struct ServerHandle(JoinHandle<io::Result<()>>);
+
+impl Drop for ServerHandle {
+    #[inline]
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+impl Future for ServerHandle {
+    type Output = io::Result<()>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match ready!(Pin::new(&mut self.0).poll(cx)) {
+            Ok(res) => res.into(),
+            Err(err) => Err(io::Error::new(ErrorKind::Other, err)).into(),
+        }
+    }
 }

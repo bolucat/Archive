@@ -1,42 +1,36 @@
 use std::{
-    io::{self, ErrorKind},
+    io,
     mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream as StdTcpStream},
-    ops::{Deref, DerefMut},
-    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    os::unix::io::{AsRawFd, RawFd},
     pin::Pin,
+    ptr,
     sync::atomic::{AtomicBool, Ordering},
     task::{self, Poll},
 };
 
 use cfg_if::cfg_if;
-use futures::ready;
-use log::error;
+use log::{debug, error, warn};
 use pin_project::pin_project;
-use socket2::SockAddr;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::{
-    io::{AsyncRead, AsyncWrite, Interest, ReadBuf},
+    io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpSocket, TcpStream as TokioTcpStream, UdpSocket},
 };
+use tokio_tfo::TfoStream;
 
 use crate::net::{
-    sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect},
+    sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
+    udp::{BatchRecvMessage, BatchSendMessage},
     AddrFamily,
     ConnectOpts,
 };
 
-enum TcpStreamState {
-    Connected,
-    FastOpenConnect(SocketAddr),
-    FastOpenWrite,
-}
-
 /// A `TcpStream` that supports TFO (TCP Fast Open)
 #[pin_project(project = TcpStreamProj)]
-pub struct TcpStream {
-    #[pin]
-    inner: TokioTcpStream,
-    state: TcpStreamState,
+pub enum TcpStream {
+    Standard(#[pin] TokioTcpStream),
+    FastOpen(#[pin] TfoStream),
 }
 
 impl TcpStream {
@@ -50,7 +44,7 @@ impl TcpStream {
         // This is a workaround for VPNService
         #[cfg(target_os = "android")]
         if !addr.ip().is_loopback() {
-            use std::time::Duration;
+            use std::{io::ErrorKind, time::Duration};
             use tokio::time;
 
             if let Some(ref path) = opts.vpn_protect_path {
@@ -95,220 +89,82 @@ impl TcpStream {
             let stream = socket.connect(addr).await?;
             set_common_sockopt_after_connect(&stream, opts)?;
 
-            return Ok(TcpStream {
-                inner: stream,
-                state: TcpStreamState::Connected,
-            });
+            return Ok(TcpStream::Standard(stream));
         }
 
-        let mut connected = false;
-
-        // TFO in Linux was supported since 3.7
-        //
-        // But TCP_FASTOPEN_CONNECT was supported since 4.1, so we have to be compatible with it
-        static SUPPORT_TCP_FASTOPEN_CONNECT: AtomicBool = AtomicBool::new(true);
-        if SUPPORT_TCP_FASTOPEN_CONNECT.load(Ordering::Relaxed) {
-            unsafe {
-                let enable: libc::c_int = 1;
-
-                let ret = libc::setsockopt(
-                    socket.as_raw_fd(),
-                    libc::IPPROTO_TCP,
-                    libc::TCP_FASTOPEN_CONNECT,
-                    &enable as *const _ as *const libc::c_void,
-                    mem::size_of_val(&enable) as libc::socklen_t,
-                );
-
-                if ret != 0 {
-                    let err = io::Error::last_os_error();
-                    if let Some(libc::ENOPROTOOPT) = err.raw_os_error() {
-                        // `TCP_FASTOPEN_CONNECT` is not supported, maybe kernel version < 4.11
-                        // Fallback to `sendto` with `MSG_FASTOPEN` (Supported after 3.7)
-                        SUPPORT_TCP_FASTOPEN_CONNECT.store(false, Ordering::Relaxed);
-                    } else {
-                        error!("set TCP_FASTOPEN_CONNECT error: {}", err);
-                        return Err(err);
-                    }
-                } else {
-                    connected = true;
-                }
-            }
-        }
-
-        let stream = if connected {
-            // call connect() if TCP_FASTOPEN_CONNECT is set
-            socket.connect(addr).await?
-        } else {
-            // call sendto() with MSG_FASTOPEN in poll_read
-            TokioTcpStream::from_std(unsafe { StdTcpStream::from_raw_fd(socket.into_raw_fd()) })?
-        };
-
+        let stream = TfoStream::connect_with_socket(socket, addr).await?;
         set_common_sockopt_after_connect(&stream, opts)?;
 
-        Ok(TcpStream {
-            inner: stream,
-            state: if connected {
-                TcpStreamState::FastOpenWrite
-            } else {
-                TcpStreamState::FastOpenConnect(addr)
-            },
-        })
+        Ok(TcpStream::FastOpen(stream))
+    }
+
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        match *self {
+            TcpStream::Standard(ref s) => s.local_addr(),
+            TcpStream::FastOpen(ref s) => s.local_addr(),
+        }
+    }
+
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        match *self {
+            TcpStream::Standard(ref s) => s.peer_addr(),
+            TcpStream::FastOpen(ref s) => s.peer_addr(),
+        }
+    }
+
+    pub fn nodelay(&self) -> io::Result<bool> {
+        match *self {
+            TcpStream::Standard(ref s) => s.nodelay(),
+            TcpStream::FastOpen(ref s) => s.nodelay(),
+        }
+    }
+
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        match *self {
+            TcpStream::Standard(ref s) => s.set_nodelay(nodelay),
+            TcpStream::FastOpen(ref s) => s.set_nodelay(nodelay),
+        }
     }
 }
 
-impl Deref for TcpStream {
-    type Target = TokioTcpStream;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for TcpStream {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl AsRawFd for TcpStream {
+    fn as_raw_fd(&self) -> RawFd {
+        match *self {
+            TcpStream::Standard(ref s) => s.as_raw_fd(),
+            TcpStream::FastOpen(ref s) => s.as_raw_fd(),
+        }
     }
 }
 
 impl AsyncRead for TcpStream {
     fn poll_read(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        self.project().inner.poll_read(cx, buf)
+        match self.project() {
+            TcpStreamProj::Standard(s) => s.poll_read(cx, buf),
+            TcpStreamProj::FastOpen(s) => s.poll_read(cx, buf),
+        }
     }
 }
 
 impl AsyncWrite for TcpStream {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
-        loop {
-            let TcpStreamProj { inner, state } = self.as_mut().project();
-
-            match *state {
-                TcpStreamState::Connected => return inner.poll_write(cx, buf),
-
-                TcpStreamState::FastOpenConnect(addr) => {
-                    // Fallback mode. Must be kernal < 4.11
-                    //
-                    // Uses sendto as BSD-like systems
-
-                    let saddr = SockAddr::from(addr);
-
-                    let stream = inner.get_mut();
-
-                    // Ensure socket is writable
-                    ready!(stream.poll_write_ready(cx))?;
-
-                    let mut connecting = false;
-                    let send_result = stream.try_io(Interest::WRITABLE, || {
-                        unsafe {
-                            let ret = libc::sendto(
-                                stream.as_raw_fd(),
-                                buf.as_ptr() as *const libc::c_void,
-                                buf.len(),
-                                libc::MSG_FASTOPEN,
-                                saddr.as_ptr(),
-                                saddr.len(),
-                            );
-
-                            if ret >= 0 {
-                                Ok(ret as usize)
-                            } else {
-                                // Error occurs
-                                let err = io::Error::last_os_error();
-
-                                // EINPROGRESS
-                                if let Some(libc::EINPROGRESS) = err.raw_os_error() {
-                                    // For non-blocking socket, it returns the number of bytes queued (and transmitted in the SYN-data packet) if cookie is available.
-                                    // If cookie is not available, it transmits a data-less SYN packet with Fast Open cookie request option and returns -EINPROGRESS like connect().
-                                    //
-                                    // So in this state. We have to loop again to call `poll_write` for sending the first packet.
-                                    connecting = true;
-
-                                    // Let `try_io` clears the write readiness.
-                                    Err(ErrorKind::WouldBlock.into())
-                                } else {
-                                    // Other errors, including EAGAIN, EWOULDBLOCK
-                                    Err(err)
-                                }
-                            }
-                        }
-                    });
-
-                    match send_result {
-                        Ok(n) => {
-                            // Connected successfully with fast open
-                            *state = TcpStreamState::Connected;
-                            return Ok(n).into();
-                        }
-                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
-                            if connecting {
-                                // Connecting with normal TCP handshakes, write the first packet after connected
-                                *state = TcpStreamState::Connected;
-                            }
-                        }
-                        Err(err) => return Err(err).into(),
-                    }
-                }
-
-                TcpStreamState::FastOpenWrite => {
-                    // First `write` after `TCP_FASTOPEN_CONNECT`
-                    // Kernel >= 4.11
-
-                    let stream = inner.get_mut();
-
-                    // Ensure socket is writable
-                    ready!(stream.poll_write_ready(cx))?;
-
-                    let mut connecting = false;
-                    let send_result = stream.try_io(Interest::WRITABLE, || {
-                        unsafe {
-                            let ret = libc::send(stream.as_raw_fd(), buf.as_ptr() as *const libc::c_void, buf.len(), 0);
-
-                            if ret >= 0 {
-                                Ok(ret as usize)
-                            } else {
-                                let err = io::Error::last_os_error();
-                                // EINPROGRESS
-                                if let Some(libc::EINPROGRESS) = err.raw_os_error() {
-                                    // For non-blocking socket, it returns the number of bytes queued (and transmitted in the SYN-data packet) if cookie is available.
-                                    // If cookie is not available, it transmits a data-less SYN packet with Fast Open cookie request option and returns -EINPROGRESS like connect().
-                                    //
-                                    // So in this state. We have to loop again to call `poll_write` for sending the first packet.
-                                    connecting = true;
-
-                                    // Let `poll_write_io` clears the write readiness.
-                                    Err(ErrorKind::WouldBlock.into())
-                                } else {
-                                    // Other errors, including EAGAIN, EWOULDBLOCK
-                                    Err(err)
-                                }
-                            }
-                        }
-                    });
-
-                    match send_result {
-                        Ok(n) => {
-                            // Connected successfully with fast open
-                            *state = TcpStreamState::Connected;
-                            return Ok(n).into();
-                        }
-                        Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
-                            if connecting {
-                                // Connecting with normal TCP handshakes, write the first packet after connected
-                                *state = TcpStreamState::Connected;
-                            }
-                        }
-                        Err(err) => return Err(err).into(),
-                    }
-                }
-            }
+    fn poll_write(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        match self.project() {
+            TcpStreamProj::Standard(s) => s.poll_write(cx, buf),
+            TcpStreamProj::FastOpen(s) => s.poll_write(cx, buf),
         }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        self.project().inner.poll_flush(cx)
+        match self.project() {
+            TcpStreamProj::Standard(s) => s.poll_flush(cx),
+            TcpStreamProj::FastOpen(s) => s.poll_flush(cx),
+        }
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<io::Result<()>> {
-        self.project().inner.poll_shutdown(cx)
+        match self.project() {
+            TcpStreamProj::Standard(s) => s.poll_shutdown(cx),
+            TcpStreamProj::FastOpen(s) => s.poll_shutdown(cx),
+        }
     }
 }
 
@@ -316,7 +172,15 @@ impl AsyncWrite for TcpStream {
 ///
 /// `TCP_FASTOPEN` was supported since Linux 3.7
 pub fn set_tcp_fastopen<S: AsRawFd>(socket: &S) -> io::Result<()> {
-    let queue: libc::c_int = 5;
+    // https://lwn.net/Articles/508865/
+    //
+    // The option value, qlen, specifies this server's limit on the size of the queue of TFO requests that have
+    // not yet completed the three-way handshake (see the remarks on prevention of resource-exhaustion attacks above).
+    //
+    // It was recommended to be `5` in this document.
+    //
+    // But since mio's TcpListener sets backlogs to 1024, it would be nice to have 1024 slots for handshaking TFO requests.
+    let queue: libc::c_int = 1024;
 
     unsafe {
         let ret = libc::setsockopt(
@@ -337,6 +201,45 @@ pub fn set_tcp_fastopen<S: AsRawFd>(socket: &S) -> io::Result<()> {
     Ok(())
 }
 
+/// Disable IP fragmentation
+#[inline]
+pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> io::Result<()> {
+    // For Linux, IP_MTU_DISCOVER should be enabled for both IPv4 and IPv6 sockets
+    // https://man7.org/linux/man-pages/man7/ip.7.html
+
+    unsafe {
+        let value: i32 = libc::IP_PMTUDISC_DO;
+        let ret = libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::IPPROTO_IP,
+            libc::IP_MTU_DISCOVER,
+            &value as *const _ as *const _,
+            mem::size_of_val(&value) as libc::socklen_t,
+        );
+
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        if af == AddrFamily::Ipv6 {
+            let value: i32 = libc::IP_PMTUDISC_DO;
+            let ret = libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::IPPROTO_IPV6,
+                libc::IPV6_MTU_DISCOVER,
+                &value as *const _ as *const _,
+                mem::size_of_val(&value) as libc::socklen_t,
+            );
+
+            if ret < 0 {
+                return Err(io::Error::last_os_error());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Create a `UdpSocket` for connecting to `addr`
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
@@ -346,13 +249,26 @@ pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) ->
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
 
-    let socket = UdpSocket::bind(bind_addr).await?;
+    let socket = if af != AddrFamily::Ipv6 {
+        UdpSocket::bind(bind_addr).await?
+    } else {
+        let socket = Socket::new(Domain::for_address(bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
+        socket_bind_dual_stack(&socket, &bind_addr, false)?;
+
+        // UdpSocket::from_std requires socket to be non-blocked
+        socket.set_nonblocking(true)?;
+        UdpSocket::from_std(socket.into())?
+    };
+
+    if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
+        warn!("failed to disable IP fragmentation, error: {}", err);
+    }
 
     // Any traffic except localhost should be protected
     // This is a workaround for VPNService
     #[cfg(target_os = "android")]
     {
-        use std::time::Duration;
+        use std::{io::ErrorKind, time::Duration};
         use tokio::time;
 
         if let Some(ref path) = config.vpn_protect_path {
@@ -417,10 +333,13 @@ fn set_bindtodevice<S: AsRawFd>(socket: &S, iface: &str) -> io::Result<()> {
 
 cfg_if! {
     if #[cfg(target_os = "android")] {
-        use std::path::Path;
-        use std::os::unix::io::RawFd;
+        use std::{
+            io::ErrorKind,
+            path::Path,
+        };
+        use tokio::io::AsyncReadExt;
 
-        mod uds;
+        use super::uds::UnixStream;
 
         /// This is a RPC for Android to `protect()` socket for connecting to remote servers
         ///
@@ -428,9 +347,7 @@ cfg_if! {
         ///
         /// More detail could be found in [shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) project.
         async fn vpn_protect<P: AsRef<Path>>(protect_path: P, fd: RawFd) -> io::Result<()> {
-            use tokio::io::AsyncReadExt;
-
-            let mut stream = self::uds::UnixStream::connect(protect_path).await?;
+            let mut stream = UnixStream::connect(protect_path).await?;
 
             // send fds
             let dummy: [u8; 1] = [1];
@@ -448,4 +365,163 @@ cfg_if! {
             Ok(())
         }
     }
+}
+
+static SUPPORT_BATCH_SEND_RECV_MSG: AtomicBool = AtomicBool::new(true);
+
+fn recvmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchRecvMessage<'_>) -> io::Result<()> {
+    let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
+
+    let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+    let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+    let sock_addr = unsafe { SockAddr::new(addr_storage, addr_len) };
+    hdr.msg_name = sock_addr.as_ptr() as *mut _;
+    hdr.msg_namelen = sock_addr.len() as _;
+
+    hdr.msg_iov = msg.data.as_ptr() as *mut _;
+    hdr.msg_iovlen = msg.data.len() as _;
+
+    let ret = unsafe { libc::recvmsg(sock.as_raw_fd(), &mut hdr as *mut _, 0) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    msg.addr = sock_addr.as_socket().expect("SockAddr.as_socket");
+    msg.data_len = ret as usize;
+
+    Ok(())
+}
+
+pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) -> io::Result<usize> {
+    if msgs.is_empty() {
+        return Ok(0);
+    }
+
+    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Acquire) {
+        recvmsg_fallback(sock, &mut msgs[0])?;
+        return Ok(1);
+    }
+
+    let mut vec_msg_name = Vec::with_capacity(msgs.len());
+    let mut vec_msg_hdr = Vec::with_capacity(msgs.len());
+
+    for msg in msgs.iter_mut() {
+        let mut hdr: libc::mmsghdr = unsafe { mem::zeroed() };
+
+        let addr_storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        let addr_len = mem::size_of_val(&addr_storage) as libc::socklen_t;
+
+        vec_msg_name.push(unsafe { SockAddr::new(addr_storage, addr_len) });
+        let sock_addr = vec_msg_name.last_mut().unwrap();
+        hdr.msg_hdr.msg_name = sock_addr.as_ptr() as *mut _;
+        hdr.msg_hdr.msg_namelen = sock_addr.len() as _;
+
+        hdr.msg_hdr.msg_iov = msg.data.as_ptr() as *mut _;
+        hdr.msg_hdr.msg_iovlen = msg.data.len() as _;
+
+        vec_msg_hdr.push(hdr);
+    }
+
+    let ret = unsafe {
+        libc::recvmmsg(
+            sock.as_raw_fd(),
+            vec_msg_hdr.as_mut_ptr(),
+            vec_msg_hdr.len() as _,
+            0,
+            ptr::null_mut(),
+        )
+    };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        if let Some(libc::ENOSYS) = err.raw_os_error() {
+            debug!("recvmmsg is not supported, fallback to recvmsg, error: {:?}", err);
+            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Release);
+
+            recvmsg_fallback(sock, &mut msgs[0])?;
+            return Ok(1);
+        }
+        return Err(err);
+    }
+
+    for idx in 0..ret as usize {
+        let msg = &mut msgs[idx];
+        let hdr = &vec_msg_hdr[idx];
+        let name = &vec_msg_name[idx];
+        msg.addr = name.as_socket().expect("SockAddr.as_socket");
+        msg.data_len = hdr.msg_len as usize;
+    }
+
+    Ok(ret as usize)
+}
+
+fn sendmsg_fallback<S: AsRawFd>(sock: &S, msg: &mut BatchSendMessage<'_>) -> io::Result<()> {
+    let mut hdr: libc::msghdr = unsafe { mem::zeroed() };
+
+    let sock_addr = msg.addr.map(SockAddr::from);
+    if let Some(ref sa) = sock_addr {
+        hdr.msg_name = sa.as_ptr() as *mut _;
+        hdr.msg_namelen = sa.len() as _;
+    }
+
+    hdr.msg_iov = msg.data.as_ptr() as *mut _;
+    hdr.msg_iovlen = msg.data.len() as _;
+
+    let ret = unsafe { libc::sendmsg(sock.as_raw_fd(), &hdr as *const _, 0) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    msg.data_len = ret as usize;
+
+    Ok(())
+}
+
+pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) -> io::Result<usize> {
+    if msgs.is_empty() {
+        return Ok(0);
+    }
+
+    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Acquire) {
+        sendmsg_fallback(sock, &mut msgs[0])?;
+        return Ok(1);
+    }
+
+    let mut vec_msg_name = Vec::with_capacity(msgs.len());
+    let mut vec_msg_hdr = Vec::with_capacity(msgs.len());
+
+    for msg in msgs.iter_mut() {
+        let mut hdr: libc::mmsghdr = unsafe { mem::zeroed() };
+
+        if let Some(addr) = msg.addr {
+            vec_msg_name.push(SockAddr::from(addr));
+            let sock_addr = vec_msg_name.last_mut().unwrap();
+            hdr.msg_hdr.msg_name = sock_addr.as_ptr() as *mut _;
+            hdr.msg_hdr.msg_namelen = sock_addr.len() as _;
+        }
+
+        hdr.msg_hdr.msg_iov = msg.data.as_ptr() as *mut _;
+        hdr.msg_hdr.msg_iovlen = msg.data.len() as _;
+
+        vec_msg_hdr.push(hdr);
+    }
+
+    let ret = unsafe { libc::sendmmsg(sock.as_raw_fd(), vec_msg_hdr.as_mut_ptr(), vec_msg_hdr.len() as _, 0) };
+    if ret < 0 {
+        let err = io::Error::last_os_error();
+        if let Some(libc::ENOSYS) = err.raw_os_error() {
+            debug!("sendmmsg is not supported, fallback to sendmsg, error: {:?}", err);
+            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Release);
+
+            sendmsg_fallback(sock, &mut msgs[0])?;
+            return Ok(1);
+        }
+        return Err(err);
+    }
+
+    for idx in 0..ret as usize {
+        let msg = &mut msgs[idx];
+        let hdr = &vec_msg_hdr[idx];
+        msg.data_len = hdr.msg_len as usize;
+    }
+
+    Ok(ret as usize)
 }

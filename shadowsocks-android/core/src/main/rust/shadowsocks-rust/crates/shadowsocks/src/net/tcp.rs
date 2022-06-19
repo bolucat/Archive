@@ -5,7 +5,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket};
 use std::{
-    io::{self, ErrorKind},
+    io,
     net::SocketAddr,
     ops::{Deref, DerefMut},
     pin::Pin,
@@ -13,7 +13,6 @@ use std::{
 };
 
 use futures::{future, ready};
-use log::{debug, warn};
 use pin_project::pin_project;
 use socket2::{Socket, TcpKeepalive};
 use tokio::{
@@ -24,7 +23,8 @@ use tokio::{
 use crate::{context::Context, relay::socks5::Address, ServerAddr};
 
 use super::{
-    sys::{set_tcp_fastopen, TcpStream as SysTcpStream},
+    is_dual_stack_addr,
+    sys::{set_tcp_fastopen, socket_bind_dual_stack, TcpStream as SysTcpStream},
     AcceptOpts,
     ConnectOpts,
 };
@@ -49,7 +49,7 @@ impl TcpStream {
         let stream = match *addr {
             ServerAddr::SocketAddr(ref addr) => SysTcpStream::connect(*addr, opts).await?,
             ServerAddr::DomainName(ref domain, port) => {
-                lookup_then!(&context, &domain, port, |addr| {
+                lookup_then_connect!(context, domain, port, |addr| {
                     SysTcpStream::connect(addr, opts).await
                 })?
                 .1
@@ -68,7 +68,7 @@ impl TcpStream {
         let stream = match *addr {
             Address::SocketAddress(ref addr) => SysTcpStream::connect(*addr, opts).await?,
             Address::DomainNameAddress(ref domain, port) => {
-                lookup_then!(&context, &domain, port, |addr| {
+                lookup_then_connect!(context, domain, port, |addr| {
                     SysTcpStream::connect(addr, opts).await
                 })?
                 .1
@@ -77,19 +77,25 @@ impl TcpStream {
 
         Ok(TcpStream(stream))
     }
-}
 
-impl Deref for TcpStream {
-    type Target = TokioTcpStream;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    /// Returns the local address that this stream is bound to.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.0.local_addr()
     }
-}
 
-impl DerefMut for TcpStream {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    /// Returns the remote address that this stream is connected to.
+    pub fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.0.peer_addr()
+    }
+
+    /// Gets the value of the `TCP_NODELAY` option on this socket.
+    pub fn nodelay(&self) -> io::Result<bool> {
+        self.0.nodelay()
+    }
+
+    /// Sets the value of the `TCP_NODELAY` option on this socket.
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.0.set_nodelay(nodelay)
     }
 }
 
@@ -137,52 +143,10 @@ impl TcpListener {
         #[cfg(not(windows))]
         socket.set_reuseaddr(true)?;
 
-        let set_dual_stack = if let SocketAddr::V6(ref v6) = *addr {
-            v6.ip().is_unspecified()
-        } else {
-            false
-        };
+        let set_dual_stack = is_dual_stack_addr(addr);
 
         if set_dual_stack {
-            // Set to DUAL STACK mode by default.
-            // WARNING: This would fail if you want to start another program listening on the same port.
-            //
-            // Should this behavior be configurable?
-            fn set_only_v6(socket: &TcpSocket, only_v6: bool) {
-                unsafe {
-                    // WARN: If the following code panics, FD will be closed twice.
-                    #[cfg(unix)]
-                    let s = Socket::from_raw_fd(socket.as_raw_fd());
-                    #[cfg(windows)]
-                    let s = Socket::from_raw_socket(socket.as_raw_socket());
-                    if let Err(err) = s.set_only_v6(only_v6) {
-                        warn!("failed to set IPV6_V6ONLY: {} for listener, error: {}", only_v6, err);
-
-                        // This is not a fatal error, just warn and skip
-                    }
-
-                    #[cfg(unix)]
-                    let _ = s.into_raw_fd();
-                    #[cfg(windows)]
-                    let _ = s.into_raw_socket();
-                }
-            }
-
-            set_only_v6(&socket, false);
-            match socket.bind(*addr) {
-                Ok(..) => {}
-                Err(ref err) if err.kind() == ErrorKind::AddrInUse => {
-                    // This is probably 0.0.0.0 with the same port has already been occupied
-                    debug!(
-                        "0.0.0.0:{} may have already been occupied, retry with IPV6_V6ONLY",
-                        addr.port()
-                    );
-
-                    set_only_v6(&socket, true);
-                    socket.bind(*addr)?;
-                }
-                Err(err) => return Err(err),
-            }
+            socket_bind_dual_stack(&socket, addr, accept_opts.ipv6_only)?;
         } else {
             socket.bind(*addr)?;
         }

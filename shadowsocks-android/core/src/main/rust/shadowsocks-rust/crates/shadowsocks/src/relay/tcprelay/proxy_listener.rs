@@ -11,7 +11,7 @@ use tokio::{
 use crate::{
     config::{ServerAddr, ServerConfig},
     context::SharedContext,
-    crypto::v1::CipherKind,
+    crypto::CipherKind,
     net::{AcceptOpts, TcpListener},
     relay::tcprelay::proxy_stream::server::ProxyServerStream,
 };
@@ -41,7 +41,7 @@ impl ProxyListener {
         let listener = match svr_cfg.external_addr() {
             ServerAddr::SocketAddr(sa) => TcpListener::bind_with_opts(sa, accept_opts).await?,
             ServerAddr::DomainName(domain, port) => {
-                lookup_then!(&context, &domain, *port, |addr| {
+                lookup_then!(&context, domain, *port, |addr| {
                     TcpListener::bind_with_opts(&addr, accept_opts.clone()).await
                 })?
                 .1

@@ -188,9 +188,9 @@ impl DnsClient {
 
         #[cfg(windows)]
         fn check_peekable<F: std::os::windows::io::AsRawSocket>(s: &mut F) -> bool {
-            use winapi::{
-                ctypes::{c_char, c_int},
-                um::winsock2::{recv, MSG_PEEK, SOCKET},
+            use windows_sys::{
+                core::PSTR,
+                Win32::Networking::WinSock::{recv, MSG_PEEK, SOCKET},
             };
 
             let sock = s.as_raw_socket() as SOCKET;
@@ -198,12 +198,7 @@ impl DnsClient {
             unsafe {
                 let mut peek_buf = [0u8; 1];
 
-                let ret = recv(
-                    sock,
-                    peek_buf.as_mut_ptr() as *mut c_char,
-                    peek_buf.len() as c_int,
-                    MSG_PEEK,
-                );
+                let ret = recv(sock, peek_buf.as_mut_ptr() as PSTR, peek_buf.len() as i32, MSG_PEEK);
 
                 match ret.cmp(&0) {
                     // EOF, connection lost
@@ -213,7 +208,7 @@ impl DnsClient {
                     Ordering::Less => {
                         let err = io::Error::last_os_error();
                         // I have to trust the `s` have already set to non-blocking mode
-                        // Becuase windows doesn't have MSG_DONTWAIT
+                        // Because windows doesn't have MSG_DONTWAIT
                         err.kind() == ErrorKind::WouldBlock
                     }
                 }

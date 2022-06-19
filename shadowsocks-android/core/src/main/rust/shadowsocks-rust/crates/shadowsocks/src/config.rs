@@ -11,11 +11,12 @@ use std::{
 };
 
 use base64::{decode_config, encode_config, URL_SAFE_NO_PAD};
+use cfg_if::cfg_if;
 use log::error;
 use url::{self, Url};
 
 use crate::{
-    crypto::v1::{openssl_bytes_to_key, CipherKind},
+    crypto::{v1::openssl_bytes_to_key, CipherKind},
     plugin::PluginConfig,
     relay::socks5::Address,
 };
@@ -175,6 +176,39 @@ pub struct ServerConfig {
     weight: ServerWeight,
 }
 
+#[cfg(feature = "aead-cipher-2022")]
+#[inline]
+fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) {
+    if method.is_aead_2022() {
+        // AEAD 2022 password is a base64 form of enc_key
+        match base64::decode_config(password, base64::STANDARD) {
+            Ok(v) => {
+                if v.len() != enc_key.len() {
+                    panic!(
+                        "{} is expecting a {} bytes key, but password: {} ({} bytes after decode)",
+                        method,
+                        enc_key.len(),
+                        password,
+                        v.len()
+                    );
+                }
+                enc_key.copy_from_slice(&v);
+            }
+            Err(err) => {
+                panic!("{} password {} is not base64 encoded, error: {}", method, password, err);
+            }
+        }
+    } else {
+        openssl_bytes_to_key(password.as_bytes(), enc_key);
+    }
+}
+
+#[cfg(not(feature = "aead-cipher-2022"))]
+#[inline]
+fn make_derived_key(_method: CipherKind, password: &str, enc_key: &mut [u8]) {
+    openssl_bytes_to_key(password.as_bytes(), enc_key);
+}
+
 impl ServerConfig {
     /// Create a new `ServerConfig`
     pub fn new<A, P>(addr: A, password: P, method: CipherKind) -> ServerConfig
@@ -185,7 +219,7 @@ impl ServerConfig {
         let password = password.into();
 
         let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
-        openssl_bytes_to_key(password.as_bytes(), &mut enc_key);
+        make_derived_key(method, &password, &mut enc_key);
 
         ServerConfig {
             addr: addr.into(),
@@ -197,7 +231,7 @@ impl ServerConfig {
             plugin_addr: None,
             remarks: None,
             id: None,
-            mode: Mode::TcpOnly,
+            mode: Mode::TcpAndUdp, // Server serves TCP & UDP by default
             weight: ServerWeight::new(),
         }
     }
@@ -211,7 +245,7 @@ impl ServerConfig {
         self.password = password.into();
 
         let mut enc_key = vec![0u8; method.key_len()].into_boxed_slice();
-        openssl_bytes_to_key(self.password.as_bytes(), &mut enc_key);
+        make_derived_key(method, &self.password, &mut enc_key);
 
         self.enc_key = enc_key;
     }
@@ -236,12 +270,12 @@ impl ServerConfig {
 
     /// Get encryption key
     pub fn key(&self) -> &[u8] {
-        &self.enc_key.as_ref()
+        self.enc_key.as_ref()
     }
 
     /// Get password
     pub fn password(&self) -> &str {
-        &self.password.as_str()
+        self.password.as_str()
     }
 
     /// Get method
@@ -336,10 +370,21 @@ impl ServerConfig {
 
     /// Get [SIP002](https://github.com/shadowsocks/shadowsocks-org/issues/27) URL
     pub fn to_url(&self) -> String {
-        let user_info = format!("{}:{}", self.method(), self.password());
-        let encoded_user_info = encode_config(&user_info, URL_SAFE_NO_PAD);
+        cfg_if! {
+            if #[cfg(feature = "aead-cipher-2022")] {
+                let user_info = if !self.method().is_aead_2022() {
+                    let user_info = format!("{}:{}", self.method(), self.password());
+                    encode_config(&user_info, URL_SAFE_NO_PAD)
+                } else {
+                    format!("{}:{}", self.method(), percent_encoding::utf8_percent_encode(self.password(), percent_encoding::NON_ALPHANUMERIC))
+                };
+            } else {
+                let mut user_info = format!("{}:{}", self.method(), self.password());
+                user_info = encode_config(&user_info, URL_SAFE_NO_PAD)
+            }
+        }
 
-        let mut url = format!("ss://{}@{}", encoded_user_info, self.addr());
+        let mut url = format!("ss://{}@{}", user_info, self.addr());
         if let Some(c) = self.plugin() {
             let mut plugin = c.plugin.clone();
             if let Some(ref opt) = c.plugin_opts {
@@ -347,15 +392,28 @@ impl ServerConfig {
                 plugin += opt;
             }
 
-            let plugin_param = [("plugin", &plugin)];
-            url += "/?";
-            url += &serde_urlencoded::to_string(&plugin_param).unwrap();
+            url += "/?plugin=";
+            for c in percent_encoding::utf8_percent_encode(&plugin, percent_encoding::NON_ALPHANUMERIC) {
+                url.push_str(c);
+            }
+        }
+
+        if let Some(remark) = self.remarks() {
+            url += "#";
+            for c in percent_encoding::utf8_percent_encode(remark, percent_encoding::NON_ALPHANUMERIC) {
+                url.push_str(c);
+            }
         }
 
         url
     }
 
     /// Parse from [SIP002](https://github.com/shadowsocks/shadowsocks-org/issues/27) URL
+    ///
+    /// Extended formats:
+    ///
+    /// 1. QRCode URL supported by shadowsocks-android, https://github.com/shadowsocks/shadowsocks-android/issues/51
+    /// 2. Plain userinfo:password format supported by go2-shadowsocks2
     pub fn from_url(encoded: &str) -> Result<ServerConfig, UrlParseError> {
         let parsed = Url::parse(encoded).map_err(UrlParseError::from)?;
 
@@ -364,16 +422,71 @@ impl ServerConfig {
         }
 
         let user_info = parsed.username();
-        let account = match decode_config(user_info, URL_SAFE_NO_PAD) {
-            Ok(account) => match String::from_utf8(account) {
-                Ok(ac) => ac,
-                Err(..) => {
-                    return Err(UrlParseError::InvalidAuthInfo);
+        if user_info.is_empty() {
+            // This maybe a QRCode URL, which is ss://BASE64-URL-ENCODE(pass:encrypt@hostname:port)
+
+            let encoded = match parsed.host_str() {
+                Some(e) => e,
+                None => return Err(UrlParseError::MissingHost),
+            };
+
+            let mut decoded_body = match decode_config(encoded, URL_SAFE_NO_PAD) {
+                Ok(b) => match String::from_utf8(b) {
+                    Ok(b) => b,
+                    Err(..) => return Err(UrlParseError::InvalidServerAddr),
+                },
+                Err(err) => {
+                    error!("failed to parse legacy ss://ENCODED with Base64, err: {}", err);
+                    return Err(UrlParseError::InvalidServerAddr);
                 }
-            },
-            Err(err) => {
-                error!("Failed to parse UserInfo with Base64, err: {}", err);
-                return Err(UrlParseError::InvalidUserInfo);
+            };
+
+            decoded_body.insert_str(0, "ss://");
+            // Parse it like ss://method:password@host:port
+            return ServerConfig::from_url(&decoded_body);
+        }
+
+        let (method, pwd) = match parsed.password() {
+            Some(password) => {
+                // Plain method:password without base64 encoded
+
+                let m = match percent_encoding::percent_decode_str(user_info).decode_utf8() {
+                    Ok(m) => m,
+                    Err(err) => {
+                        error!("failed to parse percent-encoded method in userinfo, err: {}", err);
+                        return Err(UrlParseError::InvalidAuthInfo);
+                    }
+                };
+
+                let p = match percent_encoding::percent_decode_str(password).decode_utf8() {
+                    Ok(m) => m,
+                    Err(err) => {
+                        error!("failed to parse percent-encoded password in userinfo, err: {}", err);
+                        return Err(UrlParseError::InvalidAuthInfo);
+                    }
+                };
+
+                (m, p)
+            }
+            None => {
+                let account = match decode_config(user_info, URL_SAFE_NO_PAD) {
+                    Ok(account) => match String::from_utf8(account) {
+                        Ok(ac) => ac,
+                        Err(..) => return Err(UrlParseError::InvalidAuthInfo),
+                    },
+                    Err(err) => {
+                        error!("failed to parse UserInfo with Base64, err: {}", err);
+                        return Err(UrlParseError::InvalidUserInfo);
+                    }
+                };
+
+                let mut sp2 = account.splitn(2, ':');
+                let (m, p) = match (sp2.next(), sp2.next()) {
+                    (Some(m), Some(p)) => (m, p),
+                    _ => return Err(UrlParseError::InvalidUserInfo),
+                };
+
+                (m.to_owned().into(), p.to_owned().into())
             }
         };
 
@@ -385,27 +498,22 @@ impl ServerConfig {
         let port = parsed.port().unwrap_or(8388);
         let addr = format!("{}:{}", host, port);
 
-        let mut sp2 = account.splitn(2, ':');
-        let (method, pwd) = match (sp2.next(), sp2.next()) {
-            (Some(m), Some(p)) => (m, p),
-            _ => return Err(UrlParseError::InvalidUserInfo),
-        };
-
         let addr = match addr.parse::<ServerAddr>() {
             Ok(a) => a,
             Err(err) => {
-                error!("Failed to parse \"{}\" to ServerAddr, err: {:?}", addr, err);
+                error!("failed to parse \"{}\" to ServerAddr, err: {:?}", addr, err);
                 return Err(UrlParseError::InvalidServerAddr);
             }
         };
 
-        let mut svrconfig = ServerConfig::new(addr, pwd.to_owned(), method.parse().unwrap());
+        let method = method.parse().expect("method");
+        let mut svrconfig = ServerConfig::new(addr, pwd, method);
 
         if let Some(q) = parsed.query() {
             let query = match serde_urlencoded::from_bytes::<Vec<(String, String)>>(q.as_bytes()) {
                 Ok(q) => q,
                 Err(err) => {
-                    error!("Failed to parse QueryString, err: {}", err);
+                    error!("failed to parse QueryString, err: {}", err);
                     return Err(UrlParseError::InvalidQueryString);
                 }
             };
@@ -428,6 +536,10 @@ impl ServerConfig {
                     }
                 }
             }
+        }
+
+        if let Some(frag) = parsed.fragment() {
+            svrconfig.set_remarks(frag);
         }
 
         Ok(svrconfig)
@@ -523,6 +635,12 @@ impl ServerAddr {
 /// Parse `ServerAddr` error
 #[derive(Debug)]
 pub struct ServerAddrError;
+
+impl Display for ServerAddrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid ServerAddr")
+    }
+}
 
 impl FromStr for ServerAddr {
     type Err = ServerAddrError;
@@ -622,6 +740,12 @@ pub enum ManagerAddr {
 #[derive(Debug)]
 pub struct ManagerAddrError;
 
+impl Display for ManagerAddrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid ManagerAddr")
+    }
+}
+
 impl FromStr for ManagerAddr {
     type Err = ManagerAddrError;
 
@@ -687,5 +811,63 @@ impl From<(String, u16)> for ManagerAddr {
 impl From<PathBuf> for ManagerAddr {
     fn from(p: PathBuf) -> ManagerAddr {
         ManagerAddr::UnixSocketAddr(p)
+    }
+}
+
+/// Policy for handling replay attack requests
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ReplayAttackPolicy {
+    /// Default strategy based on protocol
+    ///
+    /// SIP022 (AEAD-2022): Reject
+    /// SIP004 (AEAD): Ignore
+    /// Stream: Ignore
+    Default,
+    /// Ignore it completely
+    Ignore,
+    /// Try to detect replay attack and warn about it
+    Detect,
+    /// Try to detect replay attack and reject the request
+    Reject,
+}
+
+impl Default for ReplayAttackPolicy {
+    fn default() -> ReplayAttackPolicy {
+        ReplayAttackPolicy::Default
+    }
+}
+
+impl Display for ReplayAttackPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            ReplayAttackPolicy::Default => f.write_str("default"),
+            ReplayAttackPolicy::Ignore => f.write_str("ignore"),
+            ReplayAttackPolicy::Detect => f.write_str("detect"),
+            ReplayAttackPolicy::Reject => f.write_str("reject"),
+        }
+    }
+}
+
+/// Error while parsing ReplayAttackPolicy from string
+#[derive(Debug, Clone, Copy)]
+pub struct ReplayAttackPolicyError;
+
+impl Display for ReplayAttackPolicyError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid ReplayAttackPolicy")
+    }
+}
+
+impl FromStr for ReplayAttackPolicy {
+    type Err = ReplayAttackPolicyError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "default" => Ok(ReplayAttackPolicy::Default),
+            "ignore" => Ok(ReplayAttackPolicy::Ignore),
+            "detect" => Ok(ReplayAttackPolicy::Detect),
+            "reject" => Ok(ReplayAttackPolicy::Reject),
+            _ => Err(ReplayAttackPolicyError),
+        }
     }
 }

@@ -11,7 +11,7 @@ import org.gradle.kotlin.dsl.getByName
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions
 import java.util.*
 
-const val lifecycleVersion = "2.4.0-beta01"
+const val lifecycleVersion = "2.4.0"
 
 private val Project.android get() = extensions.getByName<BaseExtension>("android")
 
@@ -24,7 +24,7 @@ val Project.currentFlavor get() = gradle.startParameter.taskRequests.toString().
 
 fun Project.setupCommon() {
     android.apply {
-        buildToolsVersion("31.0.0")
+        buildToolsVersion("32.0.0")
         compileSdkVersion(31)
         defaultConfig {
             minSdk = 23
@@ -56,8 +56,8 @@ fun Project.setupCore() {
     setupCommon()
     android.apply {
         defaultConfig {
-            versionCode = 5020650
-            versionName = "5.2.6-nightly"
+            versionCode = 5030050
+            versionName = "5.3.0-nightly"
         }
         compileOptions.isCoreLibraryDesugaringEnabled = true
         lintOptions {

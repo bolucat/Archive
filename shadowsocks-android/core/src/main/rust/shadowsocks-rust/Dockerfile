@@ -8,7 +8,7 @@ WORKDIR /root/shadowsocks-rust
 
 ADD . .
 
-RUN rustup install "$(cat rust-toolchain)" && \
+RUN rustup install nightly && rustup default nightly && \
     case "$TARGETARCH" in \
     "386") \
         RUST_TARGET="i686-unknown-linux-musl" \
@@ -30,7 +30,7 @@ RUN rustup install "$(cat rust-toolchain)" && \
     wget -qO- "https://musl.cc/$MUSL-cross.tgz" | tar -xzC /root/ && \
     CC=/root/$MUSL-cross/bin/$MUSL-gcc && \
     rustup target add $RUST_TARGET && \
-    RUSTFLAGS="-C linker=$CC" CC=$CC cargo build --target $RUST_TARGET --release && \
+    RUSTFLAGS="-C linker=$CC" CC=$CC cargo build --target "$RUST_TARGET" --release --features "local-tun local-redir armv8 neon" && \
     mv target/$RUST_TARGET/release/ss* target/release/
 
 FROM alpine:3.14 AS sslocal
@@ -39,6 +39,8 @@ COPY --from=build /root/shadowsocks-rust/target/release/sslocal /usr/bin
 
 COPY --from=build /root/shadowsocks-rust/examples/config.json /etc/shadowsocks-rust/
 
+USER nobody
+
 ENTRYPOINT [ "sslocal", "--log-without-time", "-c", "/etc/shadowsocks-rust/config.json" ]
 
 FROM alpine:3.14 AS ssserver
@@ -46,5 +48,7 @@ FROM alpine:3.14 AS ssserver
 COPY --from=build /root/shadowsocks-rust/target/release/ssserver /usr/bin
 
 COPY --from=build /root/shadowsocks-rust/examples/config.json /etc/shadowsocks-rust/
+
+USER nobody
 
 ENTRYPOINT [ "ssserver", "--log-without-time", "-c", "/etc/shadowsocks-rust/config.json" ]

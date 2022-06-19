@@ -10,12 +10,12 @@ use std::{
 use byte_string::ByteStr;
 use bytes::{BufMut, Bytes, BytesMut};
 use futures::ready;
-use log::{trace, warn};
+use log::trace;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{
     context::Context,
-    crypto::v1::{Cipher, CipherKind},
+    crypto::{v1::Cipher, CipherKind},
 };
 
 enum DecryptReadState {
@@ -29,6 +29,7 @@ pub struct DecryptedReader {
     cipher: Option<Cipher>,
     buffer: BytesMut,
     method: CipherKind,
+    iv: Option<Bytes>,
 }
 
 impl DecryptedReader {
@@ -41,6 +42,7 @@ impl DecryptedReader {
                 cipher: None,
                 buffer: BytesMut::with_capacity(method.iv_len()),
                 method,
+                iv: None,
             }
         } else {
             DecryptedReader {
@@ -48,8 +50,13 @@ impl DecryptedReader {
                 cipher: Some(Cipher::new(method, key, &[])),
                 buffer: BytesMut::new(),
                 method,
+                iv: Some(Bytes::new()),
             }
         }
+    }
+
+    pub fn iv(&self) -> Option<&[u8]> {
+        self.iv.as_deref()
     }
 
     /// Attempt to read decrypted data from reader
@@ -112,14 +119,14 @@ impl DecryptedReader {
         }
 
         let iv = &self.buffer[..iv_len];
-        if context.check_nonce_and_set(&iv) {
-            warn!("detected repeated stream iv {:?}", ByteStr::new(&iv));
-        }
+        context.check_nonce_replay(self.method, iv)?;
 
         trace!("got stream iv {:?}", ByteStr::new(iv));
 
-        let cipher = Cipher::new(self.method, key, iv);
+        // Stores IV
+        self.iv = Some(Bytes::copy_from_slice(iv));
 
+        let cipher = Cipher::new(self.method, key, iv);
         self.cipher = Some(cipher);
 
         Ok(()).into()
@@ -167,6 +174,7 @@ pub struct EncryptedWriter {
     cipher: Cipher,
     buffer: BytesMut,
     state: EncryptWriteState,
+    iv: Bytes,
 }
 
 impl EncryptedWriter {
@@ -180,7 +188,13 @@ impl EncryptedWriter {
             cipher: Cipher::new(method, key, nonce),
             buffer,
             state: EncryptWriteState::AssemblePacket,
+            iv: Bytes::copy_from_slice(nonce),
         }
+    }
+
+    /// IV
+    pub fn iv(&self) -> &[u8] {
+        self.iv.as_ref()
     }
 
     /// Attempt to write encrypted data into the writer

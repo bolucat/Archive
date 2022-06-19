@@ -7,6 +7,7 @@ use std::{
 };
 
 use bytes::{BufMut, BytesMut};
+use cfg_if::cfg_if;
 use futures::ready;
 use log::trace;
 use once_cell::sync::Lazy;
@@ -16,13 +17,16 @@ use tokio::{
     time,
 };
 
+#[cfg(feature = "aead-cipher-2022")]
+use crate::relay::get_aead_2022_padding_size;
 use crate::{
     config::ServerConfig,
     context::SharedContext,
+    crypto::CipherKind,
     net::{ConnectOpts, TcpStream as OutboundTcpStream},
     relay::{
         socks5::Address,
-        tcprelay::crypto_io::{CryptoStream, CryptoStreamReadHalf, CryptoStreamWriteHalf},
+        tcprelay::crypto_io::{CryptoRead, CryptoStream, CryptoWrite, StreamType},
     },
 };
 
@@ -32,12 +36,19 @@ enum ProxyClientStreamWriteState {
     Connected,
 }
 
+enum ProxyClientStreamReadState {
+    #[cfg(feature = "aead-cipher-2022")]
+    CheckRequestNonce,
+    Established,
+}
+
 /// A stream for sending / receiving data stream from remote server via shadowsocks' proxy server
 #[pin_project]
 pub struct ProxyClientStream<S> {
     #[pin]
     stream: CryptoStream<S>,
-    state: ProxyClientStreamWriteState,
+    writer_state: ProxyClientStreamWriteState,
+    reader_state: ProxyClientStreamReadState,
     context: SharedContext,
 }
 
@@ -139,11 +150,23 @@ where
         A: Into<Address>,
     {
         let addr = addr.into();
-        let stream = CryptoStream::from_stream(&context, stream, svr_cfg.method(), svr_cfg.key());
+        let stream = CryptoStream::from_stream(&context, stream, StreamType::Client, svr_cfg.method(), svr_cfg.key());
+
+        #[cfg(not(feature = "aead-cipher-2022"))]
+        let reader_state = ProxyClientStreamReadState::Established;
+
+        #[cfg(feature = "aead-cipher-2022")]
+        let reader_state = if svr_cfg.method().is_aead_2022() {
+            // AEAD 2022 has a respond header
+            ProxyClientStreamReadState::CheckRequestNonce
+        } else {
+            ProxyClientStreamReadState::Established
+        };
 
         ProxyClientStream {
             stream,
-            state: ProxyClientStreamWriteState::Connect(addr),
+            writer_state: ProxyClientStreamWriteState::Connect(addr),
+            reader_state,
             context,
         }
     }
@@ -170,9 +193,91 @@ where
 {
     #[inline]
     fn poll_read(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+        #[allow(unused_mut)]
         let mut this = self.project();
-        this.stream.poll_read_decrypted(cx, &this.context, buf)
+
+        #[allow(clippy::never_loop)]
+        loop {
+            match this.reader_state {
+                ProxyClientStreamReadState::Established => {
+                    return this.stream.poll_read_decrypted(cx, this.context, buf);
+                }
+                #[cfg(feature = "aead-cipher-2022")]
+                ProxyClientStreamReadState::CheckRequestNonce => {
+                    ready!(this.stream.as_mut().poll_read_decrypted(cx, this.context, buf))?;
+
+                    // REQUEST_NONCE should be in the respond packet (header) of AEAD-2022.
+                    //
+                    // If received_request_nonce() is None, then:
+                    // 1. method.salt_len() == 0, no checking required.
+                    // 2. TCP stream read() returns EOF before receiving the header, no checking required.
+                    //
+                    // poll_read_decrypted will wait until the first non-zero size data chunk.
+                    let (data_chunk_count, _) = this.stream.current_data_chunk_remaining();
+                    if data_chunk_count > 0 {
+                        // data_chunk_count > 0, so the reader received at least 1 data chunk.
+
+                        let sent_nonce = this.stream.sent_nonce();
+                        let sent_nonce = if sent_nonce.is_empty() { None } else { Some(sent_nonce) };
+                        if sent_nonce != this.stream.received_request_nonce() {
+                            return Err(io::Error::new(
+                                ErrorKind::Other,
+                                "received TCP response header with unmatched salt",
+                            ))
+                            .into();
+                        }
+
+                        *(this.reader_state) = ProxyClientStreamReadState::Established;
+                    }
+
+                    return Ok(()).into();
+                }
+            }
+        }
     }
+}
+
+#[inline]
+fn make_first_packet_buffer(method: CipherKind, addr: &Address, buf: &[u8]) -> BytesMut {
+    // Target Address should be sent with the first packet together,
+    // which would prevent from being detected.
+
+    let addr_length = addr.serialized_len();
+    let mut buffer = BytesMut::new();
+
+    cfg_if! {
+        if #[cfg(feature = "aead-cipher-2022")] {
+            let padding_size = get_aead_2022_padding_size(buf);
+            let header_length = if method.is_aead_2022() {
+                addr_length + 2 + padding_size + buf.len()
+            } else {
+                addr_length + buf.len()
+            };
+        } else {
+            let _ = method;
+            let header_length = addr_length + buf.len();
+        }
+    }
+
+    buffer.reserve(header_length);
+
+    // STREAM / AEAD / AEAD2022 protocol, append the Address before payload
+    addr.write_to_buf(&mut buffer);
+
+    #[cfg(feature = "aead-cipher-2022")]
+    if method.is_aead_2022() {
+        buffer.put_u16(padding_size as u16);
+
+        if padding_size > 0 {
+            unsafe {
+                buffer.advance_mut(padding_size);
+            }
+        }
+    }
+
+    buffer.put_slice(buf);
+
+    buffer
 }
 
 impl<S> AsyncWrite for ProxyClientStream<S>
@@ -180,34 +285,27 @@ where
     S: AsyncRead + AsyncWrite + Unpin,
 {
     fn poll_write(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
-        let mut this = self.project();
+        let this = self.project();
 
         loop {
-            match this.state {
+            match this.writer_state {
                 ProxyClientStreamWriteState::Connect(ref addr) => {
-                    // Target Address should be sent with the first packet together,
-                    // which would prevent from being detected by connection features.
-
-                    let addr_length = addr.serialized_len();
-
-                    let mut buffer = BytesMut::with_capacity(addr_length + buf.len());
-                    addr.write_to_buf(&mut buffer);
-                    buffer.put_slice(buf);
+                    let buffer = make_first_packet_buffer(this.stream.method(), addr, buf);
 
                     // Save the concatenated buffer before it is written successfully.
                     // APIs require buffer to be kept alive before Poll::Ready
                     //
                     // Proactor APIs like IOCP on Windows, pointers of buffers have to be kept alive
                     // before IO completion.
-                    *(this.state) = ProxyClientStreamWriteState::Connecting(buffer);
+                    *(this.writer_state) = ProxyClientStreamWriteState::Connecting(buffer);
                 }
                 ProxyClientStreamWriteState::Connecting(ref buffer) => {
-                    let n = ready!(this.stream.poll_write_encrypted(cx, &buffer))?;
+                    let n = ready!(this.stream.poll_write_encrypted(cx, buffer))?;
 
                     // In general, poll_write_encrypted should perform like write_all.
                     debug_assert!(n == buffer.len());
 
-                    *(this.state) = ProxyClientStreamWriteState::Connected;
+                    *(this.writer_state) = ProxyClientStreamWriteState::Connected;
 
                     // NOTE:
                     // poll_write will return Ok(0) if buf.len() == 0
@@ -234,119 +332,5 @@ where
     #[inline]
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), io::Error>> {
         self.project().stream.poll_shutdown(cx)
-    }
-}
-
-impl<S> ProxyClientStream<S>
-where
-    S: AsyncRead + AsyncWrite + Unpin,
-{
-    /// Splits into reader and writer halves
-    pub fn into_split(self) -> (ProxyClientStreamReadHalf<S>, ProxyClientStreamWriteHalf<S>) {
-        // Cannot split if stream is still pending
-        assert!(
-            !matches!(self.state, ProxyClientStreamWriteState::Connecting(..)),
-            "stream is pending on writing the first packet"
-        );
-        let (reader, writer) = self.stream.into_split();
-        (
-            ProxyClientStreamReadHalf {
-                reader,
-                context: self.context,
-            },
-            ProxyClientStreamWriteHalf {
-                writer,
-                state: self.state,
-            },
-        )
-    }
-}
-
-/// Owned read half produced by `ProxyClientStream::into_split`
-#[pin_project]
-pub struct ProxyClientStreamReadHalf<S> {
-    #[pin]
-    reader: CryptoStreamReadHalf<S>,
-    context: SharedContext,
-}
-
-impl<S> AsyncRead for ProxyClientStreamReadHalf<S>
-where
-    S: AsyncRead + Unpin,
-{
-    #[inline]
-    fn poll_read(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        let mut this = self.project();
-        this.reader.poll_read_decrypted(cx, &this.context, buf)
-    }
-}
-
-/// Owned write half produced by `ProxyClientStream::into_split`
-#[pin_project]
-pub struct ProxyClientStreamWriteHalf<S> {
-    #[pin]
-    writer: CryptoStreamWriteHalf<S>,
-    state: ProxyClientStreamWriteState,
-}
-
-impl<S> AsyncWrite for ProxyClientStreamWriteHalf<S>
-where
-    S: AsyncWrite + Unpin,
-{
-    fn poll_write(self: Pin<&mut Self>, cx: &mut task::Context<'_>, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
-        let mut this = self.project();
-
-        loop {
-            match this.state {
-                ProxyClientStreamWriteState::Connect(ref addr) => {
-                    // Target Address should be sent with the first packet together,
-                    // which would prevent from being detected by connection features.
-
-                    let addr_length = addr.serialized_len();
-
-                    let mut buffer = BytesMut::with_capacity(addr_length + buf.len());
-                    addr.write_to_buf(&mut buffer);
-                    buffer.put_slice(buf);
-
-                    // Save the concatenated buffer before it is written successfully.
-                    // APIs require buffer to be kept alive before Poll::Ready
-                    //
-                    // Proactor APIs like IOCP on Windows, pointers of buffers have to be kept alive
-                    // before IO completion.
-                    *(this.state) = ProxyClientStreamWriteState::Connecting(buffer);
-                }
-                ProxyClientStreamWriteState::Connecting(ref buffer) => {
-                    let n = ready!(this.writer.poll_write_encrypted(cx, &buffer))?;
-
-                    // In general, poll_write_encrypted should perform like write_all.
-                    debug_assert!(n == buffer.len());
-
-                    *(this.state) = ProxyClientStreamWriteState::Connected;
-
-                    // NOTE:
-                    // poll_write will return Ok(0) if buf.len() == 0
-                    // But for the first call, this function will eventually send the handshake packet (IV/Salt + ADDR) to the remote address.
-                    //
-                    // https://github.com/shadowsocks/shadowsocks-rust/issues/232
-                    //
-                    // For protocols that requires *Server Hello* message, like FTP, clients won't send anything to the server until server sends handshake messages.
-                    // This could be achieved by calling poll_write with an empty input buffer.
-                    return Ok(buf.len()).into();
-                }
-                ProxyClientStreamWriteState::Connected => {
-                    return this.writer.poll_write_encrypted(cx, buf);
-                }
-            }
-        }
-    }
-
-    #[inline]
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.project().writer.poll_flush(cx)
-    }
-
-    #[inline]
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> Poll<Result<(), io::Error>> {
-        self.project().writer.poll_shutdown(cx)
     }
 }

@@ -15,7 +15,7 @@ use log::debug;
 use shadowsocks::{
     config::ServerType,
     context::Context,
-    crypto::v1::CipherKind,
+    crypto::CipherKind,
     net::{AcceptOpts, ConnectOpts},
     relay::{
         socks5::Address,
@@ -51,13 +51,13 @@ async fn tcp_tunnel_tfo() {
             debug!("accepted {}", peer_addr);
 
             tokio::spawn(async move {
-                let addr = Address::read_from(&mut stream).await.unwrap();
+                let addr = stream.handshake().await.unwrap();
                 let remote = match addr {
                     Address::SocketAddress(a) => TcpStream::connect(a).await.unwrap(),
                     Address::DomainNameAddress(name, port) => TcpStream::connect((name.as_str(), port)).await.unwrap(),
                 };
 
-                let (mut lr, mut lw) = stream.into_split();
+                let (mut lr, mut lw) = tokio::io::split(stream);
                 let (mut rr, mut rw) = remote.into_split();
 
                 let l2r = copy_from_encrypted(CipherKind::NONE, &mut lr, &mut rw);

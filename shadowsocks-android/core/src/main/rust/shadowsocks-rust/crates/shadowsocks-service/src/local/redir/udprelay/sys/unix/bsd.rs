@@ -9,12 +9,16 @@ use std::{
 
 use async_trait::async_trait;
 use futures::{future::poll_fn, ready};
+use shadowsocks::net::is_dual_stack_addr;
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 
 use crate::{
     config::RedirType,
-    local::redir::redir_ext::{RedirSocketOpts, UdpSocketRedirExt},
+    local::redir::{
+        redir_ext::{RedirSocketOpts, UdpSocketRedirExt},
+        sys::set_ipv6_only,
+    },
 };
 
 pub fn check_support_tproxy() -> io::Result<()> {
@@ -55,6 +59,14 @@ impl UdpRedirSocket {
         socket.set_reuse_address(true)?;
         if reuse_port {
             socket.set_reuse_port(true)?;
+        }
+
+        if is_dual_stack_addr(&addr) {
+            // Transparent socket shouldn't support dual-stack.
+
+            if let Err(err) = set_ipv6_only(&socket, true) {
+                warn!("failed to set IPV6_V6ONLY, error: {}", err);
+            }
         }
 
         socket.bind(&SockAddr::from(addr))?;
@@ -119,15 +131,17 @@ fn set_bindany(level: libc::c_int, socket: &Socket) -> io::Result<()> {
         _ => unreachable!("level can only be IPPROTO_IP or IPPROTO_IPV6"),
     };
 
-    let ret = libc::setsockopt(
-        fd,
-        level,
-        opt,
-        &enable as *const _ as *const _,
-        mem::size_of_val(&enable) as libc::socklen_t,
-    );
-    if ret != 0 {
-        return Err(Error::last_os_error());
+    unsafe {
+        let ret = libc::setsockopt(
+            fd,
+            level,
+            opt,
+            &enable as *const _ as *const _,
+            mem::size_of_val(&enable) as libc::socklen_t,
+        );
+        if ret != 0 {
+            return Err(Error::last_os_error());
+        }
     }
 
     Ok(())
@@ -140,15 +154,17 @@ fn set_bindany(_level: libc::c_int, socket: &Socket) -> io::Result<()> {
     let enable: libc::c_int = 1;
 
     // https://man.openbsd.org/getsockopt.2
-    let ret = libc::setsockopt(
-        fd,
-        libc::SOL_SOCKET,
-        libc::SO_BINDANY,
-        &enable as *const _ as *const _,
-        mem::size_of_val(&enable) as libc::socklen_t,
-    );
-    if ret != 0 {
-        return Err(Error::last_os_error());
+    unsafe {
+        let ret = libc::setsockopt(
+            fd,
+            libc::SOL_SOCKET,
+            libc::SO_BINDANY,
+            &enable as *const _ as *const _,
+            mem::size_of_val(&enable) as libc::socklen_t,
+        );
+        if ret != 0 {
+            return Err(Error::last_os_error());
+        }
     }
 
     Ok(())

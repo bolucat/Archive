@@ -2,19 +2,22 @@
 
 #[cfg(feature = "local-flow-stat")]
 use std::path::PathBuf;
-use std::{io, sync::Arc, time::Duration};
-
-use futures::{
-    future,
-    stream::{FuturesUnordered, StreamExt},
-    FutureExt,
+use std::{
+    future::Future,
+    io::{self, ErrorKind},
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::Duration,
 };
-use log::{error, trace};
+
+use futures::{future, ready};
+use log::trace;
 use shadowsocks::{
     config::Mode,
     net::{AcceptOpts, ConnectOpts},
-    plugin::{Plugin, PluginMode},
 };
+use tokio::task::JoinHandle;
 
 #[cfg(feature = "local-flow-stat")]
 use crate::net::FlowStat;
@@ -25,7 +28,7 @@ use crate::{
 
 use self::{
     context::ServiceContext,
-    loadbalancing::{PingBalancerBuilder, ServerIdent},
+    loadbalancing::{PingBalancer, PingBalancerBuilder},
 };
 
 pub mod context;
@@ -38,6 +41,8 @@ pub mod net;
 #[cfg(feature = "local-redir")]
 pub mod redir;
 pub mod socks;
+#[cfg(feature = "local-tun")]
+pub mod tun;
 #[cfg(feature = "local-tunnel")]
 pub mod tunnel;
 pub mod utils;
@@ -47,10 +52,60 @@ pub mod utils;
 /// This is borrowed from Go's `net` library's default setting
 pub(crate) const LOCAL_DEFAULT_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
+struct ServerHandle(JoinHandle<io::Result<()>>);
+
+impl Drop for ServerHandle {
+    #[inline]
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+impl Future for ServerHandle {
+    type Output = io::Result<()>;
+
+    #[inline]
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match ready!(Pin::new(&mut self.0).poll(cx)) {
+            Ok(res) => res.into(),
+            Err(err) => Err(io::Error::new(ErrorKind::Other, err)).into(),
+        }
+    }
+}
+
+/// Local Server instance
+pub struct Server {
+    vfut: Vec<ServerHandle>,
+    balancer: PingBalancer,
+}
+
+impl Server {
+    /// Create a shadowsocks local server
+    pub async fn create(config: Config) -> io::Result<Server> {
+        create(config).await
+    }
+
+    /// Run local server
+    #[deprecated]
+    pub async fn run(self) -> io::Result<()> {
+        self.wait_until_exit().await
+    }
+
+    /// Wait until any of the servers were exited
+    pub async fn wait_until_exit(self) -> io::Result<()> {
+        let (res, ..) = future::select_all(self.vfut).await;
+        res
+    }
+
+    /// Get the internal server balancer
+    pub fn server_balancer(&self) -> &PingBalancer {
+        &self.balancer
+    }
+}
+
 /// Starts a shadowsocks local server
-pub async fn run(mut config: Config) -> io::Result<()> {
+pub async fn create(config: Config) -> io::Result<Server> {
     assert!(config.config_type == ConfigType::Local && !config.local.is_empty());
-    assert!(!config.server.is_empty());
 
     trace!("{:?}", config);
 
@@ -80,8 +135,8 @@ pub async fn run(mut config: Config) -> io::Result<()> {
         #[cfg(target_os = "android")]
         vpn_protect_path: config.outbound_vpn_protect_path,
 
-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios"))]
         bind_interface: config.outbound_bind_interface,
+        bind_local_addr: config.outbound_bind_addr,
 
         ..Default::default()
     };
@@ -92,92 +147,38 @@ pub async fn run(mut config: Config) -> io::Result<()> {
     connect_opts.tcp.keepalive = config.keep_alive.or(Some(LOCAL_DEFAULT_KEEPALIVE_TIMEOUT));
     context.set_connect_opts(connect_opts);
 
-    let mut accept_opts = AcceptOpts::default();
+    let mut accept_opts = AcceptOpts {
+        ipv6_only: config.ipv6_only,
+        ..Default::default()
+    };
     accept_opts.tcp.send_buffer_size = config.inbound_send_buffer_size;
     accept_opts.tcp.recv_buffer_size = config.inbound_recv_buffer_size;
     accept_opts.tcp.nodelay = config.no_delay;
     accept_opts.tcp.fastopen = config.fast_open;
     accept_opts.tcp.keepalive = config.keep_alive.or(Some(LOCAL_DEFAULT_KEEPALIVE_TIMEOUT));
+    context.set_accept_opts(accept_opts);
 
     if let Some(resolver) = build_dns_resolver(config.dns, config.ipv6_first, context.connect_opts_ref()).await {
         context.set_dns_resolver(Arc::new(resolver));
+    }
+
+    if config.ipv6_first {
+        context.set_ipv6_first(config.ipv6_first);
     }
 
     if let Some(acl) = config.acl {
         context.set_acl(acl);
     }
 
+    context.set_security_config(&config.security);
+
     assert!(!config.local.is_empty(), "no valid local server configuration");
 
     let context = Arc::new(context);
 
-    let vfut = FuturesUnordered::new();
-
-    // Check if any of the local servers enable TCP connections
-
-    let enable_tcp = config.local.iter().any(|local_config| match local_config.protocol {
-        ProtocolType::Socks => local_config.mode.enable_tcp(),
-        #[cfg(feature = "local-tunnel")]
-        ProtocolType::Tunnel => local_config.mode.enable_tcp(),
-        #[cfg(feature = "local-http")]
-        ProtocolType::Http => true,
-        #[cfg(feature = "local-redir")]
-        ProtocolType::Redir => local_config.mode.enable_tcp(),
-        #[cfg(feature = "local-dns")]
-        ProtocolType::Dns => local_config.mode.enable_tcp(),
-    });
-
-    if enable_tcp {
-        // Start plugins for TCP proxies
-
-        let mut plugins = Vec::with_capacity(config.server.len());
-
-        for server in &mut config.server {
-            if let Some(c) = server.plugin() {
-                let plugin = Plugin::start(c, server.addr(), PluginMode::Client)?;
-                server.set_plugin_addr(plugin.local_addr().into());
-                plugins.push(plugin);
-            }
-        }
-
-        // Load balancer will check all servers' score before server's actual start.
-        // So we have to ensure all plugins have been started before that.
-        if config.server.len() > 1 && !plugins.is_empty() {
-            let mut check_fut = Vec::with_capacity(plugins.len());
-
-            for plugin in &plugins {
-                // 3 seconds is not a carefully selected value
-                // I choose that because any values bigger will make me fell too long.
-                check_fut.push(plugin.wait_started(Duration::from_secs(3)));
-            }
-
-            // Run all of them simutaneously
-            let _ = future::join_all(check_fut).await;
-        }
-
-        // Join all of them
-        for plugin in plugins {
-            vfut.push(
-                async move {
-                    match plugin.join().await {
-                        Ok(status) => {
-                            error!("plugin exited with status: {}", status);
-                            Ok(())
-                        }
-                        Err(err) => {
-                            error!("plugin exited with error: {}", err);
-                            Err(err)
-                        }
-                    }
-                }
-                .boxed(),
-            );
-        }
-    }
+    let mut vfut = Vec::new();
 
     // Create a service balancer for choosing between multiple servers
-    //
-    // XXX: This have to be called after allocating plugins' addresses
     let balancer = {
         let mut mode = Mode::TcpOnly;
 
@@ -186,10 +187,25 @@ pub async fn run(mut config: Config) -> io::Result<()> {
         }
 
         let mut balancer_builder = PingBalancerBuilder::new(context.clone(), mode);
-        for server in config.server {
-            balancer_builder.add_server(ServerIdent::new(server));
+
+        // max_server_rtt have to be set before add_server
+        if let Some(rtt) = config.balancer.max_server_rtt {
+            balancer_builder.max_server_rtt(rtt);
         }
-        balancer_builder.build().await
+
+        if let Some(intv) = config.balancer.check_interval {
+            balancer_builder.check_interval(intv);
+        }
+
+        if let Some(intv) = config.balancer.check_best_interval {
+            balancer_builder.check_best_interval(intv);
+        }
+
+        for server in config.server {
+            balancer_builder.add_server(server);
+        }
+
+        balancer_builder.build().await?
     };
 
     #[cfg(feature = "local-flow-stat")]
@@ -197,19 +213,24 @@ pub async fn run(mut config: Config) -> io::Result<()> {
         // For Android's flow statistic
 
         let report_fut = flow_report_task(stat_path, context.flow_stat());
-        vfut.push(report_fut.boxed());
+        vfut.push(ServerHandle(tokio::spawn(report_fut)));
     }
 
     for local_config in config.local {
         let balancer = balancer.clone();
-        let client_addr = local_config.addr;
 
         match local_config.protocol {
             ProtocolType::Socks => {
                 use self::socks::Socks;
 
+                let client_addr = match local_config.addr {
+                    Some(a) => a,
+                    None => return Err(io::Error::new(ErrorKind::Other, "socks requires local address")),
+                };
+
                 let mut server = Socks::with_context(context.clone());
                 server.set_mode(local_config.mode);
+                server.set_socks5_auth(local_config.socks5_auth);
 
                 if let Some(c) = config.udp_max_associations {
                     server.set_udp_capacity(c);
@@ -221,11 +242,18 @@ pub async fn run(mut config: Config) -> io::Result<()> {
                     server.set_udp_bind_addr(b.clone());
                 }
 
-                vfut.push(async move { server.run(&client_addr, balancer).await }.boxed());
+                vfut.push(ServerHandle(tokio::spawn(async move {
+                    server.run(&client_addr, balancer).await
+                })));
             }
             #[cfg(feature = "local-tunnel")]
             ProtocolType::Tunnel => {
                 use self::tunnel::Tunnel;
+
+                let client_addr = match local_config.addr {
+                    Some(a) => a,
+                    None => return Err(io::Error::new(ErrorKind::Other, "tunnel requires local address")),
+                };
 
                 let forward_addr = local_config.forward_addr.expect("tunnel requires forward address");
 
@@ -240,18 +268,32 @@ pub async fn run(mut config: Config) -> io::Result<()> {
                 server.set_mode(local_config.mode);
 
                 let udp_addr = local_config.udp_addr.unwrap_or_else(|| client_addr.clone());
-                vfut.push(async move { server.run(&client_addr, &udp_addr, balancer).await }.boxed());
+                vfut.push(ServerHandle(tokio::spawn(async move {
+                    server.run(&client_addr, &udp_addr, balancer).await
+                })));
             }
             #[cfg(feature = "local-http")]
             ProtocolType::Http => {
                 use self::http::Http;
 
+                let client_addr = match local_config.addr {
+                    Some(a) => a,
+                    None => return Err(io::Error::new(ErrorKind::Other, "http requires local address")),
+                };
+
                 let server = Http::with_context(context.clone());
-                vfut.push(async move { server.run(&client_addr, balancer).await }.boxed());
+                vfut.push(ServerHandle(tokio::spawn(async move {
+                    server.run(&client_addr, balancer).await
+                })));
             }
             #[cfg(feature = "local-redir")]
             ProtocolType::Redir => {
                 use self::redir::Redir;
+
+                let client_addr = match local_config.addr {
+                    Some(a) => a,
+                    None => return Err(io::Error::new(ErrorKind::Other, "redir requires local address")),
+                };
 
                 let mut server = Redir::with_context(context.clone());
                 if let Some(c) = config.udp_max_associations {
@@ -265,11 +307,18 @@ pub async fn run(mut config: Config) -> io::Result<()> {
                 server.set_udp_redir(local_config.udp_redir);
 
                 let udp_addr = local_config.udp_addr.unwrap_or_else(|| client_addr.clone());
-                vfut.push(async move { server.run(&client_addr, &udp_addr, balancer).await }.boxed());
+                vfut.push(ServerHandle(tokio::spawn(async move {
+                    server.run(&client_addr, &udp_addr, balancer).await
+                })));
             }
             #[cfg(feature = "local-dns")]
             ProtocolType::Dns => {
                 use self::dns::Dns;
+
+                let client_addr = match local_config.addr {
+                    Some(a) => a,
+                    None => return Err(io::Error::new(ErrorKind::Other, "dns requires local address")),
+                };
 
                 let mut server = {
                     let local_addr = local_config.local_dns_addr.expect("missing local_dns_addr");
@@ -279,14 +328,89 @@ pub async fn run(mut config: Config) -> io::Result<()> {
                 };
                 server.set_mode(local_config.mode);
 
-                vfut.push(async move { server.run(&client_addr, balancer).await }.boxed());
+                vfut.push(ServerHandle(tokio::spawn(async move {
+                    server.run(&client_addr, balancer).await
+                })));
+            }
+            #[cfg(feature = "local-tun")]
+            ProtocolType::Tun => {
+                use log::info;
+                use shadowsocks::net::UnixListener;
+
+                use self::tun::TunBuilder;
+
+                let mut builder = TunBuilder::new(context.clone(), balancer);
+                if let Some(address) = local_config.tun_interface_address {
+                    builder = builder.address(address);
+                }
+                if let Some(name) = local_config.tun_interface_name {
+                    builder = builder.name(&name);
+                }
+                if let Some(c) = config.udp_max_associations {
+                    builder = builder.udp_capacity(c);
+                }
+                if let Some(d) = config.udp_timeout {
+                    builder = builder.udp_expiry_duration(d);
+                }
+                builder = builder.mode(local_config.mode);
+                #[cfg(unix)]
+                if let Some(fd) = local_config.tun_device_fd {
+                    builder = builder.file_descriptor(fd);
+                } else if let Some(ref fd_path) = local_config.tun_device_fd_from_path {
+                    use std::fs;
+
+                    let _ = fs::remove_file(fd_path);
+
+                    let listener = match UnixListener::bind(fd_path) {
+                        Ok(l) => l,
+                        Err(err) => {
+                            log::error!("failed to bind uds path \"{}\", error: {}", fd_path.display(), err);
+                            return Err(err);
+                        }
+                    };
+
+                    info!("waiting tun's file descriptor from {}", fd_path.display());
+
+                    loop {
+                        let (mut stream, peer_addr) = listener.accept().await?;
+                        trace!("accepted {:?} for receiving tun file descriptor", peer_addr);
+
+                        let mut buffer = [0u8; 1024];
+                        let mut fd_buffer = [0];
+
+                        match stream.recv_with_fd(&mut buffer, &mut fd_buffer).await {
+                            Ok((n, fd_size)) => {
+                                if fd_size == 0 {
+                                    log::error!(
+                                        "client {:?} didn't send file descriptors with buffer.size {} bytes",
+                                        peer_addr,
+                                        n
+                                    );
+                                    continue;
+                                }
+
+                                info!("got file descriptor {} for tun from {:?}", fd_buffer[0], peer_addr);
+
+                                builder = builder.file_descriptor(fd_buffer[0]);
+                                break;
+                            }
+                            Err(err) => {
+                                log::error!(
+                                    "failed to receive file descriptors from {:?}, error: {}",
+                                    peer_addr,
+                                    err
+                                );
+                            }
+                        }
+                    }
+                }
+                let server = builder.build().await?;
+                vfut.push(ServerHandle(tokio::spawn(async move { server.run().await })));
             }
         }
     }
 
-    // let (res, ..) = future::select_all(vfut).await;
-    let (res, _) = vfut.into_future().await;
-    res.unwrap()
+    Ok(Server { vfut, balancer })
 }
 
 #[cfg(feature = "local-flow-stat")]
@@ -330,4 +454,9 @@ async fn flow_report_task(stat_path: PathBuf, flow_stat: Arc<FlowStat>) -> io::R
             }
         }
     }
+}
+
+/// Create then run a Local Server
+pub async fn run(config: Config) -> io::Result<()> {
+    create(config).await?.wait_until_exit().await
 }

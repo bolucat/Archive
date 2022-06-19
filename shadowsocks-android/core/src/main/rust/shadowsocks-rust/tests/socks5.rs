@@ -17,7 +17,7 @@ use shadowsocks_service::{
     run_server,
     shadowsocks::{
         config::{Mode, ServerAddr, ServerConfig},
-        crypto::v1::CipherKind,
+        crypto::CipherKind,
         relay::socks5::Address,
     },
 };
@@ -47,7 +47,10 @@ impl Socks5TestServer {
             },
             cli_config: {
                 let mut cfg = Config::new(ConfigType::Local);
-                cfg.local = vec![LocalConfig::new(ServerAddr::from(local_addr), ProtocolType::Socks)];
+                cfg.local = vec![LocalConfig::new_with_addr(
+                    ServerAddr::from(local_addr),
+                    ProtocolType::Socks,
+                )];
                 cfg.local[0].mode = if enable_udp { Mode::TcpAndUdp } else { Mode::TcpOnly };
                 cfg.server = vec![ServerConfig::new(svr_addr, pwd.to_owned(), method)];
                 cfg

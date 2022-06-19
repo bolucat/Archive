@@ -1,3 +1,200 @@
+shadowsocks-rust (1.14.3) unstable; urgency=medium
+
+  ## Features
+
+  - Automatically bump `RLIMIT_NOFILE` on Unix (except Android)
+    - https://github.com/golang/go/issues/46279
+    - http://0pointer.net/blog/file-descriptor-limits.html
+
+shadowsocks-rust (1.14.2) unstable; urgency=medium
+
+  ## Features
+
+  - #788 `sslocal` SOCKS5 protocol supports RFC1929 Username/Password Authentication
+    - SECURITY: This is insecured because (a) shadowsocks' SOCKS5 UDP Association doesn't require a dynamic port for each authorized clients (b) Username and passwords are sent in plain text.
+  - RustCrypto/ring-compat#79 HKDF-SHA1 uses [ring](https://crates.io/crates/ring)'s assembly implementation
+
+shadowsocks-rust (1.14.1) unstable; urgency=medium
+
+  ## Miscellaneous
+
+  - `shadowsocks`, `shadowsocks-service` crates upgraded to Rust Edition 2021.
+
+shadowsocks-rust (1.14.0) unstable; urgency=medium
+
+  ## Features
+
+  - Optimization: UDP associations managment removes unnecessary locks
+
+  ## Breaking Changes
+
+  - `shadowsocks_service::local::net::udp::UdpAssociationManager::new` returns clean-up interval and keep-alive receiver. It is not recommended to use this directly in your Project, because the API may change occationally.
+
+shadowsocks-rust (1.13.5) unstable; urgency=medium
+
+  ## Features
+
+  - #773 Set environment variable `SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN` to use system's builtin DNS resolver
+
+shadowsocks-rust (1.13.4) unstable; urgency=medium
+
+  ## Features
+
+  - Allow setting `"system"` in DNS configuration key `"dns"` to use system provided DNS API
+
+  ## BUG Fixes
+
+  - `ssservice` - fixed command line options when running it as symlink of `ssserver` and `ssmanager`
+
+shadowsocks-rust (1.13.3) unstable; urgency=medium
+
+  ## BUG Fixes
+
+  - #767 REGRESSION: `ssmanager` missing `--server-host` command line option since v1.13.0
+  - shadowsocks/shadowsocks-crypto#12 REGRESSION: `rc4-md5` method cipher IV length should be 16
+
+shadowsocks-rust (1.13.2) unstable; urgency=medium
+
+  ## Features
+
+  - (EXPERIMENTAL) Support setting `SO_USER_COOKIE` on FreeBSD
+    - Set cookie with `--outbound-user-cookie` command line option, working just like `--outbound-fwmark` on Linux
+  - (EXPERIMENTAL) Local `tun` interface refactored the `VirtDevice::poll` strategy
+    - Improve performance
+    - Still slow comparing to system's network stack
+
+  ## BUG Fixes
+
+  - #765 Updated broken Wiki URL for Plugins in command line help message
+  - #764 Regression of client blocking ACL strategy on `ssserver`
+    - Introduced since v1.9.0
+
+shadowsocks-rust (1.13.1) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - `Instant` subtraction may be overflowed in `PingBalancer`
+    - When `sslocal` has set multiple remote servers and the host system just reboots, it will crash.
+
+shadowsocks-rust (1.13.0) unstable; urgency=medium
+
+  ## Features
+
+  - #706 `balancer.check_best_interval` could let ping balancer to ping only the choosen best server in this interval
+    - Recommended: Set a shorter interval in `balancer.check_best_interval` than `balancer.check_interval` to check much frequently the best server.
+    - `balancer.check_interval` controls the interval of checking all the available servers
+    - When server start, the "check best" strategy starts after it receives enough data for estimating all servers' scores
+  - #744 Refactored `local-tun`, using `smoltcp` as a user-space network stack
+
+  ## Miscelleneous
+
+  - Upgrade [`clap`](https://crates.io/crates/clap) (the command-line argument handling library) to v3.0
+  - #739 Support K8S deployment
+  - [shadowsocks-crypto](https://github.com/shadowsocks/shadowsocks-crypto) switch underlying encryption library to [RustCrypto](https://github.com/RustCrypto)
+    - Able to build with stable Rust
+    - Build for target `aarch64` with nightly, features `"armv8 neon"` should be enabled for hardware acceleration.
+
+shadowsocks-rust (1.12.5) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - #725 High CPU consumption on Linux Kernel < 4.11 when TCP Fast Open is enabled.
+
+ -- ty <zonyitoo@gmail.com>  Fri, 17 Dec 2021 00:13:26 +0800
+  
+shadowsocks-rust (1.12.4) unstable; urgency=medium
+
+  ## Features
+
+  - Configuration
+    - `ipv6_only` configuration option setting `IPV6_V6ONLY` to all listener sockets that are listening to dual-stack address (`::`)
+    - #700 Default configuration search path also includes `$PWD`
+    - Log and Runtime related options could be configured via configuration file
+  - #698 New binary `ssservice` unified features in (`sslocal`, `ssserver` and `ssmanager`)
+
+  ## Bug Fixes
+
+  - #694 UDP binds to dual-stack address (`::`) will detect `0.0.0.0` already in use automatically
+  - Transparent Proxy (redir) local client will always set `IPV6_V6ONLY` for listeners that are listening on `::`
+
+  ## Miscelleneous
+
+  - Deprecating `SS_LOG_VERBOSE_LEVEL` and `SS_LOG_WITHOUT_TIME` (introduced in [v1.12.3](https://github.com/shadowsocks/shadowsocks-rust/releases/tag/v1.12.3)) in flavor of configuring in the configuration file
+
+ -- ty <zonyitoo@gmail.com>  Sun, 28 Nov 2021 15:01:54 +0800
+
+shadowsocks-rust (1.12.3) unstable; urgency=medium
+
+  ## Features
+
+  - #688 Support default configuration file path for `sslocal`, `ssserver` and `ssmanager`
+    - Linux: `$XDG_CONFIG_PATH/shadowsocks-rust/config.json` or `$HOME/.config/shadowsocks-rust/config.json`
+    - Windows: `{FOLDERID_RoamingAppData}\shadowsocks\shadowsocks-rust\config\config.json`
+    - macOS: `$HOME/Library/Application Support/org.shadowsocks.shadowsocks-rust/config.json`
+  - #691 Manipulating default logging options (command line options `-vvv` and `--log-without-time`) with environment variable `SS_LOG_VERBOSE_LEVEL` and `SS_LOG_WITHOUT_TIME`
+  - #419 Read servers' password from environment variables
+    - Server created from command line argument without `--password` will try to read it from TTY
+    - Servers' `"password"` field or `--password` option support `${VAR_NAME}` format to read password from environment variable `VAR_NAME`
+
+ -- ty <zonyitoo@gmail.com>  Fri, 26 Nov 2021 00:12:13 +0800
+
+shadowsocks-rust (1.12.2) unstable; urgency=medium
+
+  ## BUG Fixes
+
+  - #683 local-dns command line `--remote-dns-addr` will have default port `53`
+
+  ## Miscellaneous
+
+  - Removed direct dependency to [`mio`](https://crates.io/crates/mio), sending file descriptors through UDS now with [`sendfd`](https://crates.io/crates/sendfd).
+
+ -- ty <zonyitoo@gmail.com>  Tue, 16 Nov 00:11:44 2021 +0800
+
+shadowsocks-rust (1.12.1) unstable; urgency=medium
+
+  ## Features
+
+    - #669 ACL regular expression rules will try to convert to `||` (sub-domains) and `|` (exact match) rules.
+
+  ## Bug Fixes
+
+    - #674 MIPS targets in pre-built releases binaries will be compressed by `upx`
+    - #670 Servers created by command line options in `ssserver` will have mode `tcp_only`
+
+ -- ty <zonyitoo@gmail.com>  Tue, 9 Nov 2021 23:27:48 +0800
+
+shadowsocks-rust (1.12.0) unstable; urgency=medium
+
+  ## Features
+
+  - TCP connects with Happy Eyeballs (RFC6555, RFC8305) strategy
+  - Local 
+    - #586 Basic support of `tun` interface in `sslocal` (Experimental) Tested on macOS and Linux
+    - #620 Local server will choose remote servers based on their `"mode"`
+    - Local Balancer
+      - Configurable `max_server_rtt` and `check_interval`
+      - Reload configuration `"servers"` in runtime when receiving `SIGUSR1` signal
+  - Manager
+    - #421 `ssmanager` support `--plugin` and `--plugin-opts` as default plugin configurations
+    - #648 `ssmanager` support starting `ssserver` in standalone (independent process) mode.
+  - #627 ACL support `|` and `||` hash-set and domain-tree mode
+  - Support `--outbound-bind-interface` on Windows.
+
+  ## Bug Fixed
+
+  - #579 UDP server reply target address should be received source address
+  - TFO socket on Windows should bind to `SOCKADDR_IN6` for IPv6 targets
+  - #640 `--daemonize` will set `chdir` to current working directory
+    - [BREAKING] In the previous version `--daemonize` will call `chdir` to `/` by default, so it may change the behavior if users using relative paths in `"plugin"` or `"plugin_opts"`
+
+  ## Miscellaneous
+
+  - #596 Support Snapcraft https://snapcraft.io/shadowsocks-rust
+  - TFO on Linux queue length set to 1024 to match backlogs
+  - Completely remove Replay Attack Protection with Ping-Pong bloom filter in default build configuration
+
+ -- ty <zonyitoo@gmail.com>  Tue, 2 Nov 2021 12:52:17 +0800
+
 shadowsocks-rust (1.11.2) unstable; urgency=medium
 
   ## Features
@@ -16,7 +213,7 @@ shadowsocks-rust (1.11.2) unstable; urgency=medium
 
   ## Security
 
-  - #556 Remove slient dropping when replay was detected
+  - #556 Remove silent dropping when replay was detected
 
  -- ty <zonyitoo@gmail.com>  Sat, 24 July 2021 11:50:00 +0800
 
@@ -345,7 +542,7 @@ shadowsocks-rust (1.8.17) unstable; urgency=medium
 
   ## BUG Fixed
 
-  * [#292](https://github.com/shadowsocks/shadowsocks-rust/pull/292) Hold the TCP connection if it failed to decrypt the first packet for preventing activing probing.
+  * [#292](https://github.com/shadowsocks/shadowsocks-rust/pull/292) Hold the TCP connection if it failed to decrypt the first packet for preventing active probing.
   * [#293](https://github.com/shadowsocks/shadowsocks-rust/pull/293) Keep server running if it fails to create UDP associations.
 
  -- ty <zonyitoo@gmail.com>  Tue, 8 Sep 2020 23:31:20 +0800
@@ -410,7 +607,7 @@ shadowsocks-rust (1.8.12) unstable; urgency=medium
   * [#233](https://github.com/shadowsocks/shadowsocks-rust/issues/233) sslocal supports socks4 protocol (SOCKS4/4a)
   * Options for LRU cache in UDP relay:
       * udp_timeout: UDP Association will be kept up to this duration (in seconds)
-      * udp_max_associations: Maximum number of UDP Associations will be kept simutanously
+      * udp_max_associations: Maximum number of UDP Associations will be kept simultaneously
 
   ## BUG Fixed
 
@@ -432,7 +629,7 @@ shadowsocks-rust (1.8.11) unstable; urgency=medium
 
   * [#232](https://github.com/shadowsocks/shadowsocks-rust/issues/232) Send data along with handshake (LOCAL -> REMOTE)
   * HTTP server supports https target with both native-tls and rustls
-      * For rustls, https connections will try to negociate h2 with ALPN
+      * For rustls, https connections will try to negotiate h2 with ALPN
   * shadowsocks/shadowsocks-org#161 Support none as dummy cipher's name
   * Adding local-tunnel feature for controlling tunnel protocol
   * [#252](https://github.com/shadowsocks/shadowsocks-rust/issues/252) Support udp_max_associations configuration option
@@ -524,7 +721,7 @@ shadowsocks-rust (1.8.8) unstable; urgency=medium
       * Eliminated those connection failures while sslocal server just started
   * [#191](https://github.com/shadowsocks/shadowsocks-rust/issues/191) Skip IV/nonce duplication check for plain cipher
 
-  ## Miscelleous
+  ## Miscellaneous
 
   * Nightly builds on CircleCI: https://circleci.com/gh/shadowsocks/shadowsocks-rust
       * Obtain release binaries in #Artifacts, for example:
@@ -626,7 +823,7 @@ shadowsocks-rust (1.8.0) unstable; urgency=medium
       * `trust-dns-resolver` - `v0.18`
       * `libsodium-sys` (switched from `libsodium-ffi` for better build process)
   * Ping balancer
-      * Calculate scores not only with servers' latency, but also availablity
+      * Calculate scores not only with servers' latency, but also availability
       * Supports UDP relay
   * Retry 3 times if it connects failed to remote proxy server automatically
 
