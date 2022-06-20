@@ -1,4 +1,3 @@
-
 import Alamofire
 import AppKit
 import Foundation
@@ -34,11 +33,13 @@ class ClashResourceManager {
             let versionChange = AppVersionUtil.hasVersionChanged || AppVersionUtil.isFirstLaunch
             let customMMDBSet = !Settings.mmdbDownloadUrl.isEmpty
             if !vaild || (versionChange && customMMDBSet) {
+                Logger.log("removing new mmdb file")
                 try? fileManage.removeItem(atPath: destMMDBPath)
             }
         }
 
         if !fileManage.fileExists(atPath: destMMDBPath) {
+            Logger.log("installing new mmdb file")
             if let mmdbUrl = Bundle.main.url(forResource: "Country.mmdb", withExtension: "gz") {
                 do {
                     let data = try Data(contentsOf: mmdbUrl).gunzipped()
@@ -69,7 +70,7 @@ extension ClashResourceManager {
 
     @objc private static func updateGeoIP() {
         guard let url = showCustomAlert() else { return }
-        AF.download(url, to:  { (_, _) in
+        AF.download(url, to: { (_, _) in
             let path = kConfigFolderPath.appending("/Country.mmdb")
             return (URL(fileURLWithPath: path), .removePreviousFile)
         }).response { res in
@@ -92,7 +93,7 @@ extension ClashResourceManager {
             alert.runModal()
         }
     }
-    
+
     private static func showCustomAlert() -> String? {
         let alert = NSAlert()
         alert.messageText = NSLocalizedString("Custom your GEOIP MMDB download address.", comment: "")

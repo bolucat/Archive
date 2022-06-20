@@ -30,7 +30,7 @@ class PrivilegedHelperManager {
 
     func checkInstall() {
         Logger.log("checkInstall", level: .debug)
-        
+
         getHelperStatus { [weak self] installed in
             guard let self = self else {return}
             if !installed {
@@ -112,47 +112,30 @@ class PrivilegedHelperManager {
         return .success
     }
 
-    private func helperConnection() -> NSXPCConnection? {
-        // Check that the connection is valid before trying to do an inter process call to helper
-        if connection == nil {
-            connection = NSXPCConnection(machServiceName: PrivilegedHelperManager.machServiceName, options: NSXPCConnection.Options.privileged)
-            connection?.remoteObjectInterface = NSXPCInterface(with: ProxyConfigRemoteProcessProtocol.self)
-            connection?.invalidationHandler = {
-                [weak self] in
-                guard let self = self else { return }
-                self.connection?.invalidationHandler = nil
-                OperationQueue.main.addOperation {
-                    self.connection = nil
-                    self._helper = nil
-                    Logger.log("XPC Connection Invalidated")
-                }
-            }
-            connection?.resume()
+    func helper(failture: (() -> Void)? = nil) -> ProxyConfigRemoteProcessProtocol? {
+        connection = NSXPCConnection(machServiceName: PrivilegedHelperManager.machServiceName, options: NSXPCConnection.Options.privileged)
+        connection?.remoteObjectInterface = NSXPCInterface(with: ProxyConfigRemoteProcessProtocol.self)
+        connection?.invalidationHandler = {
+            Logger.log("XPC Connection Invalidated")
         }
-        return connection
+        connection?.resume()
+        guard let helper = connection?.remoteObjectProxyWithErrorHandler({ error in
+            Logger.log("Helper connection was closed with error: \(error)")
+            failture?()
+        }) as? ProxyConfigRemoteProcessProtocol else { return nil }
+        return helper
     }
 
-    func helper(failture: (() -> Void)? = nil) -> ProxyConfigRemoteProcessProtocol? {
-        if _helper == nil {
-            guard let newHelper = helperConnection()?.remoteObjectProxyWithErrorHandler({ error in
-                Logger.log("Helper connection was closed with error: \(error)")
-                failture?()
-            }) as? ProxyConfigRemoteProcessProtocol else { return nil }
-            _helper = newHelper
-        }
-        return _helper
-    }
     var timer: Timer?
-    private func getHelperStatus(callback:@escaping ((Bool)->Void)) {
-        
+    private func getHelperStatus(callback:@escaping ((Bool) -> Void)) {
         var called = false
-        let reply:((Bool)->Void) = {
+        let reply: ((Bool) -> Void) = {
             installed in
             if called {return}
             called = true
             callback(installed)
         }
-        
+
         let helperURL = Bundle.main.bundleURL.appendingPathComponent("Contents/Library/LaunchServices/" + PrivilegedHelperManager.machServiceName)
         guard
             let helperBundleInfo = CFBundleCopyInfoDictionaryForURL(helperURL as CFURL) as? [String: Any],
@@ -168,12 +151,12 @@ class PrivilegedHelperManager {
         }
         let timeout: TimeInterval = helperFileExists ? 15 : 5
         let time = Date()
-        
+
         timer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
             Logger.log("check helper timeout time: \(timeout)")
             reply(false)
         }
-        
+
         helper()?.getVersion { [weak timer] installedHelperVersion in
             timer?.invalidate()
             timer = nil
@@ -240,7 +223,7 @@ extension PrivilegedHelperManager {
     }
 }
 
-fileprivate struct AppAuthorizationRights {
+private struct AppAuthorizationRights {
     static let rightName: NSString = "\(PrivilegedHelperManager.machServiceName).config" as NSString
     static let rightDefaultRule: Dictionary = adminRightsRule
     static let rightDescription: CFString = "ProxyConfigHelper wants to configure your proxy setting'" as CFString
@@ -250,7 +233,7 @@ fileprivate struct AppAuthorizationRights {
                                                  "version": 1]
 }
 
-fileprivate enum DaemonInstallResult {
+private enum DaemonInstallResult {
     case success
     case authorizationFail
     case getAdminFail
