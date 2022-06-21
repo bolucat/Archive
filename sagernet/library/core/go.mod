@@ -23,7 +23,7 @@ replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20220402114650-76
 
 //replace github.com/v2fly/v2ray-core/v5 => ../v2ray-core
 
-replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.11-0.20220619142135-ced910eb4f87
+replace github.com/v2fly/v2ray-core/v5 => github.com/sagernet/v2ray-core/v5 v5.0.11-0.20220621031931-a88b7677afe1
 
 //replace github.com/sagernet/sing => ../sing
 
@@ -54,7 +54,7 @@ require (
 	github.com/pires/go-proxyproto v0.6.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/riobard/go-bloom v0.0.0-20200614022211-cdc8013cb5b3 // indirect
-	github.com/sagernet/sing v0.0.0-20220619130320-8793fe5e067d // indirect
+	github.com/sagernet/sing v0.0.0-20220620074945-99754098d119 // indirect
 	github.com/sagernet/sing-shadowsocks v0.0.0-20220619134218-830a2f478eb1 // indirect
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb // indirect
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08 // indirect
@@ -63,7 +63,7 @@ require (
 	github.com/xtls/go v0.0.0-20210920065950-d4af136d3672 // indirect
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd // indirect
 	go4.org/intern v0.0.0-20220301175310-a089fc204883 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
+	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
 	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/text v0.3.7 // indirect
@@ -75,6 +75,6 @@ require (
 	google.golang.org/grpc v1.47.0 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6 // indirect
+	inet.af/netaddr v0.0.0-20220617031823-097006376321 // indirect
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
