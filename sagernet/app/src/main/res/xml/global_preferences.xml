@@ -8,11 +8,11 @@
             app:key="isAutoConnect"
             app:summary="@string/auto_connect_summary"
             app:title="@string/auto_connect" />
-        <SwitchPreference
+        <!--<SwitchPreference
             app:icon="@drawable/ic_action_lock"
             app:key="directBootAware"
             app:summary="@string/direct_boot_aware_summary"
-            app:title="@string/direct_boot_aware" />
+            app:title="@string/direct_boot_aware" />-->
         <SwitchPreference
             app:icon="@drawable/baseline_developer_board_24"
             app:key="acquireWakeLock"
@@ -199,6 +199,7 @@
             app:title="@string/remote_dns"
             app:useSimpleSummaryProvider="true" />
         <SwitchPreference
+            app:defaultValue="true"
             app:icon="@drawable/ic_baseline_home_24"
             app:key="useLocalDnsAsDirectDns"
             app:title="@string/use_local_dns_as_direct_dns" />
