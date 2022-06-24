@@ -633,6 +633,9 @@ namespace v2rayN.Forms
                     case Keys.F:
                         menuServerFilter_Click(null, null);
                         break;
+                    case Keys.E:
+                        menuSortServerResult_Click(null, null);
+                        break;
                 }
             }
             else
@@ -773,6 +776,10 @@ namespace v2rayN.Forms
             if (GetLvSelectedIndex() < 0) return;
             ClearTestResult();
             SpeedtestHandler statistics = new SpeedtestHandler(config, v2rayHandler, lstSelecteds, actionType, UpdateSpeedtestHandler);
+        }
+        private void menuSortServerResult_Click(object sender, EventArgs e)
+        {
+            lvServers_ColumnClick(null, new ColumnClickEventArgs((int)EServerColName.testResult));
         }
 
         private void tsbTestMe_Click(object sender, EventArgs e)
@@ -1325,6 +1332,16 @@ namespace v2rayN.Forms
         private void tsbCheckUpdateXrayCore_Click(object sender, EventArgs e)
         {
             CheckUpdateCore(ECoreType.Xray);
+        }
+
+        private void tsbCheckUpdateClashCore_Click(object sender, EventArgs e)
+        {
+            CheckUpdateCore(ECoreType.clash);
+        }
+
+        private void tsbCheckUpdateClashMetaCore_Click(object sender, EventArgs e)
+        {
+            CheckUpdateCore(ECoreType.clash_meta);
         }
 
         private void CheckUpdateCore(ECoreType type)

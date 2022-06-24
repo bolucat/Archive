@@ -68,7 +68,7 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::{crypto_io::StreamType, proxy_stream::protocol::v2::SERVER_STREAM_TIMESTAMP_MAX_DIFF};
 use crate::{
-    config::ServerUserManager,
+    config::{method_support_eih, ServerUserManager},
     context::Context,
     crypto::{v2::tcp::TcpCipher, CipherKind},
 };
@@ -79,14 +79,6 @@ fn get_now_timestamp() -> u64 {
         Ok(n) => n.as_secs(),
         Err(_) => panic!("SystemTime::now() is before UNIX Epoch!"),
     }
-}
-
-#[inline]
-fn method_support_eih(method: CipherKind) -> bool {
-    matches!(
-        method,
-        CipherKind::AEAD2022_BLAKE3_AES_128_GCM | CipherKind::AEAD2022_BLAKE3_AES_256_GCM
-    )
 }
 
 /// AEAD packet payload must be smaller than 0xFFFF (u16::MAX)
@@ -103,7 +95,7 @@ pub enum ProtocolError {
     HeaderTooShort(usize, usize),
     #[error("missing extended identity header")]
     MissingExtendedIdentityHeader,
-    #[error("invalid client user identity {:?}", ByteStr::new(&.0))]
+    #[error("invalid client user identity {:?}", ByteStr::new(.0))]
     InvalidClientUser(Bytes),
     #[error("decrypt header chunk failed")]
     DecryptHeaderChunkError,
@@ -355,7 +347,7 @@ impl DecryptedReader {
                         return Err(ProtocolError::InvalidClientUser(Bytes::copy_from_slice(user_hash))).into();
                     }
                     Some(user) => {
-                        trace!("user {} choosen by EIH", user.name());
+                        trace!("user {} chosen by EIH", user.name());
                         self.user_key = Some(Bytes::copy_from_slice(user.key()));
                         TcpCipher::new(self.method, user.key(), salt)
                     }
@@ -477,7 +469,7 @@ impl DecryptedReader {
             let n = read_buf.filled().len();
             if n == 0 {
                 if !self.buffer.is_empty() {
-                    return Err(io::Error::from(ErrorKind::UnexpectedEof).into()).into();
+                    return Err(ErrorKind::UnexpectedEof.into()).into();
                 } else {
                     return Ok(0).into();
                 }
