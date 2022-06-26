@@ -25,17 +25,17 @@ require (
 	github.com/sagernet/sing v0.0.0-20220620074945-99754098d119
 	github.com/sagernet/sing-shadowsocks v0.0.0-20220619134218-830a2f478eb1
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
-	github.com/stretchr/testify v1.7.4
+	github.com/stretchr/testify v1.7.5
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08
 	github.com/v2fly/VSign v0.0.0-20201108000810-e2adc24bf848
 	github.com/v2fly/ss-bloomring v0.0.0-20210312155135-28617310f63e
 	github.com/xiaokangwang/VLite v0.0.0-20220418190619-cff95160a432
 	github.com/xtls/go v0.0.0-20210920065950-d4af136d3672
 	go.starlark.net v0.0.0-20220328144851-d1966c6b9fcd
-	golang.org/x/crypto v0.0.0-20220525230936-793ad666bf5e
-	golang.org/x/net v0.0.0-20220621193019-9d032be2e588
+	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
+	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
-	golang.org/x/sys v0.0.0-20220615213510-4f61da869c0c
+	golang.org/x/sys v0.0.0-20220624220833-87e55d714810
 	golang.zx2c4.com/wireguard v0.0.0-20220601130007-6a08d81f6bc4
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0

@@ -46,4 +46,3 @@ cat >include.txt <<EOF
 EOF
 tar cf - -C $full_root --hard-dereference . | tar xf - -C $sysroot --wildcards --wildcards-match-slash -T include.txt
 rm -rf include.txt $SDK_PATH
-cd $sysroot/*-openwrt-linux-musl*/bin

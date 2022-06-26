@@ -43,6 +43,8 @@ import io.nekohasekai.sagernet.fmt.buildV2RayConfig
 import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean
 import io.nekohasekai.sagernet.fmt.hysteria.buildHysteriaConfig
 import io.nekohasekai.sagernet.fmt.internal.ConfigBean
+import io.nekohasekai.sagernet.fmt.mieru.MieruBean
+import io.nekohasekai.sagernet.fmt.mieru.buildMieruConfig
 import io.nekohasekai.sagernet.fmt.naive.NaiveBean
 import io.nekohasekai.sagernet.fmt.naive.buildNaiveConfig
 import io.nekohasekai.sagernet.fmt.pingtunnel.PingTunnelBean
@@ -54,6 +56,8 @@ import io.nekohasekai.sagernet.fmt.trojan.buildTrojanGoConfig
 import io.nekohasekai.sagernet.fmt.trojan_go.TrojanGoBean
 import io.nekohasekai.sagernet.fmt.trojan_go.buildCustomTrojanConfig
 import io.nekohasekai.sagernet.fmt.trojan_go.buildTrojanGoConfig
+import io.nekohasekai.sagernet.fmt.tuic.TuicBean
+import io.nekohasekai.sagernet.fmt.tuic.buildTuicConfig
 import io.nekohasekai.sagernet.ktx.*
 import io.nekohasekai.sagernet.plugin.PluginManager
 import kotlinx.coroutines.*
@@ -136,6 +140,22 @@ abstract class V2RayInstance(
                             File(
                                 app.noBackupFilesDir,
                                 "hysteria_" + SystemClock.elapsedRealtime() + ".ca"
+                            ).apply {
+                                parentFile?.mkdirs()
+                                cacheFiles.add(this)
+                            }
+                        }
+                    }
+                    is MieruBean -> {
+                        initPlugin("mieru-plugin")
+                        pluginConfigs[port] = profile.type to bean.buildMieruConfig(port)
+                    }
+                    is TuicBean -> {
+                        initPlugin("tuic-plugin")
+                        pluginConfigs[port] = profile.type to bean.buildTuicConfig(port) {
+                            File(
+                                app.noBackupFilesDir,
+                                "tuic_" + SystemClock.elapsedRealtime() + ".ca"
                             ).apply {
                                 parentFile?.mkdirs()
                                 cacheFiles.add(this)
@@ -345,6 +365,42 @@ abstract class V2RayInstance(
                         if (bean.protocol == HysteriaBean.PROTOCOL_FAKETCP) {
                             commands.addAll(0, listOf("su", "-c"))
                         }
+
+                        processes.start(commands, env)
+                    }
+                    bean is MieruBean -> {
+                        val configFile = File(
+                            context.noBackupFilesDir,
+                            "mieru_" + SystemClock.elapsedRealtime() + ".json"
+                        )
+
+                        configFile.parentFile?.mkdirs()
+                        configFile.writeText(config)
+                        cacheFiles.add(configFile)
+
+                        env["MIERU_CONFIG_FILE"] = configFile.absolutePath
+
+                        val commands = mutableListOf(
+                            initPlugin("mieru-plugin").path, "run_plugin"
+                        )
+
+                        processes.start(commands, env)
+                    }
+                    bean is TuicBean -> {
+                        val configFile = File(
+                            context.noBackupFilesDir,
+                            "tuic_" + SystemClock.elapsedRealtime() + ".json"
+                        )
+
+                        configFile.parentFile?.mkdirs()
+                        configFile.writeText(config)
+                        cacheFiles.add(configFile)
+
+                        val commands = mutableListOf(
+                            initPlugin("tuic-plugin").path,
+                            "-c",
+                            configFile.absolutePath,
+                        )
 
                         processes.start(commands, env)
                     }

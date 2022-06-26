@@ -40,7 +40,7 @@ enable_unix_sockets = is_posix && !is_ios
 # x86/x64 cast_shell builds run on regular trybots and can use python runtime
 # and remote test server. ARM cast_shell builds don't have python runtime.
 is_arm_cast_shell_build =
-    is_chromecast && (current_cpu == "arm" || current_cpu == "arm64")
+    is_castos && (current_cpu == "arm" || current_cpu == "arm64")
 
 # Python works only on Linux, MacOS and Windows so exclude the others,
 # chromecast, android, fuchsia, ios.
@@ -144,8 +144,6 @@ component("net") {
     "base/datagram_buffer.h",
     "base/elements_upload_data_stream.cc",
     "base/elements_upload_data_stream.h",
-    "base/escape.cc",
-    "base/escape.h",
     "base/expiring_cache.h",
     "base/features.cc",
     "base/features.h",
@@ -653,7 +651,6 @@ component("net") {
     "http/proxy_client_socket.h",
     "http/proxy_fallback.cc",
     "http/proxy_fallback.h",
-    "http/structured_headers.cc",
     "http/structured_headers.h",
     "http/transport_security_persister.cc",
     "http/transport_security_persister.h",
@@ -989,8 +986,6 @@ component("net") {
     "ssl/ssl_server_config.h",
     "ssl/threaded_ssl_private_key.cc",
     "ssl/threaded_ssl_private_key.h",
-    "third_party/uri_template/uri_template.cc",
-    "third_party/uri_template/uri_template.h",
     "url_request/redirect_info.cc",
     "url_request/redirect_info.h",
     "url_request/redirect_util.cc",
@@ -1087,7 +1082,6 @@ component("net") {
     "//net/dns:mdns_client",
     "//net/dns/public",
     "//net/http:transport_security_state_generated_files",
-    "//net/third_party/quiche",
   ]
 
   if (enable_reporting) {
@@ -1299,6 +1293,8 @@ component("net") {
       "base/file_stream_context_posix.cc",
       "base/network_interfaces_posix.cc",
       "base/network_interfaces_posix.h",
+      "base/sockaddr_util_posix.cc",
+      "base/sockaddr_util_posix.h",
       "disk_cache/cache_util_posix.cc",
       "disk_cache/simple/simple_util_posix.cc",
       "http/url_security_manager_posix.cc",
@@ -1370,7 +1366,10 @@ component("net") {
       "cert/internal/trust_store_chrome.cc",
       "cert/internal/trust_store_chrome.h",
     ]
-    deps += [ "//net/data/ssl/chrome_root_store:gen_root_store_inc" ]
+    deps += [
+      "//net/cert:root_store_proto_lite",
+      "//net/data/ssl/chrome_root_store:gen_root_store_inc",
+    ]
     if (is_win) {
       sources += [
         "cert/internal/trust_store_win.cc",
@@ -1400,7 +1399,7 @@ component("net") {
       "third_party/nss/ssl/cmpcert.cc",
       "third_party/nss/ssl/cmpcert.h",
     ]
-    if (!is_chromecast) {
+    if (!is_castos) {
       sources += [
         "ssl/client_cert_store_nss.cc",
         "ssl/client_cert_store_nss.h",
@@ -1408,6 +1407,12 @@ component("net") {
         "ssl/ssl_platform_key_nss.h",
       ]
     }
+
+    # TODO(https://crbug.com/978854): This is a public config because
+    # multi_threaded_cert_verifier.h depends on NSS. When the linked bug is
+    # fixed, switch this to a non-public config, so NSS usage must be explicit
+    # in the build.
+    public_configs = [ "//build/config/linux/nss" ]
   }
 
   if (is_fuchsia) {
@@ -1670,12 +1675,11 @@ source_set("net_public_deps") {
   public_deps = [
     ":buildflags",
     ":net_nqe_proto",
+    ":uri_template",
     "//base",
     "//crypto",
-    "//crypto:platform",
-    "//net/third_party/quiche:net_quic_proto",
+    "//net/third_party/quiche",
     "//net/third_party/quiche:net_quic_test_tools_proto",
-    "//net/third_party/quiche:quiche_public_deps",
     "//net/traffic_annotation",
     "//third_party/boringssl",
     "//url",
@@ -1683,6 +1687,19 @@ source_set("net_public_deps") {
 }
 
 if (is_android) {
+}
+
+component("uri_template") {
+  sources = [
+    "third_party/uri_template/uri_template.cc",
+    "third_party/uri_template/uri_template.h",
+  ]
+  visibility = [
+    ":net_public_deps",
+    "//net/third_party/quiche",
+  ]
+  defines = [ "IS_URI_TEMPLATE_IMPL" ]
+  public_deps = [ "//base" ]
 }
 
 proto_library("net_nqe_proto") {

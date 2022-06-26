@@ -60,10 +60,18 @@ absl::optional<int32_t> GetWifiSignalLevel() {
   return {};
 }
 
-bool GetDnsServers(std::vector<IPEndPoint>* dns_servers,
-                   bool* dns_over_tls_active,
-                   std::string* dns_over_tls_hostname,
-                   std::vector<std::string>* search_suffixes) {
+bool GetCurrentDnsServers(std::vector<IPEndPoint>* dns_servers,
+                          bool* dns_over_tls_active,
+                          std::string* dns_over_tls_hostname,
+                          std::vector<std::string>* search_suffixes) {
+  return false;
+}
+
+bool GetDnsServersForNetwork(std::vector<IPEndPoint>* dns_servers,
+                             bool* dns_over_tls_active,
+                             std::string* dns_over_tls_hostname,
+                             std::vector<std::string>* search_suffixes,
+                             NetworkChangeNotifier::NetworkHandle network) {
   return false;
 }
 

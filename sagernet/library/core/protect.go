@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
 
 	"github.com/sirupsen/logrus"
 	v2rayNet "github.com/v2fly/v2ray-core/v5/common/net"
@@ -67,13 +66,10 @@ func (dialer protectedDialer) Dial(ctx context.Context, source v2rayNet.Address,
 }
 
 func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address, destination v2rayNet.Destination, sockopt *internet.SocketConfig) (conn net.Conn, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	destIp := destination.Address.IP()
-	ipv6 := len(destIp) != net.IPv4len
-	fd, err := getFd(destination.Network, ipv6)
+	fd, err := getFd(destination)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	if !dialer.protector.Protect(int32(fd)) {
@@ -85,25 +81,30 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		internet.ApplySockopt(sockopt, destination, uintptr(fd), ctx)
 	}
 
-	var sockaddr unix.Sockaddr
-	if !ipv6 {
-		socketAddress := &unix.SockaddrInet4{
-			Port: int(destination.Port),
+	switch destination.Network {
+	case v2rayNet.Network_TCP:
+		var sockaddr unix.Sockaddr
+		if destination.Address.Family().IsIPv4() {
+			socketAddress := &unix.SockaddrInet4{
+				Port: int(destination.Port),
+			}
+			copy(socketAddress.Addr[:], destIp)
+			sockaddr = socketAddress
+		} else {
+			socketAddress := &unix.SockaddrInet6{
+				Port: int(destination.Port),
+			}
+			copy(socketAddress.Addr[:], destIp)
+			sockaddr = socketAddress
 		}
-		copy(socketAddress.Addr[:], destIp)
-		sockaddr = socketAddress
-	} else {
-		socketAddress := &unix.SockaddrInet6{
-			Port: int(destination.Port),
-		}
-		copy(socketAddress.Addr[:], destIp)
-		sockaddr = socketAddress
-	}
 
-	err = unix.Connect(fd, sockaddr)
+		err = unix.Connect(fd, sockaddr)
+	case v2rayNet.Network_UDP:
+		err = unix.Bind(fd, &unix.SockaddrInet6{})
+	}
 	if err != nil {
 		unix.Close(fd)
-		return nil, err
+		return
 	}
 
 	file := os.NewFile(uintptr(fd), "socket")
@@ -129,21 +130,17 @@ func (dialer protectedDialer) dial(ctx context.Context, source v2rayNet.Address,
 		conn, err = net.FileConn(file)
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	return conn, nil
+	return
 }
 
-func getFd(network v2rayNet.Network, ipv6 bool) (fd int, err error) {
+func getFd(destination v2rayNet.Destination) (fd int, err error) {
 	var af int
-	if !ipv6 {
+	if destination.Network == v2rayNet.Network_TCP && destination.Address.Family().IsIPv4() {
 		af = unix.AF_INET
 	} else {
 		af = unix.AF_INET6
 	}
-	switch network {
+	switch destination.Network {
 	case v2rayNet.Network_TCP:
 		fd, err = unix.Socket(af, unix.SOCK_STREAM, unix.IPPROTO_TCP)
 	case v2rayNet.Network_UDP:

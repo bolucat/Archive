@@ -142,10 +142,6 @@ bool Socks5ServerSocket::GetSSLInfo(SSLInfo* ssl_info) {
   return false;
 }
 
-void Socks5ServerSocket::GetConnectionAttempts(ConnectionAttempts* out) const {
-  out->clear();
-}
-
 int64_t Socks5ServerSocket::GetTotalReceivedBytes() const {
   return transport_->GetTotalReceivedBytes();
 }

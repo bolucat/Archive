@@ -326,14 +326,9 @@ HacksAndPatchesCommon() {
   local os=$2
   local strip=$3
   Banner "Misc Hacks & Patches"
-  # these are linker scripts with absolute pathnames in them
-  # which we rewrite here
-  lscripts="${INSTALL_ROOT}/usr/lib/${arch}-${os}/libpthread.so \
-            ${INSTALL_ROOT}/usr/lib/${arch}-${os}/libc.so"
 
-  # Rewrite linker scripts
-  sed -i -e 's|/usr/lib/${arch}-${os}/||g'  ${lscripts}
-  sed -i -e 's|/lib/${arch}-${os}/||g' ${lscripts}
+  # Remove an unnecessary dependency on qtchooser.
+  rm "${INSTALL_ROOT}/usr/lib/${arch}-${os}/qt-default/qtchooser/default.conf"
 
   # Unversion libdbus and libxkbcommon symbols.  This is required because
   # libdbus-1-3 and libxkbcommon0 switched from unversioned symbols to versioned
@@ -385,6 +380,8 @@ HacksAndPatchesCommon() {
   # which overwrites PKG_CONFIG_LIBDIR internally
   SubBanner "Move pkgconfig scripts"
   mkdir -p ${INSTALL_ROOT}/usr/lib/pkgconfig
+  mv ${INSTALL_ROOT}/usr/lib/${arch}-${os}/pkgconfig/* \
+      ${INSTALL_ROOT}/usr/lib/pkgconfig
 }
 
 
@@ -592,8 +589,8 @@ BuildSysrootAmd64() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesAmd64
+  CleanupJailSymlinks
   VerifyLibraryDepsAmd64
   CreateTarBall
 }
@@ -612,8 +609,8 @@ BuildSysrootI386() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesI386
+  CleanupJailSymlinks
   VerifyLibraryDepsI386
   CreateTarBall
 }
@@ -632,8 +629,8 @@ BuildSysrootARM() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesARM
+  CleanupJailSymlinks
   VerifyLibraryDepsARM
   CreateTarBall
 }
@@ -652,8 +649,8 @@ BuildSysrootARM64() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesARM64
+  CleanupJailSymlinks
   VerifyLibraryDepsARM64
   CreateTarBall
 }
@@ -672,8 +669,8 @@ BuildSysrootARMEL() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesARMEL
+  CleanupJailSymlinks
   VerifyLibraryDepsARMEL
   CreateTarBall
 }
@@ -692,8 +689,8 @@ BuildSysrootMips() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesMips
+  CleanupJailSymlinks
   VerifyLibraryDepsMips
   CreateTarBall
 }
@@ -712,8 +709,8 @@ BuildSysrootMips64el() {
   local files_and_sha256sums="$(cat ${package_file})"
   StripChecksumsFromPackageList "$package_file"
   InstallIntoSysroot ${files_and_sha256sums}
-  CleanupJailSymlinks
   HacksAndPatchesMips64el
+  CleanupJailSymlinks
   VerifyLibraryDepsMips64el
   CreateTarBall
 }

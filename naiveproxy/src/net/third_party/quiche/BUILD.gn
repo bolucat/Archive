@@ -2,8 +2,37 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+# Build file for QUICHE, <https://quiche.googlesource.com/quiche/>
+#
+# The following build targets are defined:
+#   - quiche -- the part of QUICHE that is shipped within Chromium proper.
+#   - *_tool_support -- support code used in CLI tools and unit tests.
+#   - *_test_support -- support code only used in unit tests.
+#   - quiche_tests -- all of the QUICHE test targets.
+#
+# There are two kinds of build target: quiche_ and epoll_; quiche_ targets are
+# built on all platforms, epoll_ targets are only built on Linux and certain
+# similar platforms.
+
+# Dependency graph of the key targets in this file:
+#
+#     quiche <--- quiche_tool_support <--- quiche_test_support <--- quiche_tests
+#                          ^                        ^                     |
+#                          |                        |                     |
+#                          |                        |                     |
+#                  epoll_tool_support <---  epoll_test_support <----------+ (*)
+#
+#             (*) only used on platforms where epoll tests are built
+
 import("//build/config/chromeos/ui_mode.gni")
 import("//third_party/protobuf/proto_library.gni")
+
+config("quiche_internal_config") {
+  cflags = []
+  if (is_clang) {
+    cflags += [ "-Wno-unused-private-field" ]
+  }
+}
 
 config("quiche_config") {
   include_dirs = [
@@ -17,18 +46,7 @@ config("quiche_config") {
   cflags = [ "-Wno-shadow" ]
 }
 
-# Since //net and //net/third_party/quiche have a circular dependency on each
-# other, exporting dependencies from the :quiche target directly does not work.
-# Thus, all public dependencies for QUICHE should go into the target below,
-# which is in turn propagated to all of //net source sets.
-source_set("quiche_public_deps") {
-  visibility = [ "//net:net_public_deps" ]
-
-  public_configs = [ ":quiche_config" ]
-  public_deps = [ "//third_party/abseil-cpp:absl" ]
-}
-
-source_set("quiche") {
+component("quiche") {
   sources = [
     "overrides/quiche_platform_impl/quic_flags_impl.cc",
     "overrides/quiche_platform_impl/quic_flags_impl.h",
@@ -88,6 +106,8 @@ source_set("quiche") {
     "src/quiche/common/quiche_text_utils.h",
     "src/quiche/common/simple_buffer_allocator.cc",
     "src/quiche/common/simple_buffer_allocator.h",
+    "src/quiche/common/structured_headers.cc",
+    "src/quiche/common/structured_headers.h",
     "src/quiche/http2/adapter/data_source.h",
     "src/quiche/http2/adapter/event_forwarder.cc",
     "src/quiche/http2/adapter/event_forwarder.h",
@@ -100,6 +120,8 @@ source_set("quiche") {
     "src/quiche/http2/adapter/http2_util.cc",
     "src/quiche/http2/adapter/http2_util.h",
     "src/quiche/http2/adapter/http2_visitor_interface.h",
+    "src/quiche/http2/adapter/noop_header_validator.cc",
+    "src/quiche/http2/adapter/noop_header_validator.h",
     "src/quiche/http2/adapter/oghttp2_adapter.cc",
     "src/quiche/http2/adapter/oghttp2_adapter.h",
     "src/quiche/http2/adapter/oghttp2_session.cc",
@@ -197,10 +219,6 @@ source_set("quiche") {
     "src/quiche/http2/http2_constants.h",
     "src/quiche/http2/http2_structures.cc",
     "src/quiche/http2/http2_structures.h",
-    "src/quiche/http2/platform/api/http2_bug_tracker.h",
-    "src/quiche/http2/platform/api/http2_flag_utils.h",
-    "src/quiche/http2/platform/api/http2_flags.h",
-    "src/quiche/http2/platform/api/http2_logging.h",
     "src/quiche/quic/core/congestion_control/bandwidth_sampler.cc",
     "src/quiche/quic/core/congestion_control/bandwidth_sampler.h",
     "src/quiche/quic/core/congestion_control/bbr2_drain.cc",
@@ -553,6 +571,8 @@ source_set("quiche") {
     "src/quiche/quic/core/quic_packets.h",
     "src/quiche/quic/core/quic_path_validator.cc",
     "src/quiche/quic/core/quic_path_validator.h",
+    "src/quiche/quic/core/quic_ping_manager.cc",
+    "src/quiche/quic/core/quic_ping_manager.h",
     "src/quiche/quic/core/quic_protocol_flags_list.h",
     "src/quiche/quic/core/quic_received_packet_manager.cc",
     "src/quiche/quic/core/quic_received_packet_manager.h",
@@ -610,7 +630,6 @@ source_set("quiche") {
     "src/quiche/quic/core/uber_received_packet_manager.h",
     "src/quiche/quic/platform/api/quic_bug_tracker.h",
     "src/quiche/quic/platform/api/quic_client_stats.h",
-    "src/quiche/quic/platform/api/quic_containers.h",
     "src/quiche/quic/platform/api/quic_export.h",
     "src/quiche/quic/platform/api/quic_exported_stats.h",
     "src/quiche/quic/platform/api/quic_flag_utils.h",
@@ -670,27 +689,43 @@ source_set("quiche") {
     "src/quiche/spdy/core/zero_copy_output_buffer.h",
   ]
 
-  deps = [ "//net:net_deps" ]
-  public_deps = [ "//net:net_public_deps" ]
+  configs += [ ":quiche_internal_config" ]
+  public_configs = [ ":quiche_config" ]
+
+  deps = [
+    "//net:uri_template",
+    "//third_party/protobuf:protobuf_lite",
+    "//third_party/zlib",
+  ]
+
+  public_deps = [
+    ":net_quic_proto",
+    "//base",
+    "//third_party/abseil-cpp:absl",
+    "//third_party/boringssl",
+    "//url",
+  ]
+
+  defines = [ "IS_QUICHE_IMPL" ]
 }
 
 proto_library("net_quic_proto") {
-  visibility = [ "//net:net_public_deps" ]
+  visibility = [ ":quiche" ]
 
   sources = [
     "src/quiche/quic/core/proto/cached_network_parameters.proto",
     "src/quiche/quic/core/proto/crypto_server_config.proto",
     "src/quiche/quic/core/proto/source_address_token.proto",
   ]
-  cc_generator_options = "dllexport_decl=NET_EXPORT_PRIVATE:"
-  cc_include = "net/base/net_export.h"
+  cc_generator_options = "dllexport_decl=COMPONENT_EXPORT(QUICHE):"
+  cc_include = "base/component_export.h"
   component_build_force_source_set = true
 
   proto_in_dir = "src"
 
-  deps = [ "//net:net_export_header" ]
+  deps = [ "//base" ]
 
-  defines = [ "NET_IMPLEMENTATION" ]
+  defines = [ "IS_QUICHE_IMPL" ]
 
   extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
 }

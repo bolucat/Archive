@@ -5,6 +5,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -173,6 +174,16 @@ namespace clashN.Handler
 
             Task.Run(async () =>
             {
+                //Turn off system proxy
+                bool bSysProxyType = false;
+                if (!blProxy && config.sysProxyType == ESysProxyType.ForcedChange)
+                {
+                    bSysProxyType = true;
+                    config.sysProxyType = ESysProxyType.ForcedClear;
+                    SysProxyHandle.UpdateSysProxy(config, false);
+                    Thread.Sleep(3000);
+                }
+
                 if (profileItems == null)
                 {
                     profileItems = config.profileItems;
@@ -201,6 +212,10 @@ namespace clashN.Handler
                         url = String.Format(config.constItem.subConvertUrl, Utils.UrlEncode(url));
                     }
                     var result = await (new DownloadHandle()).DownloadStringAsync(url, blProxy, userAgent);
+                    if (blProxy && Utils.IsNullOrEmpty(result))
+                    {
+                        result = await (new DownloadHandle()).DownloadStringAsync(url, false, userAgent);
+                    }
 
                     _updateFunc(false, $"{hashCode}{ResUI.MsgGetSubscriptionSuccessfully}");
 
@@ -213,6 +228,7 @@ namespace clashN.Handler
                         int ret = ConfigHandler.AddBatchProfiles(ref config, result, indexId, groupId);
                         if (ret == 0)
                         {
+                            item.updateTime = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
                             _updateFunc(false, $"{hashCode}{ResUI.MsgUpdateSubscriptionEnd}");
                         }
                         else
@@ -222,6 +238,12 @@ namespace clashN.Handler
                     }
                     _updateFunc(false, $"-------------------------------------------------------");
 
+                }
+                //restore system proxy
+                if (bSysProxyType)
+                {
+                    config.sysProxyType = ESysProxyType.ForcedChange;
+                    SysProxyHandle.UpdateSysProxy(config, false);
                 }
                 _updateFunc(true, $"{ResUI.MsgUpdateSubscriptionEnd}");
             });
@@ -285,7 +307,7 @@ namespace clashN.Handler
             try
             {
                 var coreInfo = LazyConfig.Instance.GetCoreInfo(type);
-                string url = coreInfo.coreLatestUrl;             
+                string url = coreInfo.coreLatestUrl;
 
                 var result = await (new DownloadHandle()).UrlRedirectAsync(url, true);
                 if (!Utils.IsNullOrEmpty(result))
@@ -357,7 +379,7 @@ namespace clashN.Handler
             {
                 string version = redirectUrl.Substring(redirectUrl.LastIndexOf("/", StringComparison.Ordinal) + 1);
                 var coreInfo = LazyConfig.Instance.GetCoreInfo(type);
-                
+
                 string curVersion;
                 string message;
                 string url;

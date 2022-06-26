@@ -37,6 +37,7 @@ import io.nekohasekai.sagernet.fmt.hysteria.HysteriaBean;
 import io.nekohasekai.sagernet.fmt.internal.BalancerBean;
 import io.nekohasekai.sagernet.fmt.internal.ChainBean;
 import io.nekohasekai.sagernet.fmt.internal.ConfigBean;
+import io.nekohasekai.sagernet.fmt.mieru.MieruBean;
 import io.nekohasekai.sagernet.fmt.naive.NaiveBean;
 import io.nekohasekai.sagernet.fmt.pingtunnel.PingTunnelBean;
 import io.nekohasekai.sagernet.fmt.relaybaton.RelayBatonBean;
@@ -46,6 +47,7 @@ import io.nekohasekai.sagernet.fmt.socks.SOCKSBean;
 import io.nekohasekai.sagernet.fmt.ssh.SSHBean;
 import io.nekohasekai.sagernet.fmt.trojan.TrojanBean;
 import io.nekohasekai.sagernet.fmt.trojan_go.TrojanGoBean;
+import io.nekohasekai.sagernet.fmt.tuic.TuicBean;
 import io.nekohasekai.sagernet.fmt.v2ray.VLESSBean;
 import io.nekohasekai.sagernet.fmt.v2ray.VMessBean;
 import io.nekohasekai.sagernet.fmt.wireguard.WireGuardBean;
@@ -168,6 +170,18 @@ public class KryoConverters {
     public static WireGuardBean wireguardDeserialize(byte[] bytes) {
         if (ArrayUtil.isEmpty(bytes)) return null;
         return deserialize(new WireGuardBean(), bytes);
+    }
+
+    @TypeConverter
+    public static MieruBean mieruDeserialize(byte[] bytes) {
+        if (ArrayUtil.isEmpty(bytes)) return null;
+        return deserialize(new MieruBean(), bytes);
+    }
+
+    @TypeConverter
+    public static TuicBean tuicDeserialize(byte[] bytes) {
+        if (ArrayUtil.isEmpty(bytes)) return null;
+        return deserialize(new TuicBean(), bytes);
     }
 
     @TypeConverter

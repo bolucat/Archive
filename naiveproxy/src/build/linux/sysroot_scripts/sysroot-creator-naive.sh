@@ -55,6 +55,14 @@ cp() {
   [ "${2##*/}" = symbols ] && return
   /bin/cp "$@"
 }
+rm() {
+  [ "${1##*/}" = default.conf ] && return
+  /bin/rm "$@"
+}
+mv() {
+  [ "${2##*/}" = pkgconfig ] && return
+  /bin/mv "$@"
+}
 tar() {
   echo tar "$@"
 }

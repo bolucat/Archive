@@ -1,0 +1,61 @@
+{
+    "profiles": [
+        {
+            "profileName": "default",
+            "user": {
+                "name": "user2",
+                "password": "21e2e8ef4f08"
+            },
+            "servers": [
+                {
+                    "ipAddress": "2.2.2.2",
+                    "portBindings": [
+                        {
+                            "port": 4000,
+                            "protocol": "UDP"
+                        },
+                        {
+                            "port": 5000,
+                            "protocol": "UDP"
+                        }
+                    ]
+                },
+                {
+                    "ipAddress": "3.3.3.3",
+                    "portBindings": [
+                        {
+                            "port": 5000,
+                            "protocol": "UDP"
+                        },
+                        {
+                            "port": 6000,
+                            "protocol": "UDP"
+                        }
+                    ]
+                }
+            ],
+            "mtu": 1350
+        },
+        {
+            "profileName": "new",
+            "user": {
+                "name": "user3",
+                "hashedPassword": "JP98s73StI"
+            },
+            "servers": [
+                {
+                    "domainName": "example.com",
+                    "portBindings": [
+                        {
+                            "port": 6000,
+                            "protocol": "UDP"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "activeProfile": "new",
+    "rpcPort": 1989,
+    "socks5Port": 1080
+}

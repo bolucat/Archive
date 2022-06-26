@@ -56,7 +56,6 @@ component("crypto") {
   ]
 
   deps = [
-    ":platform",
     "//base",
     "//base/third_party/dynamic_annotations",
   ]
@@ -127,6 +126,7 @@ component("crypto") {
       "nss_util_internal.h",
     ]
     deps += [ "//build:chromeos_buildflags" ]
+    configs += [ "//build/config/linux/nss" ]
   }
 
   if (is_chromeos_ash) {
@@ -148,22 +148,5 @@ config("platform_config") {
     # There is a broken header guard in /usr/include/nss/secmod.h:
     # https://bugzilla.mozilla.org/show_bug.cgi?id=884072
     cflags = [ "-Wno-header-guard" ]
-  }
-}
-
-# This target historically abstracted between different cryptography and TLS
-# libraries. Now we always use //third_party/boringssl for cryptography and TLS.
-# On Linux and Chrome OS, we additionally use //build/config/linux/nss for some
-# certificate-related platform integration points. Depend on one or both of the
-# individual targets instead of this one.
-#
-# TODO(https://crbug.com/1275165): Remove this target.
-group("platform") {
-  public_deps = [ "//third_party/boringssl" ]
-
-  # Link in NSS if it is used for the platform certificate library
-  # (use_nss_certs).
-  if (use_nss_certs) {
-    public_configs = [ "//build/config/linux/nss" ]
   }
 }

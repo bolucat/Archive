@@ -1,0 +1,24 @@
+{
+    "portBindings": [
+        {
+            "port": 2012,
+            "protocol": "TCP"
+        },
+        {
+            "port": 2022,
+            "protocol": "TCP"
+        }
+    ],
+    "users": [
+        {
+            "name": "baozi",
+            "password": "shilishanlubuhuanjian"
+        },
+        {
+            "name": "dongtaiqingling",
+            "password": "jiasu"
+        }
+    ],
+    "loggingLevel": "INFO",
+    "mtu": 1400
+}

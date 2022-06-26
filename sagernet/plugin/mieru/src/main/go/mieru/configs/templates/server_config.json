@@ -1,0 +1,16 @@
+{
+    "portBindings": [
+        {
+            "port": -1,
+            "protocol": "TCP"
+        }
+    ],
+    "users": [
+        {
+            "name": "<username@example.com>",
+            "password": "<your-password>"
+        }
+    ],
+    "loggingLevel": "INFO",
+    "mtu": 1400
+}
