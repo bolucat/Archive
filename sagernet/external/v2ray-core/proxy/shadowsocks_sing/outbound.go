@@ -20,6 +20,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/proxy"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 	"github.com/v2fly/v2ray-core/v5/transport/pipe"
@@ -128,7 +129,7 @@ func (o *Outbound) Process(ctx context.Context, link *transport.Link, dialer int
 		}
 		if !handshake {
 			if timeoutReader, isTimeoutReader := link.Reader.(buf.TimeoutReader); isTimeoutReader {
-				mb, err := timeoutReader.ReadMultiBufferTimeout(time.Millisecond * 100)
+				mb, err := timeoutReader.ReadMultiBufferTimeout(proxy.FirstPayloadTimeout)
 				if err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 					return newError("read payload").Base(err)
 				}

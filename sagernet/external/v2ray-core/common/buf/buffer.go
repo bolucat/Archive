@@ -3,7 +3,7 @@ package buf
 import (
 	"io"
 
-	"github.com/v2fly/v2ray-core/v5/common/bytespool"
+	B "github.com/sagernet/sing/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 )
 
@@ -14,8 +14,6 @@ const (
 	// clash: 20K
 	Size = 16 * 1024
 )
-
-var pool = bytespool.GetPool(Size)
 
 // Buffer is a recyclable allocation of a byte array. Buffer.Release() recycles
 // the buffer into an internal buffer pool, in order to recreate a buffer more
@@ -31,7 +29,7 @@ type Buffer struct {
 // New creates a Buffer with 0 length and 2K capacity.
 func New() *Buffer {
 	return &Buffer{
-		v: pool.Get().([]byte),
+		v: B.Get(Size),
 	}
 }
 
@@ -58,7 +56,7 @@ func FromBytes(data []byte) *Buffer {
 // This method is for buffers that is released in the same function.
 func StackNew() Buffer {
 	return Buffer{
-		v: pool.Get().([]byte),
+		v: B.Get(Size),
 	}
 }
 
@@ -71,7 +69,7 @@ func (b *Buffer) Release() {
 	p := b.v
 	b.v = nil
 	b.Clear()
-	pool.Put(p) // nolint: staticcheck
+	B.Put(p) // nolint: staticcheck
 	b.Endpoint = nil
 }
 

@@ -5,7 +5,6 @@ package outbound
 import (
 	"context"
 	"syscall"
-	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
@@ -22,6 +21,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/xudp"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
+	"github.com/v2fly/v2ray-core/v5/proxy"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless"
 	"github.com/v2fly/v2ray-core/v5/proxy/vless/encoding"
 	"github.com/v2fly/v2ray-core/v5/transport"
@@ -228,7 +228,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 			serverWriter = xudp.NewPacketWriter(serverWriter, target)
 		}
 
-		if err := buf.CopyOnceTimeout(clientReader, serverWriter, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
+		if err := buf.CopyOnceTimeout(clientReader, serverWriter, proxy.FirstPayloadTimeout); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 			return err // ...
 		}
 

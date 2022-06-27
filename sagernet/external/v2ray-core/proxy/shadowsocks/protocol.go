@@ -19,6 +19,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/udpovertcp"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
+	"github.com/v2fly/v2ray-core/v5/proxy"
 	"github.com/v2fly/v2ray-core/v5/proxy/socks"
 )
 
@@ -204,7 +205,7 @@ func WriteTCPRequest(request *protocol.RequestHeader, writer io.Writer, iv []byt
 		if err := w.WriteMultiBuffer(buf.MultiBuffer{header}); err != nil {
 			return nil, newError("failed to write header").Base(err)
 		}
-		if err = buf.CopyOnceTimeout(reader, w, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
+		if err = buf.CopyOnceTimeout(reader, w, proxy.FirstPayloadTimeout); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 			return nil, newError("failed to write request payload").Base(err).AtWarning()
 		}
 	}
