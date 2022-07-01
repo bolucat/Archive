@@ -799,12 +799,20 @@ namespace v2rayN.Forms
         private void menuExport2ClientConfig_Click(object sender, EventArgs e)
         {
             int index = GetLvSelectedIndex();
+            if (index < 0)
+            {
+                return;
+            }
             MainFormHandler.Instance.Export2ClientConfig(lstVmess[index], config);
         }
 
         private void menuExport2ServerConfig_Click(object sender, EventArgs e)
         {
             int index = GetLvSelectedIndex();
+            if (index < 0)
+            {
+                return;
+            }
             MainFormHandler.Instance.Export2ServerConfig(lstVmess[index], config);
         }
 
@@ -1130,6 +1138,12 @@ namespace v2rayN.Forms
             ShowInTaskbar = false;
 
             SetVisibleCore(false);
+
+            //write Handle to reg
+            if (IsHandleCreated)
+            {
+                Utils.RegWriteValue(Global.MyRegPath, Utils.WindowHwndKey, Convert.ToString((long)Handle));
+            }
         }
 
         #endregion
@@ -1244,7 +1258,6 @@ namespace v2rayN.Forms
             int index = GetLvSelectedIndex();
             if (index < 0)
             {
-                UI.Show(ResUI.PleaseSelectServer);
                 return;
             }
             if (ConfigHandler.MoveServer(ref config, ref lstVmess, index, eMove) == 0)

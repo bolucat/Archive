@@ -40,8 +40,8 @@ subprojects {
             minSdk = 21
             targetSdk = 31
 
-            versionName = "2.5.9"
-            versionCode = 205009
+            versionName = "2.5.10"
+            versionCode = 205010
 
             resValue("string", "release_name", "v$versionName")
             resValue("integer", "release_code", "$versionCode")
@@ -65,7 +65,9 @@ subprojects {
 
         if (isApp) {
             packagingOptions {
-                excludes.add("DebugProbesKt.bin")
+                resources {
+                    excludes.add("DebugProbesKt.bin")
+                }
             }
         }
 
@@ -88,19 +90,6 @@ subprojects {
                 versionNameSuffix = ".premium"
 
                 buildConfigField("boolean", "PREMIUM", "Boolean.parseBoolean(\"true\")")
-
-                val tracker = rootProject.file("tracker.properties")
-                if (tracker.exists()) {
-                    val prop = Properties().apply {
-                        tracker.inputStream().use(this::load)
-                    }
-
-                    buildConfigField(
-                        "String",
-                        "APP_CENTER_KEY",
-                        "\"${prop.getProperty("appcenter.key")!!}\""
-                    )
-                }
             }
         }
 
