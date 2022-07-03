@@ -1,6 +1,6 @@
 [package]
 name = "tuic-protocol"
-version = "4.1.0"
+version = "4.1.1"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 description = ""
 categories = ["network-programming"]
@@ -12,6 +12,6 @@ license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/tuic"
 
 [dependencies]
+byteorder = "1.4"
 bytes = "1.1"
-thiserror = "1.0"
 tokio = { version = "1.19", features = ["io-util"] }
