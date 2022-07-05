@@ -1,16 +1,18 @@
+use crate::{
+    config::base::InboundConfig,
+    config::{base::OutboundConfig, tls::make_server_config},
+    protocol::trojan::parse,
+};
 use futures::StreamExt;
 use quinn;
 use std::io::Result;
 use std::net::ToSocketAddrs;
 use tokio::net::TcpStream;
 
-use crate::{
-    config::base::InboundConfig,
-    config::{base::OutboundConfig, tls::make_server_config},
-    protocol::trojan::parse,
-};
-
-pub async fn start(inbound_config: InboundConfig, _outboud_config: OutboundConfig) -> Result<()> {
+pub async fn start(
+    inbound_config: &'static InboundConfig,
+    _outboud_config: &'static OutboundConfig,
+) -> Result<()> {
     let address = (inbound_config.address.clone(), inbound_config.port)
         .to_socket_addrs()
         .unwrap()
@@ -19,7 +21,7 @@ pub async fn start(inbound_config: InboundConfig, _outboud_config: OutboundConfi
 
     // Build config for accepting QUIC connection
     // TODO: Avoid using unwrap
-    let server_crypto = make_server_config(&inbound_config.tls.unwrap()).unwrap();
+    let server_crypto = make_server_config(&inbound_config.tls.clone().unwrap()).unwrap();
 
     let config = quinn::ServerConfig::with_crypto(server_crypto);
 
@@ -35,7 +37,10 @@ pub async fn start(inbound_config: InboundConfig, _outboud_config: OutboundConfi
                 connection,
                 mut bi_streams,
                 ..
-            } = conn.await.unwrap();
+            } = match conn.await {
+                Ok(c) => c,
+                Err(_) => return,
+            };
 
             // Extract reader stream and writer stream from the established connection
             let (mut client_writer, mut client_reader) = match bi_streams.next().await {
@@ -44,7 +49,6 @@ pub async fn start(inbound_config: InboundConfig, _outboud_config: OutboundConfi
             };
 
             // Read proxy request from the client stream
-            // TODO: Support other proxy protocols
             let request = parse(&mut client_reader).await.unwrap().inbound_request();
 
             // Connect to remote server

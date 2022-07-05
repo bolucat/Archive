@@ -1,13 +1,15 @@
 use crate::config::base::{InboundConfig, OutboundConfig};
-use crate::proxy::tcp::acceptor::Acceptor;
-use crate::proxy::tcp::handler::Handler;
+use crate::proxy::tcp::acceptor::TcpAcceptor;
+use crate::proxy::tcp::handler::TcpHandler;
 use log::{info, warn};
 use std::io::Result;
 use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use tokio::net::TcpListener;
 
-pub async fn start(inbound_config: InboundConfig, outbound_config: OutboundConfig) -> Result<()> {
+pub async fn start(
+    inbound_config: &'static InboundConfig,
+    outbound_config: &'static OutboundConfig,
+) -> Result<()> {
     // Extract the inbound client address
     let address = (inbound_config.address.clone(), inbound_config.port)
         .to_socket_addrs()
@@ -20,8 +22,8 @@ pub async fn start(inbound_config: InboundConfig, outbound_config: OutboundConfi
 
     // Create TCP server acceptor and handler
     let (acceptor, handler) = (
-        Arc::new(Acceptor::new(&inbound_config)),
-        Arc::new(Handler::new(&outbound_config).unwrap()),
+        TcpAcceptor::init(&inbound_config),
+        TcpHandler::init(&outbound_config),
     );
 
     // Enter server listener socket accept loop
