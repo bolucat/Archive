@@ -150,7 +150,7 @@ func (s *clientSessions) openConnection(destAddr net.Addr, config *Config, tlsCo
 		ConnectionIDLength:   12,
 		HandshakeIdleTimeout: time.Second * 8,
 		MaxIdleTimeout:       time.Second * 30,
-		KeepAlive:            true,
+		KeepAlivePeriod:      time.Second * 10,
 	}
 
 	conn, err := wrapSysConn(rawConn.(*net.UDPConn), config)

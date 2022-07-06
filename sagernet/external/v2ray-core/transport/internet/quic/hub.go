@@ -106,7 +106,7 @@ func Listen(ctx context.Context, address net.Address, port net.Port, streamSetti
 		MaxIdleTimeout:        time.Second * 45,
 		MaxIncomingStreams:    32,
 		MaxIncomingUniStreams: -1,
-		KeepAlive:             true,
+		KeepAlivePeriod:       time.Second * 10,
 	}
 
 	conn, err := wrapSysConn(rawConn.(*net.UDPConn), config)

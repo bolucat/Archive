@@ -4,7 +4,6 @@ package command
 
 import (
 	"context"
-	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/log"
@@ -43,22 +42,19 @@ func (s *LoggerServer) FollowLog(_ *FollowLogRequest, stream LoggerService_Follo
 	if !ok {
 		return newError("logger not support following")
 	}
-	var err error
+	done := make(chan struct{})
 	f := func(msg cmlog.Message) {
-		err = stream.Send(&FollowLogResponse{
+		err := stream.Send(&FollowLogResponse{
 			Message: msg.String(),
 		})
+		if err != nil {
+			close(done)
+		}
 	}
 	follower.AddFollower(f)
 	defer follower.RemoveFollower(f)
-	ticker := time.NewTicker(time.Second)
-	for {
-		<-ticker.C
-		if err != nil {
-			ticker.Stop()
-			return nil
-		}
-	}
+	<-done
+	return nil
 }
 
 func (s *LoggerServer) mustEmbedUnimplementedLoggerServiceServer() {}
