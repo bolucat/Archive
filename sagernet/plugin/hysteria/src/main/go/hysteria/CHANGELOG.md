@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0
+
+- Super major CPU performance improvements (~30% to several times faster, depending on the circumstances) by optimizing several data structures in quic-go (changes upstreamed)
+
+## 1.0.5
+
+- `bind_outbound` server option for binding outbound connections to a specific address or interface
+- TCP Redirect mode (for Linux)
+
+## 1.0.4
+
+- ~10% CPU usage reduction
+- Improve performance when packet loss is high
+- New ACL syntax to support protocol/port
+
 ## 1.0.3
 
 - New string-based speed (up/down) options
