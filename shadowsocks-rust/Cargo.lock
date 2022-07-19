@@ -619,9 +619,12 @@ dependencies = [
 
 [[package]]
 name = "etherparse"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9feedaea5a9f602932e78b512b2fde69aaefd2ef4fd5fd744238f7424b246186"
+checksum = "5d7819a365c91ec3832951c660cddfd0e2b760b67078a836bbe0987057e0c6a9"
+dependencies = [
+ "arrayvec",
+]
 
 [[package]]
 name = "fake-simd"
@@ -1242,16 +1245,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "658646b21e0b72f7866c7038ab086d3d5e1cd6271f060fd37defb241949d0582"
 dependencies = [
  "digest 0.10.3",
- "md5-asm",
-]
-
-[[package]]
-name = "md5-asm"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73b9a6f25ec11ea27e22d7fc8beafda909da44ece95f63e94f1eeb23d19bb5c7"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -1310,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f17df307904acd05aa8e32e97bb20f2a0df1728bbc2d771ae8f9a90463441e9"
+checksum = "195cdbc1741b8134346d515b3a56a1c94b0912758009cfd53f99ea0f57b065fc"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -1759,13 +1752,11 @@ dependencies = [
 
 [[package]]
 name = "rpassword"
-version = "6.0.1"
+version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bf099a1888612545b683d2661a1940089f6c2e5a8e38979b2159da876bfd956"
+checksum = "26b763cb66df1c928432cc35053f8bd4cec3335d8559fc16010017d16b3c1680"
 dependencies = [
  "libc",
- "serde",
- "serde_json",
  "winapi",
 ]
 
@@ -2003,16 +1994,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest 0.10.3",
- "sha1-asm",
-]
-
-[[package]]
-name = "sha1-asm"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "563d4f7100bc3fce234e5f37bbf63dc2752558964505ba6ac3f7204bdc59eaac"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -2055,9 +2036,9 @@ dependencies = [
 
 [[package]]
 name = "shadowsocks-crypto"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daff9970653117a16e317197c0e9b81eeaca0d138eb824c3243a6aa8cf61a645"
+checksum = "db328db53587068194944fb659b7c8853bfd8b314178231c69d34656e687e08d"
 dependencies = [
  "aes 0.7.5",
  "aes-gcm",
@@ -2077,7 +2058,7 @@ dependencies = [
 
 [[package]]
 name = "shadowsocks-rust"
-version = "1.15.0-alpha.6"
+version = "1.15.0-alpha.8"
 dependencies = [
  "build-time",
  "byte_string",

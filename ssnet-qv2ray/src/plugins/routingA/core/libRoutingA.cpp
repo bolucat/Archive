@@ -1,6 +1,7 @@
 #include "libRoutingA.hpp"
 
 #include <QDebug>
+#include <QObject>
 #include <QStack>
 
 namespace RoutingA
