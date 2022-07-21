@@ -24,7 +24,7 @@ import (
 
 // NextProtoDQ - During connection establishment, DNS/QUIC support is indicated
 // by selecting the ALPN token "dq" in the crypto handshake.
-const NextProtoDQ = "doq-i00"
+const NextProtoDQ = "doq"
 
 const handshakeIdleTimeout = time.Second * 8
 
@@ -45,7 +45,7 @@ func NewQUICNameServer(url *url.URL) (*QUICNameServer, error) {
 	newError("DNS: created Local DNS-over-QUIC client for ", url.String()).AtInfo().WriteToLog()
 
 	var err error
-	port := net.Port(784)
+	port := net.Port(853)
 	if url.Port() != "" {
 		port, err = net.PortFromString(url.Port())
 		if err != nil {
