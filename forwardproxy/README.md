@@ -1,4 +1,82 @@
-# Secure forward proxy plugin for the Caddy web server
+# Secure forward proxy for the Caddy web server
+
+This package registers the `http.handlers.forward_proxy` module, which acts as an HTTPS proxy for accessing remote networks.
+
+## :warning: Experimental!
+
+This module is EXPERIMENTAL. We need more users to test this module for bugs and weaknesses before we recommend its use from within surveilled networks or regions with active censorship. Do not rely on this code in situations where personal safety, freedom, or privacy are at risk.
+
+**You can help by:**
+
+- Safely deploying this module
+- Trying to break it
+- Contributing to the code and tests in this repo to make it better
+
+We are also seeking experienced maintainers who have experience with these kinds of technologies and who are interested in continuing its development.
+
+**Expect breaking changes.**
+
+## Features
+
+- HTTP/1.1 and HTTP/2 support
+- Authentication
+- Access control lists
+- Optional probe resistance
+- PAC file
+
+
+## Introduction
+
+This Caddy module allows you to use your web server as a proxy server, configurable by numerous HTTP clients such as operating systems, web browsers, mobile devices, and apps. However, the feature set of each client varies widely, as does their correctness and security guarantees. You will have to be aware of each clients' individual weaknesses or shortcomings.
+
+
+## Quick start
+
+First, you will have to know [how to use Caddy](https://caddyserver.com/docs/getting-started).
+
+Build Caddy with this plugin. You can add it from [Caddy's download page](https://caddyserver.com/download) or build it yourself with [xcaddy](https://github.com/caddyserver/xcaddy):
+
+```
+$ xcaddy build --with github.com/caddyserver/forwardproxy@caddy2
+```
+
+Most people prefer the [Caddyfile](https://caddyserver.com/docs/caddyfile) for configuration. You can stand up a simple, wide-open unauthenticated forward proxy like this:
+
+```
+example.com
+
+route {
+	# UNAUTHENTICATED! USE ONLY FOR TESTING
+	forward_proxy
+}
+```
+
+(Obviously, replace `example.com` with your domain name which is pointed at your machine.)
+
+Because `forward_proxy` is not a standard directive, its ordering relative to other handler directives is not defined, so we put it inside a `route` block. You can alternatively do something like this:
+
+```
+{
+	order forward_proxy before file_server
+}
+
+example.com
+
+# UNAUTHENTICATED! USE ONLY FOR TESTING
+forward_proxy
+```
+
+to define its position globally; then you don't need `route` blocks. The correct order is up to you and depends on your config.
+
+
+
+
+
+
+
+
+
+
 
 This plugin enables [Caddy](https://caddyserver.com) to act as a forward proxy, with support for HTTP/2.0 and HTTP/1.1 requests. HTTP/2.0 will usually improve performance due to multiplexing.
 
@@ -19,20 +97,29 @@ In the Caddyfile the addresses must start with `:443` for the `forward_proxy` to
 Simple example that uses forward_proxy as first priority and as second just shows a webpage (using `file_server` directive) to hide that this is a proxy:
 
 ```
-{
-  order forward_proxy before file_server
-}
-:443, example.com {
-  tls acme@example.com
-  forward_proxy {
-    basic_auth abc def
-    hide_ip
-    hide_via
-    probe_resistance
-  }
-  file_server {
-    root /home/user/webpage
-  }
+:443, example.com
+route {
+	forward_proxy {
+		basic_auth user1 0NtCL2JPJBgPPMmlPcJ
+		basic_auth user2 密码
+		ports     80 443
+		hide_ip
+		hide_via
+		probe_resistance secret-link-kWWL9Q.com # alternatively you can use a real domain, such as caddyserver.com
+		serve_pac        /secret-proxy.pac
+		dial_timeout     30
+		upstream         https://user:password@extra-upstream-hop.com
+		acl {
+			allow     *.caddyserver.com
+			deny      192.168.1.1/32 192.168.0.0/16 *.prohibitedsite.com *.localhost
+			allow     ::1/128 8.8.8.8 github.com *.github.io
+			allow_file /path/to/whitelist.txt
+			deny_file  /path/to/blacklist.txt
+			allow     all
+			deny      all # unreachable rule, remaining requests are matched by `allow all` above
+		}
+	}
+	file_server
 }
 ```
 
@@ -83,24 +170,24 @@ Specifies **order** and rules for allowed destination IP networks, IP addresses 
 The hostname in each forwardproxy request will be resolved to an IP address,
 and caddy will check the IP address and hostname against the directives in order until a directive matches the request.
 acl_directive may be:
-  - `allow [ip or subnet or hostname] [ip or subnet or hostname]...`
-  - `allow_file /path/to/whitelist.txt`
-  - `deny [ip or subnet or hostname] [ip or subnet or hostname]...`
-  - `deny_file /path/to/blacklist.txt`
+	- **allow [ip or subnet or hostname] [ip or subnet or hostname]...**
+	- **allow_file /path/to/whitelist.txt**
+	- **deny [ip or subnet or hostname] [ip or subnet or hostname]...**
+	- **deny_file /path/to/blacklist.txt**
 
-  If you don't want unmatched requests to be subject to the default policy, you could finish
-  your acl rules with one of the following to specify action on unmatched requests:
-  - **allow all**
-  - **deny all**
-  
-  For hostname, you can specify `*.` as a prefix to match domain and subdomains. For example,
-  `*.caddyserver.com` will match `caddyserver.com`, `subdomain.caddyserver.com`, but not `fakecaddyserver.com`.
-  Note that hostname rules, matched early in the chain, will override later IP rules,
-  so it is advised to put IP rules first, unless domains are highly trusted and should override the
-  IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
-  For `allow_file`/`deny_file` directives, syntax is the same, and each entry must be separated by newline.  
-  This policy applies to all requests except requests to the proxy's own domain and port.
-  Whitelisting/blacklisting of ports on per-host/IP basis is not supported.  
+	If you don't want unmatched requests to be subject to the default policy, you could finish
+	your acl rules with one of the following to specify action on unmatched requests:
+	- **allow all**
+	- **deny all**
+	
+	For hostname, you can specify `*.` as a prefix to match domain and subdomains. For example,
+	`*.caddyserver.com` will match `caddyserver.com`, `subdomain.caddyserver.com`, but not `fakecaddyserver.com`.
+	Note that hostname rules, matched early in the chain, will override later IP rules,
+	so it is advised to put IP rules first, unless domains are highly trusted and should override the
+	IP rules. Also note that domain-based blacklists are easily circumventable by directly specifying the IP.  
+	For `allow_file`/`deny_file` directives, syntax is the same, and each entry must be separated by newline.  
+	This policy applies to all requests except requests to the proxy's own domain and port.
+	Whitelisting/blacklisting of ports on per-host/IP basis is not supported.  
 _Default policy:_  
 ```
 acl {  
@@ -142,7 +229,7 @@ Linux 64bit binaries are at <https://github.com/klzgrad/forwardproxy/releases>
 1. Checkout repository: `git checkout https://github.com/klzgrad/forwardproxy.git`
 2. Change into directory: `cd forwardproxy`
 3. Install caddyservers xcaddy: `go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest`
-4. Build caddy with forwardproxy: `xcaddy build --with github.com/caddyserver/forwardproxy@caddy2=$PWD`
+4. Build caddy with forwardproxy: `xcaddy build --with github.com/caddyserver/forwardproxy@master=$PWD`
 5. Result is a `caddy` executable that you can e.g. directly start with `sudo ./caddy run` (create your `Caddyfile` in the same directory)
 
 ### Run as daemon

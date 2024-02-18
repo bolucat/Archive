@@ -9,7 +9,7 @@ require (
 	github.com/miekg/dns v1.1.57
 	github.com/oschwald/maxminddb-golang v1.12.0
 	golang.org/x/sync v0.6.0
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v2 v2.4.0
 )
 
 replace github.com/metacubex/mihomo => ../../foss/golang/clash

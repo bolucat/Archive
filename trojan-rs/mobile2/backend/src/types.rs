@@ -1,15 +1,34 @@
 use derive_more::From;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
     env::JoinPathsError,
     sync::{atomic::AtomicBool, Arc, RwLock},
 };
 use wry::application::event_loop::{EventLoop, EventLoopBuilder, EventLoopClosed, EventLoopProxy};
 
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct BnetConfig {
+    pub app: String,
+    pub domain: String,
+    pub port: u16,
+    pub password: String,
+    pub gateway: String,
+    pub trust_dns: String,
+    pub distrust_dns: String,
+    pub mtu: usize,
+}
+
 pub struct MobileTrojanLoop {
     pub looper: Option<EventLoop<String>>,
     pub proxy: EventLoopProxy<String>,
     pub running: Arc<AtomicBool>,
+    pub cache_dir: String,
+    pub config: BnetConfig,
+}
+
+#[derive(Deserialize)]
+pub struct StartBnetRequest {
+    pub config: BnetConfig,
 }
 
 unsafe impl Sync for MobileTrojanLoop {}
@@ -22,6 +41,8 @@ impl MobileTrojanLoop {
         RwLock::new(Self {
             looper: Some(looper),
             running: Arc::new(AtomicBool::new(false)),
+            cache_dir: Default::default(),
+            config: Default::default(),
             proxy,
         })
     }
@@ -49,3 +70,5 @@ pub enum Error {
     Path(JoinPathsError),
     IO(std::io::Error),
 }
+
+pub type Result<T> = std::result::Result<T, Error>;
