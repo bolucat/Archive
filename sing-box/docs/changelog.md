@@ -2,9 +2,14 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-alpha.9
+#### 1.9.0-alpha.10
 
+* Add `bypass_domain` and `search_domain` platform HTTP proxy options **1**
 * Fixes and improvements
+
+**1**:
+
+See [TUN](/configuration/inbound/tun) inbound.
 
 #### 1.9.0-alpha.8
 
@@ -414,7 +419,7 @@ see [TCP Brutal](/configuration/shared/tcp-brutal/) for details.
 
 **5**:
 
-Only supported in graphical clients on Android and iOS.
+Only supported in graphical clients on Android and Apple platforms.
 
 #### 1.7.0-rc.3
 
@@ -451,7 +456,7 @@ Only supported in graphical clients on Android and iOS.
 
 **1**:
 
-Only supported in graphical clients on Android and iOS.
+Only supported in graphical clients on Android and Apple platforms.
 
 #### 1.7.0-beta.3
 
