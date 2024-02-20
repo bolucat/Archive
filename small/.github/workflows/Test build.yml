@@ -1,0 +1,48 @@
+name: Test Build
+
+on:
+ workflow_dispatch:
+  push:
+    tags:
+      - v2.**
+
+jobs:
+  build:
+    name: build ${{ matrix.arch }}-${{ matrix.release }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        release:
+          - 23.05.2
+        arch:
+          - aarch64_cortex-a53
+          - x86_64
+
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Build
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.arch }}-${{ matrix.release }}
+          PACKAGES: luci-app-passwall
+          NO_REFRESH_CHECK: true
+
+      - name: Store packages
+        uses: actions/upload-artifact@main
+        with:
+          name: ${{ matrix.arch }}-${{ matrix.release }}-packages
+          path: bin/packages/${{ matrix.arch }}/packages/*.ipk
+
+      - name: Upload packages
+        uses: ncipollo/release-action@main
+        with:
+          name: ${{ github.ref_name }}
+          token: ${{ secrets.ACCESS_TOKEN }}
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: "${{ matrix.release }}-${{ matrix.arch }}"
+          tag: v2.${{ github.run_number }}-${{ matrix.release }}-${{ matrix.arch }}
