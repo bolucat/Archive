@@ -5,13 +5,15 @@ import {
   List,
   ListItem,
   ListItemText,
-  MenuItem,
-  Select,
+  Box,
+  Typography,
+  Button,
   Switch,
   TextField,
 } from "@mui/material";
 import { useClash } from "@/hooks/use-clash";
 import { BaseDialog, DialogRef, Notice } from "@/components/base";
+import { StackModeSwitch } from "./stack-mode-switch";
 
 export const TunViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -20,12 +22,12 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
 
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState({
-    stack: "gVisor",
-    device: "Mihomo",
+    stack: "gvisor",
+    device: "Meta",
     autoRoute: true,
     autoDetectInterface: true,
-    dnsHijack: ["any:53", "tcp://any:53"],
-    strictRoute: true,
+    dnsHijack: ["any:53"],
+    strictRoute: false,
     mtu: 9000,
   });
 
@@ -33,12 +35,12 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
     open: () => {
       setOpen(true);
       setValues({
-        stack: clash?.tun.stack ?? "gVisor",
-        device: clash?.tun.device ?? "Mihomo",
+        stack: clash?.tun.stack ?? "gvisor",
+        device: clash?.tun.device ?? "Meta",
         autoRoute: clash?.tun["auto-route"] ?? true,
         autoDetectInterface: clash?.tun["auto-detect-interface"] ?? true,
-        dnsHijack: clash?.tun["dns-hijack"] ?? ["any:53", "tcp://any:53"],
-        strictRoute: clash?.tun["strict-route"] ?? true,
+        dnsHijack: clash?.tun["dns-hijack"] ?? ["any:53"],
+        strictRoute: clash?.tun["strict-route"] ?? false,
         mtu: clash?.tun.mtu ?? 9000,
       });
     },
@@ -73,7 +75,45 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
   return (
     <BaseDialog
       open={open}
-      title={t("Tun Mode")}
+      title={
+        <Box display="flex" justifyContent="space-between" gap={1}>
+          <Typography variant="h6">{t("Tun Mode")}</Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={async () => {
+              let tun = {
+                stack: "gvisor",
+                device: "Meta",
+                "auto-route": true,
+                "auto-detect-interface": true,
+                "dns-hijack": ["any:53"],
+                "strict-route": false,
+                mtu: 9000,
+              };
+              setValues({
+                stack: "gvisor",
+                device: "Meta",
+                autoRoute: true,
+                autoDetectInterface: true,
+                dnsHijack: ["any:53"],
+                strictRoute: false,
+                mtu: 9000,
+              });
+              await patchClash({ tun });
+              await mutateClash(
+                (old) => ({
+                  ...(old! || {}),
+                  tun,
+                }),
+                false
+              );
+            }}
+          >
+            {t("Reset to Default")}
+          </Button>
+        </Box>
+      }
       contentSx={{ width: 450 }}
       okBtn={t("Save")}
       cancelBtn={t("Cancel")}
@@ -84,23 +124,15 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
       <List>
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Stack")} />
-          <Select
-            size="small"
-            sx={{ width: 100, "> div": { py: "7.5px" } }}
+          <StackModeSwitch
             value={values.stack}
-            onChange={(e) => {
+            onChange={(value) => {
               setValues((v) => ({
                 ...v,
-                stack: e.target.value as string,
+                stack: value,
               }));
             }}
-          >
-            {["System", "gVisor", "Mixed"].map((i) => (
-              <MenuItem value={i} key={i}>
-                {i}
-              </MenuItem>
-            ))}
-          </Select>
+          />
         </ListItem>
 
         <ListItem sx={{ padding: "5px 2px" }}>
@@ -113,7 +145,7 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
             spellCheck="false"
             sx={{ width: 250 }}
             value={values.device}
-            placeholder="Mihomo"
+            placeholder="Meta"
             onChange={(e) =>
               setValues((v) => ({ ...v, device: e.target.value }))
             }
