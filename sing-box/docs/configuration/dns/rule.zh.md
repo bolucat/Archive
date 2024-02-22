@@ -8,6 +8,7 @@ icon: material/new-box
     :material-plus: [ip_cidr](#ip_cidr)  
     :material-plus: [ip_is_private](#ip_is_private)  
     :material-plus: [client_subnet](#client_subnet)
+    :material-plus: [rule_set_ipcidr_match_source](#rule_set_ipcidr_match_source)
 
 !!! quote "sing-box 1.8.0 中的更改"
 
@@ -116,6 +117,7 @@ icon: material/new-box
           "geoip-cn",
           "geosite-cn"
         ],
+        "rule_set_ipcidr_match_source": false,
         "invert": false,
         "outbound": [
           "direct"
@@ -301,6 +303,12 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 
 匹配[规则集](/zh/configuration/route/#rule_set)。
 
+#### rule_set_ipcidr_match_source
+
+!!! question "自 sing-box 1.9.0 起"
+
+使规则集中的 `ipcidr` 规则匹配源 IP。
+
 #### invert
 
 反选匹配结果。
@@ -347,19 +355,19 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 
 #### geoip
 
-!!! question "自 sing-box 1.8.0 起"
+!!! question "自 sing-box 1.9.0 起"
 
 与查询响应匹配 GeoIP。
 
 #### ip_cidr
 
-!!! question "自 sing-box 1.8.0 起"
+!!! question "自 sing-box 1.9.0 起"
 
 与查询相应匹配 IP CIDR。
 
 #### ip_is_private
 
-!!! question "自 sing-box 1.8.0 起"
+!!! question "自 sing-box 1.9.0 起"
 
 与查询响应匹配非公开 IP。
 

@@ -2,6 +2,21 @@
 icon: material/alert-decagram
 ---
 
+#### 1.9.0-alpha.12
+
+* Handle Windows power events
+* Always disable cache for fake-ip DNS transport if `independent_cache` disabled
+* Fixes and improvements
+
+#### 1.9.0-alpha.11
+
+* Fix missing `rule_set_ipcidr_match_source` item in DNS rules **1**
+* Fixes and improvements
+
+**1**:
+
+See [DNS Rule](/configuration/dns/rule/).
+
 #### 1.9.0-alpha.10
 
 * Add `bypass_domain` and `search_domain` platform HTTP proxy options **1**
