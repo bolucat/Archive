@@ -713,6 +713,13 @@ func (r *Router) Close() error {
 		})
 		monitor.Finish()
 	}
+	if r.powerListener != nil {
+		monitor.Start("close power listener")
+		err = E.Append(err, r.powerListener.Close(), func(err error) error {
+			return E.Cause(err, "close power listener")
+		})
+		monitor.Finish()
+	}
 	if r.timeService != nil {
 		monitor.Start("close time service")
 		err = E.Append(err, r.timeService.Close(), func(err error) error {

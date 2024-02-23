@@ -430,14 +430,6 @@ if(FIPS_DELOCATE OR NOT OPENSSL_NO_ASM)
 endif()
 
 if (MSVC)
-  option(ALLOW_XP "Build with Windows XP support." OFF)
-  if (ALLOW_XP)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /D _USING_V110_SDK71_ /D_WIN32_WINNT=0x0501")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D _USING_V110_SDK71_ /D_WIN32_WINNT=0x0501")
-  endif()
-endif()
-
-if (MSVC)
   if (MSVC_CRT_LINKAGE STREQUAL "static")
     message(STATUS "Build against static crt")
     # replace /MD with /MT

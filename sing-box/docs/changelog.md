@@ -5,7 +5,7 @@ icon: material/alert-decagram
 #### 1.9.0-alpha.12
 
 * Handle Windows power events
-* Always disable cache for fake-ip DNS transport if `independent_cache` disabled
+* Always disable cache for fake-ip DNS transport if `dns.independent_cache` disabled
 * Fixes and improvements
 
 #### 1.9.0-alpha.11
