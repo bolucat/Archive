@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.9.0-alpha.13
+
+* Fixes and improvements
+
+#### 1.8.6
+
+* Fixes and improvements
+
 #### 1.9.0-alpha.12
 
 * Handle Windows power events
