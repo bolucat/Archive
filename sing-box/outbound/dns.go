@@ -111,9 +111,7 @@ func (d *DNS) NewPacketConnection(ctx context.Context, conn N.PacketConn, metada
 			}
 		}
 		if readWaiter, created := bufio.CreatePacketReadWaiter(reader); created {
-			readWaiter.InitializeReadWaiter(N.ReadWaitOptions{
-				MTU: dns.FixedPacketSize,
-			})
+			readWaiter.InitializeReadWaiter(N.ReadWaitOptions{})
 			return d.newPacketConnection(ctx, conn, readWaiter, counters, cachedPackets, metadata)
 		}
 		break

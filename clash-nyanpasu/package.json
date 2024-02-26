@@ -34,7 +34,8 @@
     "generate:manifest": "run-p generate:manifest:*",
     "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
     "prepare": "husky",
-    "prepare:nightly": "tsx scripts/prepare-nightly.ts"
+    "prepare:nightly": "tsx scripts/prepare-nightly.ts",
+    "prepare:release": "tsx scripts/prepare-release.ts"
   },
   "prettier": {
     "plugins": [
@@ -146,7 +147,7 @@
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.1.0",
-    "telegraf": "4.16.0",
+    "telegraf": "4.16.2",
     "tsx": "4.7.1",
     "typescript": "5.3.3",
     "vite": "5.1.4",

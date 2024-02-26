@@ -149,7 +149,7 @@ async-trait = "0.1"
 socket2 = { version = "0.5", features = ["all"] }
 libc = "0.2.141"
 
-hyper = { version = "1.1", optional = true, features = ["full"] }
+hyper = { version = "1.2", optional = true, features = ["full"] }
 http-body-util = { version = "0.1", optional = true }
 
 hickory-resolver = { version = "0.24", optional = true, features = [
@@ -181,7 +181,7 @@ shadowsocks = { version = "1.18.1", path = "../shadowsocks", default-features = 
 
 # Just for the ioctl call macro
 [target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))'.dependencies]
-nix = { version = "0.27", features = ["ioctl"] }
+nix = { version = "0.28", features = ["ioctl"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock"] }

@@ -111,8 +111,8 @@ github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691/go.mod h1:B8lp4Wk
 github.com/sagernet/sing v0.2.18/go.mod h1:OL6k2F0vHmEzXz2KW19qQzu172FDgSbUSODylighuVo=
 github.com/sagernet/sing v0.3.3-beta.2 h1:ZQkONX/Vwu0p3qxWMlQDDABwAxdH8jVD3rKUB/o1f1o=
 github.com/sagernet/sing v0.3.3-beta.2/go.mod h1:qHySJ7u8po9DABtMYEkNBcOumx7ZZJf/fbv2sfTkNHE=
-github.com/sagernet/sing-dns v0.2.0-beta.8 h1:br1m5rKXu0+jWPh0KZx0Sw6uS2UCPgV2uYQZ7D8sy74=
-github.com/sagernet/sing-dns v0.2.0-beta.8/go.mod h1:IxOqfSb6Zt6UVCy8fJpDxb2XxqzHUytNqeOuJfaiLu8=
+github.com/sagernet/sing-dns v0.2.0-beta.9 h1:ldqWgzj+UbsI28i6oowFZo5QXgwkPllhn5pOfUkAxcQ=
+github.com/sagernet/sing-dns v0.2.0-beta.9/go.mod h1:ur9tzxr+9EKU+DerITlfKlUCjgzsMiQJVLffrdOfgvA=
 github.com/sagernet/sing-mux v0.2.0 h1:4C+vd8HztJCWNYfufvgL49xaOoOHXty2+EAjnzN3IYo=
 github.com/sagernet/sing-mux v0.2.0/go.mod h1:khzr9AOPocLa+g53dBplwNDz4gdsyx/YM3swtAhlkHQ=
 github.com/sagernet/sing-quic v0.1.9-beta.1 h1:rCmgLUq2d4EA643EAvjbfUYYVMPCss0GpmS4pJCT2Lw=
@@ -123,8 +123,8 @@ github.com/sagernet/sing-shadowsocks2 v0.2.0 h1:wpZNs6wKnR7mh1wV9OHwOyUr21VkS3wK
 github.com/sagernet/sing-shadowsocks2 v0.2.0/go.mod h1:RnXS0lExcDAovvDeniJ4IKa2IuChrdipolPYWBv9hWQ=
 github.com/sagernet/sing-shadowtls v0.1.4 h1:aTgBSJEgnumzFenPvc+kbD9/W0PywzWevnVpEx6Tw3k=
 github.com/sagernet/sing-shadowtls v0.1.4/go.mod h1:F8NBgsY5YN2beQavdgdm1DPlhaKQlaL6lpDdcBglGK4=
-github.com/sagernet/sing-tun v0.2.2-beta.3 h1:LEzxRkn10iicWdZAlIKtc0/G9hgzrt/WMZSkRtsbzCw=
-github.com/sagernet/sing-tun v0.2.2-beta.3/go.mod h1:TaUYOzyBWK43Si6TadJ4gc7fj2iYZ7kxcp6CzzKey3E=
+github.com/sagernet/sing-tun v0.2.3-beta.1 h1:F3A+w3s/4iP6spR7KG8lRA4AKJqXjM8JYsAPg3w20SA=
+github.com/sagernet/sing-tun v0.2.3-beta.1/go.mod h1:lkefC8gty7FTuzz9ZoNASueutIhClEz7LHjFK3BLGco=
 github.com/sagernet/sing-vmess v0.1.8 h1:XVWad1RpTy9b5tPxdm5MCU8cGfrTGdR8qCq6HV2aCNc=
 github.com/sagernet/sing-vmess v0.1.8/go.mod h1:vhx32UNzTDUkNwOyIjcZQohre1CaytquC5mPplId8uA=
 github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7 h1:DImB4lELfQhplLTxeq2z31Fpv8CQqqrUwTbrIRumZqQ=
