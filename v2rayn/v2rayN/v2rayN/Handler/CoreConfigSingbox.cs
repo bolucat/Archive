@@ -88,7 +88,7 @@ namespace v2rayN.Handler
                     default:
                         break;
                 }
-                if (_config.coreBasicItem.loglevel == "none")
+                if (_config.coreBasicItem.loglevel == Global.None)
                 {
                     singboxConfig.log.disabled = true;
                 }
@@ -235,8 +235,16 @@ namespace v2rayN.Handler
                 {
                     outbound.type = Global.ProtocolTypes[EConfigType.Shadowsocks];
 
-                    outbound.method = LazyConfig.Instance.GetShadowsocksSecurities(node).Contains(node.security) ? node.security : "none";
+                    outbound.method = LazyConfig.Instance.GetShadowsocksSecurities(node).Contains(node.security) ? node.security : Global.None;
                     outbound.password = node.id;
+
+                    if (node.network == Global.DefaultNetwork
+                        && node.headerType == Global.TcpHeaderHttp
+                        && node.requestHost.IsNullOrEmpty() == false)
+                    {
+                        outbound.plugin = "obfs-local";
+                        outbound.plugin_opts = $"obfs=http;obfs-host={node.requestHost};";
+                    }
 
                     GenOutboundMux(node, outbound);
                 }
