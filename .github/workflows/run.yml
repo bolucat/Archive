@@ -27,6 +27,8 @@ jobs:
 
       - name: Sync
         run: |
+          # Delete large package
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           # Disappeared Projects
           mv anxray .github
           mv clash .github
@@ -332,6 +334,16 @@ jobs:
           pushd nekobox-android/Clients || exit 1
           wget -qO- https://api.github.com/repos/MatsuriDayo/NekoBoxForAndroid/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
           popd || exit 1
+          # yuzu-mainline
+          mkdir -p yuzu-mainline/Clients
+          pushd yuzu-mainline/Clients || exit 1
+          wget -qO- https://api.github.com/repos/yuzu-emu/yuzu-mainline/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # yuzu-android
+          mkdir -p yuzu-android/Clients
+          pushd yuzu-android/Clients || exit 1
+          wget -qO- https://api.github.com/repos/yuzu-emu/yuzu-android/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
           # v2ray-rules-dat
           mkdir -p v2ray-rules-dat/Clients
           pushd v2ray-rules-dat/Clients || exit 1
@@ -408,17 +420,7 @@ jobs:
           echo "fix error : trojan-rs/mobile2/backend/gen/android/app/src/main/assets : errno=2 : No such file or directory"
           rm -rf mobile2/backend/gen/android/app/src/main/assets
           popd || exit 1
-          # yuzu-mainline
-          mkdir -p yuzu-mainline/Clients
-          pushd yuzu-mainline/Clients || exit 1
-          wget -qO- https://api.github.com/repos/yuzu-emu/yuzu-mainline/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # yuzu-android
-          mkdir -p yuzu-android/Clients
-          pushd yuzu-android/Clients || exit 1
-          wget -qO- https://api.github.com/repos/yuzu-emu/yuzu-android/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-
+          
       - name: Compress to packages
         run: |
           mkdir -p release
