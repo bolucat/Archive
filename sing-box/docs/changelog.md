@@ -2,9 +2,20 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-beta.5
+#### 1.9.0-beta.7
 
 * Fixes and improvements
+
+#### 1.9.0-beta.6
+
+* Fix address filter DNS rule items **1**
+* Fix DNS outbound responding with wrong data
+* Fixes and improvements
+
+**1**:
+
+Fixed an issue where address filter DNS rule was incorrectly rejected under certain circumstances.
+If you have enabled `store_rdrc` to save results, consider clearing the cache file.
 
 #### 1.8.7
 
