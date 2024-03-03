@@ -49,7 +49,7 @@ object V2rayConfigUtil {
                 return Result(true, customConfig)
             }
             val outbound = config.getProxyOutbound() ?: return Result(false, "")
-            val result = getV2rayNonCustomConfig(context, outbound)
+            val result = getV2rayNonCustomConfig(context, outbound, config.remarks)
             //Log.d(ANG_PACKAGE, result.content)
             return result
         } catch (e: Exception) {
@@ -63,7 +63,8 @@ object V2rayConfigUtil {
      */
     private fun getV2rayNonCustomConfig(
         context: Context,
-        outbound: V2rayConfig.OutboundBean
+        outbound: V2rayConfig.OutboundBean,
+        remarks: String,
     ): Result {
         val result = Result(false, "")
         //取得默认配置
@@ -98,6 +99,9 @@ object V2rayConfigUtil {
             v2rayConfig.stats = null
             v2rayConfig.policy = null
         }
+
+        v2rayConfig.remarks = remarks
+
         result.status = true
         result.content = v2rayConfig.toPrettyPrinting()
         return result
@@ -581,10 +585,21 @@ object V2rayConfigUtil {
                     tag = TAG_FRAGMENT,
                     mux = null
                 )
+
+            var packets = settingsStorage?.decodeString(AppConfig.PREF_FRAGMENT_PACKETS) ?: "tlshello"
+            if (v2rayConfig.outbounds[0].streamSettings?.security == V2rayConfig.REALITY
+                && packets == "tlshello"
+            ) {
+                packets = "1-3"
+            } else if (v2rayConfig.outbounds[0].streamSettings?.security == V2rayConfig.TLS
+                && packets != "tlshello"
+            ) {
+                packets = "tlshello"
+            }
+
             fragmentOutbound.settings = V2rayConfig.OutboundBean.OutSettingsBean(
                 fragment = V2rayConfig.OutboundBean.OutSettingsBean.FragmentBean(
-                    packets = settingsStorage?.decodeString(AppConfig.PREF_FRAGMENT_PACKETS)
-                        ?: "tlshello",
+                    packets = packets,
                     length = settingsStorage?.decodeString(AppConfig.PREF_FRAGMENT_LENGTH)
                         ?: "50-100",
                     interval = settingsStorage?.decodeString(AppConfig.PREF_FRAGMENT_INTERVAL)
