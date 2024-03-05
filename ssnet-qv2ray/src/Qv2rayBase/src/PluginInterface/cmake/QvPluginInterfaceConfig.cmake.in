@@ -1,0 +1,10 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Qt6 COMPONENTS Core)
+
+set(QvPluginInterface_VERSION @PROJECT_VERSION_MAJOR@)
+set(QvPluginInterface_UseAsLib ON)
+include(${CMAKE_CURRENT_LIST_DIR}/QvPluginInterfaceTargets.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/QvPluginInterfaceMacros.cmake)
+

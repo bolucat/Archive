@@ -1,0 +1,133 @@
+﻿<Application
+    x:Class="ClashN.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:conv="clr-namespace:ClashN.Converters"
+    ShutdownMode="OnExplicitShutdown"
+    StartupUri="Views/MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary xmlns:system="clr-namespace:System;assembly=mscorlib">
+            <ResourceDictionary.MergedDictionaries>
+                <materialDesign:BundledTheme
+                    BaseTheme="Dark"
+                    PrimaryColor="Blue"
+                    SecondaryColor="Lime" />
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Defaults.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <system:Double x:Key="StdFontSize1">11</system:Double>
+            <system:Double x:Key="StdFontSize2">12</system:Double>
+            <system:Double x:Key="StdFontSize3">13</system:Double>
+            <system:Double x:Key="StdFontSize4">14</system:Double>
+            <Style
+                x:Key="MyMaterialDesignNavigationRailTabItem"
+                BasedOn="{StaticResource MaterialDesignNavigationRailTabItem}"
+                TargetType="TabItem">
+                <Setter Property="Width" Value="100" />
+            </Style>
+            <Style
+                x:Key="ModuleTitle"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize4}" />
+            </Style>
+            <Style
+                x:Key="TabItemTitle"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize4}" />
+            </Style>
+            <Style
+                x:Key="ListItemTitle"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize3}" />
+            </Style>
+            <Style
+                x:Key="ListItemSubTitle"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style
+                x:Key="ListItemSubTitle2"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize1}" />
+            </Style>
+            <Style
+                x:Key="ToolbarItem"
+                BasedOn="{StaticResource MaterialDesignTextBlock}"
+                TargetType="{x:Type TextBlock}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style TargetType="{x:Type TextElement}">
+                <Setter Property="FontWeight" Value="Regular" />
+            </Style>
+            <Style x:Key="lvItemSelected" TargetType="{x:Type ListViewItem}">
+                <Setter Property="Margin" Value="2" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListViewItem">
+                            <materialDesign:Card Name="_Card" SnapsToDevicePixels="true">
+                                <ContentPresenter />
+                            </materialDesign:Card>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsSelected" Value="true">
+                                    <Setter TargetName="_Card" Property="Background" Value="{DynamicResource PrimaryHueLightBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style
+                x:Key="ListItemCheckBox"
+                BasedOn="{StaticResource MaterialDesignUserForegroundCheckBox}"
+                TargetType="{x:Type CheckBox}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style x:Key="ListItemChip" TargetType="{x:Type materialDesign:Chip}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize1}" />
+            </Style>
+            <Style
+                x:Key="DefButton"
+                BasedOn="{StaticResource MaterialDesignRaisedButton}"
+                TargetType="{x:Type ButtonBase}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize3}" />
+                <Setter Property="Foreground" Value="{DynamicResource PrimaryHueDarkForegroundBrush}" />
+            </Style>
+            <Style
+                x:Key="DefMenu"
+                BasedOn="{StaticResource MaterialDesignContextMenu}"
+                TargetType="{x:Type ContextMenu}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize3}" />
+                <Setter Property="FontFamily" Value="{x:Static conv:MaterialDesignFonts.MyFont}" />
+            </Style>
+            <Style
+                x:Key="DefComboBox"
+                BasedOn="{StaticResource MaterialDesignComboBox}"
+                TargetType="{x:Type ComboBox}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style
+                x:Key="DefTextBox"
+                BasedOn="{StaticResource MaterialDesignTextBox}"
+                TargetType="{x:Type TextBox}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style
+                x:Key="MyOutlinedTextBox"
+                BasedOn="{StaticResource MaterialDesignOutlinedTextBox}"
+                TargetType="{x:Type TextBox}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+            <Style
+                x:Key="DefDataGrid"
+                BasedOn="{StaticResource MaterialDesignDataGrid}"
+                TargetType="{x:Type DataGrid}">
+                <Setter Property="FontSize" Value="{DynamicResource StdFontSize2}" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

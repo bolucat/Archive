@@ -1,0 +1,51 @@
+#    _       _      _ _
+#   (_)_   _(_) ___(_) |_ _   _
+#   | | | | | |/ __| | __| | | |
+#   | | |_| | | (__| | |_| |_| |
+#  _/ |\__,_|_|\___|_|\__|\__, |
+# |__/                    |___/
+#
+# Copyright (C) 2023 @juicity <https://github.com/juicity>
+#
+# This is a open-source software, liscensed under the AGPL-3.0 License.
+# See /License for more information.
+
+name: Build (Main)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.go"
+      - "**/*.c"
+      - "**/*.h"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/build.yml"
+      - ".github/workflows/seed-build.yml"
+      - "Makefile"
+
+jobs:
+  pre-actions:
+    uses: daeuniverse/ci-seed-jobs/.github/workflows/pre-actions-public.yml@master
+    with:
+      repository: ${{ github.repository }}
+      ref: ${{ github.sha }}
+      fetch_depth: 0
+      check_runs: '["build", "main-build-passed"]'
+      bot_name: "juicity-bot"
+    secrets:
+      app_id: ${{ secrets.GH_APP_ID }}
+      private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+      telegram_to: ${{ secrets.TELEGRAM_TO }}
+      telegram_token: ${{ secrets.TELEGRAM_TOKEN }}
+
+  build:
+    uses: juicity/juicity/.github/workflows/seed-build.yml@main
+    with:
+      ref: ${{ github.sha }}
+      build_type: main-build
+    secrets:
+      app_id: ${{ secrets.GH_APP_ID }}
+      private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}

@@ -1,0 +1,128 @@
+# Copyright 2020 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# Build file for QUICHE, <https://quiche.googlesource.com/quiche/>
+#
+# The following build targets are defined:
+#   - quiche -- the part of QUICHE that is shipped within Chromium proper.
+#   - *_tool_support -- support code used in CLI tools and unit tests.
+#   - *_test_support -- support code only used in unit tests.
+#   - quiche_tests -- all of the QUICHE test targets.
+#
+# There are two kinds of build target: quiche_ and epoll_; quiche_ targets are
+# built on all platforms, epoll_ targets are only built on Linux and certain
+# similar platforms.
+
+# Dependency graph of the key targets in this file:
+#
+#     quiche <--- quiche_tool_support <--- quiche_test_support <--- quiche_tests
+#                          ^                        ^                     |
+#                          |                        |                     |
+#                          |                        |                     |
+#                  epoll_tool_support <---  epoll_test_support <----------+ (*)
+#
+#             (*) only used on platforms where epoll tests are built
+
+import("//build/config/chromeos/ui_mode.gni")
+import("//net/third_party/quiche/src/build/source_list.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+config("quiche_internal_config") {
+  cflags = []
+  if (is_clang) {
+    cflags += [
+      "-Wno-unused-private-field",
+      "-Wno-sign-compare",
+    ]
+  }
+}
+
+config("quiche_config") {
+  include_dirs = [
+    # The ordering here is important, since headers in overrides/ replace
+    # headers in src/common/platform/default.
+    "overrides",
+    "src/quiche/common/platform/default",
+    "src",
+  ]
+}
+
+component("quiche") {
+  sources = [
+              "overrides/quiche_platform_impl/quiche_bug_tracker_impl.h",
+              "overrides/quiche_platform_impl/quiche_client_stats_impl.h",
+              "overrides/quiche_platform_impl/quiche_containers_impl.h",
+              "overrides/quiche_platform_impl/quiche_export_impl.h",
+              "overrides/quiche_platform_impl/quiche_iovec_impl.h",
+              "overrides/quiche_platform_impl/quiche_logging_impl.h",
+              "overrides/quiche_platform_impl/quiche_mutex_impl.cc",
+              "overrides/quiche_platform_impl/quiche_mutex_impl.h",
+              "overrides/quiche_platform_impl/quiche_reference_counted_impl.h",
+              "overrides/quiche_platform_impl/quiche_server_stats_impl.h",
+              "overrides/quiche_platform_impl/quiche_time_utils_impl.cc",
+              "overrides/quiche_platform_impl/quiche_time_utils_impl.h",
+              "overrides/quiche_platform_impl/quiche_url_utils_impl.cc",
+              "overrides/quiche_platform_impl/quiche_url_utils_impl.h",
+              "src/quiche/common/platform/default/quiche_platform_impl/quiche_flags_impl.cc",
+              "src/quiche/common/platform/default/quiche_platform_impl/quiche_flags_impl.h",
+              "src/quiche/common/platform/default/quiche_platform_impl/quiche_prefetch_impl.h",
+              "src/quiche/http2/hpack/hpack_static_table_entries.inc",
+            ] + quiche_core_hdrs + quiche_core_srcs + binary_http_srcs +
+            binary_http_hdrs + oblivious_http_srcs + oblivious_http_hdrs
+
+  configs += [ ":quiche_internal_config" ]
+  all_dependent_configs = [ ":quiche_config" ]
+
+  deps = [
+    "//net:uri_template",
+    "//third_party/protobuf:protobuf_lite",
+    "//third_party/zlib",
+  ]
+
+  public_deps = [
+    ":net_quic_proto",
+    "//base",
+    "//third_party/abseil-cpp:absl",
+    "//third_party/boringssl",
+    "//url",
+  ]
+
+  defines = [ "IS_QUICHE_IMPL" ]
+}
+
+proto_library("net_quic_proto") {
+  visibility = [ ":quiche" ]
+
+  sources = [
+    "src/quiche/quic/core/proto/cached_network_parameters.proto",
+    "src/quiche/quic/core/proto/crypto_server_config.proto",
+    "src/quiche/quic/core/proto/source_address_token.proto",
+  ]
+  cc_generator_options = "dllexport_decl=COMPONENT_EXPORT(QUICHE):"
+  cc_include = "base/component_export.h"
+  component_build_force_source_set = true
+
+  proto_in_dir = "src"
+
+  deps = [ "//base" ]
+
+  defines = [ "IS_QUICHE_IMPL" ]
+
+  extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
+}
+
+proto_library("net_quic_test_tools_proto") {
+  visibility = [ "//net:net_public_deps" ]
+
+  sources = [ "src/quiche/quic/test_tools/send_algorithm_test_result.proto" ]
+  cc_generator_options = "dllexport_decl=NET_EXPORT_PRIVATE:"
+  cc_include = "net/base/net_export.h"
+  component_build_force_source_set = true
+
+  deps = [ "//net:net_export_header" ]
+
+  defines = [ "NET_IMPLEMENTATION" ]
+
+  extra_configs = [ "//build/config/compiler:wexit_time_destructors" ]
+}

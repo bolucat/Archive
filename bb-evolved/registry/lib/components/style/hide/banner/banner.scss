@@ -1,0 +1,31 @@
+#banner_link,
+.z-top-container.has-banner > .header,
+.custom-navbar .blur-layer,
+.bili-header__banner {
+  display: none !important;
+}
+#biliMainHeader {
+  min-height: unset !important;
+}
+.bili-header {
+  padding-top: 50px !important;
+  min-height: 0 !important;
+}
+div.blur-bg,
+.b-header-mask-wrp .b-header-mask-bg {
+  opacity: 0 !important;
+}
+.international-header .bili-banner,
+.international-home .bili-banner {
+  visibility: hidden !important;
+  height: 50px !important;
+  min-height: unset !important;
+}
+.nav-link .nav-link-ul .nav-link-item .link,
+.nav-user-center .user-con .item .name {
+  color: black !important;
+  text-shadow: none !important;
+  body.dark & {
+    color: #eee !important;
+  }
+}

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingHorizontal="8dp">
+    <TextView
+        android:id="@+id/tv_batch_delete_latency"
+        android:gravity="center_horizontal"
+        android:textAppearance="?android:attr/textAppearanceMedium"
+        android:textColor="?android:attr/textColorPrimary"
+        android:text="All"
+        android:layout_marginVertical="8dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+    <SeekBar
+        android:id="@+id/sb_batch_delete"
+        android:max="1500"
+        android:progress="1500"
+        android:layout_marginVertical="4dp"
+        android:minHeight="24dp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+
+    <RadioGroup
+        android:id="@+id/rg_batch_delete"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:layout_marginTop="2dp"
+        android:orientation="horizontal">
+
+        <RadioButton
+            android:checked="true"
+            android:id="@+id/rb_elapse"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Elapse"/>
+
+        <RadioButton
+            android:id="@+id/rb_download_speed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Download"/>
+
+    </RadioGroup>
+
+<!--    <com.github.shadowsocks.widget.CircleSeekBar-->
+<!--        android:layout_width="150dp"-->
+<!--        android:layout_height="150dp"-->
+<!--        android:layout_marginVertical="4dp"-->
+<!--        app:wheel_reached_color="@color/material_accent_300"-->
+<!--        app:wheel_reached_width="6dp"-->
+<!--        app:wheel_unreached_color="#dcdcdc"-->
+<!--        app:wheel_unreached_width="6dp"-->
+<!--        app:wheel_pointer_color="@color/material_accent_500"-->
+<!--        app:wheel_pointer_radius="7dp"/>-->
+
+</LinearLayout>

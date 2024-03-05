@@ -1,0 +1,86 @@
+Source: yass
+Maintainer: Chilledheart <hukeyue@hotmail.com>
+Section: net
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends:
+ cmake:native (>= 3.12),
+ perl:native,
+ gcc:native (>= 6.1),
+ g++:native (>= 6.1),
+ golang:native,
+ ninja-build:native,
+ debhelper (>= 9),
+ ca-certificates,
+ pkg-config <!nogui>,
+ libglib2.0-dev <!nogui>,
+ libgtk-3-dev <!nogui>
+Rules-Requires-Root: no
+Homepage: https://github.com/Chilledheart/yass
+Vcs-Git: https://github.com/Chilledheart/yass.git
+Vcs-Browser: https://github.com/Chilledheart/yass
+
+Package: yass
+Architecture: any
+Pre-Depends: ${misc:Pre-Depends}
+Build-Profiles: <!nogui>
+Recommends: ca-certificates
+Depends:
+ lsb-base (>= 3.0-6),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Description: lightweight and secure http/socks4/socks5 proxy
+ yass is a lightweight and secure http/socks proxy
+ for embedded devices and low end boxes.
+
+Package: yass-dbg
+Section: debug
+Architecture: any
+Build-Profiles: <!nogui>
+Depends:
+    yass (= ${binary:Version}),
+    ${misc:Depends},
+Description: Debugging symbols for the yass package.
+ This package contains the debugging symbols for the yass package.
+
+Package: yass-server
+Architecture: any
+Pre-Depends: ${misc:Pre-Depends}
+Depends:
+ lsb-base (>= 3.0-6),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Recommends: ca-certificates
+Description: lightweight and secure http/socks4/socks5 proxy
+ yass is a lightweight and secure http/socks proxy
+ for embedded devices and low end boxes.
+
+Package: yass-server-dbg
+Section: debug
+Architecture: any
+Depends:
+    yass-server (= ${binary:Version}),
+    ${misc:Depends},
+Description: Debugging symbols for the yass-server package.
+ This package contains the debugging symbols for the yass-server package.
+
+Package: yass-client
+Architecture: any
+Pre-Depends: ${misc:Pre-Depends}
+Depends:
+ lsb-base (>= 3.0-6),
+ ${misc:Depends},
+ ${shlibs:Depends}
+Recommends: ca-certificates
+Description: lightweight and secure http/socks4/socks5 proxy
+ yass is a lightweight and secure http/socks proxy
+ for embedded devices and low end boxes.
+
+Package: yass-client-dbg
+Section: debug
+Architecture: any
+Depends:
+    yass-client (= ${binary:Version}),
+    ${misc:Depends},
+Description: Debugging symbols for the yass-client package.
+ This package contains the debugging symbols for the yass-client package.

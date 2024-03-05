@@ -1,0 +1,79 @@
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <style name="AppThemeNoTitle" parent="AppTheme">
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="ToolBarTheme" parent="AppTheme">
+        <item name="android:colorControlNormal">@android:color/white</item>
+        <item name="android:actionMenuTextColor">@android:color/white</item>
+    </style>
+
+    <style name="CommonToolBar">
+        <item name="titleTextColor">@android:color/white</item>
+        <item name="subtitleTextColor">@android:color/white</item>
+        <item name="layout_constraintStart_toStartOf">parent</item>
+        <item name="layout_constraintEnd_toEndOf">parent</item>
+        <item name="layout_constraintTop_toTopOf">parent</item>
+        <item name="android:background">@color/colorPrimary</item>
+        <item name="android:theme">@style/ToolBarTheme</item>
+    </style>
+
+    <style name="PrimaryFlatButton" parent="Theme.AppCompat.Light">
+        <item name="android:buttonStyle">@style/Widget.AppCompat.Button.Borderless.Colored</item>
+        <item name="android:colorControlHighlight">@color/colorAccent</item>
+        <item name="android:colorAccent">@color/colorPrimary</item>
+    </style>
+
+    <style name="CommonListItemLayout">
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
+        <item name="android:paddingStart">15dp</item>
+        <item name="android:paddingEnd">15dp</item>
+    </style>
+
+    <style name="MainEditTextStyle">
+        <item name="android:ems">10</item>
+        <item name="android:layout_marginStart">@dimen/main_horizontal_margin</item>
+        <item name="android:layout_marginEnd">@dimen/main_horizontal_margin</item>
+        <item name="android:textSize">@dimen/text_size</item>
+        <item name="android:layout_marginTop">@dimen/main_vertical_margin</item>
+        <item name="android:inputType">textUri</item>
+    </style>
+
+    <style name="MainEditTextStyleSmall" parent="MainEditTextStyle">
+        <item name="android:textSize">@dimen/text_size_small</item>
+        <item name="android:layout_marginTop">0dp</item>
+    </style>
+
+    <style name="MainSwitchStyle">
+        <item name="android:layout_marginStart">@dimen/main_switch_horizontal_margin</item>
+        <item name="android:layout_marginEnd">@dimen/main_switch_horizontal_margin</item>
+        <item name="android:layout_marginTop">@dimen/main_vertical_margin</item>
+        <item name="android:textSize">@dimen/text_size_small</item>
+    </style>
+
+    <style name="MainSwitchStyleSmall" parent="MainSwitchStyle">
+        <item name="android:layout_marginTop">@dimen/main_vertical_margin_small</item>
+        <item name="android:textSize">@dimen/text_size_extra_small</item>
+    </style>
+
+    <style name="SettingsCardStyle">
+        <item name="cardCornerRadius">@dimen/settings_card_corner_radius</item>
+        <item name="cardPreventCornerOverlap">true</item>
+        <item name="cardUseCompatPadding">true</item>
+        <item name="contentPadding">@dimen/settings_card_padding</item>
+        <item name="android:layout_marginStart">@dimen/main_horizontal_margin</item>
+        <item name="android:layout_marginEnd">@dimen/main_horizontal_margin</item>
+        <item name="android:layout_marginTop">@dimen/main_vertical_margin</item>
+        <item name="android:layout_marginBottom">@dimen/main_vertical_margin</item>
+    </style>
+</resources>

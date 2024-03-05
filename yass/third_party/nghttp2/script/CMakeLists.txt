@@ -1,0 +1,7 @@
+# EXTRA_DIST = README.rst
+if(NOT DISABLE_INSTALL)
+install(
+  PROGRAMS fetch-ocsp-response
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/${CMAKE_PROJECT_NAME}"
+)
+endif()

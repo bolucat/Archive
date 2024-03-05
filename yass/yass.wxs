@@ -1,0 +1,128 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+    <?if $(var.Platform) = arm64 ?>
+      <?define MinimumInstallerVersion = '500' ?>
+    <?elseif $(var.Platform) = x64 ?>
+      <?define MinimumInstallerVersion = '200' ?>
+    <?else ?>
+      <?define MinimumInstallerVersion = '100' ?>
+    <?endif ?>
+
+    <?if $(var.Platform) = x64 or $(var.Platform) = arm64 ?>
+      <?define ProductName = 'Yet Another Shadow Socket (64 bit)' ?>
+      <?define Win64 = 'yes' ?>
+      <?define PlatformProgramFilesFolder = 'ProgramFiles64Folder' ?>
+    <?else ?>
+      <?define ProductName = 'Yet Another Shadow Socket' ?>
+      <?define Win64 = 'no' ?>
+      <?define PlatformProgramFilesFolder = 'ProgramFilesFolder' ?>
+    <?endif ?>
+
+    <Product Name='$(var.ProductName)' Id='YOURGUID' UpgradeCode='83F393F8-069C-4FF2-94D5-A40ACFDCF603'
+      Language='1033' Codepage='1252' Version='$(var.Version)' Manufacturer='Chilledheart.'>
+
+        <Package InstallerVersion='$(var.MinimumInstallerVersion)' Compressed='yes' InstallScope='perMachine' Platform='$(var.Platform)' />
+
+        <Upgrade Id='83F393F8-069C-4FF2-94D5-A40ACFDCF603'>
+            <UpgradeVersion OnlyDetect='yes' Property='NEWERFOUND' Minimum='1.0.0' IncludeMinimum='no' />
+        </Upgrade>
+
+        <Binary Id='taskkill_exe' SourceFile='C:\Windows\System32\TASKKILL.exe' />
+
+        <CustomAction Id='StopYass' BinaryKey='taskkill_exe' ExeCommand='/F /IM yass.exe /T'
+                      Execute='immediate' Impersonate='yes' Return='ignore' />
+
+        <InstallExecuteSequence>
+            <Custom Action='StopYass' Before='InstallValidate'>
+              (REMOVE="ALL") OR UPGRADINGPRODUCTCODE OR WIX_UPGRADE_DETECTED
+            </Custom>
+        </InstallExecuteSequence>
+
+        <Condition Message='YASS requires Windows XP or above'>
+            VersionNT >= 501
+        </Condition>
+
+        <MediaTemplate EmbedCab='yes' CompressionLevel='high' />
+
+        <Property Id='DiskPrompt' Value="Chilledheart's YASS Installation [1]" />
+        <Property Id='WIXUI_INSTALLDIR' Value='INSTALLDIR' />
+        <Icon Id='ARPIcon' SourceFile='..\src\win32\yass.ico' />
+        <Property Id='ARPPRODUCTICON' Value='ARPIcon' />
+        <Property Id='DISABLEADVTSHORTCUTS' Value='1' />
+
+        <Property Id='REGISTRYKEY' Value='Software\YetAnotherShadowSocket' />
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='$(var.PlatformProgramFilesFolder)'>
+                <Directory Id='INSTALLDIR' Name='YASS'/>
+            </Directory>
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='MenuDir' Name='YASS' />
+            </Directory>
+        </Directory>
+
+        <ComponentGroup Id='exe_yass'>
+            <Component Id='yass.exe' Directory='INSTALLDIR' Win64='$(var.Win64)' Guid='3E5E8F97-4E9A-4B11-B334-611CE0AFFC54'>
+                <File Name='yass.exe' Source='yass.exe' KeyPath='yes'/>
+                <!-- %CRASHPAD_HANDLER_HOLDER% -->
+                <!-- %ICUDATAFILE_HOLDER% -->
+
+                <RegistryKey Root='HKMU' Key='[REGISTRYKEY]'>
+                    <RegistryValue Key='InstallPath' Type='string' Value='[INSTALLDIR]' KeyPath='no' />
+                    <RegistryValue Key='InstallPath' Name='ExecutablePath' Type='string' Value='[#yass.exe]' KeyPath='no' />
+                </RegistryKey>
+            </Component>
+        </ComponentGroup>
+
+        <ComponentGroup Id='exe_dll'>
+            <Component Id='SupportLibrary' Directory='INSTALLDIR' Win64='$(var.Win64)' Guid='3BEB0AD7-044F-4FB6-9CF1-C53D45600722'>
+                <CreateFolder/>
+                <!-- %DLLPLACEHOLDER% -->
+                <!--
+                <File Name='Support.dll' Source='Support.dll' KeyPath='yes' />
+                -->
+            </Component>
+        </ComponentGroup>
+
+        <ComponentGroup Id='exe_license'>
+            <Component Id='License' Directory='INSTALLDIR' Win64='$(var.Win64)' Guid='CD8DB265-5EC1-4631-8CDB-8E935F1AFDFA'>
+                <!-- %LICENSEPLACEHOLDER% -->
+                <!--
+                <File Name='LICENSE' Source='LICENSE' KeyPath='yes' />
+                -->
+            </Component>
+        </ComponentGroup>
+
+        <ComponentGroup Id='exe_shortcut'>
+             <Component Id='Shortcut' Directory='MenuDir' Guid='E9D83A2A-7F75-4558-A718-795DAA3021E4'>
+                 <Shortcut Id='ApplicationStartMenuShortCut'
+                           Name='YASS'
+                           Description='Launch YASS'
+                           Target='[INSTALLDIR]yass.exe'
+                           WorkingDirectory='INSTALLDIR' />
+                 <Shortcut Id='UninstallProduct'
+                           Name='Uninstall YASS'
+                           Target='[SystemFolder]msiexec.exe'
+                           IconIndex='0'
+                           Arguments='/x [ProductCode]' />
+                 <RemoveFolder Id='Remove_MenuDir' Directory='MenuDir' On='uninstall' />
+                 <RegistryKey Root='HKMU' Key='[REGISTRYKEY]'>
+                     <RegistryValue Key='InstalledFeatures' Name='Shortcuts' Type='string' Value='1' KeyPath='yes' />
+                 </RegistryKey>
+             </Component>
+        </ComponentGroup>
+
+        <Feature Id='DefaultFeature' Title='YASS' Description='The YASS package.' ConfigurableDirectory='INSTALLDIR'>
+            <Feature Id='DefaultFeatures' AllowAdvertise='no' Title='Program' Description='The main executable.' Level='1'>
+                <ComponentGroupRef Id='exe_yass' Primary='yes' />
+                <ComponentGroupRef Id='exe_dll' Primary='yes' />
+                <ComponentGroupRef Id='exe_license' />
+                <ComponentGroupRef Id='exe_shortcut' />
+            </Feature>
+        </Feature>
+
+        <UIRef Id='WixUI_InstallDir' />
+        <UIRef Id='WixUI_ErrorProgressText' />
+        <WixVariable Id='WixUILicenseRtf' Value='..\GPL-2.0.rtf' />
+    </Product>
+</Wix>

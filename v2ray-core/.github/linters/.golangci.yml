@@ -1,0 +1,60 @@
+run:
+  timeout: 5m
+  skip-files:
+    - generated.*
+    - .pb.go
+
+issues:
+  new: true
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: "SA1019:"
+    - linters:
+        - stylecheck
+      text: "ST1016:"
+
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - depguard
+    - gocritic
+    - gofmt
+    - gofumpt
+    - goimports
+    - goprintffuncname
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - varcheck
+    - whitespace
+  disable:
+    - deadcode
+    - errcheck
+    - unused
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/v2fly/v2ray-core
+  revive:
+    rules:
+      - name: blank-imports
+        severity: warning
+        disabled: true
+  depguard:
+    rules:
+      Main:
+        deny:
+          - pkg: "github.com/pkg/errors"
+            desc: Should be replaced by standard lib errors package

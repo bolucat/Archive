@@ -1,0 +1,34 @@
+name: nightly
+
+on:
+  schedule:
+  - cron: "0 0 * * *" # nightly At 00:00
+  workflow_dispatch:
+
+jobs:
+  nightly-build-go-bin:
+    name: nightly-build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Golang with cache
+        id: golang-with-cache
+        uses: magnetikonline/action-golang-cache@v4
+        with:
+          go-version-file: go.mod
+
+      - uses: wangyoucao577/go-release-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: linux
+          goarch: ${{ matrix.goarch }}
+          pre_command: export GODEBUG=http2client=0
+          build_command: make build-nightly
+          release_tag: nightly
+          release_name: nightly
+          goversion: "1.21.1"
+          overwrite: true
+          retry: 3

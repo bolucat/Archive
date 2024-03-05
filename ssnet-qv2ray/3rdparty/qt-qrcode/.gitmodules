@@ -1,0 +1,3 @@
+[submodule "lib/libqrencode"]
+	path = lib/libqrencode
+	url = https://github.com/fukuchi/libqrencode.git

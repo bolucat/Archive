@@ -1,0 +1,11 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO microsoft/krabsetw
+    REF 3bc145fb55212aaf121be88c3a2f25afa2e07b42
+    SHA512 e25e6525a61df367ba782701cb5f22d8262b6451368dbead2ea901f59eb1479a1364d58da20e47e2413db3cb45c6b46a992a1aeb9bff60ad137ffdb91b4aba60
+    HEAD_REF master
+)
+
+file(INSTALL ${SOURCE_PATH}/krabs/krabs/ DESTINATION ${CURRENT_PACKAGES_DIR}/include/krabs)
+file(INSTALL ${SOURCE_PATH}/krabs/krabs.hpp DESTINATION ${CURRENT_PACKAGES_DIR}/include)
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)

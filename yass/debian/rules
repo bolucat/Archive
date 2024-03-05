@@ -1,0 +1,83 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+#export DH_VERBOSE = 1
+
+# Security Hardening
+export DEB_BUILD_MAINT_OPTIONS += hardening=+all
+NCPUS = $(shell nproc)
+
+export GOPROXY
+
+# In compat 13 and later, The variables HOME will be set to a writable directory
+export HOME=/tmp
+
+CMAKE_OPTIONS += ${CMAKE_CROSS_TOOLCHAIN_FLAGS_NATIVE}
+
+# this fix is required before debhelper 11.4
+# https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=907738
+ifneq ($(DH_QUIET),)
+CMAKE_OPTIONS += -DCMAKE_VERBOSE_MAKEFILE=OFF
+endif
+
+ifneq ($(filter nogui,$(DEB_BUILD_PROFILES)),)
+	CMAKE_OPTIONS += -DGUI=off
+else
+	CMAKE_OPTIONS += -DGUI=on
+endif
+
+export ASMFLAGS
+export PKG_CONFIG
+
+%:
+	dh $@ --builddirectory=build-debian
+
+override_dh_auto_clean:
+	dh_auto_clean
+
+ifneq ($(filter clang,$(DEB_BUILD_PROFILES)),)
+override_dh_auto_configure: ASMFLAGS += -ccc-gcc-name ${DEB_HOST_GNU_TYPE}-gcc
+override_dh_auto_configure: CFLAGS += -ccc-gcc-name ${DEB_HOST_GNU_TYPE}-gcc
+override_dh_auto_configure: CXXFLAGS += -ccc-gcc-name ${DEB_HOST_GNU_TYPE}-g++
+CMAKE_OPTIONS += -DCMAKE_C_COMPILER_TARGET=${DEB_HOST_GNU_TYPE} -DCMAKE_CXX_COMPILER_TARGET=${DEB_HOST_GNU_TYPE} -DCMAKE_ASM_COMPILER_TARGET=${DEB_HOST_GNU_TYPE}
+ifneq ($(filter riscv64,$(DEB_HOST_GNU_CPU)),)
+# According to the ISA spec definition rv64gc is rv64imafdc_zicsr_zifencei and
+# rv64imafdc is rv64imafdc_zicsr, see https://github.com/riscv-collab/riscv-gcc/issues/344
+override_dh_auto_configure: ASMFLAGS += -march=rv64gc -mabi=lp64d
+override_dh_auto_configure: CFLAGS += -march=rv64gc -mabi=lp64d
+override_dh_auto_configure: CXXFLAGS += -march=rv64gc -mabi=lp64d
+# lto mess with d extension support
+CMAKE_OPTIONS += -DENABLE_LTO=off
+endif
+endif
+
+ifneq ($(filter cross,$(DEB_BUILD_PROFILES)),)
+override_dh_auto_configure: PKG_CONFIG = ${DEB_HOST_GNU_TYPE}-pkg-config
+endif
+
+override_dh_auto_configure: CMAKE_OPTIONS += -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=$(DEB_HOST_ARCH)
+
+override_dh_auto_configure:
+	dh_auto_configure ${DEB_BUILD_SYSTEM_OPTIONS} -- -DCMAKE_BUILD_TYPE=Release -DBUILD_BENCHMARKS=on -DBUILD_TESTS=on $(CMAKE_OPTIONS) -DCLI=on -DSERVER=on -DUSE_BUILTIN_CA_BUNDLE_CRT=off -DUSE_TCMALLOC=on
+
+override_dh_auto_build:
+	dh_auto_build ${DEB_BUILD_SYSTEM_OPTIONS} -- -j $(NCPUS)
+
+override_dh_auto_test:
+ifneq ($(filter nocheck,$(DEB_BUILD_PROFILES)),)
+	echo 'test skipped'
+else
+	./build-debian/yass_test
+	./build-debian/yass_benchmark
+endif
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l /usr/$(DEB_HOST_GNU_TYPE)/lib -l /lib/$(DEB_HOST_GNU_TYPE)
+
+override_dh_strip:
+ifeq ($(filter nogui,$(DEB_BUILD_PROFILES)),)
+	dh_strip -pyass --dbg-package=yass-dbg
+endif
+	dh_strip -pyass-server --dbg-package=yass-server-dbg
+	dh_strip -pyass-client --dbg-package=yass-client-dbg

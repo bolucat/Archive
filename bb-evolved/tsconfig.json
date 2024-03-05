@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "target": "ESNext",
+    "strict": false,
+    "noImplicitAny": false,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
+    }
+  },
+  "vueCompilerOptions": {
+    "target": 2.7
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "registry/lib/**/*",
+    "webpack/**/*",
+    "registry/webpack/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dev",
+    "packages",
+    "typings"
+  ],
+  "ts-node": {
+    "compilerOptions": {
+      "module": "CommonJS"
+    }
+  }
+}

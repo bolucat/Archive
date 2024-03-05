@@ -1,0 +1,958 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 51;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6608D9DA2182C69D00A0E0DD /* v2rayStruct.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6608D9D92182C69D00A0E0DD /* v2rayStruct.swift */; };
+		6608D9DC2182C6D200A0E0DD /* v2rayInbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6608D9DB2182C6D200A0E0DD /* v2rayInbound.swift */; };
+		6608D9DE2182C92D00A0E0DD /* v2rayOutbound.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6608D9DD2182C92D00A0E0DD /* v2rayOutbound.swift */; };
+		6608D9E22182C9C100A0E0DD /* v2rayStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6608D9E12182C9C100A0E0DD /* v2rayStream.swift */; };
+		660D0E5A216E0158000C2922 /* V2rayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660D0E59216E0158000C2922 /* V2rayServer.swift */; };
+		66107B8622DEDBE4002FFB60 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 66107B8822DEDBE4002FFB60 /* Localizable.strings */; };
+		6610ECB721742AFD008FC401 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 664EB378216C9A5F00B6AE0D /* MainMenu.xib */; };
+		6618372923E9BF1A000F7410 /* ToastWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6618372823E9BF1A000F7410 /* ToastWindow.swift */; };
+		6618372E23E9BF74000F7410 /* ToastWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 6618372C23E9BF73000F7410 /* ToastWindow.xib */; };
+		66193A8623EE45B200289B6A /* PreferenceRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66193A8523EE45B200289B6A /* PreferenceRouting.swift */; };
+		66193A8923EE46BC00289B6A /* PreferenceRouting.xib in Resources */ = {isa = PBXBuildFile; fileRef = 66193A8723EE46BC00289B6A /* PreferenceRouting.xib */; };
+		663F040625ED4B2C00687600 /* V2rayLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663F040525ED4B2C00687600 /* V2rayLaunch.swift */; };
+		664EB375216C9A5E00B6AE0D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664EB374216C9A5E00B6AE0D /* AppDelegate.swift */; };
+		664EB377216C9A5F00B6AE0D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 664EB376216C9A5F00B6AE0D /* Assets.xcassets */; };
+		664EB392216CA9E800B6AE0D /* ConfigWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 664EB390216CA9E800B6AE0D /* ConfigWindow.swift */; };
+		6662C20B240EA782000AF6CD /* PreferenceDns.xib in Resources */ = {isa = PBXBuildFile; fileRef = 6662C209240EA782000AF6CD /* PreferenceDns.xib */; };
+		667029CA21AF8E7A0079EF41 /* Sparkle.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 667029C921AF8E7A0079EF41 /* Sparkle.framework */; };
+		667029D321AFB86E0079EF41 /* QrcodeWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 667029D121AFB86E0079EF41 /* QrcodeWindow.xib */; };
+		66784AFC2170486D00AD307F /* Util.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66784AFB2170486D00AD307F /* Util.swift */; };
+		667ECE722A9A05EC009B00EC /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667ECE712A9A05EC009B00EC /* main.swift */; };
+		667ECE762A9A064C009B00EC /* V2rayUTool in CopyFiles */ = {isa = PBXBuildFile; fileRef = 667ECE6F2A9A05EB009B00EC /* V2rayUTool */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		66973EB721797719001FEA1E /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 66973EB621797719001FEA1E /* ServiceManagement.framework */; };
+		66A77BE3268225790097A126 /* v2ray-core in Resources */ = {isa = PBXBuildFile; fileRef = 66A77BE2268225790097A126 /* v2ray-core */; };
+		66ACB1A021757D5B005B5881 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66ACB19F21757D5B005B5881 /* MainMenu.swift */; };
+		66AD5335241497000070529C /* Shortcut.m in Sources */ = {isa = PBXBuildFile; fileRef = 66AD5330241496FF0070529C /* Shortcut.m */; };
+		66BC2B89228C589E00FBB716 /* V2raySubscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66BC2B88228C589E00FBB716 /* V2raySubscription.swift */; };
+		66F07CF9236D79540088A4AE /* Ping.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66F07CF8236D79540088A4AE /* Ping.swift */; };
+		66F411B121CA49EE007AAC10 /* pac in Copy Files */ = {isa = PBXBuildFile; fileRef = 6683B1EA21C2AD1A004A1C5F /* pac */; };
+		66FEAD53217EE14C009DECF9 /* ConfigWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = 66FEAD4E217EE14C009DECF9 /* ConfigWindow.xib */; };
+		6D6DF0D1DC87F9423F490B31 /* install.sh in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DF7F662C35646734A352E /* install.sh */; };
+		6D6DF2CF13D9FD3C7C6492A4 /* QrcodeWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF12EA09D2D80788666D0 /* QrcodeWindow.swift */; };
+		6D6DF2F2DFB2234541488BBD /* PreferenceSubscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF5345E4582EE0EBD468D /* PreferenceSubscription.swift */; };
+		6D6DF41FA8F7C7B020AC4115 /* Share.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF79424C83391C205CB9C /* Share.swift */; };
+		6D6DF51271B1AF55EACC79F2 /* PreferenceSubscription.strings in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DF0CCE47F1253DECD5855 /* PreferenceSubscription.strings */; };
+		6D6DF6553CF221AEB71913EE /* PreferenceGeneral.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DFFB29020127E034AD168 /* PreferenceGeneral.swift */; };
+		6D6DF670FFB063EE2360776C /* Uri.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF11F0983AFCBEF1E347B /* Uri.swift */; };
+		6D6DF6F065067CD879201FF9 /* Import.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF87840CDA04AF0E9D36E /* Import.swift */; };
+		6D6DF807BE591BE396221EF3 /* PreferenceAdvance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF701C75D8D416096D717 /* PreferenceAdvance.swift */; };
+		6D6DF87497313615AFE3320A /* PreferencePac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF3151BBA6E56836AF6DE /* PreferencePac.swift */; };
+		6D6DF8BFC33F97E9AFCA5A4B /* V2rayConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DFD9F5991B38B128888D6 /* V2rayConfig.swift */; };
+		6D6DF93B58B654D86ACC490E /* PreferenceAbout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DF870C8E334815FBA78B2 /* PreferenceAbout.swift */; };
+		6D6DF95B4749491F1D600B05 /* PreferenceAdvance.strings in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DF586D59F646DD1C552F1 /* PreferenceAdvance.strings */; };
+		6D6DFC1618D163A9DFE3B628 /* PreferenceGeneral.strings in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DF76CE2762F4A33DB32BD /* PreferenceGeneral.strings */; };
+		6D6DFC1D9432F2A60D2156E2 /* PreferenceDns.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6DFEB25B88118513B9F581 /* PreferenceDns.swift */; };
+		6D6DFEA4ED44E1BE02451B6D /* PreferenceAbout.strings in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DF5D99F2FBB7B53564B3B /* PreferenceAbout.strings */; };
+		6D6DFFD18860EBE148F6DF1F /* PreferencePac.strings in Resources */ = {isa = PBXBuildFile; fileRef = 6D6DFE89E1A7BFE2AC1D8871 /* PreferencePac.strings */; };
+		F260898E336CFA5EAB07ADC9 /* Pods_V2rayU.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 66A5CE4521706B5A009B08B2 /* Pods_V2rayU.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6625848B2AB7417B00DFDC1E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 664EB369216C9A5E00B6AE0D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 667ECE6E2A9A05EB009B00EC;
+			remoteInfo = V2rayUTool;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		667ECE692A9A0044009B00EC /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 7;
+			files = (
+				667ECE762A9A064C009B00EC /* V2rayUTool in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		667ECE6D2A9A05EB009B00EC /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		66F411B021CA49CF007AAC10 /* Copy Files */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 7;
+			files = (
+				66F411B121CA49EE007AAC10 /* pac in Copy Files */,
+			);
+			name = "Copy Files";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		230294B5D1C5B1E0D311F3E2 /* libPods-V2rayUTool.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-V2rayUTool.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		29B27CD97A6B24986CAF0BFD /* Pods-V2rayU.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-V2rayU.release.xcconfig"; path = "Pods/Target Support Files/Pods-V2rayU/Pods-V2rayU.release.xcconfig"; sourceTree = "<group>"; };
+		6608D9D92182C69D00A0E0DD /* v2rayStruct.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = v2rayStruct.swift; sourceTree = "<group>"; };
+		6608D9DB2182C6D200A0E0DD /* v2rayInbound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = v2rayInbound.swift; sourceTree = "<group>"; };
+		6608D9DD2182C92D00A0E0DD /* v2rayOutbound.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = v2rayOutbound.swift; sourceTree = "<group>"; };
+		6608D9E12182C9C100A0E0DD /* v2rayStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = v2rayStream.swift; sourceTree = "<group>"; };
+		660D0E59216E0158000C2922 /* V2rayServer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; lineEnding = 0; path = V2rayServer.swift; sourceTree = "<group>"; usesTabs = 0; wrapsLines = 0; };
+		66107B8722DEDBE4002FFB60 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		66107B8922DEE445002FFB60 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		6618372823E9BF1A000F7410 /* ToastWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ToastWindow.swift; sourceTree = "<group>"; };
+		6618372D23E9BF73000F7410 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ToastWindow.xib; sourceTree = "<group>"; };
+		66193A8523EE45B200289B6A /* PreferenceRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferenceRouting.swift; sourceTree = "<group>"; };
+		66193A8823EE46BC00289B6A /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceRouting.xib; sourceTree = SOURCE_ROOT; };
+		66193A9323EF1EF600289B6A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceRouting.strings"; sourceTree = "<group>"; };
+		66193A9523EF1EFA00289B6A /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceRouting.strings"; sourceTree = "<group>"; };
+		6625848D2AB745E700DFDC1E /* sign.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = sign.sh; sourceTree = "<group>"; };
+		6625848E2AB746D500DFDC1E /* appdmg.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = appdmg.sh; sourceTree = "<group>"; };
+		662F0ACE2AB720C700884C17 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = ../en.lproj/PreferenceGeneral.strings; sourceTree = "<group>"; };
+		663F040525ED4B2C00687600 /* V2rayLaunch.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = V2rayLaunch.swift; sourceTree = "<group>"; };
+		664666A021CBD6C60094F0B7 /* libPods-V2rayUTool.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = "libPods-V2rayUTool.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		664B95DD217062A500DBC941 /* Alamofire */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Alamofire; path = Pods/Alamofire; sourceTree = "<group>"; };
+		664EB371216C9A5E00B6AE0D /* V2rayU.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = V2rayU.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		664EB374216C9A5E00B6AE0D /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		664EB376216C9A5F00B6AE0D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		664EB379216C9A5F00B6AE0D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
+		664EB37B216C9A5F00B6AE0D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		664EB390216CA9E800B6AE0D /* ConfigWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigWindow.swift; sourceTree = "<group>"; };
+		664FC05321A70C4300048FE3 /* build.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = build.plist; sourceTree = "<group>"; };
+		6653C20422E0A2B700754D66 /* publish.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = publish.sh; sourceTree = "<group>"; };
+		665DC9BA22A542F90062337B /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
+		6662C20A240EA782000AF6CD /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceDns.xib; sourceTree = SOURCE_ROOT; };
+		6662C20C240EA794000AF6CD /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceDns.strings"; sourceTree = "<group>"; };
+		6662C20D240EA797000AF6CD /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceDns.strings"; sourceTree = "<group>"; };
+		667029C921AF8E7A0079EF41 /* Sparkle.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Sparkle.framework; path = "../../Downloads/Sparkle-1.21.0/Sparkle.framework"; sourceTree = "<group>"; };
+		667029D221AFB86E0079EF41 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/QrcodeWindow.xib; sourceTree = "<group>"; };
+		66784AFB2170486D00AD307F /* Util.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Util.swift; sourceTree = "<group>"; };
+		667ECE6F2A9A05EB009B00EC /* V2rayUTool */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = V2rayUTool; sourceTree = BUILT_PRODUCTS_DIR; };
+		667ECE712A9A05EC009B00EC /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		6683B1EA21C2AD1A004A1C5F /* pac */ = {isa = PBXFileReference; lastKnownFileType = folder; name = pac; path = Build/pac; sourceTree = "<group>"; };
+		66973EB621797719001FEA1E /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
+		669A73A7233776B800807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "zh-HK.lproj/MainMenu.strings"; sourceTree = "<group>"; };
+		669A73A8233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "zh-HK.lproj/ConfigWindow.strings"; sourceTree = "<group>"; };
+		669A73A9233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "zh-HK.lproj/QrcodeWindow.strings"; sourceTree = "<group>"; };
+		669A73AA233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceAbout.strings"; sourceTree = "<group>"; };
+		669A73AB233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceAdvance.strings"; sourceTree = "<group>"; };
+		669A73AC233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceGeneral.strings"; sourceTree = "<group>"; };
+		669A73AD233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferencePac.strings"; sourceTree = "<group>"; };
+		669A73AE233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "../zh-HK.lproj/PreferenceSubscription.strings"; sourceTree = "<group>"; };
+		669A73AF233776B900807CF9 /* zh-HK */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-HK"; path = "zh-HK.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		66A5CE4521706B5A009B08B2 /* Pods_V2rayU.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Pods_V2rayU.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		66A77BE2268225790097A126 /* v2ray-core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "v2ray-core"; path = "Build/v2ray-core"; sourceTree = "<group>"; };
+		66ACB19F21757D5B005B5881 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
+		66AD532E241496FE0070529C /* Shortcut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Shortcut.h; sourceTree = "<group>"; };
+		66AD5330241496FF0070529C /* Shortcut.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Shortcut.m; sourceTree = "<group>"; };
+		66AD5333241496FF0070529C /* V2rayU-Bridging-header.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "V2rayU-Bridging-header.h"; sourceTree = "<group>"; };
+		66BC2B88228C589E00FBB716 /* V2raySubscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V2raySubscription.swift; sourceTree = "<group>"; };
+		66C5B194240B58B8008A22CA /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = ../en.lproj/PreferenceAdvance.strings; sourceTree = "<group>"; };
+		66F07CF8236D79540088A4AE /* Ping.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Ping.swift; sourceTree = "<group>"; };
+		66F3029C22AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/MainMenu.strings"; sourceTree = "<group>"; };
+		66F3029D22AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/ConfigWindow.strings"; sourceTree = "<group>"; };
+		66F3029E22AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/QrcodeWindow.strings"; sourceTree = "<group>"; };
+		66F3029F22AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceAbout.strings"; sourceTree = "<group>"; };
+		66F302A022AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceAdvance.strings"; sourceTree = "<group>"; };
+		66F302A122AAA0A600FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceGeneral.strings"; sourceTree = "<group>"; };
+		66F302A222AAA0A700FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferencePac.strings"; sourceTree = "<group>"; };
+		66F302A322AAA0A700FCA4E2 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "../zh-Hans.lproj/PreferenceSubscription.strings"; sourceTree = "<group>"; };
+		66FEAD45217D75FC009DECF9 /* release.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = release.sh; sourceTree = "<group>"; };
+		66FEAD4F217EE14C009DECF9 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/ConfigWindow.xib; sourceTree = "<group>"; };
+		6D6DF085C3C411989C416D0D /* user-rule.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "user-rule.txt"; sourceTree = "<group>"; };
+		6D6DF11F0983AFCBEF1E347B /* Uri.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Uri.swift; sourceTree = "<group>"; };
+		6D6DF12EA09D2D80788666D0 /* QrcodeWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = QrcodeWindow.swift; sourceTree = "<group>"; };
+		6D6DF181C5D472DBBB71B72A /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferencePac.xib; sourceTree = SOURCE_ROOT; };
+		6D6DF3151BBA6E56836AF6DE /* PreferencePac.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferencePac.swift; sourceTree = "<group>"; };
+		6D6DF3A2857899778B719CE1 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceAbout.xib; sourceTree = SOURCE_ROOT; };
+		6D6DF3C1564D0EBC5A99C9C1 /* gfwlist.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = gfwlist.txt; sourceTree = "<group>"; };
+		6D6DF5345E4582EE0EBD468D /* PreferenceSubscription.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferenceSubscription.swift; sourceTree = "<group>"; };
+		6D6DF69C7CA7EBEFFE8E22D1 /* abp.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = abp.js; sourceTree = "<group>"; };
+		6D6DF701C75D8D416096D717 /* PreferenceAdvance.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferenceAdvance.swift; sourceTree = "<group>"; };
+		6D6DF79424C83391C205CB9C /* Share.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Share.swift; sourceTree = "<group>"; };
+		6D6DF7F662C35646734A352E /* install.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = install.sh; sourceTree = "<group>"; };
+		6D6DF81E59907A2C7579BFE2 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceGeneral.xib; sourceTree = SOURCE_ROOT; };
+		6D6DF870C8E334815FBA78B2 /* PreferenceAbout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferenceAbout.swift; sourceTree = "<group>"; };
+		6D6DF87840CDA04AF0E9D36E /* Import.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Import.swift; sourceTree = "<group>"; };
+		6D6DF8F5112A8407EE959998 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = file.gitignore; path = .gitignore; sourceTree = "<group>"; };
+		6D6DF927AC79EEF7378C192A /* appdmg.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = appdmg.json; sourceTree = "<group>"; };
+		6D6DFD730D8572B1FCAB1FFE /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceSubscription.xib; sourceTree = SOURCE_ROOT; };
+		6D6DFD9F5991B38B128888D6 /* V2rayConfig.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = V2rayConfig.swift; sourceTree = "<group>"; };
+		6D6DFE1CDFAD9828F2FDE1A5 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = V2rayU/Base.lproj/PreferenceAdvance.xib; sourceTree = SOURCE_ROOT; };
+		6D6DFEB25B88118513B9F581 /* PreferenceDns.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferenceDns.swift; sourceTree = "<group>"; };
+		6D6DFFB0110E2442FC8337A5 /* format.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = format.js; sourceTree = "<group>"; };
+		6D6DFFB29020127E034AD168 /* PreferenceGeneral.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PreferenceGeneral.swift; sourceTree = "<group>"; };
+		8E15DFCD449143CCC309A1A0 /* Pods-V2rayU.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-V2rayU.debug.xcconfig"; path = "Pods/Target Support Files/Pods-V2rayU/Pods-V2rayU.debug.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		664EB36E216C9A5E00B6AE0D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				667029CA21AF8E7A0079EF41 /* Sparkle.framework in Frameworks */,
+				66973EB721797719001FEA1E /* ServiceManagement.framework in Frameworks */,
+				F260898E336CFA5EAB07ADC9 /* Pods_V2rayU.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		667ECE6C2A9A05EB009B00EC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		6608D9B82182BBAC00A0E0DD /* v2ray */ = {
+			isa = PBXGroup;
+			children = (
+				6608D9D92182C69D00A0E0DD /* v2rayStruct.swift */,
+				6608D9DB2182C6D200A0E0DD /* v2rayInbound.swift */,
+				6608D9DD2182C92D00A0E0DD /* v2rayOutbound.swift */,
+				6608D9E12182C9C100A0E0DD /* v2rayStream.swift */,
+				6D6DFD9F5991B38B128888D6 /* V2rayConfig.swift */,
+				6D6DFFB0110E2442FC8337A5 /* format.js */,
+			);
+			path = v2ray;
+			sourceTree = "<group>";
+		};
+		664EB368216C9A5E00B6AE0D = {
+			isa = PBXGroup;
+			children = (
+				66A77BE2268225790097A126 /* v2ray-core */,
+				66AD532D241496EF0070529C /* Common */,
+				6683B1EA21C2AD1A004A1C5F /* pac */,
+				66FEAD44217D75D7009DECF9 /* Build */,
+				664EB373216C9A5E00B6AE0D /* V2rayU */,
+				667ECE702A9A05EB009B00EC /* V2rayUTool */,
+				664EB372216C9A5E00B6AE0D /* Products */,
+				A10EFB32D901F1862C489D12 /* Pods */,
+				956412AC8DEB3D3D182A5D49 /* Frameworks */,
+				6D6DF8F5112A8407EE959998 /* .gitignore */,
+			);
+			sourceTree = "<group>";
+		};
+		664EB372216C9A5E00B6AE0D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				664EB371216C9A5E00B6AE0D /* V2rayU.app */,
+				667ECE6F2A9A05EB009B00EC /* V2rayUTool */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		664EB373216C9A5E00B6AE0D /* V2rayU */ = {
+			isa = PBXGroup;
+			children = (
+				66F07CF8236D79540088A4AE /* Ping.swift */,
+				6608D9B82182BBAC00A0E0DD /* v2ray */,
+				664EB376216C9A5F00B6AE0D /* Assets.xcassets */,
+				664EB374216C9A5E00B6AE0D /* AppDelegate.swift */,
+				66ACB19F21757D5B005B5881 /* MainMenu.swift */,
+				664EB378216C9A5F00B6AE0D /* MainMenu.xib */,
+				664EB390216CA9E800B6AE0D /* ConfigWindow.swift */,
+				66FEAD4E217EE14C009DECF9 /* ConfigWindow.xib */,
+				660D0E59216E0158000C2922 /* V2rayServer.swift */,
+				663F040525ED4B2C00687600 /* V2rayLaunch.swift */,
+				66BC2B88228C589E00FBB716 /* V2raySubscription.swift */,
+				66784AFB2170486D00AD307F /* Util.swift */,
+				6D6DF87840CDA04AF0E9D36E /* Import.swift */,
+				664EB37B216C9A5F00B6AE0D /* Info.plist */,
+				667029D121AFB86E0079EF41 /* QrcodeWindow.xib */,
+				6D6DF12EA09D2D80788666D0 /* QrcodeWindow.swift */,
+				6D6DFBED570A0D1FDED0BD53 /* preference */,
+				6618372823E9BF1A000F7410 /* ToastWindow.swift */,
+				6618372C23E9BF73000F7410 /* ToastWindow.xib */,
+				66107B8822DEDBE4002FFB60 /* Localizable.strings */,
+				6D6DF7F662C35646734A352E /* install.sh */,
+				6D6DF11F0983AFCBEF1E347B /* Uri.swift */,
+				6D6DF79424C83391C205CB9C /* Share.swift */,
+			);
+			path = V2rayU;
+			sourceTree = "<group>";
+		};
+		667ECE702A9A05EB009B00EC /* V2rayUTool */ = {
+			isa = PBXGroup;
+			children = (
+				667ECE712A9A05EC009B00EC /* main.swift */,
+			);
+			path = V2rayUTool;
+			sourceTree = "<group>";
+		};
+		66AD532D241496EF0070529C /* Common */ = {
+			isa = PBXGroup;
+			children = (
+				66AD532E241496FE0070529C /* Shortcut.h */,
+				66AD5330241496FF0070529C /* Shortcut.m */,
+				66AD5333241496FF0070529C /* V2rayU-Bridging-header.h */,
+			);
+			name = Common;
+			sourceTree = "<group>";
+		};
+		66FEAD44217D75D7009DECF9 /* Build */ = {
+			isa = PBXGroup;
+			children = (
+				6625848E2AB746D500DFDC1E /* appdmg.sh */,
+				6625848D2AB745E700DFDC1E /* sign.sh */,
+				664FC05321A70C4300048FE3 /* build.plist */,
+				66FEAD45217D75FC009DECF9 /* release.sh */,
+				6D6DFD93CE866018306A090E /* pac */,
+				6653C20422E0A2B700754D66 /* publish.sh */,
+				6D6DF927AC79EEF7378C192A /* appdmg.json */,
+			);
+			path = Build;
+			sourceTree = "<group>";
+		};
+		6D6DFBED570A0D1FDED0BD53 /* preference */ = {
+			isa = PBXGroup;
+			children = (
+				6D6DF870C8E334815FBA78B2 /* PreferenceAbout.swift */,
+				6D6DF3151BBA6E56836AF6DE /* PreferencePac.swift */,
+				6D6DF5345E4582EE0EBD468D /* PreferenceSubscription.swift */,
+				6D6DFFB29020127E034AD168 /* PreferenceGeneral.swift */,
+				6D6DF701C75D8D416096D717 /* PreferenceAdvance.swift */,
+				66193A8523EE45B200289B6A /* PreferenceRouting.swift */,
+				6D6DFEB25B88118513B9F581 /* PreferenceDns.swift */,
+				6D6DF5D99F2FBB7B53564B3B /* PreferenceAbout.strings */,
+				6D6DF586D59F646DD1C552F1 /* PreferenceAdvance.strings */,
+				6D6DF76CE2762F4A33DB32BD /* PreferenceGeneral.strings */,
+				6D6DFE89E1A7BFE2AC1D8871 /* PreferencePac.strings */,
+				6D6DF0CCE47F1253DECD5855 /* PreferenceSubscription.strings */,
+				66193A8723EE46BC00289B6A /* PreferenceRouting.xib */,
+				6662C209240EA782000AF6CD /* PreferenceDns.xib */,
+			);
+			path = preference;
+			sourceTree = "<group>";
+		};
+		6D6DFD93CE866018306A090E /* pac */ = {
+			isa = PBXGroup;
+			children = (
+				6D6DF69C7CA7EBEFFE8E22D1 /* abp.js */,
+				6D6DF3C1564D0EBC5A99C9C1 /* gfwlist.txt */,
+				6D6DF085C3C411989C416D0D /* user-rule.txt */,
+			);
+			path = pac;
+			sourceTree = "<group>";
+		};
+		956412AC8DEB3D3D182A5D49 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				665DC9BA22A542F90062337B /* AppKit.framework */,
+				664666A021CBD6C60094F0B7 /* libPods-V2rayUTool.a */,
+				667029C921AF8E7A0079EF41 /* Sparkle.framework */,
+				66973EB621797719001FEA1E /* ServiceManagement.framework */,
+				66A5CE4521706B5A009B08B2 /* Pods_V2rayU.framework */,
+				664B95DD217062A500DBC941 /* Alamofire */,
+				230294B5D1C5B1E0D311F3E2 /* libPods-V2rayUTool.a */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A10EFB32D901F1862C489D12 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				8E15DFCD449143CCC309A1A0 /* Pods-V2rayU.debug.xcconfig */,
+				29B27CD97A6B24986CAF0BFD /* Pods-V2rayU.release.xcconfig */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		664EB370216C9A5E00B6AE0D /* V2rayU */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 664EB37F216C9A5F00B6AE0D /* Build configuration list for PBXNativeTarget "V2rayU" */;
+			buildPhases = (
+				BB037DA2D56EB66A112B0778 /* [CP] Check Pods Manifest.lock */,
+				664EB36D216C9A5E00B6AE0D /* Sources */,
+				664EB36E216C9A5E00B6AE0D /* Frameworks */,
+				664EB36F216C9A5E00B6AE0D /* Resources */,
+				83C3E4047C50A6CD7233F986 /* [CP] Embed Pods Frameworks */,
+				66F411B021CA49CF007AAC10 /* Copy Files */,
+				667ECE692A9A0044009B00EC /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6625848C2AB7417B00DFDC1E /* PBXTargetDependency */,
+			);
+			name = V2rayU;
+			productName = V2rayU;
+			productReference = 664EB371216C9A5E00B6AE0D /* V2rayU.app */;
+			productType = "com.apple.product-type.application";
+		};
+		667ECE6E2A9A05EB009B00EC /* V2rayUTool */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 667ECE732A9A05EC009B00EC /* Build configuration list for PBXNativeTarget "V2rayUTool" */;
+			buildPhases = (
+				667ECE6B2A9A05EB009B00EC /* Sources */,
+				667ECE6C2A9A05EB009B00EC /* Frameworks */,
+				667ECE6D2A9A05EB009B00EC /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = V2rayUTool;
+			productName = V2rayUTool;
+			productReference = 667ECE6F2A9A05EB009B00EC /* V2rayUTool */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		664EB369216C9A5E00B6AE0D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				CLASSPREFIX = "";
+				LastSwiftUpdateCheck = 1400;
+				LastUpgradeCheck = 1000;
+				ORGANIZATIONNAME = yanue;
+				TargetAttributes = {
+					664EB370216C9A5E00B6AE0D = {
+						CreatedOnToolsVersion = 10.0;
+						LastSwiftMigration = "";
+						SystemCapabilities = {
+							com.apple.HardenedRuntime = {
+								enabled = 0;
+							};
+							com.apple.Sandbox = {
+								enabled = 0;
+							};
+						};
+					};
+					667ECE6E2A9A05EB009B00EC = {
+						CreatedOnToolsVersion = 14.0.1;
+					};
+				};
+			};
+			buildConfigurationList = 664EB36C216C9A5E00B6AE0D /* Build configuration list for PBXProject "V2rayU" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+				"zh-HK",
+			);
+			mainGroup = 664EB368216C9A5E00B6AE0D;
+			productRefGroup = 664EB372216C9A5E00B6AE0D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				664EB370216C9A5E00B6AE0D /* V2rayU */,
+				667ECE6E2A9A05EB009B00EC /* V2rayUTool */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		664EB36F216C9A5E00B6AE0D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				66A77BE3268225790097A126 /* v2ray-core in Resources */,
+				667029D321AFB86E0079EF41 /* QrcodeWindow.xib in Resources */,
+				6662C20B240EA782000AF6CD /* PreferenceDns.xib in Resources */,
+				6610ECB721742AFD008FC401 /* MainMenu.xib in Resources */,
+				66107B8622DEDBE4002FFB60 /* Localizable.strings in Resources */,
+				664EB377216C9A5F00B6AE0D /* Assets.xcassets in Resources */,
+				66FEAD53217EE14C009DECF9 /* ConfigWindow.xib in Resources */,
+				6618372E23E9BF74000F7410 /* ToastWindow.xib in Resources */,
+				6D6DFEA4ED44E1BE02451B6D /* PreferenceAbout.strings in Resources */,
+				6D6DF95B4749491F1D600B05 /* PreferenceAdvance.strings in Resources */,
+				6D6DFC1618D163A9DFE3B628 /* PreferenceGeneral.strings in Resources */,
+				6D6DFFD18860EBE148F6DF1F /* PreferencePac.strings in Resources */,
+				66193A8923EE46BC00289B6A /* PreferenceRouting.xib in Resources */,
+				6D6DF51271B1AF55EACC79F2 /* PreferenceSubscription.strings in Resources */,
+				6D6DF0D1DC87F9423F490B31 /* install.sh in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		83C3E4047C50A6CD7233F986 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-V2rayU/Pods-V2rayU-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-V2rayU/Pods-V2rayU-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-V2rayU/Pods-V2rayU-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		BB037DA2D56EB66A112B0778 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-V2rayU-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		664EB36D216C9A5E00B6AE0D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				664EB375216C9A5E00B6AE0D /* AppDelegate.swift in Sources */,
+				66ACB1A021757D5B005B5881 /* MainMenu.swift in Sources */,
+				66AD5335241497000070529C /* Shortcut.m in Sources */,
+				663F040625ED4B2C00687600 /* V2rayLaunch.swift in Sources */,
+				6608D9E22182C9C100A0E0DD /* v2rayStream.swift in Sources */,
+				66784AFC2170486D00AD307F /* Util.swift in Sources */,
+				660D0E5A216E0158000C2922 /* V2rayServer.swift in Sources */,
+				6608D9DC2182C6D200A0E0DD /* v2rayInbound.swift in Sources */,
+				6608D9DE2182C92D00A0E0DD /* v2rayOutbound.swift in Sources */,
+				6618372923E9BF1A000F7410 /* ToastWindow.swift in Sources */,
+				6608D9DA2182C69D00A0E0DD /* v2rayStruct.swift in Sources */,
+				66F07CF9236D79540088A4AE /* Ping.swift in Sources */,
+				664EB392216CA9E800B6AE0D /* ConfigWindow.swift in Sources */,
+				66193A8623EE45B200289B6A /* PreferenceRouting.swift in Sources */,
+				6D6DF8BFC33F97E9AFCA5A4B /* V2rayConfig.swift in Sources */,
+				6D6DF6F065067CD879201FF9 /* Import.swift in Sources */,
+				6D6DF2CF13D9FD3C7C6492A4 /* QrcodeWindow.swift in Sources */,
+				6D6DF93B58B654D86ACC490E /* PreferenceAbout.swift in Sources */,
+				6D6DF87497313615AFE3320A /* PreferencePac.swift in Sources */,
+				6D6DF2F2DFB2234541488BBD /* PreferenceSubscription.swift in Sources */,
+				6D6DF6553CF221AEB71913EE /* PreferenceGeneral.swift in Sources */,
+				66BC2B89228C589E00FBB716 /* V2raySubscription.swift in Sources */,
+				6D6DF807BE591BE396221EF3 /* PreferenceAdvance.swift in Sources */,
+				6D6DFC1D9432F2A60D2156E2 /* PreferenceDns.swift in Sources */,
+				6D6DF670FFB063EE2360776C /* Uri.swift in Sources */,
+				6D6DF41FA8F7C7B020AC4115 /* Share.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		667ECE6B2A9A05EB009B00EC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				667ECE722A9A05EC009B00EC /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6625848C2AB7417B00DFDC1E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 667ECE6E2A9A05EB009B00EC /* V2rayUTool */;
+			targetProxy = 6625848B2AB7417B00DFDC1E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		66107B8822DEDBE4002FFB60 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				66107B8722DEDBE4002FFB60 /* zh-Hans */,
+				66107B8922DEE445002FFB60 /* en */,
+				669A73AF233776B900807CF9 /* zh-HK */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		6618372C23E9BF73000F7410 /* ToastWindow.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6618372D23E9BF73000F7410 /* Base */,
+			);
+			name = ToastWindow.xib;
+			sourceTree = "<group>";
+		};
+		66193A8723EE46BC00289B6A /* PreferenceRouting.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				66193A8823EE46BC00289B6A /* Base */,
+				66193A9323EF1EF600289B6A /* zh-Hans */,
+				66193A9523EF1EFA00289B6A /* zh-HK */,
+			);
+			name = PreferenceRouting.xib;
+			sourceTree = "<group>";
+		};
+		664EB378216C9A5F00B6AE0D /* MainMenu.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				664EB379216C9A5F00B6AE0D /* Base */,
+				66F3029C22AAA0A600FCA4E2 /* zh-Hans */,
+				669A73A7233776B800807CF9 /* zh-HK */,
+			);
+			name = MainMenu.xib;
+			sourceTree = "<group>";
+		};
+		6662C209240EA782000AF6CD /* PreferenceDns.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6662C20A240EA782000AF6CD /* Base */,
+				6662C20C240EA794000AF6CD /* zh-Hans */,
+				6662C20D240EA797000AF6CD /* zh-HK */,
+			);
+			name = PreferenceDns.xib;
+			sourceTree = "<group>";
+		};
+		667029D121AFB86E0079EF41 /* QrcodeWindow.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				667029D221AFB86E0079EF41 /* Base */,
+				66F3029E22AAA0A600FCA4E2 /* zh-Hans */,
+				669A73A9233776B900807CF9 /* zh-HK */,
+			);
+			name = QrcodeWindow.xib;
+			sourceTree = "<group>";
+		};
+		66FEAD4E217EE14C009DECF9 /* ConfigWindow.xib */ = {
+			isa = PBXVariantGroup;
+			children = (
+				66FEAD4F217EE14C009DECF9 /* Base */,
+				66F3029D22AAA0A600FCA4E2 /* zh-Hans */,
+				669A73A8233776B900807CF9 /* zh-HK */,
+			);
+			name = ConfigWindow.xib;
+			sourceTree = "<group>";
+		};
+		6D6DF0CCE47F1253DECD5855 /* PreferenceSubscription.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6D6DFD730D8572B1FCAB1FFE /* Base */,
+				66F302A322AAA0A700FCA4E2 /* zh-Hans */,
+				669A73AE233776B900807CF9 /* zh-HK */,
+			);
+			name = PreferenceSubscription.strings;
+			sourceTree = "<group>";
+		};
+		6D6DF586D59F646DD1C552F1 /* PreferenceAdvance.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6D6DFE1CDFAD9828F2FDE1A5 /* Base */,
+				66F302A022AAA0A600FCA4E2 /* zh-Hans */,
+				669A73AB233776B900807CF9 /* zh-HK */,
+				66C5B194240B58B8008A22CA /* en */,
+			);
+			name = PreferenceAdvance.strings;
+			sourceTree = "<group>";
+		};
+		6D6DF5D99F2FBB7B53564B3B /* PreferenceAbout.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6D6DF3A2857899778B719CE1 /* Base */,
+				66F3029F22AAA0A600FCA4E2 /* zh-Hans */,
+				669A73AA233776B900807CF9 /* zh-HK */,
+			);
+			name = PreferenceAbout.strings;
+			sourceTree = "<group>";
+		};
+		6D6DF76CE2762F4A33DB32BD /* PreferenceGeneral.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6D6DF81E59907A2C7579BFE2 /* Base */,
+				66F302A122AAA0A600FCA4E2 /* zh-Hans */,
+				669A73AC233776B900807CF9 /* zh-HK */,
+				662F0ACE2AB720C700884C17 /* en */,
+			);
+			name = PreferenceGeneral.strings;
+			sourceTree = "<group>";
+		};
+		6D6DFE89E1A7BFE2AC1D8871 /* PreferencePac.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6D6DF181C5D472DBBB71B72A /* Base */,
+				66F302A222AAA0A700FCA4E2 /* zh-Hans */,
+				669A73AD233776B900807CF9 /* zh-HK */,
+			);
+			name = PreferencePac.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		664EB37D216C9A5F00B6AE0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 4.2;
+			};
+			name = Debug;
+		};
+		664EB37E216C9A5F00B6AE0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SKIP_INSTALL = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 4.2;
+			};
+			name = Release;
+		};
+		664EB380216C9A5F00B6AE0D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8E15DFCD449143CCC309A1A0 /* Pods-V2rayU.debug.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 4.1.0;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = RJYEH6TCJD;
+				ENABLE_ONLY_ACTIVE_RESOURCES = YES;
+				INFOPLIST_FILE = V2rayU/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = V2rayU;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 4.1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = net.yanue.V2rayU;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Common/V2rayU-Bridging-header.h";
+				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
+				SWIFT_VERSION = 4.2;
+			};
+			name = Debug;
+		};
+		664EB381216C9A5F00B6AE0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 29B27CD97A6B24986CAF0BFD /* Pods-V2rayU.release.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 4.1.0;
+				DEFINES_MODULE = YES;
+				DEVELOPMENT_TEAM = RJYEH6TCJD;
+				ENABLE_ONLY_ACTIVE_RESOURCES = YES;
+				INFOPLIST_FILE = V2rayU/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = V2rayU;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MARKETING_VERSION = 4.1.0;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = net.yanue.V2rayU;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Common/V2rayU-Bridging-header.h";
+				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
+				SWIFT_VERSION = 4.2;
+			};
+			name = Release;
+		};
+		667ECE742A9A05EC009B00EC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RJYEH6TCJD;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		667ECE752A9A05EC009B00EC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RJYEH6TCJD;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		664EB36C216C9A5E00B6AE0D /* Build configuration list for PBXProject "V2rayU" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				664EB37D216C9A5F00B6AE0D /* Debug */,
+				664EB37E216C9A5F00B6AE0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		664EB37F216C9A5F00B6AE0D /* Build configuration list for PBXNativeTarget "V2rayU" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				664EB380216C9A5F00B6AE0D /* Debug */,
+				664EB381216C9A5F00B6AE0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		667ECE732A9A05EC009B00EC /* Build configuration list for PBXNativeTarget "V2rayUTool" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				667ECE742A9A05EC009B00EC /* Debug */,
+				667ECE752A9A05EC009B00EC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 664EB369216C9A5E00B6AE0D /* Project object */;
+}

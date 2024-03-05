@@ -1,0 +1,21 @@
+[log]
+file = "./log.xml"
+level = "trace"
+
+[dns]
+type = "default"
+server = "cloudflare-dns.com"
+addr = "1.1.1.1:853"
+local_resolve = true
+
+[server]
+port = 80
+admin_password = "password"
+
+[db]
+type = "sqlite3"
+username = "root"
+password = "password"
+host = "localhost"
+port = 1433
+database = "example/server/relaybaton.db"

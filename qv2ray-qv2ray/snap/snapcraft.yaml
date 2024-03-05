@@ -1,0 +1,59 @@
+name: qv2ray
+base: core22
+adopt-info: qv2ray
+icon: assets/icons/qv2ray.png
+
+grade: stable
+confinement: strict
+
+apps:
+  qv2ray:
+    command: usr/bin/qv2ray
+    extensions:
+      - kde-neon
+    plugs:
+      - home
+      - network
+      - network-bind
+      - unity7
+      - pulseaudio
+      - gsettings
+      - network-control
+      - network-manager
+    common-id: com.github.Qv2ray
+    desktop: "usr/share/applications/qv2ray.desktop"
+
+parts:
+  qv2ray:
+    plugin: cmake
+    source-type: git
+    source: .
+    parse-info: [usr/share/metainfo/qv2ray.metainfo.xml]
+    build-packages:
+      - build-essential
+      - libgrpc++-dev
+      - libprotobuf-dev
+      - protobuf-compiler-grpc
+      - pkg-config
+      - libcurl4-openssl-dev
+      - mesa-common-dev
+      - libgles-dev
+    stage-packages:
+      - libssl3
+      - libgrpc++1
+      - libprotobuf23
+      - libglib2.0-bin
+      - libcurl4
+    cmake-parameters:
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQV2RAY_EMBED_TRANSLATIONS=ON
+      - -DFALL_BACK_TO_XDG_OPEN=ON
+    cmake-generator: Ninja
+    override-pull: |
+      snapcraftctl pull
+      build_number=$(cat makespec/BUILDVERSION)
+      tag=$(cat makespec/VERSION)
+      version=$tag.$build_number
+      snapcraftctl set-version "$version"
+      sed -i 's|^Icon=.*|Icon=/usr/share/icons/hicolor/1024x1024/apps/qv2ray.png|g' assets/qv2ray.desktop

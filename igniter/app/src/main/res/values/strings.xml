@@ -1,0 +1,133 @@
+<resources>
+    <string name="app_name">Igniter</string>
+
+    <string name="common_delete">Delete</string>
+    <string name="common_alert">Alert</string>
+    <string name="common_confirm">Confirm</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_never">Never</string>
+    <string name="common_update">Update</string>
+    <string name="common_exit">Exit</string>
+    <string name="common_save">Save</string>
+    <string name="common_save_success">Save success</string>
+
+    <string name="remote_server_remark">Remote Server Remark</string>
+    <string name="remote_addr">Remote Address</string>
+    <string name="remote_server_sni">Remote Server SNI</string>
+    <string name="remote_port">Remote Port</string>
+    <string name="default_port" translatable="false">443</string>
+    <string name="password">Password</string>
+    <string name="button_service__start">Start</string>
+    <string name="button_service__starting">Starting</string>
+    <string name="button_service__stop">Stop</string>
+    <string name="button_service__stopping">Stopping</string>
+    <string name="verify_certificate">Verify Certificate</string>
+    <string name="label_clash">Exempt Chinese Domain/IPs</string>
+    <string name="label_allowLan">Allow Traffic from LAN</string>
+    <string name="enable_ipv6">Enable IPv6</string>
+    <string name="stop_service" translatable="false">io.github.trojan_gfw.igniter.STOP_SERVICE</string>
+    <string name="bind_service" translatable="false">io.github.trojan_gfw.igniter.BIND_SERVICE</string>
+    <string name="connected_to__in__ms">Connected to %1$s in %2$sms.</string>
+    <string name="failed_to_connect_to__">Failed to connect to %1$s: %2$s</string>
+    <string name="invalid_configuration">Invalid Configuration</string>
+    <string name="notification_channel_id" translatable="false">igniter_notify_chan</string>
+    <string name="notification_channel_name">Igniter notifications</string>
+    <string name="notification_starting_service">Starting service</string>
+    <string name="notification_listen_port">listening on port: %1$s</string>
+    <string name="main_restart_proxy_service_tip">Restart proxy yourself to apply new exempt apps configuration.</string>
+    <string name="clipboard_import_tip">Do you want to import the Trojan URL you just copied?</string>
+
+    <!-- App Bar Menu -->
+    <string name="action_test_connection">Test Connection</string>
+    <string name="action_show_develop_info_logcat">Show develop info in logcat</string>
+    <string name="action_settings">Settings</string>
+
+    <string name="action_subscribe_server_list">Subscribe</string>
+    <string name="action_subscribe_settings">Subscribe settings</string>
+    <string name="subscribe_servers_success">Subscribe success</string>
+    <string name="subscribe_servers_failed">Subscribe failed. Please check your subscribe setting or try to subscribe after starting proxy. It also might be caused by format inconsistence.</string>
+    <string name="server_list_subscribe_hint">Subscribe link</string>
+    <string name="action_server_list_enter_batch_mode">Batch…</string>
+    <string name="action_server_list_select_all">Select all</string>
+    <string name="action_server_list_deselect_all">Deselect all</string>
+    <string name="batch_delete_server_list_success">Finished</string>
+    <string name="server_list_import_file_desc">Import config in plain text file</string>
+    <string name="server_list_file_chooser_msg">Select a text file</string>
+    <string name="server_list_menu_import_from_file">Import from file</string>
+    <string name="server_list_menu_test_all_proxy_server">Test all proxy server</string>
+    <string name="server_list_menu_export_to_file">Export to file</string>
+    <string name="server_list_delete_btn">@string/common_delete</string>
+    <string name="server_list_lack_of_camera_permission">Lack of camera permission!</string>
+    <string name="server_list_lack_of_read_permission">Lack of read external storage permission!</string>
+    <string name="main_save_success">@string/common_save_success</string>
+    <string name="main_save_failed">Save failed</string>
+    <string name="main_proxy_port_copied_to_clipboard">Proxy port %1$s copied to clipboard</string>
+
+    <string name="main_write_external_storage_permission_requirement">
+        Igniter needs to read and write external storage for reading or writing exempted app
+        list, which is recoverable even when Igniter is uninstalled. Denying the permission
+        will deactivate exempted app feature.
+    </string>
+    <string name="main_exempt_feature_permission_requirement">
+        Please grant read and write external storage permission in Igniter application settings first.
+    </string>
+    <string name="main_menu_server_list">Load Server</string>
+
+    <string name="scan_qr_code_from_camera">Scan from camera</string>
+    <string name="scan_qr_code_from_gallery">Scan from gallery</string>
+    <string name="scan_qr_code_success">Add server success</string>
+    <string name="scan_qr_code_failed">Cannot recognize trojanURL: %s</string>
+    <string name="scan_qr_code">Scan QR</string>
+    <string name="scan_qr_code_camera_error">Camera Error</string>
+    <string name="scan_qr_code_failed_to_pick_photo">Failed to pick photo</string>
+
+    <string name="menu_action_exempt_app_save">@string/common_save</string>
+    <string name="menu_action_exempt_app">Exempt Apps</string>
+    <string name="exempt_app_search_title">Search Apps</string>
+    <string name="exempt_app_exit">@string/common_exit</string>
+    <string name="exempt_app_loading_tip">Loading…</string>
+    <string name="exempt_app_exit_without_saving_confirm">Exit without saving exempt app list?</string>
+    <string name="exempt_app_migrate_external_exempted_app_list_msg">
+        External exempted app list configuration file detected,
+        would you like to migrate it?
+    </string>
+    <string name="exempt_app_mode_allow">Allow Mode</string>
+    <string name="exempt_app_mode_block">Block Mode</string>
+    <string name="action_save_profile">Save Server</string>
+    <string name="action_sharelink">Share Link</string>
+    <string name="title_activity_about">About</string>
+
+    <!-- Preference Titles -->
+    <string name="project_page">Project Page</string>
+    <string name="about_header">About</string>
+    <string name="credits_header">Credits</string>
+    <string name="project_license">License</string>
+
+    <!-- Messages Preferences -->
+    <string name="version_title">Version</string>
+    <string name="author_title">Developed by</string>
+
+    <!-- Sync Preferences -->
+    <string name="credit_item1_title" translatable="false">Dreamacro/clash</string>
+    <string name="credit_item2_title" translatable="false">eycorsican/go-tun2socks</string>
+    <string name="credit_item3_title" translatable="false">bingoogolapple/BGAQRCode-Android</string>
+
+    <!-- Settings  -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_extra_dns_desc" translatable="false">DNS</string>
+    <string name="settings_exit_confirm">Exit without saving settings?</string>
+    <string name="settings_save_success">Settings saved.</string>
+    <string name="settings_dns_format_error">Invalid DNS</string>
+    <string name="settings_fixed_port">Fixed Port</string>
+    <string name="settings_port_help_text">Port is range from 49152 to 65535. For random port, just keep it blank.</string>
+
+    <string name="action_about">About</string>
+
+    <!-- others -->
+    <string name="trojan_service_not_available">Trojan service is not available.</string>
+    <string name="trojan_service_error">Trojan service throws RemoteException.</string>
+    <string name="proxy_service_not_connected">ProxyService not yet connected.</string>
+    <string name="export_server_list_success">Exported Config to %s</string>
+    <string name="export_server_list_error">Export Config Error</string>
+    <string name="settings_fixed_port_usage">Only works when allow traffic from LAN is enable.\nPort is range from 49152 to 65535. For random port, just keep it blank.</string>
+</resources>

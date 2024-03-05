@@ -1,0 +1,200 @@
+[package]
+name = "shadowsocks-service"
+version = "1.18.2"
+authors = ["Shadowsocks Contributors"]
+description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
+repository = "https://github.com/shadowsocks/shadowsocks-rust"
+readme = "README.md"
+documentation = "https://docs.rs/shadowsocks-service"
+keywords = ["shadowsocks", "proxy", "socks", "socks5", "firewall"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.71"
+
+[badges]
+maintenance = { status = "passively-maintained" }
+
+[features]
+full = [
+    "local",
+    "server",
+    "manager",
+    "hickory-dns",
+    "local-http",
+    "local-redir",
+    "local-tunnel",
+    "local-socks4",
+]
+
+# Enable local server
+local = []
+# Enable remote server
+server = []
+# Enable manager server
+manager = ["server"]
+
+# Enables Hickory-DNS for replacing tokio's builtin DNS resolver
+hickory-dns = ["hickory-resolver", "shadowsocks/trust-dns"]
+# Hickory-DNS was renamed from Trust-DNS, keep compatibility.
+trust-dns = ["hickory-dns"]
+dns-over-tls = [
+    "hickory-dns",
+    "hickory-resolver/dns-over-tls",
+    "hickory-resolver/dns-over-rustls",
+    "hickory-resolver/webpki-roots",
+    "hickory-resolver/native-certs",
+]
+dns-over-native-tls = [
+    "hickory-dns",
+    "hickory-resolver/dns-over-tls",
+    "hickory-resolver/dns-over-native-tls",
+]
+dns-over-native-tls-vendored = [
+    "hickory-dns",
+    "hickory-resolver/dns-over-tls",
+    "hickory-resolver/dns-over-native-tls",
+    "native-tls/vendored",
+]
+dns-over-https = [
+    "hickory-dns",
+    "hickory-resolver/dns-over-https",
+    "hickory-resolver/dns-over-https-rustls",
+    "hickory-resolver/webpki-roots",
+    "hickory-resolver/native-certs",
+]
+dns-over-h3 = ["hickory-dns", "hickory-resolver/dns-over-h3"]
+
+# Enable DNS-relay
+local-dns = ["local", "hickory-dns"]
+# Backward compatibility, DO NOT USE
+local-dns-relay = ["local-dns"]
+# Enable client flow statistic report
+# Currently is only used in Android
+local-flow-stat = ["local"]
+# Enable HTTP protocol for sslocal
+local-http = ["local", "hyper", "http-body-util"]
+local-http-native-tls = ["local-http", "tokio-native-tls", "native-tls"]
+local-http-native-tls-vendored = [
+    "local-http-native-tls",
+    "tokio-native-tls/vendored",
+    "native-tls/vendored",
+]
+local-http-rustls = [
+    "local-http",
+    "tokio-rustls",
+    "webpki-roots",
+    "rustls-native-certs",
+]
+# Enable REDIR protocol for sslocal
+# (transparent proxy)
+local-redir = ["local"]
+# Enable tunnel protocol for sslocal
+local-tunnel = ["local"]
+# Enable socks4 protocol for sslocal
+local-socks4 = ["local"]
+# Enable Tun interface protocol for sslocal
+local-tun = ["local", "etherparse", "tun", "smoltcp"]
+
+# Enable Stream Cipher Protocol
+# WARN: Stream Cipher Protocol is proved to be insecure
+# https://github.com/shadowsocks/shadowsocks-rust/issues/373
+# Users should always avoid using these ciphers in practice
+stream-cipher = ["shadowsocks/stream-cipher"]
+
+# Enable extra AEAD ciphers
+# WARN: These non-standard AEAD ciphers are not officially supported by shadowsocks community
+aead-cipher-extra = ["shadowsocks/aead-cipher-extra"]
+
+# Enable AEAD 2022
+aead-cipher-2022 = ["shadowsocks/aead-cipher-2022"]
+# Enable AEAD 2022 with extra ciphers
+aead-cipher-2022-extra = ["shadowsocks/aead-cipher-2022-extra"]
+
+# Enable detection against replay attack
+security-replay-attack-detect = ["shadowsocks/security-replay-attack-detect"]
+
+[dependencies]
+log = "0.4"
+
+cfg-if = "1"
+pin-project = "1.1"
+once_cell = "1.17"
+thiserror = "1.0"
+arc-swap = "1.6"
+
+spin = { version = "0.9" }
+lru_time_cache = "0.11"
+bytes = "1.5"
+byte_string = "1.0"
+byteorder = "1.5"
+rand = { version = "0.8", features = ["small_rng"] }
+
+futures = "0.3"
+tokio = { version = "1.5", features = [
+    "io-util",
+    "macros",
+    "net",
+    "parking_lot",
+    "rt",
+    "sync",
+    "time",
+] }
+tokio-native-tls = { version = "0.3", optional = true }
+native-tls = { version = "0.2.8", optional = true, features = ["alpn"] }
+tokio-rustls = { version = "0.25", optional = true }
+webpki-roots = { version = "0.26", optional = true }
+rustls-native-certs = { version = "0.7", optional = true }
+async-trait = "0.1"
+
+socket2 = { version = "0.5", features = ["all"] }
+libc = "0.2.141"
+
+hyper = { version = "1.2", optional = true, features = ["full"] }
+http-body-util = { version = "0.1", optional = true }
+
+hickory-resolver = { version = "0.24", optional = true, features = [
+    "serde-config",
+] }
+
+idna = "0.5"
+ipnet = "2.9"
+iprange = "0.6"
+regex = "1.4"
+
+tun = { version = "0.6", optional = true, features = ["async"] }
+etherparse = { version = "0.14", optional = true }
+smoltcp = { version = "0.11", optional = true, default-features = false, features = [
+    "std",
+    "log",
+    "medium-ip",
+    "proto-ipv4",
+    "proto-ipv6",
+    "socket-icmp",
+    "socket-udp",
+    "socket-tcp",
+] }
+
+serde = { version = "1.0", features = ["derive"] }
+json5 = "0.4"
+
+shadowsocks = { version = "1.18.1", path = "../shadowsocks", default-features = false }
+
+# Just for the ioctl call macro
+[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "freebsd"))'.dependencies]
+nix = { version = "0.28", features = ["ioctl"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock"] }
+
+[dev-dependencies]
+byteorder = "1.5"
+env_logger = "0.11"
+
+[package.metadata.docs.rs]
+features = [
+    "full",
+    "local-http-rustls",
+    "local-dns",
+    "dns-over-tls",
+    "dns-over-https",
+]

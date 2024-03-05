@@ -1,0 +1,8 @@
+*.rs
+*.lock
+**/target/
+dist/
+**/node_modules/
+pnpm-lock.yaml
+*.lock
+*.wxs

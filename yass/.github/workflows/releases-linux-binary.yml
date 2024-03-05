@@ -1,0 +1,167 @@
+name: Build Artifacts (Linux Binary)
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      tags:
+        description: 'Test scenario tags'
+        required: false
+        type: boolean
+  pull_request:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  push:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 16 * * *'
+concurrency:
+  group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
+env:
+  CACHE_EPOCH: 123-5
+  GOPROXY: direct
+jobs:
+  linux-binary-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: i386
+            qemu_suffix: i386
+          - arch: amd64
+            qemu_suffix: amd64
+          - arch: armhf
+            qemu_suffix: armhf
+          - arch: armel
+            qemu_suffix: armel
+          - arch: arm64
+            qemu_suffix: aarch64
+          - arch: mipsel
+            qemu_suffix: mipsel
+          - arch: mips64el
+            qemu_suffix: mips64el
+    runs-on: ubuntu-20.04
+    env:
+      ARCH: ${{ matrix.arch }}
+      SDK_ROOT: ${{ github.workspace }}/debian_bullseye_${{ matrix.arch }}-sysroot
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Patch libcxxabi for both of armel and armhf
+        if: ${{ matrix.arch == 'armel' || matrix.arch == 'armhf' }}
+        run: |
+          cd third_party/libc++abi
+          patch -p1 < v8-6.7.17-fix-gcc-unwind-header.patch
+      - name: Cache clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/llvm-build/Release+Asserts
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-docker-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-docker-
+      - name: Cache qemu-user-static
+        id: qemu-user-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            qemu-user-static*.deb
+          key: ${{ runner.os }}-qemu-8.2.0-ds-5
+      - name: Cache sysroot
+        id: sysroot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK_ROOT }}
+          key: ${{ runner.os }}-sysroot-${{ matrix.arch }}-${{ hashFiles('scripts/sysroots.json') }}-v1
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: "Install dependency: prebuilt clang and clang-tidy binaries"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/download-clang-prebuilt-binaries.py
+          rm -f third_party/llvm-build/Release+Asserts/*.tgz
+      - name: "Install dependency: qemu user cache"
+        if: ${{ steps.qemu-user-cache.outputs.cache-hit != 'true' }}
+        run: |
+          wget http://ftp.us.debian.org/debian/pool/main/q/qemu/qemu-user-static_8.2.0+ds-5_amd64.deb
+      - name: "Install dependency: sysroot"
+        if: ${{ steps.sysroot-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/install-sysroot.py --arch ${{ env.ARCH }}
+      - name: Change ubuntu mirror
+        run: |
+          sudo sed -i 's/azure.archive.ubuntu.com/azure.archive.ubuntu.com/g' /etc/apt/sources.list
+          sudo apt-get update -qq
+      - name: Populate depedencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build pkg-config gettext bubblewrap
+          # libc6-i386 interferes with x86 build
+          sudo apt remove libc6-i386
+
+          sudo apt install qemu-user
+          sudo apt remove -y qemu-user-binfmt
+          sudo dpkg -i qemu-user-static_*.deb
+          # required by mbedtls build
+          sudo apt-get install -y python3-jsonschema python3-jinja2
+      - name: Build TGZ packages
+        run: |
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system linux --sysroot ${{ env.SDK_ROOT }} -build-benchmark -build-test -nc
+          ./tools/build --variant cli --arch ${{ matrix.arch }} --system linux --sysroot ${{ env.SDK_ROOT }} -build-benchmark -build-test -nc
+          ./tools/build --variant server --arch ${{ matrix.arch }} --system linux --sysroot ${{ env.SDK_ROOT }} -build-benchmark -build-test -nc
+      - name: Run tests (i386 and amd64)
+        if: ${{ matrix.arch == 'i386' ||  matrix.arch == 'amd64' }}
+        run: |
+          mkdir -p $SDK_ROOT/etc $SDK_ROOT/dev $SDK_ROOT/proc $SDK_ROOT/tmp
+          touch $SDK_ROOT/etc/resolv.conf
+          bwrap --die-with-parent --bind $SDK_ROOT / \
+            --ro-bind /sys /sys \
+            --ro-bind /etc/resolv.conf /etc/resolv.conf \
+            --proc /proc --dev /dev \
+            --unshare-all --share-net \
+            --bind $PWD/build-linux-${{ matrix.arch }} /tmp \
+            /tmp/yass_test
+      - name: Run tests (non x86, under qemu emulation)
+        if: ${{ matrix.arch != 'i386' && matrix.arch != 'amd64' }}
+        run: |
+          qemu-${{ matrix.qemu_suffix }}-static -L $SDK_ROOT \
+            $PWD/build-linux-${{ matrix.arch }}/yass_test \
+            --no_exec_proc_tests
+      - name: Upload dist tarball (including debuginfo)
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} yass*.tgz

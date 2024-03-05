@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+if(NOT @CPP_JWT_USE_VENDORED_NLOHMANN_JSON@)
+  find_dependency(nlohmann_json)
+endif()
+
+find_dependency(OpenSSL COMPONENTS SSL)
+
+include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
+check_required_components("@PROJECT_NAME@")

@@ -1,0 +1,8 @@
+{
+    "method": "http2",
+    "server": "localhost",
+    "server_port": 443,
+    "timeout": 0,
+    "username": "username",
+    "password": "password"
+}

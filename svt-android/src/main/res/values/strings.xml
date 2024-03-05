@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <string name="app_name">SSRRAY</string>
+  <string name="quick_toggle">Toggle</string>
+
+  <!-- global/misc category -->
+  <string name="misc_cat">Misc</string>
+  <string name="profile">Profile</string>
+  <string name="profile_summary">Switch to another profile or add new profiles</string>
+  <string name="nat">NAT mode (deprecated)</string>
+  <string name="nat_summary">Use NAT mode instead of VPN mode. Requires ROOT permission.</string>
+  <string name="stat">Network Traffic</string>
+  <string name="stat_summary">Sent: \t\t\t\t\t%3$s\t↑\t%1$s/s\nReceived: \t%4$s\t↓\t%2$s/s</string>
+  <string name="stat_profiles" translatable="false">\n%1$s %2$s↓ %3$sms %4$s</string>
+  <string name="traffic_summary">%1$s/s↑\t%2$s/s↓</string>
+  <plurals name="bytes" translatable="false">
+    <item quantity="one">B</item>
+    <item quantity="other">B</item>
+  </plurals>
+  <string name="connection_test_pending">Check Connectivity</string>
+  <string name="connection_test_testing">Testing…</string>
+  <string name="connection_test_available">Success: %dms latency</string>
+  <string name="connection_test_unavailable">Failed to Connect to Internet</string>
+  <string name="connection_test_error">Fail to detect internet connection: %s</string>
+  <string name="connection_test_fail">Internet Unavailable</string>
+  <string name="connection_test_error_status_code">Error code: #%d</string>
+  <string name="speed_test_available">Max Speed: %s/s</string>
+  <string name="speed_max_avg">Max: %1$s/s, Avg: %2$s/s</string>
+
+  <!-- proxy category -->
+  <string name="proxy_cat">Server Settings</string>
+  <string name="proxy_v2ray" translatable="false">V2Ray Settings</string>
+  <string name="proxy_trojan" translatable="false">Trojan Settings</string>
+  <string name="profile_name">Profile Name</string>
+  <string name="proxy">Server</string>
+  <string name="proxy_summary">Hostname or IP of the remote server</string>
+  <string name="remote_port">Remote Port</string>
+  <string name="remote_port_summary">%d (port number of the remote server)</string>
+  <string name="port">Local Port</string>
+  <string name="port_summary">%d (port number of the local server)</string>
+  <string name="sitekey">Password</string>
+  <string name="sitekey_summary">Password of the remote server</string>
+  <string name="protocol">Protocol</string>
+  <string name="protocol_summary">Protocol you set in your server</string>
+  <string name="protocol_param">Protocol Param</string>
+  <string name="protocol_param_summary">Protocol param you input in your server</string>
+  <string name="obfs">Obfs</string>
+  <string name="obfs_summary">Obfs you selected in your server</string>
+  <string name="obfs_param">Obfs Param</string>
+  <string name="obfs_param_summary">Obfs param you put in your server</string>
+  <string name="enc_method">Encrypt Method</string>
+
+  <!-- feature category -->
+  <string name="feature_cat">Feature Settings</string>
+  <string name="ipv6">IPv6 Route</string>
+  <string name="ipv6_summary">Redirect IPv6 traffic to remote</string>
+  <string name="onetime_auth">One-time Authentication</string>
+  <string name="onetime_auth_summary">Enable one-time authentication</string>
+  <string name="http_proxy">HTTP Proxy</string>
+  <string name="http_proxy_summary">Local HTTP Proxy</string>
+  <string name="dns_proxy">DNS Proxy</string>
+  <string name="dns_proxy_summary">Redirect DNS queries to remote</string>
+  <string name="auto_set_gfwlist">CHN Route</string>
+  <string name="auto_set_gfwlist_summary">Bypass all sites located in China
+  </string>
+  <string name="route_list">Route</string>
+  <string-array name="route_entry">
+    <item>All</item>
+    <item>Bypass LAN</item>
+    <item>Bypass China</item>
+    <item>Bypass LAN &amp; China</item>
+    <item>GFW List</item>
+    <item>China List</item>
+    <item>ACL4SSR BanAD</item>
+    <item>ACL4SSR GFWList BanAD</item>
+    <item>ACL4SSR OnlyBanAD</item>
+    <item>ACL4SSR FullGFWList</item>
+    <item>ACL4SSR BackCN BanAD</item>
+    <item>ACL4SSR NoBanAD</item>
+    <item>Customize ACL File</item>
+  </string-array>
+  <string-array name="route_entry_v2ray">
+    <item>All</item>
+    <item>Bypass LAN</item>
+    <item>Bypass China</item>
+    <item>Bypass LAN &amp; China</item>
+    <item>GFW List</item>
+    <item>China List</item>
+  </string-array>
+  <string-array name="profile_display_info_entry">
+    <item>Server</item>
+    <item>Port</item>
+    <item>Traffic</item>
+  </string-array>
+  <string-array name="batch_delete_choices">
+    <item>All</item>
+    <item>= 0ms</item>
+    <item>> 200ms</item>
+    <item>> 300ms</item>
+    <item>> 500ms</item>
+    <item>> 1000ms</item>
+  </string-array>
+  <string name="custom_profile_display_info">Custom Profile Display Info</string>
+  <string name="custom_profile_display_info_summary">Custom Display Server, Port and Traffic of Profile</string>
+  <string name="select_profile_display_info">Select Profile Display Info</string>
+  <string name="acl_file">ACL File URL</string>
+  <string name="aclupdate">ACL Update</string>
+  <string name="aclupdate_summary">Update Your ACL file</string>
+  <string name="aclupdate_url_notset">Sorry, an ACL file URL has to be set before you can update it. Please click on \'Customize ACL File\' in \'Route Setting\' and try again.</string>
+  <string name="aclupdate_downloading">Updating ACL file...</string>
+  <string name="aclupdate_successfully">Successfully updated ACL file.</string>
+  <string name="aclupdate_failed">Failed to update ACL file!</string>
+  <string name="proxied_apps">Per-App Proxy</string>
+  <string name="proxied_apps_summary">Set proxy for selected apps, requires NAT mode under Android 4.x</string>
+  <string name="on">On</string>
+  <string name="per_app_proxy">Per-App Proxy</string>
+  <string name="bypass_apps">Bypass Mode</string>
+  <string name="bypass_apps_summary">Enable this option to bypass selected apps</string>
+  <string name="auto_connect">Auto Connect</string>
+  <string name="auto_connect_summary">Enable ShadowsocksR on startup</string>
+  <string name="tcp_fastopen_summary">Toggling requires ROOT permission</string>
+  <string name="tcp_fastopen_summary_unsupported">Unsupported kernel version: %s &lt; 3.7.1</string>
+  <string name="udp_dns">UDP Forwarding</string>
+  <string name="udp_dns_summary">Forward UDP packets to remote</string>
+  <string name="dns">DNS</string>
+  <string name="dns_summary">The DNS server you want to use to resolve special domain,e.g. 8.8.8.8:53</string>
+  <string name="china_dns">China DNS</string>
+  <string name="china_dns_summary">The DNS server you want to use to resolve normal domain,e.g. 223.5.5.5:53</string>
+
+  <!-- notification category -->
+  <string name="forward_success">ShadowsocksR started.</string>
+  <string name="invalid_server">Invalid server name</string>
+  <string name="service_failed">Failed to connect the remote server</string>
+  <string name="method_unsafe">WARNING: The current encryption method is unsafe</string>
+  <string name="nat_deprecated">WARNING: NAT mode has been deprecated since Android 5.0</string>
+  <string name="nat_no_root">NAT mode requires ROOT permission</string>
+  <string name="switch_to_vpn">Switch to VPN mode</string>
+  <string name="stop">Stop</string>
+  <string name="stopping">Shutting down…</string>
+  <string name="vpn_error">%s</string>
+  <string name="reboot_required">Failed to start VPN service. You might need to reboot your device.</string>
+  <string name="quick_switch">Switch</string>
+  <string name="service_ssr" translatable="false">SSR Service</string>
+  <string name="service_v2ray" translatable="false">V2Ray Service</string>
+  <string name="service_trojan" translatable="false">Trojan Service</string>
+  <string name="service_nat" translatable="false">Nat Service</string>
+  <string name="service_test" translatable="false">Latency Test Service</string>
+  <string name="service_test_working">Testing Profiles…</string>
+  <string name="view_test_result">View Test Result</string>
+
+
+    <!-- alert category -->
+  <string name="close">Close</string>
+  <string name="proxy_empty">\'Proxy\' and \'Password\' should not be empty</string>
+  <string name="connect">Connect</string>
+  <string name="initializing">Initializing…</string>
+  <string name="recovering">Resetting…</string>
+  <string name="loading">Loading…</string>
+  <string name="remove_profile">Remove this profile "%s"?</string>
+
+  <string name="dr">No Duplicates</string>
+  <string name="open_url">Open</string>
+
+
+    <!-- menu category -->
+  <string name="profiles">Profiles</string>
+  <string name="settings">Settings</string>
+  <string name="recovery">Reset</string>
+  <string name="recovery_summary">Reset all the background services</string>
+  <string name="ignore_battery_optimization">Request ignore battery optimizations</string>
+  <string name="ignore_battery_optimization_summary">Click to request trigger Ignore the battery optimization, to avoid background hiccups caused by hibernation when off screen, will increase the battery consumption, may not be triggered properly on some devices.</string>
+  <string name="about">About</string>
+  <string name="about_title">SSRRAY %s</string>
+  <string name="update_v2ray_rules_dat">Update V2Ray Rules Dat File</string>
+  <string name="share">Share</string>
+  <string name="share_message">Scan QR code or use Android Beam (NFC)</string>
+  <string name="share_message_without_nfc">Scan QR code</string>
+  <string name="share_message_nfc_disabled">Scan QR code\nAndroid Beam is disabled</string>
+  <string name="turn_on_nfc">Turn on NFC &amp; Android Beam</string>
+  <string name="flush_dnscache">Flush DNS cache</string>
+  <string name="flush_dnscache_summary">Only useful in NAT mode</string>
+  <string name="flush_dnscache_summary_root">Only useful in NAT mode. Requires ROOT permission.</string>
+  <string name="flush_dnscache_no_root">Flush DNS cache cannot proceed without ROOT permission</string>
+  <string name="flushing">Flushing</string>
+  <string name="add_profile">Add Profile</string>
+  <string name="action_apply_all">Apply Settings to All Profiles</string>
+  <string name="action_export">Export to Clipboard</string>
+  <string name="action_import">Import from Clipboard</string>
+  <string name="action_export_more">Export…</string>
+  <string name="action_export_file">Export to File</string>
+  <string name="action_export_file_msg">Export to file succeeded</string>
+  <string name="action_export_file_err">Export to file failed</string>
+  <string name="action_import_file">Import from File</string>
+  <string name="action_import_qrcode_image">Import from QRCode Image</string>
+  <string name="action_import_manually_vmess">Type Manually Vmess</string>
+  <string name="action_export_msg">Successfully exported profiles.</string>
+  <string name="action_export_err">Failed to export profiles!</string>
+  <string name="action_import_msg">Successfully imported profiles.</string>
+  <string name="action_import_err">Failed to import profiles!</string>
+  <string name="v2ray_config">V2Ray Config</string>
+  <string name="config_activity">Config Activity</string>
+  <string name="new_profile_activity">New Profile Activity</string>
+  <string name="action_add_v2ray_config">Import from V2Ray Config</string>
+  <string name="action_save_v2ray_config">Save</string>
+  <string name="action_clear_v2ray_config">Clear</string>
+  <string name="action_select_all">Select all</string>
+  <string name="action_select_proxy_app">Auto select proxy app</string>
+  <string name="edit">Edit</string>
+  <string name="update">Update</string>
+  <string name="delete">Delete</string>
+  <string name="NEW">New</string>
+
+
+  <!-- profile -->
+  <string name="profile_manager_dialog">Profiles</string>
+  <string name="profile_manager_dialog_content">&#8226; Tap to select a profile;\n&#8226; Swipe left/right or press left
+    to remove;\n&#8226; Long press to reorder profiles.</string>
+  <string name="gotcha">Gotcha!</string>
+  <string name="add_profile_dialog">Add %d Profiles?</string>
+  <string name="add_profile_methods_scan_qr_code">Scan QR code</string>
+  <string name="add_profile_methods_manual_settings">Manual Settings</string>
+  <string name="add_profile_nfc_hint_title">Use Android Beam (NFC) to add a profile</string>
+  <string name="add_profile_nfc_hint">Keep both devices\' screen on. On the other device, click on the \'share\' button. Place both devices\' backs against each other.\nYou may also scan a nfc tag.</string>
+  <string name="add_profile_scanner_permission_required">Camera permission is required for scanning QR code.</string>
+  <string name="copy_url">Copy URL</string>
+  <string name="copy">Copy</string>
+  <plurals name="removed">
+    <item quantity="one">Removed</item>
+    <item quantity="other">%d items removed</item>
+  </plurals>
+  <string name="undo">Undo</string>
+
+  <string name="tips_testing">Testing...</string>
+  <string name="tips_sorting">Sorting...</string>
+  <string name="action_full_test">Full Latency Test</string>
+  <string name="action_full_test_bg">Run full latency test in background</string>
+  <string name="action_full_test_finished">Test Finished</string>
+  <string name="action_sort">Auto sort by latency</string>
+  <string name="ping">Ping</string>
+  <string name="batch_delete">Batch Delete</string>
+  <string name="batch_delete_selected_msg">Delete selected profiles in %s</string>
+  <string name="batch_delete_selected_elapsed_msg">> %1$dms, %2$d profiles</string>
+  <string name="batch_delete_selected_zero_elapsed_msg">= 0ms, %d profiles</string>
+  <string name="batch_delete_selected_speed_msg">&lt; %1$s/s, %2$d profiles</string>
+  <string name="batch_delete_selected_zero_speed_msg">= 0B/s, %d profiles</string>
+  <string name="batch_delete_selected_all_elapsed_msg">All, %d profiles</string>
+
+  <string name="frontproxy_enable">Enable</string>
+  <string name="frontproxy_addr">Address</string>
+  <string name="frontproxy_port">Port</string>
+  <string name="frontproxy_username">Username</string>
+  <string name="frontproxy_password">Password</string>
+  <string name="frontproxy_type">Type</string>
+  <string name="frontproxy_set">FrontProxy</string>
+
+
+  <string name="add_profile_methods_ssr_sub">Manage Subscriptions</string>
+  <string name="ssrsub_autoupdate_enable">Auto Update</string>
+  <string name="ssrsub_add">Add URL</string>
+  <string name="ssrsub_edit">Edit URL</string>
+  <string name="ssrsub_ok">Save and Update</string>
+  <string name="ssrsub_list">Item List</string>
+  <string name="ssrsub_error">Subscription Error: %s</string>
+  <string name="ssrsub_progres">Processing...</string>
+  <string name="ssrsub_progres_text">Please wait...</string>
+  <string name="ssrsub_update_progres">Please wait %1$d/%2$d...</string>
+  <string name="ssrsub_toast_start">Updating subscriptions...</string>
+  <string name="ssrsub_toast_success">Successfully updated subscriptions.</string>
+  <string name="ssrsub_toast_fail">Failed to update subscriptions!</string>
+  <string name="enable_auto_update_subscription">Enable Auto Update This Subscription</string>
+  <string name="group_name">Group Name</string>
+  <string name="proxy_click">Click to view and edit server address</string>
+  <string name="sni_click">Click to view and edit SNI</string>
+  <string name="sni_title">Server Name Indication (SNI)</string>
+  <string name="verify_certificate">Verify Certificate</string>
+  <string name="verify_certificate_summary">Verify server\'s certificate and host name</string>
+  <string name="ssrsub_remove_tip_title">Subscription removal</string>
+  <string name="ssrsub_remove_tip">Delete this subscription without removing its nodes (nodes that bear its group name)?</string>
+  <string name="ssrsub_remove_tip_direct">Delete the URL only</string>
+  <string name="ssrsub_remove_tip_delete">Delete the nodes too</string>
+  <string name="subscriptions">Subscriptions</string>
+  <string name="add_subscription">Add a subscription</string>
+  <string name="update_subscription">Refresh servers from subscription</string>
+  <string name="subscription_url">Subscription URL</string>
+  <string name="use_default_group_name">Use default group name</string>
+  <string name="supported_subscription_link">Support v2ray,clash,ssr link</string>
+  <string name="ssrsub_expire_on">Expire on: %s</string>
+  <string name="check_subscriptions">Check Subscriptions</string>
+
+  <string name="scan_qrcode_install_title">Scanner installation</string>
+  <string name="scan_qrcode_install_text">It seems that \'zxing scanner\' is not currently installed. You may click the \'ok\' button below to install it from Play Store, or \'Install Manually\' to manually download the apk and installed it.</string>
+  <string name="scan_qrcode_direct_download_text">Install Manually</string>
+
+  <!-- tasker -->
+  <string name="toggle_service_state">Start the service</string>
+  <string name="start_service_default">Connect to the current server</string>
+  <string name="start_service">Connect to %s</string>
+  <string name="stop_service">Switch to %s</string>
+  <string name="profile_default">Use the current profile</string>
+
+  <!-- status -->
+  <string name="sent">Sent:</string>
+  <string name="received">Received:</string>
+  <string name="allgroups">All Groups</string>
+  <string name="retry_test">Retry...</string>
+
+<!--  PreferenceScreen-->
+  <string name="preferenceScreen" translatable="false">preferenceScreen</string>
+  <string name="v2rayJSONPreferenceGroup" translatable="false">v2rayJSONPreferenceGroup</string>
+  <string name="vmessPreferenceGroup" translatable="false">vmessPreferenceGroup</string>
+  <string name="trojanPreferenceGroup" translatable="false">trojanPreferenceGroup</string>
+  <string name="ssrPreferenceGroup" translatable="false">ssrPreferenceGroup</string>
+  <string name="ssPreferenceGroup" translatable="false">ssPreferenceGroup</string>
+  <string name="featurePreferenceGroup" translatable="false">featurePreferenceGroup</string>
+  <string name="miscPreferenceGroup" translatable="false">miscPreferenceGroup</string>
+
+  <string name="traffic" translatable="false">%1$s↑\t%2$s↓</string>
+  <string name="default_group" translatable="false">Default Group</string>
+
+  <string name="delete_zero_latency">Delete 0ms</string>
+
+  <string name="test_latency">Test Latency</string>
+  <string name="test_download">Test Download</string>
+  <string name="test_both">Test Both</string>
+
+  <!--  V2Ray -->
+  <string name="v_pref_id">ID</string>
+  <string name="v_pref_alterid">AlterID</string>
+  <string name="v_pref_security">Security</string>
+  <string name="v_pref_path">Path</string>
+  <string name="v_pref_host">Host</string>
+  <string name="v_pref_headertypes">Header Type</string>
+  <string name="v_pref_networks">Network</string>
+
+<!--  settings -->
+  <string name="title_pref_sort_method">Sort Profiles By</string>
+  <string name="title_group_sort_method">Sort Groups By</string>
+  <string name="sort_by_default">By Default</string>
+  <string name="sort_by_elapsed">By Elapsed</string>
+  <string name="sort_by_download">By Download</string>
+  <string name="sort_by_normal">Normal</string>
+  <string name="sort_by_reverse">Reverse</string>
+  <string-array name="sort_method_entry">
+    <item>@string/sort_by_default</item>
+    <item>@string/sort_by_elapsed</item>
+  </string-array>
+
+  <string-array name="sort_method_value">
+    <item>default</item>
+    <item>elapsed</item>
+  </string-array>
+
+  <string-array name="switch_entry">
+    <item>On</item>
+    <item>Off</item>
+  </string-array>
+
+  <string-array name="switch_value">
+    <item>on</item>
+    <item>off</item>
+  </string-array>
+
+  <string name="title_pref_ping_method">Ping Method</string>
+  <string-array name="ping_method_entry">
+    <item>Google Ping</item>
+    <item>TCP Ping</item>
+  </string-array>
+
+  <string-array name="ping_method_value">
+    <item>google</item>
+    <item>tcp</item>
+  </string-array>
+
+
+  <string name="title_pref_hide_server">Hide Server</string>
+  <string name="summary_pref_hide_server">Hide Server Addresses for Privacy</string>
+
+  <string name="summary_ssrsub_autoupdate_enable">Auto Update Subscriptions</string>
+
+  <string name="title_auto_test_connectivity">Auto Test</string>
+  <string name="summary_auto_test_connectivity">Auto Test Connectivity on Start VPN</string>
+
+  <string name="title_ssr_dns_nocache">DNS Cache</string>
+
+  <string name="title_v2ray_sniff_enable">Enable Sniff Domain</string>
+  <string name="summary_v2ray_sniff_enable">Sniff Domain</string>
+
+  <string name="title_mux">Mux</string>
+  <string name="hint_mux">The maximum value is 1024</string>
+  <string name="summary_mux_concurrency"> Maximum number of concurrent connections: %d</string>
+
+  <string name="title_test_concurrency">Test Concurrency</string>
+  <string name="summary_test_concurrency">Maximum number of concurrent test: %d</string>
+
+  <string name="ssr_category">SSR Settings</string>
+  <string name="v2ray_category">V2Ray Settings</string>
+
+  <string name="switch_core">Switch Core</string>
+
+
+  <plurals name="format_minutes">
+    <item quantity="one">%d minute</item>
+    <item quantity="other">%d minutes</item>
+  </plurals>
+  <plurals name="format_hours">
+    <item quantity="one">%d hour</item>
+    <item quantity="other">%d hours</item>
+  </plurals>
+  <plurals name="format_days">
+    <item quantity="one">%d day</item>
+    <item quantity="other">%d days</item>
+  </plurals>
+  <plurals name="format_months">
+    <item quantity="one">%d month</item>
+    <item quantity="other">%d months</item>
+  </plurals>
+  <plurals name="format_years">
+    <item quantity="one">%d year</item>
+    <item quantity="other">%d years</item>
+  </plurals>
+  <string name="now">now</string>
+
+</resources>

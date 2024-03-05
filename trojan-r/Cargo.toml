@@ -1,0 +1,32 @@
+[package]
+name = "trojan-r"
+version = "0.1.0"
+authors = ["Page Fault <p4gefau1t@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+bytes = "1.0"
+tokio = {version = "1.6", features = ["rt", "net", "io-util", "rt-multi-thread", "sync", "macros"]}
+tokio-rustls = "0.22"
+log = "0.4"
+async-trait = "0.1"
+sha2 = "0.9"
+serde = { version = "1.0", features = ["derive"] } 
+env_logger = "0.8"
+toml = "0.5"
+clap = "2.33"
+webpki = "0.21"
+webpki-roots = "0.21"
+tokio-tungstenite = "0.14"
+futures-core = "0.3"
+futures-util = "0.3"
+
+[profile.release]
+lto = true
+
+[features]
+default = ["full"]
+client = []
+server = []
+forward = []
+full = ["client", "server", "forward"]

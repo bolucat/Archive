@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/rootScrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    tools:context=".MainActivity">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:paddingBottom="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageView
+            android:id="@+id/imageView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:srcCompat="@mipmap/ic_launcher_foreground" />
+
+        <EditText
+            android:id="@+id/remoteServerRemarkText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainEditTextStyleSmall"
+            android:hint="@string/remote_server_remark"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/imageView" />
+
+
+        <EditText
+            android:id="@+id/remoteAddrText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainEditTextStyleSmall"
+            android:hint="@string/remote_addr"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/remoteServerRemarkText" />
+
+        <EditText
+            android:id="@+id/remoteServerSNIText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainEditTextStyleSmall"
+            android:hint="@string/remote_server_sni"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/remoteAddrText" />
+
+        <EditText
+            android:id="@+id/remotePortText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainEditTextStyleSmall"
+            android:hint="@string/remote_port"
+            android:inputType="number"
+            android:maxLength="5"
+            android:text="@string/default_port"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/remoteServerSNIText" />
+
+        <EditText
+            android:id="@+id/passwordText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainEditTextStyleSmall"
+            android:hint="@string/password"
+            android:inputType="textPassword"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/remotePortText" />
+
+        <Switch
+            android:id="@+id/ipv6Switch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainSwitchStyleSmall"
+            android:text="@string/enable_ipv6"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/passwordText" />
+
+        <Switch
+            android:id="@+id/verifySwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainSwitchStyleSmall"
+            android:checked="true"
+            android:text="@string/verify_certificate"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/ipv6Switch" />
+
+        <Switch
+            android:id="@+id/clashSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainSwitchStyleSmall"
+            android:checked="true"
+            android:text="@string/label_clash"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/verifySwitch" />
+
+        <Switch
+            android:id="@+id/allowLanSwitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            style="@style/MainSwitchStyle"
+            android:checked="false"
+            android:text="@string/label_allowLan"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/clashSwitch" />
+        <Button
+            android:id="@+id/startStopButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/main_btn_height"
+            android:layout_margin="@dimen/main_btn_margin"
+            android:layout_marginTop="@dimen/main_vertical_margin"
+            android:text="@string/button_service__start"
+            android:textSize="@dimen/text_size_small"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/allowLanSwitch" />
+
+        <Button
+            android:id="@+id/copyPortBtn"
+            app:layout_constraintTop_toBottomOf="@id/startStopButton"
+            app:layout_constraintStart_toStartOf="@id/startStopButton"
+            app:layout_constraintEnd_toEndOf="@id/startStopButton"
+            android:layout_margin="@dimen/main_btn_margin"
+            tools:text="Listening on port: 40199"
+            android:visibility="invisible"
+            tools:visibility="visible"
+            android:textSize="@dimen/text_size_small"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/main_btn_height" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</ScrollView>

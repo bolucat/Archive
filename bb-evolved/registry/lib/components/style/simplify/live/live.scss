@@ -1,0 +1,277 @@
+@import 'common';
+$prefix: 'simplifyLiveroom-switch';
+
+.#{$prefix} {
+  &-vip .vip-icon,
+  &-wealthMedal .wealth-medal-ctnr,
+  &-fansMedal .fans-medal-item-ctnr,
+  &-title .title-label,
+  &-userLevel .user-level-icon,
+  &-guard .chat-history-panel .guard-icon,
+  &-systemMessage .system-msg,
+  &-systemMessage .announcement-wrapper,
+  &-welcomeMessage .welcome-guard,
+  &-welcomeMessage .welcome-msg,
+  &-popup .chat-popups-section,
+  &-popup #chat-draw-area-vm,
+  &-giftMessage .chat-item.gift-item,
+  &-giftMessage .chat-history-panel .penury-gift-msg,
+  &-guardPurchase .chat-item.guard-buy,
+  &-eventsBanner .z-section-blocks .left-container .flip-view,
+  &-eventsBanner .activity-pushing-out,
+  &-userEffect .live-room-app .aside-area .activity-welcome-section,
+  &-kanban .live-haruna-ctnr,
+  &-enterPrompt .chat-item.important-prompt-item,
+  &-enterPrompt .chat-history-panel .brush-prompt,
+  &-enterPrompt .chat-item.convention-msg,
+  &-pk .chaos-pk,
+  &-pk .awesome-pk-box,
+  &-topRank .chat-item.top3-notice,
+  &-topRank .chat-item .rank-icon {
+    display: none !important;
+  }
+}
+
+.#{$prefix}-headerPanel {
+  // 修复高度太低时下面的弹窗挡不住排行榜
+  .control-panel-ctnr .dialog-ctnr {
+    z-index: 800 !important;
+  }
+  // .player-ctnr .room-info-ctnr {
+  //   display: inline-flex !important;
+  //   flex: 1 0 auto;
+  //   align-items: center !important;
+  //   margin-left: 12px !important;
+  // }
+  .head-info-section {
+    height: 52px !important;
+    box-sizing: content-box !important;
+  }
+  .header-info-ctnr {
+    display: flex !important;
+    padding: 10px 24px 10px 12px !important;
+    height: auto !important;
+
+    .blive-avatar-icons,
+    .face-pendants {
+      display: none !important;
+    }
+    .blive-avatar-pendant {
+      width: 48px !important;
+      height: 48px !important;
+    }
+    .blive-avatar-face,
+    .blive-avatar,
+    .avatar {
+      height: 32px !important;
+      width: 32px !important;
+    }
+  }
+  .room-cover {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+  }
+  .rows-ctnr {
+    display: flex !important;
+  }
+  .rows-ctnr .upper-row,
+  .room-info-upper-row {
+    .right-ctnr {
+      .action-text:not(.watched-text) {
+        display: none !important;
+      }
+    }
+  }
+  .rows-ctnr .lower-row,
+  .room-info-down-row {
+    margin: 0 !important;
+    width: auto !important;
+    @include absolute-center();
+
+    .right-ctnr > :not(.popular-and-hot-rank),
+    .left-ctnr > :nth-child(n + 3) {
+      display: none !important;
+    }
+  }
+  .popular-and-hot-rank {
+    width: 0 !important;
+  }
+  .room-owner-username {
+    max-width: 150px !important;
+  }
+  .live-status,
+  .live-status-label {
+    display: none !important;
+  }
+}
+.#{$prefix}-giftMessage:not(.#{$prefix}-enterPrompt) {
+  .chat-history-list.with-penury-gift {
+    &:not(.with-brush-prompt) {
+      height: calc(100%) !important;
+    }
+    &.with-brush-prompt {
+      height: calc(100% - 32px) !important;
+    }
+  }
+}
+.#{$prefix}-enterPrompt:not(.#{$prefix}-giftMessage) {
+  .chat-history-list.with-brush-prompt {
+    &:not(.with-penury-gift) {
+      height: calc(100%) !important;
+    }
+    &.with-penury-gift {
+      height: calc(100% - 32px) !important;
+    }
+  }
+}
+.#{$prefix}-enterPrompt.#{$prefix}-giftMessage {
+  .chat-history-list {
+    height: calc(100%) !important;
+  }
+}
+.#{$prefix}-rankList {
+  .live-room-app {
+    .rank-list-section {
+      display: none !important;
+    }
+    .chat-history-panel {
+      height: calc(100% - 145px) !important;
+      .chat-history-list::-webkit-scrollbar-track {
+        background: transparent !important;
+      }
+    }
+    .chat-history-panel,
+    #pay-note-panel-vm .pay-note-panel,
+    #pay-note-panel-vm .pay-note-panel .detail-info .mask {
+      border-radius: 11px 11px 0 0 !important;
+    }
+  }
+  &.player-full-win {
+    .chat-history-panel,
+    #pay-note-panel-vm .pay-note-panel,
+    #pay-note-panel-vm .pay-note-panel .detail-info .mask {
+      border-radius: 0 !important;
+    }
+  }
+}
+.#{$prefix}-giftPanel {
+  .gift-panel,
+  .gift-panel-switch,
+  .gift-section.guard-ent,
+  .seeds-wrap > .dp-i-block > .item:not(.seeds),
+  .gift-control-panel .wish-icon,
+  .gift-control-panel .wish-tip,
+  .gift-control-panel .left-part-ctnr,
+  .web-live-player-gift-icon-wrap {
+    display: none !important;
+  }
+  .gift-control-section,
+  #gift-control-vm .gift-control-panel {
+    height: 48px !important;
+  }
+  .gift-control-panel .right-part {
+    height: 48px !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    min-width: unset !important;
+    > .dp-table-cell {
+      display: flex !important;
+      align-items: center !important;
+      .supporting-info {
+        transform: translateY(-2px) !important;
+      }
+    }
+  }
+  .gift-control-panel {
+    .gift-presets {
+      .gift-section {
+        display: flex !important;
+      }
+    }
+    .more-gift-section {
+      position: static !important;
+      margin: 0 6px 0 0 !important;
+      height: auto !important;
+    }
+    .z-gift-package {
+      margin: auto 0 !important;
+      position: static !important;
+      .gift-package-btn {
+        padding: 0 !important;
+      }
+    }
+    .right-part {
+      padding-top: 0 !important;
+    }
+    .right-section {
+      display: none !important;
+    }
+    // .right-section {
+    //   align-self: stretch !important;
+    //   align-items: center !important;
+    //   .vertical-separator {
+    //     height: 100% !important;
+    //   }
+    //   > .gift-section {
+    //     height: 42px !important;
+    //   }
+    // }
+    .skin-bg {
+      height: 48px !important;
+    }
+  }
+  &.player-full-win {
+    #web-player__bottom-bar__container {
+      display: none !important;
+    }
+  }
+}
+.#{$prefix}-guard {
+  .guard-danmaku::before {
+    border-image: none !important;
+    background-color: transparent !important;
+    .guard-danmaku {
+      margin: 0 !important;
+      padding: 4px 5px !important;
+    }
+    .guard-danmaku::after {
+      background-image: none !important;
+    }
+  }
+  .chat-history-panel [class*='guard-level-'] {
+    padding: 4px 5px !important;
+    margin: 0 !important;
+    &::after {
+      display: none !important;
+    }
+  }
+  .chat-history-panel .chat-colorful-bubble {
+    margin: 0 !important;
+    display: block !important;
+    border-radius: 0 !important;
+    background-color: transparent !important;
+  }
+  .wealth-medal-ctnr.medal-guard {
+    display: none !important;
+  }
+  .fans-medal-item.medal-guard {
+    margin-left: 0 !important;
+  }
+}
+.#{$prefix}-emoticons {
+  .control-panel-icon-row .emoticons-panel {
+    display: none !important;
+  }
+  .chat-history-list .chat-item .emoticon {
+    img {
+      display: none !important;
+    }
+    span {
+      display: inline-flex !important;
+    }
+  }
+  .danmaku-item-container .bilibili-danmaku img {
+    display: none !important;
+  }
+}

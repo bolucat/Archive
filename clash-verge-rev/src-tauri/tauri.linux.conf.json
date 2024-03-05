@@ -1,0 +1,14 @@
+{
+  "tauri": {
+    "systemTray": {
+      "iconPath": "icons/tray-icon.png"
+    },
+    "bundle": {
+      "targets": ["deb", "appimage", "updater"],
+      "deb": {
+        "depends": ["openssl"],
+        "desktopTemplate": "./template/clash-verge.desktop"
+      }
+    }
+  }
+}

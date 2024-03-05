@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8" />
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.4/css/bulma.min.css"
+        />
+    </head>
+    <body>
+        <section class="hero is-fullheight">
+            <div class="hero-body">
+                <div class="container">
+                    <!-- Title -->
+                    <div class="columns is-centered">
+                        <div class="column is-12">
+                            <h1 class="title has-text-centered">
+                                ehco is a network relay tool and a typo :)
+                            </h1>
+                        </div>
+                    </div>
+
+                    <!-- Build Info Box -->
+                    <div class="columns is-centered">
+                        <div class="column">
+                            <div class="box">
+                                <h3 class="subtitle has-text-centered">
+                                    Build Info
+                                </h3>
+                                <div
+                                    class="content is-flex is-justify-content-center"
+                                >
+                                    <ul style="text-align: left">
+                                        <li>Version: {{.Version}}</li>
+                                        <li>GitBranch: {{.GitBranch}}</li>
+                                        <li>GitRevision: {{.GitRevision}}</li>
+                                        <li>BuildTime: {{.BuildTime}}</li>
+                                        <li>StartTime: {{.StartTime}}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Links Box -->
+                    <div class="columns is-centered">
+                        <div class="column">
+                            <div class="box">
+                                <h3 class="subtitle has-text-centered">
+                                    Links
+                                </h3>
+                                <div
+                                    class="content is-flex is-justify-content-center"
+                                >
+                                    <ul style="text-align: left">
+                                        <li><a href="/metrics/">Metrics</a></li>
+                                        <li>
+                                            <a href="/debug/pprof/">Debug</a>
+                                        </li>
+                                        <li>
+                                            <a href="/connections/"
+                                                >Current Connections</a
+                                            >
+                                        </li>
+                                        <li>
+                                            <a href="/api/v1/config/"
+                                                >Current Config</a
+                                            >
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Clash Providers Box -->
+                    {{if .SubConfigs}}
+                    <div class="columns is-centered">
+                        <div class="column">
+                            <div class="box">
+                                <h3 class="subtitle has-text-centered">
+                                    Clash Providers
+                                </h3>
+                                <div
+                                    class="content is-flex is-justify-content-center"
+                                >
+                                    <ul style="text-align: left">
+                                        {{range .SubConfigs}}
+                                        <li>
+                                            <a
+                                                href="/clash_proxy_provider/?sub_name={{.Name}}"
+                                                >{{.Name}}</a
+                                            >
+                                        </li>
+                                        <li>
+                                            <a
+                                                href="/clash_proxy_provider/?sub_name={{.Name}}&grouped=true"
+                                                >{{.Name}}-lb</a
+                                            >
+                                        </li>
+                                        {{end}}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <!-- Reload Config Button -->
+                    <div class="columns is-centered">
+                        <div class="column is-12">
+                            <p class="has-text-centered">
+                                <button
+                                    class="button is-primary"
+                                    id="reloadButton"
+                                >
+                                    Reload Config
+                                </button>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="hero-foot">
+                <footer class="footer">
+                    <div class="content has-text-centered">
+                        <a href="https://github.com/Ehco1996/ehco"
+                            >Source code</a
+                        >
+                    </div>
+                </footer>
+            </div>
+        </section>
+
+        <script>
+            document
+                .getElementById("reloadButton")
+                .addEventListener("click", function () {
+                    var request = new XMLHttpRequest();
+                    request.open("POST", "/api/v1/config/reload/");
+                    request.onreadystatechange = function () {
+                        if (request.readyState === XMLHttpRequest.DONE) {
+                            var msg;
+                            if (request.status === 200) {
+                                msg =
+                                    "Reload config success." +
+                                    " Response: " +
+                                    request.responseText;
+                            } else {
+                                msg =
+                                    "Failed to reload config." +
+                                    " Response: " +
+                                    request.responseText;
+                            }
+                            alert(msg);
+                        }
+                    };
+                    request.send();
+                });
+        </script>
+    </body>
+</html>

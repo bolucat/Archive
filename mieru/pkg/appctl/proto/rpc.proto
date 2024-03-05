@@ -1,0 +1,99 @@
+// Copyright (C) 2024  mieru authors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+package appctl;
+
+import "base.proto";
+import "misc.proto";
+import "servercfg.proto";
+
+option go_package = "github.com/enfein/mieru/pkg/appctl/appctlpb";
+
+service ClientLifecycleService {
+    // Fetch client application status.
+    rpc GetStatus(Empty) returns (AppStatusMsg);
+
+    // Quit client daemon.
+    rpc Exit(Empty) returns (Empty);
+
+    // Get client metrics.
+    rpc GetMetrics(Empty) returns (Metrics);
+
+    // Get client session information.
+    rpc GetSessionInfo(Empty) returns (SessionInfo);
+
+    // Generate a thread dump of client daemon.
+    rpc GetThreadDump(Empty) returns (ThreadDump);
+
+    // Start CPU profiling.
+    rpc StartCPUProfile(ProfileSavePath) returns (Empty);
+
+    // Stop CPU profiling.
+    rpc StopCPUProfile(Empty) returns (Empty);
+
+    // Generate a heap profile.
+    rpc GetHeapProfile(ProfileSavePath) returns (Empty);
+
+    // Get memory statistics of client daemon.
+    rpc GetMemoryStatistics(Empty) returns (MemoryStatistics);
+}
+
+service ServerLifecycleService {
+    // Fetch server application status.
+    rpc GetStatus(Empty) returns (AppStatusMsg);
+
+    // Start proxy in server application.
+    rpc Start(Empty) returns (Empty);
+
+    // Stop proxy in server application.
+    rpc Stop(Empty) returns (Empty);
+
+    // Reload server configuration.
+    rpc Reload(Empty) returns (Empty);
+
+    // Quit server daemon.
+    rpc Exit(Empty) returns (Empty);
+
+    // Get server metrics.
+    rpc GetMetrics(Empty) returns (Metrics);
+
+    // Get server session information.
+    rpc GetSessionInfo(Empty) returns (SessionInfo);
+
+    // Generate a thread dump of server daemon.
+    rpc GetThreadDump(Empty) returns (ThreadDump);
+
+    // Start CPU profiling.
+    rpc StartCPUProfile(ProfileSavePath) returns (Empty);
+
+    // Stop CPU profiling.
+    rpc StopCPUProfile(Empty) returns (Empty);
+
+    // Generate a heap profile.
+    rpc GetHeapProfile(ProfileSavePath) returns (Empty);
+
+    // Get memory statistics of server daemon.
+    rpc GetMemoryStatistics(Empty) returns (MemoryStatistics);
+}
+
+service ServerConfigService {
+    // Fetch the server config.
+    rpc GetConfig(Empty) returns (ServerConfig);
+
+    // Update server config.
+    rpc SetConfig(ServerConfig) returns (ServerConfig);
+}

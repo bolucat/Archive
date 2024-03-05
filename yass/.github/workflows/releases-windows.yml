@@ -1,0 +1,230 @@
+name: OnDemand Build Artifacts (MSVC)
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      tags:
+        description: 'Test scenario tags'
+        required: false
+        type: boolean
+  schedule:
+    - cron: '0 16 * * *'
+concurrency:
+  group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
+defaults:
+  run:
+    shell: cmd
+env:
+  CACHE_EPOCH: 123-5
+  GOPROXY: direct
+jobs:
+  windows-release:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86, arm64]
+        crt-linkage: [dynamic]
+        build_type: [Release]
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Cache clang, nasm and wixtoolset 3
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/nasm
+            third_party/llvm-build/Release+Asserts
+            third_party/wix311
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache msvc curl
+        id: curl-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/libcurl-vc16-arm64-release-static-ipv6-sspi-schannel
+            third_party/libcurl-vc16-x64-release-static-ipv6-sspi-schannel
+            third_party/libcurl-vc16-x86-release-static-ipv6-sspi-schannel
+          key: ${{ runner.os }}-msvc-dynamic-curl-vc16-${{ matrix.arch }}-v1
+      - name: Cache depot_tools
+        id: depot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/depot_tools
+          key: ${{ runner.os }}-depot_tools-v1
+      - name: Cache crashpad build stage
+        id: crashpad-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/crashpad
+          key: ${{ runner.os }}-msvc-dynamic-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache golang (tools only)
+        uses: actions/cache@v4
+        with:
+          path: |
+            %LocalAppData%\go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('tools/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-tools-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: "Download dependency: clang, nasm and wixtoolset 3"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          scripts\download-toolchain.bat
+      - name: "Download dependency: curl"
+        if: ${{ steps.curl-cache.outputs.cache-hit != 'true' }}
+        run: |
+          scripts\download-curl-msvc.bat ${{ matrix.arch }}
+      - uses: actions/setup-python@v4
+        if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
+        with:
+          python-version: '3.11'
+      - name: Download and Build Crashpad (include depot_tools)
+        if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          WITH_CPU=${{ matrix.arch }} ./scripts/build-crashpad.sh
+      - name: Build
+        run: |
+          set VCToolsVersion=14.29
+          set Winsdk=10.0.19041.0
+          set "WindowsSDKVersion=%Winsdk%\"
+          if "${{ matrix.arch }}" == "arm64" (call :SetNewVCToolsVersion)
+          set vsdevcmd=C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat
+          set "VSCMD_START_DIR=%CD%"
+          set Platform=${{ matrix.arch }}
+
+          set "Path=%CD%\third_party\nasm;%Path%"
+          set "Path=%CD%\third_party\wix311;%Path%"
+
+          call "%vsdevcmd%" -arch=%Platform% -host_arch=amd64 -winsdk=%Winsdk% -no_logo -vcvars_ver=%VCToolsVersion%
+
+          tools\build -msvc-tgt-arch=${{ matrix.arch }} -msvc-crt-linkage=${{ matrix.crt-linkage }} -build-benchmark -build-test || exit /b
+
+          exit /b 0
+
+          :SetNewVCToolsVersion
+          set VCToolsVersion=
+      - name: Run tests
+        if: ${{ matrix.arch == 'x64' || matrix.arch == 'x86' }}
+        run: |
+          build-msvc-${{ matrix.arch }}-${{ matrix.crt-linkage }}\yass_test || exit /b
+          build-msvc-${{ matrix.arch }}-${{ matrix.crt-linkage }}\yass_benchmark || exit /b
+      - name: Upload dist tarball (including debuginfo)
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} *.zip
+      - name: Upload dist installers
+        if: ${{ github.event_name == 'release' && matrix.arch != 'arm64' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} *.msi *.exe
+  windows-xp-release:
+    runs-on: windows-2019
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+        crt-linkage: [static]
+        build_type: [Release]
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Cache clang, nasm and wixtoolset 3
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/nasm
+            third_party/llvm-build/Release+Asserts
+            third_party/wix311
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            %LocalAppData%\go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: "Download dependency: clang, nasm and wixtoolset 3"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          scripts\download-toolchain.bat
+      - name: Patch libcxx for windows xp
+        shell: bash
+        run: |
+          pushd third_party/libc++/trunk
+          patch -p1 < ../winxp.patch
+          popd
+          pushd third_party/benchmark
+          patch -p1 < ../benchmark-winxp-fix.patch
+          popd
+      - name: Build
+        run: |
+          set VCToolsVersion=14.16.27012
+          set "VCINSTALLDIR=C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC"
+          set "WindowsSDKVersion=10.0.10240.0\"
+          set "WindowsSdkDir=C:\Program Files (x86)\Windows Kits\10"
+          set "PATH=C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja;%PATH%"
+
+          set Platform=${{ matrix.arch }}
+          set VSCMD_ARG_TGT_ARCH=${{ matrix.arch }}
+
+          set "Path=%CD%\third_party\nasm;%Path%"
+          set "Path=%CD%\third_party\wix311;%Path%"
+
+          call "scripts\callxp-%Platform%.cmd"
+
+          tools\build -msvc-tgt-arch=${{ matrix.arch }} -msvc-crt-linkage=${{ matrix.crt-linkage }} -msvc-allow-xp -build-test -build-benchmark -use-icu=false || exit /b
+
+          goto :eof
+      - name: Run tests
+        run: |
+          build-msvc-winxp-${{ matrix.arch }}-${{ matrix.crt-linkage }}\yass_test || exit /b
+          build-msvc-winxp-${{ matrix.arch }}-${{ matrix.crt-linkage }}\yass_benchmark || exit /b
+      - name: Upload dist tarball (including debuginfo)
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} *.msi *.exe *.zip

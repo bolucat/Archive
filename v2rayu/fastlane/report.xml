@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="fastlane.lanes">
+    
+    
+    
+      
+      <testcase classname="fastlane.lanes" name="0: appcenter_upload" time="61.092945">
+        
+      </testcase>
+    
+  </testsuite>
+</testsuites>

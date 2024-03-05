@@ -1,0 +1,41 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - stable-next
+      - main-next
+      - dev-next
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - '!.github/workflows/lint.yml'
+  pull_request:
+    branches:
+      - stable-next
+      - main-next
+      - dev-next
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.22
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.version.outputs.go_version }}
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          args: --timeout=30m
+          install-mode: binary

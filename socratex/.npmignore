@@ -1,0 +1,10 @@
+.history
+/.github
+/assets
+/build.mjs
+/debug.mjs
+/Dockerfile
+/keys/README.md
+/package-lock.json
+/test.mjs
+/webpack.config.mjs

@@ -1,0 +1,51 @@
+// Import Bulma's core
+@import "~bulma/sass/utilities/_all";
+
+// Set your colors
+$green: $success;
+$green-invert: findColorInvert($green);
+$primary: $warning;
+$primary-invert: findColorInvert($primary);
+$twitter: #4099FF;
+$twitter-invert: findColorInvert($twitter);
+$lightblue: #acd1f0;
+$lightblue-invert: findColorInvert($lightblue);
+$warning: #ff845e;
+$warning-invert: findColorInvert($warning);
+
+$warning: #dc8e47;
+$warning-invert: findColorInvert($warning);
+$info: #4497a5;
+$info-invert: findColorInvert($info);
+$success: #506da4;
+$success-invert: findColorInvert($success);
+$delete: #cd8a7a;
+$delete-invert: findColorInvert($delete);
+$danger: rgba(255, 69, 58, 0.73);
+$danger-invert: findColorInvert($danger);
+
+// Setup $colors to use as bulma classes (e.g. 'is-twitter')
+$colors: (
+        "white": ($white, $black),
+        "black": ($black, $white),
+        "light": ($light, $light-invert),
+        "dark": ($dark, $dark-invert),
+        "primary": ($primary, $primary-invert),
+        "info": ($info, $info-invert),
+        "success": ($success, $success-invert),
+        "warning": ($warning, $warning-invert),
+        "danger": ($danger, $danger-invert),
+        "twitter": ($twitter, $twitter-invert),
+        "green": ($green, $green-invert),
+        "delete": ($delete, $delete-invert),
+        "lightblue": ($lightblue, $lightblue-invert)
+);
+
+// Links
+$link: $primary;
+$link-invert: $primary-invert;
+$link-focus-border: $primary;
+
+// Import Bulma and Buefy styles
+@import "~bulma";
+@import "~buefy/src/scss/buefy";

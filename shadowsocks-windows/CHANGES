@@ -1,0 +1,432 @@
+4.3.2.0 2020-11-05
+- PAC: direct connection for private IP ranges by @studentmain (#3008)
+- Remove duplicate startup entries (#3012)
+- Other minor bug fixes and improvements
+
+4.3.1.0 2020-10-25
+- Update abp.js (#2999)
+- Separate QR code scanning from MenuViewController (#2995)
+- Remove statistics strategy (#2994)
+- Other minor bug fixes and improvements
+
+4.3.0.0 2020-10-19
+- Cleanup and update dependencies (#2983)
+- Geosite group validation + PAC regeneration on version update (#2988)
+- PAC: add options for direct and proxied groups (#2990)
+- Transition to WPF: ForwardProxyView + HotkeysView + OnlineConfigView + VersionUpdatePromptView (#2991)
+
+4.2.1.0 2020-10-12
+- SIP008 support (#2942)
+- Exclude @cn from PAC proxied list (#2982)
+- Transition to WPF: ReactiveUI and ServerSharingView (#2959)
+- User-Agent for OnlineConfigResolver and GeositeUpdater (#2978)
+
+4.2.0.1 2020-09-26
+- Fix domain rule handling in PAC script (#2956)
+
+4.2.0.0 2020-09-10
+- Update TCPHandler.lastActivity (#2858)
+- Add Franch translation (#2861)
+- New option for ss:// URL association (#2855)
+- Updated Korean Language (#2871)
+- Decouple statistic and TCPRelay (#2872)
+- Fix nLogConfig NullReferenceExceltion (#2887)
+- Use v2ray GeoSsite to replace GFWList (#2875)
+- Optimize the updater and downloader (#2910)
+- Update SIP002 (#2904)
+- Update Japanese translations
+- Fix improperly parsed remark section (#2935)
+- Other minor bug fixes and improvements
+
+4.1.10.0 2020-04-11
+- Fix NLog config file issue (#2841, #2846)
+- Tweak log level
+
+4.1.9.3 2020-03-31
+- Set default method to chacha20-ietf-poly1305
+- Using hash in PAC URL (#2759)
+- Rename and translate title of statistics form (#2768)
+- Russian translation (#2767)
+- Refine Updated Notification logic
+- Using NLog (#2783)
+- Bug fix: wrong server in tray menu (#2782)
+- Deprecate unsafe encryption method (#2757, #2801)
+- Bug fix: server config is overwritten by others when moving up/down (#2830)
+- Other minor bug fixes and improvements
+
+4.1.9.2 2019-12-25
+- Fix i18n issues (#2740, #2741)
+
+4.1.9.1 2019-12-22
+- Fix #2739: PAC does not work
+- Translate Show Plugin Option
+
+4.1.9.0 2019-12-21
+- Refine merge PAC+abp script logic (#2598)
+- Format the proxy hostname in GfwListUpdater (#2616)
+- Fix the trayIcon display issue under Win10 dark theme (#2658)
+- Set default encryption method as chacha20-ietf-poly1305 (#2699)
+- Translate statistics config form (#2698)
+- Update .Net Framework download link (#2731)
+- Use MD5 hash instead of timestamp for PAC URL parameter (#2705)
+- Add option "Show Plugin Output" (#2722)
+- Support custom GFWListUrl defined in config file (#2728)
+- Implement new I18N csv structure (#2712)
+- Refine message when plugin program file does not exist (#2730)
+- Other minor bug fixes and improvements
+
+4.1.8 2019-10-31
+- Update the nuget configurations and packages
+- Fix some crash about thread-safe in statistics (#2591)
+- Fix server list index invalidation (#2543, #2542)
+- Refine PAC server (#2539)
+- Update the GFWList via IPv6Loopback when available
+- Modify PAC request behavior (#2526)
+- Fix .NET 4.7.2 on Win7 TLS compatibility (#2473)
+- Other minor bug fixes and improvements
+
+4.1.7.1 2019-07-14
+- Fix unexpected server delete behavior (#2459)
+- Reduce info log when checking Windows 10 Light Theme
+
+4.1.7 2019-07-10
+- Fix UDP relay (#2387)
+- Support Windows 10 1903 Light Theme (#2379)
+- Listening on local IPv6 interface (#2419) (Experimental)
+- Turn off per-monitor DPI awareness as it is not supported (#2427)
+- Fix a defect when parsing ss:// URL (#2364)
+- Upgrade the development environment to VS2017 with .NET Framework 4.7.2
+- Refactoring config form (#2410)
+- Refactoring tray icon
+- Other minor bug fixes and improvements
+
+4.1.6 2019-04-17
+- Add http proxy "basic access authentication"
+- Add check box to toggle plugin argument input
+- Add apply button for server configuration form
+- Update UI of switching proxy mode
+- Update exception handler for port assignment
+
+4.1.5 2019-03-08
+- Update nuget packages
+- Update the PAC javascript to support user rules in a better way
+- Other minor bug fixes and improvements
+
+4.1.4 2019-02-04
+- Update Privoxy to 3.0.28
+- Enlarge Privoxy max client connections
+- Update the system proxy when user-rule.txt is changed
+- Register restart after system reboot
+
+4.1.3.1 2018-12-09
+- Fix error when usersettings bypasslist is null
+
+4.1.3 2018-12-08
+- Refine sysproxy exception handling
+- Keep user bypass setting when use global proxy mode
+- Update .Net download link
+- Minor improvements
+
+4.1.2 2018-09-13
+- Fix plugin CLI argument environment variable issue (#1969 #1818)
+- Other minor bug fixes and improvements (#1978 #1968 #1993)
+
+4.1.1 2018-08-18
+- Fix auto hotkey reg issue when OS wakeup
+- Other minor bug fixes and improvements
+
+4.1.0 2018-08-05
+- Support portable mode Temp folder
+- Register hotkeys on startup
+- Fix sysproxy hanging issue
+- Minor improvements
+
+4.0.10 2018-05-10
+- Add square bracket for SIP002 IPv6 (RFC3986)
+- Add plugin CLI arguments support
+- Bug fix: Server address should not be encoded (#1758)
+- Bug fix: Wrong splash on multi display (#1729)
+- Fix PerPixelAlphaForm's issue in designer
+- Other minor bug fixes and improvements
+
+4.0.9 2018-03-14
+- Fix port occupied issue
+- Add xchacha20-ietf-poly1305
+- Update cryptographic libraries
+- Bug fixes and improvements
+
+4.0.8 2018-02-16
+- Add OpenSSL 1.1.0g support #1671
+- Update nuget packages
+- Bug fixes and improvements
+
+4.0.7 2017-12-09
+- Fix QR code and ss:// protocol import issue
+- Add an option to show password
+- User rules have higher priority in PAC file
+- Bug fixes and improvements
+
+4.0.6 2017-09-09
+- SIP002 support
+- SIP003 support
+
+4.0.5 2017-08-09
+- Fix crash when user-wininet.json fail to parse. (#1178)
+- Bug fixes and improvements.
+
+4.0.4 2017-06-01
+- Save user wininet settings as user-wininet.json
+- Improve performance of aes-256-gcm
+
+4.0.2 2017-05-19
+- Fix legacy key derivation
+- Bug fixes and improvements
+
+4.0.1 2017-04-08
+- Fix UDP relay
+- Allow to add multiple servers via Shadowsocks URL
+- Bug fixes and improvements
+
+4.0 2017-04-04
+- Add AEAD ciphers support, removed OTA
+- I18N: add Japanese support, update Traditional Chinese strings
+- sysproxy: restore user settings when system proxy is turned off
+- Bug fixes and improvements
+
+3.4.3 2017-1-11
+- Make the previous portable mode as default
+- Refine networking by Noisyfox
+- Bug fixes and improvements
+
+3.4.2.1 2016-12-30
+- Refine Traditional Chinese translation by LNDDYL
+- sysproxy: reduce false positives on virus detection
+- sysproxy: set LAN proxy settings even if RAS query fails
+- privoxy: drop obsolete tray area refreshing code
+- Fix auto startup
+- Bug fixes and improvements
+
+3.4.2 2016-12-16
+- Fix null ref in TCPRelay. (#940)
+- Bring Privoxy back. (#948)
+- Bug fixes and improvements.
+
+3.4.1 (pre-release) 2016-12-13
+- Fix crash if user input an invaild server address. (#933)
+- Fix ERR_TOO_MANY_REDIRECTS with http proxy. (#937)
+- Show SS URL in QRCode form.
+- Add import URL from clipboard.
+- Bug fixes and improvements.
+
+3.4.0 (pre-release) 2016-12-9
+- Replace Privoxy with built-in http proxy.
+- Try fix system proxy settings on windows 10 insider preview.
+- Secure local pac.
+- Update bypass list.
+- Bug fixes and improvements.
+
+3.3.6 2016-12-6
+- Refine system proxy mode switching logic,
+  merge 'Switch to PAC' and 'Switch to Global' into
+  'Switch system proxy mode'.
+- Don't store LogViewer window size in config file,
+  now you can sync config between devices with different
+  resolutions.
+- Add tag support for SS url
+- Add pre-release channel in update checker
+- Bug fixes and improvements
+
+3.3.5 2016-11-7
+- Improve system power mode handling
+- Update mbed TLS to 2.4.0
+- Check .NET Framework version on startup
+
+3.3.4 2016-10-21
+- Fix IE dial-up and VPN connection proxy settings
+  not changed since release 3.3.3.
+- Fix a UI bug
+
+3.3.3 2016-10-10
+- Add timeout support for server and forward proxy,
+  only integer is allowed
+- Use wininet API to setup system proxy
+- Upgrade to .NET Framework 4.6.2
+
+3.3.2 2016-10-03
+- Add HTTP forward proxy support
+- Bug fixes and improvements
+
+3.3.1 2016-09-20
+- Add global hotkey support
+- Bug fixes and improvements
+
+3.3 2016-09-09
+- Update Privoxy to 3.0.26
+- Change minimum system version explicitly to Windows Vista
+  since we are using dual-mode socket
+- Support running multiple instances of Privoxy for system proxy
+- Improve networking
+- New traffic chart and icon style
+- I18N: Traditional Chinese support
+- Bug fixes and improvements
+
+3.2 2016-08-13
+- Add AES-CTR, blowfish and camellia ciphers support,
+  including aes-256-ctr, aes-192-ctr, aes-128-ctr,
+  bf-cfb, camellia-128-cfb, camellia-192-cfb
+  and camellia-256-cfb.
+- Support one-time authentication in ss urls for sharing
+- Support traffic chart and traffic icon
+- Add proxy support
+- Add verbose logging
+- Improve LogForm
+- Delete log file when clicking "Clean Logs" in the LogForm
+- Bug fixes and improvements
+
+3.1 2016-05-01
+- Disable StatisticsStrategy by default
+
+3.0 2016-03-02
+- Update Privoxy to 3.0.24
+- Replace Choose by Total Packet Loss with Choose by Statistics
+- Support chacha20-ietf
+- Support Onetime Authentication
+- Optional checking updates
+- Download updates automatically
+- Improve log viewer
+- Minor fixes
+- Other improvements
+
+2.5.8 2015-09-20
+- Update GFWList url
+
+2.5.7 2015-09-19
+- Fix repeated IV
+
+2.5.6 2015-08-19
+- Add portable mode. Create shadowsocks_portable_mode.txt to use it
+- Support server reorder
+
+2.5.5 2015-08-17
+- Fix crash when enabling Availability Statistics and some servers can not be resolved
+- Allow multiple instances
+- Other fixes
+
+2.5.4 2015-08-16
+- Hide Privoxy icon
+
+2.5.3 2015-08-16
+- Replace Polipo with Privoxy
+- Add Choose by Total Packet Loss
+
+2.5.2 2015-08-04
+- Add log viewer
+
+2.5.1 2015-07-26
+- Prevent HA from switching servers too frequently
+- Fix server settings can not be updated when using HA
+- Fix server port can't be 8123
+- Other minor fixes
+
+2.5 2015-07-25
+- Support load balance
+- Support high availability
+
+2.4 2015-07-11
+- Support UDP relay
+- Support online PAC
+- Migrate update checker to GitHub releases
+- Other fixes
+
+2.3.1 2015-03-06
+- Support user rule
+
+2.3 2015-01-25
+- Use the same port for every profile
+- Use the same port for HTTP/Socks5/PAC
+- Fix GFWList PAC compatibility issue with IE11
+- Encourage users to report to GFWList when no update found
+- Minor UI improvements
+
+2.2.1 2015-01-18
+- Fix QR Code compatibility
+
+2.2 2015-01-14
+- Support updating PAC from GFWList
+- Support adding server by scanning QR Code
+- Output timestamp in logs
+- Minor fixes
+
+2.1.6 2015-01-02
+- Fix OPTIONS requests
+- Improve logs
+
+2.1.5 2014-12-25
+- Fix QR Code compatibility with iOS
+- Only left button will trigger double click on tray icon
+
+2.1.4 2014-12-20
+- Fix crash when remarks are too long
+
+2.1.3 2014-12-20
+- Add Chinese Language
+- Fix some UI issues on Windows 8
+- Fix some UI issues on high DPI screens
+- Log bind error more friendly
+- Stability issues
+
+2.1.2 2014-12-14
+- Fix sometimes Shadowsocks doesn't respond to requests
+
+2.1.1 2014-12-14
+- Add global proxy option
+
+2.1 2014-12-12
+- Add salsa20 and chacha20 support
+
+2.0.11 2014-11-23
+- Fix a crash
+- Only switch the system proxy off if we have switched it on
+
+2.0.10 2014-11-18
+- Minor fixes
+- Optimize code
+
+2.0.9 2014-11-13
+- Fix startup path
+- Fix allowed port range for polipo
+
+2.0.8 2014-11-12
+- Fix data corruption
+- Set proxy for PPPoE
+- Auto Startup Option
+- Support high DPI screens
+
+2.0.7 2014-11-11
+- Use OpenSSL for now
+
+2.0.6 2014-11-10
+- Minor bug fixes
+
+2.0.5 2014-11-09
+- Fix QRCode size
+- Share over LAN option
+- Log to temp path instead
+
+2.0.4 2014-11-09
+- Try to fix data corruption
+- Remove all configuration except x86
+
+2.0.3 2014-11-08
+- Support QRCode generation
+- Fix compatibility issues with some Chrome version
+
+2.0.2 2014-11-08
+- Add remarks
+- Fix error when polipo is killed
+
+2.0.1 2014-11-08
+- Check already running
+
+2.0 2014-11-08
+- Initial release

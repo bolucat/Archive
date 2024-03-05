@@ -1,0 +1,1882 @@
+using DynamicData;
+using DynamicData.Binding;
+using MaterialDesignColors;
+using MaterialDesignColors.ColorManipulation;
+using MaterialDesignThemes.Wpf;
+using ReactiveUI;
+using ReactiveUI.Fody.Helpers;
+using Splat;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Reactive;
+using System.Reactive.Linq;
+using System.Text;
+using System.Windows;
+using System.Windows.Media;
+using v2rayN.Handler;
+using v2rayN.Model;
+using v2rayN.Resx;
+using v2rayN.Views;
+
+namespace v2rayN.ViewModels
+{
+    public class MainWindowViewModel : ReactiveObject
+    {
+        #region private prop
+
+        private CoreHandler _coreHandler;
+        private StatisticsHandler _statistics;
+        private List<ProfileItem> _lstProfile;
+        private string _subId = string.Empty;
+        private string _serverFilter = string.Empty;
+        private static Config _config;
+        private NoticeHandler? _noticeHandler;
+        private readonly PaletteHelper _paletteHelper = new();
+        private Dictionary<string, bool> _dicHeaderSort = new();
+        private Action<EViewAction> _updateView;
+        private bool _showInTaskbar;
+
+        #endregion private prop
+
+        #region ObservableCollection
+
+        private IObservableCollection<ProfileItemModel> _profileItems = new ObservableCollectionExtended<ProfileItemModel>();
+        public IObservableCollection<ProfileItemModel> ProfileItems => _profileItems;
+
+        private IObservableCollection<SubItem> _subItems = new ObservableCollectionExtended<SubItem>();
+        public IObservableCollection<SubItem> SubItems => _subItems;
+
+        private IObservableCollection<RoutingItem> _routingItems = new ObservableCollectionExtended<RoutingItem>();
+        public IObservableCollection<RoutingItem> RoutingItems => _routingItems;
+
+        private IObservableCollection<ComboItem> _servers = new ObservableCollectionExtended<ComboItem>();
+        public IObservableCollection<ComboItem> Servers => _servers;
+
+        [Reactive]
+        public ProfileItemModel SelectedProfile { get; set; }
+
+        public IList<ProfileItemModel> SelectedProfiles { get; set; }
+
+        [Reactive]
+        public SubItem SelectedSub { get; set; }
+
+        [Reactive]
+        public SubItem SelectedMoveToGroup { get; set; }
+
+        [Reactive]
+        public RoutingItem SelectedRouting { get; set; }
+
+        [Reactive]
+        public ComboItem SelectedServer { get; set; }
+
+        [Reactive]
+        public string ServerFilter { get; set; }
+
+        [Reactive]
+        public bool BlServers { get; set; }
+
+        #endregion ObservableCollection
+
+        #region Menu
+
+        //servers
+        public ReactiveCommand<Unit, Unit> AddVmessServerCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> AddVlessServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddShadowsocksServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddSocksServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddTrojanServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddHysteria2ServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddTuicServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddWireguardServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddCustomServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddServerViaClipboardCmd { get; }
+        public ReactiveCommand<Unit, Unit> AddServerViaScanCmd { get; }
+
+        //servers delete
+        public ReactiveCommand<Unit, Unit> EditServerCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> RemoveServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> RemoveDuplicateServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> CopyServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> SetDefaultServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> ShareServerCmd { get; }
+
+        //servers move
+        public ReactiveCommand<Unit, Unit> MoveTopCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> MoveUpCmd { get; }
+        public ReactiveCommand<Unit, Unit> MoveDownCmd { get; }
+        public ReactiveCommand<Unit, Unit> MoveBottomCmd { get; }
+
+        //servers ping
+        public ReactiveCommand<Unit, Unit> MixedTestServerCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> TcpingServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> RealPingServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> SpeedServerCmd { get; }
+        public ReactiveCommand<Unit, Unit> SortServerResultCmd { get; }
+
+        //servers export
+        public ReactiveCommand<Unit, Unit> Export2ClientConfigCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> Export2ShareUrlCmd { get; }
+        public ReactiveCommand<Unit, Unit> Export2SubContentCmd { get; }
+
+        //Subscription
+        public ReactiveCommand<Unit, Unit> SubSettingCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> AddSubCmd { get; }
+        public ReactiveCommand<Unit, Unit> EditSubCmd { get; }
+        public ReactiveCommand<Unit, Unit> SubUpdateCmd { get; }
+        public ReactiveCommand<Unit, Unit> SubUpdateViaProxyCmd { get; }
+        public ReactiveCommand<Unit, Unit> SubGroupUpdateCmd { get; }
+        public ReactiveCommand<Unit, Unit> SubGroupUpdateViaProxyCmd { get; }
+
+        //Setting
+        public ReactiveCommand<Unit, Unit> OptionSettingCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> RoutingSettingCmd { get; }
+        public ReactiveCommand<Unit, Unit> DNSSettingCmd { get; }
+        public ReactiveCommand<Unit, Unit> GlobalHotkeySettingCmd { get; }
+        public ReactiveCommand<Unit, Unit> RebootAsAdminCmd { get; }
+        public ReactiveCommand<Unit, Unit> ClearServerStatisticsCmd { get; }
+        public ReactiveCommand<Unit, Unit> ImportOldGuiConfigCmd { get; }
+
+        //CheckUpdate
+        public ReactiveCommand<Unit, Unit> CheckUpdateNCmd { get; }
+
+        //public ReactiveCommand<Unit, Unit> CheckUpdateV2flyCoreCmd { get; }
+
+        //public ReactiveCommand<Unit, Unit> CheckUpdateSagerNetCoreCmd { get; }
+        public ReactiveCommand<Unit, Unit> CheckUpdateXrayCoreCmd { get; }
+
+        //public ReactiveCommand<Unit, Unit> CheckUpdateClashCoreCmd { get; }
+        //public ReactiveCommand<Unit, Unit> CheckUpdateClashMetaCoreCmd { get; }
+        public ReactiveCommand<Unit, Unit> CheckUpdateSingBoxCoreCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> CheckUpdateGeoCmd { get; }
+
+        public ReactiveCommand<Unit, Unit> ReloadCmd { get; }
+
+        [Reactive]
+        public bool BlReloadEnabled { get; set; }
+
+        public ReactiveCommand<Unit, Unit> NotifyLeftClickCmd { get; }
+
+        [Reactive]
+        public Icon NotifyIcon { get; set; }
+
+        [Reactive]
+        public ImageSource AppIcon { get; set; }
+
+        //[Reactive]
+        //public bool BlShowTrayTip { get; set; }
+
+        #endregion Menu
+
+        #region System Proxy
+
+        [Reactive]
+        public bool BlSystemProxyClear { get; set; }
+
+        [Reactive]
+        public bool BlSystemProxySet { get; set; }
+
+        [Reactive]
+        public bool BlSystemProxyNothing { get; set; }
+
+        [Reactive]
+        public bool BlSystemProxyPac { get; set; }
+
+        public ReactiveCommand<Unit, Unit> SystemProxyClearCmd { get; }
+        public ReactiveCommand<Unit, Unit> SystemProxySetCmd { get; }
+        public ReactiveCommand<Unit, Unit> SystemProxyNothingCmd { get; }
+        public ReactiveCommand<Unit, Unit> SystemProxyPacCmd { get; }
+
+        [Reactive]
+        public bool BlRouting { get; set; }
+
+        [Reactive]
+        public int SystemProxySelected { get; set; }
+
+        #endregion System Proxy
+
+        #region UI
+
+        [Reactive]
+        public string InboundDisplay { get; set; }
+
+        [Reactive]
+        public string InboundLanDisplay { get; set; }
+
+        [Reactive]
+        public string RunningServerDisplay { get; set; }
+
+        [Reactive]
+        public string RunningServerToolTipText { get; set; }
+
+        [Reactive]
+        public string RunningInfoDisplay { get; set; }
+
+        [Reactive]
+        public string SpeedProxyDisplay { get; set; }
+
+        [Reactive]
+        public string SpeedDirectDisplay { get; set; }
+
+        [Reactive]
+        public bool EnableTun { get; set; }
+
+        [Reactive]
+        public bool ColorModeDark { get; set; }
+
+        private IObservableCollection<Swatch> _swatches = new ObservableCollectionExtended<Swatch>();
+        public IObservableCollection<Swatch> Swatches => _swatches;
+
+        [Reactive]
+        public Swatch SelectedSwatch { get; set; }
+
+        [Reactive]
+        public int CurrentFontSize { get; set; }
+
+        [Reactive]
+        public bool FollowSystemTheme { get; set; }
+
+        [Reactive]
+        public string CurrentLanguage { get; set; }
+
+        #endregion UI
+
+        #region Init
+
+        public MainWindowViewModel(ISnackbarMessageQueue snackbarMessageQueue, Action<EViewAction> updateView)
+        {
+            _updateView = updateView;
+            ThreadPool.RegisterWaitForSingleObject(App.ProgramStarted, OnProgramStarted, null, -1, false);
+
+            Locator.CurrentMutable.RegisterLazySingleton(() => new NoticeHandler(snackbarMessageQueue), typeof(NoticeHandler));
+            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _config = LazyConfig.Instance.GetConfig();
+
+            SelectedProfile = new();
+            SelectedSub = new();
+            SelectedMoveToGroup = new();
+            SelectedRouting = new();
+            SelectedServer = new();
+            if (_config.tunModeItem.enableTun && Utile.IsAdministrator())
+            {
+                EnableTun = true;
+            }
+            _subId = _config.subIndexId;
+
+            Init();
+            BindingUI();
+            RestoreUI();
+
+            #region WhenAnyValue && ReactiveCommand
+
+            var canEditRemove = this.WhenAnyValue(
+               x => x.SelectedProfile,
+               selectedSource => selectedSource != null && !selectedSource.indexId.IsNullOrEmpty());
+
+            this.WhenAnyValue(
+                x => x.SelectedSub,
+                y => y != null && !y.remarks.IsNullOrEmpty() && _subId != y.id)
+                    .Subscribe(c => SubSelectedChanged(c));
+            this.WhenAnyValue(
+                 x => x.SelectedMoveToGroup,
+                 y => y != null && !y.remarks.IsNullOrEmpty())
+                     .Subscribe(c => MoveToGroup(c));
+
+            this.WhenAnyValue(
+                x => x.SelectedRouting,
+                y => y != null && !y.remarks.IsNullOrEmpty())
+                    .Subscribe(c => RoutingSelectedChanged(c));
+
+            this.WhenAnyValue(
+              x => x.SelectedServer,
+              y => y != null && !y.Text.IsNullOrEmpty())
+                  .Subscribe(c => ServerSelectedChanged(c));
+
+            this.WhenAnyValue(
+              x => x.ServerFilter,
+              y => y != null && _serverFilter != y)
+                  .Subscribe(c => ServerFilterChanged(c));
+
+            SystemProxySelected = (int)_config.sysProxyType;
+            this.WhenAnyValue(
+              x => x.SystemProxySelected,
+              y => y >= 0)
+                  .Subscribe(c => DoSystemProxySelected(c));
+
+            this.WhenAnyValue(
+              x => x.EnableTun,
+               y => y == true)
+                  .Subscribe(c => DoEnableTun(c));
+
+            //servers
+            AddVmessServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.VMess);
+            });
+            AddVlessServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.VLESS);
+            });
+            AddShadowsocksServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Shadowsocks);
+            });
+            AddSocksServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Socks);
+            });
+            AddTrojanServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Trojan);
+            });
+            AddHysteria2ServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Hysteria2);
+            });
+            AddTuicServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Tuic);
+            });
+            AddWireguardServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Wireguard);
+            });
+            AddCustomServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(true, EConfigType.Custom);
+            });
+            AddServerViaClipboardCmd = ReactiveCommand.Create(() =>
+            {
+                AddServerViaClipboard();
+            });
+            AddServerViaScanCmd = ReactiveCommand.CreateFromTask(() =>
+            {
+                return ScanScreenTaskAsync();
+            });
+            //servers delete
+            EditServerCmd = ReactiveCommand.Create(() =>
+            {
+                EditServer(false, EConfigType.Custom);
+            }, canEditRemove);
+            RemoveServerCmd = ReactiveCommand.Create(() =>
+            {
+                RemoveServer();
+            }, canEditRemove);
+            RemoveDuplicateServerCmd = ReactiveCommand.Create(() =>
+            {
+                RemoveDuplicateServer();
+            });
+            CopyServerCmd = ReactiveCommand.Create(() =>
+            {
+                CopyServer();
+            }, canEditRemove);
+            SetDefaultServerCmd = ReactiveCommand.Create(() =>
+            {
+                SetDefaultServer();
+            }, canEditRemove);
+            ShareServerCmd = ReactiveCommand.Create(() =>
+            {
+                ShareServer();
+            }, canEditRemove);
+            //servers move
+            MoveTopCmd = ReactiveCommand.Create(() =>
+            {
+                MoveServer(EMove.Top);
+            }, canEditRemove);
+            MoveUpCmd = ReactiveCommand.Create(() =>
+            {
+                MoveServer(EMove.Up);
+            }, canEditRemove);
+            MoveDownCmd = ReactiveCommand.Create(() =>
+            {
+                MoveServer(EMove.Down);
+            }, canEditRemove);
+            MoveBottomCmd = ReactiveCommand.Create(() =>
+            {
+                MoveServer(EMove.Bottom);
+            }, canEditRemove);
+
+            //servers ping
+            MixedTestServerCmd = ReactiveCommand.Create(() =>
+            {
+                ServerSpeedtest(ESpeedActionType.Mixedtest);
+            });
+            TcpingServerCmd = ReactiveCommand.Create(() =>
+            {
+                ServerSpeedtest(ESpeedActionType.Tcping);
+            }, canEditRemove);
+            RealPingServerCmd = ReactiveCommand.Create(() =>
+            {
+                ServerSpeedtest(ESpeedActionType.Realping);
+            }, canEditRemove);
+            SpeedServerCmd = ReactiveCommand.Create(() =>
+            {
+                ServerSpeedtest(ESpeedActionType.Speedtest);
+            }, canEditRemove);
+            SortServerResultCmd = ReactiveCommand.Create(() =>
+            {
+                SortServer(EServerColName.delayVal.ToString());
+            });
+            //servers export
+            Export2ClientConfigCmd = ReactiveCommand.Create(() =>
+            {
+                Export2ClientConfig();
+            }, canEditRemove);
+            Export2ShareUrlCmd = ReactiveCommand.Create(() =>
+            {
+                Export2ShareUrl();
+            }, canEditRemove);
+            Export2SubContentCmd = ReactiveCommand.Create(() =>
+            {
+                Export2SubContent();
+            }, canEditRemove);
+
+            //Subscription
+            SubSettingCmd = ReactiveCommand.Create(() =>
+            {
+                SubSetting();
+            });
+            AddSubCmd = ReactiveCommand.Create(() =>
+            {
+                EditSub(true);
+            });
+            EditSubCmd = ReactiveCommand.Create(() =>
+            {
+                EditSub(false);
+            });
+            SubUpdateCmd = ReactiveCommand.Create(() =>
+            {
+                UpdateSubscriptionProcess("", false);
+            });
+            SubUpdateViaProxyCmd = ReactiveCommand.Create(() =>
+            {
+                UpdateSubscriptionProcess("", true);
+            });
+            SubGroupUpdateCmd = ReactiveCommand.Create(() =>
+            {
+                UpdateSubscriptionProcess(_subId, false);
+            });
+            SubGroupUpdateViaProxyCmd = ReactiveCommand.Create(() =>
+            {
+                UpdateSubscriptionProcess(_subId, true);
+            });
+
+            //Setting
+            OptionSettingCmd = ReactiveCommand.Create(() =>
+            {
+                OptionSetting();
+            });
+            RoutingSettingCmd = ReactiveCommand.Create(() =>
+            {
+                RoutingSetting();
+            });
+            DNSSettingCmd = ReactiveCommand.Create(() =>
+            {
+                DNSSetting();
+            });
+            GlobalHotkeySettingCmd = ReactiveCommand.Create(() =>
+            {
+                if ((new GlobalHotkeySettingWindow()).ShowDialog() == true)
+                {
+                    _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+                }
+            });
+            RebootAsAdminCmd = ReactiveCommand.Create(() =>
+            {
+                RebootAsAdmin();
+            });
+            ClearServerStatisticsCmd = ReactiveCommand.Create(() =>
+            {
+                _statistics?.ClearAllServerStatistics();
+                RefreshServers();
+            });
+            ImportOldGuiConfigCmd = ReactiveCommand.Create(() =>
+            {
+                ImportOldGuiConfig();
+            });
+
+            //CheckUpdate
+            CheckUpdateNCmd = ReactiveCommand.Create(() =>
+            {
+                CheckUpdateN();
+            });
+            //CheckUpdateV2flyCoreCmd = ReactiveCommand.Create(() =>
+            //{
+            //    CheckUpdateCore(ECoreType.v2fly_v5);
+            //});
+            //CheckUpdateSagerNetCoreCmd = ReactiveCommand.Create(() =>
+            //{
+            //    CheckUpdateCore(ECoreType.SagerNet);
+            //});
+            CheckUpdateXrayCoreCmd = ReactiveCommand.Create(() =>
+            {
+                CheckUpdateCore(ECoreType.Xray);
+            });
+            //CheckUpdateClashCoreCmd = ReactiveCommand.Create(() =>
+            //{
+            //    CheckUpdateCore(ECoreType.clash);
+            //});
+            //CheckUpdateClashMetaCoreCmd = ReactiveCommand.Create(() =>
+            //{
+            //    CheckUpdateCore(ECoreType.clash_meta);
+            //});
+            CheckUpdateSingBoxCoreCmd = ReactiveCommand.Create(() =>
+            {
+                CheckUpdateCore(ECoreType.sing_box);
+            });
+            CheckUpdateGeoCmd = ReactiveCommand.Create(() =>
+            {
+                CheckUpdateGeo();
+            });
+
+            ReloadCmd = ReactiveCommand.Create(() =>
+            {
+                Reload();
+            });
+
+            NotifyLeftClickCmd = ReactiveCommand.Create(() =>
+            {
+                ShowHideWindow(null);
+            });
+
+            //System proxy
+            SystemProxyClearCmd = ReactiveCommand.Create(() =>
+            {
+                SetListenerType(ESysProxyType.ForcedClear);
+            });
+            SystemProxySetCmd = ReactiveCommand.Create(() =>
+            {
+                SetListenerType(ESysProxyType.ForcedChange);
+            });
+            SystemProxyNothingCmd = ReactiveCommand.Create(() =>
+            {
+                SetListenerType(ESysProxyType.Unchanged);
+            });
+            SystemProxyPacCmd = ReactiveCommand.Create(() =>
+            {
+                SetListenerType(ESysProxyType.Pac);
+            });
+
+            #endregion WhenAnyValue && ReactiveCommand
+
+            AutoHideStartup();
+
+            _showInTaskbar = true;
+        }
+
+        private void Init()
+        {
+            ConfigHandler.InitBuiltinRouting(_config);
+            ConfigHandler.InitBuiltinDNS(_config);
+            _coreHandler = new CoreHandler(_config, UpdateHandler);
+            Locator.CurrentMutable.RegisterLazySingleton(() => _coreHandler, typeof(CoreHandler));
+
+            if (_config.guiItem.enableStatistics)
+            {
+                _statistics = new StatisticsHandler(_config, UpdateStatisticsHandler);
+            }
+
+            MainFormHandler.Instance.UpdateTask(_config, UpdateTaskHandler);
+            MainFormHandler.Instance.RegisterGlobalHotkey(_config, OnHotkeyHandler, UpdateTaskHandler);
+
+            InitSubscriptionView();
+            RefreshRoutingsMenu();
+            RefreshServers();
+
+            Reload();
+            ChangeSystemProxyStatus(_config.sysProxyType, true);
+        }
+
+        private void OnProgramStarted(object state, bool timeout)
+        {
+            Application.Current.Dispatcher.Invoke((Action)(() =>
+            {
+                ShowHideWindow(true);
+            }));
+        }
+
+        #endregion Init
+
+        #region Actions
+
+        private void UpdateHandler(bool notify, string msg)
+        {
+            _noticeHandler?.SendMessage(msg);
+        }
+
+        private void UpdateTaskHandler(bool success, string msg)
+        {
+            _noticeHandler?.SendMessage(msg);
+            if (success)
+            {
+                var indexIdOld = _config.indexId;
+                RefreshServers();
+                if (indexIdOld != _config.indexId)
+                {
+                    Reload();
+                }
+                if (_config.uiItem.enableAutoAdjustMainLvColWidth)
+                {
+                    _updateView(EViewAction.AdjustMainLvColWidth);
+                }
+            }
+        }
+
+        private void UpdateStatisticsHandler(ServerSpeedItem update)
+        {
+            try
+            {
+                Application.Current.Dispatcher.Invoke((Action)(() =>
+                {
+                    if (!_showInTaskbar)
+                    {
+                        return;
+                    }
+
+                    SpeedProxyDisplay = string.Format(ResUI.SpeedDisplayText, Global.ProxyTag, Utile.HumanFy(update.proxyUp), Utile.HumanFy(update.proxyDown));
+                    SpeedDirectDisplay = string.Format(ResUI.SpeedDisplayText, Global.DirectTag, Utile.HumanFy(update.directUp), Utile.HumanFy(update.directDown));
+
+                    if (update.proxyUp + update.proxyDown > 0)
+                    {
+                        var second = DateTime.Now.Second;
+                        if (second % 3 == 0)
+                        {
+                            var item = _profileItems.Where(it => it.indexId == update.indexId).FirstOrDefault();
+                            if (item != null)
+                            {
+                                item.todayDown = Utile.HumanFy(update.todayDown);
+                                item.todayUp = Utile.HumanFy(update.todayUp);
+                                item.totalDown = Utile.HumanFy(update.totalDown);
+                                item.totalUp = Utile.HumanFy(update.totalUp);
+
+                                if (SelectedProfile?.indexId == item.indexId)
+                                {
+                                    var temp = JsonUtile.DeepCopy(item);
+                                    _profileItems.Replace(item, temp);
+                                    SelectedProfile = temp;
+                                }
+                                else
+                                {
+                                    _profileItems.Replace(item, JsonUtile.DeepCopy(item));
+                                }
+                            }
+                        }
+                    }
+                }));
+            }
+            catch (Exception ex)
+            {
+                Logging.SaveLog(ex.Message, ex);
+            }
+        }
+
+        private void UpdateSpeedtestHandler(string indexId, string delay, string speed)
+        {
+            Application.Current.Dispatcher.Invoke((Action)(() =>
+            {
+                SetTestResult(indexId, delay, speed);
+            }));
+        }
+
+        private void SetTestResult(string indexId, string delay, string speed)
+        {
+            if (Utile.IsNullOrEmpty(indexId))
+            {
+                _noticeHandler?.SendMessage(delay, true);
+                _noticeHandler?.Enqueue(delay);
+                return;
+            }
+            var item = _profileItems.Where(it => it.indexId == indexId).FirstOrDefault();
+            if (item != null)
+            {
+                if (!Utile.IsNullOrEmpty(delay))
+                {
+                    int.TryParse(delay, out int temp);
+                    item.delay = temp;
+                    item.delayVal = $"{delay} {Global.DelayUnit}";
+                }
+                if (!Utile.IsNullOrEmpty(speed))
+                {
+                    item.speedVal = $"{speed} {Global.SpeedUnit}";
+                }
+                _profileItems.Replace(item, JsonUtile.DeepCopy(item));
+            }
+        }
+
+        private void OnHotkeyHandler(EGlobalHotkey e)
+        {
+            switch (e)
+            {
+                case EGlobalHotkey.ShowForm:
+                    ShowHideWindow(null);
+                    break;
+
+                case EGlobalHotkey.SystemProxyClear:
+                    SetListenerType(ESysProxyType.ForcedClear);
+                    break;
+
+                case EGlobalHotkey.SystemProxySet:
+                    SetListenerType(ESysProxyType.ForcedChange);
+                    break;
+
+                case EGlobalHotkey.SystemProxyUnchanged:
+                    SetListenerType(ESysProxyType.Unchanged);
+                    break;
+
+                case EGlobalHotkey.SystemProxyPac:
+                    SetListenerType(ESysProxyType.Pac);
+                    break;
+            }
+        }
+
+        public void MyAppExit(bool blWindowsShutDown)
+        {
+            try
+            {
+                Logging.SaveLog("MyAppExit Begin");
+
+                StorageUI();
+                ConfigHandler.SaveConfig(_config);
+
+                //HttpProxyHandle.CloseHttpAgent(config);
+                if (blWindowsShutDown)
+                {
+                    SysProxyHandle.ResetIEProxy4WindowsShutDown();
+                }
+                else
+                {
+                    SysProxyHandle.UpdateSysProxy(_config, true);
+                }
+
+                ProfileExHandler.Instance.SaveTo();
+
+                _statistics?.SaveTo();
+                _statistics?.Close();
+
+                _coreHandler.CoreStop();
+                Logging.SaveLog("MyAppExit End");
+            }
+            catch { }
+            finally
+            {
+                Application.Current.Shutdown();
+                Environment.Exit(0);
+            }
+        }
+
+        #endregion Actions
+
+        #region Servers && Groups
+
+        private void SubSelectedChanged(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+            _subId = SelectedSub?.id;
+            _config.subIndexId = _subId;
+
+            RefreshServers();
+
+            _updateView(EViewAction.ProfilesFocus);
+        }
+
+        private void ServerFilterChanged(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+            _serverFilter = ServerFilter;
+            if (Utile.IsNullOrEmpty(_serverFilter))
+            {
+                RefreshServers();
+            }
+        }
+
+        public void RefreshServers()
+        {
+            List<ProfileItemModel> lstModel = LazyConfig.Instance.ProfileItems(_subId, _serverFilter);
+
+            ConfigHandler.SetDefaultServer(_config, lstModel);
+
+            List<ServerStatItem> lstServerStat = new();
+            if (_statistics != null && _statistics.Enable)
+            {
+                lstServerStat = _statistics.ServerStat;
+            }
+            var lstProfileExs = ProfileExHandler.Instance.ProfileExs;
+            lstModel = (from t in lstModel
+                        join t2 in lstServerStat on t.indexId equals t2.indexId into t2b
+                        from t22 in t2b.DefaultIfEmpty()
+                        join t3 in lstProfileExs on t.indexId equals t3.indexId into t3b
+                        from t33 in t3b.DefaultIfEmpty()
+                        select new ProfileItemModel
+                        {
+                            indexId = t.indexId,
+                            configType = t.configType,
+                            remarks = t.remarks,
+                            address = t.address,
+                            port = t.port,
+                            security = t.security,
+                            network = t.network,
+                            streamSecurity = t.streamSecurity,
+                            subid = t.subid,
+                            subRemarks = t.subRemarks,
+                            isActive = t.indexId == _config.indexId,
+                            sort = t33 == null ? 0 : t33.sort,
+                            delay = t33 == null ? 0 : t33.delay,
+                            delayVal = t33?.delay != 0 ? $"{t33?.delay} {Global.DelayUnit}" : string.Empty,
+                            speedVal = t33?.speed != 0 ? $"{t33?.speed} {Global.SpeedUnit}" : string.Empty,
+                            todayDown = t22 == null ? "" : Utile.HumanFy(t22.todayDown),
+                            todayUp = t22 == null ? "" : Utile.HumanFy(t22.todayUp),
+                            totalDown = t22 == null ? "" : Utile.HumanFy(t22.totalDown),
+                            totalUp = t22 == null ? "" : Utile.HumanFy(t22.totalUp)
+                        }).OrderBy(t => t.sort).ToList();
+            _lstProfile = JsonUtile.Deserialize<List<ProfileItem>>(JsonUtile.Serialize(lstModel));
+
+            Application.Current.Dispatcher.Invoke((Action)(() =>
+            {
+                _profileItems.Clear();
+                _profileItems.AddRange(lstModel);
+                if (lstModel.Count > 0)
+                {
+                    var selected = lstModel.FirstOrDefault(t => t.indexId == _config.indexId);
+                    if (selected != null)
+                    {
+                        SelectedProfile = selected;
+                    }
+                    else
+                    {
+                        SelectedProfile = lstModel[0];
+                    }
+                }
+
+                RefreshServersMenu();
+
+                //display running server
+                var running = ConfigHandler.GetDefaultServer(_config);
+                if (running != null)
+                {
+                    RunningServerDisplay =
+                    RunningServerToolTipText = running.GetSummary();
+                }
+                else
+                {
+                    RunningServerDisplay =
+                    RunningServerToolTipText = ResUI.CheckServerSettings;
+                }
+            }));
+        }
+
+        private void RefreshServersMenu()
+        {
+            _servers.Clear();
+            if (_lstProfile.Count > _config.guiItem.trayMenuServersLimit)
+            {
+                BlServers = false;
+                return;
+            }
+
+            BlServers = true;
+            for (int k = 0; k < _lstProfile.Count; k++)
+            {
+                ProfileItem it = _lstProfile[k];
+                string name = it.GetSummary();
+
+                var item = new ComboItem() { ID = it.indexId, Text = name };
+                _servers.Add(item);
+                if (_config.indexId == it.indexId)
+                {
+                    SelectedServer = item;
+                }
+            }
+        }
+
+        private void InitSubscriptionView()
+        {
+            _subItems.Clear();
+
+            _subItems.Add(new SubItem { remarks = ResUI.AllGroupServers });
+            foreach (var item in LazyConfig.Instance.SubItems().OrderBy(t => t.sort))
+            {
+                _subItems.Add(item);
+            }
+            if (_subId != null && _subItems.FirstOrDefault(t => t.id == _subId) != null)
+            {
+                SelectedSub = _subItems.FirstOrDefault(t => t.id == _subId);
+            }
+            else
+            {
+                SelectedSub = _subItems[0];
+            }
+        }
+
+        #endregion Servers && Groups
+
+        #region Add Servers
+
+        private int GetProfileItems(out List<ProfileItem> lstSelecteds, bool latest)
+        {
+            lstSelecteds = new List<ProfileItem>();
+            if (SelectedProfiles == null || SelectedProfiles.Count <= 0)
+            {
+                return -1;
+            }
+
+            var orderProfiles = SelectedProfiles?.OrderBy(t => t.sort);
+            if (latest)
+            {
+                foreach (var profile in orderProfiles)
+                {
+                    var item = LazyConfig.Instance.GetProfileItem(profile.indexId);
+                    if (item is not null)
+                    {
+                        lstSelecteds.Add(item);
+                    }
+                }
+            }
+            else
+            {
+                lstSelecteds = JsonUtile.Deserialize<List<ProfileItem>>(JsonUtile.Serialize(orderProfiles));
+            }
+
+            return 0;
+        }
+
+        public void EditServer(bool blNew, EConfigType eConfigType)
+        {
+            ProfileItem item;
+            if (blNew)
+            {
+                item = new()
+                {
+                    subid = _subId,
+                    configType = eConfigType,
+                    isSub = false,
+                };
+            }
+            else
+            {
+                if (Utile.IsNullOrEmpty(SelectedProfile?.indexId))
+                {
+                    return;
+                }
+                item = LazyConfig.Instance.GetProfileItem(SelectedProfile.indexId);
+                if (item is null)
+                {
+                    _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                    return;
+                }
+                eConfigType = item.configType;
+            }
+            bool? ret = false;
+            if (eConfigType == EConfigType.Custom)
+            {
+                ret = (new AddServer2Window(item)).ShowDialog();
+            }
+            else
+            {
+                ret = (new AddServerWindow(item)).ShowDialog();
+            }
+            if (ret == true)
+            {
+                RefreshServers();
+                if (item.indexId == _config.indexId)
+                {
+                    Reload();
+                }
+            }
+        }
+
+        public void AddServerViaClipboard()
+        {
+            var clipboardData = Utile.GetClipboardData();
+            int ret = ConfigHandler.AddBatchServers(_config, clipboardData!, _subId, false);
+            if (ret > 0)
+            {
+                InitSubscriptionView();
+                RefreshServers();
+                _noticeHandler?.Enqueue(string.Format(ResUI.SuccessfullyImportedServerViaClipboard, ret));
+            }
+        }
+
+        public async Task ScanScreenTaskAsync()
+        {
+            ShowHideWindow(false);
+
+            var dpiXY = Utile.GetDpiXY(Application.Current.MainWindow);
+            string result = await Task.Run(() =>
+            {
+                return Utile.ScanScreen(dpiXY.Item1, dpiXY.Item2);
+            });
+
+            ShowHideWindow(true);
+
+            if (Utile.IsNullOrEmpty(result))
+            {
+                _noticeHandler?.Enqueue(ResUI.NoValidQRcodeFound);
+            }
+            else
+            {
+                int ret = ConfigHandler.AddBatchServers(_config, result, _subId, false);
+                if (ret > 0)
+                {
+                    InitSubscriptionView();
+                    RefreshServers();
+                    _noticeHandler?.Enqueue(ResUI.SuccessfullyImportedServerViaScan);
+                }
+            }
+        }
+
+        public void RemoveServer()
+        {
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, true) < 0)
+            {
+                return;
+            }
+
+            if (UI.ShowYesNo(ResUI.RemoveServer) == MessageBoxResult.No)
+            {
+                return;
+            }
+            var exists = lstSelecteds.Exists(t => t.indexId == _config.indexId);
+
+            ConfigHandler.RemoveServer(_config, lstSelecteds);
+            _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+
+            RefreshServers();
+            if (exists)
+            {
+                Reload();
+            }
+        }
+
+        private void RemoveDuplicateServer()
+        {
+            var tuple = ConfigHandler.DedupServerList(_config, _subId);
+            RefreshServers();
+            Reload();
+            _noticeHandler?.Enqueue(string.Format(ResUI.RemoveDuplicateServerResult, tuple.Item1, tuple.Item2));
+        }
+
+        private void CopyServer()
+        {
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, false) < 0)
+            {
+                return;
+            }
+            if (ConfigHandler.CopyServer(_config, lstSelecteds) == 0)
+            {
+                RefreshServers();
+                _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+            }
+        }
+
+        public void SetDefaultServer()
+        {
+            if (Utile.IsNullOrEmpty(SelectedProfile?.indexId))
+            {
+                return;
+            }
+            SetDefaultServer(SelectedProfile.indexId);
+        }
+
+        private void SetDefaultServer(string indexId)
+        {
+            if (Utile.IsNullOrEmpty(indexId))
+            {
+                return;
+            }
+            if (indexId == _config.indexId)
+            {
+                return;
+            }
+            var item = LazyConfig.Instance.GetProfileItem(indexId);
+            if (item is null)
+            {
+                _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                return;
+            }
+
+            if (ConfigHandler.SetDefaultServerIndex(_config, indexId) == 0)
+            {
+                RefreshServers();
+                Reload();
+            }
+        }
+
+        private void ServerSelectedChanged(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+            if (SelectedServer == null)
+            {
+                return;
+            }
+            if (Utile.IsNullOrEmpty(SelectedServer.ID))
+            {
+                return;
+            }
+            SetDefaultServer(SelectedServer.ID);
+        }
+
+        public async void ShareServer()
+        {
+            var item = LazyConfig.Instance.GetProfileItem(SelectedProfile.indexId);
+            if (item is null)
+            {
+                _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                return;
+            }
+            var url = ShareHandler.GetShareUrl(item);
+            if (Utile.IsNullOrEmpty(url))
+            {
+                return;
+            }
+            var img = QRCodeHelper.GetQRCode(url);
+            var dialog = new QrcodeView()
+            {
+                imgQrcode = { Source = img },
+                txtContent = { Text = url },
+            };
+
+            await DialogHost.Show(dialog, "RootDialog");
+        }
+
+        public void SortServer(string colName)
+        {
+            if (Utile.IsNullOrEmpty(colName))
+            {
+                return;
+            }
+
+            _dicHeaderSort.TryAdd(colName, true);
+            _dicHeaderSort.TryGetValue(colName, out bool asc);
+            if (ConfigHandler.SortServers(_config, _subId, colName, asc) != 0)
+            {
+                return;
+            }
+            _dicHeaderSort[colName] = !asc;
+            RefreshServers();
+        }
+
+        public void TestServerAvailability()
+        {
+            var item = ConfigHandler.GetDefaultServer(_config);
+            if (item == null || item.configType == EConfigType.Custom)
+            {
+                return;
+            }
+            (new UpdateHandle()).RunAvailabilityCheck((bool success, string msg) =>
+            {
+                _noticeHandler?.SendMessage(msg, true);
+                Application.Current.Dispatcher.Invoke((Action)(() =>
+                {
+                    if (!_showInTaskbar)
+                    {
+                        return;
+                    }
+                    RunningInfoDisplay = msg;
+                }));
+            });
+        }
+
+        //move server
+        private void MoveToGroup(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, true) < 0)
+            {
+                return;
+            }
+
+            ConfigHandler.MoveToGroup(_config, lstSelecteds, SelectedMoveToGroup.id);
+            _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+
+            RefreshServers();
+            SelectedMoveToGroup = new();
+            //Reload();
+        }
+
+        public void MoveServer(EMove eMove)
+        {
+            var item = _lstProfile.FirstOrDefault(t => t.indexId == SelectedProfile.indexId);
+            if (item is null)
+            {
+                _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                return;
+            }
+
+            int index = _lstProfile.IndexOf(item);
+            if (index < 0)
+            {
+                return;
+            }
+            if (ConfigHandler.MoveServer(_config, ref _lstProfile, index, eMove) == 0)
+            {
+                RefreshServers();
+            }
+        }
+
+        public void MoveServerTo(int startIndex, ProfileItemModel targetItem)
+        {
+            var targetIndex = _profileItems.IndexOf(targetItem);
+            if (startIndex >= 0 && targetIndex >= 0 && startIndex != targetIndex)
+            {
+                if (ConfigHandler.MoveServer(_config, ref _lstProfile, startIndex, EMove.Position, targetIndex) == 0)
+                {
+                    RefreshServers();
+                }
+            }
+        }
+
+        public void ServerSpeedtest(ESpeedActionType actionType)
+        {
+            if (actionType == ESpeedActionType.Mixedtest)
+            {
+                SelectedProfiles = _profileItems;
+            }
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, false) < 0)
+            {
+                return;
+            }
+            //ClearTestResult();
+            new SpeedtestHandler(_config, _coreHandler, lstSelecteds, actionType, UpdateSpeedtestHandler);
+        }
+
+        private void Export2ClientConfig()
+        {
+            var item = LazyConfig.Instance.GetProfileItem(SelectedProfile.indexId);
+            if (item is null)
+            {
+                _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                return;
+            }
+            MainFormHandler.Instance.Export2ClientConfig(item, _config);
+        }
+
+        public void Export2ShareUrl()
+        {
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, true) < 0)
+            {
+                return;
+            }
+
+            StringBuilder sb = new();
+            foreach (var it in lstSelecteds)
+            {
+                string url = ShareHandler.GetShareUrl(it);
+                if (Utile.IsNullOrEmpty(url))
+                {
+                    continue;
+                }
+                sb.Append(url);
+                sb.AppendLine();
+            }
+            if (sb.Length > 0)
+            {
+                Utile.SetClipboardData(sb.ToString());
+                _noticeHandler?.SendMessage(ResUI.BatchExportURLSuccessfully);
+            }
+        }
+
+        private void Export2SubContent()
+        {
+            if (GetProfileItems(out List<ProfileItem> lstSelecteds, true) < 0)
+            {
+                return;
+            }
+
+            StringBuilder sb = new();
+            foreach (var it in lstSelecteds)
+            {
+                string? url = ShareHandler.GetShareUrl(it);
+                if (Utile.IsNullOrEmpty(url))
+                {
+                    continue;
+                }
+                sb.Append(url);
+                sb.AppendLine();
+            }
+            if (sb.Length > 0)
+            {
+                Utile.SetClipboardData(Utile.Base64Encode(sb.ToString()));
+                _noticeHandler?.SendMessage(ResUI.BatchExportSubscriptionSuccessfully);
+            }
+        }
+
+        #endregion Add Servers
+
+        #region Subscription
+
+        private void SubSetting()
+        {
+            if ((new SubSettingWindow()).ShowDialog() == true)
+            {
+                InitSubscriptionView();
+                SubSelectedChanged(true);
+            }
+        }
+
+        private void EditSub(bool blNew)
+        {
+            SubItem item;
+            if (blNew)
+            {
+                item = new();
+            }
+            else
+            {
+                item = LazyConfig.Instance.GetSubItem(_subId);
+                if (item is null)
+                {
+                    return;
+                }
+            }
+            var ret = (new SubEditWindow(item)).ShowDialog();
+            if (ret == true)
+            {
+                InitSubscriptionView();
+                SubSelectedChanged(true);
+            }
+        }
+
+        private void UpdateSubscriptionProcess(string subId, bool blProxy)
+        {
+            (new UpdateHandle()).UpdateSubscriptionProcess(_config, subId, blProxy, UpdateTaskHandler);
+        }
+
+        #endregion Subscription
+
+        #region Setting
+
+        private void OptionSetting()
+        {
+            var ret = (new OptionSettingWindow()).ShowDialog();
+            if (ret == true)
+            {
+                //RefreshServers();
+                Reload();
+            }
+        }
+
+        private void RoutingSetting()
+        {
+            var ret = (new RoutingSettingWindow()).ShowDialog();
+            if (ret == true)
+            {
+                ConfigHandler.InitBuiltinRouting(_config);
+                RefreshRoutingsMenu();
+                //RefreshServers();
+                Reload();
+            }
+        }
+
+        private void DNSSetting()
+        {
+            var ret = (new DNSSettingWindow()).ShowDialog();
+            if (ret == true)
+            {
+                Reload();
+            }
+        }
+
+        private void RebootAsAdmin()
+        {
+            ProcessStartInfo startInfo = new()
+            {
+                UseShellExecute = true,
+                Arguments = Global.RebootAs,
+                WorkingDirectory = Utile.StartupPath(),
+                FileName = Utile.GetExePath().AppendQuotes(),
+                Verb = "runas",
+            };
+            try
+            {
+                Process.Start(startInfo);
+                MyAppExit(false);
+            }
+            catch { }
+        }
+
+        private void ImportOldGuiConfig()
+        {
+            if (UI.OpenFileDialog(out string fileName,
+                "guiNConfig|*.json|All|*.*") != true)
+            {
+                return;
+            }
+            if (Utile.IsNullOrEmpty(fileName))
+            {
+                return;
+            }
+
+            var ret = ConfigHandler.ImportOldGuiConfig(_config, fileName);
+            if (ret == 0)
+            {
+                RefreshRoutingsMenu();
+                InitSubscriptionView();
+                RefreshServers();
+                Reload();
+                _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+            }
+            else
+            {
+                _noticeHandler?.Enqueue(ResUI.OperationFailed);
+            }
+        }
+
+        #endregion Setting
+
+        #region CheckUpdate
+
+        private void CheckUpdateN()
+        {
+            void _updateUI(bool success, string msg)
+            {
+                _noticeHandler?.SendMessage(msg);
+                if (success)
+                {
+                    MyAppExit(false);
+                }
+            }
+            (new UpdateHandle()).CheckUpdateGuiN(_config, _updateUI, _config.guiItem.checkPreReleaseUpdate);
+        }
+
+        private void CheckUpdateCore(ECoreType type)
+        {
+            void _updateUI(bool success, string msg)
+            {
+                _noticeHandler?.SendMessage(msg);
+                if (success)
+                {
+                    CloseV2ray();
+
+                    string fileName = Utile.GetTempPath(Utile.GetDownloadFileName(msg));
+                    string toPath = Utile.GetBinPath("", type.ToString());
+
+                    FileManager.ZipExtractToFile(fileName, toPath, _config.guiItem.ignoreGeoUpdateCore ? "geo" : "");
+
+                    _noticeHandler?.SendMessage(ResUI.MsgUpdateV2rayCoreSuccessfullyMore);
+
+                    Reload();
+
+                    _noticeHandler?.SendMessage(ResUI.MsgUpdateV2rayCoreSuccessfully);
+
+                    if (File.Exists(fileName))
+                    {
+                        File.Delete(fileName);
+                    }
+                }
+            }
+            (new UpdateHandle()).CheckUpdateCore(type, _config, _updateUI, _config.guiItem.checkPreReleaseUpdate);
+        }
+
+        private void CheckUpdateGeo()
+        {
+            (new UpdateHandle()).UpdateGeoFileAll(_config, UpdateTaskHandler);
+        }
+
+        #endregion CheckUpdate
+
+        #region v2ray job
+
+        public void Reload()
+        {
+            BlReloadEnabled = false;
+
+            LoadV2ray().ContinueWith(task =>
+            {
+                TestServerAvailability();
+
+                Application.Current.Dispatcher.Invoke((Action)(() =>
+                {
+                    BlReloadEnabled = true;
+                }));
+            });
+        }
+
+        private async Task LoadV2ray()
+        {
+            await Task.Run(() =>
+            {
+                _coreHandler.LoadCore();
+
+                //ConfigHandler.SaveConfig(_config, false);
+
+                ChangeSystemProxyStatus(_config.sysProxyType, false);
+            });
+        }
+
+        private void CloseV2ray()
+        {
+            ConfigHandler.SaveConfig(_config, false);
+
+            ChangeSystemProxyStatus(ESysProxyType.ForcedClear, false);
+
+            _coreHandler.CoreStop();
+        }
+
+        #endregion v2ray job
+
+        #region System proxy and Routings
+
+        public void SetListenerType(ESysProxyType type)
+        {
+            if (_config.sysProxyType == type)
+            {
+                return;
+            }
+            _config.sysProxyType = type;
+            ChangeSystemProxyStatus(type, true);
+
+            SystemProxySelected = (int)_config.sysProxyType;
+            ConfigHandler.SaveConfig(_config, false);
+        }
+
+        private void ChangeSystemProxyStatus(ESysProxyType type, bool blChange)
+        {
+            SysProxyHandle.UpdateSysProxy(_config, _config.tunModeItem.enableTun ? true : false);
+            _noticeHandler?.SendMessage(ResUI.TipChangeSystemProxy + _config.sysProxyType.ToString(), true);
+
+            Application.Current.Dispatcher.Invoke((Action)(() =>
+            {
+                BlSystemProxyClear = (type == ESysProxyType.ForcedClear);
+                BlSystemProxySet = (type == ESysProxyType.ForcedChange);
+                BlSystemProxyNothing = (type == ESysProxyType.Unchanged);
+                BlSystemProxyPac = (type == ESysProxyType.Pac);
+
+                InboundDisplayStaus();
+
+                if (blChange)
+                {
+                    NotifyIcon = MainFormHandler.Instance.GetNotifyIcon(_config);
+                    AppIcon = MainFormHandler.Instance.GetAppIcon(_config);
+                }
+            }));
+        }
+
+        private void RefreshRoutingsMenu()
+        {
+            _routingItems.Clear();
+            if (!_config.routingBasicItem.enableRoutingAdvanced)
+            {
+                BlRouting = false;
+                return;
+            }
+
+            BlRouting = true;
+            var routings = LazyConfig.Instance.RoutingItems();
+            foreach (var item in routings)
+            {
+                _routingItems.Add(item);
+                if (item.id == _config.routingBasicItem.routingIndexId)
+                {
+                    SelectedRouting = item;
+                }
+            }
+        }
+
+        private void RoutingSelectedChanged(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+
+            if (SelectedRouting == null)
+            {
+                return;
+            }
+
+            var item = LazyConfig.Instance.GetRoutingItem(SelectedRouting?.id);
+            if (item is null)
+            {
+                return;
+            }
+            if (_config.routingBasicItem.routingIndexId == item.id)
+            {
+                return;
+            }
+
+            if (ConfigHandler.SetDefaultRouting(_config, item) == 0)
+            {
+                _noticeHandler?.SendMessage(ResUI.TipChangeRouting, true);
+                Reload();
+                NotifyIcon = MainFormHandler.Instance.GetNotifyIcon(_config);
+                AppIcon = MainFormHandler.Instance.GetAppIcon(_config);
+            }
+        }
+
+        private void DoSystemProxySelected(bool c)
+        {
+            if (!c)
+            {
+                return;
+            }
+            if (_config.sysProxyType == (ESysProxyType)SystemProxySelected)
+            {
+                return;
+            }
+            SetListenerType((ESysProxyType)SystemProxySelected);
+        }
+
+        private void DoEnableTun(bool c)
+        {
+            if (_config.tunModeItem.enableTun != EnableTun)
+            {
+                _config.tunModeItem.enableTun = EnableTun;
+                // When running as a non-administrator, reboot to administrator mode
+                if (EnableTun && !Utile.IsAdministrator())
+                {
+                    _config.tunModeItem.enableTun = false;
+                    RebootAsAdmin();
+                    return;
+                }
+                Reload();
+            }
+        }
+
+        #endregion System proxy and Routings
+
+        #region UI
+
+        public void ShowHideWindow(bool? blShow)
+        {
+            var bl = blShow ?? !_showInTaskbar;
+            if (bl)
+            {
+                //Application.Current.MainWindow.ShowInTaskbar = true;
+                Application.Current.MainWindow.Show();
+                if (Application.Current.MainWindow.WindowState == WindowState.Minimized)
+                {
+                    Application.Current.MainWindow.WindowState = WindowState.Normal;
+                }
+                Application.Current.MainWindow.Activate();
+                Application.Current.MainWindow.Focus();
+            }
+            else
+            {
+                Application.Current.MainWindow.Hide();
+                //Application.Current.MainWindow.ShowInTaskbar = false;
+                //IntPtr windowHandle = new WindowInteropHelper(Application.Current.MainWindow).Handle;
+                //Utile.RegWriteValue(Global.MyRegPath, Utile.WindowHwndKey, Convert.ToString((long)windowHandle));
+            }
+            _showInTaskbar = bl;
+        }
+
+        private void RestoreUI()
+        {
+            if (FollowSystemTheme)
+            {
+                ModifyTheme(!Utile.IsLightTheme());
+            }
+            else
+            {
+                ModifyTheme(_config.uiItem.colorModeDark);
+            }
+
+            if (!_config.uiItem.colorPrimaryName.IsNullOrEmpty())
+            {
+                var swatch = new SwatchesProvider().Swatches.FirstOrDefault(t => t.Name == _config.uiItem.colorPrimaryName);
+                if (swatch != null
+                   && swatch.ExemplarHue != null
+                   && swatch.ExemplarHue?.Color != null)
+                {
+                    ChangePrimaryColor(swatch.ExemplarHue.Color);
+                }
+            }
+        }
+
+        private void StorageUI()
+        {
+        }
+
+        private void BindingUI()
+        {
+            ColorModeDark = _config.uiItem.colorModeDark;
+            FollowSystemTheme = _config.uiItem.followSystemTheme;
+            _swatches.AddRange(new SwatchesProvider().Swatches);
+            if (!_config.uiItem.colorPrimaryName.IsNullOrEmpty())
+            {
+                SelectedSwatch = _swatches.FirstOrDefault(t => t.Name == _config.uiItem.colorPrimaryName);
+            }
+            CurrentFontSize = _config.uiItem.currentFontSize;
+            CurrentLanguage = _config.uiItem.currentLanguage;
+
+            this.WhenAnyValue(
+                  x => x.ColorModeDark,
+                  y => y == true)
+                      .Subscribe(c =>
+                      {
+                          if (_config.uiItem.colorModeDark != ColorModeDark)
+                          {
+                              _config.uiItem.colorModeDark = ColorModeDark;
+                              ModifyTheme(ColorModeDark);
+                              ConfigHandler.SaveConfig(_config);
+                          }
+                      });
+
+            this.WhenAnyValue(x => x.FollowSystemTheme,
+                y => y == true)
+                    .Subscribe(c =>
+                    {
+                        if (_config.uiItem.followSystemTheme != FollowSystemTheme)
+                        {
+                            _config.uiItem.followSystemTheme = FollowSystemTheme;
+                            ConfigHandler.SaveConfig(_config);
+                            if (FollowSystemTheme)
+                            {
+                                ModifyTheme(!Utile.IsLightTheme());
+                            }
+                            else
+                            {
+                                ModifyTheme(ColorModeDark);
+                            }
+                        }
+                    });
+
+            this.WhenAnyValue(
+              x => x.SelectedSwatch,
+              y => y != null && !y.Name.IsNullOrEmpty())
+                 .Subscribe(c =>
+                 {
+                     if (SelectedSwatch == null
+                     || SelectedSwatch.Name.IsNullOrEmpty()
+                     || SelectedSwatch.ExemplarHue == null
+                     || SelectedSwatch.ExemplarHue?.Color == null)
+                     {
+                         return;
+                     }
+                     if (_config.uiItem.colorPrimaryName != SelectedSwatch?.Name)
+                     {
+                         _config.uiItem.colorPrimaryName = SelectedSwatch?.Name;
+                         ChangePrimaryColor(SelectedSwatch.ExemplarHue.Color);
+                         ConfigHandler.SaveConfig(_config);
+                     }
+                 });
+
+            this.WhenAnyValue(
+               x => x.CurrentFontSize,
+               y => y > 0)
+                  .Subscribe(c =>
+                  {
+                      if (CurrentFontSize >= Global.MinFontSize)
+                      {
+                          _config.uiItem.currentFontSize = CurrentFontSize;
+                          double size = (long)CurrentFontSize;
+                          Application.Current.Resources["StdFontSize"] = size;
+                          Application.Current.Resources["StdFontSize1"] = size + 1;
+                          Application.Current.Resources["StdFontSize2"] = size + 2;
+                          Application.Current.Resources["StdFontSizeMsg"] = size - 1;
+
+                          ConfigHandler.SaveConfig(_config);
+                      }
+                  });
+
+            this.WhenAnyValue(
+             x => x.CurrentLanguage,
+             y => y != null && !y.IsNullOrEmpty())
+                .Subscribe(c =>
+                {
+                    if (!Utile.IsNullOrEmpty(CurrentLanguage))
+                    {
+                        _config.uiItem.currentLanguage = CurrentLanguage;
+                        Thread.CurrentThread.CurrentUICulture = new(CurrentLanguage);
+                        ConfigHandler.SaveConfig(_config);
+                    }
+                });
+        }
+
+        public void InboundDisplayStaus()
+        {
+            StringBuilder sb = new();
+            sb.Append($"[{Global.InboundSocks}:{LazyConfig.Instance.GetLocalPort(Global.InboundSocks)}]");
+            sb.Append(" | ");
+            //if (_config.sysProxyType == ESysProxyType.ForcedChange)
+            //{
+            //    sb.Append($"[{Global.InboundHttp}({ResUI.SystemProxy}):{LazyConfig.Instance.GetLocalPort(Global.InboundHttp)}]");
+            //}
+            //else
+            //{
+            sb.Append($"[{Global.InboundHttp}:{LazyConfig.Instance.GetLocalPort(Global.InboundHttp)}]");
+            //}
+            InboundDisplay = $"{ResUI.LabLocal}:{sb}";
+
+            if (_config.inbound[0].allowLANConn)
+            {
+                if (_config.inbound[0].newPort4LAN)
+                {
+                    StringBuilder sb2 = new();
+                    sb2.Append($"[{Global.InboundSocks}:{LazyConfig.Instance.GetLocalPort(Global.InboundSocks2)}]");
+                    sb2.Append(" | ");
+                    sb2.Append($"[{Global.InboundHttp}:{LazyConfig.Instance.GetLocalPort(Global.InboundHttp2)}]");
+                    InboundLanDisplay = $"{ResUI.LabLAN}:{sb2}";
+                }
+                else
+                {
+                    InboundLanDisplay = $"{ResUI.LabLAN}:{sb}";
+                }
+            }
+            else
+            {
+                InboundLanDisplay = $"{ResUI.LabLAN}:None";
+            }
+        }
+
+        public void ModifyTheme(bool isDarkTheme)
+        {
+            var theme = _paletteHelper.GetTheme();
+
+            theme.SetBaseTheme(isDarkTheme ? Theme.Dark : Theme.Light);
+            _paletteHelper.SetTheme(theme);
+
+            Utile.SetDarkBorder(Application.Current.MainWindow, isDarkTheme);
+        }
+
+        public void ChangePrimaryColor(System.Windows.Media.Color color)
+        {
+            var theme = _paletteHelper.GetTheme();
+
+            theme.PrimaryLight = new ColorPair(color.Lighten());
+            theme.PrimaryMid = new ColorPair(color);
+            theme.PrimaryDark = new ColorPair(color.Darken());
+
+            _paletteHelper.SetTheme(theme);
+        }
+
+        private void AutoHideStartup()
+        {
+            if (_config.uiItem.autoHideStartup)
+            {
+                Observable.Range(1, 1)
+                 .Delay(TimeSpan.FromSeconds(1))
+                 .Subscribe(x =>
+                 {
+                     Application.Current.Dispatcher.Invoke(() =>
+                     {
+                         ShowHideWindow(false);
+                     });
+                 });
+            }
+        }
+
+        #endregion UI
+    }
+}

@@ -1,0 +1,15 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+update.json
+scripts/_env.sh
+.vscode
+
+.eslintcache
+.stylelintcache
+
+tauri.nightly.conf.json
+
+.idea

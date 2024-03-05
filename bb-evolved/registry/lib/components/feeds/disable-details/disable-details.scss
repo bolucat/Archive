@@ -1,0 +1,29 @@
+@mixin details() {
+  .details {
+    color: #222;
+    font-size: 12px;
+    opacity: 0.6;
+    cursor: pointer;
+    display: block;
+    line-height: 22px;
+    body.dark & {
+      color: #eee;
+    }
+  }
+}
+[data-module='desc'][data-orig],
+.card[data-did] .content {
+  cursor: text;
+  @include details();
+}
+.bili-rich-text-module {
+  &.at {
+    cursor: pointer;
+  }
+}
+
+.dyn-card-opus {
+  &__summary {
+    cursor: text;
+  }
+}

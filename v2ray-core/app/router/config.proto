@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package v2ray.core.app.router;
+option csharp_namespace = "V2Ray.Core.App.Router";
+option go_package = "github.com/v2fly/v2ray-core/v5/app/router";
+option java_package = "com.v2ray.core.app.router";
+option java_multiple_files = true;
+
+import "google/protobuf/any.proto";
+import "common/net/port.proto";
+import "common/net/network.proto";
+import "common/protoext/extensions.proto";
+import "app/router/routercommon/common.proto";
+
+
+message RoutingRule {
+  oneof target_tag {
+    // Tag of outbound that this rule is pointing to.
+    string tag = 1;
+
+    // Tag of routing balancer.
+    string balancing_tag = 12;
+  }
+
+  // List of domains for target domain matching.
+  repeated v2ray.core.app.router.routercommon.Domain domain = 2;
+
+  // List of CIDRs for target IP address matching.
+  // Deprecated. Use geoip below.
+  repeated v2ray.core.app.router.routercommon.CIDR cidr = 3 [deprecated = true];
+
+  // List of GeoIPs for target IP address matching. If this entry exists, the
+  // cidr above will have no effect. GeoIP fields with the same country code are
+  // supposed to contain exactly same content. They will be merged during
+  // runtime. For customized GeoIPs, please leave country code empty.
+  repeated v2ray.core.app.router.routercommon.GeoIP geoip = 10;
+
+  // A range of port [from, to]. If the destination port is in this range, this
+  // rule takes effect. Deprecated. Use port_list.
+  v2ray.core.common.net.PortRange port_range = 4 [deprecated = true];
+
+  // List of ports.
+  v2ray.core.common.net.PortList port_list = 14;
+
+  // List of networks. Deprecated. Use networks.
+  v2ray.core.common.net.NetworkList network_list = 5 [deprecated = true];
+
+  // List of networks for matching.
+  repeated v2ray.core.common.net.Network networks = 13;
+
+  // List of CIDRs for source IP address matching.
+  repeated v2ray.core.app.router.routercommon.CIDR source_cidr = 6 [deprecated = true];
+
+  // List of GeoIPs for source IP address matching. If this entry exists, the
+  // source_cidr above will have no effect.
+  repeated v2ray.core.app.router.routercommon.GeoIP source_geoip = 11;
+
+  // List of ports for source port matching.
+  v2ray.core.common.net.PortList source_port_list = 16;
+
+  repeated string user_email = 7;
+  repeated string inbound_tag = 8;
+  repeated string protocol = 9;
+
+  string attributes = 15;
+
+  string domain_matcher = 17;
+
+  // geo_domain instruct simplified config loader to load geo domain rule and fill in domain field.
+  repeated v2ray.core.app.router.routercommon.GeoSite geo_domain = 68001;
+}
+
+message BalancingRule {
+  string tag = 1;
+  repeated string outbound_selector = 2;
+  string strategy = 3;
+  google.protobuf.Any strategy_settings = 4;
+  string fallback_tag = 5;
+}
+
+message StrategyWeight {
+  bool regexp = 1;
+  string match = 2;
+  float value = 3;
+}
+
+message StrategyRandomConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "balancer";
+  option (v2ray.core.common.protoext.message_opt).short_name = "random";
+}
+
+message StrategyLeastPingConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "balancer";
+  option (v2ray.core.common.protoext.message_opt).short_name = "leastping";
+
+  string observer_tag = 7;
+}
+
+message StrategyLeastLoadConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "balancer";
+  option (v2ray.core.common.protoext.message_opt).short_name = "leastload";
+
+  // weight settings
+  repeated StrategyWeight costs = 2;
+  // RTT baselines for selecting, int64 values of time.Duration
+  repeated int64 baselines = 3;
+  // expected nodes count to select
+  int32 expected = 4;
+  // max acceptable rtt, filter away high delay nodes. defalut 0
+  int64 maxRTT = 5;
+  // acceptable failure rate
+  float tolerance = 6;
+
+  string observer_tag = 7;
+}
+
+enum DomainStrategy {
+  // Use domain as is.
+  AsIs = 0;
+
+  // Always resolve IP for domains.
+  UseIp = 1;
+
+  // Resolve to IP if the domain doesn't match any rules.
+  IpIfNonMatch = 2;
+
+  // Resolve to IP if any rule requires IP matching.
+  IpOnDemand = 3;
+}
+
+message Config {
+  DomainStrategy domain_strategy = 1;
+  repeated RoutingRule rule = 2;
+  repeated BalancingRule balancing_rule = 3;
+}
+
+message SimplifiedRoutingRule {
+  oneof target_tag {
+    // Tag of outbound that this rule is pointing to.
+    string tag = 1;
+
+    // Tag of routing balancer.
+    string balancing_tag = 12;
+  }
+
+  // List of domains for target domain matching.
+  repeated v2ray.core.app.router.routercommon.Domain domain = 2;
+
+  // List of GeoIPs for target IP address matching. If this entry exists, the
+  // cidr above will have no effect. GeoIP fields with the same country code are
+  // supposed to contain exactly same content. They will be merged during
+  // runtime. For customized GeoIPs, please leave country code empty.
+  repeated v2ray.core.app.router.routercommon.GeoIP geoip = 10;
+
+  // List of ports.
+  string port_list = 14;
+
+  // List of networks for matching.
+  v2ray.core.common.net.NetworkList networks = 13;
+
+  // List of GeoIPs for source IP address matching. If this entry exists, the
+  // source_cidr above will have no effect.
+  repeated v2ray.core.app.router.routercommon.GeoIP source_geoip = 11;
+
+  // List of ports for source port matching.
+  string source_port_list = 16;
+
+  repeated string user_email = 7;
+  repeated string inbound_tag = 8;
+  repeated string protocol = 9;
+
+  string attributes = 15;
+
+  string domain_matcher = 17;
+
+  // geo_domain instruct simplified config loader to load geo domain rule and fill in domain field.
+  repeated v2ray.core.app.router.routercommon.GeoSite geo_domain = 68001;
+}
+
+message SimplifiedConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "service";
+  option (v2ray.core.common.protoext.message_opt).short_name = "router";
+
+  DomainStrategy domain_strategy = 1;
+  repeated SimplifiedRoutingRule rule = 2;
+  repeated BalancingRule balancing_rule = 3;
+}

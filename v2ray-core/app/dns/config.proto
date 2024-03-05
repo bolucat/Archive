@@ -1,0 +1,226 @@
+syntax = "proto3";
+
+package v2ray.core.app.dns;
+option csharp_namespace = "V2Ray.Core.App.Dns";
+option go_package = "github.com/v2fly/v2ray-core/v5/app/dns";
+option java_package = "com.v2ray.core.app.dns";
+option java_multiple_files = true;
+
+import "common/net/address.proto";
+import "common/net/destination.proto";
+import "app/router/routercommon/common.proto";
+import "app/dns/fakedns/fakedns.proto";
+
+import "common/protoext/extensions.proto";
+
+message NameServer {
+  v2ray.core.common.net.Endpoint address = 1;
+  bytes client_ip = 5;
+  string tag = 7;
+
+  message PriorityDomain {
+    DomainMatchingType type = 1;
+    string domain = 2;
+  }
+
+  message OriginalRule {
+    string rule = 1;
+    uint32 size = 2;
+  }
+
+  repeated PriorityDomain prioritized_domain = 2;
+  repeated v2ray.core.app.router.routercommon.GeoIP geoip = 3;
+  repeated OriginalRule original_rules = 4;
+
+  v2ray.core.app.dns.fakedns.FakeDnsPoolMulti fake_dns = 11;
+
+  // Deprecated. Use fallback_strategy.
+  bool skipFallback = 6 [deprecated = true];
+
+  optional QueryStrategy query_strategy = 8;
+  optional CacheStrategy cache_strategy = 9;
+  optional FallbackStrategy fallback_strategy = 10;
+}
+
+enum DomainMatchingType {
+  Full = 0;
+  Subdomain = 1;
+  Keyword = 2;
+  Regex = 3;
+}
+
+enum QueryStrategy {
+  USE_IP = 0;
+  USE_IP4 = 1;
+  USE_IP6 = 2;
+}
+
+enum CacheStrategy {
+  CacheEnabled = 0;
+  CacheDisabled = 1;
+}
+
+enum FallbackStrategy {
+  Enabled = 0;
+  Disabled = 1;
+  DisabledIfAnyMatch = 2;
+}
+
+message HostMapping {
+  DomainMatchingType type = 1;
+  string domain = 2;
+
+  repeated bytes ip = 3;
+
+  // ProxiedDomain indicates the mapped domain has the same IP address on this
+  // domain. V2Ray will use this domain for IP queries.
+  string proxied_domain = 4;
+}
+
+message Config {
+  // Nameservers used by this DNS. Only traditional UDP servers are support at
+  // the moment. A special value 'localhost' as a domain address can be set to
+  // use DNS on local system.
+  repeated v2ray.core.common.net.Endpoint NameServers = 1 [deprecated = true];
+
+  // NameServer list used by this DNS client.
+  repeated NameServer name_server = 5;
+
+  // Static hosts. Domain to IP.
+  // Deprecated. Use static_hosts.
+  map<string, v2ray.core.common.net.IPOrDomain> Hosts = 2 [deprecated = true];
+
+  // Client IP for EDNS client subnet. Must be 4 bytes (IPv4) or 16 bytes
+  // (IPv6).
+  bytes client_ip = 3;
+
+  // Static domain-ip mapping in DNS server.
+  repeated HostMapping static_hosts = 4;
+
+  // Global fakedns object.
+  v2ray.core.app.dns.fakedns.FakeDnsPoolMulti fake_dns = 16;
+
+  // Tag is the inbound tag of DNS client.
+  string tag = 6;
+
+  reserved 7;
+
+  // Domain matcher to use
+  string domain_matcher = 15;
+
+  // DisableCache disables DNS cache
+  // Deprecated. Use cache_strategy.
+  bool disableCache = 8 [deprecated = true];
+
+  // Deprecated. Use fallback_strategy.
+  bool disableFallback = 10 [deprecated = true];
+
+  // Deprecated. Use fallback_strategy.
+  bool disableFallbackIfMatch = 11 [deprecated = true];
+
+  // Default query strategy (IPv4, IPv6, or both) for each name server.
+  QueryStrategy query_strategy = 9;
+
+  // Default cache strategy for each name server.
+  CacheStrategy cache_strategy = 12;
+
+  // Default fallback strategy for each name server.
+  FallbackStrategy fallback_strategy = 13;
+}
+
+
+message SimplifiedConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "service";
+  option (v2ray.core.common.protoext.message_opt).short_name = "dns";
+
+
+  // Nameservers used by this DNS. Only traditional UDP servers are support at
+  // the moment. A special value 'localhost' as a domain address can be set to
+  // use DNS on local system.
+  reserved 1;
+
+  // NameServer list used by this DNS client.
+  repeated SimplifiedNameServer name_server = 5;
+
+  // Static hosts. Domain to IP.
+  // Deprecated. Use static_hosts.
+  reserved 2;
+
+  // Client IP for EDNS client subnet. Must be 4 bytes (IPv4) or 16 bytes
+  // (IPv6).
+  string client_ip = 3;
+
+  // Static domain-ip mapping in DNS server.
+  repeated SimplifiedHostMapping static_hosts = 4;
+
+  // Global fakedns object.
+  v2ray.core.app.dns.fakedns.FakeDnsPoolMulti fake_dns = 16;
+
+  // Tag is the inbound tag of DNS client.
+  string tag = 6;
+
+  reserved 7;
+
+  // Domain matcher to use
+  string domain_matcher = 15;
+
+  // DisableCache disables DNS cache
+  // Deprecated. Use cache_strategy.
+  bool disableCache = 8 [deprecated = true];
+
+  // Deprecated. Use fallback_strategy.
+  bool disableFallback = 10 [deprecated = true];
+
+  // Deprecated. Use fallback_strategy.
+  bool disableFallbackIfMatch = 11 [deprecated = true];
+
+  // Default query strategy (IPv4, IPv6, or both) for each name server.
+  QueryStrategy query_strategy = 9;
+
+  // Default cache strategy for each name server.
+  CacheStrategy cache_strategy = 12;
+
+  // Default fallback strategy for each name server.
+  FallbackStrategy fallback_strategy = 13;
+}
+
+
+message SimplifiedHostMapping {
+  DomainMatchingType type = 1;
+  string domain = 2;
+
+  repeated string ip = 3;
+
+  // ProxiedDomain indicates the mapped domain has the same IP address on this
+  // domain. V2Ray will use this domain for IP queries.
+  string proxied_domain = 4;
+}
+
+message SimplifiedNameServer {
+  v2ray.core.common.net.Endpoint address = 1;
+  string client_ip = 5;
+  string tag = 7;
+
+  message PriorityDomain {
+    DomainMatchingType type = 1;
+    string domain = 2;
+  }
+
+  message OriginalRule {
+    string rule = 1;
+    uint32 size = 2;
+  }
+
+  repeated PriorityDomain prioritized_domain = 2;
+  repeated v2ray.core.app.router.routercommon.GeoIP geoip = 3;
+  repeated OriginalRule original_rules = 4;
+
+  v2ray.core.app.dns.fakedns.FakeDnsPoolMulti fake_dns = 11;
+
+  // Deprecated. Use fallback_strategy.
+  bool skipFallback = 6 [deprecated = true];
+
+  optional QueryStrategy query_strategy = 8;
+  optional CacheStrategy cache_strategy = 9;
+  optional FallbackStrategy fallback_strategy = 10;
+}

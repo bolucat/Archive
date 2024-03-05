@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package trojan_rust.transport.grpc;
+
+service GRPCService {
+  rpc Tun (stream Hunk) returns (stream Hunk);
+  rpc TunMulti (stream MultiHunk) returns (stream MultiHunk);
+}
+
+message Hunk {
+  bytes data = 1;
+}
+
+message MultiHunk {
+  repeated bytes data = 1;
+}

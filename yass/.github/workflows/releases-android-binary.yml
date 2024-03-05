@@ -1,0 +1,225 @@
+name: Build Artifacts (Android Binary)
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      tags:
+        description: 'Test scenario tags'
+        required: false
+        type: boolean
+  pull_request:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  push:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  release:
+    types: [published]
+  schedule:
+    - cron: '0 16 * * *'
+concurrency:
+  group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
+env:
+  CACHE_EPOCH: 123-5
+  GOPROXY: direct
+jobs:
+  android-binary-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            qemu_suffix: i386
+            apilevel: 24
+          - arch: x64
+            qemu_suffix: amd64
+            apilevel: 24
+          - arch: arm
+            qemu_suffix: armel
+            apilevel: 24
+          - arch: arm64
+            qemu_suffix: aarch64
+            apilevel: 24
+    runs-on: ubuntu-20.04
+    env:
+      ARCH: ${{ matrix.arch }}
+      SYSROOT: ${{ github.workspace }}/android-sysroot-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Patch libcxxabi for both of armel and armhf
+        if: ${{ matrix.arch == 'armel' || matrix.arch == 'arm' }}
+        run: |
+          cd third_party/libc++abi
+          patch -p1 < v8-6.7.17-fix-gcc-unwind-header.patch
+      - name: Cache clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/llvm-build/Release+Asserts
+          key: ${{ runner.os }}-android-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache depot_tools
+        id: depot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/depot_tools
+          key: ${{ runner.os }}-depot_tools-v1
+      - name: Cache crashpad build stage
+        id: crashpad-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/crashpad
+          key: ${{ runner.os }}-android-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache cargo build stage
+        id: cargo-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo
+          key: ${{ runner.os }}-android-cargo-${{ hashFiles('third_party/tun2proxy/Cargo.toml') }}-${{ hashFiles('third_party/tun2proxy/Cargo.lock') }}
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-docker-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-docker-
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle') }}
+      - name: Cache qemu-user-static
+        id: qemu-user-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            qemu-user-static*.deb
+          key: ${{ runner.os }}-qemu-8.2.0-ds-5
+      - name: Cache sysroot
+        id: sysroot-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SYSROOT }}
+          key: android-sysroot-${{ matrix.arch }}-v1
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: "Install dependency: tun2proxy"
+        run: |
+          ./scripts/setup-android-rust.sh
+          WITH_OS=android WITH_CPU=${{ matrix.arch }} ./scripts/build-tun2proxy.sh
+      - name: "Install dependency: prebuilt clang and clang-tidy binaries"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/download-clang-prebuilt-binaries.py
+          rm -f third_party/llvm-build/Release+Asserts/*.tgz
+      - name: Build TGZ packages (no build, for patching)
+        run: |
+          # FIXME required by next step, need to copy to current clang with ndk's libunwind.a
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system android \
+            -cmake-build-type MinSizeRel -no-build -no-configure \
+            -android-sdk-dir "${ANDROID_HOME}" -android-ndk-dir "${ANDROID_NDK_HOME}"
+      - name: Download and Build Crashpad (include depot_tools)
+        if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
+        run: |
+          WITH_OS=android WITH_CPU=${{ matrix.arch }} ./scripts/build-crashpad.sh
+      - name: "Install dependency: qemu user cache"
+        if: ${{ steps.qemu-user-cache.outputs.cache-hit != 'true' }}
+        run: |
+          wget http://ftp.us.debian.org/debian/pool/main/q/qemu/qemu-user-static_8.2.0+ds-5_amd64.deb
+      - name: Change ubuntu mirror
+        run: |
+          sudo sed -i 's/azure.archive.ubuntu.com/azure.archive.ubuntu.com/g' /etc/apt/sources.list
+          sudo apt-get update -qq
+      - name: Populate depedencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build pkg-config gettext bubblewrap
+          # libc6-i386 interferes with x86 build
+          sudo apt remove libc6-i386
+
+          sudo apt install qemu-user
+          sudo apt remove -y qemu-user-binfmt
+          sudo dpkg -i qemu-user-static_*.deb
+          # required by mbedtls build
+          sudo apt-get install -y python3-jsonschema python3-jinja2
+      - name: Install the Release certificate
+        if: ${{ github.event_name == 'release' }}
+        env:
+          SIGNING_STORE_BASE64: ${{ secrets.SIGNING_STORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          echo -n "$SIGNING_STORE_BASE64" | base64 --decode > $RUNNER_TEMP/release.jks
+          echo "SIGNING_STORE_PATH=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV
+          echo "SIGNING_STORE_PASSWORD=$SIGNING_STORE_PASSWORD" >> $GITHUB_ENV
+          echo "SIGNING_KEY_ALIAS=$SIGNING_KEY_ALIAS" >> $GITHUB_ENV
+          echo "SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> $GITHUB_ENV
+      - name: Build TGZ packages
+        run: |
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system android --cmake-build-type MinSizeRel \
+            -build-benchmark -build-test \
+            -android-sdk-dir "${ANDROID_HOME}" -android-ndk-dir "${ANDROID_NDK_HOME}"
+      - name: Clean up keychain and provisioning profile
+        if: ${{ always() }}
+        run: |
+          if [ ! -z $SIGNING_STORE_PATH ]; then
+            rm -f $SIGNING_STORE_PATH
+          fi
+      - name: "Install dependency: android sysroot (test purpose)"
+        if: ${{ steps.sysroot-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/get-android-sys.sh ${{ matrix.arch }} "${{ matrix.SYSROOT }}"
+      - name: Run tests (x86 and x64)
+        if: ${{ matrix.arch == 'x86' ||  matrix.arch == 'x64' }}
+        run: |
+          # android sysimg doesn't like resolv.conf
+          mkdir -p $SYSROOT/dev $SYSROOT/proc $SYSROOT/data/local/tmp
+          bwrap --die-with-parent --bind $SYSROOT / \
+            --ro-bind /sys /sys \
+            --proc /proc --dev /dev \
+            --unshare-all \
+            --bind $PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }} /data/local/tmp \
+            /data/local/tmp/yass_test
+      - name: Run tests (non x86, under qemu emulation)
+        if: ${{ matrix.arch != 'x86' && matrix.arch != 'x64' }}
+        run: |
+          # required by leveldb unittests
+          mkdir -p $SYSROOT/data/local/tmp
+          qemu-${{ matrix.qemu_suffix }}-static -L $SYSROOT \
+            -E TMPDIR=$SYSROOT/data/local/tmp \
+            $PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }}/yass_test
+      - name: Upload dist tarball (including debuginfo)
+        if: ${{ github.event_name == 'release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} yass*.tgz yass*.apk

@@ -1,0 +1,21 @@
+
+
+forward=http://forwarder1:8080
+
+# first connect forwarder1 then forwarder2 then internet
+forward=http://forwarder1:8080,socks5://forwarder2:1080
+
+
+# Round Robin mode: rr
+# High Availability mode: ha
+strategy=rr
+
+# forwarder health check
+check=http://www.msftconnecttest.com/connecttest.txt#expect=200
+checkinterval=30
+
+# as a ipset manager
+ipset=glider
+
+# matches 192.168.0.0/16
+cidr=192.168.0.0/16

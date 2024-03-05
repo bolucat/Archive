@@ -1,0 +1,18 @@
+proxychains4
+*.bz2
+*.xz
+*.o
+*.so
+*.la
+*.lo
+.deps/
+.libs/
+*.rcb
+*.out
+*~
+*.patch
+
+# Autoconf stuff 
+libtool
+config.*
+stamp-h

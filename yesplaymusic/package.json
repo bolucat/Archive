@@ -1,0 +1,135 @@
+{
+  "name": "yesplaymusic",
+  "version": "0.4.8",
+  "private": true,
+  "description": "A third party music player for Netease Music",
+  "author": "qier222<qier222@outlook.com>",
+  "scripts": {
+    "serve": "vue-cli-service serve",
+    "build": "vue-cli-service build",
+    "lint": "vue-cli-service lint",
+    "electron:build": "vue-cli-service electron:build -p never",
+    "electron:build-all": "vue-cli-service electron:build -p never -mwl",
+    "electron:build-mac": "vue-cli-service electron:build -p never -m",
+    "electron:build-win": "vue-cli-service electron:build -p never -w",
+    "electron:build-linux": "vue-cli-service electron:build -p never -l",
+    "electron:serve": "vue-cli-service electron:serve",
+    "electron:buildicon": "electron-icon-builder --input=./build/icons/icon.png --output=build --flatten",
+    "electron:publish": "vue-cli-service electron:build -mwl -p always",
+    "postinstall": "electron-builder install-app-deps",
+    "postuninstall": "electron-builder install-app-deps",
+    "prettier": "npx prettier --write ./src",
+    "netease_api:run": "npx NeteaseCloudMusicApi"
+  },
+  "main": "background.js",
+  "engines": {
+    "node": "14 || 16"
+  },
+  "dependencies": {
+    "@unblockneteasemusic/rust-napi": "^0.4.0",
+    "NeteaseCloudMusicApi": "^4.8.7",
+    "axios": "^0.26.1",
+    "change-case": "^4.1.2",
+    "cli-color": "^2.0.0",
+    "color": "^4.2.3",
+    "core-js": "^3.6.5",
+    "crypto-js": "^4.0.0",
+    "dayjs": "^1.8.36",
+    "dexie": "^3.0.3",
+    "discord-rich-presence": "^0.0.8",
+    "electron": "^13.6.7",
+    "electron-builder": "^23.0.0",
+    "electron-context-menu": "^3.1.2",
+    "electron-debug": "^3.1.0",
+    "electron-devtools-installer": "^3.2",
+    "electron-icon-builder": "^2.0.1",
+    "electron-is-dev": "^2.0.0",
+    "electron-log": "^4.3.0",
+    "electron-store": "^8.0.1",
+    "electron-updater": "^5.0.1",
+    "esbuild": "^0.20.1",
+    "esbuild-loader": "^4.0.3",
+    "express": "^4.17.1",
+    "express-fileupload": "^1.2.0",
+    "express-http-proxy": "^1.6.2",
+    "extract-zip": "^2.0.1",
+    "howler": "^2.2.3",
+    "js-cookie": "^2.2.1",
+    "jsbi": "^4.1.0",
+    "lodash": "^4.17.20",
+    "md5": "^2.3.0",
+    "mpris-service": "^2.1.2",
+    "music-metadata": "^7.5.3",
+    "node-vibrant": "^3.2.1-alpha.1",
+    "nprogress": "^0.2.0",
+    "pac-proxy-agent": "^4.1.0",
+    "plyr": "^3.6.2",
+    "qrcode": "^1.4.4",
+    "register-service-worker": "^1.7.1",
+    "svg-sprite-loader": "^6.0.11",
+    "tunnel": "^0.0.6",
+    "vscode-codicons": "^0.0.17",
+    "vue": "^2.6.11",
+    "vue-clipboard2": "^0.3.1",
+    "vue-gtag": "1",
+    "vue-i18n": "^8.22.0",
+    "vue-router": "^3.4.3",
+    "vue-slider-component": "^3.2.5",
+    "vuex": "^3.4.0",
+    "x11": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.0",
+    "@vue/cli-plugin-babel": "~4.5.0",
+    "@vue/cli-plugin-eslint": "~4.5.0",
+    "@vue/cli-plugin-pwa": "~4.5.0",
+    "@vue/cli-plugin-vuex": "~4.5.0",
+    "@vue/cli-service": "~4.5.0",
+    "babel-eslint": "^10.1.0",
+    "eslint": "^6.7.2",
+    "eslint-config-prettier": "^8.1.0",
+    "eslint-plugin-prettier": "^3.3.1",
+    "eslint-plugin-vue": "^7.9.0",
+    "husky": "^4.3.0",
+    "prettier": "2.5.1",
+    "sass": "^1.26.11",
+    "sass-loader": "^10.0.2",
+    "vue-cli-plugin-electron-builder": "~2.1.1",
+    "vue-template-compiler": "^2.6.11"
+  },
+  "resolutions": {
+    "icon-gen": "3.0.0",
+    "degenerator": "2.2.0",
+    "electron-builder": "^23.0.0"
+  },
+  "eslintConfig": {
+    "root": true,
+    "env": {
+      "node": true,
+      "browser": true
+    },
+    "extends": [
+      "plugin:vue/essential",
+      "plugin:vue/recommended",
+      "plugin:prettier/recommended",
+      "eslint:recommended"
+    ],
+    "parserOptions": {
+      "parser": "babel-eslint"
+    },
+    "globals": {
+      "ipcRenderer": "off"
+    },
+    "rules": {}
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "husky": {
+    "hooks": {
+      "pre-commit": "npm run prettier"
+    }
+  }
+}

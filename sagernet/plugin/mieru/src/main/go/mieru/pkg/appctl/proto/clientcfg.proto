@@ -1,0 +1,70 @@
+// Copyright (C) 2021  mieru authors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+syntax = "proto3";
+
+package appctl;
+
+import "endpoint.proto";
+import "logging.proto";
+import "user.proto";
+
+option go_package = "github.com/enfein/mieru/pkg/appctl/appctlpb";
+
+message ClientProfile {
+    // Client profile name.
+    optional string profileName = 1;
+
+    // User information.
+    optional User user = 2;
+
+    // A list of servers to connect.
+    repeated ServerEndpoint servers = 3;
+
+    // Maximum transmission unit of L2 payload.
+    // This setting only applies to UDP protocol.
+    optional int32 mtu = 4;
+}
+
+message ClientAdvancedSettings {}
+
+message ClientConfig {
+    // A list of known client profiles.
+    repeated ClientProfile profiles = 1;
+
+    // The active profile name.
+    optional string activeProfile = 2;
+
+    // The management RPC port that client is listening in localhost.
+    optional int32 rpcPort = 3;
+
+    // The socks5 port that mieru is listening.
+    optional int32 socks5Port = 4;
+
+    // Client advanced settings.
+    optional ClientAdvancedSettings advancedSettings = 5;
+
+    // Client logging level.
+    optional LoggingLevel loggingLevel = 6;
+
+    // If set, the socks5 port listens to LAN rather than localhost.
+    optional bool socks5ListenLAN = 7;
+
+    // The port mieru is listening to provide HTTP / HTTPS proxy.
+    optional int32 httpProxyPort = 8;
+
+    // If set, the HTTP proxy port listens to LAN rather than localhost.
+    optional bool httpProxyListenLAN = 9;
+}

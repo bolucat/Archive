@@ -1,0 +1,83 @@
+# Copyright 2013 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+# This is the root build file for GN. GN will start processing by loading this
+# file, and recursively load all dependencies until all dependencies are either
+# resolved or known not to exist (which will cause the build to fail). So if
+# you add a new build file, there must be some path of dependencies from this
+# file to your new one or GN won't know about it.
+
+import("//build/config/compiler/compiler.gni")
+import("//build/config/cronet/config.gni")
+import("//build/config/dcheck_always_on.gni")
+import("//build/config/features.gni")
+import("//build/config/rust.gni")
+import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/ui.gni")
+import("//build/gn_logs.gni")
+
+if (is_android) {
+  import("//build/config/android/config.gni")
+}
+
+declare_args() {
+  # A list of extra dependencies to add to the root target. This allows a
+  # checkout to add additional targets without explicitly changing any checked-
+  # in files.
+  root_extra_deps = []
+}
+
+if (is_official_build) {
+  # An official (maximally optimized!) component (optimized for build times)
+  # build doesn't make sense and usually doesn't work.
+  assert(!is_component_build)
+}
+
+# The `gn_all` target is used to list all of the main targets in the build, so
+# that we can figure out which BUILD.gn files to process, following the process
+# described at the top of this file.
+#
+# Because of the way GN works (again, as described above), there may be targets
+# built by `all` that aren't built by `gn_all`. We always want `all` to build,
+# so there's really never a reason you'd want to build `gn_all` instead of
+# `all`, and no tooling should depend directly on this target. Tools should
+# should depend on either an explicit list of targets, or `all`.
+
+group("gn_all") {
+  testonly = true
+
+  deps = [
+    "//net",
+  ]
+}
+
+if (is_android && !is_cronet_build) {
+  group("optimize_gn_gen") {
+    deps = [
+      # These run expensive scripts in non-default toolchains. Generally, host
+      # toolchain targets are loaded in the later part of the run, and the
+      # result is they push out the end of generation. By preloading these, the
+      # scripts can be parallelized with the rest of the load.
+      "//build/config/linux(//build/toolchain/linux:clang_x64)",
+      "//build/config/posix(//build/toolchain/linux:clang_x64)",
+
+      # Include x86 toolchains as well since V8 uses them for 32-bit snapshot
+      # generation.
+      "//build/config/linux(//build/toolchain/linux:clang_x86)",
+      "//build/config/posix(//build/toolchain/linux:clang_x86)",
+    ]
+  }
+}
+
+# Write debug logs to gn_logs.txt.
+_lines = [
+           "Generated during 'gn gen' by //BUILD.gn.",
+           "",
+         ] + build_gn_logs
+
+# GN evaluates each .gn file once per toolchain, so restricting to default
+# toolchain will ensure write_file() is called only once.
+assert(current_toolchain == default_toolchain)
+
+write_file("$root_build_dir/gn_logs.txt", _lines)

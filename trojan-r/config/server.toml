@@ -1,0 +1,23 @@
+mode = "server"
+log_level = "debug" # optional
+
+[trojan]
+password = "password"
+fallback_addr = "127.0.0.1:80"
+
+[tls]
+addr = "0.0.0.0:443"
+sni = "example.com"
+cert = "cert.pem"
+key = "key.pem"
+
+# optional
+# [plaintext]
+# addr = "127.0.0.1:12345"
+
+# optional
+# [websocket]
+# path = "/trojanpath"
+
+# optional
+# [mux]

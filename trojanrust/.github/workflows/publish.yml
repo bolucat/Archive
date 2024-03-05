@@ -1,0 +1,124 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - '*'
+  
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build for Windows x86_64
+    runs-on: windows-2019
+    steps:
+        - name: Checkout
+          uses: actions/checkout@v2
+
+        - name: Setup protoc
+          uses: arduino/setup-protoc@v1.1.2
+          
+        - name: get-cmake
+          uses: lukka/get-cmake@v3.23.0
+        
+        - name: Visual Studio shell
+          uses: egor-tensin/vs-shell@v2
+          
+        - name: Rust Toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            profile: minimal
+            toolchain: stable
+        
+        - name: Build
+          run: cargo build --release --locked
+
+        - name: Upload
+          uses: actions/upload-artifact@v2
+          with:
+            name: trojan_rust_win_x86_64
+            path: target/release/trojan-rust.exe
+    
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        name: [
+            linux,
+            macos
+        ]
+
+        include:
+          - name: linux
+            os: ubuntu-latest
+            artifact_name: target/release/trojan-rust
+            asset_name: trojan-rust-linux
+            
+          - name: macos
+            os: macos-latest
+            artifact_name: target/release/trojan-rust
+            asset_name: trojan-rust-macos
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+
+    - name: Setup protoc
+      uses: arduino/setup-protoc@v1.1.2
+
+    - name: Rust Toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+
+    - name: Build
+      run: cargo build --release --locked
+
+    - name: Upload
+      uses: actions/upload-artifact@v2
+      with:
+        name: ${{ matrix.asset_name }}
+        path: ${{ matrix.artifact_name }}
+  
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build, build-windows]
+    steps:
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan_rust_win_x86_64
+          path: ~/windows/
+      
+      - name: Download Ubuntu Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan-rust-linux
+          path: ~/linux/
+          
+      - name: Download MacOS Artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: trojan-rust-macos
+          path: ~/macos/
+      
+      - name: Rename
+        run: |
+          ls
+          ls ~/linux/
+          ls ~/macos/
+          ls ~/windows/
+          
+          mv ~/macos/trojan-rust ./trojan_rust_macos_x86_64
+          mv ~/linux/trojan-rust ./trojan_rust_linux_x86_64
+          mv ~/windows/trojan-rust.exe ./trojan_rust_win_x86_64.exe
+        
+      - name: Release
+        uses: softprops/action-gh-release@v0.1.7
+        with: 
+          files: |
+            trojan_rust_win_x86_64.exe
+            trojan_rust_linux_x86_64
+            trojan_rust_macos_x86_64

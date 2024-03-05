@@ -1,0 +1,69 @@
+[package]
+authors = ["B. Blechschmidt", "ssrlive"]
+edition = "2021"
+name = "tun2proxy"
+version = "0.1.12"
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+base64 = { version = "0.21" }
+clap = { version = "4.4", features = ["derive"] }
+ctrlc2 = { version = "3.5", features = ["termination"] }
+digest_auth = "0.3"
+dotenvy = "0.15"
+env_logger = "0.10"
+hashlink = "0.9"
+httparse = "1.8"
+libc = "0.2"
+log = "0.4"
+mio = { version = "0.8", features = ["os-poll", "net", "os-ext"] }
+nix = { version = "0.27", features = [
+    "process",
+    "signal",
+    "fs",
+    "mount",
+    "user",
+] }
+prctl = "1.0"
+smoltcp = { version = "0.11", features = ["std", "phy-tuntap_interface"] }
+socks5-impl = { version = "0.5", default-features = false }
+thiserror = "1.0"
+trust-dns-proto = "0.23"
+unicase = "2.7"
+url = "2.5"
+
+[target.'cfg(target_family="unix")'.dependencies]
+fork = "0.1"
+
+[target.'cfg(target_os="android")'.dependencies]
+android_logger = "0.13"
+jni = { version = "0.21", default-features = false }
+
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+ohos_hilog = "0.1.2"
+
+[dev-dependencies]
+ctor = "0.2"
+reqwest = { version = "0.11", default-features = false, features = [
+    "blocking",
+    "json",
+    "rustls-tls",
+] }
+serial_test = "3.0"
+test-log = "0.2"
+
+[target.'cfg(target_os="windows")'.dependencies]
+rand = "0.8"
+windows = { version = "0.52", features = [
+    "Win32_Storage_FileSystem",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Foundation",
+] }
+wintun = { version = "0.4", features = ["panic_on_unsent_packets"] }
+
+[build-dependencies]
+serde_json = "1.0"

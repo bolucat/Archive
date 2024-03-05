@@ -1,0 +1,24 @@
+.bpx-player-video-wrap::after,
+.bilibili-player-video::after {
+  position: absolute;
+  content: "";
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  background: black var(--cover-url) center no-repeat;
+  background-size: contain;
+  pointer-events: none;
+  z-index: 10;
+}
+.bpx-player-container.bpx-state-paused {
+  .bpx-player-video-wrap::after {
+    display: block;
+  }
+}
+.bilibili-player-area.video-state-pause {
+  .bilibili-player-video::after {
+    display: block;
+  }
+}

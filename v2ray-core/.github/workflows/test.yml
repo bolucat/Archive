@@ -1,0 +1,55 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - master
+      - v*
+      - dev-*
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yml"
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v4
+        with:
+          go-version: ^1.19
+
+      - name: Checkout codebase
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check Go modules
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+          go mod verify
+
+      - name: Test
+        run: |
+          export PATH=$(go env GOPATH)/bin:${PATH}
+          go install -v github.com/ory/go-acc@latest
+          go-acc --covermode=atomic -o=coverage.txt ./...
+        shell: bash
+
+      - name: Upload codecov
+        run: bash <(curl -s https://codecov.io/bash)
+        shell: bash

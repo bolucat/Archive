@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package v2ray.core.features.dns;
+option csharp_namespace = "V2Ray.Core.Features.Dns";
+option go_package = "github.com/v2fly/v2ray-core/v5/features/dns";
+option java_package = "com.v2ray.core.features.dns";
+option java_multiple_files = true;
+
+enum QueryStrategy {
+  USE_IP = 0;
+  USE_IP4 = 1;
+  USE_IP6 = 2;
+  PREFER_IP4 = 3;
+  PREFER_IP6 = 4;
+}

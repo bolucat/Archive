@@ -1,0 +1,34 @@
+{
+    "portBindings": [
+        {
+            "portRange": "2012-2022",
+            "protocol": "TCP"
+        },
+        {
+            "port": 2027,
+            "protocol": "TCP"
+        }
+    ],
+    "users": [
+        {
+            "name": "ducaiguozei",
+            "password": "xijinping",
+            "quotas": [
+                {
+                    "days": 1,
+                    "megabytes": 1024
+                },
+                {
+                    "days": 30,
+                    "megabytes": 10240
+                }
+            ]
+        },
+        {
+            "name": "meiyougongchandang",
+            "password": "caiyouxinzhongguo"
+        }
+    ],
+    "loggingLevel": "INFO",
+    "mtu": 1400
+}

@@ -1,0 +1,42 @@
+.bb-comment,
+.bili-comment-container {
+  .fold-comment {
+    position: sticky;
+    bottom: 0;
+    height: 40px;
+    width: 100%;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: white;
+    color: #99a2aa;
+    cursor: pointer;
+    transition: all 0.2s ease-out;
+    z-index: 110;
+    border-radius: 4px;
+    &:hover {
+      color: black;
+    }
+    body.dark & {
+      background-color: #444;
+      color: #eee;
+      &:hover {
+        color: var(--theme-color);
+      }
+    }
+  }
+}
+.bili-comment-container {
+  &.bili-dyn-comment .reply-list {
+    padding-bottom: 8px !important;
+  }
+  .fold-comment {
+    font-size: 13px;
+  }
+  .at-panel,
+  .emoji-panel,
+  .reply-operation .operation-list {
+    z-index: 111;
+  }
+}

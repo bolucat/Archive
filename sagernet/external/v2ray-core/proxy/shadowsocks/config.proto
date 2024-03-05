@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package v2ray.core.proxy.shadowsocks;
+option csharp_namespace = "V2Ray.Core.Proxy.Shadowsocks";
+option go_package = "github.com/v2fly/v2ray-core/v5/proxy/shadowsocks";
+option java_package = "com.v2ray.core.proxy.shadowsocks";
+option java_multiple_files = true;
+
+import "common/net/network.proto";
+import "common/protocol/user.proto";
+import "common/protocol/server_spec.proto";
+import "common/net/packetaddr/config.proto";
+
+message Account {
+  string password = 1;
+  CipherType cipher_type = 2;
+
+  bool iv_check = 3;
+  bool udp_over_tcp = 4;
+  bool experiment_reduced_iv_head_entropy = 90001;
+}
+
+enum CipherType {
+  UNKNOWN = 0;
+  AES_128_GCM = 1;
+  AES_192_GCM = 2;
+  AES_256_GCM = 3;
+  CHACHA20_IETF_POLY1305 = 4;
+  XCHACHA20_IETF_POLY1305 = 5;
+  NONE = 6;
+
+  AES_128_CTR = 7;
+  AES_192_CTR = 8;
+  AES_256_CTR = 9;
+  AES_128_CFB = 10;
+  AES_192_CFB = 11;
+  AES_256_CFB = 12;
+  AES_128_CFB8 = 13;
+  AES_192_CFB8 = 14;
+  AES_256_CFB8 = 15;
+  AES_128_OFB = 16;
+  AES_192_OFB = 17;
+  AES_256_OFB = 18;
+
+  RC4 = 19;
+  RC4_MD5 = 20;
+  BF_CFB = 21;
+  CAST5_CFB = 22;
+  DES_CFB = 23;
+  IDEA_CFB = 24;
+  RC2_CFB = 25;
+  SEED_CFB = 26;
+
+  CAMELLIA_128_CFB = 27;
+  CAMELLIA_192_CFB = 28;
+  CAMELLIA_256_CFB = 29;
+  CAMELLIA_128_CFB8 = 30;
+  CAMELLIA_192_CFB8 = 31;
+  CAMELLIA_256_CFB8 = 32;
+
+  SALSA20 = 33;
+  CHACHA20 = 34;
+  CHACHA20_IETF = 35;
+  XCHACHA20 = 36;
+
+  BLAKE3_AES_128_GCM_2022 = 37;
+  BLAKE3_AES_256_GCM_2022 = 38;
+  BLAKE3_CHACHA20_POLY1305_2022 = 39;
+
+}
+
+message ServerConfig {
+  // UdpEnabled specified whether or not to enable UDP for Shadowsocks.
+  // Deprecated. Use 'network' field.
+  bool udp_enabled = 1 [deprecated = true];
+  v2ray.core.common.protocol.User user = 2;
+  repeated v2ray.core.common.net.Network network = 3;
+  v2ray.core.net.packetaddr.PacketAddrType packet_encoding = 4;
+  string plugin = 5;
+  string plugin_opts = 6;
+  repeated string plugin_args = 7;
+}
+
+message ClientConfig {
+  repeated v2ray.core.common.protocol.ServerEndpoint server = 1;
+  string plugin = 2;
+  string plugin_opts = 3;
+  repeated string plugin_args = 4;
+  bool experiment_reduced_iv_head_entropy = 90001;
+}

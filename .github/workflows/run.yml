@@ -1,0 +1,468 @@
+on:
+  push:
+    paths:
+      - '.github/workflows/run.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release Tag'
+        required: false
+  schedule:
+    - cron: "0 18 */1 * *"
+
+name: sync
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Europe/Busingen
+    steps:
+      
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Variables
+        run: |
+          echo "VERSION=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+
+      - name: Sync
+        run: |
+          # Delete large package
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          # Disappeared Projects
+          mv anxray .github
+          mv clash .github
+          mv clash-cfa .github
+          mv clash-cfw .github
+          mv clashx .github
+          mv helloworld .github
+          mv tuic .github
+          mv yuzu .github
+          mv yuzu-mainline .github
+          mv yuzu-android .github
+          # Clean Repository
+          rm -rf *
+          export GCRS="git clone --depth 1 --recurse-submodules"
+          # GFW Projects
+          ${GCRS} https://github.com/v2fly/v2ray-core v2ray-core
+          ${GCRS} https://github.com/XTLS/Xray-core xray-core
+          ${GCRS} https://github.com/trojan-gfw/trojan trojan-gfw
+          ${GCRS} https://github.com/p4gefau1t/trojan-go trojan-go
+          ${GCRS} https://github.com/p4gefau1t/trojan-r trojan-r
+          ${GCRS} https://github.com/lazytiger/trojan-rs trojan-rs
+          ${GCRS} https://github.com/cty123/TrojanRust trojanrust
+          ${GCRS} https://github.com/shadowsocks/shadowsocks-libev shadowsocks-libev
+          ${GCRS} https://github.com/shadowsocks/go-shadowsocks2 go-shadowsocks2
+          ${GCRS} https://github.com/shadowsocks/shadowsocks-rust shadowsocks-rust
+          ${GCRS} https://github.com/klzgrad/naiveproxy naiveproxy
+          ${GCRS} https://github.com/txthinking/brook brook
+          ${GCRS} -b Alpha https://github.com/MetaCubeX/Clash.Meta clash-meta
+          ${GCRS} -b dev https://github.com/MerlinKodo/clash-rev clash-rev
+          ${GCRS} -b Alpha https://github.com/MetaCubeX/mihomo mihomo
+          ${GCRS} https://github.com/ihciah/shadow-tls shadow-tls
+          ${GCRS} https://github.com/SagerNet/sing-box sing-box
+          ${GCRS} https://github.com/enfein/mieru mieru
+          ${GCRS} https://github.com/Leask/socratex socratex
+          ${GCRS} https://github.com/juicity/juicity juicity
+          # GFW Client Projects
+          ${GCRS} https://github.com/shadowsocks/shadowsocks-windows shadowsocks-windows
+          ${GCRS} https://github.com/shadowsocks/shadowsocks-android shadowsocks-android
+          ${GCRS} https://github.com/shadowsocks/ShadowsocksX-NG shadowsocksx-ng
+          ${GCRS} https://github.com/2dust/v2rayN v2rayn
+          ${GCRS} https://github.com/2dust/v2rayNG v2rayng
+          ${GCRS} -b master https://github.com/yanue/V2rayU v2rayu
+          ${GCRS} https://github.com/v2rayA/v2rayA v2raya
+          ${GCRS} https://github.com/Qv2ray/Qv2ray qv2ray-qv2ray
+          ${GCRS} https://github.com/Shadowsocks-NET/Qv2ray ssnet-qv2ray
+          ${GCRS} -b main https://github.com/zzzgydi/clash-verge clash-verge
+          ${GCRS} https://github.com/wonfen/clash-verge-rev clash-verge-rev
+          ${GCRS} https://github.com/keiko233/clash-nyanpasu clash-nyanpasu
+          ${GCRS} https://github.com/2dust/clashN clashn
+          ${GCRS} -b main https://github.com/MetaCubeX/ClashMetaForAndroid clash-meta-android
+          ${GCRS} https://github.com/trojan-gfw/igniter igniter
+          ${GCRS} https://github.com/trojan-gfw/igniter-go-libs igniter/app/src/libs/go-libs && rm -rfv igniter/app/src/libs/go-libs/.git
+          ${GCRS} https://github.com/SagerNet/SagerNet sagernet
+          ${GCRS} https://github.com/MatsuriDayo/Matsuri matsuri
+          ${GCRS} https://github.com/xxf098/shadowsocksr-v2ray-trojan-android svt-android
+          ${GCRS} https://github.com/netchx/netch netch
+          ${GCRS} https://github.com/MatsuriDayo/nekoray nekoray
+          ${GCRS} https://github.com/MatsuriDayo/NekoBoxForAndroid nekobox-android
+          # Openwrt Projects
+          ${GCRS} https://github.com/coolsnowwolf/lede lede
+          ${GCRS} https://github.com/xiaorouji/openwrt-passwall openwrt-passwall
+          ${GCRS} https://github.com/xiaorouji/openwrt-passwall2 openwrt-passwall2
+          ${GCRS} https://github.com/kenzok8/openwrt-packages openwrt-packages
+          ${GCRS} https://github.com/kenzok8/small small
+          ${GCRS} https://github.com/vernesong/OpenClash openclash
+          # Network Tools
+          ${GCRS} https://github.com/klzgrad/forwardproxy forwardproxy
+          ${GCRS} https://github.com/wangyu-/udp2raw udp2raw
+          ${GCRS} https://github.com/wangyu-/udp2raw-multiplatform udp2raw-multi
+          ${GCRS} https://github.com/m13253/dns-over-https dns-over-https
+          ${GCRS} https://github.com/nadoo/glider glider
+          ${GCRS} https://github.com/ginuerzh/gost gost
+          ${GCRS} https://github.com/HyNetwork/hysteria hysteria
+          ${GCRS} https://github.com/esrrhs/pingtunnel pingtunnel
+          ${GCRS} https://github.com/Ehco1996/ehco echo
+          ${GCRS} https://github.com/Loyalsoldier/v2ray-rules-dat v2ray-rules-dat
+          ${GCRS} https://github.com/Loyalsoldier/geoip geoip
+          ${GCRS} https://github.com/17mon/china_ip_list china-ip
+          ${GCRS} https://github.com/ip-scanner/cloudflare ip-scanner
+          ${GCRS} https://github.com/Chilledheart/yass yass
+          ## Media Tools
+          ${GCRS} https://github.com/nilaoda/BBDown bbdown
+          ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
+          ${GCRS} https://github.com/yt-dlp/yt-dlp yt-dlp
+          ${GCRS} https://github.com/the1812/Bilibili-Evolved bb-evolved
+          ${GCRS} https://github.com/rachpt/lanzou-gui lanzou-gui
+          ${GCRS} https://github.com/gaozhangmin/aliyunpan aliyunpan
+          ${GCRS} https://git.unlock-music.dev/um/web unlock-music
+          ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
+          ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
+          ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
+          ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
+          ${GCRS} https://github.com/DIGITALCRIMINALS/OnlyFans onlyfans
+          ${GCRS} https://github.com/Ryujinx/Ryujinx ryujinx
+          ${GCRS} https://github.com/Ryujinx/release-channel-master ryujinx-release-channel
+          # Clean Git Info
+          rm -rf */.git
+          # Update logs
+          echo "Update On $(date)" >> .github/update.log
+          # Recover disappeared Projects
+          mv .github/anxray .
+          mv .github/clash .
+          mv .github/clash-cfw .
+          mv .github/clash-cfa .
+          mv .github/clashx .
+          mv .github/helloworld .
+          mv .github/tuic .
+          mv .github/yuzu .
+          mv .github/yuzu-mainline .
+          mv .github/yuzu-android .
+          # Git Commit
+          git config --local user.name "github-action[bot]"
+          git config --local user.email "${{ secrets.EMAIL }}"
+          git add .
+          git commit -am "Update On $(date)"
+
+      - name: Push Changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+
+      - name: Backup Binaries
+        run: |
+          sudo apt install -y aria2
+          # using 7zip
+          mkdir -p 7zip
+          wget "https://www.7-zip.org/a/7z2301-linux-x64.tar.xz" -O 7zip/7zip.tar.xz
+          tar -xf 7zip/7zip.tar.xz -C 7zip/ && mv 7zip/7zz .
+          rm -rf 7zip && chmod +x 7zz
+          sudo mv 7zz /usr/bin
+          # Recover Binaries from : https://github.com/bolucat/rules/releases/tag/software-archived
+          # shadowsocks-windows
+          mkdir -p shadowsocks-windows/Clients
+          pushd shadowsocks-windows/Clients || exit 1
+          wget -qO- https://api.github.com/repos/shadowsocks/shadowsocks-windows/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # shadowsocks-android
+          mkdir -p shadowsocks-android/Clients
+          pushd shadowsocks-android/Clients || exit 1
+          wget -qO- https://api.github.com/repos/shadowsocks/shadowsocks-android/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # shadowsocksx-ng
+          mkdir -p shadowsocksx-ng/Clients
+          pushd shadowsocksx-ng/Clients || exit 1
+          wget -qO- https://api.github.com/repos/shadowsocks/ShadowsocksX-NG/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # juicity
+          mkdir -p juicity/Clients
+          pushd juicity/Clients || exit 1
+          wget -qO- https://api.github.com/repos/juicity/juicity/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # v2rayn
+          mkdir -p v2rayn/Clients
+          pushd v2rayn/Clients || exit 1
+          wget -qO- https://api.github.com/repos/2dust/v2rayN/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # v2rayng
+          mkdir -p v2rayng/Clients
+          pushd v2rayng/Clients || exit 1
+          wget -qO- https://api.github.com/repos/2dust/v2rayNG/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # v2rayu
+          mkdir -p v2rayu/Clients
+          pushd v2rayu/Clients || exit 1
+          wget -qO- https://api.github.com/repos/yanue/V2rayU/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # v2raya
+          mkdir -p v2raya/Clients
+          pushd v2raya/Clients || exit 1
+          wget -qO- https://api.github.com/repos/v2rayA/v2rayA/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit
+          # clash-rev
+          mkdir -p clash-rev/Clients
+          pushd clash-rev/Clients || exit 1
+          wget -qO- https://api.github.com/repos/MerlinKodo/clash-rev/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # mihomo
+          mkdir -p mihomo/Clients
+          pushd mihomo/Clients || exit 1
+          wget -qO- https://api.github.com/repos/MetaCubeX/mihomo/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # clash-meta-android
+          mkdir -p clash-meta-android/Clients
+          pushd clash-meta-android/Clients || exit 1
+          wget -qO- https://api.github.com/repos/MetaCubeX/ClashMetaForAndroid/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # clash-verge
+          mkdir -p clash-verge/Clients
+          pushd clash-verge/Clients || exit 1
+          wget -qO- https://api.github.com/repos/zzzgydi/clash-verge/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # clash-verge-rev
+          mkdir -p clash-verge-rev/Clients
+          pushd clash-verge-rev/Clients || exit 1
+          wget -qO- https://api.github.com/repos/wonfen/clash-verge-rev/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # clash-nyanpasu
+          mkdir -p clash-nyanpasu/Clients
+          pushd clash-nyanpasu/Clients || exit 1
+          wget -qO- https://api.github.com/repos/keiko233/clash-nyanpasu/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # clashn
+          mkdir -p clashn/Clients
+          pushd clashn/Clients || exit 1
+          wget -qO- https://api.github.com/repos/2dust/clashN/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # svt-android
+          mkdir -p svt-android/Clients
+          pushd svt-android/Clients || exit 1
+          wget -qO- https://api.github.com/repos/xxf098/shadowsocksr-v2ray-trojan-android/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # nekoray
+          mkdir -p nekoray/Clients
+          pushd nekoray/Clients || exit 1
+          wget -qO- https://api.github.com/repos/MatsuriDayo/nekoray/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # nekobox-android
+          mkdir -p nekobox-android/Clients
+          pushd nekobox-android/Clients || exit 1
+          wget -qO- https://api.github.com/repos/MatsuriDayo/NekoBoxForAndroid/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # ryujinx-release-channel
+          mkdir -p ryujinx-release-channel/Clients
+          pushd ryujinx-release-channel/Clients || exit 1
+          wget -qO- https://api.github.com/repos/Ryujinx/release-channel-master/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # v2ray-rules-dat
+          mkdir -p v2ray-rules-dat/Clients
+          pushd v2ray-rules-dat/Clients || exit 1
+          wget -qO- https://api.github.com/repos/Loyalsoldier/v2ray-rules-dat/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # geoip
+          mkdir -p geoip/Clients
+          pushd geoip/Clients || exit 1
+          wget -qO- https://api.github.com/repos/Loyalsoldier/geoip/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # udp2raw
+          mkdir -p udp2raw/Clients
+          pushd udp2raw/Clients || exit 1
+          wget -qO- https://api.github.com/repos/wangyu-/udp2raw/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # udp2raw-multi
+          mkdir -p udp2raw-multi/Clients
+          pushd udp2raw-multi/Clients || exit 1
+          wget -qO- https://api.github.com/repos/wangyu-/udp2raw-multiplatform/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # brook
+          mkdir -p brook/Clients
+          pushd brook/Clients || exit 1
+          wget -qO- https://api.github.com/repos/txthinking/brook/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # netch
+          mkdir -p netch/Clients
+          pushd netch/Clients || exit 1
+          export NETCH_VER=$(wget -qO- https://api.github.com/repos/netchx/netch/tags | grep 'name' | cut -d\" -f4 | sort -hr | sed $'/\//d' | head -1)
+          wget -qO- https://api.github.com/repos/netchx/netch/releases/tags/${NETCH_VER} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # bbdown
+          mkdir -p bbdown/Clients
+          pushd bbdown/Clients || exit 1
+          wget -qO- https://api.github.com/repos/nilaoda/BBDown/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # youtube-dl
+          mkdir -p youtube-dl/Clients
+          pushd youtube-dl/Clients || exit 1
+          wget -qO- https://api.github.com/repos/ytdl-org/youtube-dl/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # yt-dlp
+          mkdir -p yt-dlp/Clients
+          pushd yt-dlp/Clients || exit 1
+          wget -qO- https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # lanzou-gui
+          mkdir -p lanzou-gui/Clients
+          pushd lanzou-gui/Clients || exit 1
+          wget -qO- https://api.github.com/repos/rachpt/lanzou-gui/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # aliyunpan
+          mkdir -p aliyunpan/Clients
+          pushd aliyunpan/Clients || exit 1
+          wget -qO- https://api.github.com/repos/gaozhangmin/aliyunpan/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # filebrowser
+          mkdir -p filebrowser/Clients
+          pushd filebrowser/Clients || exit 1
+          wget -qO- https://api.github.com/repos/filebrowser/filebrowser/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # m3u8-cli
+          mkdir -p m3u8-cli/Clients
+          pushd m3u8-cli/Clients || exit 1
+          wget -qO- https://api.github.com/repos/nilaoda/N_m3u8DL-CLI/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # yesplaymusic
+          mkdir -p yesplaymusic/Clients
+          pushd yesplaymusic/Clients || exit 1
+          wget -qO- https://api.github.com/repos/qier222/YesPlayMusic/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          popd || exit 1
+          # trojan-rs
+          pushd trojan-rs || exit 1
+          echo "fix error : trojan-rs/mobile2/backend/gen/android/app/src/main/assets : errno=2 : No such file or directory"
+          rm -rf mobile2/backend/gen/android/app/src/main/assets
+          popd || exit 1
+          
+      - name: Compress to packages
+        run: |
+          mkdir -p release
+          # Compressing
+          PROJECTS=(
+          shadowsocks-windows
+          shadowsocks-android
+          shadowsocksx-ng
+          juicity
+          v2rayn
+          v2rayng
+          v2rayu
+          v2raya
+          qv2ray-qv2ray
+          ssnet-qv2ray
+          nekoray
+          nekobox-android
+          clashx
+          clash-cfw
+          clash-cfa
+          clash-meta-android
+          clash-verge
+          clash-verge-rev
+          clash-nyanpasu
+          clash-rev
+          mihomo
+          clashn
+          igniter
+          sagernet
+          matsuri
+          mieru
+          socratex
+          anxray
+          svt-android
+          v2ray-rules-dat
+          geoip
+          china-ip
+          ip-scanner
+          udp2raw
+          udp2raw-multi
+          tuic
+          yass
+          brook
+          clash
+          v2ray-core
+          xray-core
+          sing-box
+          trojan-gfw
+          trojan-go
+          trojan-r
+          trojanrust
+          shadowsocks-libev
+          go-shadowsocks2
+          shadowsocks-rust
+          shadow-tls
+          naiveproxy
+          lede
+          openwrt-passwall
+          openwrt-passwall2
+          helloworld
+          openwrt-packages
+          small
+          openclash
+          forwardproxy
+          glider
+          gost
+          hysteria
+          pingtunnel
+          echo
+          netch
+          bbdown
+          dns-over-https
+          youtube-dl
+          yt-dlp
+          lanzou-gui
+          aliyunpan
+          unlock-music
+          filebrowser
+          m3u8-cli
+          bb-evolved
+          yesplaymusic
+          vue-color-avatar
+          onlyfans
+          yuzu
+          yuzu-mainline
+          yuzu-android
+          ryujinx
+          ryujinx-release-channel
+          )
+          for PROJECT in ${PROJECTS[@]}; do
+            if [ "${PROJECT}" == "matsuri" ] || [ "${PROJECT}" == "nekobox-android" ]; then
+              # fix "matsuri/buildScript/nkmr : errno=2 : No such file or directory"
+              # fix "nekobox-android/buildScript/nkmr : errno=2 : No such file or directory"
+              rm -rf ${PROJECT}/buildScript/nkmr
+              7zz a -m0=lzma2 -mx9 ${PROJECT}.7z ${PROJECT}
+              rm -rf ${PROJECT}
+            else
+              7zz a -m0=lzma2 -mx9 ${PROJECT}.7z ${PROJECT}
+              rm -rf ${PROJECT}
+            fi
+          done
+          # Move to Release
+          mv *.7z release
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: ${{ env.VERSION }}
+          tag: ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          artifacts: |
+            ./release/*
+            
+      - name: Delete Older Release
+        uses: dev-drprasad/delete-older-releases@v0.3.2
+        if: (!cancelled())
+        with:
+          repo: bolucat/Archive
+          keep_latest: 90
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            
+      - name: Healthy Check
+        if: (!cancelled())
+        run: |
+          echo "Check space usage"
+          df -hT
+          echo "Check memory usage"
+          free -m

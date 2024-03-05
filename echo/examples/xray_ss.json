@@ -1,0 +1,99 @@
+{
+  "web_port": 9000,
+  "web_token": "",
+  "enable_ping": false,
+  "reload_interval": 10,
+  "log_level": "debug",
+  "relay_configs": [
+    {
+      "listen": "127.0.0.1:1234",
+      "listen_type": "raw",
+      "transport_type": "raw",
+      "tcp_remotes": [
+        "0.0.0.0:5201"
+      ],
+      "udp_remotes": [
+        "0.0.0.0:5201"
+      ]
+    }
+  ],
+  "sync_traffic_endpoint": "http://127.0.0.1:8000/api/proxy_configs/1/?token=youowntoken",
+  "xray_config": {
+    "stats": {},
+    "api": {
+      "tag": "api",
+      "services": [
+        "StatsService",
+        "HandlerService"
+      ]
+    },
+    "log": {
+      "loglevel": "error"
+    },
+    "policy": {
+      "levels": {
+        "0": {
+          "statsUserUplink": true,
+          "statsUserDownlink": true
+        }
+      },
+      "system": {
+        "statsInboundUplink": true,
+        "statsInboundDownlink": true,
+        "statsOutboundUplink": true,
+        "statsOutboundDownlink": true
+      }
+    },
+    "inbounds": [
+      {
+        "listen": "127.0.0.1",
+        "port": 8080,
+        "protocol": "dokodemo-door",
+        "settings": {
+          "address": "127.0.0.1"
+        },
+        "tag": "api"
+      },
+      {
+        "listen": "127.0.0.1",
+        "port": 12345,
+        "protocol": "shadowsocks",
+        "tag": "ss_proxy",
+        "settings": {
+          "clients": [],
+          "network": "tcp,udp"
+        }
+      },
+      {
+        "port": 10801,
+        "protocol": "socks",
+        "settings": {
+          "udp": true
+        }
+      },
+      {
+        "port": 10802,
+        "protocol": "http"
+      }
+    ],
+    "outbounds": [
+      {
+        "protocol": "freedom",
+        "settings": {}
+      }
+    ],
+    "routing": {
+      "settings": {
+        "rules": [
+          {
+            "type": "field",
+            "inboundTag": [
+              "api"
+            ],
+            "outboundTag": "api"
+          }
+        ]
+      }
+    }
+  }
+}

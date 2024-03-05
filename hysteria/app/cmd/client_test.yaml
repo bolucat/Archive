@@ -1,0 +1,67 @@
+server: example.com
+
+auth: weak_ahh_password
+
+transport:
+  type: udp
+  udp:
+    hopInterval: 30s
+
+obfs:
+  type: salamander
+  salamander:
+    password: cry_me_a_r1ver
+
+tls:
+  sni: another.example.com
+  insecure: true
+  pinSHA256: 114515DEADBEEF
+  ca: custom_ca.crt
+
+quic:
+  initStreamReceiveWindow: 1145141
+  maxStreamReceiveWindow: 1145142
+  initConnReceiveWindow: 1145143
+  maxConnReceiveWindow: 1145144
+  maxIdleTimeout: 10s
+  keepAlivePeriod: 4s
+  disablePathMTUDiscovery: true
+
+bandwidth:
+  up: 200 mbps
+  down: 1 gbps
+
+fastOpen: true
+
+lazy: true
+
+socks5:
+  listen: 127.0.0.1:1080
+  username: anon
+  password: bro
+  disableUDP: true
+
+http:
+  listen: 127.0.0.1:8080
+  username: qqq
+  password: bruh
+  realm: martian
+
+tcpForwarding:
+  - listen: 127.0.0.1:8088
+    remote: internal.example.com:80
+
+udpForwarding:
+  - listen: 127.0.0.1:5353
+    remote: internal.example.com:53
+    timeout: 50s
+
+tcpTProxy:
+  listen: 127.0.0.1:2500
+
+udpTProxy:
+  listen: 127.0.0.1:2501
+  timeout: 20s
+
+tcpRedirect:
+  listen: 127.0.0.1:3500

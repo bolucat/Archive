@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>  
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>ClashN.ico</ApplicationIcon>
+	<Copyright>Copyright © 2019-2024 (GPLv3)</Copyright>
+	<FileVersion>2.20</FileVersion>
+	<SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+ 
+
+	<ItemGroup>
+		<PackageReference Include="MaterialDesignThemes" Version="4.9.0" />
+		<PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="1.1.0" />		 
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="NHotkey" Version="3.0.0" />
+		<PackageReference Include="NHotkey.Wpf" Version="3.0.0" />
+		<PackageReference Include="QRCoder.Xaml" Version="1.4.3" />
+		<PackageReference Include="TaskScheduler" Version="2.10.1" />
+		<PackageReference Include="YamlDotNet" Version="15.1.0" />
+		<PackageReference Include="ZXing.Net.Bindings.Windows.Compatibility" Version="0.16.12" />
+		<PackageReference Include="ReactiveUI.Fody" Version="19.5.41" />
+		<PackageReference Include="ReactiveUI.Validation" Version="3.1.7" />
+		<PackageReference Include="ReactiveUI.WPF" Version="19.5.41" />
+		<PackageReference Include="Splat.NLog" Version="14.8.12" />
+		<PackageReference Include="System.Reactive" Version="6.0.0" />
+	</ItemGroup>
+	
+	<ItemGroup>
+        <None Remove="ClashN.ico" />  
+        <AdditionalFiles Include="app.manifest" />
+        <EmbeddedResource Include="ClashN.ico">
+          <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+        </EmbeddedResource>
+        <EmbeddedResource Include="Sample\SampleMixin.yaml" />
+        <EmbeddedResource Include="Sample\SampleTun.yaml" />
+        <ProjectReference Include="..\..\..\v2rayN\v2rayN\PacLib\PacLib.csproj" />
+        <Resource Include="ClashN.ico">
+          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Resource> 
+        <Compile Update="Resx\ResUI.Designer.cs">
+          <DesignTime>True</DesignTime>
+          <AutoGen>True</AutoGen>
+          <DependentUpon>ResUI.resx</DependentUpon>
+        </Compile> 
+        <EmbeddedResource Update="Resx\ResUI.resx">
+          <Generator>PublicResXFileCodeGenerator</Generator>
+          <LastGenOutput>ResUI.Designer.cs</LastGenOutput>
+        </EmbeddedResource>
+        <EmbeddedResource Update="Resx\ResUI.zh-Hans.resx">
+          <Generator>PublicResXFileCodeGenerator</Generator>
+        </EmbeddedResource>
+        <EmbeddedResource Update="Resx\ResUI.fa-IR.resx">
+          <Generator>PublicResXFileCodeGenerator</Generator>
+        </EmbeddedResource>
+    </ItemGroup>
+</Project>

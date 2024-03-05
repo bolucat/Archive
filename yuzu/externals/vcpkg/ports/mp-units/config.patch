@@ -1,0 +1,17 @@
+diff --git a/src/mp-unitsConfig.cmake b/src/mp-unitsConfig.cmake
+index 10f82a82..ea637abd 100644
+--- a/src/mp-unitsConfig.cmake
++++ b/src/mp-unitsConfig.cmake
+@@ -42,10 +42,10 @@ endfunction()
+ include(CMakeFindDependencyMacro)
+ 
+ if(MP_UNITS_USE_LIBFMT)
+-    find_dependency(fmt)
++    find_dependency(fmt CONFIG)
+ endif()
+ 
+-find_dependency(gsl-lite)
++find_dependency(gsl-lite CONFIG)
+ 
+ # add range-v3 dependency only for clang + libc++
+ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

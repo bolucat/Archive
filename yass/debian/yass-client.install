@@ -1,0 +1,6 @@
+usr/bin/yass_cli
+etc/yass/config.json
+etc/yass/redir.json
+usr/lib/systemd/system/yass.service
+usr/lib/systemd/system/yass-redir.service
+usr/share/man/man1/yass_cli.1

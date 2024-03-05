@@ -1,0 +1,390 @@
+name: Compiler Compatibility
+on:
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+        type: choice
+        options:
+        - info
+        - warning
+        - debug
+      tags:
+        description: 'Test scenario tags'
+        required: false
+        type: boolean
+  pull_request:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  push:
+    branches: [master, develop]
+    paths-ignore:
+    - '**/*.md'
+    - '.circleci/**'
+    - '.cirrus.yml'
+  schedule:
+    - cron: '0 16 * * *'
+concurrency:
+  group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
+  cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
+env:
+  CACHE_EPOCH: 123-5
+  GOPROXY: direct
+jobs:
+  win-compiler-compatible-2022:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86]
+        crt-linkage: [dynamic]
+        build_type: [Debug, Release]
+    runs-on: windows-2022
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Cache clang, nasm and wixtoolset 3
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/nasm
+            third_party/llvm-build/Release+Asserts
+            third_party/wix311
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache msvc curl
+        id: curl-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/libcurl-vc16-arm64-release-static-ipv6-sspi-schannel
+            third_party/libcurl-vc16-x64-release-static-ipv6-sspi-schannel
+            third_party/libcurl-vc16-x86-release-static-ipv6-sspi-schannel
+          key: ${{ runner.os }}-msvc-dynamic-curl-vc16-${{ matrix.arch }}-v1
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            %LocalAppData%\go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: "Download dependency: clang, nasm and wixtoolset 3"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          scripts\download-toolchain.bat
+      - name: "Download dependency: curl"
+        if: ${{ steps.curl-cache.outputs.cache-hit != 'true' }}
+        run: |
+          scripts\download-curl-msvc.bat ${{ matrix.arch }}
+      - name: Build
+        run: |
+          set VCToolsVersion=
+          set Winsdk=10.0.19041.0
+          set "WindowsSDKVersion=%Winsdk%\"
+          if "${{ matrix.arch }}" == "arm64" (call :SetNewVCToolsVersion)
+          set vsdevcmd=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat
+          set "VSCMD_START_DIR=%CD%"
+          set Platform=${{ matrix.arch }}
+
+          set "Path=%CD%\third_party\nasm;%Path%"
+          set "Path=%CD%\third_party\wix311;%Path%"
+
+          call "%vsdevcmd%" -arch=%Platform% -host_arch=amd64 -winsdk=%Winsdk% -no_logo -vcvars_ver=%VCToolsVersion%
+
+          tools\build -msvc-tgt-arch=${{ matrix.arch }} -msvc-crt-linkage=${{ matrix.crt-linkage }} -use-libcxx=false -build-test -no-packaging || exit /b
+
+          exit /b 0
+
+          :SetNewVCToolsVersion
+          set VCToolsVersion=
+      - name: Run tests
+        run: |
+          cd build-msvc-${{ matrix.arch }}-${{ matrix.crt-linkage }}
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a --ipv6_mode
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5 --ipv6_mode
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h --ipv6_mode
+          yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http --ipv6_mode
+  mingw64-compiler-compatible-crosscompiling:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [i686, x86_64]
+        build_type: [Debug, Release]
+    runs-on: ubuntu-20.04
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Cache clang
+        id: clang-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/nasm
+            third_party/llvm-build/Release+Asserts
+            third_party/wix311
+          key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
+      - name: Cache mingw64 llvm
+        id: mingw-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/llvm-mingw-20230614-ucrt-ubuntu-20.04-x86_64
+          key: ${{ runner.os }}-mingw64-third_party-llvm-20230614-ucrt
+      - name: Cache mingw64 curl
+        id: curl-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/curl-8.4.0_7-win64a-mingw
+            third_party/curl-8.4.0_7-win64-mingw
+            third_party/curl-8.4.0_7-win32-mingw
+          key: ${{ runner.os }}-mingw64-curl-and-aarch64-v1
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: Change ubuntu mirror
+        run: |
+          sudo sed -i 's/azure.archive.ubuntu.com/azure.archive.ubuntu.com/g' /etc/apt/sources.list
+          sudo apt-get update -qq
+      - name: "Install dependency: prebuilt clang and clang-tidy binaries"
+        if: ${{ steps.clang-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/download-clang-prebuilt-binaries.py
+          rm -f third_party/llvm-build/Release+Asserts/*.tgz
+      - name: "Download dependency: llvm-mingw"
+        if: ${{ steps.mingw-cache.outputs.cache-hit != 'true' }}
+        run: |
+          pushd third_party
+          curl -L -O https://github.com/mstorsjo/llvm-mingw/releases/download/20230614/llvm-mingw-20230614-ucrt-ubuntu-20.04-x86_64.tar.xz
+          tar -xf llvm-mingw-20230614-ucrt-ubuntu-20.04-x86_64.tar.xz
+          rm -vf llvm-mingw-*.xz
+          popd
+      - name: "Download dependency: curl"
+        if: ${{ steps.curl-cache.outputs.cache-hit != 'true' }}
+        run: |
+          ./scripts/download-curl-mingw.sh i686
+          ./scripts/download-curl-mingw.sh x86_64
+          ./scripts/download-curl-mingw.sh aarch64
+      - name: Populate depedencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build nasm zip
+          # required by mbedtls build
+          sudo apt-get install -y python3-jsonschema python3-jinja2
+      - name: Build
+        run: |
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system mingw -build-test \
+            --clang-path $PWD/third_party/llvm-mingw-20230614-ucrt-ubuntu-20.04-x86_64 -nc
+      - name: Populate depedencies (Tests-i686)
+        if: ${{ matrix.arch == 'i686' }}
+        run: |
+          # copy curl dll required by yass_test
+          cp -v third_party/curl-8.4.0_7-win32-mingw/bin/libcurl.dll build-mingw-${{ matrix.arch }}/
+          # fix for missing i386 deb packages from deb.sury.org repository
+          sudo add-apt-repository ppa:ondrej/php
+          # alternative fix is to downgrade overloaded libpcre2 versions with five locally installed packages which are PHP-related and came from deb.sury.org repository.
+          # sudo apt-get install -y --allow-downgrades libpcre2-8-0=10.34-7ubuntu0.1 libpcre2-16-0=10.34-7ubuntu0.1 libpcre2-32-0=10.34-7ubuntu0.1 libpcre2-dev=10.34-7ubuntu0.1 libgd3=2.2.5-5.2ubuntu2.1
+          sudo dpkg --add-architecture i386 && sudo apt-get update -qq && sudo apt-get install -y wine wine32
+      - name: Populate depedencies (Tests-x86_64)
+        if: ${{ matrix.arch == 'x86_64' }}
+        run: |
+          # copy curl dll required by yass_test
+          cp -v third_party/curl-8.4.0_7-win64-mingw/bin/libcurl-x64.dll build-mingw-${{ matrix.arch }}/
+          sudo apt-get update -qq && sudo apt-get install -y wine wine64
+      - name: Run tests
+        if: ${{ matrix.arch == 'i686' || matrix.arch == 'x86_64' }}
+        run: |
+          cd build-mingw-${{ matrix.arch }}
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=25 --gtest_throw_on_failure
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=25 --gtest_throw_on_failure --ipv6_mode
+
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a --ipv6_mode
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5 --ipv6_mode
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h --ipv6_mode
+          wine yass_test.exe --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http --ipv6_mode
+  linux-compiler-compatible:
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang]
+        build_type: [Debug, Release]
+        cxxruntime: [libc++]
+    runs-on: ubuntu-22.04
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - name: Cache clang (v16.0.4)
+        id: clang16-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            third_party/clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04
+          key: ${{ runner.os }}-toolchain-clang16-v${{ env.CACHE_EPOCH }}
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: Change ubuntu mirror
+        run: |
+          sudo sed -i 's/azure.archive.ubuntu.com/azure.archive.ubuntu.com/g' /etc/apt/sources.list
+          sudo apt-get update -qq
+      - name: "Install dependency: clang 16"
+        if: ${{ steps.clang16-cache.outputs.cache-hit != 'true' }}
+        run: |
+          curl -L -O https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.4/clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04.tar.xz
+          tar -C third_party -xvf clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04.tar.xz \
+            clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04/lib/clang/16/include \
+            clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04/bin/{clang,clang++,clang-16,ld.lld,lld,llvm-ar,llvm-ranlib}
+          rm -f *.xz
+      - name: Populate depedencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake ninja-build libgtk-3-dev libncurses5 gettext
+          # required by mbedtls build
+          sudo apt-get install -y python3-jsonschema python3-jinja2
+      - name: Populate depedencies (test purposes)
+        run: sudo apt-get update -qq && sudo apt-get install -y libcurl4-openssl-dev
+      - name: Set build options
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            echo "CC=${{ github.workspace }}/third_party/clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04/bin/clang" >> $GITHUB_ENV
+            echo "CXX=${{ github.workspace }}/third_party/clang+llvm-16.0.4-x86_64-linux-gnu-ubuntu-22.04/bin/clang++" >> $GITHUB_ENV
+          fi
+          if [ "${{ matrix.cxxruntime }}" = "libc++" ]; then
+            echo build_opts="${{ env.build_opts }} -use-libcxx=1" >> $GITHUB_ENV
+          else
+            echo build_opts="${{ env.build_opts }} -use-libcxx=0" >> $GITHUB_ENV
+          fi
+      - name: Build
+        run: |
+          ./tools/build -no-packaging ${{ env.build_opts }} -build-test
+      - name: Run tests
+        run: |
+          cd build-linux-amd64
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5 --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http --ipv6_mode
+  mac-compiler-compatible:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14]
+        build_type: [Debug, Release]
+    runs-on: ${{ matrix.os }}
+    env:
+      BUILD_TYPE: '${{ matrix.build_type }}'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout with shallow submodules
+        run: |
+          # unshallow must come first otherwise submodule may be get unshallowed
+          git fetch --tags --unshallow
+          git submodule update --init --depth 1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.19.0'
+      - name: Cache golang
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      - name: Build build tool
+        run: |
+          cd tools
+          go build
+      - name: Populate depedencies
+        run: |
+          # brew update
+          # brew install ninja cmake p7zip
+          brew install ninja
+      - name: Set up Xcode to 15.2 (macos 14)
+        if: ${{ matrix.os == 'macos-14' }}
+        run: |
+          sudo xcode-select -s /Applications/Xcode_15.2.app
+      - name: Build
+        run: |
+          export CC=$(xcrun --find clang)
+          export CXX=$(xcrun --find clang++)
+          ./tools/build -no-packaging -build-test
+      - name: Run tests
+        run: |
+          cd build-darwin-arm64
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks4a --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5 --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type socks5h --ipv6_mode
+          ./yass_test --gtest_shuffle --gtest_repeat=10 --gtest_throw_on_failure --proxy_type http --ipv6_mode

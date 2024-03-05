@@ -1,0 +1,17 @@
+[client]
+port = 1080
+http_port = 1088
+redir_port = 1090
+server = "example.com"
+username = "username"
+password = "password"
+proxy_all = true
+
+[dns]
+type = "doh"
+server = "cloudflare-dns.com"
+addr = "1.1.1.1"
+
+[log]
+file = "./log.xml"
+level = "trace"

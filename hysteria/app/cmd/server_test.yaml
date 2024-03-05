@@ -1,0 +1,121 @@
+listen: :8443
+
+obfs:
+  type: salamander
+  salamander:
+    password: cry_me_a_r1ver
+
+tls:
+  cert: some.crt
+  key: some.key
+
+acme:
+  domains:
+    - sub1.example.com
+    - sub2.example.com
+  email: haha@cringe.net
+  ca: zero
+  disableHTTP: true
+  disableTLSALPN: true
+  altHTTPPort: 9980
+  altTLSALPNPort: 9443
+  dir: random_dir
+
+quic:
+  initStreamReceiveWindow: 77881
+  maxStreamReceiveWindow: 77882
+  initConnReceiveWindow: 77883
+  maxConnReceiveWindow: 77884
+  maxIdleTimeout: 999s
+  maxIncomingStreams: 256
+  disablePathMTUDiscovery: true
+
+bandwidth:
+  up: 500 mbps
+  down: 100 mbps
+
+ignoreClientBandwidth: true
+
+disableUDP: true
+udpIdleTimeout: 120s
+
+auth:
+  type: password
+  password: goofy_ahh_password
+  userpass:
+    yolo: swag
+    lol: kek
+    foo: bar
+  http:
+    url: http://127.0.0.1:5000/auth
+    insecure: true
+  command: /etc/some_command
+
+resolver:
+  type: udp
+  tcp:
+    addr: 123.123.123.123:5353
+    timeout: 4s
+  udp:
+    addr: 4.6.8.0:53
+    timeout: 2s
+  tls:
+    addr: dot.yolo.com:8853
+    timeout: 10s
+    sni: server1.yolo.net
+    insecure: true
+  https:
+    addr: cringe.ahh.cc
+    timeout: 5s
+    sni: real.stuff.net
+    insecure: true
+
+acl:
+  file: chnroute.txt
+  inline:
+    - lmao(ok)
+    - kek(cringe,boba,tea)
+  geoip: some.dat
+  geosite: some_site.dat
+  geoUpdateInterval: 168h
+
+outbounds:
+  - name: goodstuff
+    type: direct
+    direct:
+      mode: 64
+      bindIPv4: 2.4.6.8
+      bindIPv6: 0:0:0:0:0:ffff:0204:0608
+      bindDevice: eth233
+  - name: badstuff
+    type: socks5
+    socks5:
+      addr: shady.proxy.ru:1080
+      username: hackerman
+      password: Elliot Alderson
+  - name: weirdstuff
+    type: http
+    http:
+      url: https://eyy.lmao:4443/goofy
+      insecure: true
+
+trafficStats:
+  listen: :9999
+  secret: its_me_mario
+
+masquerade:
+  type: proxy
+  file:
+    dir: /www/masq
+  proxy:
+    url: https://some.site.net
+    rewriteHost: true
+  string:
+    content: aint nothin here
+    headers:
+      content-type: text/plain
+      custom-haha: lol
+    statusCode: 418
+  listenHTTP: :80
+  listenHTTPS: :443
+  forceHTTPS: true

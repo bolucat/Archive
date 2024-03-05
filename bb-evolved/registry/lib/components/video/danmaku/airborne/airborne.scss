@@ -1,0 +1,8 @@
+.bili-dm,
+.b-danmaku {
+  &.airborne {
+    text-decoration: underline;
+    cursor: pointer;
+    pointer-events: initial;
+  }
+}

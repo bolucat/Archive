@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GitSharedSettings">
+    <option name="FORCE_PUSH_PROHIBITED_PATTERNS">
+      <list />
+    </option>
+  </component>
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/editorkit" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/preferencex" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/termux-view" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/external/v2ray-core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/library/core" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/brook/src/main/go/brook" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/hysteria/src/main/go/hysteria" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/mieru/src/main/go/mieru" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/naive/src/main/jni/naiveproxy" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/pingtunnel/src/main/go/pingtunnel" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/relaybaton/src/main/go/relaybaton" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/trojan-go/src/main/go/trojan-go" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/plugin/tuic/src/main/rust/tuic" vcs="Git" />
+  </component>
+</project>

@@ -1,0 +1,90 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29709.97
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{7BD54B24-BBD7-4DD8-99EF-DAEE6684B673}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		appveyor.yml = appveyor.yml
+		CHANGES = CHANGES
+		CONTRIBUTING.md = CONTRIBUTING.md
+		LICENSE.txt = LICENSE.txt
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks", "Shadowsocks\Shadowsocks.csproj", "{DFE11C77-62FA-4011-8398-38626C02E382}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.Net", "Shadowsocks.Net\Shadowsocks.Net.csproj", "{F60CD6D5-4B1C-4293-829E-9C10D21AE8A3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.PAC", "Shadowsocks.PAC\Shadowsocks.PAC.csproj", "{AE81B416-FBC4-4F88-9EFC-D07D8789355F}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.Protobuf", "Shadowsocks.Protobuf\Shadowsocks.Protobuf.csproj", "{99142A50-E046-4F18-9C52-9855ABADA9B3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.WPF", "Shadowsocks.WPF\Shadowsocks.WPF.csproj", "{EA1FB2D4-B5A7-47A6-B097-2F4D29E23010}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.Interop", "Shadowsocks.Interop\Shadowsocks.Interop.csproj", "{1CC6E8A9-1875-430C-B2BB-F227ACD711B1}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.Tests", "Shadowsocks.Tests\Shadowsocks.Tests.csproj", "{8923E1ED-2594-4668-A4FA-DC2CFF7EA1CA}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.WPF.Tests", "Shadowsocks.WPF.Tests\Shadowsocks.WPF.Tests.csproj", "{97C056B0-2AEB-4467-AAC9-E0FE0639BA9E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.CLI", "Shadowsocks.CLI\Shadowsocks.CLI.csproj", "{78EB3006-81B0-4C13-9B80-E91766874A57}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Shadowsocks.Protocol", "Shadowsocks.Protocol\Shadowsocks.Protocol.csproj", "{94DE5045-4D09-437B-BDE3-679FCAF07A2D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DFE11C77-62FA-4011-8398-38626C02E382}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DFE11C77-62FA-4011-8398-38626C02E382}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DFE11C77-62FA-4011-8398-38626C02E382}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DFE11C77-62FA-4011-8398-38626C02E382}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F60CD6D5-4B1C-4293-829E-9C10D21AE8A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F60CD6D5-4B1C-4293-829E-9C10D21AE8A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F60CD6D5-4B1C-4293-829E-9C10D21AE8A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F60CD6D5-4B1C-4293-829E-9C10D21AE8A3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AE81B416-FBC4-4F88-9EFC-D07D8789355F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE81B416-FBC4-4F88-9EFC-D07D8789355F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE81B416-FBC4-4F88-9EFC-D07D8789355F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE81B416-FBC4-4F88-9EFC-D07D8789355F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99142A50-E046-4F18-9C52-9855ABADA9B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99142A50-E046-4F18-9C52-9855ABADA9B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99142A50-E046-4F18-9C52-9855ABADA9B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99142A50-E046-4F18-9C52-9855ABADA9B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EA1FB2D4-B5A7-47A6-B097-2F4D29E23010}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EA1FB2D4-B5A7-47A6-B097-2F4D29E23010}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EA1FB2D4-B5A7-47A6-B097-2F4D29E23010}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EA1FB2D4-B5A7-47A6-B097-2F4D29E23010}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1CC6E8A9-1875-430C-B2BB-F227ACD711B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1CC6E8A9-1875-430C-B2BB-F227ACD711B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1CC6E8A9-1875-430C-B2BB-F227ACD711B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1CC6E8A9-1875-430C-B2BB-F227ACD711B1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8923E1ED-2594-4668-A4FA-DC2CFF7EA1CA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8923E1ED-2594-4668-A4FA-DC2CFF7EA1CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8923E1ED-2594-4668-A4FA-DC2CFF7EA1CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8923E1ED-2594-4668-A4FA-DC2CFF7EA1CA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{97C056B0-2AEB-4467-AAC9-E0FE0639BA9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{97C056B0-2AEB-4467-AAC9-E0FE0639BA9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{97C056B0-2AEB-4467-AAC9-E0FE0639BA9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{97C056B0-2AEB-4467-AAC9-E0FE0639BA9E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78EB3006-81B0-4C13-9B80-E91766874A57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78EB3006-81B0-4C13-9B80-E91766874A57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78EB3006-81B0-4C13-9B80-E91766874A57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78EB3006-81B0-4C13-9B80-E91766874A57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{94DE5045-4D09-437B-BDE3-679FCAF07A2D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{94DE5045-4D09-437B-BDE3-679FCAF07A2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{94DE5045-4D09-437B-BDE3-679FCAF07A2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{94DE5045-4D09-437B-BDE3-679FCAF07A2D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {F7E7D35B-4FDA-4385-95CF-09DADED042EA}
+	EndGlobalSection
+EndGlobal
