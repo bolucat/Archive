@@ -161,30 +161,6 @@ jobs:
           rm -rf 7zip && chmod +x 7zz
           sudo mv 7zz /usr/bin
           # Recover Binaries from : https://github.com/bolucat/rules/releases/tag/software-archived
-          # clash premium
-          mkdir -p clash/Clients
-          pushd clash/Clients || exit 1
-          aria2c -c -x 8 -s 8 -j 1 -k 1M "https://github.com/bolucat/rules/releases/download/software-archived/clash.7z"
-          7zz e clash.7z && rm -rf clash.7z
-          popd || exit 1
-          # clash-cfa
-          mkdir -p clash-cfa/Clients
-          pushd clash-cfa/Clients || exit 1
-          aria2c -c -x 8 -s 8 -j 1 -k 1M "https://github.com/bolucat/rules/releases/download/software-archived/clash-cfa.7z"
-          7zz e clash-cfa.7z && rm -rf clash-cfa.7z
-          popd || exit 1
-          # clash-cfw
-          mkdir -p clash-cfw/Clients
-          pushd clash-cfw/Clients || exit 1
-          aria2c -c -x 8 -s 8 -j 1 -k 1M "https://github.com/bolucat/rules/releases/download/software-archived/clash-cfw.7z"
-          7zz e clash-cfw.7z && rm -rf clash-cfw.7z
-          popd || exit 1
-          # clashx
-          mkdir -p clashx/Clients
-          pushd clashx/Clients || exit 1
-          aria2c -c -x 8 -s 8 -j 1 -k 1M "https://github.com/bolucat/rules/releases/download/software-archived/clashx.7z"
-          7zz e clashx.7z && rm -rf clashx.7z
-          popd || exit 1
           # shadowsocks-windows
           mkdir -p shadowsocks-windows/Clients
           pushd shadowsocks-windows/Clients || exit 1
@@ -224,32 +200,7 @@ jobs:
           mkdir -p v2raya/Clients
           pushd v2raya/Clients || exit 1
           wget -qO- https://api.github.com/repos/v2rayA/v2rayA/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 
-          # qv2ray-qv2ray
-          mkdir -p qv2ray-qv2ray/Clients
-          pushd qv2ray-qv2ray/Clients || exit 1
-          wget -qO- https://api.github.com/repos/Qv2ray/Qv2ray/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # qv2ray-qv2ray plugins
-          mkdir -p qv2ray-qv2ray/Clients/plugins
-          pushd qv2ray-qv2ray/Clients/plugins || exit 1
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-Trojan/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-Trojan-Go/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-SSR/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-SS/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-Command/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/Qv2ray/QvPlugin-NaiveProxy/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # ssnet-qv2ray
-          mkdir -p ssnet-qv2ray/Clients
-          pushd ssnet-qv2ray/Clients || exit 1
-          wget -qO- https://api.github.com/repos/Shadowsocks-NET/Qv2ray/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # ssnet-qv2ray plugins
-          mkdir -p ssnet-qv2ray/Clients/plugins
-          pushd ssnet-qv2ray/Clients/plugins || exit 1
-          wget -qO- https://api.github.com/repos/bolucat/peace/releases/tags/qvplugin | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
+          popd || exit
           # clash-rev
           mkdir -p clash-rev/Clients
           pushd clash-rev/Clients || exit 1
@@ -284,45 +235,6 @@ jobs:
           mkdir -p clashn/Clients
           pushd clashn/Clients || exit 1
           wget -qO- https://api.github.com/repos/2dust/clashN/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # igniter
-          mkdir -p igniter/Clients
-          pushd igniter/Clients || exit 1
-          wget -qO- https://api.github.com/repos/trojan-gfw/igniter/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # sagernet
-          mkdir -p sagernet/Clients
-          pushd sagernet/Clients || exit 1
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # sagernet plugins
-          mkdir -p sagernet/Clients/plugins
-          pushd sagernet/Clients/plugins || exit 1
-          export Xtls_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "xtls-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Wireguard_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "wireguard-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Naive_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "naive-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Trojan_Go_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "trojan-go-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Hysteria_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "hysteria-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Brook_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "brook-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Relayboton_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "relaybaton-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Pingtunnel_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "pingtunnel-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Mieru_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "mieru-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          export Tuic_Plugin=$(wget -qO- https://api.github.com/repos/SagerNet/SagerNet/tags | grep 'name' | grep "tuic-plugin" | cut -d\" -f4 | sort -Vr | head -1)
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Xtls_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Wireguard_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Naive_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Trojan_Go_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Hysteria_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Brook_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Relayboton_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Pingtunnel_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Mieru_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          wget -qO- https://api.github.com/repos/SagerNet/SagerNet/releases/tags/${Tuic_Plugin} | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
-          popd || exit 1
-          # matsuri
-          mkdir -p matsuri/Clients
-          pushd matsuri/Clients || exit 1
-          wget -qO- https://api.github.com/repos/MatsuriDayo/Matsuri/releases/latest | jq ".assets[] | {browser_download_url}" -c | jq .browser_download_url -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
           popd || exit 1
           # svt-android
           mkdir -p svt-android/Clients
