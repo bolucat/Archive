@@ -1,0 +1,28 @@
+name: Upload release to Internet Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'The version to archive on Internet Archive'
+        required: false
+        default: 'latest'
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v2
+
+    - name: "Install dependencies"
+      run: pip install -r scripts/archiver/requirements.txt
+
+    - name: "Handle release event"
+      run: python3 scripts/archiver/ia_update_release.py
+      env:
+        IA_S3_ACCESS_KEY: ${{ secrets.IA_S3_ACCESS_KEY }}
+        IA_S3_SECRET_KEY: ${{ secrets.IA_S3_SECRET_KEY }}
