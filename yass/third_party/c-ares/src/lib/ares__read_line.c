@@ -49,6 +49,14 @@ int ares__read_line(FILE *fp, char **buf, size_t *bufsize)
       if (!fgets(*buf + offset, bytestoread, fp))
         return (offset != 0) ? 0 : (ferror(fp)) ? ARES_EFILE : ARES_EOF;
       len = offset + strlen(*buf + offset);
+
+      /* Probably means there was an embedded NULL as the first character in
+      * the line, throw away line */
+      if (len == 0) {
+        offset = 0;
+        continue;
+      }
+
       if ((*buf)[len - 1] == '\n')
         {
           (*buf)[len - 1] = 0;

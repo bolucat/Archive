@@ -2,7 +2,6 @@ package cmgr
 
 import (
 	"context"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -155,8 +154,8 @@ func (cm *cmgrImpl) countClosedConnection() int {
 }
 
 func (cm *cmgrImpl) Start(ctx context.Context, errCH chan error) {
-	cm.l.Info("start")
-	ticker := time.NewTicker(time.Second * time.Duration(cm.cfg.SyncDuration))
+	cm.l.Infof("start sync interval=%d", cm.cfg.SyncInterval)
+	ticker := time.NewTicker(time.Second * time.Duration(cm.cfg.SyncInterval))
 	defer ticker.Stop()
 
 	for {
@@ -174,33 +173,4 @@ func (cm *cmgrImpl) Start(ctx context.Context, errCH chan error) {
 			}
 		}
 	}
-}
-
-type syncReq struct {
-	RelayLabel string     `json:"relay_label"`
-	Stats      conn.Stats `json:"stats"`
-}
-
-func (cm *cmgrImpl) syncOnce() error {
-	cm.l.Infof("sync once total closed connections: %d", cm.countClosedConnection())
-	// todo: opt lock
-	cm.lock.Lock()
-
-	reqs := []syncReq{}
-	for label, conns := range cm.closedConnectionsMap {
-		for _, c := range conns {
-			reqs = append(reqs, syncReq{
-				RelayLabel: label,
-				Stats:      *c.GetStats(),
-			})
-		}
-	}
-	cm.closedConnectionsMap = make(map[string][]conn.RelayConn)
-	cm.lock.Unlock()
-	if cm.cfg.NeedSync() {
-		return myhttp.PostJson(http.DefaultClient, cm.cfg.SyncURL, &reqs)
-	} else {
-		cm.l.Debugf("remove %d closed connections", len(reqs))
-	}
-	return nil
 }
