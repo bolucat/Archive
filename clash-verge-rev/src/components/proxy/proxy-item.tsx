@@ -78,19 +78,26 @@ export const ProxyItem = (props: Props) => {
         sx={[
           { borderRadius: 1 },
           ({ palette: { mode, primary } }) => {
-            const bgcolor =
-              mode === "light"
-                ? alpha(primary.main, 0.15)
-                : alpha(primary.main, 0.35);
-            const color = mode === "light" ? primary.main : primary.light;
+            const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
+            const selectColor = mode === "light" ? primary.main : primary.light;
             const showDelay = delay > 0;
 
             return {
               "&:hover .the-check": { display: !showDelay ? "block" : "none" },
               "&:hover .the-delay": { display: showDelay ? "block" : "none" },
               "&:hover .the-icon": { display: "none" },
-              "&.Mui-selected": { bgcolor },
-              "&.Mui-selected .MuiListItemText-secondary": { color },
+              "&.Mui-selected": {
+                width: `calc(100% + 3px)`,
+                marginLeft: `-3px`,
+                borderLeft: `3px solid ${selectColor}`,
+                bgcolor:
+                  mode === "light"
+                    ? alpha(primary.main, 0.15)
+                    : alpha(primary.main, 0.35),
+              },
+              backgroundColor: bgcolor,
+              marginBottom: "8px",
+              height: "40px",
             };
           },
         ]}
@@ -99,10 +106,17 @@ export const ProxyItem = (props: Props) => {
           title={proxy.name}
           secondary={
             <>
-              <span style={{ marginRight: 4 }}>
+              <Box
+                sx={{
+                  display: "inline-block",
+                  marginRight: "8px",
+                  fontSize: "14px",
+                  color: "text.primary",
+                }}
+              >
                 {proxy.name}
                 {showType && proxy.now && ` - ${proxy.now}`}
-              </span>
+              </Box>
               {showType && !!proxy.provider && (
                 <TypeBox component="span">{proxy.provider}</TypeBox>
               )}

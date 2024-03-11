@@ -57,6 +57,7 @@ export const ProfileItem = (props: Props) => {
 
   const { upload = 0, download = 0, total = 0 } = extra ?? {};
   const from = parseUrl(itemData.url);
+  const description = itemData.desc;
   const expire = parseExpire(extra?.expire);
   const progress = Math.round(((download + upload) * 100) / (total + 0.1));
 
@@ -230,7 +231,14 @@ export const ProfileItem = (props: Props) => {
               {...attributes}
               {...listeners}
             >
-              <DragIndicator sx={{ cursor: "move", marginLeft: "-6px" }} />
+              <DragIndicator
+                sx={[
+                  { cursor: "move", marginLeft: "-6px" },
+                  ({ palette: { text } }) => {
+                    return { color: text.primary };
+                  },
+                ]}
+              />
             </Box>
 
             <Typography
@@ -268,27 +276,32 @@ export const ProfileItem = (props: Props) => {
         </Box>
         {/* the second line show url's info or description */}
         <Box sx={boxStyle}>
-          {hasUrl ? (
+          {
             <>
-              <Typography noWrap title={`From: ${from}`}>
-                {from}
-              </Typography>
-
-              <Typography
-                noWrap
-                flex="1 0 auto"
-                fontSize={14}
-                textAlign="right"
-                title={`Updated Time: ${parseExpire(updated)}`}
-              >
-                {updated > 0 ? dayjs(updated * 1000).fromNow() : ""}
-              </Typography>
+              {description ? (
+                <Typography noWrap title={description}>
+                  {description}
+                </Typography>
+              ) : (
+                hasUrl && (
+                  <Typography noWrap title={`From ${from}`}>
+                    {from}
+                  </Typography>
+                )
+              )}
+              {hasUrl && (
+                <Typography
+                  noWrap
+                  flex="1 0 auto"
+                  fontSize={14}
+                  textAlign="right"
+                  title={`Updated Time: ${parseExpire(updated)}`}
+                >
+                  {updated > 0 ? dayjs(updated * 1000).fromNow() : ""}
+                </Typography>
+              )}
             </>
-          ) : (
-            <Typography noWrap title={itemData.desc}>
-              {itemData.desc}
-            </Typography>
-          )}
+          }
         </Box>
         {/* the third line show extra info or last updated time */}
         {hasExtra ? (
@@ -303,11 +316,7 @@ export const ProfileItem = (props: Props) => {
             <span title="Updated Time">{parseExpire(updated)}</span>
           </Box>
         )}
-        <LinearProgress
-          variant="determinate"
-          value={progress}
-          color="inherit"
-        />
+        <LinearProgress variant="determinate" value={progress} />
       </ProfileBox>
 
       <Menu

@@ -50,30 +50,31 @@ export const ProxyItemMini = (props: Props) => {
       sx={[
         {
           height: 56,
-          borderRadius: 1,
+          borderRadius: 1.5,
           pl: 1.5,
           pr: 1,
           justifyContent: "space-between",
           alignItems: "center",
         },
         ({ palette: { mode, primary } }) => {
-          const bgcolor =
-            mode === "light"
-              ? alpha(primary.main, 0.15)
-              : alpha(primary.main, 0.35);
-          const color = mode === "light" ? primary.main : primary.light;
+          const bgcolor = mode === "light" ? "#ffffff" : "#24252f";
           const showDelay = delay > 0;
-
-          const shadowColor =
-            mode === "light" ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.08)";
+          const selectColor = mode === "light" ? primary.main : primary.light;
 
           return {
             "&:hover .the-check": { display: !showDelay ? "block" : "none" },
             "&:hover .the-delay": { display: showDelay ? "block" : "none" },
             "&:hover .the-icon": { display: "none" },
-            "&.Mui-selected": { bgcolor, boxShadow: `0 0 0 1px ${bgcolor}` },
-            "&.Mui-selected .MuiListItemText-secondary": { color },
-            boxShadow: `0 0 0 1px ${shadowColor}`,
+            "&.Mui-selected": {
+              width: `calc(100% + 3px)`,
+              marginLeft: `-3px`,
+              borderLeft: `3px solid ${selectColor}`,
+              bgcolor:
+                mode === "light"
+                  ? alpha(primary.main, 0.15)
+                  : alpha(primary.main, 0.35),
+            },
+            backgroundColor: bgcolor,
           };
         },
       ]}
@@ -82,7 +83,7 @@ export const ProxyItemMini = (props: Props) => {
         <Typography
           variant="body2"
           component="div"
-          color="text.secondary"
+          color="text.primary"
           sx={{
             display: "block",
             textOverflow: "ellipsis",
@@ -114,7 +115,6 @@ export const ProxyItemMini = (props: Props) => {
                   wordBreak: "break-all",
                   overflow: "hidden",
                   whiteSpace: "nowrap",
-                  fontSize: "0.75rem",
                   marginRight: "8px",
                 }}
               >
@@ -122,12 +122,28 @@ export const ProxyItemMini = (props: Props) => {
               </Typography>
             )}
             {!!proxy.provider && (
-              <TypeBox component="span">{proxy.provider}</TypeBox>
+              <TypeBox color="text.secondary" component="span">
+                {proxy.provider}
+              </TypeBox>
             )}
-            <TypeBox component="span">{proxy.type}</TypeBox>
-            {proxy.udp && <TypeBox component="span">UDP</TypeBox>}
-            {proxy.xudp && <TypeBox component="span">XUDP</TypeBox>}
-            {proxy.tfo && <TypeBox component="span">TFO</TypeBox>}
+            <TypeBox color="text.secondary" component="span">
+              {proxy.type}
+            </TypeBox>
+            {proxy.udp && (
+              <TypeBox color="text.secondary" component="span">
+                UDP
+              </TypeBox>
+            )}
+            {proxy.xudp && (
+              <TypeBox color="text.secondary" component="span">
+                XUDP
+              </TypeBox>
+            )}
+            {proxy.tfo && (
+              <TypeBox color="text.secondary" component="span">
+                TFO
+              </TypeBox>
+            )}
           </Box>
         )}
       </Box>
@@ -191,7 +207,7 @@ export const ProxyItemMini = (props: Props) => {
 };
 
 const Widget = styled(Box)(({ theme: { typography } }) => ({
-  padding: "3px 6px",
+  padding: "2px 4px",
   fontSize: 14,
   fontFamily: typography.fontFamily,
   borderRadius: "4px",
@@ -200,22 +216,13 @@ const Widget = styled(Box)(({ theme: { typography } }) => ({
 const TypeBox = styled(Box)(({ theme: { palette, typography } }) => ({
   display: "inline-block",
   border: "1px solid #ccc",
-  borderColor: alpha(palette.text.secondary, 0.36),
-  color: alpha(palette.text.secondary, 0.42),
+  borderColor: "text.secondary",
+  color: "text.secondary",
   borderRadius: 4,
   fontSize: 10,
   fontFamily: typography.fontFamily,
   marginRight: "4px",
   marginTop: "auto",
-  padding: "0 2px",
-  lineHeight: 1.25,
-}));
-
-const TypeTypo = styled(Box)(({ theme: { palette, typography } }) => ({
-  display: "inline-block",
-  fontSize: 10,
-  fontFamily: typography.fontFamily,
-  marginRight: "4px",
-  padding: "0 2px",
-  lineHeight: 1.25,
+  padding: "0 4px",
+  lineHeight: 1.5,
 }));

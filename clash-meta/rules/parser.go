@@ -18,7 +18,7 @@ func ParseRule(tp, payload, target string, params []string, subRules map[string]
 	case "DOMAIN-KEYWORD":
 		parsed = RC.NewDomainKeyword(payload, target)
 	case "DOMAIN-REGEX":
-		parsed = RC.NewDomainRegex(payload, target)
+		parsed, parseErr = RC.NewDomainRegex(payload, target)
 	case "GEOSITE":
 		parsed, parseErr = RC.NewGEOSITE(payload, target)
 	case "GEOIP":
@@ -27,6 +27,9 @@ func ParseRule(tp, payload, target string, params []string, subRules map[string]
 	case "IP-CIDR", "IP-CIDR6":
 		noResolve := RC.HasNoResolve(params)
 		parsed, parseErr = RC.NewIPCIDR(payload, target, RC.WithIPCIDRNoResolve(noResolve))
+	case "IP-ASN":
+		noResolve := RC.HasNoResolve(params)
+		parsed, parseErr = RC.NewIPASN(payload, target, noResolve)
 	case "SRC-IP-CIDR":
 		parsed, parseErr = RC.NewIPCIDR(payload, target, RC.WithIPCIDRSourceIP(true), RC.WithIPCIDRNoResolve(true))
 	case "IP-SUFFIX":

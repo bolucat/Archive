@@ -15,12 +15,11 @@ import {
   InputLabel,
   MenuItem,
   Select,
-  Switch,
   styled,
   TextField,
 } from "@mui/material";
 import { createProfile, patchProfile } from "@/services/cmds";
-import { BaseDialog, Notice } from "@/components/base";
+import { BaseDialog, Notice, Switch } from "@/components/base";
 import { version } from "@root/package.json";
 import { FileInput } from "./file-input";
 
@@ -48,7 +47,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
     const { control, watch, register, ...formIns } = useForm<IProfileItem>({
       defaultValues: {
         type: "remote",
-        name: "Remote File",
+        name: "",
         desc: "",
         url: "",
         option: {

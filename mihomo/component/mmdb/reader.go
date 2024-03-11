@@ -3,6 +3,7 @@ package mmdb
 import (
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/oschwald/maxminddb-golang"
 )
@@ -13,12 +14,21 @@ type geoip2Country struct {
 	} `maxminddb:"country"`
 }
 
-type Reader struct {
+type IPReader struct {
 	*maxminddb.Reader
 	databaseType
 }
 
-func (r Reader) LookupCode(ipAddress net.IP) []string {
+type ASNReader struct {
+	*maxminddb.Reader
+}
+
+type ASNResult struct {
+	AutonomousSystemNumber       uint32 `maxminddb:"autonomous_system_number"`
+	AutonomousSystemOrganization string `maxminddb:"autonomous_system_organization"`
+}
+
+func (r IPReader) LookupCode(ipAddress net.IP) []string {
 	switch r.databaseType {
 	case typeMaxmind:
 		var country geoip2Country
@@ -26,7 +36,7 @@ func (r Reader) LookupCode(ipAddress net.IP) []string {
 		if country.Country.IsoCode == "" {
 			return []string{}
 		}
-		return []string{country.Country.IsoCode}
+		return []string{strings.ToLower(country.Country.IsoCode)}
 
 	case typeSing:
 		var code string
@@ -54,4 +64,10 @@ func (r Reader) LookupCode(ipAddress net.IP) []string {
 	default:
 		panic(fmt.Sprint("unknown geoip database type:", r.databaseType))
 	}
+}
+
+func (r ASNReader) LookupASN(ip net.IP) ASNResult {
+	var result ASNResult
+	r.Lookup(ip, &result)
+	return result
 }

@@ -8,22 +8,29 @@ import (
 	"net"
 	"runtime"
 	"strconv"
+	"strings"
+	"time"
 
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 	tuicCommon "github.com/metacubex/mihomo/transport/tuic/common"
 
 	"github.com/metacubex/sing-quic/hysteria2"
 
 	M "github.com/sagernet/sing/common/metadata"
+	"github.com/zhangyunhao116/fastrand"
 )
 
 func init() {
 	hysteria2.SetCongestionController = tuicCommon.SetCongestionController
 }
+
+const minHopInterval = 5
+const defaultHopInterval = 30
 
 type Hysteria2 struct {
 	*Base
@@ -38,6 +45,8 @@ type Hysteria2Option struct {
 	Name           string   `proxy:"name"`
 	Server         string   `proxy:"server"`
 	Port           int      `proxy:"port"`
+	Ports          string   `proxy:"ports,omitempty"`
+	HopInterval    int      `proxy:"hop-interval,omitempty"`
 	Up             string   `proxy:"up,omitempty"`
 	Down           string   `proxy:"down,omitempty"`
 	Password       string   `proxy:"password,omitempty"`
@@ -80,6 +89,41 @@ func closeHysteria2(h *Hysteria2) {
 	if h.client != nil {
 		_ = h.client.CloseWithError(errors.New("proxy removed"))
 	}
+}
+
+func parsePorts(portStr string) (ports []uint16) {
+	portStrs := strings.Split(portStr, ",")
+	for _, portStr := range portStrs {
+		if strings.Contains(portStr, "-") {
+			// Port range
+			portRange := strings.Split(portStr, "-")
+			if len(portRange) != 2 {
+				return nil
+			}
+			start, err := strconv.ParseUint(portRange[0], 10, 16)
+			if err != nil {
+				return nil
+			}
+			end, err := strconv.ParseUint(portRange[1], 10, 16)
+			if err != nil {
+				return nil
+			}
+			if start > end {
+				start, end = end, start
+			}
+			for i := start; i <= end; i++ {
+				ports = append(ports, uint16(i))
+			}
+		} else {
+			// Single port
+			port, err := strconv.ParseUint(portStr, 10, 16)
+			if err != nil {
+				return nil
+			}
+			ports = append(ports, uint16(port))
+		}
+	}
+	return ports
 }
 
 func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
@@ -129,7 +173,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 	clientOptions := hysteria2.ClientOptions{
 		Context:            context.TODO(),
 		Dialer:             singDialer,
-		ServerAddress:      M.ParseSocksaddrHostPort(option.Server, uint16(option.Port)),
+		Logger:             log.SingLogger,
 		SendBPS:            StringToBps(option.Up),
 		ReceiveBPS:         StringToBps(option.Down),
 		SalamanderPassword: salamanderPassword,
@@ -138,6 +182,29 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 		UDPDisabled:        false,
 		CWND:               option.CWND,
 		UdpMTU:             option.UdpMTU,
+		ServerAddress: func(ctx context.Context) (*net.UDPAddr, error) {
+			return resolveUDPAddrWithPrefer(ctx, "udp", addr, C.NewDNSPrefer(option.IPVersion))
+		},
+	}
+
+	if option.Ports != "" {
+		ports := parsePorts(option.Ports)
+		if len(ports) > 0 {
+			serverAddress := make([]string, len(ports))
+			for i, port := range ports {
+				serverAddress[i] = net.JoinHostPort(option.Server, strconv.Itoa(int(port)))
+			}
+			clientOptions.ServerAddress = func(ctx context.Context) (*net.UDPAddr, error) {
+				return resolveUDPAddrWithPrefer(ctx, "udp", serverAddress[fastrand.Intn(len(serverAddress))], C.NewDNSPrefer(option.IPVersion))
+			}
+
+			if option.HopInterval == 0 {
+				option.HopInterval = defaultHopInterval
+			} else if option.HopInterval < minHopInterval {
+				option.HopInterval = minHopInterval
+			}
+			clientOptions.HopInterval = time.Duration(option.HopInterval) * time.Second
+		}
 	}
 
 	client, err := hysteria2.NewClient(clientOptions)

@@ -14,11 +14,15 @@ class YASSWindow {
   ~YASSWindow();
 
  private:
+  static YASSWindow* window;
+
+ private:
   GtkWindow* impl_;
 
  public:
   void show();
   void present();
+  void close();
 
   // Left Panel
   GtkButton* start_button_;
@@ -44,6 +48,7 @@ class YASSWindow {
   void OnSystemProxyClicked();
 
   GtkStatusbar* status_bar_;
+  std::string last_status_msg_;
 
  public:
   std::string GetServerHost();

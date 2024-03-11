@@ -1,3 +1,33 @@
+## v1.5.7
+
+### Features
+
+- 优化 UI 各种细节
+- 提供菜单栏图标样式切换选项(单色/彩色/禁用)
+- 添加自动检查更新开关
+- MacOS 开启 Tun 模式自动修改 DNS
+- 调整可拖动区域(尝试修复触摸屏无法拖动的问题)
+
+---
+
+## v1.5.6
+
+### Features
+
+- 全新专属 Verge rev UI 界面 (by @Amnesiash) 及细节调整
+- 提供允许无效证书的开关
+- 删除不必要的快捷键
+- Provider 更新添加动画
+- Merge 支持 Provider
+- 更换订阅框的粘贴按钮，删除默认的"Remote File" Profile 名称
+- 链接菜单添加节点显示
+
+### Bugs Fixes
+
+- Linux 下图片显示错误
+
+---
+
 ## v1.5.4
 
 ### Features

@@ -1037,7 +1037,7 @@
     <value>Copy the font TTF/TTC file to the directory guiFonts, restart the settings</value>
   </data>
   <data name="TbSettingsSocksPortTip" xml:space="preserve">
-    <value>HTTP port=SOCKS port+1</value>
+    <value>HTTP port=SOCKS port+1;Pac port=SOCKS port+4;API port=SOCKS port+5;</value>
   </data>
   <data name="TbSettingsStartBootTip" xml:space="preserve">
     <value>Set this with admin privileges, get admin privileges after startup</value>
@@ -1151,7 +1151,7 @@
     <value>Congestion control</value>
   </data>
   <data name="LvPrevProfile" xml:space="preserve">
-    <value>Previous proxy remakrs</value>
+    <value>Previous proxy remarks</value>
   </data>
   <data name="LvNextProfile" xml:space="preserve">
     <value>Next proxy remarks</value>

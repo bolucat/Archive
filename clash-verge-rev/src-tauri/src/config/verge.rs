@@ -42,6 +42,9 @@ pub struct IVerge {
     /// common tray icon
     pub common_tray_icon: Option<bool>,
 
+    /// menu icon
+    pub menu_icon: Option<String>,
+
     /// sysproxy tray icon
     pub sysproxy_tray_icon: Option<bool>,
 
@@ -89,6 +92,9 @@ pub struct IVerge {
 
     /// 切换代理时自动关闭连接
     pub auto_close_connection: Option<bool>,
+
+    /// 是否自动检查更新
+    pub auto_check_update: Option<bool>,
 
     /// 默认的延迟测试连接
     pub default_latency_test: Option<String>,
@@ -176,6 +182,7 @@ impl IVerge {
             traffic_graph: Some(true),
             enable_memory_usage: Some(true),
             enable_group_icon: Some(true),
+            menu_icon: Some("monochrome".into()),
             common_tray_icon: Some(false),
             sysproxy_tray_icon: Some(false),
             tun_tray_icon: Some(false),
@@ -189,6 +196,7 @@ impl IVerge {
             enable_proxy_guard: Some(false),
             proxy_guard_duration: Some(30),
             auto_close_connection: Some(true),
+            auto_check_update: Some(true),
             enable_builtin_enhanced: Some(true),
             auto_log_clean: Some(3),
             ..Self::default()
@@ -221,6 +229,7 @@ impl IVerge {
         patch!(traffic_graph);
         patch!(enable_memory_usage);
         patch!(enable_group_icon);
+        patch!(menu_icon);
         patch!(common_tray_icon);
         patch!(sysproxy_tray_icon);
         patch!(tun_tray_icon);
@@ -244,6 +253,7 @@ impl IVerge {
         patch!(hotkeys);
 
         patch!(auto_close_connection);
+        patch!(auto_check_update);
         patch!(default_latency_test);
         patch!(default_latency_timeout);
         patch!(enable_builtin_enhanced);

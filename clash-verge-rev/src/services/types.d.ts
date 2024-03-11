@@ -202,6 +202,7 @@ interface IVergeConfig {
   traffic_graph?: boolean;
   enable_memory_usage?: boolean;
   enable_group_icon?: boolean;
+  menu_icon?: "monochrome" | "colorful" | "disable";
   common_tray_icon?: boolean;
   sysproxy_tray_icon?: boolean;
   tun_tray_icon?: boolean;
@@ -232,6 +233,7 @@ interface IVergeConfig {
     css_injection?: string;
   };
   auto_close_connection?: boolean;
+  auto_check_update?: boolean;
   default_latency_test?: string;
   default_latency_timeout?: number;
   enable_builtin_enhanced?: boolean;

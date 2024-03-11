@@ -169,6 +169,7 @@ type Experimental struct {
 	Fingerprints     []string `yaml:"fingerprints"`
 	QUICGoDisableGSO bool     `yaml:"quic-go-disable-gso"`
 	QUICGoDisableECN bool     `yaml:"quic-go-disable-ecn"`
+	IP4PEnable       bool     `yaml:"dialer-ip4p-convert"`
 }
 
 // Config is mihomo config manager
@@ -347,6 +348,7 @@ type RawConfig struct {
 type GeoXUrl struct {
 	GeoIp   string `yaml:"geoip" json:"geoip"`
 	Mmdb    string `yaml:"mmdb" json:"mmdb"`
+	ASN     string `yaml:"asn" json:"asn"`
 	GeoSite string `yaml:"geosite" json:"geosite"`
 }
 
@@ -494,6 +496,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		},
 		GeoXUrl: GeoXUrl{
 			Mmdb:    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
+			ASN:     "https://github.com/P3TERX/GeoLite.mmdb/releases/download/2024.03.10/GeoLite2-ASN.mmdb",
 			GeoIp:   "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
 			GeoSite: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
 		},
@@ -619,6 +622,7 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 	C.GeoIpUrl = cfg.GeoXUrl.GeoIp
 	C.GeoSiteUrl = cfg.GeoXUrl.GeoSite
 	C.MmdbUrl = cfg.GeoXUrl.Mmdb
+	C.ASNUrl = cfg.GeoXUrl.ASN
 	C.GeodataMode = cfg.GeodataMode
 	C.UA = cfg.GlobalUA
 	if cfg.KeepAliveInterval != 0 {

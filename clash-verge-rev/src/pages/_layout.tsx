@@ -13,6 +13,9 @@ import { routers } from "./_routers";
 import { getAxios } from "@/services/api";
 import { useVerge } from "@/hooks/use-verge";
 import LogoSvg from "@/assets/image/logo.svg?react";
+import LogoSvg_dark from "@/assets/image/logo_dark.svg?react";
+import { atomThemeMode } from "@/services/states";
+import { useRecoilState } from "recoil";
 import { BaseErrorBoundary, Notice } from "@/components/base";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutControl } from "@/components/layout/layout-control";
@@ -31,8 +34,9 @@ dayjs.extend(relativeTime);
 const OS = getSystem();
 
 const Layout = () => {
+  const [mode] = useRecoilState(atomThemeMode);
+  const isDark = mode === "light" ? false : true;
   const { t } = useTranslation();
-
   const { theme } = useCustomTheme();
 
   const { verge } = useVerge();
@@ -100,9 +104,6 @@ const Layout = () => {
           square
           elevation={0}
           className={`${OS} layout`}
-          onPointerDown={(e: any) => {
-            if (e.target?.dataset?.windrag) appWindow.startDragging();
-          }}
           onContextMenu={(e) => {
             // only prevent it on Windows
             const validList = ["input", "textarea"];
@@ -123,29 +124,32 @@ const Layout = () => {
             }),
           ]}
         >
-          <div className="layout__left" data-windrag>
-            <div className="the-logo" data-windrag>
-              <LogoSvg />
-
-              {!portableFlag && <UpdateButton className="the-newbtn" />}
+          <div className="layout__left" data-tauri-drag-region="true">
+            <div className="the-logo" data-tauri-drag-region="true">
+              {!isDark ? <LogoSvg /> : <LogoSvg_dark />}
+              {<UpdateButton className="the-newbtn" />}
             </div>
 
             <List className="the-menu">
               {routers.map((router) => (
-                <LayoutItem key={router.label} to={router.link}>
+                <LayoutItem
+                  key={router.label}
+                  to={router.link}
+                  icon={router.icon}
+                >
                   {t(router.label)}
                 </LayoutItem>
               ))}
             </List>
 
-            <div className="the-traffic" data-windrag>
+            <div className="the-traffic">
               <LayoutTraffic />
             </div>
           </div>
 
-          <div className="layout__right" data-windrag>
+          <div className="layout__right">
             {OS === "windows" && (
-              <div className="the-bar">
+              <div className="the-bar" data-tauri-drag-region="true">
                 <LayoutControl />
               </div>
             )}
