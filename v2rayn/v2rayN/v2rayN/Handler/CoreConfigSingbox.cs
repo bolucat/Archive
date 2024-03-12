@@ -440,6 +440,13 @@ namespace v2rayN.Handler
                         }
                         break;
 
+                    case nameof(ETransport.httpupgrade):
+                        transport.type = nameof(ETransport.httpupgrade);
+                        transport.path = Utile.IsNullOrEmpty(node.path) ? null : node.path;
+                        transport.host = Utile.IsNullOrEmpty(node.requestHost) ? null : node.requestHost;
+
+                        break;
+
                     case nameof(ETransport.quic):
                         transport.type = nameof(ETransport.quic);
                         break;

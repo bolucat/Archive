@@ -496,7 +496,7 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 		},
 		GeoXUrl: GeoXUrl{
 			Mmdb:    "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb",
-			ASN:     "https://github.com/P3TERX/GeoLite.mmdb/releases/download/2024.03.10/GeoLite2-ASN.mmdb",
+			ASN:     "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb",
 			GeoIp:   "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
 			GeoSite: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
 		},
