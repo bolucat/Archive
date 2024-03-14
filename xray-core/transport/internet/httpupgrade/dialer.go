@@ -15,15 +15,15 @@ import (
 	"github.com/xtls/xray-core/transport/internet/tls"
 )
 
-type ConnReq struct {
+type ConnRF struct {
 	net.Conn
 	Req   *http.Request
-	first bool
+	First bool
 }
 
-func (c *ConnReq) Read(b []byte) (int, error) {
-	if c.first {
-		c.first = false
+func (c *ConnRF) Read(b []byte) (int, error) {
+	if c.First {
+		c.First = false
 		// TODO The bufio usage here is unreliable
 		resp, err := http.ReadResponse(bufio.NewReader(c.Conn), c.Req) // nolint:bodyclose
 		if err != nil {
@@ -81,7 +81,7 @@ func dialhttpUpgrade(ctx context.Context, dest net.Destination, streamSettings *
 		return nil, err
 	}
 
-	return &ConnReq{Conn: conn, Req: req}, nil
+	return &ConnRF{Conn: conn, Req: req, First: true}, nil
 }
 
 func dial(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (stat.Connection, error) {

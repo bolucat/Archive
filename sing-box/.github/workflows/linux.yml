@@ -3,8 +3,7 @@ name: Release to Linux repository
 on:
   release:
     types:
-      - released
-      - prereleased
+      - published
 
 jobs:
   build:
