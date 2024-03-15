@@ -93,18 +93,34 @@ class GroupsFragment : Fragment(), CommandClient.Handler {
     }
 
     @SuppressLint("NotifyDataSetChanged")
-    override fun updateGroups(groups: List<OutboundGroup>) {
+    override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
         val adapter = adapter ?: return
         activity?.runOnUiThread {
-            updateDisplayed(groups.isNotEmpty())
-            adapter.groups = groups
-            adapter.notifyDataSetChanged()
+            updateDisplayed(newGroups.isNotEmpty())
+            adapter.setGroups(newGroups)
         }
     }
 
     private class Adapter : RecyclerView.Adapter<GroupView>() {
 
-        lateinit var groups: List<OutboundGroup>
+        private lateinit var groups: MutableList<OutboundGroup>
+
+        @SuppressLint("NotifyDataSetChanged")
+        fun setGroups(newGroups: MutableList<OutboundGroup>) {
+            if (!::groups.isInitialized || groups.size != newGroups.size) {
+                groups = newGroups
+                notifyDataSetChanged()
+            } else {
+                newGroups.forEachIndexed { index, group ->
+                    if (this.groups[index] != group) {
+                        this.groups[index] = group
+                        notifyItemChanged(index)
+                    }
+                }
+
+            }
+        }
+
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): GroupView {
             return GroupView(
                 ViewDashboardGroupBinding.inflate(
@@ -133,6 +149,8 @@ class GroupsFragment : Fragment(), CommandClient.Handler {
         lateinit var group: OutboundGroup
         lateinit var items: MutableList<OutboundGroupItem>
         lateinit var adapter: ItemAdapter
+
+        @SuppressLint("NotifyDataSetChanged")
         fun bind(group: OutboundGroup) {
             this.group = group
             binding.groupName.text = group.tag
@@ -153,10 +171,15 @@ class GroupsFragment : Fragment(), CommandClient.Handler {
             while (itemIterator.hasNext()) {
                 items.add(itemIterator.next())
             }
-            adapter = ItemAdapter(this, group, items)
-            binding.itemList.adapter = adapter
-            (binding.itemList.itemAnimator as SimpleItemAnimator).supportsChangeAnimations = false
-            binding.itemList.layoutManager = GridLayoutManager(binding.root.context, 2)
+            if (!::adapter.isInitialized) {
+                adapter = ItemAdapter(this, group, items)
+                binding.itemList.adapter = adapter
+                (binding.itemList.itemAnimator as SimpleItemAnimator).supportsChangeAnimations =
+                    false
+                binding.itemList.layoutManager = GridLayoutManager(binding.root.context, 2)
+            } else {
+                adapter.setItems(items)
+            }
             updateExpand()
         }
 
@@ -220,9 +243,25 @@ class GroupsFragment : Fragment(), CommandClient.Handler {
     private class ItemAdapter(
         val groupView: GroupView,
         val group: OutboundGroup,
-        val items: List<OutboundGroupItem>
+        private var items: MutableList<OutboundGroupItem> = mutableListOf()
     ) :
         RecyclerView.Adapter<ItemGroupView>() {
+
+        @SuppressLint("NotifyDataSetChanged")
+        fun setItems(newItems: MutableList<OutboundGroupItem>) {
+            if (items.size != newItems.size) {
+                items = newItems
+                notifyDataSetChanged()
+            } else {
+                newItems.forEachIndexed { index, item ->
+                    if (items[index] != item) {
+                        items[index] = item
+                        notifyItemChanged(index)
+                    }
+                }
+            }
+        }
+
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ItemGroupView {
             return ItemGroupView(
                 ViewDashboardGroupItemBinding.inflate(

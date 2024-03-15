@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.databinding.FragmentDashboardBinding
 import io.nekohasekai.sfa.ui.MainActivity
@@ -20,6 +21,7 @@ class DashboardFragment : Fragment(R.layout.fragment_dashboard) {
 
     private val activity: MainActivity? get() = super.getActivity() as MainActivity?
     private var binding: FragmentDashboardBinding? = null
+    private var mediator: TabLayoutMediator? = null
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -34,21 +36,40 @@ class DashboardFragment : Fragment(R.layout.fragment_dashboard) {
         val binding = binding ?: return
         binding.dashboardPager.adapter = Adapter(this)
         binding.dashboardPager.offscreenPageLimit = Page.values().size
-        TabLayoutMediator(binding.dashboardTabLayout, binding.dashboardPager) { tab, position ->
-            tab.setText(Page.values()[position].titleRes)
-        }.attach()
         activity.serviceStatus.observe(viewLifecycleOwner) {
             when (it) {
                 Status.Stopped -> {
                     disablePager()
+                    binding.fab.setImageResource(R.drawable.ic_play_arrow_24)
+                    binding.fab.show()
+                }
+
+                Status.Starting -> {
+                    binding.fab.hide()
                 }
 
                 Status.Started -> {
                     enablePager()
+                    binding.fab.setImageResource(R.drawable.ic_stop_24)
+                    binding.fab.show()
                 }
 
                 Status.Stopping -> {
                     disablePager()
+                    binding.fab.hide()
+                }
+
+                else -> {}
+            }
+        }
+        binding.fab.setOnClickListener {
+            when (activity.serviceStatus.value) {
+                Status.Stopped -> {
+                    activity.startService()
+                }
+
+                Status.Started -> {
+                    BoxService.stop()
                 }
 
                 else -> {}
@@ -56,20 +77,37 @@ class DashboardFragment : Fragment(R.layout.fragment_dashboard) {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        val activityBinding = activity?.binding ?: return
+        val binding = binding ?: return
+        if (mediator != null) return
+        mediator = TabLayoutMediator(
+            activityBinding.dashboardTabLayout,
+            binding.dashboardPager
+        ) { tab, position ->
+            tab.setText(Page.values()[position].titleRes)
+        }.apply { attach() }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
+        mediator?.detach()
+        mediator = null
         binding = null
     }
 
     private fun enablePager() {
+        val activity = activity ?: return
         val binding = binding ?: return
-        binding.dashboardTabLayout.isVisible = true
+        activity.binding?.dashboardTabLayout?.isVisible = true
         binding.dashboardPager.isUserInputEnabled = true
     }
 
     private fun disablePager() {
+        val activity = activity ?: return
         val binding = binding ?: return
-        binding.dashboardTabLayout.isVisible = false
+        activity.binding?.dashboardTabLayout?.isVisible = false
         binding.dashboardPager.isUserInputEnabled = false
         binding.dashboardPager.setCurrentItem(0, false)
     }

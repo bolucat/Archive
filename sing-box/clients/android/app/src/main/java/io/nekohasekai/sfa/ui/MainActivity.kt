@@ -8,18 +8,24 @@ import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
-import android.os.Process
 import android.text.Html
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
+import androidx.navigation.NavDestination
 import androidx.navigation.findNavController
+import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
+import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
+import androidx.preference.Preference
+import androidx.preference.PreferenceFragmentCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.ProfileContent
@@ -38,7 +44,9 @@ import io.nekohasekai.sfa.databinding.ActivityMainBinding
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.hasPermission
 import io.nekohasekai.sfa.ui.profile.NewProfileActivity
+import io.nekohasekai.sfa.ui.settings.CoreFragment
 import io.nekohasekai.sfa.ui.shared.AbstractActivity
+import io.nekohasekai.sfa.utils.MIUIUtils
 import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -47,13 +55,18 @@ import java.io.File
 import java.util.Date
 import java.util.LinkedList
 
-class MainActivity : AbstractActivity(), ServiceConnection.Callback {
+class MainActivity : AbstractActivity<ActivityMainBinding>(),
+    PreferenceFragmentCompat.OnPreferenceStartFragmentCallback,
+    ServiceConnection.Callback {
 
     companion object {
         private const val TAG = "MainActivity"
     }
 
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var navHostFragment: NavHostFragment
+    private lateinit var navController: NavController
+    private lateinit var appBarConfiguration: AppBarConfiguration
+
     private val connection = ServiceConnection(this, this)
 
     val logList = LinkedList<String>()
@@ -63,12 +76,13 @@ class MainActivity : AbstractActivity(), ServiceConnection.Callback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-
-        val navController = findNavController(R.id.nav_host_fragment_activity_my)
+        navHostFragment =
+            supportFragmentManager.findFragmentById(R.id.nav_host_fragment_activity_my) as NavHostFragment
+        navController = navHostFragment.navController
+        navController.setGraph(R.navigation.mobile_navigation)
         navController.navigate(R.id.navigation_dashboard)
-        val appBarConfiguration =
+        navController.addOnDestinationChangedListener(::onDestinationChanged)
+        appBarConfiguration =
             AppBarConfiguration(
                 setOf(
                     R.id.navigation_dashboard,
@@ -79,11 +93,39 @@ class MainActivity : AbstractActivity(), ServiceConnection.Callback {
             )
         setupActionBarWithNavController(navController, appBarConfiguration)
         binding.navView.setupWithNavController(navController)
-
         reconnect()
         startIntegration()
 
         onNewIntent(intent)
+    }
+
+    override fun onSupportNavigateUp(): Boolean {
+        return navController.navigateUp(appBarConfiguration)
+    }
+
+    private fun onDestinationChanged(
+        navController: NavController,
+        navDestination: NavDestination,
+        bundle: Bundle?
+    ) {
+        val binding = binding ?: return
+        val destinationId = navDestination.id
+        binding.dashboardTabContainer.isVisible = destinationId == R.id.navigation_dashboard
+    }
+
+    override fun onPreferenceStartFragment(
+        caller: PreferenceFragmentCompat,
+        pref: Preference
+    ): Boolean {
+        val navController = findNavController(R.id.nav_host_fragment_activity_my)
+        when (pref.fragment) {
+            CoreFragment::class.java.name -> {
+                navController.navigate(R.id.navigation_settings_core)
+                return true
+            }
+
+            else -> return false
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -378,12 +420,9 @@ class MainActivity : AbstractActivity(), ServiceConnection.Callback {
     }
 
     private fun openPermissionSettings() {
-        if (!getSystemProperty("ro.miui.ui.version.name").isNullOrBlank()) {
-            val intent = Intent("miui.intent.action.APP_PERM_EDITOR")
-            intent.putExtra("extra_package_uid", Process.myUid())
-            intent.putExtra("extra_pkgname", packageName)
+        if (MIUIUtils.isMIUI) {
             try {
-                startActivity(intent)
+                MIUIUtils.openPermissionSettings(this)
                 return
             } catch (ignored: Exception) {
             }
@@ -398,15 +437,6 @@ class MainActivity : AbstractActivity(), ServiceConnection.Callback {
         }
     }
 
-    @SuppressLint("PrivateApi")
-    fun getSystemProperty(key: String?): String? {
-        try {
-            return Class.forName("android.os.SystemProperties").getMethod("get", String::class.java)
-                .invoke(null, key) as String
-        } catch (ignored: Exception) {
-        }
-        return null
-    }
 
     private var paused = false
     override fun onPause() {
@@ -444,5 +474,6 @@ class MainActivity : AbstractActivity(), ServiceConnection.Callback {
         connection.disconnect()
         super.onDestroy()
     }
+
 
 }

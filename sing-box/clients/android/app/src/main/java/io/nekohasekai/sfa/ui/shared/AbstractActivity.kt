@@ -1,31 +1,58 @@
 package io.nekohasekai.sfa.ui.shared
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.MenuItem
+import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.viewbinding.ViewBinding
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.DynamicColors
-import com.google.android.material.elevation.SurfaceColors
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.ktx.getAttrColor
+import io.nekohasekai.sfa.ui.MainActivity
+import io.nekohasekai.sfa.utils.MIUIUtils
+import java.lang.reflect.ParameterizedType
 
+abstract class AbstractActivity<Binding : ViewBinding>() :
+    AppCompatActivity() {
 
-abstract class AbstractActivity : AppCompatActivity() {
+    private var _binding: Binding? = null
+    internal val binding get() = _binding!!
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         DynamicColors.applyToActivityIfAvailable(this)
 
-        val color = SurfaceColors.SURFACE_2.getColor(this)
-        window.statusBarColor = color
-        window.navigationBarColor = color
+        val colorSurfaceContainer =
+            getAttrColor(com.google.android.material.R.attr.colorSurfaceContainer)
+        window.statusBarColor = colorSurfaceContainer
+        window.navigationBarColor = colorSurfaceContainer
 
-        supportActionBar?.setHomeAsUpIndicator(AppCompatResources.getDrawable(
-            this@AbstractActivity,
-            R.drawable.ic_arrow_back_24
-        )!!.apply {
-            setTint(getAttrColor(com.google.android.material.R.attr.colorOnSurface))
-        })
+        _binding = createBindingInstance(layoutInflater).also {
+            setContentView(it.root)
+        }
+
+        findViewById<MaterialToolbar>(R.id.toolbar)?.also {
+            setSupportActionBar(it)
+        }
+
+        // MIUI overrides colorSurfaceContainer to colorSurface without below flags
+        @Suppress("DEPRECATION") if (MIUIUtils.isMIUI) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            window.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+        }
+
+        if (this !is MainActivity) {
+            supportActionBar?.setHomeAsUpIndicator(AppCompatResources.getDrawable(
+                this@AbstractActivity, R.drawable.ic_arrow_back_24
+            )!!.apply {
+                setTint(getAttrColor(com.google.android.material.R.attr.colorOnSurface))
+            })
+            supportActionBar?.setDisplayHomeAsUpEnabled(true)
+        }
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -36,6 +63,16 @@ abstract class AbstractActivity : AppCompatActivity() {
             }
         }
         return super.onOptionsItemSelected(item)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun createBindingInstance(
+        inflater: LayoutInflater,
+    ): Binding {
+        val vbType = (javaClass.genericSuperclass as ParameterizedType).actualTypeArguments[0]
+        val vbClass = vbType as Class<Binding>
+        val method = vbClass.getMethod("inflate", LayoutInflater::class.java)
+        return method.invoke(null, inflater) as Binding
     }
 
 }

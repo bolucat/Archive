@@ -30,17 +30,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Apply Patch
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        run: |
-          git config --global user.email "clash-verge-rev@github.io"
-          git config --global user.name "clash-verge-rev"
-          git am patches/support-windows-aarch64.patch
-
-      - name: Init Submodule
-        if: matrix.target == 'aarch64-pc-windows-msvc'
-        run: git submodule update --init --recursive
-
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -57,7 +46,7 @@ jobs:
         with:
           node-version: "20"
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v3
         name: Install pnpm
         with:
           version: 8
@@ -100,6 +89,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
@@ -112,30 +103,56 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           target: ${{ matrix.target }}
+
       - name: Get Version
         run: |
           sudo apt-get update
           sudo apt-get install jq
           echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
+          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+
+      - run: |
+          cat > release.txt << 'EOF'
+          ### 我应该下载哪个版本？
+
+          - Windows x86_64架构: x64-setup.exe (不支持win7)
+          - Windows arm64架构: arm64-setup.exe
+          - MacOS intel芯片: x64.dmg
+          - MacOS apple M芯片: aarch64.dmg (提示文件损坏看下面FAQ)
+          - Linux x64架构: amd64.AppImage/amd64.deb
+          - Linux arm64架构: arm64.deb
+          - Linux armv7架构: armhf.deb
+          - Windows 便携板 x86_64架构: x64_portable.zip (不推荐使用，无法自动更新)
+          - Windows 便携板 arm64架构: arm64_portable.zip (不推荐使用，无法自动更新)
+
+          ### FAQ
+
+          - [https://clash-verge-rev.github.io/faq.html](https://clash-verge-rev.github.io/faq.html)
+
+          Created at  ${{ env.BUILDTIME }}.
+          EOF
+
       - name: Upload Release
         if: startsWith(matrix.target, 'x86_64')
         uses: softprops/action-gh-release@v1
         with:
           tag_name: alpha
           name: "Clash Verge Rev Alpha"
-          body: "More new features are now supported."
+          body_path: release.txt
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           files: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage*
+
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: alpha
           name: "Clash Verge Rev Alpha"
-          body: "More new features are now supported."
+          body_path: release.txt
           prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           files: src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+
   update_tag:
     name: Update tag
     runs-on: ubuntu-latest
@@ -143,21 +160,40 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
         shell: bash
+
       - name: Update Tag
         uses: richardsimko/update-tag@v1
         with:
           tag_name: alpha
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - run: |
           cat > release.txt << 'EOF'
-          ## Clash Verge Rev Alpha
+          ### 我应该下载哪个版本？
+
+          - Windows x86_64架构: x64-setup.exe (不支持win7)
+          - Windows arm64架构: arm64-setup.exe
+          - MacOS intel芯片: x64.dmg
+          - MacOS apple M芯片: aarch64.dmg (提示文件损坏看下面FAQ)
+          - Linux x64架构: amd64.AppImage/amd64.deb
+          - Linux arm64架构: arm64.deb
+          - Linux armv7架构: armhf.deb
+          - Windows 便携板 x86_64架构: x64_portable.zip (不推荐使用，无法自动更新)
+          - Windows 便携板 arm64架构: arm64_portable.zip (不推荐使用，无法自动更新)
+
+          ### FAQ
+
+          - [https://clash-verge-rev.github.io/faq.html](https://clash-verge-rev.github.io/faq.html)
+
           Created at  ${{ env.BUILDTIME }}.
           EOF
+
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
