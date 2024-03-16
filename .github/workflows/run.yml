@@ -124,6 +124,7 @@ jobs:
           ${GCRS} https://github.com/DIGITALCRIMINALS/OnlyFans onlyfans
           ${GCRS} https://github.com/Ryujinx/Ryujinx ryujinx
           ${GCRS} https://github.com/Ryujinx/release-channel-master ryujinx-release-channel
+          ${GCRS} https://gitlab.com/suyu-emu/suyu suyu
           # Clean Git Info
           rm -rf */.git
           # Update logs
@@ -421,6 +422,7 @@ jobs:
           yuzu-android
           ryujinx
           ryujinx-release-channel
+          suyu
           )
           for PROJECT in ${PROJECTS[@]}; do
             if [ "${PROJECT}" == "matsuri" ] || [ "${PROJECT}" == "nekobox-android" ]; then
