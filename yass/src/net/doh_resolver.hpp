@@ -34,7 +34,7 @@ class DoHResolver : public RefCountedThreadSafe<DoHResolver> {
 
  private:
   void DoRequest(bool enable_ipv6, const asio::ip::tcp::endpoint& endpoint);
-  void OnDoneRequest(asio::error_code ec, asio::ip::tcp::resolver::results_type results);
+  void OnDoneRequest(asio::error_code ec);
 
   asio::io_context& io_context_;
   asio::ip::tcp::resolver resolver_;
@@ -50,12 +50,13 @@ class DoHResolver : public RefCountedThreadSafe<DoHResolver> {
   int timeout_ms_ = 0;
   asio::steady_timer resolve_timer_;
 
-  bool done_ = false;
+  bool done_ = true;
   std::deque<asio::ip::tcp::endpoint> endpoints_;
   std::string host_;
   int port_;
   AsyncResolveCallback cb_;
-  std::vector<scoped_refptr<DoHRequest>> reqs_;
+  std::deque<scoped_refptr<DoHRequest>> reqs_;
+  struct addrinfo* addrinfo_ = nullptr;
 };
 
 }  // namespace net

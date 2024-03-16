@@ -14,7 +14,7 @@ std::string MoqtMessageTypeToString(const MoqtMessageType message_type) {
   switch (message_type) {
     case MoqtMessageType::kObjectStream:
       return "OBJECT_STREAM";
-    case MoqtMessageType::kObjectPreferDatagram:
+    case MoqtMessageType::kObjectDatagram:
       return "OBJECT_PREFER_DATAGRAM";
     case MoqtMessageType::kClientSetup:
       return "CLIENT_SETUP";
@@ -28,10 +28,8 @@ std::string MoqtMessageTypeToString(const MoqtMessageType message_type) {
       return "SUBSCRIBE_ERROR";
     case MoqtMessageType::kUnsubscribe:
       return "UNSUBSCRIBE";
-    case MoqtMessageType::kSubscribeFin:
-      return "SUBSCRIBE_FIN";
-    case MoqtMessageType::kSubscribeRst:
-      return "SUBSCRIBE_RST";
+    case MoqtMessageType::kSubscribeDone:
+      return "SUBSCRIBE_DONE";
     case MoqtMessageType::kAnnounce:
       return "ANNOUNCE";
     case MoqtMessageType::kAnnounceOk:
@@ -71,7 +69,7 @@ MoqtForwardingPreference GetForwardingPreference(MoqtMessageType type) {
   switch (type) {
     case MoqtMessageType::kObjectStream:
       return MoqtForwardingPreference::kObject;
-    case MoqtMessageType::kObjectPreferDatagram:
+    case MoqtMessageType::kObjectDatagram:
       return MoqtForwardingPreference::kDatagram;
     case MoqtMessageType::kStreamHeaderTrack:
       return MoqtForwardingPreference::kTrack;
@@ -91,7 +89,7 @@ MoqtMessageType GetMessageTypeForForwardingPreference(
     case MoqtForwardingPreference::kObject:
       return MoqtMessageType::kObjectStream;
     case MoqtForwardingPreference::kDatagram:
-      return MoqtMessageType::kObjectPreferDatagram;
+      return MoqtMessageType::kObjectDatagram;
     case MoqtForwardingPreference::kTrack:
       return MoqtMessageType::kStreamHeaderTrack;
     case MoqtForwardingPreference::kGroup:

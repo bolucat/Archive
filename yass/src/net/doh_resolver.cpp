@@ -103,11 +103,19 @@ void DoHResolver::Cancel() {
     return;
   }
   DCHECK(init_);
+  cb_ = nullptr;
+
   resolver_.cancel();
   resolve_timer_.cancel();
 
-  cb_ = nullptr;
-  reqs_.clear();
+  auto reqs = std::move(reqs_);
+  for (auto req : reqs) {
+    req->close();
+  }
+
+  auto* addrinfo = addrinfo_;
+  addrinfo_ = nullptr;
+  addrinfo_freedup(addrinfo);
 }
 
 void DoHResolver::Destroy() {
@@ -119,6 +127,7 @@ void DoHResolver::Destroy() {
 
 void DoHResolver::AsyncResolve(const std::string& host, int port, AsyncResolveCallback cb) {
   DCHECK(init_) << "Init should be called before use";
+  DCHECK(done_) << "Another resolve is in progress";
 
   host_ = host;
   port_ = port;
@@ -135,14 +144,14 @@ void DoHResolver::AsyncResolve(const std::string& host, int port, AsyncResolveCa
       return;
     }
     VLOG(1) << "DoH Resolver timed out";
-    OnDoneRequest(asio::error::timed_out, {});
+    OnDoneRequest(asio::error::timed_out);
   });
 
   asio::error_code ec;
   auto addr = asio::ip::make_address(doh_host_.c_str(), ec);
   bool host_is_ip_address = !ec;
   if (host_is_ip_address) {
-    VLOG(1) << "resolved ip-like address (post-resolved): " << addr.to_string();
+    VLOG(1) << "DoH Resolve resolved ip-like address (post-resolved): " << addr.to_string();
     endpoints_.emplace_back(addr, doh_port_);
     DoRequest(Net_ipv6works(), endpoints_.front());
     return;
@@ -162,12 +171,13 @@ void DoHResolver::AsyncResolve(const std::string& host, int port, AsyncResolveCa
           return;
         }
         if (ec) {
-          OnDoneRequest(ec, {});
+          DCHECK(reqs_.empty());
+          OnDoneRequest(ec);
           return;
         }
         for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
           endpoints_.push_back(*iter);
-          VLOG(1) << "found ip address (post-resolved): " << endpoints_.back().address().to_string();
+          VLOG(1) << "DoH Resolve found ip address (post-resolved): " << endpoints_.back().address().to_string();
         }
         DCHECK(!endpoints_.empty());
         DoRequest(Net_ipv6works(), endpoints_.front());
@@ -178,32 +188,75 @@ void DoHResolver::DoRequest(bool enable_ipv6, const asio::ip::tcp::endpoint& end
   scoped_refptr<DoHResolver> self(this);
   auto req = DoHRequest::Create(ssl_socket_data_index_, io_context_, endpoint, doh_host_, doh_port_, doh_path_,
                                 ssl_ctx_.get());
-  req->DoRequest(DNS_TYPE_A, host_, port_,
-                 [this, self](const asio::error_code& ec, asio::ip::tcp::resolver::results_type results) {
-                   OnDoneRequest(ec, results);
-                 });
+  req->DoRequest(DNS_TYPE_A, host_, port_, [this, self](const asio::error_code& ec, struct addrinfo* addrinfo) {
+    /* ipv4 address comes first */
+    if (addrinfo) {
+      struct addrinfo* next_addrinfo = addrinfo_;
+      addrinfo_ = addrinfo;
+      while (addrinfo->ai_next) {
+        addrinfo = addrinfo->ai_next;
+      }
+      addrinfo->ai_next = next_addrinfo;
+    }
+    reqs_.pop_front();
+    OnDoneRequest(ec);
+  });
   reqs_.push_back(req);
   if (enable_ipv6) {
     auto req = DoHRequest::Create(ssl_socket_data_index_, io_context_, endpoint, doh_host_, doh_port_, doh_path_,
                                   ssl_ctx_.get());
-    req->DoRequest(DNS_TYPE_AAAA, host_, port_,
-                   [this, self](const asio::error_code& ec, asio::ip::tcp::resolver::results_type results) {
-                     OnDoneRequest(ec, results);
-                   });
+    req->DoRequest(DNS_TYPE_AAAA, host_, port_, [this, self](const asio::error_code& ec, struct addrinfo* addrinfo) {
+      /* ipv6 address comes later */
+      if (addrinfo_) {
+        struct addrinfo* prev_addrinfo = addrinfo_;
+        while (prev_addrinfo->ai_next) {
+          prev_addrinfo = prev_addrinfo->ai_next;
+        }
+        prev_addrinfo->ai_next = addrinfo;
+      } else {
+        addrinfo_ = addrinfo;
+      }
+      reqs_.pop_back();
+      // FIXME should we ignore the failure?
+      OnDoneRequest(ec);
+    });
+    reqs_.push_back(req);
   }
 }
 
-void DoHResolver::OnDoneRequest(asio::error_code ec, asio::ip::tcp::resolver::results_type results) {
+void DoHResolver::OnDoneRequest(asio::error_code ec) {
+  if (ec) {
+    auto reqs = std::move(reqs_);
+    for (auto req : reqs) {
+      req->close();
+    }
+  }
+  if (!reqs_.empty()) {
+    VLOG(3) << "DoHResolver pending on another request";
+    return;
+  }
   if (done_) {
     return;
   }
   done_ = true;
+
+  auto* addrinfo = addrinfo_;
+  addrinfo_ = nullptr;
+  auto results = asio::ip::tcp::resolver::results_type::create(addrinfo, host_, std::to_string(port_));
+  addrinfo_freedup(addrinfo);
+
+  if (results.empty() && !ec) {
+    ec = asio::error::host_not_found;
+  }
+
+  for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
+    VLOG(1) << "DoH Resolve result: " << iter->endpoint();
+  }
+
   if (auto cb = std::move(cb_)) {
     cb(ec, results);
   }
   resolve_timer_.cancel();
-  reqs_.clear();
-  // FIXME handle ipv6
 }
 
 }  // namespace net

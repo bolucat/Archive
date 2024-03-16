@@ -25,25 +25,24 @@ namespace {
 
 inline bool IsObjectMessage(MoqtMessageType type) {
   return (type == MoqtMessageType::kObjectStream ||
-          type == MoqtMessageType::kObjectPreferDatagram ||
+          type == MoqtMessageType::kObjectDatagram ||
           type == MoqtMessageType::kStreamHeaderTrack ||
           type == MoqtMessageType::kStreamHeaderGroup);
 }
 
 inline bool IsObjectWithoutPayloadLength(MoqtMessageType type) {
   return (type == MoqtMessageType::kObjectStream ||
-          type == MoqtMessageType::kObjectPreferDatagram);
+          type == MoqtMessageType::kObjectDatagram);
 }
 
 std::vector<MoqtMessageType> message_types = {
     MoqtMessageType::kObjectStream,
-    MoqtMessageType::kObjectPreferDatagram,
+    // kObjectDatagram is a unique set of tests.
     MoqtMessageType::kSubscribe,
     MoqtMessageType::kSubscribeOk,
     MoqtMessageType::kSubscribeError,
     MoqtMessageType::kUnsubscribe,
-    MoqtMessageType::kSubscribeFin,
-    MoqtMessageType::kSubscribeRst,
+    MoqtMessageType::kSubscribeDone,
     MoqtMessageType::kAnnounce,
     MoqtMessageType::kAnnounceOk,
     MoqtMessageType::kAnnounceError,
@@ -104,116 +103,48 @@ class MoqtParserTestVisitor : public MoqtParserVisitor {
     messages_received_++;
     last_message_ = TestMessageBase::MessageStructuredData(object);
   }
-  void OnClientSetupMessage(const MoqtClientSetup& message) override {
+
+  template <typename Message>
+  void OnControlMessage(const Message& message) {
     end_of_message_ = true;
-    messages_received_++;
-    MoqtClientSetup client_setup = message;
-    if (client_setup.path.has_value()) {
-      string0_ = std::string(*client_setup.path);
-      client_setup.path = absl::string_view(string0_);
-    }
-    last_message_ = TestMessageBase::MessageStructuredData(client_setup);
+    ++messages_received_;
+    last_message_ = TestMessageBase::MessageStructuredData(message);
+  }
+  void OnClientSetupMessage(const MoqtClientSetup& message) override {
+    OnControlMessage(message);
   }
   void OnServerSetupMessage(const MoqtServerSetup& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtServerSetup server_setup = message;
-    last_message_ = TestMessageBase::MessageStructuredData(server_setup);
+    OnControlMessage(message);
   }
   void OnSubscribeMessage(const MoqtSubscribe& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtSubscribe subscribe_request = message;
-    string0_ = std::string(subscribe_request.track_namespace);
-    subscribe_request.track_namespace = absl::string_view(string0_);
-    string1_ = std::string(subscribe_request.track_name);
-    subscribe_request.track_name = absl::string_view(string1_);
-    if (subscribe_request.authorization_info.has_value()) {
-      string2_ = std::string(*subscribe_request.authorization_info);
-      subscribe_request.authorization_info = absl::string_view(string2_);
-    }
-    last_message_ = TestMessageBase::MessageStructuredData(subscribe_request);
+    OnControlMessage(message);
   }
   void OnSubscribeOkMessage(const MoqtSubscribeOk& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtSubscribeOk subscribe_ok = message;
-    last_message_ = TestMessageBase::MessageStructuredData(subscribe_ok);
+    OnControlMessage(message);
   }
   void OnSubscribeErrorMessage(const MoqtSubscribeError& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtSubscribeError subscribe_error = message;
-    string0_ = std::string(subscribe_error.reason_phrase);
-    subscribe_error.reason_phrase = absl::string_view(string0_);
-    last_message_ = TestMessageBase::MessageStructuredData(subscribe_error);
+    OnControlMessage(message);
   }
   void OnUnsubscribeMessage(const MoqtUnsubscribe& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtUnsubscribe unsubscribe = message;
-    last_message_ = TestMessageBase::MessageStructuredData(unsubscribe);
+    OnControlMessage(message);
   }
-  void OnSubscribeFinMessage(const MoqtSubscribeFin& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtSubscribeFin subscribe_fin = message;
-    last_message_ = TestMessageBase::MessageStructuredData(subscribe_fin);
-  }
-  void OnSubscribeRstMessage(const MoqtSubscribeRst& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtSubscribeRst subscribe_rst = message;
-    string0_ = std::string(subscribe_rst.reason_phrase);
-    subscribe_rst.reason_phrase = absl::string_view(string0_);
-    last_message_ = TestMessageBase::MessageStructuredData(subscribe_rst);
+  void OnSubscribeDoneMessage(const MoqtSubscribeDone& message) override {
+    OnControlMessage(message);
   }
   void OnAnnounceMessage(const MoqtAnnounce& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtAnnounce announce = message;
-    string0_ = std::string(announce.track_namespace);
-    announce.track_namespace = absl::string_view(string0_);
-    if (announce.authorization_info.has_value()) {
-      string1_ = std::string(*announce.authorization_info);
-      announce.authorization_info = absl::string_view(string1_);
-    }
-    last_message_ = TestMessageBase::MessageStructuredData(announce);
+    OnControlMessage(message);
   }
   void OnAnnounceOkMessage(const MoqtAnnounceOk& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtAnnounceOk announce_ok = message;
-    string0_ = std::string(announce_ok.track_namespace);
-    announce_ok.track_namespace = absl::string_view(string0_);
-    last_message_ = TestMessageBase::MessageStructuredData(announce_ok);
+    OnControlMessage(message);
   }
   void OnAnnounceErrorMessage(const MoqtAnnounceError& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtAnnounceError announce_error = message;
-    string0_ = std::string(announce_error.track_namespace);
-    announce_error.track_namespace = absl::string_view(string0_);
-    string1_ = std::string(announce_error.reason_phrase);
-    announce_error.reason_phrase = absl::string_view(string1_);
-    last_message_ = TestMessageBase::MessageStructuredData(announce_error);
+    OnControlMessage(message);
   }
   void OnUnannounceMessage(const MoqtUnannounce& message) override {
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtUnannounce unannounce = message;
-    string0_ = std::string(unannounce.track_namespace);
-    unannounce.track_namespace = absl::string_view(string0_);
-    last_message_ = TestMessageBase::MessageStructuredData(unannounce);
+    OnControlMessage(message);
   }
   void OnGoAwayMessage(const MoqtGoAway& message) override {
-    got_goaway_ = true;
-    end_of_message_ = true;
-    messages_received_++;
-    MoqtGoAway goaway = message;
-    string0_ = std::string(goaway.new_session_uri);
-    goaway.new_session_uri = absl::string_view(string0_);
-    last_message_ = TestMessageBase::MessageStructuredData(goaway);
+    OnControlMessage(message);
   }
   void OnParsingError(MoqtError code, absl::string_view reason) override {
     QUIC_LOG(INFO) << "Parsing error: " << reason;
@@ -223,14 +154,10 @@ class MoqtParserTestVisitor : public MoqtParserVisitor {
 
   std::optional<absl::string_view> object_payload_;
   bool end_of_message_ = false;
-  bool got_goaway_ = false;
   std::optional<absl::string_view> parsing_error_;
   MoqtError parsing_error_code_;
   uint64_t messages_received_ = 0;
   std::optional<TestMessageBase::MessageStructuredData> last_message_;
-  // Stored strings for last_message_. The visitor API does not promise the
-  // memory pointed to by string_views is persistent.
-  std::string string0_, string1_, string2_;
 };
 
 class MoqtParserTest
@@ -415,27 +342,6 @@ TEST_F(MoqtMessageSpecificTest, ObjectStreamSeparateFin) {
   EXPECT_FALSE(visitor_.parsing_error_.has_value());
 }
 
-TEST_F(MoqtMessageSpecificTest, ObjectPreferDatagramSeparateFin) {
-  // OBJECT can return on an unknown-length message even without receiving a
-  // FIN.
-  MoqtParser parser(kRawQuic, visitor_);
-  auto message = std::make_unique<ObjectPreferDatagramMessage>();
-  parser.ProcessData(message->PacketSample(), false);
-  EXPECT_EQ(visitor_.messages_received_, 1);
-  EXPECT_TRUE(message->EqualFieldValues(*visitor_.last_message_));
-  EXPECT_TRUE(visitor_.object_payload_.has_value());
-  EXPECT_EQ(*(visitor_.object_payload_), "foo");
-  EXPECT_FALSE(visitor_.end_of_message_);
-
-  parser.ProcessData(absl::string_view(), true);  // send the FIN
-  EXPECT_EQ(visitor_.messages_received_, 2);
-  EXPECT_TRUE(message->EqualFieldValues(*visitor_.last_message_));
-  EXPECT_TRUE(visitor_.object_payload_.has_value());
-  EXPECT_EQ(*(visitor_.object_payload_), "");
-  EXPECT_TRUE(visitor_.end_of_message_);
-  EXPECT_FALSE(visitor_.parsing_error_.has_value());
-}
-
 // Send the header + some payload, pure payload, then pure payload to end the
 // message.
 TEST_F(MoqtMessageSpecificTest, ThreePartObject) {
@@ -540,13 +446,43 @@ TEST_F(MoqtMessageSpecificTest, StreamHeaderTrackFollowOn) {
   EXPECT_FALSE(visitor_.parsing_error_.has_value());
 }
 
+TEST_F(MoqtMessageSpecificTest, ClientSetupRoleIsInvalid) {
+  MoqtParser parser(kRawQuic, visitor_);
+  char setup[] = {
+      0x40, 0x40, 0x02, 0x01, 0x02,  // versions
+      0x03,                          // 3 params
+      0x00, 0x01, 0x04,              // role = invalid
+      0x01, 0x03, 0x66, 0x6f, 0x6f   // path = "foo"
+  };
+  parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_, "Invalid ROLE parameter");
+  EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kProtocolViolation);
+}
+
+TEST_F(MoqtMessageSpecificTest, ServerSetupRoleIsInvalid) {
+  MoqtParser parser(kRawQuic, visitor_);
+  char setup[] = {
+      0x40, 0x41, 0x01,
+      0x01,                         // 1 param
+      0x00, 0x01, 0x04,             // role = invalid
+      0x01, 0x03, 0x66, 0x6f, 0x6f  // path = "foo"
+  };
+  parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_, "Invalid ROLE parameter");
+  EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kProtocolViolation);
+}
+
 TEST_F(MoqtMessageSpecificTest, SetupRoleAppearsTwice) {
   MoqtParser parser(kRawQuic, visitor_);
   char setup[] = {
       0x40, 0x40, 0x02, 0x01, 0x02,  // versions
       0x03,                          // 3 params
-      0x00, 0x01, 0x03,              // role = both
-      0x00, 0x01, 0x03,              // role = both
+      0x00, 0x01, 0x03,              // role = PubSub
+      0x00, 0x01, 0x03,              // role = PubSub
       0x01, 0x03, 0x66, 0x6f, 0x6f   // path = "foo"
   };
   parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
@@ -556,7 +492,7 @@ TEST_F(MoqtMessageSpecificTest, SetupRoleAppearsTwice) {
   EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kProtocolViolation);
 }
 
-TEST_F(MoqtMessageSpecificTest, SetupRoleIsMissing) {
+TEST_F(MoqtMessageSpecificTest, ClientSetupRoleIsMissing) {
   MoqtParser parser(kRawQuic, visitor_);
   char setup[] = {
       0x40, 0x40, 0x02, 0x01, 0x02,  // versions = 1, 2
@@ -571,13 +507,26 @@ TEST_F(MoqtMessageSpecificTest, SetupRoleIsMissing) {
   EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kProtocolViolation);
 }
 
+TEST_F(MoqtMessageSpecificTest, ServerSetupRoleIsMissing) {
+  MoqtParser parser(kRawQuic, visitor_);
+  char setup[] = {
+      0x40, 0x41, 0x01, 0x00,  // 1 param
+  };
+  parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "ROLE parameter missing from SERVER_SETUP message");
+  EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kProtocolViolation);
+}
+
 TEST_F(MoqtMessageSpecificTest, SetupRoleVarintLengthIsWrong) {
   MoqtParser parser(kRawQuic, visitor_);
   char setup[] = {
       0x40, 0x40,                   // type
       0x02, 0x01, 0x02,             // versions
       0x02,                         // 2 parameters
-      0x00, 0x02, 0x03,             // role = both, but length is 2
+      0x00, 0x02, 0x03,             // role = PubSub, but length is 2
       0x01, 0x03, 0x66, 0x6f, 0x6f  // path = "foo"
   };
   parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
@@ -609,7 +558,7 @@ TEST_F(MoqtMessageSpecificTest, SetupPathAppearsTwice) {
   char setup[] = {
       0x40, 0x40, 0x02, 0x01, 0x02,  // versions = 1, 2
       0x03,                          // 3 params
-      0x00, 0x01, 0x03,              // role = both
+      0x00, 0x01, 0x03,              // role = PubSub
       0x01, 0x03, 0x66, 0x6f, 0x6f,  // path = "foo"
       0x01, 0x03, 0x66, 0x6f, 0x6f,  // path = "foo"
   };
@@ -626,7 +575,7 @@ TEST_F(MoqtMessageSpecificTest, SetupPathOverWebtrans) {
   char setup[] = {
       0x40, 0x40, 0x02, 0x01, 0x02,  // versions = 1, 2
       0x02,                          // 2 params
-      0x00, 0x01, 0x03,              // role = both
+      0x00, 0x01, 0x03,              // role = PubSub
       0x01, 0x03, 0x66, 0x6f, 0x6f,  // path = "foo"
   };
   parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
@@ -642,7 +591,7 @@ TEST_F(MoqtMessageSpecificTest, SetupPathMissing) {
   char setup[] = {
       0x40, 0x40, 0x02, 0x01, 0x02,  // versions = 1, 2
       0x01,                          // 1 param
-      0x00, 0x01, 0x03,              // role = both
+      0x00, 0x01, 0x03,              // role = PubSub
   };
   parser.ProcessData(absl::string_view(setup, sizeof(setup)), false);
   EXPECT_EQ(visitor_.messages_received_, 0);
@@ -740,7 +689,7 @@ TEST_F(MoqtMessageSpecificTest, Setup2KB) {
   EXPECT_EQ(visitor_.messages_received_, 0);
   EXPECT_TRUE(visitor_.parsing_error_.has_value());
   EXPECT_EQ(*visitor_.parsing_error_, "Cannot parse non-OBJECT messages > 2KB");
-  EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kGenericError);
+  EXPECT_EQ(visitor_.parsing_error_code_, MoqtError::kInternalError);
 }
 
 TEST_F(MoqtMessageSpecificTest, UnknownMessageType) {
@@ -874,6 +823,67 @@ TEST_F(MoqtMessageSpecificTest, RelativeLocation) {
   ASSERT_TRUE(message.start_object.has_value());
   ASSERT_FALSE(message.start_object->absolute);
   EXPECT_EQ(message.start_object->relative_value, 1);
+}
+
+TEST_F(MoqtMessageSpecificTest, DatagramSuccessful) {
+  ObjectDatagramMessage message;
+  MoqtObject object;
+  absl::string_view payload =
+      MoqtParser::ProcessDatagram(message.PacketSample(), object);
+  TestMessageBase::MessageStructuredData object_metadata =
+      TestMessageBase::MessageStructuredData(object);
+  EXPECT_TRUE(message.EqualFieldValues(object_metadata));
+  EXPECT_EQ(payload, "foo");
+}
+
+TEST_F(MoqtMessageSpecificTest, WrongMessageInDatagram) {
+  MoqtParser parser(kRawQuic, visitor_);
+  ObjectStreamMessage message;
+  MoqtObject object;
+  absl::string_view payload =
+      MoqtParser::ProcessDatagram(message.PacketSample(), object);
+  EXPECT_TRUE(payload.empty());
+}
+
+TEST_F(MoqtMessageSpecificTest, TruncatedDatagram) {
+  MoqtParser parser(kRawQuic, visitor_);
+  ObjectDatagramMessage message;
+  message.set_wire_image_size(4);
+  MoqtObject object;
+  absl::string_view payload =
+      MoqtParser::ProcessDatagram(message.PacketSample(), object);
+  EXPECT_TRUE(payload.empty());
+}
+
+TEST_F(MoqtMessageSpecificTest, VeryTruncatedDatagram) {
+  MoqtParser parser(kRawQuic, visitor_);
+  char message = 0x40;
+  MoqtObject object;
+  absl::string_view payload = MoqtParser::ProcessDatagram(
+      absl::string_view(&message, sizeof(message)), object);
+  EXPECT_TRUE(payload.empty());
+}
+
+TEST_F(MoqtMessageSpecificTest, SubscribeOkInvalidContentExists) {
+  MoqtParser parser(kRawQuic, visitor_);
+  SubscribeOkMessage subscribe_ok;
+  subscribe_ok.SetInvalidContentExists();
+  parser.ProcessData(subscribe_ok.PacketSample(), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "SUBSCRIBE_OK ContentExists has invalid value");
+}
+
+TEST_F(MoqtMessageSpecificTest, SubscribeDoneInvalidContentExists) {
+  MoqtParser parser(kRawQuic, visitor_);
+  SubscribeDoneMessage subscribe_done;
+  subscribe_done.SetInvalidContentExists();
+  parser.ProcessData(subscribe_done.PacketSample(), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "SUBSCRIBE_DONE ContentExists has invalid value");
 }
 
 }  // namespace moqt::test

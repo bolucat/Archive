@@ -29,10 +29,6 @@ static void DoRemoteResolve(asio::io_context& io_context, scoped_refptr<DoHResol
     resolver->AsyncResolve("www.google.com", 80,
                            [&](asio::error_code ec, asio::ip::tcp::resolver::results_type results) {
                              work_guard.reset();
-                             // Sometimes c-ares don't get ack in time, ignore it safely
-                             if (ec == asio::error::timed_out) {
-                               return;
-                             }
                              ASSERT_FALSE(ec) << ec;
                              for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
                                const asio::ip::tcp::endpoint& endpoint = *iter;
@@ -89,7 +85,7 @@ TEST(DOH_TEST, Timeout) {
   asio::io_context io_context;
 
   auto resolver = DoHResolver::Create(io_context);
-  int ret = resolver->Init("https://1.1.1.1/dns-query", 1);
+  int ret = resolver->Init("https://2.2.2.2/dns-query", 1);
   ASSERT_EQ(ret, 0);
 
   auto work_guard =

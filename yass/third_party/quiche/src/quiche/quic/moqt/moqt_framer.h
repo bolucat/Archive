@@ -32,19 +32,12 @@ class QUICHE_EXPORT MoqtFramer {
   // Serialize functions. Takes structured data and serializes it into a
   // QuicheBuffer for delivery to the stream.
 
-  // SerializeObject also takes a payload. |payload_size| might simply be the
-  // size of |payload|, or it could be larger if there is more data coming, or
-  // it could be nullopt if the final length is unknown.
-  // If |message.payload_size| is nullopt but the forwarding preference requires
-  // a payload length, will assume that payload.length() is the correct value.
-  // If |message.payload_size| is smaller than |payload|, or
-  // |message.forwarding preference| is not consistent with
-  // |is_first_in_stream|, returns an empty buffer and triggers QUIC_BUG.
-  quiche::QuicheBuffer SerializeObject(const MoqtObject& message,
-                                       absl::string_view payload,
-                                       bool is_first_in_stream);
-  // Build a buffer for additional payload data.
-  quiche::QuicheBuffer SerializeObjectPayload(absl::string_view payload);
+  // Serializes the header for an object, including the appropriate stream
+  // header if `is_first_in_stream` is set to true.
+  quiche::QuicheBuffer SerializeObjectHeader(const MoqtObject& message,
+                                             bool is_first_in_stream);
+  quiche::QuicheBuffer SerializeObjectDatagram(const MoqtObject& message,
+                                               absl::string_view payload);
   quiche::QuicheBuffer SerializeClientSetup(const MoqtClientSetup& message);
   quiche::QuicheBuffer SerializeServerSetup(const MoqtServerSetup& message);
   // Returns an empty buffer if there is an illegal combination of locations.
@@ -53,8 +46,7 @@ class QUICHE_EXPORT MoqtFramer {
   quiche::QuicheBuffer SerializeSubscribeError(
       const MoqtSubscribeError& message);
   quiche::QuicheBuffer SerializeUnsubscribe(const MoqtUnsubscribe& message);
-  quiche::QuicheBuffer SerializeSubscribeFin(const MoqtSubscribeFin& message);
-  quiche::QuicheBuffer SerializeSubscribeRst(const MoqtSubscribeRst& message);
+  quiche::QuicheBuffer SerializeSubscribeDone(const MoqtSubscribeDone& message);
   quiche::QuicheBuffer SerializeAnnounce(const MoqtAnnounce& message);
   quiche::QuicheBuffer SerializeAnnounceOk(const MoqtAnnounceOk& message);
   quiche::QuicheBuffer SerializeAnnounceError(const MoqtAnnounceError& message);

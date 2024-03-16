@@ -18,6 +18,8 @@
 #include <sys/types.h>
 #endif
 
+namespace net {
+
 // create addrinfo
 static struct addrinfo* addrinfo_dup(bool is_ipv6, const net::dns_message::response& response, int port) {
   struct addrinfo* addrinfo = new struct addrinfo;
@@ -25,7 +27,7 @@ static struct addrinfo* addrinfo_dup(bool is_ipv6, const net::dns_message::respo
   // If hints.ai_flags includes the AI_CANONNAME flag, then the
   // ai_canonname field of the first of the addrinfo structures in the
   // returned list is set to point to the official name of the host.
-  const char* canon_name = !response.cname().empty() ? response.cname().front().c_str() : nullptr;
+  char* canon_name = !response.cname().empty() ? strdup(response.cname().front().c_str()) : nullptr;
 
   // Iterate the output
   struct addrinfo* next_addrinfo = addrinfo;
@@ -38,7 +40,7 @@ static struct addrinfo* addrinfo_dup(bool is_ipv6, const net::dns_message::respo
       next_addrinfo->ai_family = AF_INET6;
       next_addrinfo->ai_socktype = SOCK_STREAM;
       next_addrinfo->ai_protocol = 0;
-      next_addrinfo->ai_canonname = (char*)canon_name;
+      next_addrinfo->ai_canonname = canon_name;
 
       struct sockaddr_in6* in6 = new struct sockaddr_in6;
 
@@ -78,6 +80,10 @@ static struct addrinfo* addrinfo_dup(bool is_ipv6, const net::dns_message::respo
       canon_name = nullptr;
     }
   }
+  if (canon_name) {
+    free(canon_name);
+  }
+
   struct addrinfo* prev_addrinfo = addrinfo;
   addrinfo = addrinfo->ai_next;
   delete prev_addrinfo;
@@ -85,10 +91,9 @@ static struct addrinfo* addrinfo_dup(bool is_ipv6, const net::dns_message::respo
 }
 
 // free addrinfo
-static void addrinfo_freedup(struct addrinfo* addrinfo) {
+void addrinfo_freedup(struct addrinfo* addrinfo) {
   struct addrinfo* next_addrinfo;
   while (addrinfo) {
-    next_addrinfo = addrinfo->ai_next;
     if (addrinfo->ai_family == AF_INET6) {
       struct sockaddr_in6* in6 = (struct sockaddr_in6*)addrinfo->ai_addr;
       delete in6;
@@ -96,16 +101,22 @@ static void addrinfo_freedup(struct addrinfo* addrinfo) {
       struct sockaddr_in* in = (struct sockaddr_in*)addrinfo->ai_addr;
       delete in;
     }
+    if (addrinfo->ai_canonname) {
+      free(addrinfo->ai_canonname);
+    }
+    next_addrinfo = addrinfo->ai_next;
     delete addrinfo;
     addrinfo = next_addrinfo;
   }
 }
 
-namespace net {
-
 using namespace dns_message;
 
 void DoHRequest::close() {
+  if (closed_) {
+    return;
+  }
+  closed_ = true;
   cb_ = nullptr;
   if (ssl_socket_) {
     ssl_socket_->Disconnect();
@@ -119,12 +130,11 @@ void DoHRequest::DoRequest(dns_message::DNStype dns_type, const std::string& hos
   dns_type_ = dns_type;
   host_ = host;
   port_ = port;
-  service_ = std::to_string(port);
   cb_ = std::move(cb);
 
   dns_message::request msg;
   if (!msg.init(host, dns_type)) {
-    OnDoneRequest(asio::error::host_unreachable, {});
+    OnDoneRequest(asio::error::host_unreachable, nullptr);
     return;
   }
   buf_ = IOBuf::create(SOCKET_BUF_SIZE);
@@ -137,7 +147,7 @@ void DoHRequest::DoRequest(dns_message::DNStype dns_type, const std::string& hos
   asio::error_code ec;
   socket_.open(endpoint_.protocol(), ec);
   if (ec) {
-    OnDoneRequest(ec, {});
+    OnDoneRequest(ec, nullptr);
     return;
   }
   socket_.native_non_blocking(true, ec);
@@ -149,7 +159,7 @@ void DoHRequest::DoRequest(dns_message::DNStype dns_type, const std::string& hos
       return;
     }
     if (ec) {
-      OnDoneRequest(ec, {});
+      OnDoneRequest(ec, nullptr);
       return;
     }
     VLOG(3) << "DoH Remote Server Connected: " << endpoint_;
@@ -171,7 +181,7 @@ void DoHRequest::OnSocketConnect() {
     asio::error_code ec;
     if (rv < 0) {
       ec = asio::error::connection_refused;
-      OnDoneRequest(ec, {});
+      OnDoneRequest(ec, nullptr);
       return;
     }
     VLOG(3) << "DoH Remote SSL Server Connected: " << endpoint_;
@@ -201,12 +211,12 @@ void DoHRequest::OnSSLConnect() {
 
 void DoHRequest::OnSSLWritable(asio::error_code ec) {
   if (ec) {
-    OnDoneRequest(ec, {});
+    OnDoneRequest(ec, nullptr);
     return;
   }
   size_t written = ssl_socket_->Write(buf_, ec);
   if (ec) {
-    OnDoneRequest(ec, {});
+    OnDoneRequest(ec, nullptr);
     return;
   }
   buf_->trimStart(written);
@@ -220,7 +230,7 @@ void DoHRequest::OnSSLWritable(asio::error_code ec) {
 
 void DoHRequest::OnSSLReadable(asio::error_code ec) {
   if (ec) {
-    OnDoneRequest(ec, {});
+    OnDoneRequest(ec, nullptr);
     return;
   }
   size_t read;
@@ -233,7 +243,7 @@ void DoHRequest::OnSSLReadable(asio::error_code ec) {
   } while (false);
 
   if (ec && ec != asio::error::try_again && ec != asio::error::would_block) {
-    OnDoneRequest(ec, {});
+    OnDoneRequest(ec, nullptr);
     return;
   }
   recv_buf_->append(read);
@@ -281,18 +291,15 @@ void DoHRequest::OnParseDnsResponse() {
   }
 
   struct addrinfo* addrinfo = addrinfo_dup(dns_type_ == dns_message::DNS_TYPE_AAAA, response, port_);
-  auto results = asio::ip::tcp::resolver::results_type::create(addrinfo, host_, service_);
-  addrinfo_freedup(addrinfo);
 
-  OnDoneRequest({}, results);
+  OnDoneRequest({}, addrinfo);
 }
 
-void DoHRequest::OnDoneRequest(asio::error_code ec, asio::ip::tcp::resolver::results_type results) {
+void DoHRequest::OnDoneRequest(asio::error_code ec, struct addrinfo* addrinfo) {
   if (auto cb = std::move(cb_)) {
-    for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
-      VLOG(3) << "DoH Resolve result: " << iter->endpoint();
-    }
-    cb(ec, results);
+    cb(ec, addrinfo);
+  } else {
+    addrinfo_freedup(addrinfo);
   }
 }
 

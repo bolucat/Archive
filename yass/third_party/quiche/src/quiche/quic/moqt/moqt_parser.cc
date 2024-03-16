@@ -90,7 +90,7 @@ void MoqtParser::ProcessData(absl::string_view data, bool fin) {
     size_t message_len = ProcessMessage(reader->PeekRemainingPayload(), fin);
     if (message_len == 0) {
       if (reader->BytesRemaining() > kMaxMessageHeaderSize) {
-        ParseError(MoqtError::kGenericError,
+        ParseError(MoqtError::kInternalError,
                    "Cannot parse non-OBJECT messages > 2KB");
         return;
       }
@@ -113,6 +113,25 @@ void MoqtParser::ProcessData(absl::string_view data, bool fin) {
   }
 }
 
+// static
+absl::string_view MoqtParser::ProcessDatagram(absl::string_view data,
+                                              MoqtObject& object_metadata) {
+  uint64_t value;
+  quic::QuicDataReader reader(data);
+  if (!reader.ReadVarInt62(&value)) {
+    return absl::string_view();
+  }
+  if (static_cast<MoqtMessageType>(value) != MoqtMessageType::kObjectDatagram) {
+    return absl::string_view();
+  }
+  size_t processed_data = ParseObjectHeader(reader, object_metadata,
+                                            MoqtMessageType::kObjectDatagram);
+  if (processed_data == 0) {  // Incomplete header
+    return absl::string_view();
+  }
+  return reader.PeekRemainingPayload();
+}
+
 size_t MoqtParser::ProcessMessage(absl::string_view data, bool fin) {
   uint64_t value;
   quic::QuicDataReader reader(data);
@@ -128,8 +147,10 @@ size_t MoqtParser::ProcessMessage(absl::string_view data, bool fin) {
   }
   auto type = static_cast<MoqtMessageType>(value);
   switch (type) {
+    case MoqtMessageType::kObjectDatagram:
+      ParseError("Received OBJECT_DATAGRAM on stream");
+      return 0;
     case MoqtMessageType::kObjectStream:
-    case MoqtMessageType::kObjectPreferDatagram:
     case MoqtMessageType::kStreamHeaderTrack:
     case MoqtMessageType::kStreamHeaderGroup:
       return ProcessObject(reader, type, fin);
@@ -145,10 +166,8 @@ size_t MoqtParser::ProcessMessage(absl::string_view data, bool fin) {
       return ProcessSubscribeError(reader);
     case MoqtMessageType::kUnsubscribe:
       return ProcessUnsubscribe(reader);
-    case MoqtMessageType::kSubscribeFin:
-      return ProcessSubscribeFin(reader);
-    case MoqtMessageType::kSubscribeRst:
-      return ProcessSubscribeRst(reader);
+    case MoqtMessageType::kSubscribeDone:
+      return ProcessSubscribeDone(reader);
     case MoqtMessageType::kAnnounce:
       return ProcessAnnounce(reader);
     case MoqtMessageType::kAnnounceOk:
@@ -167,36 +186,18 @@ size_t MoqtParser::ProcessMessage(absl::string_view data, bool fin) {
 
 size_t MoqtParser::ProcessObject(quic::QuicDataReader& reader,
                                  MoqtMessageType type, bool fin) {
-  size_t processed_data;
+  size_t processed_data = 0;
   QUICHE_DCHECK(!ObjectPayloadInProgress());
   if (!ObjectStreamInitialized()) {
-    // nothing has been processed on the stream.
     object_metadata_ = MoqtObject();
-    if (!reader.ReadVarInt62(&object_metadata_->subscribe_id) ||
-        !reader.ReadVarInt62(&object_metadata_->track_alias)) {
+    processed_data = ParseObjectHeader(reader, object_metadata_.value(), type);
+    if (processed_data == 0) {
       object_metadata_.reset();
       return 0;
     }
-    if (type != MoqtMessageType::kStreamHeaderTrack &&
-        !reader.ReadVarInt62(&object_metadata_->group_id)) {
-      object_metadata_.reset();
-      return 0;
-    }
-    if (type != MoqtMessageType::kStreamHeaderTrack &&
-        type != MoqtMessageType::kStreamHeaderGroup &&
-        !reader.ReadVarInt62(&object_metadata_->object_id)) {
-      object_metadata_.reset();
-      return 0;
-    }
-    if (!reader.ReadVarInt62(&object_metadata_->object_send_order)) {
-      object_metadata_.reset();
-      return 0;
-    }
-    object_metadata_->forwarding_preference = GetForwardingPreference(type);
   }
   // At this point, enough data has been processed to store in object_metadata_,
   // even if there's nothing else in the buffer.
-  processed_data = reader.PreviouslyReadPayload().length();
   QUICHE_DCHECK(payload_length_remaining_ == 0);
   switch (type) {
     case MoqtMessageType::kStreamHeaderTrack:
@@ -278,7 +279,13 @@ size_t MoqtParser::ProcessClientSetup(quic::QuicDataReader& reader) {
           return 0;
         }
         uint64_t index;
-        StringViewToVarInt(value, index);
+        if (!StringViewToVarInt(value, index)) {
+          return 0;
+        }
+        if (index > static_cast<uint64_t>(MoqtRole::kRoleMax)) {
+          ParseError("Invalid ROLE parameter");
+          return 0;
+        }
         setup.role = static_cast<MoqtRole>(index);
         break;
       case MoqtSetupParameter::kPath:
@@ -336,7 +343,13 @@ size_t MoqtParser::ProcessServerSetup(quic::QuicDataReader& reader) {
           return 0;
         }
         uint64_t index;
-        StringViewToVarInt(value, index);
+        if (!StringViewToVarInt(value, index)) {
+          return 0;
+        }
+        if (index > static_cast<uint64_t>(MoqtRole::kRoleMax)) {
+          ParseError("Invalid ROLE parameter");
+          return 0;
+        }
         setup.role = static_cast<MoqtRole>(index);
         break;
       case MoqtSetupParameter::kPath:
@@ -347,6 +360,10 @@ size_t MoqtParser::ProcessServerSetup(quic::QuicDataReader& reader) {
         break;
     }
   }
+  if (!setup.role.has_value()) {
+    ParseError("ROLE parameter missing from SERVER_SETUP message");
+    return 0;
+  }
   visitor_.OnServerSetupMessage(setup);
   return reader.PreviouslyReadPayload().length();
 }
@@ -355,8 +372,8 @@ size_t MoqtParser::ProcessSubscribe(quic::QuicDataReader& reader) {
   MoqtSubscribe subscribe_request;
   if (!reader.ReadVarInt62(&subscribe_request.subscribe_id) ||
       !reader.ReadVarInt62(&subscribe_request.track_alias) ||
-      !reader.ReadStringPieceVarInt62(&subscribe_request.track_namespace) ||
-      !reader.ReadStringPieceVarInt62(&subscribe_request.track_name) ||
+      !reader.ReadStringVarInt62(subscribe_request.track_namespace) ||
+      !reader.ReadStringVarInt62(subscribe_request.track_name) ||
       !ReadLocation(reader, subscribe_request.start_group)) {
     return 0;
   }
@@ -415,11 +432,24 @@ size_t MoqtParser::ProcessSubscribe(quic::QuicDataReader& reader) {
 size_t MoqtParser::ProcessSubscribeOk(quic::QuicDataReader& reader) {
   MoqtSubscribeOk subscribe_ok;
   uint64_t milliseconds;
+  uint8_t content_exists;
   if (!reader.ReadVarInt62(&subscribe_ok.subscribe_id) ||
-      !reader.ReadVarInt62(&milliseconds)) {
+      !reader.ReadVarInt62(&milliseconds) ||
+      !reader.ReadUInt8(&content_exists)) {
+    return 0;
+  }
+  if (content_exists > 1) {
+    ParseError("SUBSCRIBE_OK ContentExists has invalid value");
     return 0;
   }
   subscribe_ok.expires = quic::QuicTimeDelta::FromMilliseconds(milliseconds);
+  if (content_exists) {
+    subscribe_ok.largest_id = FullSequence();
+    if (!reader.ReadVarInt62(&subscribe_ok.largest_id->group) ||
+        !reader.ReadVarInt62(&subscribe_ok.largest_id->object)) {
+      return 0;
+    }
+  }
   visitor_.OnSubscribeOkMessage(subscribe_ok);
   return reader.PreviouslyReadPayload().length();
 }
@@ -429,7 +459,7 @@ size_t MoqtParser::ProcessSubscribeError(quic::QuicDataReader& reader) {
   uint64_t error_code;
   if (!reader.ReadVarInt62(&subscribe_error.subscribe_id) ||
       !reader.ReadVarInt62(&error_code) ||
-      !reader.ReadStringPieceVarInt62(&subscribe_error.reason_phrase) ||
+      !reader.ReadStringVarInt62(subscribe_error.reason_phrase) ||
       !reader.ReadVarInt62(&subscribe_error.track_alias)) {
     return 0;
   }
@@ -447,33 +477,33 @@ size_t MoqtParser::ProcessUnsubscribe(quic::QuicDataReader& reader) {
   return reader.PreviouslyReadPayload().length();
 }
 
-size_t MoqtParser::ProcessSubscribeFin(quic::QuicDataReader& reader) {
-  MoqtSubscribeFin subscribe_fin;
-  if (!reader.ReadVarInt62(&subscribe_fin.subscribe_id) ||
-      !reader.ReadVarInt62(&subscribe_fin.final_group) ||
-      !reader.ReadVarInt62(&subscribe_fin.final_object)) {
+size_t MoqtParser::ProcessSubscribeDone(quic::QuicDataReader& reader) {
+  MoqtSubscribeDone subscribe_done;
+  uint8_t content_exists;
+  if (!reader.ReadVarInt62(&subscribe_done.subscribe_id) ||
+      !reader.ReadVarInt62(&subscribe_done.status_code) ||
+      !reader.ReadStringVarInt62(subscribe_done.reason_phrase) ||
+      !reader.ReadUInt8(&content_exists)) {
     return 0;
   }
-  visitor_.OnSubscribeFinMessage(subscribe_fin);
-  return reader.PreviouslyReadPayload().length();
-}
-
-size_t MoqtParser::ProcessSubscribeRst(quic::QuicDataReader& reader) {
-  MoqtSubscribeRst subscribe_rst;
-  if (!reader.ReadVarInt62(&subscribe_rst.subscribe_id) ||
-      !reader.ReadVarInt62(&subscribe_rst.error_code) ||
-      !reader.ReadStringPieceVarInt62(&subscribe_rst.reason_phrase) ||
-      !reader.ReadVarInt62(&subscribe_rst.final_group) ||
-      !reader.ReadVarInt62(&subscribe_rst.final_object)) {
+  if (content_exists > 1) {
+    ParseError("SUBSCRIBE_DONE ContentExists has invalid value");
     return 0;
   }
-  visitor_.OnSubscribeRstMessage(subscribe_rst);
+  if (content_exists == 1) {
+    subscribe_done.final_id = FullSequence();
+    if (!reader.ReadVarInt62(&subscribe_done.final_id->group) ||
+        !reader.ReadVarInt62(&subscribe_done.final_id->object)) {
+      return 0;
+    }
+  }
+  visitor_.OnSubscribeDoneMessage(subscribe_done);
   return reader.PreviouslyReadPayload().length();
 }
 
 size_t MoqtParser::ProcessAnnounce(quic::QuicDataReader& reader) {
   MoqtAnnounce announce;
-  if (!reader.ReadStringPieceVarInt62(&announce.track_namespace)) {
+  if (!reader.ReadStringVarInt62(announce.track_namespace)) {
     return 0;
   }
   uint64_t num_params;
@@ -506,7 +536,7 @@ size_t MoqtParser::ProcessAnnounce(quic::QuicDataReader& reader) {
 
 size_t MoqtParser::ProcessAnnounceOk(quic::QuicDataReader& reader) {
   MoqtAnnounceOk announce_ok;
-  if (!reader.ReadStringPieceVarInt62(&announce_ok.track_namespace)) {
+  if (!reader.ReadStringVarInt62(announce_ok.track_namespace)) {
     return 0;
   }
   visitor_.OnAnnounceOkMessage(announce_ok);
@@ -515,13 +545,15 @@ size_t MoqtParser::ProcessAnnounceOk(quic::QuicDataReader& reader) {
 
 size_t MoqtParser::ProcessAnnounceError(quic::QuicDataReader& reader) {
   MoqtAnnounceError announce_error;
-  if (!reader.ReadStringPieceVarInt62(&announce_error.track_namespace)) {
+  if (!reader.ReadStringVarInt62(announce_error.track_namespace)) {
     return 0;
   }
-  if (!reader.ReadVarInt62(&announce_error.error_code)) {
+  uint64_t error_code;
+  if (!reader.ReadVarInt62(&error_code)) {
     return 0;
   }
-  if (!reader.ReadStringPieceVarInt62(&announce_error.reason_phrase)) {
+  announce_error.error_code = static_cast<MoqtAnnounceErrorCode>(error_code);
+  if (!reader.ReadStringVarInt62(announce_error.reason_phrase)) {
     return 0;
   }
   visitor_.OnAnnounceErrorMessage(announce_error);
@@ -530,7 +562,7 @@ size_t MoqtParser::ProcessAnnounceError(quic::QuicDataReader& reader) {
 
 size_t MoqtParser::ProcessUnannounce(quic::QuicDataReader& reader) {
   MoqtUnannounce unannounce;
-  if (!reader.ReadStringPieceVarInt62(&unannounce.track_namespace)) {
+  if (!reader.ReadStringVarInt62(unannounce.track_namespace)) {
     return 0;
   }
   visitor_.OnUnannounceMessage(unannounce);
@@ -539,10 +571,33 @@ size_t MoqtParser::ProcessUnannounce(quic::QuicDataReader& reader) {
 
 size_t MoqtParser::ProcessGoAway(quic::QuicDataReader& reader) {
   MoqtGoAway goaway;
-  if (!reader.ReadStringPieceVarInt62(&goaway.new_session_uri)) {
+  if (!reader.ReadStringVarInt62(goaway.new_session_uri)) {
     return 0;
   }
   visitor_.OnGoAwayMessage(goaway);
+  return reader.PreviouslyReadPayload().length();
+}
+
+// static
+size_t MoqtParser::ParseObjectHeader(quic::QuicDataReader& reader,
+                                     MoqtObject& object, MoqtMessageType type) {
+  if (!reader.ReadVarInt62(&object.subscribe_id) ||
+      !reader.ReadVarInt62(&object.track_alias)) {
+    return 0;
+  }
+  if (type != MoqtMessageType::kStreamHeaderTrack &&
+      !reader.ReadVarInt62(&object.group_id)) {
+    return 0;
+  }
+  if (type != MoqtMessageType::kStreamHeaderTrack &&
+      type != MoqtMessageType::kStreamHeaderGroup &&
+      !reader.ReadVarInt62(&object.object_id)) {
+    return 0;
+  }
+  if (!reader.ReadVarInt62(&object.object_send_order)) {
+    return 0;
+  }
+  object.forwarding_preference = GetForwardingPreference(type);
   return reader.PreviouslyReadPayload().length();
 }
 
