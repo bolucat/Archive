@@ -103,12 +103,12 @@ class MainActivity : AbstractActivity<ActivityMainBinding>(),
         return navController.navigateUp(appBarConfiguration)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     private fun onDestinationChanged(
         navController: NavController,
         navDestination: NavDestination,
         bundle: Bundle?
     ) {
-        val binding = binding ?: return
         val destinationId = navDestination.id
         binding.dashboardTabContainer.isVisible = destinationId == R.id.navigation_dashboard
     }
@@ -128,7 +128,7 @@ class MainActivity : AbstractActivity<ActivityMainBinding>(),
         }
     }
 
-    override fun onNewIntent(intent: Intent) {
+    override public fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val uri = intent.data ?: return
         if (uri.scheme == "sing-box" && uri.host == "import-remote-profile") {

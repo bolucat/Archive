@@ -1,33 +1,41 @@
 package io.nekohasekai.sfa.ui.main
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.databinding.FragmentConfigurationBinding
+import io.nekohasekai.sfa.databinding.SheetAddProfileBinding
 import io.nekohasekai.sfa.databinding.ViewConfigutationItemBinding
 import io.nekohasekai.sfa.ktx.errorDialogBuilder
 import io.nekohasekai.sfa.ktx.shareProfile
 import io.nekohasekai.sfa.ktx.shareProfileURL
+import io.nekohasekai.sfa.ui.MainActivity
 import io.nekohasekai.sfa.ui.profile.EditProfileActivity
 import io.nekohasekai.sfa.ui.profile.NewProfileActivity
+import io.nekohasekai.sfa.ui.profile.QRScanActivity
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
 import java.util.Collections
 
 class ConfigurationFragment : Fragment() {
@@ -70,10 +78,44 @@ class ConfigurationFragment : Fragment() {
         }
         adapter.reload()
         binding.fab.setOnClickListener {
-            startActivity(Intent(requireContext(), NewProfileActivity::class.java))
+            AddProfileDialog().show(childFragmentManager, "add_profile")
         }
         ProfileManager.registerCallback(this::updateProfiles)
         return binding.root
+    }
+
+    class AddProfileDialog : BottomSheetDialogFragment(R.layout.sheet_add_profile) {
+
+        private val importFromFile =
+            registerForActivityResult(ActivityResultContracts.GetContent(), ::onImportResult)
+
+        private val scanQrCode =
+            registerForActivityResult(QRScanActivity.Contract(), ::onScanResult)
+
+        override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+            super.onViewCreated(view, savedInstanceState)
+            val binding = SheetAddProfileBinding.bind(view)
+            binding.importFromFile.setOnClickListener {
+                importFromFile.launch("*/*")
+            }
+            binding.scanQrCode.setOnClickListener {
+                scanQrCode.launch(null)
+            }
+            binding.createManually.setOnClickListener {
+                dismiss()
+                startActivity(Intent(requireContext(), NewProfileActivity::class.java))
+            }
+        }
+
+        private fun onImportResult(result: Uri?) {
+            dismiss()
+            (activity as? MainActivity ?: return).onNewIntent(Intent(Intent.ACTION_VIEW, result))
+        }
+
+        private fun onScanResult(result: Intent?) {
+            dismiss()
+            (activity as? MainActivity ?: return).onNewIntent(result ?: return)
+        }
     }
 
     override fun onResume() {
@@ -98,8 +140,9 @@ class ConfigurationFragment : Fragment() {
 
         internal var items: MutableList<Profile> = mutableListOf()
         internal val scope = lifecycleScope
-        internal val fragmentActivity = requireActivity() as FragmentActivity
+        internal val fragmentActivity = requireActivity()
 
+        @SuppressLint("NotifyDataSetChanged")
         internal fun reload() {
             lifecycleScope.launch(Dispatchers.IO) {
                 val newItems = ProfileManager.list().toMutableList()
@@ -131,6 +174,7 @@ class ConfigurationFragment : Fragment() {
             return true
         }
 
+        @OptIn(DelicateCoroutinesApi::class)
         internal fun updateUserOrder() {
             items.forEachIndexed { index, profile ->
                 profile.userOrder = index.toLong()
@@ -170,7 +214,7 @@ class ConfigurationFragment : Fragment() {
                 binding.profileLastUpdated.isVisible = true
                 binding.profileLastUpdated.text = binding.root.context.getString(
                     R.string.profile_item_last_updated,
-                    profile.typed.lastUpdated.toLocaleString()
+                    DateFormat.getDateTimeInstance().format(profile.typed.lastUpdated)
                 )
             } else {
                 binding.profileLastUpdated.isVisible = false

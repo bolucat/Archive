@@ -41,6 +41,14 @@
     <string name="profile_source_create_new">Create New</string>
     <string name="profile_source_import">Import</string>
 
+    <string name="profile_add_import_file">Import from file</string>
+    <string name="profile_add_scan_qr_code">Scan QR code</string>
+    <string name="profile_add_scan_use_front_camera">Front camera</string>
+    <string name="profile_add_scan_use_vendor_analyzer">MLKit analyzer</string>
+    <string name="profile_add_scan_enable_torch">Torch</string>
+
+    <string name="profile_add_create_manually">Create Manually</string>
+
     <string name="menu_undo">Undo</string>
     <string name="menu_redo">Redo</string>
     <string name="menu_format">Format</string>

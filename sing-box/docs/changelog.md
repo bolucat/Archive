@@ -2,9 +2,13 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-beta.15
+#### 1.9.0-beta.16
 
 * Fixes and improvements
+
+_Our Testflight distribution has been temporarily blocked by Apple (possibly due to too many beta versions)
+and you cannot join the test, install or update the sing-box beta app right now.
+Please wait patiently for processing._
 
 #### 1.9.0-beta.14
 

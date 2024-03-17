@@ -30,10 +30,13 @@ import io.nekohasekai.sfa.databinding.ViewAppListItemBinding
 import io.nekohasekai.sfa.ktx.clipboardText
 import io.nekohasekai.sfa.ui.shared.AbstractActivity
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipFile
 
 class PerAppProxyActivity : AbstractActivity<ActivityPerAppProxyBinding>() {
@@ -83,25 +86,27 @@ class PerAppProxyActivity : AbstractActivity<ActivityPerAppProxyBinding>() {
         setTitle(R.string.title_per_app_proxy)
 
         lifecycleScope.launch {
-            proxyMode = if (Settings.perAppProxyMode == Settings.PER_APP_PROXY_INCLUDE) {
-                Settings.PER_APP_PROXY_INCLUDE
-            } else {
-                Settings.PER_APP_PROXY_EXCLUDE
-            }
-            withContext(Dispatchers.Main) {
-                if (proxyMode == Settings.PER_APP_PROXY_INCLUDE) {
-                    binding.perAppProxyMode.setText(R.string.per_app_proxy_mode_include_description)
+            withContext(Dispatchers.IO) {
+                proxyMode = if (Settings.perAppProxyMode == Settings.PER_APP_PROXY_INCLUDE) {
+                    Settings.PER_APP_PROXY_INCLUDE
                 } else {
-                    binding.perAppProxyMode.setText(R.string.per_app_proxy_mode_exclude_description)
+                    Settings.PER_APP_PROXY_EXCLUDE
                 }
-            }
-            reloadApplicationList()
-            filterApplicationList()
-            withContext(Dispatchers.Main) {
-                adapter = ApplicationAdapter(displayPackages)
-                binding.appList.adapter = adapter
-                delay(500L)
-                binding.progress.isVisible = false
+                withContext(Dispatchers.Main) {
+                    if (proxyMode == Settings.PER_APP_PROXY_INCLUDE) {
+                        binding.perAppProxyMode.setText(R.string.per_app_proxy_mode_include_description)
+                    } else {
+                        binding.perAppProxyMode.setText(R.string.per_app_proxy_mode_exclude_description)
+                    }
+                }
+                reloadApplicationList()
+                filterApplicationList()
+                withContext(Dispatchers.Main) {
+                    adapter = ApplicationAdapter(displayPackages)
+                    binding.appList.adapter = adapter
+                    delay(500L)
+                    binding.progress.isVisible = false
+                }
             }
         }
     }
@@ -110,7 +115,8 @@ class PerAppProxyActivity : AbstractActivity<ActivityPerAppProxyBinding>() {
         val packageManagerFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             PackageManager.GET_PERMISSIONS or PackageManager.MATCH_UNINSTALLED_PACKAGES
         } else {
-            @Suppress("DEPRECATION") PackageManager.GET_PERMISSIONS or PackageManager.GET_UNINSTALLED_PACKAGES
+            @Suppress("DEPRECATION")
+            PackageManager.GET_PERMISSIONS or PackageManager.GET_UNINSTALLED_PACKAGES
         }
         val installedPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             packageManager.getInstalledPackages(
@@ -527,18 +533,26 @@ class PerAppProxyActivity : AbstractActivity<ActivityPerAppProxyBinding>() {
         ).setView(binding.root).setCancelable(false).create()
         progress.show()
         lifecycleScope.launch {
-            val foundApps = withContext(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+            val foundApps = withContext(Dispatchers.Default) {
                 mutableMapOf<String, PackageCache>().also { foundApps ->
-                    currentPackages.forEachIndexed { index, it ->
-                        if (scanChinaPackage(it.packageName)) {
-                            foundApps[it.packageName] = it
+                    val progressInt = AtomicInteger()
+                    currentPackages.map { it ->
+                        async {
+                            if (scanChinaPackage(it.packageName)) {
+                                foundApps[it.packageName] = it
+                            }
+                            runOnUiThread {
+                                binding.progress.progress = progressInt.addAndGet(1)
+                            }
                         }
-                        withContext(Dispatchers.Main) {
-                            binding.progress.progress = index + 1
-                        }
-                    }
+                    }.awaitAll()
                 }
             }
+            Log.d(
+                "PerAppProxyActivity",
+                "Scan China apps took ${(System.currentTimeMillis() - startTime).toDouble() / 1000}s"
+            )
             withContext(Dispatchers.Main) {
                 progress.dismiss()
                 if (foundApps.isEmpty()) {
@@ -667,7 +681,8 @@ class PerAppProxyActivity : AbstractActivity<ActivityPerAppProxyBinding>() {
             val packageManagerFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
             } else {
-                @Suppress("DEPRECATION") PackageManager.GET_UNINSTALLED_PACKAGES or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+                @Suppress("DEPRECATION")
+                PackageManager.GET_UNINSTALLED_PACKAGES or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
             }
             if (packageName.matches(chinaAppRegex)) {
                 Log.d("PerAppProxyActivity", "Match package name: $packageName")
