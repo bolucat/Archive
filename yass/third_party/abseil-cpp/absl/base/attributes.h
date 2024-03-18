@@ -863,7 +863,7 @@
 // breaks ABI compatibility, but offers `[[msvc::no_unique_address]]` for
 // situations when it can be assured that it is desired. Since Abseil does not
 // claim ABI compatibility in mixed builds, we can offer it unconditionally.
-#if defined(_MSC_VER) && _MSC_VER >= 1929
+#if defined(_MSC_VER) && _MSC_VER >= 1929 && !defined(__clang__)
 #define ABSL_ATTRIBUTE_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
 #elif ABSL_HAVE_CPP_ATTRIBUTE(no_unique_address)
 #define ABSL_ATTRIBUTE_NO_UNIQUE_ADDRESS [[no_unique_address]]

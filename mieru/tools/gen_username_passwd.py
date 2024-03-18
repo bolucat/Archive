@@ -24,13 +24,17 @@ import argparse
 import secrets
 
 
-def gen() -> None:
+def gen_username_passwd() -> None:
     parser = argparse.ArgumentParser(description='Parse string length.')
     parser.add_argument('--length', type=int, default=12, required=False, help='Length of string to generate.')
     args = parser.parse_args()
-    s = secrets.token_urlsafe(args.length)
-    print(s[:args.length])
+    print(gen_token(args.length))
+
+
+def gen_token(length: int) -> str:
+    s = secrets.token_urlsafe(length)
+    return s[:length]
 
 
 if __name__ == '__main__':
-    gen()
+    gen_username_passwd()
