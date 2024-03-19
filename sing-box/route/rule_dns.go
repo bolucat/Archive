@@ -247,7 +247,7 @@ func (r *DefaultDNSRule) WithAddressLimit() bool {
 		if !isRuleSet {
 			continue
 		}
-		if ruleSet.ContainsIPCIDRRule() {
+		if ruleSet.ContainsDestinationIPCIDRRule() {
 			return true
 		}
 	}
@@ -334,12 +334,12 @@ func (r *LogicalDNSRule) WithAddressLimit() bool {
 func (r *LogicalDNSRule) Match(metadata *adapter.InboundContext) bool {
 	if r.mode == C.LogicalTypeAnd {
 		return common.All(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.(adapter.DNSRule).Match(metadata)
 		}) != r.invert
 	} else {
 		return common.Any(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.(adapter.DNSRule).Match(metadata)
 		}) != r.invert
 	}
@@ -348,12 +348,12 @@ func (r *LogicalDNSRule) Match(metadata *adapter.InboundContext) bool {
 func (r *LogicalDNSRule) MatchAddressLimit(metadata *adapter.InboundContext) bool {
 	if r.mode == C.LogicalTypeAnd {
 		return common.All(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.(adapter.DNSRule).MatchAddressLimit(metadata)
 		}) != r.invert
 	} else {
 		return common.Any(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.(adapter.DNSRule).MatchAddressLimit(metadata)
 		}) != r.invert
 	}

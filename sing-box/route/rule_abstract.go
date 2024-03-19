@@ -140,7 +140,7 @@ func (r *abstractDefaultRule) Match(metadata *adapter.InboundContext) bool {
 	}
 
 	if !metadata.DidMatch {
-		return false
+		return true
 	}
 
 	return !r.invert
@@ -211,12 +211,12 @@ func (r *abstractLogicalRule) Close() error {
 func (r *abstractLogicalRule) Match(metadata *adapter.InboundContext) bool {
 	if r.mode == C.LogicalTypeAnd {
 		return common.All(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.Match(metadata)
 		}) != r.invert
 	} else {
 		return common.Any(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCache()
+			metadata.ResetRuleCacheContext()
 			return it.Match(metadata)
 		}) != r.invert
 	}
