@@ -331,7 +331,7 @@ jobs:
           # suyu
           mkdir -p suyu/Clients
           pushd suyu/Clients || exit 1
-          wget -qO- https://gitlab.com/api/v4/projects/55558123/releases/permalink/latest | jq '.assets.links[].direct_asset_url' -c | jq -r | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
+          wget -qO- https://gitlab.com/api/v4/projects/55558123/releases/permalink/latest | jq '.assets.links[].direct_asset_url' -c | jq -r | sed 's/blob/raw/g' | aria2c -c -x 8 -s 8 -j 1 -k 1M -i -
           popd || exit 1
           # trojan-rs
           pushd trojan-rs || exit 1
