@@ -72,7 +72,7 @@
     "@mui/icons-material": "5.15.14",
     "@mui/lab": "5.0.0-alpha.169",
     "@mui/material": "5.15.14",
-    "@mui/x-data-grid": "6.19.8",
+    "@mui/x-data-grid": "7.0.0",
     "@tauri-apps/api": "1.5.3",
     "ahooks": "3.7.10",
     "axios": "1.6.8",
@@ -151,7 +151,7 @@
     "telegraf": "4.16.3",
     "tsx": "4.7.1",
     "typescript": "5.4.3",
-    "vite": "5.2.2",
+    "vite": "5.2.3",
     "vite-plugin-monaco-editor": "1.1.0",
     "vite-plugin-svgr": "4.2.0"
   }
