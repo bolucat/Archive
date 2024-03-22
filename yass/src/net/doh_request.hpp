@@ -38,7 +38,7 @@ class DoHRequest : public RefCountedThreadSafe<DoHRequest> {
   static scoped_refptr<DoHRequest> Create(Args&&... args) {
     return MakeRefCounted<DoHRequest>(std::forward<Args>(args)...);
   }
-  ~DoHRequest() { close(); }
+  ~DoHRequest();
 
   void close();
 
@@ -57,9 +57,18 @@ class DoHRequest : public RefCountedThreadSafe<DoHRequest> {
   void OnSSLConnect();
   void OnSSLWritable(asio::error_code ec);
   void OnSSLReadable(asio::error_code ec);
-  void OnReadResult();
+  void OnReadHeader();
+  void OnReadBody();
   void OnParseDnsResponse();
   void OnDoneRequest(asio::error_code ec, struct addrinfo* addrinfo);
+
+ private:
+  enum ReadState {
+    Read_Header,
+    Read_Body,
+  };
+  ReadState read_state_ = Read_Header;
+  size_t body_length_ = 0;
 
  private:
   asio::io_context& io_context_;
