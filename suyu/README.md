@@ -1,6 +1,6 @@
 <!--
 SPDX-FileCopyrightText: 2024 suyu emulator project
-SPDX-License-Identifier: GPL v3
+SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
 **Note**: We do not support or condone piracy in any form. In order to use suyu, you'll need keys from your real Switch system, and games which you have legally obtained and paid for. We do not intend to make money or profit from this project.
@@ -60,8 +60,10 @@ We have official builds [here.](https://git.suyu.dev/suyu/suyu/releases) If any 
 
 ## Building
 
-* __Windows__: [Wiki page](https://git.suyu.dev/suyu/suyu/wiki/Building-for-Windows)
-* __Linux__: [Wiki page](https://git.suyu.dev/suyu/suyu/wiki/Building-for-Linux)
+* __Windows__: [Windows Build](https://git.suyu.dev/suyu/suyu/wiki/Building-For-Windows)
+* __Linux__: [Linux Build](https://git.suyu.dev/suyu/suyu/wiki/Building-For-Linux)
+* __Android__: [Android Build](https://git.suyu.dev/suyu/suyu/wiki/Building-For-Android)
+* __MacOS__: [MacOS Build](https://git.suyu.dev/suyu/suyu/wiki/Building-for-macOS)
 
 
 
@@ -72,4 +74,4 @@ If you have any questions, don't hesitate to ask us on [Discord](https://discord
 
 ## License
 
-suyu is licensed under the free and open-source GPL v3 license.
+suyu is licensed under the free and open-source GPL-3.0-or-later license.
