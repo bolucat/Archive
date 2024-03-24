@@ -41,7 +41,6 @@ class NaiveConnection {
       ClientProtocol protocol,
       std::unique_ptr<PaddingDetectorDelegate> padding_detector_delegate,
       const ProxyInfo& proxy_info,
-      const SSLConfig& server_ssl_config,
       RedirectResolver* resolver,
       HttpNetworkSession* session,
       const NetworkAnonymizationKey& network_anonymization_key,
@@ -95,7 +94,6 @@ class NaiveConnection {
   ClientProtocol protocol_;
   std::unique_ptr<PaddingDetectorDelegate> padding_detector_delegate_;
   const ProxyInfo& proxy_info_;
-  const SSLConfig& server_ssl_config_;
   RedirectResolver* resolver_;
   HttpNetworkSession* session_;
   const NetworkAnonymizationKey& network_anonymization_key_;

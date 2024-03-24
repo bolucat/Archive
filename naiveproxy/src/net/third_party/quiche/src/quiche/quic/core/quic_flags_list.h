@@ -73,12 +73,10 @@ QUIC_FLAG(quic_reloadable_flag_quic_enable_disable_resumption, true)
 QUIC_FLAG(quic_reloadable_flag_quic_discard_initial_packet_with_key_dropped, true)
 // If true, dispatcher sends error code QUIC_HANDSHAKE_FAILED_PACKETS_BUFFERED_TOO_LONG when handshake fails due to packets buffered for too long.
 QUIC_FLAG(quic_reloadable_flag_quic_new_error_code_when_packets_buffered_too_long, true)
-// If true, do not return from QuicSpdyClientStream::OnBodyAvailable() if visitor is nullptr.
-QUIC_FLAG(quic_reloadable_flag_quic_skip_return_on_null_visitor, true)
 // If true, enable server retransmittable on wire PING.
 QUIC_FLAG(quic_reloadable_flag_quic_enable_server_on_wire_ping, true)
 // If true, fix a QUIC BBR2 bytes counting issue caused by spurious losses.
-QUIC_FLAG(quic_reloadable_flag_quic_bbr2_fix_spurious_loss_bytes_counting, false)
+QUIC_FLAG(quic_reloadable_flag_quic_bbr2_fix_spurious_loss_bytes_counting, true)
 // If true, include stream information in idle timeout connection close detail.
 QUIC_FLAG(quic_reloadable_flag_quic_add_stream_info_to_idle_close_detail, true)
 // If true, reject or send error response code upon receiving invalid request or response headers.
@@ -101,14 +99,14 @@ QUIC_FLAG(quic_reloadable_flag_quic_use_received_client_addresses_cache, true)
 QUIC_FLAG(quic_reloadable_flag_quic_conservative_cwnd_and_pacing_gains, false)
 // If true, when TicketCrypter fails to encrypt a session ticket, quic::TlsServerHandshaker will send a placeholder ticket, instead of an empty one, to the client.
 QUIC_FLAG(quic_reloadable_flag_quic_send_placeholder_ticket_when_encrypt_ticket_fails, true)
+// If true, when the peer sends connection options \\\\\\\'SLP1\\\\\\\', \\\\\\\'SLP2\\\\\\\' and \\\\\\\'SLPF\\\\\\\', internet facing GFEs will only allow a limited number of new requests to be processed per event loop, and postpone the rest to the following event loops. Also guard QuicConnection to iterate through all decrypters at each encryption level to get cipher id for a request.
+QUIC_FLAG(quic_reloadable_flag_quic_limit_new_streams_per_loop_2, false)
 // When true, allows sending of QUIC packets marked ECT(1). A different flag (TBD) will actually utilize this capability to send ECT(1).
 QUIC_FLAG(quic_restart_flag_quic_support_ect1, false)
 // When true, correctly stores the ECN mark on incoming packets when buffered while waiting for a crypto context.
-QUIC_FLAG(quic_reloadable_flag_quic_clone_ecn, false)
+QUIC_FLAG(quic_reloadable_flag_quic_clone_ecn, true)
 // When true, defaults to BBR congestion control instead of Cubic.
 QUIC_FLAG(quic_reloadable_flag_quic_default_to_bbr, false)
-// When true, report received ECN markings to the peer. Replaces quic_receive_ecn2 to use correct codepoints.
-QUIC_FLAG(quic_restart_flag_quic_receive_ecn3, true)
 // When true, support RFC9369.
 QUIC_FLAG(quic_reloadable_flag_quic_enable_version_rfcv2, false)
 // When true, the BB2U copt causes BBR2 to wait two rounds with out draining the queue before exiting PROBE_UP and BB2S has the same effect in STARTUP.

@@ -211,12 +211,12 @@ func (r *abstractLogicalRule) Close() error {
 func (r *abstractLogicalRule) Match(metadata *adapter.InboundContext) bool {
 	if r.mode == C.LogicalTypeAnd {
 		return common.All(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCacheContext()
+			metadata.ResetRuleCache()
 			return it.Match(metadata)
 		}) != r.invert
 	} else {
 		return common.Any(r.rules, func(it adapter.HeadlessRule) bool {
-			metadata.ResetRuleCacheContext()
+			metadata.ResetRuleCache()
 			return it.Match(metadata)
 		}) != r.invert
 	}

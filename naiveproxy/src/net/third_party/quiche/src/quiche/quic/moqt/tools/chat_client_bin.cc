@@ -107,12 +107,11 @@ class ChatClient {
       }
     }
 
-    void OnObjectFragment(const moqt::FullTrackName& full_track_name,
-                          uint32_t /*stream_id*/, uint64_t group_sequence,
-                          uint64_t object_sequence,
-                          uint64_t /*object_send_order*/,
-                          absl::string_view object,
-                          bool end_of_message) override {
+    void OnObjectFragment(
+        const moqt::FullTrackName& full_track_name, uint64_t group_sequence,
+        uint64_t object_sequence, uint64_t /*object_send_order*/,
+        moqt::MoqtForwardingPreference /*forwarding_preference*/,
+        absl::string_view object, bool end_of_message) override {
       if (!end_of_message) {
         std::cerr << "Error: received partial message despite requesting "
                      "buffering\n";
@@ -147,7 +146,8 @@ class ChatClient {
             std::optional<absl::string_view> message) {
           if (message.has_value()) {
             std::cout << "ANNOUNCE rejected, " << *message << "\n";
-            session_->Error("Local ANNOUNCE rejected");
+            session_->Error(moqt::MoqtError::kGenericError,
+                            "Local ANNOUNCE rejected");
             return;
           }
           std::cout << "ANNOUNCE for " << track_namespace << " accepted\n";
@@ -224,7 +224,8 @@ class ChatClient {
       if (!got_version) {
         // Chat server currently does not send version
         if (line != "version=1") {
-          session_->Error("Catalog does not begin with version");
+          session_->Error(moqt::MoqtError::kProtocolViolation,
+                          "Catalog does not begin with version");
           return;
         }
         got_version = true;
@@ -277,7 +278,8 @@ class ChatClient {
         subscribes_to_make_++;
       } else {
         if (it->second.from_group == group_sequence) {
-          session_->Error("User listed twice in Catalog");
+          session_->Error(moqt::MoqtError::kProtocolViolation,
+                          "User listed twice in Catalog");
           return;
         }
         it->second.from_group = group_sequence;

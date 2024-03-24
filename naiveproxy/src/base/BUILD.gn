@@ -42,6 +42,11 @@ import("//build/timestamp.gni")
 import("//build/util/process_version.gni")
 import("//build_overrides/build.gni")
 
+if (is_ios) {
+  # Used to access ios_is_app_extension variable definition.
+  import("//build/config/ios/ios_sdk.gni")
+}
+
 if (is_mac) {
   # Used to generate fuzzer corpus :base_mach_port_rendezvous_convert_corpus.
   import("//third_party/protobuf/proto_library.gni")
@@ -285,7 +290,6 @@ component("base") {
     "containers/lru_cache.h",
     "containers/map_util.h",
     "containers/small_map.h",
-    "containers/span.h",
     "containers/stack.h",
     "containers/unique_ptr_adapters.h",
     "containers/util.h",
@@ -405,6 +409,7 @@ component("base") {
     "memory/platform_shared_memory_mapper.h",
     "memory/platform_shared_memory_region.cc",
     "memory/platform_shared_memory_region.h",
+    "memory/protected_memory.h",
     "memory/ptr_util.h",
     "memory/raw_ptr.h",
     "memory/raw_ptr_asan_bound_arg_tracker.cc",
@@ -488,8 +493,6 @@ component("base") {
     "metrics/histogram_macros_local.h",
     "metrics/histogram_samples.cc",
     "metrics/histogram_samples.h",
-    "metrics/histogram_shared_memory.cc",
-    "metrics/histogram_shared_memory.h",
     "metrics/histogram_snapshot_manager.cc",
     "metrics/histogram_snapshot_manager.h",
     "metrics/metrics_hashes.cc",
@@ -518,6 +521,7 @@ component("base") {
     "metrics/user_metrics_action.h",
     "no_destructor.h",
     "not_fatal_until.h",
+    "notimplemented.h",
     "notreached.h",
     "observer_list.h",
     "observer_list_internal.cc",
@@ -782,9 +786,6 @@ component("base") {
     "task/thread_pool/environment_config.h",
     "task/thread_pool/job_task_source.cc",
     "task/thread_pool/job_task_source.h",
-    "task/thread_pool/job_task_source_interface.h",
-    "task/thread_pool/job_task_source_old.cc",
-    "task/thread_pool/job_task_source_old.h",
     "task/thread_pool/pooled_parallel_task_runner.cc",
     "task/thread_pool/pooled_parallel_task_runner.h",
     "task/thread_pool/pooled_sequenced_task_runner.cc",
@@ -812,6 +813,8 @@ component("base") {
     "task/thread_pool/thread_group.h",
     "task/thread_pool/thread_group_impl.cc",
     "task/thread_pool/thread_group_impl.h",
+    "task/thread_pool/thread_group_semaphore.cc",
+    "task/thread_pool/thread_group_semaphore.h",
     "task/thread_pool/thread_group_worker_delegate.cc",
     "task/thread_pool/thread_group_worker_delegate.h",
     "task/thread_pool/thread_pool_impl.cc",
@@ -916,6 +919,8 @@ component("base") {
     "trace_event/heap_profiler_allocation_context_tracker.h",
     "trace_event/memory_allocator_dump_guid.cc",
     "trace_event/memory_allocator_dump_guid.h",
+    "trace_event/named_trigger.cc",
+    "trace_event/named_trigger.h",
     "trace_event/trace_id_helper.cc",
     "trace_event/trace_id_helper.h",
     "traits_bag.h",
@@ -927,6 +932,7 @@ component("base") {
     "types/expected_macros.h",
     "types/fixed_array.h",
     "types/id_type.h",
+    "types/is_complete.h",
     "types/is_instantiation.h",
     "types/optional_ref.h",
     "types/optional_util.h",
@@ -1056,6 +1062,7 @@ component("base") {
     "//base/third_party/dynamic_annotations",
     "//build:blink_buildflags",
     "//build:branding_buildflags",
+    "//build:ios_buildflags",
     "//build/config/compiler:compiler_buildflags",
     "//third_party/modp_b64",
   ]
@@ -1086,6 +1093,7 @@ component("base") {
     ":orderfile_buildflags",
     ":power_monitor_buildflags",
     ":profiler_buildflags",
+    ":protected_memory_buildflags",
     ":rust_buildflags",
     ":sanitizer_buildflags",
     ":synchronization_buildflags",
@@ -1197,7 +1205,7 @@ component("base") {
     deps += [
       "//third_party/ashmem",
       "//third_party/cpu_features:ndk_compat",
-      "//third_party/jni_zero:jni_zero_utils",
+      "//third_party/jni_zero:jni_zero",
     ]
 
     # Needs to be a public config so that dependent targets link against it as
@@ -1255,6 +1263,9 @@ component("base") {
       "android/jni_android.h",
       "android/jni_array.cc",
       "android/jni_array.h",
+      "android/jni_bytebuffer.cc",
+      "android/jni_bytebuffer.h",
+      "android/jni_conversions.cc",
       "android/jni_registrar.cc",
       "android/jni_registrar.h",
       "android/jni_string.cc",
@@ -1267,14 +1278,17 @@ component("base") {
       "android/library_loader/library_loader_hooks.h",
       "android/native_uma_recorder.cc",
       "android/scoped_java_ref.h",
+      "android/token_android.cc",
+      "android/token_android.h",
       "android/trace_event_binding.cc",
       "android/trace_event_binding.h",
     ]
     deps += [
       ":base_jni",
       ":process_launcher_jni",
+      "//build:robolectric_buildflags",
     ]
-    public_deps += [ "//third_party/jni_zero:jni_zero_utils" ]
+    public_deps += [ "//third_party/jni_zero:jni_zero" ]
   }  # is_android || is_robolectric
 
   # Chromeos.
@@ -1307,7 +1321,6 @@ component("base") {
       "files/dir_reader_posix.h",
       "files/file_path_watcher_stub.cc",  # See crbug.com/851641.
       "files/file_posix.cc",
-      "files/file_util_fuchsia.cc",
       "files/memory_mapped_file_posix.cc",
       "fuchsia/default_job.cc",
       "fuchsia/default_job.h",
@@ -1603,6 +1616,10 @@ component("base") {
       sources += [
         "memory/discardable_shared_memory.cc",
         "memory/discardable_shared_memory.h",
+        "memory/shared_memory_switch.cc",
+        "memory/shared_memory_switch.h",
+        "metrics/histogram_shared_memory.cc",
+        "metrics/histogram_shared_memory.h",
         "process/kill.cc",
         "process/kill.h",
         "process/launch.cc",
@@ -1676,6 +1693,7 @@ component("base") {
       "memory/page_size_win.cc",
       "memory/platform_shared_memory_mapper_win.cc",
       "memory/platform_shared_memory_region_win.cc",
+      "memory/protected_memory_win.cc",
       "message_loop/message_pump_win.cc",
       "message_loop/message_pump_win.h",
       "moving_window.h",
@@ -2029,7 +2047,6 @@ component("base") {
     sources += [
       "base_paths_ios.h",
       "base_paths_ios.mm",
-      "critical_closure_internal_ios.mm",
       "ios/block_types.h",
       "ios/crb_protocol_observers.h",
       "ios/crb_protocol_observers.mm",
@@ -2040,8 +2057,6 @@ component("base") {
       "ios/ns_error_util.h",
       "ios/ns_error_util.mm",
       "ios/ns_range.h",
-      "ios/scoped_critical_action.h",
-      "ios/scoped_critical_action.mm",
       "native_library_ios.mm",
       "power_monitor/power_monitor_device_source_ios.mm",
       "process/process_metrics_ios.cc",
@@ -2049,6 +2064,14 @@ component("base") {
       "profiler/stack_sampler_ios.cc",
       "system/sys_info_ios.mm",
     ]
+
+    if (!ios_is_app_extension) {
+      sources += [
+        "critical_closure_internal_ios.mm",
+        "ios/scoped_critical_action.h",
+        "ios/scoped_critical_action.mm",
+      ]
+    }
 
     if (use_blink) {
       sources += [
@@ -2451,6 +2474,17 @@ buildflag_header("orderfile_buildflags") {
     "DEVTOOLS_INSTRUMENTATION_DUMPING=$using_devtools_dumping",
     "ORDERFILE_INSTRUMENTATION=$using_order_profiling",
   ]
+}
+
+# Build flags for ProtectedMemory
+buildflag_header("protected_memory_buildflags") {
+  header = "protected_memory_buildflags.h"
+  header_dir = "base/memory"
+
+  # Currently Protected Memory is only supported on Windows.
+  protected_memory_enabled = is_win
+
+  flags = [ "PROTECTED_MEMORY_ENABLED=$protected_memory_enabled" ]
 }
 
 buildflag_header("synchronization_buildflags") {

@@ -5,9 +5,10 @@
 #ifndef NET_CERT_INTERNAL_TRUST_STORE_CHROME_H_
 #define NET_CERT_INTERNAL_TRUST_STORE_CHROME_H_
 
+#include <optional>
+
 #include "base/containers/span.h"
 #include "net/base/net_export.h"
-#include "third_party/abseil-cpp/absl/types/optional.h"
 #include "third_party/boringssl/src/pki/trust_store.h"
 #include "third_party/boringssl/src/pki/trust_store_in_memory.h"
 
@@ -27,9 +28,9 @@ struct ChromeRootCertInfo {
 class NET_EXPORT ChromeRootStoreData {
  public:
   // CreateChromeRootStoreData converts |proto| into a usable
-  // ChromeRootStoreData object. Returns absl::nullopt if the passed in
+  // ChromeRootStoreData object. Returns std::nullopt if the passed in
   // proto has errors in it (e.g. an unparsable DER-encoded certificate).
-  static absl::optional<ChromeRootStoreData> CreateChromeRootStoreData(
+  static std::optional<ChromeRootStoreData> CreateChromeRootStoreData(
       const chrome_root_store::RootStore& proto);
   ~ChromeRootStoreData();
 

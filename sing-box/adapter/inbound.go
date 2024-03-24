@@ -61,16 +61,12 @@ type InboundContext struct {
 }
 
 func (c *InboundContext) ResetRuleCache() {
-	c.ResetRuleCacheContext()
-	c.DidMatch = false
-}
-
-func (c *InboundContext) ResetRuleCacheContext() {
 	c.IPCIDRMatchSource = false
 	c.SourceAddressMatch = false
 	c.SourcePortMatch = false
 	c.DestinationAddressMatch = false
 	c.DestinationPortMatch = false
+	c.DidMatch = false
 }
 
 type inboundContextKey struct{}

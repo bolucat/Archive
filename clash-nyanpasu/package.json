@@ -141,7 +141,7 @@
     "prettier-plugin-toml": "2.0.1",
     "sass": "1.72.0",
     "shikiji": "0.10.2",
-    "stylelint": "16.2.1",
+    "stylelint": "16.3.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "5.0.0",
     "stylelint-config-standard": "36.0.0",
@@ -151,7 +151,7 @@
     "telegraf": "4.16.3",
     "tsx": "4.7.1",
     "typescript": "5.4.3",
-    "vite": "5.2.4",
+    "vite": "5.2.5",
     "vite-plugin-monaco-editor": "1.1.0",
     "vite-plugin-svgr": "4.2.0"
   }

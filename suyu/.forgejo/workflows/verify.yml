@@ -9,19 +9,34 @@ name: 'suyu verify'
 on:
   pull_request:
     branches: [ "dev" ]
+    paths:
+      - 'src/**'
+      - 'CMakeModules/**'
+      - 'dist/**'
+      - 'externals/**'
+      - 'vcpkg.json'
+    paths-ignore:
+      - 'src/android/**'
   push:
     branches: [ "dev" ]
+    paths:
+      - 'src/**'
+      - 'CMakeModules/**'
+      - 'dist/**'
+      - 'externals/**'
+      - 'vcpkg.json'
+    paths-ignore:
+      - 'src/android/**'
+
 env:
   PR_NUMBER: pr${{ github.event.number }}
   CCACHE_DIR: '.ccache'
-
 
 jobs:
   format:
     name: 'Verify Format'
     runs-on: ubuntu-latest
-    container:
-      image: fijxu/build-environments:linux-clang-format
+    container: fijxu/build-environments:linux-clang-format
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v3
         with:
@@ -47,9 +62,9 @@ jobs:
             image: linux-fresh
           - type: windows
             image: linux-mingw
-    container:
-      image: fijxu/build-environments:${{ matrix.image }}
-      options: -u 1001
+    container: fijxu/build-environments:${{ matrix.image }}
+      # User 1001 doesn't exists on the images.
+      # options: -u 1001
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v3
         with:

@@ -380,7 +380,8 @@ flowchart TB
                 "mode": "and",
                 "rules": [
                   {
-                    "rule_set": "geosite-geolocation-!cn"
+                    "rule_set": "geosite-geolocation-!cn",
+                    "invert": true
                   },
                   {
                     "rule_set": "geoip-cn"
@@ -462,7 +463,8 @@ flowchart TB
                 "mode": "and",
                 "rules": [
                   {
-                    "rule_set": "geosite-geolocation-!cn"
+                    "rule_set": "geosite-geolocation-!cn",
+                    "invert": true
                   },
                   {
                     "rule_set": "geoip-cn"

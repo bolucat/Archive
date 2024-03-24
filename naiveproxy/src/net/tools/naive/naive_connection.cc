@@ -53,7 +53,6 @@ NaiveConnection::NaiveConnection(
     ClientProtocol protocol,
     std::unique_ptr<PaddingDetectorDelegate> padding_detector_delegate,
     const ProxyInfo& proxy_info,
-    const SSLConfig& server_ssl_config,
     RedirectResolver* resolver,
     HttpNetworkSession* session,
     const NetworkAnonymizationKey& network_anonymization_key,
@@ -64,7 +63,6 @@ NaiveConnection::NaiveConnection(
       protocol_(protocol),
       padding_detector_delegate_(std::move(padding_detector_delegate)),
       proxy_info_(proxy_info),
-      server_ssl_config_(server_ssl_config),
       resolver_(resolver),
       session_(session),
       network_anonymization_key_(network_anonymization_key),
@@ -277,7 +275,7 @@ int NaiveConnection::DoConnectServer() {
   // Ignores socket limit set by socket pool for this type of socket.
   return InitSocketHandleForHttpRequest(
       std::move(endpoint), LOAD_IGNORE_LIMITS, MAXIMUM_PRIORITY, session_,
-      proxy_info_, server_ssl_config_, PRIVACY_MODE_DISABLED,
+      proxy_info_, {}, PRIVACY_MODE_DISABLED,
       network_anonymization_key_, SecureDnsPolicy::kDisable, SocketTag(),
       net_log_, server_socket_handle_.get(), io_callback_,
       ClientSocketPool::ProxyAuthCallback());

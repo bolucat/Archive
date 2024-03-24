@@ -67,7 +67,6 @@ class NaiveProxy {
   std::string listen_pass_;
   int concurrency_;
   ProxyInfo proxy_info_;
-  SSLConfig server_ssl_config_;
   RedirectResolver* resolver_;
   HttpNetworkSession* session_;
   NetLogWithSource net_log_;

@@ -47,7 +47,7 @@ config("compiler") {
 
   abi = "musl"
   if (current_cpu == "arm") {
-    abi = "muslgnueabi"
+    abi = "musleabi"
     arch = "arm"
   } else if (current_cpu == "arm64") {
     arch = "aarch64"

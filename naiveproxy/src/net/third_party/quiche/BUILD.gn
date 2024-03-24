@@ -49,6 +49,11 @@ config("quiche_config") {
 }
 
 component("quiche") {
+  # TODO(crbug.com/325102878): Remove once usage of the deprecated version of
+  # absl::HexStringToBytes have been removed.
+  cflags = [
+    "-Wno-deprecated-declarations",
+  ]
   sources = [
               "overrides/quiche_platform_impl/quiche_bug_tracker_impl.h",
               "overrides/quiche_platform_impl/quiche_client_stats_impl.h",

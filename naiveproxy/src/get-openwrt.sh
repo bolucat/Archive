@@ -48,3 +48,8 @@ tar cf - -C $full_root --hard-dereference . | tar xf - -C $sysroot --wildcards -
 rm -rf include.txt
 cd ..
 rm -rf $SDK_PATH
+
+# LLVM does not accept muslgnueabi as the target triple environment
+if [ -d "$sysroot/lib/gcc/arm-openwrt-linux-muslgnueabi" ]; then
+  mv "$sysroot/lib/gcc/arm-openwrt-linux-muslgnueabi" "$sysroot/lib/gcc/arm-openwrt-linux-musleabi"
+fi
