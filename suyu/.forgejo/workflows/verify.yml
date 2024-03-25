@@ -14,9 +14,10 @@ on:
       - 'CMakeModules/**'
       - 'dist/**'
       - 'externals/**'
+      - 'CMakeLists.txt'
       - 'vcpkg.json'
-    paths-ignore:
-      - 'src/android/**'
+    # paths-ignore:
+    #   - 'src/android/**'
   push:
     branches: [ "dev" ]
     paths:
@@ -24,13 +25,15 @@ on:
       - 'CMakeModules/**'
       - 'dist/**'
       - 'externals/**'
+      - 'CMakeLists.txt'
       - 'vcpkg.json'
-    paths-ignore:
-      - 'src/android/**'
+      - '.forgejo/workflows/verify.yml'
+      - '.ci/**'
+    # paths-ignore:
+    #   - 'src/android/**'
 
 env:
   PR_NUMBER: pr${{ github.event.number }}
-  CCACHE_DIR: '.ccache'
 
 jobs:
   format:
@@ -60,8 +63,8 @@ jobs:
             image: linux-fresh
           - type: linux
             image: linux-fresh
-          - type: windows
-            image: linux-mingw
+            # - type: windows
+            # image: linux-mingw
     container: fijxu/build-environments:${{ matrix.image }}
       # User 1001 doesn't exists on the images.
       # options: -u 1001
@@ -74,13 +77,13 @@ jobs:
         uses: https://code.forgejo.org/actions/cache@v3
         id: ccache-restore
         with:
-          path: .ccache
+          path: ~/.ccache
           key: ${{ runner.os }}-${{ matrix.type }}-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.type }}-
       - name: Create ccache directory
         if: steps.ccache-restore.outputs.cache-hit != 'true'
-        run: mkdir -p .ccache
+        run: mkdir -p ~/.ccache
       - name: Build
         run: ./.ci/scripts/${{ matrix.type }}/docker.sh
         env:
@@ -173,6 +176,7 @@ jobs:
   #         path: ${{ env.INDIVIDUAL_EXE }}
   android:
     runs-on: ubuntu-latest
+    container: fijxu/build-environments:android
     needs: format
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v3
@@ -190,17 +194,13 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            .ccache
+            ~/.ccache
           key: ${{ runner.os }}-android-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-android-
       - name: Query tag name
         uses: https://github.com/olegtarasov/get-tag@v2.1.2
         id: tagName
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ccache apksigner glslang-dev glslang-tools
       - name: Build
         run: ./.ci/scripts/android/build.sh
       - name: Copy and sign artifacts
