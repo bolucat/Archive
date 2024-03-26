@@ -27,14 +27,13 @@ namespace v2rayN
         /// <param name="e"></param>
         protected override void OnStartup(StartupEventArgs e)
         {
-            var exePathKey = Utile.GetMD5(Utile.GetExePath());
+            var exePathKey = Utils.GetMD5(Utils.GetExePath());
 
             var rebootas = (e.Args ?? new string[] { }).Any(t => t == Global.RebootAs);
             ProgramStarted = new EventWaitHandle(false, EventResetMode.AutoReset, exePathKey, out bool bCreatedNew);
             if (!rebootas && !bCreatedNew)
             {
                 ProgramStarted.Set();
-                Current.Shutdown();
                 Environment.Exit(0);
                 return;
             }
@@ -42,7 +41,7 @@ namespace v2rayN
             Logging.Setup();
             Init();
             Logging.LoggingEnabled(_config.guiItem.enableLog);
-            Logging.SaveLog($"v2rayN start up | {Utile.GetVersion()} | {Utile.GetExePath()}");
+            Logging.SaveLog($"v2rayN start up | {Utils.GetVersion()} | {Utils.GetExePath()}");
             Logging.ClearLogs();
 
             Thread.CurrentThread.CurrentUICulture = new(_config.uiItem.currentLanguage);
@@ -55,7 +54,6 @@ namespace v2rayN
             if (ConfigHandler.LoadConfig(ref _config) != 0)
             {
                 UI.Show($"Loading GUI configuration file is abnormal,please restart the application{Environment.NewLine}加载GUI配置文件异常,请重启应用");
-                Application.Current.Shutdown();
                 Environment.Exit(0);
                 return;
             }
