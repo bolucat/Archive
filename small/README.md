@@ -1,6 +1,6 @@
-![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=kenzok8&show_icons=true&theme=radical)
+![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=kenzok8&show_icons=true&&theme=transparent)
 <div align="center">
-<h1 align="center"smmall</h1>
+<h1 align="center"small</h1>
 <img src="https://img.shields.io/github/issues/kenzok8/small?color=green">
 <img src="https://img.shields.io/github/stars/kenzok8/small?color=yellow">
 <img src="https://img.shields.io/github/forks/kenzok8/small?color=orange">
@@ -42,7 +42,8 @@
 sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
 sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
 ./scripts/feeds update -a && rm -rf feeds/luci/applications/luci-app-mosdns
-rm -rf feeds/packages/net/{alist,adguardhome,xray*,v2ray*,v2ray*,sing*,smartdns}
+rm -rf feeds/packages/net/{alist,adguardhome,mosdns,xray*,v2ray*,v2ray*,sing*,smartdns}
+rm -rf feeds/packages/utils/v2dat
 rm -rf feeds/packages/lang/golang
 git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
 ./scripts/feeds install -a 
