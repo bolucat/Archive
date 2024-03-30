@@ -1,6 +1,6 @@
 #![cfg(target_os = "ios")]
 
-use smoltcp::{phy::Medium};
+use smoltcp::phy::Medium;
 use std::io;
 use std::os::unix::io::{AsRawFd, RawFd};
 
@@ -12,14 +12,21 @@ use smoltcp::time::Instant;
 
 use crate::IosContext;
 
+#[allow(non_camel_case_types)]
+type c_int = libc::c_int;
+#[allow(non_camel_case_types)]
+type c_size_t = libc::size_t;
+#[allow(non_camel_case_types)]
+type c_void = libc::c_void;
+
 #[derive(Debug)]
 pub struct ContextInterfaceDesc {
-    context: *mut libc::c_void,
-    read_fd: libc::c_int,
-    get_read_packet_context_data_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> *const libc::c_void,
-    get_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::size_t,
-    free_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void),
-    write_packets_fn: unsafe extern "C" fn(*mut libc::c_void, *const *mut libc::c_void, *const libc::size_t, libc::c_int),
+    context: *mut c_void,
+    read_fd: c_int,
+    get_read_packet_context_data_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *const c_void,
+    get_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_size_t,
+    free_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void),
+    write_packets_fn: unsafe extern "C" fn(*mut c_void, *const *mut c_void, *const c_size_t, c_int),
 }
 
 impl AsRawFd for ContextInterfaceDesc {
@@ -29,41 +36,40 @@ impl AsRawFd for ContextInterfaceDesc {
 }
 
 impl ContextInterfaceDesc {
-    pub fn from_context(context: *mut libc::c_void,
-                        read_fd: libc::c_int,
-                        get_read_packet_context_data_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> *const libc::c_void,
-                        get_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::size_t,
-                        free_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void),
-                        write_packets_fn: unsafe extern "C" fn(*mut libc::c_void, *const *mut libc::c_void,  *const libc::size_t, libc::c_int)) -> io::Result<ContextInterfaceDesc> {
+    pub fn from_context(
+        context: *mut c_void,
+        read_fd: c_int,
+        get_read_packet_context_data_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *const c_void,
+        get_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_size_t,
+        free_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void),
+        write_packets_fn: unsafe extern "C" fn(*mut c_void, *const *mut c_void, *const c_size_t, c_int),
+    ) -> io::Result<ContextInterfaceDesc> {
         Ok(ContextInterfaceDesc {
-          context: context, read_fd: read_fd,
-          get_read_packet_context_data_fn: get_read_packet_context_data_fn,
-          get_read_packet_context_size_fn: get_read_packet_context_size_fn,
-          free_read_packet_context_size_fn: free_read_packet_context_size_fn,
-          write_packets_fn: write_packets_fn,
+            context: context,
+            read_fd: read_fd,
+            get_read_packet_context_data_fn: get_read_packet_context_data_fn,
+            get_read_packet_context_size_fn: get_read_packet_context_size_fn,
+            free_read_packet_context_size_fn: free_read_packet_context_size_fn,
+            write_packets_fn: write_packets_fn,
         })
     }
 
-    pub fn recv(&mut self) -> io::Result<(*mut libc::c_void, *mut libc::c_void)> {
+    pub fn recv(&mut self) -> io::Result<(*mut c_void, *mut c_void)> {
         unsafe {
             let mut context_buffer = vec![0; 8];
-            let len = libc::read(
-                self.read_fd,
-                context_buffer.as_mut_ptr() as *mut libc::c_void,
-                context_buffer.len(),
-            );
+            let len = libc::read(self.read_fd, context_buffer.as_mut_ptr() as *mut c_void, context_buffer.len());
             if len == -1 {
                 return Err(io::Error::last_os_error());
             }
-            let read_ctx: *mut libc::c_void = *(context_buffer.as_ptr() as *mut *mut libc::c_void);
+            let read_ctx: *mut c_void = *(context_buffer.as_ptr() as *mut *mut c_void);
             Ok((self.context, read_ctx))
         }
     }
 
     pub fn send(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         unsafe {
-            let packet : *mut libc::c_void = buffer.as_ptr() as *mut libc::c_void;
-            let packet_length : libc::size_t = buffer.len();
+            let packet: *mut c_void = buffer.as_ptr() as *mut c_void;
+            let packet_length: c_size_t = buffer.len();
             (self.write_packets_fn)(self.context, &packet, &packet_length, 1);
             Ok(buffer.len() as usize)
         }
@@ -98,12 +104,14 @@ impl ContextInterface {
     /// On platforms like Android, a file descriptor to a tun interface is exposed.
     /// On these platforms, a ContextInterface cannot be instantiated with a name.
     pub fn from_context(context: &IosContext, medium: Medium, mtu: usize) -> io::Result<ContextInterface> {
-        let lower = ContextInterfaceDesc::from_context(context.context,
-          context.read_fd,
-          context.get_read_packet_context_data_fn,
-          context.get_read_packet_context_size_fn,
-          context.free_read_packet_context_size_fn,
-          context.write_packets_fn)?;
+        let lower = ContextInterfaceDesc::from_context(
+            context.context,
+            context.read_fd,
+            context.get_read_packet_context_data_fn,
+            context.get_read_packet_context_size_fn,
+            context.free_read_packet_context_size_fn,
+            context.write_packets_fn,
+        )?;
         Ok(ContextInterface {
             lower: Rc::new(RefCell::new(lower)),
             mtu,
@@ -135,11 +143,9 @@ impl Device for ContextInterface {
                     read_ctx,
                     get_read_packet_context_data_fn,
                     get_read_packet_context_size_fn,
-                    free_read_packet_context_size_fn
+                    free_read_packet_context_size_fn,
                 };
-                let tx = TxToken {
-                    lower: self.lower.clone(),
-                };
+                let tx = TxToken { lower: self.lower.clone() };
                 Some((rx, tx))
             }
             Err(err) if err.kind() == io::ErrorKind::WouldBlock => None,
@@ -148,19 +154,17 @@ impl Device for ContextInterface {
     }
 
     fn transmit(&mut self, _timestamp: Instant) -> Option<Self::TxToken<'_>> {
-        Some(TxToken {
-            lower: self.lower.clone(),
-        })
+        Some(TxToken { lower: self.lower.clone() })
     }
 }
 
 #[doc(hidden)]
 pub struct RxToken {
-    context: *mut libc::c_void,
-    read_ctx: *mut libc::c_void,
-    get_read_packet_context_data_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> *const libc::c_void,
-    get_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void) -> libc::size_t,
-    free_read_packet_context_size_fn: unsafe extern "C" fn(*mut libc::c_void, *mut libc::c_void),
+    context: *mut c_void,
+    read_ctx: *mut c_void,
+    get_read_packet_context_data_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *const c_void,
+    get_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void) -> c_size_t,
+    free_read_packet_context_size_fn: unsafe extern "C" fn(*mut c_void, *mut c_void),
 }
 
 impl phy::RxToken for RxToken {
@@ -168,8 +172,8 @@ impl phy::RxToken for RxToken {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
-        let data: *const libc::c_void = unsafe { (self.get_read_packet_context_data_fn)(self.context, self.read_ctx) };
-        let len: libc::size_t = unsafe { (self.get_read_packet_context_size_fn)(self.context, self.read_ctx) };
+        let data: *const c_void = unsafe { (self.get_read_packet_context_data_fn)(self.context, self.read_ctx) };
+        let len: c_size_t = unsafe { (self.get_read_packet_context_size_fn)(self.context, self.read_ctx) };
         let buffer = unsafe { std::slice::from_raw_parts_mut(data as *mut u8, len as usize) };
         f(buffer)
     }

@@ -1,17 +1,18 @@
-import { app, BrowserWindow, Menu, MenuItem, MessageChannelMain, nativeTheme, screen, session, Tray } from 'electron'
-// @ts-ignore
-import { getAsarPath, getResourcesPath, getStaticPath, getUserDataPath } from '../utils/mainfile'
-import fs, { existsSync, readFileSync, writeFileSync } from 'fs'
+import { app, BrowserWindow, ipcMain, Menu, MessageChannelMain, nativeTheme, screen, shell, Tray } from 'electron'
+import { getAsarPath, getStaticPath, getUserDataPath } from '../utils/mainfile'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
 import is from 'electron-is'
 import { ShowErrorAndRelaunch } from './dialog'
 
-
-export const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36 Edg/102.0.1245.33'
-export const Referer = 'https://www.aliyundrive.com/'
+const DEBUGGING = !app.isPackaged
+export const ua = 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) aDrive/4.12.0 Chrome/108.0.5359.215 Electron/22.3.24 Safari/537.36'
+export const Referer = 'https://www.alipan.com/'
 export const AppWindow: {
   mainWindow: BrowserWindow | undefined
   uploadWindow: BrowserWindow | undefined
   downloadWindow: BrowserWindow | undefined
+  videoWindow: BrowserWindow | undefined
+  auidoWindow: BrowserWindow | undefined
   appTray: Tray | undefined
   winWidth: number
   winHeight: number
@@ -20,17 +21,12 @@ export const AppWindow: {
   mainWindow: undefined,
   uploadWindow: undefined,
   downloadWindow: undefined,
+  videoWindow: undefined,
+  auidoWindow: undefined,
   appTray: undefined,
   winWidth: 0,
   winHeight: 0,
   winTheme: ''
-}
-export const AppMenu: {
-  menuEdit: Electron.Menu | undefined
-  menuCopy: Electron.Menu | undefined
-} = {
-  menuEdit: undefined,
-  menuCopy: undefined
 }
 
 let timerUpload: NodeJS.Timeout | undefined
@@ -107,7 +103,10 @@ export function createMainWindow() {
   AppWindow.mainWindow.on('resize', () => {
     debounceResize(function() {
       try {
-        if (AppWindow.mainWindow && AppWindow.mainWindow.isMaximized() == false && AppWindow.mainWindow.isMinimized() == false && AppWindow.mainWindow.isFullScreen() == false) {
+        if (AppWindow.mainWindow
+          && !AppWindow.mainWindow.isMaximized()
+          && !AppWindow.mainWindow.isMinimized()
+          && !AppWindow.mainWindow.isFullScreen()) {
           const s = AppWindow.mainWindow!.getSize()
           const configJson = getUserDataPath('config.json')
           writeFileSync(configJson, `{"width":${s[0].toString()},"height": ${s[1].toString()}}`, 'utf-8')
@@ -133,6 +132,7 @@ export function createMainWindow() {
   AppWindow.mainWindow.on('ready-to-show', function() {
     AppWindow.mainWindow!.webContents.send('setPage', { page: 'PageMain' })
     AppWindow.mainWindow!.webContents.send('setTheme', { dark: nativeTheme.shouldUseDarkColors })
+    AppWindow.mainWindow.maximize()
     AppWindow.mainWindow!.setTitle('阿里云盘小白羊')
     if (is.windows() && process.argv && process.argv.join(' ').indexOf('--openAsHidden') < 0) {
       AppWindow.mainWindow!.show()
@@ -156,24 +156,11 @@ export function createMainWindow() {
   createDownload()
 }
 
-export function createMenu() {
-  AppMenu.menuEdit = new Menu()
-  AppMenu.menuEdit.append(new MenuItem({ label: '剪切', role: 'cut' }))
-  AppMenu.menuEdit.append(new MenuItem({ label: '复制', role: 'copy' }))
-  AppMenu.menuEdit.append(new MenuItem({ label: '粘贴', role: 'paste' }))
-  AppMenu.menuEdit.append(new MenuItem({ label: '删除', role: 'delete' }))
-  AppMenu.menuEdit.append(new MenuItem({ label: '全选', role: 'selectAll' }))
-  AppMenu.menuCopy = new Menu()
-  AppMenu.menuCopy.append(new MenuItem({ label: '复制', role: 'copy' }))
-  AppMenu.menuCopy.append(new MenuItem({ label: '全选', role: 'selectAll' }))
-}
-
-
 export function createTray() {
   const trayMenuTemplate = [
     {
       label: '显示主界面',
-      click: function () {
+      click: function() {
         if (AppWindow.mainWindow && AppWindow.mainWindow.isDestroyed() == false) {
           if (AppWindow.mainWindow.isMinimized()) AppWindow.mainWindow.restore()
           AppWindow.mainWindow.show()
@@ -185,7 +172,7 @@ export function createTray() {
     },
     {
       label: '彻底退出并停止下载',
-      click: function () {
+      click: function() {
         if (AppWindow.mainWindow) {
           AppWindow.mainWindow.destroy()
           AppWindow.mainWindow = undefined
@@ -242,12 +229,9 @@ export function createElectronWindow(width: number, height: number, center: bool
       preload: getAsarPath('dist/electron/preload/index.js')
     }
   })
-
-
   win.removeMenu()
-  if (is.dev()) {
-    const url = `http://localhost:${process.env.VITE_DEV_SERVER_PORT}`
-    win.loadURL(url, { userAgent: ua, httpReferrer: Referer })
+  if (DEBUGGING) {
+    win.loadURL(process.env.VITE_DEV_SERVER_URL, { userAgent: ua, httpReferrer: Referer })
   } else {
     win.loadURL('file://' + getAsarPath('dist/' + page + '.html'), {
       userAgent: ua,
@@ -255,8 +239,10 @@ export function createElectronWindow(width: number, height: number, center: bool
     })
   }
 
-  if (is.dev() && devTools) {
-    if (width < 100) win.setSize(800, 600)
+  if (DEBUGGING && devTools) {
+    if (width < 100) {
+      win.setSize(800, 680)
+    }
     win.show()
     win.webContents.openDevTools({ mode: 'bottom' })
   } else {
@@ -266,11 +252,14 @@ export function createElectronWindow(width: number, height: number, center: bool
       }
     })
   }
-  win.webContents.on('before-input-event', (_, input: Electron.Input) => {
-    if (input.type === 'keyDown' && input.control && input.shift && input.key === 'F12') {
-      win.webContents.isDevToolsOpened()
-        ? win.webContents.closeDevTools()
-        : win.webContents.openDevTools({ mode: 'undocked' })
+  if (page == 'main2') {
+    handleWinCmd(win)
+  }
+  handleWebView(win)
+  win.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault()
+    if (!url.includes(process.env.VITE_DEV_SERVER_URL)) {
+      shell.openExternal(url)
     }
   })
   win.webContents.on('did-create-window', (childWindow) => {
@@ -281,8 +270,83 @@ export function createElectronWindow(width: number, height: number, center: bool
   return win
 }
 
+function handleWebView(win: BrowserWindow) {
+  // 处理DevTools
+  win.webContents.on('before-input-event', (_, input: Electron.Input) => {
+    if (input.type === 'keyDown' && input.control && input.shift && input.key === 'F12') {
+      win.webContents.isDevToolsOpened()
+        ? win.webContents.closeDevTools()
+        : win.webContents.openDevTools({ mode: 'undocked' })
+    }
+  })
+  // 处理webview跳转
+  win.webContents.addListener('did-attach-webview', (event, webContent) => {
+    webContent.on('before-input-event', (_, input: Electron.Input) => {
+      if (input.type === 'keyDown' && input.control && input.shift && input.key === 'F12') {
+        webContent.isDevToolsOpened()
+          ? webContent.closeDevTools()
+          : webContent.openDevTools({ mode: 'undocked' })
+      }
+    })
+    // 不允许的网址则阻止页面跳转并拉取浏览器展示页面
+    webContent.setWindowOpenHandler((details) => {
+      let url = details.url
+      if (!/(aliyundrive|alipan).com\/s\/[0-9a-zA-Z_]{11,}/.test(url)) {
+        webContent.loadURL(url)
+      } else {
+        win.webContents.send('webview-new-window', webContent.id, details)
+      }
+      return { action: 'deny' }
+    })
+    webContent.on('will-redirect', (e, url) => {
+      if (!/(aliyundrive|alipan).com\/s\/[0-9a-zA-Z_]{11,}/.test(url)) {
+        webContent.loadURL(url)
+      } else {
+        win.webContents.send('webview-redirect', webContent.id, url)
+      }
+      e.preventDefault()
+    })
+    // 拦截链接跳转
+    webContent.on('will-navigate', (e, url) => {
+      if (/(aliyundrive|alipan).com\/s\/[0-9a-zA-Z_]{11,}/.test(url)) {
+        e.preventDefault()
+      }
+    })
+  })
+}
+
+function handleWinCmd(win: BrowserWindow) {
+  ipcMain.on('WebToWindow', (event, data) => {
+    if (data.cmd && data.cmd === 'close') {
+      if (win && !win.isDestroyed()) win.close()
+    } else if (data.cmd && data.cmd === 'minsize') {
+      if (win && !win.isDestroyed()) win.minimize()
+    } else if (data.cmd && data.cmd === 'top') {
+      if (win && !win.isDestroyed()) {
+        if (win.isAlwaysOnTop()) {
+          event.returnValue = 'untop'
+          win.setAlwaysOnTop(false)
+        } else {
+          event.returnValue = 'top'
+          win.setAlwaysOnTop(true, 'status')
+        }
+      }
+    } else if (data.cmd && data.cmd === 'maxsize') {
+      if (win && !win.isDestroyed()) {
+        if (win.isMaximized()) {
+          event.returnValue = 'unmaximize'
+          win.unmaximize()
+        } else {
+          event.returnValue = 'maximize'
+          win.maximize()
+        }
+      }
+    }
+  })
+}
+
 function creatUploadPort() {
-  debounceUpload(function () {
+  debounceUpload(function() {
     if (AppWindow.mainWindow && AppWindow.uploadWindow && AppWindow.uploadWindow.isDestroyed() == false) {
       const { port1, port2 } = new MessageChannelMain()
       AppWindow.mainWindow.webContents.postMessage('setUploadPort', undefined, [port1])
@@ -322,6 +386,7 @@ function createUpload() {
       createUpload()
     }
   })
+  // AppWindow.uploadWindow.webContents.openDevTools({ mode: 'undocked' })
   AppWindow.uploadWindow.hide()
 }
 

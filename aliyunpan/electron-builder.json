@@ -22,8 +22,9 @@
     "hardenedRuntime": true,
     "category": "public.app-category.utilities",
     "extraResources": [
-      { "from": "./static/engine/darwin/${arch}", "to": "./engine" },
-      { "from": "./static/images/icon.icns", "to": "./images/icon.icns"}
+      { "from": "./static/images/icon.icns", "to": "./images/icon.icns"},
+      { "from": "./static/images/icon_24x24.png", "to": "./images/icon_24x24.png"},
+      { "from": "./static/engine/darwin/${arch}", "to": "./engine"}
     ],
     "target": [
       { "target": "dmg", "arch": [ "x64", "arm64" ] }
@@ -34,11 +35,15 @@
     "category": "Network",
     "artifactName": "XBYDriver-${version}-linux-${arch}.${ext}",
     "extraResources": [
+      { "from": "./static/images/icon_24x24.png", "to": "./images/icon_24x24.png"},
+      { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
+      { "from": "./static/images/icon_256x256.png", "to": "./images/icon_256x256.png"},
       { "from": "./static/engine/linux/${arch}", "to": "./engine"}
     ],
     "target": [
       { "target": "AppImage", "arch": [  "x64", "arm64", "armv7l" ] },
-      { "target": "deb", "arch": [ "x64",  "arm64", "armv7l" ] }
+      { "target": "deb", "arch": [ "x64",  "arm64", "armv7l" ] },
+      { "target": "pacman", "arch": [ "x64", "arm64", "armv7l" ] }
     ]
   },
   "win": {
@@ -46,11 +51,12 @@
     "artifactName": "XBYDriver-${version}-win-${arch}.${ext}",
     "requestedExecutionLevel": "asInvoker",
     "extraResources": [
-      { "from": "./static/engine/win32/${arch}", "to": "./engine"},
-      { "from": "./static/images/icon_256x256.ico", "to": "./images/icon_256x256.ico"}
+      { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
+      { "from": "./static/images/icon_256x256.ico", "to": "./images/icon_256x256.ico"},
+      { "from": "./static/engine/win32/${arch}", "to": "./engine"}
     ],
     "target": [
-      { "target": "nsis", "arch": [ "x64", "ia32", "arm64"] }
+      { "target": "nsis", "arch": [ "x64", "ia32", "arm64" ] }
     ]
   },
   "dmg": {
@@ -69,7 +75,10 @@
   },
   "publish": [
     {
+      "owner": "gaozhangmin",
+      "repo": "aliyunpan",
       "provider": "github",
+      "publishAutoUpdate": false,
       "releaseType": "draft"
     }
   ]

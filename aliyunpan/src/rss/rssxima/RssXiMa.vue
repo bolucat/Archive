@@ -21,7 +21,7 @@ const handleAddExtList = (addList: string[]) => {
     while (ext.startsWith(' ') || ext.startsWith('.')) ext = ext.substr(1)
     if (!ext) continue
     ext = '.' + ext
-    if (list.includes(ext) == false) list.push(ext)
+    if (!list.includes(ext)) list.push(ext)
   }
   matchExtList.value = list
 }
@@ -64,52 +64,49 @@ const handleClickXiMa = async () => {
     <div class="settingcard">
       <div class="settinghead">1:选择要洗码的文件夹</div>
       <div class="settingrow">
-        <a-input-search style="max-width: 500px" tabindex="-1" :readonly="true" button-text="选择" search-button :model-value="dirPath" @search="handleSelectDir" />
-      </div>
-      <div class="settinghead"></div>
-      <div class="settingrow">
-        <MySwitch :value="breakSmall" @update:value="breakSmall = $event">跳过小于5MB文件</MySwitch>
+        <a-input-search tabindex="-1" :readonly="true" button-text="选择文件夹" search-button :model-value="dirPath" @search="handleSelectDir" />
       </div>
       <div class="settingspace"></div>
       <div class="settinghead">2:选择要洗码的格式</div>
       <div class="settingrow">
         <MyTags :value="matchExtList" :maxlen="20" @update:value="handleAddExtList" />
-        <a-popover position="bottom">
-          <i class="iconfont iconbulb" />
+        <a-popover position='bottom'>
+          <i class='iconfont iconbulb' />
           <template #content>
-            <div>
-              默认：<span class="opred">全部</span>
-              <hr />
-              对文件夹内的全部文件，执行一次洗码<br /><br />
-              例如填写 .mp4 就是只洗码.mp4结尾的文件
-            </div>
+            默认对文件夹内的全部文件执行一次洗码。<br>
+            例如填写 .mp4 就是只洗码.mp4结尾的文件
           </template>
         </a-popover>
       </div>
       <div class="settingspace"></div>
+      <div class="settinghead"></div>
+      <div class="settingrow">
+        <MySwitch :value="breakSmall" @update:value="breakSmall = $event"> 自动跳过小于5MB的小文件</MySwitch>
+      </div>
+
+      <div class="settingspace"></div>
+      <div class="settinghead"></div>
       <div class="settingrow">
         <a-button type="primary" tabindex="-1" status="danger" :loading="ximaLoading" @click="handleClickXiMa">执行洗码</a-button>
-        <a-popover position="bottom">
-          <i class="iconfont iconbulb" />
-          <template #content>
-            <div>
-              默认：<span class="opred">全部</span>
-              <hr />
-              对文件夹内的全部文件，执行一次洗码<br /><br />
-              例如填写 .mp4 就是只洗码.mp4结尾的文件
-            </div>
-          </template>
-        </a-popover>
       </div>
     </div>
 
     <div class="settingcard">
       <div :style="{ display: 'flex' }">
-        <a-card :style="{ width: '800px' , fontSize: '20px'}" title="注意" hoverable>
+        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="注意" hoverable>
           1.会对文件夹内 全部子文件、子文件夹 递归执行，会直接修改原文件！ <br />
           2.洗码操作不可逆，不可恢复，如果原文件很重要请提前自己 备份一份！<br />
           3.洗码并不能对抗分享审查<br />
           4.测试通过：<a-typography-text type="danger">mp4 mkv mov avi wmv flv jpg png apng tif gif heic zip rar 7z tar</a-typography-text>
+        </a-card>
+        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="洗码作用" hoverable>
+          网盘里转存了一些他人分享的视频 <br />
+          当他人的原始视频被屏蔽时，自己网盘内转存的也会被屏蔽，不能下载 <br />
+          对文件洗码后文件全网唯一，不分享不会被审查，也不会被牵连屏蔽 <br />
+          <a-typography-text type="success">所以，洗码用来延长自己网盘内视频文件的有效性</a-typography-text>
+        </a-card>
+        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="洗码方式" hoverable>
+          洗码会在原始文件的<span class="opblue">结尾增加</span>5字节的<span class="opblue">随机</span>数字(改变文件size/sha1/md5/crc64)，被洗码后的文件可以认为是全世界独一无二的。操作执行的很快的，1秒可以处理几千个文件。但是洗码操作不可逆，洗码后不可恢复，如果原文件很重要请提前<span class="oporg">自己备份一份</span>！经过长期的测试验证，洗码后可以在网盘里长期保存。但洗码后如果创建分享，则会立即失效
         </a-card>
       </div>
     </div>

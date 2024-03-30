@@ -1,34 +1,35 @@
-<script setup lang="ts">
+<script setup lang='ts'>
 import { computed, ref, watchEffect } from 'vue'
 
 import { Tree as AntdTree } from 'ant-design-vue'
-import 'ant-design-vue/es/tree/style/css'
-import usePanTreeStore, { fileiconfn } from './pantreestore'
+import usePanTreeStore, { PanTreeState } from './pantreestore'
 import MySwitchTab from '../layout/MySwitchTab.vue'
-import {
-  KeyboardState,
-  MouseState,
-  useAppStore,
-  useKeyboardStore,
-  usePanFileStore,
-  useSettingStore,
-  useWinStore
-} from '../store'
+import { KeyboardState, useAppStore, useKeyboardStore, usePanFileStore, useSettingStore, useWinStore } from '../store'
 import PanDAL from './pandal'
-import { onShowRightMenu, onHideRightMenuScroll, TestCtrl } from '../utils/keyboardhelper'
+import { onHideRightMenuScroll, onShowRightMenu, TestCtrl } from '../utils/keyboardhelper'
 import DirLeftMenu from './menus/DirLeftMenu.vue'
 import { TreeNodeData } from '../store/treestore'
 import { dropMoveSelectedFile } from './topbtns/topbtn'
 import message from '../utils/message'
 import { modalUpload } from '../utils/modal'
+import { GetDriveType } from '../aliapi/utils'
 
 const treeref = ref()
+const inputselectType = ref('resource')
 const winStore = useWinStore()
 const treeHeight = computed(() => winStore.height - 42 - 56 - 24 - 4)
 const quickHeight = computed(() => winStore.height - 42 - 56 - 24 - 4 - 280 - 28)
 const appStore = useAppStore()
 const pantreeStore = usePanTreeStore()
 const settingStore = useSettingStore()
+
+const props = defineProps({
+  selectedPan: {
+    type: String,
+    default: 'resource',
+    required: true
+  }
+})
 
 const keyboardStore = useKeyboardStore()
 keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
@@ -45,42 +46,33 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
 })
 
 const switchValues = [
-  { key: 'backupPan', title: '网盘文件', alt: '' },
+  { key: 'wangpan', title: '网盘文件', alt: '' },
   { key: 'kuaijie', title: '快捷方式', alt: '' }
 ]
 
-const colorTreeData = ref<TreeNodeData[]>([])
+let DriveID = pantreeStore.drive_id
+pantreeStore.$subscribe((_m: any, state: PanTreeState) => {
+  if (state.drive_id != DriveID) {
+    DriveID = state.drive_id
+    inputselectType.value = GetDriveType(state.user_id, state.drive_id).name
+  }
+})
 
+const colorTreeData = ref<TreeNodeData[]>([])
 watchEffect(() => {
   const list = settingStore.uiFileColorArray
   const nodeList: TreeNodeData[] = []
-  nodeList.push({
-    __v_skip: true,
-    key: 'video',
-    title: '放映室',
-    namesearch: 'ca760ef',
-    icon: fileiconfn('iconrss_video'),
-    children: [],
-    isLeaf: true
-  } as TreeNodeData)
   for (let i = 0; i < list.length; i++) {
     nodeList.push({
       __v_skip: true,
       key: 'color' + list[i].key.replace('#', 'c') + ' ' + (list[i].title || list[i].key),
+      parent_file_id: '',
       title: list[i].title || list[i].key,
       namesearch: list[i].key.replace('#', 'c'),
       children: [],
       isLeaf: true
     } as TreeNodeData)
   }
-  nodeList.push({
-    __v_skip: true,
-    key: 'colorc5b89b8 已看视频',
-    title: '已看视频',
-    namesearch: 'c5b89b8',
-    children: [],
-    isLeaf: true
-  } as TreeNodeData)
   Object.freeze(nodeList)
   colorTreeData.value = nodeList
 })
@@ -91,62 +83,63 @@ watchEffect(() => {
 })
 
 const handleTreeRightClick = (e: { event: MouseEvent; node: any }) => {
-  const key = e.node.key as string
+  const { parent = undefined, key } = e.node
   if (key.length < 40 || key.startsWith('search')) return
-  PanDAL.aReLoadOneDirToShow('', key, true)
+  pantreeStore.mTreeSelected(e)
   onShowRightMenu('leftpanmenu', e.event.clientX, e.event.clientY)
 }
 
 const onRowItemDragEnter = (ev: any) => {
   ev.stopPropagation()
-  ev.preventDefault() 
+  ev.preventDefault()
   ev.target.style.outline = '2px dotted #637dff'
   ev.target.style.background = 'rgba(var(--primary-6),0.3)'
   ev.dataTransfer.dropEffect = 'move'
 }
 const onRowItemDragLeave = (ev: any) => {
   ev.stopPropagation()
-  ev.preventDefault() 
+  ev.preventDefault()
   ev.target.style.outline = 'none'
   ev.target.style.background = ''
 }
 const onRowItemDragOver = (ev: any) => {
   ev.stopPropagation()
-  ev.preventDefault() 
+  ev.preventDefault()
 }
 
-const onRowItemDrop = (ev: any, movetodirid: string) => {
+const onRowItemDrop = (ev: any, data: any) => {
   ev.stopPropagation()
-  ev.preventDefault() 
+  ev.preventDefault()
   ev.target.style.outline = 'none'
   ev.target.style.background = ''
-
-  
   const filesList = ev.dataTransfer.files
   if (filesList && filesList.length > 0) {
     const files: string[] = []
-    
     for (let i = 0, maxi = filesList.length; i < maxi; i++) {
       const path = filesList[i].path
       files.push(path)
     }
-    modalUpload('backupPan', movetodirid, files)
+    modalUpload(data.key, files)
   } else {
-    
-    dropMoveSelectedFile(movetodirid)
+    dropMoveSelectedFile(data.drive_id, data.key, true)
   }
 }
 
 const onQuickDrop = (ev: any) => {
-  ev.preventDefault() 
+  ev.preventDefault()
   ev.target.style.outline = 'none'
   ev.target.style.background = ''
 
-  const list: { key: string; title: string }[] = []
+  const list: { key: string; drive_id: string; drive_name: string; title: string }[] = []
   const selectedFile = usePanFileStore().GetSelected()
   for (let i = 0, maxi = selectedFile.length; i < maxi; i++) {
     if (selectedFile[i].isDir) {
-      list.push({ key: selectedFile[i].file_id, title: selectedFile[i].name })
+      list.push({
+        key: selectedFile[i].file_id,
+        drive_id: selectedFile[i].drive_id,
+        drive_name: GetDriveType(pantreeStore.user_id, selectedFile[i].drive_id).title,
+        title: selectedFile[i].name
+      })
     }
   }
   if (list.length == 0) {
@@ -161,124 +154,183 @@ const handleQuickDelete = (key: string) => {
 const handleQuickSelect = (index: number) => {
   const array = PanDAL.getQuickFileList()
   if (array.length >= index) {
-    const key = array[index - 1].key 
-    PanDAL.aReLoadOneDirToShow('', key, true)
+    const key = array[index - 1].key
+    const drive_id = array[index - 1].drive_id
+    console.log('handleQuickSelect', array)
+    PanDAL.aReLoadOneDirToShow(drive_id, key, true)
   }
 }
+const filterTreeData = computed(() => {
+  return pantreeStore.treeData.filter((item) => {
+    if ((useSettingStore().securityHideBackupDrive || props.selectedPan === 'resource') && item.key === 'backup_root') {
+      return false
+    }
+    if ((useSettingStore().securityHideResourceDrive || props.selectedPan === 'backup') && item.key === 'resource_root') {
+      return false
+    }
+    if (useSettingStore().securityHidePicDrive && item.key === 'pic_root') {
+      return false
+    }
+    if (!usePanTreeStore().resource_drive_id && item.key === 'resource_root') {
+      return false
+    }
+    return true
+  })
+})
 </script>
 
 <template>
-  <div style="width: 100%; height: 100%; overflow: hidden; min-width: 300px" tabindex="-1" @keydown.tab.prevent="() => true">
-    <div class="headswitch">
-      <div class="bghr"></div>
-      <div class="sw">
-        <MySwitchTab :name="'panleft'" :tabs="switchValues" :value="appStore.GetAppTabMenu" @update:value="(val:string)=>appStore.toggleTabMenu('pan', val)" />
+  <div style='width: 100%; height: 100%; overflow: hidden; min-width: 300px' tabindex='-1'
+       @keydown.tab.prevent='() => true'>
+    <div class='headswitch'>
+      <div class='bghr'></div>
+      <div class='sw'>
+        <MySwitchTab :name="'panleft'" :tabs='switchValues' :value='appStore.GetAppTabMenu'
+                     @update:value="(val:string)=>appStore.toggleTabMenu('pan', val)" />
       </div>
     </div>
-    <div class="treeleft">
-      <a-tabs type="text" :direction="'horizontal'" class="hidetabs" :justify="true" :active-key="appStore.GetAppTabMenu">
-        <a-tab-pane key="backupPan" title="1">
+    <div class='treeleft'>
+      <a-tabs type='text' :direction="'horizontal'" class='hidetabs' :justify='true'
+              :active-key='appStore.GetAppTabMenu'>
+        <a-tab-pane key='wangpan' title='1'>
           <AntdTree
-            ref="treeref"
-            :tabindex="-1"
-            :focusable="false"
-            class="dirtree"
+            ref='treeref'
+            :tabindex='-1'
+            :focusable='false'
+            class='dirtree'
             block-node
             selectable
-            :auto-expand-parent="false"
+            :auto-expand-parent='false'
             show-icon
-            :height="treeHeight"
+            :height='treeHeight'
             :style="{ height: treeHeight + 'px' }"
-            :item-height="30"
-            :show-line="{ showLeafIcon: false }"
-            :open-animation="{}"
-            :expanded-keys="pantreeStore.treeExpandedKeys"
-            :selected-keys="pantreeStore.treeSelectedKeys"
-            :tree-data="pantreeStore.treeData"
-            @select="(_:any[],e:any)=>pantreeStore.mTreeSelected(e.node.key)"
-            @expand="(_:any[],e:any)=>pantreeStore.mTreeExpand(e.node.key)"
-            @right-click="handleTreeRightClick"
-            @scroll="onHideRightMenuScroll">
+            :item-height='30'
+            :show-line='{ showLeafIcon: false }'
+            :open-animation='{}'
+            :expanded-keys='pantreeStore.treeExpandedKeys'
+            :selected-keys='pantreeStore.treeSelectedKeys'
+            :tree-data='filterTreeData'
+            @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, false)'
+            @expand='(_:any[],e:any)=>pantreeStore.mTreeExpand(e.node.key)'
+            @right-click='handleTreeRightClick'
+            @scroll='onHideRightMenuScroll'>
             <template #switcherIcon>
-              <i class="ant-tree-switcher-icon iconfont Arrow" />
+              <i class='ant-tree-switcher-icon iconfont Arrow' />
             </template>
             <template #icon>
-              <i class="iconfont iconfile-folder" />
+              <i class='iconfont iconfile-folder' />
             </template>
-            <template #title="{ dataRef }">
-              <span v-if="dataRef.key.length == 40 || dataRef.key == 'root'" class="dirtitle treedragnode" @drop="onRowItemDrop($event, dataRef.key)" @dragover="onRowItemDragOver" @dragenter="onRowItemDragEnter" @dragleave="onRowItemDragLeave">{{ dataRef.title }}</span>
-              <span v-else class="dirtitle">{{ dataRef.title }}</span>
+            <template #title='{ dataRef }'>
+              <span v-if="dataRef.key.length == 40 || dataRef.key.includes('root')"
+                    class='dirtitle treedragnode'
+                    @drop='onRowItemDrop($event, dataRef)'
+                    @dragover='onRowItemDragOver'
+                    @dragenter='onRowItemDragEnter'
+                    @dragleave='onRowItemDragLeave'>
+                {{ dataRef.title }}
+              </span>
+              <span v-else class='dirtitle'>
+                {{ dataRef.title }}
+              </span>
             </template>
           </AntdTree>
         </a-tab-pane>
-        <a-tab-pane key="kuaijie" title="2">
+        <a-tab-pane key='kuaijie' title='2'>
           <AntdTree
-            :tabindex="-1"
-            :focusable="false"
-            class="colortree"
+            :tabindex='-1'
+            :focusable='false'
+            class='colortree'
             block-node
             selectable
-            :auto-expand-parent="false"
+            :auto-expand-parent='false'
             show-icon
-            :item-height="30"
-            :show-line="{ showLeafIcon: false }"
-            :open-animation="{}"
-            :selected-keys="pantreeStore.treeSelectedKeys"
-            :tree-data="colorTreeData"
-            @select="(_:any[],e:any)=>pantreeStore.mTreeSelected(e.node.key)">
-            <template #icon="{ dataRef }">
-              <i class="iconfont iconwbiaoqian" :class="dataRef.namesearch" />
+            :style="{ marginLeft: '-18px' }"
+            :item-height='30'
+            :show-line='false'
+            :open-animation='{}'
+            :selected-keys='pantreeStore.treeSelectedKeys'
+            :tree-data='colorTreeData'
+            @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
+            <template #icon='{ dataRef }'>
+              <i class='iconfont iconwbiaoqian' :class='dataRef.namesearch' />
             </template>
-            <template #title="{ dataRef }">
+            <template #title='{ dataRef }'>
               <span :class="'dirtitle ' + dataRef.namesearch">标记 · {{ dataRef.title }}</span>
             </template>
           </AntdTree>
-          <div class="quickdrop" @drop="onQuickDrop($event)" @dragover="onRowItemDragOver" @dragenter="onRowItemDragEnter" @dragleave="onRowItemDragLeave">把右侧的文件夹拖放到这里<br />创建快捷方式(Ctrl 1-9)</div>
+          <div class='quickdrop'
+               @drop='onQuickDrop($event)'
+               @dragover='onRowItemDragOver'
+               @dragenter='onRowItemDragEnter'
+               @dragleave='onRowItemDragLeave'>
+            把右侧的文件夹拖放到这里<br />
+            创建快捷方式(Ctrl 1-9)
+          </div>
           <AntdTree
-            :tabindex="-1"
-            :focusable="false"
-            class="quicktree"
+            :tabindex='-1'
+            :focusable='false'
+            class='quicktree'
             block-node
             selectable
-            :auto-expand-parent="false"
+            :auto-expand-parent='false'
             show-icon
-            :height="quickHeight"
-            :style="{ height: quickHeight + 'px' }"
-            :item-height="30"
-            :show-line="{ showLeafIcon: false }"
-            :open-animation="{}"
-            :selected-keys="pantreeStore.treeSelectedKeys"
-            :tree-data="pantreeStore.quickData"
-            @select="(_:any[],e:any)=>pantreeStore.mTreeSelected(e.node.key)">
+            :height='quickHeight'
+            :style="{ height: quickHeight + 'px', marginLeft: '-18px' }"
+            :item-height='30'
+            :show-line='false'
+            :open-animation='{}'
+            :selected-keys='pantreeStore.treeSelectedKeys'
+            :tree-data='pantreeStore.quickData'
+            @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
             <template #icon>
-              <i class="iconfont iconfile-folder" />
+              <i class='iconfont iconfile-folder' />
             </template>
-            <template #title="{ dataRef }">
-              <span class="quicktitle" :title="dataRef.namesearch">快捷 · {{ dataRef.title }}</span>
-              <span class="quickbtn"> <a-button type="text" size="mini" @click.stop="handleQuickDelete(dataRef.key)">删除</a-button></span>
+            <template #title='{ dataRef }'>
+              <div class="quickitem">
+                 <span class='quicktitle' :title='dataRef.namesearch'>
+                {{ dataRef.title }}
+              </span>
+                <span class='quickbtn'>
+                <a-button type='text' size='mini' @click.stop='handleQuickDelete(dataRef.key)'>
+                  删除
+                </a-button>
+              </span>
+              </div>
             </template>
           </AntdTree>
         </a-tab-pane>
       </a-tabs>
     </div>
-    <DirLeftMenu />
+    <DirLeftMenu :inputselectType='inputselectType' />
   </div>
 </template>
 
-<style>
+<style lang="less">
 .treeleft {
-  margin-left: -22px;
+  margin-left: -6px;
 }
 
 .dirtree {
   height: 100%;
 }
+
+.ant-tree.ant-tree-show-line .ant-tree-child-tree li:not(:last-child)::before {
+  border-left: none !important;
+}
+
+.ant-tree.ant-tree-show-line li:not(:last-child)::before {
+  border-left: 1px dashed #d9d9d9;
+  top: 10px;
+  left: 11px
+}
+
 .dirtree .iconfont,
 .sharetree .iconfont,
 .quicktree .iconfont,
 .videotree .iconfont {
   font-size: 20px;
 }
+
 .dirtree .iconfont.iconfile-folder,
 .sharetree .iconfont.iconfile-folder,
 .quicktree .iconfont.iconfile-folder,
@@ -286,6 +338,7 @@ const handleQuickSelect = (index: number) => {
   color: #ffb74d;
   font-size: 20px;
 }
+
 .colortree .iconfont {
   font-size: 20px;
 }
@@ -293,24 +346,41 @@ const handleQuickSelect = (index: number) => {
 .dirtree .iconfont.iconrecover {
   color: #13c2c2;
 }
+
 .dirtree .iconfont.icondelete {
   color: #ff4d4fd9;
 }
+
 .dirtree .iconfont.iconsearch {
   color: #1890ff;
 }
+
+.dirtree .iconfont.iconcrown {
+  color: #ffb74d;
+}
+
+.dirtree .iconfont.iconrss_video {
+  color: #a760ef;
+}
+
+.dirtree .iconfont.iconjietu {
+  color: #a77566;
+}
+
 .colortree .iconfont.iconrss_video {
   color: #a760ef;
 }
+
 .ant-tree .iconfile-folder {
-  color: #52c4f6;
-  font-size: 1.5em !important;
+  color: #ffb74d;
+  font-size: 20px;
 }
 
 .dirtitle {
   white-space: nowrap;
   word-break: keep-all;
 }
+
 .dirtitle.treedragnode {
   width: 100%;
   display: inline-block;
@@ -320,7 +390,6 @@ const handleQuickSelect = (index: number) => {
   flex-wrap: nowrap !important;
   flex-shrink: 0 !important;
   display: flex;
-  margin-bottom: 12px;
 }
 
 .dirtree .ant-tree-list-holder {
@@ -329,7 +398,6 @@ const handleQuickSelect = (index: number) => {
 
 .dirtree .ant-tree-title {
   flex-grow: 1;
-    margin-left: 10px !important;
 }
 
 .ant-tree-node-selected .ant-tree-title,
@@ -348,12 +416,15 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   height: 56px;
   overflow: hidden;
   text-align: center;
+  justify-content: center;
   position: relative;
   padding-top: 16px;
   padding-bottom: 6px;
+  margin-left: -18px;
   flex-shrink: 0;
   flex-grow: 0;
 }
+
 .headswitch .bghr {
   position: absolute;
   left: 0;
@@ -362,6 +433,7 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   border-bottom: 1px solid var(--color-neutral-3);
   z-index: -1;
 }
+
 .headswitch .sw {
   margin: 0 auto;
   background: var(--color-bg-1);
@@ -372,23 +444,25 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   width: calc(100% - 151px) !important;
   float: right;
 }
+
 .rootsearch.arco-input-wrapper {
   background-color: transparent;
   border: 1px solid rgb(var(--primary-6)) !important;
 }
 
 .colortree {
-  height: 246px;
+  height: 180px;
   flex-shrink: 0;
   flex-grow: 0;
 }
+
 .quickdrop {
   height: 50px;
   flex-shrink: 0;
   flex-grow: 0;
-  margin: 0 4px 10px 26px;
   border: 3px dotted var(--color-border-2);
   display: flex;
+  margin-left: -18px;
   align-items: center;
   justify-content: center;
   color: var(--color-text-3);
@@ -406,12 +480,18 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   display: flex !important;
   flex-direction: row;
 }
+
 .quicktree .ant-tree-title {
   flex: auto;
   display: flex !important;
   flex-direction: row;
 }
-.quicktree .quicktitle {
+
+.quickitem {
+  display: flex;
+}
+
+.quickitem .quicktitle {
   flex-shrink: 1;
   flex-grow: 1;
   display: -webkit-box;
@@ -422,14 +502,15 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   -webkit-line-clamp: 1;
 }
 
-.quicktree .quickbtn {
+.quickitem .quickbtn {
+  flex-shrink: 0;
+  flex-grow: 0;
   padding-left: 2px;
   padding-right: 2px;
   font-size: 12px;
   color: var(--color-text-3);
-  flex-shrink: 0;
-  flex-grow: 0;
 }
+
 .quicktree .quickbtn .arco-btn-size-mini {
   padding: 0 4px;
 }

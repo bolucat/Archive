@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/gaozhangmin/staticResource/blob/master/images/icon.png" alt="NebulaGraph Data Intelligence Suite(ngdi)">
+  <img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/95fb537d-411d-41aa-8f73-9dc8adab760e" alt="NebulaGraph Data Intelligence Suite(ngdi)">
 </p>
 <p align="center">
     <br> English | <a href="README-CN.md">中文</a>
@@ -44,12 +44,11 @@
 
 </p>
 
-
 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-) [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-) [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-) [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-) [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-) [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-) [![](https://img.shields.io/badge/-%E5%A3%B0%E6%98%8E-blue)](#免责声明-)
 
 
 # 功能 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-)
-1.根据阿里云盘Open平台api开发的网盘客户端，支持win7-11，macOS，linux <br>
+1.基于阿里云盘Open平台api开发的网盘客户端，支持win7-11，macOS，linux <br>
 
 2.支持同时登录多个账号管理。 <br>
 
@@ -69,13 +68,21 @@
 
 10.支持一次性上传/下载百万级的文件/文件夹。<br>
 
+11. 支持M3u8下载。<br>
+    
+12. 影院模式支持自动刮削视频信息。<br>
+    
+13. 支持展示视频观看进度。<br>
+
+更多功能见小白羊官网：https://xbysite.pages.dev/
+
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
 
 # 界面 [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-)
-<img src="https://github.com/gaozhangmin/staticResource/blob/master/images/main_window.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/download_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/movie_page.png" width="270">
-<img src="https://github.com/gaozhangmin/staticResource/blob/master/images/plugin_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/settings_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/share_page.png" width="270">
+<img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/24d892b8-f36e-4eaf-a277-e105e8dae8f1" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/e789e557-f56f-41c5-80f9-1fad20b2ae1a" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/0b40bf83-3e59-4f15-bd01-76b9a14ec86c" width="270">
+<img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/8684a964-7682-4d62-86cb-191382eb9170" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/8e10cad3-6252-4953-9e92-98175be3ddb9" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/4a3d6a68-5fab-48f1-8146-1d47e9f633fd" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/b5c3be0b-1038-4118-8a29-fa6e5d833148" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/25b5ff29-203a-451f-97fe-31a13c4c98e2" width="270"><img src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/f32c0733-23ac-4099-9de6-5e94c20af48a" width="270">
 <a href="#readme">
 <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
@@ -123,17 +130,17 @@
       <img width="300" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/a850d1ed-f177-47a3-a61e-b82d46c6c47d" />
     </p>
 
-    -   点击 `Cancel` 按钮，然后去 `设置` -> `隐私与安全性` 页面，点击 `仍要打开` 按钮，然后在弹出窗口里点击 `打开` 按钮即可，以后就再也不会有任何弹窗告警了 🎉
+ -   点击 `Cancel` 按钮，然后去 `设置` -> `隐私与安全性` 页面，点击 `仍要打开` 按钮，然后在弹出窗口里点击 `打开` 按钮即可，以后就再也不会有任何弹窗告警了 🎉
 
-        <p align="center">
-          <img width="500" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/53743a9f-0b0e-49e2-9331-aabc93483f73" /> <img width="200" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/0d97a636-7018-4b9a-bd68-27c1c17f6cd8" />
-        </p>
+     <p align="center">
+       <img width="500" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/53743a9f-0b0e-49e2-9331-aabc93483f73" /> <img width="200" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/0d97a636-7018-4b9a-bd68-27c1c17f6cd8" />
+     </p>
 
-    -   如果在 `隐私与安全性` 中找不到以上选项，或启动时提示文件损坏（Apple Silicon版本）。打开 `Terminal.app`，并输入以下命令（中途可能需要输入密码），然后重启 `小白羊云盘` 即可：
+ -   如果在 `隐私与安全性` 中找不到以上选项，或启动时提示文件损坏（Apple Silicon版本）。打开 `Terminal.app`，并输入以下命令（中途可能需要输入密码），然后重启 `小白羊云盘` 即可：
 
-        ```sh
-        sudo xattr -d com.apple.quarantine /Applications/小白羊云盘.app
-        ```
+     ```sh
+     sudo xattr -d com.apple.quarantine /Applications/小白羊云盘.app
+     ```
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
@@ -185,7 +192,7 @@
 
 4.在使用本程序之前，你应了解并承担相应的风险，包括但不限于账号被ban，下载限速等，与本程序无关；
 
-5.如有侵权，请通过邮件与我联系，会及时处理。
+5.如有侵权，请通过邮件zhangao456@proton.me与我联系，会及时处理。
 <a href="#readme">
 <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>

@@ -176,6 +176,16 @@ const useDownStore = defineStore('down', {
       this.mRefreshListDataShow(false)
     },
 
+    mRangSelect(lastkey: string, file_idList: string[]) {
+      if (this.ListDataShow.length == 0) return
+      const selectedNew = new Set<string>(this.ListSelected)
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        selectedNew.add(file_idList[i])
+      }
+      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
+      this.mRefreshListDataShow(false)
+    },
+
     GetSelected() {
       return GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
     },

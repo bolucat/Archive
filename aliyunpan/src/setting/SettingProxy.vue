@@ -6,7 +6,7 @@ import message from '../utils/message'
 /*import HttpsProxyAgent from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'*/
 import AliHttp from '../aliapi/alihttp'
-const nodehttps = window.require('https')
+import nodehttps from 'node:https'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -90,7 +90,7 @@ const handleProxyConn = async () => {
     <div class="settingspace"></div>
     <div class="settinghead">端口</div>
     <div class="settingrow">
-      <a-input-number tabindex="-1" :style="{ width: '168px' }" hide-button placeholder="常见 8888,1080" :model-value="settingStore.proxyPort" @update:model-value="cb({ proxyPort: $event })" />
+      <a-input-number tabindex="-1" :style="{ width: '168px' }" hide-button placeholder="7890" :model-value="settingStore.proxyPort" @update:model-value="cb({ proxyPort: $event })" />
     </div>
     <div class="settingspace"></div>
     <div class="settinghead">用户名</div>
@@ -109,7 +109,7 @@ const handleProxyConn = async () => {
     <div class="settingspace"></div>
     <div class="settinghead">是否启用代理</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.proxyUseProxy" @update:value="cb({ proxyUseProxy: $event })"></MySwitch>
+      <MySwitch class='switcher' :value="settingStore.proxyUseProxy" @update:value="cb({ proxyUseProxy: $event })"></MySwitch>
       <a-popover position="right">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -146,5 +146,11 @@ const handleProxyConn = async () => {
   padding: 10px;
   box-sizing: border-box;
   vertical-align: top;
+}
+.switcher {
+  height: 30px !important;
+  align-items: center !important;
+  user-select: none !important;
+  display: inline !important;
 }
 </style>

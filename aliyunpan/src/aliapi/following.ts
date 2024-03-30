@@ -2,7 +2,7 @@ import { humanTimeAgo } from '../utils/format'
 import message from '../utils/message'
 import DebugLog from '../utils/debuglog'
 import AliHttp, { IUrlRespData } from './alihttp'
-import { IAliOtherFollowingModel, IAliMyFollowingModel } from './alimodels'
+import { IAliMyFollowingModel, IAliOtherFollowingModel } from './alimodels'
 
 export interface IAliOtherFollowingResp {
   items: IAliOtherFollowingModel[]
@@ -77,8 +77,8 @@ export default class AliFollowing {
         dir.next_marker = resp.body.code
         message.warning('列出官方推荐列表出错' + resp.body.code, 2)
         return false
-      } else {
-        DebugLog.mSaveWarning('_OtherFollowingListOnePage err=' + (resp.code || ''))
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('_OtherFollowingListOnePage err=' + (resp.code || ''), resp.body)
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('_OtherFollowingListOnePage', err)
@@ -101,8 +101,8 @@ export default class AliFollowing {
 
     do {
       const isGet = await AliFollowing.ApiMyFollowingListOnePage(dir)
-      if (isGet != true) {
-        break 
+      if (!isGet) {
+        break
       }
     } while (dir.next_marker)
     return dir
@@ -165,8 +165,8 @@ export default class AliFollowing {
         dir.next_marker = resp.body.code
         message.warning('列出订阅列表出错' + resp.body.code, 2)
         return false
-      } else {
-        DebugLog.mSaveWarning('_MyFollowingListOnePage err=' + (resp.code || ''))
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('_MyFollowingListOnePage err=' + (resp.code || ''), resp.body)
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('_MyFollowingListOnePage', err)
@@ -184,8 +184,8 @@ export default class AliFollowing {
     const resp = await AliHttp.Post(url, postData, user_id, '')
     if (AliHttp.IsSuccess(resp.code)) {
       if (tip) message.success(isFollowing ? '订阅成功' : '取消订阅成功')
-    } else {
-      DebugLog.mSaveWarning('ApiSetFollowing err=' + followingid + ' ' + (resp.code || ''))
+    } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+      DebugLog.mSaveWarning('ApiSetFollowing err=' + followingid + ' ' + (resp.code || ''), resp.body)
       message.error((isFollowing ? '订阅' : '取消订阅') + ' 操作失败，请稍后重试')
     }
   }
@@ -198,10 +198,10 @@ export default class AliFollowing {
     const resp = await AliHttp.Post(url, postData, user_id, '')
     if (AliHttp.IsSuccess(resp.code)) {
       return true
-    } else {
-      DebugLog.mSaveWarning('ApiSetFollowingMarkRead err=' + followingid + ' ' + (resp.code || ''))
-      return false
+    } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+      DebugLog.mSaveWarning('ApiSetFollowingMarkRead err=' + followingid + ' ' + (resp.code || ''), resp.body)
     }
+    return false
   }
   
 

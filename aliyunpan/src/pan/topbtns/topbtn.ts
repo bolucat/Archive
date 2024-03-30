@@ -8,10 +8,12 @@ import DebugLog from '../../utils/debuglog'
 import message from '../../utils/message'
 import {
   modalCopyFileTree,
-  modalCreatNewShareLink, modalCreatRapidLink,
+  modalCreatNewShareLink,
   modalDLNAPlayer,
   modalDownload,
   modalM3U8Download,
+  modalMoveToAlbum,
+  modalPassword,
   modalSearchPan,
   modalSelectPanDir,
   modalUpload
@@ -20,32 +22,30 @@ import { ArrayKeyList } from '../../utils/utils'
 import PanDAL from '../pandal'
 import usePanFileStore from '../panfilestore'
 import usePanTreeStore from '../pantreestore'
-import { useSettingStore, useUserStore } from '../../store'
+import { useDowningStore, useSettingStore, useUserStore } from '../../store'
 import { Sleep } from '../../utils/format'
 import TreeStore from '../../store/treestore'
 import { copyToClipboard } from '../../utils/electronhelper'
 import DownDAL from '../../down/DownDAL'
-import UploadingDAL from '../../transfer/uploadingdal'
+import { isEmpty } from 'lodash'
 import { GetDriveID } from '../../aliapi/utils'
-import {isEmpty} from "lodash";
+import AliAlbum from '../../aliapi/album'
+import { getEncType } from '../../utils/proxyhelper'
+import { Modal, Option, Select } from '@arco-design/web-vue'
+import { h } from 'vue'
+import DB from '../../utils/db'
+import UploadingDAL from '../../transfer/uploadingdal'
 
 const topbtnLock = new Set()
 
 
-export function handleUpload(uploadType: string, album_id?:string) {
+export function handleUploadAlbum(uploadType: string, album_id?:string) {
   const pantreeStore = usePanTreeStore()
   if (uploadType !== 'pic' && (!pantreeStore.user_id || !pantreeStore.drive_id || !pantreeStore.selectDir.file_id)) {
     message.error('上传操作失败 父文件夹错误')
     return
   }
-
-  if (uploadType == 'file') {
-    window.WebShowOpenDialogSync({ title: '选择多个文件上传到网盘', buttonLabel: '上传选中的文件', properties: ['openFile', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent'] }, (files: string[] | undefined) => {
-      if (files && files.length > 0) {
-        modalUpload('backupPan', pantreeStore.selectDir.file_id, files)
-      }
-    })
-  } else if (uploadType == 'pic' && album_id !== undefined) {
+  if (uploadType == 'pic' && album_id !== undefined) {
     const driver_id = GetDriveID(useUserStore().user_id, 'pic')
     const userId = useUserStore().user_id
     console.log("album_id", album_id)
@@ -57,10 +57,55 @@ export function handleUpload(uploadType: string, album_id?:string) {
         UploadingDAL.aUploadLocalFiles(userId, driver_id, "root", files,  useSettingStore().downUploadWhatExist, true)
       }
     })
-  } else {
-    window.WebShowOpenDialogSync({ title: '选择多个文件夹上传到网盘', buttonLabel: '上传文件夹', properties: ['openDirectory', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent'] }, (files: string[] | undefined) => {
+  }
+}
+
+export function handleUpload(uploadType: string, encType: string = '') {
+  const pantreeStore = usePanTreeStore()
+  if (!pantreeStore.user_id || !pantreeStore.drive_id || !pantreeStore.selectDir.file_id) {
+    message.error('上传操作失败 父文件夹错误')
+    return
+  }
+  if (encType == 'xbyEncrypt1') {
+    if (!useSettingStore().securityPassword) {
+      modalPassword('new', (success) => {
+        success && handleUpload(uploadType, encType)
+      })
+      return
+    }
+  }
+  if (uploadType == 'file') {
+    window.WebShowOpenDialogSync({
+      title: '选择多个文件上传到网盘',
+      buttonLabel: `${encType == 'xbyEncrypt1' ? '加密' : encType == 'xbyEncrypt2' ? '私密' : ''}上传选中的文件`,
+      properties: ['openFile', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
+    }, (files: string[] | undefined) => {
       if (files && files.length > 0) {
-        modalUpload('backupPan', pantreeStore.selectDir.file_id, files)
+        modalUpload(pantreeStore.selectDir.file_id, files, false, encType)
+      }
+    })
+  } else if (uploadType == 'folder') {
+    window.WebShowOpenDialogSync({
+      title: '选择多个文件夹上传到网盘',
+      buttonLabel: `${encType == 'xbyEncrypt1' ? '加密' : encType == 'xbyEncrypt2' ? '私密' : ''}上传文件夹`,
+      properties: ['openDirectory', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
+    }, (files: string[] | undefined) => {
+      if (files && files.length > 0) {
+        modalUpload(pantreeStore.selectDir.file_id, files, false, encType)
+      }
+    })
+  } else if (uploadType == 'pic_file') {
+    window.WebShowOpenDialogSync({
+      title: '选择多个照片/视频上传到网盘',
+      buttonLabel: '上传选中的照片/视频',
+      filters: [
+        { name: 'Images', extensions: ['jfif', 'pjpeg', 'pjp', 'jpg', 'jpeg', 'png', 'heic', 'gif', '3gp'] },
+        { name: 'Video', extensions: ['mp4', 'mkv', 'avi', 'mov', 'mpg', 'mpeg', 'm4v', 'webm', 'wmv'] }
+      ],
+      properties: ['openFile', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
+    }, (files: string[] | undefined) => {
+      if (files && files.length > 0) {
+        modalUpload('pic_root', files, true, encType)
       }
     })
   }
@@ -78,12 +123,13 @@ export function menuDownload(istree: boolean, tips: boolean = true) {
     return
   }
   const settingStore = useSettingStore()
+  const panTreeStore = usePanTreeStore()
   const savePath = settingStore.AriaIsLocal ? settingStore.downSavePath : settingStore.ariaSavePath
   const savePathFull = settingStore.downSavePathFull
   const downSavePathDefault = settingStore.downSavePathDefault
   if (isEmpty(savePath)) {
     message.error('未设置保存路径')
-    modalDownload('backupPan', istree)
+    modalDownload(istree)
     return
   }
   if (topbtnLock.has('menuDownload')) return
@@ -91,9 +137,11 @@ export function menuDownload(istree: boolean, tips: boolean = true) {
   let files: IAliGetFileModel[] = []
   if (istree) {
     files = [{
-      ...usePanTreeStore().selectDir,
+      ...panTreeStore.selectDir,
       isDir: true,
       ext: '',
+      mime_extension: '',
+      mime_type: '',
       category: '',
       icon: '',
       sizeStr: '',
@@ -107,8 +155,11 @@ export function menuDownload(istree: boolean, tips: boolean = true) {
   try {
     if (downSavePathDefault || !tips) {
       DownDAL.aAddDownload(files, savePath, savePathFull)
+      if (useDowningStore().ListDataRaw.length > 0) {
+        message.success(`成功创建下载任务`)
+      }
     } else {
-      modalDownload('backupPan', istree)
+      modalDownload(istree)
     }
   } catch (err: any) {
     message.error(err.message)
@@ -155,7 +206,7 @@ export async function menuFavSelectFile(istree: boolean, isFavor: boolean) {
 }
 
 
-export async function menuTrashSelectFile(istree: boolean, isDelete: boolean) {
+export async function menuTrashSelectFile(istree: boolean, isDelete: boolean, ispic: boolean = false) {
   const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isError) {
     message.error('删除操作失败 父文件夹错误')
@@ -169,26 +220,53 @@ export async function menuTrashSelectFile(istree: boolean, isDelete: boolean) {
     message.error('请不要在放映室里删除文件')
     return
   }
-
+  console.log('selectedData', selectedData)
   if (topbtnLock.has('menuTrashSelectFile')) return
   topbtnLock.add('menuTrashSelectFile')
   try {
-    let successList: string[]
-    if (isDelete) {
-      successList = await AliFileCmd.ApiDeleteBatch(selectedData.user_id, selectedData.drive_id, selectedData.selectedKeys)
+    let successList: string[] = []
+    if (ispic) {
+      if (!isDelete) {
+        const drive_file_list: { drive_id: string, file_id: string }[] = []
+        selectedData.selectedKeys.forEach(key => {
+          drive_file_list.push({
+            drive_id: selectedData.drive_id,
+            file_id: key
+          })
+        })
+        let data = await AliAlbum.ApiAlbumDeleteFiles(selectedData.user_id, selectedData.dirID, drive_file_list)
+        if (data) {
+          message.success('移出相册成功')
+        } else {
+          message.error('移出相册失败')
+        }
+      } else {
+        let result = []
+        for (const album_id of selectedData.selectedKeys) {
+          let res = await AliAlbum.ApiAlbumDelete(selectedData.user_id, album_id)
+          result.push(res)
+        }
+        if (result.length > 0) {
+          message.success('删除相册成功')
+        } else {
+          message.error('删除相册失败')
+        }
+      }
     } else {
-      successList = await AliFileCmd.ApiTrashBatch(selectedData.user_id, selectedData.drive_id, selectedData.selectedKeys)
+      if (isDelete) {
+        successList = await AliFileCmd.ApiDeleteBatch(selectedData.user_id, selectedData.drive_id, selectedData.selectedKeys)
+      } else {
+        successList = await AliFileCmd.ApiTrashBatch(selectedData.user_id, selectedData.drive_id, selectedData.selectedKeys)
+      }
     }
 
     if (istree) {
-
-      PanDAL.aReLoadOneDirToShow(selectedData.drive_id, selectedData.parentDirID, false)
+      await PanDAL.aReLoadOneDirToShow(selectedData.drive_id, selectedData.parentDirID, false)
     } else {
-
+      await DB.batchDeleteVideo(successList)
       usePanFileStore().mDeleteFiles(selectedData.dirID, successList, selectedData.dirID !== 'trash')
-
       if (selectedData.dirID !== 'trash') {
-        await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, selectedData.dirID)
+        await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, selectedData.dirID, selectedData.albumId)
         TreeStore.ClearDirSize(selectedData.drive_id, selectedData.selectedParentKeys)
       }
     }
@@ -197,6 +275,21 @@ export async function menuTrashSelectFile(istree: boolean, isDelete: boolean) {
     DebugLog.mSaveDanger('menuTrashSelectFile', err)
   }
   topbtnLock.delete('menuTrashSelectFile')
+}
+
+export async function menuAddAlbumSelectFile() {
+  const selectedData = PanDAL.GetPanSelectedData(false)
+  if (selectedData.isErrorSelected) return
+  if (selectedData.isError) {
+    message.error('添加到相册操作失败 父文件夹错误')
+    return
+  }
+  const selectedFiles = usePanFileStore().GetSelected()
+  if (selectedFiles.length == 0) {
+    message.error('没有可以添加到相册的文件！')
+    return
+  }
+  modalMoveToAlbum()
 }
 
 export async function topRestoreSelectedFile() {
@@ -229,12 +322,13 @@ export async function topRestoreSelectedFile() {
       PanDAL.aReLoadOneDirToShow('', 'refresh', false)
     }
     await Sleep(2000)
-    const dirList = await AliFileCmd.ApiGetFileBatchOpenApi(selectedData.user_id, selectedData.drive_id, diridList)
+    const dirList = await AliFileCmd.ApiGetFileBatch(selectedData.user_id, selectedData.drive_id, diridList)
     console.log(diridList, dirList)
 
     const pset = new Set<string>()
     for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-      const parent_file_id = dirList[i].parent_file_id
+      let parent_file_id = dirList[i].parent_file_id
+      if (parent_file_id.includes('root')) parent_file_id = 'root'
       if (pset.has(parent_file_id)) continue
       pset.add(parent_file_id)
       await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, parent_file_id)
@@ -248,7 +342,7 @@ export async function topRestoreSelectedFile() {
 }
 
 
-export function menuCopySelectedFile(istree: boolean, copyby: string, copyToRes=false) {
+export function menuCopySelectedFile(istree: boolean, copyby: string) {
   const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isError) {
     message.error('复制移动操作失败 父文件夹错误')
@@ -292,60 +386,33 @@ export function menuCopySelectedFile(istree: boolean, copyby: string, copyToRes=
     message.error('没有可以复制移动的文件')
     return
   }
-  if (copyToRes) {
-    modalSelectPanDir('resourcePan', copyby, parent_file_id, async function (user_id: string, drive_id: string, dirID: string) {
-      if (!drive_id || !dirID) return
-
-      let successList: string[]
-      if (copyby == 'copy') {
-        successList = await AliFileCmd.ApiCopyBatch(user_id, selectedData.drive_id, file_idList, drive_id, dirID)
-        PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        TreeStore.ClearDirSize(drive_id, [dirID])
+  modalSelectPanDir(copyby, parent_file_id, async function(user_id: string, drive_id: string, selectFile: any) {
+    if (!drive_id || !selectFile.drive_id || !selectFile.file_id) return
+    if (parent_file_id == selectFile.file_id) {
+      message.error('不能移动复制到原位置！')
+      return
+    }
+    let successList: string[]
+    if (copyby == 'copy') {
+      successList = await AliFileCmd.ApiCopyBatch(user_id, drive_id, file_idList, selectFile.drive_id, selectFile.file_id)
+      await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectFile.drive_id, selectFile.file_id)
+      TreeStore.ClearDirSize(selectedData.drive_id, [selectFile.file_id])
+    } else {
+      successList = await AliFileCmd.ApiMoveBatch(user_id, drive_id, file_idList, selectFile.drive_id, selectFile.file_id)
+      if (istree) {
+        await PanDAL.aReLoadOneDirToShow(selectedData.drive_id, selectedData.parentDirID, false)
       } else {
-        successList = await AliFileCmd.ApiMoveBatch(user_id, selectedData.drive_id, file_idList, drive_id, dirID)
-        if (istree) {
-          PanDAL.aReLoadOneDirToShow(selectedData.drive_id, selectedData.parentDirID, false)
-          PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        } else {
-          usePanFileStore().mDeleteFiles(selectedData.dirID, successList, true)
-          PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        }
-        TreeStore.ClearDirSize(drive_id, [dirID, ...selectedData.selectedParentKeys])
+        usePanFileStore().mDeleteFiles(selectedData.dirID, successList, true)
       }
-    })
-  } else {
-    modalSelectPanDir('backupPan', copyby, parent_file_id, async function (user_id: string, drive_id: string, dirID: string) {
-      if (!drive_id || !dirID) return
-
-      if (parent_file_id == dirID) {
-        message.error('不能移动复制到原位置！')
-        return
-      }
-
-      let successList: string[]
-      if (copyby == 'copy') {
-        successList = await AliFileCmd.ApiCopyBatch(user_id, drive_id, file_idList, drive_id, dirID)
-        PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        TreeStore.ClearDirSize(drive_id, [dirID])
-      } else {
-        successList = await AliFileCmd.ApiMoveBatch(user_id, drive_id, file_idList, drive_id, dirID)
-        if (istree) {
-          PanDAL.aReLoadOneDirToShow(selectedData.drive_id, selectedData.parentDirID, false)
-          PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        } else {
-          usePanFileStore().mDeleteFiles(selectedData.dirID, successList, true)
-          PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, dirID)
-        }
-        TreeStore.ClearDirSize(drive_id, [dirID, ...selectedData.selectedParentKeys])
-      }
-    })
-  }
-
+      await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectFile.drive_id, selectFile.file_id)
+      TreeStore.ClearDirSize(drive_id, [selectFile.file_id, ...selectedData.selectedParentKeys])
+    }
+  })
 }
 
 
-export function dropMoveSelectedFile(movetodirid: string) {
-  const selectedData = PanDAL.GetPanSelectedData(false)
+export function dropMoveSelectedFile(drive_id: string, movetodirid: string, istree: boolean) {
+  const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isErrorSelected) return
   if (selectedData.isError) {
     message.error('复制移动操作失败 父文件夹错误！')
@@ -378,25 +445,94 @@ export function dropMoveSelectedFile(movetodirid: string) {
   }
 
   if (file_idList.includes(movetodirid)) {
-
-    if (file_idList.length == 1) message.info('用户取消移动')
+    if (file_idList.length == 1) message.info('取消移动')
     else message.error('不能移动到原位置！')
     return
   }
 
-  AliFileCmd.ApiMoveBatch(selectedData.user_id, selectedData.drive_id, file_idList, selectedData.drive_id, movetodirid).then((success: string[]) => {
-
-
-    usePanFileStore().mDeleteFiles(selectedData.dirID, success, true)
-
-    PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, movetodirid)
-    TreeStore.ClearDirSize(selectedData.drive_id, [movetodirid, ...selectedData.selectedParentKeys])
-  })
+  let to_drive_id = drive_id || selectedData.drive_id
+  // 获取父节点
+  if (movetodirid.includes('root')) {
+    to_drive_id = GetDriveID(selectedData.user_id, movetodirid)
+    movetodirid = 'root'
+  }
+  AliFileCmd.ApiMoveBatch(selectedData.user_id, selectedData.drive_id, file_idList, to_drive_id, movetodirid)
+    .then(async (success: string[]) => {
+      usePanFileStore().mDeleteFiles(selectedData.dirID, success, true)
+      await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, selectedData.dirID)
+      if (selectedData.drive_id != to_drive_id) {
+        await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, to_drive_id, movetodirid)
+      }
+      await PanDAL.aReLoadOneDirToShow(to_drive_id, movetodirid, false)
+      TreeStore.ClearDirSize(selectedData.drive_id, [movetodirid, ...selectedData.selectedParentKeys])
+    })
 }
 
+export async function menuFileEncTypeChange(istree: boolean) {
+  const selectedData = PanDAL.GetPanSelectedData(istree)
+  const description = selectedData.fileDescription || selectedData.parentDirDescription
+  if (selectedData.isError) {
+    message.error('标记加密文件操作失败 父文件夹错误')
+    return
+  }
+  if (selectedData.isErrorSelected) {
+    message.error('没有可以标记加密的文件')
+    return
+  }
+  if (topbtnLock.has('menuFileEncTypeChange')) return
+  topbtnLock.add('menuFileEncTypeChange')
+  let encType = 'xbyEncrypt1'
+  Modal.open({
+    title: '标记加密',
+    okText: '标记',
+    bodyStyle: { minWidth: '340px' },
+    content: () => h(Select, {
+      tabindex: '-1',
+      defaultValue: 'xbyEncrypt1',
+      onChange: (value: any) => encType = value
+    }, () => [
+      h(Option, { tabindex: '-1', value: 'notEncrypt', label: '未加密' }),
+      h(Option, { tabindex: '-1', value: 'xbyEncrypt1', label: '加密文件' }),
+      h(Option, { tabindex: '-1', value: 'xbyEncrypt2', label: '私密文件' })
+    ]),
+    onOk: async () => {
+      try {
+        const successList = await AliFileCmd.ApiFileColorBatch(selectedData.user_id, selectedData.drive_id, description, encType, selectedData.selectedKeys)
+        usePanFileStore().mColorFiles(encType, successList)
+      } catch (err: any) {
+        message.error(err.message)
+        DebugLog.mSaveDanger('menuFileEncTypeChange', err)
+      }
+    },
+    onCancel: () => {
+      topbtnLock.delete('menuFileEncTypeChange')
+    }
+  })
+  topbtnLock.delete('menuFileEncTypeChange')
+}
+
+export async function menuFileClearHistory(istree: boolean) {
+  const selectedData = PanDAL.GetPanSelectedData(istree)
+  if (selectedData.isError) {
+    message.error('清除历史操作失败 父文件夹错误')
+    return
+  }
+  if (selectedData.isErrorSelected) {
+    message.error('没有可以清除历史的文件')
+    return
+  }
+  if (topbtnLock.has('menuFileClearHistory')) return
+  topbtnLock.add('menuFileClearHistory')
+  await AliFileCmd.ApiFileHistoryBatch(selectedData.user_id, selectedData.drive_id, selectedData.selectedKeys)
+  await PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+  usePanFileStore().mCancelSelect()
+  topbtnLock.delete('menuFileClearHistory')
+}
 
 export async function menuFileColorChange(istree: boolean, color: string) {
   const selectedData = PanDAL.GetPanSelectedData(istree)
+  const description = selectedData.fileDescription || selectedData.parentDirDescription
+  color = color.toLowerCase().replace('#', 'c')
   if (selectedData.isError) {
     message.error('标记文件操作失败 父文件夹错误')
     return
@@ -405,13 +541,14 @@ export async function menuFileColorChange(istree: boolean, color: string) {
     message.error('没有可以标记的文件')
     return
   }
-
-  color = color.toLowerCase().replace('#', 'c')
-
+  if (color && description.includes(color)) {
+    message.error('不能标记相同的颜色')
+    return
+  }
   if (topbtnLock.has('menuFileColorChange')) return
   topbtnLock.add('menuFileColorChange')
   try {
-    const successList = await AliFileCmd.ApiFileColorBatch(selectedData.user_id, selectedData.drive_id, color, selectedData.selectedKeys)
+    const successList = await AliFileCmd.ApiFileColorBatch(selectedData.user_id, selectedData.drive_id, description, color, selectedData.selectedKeys)
     usePanFileStore().mColorFiles(color, successList)
   } catch (err: any) {
     message.error(err.message)
@@ -421,7 +558,7 @@ export async function menuFileColorChange(istree: boolean, color: string) {
 }
 
 
-export function menuCreatShare(istree: boolean, shareby: string) {
+export function menuCreatShare(istree: boolean, shareby: string, driveType: string) {
   const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isError) {
     message.error('创建分享操作失败 父文件夹错误')
@@ -440,6 +577,8 @@ export function menuCreatShare(istree: boolean, shareby: string) {
         name: dir.name,
         namesearch: dir.namesearch,
         ext: '',
+        mime_type: '',
+        mime_extension: '',
         category: '',
         icon: 'iconfile-folder',
         size: 0,
@@ -449,7 +588,7 @@ export function menuCreatShare(istree: boolean, shareby: string) {
         starred: false,
         isDir: true,
         thumbnail: '',
-        description: ''
+        description: dir.description
       }
     ]
   } else {
@@ -459,7 +598,25 @@ export function menuCreatShare(istree: boolean, shareby: string) {
     message.error('没有可以分享的文件！')
     return
   }
-  modalCreatRapidLink(shareby, list)
+  let encFiles = list.filter(l => getEncType(l) == 'xbyEncrypt2')
+  if (encFiles.length > 0) {
+    Modal.open({
+      title: '存在私密的文件，是否继续分享？',
+      bodyStyle: {
+        minWidth: '340px',
+        minHeight: '100px'
+      },
+      closable: false,
+      content: encFiles.map(v => v.name).join(','),
+      okText: '确认',
+      cancelText: '取消',
+      onOk(e) {
+        modalCreatNewShareLink(shareby, driveType, list)
+      }
+    })
+  } else {
+    modalCreatNewShareLink(shareby, driveType, list)
+  }
 }
 
 
@@ -476,15 +633,12 @@ export async function topFavorDeleteAll() {
     message.loading('清空收藏夹执行中...', 60, loadingKey)
     let count = 0
     while (true) {
-
       const resp: IAliFileResp = NewIAliFileResp(selectedData.user_id, selectedData.drive_id, 'favorite', '收藏夹')
       await AliTrash.ApiFavorFileListOnePageForClean('updated_at', 'DESC', resp)
       if (resp.items.length > 0) {
-
         const selectkeys = ArrayKeyList<string>('file_id', resp.items)
         const successList = await AliFileCmd.ApiFavorBatch(selectedData.user_id, selectedData.drive_id, false, false, selectkeys)
         count += successList.length
-
         message.loading('清空收藏夹执行中...(' + count.toString() + ')', 60, loadingKey)
       } else {
         break
@@ -578,26 +732,36 @@ export async function topRecoverSelectedFile() {
   try {
     message.loading('文件恢复执行中...', 60, loadingKey)
     let successList: string[] = []
-    const oneTimeList: { drive_id: string; file_id: string; content_hash: string; size: number; name: string }[] = []
+    let oneTimeList: { drive_id: string; file_id: string; content_hash: string; size: number; name: string }[] = []
     for (let i = 0, maxi = resumeList.length; i < maxi; i++) {
       oneTimeList.push(resumeList[i])
       if (oneTimeList.length > 99) {
         const data = await AliFileCmd.ApiRecoverBatch(selectedData.user_id, oneTimeList)
-        successList = successList.concat(data)
+        if (Array.isArray(data)) {
+          successList = successList.concat(data)
+        } else {
+          oneTimeList = []
+          message.error(data, 3, loadingKey)
+          break
+        }
         oneTimeList.length = 0
         message.loading('文件恢复执行中...(' + i.toString() + ')', 60, loadingKey)
       }
     }
     if (oneTimeList.length > 0) {
       const data = await AliFileCmd.ApiRecoverBatch(selectedData.user_id, oneTimeList)
-      successList = successList.concat(data)
+      if (Array.isArray(data)) {
+        successList = successList.concat(data)
+      } else {
+        message.error(data, 3, loadingKey)
+      }
       oneTimeList.length = 0
     }
-    message.success('文件恢复(' + successList.length + ') 成功!', 3, loadingKey)
-
-    PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, 'root')
-
-    usePanFileStore().mDeleteFiles('recover', successList, false)
+    if (successList.length > 0) {
+      message.success('文件恢复(' + successList.length + ') 成功!', 3, loadingKey)
+      await PanDAL.aReLoadOneDirToRefreshTree(selectedData.user_id, selectedData.drive_id, 'root')
+      usePanFileStore().mDeleteFiles('recover', successList, false)
+    }
   } catch (err: any) {
     message.error(err.message, 3, loadingKey)
     DebugLog.mSaveDanger('topRecoverSelectedFile', err)
@@ -606,32 +770,48 @@ export async function topRecoverSelectedFile() {
 }
 
 
-export async function topSearchAll(word: string) {
-
+export async function topSearchAll(word: string, inputsearchType: string[]) {
+  if (!word) return
   if (word == 'topSearchAll高级搜索') {
-    modalSearchPan("backupPan")
+    modalSearchPan(inputsearchType)
     return
   }
-
   const pantreeStore = usePanTreeStore()
-  if (!pantreeStore.user_id || !pantreeStore.drive_id || !pantreeStore.selectDir.file_id) {
-    message.error('搜索文件操作失败 父文件夹错误')
+  if (!pantreeStore.user_id || !inputsearchType || !pantreeStore.selectDir.file_id) {
+    message.error('搜索失败 父文件夹错误')
+    return
+  }
+  if (inputsearchType.length > 0) {
+    if (useSettingStore().securityHideBackupDrive) {
+      inputsearchType = inputsearchType.filter((t) => t != 'backup')
+    }
+    if (useSettingStore().securityHideResourceDrive) {
+      inputsearchType = inputsearchType.filter((t) => t != 'resource')
+    }
+    if (useSettingStore().securityHidePicDrive) {
+      inputsearchType = inputsearchType.filter((t) => t != 'pic')
+    }
+    word += ' range:' + inputsearchType.join(',') + ' '
+  } else {
+    message.error('搜索失败 搜索范围不能为空')
     return
   }
   const searchid = 'search' + word
-  PanDAL.aReLoadOneDirToShow('', searchid, false)
+  await PanDAL.aReLoadOneDirToShow('', searchid, false)
 }
 
 
 export async function menuJumpToDir() {
+  let panTreeStore = usePanTreeStore()
   let first = usePanFileStore().GetSelectedFirst()
-  if (first && !first.parent_file_id) first = await AliFile.ApiGetFile(usePanTreeStore().user_id, first.drive_id, first.file_id)
+  if (first && !first.parent_file_id) {
+    first = await AliFile.ApiGetFile(panTreeStore.user_id, first.drive_id, first.file_id)
+  }
   if (!first) {
     message.error('没有选中任何文件')
     return
   }
-
-  PanDAL.aReLoadOneDirToShow('', first.parent_file_id, true).then(() => {
+  PanDAL.aReLoadOneDirToShow(first.drive_id, first.parent_file_id, true).then(() => {
     usePanFileStore().mKeyboardSelect(first!.file_id, false, false)
     usePanFileStore().mSaveFileScrollTo(first!.file_id)
   })
@@ -643,7 +823,10 @@ export function menuVideoXBT() {
     message.error('没有选中任何文件')
     return
   }
-
+  if (first.description && first.description.includes('xbyEncrypt')) {
+    message.error('加密视频无法获取雪碧图')
+    return
+  }
   if (first.icon == 'iconweifa') {
     message.error('违规视频无法预览')
     return
@@ -672,7 +855,7 @@ export function menuM3U8Download() {
     message.error('没有选中任何文件')
     return
   }
-  modalM3U8Download("backupPan")
+  modalM3U8Download()
 }
 
 export function menuCopyFileName() {
@@ -705,5 +888,5 @@ export function menuCopyFileTree() {
     message.error('没有选中任何文件！')
     return
   }
-  modalCopyFileTree('backupPan', list)
+  modalCopyFileTree(list)
 }

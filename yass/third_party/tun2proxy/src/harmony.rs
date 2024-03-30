@@ -1,20 +1,14 @@
 #![cfg(all(target_os = "linux", target_env = "ohos"))]
 
 use crate::{error::Error, tun2proxy::TunToProxy, tun_to_proxy, NetworkInterface, Options, Proxy};
+use std::ffi::CStr;
 use std::io::Error as IoError;
 use std::os::fd::RawFd;
-use std::ffi::CStr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::fence;
-use std::sync::atomic::Ordering;
 
 #[allow(non_camel_case_types)]
 type c_int = std::os::raw::c_int;
 #[allow(non_camel_case_types)]
 type c_char = std::os::raw::c_char;
-
-static mut TUN_INIT: AtomicBool = AtomicBool::new(false);
-static mut TUN_TO_PROXY: Option<TunToProxy> = None;
 
 /// # Safety
 ///
@@ -26,7 +20,7 @@ pub unsafe extern "C" fn tun2proxy_init(
     tun_mtu: c_int,
     log_level_int: c_int,
     dns_over_tcp: c_int,
-) -> c_int {
+) -> *mut c_char {
     let log_level = match log_level_int {
         0 => "off",
         1 => "error",
@@ -45,7 +39,7 @@ pub unsafe extern "C" fn tun2proxy_init(
             .with_filter(filter),
     );
 
-    let block = || -> Result<(), Error> {
+    let block = || -> Result<TunToProxy, Error> {
         let proxy_url = unsafe { CStr::from_ptr(proxy_url) }.to_str()?;
         let proxy = Proxy::from_url(proxy_url)?;
 
@@ -60,73 +54,83 @@ pub unsafe extern "C" fn tun2proxy_init(
         let dup_tun_fd = dup_fd(tun_fd)?;
         let interface = NetworkInterface::Fd(dup_tun_fd);
         let tun2proxy = tun_to_proxy(&interface, &proxy, options)?;
-        TUN_TO_PROXY = Some(tun2proxy);
-        fence(Ordering::Release);
-        TUN_INIT.store(true, Ordering::Relaxed);
-        Ok::<(), Error>(())
+        Ok::<TunToProxy, Error>(tun2proxy)
     };
-    if let Err(error) = block() {
-        log::error!("failed to run tun2proxy with error: {:?}", error);
-        return 1;
+    match block() {
+        Ok(tun2proxy) => {
+            let b = Box::new(tun2proxy);
+            Box::into_raw(b) as *mut c_char
+        }
+        Err(error) => {
+            log::error!("failed to run tun2proxy with error: {:?}", error);
+            0 as *mut c_char
+        }
     }
-    0
 }
 
 /// # Safety
 ///
 /// Running tun2proxy
 #[no_mangle]
-pub unsafe extern "C" fn tun2proxy_run() -> c_int {
-    let block = || -> Result<(), Error> {
-        while !TUN_INIT.load(Ordering::Relaxed) {
-            fence(Ordering::Acquire);
-            std::thread::yield_now();
-        }
-        if let Some(tun2proxy) = &mut TUN_TO_PROXY {
-            tun2proxy.run()?;
-        }
-        TUN_TO_PROXY = None;
-        fence(Ordering::Release);
-        TUN_INIT.store(false, Ordering::Relaxed);
-        Ok::<(), Error>(())
-    };
-    if let Err(error) = block() {
-        log::error!("failed to run tun2proxy with error: {:?}", error);
+pub unsafe extern "C" fn tun2proxy_run(tun2proxy_ptr: *mut c_char) -> c_int {
+    if tun2proxy_ptr == 0 as *mut c_char {
         return 1;
     }
-    0
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let mut tun2proxy = unsafe { Box::from_raw(ptr) };
+    let mut block = || -> Result<(), Error> {
+        tun2proxy.run()?;
+        Ok::<(), Error>(())
+    };
+    match block() {
+        Ok(()) => {
+            std::mem::forget(tun2proxy);
+            0
+        }
+        Err(error) => {
+            std::mem::forget(tun2proxy);
+            log::error!("failed to run tun2proxy with error: {:?}", error);
+            1
+        }
+    }
 }
 
 /// # Safety
 ///
 /// Shutdown tun2proxy
 #[no_mangle]
-pub unsafe extern "C" fn tun2proxy_destroy() -> c_int {
-    if !TUN_INIT.load(Ordering::Relaxed) {
-        fence(Ordering::Acquire);
-        log::error!("tun2proxy already stopped");
-        return 0;
+pub unsafe extern "C" fn tun2proxy_shutdown(tun2proxy_ptr: *mut c_char) -> c_int {
+    if tun2proxy_ptr == 0 as *mut c_char {
+        return 1;
     }
-    match &mut TUN_TO_PROXY {
-        None => {
-            log::error!("tun2proxy not started");
-            1
-        }
-        Some(tun2proxy) => {
-            if let Err(e) = tun2proxy.shutdown() {
-                log::error!("failed to shutdown tun2proxy with error: {:?}", e);
-                1
-            } else {
-                0
-            }
-        }
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let mut tun2proxy = unsafe { Box::from_raw(ptr) };
+    if let Err(e) = tun2proxy.shutdown() {
+        std::mem::forget(tun2proxy);
+        log::error!("failed to shutdown tun2proxy with error: {:?}", e);
+        1
+    } else {
+        std::mem::forget(tun2proxy);
+        0
     }
+}
+
+/// # Safety
+///
+/// Destroy tun2proxy
+#[no_mangle]
+pub unsafe extern "C" fn tun2proxy_destroy(tun2proxy_ptr: *mut c_char) -> () {
+    if tun2proxy_ptr == 0 as *mut c_char {
+        return;
+    }
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let _tun2proxy = unsafe { Box::from_raw(ptr) };
 }
 
 fn dup_fd(fd: RawFd) -> Result<RawFd, Error> {
     let dup_fd = unsafe { libc::dup(fd) };
     if dup_fd < 0 {
-      return Err(Error::Io(IoError::last_os_error()));
+        return Err(Error::Io(IoError::last_os_error()));
     }
     Ok(dup_fd)
 }

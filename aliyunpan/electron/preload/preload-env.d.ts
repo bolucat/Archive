@@ -2,6 +2,8 @@
 declare namespace NodeJS {
   interface ProcessEnv {
     NODE_ENV: 'development' | 'production'
+    DIST: string
+    VITE_PUBLIC: string
     readonly VITE_DEV_SERVER_HOST: string
     readonly VITE_DEV_SERVER_PORT: string
   }
@@ -11,6 +13,7 @@ declare interface Window {
   platform: any
   WinMsg: any
   WebToElectron: any
+  WebToWindow: any
   WebToElectronCB: any
   WebSpawnSync: any
   WebExecSync: any

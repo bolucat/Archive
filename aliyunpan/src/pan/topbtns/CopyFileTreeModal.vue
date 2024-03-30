@@ -178,7 +178,7 @@ export default defineComponent({
       form.treeContent = ''
       form.treeInfo = ''
       
-      if (treeData.isDir == false) {
+      if (!treeData.isDir) {
         form.treeInfo = '文件 1 个，文件夹 0 个'
         RefreshFileTree()
         return

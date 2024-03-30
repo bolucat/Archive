@@ -157,7 +157,7 @@ export function TestKeyboardSelect(event: KeyboardMessage, viewlist: any, store:
     store.mKeyboardSelect(key, true, false)
     viewlist.scrollIntoView({ key: key, align: 'auto' })
   }
-  return TestCtrl(' ', event, cspace);
+  return TestCtrl(' ', event, cspace)
 }
 
 export function RefreshScroll(element: any) {
@@ -185,9 +185,14 @@ export function RefreshScrollTo(element: any, top: number) {
   }
 }
 
-const menulist = ['leftpansubmove', 'leftrespansubmove','leftpansubzhankai', 'leftrespansubzhankai', 'leftpanmenu','leftrespanmenu', 'rightpansubmove', 'rightrespansubmove', 'rightpansubbiaoji',
-  'rightrespansubbiaoji', 'rightpansubmore', 'rightpanmenu', 'rightpantrashmenu',  'rightrespansubmore', 'rightrespanmenu', 'rightrespantrashmenu', 'rightmysharemenu', 'rightmytransfersharemenu', 'rightothersharemenu',
-  'uploadingrightmenu', 'uploadedrightmenu', 'downingrightmenu', 'downedrightmenu', 'rightuploadedmenu', 'rightuploadingmenu']
+const menulist = [
+  'leftpansubmove', 'leftpansubzhankai', 'leftpanmenu',
+  'rightpansubmove', 'rightpansubbiaoji', 'rightpansubmore', 'rightpanmenu', 'rightpantrashmenu',
+  'rightmysharemenu', 'rightmytransfersharemenu', 'rightothersharemenu', 'rightsharehistorymenu', 'rightsharebottlefishmenu',
+  'uploadingrightmenu', 'uploadedrightmenu',
+  'downingrightmenu', 'downedrightmenu',
+  'rightuploadedmenu', 'rightuploadingmenu'
+]
 const menuliststate = new Set()
 
 export function onHideRightMenu(): void {

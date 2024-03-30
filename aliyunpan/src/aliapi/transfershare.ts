@@ -19,8 +19,8 @@ export default class AliTransferShare {
       const add: IAliShareItem = Object.assign({}, item, { first_file: undefined, icon: 'iconwenjian' })
       add.share_msg = humanExpiration(item.expiration)
       return add
-    } else {
-      DebugLog.mSaveWarning('ApiCreatShare err=' + (resp.code || ''))
+    } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+      DebugLog.mSaveWarning('ApiCreatShare err=' + (resp.code || ''), resp.body)
     }
     if (resp.body?.code.startsWith('UserPunished')) return '账号分享行为异常，无法分享'
     else if (resp.body?.code == 'InvalidParameter.FileIdList') return '选择文件过多，无法分享'

@@ -10,12 +10,17 @@ defineProps({
     required: false,
     default: true
   },
+  selectedPan: {
+    type: String,
+    default: 'resource',
+    required: false
+  }
 })
 </script>
 
 <template>
   <MySplit :visible="visible">
-    <template #first><PanLeft /></template>
+    <template #first><PanLeft :selectedPan='selectedPan' /></template>
     <template #second><PanRight /></template>
   </MySplit>
 </template>

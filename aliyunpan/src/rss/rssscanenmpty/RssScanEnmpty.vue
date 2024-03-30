@@ -2,17 +2,16 @@
 import message from '../../utils/message'
 import { computed, ref, watch } from 'vue'
 import MyLoading from '../../layout/MyLoading.vue'
-import { useUserStore, useWinStore } from '../../store'
+import { useSettingStore, useUserStore, useWinStore } from '../../store'
 import UserDAL from '../../user/userdal'
 import AliFileCmd from '../../aliapi/filecmd'
 import { LoadScanDir, NewScanDriver, ResetScanDriver, TreeNodeData, TreeSelectAll, TreeSelectOne } from '../ScanDAL'
 import { GetEnmptyDir, GetTreeNodes } from './scanenmpty'
 
-import { Tree as AntdTree, Checkbox as AntdCheckbox } from 'ant-design-vue'
-import 'ant-design-vue/es/tree/style/css'
-import 'ant-design-vue/es/checkbox/style/css'
+import { Checkbox as AntdCheckbox, Tree as AntdTree } from 'ant-design-vue'
 import { EventDataNode } from 'ant-design-vue/es/tree'
 import DB from '../../utils/db'
+import { GetDriveID } from '../../aliapi/utils'
 
 const winStore = useWinStore()
 const userStore = useUserStore()
@@ -25,6 +24,7 @@ const scanLoaded = ref(false)
 const delLoading = ref(false)
 const Processing = ref(0)
 const scanCount = ref(0)
+const panType = ref('backup')
 const totalDirCount = ref(0)
 
 const ScanPanData = NewScanDriver('')
@@ -61,7 +61,7 @@ const RefreshTree = () => {
   const expandedkeys: string[] = []
   const checkedkeys: string[] = []
   const treeDataMap = new Map<string, TreeNodeData>()
-  const treeDataNodes = GetTreeNodes(ScanPanData, 'root', treeDataMap)
+  const treeDataNodes = GetTreeNodes(ScanPanData, panType.value + '_root', treeDataMap)
   Object.freeze(treeDataNodes)
   treeData.value = treeDataNodes
   const values = treeDataMap.values()
@@ -89,8 +89,13 @@ const handleDelete = () => {
     message.error('账号错误')
     return
   }
+  if(!checkedKeys.value.length){
+    message.error('没有选中需要删除的文件')
+    return
+  }
   delLoading.value = true
-  AliFileCmd.ApiTrashBatch(user.user_id, user.backup_drive_id, checkedKeys.value).then((success: string[]) => {
+  let drive_id = GetDriveID(user.user_id, panType.value)
+  AliFileCmd.ApiTrashBatch(user.user_id, drive_id, checkedKeys.value).then((success: string[]) => {
       delLoading.value = false
       DB.saveValueNumber('AllDir_' + user.backup_drive_id, 0)
       RefreshTree()
@@ -122,10 +127,9 @@ const handleScan = () => {
     }
   }
   setTimeout(refresh, 3000)
-
-  LoadScanDir(user.user_id, user.backup_drive_id, totalDirCount, Processing, ScanPanData)
+  let drive_id = GetDriveID(user.user_id, panType.value)
+  LoadScanDir(user.user_id, drive_id, panType.value + '_root', totalDirCount, Processing, ScanPanData)
     .then(() => {
-      
       return GetEnmptyDir(user.user_id, ScanPanData, Processing, scanCount)
     })
     .catch((err: any) => {
@@ -170,12 +174,19 @@ const handleScan = () => {
     <div class="settingcard scanauto" style="padding: 4px; margin-top: 4px">
       <a-row justify="space-between" align="center" style="margin: 12px; height: 28px; flex-grow: 0; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden">
         <AntdCheckbox :disabled="scanLoaded == false" :checked="scanCount > 0 && checkedKeys.length == scanCount" style="margin-left: 12px; margin-right: 12px" @click.stop.prevent="handleSelectAll">全选</AntdCheckbox>
-        <span v-if="scanLoaded" class="checkedInfo">已选中 {{ checkedKeys.length }} / {{ scanCount }} 共 {{ totalDirCount }} 个文件夹</span>
-        <span v-else class="checkedInfo">网盘中文件夹很多时，需要扫描较长时间</span>
+        <span v-if="scanLoaded" class="checkedInfo">已选中 {{ checkedKeys.length }} / {{ scanCount }} </span>
+        <span v-else class="checkedInfo">网盘中文件夹很多时，需要扫描较长时间。文件夹列表有30分钟缓存。新建的空文件夹需要等30分钟才能扫描出来</span>
         <div style="flex: auto"></div>
         <a-button v-if="scanLoaded" size="small" tabindex="-1" style="margin-right: 12px" @click="handleReset">取消</a-button>
         <a-button v-if="scanLoaded" type="primary" size="small" tabindex="-1" status="danger" :loading="delLoading" title="把选中的文件夹放入回收站" @click="handleDelete">删除选中</a-button>
-        <a-button v-else type="primary" size="small" tabindex="-1" :loading="scanLoading" @click="handleScan">开始扫描空文件夹</a-button>
+        <template v-else>
+          <a-select v-model:model-value="panType" size="small" tabindex="-1" style="width: 100px; flex-shrink: 0; margin-right: 2px" :disabled="scanLoading">
+            <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-option>
+            <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-option>
+          </a-select>
+          <a-button type='primary' size='small' tabindex='-1' :loading='scanLoading' @click='handleScan'>开始扫描
+          </a-button>
+        </template>
       </a-row>
       <a-spin v-if="scanLoading || scanLoaded" :loading="scanLoading" tip="耐心等待，很慢的..." :style="{ width: '100%', height: treeHeight + 'px', overflow: 'hidden' }">
         <AntdTree

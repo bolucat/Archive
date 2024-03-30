@@ -1,4 +1,4 @@
-import { ITokenInfo, useFootStore } from '../store'
+import { useFootStore, useSettingStore } from '../store'
 import UserDAL from '../user/userdal'
 import DebugLog from '../utils/debuglog'
 import { Sleep } from '../utils/format'
@@ -9,38 +9,26 @@ import { IAliBatchResult } from './models'
 
 import { SHA256 } from 'crypto-js'
 import { ecdsaSign, publicKeyCreate } from 'secp256k1'
+import { IAliFileItem, IAliGetFileModel } from './alimodels'
+import { decodeName, encodeName } from '../module/flow-enc/utils'
+import path from 'path'
+import mime from 'mime-types'
+import { getEncPassword, getEncType } from '../utils/proxyhelper'
 
-export declare type Drive = 'pan' | 'pic' | 'safe'
-
-
-export function GetDriveID(user_id: string, drive: Drive): string {
+export function GetDriveID(user_id: string, drive: string): string {
   const token = UserDAL.GetUserToken(user_id)
   if (token) {
-    switch (drive) {
-      case 'pan':
-        return token.backup_drive_id
-      case 'pic':
-        return token.pic_drive_id
-      case 'safe':
-        return token.default_sbox_drive_id
+    if (drive.includes('backup')) {
+      return token.backup_drive_id
+    } else if (drive.includes('resource')) {
+      return token.resource_drive_id
+    } else if (drive.includes('pic')) {
+      return token.pic_drive_id
+    } else if (drive.includes('safe')) {
+      return token.default_sbox_drive_id
     }
   }
   return ''
-}
-
-
-export function GetDriveID2(token: ITokenInfo, driveName: string): string {
-  if (token) {
-    switch (driveName) {
-      case 'pan':
-        return token.backup_drive_id
-      case 'pic':
-        return token.pic_drive_id
-      case 'safe':
-        return token.default_sbox_drive_id
-    }
-  }
-  return driveName
 }
 
 export function GetDriveType(user_id: string, drive_id: string): any {
@@ -48,14 +36,18 @@ export function GetDriveType(user_id: string, drive_id: string): any {
   if (token) {
     switch (drive_id) {
       case token.backup_drive_id:
-        return { title: '备份盘', key: 'backup_root' }
+        return { title: '备份盘', name: 'backup', key: 'backup_root' }
       case token.resource_drive_id:
-        return { title: '资源盘', key: 'resource_root' }
+        return { title: '资源盘', name: 'resource', key: 'resource_root' }
+      case token.pic_drive_id:
+        return { title: '全部相册', name: 'pic', key: 'pic_root' }
       case token.default_sbox_drive_id:
-        return { title: '安全盘', key: 'safe_root' }
+        return { title: '安全盘', name: 'safe', key: 'safe_root' }
+      default:
+        return { title: '备份盘', name: 'backup', key: 'backup_root' }
     }
   }
-  return { title: '', key: '' }
+  return { title: '备份盘', name: 'backup', key: 'backup_root' }
 }
 
 export function GetSignature(nonce: number, user_id: string, deviceId: string) {
@@ -63,8 +55,8 @@ export function GetSignature(nonce: number, user_id: string, deviceId: string) {
     const hashArray = Array.from(bytes) // convert buffer to byte array
     // convert bytes to hex string
     return hashArray
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
   }
   const toU8 = (wordArray: CryptoJS.lib.WordArray) => {
     const words = wordArray.words
@@ -83,6 +75,69 @@ export function GetSignature(nonce: number, user_id: string, deviceId: string) {
   return { signature, publicKey }
 }
 
+export function EncodeEncName(user_id: string, name: string, isDir: boolean, encType: string, inputpassword: string = '') {
+  let settingStore = useSettingStore()
+  if (encType && settingStore.securityEncFileName) {
+    // 加密名称
+    const splitFolder = name.split('/')
+    const securityPassword = getEncPassword(user_id, encType, inputpassword)
+    const securityEncType = settingStore.securityEncType
+    if (!isDir) {
+      return splitFolder.map(name => {
+        let plainName = ''
+        let basename = path.basename(name)
+        let extname = path.extname(name)
+        if (settingStore.securityEncFileNameHideExt) {
+          plainName = basename
+          extname = ''
+        } else {
+          plainName = basename.replace(extname, '')
+        }
+        return encodeName(securityPassword, securityEncType, plainName) + extname
+      }).join('/')
+    } else {
+      return splitFolder.map(name => encodeName(securityPassword, securityEncType, name)).join('/')
+    }
+  } else {
+    return name
+  }
+}
+
+export function DecodeEncName(user_id: string, item: IAliFileItem | IAliGetFileModel, inputpassword: string = '') {
+  // 自动解密文件名
+  let settingStore = useSettingStore()
+  const securityFileNameAutoDecrypt = settingStore.securityFileNameAutoDecrypt
+  const securityEncType = settingStore.securityEncType
+  let ext = ''
+  let mine_type = item.mime_type
+  if ('file_extension' in item) {
+    ext = item.file_extension || ''
+  } else if ('ext' in item) {
+    ext = item.ext
+  }
+  let name = item.name
+  let description = item.description
+  let need_decode = description && description.includes('xbyEncrypt')
+  if (need_decode && securityFileNameAutoDecrypt) {
+    let encType = getEncType(item)
+    let filename = item.name.replace(ext ? '.' + ext : '', '')
+    let password = getEncPassword(user_id, encType, inputpassword)
+    let realName = decodeName(password, securityEncType, filename) || item.name
+    if (ext) {
+      name = realName + '.' + ext
+    } else if (path.extname(realName)) {
+      // 修复加密后的扩展
+      name = realName
+      ext = path.extname(realName).replace('.', '')
+      mine_type = mime.lookup(ext) || 'application/oct-stream'
+    } else {
+      name = realName
+    }
+    return { name: name, mine_type, ext }
+  }
+  return { name: item.name, mine_type, ext }
+}
+
 async function _ApiBatch(postData: string, user_id: string, share_token: string, result: IAliBatchResult): Promise<void> {
   if (!user_id && !share_token) return
   const url = 'v2/batch'
@@ -97,24 +152,46 @@ async function _ApiBatch(postData: string, user_id: string, share_token: string,
         if (respi.body && respi.body.async_task_id) {
 
 
-          result.async_task.push({ drive_id: respi.body.drive_id || '', file_id: respi.id, task_id: respi.body.async_task_id, newdrive_id: respi.body.drive_id || '', newfile_id: respi.body.file_id || '' })
+          result.async_task.push({
+            drive_id: respi.body.drive_id || '',
+            file_id: respi.id,
+            task_id: respi.body.async_task_id,
+            newdrive_id: respi.body.drive_id || '',
+            newfile_id: respi.body.file_id || ''
+          })
         } else if (respi.body && respi.body.share_id && respi.body.share_msg) {
 
-          result.reslut.push({ id: respi.id, share_id: respi.body.share_id, share_pwd: respi.body.share_pwd || '', share_url: respi.body.share_url, expiration: respi.body.expiration || '', share_name: respi.body.share_name || '' })
+          result.reslut.push({
+            id: respi.id,
+            share_id: respi.body.share_id,
+            share_pwd: respi.body.share_pwd || '',
+            share_url: respi.body.share_url,
+            expiration: respi.body.expiration || '',
+            share_name: respi.body.share_name || ''
+          })
         } else if (respi.body) {
-          result.reslut.push({ id: respi.id, file_id: respi.body.file_id, name: respi.body.name || '', body: respi.body })
+          result.reslut.push({
+            id: respi.id,
+            file_id: respi.body.file_id,
+            name: respi.body.name || '',
+            body: respi.body
+          })
         } else if (respi.id) {
           result.reslut.push({ id: respi.id, file_id: respi.id })
         }
       } else {
         const respi = responses[i]
         const logmsg = (respi.body.code || '') + ' ' + (respi.body.message || '')
-        if (logmsg.includes('File under sync control') == false) DebugLog.mSaveDanger(logmsg)
-        if (respi.body && respi.body.code) result.error.push({ id: respi.body.id || respi.id, code: respi.body.code, message: respi.body.message })
+        if (!logmsg.includes('File under sync control')) DebugLog.mSaveDanger(logmsg)
+        if (respi.body && respi.body.code) result.error.push({
+          id: respi.body.id || respi.id,
+          code: respi.body.code,
+          message: respi.body.message
+        })
       }
     }
-  } else {
-    DebugLog.mSaveWarning('_ApiBatch err=' + (resp.code || ''))
+  } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+    DebugLog.mSaveWarning('_ApiBatch err=' + (resp.code || ''), resp.body)
   }
 }
 
@@ -142,8 +219,7 @@ export async function ApiBatch(title: string, batchList: string[], user_id: stri
     }
 
     if (allTask.length >= 3) {
-
-      await Promise.all(allTask).catch(() => {})
+      await Promise.all(allTask).catch()
       allTask = []
       if (title != '') message.loading(title + ' 执行中...(' + result.count.toString() + ')', 60, loadingKey)
     }
@@ -152,7 +228,8 @@ export async function ApiBatch(title: string, batchList: string[], user_id: stri
     postData += '],"resource":"file"}'
     allTask.push(_ApiBatch(postData, user_id, share_token, result))
   }
-  if (allTask.length > 0) await Promise.all(allTask).catch(() => {})
+  if (allTask.length > 0) await Promise.all(allTask).catch(() => {
+  })
 
   if (result.async_task.length > 0) {
     if (title != '' || share_token != '') message.warning(title + ' 异步执行中(' + result.async_task.length + ')', 2, loadingKey)
@@ -218,7 +295,13 @@ export function ApiBatchMaker(url: string, idList: string[], bodymake: (file_id:
     const id = idList[i]
     if (batchSet.has(id)) continue
     batchSet.add(id)
-    batchList.push(JSON.stringify({ body: bodymake(id), headers: { 'Content-Type': 'application/json' }, id: id, method: 'POST', url }))
+    batchList.push(JSON.stringify({
+      body: bodymake(id),
+      headers: { 'Content-Type': 'application/json' },
+      id: id,
+      method: 'POST',
+      url
+    }))
   }
   batchSet.clear()
   return batchList
@@ -232,7 +315,13 @@ export function ApiBatchMaker2(url: string, idList: string[], namelist: string[]
     const id = idList[i]
     if (batchSet.has(id)) continue
     batchSet.add(id)
-    batchList.push(JSON.stringify({ body: bodymake(id, namelist[i]), headers: { 'Content-Type': 'application/json' }, id: id, method: 'POST', url }))
+    batchList.push(JSON.stringify({
+      body: bodymake(id, namelist[i]),
+      headers: { 'Content-Type': 'application/json' },
+      id: id,
+      method: 'POST',
+      url
+    }))
   }
   batchSet.clear()
   return batchList
@@ -279,8 +368,8 @@ export async function ApiGetAsyncTask(user_id: string, async_task_id: string): P
       message.warning('操作部分成功 ' + resp.body.message?.replace('ErrQuotaExhausted', '网盘空间已满') || '', 5)
       return 'error'
     }
-  } else {
-    DebugLog.mSaveWarning('ApiGetAsyncTask err=' + (resp.code || ''))
+  } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+    DebugLog.mSaveWarning('ApiGetAsyncTask err=' + (resp.code || ''), resp.body)
   }
   return 'error'
 }
@@ -299,8 +388,8 @@ export async function ApiGetAsyncTaskUnzip(user_id: string, drive_id: string, fi
       message.warning('操作部分成功 ' + resp.body.message?.replace('ErrQuotaExhausted', '网盘空间已满') || '', 5)
       return 'error'
     }
-  } else {
-    DebugLog.mSaveWarning('ApiGetAsyncTaskUnzip err=' + (resp.code || ''))
+  } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+    DebugLog.mSaveWarning('ApiGetAsyncTaskUnzip err=' + (resp.code || ''), resp.body)
   }
   return 'error'
 }

@@ -4,5 +4,5 @@ export default {
   '*.{vue}': ['stylelint --fix', 'prettier --write', 'eslint --cache --fix'],
   '*.{less,css}': ['stylelint --fix', 'prettier --write'],
   // typecheck
-  'packages/renderer/**/{*.ts,*.tsx,*.vue,tsconfig.json}': ({ filenames }) => 'npm run typecheck'
+  'src/**/{*.ts,*.tsx,*.vue,tsconfig.json}': ({ filenames }) => 'npm run typecheck'
 }

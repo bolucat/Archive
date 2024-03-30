@@ -1,5 +1,5 @@
 import AliUploadDisk from '../aliapi/uploaddisk'
-import DBUpload, { IStateUploadInfo, IUploadingUI, IStateUploadTaskFile } from '../utils/dbupload'
+import DBUpload, { IStateUploadInfo, IStateUploadTaskFile, IUploadingUI } from '../utils/dbupload'
 import { humanSizeSpeed } from '../utils/format'
 import { ArrayKeyList } from '../utils/utils'
 import { StartUpload } from './uploader'
@@ -17,7 +17,6 @@ export async function UploadCmd(Command: string, IsAll: boolean, UploadIDList: n
       const keys = RuningList.values()
       for (let i = 0, maxi = RuningList.size; i < maxi; i++) {
         const item = keys.next().value as IUploadingUI
-        
         if (map.has(item.UploadID)) item.IsRunning = false
       }
     }
@@ -99,14 +98,14 @@ export async function UploadReport(): Promise<void> {
     const uploadState = item.Info.uploadState
     // "hashing" | "running" | "已暂停" | "success" | "error" (排队中 状态不可能出现)
     if (!item.IsRunning || uploadState == '已暂停') {
-      
+
       stopList.push(item.Info)
       AliUploadDisk.DelFileUploadSpeed(item.UploadID)
     } else if (uploadState == 'success') {
-      
+
       successList.push(item.File)
     } else if (uploadState == 'error') {
-      
+
       errorList.push(item.Info)
     } else if (uploadState == 'hashing') {
       

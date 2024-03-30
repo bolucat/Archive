@@ -10,7 +10,7 @@ import { ref, onMounted } from 'vue';
 export default {
   setup() {
     const iframeRef = ref(null);
-    const iframeSrc = ref(''); // 初始的 iframe URL
+    const iframeSrc = ref('')// 初始的 iframe URL
 
     onMounted(() => {
       setTimeout(() => {

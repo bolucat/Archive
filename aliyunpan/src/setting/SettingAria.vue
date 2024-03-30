@@ -5,7 +5,6 @@ import { AriaChangeToLocal, AriaChangeToRemote, AriaTest } from '../utils/aria2c
 import message from '../utils/message'
 
 import { Checkbox as AntdCheckbox } from 'ant-design-vue'
-import 'ant-design-vue/es/checkbox/style/css'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -52,7 +51,6 @@ const handleAriaConn = () => {
 
     AriaTest(settingStore.ariaHttps, host, port, secret).then((issuccess: boolean) => {
       if (issuccess) {
-
         settingStore.updateStore({ ariaState: 'remote' })
         AriaChangeToRemote().then((isOnline: boolean | undefined) => {
           settingStore.ariaLoading = false
@@ -100,10 +98,10 @@ const handleResetAListPwd = () => {
 
 <template>
   <div class="settingcard">
-    <a-alert banner>文件直接下载到远程电脑</a-alert>
+    <a-alert banner>可以 把文件直接下载到远程电脑里</a-alert>
     <div class="settingspace"></div>
 
-    <div class="settinghead">远程文件保存位置</div>
+    <div class="settinghead">Aria远程下载文件保存位置</div>
     <div class="settingrow">
       <a-input tabindex="-1" :disabled="!settingStore.AriaIsLocal" :style="{ width: '300px' }" placeholder="粘贴远程电脑上的文件夹路径" v-model:model-value="ariaSavePath" />
       <a-popover position="bottom">
@@ -120,9 +118,9 @@ const handleResetAListPwd = () => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">Aria地址</div>
+    <div class="settinghead">Aria连接地址RPC IP:Port 或 域名:Port</div>
     <div class="settingrow">
-      <a-input tabindex="-1" :disabled="!settingStore.AriaIsLocal" :style="{ width: '300px' }" placeholder="IP:Port 或 域名:Port" v-model:model-value="ariaUrl">
+      <a-input tabindex="-1" :disabled="!settingStore.AriaIsLocal" :style="{ width: '300px' }" placeholder="Aria2连接地址（IP:Port）" v-model:model-value="ariaUrl">
         <template #prefix> ws:// </template>
         <template #suffix> /jsonrpc </template>
       </a-input>
@@ -142,7 +140,7 @@ const handleResetAListPwd = () => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">Aria密码</div>
+    <div class="settinghead">Aria连接密码 secret</div>
     <div class="settingrow">
       <a-input tabindex="-1" :disabled="!settingStore.AriaIsLocal" :style="{ width: '300px' }" placeholder="Aria2连接密码" v-model:model-value="ariaPwd" />
       <a-popover position="bottom">
@@ -157,7 +155,7 @@ const handleResetAListPwd = () => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">使用SSL</div>
+    <div class="settinghead">Aria使用ssl链接</div>
     <div class="settingrow">
       <AntdCheckbox tabindex="-1" :checked="settingStore.ariaHttps" @change="(e:any)=>cb({ ariaHttps: e.target.checked })">使用ssl链接(wss 或 https)</AntdCheckbox>
 
@@ -178,16 +176,30 @@ const handleResetAListPwd = () => {
     <div class="settingrow" v-show="settingStore.AriaIsLocal">
       <a-button type="outline" size="small" tabindex="-1" :loading="settingStore.ariaLoading" @click="handleAriaConn">当前是 本地模式，点击切换</a-button>
     </div>
+    <div class="settingrow" v-show="!settingStore.ariaLoading && settingStore.AriaIsLocal">
+      <a-typography-text type="secondary">新创建的下载任务都会下载到本地，只能管理本地的下载任务</a-typography-text>
+    </div>
+
     <div class="settingrow" v-show="!settingStore.AriaIsLocal">
       <a-button type="primary" size="small" tabindex="-1" :loading="settingStore.ariaLoading" @click="handleAriaOff(false)">当前是 远程Aria模式，点击切换</a-button>
-    </div>
-    <div class="settingspace"></div>
-    <div class="settinghead">重置AList登录密码</div>
-    <div class="settingrow">
-      <a-input tabindex="-1" :style="{ width: '100px' }" placeholder="AList登录密码" v-model:model-value="alistPwd" />
-      <a-button type="primary" size="small" tabindex="-1" @click="handleResetAListPwd()">重置AList登录密码</a-button>
     </div>
   </div>
 </template>
 
-<style></style>
+<style>
+.settinghead {
+  display: flex;
+  margin-right: 20px;
+}
+.settinghead::after {
+  width: 0;
+  height: 0;
+}
+.settinghead, .settingrow {
+  display: inline-flex;
+  width: 50%;
+  padding: 10px;
+  box-sizing: border-box;
+  vertical-align: top;
+}
+</style>

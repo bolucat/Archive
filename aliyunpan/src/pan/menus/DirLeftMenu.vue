@@ -1,24 +1,28 @@
-<script lang="ts">
-import { defineComponent } from 'vue'
-import { menuTrashSelectFile, menuCopySelectedFile, menuCreatShare, menuDownload } from '../topbtns/topbtn'
+<script setup lang="ts">
+import { menuCopySelectedFile, menuCreatShare, menuDownload, menuTrashSelectFile } from '../topbtns/topbtn'
 import { modalRename, modalShuXing } from '../../utils/modal'
 import PanDAL from '../pandal'
 import { usePanTreeStore } from '../../store'
 import TreeStore from '../../store/treestore'
-export default defineComponent({
-  setup() {
-    const handleRefresh = () => PanDAL.aReLoadOneDirToShow('', 'refresh', false)
-    const handleExpandAll = (isExpand: boolean) => {
-      const pantreeStore = usePanTreeStore()
-      const drive_id = pantreeStore.drive_id
-      const file_id = pantreeStore.selectDir.file_id
-      const diridList = TreeStore.GetDirChildDirID(drive_id, file_id)
-      pantreeStore.mTreeExpandAll(diridList, isExpand)
-    }
-    const istree = true
-    return { istree, handleRefresh, handleExpandAll, menuCreatShare, menuTrashSelectFile, menuCopySelectedFile, modalRename, modalShuXing, menuDownload }
+
+const istree = true
+
+const props = defineProps({
+  inputselectType: {
+    type: String,
+    required: true
   }
 })
+
+const handleRefresh = () => PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+const handleExpandAll = (isExpand: boolean) => {
+  const pantreeStore = usePanTreeStore()
+  const drive_id = pantreeStore.drive_id
+  const file_id = pantreeStore.selectDir.file_id
+  const diridList = TreeStore.GetDirChildDirID(drive_id, file_id)
+  pantreeStore.mTreeExpandAll(diridList, isExpand)
+}
+
 </script>
 
 <template>
@@ -49,8 +53,13 @@ export default defineComponent({
         <template #icon> <i class="iconfont icondownload" /> </template>
         <template #default>下载</template>
       </a-doption>
-      <a-doption @click="() => menuCreatShare(istree, 'pan')">
-        <template #icon> <i class="iconfont iconrss" /> </template>
+      <a-doption v-show="inputselectType.includes('resource')"
+                 @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
+        <template #icon><i class='iconfont iconfenxiang' /></template>
+        <template #default>分享</template>
+      </a-doption>
+      <a-doption @click="() => menuCreatShare(istree, 'pan', 'backup_root')">
+        <template #icon><i class='iconfont iconrss' /></template>
         <template #default>快传</template>
       </a-doption>
 
@@ -69,14 +78,6 @@ export default defineComponent({
             <template #icon> <i class="iconfont iconcopy" /> </template>
             <template #default>复制到...</template>
           </a-doption>
-          <a-doption @click="() => menuCopySelectedFile(istree, 'cut', true)">
-            <template #icon> <i class="iconfont iconscissor" /> </template>
-            <template #default>移动到资源盘</template>
-          </a-doption>
-          <a-doption @click="() => menuCopySelectedFile(istree, 'copy', true)">
-            <template #icon> <i class="iconfont iconcopy" /> </template>
-            <template #default>复制到资源盘</template>
-          </a-doption>
           <a-doption class="danger" @click="() => menuTrashSelectFile(istree, false)">
             <template #icon> <i class="iconfont icondelete" /> </template>
             <template #default>回收站</template>
@@ -84,13 +85,13 @@ export default defineComponent({
         </template>
       </a-dsubmenu>
 
-      <a-doption @click="() => modalRename('backupPan', istree, false)">
-        <template #icon> <i class="iconfont iconedit-square" /> </template>
+      <a-doption @click='() => modalRename(istree, false, false)'>
+        <template #icon><i class='iconfont iconedit-square' /></template>
         <template #default>重命名</template>
       </a-doption>
 
-      <a-doption @click="() => modalShuXing('backupPan',istree, false)">
-        <template #icon> <i class="iconfont iconshuxing" /> </template>
+      <a-doption @click='() => modalShuXing(istree)'>
+        <template #icon><i class='iconfont iconshuxing' /></template>
         <template #default>属性</template>
       </a-doption>
     </template>

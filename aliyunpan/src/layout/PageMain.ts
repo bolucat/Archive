@@ -1,5 +1,5 @@
 import ServerHttp from '../aliapi/server'
-import { useAppStore, useFootStore, useSettingStore } from '../store'
+import { useAppStore, useFootStore, usePanTreeStore, useSettingStore, useUserStore } from '../store'
 import AppCache from '../utils/appcache'
 import DownDAL from '../down/DownDAL'
 import UploadDAL from '../transfer/uploaddal'
@@ -10,7 +10,12 @@ import DebugLog from '../utils/debuglog'
 import PanDAL from '../pan/pandal'
 import UploadingDAL from '../transfer/uploadingdal'
 import { Sleep } from '../utils/format'
-import M3u8DownloadDAL from "../down/m3u8/M3u8DownloadDAL";
+import { createProxyServer } from '../utils/proxyhelper'
+import cache from '../utils/cache'
+import WebDavServer from '../module/webdav'
+import AliHttp from '../aliapi/alihttp'
+import DB from '../utils/db'
+import M3u8DownloadDAL from '../down/m3u8/M3u8DownloadDAL'
 
 export function PageMain() {
   if (window.WinMsg) return
@@ -18,7 +23,17 @@ export function PageMain() {
   //useSettingStore().WebSetProxy()
   Promise.resolve()
     .then(async () => {
-      DebugLog.mSaveSuccess('小白羊启动')
+      // 创建代理server
+      if (!window.MainProxyServer) {
+        window.MainProxyHost = useSettingStore().debugProxyHost
+        window.MainProxyPort = useSettingStore().debugProxyPort
+        window.MainProxyServer = await createProxyServer(window.MainProxyPort)
+        window.MainProxyServer.on('close', async () => {
+          await Sleep(2000)
+          window.MainProxyServer = await createProxyServer(window.MainProxyPort)
+        })
+      }
+      // DebugLog.mSaveSuccess('小白羊启动')
       await ShareDAL.aLoadFromDB().catch((err: any) => {
         DebugLog.mSaveDanger('ShareDALLDB', err)
       })
@@ -29,7 +44,6 @@ export function PageMain() {
     })
     .then(async () => {
       await Sleep(500)
-
       // 启动时检查更新
       if (useSettingStore().uiLaunchAutoCheckUpdate) {
         ServerHttp.CheckUpgrade(false).catch((err: any) => {
@@ -54,10 +68,29 @@ export function PageMain() {
       })
       await Sleep(500)
 
+      await AppCache.aLoadDirSize().catch((err: any) => {
+        DebugLog.mSaveDanger('AppDirDALDB', err)
+      })
+
       await AppCache.aLoadCacheSize().catch((err: any) => {
         DebugLog.mSaveDanger('AppCacheDALDB', err)
       })
 
+      // 启动WebDav
+      if (useSettingStore().webDavAutoEnable) {
+        await WebDavServer.config({
+          port: useSettingStore().webDavPort,
+          hostname: useSettingStore().webDavHost,
+          requireAuthentification: false
+        }).start().then(() => {
+          useSettingStore().webDavEnable = WebDavServer.isStarted()
+        }).catch((err: any) => {
+          useSettingStore().webDavEnable = false
+        })
+      } else {
+        useSettingStore().webDavEnable = false
+      }
+      // 开启定时任务
       setTimeout(timeEvent, 1000)
     })
     .catch((err: any) => {
@@ -65,9 +98,11 @@ export function PageMain() {
     })
 }
 
-export const WinMsg = function (arg: any) {
+export const WinMsg = async (arg: any) => {
   if (arg.cmd == 'MainUploadEvent') {
-    if (arg.ReportList.length > 0 && arg.ReportList.length != arg.RunningKeys.length) console.log('RunningKeys', arg)
+    if (arg.ReportList.length > 0 && arg.ReportList.length != arg.RunningKeys.length) {
+      console.log('RunningKeys', arg)
+    }
     if (arg.StopKeys.length > 0) console.log('StopKeys', arg)
     UploadingDAL.aUploadingEvent(arg.ReportList, arg.ErrorList, arg.SuccessList, arg.RunningKeys, arg.StopKeys, arg.LoadingKeys, arg.SpeedTotal)
   } else if (arg.cmd == 'MainUploadAppendFiles') {
@@ -82,11 +117,14 @@ export const WinMsg = function (arg: any) {
 let runTime = Math.floor(Date.now() / 1000)
 let chkUpgradeTime1 = Math.floor(Date.now() / 1000)
 let chkUpgradeTime2 = Math.floor(Date.now() / 1000)
-let chkDirSizeTime = 0
-let lockDirSizeTime = false
+let chkBackupDirSizeTime = 0
+let chkResourceDirSizeTime = 0
+let lockBackupDirSizeTime = false
+let lockResourceDirSizeTime = false
 let chkClearDownLogTime = 0
 let chkTokenTime = 0
 let chkTaskTime = 0
+let chkDanmuTime = 0
 
 /**
  * 时间事件，一但被调用每秒执行一次 <br/>
@@ -97,18 +135,22 @@ function timeEvent() {
 
   const nowTime = Math.floor(Date.now() / 1000)
 
-
+  // 24小时重置
   if (nowTime - runTime > 60 * 60 * 24) {
     runTime = nowTime
-    chkDirSizeTime = 0
+    chkBackupDirSizeTime = 0
+    chkResourceDirSizeTime = 0
   }
 
-  if (chkUpgradeTime1 > 0 && nowTime - chkUpgradeTime1 > 360) {
-    chkUpgradeTime1 = -1
-    ServerHttp.CheckConfigUpgrade().catch((err: any) => {
-      DebugLog.mSaveDanger('CheckConfigUpgrade', err)
-    })
+  if (chkUpgradeTime1 > 0) {
+    if (nowTime - chkUpgradeTime1 > 14400) {
+      chkUpgradeTime1 = nowTime
+      ServerHttp.CheckConfigUpgrade().catch((err: any) => {
+        DebugLog.mSaveDanger('CheckConfigUpgrade', err)
+      })
+    }
   }
+  // 14300s检查一次
   if (nowTime - chkUpgradeTime2 > 14300) {
     chkUpgradeTime2 = nowTime
     ServerHttp.CheckConfigUpgrade().catch((err: any) => {
@@ -116,23 +158,39 @@ function timeEvent() {
     })
   }
 
-  // 自动刷新文件夹大小
-  if (settingStore.uiFolderSize == true
-      && !lockDirSizeTime
-      && nowTime - runTime > 50
-      && chkDirSizeTime >= 10) {
-    lockDirSizeTime = true
-    PanDAL.aUpdateDirFileSize()
+  // 自动刷新文件夹大小，10s检查一次
+  if (settingStore.uiFolderSize
+    && !lockBackupDirSizeTime
+    && nowTime - runTime > 50
+    && chkBackupDirSizeTime >= 10) {
+    lockBackupDirSizeTime = true
+    PanDAL.aUpdateDirFileSize(usePanTreeStore().backup_drive_id)
       .catch((err: any) => {
-        DebugLog.mSaveDanger('aUpdateDirFileSize', err)
+        DebugLog.mSaveDanger('aUpdateBackupDirFileSize', err)
       })
       .then(() => {
-        chkDirSizeTime = 0
-        lockDirSizeTime = false
+        chkBackupDirSizeTime = 0
+        lockBackupDirSizeTime = false
       })
-  } else chkDirSizeTime++
+  } else chkBackupDirSizeTime++
+  // 自动刷新文件夹大小，15s检查一次
+  if (settingStore.uiFolderSize
+    && !lockResourceDirSizeTime
+    && nowTime - runTime > 50
+    && chkResourceDirSizeTime >= 15) {
+    lockResourceDirSizeTime = true
 
-  // 自动清除上传下载日志
+    PanDAL.aUpdateDirFileSize(usePanTreeStore().resource_drive_id)
+      .catch((err: any) => {
+        DebugLog.mSaveDanger('aUpdateResourceDirFileSize', err)
+      })
+      .then(() => {
+        chkResourceDirSizeTime = 0
+        lockResourceDirSizeTime = false
+      })
+  } else chkResourceDirSizeTime++
+
+  // 自动清除上传下载日志，540s检查一次
   chkClearDownLogTime++
   if (nowTime - runTime > 60 && chkClearDownLogTime >= 540) {
     chkClearDownLogTime = 0
@@ -142,9 +200,13 @@ function timeEvent() {
     DownDAL.aClearDowned().catch((err: any) => {
       DebugLog.mSaveDanger('aClearDowned ', err)
     })
+
+    M3u8DownloadDAL.aClearDowned().catch((err: any) => {
+      DebugLog.mSaveDanger('aClearM3u8Downed ', err)
+    })
   }
 
-
+  // 自动刷新Token，600s检查一次
   chkTokenTime++
   if (nowTime - runTime > 10 && chkTokenTime >= 600) {
     chkTokenTime = 0
@@ -153,13 +215,21 @@ function timeEvent() {
     })
   }
 
+  // 异步任务，2s检查一次
   chkTaskTime++
   if (nowTime - runTime > 6 && chkTaskTime >= 2) {
     chkTaskTime = 0
     useFootStore().aUpdateTask()
   }
 
+  // 清理弹幕缓存，300s检查一次
+  chkDanmuTime++
+  if (nowTime - runTime > 6 && chkDanmuTime >= 60 * 5) {
+    chkDanmuTime = 0
+    cache.clearOutDate()
+  }
 
+  // 刷新下载速度
   DownDAL.aSpeedEvent().catch((err: any) => {
     DebugLog.mSaveDanger('aSpeedEvent', err)
   })
@@ -170,8 +240,7 @@ function timeEvent() {
 
   // 没有下载和上传时触发自动关闭
   if (settingStore.downAutoShutDown == 2) {
-    if (!DownDAL.QueryIsDowning()
-        && !UploadingDAL.QueryIsUploading()) {
+    if (!DownDAL.QueryIsDowning() && !UploadingDAL.QueryIsUploading()) {
       settingStore.downAutoShutDown = 0
       useAppStore().appShutDown = true
     }

@@ -11,7 +11,7 @@ import { foldericonfn, IScanDriverModel, TreeNodeData } from '../ScanDAL'
 
 export async function GetCleanFile(user_id: string, PanData: IScanDriverModel, Processing: Ref<number>, scanCount: Ref<number>, totalFileCount: Ref<number>, scanType: string, fileSize?: number) {
   scanCount.value = 0
-  const keys = PanData.DirMap.keys() 
+  const keys = PanData.DirMap.keys()
   let dirList: IAliDirBatchResp[] = []
   Processing.value = 0
   while (true) {
@@ -23,12 +23,12 @@ export async function GetCleanFile(user_id: string, PanData: IScanDriverModel, P
         dirList.push({ dirID: key.value, next_marker: '', items: [], itemsKey: new Set() } as IAliDirBatchResp)
       } else break
     }
-    Processing.value += add
     if (dirList.length == 0) break
-    if (!PanData.drive_id) break 
-
+    if (!PanData.drive_id) break
     const isGet = await ApiBatchDirFileList(user_id, PanData.drive_id, dirList, scanType, fileSize)
+
     if (isGet) {
+      Processing.value += add
       const list: IAliDirBatchResp[] = []
       for (let i = 0, maxi = dirList.length; i < maxi; i++) {
         if (dirList[i].next_marker && dirList[i].items.length < 2000) {
@@ -89,11 +89,10 @@ export async function GetCleanFile(user_id: string, PanData: IScanDriverModel, P
 
 async function ApiBatchDirFileList(user_id: string, drive_id: string, dirList: IAliDirBatchResp[], scanType: string, fileSize?: number) {
   if (!user_id || !drive_id || dirList.length == 0) return false
-  let postData = '{"requests":['
   for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-    if (i > 0) postData = postData + ','
-    
-    let query = 'parent_file_id="' + dirList[i].dirID + '"'
+    const dir = dirList[i]
+    let dirID = dir.dirID.includes('root') ? 'root' : dir.dirID
+    let query = 'parent_file_id="' + dirID + '"'
     if (scanType == 'size') query += ` and size > ${ 1048576 * (fileSize || 100)}`
     else if (scanType == 'size10') query += ' and size > 10485760'
     else if (scanType == 'size100') query += ' and size > 104857600'
@@ -101,60 +100,36 @@ async function ApiBatchDirFileList(user_id: string, drive_id: string, dirList: I
     else if (scanType == 'size5000') query += ' and size > 5242880000'
     else if (['video', 'doc', 'image', 'audio', 'others', 'zip'].includes(scanType)) query += ' and size > 1048576000 and category = "' + scanType + '"'
     if (!query.includes('category')) query += ' and type = "file"'
-    const data2 = {
-      body: {
-        drive_id: drive_id,
-        query: query,
-        marker: dirList[i].next_marker,
-        limit: 100,
-        fields: 'thumbnail',
-        order_by: 'size DESC'
-      },
-      headers: { 'Content-Type': 'application/json' },
-      id: dirList[i].dirID,
-      method: 'POST',
-      url: '/file/search'
+    let postData = {
+      drive_id: drive_id,
+      limit: 100,
+      query: query,
+      fields: 'thumbnail',
+      order_by: 'size DESC',
+      marker: dir.next_marker
     }
-    postData = postData + JSON.stringify(data2)
-  }
-  postData += '],"resource":"file"}'
-
-  const url = 'v2/batch?jsonmask=responses(id%2Cstatus%2Cbody(next_marker%2Cpunished_file_count%2Ctotal_count%2Citems(name%2Cfile_id%2Cdrive_id%2Ctype%2Csize%2Cupdated_at%2Ccategory%2Cfile_extension%2Cparent_file_id%2Cmime_type%2Cmime_extension%2Cpunish_flag)))'
-  const resp = await AliHttp.Post(url, postData, user_id, '')
-
-  try {
-    if (AliHttp.IsSuccess(resp.code)) {
-      const responses = resp.body.responses
-      for (let j = 0, maxj = responses.length; j < maxj; j++) {
-        const status = responses[j].status as number
-        if (status >= 200 && status <= 205) {
-          const respi = responses[j]
-          const id = respi.id || ''
-          for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-            if (dirList[i].dirID == id) {
-              const dir = dirList[i]
-              const items = respi.body.items
-              dir.next_marker = respi.body.next_marker
-              for (let i = 0, maxi = items.length; i < maxi; i++) {
-                if (dir.itemsKey.has(items[i].file_id)) continue
-                const add = AliDirFileList.getFileInfo(items[i], '')
-                dir.items.push(add)
-                dir.itemsKey.add(add.file_id)
-              }
-              if (dir.items.length >= 3000) dir.next_marker = '' 
-              break
-            }
-          }
+    const url = 'adrive/v3/file/search?jsonmask=next_marker%2Citems(name%2Cfile_id%2Cdrive_id%2Ctype%2Csize%2Cupdated_at%2Ccategory%2Cfile_extension%2Cparent_file_id%2Cmime_type%2Cmime_extension%2Cpunish_flag)'
+    const resp = await AliHttp.Post(url, postData, user_id, '')
+    try {
+      if (AliHttp.IsSuccess(resp.code)) {
+        const items = resp.body.items
+        dir.next_marker = resp.body.next_marker
+        for (let j = 0, maxj = items.length; j < maxj; j++) {
+          if (dir.itemsKey.has(items[i].file_id)) continue
+          const add = AliDirFileList.getFileInfo(user_id, items[i], '')
+          dir.items.push(add)
+          dir.itemsKey.add(add.file_id)
+          if (dir.items.length >= 3000) dir.next_marker = ''
         }
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('SCApiDuplicateList err=' + (resp.code || ''), resp.body)
       }
-      return true
-    } else {
-      DebugLog.mSaveWarning('SCApiDuplicateList err=' + (resp.code || ''))
+    } catch (err: any) {
+      DebugLog.mSaveWarning('ApiBatchDirFileList', err)
+      return false
     }
-  } catch (err: any) {
-    DebugLog.mSaveWarning('ApiBatchDirFileList', err)
   }
-  return false
+  return true
 }
 const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
 
@@ -166,7 +141,6 @@ export function GetTreeNodes(PanData: IScanDriverModel, parent_file_id: string, 
   for (let i = 0, maxi = dirList.length; i < maxi; i++) {
     item = dirList[i]
     if (item.description != '' || PanData.CleanDirMap.has(item.file_id)) {
-      
       const isDir = item.description == 'iconfile-folder' || !item.description
       data.push({
         key: item.file_id,
@@ -205,12 +179,12 @@ export function DeleteFromScanClean(PanData: IScanDriverModel, idList: string[])
   }
 }
 
-export function GetTreeCheckedSize(PanData: IScanDriverModel, checkedKeys: string[]) {
+export function GetTreeCheckedSize(PanData: IScanDriverModel, PanType: string, checkedKeys: string[]) {
   if (checkedKeys.length == 0) return 0
   const checkedMap = new Set(checkedKeys)
   let checkedsize = 0
   const treeDataMap = new Map<string, TreeNodeData>()
-  GetTreeNodes(PanData, 'root', treeDataMap)
+  GetTreeNodes(PanData, PanType + '_root', treeDataMap)
   const values = treeDataMap.values()
   let clen = 0
   for (let i = 0, maxi = treeDataMap.size; i < maxi; i++) {

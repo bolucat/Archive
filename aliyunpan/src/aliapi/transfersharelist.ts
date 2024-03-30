@@ -40,10 +40,10 @@ export default class AliTransferShareList {
       order_direction: 'DESC'
     }
     const resp = await AliHttp.Post(url, postData,user_id,'')
-    return AliTransferShareList._TransferShareListOnePage(user_id, dir, resp)
+    return await AliTransferShareList._TransferShareListOnePage(user_id, dir, resp)
   }
 
-  static _TransferShareListOnePage(user_id: string, dir: IAliShareResp, resp: IUrlRespData): boolean {
+  static async _TransferShareListOnePage(user_id: string, dir: IAliShareResp, resp: IUrlRespData): Promise<boolean> {
     try {
       if (AliHttp.IsSuccess(resp.code)) {
         const timeNow = new Date().getTime()
@@ -51,7 +51,7 @@ export default class AliTransferShareList {
           const item = resp.body.items[i] as IAliShareItem
           if (dir.itemsKey.has(item.share_id)) continue
           let icon = 'iconwenjian'
-          let first_file: any = item.share_id && AliTransferShareList.ApiTransferShareFileStatus(user_id, item.share_id)
+          let first_file: any = item.share_id && await AliTransferShareList.ApiTransferShareFileStatus(user_id, item.share_id)
           const add = Object.assign({}, item, { first_file, icon }) as IAliShareItem
           if (!add.full_share_msg) add.full_share_msg = ''
           if (!add.share_msg) add.share_msg = ''
@@ -77,8 +77,8 @@ export default class AliTransferShareList {
         dir.items.length = 0
         message.warning('列出分享列表出错' + resp.body.code, 2)
         return false
-      } else {
-        DebugLog.mSaveWarning('_ShareListOnePage err=' + (resp.code || ''))
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('_ShareListOnePage err=' + (resp.code || ''), resp.body)
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('_ShareListOnePage', err)
@@ -92,8 +92,8 @@ export default class AliTransferShareList {
     const resp = await AliHttp.Post(url, postData, user_id, '')
     if (AliHttp.IsSuccess(resp.code)) {
       return resp.body as IAliShareItem
-    } else {
-      DebugLog.mSaveWarning('ApiTransferShareFileStatus err=' + (resp.code || ''))
+    } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+      DebugLog.mSaveWarning('ApiTransferShareFileStatus err=' + (resp.code || ''), resp.body)
     }
     return false
   }

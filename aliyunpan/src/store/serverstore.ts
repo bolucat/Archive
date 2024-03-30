@@ -5,18 +5,27 @@ export interface IShareSiteModel {
   title: string
   url: string
   tip: string
+  group: string
+  color: string
+  external: string
+}
+
+export interface IShareSiteGroupModel {
+  group: string,
+  title: string
 }
 
 export interface ServerState {
-
   shareSiteList: IShareSiteModel[]
+  shareSiteGroupList: IShareSiteGroupModel[]
   helpUrl: string
 }
 
 const useServerStore = defineStore('serverstore', {
   state: (): ServerState => ({
     shareSiteList: [],
-    helpUrl: 'aHR0cHM6Ly9naXRodWIuY29tL2dhb3poYW5nbWluL2FsaXl1bnBhbg=='
+    shareSiteGroupList: [],
+    helpUrl: 'aHR0cHM6Ly94YnlzaXRlLnBhZ2VzLmRldi8='
   }),
   actions: {
 
@@ -24,8 +33,12 @@ const useServerStore = defineStore('serverstore', {
       this.shareSiteList = shareSiteList || []
     },
 
+    mSaveShareSiteGroupList(shareSiteGroupList: IShareSiteGroupModel[]) {
+      this.shareSiteGroupList = shareSiteGroupList || []
+    },
+
     mSaveHelpUrl(url: string) {
-      this.helpUrl = url || 'aHR0cHM6Ly9naXRodWIuY29tL2dhb3poYW5nbWluL2FsaXl1bnBhbg=='
+      this.helpUrl = url || 'aHR0cHM6Ly94YnlzaXRlLnBhZ2VzLmRldi8='
     }
   }
 })

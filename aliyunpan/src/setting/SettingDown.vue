@@ -1,15 +1,18 @@
-<script setup lang="ts">
+<script setup lang='ts'>
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
-import {AriaGlobalSpeed} from "../utils/aria2c";
+import { AriaGlobalSpeed } from '../utils/aria2c'
+
 const settingStore = useSettingStore()
+
 const cb = async (val: any) => {
-    // 限速实时生效
-    if (Object.hasOwn(val, 'downGlobalSpeed')){
-        await AriaGlobalSpeed()
-    }
-    await settingStore.updateStore(val)
+  await settingStore.updateStore(val)
+  // 限速实时生效
+  if (Object.hasOwn(val, 'downGlobalSpeed') || Object.hasOwn(val, 'downGlobalSpeedM')) {
+    await AriaGlobalSpeed()
+  }
 }
+
 const handleSelectDownSavePath = () => {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
@@ -22,6 +25,23 @@ const handleSelectDownSavePath = () => {
       (result: string[] | undefined) => {
         if (result && result[0]) {
           settingStore.updateStore({ downSavePath: result[0] })
+        }
+      }
+    )
+  }
+}
+const handleSelectFFmpeg = () => {
+  if (window.WebShowOpenDialogSync) {
+    window.WebShowOpenDialogSync(
+      {
+        title: '选择FFmpeg可执行程序路径',
+        buttonLabel: '选择',
+        properties: ['openFile'],
+        defaultPath: settingStore.ffmpegPath
+      },
+      (result: string[] | undefined) => {
+        if (result && result[0]) {
+          settingStore.updateStore({ ffmpegPath: result[0] })
         }
       }
     )
@@ -54,7 +74,9 @@ const handleSelectDownSavePath = () => {
     <div class="settingspace"></div>
     <div class="settinghead">使用网盘完整路径</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.downSavePathFull" @update:value="cb({ downSavePathFull: $event })"> </MySwitch>
+      <MySwitch :value='settingStore.downSavePathFull' @update:value='cb({ downSavePathFull: $event })'> 新建下载任务时
+        按照网盘完整路径保存
+      </MySwitch>
       <a-popover position="bottom">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -69,7 +91,9 @@ const handleSelectDownSavePath = () => {
     <div class="settingspace"></div>
     <div class="settinghead">自动跳过违规文件</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.downSaveBreakWeiGui" @update:value="cb({ downSaveBreakWeiGui: $event })"> </MySwitch>
+      <MySwitch :value='settingStore.downSaveBreakWeiGui' @update:value='cb({ downSaveBreakWeiGui: $event })'> 新建下载任务时
+        自动跳过违规文件
+      </MySwitch>
       <a-popover position="bottom">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -82,33 +106,33 @@ const handleSelectDownSavePath = () => {
         </template>
       </a-popover>
     </div>
-    <div class="settingspace"></div>
-    <div class="settinghead">最大并行任务数</div>
-    <div class="settingrow">
-      <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.downFileMax" :popup-container="'#SettingDiv'" @update:model-value="cb({ downFileMax: $event })">
-        <a-option :value="1">
-          1 个文件
-          <template #suffix>大文件</template>
-        </a-option>
-        <a-option :value="3">3 个文件</a-option>
-        <a-option :value="5">
-          5 个文件
-          <template #suffix>推荐</template>
-        </a-option>
-        <a-option :value="10">10个文件</a-option>
-        <a-option :value="20">20个文件</a-option>
-        <a-option :value="30">30个文件<template #suffix>大量小文件</template></a-option>
-      </a-select>
+  </div>
+
+  <div class='settingcard'>
+    <div class='settinghead'>下载时 最大并行任务数</div>
+    <div class='settingrow'>
+      <a-input-number
+        tabindex='-1' :style="{ width: '252px' }"
+        mode='button'
+        :min='1' :max='100' :step='1'
+        :model-value='settingStore.downFileMax'
+        @update:model-value='cb({ downFileMax: $event })'>
+        <template #prefix> 同时下载</template>
+        <template #suffix> 个文件</template>
+      </a-input-number>
     </div>
-    <div class="settingspace"></div>
-    <div class="settinghead">单个文件线程数</div>
-    <div class="settingrow">
-      <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.downThreadMax" :popup-container="'#SettingDiv'" @update:model-value="cb({ downThreadMax: $event })">
-        <a-option :value="1">1个线程</a-option>
-        <a-option :value="2">2个线程</a-option>
-        <a-option :value="4">4个线程<template #suffix>   推荐</template></a-option>
-        <a-option :value="8">8个线程</a-option>
-        <a-option :value="16">16个线程</a-option>
+    <div class='settingspace'></div>
+    <div class='settinghead'>下载时 每个文件的线程</div>
+    <div class='settingrow'>
+      <a-select tabindex='-1' :style="{ width: '252px' }" :model-value='settingStore.downThreadMax'
+                :popup-container="'#SettingDiv'" @update:model-value='cb({ downThreadMax: $event })'>
+        <a-option :value='1'>每个文件使用 1 个线程</a-option>
+        <a-option :value='2'>每个文件使用 2 个线程</a-option>
+        <a-option :value='4'>每个文件使用 4 个线程</a-option>
+        <a-option :value='8'>每个文件使用 8 个线程</a-option>
+        <a-option :value='16'>每个文件使用16个线程</a-option>
+        <a-option :value='24'>每个文件使用24个线程</a-option>
+        <a-option :value='32'>每个文件使用32个线程</a-option>
       </a-select>
       <a-popover position="right">
         <i class="iconfont iconbulb" />
@@ -141,6 +165,20 @@ const handleSelectDownSavePath = () => {
             <span class="opred">0-100MB/s</span> 百兆宽带最高跑到 12MB/s<br />
             <span class="opred">0-999KB/s</span> 超慢的宽带请选择KB/s (1MB/s=1000KB/s)<br />
             适当的限速可以不影响其他人上网
+          </div>
+        </template>
+      </a-popover>
+    </div>
+
+    <div class="settingspace"></div>
+    <div class="settinghead">FFmpeg可执行程序路径</div>
+    <div class="settingrow">
+      <a-input-search tabindex="-1" style="max-width: 300px" :readonly="true" button-text="选择" search-button :model-value="settingStore.ffmpegPath" @search="handleSelectFFmpeg" />
+      <a-popover position="bottom">
+        <i class="iconfont iconbulb" />
+        <template #content>
+          <div :style="{ width: '360px' }">
+            用于下载M3U8视频，合并分片文件
           </div>
         </template>
       </a-popover>

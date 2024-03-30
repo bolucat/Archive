@@ -9,6 +9,5 @@ tmp
 release
 
 .idea
-yarn.lock
-localVersion
 
+localVersion

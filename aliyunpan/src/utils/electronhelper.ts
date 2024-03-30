@@ -12,6 +12,10 @@ export function openExternal(url: string): void {
   window.Electron.shell.openExternal(url)
 }
 
+export function openLocalPath(path: string): void {
+  window.Electron.shell.openPath(path)
+}
+
 const ElectronPath = {
   
   AppUserData: '',

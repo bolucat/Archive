@@ -259,11 +259,11 @@ static std::unique_ptr<std::thread> g_tun2proxy_thread;
 // tun_fd
 // tun_mtu
 // dns_over_tcp
-static napi_value startTun2proxy(napi_env env, napi_callback_info info) {
+static napi_value initTun2proxy(napi_env env, napi_callback_info info) {
   napi_value args[4]{};
   size_t argc = std::size(args);
   auto status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
-  if (status != napi_ok || argc != 4) {
+  if (status != napi_ok || argc != std::size(args)) {
     napi_throw_error(env, nullptr, "napi_get_cb_info failed");
     return nullptr;
   }
@@ -361,22 +361,59 @@ static napi_value startTun2proxy(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  int ret = tun2proxy_init(proxy_url_buf, tun_fd_int, tun_mtu_int, log_level, dns_over_tcp_int);
-  if (ret != 0) {
-    LOG(WARNING) << "tun2proxy_run failed: " << ret;
+  void* ptr = tun2proxy_init(proxy_url_buf, tun_fd_int, tun_mtu_int, log_level, dns_over_tcp_int);
+  if (ptr == nullptr) {
+    LOG(WARNING) << "tun2proxy_init failed";
   }
-  return nullptr;
+
+  napi_value value;
+  status = napi_create_int64(env, reinterpret_cast<int64_t>(ptr), &value);
+  if (status != napi_ok) {
+    napi_throw_error(env, nullptr, "napi_create_int64 failed");
+    return nullptr;
+  }
+
+  return value;
 }
 
 static napi_value runTun2proxy(napi_env env, napi_callback_info info) {
-  g_tun2proxy_thread = std::make_unique<std::thread>([] {
+  napi_value args[1]{};
+  size_t argc = std::size(args);
+  auto status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (status != napi_ok || argc != std::size(args)) {
+    napi_throw_error(env, nullptr, "napi_get_cb_info failed");
+    return nullptr;
+  }
+
+  napi_value ptr = args[0];
+
+  napi_valuetype type;
+  status = napi_typeof(env, ptr, &type);
+  if (status != napi_ok) {
+    napi_throw_error(env, nullptr, "napi_typeof failed");
+    return nullptr;
+  }
+
+  if (type != napi_number) {
+    napi_throw_error(env, nullptr, "mismatched argument type, expected: napi_number");
+    return nullptr;
+  }
+
+  int64_t ptr_int;
+  status = napi_get_value_int64(env, ptr, &ptr_int);
+  if (status != napi_ok) {
+    napi_throw_error(env, nullptr, "napi_get_value_int64 failed");
+    return nullptr;
+  }
+
+  g_tun2proxy_thread = std::make_unique<std::thread>([=] {
     if (!SetCurrentThreadName("tun2proxy")) {
       PLOG(WARNING) << "failed to set thread name";
     }
     if (!SetCurrentThreadPriority(ThreadPriority::ABOVE_NORMAL)) {
       PLOG(WARNING) << "failed to set thread priority";
     }
-    int ret = tun2proxy_run();
+    int ret = tun2proxy_run(reinterpret_cast<void*>(ptr_int));
     if (ret != 0) {
       LOG(WARNING) << "tun2proxy_run failed: " << ret;
     }
@@ -385,14 +422,47 @@ static napi_value runTun2proxy(napi_env env, napi_callback_info info) {
 }
 
 static napi_value stopTun2proxy(napi_env env, napi_callback_info info) {
+  napi_value args[1]{};
+  size_t argc = std::size(args);
+  auto status = napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+  if (status != napi_ok || argc != std::size(args)) {
+    napi_throw_error(env, nullptr, "napi_get_cb_info failed");
+    return nullptr;
+  }
+
+  napi_value ptr = args[0];
+
+  napi_valuetype type;
+  status = napi_typeof(env, ptr, &type);
+  if (status != napi_ok) {
+    napi_throw_error(env, nullptr, "napi_typeof failed");
+    return nullptr;
+  }
+
+  if (type != napi_number) {
+    napi_throw_error(env, nullptr, "mismatched argument type, expected: napi_number");
+    return nullptr;
+  }
+
+  int64_t ptr_int;
+  status = napi_get_value_int64(env, ptr, &ptr_int);
+  if (status != napi_ok) {
+    napi_throw_error(env, nullptr, "napi_get_value_int64 failed");
+    return nullptr;
+  }
+
   if (!g_tun2proxy_thread) {
     return nullptr;
   }
-  int ret = tun2proxy_destroy();
+
+  int ret = tun2proxy_shutdown(reinterpret_cast<void*>(ptr_int));
   if (ret != 0) {
-    LOG(WARNING) << "tun2proxy_destroy failed: " << ret;
+    LOG(WARNING) << "tun2proxy_shutdown failed: " << ret;
   }
   g_tun2proxy_thread->join();
+  g_tun2proxy_thread.reset();
+
+  tun2proxy_destroy(reinterpret_cast<void*>(ptr_int));
   return nullptr;
 }
 
@@ -1039,7 +1109,7 @@ static napi_value Init(napi_env env, napi_value exports) {
       {"setProtectFdCallback", nullptr, setProtectFdCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"setProtectFdCallbackCleanup", nullptr, setProtectFdCallbackCleanup, nullptr, nullptr, nullptr, napi_default,
        nullptr},
-      {"startTun2proxy", nullptr, startTun2proxy, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"initTun2proxy", nullptr, initTun2proxy, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"runTun2proxy", nullptr, runTun2proxy, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"stopTun2proxy", nullptr, stopTun2proxy, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"startWorker", nullptr, startWorker, nullptr, nullptr, nullptr, napi_default, nullptr},

@@ -1,6 +1,6 @@
 import Dexie from 'dexie'
 import { ITokenInfo } from '../user/userstore'
-import { IOtherShareLinkModel } from '../share/share/OtherShareStore'
+import { IOtherShareLinkModel, VideoPlayRecord } from '../share/share/OtherShareStore'
 
 class XBYDB3 extends Dexie {
   iobject: Dexie.Table<object, string>
@@ -11,11 +11,12 @@ class XBYDB3 extends Dexie {
 
   itoken: Dexie.Table<ITokenInfo, string>
   iothershare: Dexie.Table<IOtherShareLinkModel, string>
+  ivideo: Dexie.Table<VideoPlayRecord, string>
 
   constructor() {
     super('XBY3Database')
 
-    this.version(10)
+    this.version(14)
       .stores({
         iobject: '',
         istring: '',
@@ -24,7 +25,8 @@ class XBYDB3 extends Dexie {
         icache: '',
 
         itoken: 'user_id',
-        iothershare: 'share_id'
+        iothershare: 'share_id',
+        ivideo: 'file_id'
       })
       .upgrade((tx: any) => {
         console.log('upgrade', tx)
@@ -37,6 +39,7 @@ class XBYDB3 extends Dexie {
 
     this.itoken = this.table('itoken')
     this.iothershare = this.table('iothershare')
+    this.ivideo = this.table('ivideo')
   }
 
   async getValueString(key: string): Promise<string> {
@@ -49,6 +52,11 @@ class XBYDB3 extends Dexie {
   async saveValueString(key: string, value: string): Promise<string> {
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.istring.put(value || '', key)
+  }
+
+  async deleteValueString(file_id: string): Promise<void> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.istring.delete(file_id)
   }
 
   async saveValueStringBatch(keys: string[], values: string[]): Promise<string> {
@@ -127,11 +135,18 @@ class XBYDB3 extends Dexie {
     return this.itoken.put(token, token.user_id).catch(() => {})
   }
 
+  async saveUserBatch(tokens: ITokenInfo[]): Promise<boolean | string> {
+    if (tokens.length == 0) return false
+    if (!this.isOpen()) await this.open().catch()
+    return this.itoken.bulkPut(tokens).catch()
+  }
+
   async getCache(key: string): Promise<Blob | undefined> {
     if (!this.isOpen()) await this.open().catch(() => {})
     const val = await this.icache.get(key)
     return val
   }
+
   async saveCache(key: string, data: Blob) {
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.icache.put(data, key)
@@ -156,6 +171,26 @@ class XBYDB3 extends Dexie {
   async saveOtherShare(share: IOtherShareLinkModel): Promise<string | void> {
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.iothershare.put(share, share.share_id).catch(() => {})
+  }
+
+  async getVideoInfo(file_id: string) {
+    if (!this.isOpen()) await this.open().catch(() => {});
+    return this.ivideo.get(file_id);
+  }
+
+  async deleteVideo(file_id: string): Promise<void> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.ivideo.delete(file_id)
+  }
+
+  async batchDeleteVideo(file_id: string[]): Promise<void> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.ivideo.bulkDelete(file_id)
+  }
+
+  async saveVideoInfo(file_id: string, video: VideoPlayRecord) {
+    if (!this.isOpen()) await this.open().catch(() => {});
+    return this.ivideo.put(video, file_id).catch(() => {});
   }
 }
 

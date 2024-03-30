@@ -39,7 +39,8 @@ export interface IStateUploadTask {
   check_name_mode: string
 
   isDir: boolean
-  
+  encType: string
+
   localFilePath: string
 
   
@@ -102,6 +103,7 @@ export interface IUploadingUI {
   drive_id: string
   check_name_mode: string
   localFilePath: string
+  encType: string
 
   File: IStateUploadTaskFile
   Info: IStateUploadInfo
@@ -116,7 +118,7 @@ class XBYDB3Upload extends Dexie {
   constructor() {
     super('XBYDB3Upload')
 
-    this.version(2)
+    this.version(3)
       .stores({
         iuploadtask: '&TaskID',
         iuploadinfo: '&UploadID',

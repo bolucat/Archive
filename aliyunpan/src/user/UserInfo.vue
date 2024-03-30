@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useUserStore } from '../store'
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
-import { modalUserSpace } from '../utils/modal'
+import { modalUserRewardSpace, modalUserSpace } from '../utils/modal'
 import AliUser from '../aliapi/user'
 
 const userStore = useUserStore()
@@ -26,13 +26,18 @@ const handleUserSpace = () => {
   modalUserSpace()
 }
 
+const handleUserRewardSpace = () => {
+  modalUserRewardSpace(userStore.user_id)
+}
+
 const handleLogOff = () => {
-  UserDAL.UserLogOff(useUserStore().user_id)
+  UserDAL.UserLogOff(userStore.user_id)
 }
 
 const handleLogin = () => {
   if (window.WebClearCookies) {
     window.WebClearCookies({ origin: 'https://auth.aliyundrive.com', storages: ['cookies', 'localstorage'] })
+    window.WebClearCookies({ origin: 'https://auth.alipan.com', storages: ['cookies', 'localstorage'] })
   }
   useUserStore().userShowLogin = true
 }
@@ -44,8 +49,8 @@ const userList = computed(() => {
 
 const getUserName = computed(() => {
   let userName = userStore.GetUserToken.nick_name || userStore.GetUserToken.user_name
-  if (userName.length > 10) {
-    return userName.substring(0, 10) + '...'
+  if (userName.length > 3) {
+    return userName.substring(0, 3) + '...'
   } else {
     return userName
   }
@@ -98,8 +103,11 @@ const getUserName = computed(() => {
           </a-col>
           <a-col flex='auto'></a-col>
           <a-col flex='none'>
-            <a-button type='text' size='small' tabindex='-1' style='min-width: 46px; padding: 0 8px' status='warning'
+            <a-button type='text' size='small' tabindex='-1' style='min-width: 20px; padding: 0 8px' status='warning'
                       @click='handleUserSpace()'>容量详情
+            </a-button>
+            <a-button type='text' size='small' tabindex='-1' style='min-width: 20px; padding: 0 8px' status='success'
+                      @click='handleUserRewardSpace()'>福利兑换
             </a-button>
           </a-col>
         </a-row>

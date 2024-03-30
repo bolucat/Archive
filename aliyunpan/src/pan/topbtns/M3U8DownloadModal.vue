@@ -11,6 +11,7 @@ import AliHttp from "../../aliapi/alihttp";
 import {IAliGetFileModel} from "../../aliapi/alimodels";
 import M3u8DownloadDAL from "../../down/m3u8/M3u8DownloadDAL";
 import path from "path";
+import { isEmpty } from 'lodash'
 
 export default defineComponent({
   props: {
@@ -27,7 +28,7 @@ export default defineComponent({
     const file_id = ref('')
     const file_name = ref('')
     const fileItem = ref<IAliGetFileModel>()
-
+    const settingStore = useSettingStore()
     const m3u8List = ref<string[]>([])
     const m3u8Info = ref('')
     const videoPreview = ref<IVideoPreviewUrl>()
@@ -45,28 +46,33 @@ export default defineComponent({
         return
       }
 
-      const preview = await AliFile.ApiVideoPreviewUrlOpenApi(user_id.value, first.drive_id, first.file_id)
-      if (preview) {
+      const preview = await AliFile.ApiVideoPreviewUrl(user_id.value, first.drive_id, first.file_id)
+      if (typeof preview == 'string') {
+        message.error(preview)
+      } else if (preview && preview.qualities) {
         videoPreview.value = preview
         let info = ''
-        if (preview.urlFHD) {
-          m3u8List.value.push('1080P')
-          if (!info) info = '1080P'
-        }
-        if (preview.urlHD) {
-          m3u8List.value.push('720P')
-          if (!info) info = '720P'
-        }
-        if (preview.urlSD) {
-          m3u8List.value.push('540P')
-          if (!info) info = '540P'
-        }
-        if (preview.urlLD) {
-          m3u8List.value.push('480P')
-          if (!info) info = '480P'
-        }
-
+        preview.qualities.forEach((item) => {
+          m3u8List.value.push(item.value)
+          if (info === '' || !info) {
+            info = item.value
+          } else {
+            if (item.value === '2560p') {
+              info = item.value
+            } else if (item.value === '1080p' && (info === '720p' || info === '540p' || info === '480p')) {
+              info = item.value
+            } else if (item.value === '72op' && (info === '540p' || info === '480p')) {
+              info = item.value
+            } else if (item.value === '540p' && info === '480p') {
+              info = item.value
+            } else if (item.value === '480p' && (info === '' || !info)) {
+              info = item.value
+            }
+          }
+        })
         m3u8Info.value = '时长：' + humanTime(preview.duration) + '  分辨率：' + preview.width + ' x ' + preview.height + '  清晰度：' + info
+      } else {
+        message.error('视频的转码链接获取失败，请稍后重试')
       }
     }
 
@@ -104,11 +110,38 @@ export default defineComponent({
     }
 
     const handleDownload = async (item: string, fileItem:IAliGetFileModel|undefined) => {
+      const savePath = settingStore.AriaIsLocal ? settingStore.downSavePath : settingStore.ariaSavePath
+      if (isEmpty(savePath)) {
+        message.error('未设置保存路径')
+        return
+      }
       let url = ''
-      if (item == '1080P') url = videoPreview.value?.urlFHD || ''
-      if (item == '720P') url = videoPreview.value?.urlHD || ''
-      if (item == '540P') url = videoPreview.value?.urlSD || ''
-      if (item == '480P') url = videoPreview.value?.urlLD || ''
+      if (item == '2560p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '2560p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '1080p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '1080p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '720p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '720p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '540p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '540p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '480p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '480p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      }
       const baseUrl = parseBaseUrl(url);
       if (baseUrl && fileItem) {
         const urls = await parseM3U8Url(url, baseUrl)
@@ -137,6 +170,8 @@ export default defineComponent({
               timeStr: fileItem.timeStr,
               starred: fileItem.starred,
               isDir: false,
+              mime_type: fileItem.mime_type,
+              mime_extension: fileItem.mime_extension,
               thumbnail: fileItem.thumbnail,
               description: fileItem.description,
               download_url: url,
@@ -153,11 +188,32 @@ export default defineComponent({
 
     const handleCopyUrl = (item: string) => {
       let url = ''
-      if (item == '1080P') url = videoPreview.value?.urlFHD || ''
-      if (item == '720P') url = videoPreview.value?.urlHD || ''
-      if (item == '540P') url = videoPreview.value?.urlSD || ''
-      if (item == '480P') url = videoPreview.value?.urlLD || ''
-
+      if (item == '2560p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '2560p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '1080p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '1080p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '720p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '720p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '540p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '540p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      } else if (item == '480p') {
+        const filteredItem = videoPreview.value?.qualities.filter((item) => item.value === '480p')
+        if (filteredItem && filteredItem.length > 0) {
+          url = filteredItem[0].url || ''
+        }
+      }
       if (url) {
         copyToClipboard(url)
         message.success(item + ' M3U8下载链接已复制到剪切板')
@@ -165,7 +221,6 @@ export default defineComponent({
     }
 
     const handleClose = () => {
-      
       m3u8List.value = []
       user_id.value = ''
       drive_id.value = ''

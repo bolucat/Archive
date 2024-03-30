@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../utils/selecthelper'
+import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, SelectAll } from '../utils/selecthelper'
 import { IStateUploadTask } from '../utils/dbupload'
-import fuzzysort from "fuzzysort"
+import fuzzysort from 'fuzzysort'
 
 type Item = IStateUploadTask
 
@@ -135,6 +135,16 @@ const useUploadedStore = defineStore('uploaded', {
       if (this.ListDataShow.length == 0) return
       const data = KeyboardSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, 0)
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
+      this.mRefreshListDataShow(false)
+    },
+
+    mRangSelect(lastkey: number, file_idList: number[]) {
+      if (this.ListDataShow.length == 0) return
+      const selectedNew = new Set<number>(this.ListSelected)
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        selectedNew.add(file_idList[i])
+      }
+      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
       this.mRefreshListDataShow(false)
     },
 

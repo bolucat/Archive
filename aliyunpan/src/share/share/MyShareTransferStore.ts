@@ -7,24 +7,25 @@ import { HanToPin } from '../../utils/utils'
 type Item = IAliShareItem
 
 export interface MyTransferShareState {
-  
+
   ListLoading: boolean
-  
+
   ListDataRaw: Item[]
-  
+
   ListDataShow: Item[]
 
-  
+
   ListSelected: Set<string>
-  
+
   ListOrderKey: string
-  
+
   ListFocusKey: string
-  
+
   ListSelectKey: string
-  
+
   ListSearchKey: string
 }
+
 type State = MyTransferShareState
 const KEY = 'share_id'
 
@@ -44,7 +45,7 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
     ListDataCount(state: State): number {
       return state.ListDataShow.length
     },
-    
+
     IsListSelected(state: State): boolean {
       return state.ListSelected.size > 0
     },
@@ -81,7 +82,7 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
         item.description = HanToPin(item.share_name)
       }
       this.ListDataRaw = this.mGetOrder(this.ListOrderKey, list)
-      
+
       const oldSelected = this.ListSelected
       const newSelected = new Set<string>()
       let key = ''
@@ -91,42 +92,65 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
       let ListSelectKey = this.ListSelectKey
       for (let i = 0, maxi = list.length; i < maxi; i++) {
         key = list[i][KEY]
-        if (oldSelected.has(key)) newSelected.add(key) 
+        if (oldSelected.has(key)) newSelected.add(key)
         if (key == ListFocusKey) findFocusKey = true
         if (key == ListSelectKey) findSelectKey = true
       }
       if (!findFocusKey) ListFocusKey = ''
       if (!findSelectKey) ListSelectKey = ''
-      this.$patch({ ListSelected: newSelected, ListFocusKey: ListFocusKey, ListSelectKey: ListSelectKey, ListSearchKey: '' })
-      this.mRefreshListDataShow(true) 
+      this.$patch({
+        ListSelected: newSelected,
+        ListFocusKey: ListFocusKey,
+        ListSelectKey: ListSelectKey,
+        ListSearchKey: ''
+      })
+      this.mRefreshListDataShow(true)
     },
-    
+
     mSearchListData(value: string) {
       this.$patch({ ListSelected: new Set<string>(), ListFocusKey: '', ListSelectKey: '', ListSearchKey: value })
-      this.mRefreshListDataShow(true) 
+      this.mRefreshListDataShow(true)
     },
-    
+
     mOrderListData(value: string) {
       this.$patch({ ListOrderKey: value, ListSelected: new Set<string>(), ListFocusKey: '', ListSelectKey: '' })
       this.ListDataRaw = this.mGetOrder(value, this.ListDataRaw)
-      this.mRefreshListDataShow(true) 
+      this.mRefreshListDataShow(true)
     },
     mGetOrder(order: string, list: Item[]) {
       if (order == 'time') {
         list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      } else if (order == 'state') {
+        list.sort((a, b) => {
+          const s = a.share_msg.localeCompare(b.share_msg)
+          if (s == 0) {
+            if (a.first_file && b.first_file) return 0
+            if (a.first_file) return 1
+            if (b.first_file) return -1
+            return 0
+          }
+          return s
+        })
+      } else if (order == 'save') {
+        list.sort((a, b) => {
+          if (a.is_share_saved && b.is_share_saved) return 0
+          if (a.is_share_saved) return 1
+          if (b.is_share_saved) return -1
+          return 0
+        })
       }
       return list
     },
-    
+
     mRefreshListDataShow(refreshRaw: boolean) {
       if (!refreshRaw) {
-        const ListDataShow = this.ListDataShow.concat() 
+        const ListDataShow = this.ListDataShow.concat()
         Object.freeze(ListDataShow)
         this.ListDataShow = ListDataShow
         return
       }
       if (this.ListSearchKey) {
-        
+
         const searchList: Item[] = []
         const results = fuzzysort.go(this.ListSearchKey, this.ListDataRaw, {
           threshold: -200000,
@@ -139,46 +163,61 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
         Object.freeze(searchList)
         this.ListDataShow = searchList
       } else {
-        
-        const listDataShow = this.ListDataRaw.concat() 
+
+        const listDataShow = this.ListDataRaw.concat()
         Object.freeze(listDataShow)
         this.ListDataShow = listDataShow
       }
-      
+
       const freezeList = this.ListDataShow
       const oldSelected = this.ListSelected
       const newSelected = new Set<string>()
       let key = ''
       for (let i = 0, maxi = freezeList.length; i < maxi; i++) {
         key = freezeList[i][KEY]
-        if (oldSelected.has(key)) newSelected.add(key) 
+        if (oldSelected.has(key)) newSelected.add(key)
       }
       this.ListSelected = newSelected
     },
 
-    
+
     mSelectAll() {
-      this.$patch({ ListSelected: SelectAll(this.ListDataShow, KEY, this.ListSelected), ListFocusKey: '', ListSelectKey: '' })
-      this.mRefreshListDataShow(false) 
+      this.$patch({
+        ListSelected: SelectAll(this.ListDataShow, KEY, this.ListSelected),
+        ListFocusKey: '',
+        ListSelectKey: ''
+      })
+      this.mRefreshListDataShow(false)
     },
     mMouseSelect(key: string, Ctrl: boolean, Shift: boolean) {
       if (this.ListDataShow.length == 0) return
       const data = MouseSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, '')
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
+
+    mRangSelect(lastkey: string, file_idList: string[]) {
+      if (this.ListDataShow.length == 0) return
+      const selectedNew = new Set<string>(this.ListSelected)
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        selectedNew.add(file_idList[i])
+      }
+      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
+      this.mRefreshListDataShow(false)
+    },
+
     mKeyboardSelect(key: string, Ctrl: boolean, Shift: boolean) {
       if (this.ListDataShow.length == 0) return
       const data = KeyboardSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, '')
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
 
-    
+
     GetSelected() {
       return GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
     },
-    
+
     GetSelectedFirst() {
       const list = GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
       if (list.length > 0) return list[0]
@@ -186,7 +225,7 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
     },
     mSetFocus(key: string) {
       this.ListFocusKey = key
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
     mGetFocus() {
       if (!this.ListFocusKey && this.ListDataShow.length > 0) return this.ListDataShow[0][KEY]
@@ -207,7 +246,7 @@ const useMyTransferShareStore = defineStore('myTransferShare', {
       }
       if (this.ListDataRaw.length != newDataList.length) {
         this.ListDataRaw = newDataList
-        this.mRefreshListDataShow(true) 
+        this.mRefreshListDataShow(true)
       }
     }
   }

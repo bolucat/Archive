@@ -1,4 +1,3 @@
-import AliFile from '../aliapi/file'
 import { IAliFileResp } from '../aliapi/dirfilelist'
 
 import Aria2 from 'aria2-lib'
@@ -6,18 +5,18 @@ import axios from 'axios'
 import DownDAL, { IAriaDownProgress, IStateDownFile } from '../down/DownDAL'
 import message from './message'
 import UserDAL from '../user/userdal'
-import { useSettingStore, useFootStore } from '../store'
+import { useFootStore, useSettingStore } from '../store'
 import DebugLog from './debuglog'
-import Config from './config'
+import Config from '../config'
 import AliTrash from '../aliapi/trash'
 
 import path from 'path'
 import fs, { existsSync } from 'fs'
-import { execFile, SpawnOptions } from 'child_process'
-import net from "net"
-import M3u8DownloadDAL from "../down/m3u8/M3u8DownloadDAL"
+import { getRawUrl } from './proxyhelper'
+import M3u8DownloadDAL from '../down/m3u8/M3u8DownloadDAL'
+import AliFile from '../aliapi/file'
 
-const localPwd = 'S4znWTaZYQi3cpRNb'
+export const localPwd = 'S4znWTaZYQi3cpRNb'
 
 let Aria2cChangeing: boolean = false
 let Aria2EngineLocal: Aria2 | undefined = undefined
@@ -55,7 +54,8 @@ function CloseRemote() {
     if (Aria2EngineRemote) {
       try {
         Aria2EngineRemote.close().catch().then()
-      } catch {}
+      } catch {
+      }
       Aria2EngineRemote = undefined
     }
   }
@@ -160,7 +160,7 @@ export async function AriaChangeToRemote() {
 
 export async function AriaChangeToLocal() {
   CloseRemote()
-  if (Aria2cLocalRelaunchTime < 10) {
+  if (Aria2cLocalRelaunchTime < 5) {
     try {
       let port = 16800
       if (Aria2EngineLocal == undefined) {
@@ -177,8 +177,9 @@ export async function AriaChangeToLocal() {
             SetAriaOnline(false, 'local')
           }
         })
+        Aria2EngineLocal.setMaxListeners(0)
       }
-      await Sleep(500)
+      await Sleep(800)
       await Aria2EngineLocal.open()
         .then(() => {
           Aria2cLocalRelaunchTime = 0
@@ -230,8 +231,6 @@ export async function AriaConnect() {
     return IsAria2cOnlineRemote
   }
 }
-
-
 
 
 export async function AriaGetDowningList() {
@@ -317,10 +316,10 @@ export async function AriaStopList(list: string[]) {
 
 export function AriaShoutDown() {
   if (useSettingStore().AriaIsLocal) {
-    Aria2EngineLocal?.call('aria2.forceShutdown').catch((e: any) => {})
+    Aria2EngineLocal?.call('aria2.forceShutdown').catch((e: any) => {
+    })
   }
 }
-
 
 export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
   try {
@@ -353,7 +352,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         dirID: info.file_id,
         dirName: info.name
       }
-      do{
+      do {
         const isGet = await AliTrash.ApiFileListOnePageAria('name', 'ASC', dirInfo)
         if (!isGet) return '解析子文件列表失败，稍后重试'
         if (file.Down.IsStop) {
@@ -372,7 +371,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       const fileFull = path.join(dirPath, info.name)
       if (!info.ariaRemote) {
         try {
-          const fileStat = await fs.promises.stat(fileFull);
+          const fileStat = await fs.promises.stat(fileFull)
           if (fileStat && fileStat.size == info.size) return 'downed'
           else return '本地存在重名文件，请手动删除'
         } catch (error: any) {
@@ -412,7 +411,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         downloadUrl = ''
       }
       if (!downloadUrl) {
-        const durl = await AliFile.ApiFileDownloadUrlOpenApi(info.user_id, info.drive_id, info.file_id, 14400)
+        const durl = await getRawUrl(info.user_id, info.drive_id, info.file_id, info.encType)
         if (typeof durl == 'string') {
           return `生成下载链接失败, ${durl}`
         } else if (!durl.url) {
@@ -425,7 +424,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       if (file.Down.IsStop) return '已暂停'
       const split = useSettingStore().downThreadMax
       const referer = Config.referer
-      const userAgent = Config.downAgent1
+      const userAgent = Config.downAgent
       const multicall = [
         ['aria2.forceRemove', info.GID],
         ['aria2.removeDownloadResult', info.GID],

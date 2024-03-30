@@ -3,11 +3,9 @@ import message from '../../utils/message'
 import { computed, reactive, ref, watch } from 'vue'
 import { UserTokenMap } from '../../user/userdal'
 import { useUserStore, useWinStore } from '../../store'
-import { GetTreeNodes, ICopyTreeInfo, ICopyTreeNode, LoadCopy, LoadDir, NewCopyTreeInfo } from './usercopy'
+import { GetTreeNodes, ICopyTreeInfo, ICopyTreeNode, LoadDir, NewCopyTreeInfo } from './usercopy'
 
 import { Checkbox as AntdCheckbox, Tree as AntdTree } from 'ant-design-vue'
-import 'ant-design-vue/es/checkbox/style/css'
-import 'ant-design-vue/es/tree/style/css'
 
 const winStore = useWinStore()
 const userStore = useUserStore()
@@ -84,7 +82,7 @@ const handleLeftTreeSelect = (selectkeys: any) => {
 
   if (key == 'refresh') key = LeftData.dirID
   else if (key == 'back') key = LeftData.parentID
-  else if (key == 'root') key = 'root'
+  else if (key.includes('root')) key = 'root'
   else if (!key.startsWith('dir_')) return
   LeftCheckedKeys.value = []
   LoadDir(key, LeftData, LeftTreeData)
@@ -94,7 +92,7 @@ const handleRightTreeSelect = (selectkeys: any) => {
 
   if (key == 'refresh') key = RightData.dirID
   else if (key == 'back') key = RightData.parentID
-  else if (key == 'root') key = 'root'
+  else if (key.includes('root')) key = 'root'
   else if (!key.startsWith('dir_')) return
 
   LoadDir(key, RightData, RightTreeData)
@@ -106,7 +104,7 @@ const handleLeftUser = (user_id: any) => {
   LeftData.user_id = userToken.user_id
   LeftData.drive_id = userToken.backup_drive_id
   LeftCheckedKeys.value = []
-  LoadDir('root', LeftData, LeftTreeData)
+  LoadDir('backup_root', LeftData, LeftTreeData)
 }
 
 const handleRightUser = (user_id: any) => {
@@ -119,7 +117,7 @@ const handleRightUser = (user_id: any) => {
   if (!userToken) return
   RightData.user_id = userToken.user_id
   RightData.drive_id = userToken.backup_drive_id
-  LoadDir('root', RightData, RightTreeData)
+  LoadDir('backup_root', RightData, RightTreeData)
 }
 </script>
 
@@ -167,7 +165,7 @@ const handleRightUser = (user_id: any) => {
       <a-split v-show="copyLoading == false" :style="{ height: treeHeight + 36 + 'px', width: '100%' }" min="300px" max="0.8">
         <template #first>
           <div class="rsscopymenu">
-            <a-button type="text" size="small" tabindex="-1" title="根目录" @click="handleLeftTreeSelect(['root'])"><i class="iconfont iconhome" /></a-button>
+            <a-button type="text" size="small" tabindex="-1" title="根目录" @click="handleLeftTreeSelect(['backup_root'])"><i class="iconfont iconhome" /></a-button>
             <a-button type="text" size="small" tabindex="-1" title="返回上级" @click="handleLeftTreeSelect(['back'])"><i class="iconfont iconarrow-top-2-icon-copy" /></a-button>
             <a-button type="text" size="small" tabindex="-1" title="刷新" @click="handleLeftTreeSelect(['refresh'])"><i class="iconfont iconreload-1-icon" /></a-button>
             <AntdCheckbox tabindex="-1" :disabled="LeftData.loading" :checked="LeftCheckedKeys.length > 0 && LeftTreeData.length == LeftCheckedKeys.length" style="margin-left: 7px" @click.stop.prevent="handleSelectAll">全选</AntdCheckbox>
@@ -201,7 +199,7 @@ const handleRightUser = (user_id: any) => {
         </template>
         <template #second>
           <div class="rsscopymenu">
-            <a-button type="text" size="small" tabindex="-1" title="根目录" @click="handleRightTreeSelect(['root'])"><i class="iconfont iconhome" /></a-button>
+            <a-button type="text" size="small" tabindex="-1" title="根目录" @click="handleRightTreeSelect(['backup_root'])"><i class="iconfont iconhome" /></a-button>
             <a-button type="text" size="small" tabindex="-1" title="返回上级" @click="handleRightTreeSelect(['back'])"><i class="iconfont iconarrow-top-2-icon-copy" /></a-button>
             <a-button type="text" size="small" tabindex="-1" title="刷新" @click="handleRightTreeSelect(['refresh'])"><i class="iconfont iconreload-1-icon" /></a-button>
             <span class="checkedInfo" style="margin-left: 8px">复制到 {{ RightData.dirName }}</span>

@@ -3,17 +3,11 @@
 use crate::{error::Error, tun2proxy::TunToProxy, tun_to_proxy, NetworkInterface, Options, Proxy};
 use jni::{
     objects::{JClass, JString},
-    sys::{jboolean, jint},
+    sys::{jboolean, jint, jlong},
     JNIEnv,
 };
 use std::io::Error as IoError;
 use std::os::fd::RawFd;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::fence;
-use std::sync::atomic::Ordering;
-
-static mut TUN_INIT: AtomicBool = AtomicBool::new(false);
-static mut TUN_TO_PROXY: Option<TunToProxy> = None;
 
 /// # Safety
 ///
@@ -27,7 +21,7 @@ pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyInit(
     tun_mtu: jint,
     log_level_int: jint,
     dns_over_tcp: jboolean,
-) -> jint {
+) -> jlong {
     let log_level = match log_level_int {
         0 => "off",
         1 => "error",
@@ -46,7 +40,7 @@ pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyInit(
             .with_filter(filter),
     );
 
-    let mut block = || -> Result<(), Error> {
+    let mut block = || -> Result<TunToProxy, Error> {
         let proxy_url = get_java_string(&mut env, &proxy_url)?;
         let proxy = Proxy::from_url(proxy_url)?;
 
@@ -61,70 +55,74 @@ pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyInit(
         let dup_tun_fd = dup_fd(tun_fd)?;
         let interface = NetworkInterface::Fd(dup_tun_fd);
         let tun2proxy = tun_to_proxy(&interface, &proxy, options)?;
-        TUN_TO_PROXY = Some(tun2proxy);
-        fence(Ordering::Release);
-        TUN_INIT.store(true, Ordering::Relaxed);
-        Ok::<(), Error>(())
+        Ok::<TunToProxy, Error>(tun2proxy)
     };
-    if let Err(error) = block() {
-        log::error!("failed to run tun2proxy with error: {:?}", error);
-        return 1;
+    match block() {
+        Ok(tun2proxy) => {
+            let b = Box::new(tun2proxy);
+            Box::into_raw(b) as jlong
+        }
+        Err(error) => {
+            log::error!("failed to run tun2proxy with error: {:?}", error);
+            0 as jlong
+        }
     }
-    0
 }
 
 /// # Safety
 ///
 /// Running tun2proxy
 #[no_mangle]
-pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyRun(
-    mut _env: JNIEnv,
-    _clazz: JClass
-) -> jint {
-    let block = || -> Result<(), Error> {
-        while !TUN_INIT.load(Ordering::Relaxed) {
-            fence(Ordering::Acquire);
-            std::thread::yield_now();
-        }
-        if let Some(tun2proxy) = &mut TUN_TO_PROXY {
-            tun2proxy.run()?;
-        }
-        TUN_TO_PROXY = None;
-        fence(Ordering::Release);
-        TUN_INIT.store(false, Ordering::Relaxed);
+pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyRun(mut _env: JNIEnv, _clazz: JClass, tun2proxy_ptr: jlong) -> jint {
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let mut tun2proxy = unsafe { Box::from_raw(ptr) };
+    let mut block = || -> Result<(), Error> {
+        tun2proxy.run()?;
         Ok::<(), Error>(())
     };
-    if let Err(error) = block() {
-        log::error!("failed to run tun2proxy with error: {:?}", error);
-        return 1;
+    match block() {
+        Ok(()) => {
+            std::mem::forget(tun2proxy);
+            0
+        }
+        Err(error) => {
+            std::mem::forget(tun2proxy);
+            log::error!("failed to run tun2proxy with error: {:?}", error);
+            1
+        }
     }
-    0
 }
 
 /// # Safety
 ///
 /// Shutdown tun2proxy
 #[no_mangle]
-pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyDestroy(_env: JNIEnv, _: JClass) -> jint {
-    if !TUN_INIT.load(Ordering::Relaxed) {
-        fence(Ordering::Acquire);
-        log::error!("tun2proxy already stopped");
-        return 0;
+pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyShutdown(_env: JNIEnv, _: JClass, tun2proxy_ptr: jlong) -> jint {
+    if tun2proxy_ptr == 0 {
+        return 1;
     }
-    match &mut TUN_TO_PROXY {
-        None => {
-            log::error!("tun2proxy not started");
-            1
-        }
-        Some(tun2proxy) => {
-            if let Err(e) = tun2proxy.shutdown() {
-                log::error!("failed to shutdown tun2proxy with error: {:?}", e);
-                1
-            } else {
-                0
-            }
-        }
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let mut tun2proxy = unsafe { Box::from_raw(ptr) };
+    if let Err(e) = tun2proxy.shutdown() {
+        std::mem::forget(tun2proxy);
+        log::error!("failed to shutdown tun2proxy with error: {:?}", e);
+        1
+    } else {
+        std::mem::forget(tun2proxy);
+        0
     }
+}
+
+/// # Safety
+///
+/// Destroy tun2proxy
+#[no_mangle]
+pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyDestroy(_env: JNIEnv, _: JClass, tun2proxy_ptr: jlong) -> () {
+    if tun2proxy_ptr == 0 {
+        return;
+    }
+    let ptr = tun2proxy_ptr as *mut TunToProxy;
+    let _tun2proxy = unsafe { Box::from_raw(ptr) };
 }
 
 unsafe fn get_java_string<'a>(env: &'a mut JNIEnv, string: &'a JString) -> Result<&'a str, Error> {
@@ -136,7 +134,7 @@ unsafe fn get_java_string<'a>(env: &'a mut JNIEnv, string: &'a JString) -> Resul
 fn dup_fd(fd: RawFd) -> Result<RawFd, Error> {
     let dup_fd = unsafe { libc::dup(fd) };
     if dup_fd < 0 {
-      return Err(Error::Io(IoError::last_os_error()));
+        return Err(Error::Io(IoError::last_os_error()));
     }
     Ok(dup_fd)
 }

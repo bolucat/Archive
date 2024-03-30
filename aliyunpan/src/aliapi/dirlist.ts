@@ -1,43 +1,41 @@
 import DebugLog from '../utils/debuglog'
 import { MapValueToArray } from '../utils/utils'
 import AliHttp from './alihttp'
-import {IAliFileItem, IAliGetDirModel, IAliGetFileModel} from './alimodels'
-import AliDirFileList from './dirfilelist'
+import { IAliGetDirModel, IAliGetFileModel } from './alimodels'
 import dayjs from 'dayjs'
 import AliTrash from './trash'
 import { DirData } from '../store/treestore'
 import AliUser from './user'
-import AliFile from "./file";
 
 export interface IAliDirResp {
   items: IAliGetDirModel[]
   next_marker: string
 
-  m_user_id: string 
-  m_drive_id: string 
-  dirID: string 
-  dirName: string 
+  m_user_id: string
+  m_drive_id: string
+  dirID: string
+  dirName: string
 }
 
 export interface IDirDataResp {
   items: DirData[]
   next_marker: string
 
-  m_user_id: string 
-  m_drive_id: string 
-  dirID: string 
-  dirName: string 
+  m_user_id: string
+  m_drive_id: string
+  dirID: string
+  dirName: string
 }
 
 export interface IAliDirBatchResp {
   items: IAliGetFileModel[]
   itemsKey: Set<string>
   next_marker: string
-  dirID: string 
+  dirID: string
 }
 
 export default class AliDirList {
-  
+
   static async ApiFastAllDirList(user_id: string, drive_id: string): Promise<IAliDirResp> {
     const result: IAliDirResp = {
       items: [],
@@ -88,7 +86,7 @@ export default class AliDirList {
                   namesearch: '',
                   size: item.size || 0,
                   time: new Date(item.updated_at).getTime(),
-                  
+
                   description: item.description || ''
                 }
                 allMap.set(add.file_id, add)
@@ -109,31 +107,30 @@ export default class AliDirList {
                   namesearch: '',
                   size: item.size || 0,
                   time: new Date(item.updated_at).getTime(),
-                  
+
                   description: item.description || ''
                 }
                 allMap.set(add.file_id, add)
                 lockSet.add(item.file_id)
               }
             }
-            if (isFind) break 
-            if (resp1.body.next_marker == '' && resp2.body.next_marker == '') break 
+            if (isFind) break
+            if (resp1.body.next_marker == '' && resp2.body.next_marker == '') break
           } else {
-            
+
             errorMessage += 'err1' + (resp1.status || '')
             errorMessage += 'err2' + (resp2.status || '')
             break
           }
         } else if (resp.code == 402) {
-          
-          DebugLog.mSaveWarning('ApiFastAllDirList err=' + drive_id + ' ' + (resp.code || ''))
+          DebugLog.mSaveWarning('ApiFastAllDirList err=' + drive_id + ' ' + (resp.code || ''), resp.body)
           break
-        } else {
+        } else if (!AliHttp.HttpCodeBreak(resp.code)) {
           errorMessage += 'err' + (resp.code || '')
-          DebugLog.mSaveWarning('ApiFastAllDirList err=' + (resp.code || ''))
+          DebugLog.mSaveWarning('ApiFastAllDirList err=' + (resp.code || ''), resp.body)
         }
       } catch (err: any) {
-        
+
         errorMessage += 'err' + (err.message || '')
         DebugLog.mSaveWarning('ApiFastAllDirList', err)
         break
@@ -148,87 +145,6 @@ export default class AliDirList {
     return result
   }
 
-  
-  static async ApiBatchDirFileList(user_id: string, drive_id: string, dirList: IAliDirBatchResp[], limit: number, listTypeOrQuery: string): Promise<boolean> {
-    if (!user_id || !drive_id) return false
-
-    let postData = '{"requests":['
-    for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-      if (i > 0) postData = postData + ','
-
-      let query = 'parent_file_id="' + dirList[i].dirID + '"'
-      if (listTypeOrQuery == 'all') query = 'parent_file_id="' + dirList[i].dirID + '"'
-      else if (listTypeOrQuery == 'folder') query = 'parent_file_id="' + dirList[i].dirID + '" and type = "folder"'
-      else if (listTypeOrQuery == 'file') query = 'parent_file_id="' + dirList[i].dirID + '" and type = "file"'
-      else query = query + listTypeOrQuery
-      const data2 = {
-        body: {
-          drive_id: drive_id,
-          query: query,
-          marker: dirList[i].next_marker,
-          url_expire_sec: 14400,
-          limit: limit,
-          // fields: 'thumbnail',
-          image_thumbnail_process: '',
-          video_thumbnail_process: '',
-          image_url_process: ''
-        },
-        headers: { 'Content-Type': 'application/json' },
-        id: dirList[i].dirID,
-        method: 'POST',
-        url: '/file/search'
-      }
-      postData = postData + JSON.stringify(data2)
-    }
-    postData += '],"resource":"file"}'
-
-    const url = 'v2/batch'
-    const resp = await AliHttp.Post(url, postData, user_id, '')
-
-    try {
-      if (AliHttp.IsSuccess(resp.code)) {
-        const responses = resp.body.responses
-        for (let j = 0, maxj = responses.length; j < maxj; j++) {
-          const status = responses[j].status as number
-          if (status >= 200 && status <= 205) {
-            const respi = responses[j]
-            const id = respi.id || ''
-            for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-              if (dirList[i].dirID == id) {
-                const dir = dirList[i]
-                dir.next_marker = respi.body.next_marker
-                const items = respi.body.items
-                for (let i = 0, maxi = items.length; i < maxi; i++) {
-                  const fileItem = items[i] as IAliFileItem
-                  if (fileItem.type === 'file') {
-                    const fileDetails = await AliFile.ApiFileInfoOpenApi(user_id, drive_id, fileItem.file_id);
-                    fileItem.thumbnail = fileDetails?.thumbnail
-                    fileItem.url = fileDetails?.url || fileItem.url
-                    fileItem.download_url = fileDetails?.download_url || fileItem.download_url
-                    fileItem.starred = fileDetails?.starred || fileItem.starred
-                    fileItem.trashed = fileDetails?.trashed || fileItem.trashed
-                    fileItem.deleted = fileDetails?.deleted || fileItem.deleted
-                    fileItem.description = fileDetails?.description || fileItem.description
-                  }
-                  const add = AliDirFileList.getFileInfo(fileItem, '')
-                  dir.items.push(add)
-                }
-                break
-              }
-            }
-          }
-        }
-        return true
-      } else {
-        DebugLog.mSaveWarning('ApiBatchDirFileList err=' + (resp.code || ''))
-      }
-    } catch (err: any) {
-      DebugLog.mSaveWarning('ApiBatchDirFileList', err)
-    }
-    return false
-  }
-
-  
   static async ApiFastAllDirListByTime(user_id: string, drive_id: string, created_at: Date): Promise<IAliDirResp> {
     const result: IAliDirResp = {
       items: [],
@@ -240,7 +156,7 @@ export default class AliDirList {
     }
     if (!user_id || !drive_id) return result
 
-    
+
     const allMap = new Map<string, IAliGetDirModel>()
 
     let dirList: IAliDirBatchResp[] = []
@@ -301,7 +217,13 @@ export default class AliDirList {
               const respi = responses[j]
               const id = respi.id || ''
               for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-                if (dirList[i].dirID.replaceAll('"', '').replaceAll(' ', '').replaceAll('-', '').replaceAll(':', '').replaceAll(',', '') == id) {
+                let pid = dirList[i].dirID
+                  .replaceAll('"', '')
+                  .replaceAll(' ', '')
+                  .replaceAll('-', '')
+                  .replaceAll(':', '')
+                  .replaceAll(',', '')
+                if (pid == id) {
                   const dir = dirList[i]
                   const items = respi.body.items
                   dir.next_marker = respi.body.next_marker
@@ -318,7 +240,7 @@ export default class AliDirList {
                       namesearch: '',
                       size: item.size || 0,
                       time: new Date(item.updated_at).getTime(),
-                      
+
                       description: item.description || ''
                     }
                     allMap.set(add.file_id, add)
@@ -330,9 +252,9 @@ export default class AliDirList {
           }
           dirList.length = 0
           dirList = list
-        } else {
+        } else if (!AliHttp.HttpCodeBreak(resp.code)) {
           errorMessage = (resp.code || '').toString()
-          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''))
+          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''), resp.body)
         }
       } catch (err: any) {
         errorMessage = err.message || ''
@@ -348,7 +270,7 @@ export default class AliDirList {
   }
 
   static async _ApiDirFileListInfo(user_id: string, drive_id: string) {
-    const url = 'adrive/v1.0/openFile/search'
+    const url = 'adrive/v3/file/search'
     const postData = {
       drive_id: drive_id,
       marker: '',
@@ -367,8 +289,8 @@ export default class AliDirList {
         const created_at = items.length > 0 ? new Date(items[0].created_at) : new Date()
         const total_count = resp.body.total_count || 0
         return { created_at, total_count }
-      } else {
-        DebugLog.mSaveWarning('_ApiDirFileListInfo err=' + (resp.code || ''))
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('_ApiDirFileListInfo err=' + (resp.code || ''), resp.body)
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('_ApiDirFileListInfo', err)
@@ -376,14 +298,14 @@ export default class AliDirList {
     return { created_at: new Date(), total_count: 0 }
   }
 
-  
-  static async ApiFastAllDirListByPID(user_id: string, drive_id: string): Promise<IDirDataResp> {
+
+  static async ApiFastAllDirListByPID(user_id: string, drive_id: string, drive_root: string): Promise<IDirDataResp> {
     const result: IDirDataResp = {
       items: [],
       next_marker: '',
       m_user_id: user_id,
       m_drive_id: drive_id,
-      dirID: 'root',
+      dirID: drive_root,
       dirName: ''
     }
     if (!user_id || !drive_id) return result
@@ -391,25 +313,27 @@ export default class AliDirList {
     const allMap = new Map<string, DirData>()
     const dirCount = await AliUser.ApiUserDriveFileCount(user_id, '', 'folder')
     const PIDList: string[] = []
-    
-    const root = await AliTrash.ApiDirFileListNoLock(user_id, drive_id, 'root', '', 'name ASC', 'folder', 0)
+
+    const root = await AliTrash.ApiDirFileListNoLock(user_id, drive_id, drive_root, '', 'name ASC', 'folder', 0)
     for (let i = 0, maxi = root.items.length; i < maxi; i++) {
       const item = root.items[i]
+      if (item.parent_file_id === 'root') {
+        item.parent_file_id = drive_root
+      }
       const add: DirData = {
         file_id: item.file_id,
+        drive_id: item.drive_id,
         parent_file_id: item.parent_file_id,
         name: item.name,
         time: item.time,
+        description: item.description,
         size: 0
       }
-
       allMap.set(add.file_id, add)
       PIDList.push(add.file_id)
     }
-
-    
-    let dirList: IAliDirBatchResp[] = []
     let errorMessage = ''
+    let dirList: IAliDirBatchResp[] = []
     let index = 0
     while (true) {
       while (dirList.length < 30) {
@@ -417,7 +341,92 @@ export default class AliDirList {
           let dirID = 'parent_file_id in ['
           let add = 0
           for (let maxj = PIDList.length; index < maxj; index++) {
-            dirID += add == 0 ? '"' + PIDList[index] + '"' : ',"' + PIDList[index] + '"'
+            let PID = PIDList[index].includes('root') ? 'root' : PIDList[index]
+            dirID += add == 0 ? '"' + PID + '"' : ',"' + PID + '"'
+            add++
+            if (add >= 50) break
+          }
+          dirID += ']'
+          dirList.push({ dirID: dirID, next_marker: '', items: [], itemsKey: new Set() } as IAliDirBatchResp)
+        } else break
+      }
+      if (dirList.length == 0) break
+      for (let i = 0, maxi = dirList.length; i < maxi; i++) {
+        const dir = dirList[i]
+        if(!dir) break
+        const query = 'type="folder" and ' + dir.dirID
+        let postData = {
+          drive_id: drive_id,
+          limit: 100,
+          query: query,
+          fields: 'thumbnail',
+          order_by: 'name ASC',
+          marker: dir.next_marker
+        }
+        const url = 'adrive/v3/file/search?jsonmask=next_marker%2Citems(drive_id%2Ccreated_at%2Cfile_id%2Cname%2Cparent_file_id%2Cupdated_at%2Cdescription)'
+        const resp = await AliHttp.Post(url, postData, user_id, '')
+        try {
+          if (AliHttp.IsSuccess(resp.code)) {
+            const items = resp.body.items
+            const list: IAliDirBatchResp[] = []
+            dir.next_marker = resp.body.next_marker
+            if (dir.next_marker) {
+              list.push(dir)
+            }
+            for (let i = 0, maxi = items.length; i < maxi; i++) {
+              const item = items[i]
+              if (allMap.has(item.file_id)) continue
+              if (item.parent_file_id === 'root') {
+                item.parent_file_id = drive_root
+              }
+              const add: DirData = {
+                file_id: item.file_id,
+                drive_id: item.drive_id,
+                parent_file_id: item.parent_file_id,
+                name: item.name,
+                time: new Date(item.updated_at).getTime(),
+                description: item.description,
+                size: 0
+              }
+              allMap.set(add.file_id, add)
+              PIDList.push(add.file_id)
+            }
+            dirList.length = 0
+            dirList = list
+            if (window.WinMsgToMain) window.WinMsgToMain({
+              cmd: 'MainShowAllDirProgress',
+              drive_id,
+              index: allMap.size,
+              total: dirCount
+            })
+          } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+            errorMessage = (resp.code || '').toString()
+            DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''), resp.body)
+          }
+        }  catch (err: any) {
+          errorMessage = err.message || ''
+          DebugLog.mSaveWarning('ApiBatchDirFileList', err)
+        }
+      }
+    }
+    const list = MapValueToArray(allMap)
+    console.log('listcount', list.length)
+    result.items = errorMessage ? [] : list
+    result.next_marker = errorMessage
+    return result
+  }
+
+  static async ApiBatchLoadDirListByPID(user_id: string, drive_root: string, drive_id: string, PIDList: string[], allMap: Map<string, DirData>, dirCount: number, errorMessage: string = '') {
+    let dirList: IAliDirBatchResp[] = []
+    let index = 0
+    while (true) {
+      while (dirList.length < 30) {
+        if (PIDList.length > index) {
+          let dirID = 'parent_file_id in ['
+          let add = 0
+          for (let maxj = PIDList.length; index < maxj; index++) {
+            let PID = PIDList[index].includes('root') ? 'root' : PIDList[index]
+            dirID += add == 0 ? '"' + PID + '"' : ',"' + PID + '"'
             add++
             if (add >= 50) break
           }
@@ -431,6 +440,12 @@ export default class AliDirList {
       for (let i = 0, maxi = dirList.length; i < maxi; i++) {
         if (i > 0) postData = postData + ','
         const query = 'type="folder" and ' + dirList[i].dirID
+        let id = dirList[i].dirID
+          .replaceAll('"', '')
+          .replaceAll(' ', '')
+          .replaceAll(',', '')
+          .substring(0, 54)
+        if (id.includes('root')) id = 'root'
         const data2 = {
           body: {
             drive_id: drive_id,
@@ -441,7 +456,7 @@ export default class AliDirList {
             order_by: 'name ASC'
           },
           headers: { 'Content-Type': 'application/json' },
-          id: dirList[i].dirID.replaceAll('"', '').replaceAll(' ', '').replaceAll(',', '').substring(0, 54),
+          id: id,
           method: 'POST',
           url: '/file/search'
         }
@@ -462,19 +477,29 @@ export default class AliDirList {
               const respi = responses[j]
               const id = respi.id || ''
               for (let i = 0, maxi = dirList.length; i < maxi; i++) {
-                if (dirList[i].dirID.replaceAll('"', '').replaceAll(' ', '').replaceAll(',', '').substring(0, 54) == id) {
+                let pid = dirList[i].dirID
+                  .replaceAll('"', '')
+                  .replaceAll(' ', '')
+                  .replaceAll(',', '')
+                  .substring(0, 54)
+                if (pid == id) {
                   const dir = dirList[i]
                   const items = respi.body.items
                   dir.next_marker = respi.body.next_marker
                   if (dir.next_marker) list.push(dir)
                   for (let i = 0, maxi = items.length; i < maxi; i++) {
-                    if (allMap.has(items[i].file_id)) continue
                     const item = items[i]
+                    if (allMap.has(item.file_id)) continue
+                    if (item.parent_file_id === 'root') {
+                      item.parent_file_id = drive_root
+                    }
                     const add: DirData = {
                       file_id: item.file_id,
+                      drive_id: item.drive_id,
                       parent_file_id: item.parent_file_id,
                       name: item.name,
                       time: new Date(item.updated_at).getTime(),
+                      description: item.description,
                       size: 0
                     }
                     allMap.set(add.file_id, add)
@@ -487,22 +512,20 @@ export default class AliDirList {
           }
           dirList.length = 0
           dirList = list
-          if (window.WinMsgToMain) window.WinMsgToMain({ cmd: 'MainShowAllDirProgress', drive_id, index: allMap.size, total: dirCount })
-        } else {
+          if (window.WinMsgToMain) window.WinMsgToMain({
+            cmd: 'MainShowAllDirProgress',
+            drive_id,
+            index: allMap.size,
+            total: dirCount
+          })
+        } else if (!AliHttp.HttpCodeBreak(resp.code)) {
           errorMessage = (resp.code || '').toString()
-          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''))
+          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''), resp.body)
         }
       } catch (err: any) {
         errorMessage = err.message || ''
         DebugLog.mSaveWarning('ApiBatchDirFileList', err)
       }
     }
-
-    const list = MapValueToArray(allMap)
-    console.log('listcount', list.length)
-    result.items = errorMessage ? [] : list
-    result.next_marker = errorMessage
-
-    return result
   }
 }

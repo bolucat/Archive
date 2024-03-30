@@ -1,14 +1,14 @@
 import { AppWindow, createElectronWindow, Referer, ua } from './window'
 import path from 'path'
 import is from 'electron-is'
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerSaveBlocker, session, shell } from 'electron'
 import { existsSync, writeFileSync } from 'fs'
 import { exec, execFile, spawn, SpawnOptions } from 'child_process'
 import { ShowError } from './dialog'
-// @ts-ignore
-import {getResourcesPath, getStaticPath, getUserDataPath} from '../utils/mainfile'
+import { getStaticPath, getUserDataPath } from '../utils/mainfile'
 import { portIsOccupied } from '../utils'
 
+let psbId: any
 export default class ipcEvent {
   private constructor() {
   }
@@ -16,6 +16,7 @@ export default class ipcEvent {
   static handleEvents() {
     this.handleWebToElectron()
     this.handleWebToElectronCB()
+    this.handleShowContextMenu()
     this.handleWebShowOpenDialogSync()
     this.handleWebShowSaveDialogSync()
     this.handleWebShowItemInFolder()
@@ -44,13 +45,23 @@ export default class ipcEvent {
       let mainWindow = AppWindow.mainWindow
       if (data.cmd && data.cmd === 'close') {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
+      } else if (data.cmd && data.cmd === 'relaunch') {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.destroy()
+          mainWindow = undefined
+        }
+        try {
+          app.relaunch({ args: process.argv.slice(1).concat(['--relaunch']) })
+          app.exit(0)
+        } catch {
+        }
       } else if (data.cmd && data.cmd === 'exit') {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.destroy()
           mainWindow = undefined
         }
         try {
-          app.exit()
+          app.exit(0)
         } catch {
         }
       } else if (data.cmd && data.cmd === 'minsize') {
@@ -61,6 +72,26 @@ export default class ipcEvent {
             mainWindow.unmaximize()
           } else {
             mainWindow.maximize()
+          }
+        }
+      } else if (data.cmd && data.cmd === 'minsizeAudio') {
+        if (AppWindow.auidoWindow && !AppWindow.auidoWindow.isDestroyed()) AppWindow.auidoWindow.minimize()
+      } else if (data.cmd && data.cmd === 'maxsizeAudio') {
+        if (AppWindow.auidoWindow && !AppWindow.auidoWindow.isDestroyed()) {
+          if (AppWindow.auidoWindow.isMaximized()) {
+            AppWindow.auidoWindow.unmaximize()
+          } else {
+            AppWindow.auidoWindow.maximize()
+          }
+        }
+      } else if (data.cmd && data.cmd === 'minsizeVideo') {
+        if (AppWindow.videoWindow && !AppWindow.videoWindow.isDestroyed()) AppWindow.videoWindow.minimize()
+      } else if (data.cmd && data.cmd === 'maxsizeVideo') {
+        if (AppWindow.videoWindow && !AppWindow.videoWindow.isDestroyed()) {
+          if (AppWindow.videoWindow.isMaximized()) {
+            AppWindow.videoWindow.unmaximize()
+          } else {
+            AppWindow.videoWindow.maximize()
           }
         }
       } else if (data.cmd && (Object.hasOwn(data.cmd, 'launchStart')
@@ -84,6 +115,19 @@ export default class ipcEvent {
           !launchStartShow && settings.args.push('--openAsHidden')
         }
         app.setLoginItemSettings(settings)
+      } else if (data.cmd && data.cmd === 'preventSleep') {
+        if (data.flag) {
+          if (psbId && powerSaveBlocker.isStarted(psbId)) {
+            return
+          }
+          psbId = powerSaveBlocker.start('prevent-app-suspension')
+        } else {
+          if (typeof psbId === 'undefined' || !powerSaveBlocker.isStarted(psbId)) {
+            return
+          }
+          powerSaveBlocker.stop(psbId)
+          psbId = undefined
+        }
       } else {
         event.sender.send('ElectronToWeb', 'mainsenddata')
       }
@@ -106,6 +150,25 @@ export default class ipcEvent {
       } else {
         event.returnValue = 'backdata'
       }
+    })
+  }
+
+  private static handleShowContextMenu() {
+    ipcMain.on('show-context-menu', (event, params) => {
+      const { showCut, showCopy, showPaste } = params
+      const window = BrowserWindow.fromWebContents(event.sender)
+      // 制作右键菜单
+      let template: Array<Electron.MenuItemConstructorOptions> = [
+        // 设置选项是否可见
+        { role: 'selectAll', label: '全选' },
+        { role: 'copy', label: '复制', visible: showCopy },
+        { role: 'cut', label: '剪切', visible: showCut },
+        { role: 'paste', label: '粘贴', visible: showPaste },
+        { role: 'undo', label: '撤销' }
+      ]
+      // 显示菜单
+      const contextMenu = Menu.buildFromTemplate(template)
+      contextMenu.popup({ window })
     })
   }
 
@@ -174,11 +237,10 @@ export default class ipcEvent {
             command = `${argsToStr(data.command)}`
           }
           const subProcess = spawn(command, data.args, options)
-          const isRunning = process.kill(subProcess.pid, 0)
           subProcess.unref()
           event.returnValue = {
             pid: subProcess.pid,
-            isRunning: isRunning,
+            subProcess: subProcess,
             execCmd: data,
             options: options,
             exitCode: subProcess.exitCode
@@ -292,9 +354,11 @@ export default class ipcEvent {
           windowsHide: false,
           windowsVerbatimArguments: true
         }
+        const fileAllocation = is.macOS() ? 'none' : (is.windows() ? 'falloc' : 'trunc')
         const args = [
           `--stop-with-process=${argsToStr(process.pid)}`,
           `--conf-path=${argsToStr(confPath)}`,
+          `--file-allocation=${argsToStr(fileAllocation)}`,
           `--rpc-listen-port=${argsToStr(listenPort)}`,
           '-D'
         ]
@@ -455,13 +519,20 @@ export default class ipcEvent {
   }
 
   private static handleWebOpenWindow() {
+    // let winWidth = AppWindow.winWidth
+    // if (winWidth < 1080) winWidth = 1080
     ipcMain.on('WebOpenWindow', (event, data) => {
-      const win = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main2', data.theme)
+      const win = createElectronWindow(data.width || AppWindow.winWidth, data.height || AppWindow.winHeight, true, 'main2', data.theme)
       win.on('ready-to-show', function() {
         win.webContents.send('setPage', data)
         win.setTitle('预览窗口')
         win.show()
       })
+      if (data.page === 'PageAudio') {
+        AppWindow.auidoWindow = win
+      } else if (data.page === 'PageVideo') {
+        AppWindow.videoWindow = win
+      }
     })
   }
 

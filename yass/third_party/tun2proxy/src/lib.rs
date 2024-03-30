@@ -12,12 +12,12 @@ use std::{
 };
 
 mod android;
-mod harmony;
-mod ios;
 mod context_interface;
 mod dns;
 pub mod error;
+mod harmony;
 mod http;
+mod ios;
 pub mod setup;
 mod socks;
 mod tun2proxy;
@@ -34,6 +34,7 @@ pub struct Proxy {
     pub credentials: Option<UserKey>,
 }
 
+#[cfg(target_os = "ios")]
 #[derive(Clone, Debug)]
 pub struct IosContext {
     pub context: *mut libc::c_void,

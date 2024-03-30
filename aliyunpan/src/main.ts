@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import ArcoVue from '@arco-design/web-vue'
 import store, { useAppStore, useSettingStore } from './store'
-import '@arco-design/web-vue/dist/arco.css'
+import '@arco-themes/vue-gi-demo/css/arco.css'
 import message from './utils/message'
 import DebugLog from './utils/debuglog'
 import { PageMain } from './layout/PageMain'
@@ -10,15 +10,22 @@ import { WorkerPage } from './workerpage/workercmd'
 
 window.onerror = function (errorMessage, scriptURI, lineNo, columnNo, error) {
   try {
-    if (errorMessage && typeof errorMessage === 'string' && errorMessage.indexOf('ResizeObserver loop limit exceeded') >= 0) return true
-    DebugLog.mSaveDanger('onerror')
+    if (errorMessage
+      && typeof errorMessage === 'string') {
+      if (errorMessage.indexOf('ResizeObserver') >= 0
+        || errorMessage.indexOf('listen EADDRINUSE') >= 0
+        || errorMessage.indexOf('connect ENOENT') >= 0) {
+        return true
+      }
+    }
+    // DebugLog.mSaveDanger('onerror')
     if (typeof errorMessage === 'string') {
       DebugLog.mSaveDanger(errorMessage)
-      message.error('onerror ' + errorMessage, 8)
+      message.error('onerror ' + errorMessage)
     }
     if (error) {
       DebugLog.mSaveDanger('onerror', error)
-      message.error('onerror ' + error.message, 8)
+      message.error('onerror ' + error.message)
     }
   } catch {}
   return true
@@ -32,11 +39,11 @@ window.addEventListener('unhandledrejection', function (event) {
       return
     }
 
-    DebugLog.mSaveDanger('unhandledrejection')
+    // DebugLog.mSaveDanger('unhandledrejection')
     const reason = event.reason
     if (reason && reason.message) {
       DebugLog.mSaveDanger('unhandledrejection', reason)
-      message.error('rejection ' + reason.message, 8)
+      message.error('rejection ' + reason.message, 1)
     }
     if (!reason) DebugLog.mSaveDanger('unhandledrejection', JSON.stringify(event))
   } catch {}
@@ -49,10 +56,10 @@ app.config.errorHandler = function (err: any, vm, info) {
   try {
     if (typeof err === 'string') {
       DebugLog.mSaveDanger('errorHandler', err)
-      message.error('errorHandler ' + err, 8)
+      message.error('errorHandler ' + err, 1)
     } else {
       DebugLog.mSaveDanger('errorHandler', err)
-      if (err && err.message) message.error('errorHandler ' + err.message, 8)
+      if (err && err.message) message.error('errorHandler ' + err.message, 1)
     }
   } catch {}
   return true
@@ -126,6 +133,8 @@ window.Electron.ipcRenderer.on('setPage', (_event: any, args: any) => {
     appStore.pageVideoXBT = args.data
   } else if (args.page == 'PageVideo') {
     appStore.pageVideo = args.data
+  } else if (args.page == 'PageAudio') {
+    appStore.pageAudio = args.data
   }
   if (args.page) appStore.togglePage(args.page)
 })

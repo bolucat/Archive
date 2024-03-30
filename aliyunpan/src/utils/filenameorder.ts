@@ -42,7 +42,7 @@ export function OrderFile(orderby: string, order: string, list: IAliGetFileModel
 
 function OrderByTimeAsc(list: { time: number; name: string }[]) {
   let t = 0
-  return list.sort(function (a, b) {
+  return list.sort(function(a, b) {
     t = a.time - b.time
     if (t == 0) return _OrderName(a.name, b.name)
     else return t
@@ -50,7 +50,7 @@ function OrderByTimeAsc(list: { time: number; name: string }[]) {
 }
 
 function OrderByTimeDesc(list: { time: number; name: string }[]) {
-  return list.sort(function (b, a) {
+  return list.sort(function(b, a) {
     const t = a.time - b.time
     if (t == 0) return _OrderName(a.name, b.name)
     else return t
@@ -58,7 +58,7 @@ function OrderByTimeDesc(list: { time: number; name: string }[]) {
 }
 
 function OrderBySizeAsc(list: { size: number; name: string }[]) {
-  return list.sort(function (a, b) {
+  return list.sort(function(a, b) {
     const t = a.size - b.size
     if (t == 0) return _OrderName(a.name, b.name)
     else return t
@@ -66,7 +66,7 @@ function OrderBySizeAsc(list: { size: number; name: string }[]) {
 }
 
 function OrderBySizeDesc(list: { size: number; name: string }[]) {
-  return list.sort(function (b, a) {
+  return list.sort(function(b, a) {
     const t = a.size - b.size
     if (t == 0) return _OrderName(a.name, b.name)
     else return t
@@ -74,13 +74,13 @@ function OrderBySizeDesc(list: { size: number; name: string }[]) {
 }
 
 function OrderByNameAsc(list: { name: string }[]) {
-  return list.sort(function (a, b) {
+  return list.sort(function(a, b) {
     return _OrderName(a.name, b.name)
   })
 }
 
 function OrderByNameDesc(list: { name: string }[]) {
-  return list.sort(function (b, a) {
+  return list.sort(function(b, a) {
     return _OrderName(a.name, b.name)
   })
 }
@@ -90,7 +90,6 @@ const intlen = new Intl.Collator(['en', 'zh-CN-u-co-pinyin', 'jp'], { numeric: t
 const azreg = new RegExp('[a-zA-Z]')
 
 function _OrderName(a: string, b: string) {
-  
   a = replaceHanNumber(a)
   b = replaceHanNumber(b)
   if (azreg.test(a.charAt(0)) || azreg.test(b.charAt(0))) return intlen.compare(a, b)
@@ -105,7 +104,7 @@ function replaceHanNumber(a: string): string {
     c = a[i]
     switch (c) {
       case '零':
-        b += '0' 
+        b += '0'
         break
       case '一':
         b += '1'

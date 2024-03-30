@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+#[cfg(target_os = "ios")]
+use crate::context_interface::ContextInterface;
 #[cfg(target_os = "windows")]
 use crate::wintuninterface::{self, NamedPipeSource, WinTunInterface};
 use crate::{dns, error::Error, error::Result, virtdevice::VirtualTunDevice, NetworkInterface, Options};
@@ -8,8 +10,6 @@ use mio::unix::SourceFd;
 use mio::{event::Event, net::TcpStream, net::UdpSocket, Events, Interest, Poll, Token};
 #[cfg(target_os = "macos")]
 use smoltcp::phy::RawSocket;
-#[cfg(target_os = "ios")]
-use crate::context_interface::ContextInterface;
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use smoltcp::phy::TunTapInterface;
 use smoltcp::{

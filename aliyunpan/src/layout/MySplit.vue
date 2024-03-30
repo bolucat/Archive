@@ -1,5 +1,5 @@
 <script lang="ts">
-import {defineComponent, ref, watchEffect} from 'vue'
+import { defineComponent, ref, watchEffect } from 'vue'
 import { useWinStore, WinState } from '../store'
 
 export default defineComponent({
@@ -13,11 +13,11 @@ export default defineComponent({
   emits: ['splitSize'],
   setup(props) {
     const leftMinWidth = 0
-    const rightMinWidth = 280
+    const rightMinWidth = 220
     const winStore = useWinStore()
-    const bodyWidth = ref(Math.max(winStore.width, 800))
+    const bodyWidth = ref(Math.max(winStore.width, 900))
     const splitMoveing = ref(false)
-    const splitSize = ref(bodyWidth.value < 900 ? '280px' : '320px')
+    const splitSize = ref(bodyWidth.value < 900 ? '220px' : '240px')
     const splitSizeMax = ref(bodyWidth.value - rightMinWidth)
 
     winStore.$subscribe((_m: any, state: WinState) => {
@@ -35,7 +35,7 @@ export default defineComponent({
     })
     watchEffect(() => {
       if(props.visible){
-        splitSize.value = bodyWidth.value < 900 ? '280px' : '320px'
+        splitSize.value = bodyWidth.value < 900 ? '220px' : '240px'
       }else {
         splitSize.value = '0px'
       }
@@ -46,7 +46,9 @@ export default defineComponent({
 </script>
 
 <template>
-  <a-split v-model:size="splitSize" class="MySplit" style="height: 100%; width: 100%" :min="leftMinWidth" :max="splitSizeMax" tabindex="-1" @move-start="splitMoveing = true" @move-end="splitMoveing = false">
+  <a-split v-model:size="splitSize" class="MySplit" style="height: 100%; width: 100%;"
+           :min="leftMinWidth" :max="splitSizeMax" tabindex="-1"
+           @move-start="splitMoveing = true" @move-end="splitMoveing = false">
     <template #first>
       <slot name="first">first</slot>
     </template>

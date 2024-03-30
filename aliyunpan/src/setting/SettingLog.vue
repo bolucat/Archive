@@ -9,6 +9,7 @@ const logStore = useLogStore()
 const winStore = useWinStore()
 
 const logHeight = computed(() => winStore.height - 316)
+
 const handleSaveLogRefresh = () => {
   DebugLog.aLoadFromDB()
 }
@@ -31,7 +32,8 @@ const handleSaveLogCopy = () => {
 
 <template>
   <div class="settingcard">
-    <div class="settinghead">运行日志</div>
+    <div class="settingspace"></div>
+    <div class="settinghead">:运行日志</div>
     <a-list
       :bordered="false"
       :max-height="logHeight"

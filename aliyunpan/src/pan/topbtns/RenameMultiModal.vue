@@ -1,11 +1,10 @@
-<script lang='ts'>
+<script setup lang='ts'>
 import { modalCloseAll } from '../../utils/modal'
-import { computed, defineComponent, h, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, h, reactive, ref, watch, watchEffect } from 'vue'
 import MySwitchTab from '../../layout/MySwitchTab.vue'
 import usePanFileStore from '../panfilestore'
-import { AntTreeNodeDragEnterEvent, AntTreeNodeDropEvent, EventDataNode } from 'ant-design-vue/es/tree'
+import { AntTreeNodeDropEvent, EventDataNode } from 'ant-design-vue/es/tree'
 import { Tree as AntdTree } from 'ant-design-vue'
-import 'ant-design-vue/es/tree/style/css'
 import { usePanTreeStore, useWinStore } from '../../store'
 import AliTrash from '../../aliapi/trash'
 import message from '../../utils/message'
@@ -16,473 +15,482 @@ import PanDAL from '../pandal'
 import { throttle } from '../../utils/debounce'
 import { IAliGetFileModel } from '../../aliapi/alimodels'
 import { treeSelectToExpand } from '../../utils/antdtree'
+import { copyToClipboard } from '../../utils/electronhelper'
+import path from 'path'
 
 const iconfolder = h('i', { class: 'iconfont iconfile-folder' })
 const foldericonfn = () => iconfolder
 const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
 
-export default defineComponent({
-  components: { MySwitchTab, AntdTree },
-  props: {
-    visible: {
-      type: Boolean,
-      required: true
-    },
-    istree: {
-      type: Boolean,
-      required: true
-    }
+
+const props = defineProps({
+  visible: {
+    type: Boolean,
+    required: true
   },
-  setup(props) {
-    const okLoading = ref(false)
-    const treeref = ref()
-    const winStore = useWinStore()
-    const treeHeight = computed(() => winStore.height - 42 - 90)
-    const switchValues = [
-      { key: 'replace', title: '替换', alt: '' },
-      { key: 'delete', title: '删除', alt: '' },
-      { key: 'add', title: '增加', alt: '' },
-      { key: 'index', title: '编号', alt: '' },
-      { key: 'others', title: '其他', alt: '' }
-    ]
-    const switchValue = ref('replace')
-    const handleSwitch = (val: string) => {
-      switchValue.value = val
-      renameConfig.replace.enable = val == 'replace'
-      renameConfig.delete.enable = val == 'delete'
-      renameConfig.add.enable = val == 'add'
-      renameConfig.index.enable = val == 'index'
-      renameConfig.others.enable = val == 'others'
-    }
-
-    const replaceData = ref<string[]>([])
-    const indexData = [
-      { label: '第#个 例如:第001个', value: '第#个' },
-      { label: '(#) 例如:(001)', value: '(#)' },
-      { label: '[#] 例如:[001]', value: '[#]' },
-      { label: '#.  例如:001.', value: '#.' },
-      { label: '#-  例如:001-', value: '#-' }
-    ]
-    const renameConfig = reactive(NewRenameConfigData())
-
-    const treeData = ref<TreeNodeData[]>([])
-    const treeExpandedKeys = ref<string[]>([])
-    const treeSelectedKeys = ref<string[]>([])
-    const treeCheckedKeys = ref<{ checked: string[]; halfChecked: string[] }>({ checked: [], halfChecked: [] })
-    const checkInfo = ref('')
-    const multiOpt = ref(false)
-
-    const onRunReplaceName = throttle(() => {
-      RunReplaceName(renameConfig, treeData.value, treeCheckedKeys.value.checked)
-    }, 300)
-
-    watchEffect(() => {
-      const checkLen = treeCheckedKeys.value.checked.length || 0
-      let alllen = 0
-      let matchlen = 0
-      RunAllNode(treeData.value, (node) => {
-        alllen++
-        if (node.isMatch) matchlen++
-        return true
-      })
-      checkInfo.value = '已选中 ' + checkLen + ' 要替换 ' + matchlen + ' 总数 ' + alllen
-      onRunReplaceName()
-    })
-
-    watch(renameConfig, onRunReplaceName)
-
-    const onLoadData = (treeNode: EventDataNode) => {
-      return new Promise<void>((resolve) => {
-        if (!treeNode.dataRef || treeNode.dataRef?.children?.length) {
-          resolve()
-          return
-        }
-        apiLoad(treeNode.dataRef.key).then((addList: TreeNodeData[]) => {
-          treeNode.dataRef!.children = addList
-          if (treeData.value) treeData.value = treeData.value.concat()
-          resolve()
-        })
-      })
-    }
-
-    const autoExpand = (list: TreeNodeData[]) => {
-      if (list.length < 4) {
-        setTimeout(() => {
-          for (let i = 0, maxi = list.length; i < maxi; i++) {
-            const item = list[i]
-            if (!item.isLeaf) {
-              apiLoad(item.key).then((addList: TreeNodeData[]) => {
-                item.children = addList
-                if (treeData.value) treeData.value = treeData.value.concat()
-                if (treeExpandedKeys.value) treeExpandedKeys.value.push(item.key)
-              })
-            }
-          }
-        }, 200)
-      }
-    }
-
-    const apiLoad = (key: any) => {
-      const pantreeStore = usePanTreeStore()
-      return AliTrash.ApiDirFileListNoLock(pantreeStore.user_id, pantreeStore.drive_id, key as string, '', 'name ASC')
-        .then((resp) => {
-          const addList: TreeNodeData[] = []
-          if (resp.next_marker == '') {
-            for (let i = 0, maxi = resp.items.length; i < maxi; i++) {
-              const item = resp.items[i]
-              addList.push({
-                key: item.file_id,
-                title: item.name,
-                rawtitle: item.name,
-                newtitle: item.name,
-                children: [],
-                isDir: item.isDir,
-                isLeaf: !item.isDir,
-                isMatch: false,
-                icon: item.isDir ? foldericonfn : () => fileiconfn(item.icon)
-              } as TreeNodeData)
-            }
-            autoExpand(addList)
-          } else {
-            message.error('列出文件失败：' + resp.next_marker)
-          }
-          if (addList.length > 0) {
-            setTimeout(() => {
-              onRunReplaceName()
-            }, 300)
-          }
-          return addList
-        })
-        .catch(() => {
-          return [] as TreeNodeData[]
-        })
-    }
-
-    const handleOpen = () => {
-      const cacheReg = localStorage.getItem('renamemulti')
-      if (cacheReg) {
-        replaceData.value = JSON.parse(cacheReg)
-      }
-      let fileList: IAliGetFileModel[] = []
-      if (props.istree) {
-        const pantreeStore = usePanTreeStore()
-        fileList = [{
-          ...pantreeStore.selectDir,
-          isDir: true,
-          ext: '',
-          category: '',
-          icon: '',
-          sizeStr: '',
-          timeStr: '',
-          starred: false,
-          thumbnail: ''
-        } as IAliGetFileModel]
-      } else {
-        const panfileStore = usePanFileStore()
-        fileList = panfileStore.GetSelected()
-        if (fileList.length == 0) {
-          const focus = panfileStore.mGetFocus()
-          panfileStore.mKeyboardSelect(focus, false, false)
-          fileList = panfileStore.GetSelected()
-        }
-      }
-
-      const data: TreeNodeData[] = []
-      const checkList: string[] = []
-      fileList.map((item) => {
-        data.push({
-          key: item.file_id,
-          title: item.name,
-          rawtitle: item.name,
-          newtitle: item.name,
-          children: [],
-          isDir: item.isDir,
-          isLeaf: !item.isDir,
-          isMatch: false,
-          icon: item.isDir ? foldericonfn : () => fileiconfn(item.icon)
-        } as TreeNodeData)
-
-        checkList.push(item.file_id)
-        return true
-      })
-
-      treeData.value = data
-      treeCheckedKeys.value = { checked: checkList, halfChecked: [] }
-    }
-    const handleClose = () => {
-
-      if (okLoading.value) okLoading.value = false
-      switchValue.value = 'replace'
-      replaceData.value = []
-      treeData.value = []
-      treeExpandedKeys.value = []
-      treeSelectedKeys.value = []
-      treeCheckedKeys.value.checked = []
-      renameConfig.show = false
-      renameConfig.replace = {
-        enable: true,
-        search: '',
-        newword: '',
-        chkCase: true,
-        chkAll: true,
-        chkReg: false,
-        applyto: 'name'
-      }
-      renameConfig.delete = {
-        enable: false,
-        type: 'search',
-        search: '',
-        chkCase: true,
-        chkAll: true,
-        chkReg: false,
-        applyto: 'name',
-        beginlen: 0,
-        endlen: 0,
-        beginword: '',
-        endword: ''
-      }
-      renameConfig.add = {
-        enable: false,
-        type: 'position',
-        search: '',
-        before: '',
-        after: '',
-        beginword: '',
-        endword: '',
-        applyto: 'name'
-      }
-      renameConfig.index = { enable: false, type: 'begin', format: '', minlen: 1, beginindex: 1, minnum: 1 }
-      renameConfig.others = { enable: false, nameformat: '', extformat: '', randomformat: '', randomlen: 4 }
-    }
-
-    const handleSelectTree = (type: string) => {
-      const checkList: string[] = []
-
-      treeCheckedKeys.value = { checked: checkList, halfChecked: [] }
-    }
-
-    const handleTreeCheck = () => {
-      onRunReplaceName()
-    }
-
-    const onDragEnter = (info: AntTreeNodeDragEnterEvent) => {
-    }
-
-    const onDrop = (info: AntTreeNodeDropEvent) => {
-      const dropKey = info.node.key
-      const dragKey = info.dragNode.key
-      const dropPos = info.node.pos?.split('-') || []
-
-      let fromPos = info.dragNode.pos || ''
-      if (fromPos.indexOf('-') > 0) fromPos = fromPos.substring(0, fromPos.lastIndexOf('-') + 1)
-      let toPos = info.node.pos || ''
-      if (toPos.indexOf('-') > 0) toPos = toPos.substring(0, toPos.lastIndexOf('-') + 1)
-      const isTop = fromPos.indexOf(toPos) == 0 && fromPos.length == toPos.length + 2
-      console.log(fromPos, info.dragNode, 'to', toPos, info.node, info.dropPosition, dropPos, isTop)
-      if (fromPos != toPos && !isTop) {
-        message.warning('只能在同一个文件夹中拖放排序')
-        return false
-      }
-
-      const dropPosition = info.dropPosition - Number(dropPos[dropPos.length - 1])
-      const loop = (data: TreeNodeData[], key: string | number, callback: any) => {
-        data.forEach((item, index) => {
-          if (item.key === key) {
-            return callback(item, index, data)
-          }
-          if (item.children) {
-            return loop(item.children, key, callback)
-          }
-        })
-      }
-      const data = [...treeData.value]
-
-
-      let dragObj: TreeNodeData = data[0]
-      loop(data, dragKey, (item: TreeNodeData, index: number, arr: TreeNodeData[]) => {
-        arr.splice(index, 1)
-        dragObj = item
-      })
-      let ar: TreeNodeData[] = []
-      let i = 0
-      loop(data, dropKey, (item: TreeNodeData, index: number, arr: TreeNodeData[]) => {
-        if (isTop) ar = item.children
-        else ar = arr
-        i = index
-      })
-      console.log(dropPosition, ar, i)
-      if (dropPosition === -1) {
-        ar.splice(i, 0, dragObj)
-      } else if (dropPosition === 0) {
-        ar.splice(0, 0, dragObj)
-      } else {
-        ar.splice(i + 1, 0, dragObj)
-      }
-
-      treeData.value = data
-      onRunReplaceName()
-    }
-
-    return {
-      okLoading,
-      treeref,
-      treeHeight,
-      handleOpen,
-      handleClose,
-      switchValues,
-      switchValue,
-      handleSwitch,
-      replaceData,
-      indexData,
-      renameConfig,
-      treeData,
-      treeExpandedKeys,
-      treeSelectedKeys,
-      treeCheckedKeys,
-      multiOpt,
-      treeSelectToExpand,
-      handleTreeCheck,
-      onLoadData,
-      handleSelectTree,
-      checkInfo,
-      onRunReplaceName,
-      onDragEnter,
-      onDrop
-    }
-  },
-  methods: {
-    handleHide() {
-      if (this.okLoading == false) modalCloseAll()
-      else {
-        message.warning('批量重命名正在执行中，不能关闭窗口')
-      }
-    },
-    handleOK(type: string) {
-      let reg = ''
-      if (this.renameConfig.replace.enable && this.renameConfig.replace.chkReg) reg = this.renameConfig.replace.search
-      if (this.renameConfig.delete.enable && this.renameConfig.delete.chkReg) reg = this.renameConfig.delete.search
-      if (reg) {
-        let regList: string[] = []
-        const cacheReg = localStorage.getItem('renamemulti')
-        if (cacheReg) regList = JSON.parse(cacheReg)
-        if (!regList.includes(reg)) {
-          regList.push(reg)
-          localStorage.setItem('renamemulti', JSON.stringify(regList))
-        }
-      }
-      const idList: string[] = []
-      const nameList: string[] = []
-      const checkMap = new Set(this.treeCheckedKeys.checked)
-      RunAllNode(this.treeData, (node) => {
-        const isMatch = node.newtitle && node.newtitle !== node.rawtitle && checkMap.has(node.key)
-        if (isMatch) {
-          idList.push(node.key)
-          nameList.push(node.newtitle)
-        }
-        return true
-      })
-      if (idList.length == 0) {
-        message.error('没有需要重命名的文件!')
-        return
-      }
-      this.okLoading = true
-      const pantreeStore = usePanTreeStore()
-      AliFileCmd.ApiRenameBatch(pantreeStore.user_id, pantreeStore.drive_id, idList, nameList)
-        .then((success) => {
-          if (success.length > 0) {
-            usePanTreeStore().mRenameFiles(success)
-            usePanFileStore().mRenameFiles(success)
-            PanDAL.RefreshPanTreeAllNode(pantreeStore.drive_id)
-            message.success('批量重命名 成功')
-          } else {
-            message.error('批量重命名 失败')
-          }
-        })
-        .catch((err: any) => {
-          message.error('批量重命名 失败', err.message || '')
-          DebugLog.mSaveDanger('批量重命名失败 ', err)
-        })
-        .then(() => {
-          this.okLoading = false
-          if (!this.multiOpt) {
-            modalCloseAll()
-          } else {
-            this.handleOpen()
-          }
-        })
-    },
-    handleContextMenu(menuKey: string, treeNodeKey: string) {
-      if (menuKey == 'all') {
-        let checkList: string[] = []
-        RunAllNode(this.treeData, (node) => {
-          checkList.push(node.key)
-          return true
-        })
-        if (checkList.length == this.treeCheckedKeys.checked.length) checkList = []
-        this.treeCheckedKeys = { checked: checkList, halfChecked: [] }
-        return
-      }
-      const checked = new Set(this.treeCheckedKeys.checked)
-      if (menuKey == 'selectall') {
-        RunAllNode(this.treeData, (node) => {
-          if (node.key == treeNodeKey) {
-            if (node.children) node.children.map((t) => checked.add(t.key))
-            return false
-          }
-          return true
-        })
-      } else if (menuKey == 'selectnone') {
-        RunAllNode(this.treeData, (node) => {
-          if (node.key == treeNodeKey) {
-            if (node.children) {
-              node.children.map((t) => {
-                checked.delete(t.key)
-                return true
-              })
-            }
-            return false
-          }
-          return true
-        })
-      } else if (menuKey == 'selectfile') {
-        RunAllNode(this.treeData, (node) => {
-          if (node.key == treeNodeKey) {
-            if (node.children) {
-              node.children.map((t) => {
-                if (t.isDir) checked.delete(t.key)
-                else checked.add(t.key)
-                return true
-              })
-            }
-            return false
-          }
-          return true
-        })
-      } else if (menuKey == 'selectfolder') {
-        RunAllNode(this.treeData, (node) => {
-          if (node.key == treeNodeKey) {
-            if (node.children) {
-              node.children.map((t) => {
-                if (t.isDir) checked.add(t.key)
-                else checked.delete(t.key)
-                return true
-              })
-            }
-            return false
-          }
-          return true
-        })
-      }
-      this.treeCheckedKeys.checked = Array.from(checked)
-    },
-    handleMultiOpt() {
-      this.multiOpt = !this.multiOpt
-    },
-    handleSelectRow(visible: boolean, treeNodeKey: string) {
-      if (visible) this.treeSelectedKeys = [treeNodeKey]
-    }
+  istree: {
+    type: Boolean,
+    required: true
   }
 })
+
+const okLoading = ref(false)
+const treeref = ref()
+const winStore = useWinStore()
+const treeHeight = computed(() => winStore.height - 42 - 90)
+const switchValues = [
+  { key: 'replace', title: '替换', alt: '' },
+  { key: 'delete', title: '删除', alt: '' },
+  { key: 'add', title: '增加', alt: '' },
+  { key: 'index', title: '编号', alt: '' },
+  { key: 'others', title: '其他', alt: '' }
+]
+const switchValue = ref('replace')
+const handleSwitch = (val: string) => {
+  switchValue.value = val
+  renameConfig.replace.enable = val == 'replace'
+  renameConfig.delete.enable = val == 'delete'
+  renameConfig.add.enable = val == 'add'
+  renameConfig.index.enable = val == 'index'
+  renameConfig.others.enable = val == 'others'
+}
+
+const replaceData = ref<string[]>([])
+const indexData = [
+  { label: '# 例如:01', value: '#' },
+  { label: '(#) 例如:(01)', value: '(#)' },
+  { label: '[#] 例如:[01]', value: '[#]' },
+  { label: '第#个 例如:第01个', value: '第#个' },
+  { label: 'S01E# 例如:S01E01', value: 'S01E#' },
+  { label: '#.  例如:01.', value: '#.' },
+  { label: '#-  例如:01-', value: '#-' }
+]
+const renameConfig = reactive(NewRenameConfigData())
+
+const treeData = ref<TreeNodeData[]>([])
+const treeExpandedKeys = ref<string[]>([])
+const treeSelectedKeys = ref<string[]>([])
+const treeCheckedKeys = ref<{ checked: string[]; halfChecked: string[] }>({ checked: [], halfChecked: [] })
+const checkInfo = ref('')
+const multiOpt = ref(false)
+const allLen = ref(0)
+
+const onRunReplaceName = throttle(() => {
+  RunReplaceName(renameConfig, treeData.value, treeCheckedKeys.value.checked)
+}, 300)
+
+watchEffect(() => {
+  const checkLen = treeCheckedKeys.value.checked.length || 0
+  allLen.value = 0
+  let matchlen = 0
+  RunAllNode(treeData.value, (node) => {
+    allLen.value++
+    if (node.isMatch) matchlen++
+    return true
+  })
+  checkInfo.value = '已选中 ' + checkLen + ' 要替换 ' + matchlen + ' 总数 ' + allLen.value
+  onRunReplaceName()
+})
+
+watch(renameConfig, onRunReplaceName)
+
+
+const onLoadData = (treeNode: EventDataNode) => {
+  return new Promise<void>((resolve) => {
+    if (!treeNode.dataRef || treeNode.dataRef?.children?.length) {
+      resolve()
+      return
+    }
+    apiLoad(treeNode.dataRef.key).then((addList: TreeNodeData[]) => {
+      treeNode.dataRef!.children = addList
+      if (treeData.value) {
+        treeData.value = treeData.value.concat()
+      }
+      resolve()
+    })
+  })
+}
+
+const autoExpand = (list: TreeNodeData[]) => {
+  if (list.length < 4) {
+    setTimeout(() => {
+      for (let i = 0, maxi = list.length; i < maxi; i++) {
+        const item = list[i]
+        if (!item.isLeaf) {
+          apiLoad(item.key).then((addList: TreeNodeData[]) => {
+            item.children = addList
+            if (treeData.value) treeData.value = treeData.value.concat()
+            if (treeExpandedKeys.value) treeExpandedKeys.value.push(item.key)
+          })
+        }
+      }
+    }, 200)
+  }
+}
+
+const apiLoad = (key: any) => {
+  const pantreeStore = usePanTreeStore()
+  return AliTrash.ApiDirFileListNoLock(pantreeStore.user_id, pantreeStore.drive_id, key as string, '', 'name ASC')
+    .then((resp) => {
+      const addList: TreeNodeData[] = []
+      if (resp.next_marker == '') {
+        for (let i = 0, maxi = resp.items.length; i < maxi; i++) {
+          const item = resp.items[i]
+          addList.push({
+            key: item.file_id,
+            title: item.name,
+            rawtitle: item.name,
+            newtitle: item.name,
+            children: [],
+            isDir: item.isDir,
+            isLeaf: !item.isDir,
+            isMatch: false,
+            icon: item.isDir ? foldericonfn : () => fileiconfn(item.icon)
+          } as TreeNodeData)
+        }
+        autoExpand(addList)
+      } else {
+        message.error('列出文件失败：' + resp.next_marker)
+      }
+      if (addList.length > 0) {
+        setTimeout(() => {
+          onRunReplaceName()
+        }, 300)
+      }
+      return addList
+    })
+    .catch(() => {
+      return [] as TreeNodeData[]
+    })
+}
+
+const handleOpen = () => {
+  const cacheReg = localStorage.getItem('renamemulti')
+  if (cacheReg) {
+    replaceData.value = JSON.parse(cacheReg)
+  }
+  let fileList: IAliGetFileModel[] = []
+  if (props.istree) {
+    const pantreeStore = usePanTreeStore()
+    fileList = [{
+      ...pantreeStore.selectDir,
+      isDir: true,
+      ext: '',
+      category: '',
+      icon: '',
+      sizeStr: '',
+      timeStr: '',
+      starred: false,
+      thumbnail: ''
+    } as IAliGetFileModel]
+  } else {
+    const panfileStore = usePanFileStore()
+    fileList = panfileStore.GetSelected()
+    if (fileList.length == 0) {
+      const focus = panfileStore.mGetFocus()
+      panfileStore.mKeyboardSelect(focus, false, false)
+      fileList = panfileStore.GetSelected()
+    }
+  }
+
+  const data: TreeNodeData[] = []
+  const checkList: string[] = []
+  fileList.map((item) => {
+    data.push({
+      key: item.file_id,
+      title: item.name,
+      rawtitle: item.name,
+      newtitle: item.name,
+      children: [],
+      isDir: item.isDir,
+      isLeaf: !item.isDir,
+      isMatch: false,
+      icon: item.isDir ? foldericonfn : () => fileiconfn(item.icon)
+    } as TreeNodeData)
+
+    checkList.push(item.file_id)
+    return true
+  })
+
+  treeData.value = data
+  treeCheckedKeys.value = { checked: checkList, halfChecked: [] }
+}
+
+const handleResetConfig = () => {
+  renameConfig.replace = {
+    enable: true,
+    search: '',
+    newword: '',
+    chkCase: true,
+    chkAll: true,
+    chkReg: false,
+    applyto: 'name'
+  }
+  renameConfig.delete = {
+    enable: false,
+    type: 'search',
+    search: '',
+    chkCase: true,
+    chkAll: true,
+    chkReg: false,
+    applyto: 'name',
+    beginlen: 0,
+    endlen: 0,
+    beginword: '',
+    endword: ''
+  }
+  renameConfig.add = {
+    enable: false,
+    type: 'position',
+    search: '',
+    before: '',
+    after: '',
+    beginword: '',
+    endword: '',
+    applyto: 'name'
+  }
+  renameConfig.index = { enable: false, type: 'begin', format: '', minlen: 1, beginindex: 1, minnum: 1 }
+  renameConfig.others = { enable: false, nameformat: '', extformat: '', randomformat: '', randomlen: 4 }
+}
+
+const handleClose = () => {
+  if (okLoading.value) okLoading.value = false
+  switchValue.value = 'replace'
+  replaceData.value = []
+  treeData.value = []
+  treeExpandedKeys.value = []
+  treeSelectedKeys.value = []
+  treeCheckedKeys.value.checked = []
+  renameConfig.show = false
+  handleResetConfig()
+}
+
+const handleTreeCheck = () => {
+  onRunReplaceName()
+}
+
+const onDrop = (info: AntTreeNodeDropEvent) => {
+  const dropKey = info.node.key
+  const dragKey = info.dragNode.key
+  const dropPos = info.node.pos?.split('-') || []
+
+  let fromPos = info.dragNode.pos || ''
+  if (fromPos.indexOf('-') > 0) fromPos = fromPos.substring(0, fromPos.lastIndexOf('-') + 1)
+  let toPos = info.node.pos || ''
+  if (toPos.indexOf('-') > 0) toPos = toPos.substring(0, toPos.lastIndexOf('-') + 1)
+  const isTop = fromPos.indexOf(toPos) == 0 && fromPos.length == toPos.length + 2
+  console.log(fromPos, info.dragNode, 'to', toPos, info.node, info.dropPosition, dropPos, isTop)
+  if (fromPos != toPos && !isTop) {
+    message.warning('只能在同一个文件夹中拖放排序')
+    return false
+  }
+
+  const dropPosition = info.dropPosition - Number(dropPos[dropPos.length - 1])
+  const loop = (data: TreeNodeData[], key: string | number, callback: any) => {
+    data.forEach((item, index) => {
+      if (item.key === key) {
+        return callback(item, index, data)
+      }
+      if (item.children) {
+        return loop(item.children, key, callback)
+      }
+    })
+  }
+  const data = [...treeData.value]
+
+
+  let dragObj: TreeNodeData = data[0]
+  loop(data, dragKey, (item: TreeNodeData, index: number, arr: TreeNodeData[]) => {
+    arr.splice(index, 1)
+    dragObj = item
+  })
+  let ar: TreeNodeData[] = []
+  let i = 0
+  loop(data, dropKey, (item: TreeNodeData, index: number, arr: TreeNodeData[]) => {
+    if (isTop) ar = item.children
+    else ar = arr
+    i = index
+  })
+  console.log(dropPosition, ar, i)
+  if (dropPosition === -1) {
+    ar.splice(i, 0, dragObj)
+  } else if (dropPosition === 0) {
+    ar.splice(0, 0, dragObj)
+  } else {
+    ar.splice(i + 1, 0, dragObj)
+  }
+
+  treeData.value = data
+  onRunReplaceName()
+}
+
+const handleHide = () => {
+  if (okLoading.value == false) modalCloseAll()
+  else {
+    message.warning('批量重命名正在执行中，不能关闭窗口')
+  }
+}
+
+const handleOK = (type: string) => {
+  let reg = ''
+  if (renameConfig.replace.enable && renameConfig.replace.chkReg) reg = renameConfig.replace.search
+  if (renameConfig.delete.enable && renameConfig.delete.chkReg) reg = renameConfig.delete.search
+  if (reg) {
+    let regList: string[] = []
+    const cacheReg = localStorage.getItem('renamemulti')
+    if (cacheReg) regList = JSON.parse(cacheReg)
+    if (!regList.includes(reg)) {
+      regList.push(reg)
+      localStorage.setItem('renamemulti', JSON.stringify(regList))
+    }
+  }
+  const idList: string[] = []
+  const nameList: string[] = []
+  const checkMap = new Set(treeCheckedKeys.value.checked)
+  RunAllNode(treeData.value, (node) => {
+    const isMatch = node.newtitle && node.newtitle !== node.rawtitle && checkMap.has(node.key)
+    if (isMatch) {
+      idList.push(node.key)
+      nameList.push(node.newtitle)
+    }
+    return true
+  })
+  if (idList.length == 0) {
+    message.error('没有需要重命名的文件!')
+    return
+  }
+  okLoading.value = true
+  const pantreeStore = usePanTreeStore()
+  AliFileCmd.ApiRenameBatch(pantreeStore.user_id, pantreeStore.drive_id, idList, nameList)
+    .then((success) => {
+      if (success.length > 0) {
+        if (!multiOpt.value) {
+          usePanTreeStore().mRenameFiles(success)
+          usePanFileStore().mRenameFiles(success)
+          PanDAL.RefreshPanTreeAllNode(pantreeStore.drive_id)
+          modalCloseAll()
+        } else {
+          let fileMap: Map<string, string> = new Map<string, string>()
+          success.forEach((file) => {
+            fileMap.set(file.file_id, file.name)
+          })
+          // 更新列表
+          RunAllNode(treeData.value, (node) => {
+            if (fileMap.has(node.key)) {
+              const title = fileMap.get(node.key) || ''
+              node.newtitle = title
+              node.rawtitle = title
+              node.title = title
+              node.isMatch = false
+            }
+            return true
+          })
+          treeCheckedKeys.value = { checked: [], halfChecked: [] }
+        }
+        message.success('批量重命名 成功')
+      } else {
+        message.error('批量重命名 失败')
+      }
+    })
+    .catch((err: any) => {
+      console.log(err)
+      message.error('批量重命名 失败', err.message || '')
+      DebugLog.mSaveDanger('批量重命名失败 ', err)
+    })
+    .then(() => {
+      okLoading.value = false
+    })
+}
+
+const handleContextMenu = (menuKey: string, treeNodeKey: string) => {
+  if (menuKey == 'all') {
+    let checkList: string[] = []
+    RunAllNode(treeData.value, (node) => {
+      checkList.push(node.key)
+      return true
+    })
+    if (checkList.length == treeCheckedKeys.value.checked.length) checkList = []
+    treeCheckedKeys.value = { checked: checkList, halfChecked: [] }
+    return
+  }
+  const checked = new Set(treeCheckedKeys.value.checked)
+  if (menuKey.startsWith('selectcopy')) {
+    RunAllNode(treeData.value, (node) => {
+      if (node.key == treeNodeKey) {
+        if (menuKey === 'selectcopyall') {
+          copyToClipboard(node.title)
+          message.success('选择项全名已复制到剪切板')
+        } else if (menuKey === 'selectcopyname') {
+          copyToClipboard(path.parse(node.title).name)
+          message.success('选择项名称已复制到剪切板')
+        }
+        return true
+      }
+      return true
+    })
+  } else if (menuKey == 'selectall') {
+    RunAllNode(treeData.value, (node) => {
+      if (node.key == treeNodeKey) {
+        if (node.children) node.children.map((t) => checked.add(t.key))
+        return false
+      }
+      return true
+    })
+  } else if (menuKey == 'selectnone') {
+    RunAllNode(treeData.value, (node) => {
+      if (node.key == treeNodeKey) {
+        if (node.children) {
+          node.children.map((t) => {
+            checked.delete(t.key)
+            return true
+          })
+        }
+        return false
+      }
+      return true
+    })
+  } else if (menuKey == 'selectfile') {
+    RunAllNode(treeData.value, (node) => {
+      if (node.key == treeNodeKey) {
+        if (node.children) {
+          node.children.map((t) => {
+            if (t.isDir) checked.delete(t.key)
+            else checked.add(t.key)
+            return true
+          })
+        }
+        return false
+      }
+      return true
+    })
+  } else if (menuKey == 'selectfolder') {
+    RunAllNode(treeData.value, (node) => {
+      if (node.key == treeNodeKey) {
+        if (node.children) {
+          node.children.map((t) => {
+            if (t.isDir) checked.add(t.key)
+            else checked.delete(t.key)
+            return true
+          })
+        }
+        return false
+      }
+      return true
+    })
+  }
+  treeCheckedKeys.value.checked = Array.from(checked)
+}
+
+const handleMultiOpt = () => {
+  multiOpt.value = !multiOpt.value
+}
+
+const handleSelectRow = (visible: boolean, treeNodeKey: string) => {
+  if (visible) {
+    treeSelectedKeys.value = [treeNodeKey]
+  }
+}
+
 </script>
 
 <template>
@@ -494,7 +502,7 @@ export default defineComponent({
     <div class='modalbody' style='height: calc(100vh - 42px)'>
       <a-layout style='height: 100%'>
         <a-layout-sider class='renameleft' style='width: 300px'>
-          <div class='headswitch'>
+          <div class='headswitch' style='margin: 0'>
             <div class='bghr'></div>
             <div class='sw'>
               <MySwitchTab :name="'panleft'" :tabs='switchValues' :value='switchValue' @update:value='handleSwitch' />
@@ -981,9 +989,11 @@ export default defineComponent({
               <a-button type='text' size='small' tabindex='-1' :disabled='okLoading'
                         style='margin: 0'
                         @click="handleContextMenu('all', '')">
-                <i :class="treeCheckedKeys.checked.length === treeData.length ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />全选
+                <i
+                  :class="treeCheckedKeys.checked.length === allLen ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                {{ treeCheckedKeys.checked.length === allLen ? '取消全选' : '全选' }}
               </a-button>
-              <a-button type='text' size='small' tabindex='-1' style='margin: 0' @click="handleMultiOpt">
+              <a-button type='text' size='small' tabindex='-1' style='margin: 0' @click='handleMultiOpt'>
                 <i :class="multiOpt ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />多次操作
               </a-button>
             </div>
@@ -1019,25 +1029,30 @@ export default defineComponent({
               draggable
               @select='treeSelectToExpand'
               @check='handleTreeCheck'
-              @dragenter='onDragEnter'
               @drop='onDrop'>
               <template #switcherIcon>
                 <i class='ant-tree-switcher-icon iconfont Arrow' />
               </template>
               <template #title='{ dataRef }'>
-                <a-dropdown v-if='dataRef.isDir' class='smallmenu' :trigger="['contextMenu']"
+                <a-dropdown class='smallmenu' :trigger="['contextMenu']"
                             @select='(value:any)=>handleContextMenu(value,dataRef.key)'
                             @popup-visible-change='(visible:boolean)=>handleSelectRow(visible,dataRef.key)'>
-                  <span :class="dataRef.isMatch ? 'match fulltitle' : 'fulltitle'" title='点击鼠标右键菜单'
+                  <span :class="dataRef.isMatch ? 'match fulltitle' : 'fulltitle'"
+                        title='点击鼠标右键菜单'
                         v-html='dataRef.title'></span>
-                  <template #content>
-                    <a-doption value='selectall'>选则全部子项</a-doption>
+                  <template #content v-if='dataRef.isDir'>
+                    <a-doption value='selectcopyall'>复制选择项全名</a-doption>
+                    <a-doption value='selectcopyname'>复制选择项名称</a-doption>
+                    <a-doption value='selectall'>选择全部子项</a-doption>
                     <a-doption value='selectnone'>反选全部子项</a-doption>
-                    <a-doption value='selectfile'>选则子文件</a-doption>
-                    <a-doption value='selectfolder'>选则子文件夹</a-doption>
+                    <a-doption value='selectfile'>选择子文件</a-doption>
+                    <a-doption value='selectfolder'>选择子文件夹</a-doption>
+                  </template>
+                  <template v-else #content>
+                    <a-doption value='selectcopyall'>复制选择项全名</a-doption>
+                    <a-doption value='selectcopyname'>复制选择项名称</a-doption>
                   </template>
                 </a-dropdown>
-                <span v-else :class="dataRef.isMatch ? 'match fulltitle' : 'fulltitle'" v-html='dataRef.title'></span>
               </template>
             </AntdTree>
           </div>

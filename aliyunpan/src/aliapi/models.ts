@@ -1,10 +1,33 @@
-
 export interface IDownloadUrl {
   drive_id: string
   file_id: string
-  expire_sec: number
+  expire_time: number
   url: string
   size: number
+}
+
+
+export interface IVideoPreviewUrl {
+  drive_id: string
+  file_id: string
+  size: number
+  duration: number
+  expire_time: number
+  width: number
+  height: number
+  qualities: {
+    html: string
+    quality: string
+    height: number
+    width: number
+    label: string
+    value: string
+    url: string
+  }[]
+  subtitles: {
+    language: string
+    url: string
+  }[]
 }
 
 export interface ICompilationList {
@@ -16,33 +39,11 @@ export interface ICompilationList {
   category: string
   drive_id: string
   file_id: string
+  file_extension: string
   url: string
-  expire_sec: number
+  expire_time: number
   play_cursor: number
   compilation_id: string
-}
-
-
-export interface IVideoPreviewUrl {
-  drive_id: string
-  file_id: string
-  expire_sec: number
-  url: string
-  duration: number
-  width: number
-  height: number
-  urlQHD: string
-  play_cursor: number
-
-  urlFHD: string
-  urlHD: string
-  urlSD: string
-  urlLD: string
-  file_name?:string,
-  subtitles: {
-    language: string
-    url: string
-  }[]
 }
 
 
@@ -102,17 +103,17 @@ export interface IAliBatchResult {
   reslut: {
     id: string
     file_id?: string
-    
+
     name?: string
     type?: string
     parent_file_id?: string
-    
+
     share_id?: string
     share_pwd?: string
     share_url?: string
     expiration?: string
     share_name?: string
-    
+
     body?: any
   }[]
   error: {
@@ -143,15 +144,15 @@ export interface IBatchResult {
 
 
 export interface IAliGetAlbumModel {
-  album_id: string 
-  created_at: number 
-  description: string 
-  file_count: number 
-  image_count: number 
-  name: string 
-  owner: string 
-  updated_at: number 
-  video_count: number 
+  album_id: string
+  created_at: number
+  description: string
+  file_count: number
+  image_count: number
+  name: string
+  owner: string
+  updated_at: number
+  video_count: number
 }
 
 export interface IAliUserDriveDetails {
@@ -167,12 +168,12 @@ export interface IAliUserDriveDetails {
 }
 
 export interface IAliUserDriveCapacity {
-  type: string 
+  type: string
   size: number
   sizeStr: string
-  expired: string 
-  expiredstr: string 
-  description: string 
+  expired: string
+  expiredstr: string
+  description: string
   latest_receive_time: string /* "2022-05-02T00:50:51.379Z" */
 }
 
@@ -181,29 +182,29 @@ export interface IStateUploadFile {
   UploadID: string
   Info: {
     user_id: string
-    
+
     localFilePath: string
-    
+
     parent_file_id: string
     drive_id: string
 
     path: string
-    
+
     name: string
-    
+
     size: number
     sizeStr: string
     icon: string
     isDir: boolean
     isMiaoChuan: boolean
-    
+
     sha1: string
-    
+
     crc64: string
   }
-  
+
   Upload: {
-    
+
     DownState: string
     DownTime: number
     DownSize: number
@@ -218,11 +219,11 @@ export interface IStateUploadFile {
     failedCode: number
     /** 失败的消息 */
     failedMessage: string
-    
+
     AutoTry: number
-    
+
     upload_id: string
-    
+
     file_id: string
     /** 是否覆盖上传 */
     IsBreakExist: boolean

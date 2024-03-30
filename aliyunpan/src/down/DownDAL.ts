@@ -17,6 +17,8 @@ import { humanSize, humanSizeSpeed } from '../utils/format'
 import { Howl } from 'howler'
 import DBDown from '../utils/dbdown'
 import fsPromises from 'fs/promises'
+import { DecodeEncName } from '../aliapi/utils'
+import { getEncType } from '../utils/proxyhelper'
 
 export interface IStateDownFile {
   DownID: string
@@ -59,10 +61,14 @@ export interface IStateDownInfo {
   sizestr: string
   icon: string
   isDir: boolean
+  encType: string
 
   sha1: string
 
   crc64: string
+
+  m3u8_total_file_nums?:number
+  m3u8_parent_file_name?:string
 }
 
 export interface IAriaDownProgress {
@@ -77,13 +83,8 @@ export interface IAriaDownProgress {
 
 /** 存盘的时机：默认 10 时进行 */
 let SaveTimeWait = 0
-/** 下载正在执行中的数据 */
-export let DownInExeMap = new Map<string, IStateDownFile>()
-/** 下载正在队列中的数据 */
-export let DownInQueues: IStateDownFile[] = []
-
 const sound = new Howl({
-  src: ['./audio/down_finished.mp3'], // 音频文件路径
+  src: ['./audio/download_finished.mp3'], // 音频文件路径
   autoplay: false, // 是否自动播放
   volume: 1.0 // 音量，范围 0.0 ~ 1.0
 })
@@ -159,7 +160,7 @@ export default class DownDAL {
     const sep = settingStore.ariaSavePath.indexOf('/') >= 0 ? '/' : '\\'
     for (let f = 0; f < fileList.length; f++) {
       const file = fileList[f]
-      const name = ClearFileName(file.name)
+      const name = ClearFileName(DecodeEncName(userID, file).name)
       let fullPath = savePath
       if (needPanPath) {
         if (cPath != '' && cPid == file.parent_file_id) fullPath = cPath
@@ -168,7 +169,7 @@ export default class DownDAL {
           const plist = TreeStore.GetDirPath(file.drive_id, file.parent_file_id)
           for (let p = 0; p < plist.length; p++) {
             const pName = ClearFileName(plist[p].name)
-            if (pName == '根目录') continue
+            if (plist[p].file_id.includes('root')) continue
             if (path.join(cPath2, pName, name).length > 250) break
             cPath2 = path.join(cPath2, pName)
           }
@@ -188,7 +189,6 @@ export default class DownDAL {
 
       let downloadurl = ''
       let crc64 = ''
-
       const downitem: IStateDownFile = {
         DownID: userID + '|' + file.file_id,
         Info: {
@@ -203,6 +203,7 @@ export default class DownDAL {
           sizestr: file.sizeStr,
           isDir: file.isDir,
           icon: file.icon,
+          encType: getEncType(file),
           sha1: '',
           crc64: crc64
         },
@@ -240,9 +241,8 @@ export default class DownDAL {
     const isOnline = await AriaConnect()
     if (isOnline && downingStore.ListDataRaw.length) {
       await AriaGetDowningList()
-
       const ariaRemote = IsAria2cRemote()
-      const DowningList: IStateDownFile[] = useDowningStore().ListDataRaw
+      const DowningList: IStateDownFile[] = downingStore.ListDataRaw
       const timeThreshold = Date.now() - 60 * 1000
       const downFileMax = settingStore.downFileMax
       const shouldSkipDown = (Down: any) => {
@@ -253,7 +253,7 @@ export default class DownDAL {
           (Down.IsFailed && timeThreshold <= Down.AutoTry)
         )
       }
-      let downingCount = DowningList.filter((down: any) => down.Down.IsDowning).length
+      let addDowningCount = 0
       for (let i = 0; i < DowningList.length; i++) {
         const DownItem = DowningList[i]
         const { DownID, Info, Down } = DownItem
@@ -263,20 +263,20 @@ export default class DownDAL {
           const completedDownId = `${Date.now()}_${Down.DownTime}`
           // 删除已完成的下载并更新数据库
           DowningList.splice(i, 1)
-          DBDown.deleteDowning(DownID)
+          await DBDown.deleteDowning(DownID)
           // 将已完成的下载添加到下载文件列表中
           const downedData = JSON.parse(JSON.stringify({ DownID: completedDownId, Down, Info }))
           downedStore.ListDataRaw.unshift({ DownID: completedDownId, Down, Info })
           downedStore.mRefreshListDataShow(true)
-          DBDown.saveDowned(completedDownId, downedData)
+          await DBDown.saveDowned(completedDownId, downedData)
           if (downedStore.ListSelected.has(completedDownId)) {
             downedStore.ListSelected.delete(completedDownId)
           }
           // 移除Aria2已完成的任务
           await AriaDeleteList([Info.GID])
           i--
-        } else if (downingCount < downFileMax && !shouldSkipDown(Down)) {
-          downingCount++
+        } else if ((addDowningCount + downingStore.ListDataDowningCount) < downFileMax && !shouldSkipDown(Down)) {
+          addDowningCount++
           downingStore.mUpdateDownState(DownItem, 'start')
           let state = await AriaAddUrl(DownItem)
           downingStore.mUpdateDownState(DownItem, state)
@@ -379,7 +379,7 @@ export default class DownDAL {
     // 处理待删除文件
     if (!isAll) {
       const downIDList = deleteList.map(item => item.DownID)
-      console.log('deleteDowning', deleteList)
+      // console.log('deleteDowning', deleteList)
       await DBDown.deleteDownings(JSON.parse(JSON.stringify(downIDList)))
     } else {
       await DBDown.deleteDowningAll()
@@ -423,12 +423,6 @@ export default class DownDAL {
   }
 
   static QueryIsDowning() {
-    const downingList = useDowningStore().ListDataRaw
-    for (let i = 0, maxi = downingList.length; i < maxi; i++) {
-      if (!downingList[i].Down.IsDowning) {
-        return true
-      }
-    }
-    return false
+    return useDowningStore().ListDataDowningCount > 0
   }
 }

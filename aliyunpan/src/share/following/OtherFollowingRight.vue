@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useAppStore, useOtherFollowingStore, FollowingState, useKeyboardStore, KeyboardState, useMyFollowingStore, useUserStore } from '../../store'
+import {
+  FollowingState,
+  KeyboardState,
+  useAppStore,
+  useKeyboardStore,
+  useMyFollowingStore,
+  useOtherFollowingStore,
+  useUserStore
+} from '../../store'
 import FollowingDAL from './FollowingDAL'
 import { copyToClipboard, openExternal } from '../../utils/electronhelper'
 import message from '../../utils/message'
 import { TestKey } from '../../utils/keyboardhelper'
 import { IAliOtherFollowingModel } from '../../aliapi/alimodels'
+
 const otherfollowingStore = useOtherFollowingStore()
 const myfollowingStore = useMyFollowingStore()
 const appStore = useAppStore()
@@ -36,12 +45,12 @@ const handleSelectList = (key: string) => {
   tuijianList.value = list
 }
 const handleCopyLink = (followingid: string, nick_name: string) => {
-  const url = 'https://www.aliyundrive.com/u/' + followingid + '/feed#' + nick_name
+  const url = 'https://www.alipan.com/u/' + followingid + '/feed#' + nick_name
   copyToClipboard(url)
   message.success('订阅链接已复制到剪切板')
 }
 const handleOpenLink = (followingid: string) => {
-  const url = 'https://www.aliyundrive.com/u/' + followingid + '/feed'
+  const url = 'https://www.alipan.com/u/' + followingid + '/feed'
   openExternal(url)
 }
 const handleFollowing = (followingid: string, isFollowing: boolean) => {
