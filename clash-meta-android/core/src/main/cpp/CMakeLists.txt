@@ -28,11 +28,7 @@ string (REGEX REPLACE "[\n\t\r]" "" CURRENT_BRANCH ${CURRENT_BRANCH})
 message(STATUS "git current branch = ${CURRENT_BRANCH}")
 
 # 获取生成时间
-execute_process(
-  COMMAND date +"%y%m%d"
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} 
-  OUTPUT_VARIABLE COMPILE_TIME
-)
+string(TIMESTAMP COMPILE_TIME "%y%m%d")
 string (REGEX REPLACE "[\n\t\r]" "" COMPILE_TIME ${COMPILE_TIME})
 string(REGEX REPLACE "\"" "" COMPILE_TIME ${COMPILE_TIME})
 

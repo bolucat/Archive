@@ -112,6 +112,10 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 	} else {
 		udpTimeout = int64(sing.UDPTimeout.Seconds())
 	}
+	tableIndex := options.TableIndex
+	if tableIndex == 0 {
+		tableIndex = 2022
+	}
 	includeUID := uidToRange(options.IncludeUID)
 	if len(options.IncludeUIDRange) > 0 {
 		var err error
@@ -169,6 +173,7 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		closed:  false,
 		options: options,
 		handler: handler,
+		tunName: tunName,
 	}
 	defer func() {
 		if err != nil {
@@ -225,7 +230,7 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		ExcludePackage:           options.ExcludePackage,
 		FileDescriptor:           options.FileDescriptor,
 		InterfaceMonitor:         defaultInterfaceMonitor,
-		TableIndex:               2022,
+		TableIndex:               tableIndex,
 	}
 
 	err = l.buildAndroidRules(&tunOptions)
@@ -275,7 +280,6 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 
 func (l *Listener) FlushDefaultInterface() {
 	if l.options.AutoDetectInterface {
-		targetInterface := dialer.DefaultInterface.Load()
 		for _, destination := range []netip.Addr{netip.IPv4Unspecified(), netip.IPv6Unspecified(), netip.MustParseAddr("1.1.1.1")} {
 			autoDetectInterfaceName := l.defaultInterfaceMonitor.DefaultInterfaceName(destination)
 			if autoDetectInterfaceName == l.tunName {
@@ -283,16 +287,15 @@ func (l *Listener) FlushDefaultInterface() {
 			} else if autoDetectInterfaceName == "" || autoDetectInterfaceName == "<nil>" {
 				log.Warnln("[TUN] Auto detect interface by %s get empty name.", destination.String())
 			} else {
-				targetInterface = autoDetectInterfaceName
-				if old := dialer.DefaultInterface.Load(); old != targetInterface {
-					log.Warnln("[TUN] default interface changed by monitor, %s => %s", old, targetInterface)
-
-					dialer.DefaultInterface.Store(targetInterface)
-
+				if old := dialer.DefaultInterface.Swap(autoDetectInterfaceName); old != autoDetectInterfaceName {
+					log.Warnln("[TUN] default interface changed by monitor, %s => %s", old, autoDetectInterfaceName)
 					iface.FlushCache()
 				}
 				return
 			}
+		}
+		if dialer.DefaultInterface.CompareAndSwap("", "<invalid>") {
+			log.Warnln("[TUN] Auto detect interface failed, set '<invalid>' to DefaultInterface to avoid lookback")
 		}
 	}
 }

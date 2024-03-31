@@ -40,11 +40,12 @@ const Item = styled(Box)(({ theme: { palette, typography } }) => ({
 
 interface Props {
   value: ILogItem;
+  index: number;
 }
 
 const LogItem = (props: Props) => {
   const theme = useTheme();
-  const { value } = props;
+  const { value, index } = props;
   const [payload, setPayload] = useState(value.payload);
   useEffect(() => {
     formatAnsi(value.payload).then((res) => {
@@ -53,7 +54,13 @@ const LogItem = (props: Props) => {
   }, [value.payload]);
 
   return (
-    <Item>
+    <Item
+      sx={{
+        ml: 3.5,
+        mr: 3.5,
+        pt: index === 0 ? 8 : 0,
+      }}
+    >
       <div>
         <span className="time">{value.time}</span>
         <span className="type" data-type={value.type.toLowerCase()}>

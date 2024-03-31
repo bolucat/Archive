@@ -34,13 +34,19 @@ const RuleItem = (props: Props) => {
   const { index, value } = props;
 
   return (
-    <Item>
+    <Item
+      sx={{
+        pl: 3.5,
+        pr: 3.5,
+        pt: index === 0 ? 8 : 0,
+      }}
+    >
       <Typography
         color="text.secondary"
         variant="body2"
         sx={{ lineHeight: 2, minWidth: 30, mr: 2.25, textAlign: "center" }}
       >
-        {index}
+        {index + 1}
       </Typography>
 
       <Box sx={{ userSelect: "text" }}>

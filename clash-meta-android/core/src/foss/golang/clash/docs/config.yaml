@@ -383,6 +383,7 @@ proxies: # socks5
       # headers:
       #   custom: value
       # v2ray-http-upgrade: false
+      # v2ray-http-upgrade-fast-open: false
 
   - name: "ss4-shadow-tls"
     type: ss
@@ -461,6 +462,7 @@ proxies: # socks5
       # max-early-data: 2048
       # early-data-header-name: Sec-WebSocket-Protocol
       # v2ray-http-upgrade: false
+      # v2ray-http-upgrade-fast-open: false
 
   - name: "vmess-h2"
     type: vmess
@@ -589,6 +591,7 @@ proxies: # socks5
       headers:
         Host: example.com
       # v2ray-http-upgrade: false
+      # v2ray-http-upgrade-fast-open: false
 
   # Trojan
   - name: "trojan"
@@ -633,6 +636,7 @@ proxies: # socks5
     #   headers:
     #     Host: example.com
     #   v2ray-http-upgrade: false
+    #   v2ray-http-upgrade-fast-open: false
 
   - name: "trojan-xtls"
     type: trojan
@@ -674,6 +678,8 @@ proxies: # socks5
     type: hysteria2
     server: server.com
     port: 443
+    # ports: 1000,2000-3000,5000 # port 不可省略
+    # hop-interval: 15
     #  up和down均不写或为0则使用BBR流控
     # up: "30 Mbps" # 若不写单位，默认为 Mbps
     # down: "200 Mbps" # 若不写单位，默认为 Mbps
@@ -706,12 +712,10 @@ proxies: # socks5
     # dialer-proxy: "ss1"
     # remote-dns-resolve: true # 强制dns远程解析，默认值为false
     # dns: [ 1.1.1.1, 8.8.8.8 ] # 仅在remote-dns-resolve为true时生效
-    # 如果peers不为空，该段落中的allowed-ips不可为空；前面段落的server,port,ip,ipv6,public-key,pre-shared-key均会被忽略，但private-key会被保留且只能在顶层指定
+    # 如果peers不为空，该段落中的allowed-ips不可为空；前面段落的server,port,public-key,pre-shared-key均会被忽略，但private-key会被保留且只能在顶层指定
     # peers:
     #   - server: 162.159.192.1
     #     port: 2480
-    #     ip: 172.16.0.2
-    #     ipv6: fd01:5ca1:ab1e:80fa:ab85:6eea:213f:f4a5
     #     public-key: Cr8hWlKvtDt7nrvf+f0brNQQzabAqrjfBvas9pmowjo=
     #     # pre-shared-key: 31aIhAPwktDGpH4JDhA8GNvjFXEf/a6+UaQRyOAiyfM=
     #     allowed-ips: ['0.0.0.0/0']
@@ -767,6 +771,18 @@ proxies: # socks5
     # protocol-param: "#"
     # udp: true
 
+  - name: "ssh-out"
+    type: ssh
+
+    server: 127.0.0.1
+    port: 22
+    username: root
+    password: password
+    privateKey: path
+
+# dns出站会将请求劫持到内部dns模块,所有请求均在内部处理
+  - name: "dns-out"
+    type: dns
 proxy-groups:
   # 代理链，目前relay可以支持udp的只有vmess/vless/trojan/ss/ssr/tuic
   # wireguard目前不支持在relay中使用，请使用proxy中的dialer-proxy配置项
@@ -885,6 +901,8 @@ rule-providers:
     type: file
 rules:
   - RULE-SET,rule1,REJECT
+  - IP-ASN,1,PROXY
+  - DOMAIN-REGEX,^abc,DIRECT
   - DOMAIN-SUFFIX,baidu.com,DIRECT
   - DOMAIN-KEYWORD,google,ss1
   - IP-CIDR,1.1.1.1/32,ss1
