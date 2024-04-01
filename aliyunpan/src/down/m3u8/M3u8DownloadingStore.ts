@@ -1,13 +1,12 @@
 import fuzzysort from 'fuzzysort'
 import { defineStore } from 'pinia'
-import DownDAL, { IStateDownFile } from '../DownDAL'
+import { IStateDownFile } from './M3u8DownloadDAL'
 import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../../utils/selecthelper'
 import { humanSize } from '../../utils/format'
 import message from '../../utils/message'
 import { useM3u8DownloadedStore } from '../../store'
 import { AriaDeleteList, AriaStopList } from '../../utils/aria2c'
 import DBDown from '../../utils/dbdown'
-import M3u8DownloadDAL from './M3u8DownloadDAL'
 
 type Item = IStateDownFile
 type State = DowningState
@@ -47,10 +46,6 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
   getters: {
     ListDataCount(state: State): number {
       return state.ListDataShow.length
-    },
-
-    ListDataDowningCount(state: State): number {
-      return state.ListDataRaw.filter((down: any) => down.Down.IsDowning).length
     },
 
     IsListSelected(state: State): boolean {
@@ -222,23 +217,29 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
       }
     },
 
-    mAddDownload({ downlist }: { downlist: Item[] }) {
-      const savelist = []
+    mAddDownload({ downlist, tip}: { downlist: Item[]; tip: boolean}) {
       const DowningList = this.ListDataRaw
-      const haslist = new Set(DowningList.map(item => item.DownID))
-      for (const downitem of downlist) {
+      const savelist = []
+      const haslist = new Map<string, boolean>()
+      for (let i = 0; i < DowningList.length; i++) {
+        haslist.set(DowningList[i].DownID, true)
+      }
+      for (let d = 0; d < downlist.length; d++) {
+        const downitem = downlist[d]
         if (!haslist.has(downitem.DownID)) {
           Object.freeze(downitem.Info)
           savelist.push(downitem)
-          haslist.add(downitem.DownID)
         }
       }
-      if (savelist.length === 0) {
-        message.info('下载任务已存在，请勿重复创建任务')
-      } else {
-        DBDown.saveDownings(JSON.parse(JSON.stringify(savelist)))
-        DowningList.push(...savelist)
-        this.mRefreshListDataShow(true)
+      DBDown.saveDownings(JSON.parse(JSON.stringify(savelist)))
+      DowningList.push(...savelist);
+      this.mRefreshListDataShow(true)
+      if (tip) {
+        if (savelist.length == 0) {
+          message.info('下载任务已存在，请勿重复创建任务')
+        } else {
+          message.success('成功创建 ' + savelist.length.toString() + '个下载任务')
+        }
       }
     },
 
@@ -247,10 +248,21 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
      */
     mStartDowning() {
       const DowningList = this.ListDataRaw
-      for (const downID of this.ListSelected) {
-        const selectedDown: IStateDownFile | undefined = DowningList.find(down => down.DownID === downID)
-        if (selectedDown && !selectedDown.Down.IsDowning && !selectedDown.Down.IsCompleted) {
-          this.mUpdateDownState(selectedDown, 'queue')
+      for (const DownID of this.ListSelected) {
+        for (let j = 0; j < DowningList.length; j++) {
+          if (DowningList[j].DownID == DownID) {
+            const down = DowningList[j].Down;
+            if (down.IsDowning || down.IsCompleted) continue
+            down.IsStop = false
+            down.DownState = '队列中'
+            down.DownSpeed = 0
+            down.DownSpeedStr = ''
+            down.IsFailed = false
+            down.FailedCode = 0
+            down.FailedMessage = ''
+            down.AutoTry = 0
+            break
+          }
         }
       }
     },
@@ -263,15 +275,23 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
       for (let j = 0; j < DowningList.length; j++) {
         const down = DowningList[j].Down
         if (down.IsDowning || down.IsCompleted) continue
-        this.mUpdateDownState(DowningList[j], 'queue')
+        down.IsStop = false
+        down.DownState = '队列中'
+        down.DownSpeed = 0
+        down.DownSpeedStr = ''
+        down.IsFailed = false
+        down.FailedCode = 0;
+        down.FailedMessage = ''
+        down.AutoTry = 0
       }
     },
 
     /**
      * 暂停下载，只改变状态，待定时任务处理
      */
-    async mStopDowning() {
+    mStopDowning() {
       const gidList: string[] = []
+      const downIDList: string[] = []
       const downList: Item[] = []
       const DowningList = this.ListDataRaw
       for (const DownID of this.ListSelected) {
@@ -280,30 +300,54 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
             const down = DowningList[j].Down
             if (down.IsCompleted) continue
             gidList.push(DowningList[j].Info.GID)
+            downIDList.push(DowningList[j].DownID)
             downList.push(DowningList[j])
-            this.mUpdateDownState(DowningList[j], 'stop')
+            down.IsDowning = false
+            down.IsCompleted = false
+            down.IsStop = true
+            down.DownState = '已暂停'
+            down.DownSpeed = 0
+            down.DownSpeedStr = ''
+            down.IsFailed = false
+            down.FailedCode = 0
+            down.FailedMessage = ''
+            down.AutoTry = 0
             break
           }
         }
       }
-      await M3u8DownloadDAL.stopDowning(downList, gidList)
+      AriaStopList(gidList).then(r => {})
+      // DownDAL.stopDowning(false, downIDList) // TODO
       this.mRefreshListDataShow(true)
+      DBDown.saveDownings(JSON.parse(JSON.stringify(downList)))
     },
 
     /**
      * 暂停全部
      */
-    async mStopAllDowning() {
+    mStopAllDowning() {
       const gidList: string[] = []
+      const downIDList: string[] = []
       const DowningList = this.ListDataRaw
       for (let j = 0; j < DowningList.length; j++) {
         const down = DowningList[j].Down
         if (down.IsCompleted) continue
+        downIDList.push(DowningList[j].DownID)
         gidList.push(DowningList[j].Info.GID)
-        this.mUpdateDownState(DowningList[j], 'stop')
+        down.IsDowning = false
+        down.IsStop = true
+        down.DownState = '已暂停'
+        down.DownSpeed = 0
+        down.DownSpeedStr = ''
+        down.IsFailed = false
+        down.FailedCode = 0
+        down.FailedMessage = ''
+        down.AutoTry = 0
       }
-      await M3u8DownloadDAL.stopDowning(DowningList, gidList)
+      AriaStopList(gidList).then(r => {})
+      // DownDAL.stopDowning(false, downIDList) // TODO
       this.mRefreshListDataShow(true)
+      DBDown.saveDownings(JSON.parse(JSON.stringify(DowningList)))
     },
 
     /**
@@ -311,46 +355,51 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
      * 注：下载服务中的执行列表，请根据状态做进一步处理
      * @param downIDList
      */
-    async mDeleteDowning(downIDList: string[]) {
+    mDeleteDowning(downIDList: string[]) {
       const gidList: string[] = []
-      const newListSelected = new Set(this.ListSelected)
-      const newList: Item[] = []
-      const DowningList: Item[] = this.ListDataRaw
-      const deleteList: Item[] = []
+      const DowningList = this.ListDataRaw
+      const newListSelected = new Set(this.ListSelected);
+      const newList: Item[] = [];
       for (let j = 0; j < DowningList.length; j++) {
-        const DownID = DowningList[j].DownID
+        const DownID = DowningList[j].DownID;
         if (downIDList.includes(DownID)) {
-          DowningList[j].Down.DownState = '待删除'
           gidList.push(DowningList[j].Info.GID)
-          deleteList.push(DowningList[j])
-          if (newListSelected.has(DownID)) {
-            newListSelected.delete(DownID)
-          }
+          DowningList[j].Down.DownState = '待删除'
+          if (newListSelected.has(DownID)) newListSelected.delete(DownID);
         } else {
-          newList.push(DowningList[j])
+          newList.push(DowningList[j]);
         }
       }
-      this.ListDataRaw = newList
-      this.ListSelected = newListSelected
-      await M3u8DownloadDAL.deleteDowning(false, deleteList, gidList)
+      this.ListDataRaw = newList;
+      this.ListSelected = newListSelected;
+      DBDown.deleteDownings(JSON.parse(JSON.stringify(downIDList)))
       this.mRefreshListDataShow(true)
+      AriaStopList(gidList).then(r => {})
+      AriaDeleteList(gidList).then(r => {})
+      // DownDAL.deleteDowning(false, downIDList) // TODO
     },
 
     /**
      * 删除全部，修改为“待删除”状态，并从列表中删除 <br/>
      * 注：下载服务中的执行列表，请根据状态做进一步处理
      */
-    async mDeleteAllDowning() {
+    mDeleteAllDowning() {
       const gidList: string[] = []
       const DowningList = this.ListDataRaw
+      this.ListSelected = new Set<string>()
+      const downIDList: string[] = []
       for (let j = 0; j < DowningList.length; j++) {
+        const DownID = DowningList[j].DownID
         DowningList[j].Down.DownState = '待删除'
+        downIDList.push(DownID)
         gidList.push(DowningList[j].Info.GID)
       }
-      await M3u8DownloadDAL.deleteDowning(true, DowningList, gidList)
       DowningList.splice(0, DowningList.length)
-      this.ListSelected = new Set<string>()
+      DBDown.deleteDowningAll()
       this.mRefreshListDataShow(true)
+      AriaStopList(gidList).then(r => {})
+      AriaDeleteList(gidList).then(r => {})
+      // DownDAL.deleteDowning(false, downIDList) // TODO
     },
 
     /**
@@ -359,92 +408,54 @@ const useM3u8DownloadingStore = defineStore('m3u8downloading', {
      */
     mOrderDowning(downIDList: string[]) {
       const DowningList = this.ListDataRaw
-      const newlist: Item[] = []
-      const lastlist: Item[] = []
+      const newlist: Item[] = [];
+      const lastlist: Item[] = [];
 
       for (let j = 0; j < DowningList.length; j++) {
-        const DownID = DowningList[j].DownID
-        let find = false
+        const DownID = DowningList[j].DownID;
+        let find = false;
         for (let i = 0; i < downIDList.length; i++) {
           if (downIDList[i] == DownID) {
-            newlist.push(DowningList[j])
-            find = true
-            break
+            newlist.push(DowningList[j]);
+            find = true;
+            break;
           }
         }
         if (!find) {
-          lastlist.push(DowningList[j])
+          lastlist.push(DowningList[j]);
         }
       }
-      DowningList.splice(0, DowningList.length, ...newlist, ...lastlist)
+      DowningList.splice(0, DowningList.length, ...newlist, ...lastlist);
       this.mRefreshListDataShow(true)
     },
 
-    mUpdateDownState(DownItem: IStateDownFile, state: string, msg?: string) {
-      const { DownID, Down } = DownItem
-      const updateState: any = {
-        DownID: DownID,
-        IsDowning: false,
-        IsCompleted: false,
-        DownProcess: 0,
-        DownSpeedStr: '',
-        DownState: '',
-        AutoTry: 0,
-        IsFailed: false,
-        IsStop: false,
-        FailedCode: 0,
-        FailedMessage: ''
+    mSaveToDowned(DownID: string) {
+      const DowningList = this.ListDataRaw
+      for (let j = 0; j < DowningList.length; j++) {
+        if (DowningList[j].DownID == DownID && DowningList[j].Down.DownState === '已完成') {
+          const item = DowningList[j]
+          DowningList.splice(j, 1)
+          DBDown.deleteDowning(item.DownID)
+          item.Down.DownTime = Date.now()
+          item.DownID = item.Down.DownTime.toString() + '_' + item.DownID
+          useM3u8DownloadedStore().ListDataRaw.splice(0, 0, item)
+          useM3u8DownloadedStore().mRefreshListDataShow(true)
+          DBDown.saveDowned(item.DownID, JSON.parse(JSON.stringify(item)))
+          break;
+        }
       }
-      switch (state) {
-        case 'start':
-          updateState.DownState = '解析中'
-          updateState.IsDowning = true
-          updateState.DownTime = Date.now()
-          break
-        case 'queue':
-          updateState.IsDowning = false
-          updateState.DownState = '队列中'
-          break
-        case 'success':
-          updateState.IsDowning = true
-          updateState.DownState = '下载中'
-          break
-        case 'downed':
-          updateState.IsDowning = true
-          updateState.IsCompleted = true
-          updateState.DownState = '已完成'
-          updateState.DownProcess = 100
-          break
-        case 'valid':
-          updateState.IsDowning = true
-          updateState.IsCompleted = true
-          updateState.DownState = '校验中'
-          updateState.DownProcess = 100
-          break
-        case 'stop':
-          updateState.IsDowning = false
-          updateState.DownState = '已暂停'
-          updateState.DownSpeed = 0
-          updateState.DownSpeedStr = ''
-          updateState.IsStop = true
-          break
-        case 'error':
-          updateState.DownState = '已出错'
-          updateState.DownSpeed = 0
-          updateState.AutoTry = Date.now()
-          updateState.IsFailed = true
-          updateState.FailedMessage = msg || state
-          break
-        default:
-          updateState.DownState = '已出错'
-          updateState.DownSpeed = 0
-          updateState.AutoTry = Date.now()
-          updateState.IsFailed = true
-          updateState.FailedCode = 504
-          updateState.FailedMessage = msg || state
-          break
+      if (this.ListSelected.has(DownID)) this.ListSelected.delete(DownID)
+    },
+
+    mUpdateDownState(data: any) {
+      const DowningList = this.ListDataRaw
+      const DownID = data.DownID;
+      for (let j = 0; j < DowningList.length; j++) {
+        if (DowningList[j].DownID == DownID) {
+          DowningList[j].Down = { ...DowningList[j].Down, ...data };
+          break;
+        }
       }
-      DownItem.Down = {  ...DownItem.Down, ...updateState }
     }
 
   }

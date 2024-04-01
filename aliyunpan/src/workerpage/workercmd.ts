@@ -51,12 +51,12 @@ export const WinMsgUpload = function (arg: any) {
     } else if (arg.cmd == 'UploadCmd') {
       UploadCmd(arg.Command, arg.IsAll, arg.UploadIDList, arg.TaskIDList)
     } else if (arg.cmd == 'AllDirList') {
-      LoadAllDirList(arg.user_id, arg.drive_id, arg.drive_root)
+      LoadAllDirList(arg.user_id, arg.drive_id)
     }
   } catch {}
 }
 
-function LoadAllDirList(user_id: string, drive_id: string, drive_root: string): void {
+function LoadAllDirList(user_id: string, drive_id: string): void {
   console.time('AllDirList')
   const lock = AllDirLock.get(drive_id) || 0
   const time = Date.now() / 1000 
@@ -69,12 +69,12 @@ function LoadAllDirList(user_id: string, drive_id: string, drive_root: string): 
     }
   }
   AllDirLock.set(drive_id, time)
-  AliDirList.ApiFastAllDirListByPID(user_id, drive_id, drive_root)
+  AliDirList.ApiFastAllDirListByPID(user_id, drive_id)
     .then((data) => {
       console.timeEnd('AllDirList')
       AllDirLock.delete(drive_id)
       if (!data.next_marker) {
-        TreeStore.ConvertToOneDriver(user_id, drive_id, data.items, true, false).then((one) => {
+        TreeStore.ConvertToOneDriver(drive_id, data.items, true, false).then((one) => {
           window.WinMsgToMain({ cmd: 'MainSaveAllDir', OneDriver: one, ErrorMessage: '' })
         })
       } else {

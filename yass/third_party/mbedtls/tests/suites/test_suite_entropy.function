@@ -102,6 +102,7 @@ static int write_nv_seed(unsigned char *buf, size_t buf_len)
 
     if (fwrite(buf, 1, MBEDTLS_ENTROPY_BLOCK_SIZE, f) !=
         MBEDTLS_ENTROPY_BLOCK_SIZE) {
+        fclose(f);
         return -1;
     }
 
@@ -124,6 +125,7 @@ int read_nv_seed(unsigned char *buf, size_t buf_len)
 
     if (fread(buf, 1, MBEDTLS_ENTROPY_BLOCK_SIZE, f) !=
         MBEDTLS_ENTROPY_BLOCK_SIZE) {
+        fclose(f);
         return -1;
     }
 
@@ -445,7 +447,7 @@ void entropy_nv_seed_std_io()
 }
 /* END_CASE */
 
-/* BEGIN_CASE depends_on:MBEDTLS_MD_C:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_PLATFORM_NV_SEED_ALT */
+/* BEGIN_CASE depends_on:MBEDTLS_MD_LIGHT:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_PLATFORM_NV_SEED_ALT */
 void entropy_nv_seed(data_t *read_seed)
 {
 #if defined(MBEDTLS_ENTROPY_SHA512_ACCUMULATOR)

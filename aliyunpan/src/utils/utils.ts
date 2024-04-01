@@ -1,11 +1,5 @@
 import { deflateRawSync, inflateRawSync } from 'zlib'
 import crypto from 'crypto'
-import pkg from '../../package.json'
-import { getUserDataPath } from './electronhelper'
-import fs, { stat } from 'node:fs'
-import net from 'net'
-import { Buffer } from 'buffer'
-
 
 export function ArrayCopyReverse(arr: any[]): any[] {
   const copy: any[] = []
@@ -14,7 +8,6 @@ export function ArrayCopyReverse(arr: any[]): any[] {
   }
   return copy
 }
-
 export function ArrayCopy(arr: any[]): any[] {
   const copy: any[] = []
   for (let i = 0, maxi = arr.length; i < maxi; i++) {
@@ -63,7 +56,7 @@ export function BlobToString(body: Blob, encoding: string): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader()
     reader.readAsText(body, encoding)
-    reader.onload = function() {
+    reader.onload = function () {
       resolve((reader.result as string) || '')
     }
   })
@@ -73,7 +66,7 @@ export function BlobToBuff(body: Blob): Promise<ArrayBuffer | undefined> {
   return new Promise((resolve) => {
     const reader = new FileReader()
     reader.readAsArrayBuffer(body)
-    reader.onload = function() {
+    reader.onload = function () {
       resolve(reader.result as ArrayBuffer)
     }
   })
@@ -107,23 +100,12 @@ export function HanToPin(input: string): string {
   return strarr.join('')
 }
 
-export function GetExpiresTime(downUrl: string) {
-  let url = decodeURIComponent(downUrl)
-  if (!url || !url.includes('x-oss-expires=')) return 0
-  try {
-    let expires = url.substring(url.indexOf('x-oss-expires=') + 'x-oss-expires='.length)
-    expires = expires.substring(0, expires.indexOf('&'))
-    return parseInt(expires) * 1000
-  } catch {
-    return 0
-  }
-}
 
 export function GetOssExpires(downUrl: string) {
-  let url = decodeURIComponent(downUrl)
-  if (!url || !url.includes('x-oss-expires=')) return 0
+  if (!downUrl || !downUrl.includes('x-oss-expires=')) return 0
   try {
-    let expires = url.substring(url.indexOf('x-oss-expires=') + 'x-oss-expires='.length)
+    
+    let expires = downUrl.substring(downUrl.indexOf('x-oss-expires=') + 'x-oss-expires='.length)
     expires = expires.substring(0, expires.indexOf('&'))
     return parseInt(expires) - Math.floor(Date.now() / 1000)
   } catch {
@@ -143,48 +125,4 @@ export function md5Code(key: string) {
   const buffa = Buffer.from(key)
   const md5a = crypto.createHash('md5').update(buffa).digest('hex')
   return md5a
-}
-
-export function getPkgVersion() {
-  return pkg.version
-}
-
-export function createTmpFile(content: string, name: string) {
-  let tmpFile = ''
-  try {
-    // 生成临时文件路径
-    tmpFile = getUserDataPath(name)
-    // 向临时文件中写入数据
-    fs.writeFileSync(tmpFile, content)
-  } catch (err) {
-  }
-  return tmpFile
-}
-
-export function delTmpFile(tmpFilePath: string) {
-  stat(tmpFilePath, async (err, stats) => {
-    if (!err) {
-      fs.rmSync(tmpFilePath, { recursive: true })
-    }
-  })
-}
-
-export function portIsOccupied(port: number) {
-  return new Promise<number>((resolve, reject) => {
-    let server = net.createServer().listen(port)
-    server.on('listening', async () => {
-      console.log(`the server is runnint on port ${port}`)
-      server.close()
-      resolve(port) // 返回可用端口
-    })
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(portIsOccupied(port + 1)) // 如传入端口号被占用则 +1
-        console.log(`this port ${port} is occupied.try another.`)
-      } else {
-        // reject(err)
-        resolve(port)
-      }
-    })
-  })
 }

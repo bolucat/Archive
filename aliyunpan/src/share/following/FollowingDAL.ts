@@ -88,34 +88,20 @@ export default class FollowingDAL {
     
     
     text = text.replaceAll('/drive/subscription', '')
-    let index1 = text.indexOf('aliyundrive.com/u/')
-    let index2 = text.indexOf('alipan.com/u/')
-    if (index1 > 0) {
-      while (index1 > 0) {
-        let id = text.substring(index1 + 'aliyundrive.com/u/'.length)
-        if (id.length > 50) id = id.substring(0, 50)
-        if (id.indexOf('/') > 0) id = id.substring(0, id.indexOf('/'))
-        if (id.indexOf('#') > 0) id = id.substring(0, id.indexOf('#'))
-        if (id.indexOf('?') > 0) id = id.substring(0, id.indexOf('?'))
-        if (id.indexOf('&') > 0) id = id.substring(0, id.indexOf('&'))
-        id = id.trim()
-        if (id.length == 32 && /^[A-Za-z0-9]+$/.test(id) && !idList.includes(id)) idList.push(id)
-        text = text.substring(index1 + 'aliyundrive.com/u/'.length)
-        index1 = text.indexOf('aliyundrive.com/u/')
-      }
-    } else if (index2 > 0) {
-      while (index2 > 0) {
-        let id = text.substring(index2 + 'alipan.com/u/'.length)
-        if (id.length > 50) id = id.substring(0, 50)
-        if (id.indexOf('/') > 0) id = id.substring(0, id.indexOf('/'))
-        if (id.indexOf('#') > 0) id = id.substring(0, id.indexOf('#'))
-        if (id.indexOf('?') > 0) id = id.substring(0, id.indexOf('?'))
-        if (id.indexOf('&') > 0) id = id.substring(0, id.indexOf('&'))
-        id = id.trim()
-        if (id.length == 32 && /^[A-Za-z0-9]+$/.test(id) && !idList.includes(id)) idList.push(id)
-        text = text.substring(index2 + 'alipan.com/u/'.length)
-        index2 = text.indexOf('alipan.com/u/')
-      }
+    let index = text.indexOf('aliyundrive.com/u/')
+    while (index > 0) {
+      let id = text.substring(index + 'aliyundrive.com/u/'.length)
+
+      
+      if (id.length > 50) id = id.substring(0, 50)
+      if (id.indexOf('/') > 0) id = id.substring(0, id.indexOf('/'))
+      if (id.indexOf('#') > 0) id = id.substring(0, id.indexOf('#'))
+      if (id.indexOf('?') > 0) id = id.substring(0, id.indexOf('?'))
+      if (id.indexOf('&') > 0) id = id.substring(0, id.indexOf('&'))
+      id = id.trim()
+      if (id.length == 32 && /^[A-Za-z0-9]+$/.test(id) && !idList.includes(id)) idList.push(id)
+      text = text.substring(index + 'aliyundrive.com/u/'.length)
+      index = text.indexOf('aliyundrive.com/u/')
     }
 
     if (idList.length == 0) {

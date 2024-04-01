@@ -40,6 +40,7 @@ import '../assets/style.css';
 import '../assets/sidebar.css';
 import AliAlbum from '../aliapi/album'
 import AliHttp from '../aliapi/alihttp'
+import 'ant-design-vue/es/tree/style/css'
 
 export default {
   name: "Sidebar",
@@ -52,7 +53,7 @@ export default {
   methods: {
 
     async updateAlbum(album, newName) {
-      const resp = await AliAlbum.ApiAlbumUpdat_1(album.name, newName, '');
+      const resp = await AliAlbum.ApiAlbumUpdate(album.name, newName, '');
       if (AliHttp.IsSuccess(resp.code)) {
         album.friendly_name = newName
       } else {
@@ -60,7 +61,7 @@ export default {
       }
     },
     async deleteAlbum(album) {
-      const resp = await AliAlbum.ApiAlbumDelete_1(album.name)
+      const resp = await AliAlbum.ApiAlbumDelete(album.name)
       if (AliHttp.IsSuccess(resp.code)) {
         this.getAlbumList()
       } else {

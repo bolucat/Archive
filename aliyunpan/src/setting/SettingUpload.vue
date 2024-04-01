@@ -2,10 +2,13 @@
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import MyTags from '../layout/MyTags.vue'
-
+import {AriaGlobalDownSpeed, AriaGlobalUploadSpeed} from "../utils/aria2c";
 const settingStore = useSettingStore()
-const cb = (val: any) => {
-  settingStore.updateStore(val)
+const cb = async (val: any) => {
+    settingStore.updateStore(val)
+    if (val.downGlobalSpeed > 0) {
+        await AriaGlobalUploadSpeed()
+    }
 }
 </script>
 
@@ -15,18 +18,18 @@ const cb = (val: any) => {
     <div class="settingrow">
       <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.uploadFileMax" :popup-container="'#SettingDiv'" @update:model-value="cb({ uploadFileMax: $event })">
         <a-option :value="1">
-          同时上传 1 个文件
+          1 个文件
           <template #suffix>大文件</template>
         </a-option>
-        <a-option :value="3">同时上传 3 个文件</a-option>
+        <a-option :value="3">3 个文件</a-option>
         <a-option :value="5">
-          同时上传 5 个文件
+          5 个文件
           <template #suffix>推荐</template>
         </a-option>
-        <a-option :value="10">同时上传10个文件</a-option>
-        <a-option :value="20">同时上传20个文件</a-option>
-        <a-option :value="30">同时上传30个文件<template #suffix>大量小文件</template></a-option>
-        <a-option :value="50">同时上传50个文件</a-option>
+        <a-option :value="10">10个文件</a-option>
+        <a-option :value="20">20个文件</a-option>
+        <a-option :value="30">30个文件<template #suffix>大量小文件</template></a-option>
+        <a-option :value="50">50个文件</a-option>
       </a-select>
     </div>
     <div class="settingspace"></div>
@@ -56,8 +59,8 @@ const cb = (val: any) => {
       </div>
 
     <div class="settingspace"></div>
-    <div class="settinghead">上传时 总上传速度限制</div>
-    <div class="settingrow" >
+    <div class="settinghead">上传速度限制</div>
+    <div class="settingrow">
       <a-input-number
         tabindex="-1"
         :style="{ width: '128px' }"
@@ -105,10 +108,7 @@ const cb = (val: any) => {
     <div class="settingspace"></div>
     <div class="settinghead">自动关机</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.downAutoShutDown > 0"
-                @update:value="cb({ downAutoShutDown: $event ? 1 : 0 })">
-        下载中/上传中 的任务全部完成后自动关机
-      </MySwitch>
+      <MySwitch :value="settingStore.downAutoShutDown > 0" @update:value="cb({ downAutoShutDown: $event ?  1 : 0 })"></MySwitch>
       <a-popover position="bottom">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -122,7 +122,7 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">上传下载完 声音提示</div>
+    <div class="settinghead">提示音</div>
     <div class="settingrow">
       <MySwitch :value="settingStore.downFinishAudio" @update:value="cb({ downFinishAudio: $event })"></MySwitch>
       <a-popover position="bottom">
@@ -137,23 +137,23 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">上传下载时 优先传输小文件</div>
+    <div class="settinghead">小文件优先</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.downSmallFileFirst" @update:value="cb({ downSmallFileFirst: $event })"> 下载中/上传中 优先传输小于100MB的文件</MySwitch>
+      <MySwitch :value="settingStore.downSmallFileFirst" @update:value="cb({ downSmallFileFirst: $event })"></MySwitch>
       <a-popover position="right">
         <i class="iconfont iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
             <hr />
-            当有很多文件需要上传下载时<br />着急用小文件，可以开启此选项
+            下载中/上传中 优先传输小于100MB的文件
           </div>
         </template>
       </a-popover>
     </div>
 
     <div class="settingspace"></div>
-    <div class="settinghead">上传下载时 任务栏显示总进度</div>
+    <div class="settinghead">任务栏显示进度</div>
     <div class="settingrow">
       <MySwitch :value="settingStore.downSaveShowPro" @update:value="cb({ downSaveShowPro: $event })"> </MySwitch>
       <a-popover position="right">
@@ -168,7 +168,9 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">文件过滤</div>
+    <div class="settinghead">文件过滤
+
+    </div>
     <div class="settingrow">
       <MyTags :value="settingStore.downIngoredList" :maxlen="20" @update:value="cb({ downIngoredList: $event })" />
       <a-popover position="bottom">

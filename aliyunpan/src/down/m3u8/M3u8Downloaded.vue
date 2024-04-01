@@ -4,7 +4,8 @@ import { useAppStore, useKeyboardStore, KeyboardState, useWinStore, useM3u8Downl
 import { onShowRightMenu, onHideRightMenuScroll, RefreshScroll, RefreshScrollTo, TestCtrl, TestKey,
   TestKeyboardScroll, TestKeyboardSelect } from '../../utils/keyboardhelper'
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
-import { IStateDownFile } from '../DownDAL'
+import 'ant-design-vue/es/tooltip/style/css'
+import { IStateDownFile } from './M3u8DownloadDAL'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -33,7 +34,7 @@ const handleSelect = (shareid: string, event: any) => {
   downedStore.mMouseSelect(shareid, event.ctrlKey, event.shiftKey)
 }
 
-const handleDelete = () => downedStore.mDeleteDowned([...downedStore.ListSelected])
+const handleDelete = () => downedStore.mDeleteUploaded([...downedStore.ListSelected])
 
 const handleOpenFile = (file: IStateDownFile | null) =>
   downedStore.mOpenUploadedFile(file, [...downedStore.ListSelected], false)
@@ -41,7 +42,7 @@ const handleOpenFile = (file: IStateDownFile | null) =>
 const handleOpenDir = (file: IStateDownFile | null) =>
   downedStore.mOpenUploadedFile(file, [...downedStore.ListSelected], true)
 
-const handleDeleteAll = () => downedStore.mDeleteAllDowned()
+const handleDeleteAll = () => downedStore.mDeleteAllUploaded()
 
 const handleSearchInput = (value: string) => {
   downedStore.mSearchListData(value)

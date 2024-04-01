@@ -4,7 +4,7 @@ import { usePanTreeStore, useSettingStore } from '../../store'
 import message from '../../utils/message'
 import { modalCloseAll } from '../../utils/modal'
 import { CheckFileName, ClearFileName } from '../../utils/filehelper'
-import { defineComponent, PropType, reactive, ref } from 'vue'
+import { defineComponent, ref, reactive, PropType } from 'vue'
 import PanDAL from '../pandal'
 
 export default defineComponent({
@@ -14,10 +14,6 @@ export default defineComponent({
       required: true
     },
     dirtype: {
-      type: String,
-      required: true
-    },
-    encType: {
       type: String,
       required: true
     },
@@ -116,7 +112,7 @@ export default defineComponent({
 
         this.okLoading = true
         let newdirid = ''
-        AliFileCmd.ApiCreatNewForder(pantreeStore.user_id, pantreeStore.drive_id, this.parentdirid || pantreeStore.selectDir.file_id, newName, this.encType)
+        AliFileCmd.ApiCreatNewForder(pantreeStore.user_id, pantreeStore.drive_id, this.parentdirid || pantreeStore.selectDir.file_id, newName)
           .then((data) => {
             if (data.error) message.error('新建文件夹 失败' + data.error)
             else {

@@ -38,6 +38,10 @@
 #if (defined(__GNUC__) || defined(__clang__)) && defined(__AES__) && defined(__PCLMUL__)
 #define MBEDTLS_AESNI_HAVE_INTRINSICS
 #endif
+/* For 32-bit, we only support intrinsics */
+#if defined(MBEDTLS_ARCH_IS_X86) && (defined(__GNUC__) || defined(__clang__))
+#define MBEDTLS_AESNI_HAVE_INTRINSICS
+#endif
 
 /* Choose the implementation of AESNI, if one is available.
  *
@@ -53,8 +57,6 @@
  * (Only implemented with gas syntax, only for 64-bit.)
  */
 #define MBEDTLS_AESNI_HAVE_CODE 1 // via assembly
-#elif defined(__GNUC__)
-#   error "Must use `-mpclmul -msse2 -maes` for MBEDTLS_AESNI_C"
 #else
 #error "MBEDTLS_AESNI_C defined, but neither intrinsics nor assembly available"
 #endif
@@ -117,6 +119,7 @@ void mbedtls_aesni_gcm_mult(unsigned char c[16],
                             const unsigned char a[16],
                             const unsigned char b[16]);
 
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
 /**
  * \brief           Internal round key inversion. This function computes
  *                  decryption round keys from the encryption round keys.
@@ -131,6 +134,7 @@ void mbedtls_aesni_gcm_mult(unsigned char c[16],
 void mbedtls_aesni_inverse_key(unsigned char *invkey,
                                const unsigned char *fwdkey,
                                int nr);
+#endif /* !MBEDTLS_BLOCK_CIPHER_NO_DECRYPT */
 
 /**
  * \brief           Internal key expansion for encryption
@@ -153,6 +157,6 @@ int mbedtls_aesni_setkey_enc(unsigned char *rk,
 #endif
 
 #endif /* MBEDTLS_AESNI_HAVE_CODE */
-#endif  /* MBEDTLS_AESNI_C */
+#endif  /* MBEDTLS_AESNI_C && (MBEDTLS_ARCH_IS_X64 || MBEDTLS_ARCH_IS_X86) */
 
 #endif /* MBEDTLS_AESNI_H */

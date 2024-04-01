@@ -4,6 +4,7 @@ import { useAppStore, useKeyboardStore, KeyboardState, useWinStore, useM3u8Downl
 import { onShowRightMenu, onHideRightMenuScroll, RefreshScroll, RefreshScrollTo, TestCtrl, TestKey,
   TestKeyboardScroll, TestKeyboardSelect } from '../../utils/keyboardhelper'
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
+import 'ant-design-vue/es/tooltip/style/css'
 
 const viewlist = ref()
 const inputsearch = ref()

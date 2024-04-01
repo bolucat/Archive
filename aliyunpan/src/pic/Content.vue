@@ -4,8 +4,10 @@ import '../assets/contentview.css'
 
 import AliAlbum from '../aliapi/album'
 import { modalCreatNewAlbum, modalMoveToAlbum } from '../utils/modal'
-import { handleUploadAlbum } from '../pan/topbtns/topbtn'
+import { handleUpload } from '../pan/topbtns/topbtn'
+import { Tooltip as  AntdTooltip } from 'ant-design-vue'
 import AliHttp from "../aliapi/alihttp";
+import 'ant-design-vue/es/tree/style/css'
 import {GetDriveID} from "../aliapi/utils";
 import {useUserStore} from "../store";
 
@@ -44,7 +46,7 @@ export default {
   },
   methods: {
     modalMoveToAlbum,
-    handleUploadAlbum,
+    handleUpload,
     modalCreatNewAlbum,
     raise_event_show_sidebar(val, mode) {
       this.$emit('should-show-sidebar', val, mode);
@@ -180,7 +182,7 @@ export default {
     <div class="toppanbtns" style="height: 26px; margin-bottom:5px;" tabindex="-1">
       <div class="toppanbtn">
         <a-button type="text" size="small" tabindex="-1" @click="() => modalCreatNewAlbum()"><i class="iconfont iconplus" />新建相册</a-button>
-        <a-button type="text" size="small" tabindex="-1" @click="() => handleUploadAlbum('pic', this.base_name)"><i class="iconfont iconupload" />上传照片</a-button>
+        <a-button type="text" size="small" tabindex="-1" @click="() => handleUpload('pic', this.base_name)"><i class="iconfont iconupload" />上传照片</a-button>
       </div>
       <div class="toppanbtn" v-show="isselected">
         <a-button type="text" size="small" tabindex="-1"  @click="() => handleRemovePhoto()"><i class="iconfont icondelete" />从相册中移除</a-button>

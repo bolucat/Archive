@@ -31,6 +31,18 @@
 #include <immintrin.h>
 #endif
 
+#if defined(MBEDTLS_ARCH_IS_X86)
+#if defined(MBEDTLS_COMPILER_IS_GCC)
+#pragma GCC push_options
+#pragma GCC target ("pclmul,sse2,aes")
+#define MBEDTLS_POP_TARGET_PRAGMA
+#elif defined(__clang__) && (__clang_major__ >= 5)
+#include <wmmintrin.h>
+#pragma clang attribute push (__attribute__((target("pclmul,sse2,aes"))), apply_to=function)
+#define MBEDTLS_POP_TARGET_PRAGMA
+#endif
+#endif
+
 #if !defined(MBEDTLS_AES_USE_HARDWARE_ONLY)
 /*
  * AES-NI support detection routine
@@ -83,14 +95,19 @@ int mbedtls_aesni_crypt_ecb(mbedtls_aes_context *ctx,
     ++rk;
     --nr;
 
-    if (mode == 0) {
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
+    if (mode == MBEDTLS_AES_DECRYPT) {
         while (nr != 0) {
             state = _mm_aesdec_si128(state, *rk);
             ++rk;
             --nr;
         }
         state = _mm_aesdeclast_si128(state, *rk);
-    } else {
+    } else
+#else
+    (void) mode;
+#endif
+    {
         while (nr != 0) {
             state = _mm_aesenc_si128(state, *rk);
             ++rk;
@@ -177,7 +194,7 @@ void mbedtls_aesni_gcm_mult(unsigned char c[16],
                             const unsigned char a[16],
                             const unsigned char b[16])
 {
-    __m128i aa, bb, cc, dd;
+    __m128i aa = { 0 }, bb = { 0 }, cc, dd;
 
     /* The inputs are in big-endian order, so byte-reverse them */
     for (size_t i = 0; i < 16; i++) {
@@ -207,6 +224,7 @@ void mbedtls_aesni_gcm_mult(unsigned char c[16],
 /*
  * Compute decryption round keys from encryption round keys
  */
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
 void mbedtls_aesni_inverse_key(unsigned char *invkey,
                                const unsigned char *fwdkey, int nr)
 {
@@ -219,6 +237,7 @@ void mbedtls_aesni_inverse_key(unsigned char *invkey,
     }
     *ik = *fk;
 }
+#endif
 
 /*
  * Key expansion, 128-bit case
@@ -386,6 +405,15 @@ static void aesni_setkey_enc_256(unsigned char *rk_bytes,
 }
 #endif /* !MBEDTLS_AES_ONLY_128_BIT_KEY_LENGTH */
 
+#if defined(MBEDTLS_POP_TARGET_PRAGMA)
+#if defined(__clang__)
+#pragma clang attribute pop
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
+#undef MBEDTLS_POP_TARGET_PRAGMA
+#endif
+
 #else /* MBEDTLS_AESNI_HAVE_CODE == 1 */
 
 #if defined(__has_feature)
@@ -445,6 +473,7 @@ int mbedtls_aesni_crypt_ecb(mbedtls_aes_context *ctx,
          "jnz       1b              \n\t"
          "movdqu    (%1), %%xmm1    \n\t" // load round key
          AESENCLAST(xmm1_xmm0)            // last round
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
          "jmp       3f              \n\t"
 
          "2:                        \n\t" // decryption loop
@@ -455,6 +484,7 @@ int mbedtls_aesni_crypt_ecb(mbedtls_aes_context *ctx,
          "jnz       2b              \n\t"
          "movdqu    (%1), %%xmm1    \n\t" // load round key
          AESDECLAST(xmm1_xmm0)            // last round
+#endif
 
          "3:                        \n\t"
          "movdqu    %%xmm0, (%4)    \n\t" // export output
@@ -581,6 +611,7 @@ void mbedtls_aesni_gcm_mult(unsigned char c[16],
 /*
  * Compute decryption round keys from encryption round keys
  */
+#if !defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
 void mbedtls_aesni_inverse_key(unsigned char *invkey,
                                const unsigned char *fwdkey, int nr)
 {
@@ -600,6 +631,7 @@ void mbedtls_aesni_inverse_key(unsigned char *invkey,
 
     memcpy(ik, fk, 16);
 }
+#endif
 
 /*
  * Key expansion, 128-bit case

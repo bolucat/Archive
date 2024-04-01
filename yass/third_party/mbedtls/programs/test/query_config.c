@@ -1220,6 +1220,14 @@ int query_config(const char *config)
     }
 #endif /* MBEDTLS_PSA_INJECT_ENTROPY */
 
+#if defined(MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS)
+    if( strcmp( "MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS );
+        return( 0 );
+    }
+#endif /* MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS */
+
 #if defined(MBEDTLS_RSA_NO_CRT)
     if( strcmp( "MBEDTLS_RSA_NO_CRT", config ) == 0 )
     {
@@ -1612,6 +1620,14 @@ int query_config(const char *config)
     }
 #endif /* MBEDTLS_BASE64_C */
 
+#if defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
+    if( strcmp( "MBEDTLS_BLOCK_CIPHER_NO_DECRYPT", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( MBEDTLS_BLOCK_CIPHER_NO_DECRYPT );
+        return( 0 );
+    }
+#endif /* MBEDTLS_BLOCK_CIPHER_NO_DECRYPT */
+
 #if defined(MBEDTLS_BIGNUM_C)
     if( strcmp( "MBEDTLS_BIGNUM_C", config ) == 0 )
     {
@@ -1763,6 +1779,14 @@ int query_config(const char *config)
         return( 0 );
     }
 #endif /* MBEDTLS_GCM_C */
+
+#if defined(MBEDTLS_GCM_LARGE_TABLE)
+    if( strcmp( "MBEDTLS_GCM_LARGE_TABLE", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( MBEDTLS_GCM_LARGE_TABLE );
+        return( 0 );
+    }
+#endif /* MBEDTLS_GCM_LARGE_TABLE */
 
 #if defined(MBEDTLS_HKDF_C)
     if( strcmp( "MBEDTLS_HKDF_C", config ) == 0 )
@@ -2004,6 +2028,14 @@ int query_config(const char *config)
     }
 #endif /* MBEDTLS_SHA256_C */
 
+#if defined(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT)
+    if( strcmp( "MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT );
+        return( 0 );
+    }
+#endif /* MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT */
+
 #if defined(MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT)
     if( strcmp( "MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT", config ) == 0 )
     {
@@ -2011,6 +2043,14 @@ int query_config(const char *config)
         return( 0 );
     }
 #endif /* MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT */
+
+#if defined(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY)
+    if( strcmp( "MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY );
+        return( 0 );
+    }
+#endif /* MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY */
 
 #if defined(MBEDTLS_SHA256_USE_A64_CRYPTO_ONLY)
     if( strcmp( "MBEDTLS_SHA256_USE_A64_CRYPTO_ONLY", config ) == 0 )
@@ -3212,6 +3252,46 @@ int query_config(const char *config)
     }
 #endif /* PSA_WANT_ECC_SECP_R1_521 */
 
+#if defined(PSA_WANT_DH_RFC7919_2048)
+    if( strcmp( "PSA_WANT_DH_RFC7919_2048", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( PSA_WANT_DH_RFC7919_2048 );
+        return( 0 );
+    }
+#endif /* PSA_WANT_DH_RFC7919_2048 */
+
+#if defined(PSA_WANT_DH_RFC7919_3072)
+    if( strcmp( "PSA_WANT_DH_RFC7919_3072", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( PSA_WANT_DH_RFC7919_3072 );
+        return( 0 );
+    }
+#endif /* PSA_WANT_DH_RFC7919_3072 */
+
+#if defined(PSA_WANT_DH_RFC7919_4096)
+    if( strcmp( "PSA_WANT_DH_RFC7919_4096", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( PSA_WANT_DH_RFC7919_4096 );
+        return( 0 );
+    }
+#endif /* PSA_WANT_DH_RFC7919_4096 */
+
+#if defined(PSA_WANT_DH_RFC7919_6144)
+    if( strcmp( "PSA_WANT_DH_RFC7919_6144", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( PSA_WANT_DH_RFC7919_6144 );
+        return( 0 );
+    }
+#endif /* PSA_WANT_DH_RFC7919_6144 */
+
+#if defined(PSA_WANT_DH_RFC7919_8192)
+    if( strcmp( "PSA_WANT_DH_RFC7919_8192", config ) == 0 )
+    {
+        MACRO_EXPANSION_TO_STR( PSA_WANT_DH_RFC7919_8192 );
+        return( 0 );
+    }
+#endif /* PSA_WANT_DH_RFC7919_8192 */
+
 #if defined(PSA_WANT_KEY_TYPE_DERIVE)
     if( strcmp( "PSA_WANT_KEY_TYPE_DERIVE", config ) == 0 )
     {
@@ -4014,6 +4094,10 @@ void list_config(void)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_PSA_INJECT_ENTROPY);
 #endif /* MBEDTLS_PSA_INJECT_ENTROPY */
 
+#if defined(MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS)
+    OUTPUT_MACRO_NAME_VALUE(MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS);
+#endif /* MBEDTLS_PSA_ASSUME_EXCLUSIVE_BUFFERS */
+
 #if defined(MBEDTLS_RSA_NO_CRT)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_RSA_NO_CRT);
 #endif /* MBEDTLS_RSA_NO_CRT */
@@ -4210,6 +4294,10 @@ void list_config(void)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_BASE64_C);
 #endif /* MBEDTLS_BASE64_C */
 
+#if defined(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT)
+    OUTPUT_MACRO_NAME_VALUE(MBEDTLS_BLOCK_CIPHER_NO_DECRYPT);
+#endif /* MBEDTLS_BLOCK_CIPHER_NO_DECRYPT */
+
 #if defined(MBEDTLS_BIGNUM_C)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_BIGNUM_C);
 #endif /* MBEDTLS_BIGNUM_C */
@@ -4285,6 +4373,10 @@ void list_config(void)
 #if defined(MBEDTLS_GCM_C)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_GCM_C);
 #endif /* MBEDTLS_GCM_C */
+
+#if defined(MBEDTLS_GCM_LARGE_TABLE)
+    OUTPUT_MACRO_NAME_VALUE(MBEDTLS_GCM_LARGE_TABLE);
+#endif /* MBEDTLS_GCM_LARGE_TABLE */
 
 #if defined(MBEDTLS_HKDF_C)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_HKDF_C);
@@ -4406,9 +4498,17 @@ void list_config(void)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_SHA256_C);
 #endif /* MBEDTLS_SHA256_C */
 
+#if defined(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT)
+    OUTPUT_MACRO_NAME_VALUE(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT);
+#endif /* MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_IF_PRESENT */
+
 #if defined(MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT);
 #endif /* MBEDTLS_SHA256_USE_A64_CRYPTO_IF_PRESENT */
+
+#if defined(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY)
+    OUTPUT_MACRO_NAME_VALUE(MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY);
+#endif /* MBEDTLS_SHA256_USE_ARMV8_A_CRYPTO_ONLY */
 
 #if defined(MBEDTLS_SHA256_USE_A64_CRYPTO_ONLY)
     OUTPUT_MACRO_NAME_VALUE(MBEDTLS_SHA256_USE_A64_CRYPTO_ONLY);
@@ -5009,6 +5109,26 @@ void list_config(void)
 #if defined(PSA_WANT_ECC_SECP_R1_521)
     OUTPUT_MACRO_NAME_VALUE(PSA_WANT_ECC_SECP_R1_521);
 #endif /* PSA_WANT_ECC_SECP_R1_521 */
+
+#if defined(PSA_WANT_DH_RFC7919_2048)
+    OUTPUT_MACRO_NAME_VALUE(PSA_WANT_DH_RFC7919_2048);
+#endif /* PSA_WANT_DH_RFC7919_2048 */
+
+#if defined(PSA_WANT_DH_RFC7919_3072)
+    OUTPUT_MACRO_NAME_VALUE(PSA_WANT_DH_RFC7919_3072);
+#endif /* PSA_WANT_DH_RFC7919_3072 */
+
+#if defined(PSA_WANT_DH_RFC7919_4096)
+    OUTPUT_MACRO_NAME_VALUE(PSA_WANT_DH_RFC7919_4096);
+#endif /* PSA_WANT_DH_RFC7919_4096 */
+
+#if defined(PSA_WANT_DH_RFC7919_6144)
+    OUTPUT_MACRO_NAME_VALUE(PSA_WANT_DH_RFC7919_6144);
+#endif /* PSA_WANT_DH_RFC7919_6144 */
+
+#if defined(PSA_WANT_DH_RFC7919_8192)
+    OUTPUT_MACRO_NAME_VALUE(PSA_WANT_DH_RFC7919_8192);
+#endif /* PSA_WANT_DH_RFC7919_8192 */
 
 #if defined(PSA_WANT_KEY_TYPE_DERIVE)
     OUTPUT_MACRO_NAME_VALUE(PSA_WANT_KEY_TYPE_DERIVE);

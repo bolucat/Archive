@@ -2,92 +2,63 @@ import { rmSync } from 'fs'
 import path from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
+import electron, { onstart } from 'vite-plugin-electron'
 import pkg from './package.json'
 
-// https://vitejs.dev/config/
-// @ts-ignore
-export default defineConfig(({ command }) => {
-  rmSync('dist', { recursive: true, force: true })
-  rmSync('release', { recursive: true, force: true })
+rmSync('dist', { recursive: true, force: true }) // v14.14.0
 
-  const isBuild = command === 'build'
-  return {
-    build: {
-      rollupOptions: {
-        output: {
-          chunkFileNames: '[name].js',
-          entryFileNames: '[name].js',
-          assetFileNames: '[name].[ext]'
+// https://vitejs.dev/config/
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        chunkFileNames: '[name].js',
+        entryFileNames: '[name].js',
+        assetFileNames: '[name].[ext]',
+      }
+    }
+  },
+  plugins: [
+    vue({
+      template:{
+        compilerOptions:{
+          isCustomElement: tag => tag == 'Webview'
         }
       }
-    },
-    esbuild: isBuild ? { drop: ['console', 'debugger'] } : {},
-    plugins: [
-      vue({
-        template: {
-          compilerOptions: {
-            isCustomElement: (tag) => tag == 'Webview'
-          }
-        }
-      }),
-      electron([
-        {
-          // Main process entry file of the Electron App.
-          entry: 'electron/main/index.ts',
-          onstart({ startup }) {
-            if (process.env.VSCODE_DEBUG) {
-              console.log(/* For `.vscode/.debug.script.mjs` */ '[startup] Electron App')
-            } else {
-              startup()
-            }
+    }),
+    electron({
+      main: {
+        entry: 'electron/main/index.ts',
+        vite: {
+          build: {
+            // For Debug
+            // sourcemap: true,
+            outDir: 'dist/electron/main',
           },
-          vite: {
-            build: {
-              minify: isBuild,
-              outDir: 'dist/electron/main',
-              rollupOptions: {
-                // Some third-party Node.js libraries may not be built correctly by Vite, especially `C/C++` addons,
-                // we can use `external` to exclude them to ensure they work correctly.
-                // Others need to put them in `dependencies` to ensure they are collected into `app.asar` after the app is built.
-                // Of course, this is not absolute, just this way is relatively simple. :)
-                // @ts-ignore
-                external: Object.keys('dependencies' in pkg ? pkg.dependencies : {})
-              }
-            }
-          }
+          // Will start Electron via VSCode Debug
+          plugins: [process.env.VSCODE_DEBUG ? onstart() : null],
         },
-        {
-          entry: path.join(__dirname, 'electron/preload/index.ts'),
-          onstart({ reload }) {
-            // Notify the Renderer process to reload the page when the Preload scripts build is complete,
-            // instead of restarting the entire Electron App.
-            reload()
+      },
+      preload: {
+        input: {
+          // You can configure multiple preload here
+          index: path.join(__dirname, 'electron/preload/index.ts'),
+        },
+        vite: {
+          build: {
+            // For Debug
+            // sourcemap: 'inline',
+            outDir: 'dist/electron/preload',
           },
-          vite: {
-            build: {
-              minify: isBuild,
-              outDir: 'dist/electron/preload',
-              rollupOptions: {
-                // @ts-ignore
-                external: Object.keys('dependencies' in pkg ? pkg.dependencies : {})
-              }
-            }
-          }
-        }
-      ]),
-      // Use Node.js API in the Renderer process
-      renderer()
-    ],
-    server:
-      process.env.VSCODE_DEBUG &&
-      (() => {
-        const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL)
-        return {
-          host: url.hostname,
-          port: +url.port
-        }
-      })()
-  }
+        },
+      },
+      // Enables use of Node.js API in the Renderer-process
+      // https://github.com/electron-vite/vite-plugin-electron/tree/main/packages/electron-renderer#electron-renderervite-serve
+      renderer: {},
+    }),
+  ],
+  server: process.env.VSCODE_DEBUG ? {
+    host: pkg.debug.env.VITE_DEV_SERVER_HOSTNAME,
+    port: pkg.debug.env.VITE_DEV_SERVER_PORT,
+  } : undefined,
 })

@@ -156,7 +156,7 @@ const usePicStore = defineStore('pic', {
           ListDataGrid: []
         })
       }
-      useFootStore().mSaveDirInfo('文件列表加载中...')
+      useFootStore().mSaveDirInfo('pan', '文件列表加载中...')
     }
   }
 })

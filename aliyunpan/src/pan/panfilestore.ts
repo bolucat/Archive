@@ -14,8 +14,6 @@ import { IAliFileResp } from '../aliapi/dirfilelist'
 import PanDAL from './pandal'
 import TreeStore from '../store/treestore'
 import { useFootStore } from '../store'
-import { OrderDir } from '../utils/filenameorder'
-import { onHideRightMenuScroll } from '../utils/keyboardhelper'
 
 type Item = IAliGetFileModel
 
@@ -27,7 +25,6 @@ export interface GridItem {
 export interface PanFileState {
   DriveID: string
   DirID: string
-  AlbumID: string
   DirName: string
 
   ListLoading: boolean
@@ -37,6 +34,7 @@ export interface PanFileState {
 
   ListDataShow: Item[]
   ListDataGrid: GridItem[]
+
 
   ListSelected: Set<string>
 
@@ -49,8 +47,8 @@ export interface PanFileState {
   ListSearchKey: string
 
   ListShowMode: string
-  openMoviePage:boolean
   ListShowColumn: number
+
 
   scrollToFile: string
 }
@@ -62,12 +60,10 @@ const usePanFileStore = defineStore('panfile', {
   state: (): State => ({
     DriveID: '',
     DirID: '',
-    AlbumID: '',
     DirName: '',
 
     ListLoading: false,
     ListLoadingIndex: 0,
-    openMoviePage: false,
     ListDataRaw: [],
     ListDataShow: [],
     ListDataGrid: [],
@@ -91,11 +87,7 @@ const usePanFileStore = defineStore('panfile', {
     },
 
     IsListSelectedMulti(state: State): boolean {
-      let isMulti = state.ListSelected.size > 1
-      if (isMulti && state.DirID === 'mypic') {
-        return false
-      }
-      return isMulti
+      return state.ListSelected.size > 1
     },
     ListSelectedCount(state: State): number {
       return state.ListSelected.size
@@ -121,32 +113,14 @@ const usePanFileStore = defineStore('panfile', {
           }
         }
       }
+
       return isAllFav
     },
-
-    IsListSelectedColorAll(state: State): boolean {
-      const list = state.ListDataShow
-      const len = list.length
-      let isAllColor = true
-
-      for (let i = 0, maxi = len; i < maxi; i++) {
-        if (state.ListSelected.has(list[i].file_id)) {
-          if (!list[i].description) {
-            isAllColor = false
-            break
-          }
-        }
-      }
-      return isAllColor
-    },
-
     SelectDirType(state: State): string {
       const file_id = state.DirID
       if (file_id == 'recover') return 'recover'
       if (file_id == 'trash') return 'trash'
       if (file_id == 'favorite') return 'favorite'
-      if (state.AlbumID) return 'mypic'
-      if (file_id == 'pic' || file_id == 'pic_root' || file_id == 'mypic') return 'pic'
       if (file_id.startsWith('search')) return 'search'
       if (file_id.startsWith('color')) return 'color'
       if (file_id.startsWith('video')) return 'video'
@@ -166,27 +140,19 @@ const usePanFileStore = defineStore('panfile', {
           return '大小 · 降'
         case 'size asc':
           return '大小 · 升'
-        case 'file_count desc':
-          return '数量 · 降'
-        case 'file_count asc':
-          return '数量 · 升'
       }
       return '选择文件排序'
     }
   },
 
   actions: {
-    mSetMovieMode(movieFlag:boolean) {
-      this.$patch({openMoviePage: movieFlag})
-    },
 
-    mSaveDirFileLoading(drive_id: string, dirID: string, dirName: string, albumID: string = '') {
+    mSaveDirFileLoading(drive_id: string, dirID: string, dirName: string) {
       const order = TreeStore.GetDirOrder(drive_id, dirID)
-      if (this.DirID != dirID || this.DriveID != drive_id || this.AlbumID != albumID) {
+      if (this.DirID != dirID || this.DriveID != drive_id) {
         this.$patch({
           DriveID: drive_id,
           DirID: dirID,
-          AlbumID: albumID,
           DirName: dirName,
           ListOrderKey: order,
           ListLoading: true,
@@ -203,7 +169,6 @@ const usePanFileStore = defineStore('panfile', {
         this.$patch({
           DriveID: drive_id,
           DirID: dirID,
-          AlbumID: albumID,
           DirName: dirName,
           ListOrderKey: order,
           ListLoading: true,
@@ -214,7 +179,7 @@ const usePanFileStore = defineStore('panfile', {
           ListDataGrid: []
         })
       }
-      useFootStore().mSaveDirInfo('文件列表加载中...')
+      useFootStore().mSaveDirInfo('pan', '文件列表加载中...')
     },
 
     mSaveDirFileLoadingPart(pageIndex: number, partDir: IAliFileResp, itemsTotal: number = 0) {
@@ -224,7 +189,7 @@ const usePanFileStore = defineStore('panfile', {
         this.ListLoadingIndex++
         this.ListDataRaw = this.ListDataRaw.concat(partDir.items)
         this.mRefreshListDataShow(true)
-        if (itemsTotal > 0) useFootStore().mSaveDirInfo('文件列表加载中...　总:' + itemsTotal)
+        if (itemsTotal > 0) useFootStore().mSaveDirInfo('pan', '文件列表加载中...　总:' + itemsTotal)
       }
     },
 
@@ -248,9 +213,9 @@ const usePanFileStore = defineStore('panfile', {
           else fileCount++
           return true
         })
-        panInfo = '文件夹:' + dirCount + '　文件:' + fileCount + '　总:' + (itemsTotal ? itemsTotal : dirCount + fileCount)
+        panInfo = '文件夹:' + dirCount + '　文件:' + fileCount + '　总:' + itemsTotal
       }
-      useFootStore().mSaveDirInfo(panInfo)
+      useFootStore().mSaveDirInfo('pan', panInfo)
     },
 
     mSearchListData(value: string) {
@@ -290,12 +255,6 @@ const usePanFileStore = defineStore('panfile', {
         for (let i = 0, maxi = results.length; i < maxi; i++) {
           if (results[i].score > -200000) showList.push(results[i].obj)
         }
-        // 重新排序
-        const orders = this.ListOrderKey
-          .replace(' desc', ' DESC')
-          .replace(' asc', ' ASC')
-          .split(' ')
-        OrderDir(orders[0], orders[1], showList)
       } else {
         showList = this.ListDataRaw.concat()
       }
@@ -324,7 +283,6 @@ const usePanFileStore = defineStore('panfile', {
     },
 
     mSelectAll() {
-      if (!this.ListDataShow.length) return
       let selectKey = this.ListDataShow[0].file_id
       let ListSelected = SelectAll(this.ListDataShow, KEY, this.ListSelected)
       if (this.ListDataShow.length === this.ListSelected.size) selectKey = ''
@@ -345,7 +303,6 @@ const usePanFileStore = defineStore('panfile', {
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
       this.mRefreshListDataShow(false)
     },
-
     mRangSelect(lastkey: string, file_idList: string[]) {
       if (this.ListDataShow.length == 0) return
       const selectedNew = new Set<string>(this.ListSelected)
@@ -353,13 +310,6 @@ const usePanFileStore = defineStore('panfile', {
         selectedNew.add(file_idList[i])
       }
       this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
-      this.mRefreshListDataShow(false)
-    },
-
-    mCancelSelect() {
-      onHideRightMenuScroll()
-      this.ListSelected.clear()
-      this.ListFocusKey = ''
       this.mRefreshListDataShow(false)
     },
 
@@ -380,7 +330,6 @@ const usePanFileStore = defineStore('panfile', {
       if (list.length > 0) return list[0]
       return undefined
     },
-
     mSetFocus(key: string) {
       this.ListFocusKey = key
       this.mRefreshListDataShow(false)
@@ -405,6 +354,7 @@ const usePanFileStore = defineStore('panfile', {
         for (let i = 0, maxi = listDataRaw.length; i < maxi; i++) {
           const item = listDataRaw[i]
           if (fileMap.has(item.file_id)) {
+
             deleteCount++
             if (item.isDir) diridList.push(item.file_id)
           } else {
@@ -417,11 +367,12 @@ const usePanFileStore = defineStore('panfile', {
         }
       }
       if (needDelDir) {
+
         TreeStore.DeleteDirs(this.DriveID, file_idList)
+
         PanDAL.RefreshPanTreeAllNode(this.DriveID)
       }
     },
-
     mFavorFiles(isfavor: boolean, file_idList: string[]) {
       const listDataRaw = this.ListDataRaw
       let isChange = false
@@ -435,9 +386,7 @@ const usePanFileStore = defineStore('panfile', {
       }
       if (isChange) this.mRefreshListDataShow(false)
     },
-
     mColorFiles(color: string, file_idList: string[]) {
-      if (color === 'notEncrypt') color = ''
       const listDataRaw = this.ListDataRaw
       let isChange = false
       const fileMap = new Set(file_idList)
@@ -464,9 +413,7 @@ const usePanFileStore = defineStore('panfile', {
       }
       if (isChange) this.mRefreshListDataShow(false)
     },
-
     mSaveFileScrollTo(file_id: string) {
-      if (file_id == 'refresh') file_id = this.ListSelectKey
       this.scrollToFile = file_id
     }
   }

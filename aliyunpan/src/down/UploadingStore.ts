@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, SelectAll } from '../utils/selecthelper'
+import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../utils/selecthelper'
 
 
 export interface IUploadingModel {
@@ -64,9 +64,6 @@ const useUploadingStore = defineStore('uploading', {
   }),
 
   getters: {
-    ListDataUploadingCount(state: State): number {
-      return state.ListDataShow.length
-    },
 
     IsListSelected(state: State): boolean {
       return state.ListSelected.size > 0
@@ -154,16 +151,6 @@ const useUploadingStore = defineStore('uploading', {
       if (this.ListDataShow.length == 0) return
       const data = KeyboardSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, 0)
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
-      this.mRefreshListDataShow(false)
-    },
-
-    mRangSelect(lastkey: number, file_idList: number[]) {
-      if (this.ListDataShow.length == 0) return
-      const selectedNew = new Set<number>(this.ListSelected)
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        selectedNew.add(file_idList[i])
-      }
-      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
       this.mRefreshListDataShow(false)
     },
 

@@ -3,14 +3,14 @@ import message from '../../utils/message'
 import { humanSize } from '../../utils/format'
 import { computed, ref, watch } from 'vue'
 import MyLoading from '../../layout/MyLoading.vue'
-import { useSettingStore, useUserStore, useWinStore } from '../../store'
+import { useUserStore, useWinStore } from '../../store'
 import UserDAL from '../../user/userdal'
 import AliFileCmd from '../../aliapi/filecmd'
-import { FileData, FileNodeData, LoadScanDir, NewScanDriver, ResetScanDriver } from '../ScanDAL'
+import { LoadScanDir, NewScanDriver, ResetScanDriver, FileNodeData, FileData } from '../ScanDAL'
 import { GetSameFile } from './same'
 
 import { Checkbox as AntdCheckbox } from 'ant-design-vue'
-import { GetDriveID } from '../../aliapi/utils'
+import 'ant-design-vue/es/checkbox/style/css'
 
 const winStore = useWinStore()
 const userStore = useUserStore()
@@ -30,9 +30,6 @@ const checkedCount = ref(0)
 const checkedSize = ref(0)
 const checkedKeys = new Set<string>()
 const treeData = ref<FileNodeData[]>([])
-
-const scanType = ref('all')
-const panType = ref('backup')
 
 const handleReset = () => {
   scanLoading.value = false
@@ -94,14 +91,9 @@ const handleDelete = () => {
     message.error('账号错误')
     return
   }
-  const idList = Array.from(checkedKeys)
-  if(!idList.length){
-    message.error('没有选中需要删除的文件')
-    return
-  }
   delLoading.value = true
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  AliFileCmd.ApiTrashBatch(user.user_id, drive_id, idList).then((success: string[]) => {
+  const idList = Array.from(checkedKeys)
+  AliFileCmd.ApiTrashBatch(user.user_id, user.default_drive_id, idList).then((success: string[]) => {
     delLoading.value = false
     handleScan()
   })
@@ -131,8 +123,8 @@ const handleScan = () => {
     }
   }
   setTimeout(refresh, 3000)
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  LoadScanDir(user.user_id, drive_id, panType.value + '_root', totalDirCount, Processing, ScanPanData)
+
+  LoadScanDir(user.user_id, user.default_drive_id, totalDirCount, Processing, ScanPanData)
     .then(() => {
       return GetSameFile(user.user_id, ScanPanData, Processing, scanCount, totalFileCount, scanType.value)
     })
@@ -149,6 +141,8 @@ const handleScan = () => {
       Processing.value = 0
     })
 }
+
+const scanType = ref('all')
 </script>
 
 <script lang="ts"></script>
@@ -183,26 +177,19 @@ const handleScan = () => {
       <a-row justify="space-between" align="center" style="margin: 12px; height: 28px; flex-grow: 0; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden">
         <span v-if="scanLoaded" class="checkedInfo">已选中 {{ checkedCount }} 个文件 {{ humanSize(checkedSize) }}</span>
         <span v-else-if="scanLoading" class="checkedInfo">正在列出文件 {{ Processing }} </span>
-        <span v-else class="checkedInfo">手机APP--容量管理--重复文件清理(<span style='color: crimson'>仅阿里云盘会员可用</span>)</span>
+        <span v-else class="checkedInfo">手机APP--容量管理--重复文件清理(仅阿里云盘会员可用)</span>
         <div style="flex: auto"></div>
 
         <a-button v-if="scanLoaded" size="small" tabindex="-1" style="margin-right: 12px" @click="handleReset">取消</a-button>
-        <template v-else>
-          <a-select v-model:model-value='panType' size='small' tabindex='-1'
-                    style='width: 100px; flex-shrink: 0; margin-right: 2px' :disabled='scanLoading'>
-            <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-option>
-            <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-option>
-          </a-select>
-          <a-select v-model:model-value="scanType" size="small" tabindex="-1" :style="{ width: '136px' }" :disabled="scanLoading" style="margin-right: 12px">
-            <a-option value="all">全部</a-option>
-            <a-option value="video">视频</a-option>
-            <a-option value="image">图片</a-option>
-            <a-option value="audio">音频</a-option>
-            <a-option value="doc">文档</a-option>
-            <a-option value="zip">压缩包</a-option>
-            <a-option value="others">其他</a-option>
-          </a-select>
-        </template>
+        <a-select v-else v-model:model-value="scanType" size="small" tabindex="-1" :style="{ width: '136px' }" :disabled="scanLoading" style="margin-right: 12px">
+          <a-option value="all">全部</a-option>
+          <a-option value="video">视频</a-option>
+          <a-option value="image">图片</a-option>
+          <a-option value="audio">音频</a-option>
+          <a-option value="doc">文档</a-option>
+          <a-option value="zip">压缩包</a-option>
+          <a-option value="others">其他</a-option>
+        </a-select>
         <a-button v-if="scanLoaded" type="primary" size="small" tabindex="-1" status="danger" :loading="delLoading" title="把选中的文件放入回收站" @click="handleDelete">删除选中</a-button>
         <a-button v-else type="primary" size="small" tabindex="-1" :loading="scanLoading" @click="handleScan">加载列表</a-button>
       </a-row>

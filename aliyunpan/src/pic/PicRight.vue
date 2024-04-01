@@ -111,11 +111,7 @@ const handleFileListOrder = (order: string) => {
         </template>
       </a-button>
     </div>
-    <PanTopbtn dirtype='pic'
-               inputpicType='pic_root'
-               inputselectType='pic'
-               :isselected='panfileStore.IsListSelected' />
-
+    <PanTopbtn :dirtype="'pan'" :isselected="false" />
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
       <a-input-search

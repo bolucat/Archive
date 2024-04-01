@@ -1,19 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
-import { useAppStore } from '../store'
 import SettingPlay from './SettingPlay.vue'
 import SettingPan from './SettingPan.vue'
 import SettingUI from './SettingUI.vue'
-import SettingAccount from './SettingAccount.vue'
 import SettingDown from './SettingDown.vue'
 import SettingDebug from './SettingDebug.vue'
 import SettingUpload from './SettingUpload.vue'
 import SettingAria from './SettingAria.vue'
 import SettingLog from './SettingLog.vue'
+import { useAppStore } from '../store'
 import SettingProxy from './SettingProxy.vue'
-import SettingWebDav from './SettingWebDav.vue'
-import SettingSecurity from './SettingSecurity.vue'
-import SettingAList from './SettingAList.vue'
+import SettingLocalAria from './SettingLocalAria.vue'
 
 const appStore = useAppStore()
 
@@ -35,16 +32,13 @@ onMounted(() => {
   )
 
   observer.observe(document.getElementById('SettingUI')!)
-  observer.observe(document.getElementById('SettingAccount')!)
-  observer.observe(document.getElementById('SettingSecurity')!)
-  observer.observe(document.getElementById('SettingPlay')!)
-  observer.observe(document.getElementById('SettingPan')!)
   observer.observe(document.getElementById('SettingDown')!)
   observer.observe(document.getElementById('SettingUpload')!)
-  observer.observe(document.getElementById('SettingWebDav')!)
+  observer.observe(document.getElementById('SettingPlay')!)
+  observer.observe(document.getElementById('SettingPan')!)
+  observer.observe(document.getElementById('SettingAria')!)
   observer.observe(document.getElementById('SettingDebug')!)
   observer.observe(document.getElementById('SettingProxy')!)
-  observer.observe(document.getElementById('SettingAria')!)
   observer.observe(document.getElementById('SettingLog')!)
 })
 
@@ -56,56 +50,43 @@ onUnmounted(() => {
 <template>
   <a-layout style="height: 100%">
     <a-layout-sider hide-trigger :width="158" class="xbyleft" tabindex="-1" @keydown.tab.prevent="() => true">
-      <div class='headdesc'>软件 设置项</div>
-      <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu"
-              @update:selected-keys="appStore.toggleTabMenu('setting', $event[0])">
+      <div class="headdesc">APP 设置项</div>
+      <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu" @update:selected-keys="appStore.toggleTabMenu('setting', $event[0])">
         <a-menu-item key="SettingUI">
           <template #icon><i class="iconfont iconui" /></template>
-          应用设置
-        </a-menu-item>
-        <a-menu-item key="SettingAccount">
-          <template #icon><i class="iconfont iconrobot" /></template>
-          账户设置
-        </a-menu-item>
-        <a-menu-item key="SettingSecurity">
-          <template #icon><i class="iconfont iconchrome" /></template>
-          安全设置
-        </a-menu-item>
-        <a-menu-item key="SettingPlay">
-          <template #icon><i class="iconfont iconshipin" /></template>
-          视频播放设置
-        </a-menu-item>
-        <a-menu-item key="SettingPan">
-          <template #icon><i class="iconfont iconfile-folder" /></template>
-          网盘设置
+          APP
         </a-menu-item>
         <a-menu-item key="SettingDown">
           <template #icon><i class="iconfont icondownload" /></template>
-          下载文件
+          下载
         </a-menu-item>
         <a-menu-item key="SettingUpload">
           <template #icon><i class="iconfont iconupload" /></template>
-          上传文件
+          上传
         </a-menu-item>
-        <a-menu-item key='SettingWebDav'>
-          <template #icon><i class='iconfont iconchuanshu2' /></template>
-          WebDav
+        <a-menu-item key="SettingPlay">
+          <template #icon><i class="iconfont iconshipin" /></template>
+          在线播放
         </a-menu-item>
-        <a-menu-item key='SettingAlist'>
-          <template #icon><i class='iconfont iconchuanshu2' /></template>
-          Alist
+        <a-menu-item key="SettingPan">
+          <template #icon><i class="iconfont iconfile-folder" /></template>
+          网盘
         </a-menu-item>
         <a-menu-item key="SettingDebug">
           <template #icon><i class="iconfont iconlogoff" /></template>
           高级选项
         </a-menu-item>
-        <a-menu-item key="SettingProxy">
+	      <a-menu-item key="SettingProxy">
           <template #icon><i class="iconfont iconyuanduanfuzhi" /></template>
           网络代理
         </a-menu-item>
         <a-menu-item key="SettingAria">
           <template #icon><i class="iconfont iconchuanshu" /></template>
           远程Aria
+        </a-menu-item>
+        <a-menu-item key="SettingLocalAria">
+            <template #icon><i class="iconfont iconchuanshu" /></template>
+            本地Aria
         </a-menu-item>
         <a-menu-item key="SettingLog">
           <template #icon><i class="iconfont icondebug" /></template>
@@ -117,27 +98,30 @@ onUnmounted(() => {
       <div id="SettingDiv" style="position: relative">
         <div id="SettingUI">
           <div>
-            <a-divider :size="2" orientation="center" class="settinghr">应用设置</a-divider>
+            <div style="height: 10px"></div>
+            <a-divider orientation="center" class="settinghr">APP</a-divider>
           </div>
           <SettingUI />
         </div>
-        <div id="SettingAccount">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">账户设置</a-divider>
-          </div>
-          <SettingAccount />
-        </div>
-        <div id="SettingSecurity">
+        <div id="SettingDown">
           <div>
             <div style="height: 10px"></div>
-            <a-divider orientation="center" class="settinghr">安全设置</a-divider>
+            <a-divider orientation="center" class="settinghr">下载</a-divider>
           </div>
-          <SettingSecurity />
+          <SettingDown />
+        </div>
+
+        <div id="SettingUpload">
+          <div>
+            <div style="height: 10px"></div>
+            <a-divider orientation="center" class="settinghr">上传</a-divider>
+          </div>
+          <SettingUpload />
         </div>
         <div id="SettingPlay">
           <div>
             <div style="height: 10px"></div>
-            <a-divider orientation="center" class="settinghr">视频播放设置</a-divider>
+            <a-divider orientation="center" class="settinghr">在线播放</a-divider>
           </div>
           <SettingPlay />
         </div>
@@ -147,31 +131,6 @@ onUnmounted(() => {
             <a-divider orientation="center" class="settinghr">网盘</a-divider>
           </div>
           <SettingPan />
-        </div>
-        <div id="SettingDown">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">下载文件</a-divider>
-          </div>
-          <SettingDown />
-        </div>
-
-        <div id="SettingUpload">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">上传文件</a-divider>
-          </div>
-          <SettingUpload />
-        </div>
-        <div id='SettingWebDav'>
-          <div>
-            <a-divider :size="2" orientation='center' class='settinghr'>WebDav</a-divider>
-          </div>
-          <SettingWebDav />
-        </div>
-        <div id='SettingAlist'>
-          <div>
-            <a-divider :size="2" orientation='center' class='settinghr'>Alist</a-divider>
-          </div>
-          <SettingAList />
         </div>
         <div id="SettingDebug">
           <div>
@@ -194,6 +153,13 @@ onUnmounted(() => {
           </div>
           <SettingAria />
         </div>
+        <div id="SettingLocalAria">
+            <div>
+                <div style="height: 10px"></div>
+                <a-divider orientation="center" class="settinghr">本地Aria</a-divider>
+            </div>
+            <SettingLocalAria />
+        </div>
         <div id="SettingLog">
           <div>
             <div style="height: 10px"></div>
@@ -213,7 +179,6 @@ onUnmounted(() => {
   background: var(--rightbg2);
   padding: 0 20px !important;
 }
-
 .settinghr {
   margin: 40px 0 !important;
   user-select: none;
@@ -228,7 +193,6 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-drag: none;
 }
-
 .settingcard .iconbulb,
 .settingrow .iconbulb {
   display: inline-block;
@@ -239,7 +203,6 @@ onUnmounted(() => {
   line-height: 22px;
   cursor: help;
 }
-
 .settinghead {
   display: inline-block;
   margin-bottom: 4px;
@@ -261,12 +224,10 @@ onUnmounted(() => {
   max-width: 450px;
   margin-right: auto;
 }
-
 .settingspace {
   height: 16px;
   user-select: none;
 }
-
 .hrspace {
   padding-top: 8px;
 }

@@ -20,7 +20,7 @@ export default class AliFileWalk {
     const orders = order.split(' ')
     do {
       const isGet = await AliFileWalk._ApiWalkFileListOnePage(orders[0], orders[1], dir, type)
-      if (!isGet) {
+      if (isGet != true) {
         break 
       }
       if (dir.items.length >= max && max > 0) {
@@ -32,7 +32,7 @@ export default class AliFileWalk {
   }
 
   private static async _ApiWalkFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string = '') {
-    const url = 'v2/file/walk?jsonmask=next_marker%2Citems(category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription)'
+    const url = 'v2/file/walk?jsonmask=next_marker%2Cpunished_file_count%2Ctotal_count%2Citems(category%2Ccreated_at%2Cdomain_id%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription)'
     let postData = {
       drive_id: dir.m_drive_id,
       parent_file_id: dir.dirID,
@@ -54,12 +54,12 @@ export default class AliFileWalk {
       if (AliHttp.IsSuccess(resp.code)) {
         dir.next_marker = resp.body.next_marker
         const isRecover = dir.dirID == 'recover'
-        const downUrl = isRecover ? '' : 'https://api.alipan.com/v2/file/download?t=' + Date.now().toString()
+        const downUrl = isRecover ? '' : 'https://api.aliyundrive.com/v2/file/download?t=' + Date.now().toString() 
 
         for (let i = 0, maxi = resp.body.items.length; i < maxi; i++) {
           const item = resp.body.items[i] as IAliFileItem
           if (dir.itemsKey.has(item.file_id)) continue
-          const add = AliDirFileList.getFileInfo(dir.m_user_id, item, downUrl)
+          const add = AliDirFileList.getFileInfo(item, downUrl)
           if (isRecover) add.description = item.content_hash
           dir.items.push(add)
           dir.itemsKey.add(item.file_id)
@@ -74,11 +74,11 @@ export default class AliFileWalk {
         return true
       } else if (resp.body && resp.body.code) {
         dir.items.length = 0
-        dir.next_marker = resp.body.code
+        dir.next_marker = resp.body.code 
         // message.warning('列出文件出错 ' + resp.body.code, 2)
         return false
-      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
-        DebugLog.mSaveWarning('_FileListOnePage err=' + (resp.code || ''), resp.body)
+      } else {
+        DebugLog.mSaveWarning('_FileListOnePage err=' + (resp.code || ''))
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('_FileListOnePage ' + dir.dirID, err)

@@ -14,7 +14,6 @@ export interface ICopyTreeInfo {
   loading: boolean
   onlyDir: boolean
 }
-
 export function NewCopyTreeInfo(onlyDir: boolean) {
   const info: ICopyTreeInfo = {
     user_id: '',
@@ -40,22 +39,14 @@ export interface ICopyTreeNode {
 
 export async function LoadDir(dirID: string, DirData: ICopyTreeInfo, treeData: ICopyTreeNode[], disabledFile: boolean): Promise<void> {
   DirData.loading = true
-  if (!dirID) dirID = 'backup_root'
+  if (!dirID) dirID = 'root'
   if (dirID.startsWith('dir_')) dirID = dirID.substring('dir_'.length)
-  if (dirID == 'backup_root') {
-    DirData.dirID = 'backup_root'
-    DirData.dirName = '备份盘'
-    DirData.parentID = 'backup_root'
-  } else if (dirID == 'resource_root') {
-    DirData.dirID = 'resource_root'
-    DirData.dirName = '资源盘'
-    DirData.parentID = 'resource_root'
-  } else if (dirID == 'pic_root') {
-    DirData.dirID = 'pic_root'
-    DirData.dirName = '相册'
-    DirData.parentID = 'pic_root'
+  if (dirID == 'root') {
+    DirData.dirID = 'root'
+    DirData.dirName = '根目录'
+    DirData.parentID = 'root'
   } else {
-    const getDir = await AliFile.ApiFileInfo(DirData.user_id, DirData.drive_id, dirID)
+    const getDir = await AliFile.ApiFileInfoOpenApi(DirData.user_id, DirData.drive_id, dirID)
     if (getDir) {
       DirData.dirID = getDir.file_id
       DirData.dirName = getDir.name

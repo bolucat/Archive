@@ -1,16 +1,16 @@
-<script setup lang='ts'>
+<script setup lang="ts">
 import message from '../../utils/message'
 import { humanSize } from '../../utils/format'
 import { computed, ref, watch } from 'vue'
 import MyLoading from '../../layout/MyLoading.vue'
-import { useSettingStore, useUserStore, useWinStore } from '../../store'
+import { useUserStore, useWinStore } from '../../store'
 import UserDAL from '../../user/userdal'
 import AliFileCmd from '../../aliapi/filecmd'
-import { FileData, FileNodeData, LoadScanDir, NewScanDriver, ResetScanDriver } from '../ScanDAL'
+import {LoadScanDir, NewScanDriver, ResetScanDriver, FileNodeData, FileData, TreeSelectAll} from '../ScanDAL'
 import { DeleteFromSameData, GetSameFile } from './scansame'
 
 import { Checkbox as AntdCheckbox } from 'ant-design-vue'
-import { GetDriveID } from '../../aliapi/utils'
+import 'ant-design-vue/es/checkbox/style/css'
 
 const winStore = useWinStore()
 const userStore = useUserStore()
@@ -26,7 +26,6 @@ const totalFileCount = ref(0)
 const isAllChecked = ref(false)
 const ScanPanData = NewScanDriver('')
 const scanType = ref('video')
-const panType = ref('backup')
 
 const checkedCount = ref(0)
 const checkedKeys = ref(new Set<string>())
@@ -52,6 +51,7 @@ const handleReset = () => {
 watch(userStore.$state, handleReset)
 
 const RefreshTree = () => {
+  
   let showData: FileNodeData[] = []
   const entries = ScanPanData.SameDirMap.entries()
   for (let i = 0, maxi = ScanPanData.SameDirMap.size; i < maxi; i++) {
@@ -71,21 +71,20 @@ const RefreshTree = () => {
   scanCount.value = showData.length
 }
 
-const handleSmartSelect = () => {
-  isAllChecked.value = !isAllChecked.value
-  checkedKeys.value.clear()
-  checkedSize.value = 0
-  checkedCount.value = 0
-  treeData.value.forEach((node) => {
-    for (let i = node.files.length - 2; i >= 0; i--) {
-      const file = node.files[i]
-      if (isAllChecked.value) {
-        checkedKeys.value.add(file.file_id)
-        checkedSize.value += file.size
-        checkedCount.value += 1
-      }
-    }
-  })
+const handleSelectAll = () => {
+    isAllChecked.value = !isAllChecked.value
+    checkedKeys.value.clear()
+    checkedSize.value = 0
+    checkedCount.value = 0
+    treeData.value.forEach((node) => {
+        node.files.forEach((file) => {
+            if (isAllChecked.value) {
+                checkedKeys.value.add(file.file_id)
+                checkedSize.value += file.size
+                checkedCount.value += 1
+            }
+        })
+    })
 }
 
 const handleCheck = (file_id: string) => {
@@ -110,14 +109,9 @@ const handleDelete = () => {
     message.error('账号错误')
     return
   }
-  const idList = Array.from(checkedKeys.value)
-  if(!idList.length){
-    message.error('没有选中需要删除的文件')
-    return
-  }
   delLoading.value = true
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  AliFileCmd.ApiTrashBatch(user.user_id, drive_id, idList).then((success: string[]) => {
+  const idList = Array.from(checkedKeys.value)
+  AliFileCmd.ApiTrashBatch(user.user_id, user.default_drive_id, idList).then((success: string[]) => {
     delLoading.value = false
     DeleteFromSameData(ScanPanData, idList)
     checkedKeys.value.clear()
@@ -146,20 +140,23 @@ const handleScan = () => {
 
   const refresh = () => {
     if (scanLoading.value) {
+      
       RefreshTree()
       setTimeout(refresh, 3000)
     }
   }
   setTimeout(refresh, 3000)
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  LoadScanDir(user.user_id, drive_id, panType.value + '_root', totalDirCount, Processing, ScanPanData)
+
+  LoadScanDir(user.user_id, user.default_drive_id, totalDirCount, Processing, ScanPanData)
     .then(() => {
+      
       return GetSameFile(user.user_id, ScanPanData, Processing, scanCount, totalFileCount, scanType.value)
     })
     .catch((err: any) => {
       message.error(err.message || '扫描失败')
     })
     .then(() => {
+      
       scanLoading.value = false
       RefreshTree()
       scanLoaded.value = true
@@ -169,122 +166,97 @@ const handleScan = () => {
 </script>
 
 <template>
-  <div class='scanfill rightbg'>
-    <div class='settingcard scanfix' style='padding: 12px 24px 8px 24px'>
+  <div class="scanfill rightbg">
+    <div class="settingcard scanfix" style="padding: 12px 24px 8px 24px">
       <a-steps>
-        <a-step
-          :description="scanLoaded ? '扫描出 ' + scanCount + ' 组重复文件' : scanLoading ? '扫描进度：' + (Processing > 50 ? Math.floor((Processing * 100) / totalDirCount) + '%' : Processing) : '在网盘中查找一遍'">
+        <a-step :description="scanLoaded ? '扫描出 ' + scanCount + ' 组重复文件' : scanLoading ? '扫描进度：' + (Processing > 50 ? Math.floor((Processing * 100) / totalDirCount) + '%' : Processing) : '在网盘中查找一遍'">
           查找
           <template #icon>
-            <MyLoading v-if='scanLoading' />
-            <i v-else class='iconfont iconrsearch' />
+            <MyLoading v-if="scanLoading" />
+            <i v-else class="iconfont iconrsearch" />
           </template>
         </a-step>
-        <a-step description='勾选 需要删除的'>
+        <a-step description="勾选 需要删除的">
           勾选
           <template #icon>
-            <i class='iconfont iconedit-square' />
+            <i class="iconfont iconedit-square" />
           </template>
         </a-step>
-        <a-step description='删除 放入回收站'>
+        <a-step description="删除 放入回收站">
           删除
           <template #icon>
-            <i class='iconfont icondelete' />
+            <i class="iconfont icondelete" />
           </template>
         </a-step>
       </a-steps>
     </div>
 
-    <div class='settingcard scanauto' style='padding: 4px; margin-top: 4px'>
-      <a-row justify='space-between' align='center'
-             style='margin: 12px; height: 28px; flex-grow: 0; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden'>
-        <AntdCheckbox :disabled='scanLoaded == false' :checked='isAllChecked'
-                      style='margin-left: 12px; margin-right: 12px' @click.stop.prevent='handleSmartSelect'>
-          智能选择
-        </AntdCheckbox>
-        <span v-if='scanLoaded' class='checkedInfo'>
-          已选中 {{ checkedCount }} 个文件 {{ humanSize(checkedSize) }}
-        </span>
+    <div class="settingcard scanauto" style="padding: 4px; margin-top: 4px">
+      <a-row justify="space-between" align="center" style="margin: 12px; height: 28px; flex-grow: 0; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden">
+        <AntdCheckbox :disabled="scanLoaded == false" :checked="isAllChecked" style="margin-left: 12px; margin-right: 12px" @click.stop.prevent="handleSelectAll">全选</AntdCheckbox>
+        <span v-if="scanLoaded" class="checkedInfo">已选中 {{ checkedCount }} 个文件 {{ humanSize(checkedSize) }}</span>
 
-        <span v-else-if='totalDirCount > 0' class='checkedInfo'>
-          正在列出文件 {{ Processing }} / {{ totalDirCount }}
-        </span>
-        <span v-else class='checkedInfo'>网盘中文件很多时，需要扫描很长时间。文件列表有30分钟缓存。新文件需要等30分钟后才能扫描出来</span>
-        <div style='flex: auto'></div>
+        <span v-else-if="totalDirCount > 0" class="checkedInfo">正在列出文件 {{ Processing }} / {{ totalDirCount }}</span>
+        <span v-else class="checkedInfo">网盘中文件很多时，需要扫描很长时间</span>
+        <div style="flex: auto"></div>
 
-        <a-button v-if='scanLoaded' size='small' tabindex='-1' style='margin-right: 12px' @click='handleReset'>取消</a-button>
-        <template v-else>
-          <a-select v-model:model-value='panType' size='small' tabindex='-1'
-                    style='width: 100px; flex-shrink: 0; margin-right: 2px' :disabled='scanLoading'>
-            <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-option>
-            <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-option>
-          </a-select>
-          <a-select v-model:model-value='scanType' size='small' tabindex='-1'
-                    style='width: 136px; flex-shrink: 0; margin-right: 12px' :disabled='scanLoading'>
-            <a-option value='video'>视频</a-option>
-            <a-option value='doc'>文档</a-option>
-            <a-option value='image'>图片</a-option>
-            <a-option value='audio'>音乐</a-option>
-            <a-option value='zip'>压缩包</a-option>
-            <a-option value='others'>其他</a-option>
-            <a-option value='size1000'>全部>1G</a-option>
-            <a-option value='size100'>全部>100MB</a-option>
-            <a-option value='size10'> 全部>10MB</a-option>
-          </a-select>
-        </template>
-        <a-button v-if='scanLoaded' type='primary' size='small' tabindex='-1' status='danger' :loading='delLoading'
-                  title='把选中的文件放入回收站' @click='handleDelete'>删除选中
-        </a-button>
-        <a-button v-else type='primary' size='small' tabindex='-1' :loading='scanLoading' @click='handleScan'>
-          开始扫描
-        </a-button>
+        <a-button v-if="scanLoaded" size="small" tabindex="-1" style="margin-right: 12px" @click="handleReset">取消</a-button>
+        <a-select v-else v-model:model-value="scanType" size="small" tabindex="-1" style="width: 136px; flex-shrink: 0; margin-right: 12px" :disabled="scanLoading">
+          <a-option value="video">视频</a-option>
+          <a-option value="doc">文档</a-option>
+          <a-option value="image">图片</a-option>
+          <a-option value="audio">音乐</a-option>
+          <a-option value="zip">压缩包</a-option>
+          <a-option value="others">其他</a-option>
+          <a-option value="size1000">全部>1G</a-option>
+          <a-option value="size100">全部>100MB</a-option>
+          <a-option value="size10"> 全部>10MB</a-option>
+        </a-select>
+        <a-button v-if="scanLoaded" type="primary" size="small" tabindex="-1" status="danger" :loading="delLoading" title="把选中的文件放入回收站" @click="handleDelete">删除选中</a-button>
+        <a-button v-else type="primary" size="small" tabindex="-1" :loading="scanLoading" @click="handleScan">开始扫描重复</a-button>
       </a-row>
-      <a-spin v-if='scanLoading || scanLoaded' :loading='scanLoading' tip='耐心等待，很慢的...'
-              :style="{ width: '100%', height: treeHeight + 'px' }">
+      <a-spin v-if="scanLoading || scanLoaded" :loading="scanLoading" tip="耐心等待，很慢的..." :style="{ width: '100%', height: treeHeight + 'px' }">
         <a-list
-          ref='viewlist'
-          :bordered='false'
-          :split='false'
-          :max-height='treeHeight'
+          ref="viewlist"
+          :bordered="false"
+          :split="false"
+          :max-height="treeHeight"
           :virtual-list-props="{
             height: treeHeight,
             itemKey: 'hash'
           }"
-          style='width: 100%'
-          :data='treeData'
-          tabindex='-1'>
-          <template #empty>
-            <a-empty description='扫描结束 没找到重复文件' />
-          </template>
+          style="width: 100%"
+          :data="treeData"
+          tabindex="-1">
+          <template #empty><a-empty description="扫描结束 没找到重复文件" /></template>
 
-          <template #item='{ item, index }'>
-            <div :key='item.hash' class='sameitem'>
-              <div class='samehash'>#{{ index + 1 }} : {{ item.files[0].sizeStr }} - {{ item.hash }}</div>
-              <div v-for='file in item.files' :key='file.file_id' class='samefile'>
-                <div class='samefileinfo'>
-                  <div class='samecheck'>
-                    <AntdCheckbox tabindex='-1' :checked='checkedKeys.has(file.file_id)'
-                                  @click.stop.prevent='handleCheck(file.file_id)'></AntdCheckbox>
+          <template #item="{ item, index }">
+            <div :key="item.hash" class="sameitem">
+              <div class="samehash">#{{ index + 1 }} : {{ item.files[0].sizeStr }} - {{ item.hash }}</div>
+              <div v-for="file in item.files" :key="file.file_id" class="samefile">
+                <div class="samefileinfo">
+                  <div class="samecheck">
+                    <AntdCheckbox tabindex="-1" :checked="checkedKeys.has(file.file_id)" @click.stop.prevent="handleCheck(file.file_id)"></AntdCheckbox>
                   </div>
-                  <div class='fileicon'>
-                    <i :class="'iconfont ' + file.icon" aria-hidden='true'></i>
+                  <div class="fileicon">
+                    <i :class="'iconfont ' + file.icon" aria-hidden="true"></i>
                   </div>
-                  <div class='samename'>
-                    <div :title='file.name' @click.stop.prevent='handleCheck(file.file_id)'>
+                  <div class="samename">
+                    <div :title="file.name" @click.stop.prevent="handleCheck(file.file_id)">
                       {{ file.name }}
                     </div>
                   </div>
-                  <div class='sametime'>{{ file.timeStr }}</div>
+                  <div class="sametime">{{ file.timeStr }}</div>
                 </div>
-                <div class='samepath' :title='file.parent_file_path'>{{ file.parent_file_path }}</div>
+                <div class="samepath" :title="file.parent_file_path">{{ file.parent_file_path }}</div>
               </div>
             </div>
           </template>
         </a-list>
       </a-spin>
-      <a-empty v-else class='beginscan'>
+      <a-empty v-else class="beginscan">
         <template #image>
-          <i class='iconfont iconrsearch' />
+          <i class="iconfont iconrsearch" />
         </template>
         请点击上方 开始扫描 按钮
       </a-empty>
@@ -297,19 +269,16 @@ const handleScan = () => {
   padding: 12px;
   border: 1px solid var(--color-border-1);
 }
-
 .samehash {
   font-size: 14px;
   color: #8a9ca5;
   margin-bottom: 12px;
 }
-
 .samefileinfo {
   display: flex;
   height: 32px;
   align-items: center;
 }
-
 .samecheck {
   width: 24px;
   height: 24px;
@@ -317,11 +286,9 @@ const handleScan = () => {
   flex-shrink: 0;
   justify-items: center;
 }
-
 .samename {
   flex-grow: 1;
 }
-
 .samename > div {
   line-height: 1.2;
   display: -webkit-box;
@@ -335,7 +302,6 @@ const handleScan = () => {
   cursor: pointer;
   width: fit-content;
 }
-
 .sametime {
   font-size: 12px;
   line-height: 14px;
@@ -343,7 +309,6 @@ const handleScan = () => {
   white-space: nowrap;
   word-break: keep-all;
 }
-
 .samepath {
   font-size: 12px;
   line-height: 14px;

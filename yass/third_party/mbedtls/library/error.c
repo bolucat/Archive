@@ -421,6 +421,8 @@ const char *mbedtls_high_level_strerr(int error_code)
             return( "SSL - * Received NewSessionTicket Post Handshake Message. This error code is experimental and may be changed or removed without notice" );
         case -(MBEDTLS_ERR_SSL_CANNOT_READ_EARLY_DATA):
             return( "SSL - Not possible to read early data" );
+        case -(MBEDTLS_ERR_SSL_RECEIVED_EARLY_DATA):
+            return( "SSL - * Early data has been received as part of an on-going handshake. This error code can be returned only on server side if and only if early data has been enabled by means of the mbedtls_ssl_conf_early_data() API. This error code can then be returned by mbedtls_ssl_handshake(), mbedtls_ssl_handshake_step(), mbedtls_ssl_read() or mbedtls_ssl_write() if early data has been received as part of the handshake sequence they triggered. To read the early data, call mbedtls_ssl_read_early_data()" );
         case -(MBEDTLS_ERR_SSL_CANNOT_WRITE_EARLY_DATA):
             return( "SSL - Not possible to write early data" );
         case -(MBEDTLS_ERR_SSL_CACHE_ENTRY_NOT_FOUND):

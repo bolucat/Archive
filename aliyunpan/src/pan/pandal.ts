@@ -1,14 +1,12 @@
 import { IAliGetDirModel } from '../aliapi/alimodels'
 import AliFile from '../aliapi/file'
 import AliDirFileList from '../aliapi/dirfilelist'
-import { ITokenInfo, useFootStore, usePanFileStore } from '../store'
+import { useFootStore, usePanFileStore } from '../store'
 import TreeStore, { IDriverModel, TreeNodeData } from '../store/treestore'
 import DB from '../utils/db'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
 import usePanTreeStore from './pantreestore'
-import { GetDriveID, GetDriveType } from '../aliapi/utils'
-import AliAlbum from '../aliapi/album'
 
 export interface PanSelectedData {
   isError: boolean
@@ -16,66 +14,42 @@ export interface PanSelectedData {
   user_id: string
   drive_id: string
   dirID: string
-  albumId: string
   parentDirID: string
-  fileDescription: string
-  parentDirDescription: string
   selectedKeys: string[]
-  selectedParentKeys: string[],
+  selectedParentKeys: string[]
 }
 
 const RefreshLock = new Set<string>()
 
 export default class PanDAL {
 
-  static async aReLoadBackupDrive(token: ITokenInfo): Promise<void> {
-    const { user_id, default_drive_id, resource_drive_id, backup_drive_id, pic_drive_id } = token
-    const drive_id = backup_drive_id
+  static async aReLoadDrive(user_id: string, drive_id: string): Promise<void> {
     const pantreeStore = usePanTreeStore()
-    // 保存DriveId
-    pantreeStore.mSaveUser(user_id, default_drive_id, resource_drive_id, backup_drive_id, pic_drive_id)
-    pantreeStore.drive_id = drive_id
-    if (!user_id || !pantreeStore.drive_id) return
-    const backupCache = await DB.getValueObject('AllDir_' + drive_id)
-    if (backupCache) {
-      console.log('aReLoadDrive backupCache')
-      await TreeStore.ConvertToOneDriver(user_id, drive_id, backupCache as IAliGetDirModel[], false, true)
+    pantreeStore.mSaveUser(user_id, drive_id)
+    if (!user_id || !drive_id) return
+
+    const cache = await DB.getValueObject('AllDir_' + drive_id)
+    if (cache) {
+      console.log('aReLoadDrive cache')
+      await TreeStore.ConvertToOneDriver(drive_id, cache as IAliGetDirModel[], false, true)
+      // PanDAL.RefreshPanTreeAllNode(drive_id) 
     }
-    if (backupCache) {
+    await PanDAL.aReLoadOneDirToShow(drive_id, 'root', true)
+    if (cache) {
       const dt = await DB.getValueNumber('AllDir_' + drive_id)
       if (Date.now() - dt < 1000 * 60 * 60) {
         return
       }
     }
-    useFootStore().mSaveLoading('加载全部文件夹...')
-    window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: drive_id, drive_root: 'backup_root' })
-  }
 
-  static async aReLoadResourceDrive(token: ITokenInfo): Promise<void> {
-    const { user_id, default_drive_id, resource_drive_id, backup_drive_id, pic_drive_id } = token
-    const pantreeStore = usePanTreeStore()
-    // 保存DriveId
-    pantreeStore.mSaveUser(user_id, default_drive_id, resource_drive_id, backup_drive_id, pic_drive_id)
-    if (!user_id || !resource_drive_id) return
-    const resourceCache = await DB.getValueObject('AllDir_' + resource_drive_id)
-    if (resourceCache) {
-      console.log('aReLoadDrive resourceCache')
-      await TreeStore.ConvertToOneDriver(user_id, resource_drive_id, resourceCache as IAliGetDirModel[], false, true)
-    }
-    if (resourceCache) {
-      const dt = await DB.getValueNumber('AllDir_' + resource_drive_id)
-      if (Date.now() - dt < 1000 * 60 * 60) {
-        return
-      }
-    }
     useFootStore().mSaveLoading('加载全部文件夹...')
-    window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: resource_drive_id, drive_root: 'resource_root' })
+    window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id })
   }
 
   static async aReLoadDriveSave(OneDriver: IDriverModel, error: string): Promise<void> {
     if (error == 'time') return
     if (!error) {
-      await TreeStore.SaveOneDriver(OneDriver)
+      TreeStore.SaveOneDriver(OneDriver)
       PanDAL.RefreshPanTreeAllNode(OneDriver.drive_id)
     } else {
       message.error('列出全盘文件夹失败' + error)
@@ -87,38 +61,23 @@ export default class PanDAL {
   static RefreshPanTreeAllNode(drive_id: string) {
     const OneDriver = TreeStore.GetDriver(drive_id)
     if (!OneDriver) return
+    console.log('RefreshPanTreeAllNode')
     const pantreeStore = usePanTreeStore()
-    const driveType = GetDriveType(usePanTreeStore().user_id, drive_id)
-    const dir: TreeNodeData = {
-      __v_skip: true,
-      key: driveType.key,
-      drive_id: drive_id,
-      parent_file_id: '',
-      title: driveType.title,
-      namesearch: '',
-      children: []
-    }
-    const expandedKeys = new Set(usePanTreeStore().treeExpandedKeys)
+    const expandedKeys = new Set(pantreeStore.treeExpandedKeys)
+
+    const dir: TreeNodeData = { __v_skip: true, title: '根目录', namesearch: '', key: 'root', children: [] }
     const map = new Map<string, TreeNodeData>()
     TreeStore.GetTreeDataToShow(OneDriver, dir, expandedKeys, map, true)
     map.set(dir.key, dir)
     pantreeStore.mSaveTreeAllNode(OneDriver.drive_id, dir, map)
   }
 
-  static GetPanTreeAllNode(user_id: string, drive_id: string, treeExpandedKeys: string[], getChildren: boolean = true, isLeafForce: boolean = false): TreeNodeData[] {
-    const driveType = GetDriveType(user_id, drive_id)
-    const dir: TreeNodeData = {
-      __v_skip: true,
-      title: driveType.title,
-      drive_id: drive_id,
-      parent_file_id: '',
-      namesearch: '',
-      key: driveType.key,
-      children: []
-    }
+  static GetPanTreeAllNode(drive_id: string, treeExpandedKeys: string[], getChildren: boolean = true, isLeafForce: boolean = false): TreeNodeData[] {
     const OneDriver = TreeStore.GetDriver(drive_id)
-    if (!OneDriver) return [dir]
+    if (!OneDriver) return []
+    console.log('GetPanTreeAllNode')
     const expandedKeys = new Set(treeExpandedKeys)
+    const dir: TreeNodeData = { __v_skip: true, title: '根目录', namesearch: '', key: 'root', children: [] }
     const map = new Map<string, TreeNodeData>()
     TreeStore.GetTreeDataToShow(OneDriver, dir, expandedKeys, map, getChildren, '', isLeafForce)
     map.set(dir.key, dir)
@@ -128,107 +87,84 @@ export default class PanDAL {
 
   static aTreeScrollToDir(dirID: string) {
     usePanTreeStore().mSaveTreeScrollTo(dirID)
-    usePanFileStore().mSaveFileScrollTo(dirID)
   }
 
 
-  static async aReLoadOneDirToShow(drive_id: string, file_id: string, selfExpand: boolean, album_id: string = ''): Promise<boolean> {
-    const panTreeStore = usePanTreeStore()
-    const user_id = panTreeStore.user_id
-    const driveType = GetDriveType(user_id, drive_id)
+  static async aReLoadOneDirToShow(drive_id: string, file_id: string, selfExpand: boolean): Promise<boolean> {
+    const pantreeStore = usePanTreeStore()
+    if (!drive_id) drive_id = pantreeStore.drive_id
+    if (!drive_id) return false
+    if (file_id == 'refresh') file_id = pantreeStore.selectDir.file_id
     const isBack = file_id == 'back'
-    if (!drive_id) {
-      drive_id = GetDriveID(user_id, file_id) || panTreeStore.drive_id
-    }
-    panTreeStore.drive_id = drive_id
-    if (file_id == 'refresh') {
-      file_id = panTreeStore.selectDir.file_id
-    }
     if (isBack) {
-      if (panTreeStore.History.length > 0) {
-        panTreeStore.History.shift()
-        if (panTreeStore.History.length > 0) {
-          drive_id = panTreeStore.History[0].drive_id
-          file_id = panTreeStore.History[0].file_id
+      if (pantreeStore.History.length > 0) {
+        pantreeStore.History.splice(0, 1)
+        if (pantreeStore.History.length > 0) {
+          drive_id = pantreeStore.History[0].drive_id
+          file_id = pantreeStore.History[0].file_id
         }
       }
       if (file_id == 'back') {
-        file_id = driveType.key
-        panTreeStore.History = []
-      }
-      if (file_id.includes('pic')) {
-        panTreeStore.selectDir.album_type = file_id
-      } else {
-        panTreeStore.selectDir.album_type = 'pic_root'
-        panTreeStore.selectDir.album_id = ''
+        pantreeStore.History = []
+        file_id = 'root'
       }
     }
+
     let dir = TreeStore.GetDir(drive_id, file_id)
     let dirPath = TreeStore.GetDirPath(drive_id, file_id)
-    if (!dir || (dirPath.length == 0 && !file_id.includes('root'))) {
-      let findPath = []
-      if (!album_id) {
-        findPath = await AliFile.ApiFileGetPath(panTreeStore.user_id, drive_id, file_id)
-      } else {
-        findPath = await AliAlbum.ApiAlbumGetPath(panTreeStore.user_id, drive_id, album_id)
-      }
+    if (!dir || (dirPath.length == 0 && file_id != 'root')) {
+      const findPath = await AliFile.ApiFileGetPath(pantreeStore.user_id, drive_id, file_id)
       if (findPath.length > 0) {
         dirPath = findPath
         dir = { ...dirPath[dirPath.length - 1] }
       }
     }
-    if (!dir || (dirPath.length == 0 && !file_id.includes('root'))) {
+
+    if (!dir || (dirPath.length == 0 && file_id != 'root')) {
       message.error('出错，找不到指定的文件夹 ' + file_id)
       return false
     }
+
     // 记录跳转历史
-    if (!isBack && panTreeStore.selectDir.file_id != dir.file_id) {
+    if (!isBack && pantreeStore.selectDir.file_id != dir.file_id) {
       const history: IAliGetDirModel[] = [dir]
-      for (let i = 0, maxi = panTreeStore.History.length; i < maxi; i++) {
-        history.push(panTreeStore.History[i])
+      for (let i = 0, maxi = pantreeStore.History.length; i < maxi; i++) {
+        const his = pantreeStore.History[i]
+        history.push(his)
         if (history.length >= 50) break
       }
-      panTreeStore.History = history
+      pantreeStore.History = history
     }
-    // 展开列表节点
-    const treeExpandedKeys = new Set(panTreeStore.treeExpandedKeys)
+
+    const treeExpandedKeys = new Set(pantreeStore.treeExpandedKeys)
+    treeExpandedKeys.add('root')
     for (let i = 0, maxi = dirPath.length - 1; i < maxi; i++) {
       treeExpandedKeys.add(dirPath[i].file_id)
     }
-    if (selfExpand) {
-      treeExpandedKeys.add(dir.file_id)
-    }
-    panTreeStore.mShowDir(dir, dirPath, [dir.file_id], Array.from(treeExpandedKeys))
-    // console.warn('selectDir', panTreeStore.selectDir)
+    if (selfExpand) treeExpandedKeys.add(dir.file_id)
+    pantreeStore.mShowDir(dir, dirPath, [dir.file_id], Array.from(treeExpandedKeys))
     PanDAL.RefreshPanTreeAllNode(drive_id)
     const panfileStore = usePanFileStore()
-    if (panfileStore.ListLoading && panfileStore.DriveID == drive_id && panfileStore.DirID == dir.file_id) {
-      return false
-    }
-    panfileStore.mSaveDirFileLoading(drive_id, dir.file_id, dir.name, dir.album_id)
-    return PanDAL.GetDirFileList(panTreeStore.user_id, dir.drive_id, dir.file_id, dir.name, dir.album_id)
+    if (panfileStore.ListLoading && panfileStore.DriveID == drive_id && panfileStore.DirID == dir.file_id) return false
+    panfileStore.mSaveDirFileLoading(drive_id, dir.file_id, dir.name)
+    return PanDAL.GetDirFileList(pantreeStore.user_id, dir.drive_id, dir.file_id, dir.name)
   }
 
 
-  static GetDirFileList(user_id: string, drive_id: string, dirID: string, dirName: string, albumID: string = '', hasFiles: boolean = true): Promise<boolean> {
+  static GetDirFileList(user_id: string, drive_id: string, dirID: string, dirName: string, hasFiles: boolean = true): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       if (dirID == 'search') {
-        if (hasFiles) {
-          usePanFileStore().mSaveDirFileLoadingFinish(drive_id, dirID, [])
-        }
+        if (hasFiles) usePanFileStore().mSaveDirFileLoadingFinish(drive_id, dirID, [])
         resolve(true)
         return
       }
 
       const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ')
-      AliDirFileList.ApiDirFileList(user_id, drive_id, dirID, dirName, order, hasFiles ? '' : 'folder', albumID)
+      AliDirFileList.ApiDirFileList(user_id, drive_id, dirID, dirName, order, hasFiles ? '' : 'folder')
         .then((dir) => {
           if (!dir.next_marker) {
-            dir.dirID = dirID // 修复root
             TreeStore.SaveOneDirFileList(dir, hasFiles).then(() => {
-              if (hasFiles) {
-                usePanFileStore().mSaveDirFileLoadingFinish(drive_id, dirID, dir.items, dir.itemsTotal || 0)
-              }
+              if (hasFiles) usePanFileStore().mSaveDirFileLoadingFinish(drive_id, dirID, dir.items, dir.itemsTotal || 0)
               PanDAL.RefreshPanTreeAllNode(drive_id)
               resolve(true)
             })
@@ -250,10 +186,9 @@ export default class PanDAL {
   }
 
 
-  static aReLoadOneDirToRefreshTree(user_id: string, drive_id: string, dirID: string, albumID?: string): Promise<boolean> {
+  static aReLoadOneDirToRefreshTree(user_id: string, drive_id: string, dirID: string): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      if (dirID == 'favorite' || dirID.startsWith('color')
-        || dirID.startsWith('search') || dirID.startsWith('video')) {
+      if (dirID == 'favorite' || dirID.startsWith('color') || dirID.startsWith('search') || dirID.startsWith('video')) {
         resolve(true)
         return
       }
@@ -263,16 +198,16 @@ export default class PanDAL {
       }
       RefreshLock.add(dirID)
       const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ')
-
-      AliDirFileList.ApiDirFileList(user_id, drive_id, dirID, '', order, 'folder', albumID)
+      AliDirFileList.ApiDirFileList(user_id, drive_id, dirID, '', order, 'folder')
         .then((dir) => {
           if (!dir.next_marker) {
-            dir.dirID = dirID
             TreeStore.SaveOneDirFileList(dir, false).then(() => {
+
               PanDAL.RefreshPanTreeAllNode(drive_id)
+
               const pantreeStore = usePanTreeStore()
-              if (pantreeStore.selectDir.drive_id == drive_id && (pantreeStore.selectDir.file_id == dirID)) {
-                PanDAL.aReLoadOneDirToShow(drive_id, dirID, false, albumID).then(() => {
+              if (pantreeStore.selectDir.drive_id == drive_id && pantreeStore.selectDir.file_id == dirID) {
+                PanDAL.aReLoadOneDirToShow(drive_id, dirID, false).then(() => {
                   RefreshLock.delete(dirID)
                   resolve(true)
                 })
@@ -298,20 +233,16 @@ export default class PanDAL {
   }
 
   static GetPanSelectedData(istree: boolean): PanSelectedData {
-    const panTreeStore = usePanTreeStore()
-    const panFileStore = usePanFileStore()
+    const pantreeStore = usePanTreeStore()
     const data: PanSelectedData = {
       isError: false,
       isErrorSelected: false,
-      user_id: panTreeStore.user_id,
-      drive_id: panTreeStore.drive_id,
-      dirID: panTreeStore.selectDir.file_id,
-      albumId: panTreeStore.selectDir.album_id || '',
-      parentDirID: panTreeStore.selectDir.parent_file_id,
-      selectedKeys: istree ? [panTreeStore.selectDir.file_id] : panFileStore.GetSelectedID(),
-      selectedParentKeys: istree ? [panTreeStore.selectDir.parent_file_id] : panFileStore.GetSelectedParentDirID(),
-      fileDescription: panFileStore.GetSelectedFirst()?.description || '',
-      parentDirDescription: panTreeStore.selectDir.description
+      user_id: pantreeStore.user_id,
+      drive_id: pantreeStore.drive_id,
+      dirID: pantreeStore.selectDir.file_id,
+      parentDirID: pantreeStore.selectDir.parent_file_id,
+      selectedKeys: istree ? [pantreeStore.selectDir.file_id] : usePanFileStore().GetSelectedID(),
+      selectedParentKeys: istree ? [pantreeStore.selectDir.parent_file_id] : usePanFileStore().GetSelectedParentDirID()
     }
 
     data.isError = !data.user_id || !data.drive_id || !data.dirID
@@ -319,7 +250,7 @@ export default class PanDAL {
     return data
   }
 
-  static updateQuickFile(list: { key: string; drive_id: string; drive_name: string; title: string }[]) {
+  static updateQuickFile(list: { key: string; title: string }[]) {
     if (list.length == 0) return
     const pantreeStore = usePanTreeStore()
     const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
@@ -329,12 +260,10 @@ export default class PanDAL {
       for (let i = 0; i < arr.length; i++) {
         if (arr[i].key == t.key) {
           arr[i].title = t.title
-          arr[i].drive_id = t.drive_id
-          arr[i].drive_name = t.drive_name
           find = true
         }
       }
-      if (!find) arr.push({ key: t.key, drive_id: t.drive_id, drive_name: t.drive_name, title: t.title })
+      if (find == false) arr.push({ key: t.key, title: t.title })
       return true
     })
     localStorage.setItem('FileQuick-' + pantreeStore.user_id, JSON.stringify(arr))
@@ -347,7 +276,7 @@ export default class PanDAL {
     const pantreeStore = usePanTreeStore()
     const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
     const arr = jsonstr ? JSON.parse(jsonstr) : []
-    const newArray: { key: string; drive_id: string; drive_name: string; title: string }[] = []
+    const newArray: { key: string; title: string }[] = []
     for (let i = 0; i < arr.length; i++) {
       if (arr[i].key != key) newArray.push(arr[i])
     }
@@ -359,7 +288,8 @@ export default class PanDAL {
   static getQuickFileList() {
     const pantreeStore = usePanTreeStore()
     const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
-    return jsonstr ? JSON.parse(jsonstr) : []
+    const arr = jsonstr ? JSON.parse(jsonstr) : []
+    return arr
   }
 
 
@@ -370,9 +300,10 @@ export default class PanDAL {
   }
 
 
-  static async aUpdateDirFileSize(drive_id: string): Promise<void> {
+  static async aUpdateDirFileSize(): Promise<void> {
     const pantreeStore = usePanTreeStore()
     const user_id = pantreeStore.user_id
+    const drive_id = pantreeStore.drive_id
 
     const diridList = TreeStore.GetDirSizeNeedRefresh(drive_id, 604800)
     const partList: string[] = []

@@ -32,6 +32,7 @@
 import '../assets/style.css';
 import '../assets/preview.css';
 import message from "../utils/message";
+import 'ant-design-vue/es/tree/style/css'
 
 export default {
   name: "Preview",

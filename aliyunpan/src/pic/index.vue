@@ -28,6 +28,7 @@ import ContentView from "./Content.vue";
 import Preview from './Preview.vue';
 import {useAppStore, useUserStore} from "../store";
 import {GetDriveID} from "../aliapi/utils";
+import 'ant-design-vue/es/tree/style/css'
 
 export default {
   emits: ['previewPhoto'],

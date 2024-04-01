@@ -5,7 +5,7 @@ import {
   useSettingStore,
   useM3u8DownloadedStore,
   useM3u8DownloadingStore,
-  useFootStore, useDowningStore, useDownedStore
+  useFootStore,
 } from '../../store'
 import {
   AriaAddUrl,
@@ -22,9 +22,66 @@ import TreeStore from "../../store/treestore";
 import fs from "fs";
 import { execFile } from 'child_process'
 import DBDown from '../../utils/dbdown'
-import { IAriaDownProgress, IStateDownFile } from '../DownDAL'
-import { getEncType } from '../../utils/proxyhelper'
-import fsPromises from 'fs/promises'
+
+export interface IStateDownFile {
+  DownID: string
+  Info: IStateDownInfo
+
+  Down: {
+
+    DownState: string
+    DownTime: number
+    DownSize: number
+    DownSpeed: number
+    DownSpeedStr: string
+    DownProcess: number
+    IsStop: boolean
+    IsDowning: boolean
+    IsCompleted: boolean
+    IsFailed: boolean
+    FailedCode: number
+    FailedMessage: string
+
+    AutoTry: number
+
+    DownUrl: string
+  }
+}
+export interface IStateDownInfo {
+
+  GID: string
+  user_id: string
+
+  DownSavePath: string
+  ariaRemote: boolean
+
+  file_id: string
+  drive_id: string
+
+  name: string
+
+  size: number
+  sizestr: string
+  icon: string
+  isDir: boolean
+
+  sha1: string
+
+  crc64: string
+  m3u8_total_file_nums?:number
+  m3u8_parent_file_name?:string
+}
+
+
+export interface IAriaDownProgress {
+  gid: string
+  status: string
+  totalLength: string
+  completedLength: string
+  downloadSpeed: string
+  errorCode: string
+  errorMessage: string
+}
 
 /** 存盘的时机：默认 10 时进行 */
 let SaveTimeWait = 0
@@ -44,9 +101,9 @@ export default class M3u8DownloadDAL {
   /**
    * 从DB中加载数据
    */
-  static async aReloadDowning() {
+  static async aReloadDowning () {
     const downingStore = useM3u8DownloadingStore()
-    if (downingStore.ListLoading) return
+    if(downingStore.ListLoading) return
     downingStore.ListLoading = true
     const stateDownFiles = await DBDown.getDowningAll()
     // 首次从DB中加载数据，如果上次意外停止则重新开始，如果手动暂停则保持
@@ -57,23 +114,23 @@ export default class M3u8DownloadDAL {
         down.IsCompleted = false
         down.IsStop = false
         down.DownState = '队列中'
-        down.DownSpeed = 0
+        down.DownSpeed = 0;
         down.DownSpeedStr = ''
         down.IsFailed = false
-        down.FailedCode = 0
+        down.FailedCode = 0;
         down.FailedMessage = ''
-        down.AutoTry = 0
+        down.AutoTry = 0;
         down.IsDowning = false
       }
     }
     downingStore.ListDataRaw = stateDownFiles
-    downingStore.ListLoading = false
     downingStore.mRefreshListDataShow(true)
+    downingStore.ListLoading = false
   }
 
-  static async aReloadDowned() {
+  static async aReloadDowned () {
     const downedStore = useM3u8DownloadedStore()
-    if (downedStore.ListLoading) return
+    if(downedStore.ListLoading) return
     downedStore.ListLoading = true
     const max = useSettingStore().debugDownedListMax
     const showlist = await DBDown.getDownedByTop(max)
@@ -153,7 +210,6 @@ export default class M3u8DownloadDAL {
           sizestr: file.sizeStr,
           isDir: file.isDir,
           icon: file.icon,
-          encType: getEncType(file),
           sha1: '',
           crc64: crc64,
           m3u8_total_file_nums: file.m3u8_total_file_nums,
@@ -182,7 +238,7 @@ export default class M3u8DownloadDAL {
       downlist.push(downitem);
     }
 
-    useM3u8DownloadingStore().mAddDownload({ downlist});
+    useM3u8DownloadingStore().mAddDownload({ downlist, tip});
   }
 
   /**
@@ -190,58 +246,100 @@ export default class M3u8DownloadDAL {
    */
   static async aSpeedEvent() {
     const downingStore = useM3u8DownloadingStore()
-    const downedStore = useM3u8DownloadedStore()
     const settingStore = useSettingStore()
 
     const isOnline = await AriaConnect()
-    if (isOnline && downingStore.ListDataRaw.length) {
-      await AriaGetM3u8DowningList()
+    if (isOnline) {
+      await AriaGetM3u8DowningList().catch(() => {
+        //
+      });
+
+      const DowningList = useM3u8DownloadingStore().ListDataRaw
+      let downingCount = 0;
       const ariaRemote = IsAria2cRemote()
-      const DowningList: IStateDownFile[] = downingStore.ListDataRaw
-      const timeThreshold = Date.now() - 60 * 1000
-      const downFileMax = settingStore.downFileMax
-      const shouldSkipDown = (Down: any) => {
-        return (
-          Down.IsCompleted ||
-          Down.IsStop ||
-          Down.IsDowning ||
-          (Down.IsFailed && timeThreshold <= Down.AutoTry)
-        )
-      }
-      let addDowningCount = 0
-      for (let i = 0; i < DowningList.length; i++) {
-        const DownItem = DowningList[i]
-        const { DownID, Info, Down } = DownItem
-        if (Info.ariaRemote !== ariaRemote) continue
-        if (Down.IsCompleted && Down.DownState === '已完成') {
-          // 将下载标记为已完成并添加到列表以供稍后处理
-          const completedDownId = `${Date.now()}_${Down.DownTime}`
-          // 删除已完成的下载并更新数据库
-          DowningList.splice(i, 1)
-          await DBDown.deleteDowning(DownID)
-          // 将已完成的下载添加到下载文件列表中
-          const downedData = JSON.parse(JSON.stringify({ DownID: completedDownId, Down, Info }))
-          downedStore.ListDataRaw.unshift({ DownID: completedDownId, Down, Info })
-          downedStore.mRefreshListDataShow(true)
-          await DBDown.saveDowned(completedDownId, downedData)
-          if (downedStore.ListSelected.has(completedDownId)) {
-            downedStore.ListSelected.delete(completedDownId)
-          }
-          // 移除Aria2已完成的任务
-          await AriaDeleteList([Info.GID])
-          i--
-        } else if ((addDowningCount + downingStore.ListDataDowningCount) < downFileMax && !shouldSkipDown(Down)) {
-          addDowningCount++
-          downingStore.mUpdateDownState(DownItem, 'start')
-          let state = await AriaAddUrl(DownItem)
-          downingStore.mUpdateDownState(DownItem, state)
+      for (let j = 0; j < DowningList.length; j++) {
+        if (DowningList[j].Info.ariaRemote != ariaRemote) continue;
+        if (DowningList[j].Down.IsDowning) {
+          downingCount++;
+        }
+        if (DowningList[j].Down.IsCompleted && DowningList[j].Down.DownState === '已完成') {
+          downingStore.mSaveToDowned(DowningList[j].DownID);
+          j--;
         }
       }
-    } else {
-      useFootStore().mSaveDownTotalSpeedInfo('')
+      const time = Date.now() - 60 * 1000;
+      for (let j = 0; j < DowningList.length; j++) {
+        if (downingCount >= settingStore.downFileMax) break;
+        if (DowningList[j].Info.ariaRemote != ariaRemote) continue;
+        const DownID = DowningList[j].DownID;
+        const down = DowningList[j].Down;
+        if (down.IsCompleted == false && down.IsStop == false && down.IsDowning == false) {
+          if (down.IsFailed == false || time > down.AutoTry) {
+            downingCount += 1;
+            downingStore.mUpdateDownState({ DownID, IsDowning: true, DownSpeedStr: '', DownState: '解析中', DownTime: Date.now(), FailedCode: 0, FailedMessage: '' });
+
+            AriaAddUrl(DowningList[j]).then((ret) => {
+              if (ret == 'downed') {
+                downingStore.mUpdateDownState({
+                  DownID,
+                  IsDowning: true,
+                  IsCompleted: true,
+                  DownProcess: 100,
+                  DownSpeedStr: '',
+                  DownState: '已完成',
+                  AutoTry: 0,
+                  IsFailed: false,
+                  IsStop: false,
+                  FailedCode: 0,
+                  FailedMessage: '',
+                });
+              } else if (ret == 'success') {
+                downingStore.mUpdateDownState({
+                  DownID,
+                  IsDowning: true,
+                  IsCompleted: false,
+                  DownSpeedStr: '',
+                  DownState: '下载中',
+                  AutoTry: 0,
+                  IsFailed: false,
+                  IsStop: false,
+                  FailedCode: 0,
+                  FailedMessage: '',
+                });
+              } else if (ret == '已暂停') {
+                downingStore.mUpdateDownState({
+                  DownID,
+                  IsDowning: false,
+                  IsCompleted: false,
+                  DownSpeedStr: '',
+                  DownState: '已暂停',
+                  AutoTry: 0,
+                  IsFailed: false,
+                  IsStop: true,
+                  FailedCode: 0,
+                  FailedMessage: '已暂停',
+                });
+              } else {
+                downingStore.mUpdateDownState({
+                  DownID,
+                  IsDowning: false,
+                  IsCompleted: false,
+                  DownSpeedStr: '',
+                  DownState: '已出错',
+                  AutoTry: Date.now(),
+                  IsFailed: true,
+                  IsStop: false,
+                  FailedCode: 504,
+                  FailedMessage: ret,
+                });
+              }
+            });
+          }
+        }
+      }
     }
     downingStore.mRefreshListDataShow(true)
-    downedStore.mRefreshListDataShow(true)
+    useM3u8DownloadedStore().mRefreshListDataShow(true)
   }
 
   static compareTsFiles(a: string, b: string): number {
@@ -309,138 +407,158 @@ export default class M3u8DownloadDAL {
     }
   }
 
+  /**
+   * 速度事件方法
+   */
   static mSpeedEvent(list: IAriaDownProgress[]) {
     const downingStore = useM3u8DownloadingStore()
     const settingStore = useSettingStore()
-    const DowningList: IStateDownFile[] = downingStore.ListDataRaw
-    const ariaRemote = !settingStore.AriaIsLocal
+    const DowningList = downingStore.ListDataRaw
 
-    const dellist: string[] = []
-    const saveList: IStateDownFile[] = []
-
-    let hasSpeed = 0
-
-    for (const listItem of list) {
-      try {
-        const { gid, status, totalLength, completedLength, downloadSpeed, errorCode, errorMessage } = listItem
-        const isComplete = status === 'complete'
-        const isDowning = isComplete || status === 'active' || status === 'waiting'
-        const isStop = status === 'paused' || status === 'removed'
-        const isError = status === 'error'
-        const downingItem: IStateDownFile | undefined = DowningList.find((item) => item.Info.ariaRemote === ariaRemote && item.Info.GID === gid)
-        if (!downingItem) continue
-        const { DownID, Down, Info } = downingItem
-        const totalLengthInt = parseInt(totalLength) || 0
-        Down.DownSize = parseInt(completedLength) || 0
-        Down.DownSpeed = parseInt(downloadSpeed) || 0
-        Down.DownSpeedStr = humanSize(Down.DownSpeed) + '/s'
-        Down.DownProcess = Math.floor((Down.DownSize * 100) / (totalLengthInt + 1)) % 100
-        Down.IsCompleted = isComplete
-        Down.IsDowning = isDowning
-        Down.IsFailed = isError
-        Down.IsStop = isStop
-        if (errorCode && errorCode !== '0') {
-          Down.FailedCode = parseInt(errorCode) || 0
-          Down.FailedMessage = FormatAriaError(errorCode, errorMessage)
-        }
-        if (isComplete) {
-          downingStore.mUpdateDownState(downingItem, 'valid')
-          const check = AriaHashFile(downingItem)
-          if (check.Check) {
-            if (useSettingStore().downFinishAudio && !sound.playing()) {
-              sound.play()
-            }
-            downingStore.mUpdateDownState(downingItem, 'downed')
-            this.tryConcatM3u8Video(downingItem)
-          } else {
-            downingStore.mUpdateDownState(downingItem, 'error', '移动文件失败，请重新下载')
-          }
-        } else if (isStop) {
-          downingStore.mUpdateDownState(downingItem, 'stop')
-          dellist.push(gid)
-        } else if (isError) {
-          if (!Down.FailedMessage) {
-            Down.FailedMessage = '下载失败'
-          }
-          downingStore.mUpdateDownState(downingItem, 'error', Down.FailedMessage)
-          dellist.push(gid)
-        } else if (isDowning) {
-          hasSpeed += Down.DownSpeed
-          let lastTime = ((totalLengthInt - Down.DownSize) / (Down.DownSpeed + 1)) % 356400
-          if (lastTime < 1) lastTime = 1
-          // 进度条
-          Down.DownState =
-            `${Down.DownProcess}% ${(lastTime / 3600).toFixed(0).padStart(2, '0')}:${((lastTime % 3600) / 60)
-              .toFixed(0)
-              .padStart(2, '0')}:${(lastTime % 60).toFixed(0).padStart(2, '0')}`
-          if (SaveTimeWait > 10) {
-            saveList.push(downingItem)
+    if (list == undefined) list = [];
+    const dellist: string[] = [];
+    let hasSpeed = 0;
+    for (let n = 0; n < DowningList.length; n++) {
+      if (DowningList[n].Down.DownSpeedStr != '') {
+        const gid = DowningList[n].Info.GID;
+        let isFind = false;
+        for (let m = 0; m < list.length; m++) {
+          if (list[m].gid != gid) continue
+          if (list[m].gid == gid && list[m].status == 'active') {
+            isFind = true;
+            break;
           }
         }
-        downingStore.mRefreshListDataShow(true)
-      } catch {
-        // Ignore any errors
+        if (!isFind) {
+          if (DowningList[n].Down.DownState != '已暂停') DowningList[n].Down.DownState = '队列中'
+          DowningList[n].Down.DownSpeed = 0;
+          DowningList[n].Down.DownSpeedStr = '';
+        }
       }
     }
-    // 存盘时间
-    SaveTimeWait = (SaveTimeWait + 1) % 11
-    if (saveList.length) {
-      DBDown.saveDownings(JSON.parse(JSON.stringify(saveList)))
+    const ariaRemote = !settingStore.AriaIsLocal
+
+    const saveList: IStateDownFile[] = [];
+    for (let i = 0; i < list.length; i++) {
+      try {
+        const gid = list[i].gid
+        const isComplete = list[i].status === 'complete'
+        const isDowning = isComplete || list[i].status === 'active' || list[i].status === 'waiting'
+        const isStop = list[i].status === 'paused' || list[i].status === 'removed'
+        const isError = list[i].status === 'error'
+
+        for (let j = 0; j < DowningList.length; j++) {
+          if (DowningList[j].Info.ariaRemote != ariaRemote) continue;
+          if (DowningList[j].Info.GID == gid) {
+            const downItem = DowningList[j];
+            const down = downItem.Down;
+            const totalLength = parseInt(list[i].totalLength) || 0;
+            down.DownSize = parseInt(list[i].completedLength) || 0;
+            down.DownSpeed = parseInt(list[i].downloadSpeed) || 0;
+            down.DownSpeedStr = humanSize(down.DownSpeed) + '/s';
+            down.DownProcess = Math.floor((down.DownSize * 100) / (totalLength + 1)) % 100;
+
+            down.IsCompleted = isComplete;
+            down.IsDowning = isDowning;
+            down.IsFailed = isError;
+            down.IsStop = isStop;
+
+            if (list[i].errorCode && list[i].errorCode != '0') {
+              down.FailedCode = parseInt(list[i].errorCode) || 0;
+              down.FailedMessage = FormatAriaError(list[i].errorCode, list[i].errorMessage);
+            }
+
+            if (isComplete) {
+              down.DownSize = downItem.Info.size;
+              down.DownSpeed = 0;
+              down.DownSpeedStr = '';
+              down.DownProcess = 100;
+              down.FailedCode = 0;
+              down.FailedMessage = '';
+
+              down.DownState = '校验中';
+              const check = AriaHashFile(downItem);
+              if (check.Check) {
+                if (useSettingStore().downFinishAudio && !sound.playing()) {
+                  sound.play()
+                }
+                downingStore.mUpdateDownState({
+                  DownID: check.DownID,
+                  DownState: '已完成',
+                  IsFailed: false,
+                  IsDowning: true,
+                  IsStop: false,
+                  IsCompleted: true,
+                  FailedMessage: '',
+                });
+                this.tryConcatM3u8Video(downItem)
+              } else {
+                downingStore.mUpdateDownState({
+                  DownID: check.DownID,
+                  DownState: '已出错',
+                  IsFailed: true,
+                  IsDowning: false,
+                  IsStop: true,
+                  IsCompleted: false,
+                  FailedMessage: '移动文件失败，请重新下载',
+                });
+              }
+            } else if (isStop) {
+              down.DownState = '已暂停';
+              down.DownSpeed = 0;
+              down.DownSpeedStr = '';
+              down.FailedCode = 0;
+              down.FailedMessage = '';
+            } else if (isStop || isError) {
+              down.DownState = '已出错';
+              down.DownSpeed = 0;
+              down.DownSpeedStr = '';
+              down.AutoTry = Date.now();
+              if (down.FailedMessage == '') down.FailedMessage = '下载失败';
+            } else if (isDowning) {
+              hasSpeed += down.DownSpeed;
+              let lasttime = ((totalLength - down.DownSize) / (down.DownSpeed + 1)) % 356400;
+              if (lasttime < 1) lasttime = 1;
+              down.DownState =
+                down.DownProcess.toString() +
+                '% ' +
+                (lasttime / 3600).toFixed(0).padStart(2, '0') +
+                ':' +
+                ((lasttime % 3600) / 60).toFixed(0).padStart(2, '0') +
+                ':' +
+                (lasttime % 60).toFixed(0).padStart(2, '0');
+              if (SaveTimeWait > 10) saveList.push(downItem);
+            } else {
+              //console.log('update', DowningList[j]);
+            }
+            if (isStop || isError) {
+              dellist.push(gid);
+            }
+            downingStore.mRefreshListDataShow(true)
+            break;
+          }
+        }
+      } catch {}
     }
-    if (dellist.length) {
-      AriaDeleteList(dellist).then()
-    }
+
+    if (saveList.length > 0) DBDown.saveDownings(JSON.parse(JSON.stringify(saveList)))
+    if (dellist.length > 0) AriaDeleteList(dellist).then()
+    if (SaveTimeWait > 10) SaveTimeWait = 0;
+    else SaveTimeWait++;
     useFootStore().mSaveDownTotalSpeedInfo(hasSpeed && humanSizeSpeed(hasSpeed) || '')
   }
 
-  static async deleteDowning(isAll: boolean, deleteList: IStateDownFile[], gidList: string[]) {
-    // 处理待删除文件
-    if (!isAll) {
-      const downIDList = deleteList.map(item => item.DownID)
-      // console.log('deleteDowning', deleteList)
-      await DBDown.deleteDownings(JSON.parse(JSON.stringify(downIDList)))
-    } else {
-      await DBDown.deleteDowningAll()
-    }
-    // 停止aria2下载任务
-    await AriaStopList(gidList)
-    await AriaDeleteList(gidList)
-    // 删除临时文件
-    for (let downFile of deleteList) {
-      let downInfo = downFile.Info
-      if (downInfo.ariaRemote) continue
-      try {
-        if (!downInfo.isDir) {
-          let filePath = path.join(downInfo.DownSavePath, downInfo.name)
-          let tmpFilePath1 = filePath + '.td.aria2'
-          let tmpFilePath2 = filePath + '.td'
-          await fsPromises.rm(tmpFilePath1, { recursive: true })
-          await fsPromises.rm(tmpFilePath2, { recursive: true })
-        }
-      } catch (e) {
-      }
-    }
-  }
-
-  static async deleteDowned(isAll: boolean, deleteList: IStateDownFile[]) {
-    if (!isAll) {
-      // 处理待删除状态
-      const downIDList = deleteList
-        .filter(list => list.Down.DownState === '待删除')
-        .map(item => item.DownID)
-      console.log('downedList', deleteList)
-      await DBDown.deleteDowneds(JSON.parse(JSON.stringify(downIDList)))
-    } else {
-      await DBDown.deleteDownedAll()
-    }
-  }
-
-  static async stopDowning(downList: IStateDownFile[], gidList: string[]) {
-    await DBDown.saveDownings(JSON.parse(JSON.stringify(downList)))
-    await AriaStopList(gidList)
-  }
-
+  /**
+   * 查询是否下载中
+   */
   static QueryIsDowning() {
-    return useM3u8DownloadingStore().ListDataDowningCount > 0
+    return false
+  }
+
+  /**
+   * ?查询选择的是否下载中？
+   */
+  static QuerySelectedIsDowning() {
+    return false
   }
 }

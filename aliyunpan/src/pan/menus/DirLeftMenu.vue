@@ -1,28 +1,24 @@
-<script setup lang="ts">
-import { menuCopySelectedFile, menuCreatShare, menuDownload, menuTrashSelectFile } from '../topbtns/topbtn'
+<script lang="ts">
+import { defineComponent } from 'vue'
+import { menuTrashSelectFile, menuCopySelectedFile, menuCreatShare, menuDownload } from '../topbtns/topbtn'
 import { modalRename, modalShuXing } from '../../utils/modal'
 import PanDAL from '../pandal'
 import { usePanTreeStore } from '../../store'
 import TreeStore from '../../store/treestore'
-
-const istree = true
-
-const props = defineProps({
-  inputselectType: {
-    type: String,
-    required: true
+export default defineComponent({
+  setup() {
+    const handleRefresh = () => PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+    const handleExpandAll = (isExpand: boolean) => {
+      const pantreeStore = usePanTreeStore()
+      const drive_id = pantreeStore.drive_id
+      const file_id = pantreeStore.selectDir.file_id
+      const diridList = TreeStore.GetDirChildDirID(drive_id, file_id)
+      pantreeStore.mTreeExpandAll(diridList, isExpand)
+    }
+    const istree = true
+    return { istree, handleRefresh, handleExpandAll, menuCreatShare, menuTrashSelectFile, menuCopySelectedFile, modalRename, modalShuXing, menuDownload }
   }
 })
-
-const handleRefresh = () => PanDAL.aReLoadOneDirToShow('', 'refresh', false)
-const handleExpandAll = (isExpand: boolean) => {
-  const pantreeStore = usePanTreeStore()
-  const drive_id = pantreeStore.drive_id
-  const file_id = pantreeStore.selectDir.file_id
-  const diridList = TreeStore.GetDirChildDirID(drive_id, file_id)
-  pantreeStore.mTreeExpandAll(diridList, isExpand)
-}
-
 </script>
 
 <template>
@@ -53,14 +49,9 @@ const handleExpandAll = (isExpand: boolean) => {
         <template #icon> <i class="iconfont icondownload" /> </template>
         <template #default>下载</template>
       </a-doption>
-      <a-doption v-show="inputselectType.includes('resource')"
-                 @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
-        <template #icon><i class='iconfont iconfenxiang' /></template>
+      <a-doption @click="() => menuCreatShare(istree, 'pan')">
+        <template #icon> <i class="iconfont iconfenxiang" /> </template>
         <template #default>分享</template>
-      </a-doption>
-      <a-doption @click="() => menuCreatShare(istree, 'pan', 'backup_root')">
-        <template #icon><i class='iconfont iconrss' /></template>
-        <template #default>快传</template>
       </a-doption>
 
       <a-dsubmenu id="leftpansubmove" class="rightmenu" trigger="hover">
@@ -85,13 +76,13 @@ const handleExpandAll = (isExpand: boolean) => {
         </template>
       </a-dsubmenu>
 
-      <a-doption @click='() => modalRename(istree, false, false)'>
-        <template #icon><i class='iconfont iconedit-square' /></template>
+      <a-doption @click="() => modalRename(istree, false)">
+        <template #icon> <i class="iconfont iconedit-square" /> </template>
         <template #default>重命名</template>
       </a-doption>
 
-      <a-doption @click='() => modalShuXing(istree)'>
-        <template #icon><i class='iconfont iconshuxing' /></template>
+      <a-doption @click="() => modalShuXing(istree, false)">
+        <template #icon> <i class="iconfont iconshuxing" /> </template>
         <template #default>属性</template>
       </a-doption>
     </template>

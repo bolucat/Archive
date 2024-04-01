@@ -1,13 +1,12 @@
 import fuzzysort from 'fuzzysort'
 import { defineStore } from 'pinia'
-import { IStateDownFile } from '../DownDAL'
+import { IStateDownFile } from './M3u8DownloadDAL'
 import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../../utils/selecthelper'
 import { humanSize } from '../../utils/format'
 import message from '../../utils/message'
 import fs from 'fs'
 import path from 'path'
 import DBDown from '../../utils/dbdown'
-import M3u8DownloadDAL from './M3u8DownloadDAL'
 
 type Item = IStateDownFile
 type State = DownState
@@ -202,36 +201,34 @@ const useM3u8DownloadedStore = defineStore('m3u8downloaded', {
 
     /**
      * 删除下载完成，修改为“待删除”状态，并从列表中删除 <br/>
-     * @param downedIDList
+     * @param uploadIDList
      */
-    async mDeleteDowned(downedIDList: string[]) {
-      const newListSelected = new Set(this.ListSelected)
-      const newList: Item[] = []
-      const downedList: Item[] = this.ListDataRaw
-      const deleteList: Item[] = []
-      for (let j = 0; j < downedList.length; j++) {
-        const downID = downedList[j].DownID
-        if (downedIDList.includes(downID)) {
-          downedList[j].Down.DownState = '待删除'
-          deleteList.push(downedList[j])
-          if (newListSelected.has(downID)) newListSelected.delete(downID)
+    mDeleteUploaded(uploadIDList: string[]) {
+      const UploadedList = this.ListDataRaw
+      const newListSelected = new Set(this.ListSelected);
+      const newList: Item[] = [];
+      for (let j = 0; j < UploadedList.length; j++) {
+        const downID = UploadedList[j].DownID;
+        if (uploadIDList.includes(downID)) {
+          UploadedList[j].Down.DownState = '待删除'
+          if (newListSelected.has(downID)) newListSelected.delete(downID);
         } else {
-          newList.push(downedList[j])
+          newList.push(UploadedList[j]);
         }
       }
-      this.ListDataRaw = newList
-      this.ListSelected = newListSelected
-      await M3u8DownloadDAL.deleteDowned(false, deleteList)
+      this.ListDataRaw = newList;
+      this.ListSelected = newListSelected;
+      DBDown.deleteDowneds(uploadIDList)
       this.mRefreshListDataShow(true)
     },
 
     /**
      * 删除全部
      */
-    async mDeleteAllDowned() {
-      await M3u8DownloadDAL.deleteDowned(true, this.ListDataRaw)
+    mDeleteAllUploaded() {
       this.ListSelected = new Set<string>()
       this.ListDataRaw.splice(0, this.ListDataRaw.length)
+      DBDown.deleteDownedAll()
       this.mRefreshListDataShow(true)
     },
 

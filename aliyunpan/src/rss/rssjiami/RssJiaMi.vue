@@ -1,24 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { usePanTreeStore, useSettingStore } from '../../store'
+import { useSettingStore } from '../../store'
+import { Sleep } from '../../utils/format'
 import MyTags from '../../layout/MyTags.vue'
 import MySwitch from '../../layout/MySwitch.vue'
 import message from '../../utils/message'
-import { DoJiaMi } from './jiami'
-import { decodeName } from '../../module/flow-enc/utils'
+import { DoDecryption, DoEncryption } from './jiami'
 
 const Loading = ref(false)
-const encPath = ref('')
-const outPath = ref('')
+const dirPath = ref('')
 const breakSmall = ref(true)
-const encName = ref(false)
-const encType = ref('aesctr')
-const encDecType = ref('xbyEncrypt1')
-const password = ref('')
-const mode = ref<'enc' | 'dec' | 'decName'>('enc')
+const copyMode = ref(false)
+const videoMode = ref(true)
+const passwored = ref('')
+const mode = ref('加密')
 const matchExtList = ref<string[]>([])
-const encContent = ref('')
-const decContent = ref('')
 
 const handleAddExtList = (addList: string[]) => {
   const list: string[] = []
@@ -29,61 +25,55 @@ const handleAddExtList = (addList: string[]) => {
     while (ext.startsWith(' ') || ext.startsWith('.')) ext = ext.substr(1)
     if (!ext) continue
     ext = '.' + ext
-    if (!list.includes(ext)) list.push(ext)
+    if (list.includes(ext) == false) list.push(ext)
   }
   matchExtList.value = list
 }
 
-const handleSelectDir = (inout: boolean) => {
+const handleSelectDir = () => {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
       {
-        title: '选择一个文件夹',
+        title: '选择一个文件夹，对文件夹内全部文件执行加密',
         buttonLabel: '选择',
         properties: ['openDirectory', 'createDirectory'],
         defaultPath: useSettingStore().downSavePath
       },
       (result: string[] | undefined) => {
         if (result && result[0]) {
-          if (inout) {
-            encPath.value = result[0]
-          } else {
-            outPath.value = result[0]
-          }
+          dirPath.value = result[0]
         }
       }
     )
   }
 }
 
-const handleDecType = () => {
-  password.value = encDecType.value === 'xbyEncrypt1' ? '' : usePanTreeStore().user_id
+const handleEncryption = async () => {
+  if (Loading.value) return
+  if (!dirPath.value) {
+    message.error('还没有选择要执行加密的文件夹')
+    return
+  }
+  Loading.value = true
+
+  const runCount =  await DoEncryption(dirPath.value, breakSmall.value, matchExtList.value, passwored.value, copyMode.value)
+  await Sleep(2000)
+  if (runCount > 0) message.success('成功加密 ' + runCount + ' 个文件')
+  Loading.value = false
 }
 
-const handleClickJiaMi = async () => {
+const handleDecryption = async () => {
   if (Loading.value) return
-  if (mode.value != 'decName') {
-    if (!encPath.value) {
-      message.error('没有选择要执行操作的文件夹')
-      return
-    }
-    if (!outPath.value) {
-      message.error('没有选择输出的文件夹')
-      return
-    }
-    Loading.value = true
-    const resp = await DoJiaMi(
-      mode.value, encType.value, encName.value, password.value,
-      encPath.value, outPath.value,
-      breakSmall.value, matchExtList.value
-    )
-    if (resp.count > 0) {
-      message.success(`成功加密${resp.count}个文件，耗时${resp.time}`, 8)
-    }
-  } else {
-    Loading.value = true
-    decContent.value = decodeName(password.value, encType.value, encContent.value) || ''
+  if (!dirPath.value) {
+    message.error('还没有选择要执行解密的文件夹')
+    return
   }
+  Loading.value = true
+
+  const runCount =  await DoDecryption(dirPath.value,  passwored.value)
+  await Sleep(2000)
+  if (runCount > 0) message.success('成功解密 ' + runCount + ' 个文件')
+
   Loading.value = false
 }
 </script>
@@ -91,167 +81,90 @@ const handleClickJiaMi = async () => {
 <template>
   <div class="fullscroll rightbg">
     <div class="settingcard">
-      <div class="settinghead">加密或解密</div>
+      <div class="settinghead">文件加解密</div>
       <div class="settingrow">
         <a-radio-group v-model="mode" type="button" tabindex="-1">
-          <a-radio tabindex="-1" value="enc">加密文件</a-radio>
-          <a-radio tabindex="-1" value="dec">解密文件</a-radio>
-          <a-radio tabindex="-1" value="decName">解密名称</a-radio>
+          <a-radio tabindex="-1" value="加密">加密</a-radio>
+          <a-radio tabindex="-1" value="解密">解密</a-radio>
         </a-radio-group>
-      </div>
-      <div class="settingspace"></div>
-      <div class="settinghead">0:选择加密算法</div>
-      <div class="settingrow">
-        <a-radio-group v-model="encType" type="radio" tabindex="-1">
-          <a-radio tabindex="-1" value="aesctr">AES-CTR</a-radio>
-          <a-radio tabindex="-1" value="rc4md5">RC4-MD5</a-radio>
-        </a-radio-group>
-      </div>
-      <div class="settingspace"></div>
-      <div class="settinghead">1:选择加密类型</div>
-      <div class="settingrow">
-        <a-radio-group v-model="encDecType" type="radio" tabindex="-1" @change="handleDecType">
-          <a-radio tabindex="-1" value="xbyEncrypt1">加密</a-radio>
-          <a-radio tabindex="-1" value="xbyEncrypt2">私密</a-radio>
-        </a-radio-group>
-      </div>
-      <template v-if="mode != 'decName'">
-        <div class="settingspace"></div>
-        <div class="settinghead">2:选择输入的文件夹</div>
-        <div class="settingrow">
-          <a-input-search tabindex="-1" :readonly="true" button-text="选择文件夹" search-button :model-value="encPath"
-                          @search="handleSelectDir(true)" />
-        </div>
-        <div class="settingspace"></div>
-        <div class="settinghead">3:选择输出的文件夹</div>
-        <div class="settingrow">
-          <a-input-search tabindex="-1" :readonly="true" button-text="选择文件夹" search-button :model-value="outPath"
-                          @search="handleSelectDir(false)" />
-        </div>
-      </template>
-      <template v-else>
-        <div class="settingspace"></div>
-        <div class="settinghead">2:输入加密的内容</div>
-        <a-textarea v-model='encContent' placeholder='加密的名称' show-word-limit
-                    @keydown='(e:any) => e.stopPropagation()' />
-        <template v-if="encDecType === 'xbyEncrypt1'">
-          <div class="settingspace"></div>
-          <div class="settinghead">3:填写解密的密码</div>
-          <div class="settingrow">
-            <a-input v-model="password" tabindex="-1" :style="{ width: '257px' }"
-                     placeholder="没有不填" allow-clear />
-            <div class="helptxt">如果文件加密时设置了密码，则解密必须提供密码</div>
-          </div>
-        </template>
-        <div class="settingspace"></div>
-        <div class="settinghead">4:解密结果</div>
-        <a-textarea v-model='decContent' placeholder='解密的名称' show-word-limit
-                    @keydown='(e:any) => e.stopPropagation()' disabled />
-      </template>
-      <div v-if="mode == 'enc'">
-        <div class="settingspace"></div>
-        <div class="settinghead">4:选择要加密的格式</div>
-        <div class="settingrow">
-          <MyTags :value="matchExtList" :maxlen="20" @update:value="handleAddExtList" />
-          <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
-            <template #content>
-              默认对文件夹内的全部文件执行一次加密。<br>
-              例如填写 .mp4 就是只加密.mp4结尾的文件
-            </template>
-          </a-popover>
-        </div>
-        <template v-if="encDecType === 'xbyEncrypt1'">
-          <div class="settingspace"></div>
-          <div class="settinghead">5:填写加密的密码</div>
-          <div class="settingrow">
-            <a-input v-model="password" tabindex="-1" :style="{ width: '257px' }" placeholder="可以不填" allow-clear />
-            <a-popover position='bottom'>
-              <i class='iconfont iconbulb' />
-              <template #content>
-                默认不填，解密时无需密码直接解密。<br>
-                填写任意字符串，解密时必须输入正确的密码才能解密
-              </template>
-            </a-popover>
-          </div>
-        </template>
-        <div class="settingspace"></div>
-        <div class="settinghead"></div>
-        <div class="settingrow">
-          <MySwitch :value="breakSmall" @update:value="breakSmall = $event"> 自动跳过小于5MB的小文件</MySwitch>
-        </div>
-        <div class="settingspace"></div>
-        <div class="settinghead"></div>
-        <div class="settingrow">
-          <MySwitch :value="encName" @update:value="encName = $event"> 加密文件名</MySwitch>
-        </div>
-      </div>
-      <div v-else-if="mode == 'dec'">
-        <div class="settingspace"></div>
-        <div class="settinghead">4:选择要解密的格式</div>
-        <div class="settingrow">
-          <MyTags :value="matchExtList" :maxlen="20" @update:value="handleAddExtList" />
-          <div class="helptxt">默认不填，对文件夹内的全部文件，执行一次加密</div>
-          <div class="helptxt">例如填写 .mp4 就是只加密.mp4结尾的文件</div>
-        </div>
-        <template v-if="encDecType === 'xbyEncrypt1'">
-          <div class="settingspace"></div>
-          <div class="settinghead">5:填写解密的密码</div>
-          <div class="settingrow">
-            <a-input v-model="password" tabindex="-1" :style="{ width: '257px' }" placeholder="没有不填" allow-clear />
-            <div class="helptxt">如果文件加密时设置了密码，则解密必须提供密码</div>
-          </div>
-        </template>
       </div>
 
       <div class="settingspace"></div>
-      <div class="settinghead"></div>
+      <div class="settinghead">1:文件夹</div>
       <div class="settingrow">
-        <a-button type="primary" tabindex="-1"
-                  :status="mode == 'enc'? 'danger' : 'success'"
-                  :loading="Loading"
-                  @click="handleClickJiaMi">
-          {{ mode == 'enc' ? '执行加密' : '执行解密' }}
-        </a-button>
+        <a-input-search  tabindex="-1" :readonly="true" button-text="选择" search-button :model-value="dirPath" @search="handleSelectDir" />
+      </div>
+
+      <div v-if="mode == '加密'">
+        <div class="settinghead"></div>
+        <div class="settingrow">
+          <MySwitch :value="breakSmall" @update:value="breakSmall = $event"> 跳过小于5MB的小文件</MySwitch>
+        </div>
+        <div class="settinghead"></div>
+        <div class="settingrow">
+          <MySwitch :value="copyMode" @update:value="copyMode = $event"> 保留原文件</MySwitch>
+        </div>
+        <div class="settingspace"></div>
+        <div class="settinghead">2:文件格式</div>
+        <div class="settingrow">
+          <MyTags :value="matchExtList" :maxlen="20" @update:value="handleAddExtList" />
+          <a-popover position="bottom">
+            <i class="iconfont iconbulb" />
+            <template #content>
+              <div>
+                默认：<span class="opred">全部</span>
+                <hr />
+                对文件夹内的全部文件，执行一次加密<br /><br />
+                例如填写 .mp4 就是只加密.mp4结尾的文件
+              </div>
+            </template>
+          </a-popover>
+        </div>
+        <div class="settingspace"></div>
+        <div class="settinghead">3:设置解密密码</div>
+        <div class="settingrow">
+          <a-input v-model="passwored" tabindex="-1" :style="{ width: '120px', height: '30px'}" placeholder="" allow-clear />
+          <a-popover position="bottom">
+            <i class="iconfont iconbulb" />
+            <template #content>
+              <div>
+                默认：<span class="opred">为空</span>
+                <hr />
+                解密时无需密码直接解密<br /><br />
+                解密时必须输入正确的密码才能解密
+              </div>
+            </template>
+          </a-popover>
+        </div>
+      </div>
+      <div v-else>
+        <div class="settingspace"></div>
+        <div class="settinghead">2:解密的密码</div>
+        <div class="settingrow">
+          <a-input v-model="passwored" tabindex="-1" :style="{ width: '120px', height: '30px'}" placeholder="没有则不填" allow-clear />
+          <a-popover position="bottom">
+            <i class="iconfont iconbulb" />
+            <template #content>
+              <div>
+                如果文件加密时设置了密码，则解密必须提供密码
+              </div>
+            </template>
+          </a-popover>
+        </div>
+      </div>
+      <div class="settingspace"></div>
+      <div class="settingrow">
+        <a-button v-if="mode == '加密'"  disabled type="primary" tabindex="-1" status="danger" :loading="Loading" @click="handleEncryption">执行加密</a-button>
+        <a-button v-else  disabled type="primary" tabindex="-1" status="success" :loading="Loading" @click="handleDecryption">执行解密</a-button>
+        <div><span class="opred">文件加密功能仍在测试阶段，暂未开放公众使用</span></div>
       </div>
     </div>
 
     <div class="settingcard">
-      <div :style="{ display: 'flex' }">
-        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="注意" hoverable>
-          <span class="oporg">警告</span>：仅支持加密文件，不限制文件格式！ <br />
-          <span class="oporg">警告</span>：不能把文件夹打包加密成一个文件！ <br />
-        </a-card>
-        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="加密作用" hoverable>
-          网盘里存放了一些个人数据 <br />
-          1.想要保护个人隐私，杜绝可能的AI审查 <br />
-          2.对文件安全隐私有一定的需求，防止云盘扫描删除，有实时播放视频和下载的需求<br />
-        </a-card>
-        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="我直接打压缩包不就好了吗？" hoverable>
-          1.
-          <a-typography-text type="success">加密的文件，使用小白羊下载时会自动解密</a-typography-text>
-          <br />
-          2.
-          <a-typography-text type="success">加密的视频文件，小白羊支持直接在线播放</a-typography-text>
-          <br />
-          3.
-          <a-typography-text type="success">加密的文件，无法通过其他软件解密查看原始数据</a-typography-text>
-          <br />
-        </a-card>
-        <a-card :style="{ width: '800px' , fontSize: '15px',  lineHeight: '30px'}" title="加密方式说明" hoverable>
-          1.AES-CTR 更加安全，速度最快。推荐 armV8 以上的 cpu 使用，X86 架构的也推荐在支持 AES 指令的机器使用<br />
-          2.RC4-MD5 由于使用 nodejs 进行实现，性能会稍微差一些。适合在 CPU 不支持 AES 指令的设备中使用<br />
-          3.
-          <a-typography-text type="danger">
-            加密上传的文件需要设置安全密码解密，私密上传的文件仅加密上传的用户可以解密（和用户相关，无需输入密码）
-          </a-typography-text>
-          <br />
-          4.被加密的文件可以认为是全世界独一无二的<br />
-          <div class="hrspace"></div>
-          <span class="oporg"> AES-CTR 可以跑满 800Mpbs+的带宽，RC4 测试理论是可以跑满 300Mbps 带宽的</span>
-          ，所以你完全不用担心的它的性能会出现瓶颈<br />
-        </a-card>
-      </div>
+      <span class="oporg">警告</span>：会对文件夹内 全部子文件、子文件夹 递归执行，会直接修改原文件！ <br />
+      <span class="oporg">警告</span>：复制后加密模式，会把原文件复制一份然后加密，请确认硬盘剩余空间！ <br />
+      <span class="oporg">警告</span>：仅支持加密文件，不限制文件格式！ <br />
+      <span class="oporg">警告</span>：不能把文件夹打包加密成一个文件！ <br />
     </div>
   </div>
 </template>
@@ -261,23 +174,7 @@ const handleClickJiaMi = async () => {
   background: var(--rightbg2);
   padding: 0 20px !important;
 }
-
 .helptxt {
   color: var(--color-text-3);
-}
-.settinghead {
-  display: flex;
-  margin-right: 20px;
-}
-.settinghead::after {
-  width: 0;
-  height: 0;
-}
-.settinghead, .settingrow {
-  display: inline-flex;
-  width: 50%;
-  padding: 10px;
-  box-sizing: border-box;
-  vertical-align: top;
 }
 </style>

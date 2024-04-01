@@ -51,7 +51,7 @@ const useKeyboardStore = defineStore('keyboard', {
       this.$patch(partial)
     },
     KeyDown(event: KeyboardEvent) {
-      // console.log('KeyboardEvent', event)
+      console.log('KeyboardEvent', event)
       this.KeyDownEvent = {
         Ctrl: event.ctrlKey,
         Shift: event.shiftKey,

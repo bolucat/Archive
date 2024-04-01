@@ -4,116 +4,96 @@ window.Electron = Electron
 process.noAsar = true
 window.platform = process.platform
 
-window.WebToElectron = function(data: any) {
+window.WebToElectron = function (data: any) {
   try {
     ipcRenderer.send('WebToElectron', data)
-  } catch {
-  }
+  } catch {}
 }
 
-window.WebToWindow = function(data: any, callback: any) {
-  try {
-    const backData = ipcRenderer.sendSync('WebToWindow', data)
-    callback && callback(backData)
-  } catch {
-  }
-}
-
-window.WebToElectronCB = function(data: any, callback: any) {
+window.WebToElectronCB = function (data: any, callback: any) {
   try {
     const backData = ipcRenderer.sendSync('WebToElectronCB', data)
-    callback(backData)
-  } catch {
-  }
+    callback(backData) 
+  } catch {}
 }
 
-ipcRenderer.on('MainSendToken', function(event, arg) {
+ipcRenderer.on('ElectronToWeb', function (event, arg) {
+  
+})
+ipcRenderer.on('MainSendToken', function (event, arg) {
   try {
     window.postMessage(arg)
-  } catch {
-  }
+  } catch {}
 })
 
-window.WebSpawnSync = function(data: any, callback: any) {
+window.WebSpawnSync = function (data: any, callback: any) {
   try {
-    const backData = ipcRenderer.sendSync('WebSpawnSync', data)
-    callback(backData)
-  } catch {
-  }
+    const backData = ipcRenderer.sendSync('WebSpawnSync', data) 
+    callback(backData) 
+  } catch {}
 }
-window.WebExecSync = function(data: any, callback: any) {
+window.WebExecSync = function (data: any, callback: any) {
   try {
-    const backData = ipcRenderer.sendSync('WebExecSync', data)
-    callback(backData)
-  } catch {
-  }
+    const backData = ipcRenderer.sendSync('WebExecSync', data) 
+    callback(backData) 
+  } catch {}
 }
-window.WebShowOpenDialogSync = function(config: any, callback: any) {
+window.WebShowOpenDialogSync = function (config: any, callback: any) {
   try {
     const backData = ipcRenderer.sendSync('WebShowOpenDialogSync', config)
-    callback(backData)
-  } catch {
-  }
+    callback(backData) 
+  } catch {}
 }
 
-window.WebShowSaveDialogSync = function(config: any, callback: any) {
+window.WebShowSaveDialogSync = function (config: any, callback: any) {
   try {
     const backData = ipcRenderer.sendSync('WebShowSaveDialogSync', config)
-    callback(backData)
-  } catch {
-  }
+    callback(backData) 
+  } catch {}
 }
-window.WebShowItemInFolder = function(fullPath: string) {
+window.WebShowItemInFolder = function (fullPath: string) {
   try {
     ipcRenderer.send('WebShowItemInFolder', fullPath)
-  } catch {
-  }
+  } catch {}
 }
 
-window.WebPlatformSync = function(callback: any) {
+window.WebPlatformSync = function (callback: any) {
   try {
     const backData = ipcRenderer.sendSync('WebPlatformSync')
-    callback(backData)
-  } catch {
-  }
+    callback(backData) 
+  } catch {}
 }
 
-window.WebClearCookies = function(data: any) {
+window.WebClearCookies = function (data: any) {
   try {
     ipcRenderer.send('WebClearCookies', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebClearCache = function(data: any) {
+window.WebClearCache = function (data: any) {
   try {
     ipcRenderer.send('WebClearCache', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebUserToken = function(data: any) {
+window.WebUserToken = function (data: any) {
   try {
     ipcRenderer.send('WebUserToken', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebSaveTheme = function(data: any) {
+window.WebSaveTheme = function (data: any) {
   try {
     ipcRenderer.send('WebSaveTheme', data)
-  } catch {
-  }
+  } catch {}
 }
 
-window.WebReload = function(data: any) {
+window.WebReload = function (data: any) {
   try {
     ipcRenderer.send('WebReload', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebRelaunch = function(data: any) {
+window.WebRelaunch = function (data: any) {
   try {
     ipcRenderer.send('WebRelaunch', data)
-  } catch {
-  }
+  } catch {}
 }
 window.WebRelaunchAria = async function() {
   try {
@@ -122,109 +102,69 @@ window.WebRelaunchAria = async function() {
     return 0
   }
 }
-window.WebRelaunchAlist = async function() {
+window.WebSetProgressBar = function (data: any) {
   try {
-    return await ipcRenderer.invoke('WebRelaunchAlist')
-  } catch {
-    return 0
-  }
+    ipcRenderer.send('WebSetProgressBar', data) 
+  } catch {}
 }
-window.WebResetAlistPwd = async function(data: any) {
+window.WebSetCookies = function (cookies: any) {
   try {
-    return await ipcRenderer.invoke('WebResetAlistPwd', data)
-  } catch {
-    return 0
-  }
-}
-window.WebSetProgressBar = function(data: any) {
-  try {
-    ipcRenderer.send('WebSetProgressBar', data)
-  } catch {
-  }
-}
-window.WebGetCookies = async function(data: any) {
-  try {
-    return await ipcRenderer.invoke('WebGetCookies', data)
-  } catch {
-  }
-}
-window.WebSetCookies = function(cookies: any) {
-  try {
-    ipcRenderer.send('WebSetCookies', cookies)
-  } catch {
-  }
+    ipcRenderer.send('WebSetCookies', cookies) 
+  } catch {}
 }
 
-window.WebOpenWindow = function(data: any) {
+window.WebOpenWindow = function (data: any) {
   try {
     ipcRenderer.send('WebOpenWindow', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebOpenUrl = function(data: any) {
+window.WebOpenUrl = function (data: any) {
   try {
     ipcRenderer.send('WebOpenUrl', data)
-  } catch {
-  }
+  } catch {}
 }
-window.WebShutDown = function(data: any) {
+window.WebShutDown = function (data: any) {
   try {
-    ipcRenderer.send('WebShutDown', data)
-  } catch {
-  }
+    ipcRenderer.send('WebShutDown', data) 
+  } catch {}
 }
-window.WebSetProxy = function(data: { proxyUrl: string }) {
+window.WebSetProxy = function (data: { proxyUrl: string }) {
   try {
     ipcRenderer.send('WebSetProxy', data)
-  } catch {
-  }
+  } catch {}
 }
 
 function createRightMenu() {
-  window.addEventListener('contextmenu', (e) => {
-      if (e) e.preventDefault()
-      const target = e.target as HTMLElement
-      // 检查页面是否是有选择的文本 这里显示复制和剪切选项是否可见
-      const selectText = !!window.getSelection().toString()
-      if (selectText || isEleEditable(target)) {
-        // 读取剪切板是否有文本 这里传递粘贴选项是否可见
-        const showPaste = !!navigator.clipboard.readText()
-        // 判断ReadOnly
-        const isReadOnly = target.hasAttribute('readonly')
-        // 发送给主进程让它显示菜单
-        ipcRenderer.send('show-context-menu', {
-          showPaste: !isReadOnly && showPaste,
-          showCopy: selectText,
-          showCut: !isReadOnly && selectText
-        })
-      }
-    }
+  window.addEventListener(
+    'contextmenu',
+    (e) => {
+      try {
+        if (e) e.preventDefault()
+        if (isEleEditable(e.target)) {
+          ipcRenderer.send('WebToElectron', { cmd: 'menuedit' })
+        } else {
+          
+          const selectText = window.getSelection()?.toString()
+          if (selectText) ipcRenderer.send('WebToElectron', { cmd: 'menucopy' })
+        }
+      } catch {}
+    },
+    false
   )
 }
 
 function isEleEditable(e: any): boolean {
-  if (!e) return false
-  if (e.tagName === 'TEXTAREA'
-    || (e.tagName === 'INPUT' && e.type !== 'checkbox')
-    || e.contentEditable == 'true') {
+  if (!e) {
+    return false
+  }
+  
+  if ((e.tagName === 'INPUT' && e.type !== 'checkbox') || e.tagName === 'TEXTAREA' || e.contentEditable == 'true') {
     return true
   } else {
+    
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return isEleEditable(e.parentNode)
   }
 }
 
 createRightMenu()
-
-// fix: new-windows event
-ipcRenderer.on('webview-new-window', (e, webContentsId, details) => {
-  const webview = document.getElementById('webview') as any
-  const evt = new Event('new-window', { bubbles: true, cancelable: false })
-  webview.dispatchEvent(Object.assign(evt, details))
-})
-
-ipcRenderer.on('webview-redirect', (e, webContentsId, url) => {
-  const webview = document.getElementById('webview') as any
-  const evt = new Event('will-redirect', { bubbles: true, cancelable: false })
-  webview.dispatchEvent(Object.assign(evt, { url }))
-})

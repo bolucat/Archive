@@ -1,4 +1,4 @@
-import { ApiGetAsyncTask, ApiGetAsyncTaskUnzip, AsyncType } from '../aliapi/utils'
+import { ApiGetAsyncTask, ApiGetAsyncTaskUnzip, AsyncType, Drive } from '../aliapi/utils'
 import PanDAL from '../pan/pandal'
 import DebugLog from '../utils/debuglog'
 import { humanTimeFM } from '../utils/format'
@@ -25,7 +25,6 @@ export interface AsyncModel {
 export interface FootState {
 
   taskVisible: boolean
-  sponsorVisible: boolean
 
   taskList: AsyncModel[]
 
@@ -35,6 +34,8 @@ export interface FootState {
   rightWidth: number
 
   panDirInfo: string
+
+  picDirInfo: string
 
   uploadingInfo: string
 
@@ -56,11 +57,11 @@ export interface FootState {
 const useFootStore = defineStore('foot', {
   state: (): FootState => ({
     taskVisible: false,
-    sponsorVisible: false,
     taskList: [],
     audioUrl: '',
     rightWidth: 301,
     panDirInfo: '',
+    picDirInfo: '',
     uploadingInfo: '',
     uploadTotalSpeed: '',
     downloadingInfo: '',
@@ -84,6 +85,7 @@ const useFootStore = defineStore('foot', {
       if (state.loadingInfo) return ''
       const appTab = useAppStore().appTab
       if (appTab == 'pan') return state.panSpaceInfo
+      if (appTab == 'pic') return state.panSpaceInfo
       return ''
     },
     GetInfo(state: FootState): string {
@@ -91,6 +93,7 @@ const useFootStore = defineStore('foot', {
       const appTab = useAppStore().appTab
       const appPage = useAppStore().GetAppTabMenu
       if (appTab == 'pan') return state.panDirInfo
+      if (appTab == 'pic') return state.panDirInfo
       if (appPage == 'DowningRight') return state.downloadingInfo
       if (appPage == 'UploadingRight') return state.uploadingInfo
       return ''
@@ -102,18 +105,6 @@ const useFootStore = defineStore('foot', {
       this.$patch(partial)
     },
 
-    mClearTask() {
-      const list = this.taskList
-      const newList: AsyncModel[] = []
-      for (let i = 0, maxi = list.length; i < maxi; i++) {
-        if (list[i].status == 'running') newList.push(list[i])
-      }
-      this.taskList = newList
-    },
-
-    mDeleteAllTask() {
-      this.taskList = []
-    },
 
     mDeleteTask(key: string) {
       this.taskList = this.taskList.filter((t) => t.key != key)
@@ -138,16 +129,18 @@ const useFootStore = defineStore('foot', {
           if (item.type == '解压') {
             result = ApiGetAsyncTaskUnzip(item.user_id, item.zipdrive_id, item.zipfile_id, item.zipdomain_id, item.key)
           } else {
+
             result = ApiGetAsyncTask(item.user_id, item.key)
           }
           result
-            .then(async (resp) => {
+            .then((resp) => {
               item.status = resp
               list[i].endtime = new Date().getTime()
               list[i].usetime = humanTimeFM((list[i].endtime - list[i].starttime) / 1000)
               if (item.status != 'running') {
+
                 if (item.type == '解压' || item.type == '复制' || item.type == '导入分享' || item.type == '回收站还原') {
-                  await PanDAL.aReLoadOneDirToShow(item.todrive_id, item.tofile_id, false)
+                  PanDAL.GetDirFileList(item.user_id, item.todrive_id, item.tofile_id, '')
                 }
               }
             })
@@ -156,6 +149,15 @@ const useFootStore = defineStore('foot', {
             })
         }
       }
+    },
+
+    mClearTask() {
+      const list = this.taskList
+      const newList: AsyncModel[] = []
+      for (let i = 0, maxi = list.length; i < maxi; i++) {
+        if (list[i].status == 'running') newList.push(list[i])
+      }
+      this.taskList = newList
     },
 
     mSaveUploadingInfo(total: number) {
@@ -186,8 +188,9 @@ const useFootStore = defineStore('foot', {
       this.panSpaceInfo = '总空间 ' + token.spaceinfo
     },
 
-    mSaveDirInfo(info: string) {
-      this.panDirInfo = info
+    mSaveDirInfo(drive: Drive, info: string) {
+      if (drive == 'pan') this.panDirInfo = info
+      if (drive == 'pic') this.picDirInfo = info
     }
   }
 })

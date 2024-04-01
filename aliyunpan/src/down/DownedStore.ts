@@ -1,11 +1,12 @@
 import fuzzysort from 'fuzzysort'
 import { defineStore } from 'pinia'
-import DownDAL, { IStateDownFile } from './DownDAL'
-import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, SelectAll } from '../utils/selecthelper'
+import { IStateDownFile } from './DownDAL'
+import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../utils/selecthelper'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import fs from 'fs'
 import path from 'path'
+import DBDown from '../utils/dbdown'
 
 type Item = IStateDownFile
 type State = DownState
@@ -176,16 +177,6 @@ const useDownStore = defineStore('down', {
       this.mRefreshListDataShow(false)
     },
 
-    mRangSelect(lastkey: string, file_idList: string[]) {
-      if (this.ListDataShow.length == 0) return
-      const selectedNew = new Set<string>(this.ListSelected)
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        selectedNew.add(file_idList[i])
-      }
-      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
-      this.mRefreshListDataShow(false)
-    },
-
     GetSelected() {
       return GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
     },
@@ -212,36 +203,34 @@ const useDownStore = defineStore('down', {
 
     /**
      * 删除下载完成，修改为“待删除”状态，并从列表中删除 <br/>
-     * @param downedIDList
+     * @param uploadIDList
      */
-    async mDeleteDowned(downedIDList: string[]) {
+    mDeleteUploaded(uploadIDList: string[]) {
+      const UploadedList = this.ListDataRaw
       const newListSelected = new Set(this.ListSelected)
       const newList: Item[] = []
-      const downedList: Item[] = this.ListDataRaw
-      const deleteList: Item[] = []
-      for (let j = 0; j < downedList.length; j++) {
-        const downID = downedList[j].DownID
-        if (downedIDList.includes(downID)) {
-          downedList[j].Down.DownState = '待删除'
-          deleteList.push(downedList[j])
+      for (let j = 0; j < UploadedList.length; j++) {
+        const downID = UploadedList[j].DownID
+        if (uploadIDList.includes(downID)) {
+          UploadedList[j].Down.DownState = '待删除'
           if (newListSelected.has(downID)) newListSelected.delete(downID)
         } else {
-          newList.push(downedList[j])
+          newList.push(UploadedList[j])
         }
       }
       this.ListDataRaw = newList
       this.ListSelected = newListSelected
-      await DownDAL.deleteDowned(false, deleteList)
+      DBDown.deleteDowneds(uploadIDList)
       this.mRefreshListDataShow(true)
     },
 
     /**
      * 删除全部
      */
-    async mDeleteAllDowned() {
-      await DownDAL.deleteDowned(true, this.ListDataRaw)
+    mDeleteAllUploaded() {
       this.ListSelected = new Set<string>()
       this.ListDataRaw.splice(0, this.ListDataRaw.length)
+      DBDown.deleteDownedAll()
       this.mRefreshListDataShow(true)
     },
 
@@ -254,6 +243,7 @@ const useDownStore = defineStore('down', {
      */
     mOpenUploadedFile(file: Item | null, downIDList: string[], isDir: boolean) {
       const DownedList = this.ListDataRaw
+
       const openDir = (localFilePath: string) => {
         try {
           if (fs.existsSync(localFilePath)) {
