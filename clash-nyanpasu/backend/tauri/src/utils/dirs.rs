@@ -191,3 +191,19 @@ pub fn path_to_str(path: &PathBuf) -> Result<&str> {
         .ok_or(anyhow::anyhow!("failed to get path from {:?}", path))?;
     Ok(path_str)
 }
+
+pub fn get_single_instance_placeholder() -> String {
+    #[cfg(not(target_os = "macos"))]
+    {
+        APP_NAME.to_string()
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        tauri::api::path::local_data_dir()
+            .unwrap()
+            .join(APP_NAME)
+            .to_string_lossy()
+            .to_string()
+    }
+}

@@ -15,7 +15,7 @@ use std::{
 };
 use tauri::{
     api::shell::{open, Program},
-    Manager,
+    AppHandle, Manager,
 };
 use tracing::{debug, warn};
 use tracing_attributes::instrument;
@@ -83,15 +83,12 @@ pub fn get_uid(prefix: &str) -> String {
 /// parse the string
 /// xxx=123123; => 123123
 pub fn parse_str<T: FromStr>(target: &str, key: &str) -> Option<T> {
-    target.find(key).and_then(|idx| {
-        let idx = idx + key.len();
-        let value = &target[idx..];
-
-        match value.split(';').next() {
-            Some(value) => value.trim().parse(),
-            None => value.trim().parse(),
+    target.split(';').map(str::trim).find_map(|s| {
+        let mut parts = s.splitn(2, '=');
+        match (parts.next(), parts.next()) {
+            (Some(k), Some(v)) if k == key => v.parse::<T>().ok(),
+            _ => None,
         }
-        .ok()
     })
 }
 
@@ -216,6 +213,18 @@ pub fn get_max_scale_factor() -> f64 {
             1.0_f64
         }
     }
+}
+
+#[instrument(skip(app_handle))]
+pub fn quit_application(app_handle: &AppHandle) {
+    let _ = super::resolve::save_window_state(app_handle, true);
+
+    super::resolve::resolve_reset();
+    tauri::api::process::kill_children();
+    app_handle.exit(0);
+    // flush all data to disk
+    crate::core::storage::Storage::global().destroy().unwrap();
+    std::process::exit(0);
 }
 
 #[macro_export]
