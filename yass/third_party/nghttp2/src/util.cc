@@ -24,9 +24,6 @@
  */
 #include "util.h"
 
-#ifdef HAVE_TIME_H
-#  include <time.h>
-#endif // HAVE_TIME_H
 #include <sys/types.h>
 #ifdef HAVE_SYS_SOCKET_H
 #  include <sys/socket.h>
@@ -59,6 +56,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
@@ -619,7 +617,7 @@ void show_candidates(const char *unkopt, const option *options) {
     if (istarts_with(options[i].name, options[i].name + optnamelen, unkopt,
                      unkopt + unkoptlen)) {
       if (optnamelen == static_cast<size_t>(unkoptlen)) {
-        // Exact match, then we don't show any condidates.
+        // Exact match, then we don't show any candidates.
         return;
       }
       ++prefix_match;
@@ -801,6 +799,30 @@ void set_port(Address &addr, uint16_t port) {
   case AF_INET6:
     addr.su.in6.sin6_port = htons(port);
     break;
+  }
+}
+
+uint16_t get_port(const sockaddr_union *su) {
+  switch (su->storage.ss_family) {
+  case AF_INET:
+    return ntohs(su->in.sin_port);
+  case AF_INET6:
+    return ntohs(su->in6.sin6_port);
+  default:
+    return 0;
+  }
+}
+
+bool quic_prohibited_port(uint16_t port) {
+  switch (port) {
+  case 1900:
+  case 5353:
+  case 11211:
+  case 20800:
+  case 27015:
+    return true;
+  default:
+    return port < 1024;
   }
 }
 
@@ -1350,66 +1372,166 @@ StringRef make_hostport(BlockAllocator &balloc, const StringRef &host,
 }
 
 namespace {
-void hexdump8(FILE *out, const uint8_t *first, const uint8_t *last) {
-  auto stop = std::min(first + 8, last);
-  for (auto k = first; k != stop; ++k) {
-    fprintf(out, "%02x ", *k);
+uint8_t *hexdump_addr(uint8_t *dest, size_t addr) {
+  // Lower 32 bits are displayed.
+  for (size_t i = 0; i < 4; ++i) {
+    auto a = (addr >> (3 - i) * 8) & 0xff;
+
+    *dest++ = LOWER_XDIGITS[a >> 4];
+    *dest++ = LOWER_XDIGITS[a & 0xf];
   }
-  // each byte needs 3 spaces (2 hex value and space)
-  for (; stop != first + 8; ++stop) {
-    fputs("   ", out);
-  }
-  // we have extra space after 8 bytes
-  fputc(' ', out);
+
+  return dest;
 }
 } // namespace
 
-void hexdump(FILE *out, const uint8_t *src, size_t len) {
-  if (len == 0) {
-    return;
+namespace {
+uint8_t *hexdump_ascii(uint8_t *dest, const uint8_t *data, size_t datalen) {
+  *dest++ = '|';
+
+  for (size_t i = 0; i < datalen; ++i) {
+    if (0x20 <= data[i] && data[i] <= 0x7e) {
+      *dest++ = data[i];
+    } else {
+      *dest++ = '.';
+    }
   }
-  size_t buflen = 0;
+
+  *dest++ = '|';
+
+  return dest;
+}
+} // namespace
+
+namespace {
+uint8_t *hexdump8(uint8_t *dest, const uint8_t *data, size_t datalen) {
+  size_t i;
+
+  for (i = 0; i < datalen; ++i) {
+    *dest++ = LOWER_XDIGITS[data[i] >> 4];
+    *dest++ = LOWER_XDIGITS[data[i] & 0xf];
+    *dest++ = ' ';
+  }
+
+  for (; i < 8; ++i) {
+    *dest++ = ' ';
+    *dest++ = ' ';
+    *dest++ = ' ';
+  }
+
+  return dest;
+}
+} // namespace
+
+namespace {
+uint8_t *hexdump16(uint8_t *dest, const uint8_t *data, size_t datalen) {
+  if (datalen > 8) {
+    dest = hexdump8(dest, data, 8);
+    *dest++ = ' ';
+    dest = hexdump8(dest, data + 8, datalen - 8);
+    *dest++ = ' ';
+  } else {
+    dest = hexdump8(dest, data, datalen);
+    *dest++ = ' ';
+    dest = hexdump8(dest, nullptr, 0);
+    *dest++ = ' ';
+  }
+
+  return dest;
+}
+} // namespace
+
+namespace {
+uint8_t *hexdump_line(uint8_t *dest, const uint8_t *data, size_t datalen,
+                      size_t addr) {
+  dest = hexdump_addr(dest, addr);
+  *dest++ = ' ';
+  *dest++ = ' ';
+
+  dest = hexdump16(dest, data, datalen);
+
+  return hexdump_ascii(dest, data, datalen);
+}
+} // namespace
+
+namespace {
+int hexdump_write(int fd, const uint8_t *data, size_t datalen) {
+  ssize_t nwrite;
+
+  for (; (nwrite = write(fd, data, datalen)) == -1 && errno == EINTR;)
+    ;
+  if (nwrite == -1) {
+    return -1;
+  }
+
+  return 0;
+}
+} // namespace
+
+int hexdump(FILE *out, const void *data, size_t datalen) {
+  if (datalen == 0) {
+    return 0;
+  }
+
+  // min_space is the additional minimum space that the buffer must
+  // accept, which is the size of a single full line output + one
+  // repeat line marker ("*\n").  If the remaining buffer size is less
+  // than that, flush the buffer and reset.
+  constexpr size_t min_space = 79 + 2;
+
+  auto fd = fileno(out);
+  std::array<uint8_t, 4096> buf;
+  auto last = buf.data();
+  auto in = reinterpret_cast<const uint8_t *>(data);
   auto repeated = false;
-  std::array<uint8_t, 16> buf{};
-  auto end = src + len;
-  auto i = src;
-  for (;;) {
-    auto nextlen =
-        std::min(static_cast<size_t>(16), static_cast<size_t>(end - i));
-    if (nextlen == buflen &&
-        std::equal(std::begin(buf), std::begin(buf) + buflen, i)) {
-      // as long as adjacent 16 bytes block are the same, we just
-      // print single '*'.
-      if (!repeated) {
-        repeated = true;
-        fputs("*\n", out);
-      }
-      i += nextlen;
-      continue;
-    }
-    repeated = false;
-    fprintf(out, "%08lx", static_cast<unsigned long>(i - src));
-    if (i == end) {
-      fputc('\n', out);
-      break;
-    }
-    fputs("  ", out);
-    hexdump8(out, i, end);
-    hexdump8(out, i + 8, std::max(i + 8, end));
-    fputc('|', out);
-    auto stop = std::min(i + 16, end);
-    buflen = stop - i;
-    auto p = buf.data();
-    for (; i != stop; ++i) {
-      *p++ = *i;
-      if (0x20 <= *i && *i <= 0x7e) {
-        fputc(*i, out);
-      } else {
-        fputc('.', out);
+
+  for (size_t offset = 0; offset < datalen; offset += 16) {
+    auto n = datalen - offset;
+    auto s = in + offset;
+
+    if (n >= 16) {
+      n = 16;
+
+      if (offset > 0) {
+        if (std::equal(s - 16, s, s)) {
+          if (repeated) {
+            continue;
+          }
+
+          repeated = true;
+
+          *last++ = '*';
+          *last++ = '\n';
+
+          continue;
+        }
+
+        repeated = false;
       }
     }
-    fputs("|\n", out);
+
+    last = hexdump_line(last, s, n, offset);
+    *last++ = '\n';
+
+    auto len = static_cast<size_t>(last - buf.data());
+    if (len + min_space > buf.size()) {
+      if (hexdump_write(fd, buf.data(), len) != 0) {
+        return -1;
+      }
+
+      last = buf.data();
+    }
   }
+
+  last = hexdump_addr(last, datalen);
+  *last++ = '\n';
+
+  auto len = static_cast<size_t>(last - buf.data());
+  if (len) {
+    return hexdump_write(fd, buf.data(), len);
+  }
+
+  return 0;
 }
 
 void put_uint16be(uint8_t *buf, uint16_t n) {
@@ -1530,16 +1652,6 @@ uint32_t hash32(const StringRef &s) {
 
   return h;
 }
-
-#if !OPENSSL_1_1_API
-namespace {
-EVP_MD_CTX *EVP_MD_CTX_new(void) { return EVP_MD_CTX_create(); }
-} // namespace
-
-namespace {
-void EVP_MD_CTX_free(EVP_MD_CTX *ctx) { EVP_MD_CTX_destroy(ctx); }
-} // namespace
-#endif // !OPENSSL_1_1_API
 
 namespace {
 int message_digest(uint8_t *res, const EVP_MD *meth, const StringRef &s) {

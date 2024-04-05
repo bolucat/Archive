@@ -43,6 +43,7 @@
 #include <chrono>
 #include <array>
 
+#define NGHTTP2_NO_SSIZE_T
 #include <nghttp2/nghttp2.h>
 
 #ifdef ENABLE_HTTP3
@@ -92,7 +93,7 @@ struct Config {
   size_t nclients;
   size_t nthreads;
   // The maximum number of concurrent streams per session.
-  ssize_t max_concurrent_streams;
+  size_t max_concurrent_streams;
   size_t window_bits;
   size_t connection_window_bits;
   size_t max_frame_size;
@@ -127,9 +128,9 @@ struct Config {
   bool base_uri_unix;
   // used when UNIX domain socket is used (base_uri_unix is true).
   sockaddr_un unix_addr;
-  // list of supported NPN/ALPN protocol strings in the order of
+  // list of supported ALPN protocol strings in the order of
   // preference.
-  std::vector<std::string> npn_list;
+  std::vector<std::string> alpn_list;
   // The number of request per second for each client.
   double rps;
   // Disables GSO for UDP connections.
@@ -138,6 +139,9 @@ struct Config {
   size_t max_udp_payload_size;
   // Enable ktls.
   bool ktls;
+  // sni is the value sent in TLS SNI, overriding DNS name of the
+  // remote host.
+  std::string sni;
 
   Config();
   ~Config();

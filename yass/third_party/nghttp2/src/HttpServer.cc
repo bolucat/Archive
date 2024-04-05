@@ -291,9 +291,7 @@ public:
     return ssl;
   }
   const Config *get_config() const { return config_; }
-  struct ev_loop *get_loop() const {
-    return loop_;
-  }
+  struct ev_loop *get_loop() const { return loop_; }
   int64_t get_next_session_id() {
     auto session_id = next_session_id_;
     if (next_session_id_ == std::numeric_limits<int64_t>::max()) {
@@ -585,9 +583,7 @@ Http2Handler::~Http2Handler() {
 
 void Http2Handler::remove_self() { sessions_->remove_handler(this); }
 
-struct ev_loop *Http2Handler::get_loop() const {
-  return sessions_->get_loop();
-}
+struct ev_loop *Http2Handler::get_loop() const { return sessions_->get_loop(); }
 
 Http2Handler::WriteBuf *Http2Handler::get_wb() { return &wb_; }
 
@@ -611,10 +607,10 @@ int Http2Handler::fill_wb() {
 
   for (;;) {
     const uint8_t *data;
-    auto datalen = nghttp2_session_mem_send(session_, &data);
+    auto datalen = nghttp2_session_mem_send2(session_, &data);
 
     if (datalen < 0) {
-      std::cerr << "nghttp2_session_mem_send() returned error: "
+      std::cerr << "nghttp2_session_mem_send2() returned error: "
                 << nghttp2_strerror(datalen) << std::endl;
       return -1;
     }
@@ -652,10 +648,10 @@ int Http2Handler::read_clear() {
     util::hexdump(stdout, buf.data(), nread);
   }
 
-  rv = nghttp2_session_mem_recv(session_, buf.data(), nread);
+  rv = nghttp2_session_mem_recv2(session_, buf.data(), nread);
   if (rv < 0) {
     if (rv != NGHTTP2_ERR_BAD_CLIENT_MAGIC) {
-      std::cerr << "nghttp2_session_mem_recv() returned error: "
+      std::cerr << "nghttp2_session_mem_recv2() returned error: "
                 << nghttp2_strerror(rv) << std::endl;
     }
     return -1;
@@ -729,7 +725,7 @@ int Http2Handler::tls_handshake() {
     std::cerr << "SSL/TLS handshake completed" << std::endl;
   }
 
-  if (verify_npn_result() != 0) {
+  if (verify_alpn_result() != 0) {
     return -1;
   }
 
@@ -754,34 +750,40 @@ int Http2Handler::read_tls() {
 
   ERR_clear_error();
 
-  auto rv = SSL_read(ssl_, buf.data(), buf.size());
+  for (;;) {
+    auto rv = SSL_read(ssl_, buf.data(), buf.size());
 
-  if (rv <= 0) {
-    auto err = SSL_get_error(ssl_, rv);
-    switch (err) {
-    case SSL_ERROR_WANT_READ:
-      return write_(*this);
-    case SSL_ERROR_WANT_WRITE:
-      // renegotiation started
-      return -1;
-    default:
+    if (rv <= 0) {
+      auto err = SSL_get_error(ssl_, rv);
+      switch (err) {
+      case SSL_ERROR_WANT_READ:
+        return write_(*this);
+      case SSL_ERROR_WANT_WRITE:
+        // renegotiation started
+        return -1;
+      default:
+        return -1;
+      }
+    }
+
+    auto nread = rv;
+
+    if (get_config()->hexdump) {
+      util::hexdump(stdout, buf.data(), nread);
+    }
+
+    rv = nghttp2_session_mem_recv2(session_, buf.data(), nread);
+    if (rv < 0) {
+      if (rv != NGHTTP2_ERR_BAD_CLIENT_MAGIC) {
+        std::cerr << "nghttp2_session_mem_recv2() returned error: "
+                  << nghttp2_strerror(rv) << std::endl;
+      }
       return -1;
     }
-  }
 
-  auto nread = rv;
-
-  if (get_config()->hexdump) {
-    util::hexdump(stdout, buf.data(), nread);
-  }
-
-  rv = nghttp2_session_mem_recv(session_, buf.data(), nread);
-  if (rv < 0) {
-    if (rv != NGHTTP2_ERR_BAD_CLIENT_MAGIC) {
-      std::cerr << "nghttp2_session_mem_recv() returned error: "
-                << nghttp2_strerror(rv) << std::endl;
+    if (SSL_pending(ssl_) == 0) {
+      break;
     }
-    return -1;
   }
 
   return write_(*this);
@@ -896,29 +898,18 @@ int Http2Handler::connection_made() {
   return on_write();
 }
 
-int Http2Handler::verify_npn_result() {
+int Http2Handler::verify_alpn_result() {
   const unsigned char *next_proto = nullptr;
   unsigned int next_proto_len;
-  // Check the negotiated protocol in NPN or ALPN
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_get0_next_proto_negotiated(ssl_, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-  for (int i = 0; i < 2; ++i) {
-    if (next_proto) {
-      auto proto = StringRef{next_proto, next_proto_len};
-      if (sessions_->get_config()->verbose) {
-        std::cout << "The negotiated protocol: " << proto << std::endl;
-      }
-      if (util::check_h2_is_selected(proto)) {
-        return 0;
-      }
-      break;
-    } else {
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-      SSL_get0_alpn_selected(ssl_, &next_proto, &next_proto_len);
-#else  // OPENSSL_VERSION_NUMBER < 0x10002000L
-      break;
-#endif // OPENSSL_VERSION_NUMBER < 0x10002000L
+  // Check the negotiated protocol in ALPN
+  SSL_get0_alpn_selected(ssl_, &next_proto, &next_proto_len);
+  if (next_proto) {
+    auto proto = StringRef{next_proto, next_proto_len};
+    if (sessions_->get_config()->verbose) {
+      std::cout << "The negotiated protocol: " << proto << std::endl;
+    }
+    if (util::check_h2_is_selected(proto)) {
+      return 0;
     }
   }
   if (sessions_->get_config()->verbose) {
@@ -932,7 +923,7 @@ int Http2Handler::verify_npn_result() {
 int Http2Handler::submit_file_response(const StringRef &status, Stream *stream,
                                        time_t last_modified, off_t file_length,
                                        const std::string *content_type,
-                                       nghttp2_data_provider *data_prd) {
+                                       nghttp2_data_provider2 *data_prd) {
   std::string last_modified_str;
   auto nva = make_array(http2::make_nv_ls_nocopy(":status", status),
                         http2::make_nv_ls_nocopy("server", NGHTTPD_SERVER),
@@ -957,13 +948,13 @@ int Http2Handler::submit_file_response(const StringRef &status, Stream *stream,
   if (!trailer_names.empty()) {
     nva[nvlen++] = http2::make_nv_ls_nocopy("trailer", trailer_names);
   }
-  return nghttp2_submit_response(session_, stream->stream_id, nva.data(), nvlen,
-                                 data_prd);
+  return nghttp2_submit_response2(session_, stream->stream_id, nva.data(),
+                                  nvlen, data_prd);
 }
 
 int Http2Handler::submit_response(const StringRef &status, int32_t stream_id,
                                   const HeaderRefs &headers,
-                                  nghttp2_data_provider *data_prd) {
+                                  nghttp2_data_provider2 *data_prd) {
   auto nva = std::vector<nghttp2_nv>();
   nva.reserve(4 + headers.size());
   nva.push_back(http2::make_nv_ls_nocopy(":status", status));
@@ -980,13 +971,13 @@ int Http2Handler::submit_response(const StringRef &status, int32_t stream_id,
   for (auto &nv : headers) {
     nva.push_back(http2::make_nv_nocopy(nv.name, nv.value, nv.no_index));
   }
-  int r = nghttp2_submit_response(session_, stream_id, nva.data(), nva.size(),
-                                  data_prd);
+  int r = nghttp2_submit_response2(session_, stream_id, nva.data(), nva.size(),
+                                   data_prd);
   return r;
 }
 
 int Http2Handler::submit_response(const StringRef &status, int32_t stream_id,
-                                  nghttp2_data_provider *data_prd) {
+                                  nghttp2_data_provider2 *data_prd) {
   auto nva = make_array(http2::make_nv_ls_nocopy(":status", status),
                         http2::make_nv_ls_nocopy("server", NGHTTPD_SERVER),
                         http2::make_nv_ls("date", sessions_->get_cached_date()),
@@ -1000,8 +991,8 @@ int Http2Handler::submit_response(const StringRef &status, int32_t stream_id,
     }
   }
 
-  return nghttp2_submit_response(session_, stream_id, nva.data(), nvlen,
-                                 data_prd);
+  return nghttp2_submit_response2(session_, stream_id, nva.data(), nvlen,
+                                  data_prd);
 }
 
 int Http2Handler::submit_non_final_response(const std::string &status,
@@ -1091,9 +1082,10 @@ void Http2Handler::terminate_session(uint32_t error_code) {
   nghttp2_session_terminate_session(session_, error_code);
 }
 
-ssize_t file_read_callback(nghttp2_session *session, int32_t stream_id,
-                           uint8_t *buf, size_t length, uint32_t *data_flags,
-                           nghttp2_data_source *source, void *user_data) {
+nghttp2_ssize file_read_callback(nghttp2_session *session, int32_t stream_id,
+                                 uint8_t *buf, size_t length,
+                                 uint32_t *data_flags,
+                                 nghttp2_data_source *source, void *user_data) {
   int rv;
   auto hd = static_cast<Http2Handler *>(user_data);
   auto stream = hd->get_stream(stream_id);
@@ -1142,7 +1134,7 @@ void prepare_status_response(Stream *stream, Http2Handler *hd, int status) {
 
   // we don't set stream->file_ent since we don't want to expire it.
   stream->body_length = file_ent->length;
-  nghttp2_data_provider data_prd;
+  nghttp2_data_provider2 data_prd;
   data_prd.source.fd = file_ent->fd;
   data_prd.read_callback = file_read_callback;
 
@@ -1170,7 +1162,7 @@ void prepare_echo_response(Stream *stream, Http2Handler *hd) {
     hd->submit_rst_stream(stream, NGHTTP2_INTERNAL_ERROR);
     return;
   }
-  nghttp2_data_provider data_prd;
+  nghttp2_data_provider2 data_prd;
   data_prd.source.fd = stream->file_ent->fd;
   data_prd.read_callback = file_read_callback;
 
@@ -1393,7 +1385,7 @@ void prepare_response(Stream *stream, Http2Handler *hd,
 
   stream->body_length = file_ent->length;
 
-  nghttp2_data_provider data_prd;
+  nghttp2_data_provider2 data_prd;
 
   data_prd.source.fd = file_ent->fd;
   data_prd.read_callback = file_read_callback;
@@ -1691,9 +1683,9 @@ int send_data_callback(nghttp2_session *session, nghttp2_frame *frame,
 } // namespace
 
 namespace {
-ssize_t select_padding_callback(nghttp2_session *session,
-                                const nghttp2_frame *frame, size_t max_payload,
-                                void *user_data) {
+nghttp2_ssize select_padding_callback(nghttp2_session *session,
+                                      const nghttp2_frame *frame,
+                                      size_t max_payload, void *user_data) {
   auto hd = static_cast<Http2Handler *>(user_data);
   return std::min(max_payload, frame->hd.length + hd->get_config()->padding);
 }
@@ -1780,7 +1772,7 @@ void fill_callback(nghttp2_session_callbacks *callbacks, const Config *config) {
                                                    send_data_callback);
 
   if (config->padding) {
-    nghttp2_session_callbacks_set_select_padding_callback(
+    nghttp2_session_callbacks_set_select_padding_callback2(
         callbacks, select_padding_callback);
   }
 }
@@ -1996,18 +1988,6 @@ HttpServer::HttpServer(const Config *config) : config_(config) {
   };
 }
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-namespace {
-int next_proto_cb(SSL *s, const unsigned char **data, unsigned int *len,
-                  void *arg) {
-  auto next_proto = static_cast<std::vector<unsigned char> *>(arg);
-  *data = next_proto->data();
-  *len = next_proto->size();
-  return SSL_TLSEXT_ERR_OK;
-}
-} // namespace
-#endif // !OPENSSL_NO_NEXTPROTONEG
-
 namespace {
 int verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
   // We don't verify the client certificate. Just request it for the
@@ -2093,7 +2073,6 @@ int start_listen(HttpServer *sv, struct ev_loop *loop, Sessions *sessions,
 }
 } // namespace
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
 namespace {
 int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
                          unsigned char *outlen, const unsigned char *in,
@@ -2115,7 +2094,6 @@ int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
   return SSL_TLSEXT_ERR_OK;
 }
 } // namespace
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 
 int HttpServer::run() {
   SSL_CTX *ssl_ctx = nullptr;
@@ -2161,23 +2139,12 @@ int HttpServer::run() {
     SSL_CTX_set_session_cache_mode(ssl_ctx, SSL_SESS_CACHE_SERVER);
 
 #ifndef OPENSSL_NO_EC
-#  if !LIBRESSL_LEGACY_API && OPENSSL_VERSION_NUMBER >= 0x10002000L
     if (SSL_CTX_set1_curves_list(ssl_ctx, "P-256") != 1) {
       std::cerr << "SSL_CTX_set1_curves_list failed: "
                 << ERR_error_string(ERR_get_error(), nullptr);
       return -1;
     }
-#  else  // !(!LIBRESSL_LEGACY_API && OPENSSL_VERSION_NUMBER >= 0x10002000L)
-    auto ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-    if (ecdh == nullptr) {
-      std::cerr << "EC_KEY_new_by_curv_name failed: "
-                << ERR_error_string(ERR_get_error(), nullptr);
-      return -1;
-    }
-    SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
-    EC_KEY_free(ecdh);
-#  endif // !(!LIBRESSL_LEGACY_API && OPENSSL_VERSION_NUMBER >= 0x10002000L)
-#endif   // OPENSSL_NO_EC
+#endif // OPENSSL_NO_EC
 
     if (!config_->dh_param_file.empty()) {
       // Read DH parameters from file
@@ -2243,13 +2210,17 @@ int HttpServer::run() {
 
     next_proto = util::get_default_alpn();
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, next_proto_cb, &next_proto);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
     // ALPN selection callback
     SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_proto_cb, this);
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
+
+#if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
+    if (!SSL_CTX_add_cert_compression_alg(
+            ssl_ctx, nghttp2::tls::CERTIFICATE_COMPRESSION_ALGO_BROTLI,
+            nghttp2::tls::cert_compress, nghttp2::tls::cert_decompress)) {
+      std::cerr << "SSL_CTX_add_cert_compression_alg failed." << std::endl;
+      return -1;
+    }
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL && HAVE_LIBBROTLI
   }
 
   auto loop = EV_DEFAULT;
@@ -2264,6 +2235,9 @@ int HttpServer::run() {
   }
 
   ev_run(loop, 0);
+
+  SSL_CTX_free(ssl_ctx);
+
   return 0;
 }
 

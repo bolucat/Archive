@@ -438,11 +438,11 @@ int Client::quic_init(const sockaddr *local_addr, socklen_t local_addrlen,
       },
   };
 
-  assert(config->npn_list.size());
+  assert(config->alpn_list.size());
 
   uint32_t quic_version;
 
-  if (config->npn_list[0] == NGHTTP3_ALPN_H3) {
+  if (config->alpn_list[0] == NGHTTP3_ALPN_H3) {
     quic_version = NGTCP2_PROTO_VER_V1;
   } else {
     quic_version = NGTCP2_PROTO_VER_MIN;
@@ -654,7 +654,8 @@ int Client::write_quic() {
       ngtcp2_conn_get_path_max_tx_udp_payload_size(quic.conn);
 #endif // UDP_SEGMENT
   auto max_pktcnt =
-      ngtcp2_conn_get_send_quantum(quic.conn) / max_udp_payload_size;
+      std::max(ngtcp2_conn_get_send_quantum(quic.conn) / max_udp_payload_size,
+               static_cast<size_t>(1));
   uint8_t *bufpos = quic.tx.data.get();
   ngtcp2_path_storage ps;
   size_t gso_size = 0;

@@ -63,6 +63,7 @@ char *strndup(const char *s, size_t size);
 #include <event2/bufferevent_ssl.h>
 #include <event2/dns.h>
 
+#define NGHTTP2_NO_SSIZE_T
 #include <nghttp2/nghttp2.h>
 
 #include "url-parser/url_parser.h"
@@ -196,18 +197,19 @@ static void print_headers(FILE *f, nghttp2_nv *nva, size_t nvlen) {
   fprintf(f, "\n");
 }
 
-/* nghttp2_send_callback. Here we transmit the |data|, |length| bytes,
-   to the network. Because we are using libevent bufferevent, we just
-   write those bytes into bufferevent buffer. */
-static ssize_t send_callback(nghttp2_session *session, const uint8_t *data,
-                             size_t length, int flags, void *user_data) {
+/* nghttp2_send_callback2. Here we transmit the |data|, |length|
+   bytes, to the network. Because we are using libevent bufferevent,
+   we just write those bytes into bufferevent buffer. */
+static nghttp2_ssize send_callback(nghttp2_session *session,
+                                   const uint8_t *data, size_t length,
+                                   int flags, void *user_data) {
   http2_session_data *session_data = (http2_session_data *)user_data;
   struct bufferevent *bev = session_data->bev;
   (void)session;
   (void)flags;
 
   bufferevent_write(bev, data, length);
-  return (ssize_t)length;
+  return (nghttp2_ssize)length;
 }
 
 /* nghttp2_on_header_callback: Called when nghttp2 library emits
@@ -308,23 +310,6 @@ static int on_stream_close_callback(nghttp2_session *session, int32_t stream_id,
   return 0;
 }
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-/* NPN TLS extension client callback. We check that server advertised
-   the HTTP/2 protocol the nghttp2 library supports. If not, exit
-   the program. */
-static int select_next_proto_cb(SSL *ssl, unsigned char **out,
-                                unsigned char *outlen, const unsigned char *in,
-                                unsigned int inlen, void *arg) {
-  (void)ssl;
-  (void)arg;
-
-  if (nghttp2_select_next_protocol(out, outlen, in, inlen) <= 0) {
-    errx(1, "Server did not advertise " NGHTTP2_PROTO_VERSION_ID);
-  }
-  return SSL_TLSEXT_ERR_OK;
-}
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
-
 /* Create SSL_CTX. */
 static SSL_CTX *create_ssl_ctx(void) {
   SSL_CTX *ssl_ctx;
@@ -337,13 +322,8 @@ static SSL_CTX *create_ssl_ctx(void) {
                       SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 |
                           SSL_OP_NO_COMPRESSION |
                           SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_CTX_set_next_proto_select_cb(ssl_ctx, select_next_proto_cb, NULL);
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   SSL_CTX_set_alpn_protos(ssl_ctx, (const unsigned char *)"\x02h2", 3);
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10002000L */
 
   return ssl_ctx;
 }
@@ -364,7 +344,7 @@ static void initialize_nghttp2_session(http2_session_data *session_data) {
 
   nghttp2_session_callbacks_new(&callbacks);
 
-  nghttp2_session_callbacks_set_send_callback(callbacks, send_callback);
+  nghttp2_session_callbacks_set_send_callback2(callbacks, send_callback);
 
   nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks,
                                                        on_frame_recv_callback);
@@ -425,8 +405,8 @@ static void submit_request(http2_session_data *session_data) {
       MAKE_NV(":path", stream_data->path, stream_data->pathlen)};
   fprintf(stderr, "Request headers:\n");
   print_headers(stderr, hdrs, ARRLEN(hdrs));
-  stream_id = nghttp2_submit_request(session_data->session, NULL, hdrs,
-                                     ARRLEN(hdrs), NULL, stream_data);
+  stream_id = nghttp2_submit_request2(session_data->session, NULL, hdrs,
+                                      ARRLEN(hdrs), NULL, stream_data);
   if (stream_id < 0) {
     errx(1, "Could not submit HTTP request: %s", nghttp2_strerror(stream_id));
   }
@@ -453,12 +433,12 @@ static int session_send(http2_session_data *session_data) {
    context. To send them, we call session_send() in the end. */
 static void readcb(struct bufferevent *bev, void *ptr) {
   http2_session_data *session_data = (http2_session_data *)ptr;
-  ssize_t readlen;
+  nghttp2_ssize readlen;
   struct evbuffer *input = bufferevent_get_input(bev);
   size_t datalen = evbuffer_get_length(input);
   unsigned char *data = evbuffer_pullup(input, -1);
 
-  readlen = nghttp2_session_mem_recv(session_data->session, data, datalen);
+  readlen = nghttp2_session_mem_recv2(session_data->session, data, datalen);
   if (readlen < 0) {
     warnx("Fatal error: %s", nghttp2_strerror((int)readlen));
     delete_http2_session_data(session_data);
@@ -508,14 +488,9 @@ static void eventcb(struct bufferevent *bev, short events, void *ptr) {
 
     ssl = bufferevent_openssl_get_ssl(session_data->bev);
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_get0_next_proto_negotiated(ssl, &alpn, &alpnlen);
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
     if (alpn == NULL) {
       SSL_get0_alpn_selected(ssl, &alpn, &alpnlen);
     }
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10002000L */
 
     if (alpn == NULL || alpnlen != 2 || memcmp("h2", alpn, 2) != 0) {
       fprintf(stderr, "h2 is not negotiated\n");
@@ -616,19 +591,6 @@ int main(int argc, char **argv) {
   memset(&act, 0, sizeof(struct sigaction));
   act.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &act, NULL);
-
-#if OPENSSL_VERSION_NUMBER >= 0x1010000fL
-  /* No explicit initialization is required. */
-#elif defined(OPENSSL_IS_BORINGSSL)
-  CRYPTO_library_init();
-#else  /* !(OPENSSL_VERSION_NUMBER >= 0x1010000fL) &&                          \
-          !defined(OPENSSL_IS_BORINGSSL) */
-  OPENSSL_config(NULL);
-  SSL_load_error_strings();
-  SSL_library_init();
-  OpenSSL_add_all_algorithms();
-#endif /* !(OPENSSL_VERSION_NUMBER >= 0x1010000fL) &&                          \
-          !defined(OPENSSL_IS_BORINGSSL) */
 
   run(argv[1]);
   return 0;

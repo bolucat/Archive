@@ -124,7 +124,7 @@ int Http3Session::on_write() { return -1; }
 void Http3Session::terminate() {}
 
 size_t Http3Session::max_concurrent_streams() {
-  return (size_t)client_->worker->config->max_concurrent_streams;
+  return client_->worker->config->max_concurrent_streams;
 }
 
 namespace {
@@ -144,6 +144,23 @@ int Http3Session::stream_close(int64_t stream_id, uint64_t app_error_code) {
     ngtcp2_conn_extend_max_streams_uni(client_->quic.conn, 1);
   }
   client_->on_stream_close(stream_id, app_error_code == NGHTTP3_H3_NO_ERROR);
+  return 0;
+}
+
+namespace {
+int end_stream(nghttp3_conn *conn, int64_t stream_id, void *user_data,
+               void *stream_user_data) {
+  auto s = static_cast<Http3Session *>(user_data);
+  if (s->end_stream(stream_id) != 0) {
+    return NGHTTP3_ERR_CALLBACK_FAILURE;
+  }
+  return 0;
+}
+} // namespace
+
+int Http3Session::end_stream(int64_t stream_id) {
+  client_->record_ttfb();
+
   return 0;
 }
 
@@ -321,7 +338,7 @@ int Http3Session::init_conn() {
       h2load::recv_header,
       nullptr, // end_trailers
       h2load::stop_sending,
-      nullptr, // end_stream
+      h2load::end_stream,
       h2load::reset_stream,
       nullptr, // shutdown
   };

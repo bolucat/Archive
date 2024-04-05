@@ -74,6 +74,19 @@ void QUICListener::on_read() {
       return;
     }
 
+    // Packets less than 22 bytes never be a valid QUIC packet.
+    if (nread < 22) {
+      ++pktcnt;
+
+      continue;
+    }
+
+    if (util::quic_prohibited_port(util::get_port(&su))) {
+      ++pktcnt;
+
+      continue;
+    }
+
     Address local_addr{};
     if (util::msghdr_get_local_addr(local_addr, &msg, su.storage.ss_family) !=
         0) {
@@ -108,7 +121,8 @@ void QUICListener::on_read() {
                   << " bytes";
       }
 
-      if (datalen == 0) {
+      // Packets less than 22 bytes never be a valid QUIC packet.
+      if (datalen < 22) {
         break;
       }
 

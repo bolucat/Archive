@@ -567,6 +567,12 @@ std::string to_numeric_addr(const struct sockaddr *sa, socklen_t salen);
 // Sets |port| to |addr|.
 void set_port(Address &addr, uint16_t port);
 
+// Get port from |su|.
+uint16_t get_port(const sockaddr_union *su);
+
+// Returns true if |port| is prohibited as a QUIC client port.
+bool quic_prohibited_port(uint16_t port);
+
 // Returns ASCII dump of |data| of length |len|.  Only ASCII printable
 // characters are preserved.  Other characters are replaced with ".".
 std::string ascii_dump(const uint8_t *data, size_t len);
@@ -840,8 +846,10 @@ StringRef make_http_hostport(OutputIt first, const StringRef &host,
   return StringRef{first, p};
 }
 
-// Dumps |src| of length |len| in the format similar to `hexdump -C`.
-void hexdump(FILE *out, const uint8_t *src, size_t len);
+// hexdump dumps |data| of length |datalen| in the format similar to
+// hexdump(1) with -C option.  This function returns 0 if it succeeds,
+// or -1.
+int hexdump(FILE *out, const void *data, size_t datalen);
 
 // Copies 2 byte unsigned integer |n| in host byte order to |buf| in
 // network byte order.

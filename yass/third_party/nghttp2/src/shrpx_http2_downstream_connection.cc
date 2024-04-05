@@ -162,10 +162,11 @@ int Http2DownstreamConnection::submit_rst_stream(Downstream *downstream,
 }
 
 namespace {
-ssize_t http2_data_read_callback(nghttp2_session *session, int32_t stream_id,
-                                 uint8_t *buf, size_t length,
-                                 uint32_t *data_flags,
-                                 nghttp2_data_source *source, void *user_data) {
+nghttp2_ssize http2_data_read_callback(nghttp2_session *session,
+                                       int32_t stream_id, uint8_t *buf,
+                                       size_t length, uint32_t *data_flags,
+                                       nghttp2_data_source *source,
+                                       void *user_data) {
   int rv;
   auto sd = static_cast<StreamData *>(
       nghttp2_session_get_stream_user_data(session, stream_id));
@@ -349,13 +350,13 @@ int Http2DownstreamConnection::push_request_headers() {
   auto upstream = downstream_->get_upstream();
   auto handler = upstream->get_client_handler();
 
-#if OPENSSL_1_1_1_API
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_BORINGSSL)
   auto conn = handler->get_connection();
 
   if (conn->tls.ssl && !SSL_is_init_finished(conn->tls.ssl)) {
     nva.push_back(http2::make_nv_ll("early-data", "1"));
   }
-#endif // OPENSSL_1_1_1_API
+#endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_BORINGSSL
 
   auto fwd =
       fwdconf.strip_incoming ? nullptr : req.fs.header(http2::HD_FORWARDED);
@@ -476,8 +477,8 @@ int Http2DownstreamConnection::push_request_headers() {
 
   auto transfer_encoding = req.fs.header(http2::HD_TRANSFER_ENCODING);
 
-  nghttp2_data_provider *data_prdptr = nullptr;
-  nghttp2_data_provider data_prd;
+  nghttp2_data_provider2 *data_prdptr = nullptr;
+  nghttp2_data_provider2 data_prd;
 
   // Add body as long as transfer-encoding is given even if
   // req.fs.content_length == 0 to forward trailer fields.

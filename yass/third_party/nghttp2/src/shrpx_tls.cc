@@ -55,9 +55,9 @@
 #  include <openssl/core_names.h>
 #  include <openssl/decoder.h>
 #endif // OPENSSL_3_0_0_API
-#ifdef OPENSSL_IS_BORINGSSL
+#ifdef NGHTTP2_OPENSSL_IS_BORINGSSL
 #  include <openssl/hmac.h>
-#endif // OPENSSL_IS_BORINGSSL
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
 #include <nghttp2/nghttp2.h>
 
@@ -71,6 +71,11 @@
 #    include <ngtcp2/ngtcp2_crypto_boringssl.h>
 #  endif // HAVE_LIBNGTCP2_CRYPTO_BORINGSSL
 #endif   // ENABLE_HTTP3
+
+#ifdef HAVE_LIBBROTLI
+#  include <brotli/encode.h>
+#  include <brotli/decode.h>
+#endif // HAVE_LIBBROTLI
 
 #include "shrpx_log.h"
 #include "shrpx_client_handler.h"
@@ -95,26 +100,6 @@ using namespace std::chrono_literals;
 namespace shrpx {
 
 namespace tls {
-
-#if !OPENSSL_1_1_API
-namespace {
-const unsigned char *ASN1_STRING_get0_data(ASN1_STRING *x) {
-  return ASN1_STRING_data(x);
-}
-} // namespace
-#endif // !OPENSSL_1_1_API
-
-#ifndef OPENSSL_NO_NEXTPROTONEG
-namespace {
-int next_proto_cb(SSL *s, const unsigned char **data, unsigned int *len,
-                  void *arg) {
-  auto &prefs = get_config()->tls.alpn_prefs;
-  *data = prefs.data();
-  *len = prefs.size();
-  return SSL_TLSEXT_ERR_OK;
-}
-} // namespace
-#endif // !OPENSSL_NO_NEXTPROTONEG
 
 namespace {
 int verify_callback(int preverify_ok, X509_STORE_CTX *ctx) {
@@ -178,6 +163,35 @@ int ssl_pem_passwd_cb(char *buf, int size, int rwflag, void *user_data) {
 } // namespace
 
 namespace {
+std::shared_ptr<std::vector<uint8_t>>
+get_ocsp_data(TLSContextData *tls_ctx_data) {
+#ifdef HAVE_ATOMIC_STD_SHARED_PTR
+  return std::atomic_load_explicit(&tls_ctx_data->ocsp_data,
+                                   std::memory_order_acquire);
+#else  // !HAVE_ATOMIC_STD_SHARED_PTR
+  std::lock_guard<std::mutex> g(tls_ctx_data->mu);
+  return tls_ctx_data->ocsp_data;
+#endif // !HAVE_ATOMIC_STD_SHARED_PTR
+}
+} // namespace
+
+namespace {
+void set_ocsp_response(SSL *ssl) {
+#ifdef NGHTTP2_OPENSSL_IS_BORINGSSL
+  auto tls_ctx_data =
+      static_cast<TLSContextData *>(SSL_CTX_get_app_data(SSL_get_SSL_CTX(ssl)));
+  auto data = get_ocsp_data(tls_ctx_data);
+
+  if (!data) {
+    return;
+  }
+
+  SSL_set_ocsp_response(ssl, data->data(), data->size());
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
+}
+} // namespace
+
+namespace {
 // *al is set to SSL_AD_UNRECOGNIZED_NAME by openssl, so we don't have
 // to set it explicitly.
 int servername_callback(SSL *ssl, int *al, void *arg) {
@@ -187,12 +201,16 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
 
   auto rawhost = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
   if (rawhost == nullptr) {
+    set_ocsp_response(ssl);
+
     return SSL_TLSEXT_ERR_NOACK;
   }
 
   auto len = strlen(rawhost);
   // NI_MAXHOST includes terminal NULL.
   if (len == 0 || len + 1 > NI_MAXHOST) {
+    set_ocsp_response(ssl);
+
     return SSL_TLSEXT_ERR_NOACK;
   }
 
@@ -214,6 +232,8 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
 
   auto idx = cert_tree->lookup(hostname);
   if (idx == -1) {
+    set_ocsp_response(ssl);
+
     return SSL_TLSEXT_ERR_NOACK;
   }
 
@@ -231,8 +251,7 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
 
   assert(!ssl_ctx_list.empty());
 
-#if !defined(OPENSSL_IS_BORINGSSL) && !LIBRESSL_IN_USE &&                      \
-    OPENSSL_VERSION_NUMBER >= 0x10002000L
+#ifdef NGHTTP2_GENUINE_OPENSSL
   auto num_sigalgs =
       SSL_get_sigalgs(ssl, 0, nullptr, nullptr, nullptr, nullptr, nullptr);
 
@@ -274,12 +293,7 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
 
     for (auto ssl_ctx : ssl_ctx_list) {
       auto cert = SSL_CTX_get0_certificate(ssl_ctx);
-
-#  if OPENSSL_1_1_API
       auto pubkey = X509_get0_pubkey(cert);
-#  else  // !OPENSSL_1_1_API
-      auto pubkey = X509_get_pubkey(cert);
-#  endif // !OPENSSL_1_1_API
 
       if (EVP_PKEY_base_id(pubkey) != EVP_PKEY_EC) {
         continue;
@@ -296,13 +310,8 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
         SSL_set_SSL_CTX(ssl, ssl_ctx);
         return SSL_TLSEXT_ERR_OK;
       }
-#  else // !OPENSSL_3_0_0_API
-#    if OPENSSL_1_1_API
+#  else  // !OPENSSL_3_0_0_API
       auto eckey = EVP_PKEY_get0_EC_KEY(pubkey);
-#    else  // !OPENSSL_1_1_API
-      auto eckey = EVP_PKEY_get1_EC_KEY(pubkey);
-#    endif // !OPENSSL_1_1_API
-
       if (eckey == nullptr) {
         continue;
       }
@@ -310,41 +319,24 @@ int servername_callback(SSL *ssl, int *al, void *arg) {
       auto ecgroup = EC_KEY_get0_group(eckey);
       auto cert_curve = EC_GROUP_get_curve_name(ecgroup);
 
-#    if !OPENSSL_1_1_API
-      EC_KEY_free(eckey);
-      EVP_PKEY_free(pubkey);
-#    endif // !OPENSSL_1_1_API
-
       if (shared_curve == cert_curve) {
         SSL_set_SSL_CTX(ssl, ssl_ctx);
         return SSL_TLSEXT_ERR_OK;
       }
-#  endif   // !OPENSSL_3_0_0_API
+#  endif // !OPENSSL_3_0_0_API
     }
   }
-#endif // !defined(OPENSSL_IS_BORINGSSL) && !LIBRESSL_IN_USE &&
-       // OPENSSL_VERSION_NUMBER >= 0x10002000L
+#endif // NGHTTP2_GENUINE_OPENSSL
 
   SSL_set_SSL_CTX(ssl, ssl_ctx_list[0]);
+
+  set_ocsp_response(ssl);
 
   return SSL_TLSEXT_ERR_OK;
 }
 } // namespace
 
-#ifndef OPENSSL_IS_BORINGSSL
-namespace {
-std::shared_ptr<std::vector<uint8_t>>
-get_ocsp_data(TLSContextData *tls_ctx_data) {
-#  ifdef HAVE_ATOMIC_STD_SHARED_PTR
-  return std::atomic_load_explicit(&tls_ctx_data->ocsp_data,
-                                   std::memory_order_acquire);
-#  else  // !HAVE_ATOMIC_STD_SHARED_PTR
-  std::lock_guard<std::mutex> g(tls_ctx_data->mu);
-  return tls_ctx_data->ocsp_data;
-#  endif // !HAVE_ATOMIC_STD_SHARED_PTR
-}
-} // namespace
-
+#ifndef NGHTTP2_OPENSSL_IS_BORINGSSL
 namespace {
 int ocsp_resp_cb(SSL *ssl, void *arg) {
   auto ssl_ctx = SSL_get_SSL_CTX(ssl);
@@ -357,8 +349,8 @@ int ocsp_resp_cb(SSL *ssl, void *arg) {
     return SSL_TLSEXT_ERR_OK;
   }
 
-  auto buf =
-      static_cast<uint8_t *>(CRYPTO_malloc(data->size(), __FILE__, __LINE__));
+  auto buf = static_cast<uint8_t *>(
+      CRYPTO_malloc(data->size(), NGHTTP2_FILE_NAME, __LINE__));
 
   if (!buf) {
     return SSL_TLSEXT_ERR_OK;
@@ -371,7 +363,7 @@ int ocsp_resp_cb(SSL *ssl, void *arg) {
   return SSL_TLSEXT_ERR_OK;
 }
 } // namespace
-#endif // OPENSSL_IS_BORINGSSL
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
 constexpr auto MEMCACHED_SESSION_CACHE_KEY_PREFIX =
     StringRef::from_lit("nghttpx:tls-session-cache:");
@@ -447,13 +439,8 @@ int tls_session_new_cb(SSL *ssl, SSL_SESSION *session) {
 } // namespace
 
 namespace {
-SSL_SESSION *tls_session_get_cb(SSL *ssl,
-#if OPENSSL_1_1_API || LIBRESSL_2_7_API
-                                const unsigned char *id,
-#else  // !(OPENSSL_1_1_API || LIBRESSL_2_7_API)
-                                unsigned char *id,
-#endif // !(OPENSSL_1_1_API || LIBRESSL_2_7_API)
-                                int idlen, int *copy) {
+SSL_SESSION *tls_session_get_cb(SSL *ssl, const unsigned char *id, int idlen,
+                                int *copy) {
   auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
   auto handler = static_cast<ClientHandler *>(conn->data);
   auto worker = handler->get_worker();
@@ -676,15 +663,14 @@ void info_callback(const SSL *ssl, int where, int ret) {
 }
 } // namespace
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
 namespace {
 int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
                          unsigned char *outlen, const unsigned char *in,
                          unsigned int inlen, void *arg) {
-  // We assume that get_config()->npn_list contains ALPN protocol
+  // We assume that get_config()->alpn_list contains ALPN protocol
   // identifier sorted by preference order.  So we just break when we
   // found the first overlap.
-  for (const auto &target_proto_id : get_config()->tls.npn_list) {
+  for (const auto &target_proto_id : get_config()->tls.alpn_list) {
     for (auto p = in, end = in + inlen; p < end;) {
       auto proto_id = p + 1;
       auto proto_len = *p;
@@ -705,10 +691,8 @@ int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
   return SSL_TLSEXT_ERR_NOACK;
 }
 } // namespace
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 
 #ifdef ENABLE_HTTP3
-#  if OPENSSL_VERSION_NUMBER >= 0x10002000L
 namespace {
 int quic_alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
                               unsigned char *outlen, const unsigned char *in,
@@ -738,16 +722,9 @@ int quic_alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
   return SSL_TLSEXT_ERR_ALERT_FATAL;
 }
 } // namespace
-#  endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
-#endif   // ENABLE_HTTP3
+#endif // ENABLE_HTTP3
 
-#if !LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L &&               \
-    !defined(OPENSSL_IS_BORINGSSL)
-
-#  ifndef TLSEXT_TYPE_signed_certificate_timestamp
-#    define TLSEXT_TYPE_signed_certificate_timestamp 18
-#  endif // !TLSEXT_TYPE_signed_certificate_timestamp
-
+#ifdef NGHTTP2_GENUINE_OPENSSL
 namespace {
 int sct_add_cb(SSL *ssl, unsigned int ext_type, unsigned int context,
                const unsigned char **out, size_t *outlen, X509 *x,
@@ -806,34 +783,7 @@ int sct_parse_cb(SSL *ssl, unsigned int ext_type, unsigned int context,
 }
 } // namespace
 
-#  if !OPENSSL_1_1_1_API
-
-namespace {
-int legacy_sct_add_cb(SSL *ssl, unsigned int ext_type,
-                      const unsigned char **out, size_t *outlen, int *al,
-                      void *add_arg) {
-  return sct_add_cb(ssl, ext_type, 0, out, outlen, nullptr, 0, al, add_arg);
-}
-} // namespace
-
-namespace {
-void legacy_sct_free_cb(SSL *ssl, unsigned int ext_type,
-                        const unsigned char *out, void *add_arg) {
-  sct_free_cb(ssl, ext_type, 0, out, add_arg);
-}
-} // namespace
-
-namespace {
-int legacy_sct_parse_cb(SSL *ssl, unsigned int ext_type,
-                        const unsigned char *in, size_t inlen, int *al,
-                        void *parse_arg) {
-  return sct_parse_cb(ssl, ext_type, 0, in, inlen, nullptr, 0, al, parse_arg);
-}
-} // namespace
-
-#  endif // !OPENSSL_1_1_1_API
-#endif   // !LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L &&
-         // !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL
 
 #ifndef OPENSSL_NO_PSK
 namespace {
@@ -896,6 +846,83 @@ unsigned int psk_client_cb(SSL *ssl, const char *hint, char *identity_out,
 } // namespace
 #endif // !OPENSSL_NO_PSK
 
+#if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
+namespace {
+int cert_compress(SSL *ssl, CBB *out, const uint8_t *in, size_t in_len) {
+  uint8_t *dest;
+
+  size_t compressed_size = BrotliEncoderMaxCompressedSize(in_len);
+  if (compressed_size == 0) {
+    LOG(ERROR) << "BrotliEncoderMaxCompressedSize failed";
+
+    return 0;
+  }
+
+  if (LOG_ENABLED(INFO)) {
+    LOG(INFO) << "Maximum compressed size is " << compressed_size
+              << " bytes against input " << in_len << " bytes";
+  }
+
+  if (!CBB_reserve(out, &dest, compressed_size)) {
+    LOG(ERROR) << "CBB_reserve failed";
+
+    return 0;
+  }
+
+  if (BrotliEncoderCompress(BROTLI_MAX_QUALITY, BROTLI_DEFAULT_WINDOW,
+                            BROTLI_MODE_GENERIC, in_len, in, &compressed_size,
+                            dest) != BROTLI_TRUE) {
+    LOG(ERROR) << "BrotliEncoderCompress failed";
+
+    return 0;
+  }
+
+  if (LOG_ENABLED(INFO)) {
+    LOG(INFO) << "BrotliEncoderCompress succeeded, produced " << compressed_size
+              << " bytes, " << (in_len - compressed_size) * 100 / in_len
+              << "% reduction";
+  }
+
+  if (!CBB_did_write(out, compressed_size)) {
+    LOG(ERROR) << "CBB_did_write failed";
+
+    return 0;
+  }
+
+  return 1;
+}
+
+int cert_decompress(SSL *ssl, CRYPTO_BUFFER **out, size_t uncompressed_len,
+                    const uint8_t *in, size_t in_len) {
+  uint8_t *dest;
+  auto buf = CRYPTO_BUFFER_alloc(&dest, uncompressed_len);
+  auto len = uncompressed_len;
+
+  if (BrotliDecoderDecompress(in_len, in, &len, dest) !=
+      BROTLI_DECODER_RESULT_SUCCESS) {
+    LOG(ERROR) << "BrotliDecoderDecompress failed";
+
+    CRYPTO_BUFFER_free(buf);
+
+    return 0;
+  }
+
+  if (uncompressed_len != len) {
+    LOG(ERROR) << "Unexpected uncompressed length: expected "
+               << uncompressed_len << " bytes, actual " << len << " bytes";
+
+    CRYPTO_BUFFER_free(buf);
+
+    return 0;
+  }
+
+  *out = buf;
+
+  return 1;
+}
+} // namespace
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL && HAVE_LIBBROTLI
+
 struct TLSProtocol {
   StringRef name;
   long int mask;
@@ -942,7 +969,7 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
                   SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION |
                   SSL_OP_SINGLE_ECDH_USE | SSL_OP_SINGLE_DH_USE |
                   SSL_OP_CIPHER_SERVER_PREFERENCE
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#ifdef NGHTTP2_GENUINE_OPENSSL
                   // The reason for disabling built-in anti-replay in
                   // OpenSSL is that it only works if client gets back
                   // to the same server.  The freshness check
@@ -950,7 +977,7 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
                   // https://tools.ietf.org/html/rfc8446#section-8.3
                   // is still performed.
                   | SSL_OP_NO_ANTI_REPLAY
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL
       ;
 
   auto config = mod_config();
@@ -987,39 +1014,21 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
     DIE();
   }
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_LIBRESSL)
   if (SSL_CTX_set_ciphersuites(ssl_ctx, tlsconf.tls13_ciphers.c_str()) == 0) {
     LOG(FATAL) << "SSL_CTX_set_ciphersuites " << tlsconf.tls13_ciphers
                << " failed: " << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_LIBRESSL
 
 #ifndef OPENSSL_NO_EC
-#  if !LIBRESSL_LEGACY_API && OPENSSL_VERSION_NUMBER >= 0x10002000L
   if (SSL_CTX_set1_curves_list(ssl_ctx, tlsconf.ecdh_curves.c_str()) != 1) {
     LOG(FATAL) << "SSL_CTX_set1_curves_list " << tlsconf.ecdh_curves
                << " failed";
     DIE();
   }
-#    if !defined(OPENSSL_IS_BORINGSSL) && !OPENSSL_1_1_API
-  // It looks like we need this function call for OpenSSL 1.0.2.  This
-  // function was deprecated in OpenSSL 1.1.0 and BoringSSL.
-  SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
-#    endif // !defined(OPENSSL_IS_BORINGSSL) && !OPENSSL_1_1_API
-#  else    // LIBRESSL_LEGACY_API || OPENSSL_VERSION_NUBMER < 0x10002000L
-  // Use P-256, which is sufficiently secure at the time of this
-  // writing.
-  auto ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-  if (ecdh == nullptr) {
-    LOG(FATAL) << "EC_KEY_new_by_curv_name failed: "
-               << ERR_error_string(ERR_get_error(), nullptr);
-    DIE();
-  }
-  SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
-  EC_KEY_free(ecdh);
-#  endif   // LIBRESSL_LEGACY_API || OPENSSL_VERSION_NUBMER < 0x10002000L
-#endif     // OPENSSL_NO_EC
+#endif // OPENSSL_NO_EC
 
   if (!tlsconf.dh_param_file.empty()) {
     // Read DH parameters from file
@@ -1141,23 +1150,17 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
 #else  // !OPENSSL_3_0_0_API
   SSL_CTX_set_tlsext_ticket_key_cb(ssl_ctx, ticket_key_cb);
 #endif // !OPENSSL_3_0_0_API
-#ifndef OPENSSL_IS_BORINGSSL
+#ifndef NGHTTP2_OPENSSL_IS_BORINGSSL
   SSL_CTX_set_tlsext_status_cb(ssl_ctx, ocsp_resp_cb);
-#endif // OPENSSL_IS_BORINGSSL
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
   SSL_CTX_set_info_callback(ssl_ctx, info_callback);
 
-#ifdef OPENSSL_IS_BORINGSSL
+#ifdef NGHTTP2_OPENSSL_IS_BORINGSSL
   SSL_CTX_set_early_data_enabled(ssl_ctx, 1);
-#endif // OPENSSL_IS_BORINGSSL
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
-  // NPN advertisement
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, next_proto_cb, nullptr);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   // ALPN selection callback
   SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_proto_cb, nullptr);
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 
   auto tls_ctx_data = new TLSContextData();
   tls_ctx_data->cert_file = cert_file;
@@ -1165,14 +1168,12 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
 
   SSL_CTX_set_app_data(ssl_ctx, tls_ctx_data);
 
-#if !LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L &&               \
-    !defined(OPENSSL_IS_BORINGSSL)
+#ifdef NGHTTP2_GENUINE_OPENSSL
   // SSL_extension_supported(TLSEXT_TYPE_signed_certificate_timestamp)
   // returns 1, which means OpenSSL internally handles it.  But
   // OpenSSL handles signed_certificate_timestamp extension specially,
   // and it lets custom handler to process the extension.
   if (!sct_data.empty()) {
-#  if OPENSSL_1_1_1_API
     // It is not entirely clear to me that SSL_EXT_CLIENT_HELLO is
     // required here.  sct_parse_cb is called without
     // SSL_EXT_CLIENT_HELLO being set.  But the passed context value
@@ -1186,18 +1187,8 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
                  << ERR_error_string(ERR_get_error(), nullptr);
       DIE();
     }
-#  else  // !OPENSSL_1_1_1_API
-    if (SSL_CTX_add_server_custom_ext(
-            ssl_ctx, TLSEXT_TYPE_signed_certificate_timestamp,
-            legacy_sct_add_cb, legacy_sct_free_cb, nullptr, legacy_sct_parse_cb,
-            nullptr) != 1) {
-      LOG(FATAL) << "SSL_CTX_add_server_custom_ext failed: "
-                 << ERR_error_string(ERR_get_error(), nullptr);
-      DIE();
-    }
-#  endif // !OPENSSL_1_1_1_API
   }
-#elif defined(OPENSSL_IS_BORINGSSL)
+#elif defined(NGHTTP2_OPENSSL_IS_BORINGSSL)
   if (!tls_ctx_data->sct_data.empty() &&
       SSL_CTX_set_signed_cert_timestamp_list(
           ssl_ctx, tls_ctx_data->sct_data.data(),
@@ -1206,19 +1197,33 @@ SSL_CTX *create_ssl_context(const char *private_key_file, const char *cert_file,
                << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#endif // defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#ifdef NGHTTP2_GENUINE_OPENSSL
   if (SSL_CTX_set_max_early_data(ssl_ctx, tlsconf.max_early_data) != 1) {
     LOG(FATAL) << "SSL_CTX_set_max_early_data failed: "
                << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+  if (SSL_CTX_set_recv_max_early_data(ssl_ctx, tlsconf.max_early_data) != 1) {
+    LOG(FATAL) << "SSL_CTX_set_recv_max_early_data failed: "
+               << ERR_error_string(ERR_get_error(), nullptr);
+    DIE();
+  }
+#endif // NGHTTP2_GENUINE_OPENSSL
 
 #ifndef OPENSSL_NO_PSK
   SSL_CTX_set_psk_server_callback(ssl_ctx, psk_server_cb);
 #endif // !LIBRESSL_NO_PSK
+
+#if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
+  if (!SSL_CTX_add_cert_compression_alg(
+          ssl_ctx, nghttp2::tls::CERTIFICATE_COMPRESSION_ALGO_BROTLI,
+          cert_compress, cert_decompress)) {
+    LOG(FATAL) << "SSL_CTX_add_cert_compression_alg failed";
+    DIE();
+  }
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL && HAVE_LIBBROTLI
 
   return ssl_ctx;
 }
@@ -1243,14 +1248,14 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
       SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION | SSL_OP_SINGLE_ECDH_USE |
       SSL_OP_SINGLE_DH_USE |
       SSL_OP_CIPHER_SERVER_PREFERENCE
-#  if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  ifdef NGHTTP2_GENUINE_OPENSSL
       // The reason for disabling built-in anti-replay in OpenSSL is
       // that it only works if client gets back to the same server.
       // The freshness check described in
       // https://tools.ietf.org/html/rfc8446#section-8.3 is still
       // performed.
       | SSL_OP_NO_ANTI_REPLAY
-#  endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  endif // NGHTTP2_GENUINE_OPENSSL
       ;
 
   auto config = mod_config();
@@ -1283,39 +1288,21 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
     DIE();
   }
 
-#  if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_LIBRESSL)
   if (SSL_CTX_set_ciphersuites(ssl_ctx, tlsconf.tls13_ciphers.c_str()) == 0) {
     LOG(FATAL) << "SSL_CTX_set_ciphersuites " << tlsconf.tls13_ciphers
                << " failed: " << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#  endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_LIBRESSL
 
 #  ifndef OPENSSL_NO_EC
-#    if !LIBRESSL_LEGACY_API && OPENSSL_VERSION_NUMBER >= 0x10002000L
   if (SSL_CTX_set1_curves_list(ssl_ctx, tlsconf.ecdh_curves.c_str()) != 1) {
     LOG(FATAL) << "SSL_CTX_set1_curves_list " << tlsconf.ecdh_curves
                << " failed";
     DIE();
   }
-#      if !defined(OPENSSL_IS_BORINGSSL) && !OPENSSL_1_1_API
-  // It looks like we need this function call for OpenSSL 1.0.2.  This
-  // function was deprecated in OpenSSL 1.1.0 and BoringSSL.
-  SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
-#      endif // !defined(OPENSSL_IS_BORINGSSL) && !OPENSSL_1_1_API
-#    else    // LIBRESSL_LEGACY_API || OPENSSL_VERSION_NUBMER < 0x10002000L
-  // Use P-256, which is sufficiently secure at the time of this
-  // writing.
-  auto ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-  if (ecdh == nullptr) {
-    LOG(FATAL) << "EC_KEY_new_by_curv_name failed: "
-               << ERR_error_string(ERR_get_error(), nullptr);
-    DIE();
-  }
-  SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
-  EC_KEY_free(ecdh);
-#    endif   // LIBRESSL_LEGACY_API || OPENSSL_VERSION_NUBMER < 0x10002000L
-#  endif     // OPENSSL_NO_EC
+#  endif // OPENSSL_NO_EC
 
   if (!tlsconf.dh_param_file.empty()) {
     // Read DH parameters from file
@@ -1437,14 +1424,12 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
 #  else  // !OPENSSL_3_0_0_API
   SSL_CTX_set_tlsext_ticket_key_cb(ssl_ctx, ticket_key_cb);
 #  endif // !OPENSSL_3_0_0_API
-#  ifndef OPENSSL_IS_BORINGSSL
+#  ifndef NGHTTP2_OPENSSL_IS_BORINGSSL
   SSL_CTX_set_tlsext_status_cb(ssl_ctx, ocsp_resp_cb);
-#  endif // OPENSSL_IS_BORINGSSL
+#  endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
-#  if OPENSSL_VERSION_NUMBER >= 0x10002000L
   // ALPN selection callback
   SSL_CTX_set_alpn_select_cb(ssl_ctx, quic_alpn_select_proto_cb, nullptr);
-#  endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 
   auto tls_ctx_data = new TLSContextData();
   tls_ctx_data->cert_file = cert_file;
@@ -1452,14 +1437,12 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
 
   SSL_CTX_set_app_data(ssl_ctx, tls_ctx_data);
 
-#  if !LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L &&             \
-      !defined(OPENSSL_IS_BORINGSSL)
+#  ifdef NGHTTP2_GENUINE_OPENSSL
   // SSL_extension_supported(TLSEXT_TYPE_signed_certificate_timestamp)
   // returns 1, which means OpenSSL internally handles it.  But
   // OpenSSL handles signed_certificate_timestamp extension specially,
   // and it lets custom handler to process the extension.
   if (!sct_data.empty()) {
-#    if OPENSSL_1_1_1_API
     // It is not entirely clear to me that SSL_EXT_CLIENT_HELLO is
     // required here.  sct_parse_cb is called without
     // SSL_EXT_CLIENT_HELLO being set.  But the passed context value
@@ -1473,18 +1456,8 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
                  << ERR_error_string(ERR_get_error(), nullptr);
       DIE();
     }
-#    else  // !OPENSSL_1_1_1_API
-    if (SSL_CTX_add_server_custom_ext(
-            ssl_ctx, TLSEXT_TYPE_signed_certificate_timestamp,
-            legacy_sct_add_cb, legacy_sct_free_cb, nullptr, legacy_sct_parse_cb,
-            nullptr) != 1) {
-      LOG(FATAL) << "SSL_CTX_add_server_custom_ext failed: "
-                 << ERR_error_string(ERR_get_error(), nullptr);
-      DIE();
-    }
-#    endif // !OPENSSL_1_1_1_API
   }
-#  elif defined(OPENSSL_IS_BORINGSSL)
+#  elif defined(NGHTTP2_OPENSSL_IS_BORINGSSL)
   if (!tls_ctx_data->sct_data.empty() &&
       SSL_CTX_set_signed_cert_timestamp_list(
           ssl_ctx, tls_ctx_data->sct_data.data(),
@@ -1493,9 +1466,9 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
                << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#  endif // defined(OPENSSL_IS_BORINGSSL)
+#  endif // NGHTTP2_OPENSSL_IS_BORINGSSL
 
-#  if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  ifdef NGHTTP2_GENUINE_OPENSSL
   auto &quicconf = config->quic;
 
   if (quicconf.upstream.early_data &&
@@ -1505,72 +1478,31 @@ SSL_CTX *create_quic_ssl_context(const char *private_key_file,
                << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#  endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#  endif // NGHTTP2_GENUINE_OPENSSL
 
 #  ifndef OPENSSL_NO_PSK
   SSL_CTX_set_psk_server_callback(ssl_ctx, psk_server_cb);
 #  endif // !LIBRESSL_NO_PSK
 
+#  if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
+  if (!SSL_CTX_add_cert_compression_alg(
+          ssl_ctx, nghttp2::tls::CERTIFICATE_COMPRESSION_ALGO_BROTLI,
+          cert_compress, cert_decompress)) {
+    LOG(FATAL) << "SSL_CTX_add_cert_compression_alg failed";
+    DIE();
+  }
+#  endif // NGHTTP2_OPENSSL_IS_BORINGSSL && HAVE_LIBBROTLI
+
   return ssl_ctx;
 }
 #endif // ENABLE_HTTP3
-
-namespace {
-int select_h2_next_proto_cb(SSL *ssl, unsigned char **out,
-                            unsigned char *outlen, const unsigned char *in,
-                            unsigned int inlen, void *arg) {
-  if (!util::select_h2(const_cast<const unsigned char **>(out), outlen, in,
-                       inlen)) {
-    return SSL_TLSEXT_ERR_NOACK;
-  }
-
-  return SSL_TLSEXT_ERR_OK;
-}
-} // namespace
-
-namespace {
-int select_h1_next_proto_cb(SSL *ssl, unsigned char **out,
-                            unsigned char *outlen, const unsigned char *in,
-                            unsigned int inlen, void *arg) {
-  auto end = in + inlen;
-  for (; in < end;) {
-    if (util::streq(NGHTTP2_H1_1_ALPN, StringRef{in, in + (in[0] + 1)})) {
-      *out = const_cast<unsigned char *>(in) + 1;
-      *outlen = in[0];
-      return SSL_TLSEXT_ERR_OK;
-    }
-    in += in[0] + 1;
-  }
-
-  return SSL_TLSEXT_ERR_NOACK;
-}
-} // namespace
-
-namespace {
-int select_next_proto_cb(SSL *ssl, unsigned char **out, unsigned char *outlen,
-                         const unsigned char *in, unsigned int inlen,
-                         void *arg) {
-  auto conn = static_cast<Connection *>(SSL_get_app_data(ssl));
-  switch (conn->proto) {
-  case Proto::HTTP1:
-    return select_h1_next_proto_cb(ssl, out, outlen, in, inlen, arg);
-  case Proto::HTTP2:
-    return select_h2_next_proto_cb(ssl, out, outlen, in, inlen, arg);
-  default:
-    return SSL_TLSEXT_ERR_NOACK;
-  }
-}
-} // namespace
 
 SSL_CTX *create_ssl_client_context(
 #ifdef HAVE_NEVERBLEED
     neverbleed_t *nb,
 #endif // HAVE_NEVERBLEED
     const StringRef &cacert, const StringRef &cert_file,
-    const StringRef &private_key_file,
-    int (*next_proto_select_cb)(SSL *s, unsigned char **out,
-                                unsigned char *outlen, const unsigned char *in,
-                                unsigned int inlen, void *arg)) {
+    const StringRef &private_key_file) {
   auto ssl_ctx = SSL_CTX_new(TLS_client_method());
   if (!ssl_ctx) {
     LOG(FATAL) << ERR_error_string(ERR_get_error(), nullptr);
@@ -1607,14 +1539,14 @@ SSL_CTX *create_ssl_client_context(
     DIE();
   }
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_LIBRESSL)
   if (SSL_CTX_set_ciphersuites(ssl_ctx, tlsconf.client.tls13_ciphers.c_str()) ==
       0) {
     LOG(FATAL) << "SSL_CTX_set_ciphersuites " << tlsconf.client.tls13_ciphers
                << " failed: " << ERR_error_string(ERR_get_error(), nullptr);
     DIE();
   }
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_LIBRESSL
 
   SSL_CTX_set_mode(ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
 
@@ -1670,11 +1602,14 @@ SSL_CTX *create_ssl_client_context(
   SSL_CTX_set_psk_client_callback(ssl_ctx, psk_client_cb);
 #endif // !OPENSSL_NO_PSK
 
-  // NPN selection callback.  This is required to set SSL_CTX because
-  // OpenSSL does not offer SSL_set_next_proto_select_cb.
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_CTX_set_next_proto_select_cb(ssl_ctx, next_proto_select_cb, nullptr);
-#endif // !OPENSSL_NO_NEXTPROTONEG
+#if defined(NGHTTP2_OPENSSL_IS_BORINGSSL) && defined(HAVE_LIBBROTLI)
+  if (!SSL_CTX_add_cert_compression_alg(
+          ssl_ctx, nghttp2::tls::CERTIFICATE_COMPRESSION_ALGO_BROTLI,
+          cert_compress, cert_decompress)) {
+    LOG(FATAL) << "SSL_CTX_add_cert_compression_alg failed";
+    DIE();
+  }
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL && HAVE_LIBBROTLI
 
   return ssl_ctx;
 }
@@ -2116,16 +2051,7 @@ int cert_lookup_tree_add_ssl_ctx(
     SSL_CTX *ssl_ctx) {
   std::array<uint8_t, NI_MAXHOST> buf;
 
-#if LIBRESSL_2_7_API ||                                                        \
-    (!LIBRESSL_IN_USE && OPENSSL_VERSION_NUMBER >= 0x10002000L)
   auto cert = SSL_CTX_get0_certificate(ssl_ctx);
-#else  // !LIBRESSL_2_7_API && OPENSSL_VERSION_NUMBER < 0x10002000L
-  auto tls_ctx_data =
-      static_cast<TLSContextData *>(SSL_CTX_get_app_data(ssl_ctx));
-  auto cert = load_certificate(tls_ctx_data->cert_file);
-  auto cert_deleter = defer(X509_free, cert);
-#endif // !LIBRESSL_2_7_API && OPENSSL_VERSION_NUMBER < 0x10002000L
-
   auto altnames = static_cast<GENERAL_NAMES *>(
       X509_get_ext_d2i(cert, NID_subject_alt_name, nullptr, nullptr));
   if (altnames) {
@@ -2389,23 +2315,19 @@ SSL_CTX *setup_downstream_client_ssl_context(
 #ifdef HAVE_NEVERBLEED
       nb,
 #endif // HAVE_NEVERBLEED
-      tlsconf.cacert, tlsconf.client.cert_file, tlsconf.client.private_key_file,
-      select_next_proto_cb);
+      tlsconf.cacert, tlsconf.client.cert_file,
+      tlsconf.client.private_key_file);
 }
 
 void setup_downstream_http2_alpn(SSL *ssl) {
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   // ALPN advertisement
   auto alpn = util::get_default_alpn();
   SSL_set_alpn_protos(ssl, alpn.data(), alpn.size());
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 }
 
 void setup_downstream_http1_alpn(SSL *ssl) {
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   // ALPN advertisement
   SSL_set_alpn_protos(ssl, NGHTTP2_H1_1_ALPN.byte(), NGHTTP2_H1_1_ALPN.size());
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
 }
 
 std::unique_ptr<CertLookupTree> create_cert_lookup_tree() {
@@ -2474,9 +2396,7 @@ int proto_version_from_string(const StringRef &v) {
 
 int verify_ocsp_response(SSL_CTX *ssl_ctx, const uint8_t *ocsp_resp,
                          size_t ocsp_resplen) {
-
-#if !defined(OPENSSL_NO_OCSP) && !LIBRESSL_IN_USE &&                           \
-    OPENSSL_VERSION_NUMBER >= 0x10002000L
+#ifndef OPENSSL_NO_OCSP
   int rv;
 
   STACK_OF(X509) * chain_certs;
@@ -2522,11 +2442,7 @@ int verify_ocsp_response(SSL_CTX *ssl_ctx, const uint8_t *ocsp_resp,
     return -1;
   }
 
-#  if OPENSSL_1_1_API
   auto certid = OCSP_SINGLERESP_get0_id(sresp);
-#  else  // !OPENSSL_1_1_API
-  auto certid = sresp->certId;
-#  endif // !OPENSSL_1_1_API
   assert(certid != nullptr);
 
   ASN1_INTEGER *serial;
@@ -2553,8 +2469,7 @@ int verify_ocsp_response(SSL_CTX *ssl_ctx, const uint8_t *ocsp_resp,
   if (LOG_ENABLED(INFO)) {
     LOG(INFO) << "OCSP verification succeeded";
   }
-#endif // !defined(OPENSSL_NO_OCSP) && !LIBRESSL_IN_USE
-       // && OPENSSL_VERSION_NUMBER >= 0x10002000L
+#endif // !OPENSSL_NO_OCSP
 
   return 0;
 }
@@ -2620,7 +2535,7 @@ namespace {
 int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
   int rv;
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#if defined(NGHTTP2_GENUINE_OPENSSL) || defined(NGHTTP2_OPENSSL_IS_LIBRESSL)
   struct tm tm;
   rv = ASN1_TIME_to_tm(at, &tm);
   if (rv != 1) {
@@ -2628,7 +2543,7 @@ int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
   }
 
   t = nghttp2_timegm(&tm);
-#else // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
+#else // !NGHTTP2_GENUINE_OPENSSL && !NGHTTP2_OPENSSL_IS_LIBRESSL
   auto b = BIO_new(BIO_s_mem());
   if (!b) {
     return -1;
@@ -2641,7 +2556,7 @@ int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
     return -1;
   }
 
-#  ifdef OPENSSL_IS_BORINGSSL
+#  ifdef NGHTTP2_OPENSSL_IS_BORINGSSL
   char *s;
 #  else
   unsigned char *s;
@@ -2654,18 +2569,14 @@ int time_t_from_asn1_time(time_t &t, const ASN1_TIME *at) {
   }
 
   t = tt;
-#endif // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
+#endif // !NGHTTP2_GENUINE_OPENSSL && !NGHTTP2_OPENSSL_IS_LIBRESSL
 
   return 0;
 }
 } // namespace
 
 int get_x509_not_before(time_t &t, X509 *x) {
-#if OPENSSL_1_1_API
   auto at = X509_get0_notBefore(x);
-#else  // !OPENSSL_1_1_API
-  auto at = X509_get_notBefore(x);
-#endif // !OPENSSL_1_1_API
   if (!at) {
     return -1;
   }
@@ -2674,11 +2585,7 @@ int get_x509_not_before(time_t &t, X509 *x) {
 }
 
 int get_x509_not_after(time_t &t, X509 *x) {
-#if OPENSSL_1_1_API
   auto at = X509_get0_notAfter(x);
-#else  // !OPENSSL_1_1_API
-  auto at = X509_get_notAfter(x);
-#endif // !OPENSSL_1_1_API
   if (!at) {
     return -1;
   }

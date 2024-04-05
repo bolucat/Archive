@@ -34,6 +34,7 @@
 #include "shrpx_log.h"
 #include "shrpx_http3_upstream.h"
 #include "shrpx_connection_handler.h"
+#include "ssl_compat.h"
 
 namespace shrpx {
 
@@ -122,7 +123,7 @@ int QUICConnectionHandler::handle_packet(const UpstreamAddr *faddr,
   }
 
   if (it == std::end(connections_)) {
-    std::array<uint8_t, SHRPX_QUIC_DECRYPTED_DCIDLEN> decrypted_dcid;
+    ConnectionID decrypted_dcid;
 
     auto &qkms = conn_handler->get_quic_keying_materials();
     const QUICKeyingMaterial *qkm = nullptr;
@@ -131,19 +132,17 @@ int QUICConnectionHandler::handle_packet(const UpstreamAddr *faddr,
       qkm = select_quic_keying_material(
           *qkms.get(), vc.dcid[0] & SHRPX_QUIC_DCID_KM_ID_MASK);
 
-      if (decrypt_quic_connection_id(decrypted_dcid.data(),
-                                     vc.dcid + SHRPX_QUIC_CID_PREFIX_OFFSET,
-                                     qkm->cid_encryption_key.data()) != 0) {
+      if (decrypt_quic_connection_id(decrypted_dcid,
+                                     vc.dcid + SHRPX_QUIC_CID_WORKER_ID_OFFSET,
+                                     qkm->cid_decryption_ctx) != 0) {
         return 0;
       }
 
       if (qkm != &qkms->keying_materials.front() ||
-          !std::equal(std::begin(decrypted_dcid),
-                      std::begin(decrypted_dcid) + SHRPX_QUIC_CID_PREFIXLEN,
-                      worker_->get_cid_prefix())) {
+          decrypted_dcid.worker != worker_->get_worker_id()) {
         auto quic_lwp =
-            conn_handler->match_quic_lingering_worker_process_cid_prefix(
-                decrypted_dcid.data(), decrypted_dcid.size());
+            conn_handler->match_quic_lingering_worker_process_worker_id(
+                decrypted_dcid.worker);
         if (quic_lwp) {
           if (conn_handler->forward_quic_packet_to_lingering_worker_process(
                   quic_lwp, remote_addr, local_addr, pi, data, datalen) == 0) {
@@ -176,23 +175,21 @@ int QUICConnectionHandler::handle_packet(const UpstreamAddr *faddr,
 
     switch (ngtcp2_accept(&hd, data, datalen)) {
     case 0: {
-      // If we get Initial and it has the CID prefix of this worker,
-      // it is likely that client is intentionally use the prefix.
-      // Just drop it.
+      // If we get Initial and it has the Worker ID of this worker, it
+      // is likely that client is intentionally use the prefix.  Just
+      // drop it.
       if (vc.dcidlen == SHRPX_QUIC_SCIDLEN) {
         if (qkm != &qkms->keying_materials.front()) {
           qkm = &qkms->keying_materials.front();
 
-          if (decrypt_quic_connection_id(decrypted_dcid.data(),
-                                         vc.dcid + SHRPX_QUIC_CID_PREFIX_OFFSET,
-                                         qkm->cid_encryption_key.data()) != 0) {
+          if (decrypt_quic_connection_id(
+                  decrypted_dcid, vc.dcid + SHRPX_QUIC_CID_WORKER_ID_OFFSET,
+                  qkm->cid_decryption_ctx) != 0) {
             return 0;
           }
         }
 
-        if (std::equal(std::begin(decrypted_dcid),
-                       std::begin(decrypted_dcid) + SHRPX_QUIC_CID_PREFIXLEN,
-                       worker_->get_cid_prefix())) {
+        if (decrypted_dcid.worker == worker_->get_worker_id()) {
           return 0;
         }
       }
@@ -323,22 +320,19 @@ int QUICConnectionHandler::handle_packet(const UpstreamAddr *faddr,
       break;
     }
     default:
-      if (!config->single_thread && !(data[0] & 0x80) &&
-          vc.dcidlen == SHRPX_QUIC_SCIDLEN &&
-          !std::equal(std::begin(decrypted_dcid),
-                      std::begin(decrypted_dcid) + SHRPX_QUIC_CID_PREFIXLEN,
-                      worker_->get_cid_prefix())) {
-        if (conn_handler->forward_quic_packet(faddr, remote_addr, local_addr,
-                                              pi, decrypted_dcid.data(), data,
+      if (!(data[0] & 0x80) && vc.dcidlen == SHRPX_QUIC_SCIDLEN &&
+          decrypted_dcid.worker != worker_->get_worker_id()) {
+        if (!config->single_thread &&
+            conn_handler->forward_quic_packet(faddr, remote_addr, local_addr,
+                                              pi, decrypted_dcid.worker, data,
                                               datalen) == 0) {
           return 0;
         }
-      }
 
-      if (!(data[0] & 0x80)) {
-        // TODO Must be rate limited
-        send_stateless_reset(faddr, vc.dcid, vc.dcidlen, remote_addr,
-                             local_addr);
+        if (datalen >= SHRPX_QUIC_SCIDLEN + 22) {
+          send_stateless_reset(faddr, datalen, vc.dcid, vc.dcidlen, remote_addr,
+                               local_addr);
+        }
       }
 
       return 0;
@@ -390,9 +384,9 @@ ClientHandler *QUICConnectionHandler::handle_new_connection(
     return nullptr;
   }
 
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#ifdef NGHTTP2_GENUINE_OPENSSL
   assert(SSL_is_quic(ssl));
-#endif // OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#endif // NGHTTP2_GENUINE_OPENSSL
 
   SSL_set_accept_state(ssl);
 
@@ -400,11 +394,11 @@ ClientHandler *QUICConnectionHandler::handle_new_connection(
   auto &quicconf = config->quic;
 
   if (quicconf.upstream.early_data) {
-#if OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL)
+#ifdef NGHTTP2_GENUINE_OPENSSL
     SSL_set_quic_early_data_enabled(ssl, 1);
-#else  // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
+#elif defined(NGHTTP2_OPENSSL_IS_BORINGSSL)
     SSL_set_early_data_enabled(ssl, 1);
-#endif // !(OPENSSL_1_1_1_API && !defined(OPENSSL_IS_BORINGSSL))
+#endif // NGHTTP2_OPENSSL_IS_BORINGSSL
   }
 
   // Disable TLS session ticket if we don't have working ticket
@@ -477,9 +471,8 @@ int QUICConnectionHandler::send_retry(
 
   ngtcp2_cid retry_scid;
 
-  if (generate_quic_retry_connection_id(retry_scid, SHRPX_QUIC_SCIDLEN,
-                                        quicconf.server_id.data(), qkm.id,
-                                        qkm.cid_encryption_key.data()) != 0) {
+  if (generate_quic_retry_connection_id(retry_scid, quicconf.server_id, qkm.id,
+                                        qkm.cid_encryption_ctx) != 0) {
     return -1;
   }
 
@@ -562,11 +555,9 @@ int QUICConnectionHandler::send_version_negotiation(
                           buf.data(), nwrite, 0);
 }
 
-int QUICConnectionHandler::send_stateless_reset(const UpstreamAddr *faddr,
-                                                const uint8_t *dcid,
-                                                size_t dcidlen,
-                                                const Address &remote_addr,
-                                                const Address &local_addr) {
+int QUICConnectionHandler::send_stateless_reset(
+    const UpstreamAddr *faddr, size_t pktlen, const uint8_t *dcid,
+    size_t dcidlen, const Address &remote_addr, const Address &local_addr) {
   if (stateless_reset_bucket_ == 0) {
     if (LOG_ENABLED(INFO)) {
       LOG(INFO) << "Stateless Reset bucket has been depleted";
@@ -597,17 +588,30 @@ int QUICConnectionHandler::send_stateless_reset(const UpstreamAddr *faddr,
     return -1;
   }
 
-  std::array<uint8_t, NGTCP2_MIN_STATELESS_RESET_RANDLEN> rand_bytes;
+  // SCID + minimum expansion - NGTCP2_STATELESS_RESET_TOKENLEN
+  constexpr size_t max_rand_byteslen =
+      SHRPX_QUIC_SCIDLEN + 22 - NGTCP2_STATELESS_RESET_TOKENLEN;
 
-  if (RAND_bytes(rand_bytes.data(), rand_bytes.size()) != 1) {
+  size_t rand_byteslen;
+
+  if (pktlen <= 43) {
+    // As per
+    // https://datatracker.ietf.org/doc/html/rfc9000#section-10.3
+    rand_byteslen = pktlen - NGTCP2_STATELESS_RESET_TOKENLEN - 1;
+  } else {
+    rand_byteslen = max_rand_byteslen;
+  }
+
+  std::array<uint8_t, max_rand_byteslen> rand_bytes;
+
+  if (RAND_bytes(rand_bytes.data(), rand_byteslen) != 1) {
     return -1;
   }
 
   std::array<uint8_t, NGTCP2_MAX_UDP_PAYLOAD_SIZE> buf;
 
-  auto nwrite =
-      ngtcp2_pkt_write_stateless_reset(buf.data(), buf.size(), token.data(),
-                                       rand_bytes.data(), rand_bytes.size());
+  auto nwrite = ngtcp2_pkt_write_stateless_reset(
+      buf.data(), buf.size(), token.data(), rand_bytes.data(), rand_byteslen);
   if (nwrite < 0) {
     LOG(ERROR) << "ngtcp2_pkt_write_stateless_reset: "
                << ngtcp2_strerror(nwrite);

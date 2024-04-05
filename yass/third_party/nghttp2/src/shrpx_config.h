@@ -405,6 +405,13 @@ constexpr auto SHRPX_OPT_FRONTEND_QUIC_INITIAL_RTT =
 constexpr auto SHRPX_OPT_REQUIRE_HTTP_SCHEME =
     StringRef::from_lit("require-http-scheme");
 constexpr auto SHRPX_OPT_TLS_KTLS = StringRef::from_lit("tls-ktls");
+constexpr auto SHRPX_OPT_ALPN_LIST = StringRef::from_lit("alpn-list");
+constexpr auto SHRPX_OPT_FRONTEND_HEADER_TIMEOUT =
+    StringRef::from_lit("frontend-header-timeout");
+constexpr auto SHRPX_OPT_FRONTEND_HTTP2_IDLE_TIMEOUT =
+    StringRef::from_lit("frontend-http2-idle-timeout");
+constexpr auto SHRPX_OPT_FRONTEND_HTTP3_IDLE_TIMEOUT =
+    StringRef::from_lit("frontend-http3-idle-timeout");
 
 constexpr size_t SHRPX_OBFUSCATED_NODE_LENGTH = 8;
 
@@ -635,6 +642,12 @@ struct TLSCertificate {
 
 #ifdef ENABLE_HTTP3
 struct QUICKeyingMaterial {
+  QUICKeyingMaterial() noexcept = default;
+  QUICKeyingMaterial(QUICKeyingMaterial &&other) noexcept;
+  ~QUICKeyingMaterial() noexcept;
+  QUICKeyingMaterial &operator=(QUICKeyingMaterial &&other) noexcept;
+  EVP_CIPHER_CTX *cid_encryption_ctx;
+  EVP_CIPHER_CTX *cid_decryption_ctx;
   std::array<uint8_t, SHRPX_QUIC_SECRET_RESERVEDLEN> reserved;
   std::array<uint8_t, SHRPX_QUIC_SECRETLEN> secret;
   std::array<uint8_t, SHRPX_QUIC_SALTLEN> salt;
@@ -753,9 +766,9 @@ struct TLSConfig {
   // The list of additional TLS certificate pair
   std::vector<TLSCertificate> subcerts;
   std::vector<unsigned char> alpn_prefs;
-  // list of supported NPN/ALPN protocol strings in the order of
+  // list of supported ALPN protocol strings in the order of
   // preference.
-  std::vector<StringRef> npn_list;
+  std::vector<StringRef> alpn_list;
   // list of supported SSL/TLS protocol strings.
   std::vector<StringRef> tls_proto_list;
   std::vector<uint8_t> sct_data;
@@ -809,7 +822,7 @@ struct QUICConfig {
     StringRef prog_file;
     bool disabled;
   } bpf;
-  std::array<uint8_t, SHRPX_QUIC_SERVER_IDLEN> server_id;
+  uint32_t server_id;
 };
 
 struct Http3Config {
@@ -858,6 +871,9 @@ struct HttpConfig {
   struct {
     bool strip_incoming;
   } early_data;
+  struct {
+    ev_tstamp header;
+  } timeout;
   std::vector<AltSvc> altsvcs;
   // altsvcs serialized in a wire format.
   StringRef altsvc_header_value;
@@ -1042,11 +1058,10 @@ struct ConnectionConfig {
 
   struct {
     struct {
-      ev_tstamp http2_read;
-      ev_tstamp http3_read;
-      ev_tstamp read;
+      ev_tstamp http2_idle;
+      ev_tstamp http3_idle;
       ev_tstamp write;
-      ev_tstamp idle_read;
+      ev_tstamp idle;
     } timeout;
     struct {
       RateLimitConfig read;
@@ -1183,6 +1198,7 @@ enum {
   SHRPX_OPTID_ADD_REQUEST_HEADER,
   SHRPX_OPTID_ADD_RESPONSE_HEADER,
   SHRPX_OPTID_ADD_X_FORWARDED_FOR,
+  SHRPX_OPTID_ALPN_LIST,
   SHRPX_OPTID_ALTSVC,
   SHRPX_OPTID_API_MAX_REQUEST_BODY,
   SHRPX_OPTID_BACKEND,
@@ -1242,12 +1258,14 @@ enum {
   SHRPX_OPTID_FORWARDED_FOR,
   SHRPX_OPTID_FRONTEND,
   SHRPX_OPTID_FRONTEND_FRAME_DEBUG,
+  SHRPX_OPTID_FRONTEND_HEADER_TIMEOUT,
   SHRPX_OPTID_FRONTEND_HTTP2_CONNECTION_WINDOW_BITS,
   SHRPX_OPTID_FRONTEND_HTTP2_CONNECTION_WINDOW_SIZE,
   SHRPX_OPTID_FRONTEND_HTTP2_DECODER_DYNAMIC_TABLE_SIZE,
   SHRPX_OPTID_FRONTEND_HTTP2_DUMP_REQUEST_HEADER,
   SHRPX_OPTID_FRONTEND_HTTP2_DUMP_RESPONSE_HEADER,
   SHRPX_OPTID_FRONTEND_HTTP2_ENCODER_DYNAMIC_TABLE_SIZE,
+  SHRPX_OPTID_FRONTEND_HTTP2_IDLE_TIMEOUT,
   SHRPX_OPTID_FRONTEND_HTTP2_MAX_CONCURRENT_STREAMS,
   SHRPX_OPTID_FRONTEND_HTTP2_OPTIMIZE_WINDOW_SIZE,
   SHRPX_OPTID_FRONTEND_HTTP2_OPTIMIZE_WRITE_BUFFER_SIZE,
@@ -1256,6 +1274,7 @@ enum {
   SHRPX_OPTID_FRONTEND_HTTP2_WINDOW_BITS,
   SHRPX_OPTID_FRONTEND_HTTP2_WINDOW_SIZE,
   SHRPX_OPTID_FRONTEND_HTTP3_CONNECTION_WINDOW_SIZE,
+  SHRPX_OPTID_FRONTEND_HTTP3_IDLE_TIMEOUT,
   SHRPX_OPTID_FRONTEND_HTTP3_MAX_CONCURRENT_STREAMS,
   SHRPX_OPTID_FRONTEND_HTTP3_MAX_CONNECTION_WINDOW_SIZE,
   SHRPX_OPTID_FRONTEND_HTTP3_MAX_WINDOW_SIZE,

@@ -314,6 +314,12 @@ void NgHttp2Adapter::Initialize() {
     nghttp2_option_set_no_auto_window_update(owned_options, 1);
     nghttp2_option_set_max_send_header_block_length(owned_options, 0x2000000);
     nghttp2_option_set_max_outbound_ack(owned_options, 10000);
+#if NGHTTP2_VERSION_NUM >= 0x013d00
+    // nghttp2 REQUIRES setting max number of CONTINUATION frames.
+    // 1024 is chosen to accommodate Envoy's 8Mb max limit of max_request_headers_kb
+    // in both headers and trailers
+    nghttp2_option_set_max_continuations(owned_options, 1024);
+#endif
     nghttp2_option_set_user_recv_extension_type(owned_options,
                                                 kMetadataFrameType);
     options_ = owned_options;

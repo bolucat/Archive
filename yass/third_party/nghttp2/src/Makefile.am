@@ -53,6 +53,8 @@ AM_CPPFLAGS = \
 	@JANSSON_CFLAGS@ \
 	@LIBBPF_CFLAGS@ \
 	@ZLIB_CFLAGS@ \
+	@LIBBROTLIENC_CFLAGS@ \
+	@LIBBROTLIDEC_CFLAGS@ \
 	@EXTRA_DEFS@ \
 	@DEFS@
 AM_LDFLAGS = @LIBTOOL_LDFLAGS@
@@ -73,6 +75,8 @@ LDADD = $(top_builddir)/lib/libnghttp2.la \
 	@JANSSON_LIBS@ \
 	@LIBBPF_LIBS@ \
 	@ZLIB_LIBS@ \
+	@LIBBROTLIENC_LIBS@ \
+	@LIBBROTLIDEC_LIBS@ \
 	@APPLDFLAGS@
 
 if ENABLE_APP
@@ -203,7 +207,6 @@ libnghttpx_a_CPPFLAGS += -I${top_srcdir}/third-party/neverbleed
 nghttpx_LDADD += ${top_builddir}/third-party/libneverbleed.la
 endif # HAVE_NEVERBLEED
 
-if HAVE_CUNIT
 check_PROGRAMS += nghttpx-unittest
 nghttpx_unittest_SOURCES = shrpx-unittest.cc \
 	shrpx_tls_test.cc shrpx_tls_test.h \
@@ -219,10 +222,13 @@ nghttpx_unittest_SOURCES = shrpx-unittest.cc \
 	buffer_test.cc buffer_test.h \
 	memchunk_test.cc memchunk_test.h \
 	template_test.cc template_test.h \
-	base64_test.cc base64_test.h
+	base64_test.cc base64_test.h \
+	$(top_srcdir)/tests/munit/munit.c $(top_srcdir)/tests/munit/munit.h \
+	$(top_srcdir)/tests/munit/munitxx.h
 nghttpx_unittest_CPPFLAGS = ${AM_CPPFLAGS} \
+	-I$(top_srcdir)/tests/munit \
 	-DNGHTTP2_SRC_DIR=\"$(top_srcdir)/src\"
-nghttpx_unittest_LDADD = libnghttpx.a ${LDADD} @CUNIT_LIBS@ @TESTLDADD@
+nghttpx_unittest_LDADD = libnghttpx.a ${LDADD} @TESTLDADD@
 
 if HAVE_MRUBY
 nghttpx_unittest_CPPFLAGS += \
@@ -237,7 +243,6 @@ nghttpx_unittest_LDADD += ${top_builddir}/third-party/libneverbleed.la
 endif # HAVE_NEVERBLEED
 
 TESTS += nghttpx-unittest
-endif # HAVE_CUNIT
 
 endif # ENABLE_APP
 

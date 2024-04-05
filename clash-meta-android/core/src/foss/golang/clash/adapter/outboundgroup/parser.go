@@ -88,6 +88,30 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 	}
 	groupOption.ExpectedStatus = status
 
+	if len(groupOption.Use) != 0 {
+		list, err := getProviders(providersMap, groupOption.Use)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", groupName, err)
+		}
+
+		if groupOption.URL == "" {
+			for _, p := range list {
+				if p.HealthCheckURL() != "" {
+					groupOption.URL = p.HealthCheckURL()
+					break
+				}
+			}
+
+			if groupOption.URL == "" {
+				groupOption.URL = C.DefaultTestURL
+			}
+		}
+
+		// different proxy groups use different test URL
+		addTestUrlToProviders(list, groupOption.URL, expectedStatus, groupOption.Filter, uint(groupOption.Interval))
+		providers = append(providers, list...)
+	}
+
 	if len(groupOption.Proxies) != 0 {
 		ps, err := getProxies(proxyMap, groupOption.Proxies)
 		if err != nil {
@@ -98,13 +122,14 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 			return nil, fmt.Errorf("%s: %w", groupName, errDuplicateProvider)
 		}
 
-		// select don't need health check
+		if groupOption.URL == "" {
+			groupOption.URL = C.DefaultTestURL
+		}
+
+		// select don't need auto health check
 		if groupOption.Type != "select" && groupOption.Type != "relay" {
 			if groupOption.Interval == 0 {
 				groupOption.Interval = 300
-			}
-			if groupOption.URL == "" {
-				groupOption.URL = C.DefaultTestURL
 			}
 		}
 
@@ -117,30 +142,6 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 
 		providers = append(providers, pd)
 		providersMap[groupName] = pd
-	}
-
-	if len(groupOption.Use) != 0 {
-		list, err := getProviders(providersMap, groupOption.Use)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", groupName, err)
-		}
-
-		if groupOption.URL == "" {
-			for _, p := range list {
-				if p.HealthCheckURL() != "" {
-					groupOption.URL = p.HealthCheckURL()
-				}
-				break
-			}
-
-			if groupOption.URL == "" {
-				groupOption.URL = C.DefaultTestURL
-			}
-		}
-
-		// different proxy groups use different test URL
-		addTestUrlToProviders(list, groupOption.URL, expectedStatus, groupOption.Filter, uint(groupOption.Interval))
-		providers = append(providers, list...)
 	}
 
 	var group C.ProxyAdapter

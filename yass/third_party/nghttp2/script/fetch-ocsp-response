@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # nghttp2 - HTTP/2 C Library
@@ -96,7 +96,7 @@ def run_openssl(args, allow_tempfail=False):
             raise Exception('nonzero return code {}'.format(p.returncode))
         return buf.getvalue()
     except Exception as e:
-        msg = 'OpenSSL exitted abnormally: {}:{}'.format(args, e)
+        msg = 'OpenSSL exited abnormally: {}:{}'.format(args, e)
         tempfail(msg) if allow_tempfail else die(msg)
 
 

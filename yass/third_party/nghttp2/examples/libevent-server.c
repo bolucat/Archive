@@ -71,6 +71,7 @@
 #include <event2/bufferevent_ssl.h>
 #include <event2/listener.h>
 
+#define NGHTTP2_NO_SSIZE_T
 #include <nghttp2/nghttp2.h>
 
 #define OUTPUT_WOULDBLOCK_THRESHOLD (1 << 16)
@@ -106,22 +107,6 @@ struct app_context {
   struct event_base *evbase;
 };
 
-static unsigned char next_proto_list[256];
-static size_t next_proto_list_len;
-
-#ifndef OPENSSL_NO_NEXTPROTONEG
-static int next_proto_cb(SSL *ssl, const unsigned char **data,
-                         unsigned int *len, void *arg) {
-  (void)ssl;
-  (void)arg;
-
-  *data = next_proto_list;
-  *len = (unsigned int)next_proto_list_len;
-  return SSL_TLSEXT_ERR_OK;
-}
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
-
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
 static int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
                                 unsigned char *outlen, const unsigned char *in,
                                 unsigned int inlen, void *arg) {
@@ -129,7 +114,7 @@ static int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
   (void)ssl;
   (void)arg;
 
-  rv = nghttp2_select_next_protocol((unsigned char **)out, outlen, in, inlen);
+  rv = nghttp2_select_alpn(out, outlen, in, inlen);
 
   if (rv != 1) {
     return SSL_TLSEXT_ERR_NOACK;
@@ -137,7 +122,6 @@ static int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
 
   return SSL_TLSEXT_ERR_OK;
 }
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10002000L */
 
 /* Create SSL_CTX. */
 static SSL_CTX *create_ssl_ctx(const char *key_file, const char *cert_file) {
@@ -177,18 +161,7 @@ static SSL_CTX *create_ssl_ctx(const char *key_file, const char *cert_file) {
     errx(1, "Could not read certificate file %s", cert_file);
   }
 
-  next_proto_list[0] = NGHTTP2_PROTO_VERSION_ID_LEN;
-  memcpy(&next_proto_list[1], NGHTTP2_PROTO_VERSION_ID,
-         NGHTTP2_PROTO_VERSION_ID_LEN);
-  next_proto_list_len = 1 + NGHTTP2_PROTO_VERSION_ID_LEN;
-
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_CTX_set_next_protos_advertised_cb(ssl_ctx, next_proto_cb, NULL);
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
-
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
   SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_proto_cb, NULL);
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10002000L */
 
   return ssl_ctx;
 }
@@ -305,16 +278,16 @@ static int session_send(http2_session_data *session_data) {
 }
 
 /* Read the data in the bufferevent and feed them into nghttp2 library
-   function. Invocation of nghttp2_session_mem_recv() may make
+   function. Invocation of nghttp2_session_mem_recv2() may make
    additional pending frames, so call session_send() at the end of the
    function. */
 static int session_recv(http2_session_data *session_data) {
-  ssize_t readlen;
+  nghttp2_ssize readlen;
   struct evbuffer *input = bufferevent_get_input(session_data->bev);
   size_t datalen = evbuffer_get_length(input);
   unsigned char *data = evbuffer_pullup(input, -1);
 
-  readlen = nghttp2_session_mem_recv(session_data->session, data, datalen);
+  readlen = nghttp2_session_mem_recv2(session_data->session, data, datalen);
   if (readlen < 0) {
     warnx("Fatal error: %s", nghttp2_strerror((int)readlen));
     return -1;
@@ -329,8 +302,9 @@ static int session_recv(http2_session_data *session_data) {
   return 0;
 }
 
-static ssize_t send_callback(nghttp2_session *session, const uint8_t *data,
-                             size_t length, int flags, void *user_data) {
+static nghttp2_ssize send_callback(nghttp2_session *session,
+                                   const uint8_t *data, size_t length,
+                                   int flags, void *user_data) {
   http2_session_data *session_data = (http2_session_data *)user_data;
   struct bufferevent *bev = session_data->bev;
   (void)session;
@@ -342,7 +316,7 @@ static ssize_t send_callback(nghttp2_session *session, const uint8_t *data,
     return NGHTTP2_ERR_WOULDBLOCK;
   }
   bufferevent_write(bev, data, length);
-  return (ssize_t)length;
+  return (nghttp2_ssize)length;
 }
 
 /* Returns nonzero if the string |s| ends with the substring |sub| */
@@ -398,11 +372,11 @@ static char *percent_decode(const uint8_t *value, size_t valuelen) {
   return res;
 }
 
-static ssize_t file_read_callback(nghttp2_session *session, int32_t stream_id,
-                                  uint8_t *buf, size_t length,
-                                  uint32_t *data_flags,
-                                  nghttp2_data_source *source,
-                                  void *user_data) {
+static nghttp2_ssize file_read_callback(nghttp2_session *session,
+                                        int32_t stream_id, uint8_t *buf,
+                                        size_t length, uint32_t *data_flags,
+                                        nghttp2_data_source *source,
+                                        void *user_data) {
   int fd = source->fd;
   ssize_t r;
   (void)session;
@@ -417,17 +391,17 @@ static ssize_t file_read_callback(nghttp2_session *session, int32_t stream_id,
   if (r == 0) {
     *data_flags |= NGHTTP2_DATA_FLAG_EOF;
   }
-  return r;
+  return (nghttp2_ssize)r;
 }
 
 static int send_response(nghttp2_session *session, int32_t stream_id,
                          nghttp2_nv *nva, size_t nvlen, int fd) {
   int rv;
-  nghttp2_data_provider data_prd;
+  nghttp2_data_provider2 data_prd;
   data_prd.source.fd = fd;
   data_prd.read_callback = file_read_callback;
 
-  rv = nghttp2_submit_response(session, stream_id, nva, nvlen, &data_prd);
+  rv = nghttp2_submit_response2(session, stream_id, nva, nvlen, &data_prd);
   if (rv != 0) {
     warnx("Fatal error: %s", nghttp2_strerror(rv));
     return -1;
@@ -618,7 +592,7 @@ static void initialize_nghttp2_session(http2_session_data *session_data) {
 
   nghttp2_session_callbacks_new(&callbacks);
 
-  nghttp2_session_callbacks_set_send_callback(callbacks, send_callback);
+  nghttp2_session_callbacks_set_send_callback2(callbacks, send_callback);
 
   nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks,
                                                        on_frame_recv_callback);
@@ -702,14 +676,7 @@ static void eventcb(struct bufferevent *bev, short events, void *ptr) {
 
     ssl = bufferevent_openssl_get_ssl(session_data->bev);
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-    SSL_get0_next_proto_negotiated(ssl, &alpn, &alpnlen);
-#endif /* !OPENSSL_NO_NEXTPROTONEG */
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-    if (alpn == NULL) {
-      SSL_get0_alpn_selected(ssl, &alpn, &alpnlen);
-    }
-#endif /* OPENSSL_VERSION_NUMBER >= 0x10002000L */
+    SSL_get0_alpn_selected(ssl, &alpn, &alpnlen);
 
     if (alpn == NULL || alpnlen != 2 || memcmp("h2", alpn, 2) != 0) {
       fprintf(stderr, "%s h2 is not negotiated\n", session_data->client_addr);
@@ -816,19 +783,6 @@ int main(int argc, char **argv) {
   memset(&act, 0, sizeof(struct sigaction));
   act.sa_handler = SIG_IGN;
   sigaction(SIGPIPE, &act, NULL);
-
-#if OPENSSL_VERSION_NUMBER >= 0x1010000fL
-  /* No explicit initialization is required. */
-#elif defined(OPENSSL_IS_BORINGSSL)
-  CRYPTO_library_init();
-#else  /* !(OPENSSL_VERSION_NUMBER >= 0x1010000fL) &&                          \
-          !defined(OPENSSL_IS_BORINGSSL) */
-  OPENSSL_config(NULL);
-  SSL_load_error_strings();
-  SSL_library_init();
-  OpenSSL_add_all_algorithms();
-#endif /* !(OPENSSL_VERSION_NUMBER >= 0x1010000fL) &&                          \
-          !defined(OPENSSL_IS_BORINGSSL) */
 
   run(argv[1], argv[2], argv[3]);
   return 0;

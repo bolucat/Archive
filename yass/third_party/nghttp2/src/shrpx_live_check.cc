@@ -405,14 +405,7 @@ int LiveCheck::tls_handshake() {
   const unsigned char *next_proto = nullptr;
   unsigned int next_proto_len = 0;
 
-#ifndef OPENSSL_NO_NEXTPROTONEG
-  SSL_get0_next_proto_negotiated(conn_.tls.ssl, &next_proto, &next_proto_len);
-#endif // !OPENSSL_NO_NEXTPROTONEG
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L
-  if (next_proto == nullptr) {
-    SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
-  }
-#endif // OPENSSL_VERSION_NUMBER >= 0x10002000L
+  SSL_get0_alpn_selected(conn_.tls.ssl, &next_proto, &next_proto_len);
 
   auto proto = StringRef{next_proto, next_proto_len};
 
@@ -587,18 +580,16 @@ int LiveCheck::write_clear() {
 }
 
 int LiveCheck::on_read(const uint8_t *data, size_t len) {
-  ssize_t rv;
-
-  rv = nghttp2_session_mem_recv(session_, data, len);
+  auto rv = nghttp2_session_mem_recv2(session_, data, len);
   if (rv < 0) {
-    LOG(ERROR) << "nghttp2_session_mem_recv() returned error: "
+    LOG(ERROR) << "nghttp2_session_mem_recv2() returned error: "
                << nghttp2_strerror(rv);
     return -1;
   }
 
   if (settings_ack_received_ && !session_closing_) {
     session_closing_ = true;
-    rv = nghttp2_session_terminate_session(session_, NGHTTP2_NO_ERROR);
+    auto rv = nghttp2_session_terminate_session(session_, NGHTTP2_NO_ERROR);
     if (rv != 0) {
       return -1;
     }
@@ -626,10 +617,10 @@ int LiveCheck::on_read(const uint8_t *data, size_t len) {
 int LiveCheck::on_write() {
   for (;;) {
     const uint8_t *data;
-    auto datalen = nghttp2_session_mem_send(session_, &data);
+    auto datalen = nghttp2_session_mem_send2(session_, &data);
 
     if (datalen < 0) {
-      LOG(ERROR) << "nghttp2_session_mem_send() returned error: "
+      LOG(ERROR) << "nghttp2_session_mem_send2() returned error: "
                  << nghttp2_strerror(datalen);
       return -1;
     }
