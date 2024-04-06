@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gobwas/ws"
-	"github.com/gorilla/mux"
+	"github.com/labstack/echo/v4"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 
@@ -21,14 +21,39 @@ import (
 	"github.com/Ehco1996/ehco/pkg/lb"
 )
 
-type Mwss struct {
-	*Raw
-	mtp *smuxTransporter
+type MWSSClient struct {
+	*RawClient
+	dialer *ws.Dialer
+	mtp    *smuxTransporter
 }
 
-func (s *Mwss) dialRemote(remote *lb.Node) (net.Conn, error) {
+func newMWSSClient(raw *RawClient) *MWSSClient {
+	dialer := &ws.Dialer{TLSConfig: mytls.DefaultTLSConfig, Timeout: constant.DialTimeOut}
+	c := &MWSSClient{dialer: dialer, RawClient: raw}
+	mtp := NewSmuxTransporter(raw.l.Named("mwss"), c.initNewSession)
+	c.mtp = mtp
+	return c
+}
+
+func (c *MWSSClient) initNewSession(ctx context.Context, addr string) (*smux.Session, error) {
+	rc, _, _, err := c.dialer.Dial(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	// stream multiplex
+	cfg := smux.DefaultConfig()
+	cfg.KeepAliveDisabled = true
+	session, err := smux.Client(rc, cfg)
+	if err != nil {
+		return nil, err
+	}
+	c.l.Infof("init new session to: %s", rc.RemoteAddr())
+	return session, nil
+}
+
+func (s *MWSSClient) dialRemote(remote *lb.Node) (net.Conn, error) {
 	t1 := time.Now()
-	mwssc, err := s.mtp.Dial(context.TODO(), remote.Address+"/mwss/")
+	mwssc, err := s.mtp.Dial(context.TODO(), remote.Address+"/handshake/")
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +64,7 @@ func (s *Mwss) dialRemote(remote *lb.Node) (net.Conn, error) {
 	return mwssc, nil
 }
 
-func (s *Mwss) HandleTCPConn(c net.Conn, remote *lb.Node) error {
+func (s *MWSSClient) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 	clonedRemote := remote.Clone()
 	mwsc, err := s.dialRemote(clonedRemote)
 	if err != nil {
@@ -53,7 +78,7 @@ func (s *Mwss) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 }
 
 type MWSSServer struct {
-	raw        *Raw
+	raw        *RawClient
 	httpServer *http.Server
 	l          *zap.SugaredLogger
 
@@ -61,7 +86,7 @@ type MWSSServer struct {
 	errChan  chan error
 }
 
-func NewMWSSServer(listenAddr string, raw *Raw, l *zap.SugaredLogger) *MWSSServer {
+func NewMWSSServer(listenAddr string, raw *RawClient, l *zap.SugaredLogger) *MWSSServer {
 	s := &MWSSServer{
 		raw:      raw,
 		l:        l,
@@ -69,12 +94,12 @@ func NewMWSSServer(listenAddr string, raw *Raw, l *zap.SugaredLogger) *MWSSServe
 		connChan: make(chan net.Conn, 1024),
 	}
 
-	mux := mux.NewRouter()
-	mux.Handle("/", web.MakeIndexF())
-	mux.Handle("/mwss/", http.HandlerFunc(s.HandleRequest))
+	e := web.NewEchoServer()
+	e.GET("/", echo.WrapHandler(web.MakeIndexF()))
+	e.GET("/handshake/", echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
 	s.httpServer = &http.Server{
 		Addr:              listenAddr,
-		Handler:           mux,
+		Handler:           e,
 		TLSConfig:         mytls.DefaultTLSConfig,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
@@ -153,33 +178,4 @@ func (s *MWSSServer) Accept() (conn net.Conn, err error) {
 
 func (s *MWSSServer) Close() error {
 	return s.httpServer.Close()
-}
-
-type MWSSClient struct {
-	dialer *ws.Dialer
-	l      *zap.SugaredLogger
-}
-
-func NewMWSSClient(l *zap.SugaredLogger) *MWSSClient {
-	dialer := &ws.Dialer{TLSConfig: mytls.DefaultTLSConfig, Timeout: constant.DialTimeOut}
-	return &MWSSClient{
-		dialer: dialer,
-		l:      l,
-	}
-}
-
-func (c *MWSSClient) InitNewSession(ctx context.Context, addr string) (*smux.Session, error) {
-	rc, _, _, err := c.dialer.Dial(ctx, addr)
-	if err != nil {
-		return nil, err
-	}
-	// stream multiplex
-	cfg := smux.DefaultConfig()
-	cfg.KeepAliveDisabled = true
-	session, err := smux.Client(rc, cfg)
-	if err != nil {
-		return nil, err
-	}
-	c.l.Infof("init new session to: %s", rc.RemoteAddr())
-	return session, nil
 }

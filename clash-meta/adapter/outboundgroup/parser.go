@@ -108,7 +108,6 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 		} else {
 			addTestUrlToProviders(PDs, groupOption.URL, expectedStatus, groupOption.Filter, uint(groupOption.Interval))
 		}
-
 		providers = append(providers, PDs...)
 	}
 
@@ -140,7 +139,7 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 			return nil, fmt.Errorf("%s: %w", groupName, err)
 		}
 
-		providers = append(providers, pd)
+		providers = append([]types.ProxyProvider{pd}, providers...)
 		providersMap[groupName] = pd
 	}
 

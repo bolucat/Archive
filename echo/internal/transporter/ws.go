@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gobwas/ws"
-	"github.com/gorilla/mux"
+	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
 	"github.com/Ehco1996/ehco/internal/conn"
@@ -17,14 +17,18 @@ import (
 	"github.com/Ehco1996/ehco/pkg/lb"
 )
 
-type Ws struct {
-	*Raw
+type WsClient struct {
+	*RawClient
 }
 
-func (s *Ws) dialRemote(remote *lb.Node) (net.Conn, error) {
+func newWsClient(raw *RawClient) *WsClient {
+	return &WsClient{RawClient: raw}
+}
+
+func (s *WsClient) dialRemote(remote *lb.Node) (net.Conn, error) {
 	t1 := time.Now()
 	d := ws.Dialer{Timeout: constant.DialTimeOut}
-	wsc, _, _, err := d.Dial(context.TODO(), remote.Address+"/ws/")
+	wsc, _, _, err := d.Dial(context.TODO(), remote.Address+"/handshake/")
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +38,7 @@ func (s *Ws) dialRemote(remote *lb.Node) (net.Conn, error) {
 	return wsc, nil
 }
 
-func (s *Ws) HandleTCPConn(c net.Conn, remote *lb.Node) error {
+func (s *WsClient) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 	clonedRemote := remote.Clone()
 	wsc, err := s.dialRemote(clonedRemote)
 	if err != nil {
@@ -50,30 +54,32 @@ func (s *Ws) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 }
 
 type WSServer struct {
-	raw        *Raw
-	l          *zap.SugaredLogger
+	raw        *RawClient
+	e          *echo.Echo
 	httpServer *http.Server
+	l          *zap.SugaredLogger
 }
 
-func NewWSServer(listenAddr string, raw *Raw, l *zap.SugaredLogger) *WSServer {
-	s := &WSServer{raw: raw, l: l}
-	mux := mux.NewRouter()
-	mux.HandleFunc("/", web.MakeIndexF())
-	mux.HandleFunc("/ws/", s.HandleRequest)
-	s.httpServer = &http.Server{
-		Addr:              listenAddr,
-		ReadHeaderTimeout: 30 * time.Second,
-		Handler:           mux,
+func NewWSServer(listenAddr string, raw *RawClient, l *zap.SugaredLogger) *WSServer {
+	s := &WSServer{
+		l:          l,
+		raw:        raw,
+		httpServer: &http.Server{Addr: listenAddr, ReadHeaderTimeout: 30 * time.Second},
 	}
+	e := web.NewEchoServer()
+	e.GET("/", echo.WrapHandler(web.MakeIndexF()))
+	e.GET("/handshake/", echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
+	s.e = e
+	s.httpServer.Handler = e
 	return s
 }
 
 func (s *WSServer) ListenAndServe() error {
-	return s.httpServer.ListenAndServe()
+	return s.e.StartServer(s.httpServer)
 }
 
 func (s *WSServer) Close() error {
-	return s.httpServer.Close()
+	return s.e.Close()
 }
 
 func (s *WSServer) HandleRequest(w http.ResponseWriter, req *http.Request) {
@@ -81,7 +87,6 @@ func (s *WSServer) HandleRequest(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		return
 	}
-
 	remote := s.raw.GetRemote()
 	if err := s.raw.HandleTCPConn(wsc, remote); err != nil {
 		s.l.Errorf("HandleTCPConn meet error from:%s to:%s err:%s", wsc.RemoteAddr(), remote.Address, err)

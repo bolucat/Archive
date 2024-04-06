@@ -15,12 +15,37 @@ import (
 	"github.com/Ehco1996/ehco/pkg/lb"
 )
 
-type MTCP struct {
-	*Raw
-	mtp *smuxTransporter
+type MTCPClient struct {
+	*RawClient
+	dialer *net.Dialer
+	mtp    *smuxTransporter
 }
 
-func (s *MTCP) dialRemote(remote *lb.Node) (net.Conn, error) {
+func newMTCPClient(raw *RawClient) *MTCPClient {
+	dialer := &net.Dialer{Timeout: constant.DialTimeOut}
+	c := &MTCPClient{dialer: dialer, RawClient: raw}
+	mtp := NewSmuxTransporter(raw.l.Named("mtcp"), c.initNewSession)
+	c.mtp = mtp
+	return c
+}
+
+func (c *MTCPClient) initNewSession(ctx context.Context, addr string) (*smux.Session, error) {
+	rc, err := c.dialer.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	// stream multiplex
+	cfg := smux.DefaultConfig()
+	cfg.KeepAliveDisabled = true
+	session, err := smux.Client(rc, cfg)
+	if err != nil {
+		return nil, err
+	}
+	c.l.Infof("init new session to: %s", rc.RemoteAddr())
+	return session, nil
+}
+
+func (s *MTCPClient) dialRemote(remote *lb.Node) (net.Conn, error) {
 	t1 := time.Now()
 	mtcpc, err := s.mtp.Dial(context.TODO(), remote.Address)
 	if err != nil {
@@ -32,7 +57,7 @@ func (s *MTCP) dialRemote(remote *lb.Node) (net.Conn, error) {
 	return mtcpc, nil
 }
 
-func (s *MTCP) HandleTCPConn(c net.Conn, remote *lb.Node) error {
+func (s *MTCPClient) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 	clonedRemote := remote.Clone()
 	mtcpc, err := s.dialRemote(clonedRemote)
 	if err != nil {
@@ -46,7 +71,7 @@ func (s *MTCP) HandleTCPConn(c net.Conn, remote *lb.Node) error {
 }
 
 type MTCPServer struct {
-	raw        *Raw
+	raw        *RawClient
 	listenAddr string
 	listener   net.Listener
 	l          *zap.SugaredLogger
@@ -55,7 +80,7 @@ type MTCPServer struct {
 	connChan chan net.Conn
 }
 
-func NewMTCPServer(listenAddr string, raw *Raw, l *zap.SugaredLogger) *MTCPServer {
+func NewMTCPServer(listenAddr string, raw *RawClient, l *zap.SugaredLogger) *MTCPServer {
 	return &MTCPServer{
 		l:          l,
 		raw:        raw,
@@ -137,29 +162,4 @@ func (s *MTCPServer) ListenAndServe() error {
 
 func (s *MTCPServer) Close() error {
 	return s.listener.Close()
-}
-
-type MTCPClient struct {
-	l      *zap.SugaredLogger
-	dialer *net.Dialer
-}
-
-func NewMTCPClient(l *zap.SugaredLogger) *MTCPClient {
-	return &MTCPClient{l: l, dialer: &net.Dialer{Timeout: constant.DialTimeOut}}
-}
-
-func (c *MTCPClient) InitNewSession(ctx context.Context, addr string) (*smux.Session, error) {
-	rc, err := c.dialer.Dial("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	// stream multiplex
-	cfg := smux.DefaultConfig()
-	cfg.KeepAliveDisabled = true
-	session, err := smux.Client(rc, cfg)
-	if err != nil {
-		return nil, err
-	}
-	c.l.Infof("init new session to: %s", rc.RemoteAddr())
-	return session, nil
 }
