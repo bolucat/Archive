@@ -384,38 +384,43 @@ pub fn get_custom_app_dir() -> CmdResult<Option<String>> {
 pub async fn set_custom_app_dir(app_handle: tauri::AppHandle, path: String) -> CmdResult {
     use crate::utils::{self, dialog::migrate_dialog, winreg::set_app_dir};
     use rust_i18n::t;
-    use std::{path::PathBuf, time::Duration};
+    use std::path::PathBuf;
 
     let path_str = path.clone();
     let path = PathBuf::from(path);
 
     // show a dialog to ask whether to migrate the data
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
+    let res =
+        tauri::async_runtime::spawn_blocking(move || {
+            let msg = t!("dialog.custom_app_dir_migrate", path = path_str).to_string();
 
-        if migrate_dialog(&msg) {
-            let app_exe = tauri::utils::platform::current_exe()?;
-            let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
-            std::thread::spawn(move || {
+            if migrate_dialog(&msg) {
+                let app_exe = tauri::utils::platform::current_exe()?;
+                let app_exe = dunce::canonicalize(app_exe)?.to_string_lossy().to_string();
                 std::process::Command::new("powershell")
                     .arg("-Command")
                     .arg(
                     format!(
-                        r#"Start-Process '{}' -ArgumentList 'migrate-home-dir','{}' -Verb runAs"#,
+                        r#"Start-Process '{}' -ArgumentList 'migrate-home-dir','"{}"' -Verb runAs"#,
                         app_exe.as_str(),
                         path_str.as_str()
                     )
                     .as_str(),
                 ).spawn().unwrap();
                 utils::help::quit_application(&app_handle);
-            });
-        } else {
-            set_app_dir(&path)?;
-        }
-        Ok::<_, anyhow::Error>(())
-    })
-    .await;
+            } else {
+                set_app_dir(&path)?;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await;
     wrap_err!(wrap_err!(res)?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_application(app_handle: tauri::AppHandle) -> CmdResult {
+    crate::utils::help::restart_application(&app_handle);
     Ok(())
 }
 

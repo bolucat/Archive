@@ -1,42 +1,54 @@
 package transporter
 
 import (
-	"fmt"
 	"net"
 
-	"github.com/Ehco1996/ehco/internal/cmgr"
 	"github.com/Ehco1996/ehco/internal/constant"
-	"github.com/Ehco1996/ehco/internal/relay/conf"
 	"github.com/Ehco1996/ehco/pkg/lb"
 )
 
-// RelayTransporter
-type RelayTransporter interface {
-	dialRemote(remote *lb.Node) (net.Conn, error)
-	HandleTCPConn(c net.Conn, remote *lb.Node) error
-	GetRemote() *lb.Node
+type TCPHandShakeF func(remote *lb.Node) (net.Conn, error)
+
+type RelayClient interface {
+	TCPHandShake(remote *lb.Node) (net.Conn, error)
+	RelayTCPConn(c net.Conn, handshakeF TCPHandShakeF) error
 }
 
-func NewRelayTransporter(cfg *conf.Config, connMgr cmgr.Cmgr) RelayTransporter {
-	tcpNodeList := make([]*lb.Node, len(cfg.TCPRemotes))
-	for idx, addr := range cfg.TCPRemotes {
-		tcpNodeList[idx] = &lb.Node{
-			Address: addr,
-			Label:   fmt.Sprintf("%s-%s", cfg.Label, addr),
-		}
+func NewRelayClient(relayType string, base *baseTransporter) (RelayClient, error) {
+	switch relayType {
+	case constant.RelayTypeRaw:
+		return newRawClient(base)
+	case constant.RelayTypeWS:
+		return newWsClient(base)
+	case constant.RelayTypeWSS:
+		return newWssClient(base)
+	case constant.RelayTypeMWSS:
+		return newMwssClient(base)
+	case constant.RelayTypeMTCP:
+		return newMtcpClient(base)
+	default:
+		panic("unsupported transport type")
 	}
-	raw := newRawClient(cfg.Label, lb.NewRoundRobin(tcpNodeList), connMgr)
-	switch cfg.TransportType {
-	case constant.Transport_RAW:
-		return raw
-	case constant.Transport_WS:
-		return newWsClient(raw)
-	case constant.Transport_WSS:
-		return newWSSClient(raw)
-	case constant.Transport_MWSS:
-		return newMWSSClient(raw)
-	case constant.Transport_MTCP:
-		return newMTCPClient(raw)
+}
+
+type RelayServer interface {
+	ListenAndServe() error
+	Close() error
+}
+
+func NewRelayServer(relayType string, base *baseTransporter) (RelayServer, error) {
+	switch relayType {
+	case constant.RelayTypeRaw:
+		return newRawServer(base)
+	case constant.RelayTypeWS:
+		return newWsServer(base)
+	case constant.RelayTypeWSS:
+		return newWssServer(base)
+	case constant.RelayTypeMWSS:
+		return newMwssServer(base)
+	case constant.RelayTypeMTCP:
+		return newMtcpServer(base)
+	default:
+		panic("unsupported transport type")
 	}
-	return nil
 }

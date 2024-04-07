@@ -54,7 +54,7 @@ func (h *HTTPVehicle) Path() string {
 func (h *HTTPVehicle) Read() ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
-	resp, err := mihomoHttp.HttpRequest(ctx, h.url, http.MethodGet, h.header, nil, h.proxy)
+	resp, err := mihomoHttp.HttpRequestWithProxy(ctx, h.url, http.MethodGet, h.header, nil, h.proxy)
 	if err != nil {
 		return nil, err
 	}

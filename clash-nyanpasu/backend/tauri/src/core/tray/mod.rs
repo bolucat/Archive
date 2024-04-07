@@ -2,7 +2,7 @@ use crate::{cmds, config::Config, feat, utils, utils::resolve};
 use anyhow::Result;
 use rust_i18n::t;
 use tauri::{
-    api, AppHandle, CustomMenuItem, Manager, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
+    AppHandle, CustomMenuItem, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
     SystemTraySubmenu,
 };
 use tracing_attributes::instrument;
@@ -151,7 +151,7 @@ impl Tray {
                 "open_core_dir" => crate::log_err!(cmds::open_core_dir()),
                 "open_logs_dir" => crate::log_err!(cmds::open_logs_dir()),
                 "restart_clash" => feat::restart_clash_core(),
-                "restart_app" => api::process::restart(&app_handle.env()),
+                "restart_app" => utils::help::restart_application(app_handle),
                 "quit" => {
                     utils::help::quit_application(app_handle);
                 }

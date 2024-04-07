@@ -88,16 +88,13 @@ func ParseProxyProvider(name string, mapping map[string]any) (types.ProxyProvide
 		path := C.Path.Resolve(schema.Path)
 		vehicle = resource.NewFileVehicle(path)
 	case "http":
-		var path string
+		path := C.Path.GetPathByHash("proxies", schema.URL)
 		if schema.Path != "" {
 			path = C.Path.Resolve(schema.Path)
 			if !features.CMFA && !C.Path.IsSafePath(path) {
 				return nil, fmt.Errorf("%w: %s", errSubPath, path)
 			}
-		} else {
-			path = C.Path.GetPathByHash("proxies", schema.URL)
 		}
-
 		vehicle = resource.NewHTTPVehicle(schema.URL, path, schema.Proxy, schema.Header)
 	default:
 		return nil, fmt.Errorf("%w: %s", errVehicleType, schema.Type)

@@ -1,5 +1,10 @@
+use std::str::FromStr;
+
 use anyhow::Ok;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+use tauri::utils::platform::current_exe;
+
+use crate::utils;
 
 #[derive(Parser, Debug)]
 #[command(name = "clash-nyanpasu", version, about, long_about = None)]
@@ -12,16 +17,52 @@ pub struct Cli {
 enum Commands {
     #[command(about = "Migrate home directory to another path.")]
     MigrateHomeDir { target_path: String },
+    #[command(about = "A launch bridge to resolve the delay exit issue.")]
+    Launch {
+        // FIXME: why the raw arg is not working?
+        #[arg(raw = true)]
+        args: Vec<String>,
+    },
+}
+
+struct DelayedExitGuard;
+impl DelayedExitGuard {
+    pub fn new() -> Self {
+        Self
+    }
+}
+impl Drop for DelayedExitGuard {
+    fn drop(&mut self) {
+        std::thread::sleep(std::time::Duration::from_secs(5));
+    }
 }
 
 pub fn parse() -> anyhow::Result<()> {
     let cli = Cli::parse();
     if let Some(commands) = &cli.command {
+        let guard = DelayedExitGuard::new();
         match commands {
             Commands::MigrateHomeDir { target_path } => {
                 self::handler::migrate_home_dir_handler(target_path).unwrap();
             }
+            Commands::Launch { args } => {
+                let _ = utils::init::check_singleton().unwrap();
+                let appimage: Option<String> = {
+                    #[cfg(target_os = "linux")]
+                    {
+                        std::env::var_os("APPIMAGE").map(|s| s.to_string_lossy().to_string())
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    None
+                };
+                let path = match appimage {
+                    Some(appimage) => std::path::PathBuf::from_str(&appimage).unwrap(),
+                    None => current_exe().unwrap(),
+                };
+                std::process::Command::new(path).args(args).spawn().unwrap();
+            }
         }
+        drop(guard);
         std::process::exit(0);
     }
     Ok(()) // bypass
@@ -36,6 +77,7 @@ mod handler {
         use std::{path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
         use sysinfo::System;
         use tauri::utils::platform::current_exe;
+        println!("target path {}", target_path);
 
         let token = Token::with_current_process()?;
         if let PrivilegeLevel::NotPrivileged = token.privilege_level()? {

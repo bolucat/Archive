@@ -14,7 +14,10 @@ use std::{
     str::FromStr,
 };
 use tauri::{
-    api::shell::{open, Program},
+    api::{
+        process::current_binary,
+        shell::{open, Program},
+    },
     AppHandle, Manager,
 };
 use tracing::{debug, warn};
@@ -216,14 +219,36 @@ pub fn get_max_scale_factor() -> f64 {
 }
 
 #[instrument(skip(app_handle))]
-pub fn quit_application(app_handle: &AppHandle) {
+fn cleanup_processes(app_handle: &AppHandle) {
     let _ = super::resolve::save_window_state(app_handle, true);
-
     super::resolve::resolve_reset();
     tauri::api::process::kill_children();
+}
+
+#[instrument(skip(app_handle))]
+pub fn quit_application(app_handle: &AppHandle) {
+    cleanup_processes(app_handle);
     app_handle.exit(0);
-    // flush all data to disk
-    crate::core::storage::Storage::global().destroy().unwrap();
+    std::process::exit(0);
+}
+
+#[instrument(skip(app_handle))]
+pub fn restart_application(app_handle: &AppHandle) {
+    cleanup_processes(app_handle);
+    let env = app_handle.env();
+    let path = current_binary(&env).unwrap();
+    let arg = std::env::args().collect::<Vec<String>>();
+    let mut args = vec!["launch".to_string(), "--".to_string()];
+    // filter out the first arg
+    if arg.len() > 1 {
+        args.extend(arg.iter().skip(1).cloned());
+    }
+    tracing::info!("restart app: {:#?} with args: {:#?}", path, args);
+    std::process::Command::new(path)
+        .args(args)
+        .spawn()
+        .expect("application failed to start");
+    app_handle.exit(0);
     std::process::exit(0);
 }
 

@@ -14,6 +14,12 @@ A <a href="https://github.com/Dreamacro/clash">Clash</a> GUI based on <a href="h
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/pre-release"><img src="https://img.shields.io/github/actions/workflow/status/LibNyanpasu/clash-nyanpasu/dev.yaml?style=flat-square" alt="Dev Build Status" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/stargazers"><img src="https://img.shields.io/github/stars/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu stars" /></a>
   <a href="https://github.com/LibNyanpasu/clash-nyanpasu/releases/latest"><img src="https://img.shields.io/github/downloads/LibNyanpasu/clash-nyanpasu/total?style=flat-square" alt="GitHub Downloads (all assets, all releases)" /></a>
+  <a href="https://github.com/LibNyanpasu/clash-nyanpasu/blob/main/LICENSE"><img src="https://img.shields.io/github/license/LibNyanpasu/clash-nyanpasu?style=flat-square" alt="Nyanpasu License" /></a>
+</p>
+
+<p align="center">
+  <a href="https://twitter.com/ClashNyanpasu"><img src="https://img.shields.io/twitter/follow/ClashNyanpasu
+  ?style=flat-square" alt="Nyanpasu Twitter" /></a>
 </p>
 
 ## Features
@@ -80,6 +86,7 @@ Issue and PR welcome!
 Clash Nyanpasu was based on or inspired by these projects and so on:
 
 - [zzzgydi/clash-verge](https://github.com/zzzgydi/clash-verge): A Clash GUI based on tauri. Supports Windows, macOS and Linux.
+- [clash-verge-rev/clash-verge-rev](https://github.com/clash-verge-rev/clash-verge-rev): Another fork of Clash Verge. Some patches are included for bug fixes.
 - [tauri-apps/tauri](https://github.com/tauri-apps/tauri): Build smaller, faster, and more secure desktop applications with a web frontend.
 - [Dreamacro/clash](https://github.com/Dreamacro/clash): A rule-based tunnel in Go.
 - [MetaCubeX/Clash.Meta](https://github.com/MetaCubeX/mihomo): A rule-based tunnel in Go.

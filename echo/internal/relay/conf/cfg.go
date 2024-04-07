@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/Ehco1996/ehco/internal/constant"
+
+	"github.com/Ehco1996/ehco/pkg/lb"
 	"go.uber.org/zap"
 )
 
@@ -22,19 +24,19 @@ func (r *Config) Validate() error {
 	if r.Adjust() != nil {
 		return errors.New("adjust config failed")
 	}
-	if r.ListenType != constant.Listen_RAW &&
-		r.ListenType != constant.Listen_WS &&
-		r.ListenType != constant.Listen_WSS &&
-		r.ListenType != constant.Listen_MTCP &&
-		r.ListenType != constant.Listen_MWSS {
+	if r.ListenType != constant.RelayTypeRaw &&
+		r.ListenType != constant.RelayTypeWS &&
+		r.ListenType != constant.RelayTypeWSS &&
+		r.ListenType != constant.RelayTypeMTCP &&
+		r.ListenType != constant.RelayTypeMWSS {
 		return fmt.Errorf("invalid listen type:%s", r.ListenType)
 	}
 
-	if r.TransportType != constant.Transport_RAW &&
-		r.TransportType != constant.Transport_WS &&
-		r.TransportType != constant.Transport_WSS &&
-		r.TransportType != constant.Transport_MTCP &&
-		r.TransportType != constant.Transport_MWSS {
+	if r.TransportType != constant.RelayTypeRaw &&
+		r.TransportType != constant.RelayTypeWS &&
+		r.TransportType != constant.RelayTypeWSS &&
+		r.TransportType != constant.RelayTypeMTCP &&
+		r.TransportType != constant.RelayTypeMWSS {
 		return fmt.Errorf("invalid transport type:%s", r.ListenType)
 	}
 
@@ -106,16 +108,31 @@ func (r *Config) Different(new *Config) bool {
 }
 
 // todo make this shorter and more readable
-func (r *Config) defaultLabel() string {
-	defaultLabel := fmt.Sprintf("<At=%s Over=%s TCP-To=%s UDP-To=%s Through=%s>",
-		r.Listen, r.ListenType, r.TCPRemotes, r.UDPRemotes, r.TransportType)
+func (r *Config) DefaultLabel() string {
+	defaultLabel := fmt.Sprintf("<At=%s TCP-To=%s TP=%s>",
+		r.Listen, r.TCPRemotes, r.TransportType)
 	return defaultLabel
 }
 
 func (r *Config) Adjust() error {
 	if r.Label == "" {
-		r.Label = r.defaultLabel()
+		r.Label = r.DefaultLabel()
 		zap.S().Debugf("label is empty, set default label:%s", r.Label)
 	}
 	return nil
+}
+
+func (r *Config) ToTCPRemotes() lb.RoundRobin {
+	tcpNodeList := make([]*lb.Node, len(r.TCPRemotes))
+	for idx, addr := range r.TCPRemotes {
+		tcpNodeList[idx] = &lb.Node{
+			Address: addr,
+			Label:   fmt.Sprintf("%s-%s", r.Label, addr),
+		}
+	}
+	return lb.NewRoundRobin(tcpNodeList)
+}
+
+func (r *Config) GetLoggerName() string {
+	return fmt.Sprintf("%s(%s<->%s)", r.Label, r.ListenType, r.TransportType)
 }
