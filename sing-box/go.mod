@@ -26,14 +26,14 @@ require (
 	github.com/sagernet/gvisor v0.0.0-20240315080113-799fb6b6d311
 	github.com/sagernet/quic-go v0.42.0-beta.2
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.4.0-beta.6
+	github.com/sagernet/sing v0.4.0-beta.12
 	github.com/sagernet/sing-dns v0.2.0-beta.16
 	github.com/sagernet/sing-mux v0.2.0
-	github.com/sagernet/sing-quic v0.1.10-beta.2
+	github.com/sagernet/sing-quic v0.1.12-beta.1
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.1.4
-	github.com/sagernet/sing-tun v0.2.6-beta.1
+	github.com/sagernet/sing-tun v0.2.7-beta.1
 	github.com/sagernet/sing-vmess v0.1.8
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/tfo-go v0.0.0-20231209031829-7b5343ac1dc6
@@ -44,11 +44,11 @@ require (
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.21.0
-	golang.org/x/net v0.22.0
-	golang.org/x/sys v0.18.0
+	golang.org/x/crypto v0.22.0
+	golang.org/x/net v0.24.0
+	golang.org/x/sys v0.19.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
-	google.golang.org/grpc v1.62.1
+	google.golang.org/grpc v1.63.0
 	google.golang.org/protobuf v1.33.0
 	howett.net/plist v1.0.1
 )
@@ -64,7 +64,6 @@ require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/pprof v0.0.0-20231101202521-4ca4178f5c7a // indirect
 	github.com/hashicorp/yamux v0.1.1 // indirect
@@ -90,7 +89,7 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.19.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240123012728-ef4313101c80 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.2.1 // indirect

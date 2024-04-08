@@ -232,7 +232,7 @@ namespace v2rayN.Models
         /// <summary>
         ///
         /// </summary>
-        public List<VnextItem4Ray> vnext { get; set; }
+        public List<VnextItem4Ray>? vnext { get; set; }
 
         /// <summary>
         ///
@@ -253,6 +253,8 @@ namespace v2rayN.Models
         ///
         /// </summary>
         public int? userLevel { get; set; }
+
+        public FragmentItem4Ray? fragment { get; set; }
     }
 
     public class VnextItem4Ray
@@ -288,17 +290,17 @@ namespace v2rayN.Models
         /// <summary>
         ///
         /// </summary>
-        public string method { get; set; }
+        public string? method { get; set; }
 
         /// <summary>
         ///
         /// </summary>
-        public bool ota { get; set; }
+        public bool? ota { get; set; }
 
         /// <summary>
         ///
         /// </summary>
-        public string password { get; set; }
+        public string? password { get; set; }
 
         /// <summary>
         ///
@@ -308,7 +310,7 @@ namespace v2rayN.Models
         /// <summary>
         ///
         /// </summary>
-        public int level { get; set; }
+        public int? level { get; set; }
 
         /// <summary>
         /// trojan
@@ -336,7 +338,7 @@ namespace v2rayN.Models
         /// <summary>
         ///
         /// </summary>
-        public int level { get; set; }
+        public int? level { get; set; }
     }
 
     public class Mux4Ray
@@ -664,5 +666,12 @@ namespace v2rayN.Models
     public class Sockopt4Ray
     {
         public string? dialerProxy { get; set; }
+    }
+
+    public class FragmentItem4Ray
+    {
+        public string? packets { get; set; }
+        public string? length { get; set; }
+        public string? interval { get; set; }
     }
 }

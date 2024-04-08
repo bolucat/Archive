@@ -1198,4 +1198,13 @@
   <data name="TransportRequestHostTip5" xml:space="preserve">
     <value>*grpc Authority</value>
   </data>
+  <data name="menuAddHttpServer" xml:space="preserve">
+    <value>Add [Http] server</value>
+  </data>
+  <data name="TbSettingsEnableFragmentTips" xml:space="preserve">
+    <value>Use Xray and enable non-Tun mode, which conflicts with the group previous proxy</value>
+  </data>
+  <data name="TbSettingsEnableFragment" xml:space="preserve">
+    <value>Enable fragment</value>
+  </data>
 </root>

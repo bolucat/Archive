@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use anyhow::Ok;
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use tauri::utils::platform::current_exe;
 
 use crate::utils;
@@ -11,6 +11,8 @@ use crate::utils;
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+    #[arg(raw = true)]
+    args: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -19,7 +21,6 @@ enum Commands {
     MigrateHomeDir { target_path: String },
     #[command(about = "A launch bridge to resolve the delay exit issue.")]
     Launch {
-        // FIXME: why the raw arg is not working?
         #[arg(raw = true)]
         args: Vec<String>,
     },
@@ -59,6 +60,8 @@ pub fn parse() -> anyhow::Result<()> {
                     Some(appimage) => std::path::PathBuf::from_str(&appimage).unwrap(),
                     None => current_exe().unwrap(),
                 };
+                // let args = args.clone();
+                // args.extend(vec!["--".to_string()]);
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
         }

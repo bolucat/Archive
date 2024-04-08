@@ -619,6 +619,15 @@ namespace v2rayN.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Add [Http] server 的本地化字符串。
+        /// </summary>
+        public static string menuAddHttpServer {
+            get {
+                return ResourceManager.GetString("menuAddHttpServer", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Add [Hysteria2] server 的本地化字符串。
         /// </summary>
         public static string menuAddHysteria2Server {
@@ -2623,6 +2632,24 @@ namespace v2rayN.Resx {
         public static string TbSettingsEnableExInbound {
             get {
                 return ResourceManager.GetString("TbSettingsEnableExInbound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Enable fragment 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsEnableFragment {
+            get {
+                return ResourceManager.GetString("TbSettingsEnableFragment", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Use Xray and enable non-Tun mode, which conflicts with the group previous proxy 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsEnableFragmentTips {
+            get {
+                return ResourceManager.GetString("TbSettingsEnableFragmentTips", resourceCulture);
             }
         }
         
