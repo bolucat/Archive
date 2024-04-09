@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -69,7 +70,7 @@ func main() {
 		},
 		&cli.StringFlag{
 			Name:  "log",
-			Usage: "Enable log. A valid value is file path or 'console'. If you want to debug SOCKS5 lib, set env SOCKS5_DEBUG=true",
+			Usage: "Enable log. A valid value is file path or 'console'. Send SIGUSR1 to me to reset the log file on unix system. If you want to debug SOCKS5 lib, set env SOCKS5_DEBUG=true",
 		},
 		&cli.StringSliceFlag{
 			Name:  "tag",
@@ -155,10 +156,22 @@ func main() {
 			Name:  "blockListUpdateInterval",
 			Usage: "Update list --blockDomainList,--blockCIDR4List,--blockCIDR6List interval, second. default 0, only read one time on start",
 		},
+		&cli.StringFlag{
+			Name:  "pid",
+			Usage: "A file path used to store pid",
+		},
 	}
 	app.Before = func(c *cli.Context) error {
 		brook.ClientHKDFInfo = []byte(c.String("clientHKDFInfo"))
 		brook.ServerHKDFInfo = []byte(c.String("serverHKDFInfo"))
+		if c.String("pid") != "" {
+			if !filepath.IsAbs(c.String("pid")) {
+				return errors.New("--pid must be with absolute path")
+			}
+			if err := os.WriteFile(c.String("pid"), []byte(strconv.Itoa(os.Getpid())), 0744); err != nil {
+				return err
+			}
+		}
 		if c.String("pprof") != "" {
 			p, err := pprof.NewPprof(c.String("pprof"))
 			if err != nil {
@@ -283,7 +296,7 @@ func main() {
 	app.Commands = []*cli.Command{
 		&cli.Command{
 			Name:  "server",
-			Usage: "Run as brook server, both TCP and UDP",
+			Usage: "Start a brook server that supports tcp and udp",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -389,7 +402,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "client",
-			Usage: "Run as brook client, both TCP and UDP, to start a socks5 proxy, [src <-> socks5 <-> $ brook client <-> $ brook server <-> dst]",
+			Usage: "Start a brook client that supports tcp and udp. It can open a socks5 proxy, [src <-> socks5 <-> $ brook client <-> $ brook server <-> dst]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -514,7 +527,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "wsserver",
-			Usage: "Run as brook wsserver, both TCP and UDP, it will start a standard http server and websocket server",
+			Usage: "Start a brook wsserver that supports tcp and udp. It opens a standard http server and a websocket server",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -634,7 +647,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "wsclient",
-			Usage: "Run as brook wsclient, both TCP and UDP, to start a socks5 proxy, [src <-> socks5 <-> $ brook wsclient <-> $ brook wsserver <-> dst]",
+			Usage: "Start a brook wsclient that supports tcp and udp. It can open a socks5 proxy, [src <-> socks5 <-> $ brook wsclient <-> $ brook wsserver <-> dst]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -759,7 +772,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "wssserver",
-			Usage: "Run as brook wssserver, both TCP and UDP, it will start a standard https server and websocket server",
+			Usage: "Start a brook wssserver that supports tcp and udp. It opens a standard https server and a websocket server",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -905,7 +918,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "wssclient",
-			Usage: "Run as brook wssclient, both TCP and UDP, to start a socks5 proxy, [src <-> socks5 <-> $ brook wssclient <-> $ brook wssserver <-> dst]",
+			Usage: "Start a brook wssclient that supports tcp and udp. It can open a socks5 proxy, [src <-> socks5 <-> $ brook wssclient <-> $ brook wssserver <-> dst]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1030,7 +1043,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "quicserver",
-			Usage: "Run as brook quicserver, both TCP and UDP",
+			Usage: "Start a brook quicserver that supports tcp and udp.",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1171,7 +1184,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "quicclient",
-			Usage: "Run as brook quicclient, both TCP and UDP, to start a socks5 proxy, [src <-> socks5 <-> $ brook quicclient <-> $ brook quicserver <-> dst]. (Note that the global dial parameter is ignored now)",
+			Usage: "Start a brook quicclient that supports tcp and udp. It can open a socks5 proxy, [src <-> socks5 <-> $ brook quicclient <-> $ brook quicserver <-> dst]. (The global-dial-parameter is ignored)",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1296,7 +1309,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "relayoverbrook",
-			Usage: "Run as relay over brook, both TCP and UDP, this means access [from address] is equal to [to address], [src <-> from address <-> $ brook server/wsserver/wssserver/quicserver <-> to address]",
+			Usage: "Relay network traffic over brook, which supports TCP and UDP. Accessing [from address] is equal to accessing [to address], [src <-> from address <-> $ brook server/wsserver/wssserver/quicserver <-> to address]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1400,7 +1413,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "dnsserveroverbrook",
-			Usage: "Run as dns server over brook, both TCP and UDP, [src <-> $ brook dnserversoverbrook <-> $ brook server/wsserver/wssserver/quicserver <-> dns] or [src <-> $ brook dnsserveroverbrook <-> dnsForBypass]",
+			Usage: "Run a dns server over brook, which supports TCP and UDP, [src <-> $ brook dnserversoverbrook <-> $ brook server/wsserver/wssserver/quicserver <-> dns] or [src <-> $ brook dnsserveroverbrook <-> dnsForBypass]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1539,7 +1552,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "link",
-			Usage: "Generate brook link",
+			Usage: "Generate a brook link",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1680,7 +1693,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "connect",
-			Usage: "Run as client and connect to brook link, both TCP and UDP, to start a socks5 proxy, [src <-> socks5 <-> $ brook connect <-> $ brook server/wsserver/wssserver/quicserver <-> dst]",
+			Usage: "Run a client and connect with a brook link, which supports TCP and UDP. It can start a socks5 proxy, [src <-> socks5 <-> $ brook connect <-> $ brook server/wsserver/wssserver/quicserver <-> dst]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1787,7 +1800,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "relay",
-			Usage: "Run as standalone relay, both TCP and UDP, this means access [from address] is equal to access [to address], [src <-> from address <-> to address]",
+			Usage: "Run a standalone relay, which supports TCP and UDP. Accessing [from address] is equal to accessing [to address], [src <-> from address <-> to address]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -1845,7 +1858,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "dnsserver",
-			Usage: "Run as standalone dns server",
+			Usage: "Run a standalone dns server",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2002,7 +2015,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "dohserver",
-			Usage: "Run as standalone doh server",
+			Usage: "Run a standalone doh server",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2206,7 +2219,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "dhcpserver",
-			Usage: "Run as standalone dhcp server. Note that you need to stop other dhcp servers, if there are.",
+			Usage: "Run a standalone dhcp server. Other running dhcp servers need to be stopped.",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2281,7 +2294,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "socks5",
-			Usage: "Run as standalone standard socks5 server, both TCP and UDP",
+			Usage: "Run a standalone standard socks5 server, which supports TCP and UDP",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2365,7 +2378,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "socks5tohttp",
-			Usage: "Convert socks5 to http proxy, [src <-> listen address(http proxy) <-> socks5 address <-> dst]",
+			Usage: "Convert a socks5 proxy to a http proxy, [src <-> listen address(http proxy) <-> socks5 address <-> dst]",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2426,7 +2439,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "pac",
-			Usage: "Run as PAC server or save PAC to file",
+			Usage: "Run a PAC server or save PAC to a file",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2488,7 +2501,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "testsocks5",
-			Usage: "Test UDP and TCP of socks5 server",
+			Usage: "Test a socks5 server to see if it works properly",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
@@ -2545,7 +2558,7 @@ func main() {
 		},
 		&cli.Command{
 			Name:  "testbrook",
-			Usage: "Test UDP and TCP of brook server/wsserver/wssserver/quicserver. (Note that the global dial parameter is ignored now)",
+			Usage: "Test UDP and TCP of a brook server/wsserver/wssserver/quicserver connection. (The global-dial-parameter is ignored)",
 			BashComplete: func(c *cli.Context) {
 				l := c.Command.VisibleFlags()
 				for _, v := range l {
