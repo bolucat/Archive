@@ -19,6 +19,7 @@
 
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
+#include "absl/base/macros.h"
 #include "absl/base/optimization.h"
 #include "tcmalloc/common.h"
 #include "tcmalloc/huge_page_aware_allocator.h"
@@ -28,6 +29,7 @@
 #include "tcmalloc/page_heap.h"
 #include "tcmalloc/pages.h"
 #include "tcmalloc/parameters.h"
+#include "tcmalloc/selsan/selsan.h"
 #include "tcmalloc/static_vars.h"
 #include "tcmalloc/stats.h"
 
@@ -59,7 +61,7 @@ bool decide_want_hpaa() {
           }
         }
 
-        Log(kLog, __FILE__, __LINE__,
+        TC_LOG(
             "Runtime opt-out from HPAA requires building with "
             "//tcmalloc:want_no_hpaa."
         );
@@ -69,8 +71,7 @@ bool decide_want_hpaa() {
       case '2':
         return true;
       default:
-        Crash(kCrash, __FILE__, __LINE__, "bad env var", e);
-        return false;
+        TC_BUG("bad env var '%s'", e);
     }
   }
 
@@ -97,43 +98,50 @@ bool want_hpaa() {
 PageAllocator::PageAllocator() {
   const bool kUseHPAA = want_hpaa();
   has_cold_impl_ = ColdFeatureActive();
+  size_t part = 0;
   if (kUseHPAA) {
-    normal_impl_[0] = new (&choices_[0].hpaa) HugePageAwareAllocator(
+    normal_impl_[0] = new (&choices_[part++].hpaa) HugePageAwareAllocator(
         HugePageAwareAllocatorOptions{MemoryTag::kNormal});
     if (tc_globals.numa_topology().numa_aware()) {
-      normal_impl_[1] = new (&choices_[1].hpaa) HugePageAwareAllocator(
+      normal_impl_[1] = new (&choices_[part++].hpaa) HugePageAwareAllocator(
           HugePageAwareAllocatorOptions{MemoryTag::kNormalP1});
     }
-    sampled_impl_ =
-        new (&choices_[kNumaPartitions + 0].hpaa) HugePageAwareAllocator(
-            HugePageAwareAllocatorOptions{MemoryTag::kSampled});
+    sampled_impl_ = new (&choices_[part++].hpaa) HugePageAwareAllocator(
+        HugePageAwareAllocatorOptions{MemoryTag::kSampled});
+    if (selsan::IsEnabled()) {
+      selsan_impl_ = new (&choices_[part++].hpaa) HugePageAwareAllocator(
+          HugePageAwareAllocatorOptions{MemoryTag::kSelSan});
+    }
     if (has_cold_impl_) {
-      cold_impl_ =
-          new (&choices_[kNumaPartitions + 1].hpaa) HugePageAwareAllocator(
-              HugePageAwareAllocatorOptions{MemoryTag::kCold});
+      cold_impl_ = new (&choices_[part++].hpaa) HugePageAwareAllocator(
+          HugePageAwareAllocatorOptions{MemoryTag::kCold});
     } else {
       cold_impl_ = normal_impl_[0];
     }
     alg_ = HPAA;
   } else {
-#if defined(TCMALLOC_SMALL_BUT_SLOW) || defined(TCMALLOC_LARGE_PAGES)
-    normal_impl_[0] = new (&choices_[0].ph) PageHeap(MemoryTag::kNormal);
+#if defined(TCMALLOC_INTERNAL_SMALL_BUT_SLOW) || \
+    defined(TCMALLOC_INTERNAL_32K_PAGES)
+    normal_impl_[0] = new (&choices_[part++].ph) PageHeap(MemoryTag::kNormal);
     if (tc_globals.numa_topology().numa_aware()) {
-      normal_impl_[1] = new (&choices_[1].ph) PageHeap(MemoryTag::kNormalP1);
+      normal_impl_[1] =
+          new (&choices_[part++].ph) PageHeap(MemoryTag::kNormalP1);
     }
-    sampled_impl_ =
-        new (&choices_[kNumaPartitions + 0].ph) PageHeap(MemoryTag::kSampled);
+    sampled_impl_ = new (&choices_[part++].ph) PageHeap(MemoryTag::kSampled);
+    if (selsan::IsEnabled()) {
+      selsan_impl_ = new (&choices_[part++].ph) PageHeap(MemoryTag::kSelSan);
+    }
     if (has_cold_impl_) {
-      cold_impl_ =
-          new (&choices_[kNumaPartitions + 1].ph) PageHeap(MemoryTag::kCold);
+      cold_impl_ = new (&choices_[part++].ph) PageHeap(MemoryTag::kCold);
     } else {
       cold_impl_ = normal_impl_[0];
     }
     alg_ = PAGE_HEAP;
 #else
     static_assert(huge_page_allocator_internal::kUnconditionalHPAA);
-    CHECK_CONDITION(false && "unreachable");
+    TC_BUG("unreachable");
 #endif
+    TC_CHECK_LE(part, ABSL_ARRAYSIZE(choices_));
   }
 }
 
@@ -192,26 +200,27 @@ void PageAllocator::ShrinkToUsageLimit(Length n) {
     const Length pages = LengthFromBytes(overage + kPageSize - 1);
     if (ShrinkHardBy(pages, kHard)) {
       ++successful_shrinks_after_limit_hit_[kHard];
-      ASSERT(successful_shrinks_after_limit_hit_[kHard] == limit_hits_[kHard]);
+      TC_ASSERT_EQ(successful_shrinks_after_limit_hit_[kHard],
+                   limit_hits_[kHard]);
       return;
     }
     const size_t hard_limit = limits_[kHard];
     limits_[kHard] = std::numeric_limits<size_t>::max();
-    Crash(
-        kCrash, __FILE__, __LINE__, "Hit hard tcmalloc heap limit of",
-        hard_limit,
+    TC_BUG(
+        "Hit hard tcmalloc heap limit of %v "
         "(e.g. --tcmalloc_heap_size_hard_limit). "
         "Aborting.\nIt was most likely set to catch "
         "allocations that would crash the process anyway. "
-    );
+        ,
+        hard_limit);
   }
 
   // Print logs once.
   static bool warned = false;
   if (warned) return;
   warned = true;
-  Log(kLogWithStack, __FILE__, __LINE__, "Couldn't respect usage limit of",
-      limits_[kSoft], "and OOM is likely to follow.");
+  TC_LOG("Couldn't respect usage limit of %v and OOM is likely to follow.",
+         limits_[kSoft]);
 }
 
 bool PageAllocator::ShrinkHardBy(Length pages, LimitKind limit_kind) {
@@ -230,8 +239,10 @@ bool PageAllocator::ShrinkHardBy(Length pages, LimitKind limit_kind) {
     static bool warned_hugepages = false;
     if (!warned_hugepages) {
       const size_t limit = limits_[limit_kind];
-      Log(kLogWithStack, __FILE__, __LINE__, "Couldn't respect usage limit of",
-          limit, "without breaking hugepages - performance will drop");
+      TC_LOG(
+          "Couldn't respect usage limit of %v without breaking hugepages - "
+          "performance will drop",
+          limit);
       warned_hugepages = true;
     }
     if (has_cold_impl_) {

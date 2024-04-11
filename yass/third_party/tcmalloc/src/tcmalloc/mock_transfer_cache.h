@@ -92,7 +92,7 @@ class ArenaBasedFakeTransferCacheManager {
     if (aligned != nullptr) {
       // Increase by the allocated size plus the alignment offset.
       used_ += size + (kTotalSize - space);
-      CHECK_CONDITION(used_ <= bytes_.capacity());
+      TC_CHECK_LE(used_, bytes_.capacity());
     }
     return aligned;
   }
@@ -246,11 +246,11 @@ class TwoSizeClassManager : public FakeTransferCacheManager {
   static constexpr size_t kNumToMove2 = 2;
 
   TwoSizeClassManager() {
-    caches_.push_back(absl::make_unique<TransferCache>(
+    caches_.push_back(std::make_unique<TransferCache>(
         this, 0, /*use_all_buckets_for_few_object_spans=*/false));
-    caches_.push_back(absl::make_unique<TransferCache>(
+    caches_.push_back(std::make_unique<TransferCache>(
         this, 1, /*use_all_buckets_for_few_object_spans=*/false));
-    caches_.push_back(absl::make_unique<TransferCache>(
+    caches_.push_back(std::make_unique<TransferCache>(
         this, 2, /*use_all_buckets_for_few_object_spans=*/false));
   }
 
@@ -297,14 +297,14 @@ class FakeCpuLayout {
   static constexpr int kCpusPerShard = 2;
 
   void Init(int shards) {
-    ASSERT(shards > 0);
-    ASSERT(shards * kCpusPerShard <= kNumCpus);
+    TC_ASSERT_GT(shards, 0);
+    TC_ASSERT_LE(shards * kCpusPerShard, kNumCpus);
     num_shards_ = shards;
   }
 
   void SetCurrentCpu(int cpu) {
-    ASSERT(cpu >= 0);
-    ASSERT(cpu < kNumCpus);
+    TC_ASSERT_GE(cpu, 0);
+    TC_ASSERT_LT(cpu, kNumCpus);
     current_cpu_ = cpu;
   }
 

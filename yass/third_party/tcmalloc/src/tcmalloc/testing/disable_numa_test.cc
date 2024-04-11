@@ -1,4 +1,4 @@
-// Copyright 2022 The TCMalloc Authors
+// Copyright 2024 The TCMalloc Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,16 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/base/attributes.h"
+#include "gtest/gtest.h"
+#include "tcmalloc/internal/numa.h"
+#include "tcmalloc/static_vars.h"
 
-namespace tcmalloc {
-namespace tcmalloc_internal {
+namespace {
 
-// This - if linked into a binary - allows lazy size class resize to be
-// disabled.
-ABSL_ATTRIBUTE_UNUSED int default_want_disable_laze_size_class_resize() {
-  return 1;
+TEST(Numa, Inactive) {
+  EXPECT_FALSE(
+      tcmalloc::tcmalloc_internal::tc_globals.numa_topology().numa_aware());
 }
 
-}  // namespace tcmalloc_internal
-}  // namespace tcmalloc
+}  // namespace

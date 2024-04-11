@@ -27,6 +27,7 @@
 #include "tcmalloc/internal/prefetch.h"
 #include "tcmalloc/pagemap.h"
 #include "tcmalloc/pages.h"
+#include "tcmalloc/selsan/selsan.h"
 #include "tcmalloc/span.h"
 #include "tcmalloc/static_vars.h"
 
@@ -38,6 +39,9 @@ namespace central_freelist_internal {
 static MemoryTag MemoryTagFromSizeClass(size_t size_class) {
   if (IsExpandedSizeClass(size_class)) {
     return MemoryTag::kCold;
+  }
+  if (selsan::IsEnabled()) {
+    return MemoryTag::kSelSan;
   }
   if (!tc_globals.numa_topology().numa_aware()) {
     return MemoryTag::kNormal;
@@ -58,7 +62,7 @@ void StaticForwarder::MapObjectsToSpans(absl::Span<void*> batch, Span** spans) {
   for (int i = 0; i < batch.size(); ++i) {
     const PageId p = PageIdContaining(batch[i]);
     Span* span = tc_globals.pagemap().GetExistingDescriptor(p);
-    ASSERT(span != nullptr);
+    TC_ASSERT_NE(span, nullptr);
     span->Prefetch();
     spans[i] = span;
   }
@@ -73,8 +77,8 @@ Span* StaticForwarder::AllocateSpan(int size_class,
   if (ABSL_PREDICT_FALSE(span == nullptr)) {
     return nullptr;
   }
-  ASSERT(tag == GetMemoryTag(span->start_address()));
-  ASSERT(span->num_pages() == pages_per_span);
+  TC_ASSERT_EQ(tag, GetMemoryTag(span->start_address()));
+  TC_ASSERT_EQ(span->num_pages(), pages_per_span);
 
   tc_globals.pagemap().RegisterSizeClass(span, size_class);
   return span;
@@ -83,9 +87,9 @@ Span* StaticForwarder::AllocateSpan(int size_class,
 static void ReturnSpansToPageHeap(MemoryTag tag, absl::Span<Span*> free_spans,
                                   size_t objects_per_span)
     ABSL_LOCKS_EXCLUDED(pageheap_lock) {
-  AllocationGuardSpinLockHolder h(&pageheap_lock);
+  PageHeapSpinLockHolder l;
   for (Span* const free_span : free_spans) {
-    ASSERT(tag == GetMemoryTag(free_span->start_address()));
+    TC_ASSERT_EQ(tag, GetMemoryTag(free_span->start_address()));
     tc_globals.page_allocator().Delete(free_span, objects_per_span, tag);
   }
 }
@@ -94,8 +98,7 @@ void StaticForwarder::DeallocateSpans(int size_class, size_t objects_per_span,
                                       absl::Span<Span*> free_spans) {
   // Unregister size class doesn't require holding any locks.
   for (Span* const free_span : free_spans) {
-    ASSERT(IsNormalMemory(free_span->start_address()) ||
-           IsColdMemory(free_span->start_address()));
+    TC_ASSERT_NE(GetMemoryTag(free_span->start_address()), MemoryTag::kSampled);
     tc_globals.pagemap().UnregisterSizeClass(free_span);
 
     // Before taking pageheap_lock, prefetch the PageTrackers these spans are

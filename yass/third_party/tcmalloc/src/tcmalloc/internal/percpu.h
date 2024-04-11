@@ -16,13 +16,11 @@
 #define TCMALLOC_INTERNAL_PERCPU_H_
 
 // sizeof(Sampler)
-#define TCMALLOC_SAMPLER_SIZE 40
+#define TCMALLOC_SAMPLER_SIZE 32
 // alignof(Sampler)
 #define TCMALLOC_SAMPLER_ALIGN 8
 // Sampler::HotDataOffset()
-#define TCMALLOC_SAMPLER_HOT_OFFSET 32
-
-#define TCMALLOC_PERCPU_SLABS_MASK 0xFFFFFFFFFFFFFF00
+#define TCMALLOC_SAMPLER_HOT_OFFSET 24
 
 // Offset from __rseq_abi to the cached slabs address.
 #define TCMALLOC_RSEQ_SLABS_OFFSET -4
@@ -64,7 +62,6 @@
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
-#include "tcmalloc/internal/atomic_danger.h"
 #include "tcmalloc/internal/config.h"
 #include "tcmalloc/internal/linux_syscall_support.h"
 #include "tcmalloc/internal/logging.h"
@@ -114,9 +111,9 @@ inline constexpr int kCpuIdInitialized = 0;
 //   cpu_offset = TcmallocSlab.virtual_cpu_id_offset_;
 //   cpu = *(&__rseq_abi + virtual_cpu_id_offset_);
 //   slabs_and_shift = TcmallocSlab.slabs_and_shift_;
-//   shift = slabs_and_shift & ~TCMALLOC_PERCPU_SLABS_MASK;
+//   shift = slabs_and_shift & kShiftMask;
 //   shifted_cpu = cpu << shift;
-//   slabs = slabs_and_shift & TCMALLOC_PERCPU_SLABS_MASK;
+//   slabs = slabs_and_shift & kSlabsMask;
 //   slabs += shifted_cpu;
 //
 // To remove this calculation from fast paths, we cache the slabs address
@@ -171,17 +168,19 @@ extern "C" ABSL_CONST_INIT thread_local volatile kernel_rseq __rseq_abi
 // that the definition may come from a dynamic library and has to use
 // GOT access. When compiler sees even a weak definition, it knows the
 // declaration will be in the current module and can generate direct accesses.
-thread_local volatile uintptr_t tcmalloc_slabs ABSL_ATTRIBUTE_WEAK = {};
-thread_local volatile kernel_rseq __rseq_abi ABSL_ATTRIBUTE_WEAK = {
-    0,      static_cast<unsigned>(kCpuIdUninitialized),   0, 0,
-    {0, 0}, {{kCpuIdUninitialized, kCpuIdUninitialized}},
+ABSL_CONST_INIT thread_local volatile uintptr_t tcmalloc_slabs
+    ABSL_ATTRIBUTE_WEAK = {};
+ABSL_CONST_INIT thread_local volatile kernel_rseq __rseq_abi
+    ABSL_ATTRIBUTE_WEAK = {
+        0,      static_cast<unsigned>(kCpuIdUninitialized),   0, 0,
+        {0, 0}, {{kCpuIdUninitialized, kCpuIdUninitialized}},
 };
 
 static inline int RseqCpuId() { return __rseq_abi.cpu_id; }
 
 static inline int VirtualRseqCpuId(const size_t virtual_cpu_id_offset) {
-  ASSERT(virtual_cpu_id_offset == offsetof(kernel_rseq, cpu_id) ||
-         virtual_cpu_id_offset == offsetof(kernel_rseq, vcpu_id));
+  TC_ASSERT(virtual_cpu_id_offset == offsetof(kernel_rseq, cpu_id) ||
+            virtual_cpu_id_offset == offsetof(kernel_rseq, vcpu_id));
   return *reinterpret_cast<short*>(reinterpret_cast<uintptr_t>(&__rseq_abi) +
                                    virtual_cpu_id_offset);
 }
@@ -196,14 +195,11 @@ static inline int VirtualRseqCpuId(const size_t virtual_cpu_id_offset) {
 // Functions below are implemented in the architecture-specific percpu_rseq_*.S
 // files.
 extern "C" {
-int TcmallocSlab_Internal_PerCpuCmpxchg64(int target_cpu, intptr_t* p,
-                                          intptr_t old_val, intptr_t new_val,
-                                          size_t virtual_cpu_id_offset);
-
 size_t TcmallocSlab_Internal_PushBatch(size_t size_class, void** batch,
                                        size_t len);
 size_t TcmallocSlab_Internal_PopBatch(size_t size_class, void** batch,
-                                      size_t len);
+                                      size_t len,
+                                      std::atomic<uint16_t>* begin_ptr);
 }  // extern "C"
 
 // NOTE:  We skirt the usual naming convention slightly above using "_" to
@@ -212,6 +208,9 @@ size_t TcmallocSlab_Internal_PopBatch(size_t size_class, void** batch,
 
 // Return whether we are using flat virtual CPUs.
 bool UsingFlatVirtualCpus();
+
+enum class RseqVcpuMode { kNone };
+inline RseqVcpuMode GetRseqVcpuMode() { return RseqVcpuMode::kNone; }
 
 inline int GetCurrentCpuUnsafe() {
   // Use the rseq mechanism.
@@ -236,7 +235,7 @@ inline int GetCurrentCpu() {
 
 #ifdef TCMALLOC_HAVE_SCHED_GETCPU
   cpu = sched_getcpu();
-  ASSERT(cpu >= 0);
+  TC_ASSERT_GE(cpu, 0);
 #endif  // TCMALLOC_HAVE_SCHED_GETCPU
 
   return cpu;
@@ -250,7 +249,7 @@ inline int GetCurrentVirtualCpu(const size_t virtual_cpu_id_offset) {
   // We can't use the unsafe version unless we have the appropriate version of
   // the rseq extension. This also allows us a convenient escape hatch if the
   // kernel changes the way it uses special-purpose registers for CPU IDs.
-  int cpu = VirtualRseqCpuId(virtual_cpu_id_offset);
+  int cpu = GetCurrentVirtualCpuUnsafe(virtual_cpu_id_offset);
 
   // We open-code the check for fast-cpu availability since we do not want to
   // force initialization in the first-call case.  This so done so that we can
@@ -263,20 +262,20 @@ inline int GetCurrentVirtualCpu(const size_t virtual_cpu_id_offset) {
   }
 
   // Do not return a physical CPU ID when we expect a virtual CPU ID.
-  CHECK_CONDITION(virtual_cpu_id_offset != offsetof(kernel_rseq, vcpu_id));
+  TC_CHECK_NE(virtual_cpu_id_offset, offsetof(kernel_rseq, vcpu_id));
 
 #ifdef TCMALLOC_HAVE_SCHED_GETCPU
   cpu = sched_getcpu();
-  ASSERT(cpu >= 0);
+  TC_ASSERT_GE(cpu, 0);
 #endif  // TCMALLOC_HAVE_SCHED_GETCPU
 
   return cpu;
 }
 
-inline int VirtualRseqCpuId() {
-  const size_t offset = UsingFlatVirtualCpus() ? offsetof(kernel_rseq, cpu_id)
-                                               : offsetof(kernel_rseq, vcpu_id);
-  return VirtualRseqCpuId(offset);
+inline int GetCurrentVirtualCpuUnsafe() {
+  const size_t offset = UsingFlatVirtualCpus() ? offsetof(kernel_rseq, vcpu_id)
+                                               : offsetof(kernel_rseq, cpu_id);
+  return GetCurrentVirtualCpuUnsafe(offset);
 }
 
 bool InitFastPerCpu();
@@ -357,22 +356,6 @@ inline void TSANReleaseBatch(void** batch, int n) {
     __tsan_release(batch[i]);
   }
 #endif
-}
-
-inline void TSANMemoryBarrierOn(void* p) {
-  TSANAcquire(p);
-  TSANRelease(p);
-}
-
-// These methods may *only* be called if IsFast() has been called by the current
-// thread (and it returned true).
-inline int CompareAndSwapUnsafe(int target_cpu, std::atomic<intptr_t>* p,
-                                intptr_t old_val, intptr_t new_val,
-                                const size_t virtual_cpu_id_offset) {
-  TSANMemoryBarrierOn(p);
-  return TcmallocSlab_Internal_PerCpuCmpxchg64(
-      target_cpu, tcmalloc_internal::atomic_danger::CastToIntegral(p), old_val,
-      new_val, virtual_cpu_id_offset);
 }
 
 void FenceCpu(int cpu, const size_t virtual_cpu_id_offset);

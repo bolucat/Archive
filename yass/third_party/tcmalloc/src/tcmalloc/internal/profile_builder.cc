@@ -90,11 +90,11 @@ static const char* GetSoName(const dl_phdr_info* const info) {
   if (dt_soname == nullptr) {
     return nullptr;
   }
-  CHECK_CONDITION(dt_strtab != nullptr);
-  CHECK_CONDITION(dt_strsz != nullptr);
+  TC_CHECK_NE(dt_strtab, nullptr);
+  TC_CHECK_NE(dt_strsz, nullptr);
   const char* const strtab =
       reinterpret_cast<char*>(info->dlpi_addr + dt_strtab->d_un.d_val);
-  CHECK_CONDITION(dt_soname->d_un.d_val < dt_strsz->d_un.d_val);
+  TC_CHECK_LT(dt_soname->d_un.d_val, dt_strsz->d_un.d_val);
   return strtab + dt_soname->d_un.d_val;
 }
 #endif  // defined(__linux__)
@@ -268,6 +268,8 @@ ABSL_CONST_INIT const absl::string_view kProfileDropFrames =
     "pvalloc|"
     "valloc|"
     "realloc|"
+    "aligned_alloc|"
+    "sdallocx|"
 
     // TCMalloc.
     "tcmalloc::.*|"
@@ -291,15 +293,24 @@ ABSL_CONST_INIT const absl::string_view kProfileDropFrames =
 
     // libstdc++ memory allocation routines
     "__gnu_cxx::new_allocator::allocate|"
+    "__gnu_cxx::new_allocator::deallocate|"
     "__malloc_alloc_template::allocate|"
     "_M_allocate|"
 
     // libc++ memory allocation routines
-    "std::__u::__libcpp_allocate|"
-    "std::__u::__libcpp_operator_delete|"
-    "std::__u::allocator::allocate|"
-    "std::__u::allocator_traits::allocate|"
-    "std::__u::__builtin_new_allocator::__allocate_bytes|"
+    "std::__(u|1)::__libcpp_allocate|"
+    "std::__(u|1)::__libcpp_deallocate|"
+    "std::__(u|1)::__libcpp_operator_new|"
+    "std::__(u|1)::__libcpp_operator_delete|"
+    "std::__(u|1)::allocator::allocate|"
+    "std::__(u|1)::allocator::deallocate|"
+    "std::__(u|1)::allocator_traits::allocate|"
+    "std::__(u|1)::allocator_traits::deallocate|"
+    "std::__(u|1)::__builtin_new_allocator::__allocate_bytes|"
+    "std::__(u|1)::__do_deallocate_handle_size|"
+    "std::__(u|1)::__allocate_at_least|"
+    "std::__(u|1)::__allocation_guard::(~)?__allocation_guard|"
+    "std::__(u|1)::__split_buffer::(~)?__split_buffer|"
 
     // Other misc. memory allocation routines
     "(::)?do_malloc_pages|"
@@ -310,10 +321,11 @@ ABSL_CONST_INIT const absl::string_view kProfileDropFrames =
     "__libc_malloc|"
     "__libc_memalign|"
     "__libc_realloc|"
-    "(::)?slow_alloc|"
+    "slow_alloc|"
     "fast_alloc|"
-    "(::)?AllocSmall|"
-    "operator new(\\[\\])?";
+    "AllocSmall|"
+    "operator new|"
+    "operator delete";
 
 ProfileBuilder::ProfileBuilder()
     : profile_(std::make_unique<perftools::profiles::Profile>()) {
@@ -347,7 +359,7 @@ int ProfileBuilder::InternLocation(const void* ptr) {
     return inserted.first->second;
   }
   perftools::profiles::Location& location = *profile_->add_location();
-  ASSERT(inserted.first->second == index);
+  TC_ASSERT_EQ(inserted.first->second, index);
   location.set_id(index);
   location.set_address(address);
 
@@ -366,7 +378,7 @@ int ProfileBuilder::InternLocation(const void* ptr) {
   const perftools::profiles::Mapping& mapping =
       profile_->mapping(mapping_index);
   const int mapping_id = mapping.id();
-  ASSERT(it->first == mapping.memory_start());
+  TC_ASSERT(it->first == mapping.memory_start());
 
   if (it->first <= address && address < mapping.memory_limit()) {
     location.set_mapping_id(mapping_id);
@@ -385,7 +397,7 @@ void ProfileBuilder::InternCallstack(absl::Span<const void* const> stack,
         absl::bit_cast<const void*>(absl::bit_cast<uintptr_t>(frame) - 1));
     sample.add_location_id(id);
   }
-  ASSERT(sample.location_id().size() == stack.size());
+  TC_ASSERT_EQ(sample.location_id().size(), stack.size());
 }
 
 void ProfileBuilder::AddCurrentMappings() {
@@ -406,7 +418,7 @@ void ProfileBuilder::AddCurrentMappings() {
       }
       const ElfW(Phdr)* pt_load = &info->dlpi_phdr[i];
 
-      CHECK_CONDITION(pt_load != nullptr);
+      TC_CHECK_NE(pt_load, nullptr);
 
       // Extract data.
       const size_t memory_start = info->dlpi_addr + pt_load->p_vaddr;
@@ -476,7 +488,7 @@ int ProfileBuilder::AddMapping(uintptr_t memory_start, uintptr_t memory_limit,
 
 static void MakeLifetimeProfileProto(const tcmalloc::Profile& profile,
                                      ProfileBuilder* builder) {
-  CHECK_CONDITION(builder != nullptr);
+  TC_CHECK_NE(builder, nullptr);
   perftools::profiles::Profile& converted = builder->profile();
   perftools::profiles::ValueType* period_type = converted.mutable_period_type();
 
@@ -511,6 +523,7 @@ static void MakeLifetimeProfileProto(const tcmalloc::Profile& profile,
   const int active_cpu_id = builder->InternString("active CPU");
   const int active_vcpu_id = builder->InternString("active vCPU");
   const int active_l3_id = builder->InternString("active L3");
+  const int active_numa_id = builder->InternString("active NUMA");
   const int same_id = builder->InternString("same");
   const int different_id = builder->InternString("different");
   const int active_thread_id = builder->InternString("active thread");
@@ -520,7 +533,7 @@ static void MakeLifetimeProfileProto(const tcmalloc::Profile& profile,
   profile.Iterate([&](const tcmalloc::Profile::Sample& entry) {
     perftools::profiles::Sample& sample = *converted.add_sample();
 
-    CHECK_CONDITION(entry.depth <= ABSL_ARRAYSIZE(entry.stack));
+    TC_CHECK_LE(entry.depth, ABSL_ARRAYSIZE(entry.stack));
     builder->InternCallstack(absl::MakeSpan(entry.stack, entry.depth), sample);
 
     auto add_label = [&](int key, int unit, size_t value) {
@@ -574,6 +587,9 @@ static void MakeLifetimeProfileProto(const tcmalloc::Profile& profile,
                               same_id, different_id);
     add_optional_string_label(active_l3_id,
                               entry.allocator_deallocator_l3_matched, same_id,
+                              different_id);
+    add_optional_string_label(active_numa_id,
+                              entry.allocator_deallocator_numa_matched, same_id,
                               different_id);
     add_optional_string_label(active_thread_id,
                               entry.allocator_deallocator_thread_matched,
@@ -720,7 +736,7 @@ absl::StatusOr<std::unique_ptr<perftools::profiles::Profile>> MakeProfileProto(
     perftools::profiles::Profile& profile = builder.profile();
     perftools::profiles::Sample& sample = *profile.add_sample();
 
-    CHECK_CONDITION(entry.depth <= ABSL_ARRAYSIZE(entry.stack));
+    TC_CHECK_LE(entry.depth, ABSL_ARRAYSIZE(entry.stack));
     builder.InternCallstack(absl::MakeSpan(entry.stack, entry.depth), sample);
 
     sample.add_value(data.count);

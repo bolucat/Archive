@@ -78,18 +78,14 @@ class LimitTest : public ::testing::Test {
 
   // avoid fragmentation in local caches
   void* malloc_pages(size_t bytes) {
-    CHECK_CONDITION(bytes % kPageSize == 0);
+    TC_CHECK_EQ(bytes % kPageSize, 0);
     void* ptr;
-    CHECK_CONDITION(posix_memalign(&ptr, kPageSize, bytes) == 0);
+    TC_CHECK_EQ(0, posix_memalign(&ptr, kPageSize, bytes));
     return ptr;
   }
 
   size_t physical_memory_used() {
-    std::map<std::string, MallocExtension::Property> m =
-        MallocExtension::GetProperties();
-    auto i = m.find("generic.physical_memory_used");
-    CHECK_CONDITION(i != m.end());
-    return i->second.value;
+    return *MallocExtension::GetNumericProperty("generic.physical_memory_used");
   }
 
   // Returns a human-readable stats representation.  This is backed by

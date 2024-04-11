@@ -56,6 +56,9 @@ namespace tcmalloc {
 // as is.
 using hot_cold_t = __hot_cold_t;
 
+constexpr hot_cold_t kDefaultMinHotAccessHint =
+    static_cast<tcmalloc::hot_cold_t>(1);
+
 }  // namespace tcmalloc
 
 inline bool AbslParseFlag(absl::string_view text, tcmalloc::hot_cold_t* hotness,
@@ -173,6 +176,7 @@ class Profile final {
     std::optional<bool> allocator_deallocator_physical_cpu_matched;
     std::optional<bool> allocator_deallocator_virtual_cpu_matched;
     std::optional<bool> allocator_deallocator_l3_matched;
+    std::optional<bool> allocator_deallocator_numa_matched;
     std::optional<bool> allocator_deallocator_thread_matched;
 
     // Provide the status of GWP-ASAN guarding for a given sample.
@@ -207,7 +211,7 @@ class Profile final {
       // Request guard: may still not be guarded for other reasons (see
       //    above)
       Requested = 1,
-      // Require guard: If at all possible, guard this sample to maintain rates.
+      // Unused.
       Required = 2,
       // The result when a sample is actually guarded by GWP-ASAN.
       Guarded = 10,
@@ -258,6 +262,11 @@ class AddressRegionFactory {
     kInfrequent ABSL_DEPRECATED("Use kInfrequentAllocation") =
         kInfrequentAllocation,
     kInfrequentAccess,  // TCMalloc places cold allocations in these regions.
+    // Usage of the below implies numa_aware is enabled. tcmalloc will mbind the
+    // address region to the hinted socket, but also passes the hint in case
+    // mbind is not sufficient (e.g. when dealing with pre-faulted memory).
+    kNormalNumaAwareS0,  // Normal usage intended for NUMA S0 under numa_aware.
+    kNormalNumaAwareS1,  // Normal usage intended for NUMA S1 under numa_aware.
   };
 
   AddressRegionFactory() {}
@@ -354,7 +363,7 @@ class MallocExtension final {
   // -------------------------------------------------------------------
 
   // Gets the named property's value or a nullopt if the property is not valid.
-  static absl::optional<size_t> GetNumericProperty(absl::string_view property);
+  static std::optional<size_t> GetNumericProperty(absl::string_view property);
 
   // Marks the current thread as "idle".  This function may optionally be called
   // by threads as a hint to the malloc implementation that any thread-specific
@@ -471,10 +480,6 @@ class MallocExtension final {
   // ActivateGuardedSampling).
   static void SetGuardedSamplingRate(int64_t rate);
 
-  // TODO(b/263387812): remove when experimentation is complete
-  static bool GetImprovedGuardedSampling();
-  static void SetImprovedGuardedSampling(bool enable);
-
   // Switches TCMalloc to guard sampled allocations for underflow, overflow, and
   // use-after-free according to the guarded sample parameter value.
   static void ActivateGuardedSampling();
@@ -533,7 +538,7 @@ class MallocExtension final {
   // -- that is, must be exactly the pointer returned to by malloc() et al., not
   // some offset from that -- and should not have been freed yet.  p may be
   // null.
-  static absl::optional<size_t> GetAllocatedSize(const void* p);
+  static std::optional<size_t> GetAllocatedSize(const void* p);
 
   // Returns
   // * kOwned if TCMalloc allocated the memory pointed to by p, or
@@ -773,6 +778,48 @@ class ProfileBase {
   // (heap, peakheap, etc.), this returns absl::ZeroDuration().
   virtual absl::Duration Duration() const = 0;
 };
+
+enum class MadvisePreference {
+  kNever = 0x0,
+  kDontNeed = 0x1,
+  kFreeAndDontNeed = 0x3,
+  kFreeOnly = 0x2,
+};
+
+inline bool AbslParseFlag(absl::string_view text, MadvisePreference* preference,
+                          std::string* /* error */) {
+  if (text == "NEVER") {
+    *preference = MadvisePreference::kNever;
+    return true;
+  } else if (text == "DONTNEED") {
+    *preference = MadvisePreference::kDontNeed;
+    return true;
+  } else if (text == "FREE_AND_DONTNEED") {
+    *preference = MadvisePreference::kFreeAndDontNeed;
+    return true;
+  } else if (text == "FREE_ONLY") {
+    *preference = MadvisePreference::kFreeOnly;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+inline std::string AbslUnparseFlag(MadvisePreference preference) {
+  switch (preference) {
+    case MadvisePreference::kNever:
+      return "NEVER";
+    case MadvisePreference::kDontNeed:
+      return "DONTNEED";
+    case MadvisePreference::kFreeAndDontNeed:
+      return "FREE_AND_DONTNEED";
+    case MadvisePreference::kFreeOnly:
+      return "FREE_ONLY";
+  }
+
+  ABSL_UNREACHABLE();
+  return "";
+}
 
 }  // namespace tcmalloc_internal
 }  // namespace tcmalloc

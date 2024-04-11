@@ -4,12 +4,11 @@
 #include "config/config.hpp"
 #include "config/config_impl.hpp"
 
-#include <sstream>
-
 #include <absl/flags/flag.h>
 #include <absl/flags/internal/program_name.h>
 #include <absl/flags/usage.h>
 #include <absl/strings/str_cat.h>
+#include <sstream>
 
 #include "core/logging.hpp"
 #include "core/utils.hpp"
@@ -168,8 +167,6 @@ std::string AbslUnparseFlag(const RateFlag& flag) {
   return os.str();
 }
 
-ABSL_FLAG(bool, ipv6_mode, true, "Resolve names to IPv6 addresses");
-
 ABSL_FLAG(std::string, server_host, "http2.github.io", "Remote server on given host");
 ABSL_FLAG(std::string, server_sni, "", "Remote server on given sni");
 ABSL_FLAG(PortFlag, server_port, PortFlag(443), "Remote server on given port");
@@ -187,9 +184,6 @@ ABSL_FLAG(uint32_t, parallel_max, 512, "Maximum concurrency for parallel connect
 
 ABSL_FLAG(RateFlag, limit_rate, RateFlag(0), "Limit transfer speed to RATE");
 
-ABSL_FLAG(std::string, doh_url, "", "Resolve host names over DoH");
-ABSL_FLAG(std::string, dot_host, "", "Resolve host names over DoT");
-
 namespace config {
 
 void ReadConfigFileOption(int argc, const char** argv) {
@@ -197,7 +191,14 @@ void ReadConfigFileOption(int argc, const char** argv) {
   while (pos < argc) {
     std::string arg = argv[pos];
     if (pos + 1 < argc && (arg == "-v" || arg == "--v")) {
-      absl::SetFlag(&FLAGS_v, atoi(argv[pos + 1]));
+      auto v_opt = StringToIntegerU(argv[pos + 1]);
+      if (!v_opt.has_value()) {
+        fprintf(stderr, "Invalid Option: %s %s\n", argv[pos], argv[pos + 1]);
+        fflush(stderr);
+        exit(-1);
+        continue;
+      }
+      absl::SetFlag(&FLAGS_v, v_opt.value());
       argv[pos] = "";
       argv[pos + 1] = "";
       pos += 2;
@@ -214,13 +215,13 @@ void ReadConfigFileOption(int argc, const char** argv) {
       argv[pos + 1] = "";
       pos += 2;
       continue;
-    } else if (strncmp(argv[pos], "-log_dir=", sizeof("-log_dir=")-1) == 0) {
-      absl::SetFlag(&FLAGS_log_dir, argv[pos] + sizeof("-log_dir=")-1);
+    } else if (strncmp(argv[pos], "-log_dir=", sizeof("-log_dir=") - 1) == 0) {
+      absl::SetFlag(&FLAGS_log_dir, argv[pos] + sizeof("-log_dir=") - 1);
       argv[pos] = "";
       pos += 1;
       continue;
-    } else if (strncmp(argv[pos], "--log_dir=", sizeof("--log_dir=")-1) == 0) {
-      absl::SetFlag(&FLAGS_log_dir, argv[pos] + sizeof("--log_dir=")-1);
+    } else if (strncmp(argv[pos], "--log_dir=", sizeof("--log_dir=") - 1) == 0) {
+      absl::SetFlag(&FLAGS_log_dir, argv[pos] + sizeof("--log_dir=") - 1);
       argv[pos] = "";
       pos += 1;
       continue;
@@ -576,8 +577,7 @@ std::string ReadConfigFromArgument(const std::string& server_host,
 }
 
 void SetClientUsageMessage(const std::string& exec_path) {
-  absl::SetProgramUsageMessage(absl::StrCat(
-      "Usage: ", Basename(exec_path), " [options ...]\n", R"(
+  absl::SetProgramUsageMessage(absl::StrCat("Usage: ", Basename(exec_path), " [options ...]\n", R"(
   -K, --config <file> Read config from a file
   --server_host <host> Remote server on given host
   --server_port <port> Remote server on given port
@@ -590,8 +590,7 @@ void SetClientUsageMessage(const std::string& exec_path) {
 }
 
 void SetServerUsageMessage(const std::string& exec_path) {
-  absl::SetProgramUsageMessage(absl::StrCat(
-      "Usage: ", Basename(exec_path), " [options ...]\n", R"(
+  absl::SetProgramUsageMessage(absl::StrCat("Usage: ", Basename(exec_path), " [options ...]\n", R"(
   -K, --config <file> Read config from a file
   --certificate_chain_file <file> (TLS) Certificate Chain File Path
   --private_key_file <file> (TLS) Private Key File Path

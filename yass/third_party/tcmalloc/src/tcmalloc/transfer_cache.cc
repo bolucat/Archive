@@ -20,29 +20,15 @@
 #include <new>
 
 #include "absl/base/attributes.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tcmalloc/internal/config.h"
-#include "tcmalloc/internal/optimization.h"
 #include "tcmalloc/static_vars.h"
 
 GOOGLE_MALLOC_SECTION_BEGIN
 namespace tcmalloc {
 namespace tcmalloc_internal {
 
-absl::string_view TransferCacheImplementationToLabel(
-    TransferCacheImplementation type) {
-  switch (type) {
-    case TransferCacheImplementation::kLifo:
-      return "LIFO";
-    case TransferCacheImplementation::kNone:
-      return "NO_TRANSFERCACHE";
-    default:
-      ASSUME(false);
-  }
-}
-
-#ifndef TCMALLOC_SMALL_BUT_SLOW
+#ifndef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
 
 size_t StaticForwarder::class_to_size(int size_class) {
   return tc_globals.sizemap().class_to_size(size_class);

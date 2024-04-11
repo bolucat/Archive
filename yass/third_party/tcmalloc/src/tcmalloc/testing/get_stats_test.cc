@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <ctype.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <string.h>
@@ -87,30 +88,29 @@ TEST_F(GetStatsTest, Pbtxt) {
     EXPECT_THAT(buf, HasSubstr("percpu_slab_residence: 0"));
   }
   EXPECT_THAT(buf, ContainsRegex("(cpus_allowed: [1-9][0-9]*)"));
-#ifdef TCMALLOC_SMALL_BUT_SLOW
-  EXPECT_THAT(buf,
-              HasSubstr("transfer_cache_implementation: NO_TRANSFERCACHE"));
-#else
-  EXPECT_THAT(buf, HasSubstr("transfer_cache_implementation: LIFO"));
-#endif
 
   EXPECT_THAT(buf, HasSubstr("desired_usage_limit_bytes: -1"));
   EXPECT_THAT(buf,
               HasSubstr(absl::StrCat("profile_sampling_rate: ",
                                      Parameters::profile_sampling_rate())));
   EXPECT_THAT(buf, HasSubstr("limit_hits: 0"));
-#ifdef TCMALLOC_SMALL_BUT_SLOW
   EXPECT_THAT(buf, HasSubstr("tcmalloc_skip_subrelease_interval_ns: 0"));
-#else
-  EXPECT_THAT(buf,
-              HasSubstr("tcmalloc_skip_subrelease_interval_ns: 60000000000"));
-#endif
+#ifdef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
   EXPECT_THAT(buf, HasSubstr("tcmalloc_skip_subrelease_short_interval_ns: 0"));
   EXPECT_THAT(buf, HasSubstr("tcmalloc_skip_subrelease_long_interval_ns: 0"));
+#else
+  EXPECT_THAT(
+      buf,
+      HasSubstr("tcmalloc_skip_subrelease_short_interval_ns: 60000000000"));
+  EXPECT_THAT(
+      buf,
+      HasSubstr("tcmalloc_skip_subrelease_long_interval_ns: 300000000000"));
+#endif
 
   EXPECT_THAT(buf, HasSubstr("tcmalloc_release_partial_alloc_pages: true"));
-  EXPECT_THAT(buf, HasSubstr("tcmalloc_resize_cpu_cache_size_classes: true"));
-  EXPECT_THAT(buf, HasSubstr("tcmalloc_improved_guarded_sampling: 1"));
+  EXPECT_THAT(buf,
+              HasSubstr("tcmalloc_huge_region_demand_based_release: false"));
+  EXPECT_THAT(buf, HasSubstr("tcmalloc_release_pages_from_huge_region: true"));
   EXPECT_THAT(buf, ContainsRegex("(tcmalloc_filler_chunks_per_alloc: 8|(16))"));
 
   sized_delete(alloc, kSize);
@@ -127,7 +127,6 @@ TEST_F(GetStatsTest, Parameters) {
   Parameters::set_filler_skip_subrelease_interval(absl::Seconds(1));
   Parameters::set_filler_skip_subrelease_short_interval(absl::Seconds(2));
   Parameters::set_filler_skip_subrelease_long_interval(absl::Seconds(3));
-  Parameters::set_improved_guarded_sampling(false);
 
   auto using_hpaa = [](absl::string_view sv) {
     return absl::StrContains(sv, "HugePageAwareAllocator");
@@ -142,8 +141,6 @@ TEST_F(GetStatsTest, Parameters) {
     }
     EXPECT_THAT(buf,
                 HasSubstr(R"(PARAMETER tcmalloc_guarded_sample_parameter -1)"));
-    EXPECT_THAT(buf,
-                HasSubstr(R"(PARAMETER tcmalloc_improved_guarded_sampling 0)"));
 #ifdef TCMALLOC_DEPRECATED_PERTHREAD
     EXPECT_THAT(buf, HasSubstr(R"(PARAMETER tcmalloc_per_cpu_caches 0)"));
 #endif  // TCMALLOC_DEPRECATED_PERTHREAD
@@ -165,9 +162,10 @@ TEST_F(GetStatsTest, Parameters) {
         buf, HasSubstr(R"(PARAMETER tcmalloc_release_partial_alloc_pages 1)"));
     EXPECT_THAT(
         buf,
-        HasSubstr(R"(PARAMETER tcmalloc_resize_cpu_cache_size_classes 1)"));
-    EXPECT_THAT(buf,
-                HasSubstr(R"(PARAMETER tcmalloc_improved_guarded_sampling 0)"));
+        HasSubstr(R"(PARAMETER tcmalloc_huge_region_demand_based_release 0)"));
+    EXPECT_THAT(
+        buf,
+        HasSubstr(R"(PARAMETER tcmalloc_release_pages_from_huge_region 1)"));
     if (using_hpaa(buf)) {
       EXPECT_THAT(buf, HasSubstr(R"(using_hpaa_subrelease: false)"));
     }
@@ -201,7 +199,6 @@ TEST_F(GetStatsTest, Parameters) {
       absl::Milliseconds(120250));
   Parameters::set_filler_skip_subrelease_long_interval(
       absl::Milliseconds(180375));
-  Parameters::set_improved_guarded_sampling(true);
 
   {
     const std::string buf = MallocExtension::GetStats();
@@ -212,8 +209,6 @@ TEST_F(GetStatsTest, Parameters) {
     }
     EXPECT_THAT(buf,
                 HasSubstr(R"(PARAMETER tcmalloc_guarded_sample_parameter 50)"));
-    EXPECT_THAT(buf,
-                HasSubstr(R"(PARAMETER tcmalloc_improved_guarded_sampling 1)"));
     EXPECT_THAT(
         buf,
         HasSubstr(
@@ -312,6 +307,25 @@ TEST_F(GetStatsTest, StackDepth) {
   }
 
   ASSERT_EQ(pthread_attr_destroy(&thread_attributes), 0);
+}
+
+TEST_F(GetStatsTest, SelSan) {
+  std::string buf = MallocExtension::GetStats();
+  std::string pbtxt = GetStatsInPbTxt();
+#ifndef TCMALLOC_INTERNAL_SELSAN
+  std::transform(buf.begin(), buf.end(), buf.begin(), tolower);
+  std::transform(pbtxt.begin(), pbtxt.end(), pbtxt.begin(), tolower);
+  EXPECT_THAT(buf, Not(HasSubstr("selsan")));
+  EXPECT_THAT(pbtxt, Not(HasSubstr("selsan")));
+#else   // #ifndef TCMALLOC_INTERNAL_SELSAN
+  EXPECT_THAT(buf, ContainsRegex(R"(
+SelSan Status
+------------------------------------------------
+Enabled: (0|1)
+)"));
+  EXPECT_THAT(pbtxt,
+              ContainsRegex(R"(selsan { status: SELSAN_(ENABLED|DISABLED)})"));
+#endif  // #ifndef TCMALLOC_INTERNAL_SELSAN
 }
 
 }  // namespace

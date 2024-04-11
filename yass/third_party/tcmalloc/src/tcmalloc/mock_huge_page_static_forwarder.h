@@ -121,7 +121,7 @@ class FakeStaticForwarder {
 
   // SystemAlloc state.
   AddressRange AllocatePages(size_t bytes, size_t align, MemoryTag tag) {
-    CHECK_CONDITION(absl::has_single_bit(align));
+    TC_CHECK(absl::has_single_bit(align), "align=%v", align);
     fake_allocation_ = (fake_allocation_ + align - 1u) & ~(align - 1u);
 
     AddressRange ret{
@@ -131,11 +131,11 @@ class FakeStaticForwarder {
     fake_allocation_ += bytes;
     return ret;
   }
-  // TODO(ckennelly): Accept PageId/Length.
-  bool ReleasePages(void* ptr, size_t size) {
-    const uintptr_t start = reinterpret_cast<uintptr_t>(ptr) & ~kTagMask;
-    const uintptr_t end = start + size;
-    CHECK_CONDITION(end <= fake_allocation_);
+  bool ReleasePages(PageId begin, Length size) {
+    const uintptr_t start =
+        reinterpret_cast<uintptr_t>(begin.start_addr()) & ~kTagMask;
+    const uintptr_t end = start + size.in_bytes();
+    TC_CHECK_LE(end, fake_allocation_);
 
     return release_succeeds_;
   }
@@ -175,7 +175,7 @@ class FakeStaticForwarder {
 
     T* allocate(size_t n) {
       // Check if n is too big to allocate.
-      ASSERT((n * sizeof(T)) / sizeof(T) == n);
+      TC_ASSERT_EQ((n * sizeof(T)) / sizeof(T), n);
       return static_cast<T*>(absl::base_internal::LowLevelAlloc::AllocWithArena(
           n * sizeof(T), ll_arena()));
     }

@@ -22,6 +22,8 @@
 #include <string>
 
 #include "benchmark/benchmark.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tcmalloc/internal/percpu.h"
 #include "tcmalloc/malloc_extension.h"
 
@@ -110,6 +112,12 @@ class ScopedBackgroundProcessActionsEnabled {
   explicit ScopedBackgroundProcessActionsEnabled(bool value)
       : previous_(MallocExtension::GetBackgroundProcessActionsEnabled()) {
     MallocExtension::SetBackgroundProcessActionsEnabled(value);
+    if (!value) {
+      // If the thread is doing something at the moment, let it finish.
+      // This is unreliable, but simple. The thread sleeps for 1 sec,
+      // so we sleep for 5.
+      absl::SleepFor(absl::Seconds(5));
+    }
   }
 
   ~ScopedBackgroundProcessActionsEnabled() {
@@ -195,8 +203,7 @@ inline void UnregisterRseq() {
           tcmalloc_internal::subtle::percpu::kRseqUnregister,
           TCMALLOC_PERCPU_RSEQ_SIGNATURE);
 #else
-  // rseq is is unavailable in this build
-  CHECK_CONDITION(false);
+  TC_BUG("rseq is is unavailable in this build");
 #endif
 }
 
@@ -207,18 +214,18 @@ class ScopedUnregisterRseq {
   ScopedUnregisterRseq() {
     // Since we expect that we will be able to register the thread for rseq in
     // the destructor, verify that we can do so now.
-    CHECK_CONDITION(tcmalloc_internal::subtle::percpu::IsFast());
+    TC_CHECK(tcmalloc_internal::subtle::percpu::IsFast());
 
     UnregisterRseq();
 
     // Unregistering stores kCpuIdUninitialized to the cpu_id field.
-    CHECK_CONDITION(tcmalloc_internal::subtle::percpu::RseqCpuId() ==
-                    tcmalloc_internal::subtle::percpu::kCpuIdUninitialized);
+    TC_CHECK_EQ(tcmalloc_internal::subtle::percpu::RseqCpuId(),
+                tcmalloc_internal::subtle::percpu::kCpuIdUninitialized);
   }
 
   // REQUIRES: __rseq_abi.cpu_id == kCpuIdUninitialized
   ~ScopedUnregisterRseq() {
-    CHECK_CONDITION(tcmalloc_internal::subtle::percpu::IsFast());
+    TC_CHECK(tcmalloc_internal::subtle::percpu::IsFast());
   }
 };
 
@@ -255,23 +262,6 @@ class ScopedFakeCpuId {
  private:
 
   const ScopedUnregisterRseq unregister_rseq_;
-};
-
-// TODO(b/263387812): remove when experimentation is complete.
-// Temporarily enables or disables improved guarded sampling.
-class ScopedImprovedGuardedSampling {
- public:
-  explicit ScopedImprovedGuardedSampling(bool is_enabled)
-      : previous_(MallocExtension::GetImprovedGuardedSampling()) {
-    MallocExtension::SetImprovedGuardedSampling(is_enabled);
-  }
-
-  ~ScopedImprovedGuardedSampling() {
-    MallocExtension::SetImprovedGuardedSampling(previous_);
-  }
-
- private:
-  bool previous_;
 };
 
 // This pragma ensures that a loop does not get unrolled, in which case the

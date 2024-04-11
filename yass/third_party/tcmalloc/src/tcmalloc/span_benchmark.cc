@@ -32,19 +32,22 @@ namespace tcmalloc {
 namespace tcmalloc_internal {
 namespace {
 
+// TODO(b/304135905): Complete experiments and remove hard-coded cache size.
+constexpr uint32_t kMaxCacheSize = 4;
+
 class RawSpan {
  public:
   void Init(size_t size_class) {
     size_t size = tc_globals.sizemap().class_to_size(size_class);
-    CHECK_CONDITION(size > 0);
+    TC_CHECK_GT(size, 0);
     auto npages = Length(tc_globals.sizemap().class_to_pages(size_class));
     size_t objects_per_span = npages.in_bytes() / size;
 
     void* mem;
     int res = posix_memalign(&mem, kPageSize, npages.in_bytes());
-    CHECK_CONDITION(res == 0);
+    TC_CHECK_EQ(res, 0);
     span_.Init(PageIdContaining(mem), npages);
-    span_.BuildFreelist(size, objects_per_span, nullptr, 0);
+    span_.BuildFreelist(size, objects_per_span, nullptr, 0, kMaxCacheSize);
   }
 
   ~RawSpan() { free(span_.start_address()); }
@@ -61,7 +64,7 @@ void BM_single_span(benchmark::State& state) {
   const int size_class = state.range(0);
 
   size_t size = tc_globals.sizemap().class_to_size(size_class);
-  CHECK_CONDITION(size > 0);
+  uint32_t reciprocal = Span::CalcReciprocal(size);
   size_t batch_size = tc_globals.sizemap().num_objects_to_move(size_class);
   RawSpan raw_span;
   raw_span.Init(size_class);
@@ -75,7 +78,7 @@ void BM_single_span(benchmark::State& state) {
     processed += n;
 
     for (int j = 0; j < n; j++) {
-      span.FreelistPush(batch[j], size);
+      span.FreelistPush(batch[j], size, reciprocal, kMaxCacheSize);
     }
   }
 
@@ -88,7 +91,8 @@ void BM_single_span_fulldrain(benchmark::State& state) {
   const int size_class = state.range(0);
 
   size_t size = tc_globals.sizemap().class_to_size(size_class);
-  CHECK_CONDITION(size > 0);
+  uint32_t reciprocal = Span::CalcReciprocal(size);
+  TC_CHECK_GT(size, 0);
   size_t npages = tc_globals.sizemap().class_to_pages(size_class);
   size_t batch_size = tc_globals.sizemap().num_objects_to_move(size_class);
   size_t objects_per_span = npages * kPageSize / size;
@@ -111,7 +115,7 @@ void BM_single_span_fulldrain(benchmark::State& state) {
     // Fill span
     while (oindex > 0) {
       void* p = objects[oindex - 1];
-      if (!span.FreelistPush(p, size)) {
+      if (!span.FreelistPush(p, size, reciprocal, kMaxCacheSize)) {
         break;
       }
 
@@ -161,7 +165,7 @@ void BM_NewDelete(benchmark::State& state) {
 
     benchmark::DoNotOptimize(sp);
 
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     tc_globals.page_allocator().Delete(sp, kSpanInfo.objects_per_span,
                                        MemoryTag::kNormal);
   }
@@ -177,7 +181,8 @@ void BM_multiple_spans(benchmark::State& state) {
   const int num_spans = 10000000;
   std::vector<RawSpan> spans(num_spans);
   size_t size = tc_globals.sizemap().class_to_size(size_class);
-  CHECK_CONDITION(size > 0);
+  uint32_t reciprocal = Span::CalcReciprocal(size);
+  TC_CHECK_GT(size, 0);
   size_t batch_size = tc_globals.sizemap().num_objects_to_move(size_class);
   for (int i = 0; i < num_spans; i++) {
     spans[i].Init(size_class);
@@ -194,7 +199,8 @@ void BM_multiple_spans(benchmark::State& state) {
     processed += n;
 
     for (int j = 0; j < n; j++) {
-      spans[current_span].span().FreelistPush(batch[j], size);
+      spans[current_span].span().FreelistPush(batch[j], size, reciprocal,
+                                              kMaxCacheSize);
     }
   }
 

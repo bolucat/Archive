@@ -50,22 +50,14 @@ class Parameters {
 
   static bool use_all_buckets_for_few_object_spans_in_cfl();
 
+  static absl::Duration huge_cache_release_time();
+
   static int64_t guarded_sampling_rate() {
     return guarded_sampling_rate_.load(std::memory_order_relaxed);
   }
 
   static void set_guarded_sampling_rate(int64_t value) {
     TCMalloc_Internal_SetGuardedSamplingRate(value);
-  }
-
-  // TODO(b/263387812): remove when experimentation is complete
-  static bool improved_guarded_sampling() {
-    return improved_guarded_sampling_.load(std::memory_order_relaxed);
-  }
-
-  // TODO(b/263387812): remove when experimentation is complete
-  static void set_improved_guarded_sampling(bool enable) {
-    TCMalloc_Internal_SetImprovedGuardedSampling(enable);
   }
 
   static int32_t max_per_cpu_cache_size();
@@ -84,6 +76,14 @@ class Parameters {
 
   static void set_madvise_free(bool value) {
     TCMalloc_Internal_SetMadviseFree(value);
+  }
+
+  static MadvisePreference madvise() {
+    return madvise_.load(std::memory_order_relaxed);
+  }
+
+  static void set_madvise_free(MadvisePreference value) {
+    TCMalloc_Internal_SetMadvise(value);
   }
 
   static tcmalloc::hot_cold_t min_hot_access_hint() {
@@ -106,13 +106,16 @@ class Parameters {
     TCMalloc_Internal_SetPeakSamplingHeapGrowthFraction(value);
   }
 
-  static bool resize_cpu_cache_size_classes() {
-    return resize_cpu_cache_size_classes_enabled_.load(
-        std::memory_order_relaxed);
-  }
-
   static bool release_partial_alloc_pages() {
     return release_partial_alloc_pages_.load(std::memory_order_relaxed);
+  }
+
+  static bool huge_region_demand_based_release() {
+    return huge_region_demand_based_release_.load(std::memory_order_relaxed);
+  }
+
+  static bool release_pages_from_huge_region() {
+    return release_pages_from_huge_region_.load(std::memory_order_relaxed);
   }
 
   static bool per_cpu_caches() {
@@ -122,7 +125,7 @@ class Parameters {
   static void set_per_cpu_caches(bool value) {
 #if !defined(TCMALLOC_DEPRECATED_PERTHREAD)
     if (!value) {
-      Log(kLog, __FILE__, __LINE__,
+      TC_LOG(
           "Using per-thread caches requires linking against "
           ":tcmalloc_deprecated_perthread.");
       return;
@@ -130,6 +133,14 @@ class Parameters {
 #endif  // !TCMALLOC_DEPRECATED_PERTHREAD
 
     TCMalloc_Internal_SetPerCpuCachesEnabled(value);
+  }
+
+  static uint32_t max_span_cache_size() {
+    return max_span_cache_size_.load(std::memory_order_relaxed);
+  }
+
+  static void set_max_span_cache_size(uint32_t v) {
+    max_span_cache_size_.store(v, std::memory_order_relaxed);
   }
 
   static int64_t profile_sampling_rate() {
@@ -190,11 +201,10 @@ class Parameters {
  private:
   friend void ::TCMalloc_Internal_SetBackgroundReleaseRate(size_t v);
   friend void ::TCMalloc_Internal_SetGuardedSamplingRate(int64_t v);
-  // TODO(b/263387812): remove when experimentation is complete
-  friend void ::TCMalloc_Internal_SetImprovedGuardedSampling(bool v);
   friend void ::TCMalloc_Internal_SetHPAASubrelease(bool v);
-  friend void ::TCMalloc_Internal_SetResizeCpuCacheSizeClassesEnabled(bool v);
   friend void ::TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(bool v);
+  friend void ::TCMalloc_Internal_SetHugeRegionDemandBasedRelease(bool v);
+  friend void ::TCMalloc_Internal_SetReleasePagesFromHugeRegionEnabled(bool v);
   friend void ::TCMalloc_Internal_SetMaxPerCpuCacheSize(int32_t v);
   friend void ::TCMalloc_Internal_SetMaxTotalThreadCacheBytes(int64_t v);
   friend void ::TCMalloc_Internal_SetPeakSamplingHeapGrowthFraction(double v);
@@ -215,21 +225,24 @@ class Parameters {
 
   friend void TCMalloc_Internal_SetLifetimeAllocatorOptions(
       absl::string_view s);
+  friend void ::TCMalloc_Internal_SetMadvise(
+      tcmalloc::tcmalloc_internal::MadvisePreference v);
   friend void ::TCMalloc_Internal_SetMadviseFree(bool v);
   friend void ::TCMalloc_Internal_SetMinHotAccessHint(uint8_t v);
 
   static std::atomic<MallocExtension::BytesPerSecond> background_release_rate_;
   static std::atomic<int64_t> guarded_sampling_rate_;
-  // TODO(b/263387812): remove when experimentation is complete
-  static std::atomic<bool> improved_guarded_sampling_;
-  static std::atomic<bool> resize_cpu_cache_size_classes_enabled_;
+  static std::atomic<uint32_t> max_span_cache_size_;
   static std::atomic<int32_t> max_per_cpu_cache_size_;
   static std::atomic<int64_t> max_total_thread_cache_bytes_;
   static std::atomic<double> peak_sampling_heap_growth_fraction_;
   static std::atomic<bool> per_cpu_caches_enabled_;
   static std::atomic<bool> release_partial_alloc_pages_;
+  static std::atomic<bool> huge_region_demand_based_release_;
+  static std::atomic<bool> release_pages_from_huge_region_;
   static std::atomic<int64_t> profile_sampling_rate_;
   static std::atomic<bool> per_cpu_caches_dynamic_slab_;
+  static std::atomic<MadvisePreference> madvise_;
   static std::atomic<bool> madvise_free_;
   static std::atomic<tcmalloc::hot_cold_t> min_hot_access_hint_;
   static std::atomic<double> per_cpu_caches_dynamic_slab_grow_threshold_;

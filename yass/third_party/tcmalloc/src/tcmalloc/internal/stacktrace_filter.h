@@ -25,6 +25,7 @@
 namespace tcmalloc {
 
 class TcMallocTest;
+class GuardedAllocAlignmentTest;
 
 namespace tcmalloc_internal {
 
@@ -51,6 +52,11 @@ class StackTraceFilter {
     return replacement_inserts_.load(std::memory_order_relaxed);
   }
 
+  // For Testing Only: expunge all counts, allowing for resetting the count,
+  // which allows the Improved Coverage algorithm to guard a specific stack
+  // trace more than kMaxGuardsPerStackTraceSignature times.
+  void Reset();
+
  private:
   constexpr static size_t kMask = 0xFF;
   constexpr static size_t kHashCountLimit = kMask;
@@ -64,15 +70,11 @@ class StackTraceFilter {
         absl::Span<void* const>(stacktrace.stack, stacktrace.depth));
   }
 
-  // For Testing Only: expunge all counts, allowing for resetting the count,
-  // which allows the Improved Coverage algorithm to guard a specific stack
-  // trace more than kMaxGuardsPerStackTraceSignature times.
-  void Reset();
-
-  friend class ParameterizedGuardedPageAllocatorProfileTest;
+  friend class GuardedPageAllocatorProfileTest;
   friend class StackTraceFilterTest;
   friend class StackTraceFilterThreadedTest;
   friend class tcmalloc::TcMallocTest;
+  friend class tcmalloc::GuardedAllocAlignmentTest;
 };
 
 inline size_t StackTraceFilter::Count(const StackTrace& stacktrace) const {

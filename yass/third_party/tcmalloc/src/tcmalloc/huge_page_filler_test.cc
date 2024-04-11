@@ -157,7 +157,7 @@ class PageTrackerTest : public testing::Test {
   PageTrackerTest()
       :  // an unlikely magic page
         huge_(HugePageContaining(reinterpret_cast<void*>(0x1abcde200000))),
-        tracker_(huge_, absl::base_internal::CycleClock::Now(),
+        tracker_(huge_,
                  /*was_donated=*/false) {}
 
   ~PageTrackerTest() override { mock_.VerifyAndClear(); }
@@ -183,18 +183,18 @@ class PageTrackerTest : public testing::Test {
 
   class MockUnbackInterface final : public MemoryModifyFunction {
    public:
-    ABSL_MUST_USE_RESULT bool operator()(void* p, size_t len) override {
-      CHECK_CONDITION(actual_index_ < ABSL_ARRAYSIZE(actual_));
+    ABSL_MUST_USE_RESULT bool operator()(PageId p, Length len) override {
+      TC_CHECK_LT(actual_index_, ABSL_ARRAYSIZE(actual_));
       actual_[actual_index_] = {p, len};
-      CHECK_CONDITION(actual_index_ < ABSL_ARRAYSIZE(expected_));
+      TC_CHECK_LT(actual_index_, ABSL_ARRAYSIZE(expected_));
       // Assume expected calls occur and use those return values.
       const bool success = expected_[actual_index_].success;
       ++actual_index_;
       return success;
     }
 
-    void Expect(void* p, size_t len, bool success) {
-      CHECK_CONDITION(expected_index_ < kMaxCalls);
+    void Expect(PageId p, Length len, bool success) {
+      TC_CHECK_LT(expected_index_, kMaxCalls);
       expected_[expected_index_] = {p, len, success};
       ++expected_index_;
     }
@@ -212,8 +212,8 @@ class PageTrackerTest : public testing::Test {
 
    private:
     struct CallArgs {
-      void* ptr{nullptr};
-      size_t len{0};
+      PageId ptr;
+      Length len;
       bool success = true;
     };
 
@@ -241,24 +241,22 @@ class PageTrackerTest : public testing::Test {
   PageTracker tracker_;
 
   void ExpectPages(PAlloc a, bool success = true) {
-    void* ptr = a.p.start_addr();
-    size_t bytes = a.n.in_bytes();
-    mock_.Expect(ptr, bytes, success);
+    mock_.Expect(a.p, a.n, success);
   }
 
   PAlloc Get(Length n, SpanAllocInfo span_alloc_info) {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     PageId p = tracker_.Get(n).page;
     return {p, n, span_alloc_info};
   }
 
   void Put(PAlloc a) {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     tracker_.Put(a.p, a.n);
   }
 
   Length ReleaseFree() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return tracker_.ReleaseFree(mock_);
   }
 };
@@ -485,12 +483,11 @@ TEST_F(PageTrackerTest, Stats) {
   struct Helper {
     static void Stat(const PageTracker& tracker,
                      std::vector<Length>* small_backed,
-                     std::vector<Length>* small_unbacked, LargeSpanStats* large,
-                     double* avg_age_backed, double* avg_age_unbacked) {
+                     std::vector<Length>* small_unbacked,
+                     LargeSpanStats* large) {
       SmallSpanStats small;
       *large = LargeSpanStats();
-      PageAgeHistograms ages(absl::base_internal::CycleClock::Now());
-      tracker.AddSpanStats(&small, large, &ages);
+      tracker.AddSpanStats(&small, large);
       small_backed->clear();
       small_unbacked->clear();
       for (auto i = Length(0); i < kMaxPages; ++i) {
@@ -502,15 +499,11 @@ TEST_F(PageTrackerTest, Stats) {
           small_unbacked->push_back(i);
         }
       }
-
-      *avg_age_backed = ages.GetTotalHistogram(false)->avg_age();
-      *avg_age_unbacked = ages.GetTotalHistogram(true)->avg_age();
     }
   };
 
   LargeSpanStats large;
   std::vector<Length> small_backed, small_unbacked;
-  double avg_age_backed, avg_age_unbacked;
 
   SpanAllocInfo info1 = {kPagesPerHugePage.raw_num(),
                          AccessDensityPrediction::kDense};
@@ -522,68 +515,47 @@ TEST_F(PageTrackerTest, Stats) {
   Put({next, n, info2});
   next += kMaxPages + Length(1);
 
-  absl::SleepFor(absl::Milliseconds(10));
-  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large,
-               &avg_age_backed, &avg_age_unbacked);
+  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large);
   EXPECT_THAT(small_backed, testing::ElementsAre());
   EXPECT_THAT(small_unbacked, testing::ElementsAre());
   EXPECT_EQ(large.spans, 1);
   EXPECT_EQ(large.normal_pages, kMaxPages + Length(1));
   EXPECT_EQ(large.returned_pages, Length(0));
-  EXPECT_GE(avg_age_backed, 0.01);
 
   ++next;
   SpanAllocInfo info3 = {1, AccessDensityPrediction::kSparse};
   Put({next, Length(1), info3});
   next += Length(1);
-  absl::SleepFor(absl::Milliseconds(20));
-  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large,
-               &avg_age_backed, &avg_age_unbacked);
+  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large);
   EXPECT_THAT(small_backed, testing::ElementsAre(Length(1)));
   EXPECT_THAT(small_unbacked, testing::ElementsAre());
   EXPECT_EQ(large.spans, 1);
   EXPECT_EQ(large.normal_pages, kMaxPages + Length(1));
   EXPECT_EQ(large.returned_pages, Length(0));
-  EXPECT_GE(avg_age_backed,
-            ((kMaxPages + Length(1)).raw_num() * 0.03 + 1 * 0.02) /
-                (kMaxPages + Length(2)).raw_num());
-  EXPECT_EQ(avg_age_unbacked, 0);
 
   ++next;
   SpanAllocInfo info4 = {2, AccessDensityPrediction::kSparse};
   Put({next, Length(2), info4});
   next += Length(2);
-  absl::SleepFor(absl::Milliseconds(30));
-  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large,
-               &avg_age_backed, &avg_age_unbacked);
+  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large);
   EXPECT_THAT(small_backed, testing::ElementsAre(Length(1), Length(2)));
   EXPECT_THAT(small_unbacked, testing::ElementsAre());
   EXPECT_EQ(large.spans, 1);
   EXPECT_EQ(large.normal_pages, kMaxPages + Length(1));
   EXPECT_EQ(large.returned_pages, Length(0));
-  EXPECT_GE(avg_age_backed,
-            ((kMaxPages + Length(1)).raw_num() * 0.06 + 1 * 0.05 + 2 * 0.03) /
-                (kMaxPages + Length(4)).raw_num());
-  EXPECT_EQ(avg_age_unbacked, 0);
 
   ++next;
   SpanAllocInfo info5 = {3, AccessDensityPrediction::kSparse};
   Put({next, Length(3), info5});
   next += Length(3);
   ASSERT_LE(next, end);
-  absl::SleepFor(absl::Milliseconds(40));
-  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large,
-               &avg_age_backed, &avg_age_unbacked);
+  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large);
   EXPECT_THAT(small_backed,
               testing::ElementsAre(Length(1), Length(2), Length(3)));
   EXPECT_THAT(small_unbacked, testing::ElementsAre());
   EXPECT_EQ(large.spans, 1);
   EXPECT_EQ(large.normal_pages, kMaxPages + Length(1));
   EXPECT_EQ(large.returned_pages, Length(0));
-  EXPECT_GE(avg_age_backed, ((kMaxPages + Length(1)).raw_num() * 0.10 +
-                             1 * 0.09 + 2 * 0.07 + 3 * 0.04) /
-                                (kMaxPages + Length(7)).raw_num());
-  EXPECT_EQ(avg_age_unbacked, 0);
 
   n = kMaxPages + Length(1);
   ExpectPages({p, n, info2});
@@ -591,17 +563,13 @@ TEST_F(PageTrackerTest, Stats) {
   ExpectPages({p + kMaxPages + Length(4), Length(2), info4});
   ExpectPages({p + kMaxPages + Length(7), Length(3), info5});
   EXPECT_EQ(kMaxPages + Length(7), ReleaseFree());
-  absl::SleepFor(absl::Milliseconds(100));
-  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large,
-               &avg_age_backed, &avg_age_unbacked);
+  Helper::Stat(tracker_, &small_backed, &small_unbacked, &large);
   EXPECT_THAT(small_backed, testing::ElementsAre());
   EXPECT_THAT(small_unbacked,
               testing::ElementsAre(Length(1), Length(2), Length(3)));
   EXPECT_EQ(large.spans, 1);
   EXPECT_EQ(large.normal_pages, Length(0));
   EXPECT_EQ(large.returned_pages, kMaxPages + Length(1));
-  EXPECT_EQ(avg_age_backed, 0);
-  EXPECT_GT(avg_age_unbacked, 0.099);
 }
 
 TEST_F(PageTrackerTest, b151915873) {
@@ -636,9 +604,8 @@ TEST_F(PageTrackerTest, b151915873) {
 
   SmallSpanStats small;
   LargeSpanStats large;
-  PageAgeHistograms ages(absl::base_internal::CycleClock::Now());
 
-  tracker_.AddSpanStats(&small, &large, &ages);
+  tracker_.AddSpanStats(&small, &large);
 
   EXPECT_EQ(small.normal_length[1], 1);
   EXPECT_THAT(0,
@@ -650,7 +617,7 @@ class BlockingUnback final : public MemoryModifyFunction {
  public:
   constexpr BlockingUnback() = default;
 
-  ABSL_MUST_USE_RESULT bool operator()(void* p, size_t len) override {
+  ABSL_MUST_USE_RESULT bool operator()(PageId p, Length len) override {
     if (!mu_) {
       return success_;
     }
@@ -663,8 +630,6 @@ class BlockingUnback final : public MemoryModifyFunction {
     mu_->Unlock();
     return success_;
   }
-
-  void set_lock(absl::Mutex* mu) { mu_ = mu; }
 
   absl::BlockingCounter* counter_ = nullptr;
   bool success_ = true;
@@ -695,7 +660,7 @@ class FillerTest : public testing::TestWithParam<
     intptr_t i = backing_.size();
     backing_.resize(i + kPagesPerHugePage.raw_num());
     intptr_t addr = i << kPageShift;
-    CHECK_CONDITION(addr % kHugePageSize == 0);
+    TC_CHECK_EQ(addr % kHugePageSize, 0);
     return HugePageContaining(reinterpret_cast<void*>(addr));
   }
 
@@ -720,7 +685,7 @@ class FillerTest : public testing::TestWithParam<
       : filler_(Clock{.now = FakeClock, .freq = GetFakeClockFrequency},
                 /*separate_allocs_for_sparse_and_dense_spans=*/
                 std::get<0>(GetParam()),
-                /*chunks_per_alloc=*/std::get<1>(GetParam()),
+                /*chunks_per_alloc=*/std::get<1>(GetParam()), blocking_unback_,
                 blocking_unback_) {
     ResetClock();
     // Reset success state
@@ -735,6 +700,7 @@ class FillerTest : public testing::TestWithParam<
     Length n;
     size_t mark;
     SpanAllocInfo span_alloc_info;
+    bool from_released;
   };
 
   void Mark(const PAlloc& alloc) { MarkRange(alloc.p, alloc.n, alloc.mark); }
@@ -764,7 +730,7 @@ class FillerTest : public testing::TestWithParam<
 
   PAlloc AllocateWithSpanAllocInfo(Length n, SpanAllocInfo span_alloc_info,
                                    bool donated = false) {
-    CHECK_CONDITION(n <= kPagesPerHugePage);
+    TC_CHECK_LE(n, kPagesPerHugePage);
     PAlloc ret = AllocateRaw(n, span_alloc_info, donated);
     ret.n = n;
     Mark(ret);
@@ -773,7 +739,7 @@ class FillerTest : public testing::TestWithParam<
   }
 
   PAlloc Allocate(Length n, bool donated = false) {
-    CHECK_CONDITION(n <= kPagesPerHugePage);
+    TC_CHECK_LE(n, kPagesPerHugePage);
     PAlloc ret;
     size_t objects =
         randomize_density_ ? (1 << absl::Uniform<size_t>(gen_, 0, 8)) : 1;
@@ -800,7 +766,7 @@ class FillerTest : public testing::TestWithParam<
   }
 
   Length ReleasePages(Length desired, SkipSubreleaseIntervals intervals = {}) {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return filler_.ReleasePages(desired, intervals,
                                 /*release_partial_alloc_pages=*/false,
                                 /*hit_limit=*/false);
@@ -808,14 +774,14 @@ class FillerTest : public testing::TestWithParam<
 
   Length ReleasePartialPages(Length desired,
                              SkipSubreleaseIntervals intervals = {}) {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return filler_.ReleasePages(desired, intervals,
                                 /*release_partial_alloc_pages=*/true,
                                 /*hit_limit=*/false);
   }
 
   Length HardReleasePages(Length desired) {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return filler_.ReleasePages(desired, SkipSubreleaseIntervals{},
                                 /*release_partial_alloc_pages=*/false,
                                 /*hit_limit=*/true);
@@ -843,16 +809,16 @@ class FillerTest : public testing::TestWithParam<
     ret.mark = ++next_mark_;
     ret.span_alloc_info = span_alloc_info;
     if (!donated) {  // Donated means always create a new hugepage
-      absl::base_internal::SpinLockHolder l(&pageheap_lock);
-      auto [pt, page] = filler_.TryGet(n, span_alloc_info);
+      PageHeapSpinLockHolder l;
+      auto [pt, page, from_released] = filler_.TryGet(n, span_alloc_info);
       ret.pt = pt;
       ret.p = page;
+      ret.from_released = from_released;
     }
     if (ret.pt == nullptr) {
-      ret.pt = new PageTracker(GetBacking(),
-                               absl::base_internal::CycleClock::Now(), donated);
+      ret.pt = new PageTracker(GetBacking(), donated);
       {
-        absl::base_internal::SpinLockHolder l(&pageheap_lock);
+        PageHeapSpinLockHolder l;
         ret.p = ret.pt->Get(n).page;
       }
       filler_.Contribute(ret.pt, donated, span_alloc_info);
@@ -867,7 +833,7 @@ class FillerTest : public testing::TestWithParam<
   bool DeleteRaw(const PAlloc& p) {
     PageTracker* pt;
     {
-      absl::base_internal::SpinLockHolder l(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       pt = filler_.Put(p.pt, p.p, p.n);
     }
     total_allocated_ -= p.n;
@@ -957,6 +923,7 @@ TEST_P(FillerTest, ReleaseFromFullAllocs) {
   EXPECT_EQ(filler_.unmapped_pages(), kAlloc - Length(1));
   ASSERT_TRUE(p1.pt->released());
   ASSERT_FALSE(p3.pt->released());
+  ASSERT_FALSE(p3.from_released);
 
   // Check subrelease stats.
   SubreleaseStats subrelease = filler_.subrelease_stats();
@@ -966,6 +933,7 @@ TEST_P(FillerTest, ReleaseFromFullAllocs) {
   // We expect to reuse p1.pt.
   PAlloc p5 = AllocateWithSpanAllocInfo(kAlloc - Length(1), p1.span_alloc_info);
   ASSERT_TRUE(p1.pt == p5.pt);
+  ASSERT_TRUE(p5.from_released);
 
   Delete(p2);
   Delete(p4);
@@ -1080,7 +1048,9 @@ TEST_P(FillerTest, Release) {
   EXPECT_EQ(filler_.unmapped_pages(), kAlloc - Length(1));
   EXPECT_EQ(filler_.previously_released_huge_pages(), NHugePages(0));
   ASSERT_TRUE(p1.pt->released());
+  ASSERT_FALSE(p1.from_released);
   ASSERT_FALSE(p3.pt->released());
+  ASSERT_FALSE(p3.from_released);
 
   // We expect to reuse p1.pt.
   PAlloc p5 = AllocateWithSpanAllocInfo(kAlloc - Length(1), p1.span_alloc_info);
@@ -2123,281 +2093,6 @@ TEST_P(FillerTest, ReportSkipSubreleases) {
 HugePageFiller: Since the start of the execution, 2 subreleases (192 pages) were skipped due to either recent (180s) peaks, or the sum of short-term (0s) fluctuations and long-term (0s) trends.
 HugePageFiller: 100.0000% of decisions confirmed correct, 0 pending (100.0000% of pages, 0 pending), as per anticipated 300s realized fragmentation.
 )"));
-}
-
-class FillerStatsTrackerTest : public testing::Test {
- private:
-  static int64_t clock_;
-  static int64_t FakeClock() { return clock_; }
-  static double GetFakeClockFrequency() {
-    return absl::ToDoubleNanoseconds(absl::Seconds(2));
-  }
-
- protected:
-  static constexpr absl::Duration kWindow = absl::Minutes(10);
-
-  using StatsTrackerType = FillerStatsTracker<16>;
-  StatsTrackerType tracker_{
-      Clock{.now = FakeClock, .freq = GetFakeClockFrequency}, kWindow,
-      absl::Minutes(5)};
-
-  void Advance(absl::Duration d) {
-    clock_ += static_cast<int64_t>(absl::ToDoubleSeconds(d) *
-                                   GetFakeClockFrequency());
-  }
-
-  // Generates four data points for the tracker that represent "interesting"
-  // points (i.e., min/max pages demand, min/max hugepages).
-  void GenerateInterestingPoints(Length num_pages, HugeLength num_hugepages,
-                                 Length num_free_pages);
-
-  // Generates a data point with a particular amount of demand pages, while
-  // ignoring the specific number of hugepages.
-  void GenerateDemandPoint(Length num_pages, Length num_free_pages);
-
-  void SetUp() override {
-    // Resets the clock used by FillerStatsTracker, allowing each test starts
-    // in epoch 0.
-    clock_ = 0;
-  }
-};
-
-int64_t FillerStatsTrackerTest::clock_{0};
-
-void FillerStatsTrackerTest::GenerateInterestingPoints(Length num_pages,
-                                                       HugeLength num_hugepages,
-                                                       Length num_free_pages) {
-  for (int i = 0; i <= 1; ++i) {
-    for (int j = 0; j <= 1; ++j) {
-      StatsTrackerType::FillerStats stats;
-      stats.num_pages = num_pages + Length((i == 0) ? 4 : 8 * j);
-      stats.free_pages = num_free_pages + Length(10 * i + j);
-      stats.unmapped_pages = Length(10);
-      stats.used_pages_in_subreleased_huge_pages = num_pages;
-      stats.huge_pages[StatsTrackerType::kRegular] =
-          num_hugepages + ((i == 1) ? NHugePages(4) : NHugePages(8) * j);
-      stats.huge_pages[StatsTrackerType::kDonated] = num_hugepages;
-      stats.huge_pages[StatsTrackerType::kPartialReleased] = NHugePages(i);
-      stats.huge_pages[StatsTrackerType::kReleased] = NHugePages(j);
-      tracker_.Report(stats);
-    }
-  }
-}
-
-void FillerStatsTrackerTest::GenerateDemandPoint(Length num_pages,
-                                                 Length num_free_pages) {
-  HugeLength hp = NHugePages(1);
-  StatsTrackerType::FillerStats stats;
-  stats.num_pages = num_pages;
-  stats.free_pages = num_free_pages;
-  stats.unmapped_pages = Length(0);
-  stats.used_pages_in_subreleased_huge_pages = Length(0);
-  stats.huge_pages[StatsTrackerType::kRegular] = hp;
-  stats.huge_pages[StatsTrackerType::kDonated] = hp;
-  stats.huge_pages[StatsTrackerType::kPartialReleased] = hp;
-  stats.huge_pages[StatsTrackerType::kReleased] = hp;
-  tracker_.Report(stats);
-}
-
-// Tests that the tracker aggregates all data correctly. The output is tested by
-// comparing the text output of the tracker. While this is a bit verbose, it is
-// much cleaner than extracting and comparing all data manually.
-TEST_F(FillerStatsTrackerTest, Works) {
-  // Ensure that the beginning (when free pages are 0) is outside the 5-min
-  // window the instrumentation is recording.
-  GenerateInterestingPoints(Length(1), NHugePages(1), Length(1));
-  Advance(absl::Minutes(5));
-
-  GenerateInterestingPoints(Length(100), NHugePages(5), Length(200));
-
-  Advance(absl::Minutes(1));
-
-  GenerateInterestingPoints(Length(200), NHugePages(10), Length(100));
-
-  Advance(absl::Minutes(1));
-
-  // Test text output (time series summary).
-  {
-    std::string buffer(1024 * 1024, '\0');
-    Printer printer(&*buffer.begin(), buffer.size());
-    {
-      tracker_.Print(&printer);
-      buffer.erase(printer.SpaceRequired());
-    }
-
-    EXPECT_THAT(buffer, StrEq(R"(HugePageFiller: time series over 5 min interval
-
-HugePageFiller: realized fragmentation: 0.8 MiB
-HugePageFiller: minimum free pages: 110 (100 backed)
-HugePageFiller: at peak demand: 208 pages (and 111 free, 10 unmapped)
-HugePageFiller: at peak demand: 26 hps (14 regular, 10 donated, 1 partial, 1 released)
-HugePageFiller: at peak hps: 208 pages (and 111 free, 10 unmapped)
-HugePageFiller: at peak hps: 26 hps (14 regular, 10 donated, 1 partial, 1 released)
-
-HugePageFiller: Since the start of the execution, 0 subreleases (0 pages) were skipped due to either recent (0s) peaks, or the sum of short-term (0s) fluctuations and long-term (0s) trends.
-HugePageFiller: 0.0000% of decisions confirmed correct, 0 pending (0.0000% of pages, 0 pending), as per anticipated 0s realized fragmentation.
-HugePageFiller: Subrelease stats last 10 min: total 0 pages subreleased (0 pages from partial allocs), 0 hugepages broken
-)"));
-  }
-}
-
-TEST_F(FillerStatsTrackerTest, InvalidDurations) {
-  // These should not crash.
-  tracker_.min_free_pages(absl::InfiniteDuration());
-  tracker_.min_free_pages(kWindow + absl::Seconds(1));
-  tracker_.min_free_pages(-(kWindow + absl::Seconds(1)));
-  tracker_.min_free_pages(-absl::InfiniteDuration());
-}
-
-TEST_F(FillerStatsTrackerTest, ComputeRecentPeaks) {
-  GenerateDemandPoint(Length(3000), Length(1000));
-  Advance(absl::Minutes(1.25));
-  GenerateDemandPoint(Length(1500), Length(0));
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(100), Length(2000));
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(500), Length(3000));
-
-  Length peak = tracker_.GetRecentPeak(absl::Minutes(3));
-  EXPECT_EQ(peak, Length(1500));
-  Length peak2 = tracker_.GetRecentPeak(absl::Minutes(5));
-  EXPECT_EQ(peak2, Length(3000));
-
-  Advance(absl::Minutes(4));
-  GenerateDemandPoint(Length(200), Length(3000));
-
-  Length peak3 = tracker_.GetRecentPeak(absl::Minutes(4));
-  EXPECT_EQ(peak3, Length(200));
-
-  Advance(absl::Minutes(5));
-  GenerateDemandPoint(Length(150), Length(3000));
-
-  Length peak4 = tracker_.GetRecentPeak(absl::Minutes(5));
-  EXPECT_EQ(peak4, Length(150));
-}
-
-TEST_F(FillerStatsTrackerTest, ComputeRecentDemand) {
-  // Generates max and min demand in each epoch to create short-term demand
-  // fluctuations.
-  GenerateDemandPoint(Length(1500), Length(2000));
-  GenerateDemandPoint(Length(3000), Length(1000));
-  Advance(absl::Minutes(1.25));
-  GenerateDemandPoint(Length(500), Length(1000));
-  GenerateDemandPoint(Length(1500), Length(0));
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(50), Length(1000));
-  GenerateDemandPoint(Length(100), Length(2000));
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(100), Length(2000));
-  GenerateDemandPoint(Length(300), Length(3000));
-
-  Length short_long_peak_pages =
-      tracker_.GetRecentDemand(absl::Minutes(2), absl::Minutes(3));
-  EXPECT_EQ(short_long_peak_pages, Length(700));
-  Length short_long_peak_pages2 =
-      tracker_.GetRecentDemand(absl::Minutes(5), absl::Minutes(5));
-  EXPECT_EQ(short_long_peak_pages2, Length(3000));
-
-  Advance(absl::Minutes(4));
-  GenerateDemandPoint(Length(150), Length(500));
-  GenerateDemandPoint(Length(200), Length(3000));
-
-  Length short_long_peak_pages3 =
-      tracker_.GetRecentDemand(absl::Minutes(1), absl::ZeroDuration());
-  EXPECT_EQ(short_long_peak_pages3, Length(50));
-
-  Advance(absl::Minutes(5));
-  GenerateDemandPoint(Length(100), Length(700));
-  GenerateDemandPoint(Length(150), Length(800));
-
-  Length short_long_peak_pages4 =
-      tracker_.GetRecentDemand(absl::ZeroDuration(), absl::Minutes(5));
-  EXPECT_EQ(short_long_peak_pages4, Length(100));
-  // The short_interval needs to be shorter or equal to the long_interval when
-  // they are both set.
-  EXPECT_DEBUG_DEATH(
-      tracker_.GetRecentDemand(absl::Minutes(2), absl::Minutes(1)),
-      testing::HasSubstr("short_interval <= long_interval"));
-}
-
-TEST_F(FillerStatsTrackerTest, TrackCorrectSubreleaseDecisions) {
-  // First peak (large)
-  GenerateDemandPoint(Length(1000), Length(1000));
-
-  // Incorrect subrelease: Subrelease to 1000
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(100), Length(1000));
-  tracker_.ReportSkippedSubreleasePages(Length(900), Length(1000));
-
-  // Second peak (small)
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(500), Length(1000));
-
-  EXPECT_EQ(tracker_.total_skipped().pages, Length(900));
-  EXPECT_EQ(tracker_.total_skipped().count, 1);
-  EXPECT_EQ(tracker_.correctly_skipped().pages, Length(0));
-  EXPECT_EQ(tracker_.correctly_skipped().count, 0);
-  EXPECT_EQ(tracker_.pending_skipped().pages, Length(900));
-  EXPECT_EQ(tracker_.pending_skipped().count, 1);
-
-  // Correct subrelease: Subrelease to 500
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(500), Length(100));
-  tracker_.ReportSkippedSubreleasePages(Length(50), Length(550));
-  GenerateDemandPoint(Length(500), Length(50));
-  tracker_.ReportSkippedSubreleasePages(Length(50), Length(500));
-  GenerateDemandPoint(Length(500), Length(0));
-
-  EXPECT_EQ(tracker_.total_skipped().pages, Length(1000));
-  EXPECT_EQ(tracker_.total_skipped().count, 3);
-  EXPECT_EQ(tracker_.correctly_skipped().pages, Length(0));
-  EXPECT_EQ(tracker_.correctly_skipped().count, 0);
-  EXPECT_EQ(tracker_.pending_skipped().pages, Length(1000));
-  EXPECT_EQ(tracker_.pending_skipped().count, 3);
-
-  // Third peak (large, too late for first peak)
-  Advance(absl::Minutes(4));
-  GenerateDemandPoint(Length(1100), Length(1000));
-
-  Advance(absl::Minutes(5));
-  GenerateDemandPoint(Length(1100), Length(1000));
-
-  EXPECT_EQ(tracker_.total_skipped().pages, Length(1000));
-  EXPECT_EQ(tracker_.total_skipped().count, 3);
-  EXPECT_EQ(tracker_.correctly_skipped().pages, Length(100));
-  EXPECT_EQ(tracker_.correctly_skipped().count, 2);
-  EXPECT_EQ(tracker_.pending_skipped().pages, Length(0));
-  EXPECT_EQ(tracker_.pending_skipped().count, 0);
-}
-
-TEST_F(FillerStatsTrackerTest, SubreleaseCorrectnessWithChangingIntervals) {
-  // First peak (large)
-  GenerateDemandPoint(Length(1000), Length(1000));
-
-  Advance(absl::Minutes(1));
-  GenerateDemandPoint(Length(100), Length(1000));
-
-  tracker_.ReportSkippedSubreleasePages(Length(50), Length(1000),
-                                        absl::Minutes(4));
-  Advance(absl::Minutes(1));
-
-  // With two correctness intervals in the same epoch, take the maximum
-  tracker_.ReportSkippedSubreleasePages(Length(100), Length(1000),
-                                        absl::Minutes(1));
-  tracker_.ReportSkippedSubreleasePages(Length(200), Length(1000),
-                                        absl::Minutes(7));
-
-  Advance(absl::Minutes(5));
-  GenerateDemandPoint(Length(1100), Length(1000));
-  Advance(absl::Minutes(10));
-  GenerateDemandPoint(Length(1100), Length(1000));
-
-  EXPECT_EQ(tracker_.total_skipped().pages, Length(350));
-  EXPECT_EQ(tracker_.total_skipped().count, 3);
-  EXPECT_EQ(tracker_.correctly_skipped().pages, Length(300));
-  EXPECT_EQ(tracker_.correctly_skipped().count, 2);
-  EXPECT_EQ(tracker_.pending_skipped().pages, Length(0));
-  EXPECT_EQ(tracker_.pending_skipped().count, 0);
 }
 
 std::vector<FillerTest::PAlloc> FillerTest::GenerateInterestingAllocs() {

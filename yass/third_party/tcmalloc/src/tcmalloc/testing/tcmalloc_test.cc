@@ -68,11 +68,14 @@
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "tcmalloc/common.h"
+#include "tcmalloc/huge_pages.h"
+#include "tcmalloc/internal/config.h"
 #include "tcmalloc/internal/declarations.h"
 #include "tcmalloc/internal/logging.h"
 #include "tcmalloc/internal/parameter_accessors.h"
 #include "tcmalloc/malloc_extension.h"
 #include "tcmalloc/new_extension.h"
+#include "tcmalloc/pages.h"
 #include "tcmalloc/parameters.h"
 #include "tcmalloc/testing/test_allocator_harness.h"
 #include "tcmalloc/testing/testutil.h"
@@ -104,6 +107,14 @@ static const int kSizeBits = 8 * sizeof(size_t);
 static const size_t kMaxTestSize = ~static_cast<size_t>(0);
 static const size_t kMaxSignedSize = ((size_t(1) << (kSizeBits - 1)) - 1);
 
+#ifndef __riscv
+// This goes slightly beyond kMaxSize to test both small and page allocations.
+static const size_t kMaxTestAllocSize = 384 << 10;
+#else
+// Execution is very slow on riscv.
+static const size_t kMaxTestAllocSize = 4 << 10;
+#endif  // #ifndef __riscv
+
 namespace tcmalloc {
 extern ABSL_ATTRIBUTE_WEAK bool want_hpaa();
 }  // namespace tcmalloc
@@ -116,7 +127,7 @@ int main(int argc, char** argv) {
   return RUN_ALL_TESTS();
 }
 
-namespace tcmalloc {
+namespace tcmalloc::tcmalloc_internal {
 namespace {
 
 TEST(TcmallocTest, EmptyAllocations) {
@@ -339,7 +350,7 @@ TEST(TCMallocTest, Multithreaded) {
 
   mgr.Start(kThreads, [&](int thread_id) { harness.Run(thread_id); });
 
-  absl::SleepFor(absl::Seconds(5));
+  absl::SleepFor(absl::Seconds(3));
 
   mgr.Stop();
 }
@@ -416,7 +427,7 @@ TEST(TCMallocTest, EnormousAllocations) {
 static size_t GetUnmappedBytes() {
   std::optional<size_t> bytes =
       MallocExtension::GetNumericProperty("tcmalloc.pageheap_unmapped_bytes");
-  CHECK_CONDITION(bytes.has_value());
+  TC_CHECK(bytes.has_value());
   return *bytes;
 }
 
@@ -754,10 +765,7 @@ TEST(TCMallocTest, SizedDeleteSampled) {
 // Check sampled allocations return the proper size.
 TEST(TCMallocTest, SampleAllocatedSize) {
   ScopedAlwaysSample always_sample;
-
-  // Do 64 megabytes of allocation; this should (nearly) guarantee we
-  // get a sample.
-  for (int i = 0; i < 1024 * 1024; ++i) {
+  for (int i = 0; i < 10; ++i) {
     void* ptr = malloc(64);
     ASSERT_EQ(64, MallocExtension::GetAllocatedSize(ptr));
     free(ptr);
@@ -766,13 +774,13 @@ TEST(TCMallocTest, SampleAllocatedSize) {
 
 // Ensure that nallocx works before main.
 struct GlobalNallocx {
-  GlobalNallocx() { CHECK_CONDITION(nallocx(99, 0) >= 99); }
+  GlobalNallocx() { TC_CHECK_GE(nallocx(99, 0), 99); }
 } global_nallocx;
 
 #ifdef __GNUC__
 // 101 is the max user priority.
 static void check_global_nallocx() __attribute__((constructor(101)));
-static void check_global_nallocx() { CHECK_CONDITION(nallocx(99, 0) >= 99); }
+static void check_global_nallocx() { TC_CHECK_GE(nallocx(99, 0), 99); }
 #endif
 
 TEST(TCMallocTest, nallocx) {
@@ -780,7 +788,7 @@ TEST(TCMallocTest, nallocx) {
   // predicts.  So we disable guarded allocations.
   ScopedGuardedSamplingRate gs(-1);
 
-  for (size_t size = 0; size <= (1 << 20); size += 7) {
+  for (size_t size = 0; size <= kMaxTestAllocSize; size += 11) {
     size_t rounded = nallocx(size, 0);
     ASSERT_GE(rounded, size);
     void* ptr = operator new(size);
@@ -794,8 +802,12 @@ TEST(TCMallocTest, nallocx_alignment) {
   // predicts.  So we disable guarded allocations.
   ScopedGuardedSamplingRate gs(-1);
 
-  for (size_t size = 0; size <= (1 << 20); size += 7) {
-    for (size_t align = 0; align < 10; align++) {
+  for (size_t size = 0; size <= kMaxTestAllocSize; size += 17) {
+#ifndef __riscv
+    for (auto align : {0, 1, 7, 8, 10}) {
+#else
+    for (auto align : {5, 7}) {
+#endif
       size_t rounded = nallocx(size, MALLOCX_LG_ALIGN(align));
       ASSERT_GE(rounded, size);
       ASSERT_EQ(rounded % (1 << align), 0);
@@ -882,7 +894,7 @@ std::optional<int64_t> ParseLowLevelAllocator(absl::string_view allocator_name,
   char needlebuf[32];
   int len =
       absl::SNPrintF(needlebuf, sizeof(needlebuf), "\n%s: ", allocator_name);
-  CHECK_CONDITION(0 < len && len < sizeof(needlebuf));
+  TC_CHECK(0 < len && len < sizeof(needlebuf));
   const absl::string_view needle = needlebuf;
 
   auto pos = buf.find(needle);
@@ -912,8 +924,6 @@ std::optional<int64_t> ParseLowLevelAllocator(absl::string_view allocator_name,
 
 TEST(TCMallocTest, GetStatsReportsLowLevel) {
   std::string stats = MallocExtension::GetStats();
-  fprintf(stderr, "%s\n", stats.c_str());
-
   std::optional<int64_t> low_level_bytes =
       ParseLowLevelAllocator("MmapSysAllocator", stats);
   ASSERT_THAT(low_level_bytes, testing::Ne(std::nullopt));
@@ -964,6 +974,8 @@ TEST(TCMallocTest, TestAliasedFunctions) {
   ExpectSameAddresses(&::free, operator_delete_array_nothrow);
 }
 
+// This test is extremely slow on riscv.
+#ifndef __riscv
 enum class ThrowException { kNo, kYes };
 
 class TcmallocSizedNewTest
@@ -1052,7 +1064,7 @@ class TcmallocSizedNewTest
 INSTANTIATE_TEST_SUITE_P(
     AlignedHotColdThrow, TcmallocSizedNewTest,
     testing::Combine(
-        testing::Values(1, 2, 4, 8, 16, 32, 64),
+        testing::Values(1, 8, 32, 64),
         testing::Values(hot_cold_t(0), hot_cold_t{128}, hot_cold_t{255}),
         testing::Values(ThrowException::kNo, ThrowException::kYes)),
     [](const testing::TestParamInfo<TcmallocSizedNewTest::ParamType>& info) {
@@ -1080,11 +1092,12 @@ TEST_P(TcmallocSizedNewTest, SizedOperatorNewReturnsExtraCapacity) {
 }
 
 TEST_P(TcmallocSizedNewTest, SizedOperatorNew) {
-  for (size_t size = 0; size < 64 * 1024; ++size) {
+  for (size_t size = 0; size < 16 * 1024; size += 3) {
     sized_ptr_t res = New(size);
     EXPECT_NE(res.p, nullptr);
     EXPECT_GE(res.n, size);
-    EXPECT_LE(size, std::max(size + 100, 2 * size));
+    size_t max_increase = static_cast<size_t>(GetAlignment()) <= 8 ? 2 : 3;
+    EXPECT_LE(res.n, std::max(size + 100, max_increase * size));
     benchmark::DoNotOptimize(memset(res.p, 0xBF, res.n));
     Delete(res);
   }
@@ -1103,36 +1116,40 @@ TEST_P(TcmallocSizedNewTest, InvalidSizedOperatorNew) {
 
 TEST_P(TcmallocSizedNewTest, SizedOperatorNewMatchesMallocExtensionValue) {
   // Set reasonable sampling and guarded sampling probabilities.
-  ScopedProfileSamplingRate s(20);
+  ScopedProfileSamplingRate s(2000);
   ScopedGuardedSamplingRate gs(20);
-  constexpr size_t kOddIncrement = 117;
+
+  auto test = [&](size_t size) {
+    sized_ptr_t r = New(size);
+    ASSERT_EQ(r.n, MallocExtension::GetAllocatedSize(r.p));
+    if (IsOveraligned()) {
+      ::operator delete(r.p, r.n, GetAlignment());
+    } else {
+      ::operator delete(r.p, r.n);
+    }
+  };
 
   // Traverse clean power 2 / common size class / page sizes
   for (size_t size = 32; size <= 2 * 1024 * 1024; size *= 2) {
-    sized_ptr_t r = New(size);
-    ASSERT_EQ(r.n, MallocExtension::GetAllocatedSize(r.p));
-    if (IsOveraligned()) {
-      ::operator delete(r.p, r.n, GetAlignment());
-    } else {
-      ::operator delete(r.p, r.n);
-    }
+    test(size);
   }
 
   // Traverse randomized sizes
-  for (size_t size = 32; size <= 2 * 1024 * 1024; size += kOddIncrement) {
-    sized_ptr_t r = New(size);
-    ASSERT_EQ(r.n, MallocExtension::GetAllocatedSize(r.p));
-    if (IsOveraligned()) {
-      ::operator delete(r.p, r.n, GetAlignment());
-    } else {
-      ::operator delete(r.p, r.n);
-    }
+  constexpr size_t kOddIncrement = 117;
+  for (size_t size = 32; size <= kMaxTestAllocSize; size += kOddIncrement) {
+    test(size);
   }
 }
+#endif  // #ifndef __riscv
 
 TEST(SizedDeleteTest, SizedOperatorDelete) {
+#ifndef __riscv
+  const size_t kMaxSize = 64 * 1024;
+#else
+  const size_t kMaxSize = 1024;
+#endif  // #ifndef __riscv
   enum DeleteSize { kSize, kCapacity, kHalfway };
-  for (size_t size = 0; size < 64 * 1024; ++size) {
+  for (size_t size = 0; size < kMaxSize; ++size) {
     for (auto delete_size : {kSize, kCapacity, kHalfway}) {
       sized_ptr_t res = tcmalloc_size_returning_operator_new(size);
       switch (delete_size) {
@@ -1150,17 +1167,8 @@ TEST(SizedDeleteTest, SizedOperatorDelete) {
   }
 }
 
-TEST(SizedDeleteTest, NothrowSizedOperatorDelete) {
-  for (size_t size = 0; size < 64 * 1024; ++size) {
-    sized_ptr_t res = tcmalloc_size_returning_operator_new(size);
-    ::operator delete(res.p, std::nothrow);
-  }
-}
-
 TEST(HotColdTest, HotColdNew) {
   const bool expectColdTags = tcmalloc_internal::ColdFeatureActive();
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
 
   absl::flat_hash_set<uintptr_t> hot;
   absl::flat_hash_set<uintptr_t> cold;
@@ -1172,7 +1180,6 @@ TEST(HotColdTest, HotColdNew) {
     void* ptr;
     size_t size;
   };
-
   constexpr size_t kSmall = 2 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1187,12 +1194,12 @@ TEST(HotColdTest, HotColdNew) {
 
     ptrs.emplace_back(SizedPtr{ptr, size});
 
-    EXPECT_TRUE(!IsColdMemory(ptr)) << ptr;
+    EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold) << ptr;
   }
 
   // Delete
   for (SizedPtr s : ptrs) {
-    if (expectColdTags && !IsSampledMemory(s.ptr)) {
+    if (expectColdTags && IsNormalMemory(s.ptr)) {
       EXPECT_TRUE(hot.insert(reinterpret_cast<uintptr_t>(s.ptr)).second);
     }
 
@@ -1215,7 +1222,7 @@ TEST(HotColdTest, HotColdNew) {
   }
 
   for (SizedPtr s : ptrs) {
-    if (expectColdTags && IsColdMemory(s.ptr)) {
+    if (expectColdTags && GetMemoryTag(s.ptr) == MemoryTag::kCold) {
       EXPECT_TRUE(cold.insert(reinterpret_cast<uintptr_t>(s.ptr)).second);
     }
 
@@ -1241,9 +1248,6 @@ TEST(HotColdTest, NothrowHotColdNew) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1266,12 +1270,10 @@ TEST(HotColdTest, NothrowHotColdNew) {
 
     ptrs.emplace_back(SizedPtr{ptr, size});
 
-    if (label >= 128) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    if (static_cast<tcmalloc::hot_cold_t>(label) >= kDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << size << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << size << " " << label;
     }
   }
 
@@ -1289,9 +1291,6 @@ TEST(HotColdTest, AlignedNothrowHotColdNew) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1317,12 +1316,10 @@ TEST(HotColdTest, AlignedNothrowHotColdNew) {
 
     ptrs.emplace_back(SizedPtr{ptr, size, alignment});
 
-    if (label >= 128) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    if (static_cast<tcmalloc::hot_cold_t>(label) >= kDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << size << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << size << " " << label;
     }
   }
 
@@ -1348,9 +1345,6 @@ TEST(HotColdTest, ArrayNothrowHotColdNew) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1373,12 +1367,10 @@ TEST(HotColdTest, ArrayNothrowHotColdNew) {
 
     ptrs.emplace_back(SizedPtr{ptr, size});
 
-    if (label >= 128) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    if (static_cast<tcmalloc::hot_cold_t>(label) >= kDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << size << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << size << " " << label;
     }
   }
 
@@ -1396,9 +1388,6 @@ TEST(HotColdTest, ArrayAlignedNothrowHotColdNew) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1424,12 +1413,10 @@ TEST(HotColdTest, ArrayAlignedNothrowHotColdNew) {
 
     ptrs.emplace_back(SizedPtr{ptr, size, alignment});
 
-    if (label >= 128) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    if (static_cast<tcmalloc::hot_cold_t>(label) >= kDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << size << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << size << " " << label;
     }
   }
 
@@ -1455,9 +1442,6 @@ TEST(HotColdTest, SizeReturningHotColdNew) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
 
@@ -1480,12 +1464,10 @@ TEST(HotColdTest, SizeReturningHotColdNew) {
         requested, static_cast<hot_cold_t>(label));
     ASSERT_GE(actual, requested);
 
-    if (label >= 128) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    if (static_cast<tcmalloc::hot_cold_t>(label) >= kDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << requested << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << requested << " " << label;
     }
 
     std::optional<size_t> allocated_size =
@@ -1519,12 +1501,10 @@ TEST(HotColdTest, HotColdNewMinHotFlag) {
   if (!expectColdTags) {
     GTEST_SKIP() << "Cold allocations not enabled";
   }
-  using tcmalloc_internal::IsColdMemory;
-  using tcmalloc_internal::IsSampledMemory;
-  using tcmalloc_internal::Parameters;
-
   // Test using a non-default threshold.
-  Parameters::set_min_hot_access_hint(static_cast<tcmalloc::hot_cold_t>(1));
+  constexpr tcmalloc::hot_cold_t kNonDefaultMinHotAccessHint =
+      static_cast<tcmalloc::hot_cold_t>(10);
+  Parameters::set_min_hot_access_hint(kNonDefaultMinHotAccessHint);
 
   constexpr size_t kSmall = 128 << 10;
   constexpr size_t kLarge = 1 << 20;
@@ -1547,13 +1527,13 @@ TEST(HotColdTest, HotColdNewMinHotFlag) {
 
     ptrs.emplace_back(SizedPtr{ptr, size});
 
-    // The hotness threshold should have been set to 1 above via SetFlag.
-    if (label >= 1) {
-      // Hot
-      EXPECT_FALSE(IsColdMemory(ptr));
+    // The hotness threshold should have been set to kNonDefaultMinHotAccessHint
+    // above via SetFlag.
+    if (static_cast<tcmalloc::hot_cold_t>(label) >=
+        kNonDefaultMinHotAccessHint) {
+      EXPECT_NE(GetMemoryTag(ptr), MemoryTag::kCold);
     } else {
-      EXPECT_TRUE(IsSampledMemory(ptr) || IsColdMemory(ptr))
-          << size << " " << label;
+      EXPECT_TRUE(!IsNormalMemory(ptr)) << size << " " << label;
     }
   }
 
@@ -1566,7 +1546,7 @@ TEST(HotColdTest, HotColdNewMinHotFlag) {
   }
 
   // Reset parameter to default.
-  Parameters::set_min_hot_access_hint(static_cast<tcmalloc::hot_cold_t>(128));
+  Parameters::set_min_hot_access_hint(kDefaultMinHotAccessHint);
 }
 
 // Test that when we use size-returning new, we can pass any of the sizes
@@ -1607,5 +1587,36 @@ TEST(TCMalloc, malloc_info) {
   free(buf);
 }
 
+TEST(Check, CustomTypes) {
+  Length len1(1), len2(2);
+  TC_CHECK_NE(len1, len2);
+  EXPECT_DEATH(
+      TC_CHECK_EQ(len1, len2),
+      absl::StrFormat("len1 == len2 \\(%u == %u\\)", kPageSize, 2 * kPageSize));
+
+  HugeLength hlen1(1.0), hlen2(2.0);
+  TC_CHECK_NE(hlen1, hlen2);
+  EXPECT_DEATH(TC_CHECK_EQ(hlen1, hlen2),
+               absl::StrFormat("hlen1 == hlen2 \\(%u == %u\\)", kHugePageSize,
+                               2 * kHugePageSize));
+
+  PageId page1{1}, page2{2};
+  TC_CHECK_NE(page1, page2);
+  EXPECT_DEATH(TC_CHECK_EQ(page1, page2),
+               absl::StrFormat("page1 == page2 \\(0x%zx == 0x%zx\\)", kPageSize,
+                               2 * kPageSize));
+
+  HugePage hpage1{1}, hpage2{2};
+  TC_CHECK_NE(hpage1, hpage2);
+  EXPECT_DEATH(TC_CHECK_EQ(hpage1, hpage2),
+               absl::StrFormat("hpage1 == hpage2 \\(0x%zx == 0x%zx\\)",
+                               kHugePageSize, 2 * kHugePageSize));
+
+  absl::Duration dur1(absl::Seconds(1));
+  absl::Duration dur2(absl::Seconds(2));
+  TC_CHECK_NE(dur1, dur2);
+  EXPECT_DEATH(TC_CHECK_EQ(dur1, dur2), "dur1 == dur2 \\(1s == 2s\\)");
+}
+
 }  // namespace
-}  // namespace tcmalloc
+}  // namespace tcmalloc::tcmalloc_internal

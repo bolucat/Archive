@@ -34,11 +34,14 @@
 #include "absl/base/optimization.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tcmalloc/common.h"
 #include "tcmalloc/internal/affinity.h"
+#include "tcmalloc/internal/logging.h"
 #include "tcmalloc/internal/optimization.h"
+#include "tcmalloc/internal/percpu_tcmalloc.h"
 #include "tcmalloc/internal/sysinfo.h"
 #include "tcmalloc/mock_transfer_cache.h"
 #include "tcmalloc/parameters.h"
@@ -99,7 +102,7 @@ class TestStaticForwarder {
   }
 
   void InitializeShardedManager(int num_shards) {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     cpu_layout_.Init(num_shards);
     sharded_manager_.Init();
   }
@@ -135,8 +138,6 @@ class TestStaticForwarder {
   }
 
   bool per_cpu_caches_dynamic_slab_enabled() { return dynamic_slab_enabled_; }
-
-  bool resize_size_classes_enabled() { return resize_size_classes_enabled_; }
 
   double per_cpu_caches_dynamic_slab_grow_threshold() {
     if (dynamic_slab_grow_threshold_ >= 0) return dynamic_slab_grow_threshold_;
@@ -195,10 +196,6 @@ class TestStaticForwarder {
     return configure_size_class_max_capacity_;
   }
 
-  bool use_extended_cold_size_classes() const {
-    return use_extended_size_class_for_cold_;
-  }
-
   using ShardedManager =
       ShardedTransferCacheManagerBase<FakeShardedTransferCacheManager,
                                       FakeCpuLayout,
@@ -234,8 +231,6 @@ class TestStaticForwarder {
   bool wider_slabs_enabled_ = false;
   bool configure_size_class_max_capacity_ = false;
   DynamicSlab dynamic_slab_ = DynamicSlab::kNoop;
-  bool resize_size_classes_enabled_ = false;
-  bool use_extended_size_class_for_cold_ = false;
   std::optional<SizeMap> size_map_;
 
  private:
@@ -266,7 +261,7 @@ TEST(CpuCacheTest, MinimumShardsForGenericCache) {
 
   ShardedManager& sharded_transfer_cache = forwarder.sharded_transfer_cache();
   constexpr int kNumShards = ShardedManager::kMinShardsAllowed - 1;
-  ASSERT(kNumShards > 0);
+  TC_ASSERT_GT(kNumShards, 0);
   forwarder.InitializeShardedManager(kNumShards);
 
   constexpr int kCpuId = 0;
@@ -281,7 +276,7 @@ TEST(CpuCacheTest, MinimumShardsForGenericCache) {
   // Allocate an object. As we are using less than kMinShardsAllowed number of
   // shards, we should bypass sharded transfer cache entirely.
   void* ptr = cache.Allocate(kSizeClass);
-  for (int size_class = 0; size_class < kNumClasses; ++size_class) {
+  for (int size_class = 1; size_class < kNumClasses; ++size_class) {
     EXPECT_FALSE(sharded_transfer_cache.should_use(size_class));
     EXPECT_EQ(sharded_transfer_cache.GetStats(size_class).capacity, 0);
     EXPECT_EQ(sharded_transfer_cache.GetStats(size_class).max_capacity, 0);
@@ -317,7 +312,7 @@ TEST(CpuCacheTest, UsesShardedAsBackingCache) {
 
   ShardedManager& sharded_transfer_cache = forwarder.sharded_transfer_cache();
   constexpr int kNumShards = ShardedManager::kMinShardsAllowed;
-  ASSERT(kNumShards > 0);
+  TC_ASSERT_GT(kNumShards, 0);
   forwarder.InitializeShardedManager(kNumShards);
 
   ScopedFakeCpuId fake_cpu_id(0);
@@ -381,9 +376,11 @@ TEST(CpuCacheTest, Metadata) {
       cache.GetPerCpuSlabShiftBounds();
 
   PerCPUMetadataState r = cache.MetadataMemoryUsage();
-  EXPECT_EQ(r.virtual_size,
-            subtle::percpu::GetSlabsAllocSize(
-                subtle::percpu::ToShiftType(shift_bounds.max_shift), num_cpus));
+  size_t slabs_size = subtle::percpu::GetSlabsAllocSize(
+      subtle::percpu::ToShiftType(shift_bounds.max_shift), num_cpus);
+  size_t resize_size = num_cpus * sizeof(bool);
+  size_t begins_size = kNumClasses * sizeof(std::atomic<uint16_t>);
+  EXPECT_EQ(r.virtual_size, slabs_size + resize_size + begins_size);
   EXPECT_EQ(r.resident_size, 0);
 
   auto count_cores = [&]() {
@@ -429,9 +426,11 @@ TEST(CpuCacheTest, Metadata) {
   EXPECT_EQ(1, count_cores());
 
   r = cache.MetadataMemoryUsage();
-  EXPECT_EQ(r.virtual_size,
-            subtle::percpu::GetSlabsAllocSize(
-                subtle::percpu::ToShiftType(shift_bounds.max_shift), num_cpus));
+  EXPECT_EQ(
+      r.virtual_size,
+      resize_size + begins_size +
+          subtle::percpu::GetSlabsAllocSize(
+              subtle::percpu::ToShiftType(shift_bounds.max_shift), num_cpus));
 
   // We expect to fault in a single core, but we may end up faulting an
   // entire hugepage worth of memory when we touch that core and another when
@@ -484,7 +483,7 @@ TEST(CpuCacheTest, Metadata) {
               cache.Capacity(cpu));
   }
 
-  for (int size_class = 0; size_class < kNumClasses; ++size_class) {
+  for (int size_class = 1; size_class < kNumClasses; ++size_class) {
     // This is sensitive to the current growth policies of CpuCache.  It may
     // require updating from time-to-time.
     EXPECT_EQ(cache.TotalObjectsOfClass(size_class),
@@ -637,8 +636,6 @@ TEST(CpuCacheTest, StressSizeClassResize) {
   }
 
   CpuCache cache;
-  TestStaticForwarder& forwarder = cache.forwarder();
-  forwarder.resize_size_classes_enabled_ = true;
   cache.Activate();
 
   std::vector<std::thread> threads;
@@ -824,15 +821,15 @@ TEST(CpuCacheTest, ResizeSizeClassesTest) {
   }
 
   CpuCache cache;
+  // Reduce cache capacity so that it will see need in stealing and rebalancing.
+  const size_t max_cpu_cache_size = 128 << 10;
+  cache.SetCacheLimit(max_cpu_cache_size);
   cache.Activate();
-  TestStaticForwarder& forwarder = cache.forwarder();
-  forwarder.resize_size_classes_enabled_ = true;
 
   // Temporarily fake being on the given CPU.
   constexpr int kCpuId = 0;
   constexpr int kCpuId1 = 1;
 
-  const size_t max_cpu_cache_size = Parameters::max_per_cpu_cache_size();
   constexpr int kSmallClass = 1;
   constexpr int kLargeClass = 2;
   const int kMaxCapacity = cache.forwarder().max_capacity(kLargeClass);
@@ -945,18 +942,15 @@ static void HotCacheOperations(CpuCache& cache, int cpu_id) {
 
 class DynamicWideSlabTest
     : public testing::TestWithParam<
-          std::tuple<bool /* use_extended_size_class_for_cold */,
-                     bool /* use_wider_slab */,
+          std::tuple<bool /* use_wider_slab */,
                      bool /* configure_size_class_max_capacity */>> {
  public:
-  bool use_extended_size_class_for_cold() { return std::get<0>(GetParam()); }
-  bool use_wider_slab() { return std::get<1>(GetParam()); }
-  bool configure_size_class_max_capacity() { return std::get<2>(GetParam()); }
+  bool use_wider_slab() { return std::get<0>(GetParam()); }
+  bool configure_size_class_max_capacity() { return std::get<1>(GetParam()); }
 };
 
 INSTANTIATE_TEST_SUITE_P(TestDynamicWideSlab, DynamicWideSlabTest,
-                         testing::Combine(testing::Bool(), testing::Bool(),
-                                          testing::Bool()));
+                         testing::Combine(testing::Bool(), testing::Bool()));
 
 // Test that we are complying with the threshold when we grow the slab.
 // When wider slab is enabled, we check if overflow/underflow ratio is above the
@@ -972,10 +966,8 @@ TEST_P(DynamicWideSlabTest, DynamicSlabThreshold) {
   forwarder.dynamic_slab_enabled_ = true;
   forwarder.dynamic_slab_grow_threshold_ = kDynamicSlabGrowThreshold;
   forwarder.wider_slabs_enabled_ = use_wider_slab();
-  forwarder.use_extended_size_class_for_cold_ =
-      use_extended_size_class_for_cold();
   SizeMap size_map;
-  size_map.Init(kSizeClasses, use_extended_size_class_for_cold());
+  size_map.Init(kSizeClasses.classes);
   forwarder.size_map_ = size_map;
 
   cache.Activate();
@@ -1038,7 +1030,7 @@ TEST_P(DynamicWideSlabTest, DynamicSlabParamsChange) {
 #endif
 
   SizeMap size_map;
-  size_map.Init(kSizeClasses, use_extended_size_class_for_cold());
+  size_map.Init(kSizeClasses.classes);
   for (bool initially_enabled : {false, true}) {
     for (DynamicSlab initial_dynamic_slab :
          {DynamicSlab::kGrow, DynamicSlab::kShrink, DynamicSlab::kNoop}) {
@@ -1047,8 +1039,6 @@ TEST_P(DynamicWideSlabTest, DynamicSlabParamsChange) {
       forwarder.dynamic_slab_enabled_ = initially_enabled;
       forwarder.dynamic_slab_ = initial_dynamic_slab;
       forwarder.wider_slabs_enabled_ = use_wider_slab();
-      forwarder.use_extended_size_class_for_cold_ =
-          use_extended_size_class_for_cold();
       forwarder.size_map_ = size_map;
 
       cache.Activate();
@@ -1092,12 +1082,13 @@ TEST(CpuCacheTest, ColdHotCacheShuffleTest) {
   }
 
   CpuCache cache;
+  // Reduce cache capacity so that it will see need in stealing and rebalancing.
+  const size_t max_cpu_cache_size = 1 << 10;
+  cache.SetCacheLimit(max_cpu_cache_size);
   cache.Activate();
 
   constexpr int hot_cpu_id = 0;
   constexpr int cold_cpu_id = 1;
-
-  const size_t max_cpu_cache_size = Parameters::max_per_cpu_cache_size();
 
   // Empirical tests suggest that we should be able to steal all the steal-able
   // capacity from colder cache in < 100 tries. Keeping enough buffer here to
@@ -1132,6 +1123,7 @@ TEST(CpuCacheTest, ColdHotCacheShuffleTest) {
   // Check that we drained cold cache to the lower capacity limit.
   // We also keep some tolerance, up to the largest class size, below the lower
   // capacity threshold that we can drain cold cache to.
+  EXPECT_LT(cold_cache_capacity, max_cpu_cache_size);
   EXPECT_GT(cold_cache_capacity,
             CpuCache::kCacheCapacityThreshold * max_cpu_cache_size -
                 cache.forwarder().class_to_size(size_class));
@@ -1304,7 +1296,7 @@ TEST(CpuCacheTest, SizeClassCapacityTest) {
     EXPECT_TRUE(cache.HasPopulated(cpu));
   }
 
-  for (int size_class = 0; size_class < kNumClasses; ++size_class) {
+  for (int size_class = 1; size_class < kNumClasses; ++size_class) {
     SCOPED_TRACE(absl::StrFormat("Failed size_class: %d", size_class));
     CpuCache::SizeClassCapacityStats capacity_stats =
         cache.GetSizeClassCapacityStats(size_class);
@@ -1427,15 +1419,21 @@ class CpuCacheEnvironment {
       case 9:
         benchmark::DoNotOptimize(cache_.Capacity(cpu));
         break;
-      case 10:
+      case 10: {
+        absl::MutexLock lock(&background_mutex_);
         cache_.ShuffleCpuCaches();
         break;
-      case 11:
+      }
+      case 11: {
+        absl::MutexLock lock(&background_mutex_);
         cache_.TryReclaimingCaches();
         break;
-      case 12:
+      }
+      case 12: {
+        absl::MutexLock lock(&background_mutex_);
         cache_.Reclaim(cpu);
         break;
+      }
       case 13:
         benchmark::DoNotOptimize(cache_.GetNumReclaims(cpu));
         break;
@@ -1493,6 +1491,8 @@ class CpuCacheEnvironment {
  private:
   const int num_cpus_;
   CpuCache cache_;
+  // Protects operations executed on the background thread in real life.
+  absl::Mutex background_mutex_;
   std::atomic<bool> ready_{false};
 };
 
@@ -1512,7 +1512,7 @@ TEST(CpuCacheTest, Fuzz) {
   threads.Start(10, [&](int thread_id) {
     // Ensure this thread has registered itself with the kernel to use
     // restartable sequences.
-    CHECK_CONDITION(subtle::percpu::IsFast());
+    ASSERT_TRUE(subtle::percpu::IsFast());
     env.RandomlyPoke(thread_state[thread_id].rng);
   });
 
@@ -1572,7 +1572,7 @@ TEST(CpuCacheTest, DISABLED_ChangingSizes) {
     // Ensure this thread has registered itself with the kernel to use
     // restartable sequences.
     if (thread_id > 0) {
-      CHECK_CONDITION(subtle::percpu::IsFast());
+      ASSERT_TRUE(subtle::percpu::IsFast());
       env.RandomlyPoke(thread_state[thread_id].rng);
       return;
     }
@@ -1581,7 +1581,7 @@ TEST(CpuCacheTest, DISABLED_ChangingSizes) {
     // ensure that we can call SetCacheLimit with either precondition.
     std::optional<ScopedUnregisterRseq> rseq;
     if (rseq_active_for_size_changing_thread) {
-      CHECK_CONDITION(subtle::percpu::IsFast());
+      ASSERT_TRUE(subtle::percpu::IsFast());
     } else {
       rseq.emplace();
     }

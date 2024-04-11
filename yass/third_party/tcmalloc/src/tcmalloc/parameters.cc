@@ -32,6 +32,7 @@
 #include "tcmalloc/internal/config.h"
 #include "tcmalloc/internal/environment.h"
 #include "tcmalloc/internal/logging.h"
+#include "tcmalloc/internal_malloc_extension.h"
 #include "tcmalloc/malloc_extension.h"
 #include "tcmalloc/page_allocator.h"
 #include "tcmalloc/static_vars.h"
@@ -81,19 +82,14 @@ static std::atomic<int64_t>& background_process_sleep_interval_ns() {
 // skip_subrelease_long_interval_ns() are determined at runtime, we cannot
 // require constant initialization for the atomic.  This avoids an
 // initialization order fiasco.
+//
+// TODO(b/197880883):  Clean up legacy subrelease when short-long-term
+// subrelease is the default.
 static std::atomic<int64_t>& skip_subrelease_interval_ns() {
   ABSL_CONST_INIT static absl::once_flag flag;
   ABSL_CONST_INIT static std::atomic<int64_t> v{0};
   absl::base_internal::LowLevelCallOnce(&flag, [&]() {
-    v.store(absl::ToInt64Nanoseconds(
-#if defined(TCMALLOC_SMALL_BUT_SLOW)
-                absl::ZeroDuration()
-#else
-        IsExperimentActive(Experiment::TCMALLOC_SHORT_LONG_TERM_SUBRELEASE)
-            ? absl::ZeroDuration()
-            : absl::Seconds(60)
-#endif
-                    ),
+    v.store(absl::ToInt64Nanoseconds(absl::ZeroDuration()),
             std::memory_order_relaxed);
   });
   return v;
@@ -101,41 +97,38 @@ static std::atomic<int64_t>& skip_subrelease_interval_ns() {
 
 // Configures short and long intervals to zero by default. We expect to set them
 // to the non-zero durations once the feature is no longer experimental.
-//
-// TODO(b/197880883):  Complete experiments with this flag.
 static std::atomic<int64_t>& skip_subrelease_short_interval_ns() {
   ABSL_CONST_INIT static absl::once_flag flag;
   ABSL_CONST_INIT static std::atomic<int64_t> v{0};
   absl::base_internal::LowLevelCallOnce(&flag, [&]() {
+    // clang-format off
     v.store(absl::ToInt64Nanoseconds(
-#if defined(TCMALLOC_SMALL_BUT_SLOW)
+#if defined(TCMALLOC_INTERNAL_SMALL_BUT_SLOW)
                 absl::ZeroDuration()
 #else
-        IsExperimentActive(Experiment::TCMALLOC_SHORT_LONG_TERM_SUBRELEASE)
-            ? absl::Seconds(10)
-            : absl::ZeroDuration()
+                absl::Seconds(60)
 #endif
                     ),
             std::memory_order_relaxed);
+    // clang-format on
   });
   return v;
 }
 
-// TODO(b/197880883):  Complete experiments with this flag.
 static std::atomic<int64_t>& skip_subrelease_long_interval_ns() {
   ABSL_CONST_INIT static absl::once_flag flag;
   ABSL_CONST_INIT static std::atomic<int64_t> v{0};
   absl::base_internal::LowLevelCallOnce(&flag, [&]() {
+    // clang-format off
     v.store(absl::ToInt64Nanoseconds(
-#if defined(TCMALLOC_SMALL_BUT_SLOW)
+#if defined(TCMALLOC_INTERNAL_SMALL_BUT_SLOW)
                 absl::ZeroDuration()
 #else
-        IsExperimentActive(Experiment::TCMALLOC_SHORT_LONG_TERM_SUBRELEASE)
-            ? absl::Seconds(300)
-            : absl::ZeroDuration()
+                absl::Seconds(300)
 #endif
                     ),
             std::memory_order_relaxed);
+    // clang-format on
   });
   return v;
 }
@@ -156,17 +149,53 @@ void Parameters::set_hpaa_subrelease(bool value) {
   TCMalloc_Internal_SetHPAASubrelease(value);
 }
 
+bool ABSL_ATTRIBUTE_WEAK default_want_disable_few_object_span_prioritization();
+
+// TODO(b/333390360): remove the function
+// default_want_disable_few_object_span_prioritization() and the
+// env TCMALLOC_DISABLE_FEW_OBJECT_SPAN_PRIORITIZATION
+// opt-out some time after 2024-05-10.
+static bool want_disable_few_object_span_prioritization() {
+  if (default_want_disable_few_object_span_prioritization != nullptr)
+    return true;
+  const char* e =
+      thread_safe_getenv("TCMALLOC_DISABLE_FEW_OBJECT_SPAN_PRIORITIZATION");
+  if (e) {
+    switch (e[0]) {
+      case '0':
+        // TODO(b/309967531): enable this.
+        return true;
+      case '1':
+        return true;
+      default:
+        TC_BUG("bad env var '%s'", e);
+    }
+  }
+  // TODO(b/309967531): enable this.
+  return true;
+}
+
 bool Parameters::use_all_buckets_for_few_object_spans_in_cfl() {
   ABSL_CONST_INIT static absl::once_flag flag;
   ABSL_CONST_INIT static std::atomic<bool> v{false};
   absl::base_internal::LowLevelCallOnce(&flag, [&]() {
-    v.store(
-        IsExperimentActive(
-            Experiment::
-                TEST_ONLY_TCMALLOC_USE_ALL_BUCKETS_FOR_FEW_OBJECT_SPANS_IN_CFL),
-        std::memory_order_relaxed);
+    v.store(!want_disable_few_object_span_prioritization(),
+            std::memory_order_relaxed);
   });
-  return v;
+  return v.load(std::memory_order_relaxed);
+}
+
+absl::Duration Parameters::huge_cache_release_time() {
+  ABSL_CONST_INIT static absl::once_flag flag;
+  ABSL_CONST_INIT static std::atomic<int32_t> v{1};
+  absl::base_internal::LowLevelCallOnce(&flag, [&]() {
+    v.store(IsExperimentActive(
+                Experiment::TEST_ONLY_TCMALLOC_HUGE_CACHE_RELEASE_30S)
+                ? 30
+                : 1,
+            std::memory_order_relaxed);
+  });
+  return absl::Seconds(v.load(std::memory_order_relaxed));
 }
 
 ABSL_CONST_INIT std::atomic<MallocExtension::BytesPerSecond>
@@ -176,13 +205,14 @@ ABSL_CONST_INIT std::atomic<MallocExtension::BytesPerSecond>
 
 ABSL_CONST_INIT std::atomic<int64_t> Parameters::guarded_sampling_rate_(
     50 * kDefaultProfileSamplingRate);
-// TODO(b/274658726, b/305723428): Remove this opt-out flag.
-ABSL_CONST_INIT std::atomic<bool>
-    Parameters::resize_cpu_cache_size_classes_enabled_(true);
-// TODO(b/263387812): remove when experimentation is complete
-ABSL_CONST_INIT std::atomic<bool> Parameters::improved_guarded_sampling_(true);
 // TODO(b/285379004):  Remove this opt-out.
 ABSL_CONST_INIT std::atomic<bool> Parameters::release_partial_alloc_pages_(
+    true);
+// TODO(b/328440160):  Remove this opt-out.
+ABSL_CONST_INIT std::atomic<bool> Parameters::huge_region_demand_based_release_(
+    false);
+// TODO(b/199203282):  Remove this opt-out.
+ABSL_CONST_INIT std::atomic<bool> Parameters::release_pages_from_huge_region_(
     true);
 ABSL_CONST_INIT std::atomic<int64_t> Parameters::max_total_thread_cache_bytes_(
     kDefaultOverallThreadCacheSize);
@@ -197,9 +227,11 @@ ABSL_CONST_INIT std::atomic<bool> Parameters::per_cpu_caches_enabled_(
 );
 ABSL_CONST_INIT std::atomic<bool> Parameters::per_cpu_caches_dynamic_slab_(
     true);
+ABSL_CONST_INIT std::atomic<MadvisePreference> Parameters::madvise_(
+    MadvisePreference::kDontNeed);
 ABSL_CONST_INIT std::atomic<bool> Parameters::madvise_free_(false);
 ABSL_CONST_INIT std::atomic<tcmalloc::hot_cold_t>
-    Parameters::min_hot_access_hint_(static_cast<tcmalloc::hot_cold_t>(128));
+    Parameters::min_hot_access_hint_(kDefaultMinHotAccessHint);
 ABSL_CONST_INIT std::atomic<double>
     Parameters::per_cpu_caches_dynamic_slab_grow_threshold_(0.9);
 ABSL_CONST_INIT std::atomic<double>
@@ -207,6 +239,9 @@ ABSL_CONST_INIT std::atomic<double>
 
 ABSL_CONST_INIT std::atomic<int64_t> Parameters::profile_sampling_rate_(
     kDefaultProfileSamplingRate);
+// TODO.  Start with 0 to make it clear if we have read this before it is
+// populated during Init.
+ABSL_CONST_INIT std::atomic<uint32_t> Parameters::max_span_cache_size_(0);
 
 bool Parameters::background_process_actions_enabled() {
   return background_process_actions_enabled_ptr().load(
@@ -253,8 +288,7 @@ static bool want_disable_separate_allocs_for_few_and_many_objects_spans() {
       case '1':
         return true;
       default:
-        Crash(kCrash, __FILE__, __LINE__, "bad env var", e);
-        return false;
+        TC_BUG("bad env var '%s'", e);
     }
   }
   return false;
@@ -287,15 +321,6 @@ int32_t Parameters::max_per_cpu_cache_size() {
   return tc_globals.cpu_cache().CacheLimit();
 }
 
-int ABSL_ATTRIBUTE_WEAK default_want_disable_laze_size_class_resize();
-
-// TODO(b/305723428): remove the default_want_disable_laze_size_class_resize
-// opt-out.
-static bool want_disable_lazy_size_class_resize() {
-  if (default_want_disable_laze_size_class_resize == nullptr) return false;
-  return default_want_disable_laze_size_class_resize() > 0;
-}
-
 int ABSL_ATTRIBUTE_WEAK default_want_disable_dynamic_slabs();
 
 // TODO(b/271475288): remove the default_want_disable_dynamic_slabs opt-out
@@ -309,8 +334,6 @@ static bool want_disable_dynamic_slabs() {
 }  // namespace tcmalloc
 GOOGLE_MALLOC_SECTION_END
 
-using tcmalloc::tcmalloc_internal::kLog;
-using tcmalloc::tcmalloc_internal::Log;
 using tcmalloc::tcmalloc_internal::Parameters;
 using tcmalloc::tcmalloc_internal::tc_globals;
 
@@ -330,16 +353,6 @@ int64_t MallocExtension_Internal_GetGuardedSamplingRate() {
 
 void MallocExtension_Internal_SetGuardedSamplingRate(int64_t value) {
   Parameters::set_guarded_sampling_rate(value);
-}
-
-// TODO(b/263387812): remove when experimentation is complete
-bool MallocExtension_Internal_GetImprovedGuardedSampling() {
-  return Parameters::improved_guarded_sampling();
-}
-
-// TODO(b/263387812): remove when experimentation is complete
-void MallocExtension_Internal_SetImprovedGuardedSampling(bool value) {
-  Parameters::set_improved_guarded_sampling(value);
 }
 
 int64_t MallocExtension_Internal_GetMaxTotalThreadCacheBytes() {
@@ -421,12 +434,16 @@ bool TCMalloc_Internal_GetHPAASubrelease() {
   return Parameters::hpaa_subrelease();
 }
 
-bool TCMalloc_Internal_GetResizeCpuCacheSizeClassesEnabled() {
-  return Parameters::resize_cpu_cache_size_classes();
-}
-
 bool TCMalloc_Internal_GetReleasePartialAllocPagesEnabled() {
   return Parameters::release_partial_alloc_pages();
+}
+
+bool TCMalloc_Internal_GetHugeRegionDemandBasedRelease() {
+  return Parameters::huge_region_demand_based_release();
+}
+
+bool TCMalloc_Internal_GetReleasePagesFromHugeRegionEnabled() {
+  return Parameters::release_pages_from_huge_region();
 }
 
 double TCMalloc_Internal_GetPeakSamplingHeapGrowthFraction() {
@@ -439,11 +456,6 @@ bool TCMalloc_Internal_GetPerCpuCachesEnabled() {
 
 void TCMalloc_Internal_SetGuardedSamplingRate(int64_t v) {
   Parameters::guarded_sampling_rate_.store(v, std::memory_order_relaxed);
-}
-
-// TODO(b/263387812): remove when experimentation is complete
-void TCMalloc_Internal_SetImprovedGuardedSampling(bool v) {
-  Parameters::improved_guarded_sampling_.store(v, std::memory_order_relaxed);
 }
 
 // update_lock guards changes via SetHeapSizeHardLimit.
@@ -463,8 +475,7 @@ void TCMalloc_Internal_SetHeapSizeHardLimit(uint64_t value) {
       tc_globals.page_allocator().limit(PageAllocator::kHard);
   tc_globals.page_allocator().set_limit(value, PageAllocator::kHard);
   if (value != old_limit) {
-    Log(kLog, __FILE__, __LINE__, "[tcmalloc] set page heap hard limit to",
-        value, "bytes");
+    TC_LOG("[tcmalloc] set page heap hard limit to %v bytes", value);
   }
 }
 
@@ -473,18 +484,18 @@ void TCMalloc_Internal_SetHPAASubrelease(bool v) {
       v, std::memory_order_relaxed);
 }
 
-void TCMalloc_Internal_SetResizeCpuCacheSizeClassesEnabled(bool v) {
-  // We only allow disabling size class resize using both the flag and
-  // want_disable_lazy_size_class_resize.
-  if (!v && !tcmalloc::tcmalloc_internal::want_disable_lazy_size_class_resize())
-    return;
+void TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(bool v) {
+  Parameters::release_partial_alloc_pages_.store(v, std::memory_order_relaxed);
+}
 
-  Parameters::resize_cpu_cache_size_classes_enabled_.store(
+void TCMalloc_Internal_SetHugeRegionDemandBasedRelease(bool v) {
+  Parameters::huge_region_demand_based_release_.store(
       v, std::memory_order_relaxed);
 }
 
-void TCMalloc_Internal_SetReleasePartialAllocPagesEnabled(bool v) {
-  Parameters::release_partial_alloc_pages_.store(v, std::memory_order_relaxed);
+void TCMalloc_Internal_SetReleasePagesFromHugeRegionEnabled(bool v) {
+  Parameters::release_pages_from_huge_region_.store(v,
+                                                    std::memory_order_relaxed);
 }
 
 void TCMalloc_Internal_SetMaxPerCpuCacheSize(int32_t v) {
@@ -505,6 +516,15 @@ void TCMalloc_Internal_SetPeakSamplingHeapGrowthFraction(double v) {
 }
 
 void TCMalloc_Internal_SetPerCpuCachesEnabled(bool v) {
+#if !defined(TCMALLOC_DEPRECATED_PERTHREAD)
+  if (!v) {
+    TC_LOG(
+        "Using per-thread caches requires linking against "
+        ":tcmalloc_deprecated_perthread.");
+    return;
+  }
+#endif  // !TCMALLOC_DEPRECATED_PERTHREAD
+
   Parameters::per_cpu_caches_enabled_.store(v, std::memory_order_relaxed);
 }
 
@@ -582,6 +602,15 @@ double TCMalloc_Internal_GetPerCpuCachesDynamicSlabShrinkThreshold() {
 void TCMalloc_Internal_SetPerCpuCachesDynamicSlabShrinkThreshold(double v) {
   Parameters::per_cpu_caches_dynamic_slab_shrink_threshold_.store(
       v, std::memory_order_relaxed);
+}
+
+tcmalloc::tcmalloc_internal::MadvisePreference TCMalloc_Internal_GetMadvise() {
+  return Parameters::madvise();
+}
+
+void TCMalloc_Internal_SetMadvise(
+    tcmalloc::tcmalloc_internal::MadvisePreference v) {
+  Parameters::madvise_.store(v, std::memory_order_relaxed);
 }
 
 bool TCMalloc_Internal_GetMadviseFree() { return Parameters::madvise_free(); }

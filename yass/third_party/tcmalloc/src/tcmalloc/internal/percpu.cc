@@ -62,12 +62,18 @@ ABSL_CONST_INIT static std::atomic<bool> using_upstream_fence{false};
 
 extern "C" thread_local char tcmalloc_sampler ABSL_ATTRIBUTE_INITIAL_EXEC;
 
-// Is this thread's __rseq_abi struct currently registered with the kernel?
-static bool ThreadRegistered() { return RseqCpuId() >= kCpuIdInitialized; }
-
 static bool InitThreadPerCpu() {
   // If we're already registered, there's nothing further for us to do.
-  if (ThreadRegistered()) {
+  if (IsFastNoInit()) {
+    return true;
+  }
+
+  // Mask signals and double check thread registration afterwards.  If we
+  // encounter a signal between ThreadRegistered() above and rseq() and that
+  // signal initializes per-CPU, rseq() here will fail with EBUSY.
+  ScopedSigmask mask;
+
+  if (IsFastNoInit()) {
     return true;
   }
 
@@ -83,7 +89,7 @@ bool UsingFlatVirtualCpus() {
 }
 
 static void InitPerCpu() {
-  CHECK_CONDITION(NumCPUs() <= std::numeric_limits<uint16_t>::max());
+  TC_CHECK(NumCPUs() <= std::numeric_limits<uint16_t>::max());
 
   // Based on the results of successfully initializing the first thread, mark
   // init_status to initialize all subsequent threads.
@@ -98,18 +104,18 @@ static void InitPerCpu() {
     volatile auto slabs_addr = reinterpret_cast<uintptr_t>(&tcmalloc_slabs);
     auto rseq_abi_addr = reinterpret_cast<uintptr_t>(&__rseq_abi);
     //  Ensure __rseq_abi alignment required by ABI.
-    CHECK_CONDITION(rseq_abi_addr % 32 == 0);
+    TC_CHECK_EQ(rseq_abi_addr % 32, 0);
     // Ensure that all our TLS data is in a single cache line.
-    CHECK_CONDITION((rseq_abi_addr / 64) == (slabs_addr / 64));
-    CHECK_CONDITION((rseq_abi_addr / 64) ==
-                    ((sampler_addr + TCMALLOC_SAMPLER_HOT_OFFSET) / 64));
+    TC_CHECK_EQ(rseq_abi_addr / 64, slabs_addr / 64);
+    TC_CHECK_EQ(rseq_abi_addr / 64,
+                (sampler_addr + TCMALLOC_SAMPLER_HOT_OFFSET) / 64);
     // Ensure that tcmalloc_slabs partially overlap with
     // __rseq_abi.cpu_id_start as we expect.
-    CHECK_CONDITION(slabs_addr == rseq_abi_addr + TCMALLOC_RSEQ_SLABS_OFFSET);
+    TC_CHECK_EQ(slabs_addr, rseq_abi_addr + TCMALLOC_RSEQ_SLABS_OFFSET);
     // Ensure Sampler is properly aligned.
-    CHECK_CONDITION((sampler_addr % TCMALLOC_SAMPLER_ALIGN) == 0);
+    TC_CHECK_EQ(sampler_addr % TCMALLOC_SAMPLER_ALIGN, 0);
     // Ensure that tcmalloc_sampler is located before tcmalloc_slabs.
-    CHECK_CONDITION(sampler_addr + TCMALLOC_SAMPLER_SIZE <= slabs_addr);
+    TC_CHECK_LE(sampler_addr + TCMALLOC_SAMPLER_SIZE, slabs_addr);
 
     constexpr int kMEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_RSEQ = (1 << 8);
     // It is safe to make the syscall below multiple times.
@@ -126,12 +132,35 @@ static void InitPerCpu() {
 // completed then only the thread-level will be completed.  A return of false
 // indicates that initialization failed and RSEQ is unavailable.
 bool InitFastPerCpu() {
-  absl::base_internal::LowLevelCallOnce(&init_per_cpu_once, InitPerCpu);
+  // On the first trip through this function do the necessary process-wide
+  // initialization work.
+  //
+  // We do this with all signals disabled so that we don't deadlock due to
+  // re-entering from a signal handler.
+  //
+  // We use a global atomic to record an 'initialized' state as a fast path
+  // check, which allows us to avoid the signal mask syscall that we must
+  // use to prevent nested initialization during a signal deadlocking on
+  // LowLevelOnceInit, before we can enter the 'init once' logic.
+  ABSL_CONST_INIT static std::atomic<bool> initialized(false);
+  if (!initialized.load(std::memory_order_acquire)) {
+    ScopedSigmask mask;
+
+    absl::base_internal::LowLevelCallOnce(&init_per_cpu_once, [&] {
+      InitPerCpu();
+
+      // Set `initialized` to true after all initialization has completed.
+      // The below store orders with the load acquire further up, i.e., all
+      // initialization and side effects thereof are visible to any thread
+      // observing a true value in the fast path check.
+      initialized.store(true, std::memory_order_release);
+    });
+  }
 
   // Once we've decided fast-cpu support is available, initialization for all
   // subsequent threads must succeed for consistency.
   if (init_status == kFastMode && RseqCpuId() == kCpuIdUninitialized) {
-    CHECK_CONDITION(InitThreadPerCpu());
+    TC_CHECK(InitThreadPerCpu());
   }
 
 #if TCMALLOC_INTERNAL_PERCPU_USE_RSEQ
@@ -157,7 +186,7 @@ static bool SetAffinityOneCpu(int cpu) {
   if (0 == sched_setaffinity(0, sizeof(cpu_set_t), &set)) {
     return true;
   }
-  CHECK_CONDITION(errno == EINVAL);
+  TC_CHECK_EQ(errno, EINVAL);
   return false;
 }
 
@@ -175,7 +204,7 @@ static void SlowFence(int target) {
   // First, save our cpumask (the user may want it back.)
   cpu_set_t old;
   CPU_ZERO(&old);
-  CHECK_CONDITION(0 == sched_getaffinity(0, sizeof(cpu_set_t), &old));
+  TC_CHECK_EQ(0, sched_getaffinity(0, sizeof(cpu_set_t), &old));
 
   // Here's the basic idea: if we run on every CPU, then every thread
   // that runs after us has certainly seen every store we've made up
@@ -236,16 +265,15 @@ static void SlowFence(int target) {
   using tcmalloc::tcmalloc_internal::signal_safe_open;
   using tcmalloc::tcmalloc_internal::signal_safe_read;
   int fd = signal_safe_open("/proc/self/cpuset", O_RDONLY);
-  CHECK_CONDITION(fd >= 0);
+  TC_CHECK_GE(fd, 0);
 
   char c;
-  CHECK_CONDITION(1 == signal_safe_read(fd, &c, 1, nullptr));
-
-  CHECK_CONDITION(0 == signal_safe_close(fd));
+  TC_CHECK_EQ(1, signal_safe_read(fd, &c, 1, nullptr));
+  TC_CHECK_EQ(0, signal_safe_close(fd));
 
   // Try to go back to what we originally had before Fence.
   if (0 != sched_setaffinity(0, sizeof(cpu_set_t), &old)) {
-    CHECK_CONDITION(EINVAL == errno);
+    TC_CHECK_EQ(EINVAL, errno);
     // The original set is no longer valid, which should only happen if
     // cpuset.cpus was changed at some point in Fence.  If that happened and we
     // didn't fence, our control plane would have rewritten our affinity mask to
@@ -255,14 +283,14 @@ static void SlowFence(int target) {
     for (int i = 0, n = NumCPUs(); i < n; ++i) {
       CPU_SET(i, &set);
     }
-    CHECK_CONDITION(0 == sched_setaffinity(0, sizeof(cpu_set_t), &set));
+    TC_CHECK_EQ(0, sched_setaffinity(0, sizeof(cpu_set_t), &set));
   }
 }
 
 #if TCMALLOC_INTERNAL_PERCPU_USE_RSEQ
 static void UpstreamRseqFenceCpu(int cpu) {
-  CHECK_CONDITION(using_upstream_fence.load(std::memory_order_relaxed) &&
-                  "upstream fence unavailable.");
+  TC_CHECK(using_upstream_fence.load(std::memory_order_relaxed) &&
+           "upstream fence unavailable.");
 
   constexpr int kMEMBARRIER_CMD_PRIVATE_EXPEDITED_RSEQ = (1 << 7);
   constexpr int kMEMBARRIER_CMD_FLAG_CPU = (1 << 0);
@@ -270,8 +298,8 @@ static void UpstreamRseqFenceCpu(int cpu) {
   int64_t res = syscall(__NR_membarrier, kMEMBARRIER_CMD_PRIVATE_EXPEDITED_RSEQ,
                         kMEMBARRIER_CMD_FLAG_CPU, cpu);
 
-  CHECK_CONDITION((res == 0 || res == -ENXIO /* missing CPU */) &&
-                  "Upstream fence failed.");
+  TC_CHECK(res == 0 || res == -ENXIO /* missing CPU */,
+           "Upstream fence failed.");
 }
 #endif  // TCMALLOC_INTERNAL_PERCPU_USE_RSEQ
 
@@ -279,7 +307,7 @@ static void UpstreamRseqFenceCpu(int cpu) {
 // our writes up til now are visible to every other CPU. (cpu == -1 is
 // equivalent to all CPUs.)
 static void FenceInterruptCPU(int cpu) {
-  CHECK_CONDITION(IsFast());
+  TC_CHECK(IsFast());
 
   // TODO(b/149390298):  Provide an upstream extension for sys_membarrier to
   // interrupt ongoing restartable sequences.

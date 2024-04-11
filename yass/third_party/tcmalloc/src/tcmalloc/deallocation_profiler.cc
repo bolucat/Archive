@@ -73,7 +73,7 @@ class AllocAdaptor final {
 
   T* allocate(size_t n) {
     // Check if n is too big to allocate.
-    ASSERT((n * sizeof(T)) / sizeof(T) == n);
+    TC_ASSERT_EQ((n * sizeof(T)) / sizeof(T), n);
     return static_cast<T*>(Alloc::Allocate(n * sizeof(T)));
   }
   void deallocate(T* p, size_t n) { Alloc::Free(p, n * sizeof(T)); }
@@ -97,6 +97,7 @@ struct DeallocationSampleRecord {
   int cpu_id = -1;
   int vcpu_id = -1;
   int l3_id = -1;
+  int numa_id = -1;
   pid_t thread_id = 0;
 
   template <typename H>
@@ -120,18 +121,21 @@ struct DeallocationSampleRecord {
 struct CpuThreadMatchingStatus {
   constexpr CpuThreadMatchingStatus(bool physical_cpu_matched,
                                     bool virtual_cpu_matched, bool l3_matched,
-                                    bool thread_matched)
+                                    bool numa_matched, bool thread_matched)
       : physical_cpu_matched(physical_cpu_matched),
         virtual_cpu_matched(virtual_cpu_matched),
         l3_matched(l3_matched),
+        numa_matched(numa_matched),
         thread_matched(thread_matched),
-        value((static_cast<int>(physical_cpu_matched) << 3) |
-              (static_cast<int>(virtual_cpu_matched) << 2) |
-              (static_cast<int>(l3_matched) << 1) |
+        value((static_cast<int>(physical_cpu_matched) << 4) |
+              (static_cast<int>(virtual_cpu_matched) << 3) |
+              (static_cast<int>(l3_matched) << 2) |
+              (static_cast<int>(numa_matched) << 1) |
               static_cast<int>(thread_matched)) {}
   bool physical_cpu_matched;
   bool virtual_cpu_matched;
   bool l3_matched;
+  bool numa_matched;
   bool thread_matched;
   int value;
 };
@@ -162,100 +166,135 @@ int GetL3Id(int cpu_id) {
              : -1;
 }
 
+int GetNumaId(int cpu_id) {
+  return cpu_id >= 0
+             ? tcmalloc_internal::tc_globals.numa_topology().GetCpuPartition(
+                   cpu_id)
+             : -1;
+}
+
 constexpr std::pair<CpuThreadMatchingStatus, RpcMatchingStatus> kAllCases[] = {
-    {CpuThreadMatchingStatus(false, false, false, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, false, false, true),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, false, true, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, false, true, true),
-     RpcMatchingStatus(0, 0)},
+    // clang-format off
+    {CpuThreadMatchingStatus(false, false, false, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, false, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, false, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, false, true, true), RpcMatchingStatus(0, 0)},
 
-    {CpuThreadMatchingStatus(false, false, false, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, false, false, true),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, false, true, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, false, true, true),
-     RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, false, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, false, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, false, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, false, true, true), RpcMatchingStatus(1, 2)},
 
-    {CpuThreadMatchingStatus(false, false, false, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, false, false, true),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, false, true, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, false, true, true),
-     RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, false, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, false, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, false, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, false, true, true), RpcMatchingStatus(1, 1)},
 
-    {CpuThreadMatchingStatus(false, true, false, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, true, false, true),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, true, true, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(false, true, true, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, true, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, true, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, true, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, false, true, true, true), RpcMatchingStatus(0, 0)},
 
-    {CpuThreadMatchingStatus(false, true, false, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, true, false, true),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, true, true, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(false, true, true, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, true, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, true, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, true, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, false, true, true, true), RpcMatchingStatus(1, 2)},
 
-    {CpuThreadMatchingStatus(false, true, false, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, true, false, true),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, true, true, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(false, true, true, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, true, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, true, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, true, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, false, true, true, true), RpcMatchingStatus(1, 1)},
 
-    {CpuThreadMatchingStatus(true, false, false, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, false, false, true),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, false, true, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, false, true, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, false, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, false, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, false, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, false, true, true), RpcMatchingStatus(0, 0)},
 
-    {CpuThreadMatchingStatus(true, false, false, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, false, false, true),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, false, true, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, false, true, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, false, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, false, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, false, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, false, true, true), RpcMatchingStatus(1, 2)},
 
-    {CpuThreadMatchingStatus(true, false, false, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, false, false, true),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, false, true, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, false, true, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, false, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, false, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, false, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, false, true, true), RpcMatchingStatus(1, 1)},
 
-    {CpuThreadMatchingStatus(true, true, false, false),
-     RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, true, false, true), RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, true, true, false), RpcMatchingStatus(0, 0)},
-    {CpuThreadMatchingStatus(true, true, true, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, true, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, true, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, true, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(false, true, true, true, true), RpcMatchingStatus(0, 0)},
 
-    {CpuThreadMatchingStatus(true, true, false, false),
-     RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, true, false, true), RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, true, true, false), RpcMatchingStatus(1, 2)},
-    {CpuThreadMatchingStatus(true, true, true, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, true, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, true, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, true, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(false, true, true, true, true), RpcMatchingStatus(1, 2)},
 
-    {CpuThreadMatchingStatus(true, true, false, false),
-     RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, true, false, true), RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, true, true, false), RpcMatchingStatus(1, 1)},
-    {CpuThreadMatchingStatus(true, true, true, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, true, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, true, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, true, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(false, true, true, true, true), RpcMatchingStatus(1, 1)},
 
+    {CpuThreadMatchingStatus(true, false, false, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, false, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, false, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, false, true, true), RpcMatchingStatus(0, 0)},
+
+    {CpuThreadMatchingStatus(true, false, false, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, false, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, false, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, false, true, true), RpcMatchingStatus(1, 2)},
+
+    {CpuThreadMatchingStatus(true, false, false, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, false, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, false, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, false, true, true), RpcMatchingStatus(1, 1)},
+
+    {CpuThreadMatchingStatus(true, false, true, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, true, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, true, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, false, true, true, true), RpcMatchingStatus(0, 0)},
+
+    {CpuThreadMatchingStatus(true, false, true, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, true, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, true, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, false, true, true, true), RpcMatchingStatus(1, 2)},
+
+    {CpuThreadMatchingStatus(true, false, true, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, true, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, true, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, false, true, true, true), RpcMatchingStatus(1, 1)},
+
+    {CpuThreadMatchingStatus(true, true, false, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, false, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, false, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, false, true, true), RpcMatchingStatus(0, 0)},
+
+    {CpuThreadMatchingStatus(true, true, false, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, false, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, false, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, false, true, true), RpcMatchingStatus(1, 2)},
+
+    {CpuThreadMatchingStatus(true, true, false, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, false, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, false, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, false, true, true), RpcMatchingStatus(1, 1)},
+
+    {CpuThreadMatchingStatus(true, true, true, false, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, true, false, true), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, true, true, false), RpcMatchingStatus(0, 0)},
+    {CpuThreadMatchingStatus(true, true, true, true, true), RpcMatchingStatus(0, 0)},
+
+    {CpuThreadMatchingStatus(true, true, true, false, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, true, false, true), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, true, true, false), RpcMatchingStatus(1, 2)},
+    {CpuThreadMatchingStatus(true, true, true, true, true), RpcMatchingStatus(1, 2)},
+
+    {CpuThreadMatchingStatus(true, true, true, false, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, true, false, true), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, true, true, false), RpcMatchingStatus(1, 1)},
+    {CpuThreadMatchingStatus(true, true, true, true, true), RpcMatchingStatus(1, 1)},
+    // clang-format on
 };
 }  // namespace
 
@@ -281,7 +320,7 @@ class DeallocationProfiler {
       LowLevelArenaReference() {
         AllocationGuardSpinLockHolder h(&arena_lock_);
         if ((refcount_++) == 0) {
-          CHECK_CONDITION(arena_ == nullptr);
+          TC_CHECK_EQ(arena_, nullptr);
           arena_ = absl::base_internal::LowLevelAlloc::NewArena(0);
         }
       }
@@ -289,8 +328,7 @@ class DeallocationProfiler {
       ~LowLevelArenaReference() {
         AllocationGuardSpinLockHolder h(&arena_lock_);
         if ((--refcount_) == 0) {
-          CHECK_CONDITION(
-              absl::base_internal::LowLevelAlloc::DeleteArena(arena_));
+          TC_CHECK(absl::base_internal::LowLevelAlloc::DeleteArena(arena_));
           arena_ = nullptr;
         }
       }
@@ -445,8 +483,10 @@ class DeallocationProfiler {
     // TODO(mmaas): Do we need to worry about b/65384231 anymore?
     allocation.creation_time = stack_trace.allocation_time;
     allocation.cpu_id = tcmalloc_internal::subtle::percpu::GetCurrentCpu();
-    allocation.vcpu_id = tcmalloc_internal::subtle::percpu::VirtualRseqCpuId();
+    allocation.vcpu_id =
+        tcmalloc_internal::subtle::percpu::GetCurrentVirtualCpuUnsafe();
     allocation.l3_id = GetL3Id(allocation.cpu_id);
+    allocation.numa_id = GetNumaId(allocation.cpu_id);
     allocation.thread_id = absl::base_internal::GetTID();
     // We divide by the requested size to obtain the number of allocations.
     // TODO(b/248332543): Consider using AllocatedBytes from sampler.h.
@@ -472,8 +512,9 @@ class DeallocationProfiler {
     deallocation.creation_time = absl::Now();
     deallocation.cpu_id = tcmalloc_internal::subtle::percpu::GetCurrentCpu();
     deallocation.vcpu_id =
-        tcmalloc_internal::subtle::percpu::VirtualRseqCpuId();
+        tcmalloc_internal::subtle::percpu::GetCurrentVirtualCpuUnsafe();
     deallocation.l3_id = GetL3Id(deallocation.cpu_id);
+    deallocation.numa_id = GetNumaId(deallocation.cpu_id);
     deallocation.thread_id = absl::base_internal::GetTID();
     deallocation.depth =
         absl::GetStackTrace(deallocation.stack, kMaxStackDepth, 1);
@@ -501,7 +542,7 @@ void DeallocationProfilerList::Remove(DeallocationProfiler* profiler) {
   DeallocationProfiler** link = &first_;
   DeallocationProfiler* cur = first_;
   while (cur != profiler) {
-    CHECK_CONDITION(cur != nullptr);
+    TC_CHECK_NE(cur, nullptr);
     link = &cur->next_;
     cur = cur->next_;
   }
@@ -558,6 +599,7 @@ void DeallocationProfiler::DeallocationStackTraceTable::AddTrace(
       CpuThreadMatchingStatus(alloc_trace.cpu_id == dealloc_trace.cpu_id,
                               alloc_trace.vcpu_id == dealloc_trace.vcpu_id,
                               alloc_trace.l3_id == dealloc_trace.l3_id,
+                              alloc_trace.numa_id == dealloc_trace.numa_id,
                               alloc_trace.thread_id == dealloc_trace.thread_id);
 
   // Initialize a default rpc matched status.
@@ -573,7 +615,7 @@ void DeallocationProfiler::DeallocationStackTraceTable::AddTrace(
   double life_time_ns = absl::ToDoubleNanoseconds(life_time);
 
   // Update mean and variance using Welford’s online algorithm.
-  ASSERT(index < ABSL_ARRAYSIZE(v.counts));
+  TC_ASSERT_LT(index, ABSL_ARRAYSIZE(v.counts));
 
   double old_mean_ns = v.mean_life_times_ns[index];
   v.mean_life_times_ns[index] +=
@@ -641,6 +683,8 @@ void DeallocationProfiler::DeallocationStackTraceTable::Iterate(
             matching_case.first.virtual_cpu_matched;
         sample.allocator_deallocator_l3_matched =
             matching_case.first.l3_matched;
+        sample.allocator_deallocator_numa_matched =
+            matching_case.first.numa_matched;
         sample.allocator_deallocator_thread_matched =
             matching_case.first.thread_matched;
       }

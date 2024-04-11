@@ -60,10 +60,6 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
   // either case we'll record nothing in the loop below.
   partition_to_nodes[NodeToPartition(0, num_partitions)] |= 1 << 0;
 
-  // If we only compiled in support for one partition then we're trivially
-  // done; NUMA awareness is unavailable.
-  if (num_partitions == 1) return false;
-
   // We rely on rseq to quickly obtain a CPU ID & lookup the appropriate
   // partition in NumaTopology::GetCurrentPartition(). If rseq is unavailable,
   // disable NUMA awareness.
@@ -80,9 +76,12 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
   // CPU 0 added above.
   const char* e =
       tcmalloc::tcmalloc_internal::thread_safe_getenv("TCMALLOC_NUMA_AWARE");
+  bool enabled = true;
   if (e == nullptr) {
     // Enable NUMA awareness iff default_want_numa_aware().
-    if (!default_want_numa_aware()) return false;
+    if (!default_want_numa_aware()) {
+      enabled = false;
+    }
   } else if (!strcmp(e, "no-binding")) {
     // Enable NUMA awareness with no memory binding behavior.
     *bind_mode = NumaBindMode::kNone;
@@ -94,9 +93,9 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
     *bind_mode = NumaBindMode::kStrict;
   } else if (!strcmp(e, "0")) {
     // Disable NUMA awareness.
-    return false;
+    enabled = false;
   } else {
-    Crash(kCrash, __FILE__, __LINE__, "bad TCMALLOC_NUMA_AWARE env var", e);
+    TC_BUG("bad TCMALLOC_NUMA_AWARE env var '%s'", e);
   }
 
   // The cpu_to_scaled_partition array has a fixed size so that we can
@@ -105,7 +104,7 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
   // sufficient, but sanity check that indexing it by CPU number shouldn't
   // exceed its bounds.
   int num_cpus = NumCPUs();
-  CHECK_CONDITION(num_cpus <= CPU_SETSIZE);
+  TC_CHECK_LE(num_cpus, CPU_SETSIZE);
 
   // We could just always report that we're NUMA aware, but if a NUMA-aware
   // binary runs on a system that doesn't include multiple NUMA nodes then our
@@ -120,7 +119,7 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
     if (fd == -1) {
       // We expect to encounter ENOENT once node surpasses the actual number of
       // nodes present in the system. Any other error is a problem.
-      CHECK_CONDITION(errno == ENOENT);
+      TC_CHECK_EQ(errno, ENOENT);
       break;
     }
 
@@ -143,7 +142,7 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
     // We are on the same side of an airtight hatchway as the kernel, but we
     // want to know if we can no longer parse the values the kernel is
     // providing.
-    CHECK_CONDITION(node_cpus.has_value());
+    TC_CHECK(node_cpus.has_value());
 
     // Assign local CPUs to the appropriate partition.
     for (size_t cpu = 0; cpu < CPU_SETSIZE; cpu++) {
@@ -161,7 +160,7 @@ bool InitNumaTopology(size_t cpu_to_scaled_partition[CPU_SETSIZE],
     signal_safe_close(fd);
   }
 
-  return numa_aware;
+  return enabled && numa_aware;
 }
 
 }  // namespace tcmalloc_internal

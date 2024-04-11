@@ -1,12 +1,16 @@
+use redb::TableDefinition;
+
 use crate::utils::dirs;
-use rocksdb::MultiThreaded;
-use std::sync::{Arc, OnceLock};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
 
 /// storage is a wrapper or called a facade for the rocksdb
 /// Maybe provide a facade for a kv storage is a good idea?
 pub struct Storage {
-    instance: rocksdb::TransactionDB<MultiThreaded>,
-    path: String,
+    instance: redb::Database,
 }
 
 impl Storage {
@@ -15,22 +19,26 @@ impl Storage {
 
         STORAGE.get_or_init(|| {
             let path = dirs::storage_path().unwrap().to_str().unwrap().to_string();
-            let instance = rocksdb::TransactionDB::<MultiThreaded>::open_default(&path).unwrap();
-            Arc::new(Storage { instance, path })
+            let path = PathBuf::from(&path);
+            let instance: redb::Database = if path.exists() && !path.is_dir() {
+                redb::Database::open(&path).unwrap()
+            } else {
+                if path.exists() && path.is_dir() {
+                    fs::remove_dir(&path).unwrap();
+                }
+                let db = redb::Database::create(&path).unwrap();
+                const TABLE: TableDefinition<&[u8], &[u8]> = TableDefinition::new("clash-nyanpasu");
+                // Create table
+                let write_txn = db.begin_write().unwrap();
+                write_txn.open_table(TABLE).unwrap();
+                write_txn.commit().unwrap();
+                db
+            };
+            Arc::new(Storage { instance })
         })
     }
 
-    pub fn get_instance(&self) -> &rocksdb::TransactionDB<MultiThreaded> {
+    pub fn get_instance(&self) -> &redb::Database {
         &self.instance
-    }
-
-    pub fn destroy(&self) -> Result<(), rocksdb::Error> {
-        rocksdb::DB::destroy(&rocksdb::Options::default(), &self.path)
-    }
-}
-
-impl Drop for Storage {
-    fn drop(&mut self) {
-        self.destroy().unwrap();
     }
 }

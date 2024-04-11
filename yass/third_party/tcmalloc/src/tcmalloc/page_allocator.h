@@ -90,8 +90,8 @@ class PageAllocator {
   void set_limit(size_t limit, LimitKind limit_kind)
       ABSL_LOCKS_EXCLUDED(pageheap_lock);
   int64_t limit(LimitKind limit_kind) const ABSL_LOCKS_EXCLUDED(pageheap_lock) {
-    ASSERT(limit_kind < kNumLimits);
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
+    TC_ASSERT_LT(limit_kind, kNumLimits);
+    PageHeapSpinLockHolder h;
     return limits_[limit_kind];
   }
 
@@ -137,7 +137,8 @@ class PageAllocator {
 
   size_t active_numa_partitions() const;
 
-  static constexpr size_t kNumHeaps = kNumaPartitions + 2;
+  static constexpr size_t kNumHeaps =
+      kNumaPartitions + 2 + (kSelSanPresent ? 1 : 0);
 
   union Choices {
     Choices() : dummy(0) {}
@@ -148,6 +149,7 @@ class PageAllocator {
   } choices_[kNumHeaps];
   std::array<Interface*, kNumaPartitions> normal_impl_;
   Interface* sampled_impl_;
+  Interface* selsan_impl_ = nullptr;
   Interface* cold_impl_;
   Algorithm alg_;
   bool has_cold_impl_;
@@ -178,7 +180,7 @@ class PageAllocator {
 
 inline PageAllocator::Interface* PageAllocator::impl(MemoryTag tag) const {
   if constexpr (huge_page_allocator_internal::kUnconditionalHPAA) {
-    ASSERT(alg_ == HPAA);
+    TC_ASSERT_EQ(alg_, HPAA);
   }
 
   switch (tag) {
@@ -188,6 +190,8 @@ inline PageAllocator::Interface* PageAllocator::impl(MemoryTag tag) const {
       return normal_impl_[1];
     case MemoryTag::kSampled:
       return sampled_impl_;
+    case MemoryTag::kSelSan:
+      return selsan_impl_;
     case MemoryTag::kCold:
       return cold_impl_;
     default:
@@ -218,6 +222,9 @@ inline BackingStats PageAllocator::stats() const {
     ret += normal_impl_[partition]->stats();
   }
   ret += sampled_impl_->stats();
+  if (selsan_impl_) {
+    ret += selsan_impl_->stats();
+  }
   if (has_cold_impl_) {
     ret += cold_impl_->stats();
   }
@@ -299,7 +306,7 @@ inline void PageAllocator::PrintInPbtxt(PbtxtRegion* region, MemoryTag tag) {
 }
 
 inline void PageAllocator::set_limit(size_t limit, LimitKind limit_kind) {
-  AllocationGuardSpinLockHolder h(&pageheap_lock);
+  PageHeapSpinLockHolder h;
   limits_[limit_kind] = limit;
   if (limits_[kHard] < limits_[kSoft]) {
     // Soft limit can not be higher than hard limit.
@@ -310,15 +317,15 @@ inline void PageAllocator::set_limit(size_t limit, LimitKind limit_kind) {
 }
 
 inline int64_t PageAllocator::limit_hits(LimitKind limit_kind) const {
-  ASSERT(limit_kind < kNumLimits);
-  AllocationGuardSpinLockHolder h(&pageheap_lock);
+  TC_ASSERT_LT(limit_kind, kNumLimits);
+  PageHeapSpinLockHolder l;
   return limit_hits_[limit_kind];
 }
 
 inline int64_t PageAllocator::successful_shrinks_after_limit_hit(
     LimitKind limit_kind) const {
-  ASSERT(limit_kind < kNumLimits);
-  AllocationGuardSpinLockHolder h(&pageheap_lock);
+  TC_ASSERT_LT(limit_kind, kNumLimits);
+  PageHeapSpinLockHolder l;
   return successful_shrinks_after_limit_hit_[limit_kind];
 }
 

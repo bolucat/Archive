@@ -1,3 +1,4 @@
+
 // Copyright 2019 The TCMalloc Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +34,7 @@
 #include "tcmalloc/common.h"
 #include "tcmalloc/hinted_tracker_lists.h"
 #include "tcmalloc/huge_cache.h"
+#include "tcmalloc/huge_page_subrelease.h"
 #include "tcmalloc/huge_pages.h"
 #include "tcmalloc/internal/clock.h"
 #include "tcmalloc/internal/config.h"
@@ -49,737 +51,6 @@ GOOGLE_MALLOC_SECTION_BEGIN
 namespace tcmalloc {
 namespace tcmalloc_internal {
 
-// This and the following classes implement the adaptive hugepage subrelease
-// mechanism and realized fragmentation metric described in "Adaptive Hugepage
-// Subrelease for Non-moving Memory Allocators in Warehouse-Scale Computers"
-// (ISMM 2021).
-
-// Tracks correctness of skipped subrelease decisions over time.
-template <size_t kEpochs = 16>
-class SkippedSubreleaseCorrectnessTracker {
- public:
-  struct SkippedSubreleaseDecision {
-    Length pages;  // Number of pages we skipped subreleasing.
-    size_t count;  // Number of times we skipped a subrelease.
-
-    SkippedSubreleaseDecision() : pages(0), count(0) {}
-    explicit SkippedSubreleaseDecision(Length pages) : pages(pages), count(1) {}
-    explicit SkippedSubreleaseDecision(Length pages, size_t count)
-        : pages(pages), count(count) {}
-
-    SkippedSubreleaseDecision& operator+=(SkippedSubreleaseDecision rhs) {
-      pages += rhs.pages;
-      count += rhs.count;
-      return *this;
-    }
-
-    static SkippedSubreleaseDecision Zero() {
-      return SkippedSubreleaseDecision();
-    }
-  };
-
-  explicit constexpr SkippedSubreleaseCorrectnessTracker(Clock clock,
-                                                         absl::Duration w)
-      : window_(w),
-        epoch_length_(window_ / kEpochs),
-        last_confirmed_peak_(0),
-        tracker_(clock, w) {}
-
-  // Not copyable or movable
-  SkippedSubreleaseCorrectnessTracker(
-      const SkippedSubreleaseCorrectnessTracker&) = delete;
-  SkippedSubreleaseCorrectnessTracker& operator=(
-      const SkippedSubreleaseCorrectnessTracker&) = delete;
-
-  void ReportSkippedSubreleasePages(
-      Length skipped_pages, Length peak_pages,
-      absl::Duration expected_time_until_next_peak) {
-    total_skipped_ += SkippedSubreleaseDecision(skipped_pages);
-    pending_skipped_ += SkippedSubreleaseDecision(skipped_pages);
-
-    SkippedSubreleaseUpdate update;
-    update.decision = SkippedSubreleaseDecision(skipped_pages);
-    update.num_pages_at_decision = peak_pages;
-    update.correctness_interval_epochs =
-        expected_time_until_next_peak / epoch_length_;
-    tracker_.Report(update);
-  }
-
-  void ReportUpdatedPeak(Length current_peak) {
-    // Record this peak for the current epoch (so we don't double-count correct
-    // predictions later) and advance the tracker.
-    SkippedSubreleaseUpdate update;
-    update.confirmed_peak = current_peak;
-    if (tracker_.Report(update)) {
-      // Also keep track of the largest peak we have confirmed this epoch.
-      last_confirmed_peak_ = Length(0);
-    }
-
-    // Recompute currently pending decisions.
-    pending_skipped_ = SkippedSubreleaseDecision::Zero();
-
-    Length largest_peak_already_confirmed = last_confirmed_peak_;
-
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const SkippedSubreleaseEntry& e) {
-          // Do not clear any decisions in the current epoch.
-          if (offset == 0) {
-            return;
-          }
-
-          if (e.decisions.count > 0 &&
-              e.max_num_pages_at_decision > largest_peak_already_confirmed &&
-              offset <= e.correctness_interval_epochs) {
-            if (e.max_num_pages_at_decision <= current_peak) {
-              // We can confirm a subrelease decision as correct and it had not
-              // been confirmed correct by an earlier peak yet.
-              correctly_skipped_ += e.decisions;
-            } else {
-              pending_skipped_ += e.decisions;
-            }
-          }
-
-          // Did we clear any earlier decisions based on a peak in this epoch?
-          // Keep track of the peak, so we do not clear them again.
-          largest_peak_already_confirmed =
-              std::max(largest_peak_already_confirmed, e.max_confirmed_peak);
-        },
-        -1);
-
-    last_confirmed_peak_ = std::max(last_confirmed_peak_, current_peak);
-  }
-
-  inline SkippedSubreleaseDecision total_skipped() const {
-    return total_skipped_;
-  }
-
-  inline SkippedSubreleaseDecision correctly_skipped() const {
-    return correctly_skipped_;
-  }
-
-  inline SkippedSubreleaseDecision pending_skipped() const {
-    return pending_skipped_;
-  }
-
- private:
-  struct SkippedSubreleaseUpdate {
-    // A subrelease decision that was made at this time step: How much did we
-    // decide not to release?
-    SkippedSubreleaseDecision decision;
-
-    // What does our future demand have to be for this to be correct? If there
-    // were multiple subrelease decisions in the same epoch, use the max.
-    Length num_pages_at_decision;
-
-    // How long from the time of the decision do we have before the decision
-    // will be determined incorrect?
-    int64_t correctness_interval_epochs = 0;
-
-    // At this time step, we confirmed a demand peak at this level, which means
-    // all subrelease decisions in earlier time steps that had peak_demand_pages
-    // <= this confirmed_peak were confirmed correct and don't need to be
-    // considered again in the future.
-    Length confirmed_peak;
-  };
-
-  struct SkippedSubreleaseEntry {
-    SkippedSubreleaseDecision decisions = SkippedSubreleaseDecision::Zero();
-    Length max_num_pages_at_decision;
-    int64_t correctness_interval_epochs = 0;
-    Length max_confirmed_peak;
-
-    static SkippedSubreleaseEntry Nil() { return SkippedSubreleaseEntry(); }
-
-    void Report(SkippedSubreleaseUpdate e) {
-      decisions += e.decision;
-      correctness_interval_epochs =
-          std::max(correctness_interval_epochs, e.correctness_interval_epochs);
-      max_num_pages_at_decision =
-          std::max(max_num_pages_at_decision, e.num_pages_at_decision);
-      max_confirmed_peak = std::max(max_confirmed_peak, e.confirmed_peak);
-    }
-  };
-
-  const absl::Duration window_;
-  const absl::Duration epoch_length_;
-
-  // The largest peak we processed this epoch. This is required to avoid us
-  // double-counting correctly predicted decisions.
-  Length last_confirmed_peak_;
-
-  SkippedSubreleaseDecision total_skipped_;
-  SkippedSubreleaseDecision correctly_skipped_;
-  SkippedSubreleaseDecision pending_skipped_;
-
-  TimeSeriesTracker<SkippedSubreleaseEntry, SkippedSubreleaseUpdate, kEpochs>
-      tracker_;
-};
-
-struct SkipSubreleaseIntervals {
-  // Interval that locates recent demand peak.
-  absl::Duration peak_interval;
-  // Interval that locates recent short-term demand fluctuation.
-  absl::Duration short_interval;
-  // Interval that locates recent long-term demand trend.
-  absl::Duration long_interval;
-  // Checks if the peak interval is set.
-  bool IsPeakIntervalSet() const {
-    return peak_interval != absl::ZeroDuration();
-  }
-  // Checks if the skip subrelease feature is enabled.
-  bool SkipSubreleaseEnabled() const {
-    if (peak_interval != absl::ZeroDuration() ||
-        short_interval != absl::ZeroDuration() ||
-        long_interval != absl::ZeroDuration()) {
-      return true;
-    }
-    return false;
-  }
-};
-
-struct SubreleaseStats {
-  Length total_pages_subreleased;  // cumulative since startup
-  Length total_partial_alloc_pages_subreleased;  // cumulative since startup
-  Length num_pages_subreleased;
-  Length num_partial_alloc_pages_subreleased;
-  HugeLength total_hugepages_broken{NHugePages(0)};  // cumulative since startup
-  HugeLength num_hugepages_broken{NHugePages(0)};
-
-  bool is_limit_hit = false;
-  // Keep these limit-related stats cumulative since startup only
-  Length total_pages_subreleased_due_to_limit;
-  HugeLength total_hugepages_broken_due_to_limit{NHugePages(0)};
-
-  void reset() {
-    total_pages_subreleased += num_pages_subreleased;
-    total_partial_alloc_pages_subreleased +=
-        num_partial_alloc_pages_subreleased;
-    total_hugepages_broken += num_hugepages_broken;
-    num_pages_subreleased = Length(0);
-    num_partial_alloc_pages_subreleased = Length(0);
-    num_hugepages_broken = NHugePages(0);
-  }
-
-  // Must be called at the beginning of each subrelease request
-  void set_limit_hit(bool value) { is_limit_hit = value; }
-
-  // This only has a well-defined meaning within ReleaseCandidates where
-  // set_limit_hit() has been called earlier. Do not use anywhere else.
-  bool limit_hit() { return is_limit_hit; }
-};
-
-// Track filler statistics over a time window.
-template <size_t kEpochs = 16>
-class FillerStatsTracker {
- public:
-  enum Type {
-    kRegular,
-    kSparse = kRegular,
-    kDense,
-    kDonated,
-    kPartialReleased,
-    kReleased,
-    kNumTypes
-  };
-
-  struct FillerStats {
-    Length num_pages;
-    Length free_pages;
-    Length unmapped_pages;
-    Length used_pages_in_subreleased_huge_pages;
-    HugeLength huge_pages[kNumTypes];
-    Length num_pages_subreleased;
-    Length num_partial_alloc_pages_subreleased;
-    HugeLength num_hugepages_broken = NHugePages(0);
-
-    HugeLength total_huge_pages() const {
-      HugeLength total_huge_pages;
-      for (int i = 0; i < kNumTypes; i++) {
-        total_huge_pages += huge_pages[i];
-      }
-      return total_huge_pages;
-    }
-  };
-
-  struct NumberOfFreePages {
-    Length free;
-    Length free_backed;
-  };
-
-  explicit constexpr FillerStatsTracker(Clock clock, absl::Duration w,
-                                        absl::Duration summary_interval)
-      : summary_interval_(summary_interval),
-        window_(w),
-        epoch_length_(window_ / kEpochs),
-        tracker_(clock, w),
-        skipped_subrelease_correctness_(clock, w) {
-    // The summary_interval is used in two trackers: FillerStatsTracker for
-    // evaluating realized fragmentation, and
-    // SkippedSubreleaseCorrectnessTracker for evaluating the correctness of
-    // skipped subrelease. Here we check the length of the two trackers are
-    // sufficient for the evaluation.
-    ASSERT(summary_interval <= w);
-  }
-
-  // Not copyable or movable
-  FillerStatsTracker(const FillerStatsTracker&) = delete;
-  FillerStatsTracker& operator=(const FillerStatsTracker&) = delete;
-
-  void Report(const FillerStats& stats) {
-    if (ABSL_PREDICT_FALSE(tracker_.Report(stats))) {
-      if (ABSL_PREDICT_FALSE(pending_skipped().count > 0)) {
-        // Consider the peak within the just completed epoch to confirm the
-        // correctness of any recent subrelease decisions.
-        skipped_subrelease_correctness_.ReportUpdatedPeak(std::max(
-            stats.num_pages,
-            tracker_.GetEpochAtOffset(1).stats[kStatsAtMaxDemand].num_pages));
-      }
-    }
-  }
-
-  void Print(Printer* out) const;
-  void PrintInPbtxt(PbtxtRegion* hpaa) const;
-
-  // Calculates recent peaks for skipping subrelease decisions. If our allocated
-  // memory is below the demand peak within the last peak_interval, we stop
-  // subreleasing. If our demand is going above that peak again within another
-  // realized fragemenation interval, we report that we made the correct
-  // decision.
-  Length GetRecentPeak(absl::Duration peak_interval) {
-    last_skip_subrelease_intervals_.peak_interval =
-        std::min(peak_interval, epoch_length_ * kEpochs);
-    Length max_demand_pages;
-
-    int64_t num_epochs =
-        std::min<int64_t>(peak_interval / epoch_length_, kEpochs);
-
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-          if (!e.empty()) {
-            // Identify the maximum number of demand pages we have seen within
-            // the time interval.
-            if (e.stats[kStatsAtMaxDemand].num_pages > max_demand_pages) {
-              max_demand_pages = e.stats[kStatsAtMaxDemand].num_pages;
-            }
-          }
-        },
-        num_epochs);
-
-    return max_demand_pages;
-  }
-
-  // Calculates demand requirements for skip subrelease: HugePageFiller would
-  // not subrelease if it has less pages than (or equal to) the required
-  // amount. We report that the skipping is correct if future demand is going to
-  // be above the required amount within another realized fragemenation
-  // interval. The demand requirement is the sum of short-term demand
-  // fluctuation peak and long-term demand trend. The former is the largest max
-  // and min demand difference within short_interval, and the latter is the
-  // largest min demand within long_interval. When both set, short_interval
-  // should be (significantly) shorter or equal to long_interval to avoid
-  // realized fragmentation caused by non-recent (short-term) demand spikes.
-  Length GetRecentDemand(absl::Duration short_interval,
-                         absl::Duration long_interval) {
-    if (short_interval != absl::ZeroDuration() &&
-        long_interval != absl::ZeroDuration()) {
-      ASSERT(short_interval <= long_interval);
-    }
-    last_skip_subrelease_intervals_.short_interval =
-        std::min(short_interval, epoch_length_ * kEpochs);
-    last_skip_subrelease_intervals_.long_interval =
-        std::min(long_interval, epoch_length_ * kEpochs);
-    Length short_term_fluctuation_pages, long_term_trend_pages;
-    int short_epochs = std::min<int>(short_interval / epoch_length_, kEpochs);
-    int long_epochs = std::min<int>(long_interval / epoch_length_, kEpochs);
-
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-          if (!e.empty()) {
-            Length demand_difference = e.stats[kStatsAtMaxDemand].num_pages -
-                                       e.stats[kStatsAtMinDemand].num_pages;
-            // Identifies the highest demand fluctuation (i.e., difference
-            // between max_demand and min_demand) that we have seen within the
-            // time interval.
-            if (demand_difference > short_term_fluctuation_pages) {
-              short_term_fluctuation_pages = demand_difference;
-            }
-          }
-        },
-        short_epochs);
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-          if (!e.empty()) {
-            // Identifies the long-term demand peak (i.e., largest minimum
-            // demand) that we have seen within the time interval.
-            if (e.stats[kStatsAtMinDemand].num_pages > long_term_trend_pages) {
-              long_term_trend_pages = e.stats[kStatsAtMinDemand].num_pages;
-            }
-          }
-        },
-        long_epochs);
-
-    // Since we are taking the sum of peaks, we can end up with a demand peak
-    // that is larger than the largest peak encountered so far, which could
-    // lead to OOMs. We adjust the peak in that case, by capping it to the
-    // largest peak observed in our time series.
-    Length demand_peak = Length(0);
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-          if (!e.empty()) {
-            if (e.stats[kStatsAtMaxDemand].num_pages > demand_peak) {
-              demand_peak = e.stats[kStatsAtMaxDemand].num_pages;
-            }
-          }
-        },
-        -1);
-
-    return std::min(demand_peak,
-                    short_term_fluctuation_pages + long_term_trend_pages);
-  }
-
-  // Reports a skipped subrelease, which is evaluated by coming peaks within the
-  // realized fragmentation interval. The purpose is these skipped pages would
-  // only create realized fragmentation if peaks in that interval are
-  // smaller than peak_pages.
-  void ReportSkippedSubreleasePages(Length pages, Length peak_pages) {
-    ReportSkippedSubreleasePages(pages, peak_pages, summary_interval_);
-  }
-
-  // Reports a skipped subrelease, which is evaluated by coming peaks within the
-  // given time interval.
-  void ReportSkippedSubreleasePages(Length pages, Length peak_pages,
-                                    absl::Duration next_peak_interval) {
-    if (pages == Length(0)) {
-      return;
-    }
-    last_next_peak_interval_ = next_peak_interval;
-    skipped_subrelease_correctness_.ReportSkippedSubreleasePages(
-        pages, peak_pages, next_peak_interval);
-  }
-
-  inline typename SkippedSubreleaseCorrectnessTracker<
-      kEpochs>::SkippedSubreleaseDecision
-  total_skipped() const {
-    return skipped_subrelease_correctness_.total_skipped();
-  }
-
-  inline typename SkippedSubreleaseCorrectnessTracker<
-      kEpochs>::SkippedSubreleaseDecision
-  correctly_skipped() const {
-    return skipped_subrelease_correctness_.correctly_skipped();
-  }
-
-  inline typename SkippedSubreleaseCorrectnessTracker<
-      kEpochs>::SkippedSubreleaseDecision
-  pending_skipped() const {
-    return skipped_subrelease_correctness_.pending_skipped();
-  }
-
-  // Returns the minimum number of free pages throughout the tracker period.
-  // The first value of the pair is the number of all free pages, the second
-  // value contains only the backed ones.
-  NumberOfFreePages min_free_pages(absl::Duration w) const {
-    NumberOfFreePages mins;
-    mins.free = Length::max();
-    mins.free_backed = Length::max();
-
-    int64_t num_epochs = std::clamp(w / epoch_length_, int64_t{0},
-                                    static_cast<int64_t>(kEpochs));
-
-    tracker_.IterBackwards(
-        [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-          if (!e.empty()) {
-            mins.free = std::min(mins.free, e.min_free_pages);
-            mins.free_backed =
-                std::min(mins.free_backed, e.min_free_backed_pages);
-          }
-        },
-        num_epochs);
-    mins.free = (mins.free == Length::max()) ? Length(0) : mins.free;
-    mins.free_backed =
-        (mins.free_backed == Length::max()) ? Length(0) : mins.free_backed;
-    return mins;
-  }
-
- private:
-  // We collect filler statistics at four "interesting points" within each time
-  // step: at min/max demand of pages and at min/max use of hugepages. This
-  // allows us to approximate the envelope of the different metrics.
-  enum StatsType {
-    kStatsAtMinDemand,
-    kStatsAtMaxDemand,
-    kStatsAtMinHugePages,
-    kStatsAtMaxHugePages,
-    kNumStatsTypes
-  };
-
-  struct FillerStatsEntry {
-    // Collect filler stats at "interesting points" (minimum/maximum page demand
-    // and at minimum/maximum usage of huge pages).
-    FillerStats stats[kNumStatsTypes] = {};
-    static constexpr Length kDefaultValue = Length::max();
-    Length min_free_pages = kDefaultValue;
-    Length min_free_backed_pages = kDefaultValue;
-    Length num_pages_subreleased;
-    Length num_partial_alloc_pages_subreleased;
-    HugeLength num_hugepages_broken = NHugePages(0);
-
-    static FillerStatsEntry Nil() { return FillerStatsEntry(); }
-
-    void Report(const FillerStats& e) {
-      if (empty()) {
-        for (int i = 0; i < kNumStatsTypes; i++) {
-          stats[i] = e;
-        }
-      }
-
-      if (e.num_pages < stats[kStatsAtMinDemand].num_pages) {
-        stats[kStatsAtMinDemand] = e;
-      }
-
-      if (e.num_pages > stats[kStatsAtMaxDemand].num_pages) {
-        stats[kStatsAtMaxDemand] = e;
-      }
-
-      if (e.total_huge_pages() <
-          stats[kStatsAtMinHugePages].total_huge_pages()) {
-        stats[kStatsAtMinHugePages] = e;
-      }
-
-      if (e.total_huge_pages() >
-          stats[kStatsAtMaxHugePages].total_huge_pages()) {
-        stats[kStatsAtMaxHugePages] = e;
-      }
-
-      min_free_pages =
-          std::min(min_free_pages, e.free_pages + e.unmapped_pages);
-      min_free_backed_pages = std::min(min_free_backed_pages, e.free_pages);
-
-      // Subrelease stats
-      num_pages_subreleased += e.num_pages_subreleased;
-      num_partial_alloc_pages_subreleased +=
-          e.num_partial_alloc_pages_subreleased;
-      num_hugepages_broken += e.num_hugepages_broken;
-    }
-
-    bool empty() const { return min_free_pages == kDefaultValue; }
-  };
-
-  // The tracker reports pages that have been free for at least this interval,
-  // as well as peaks within this interval. The interval is also used for
-  // deciding correctness of skipped subreleases by associating past skipping
-  // decisions to peaks within this interval.
-  const absl::Duration summary_interval_;
-
-  const absl::Duration window_;
-  const absl::Duration epoch_length_;
-
-  TimeSeriesTracker<FillerStatsEntry, FillerStats, kEpochs> tracker_;
-  SkippedSubreleaseCorrectnessTracker<kEpochs> skipped_subrelease_correctness_;
-
-  // Records most recent intervals for skipping subreleases, plus expected next
-  // peak_interval for evaluating skipped subreleases. All for reporting and
-  // debugging only.
-  SkipSubreleaseIntervals last_skip_subrelease_intervals_;
-  absl::Duration last_next_peak_interval_;
-};
-
-// Evaluates a/b, avoiding division by zero.
-inline double safe_div(Length a, Length b) {
-  return safe_div(a.raw_num(), b.raw_num());
-}
-
-template <size_t kEpochs>
-void FillerStatsTracker<kEpochs>::Print(Printer* out) const {
-  NumberOfFreePages free_pages = min_free_pages(summary_interval_);
-  out->printf("HugePageFiller: time series over %d min interval\n\n",
-              absl::ToInt64Minutes(summary_interval_));
-
-  // Realized fragmentation is equivalent to backed minimum free pages over a
-  // 5-min interval. It is printed for convenience but not included in pbtxt.
-  out->printf("HugePageFiller: realized fragmentation: %.1f MiB\n",
-              free_pages.free_backed.in_mib());
-  out->printf("HugePageFiller: minimum free pages: %zu (%zu backed)\n",
-              free_pages.free.raw_num(), free_pages.free_backed.raw_num());
-
-  FillerStatsEntry at_peak_demand;
-  FillerStatsEntry at_peak_hps;
-
-  tracker_.IterBackwards(
-      [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-        if (!e.empty()) {
-          if (at_peak_demand.empty() ||
-              at_peak_demand.stats[kStatsAtMaxDemand].num_pages <
-                  e.stats[kStatsAtMaxDemand].num_pages) {
-            at_peak_demand = e;
-          }
-
-          if (at_peak_hps.empty() ||
-              at_peak_hps.stats[kStatsAtMaxHugePages].total_huge_pages() <
-                  e.stats[kStatsAtMaxHugePages].total_huge_pages()) {
-            at_peak_hps = e;
-          }
-        }
-      },
-      summary_interval_ / epoch_length_);
-
-  out->printf(
-      "HugePageFiller: at peak demand: %zu pages (and %zu free, %zu unmapped)\n"
-      "HugePageFiller: at peak demand: %zu hps (%zu regular, %zu donated, "
-      "%zu partial, %zu released)\n",
-      at_peak_demand.stats[kStatsAtMaxDemand].num_pages.raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].free_pages.raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].unmapped_pages.raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].total_huge_pages().raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].huge_pages[kRegular].raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].huge_pages[kDonated].raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand]
-          .huge_pages[kPartialReleased]
-          .raw_num(),
-      at_peak_demand.stats[kStatsAtMaxDemand].huge_pages[kReleased].raw_num());
-
-  out->printf(
-      "HugePageFiller: at peak hps: %zu pages (and %zu free, %zu unmapped)\n"
-      "HugePageFiller: at peak hps: %zu hps (%zu regular, %zu donated, "
-      "%zu partial, %zu released)\n",
-      at_peak_hps.stats[kStatsAtMaxDemand].num_pages.raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].free_pages.raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].unmapped_pages.raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].total_huge_pages().raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].huge_pages[kRegular].raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].huge_pages[kDonated].raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand]
-          .huge_pages[kPartialReleased]
-          .raw_num(),
-      at_peak_hps.stats[kStatsAtMaxDemand].huge_pages[kReleased].raw_num());
-
-  out->printf(
-      "\nHugePageFiller: Since the start of the execution, %zu subreleases (%zu"
-      " pages) were skipped due to either recent (%ds) peaks, or the sum of"
-      " short-term (%ds) fluctuations and long-term (%ds) trends.\n",
-      total_skipped().count, total_skipped().pages.raw_num(),
-      absl::ToInt64Seconds(last_skip_subrelease_intervals_.peak_interval),
-      absl::ToInt64Seconds(last_skip_subrelease_intervals_.short_interval),
-      absl::ToInt64Seconds(last_skip_subrelease_intervals_.long_interval));
-
-  Length skipped_pages = total_skipped().pages - pending_skipped().pages;
-  double correctly_skipped_pages_percentage =
-      safe_div(100.0 * correctly_skipped().pages, skipped_pages);
-
-  size_t skipped_count = total_skipped().count - pending_skipped().count;
-  double correctly_skipped_count_percentage =
-      safe_div(100.0 * correctly_skipped().count, skipped_count);
-
-  out->printf(
-      "HugePageFiller: %.4f%% of decisions confirmed correct, %zu "
-      "pending (%.4f%% of pages, %zu pending), as per anticipated %ds realized "
-      "fragmentation.\n",
-      correctly_skipped_count_percentage, pending_skipped().count,
-      correctly_skipped_pages_percentage, pending_skipped().pages.raw_num(),
-      absl::ToInt64Seconds(last_next_peak_interval_));
-
-  // Print subrelease stats
-  Length total_subreleased;
-  Length total_partial_alloc_pages_subreleased;
-  HugeLength total_broken = NHugePages(0);
-  tracker_.Iter(
-      [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-        total_subreleased += e.num_pages_subreleased;
-        total_partial_alloc_pages_subreleased +=
-            e.num_partial_alloc_pages_subreleased;
-        total_broken += e.num_hugepages_broken;
-      },
-      tracker_.kSkipEmptyEntries);
-  out->printf(
-      "HugePageFiller: Subrelease stats last %d min: total "
-      "%zu pages subreleased (%zu pages from partial allocs), "
-      "%zu hugepages broken\n",
-      static_cast<int64_t>(absl::ToInt64Minutes(window_)),
-      total_subreleased.raw_num(),
-      total_partial_alloc_pages_subreleased.raw_num(), total_broken.raw_num());
-}
-
-template <size_t kEpochs>
-void FillerStatsTracker<kEpochs>::PrintInPbtxt(PbtxtRegion* hpaa) const {
-  {
-    auto skip_subrelease = hpaa->CreateSubRegion("filler_skipped_subrelease");
-    skip_subrelease.PrintI64(
-        "skipped_subrelease_interval_ms",
-        absl::ToInt64Milliseconds(
-            last_skip_subrelease_intervals_.peak_interval));
-    skip_subrelease.PrintI64(
-        "skipped_subrelease_short_interval_ms",
-        absl::ToInt64Milliseconds(
-            last_skip_subrelease_intervals_.short_interval));
-    skip_subrelease.PrintI64(
-        "skipped_subrelease_long_interval_ms",
-        absl::ToInt64Milliseconds(
-            last_skip_subrelease_intervals_.long_interval));
-    skip_subrelease.PrintI64("skipped_subrelease_pages",
-                             total_skipped().pages.raw_num());
-    skip_subrelease.PrintI64("correctly_skipped_subrelease_pages",
-                             correctly_skipped().pages.raw_num());
-    skip_subrelease.PrintI64("pending_skipped_subrelease_pages",
-                             pending_skipped().pages.raw_num());
-    skip_subrelease.PrintI64("skipped_subrelease_count", total_skipped().count);
-    skip_subrelease.PrintI64("correctly_skipped_subrelease_count",
-                             correctly_skipped().count);
-    skip_subrelease.PrintI64("pending_skipped_subrelease_count",
-                             pending_skipped().count);
-    skip_subrelease.PrintI64(
-        "next_peak_interval_ms",
-        absl::ToInt64Milliseconds(last_next_peak_interval_));
-  }
-
-  auto filler_stats = hpaa->CreateSubRegion("filler_stats_timeseries");
-  filler_stats.PrintI64("window_ms", absl::ToInt64Milliseconds(epoch_length_));
-  filler_stats.PrintI64("epochs", kEpochs);
-
-  NumberOfFreePages free_pages = min_free_pages(summary_interval_);
-  filler_stats.PrintI64("min_free_pages_interval_ms",
-                        absl::ToInt64Milliseconds(summary_interval_));
-  filler_stats.PrintI64("min_free_pages", free_pages.free.raw_num());
-  filler_stats.PrintI64("min_free_backed_pages",
-                        free_pages.free_backed.raw_num());
-
-  static const char* labels[kNumStatsTypes] = {
-      "at_minimum_demand", "at_maximum_demand", "at_minimum_huge_pages",
-      "at_maximum_huge_pages"};
-
-  tracker_.Iter(
-      [&](size_t offset, int64_t ts, const FillerStatsEntry& e) {
-        auto region = filler_stats.CreateSubRegion("measurements");
-        region.PrintI64("epoch", offset);
-        region.PrintI64("timestamp_ms",
-                        absl::ToInt64Milliseconds(absl::Nanoseconds(ts)));
-        region.PrintI64("min_free_pages", e.min_free_pages.raw_num());
-        region.PrintI64("min_free_backed_pages",
-                        e.min_free_backed_pages.raw_num());
-        region.PrintI64("num_pages_subreleased",
-                        e.num_pages_subreleased.raw_num());
-        region.PrintI64("num_hugepages_broken",
-                        e.num_hugepages_broken.raw_num());
-        region.PrintI64("partial_alloc_pages_subreleased",
-                        e.num_partial_alloc_pages_subreleased.raw_num());
-        for (int i = 0; i < kNumStatsTypes; i++) {
-          auto m = region.CreateSubRegion(labels[i]);
-          FillerStats stats = e.stats[i];
-          m.PrintI64("num_pages", stats.num_pages.raw_num());
-          m.PrintI64("regular_huge_pages",
-                     stats.huge_pages[kRegular].raw_num());
-          m.PrintI64("donated_huge_pages",
-                     stats.huge_pages[kDonated].raw_num());
-          m.PrintI64("partial_released_huge_pages",
-                     stats.huge_pages[kPartialReleased].raw_num());
-          m.PrintI64("released_huge_pages",
-                     stats.huge_pages[kReleased].raw_num());
-          m.PrintI64("used_pages_in_subreleased_huge_pages",
-                     stats.used_pages_in_subreleased_huge_pages.raw_num());
-        }
-      },
-      tracker_.kSkipEmptyEntries);
-}
-
 inline bool IsDenseSpan(AccessDensityPrediction density) {
   return density == AccessDensityPrediction::kDense;
 }
@@ -791,7 +62,7 @@ inline bool IsDenseSpan(AccessDensityPrediction density) {
 // to support unlocking the page heap lock in a dynamic annotation-friendly way.
 class PageTracker : public TList<PageTracker>::Elem {
  public:
-  PageTracker(HugePage p, uint64_t when, bool was_donated)
+  PageTracker(HugePage p, bool was_donated)
       : location_(p),
         released_count_(0),
         abandoned_count_(0),
@@ -801,8 +72,6 @@ class PageTracker : public TList<PageTracker>::Elem {
         abandoned_(false),
         unbroken_(true),
         free_{} {
-    init_when(when);
-
 #ifndef __ppc64__
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -820,16 +89,6 @@ class PageTracker : public TList<PageTracker>::Elem {
                       2 * ABSL_CACHELINE_SIZE,
                   "location_ should fall within the first two cachelines of "
                   "PageTracker.");
-    static_assert(
-        offsetof(PageTracker, when_numerator_) + sizeof(when_numerator_) <=
-            2 * ABSL_CACHELINE_SIZE,
-        "when_numerator_ should fall within the first two cachelines "
-        "of PageTracker.");
-    static_assert(
-        offsetof(PageTracker, when_denominator_) + sizeof(when_denominator_) <=
-            2 * ABSL_CACHELINE_SIZE,
-        "when_denominator_ should fall within the first two "
-        "cachelines of PageTracker.");
     static_assert(
         offsetof(PageTracker, donated_) + sizeof(donated_) <=
             2 * ABSL_CACHELINE_SIZE,
@@ -888,7 +147,7 @@ class PageTracker : public TList<PageTracker>::Elem {
   // Requires was_donated().
   Length abandoned_count() const { return Length(abandoned_count_); }
   void set_abandoned_count(Length count) {
-    ASSERT(was_donated_);
+    TC_ASSERT(was_donated_);
     abandoned_count_ = count.raw_num();
   }
 
@@ -911,24 +170,12 @@ class PageTracker : public TList<PageTracker>::Elem {
   Length ReleaseFree(MemoryModifyFunction& unback)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(pageheap_lock);
 
-  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large,
-                    PageAgeHistograms* ages) const;
+  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large) const;
   bool HasDenseSpans() const { return has_dense_spans_; }
   void SetHasDenseSpans() { has_dense_spans_ = true; }
 
  private:
-  void init_when(uint64_t w) {
-    const Length before = Length(free_.total_free());
-    when_numerator_ = w * before.raw_num();
-    when_denominator_ = before.raw_num();
-  }
-
   HugePage location_;
-  // We keep track of an average time weighted by Length::raw_num. In order to
-  // avoid doing division on fast path, store the numerator and denominator and
-  // only do the division when we need the average.
-  uint64_t when_numerator_;
-  uint64_t when_denominator_;
 
   // Cached value of released_by_page_.CountBits(0, kPagesPerHugePages)
   //
@@ -968,9 +215,7 @@ class PageTracker : public TList<PageTracker>::Elem {
 
   ABSL_MUST_USE_RESULT bool ReleasePages(PageId p, Length n,
                                          MemoryModifyFunction& unback) {
-    void* ptr = p.start_addr();
-    size_t byte_len = n.in_bytes();
-    bool success = unback(ptr, byte_len);
+    bool success = unback(p, n);
     if (ABSL_PREDICT_TRUE(success)) {
       unbroken_ = false;
     }
@@ -1012,16 +257,20 @@ class HugePageFiller {
  public:
   explicit HugePageFiller(
       HugePageFillerAllocsOption allocs_option, size_t chunks_per_alloc,
-      MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND);
+      MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND,
+      MemoryModifyFunction& unback_without_lock ABSL_ATTRIBUTE_LIFETIME_BOUND);
   HugePageFiller(Clock clock, HugePageFillerAllocsOption allocs_options,
                  size_t chunks_per_alloc,
-                 MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND);
+                 MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND,
+                 MemoryModifyFunction& unback_without_lock
+                     ABSL_ATTRIBUTE_LIFETIME_BOUND);
 
   typedef TrackerType Tracker;
 
   struct TryGetResult {
     TrackerType* pt;
     PageId page;
+    bool from_released;
   };
 
   // Our API is simple, but note that it does not include an unconditional
@@ -1052,7 +301,7 @@ class HugePageFiller {
 
   // Useful statistics
   Length pages_allocated(AccessDensityPrediction type) const {
-    ASSERT(type < AccessDensityPrediction::kPredictionCounts);
+    TC_ASSERT_LT(type, AccessDensityPrediction::kPredictionCounts);
     return pages_allocated_[type];
   }
   Length pages_allocated() const {
@@ -1063,26 +312,28 @@ class HugePageFiller {
   Length unmapped_pages() const { return unmapped_; }
   Length free_pages() const;
   Length used_pages_in_released() const {
-    ASSERT(n_used_released_[AccessDensityPrediction::kSparse] <=
-           regular_alloc_released_[AccessDensityPrediction::kSparse]
-               .size()
-               .in_pages());
-    ASSERT(n_used_released_[AccessDensityPrediction::kDense] <=
-           regular_alloc_released_[AccessDensityPrediction::kDense]
-               .size()
-               .in_pages());
+    TC_ASSERT_LE(n_used_released_[AccessDensityPrediction::kSparse],
+                 regular_alloc_released_[AccessDensityPrediction::kSparse]
+                     .size()
+                     .in_pages());
+    TC_ASSERT_LE(n_used_released_[AccessDensityPrediction::kDense],
+                 regular_alloc_released_[AccessDensityPrediction::kDense]
+                     .size()
+                     .in_pages());
     return n_used_released_[AccessDensityPrediction::kDense] +
            n_used_released_[AccessDensityPrediction::kSparse];
   }
   Length used_pages_in_partial_released() const {
-    ASSERT(n_used_partial_released_[AccessDensityPrediction::kSparse] <=
-           regular_alloc_partial_released_[AccessDensityPrediction::kSparse]
-               .size()
-               .in_pages());
-    ASSERT(n_used_partial_released_[AccessDensityPrediction::kDense] <=
-           regular_alloc_partial_released_[AccessDensityPrediction::kDense]
-               .size()
-               .in_pages());
+    TC_ASSERT_LE(
+        n_used_partial_released_[AccessDensityPrediction::kSparse],
+        regular_alloc_partial_released_[AccessDensityPrediction::kSparse]
+            .size()
+            .in_pages());
+    TC_ASSERT_LE(
+        n_used_partial_released_[AccessDensityPrediction::kDense],
+        regular_alloc_partial_released_[AccessDensityPrediction::kDense]
+            .size()
+            .in_pages());
     return n_used_partial_released_[AccessDensityPrediction::kDense] +
            n_used_partial_released_[AccessDensityPrediction::kSparse];
   }
@@ -1127,8 +378,7 @@ class HugePageFiller {
   static constexpr size_t kCandidatesForReleasingMemory =
       kPagesPerHugePage.raw_num();
 
-  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large,
-                    PageAgeHistograms* ages) const;
+  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large) const;
 
   BackingStats stats() const;
   SubreleaseStats subrelease_stats() const { return subrelease_stats_; }
@@ -1210,8 +460,8 @@ class HugePageFiller {
   // CompareForSubrelease identifies the worse candidate for subrelease, between
   // the choice of huge pages a and b.
   static bool CompareForSubrelease(TrackerType* a, TrackerType* b) {
-    ASSERT(a != nullptr);
-    ASSERT(b != nullptr);
+    TC_ASSERT_NE(a, nullptr);
+    TC_ASSERT_NE(b, nullptr);
 
     if (a->used_pages() < b->used_pages()) return true;
     if (a->used_pages() > b->used_pages()) return false;
@@ -1250,16 +500,18 @@ class HugePageFiller {
 
   // Functionality related to time series tracking.
   void UpdateFillerStatsTracker();
-  using StatsTrackerType = FillerStatsTracker<600>;
+  using StatsTrackerType = SubreleaseStatsTracker<600>;
   StatsTrackerType fillerstats_tracker_;
+  // TODO(b/73749855):  Remove remaining uses of unback_.
   MemoryModifyFunction& unback_;
+  MemoryModifyFunction& unback_without_lock_;
 };
 
 inline typename PageTracker::PageAllocation PageTracker::Get(Length n) {
   size_t index = free_.FindAndMark(n.raw_num());
 
-  ASSERT(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()) ==
-         released_count_);
+  TC_ASSERT_EQ(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()),
+               released_count_);
 
   size_t unbacked = 0;
   // If release_count_ == 0, CountBits will return 0 and ClearRange will be a
@@ -1270,12 +522,12 @@ inline typename PageTracker::PageAllocation PageTracker::Get(Length n) {
   if (ABSL_PREDICT_FALSE(released_count_ > 0)) {
     unbacked = released_by_page_.CountBits(index, n.raw_num());
     released_by_page_.ClearRange(index, n.raw_num());
-    ASSERT(released_count_ >= unbacked);
+    TC_ASSERT_GE(released_count_, unbacked);
     released_count_ -= unbacked;
   }
 
-  ASSERT(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()) ==
-         released_count_);
+  TC_ASSERT_EQ(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()),
+               released_count_);
   return PageAllocation{location_.first_page() + Length(index),
                         Length(unbacked)};
 }
@@ -1283,9 +535,6 @@ inline typename PageTracker::PageAllocation PageTracker::Get(Length n) {
 inline void PageTracker::Put(PageId p, Length n) {
   Length index = p - location_.first_page();
   free_.Unmark(index.raw_num(), n.raw_num());
-
-  when_numerator_ += n.raw_num() * absl::base_internal::CycleClock::Now();
-  when_denominator_ += n.raw_num();
 }
 
 inline Length PageTracker::ReleaseFree(MemoryModifyFunction& unback) {
@@ -1313,7 +562,7 @@ inline Length PageTracker::ReleaseFree(MemoryModifyFunction& unback) {
 
       // In debug builds, verify [free_index, end) is backed.
       size_t length = end - free_index;
-      ASSERT(released_by_page_.CountBits(free_index, length) == 0);
+      TC_ASSERT_EQ(released_by_page_.CountBits(free_index, length), 0);
       PageId p = location_.first_page() + Length(free_index);
 
       if (ABSL_PREDICT_TRUE(ReleasePages(p, Length(length), unback))) {
@@ -1331,20 +580,16 @@ inline Length PageTracker::ReleaseFree(MemoryModifyFunction& unback) {
   }
 
   released_count_ += count;
-  ASSERT(Length(released_count_) <= kPagesPerHugePage);
-  ASSERT(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()) ==
-         released_count_);
-  init_when(absl::base_internal::CycleClock::Now());
+  TC_ASSERT_LE(Length(released_count_), kPagesPerHugePage);
+  TC_ASSERT_EQ(released_by_page_.CountBits(0, kPagesPerHugePage.raw_num()),
+               released_count_);
   return Length(count);
 }
 
 inline void PageTracker::AddSpanStats(SmallSpanStats* small,
-                                      LargeSpanStats* large,
-                                      PageAgeHistograms* ages) const {
+                                      LargeSpanStats* large) const {
   size_t index = 0, n;
 
-  uint64_t w = when_denominator_ == 0 ? when_numerator_
-                                      : when_numerator_ / when_denominator_;
   while (free_.NextFreeRange(index, &index, &n)) {
     bool is_released = released_by_page_.GetBit(index);
     // Find the last bit in the run with the same state (set or cleared) as
@@ -1357,7 +602,7 @@ inline void PageTracker::AddSpanStats(SmallSpanStats* small,
                         : released_by_page_.FindSet(index + 1);
     }
     n = std::min(end - index, n);
-    ASSERT(n > 0);
+    TC_ASSERT_GT(n, 0);
 
     if (n < kMaxPages.raw_num()) {
       if (small != nullptr) {
@@ -1378,9 +623,6 @@ inline void PageTracker::AddSpanStats(SmallSpanStats* small,
       }
     }
 
-    if (ages) {
-      ages->RecordRange(Length(n), is_released, w);
-    }
     index += n;
   }
 }
@@ -1394,28 +636,31 @@ inline Length PageTracker::free_pages() const {
 template <class TrackerType>
 inline HugePageFiller<TrackerType>::HugePageFiller(
     HugePageFillerAllocsOption allocs_option, size_t chunks_per_alloc,
-    MemoryModifyFunction& unback)
+    MemoryModifyFunction& unback, MemoryModifyFunction& unback_without_lock)
     : HugePageFiller(Clock{.now = absl::base_internal::CycleClock::Now,
                            .freq = absl::base_internal::CycleClock::Frequency},
-                     allocs_option, chunks_per_alloc, unback) {}
+                     allocs_option, chunks_per_alloc, unback,
+                     unback_without_lock) {}
 
 // For testing with mock clock
 template <class TrackerType>
 inline HugePageFiller<TrackerType>::HugePageFiller(
     Clock clock, HugePageFillerAllocsOption allocs_option,
-    size_t chunks_per_alloc, MemoryModifyFunction& unback)
+    size_t chunks_per_alloc, MemoryModifyFunction& unback,
+    MemoryModifyFunction& unback_without_lock)
     : chunks_per_alloc_(chunks_per_alloc),
       allocs_for_sparse_and_dense_spans_(allocs_option),
       size_(NHugePages(0)),
       fillerstats_tracker_(clock, absl::Minutes(10), absl::Minutes(5)),
-      unback_(unback) {
-  ASSERT(chunks_per_alloc_ > 0 && chunks_per_alloc_ <= kChunks);
+      unback_(unback),
+      unback_without_lock_(unback_without_lock) {
+  TC_ASSERT(chunks_per_alloc_ > 0 && chunks_per_alloc_ <= kChunks);
 }
 
 template <class TrackerType>
 inline typename HugePageFiller<TrackerType>::TryGetResult
 HugePageFiller<TrackerType>::TryGet(Length n, SpanAllocInfo span_alloc_info) {
-  ASSERT(n > Length(0));
+  TC_ASSERT_GT(n, Length(0));
 
   // How do we choose which hugepage to allocate from (among those with
   // a free range of at least n?) Our goal is to be as space-efficient
@@ -1494,7 +739,7 @@ HugePageFiller<TrackerType>::TryGet(Length n, SpanAllocInfo span_alloc_info) {
   do {
     pt = regular_alloc_[type].GetLeast(ListFor(n, 0));
     if (pt) {
-      ASSERT(!pt->donated());
+      TC_ASSERT(!pt->donated());
       break;
     }
     if (ABSL_PREDICT_TRUE(type == AccessDensityPrediction::kSparse)) {
@@ -1505,17 +750,17 @@ HugePageFiller<TrackerType>::TryGet(Length n, SpanAllocInfo span_alloc_info) {
     }
     pt = regular_alloc_partial_released_[type].GetLeast(ListFor(n, 0));
     if (pt) {
-      ASSERT(!pt->donated());
+      TC_ASSERT(!pt->donated());
       was_released = true;
-      ASSERT(n_used_partial_released_[type] >= pt->used_pages());
+      TC_ASSERT_GE(n_used_partial_released_[type], pt->used_pages());
       n_used_partial_released_[type] -= pt->used_pages();
       break;
     }
     pt = regular_alloc_released_[type].GetLeast(ListFor(n, 0));
     if (pt) {
-      ASSERT(!pt->donated());
+      TC_ASSERT(!pt->donated());
       was_released = true;
-      ASSERT(n_used_released_[type] >= pt->used_pages());
+      TC_ASSERT_GE(n_used_released_[type], pt->used_pages());
       n_used_released_[type] -= pt->used_pages();
       break;
     }
@@ -1523,10 +768,10 @@ HugePageFiller<TrackerType>::TryGet(Length n, SpanAllocInfo span_alloc_info) {
     return {nullptr, PageId{0}};
   } while (false);
   ASSUME(pt != nullptr);
-  ASSERT(pt->longest_free_range() >= n);
+  TC_ASSERT_GE(pt->longest_free_range(), n);
   // type == AccessDensityPrediction::kDense => pt->HasDenseSpans(). This
   // also verifies we do not end up with a donated pt on the kDense path.
-  ASSERT(type == AccessDensityPrediction::kSparse || pt->HasDenseSpans());
+  TC_ASSERT(type == AccessDensityPrediction::kSparse || pt->HasDenseSpans());
   const auto page_allocation = pt->Get(n);
   AddToFillerList(pt);
   pages_allocated_[type] += n;
@@ -1537,15 +782,14 @@ HugePageFiller<TrackerType>::TryGet(Length n, SpanAllocInfo span_alloc_info) {
     pt->set_was_released(/*status=*/true);
     ++n_was_released_[type];
   }
-  ASSERT(was_released || page_allocation.previously_unbacked == Length(0));
-  (void)was_released;
-  ASSERT(unmapped_ >= page_allocation.previously_unbacked);
+  TC_ASSERT(was_released || page_allocation.previously_unbacked == Length(0));
+  TC_ASSERT_GE(unmapped_, page_allocation.previously_unbacked);
   unmapped_ -= page_allocation.previously_unbacked;
   // We're being used for an allocation, so we are no longer considered
   // donated by this point.
-  ASSERT(!pt->donated());
+  TC_ASSERT(!pt->donated());
   UpdateFillerStatsTracker();
-  return {pt, page_allocation.page};
+  return {pt, page_allocation.page, was_released};
 }
 
 // Marks [p, p + n) as usable by new allocations into *pt; returns pt
@@ -1558,21 +802,21 @@ inline TrackerType* HugePageFiller<TrackerType>::Put(TrackerType* pt, PageId p,
   RemoveFromFillerList(pt);
   pt->Put(p, n);
   if (pt->HasDenseSpans()) {
-    ASSERT(pages_allocated_[AccessDensityPrediction::kDense] >= n);
+    TC_ASSERT_GE(pages_allocated_[AccessDensityPrediction::kDense], n);
     pages_allocated_[AccessDensityPrediction::kDense] -= n;
   } else {
-    ASSERT(pages_allocated_[AccessDensityPrediction::kSparse] >= n);
+    TC_ASSERT_GE(pages_allocated_[AccessDensityPrediction::kSparse], n);
     pages_allocated_[AccessDensityPrediction::kSparse] -= n;
   }
 
   if (pt->longest_free_range() == kPagesPerHugePage) {
-    ASSERT(pt->nallocs() == 0);
+    TC_ASSERT_EQ(pt->nallocs(), 0);
     --size_;
     if (pt->released()) {
       const Length free_pages = pt->free_pages();
       const Length released_pages = pt->released_pages();
-      ASSERT(free_pages >= released_pages);
-      ASSERT(unmapped_ >= released_pages);
+      TC_ASSERT_GE(free_pages, released_pages);
+      TC_ASSERT_GE(unmapped_, released_pages);
       unmapped_ -= released_pages;
 
       if (free_pages > released_pages) {
@@ -1581,9 +825,8 @@ inline TrackerType* HugePageFiller<TrackerType>::Put(TrackerType* pt, PageId p,
         // rest of the hugepage.  This simplifies subsequent accounting by
         // allowing us to work with hugepage-granularity, rather than needing to
         // retain pt's state indefinitely.
-        pageheap_lock.Unlock();
-        bool success = unback_(pt->location().start_addr(), kHugePageSize);
-        pageheap_lock.Lock();
+        bool success = unback_without_lock_(pt->location().first_page(),
+                                            kPagesPerHugePage);
 
         if (ABSL_PREDICT_TRUE(success)) {
           unmapping_unaccounted_ += free_pages - released_pages;
@@ -1612,7 +855,7 @@ template <class TrackerType>
 inline void HugePageFiller<TrackerType>::Contribute(
     TrackerType* pt, bool donated, SpanAllocInfo span_alloc_info) {
   // A contributed huge page should not yet be subreleased.
-  ASSERT(pt->released_pages() == Length(0));
+  TC_ASSERT_EQ(pt->released_pages(), Length(0));
 
   const AccessDensityPrediction type =
       ABSL_PREDICT_TRUE(allocs_for_sparse_and_dense_spans_ ==
@@ -1622,9 +865,9 @@ inline void HugePageFiller<TrackerType>::Contribute(
           : AccessDensityPrediction::kSparse;
 
   pages_allocated_[type] += pt->used_pages();
-  ASSERT(!(type == AccessDensityPrediction::kDense && donated));
+  TC_ASSERT(!(type == AccessDensityPrediction::kDense && donated));
   if (donated) {
-    ASSERT(pt->was_donated());
+    TC_ASSERT(pt->was_donated());
     DonateToFillerList(pt);
   } else {
     if (type == AccessDensityPrediction::kDense) {
@@ -1643,8 +886,8 @@ inline int HugePageFiller<TrackerType>::SelectCandidates(
     absl::Span<TrackerType*> candidates, int current_candidates,
     const PageTrackerLists<N>& tracker_list, size_t tracker_start) {
   auto PushCandidate = [&](TrackerType* pt) {
-    ASSERT(pt->free_pages() > Length(0));
-    ASSERT(pt->free_pages() > pt->released_pages());
+    TC_ASSERT_GT(pt->free_pages(), Length(0));
+    TC_ASSERT_GT(pt->free_pages(), pt->released_pages());
 
     // If we have few candidates, we can avoid creating a heap.
     //
@@ -1692,18 +935,18 @@ inline Length HugePageFiller<TrackerType>::ReleaseCandidates(
 #endif
   for (int i = 0; i < candidates.size() && total_released < target; i++) {
     TrackerType* best = candidates[i];
-    ASSERT(best != nullptr);
+    TC_ASSERT_NE(best, nullptr);
 
     // Verify that we have pages that we can release.
-    ASSERT(best->free_pages() != Length(0));
+    TC_ASSERT_NE(best->free_pages(), Length(0));
     // TODO(b/73749855):  This assertion may need to be relaxed if we release
     // the pageheap_lock here.  A candidate could change state with another
     // thread while we have the lock released for another candidate.
-    ASSERT(best->free_pages() > best->released_pages());
+    TC_ASSERT_GT(best->free_pages(), best->released_pages());
 
 #ifndef NDEBUG
     // Double check that our sorting criteria were applied correctly.
-    ASSERT(last <= best->used_pages());
+    TC_ASSERT_LE(last, best->used_pages());
     last = best->used_pages();
 #endif
 
@@ -1713,7 +956,7 @@ inline Length HugePageFiller<TrackerType>::ReleaseCandidates(
     RemoveFromFillerList(best);
     Length ret = best->ReleaseFree(unback_);
     unmapped_ += ret;
-    ASSERT(unmapped_ >= best->released_pages());
+    TC_ASSERT_GE(unmapped_, best->released_pages());
     total_released += ret;
     AddToFillerList(best);
   }
@@ -1756,7 +999,7 @@ inline Length HugePageFiller<TrackerType>::GetDesiredSubreleasePages(
   // the recent *demand* requirement, i.e., if we have a large amount of free
   // memory right now but demand is below the requirement, we still want to
   // subrelease.
-  ASSERT(total_released < desired);
+  TC_ASSERT_LT(total_released, desired);
   if (!intervals.SkipSubreleaseEnabled()) {
     return desired;
   }
@@ -1929,11 +1172,8 @@ inline Length HugePageFiller<TrackerType>::ReleasePages(
 
 template <class TrackerType>
 inline void HugePageFiller<TrackerType>::AddSpanStats(
-    SmallSpanStats* small, LargeSpanStats* large,
-    PageAgeHistograms* ages) const {
-  auto loop = [&](const TrackerType* pt) {
-    pt->AddSpanStats(small, large, ages);
-  };
+    SmallSpanStats* small, LargeSpanStats* large) const {
+  auto loop = [&](const TrackerType* pt) { pt->AddSpanStats(small, large); };
   // We can skip the first chunks_per_tracker_list lists as they are known to be
   // 100% full.
   donated_alloc_.Iter(loop, 0);
@@ -1982,7 +1222,7 @@ class UsageInfo {
       // Because kPagesPerHugePage is a power of two, it must be at least 16
       // to get inside this "if" - either i=5 and kPagesPerHugePage=8 and
       // the test fails, or kPagesPerHugePage <= 4 and the test fails.
-      ASSERT(kPagesPerHugePage >= Length(16));
+      TC_ASSERT_GE(kPagesPerHugePage, Length(16));
       constexpr int step = kPagesPerHugePage.raw_num() / 16;
       // We want to move in "step"-sized increments, aligned every "step".
       // So first we have to round i up to the nearest step boundary. This
@@ -1999,12 +1239,12 @@ class UsageInfo {
       bucket_bounds_[buckets_size_] = i;
       buckets_size_++;
     }
-    CHECK_CONDITION(buckets_size_ <= kBucketCapacity);
+    TC_CHECK_LE(buckets_size_, kBucketCapacity);
   }
 
   template <class TrackerType>
   void Record(const TrackerType* pt, Type which) {
-    ASSERT(which < kNumTypes);
+    TC_ASSERT_LT(which, kNumTypes);
     const Length free = kPagesPerHugePage - pt->used_pages();
     const Length lf = pt->longest_free_range();
     const size_t nalloc = pt->nallocs();
@@ -2060,7 +1300,7 @@ class UsageInfo {
   int BucketNum(size_t page) {
     auto it =
         std::upper_bound(bucket_bounds_, bucket_bounds_ + buckets_size_, page);
-    CHECK_CONDITION(it != bucket_bounds_);
+    TC_CHECK_NE(it, bucket_bounds_);
     return it - bucket_bounds_ - 1;
   }
 
@@ -2089,7 +1329,7 @@ class UsageInfo {
   }
 
   absl::string_view TypeToStr(Type type) const {
-    ASSERT(type < kNumTypes);
+    TC_ASSERT_LT(type, kNumTypes);
     switch (type) {
       case kSparseRegular:
         return "sparsely-accessed regular";
@@ -2105,15 +1345,13 @@ class UsageInfo {
         return "sparsely-accessed released";
       case kDenseReleased:
         return "densely-accessed released";
-      default: {
-        Crash(kCrash, __FILE__, __LINE__, "bad type", type);
-        return "bad type";
-      }
+      default:
+        TC_BUG("bad type %v", type);
     }
   }
 
   absl::string_view AllocType(Type type) const {
-    ASSERT(type < kNumTypes);
+    TC_ASSERT_LT(type, kNumTypes);
     switch (type) {
       case kSparseRegular:
       case kDenseRegular:
@@ -2126,15 +1364,13 @@ class UsageInfo {
       case kSparseReleased:
       case kDenseReleased:
         return "RELEASED";
-      default: {
-        Crash(kCrash, __FILE__, __LINE__, "bad type", type);
-        return "bad type";
-      }
+      default:
+        TC_BUG("bad type %v", type);
     }
   }
 
   absl::string_view ObjectType(Type type) const {
-    ASSERT(type < kNumTypes);
+    TC_ASSERT_LT(type, kNumTypes);
     switch (type) {
       case kSparseRegular:
       case kDonated:
@@ -2145,10 +1381,8 @@ class UsageInfo {
       case kDensePartialReleased:
       case kDenseReleased:
         return "DENSELY_ACCESSED";
-      default: {
-        Crash(kCrash, __FILE__, __LINE__, "bad type", type);
-        return "bad type";
-      }
+      default:
+        TC_BUG("bad type %v", type);
     }
   }
 
@@ -2222,7 +1456,7 @@ inline void HugePageFiller<TrackerType>::Print(Printer* out,
 
   // A donated alloc full list is impossible because it would have never been
   // donated in the first place. (It's an even hugepage.)
-  ASSERT(donated_alloc_[0].empty());
+  TC_ASSERT(donated_alloc_[0].empty());
   // Evaluate a/b, avoiding division by zero
   const auto safe_div = [](Length a, Length b) {
     return b == Length(0) ? 0.
@@ -2264,7 +1498,7 @@ inline void HugePageFiller<TrackerType>::Print(Printer* out,
   const HugeLength n_nonfull =
       stats.n_partial[AccessDensityPrediction::kPredictionCounts] +
       stats.n_partial_released[AccessDensityPrediction::kPredictionCounts];
-  ASSERT(free_pages() <= n_nonfull.in_pages());
+  TC_ASSERT_LE(free_pages(), n_nonfull.in_pages());
   out->printf("HugePageFiller: among non-fulls, %.4f free\n",
               safe_div(free_pages(), n_nonfull.in_pages()));
 
@@ -2339,14 +1573,14 @@ inline void HugePageFiller<TrackerType>::Print(Printer* out,
   usage.Print(out);
 
   out->printf("\n");
-  fillerstats_tracker_.Print(out);
+  fillerstats_tracker_.Print(out, "HugePageFiller");
 }
 
 template <class TrackerType>
 inline void HugePageFiller<TrackerType>::PrintAllocStatsInPbtxt(
     absl::string_view field, PbtxtRegion* hpaa,
     const HugePageFillerStats& stats, AccessDensityPrediction count) const {
-  ASSERT(count < AccessDensityPrediction::kPredictionCounts);
+  TC_ASSERT_LT(count, AccessDensityPrediction::kPredictionCounts);
   PbtxtRegion alloc_region = hpaa->CreateSubRegion(field);
   alloc_region.PrintI64("full_huge_pages", stats.n_full[count].raw_num());
   alloc_region.PrintI64("partial_huge_pages", stats.n_partial[count].raw_num());
@@ -2362,7 +1596,7 @@ inline void HugePageFiller<TrackerType>::PrintInPbtxt(PbtxtRegion* hpaa) const {
 
   // A donated alloc full list is impossible because it would have never been
   // donated in the first place. (It's an even hugepage.)
-  ASSERT(donated_alloc_[0].empty());
+  TC_ASSERT(donated_alloc_[0].empty());
   // Evaluate a/b, avoiding division by zero
   const auto safe_div = [](Length a, Length b) {
     return b == Length(0) ? 0.
@@ -2459,12 +1693,15 @@ inline void HugePageFiller<TrackerType>::PrintInPbtxt(PbtxtRegion* hpaa) const {
 
   usage.Print(hpaa);
 
-  fillerstats_tracker_.PrintInPbtxt(hpaa);
+  fillerstats_tracker_.PrintSubreleaseStatsInPbtxt(hpaa,
+                                                   "filler_skipped_subrelease");
+  fillerstats_tracker_.PrintTimeseriesStatsInPbtxt(hpaa,
+                                                   "filler_stats_timeseries");
 }
 
 template <class TrackerType>
 inline void HugePageFiller<TrackerType>::UpdateFillerStatsTracker() {
-  StatsTrackerType::FillerStats stats;
+  StatsTrackerType::SubreleaseStats stats;
   stats.num_pages = pages_allocated();
   stats.free_pages = free_pages();
   stats.unmapped_pages = unmapped_pages();
@@ -2492,7 +1729,7 @@ inline void HugePageFiller<TrackerType>::UpdateFillerStatsTracker() {
 
 template <class TrackerType>
 inline size_t HugePageFiller<TrackerType>::IndexFor(TrackerType* pt) const {
-  ASSERT(!pt->empty());
+  TC_ASSERT(!pt->empty());
   // Prefer to allocate from hugepages with many allocations already present;
   // spaced logarithmically.
   const size_t na = pt->nallocs();
@@ -2506,24 +1743,24 @@ inline size_t HugePageFiller<TrackerType>::IndexFor(TrackerType* pt) const {
   // chunks_per_alloc_ - 1.)
   const size_t kOffset = __builtin_clzl(1) - (chunks_per_alloc_ - 1);
   const size_t i = std::max(neg_ceil_log, kOffset) - kOffset;
-  ASSERT(i < chunks_per_alloc_);
-  ASSERT(i < kChunks);
+  TC_ASSERT_LT(i, chunks_per_alloc_);
+  TC_ASSERT_LT(i, kChunks);
   return i;
 }
 
 template <class TrackerType>
 inline size_t HugePageFiller<TrackerType>::ListFor(const Length longest,
                                                    const size_t chunk) const {
-  ASSERT(chunk < kChunks);
-  ASSERT(chunk < chunks_per_alloc_);
-  ASSERT(longest < kPagesPerHugePage);
+  TC_ASSERT_LT(chunk, kChunks);
+  TC_ASSERT_LT(chunk, chunks_per_alloc_);
+  TC_ASSERT_LT(longest, kPagesPerHugePage);
   return longest.raw_num() * chunks_per_alloc_ + chunk;
 }
 
 template <class TrackerType>
 inline void HugePageFiller<TrackerType>::RemoveFromFillerList(TrackerType* pt) {
   Length longest = pt->longest_free_range();
-  ASSERT(longest < kPagesPerHugePage);
+  TC_ASSERT_LT(longest, kPagesPerHugePage);
 
   if (pt->donated()) {
     donated_alloc_.Remove(pt, longest.raw_num());
@@ -2543,11 +1780,11 @@ inline void HugePageFiller<TrackerType>::RemoveFromFillerList(TrackerType* pt) {
     regular_alloc_[type].Remove(pt, i);
   } else if (pt->free_pages() <= pt->released_pages()) {
     regular_alloc_released_[type].Remove(pt, i);
-    ASSERT(n_used_released_[type] >= pt->used_pages());
+    TC_ASSERT_GE(n_used_released_[type], pt->used_pages());
     n_used_released_[type] -= pt->used_pages();
   } else {
     regular_alloc_partial_released_[type].Remove(pt, i);
-    ASSERT(n_used_partial_released_[type] >= pt->used_pages());
+    TC_ASSERT_GE(n_used_partial_released_[type], pt->used_pages());
     n_used_partial_released_[type] -= pt->used_pages();
   }
 }
@@ -2556,7 +1793,7 @@ template <class TrackerType>
 inline void HugePageFiller<TrackerType>::AddToFillerList(TrackerType* pt) {
   size_t chunk = IndexFor(pt);
   Length longest = pt->longest_free_range();
-  ASSERT(longest < kPagesPerHugePage);
+  TC_ASSERT_LT(longest, kPagesPerHugePage);
 
   // Once a donated alloc is used in any way, it degenerates into being a
   // regular alloc. This allows the algorithm to keep using it (we had to be
@@ -2586,10 +1823,10 @@ inline void HugePageFiller<TrackerType>::AddToFillerList(TrackerType* pt) {
 template <class TrackerType>
 inline void HugePageFiller<TrackerType>::DonateToFillerList(TrackerType* pt) {
   Length longest = pt->longest_free_range();
-  ASSERT(longest < kPagesPerHugePage);
+  TC_ASSERT_LT(longest, kPagesPerHugePage);
 
   // We should never be donating already-released trackers!
-  ASSERT(!pt->released());
+  TC_ASSERT(!pt->released());
   pt->set_donated(true);
 
   donated_alloc_.Add(pt, longest.raw_num());
@@ -2602,14 +1839,14 @@ inline double HugePageFiller<TrackerType>::hugepage_frac() const {
   // just the difference:
   const Length used = used_pages();
   const Length used_on_rel = used_pages_in_any_subreleased();
-  ASSERT(used >= used_on_rel);
+  TC_ASSERT_GE(used, used_on_rel);
   const Length used_on_huge = used - used_on_rel;
 
   const Length denom = used > Length(0) ? used : Length(1);
   const double ret =
       static_cast<double>(used_on_huge.raw_num()) / denom.raw_num();
-  ASSERT(ret >= 0);
-  ASSERT(ret <= 1);
+  TC_ASSERT_GE(ret, 0);
+  TC_ASSERT_LE(ret, 1);
   return std::clamp<double>(ret, 0, 1);
 }
 

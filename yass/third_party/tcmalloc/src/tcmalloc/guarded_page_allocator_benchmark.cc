@@ -42,7 +42,7 @@ static size_t PageSize() {
 void BM_AllocDealloc(benchmark::State& state) {
   static GuardedPageAllocator* gpa = []() {
     auto gpa = new GuardedPageAllocator;
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     gpa->Init(kMaxGpaPages, kMaxGpaPages);
     gpa->AllowAllocations();
     return gpa;
@@ -50,7 +50,7 @@ void BM_AllocDealloc(benchmark::State& state) {
   size_t alloc_size = state.range(0);
   for (auto _ : state) {
     char* ptr = reinterpret_cast<char*>(gpa->Allocate(alloc_size, 0).alloc);
-    CHECK_CONDITION(ptr != nullptr);
+    TC_CHECK_NE(ptr, nullptr);
     ptr[0] = 'X';               // Page fault first page.
     ptr[alloc_size - 1] = 'X';  // Page fault last page.
     gpa->Deallocate(ptr);

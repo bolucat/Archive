@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -32,11 +33,13 @@
 #include "tcmalloc/internal/config.h"
 #include "tcmalloc/internal/logging.h"
 #include "tcmalloc/internal/memory_stats.h"
+#include "tcmalloc/internal/optimization.h"
 #include "tcmalloc/internal/percpu.h"
 #include "tcmalloc/page_allocator.h"
 #include "tcmalloc/page_heap_allocator.h"
 #include "tcmalloc/pagemap.h"
 #include "tcmalloc/parameters.h"
+#include "tcmalloc/selsan/selsan.h"
 #include "tcmalloc/span.h"
 #include "tcmalloc/span_stats.h"
 #include "tcmalloc/stack_trace_table.h"
@@ -49,6 +52,40 @@
 GOOGLE_MALLOC_SECTION_BEGIN
 namespace tcmalloc {
 namespace tcmalloc_internal {
+
+using subtle::percpu::RseqVcpuMode;
+
+static absl::string_view MadviseString() {
+  MadvisePreference pref = Parameters::madvise();
+
+  if (Parameters::madvise_free()) {
+    switch (pref) {
+      case MadvisePreference::kNever:
+        pref = MadvisePreference::kFreeOnly;
+        break;
+      case MadvisePreference::kDontNeed:
+        pref = MadvisePreference::kFreeAndDontNeed;
+        break;
+      case MadvisePreference::kFreeOnly:
+        break;
+      case MadvisePreference::kFreeAndDontNeed:
+        break;
+    }
+  }
+
+  switch (pref) {
+    case MadvisePreference::kNever:
+      return "MADVISE_NEVER";
+    case MadvisePreference::kDontNeed:
+      return "MADVISE_DONTNEED";
+    case MadvisePreference::kFreeOnly:
+      return "MADVISE_FREE_ONLY";
+    case MadvisePreference::kFreeAndDontNeed:
+      return "MADVISE_FREE_AND_DONTNEED";
+  }
+
+  ABSL_UNREACHABLE();
+}
 
 // Get stats into "r".  Also, if class_count != NULL, class_count[k]
 // will be set to the total number of objects of size class k in the
@@ -90,9 +127,8 @@ void ExtractStats(TCMallocStats* r, uint64_t* class_count,
   // Add stats from per-thread heaps
   r->thread_bytes = 0;
   {  // scope
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
-    ThreadCache::GetThreadStats(&r->thread_bytes, class_count);
-    r->tc_stats = ThreadCache::HeapStats();
+    PageHeapSpinLockHolder l;
+    r->tc_stats = ThreadCache::GetStats(&r->thread_bytes, class_count);
     r->span_stats = tc_globals.span_allocator().stats();
     r->stack_stats = tc_globals.sampledallocation_allocator().stats();
     r->linked_sample_stats = tc_globals.linked_sample_allocator().stats();
@@ -118,7 +154,7 @@ void ExtractStats(TCMallocStats* r, uint64_t* class_count,
   if (report_residence) {
     auto resident_bytes = tc_globals.pagemap_residence();
     r->pagemap_root_bytes_res = resident_bytes;
-    ASSERT(r->metadata_bytes >= r->pagemap_bytes);
+    TC_ASSERT_GE(r->metadata_bytes, r->pagemap_bytes);
     r->metadata_bytes = r->metadata_bytes - r->pagemap_bytes + resident_bytes;
   } else {
     r->pagemap_root_bytes_res = 0;
@@ -138,7 +174,7 @@ void ExtractStats(TCMallocStats* r, uint64_t* class_count,
       r->percpu_metadata_bytes_res = percpu_metadata.resident_size;
       r->percpu_metadata_bytes = percpu_metadata.virtual_size;
 
-      ASSERT(r->metadata_bytes >= r->percpu_metadata_bytes);
+      TC_ASSERT_GE(r->metadata_bytes, r->percpu_metadata_bytes);
       r->metadata_bytes = r->metadata_bytes - r->percpu_metadata_bytes +
                           r->percpu_metadata_bytes_res;
     }
@@ -214,6 +250,34 @@ static int CountAllowedCpus() {
   return CPU_COUNT(&allowed_cpus);
 }
 
+static absl::string_view SizeClassConfigurationString(
+    SizeClassConfiguration config) {
+  switch (config) {
+    case SizeClassConfiguration::kPow2Below64:
+      return "SIZE_CLASS_POW2_BELOW_64";
+    case SizeClassConfiguration::kPow2Only:
+      return "SIZE_CLASS_POW2_ONLY";
+    case SizeClassConfiguration::kLowFrag:
+      return "SIZE_CLASS_LOW_FRAG";
+    case SizeClassConfiguration::kLegacy:
+      // TODO(b/242710633): remove this opt out.
+      return "SIZE_CLASS_LEGACY";
+  }
+
+  ASSUME(false);
+  return "SIZE_CLASS_UNKNOWN";
+}
+
+static absl::string_view PerCpuTypeString(RseqVcpuMode mode) {
+  switch (mode) {
+    case RseqVcpuMode::kNone:
+      return "NONE";
+  }
+
+  ASSUME(false);
+  return "NONE";
+}
+
 void DumpStats(Printer* out, int level) {
   TCMallocStats stats;
   uint64_t class_count[kNumClasses];
@@ -235,7 +299,7 @@ void DumpStats(Printer* out, int level) {
   const uint64_t unmapped_bytes = UnmappedBytes(stats);
   const uint64_t bytes_in_use_by_app = InUseByApp(stats);
 
-#ifdef TCMALLOC_SMALL_BUT_SLOW
+#ifdef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
   out->printf("NOTE:  SMALL MEMORY MODEL IS IN USE, PERFORMANCE MAY SUFFER.\n");
 #endif
   // clang-format off
@@ -385,7 +449,7 @@ void DumpStats(Printer* out, int level) {
           span_stats[size_class].prob_returned());
     }
 
-#ifndef TCMALLOC_SMALL_BUT_SLOW
+#ifndef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
     out->printf("------------------------------------------------\n");
     out->printf("Central cache freelist: Span utilization histogram\n");
     out->printf("Non-cumulative number of spans with allocated objects < N\n");
@@ -409,6 +473,7 @@ void DumpStats(Printer* out, int level) {
     tc_globals.page_allocator().Print(out, MemoryTag::kSampled);
     tc_globals.page_allocator().Print(out, MemoryTag::kCold);
     tc_globals.guardedpage_allocator().Print(out);
+    selsan::PrintTextStats(out);
 
     uint64_t soft_limit_bytes =
         tc_globals.page_allocator().limit(PageAllocator::kSoft);
@@ -445,14 +510,16 @@ void DumpStats(Printer* out, int level) {
                     Parameters::filler_skip_subrelease_long_interval()));
     out->printf("PARAMETER tcmalloc_release_partial_alloc_pages %d\n",
                 Parameters::release_partial_alloc_pages() ? 1 : 0);
+    out->printf("PARAMETER tcmalloc_huge_region_demand_based_release %d\n",
+                Parameters::huge_region_demand_based_release() ? 1 : 0);
+    out->printf("PARAMETER tcmalloc_release_pages_from_huge_region %d\n",
+                Parameters::release_pages_from_huge_region() ? 1 : 0);
     out->printf("PARAMETER flat vcpus %d\n",
                 subtle::percpu::UsingFlatVirtualCpus() ? 1 : 0);
     out->printf(
         "PARAMETER tcmalloc_separate_allocs_for_few_and_many_objects_spans "
         "%d\n",
         Parameters::separate_allocs_for_few_and_many_objects_spans());
-    out->printf("PARAMETER tcmalloc_resize_cpu_cache_size_classes %d\n",
-                Parameters::resize_cpu_cache_size_classes() ? 1 : 0);
     out->printf("PARAMETER tcmalloc_filler_chunks_per_alloc %d\n",
                 Parameters::chunks_per_alloc());
     out->printf("PARAMETER tcmalloc_use_wider_slabs %d\n",
@@ -462,6 +529,15 @@ void DumpStats(Printer* out, int level) {
     out->printf(
         "PARAMETER tcmalloc_use_all_buckets_for_few_object_spans %d\n",
         Parameters::use_all_buckets_for_few_object_spans_in_cfl() ? 1 : 0);
+
+    out->printf(
+        "PARAMETER size_class_config %s\n",
+        SizeClassConfigurationString(tc_globals.size_class_configuration()));
+    out->printf("PARAMETER percpu_vcpu_type %s\n",
+                PerCpuTypeString(subtle::percpu::GetRseqVcpuMode()));
+    out->printf("PARAMETER max_span_cache_size %d\n",
+                Parameters::max_span_cache_size());
+    out->printf("PARAMETER madvise %s\n", MadviseString());
   }
 }
 
@@ -543,7 +619,7 @@ void DumpStatsInPbtxt(Printer* out, int level) {
 
   if (level >= 2) {
     {
-#ifndef TCMALLOC_SMALL_BUT_SLOW
+#ifndef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
       for (int size_class = 1; size_class < kNumClasses; ++size_class) {
         uint64_t class_bytes = class_count[size_class] *
                                tc_globals.sizemap().class_to_size(size_class);
@@ -564,10 +640,6 @@ void DumpStatsInPbtxt(Printer* out, int level) {
 
     tc_globals.transfer_cache().PrintInPbtxt(&region);
     tc_globals.sharded_transfer_cache().PrintInPbtxt(&region);
-
-    region.PrintRaw("transfer_cache_implementation",
-                    TransferCacheImplementationToLabel(
-                        tc_globals.transfer_cache().implementation()));
 
     if (UsePerCpuCache(tc_globals)) {
       tc_globals.cpu_cache().PrintInPbtxt(&region);
@@ -604,6 +676,7 @@ void DumpStatsInPbtxt(Printer* out, int level) {
     auto gwp_asan = region.CreateSubRegion("gwp_asan");
     tc_globals.guardedpage_allocator().PrintInPbtxt(&gwp_asan);
   }
+  selsan::PrintPbtxtStats(&region);
 
   region.PrintI64("memory_release_failures", SystemReleaseErrors());
 
@@ -625,13 +698,15 @@ void DumpStatsInPbtxt(Printer* out, int level) {
                       Parameters::filler_skip_subrelease_long_interval()));
   region.PrintBool("tcmalloc_release_partial_alloc_pages",
                    Parameters::release_partial_alloc_pages());
+  region.PrintBool("tcmalloc_huge_region_demand_based_release",
+                   Parameters::huge_region_demand_based_release());
+  region.PrintBool("tcmalloc_release_pages_from_huge_region",
+                   Parameters::release_pages_from_huge_region());
   region.PrintI64("profile_sampling_rate", Parameters::profile_sampling_rate());
   region.PrintRaw("percpu_vcpu_type",
-                  subtle::percpu::UsingFlatVirtualCpus() ? "FLAT" : "NONE");
+                  PerCpuTypeString(subtle::percpu::GetRseqVcpuMode()));
   region.PrintI64("separate_allocs_for_few_and_many_objects_spans",
                   Parameters::separate_allocs_for_few_and_many_objects_spans());
-  region.PrintBool("tcmalloc_resize_cpu_cache_size_classes",
-                   Parameters::resize_cpu_cache_size_classes());
   region.PrintI64("tcmalloc_filler_chunks_per_alloc",
                   Parameters::chunks_per_alloc());
   region.PrintI64("tcmalloc_use_wider_slabs",
@@ -640,13 +715,19 @@ void DumpStatsInPbtxt(Printer* out, int level) {
                    tc_globals.cpu_cache().ConfigureSizeClassMaxCapacity());
   region.PrintI64("tcmalloc_use_all_buckets_for_few_object_spans",
                   Parameters::use_all_buckets_for_few_object_spans_in_cfl());
+  region.PrintI64("span_max_cache_size", Parameters::max_span_cache_size());
+
+  region.PrintRaw(
+      "size_class_config",
+      SizeClassConfigurationString(tc_globals.size_class_configuration()));
+  region.PrintRaw("madvise", MadviseString());
 }
 
 bool GetNumericProperty(const char* name_data, size_t name_size,
                         size_t* value) {
   // LINT.IfChange
-  ASSERT(name_data != nullptr);
-  ASSERT(value != nullptr);
+  TC_ASSERT_NE(name_data, nullptr);
+  TC_ASSERT_NE(value, nullptr);
   const absl::string_view name(name_data, name_size);
 
   // This is near the top since ReleasePerCpuMemoryToOS() calls it frequently.
@@ -696,7 +777,7 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
   }
 
   if (name == "generic.heap_size") {
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     BackingStats stats = tc_globals.page_allocator().stats();
     *value = HeapSizeBytes(stats);
     return true;
@@ -726,7 +807,7 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
   if (name == "tcmalloc.slack_bytes") {
     // Kept for backwards compatibility.  Now defined externally as:
     //    pageheap_free_bytes + pageheap_unmapped_bytes.
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     BackingStats stats = tc_globals.page_allocator().stats();
     *value = SlackBytes(stats);
     return true;
@@ -734,14 +815,14 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
 
   if (name == "tcmalloc.pageheap_free_bytes" ||
       name == "tcmalloc.page_heap_free") {
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     *value = tc_globals.page_allocator().stats().free_bytes;
     return true;
   }
 
   if (name == "tcmalloc.pageheap_unmapped_bytes" ||
       name == "tcmalloc.page_heap_unmapped") {
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     // Arena non-resident bytes aren't on the page heap, but they are unmapped.
     *value = tc_globals.page_allocator().stats().unmapped_bytes +
              tc_globals.arena().stats().bytes_nonresident;
@@ -754,13 +835,13 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
   }
 
   if (name == "tcmalloc.page_algorithm") {
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     *value = tc_globals.page_allocator().algorithm();
     return true;
   }
 
   if (name == "tcmalloc.max_total_thread_cache_bytes") {
-    AllocationGuardSpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     *value = ThreadCache::overall_thread_cache_size();
     return true;
   }
@@ -834,23 +915,6 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
         PageAllocator::kHard);
     return true;
   }
-
-  // TODO(b/288099265): Delete "limit_hits" after 2024-02-01
-  if (name == "tcmalloc.limit_hits") {
-    *value = tc_globals.page_allocator().limit_hits(PageAllocator::kSoft) +
-             tc_globals.page_allocator().limit_hits(PageAllocator::kHard);
-    return true;
-  }
-  // TODO(b/288099265): Delete "successful_shrinks_after_limit_hit" after
-  // 2024-02-01
-  if (name == "tcmalloc.successful_shrinks_after_limit_hit") {
-    *value = tc_globals.page_allocator().successful_shrinks_after_limit_hit(
-                 PageAllocator::kSoft) +
-             tc_globals.page_allocator().successful_shrinks_after_limit_hit(
-                 PageAllocator::kHard);
-    return true;
-  }
-
   if (name == "tcmalloc.required_bytes") {
     TCMallocStats stats;
     ExtractTCMallocStats(&stats, false);
@@ -860,7 +924,7 @@ bool GetNumericProperty(const char* name_data, size_t name_size,
 
   const absl::string_view kExperimentPrefix = "tcmalloc.experiment.";
   if (absl::StartsWith(name, kExperimentPrefix)) {
-    absl::optional<Experiment> exp =
+    std::optional<Experiment> exp =
         FindExperimentByName(absl::StripPrefix(name, kExperimentPrefix));
     if (exp.has_value()) {
       *value = IsExperimentActive(*exp) ? 1 : 0;

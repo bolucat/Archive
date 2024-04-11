@@ -12,19 +12,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/base/attributes.h"
-#include "tcmalloc/internal/config.h"
 
-GOOGLE_MALLOC_SECTION_BEGIN
-namespace tcmalloc {
-namespace tcmalloc_internal {
+#include <cstdio>
+#include <string>
 
-// This -if linked into a binary - overrides page_allocator.cc and forces HPAA
-// on/subrelease on.
-ABSL_ATTRIBUTE_UNUSED int default_want_hpaa() { return 1; }
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "tcmalloc/malloc_extension.h"
 
-ABSL_ATTRIBUTE_UNUSED int default_subrelease() { return 1; }
+int main(int argc, char** argv) {
+  std::string input = tcmalloc::MallocExtension::GetStats();
 
-}  // namespace tcmalloc_internal
-}  // namespace tcmalloc
-GOOGLE_MALLOC_SECTION_END
+  if (absl::StrContains(
+          input, "PARAMETER tcmalloc_use_all_buckets_for_few_object_spans 1")) {
+    printf("Active");
+  } else {
+    printf("Inactive");
+  }
+
+  return 0;
+}

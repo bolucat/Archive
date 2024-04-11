@@ -157,12 +157,12 @@ TYPED_TEST_P(TransferCacheTest, ReadStats) {
 
   std::thread t2([&]() {
     while (!stop.load(std::memory_order_acquire)) {
-      CHECK_CONDITION(stats.insert_hits >= 1);
-      CHECK_CONDITION(stats.insert_misses == 0);
-      CHECK_CONDITION(stats.insert_object_misses == 0);
-      CHECK_CONDITION(stats.remove_hits >= 1);
-      CHECK_CONDITION(stats.remove_misses == 0);
-      CHECK_CONDITION(stats.remove_object_misses == 0);
+      TC_CHECK_GE(stats.insert_hits, 1);
+      TC_CHECK_EQ(stats.insert_misses, 0);
+      TC_CHECK_EQ(stats.insert_object_misses, 0);
+      TC_CHECK_GE(stats.remove_hits, 1);
+      TC_CHECK_EQ(stats.remove_misses, 0);
+      TC_CHECK_EQ(stats.remove_object_misses, 0);
     }
   });
 
@@ -366,9 +366,8 @@ TYPED_TEST_P(TransferCacheTest, b172283201) {
     pointers.push_back(&buffer[i]);
   }
 
-  // To produce wraparound in the RingBufferTransferCache, we fill up the cache
-  // completely and then keep inserting new elements. This makes the cache
-  // return old elements to the freelist and eventually wrap around.
+  // Fill up the cache completely and then keep inserting new elements.
+  // This makes the cache return old elements to the freelist.
   EXPECT_CALL(env.central_freelist(), RemoveRange).Times(0);
   // We do return items to the freelist, don't try to actually free them.
   ON_CALL(env.central_freelist(), InsertRange).WillByDefault(testing::Return());
@@ -495,7 +494,7 @@ TEST(ShardedTransferCacheManagerTest, MinimumNumShards) {
 
   using ShardedManager = FakeShardedTransferCacheEnvironment::ShardedManager;
   constexpr int kNumShards = ShardedManager::kMinShardsAllowed - 1;
-  ASSERT(kNumShards > 0);
+  TC_ASSERT_GT(kNumShards, 0);
   FakeShardedTransferCacheEnvironment env(kNumShards,
                                           /*use_generic_cache=*/true);
   ShardedManager& manager = env.sharded_manager();

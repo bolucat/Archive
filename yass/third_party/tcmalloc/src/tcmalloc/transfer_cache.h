@@ -41,7 +41,7 @@
 #include "tcmalloc/parameters.h"
 #include "tcmalloc/transfer_cache_stats.h"
 
-#ifndef TCMALLOC_SMALL_BUT_SLOW
+#ifndef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
 #include "tcmalloc/transfer_cache_internals.h"
 #endif
 
@@ -49,15 +49,7 @@ GOOGLE_MALLOC_SECTION_BEGIN
 namespace tcmalloc {
 namespace tcmalloc_internal {
 
-enum class TransferCacheImplementation {
-  kLifo,
-  kNone,
-};
-
-absl::string_view TransferCacheImplementationToLabel(
-    TransferCacheImplementation type);
-
-#ifndef TCMALLOC_SMALL_BUT_SLOW
+#ifndef TCMALLOC_INTERNAL_SMALL_BUT_SLOW
 
 class StaticForwarder {
  public:
@@ -151,7 +143,7 @@ class ShardedTransferCacheManagerBase {
     num_shards_ = cpu_layout_->NumShards();
     shards_ = reinterpret_cast<Shard *>(owner_->Alloc(
         sizeof(Shard) * num_shards_, std::align_val_t{ABSL_CACHELINE_SIZE}));
-    ASSERT(shards_ != nullptr);
+    TC_ASSERT_NE(shards_, nullptr);
 
     for (int shard = 0; shard < num_shards_; ++shard) {
       new (&shards_[shard]) Shard;
@@ -205,14 +197,14 @@ class ShardedTransferCacheManagerBase {
   }
 
   void *Pop(int size_class) {
-    ASSERT(subtle::percpu::IsFastNoInit());
+    TC_ASSERT(subtle::percpu::IsFastNoInit());
     void *batch[1];
     const int got = get_cache(size_class).RemoveRange(size_class, batch, 1);
     return got == 1 ? batch[0] : nullptr;
   }
 
   void Push(int size_class, void *ptr) {
-    ASSERT(subtle::percpu::IsFastNoInit());
+    TC_ASSERT(subtle::percpu::IsFastNoInit());
     get_cache(size_class).InsertRange(size_class, {&ptr, 1});
   }
 
@@ -367,11 +359,11 @@ class ShardedTransferCacheManagerBase {
 
   // Initializes all transfer caches in the given shard.
   void InitShard(Shard &shard) ABSL_LOCKS_EXCLUDED(pageheap_lock) {
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     TransferCache *new_caches = reinterpret_cast<TransferCache *>(
         owner_->Alloc(sizeof(TransferCache) * kNumClasses,
                       std::align_val_t{ABSL_CACHELINE_SIZE}));
-    ASSERT(new_caches != nullptr);
+    TC_ASSERT_NE(new_caches, nullptr);
     for (int size_class = 0; size_class < kNumClasses; ++size_class) {
       Capacity capacity = UseGenericCache() ? ScaledCacheCapacity(size_class)
                                             : LargeCacheCapacity(size_class);
@@ -393,7 +385,7 @@ class ShardedTransferCacheManagerBase {
   TransferCache &get_cache(int size_class) {
     const uint8_t shard_index =
         cpu_layout_->CpuShard(cpu_layout_->CurrentCpu());
-    ASSERT(shard_index < num_shards_);
+    TC_ASSERT_LT(shard_index, num_shards_);
     Shard &shard = shards_[shard_index];
     absl::base_internal::LowLevelCallOnce(
         &shard.once_flag, [this, &shard]() { InitShard(shard); });
@@ -445,20 +437,12 @@ class TransferCacheManager : public StaticForwarder {
     return cache_[size_class].tc.tc_length();
   }
 
-  bool HasSpareCapacity(int size_class) const {
-    return cache_[size_class].tc.HasSpareCapacity(size_class);
-  }
-
   TransferCacheStats GetStats(int size_class) const {
     return cache_[size_class].tc.GetStats();
   }
 
   CentralFreeList &central_freelist(int size_class) {
     return cache_[size_class].tc.freelist();
-  }
-
-  TransferCacheImplementation implementation() const {
-    return TransferCacheImplementation::kLifo;
   }
 
   bool CanIncreaseCapacity(int size_class) const {
@@ -506,10 +490,6 @@ class TransferCacheManager : public StaticForwarder {
   }
 
   void Print(Printer *out) const {
-    out->printf("------------------------------------------------\n");
-    out->printf("Transfer cache implementation: %s\n",
-                TransferCacheImplementationToLabel(implementation()));
-
     out->printf("------------------------------------------------\n");
     out->printf("Used bytes, current capacity, and maximum allowed capacity\n");
     out->printf("of the transfer cache freelists.\n");
@@ -598,10 +578,6 @@ class TransferCacheManager {
     return freelist_[size_class];
   }
 
-  TransferCacheImplementation implementation() const {
-    return TransferCacheImplementation::kNone;
-  }
-
   void Print(Printer* out) const {}
   void PrintInPbtxt(PbtxtRegion* region) const {}
 
@@ -632,7 +608,7 @@ struct ShardedTransferCacheManager {
   void PrintInPbtxt(PbtxtRegion* region) const {}
 };
 
-#endif  // !TCMALLOC_SMALL_BUT_SLOW
+#endif  // !TCMALLOC_INTERNAL_SMALL_BUT_SLOW
 
 }  // namespace tcmalloc_internal
 }  // namespace tcmalloc

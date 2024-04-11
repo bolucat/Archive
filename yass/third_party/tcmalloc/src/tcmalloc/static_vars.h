@@ -40,10 +40,10 @@
 #include "tcmalloc/internal/percpu.h"
 #include "tcmalloc/internal/sampled_allocation.h"
 #include "tcmalloc/internal/sampled_allocation_recorder.h"
-#include "tcmalloc/internal/stacktrace_filter.h"
 #include "tcmalloc/page_allocator.h"
 #include "tcmalloc/page_heap_allocator.h"
 #include "tcmalloc/pages.h"
+#include "tcmalloc/parameters.h"
 #include "tcmalloc/peak_heap_tracker.h"
 #include "tcmalloc/sampled_allocation_allocator.h"
 #include "tcmalloc/sizemap.h"
@@ -62,6 +62,13 @@ class ThreadCache;
 using SampledAllocationRecorder =
     ::tcmalloc::tcmalloc_internal::SampleRecorder<SampledAllocation,
                                                   SampledAllocationAllocator>;
+
+enum class SizeClassConfiguration {
+  kPow2Below64 = 1,
+  kPow2Only = 2,
+  kLowFrag = 3,
+  kLegacy = 4,
+};
 
 class Static final {
  public:
@@ -112,8 +119,6 @@ class Static final {
   static GuardedPageAllocator& guardedpage_allocator() {
     return guardedpage_allocator_;
   }
-
-  static StackTraceFilter& stacktrace_filter() { return stacktrace_filter_; }
 
   static SampledAllocationAllocator& sampledallocation_allocator() {
     return sampledallocation_allocator_;
@@ -172,6 +177,8 @@ class Static final {
   // structure, so figure out how much of it is actually resident.
   static size_t pagemap_residence();
 
+  static SizeClassConfiguration size_class_configuration();
+
  private:
 #if defined(__clang__)
   __attribute__((preserve_most))
@@ -191,7 +198,6 @@ class Static final {
   ABSL_CONST_INIT static ShardedTransferCacheManager sharded_transfer_cache_;
   static CpuCache cpu_cache_;
   ABSL_CONST_INIT static GuardedPageAllocator guardedpage_allocator_;
-  ABSL_CONST_INIT static StackTraceFilter stacktrace_filter_;
   static SampledAllocationAllocator sampledallocation_allocator_;
   static PageHeapAllocator<Span> span_allocator_;
   static PageHeapAllocator<ThreadCache> threadcache_allocator_;
@@ -241,15 +247,21 @@ inline void Static::InitIfNecessary() {
 // TODO(b/134687001): move span_allocator to Span, getting rid of the need for
 // this.
 inline Span* Span::New(PageId p, Length len) {
-  Span* result = Static::span_allocator().New();
+  const uint32_t max_span_cache_size = Parameters::max_span_cache_size();
+  Span* result = Static::span_allocator().NewWithSize(
+      Span::CalcSizeOf(max_span_cache_size),
+      Span::CalcAlignOf(max_span_cache_size));
   result->Init(p, len);
   return result;
 }
 
 inline void Span::Delete(Span* span) {
 #ifndef NDEBUG
+  const uint32_t max_span_cache_size = Parameters::max_span_cache_size();
+  const size_t span_size = Span::CalcSizeOf(max_span_cache_size);
+
   // In debug mode, trash the contents of deleted Spans
-  memset(static_cast<void*>(span), 0x3f, sizeof(*span));
+  memset(static_cast<void*>(span), 0x3f, span_size);
 #endif
   Static::span_allocator().Delete(span);
 }

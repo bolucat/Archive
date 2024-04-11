@@ -39,6 +39,7 @@
 #include "absl/types/span.h"
 #include "tcmalloc/internal/logging.h"
 #include "tcmalloc/internal/percpu.h"
+#include "tcmalloc/internal/sysinfo.h"
 
 namespace tcmalloc {
 namespace tcmalloc_internal {
@@ -58,12 +59,11 @@ class SyntheticCpuList {
  public:
   explicit SyntheticCpuList(const absl::string_view content) {
     fd_ = memfd_create("cpulist", MFD_CLOEXEC);
-    CHECK_CONDITION(fd_ != -1);
+    TC_CHECK_NE(fd_, -1);
 
-    CHECK_CONDITION(write(fd_, content.data(), content.size()) ==
-                    content.size());
-    CHECK_CONDITION(write(fd_, "\n", 1) == 1);
-    CHECK_CONDITION(lseek(fd_, 0, SEEK_SET) == 0);
+    TC_CHECK_EQ(write(fd_, content.data(), content.size()), content.size());
+    TC_CHECK_EQ(write(fd_, "\n", 1), 1);
+    TC_CHECK_EQ(lseek(fd_, 0, SEEK_SET), 0);
   }
 
   ~SyntheticCpuList() { close(fd_); }
@@ -107,10 +107,10 @@ class NumaTopologyTest : public ::testing::Test {
   }
 };
 
-template <size_t NumPartitions>
-NumaTopology<NumPartitions> CreateNumaTopology(
+template <size_t NumPartitions, size_t ScaleBy = 1>
+NumaTopology<NumPartitions, ScaleBy> CreateNumaTopology(
     const absl::Span<const SyntheticCpuList> cpu_lists) {
-  NumaTopology<NumPartitions> nt;
+  NumaTopology<NumPartitions, ScaleBy> nt;
   nt.InitForTest([&](const size_t node) {
     if (node >= cpu_lists.size()) {
       errno = ENOENT;
@@ -132,6 +132,7 @@ TEST_F(NumaTopologyTest, NoCompileTimeNuma) {
 
   EXPECT_EQ(nt.numa_aware(), false);
   EXPECT_EQ(nt.active_partitions(), 1);
+  EXPECT_EQ(nt.GetCurrentPartition(), 0);
 }
 
 // Ensure that if we run on a system with no NUMA support at all (i.e. no
@@ -142,6 +143,7 @@ TEST_F(NumaTopologyTest, NoRunTimeNuma) {
 
   EXPECT_EQ(nt.numa_aware(), false);
   EXPECT_EQ(nt.active_partitions(), 1);
+  EXPECT_EQ(nt.GetCurrentPartition(), 0);
 }
 
 // Ensure that if we run on a system with only 1 node then we disable NUMA
@@ -195,6 +197,20 @@ TEST_F(NumaTopologyTest, EmptyNode) {
   }
 }
 
+TEST_F(NumaTopologyTest, IsLocalToCpuPartition) {
+  std::vector<SyntheticCpuList> nodes;
+  nodes.emplace_back("0-1");
+  nodes.emplace_back("2-3");
+
+  const auto nt = CreateNumaTopology<2, 2>(nodes);
+
+  EXPECT_EQ(nt.numa_aware(), true);
+  EXPECT_TRUE(nt.IsLocalToCpuPartition(/*size_class=*/0, /*cpu=*/0));
+  EXPECT_TRUE(nt.IsLocalToCpuPartition(/*size_class=*/2, /*cpu=*/2));
+  EXPECT_FALSE(nt.IsLocalToCpuPartition(/*size_class=*/0, /*cpu=*/2));
+  EXPECT_FALSE(nt.IsLocalToCpuPartition(/*size_class=*/2, /*cpu=*/0));
+}
+
 // Test that cpulists too long to fit into the 16 byte buffer used by
 // InitNumaTopology() parse successfully.
 TEST_F(NumaTopologyTest, LongCpuLists) {
@@ -237,8 +253,14 @@ TEST_F(NumaTopologyTest, Host) {
   NumaTopology<4> nt;
   nt.Init();
 
+  const size_t active_partitions = nt.active_partitions();
+
   // We don't actually know anything about the host, so there's not much more
   // we can do beyond checking that we didn't crash.
+  for (int cpu = 0, n = NumCPUs(); cpu < n; ++cpu) {
+    size_t partition = nt.GetCpuPartition(cpu);
+    EXPECT_LT(partition, active_partitions) << cpu;
+  }
 }
 
 }  // namespace

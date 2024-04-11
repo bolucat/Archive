@@ -42,7 +42,7 @@ StackTraceTable::~StackTraceTable() {
     LinkedSample* next = cur->next;
     cur->~LinkedSample();
     {
-      AllocationGuardSpinLockHolder h(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       tc_globals.linked_sample_allocator().Delete(cur);
     }
     cur = next;
@@ -65,7 +65,7 @@ void StackTraceTable::AddTrace(double sample_weight, const StackTrace& t) {
   // under google3/tcmalloc/heap_profiling_test.cc.
   LinkedSample* s;
   {
-    AllocationGuardSpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     s = tc_globals.linked_sample_allocator().New();
   }
   s = new (s) LinkedSample;
@@ -80,7 +80,7 @@ void StackTraceTable::AddTrace(double sample_weight, const StackTrace& t) {
   //
   // TODO(b/215362992): Revisit this assertion when GWP-ASan guards
   // zero-byte allocations.
-  ASSERT(allocated_size > 0);
+  TC_ASSERT_GT(allocated_size, 0);
   // The reported count of samples, with possible rounding up for unsample.
   s->sample.count = (bytes + allocated_size / 2) / allocated_size;
   s->sample.sum = s->sample.count * allocated_size;

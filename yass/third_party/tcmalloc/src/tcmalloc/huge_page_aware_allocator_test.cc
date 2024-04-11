@@ -94,8 +94,8 @@ class HugePageAwareAllocatorTest
   }
 
   ~HugePageAwareAllocatorTest() override {
-    CHECK_CONDITION(ids_.empty());
-    CHECK_CONDITION(total_ == Length(0));
+    TC_CHECK(ids_.empty());
+    TC_CHECK_EQ(total_, Length(0));
     // We end up leaking both the backing allocations and the metadata.
     // The backing allocations are unmapped--it's silly, but not
     // costing us muchin a 64-bit address space.
@@ -103,12 +103,9 @@ class HugePageAwareAllocatorTest
     // It'd be very complicated to rebuild the allocator to support
     // teardown, so we just put up with it.
     {
-      absl::base_internal::SpinLockHolder h(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       auto stats = allocator_->stats();
-      if (stats.free_bytes + stats.unmapped_bytes != stats.system_bytes) {
-        Crash(kCrash, __FILE__, __LINE__, stats.free_bytes,
-              stats.unmapped_bytes, "!=", stats.system_bytes);
-      }
+      TC_CHECK_EQ(stats.free_bytes + stats.unmapped_bytes, stats.system_bytes);
     }
 
     free(allocator_);
@@ -121,7 +118,7 @@ class HugePageAwareAllocatorTest
     size_t actual_used_bytes = total_.in_bytes();
     BackingStats stats;
     {
-      absl::base_internal::SpinLockHolder h2(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       stats = allocator_->stats();
     }
     uint64_t used_bytes =
@@ -132,7 +129,7 @@ class HugePageAwareAllocatorTest
   uint64_t GetFreeBytes() {
     BackingStats stats;
     {
-      absl::base_internal::SpinLockHolder h2(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       stats = allocator_->stats();
     }
     return stats.free_bytes;
@@ -143,20 +140,20 @@ class HugePageAwareAllocatorTest
   }
 
   void AllocatorDelete(Span* s, size_t objects_per_span) {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     allocator_->Delete(s, objects_per_span);
   }
 
   Span* New(Length n, SpanAllocInfo span_alloc_info) {
     absl::base_internal::SpinLockHolder h(&lock_);
     Span* span = AllocatorNew(n, span_alloc_info);
-    CHECK_CONDITION(span != nullptr);
+    TC_CHECK_NE(span, nullptr);
     EXPECT_GE(span->num_pages(), n);
     const size_t id = next_id_++;
     total_ += n;
     CheckStats();
     // and distinct spans...
-    CHECK_CONDITION(ids_.insert({span, id}).second);
+    TC_CHECK(ids_.insert({span, id}).second);
     return span;
   }
 
@@ -165,7 +162,7 @@ class HugePageAwareAllocatorTest
     {
       absl::base_internal::SpinLockHolder h(&lock_);
       auto i = ids_.find(span);
-      CHECK_CONDITION(i != ids_.end());
+      TC_CHECK(i != ids_.end());
       const size_t id = i->second;
       ids_.erase(i);
       AllocatorDelete(span, objects_per_span);
@@ -198,17 +195,17 @@ class HugePageAwareAllocatorTest
   }
 
   Length ReleasePages(Length k) {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return allocator_->ReleaseAtLeastNPages(k);
   }
 
   Length ReleaseAtLeastNPagesBreakingHugepages(Length n) {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return allocator_->ReleaseAtLeastNPagesBreakingHugepages(n);
   }
 
   bool UseHugeRegionMoreOften() {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return allocator_->region().UseHugeRegionMoreOften();
   }
 
@@ -432,7 +429,7 @@ TEST_P(HugePageAwareAllocatorTest, UseHugeRegion) {
   BackingStats region_stats;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     small_pages = allocator_->info().small();
     donated_huge_pages = allocator_->DonatedHugePages();
@@ -542,7 +539,7 @@ TEST_P(HugePageAwareAllocatorTest, UseHugeRegion) {
   if (UseHugeRegionMoreOften()) {
     Length released;
     {
-      absl::base_internal::SpinLockHolder l(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       released = allocator_->ReleaseAtLeastNPages(Length(1));
     }
     EXPECT_GT(released.in_bytes(), 0);
@@ -551,7 +548,7 @@ TEST_P(HugePageAwareAllocatorTest, UseHugeRegion) {
     backed_bytes = region_stats.system_bytes - region_stats.unmapped_bytes;
 
     {
-      absl::base_internal::SpinLockHolder l(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       released = allocator_->ReleaseAtLeastNPages(Length(1));
     }
     EXPECT_GT(released.in_bytes(), 0);
@@ -560,7 +557,7 @@ TEST_P(HugePageAwareAllocatorTest, UseHugeRegion) {
 
     Length backed_in_pages = LengthFromBytes(backed_bytes);
     {
-      absl::base_internal::SpinLockHolder l(&pageheap_lock);
+      PageHeapSpinLockHolder l;
       released =
           allocator_->ReleaseAtLeastNPagesBreakingHugepages(backed_in_pages);
     }
@@ -590,7 +587,7 @@ TEST_P(HugePageAwareAllocatorTest, DonatedHugePages) {
   Length abandoned_pages;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     donated_huge_pages = allocator_->DonatedHugePages();
     abandoned_pages = allocator_->AbandonedPages();
@@ -683,7 +680,7 @@ TEST_P(HugePageAwareAllocatorTest, SmallDonations) {
   Length abandoned_pages;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     donated_huge_pages = allocator_->DonatedHugePages();
     abandoned_pages = allocator_->AbandonedPages();
@@ -780,7 +777,7 @@ TEST_P(HugePageAwareAllocatorTest, LargeDonations) {
   Length abandoned_pages;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     donated_huge_pages = allocator_->DonatedHugePages();
     abandoned_pages = allocator_->AbandonedPages();
@@ -837,7 +834,7 @@ TEST_P(HugePageAwareAllocatorTest, TailDonation) {
   Length abandoned_pages;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     donated_huge_pages = allocator_->DonatedHugePages();
     abandoned_pages = allocator_->AbandonedPages();
@@ -917,7 +914,7 @@ TEST_P(HugePageAwareAllocatorTest, NotDonated) {
   Length abandoned_pages;
 
   auto RefreshStats = [&]() {
-    absl::base_internal::SpinLockHolder l(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     slack = allocator_->info().slack();
     donated_huge_pages = allocator_->DonatedHugePages();
     abandoned_pages = allocator_->AbandonedPages();
@@ -1014,7 +1011,7 @@ TEST_P(HugePageAwareAllocatorTest, LargeSmall) {
 
   BackingStats stats;
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     stats = allocator_->stats();
   }
 
@@ -1091,7 +1088,7 @@ TEST_P(HugePageAwareAllocatorTest, DonationAccounting) {
   HugeLength donated;
   // Check donation count.
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     donated = allocator_->DonatedHugePages();
   }
   EXPECT_EQ(donated, NHugePages(4));
@@ -1106,7 +1103,7 @@ TEST_P(HugePageAwareAllocatorTest, DonationAccounting) {
 
   // Check donation count.
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     donated = allocator_->DonatedHugePages();
   }
   EXPECT_EQ(donated, NHugePages(0));
@@ -1145,9 +1142,7 @@ static size_t BytesInCore(void* p, size_t len) {
     // We call mincore in bounded size chunks (though typically one
     // chunk will cover an entire request.)
     const size_t chunk_len = std::min(kChunk, len);
-    if (mincore(p, chunk_len, buf) != 0) {
-      Crash(kCrash, __FILE__, __LINE__, "mincore failed, errno", errno);
-    }
+    TC_CHECK_EQ(0, mincore(p, chunk_len, buf), "errno=%d", errno);
     const size_t lim = chunk_len / pagesize;
     for (size_t i = 0; i < lim; ++i) {
       if (buf[i] & 1) resident += pagesize;
@@ -1216,54 +1211,8 @@ class StatTest : public testing::Test {
  protected:
   StatTest() = default;
 
-  // TODO(b/242550501): Replace this with a fake forwarder, rather than using
-  // the real page heap.
-  class RegionFactory;
-
-  class Region : public AddressRegion {
+  class Forwarder : public huge_page_allocator_internal::StaticForwarder {
    public:
-    Region(AddressRegion* underlying, RegionFactory* factory)
-        : underlying_(underlying), factory_(factory) {}
-
-    std::pair<void*, size_t> Alloc(size_t size, size_t alignment) override {
-      std::pair<void*, size_t> ret = underlying_->Alloc(size, alignment);
-      if (!ret.first) return {nullptr, 0};
-
-      // we only support so many allocations here for simplicity
-      CHECK_CONDITION(factory_->n_ < factory_->kNumAllocs);
-      // Anything coming from the test allocator will request full
-      // alignment.  Metadata allocations will not.  Since we can't
-      // control the backing of metadata allocations, elide them.
-      // TODO(b/128521238): this is not a good way to do this.
-      if (alignment >= kHugePageSize) {
-        factory_->allocs_[factory_->n_] = ret;
-        factory_->n_++;
-      }
-      return ret;
-    }
-
-   private:
-    AddressRegion* underlying_;
-    RegionFactory* factory_;
-  };
-
-  class RegionFactory : public AddressRegionFactory {
-   public:
-    explicit RegionFactory(AddressRegionFactory* underlying)
-        : underlying_(underlying), n_(0) {}
-
-    AddressRegion* Create(void* start, size_t size, UsageHint hint) override {
-      AddressRegion* underlying_region = underlying_->Create(start, size, hint);
-      CHECK_CONDITION(underlying_region);
-      void* region_space = MallocInternal(sizeof(Region));
-      CHECK_CONDITION(region_space);
-      return new (region_space) Region(underlying_region, this);
-    }
-
-    size_t GetStats(absl::Span<char> buffer) override {
-      return underlying_->GetStats(buffer);
-    }
-
     MemoryBytes Memory() {
       MemoryBytes b = {0, 0};
       for (int i = 0; i < n_; ++i) {
@@ -1276,37 +1225,46 @@ class StatTest : public testing::Test {
       return b;
     }
 
-    AddressRegionFactory* underlying() const { return underlying_; }
+    // Provide hooked versions of AllocatePages
+    AddressRange AllocatePages(size_t bytes, size_t align, MemoryTag tag) {
+      auto& underlying = *static_cast<StaticForwarder*>(this);
+      auto range = underlying.AllocatePages(bytes, align, tag);
+
+      // we only support so many allocations here for simplicity
+      TC_CHECK_LT(n_, kNumAllocs);
+      if (tag != MemoryTag::kMetadata) {
+        allocs_[n_] = {range.ptr, range.bytes};
+        n_++;
+      }
+
+      return range;
+    }
 
    private:
-    friend class Region;
-    AddressRegionFactory* underlying_;
-
     static constexpr size_t kNumAllocs = 1000;
-    size_t n_;
-    std::pair<void*, size_t> allocs_[kNumAllocs];
+    size_t n_ = 0;
+    std::pair<void*, size_t> allocs_[kNumAllocs] = {};
   };
 
+  using HookedAllocator =
+      huge_page_allocator_internal::HugePageAwareAllocator<Forwarder>;
+
   // Carefully get memory usage without touching anything.
-  MemoryBytes GetSystemBytes() { return replacement_region_factory_.Memory(); }
+  MemoryBytes GetSystemBytes() { return alloc_->forwarder().Memory(); }
 
   // This is essentially a test case set up, but run manually -
   // we can't guarantee gunit won't malloc between.
   void PrepTest() {
-    memset(buf, 0, sizeof(buf));
-    MallocExtension::ReleaseMemoryToSystem(std::numeric_limits<size_t>::max());
-    SetRegionFactory(&replacement_region_factory_);
-    alloc = new (buf) HugePageAwareAllocator(
-        HugePageAwareAllocatorOptions{MemoryTag::kNormal});
+    memset(buf_, 0, sizeof(buf_));
+    alloc_ = new (buf_)
+        HookedAllocator(HugePageAwareAllocatorOptions{MemoryTag::kNormal});
   }
 
-  ~StatTest() override {
-    SetRegionFactory(replacement_region_factory_.underlying());
-  }
+  ~StatTest() override = default;
 
   BackingStats Stats() {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
-    BackingStats stats = alloc->stats();
+    PageHeapSpinLockHolder l;
+    BackingStats stats = alloc_->stats();
     return stats;
   }
 
@@ -1327,12 +1285,9 @@ class StatTest : public testing::Test {
   }
 
   Span* Alloc(Length n, SpanAllocInfo span_info) {
-    Span* span = alloc->New(n, span_info);
+    Span* span = alloc_->New(n, span_info);
     TouchTHP(span);
-    if (n > span->num_pages()) {
-      Crash(kCrash, __FILE__, __LINE__, n.raw_num(),
-            "not <=", span->num_pages().raw_num());
-    }
+    TC_CHECK_LE(n, span->num_pages());
     n = span->num_pages();
     if (n > longest_) longest_ = n;
     total_ += n;
@@ -1344,8 +1299,8 @@ class StatTest : public testing::Test {
     Length n = s->num_pages();
     total_ -= n;
     {
-      absl::base_internal::SpinLockHolder h(&pageheap_lock);
-      alloc->Delete(s, span_info.objects_per_span);
+      PageHeapSpinLockHolder l;
+      alloc_->Delete(s, span_info.objects_per_span);
     }
   }
 
@@ -1355,9 +1310,9 @@ class StatTest : public testing::Test {
     SmallSpanStats small;
     LargeSpanStats large;
     {
-      absl::base_internal::SpinLockHolder h(&pageheap_lock);
-      alloc->GetSmallSpanStats(&small);
-      alloc->GetLargeSpanStats(&large);
+      PageHeapSpinLockHolder l;
+      alloc_->GetSmallSpanStats(&small);
+      alloc_->GetLargeSpanStats(&large);
     }
 
     size_t span_stats_free_bytes = 0, span_stats_released_bytes = 0;
@@ -1380,9 +1335,8 @@ class StatTest : public testing::Test {
     ASSERT_EQ(stats.unmapped_bytes, span_stats_released_bytes);
   }
 
-  char buf[sizeof(HugePageAwareAllocator)];
-  HugePageAwareAllocator* alloc;
-  RegionFactory replacement_region_factory_{GetRegionFactory()};
+  char buf_[sizeof(HookedAllocator)];
+  HookedAllocator* alloc_;
 
   Length total_;
   Length longest_;
@@ -1421,8 +1375,8 @@ TEST_F(StatTest, Basic) {
 
     if (absl::Bernoulli(rng, 1.0 / 3)) {
       Length pages(absl::LogUniform<int32_t>(rng, 0, (1 << 10) - 1) + 1);
-      absl::base_internal::SpinLockHolder h(&pageheap_lock);
-      alloc->ReleaseAtLeastNPages(pages);
+      PageHeapSpinLockHolder l;
+      alloc_->ReleaseAtLeastNPages(pages);
     }
 
     // stats are expensive, don't always check
@@ -1439,7 +1393,7 @@ TEST_F(StatTest, Basic) {
   {
     CheckStats();
     pageheap_lock.Lock();
-    auto final_stats = alloc->stats();
+    auto final_stats = alloc_->stats();
     pageheap_lock.Unlock();
     ASSERT_EQ(final_stats.free_bytes + final_stats.unmapped_bytes,
               final_stats.system_bytes);
@@ -1475,7 +1429,7 @@ TEST_P(HugePageAwareAllocatorTest, ParallelRelease) {
     if (absl::Bernoulli(m.rng, 0.6) || m.spans.empty()) {
       Span* s =
           AllocatorNew(Length(absl::LogUniform(m.rng, 1, 1 << 10)), kSpanInfo);
-      CHECK_CONDITION(s != nullptr);
+      TC_CHECK_NE(s, nullptr);
 
       // Touch the contents of the buffer.  We later use it to verify we are the
       // only thread manipulating the Span, for example, if another thread

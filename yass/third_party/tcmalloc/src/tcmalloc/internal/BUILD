@@ -14,8 +14,8 @@
 #
 # Internal libraries used for the implementation and testing of TCMalloc.
 
-load("@rules_fuzzing//fuzzing:cc_defs.bzl", "cc_fuzz_test")
 load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_fuzzing//fuzzing:cc_defs.bzl", "cc_fuzz_test")
 load("@rules_proto//proto:defs.bzl", "proto_library")
 load("//tcmalloc:copts.bzl", "TCMALLOC_DEFAULT_COPTS")
 load("//tcmalloc:variants.bzl", "create_tcmalloc_benchmark")
@@ -268,6 +268,7 @@ cc_library(
     deps = [
         ":allocation_guard",
         ":config",
+        ":environment",
         ":parameter_accessors",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -286,7 +287,7 @@ cc_test(
     ],
     deps = [
         ":logging",
-        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -334,7 +335,9 @@ cc_library(
     hdrs = ["mincore.h"],
     copts = TCMALLOC_DEFAULT_COPTS,
     linkstatic = 1,
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [
         ":config",
         ":page_size",
@@ -347,7 +350,9 @@ cc_library(
     hdrs = ["residency.h"],
     copts = TCMALLOC_DEFAULT_COPTS,
     linkstatic = 1,
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [
         ":config",
         ":page_size",
@@ -506,6 +511,7 @@ cc_test(
         ":logging",
         ":numa",
         ":percpu",
+        ":sysinfo",
         "//tcmalloc:want_numa_aware",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings",
@@ -565,6 +571,7 @@ cc_library(
         "//tcmalloc:__subpackages__",
     ],
     deps = [
+        "//tcmalloc:malloc_extension",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/time",
     ],
@@ -585,7 +592,9 @@ cc_library(
         "percpu_rseq_aarch64.S",
         "percpu_rseq_x86_64.S",
     ],
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [
         ":atomic_danger",
         ":config",
@@ -599,23 +608,57 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "percpu_test",
+    srcs = ["percpu_test.cc"],
+    copts = TCMALLOC_DEFAULT_COPTS,
+    deps = [
+        ":logging",
+        ":percpu",
+        "//tcmalloc/testing:testutil",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "percpu_early_test",
+    srcs = ["percpu_early_test.cc"],
+    copts = TCMALLOC_DEFAULT_COPTS,
+    linkstatic = 1,
+    tags = [
+    ],
+    deps = [
+        ":percpu",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "percpu_tcmalloc",
+    srcs = ["percpu_tcmalloc.cc"],
     hdrs = ["percpu_tcmalloc.h"],
     copts = TCMALLOC_DEFAULT_COPTS,
     visibility = [
         "//tcmalloc:__subpackages__",
     ],
     deps = [
+        ":config",
+        ":linux_syscall_support",
         ":logging",
         ":mincore",
         ":optimization",
         ":percpu",
+        ":prefetch",
         ":sysinfo",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/numeric:bits",
     ],
 )
 
@@ -679,7 +722,9 @@ proto_library(
 
 cc_proto_library(
     name = "profile_cc_proto",
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [":profile_proto"],
 )
 
@@ -688,7 +733,9 @@ cc_library(
     srcs = ["profile_builder.cc"],
     hdrs = ["profile_builder.h"],
     copts = TCMALLOC_DEFAULT_COPTS,
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [
         ":logging",
         ":pageflags",
@@ -981,6 +1028,7 @@ cc_library(
     ],
     deps = [
         ":config",
+        ":logging",
         "@com_google_absl//absl/time",
     ],
 )

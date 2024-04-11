@@ -95,6 +95,8 @@ ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_GetSkipSubreleaseLongInterval(
     absl::Duration* ret);
 ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_GetProperties(
     std::map<std::string, tcmalloc::MallocExtension::Property>* ret);
+ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_GetExperiments(
+    std::map<std::string, tcmalloc::MallocExtension::Property>* ret);
 ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_GetStats(std::string* ret);
 ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_SetMaxPerCpuCacheSize(
     int32_t value);
@@ -134,11 +136,6 @@ ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_SetBackgroundReleaseRate(
 ABSL_ATTRIBUTE_WEAK int64_t MallocExtension_Internal_GetGuardedSamplingRate();
 ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_SetGuardedSamplingRate(
     int64_t);
-
-// TODO(b/263387812): remove when experimentation is complete
-ABSL_ATTRIBUTE_WEAK bool MallocExtension_Internal_GetImprovedGuardedSampling();
-ABSL_ATTRIBUTE_WEAK void MallocExtension_Internal_SetImprovedGuardedSampling(
-    bool);
 
 ABSL_ATTRIBUTE_WEAK int64_t
 MallocExtension_Internal_GetMaxTotalThreadCacheBytes();

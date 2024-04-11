@@ -77,26 +77,23 @@ namespace {
 using testing::Each;
 using testing::UnorderedElementsAreArray;
 
-constexpr size_t kStressSlabs = 4;
+constexpr size_t kStressSlabs = 5;
 constexpr size_t kStressCapacity = 4;
 
 constexpr size_t kShift = 18;
-typedef class TcmallocSlab<kStressSlabs> TcmallocSlab;
 
-TcmallocSlab::Slabs* AllocSlabs(
-    absl::FunctionRef<void*(size_t, std::align_val_t)> alloc,
-    size_t raw_shift) {
+void* AllocSlabs(absl::FunctionRef<void*(size_t, std::align_val_t)> alloc,
+                 size_t raw_shift) {
   Shift shift = ToShiftType(raw_shift);
   const size_t slabs_size = GetSlabsAllocSize(shift, NumCPUs());
-  return static_cast<TcmallocSlab::Slabs*>(
-      alloc(slabs_size, kPhysicalPageAlign));
+  return alloc(slabs_size, kPhysicalPageAlign);
 }
 
 void InitSlab(TcmallocSlab& slab,
               absl::FunctionRef<void*(size_t, std::align_val_t)> alloc,
               absl::FunctionRef<size_t(size_t)> capacity, size_t raw_shift) {
-  TcmallocSlab::Slabs* slabs = AllocSlabs(alloc, raw_shift);
-  slab.Init(slabs, capacity, ToShiftType(raw_shift));
+  void* slabs = AllocSlabs(alloc, raw_shift);
+  slab.Init(kStressSlabs, alloc, slabs, capacity, ToShiftType(raw_shift));
 }
 
 class TcmallocSlabTest : public testing::Test {
@@ -163,7 +160,7 @@ TEST_F(TcmallocSlabTest, Metadata) {
   // Read stats from the slab.  This will fault additional memory.
   for (int cpu = 0, n = NumCPUs(); cpu < n; ++cpu) {
     // To inhibit optimization, verify the values are sensible.
-    for (int size_class = 0; size_class < kStressSlabs; ++size_class) {
+    for (int size_class = 1; size_class < kStressSlabs; ++size_class) {
       EXPECT_EQ(0, slab_.Length(cpu, size_class));
       EXPECT_EQ(0, slab_.Capacity(cpu, size_class));
     }
@@ -189,7 +186,7 @@ TEST_F(TcmallocSlabTest, Unit) {
   // slab to trigger initialization.
   absl::FixedArray<bool, 0> initialized(NumCPUs(), false);
 
-  char objects[kCapacity];
+  void* objects[kCapacity];
   void* object_ptrs[kCapacity];
   for (int i = 0; i < kCapacity; ++i) {
     object_ptrs[i] = &objects[i];
@@ -201,7 +198,7 @@ TEST_F(TcmallocSlabTest, Unit) {
     // Temporarily fake being on the given CPU.
     ScopedFakeCpuId fake_cpu_id(cpu);
 
-    for (size_t size_class = 0; size_class < kStressSlabs; ++size_class) {
+    for (size_t size_class = 1; size_class < kStressSlabs; ++size_class) {
       SCOPED_TRACE(size_class);
 
       // Check new slab state.
@@ -210,26 +207,17 @@ TEST_F(TcmallocSlabTest, Unit) {
 
       if (!initialized[cpu]) {
         ASSERT_EQ(slab_.Pop(size_class), nullptr);
-        slab_.InitCpu(slab_.GetCurrentVirtualCpuUnsafe(),
-                      [](size_t size_class) { return kCapacity; });
+        slab_.InitCpu(cpu, [](size_t size_class) { return kCapacity; });
         initialized[cpu] = true;
       }
 
-      // Test overflow/underflow handlers.
+      // Test that operations on uncached slab fail.
       ASSERT_EQ(slab_.Pop(size_class), nullptr);
       EXPECT_FALSE(slab_.Push(size_class, &objects[0]));
       EXPECT_FALSE(slab_.Push(size_class, &objects[0]));
       EXPECT_FALSE(slab_.Push(size_class, &objects[0]));
-
-      // Grow capacity to kCapacity / 2.
       const auto max_capacity = [](uint8_t shift) { return kCapacity; };
-      ASSERT_EQ(slab_.Grow(cpu, size_class, kCapacity / 2, max_capacity),
-                kCapacity / 2);
-      ASSERT_EQ(slab_.Length(cpu, size_class), 0);
-      ASSERT_EQ(slab_.Capacity(cpu, size_class), kCapacity / 2);
-      ASSERT_EQ(slab_.Pop(size_class), nullptr);
-
-      ASSERT_FALSE(slab_.Push(size_class, &objects[0]));
+      ASSERT_EQ(slab_.Grow(cpu, size_class, 1, max_capacity), 0);
       {
         auto [got_cpu, cached] = slab_.CacheCpuSlab();
         ASSERT_TRUE(cached);
@@ -240,6 +228,13 @@ TEST_F(TcmallocSlabTest, Unit) {
         ASSERT_FALSE(cached);
         ASSERT_EQ(got_cpu, cpu);
       }
+
+      // Grow capacity to kCapacity / 2.
+      ASSERT_EQ(slab_.Grow(cpu, size_class, kCapacity / 2, max_capacity),
+                kCapacity / 2);
+      ASSERT_EQ(slab_.Length(cpu, size_class), 0);
+      ASSERT_EQ(slab_.Capacity(cpu, size_class), kCapacity / 2);
+      ASSERT_EQ(slab_.Pop(size_class), nullptr);
       ASSERT_TRUE(slab_.Push(size_class, &objects[0]));
 
       ASSERT_EQ(slab_.Length(cpu, size_class), 1);
@@ -255,14 +250,9 @@ TEST_F(TcmallocSlabTest, Unit) {
         ASSERT_EQ(slab_.Pop(size_class), &objects[i - 1]);
         ASSERT_EQ(slab_.Length(cpu, size_class), i - 1);
       }
-      // Ensure that Shink don't underflow capacity.
-      ASSERT_EQ(slab_.Shrink(cpu, size_class, kCapacity), kCapacity / 2);
-      ASSERT_EQ(slab_.Capacity(cpu, size_class), 0);
 
-      // Grow capacity to kCapacity.
-      ASSERT_EQ(slab_.Grow(cpu, size_class, kCapacity / 2, max_capacity),
-                kCapacity / 2);
-      // Ensure that grow don't overflow max capacity.
+      // Grow capacity to kCapacity and ensure that grow don't overflow max
+      // capacity.
       ASSERT_EQ(slab_.Grow(cpu, size_class, kCapacity, max_capacity),
                 kCapacity / 2);
       ASSERT_EQ(slab_.Capacity(cpu, size_class), kCapacity);
@@ -276,14 +266,9 @@ TEST_F(TcmallocSlabTest, Unit) {
         ASSERT_EQ(slab_.Length(cpu, size_class), i - 1);
       }
 
-      // Ensure that we can't shrink below length.
+      // Test Drain.
       ASSERT_TRUE(slab_.Push(size_class, &objects[0]));
       ASSERT_TRUE(slab_.Push(size_class, &objects[1]));
-      ASSERT_EQ(slab_.Shrink(cpu, size_class, kCapacity), kCapacity - 2);
-      ASSERT_EQ(slab_.Capacity(cpu, size_class), 2);
-
-      // Test Drain.
-      ASSERT_EQ(slab_.Grow(cpu, size_class, 2, max_capacity), 2);
 
       slab_.Drain(cpu, [size_class, cpu, &objects](
                            int cpu_arg, size_t size_class_arg, void** batch,
@@ -291,7 +276,7 @@ TEST_F(TcmallocSlabTest, Unit) {
         ASSERT_EQ(cpu, cpu_arg);
         if (size_class == size_class_arg) {
           ASSERT_EQ(size, 2);
-          ASSERT_EQ(cap, 4);
+          ASSERT_EQ(cap, 10);
           ASSERT_EQ(batch[0], &objects[0]);
           ASSERT_EQ(batch[1], &objects[1]);
         } else {
@@ -402,7 +387,21 @@ TEST_F(TcmallocSlabTest, Unit) {
           batch[j] = nullptr;
         }
       }
-      ASSERT_EQ(slab_.Shrink(cpu, size_class, kCapacity / 2), kCapacity / 2);
+
+      slab_.Drain(cpu,
+                  [size_class, cpu](int cpu_arg, size_t size_class_arg,
+                                    void** batch, size_t size, size_t cap) {
+                    ASSERT_EQ(cpu, cpu_arg);
+                    if (size_class == size_class_arg) {
+                      ASSERT_EQ(size, 0);
+                      ASSERT_EQ(cap, 5);
+                    } else {
+                      ASSERT_EQ(size, 0);
+                      ASSERT_EQ(cap, 0);
+                    }
+                  });
+      ASSERT_EQ(slab_.Length(cpu, size_class), 0);
+      ASSERT_EQ(slab_.Capacity(cpu, size_class), 0);
       slab_.UncacheCpuSlab();
     }
   }
@@ -421,6 +420,7 @@ TEST_F(TcmallocSlabTest, ShrinkEmptyCache) {
   constexpr int kCpu = 1;
   constexpr int kSizeClass = 1;
   slab_.InitCpu(kCpu, [](size_t size_class) { return kCapacity; });
+  slab_.StopCpu(kCpu);
   EXPECT_EQ(
       slab_.ShrinkOtherCache(kCpu, kSizeClass, /*len=*/1,
                              [](size_t size_class, void** batch, size_t n) {
@@ -432,6 +432,7 @@ TEST_F(TcmallocSlabTest, ShrinkEmptyCache) {
                                }
                              }),
       0);
+  slab_.StartCpu(kCpu);
 }
 
 TEST_F(TcmallocSlabTest, SimulatedMadviseFailure) {
@@ -449,12 +450,13 @@ TEST_F(TcmallocSlabTest, SimulatedMadviseFailure) {
     auto alloc = [&](size_t size, std::align_val_t alignment) {
       return ByteCountingMalloc(size, alignment);
     };
-    TcmallocSlab::Slabs* slabs = AllocSlabs(alloc, shift);
+    void* slabs = AllocSlabs(alloc, shift);
     (void)slab_.ResizeSlabs(
-        subtle::percpu::ToShiftType(shift), slabs, alloc,
+        subtle::percpu::ToShiftType(shift), slabs,
         [](size_t) { return kCapacity / 2; }, [](int cpu) { return cpu == 0; },
         [&](int cpu, size_t size_class, void** batch, size_t size, size_t cap) {
           EXPECT_EQ(size, 0);
+          EXPECT_EQ(cap, 0);
         });
   };
 
@@ -480,6 +482,9 @@ struct Context {
 void InitCpuOnce(Context& ctx, int cpu) {
   if (cpu < 0) {
     cpu = ctx.slab->CacheCpuSlab().first;
+    if (cpu < 0) {
+      return;
+    }
   }
   absl::base_internal::LowLevelCallOnce(&ctx.init[cpu], [&]() {
     absl::MutexLock lock(&ctx.mutexes[cpu]);
@@ -498,8 +503,8 @@ void StressThread(size_t thread_id, Context& ctx) {
   const int num_cpus = NumCPUs();
   absl::BitGen rnd(absl::SeedSeq({thread_id}));
   while (!*ctx.stop) {
-    size_t size_class = absl::Uniform<int32_t>(rnd, 0, kStressSlabs);
-    const int what = absl::Uniform<int32_t>(rnd, 0, 101);
+    size_t size_class = absl::Uniform<int32_t>(rnd, 1, kStressSlabs);
+    const int what = absl::Uniform<int32_t>(rnd, 0, 91);
     if (what < 10) {
       if (!block.empty()) {
         if (ctx.slab->Push(size_class, block.back())) {
@@ -553,35 +558,29 @@ void StressThread(size_t thread_id, Context& ctx) {
           break;
         }
       }
+      size_t res = 0;
       if (n != 0) {
-        const int cpu = ctx.slab->GetCurrentVirtualCpuUnsafe();
-        // Grow mutates the header array and must be operating on an initialized
-        // core.
-        InitCpuOnce(ctx, cpu);
+        const int cpu = ctx.slab->CacheCpuSlab().first;
+        if (cpu >= 0) {
+          // Grow mutates the header array and must be operating on
+          // an initialized core.
+          InitCpuOnce(ctx, cpu);
 
-        size_t res = ctx.slab->Grow(
-            cpu, size_class, n, [](uint8_t shift) { return kStressCapacity; });
-        EXPECT_LE(res, n);
+          res = ctx.slab->Grow(cpu, size_class, n,
+                               [](uint8_t shift) { return kStressCapacity; });
+          EXPECT_LE(res, n);
+        }
         ctx.capacity->fetch_add(n - res);
       }
     } else if (what < 60) {
-      const int cpu = ctx.slab->GetCurrentVirtualCpuUnsafe();
-      // Shrink mutates the header array and must be operating on an initialized
-      // core.
-      InitCpuOnce(ctx, cpu);
-
-      size_t n = ctx.slab->Shrink(
-          cpu, size_class, absl::Uniform<int32_t>(rnd, 0, kStressCapacity) + 1);
-      ctx.capacity->fetch_add(n);
-    } else if (what < 70) {
       size_t len = ctx.slab->Length(absl::Uniform<int32_t>(rnd, 0, num_cpus),
                                     size_class);
       EXPECT_LE(len, kStressCapacity);
-    } else if (what < 80) {
+    } else if (what < 70) {
       size_t cap = ctx.slab->Capacity(absl::Uniform<int32_t>(rnd, 0, num_cpus),
                                       size_class);
       EXPECT_LE(cap, kStressCapacity);
-    } else if (what < 90) {
+    } else if (what < 80) {
       int cpu = absl::Uniform<int32_t>(rnd, 0, num_cpus);
 
       // ShrinkOtherCache mutates the header array and must be operating on an
@@ -590,6 +589,7 @@ void StressThread(size_t thread_id, Context& ctx) {
 
       absl::MutexLock lock(&ctx.mutexes[cpu]);
       size_t to_shrink = absl::Uniform<int32_t>(rnd, 0, kStressCapacity) + 1;
+      ctx.slab->StopCpu(cpu);
       size_t total_shrunk = ctx.slab->ShrinkOtherCache(
           cpu, size_class, to_shrink,
           [&block](size_t size_class, void** batch, size_t n) {
@@ -601,10 +601,11 @@ void StressThread(size_t thread_id, Context& ctx) {
               block.push_back(batch[i]);
             }
           });
+      ctx.slab->StartCpu(cpu);
       EXPECT_LE(total_shrunk, to_shrink);
       EXPECT_LE(0, total_shrunk);
       ctx.capacity->fetch_add(total_shrunk);
-    } else if (what < 100) {
+    } else if (what < 90) {
       size_t to_grow = absl::Uniform<int32_t>(rnd, 0, kStressCapacity) + 1;
       for (;;) {
         size_t c = ctx.capacity->load();
@@ -624,9 +625,11 @@ void StressThread(size_t thread_id, Context& ctx) {
         InitCpuOnce(ctx, cpu);
 
         absl::MutexLock lock(&ctx.mutexes[cpu]);
+        ctx.slab->StopCpu(cpu);
         size_t grown = ctx.slab->GrowOtherCache(
             cpu, size_class, to_grow,
             [](uint8_t shift) { return kStressCapacity; });
+        ctx.slab->StartCpu(cpu);
         EXPECT_LE(grown, to_grow);
         EXPECT_GE(grown, 0);
         ctx.capacity->fetch_add(to_grow - grown);
@@ -645,7 +648,7 @@ void StressThread(size_t thread_id, Context& ctx) {
         std::optional<ScopedUnregisterRseq> scoped_rseq;
         if (unregister) {
           scoped_rseq.emplace();
-          ASSERT(!IsFastNoInit());
+          TC_ASSERT(!IsFastNoInit());
         }
 
         ctx.slab->Drain(
@@ -664,7 +667,7 @@ void StressThread(size_t thread_id, Context& ctx) {
       }
 
       // Verify we re-registered with rseq as required.
-      ASSERT(IsFastNoInit());
+      TC_ASSERT(IsFastNoInit());
     }
   }
 }
@@ -699,9 +702,9 @@ void ResizeSlabsThread(Context& ctx, TcmallocSlab::DrainHandler drain_handler,
       }
     }
     for (size_t cpu = 0; cpu < num_cpus; ++cpu) ctx.mutexes[cpu].Lock();
-    TcmallocSlab::Slabs* slabs = AllocSlabs(allocator, shift);
+    void* slabs = AllocSlabs(allocator, shift);
     const auto [old_slabs, old_slabs_size] = ctx.slab->ResizeSlabs(
-        ToShiftType(shift), slabs, allocator, get_capacity,
+        ToShiftType(shift), slabs, get_capacity,
         [&](size_t cpu) {
           return ctx.has_init[cpu].load(std::memory_order_relaxed);
         },
@@ -712,6 +715,8 @@ void ResizeSlabsThread(Context& ctx, TcmallocSlab::DrainHandler drain_handler,
     // madvise failing.
     const bool simulate_madvise_failure = absl::Bernoulli(rnd, 0.1);
     if (!simulate_madvise_failure) {
+      // Verify that we do not write to an old slab, as this may indicate a bug.
+      mprotect(old_slabs, old_slabs_size, PROT_READ);
       // It's important that we do this here in order to uncover any potential
       // correctness issues due to madvising away the old slabs.
       // TODO(b/214241843): we should be able to just do one MADV_DONTNEED once
@@ -754,8 +759,10 @@ void ResizeSlabsThread(Context& ctx, TcmallocSlab::DrainHandler drain_handler,
 
     // Delete the old slab from 100 iterations ago.
     if (old_slabs_span[old_slabs_idx].first != nullptr) {
-      sized_aligned_delete(old_slabs_span[old_slabs_idx].first,
-                           old_slabs_span[old_slabs_idx].second,
+      auto [old_slabs, old_slabs_size] = old_slabs_span[old_slabs_idx];
+
+      mprotect(old_slabs, old_slabs_size, PROT_READ | PROT_WRITE);
+      sized_aligned_delete(old_slabs, old_slabs_size,
                            std::align_val_t{EXEC_PAGESIZE});
     }
     old_slabs_span[old_slabs_idx] = {old_slabs, old_slabs_size};
@@ -799,7 +806,8 @@ TEST_P(StressThreadTest, Stress) {
   std::vector<std::vector<void*>> blocks(n_stress_threads);
   for (size_t i = 0; i < blocks.size(); ++i) {
     for (size_t j = 0; j < kStressCapacity; ++j) {
-      blocks[i].push_back(reinterpret_cast<void*>(i * kStressCapacity + j + 1));
+      blocks[i].push_back(reinterpret_cast<void*>(
+          (i * kStressCapacity + j + 1) * sizeof(void*)));
     }
   }
   std::atomic<bool> stop(false);
@@ -855,7 +863,7 @@ TEST_P(StressThreadTest, Stress) {
   }
   for (int cpu = 0; cpu < num_cpus; ++cpu) {
     slab.Drain(cpu, drain_handler);
-    for (size_t size_class = 0; size_class < kStressSlabs; ++size_class) {
+    for (size_t size_class = 1; size_class < kStressSlabs; ++size_class) {
       EXPECT_EQ(slab.Length(cpu, size_class), 0);
       EXPECT_EQ(slab.Capacity(cpu, size_class), 0);
     }
@@ -870,6 +878,8 @@ TEST_P(StressThreadTest, Stress) {
   void* deleted_slabs = slab.Destroy(sized_aligned_delete);
   for (const auto& [old_slabs, old_slabs_size] : old_slabs_arr) {
     if (old_slabs == nullptr || old_slabs == deleted_slabs) continue;
+
+    mprotect(old_slabs, old_slabs_size, PROT_READ | PROT_WRITE);
     sized_aligned_delete(old_slabs, old_slabs_size,
                          std::align_val_t{EXEC_PAGESIZE});
   }
@@ -975,7 +985,7 @@ TEST(TcmallocSlab, CriticalSectionMetadata) {
 }
 
 void BM_PushPop(benchmark::State& state) {
-  CHECK_CONDITION(IsFast());
+  TC_CHECK(IsFast());
   constexpr int kCpu = 0;
   constexpr size_t kSizeClass = 0;
   // Fake being on the given CPU. This allows Grow to succeed for
@@ -995,28 +1005,28 @@ void BM_PushPop(benchmark::State& state) {
     slab.InitCpu(cpu, get_capacity);
   }
   auto [cpu, _] = slab.CacheCpuSlab();
-  CHECK_CONDITION(cpu == kCpu);
+  TC_CHECK_EQ(cpu, kCpu);
 
-  CHECK_CONDITION(slab.Grow(kCpu, kSizeClass, kBatchSize, [](uint8_t shift) {
-    return kBatchSize;
-  }) == kBatchSize);
+  TC_CHECK_EQ(slab.Grow(kCpu, kSizeClass, kBatchSize,
+                        [](uint8_t shift) { return kBatchSize; }),
+              kBatchSize);
   void* batch[kBatchSize];
   for (int i = 0; i < kBatchSize; i++) {
     batch[i] = &batch[i];
   }
   for (auto _ : state) {
     for (size_t x = 0; x < kBatchSize; x++) {
-      CHECK_CONDITION(slab.Push(kSizeClass, batch[x]));
+      TC_CHECK(slab.Push(kSizeClass, batch[x]));
     }
     for (size_t x = 0; x < kBatchSize; x++) {
-      CHECK_CONDITION(slab.Pop(kSizeClass) == batch[kBatchSize - x - 1]);
+      TC_CHECK(slab.Pop(kSizeClass) == batch[kBatchSize - x - 1]);
     }
   }
 }
 BENCHMARK(BM_PushPop);
 
 void BM_PushPopBatch(benchmark::State& state) {
-  CHECK_CONDITION(IsFast());
+  TC_CHECK(IsFast());
   constexpr int kCpu = 0;
   constexpr size_t kSizeClass = 0;
   // Fake being on the given CPU. This allows Grow to succeed for
@@ -1034,18 +1044,17 @@ void BM_PushPopBatch(benchmark::State& state) {
     slab.InitCpu(cpu, get_capacity);
   }
   auto [cpu, _] = slab.CacheCpuSlab();
-  CHECK_CONDITION(cpu == kCpu);
-  CHECK_CONDITION(slab.Grow(kCpu, kSizeClass, kBatchSize, [](uint8_t shift) {
-    return kBatchSize;
-  }) == kBatchSize);
+  TC_CHECK_EQ(cpu, kCpu);
+  TC_CHECK_EQ(slab.Grow(kCpu, kSizeClass, kBatchSize,
+                        [](uint8_t shift) { return kBatchSize; }),
+              kBatchSize);
   void* batch[kBatchSize];
   for (int i = 0; i < kBatchSize; i++) {
     batch[i] = &batch[i];
   }
   for (auto _ : state) {
-    CHECK_CONDITION(slab.PushBatch(kSizeClass, batch, kBatchSize) ==
-                    kBatchSize);
-    CHECK_CONDITION(slab.PopBatch(kSizeClass, batch, kBatchSize) == kBatchSize);
+    TC_CHECK_EQ(slab.PushBatch(kSizeClass, batch, kBatchSize), kBatchSize);
+    TC_CHECK_EQ(slab.PopBatch(kSizeClass, batch, kBatchSize), kBatchSize);
   }
 }
 BENCHMARK(BM_PushPopBatch);

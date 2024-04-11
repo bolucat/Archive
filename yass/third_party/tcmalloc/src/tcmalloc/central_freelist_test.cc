@@ -65,6 +65,7 @@ class StaticForwarderTest : public testing::TestWithParam<
   Length pages_per_span_;
   size_t batch_size_;
   size_t objects_per_span_;
+  uint32_t size_reciprocal_;
   AccessDensityPrediction density_;
 
  private:
@@ -92,6 +93,7 @@ class StaticForwarderTest : public testing::TestWithParam<
     pages_per_span_ = Length(tc_globals.sizemap().class_to_pages(size_class_));
     batch_size_ = tc_globals.sizemap().num_objects_to_move(size_class_);
     objects_per_span_ = pages_per_span_.in_bytes() / object_size_;
+    size_reciprocal_ = Span::CalcReciprocal(object_size_);
   }
 };
 
@@ -103,8 +105,10 @@ TEST_P(StaticForwarderTest, Simple) {
   ASSERT_NE(span, nullptr);
 
   absl::FixedArray<void*> batch(objects_per_span_);
-  size_t allocated = span->BuildFreelist(object_size_, objects_per_span_,
-                                         &batch[0], objects_per_span_);
+  const uint32_t max_span_cache_size = StaticForwarder::max_span_cache_size();
+  size_t allocated =
+      span->BuildFreelist(object_size_, objects_per_span_, &batch[0],
+                          objects_per_span_, max_span_cache_size);
   ASSERT_EQ(allocated, objects_per_span_);
 
   EXPECT_EQ(size_class_, tc_globals.pagemap().sizeclass(span->first_page()));
@@ -119,7 +123,8 @@ TEST_P(StaticForwarderTest, Simple) {
   }
 
   for (void* ptr : batch) {
-    span->FreelistPush(ptr, object_size_);
+    span->FreelistPush(ptr, object_size_, size_reciprocal_,
+                       max_span_cache_size);
   }
 
   StaticForwarder::DeallocateSpans(size_class_, objects_per_span_,
@@ -200,11 +205,12 @@ class StaticForwarderEnvironment {
         StaticForwarder::AllocateSpan(size_class_, alloc_info, pages_per_span_);
     ASSERT_NE(span, nullptr);
 
-    auto d = absl::make_unique<SpanData>();
+    auto d = std::make_unique<SpanData>();
     d->span = span;
 
-    size_t allocated = span->BuildFreelist(object_size_, objects_per_span_,
-                                           d->batch, batch_size_);
+    size_t allocated = span->BuildFreelist(
+        object_size_, objects_per_span_, d->batch, batch_size_,
+        StaticForwarder::max_span_cache_size());
     EXPECT_LE(allocated, objects_per_span_);
 
     EXPECT_EQ(size_class_, tc_globals.pagemap().sizeclass(span->first_page()));
@@ -282,7 +288,7 @@ class StaticForwarderEnvironment {
 };
 
 static BackingStats PageHeapStats() {
-  absl::base_internal::SpinLockHolder l(&pageheap_lock);
+  PageHeapSpinLockHolder l;
   return tc_globals.page_allocator().stats();
 }
 
@@ -332,11 +338,12 @@ using central_freelist_internal::kNumLists;
 using TypeParam = FakeCentralFreeListEnvironment<
     central_freelist_internal::CentralFreeList<MockStaticForwarder>>;
 using CentralFreeListTest =
-    ::testing::TestWithParam<std::tuple<SizeClassInfo, bool>>;
+    ::testing::TestWithParam<std::tuple<SizeClassInfo, bool, bool>>;
 
 TEST_P(CentralFreeListTest, IsolatedSmoke) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   EXPECT_CALL(e.forwarder(), AllocateSpan).Times(1);
 
   absl::FixedArray<void*> batch(e.batch_size());
@@ -388,7 +395,8 @@ TEST_P(CentralFreeListTest, IsolatedSmoke) {
 
 TEST_P(CentralFreeListTest, SpanUtilizationHistogram) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   constexpr size_t kNumSpans = 10;
 
   // Request kNumSpans spans.
@@ -418,7 +426,7 @@ TEST_P(CentralFreeListTest, SpanUtilizationHistogram) {
       object_to_span.emplace_back(batch[i], s);
       allocated_per_span[s] += 1;
     }
-    ASSERT(span_idx < kNumSpans);
+    TC_ASSERT_LT(span_idx, kNumSpans);
   }
 
   // Make sure that we have fetched exactly from kNumSpans spans.
@@ -463,7 +471,7 @@ TEST_P(CentralFreeListTest, SpanUtilizationHistogram) {
       // If span has non-zero allocated objects, include it in the histogram.
       if (span_and_count.second > 0) {
         const size_t bucket = absl::bit_width(span_and_count.second) - 1;
-        ASSERT(bucket <= last_bucket);
+        TC_ASSERT_LE(bucket, last_bucket);
         ++expected[bucket];
       }
     }
@@ -491,7 +499,8 @@ TEST_P(CentralFreeListTest, SinglePopulate) {
   // Make sure that we allocate up to kObjectsPerSpan objects in both the span
   // prioritization states.
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   // Try to fetch sufficiently large number of objects at startup.
   const int num_objects_to_fetch = 10 * e.objects_per_span();
   std::vector<void*> objects(num_objects_to_fetch, nullptr);
@@ -514,7 +523,7 @@ TEST_P(CentralFreeListTest, SinglePopulate) {
 // each operation, the actual index is matched against the expected one.
 template <typename IndexingFunc>
 void TestIndexing(TypeParam& e, IndexingFunc f) {
-  ASSERT(kNumLists > 0);
+  TC_ASSERT_GT(kNumLists, 0);
   const int num_objects_to_fetch = e.objects_per_span();
   std::vector<void*> objects(num_objects_to_fetch);
   size_t fetched = 0;
@@ -526,15 +535,15 @@ void TestIndexing(TypeParam& e, IndexingFunc f) {
     // Try to fetch one object from the span.
     int got = e.central_freelist().RemoveRange(&objects[fetched], 1);
     fetched += got;
-    ASSERT(fetched);
+    TC_ASSERT(fetched);
     if (fetched % num_objects_to_fetch == 0) {
       // Span should have been removed from nonempty_ lists because we have
       // allocated all the objects from it.
       EXPECT_EQ(e.central_freelist().NumSpansInList(expected_idx), 0);
     } else {
       expected_idx = f(fetched);
-      ASSERT(expected_idx >= 0);
-      ASSERT(expected_idx < kNumLists);
+      TC_ASSERT_GE(expected_idx, 0);
+      TC_ASSERT_LT(expected_idx, kNumLists);
       // Check that the span exists in the corresponding nonempty_ list.
       EXPECT_EQ(e.central_freelist().NumSpansInList(expected_idx), 1);
     }
@@ -546,7 +555,7 @@ void TestIndexing(TypeParam& e, IndexingFunc f) {
   while (--remaining > 0) {
     // Return objects back to the span one at a time.
     e.central_freelist().InsertRange({&objects[remaining], 1});
-    ASSERT(remaining);
+    TC_ASSERT(remaining);
     // When allocated objects are more than the threshold, the span is indexed
     // to nonempty_ list 0.
     expected_idx = f(remaining);
@@ -562,7 +571,8 @@ void TestIndexing(TypeParam& e, IndexingFunc f) {
 
 TEST_P(CentralFreeListTest, BitwidthIndexedNonEmptyLists) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   if (e.objects_per_span() <= 2 * kNumLists &&
       e.use_all_buckets_for_few_object_spans() == true) {
     GTEST_SKIP()
@@ -577,7 +587,8 @@ TEST_P(CentralFreeListTest, BitwidthIndexedNonEmptyLists) {
 
 TEST_P(CentralFreeListTest, DirectIndexedEncodedNonEmptyLists) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   if (e.objects_per_span() > 2 * kNumLists ||
       e.use_all_buckets_for_few_object_spans() == false) {
     GTEST_SKIP() << "Skipping test as one hot encoding not required.";
@@ -597,7 +608,8 @@ TEST_P(CentralFreeListTest, DirectIndexedEncodedNonEmptyLists) {
 // as enforced by our prioritization scheme.
 TEST_P(CentralFreeListTest, SpanPriority) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
 
   // If the number of objects per span is less than 2, we do not use more than
   // one nonempty_ lists. So, we can not prioritize the spans based on how many
@@ -702,7 +714,8 @@ TEST_P(CentralFreeListTest, SpanPriority) {
 
 TEST_P(CentralFreeListTest, MultipleSpans) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   std::vector<void*> all_objects;
   constexpr size_t kNumSpans = 10;
 
@@ -784,7 +797,8 @@ TEST_P(CentralFreeListTest, MultipleSpans) {
 
 TEST_P(CentralFreeListTest, PassSpanDensityToPageheap) {
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   ASSERT_GE(e.objects_per_span(), 1);
   auto test_function = [&](size_t num_objects,
                            AccessDensityPrediction density) {
@@ -813,7 +827,8 @@ TEST_P(CentralFreeListTest, SpanFragmentation) {
   // it, but this gives us a self-contained (and sanitizable) implementation of
   // the CentralFreeList.
   TypeParam e(std::get<0>(GetParam()).size, std::get<0>(GetParam()).pages,
-              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()));
+              std::get<0>(GetParam()).num_to_move, std::get<1>(GetParam()),
+              std::get<2>(GetParam()));
   // Allocate one object from the CFL to allocate a span.
   void* initial;
   int got = e.central_freelist().RemoveRange(&initial, 1);
@@ -849,8 +864,10 @@ INSTANTIATE_TEST_SUITE_P(
     CentralFreeList, CentralFreeListTest,
     testing::Combine(
         // We skip the first size class since it is set to 0.
-        testing::ValuesIn(kSizeClasses.begin() + 1, kSizeClasses.end()),
-        /*use_all_buckets_for_few_object_spans=*/testing::Values(false, true)));
+        testing::ValuesIn(kSizeClasses.classes.begin() + 1,
+                          kSizeClasses.classes.end()),
+        /*use_all_buckets_for_few_object_spans=*/testing::Values(false, true),
+        /*use_large_spans=*/testing::Values(false, true)));
 
 }  // namespace
 }  // namespace tcmalloc_internal

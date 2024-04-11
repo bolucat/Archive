@@ -97,9 +97,9 @@
   .globl label##_trampoline;                                      \
   .type  label##_trampoline, @function;                           \
 label##_trampoline:                                               \
-  .cfi_startproc;                                                 \
+  CFI(.cfi_startproc);                                            \
   jmp .L##label##_abort;                                          \
-  .cfi_endproc;                                                   \
+  CFI(.cfi_endproc);                                              \
   .size label##_trampoline, . - label##_trampoline;
 
 // This is part of the upstream rseq ABI.  The 4 bytes prior to the abort IP
@@ -169,12 +169,12 @@ label##_trampoline:                                               \
   .local tcmalloc_internal_tls_fetch_pic
   .type tcmalloc_internal_tls_fetch_pic, @function
 tcmalloc_internal_tls_fetch_pic:
-  .cfi_startproc
+  CFI(.cfi_startproc)
   push %rbp
-  .cfi_def_cfa_offset 16
-  .cfi_offset 6, -16
+  CFI(.cfi_def_cfa_offset 16)
+  CFI(.cfi_offset 6, -16)
   mov %rsp, %rbp
-  .cfi_def_cfa_register 6
+  CFI(.cfi_def_cfa_register 6)
   sub $0x30, %rsp
   mov %rsi, -0x08(%rbp)  /* atypical abi: tcmalloc_tls_fetch_pic preserves regs */
   mov %rdi, -0x10(%rbp)
@@ -200,50 +200,16 @@ tcmalloc_internal_tls_fetch_pic:
   mov -0x30(%rbp), %r9
   add $0x30, %rsp
   leave
-  .cfi_def_cfa_register 7
-  .cfi_def_cfa_offset 8
+  CFI(.cfi_def_cfa_register 7)
+  CFI(.cfi_def_cfa_offset 8)
   ret; /* &__rseq_abi in %rax */
-  .cfi_endproc
+  CFI(.cfi_endproc)
 ENCODE_SIZE(tcmalloc_internal_tls_fetch_pic)
 #endif  /* !defined(__PIC__) || defined(__PIE__) */
 
 /* ---------------- end helper macros ---------------- */
 
 /* start of atomic restartable sequences */
-
-/*
- * NOTE:  We don't use cmpxchgq in the following functions since this would
-   make checking the success of our commit operation dependent on flags (which
- * are in turn clobbered by the restart region) -- furthermore we can't just
- * retry to fill in the flags since the restarted cmpxchg may have actually
- * succeeded; spuriously failing subsequent attempts.
- */
-
-/*
- * int TcmallocSlab_Internal_PerCpuCmpxchg64(
- *     int target_cpu (%rdi), long *p (%rsi), long old_val (%rdx),
- *     long new_val (%rcx), size_t virtual_cpu_id_offset (%r8))
- */
-  .p2align 6; /* aligns to 2^6 with NOP filling */
-  .globl TcmallocSlab_Internal_PerCpuCmpxchg64
-  .type  TcmallocSlab_Internal_PerCpuCmpxchg64, @function
-TcmallocSlab_Internal_PerCpuCmpxchg64:
-  .cfi_startproc
-  START_RSEQ(TcmallocSlab_Internal_PerCpuCmpxchg64);
-  FETCH_CPU(%eax, %r8)
-  cmp %eax, %edi; /* check cpu vs current_cpu */
-  jne .LTcmallocSlab_Internal_PerCpuCmpxchg64_commit;
-  cmp %rdx, (%rsi); /* verify *p == old */
-  jne .LTcmallocSlab_Internal_PerCpuCmpxchg64_value_mismatch;
-  mov %rcx, (%rsi);
-.LTcmallocSlab_Internal_PerCpuCmpxchg64_commit:
-  ret;  /* return current cpu, indicating mismatch OR success */
-.LTcmallocSlab_Internal_PerCpuCmpxchg64_value_mismatch:
-  mov $-1, %eax;  /* mismatch versus "old" or "check", return -1 */
-  ret;
-  .cfi_endproc
-ENCODE_SIZE(TcmallocSlab_Internal_PerCpuCmpxchg64)
-DEFINE_UPSTREAM_CS(TcmallocSlab_Internal_PerCpuCmpxchg64)
 
 /* size_t TcmallocSlab_Internal_PushBatch(
  *     size_t size_class (%rdi),
@@ -272,13 +238,13 @@ DEFINE_UPSTREAM_CS(TcmallocSlab_Internal_PerCpuCmpxchg64)
   .globl TcmallocSlab_Internal_PushBatch
   .type  TcmallocSlab_Internal_PushBatch, @function
 TcmallocSlab_Internal_PushBatch:
-  .cfi_startproc
+  CFI(.cfi_startproc)
   START_RSEQ(TcmallocSlab_Internal_PushBatch);
   FETCH_SLABS(%r8);
   btrq $TCMALLOC_CACHED_SLABS_BIT, %r8;
   jnc .LTcmallocSlab_Internal_PushBatch_full;
-  movzwq (%r8, %rdi, 8), %r9; /* current */
-  movzwq 6(%r8, %rdi, 8), %r10; /* end */
+  movzwq (%r8, %rdi, 4), %r9; /* current */
+  movzwq 2(%r8, %rdi, 4), %r10; /* end */
   cmpq %r10, %r9;
   jae .LTcmallocSlab_Internal_PushBatch_full;
   movq %rdx, %r11; /* r11 = copy of len */
@@ -293,7 +259,7 @@ TcmallocSlab_Internal_PushBatch:
   incq %r9;
   cmpq %r9, %r10;
   jne .LTcmallocSlab_Internal_PushBatch_loop
-  movw %r9w, (%r8, %rdi, 8);
+  movw %r9w, (%r8, %rdi, 4);
 .LTcmallocSlab_Internal_PushBatch_commit:
   movq %rdx, %rax;
   subq %r11, %rax;
@@ -301,26 +267,27 @@ TcmallocSlab_Internal_PushBatch:
 .LTcmallocSlab_Internal_PushBatch_full:
   xor %rax, %rax;
   ret;
-  .cfi_endproc
+  CFI(.cfi_endproc)
 ENCODE_SIZE(TcmallocSlab_Internal_PushBatch)
 DEFINE_UPSTREAM_CS(TcmallocSlab_Internal_PushBatch)
 
 /* size_t TcmallocSlab_Internal_PopBatch(
  *     size_t size_class (%rdi),
  *     void** batch (%rsi),
- *     size_t len (%rdx)) {
+ *     size_t len (%rdx),
+ *     std::atomic<uint16_t>* begin_ptr (%rcx)) {
  *   uint64_t* r8 = tcmalloc_rseq.slabs;
  *   if ((r8 & TCMALLOC_CACHED_SLABS_BIT) == 0) return 0;
  *   r8 &= ~TCMALLOC_CACHED_SLABS_BIT;
  *   Header* hdr = GetHeader(rdi, rax, size_class);
  *   uint64_t r9 = hdr->current;
- *   uint64_t r10 = hdr->begin;
+ *   uint64_t r10 = *begin_ptr;
  *   if (r9 <= r10) return 0;
  *   r11 = min(rdx, r9 - r10);
  *   rax = 0;
  * loop:
  *   r9--;
- *   r10 = *(r12 + r9 * 8);
+ *   r10 = *(r8 + r9 * 8);
  *   batch[rax] = r10;
  *   rax++;
  *   if (rax != r11) goto loop;
@@ -332,14 +299,14 @@ DEFINE_UPSTREAM_CS(TcmallocSlab_Internal_PushBatch)
   .globl TcmallocSlab_Internal_PopBatch
   .type  TcmallocSlab_Internal_PopBatch, @function
 TcmallocSlab_Internal_PopBatch:
-  .cfi_startproc
+  CFI(.cfi_startproc)
   START_RSEQ(TcmallocSlab_Internal_PopBatch);
   FETCH_SLABS(%r8);
   xorq %rax, %rax;
   btrq $TCMALLOC_CACHED_SLABS_BIT, %r8;
   jnc .LTcmallocSlab_Internal_PopBatch_commit;
-  movzwq (%r8, %rdi, 8), %r9; /* current */
-  movzwq 4(%r8, %rdi, 8), %r10; /* begin */
+  movzwq (%r8, %rdi, 4), %r9; /* current */
+  movzwq (%rcx), %r10; /* begin */
   cmp %r10, %r9;
   jbe .LTcmallocSlab_Internal_PopBatch_commit;
   movq %r9, %r11;
@@ -353,10 +320,10 @@ TcmallocSlab_Internal_PopBatch:
   incq %rax;
   cmpq %rax, %r11;
   jne .LTcmallocSlab_Internal_PopBatch_loop
-  movw %r9w, (%r8, %rdi, 8);
+  movw %r9w, (%r8, %rdi, 4);
 .LTcmallocSlab_Internal_PopBatch_commit:
   ret;
-  .cfi_endproc
+  CFI(.cfi_endproc)
 ENCODE_SIZE(TcmallocSlab_Internal_PopBatch)
 DEFINE_UPSTREAM_CS(TcmallocSlab_Internal_PopBatch)
 

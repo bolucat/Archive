@@ -60,7 +60,7 @@ bool decide_subrelease() {
           }
         }
 
-        Log(kLog, __FILE__, __LINE__,
+        TC_LOG(
             "Runtime opt-out from HPAA requires building with "
             "//tcmalloc:want_no_hpaa."
         );
@@ -70,8 +70,7 @@ bool decide_subrelease() {
       case '2':
         return true;
       default:
-        Crash(kCrash, __FILE__, __LINE__, "bad env var", e);
-        return false;
+        TC_BUG("bad env var '%s'", e);
     }
   }
 
@@ -104,8 +103,7 @@ bool use_huge_region_more_often() {
       case '1':
         return false;
       default:
-        Crash(kCrash, __FILE__, __LINE__, "bad env var", e);
-        return false;
+        TC_BUG("bad env var '%s'", e);
     }
   }
 

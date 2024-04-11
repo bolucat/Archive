@@ -55,12 +55,15 @@ cc_library(
     srcs = ["testutil.cc"],
     hdrs = ["testutil.h"],
     copts = TCMALLOC_DEFAULT_COPTS,
-    visibility = ["//tcmalloc:__subpackages__"],
+    visibility = [
+        "//tcmalloc:__subpackages__",
+    ],
     deps = [
         "//tcmalloc:malloc_extension",
         "//tcmalloc/internal:logging",
         "//tcmalloc/internal:percpu",
         "@com_github_google_benchmark//:benchmark",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -73,11 +76,13 @@ create_tcmalloc_testsuite(
         "//conditions:default": None,
     }),
     linkstatic = 1,  # get the most realistic performance
+    shard_count = 3,
     tags = [
         "nosan",
     ],
     visibility = ["//visibility:private"],
     deps = REGTEST_DEPS + [
+        "//tcmalloc/internal:config",
         "@com_github_google_benchmark//:benchmark",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
@@ -196,8 +201,10 @@ cc_test(
     tags = ["nosan"],
     deps = [
         ":testutil",
+        "//tcmalloc:malloc_extension",
         "//tcmalloc/internal:config",
         "//tcmalloc/internal:linked_list",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -218,6 +225,8 @@ cc_test(
     timeout = "long",
     srcs = ["sampling_test.cc"],
     copts = TCMALLOC_DEFAULT_COPTS,
+    # Some experiments change sampling overhead.
+    env = {"BORG_EXPERIMENTS": ""},
     linkstatic = 1,
     malloc = "//tcmalloc",
     tags = [
@@ -340,16 +349,21 @@ create_tcmalloc_testsuite(
     srcs = ["no_deps_test.cc"],
     copts = TCMALLOC_DEFAULT_COPTS,
     linkstatic = 1,
-    deps = ["//tcmalloc:malloc_extension"],
+    deps = [
+        "//tcmalloc:malloc_extension",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 create_tcmalloc_testsuite(
     name = "no_deps_per_cpu_test",
     srcs = ["no_deps_test.cc"],
     copts = TCMALLOC_DEFAULT_COPTS,
-    env = {"FORCE_CPU_CACHES": "1"},
     linkstatic = 1,
-    deps = ["//tcmalloc:malloc_extension"],
+    deps = [
+        "//tcmalloc:malloc_extension",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 create_tcmalloc_testsuite(
@@ -488,18 +502,6 @@ cc_binary(
 )
 
 cc_binary(
-    name = "want_hpaa_test_helper_subrelease",
-    testonly = 1,
-    srcs = ["want_hpaa_test_helper.cc"],
-    copts = TCMALLOC_DEFAULT_COPTS,
-    deps = [
-        "//tcmalloc:malloc_extension",
-        "//tcmalloc:want_hpaa_subrelease",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_binary(
     name = "want_hpaa_test_helper_no_hpaa",
     testonly = 1,
     srcs = ["want_hpaa_test_helper.cc"],
@@ -609,18 +611,27 @@ cc_library(
 cc_test(
     name = "numa_locality_test",
     srcs = ["numa_locality_test.cc"],
-    copts = ["-DTCMALLOC_NUMA_AWARE"] + TCMALLOC_DEFAULT_COPTS,
+    copts = ["-DTCMALLOC_INTERNAL_NUMA_AWARE"] + TCMALLOC_DEFAULT_COPTS,
+    linkstatic = 1,
     malloc = "//tcmalloc:tcmalloc_numa_aware",
-    tags = ["requires-net:external"],
+    tags = [
+    ],
     deps = [
         ":testutil",
         "//tcmalloc:common_numa_aware",
+        "//tcmalloc:malloc_extension",
         "//tcmalloc:want_numa_aware",
         "//tcmalloc/internal:affinity",
         "//tcmalloc/internal:logging",
         "//tcmalloc/internal:numa",
         "//tcmalloc/internal:page_size",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/random",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -709,6 +720,7 @@ create_tcmalloc_testsuite(
         "//tcmalloc/internal:profile_builder",
         "//tcmalloc/internal:profile_cc_proto",
         "@com_github_google_benchmark//:benchmark",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -800,6 +812,7 @@ create_tcmalloc_testsuite(
         "nosan",
     ],
     deps = [
+        ":testutil",
         "//tcmalloc:malloc_extension",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -907,6 +920,37 @@ cc_test(
         "@com_google_absl//absl/log:absl_check",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+create_tcmalloc_testsuite(
+    name = "profile_drop_frames_test",
+    srcs = ["profile_drop_frames_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+        "noubsan",
+    ],
+    deps = [
+        "//tcmalloc:malloc_extension",
+        "//tcmalloc:new_extension",
+        "//tcmalloc/internal:profile_builder",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+create_tcmalloc_testsuite(
+    name = "disable_numa_test",
+    srcs = ["disable_numa_test.cc"],
+    env = {"TCMALLOC_NUMA_AWARE": "0"},
+    deps = [
+        "//tcmalloc/internal:numa",
         "@com_google_googletest//:gtest_main",
     ],
 )

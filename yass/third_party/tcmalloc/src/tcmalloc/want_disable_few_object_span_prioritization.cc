@@ -1,4 +1,4 @@
-// Copyright 2023 The TCMalloc Authors
+// Copyright 2022 The TCMalloc Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,31 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-#include "tcmalloc/flags.h"
-#include "gtest/gtest.h"
 #include "absl/base/attributes.h"
-#include "absl/flags/flag.h"
-#include "tcmalloc/parameters.h"
+#include "tcmalloc/internal/config.h"
 
+GOOGLE_MALLOC_SECTION_BEGIN
 namespace tcmalloc {
 namespace tcmalloc_internal {
 
-int ABSL_ATTRIBUTE_WEAK default_want_disable_laze_size_class_resize();
-
-namespace {
-
-TEST(DisableLazySizeClassResizeTest, Sanity) {
-  ASSERT_NE(default_want_disable_laze_size_class_resize, nullptr);
-  EXPECT_EQ(default_want_disable_laze_size_class_resize(), 1);
-
-  absl::SetFlag(&FLAGS_tcmalloc_resize_cpu_cache_size_classes, true);
-  EXPECT_TRUE(Parameters::resize_cpu_cache_size_classes());
-
-  absl::SetFlag(&FLAGS_tcmalloc_resize_cpu_cache_size_classes, false);
-  EXPECT_FALSE(Parameters::resize_cpu_cache_size_classes());
+// This - if linked into a binary - disables few-object-span-prioritization
+// feature.
+ABSL_ATTRIBUTE_UNUSED bool
+default_want_disable_few_object_span_prioritization() {
+  return true;
 }
 
-}  // namespace
 }  // namespace tcmalloc_internal
 }  // namespace tcmalloc
+GOOGLE_MALLOC_SECTION_END

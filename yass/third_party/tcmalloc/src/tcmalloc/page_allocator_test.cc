@@ -27,6 +27,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "absl/base/internal/spinlock.h"
+#include "tcmalloc/common.h"
 #include "tcmalloc/internal/config.h"
 #include "tcmalloc/internal/logging.h"
 #include "tcmalloc/malloc_extension.h"
@@ -70,7 +71,7 @@ class PageAllocatorTest : public testing::Test {
   }
   void Delete(Span* s, size_t objects_per_span,
               MemoryTag tag = MemoryTag::kNormal) {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     allocator_->Delete(s, objects_per_span, tag);
   }
 
@@ -106,28 +107,28 @@ TEST_F(PageAllocatorTest, Record) {
            kSpanInfo.objects_per_span);
   }
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     auto info = allocator_->info(MemoryTag::kNormal);
 
-    CHECK_CONDITION(15 == info.counts_for(Length(1)).nalloc);
-    CHECK_CONDITION(15 == info.counts_for(Length(1)).nfree);
+    ASSERT_EQ(15, info.counts_for(Length(1)).nalloc);
+    ASSERT_EQ(15, info.counts_for(Length(1)).nfree);
 
-    CHECK_CONDITION(20 == info.counts_for(Length(2)).nalloc);
-    CHECK_CONDITION(0 == info.counts_for(Length(2)).nfree);
+    ASSERT_EQ(20, info.counts_for(Length(2)).nalloc);
+    ASSERT_EQ(0, info.counts_for(Length(2)).nfree);
 
-    CHECK_CONDITION(25 == info.counts_for(Length(3)).nalloc);
-    CHECK_CONDITION(25 == info.counts_for(Length(3)).nfree);
+    ASSERT_EQ(25, info.counts_for(Length(3)).nalloc);
+    ASSERT_EQ(25, info.counts_for(Length(3)).nfree);
 
     for (auto i = Length(4); i <= kMaxPages; ++i) {
-      CHECK_CONDITION(0 == info.counts_for(i).nalloc);
-      CHECK_CONDITION(0 == info.counts_for(i).nfree);
+      ASSERT_EQ(0, info.counts_for(i).nalloc);
+      ASSERT_EQ(0, info.counts_for(i).nfree);
     }
 
     const Length absurd =
         Length(uintptr_t{1} << (kAddressBits - 1 - kPageShift));
     for (Length i = kMaxPages + Length(1); i < absurd; i *= 2) {
-      CHECK_CONDITION(0 == info.counts_for(i).nalloc);
-      CHECK_CONDITION(0 == info.counts_for(i).nfree);
+      ASSERT_EQ(0, info.counts_for(i).nalloc);
+      ASSERT_EQ(0, info.counts_for(i).nfree);
     }
   }
   for (auto s : spans) Delete(s, kSpanInfo.objects_per_span);
@@ -154,7 +155,7 @@ TEST_F(PageAllocatorTest, ShrinkFailureTest) {
 
   BackingStats stats;
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     stats = allocator_->stats();
   }
   EXPECT_EQ(stats.system_bytes, 2 * kHugePageSize);
@@ -164,7 +165,7 @@ TEST_F(PageAllocatorTest, ShrinkFailureTest) {
   // Choose a limit so that we hit and we are not able to satisfy it.
   allocator_->set_limit(kPagesPerHugePage.in_bytes(), PageAllocator::kSoft);
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     allocator_->ShrinkToUsageLimit(Length(0));
   }
   EXPECT_LE(1, allocator_->limit_hits(PageAllocator::kSoft));
@@ -188,7 +189,7 @@ TEST_F(PageAllocatorTest, b270916852) {
 
   BackingStats stats;
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     stats = allocator_->stats();
   }
   EXPECT_EQ(stats.system_bytes, 2 * kHugePageSize);
@@ -200,14 +201,14 @@ TEST_F(PageAllocatorTest, b270916852) {
   // 2.  It is below current usage.
   // 3.  It is above what can be released from a single page heap.
   const size_t metadata_bytes = []() {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     return tc_globals.metadata_bytes();
   }();
   allocator_->set_limit(
       metadata_bytes + (3 * kPagesPerHugePage / 2).in_bytes() + kPageSize,
       PageAllocator::kSoft);
   {
-    absl::base_internal::SpinLockHolder h(&pageheap_lock);
+    PageHeapSpinLockHolder l;
     allocator_->ShrinkToUsageLimit(Length(0));
   }
   EXPECT_LE(1, allocator_->limit_hits(PageAllocator::kSoft));

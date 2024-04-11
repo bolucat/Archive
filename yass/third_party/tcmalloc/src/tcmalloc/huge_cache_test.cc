@@ -40,6 +40,7 @@
 #include "tcmalloc/internal/logging.h"
 #include "tcmalloc/mock_metadata_allocator.h"
 #include "tcmalloc/mock_virtual_allocator.h"
+#include "tcmalloc/pages.h"
 #include "tcmalloc/stats.h"
 
 namespace tcmalloc {
@@ -48,7 +49,7 @@ namespace {
 
 using testing::Return;
 
-class HugeCacheTest : public testing::Test {
+class HugeCacheTest : public testing::TestWithParam<absl::Duration> {
  private:
   // Allow tests to modify the clock used by the cache.
   static int64_t clock_offset_;
@@ -63,9 +64,9 @@ class HugeCacheTest : public testing::Test {
 
   class MockBackingInterface : public MemoryModifyFunction {
    public:
-    MOCK_METHOD(bool, Unback, (void* p, size_t len), ());
+    MOCK_METHOD(bool, Unback, (PageId p, Length len), ());
 
-    bool operator()(void* p, size_t len) override { return Unback(p, len); }
+    bool operator()(PageId p, Length len) override { return Unback(p, len); }
   };
 
  protected:
@@ -89,19 +90,20 @@ class HugeCacheTest : public testing::Test {
   FakeMetadataAllocator metadata_allocator_;
   HugeAllocator alloc_{vm_allocator_, metadata_allocator_};
   HugeCache cache_{&alloc_, metadata_allocator_, mock_unback_,
+                   /*cache_time=*/GetParam(),
                    Clock{.now = GetClock, .freq = GetClockFrequency}};
 };
 
 int64_t HugeCacheTest::clock_offset_ = 0;
 
-TEST_F(HugeCacheTest, Basic) {
+TEST_P(HugeCacheTest, Basic) {
   bool from;
   for (int i = 0; i < 100 * 1000; ++i) {
     cache_.Release(cache_.Get(NHugePages(1), &from));
   }
 }
 
-TEST_F(HugeCacheTest, Backing) {
+TEST_P(HugeCacheTest, Backing) {
   bool from;
   cache_.Release(cache_.Get(NHugePages(4), &from));
   EXPECT_TRUE(from);
@@ -119,7 +121,7 @@ TEST_F(HugeCacheTest, Backing) {
   cache_.Release(r);
 }
 
-TEST_F(HugeCacheTest, Release) {
+TEST_P(HugeCacheTest, Release) {
   bool from;
   const HugeLength one = NHugePages(1);
   cache_.Release(cache_.Get(NHugePages(5), &from));
@@ -150,18 +152,19 @@ TEST_F(HugeCacheTest, Release) {
   cache_.Release(r5);
 
   ASSERT_EQ(NHugePages(3), cache_.size());
-  EXPECT_CALL(mock_unback_, Unback(r5.start_addr(), kHugePageSize * 1))
+  EXPECT_CALL(mock_unback_, Unback(r5.start().first_page(), kPagesPerHugePage))
       .WillOnce(Return(true));
   EXPECT_EQ(NHugePages(1), cache_.ReleaseCachedPages(NHugePages(1)));
   cache_.Release(r3);
   cache_.Release(r4);
 
-  EXPECT_CALL(mock_unback_, Unback(r1.start_addr(), 4 * kHugePageSize))
+  EXPECT_CALL(mock_unback_,
+              Unback(r1.start().first_page(), 4 * kPagesPerHugePage))
       .WillOnce(Return(true));
   EXPECT_EQ(NHugePages(4), cache_.ReleaseCachedPages(NHugePages(200)));
 }
 
-TEST_F(HugeCacheTest, ReleaseFailure) {
+TEST_P(HugeCacheTest, ReleaseFailure) {
   bool from;
   const HugeLength one = NHugePages(1);
   cache_.Release(cache_.Get(NHugePages(5), &from));
@@ -192,35 +195,20 @@ TEST_F(HugeCacheTest, ReleaseFailure) {
   cache_.Release(r5);
 
   ASSERT_EQ(NHugePages(3), cache_.size());
-  EXPECT_CALL(mock_unback_, Unback(r5.start_addr(), 1 * kHugePageSize))
+  EXPECT_CALL(mock_unback_,
+              Unback(r5.start().first_page(), 1 * kPagesPerHugePage))
       .WillOnce(Return(false));
   EXPECT_EQ(NHugePages(0), cache_.ReleaseCachedPages(NHugePages(1)));
   cache_.Release(r3);
   cache_.Release(r4);
 
-  EXPECT_CALL(mock_unback_, Unback(r1.start_addr(), 5 * kHugePageSize))
+  EXPECT_CALL(mock_unback_,
+              Unback(r1.start().first_page(), 5 * kPagesPerHugePage))
       .WillOnce(Return(false));
   EXPECT_EQ(NHugePages(0), cache_.ReleaseCachedPages(NHugePages(200)));
 }
 
-TEST_F(HugeCacheTest, Regret) {
-  bool from;
-  HugeRange r = cache_.Get(NHugePages(20), &from);
-  cache_.Release(r);
-  HugeLength cached = cache_.size();
-  absl::Duration d = absl::Seconds(20);
-  Advance(d);
-  char buf[512];
-  Printer out(buf, 512);
-  cache_.Print(&out);  // To update the regret
-  uint64_t expected_regret = absl::ToInt64Nanoseconds(d) * cached.raw_num();
-  // Not exactly accurate since the mock clock advances with real time, and
-  // when we measure regret will be updated.
-  EXPECT_NEAR(cache_.regret(), expected_regret, expected_regret / 100);
-  EXPECT_GE(cache_.regret(), expected_regret);
-}
-
-TEST_F(HugeCacheTest, Stats) {
+TEST_P(HugeCacheTest, Stats) {
   bool from;
   HugeRange r = cache_.Get(NHugePages(1 + 1 + 2 + 1 + 3), &from);
   HugeRange r1, r2, r3, spacer1, spacer2;
@@ -242,55 +230,44 @@ TEST_F(HugeCacheTest, Stats) {
 
   struct Helper {
     static void Stat(const HugeCache& cache, size_t* spans,
-                     Length* pages_backed, Length* pages_unbacked,
-                     double* avg_age) {
-      PageAgeHistograms ages(absl::base_internal::CycleClock::Now());
+                     Length* pages_backed, Length* pages_unbacked) {
       LargeSpanStats large;
-      cache.AddSpanStats(nullptr, &large, &ages);
+      cache.AddSpanStats(nullptr, &large);
 
-      const PageAgeHistograms::Histogram* hist = ages.GetTotalHistogram(false);
       *spans = large.spans;
       *pages_backed = large.normal_pages;
       *pages_unbacked = large.returned_pages;
-      *avg_age = hist->avg_age();
     }
   };
 
-  double avg_age;
   size_t spans;
   Length pages_backed;
   Length pages_unbacked;
 
   cache_.Release(r1);
-  absl::SleepFor(absl::Microseconds(5000));
-  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked, &avg_age);
+  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked);
   EXPECT_EQ(Length(0), pages_unbacked);
   EXPECT_EQ(1, spans);
   EXPECT_EQ(NHugePages(1).in_pages(), pages_backed);
-  EXPECT_LE(0.005, avg_age);
 
   cache_.Release(r2);
-  absl::SleepFor(absl::Microseconds(2500));
-  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked, &avg_age);
+  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked);
   EXPECT_EQ(Length(0), pages_unbacked);
   EXPECT_EQ(2, spans);
   EXPECT_EQ(NHugePages(3).in_pages(), pages_backed);
-  EXPECT_LE((0.0075 * 1 + 0.0025 * 2) / (1 + 2), avg_age);
 
   cache_.Release(r3);
-  absl::SleepFor(absl::Microseconds(1250));
-  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked, &avg_age);
+  Helper::Stat(cache_, &spans, &pages_backed, &pages_unbacked);
   EXPECT_EQ(Length(0), pages_unbacked);
   EXPECT_EQ(3, spans);
   EXPECT_EQ(NHugePages(6).in_pages(), pages_backed);
-  EXPECT_LE((0.00875 * 1 + 0.00375 * 2 + 0.00125 * 3) / (1 + 2 + 3), avg_age);
 }
 
 static double Frac(HugeLength num, HugeLength denom) {
   return static_cast<double>(num.raw_num()) / denom.raw_num();
 }
 
-TEST_F(HugeCacheTest, Growth) {
+TEST_P(HugeCacheTest, Growth) {
   EXPECT_CALL(mock_unback_, Unback(testing::_, testing::_))
       .WillRepeatedly(Return(true));
 
@@ -370,22 +347,24 @@ TEST_F(HugeCacheTest, Growth) {
 
 // If we repeatedly grow and shrink, but do so very slowly, we should *not*
 // cache the large variation.
-TEST_F(HugeCacheTest, SlowGrowthUncached) {
+TEST_P(HugeCacheTest, SlowGrowthUncached) {
   EXPECT_CALL(mock_unback_, Unback(testing::_, testing::_))
       .WillRepeatedly(Return(true));
+
+  absl::Duration cache_time = GetParam();
 
   absl::BitGen rng;
   std::uniform_int_distribution<size_t> sizes(1, 10);
   for (int i = 0; i < 20; ++i) {
     std::vector<HugeRange> rs;
     for (int j = 0; j < 20; ++j) {
-      Advance(absl::Milliseconds(600));
+      Advance(cache_time);
       bool released;
       rs.push_back(cache_.Get(NHugePages(sizes(rng)), &released));
     }
     HugeLength max_cached = NHugePages(0);
     for (auto r : rs) {
-      Advance(absl::Milliseconds(600));
+      Advance(cache_time);
       cache_.Release(r);
       max_cached = std::max(max_cached, cache_.size());
     }
@@ -394,10 +373,11 @@ TEST_F(HugeCacheTest, SlowGrowthUncached) {
 }
 
 // If very rarely we have a huge increase in usage, it shouldn't be cached.
-TEST_F(HugeCacheTest, SpikesUncached) {
+TEST_P(HugeCacheTest, SpikesUncached) {
   EXPECT_CALL(mock_unback_, Unback(testing::_, testing::_))
       .WillRepeatedly(Return(true));
 
+  absl::Duration cache_time = GetParam();
   absl::BitGen rng;
   std::uniform_int_distribution<size_t> sizes(1, 10);
   for (int i = 0; i < 20; ++i) {
@@ -412,14 +392,15 @@ TEST_F(HugeCacheTest, SpikesUncached) {
       max_cached = std::max(max_cached, cache_.size());
     }
     EXPECT_GE(NHugePages(10), max_cached);
-    Advance(absl::Seconds(30));
+    Advance(10 * cache_time);
   }
 }
 
 // If very rarely we have a huge *decrease* in usage, it *should* be cached.
-TEST_F(HugeCacheTest, DipsCached) {
+TEST_P(HugeCacheTest, DipsCached) {
   absl::BitGen rng;
   std::uniform_int_distribution<size_t> sizes(1, 10);
+  absl::Duration cache_time = GetParam();
   for (int i = 0; i < 20; ++i) {
     std::vector<HugeRange> rs;
     HugeLength got = NHugePages(0);
@@ -432,7 +413,7 @@ TEST_F(HugeCacheTest, DipsCached) {
       if (released) uncached += n;
     }
     // Most of our time is at high usage...
-    Advance(absl::Seconds(30));
+    Advance(10 * cache_time);
     // Now immediately release and reallocate.
     for (auto r : rs) {
       cache_.Release(r);
@@ -447,9 +428,10 @@ TEST_F(HugeCacheTest, DipsCached) {
 
 // Suppose in a previous era of behavior we needed a giant cache,
 // but now we don't.  Do we figure this out promptly?
-TEST_F(HugeCacheTest, Shrink) {
+TEST_P(HugeCacheTest, Shrink) {
   absl::BitGen rng;
   std::uniform_int_distribution<size_t> sizes(1, 10);
+  absl::Duration cache_time = GetParam();
   for (int i = 0; i < 20; ++i) {
     std::vector<HugeRange> rs;
     for (int j = 0; j < 2000; ++j) {
@@ -466,7 +448,7 @@ TEST_F(HugeCacheTest, Shrink) {
 
   for (int i = 0; i < 30; ++i) {
     // New working set <= 20 pages.
-    Advance(absl::Seconds(1));
+    Advance(cache_time);
 
     // And do some work.
     for (int j = 0; j < 100; ++j) {
@@ -481,7 +463,7 @@ TEST_F(HugeCacheTest, Shrink) {
   ASSERT_GE(NHugePages(25), cache_.limit());
 }
 
-TEST_F(HugeCacheTest, Usage) {
+TEST_P(HugeCacheTest, Usage) {
   bool released;
 
   auto r1 = cache_.Get(NHugePages(10), &released);
@@ -564,6 +546,9 @@ TEST_F(MinMaxTrackerTest, Works) {
   EXPECT_EQ(NHugePages(1), tracker.MaxOverTime(kDuration));
   EXPECT_EQ(NHugePages(1), tracker.MinOverTime(kDuration));
 }
+
+INSTANTIATE_TEST_SUITE_P(All, HugeCacheTest,
+                         testing::Values(absl::Seconds(1), absl::Seconds(30)));
 
 }  // namespace
 }  // namespace tcmalloc_internal

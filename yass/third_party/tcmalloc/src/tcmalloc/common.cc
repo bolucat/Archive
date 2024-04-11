@@ -30,17 +30,21 @@ absl::string_view MemoryTagToLabel(MemoryTag tag) {
       return "NORMAL_P1";
     case MemoryTag::kSampled:
       return "SAMPLED";
+    case MemoryTag::kSelSan:
+      return "SELSAN";
     case MemoryTag::kCold:
       return "COLD";
-    default:
-      ASSUME(false);
+    case MemoryTag::kMetadata:
+      return "METADATA";
   }
+
+  ASSUME(false);
 }
 
 // This only provides correct answer for TCMalloc-allocated memory,
 // and may give a false positive for non-allocated block.
 extern "C" bool TCMalloc_Internal_PossiblyCold(const void* ptr) {
-  return IsColdMemory(ptr);
+  return GetMemoryTag(ptr) == MemoryTag::kCold;
 }
 
 }  // namespace tcmalloc_internal

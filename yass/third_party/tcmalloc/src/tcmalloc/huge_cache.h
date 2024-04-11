@@ -43,7 +43,7 @@ class MemoryModifyFunction {
  public:
   virtual ~MemoryModifyFunction() = default;
 
-  ABSL_MUST_USE_RESULT virtual bool operator()(void* start, size_t len) = 0;
+  ABSL_MUST_USE_RESULT virtual bool operator()(PageId start, Length len) = 0;
 };
 
 // Track the extreme values of a HugeLength value over the past
@@ -103,14 +103,16 @@ class HugeCache {
   // For use in production
   HugeCache(HugeAllocator* allocator,
             MetadataAllocator& meta_allocate ABSL_ATTRIBUTE_LIFETIME_BOUND,
-            MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND)
-      : HugeCache(allocator, meta_allocate, unback,
+            MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND,
+            absl::Duration cache_time)
+      : HugeCache(allocator, meta_allocate, unback, cache_time,
                   Clock{.now = absl::base_internal::CycleClock::Now,
                         .freq = absl::base_internal::CycleClock::Frequency}) {}
 
   // For testing with mock clock.
   //
-  // 2s (kCacheTime * 2) looks like an arbitrary window; it mostly is.
+  // cache_time * 2 (default cache_time = 1s) looks like an arbitrary window; it
+  // mostly is.
   //
   // Suffice to say that the below code (see MaybeGrowCacheLimit)
   // tries to make sure the cache is sized to protect a working set
@@ -137,20 +139,20 @@ class HugeCache {
   HugeCache(HugeAllocator* allocator,
             MetadataAllocator& meta_allocate ABSL_ATTRIBUTE_LIFETIME_BOUND,
             MemoryModifyFunction& unback ABSL_ATTRIBUTE_LIFETIME_BOUND,
-            Clock clock)
+            absl::Duration cache_time, Clock clock)
       : allocator_(allocator),
         cache_(meta_allocate),
         clock_(clock),
-        cache_time_ticks_(clock_.freq() * absl::ToDoubleSeconds(kCacheTime)),
+        cache_time_ticks_(clock_.freq() * absl::ToDoubleSeconds(cache_time)),
         nanoseconds_per_tick_(absl::ToInt64Nanoseconds(absl::Seconds(1)) /
                               clock_.freq()),
         last_limit_change_(clock.now()),
-        last_regret_update_(clock.now()),
         detailed_tracker_(clock, absl::Minutes(10)),
-        usage_tracker_(clock, kCacheTime * 2),
-        off_peak_tracker_(clock, kCacheTime * 2),
-        size_tracker_(clock, kCacheTime * 2),
-        unback_(unback) {}
+        usage_tracker_(clock, cache_time * 2),
+        off_peak_tracker_(clock, cache_time * 2),
+        size_tracker_(clock, cache_time * 2),
+        unback_(unback),
+        cache_time_(cache_time) {}
   // Allocate a usable set of <n> contiguous hugepages.  Try to give out
   // memory that's currently backed from the kernel if we have it available.
   // *from_released is set to false if the return range is already backed;
@@ -168,15 +170,12 @@ class HugeCache {
 
   // Backed memory available.
   HugeLength size() const { return size_; }
-  // Total memory cached (in HugeLength * nanoseconds)
-  uint64_t regret() const { return regret_ * nanoseconds_per_tick_; }
   // Current limit for how much backed memory we'll cache.
   HugeLength limit() const { return limit_; }
   // Sum total of unreleased requests.
   HugeLength usage() const { return usage_; }
 
-  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large,
-                    PageAgeHistograms* ages) const;
+  void AddSpanStats(SmallSpanStats* small, LargeSpanStats* large) const;
 
   BackingStats stats() const {
     BackingStats s;
@@ -211,7 +210,6 @@ class HugeCache {
   HugeLength size_{NHugePages(0)};
 
   HugeLength limit_{NHugePages(10)};
-  const absl::Duration kCacheTime = absl::Seconds(1);
 
   size_t hits_{0};
   size_t misses_{0};
@@ -238,8 +236,6 @@ class HugeCache {
   // However, we can go below it if we haven't used that much for 30 seconds.
   HugeLength MinCacheLimit() const { return NHugePages(10); }
 
-  uint64_t regret_{0};  // overflows if we cache 585 hugepages for 1 year
-  int64_t last_regret_update_;
   void UpdateSize(HugeLength size);
 
   MinMaxTracker<600> detailed_tracker_;
@@ -252,6 +248,7 @@ class HugeCache {
   HugeLength total_periodic_unbacked_{NHugePages(0)};
 
   MemoryModifyFunction& unback_;
+  absl::Duration cache_time_;
 };
 
 }  // namespace tcmalloc_internal
