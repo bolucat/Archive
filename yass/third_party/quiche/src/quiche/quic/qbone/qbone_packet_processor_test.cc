@@ -333,6 +333,9 @@ class QbonePacketProcessorTest : public QuicTest {
     processor_ = std::make_unique<QbonePacketProcessor>(
         self_ip_, client_ip_, /*client_ip_subnet_length=*/62, &output_,
         &stats_);
+
+    // Ignore calls to RecordThroughput
+    EXPECT_CALL(stats_, RecordThroughput(_, _, _)).WillRepeatedly(Return());
   }
 
   void SendPacketFromClient(absl::string_view packet) {
@@ -355,18 +358,20 @@ class QbonePacketProcessorTest : public QuicTest {
 };
 
 TEST_F(QbonePacketProcessorTest, EmptyPacket) {
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK, _));
+  EXPECT_CALL(stats_, RecordThroughput(0, Direction::FROM_OFF_NETWORK, _));
   SendPacketFromClient("");
 
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_NETWORK, _));
+  EXPECT_CALL(stats_, RecordThroughput(0, Direction::FROM_NETWORK, _));
   SendPacketFromNetwork("");
 }
 
 TEST_F(QbonePacketProcessorTest, RandomGarbage) {
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK, _));
   SendPacketFromClient(std::string(1280, 'a'));
 
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_NETWORK, _));
   SendPacketFromNetwork(std::string(1280, 'a'));
 }
 
@@ -375,31 +380,31 @@ TEST_F(QbonePacketProcessorTest, RandomGarbageWithCorrectLengthFields) {
   packet[4] = 0;
   packet[5] = 0;
 
-  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToClient(IsIcmpMessage(ICMP6_DST_UNREACH)));
   SendPacketFromClient(packet);
 }
 
 TEST_F(QbonePacketProcessorTest, GoodPacketFromClient) {
-  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_OFF_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToNetwork(_));
   SendPacketFromClient(kReferenceClientPacket);
 }
 
 TEST_F(QbonePacketProcessorTest, GoodPacketFromClientSubnet) {
-  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_OFF_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToNetwork(_));
   SendPacketFromClient(kReferenceClientSubnetPacket);
 }
 
 TEST_F(QbonePacketProcessorTest, GoodPacketFromNetwork) {
-  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_NETWORK));
+  EXPECT_CALL(stats_, OnPacketForwarded(Direction::FROM_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToClient(_));
   SendPacketFromNetwork(kReferenceNetworkPacket);
 }
 
 TEST_F(QbonePacketProcessorTest, GoodPacketFromNetworkWrongDirection) {
-  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToClient(IsIcmpMessage(ICMP6_DST_UNREACH)));
   SendPacketFromClient(kReferenceNetworkPacket);
 }
@@ -408,7 +413,7 @@ TEST_F(QbonePacketProcessorTest, TtlExpired) {
   std::string packet(kReferenceNetworkPacket);
   packet[7] = 1;
 
-  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToNetwork(IsIcmpMessage(ICMP6_TIME_EXCEEDED)));
   SendPacketFromNetwork(packet);
 }
@@ -417,7 +422,7 @@ TEST_F(QbonePacketProcessorTest, UnknownProtocol) {
   std::string packet(kReferenceNetworkPacket);
   packet[6] = IPPROTO_SCTP;
 
-  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToNetwork(IsIcmpMessage(ICMP6_PARAM_PROB)));
   SendPacketFromNetwork(packet);
 }
@@ -428,7 +433,7 @@ TEST_F(QbonePacketProcessorTest, FilterFromClient) {
       .WillRepeatedly(Return(ProcessingResult::SILENT_DROP));
   processor_->set_filter(std::move(filter));
 
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK, _));
   SendPacketFromClient(kReferenceClientPacket);
 }
 
@@ -446,7 +451,7 @@ class TestFilter : public QbonePacketProcessor::Filter {
     EXPECT_EQ(client_ip_, SourceIpFromHeader(full_packet));
     EXPECT_EQ(network_ip_, DestinationIpFromHeader(full_packet));
 
-    last_tos_ = TrafficClassFromHeader(full_packet);
+    last_tos_ = QbonePacketProcessor::TrafficClassFromHeader(full_packet);
     called_++;
     return ProcessingResult::SILENT_DROP;
   }
@@ -469,28 +474,36 @@ TEST_F(QbonePacketProcessorTest, FilterHelperFunctions) {
   TestFilter* filter = filter_owned.get();
   processor_->set_filter(std::move(filter_owned));
 
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK, _));
   SendPacketFromClient(kReferenceClientPacket);
   ASSERT_EQ(1, filter->called());
 }
 
 TEST_F(QbonePacketProcessorTest, FilterHelperFunctionsTOS) {
   auto filter_owned = std::make_unique<TestFilter>(client_ip_, network_ip_);
-  TestFilter* filter = filter_owned.get();
   processor_->set_filter(std::move(filter_owned));
 
-  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK))
+  EXPECT_CALL(stats_, OnPacketDroppedSilently(Direction::FROM_OFF_NETWORK, _))
       .Times(testing::AnyNumber());
+  EXPECT_CALL(stats_, RecordThroughput(kReferenceClientPacket.size(),
+                                       Direction::FROM_OFF_NETWORK, 0));
   SendPacketFromClient(kReferenceClientPacket);
-  ASSERT_EQ(0, filter->last_tos());
+
+  EXPECT_CALL(stats_, RecordThroughput(kReferenceClientPacketAF4.size(),
+                                       Direction::FROM_OFF_NETWORK, 0x80));
   SendPacketFromClient(kReferenceClientPacketAF4);
-  ASSERT_EQ(0x80, filter->last_tos());
+
+  EXPECT_CALL(stats_, RecordThroughput(kReferenceClientPacketAF3.size(),
+                                       Direction::FROM_OFF_NETWORK, 0x60));
   SendPacketFromClient(kReferenceClientPacketAF3);
-  ASSERT_EQ(0x60, filter->last_tos());
+
+  EXPECT_CALL(stats_, RecordThroughput(kReferenceClientPacketAF2.size(),
+                                       Direction::FROM_OFF_NETWORK, 0x40));
   SendPacketFromClient(kReferenceClientPacketAF2);
-  ASSERT_EQ(0x40, filter->last_tos());
+
+  EXPECT_CALL(stats_, RecordThroughput(kReferenceClientPacketAF1.size(),
+                                       Direction::FROM_OFF_NETWORK, 0x20));
   SendPacketFromClient(kReferenceClientPacketAF1);
-  ASSERT_EQ(0x20, filter->last_tos());
 }
 
 TEST_F(QbonePacketProcessorTest, Icmp6EchoResponseHasRightPayload) {
@@ -508,7 +521,7 @@ TEST_F(QbonePacketProcessorTest, Icmp6EchoResponseHasRightPayload) {
           })));
   processor_->set_filter(std::move(filter));
 
-  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK));
+  EXPECT_CALL(stats_, OnPacketDroppedWithIcmp(Direction::FROM_OFF_NETWORK, _));
   EXPECT_CALL(output_, SendPacketToClient(_))
       .WillOnce(Invoke([](absl::string_view packet) {
         // Explicit conversion because otherwise it is treated as a null

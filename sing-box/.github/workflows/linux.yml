@@ -19,6 +19,7 @@ jobs:
           go-version: ^1.22
       - name: Extract signing key
         run: |-
+          mkdir -p $HOME/.gnupg
           cat > $HOME/.gnupg/sagernet.key <<EOF
           ${{ secrets.GPG_KEY }}
           EOF
