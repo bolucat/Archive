@@ -7,6 +7,10 @@ var blacklist struct {
 	Mutex sync.Mutex
 }
 
+func init() {
+	blacklist.Map = make(map[string]struct{})
+}
+
 func AddSystemDnsBlacklist(names ...string) {
 	blacklist.Mutex.Lock()
 	defer blacklist.Mutex.Unlock()

@@ -21,7 +21,9 @@ import (
 
 	"github.com/apernet/hysteria/app/internal/forwarding"
 	"github.com/apernet/hysteria/app/internal/http"
+	"github.com/apernet/hysteria/app/internal/proxymux"
 	"github.com/apernet/hysteria/app/internal/redirect"
+	"github.com/apernet/hysteria/app/internal/sockopts"
 	"github.com/apernet/hysteria/app/internal/socks5"
 	"github.com/apernet/hysteria/app/internal/tproxy"
 	"github.com/apernet/hysteria/app/internal/tun"
@@ -99,13 +101,20 @@ type clientConfigTLS struct {
 }
 
 type clientConfigQUIC struct {
-	InitStreamReceiveWindow     uint64        `mapstructure:"initStreamReceiveWindow"`
-	MaxStreamReceiveWindow      uint64        `mapstructure:"maxStreamReceiveWindow"`
-	InitConnectionReceiveWindow uint64        `mapstructure:"initConnReceiveWindow"`
-	MaxConnectionReceiveWindow  uint64        `mapstructure:"maxConnReceiveWindow"`
-	MaxIdleTimeout              time.Duration `mapstructure:"maxIdleTimeout"`
-	KeepAlivePeriod             time.Duration `mapstructure:"keepAlivePeriod"`
-	DisablePathMTUDiscovery     bool          `mapstructure:"disablePathMTUDiscovery"`
+	InitStreamReceiveWindow     uint64                   `mapstructure:"initStreamReceiveWindow"`
+	MaxStreamReceiveWindow      uint64                   `mapstructure:"maxStreamReceiveWindow"`
+	InitConnectionReceiveWindow uint64                   `mapstructure:"initConnReceiveWindow"`
+	MaxConnectionReceiveWindow  uint64                   `mapstructure:"maxConnReceiveWindow"`
+	MaxIdleTimeout              time.Duration            `mapstructure:"maxIdleTimeout"`
+	KeepAlivePeriod             time.Duration            `mapstructure:"keepAlivePeriod"`
+	DisablePathMTUDiscovery     bool                     `mapstructure:"disablePathMTUDiscovery"`
+	Sockopts                    clientConfigQUICSockopts `mapstructure:"sockopts"`
+}
+
+type clientConfigQUICSockopts struct {
+	BindInterface       *string `mapstructure:"bindInterface"`
+	FirewallMark        *uint32 `mapstructure:"fwmark"`
+	FdControlUnixSocket *string `mapstructure:"fdControlUnixSocket"`
 }
 
 type clientConfigBandwidth struct {
@@ -195,6 +204,21 @@ func (c *clientConfig) fillServerAddr(hyConfig *client.Config) error {
 // fillConnFactory must be called after fillServerAddr, as we have different logic
 // for ConnFactory depending on whether we have a port hopping address.
 func (c *clientConfig) fillConnFactory(hyConfig *client.Config) error {
+	so := &sockopts.SocketOptions{
+		BindInterface:       c.QUIC.Sockopts.BindInterface,
+		FirewallMark:        c.QUIC.Sockopts.FirewallMark,
+		FdControlUnixSocket: c.QUIC.Sockopts.FdControlUnixSocket,
+	}
+	if err := so.CheckSupported(); err != nil {
+		var unsupportedErr *sockopts.UnsupportedError
+		if errors.As(err, &unsupportedErr) {
+			return configError{
+				Field: "quic.sockopts." + unsupportedErr.Field,
+				Err:   errors.New("unsupported on this platform"),
+			}
+		}
+		return configError{Field: "quic.sockopts", Err: err}
+	}
 	// Inner PacketConn
 	var newFunc func(addr net.Addr) (net.PacketConn, error)
 	switch strings.ToLower(c.Transport.Type) {
@@ -202,11 +226,11 @@ func (c *clientConfig) fillConnFactory(hyConfig *client.Config) error {
 		if hyConfig.ServerAddr.Network() == "udphop" {
 			hopAddr := hyConfig.ServerAddr.(*udphop.UDPHopAddr)
 			newFunc = func(addr net.Addr) (net.PacketConn, error) {
-				return udphop.NewUDPHopPacketConn(hopAddr, c.Transport.UDP.HopInterval, nil)
+				return udphop.NewUDPHopPacketConn(hopAddr, c.Transport.UDP.HopInterval, so.ListenUDP)
 			}
 		} else {
 			newFunc = func(addr net.Addr) (net.PacketConn, error) {
-				return net.ListenUDP("udp", nil)
+				return so.ListenUDP()
 			}
 		}
 	default:
@@ -531,7 +555,7 @@ func clientSOCKS5(config socks5Config, c client.Client) error {
 	if config.Listen == "" {
 		return configError{Field: "listen", Err: errors.New("listen address is empty")}
 	}
-	l, err := correctnet.Listen("tcp", config.Listen)
+	l, err := proxymux.ListenSOCKS(config.Listen)
 	if err != nil {
 		return configError{Field: "listen", Err: err}
 	}
@@ -556,7 +580,7 @@ func clientHTTP(config httpConfig, c client.Client) error {
 	if config.Listen == "" {
 		return configError{Field: "listen", Err: errors.New("listen address is empty")}
 	}
-	l, err := correctnet.Listen("tcp", config.Listen)
+	l, err := proxymux.ListenHTTP(config.Listen)
 	if err != nil {
 		return configError{Field: "listen", Err: err}
 	}
