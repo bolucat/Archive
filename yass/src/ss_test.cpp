@@ -38,6 +38,8 @@ ABSL_FLAG(std::string, proxy_type, "http", "proxy type, available: socks4, socks
 
 #include "test_util.hpp"
 
+const ProgramType pType = YASS_UNITTEST;
+
 using namespace net;
 
 namespace {
@@ -275,11 +277,11 @@ class ContentProviderConnectionFactory : public ConnectionFactory {
  public:
   using ConnectionType = ContentProviderConnection;
   template <typename... Args>
-  scoped_refptr<ConnectionType> Create(Args&&... args) {
+  static scoped_refptr<ConnectionType> Create(Args&&... args) {
     return MakeRefCounted<ConnectionType>(std::forward<Args>(args)...);
   }
-  const char* Name() override { return "content-provider"; }
-  const char* ShortName() override { return "cp"; }
+  static constexpr const ConnectionFactoryType Type = CONNECTION_FACTORY_CONTENT_PROVIDER;
+  static constexpr const char Name[] = "content-provider";
 };
 
 typedef ContentServer<ContentProviderConnectionFactory> ContentProviderServer;
