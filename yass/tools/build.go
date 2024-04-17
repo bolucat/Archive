@@ -495,8 +495,23 @@ func getLLVMVersion() string {
 	return llvm_version
 }
 
+func getMinGWLLVMVersion(mingwDir string) string {
+	entries, err := ioutil.ReadDir(filepath.Join(mingwDir, "lib", "clang"))
+	if err != nil {
+		glog.Fatalf("%v", err)
+	}
+	var llvm_version string
+	for _, entry := range entries {
+		llvm_version = entry.Name()
+	}
+	if llvm_version == "" {
+		glog.Fatalf("toolchain not found")
+	}
+	return llvm_version
+}
+
 func getAndFixMinGWLibunwind(mingwDir string) {
-	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/16/lib/windows", mingwDir), "windows")
+	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/%s/lib/windows", mingwDir, getMinGWLLVMVersion(mingwDir)), "windows")
 }
 
 func getAndFixAndroidLibunwind(ndkDir string) {
@@ -967,6 +982,7 @@ func buildStageGenerateBuildScript() {
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DGCC_TARGET=%s%d", androidAbiTarget, androidApiLevel))
 		// FIXME patch llvm toolchain to find libunwind.a
 		getAndFixAndroidLibunwind(androidNdkDir)
+		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DENABLE_FORTIFY=on"))
 	}
 
 	if systemNameFlag == "harmony" {
@@ -985,6 +1001,7 @@ func buildStageGenerateBuildScript() {
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DOHOS_SDK_NATIVE=%s/native", harmonyNdkDir))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DLLVM_SYSROOT=%s", clangPath))
 		getAndFixHarmonyLibunwind()
+		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DENABLE_FORTIFY=on"))
 	}
 
 	if systemNameFlag == "linux" && sysrootFlag != "" {
@@ -1012,6 +1029,7 @@ func buildStageGenerateBuildScript() {
 		if subsystem == "" {
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DUSE_TCMALLOC=on"))
 		}
+		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DENABLE_FORTIFY=on"))
 	}
 
 	if systemNameFlag == "freebsd" && sysrootFlag != "" {
@@ -1042,6 +1060,7 @@ func buildStageGenerateBuildScript() {
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DGCC_SYSROOT=%s", sysrootFlag))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DGCC_SYSTEM_PROCESSOR=%s", llvmArch))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DGCC_TARGET=%s", llvmTarget))
+		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DENABLE_FORTIFY=on"))
 	}
 	cmakeCmd := append([]string{"cmake", ".."}, cmakeArgs...)
 	if noConfigureFlag {
