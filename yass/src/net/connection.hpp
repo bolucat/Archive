@@ -133,6 +133,18 @@ class SSLDownlink : public Downlink {
   scoped_refptr<SSLServerSocket> ssl_socket_;
 };
 
+#ifdef __cpp_concepts
+template <typename T>
+concept StartClosableConnection = requires(T t) {
+  /// Enter the start phase, begin to read requests
+  { t.start() };
+  /// Close the socket and clean up
+  { t.close() };
+};
+#else
+#define StartClosableConnection typename
+#endif
+
 class Connection {
   using io_handle_t = Downlink::io_handle_t;
   using handle_t = Downlink::handle_t;
@@ -175,9 +187,12 @@ class Connection {
         enable_upstream_tls_(enable_upstream_tls),
         enable_tls_(enable_tls),
         upstream_ssl_ctx_(upstream_ssl_ctx) {
+    DCHECK_LE(remote_host_sni_.size(), (unsigned int)TLSEXT_MAXLEN_host_name);
     if (enable_tls) {
+      DCHECK(ssl_ctx);
       downlink_ = std::make_unique<SSLDownlink>(io_context, https_fallback, ssl_ctx);
     } else {
+      DCHECK(!ssl_ctx);
       downlink_ = std::make_unique<Downlink>(io_context);
     }
   }
@@ -214,12 +229,6 @@ class Connection {
     tlsext_ctx_.reset(tlsext_ctx);
     ssl_socket_data_index_ = ssl_socket_data_index;
   }
-
-  /// Enter the start phase, begin to read requests
-  virtual void start() {}
-
-  /// Close the socket and clean up
-  virtual void close() {}
 
   /// set callback
   ///
@@ -298,16 +307,24 @@ class Connection {
   absl::AnyInvocable<void()> disconnect_cb_;
 };
 
+enum ConnectionFactoryType {
+  CONNECTION_FACTORY_UNSPEC,
+  CONNECTION_FACTORY_CLIENT,
+  CONNECTION_FACTORY_SERVER,
+  CONNECTION_FACTORY_CONTENT_PROVIDER,
+};
+
+template <StartClosableConnection T>
 class ConnectionFactory {
  public:
-  enum ConnectionFactoryType {
-    CONNECTION_FACTORY_UNSPEC,
-    CONNECTION_FACTORY_CLIENT,
-    CONNECTION_FACTORY_SERVER,
-    CONNECTION_FACTORY_CONTENT_PROVIDER,
-  };
-  static constexpr const ConnectionFactoryType Type = CONNECTION_FACTORY_UNSPEC;
-  static constexpr const char Name[] = "unspec";
+  using ConnectionType = T;
+
+  template <typename... Args>
+  static scoped_refptr<ConnectionType> Create(Args&&... args) {
+    return MakeRefCounted<ConnectionType>(std::forward<Args>(args)...);
+  }
+  static constexpr const ConnectionFactoryType Type = ConnectionType::Type;
+  static constexpr const char* Name = ConnectionType::Name;
 };
 
 }  // namespace net

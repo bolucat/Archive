@@ -89,27 +89,26 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 	groupOption.ExpectedStatus = status
 
 	if len(groupOption.Use) != 0 {
-		list, err := getProviders(providersMap, groupOption.Use)
+		PDs, err := getProviders(providersMap, groupOption.Use)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", groupName, err)
 		}
 
+		// if test URL is empty, use the first health check URL of providers
 		if groupOption.URL == "" {
-			for _, p := range list {
-				if p.HealthCheckURL() != "" {
-					groupOption.URL = p.HealthCheckURL()
+			for _, pd := range PDs {
+				if pd.HealthCheckURL() != "" {
+					groupOption.URL = pd.HealthCheckURL()
 					break
 				}
 			}
-
 			if groupOption.URL == "" {
 				groupOption.URL = C.DefaultTestURL
 			}
+		} else {
+			addTestUrlToProviders(PDs, groupOption.URL, expectedStatus, groupOption.Filter, uint(groupOption.Interval))
 		}
-
-		// different proxy groups use different test URL
-		addTestUrlToProviders(list, groupOption.URL, expectedStatus, groupOption.Filter, uint(groupOption.Interval))
-		providers = append(providers, list...)
+		providers = append(providers, PDs...)
 	}
 
 	if len(groupOption.Proxies) != 0 {
@@ -140,7 +139,7 @@ func ParseProxyGroup(config map[string]any, proxyMap map[string]C.Proxy, provide
 			return nil, fmt.Errorf("%s: %w", groupName, err)
 		}
 
-		providers = append(providers, pd)
+		providers = append([]types.ProxyProvider{pd}, providers...)
 		providersMap[groupName] = pd
 	}
 

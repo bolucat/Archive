@@ -36,6 +36,7 @@ SSLSocket::SSLSocket(int ssl_socket_data_index,
       early_data_enabled_(absl::GetFlag(FLAGS_tls13_early_data)),
       pending_read_error_(kSSLClientSocketNoPendingResult) {
   DCHECK(!ssl_);
+  DCHECK(ssl_ctx);
   ssl_.reset(SSL_new(ssl_ctx));
   CHECK_NE(0, SSL_set_ex_data(ssl_.get(), ssl_socket_data_index_, this));
 
@@ -49,6 +50,7 @@ SSLSocket::SSLSocket(int ssl_socket_data_index,
     asio::ip::make_address(host_name.c_str(), ec);
     bool host_is_ip_address = !ec;
     if (!host_is_ip_address) {
+      DCHECK_LE(host_name.size(), (unsigned int)TLSEXT_MAXLEN_host_name);
       int ret = SSL_set_tlsext_host_name(ssl_.get(), host_name.c_str());
       CHECK_EQ(ret, 1) << "SSL_set_tlsext_host_name failure";
     }
