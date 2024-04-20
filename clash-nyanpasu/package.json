@@ -101,9 +101,9 @@
     "tsx": "4.7.2",
     "typescript": "5.4.5"
   },
-  "packageManager": "pnpm@9.0.2",
+  "packageManager": "pnpm@9.0.4",
   "engines": {
-    "node": "^20 || ^21"
+    "node": "21.7.3"
   },
   "pnpm": {
     "overrides": {
