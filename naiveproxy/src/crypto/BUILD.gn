@@ -26,6 +26,8 @@ component("crypto") {
     "ec_signature_creator_impl.h",
     "encryptor.cc",
     "encryptor.h",
+    "features.cc",
+    "features.h",
     "hkdf.cc",
     "hkdf.h",
     "hmac.cc",
@@ -71,18 +73,25 @@ component("crypto") {
   if (is_apple) {
     sources += [
       "apple_keychain.h",
+      "apple_keychain_util.h",
+      "apple_keychain_util.mm",
       "apple_keychain_v2.h",
       "apple_keychain_v2.mm",
     ]
 
     if (is_mac) {
-      sources += [ "apple_keychain_mac.cc" ]
+      sources += [
+        "apple_keychain_mac.cc",
+        "user_verifying_key_mac.mm",
+      ]
     } else if (is_ios) {
       sources += [ "apple_keychain_ios.mm" ]
     }
 
     frameworks = [
       "CoreFoundation.framework",
+      "CryptoTokenKit.framework",
+      "Foundation.framework",
       "Security.framework",
     ]
   }
@@ -91,6 +100,7 @@ component("crypto") {
     sources += [
       "mac_security_services_lock.cc",
       "mac_security_services_lock.h",
+      "unexportable_key_mac.mm",
     ]
   }
   if (is_win) {

@@ -63,7 +63,7 @@ bool AbslParseFlag(absl::string_view text, CipherMethodFlag* flag, std::string* 
 // the constituent types.
 std::string AbslUnparseFlag(const CipherMethodFlag& flag) {
   assert(is_valid_cipher_method(flag.method) && "Invalid cipher_method");
-  return to_cipher_method_str(flag.method);
+  return std::string(to_cipher_method_str(flag.method));
 }
 
 // Within the implementation, `AbslParseFlag()` will, in turn invoke
@@ -174,8 +174,7 @@ ABSL_FLAG(PortFlag, local_port, PortFlag(1080), "Local proxy server on given por
 ABSL_FLAG(std::string, username, "username", "Server user");
 ABSL_FLAG(std::string, password, "password", "Server password");
 static const std::string kCipherMethodHelpMessage =
-    absl::StrCat("Specify encrypt of method to use, one of ",
-                 absl::string_view(kCipherMethodsStr, strlen(kCipherMethodsStr) - 2));
+    absl::StrCat("Specify encrypt of method to use, one of ", kCipherMethodsStr);
 ABSL_FLAG(CipherMethodFlag, method, CipherMethodFlag(CRYPTO_DEFAULT), kCipherMethodHelpMessage);
 
 ABSL_FLAG(uint32_t, parallel_max, 512, "Maximum concurrency for parallel connections");
@@ -283,17 +282,17 @@ bool SaveConfig() {
   return all_fields_written;
 }
 
-std::string ReadConfigFromArgument(const std::string& server_host,
-                                   const std::string& server_sni,
-                                   const std::string& _server_port,
-                                   const std::string& username,
-                                   const std::string& password,
+std::string ReadConfigFromArgument(std::string_view server_host,
+                                   std::string_view server_sni,
+                                   std::string_view _server_port,
+                                   std::string_view username,
+                                   std::string_view password,
                                    cipher_method method,
-                                   const std::string& local_host,
-                                   const std::string& _local_port,
-                                   const std::string& doh_url,
-                                   const std::string& dot_host,
-                                   const std::string& _timeout) {
+                                   std::string_view local_host,
+                                   std::string_view _local_port,
+                                   std::string_view doh_url,
+                                   std::string_view dot_host,
+                                   std::string_view _timeout) {
   std::ostringstream err_msg;
 
   if (server_host.empty() || server_host.size() >= TLSEXT_MAXLEN_host_name) {
@@ -362,17 +361,17 @@ std::string ReadConfigFromArgument(const std::string& server_host,
   return ret;
 }
 
-std::string ReadConfigFromArgument(const std::string& server_host,
-                                   const std::string& server_sni,
-                                   const std::string& _server_port,
-                                   const std::string& username,
-                                   const std::string& password,
-                                   const std::string& method_string,
-                                   const std::string& local_host,
-                                   const std::string& _local_port,
-                                   const std::string& doh_url,
-                                   const std::string& dot_host,
-                                   const std::string& _timeout) {
+std::string ReadConfigFromArgument(std::string_view server_host,
+                                   std::string_view server_sni,
+                                   std::string_view _server_port,
+                                   std::string_view username,
+                                   std::string_view password,
+                                   std::string_view method_string,
+                                   std::string_view local_host,
+                                   std::string_view _local_port,
+                                   std::string_view doh_url,
+                                   std::string_view dot_host,
+                                   std::string_view _timeout) {
   std::ostringstream err_msg;
 
   if (server_host.empty() || server_host.size() >= TLSEXT_MAXLEN_host_name) {
@@ -442,7 +441,7 @@ std::string ReadConfigFromArgument(const std::string& server_host,
   return ret;
 }
 
-void SetClientUsageMessage(const std::string& exec_path) {
+void SetClientUsageMessage(std::string_view exec_path) {
   absl::SetProgramUsageMessage(absl::StrCat("Usage: ", Basename(exec_path), " [options ...]\n", R"(
   -K, --config <file> Read config from a file
   --server_host <host> Remote server on given host
@@ -455,7 +454,7 @@ void SetClientUsageMessage(const std::string& exec_path) {
 )"));
 }
 
-void SetServerUsageMessage(const std::string& exec_path) {
+void SetServerUsageMessage(std::string_view exec_path) {
   absl::SetProgramUsageMessage(absl::StrCat("Usage: ", Basename(exec_path), " [options ...]\n", R"(
   -K, --config <file> Read config from a file
   --certificate_chain_file <file> (TLS) Certificate Chain File Path

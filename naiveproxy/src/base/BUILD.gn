@@ -92,6 +92,14 @@ assert(!is_nacl || is_nacl_saigo,
 assert(!is_win || is_clang,
        "only clang-cl is supported on Windows, see https://crbug.com/988071")
 
+# Whether we should provide a `__libcpp_verbose_abort` handler that discards
+# `__VA_ARGS__` and just calls base::ImmediateCrash() for hardening failures.
+# This conditional matches `defined(OFFICIAL_BUILD) && !DCHECK_IS_ON()` in
+# base/check.h. I.e. we optimize `::std::__libcpp_verbose_abort(__VA_ARGS__)`
+# to discard `__VA_ARGS__` when we disable logging from CHECK() failures.
+use_nodebug_assertion =
+    use_custom_libcxx && is_official_build && !is_debug && !dcheck_always_on
+
 # Determines whether libevent should be dep.
 dep_libevent = !is_fuchsia && !is_win && !is_mac && !is_nacl
 
@@ -213,8 +221,6 @@ component("base") {
   sources = [
     "allocator/allocator_check.cc",
     "allocator/allocator_check.h",
-    "allocator/allocator_extension.cc",
-    "allocator/allocator_extension.h",
     "allocator/dispatcher/configuration.h",
     "allocator/dispatcher/dispatcher.cc",
     "allocator/dispatcher/dispatcher.h",
@@ -271,9 +277,6 @@ component("base") {
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
     "containers/contains.h",
-    "containers/cxx20_erase.h",
-    "containers/cxx20_erase_internal.h",
-    "containers/cxx20_erase_vector.h",
     "containers/enum_set.h",
     "containers/extend.h",
     "containers/fixed_flat_map.h",
@@ -290,7 +293,11 @@ component("base") {
     "containers/lru_cache.h",
     "containers/map_util.h",
     "containers/small_map.h",
+    "containers/span.h",
+    "containers/span_reader.h",
     "containers/stack.h",
+    "containers/to_value_list.h",
+    "containers/to_vector.h",
     "containers/unique_ptr_adapters.h",
     "containers/util.h",
     "containers/vector_buffer.h",
@@ -304,14 +311,10 @@ component("base") {
     "debug/asan_invalid_access.h",
     "debug/asan_service.cc",
     "debug/asan_service.h",
-    "debug/buffered_dwarf_reader.cc",
-    "debug/buffered_dwarf_reader.h",
     "debug/debugger.cc",
     "debug/debugger.h",
     "debug/dump_without_crashing.cc",
     "debug/dump_without_crashing.h",
-    "debug/dwarf_line_no.cc",
-    "debug/dwarf_line_no.h",
     "debug/leak_annotations.h",
     "debug/profiler.cc",
     "debug/profiler.h",
@@ -563,7 +566,8 @@ component("base") {
     "process/process_handle.cc",
     "process/process_handle.h",
     "process/process_info.h",
-    "process/process_metrics_iocounters.h",
+    "process/set_process_title.cc",
+    "process/set_process_title.h",
     "profiler/frame.cc",
     "profiler/frame.h",
     "profiler/metadata_recorder.cc",
@@ -939,6 +943,7 @@ component("base") {
     "types/pass_key.h",
     "types/strong_alias.h",
     "types/supports_ostream_operator.h",
+    "types/to_address.h",
     "types/token_type.h",
     "types/variant_util.h",
     "unguessable_token.cc",
@@ -1117,7 +1122,7 @@ component("base") {
     public_deps += [ "//build/rust:cxx_cppdeps" ]
   }
 
-  if (use_custom_libcxx && enable_safe_libcxx && !is_debug) {
+  if (use_nodebug_assertion) {
     public_deps += [ ":nodebug_assertion" ]
   }
 
@@ -1249,6 +1254,7 @@ component("base") {
   if (is_robolectric) {
     # Make jni.h available.
     configs += [ "//third_party/jdk" ]
+    deps += [ ":base_robolectric_jni" ]
   }
   if (is_robolectric) {
     sources += [
@@ -1283,11 +1289,7 @@ component("base") {
       "android/trace_event_binding.cc",
       "android/trace_event_binding.h",
     ]
-    deps += [
-      ":base_jni",
-      ":process_launcher_jni",
-      "//build:robolectric_buildflags",
-    ]
+    deps += [ "//build:robolectric_buildflags" ]
     public_deps += [ "//third_party/jni_zero:jni_zero" ]
   }  # is_android || is_robolectric
 
@@ -1422,7 +1424,7 @@ component("base") {
       "//third_party/fuchsia-sdk/sdk/pkg/async-loop-cpp",
       "//third_party/fuchsia-sdk/sdk/pkg/async-loop-default",
       "//third_party/fuchsia-sdk/sdk/pkg/fidl",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_inspect_cpp",
+      "//third_party/fuchsia-sdk/sdk/pkg/inspect_component_cpp",
       "//third_party/icu",
     ]
 
@@ -2025,7 +2027,6 @@ component("base") {
       "profiler/suspendable_thread_delegate_mac.h",
       "synchronization/waitable_event_watcher_mac.cc",
       "system/sys_info_mac.mm",
-      "time/time_exploded_posix.cc",
     ]
 
     libs += [
@@ -2082,7 +2083,7 @@ component("base") {
         "mac/mach_port_rendezvous.cc",
         "mac/mach_port_rendezvous.h",
         "process/kill_mac.cc",
-        "process/launch_mac.cc",
+        "process/launch_ios.cc",
         "process/memory_mac.mm",
         "process/port_provider_mac.cc",
         "process/port_provider_mac.h",
@@ -2131,12 +2132,6 @@ component("base") {
       ]
     }
 
-    if (current_cpu == "x64" || current_cpu == "arm64") {
-      sources += [ "time/time_exploded_posix.cc" ]
-    } else {
-      sources += [ "time/time_exploded_ios.cc" ]
-    }
-
     frameworks += [
       "Foundation.framework",
       "UIKit.framework",
@@ -2153,17 +2148,24 @@ component("base") {
 
     configs += linux_configs
     all_dependent_configs += linux_configs
-    sources += [ "system/sys_info_linux.cc" ]
+    sources += [
+      "process/set_process_title_linux.cc",
+      "process/set_process_title_linux.h",
+      "system/sys_info_linux.cc",
+    ]
     if (!is_cronet_build) {
       # These dependencies are not required on Android.
       sources += [
         "nix/mime_util_xdg.cc",
         "nix/mime_util_xdg.h",
+        "nix/scoped_xdg_activation_token_injector.cc",
+        "nix/scoped_xdg_activation_token_injector.h",
         "nix/xdg_util.cc",
         "nix/xdg_util.h",
       ]
       defines += [ "USE_SYMBOLIZE" ]
       deps += [
+        ":dwarf_helpers",
         "//base/third_party/symbolize",
         "//base/third_party/xdg_user_dirs",
       ]
@@ -2220,7 +2222,6 @@ component("base") {
       "synchronization/waitable_event_watcher_posix.cc",
       "threading/platform_thread_internal_posix.cc",
       "threading/platform_thread_internal_posix.h",
-      "time/time_exploded_posix.cc",
       "time/time_now_posix.cc",
     ]
 
@@ -2240,6 +2241,10 @@ component("base") {
         "//third_party/icu:icuuc",
       ]
     }
+  }
+
+  if (is_posix) {
+    sources += [ "time/time_exploded_posix.cc" ]
   }
 
   if ((is_posix && !is_apple && !is_android) || is_fuchsia) {
@@ -2400,6 +2405,34 @@ component("base") {
   }
 }
 
+if (is_linux || is_chromeos) {
+  # Split out as a separate target for two reasons:
+  # - the line number reader is 2x slower in debug builds if not optimized,
+  #   leading to a worse dev experience and test timeouts.
+  # - it would be nice to upstream this logic into something like Abseil. The
+  #   logic that drives the base symbolizer is already imported more or less
+  #   directly from Abseil.
+  source_set("dwarf_helpers") {
+    sources = [
+      "debug/buffered_dwarf_reader.cc",
+      "debug/buffered_dwarf_reader.h",
+      "debug/dwarf_line_no.cc",
+      "debug/dwarf_line_no.h",
+    ]
+
+    deps = [
+      "//base/allocator/partition_allocator:raw_ptr",
+      "//base/numerics:base_numerics",
+      "//base/third_party/symbolize",
+    ]
+
+    defines = [ "USE_SYMBOLIZE" ]
+
+    configs -= [ "//build/config/compiler:default_optimization" ]
+    configs += [ "//build/config/compiler:optimize_max" ]
+  }
+}
+
 # Build flags for Control Flow Integrity
 # https://www.chromium.org/developers/testing/control-flow-integrity
 buildflag_header("cfi_buildflags") {
@@ -2426,6 +2459,12 @@ buildflag_header("debugging_buildflags") {
   # TODO(crbug.com/1420774): Try and enable these checks on Android too.
   enable_commandline_sequence_checks =
       (is_debug || dcheck_always_on) && !is_android
+
+  if (enable_stack_trace_line_numbers) {
+    assert(
+        symbol_level > 0,
+        "symbol_level must be set to greater than 0 for source line numbers.")
+  }
 
   flags = [
     "DCHECK_IS_CONFIGURABLE=$dcheck_is_configurable",
@@ -2600,7 +2639,7 @@ static_library("base_static") {
   }
 }
 
-if (use_safe_libcxx && !is_debug) {
+if (use_nodebug_assertion) {
   # nodebug_assertion.cc has to be in its own source_set instead of being
   # included as a source in //base as otherwise its symbols won't be linked in
   # if they end up in an archive.

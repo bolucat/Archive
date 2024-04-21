@@ -582,9 +582,9 @@ int Socks5ServerSocket::DoHandshakeReadComplete(int result) {
       std::string domain(&buffer_[address_start], address_size_);
       request_endpoint_ = HostPortPair(domain, port_host);
     } else {
-      IPAddress ip_addr(
+      IPAddress ip_addr(base::span<const uint8_t>{
           reinterpret_cast<const uint8_t*>(&buffer_[address_start]),
-          address_size_);
+          static_cast<size_t>(address_size_)});
       IPEndPoint endpoint(ip_addr, port_host);
       request_endpoint_ = HostPortPair::FromIPEndPoint(endpoint);
     }

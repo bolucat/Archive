@@ -144,6 +144,32 @@ class QuicSpdyStream::HttpDecoderVisitor : public HttpDecoder::Visitor {
     stream_->OnWebTransportStreamFrameType(header_length, session_id);
   }
 
+  bool OnMetadataFrameStart(QuicByteCount header_length,
+                            QuicByteCount payload_length) override {
+    if (!VersionUsesHttp3(stream_->transport_version())) {
+      CloseConnectionOnWrongFrame("Metadata");
+      return false;
+    }
+    return stream_->OnMetadataFrameStart(header_length, payload_length);
+  }
+
+  bool OnMetadataFramePayload(absl::string_view payload) override {
+    QUICHE_DCHECK(!payload.empty());
+    if (!VersionUsesHttp3(stream_->transport_version())) {
+      CloseConnectionOnWrongFrame("Metadata");
+      return false;
+    }
+    return stream_->OnMetadataFramePayload(payload);
+  }
+
+  bool OnMetadataFrameEnd() override {
+    if (!VersionUsesHttp3(stream_->transport_version())) {
+      CloseConnectionOnWrongFrame("Metadata");
+      return false;
+    }
+    return stream_->OnMetadataFrameEnd();
+  }
+
   bool OnUnknownFrameStart(uint64_t frame_type, QuicByteCount header_length,
                            QuicByteCount payload_length) override {
     return stream_->OnUnknownFrameStart(frame_type, header_length,
@@ -697,6 +723,16 @@ void QuicSpdyStream::OnTrailingHeadersComplete(
   }
 }
 
+void QuicSpdyStream::RegisterMetadataVisitor(MetadataVisitor* visitor) {
+  QUIC_BUG_IF(Metadata visitor requires http3 metadata flag,
+              !GetQuicReloadableFlag(quic_enable_http3_metadata_decoding));
+  metadata_visitor_ = visitor;
+}
+
+void QuicSpdyStream::UnregisterMetadataVisitor() {
+  metadata_visitor_ = nullptr;
+}
+
 void QuicSpdyStream::OnPriorityFrame(
     const spdy::SpdyStreamPrecedence& precedence) {
   QUICHE_DCHECK_EQ(Perspective::IS_SERVER,
@@ -1162,6 +1198,61 @@ void QuicSpdyStream::OnWebTransportStreamFrameType(
       std::make_unique<WebTransportDataStream>(this, session_id);
   spdy_session_->AssociateIncomingWebTransportStreamWithSession(session_id,
                                                                 id());
+}
+
+bool QuicSpdyStream::OnMetadataFrameStart(QuicByteCount header_length,
+                                          QuicByteCount payload_length) {
+  if (metadata_visitor_ == nullptr) {
+    return OnUnknownFrameStart(
+        static_cast<uint64_t>(quic::HttpFrameType::METADATA), header_length,
+        payload_length);
+  }
+
+  QUIC_BUG_IF(Invalid METADATA state, metadata_decoder_ != nullptr);
+  constexpr size_t kMaxMetadataBlockSize = 1 << 20;  // 1 MB
+  metadata_decoder_ = std::make_unique<MetadataDecoder>(
+      id(), kMaxMetadataBlockSize, header_length, payload_length);
+
+  // Consume the frame header.
+  QUIC_DVLOG(1) << ENDPOINT << "Consuming " << header_length
+                << " byte long frame header of METADATA.";
+  sequencer()->MarkConsumed(body_manager_.OnNonBody(header_length));
+  return true;
+}
+
+bool QuicSpdyStream::OnMetadataFramePayload(absl::string_view payload) {
+  if (metadata_visitor_ == nullptr) {
+    return OnUnknownFramePayload(payload);
+  }
+
+  if (!metadata_decoder_->Decode(payload)) {
+    OnUnrecoverableError(QUIC_DECOMPRESSION_FAILURE,
+                         metadata_decoder_->error_message());
+    return false;
+  }
+
+  // Consume the frame payload.
+  QUIC_DVLOG(1) << ENDPOINT << "Consuming " << payload.size()
+                << " bytes of payload of METADATA.";
+  sequencer()->MarkConsumed(body_manager_.OnNonBody(payload.size()));
+  return true;
+}
+
+bool QuicSpdyStream::OnMetadataFrameEnd() {
+  if (metadata_visitor_ == nullptr) {
+    return OnUnknownFrameEnd();
+  }
+
+  if (!metadata_decoder_->EndHeaderBlock()) {
+    OnUnrecoverableError(QUIC_DECOMPRESSION_FAILURE,
+                         metadata_decoder_->error_message());
+    return false;
+  }
+
+  metadata_visitor_->OnMetadataComplete(metadata_decoder_->frame_len(),
+                                        metadata_decoder_->headers());
+  metadata_decoder_.reset();
+  return !sequencer()->IsClosed() && !reading_stopped();
 }
 
 bool QuicSpdyStream::OnUnknownFrameStart(uint64_t frame_type,

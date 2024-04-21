@@ -31,10 +31,7 @@ import("//third_party/protobuf/proto_library.gni")
 config("quiche_internal_config") {
   cflags = []
   if (is_clang) {
-    cflags += [
-      "-Wno-unused-private-field",
-      "-Wno-sign-compare",
-    ]
+    cflags += [ "-Wno-sign-compare" ]
   }
 }
 
@@ -51,9 +48,7 @@ config("quiche_config") {
 component("quiche") {
   # TODO(crbug.com/325102878): Remove once usage of the deprecated version of
   # absl::HexStringToBytes have been removed.
-  cflags = [
-    "-Wno-deprecated-declarations",
-  ]
+  cflags = [ "-Wno-deprecated-declarations" ]
   sources = [
               "overrides/quiche_platform_impl/quiche_bug_tracker_impl.h",
               "overrides/quiche_platform_impl/quiche_client_stats_impl.h",
@@ -65,6 +60,8 @@ component("quiche") {
               "overrides/quiche_platform_impl/quiche_mutex_impl.h",
               "overrides/quiche_platform_impl/quiche_reference_counted_impl.h",
               "overrides/quiche_platform_impl/quiche_server_stats_impl.h",
+              "overrides/quiche_platform_impl/quiche_stack_trace_impl.cc",
+              "overrides/quiche_platform_impl/quiche_stack_trace_impl.h",
               "overrides/quiche_platform_impl/quiche_time_utils_impl.cc",
               "overrides/quiche_platform_impl/quiche_time_utils_impl.h",
               "overrides/quiche_platform_impl/quiche_url_utils_impl.cc",

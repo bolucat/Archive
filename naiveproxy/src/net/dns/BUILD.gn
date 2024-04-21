@@ -45,6 +45,8 @@ source_set("dns") {
     "dns_server_iterator.h",
     "dns_session.cc",
     "dns_session.h",
+    "dns_task_results_manager.cc",
+    "dns_task_results_manager.h",
     "dns_transaction.cc",
     "dns_udp_tracker.cc",
     "dns_udp_tracker.h",

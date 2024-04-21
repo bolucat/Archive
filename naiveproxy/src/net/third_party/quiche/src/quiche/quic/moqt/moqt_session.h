@@ -19,6 +19,7 @@
 #include "quiche/quic/moqt/moqt_parser.h"
 #include "quiche/quic/moqt/moqt_track.h"
 #include "quiche/common/platform/api/quiche_export.h"
+#include "quiche/common/quiche_buffer_allocator.h"
 #include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/simple_buffer_allocator.h"
 #include "quiche/web_transport/web_transport.h"
@@ -34,9 +35,19 @@ using MoqtSessionTerminatedCallback =
     quiche::SingleUseCallback<void(absl::string_view error_message)>;
 using MoqtSessionDeletedCallback = quiche::SingleUseCallback<void()>;
 // If |error_message| is nullopt, the ANNOUNCE was successful.
-using MoqtAnnounceCallback = quiche::SingleUseCallback<void(
+using MoqtOutgoingAnnounceCallback = quiche::SingleUseCallback<void(
     absl::string_view track_namespace,
-    std::optional<absl::string_view> error_message)>;
+    std::optional<MoqtAnnounceErrorReason> error)>;
+using MoqtIncomingAnnounceCallback =
+    quiche::MultiUseCallback<std::optional<MoqtAnnounceErrorReason>(
+        absl::string_view track_namespace)>;
+
+inline std::optional<MoqtAnnounceErrorReason> DefaultIncomingAnnounceCallback(
+    absl::string_view /*track_namespace*/) {
+  return std::optional(MoqtAnnounceErrorReason{
+      MoqtAnnounceErrorCode::kAnnounceNotSupported,
+      "This endpoint does not accept incoming ANNOUNCE messages"});
+};
 
 // Callbacks for session-level events.
 struct MoqtSessionCallbacks {
@@ -44,23 +55,21 @@ struct MoqtSessionCallbacks {
   MoqtSessionTerminatedCallback session_terminated_callback =
       +[](absl::string_view) {};
   MoqtSessionDeletedCallback session_deleted_callback = +[] {};
+
+  MoqtIncomingAnnounceCallback incoming_announce_callback =
+      DefaultIncomingAnnounceCallback;
 };
 
 class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
  public:
   MoqtSession(webtransport::Session* session, MoqtSessionParameters parameters,
-              MoqtSessionCallbacks callbacks)
+              MoqtSessionCallbacks callbacks = MoqtSessionCallbacks())
       : session_(session),
         parameters_(parameters),
-        session_established_callback_(
-            std::move(callbacks.session_established_callback)),
-        session_terminated_callback_(
-            std::move(callbacks.session_terminated_callback)),
-        session_deleted_callback_(
-            std::move(callbacks.session_deleted_callback)),
+        callbacks_(std::move(callbacks)),
         framer_(quiche::SimpleBufferAllocator::Get(),
                 parameters.using_webtrans) {}
-  ~MoqtSession() { std::move(session_deleted_callback_)(); }
+  ~MoqtSession() { std::move(callbacks_.session_deleted_callback)(); }
 
   // webtransport::SessionVisitor implementation.
   void OnSessionReady() override;
@@ -68,7 +77,7 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
                        const std::string&) override;
   void OnIncomingBidirectionalStreamAvailable() override;
   void OnIncomingUnidirectionalStreamAvailable() override;
-  void OnDatagramReceived(absl::string_view /*datagram*/) override {}
+  void OnDatagramReceived(absl::string_view datagram) override;
   void OnCanCreateNewOutgoingBidirectionalStream() override {}
   void OnCanCreateNewOutgoingUnidirectionalStream() override {}
 
@@ -81,12 +90,13 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   // is nullptr, then incoming SUBSCRIBE for objects in the path will receive
   // SUBSCRIBE_OK, but never actually get the objects.
   void AddLocalTrack(const FullTrackName& full_track_name,
+                     MoqtForwardingPreference forwarding_preference,
                      LocalTrack::Visitor* visitor);
   // Send an ANNOUNCE message for |track_namespace|, and call
   // |announce_callback| when the response arrives. Will fail immediately if
   // there is already an unresolved ANNOUNCE for that namespace.
   void Announce(absl::string_view track_namespace,
-                MoqtAnnounceCallback announce_callback);
+                MoqtOutgoingAnnounceCallback announce_callback);
   bool HasSubscribers(const FullTrackName& full_track_name) const;
 
   // Returns true if SUBSCRIBE was sent. If there is already a subscription to
@@ -117,13 +127,13 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   // |payload|.
   // |payload.length() >= |payload_length|, because the application can deliver
   // partial objects.
-  bool PublishObject(FullTrackName& full_track_name, uint64_t group_id,
+  bool PublishObject(const FullTrackName& full_track_name, uint64_t group_id,
                      uint64_t object_id, uint64_t object_send_order,
-                     MoqtForwardingPreference forwarding_preference,
-                     absl::string_view payload,
-                     std::optional<uint64_t> payload_length,
-                     bool end_of_stream);
+                     absl::string_view payload, bool end_of_stream);
   // TODO: Add an API to FIN the stream for a particular track/group/object.
+  // TODO: Add an API to send partial objects.
+
+  MoqtSessionCallbacks& callbacks() { return callbacks_; }
 
  private:
   friend class test::MoqtSessionPeer;
@@ -158,8 +168,8 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     void OnSubscribeOkMessage(const MoqtSubscribeOk& message) override;
     void OnSubscribeErrorMessage(const MoqtSubscribeError& message) override;
     void OnUnsubscribeMessage(const MoqtUnsubscribe& message) override;
-    void OnSubscribeFinMessage(const MoqtSubscribeFin& /*message*/) override {}
-    void OnSubscribeRstMessage(const MoqtSubscribeRst& /*message*/) override {}
+    void OnSubscribeDoneMessage(const MoqtSubscribeDone& /*message*/) override {
+    }
     void OnAnnounceMessage(const MoqtAnnounce& message) override;
     void OnAnnounceOkMessage(const MoqtAnnounceOk& message) override;
     void OnAnnounceErrorMessage(const MoqtAnnounceError& message) override;
@@ -173,6 +183,10 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     }
 
     webtransport::Stream* stream() const { return stream_; }
+
+    // Sends a control message, or buffers it if there is insufficient flow
+    // control credit.
+    void SendOrBufferMessage(quiche::QuicheBuffer message, bool fin = false);
 
    private:
     friend class test::MoqtSessionPeer;
@@ -191,6 +205,12 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     std::string partial_object_;
   };
 
+  // Returns the pointer to the control stream, or nullptr if none is present.
+  Stream* GetControlStream();
+  // Sends a message on the control stream; QUICHE_DCHECKs if no control stream
+  // is present.
+  void SendControlMessage(quiche::QuicheBuffer message);
+
   // Returns false if the SUBSCRIBE isn't sent.
   bool Subscribe(MoqtSubscribe& message, RemoteTrack::Visitor* visitor);
   // converts two MoqtLocations into absolute sequences.
@@ -202,11 +222,14 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   // TODO: Add a callback if stream creation is delayed.
   std::optional<webtransport::StreamId> OpenUnidirectionalStream();
 
+  // Get FullTrackName and visitor for a subscribe_id and track_alias. Returns
+  // nullptr if not present.
+  std::pair<FullTrackName, RemoteTrack::Visitor*> TrackPropertiesFromAlias(
+      const MoqtObject& message);
+
   webtransport::Session* session_;
   MoqtSessionParameters parameters_;
-  MoqtSessionEstablishedCallback session_established_callback_;
-  MoqtSessionTerminatedCallback session_terminated_callback_;
-  MoqtSessionDeletedCallback session_deleted_callback_;
+  MoqtSessionCallbacks callbacks_;
   MoqtFramer framer_;
 
   std::optional<webtransport::StreamId> control_stream_;
@@ -230,14 +253,25 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   struct ActiveSubscribe {
     MoqtSubscribe message;
     RemoteTrack::Visitor* visitor;
+    // The forwarding preference of the first received object, which all
+    // subsequent objects must match.
+    std::optional<MoqtForwardingPreference> forwarding_preference;
+    // If true, an object has arrived for the subscription before SUBSCRIBE_OK
+    // arrived.
+    bool received_object = false;
   };
   // Outgoing SUBSCRIBEs that have not received SUBSCRIBE_OK or SUBSCRIBE_ERROR.
   absl::flat_hash_map<uint64_t, ActiveSubscribe> active_subscribes_;
   uint64_t next_subscribe_id_ = 0;
 
   // Indexed by track namespace.
-  absl::flat_hash_map<std::string, MoqtAnnounceCallback>
+  absl::flat_hash_map<std::string, MoqtOutgoingAnnounceCallback>
       pending_outgoing_announces_;
+
+  // The role the peer advertised in its SETUP message. Initialize it to avoid
+  // an uninitialized value if no SETUP arrives or it arrives with no Role
+  // parameter, and other checks have changed/been disabled.
+  MoqtRole peer_role_ = MoqtRole::kPubSub;
 };
 
 }  // namespace moqt

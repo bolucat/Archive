@@ -44,9 +44,7 @@ std::string h_cache_dir;
 std::string h_data_dir;
 #endif
 
-using namespace std::string_literals;
-
-std::optional<int> StringToInteger(const std::string& value) {
+std::optional<int> StringToInteger(std::string_view value) {
   int result;
 
   if (gurl_base::StringToInt(value, &result)) {
@@ -56,7 +54,7 @@ std::optional<int> StringToInteger(const std::string& value) {
   return std::nullopt;
 }
 
-std::optional<unsigned> StringToIntegerU(const std::string& value) {
+std::optional<unsigned> StringToIntegerU(std::string_view value) {
   unsigned result;
 
   if (gurl_base::StringToUint(value, &result)) {
@@ -66,7 +64,7 @@ std::optional<unsigned> StringToIntegerU(const std::string& value) {
   return std::nullopt;
 }
 
-std::optional<int64_t> StringToInteger64(const std::string& value) {
+std::optional<int64_t> StringToInteger64(std::string_view value) {
   int64_t result;
 
   if (gurl_base::StringToInt64(value, &result)) {
@@ -76,7 +74,7 @@ std::optional<int64_t> StringToInteger64(const std::string& value) {
   return std::nullopt;
 }
 
-std::optional<uint64_t> StringToIntegerU64(const std::string& value) {
+std::optional<uint64_t> StringToIntegerU64(std::string_view value) {
   uint64_t result;
 
   if (gurl_base::StringToUint64(value, &result)) {
@@ -235,7 +233,8 @@ std::string ExpandUser(const std::string& file_path) {
 
 #if !defined(__APPLE__) && !defined(_WIN32)
 
-static std::string main_exe_path = "UNKNOWN"s;
+static constexpr std::string_view kDefaultExePath = "UNKNOWN";
+static std::string main_exe_path = std::string(kDefaultExePath);
 
 bool GetExecutablePath(std::string* path) {
   char exe_path[PATH_MAX];

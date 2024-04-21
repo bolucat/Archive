@@ -80,6 +80,11 @@ class SystemTrustStoreChromeOnly : public SystemTrustStore {
     return trust_store_chrome_->version();
   }
 
+  base::span<const ChromeRootCertConstraints> GetChromeRootConstraints(
+      const bssl::ParsedCertificate* cert) const override {
+    return trust_store_chrome_->GetConstraintsForCert(cert);
+  }
+
  private:
   std::unique_ptr<TrustStoreChrome> trust_store_chrome_;
 };
@@ -115,6 +120,11 @@ class SystemTrustStoreChromeWithUnOwnedSystemStore : public SystemTrustStore {
 
   int64_t chrome_root_store_version() const override {
     return trust_store_chrome_->version();
+  }
+
+  base::span<const ChromeRootCertConstraints> GetChromeRootConstraints(
+      const bssl::ParsedCertificate* cert) const override {
+    return trust_store_chrome_->GetConstraintsForCert(cert);
   }
 
  private:
@@ -400,6 +410,11 @@ class SystemTrustStoreStaticUnix : public SystemTrustStore {
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
   int64_t chrome_root_store_version() const override {
     return 0;
+  }
+
+  base::span<const ChromeRootCertConstraints> GetChromeRootConstraints(
+      const bssl::ParsedCertificate* /*cert*/) const override {
+    return {};
   }
 #endif
 };

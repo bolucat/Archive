@@ -1195,6 +1195,8 @@ module std_private_compare_synth_three_way                [system] { header "__c
 module std_private_compare_three_way_comparable           [system] { header "__compare/three_way_comparable.h" }
 module std_private_compare_weak_order                     [system] { header "__compare/weak_order.h" }
 
+module std_private_complex_complex_fwd            [system] { header "__fwd/complex.h" }
+
 module std_private_concepts_arithmetic            [system] { header "__concepts/arithmetic.h" }
 module std_private_concepts_assignable            [system] { header "__concepts/assignable.h" }
 module std_private_concepts_boolean_testable      [system] { header "__concepts/boolean_testable.h" }
@@ -1363,7 +1365,7 @@ module std_private_functional_hash                       [system] {
   export std_private_type_traits_underlying_type
   export std_private_utility_pair
 }
-module std_private_functional_hash_fwd                   [system] { header "__fwd/hash.h" }
+module std_private_functional_fwd                        [system] { header "__fwd/functional.h" }
 module std_private_functional_identity                   [system] { header "__functional/identity.h" }
 module std_private_functional_invoke                     [system] {
   header "__functional/invoke.h"
