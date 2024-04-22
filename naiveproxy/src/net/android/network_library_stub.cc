@@ -56,7 +56,7 @@ std::string GetWifiSSID() {
   return {};
 }
 
-absl::optional<int32_t> GetWifiSignalLevel() {
+std::optional<int32_t> GetWifiSignalLevel() {
   return {};
 }
 
