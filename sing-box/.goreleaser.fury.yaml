@@ -80,8 +80,8 @@ furies:
   - account: sagernet
     ids:
       - package
-    skip: "{{ not (not .Prerelease) }}"
+    disable: "{{ not (not .Prerelease) }}"
   - account: sagernet
     ids:
       - package_beta
-    skip: "{{ not .Prerelease }}"
+    disable: "{{ not .Prerelease }}"

@@ -14,78 +14,86 @@ type loopBackDetector struct {
 	router           adapter.Router
 	connAccess       sync.RWMutex
 	packetConnAccess sync.RWMutex
-	connMap          map[netip.AddrPort]bool
-	packetConnMap    map[uint16]bool
+	connMap          map[netip.AddrPort]netip.AddrPort
+	packetConnMap    map[uint16]uint16
 }
 
 func newLoopBackDetector(router adapter.Router) *loopBackDetector {
 	return &loopBackDetector{
 		router:        router,
-		connMap:       make(map[netip.AddrPort]bool),
-		packetConnMap: make(map[uint16]bool),
+		connMap:       make(map[netip.AddrPort]netip.AddrPort),
+		packetConnMap: make(map[uint16]uint16),
 	}
 }
 
 func (l *loopBackDetector) NewConn(conn net.Conn) net.Conn {
-	connAddr := M.AddrPortFromNet(conn.LocalAddr())
-	if !connAddr.IsValid() {
+	source := M.AddrPortFromNet(conn.LocalAddr())
+	if !source.IsValid() {
 		return conn
 	}
 	if udpConn, isUDPConn := conn.(abstractUDPConn); isUDPConn {
-		if !connAddr.Addr().IsLoopback() {
-			_, err := l.router.InterfaceFinder().InterfaceByAddr(connAddr.Addr())
+		if !source.Addr().IsLoopback() {
+			_, err := l.router.InterfaceFinder().InterfaceByAddr(source.Addr())
 			if err != nil {
 				return conn
 			}
 		}
+		if !N.IsPublicAddr(source.Addr()) {
+			return conn
+		}
 		l.packetConnAccess.Lock()
-		l.packetConnMap[connAddr.Port()] = true
+		l.packetConnMap[source.Port()] = M.AddrPortFromNet(conn.RemoteAddr()).Port()
 		l.packetConnAccess.Unlock()
-		return &loopBackDetectUDPWrapper{abstractUDPConn: udpConn, detector: l, connPort: connAddr.Port()}
+		return &loopBackDetectUDPWrapper{abstractUDPConn: udpConn, detector: l, connPort: source.Port()}
 	} else {
 		l.connAccess.Lock()
-		l.connMap[connAddr] = true
+		l.connMap[source] = M.AddrPortFromNet(conn.RemoteAddr())
 		l.connAccess.Unlock()
-		return &loopBackDetectWrapper{Conn: conn, detector: l, connAddr: connAddr}
+		return &loopBackDetectWrapper{Conn: conn, detector: l, connAddr: source}
 	}
 }
 
-func (l *loopBackDetector) NewPacketConn(conn N.NetPacketConn) N.NetPacketConn {
-	connAddr := M.AddrPortFromNet(conn.LocalAddr())
-	if !connAddr.IsValid() {
+func (l *loopBackDetector) NewPacketConn(conn N.NetPacketConn, destination M.Socksaddr) N.NetPacketConn {
+	source := M.AddrPortFromNet(conn.LocalAddr())
+	if !source.IsValid() {
 		return conn
 	}
-	if !connAddr.Addr().IsLoopback() {
-		_, err := l.router.InterfaceFinder().InterfaceByAddr(connAddr.Addr())
+	if !source.Addr().IsLoopback() {
+		_, err := l.router.InterfaceFinder().InterfaceByAddr(source.Addr())
 		if err != nil {
 			return conn
 		}
 	}
 	l.packetConnAccess.Lock()
-	l.packetConnMap[connAddr.Port()] = true
+	l.packetConnMap[source.Port()] = destination.AddrPort().Port()
 	l.packetConnAccess.Unlock()
-	return &loopBackDetectPacketWrapper{NetPacketConn: conn, detector: l, connPort: connAddr.Port()}
+	return &loopBackDetectPacketWrapper{NetPacketConn: conn, detector: l, connPort: source.Port()}
 }
 
-func (l *loopBackDetector) CheckConn(connAddr netip.AddrPort) bool {
+func (l *loopBackDetector) CheckConn(source netip.AddrPort, local netip.AddrPort) bool {
 	l.connAccess.RLock()
 	defer l.connAccess.RUnlock()
-	return l.connMap[connAddr]
+	destination, loaded := l.connMap[source]
+	return loaded && destination != local
 }
 
-func (l *loopBackDetector) CheckPacketConn(connAddr netip.AddrPort) bool {
-	if !connAddr.IsValid() || !connAddr.Addr().IsLoopback() {
+func (l *loopBackDetector) CheckPacketConn(source netip.AddrPort, local netip.AddrPort) bool {
+	if !source.IsValid() {
 		return false
 	}
-	if !connAddr.Addr().IsLoopback() {
-		_, err := l.router.InterfaceFinder().InterfaceByAddr(connAddr.Addr())
+	if !source.Addr().IsLoopback() {
+		_, err := l.router.InterfaceFinder().InterfaceByAddr(source.Addr())
 		if err != nil {
 			return false
 		}
 	}
+	if N.IsPublicAddr(source.Addr()) {
+		return false
+	}
 	l.packetConnAccess.RLock()
 	defer l.packetConnAccess.RUnlock()
-	return l.packetConnMap[connAddr.Port()]
+	destinationPort, loaded := l.packetConnMap[source.Port()]
+	return loaded && destinationPort != local.Port()
 }
 
 type loopBackDetectWrapper struct {
