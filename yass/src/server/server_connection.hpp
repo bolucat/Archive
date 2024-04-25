@@ -93,7 +93,7 @@ class ServerConnection : public RefCountedThreadSafe<ServerConnection>,
                          public net::cipher_visitor_interface {
  public:
   static constexpr const net::ConnectionFactoryType Type = net::CONNECTION_FACTORY_SERVER;
-  static constexpr const char Name[] = "server";
+  static constexpr const std::string_view Name = "server";
 
  public:
   /// The state of service
@@ -129,8 +129,8 @@ class ServerConnection : public RefCountedThreadSafe<ServerConnection>,
   /// \param upstream_ssl_ctx the ssl context object for tls data transfer (upstream)
   /// \param ssl_ctx the ssl context object for tls data transfer
   ServerConnection(asio::io_context& io_context,
-                   const std::string& remote_host_ips,
-                   const std::string& remote_host_sni,
+                   std::string_view remote_host_ips,
+                   std::string_view remote_host_sni,
                    uint16_t remote_port,
                    bool upstream_https_fallback,
                    bool https_fallback,
@@ -292,7 +292,7 @@ class ServerConnection : public RefCountedThreadSafe<ServerConnection>,
   /// copy of connect method
   bool http_is_connect_ = false;
   /// copy of connect response
-  static const char http_connect_reply_[];
+  static const std::string_view http_connect_reply_;
   /// copy of padding support
   bool padding_support_ = false;
   int num_padding_send_ = 0;

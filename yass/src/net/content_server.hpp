@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <array>
 #include <functional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -43,12 +45,12 @@ class ContentServer {
 
  public:
   explicit ContentServer(asio::io_context& io_context,
-                         const std::string& remote_host_ips = {},
-                         const std::string& remote_host_sni = {},
+                         std::string_view remote_host_ips = {},
+                         std::string_view remote_host_sni = {},
                          uint16_t remote_port = {},
-                         const std::string& upstream_certificate = {},
-                         const std::string& certificate = {},
-                         const std::string& private_key = {},
+                         std::string_view upstream_certificate = {},
+                         std::string_view certificate = {},
+                         std::string_view private_key = {},
                          ContentServer::Delegate* delegate = nullptr)
       : io_context_(io_context),
         work_guard_(
@@ -87,7 +89,7 @@ class ContentServer {
   }
 
   void listen(const asio::ip::tcp::endpoint& endpoint,
-              const std::string& server_name,
+              std::string_view server_name,
               int backlog,
               asio::error_code& ec) {
     if (next_listen_ctx_ >= MAX_LISTEN_ADDRESSES) {
@@ -430,15 +432,16 @@ class ContentServer {
       if (in[0] + 1u > inlen) {
         goto err;
       }
-      auto alpn = std::string(reinterpret_cast<const char*>(in + 1), in[0]);
-      if (!server->https_fallback_ && alpn == "h2") {
+      using std::string_view_literals::operator""sv;
+      auto alpn = std::string_view(reinterpret_cast<const char*>(in + 1), in[0]);
+      if (!server->https_fallback_ && alpn == "h2"sv) {
         VLOG(1) << "Connection (" << T::Name << ") " << connection_id << " Alpn support (server) chosen: " << alpn;
         server->set_https_fallback(connection_id, false);
         *out = in + 1;
         *outlen = in[0];
         return SSL_TLSEXT_ERR_OK;
       }
-      if (alpn == "http/1.1") {
+      if (alpn == "http/1.1"sv) {
         VLOG(1) << "Connection (" << T::Name << ") " << connection_id << " Alpn support (server) chosen: " << alpn;
         server->set_https_fallback(connection_id, true);
         *out = in + 1;
@@ -469,11 +472,11 @@ class ContentServer {
     auto server = reinterpret_cast<ContentServer*>(tlsext_ctx->server);
     int connection_id = tlsext_ctx->connection_id;
     int listen_ctx_num = tlsext_ctx->listen_ctx_num;
-    absl::string_view expected_server_name = server->listen_ctxs_[listen_ctx_num].server_name;
+    std::string_view expected_server_name = server->listen_ctxs_[listen_ctx_num].server_name;
 
     // SNI must be accessible from the SNI callback.
     const char* server_name_ptr = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-    absl::string_view server_name;
+    std::string_view server_name;
     if (server_name_ptr) {
       server_name = server_name_ptr;
     }

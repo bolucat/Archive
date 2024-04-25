@@ -1,13 +1,6 @@
 import useSWR from "swr";
-import {
-  getNyanpasuConfig,
-  patchNyanpasuConfig,
-  VergeConfig,
-  getCoreVersion,
-  setClashCore as setClashCoreWithTauri,
-  restartSidecar,
-  updateCore as updateCoreWithTauri,
-} from "@/service";
+import * as service from "@/service";
+import { VergeConfig, restartSidecar, getCoreVersion } from "@/service";
 import { fetchCoreVersion, fetchLatestCore } from "@/service/core";
 
 /**
@@ -20,12 +13,12 @@ export const useNyanpasu = (options?: {
 }) => {
   const { data, error, mutate } = useSWR<VergeConfig>(
     "nyanpasuConfig",
-    getNyanpasuConfig,
+    service.getNyanpasuConfig,
   );
 
   const setNyanpasuConfig = async (payload: Partial<VergeConfig>) => {
     try {
-      await patchNyanpasuConfig(payload);
+      await service.patchNyanpasuConfig(payload);
 
       const result = await mutate();
 
@@ -44,7 +37,7 @@ export const useNyanpasu = (options?: {
   const setClashCore = async (
     clashCore: Required<VergeConfig>["clash_core"],
   ) => {
-    await setClashCoreWithTauri(clashCore);
+    await service.setClashCore(clashCore);
 
     // timeout for restart clash core.
     setTimeout(() => {
@@ -55,9 +48,23 @@ export const useNyanpasu = (options?: {
   const getLatestCore = useSWR("getLatestCore", fetchLatestCore);
 
   const updateCore = async (core: Required<VergeConfig>["clash_core"]) => {
-    await updateCoreWithTauri(core);
+    await service.updateCore(core);
 
     getClashCore.mutate();
+  };
+
+  const getSystemProxy = useSWR("getSystemProxy", service.getSystemProxy);
+
+  const getServiceStatus = useSWR("getServiceStatus", service.checkService);
+
+  const setServiceStatus = async (type: "install" | "uninstall") => {
+    if (type === "install") {
+      await service.installService();
+    } else {
+      await service.uninstallService();
+    }
+
+    return getServiceStatus.mutate();
   };
 
   return {
@@ -71,5 +78,8 @@ export const useNyanpasu = (options?: {
     restartSidecar,
     getLatestCore,
     updateCore,
+    getSystemProxy,
+    getServiceStatus,
+    setServiceStatus,
   };
 };

@@ -149,6 +149,7 @@ export const SettingClashCore = () => {
           return (
             <motion.div
               key={index}
+              initial={false}
               animate={show ? "open" : "closed"}
               variants={{
                 open: {
@@ -199,9 +200,7 @@ export const SettingClashCore = () => {
             </LoadingButton>
           </Box>
 
-          <Tooltip title="Show more">
-            <ExpandMore expand={expand} onClick={() => setExpand(!expand)} />
-          </Tooltip>
+          <ExpandMore expand={expand} onClick={() => setExpand(!expand)} />
         </ListItem>
       </List>
     </BaseCard>

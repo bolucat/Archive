@@ -7,6 +7,8 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "config/config.hpp"
@@ -133,18 +135,6 @@ class SSLDownlink : public Downlink {
   scoped_refptr<SSLServerSocket> ssl_socket_;
 };
 
-#ifdef __cpp_concepts
-template <typename T>
-concept StartClosableConnection = requires(T t) {
-  /// Enter the start phase, begin to read requests
-  { t.start() };
-  /// Close the socket and clean up
-  { t.close() };
-};
-#else
-#define StartClosableConnection typename
-#endif
-
 class Connection {
   using io_handle_t = Downlink::io_handle_t;
   using handle_t = Downlink::handle_t;
@@ -170,8 +160,8 @@ class Connection {
   /// \param upstream_ssl_ctx the ssl context object for tls data transfer (upstream)
   /// \param ssl_ctx the ssl context object for tls data transfer
   Connection(asio::io_context& io_context,
-             const std::string& remote_host_ips,
-             const std::string& remote_host_sni,
+             std::string_view remote_host_ips,
+             std::string_view remote_host_sni,
              uint16_t remote_port,
              bool upstream_https_fallback,
              bool https_fallback,
@@ -314,6 +304,27 @@ enum ConnectionFactoryType {
   CONNECTION_FACTORY_CONTENT_PROVIDER,
 };
 
+#ifdef __cpp_concepts
+#include <concepts>
+template <typename T>
+concept BasicConnection = requires(T t) {
+  /// require Name field
+  { T::Name } -> std::convertible_to<std::string_view>;
+  /// require Type field
+  { T::Type } -> std::convertible_to<ConnectionFactoryType>;
+};
+
+template <typename T>
+concept StartClosableConnection = BasicConnection<T> && requires(T t) {
+  /// Enter the start phase, begin to read requests
+  { t.start() };
+  /// Close the socket and clean up
+  { t.close() };
+};
+#else
+#define StartClosableConnection typename
+#endif
+
 template <StartClosableConnection T>
 class ConnectionFactory {
  public:
@@ -324,7 +335,7 @@ class ConnectionFactory {
     return MakeRefCounted<ConnectionType>(std::forward<Args>(args)...);
   }
   static constexpr const ConnectionFactoryType Type = ConnectionType::Type;
-  static constexpr const char* Name = ConnectionType::Name;
+  static constexpr const std::string_view Name = ConnectionType::Name;
 };
 
 }  // namespace net

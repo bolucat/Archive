@@ -42,16 +42,18 @@ ABSL_FLAG(std::string, proxy_type, "http", "proxy type, available: socks4, socks
 const ProgramType pType = YASS_UNITTEST;
 
 using namespace net;
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 namespace {
 
 IOBuf g_send_buffer;
 std::mutex g_in_provider_mutex;
 std::unique_ptr<IOBuf> g_recv_buffer;
-constexpr const char kConnectResponse[] = "HTTP/1.1 200 Connection established\r\n\r\n";
+constexpr const std::string_view kConnectResponse = "HTTP/1.1 200 Connection established\r\n\r\n";
 
 // openssl req -newkey rsa:1024 -keyout pkey.pem -x509 -out cert.crt -days 3650 -nodes -subj /C=XX
-constexpr const char kCertificate[] = R"(
+constexpr const std::string_view kCertificate = R"(
 -----BEGIN CERTIFICATE-----
 MIIB9jCCAV+gAwIBAgIUM03bTKd+A2WwrfolXJC+L9AsxI8wDQYJKoZIhvcNAQEL
 BQAwDTELMAkGA1UEBhMCWFgwHhcNMjMwMTI5MjA1MDU5WhcNMzMwMTI2MjA1MDU5
@@ -67,7 +69,7 @@ yyvnIm8njIJSin7Vf4tD1PfY6Obyc8ygUSw=
 -----END CERTIFICATE-----
 )";
 
-constexpr char kPrivateKey[] = R"(
+constexpr const std::string_view kPrivateKey = R"(
 -----BEGIN PRIVATE KEY-----
 MIICdQIBADANBgkqhkiG9w0BAQEFAASCAl8wggJbAgEAAoGBANxhmaUG3T4dtrgj
 CHrORlCXw6rAHWuSOyXlLdVKtCnm7ENa8TPUFIM7L1ZLWKihsWVue3Yz5XFrYX1B
@@ -102,12 +104,12 @@ void GenerateRandContent(int size) {
 class ContentProviderConnection : public RefCountedThreadSafe<ContentProviderConnection>, public Connection {
  public:
   static constexpr const ConnectionFactoryType Type = CONNECTION_FACTORY_CONTENT_PROVIDER;
-  static constexpr const char Name[] = "content-provider";
+  static constexpr const std::string_view Name = "content-provider";
 
  public:
   ContentProviderConnection(asio::io_context& io_context,
-                            const std::string& remote_host_ips,
-                            const std::string& remote_host_sni,
+                            std::string_view remote_host_ips,
+                            std::string_view remote_host_sni,
                             uint16_t remote_port,
                             bool upstream_https_fallback,
                             bool https_fallback,
@@ -282,14 +284,14 @@ using ContentProviderConnectionFactory = ConnectionFactory<ContentProviderConnec
 using ContentProviderServer = ContentServer<ContentProviderConnectionFactory>;
 
 #ifndef HAVE_CURL
-void GenerateConnectRequest(std::string host, int port_num, IOBuf* buf) {
+void GenerateConnectRequest(std::string_view host, int port_num, IOBuf* buf) {
   std::string request_header = absl::StrFormat(
       "CONNECT %s:%d HTTP/1.1\r\n"
       "Host: packages.endpointdev.com:443\r\n"
       "User-Agent: curl/7.77.0\r\n"
       "Proxy-Connection: Keep-Alive\r\n"
       "\r\n",
-      host.c_str(), port_num);
+      host, port_num);
   buf->reserve(request_header.size(), 0);
   memcpy(buf->mutable_buffer(), request_header.c_str(), request_header.size());
   buf->prepend(request_header.size());
@@ -352,7 +354,7 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
 
   asio::ip::tcp::endpoint GetEndpoint(int port_num) const {
     asio::error_code ec;
-    auto addr = asio::ip::make_address(absl::GetFlag(FLAGS_ipv6_mode) ? "::1" : "127.0.0.1", ec);
+    auto addr = asio::ip::make_address(absl::GetFlag(FLAGS_ipv6_mode) ? "::1"sv : "127.0.0.1"sv, ec);
     CHECK(!ec) << ec;
     asio::ip::tcp::endpoint endpoint;
     endpoint.address(addr);
@@ -362,7 +364,7 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
 
   void StartWorkThread() {
     thread_ = std::make_unique<std::thread>([this]() {
-      if (!SetCurrentThreadName("background")) {
+      if (!SetCurrentThreadName("background"s)) {
         PLOG(WARNING) << "failed to set thread name";
       }
       if (!SetCurrentThreadPriority(ThreadPriority::ABOVE_NORMAL)) {
@@ -392,7 +394,7 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
     std::string url = absl::StrCat("http://localhost:", content_provider_endpoint_.port());
     // TODO A bug inside curl that it doesn't respect IPRESOLVE_V6
     // https://github.com/curl/curl/issues/11465
-    if (absl::GetFlag(FLAGS_proxy_type) == "socks5") {
+    if (absl::GetFlag(FLAGS_proxy_type) == "socks5"s) {
       if (absl::GetFlag(FLAGS_ipv6_mode)) {
         url = "http://[::1]:" + std::to_string(content_provider_endpoint_.port());
       } else {
@@ -408,15 +410,15 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     std::string proxy_url = absl::StrCat("localhost:", local_endpoint_.port());
     curl_easy_setopt(curl, CURLOPT_PROXY, proxy_url.c_str());
-    if (absl::GetFlag(FLAGS_proxy_type) == "socks4") {
+    if (absl::GetFlag(FLAGS_proxy_type) == "socks4"s) {
       curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS4);
-    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks4a") {
+    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks4a"s) {
       curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS4A);
-    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks5") {
+    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks5"s) {
       curl_easy_setopt(curl, CURLOPT_PROXYTYPE, (long)CURLPROXY_SOCKS5);
-    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks5h") {
+    } else if (absl::GetFlag(FLAGS_proxy_type) == "socks5h"s) {
       curl_easy_setopt(curl, CURLOPT_PROXYTYPE, (long)CURLPROXY_SOCKS5_HOSTNAME);
-    } else if (absl::GetFlag(FLAGS_proxy_type) == "http") {
+    } else if (absl::GetFlag(FLAGS_proxy_type) == "http"s) {
       curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     } else {
       LOG(FATAL) << "Invalid proxy type: " << absl::GetFlag(FLAGS_proxy_type);
@@ -478,7 +480,7 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
 
     // Generate http 1.0 proxy header
     auto request_buf = IOBuf::create(SOCKET_BUF_SIZE);
-    GenerateConnectRequest("localhost", content_provider_endpoint_.port(), request_buf.get());
+    GenerateConnectRequest("localhost"sv, content_provider_endpoint_.port(), request_buf.get());
 
     // Write data after proxy header
     size_t written = asio::write(s, const_buffer(*request_buf), ec);
@@ -487,20 +489,20 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
     EXPECT_EQ(written, request_buf->length());
 
     // Read proxy response
-    constexpr const int response_len = sizeof(kConnectResponse) - 1;
+    constexpr const int kConnectResponseLength = kConnectResponse.size();
     IOBuf response_buf;
-    response_buf.reserve(0, response_len);
-    size_t read = asio::read(s, asio::mutable_buffer(response_buf.mutable_tail(), response_len), ec);
+    response_buf.reserve(0, kConnectResponseLength);
+    size_t read = asio::read(s, asio::mutable_buffer(response_buf.mutable_tail(), kConnectResponseLength), ec);
     VLOG(1) << "Connection (content-consumer) read: " << read << " bytes";
     response_buf.append(read);
-    ASSERT_EQ((int)read, response_len);
+    ASSERT_EQ((int)read, kConnectResponseLength);
 
     // Check proxy response
     const char* response_buffer = reinterpret_cast<const char*>(response_buf.data());
     size_t response_buffer_length = response_buf.length();
-    ASSERT_EQ((int)response_buffer_length, response_len);
+    ASSERT_EQ((int)response_buffer_length, kConnectResponseLength);
     ASSERT_EQ(::testing::Bytes(response_buffer, response_buffer_length),
-              ::testing::Bytes(kConnectResponse, response_len));
+              ::testing::Bytes(kConnectResponse.data(), kConnectResponseLength));
 
     // Write HTTP Request Header
     std::string http_request_hdr = absl::StrFormat(
@@ -609,7 +611,7 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
     asio::error_code ec;
 
     content_provider_server_ = std::make_unique<ContentProviderServer>(io_context_);
-    content_provider_server_->listen(endpoint, std::string(), backlog, ec);
+    content_provider_server_->listen(endpoint, {}, backlog, ec);
     if (ec) {
       LOG(ERROR) << "listen failed due to: " << ec;
       return ec;
@@ -630,10 +632,9 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
 
   asio::error_code StartServer(asio::ip::tcp::endpoint endpoint, int backlog) {
     asio::error_code ec;
-    server_server_ =
-        std::make_unique<server::ServerServer>(io_context_, std::string(), std::string(), uint16_t(), std::string(),
-                                               std::string(kCertificate), std::string(kPrivateKey));
-    server_server_->listen(endpoint, "localhost", backlog, ec);
+    server_server_ = std::make_unique<server::ServerServer>(io_context_, std::string_view(), std::string_view(),
+                                                            uint16_t(), std::string_view(), kCertificate, kPrivateKey);
+    server_server_->listen(endpoint, "localhost"sv, backlog, ec);
 
     if (ec) {
       LOG(ERROR) << "listen failed due to: " << ec;
@@ -655,9 +656,10 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
   asio::error_code StartLocal(asio::ip::tcp::endpoint remote_endpoint, asio::ip::tcp::endpoint endpoint, int backlog) {
     asio::error_code ec;
 
-    local_server_ = std::make_unique<cli::CliServer>(io_context_, absl::GetFlag(FLAGS_ipv6_mode) ? "::1" : "127.0.0.1",
-                                                     "localhost", remote_endpoint.port(), kCertificate);
-    local_server_->listen(endpoint, std::string(), backlog, ec);
+    local_server_ =
+        std::make_unique<cli::CliServer>(io_context_, absl::GetFlag(FLAGS_ipv6_mode) ? "::1"sv : "127.0.0.1"sv,
+                                         "localhost"sv, remote_endpoint.port(), kCertificate);
+    local_server_->listen(endpoint, {}, backlog, ec);
 
     if (ec) {
       LOG(ERROR) << "listen failed due to: " << ec;
