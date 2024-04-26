@@ -33,17 +33,6 @@ int main(int argc, const char** argv) {
     return -1;
   }
 
-  absl::SetFlag(&FLAGS_logtostderr, true);
-#ifdef NDEBUG
-  absl::SetFlag(&FLAGS_stderrthreshold, LOGGING_WARNING);
-#else
-  absl::SetFlag(&FLAGS_stderrthreshold, LOGGING_VERBOSE);
-#endif
-
-  if (!SetUTF8Locale()) {
-    LOG(WARNING) << "Failed to set up utf-8 locale";
-  }
-
   absl::InitializeSymbolizer(exec_path.c_str());
 #ifdef HAVE_CRASHPAD
   CHECK(InitializeCrashpad(exec_path));

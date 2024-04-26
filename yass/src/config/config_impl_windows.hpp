@@ -42,6 +42,7 @@ static_assert(sizeof(QWORD) == sizeof(uint64_t), "A QWORD is a 64-bit unsigned i
 bool ReadValue(HKEY hkey, const std::string& value, DWORD* type, std::vector<BYTE>* output) {
   DWORD BufferSize;
   std::wstring wvalue = SysUTF8ToWide(value);
+  output->clear();
 
   // If lpData is nullptr, and lpcbData is non-nullptr, the function returns
   // ERROR_SUCCESS and stores the size of the data, in bytes, in the variable
@@ -129,20 +130,23 @@ class ConfigImplWindows : public ConfigImpl {
     DWORD type;
     std::vector<BYTE> output;
 
-    if (ReadValue(hkey_, key, &type, &output)) {
+    if (ReadValue(hkey_, key, &type, &output) && (type == REG_SZ || type == REG_EXPAND_SZ) &&
+        output.size() % sizeof(wchar_t) == 0) {
       wchar_t* raw_value = reinterpret_cast<wchar_t*>(output.data());
       size_t raw_len = output.size() / sizeof(wchar_t);
-      if (raw_len)
+      std::wstring raw_str;
+      if (raw_len) {
         raw_value[raw_len - 1] = L'\0';
+        raw_str = std::wstring(raw_value, raw_len - 1);
+      }
 
       if (type == REG_SZ) {
-        *value = SysWideToUTF8(raw_value);
+        *value = SysWideToUTF8(raw_str);
         return true;
       }
 
       if (type == REG_EXPAND_SZ) {
-        std::wstring expanded_value = ExpandUserFromString(raw_value, raw_len);
-        *value = SysWideToUTF8(expanded_value);
+        *value = SysWideToUTF8(ExpandUserFromString(raw_str));
         return true;
       }
       /* fall through */
@@ -164,7 +168,7 @@ class ConfigImplWindows : public ConfigImpl {
     std::vector<BYTE> output;
 
     if (ReadValue(hkey_, key, &type, &output) && (type == REG_DWORD || type == REG_BINARY) &&
-        output.size() == sizeof(DWORD)) {
+        output.size() == sizeof(uint32_t)) {
       *value = *reinterpret_cast<uint32_t*>(output.data());
       return true;
     }
@@ -182,8 +186,14 @@ class ConfigImplWindows : public ConfigImpl {
     std::vector<BYTE> output;
 
     if (ReadValue(hkey_, key, &type, &output) && (type == REG_QWORD || type == REG_BINARY) &&
-        output.size() == sizeof(*value)) {
+        output.size() == sizeof(uint64_t)) {
       *value = *reinterpret_cast<uint64_t*>(output.data());
+      return true;
+    }
+
+    if (ReadValue(hkey_, key, &type, &output) && (type == REG_DWORD || type == REG_BINARY) &&
+        output.size() == sizeof(uint32_t)) {
+      *value = *reinterpret_cast<uint32_t*>(output.data());
       return true;
     }
 

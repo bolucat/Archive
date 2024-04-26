@@ -25,6 +25,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: ${{ runner.os == 'Windows' }}
         uses: ilammy/setup-nasm@v1
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Rust
         run: |
           rustup set profile minimal
@@ -36,7 +40,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           args: |
-            --features "local-http-rustls local-redir local-flow-stat local-dns dns-over-tls dns-over-https stream-cipher aead-cipher-2022" -- -Z macro-backtrace
+            --features "local-http-rustls local-redir local-flow-stat local-dns local-tun local-fake-dns dns-over-tls dns-over-https stream-cipher aead-cipher-2022" -- -Z macro-backtrace
             -W clippy::absurd_extreme_comparisons
             -W clippy::erasing_op
             -A clippy::collapsible_else_if

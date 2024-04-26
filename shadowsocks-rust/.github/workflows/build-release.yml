@@ -59,7 +59,7 @@ jobs:
           fi
 
           if [[ "$compile_target" == *"-windows-"* ]]; then
-            compile_features="-f winservice"
+            compile_features="-f winservice -f local-tun"
           fi
 
           if [[ "$compile_target" == "mips-"* || "$compile_target" == "mipsel-"* || "$compile_target" == "mips64-"* || "$compile_target" == "mips64el-"* ]]; then
@@ -103,6 +103,10 @@ jobs:
           brew install gnu-tar
           # echo "::add-path::/usr/local/opt/gnu-tar/libexec/gnubin"
           echo "/usr/local/opt/gnu-tar/libexec/gnubin" >> $GITHUB_PATH
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust
         run: |
@@ -134,6 +138,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/setup-nasm@v1
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust
         run: |
@@ -144,7 +152,7 @@ jobs:
 
       - name: Build release
         run: |
-          pwsh ./build/build-host-release.ps1 winservice
+          pwsh ./build/build-host-release.ps1 "winservice local-tun"
 
       - name: Upload Github Assets
         uses: softprops/action-gh-release@v1
