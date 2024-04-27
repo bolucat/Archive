@@ -1,4 +1,4 @@
 declare const classNames: {
-  readonly LoadingMask: "LoadingMask";
+  readonly LogoBox: "LogoBox";
 };
 export default classNames;

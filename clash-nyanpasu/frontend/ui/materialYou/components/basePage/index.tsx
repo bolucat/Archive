@@ -1,4 +1,12 @@
-import { ReactNode, FC, CSSProperties, memo } from "react";
+import {
+  ReactNode,
+  FC,
+  CSSProperties,
+  memo,
+  useRef,
+  useEffect,
+  useMemo,
+} from "react";
 import Typography from "@mui/material/Typography";
 import { BaseErrorBoundary } from "./baseErrorBoundary";
 import "./style.scss";
@@ -40,15 +48,28 @@ export const BasePage: FC<Props> = ({
   full,
   children,
 }) => {
+  const sectionStyleRef = useRef(sectionStyle);
+  const contentStyleRef = useRef(contentStyle);
+
+  useEffect(() => {
+    sectionStyleRef.current = sectionStyle;
+    contentStyleRef.current = contentStyle;
+  }, [sectionStyle, contentStyle]);
+
+  const memoizedChildren = useMemo(() => children, [children]);
+
   return (
     <BaseErrorBoundary>
       <div className="MDYBasePage" data-windrag>
         <Header title={title} header={header} />
 
         <div className={`MDYBasePage-container ${full ? "no-padding" : ""}`}>
-          <section style={sectionStyle}>
-            <div className="MDYBasePage-content" style={contentStyle}>
-              {children}
+          <section style={sectionStyleRef.current}>
+            <div
+              className="MDYBasePage-content"
+              style={contentStyleRef.current}
+            >
+              {memoizedChildren}
             </div>
           </section>
         </div>

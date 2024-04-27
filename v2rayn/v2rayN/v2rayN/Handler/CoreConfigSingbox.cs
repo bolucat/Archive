@@ -54,7 +54,7 @@ namespace v2rayN.Handler
 
                 GenDns(node, singboxConfig);
 
-                GenStatistic(singboxConfig);
+                GenExperimental(singboxConfig);
 
                 ConvertGeo2Ruleset(singboxConfig);
 
@@ -337,16 +337,16 @@ namespace v2rayN.Handler
         {
             try
             {
-                //if (_config.coreBasicItem.muxEnabled)
-                //{
-                //    var mux = new Multiplex4Sbox()
-                //    {
-                //        enabled = true,
-                //        protocol = _config.mux4SboxItem.protocol,
-                //        max_connections = _config.mux4SboxItem.max_connections,
-                //    };
-                //    outbound.multiplex = mux;
-                //}
+                if (_config.coreBasicItem.muxEnabled && !Utils.IsNullOrEmpty(_config.mux4SboxItem.protocol))
+                {
+                    var mux = new Multiplex4Sbox()
+                    {
+                        enabled = true,
+                        protocol = _config.mux4SboxItem.protocol,
+                        max_connections = _config.mux4SboxItem.max_connections,
+                    };
+                    outbound.multiplex = mux;
+                }
             }
             catch (Exception ex)
             {
@@ -822,30 +822,26 @@ namespace v2rayN.Handler
             return 0;
         }
 
-        private int GenStatistic(SingboxConfig singboxConfig)
+        private int GenExperimental(SingboxConfig singboxConfig)
         {
             if (_config.guiItem.enableStatistics)
             {
-                singboxConfig.experimental = new Experimental4Sbox()
+                singboxConfig.experimental ??= new Experimental4Sbox();
+                singboxConfig.experimental.clash_api = new Clash_Api4Sbox()
                 {
-                    cache_file = new CacheFile4Sbox()
-                    {
-                        enabled = true
-                    },
-                    //v2ray_api = new V2ray_Api4Sbox()
-                    //{
-                    //    listen = $"{Global.Loopback}:{Global.StatePort}",
-                    //    stats = new Stats4Sbox()
-                    //    {
-                    //        enabled = true,
-                    //    }
-                    //},
-                    clash_api = new Clash_Api4Sbox()
-                    {
-                        external_controller = $"{Global.Loopback}:{LazyConfig.Instance.StatePort}",
-                    }
+                    external_controller = $"{Global.Loopback}:{LazyConfig.Instance.StatePort}",
                 };
             }
+
+            if (_config.coreBasicItem.enableCacheFile4Sbox)
+            {
+                singboxConfig.experimental ??= new Experimental4Sbox();
+                singboxConfig.experimental.cache_file = new CacheFile4Sbox()
+                {
+                    enabled = true
+                };
+            }
+
             return 0;
         }
 

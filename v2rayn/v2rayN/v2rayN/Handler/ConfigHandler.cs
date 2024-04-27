@@ -50,7 +50,6 @@ namespace v2rayN.Handler
                 {
                     logEnabled = false,
                     loglevel = "warning",
-
                     muxEnabled = false,
                 };
             }
@@ -180,7 +179,7 @@ namespace v2rayN.Handler
                 config.mux4SboxItem = new()
                 {
                     protocol = Global.SingboxMuxs[0],
-                    max_connections = 4
+                    max_connections = 8
                 };
             }
 
