@@ -2,8 +2,11 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-rc.12
+#### 1.9.0-rc.13
 
+* Update Hysteria protocol
+* Update quic-go to v0.43.0
+* Update gVisor to 20240422.0
 * Fixes and improvements
 
 #### 1.8.12

@@ -186,3 +186,45 @@ TEST(UtilsTest, HumanReadableByteCountBin) {
   HumanReadableByteCountBin(&ss, ~0ULL);
   EXPECT_EQ(ss.str(), "16.00 E");
 }
+
+TEST(UtilsTest, SplitHostPort) {
+  std::string host;
+  uint16_t portnum;
+
+  // test with no port
+  EXPECT_TRUE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost"));
+  EXPECT_EQ(host, "localhost");
+  EXPECT_EQ(portnum, 80u);
+
+  // test with explicit port
+  EXPECT_TRUE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost:12345"));
+  EXPECT_EQ(host, "localhost");
+  EXPECT_EQ(portnum, 12345u);
+
+  // test with another explicit portnum
+  EXPECT_TRUE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost:443"));
+  EXPECT_EQ(host, "localhost");
+  EXPECT_EQ(portnum, 443u);
+
+  // test with username and password
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "username@localhost:443"));
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "username:password@localhost:443"));
+
+  // test with invalid host
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, ":443"));
+
+  // test with invalid portnums
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost:portnum"));
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost:222222"));
+  EXPECT_FALSE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "localhost:-1"));
+
+  // test with ipv4 address
+  EXPECT_TRUE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "127.0.0.1:443"));
+  EXPECT_EQ(host, "127.0.0.1");
+  EXPECT_EQ(portnum, 443u);
+
+  // test with ipv6 address
+  EXPECT_TRUE(SplitHostPortWithDefaultPort<80>(&host, &portnum, "[::1]:443"));
+  EXPECT_EQ(host, "[::1]");
+  EXPECT_EQ(portnum, 443u);
+}

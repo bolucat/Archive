@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2023 Chilledheart  */
+/* Copyright (c) 2023-2024 Chilledheart  */
 
 #include "net/http_parser.hpp"
 #include "core/utils.hpp"
 #include "url/gurl.h"
 
+#include <absl/strings/ascii.h>
 #include <absl/strings/str_cat.h>
 
 #ifndef HAVE_BALSA_HTTP_PARSER
@@ -16,6 +17,8 @@
 #endif
 
 namespace net {
+
+constexpr const std::string_view kHttpVersionPrefix = "HTTP/";
 
 // Convert plain http proxy header to http request header
 //
@@ -56,25 +59,6 @@ static void ReforgeHttpRequestImpl(std::string* header,
   ss << "\r\n";
 
   *header = ss.str();
-}
-
-static void SplitHostPort(std::string* out_hostname, std::string* out_port, const std::string& hostname_and_port) {
-  size_t colon_offset = hostname_and_port.find_last_of(':');
-  const size_t bracket_offset = hostname_and_port.find_last_of(']');
-  std::string hostname, port;
-
-  // An IPv6 literal may have colons internally, guarded by square brackets.
-  if (bracket_offset != std::string::npos && colon_offset != std::string::npos && bracket_offset > colon_offset) {
-    colon_offset = std::string::npos;
-  }
-
-  if (colon_offset == std::string::npos) {
-    *out_hostname = hostname_and_port;
-    *out_port = "80";
-  } else {
-    *out_hostname = hostname_and_port.substr(0, colon_offset);
-    *out_port = hostname_and_port.substr(colon_offset + 1);
-  }
 }
 
 #ifdef HAVE_BALSA_HTTP_PARSER
@@ -180,23 +164,21 @@ bool isUrlValid(std::string_view url, bool is_connect) {
          std::all_of(path_query.begin(), path_query.end(), is_valid_path_query_char);
 }
 
+// Returns true if `version_input` is a valid HTTP version string as defined at
+// https://www.rfc-editor.org/rfc/rfc9112.html#section-2.3, or empty (for HTTP/0.9).
 bool isVersionValid(std::string_view version_input) {
-  // HTTP-version is defined at
-  // https://www.rfc-editor.org/rfc/rfc9112.html#section-2.3. HTTP/0.9 requests
-  // have no http-version, so empty `version_input` is also accepted.
+  if (version_input.empty()) {
+    return true;
+  }
 
-#if 0
-  static const auto regex = [] {
-    envoy::type::matcher::v3::RegexMatcher matcher;
-    *matcher.mutable_google_re2() = envoy::type::matcher::v3::RegexMatcher::GoogleRE2();
-    matcher.set_regex("|HTTP/[0-9]\\.[0-9]");
-    return Regex::Utility::parseRegex(matcher);
-  }();
+  if (!absl::StartsWith(version_input, kHttpVersionPrefix)) {
+    return false;
+  }
+  version_input.remove_prefix(kHttpVersionPrefix.size());
 
-  return regex->match(version_input);
-#else
-  return true;
-#endif
+  // Version number is in the form of "[0-9].[0-9]".
+  return version_input.size() == 3 && absl::ascii_isdigit(version_input[0]) && version_input[1] == '.' &&
+         absl::ascii_isdigit(version_input[2]);
 }
 
 }  // anonymous namespace
@@ -252,22 +234,19 @@ void HttpRequestParser::ProcessHeaders(const quiche::BalsaHeaders& headers) {
 
     if (key == "Host" && !http_is_connect_) {
       std::string authority = std::string(value);
-      std::string hostname, port;
-      SplitHostPort(&hostname, &port, authority);
+      std::string hostname;
+      uint16_t portnum;
+      if (!SplitHostPortWithDefaultPort<80>(&hostname, &portnum, authority)) {
+        VLOG(1) << "parser failed: bad http field: Authority: " << authority;
+        status_ = ParserStatus::Error;
+        break;
+      }
 
       // Handle IPv6 literals.
       if (hostname.size() >= 2 && hostname[0] == '[' && hostname[hostname.size() - 1] == ']') {
         hostname = hostname.substr(1, hostname.size() - 2);
       }
 
-      std::optional<unsigned> portnum_opt = StringToIntegerU(port);
-      if (!portnum_opt.has_value() || portnum_opt.value() > UINT16_MAX) {
-        VLOG(1) << "parser failed: bad http field: Host: " << authority << " hostname: " << hostname
-                << " port: " << port;
-        status_ = ParserStatus::Error;
-        break;
-      }
-      const uint16_t portnum = static_cast<uint16_t>(portnum_opt.value());
       http_host_ = hostname;
       http_port_ = portnum;
     }
@@ -314,22 +293,20 @@ void HttpRequestParser::OnRequestFirstLineInput(std::string_view /*line_input*/,
   http_url_ = std::string(request_uri);
   if (is_connect) {
     std::string authority = http_url_;
-    std::string hostname, port;
-    SplitHostPort(&hostname, &port, authority);
+    std::string hostname;
+    uint16_t portnum;
+    if (!SplitHostPortWithDefaultPort<80>(&hostname, &portnum, authority)) {
+      VLOG(1) << "parser failed: bad http field: Authority: " << authority;
+      status_ = ParserStatus::Error;
+      error_message_ = "HPE_INVALID_AUTHORITY";
+      return;
+    }
 
     // Handle IPv6 literals.
     if (hostname.size() >= 2 && hostname[0] == '[' && hostname[hostname.size() - 1] == ']') {
       hostname = hostname.substr(1, hostname.size() - 2);
     }
 
-    std::optional<unsigned> portnum_opt = StringToIntegerU(port);
-    if (!portnum_opt.has_value() || portnum_opt.value() > UINT16_MAX) {
-      VLOG(1) << "parser failed: bad http field: Host: " << authority << " hostname: " << hostname << " port: " << port;
-      status_ = ParserStatus::Error;
-      error_message_ = "HPE_INVALID_URL";
-      return;
-    }
-    const uint16_t portnum = static_cast<uint16_t>(portnum_opt.value());
     http_host_ = hostname;
     http_port_ = portnum;
   }
@@ -519,20 +496,18 @@ int HttpRequestParser::OnReadHttpRequestHeaderValue(http_parser* parser, const c
   self->http_headers_[self->http_field_] = self->http_value_;
   if (self->http_field_ == "Host" && !self->http_is_connect_) {
     std::string authority = std::string(buf, len);
-    std::string hostname, port;
-    SplitHostPort(&hostname, &port, authority);
+    std::string hostname;
+    uint16_t portnum;
+    if (!SplitHostPortWithDefaultPort<80>(&hostname, &portnum, authority)) {
+      VLOG(1) << "parser failed: bad http field: Authority: " << authority;
+      return -1;
+    }
 
     // Handle IPv6 literals.
     if (hostname.size() >= 2 && hostname[0] == '[' && hostname[hostname.size() - 1] == ']') {
       hostname = hostname.substr(1, hostname.size() - 2);
     }
 
-    std::optional<unsigned> portnum_opt = StringToIntegerU(port);
-    if (!portnum_opt.has_value() || portnum_opt.value() > UINT16_MAX) {
-      VLOG(1) << "parser failed: bad http field: Host: " << authority << " hostname: " << hostname << " port: " << port;
-      return -1;
-    }
-    const uint16_t portnum = static_cast<uint16_t>(portnum_opt.value());
     self->http_host_ = hostname;
     self->http_port_ = portnum;
   }

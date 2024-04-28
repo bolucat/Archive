@@ -28,25 +28,6 @@ using namespace net;
 using gurl_base::ToLowerASCII;
 
 #ifdef HAVE_QUICHE
-static void SplitHostPort(std::string* out_hostname, std::string* out_port, const std::string& hostname_and_port) {
-  size_t colon_offset = hostname_and_port.find_last_of(':');
-  const size_t bracket_offset = hostname_and_port.find_last_of(']');
-  std::string hostname, port;
-
-  // An IPv6 literal may have colons internally, guarded by square brackets.
-  if (bracket_offset != std::string::npos && colon_offset != std::string::npos && bracket_offset > colon_offset) {
-    colon_offset = std::string::npos;
-  }
-
-  if (colon_offset == std::string::npos) {
-    *out_hostname = hostname_and_port;
-    *out_port = "443"s;
-  } else {
-    *out_hostname = hostname_and_port.substr(0, colon_offset);
-    *out_port = hostname_and_port.substr(colon_offset + 1);
-  }
-}
-
 static std::vector<http2::adapter::Header> GenerateHeaders(std::vector<std::pair<std::string, std::string>> headers,
                                                            int status = 0) {
   std::vector<http2::adapter::Header> response_vector;
@@ -345,8 +326,13 @@ bool ServerConnection::OnEndHeadersForStream(http2::adapter::Http2StreamId strea
     return false;
   }
 
-  std::string hostname, port;
-  SplitHostPort(&hostname, &port, authority);
+  std::string hostname;
+  uint16_t portnum;
+  if (!SplitHostPortWithDefaultPort<443>(&hostname, &portnum, authority)) {
+    LOG(INFO) << "Connection (server) " << connection_id() << " from: " << peer_endpoint
+              << " Unexpected authority: " << authority;
+    return false;
+  }
 
   // Handle IPv6 literals.
   if (hostname.size() >= 2 && hostname[0] == '[' && hostname[hostname.size() - 1] == ']') {
@@ -357,14 +343,6 @@ bool ServerConnection::OnEndHeadersForStream(http2::adapter::Http2StreamId strea
     LOG(WARNING) << "Connection (server) " << connection_id() << " too long domain name: " << hostname;
     return false;
   }
-
-  std::optional<unsigned> portnum_opt = StringToIntegerU(port);
-  if (!portnum_opt.has_value() || portnum_opt.value() > UINT16_MAX) {
-    LOG(INFO) << "Connection (server) " << connection_id() << " from: " << peer_endpoint
-              << " Unexpected authority: " << authority << " hostname: " << hostname << " port: " << port;
-    return false;
-  }
-  const uint16_t portnum = static_cast<uint16_t>(portnum_opt.value());
 
   request_ = ss::request(hostname, portnum);
 
