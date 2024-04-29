@@ -10,10 +10,9 @@ import {
 import { BaseCard } from "@nyanpasu/ui";
 import { useTranslation } from "react-i18next";
 import LogoSvg from "@/assets/image/logo.svg?react";
-import style from "./setting-nyanpasu-version.module.scss";
 import { version } from "~/package.json";
-import { LoadingButton } from "@mui/lab";
-import { useState } from "react";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { useEffect, useState } from "react";
 import { useLockFn } from "ahooks";
 import { checkUpdate } from "@tauri-apps/api/updater";
 import { useMessage } from "@/hooks/use-notification";
@@ -77,10 +76,9 @@ export const SettingNyanpasuVersion = () => {
               display="flex"
               flexDirection="column"
               alignItems="center"
-              className={style.LogoBox}
               gap={2}
             >
-              <LogoSvg />
+              <LogoSvg className="w-32 h-32" />
 
               <Typography fontWeight={700} noWrap>
                 {"Clash Nyanpasu~(∠・ω< )⌒☆"}​
@@ -96,11 +94,11 @@ export const SettingNyanpasuVersion = () => {
         <Box sx={{ pt: 1, pb: 1 }}>
           <LabelSwitch
             label={t("Auto Check Updates")}
-            value={!nyanpasuConfig?.disable_auto_check_update}
+            value={nyanpasuConfig?.enable_auto_check_update || true}
             onChange={() =>
               setNyanpasuConfig({
-                disable_auto_check_update:
-                  nyanpasuConfig?.disable_auto_check_update,
+                enable_auto_check_update:
+                  !nyanpasuConfig?.enable_auto_check_update,
               })
             }
           />

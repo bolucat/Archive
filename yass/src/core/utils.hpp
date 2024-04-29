@@ -11,6 +11,7 @@
 #include <string_view>
 #include <thread>
 
+#include <absl/types/span.h>
 #include <base/compiler_specific.h>
 #include <base/files/memory_mapped_file.h>
 #include <base/files/platform_file.h>
@@ -204,7 +205,7 @@ bool Net_ipv6works();
 using ssize_t = ptrdiff_t;
 #endif
 
-ssize_t ReadFileToBuffer(const std::string& path, char* buf, size_t buf_len);
+ssize_t ReadFileToBuffer(const std::string& path, absl::Span<char> buffer);
 ssize_t WriteFileWithBuffer(const std::string& path, std::string_view buf);
 PlatformFile OpenReadFile(const std::string& path);
 #ifdef _WIN32
@@ -242,8 +243,6 @@ extern const ProgramType pType;
 const char* ProgramTypeToStr(ProgramType type);
 
 template <int DefaultPort>
-bool SplitHostPortWithDefaultPort(std::string* out_hostname,
-                                  uint16_t* out_port,
-                                  const std::string& host_port_string);
+bool SplitHostPortWithDefaultPort(std::string* out_hostname, uint16_t* out_port, const std::string& host_port_string);
 
 #endif  // YASS_UTILS
