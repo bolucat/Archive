@@ -121,7 +121,7 @@ pub fn define_command_line_options(mut app: Command) -> Command {
                 .action(ArgAction::Set)
                 .value_hint(ValueHint::CommandName)
                 .requires("SERVER_ADDR")
-                .help("SIP003 (https://shadowsocks.org/doc/sip003.html) plugin"),
+                .help("SIP003 (https://shadowsocks.org/guide/sip003.html) plugin"),
         )
         .arg(
             Arg::new("PLUGIN_MODE")
@@ -366,8 +366,12 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
                     plugin: p,
                     plugin_opts: matches.get_one::<String>("PLUGIN_OPT").cloned(),
                     plugin_args: Vec::new(),
-                    plugin_mode: matches.get_one::<String>("PLUGIN_MODE")
-                        .map(|x| x.parse::<Mode>().expect("plugin-mode must be one of `tcp_only` (default), `udp_only` and `tcp_and_udp`"))
+                    plugin_mode: matches
+                        .get_one::<String>("PLUGIN_MODE")
+                        .map(|x| {
+                            x.parse::<Mode>()
+                                .expect("plugin-mode must be one of `tcp_only` (default), `udp_only` and `tcp_and_udp`")
+                        })
                         .unwrap_or(Mode::TcpOnly),
                 };
 
@@ -490,7 +494,7 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
             eprintln!(
                 "missing proxy servers, consider specifying it by \
                     --server-addr, --encrypt-method, --password command line option, \
-                        or configuration file, check more details in https://shadowsocks.org/doc/configs.html"
+                        or configuration file, check more details in https://shadowsocks.org/guide/configs.html"
             );
             return Err(crate::EXIT_CODE_INSUFFICIENT_PARAMS.into());
         }

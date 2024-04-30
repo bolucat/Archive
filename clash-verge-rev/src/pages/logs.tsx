@@ -47,8 +47,27 @@ const LogPage = () => {
   const isDark = theme.palette.mode === "dark";
   const [logState, setLogState] = useState("all");
   const [filterText, setFilterText] = useState("");
-
+  const [useRegexSearch, setUseRegexSearch] = useState(true);
+  const [hasInputError, setInputError] = useState(false);
+  const [inputHelperText, setInputHelperText] = useState("");
   const filterLogs = useMemo(() => {
+    setInputHelperText("");
+    setInputError(false);
+    if (useRegexSearch) {
+      try {
+        const regex = new RegExp(filterText);
+        return logData.filter((data) => {
+          return (
+            regex.test(data.payload) &&
+            (logState === "all" ? true : data.type.includes(logState))
+          );
+        });
+      } catch (err: any) {
+        setInputHelperText(err.message.substring(0, 60));
+        setInputError(true);
+        return logData;
+      }
+    }
     return logData.filter((data) => {
       return (
         data.payload.includes(filterText) &&
@@ -107,8 +126,24 @@ const LogPage = () => {
         </StyledSelect>
 
         <BaseStyledTextField
+          error={hasInputError}
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
+          helperText={inputHelperText}
+          placeholder={t("Filter conditions")}
+          InputProps={{
+            sx: { pr: 1 },
+            endAdornment: (
+              <IconButton
+                sx={{ fontWeight: "800", height: "100%", padding: "0" }}
+                color={useRegexSearch ? "primary" : "default"}
+                title={t("Use Regular Expression")}
+                onClick={() => setUseRegexSearch(!useRegexSearch)}
+              >
+                .*
+              </IconButton>
+            ),
+          }}
         />
       </Box>
 

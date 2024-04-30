@@ -60,7 +60,7 @@ APP package name is `com.github.metacubex.clash.meta`
 - Import a profile
   - URL Scheme `clash://install-config?url=<encoded URI>` or `clashmeta://install-config?url=<encoded URI>`
 
-### Contribution and Project Maintainance
+### Contribution and Project Maintenance
 
 #### Meta Kernel
 
@@ -68,7 +68,7 @@ APP package name is `com.github.metacubex.clash.meta`
   - If you want to contribute to the kernel, make PRs to `Alpha` branch of the Meta kernel repository.
   - If you want to contribute Android-specific patches to the kernel, make PRs to  `android-open` branch of the Meta kernel repository.
 
-#### Maintainance
+#### Maintenance
 
 - When `MetaCubeX/Clash.Meta` kernel is updated to a new version, the `Update Dependencies` actions in this repo will be triggered automatically.
   - It will pull the new version of the meta kernel, update all the golang dependencies, and create a PR without manual intervention.
