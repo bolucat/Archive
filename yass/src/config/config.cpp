@@ -61,14 +61,18 @@ bool ReadConfig() {
   config_impl->Read("tcp_keep_alive_interval", &FLAGS_tcp_keep_alive_interval);
 
   /* optional tls fields */
-  config_impl->Read("certificate_chain_file", &FLAGS_certificate_chain_file);
-  config_impl->Read("private_key_file", &FLAGS_private_key_file);
-  config_impl->Read("private_key_password", &FLAGS_private_key_password, true);
-  config_impl->Read("insecure_mode", &FLAGS_insecure_mode);
   config_impl->Read("cacert", &FLAGS_cacert);
   config_impl->Read("capath", &FLAGS_capath);
+  config_impl->Read("certificate_chain_file", &FLAGS_certificate_chain_file);
+  if (pType == YASS_SERVER) {
+    config_impl->Read("private_key_file", &FLAGS_private_key_file);
+    config_impl->Read("private_key_password", &FLAGS_private_key_password, true);
+  }
+  if (pType == YASS_CLIENT || pType == YASS_CLIENT_SLAVE) {
+    config_impl->Read("insecure_mode", &FLAGS_insecure_mode);
+    config_impl->Read("enable_post_quantum_kyber", &FLAGS_enable_post_quantum_kyber);
+  }
   config_impl->Read("tls13_early_data", &FLAGS_tls13_early_data);
-  config_impl->Read("enable_post_quantum_kyber", &FLAGS_enable_post_quantum_kyber);
 
   /* close fields */
   config_impl->Close();
@@ -122,14 +126,18 @@ bool SaveConfig() {
   all_fields_written &= config_impl->Write("tcp_keep_alive_idle_timeout", FLAGS_tcp_keep_alive_idle_timeout);
   all_fields_written &= config_impl->Write("tcp_keep_alive_interval", FLAGS_tcp_keep_alive_interval);
 
-  all_fields_written &= config_impl->Write("certificate_chain_file", FLAGS_certificate_chain_file);
-  all_fields_written &= config_impl->Write("private_key_file", FLAGS_private_key_file);
-  all_fields_written &= config_impl->Write("private_key_password", FLAGS_private_key_password);
-  all_fields_written &= config_impl->Write("insecure_mode", FLAGS_insecure_mode);
   all_fields_written &= config_impl->Write("cacert", FLAGS_cacert);
   all_fields_written &= config_impl->Write("capath", FLAGS_capath);
+  all_fields_written &= config_impl->Write("certificate_chain_file", FLAGS_certificate_chain_file);
+  if (pType == YASS_SERVER) {
+    all_fields_written &= config_impl->Write("private_key_file", FLAGS_private_key_file);
+    all_fields_written &= config_impl->Write("private_key_password", FLAGS_private_key_password);
+  }
+  if (pType == YASS_CLIENT || pType == YASS_CLIENT_SLAVE) {
+    all_fields_written &= config_impl->Write("insecure_mode", FLAGS_insecure_mode);
+    all_fields_written &= config_impl->Write("enable_post_quantum_kyber", FLAGS_enable_post_quantum_kyber);
+  }
   all_fields_written &= config_impl->Write("tls13_early_data", FLAGS_tls13_early_data);
-  all_fields_written &= config_impl->Write("enable_post_quantum_kyber", FLAGS_enable_post_quantum_kyber);
 
   all_fields_written &= config_impl->Close();
 
@@ -305,20 +313,35 @@ void SetClientUsageMessage(std::string_view exec_path) {
   --username <username> Server user
   --password <pasword> Server password
   --method <method> Specify encrypt of method to use
+  --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
+  --padding_support Enable padding support
+  --use_ca_bundle_crt Use builtin ca-bundle.crt instead of system CA store
+  --cacert <file> Tells where to use the specified certificate file to verify the peer
+  --capath <dir> Tells where to use the specified certificate dir to verify the peer
+  --certificate_chain_file <file> Specify Certificate Chain File Path
+  -k, --insecure_mode Skip the verification step and proceed without checking
+  --tls13_early_data Enable 0RTTI Early Data
+  --enable_post_quantum_kyber Enable post-quantum secure TLS key encapsulation mechanism X25519Kyber768, based on a NIST standard (ML-KEM)
 )"));
 }
 
 void SetServerUsageMessage(std::string_view exec_path) {
   absl::SetProgramUsageMessage(absl::StrCat("Usage: ", Basename(exec_path), " [options ...]\n", R"(
   -K, --config <file> Read config from a file
-  --certificate_chain_file <file> (TLS) Certificate Chain File Path
-  --private_key_file <file> (TLS) Private Key File Path
-  --private_key_password <password> (TLS) Private Key Password
   --server_host <host> Server on given host
   --server_port <port> Server on given port
   --username <username> Server user
   --password <pasword> Server password
   --method <method> Specify encrypt of method to use
+  --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
+  --padding_support Enable padding support
+  --use_ca_bundle_crt Use builtin ca-bundle.crt instead of system CA store
+  --cacert <file> Tells where to use the specified certificate file to verify the peer
+  --capath <dir> Tells where to use the specified certificate dir to verify the peer
+  --certificate_chain_file <file> Specify Certificate Chain File Path
+  --private_key_file <file> Specify Private Key File Path
+  --private_key_password <password> Specify Private Key Password
+  --tls13_early_data Enable 0RTTI Early Data
 )"));
 }
 
