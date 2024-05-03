@@ -19,10 +19,10 @@ require (
 	github.com/miekg/dns v1.1.59
 	github.com/mustafaturan/bus v1.0.2
 	github.com/pelletier/go-toml v1.9.5
-	github.com/pion/transport/v2 v2.2.4
+	github.com/pion/transport/v2 v2.2.5
 	github.com/pires/go-proxyproto v0.7.0
 	github.com/quic-go/quic-go v0.43.0
-	github.com/refraction-networking/utls v1.6.4
+	github.com/refraction-networking/utls v1.6.5
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	github.com/stretchr/testify v1.9.0
 	github.com/v2fly/BrowserBridge v0.0.0-20210430233438-0570fc1d7d08
@@ -34,14 +34,14 @@ require (
 	go4.org/netipx v0.0.0-20230303233057-f1b76eb4bb35
 	golang.org/x/crypto v0.22.0
 	golang.org/x/net v0.24.0
-	golang.org/x/sync v0.6.0
+	golang.org/x/sync v0.7.0
 	golang.org/x/sys v0.19.0
 	google.golang.org/grpc v1.63.2
 	google.golang.org/protobuf v1.34.0
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20231020174304-b8a429915ff1
 	h12.io/socks v1.0.3
-	lukechampine.com/blake3 v1.2.2
+	lukechampine.com/blake3 v1.3.0
 )
 
 require (

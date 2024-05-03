@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.9.0-rc.15
+
+* Fixes and improvements
+
+#### 1.8.13
+
+* Fix fake-ip mapping
+* Fixes and improvements
+
 #### 1.9.0-rc.14
 
 * Fixes and improvements

@@ -17,6 +17,7 @@ data class Proxy(
     enum class Type(val group: Boolean) {
         Direct(false),
         Reject(false),
+        RejectDrop(false),
         Compatible(false),
         Pass(false),
 
