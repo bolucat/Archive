@@ -7,6 +7,7 @@
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/Chilledheart/yass)](https://github.com/Chilledheart/yass/releases)
 [![aur yass-proxy](https://img.shields.io/aur/version/yass-proxy)](https://aur.archlinux.org/packages/yass-proxy)
 [![aur yass-proxy-cli](https://img.shields.io/aur/version/yass-proxy-cli)](https://aur.archlinux.org/packages/yass-proxy-cli)
+[![homebrew cask](https://img.shields.io/homebrew/cask/v/yass)](https://formulae.brew.sh/cask/yass)
 
 yass is client-server model based and efficient forward proxy
 supporting http/socks4/socks4a/socks5 protocol. The server side is experimental.
@@ -17,7 +18,7 @@ supporting http/socks4/socks4a/socks5 protocol. The server side is experimental.
 - Easier to maintain and adopt new features.
 - Safe memory layout.
 
-More Information refers to [wiki](https://github.com/Chilledheart/yass/wiki) and [NaïveProxy][naiveproxy]-compatible protocol support.
+More Information refers to [wiki](https://github.com/Chilledheart/yass/wiki).
 
 ## Usages
 
@@ -26,6 +27,7 @@ More Information refers to [wiki](https://github.com/Chilledheart/yass/wiki) and
 - iOS [join via TestFlight](https://testflight.apple.com/join/6AkiEq09) or [download ipa](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-ios-release-arm64-1.9.3.ipa)
 - Windows [download installer](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-mingw-win7-release-x86_64-1.9.3-system-installer.exe) or [download 32-bit installer](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-mingw-winxp-release-i686-1.9.3-system-installer.exe) [(require vc 2010 runtime)][vs2010_x86] or [download woa arm64 installer](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-mingw-release-aarch64-1.9.3-system-installer.exe)
 - macOS [download intel dmg](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-macos-release-x64-1.9.3.dmg) or [download apple silicon dmg](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-macos-release-arm64-1.9.3.dmg)
+> via homebrew: `brew install --cask yass`
 - Linux [download rpm](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass.el7.x86_64.1.9.3-0.rpm) or [download deb](https://github.com/Chilledheart/yass/releases/download/1.9.3/yass-client-ubuntu-16.04-xenial_amd64.1.9.3.deb)
 
 View more at [release page](https://github.com/Chilledheart/yass/releases/tag/1.9.3)
