@@ -12,8 +12,8 @@ require (
 	github.com/miekg/dns v1.1.59
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pires/go-proxyproto v0.7.0
-	github.com/quic-go/quic-go v0.43.0
-	github.com/refraction-networking/utls v1.6.5
+	github.com/quic-go/quic-go v0.43.1
+	github.com/refraction-networking/utls v1.6.6
 	github.com/sagernet/sing v0.3.8
 	github.com/sagernet/sing-shadowsocks v0.2.6
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
@@ -25,7 +25,7 @@ require (
 	golang.org/x/crypto v0.22.0
 	golang.org/x/net v0.24.0
 	golang.org/x/sync v0.7.0
-	golang.org/x/sys v0.19.0
+	golang.org/x/sys v0.20.0
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173
 	google.golang.org/grpc v1.63.2
 	google.golang.org/protobuf v1.34.0
