@@ -27,8 +27,9 @@
     "ahooks": "3.7.11",
     "axios": "1.6.8",
     "dayjs": "1.11.11",
-    "framer-motion": "11.1.8",
+    "framer-motion": "11.1.9",
     "i18next": "23.11.3",
+    "jotai": "2.8.0",
     "monaco-editor": "0.48.0",
     "mui-color-input": "2.0.3",
     "react": "18.3.1",
@@ -41,7 +42,6 @@
     "react-router-dom": "6.23.0",
     "react-transition-group": "4.4.5",
     "react-virtuoso": "4.7.10",
-    "recoil": "0.7.7",
     "swr": "2.2.5"
   },
   "devDependencies": {

@@ -1,63 +1,37 @@
 use super::{use_filter, use_lowercase};
 use serde_yaml::{self, Mapping, Sequence, Value};
 
-const MERGE_FIELDS: [&str; 10] = [
+const MERGE_FIELDS: [&str; 6] = [
     "prepend-rules",
     "append-rules",
-    "prepend-rule-providers",
-    "append-rule-providers",
     "prepend-proxies",
     "append-proxies",
-    "prepend-proxy-providers",
-    "append-proxy-providers",
     "prepend-proxy-groups",
     "append-proxy-groups",
 ];
 
-pub fn use_merge(merge: Mapping, mut config: Mapping) -> Mapping {
-    // 直接覆盖原字段
-    use_lowercase(merge.clone())
-        .into_iter()
-        .filter(|(key, _)| !MERGE_FIELDS.contains(&key.as_str().unwrap_or_default()))
-        .for_each(|(key, value)| {
-            config.insert(key, value);
-        });
+fn deep_merge(a: &mut Value, b: &Value) {
+    match (a, b) {
+        (&mut Value::Mapping(ref mut a), &Value::Mapping(ref b)) => {
+            for (k, v) in b {
+                deep_merge(a.entry(k.clone()).or_insert(Value::Null), v);
+            }
+        }
+        (a, b) => *a = b.clone(),
+    }
+}
 
+pub fn use_merge(merge: Mapping, config: Mapping) -> Mapping {
+    let mut config = Value::from(config);
+    let mut merge_without_append = use_lowercase(merge.clone());
+    for key in MERGE_FIELDS {
+        merge_without_append.remove(key).unwrap_or_default();
+    }
+    deep_merge(&mut config, &Value::from(merge_without_append));
+
+    let mut config = config.as_mapping().unwrap().clone();
     let merge_list = MERGE_FIELDS.iter().map(|s| s.to_string());
     let merge = use_filter(merge, &merge_list.collect());
-
-    ["rule-providers", "proxy-providers"]
-        .iter()
-        .for_each(|key_str| {
-            let key_val = Value::from(key_str.to_string());
-
-            let mut map = Mapping::default();
-
-            map = config.get(&key_val).map_or(map.clone(), |val| {
-                val.as_mapping().map_or(map, |v| v.clone())
-            });
-
-            let pre_key = Value::from(format!("prepend-{key_str}"));
-            let post_key = Value::from(format!("append-{key_str}"));
-
-            if let Some(pre_val) = merge.get(&pre_key) {
-                if pre_val.is_mapping() {
-                    let mut pre_val = pre_val.as_mapping().unwrap().clone();
-                    pre_val.extend(map);
-                    map = pre_val;
-                }
-            }
-
-            if let Some(post_val) = merge.get(&post_key) {
-                if post_val.is_mapping() {
-                    map.extend(post_val.as_mapping().unwrap().clone());
-                }
-            }
-
-            if !map.is_empty() {
-                config.insert(key_val, Value::from(map));
-            }
-        });
 
     ["rules", "proxies", "proxy-groups"]
         .iter()
