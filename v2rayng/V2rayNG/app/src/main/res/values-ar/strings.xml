@@ -23,7 +23,7 @@
     <string name="menu_item_add_config">إضافة تكوين</string>
     <string name="menu_item_save_config">حفظ التكوين</string>
     <string name="menu_item_del_config">حذف التكوين</string>
-    <string name="menu_item_import_config_qrcode">استيراد التكوين من رمز الاستجابة السريعة (QRcode)</item>
+    <string name="menu_item_import_config_qrcode">استيراد التكوين من رمز الاستجابة السريعة (QRcode)</string>
     <string name="menu_item_import_config_clipboard">استيراد التكوين من الحافظة</string>
     <string name="menu_item_import_config_manually_vmess">الكتابة يدويًا [Vmess]</string>
     <string name="menu_item_import_config_manually_vless">الكتابة يدويًا [VLESS]</string>
@@ -141,7 +141,7 @@
     <string name="summary_pref_fake_dns_enabled">يعيد DNS المحلي عنوان IP وهمي (أسرع، ولكنه قد لا يعمل مع بعض التطبيقات)</string>
 
     <string name="title_pref_prefer_ipv6">تفضيل IPv6</string>
-    <string name="summary_pref_pref_ipv6">تفضيل عنوان IPv6 وطرق التوجيه</string>
+    <string name="summary_pref_prefer_ipv6">تفضيل عنوان IPv6 وطرق التوجيه</string>
 
     <string name="title_pref_routing">التوجيه</string>
     <string name="title_pref_routing_domain_strategy">استراتيجية النطاق</string>

@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.9.0-rc.16
+
+* Mitigating TunnelVision attacks **1**
+* Fixes and improvements
+
+**1**:
+
+See [TunnelVision](/manual/misc/tunnelvision).
+
 #### 1.9.0-rc.15
 
 * Fixes and improvements

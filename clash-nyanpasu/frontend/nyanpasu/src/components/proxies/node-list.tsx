@@ -1,10 +1,17 @@
-import { Box, ButtonBase, Chip, useTheme } from "@mui/material";
+import {
+  Box,
+  Chip,
+  ChipProps,
+  CircularProgress,
+  useTheme,
+} from "@mui/material";
 import Grid from "@mui/material/Unstable_Grid2";
 import { PaperSwitchButton } from "../setting/modules/system-proxy";
-import { Clash, useClashCore } from "@nyanpasu/interface";
+import { Clash, useClashCore, useNyanpasu } from "@nyanpasu/interface";
 import { useAtom } from "jotai";
 import { proxyGroupAtom } from "@/store";
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
+import { classNames } from "@/utils";
 
 type History = Clash.Proxy["history"];
 
@@ -38,9 +45,12 @@ const getColorForDelay = (delay: number): string => {
   return color;
 };
 
-const FeatureChip = memo(function FeatureChip({ label }: { label: string }) {
+const FeatureChip = memo(function FeatureChip(props: ChipProps) {
   return (
     <Chip
+      variant="outlined"
+      size="small"
+      {...props}
       sx={{
         fontSize: 10,
         height: 16,
@@ -49,10 +59,70 @@ const FeatureChip = memo(function FeatureChip({ label }: { label: string }) {
         "& .MuiChip-label": {
           padding: "0 4px",
         },
+        ...props.sx,
       }}
-      label={label}
-      size="small"
-      variant="outlined"
+    />
+  );
+});
+
+const DelayChip = memo(function DelayChip({
+  delay,
+  onClick,
+}: {
+  delay: number;
+  onClick: () => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const handleClick = async () => {
+    try {
+      setLoading(true);
+
+      await onClick();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <FeatureChip
+      sx={{
+        ml: "auto",
+        color: getColorForDelay(delay),
+      }}
+      label={
+        <>
+          <span
+            className={classNames(
+              "transition-opacity",
+              loading ? "opacity-0" : "opacity-1",
+            )}
+          >
+            {`${delay} ms`}
+          </span>
+
+          <CircularProgress
+            size={12}
+            className={classNames(
+              "transition-opacity",
+              "absolute",
+              "animate-spin",
+              "top-0",
+              "bottom-0",
+              "left-0",
+              "right-0",
+              "m-auto",
+              loading ? "opacity-1" : "opacity-0",
+            )}
+          />
+        </>
+      }
+      variant="filled"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClick();
+      }}
     />
   );
 });
@@ -60,11 +130,15 @@ const FeatureChip = memo(function FeatureChip({ label }: { label: string }) {
 const NodeCard = memo(function NodeCard({
   node,
   now,
+  disabled,
   onClick,
+  onClickDelay,
 }: {
   node: Clash.Proxy<string>;
   now?: string;
+  disabled?: boolean;
   onClick: () => void;
+  onClickDelay: () => Promise<void>;
 }) {
   const delay = useMemo(() => filterDelay(node.history), [node.history]);
 
@@ -73,45 +147,37 @@ const NodeCard = memo(function NodeCard({
       label={node.name}
       checked={node.name === now}
       onClick={onClick}
+      disabled={disabled}
     >
       <Box width="100%" display="flex" gap={0.5}>
         <FeatureChip label={node.type} />
 
         {node.udp && <FeatureChip label="UDP" />}
 
-        <ButtonBase
-          sx={{
-            fontSize: 10,
-            height: 16,
-            borderRadius: 4,
-            padding: "4px 8px",
-            ml: "auto",
-            color: getColorForDelay(delay),
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          {delay} ms
-        </ButtonBase>
+        <DelayChip delay={delay} onClick={onClickDelay} />
       </Box>
     </PaperSwitchButton>
   );
 });
 
 export const NodeList = () => {
-  const { data, setGroupProxy } = useClashCore();
+  const { data, setGroupProxy, updateProxiesDelay } = useClashCore();
+
+  const { getCurrentMode } = useNyanpasu();
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
   const group = useMemo(() => {
-    if (proxyGroup.selector !== null) {
-      return data?.groups[proxyGroup.selector];
+    if (getCurrentMode.global) {
+      return data?.global;
     } else {
-      return undefined;
+      if (proxyGroup.selector !== null) {
+        return data?.groups[proxyGroup.selector];
+      } else {
+        return undefined;
+      }
     }
-  }, [data?.groups, proxyGroup.selector]);
+  }, [data?.groups, proxyGroup.selector, getCurrentMode]);
 
   const hendleClick = (node: string) => {
     setGroupProxy(proxyGroup.selector as number, node);
@@ -126,7 +192,11 @@ export const NodeList = () => {
               <NodeCard
                 node={node}
                 now={group.now}
+                disabled={group.type !== "Selector"}
                 onClick={() => hendleClick(node.name)}
+                onClickDelay={async () => {
+                  await updateProxiesDelay(node.name);
+                }}
               />
             </Grid>
           );

@@ -20,7 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Rust
-        run: rustup toolchain install stable --profile minimal && rustup default stable && rustup component add clippy rustfmt && rustc --version && cargo --version && rustup show
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup component add clippy rustfmt
+          rustc --version
+          cargo --version
+          rustup show
+
       - name: Tauri dependencies
         if: startsWith(matrix.targets.os, 'ubuntu-')
         run: >-
@@ -46,10 +53,9 @@ jobs:
         with:
           node-version: 20
 
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         name: Install pnpm
         with:
-          version: 8
           run_install: false
 
       - name: Get pnpm store directory
