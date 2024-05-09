@@ -3,21 +3,77 @@ import {
   Box,
   Button,
   ButtonGroup,
+  Menu,
+  MenuItem,
   TextField,
-  Typography,
   alpha,
   useTheme,
 } from "@mui/material";
-import { useReactive } from "ahooks";
-import { useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
-import { GroupList, NodeList } from "@/components/proxies";
-import { Bolt, Public } from "@mui/icons-material";
+import { DelayButton, GroupList, NodeList } from "@/components/proxies";
+import { Public } from "@mui/icons-material";
 import { useAtom } from "jotai";
-import { proxyGroupAtom } from "@/store";
-import LoadingButton from "@mui/lab/LoadingButton";
+import { proxyGroupAtom, proxyGroupSortAtom } from "@/store";
+import ReactTextTransition from "react-text-transition";
+
+const ProxyGroupName = memo(function ProxyGroupName({
+  name,
+}: {
+  name: string;
+}) {
+  return <ReactTextTransition inline>{name}</ReactTextTransition>;
+});
+
+const SortSelector = memo(function SortSelector() {
+  const { t } = useTranslation();
+
+  const [proxyGroupSort, setProxyGroupSort] = useAtom(proxyGroupSortAtom);
+
+  type SortType = typeof proxyGroupSort;
+
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+
+  const handleClick = (sort: SortType) => {
+    setAnchorEl(null);
+    setProxyGroupSort(sort);
+  };
+
+  const tmaps: { [key: string]: string } = {
+    default: "Sort by default",
+    delay: "Sort by delay",
+    name: "Sort by name",
+  };
+
+  return (
+    <>
+      <Button
+        size="small"
+        variant="outlined"
+        sx={{ textTransform: "none" }}
+        onClick={(e) => setAnchorEl(e.currentTarget)}
+      >
+        {t(tmaps[proxyGroupSort])}
+      </Button>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={() => setAnchorEl(null)}
+      >
+        {Object.entries(tmaps).map(([key, value], index) => {
+          return (
+            <MenuItem key={index} onClick={() => handleClick(key as SortType)}>
+              {t(value)}
+            </MenuItem>
+          );
+        })}
+      </Menu>
+    </>
+  );
+});
 
 export default function ProxyPage() {
   const { t } = useTranslation();
@@ -29,10 +85,6 @@ export default function ProxyPage() {
   const { data, updateGroupDelay } = useClashCore();
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
-
-  const loading = useReactive({
-    delay: false,
-  });
 
   const group = useMemo(() => {
     if (getCurrentMode.global) {
@@ -49,13 +101,7 @@ export default function ProxyPage() {
   }, [proxyGroup.selector, data?.groups, getCurrentMode]);
 
   const handleDelayClick = async () => {
-    try {
-      loading.delay = true;
-
-      await updateGroupDelay(proxyGroup.selector as number);
-    } finally {
-      loading.delay = false;
-    }
+    await updateGroupDelay(proxyGroup.selector as number);
   };
 
   return (
@@ -98,16 +144,13 @@ export default function ProxyPage() {
       side={getCurrentMode.rule && <GroupList />}
       toolBar={
         !getCurrentMode.direct && (
-          <Box
-            width="100%"
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography>{group?.name}</Typography>
-            </Box>
-          </Box>
+          <div className="w-full flex items-center justify-between">
+            <div>{group?.name && <ProxyGroupName name={group?.name} />}</div>
+
+            <div>
+              <SortSelector />
+            </div>
+          </div>
         )
       }
     >
@@ -115,33 +158,7 @@ export default function ProxyPage() {
         <>
           <NodeList />
 
-          <LoadingButton
-            size="large"
-            sx={{
-              position: "fixed",
-              bottom: 32,
-              right: 32,
-              zIndex: 10,
-              height: 64,
-              width: 64,
-              borderRadius: 4,
-              boxShadow: 8,
-              backgroundColor: alpha(palette.primary.main, 0.3),
-              backdropFilter: "blur(8px)",
-
-              "&:hover": {
-                backgroundColor: alpha(palette.primary.main, 0.1),
-              },
-
-              "&.MuiLoadingButton-loading": {
-                backgroundColor: alpha(palette.primary.main, 0.15),
-              },
-            }}
-            loading={loading.delay}
-            onClick={handleDelayClick}
-          >
-            <Bolt />
-          </LoadingButton>
+          <DelayButton onClick={handleDelayClick} />
         </>
       ) : (
         <div className="h-full w-full flex items-center justify-center">
