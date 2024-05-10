@@ -4375,9 +4375,18 @@ OPENSSL_EXPORT void SSL_set_msg_callback_arg(SSL *ssl, void *arg);
 // access to the log.
 //
 // The format is described in
-// https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Key_Log_Format.
-OPENSSL_EXPORT void SSL_CTX_set_keylog_callback(
-    SSL_CTX *ctx, void (*cb)(const SSL *ssl, const char *line));
+// https://www.ietf.org/archive/id/draft-ietf-tls-keylogfile-01.html
+//
+// WARNING: The data in |line| allows an attacker to break security properties
+// of the TLS protocol, including confidentiality, integrity, and forward
+// secrecy. This impacts both the current connection, and, in TLS 1.2, future
+// connections that resume a session from it. Both direct access to the data and
+// side channel leaks from application code are possible attack vectors. This
+// callback is intended for debugging and should not be used in production
+// connections.
+OPENSSL_EXPORT void SSL_CTX_set_keylog_callback(SSL_CTX *ctx,
+                                                void (*cb)(const SSL *ssl,
+                                                           const char *line));
 
 // SSL_CTX_get_keylog_callback returns the callback configured by
 // |SSL_CTX_set_keylog_callback|.

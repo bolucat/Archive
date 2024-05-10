@@ -10,6 +10,7 @@
 
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
+#include "quiche/http2/adapter/chunked_buffer.h"
 #include "quiche/http2/adapter/data_source.h"
 #include "quiche/http2/adapter/event_forwarder.h"
 #include "quiche/http2/adapter/header_validator.h"
@@ -166,7 +167,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   }
   bool want_write() const override {
     return !fatal_send_error_ &&
-           (!frames_.empty() || !buffered_data_.empty() || HasReadyStream() ||
+           (!frames_.empty() || !buffered_data_.Empty() || HasReadyStream() ||
             !goaway_rejected_streams_.empty());
   }
   int GetRemoteWindowSize() const override { return connection_send_window_; }
@@ -365,6 +366,13 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // streams, returns zero.
   Http2StreamId GetNextReadyStream();
 
+  int32_t SubmitRequestInternal(absl::Span<const Header> headers,
+                                std::unique_ptr<DataFrameSource> data_source,
+                                void* user_data);
+  int SubmitResponseInternal(Http2StreamId stream_id,
+                             absl::Span<const Header> headers,
+                             std::unique_ptr<DataFrameSource> data_source);
+
   // Sends the buffered connection preface or serialized frame data, if any.
   SendResult MaybeSendBufferedData();
 
@@ -447,6 +455,17 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // initial window.
   void UpdateStreamReceiveWindowSizes(uint32_t new_value);
 
+  // Returns true if the given stream has additional data to write before
+  // trailers or the end of the stream.
+  bool HasMoreData(const StreamState& stream_state) const;
+
+  // Returns true if the given stream has data ready to write. Trailers are
+  // considered separately.
+  bool IsReadyToWriteData(const StreamState& stream_state) const;
+
+  // Abandons any remaining data, e.g. on stream reset.
+  void AbandonData(StreamState& stream_state);
+
   // Gathers information required to construct a DATA frame header.
   struct DataFrameInfo {
     int64_t payload_length;
@@ -493,7 +512,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   std::list<std::unique_ptr<spdy::SpdyFrameIR>> frames_;
   // Buffered data (connection preface, serialized frames) that has not yet been
   // sent.
-  std::string buffered_data_;
+  ChunkedBuffer buffered_data_;
 
   // Maintains the set of streams ready to write data to the peer.
   using WriteScheduler = PriorityWriteScheduler<Http2StreamId>;

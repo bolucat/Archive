@@ -21,6 +21,7 @@
 #include "net/socks5.hpp"
 #include "net/socks5_request.hpp"
 #include "net/socks5_request_parser.hpp"
+#include "net/ss_request_parser.hpp"
 #include "version.h"
 
 ABSL_FLAG(bool, hide_via, true, "If true, the Via heaeder will not be added.");
@@ -206,8 +207,7 @@ void ServerConnection::close() {
 }
 
 void ServerConnection::Start() {
-  const auto method = absl::GetFlag(FLAGS_method).method;
-  bool http2 = CIPHER_METHOD_IS_HTTP2(method);
+  bool http2 = CIPHER_METHOD_IS_HTTP2(method());
   if (http2 && downlink_->https_fallback()) {
     http2 = false;
   }
@@ -245,13 +245,11 @@ void ServerConnection::Start() {
     ReadHandshakeViaHttps();
   } else {
     DCHECK(!http2);
-    auto method = absl::GetFlag(FLAGS_method).method;
-    if (CIPHER_METHOD_IS_SOCKS(method)) {
+    if (CIPHER_METHOD_IS_SOCKS(method())) {
       ReadHandshakeViaSocks();
     } else {
-      encoder_ =
-          std::make_unique<cipher>("", absl::GetFlag(FLAGS_password), absl::GetFlag(FLAGS_method).method, this, true);
-      decoder_ = std::make_unique<cipher>("", absl::GetFlag(FLAGS_password), absl::GetFlag(FLAGS_method).method, this);
+      encoder_ = std::make_unique<cipher>("", absl::GetFlag(FLAGS_password), method(), this, true);
+      decoder_ = std::make_unique<cipher>("", absl::GetFlag(FLAGS_password), method(), this);
       ReadHandshake();
     }
   }
@@ -534,8 +532,9 @@ void ServerConnection::ReadHandshake() {
 
     DumpHex("HANDSHAKE->", buf.get());
 
+    ss::request_parser parser;
     ss::request_parser::result_type result;
-    std::tie(result, std::ignore) = request_parser_.parse(request_, buf->data(), buf->data() + bytes_transferred);
+    std::tie(result, std::ignore) = parser.parse(request_, buf->data(), buf->data() + bytes_transferred);
 
     if (result == ss::request_parser::good) {
       buf->trimStart(request_.length());
@@ -700,8 +699,7 @@ void ServerConnection::OnReadHandshakeViaSocks() {
   }
   buf->append(bytes_transferred);
 
-  auto method = absl::GetFlag(FLAGS_method).method;
-  switch (method) {
+  switch (method()) {
     case CRYPTO_SOCKS4:
     case CRYPTO_SOCKS4A: {
       socks4::request_parser request_parser;
@@ -757,12 +755,14 @@ void ServerConnection::OnReadHandshakeViaSocks() {
       break;
     };
     default:
+      CHECK(false);
       break;
   }
 }
 
 void ServerConnection::WriteHandshakeResponse() {
   scoped_refptr<ServerConnection> self(this);
+  DCHECK(CIPHER_METHOD_IS_SOCKS(method()));
 
   downlink_->async_write_some([this, self](asio::error_code ec) {
     if (closed_ || closing_) {
@@ -776,9 +776,8 @@ void ServerConnection::WriteHandshakeResponse() {
       return;
     }
     std::shared_ptr<IOBuf> buf;
-    auto method = absl::GetFlag(FLAGS_method).method;
-    DCHECK(CIPHER_METHOD_IS_SOCKS(method));
-    if (method == CRYPTO_SOCKS4 || method == CRYPTO_SOCKS4A) {
+    DCHECK(CIPHER_METHOD_IS_SOCKS(method()));
+    if (method() == CRYPTO_SOCKS4 || method() == CRYPTO_SOCKS4A) {
       socks4::reply reply;
       asio::ip::tcp::endpoint endpoint{asio::ip::tcp::v4(), 0};
       reply.set_endpoint(endpoint);
@@ -895,8 +894,7 @@ void ServerConnection::OnReadHandshakeViaSocks5() {
     buf->append(bytes_transferred);
   }
 
-  auto method = absl::GetFlag(FLAGS_method).method;
-  DCHECK(CIPHER_METHOD_IS_SOCKS5(method));
+  DCHECK(CIPHER_METHOD_IS_SOCKS5(method()));
   socks5::request_parser request_parser;
   socks5::request request;
 
@@ -1144,8 +1142,7 @@ std::shared_ptr<IOBuf> ServerConnection::GetNextDownstreamBuf(asio::error_code& 
       if (downlink_->https_fallback()) {
     downstream_.push_back(buf);
   } else {
-    const auto method = absl::GetFlag(FLAGS_method).method;
-    if (CIPHER_METHOD_IS_SOCKS(method)) {
+    if (CIPHER_METHOD_IS_SOCKS(method())) {
       downstream_.push_back(buf);
     } else {
       EncryptData(&downstream_, buf);
@@ -1316,8 +1313,7 @@ try_again:
       if (downlink_->https_fallback()) {
     upstream_.push_back(buf);
   } else {
-    const auto method = absl::GetFlag(FLAGS_method).method;
-    if (CIPHER_METHOD_IS_SOCKS(method)) {
+    if (CIPHER_METHOD_IS_SOCKS(method())) {
       upstream_.push_back(buf);
     } else {
       decoder_->process_bytes(buf);
@@ -1465,7 +1461,8 @@ void ServerConnection::OnConnect() {
       }
       headers.emplace_back("padding"s, padding);
     }
-    int submit_result = adapter_->SubmitResponse(stream_id_, GenerateHeaders(headers, 200), std::move(data_frame));
+    int submit_result =
+        adapter_->SubmitResponse(stream_id_, GenerateHeaders(headers, 200), std::move(data_frame), false);
     SendIfNotProcessing();
     if (submit_result != 0) {
       OnDisconnect(asio::error::connection_aborted);

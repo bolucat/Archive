@@ -17,10 +17,8 @@
 #include "net/resolver.hpp"
 #include "net/socks4.hpp"
 #include "net/socks4_request.hpp"
-#include "net/socks4_request_parser.hpp"
 #include "net/socks5.hpp"
 #include "net/socks5_request.hpp"
-#include "net/socks5_request_parser.hpp"
 #include "net/ss_request.hpp"
 #include "net/ssl_stream.hpp"
 #include "net/stream.hpp"
@@ -327,13 +325,10 @@ class CliConnection : public RefCountedThreadSafe<CliConnection>,
   /// state machine
   state state_;
 
-  /// parser of method select request
-  socks5::method_select_request_parser method_select_request_parser_;
+ private:
   /// copy of method select request
   socks5::method_select_request method_select_request_;
 
-  /// parser of handshake request
-  socks5::request_parser request_parser_;
   /// copy of handshake request
   socks5::request s5_request_;
 
@@ -342,8 +337,6 @@ class CliConnection : public RefCountedThreadSafe<CliConnection>,
   /// copy of handshake response
   socks5::reply s5_reply_;
 
-  /// parser of handshake request
-  socks4::request_parser s4_request_parser_;
   /// copy of handshake request
   socks4::request s4_request_;
 
@@ -366,6 +359,12 @@ class CliConnection : public RefCountedThreadSafe<CliConnection>,
   int num_padding_send_ = 0;
   int num_padding_recv_ = 0;
   std::shared_ptr<IOBuf> padding_in_middle_buf_;
+
+ private:
+  void ReadUpstreamHttpsHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
+  void ReadUpstreamMethodSelectHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
+  void WriteUpstreamMethodSelectResponse();
+  void ReadUpstreamSocksHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
 
   /// the state of https fallback handshake (upstream)
   bool upstream_handshake_ = true;
