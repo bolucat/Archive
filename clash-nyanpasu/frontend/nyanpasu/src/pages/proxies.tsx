@@ -9,9 +9,9 @@ import {
   alpha,
   useTheme,
 } from "@mui/material";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNyanpasu, useClashCore } from "@nyanpasu/interface";
+import { useNyanpasu, useClashCore, Clash } from "@nyanpasu/interface";
 import { SidePage } from "@nyanpasu/ui";
 import { DelayButton, GroupList, NodeList } from "@/components/proxies";
 import { Public } from "@mui/icons-material";
@@ -86,16 +86,17 @@ export default function ProxyPage() {
 
   const [proxyGroup] = useAtom(proxyGroupAtom);
 
-  const group = useMemo(() => {
+  const [group, setGroup] =
+    useState<Clash.Proxy<Clash.Proxy<string> | string>>();
+
+  useEffect(() => {
     if (getCurrentMode.global) {
-      return data?.global;
+      setGroup(data?.global);
     } else if (getCurrentMode.direct) {
-      return data?.direct;
+      setGroup(data?.direct);
     } else {
       if (proxyGroup.selector !== null) {
-        return data?.groups[proxyGroup.selector];
-      } else {
-        return undefined;
+        setGroup(data?.groups[proxyGroup.selector]);
       }
     }
   }, [proxyGroup.selector, data?.groups, getCurrentMode]);
@@ -153,6 +154,7 @@ export default function ProxyPage() {
           </div>
         )
       }
+      noChildrenScroll
     >
       {!getCurrentMode.direct ? (
         <>

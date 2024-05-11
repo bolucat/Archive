@@ -1,4 +1,4 @@
-import { ReactNode, FC, memo, useMemo } from "react";
+import { ReactNode, FC, memo } from "react";
 import Divider from "@mui/material/Divider";
 import Toolbar from "@mui/material/Toolbar";
 import Typography from "@mui/material/Typography";
@@ -12,6 +12,7 @@ interface Props {
   sideBar?: ReactNode;
   side?: ReactNode;
   toolBar?: ReactNode;
+  noChildrenScroll?: boolean;
 }
 
 const Header: FC<{ title?: ReactNode; header?: ReactNode }> = memo(
@@ -41,11 +42,8 @@ export const SidePage: FC<Props> = ({
   sideBar,
   side,
   toolBar,
+  noChildrenScroll,
 }) => {
-  const memoizedChildren = useMemo(() => children, [children]);
-
-  const memoizedSide = useMemo(() => side, [side]);
-
   return (
     <BaseErrorBoundary>
       <div className={style["MDYSidePage-Main"]} data-windrag>
@@ -58,7 +56,7 @@ export const SidePage: FC<Props> = ({
                 {sideBar && <div>{sideBar}</div>}
 
                 <div className={style["LeftContainer-Content"]}>
-                  <section>{memoizedSide}</section>
+                  <section>{side}</section>
                 </div>
               </div>
             )}
@@ -76,7 +74,11 @@ export const SidePage: FC<Props> = ({
                 className={style["RightContainer-Content"]}
                 style={toolBar ? { height: "calc(100% - 49px)" } : undefined}
               >
-                <section>{memoizedChildren}</section>
+                <section
+                  style={noChildrenScroll ? { overflow: "visible" } : undefined}
+                >
+                  {children}
+                </section>
               </div>
             </div>
           </div>
