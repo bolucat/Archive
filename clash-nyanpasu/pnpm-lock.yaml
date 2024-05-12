@@ -134,8 +134,8 @@ importers:
         specifier: 3.4.3
         version: 3.4.3
       tsx:
-        specifier: 4.9.5
-        version: 4.9.5
+        specifier: 4.10.1
+        version: 4.10.1
       typescript:
         specifier: 5.4.5
         version: 5.4.5
@@ -174,8 +174,8 @@ importers:
         specifier: 11.11.5
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1))(react@19.0.0-beta-04b058868c-20240508)(types-react@19.0.0-beta.1)
       '@generouted/react-router':
-        specifier: 1.19.3
-        version: 1.19.3(react-router-dom@6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))
+        specifier: 1.19.4
+        version: 1.19.4(react-router-dom@6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -1003,8 +1003,8 @@ packages:
   '@floating-ui/utils@0.2.2':
     resolution: {integrity: sha512-J4yDIIthosAsRZ5CPYP/jQvUAQtlZTTD/4suA08/FEnlxqW3sKS9iAhgsa9VYLZ6vDHn/ixJgIqRQPotoBjxIw==}
 
-  '@generouted/react-router@1.19.3':
-    resolution: {integrity: sha512-3/Y0j302HnwxyU0KOoCOFSVwJZN4eD73+CVtSaOKUnLbGW1ftP1dT8Eur14PALGvZOVR4gsFrUJFq6a4c/kWvQ==}
+  '@generouted/react-router@1.19.4':
+    resolution: {integrity: sha512-VpOSWt1GA334bf9r3M482GTOpEcYaGiBgfonMMN8VABBX11oxZuYNF4Gw7AWoa8wu+0VerdS0q5KnRXklS2fow==}
     peerDependencies:
       react: npm:react@beta
       react-router-dom: '>=6'
@@ -2675,8 +2675,8 @@ packages:
   functions-have-names@1.2.3:
     resolution: {integrity: sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==}
 
-  generouted@1.19.3:
-    resolution: {integrity: sha512-1KnOmPYBNryAm+9PvvOTOzKiWvuBKRwK+Xr4dP/I9U00y7UAv/VrFGeb0v7mYMiny6jpWBmfBFKaUvq4Q0Z4dQ==}
+  generouted@1.19.4:
+    resolution: {integrity: sha512-33y/vqC6zSIVO274fZKcuJfLQ+urJ+eHn+XdKpiYp5ZTsd83deTjQCp4qcQ8rJbKBNjchj+HUDlTGdXg1mgtOw==}
     peerDependencies:
       vite: '>=3'
 
@@ -4535,8 +4535,8 @@ packages:
   tslib@2.6.2:
     resolution: {integrity: sha512-AEYxH93jGFPn/a2iVAwW87VuUIkR1FVUKB77NwMF7nBTDkDrrT/Hpt/IrCJ0QXhW27jTBDcf5ZY7w6RiqTMw2Q==}
 
-  tsx@4.9.5:
-    resolution: {integrity: sha512-bVKowxL5sqd5Pxkkgy6M9IGpxyY9+SPxWPNviZyqNBT/i6/X9EHbmuLDUw/6/Tugw1ca8VXNDtcM/amQjXcEOA==}
+  tsx@4.10.1:
+    resolution: {integrity: sha512-G+CcyTOopwhuI81FU+KpzGN5UBhHgGEDlGt8mHAXKxv8pDGr6WI7hI7aRjTRol5WzFVsSNuzl3ekCZ0eLIJlEQ==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -5467,10 +5467,10 @@ snapshots:
 
   '@floating-ui/utils@0.2.2': {}
 
-  '@generouted/react-router@1.19.3(react-router-dom@6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))':
+  '@generouted/react-router@1.19.4(react-router-dom@6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))':
     dependencies:
       fast-glob: 3.3.2
-      generouted: 1.19.3(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))
+      generouted: 1.19.4(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0))
       react: 19.0.0-beta-04b058868c-20240508
       react-router-dom: 6.23.1(react-dom@19.0.0-beta-04b058868c-20240508(react@19.0.0-beta-04b058868c-20240508))(react@19.0.0-beta-04b058868c-20240508)
       vite: 5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0)
@@ -7329,7 +7329,7 @@ snapshots:
 
   functions-have-names@1.2.3: {}
 
-  generouted@1.19.3(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0)):
+  generouted@1.19.4(vite@5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0)):
     dependencies:
       vite: 5.2.11(@types/node@20.12.11)(less@4.2.0)(sass@1.77.1)(stylus@0.62.0)
 
@@ -9399,7 +9399,7 @@ snapshots:
 
   tslib@2.6.2: {}
 
-  tsx@4.9.5:
+  tsx@4.10.1:
     dependencies:
       esbuild: 0.20.2
       get-tsconfig: 4.7.4

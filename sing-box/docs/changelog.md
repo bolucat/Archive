@@ -4,6 +4,9 @@ icon: material/alert-decagram
 
 #### 1.9.0-rc.17
 
+* Add custom prefix support in EDNS0 client subnet options
+* Fix hysteria2 crash
+* Fix `store_rdrc` corrupted
 * Fixes and improvements
 
 #### 1.9.0-rc.16

@@ -25,6 +25,7 @@
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/platform/api/quiche_flags.h"
 #include "quiche/common/quiche_callbacks.h"
+#include "quiche/common/quiche_circular_deque.h"
 #include "quiche/common/quiche_linked_hash_map.h"
 #include "quiche/spdy/core/http2_frame_decoder_adapter.h"
 #include "quiche/spdy/core/http2_header_block.h"
@@ -269,7 +270,6 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
 
     void Reset() {
       error_encountered_ = false;
-      result_ = Http2VisitorInterface::HEADER_OK;
     }
 
     void set_stream_id(Http2StreamId stream_id) { stream_id_ = stream_id; }
@@ -305,8 +305,6 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
     OgHttp2Session& session_;
     Http2VisitorInterface& visitor_;
     Http2StreamId stream_id_ = 0;
-    Http2VisitorInterface::OnHeaderResult result_ =
-        Http2VisitorInterface::HEADER_OK;
     // Validates header blocks according to the HTTP/2 specification.
     std::unique_ptr<HeaderValidatorBase> validator_;
     HeaderType type_ = HeaderType::RESPONSE;
@@ -504,7 +502,7 @@ class QUICHE_EXPORT OgHttp2Session : public Http2Session,
   // Stores the queue of callbacks to invoke upon receiving SETTINGS acks. At
   // most one callback is invoked for each SETTINGS ack.
   using SettingsAckCallback = quiche::SingleUseCallback<void()>;
-  std::list<SettingsAckCallback> settings_ack_callbacks_;
+  quiche::QuicheCircularDeque<SettingsAckCallback> settings_ack_callbacks_;
 
   // Delivers header name-value pairs to the visitor.
   PassthroughHeadersHandler headers_handler_;

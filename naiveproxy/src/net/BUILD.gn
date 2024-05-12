@@ -809,6 +809,10 @@ component("net") {
     "quic/quic_session_pool_direct_job.h",
     "quic/quic_session_pool_job.cc",
     "quic/quic_session_pool_job.h",
+    "quic/quic_session_pool_proxy_job.cc",
+    "quic/quic_session_pool_proxy_job.h",
+    "quic/quic_session_pool_session_attempt.cc",
+    "quic/quic_session_pool_session_attempt.h",
     "quic/set_quic_flag.cc",
     "quic/set_quic_flag.h",
     "quic/web_transport_client.cc",
@@ -829,6 +833,8 @@ component("net") {
     "socket/connect_job.h",
     "socket/connect_job_factory.cc",
     "socket/connect_job_factory.h",
+    "socket/connect_job_params.cc",
+    "socket/connect_job_params.h",
     "socket/connect_job_params_factory.cc",
     "socket/connect_job_params_factory.h",
     "socket/connection_attempts.h",
@@ -943,6 +949,8 @@ component("net") {
     "ssl/client_cert_identity.cc",
     "ssl/client_cert_identity.h",
     "ssl/client_cert_store.h",
+    "ssl/openssl_private_key.cc",
+    "ssl/openssl_private_key.h",
     "ssl/openssl_ssl_util.cc",
     "ssl/openssl_ssl_util.h",
     "ssl/ssl_cert_request_info.cc",
@@ -1100,8 +1108,10 @@ component("net") {
 
   if (enable_device_bound_sessions) {
     sources += [
-      "device_bound_sessions/bound_session_registration_fetcher_param.cc",
-      "device_bound_sessions/bound_session_registration_fetcher_param.h",
+      "device_bound_sessions/device_bound_session_registration_fetcher_param.cc",
+      "device_bound_sessions/device_bound_session_registration_fetcher_param.h",
+      "device_bound_sessions/device_bound_session_service.cc",
+      "device_bound_sessions/device_bound_session_service.h",
     ]
   }
 
@@ -1345,6 +1355,7 @@ component("net") {
       "cert/internal/trust_store_chrome.h",
     ]
     deps += [
+      "//base/version_info",
       "//net/cert:root_store_proto_lite",
       "//net/data/ssl/chrome_root_store:gen_root_store_inc",
     ]
@@ -1581,6 +1592,10 @@ component("net") {
     configs -= [ "//build/config/compiler:default_optimization" ]
     configs += [ "//build/config/compiler:optimize_max" ]
   }
+
+  if (false) {
+    deps += [ "//mojo/public/cpp/bindings:default_construct_tag" ]
+  }
 }
 
 # net_export.h has its own build target so that code (eg
@@ -1612,7 +1627,6 @@ source_set("net_deps") {
     ":net_export_header",
     ":preload_decoder",
     "//base",
-    "//base/third_party/dynamic_annotations",
     "//net/base/registry_controlled_domains",
     "//third_party/protobuf:protobuf_lite",
     "//third_party/zlib",

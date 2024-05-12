@@ -48,6 +48,11 @@ MessagePump::MessagePump() = default;
 
 MessagePump::~MessagePump() = default;
 
+bool MessagePump::HandleNestedNativeLoopWithApplicationTasks(
+    bool application_tasks_desired) {
+  return false;
+}
+
 // static
 void MessagePump::OverrideMessagePumpForUIFactory(MessagePumpFactory* factory) {
   DCHECK(!message_pump_for_ui_factory_);
@@ -115,6 +120,7 @@ void MessagePump::InitializeFeatures() {
 #if BUILDFLAG(IS_WIN)
   g_explicit_high_resolution_timer_win =
       FeatureList::IsEnabled(kExplicitHighResolutionTimerWin);
+  MessagePumpWin::InitializeFeatures();
 #endif
 }
 

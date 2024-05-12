@@ -58,6 +58,7 @@ flags="$flags"'
   use_gtk=false
   use_platform_icu_alternatives=true
   use_glib=false
+  enable_js_protobuf=false
 
   disable_file_support=true
   enable_websockets=false
@@ -88,18 +89,6 @@ case "$EXTRA_FLAGS" in
   flags="$flags"'
     default_min_sdk_version=24
     is_high_end_android=true'
-  ;;
-esac
-
-# OpenWrt static builds are bad with Clang 18+ and ThinLTO.
-# Segfaults in fstack-protector on ARM.
-# See https://github.com/llvm/llvm-project/issues/64999
-case "$EXTRA_FLAGS" in
-*build_static=true*)
-  if [ "$target_cpu" = "arm" ]; then
-    flags="$flags"'
-      use_thin_lto=false'
-  fi
   ;;
 esac
 

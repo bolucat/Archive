@@ -471,7 +471,7 @@ flowchart TB
                   }
                 ],
                 "server": "google",
-                "client_subnet": "114.114.114.114" // Any China client IP address
+                "client_subnet": "114.114.114.114/24" // Any China client IP address
               }
             ]
           },

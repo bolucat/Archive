@@ -39,6 +39,8 @@ class NaiveProxyDelegate : public ProxyDelegate {
                       const ProxyRetryInfoMap& proxy_retry_info,
                       ProxyInfo* result) override {}
   void OnFallback(const ProxyChain& bad_proxy, int net_error) override {}
+  void OnSuccessfulRequestAfterFailures(
+      const ProxyRetryInfoMap& proxy_retry_info) override {}
 
   // This only affects h2 proxy client socket.
   void OnBeforeTunnelRequest(const ProxyChain& proxy_chain,

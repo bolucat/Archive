@@ -277,6 +277,7 @@ component("base") {
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
     "containers/contains.h",
+    "containers/dynamic_extent.h",
     "containers/enum_set.h",
     "containers/extend.h",
     "containers/fixed_flat_map.h",
@@ -295,6 +296,7 @@ component("base") {
     "containers/small_map.h",
     "containers/span.h",
     "containers/span_reader.h",
+    "containers/span_writer.h",
     "containers/stack.h",
     "containers/to_value_list.h",
     "containers/to_vector.h",
@@ -362,7 +364,6 @@ component("base") {
     "functional/function_ref.h",
     "functional/overloaded.h",
     "functional/unretained_traits.h",
-    "gtest_prod_util.cc",
     "gtest_prod_util.h",
     "hash/hash.cc",
     "hash/hash.h",
@@ -412,6 +413,8 @@ component("base") {
     "memory/platform_shared_memory_mapper.h",
     "memory/platform_shared_memory_region.cc",
     "memory/platform_shared_memory_region.h",
+    "memory/post_delayed_memory_reduction_task.cc",
+    "memory/post_delayed_memory_reduction_task.h",
     "memory/protected_memory.h",
     "memory/ptr_util.h",
     "memory/raw_ptr.h",
@@ -544,6 +547,8 @@ component("base") {
     "power_monitor/battery_level_provider.h",
     "power_monitor/battery_state_sampler.cc",
     "power_monitor/battery_state_sampler.h",
+    "power_monitor/cpu_frequency_utils.cc",
+    "power_monitor/cpu_frequency_utils.h",
     "power_monitor/power_monitor.cc",
     "power_monitor/power_monitor.h",
     "power_monitor/power_monitor_device_source.cc",
@@ -626,6 +631,7 @@ component("base") {
     "stl_util.h",
     "strings/abseil_string_number_conversions.cc",
     "strings/abseil_string_number_conversions.h",
+    "strings/cstring_view.h",
     "strings/escape.cc",
     "strings/escape.h",
     "strings/latin1_string_conversions.cc",
@@ -1030,7 +1036,11 @@ component("base") {
   }
 
   if (is_chromeos) {
-    sources += [ "threading/platform_thread_cros.cc" ]
+    sources += [
+      "process/process_priority_delegate.h",
+      "threading/cross_process_platform_thread_delegate.h",
+      "threading/platform_thread_cros.cc",
+    ]
   }
 
   if (is_chromeos_ash) {
@@ -1064,11 +1074,11 @@ component("base") {
     "//base/allocator:buildflags",
     "//base/allocator/partition_allocator:raw_ptr",
     "//base/third_party/double_conversion",
-    "//base/third_party/dynamic_annotations",
     "//build:blink_buildflags",
     "//build:branding_buildflags",
     "//build:ios_buildflags",
     "//build/config/compiler:compiler_buildflags",
+    "//third_party/abseil-cpp:absl",
     "//third_party/modp_b64",
   ]
 
@@ -1078,7 +1088,7 @@ component("base") {
   defines += [ "IS_RAW_PTR_IMPL" ]
 
   if (build_rust_json_reader) {
-    deps += [ "//third_party/rust/serde_json_lenient/v0_1/wrapper" ]
+    deps += [ "//third_party/rust/serde_json_lenient/v0_2/wrapper" ]
   }
 
   # native_unwinder_android is intended for use solely via a dynamic feature
@@ -1984,6 +1994,8 @@ component("base") {
       "mac/launch_services_spi.h",
       "mac/launchd.cc",
       "mac/launchd.h",
+      "mac/login_util.cc",
+      "mac/login_util.h",
       "mac/mac_util.h",
       "mac/mac_util.mm",
       "mac/mach_port_rendezvous.cc",
@@ -2082,19 +2094,28 @@ component("base") {
         "ios/sim_header_shims.h",
         "mac/mach_port_rendezvous.cc",
         "mac/mach_port_rendezvous.h",
-        "process/kill_mac.cc",
-        "process/launch_ios.cc",
+        "process/kill_ios.cc",
         "process/memory_mac.mm",
         "process/port_provider_mac.cc",
         "process/port_provider_mac.h",
         "process/process_handle_mac.cc",
+        "process/process_ios.cc",
         "process/process_iterator_mac.cc",
         "process/process_mac.cc",
         "process/process_posix.cc",
         "sync_socket_posix.cc",
         "synchronization/waitable_event_watcher_mac.cc",
       ]
-      libs += [ "bsm" ]
+
+      # We include launch_mac on simulator builds so unittests can fork.
+      if (target_environment == "simulator") {
+        sources += [
+          "process/kill_mac.cc",
+          "process/launch_mac.cc",
+        ]
+      } else {
+        sources += [ "process/launch_ios.cc" ]
+      }
     } else {
       sources += [
         "process/launch_ios.cc",
@@ -2257,7 +2278,7 @@ component("base") {
 
   # On ARC++-enabled ChromeOS system, we need TimeTicks::FromUptimeMillis to
   # interpret time values sent from Android container.
-  if (is_android || is_chromeos_ash) {
+  if (is_android || is_chromeos) {
     sources += [ "time/time_android.cc" ]
   }
 
