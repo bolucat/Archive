@@ -24,7 +24,7 @@ pub struct Sysopt {
 }
 
 #[cfg(target_os = "windows")]
-static DEFAULT_BYPASS: &str = "localhost;127.*;192.168.*;10.*;172.16.*;<local>";
+static DEFAULT_BYPASS: &str = "localhost;127.*;192.168.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;<local>";
 #[cfg(target_os = "linux")]
 static DEFAULT_BYPASS: &str = "localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,::1";
 #[cfg(target_os = "macos")]
@@ -63,7 +63,16 @@ impl Sysopt {
             enable,
             host: String::from("127.0.0.1"),
             port,
-            bypass: bypass.unwrap_or(DEFAULT_BYPASS.into()),
+            bypass: match bypass {
+                Some(bypass) => {
+                    if bypass.is_empty() {
+                        DEFAULT_BYPASS.into()
+                    } else {
+                        bypass
+                    }
+                }
+                None => DEFAULT_BYPASS.into(),
+            },
         };
 
         if enable {
@@ -101,7 +110,16 @@ impl Sysopt {
         let mut sysproxy = cur_sysproxy.take().unwrap();
 
         sysproxy.enable = enable;
-        sysproxy.bypass = bypass.unwrap_or(DEFAULT_BYPASS.into());
+        sysproxy.bypass = match bypass {
+            Some(bypass) => {
+                if bypass.is_empty() {
+                    DEFAULT_BYPASS.into()
+                } else {
+                    bypass
+                }
+            }
+            None => DEFAULT_BYPASS.into(),
+        };
 
         let port = Config::verge()
             .latest()
@@ -281,7 +299,16 @@ impl Sysopt {
                     enable: true,
                     host: "127.0.0.1".into(),
                     port,
-                    bypass: bypass.unwrap_or(DEFAULT_BYPASS.into()),
+                    bypass: match bypass {
+                        Some(bypass) => {
+                            if bypass.is_empty() {
+                                DEFAULT_BYPASS.into()
+                            } else {
+                                bypass
+                            }
+                        }
+                        None => DEFAULT_BYPASS.into(),
+                    },
                 };
 
                 log_err!(sysproxy.set_system_proxy());

@@ -120,14 +120,6 @@ struct SSBalancerConfig {
     check_best_interval: Option<u64>,
 }
 
-#[cfg(feature = "local-online-config")]
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct SSOnlineConfig {
-    config_url: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    update_interval: Option<u64>,
-}
-
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct SSConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -241,7 +233,7 @@ struct SSConfig {
 
     #[cfg(feature = "local-online-config")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    online_config: Option<SSOnlineConfig>,
+    version: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -425,6 +417,11 @@ pub enum ConfigType {
 
     /// Config for Manager server
     Manager,
+
+    /// Config for online config (SIP008)
+    /// https://shadowsocks.org/doc/sip008.html
+    #[cfg(feature = "local-online-config")]
+    OnlineConfig,
 }
 
 impl ConfigType {
@@ -441,6 +438,12 @@ impl ConfigType {
     /// Check if it is manager server type
     pub fn is_manager(self) -> bool {
         self == ConfigType::Manager
+    }
+
+    /// Chec if it is online config type (SIP008)
+    #[cfg(feature = "local-online-config")]
+    pub fn is_online_config(self) -> bool {
+        self == ConfigType::OnlineConfig
     }
 }
 
@@ -1234,17 +1237,6 @@ impl LocalInstanceConfig {
     }
 }
 
-/// OnlineConfiguration (SIP008)
-/// https://shadowsocks.org/doc/sip008.html
-#[cfg(feature = "local-online-config")]
-#[derive(Debug, Clone)]
-pub struct OnlineConfig {
-    /// SIP008 URL
-    pub config_url: String,
-    /// Update interval, 3600s by default
-    pub update_interval: Option<Duration>,
-}
-
 /// Configuration
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -1344,10 +1336,6 @@ pub struct Config {
     /// Configuration file path, the actual path of the configuration.
     /// This is normally for auto-reloading if implementation supports.
     pub config_path: Option<PathBuf>,
-
-    /// Online Configuration Delivery (SIP008)
-    #[cfg(feature = "local-online-config")]
-    pub online_config: Option<OnlineConfig>,
 
     #[doc(hidden)]
     /// Workers in runtime
@@ -1472,8 +1460,6 @@ impl Config {
             balancer: BalancerConfig::default(),
 
             config_path: None,
-            #[cfg(feature = "local-online-config")]
-            online_config: None,
 
             worker_count: 1,
         }
@@ -1833,6 +1819,25 @@ impl Config {
                 // servers only uses `local_address` for binding outbound interfaces
                 //
                 // This behavior causes lots of confusion. use outbound_bind_addr instead
+            }
+            #[cfg(feature = "local-online-config")]
+            ConfigType::OnlineConfig => {
+                // SIP008. https://shadowsocks.org/doc/sip008.html
+                // "version" should be set to "1"
+                match config.version {
+                    Some(1) => {}
+                    Some(v) => {
+                        let err = Error::new(
+                            ErrorKind::Invalid,
+                            "invalid online config version",
+                            Some(format!("version: {v}")),
+                        );
+                        return Err(err);
+                    }
+                    None => {
+                        warn!("OnlineConfig \"version\" is missing in the configuration, assuming it is a compatible version for this project");
+                    }
+                }
             }
         }
 
@@ -2347,14 +2352,6 @@ impl Config {
             nconfig.acl = Some(acl);
         }
 
-        #[cfg(feature = "local-online-config")]
-        if let Some(online_config) = config.online_config {
-            nconfig.online_config = Some(OnlineConfig {
-                config_url: online_config.config_url,
-                update_interval: online_config.update_interval.map(Duration::from_secs),
-            });
-        }
-
         Ok(nconfig)
     }
 
@@ -2566,6 +2563,16 @@ impl Config {
             return Err(err);
         }
 
+        #[cfg(feature = "local-online-config")]
+        if self.config_type.is_online_config() && self.server.is_empty() {
+            let err = Error::new(
+                ErrorKind::MissingField,
+                "missing any valid servers in configuration",
+                None,
+            );
+            return Err(err);
+        }
+
         if self.config_type.is_manager() && self.manager.is_none() {
             let err = Error::new(
                 ErrorKind::MissingField,
@@ -2595,6 +2602,20 @@ impl Config {
                     }
 
                     if self.config_type.is_local() {
+                        // Only server could bind to INADDR_ANY
+                        let ip = sa.ip();
+                        if ip.is_unspecified() {
+                            let err = Error::new(
+                                ErrorKind::Malformed,
+                                "`server` shouldn't be an unspecified address (INADDR_ANY)",
+                                None,
+                            );
+                            return Err(err);
+                        }
+                    }
+
+                    #[cfg(feature = "local-online-config")]
+                    if self.config_type.is_online_config() {
                         // Only server could bind to INADDR_ANY
                         let ip = sa.ip();
                         if ip.is_unspecified() {
@@ -3067,15 +3088,6 @@ impl fmt::Display for Config {
         // ACL
         if let Some(ref acl) = self.acl {
             jconf.acl = Some(acl.file_path().to_str().unwrap().to_owned());
-        }
-
-        // OnlineConfig
-        #[cfg(feature = "local-online-config")]
-        if let Some(ref online_config) = self.online_config {
-            jconf.online_config = Some(SSOnlineConfig {
-                config_url: online_config.config_url.clone(),
-                update_interval: online_config.update_interval.map(|d| d.as_secs()),
-            });
         }
 
         write!(f, "{}", json5::to_string(&jconf).unwrap())

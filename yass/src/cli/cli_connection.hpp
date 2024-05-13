@@ -326,9 +326,6 @@ class CliConnection : public RefCountedThreadSafe<CliConnection>,
   state state_;
 
  private:
-  /// copy of method select request
-  socks5::method_select_request method_select_request_;
-
   /// copy of handshake request
   socks5::request s5_request_;
 
@@ -362,15 +359,22 @@ class CliConnection : public RefCountedThreadSafe<CliConnection>,
 
  private:
   void ReadUpstreamHttpsHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
-  void ReadUpstreamMethodSelectHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
-  void WriteUpstreamMethodSelectResponse();
-  void ReadUpstreamSocksHandshake(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
+
+  void WriteUpstreamMethodSelectRequest();
+  void ReadUpstreamMethodSelectResponse(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
+  void WriteUpstreamAuthRequest();
+  void ReadUpstreamAuthResponse(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
+  void WriteUpstreamSocks4Request();
+  void WriteUpstreamSocks4ARequest();
+  void WriteUpstreamSocks5Request();
+  void ReadUpstreamSocksResponse(std::shared_ptr<IOBuf> buf, asio::error_code& ec);
 
   /// the state of https fallback handshake (upstream)
   bool upstream_handshake_ = true;
   /// the state of socks5 method select handshake (upstream)
-  bool socks5_method_select_handshake_ = true;
-  bool socks_handshake_ = true;
+  bool socks5_method_select_handshake_ = false;
+  bool socks5_auth_handshake_ = false;
+  bool socks_handshake_ = false;
 
   std::string remote_domain() const {
     std::ostringstream ss;

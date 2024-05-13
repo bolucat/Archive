@@ -575,7 +575,8 @@ pub fn define_command_line_options(mut app: Command) -> Command {
 
 /// Create `Runtime` and `main` entry
 pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = ExitCode>), ExitCode> {
-    let (mut config, runtime) = {
+    #[cfg_attr(not(feature = "local-online-config"), allow(unused_mut))]
+    let (mut config, service_config, runtime) = {
         let config_path_opt = matches.get_one::<PathBuf>("CONFIG").cloned().or_else(|| {
             if !matches.contains_id("SERVER_CONFIG") {
                 match crate::config::get_default_config_path("local.json") {
@@ -929,10 +930,10 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
 
         #[cfg(feature = "local-online-config")]
         if let Some(online_config_url) = matches.get_one::<String>("ONLINE_CONFIG_URL") {
-            use shadowsocks_service::config::OnlineConfig;
+            use crate::config::OnlineConfig;
 
             let online_config_update_interval = matches.get_one::<u64>("ONLINE_CONFIG_UPDATE_INTERVAL").cloned();
-            config.online_config = Some(OnlineConfig {
+            service_config.online_config = Some(OnlineConfig {
                 config_url: online_config_url.clone(),
                 update_interval: online_config_update_interval.map(Duration::from_secs),
             });
@@ -984,7 +985,7 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
 
         let runtime = builder.enable_all().build().expect("create tokio Runtime");
 
-        (config, runtime)
+        (config, service_config, runtime)
     };
 
     let main_fut = async move {
@@ -1002,7 +1003,7 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
 
         // Fetch servers from remote for the first time
         #[cfg(feature = "local-online-config")]
-        if let Some(ref online_config) = config.online_config {
+        if let Some(ref online_config) = service_config.online_config {
             if let Ok(mut servers) = get_online_config_servers(&online_config.config_url).await {
                 config.server.append(&mut servers);
             }
@@ -1014,12 +1015,6 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
             return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
         }
 
-        #[cfg(feature = "local-online-config")]
-        let (online_config_url, online_config_update_interval) = match config.online_config.clone() {
-            Some(o) => (Some(o.config_url), o.update_interval),
-            None => (None, None),
-        };
-
         let instance = Server::new(config).await.expect("create local");
 
         let reload_task = ServerReloader {
@@ -1027,9 +1022,9 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
             balancer: instance.server_balancer().clone(),
             static_servers,
             #[cfg(feature = "local-online-config")]
-            online_config_url,
+            online_config_url: service_config.online_config.as_ref().map(|c| c.config_url.clone()),
             #[cfg(feature = "local-online-config")]
-            online_config_update_interval,
+            online_config_update_interval: service_config.online_config.as_ref().and_then(|c| c.update_interval),
         }
         .launch_reload_server_task();
 
@@ -1140,8 +1135,7 @@ async fn get_online_config_servers(
         }
     };
 
-    // NOTE: ConfigType::Local will force verify local_address and local_port keys. SIP008 standard doesn't include those keys.
-    let online_config = match Config::load_from_str(&body, ConfigType::Server) {
+    let online_config = match Config::load_from_str(&body, ConfigType::OnlineConfig) {
         Ok(c) => c,
         Err(err) => {
             error!(
@@ -1152,10 +1146,19 @@ async fn get_online_config_servers(
         }
     };
 
+    if let Err(err) = online_config.check_integrity() {
+        error!(
+            "server-loader task failed to load from url: {}, error: {}",
+            online_config_url, err
+        );
+        return Err(Box::new(err));
+    }
+
     Ok(online_config.server)
 }
 
 impl ServerReloader {
+    #[cfg_attr(not(any(unix, feature = "local-online-config")), allow(dead_code))]
     async fn run_once(&self) -> Result<(), Box<dyn std::error::Error>> {
         let start_time = Instant::now();
 
@@ -1188,6 +1191,7 @@ impl ServerReloader {
 
         struct ConfigDisplay<'a>(&'a ServerReloader);
         impl Display for ConfigDisplay<'_> {
+            #[cfg_attr(not(feature = "local-online-config"), allow(unused_assignments, unused_variables))]
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 let mut is_first = true;
 
@@ -1262,10 +1266,12 @@ impl ServerReloader {
     async fn launch_reload_server_task(self) {
         let arc_self = Arc::new(self);
 
+        #[allow(unused_mut)]
         let mut futs: Vec<BoxFuture<()>> = Vec::new();
 
         #[cfg(unix)]
         {
+            #[cfg_attr(not(feature = "local-online-config"), allow(unused_mut))]
             let mut has_things_to_do = arc_self.config_path.is_some();
             #[cfg(feature = "local-online-config")]
             {
