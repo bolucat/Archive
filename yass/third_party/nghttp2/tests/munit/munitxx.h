@@ -38,7 +38,7 @@
   do {                                                                         \
     const std::string munit_tmp_a_ = a;                                        \
     const std::string munit_tmp_b_ = b;                                        \
-    if (MUNIT_UNLIKELY(a != b)) {                                              \
+    if (MUNIT_UNLIKELY(munit_tmp_a_ != munit_tmp_b_)) {                        \
       munit_hexdump_diff(stderr, munit_tmp_a_.c_str(), munit_tmp_a_.size(),    \
                          munit_tmp_b_.c_str(), munit_tmp_b_.size());           \
       munit_errorf("assertion failed: string %s == %s (\"%s\" == \"%s\")", #a, \
@@ -52,7 +52,7 @@
     do {                                                                       \
       const std::string_view munit_tmp_a_ = a;                                 \
       const std::string_view munit_tmp_b_ = b;                                 \
-      if (MUNIT_UNLIKELY(a != b)) {                                            \
+      if (MUNIT_UNLIKELY(munit_tmp_a_ != munit_tmp_b_)) {                      \
         munit_hexdump_diff(stderr, munit_tmp_a_.data(), munit_tmp_a_.size(),   \
                            munit_tmp_b_.data(), munit_tmp_b_.size());          \
         munit_errorf(                                                          \

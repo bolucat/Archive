@@ -191,11 +191,11 @@ bool in_attr_char(char c) {
 StringRef percent_encode_token(BlockAllocator &balloc,
                                const StringRef &target) {
   auto iov = make_byte_ref(balloc, target.size() * 3 + 1);
-  auto p = percent_encode_token(iov.base, target);
+  auto p = percent_encode_token(std::begin(iov), target);
 
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 size_t percent_encode_tokenlen(const StringRef &target) {
@@ -237,11 +237,11 @@ StringRef quote_string(BlockAllocator &balloc, const StringRef &target) {
   }
 
   auto iov = make_byte_ref(balloc, target.size() + cnt + 1);
-  auto p = quote_string(iov.base, target);
+  auto p = quote_string(std::begin(iov), target);
 
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 size_t quote_stringlen(const StringRef &target) {
@@ -465,13 +465,13 @@ time_t parse_http_date(const StringRef &s) {
   tm tm{};
 #ifdef _WIN32
   // there is no strptime - use std::get_time
-  std::stringstream sstr(s.str());
+  std::stringstream sstr(s.data());
   sstr >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S GMT");
   if (sstr.fail()) {
     return 0;
   }
 #else  // !_WIN32
-  char *r = strptime(s.c_str(), "%a, %d %b %Y %H:%M:%S GMT", &tm);
+  char *r = strptime(s.data(), "%a, %d %b %Y %H:%M:%S GMT", &tm);
   if (r == 0) {
     return 0;
   }
@@ -481,7 +481,7 @@ time_t parse_http_date(const StringRef &s) {
 
 time_t parse_openssl_asn1_time_print(const StringRef &s) {
   tm tm{};
-  auto r = strptime(s.c_str(), "%b %d %H:%M:%S %Y GMT", &tm);
+  auto r = strptime(s.data(), "%b %d %H:%M:%S %Y GMT", &tm);
   if (r == nullptr) {
     return 0;
   }
@@ -496,32 +496,22 @@ char upcase(char c) {
   }
 }
 
-std::string format_hex(const unsigned char *s, size_t len) {
+std::string format_hex(std::span<const uint8_t> s) {
   std::string res;
-  res.resize(len * 2);
+  res.resize(s.size() * 2);
 
-  for (size_t i = 0; i < len; ++i) {
-    unsigned char c = s[i];
+  format_hex(std::begin(res), s);
 
-    res[i * 2] = LOWER_XDIGITS[c >> 4];
-    res[i * 2 + 1] = LOWER_XDIGITS[c & 0x0f];
-  }
   return res;
 }
 
-StringRef format_hex(BlockAllocator &balloc, const StringRef &s) {
+StringRef format_hex(BlockAllocator &balloc, std::span<const uint8_t> s) {
   auto iov = make_byte_ref(balloc, s.size() * 2 + 1);
-  auto p = iov.base;
-
-  for (auto cc : s) {
-    uint8_t c = cc;
-    *p++ = LOWER_XDIGITS[c >> 4];
-    *p++ = LOWER_XDIGITS[c & 0xf];
-  }
+  auto p = format_hex(std::begin(iov), s);
 
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 void to_token68(std::string &base64str) {
@@ -544,19 +534,18 @@ StringRef to_base64(BlockAllocator &balloc, const StringRef &token68str) {
   // At most 3 padding '='
   auto len = token68str.size() + 3;
   auto iov = make_byte_ref(balloc, len + 1);
-  auto p = iov.base;
 
-  p = std::transform(std::begin(token68str), std::end(token68str), p,
-                     [](char c) {
-                       switch (c) {
-                       case '-':
-                         return '+';
-                       case '_':
-                         return '/';
-                       default:
-                         return c;
-                       }
-                     });
+  auto p = std::transform(std::begin(token68str), std::end(token68str),
+                          std::begin(iov), [](char c) {
+                            switch (c) {
+                            case '-':
+                              return '+';
+                            case '_':
+                              return '/';
+                            default:
+                              return c;
+                            }
+                          });
 
   auto rem = token68str.size() & 0x3;
   if (rem) {
@@ -565,7 +554,7 @@ StringRef to_base64(BlockAllocator &balloc, const StringRef &token68str) {
 
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 namespace {
@@ -878,7 +867,7 @@ bool check_path(const std::string &path) {
          path.find('\\') == std::string::npos &&
          path.find("/../") == std::string::npos &&
          path.find("/./") == std::string::npos &&
-         !util::ends_with_l(path, "/..") && !util::ends_with_l(path, "/.");
+         !util::ends_with(path, "/.."_sr) && !util::ends_with(path, "/."_sr);
 }
 
 int64_t to_time64(const timeval &tv) {
@@ -886,8 +875,8 @@ int64_t to_time64(const timeval &tv) {
 }
 
 bool check_h2_is_selected(const StringRef &proto) {
-  return streq(NGHTTP2_H2, proto) || streq(NGHTTP2_H2_16, proto) ||
-         streq(NGHTTP2_H2_14, proto);
+  return NGHTTP2_H2 == proto || NGHTTP2_H2_16 == proto ||
+         NGHTTP2_H2_14 == proto;
 }
 
 namespace {
@@ -1148,58 +1137,63 @@ bool ipv6_numeric_addr(const char *host) {
 }
 
 namespace {
-std::pair<int64_t, size_t> parse_uint_digits(const void *ss, size_t len) {
-  const uint8_t *s = static_cast<const uint8_t *>(ss);
-  int64_t n = 0;
-  size_t i;
-  if (len == 0) {
-    return {-1, 0};
+std::optional<std::pair<int64_t, StringRef>>
+parse_uint_digits(const StringRef &s) {
+  if (s.empty()) {
+    return {};
   }
+
   constexpr int64_t max = std::numeric_limits<int64_t>::max();
-  for (i = 0; i < len; ++i) {
-    if ('0' <= s[i] && s[i] <= '9') {
-      if (n > max / 10) {
-        return {-1, 0};
-      }
-      n *= 10;
-      if (n > max - (s[i] - '0')) {
-        return {-1, 0};
-      }
-      n += s[i] - '0';
-      continue;
+
+  int64_t n = 0;
+  size_t i = 0;
+
+  for (auto c : s) {
+    if ('0' > c || c > '9') {
+      break;
     }
-    break;
+
+    if (n > max / 10) {
+      return {};
+    }
+
+    n *= 10;
+
+    if (n > max - (c - '0')) {
+      return {};
+    }
+
+    n += c - '0';
+
+    ++i;
   }
+
   if (i == 0) {
-    return {-1, 0};
+    return {};
   }
-  return {n, i};
+
+  return std::pair{n, s.substr(i)};
 }
 } // namespace
 
-int64_t parse_uint_with_unit(const char *s) {
-  return parse_uint_with_unit(reinterpret_cast<const uint8_t *>(s), strlen(s));
-}
-
-int64_t parse_uint_with_unit(const StringRef &s) {
-  return parse_uint_with_unit(s.byte(), s.size());
-}
-
-int64_t parse_uint_with_unit(const uint8_t *s, size_t len) {
-  int64_t n;
-  size_t i;
-  std::tie(n, i) = parse_uint_digits(s, len);
-  if (n == -1) {
-    return -1;
+std::optional<int64_t> parse_uint_with_unit(const StringRef &s) {
+  auto r = parse_uint_digits(s);
+  if (!r) {
+    return {};
   }
-  if (i == len) {
+
+  auto [n, rest] = *r;
+
+  if (rest.empty()) {
     return n;
   }
-  if (i + 1 != len) {
-    return -1;
+
+  if (rest.size() != 1) {
+    return {};
   }
+
   int mul = 1;
-  switch (s[i]) {
+  switch (rest[0]) {
   case 'K':
   case 'k':
     mul = 1 << 10;
@@ -1213,94 +1207,81 @@ int64_t parse_uint_with_unit(const uint8_t *s, size_t len) {
     mul = 1 << 30;
     break;
   default:
-    return -1;
+    return {};
   }
+
   constexpr int64_t max = std::numeric_limits<int64_t>::max();
   if (n > max / mul) {
-    return -1;
+    return {};
   }
+
   return n * mul;
 }
 
-int64_t parse_uint(const char *s) {
-  return parse_uint(reinterpret_cast<const uint8_t *>(s), strlen(s));
-}
-
-int64_t parse_uint(const std::string &s) {
-  return parse_uint(reinterpret_cast<const uint8_t *>(s.c_str()), s.size());
-}
-
-int64_t parse_uint(const StringRef &s) {
-  return parse_uint(s.byte(), s.size());
-}
-
-int64_t parse_uint(const uint8_t *s, size_t len) {
-  int64_t n;
-  size_t i;
-  std::tie(n, i) = parse_uint_digits(s, len);
-  if (n == -1 || i != len) {
-    return -1;
+std::optional<int64_t> parse_uint(const StringRef &s) {
+  auto r = parse_uint_digits(s);
+  if (!r || !(*r).second.empty()) {
+    return {};
   }
-  return n;
+
+  return (*r).first;
 }
 
-double parse_duration_with_unit(const char *s) {
-  return parse_duration_with_unit(reinterpret_cast<const uint8_t *>(s),
-                                  strlen(s));
-}
-
-double parse_duration_with_unit(const StringRef &s) {
-  return parse_duration_with_unit(s.byte(), s.size());
-}
-
-double parse_duration_with_unit(const uint8_t *s, size_t len) {
+std::optional<double> parse_duration_with_unit(const StringRef &s) {
   constexpr auto max = std::numeric_limits<int64_t>::max();
-  int64_t n;
-  size_t i;
 
-  std::tie(n, i) = parse_uint_digits(s, len);
-  if (n == -1) {
-    goto fail;
+  auto r = parse_uint_digits(s);
+  if (!r) {
+    return {};
   }
-  if (i == len) {
+
+  auto [n, rest] = *r;
+
+  if (rest.empty()) {
     return static_cast<double>(n);
   }
-  switch (s[i]) {
+
+  switch (rest[0]) {
   case 'S':
   case 's':
     // seconds
-    if (i + 1 != len) {
-      goto fail;
+    if (rest.size() != 1) {
+      return {};
     }
+
     return static_cast<double>(n);
   case 'M':
   case 'm':
-    if (i + 1 == len) {
+    if (rest.size() == 1) {
       // minutes
       if (n > max / 60) {
-        goto fail;
+        return {};
       }
+
       return static_cast<double>(n) * 60;
     }
 
-    if (i + 2 != len || (s[i + 1] != 's' && s[i + 1] != 'S')) {
-      goto fail;
+    if (rest.size() != 2 || (rest[1] != 's' && rest[1] != 'S')) {
+      return {};
     }
+
     // milliseconds
     return static_cast<double>(n) / 1000.;
   case 'H':
   case 'h':
     // hours
-    if (i + 1 != len) {
-      goto fail;
+    if (rest.size() != 1) {
+      return {};
     }
+
     if (n > max / 3600) {
-      goto fail;
+      return {};
     }
+
     return static_cast<double>(n) * 3600;
+  default:
+    return {};
   }
-fail:
-  return std::numeric_limits<double>::infinity();
 }
 
 std::string duration_str(double t) {
@@ -1362,13 +1343,13 @@ std::string dtos(double n) {
 StringRef make_http_hostport(BlockAllocator &balloc, const StringRef &host,
                              uint16_t port) {
   auto iov = make_byte_ref(balloc, host.size() + 2 + 1 + 5 + 1);
-  return make_http_hostport(iov.base, host, port);
+  return make_http_hostport(std::begin(iov), host, port);
 }
 
 StringRef make_hostport(BlockAllocator &balloc, const StringRef &host,
                         uint16_t port) {
   auto iov = make_byte_ref(balloc, host.size() + 2 + 1 + 5 + 1);
-  return make_hostport(iov.base, host, port);
+  return make_hostport(std::begin(iov), host, port);
 }
 
 namespace {
@@ -1611,7 +1592,7 @@ int read_mime_types(std::map<std::string, std::string> &res,
 
 StringRef percent_decode(BlockAllocator &balloc, const StringRef &src) {
   auto iov = make_byte_ref(balloc, src.size() * 3 + 1);
-  auto p = iov.base;
+  auto p = std::begin(iov);
   for (auto first = std::begin(src); first != std::end(src); ++first) {
     if (*first != '%') {
       *p++ = *first;
@@ -1628,7 +1609,7 @@ StringRef percent_decode(BlockAllocator &balloc, const StringRef &src) {
     *p++ = *first;
   }
   *p = '\0';
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 // Returns x**y
@@ -1669,7 +1650,7 @@ int message_digest(uint8_t *res, const EVP_MD *meth, const StringRef &s) {
     return -1;
   }
 
-  rv = EVP_DigestUpdate(ctx, s.c_str(), s.size());
+  rv = EVP_DigestUpdate(ctx, s.data(), s.size());
   if (rv != 1) {
     return -1;
   }
@@ -1707,11 +1688,12 @@ bool is_hex_string(const StringRef &s) {
   return true;
 }
 
-StringRef decode_hex(BlockAllocator &balloc, const StringRef &s) {
+std::span<const uint8_t> decode_hex(BlockAllocator &balloc,
+                                    const StringRef &s) {
   auto iov = make_byte_ref(balloc, s.size() + 1);
-  auto p = decode_hex(iov.base, s);
+  auto p = decode_hex(std::begin(iov), s);
   *p = '\0';
-  return StringRef{iov.base, p};
+  return {std::begin(iov), p};
 }
 
 StringRef extract_host(const StringRef &hostport) {
@@ -1824,7 +1806,7 @@ StringRef rstrip(BlockAllocator &balloc, const StringRef &s) {
     return s;
   }
 
-  return make_string_ref(balloc, StringRef{s.c_str(), s.size() - len});
+  return make_string_ref(balloc, StringRef{s.data(), s.size() - len});
 }
 
 #ifdef ENABLE_HTTP3

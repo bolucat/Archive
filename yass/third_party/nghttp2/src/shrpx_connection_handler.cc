@@ -647,7 +647,7 @@ int ConnectionHandler::start_ocsp_update(const char *cert_file) {
 
   char *const argv[] = {
       const_cast<char *>(
-          get_config()->tls.ocsp.fetch_ocsp_response_file.c_str()),
+          get_config()->tls.ocsp.fetch_ocsp_response_file.data()),
       const_cast<char *>(cert_file), nullptr};
 
   Process proc;
@@ -740,8 +740,7 @@ void ConnectionHandler::handle_ocsp_complete() {
       auto quic_tls_ctx_data = static_cast<tls::TLSContextData *>(
           SSL_CTX_get_app_data(quic_ssl_ctx));
 #  ifdef HAVE_ATOMIC_STD_SHARED_PTR
-      std::atomic_store_explicit(
-          &quic_tls_ctx_data->ocsp_data,
+      quic_tls_ctx_data->ocsp_data.store(
           std::make_shared<std::vector<uint8_t>>(ocsp_.resp),
           std::memory_order_release);
 #  else  // !HAVE_ATOMIC_STD_SHARED_PTR
@@ -753,8 +752,7 @@ void ConnectionHandler::handle_ocsp_complete() {
 #endif // ENABLE_HTTP3
 
 #ifdef HAVE_ATOMIC_STD_SHARED_PTR
-    std::atomic_store_explicit(
-        &tls_ctx_data->ocsp_data,
+    tls_ctx_data->ocsp_data.store(
         std::make_shared<std::vector<uint8_t>>(std::move(ocsp_.resp)),
         std::memory_order_release);
 #else  // !HAVE_ATOMIC_STD_SHARED_PTR
@@ -1004,10 +1002,12 @@ void ConnectionHandler::set_enable_acceptor_on_ocsp_completion(bool f) {
 }
 
 #ifdef ENABLE_HTTP3
-int ConnectionHandler::forward_quic_packet(
-    const UpstreamAddr *faddr, const Address &remote_addr,
-    const Address &local_addr, const ngtcp2_pkt_info &pi, const WorkerID &wid,
-    const uint8_t *data, size_t datalen) {
+int ConnectionHandler::forward_quic_packet(const UpstreamAddr *faddr,
+                                           const Address &remote_addr,
+                                           const Address &local_addr,
+                                           const ngtcp2_pkt_info &pi,
+                                           const WorkerID &wid,
+                                           std::span<const uint8_t> data) {
   assert(!get_config()->single_thread);
 
   auto worker = find_worker(wid);
@@ -1018,7 +1018,7 @@ int ConnectionHandler::forward_quic_packet(
   WorkerEvent wev{};
   wev.type = WorkerEventType::QUIC_PKT_FORWARD;
   wev.quic_pkt = std::make_unique<QUICPacket>(faddr->index, remote_addr,
-                                              local_addr, pi, data, datalen);
+                                              local_addr, pi, data);
 
   worker->send(std::move(wev));
 
@@ -1104,8 +1104,8 @@ void ConnectionHandler::set_quic_lingering_worker_processes(
 
 int ConnectionHandler::forward_quic_packet_to_lingering_worker_process(
     QUICLingeringWorkerProcess *quic_lwp, const Address &remote_addr,
-    const Address &local_addr, const ngtcp2_pkt_info &pi, const uint8_t *data,
-    size_t datalen) {
+    const Address &local_addr, const ngtcp2_pkt_info &pi,
+    std::span<const uint8_t> data) {
   std::array<uint8_t, 512> header;
 
   assert(header.size() >= 1 + 1 + 1 + 1 + sizeof(sockaddr_storage) * 2);
@@ -1129,8 +1129,8 @@ int ConnectionHandler::forward_quic_packet_to_lingering_worker_process(
           .iov_len = static_cast<size_t>(p - header.data()),
       },
       {
-          .iov_base = const_cast<uint8_t *>(data),
-          .iov_len = datalen,
+          .iov_base = const_cast<uint8_t *>(data.data()),
+          .iov_len = data.size(),
       },
   };
 
@@ -1279,8 +1279,7 @@ int ConnectionHandler::quic_ipc_read() {
 
     // Ignore return value
     quic_conn_handler->handle_packet(faddr, pkt->remote_addr, pkt->local_addr,
-                                     pkt->pi, pkt->data.data(),
-                                     pkt->data.size());
+                                     pkt->pi, pkt->data);
 
     return 0;
   }

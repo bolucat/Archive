@@ -322,11 +322,11 @@ int ClientHandler::write_tls() {
 int ClientHandler::read_quic(const UpstreamAddr *faddr,
                              const Address &remote_addr,
                              const Address &local_addr,
-                             const ngtcp2_pkt_info &pi, const uint8_t *data,
-                             size_t datalen) {
+                             const ngtcp2_pkt_info &pi,
+                             std::span<const uint8_t> data) {
   auto upstream = static_cast<Http3Upstream *>(upstream_.get());
 
-  return upstream->on_read(faddr, remote_addr, local_addr, pi, data, datalen);
+  return upstream->on_read(faddr, remote_addr, local_addr, pi, data);
 }
 
 int ClientHandler::write_quic() { return upstream_->on_write(); }
@@ -492,13 +492,13 @@ ClientHandler::ClientHandler(Worker *worker, int fd, SSL *ssl,
       auto len = SHRPX_OBFUSCATED_NODE_LENGTH + 1;
       // 1 for terminating NUL.
       auto buf = make_byte_ref(balloc_, len + 1);
-      auto p = buf.base;
+      auto p = std::begin(buf);
       *p++ = '_';
       p = util::random_alpha_digit(p, p + SHRPX_OBFUSCATED_NODE_LENGTH,
                                    worker_->get_randgen());
       *p = '\0';
 
-      forwarded_for_ = StringRef{buf.base, p};
+      forwarded_for_ = StringRef{std::span{std::begin(buf), p}};
     } else {
       init_forwarded_for(family, ipaddr_);
     }
@@ -511,13 +511,13 @@ void ClientHandler::init_forwarded_for(int family, const StringRef &ipaddr) {
     auto len = 2 + ipaddr.size();
     // 1 for terminating NUL.
     auto buf = make_byte_ref(balloc_, len + 1);
-    auto p = buf.base;
+    auto p = std::begin(buf);
     *p++ = '[';
     p = std::copy(std::begin(ipaddr), std::end(ipaddr), p);
     *p++ = ']';
     *p = '\0';
 
-    forwarded_for_ = StringRef{buf.base, p};
+    forwarded_for_ = StringRef{std::span{std::begin(buf), p}};
   } else {
     // family == AF_INET or family == AF_UNIX
     forwarded_for_ = ipaddr;
@@ -535,7 +535,7 @@ void ClientHandler::setup_upstream_io_callback() {
     // upgraded to HTTP/2 through HTTP Upgrade or direct HTTP/2
     // connection.
     upstream_ = std::make_unique<HttpsUpstream>(this);
-    alpn_ = StringRef::from_lit("http/1.1");
+    alpn_ = "http/1.1"_sr;
     read_ = &ClientHandler::read_clear;
     write_ = &ClientHandler::write_clear;
     on_read_ = &ClientHandler::upstream_http1_connhd_read;
@@ -629,7 +629,7 @@ int ClientHandler::validate_next_proto() {
       CLOG(INFO, this) << "No protocol negotiated. Fallback to HTTP/1.1";
     }
 
-    proto = StringRef::from_lit("http/1.1");
+    proto = "http/1.1"_sr;
   }
 
   if (!tls::in_proto_list(get_config()->tls.alpn_list, proto)) {
@@ -657,9 +657,9 @@ int ClientHandler::validate_next_proto() {
     return 0;
   }
 
-  if (proto == StringRef::from_lit("http/1.1")) {
+  if (proto == "http/1.1"_sr) {
     upstream_ = std::make_unique<HttpsUpstream>(this);
-    alpn_ = StringRef::from_lit("http/1.1");
+    alpn_ = "http/1.1"_sr;
 
     // At this point, input buffer is already filled with some bytes.
     // The read callback is not called until new data come. So consume
@@ -802,8 +802,7 @@ uint32_t ClientHandler::get_affinity_cookie(Downstream *downstream,
 
   auto d = std::uniform_int_distribution<uint32_t>(1);
   auto rh = d(worker_->get_randgen());
-  h = util::hash32(StringRef{reinterpret_cast<uint8_t *>(&rh),
-                             reinterpret_cast<uint8_t *>(&rh) + sizeof(rh)});
+  h = util::hash32(StringRef{reinterpret_cast<char *>(&rh), sizeof(rh)});
 
   downstream->renew_affinity_cookie(h);
 
@@ -963,8 +962,7 @@ DownstreamAddr *ClientHandler::get_downstream_addr_strict_affinity(
   } else {
     auto d = std::uniform_int_distribution<uint32_t>(1);
     auto rh = d(worker_->get_randgen());
-    h = util::hash32(StringRef{reinterpret_cast<uint8_t *>(&rh),
-                               reinterpret_cast<uint8_t *>(&rh) + sizeof(rh)});
+    h = util::hash32(StringRef{reinterpret_cast<char *>(&rh), sizeof(rh)});
   }
 
   // Client is not bound to a particular backend, or the bound backend
@@ -1148,7 +1146,7 @@ SSL *ClientHandler::get_ssl() const { return conn_.tls.ssl; }
 
 void ClientHandler::direct_http2_upgrade() {
   upstream_ = std::make_unique<Http2Upstream>(this);
-  alpn_ = StringRef::from_lit(NGHTTP2_CLEARTEXT_PROTO_VERSION_ID);
+  alpn_ = NGHTTP2_CLEARTEXT_PROTO_VERSION_ID ""_sr;
   on_read_ = &ClientHandler::upstream_read;
   write_ = &ClientHandler::write_clear;
 }
@@ -1173,17 +1171,16 @@ int ClientHandler::perform_http2_upgrade(HttpsUpstream *http) {
   upstream_.release();
   // TODO We might get other version id in HTTP2-settings, if we
   // support aliasing for h2, but we just use library default for now.
-  alpn_ = StringRef::from_lit(NGHTTP2_CLEARTEXT_PROTO_VERSION_ID);
+  alpn_ = NGHTTP2_CLEARTEXT_PROTO_VERSION_ID ""_sr;
   on_read_ = &ClientHandler::upstream_http2_connhd_read;
   write_ = &ClientHandler::write_clear;
 
   input->remove(*output, input->rleft());
 
-  constexpr auto res =
-      StringRef::from_lit("HTTP/1.1 101 Switching Protocols\r\n"
-                          "Connection: Upgrade\r\n"
-                          "Upgrade: " NGHTTP2_CLEARTEXT_PROTO_VERSION_ID "\r\n"
-                          "\r\n");
+  constexpr auto res = "HTTP/1.1 101 Switching Protocols\r\n"
+                       "Connection: Upgrade\r\n"
+                       "Upgrade: " NGHTTP2_CLEARTEXT_PROTO_VERSION_ID "\r\n"
+                       "\r\n"_sr;
 
   output->append(res);
   upstream_ = std::move(upstream);
@@ -1196,9 +1193,9 @@ bool ClientHandler::get_http2_upgrade_allowed() const { return !conn_.tls.ssl; }
 
 StringRef ClientHandler::get_upstream_scheme() const {
   if (conn_.tls.ssl) {
-    return StringRef::from_lit("https");
+    return "https"_sr;
   } else {
-    return StringRef::from_lit("http");
+    return "http"_sr;
   }
 }
 
@@ -1324,7 +1321,7 @@ int ClientHandler::proxy_protocol_read() {
   // NULL character really destroys functions which expects NULL
   // terminated string.  We won't expect it in PROXY protocol line, so
   // find it here.
-  auto chrs = std::array<char, 2>{'\n', '\0'};
+  auto chrs = std::to_array({'\n', '\0'});
 
   constexpr size_t MAX_PROXY_LINELEN = 107;
 
@@ -1342,7 +1339,7 @@ int ClientHandler::proxy_protocol_read() {
 
   --end;
 
-  constexpr auto HEADER = StringRef::from_lit("PROXY ");
+  constexpr auto HEADER = "PROXY "_sr;
 
   if (static_cast<size_t>(end - rb_.pos()) < HEADER.size()) {
     if (LOG_ENABLED(INFO)) {
@@ -1351,7 +1348,7 @@ int ClientHandler::proxy_protocol_read() {
     return -1;
   }
 
-  if (!util::streq(HEADER, StringRef{rb_.pos(), HEADER.size()})) {
+  if (HEADER != StringRef{rb_.pos(), HEADER.size()}) {
     if (LOG_ENABLED(INFO)) {
       CLOG(INFO, this) << "PROXY-protocol-v1: Bad PROXY protocol version 1 ID";
     }
@@ -1399,7 +1396,7 @@ int ClientHandler::proxy_protocol_read() {
       }
       return -1;
     }
-    if (!util::streq_l("UNKNOWN", rb_.pos(), 7)) {
+    if ("UNKNOWN"_sr != StringRef{rb_.pos(), 7}) {
       if (LOG_ENABLED(INFO)) {
         CLOG(INFO, this) << "PROXY-protocol-v1: Unknown INET protocol family";
       }
@@ -1482,9 +1479,10 @@ int ClientHandler::proxy_protocol_read() {
 
   rb_.drain(end + 2 - rb_.pos());
 
-  ipaddr_ =
-      make_string_ref(balloc_, StringRef{src_addr, src_addr + src_addrlen});
-  port_ = make_string_ref(balloc_, StringRef{src_port, src_port + src_portlen});
+  ipaddr_ = make_string_ref(
+      balloc_, StringRef{src_addr, static_cast<size_t>(src_addrlen)});
+  port_ = make_string_ref(
+      balloc_, StringRef{src_port, static_cast<size_t>(src_portlen)});
 
   if (LOG_ENABLED(INFO)) {
     CLOG(INFO, this) << "PROXY-protocol-v1: Finished, " << (rb_.pos() - first)

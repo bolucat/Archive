@@ -58,10 +58,8 @@ using namespace nghttp2;
 namespace shrpx {
 
 namespace {
-constexpr StringRef SEVERITY_STR[] = {
-    StringRef::from_lit("INFO"), StringRef::from_lit("NOTICE"),
-    StringRef::from_lit("WARN"), StringRef::from_lit("ERROR"),
-    StringRef::from_lit("FATAL")};
+constexpr StringRef SEVERITY_STR[] = {"INFO"_sr, "NOTICE"_sr, "WARN"_sr,
+                                      "ERROR"_sr, "FATAL"_sr};
 } // namespace
 
 namespace {
@@ -173,11 +171,10 @@ Log::~Log() {
   if (errorconf.syslog) {
     if (severity_ == NOTICE) {
       syslog(severity_to_syslog_level(severity_), "[%s] %.*s",
-             SEVERITY_STR[severity_].c_str(), static_cast<int>(rleft()),
-             begin_);
+             SEVERITY_STR[severity_].data(), static_cast<int>(rleft()), begin_);
     } else {
       syslog(severity_to_syslog_level(severity_), "[%s] %.*s (%s:%d)",
-             SEVERITY_STR[severity_].c_str(), static_cast<int>(rleft()), begin_,
+             SEVERITY_STR[severity_].data(), static_cast<int>(rleft()), begin_,
              filename_, linenum_);
     }
 
@@ -192,10 +189,10 @@ Log::~Log() {
   // Error log format: <datetime> <main-pid> <current-pid>
   // <thread-id> <level> (<filename>:<line>) <msg>
   rv = snprintf(buf, sizeof(buf), "%s %d %d %s %s%s%s (%s:%d) %.*s\n",
-                lgconf->tstamp->time_iso8601.c_str(), config->pid, lgconf->pid,
+                lgconf->tstamp->time_iso8601.data(), config->pid, lgconf->pid,
                 lgconf->thread_id.c_str(), tty ? SEVERITY_COLOR[severity_] : "",
-                SEVERITY_STR[severity_].c_str(), tty ? "\033[0m" : "",
-                filename_, linenum_, static_cast<int>(rleft()), begin_);
+                SEVERITY_STR[severity_].data(), tty ? "\033[0m" : "", filename_,
+                linenum_, static_cast<int>(rleft()), begin_);
 
   if (rv < 0) {
     return;
@@ -380,7 +377,7 @@ namespace {
 template <typename OutputIterator>
 std::pair<OutputIterator, OutputIterator>
 copy(const StringRef &src, OutputIterator d_first, OutputIterator d_last) {
-  return copy(src.c_str(), src.size(), d_first, d_last);
+  return copy(src.data(), src.size(), d_first, d_last);
 }
 } // namespace
 
@@ -531,7 +528,7 @@ template <typename OutputIterator>
 std::pair<OutputIterator, OutputIterator> copy_escape(const StringRef &src,
                                                       OutputIterator d_first,
                                                       OutputIterator d_last) {
-  return copy_escape(src.c_str(), src.size(), d_first, d_last);
+  return copy_escape(src.data(), src.size(), d_first, d_last);
 }
 } // namespace
 
@@ -555,7 +552,7 @@ StringRef construct_absolute_request_uri(BlockAllocator &balloc,
   }
 
   auto iov = make_byte_ref(balloc, len + 1);
-  auto p = iov.base;
+  auto p = std::begin(iov);
 
   if (req.scheme.empty()) {
     // We may have to log the request which lacks scheme (e.g.,
@@ -569,7 +566,7 @@ StringRef construct_absolute_request_uri(BlockAllocator &balloc,
   p = std::copy(std::begin(req.path), std::end(req.path), p);
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 } // namespace
 
@@ -593,14 +590,13 @@ void upstream_accesslog(const std::vector<LogFragment> &lfv,
   auto &balloc = downstream->get_block_allocator();
 
   auto downstream_addr = downstream->get_addr();
-  auto method = req.method == -1 ? StringRef::from_lit("<unknown>")
-                                 : http2::to_method_string(req.method);
-  auto path =
-      req.method == HTTP_CONNECT ? req.authority
-      : config->http2_proxy      ? construct_absolute_request_uri(balloc, req)
-      : req.path.empty() ? req.method == HTTP_OPTIONS ? StringRef::from_lit("*")
-                                                      : StringRef::from_lit("-")
-                         : req.path;
+  auto method =
+      req.method == -1 ? "<unknown>"_sr : http2::to_method_string(req.method);
+  auto path = req.method == HTTP_CONNECT ? req.authority
+              : config->http2_proxy
+                  ? construct_absolute_request_uri(balloc, req)
+              : req.path.empty() ? req.method == HTTP_OPTIONS ? "*"_sr : "-"_sr
+                                 : req.path;
   auto path_without_query =
       req.method == HTTP_CONNECT
           ? path
@@ -880,7 +876,7 @@ int reopen_log_files(const LoggingConfig &loggingconf) {
   auto &errorconf = loggingconf.error;
 
   if (!accessconf.syslog && !accessconf.file.empty()) {
-    new_accesslog_fd = open_log_file(accessconf.file.c_str());
+    new_accesslog_fd = open_log_file(accessconf.file.data());
 
     if (new_accesslog_fd == -1) {
       LOG(ERROR) << "Failed to open accesslog file " << accessconf.file;
@@ -889,7 +885,7 @@ int reopen_log_files(const LoggingConfig &loggingconf) {
   }
 
   if (!errorconf.syslog && !errorconf.file.empty()) {
-    new_errorlog_fd = open_log_file(errorconf.file.c_str());
+    new_errorlog_fd = open_log_file(errorconf.file.data());
 
     if (new_errorlog_fd == -1) {
       if (lgconf->errorlog_fd != -1) {

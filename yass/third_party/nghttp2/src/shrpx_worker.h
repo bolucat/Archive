@@ -265,12 +265,12 @@ struct WorkerStat {
 struct QUICPacket {
   QUICPacket(size_t upstream_addr_index, const Address &remote_addr,
              const Address &local_addr, const ngtcp2_pkt_info &pi,
-             const uint8_t *data, size_t datalen)
+             std::span<const uint8_t> data)
       : upstream_addr_index{upstream_addr_index},
         remote_addr{remote_addr},
         local_addr{local_addr},
         pi{pi},
-        data{data, data + datalen} {}
+        data{std::begin(data), std::end(data)} {}
   QUICPacket() : upstream_addr_index{}, remote_addr{}, local_addr{}, pi{} {}
   size_t upstream_addr_index;
   Address remote_addr;
@@ -439,10 +439,12 @@ private:
   QUICConnectionHandler quic_conn_handler_;
 #endif // ENABLE_HTTP3
 
-#ifndef HAVE_ATOMIC_STD_SHARED_PTR
+#ifdef HAVE_ATOMIC_STD_SHARED_PTR
+  std::atomic<std::shared_ptr<TicketKeys>> ticket_keys_;
+#else  // !HAVE_ATOMIC_STD_SHARED_PTR
   std::mutex ticket_keys_m_;
-#endif // !HAVE_ATOMIC_STD_SHARED_PTR
   std::shared_ptr<TicketKeys> ticket_keys_;
+#endif // !HAVE_ATOMIC_STD_SHARED_PTR
   std::vector<std::shared_ptr<DownstreamAddrGroup>> downstream_addr_groups_;
   // Worker level blocker for downstream connection.  For example,
   // this is used when file descriptor is exhausted.

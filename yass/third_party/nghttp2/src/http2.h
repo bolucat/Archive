@@ -113,16 +113,14 @@ bool lws(const char *value);
 void copy_url_component(std::string &dest, const http_parser_url *u, int field,
                         const char *url);
 
-Headers::value_type to_header(const uint8_t *name, size_t namelen,
-                              const uint8_t *value, size_t valuelen,
+Headers::value_type to_header(const StringRef &name, const StringRef &value,
                               bool no_index, int32_t token);
 
 // Add name/value pairs to |nva|.  If |no_index| is true, this
 // name/value pair won't be indexed when it is forwarded to the next
-// hop.  This function strips white spaces around |value|.
-void add_header(Headers &nva, const uint8_t *name, size_t namelen,
-                const uint8_t *value, size_t valuelen, bool no_index,
-                int32_t token);
+// hop.
+void add_header(Headers &nva, const StringRef &name, const StringRef &value,
+                bool no_index, int32_t token);
 
 // Returns pointer to the entry in |nva| which has name |name|.  If
 // more than one entries which have the name |name|, last occurrence
@@ -132,60 +130,48 @@ const Headers::value_type *get_header(const Headers &nva, const char *name);
 // Returns true if the value of |nv| is not empty.
 bool non_empty_value(const HeaderRefs::value_type *nv);
 
-// Creates nghttp2_nv using |name| and |value| and returns it. The
-// returned value only references the data pointer to name.c_str() and
-// value.c_str().  If |no_index| is true, nghttp2_nv flags member has
-// NGHTTP2_NV_FLAG_NO_INDEX flag set.
-nghttp2_nv make_nv(const std::string &name, const std::string &value,
-                   bool no_index = false);
+// Create nghttp2_nv from |name|, |value| and |flags|.
+inline nghttp2_nv make_field_flags(const StringRef &name,
+                                   const StringRef &value,
+                                   uint8_t flags = NGHTTP2_NV_FLAG_NONE) {
+  auto ns = as_uint8_span(std::span{name});
+  auto vs = as_uint8_span(std::span{value});
 
-nghttp2_nv make_nv(const StringRef &name, const StringRef &value,
-                   bool no_index = false);
-
-nghttp2_nv make_nv_nocopy(const std::string &name, const std::string &value,
-                          bool no_index = false);
-
-nghttp2_nv make_nv_nocopy(const StringRef &name, const StringRef &value,
-                          bool no_index = false);
-
-// Create nghttp2_nv from string literal |name| and |value|.
-template <size_t N, size_t M>
-constexpr nghttp2_nv make_nv_ll(const char (&name)[N], const char (&value)[M]) {
-  return {(uint8_t *)name, (uint8_t *)value, N - 1, M - 1,
-          NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE};
+  return {const_cast<uint8_t *>(ns.data()), const_cast<uint8_t *>(vs.data()),
+          ns.size(), vs.size(), flags};
 }
 
-// Create nghttp2_nv from string literal |name| and c-string |value|.
-template <size_t N>
-nghttp2_nv make_nv_lc(const char (&name)[N], const char *value) {
-  return {(uint8_t *)name, (uint8_t *)value, N - 1, strlen(value),
-          NGHTTP2_NV_FLAG_NO_COPY_NAME};
+// Creates nghttp2_nv from |name|, |value| and |flags|.  nghttp2
+// library does not copy them.
+inline nghttp2_nv make_field(const StringRef &name, const StringRef &value,
+                             uint8_t flags = NGHTTP2_NV_FLAG_NONE) {
+  return make_field_flags(name, value,
+                          static_cast<uint8_t>(NGHTTP2_NV_FLAG_NO_COPY_NAME |
+                                               NGHTTP2_NV_FLAG_NO_COPY_VALUE |
+                                               flags));
 }
 
-template <size_t N>
-nghttp2_nv make_nv_lc_nocopy(const char (&name)[N], const char *value) {
-  return {(uint8_t *)name, (uint8_t *)value, N - 1, strlen(value),
-          NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE};
+// Creates nghttp2_nv from |name|, |value| and |flags|.  nghttp2
+// library copies |value| unless |flags| includes
+// NGHTTP2_NV_FLAG_NO_COPY_VALUE.
+inline nghttp2_nv make_field_v(const StringRef &name, const StringRef &value,
+                               uint8_t flags = NGHTTP2_NV_FLAG_NONE) {
+  return make_field_flags(
+      name, value, static_cast<uint8_t>(NGHTTP2_NV_FLAG_NO_COPY_NAME | flags));
 }
 
-// Create nghttp2_nv from string literal |name| and std::string
-// |value|.
-template <size_t N>
-nghttp2_nv make_nv_ls(const char (&name)[N], const std::string &value) {
-  return {(uint8_t *)name, (uint8_t *)value.c_str(), N - 1, value.size(),
-          NGHTTP2_NV_FLAG_NO_COPY_NAME};
+// Creates nghttp2_nv from |name|, |value| and |flags|.  nghttp2
+// library copies |name| and |value| unless |flags| includes
+// NGHTTP2_NV_FLAG_NO_COPY_NAME or NGHTTP2_NV_FLAG_NO_COPY_VALUE.
+inline nghttp2_nv make_field_nv(const StringRef &name, const StringRef &value,
+                                uint8_t flags = NGHTTP2_NV_FLAG_NONE) {
+  return make_field_flags(name, value, flags);
 }
 
-template <size_t N>
-nghttp2_nv make_nv_ls_nocopy(const char (&name)[N], const std::string &value) {
-  return {(uint8_t *)name, (uint8_t *)value.c_str(), N - 1, value.size(),
-          NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE};
-}
-
-template <size_t N>
-nghttp2_nv make_nv_ls_nocopy(const char (&name)[N], const StringRef &value) {
-  return {(uint8_t *)name, (uint8_t *)value.c_str(), N - 1, value.size(),
-          NGHTTP2_NV_FLAG_NO_COPY_NAME | NGHTTP2_NV_FLAG_NO_COPY_VALUE};
+// Returns NGHTTP2_NV_FLAG_NO_INDEX if |no_index| is true, otherwise
+// NGHTTP2_NV_FLAG_NONE.
+inline uint8_t no_index(bool no_index) {
+  return no_index ? NGHTTP2_NV_FLAG_NO_INDEX : NGHTTP2_NV_FLAG_NONE;
 }
 
 enum HeaderBuildOp {
@@ -340,10 +326,9 @@ enum {
 
 using HeaderIndex = std::array<int16_t, HD_MAXIDX>;
 
-// Looks up header token for header name |name| of length |namelen|.
-// Only headers we are interested in are tokenized.  If header name
-// cannot be tokenized, returns -1.
-int lookup_token(const uint8_t *name, size_t namelen);
+// Looks up header token for header name |name|.  Only headers we are
+// interested in are tokenized.  If header name cannot be tokenized,
+// returns -1.
 int lookup_token(const StringRef &name);
 
 // Initializes |hdidx|, header index.  The |hdidx| must point to the
@@ -390,10 +375,9 @@ bool expect_response_body(int method_token, int status_code);
 // true if response has body, taking into account status code only.
 bool expect_response_body(int status_code);
 
-// Looks up method token for method name |name| of length |namelen|.
-// Only methods defined in llhttp.h (llhttp_method) are tokenized.  If
-// method name cannot be tokenized, returns -1.
-int lookup_method_token(const uint8_t *name, size_t namelen);
+// Looks up method token for method name |name|.  Only methods defined
+// in llhttp.h (llhttp_method) are tokenized.  If method name cannot
+// be tokenized, returns -1.
 int lookup_method_token(const StringRef &name);
 
 // Returns string representation of |method_token|.  This is wrapper

@@ -98,7 +98,8 @@ namespace v2rayN.Handler
         {
             try
             {
-                v2rayConfig.inbounds = new List<Inbounds4Ray>();
+                var listen = "0.0.0.0";
+                v2rayConfig.inbounds = [];
 
                 Inbounds4Ray? inbound = GetInbound(_config.inbound[0], EInboundProtocol.socks, true);
                 v2rayConfig.inbounds.Add(inbound);
@@ -112,11 +113,11 @@ namespace v2rayN.Handler
                     if (_config.inbound[0].newPort4LAN)
                     {
                         var inbound3 = GetInbound(_config.inbound[0], EInboundProtocol.socks2, true);
-                        inbound3.listen = "0.0.0.0";
+                        inbound3.listen = listen;
                         v2rayConfig.inbounds.Add(inbound3);
 
                         var inbound4 = GetInbound(_config.inbound[0], EInboundProtocol.http2, false);
-                        inbound4.listen = "0.0.0.0";
+                        inbound4.listen = listen;
                         v2rayConfig.inbounds.Add(inbound4);
 
                         //auth
@@ -131,8 +132,8 @@ namespace v2rayN.Handler
                     }
                     else
                     {
-                        inbound.listen = "0.0.0.0";
-                        inbound2.listen = "0.0.0.0";
+                        inbound.listen = listen;
+                        inbound2.listen = listen;
                     }
                 }
             }
@@ -143,24 +144,25 @@ namespace v2rayN.Handler
             return 0;
         }
 
-        private Inbounds4Ray? GetInbound(InItem inItem, EInboundProtocol protocol, bool bSocks)
+        private Inbounds4Ray GetInbound(InItem inItem, EInboundProtocol protocol, bool bSocks)
         {
             string result = Utils.GetEmbedText(Global.V2raySampleInbound);
             if (Utils.IsNullOrEmpty(result))
             {
-                return null;
+                return new();
             }
 
             var inbound = JsonUtils.Deserialize<Inbounds4Ray>(result);
             if (inbound == null)
             {
-                return null;
+                return new();
             }
             inbound.tag = protocol.ToString();
             inbound.port = inItem.localPort + (int)protocol;
             inbound.protocol = bSocks ? EInboundProtocol.socks.ToString() : EInboundProtocol.http.ToString();
             inbound.settings.udp = inItem.udpEnabled;
             inbound.sniffing.enabled = inItem.sniffingEnabled;
+            inbound.sniffing.destOverride = inItem.destOverride;
             inbound.sniffing.routeOnly = inItem.routeOnly;
 
             return inbound;

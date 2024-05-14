@@ -25,7 +25,7 @@ dnl Do not change user variables!
 dnl https://www.gnu.org/software/automake/manual/html_node/Flag-Variables-Ordering.html
 
 AC_PREREQ(2.61)
-AC_INIT([nghttp2], [1.61.0], [t-tujikawa@users.sourceforge.net])
+AC_INIT([nghttp2], [1.62.0], [t-tujikawa@users.sourceforge.net])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -45,7 +45,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 dnl See versioning rule:
 dnl  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
 AC_SUBST(LT_CURRENT, 42)
-AC_SUBST(LT_REVISION, 0)
+AC_SUBST(LT_REVISION, 1)
 AC_SUBST(LT_AGE, 28)
 
 major=`echo $PACKAGE_VERSION |cut -d. -f1 | sed -e "s/[^0-9]//g"`
@@ -238,7 +238,7 @@ fi
 save_CXXFLAGS="$CXXFLAGS"
 CXXFLAGS=
 
-AX_CXX_COMPILE_STDCXX([14], [], [optional])
+AX_CXX_COMPILE_STDCXX([20], [], [optional])
 
 CXX1XCXXFLAGS="$CXXFLAGS"
 CXXFLAGS="$save_CXXFLAGS"
@@ -283,21 +283,20 @@ std::map<int, int>().emplace(1, 2);
     [have_std_map_emplace=no
      AC_MSG_RESULT([no])])
 
-# Check that std::atomic_* overloads for std::shared_ptr are
-# available.
-AC_MSG_CHECKING([whether std::atomic_* overloads for std::shared_ptr are available])
+# Check that std::atomic<std::shared_ptr<T>> is supported.
+AC_MSG_CHECKING([whether std::atomic<std::shared_ptr<T>> is supported])
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
 [[
 #include <memory>
 ]],
 [[
-auto a = std::make_shared<int>(1000000007);
-auto p = std::atomic_load(&a);
+auto a = std::atomic<std::shared_ptr<int>>(std::make_shared<int>(1000000007));
+auto p = a.load();
 ++*p;
-std::atomic_store(&a, p);
+a.store(p);
 ]])],
     [AC_DEFINE([HAVE_ATOMIC_STD_SHARED_PTR], [1],
-               [Define to 1 if you have the std::atomic_* overloads for std::shared_ptr.])
+               [Define to 1 if you have the std::atomic<std::shared_ptr<T>> is supported.])
      have_atomic_std_shared_ptr=yes
      AC_MSG_RESULT([yes])],
     [have_atomic_std_shared_ptr=no
@@ -466,7 +465,7 @@ fi
 # c-ares (for src)
 have_libcares=no
 if test "x${request_libcares}" != "xno"; then
-  PKG_CHECK_MODULES([LIBCARES], [libcares >= 1.7.5], [have_libcares=yes],
+  PKG_CHECK_MODULES([LIBCARES], [libcares >= 1.16.0], [have_libcares=yes],
                     [have_libcares=no])
   if test "x${have_libcares}" = "xno"; then
     AC_MSG_NOTICE($LIBCARES_PKG_ERRORS)

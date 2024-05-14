@@ -29,56 +29,6 @@ namespace nghttp2 {
 namespace http3 {
 
 namespace {
-nghttp3_nv make_nv_internal(const std::string &name, const std::string &value,
-                            bool never_index, uint8_t nv_flags) {
-  uint8_t flags;
-
-  flags = nv_flags |
-          (never_index ? NGHTTP3_NV_FLAG_NEVER_INDEX : NGHTTP3_NV_FLAG_NONE);
-
-  return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
-          value.size(), flags};
-}
-} // namespace
-
-namespace {
-nghttp3_nv make_nv_internal(const StringRef &name, const StringRef &value,
-                            bool never_index, uint8_t nv_flags) {
-  uint8_t flags;
-
-  flags = nv_flags |
-          (never_index ? NGHTTP3_NV_FLAG_NEVER_INDEX : NGHTTP3_NV_FLAG_NONE);
-
-  return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
-          value.size(), flags};
-}
-} // namespace
-
-nghttp3_nv make_nv(const std::string &name, const std::string &value,
-                   bool never_index) {
-  return make_nv_internal(name, value, never_index, NGHTTP3_NV_FLAG_NONE);
-}
-
-nghttp3_nv make_nv(const StringRef &name, const StringRef &value,
-                   bool never_index) {
-  return make_nv_internal(name, value, never_index, NGHTTP3_NV_FLAG_NONE);
-}
-
-nghttp3_nv make_nv_nocopy(const std::string &name, const std::string &value,
-                          bool never_index) {
-  return make_nv_internal(name, value, never_index,
-                          NGHTTP3_NV_FLAG_NO_COPY_NAME |
-                              NGHTTP3_NV_FLAG_NO_COPY_VALUE);
-}
-
-nghttp3_nv make_nv_nocopy(const StringRef &name, const StringRef &value,
-                          bool never_index) {
-  return make_nv_internal(name, value, never_index,
-                          NGHTTP3_NV_FLAG_NO_COPY_NAME |
-                              NGHTTP3_NV_FLAG_NO_COPY_VALUE);
-}
-
-namespace {
 void copy_headers_to_nva_internal(std::vector<nghttp3_nv> &nva,
                                   const HeaderRefs &headers, uint8_t nv_flags,
                                   uint32_t flags) {
@@ -172,33 +122,17 @@ void copy_headers_to_nva_internal(std::vector<nghttp3_nv> &nva,
       it_via = it;
       break;
     }
-    nva.push_back(
-        make_nv_internal(kv->name, kv->value, kv->no_index, nv_flags));
+    nva.push_back(make_field_flags(kv->name, kv->value,
+                                   nv_flags | never_index(kv->no_index)));
   }
 }
 } // namespace
-
-void copy_headers_to_nva(std::vector<nghttp3_nv> &nva,
-                         const HeaderRefs &headers, uint32_t flags) {
-  copy_headers_to_nva_internal(nva, headers, NGHTTP3_NV_FLAG_NONE, flags);
-}
 
 void copy_headers_to_nva_nocopy(std::vector<nghttp3_nv> &nva,
                                 const HeaderRefs &headers, uint32_t flags) {
   copy_headers_to_nva_internal(
       nva, headers,
       NGHTTP3_NV_FLAG_NO_COPY_NAME | NGHTTP3_NV_FLAG_NO_COPY_VALUE, flags);
-}
-
-int check_nv(const uint8_t *name, size_t namelen, const uint8_t *value,
-             size_t valuelen) {
-  if (!nghttp3_check_header_name(name, namelen)) {
-    return 0;
-  }
-  if (!nghttp3_check_header_value(value, valuelen)) {
-    return 0;
-  }
-  return 1;
 }
 
 } // namespace http3

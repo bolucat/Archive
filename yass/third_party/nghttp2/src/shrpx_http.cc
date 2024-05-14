@@ -41,7 +41,7 @@ StringRef create_error_html(BlockAllocator &balloc, unsigned int http_status) {
   const auto &error_pages = httpconf.error_pages;
   for (const auto &page : error_pages) {
     if (page.http_status == 0 || page.http_status == http_status) {
-      return StringRef{std::begin(page.content), std::end(page.content)};
+      return StringRef{std::span{page.content}};
     }
   }
 
@@ -49,12 +49,10 @@ StringRef create_error_html(BlockAllocator &balloc, unsigned int http_status) {
   auto reason_phrase = http2::get_reason_phrase(http_status);
 
   return concat_string_ref(
-      balloc, StringRef::from_lit(R"(<!DOCTYPE html><html lang="en"><title>)"),
-      status_string, StringRef::from_lit(" "), reason_phrase,
-      StringRef::from_lit("</title><body><h1>"), status_string,
-      StringRef::from_lit(" "), reason_phrase,
-      StringRef::from_lit("</h1><footer>"), httpconf.server_name,
-      StringRef::from_lit("</footer></body></html>"));
+      balloc, R"(<!DOCTYPE html><html lang="en"><title>)"_sr, status_string,
+      " "_sr, reason_phrase, "</title><body><h1>"_sr, status_string, " "_sr,
+      reason_phrase, "</h1><footer>"_sr, httpconf.server_name,
+      "</footer></body></html>"_sr);
 }
 
 StringRef create_forwarded(BlockAllocator &balloc, int params,
@@ -75,7 +73,7 @@ StringRef create_forwarded(BlockAllocator &balloc, int params,
   }
 
   auto iov = make_byte_ref(balloc, len + 1);
-  auto p = iov.base;
+  auto p = std::begin(iov);
 
   if ((params & FORWARDED_BY) && !node_by.empty()) {
     // This must be quoted-string unless it is obfuscated version
@@ -118,14 +116,14 @@ StringRef create_forwarded(BlockAllocator &balloc, int params,
     *p++ = ';';
   }
 
-  if (iov.base == p) {
+  if (std::begin(iov) == p) {
     return StringRef{};
   }
 
   --p;
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 std::string colorizeHeaders(const char *hdrs) {
@@ -146,7 +144,7 @@ std::string colorizeHeaders(const char *hdrs) {
     nhdrs += TTY_HTTP_HD;
     nhdrs.append(p, np);
     nhdrs += TTY_RST;
-    auto redact = util::strieq_l("authorization", StringRef{p, np});
+    auto redact = util::strieq("authorization"_sr, StringRef{p, np});
     p = np;
     np = strchr(p, '\n');
     if (!np) {
@@ -176,8 +174,8 @@ nghttp2_ssize select_padding_callback(nghttp2_session *session,
 StringRef create_affinity_cookie(BlockAllocator &balloc, const StringRef &name,
                                  uint32_t affinity_cookie,
                                  const StringRef &path, bool secure) {
-  static constexpr auto PATH_PREFIX = StringRef::from_lit("; Path=");
-  static constexpr auto SECURE = StringRef::from_lit("; Secure");
+  static constexpr auto PATH_PREFIX = "; Path="_sr;
+  static constexpr auto SECURE = "; Secure"_sr;
   // <name>=<value>[; Path=<path>][; Secure]
   size_t len = name.size() + 1 + 8;
 
@@ -189,14 +187,10 @@ StringRef create_affinity_cookie(BlockAllocator &balloc, const StringRef &name,
   }
 
   auto iov = make_byte_ref(balloc, len + 1);
-  auto p = iov.base;
-  p = std::copy(std::begin(name), std::end(name), p);
+  auto p = std::copy(std::begin(name), std::end(name), std::begin(iov));
   *p++ = '=';
   affinity_cookie = htonl(affinity_cookie);
-  p = util::format_hex(p,
-                       StringRef{reinterpret_cast<uint8_t *>(&affinity_cookie),
-                                 reinterpret_cast<uint8_t *>(&affinity_cookie) +
-                                     sizeof(affinity_cookie)});
+  p = util::format_hex(p, std::span{&affinity_cookie, 1});
   if (!path.empty()) {
     p = std::copy(std::begin(PATH_PREFIX), std::end(PATH_PREFIX), p);
     p = std::copy(std::begin(path), std::end(path), p);
@@ -205,14 +199,14 @@ StringRef create_affinity_cookie(BlockAllocator &balloc, const StringRef &name,
     p = std::copy(std::begin(SECURE), std::end(SECURE), p);
   }
   *p = '\0';
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 bool require_cookie_secure_attribute(SessionAffinityCookieSecure secure,
                                      const StringRef &scheme) {
   switch (secure) {
   case SessionAffinityCookieSecure::AUTO:
-    return scheme == "https";
+    return scheme == "https"_sr;
   case SessionAffinityCookieSecure::YES:
     return true;
   default:
@@ -247,7 +241,7 @@ StringRef create_altsvc_header_value(BlockAllocator &balloc,
 
   // We will write additional ", " at the end, and cut it later.
   auto iov = make_byte_ref(balloc, len + 2);
-  auto p = iov.base;
+  auto p = std::begin(iov);
 
   for (auto &altsvc : altsvcs) {
     p = util::percent_encode_token(p, altsvc.protocol_id);
@@ -266,13 +260,13 @@ StringRef create_altsvc_header_value(BlockAllocator &balloc,
   p -= 2;
   *p = '\0';
 
-  assert(static_cast<size_t>(p - iov.base) == len);
+  assert(static_cast<size_t>(p - std::begin(iov)) == len);
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 bool check_http_scheme(const StringRef &scheme, bool encrypted) {
-  return encrypted ? scheme == "https" : scheme == "http";
+  return encrypted ? scheme == "https"_sr : scheme == "http"_sr;
 }
 
 } // namespace http

@@ -3,12 +3,12 @@ use anyhow::Result;
 use chrono::Local;
 use glob::glob;
 use std::path::Path;
-use zip::ZipWriter;
+use zip::{write::SimpleFileOptions, ZipWriter};
 
 pub fn collect_logs(target_path: &Path) -> Result<()> {
     let logs_dir = app_logs_dir()?;
     let now = Local::now().format("%Y-%m-%d");
-    let globstr = format!("{}/{}-*.log", logs_dir.to_str().unwrap(), now);
+    let globstr = format!("{}/*.{}.app.log", logs_dir.to_str().unwrap(), now);
     let mut paths = Vec::new();
     for entry in glob(&globstr)? {
         match entry {
@@ -20,7 +20,7 @@ pub fn collect_logs(target_path: &Path) -> Result<()> {
     let mut zip = ZipWriter::new(file);
     for path in paths {
         let file_name = path.file_name().unwrap().to_str().unwrap();
-        zip.start_file(file_name, Default::default())?;
+        zip.start_file(file_name, SimpleFileOptions::default())?;
         let mut file = std::fs::File::open(path)?;
         std::io::copy(&mut file, &mut zip)?;
     }

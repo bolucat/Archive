@@ -36,6 +36,7 @@
 #include "template.h"
 
 using namespace nghttp2;
+using namespace std::literals;
 
 namespace shrpx {
 
@@ -70,7 +71,6 @@ const MunitTest tests[]{
     munit_void_test(test_util_parse_config_str_list),
     munit_void_test(test_util_make_http_hostport),
     munit_void_test(test_util_make_hostport),
-    munit_void_test(test_util_strifind),
     munit_void_test(test_util_random_alpha_digit),
     munit_void_test(test_util_format_hex),
     munit_void_test(test_util_is_hex_string),
@@ -88,33 +88,14 @@ const MunitSuite util_suite{
 };
 
 void test_util_streq(void) {
-  assert_true(
-      util::streq(StringRef::from_lit("alpha"), StringRef::from_lit("alpha")));
-  assert_false(util::streq(StringRef::from_lit("alpha"),
-                           StringRef::from_lit("alphabravo")));
-  assert_false(util::streq(StringRef::from_lit("alphabravo"),
-                           StringRef::from_lit("alpha")));
-  assert_false(
-      util::streq(StringRef::from_lit("alpha"), StringRef::from_lit("alphA")));
-  assert_false(util::streq(StringRef{}, StringRef::from_lit("a")));
-  assert_true(util::streq(StringRef{}, StringRef{}));
-  assert_false(util::streq(StringRef::from_lit("alpha"), StringRef{}));
-
-  assert_false(
-      util::streq(StringRef::from_lit("alph"), StringRef::from_lit("alpha")));
-  assert_false(
-      util::streq(StringRef::from_lit("alpha"), StringRef::from_lit("alph")));
-  assert_false(
-      util::streq(StringRef::from_lit("alpha"), StringRef::from_lit("alphA")));
-
-  assert_true(util::streq_l("alpha", "alpha", 5));
-  assert_true(util::streq_l("alpha", "alphabravo", 5));
-  assert_false(util::streq_l("alpha", "alphabravo", 6));
-  assert_false(util::streq_l("alphabravo", "alpha", 5));
-  assert_false(util::streq_l("alpha", "alphA", 5));
-  assert_false(util::streq_l("", "a", 1));
-  assert_true(util::streq_l("", "", 0));
-  assert_false(util::streq_l("alpha", "", 0));
+  assert_true(util::streq("alpha"_sr, "alpha"_sr, 5));
+  assert_true(util::streq("alpha"_sr, "alphabravo"_sr, 5));
+  assert_false(util::streq("alpha"_sr, "alphabravo"_sr, 6));
+  assert_false(util::streq("alphabravo"_sr, "alpha"_sr, 5));
+  assert_false(util::streq("alpha"_sr, "alphA"_sr, 5));
+  assert_false(util::streq(""_sr, "a"_sr, 1));
+  assert_true(util::streq(""_sr, ""_sr, 0));
+  assert_false(util::streq("alpha"_sr, ""_sr, 0));
 }
 
 void test_util_strieq(void) {
@@ -124,27 +105,16 @@ void test_util_strieq(void) {
   assert_false(util::strieq(std::string("alpha"), std::string("AlPhA ")));
   assert_false(util::strieq(std::string(), std::string("AlPhA ")));
 
-  assert_true(
-      util::strieq(StringRef::from_lit("alpha"), StringRef::from_lit("alpha")));
-  assert_true(
-      util::strieq(StringRef::from_lit("alpha"), StringRef::from_lit("AlPhA")));
+  assert_true(util::strieq("alpha"_sr, "alpha"_sr));
+  assert_true(util::strieq("alpha"_sr, "AlPhA"_sr));
   assert_true(util::strieq(StringRef{}, StringRef{}));
-  assert_false(util::strieq(StringRef::from_lit("alpha"),
-                            StringRef::from_lit("AlPhA ")));
-  assert_false(
-      util::strieq(StringRef::from_lit(""), StringRef::from_lit("AlPhA ")));
+  assert_false(util::strieq("alpha"_sr, "AlPhA "_sr));
+  assert_false(util::strieq(""_sr, "AlPhA "_sr));
 
-  assert_true(util::strieq_l("alpha", "alpha", 5));
-  assert_true(util::strieq_l("alpha", "AlPhA", 5));
-  assert_true(util::strieq_l("", static_cast<const char *>(nullptr), 0));
-  assert_false(util::strieq_l("alpha", "AlPhA ", 6));
-  assert_false(util::strieq_l("", "AlPhA ", 6));
-
-  assert_true(util::strieq_l("alpha", StringRef::from_lit("alpha")));
-  assert_true(util::strieq_l("alpha", StringRef::from_lit("AlPhA")));
-  assert_true(util::strieq_l("", StringRef{}));
-  assert_false(util::strieq_l("alpha", StringRef::from_lit("AlPhA ")));
-  assert_false(util::strieq_l("", StringRef::from_lit("AlPhA ")));
+  assert_true(util::strieq("alpha"_sr, "alpha"_sr, 5));
+  assert_true(util::strieq("alpha"_sr, "AlPhA"_sr, 5));
+  assert_false(util::strieq("alpha"_sr, "AlPhA "_sr, 6));
+  assert_false(util::strieq(""_sr, "AlPhA "_sr, 6));
 }
 
 void test_util_inp_strlower(void) {
@@ -164,12 +134,8 @@ void test_util_inp_strlower(void) {
 void test_util_to_base64(void) {
   BlockAllocator balloc(4096, 4096);
 
-  assert_stdstring_equal(
-      "AAA++B/=",
-      util::to_base64(balloc, StringRef::from_lit("AAA--B_")).str());
-  assert_stdstring_equal(
-      "AAA++B/B",
-      util::to_base64(balloc, StringRef::from_lit("AAA--B_B")).str());
+  assert_stdsv_equal("AAA++B/="sv, util::to_base64(balloc, "AAA--B_"_sr));
+  assert_stdsv_equal("AAA++B/B"sv, util::to_base64(balloc, "AAA--B_B"_sr));
 }
 
 void test_util_to_token68(void) {
@@ -184,18 +150,11 @@ void test_util_to_token68(void) {
 
 void test_util_percent_encode_token(void) {
   BlockAllocator balloc(4096, 4096);
-  assert_stdstring_equal(
-      "h2",
-      util::percent_encode_token(balloc, StringRef::from_lit("h2")).str());
-  assert_stdstring_equal(
-      "h3~",
-      util::percent_encode_token(balloc, StringRef::from_lit("h3~")).str());
-  assert_stdstring_equal(
-      "100%25",
-      util::percent_encode_token(balloc, StringRef::from_lit("100%")).str());
-  assert_stdstring_equal(
-      "http%202",
-      util::percent_encode_token(balloc, StringRef::from_lit("http 2")).str());
+  assert_stdsv_equal("h2"sv, util::percent_encode_token(balloc, "h2"_sr));
+  assert_stdsv_equal("h3~"sv, util::percent_encode_token(balloc, "h3~"_sr));
+  assert_stdsv_equal("100%25"sv, util::percent_encode_token(balloc, "100%"_sr));
+  assert_stdsv_equal("http%202"sv,
+                     util::percent_encode_token(balloc, "http 2"_sr));
 }
 
 void test_util_percent_decode(void) {
@@ -216,27 +175,20 @@ void test_util_percent_decode(void) {
   }
   BlockAllocator balloc(1024, 1024);
 
-  assert_stdstring_equal(
-      "foobar",
-      util::percent_decode(balloc, StringRef::from_lit("%66%6F%6f%62%61%72"))
-          .str());
+  assert_stdsv_equal("foobar"sv,
+                     util::percent_decode(balloc, "%66%6F%6f%62%61%72"_sr));
 
-  assert_stdstring_equal(
-      "f%6", util::percent_decode(balloc, StringRef::from_lit("%66%6")).str());
+  assert_stdsv_equal("f%6"sv, util::percent_decode(balloc, "%66%6"_sr));
 
-  assert_stdstring_equal(
-      "f%", util::percent_decode(balloc, StringRef::from_lit("%66%")).str());
+  assert_stdsv_equal("f%"sv, util::percent_decode(balloc, "%66%"_sr));
 }
 
 void test_util_quote_string(void) {
   BlockAllocator balloc(4096, 4096);
-  assert_stdstring_equal(
-      "alpha", util::quote_string(balloc, StringRef::from_lit("alpha")).str());
-  assert_stdstring_equal(
-      "", util::quote_string(balloc, StringRef::from_lit("")).str());
-  assert_stdstring_equal(
-      "\\\"alpha\\\"",
-      util::quote_string(balloc, StringRef::from_lit("\"alpha\"")).str());
+  assert_stdsv_equal("alpha"sv, util::quote_string(balloc, "alpha"_sr));
+  assert_stdsv_equal(""sv, util::quote_string(balloc, ""_sr));
+  assert_stdsv_equal("\\\"alpha\\\""sv,
+                     util::quote_string(balloc, "\"alpha\""_sr));
 }
 
 void test_util_utox(void) {
@@ -255,17 +207,15 @@ void test_util_http_date(void) {
 
   std::array<char, 30> http_buf;
 
-  assert_stdstring_equal(
-      "Thu, 01 Jan 1970 00:00:00 GMT",
+  assert_stdsv_equal(
+      "Thu, 01 Jan 1970 00:00:00 GMT"sv,
       util::format_http_date(http_buf.data(),
-                             std::chrono::system_clock::time_point())
-          .str());
-  assert_stdstring_equal(
-      "Wed, 29 Feb 2012 09:15:16 GMT",
+                             std::chrono::system_clock::time_point()));
+  assert_stdsv_equal(
+      "Wed, 29 Feb 2012 09:15:16 GMT"sv,
       util::format_http_date(http_buf.data(),
                              std::chrono::system_clock::time_point(
-                                 std::chrono::seconds(1330506916)))
-          .str());
+                                 std::chrono::seconds(1330506916))));
 }
 
 void test_util_select_h2(void) {
@@ -310,7 +260,7 @@ void test_util_select_h2(void) {
   // picked up because it has precedence over the other.
   const unsigned char t6[] = "\x5h2-14\x5h2-16";
   assert_true(util::select_h2(&out, &outlen, t6, sizeof(t6) - 1));
-  assert_true(util::streq(NGHTTP2_H2_16, StringRef{out, outlen}));
+  assert_stdsv_equal(NGHTTP2_H2_16, (StringRef{out, outlen}));
 }
 
 void test_util_ipv6_numeric_addr(void) {
@@ -336,11 +286,11 @@ void test_util_utos(void) {
 void test_util_make_string_ref_uint(void) {
   BlockAllocator balloc(1024, 1024);
 
-  assert_stdstring_equal("0", util::make_string_ref_uint(balloc, 0).str());
-  assert_stdstring_equal("123", util::make_string_ref_uint(balloc, 123).str());
-  assert_stdstring_equal(
-      "18446744073709551615",
-      util::make_string_ref_uint(balloc, 18446744073709551615ULL).str());
+  assert_stdsv_equal("0"sv, util::make_string_ref_uint(balloc, 0));
+  assert_stdsv_equal("123"sv, util::make_string_ref_uint(balloc, 123));
+  assert_stdsv_equal(
+      "18446744073709551615"sv,
+      util::make_string_ref_uint(balloc, 18446744073709551615ULL));
 }
 
 void test_util_utos_unit(void) {
@@ -369,65 +319,69 @@ void test_util_utos_funit(void) {
 }
 
 void test_util_parse_uint_with_unit(void) {
-  assert_int64(0, ==, util::parse_uint_with_unit("0"));
-  assert_int64(1023, ==, util::parse_uint_with_unit("1023"));
-  assert_int64(1024, ==, util::parse_uint_with_unit("1k"));
-  assert_int64(2048, ==, util::parse_uint_with_unit("2K"));
-  assert_int64(1 << 20, ==, util::parse_uint_with_unit("1m"));
-  assert_int64(1 << 21, ==, util::parse_uint_with_unit("2M"));
-  assert_int64(1 << 30, ==, util::parse_uint_with_unit("1g"));
-  assert_int64(1LL << 31, ==, util::parse_uint_with_unit("2G"));
+  assert_int64(0, ==, util::parse_uint_with_unit("0").value_or(-1));
+  assert_int64(1023, ==, util::parse_uint_with_unit("1023").value_or(-1));
+  assert_int64(1024, ==, util::parse_uint_with_unit("1k").value_or(-1));
+  assert_int64(2048, ==, util::parse_uint_with_unit("2K").value_or(-1));
+  assert_int64(1 << 20, ==, util::parse_uint_with_unit("1m").value_or(-1));
+  assert_int64(1 << 21, ==, util::parse_uint_with_unit("2M").value_or(-1));
+  assert_int64(1 << 30, ==, util::parse_uint_with_unit("1g").value_or(-1));
+  assert_int64(1LL << 31, ==, util::parse_uint_with_unit("2G").value_or(-1));
   assert_int64(9223372036854775807LL, ==,
-               util::parse_uint_with_unit("9223372036854775807"));
+               util::parse_uint_with_unit("9223372036854775807").value_or(-1));
   // check overflow case
-  assert_int64(-1, ==, util::parse_uint_with_unit("9223372036854775808"));
-  assert_int64(-1, ==, util::parse_uint_with_unit("10000000000000000000"));
-  assert_int64(-1, ==, util::parse_uint_with_unit("9223372036854775807G"));
+  assert_false(util::parse_uint_with_unit("9223372036854775808"));
+  assert_false(util::parse_uint_with_unit("10000000000000000000"));
+  assert_false(util::parse_uint_with_unit("9223372036854775807G"));
   // bad characters
-  assert_int64(-1, ==, util::parse_uint_with_unit("1.1"));
-  assert_int64(-1, ==, util::parse_uint_with_unit("1a"));
-  assert_int64(-1, ==, util::parse_uint_with_unit("a1"));
-  assert_int64(-1, ==, util::parse_uint_with_unit("1T"));
-  assert_int64(-1, ==, util::parse_uint_with_unit(""));
+  assert_false(util::parse_uint_with_unit("1.1"));
+  assert_false(util::parse_uint_with_unit("1a"));
+  assert_false(util::parse_uint_with_unit("a1"));
+  assert_false(util::parse_uint_with_unit("1T"));
+  assert_false(util::parse_uint_with_unit(""));
 }
 
 void test_util_parse_uint(void) {
-  assert_int64(0, ==, util::parse_uint("0"));
-  assert_int64(1023, ==, util::parse_uint("1023"));
-  assert_int64(-1, ==, util::parse_uint("1k"));
+  assert_int64(0, ==, util::parse_uint("0").value_or(-1));
+  assert_int64(1023, ==, util::parse_uint("1023").value_or(-1));
+  assert_false(util::parse_uint("1k"));
   assert_int64(9223372036854775807LL, ==,
-               util::parse_uint("9223372036854775807"));
+               util::parse_uint("9223372036854775807").value_or(-1));
   // check overflow case
-  assert_int64(-1, ==, util::parse_uint("9223372036854775808"));
-  assert_int64(-1, ==, util::parse_uint("10000000000000000000"));
+  assert_false(util::parse_uint("9223372036854775808"));
+  assert_false(util::parse_uint("10000000000000000000"));
   // bad characters
-  assert_int64(-1, ==, util::parse_uint("1.1"));
-  assert_int64(-1, ==, util::parse_uint("1a"));
-  assert_int64(-1, ==, util::parse_uint("a1"));
-  assert_int64(-1, ==, util::parse_uint("1T"));
-  assert_int64(-1, ==, util::parse_uint(""));
+  assert_false(util::parse_uint("1.1"));
+  assert_false(util::parse_uint("1a"));
+  assert_false(util::parse_uint("a1"));
+  assert_false(util::parse_uint("1T"));
+  assert_false(util::parse_uint(""));
 }
 
 void test_util_parse_duration_with_unit(void) {
-  assert_double(0., ==, util::parse_duration_with_unit("0"));
-  assert_double(123., ==, util::parse_duration_with_unit("123"));
-  assert_double(123., ==, util::parse_duration_with_unit("123s"));
-  assert_double(0.500, ==, util::parse_duration_with_unit("500ms"));
-  assert_double(123., ==, util::parse_duration_with_unit("123S"));
-  assert_double(0.500, ==, util::parse_duration_with_unit("500MS"));
-  assert_double(180, ==, util::parse_duration_with_unit("3m"));
-  assert_double(3600 * 5, ==, util::parse_duration_with_unit("5h"));
+  auto inf = std::numeric_limits<double>::infinity();
 
-  auto err = std::numeric_limits<double>::infinity();
+  assert_double(0., ==, util::parse_duration_with_unit("0").value_or(inf));
+  assert_double(123., ==, util::parse_duration_with_unit("123").value_or(inf));
+  assert_double(123., ==, util::parse_duration_with_unit("123s").value_or(inf));
+  assert_double(0.500, ==,
+                util::parse_duration_with_unit("500ms").value_or(inf));
+  assert_double(123., ==, util::parse_duration_with_unit("123S").value_or(inf));
+  assert_double(0.500, ==,
+                util::parse_duration_with_unit("500MS").value_or(inf));
+  assert_double(180, ==, util::parse_duration_with_unit("3m").value_or(inf));
+  assert_double(3600 * 5, ==,
+                util::parse_duration_with_unit("5h").value_or(inf));
+
   // check overflow case
-  assert_double(err, ==, util::parse_duration_with_unit("9223372036854775808"));
+  assert_false(util::parse_duration_with_unit("9223372036854775808"));
   // bad characters
-  assert_double(err, ==, util::parse_duration_with_unit("0u"));
-  assert_double(err, ==, util::parse_duration_with_unit("0xs"));
-  assert_double(err, ==, util::parse_duration_with_unit("0mt"));
-  assert_double(err, ==, util::parse_duration_with_unit("0mss"));
-  assert_double(err, ==, util::parse_duration_with_unit("s"));
-  assert_double(err, ==, util::parse_duration_with_unit("ms"));
+  assert_false(util::parse_duration_with_unit("0u"));
+  assert_false(util::parse_duration_with_unit("0xs"));
+  assert_false(util::parse_duration_with_unit("0mt"));
+  assert_false(util::parse_duration_with_unit("0mss"));
+  assert_false(util::parse_duration_with_unit("s"));
+  assert_false(util::parse_duration_with_unit("ms"));
 }
 
 void test_util_duration_str(void) {
@@ -469,51 +423,32 @@ void test_util_format_duration(void) {
 }
 
 void test_util_starts_with(void) {
-  assert_true(util::starts_with(StringRef::from_lit("foo"),
-                                StringRef::from_lit("foo")));
-  assert_true(util::starts_with(StringRef::from_lit("fooo"),
-                                StringRef::from_lit("foo")));
-  assert_true(util::starts_with(StringRef::from_lit("ofoo"), StringRef{}));
-  assert_false(util::starts_with(StringRef::from_lit("ofoo"),
-                                 StringRef::from_lit("foo")));
+  assert_true(util::starts_with("foo"_sr, "foo"_sr));
+  assert_true(util::starts_with("fooo"_sr, "foo"_sr));
+  assert_true(util::starts_with("ofoo"_sr, StringRef{}));
+  assert_false(util::starts_with("ofoo"_sr, "foo"_sr));
 
-  assert_true(util::istarts_with(StringRef::from_lit("FOO"),
-                                 StringRef::from_lit("fOO")));
-  assert_true(util::istarts_with(StringRef::from_lit("ofoo"), StringRef{}));
-  assert_true(util::istarts_with(StringRef::from_lit("fOOo"),
-                                 StringRef::from_lit("Foo")));
-  assert_false(util::istarts_with(StringRef::from_lit("ofoo"),
-                                  StringRef::from_lit("foo")));
-
-  assert_true(util::istarts_with_l(StringRef::from_lit("fOOo"), "Foo"));
-  assert_false(util::istarts_with_l(StringRef::from_lit("ofoo"), "foo"));
+  assert_true(util::istarts_with("FOO"_sr, "fOO"_sr));
+  assert_true(util::istarts_with("ofoo"_sr, StringRef{}));
+  assert_true(util::istarts_with("fOOo"_sr, "Foo"_sr));
+  assert_false(util::istarts_with("ofoo"_sr, "foo"_sr));
 }
 
 void test_util_ends_with(void) {
-  assert_true(
-      util::ends_with(StringRef::from_lit("foo"), StringRef::from_lit("foo")));
-  assert_true(util::ends_with(StringRef::from_lit("foo"), StringRef{}));
-  assert_true(
-      util::ends_with(StringRef::from_lit("ofoo"), StringRef::from_lit("foo")));
-  assert_false(
-      util::ends_with(StringRef::from_lit("ofoo"), StringRef::from_lit("fo")));
+  assert_true(util::ends_with("foo"_sr, "foo"_sr));
+  assert_true(util::ends_with("foo"_sr, StringRef{}));
+  assert_true(util::ends_with("ofoo"_sr, "foo"_sr));
+  assert_false(util::ends_with("ofoo"_sr, "fo"_sr));
 
-  assert_true(
-      util::iends_with(StringRef::from_lit("fOo"), StringRef::from_lit("Foo")));
-  assert_true(util::iends_with(StringRef::from_lit("foo"), StringRef{}));
-  assert_true(util::iends_with(StringRef::from_lit("oFoo"),
-                               StringRef::from_lit("fOO")));
-  assert_false(
-      util::iends_with(StringRef::from_lit("ofoo"), StringRef::from_lit("fo")));
-
-  assert_true(util::iends_with_l(StringRef::from_lit("oFoo"), "fOO"));
-  assert_false(util::iends_with_l(StringRef::from_lit("ofoo"), "fo"));
+  assert_true(util::iends_with("fOo"_sr, "Foo"_sr));
+  assert_true(util::iends_with("foo"_sr, StringRef{}));
+  assert_true(util::iends_with("oFoo"_sr, "fOO"_sr));
+  assert_false(util::iends_with("ofoo"_sr, "fo"_sr));
 }
 
 void test_util_parse_http_date(void) {
   assert_int64(1001939696, ==,
-               util::parse_http_date(
-                   StringRef::from_lit("Mon, 1 Oct 2001 12:34:56 GMT")));
+               util::parse_http_date("Mon, 1 Oct 2001 12:34:56 GMT"_sr));
 }
 
 void test_util_localtime_date(void) {
@@ -535,21 +470,19 @@ void test_util_localtime_date(void) {
 
   std::array<char, 27> common_buf;
 
-  assert_stdstring_equal(
-      "02/Oct/2001:00:34:56 +1200",
+  assert_stdsv_equal(
+      "02/Oct/2001:00:34:56 +1200"sv,
       util::format_common_log(common_buf.data(),
                               std::chrono::system_clock::time_point(
-                                  std::chrono::seconds(1001939696)))
-          .str());
+                                  std::chrono::seconds(1001939696))));
 
   std::array<char, 30> iso8601_buf;
 
-  assert_stdstring_equal(
-      "2001-10-02T00:34:56.123+12:00",
+  assert_stdsv_equal(
+      "2001-10-02T00:34:56.123+12:00"sv,
       util::format_iso8601(iso8601_buf.data(),
                            std::chrono::system_clock::time_point(
-                               std::chrono::milliseconds(1001939696123LL)))
-          .str());
+                               std::chrono::milliseconds(1001939696123LL))));
 
   if (tz) {
     setenv("TZ", tz, 1);
@@ -562,16 +495,16 @@ void test_util_localtime_date(void) {
 
 void test_util_get_uint64(void) {
   {
-    auto v = std::array<unsigned char, 8>{
-        {0x01, 0x12, 0x34, 0x56, 0xff, 0x9a, 0xab, 0xbc}};
+    auto v = std::to_array<unsigned char>(
+        {0x01, 0x12, 0x34, 0x56, 0xff, 0x9a, 0xab, 0xbc});
 
     auto n = util::get_uint64(v.data());
 
     assert_uint64(0x01123456ff9aabbcULL, ==, n);
   }
   {
-    auto v = std::array<unsigned char, 8>{
-        {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}};
+    auto v = std::to_array<unsigned char>(
+        {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff});
 
     auto n = util::get_uint64(v.data());
 
@@ -580,16 +513,16 @@ void test_util_get_uint64(void) {
 }
 
 void test_util_parse_config_str_list(void) {
-  auto res = util::parse_config_str_list(StringRef::from_lit("a"));
+  auto res = util::parse_config_str_list("a"_sr);
   assert_size(1, ==, res.size());
   assert_stdstring_equal("a", res[0]);
 
-  res = util::parse_config_str_list(StringRef::from_lit("a,"));
+  res = util::parse_config_str_list("a,"_sr);
   assert_size(2, ==, res.size());
   assert_stdstring_equal("a", res[0]);
   assert_stdstring_equal("", res[1]);
 
-  res = util::parse_config_str_list(StringRef::from_lit(":a::"), ':');
+  res = util::parse_config_str_list(":a::"_sr, ':');
   assert_size(4, ==, res.size());
   assert_stdstring_equal("", res[0]);
   assert_stdstring_equal("a", res[1]);
@@ -600,7 +533,7 @@ void test_util_parse_config_str_list(void) {
   assert_size(1, ==, res.size());
   assert_stdstring_equal("", res[0]);
 
-  res = util::parse_config_str_list(StringRef::from_lit("alpha,bravo,charlie"));
+  res = util::parse_config_str_list("alpha,bravo,charlie"_sr);
   assert_size(3, ==, res.size());
   assert_stdstring_equal("alpha", res[0]);
   assert_stdstring_equal("bravo", res[1]);
@@ -610,56 +543,27 @@ void test_util_parse_config_str_list(void) {
 void test_util_make_http_hostport(void) {
   BlockAllocator balloc(4096, 4096);
 
-  assert_stdstring_equal(
-      "localhost",
-      util::make_http_hostport(balloc, StringRef::from_lit("localhost"), 80)
-          .str());
-  assert_stdstring_equal(
-      "[::1]",
-      util::make_http_hostport(balloc, StringRef::from_lit("::1"), 443).str());
-  assert_stdstring_equal(
-      "localhost:3000",
-      util::make_http_hostport(balloc, StringRef::from_lit("localhost"), 3000)
-          .str());
+  assert_stdsv_equal("localhost"sv,
+                     util::make_http_hostport(balloc, "localhost"_sr, 80));
+  assert_stdsv_equal("[::1]"sv,
+                     util::make_http_hostport(balloc, "::1"_sr, 443));
+  assert_stdsv_equal("localhost:3000"sv,
+                     util::make_http_hostport(balloc, "localhost"_sr, 3000));
 }
 
 void test_util_make_hostport(void) {
   std::array<char, util::max_hostport> hostport_buf;
-  assert_stdstring_equal(
-      "localhost:80", util::make_hostport(std::begin(hostport_buf),
-                                          StringRef::from_lit("localhost"), 80)
-                          .str());
-  assert_stdstring_equal("[::1]:443",
-                         util::make_hostport(std::begin(hostport_buf),
-                                             StringRef::from_lit("::1"), 443)
-                             .str());
+  assert_stdsv_equal(
+      "localhost:80"sv,
+      util::make_hostport(std::begin(hostport_buf), "localhost"_sr, 80));
+  assert_stdsv_equal(
+      "[::1]:443"sv,
+      util::make_hostport(std::begin(hostport_buf), "::1"_sr, 443));
 
   BlockAllocator balloc(4096, 4096);
-  assert_stdstring_equal(
-      "localhost:80",
-      util::make_hostport(balloc, StringRef::from_lit("localhost"), 80).str());
-  assert_stdstring_equal(
-      "[::1]:443",
-      util::make_hostport(balloc, StringRef::from_lit("::1"), 443).str());
-}
-
-void test_util_strifind(void) {
-  assert_true(util::strifind(StringRef::from_lit("gzip, deflate, bzip2"),
-                             StringRef::from_lit("gzip")));
-
-  assert_true(util::strifind(StringRef::from_lit("gzip, deflate, bzip2"),
-                             StringRef::from_lit("dEflate")));
-
-  assert_true(util::strifind(StringRef::from_lit("gzip, deflate, bzip2"),
-                             StringRef::from_lit("BZIP2")));
-
-  assert_true(util::strifind(StringRef::from_lit("nghttp2"), StringRef{}));
-
-  // Be aware this fact
-  assert_false(util::strifind(StringRef{}, StringRef{}));
-
-  assert_false(util::strifind(StringRef::from_lit("nghttp2"),
-                              StringRef::from_lit("http1")));
+  assert_stdsv_equal("localhost:80"sv,
+                     util::make_hostport(balloc, "localhost"_sr, 80));
+  assert_stdsv_equal("[::1]:443"sv, util::make_hostport(balloc, "::1"_sr, 443));
 }
 
 void test_util_random_alpha_digit(void) {
@@ -680,123 +584,121 @@ void test_util_random_alpha_digit(void) {
 void test_util_format_hex(void) {
   BlockAllocator balloc(4096, 4096);
 
-  assert_stdstring_equal(
-      "0ff0", util::format_hex(balloc, StringRef::from_lit("\x0f\xf0")).str());
-  assert_stdstring_equal(
-      "", util::format_hex(balloc, StringRef::from_lit("")).str());
+  assert_stdsv_equal("0ff0"sv,
+                     util::format_hex(balloc, std::span{"\x0f\xf0"_sr}));
+  assert_stdsv_equal(""sv,
+                     util::format_hex(balloc, std::span<const uint8_t>{}));
+
+  union T {
+    uint16_t x;
+    uint8_t y[2];
+  };
+
+  auto t = T{.y = {0xbe, 0xef}};
+
+  assert_stdstring_equal("beef", util::format_hex(std::span{&t.x, 1}));
+
+  std::string o;
+  o.resize(4);
+
+  assert_true(std::end(o) ==
+              util::format_hex(std::begin(o), std::span{&t.x, 1}));
+  assert_stdstring_equal("beef", o);
+
+  struct S {
+    uint8_t x[8];
+  };
+
+  auto s = S{{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0xf8}};
+
+  assert_stdstring_equal("01020304050607f8", util::format_hex(s.x));
 }
 
 void test_util_is_hex_string(void) {
   assert_true(util::is_hex_string(StringRef{}));
-  assert_true(util::is_hex_string(StringRef::from_lit("0123456789abcdef")));
-  assert_true(util::is_hex_string(StringRef::from_lit("0123456789ABCDEF")));
-  assert_false(util::is_hex_string(StringRef::from_lit("000")));
-  assert_false(util::is_hex_string(StringRef::from_lit("XX")));
+  assert_true(util::is_hex_string("0123456789abcdef"_sr));
+  assert_true(util::is_hex_string("0123456789ABCDEF"_sr));
+  assert_false(util::is_hex_string("000"_sr));
+  assert_false(util::is_hex_string("XX"_sr));
 }
 
 void test_util_decode_hex(void) {
   BlockAllocator balloc(4096, 4096);
 
-  assert_stdstring_equal(
-      "\x0f\xf0", util::decode_hex(balloc, StringRef::from_lit("0ff0")).str());
-  assert_stdstring_equal("", util::decode_hex(balloc, StringRef{}).str());
+  assert_stdsv_equal("\x0f\xf0"sv,
+                     StringRef{util::decode_hex(balloc, "0ff0"_sr)});
+  assert_stdsv_equal(""sv, StringRef{util::decode_hex(balloc, StringRef{})});
 }
 
 void test_util_extract_host(void) {
-  assert_stdstring_equal("foo",
-                         util::extract_host(StringRef::from_lit("foo")).str());
-  assert_stdstring_equal("foo",
-                         util::extract_host(StringRef::from_lit("foo:")).str());
-  assert_stdstring_equal(
-      "foo", util::extract_host(StringRef::from_lit("foo:0")).str());
-  assert_stdstring_equal(
-      "[::1]", util::extract_host(StringRef::from_lit("[::1]")).str());
-  assert_stdstring_equal(
-      "[::1]", util::extract_host(StringRef::from_lit("[::1]:")).str());
+  assert_stdsv_equal("foo"sv, util::extract_host("foo"_sr));
+  assert_stdsv_equal("foo"sv, util::extract_host("foo:"_sr));
+  assert_stdsv_equal("foo"sv, util::extract_host("foo:0"_sr));
+  assert_stdsv_equal("[::1]"sv, util::extract_host("[::1]"_sr));
+  assert_stdsv_equal("[::1]"sv, util::extract_host("[::1]:"_sr));
 
-  assert_true(util::extract_host(StringRef::from_lit(":foo")).empty());
-  assert_true(util::extract_host(StringRef::from_lit("[::1")).empty());
-  assert_true(util::extract_host(StringRef::from_lit("[::1]0")).empty());
+  assert_true(util::extract_host(":foo"_sr).empty());
+  assert_true(util::extract_host("[::1"_sr).empty());
+  assert_true(util::extract_host("[::1]0"_sr).empty());
   assert_true(util::extract_host(StringRef{}).empty());
 }
 
 void test_util_split_hostport(void) {
-  assert_true(std::make_pair(StringRef::from_lit("foo"), StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("foo")));
-  assert_true(
-      std::make_pair(StringRef::from_lit("foo"), StringRef::from_lit("80")) ==
-      util::split_hostport(StringRef::from_lit("foo:80")));
-  assert_true(
-      std::make_pair(StringRef::from_lit("::1"), StringRef::from_lit("80")) ==
-      util::split_hostport(StringRef::from_lit("[::1]:80")));
-  assert_true(std::make_pair(StringRef::from_lit("::1"), StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("[::1]")));
+  assert_true(std::make_pair("foo"_sr, StringRef{}) ==
+              util::split_hostport("foo"_sr));
+  assert_true(std::make_pair("foo"_sr, "80"_sr) ==
+              util::split_hostport("foo:80"_sr));
+  assert_true(std::make_pair("::1"_sr, "80"_sr) ==
+              util::split_hostport("[::1]:80"_sr));
+  assert_true(std::make_pair("::1"_sr, StringRef{}) ==
+              util::split_hostport("[::1]"_sr));
 
   assert_true(std::make_pair(StringRef{}, StringRef{}) ==
               util::split_hostport(StringRef{}));
   assert_true(std::make_pair(StringRef{}, StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("[::1]:")));
+              util::split_hostport("[::1]:"_sr));
   assert_true(std::make_pair(StringRef{}, StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("foo:")));
+              util::split_hostport("foo:"_sr));
   assert_true(std::make_pair(StringRef{}, StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("[::1:")));
+              util::split_hostport("[::1:"_sr));
   assert_true(std::make_pair(StringRef{}, StringRef{}) ==
-              util::split_hostport(StringRef::from_lit("[::1]80")));
+              util::split_hostport("[::1]80"_sr));
 }
 
 void test_util_split_str(void) {
-  assert_true(std::vector<StringRef>{StringRef::from_lit("")} ==
-              util::split_str(StringRef::from_lit(""), ','));
-  assert_true(std::vector<StringRef>{StringRef::from_lit("alpha")} ==
-              util::split_str(StringRef::from_lit("alpha"), ','));
-  assert_true((std::vector<StringRef>{StringRef::from_lit("alpha"),
-                                      StringRef::from_lit("")}) ==
-              util::split_str(StringRef::from_lit("alpha,"), ','));
-  assert_true((std::vector<StringRef>{StringRef::from_lit("alpha"),
-                                      StringRef::from_lit("bravo")}) ==
-              util::split_str(StringRef::from_lit("alpha,bravo"), ','));
-  assert_true((std::vector<StringRef>{StringRef::from_lit("alpha"),
-                                      StringRef::from_lit("bravo"),
-                                      StringRef::from_lit("charlie")}) ==
-              util::split_str(StringRef::from_lit("alpha,bravo,charlie"), ','));
-  assert_true(
-      (std::vector<StringRef>{StringRef::from_lit("alpha"),
-                              StringRef::from_lit("bravo"),
-                              StringRef::from_lit("charlie")}) ==
-      util::split_str(StringRef::from_lit("alpha,bravo,charlie"), ',', 0));
-  assert_true(std::vector<StringRef>{StringRef::from_lit("")} ==
-              util::split_str(StringRef::from_lit(""), ',', 1));
-  assert_true(std::vector<StringRef>{StringRef::from_lit("")} ==
-              util::split_str(StringRef::from_lit(""), ',', 2));
-  assert_true(
-      (std::vector<StringRef>{StringRef::from_lit("alpha"),
-                              StringRef::from_lit("bravo,charlie")}) ==
-      util::split_str(StringRef::from_lit("alpha,bravo,charlie"), ',', 2));
-  assert_true(std::vector<StringRef>{StringRef::from_lit("alpha")} ==
-              util::split_str(StringRef::from_lit("alpha"), ',', 2));
-  assert_true((std::vector<StringRef>{StringRef::from_lit("alpha"),
-                                      StringRef::from_lit("")}) ==
-              util::split_str(StringRef::from_lit("alpha,"), ',', 2));
-  assert_true(std::vector<StringRef>{StringRef::from_lit("alpha")} ==
-              util::split_str(StringRef::from_lit("alpha"), ',', 0));
-  assert_true(
-      std::vector<StringRef>{StringRef::from_lit("alpha,bravo,charlie")} ==
-      util::split_str(StringRef::from_lit("alpha,bravo,charlie"), ',', 1));
+  assert_true(std::vector<StringRef>{""_sr} == util::split_str(""_sr, ','));
+  assert_true(std::vector<StringRef>{"alpha"_sr} ==
+              util::split_str("alpha"_sr, ','));
+  assert_true((std::vector<StringRef>{"alpha"_sr, ""_sr}) ==
+              util::split_str("alpha,"_sr, ','));
+  assert_true((std::vector<StringRef>{"alpha"_sr, "bravo"_sr}) ==
+              util::split_str("alpha,bravo"_sr, ','));
+  assert_true((std::vector<StringRef>{"alpha"_sr, "bravo"_sr, "charlie"_sr}) ==
+              util::split_str("alpha,bravo,charlie"_sr, ','));
+  assert_true((std::vector<StringRef>{"alpha"_sr, "bravo"_sr, "charlie"_sr}) ==
+              util::split_str("alpha,bravo,charlie"_sr, ',', 0));
+  assert_true(std::vector<StringRef>{""_sr} == util::split_str(""_sr, ',', 1));
+  assert_true(std::vector<StringRef>{""_sr} == util::split_str(""_sr, ',', 2));
+  assert_true((std::vector<StringRef>{"alpha"_sr, "bravo,charlie"_sr}) ==
+              util::split_str("alpha,bravo,charlie"_sr, ',', 2));
+  assert_true(std::vector<StringRef>{"alpha"_sr} ==
+              util::split_str("alpha"_sr, ',', 2));
+  assert_true((std::vector<StringRef>{"alpha"_sr, ""_sr}) ==
+              util::split_str("alpha,"_sr, ',', 2));
+  assert_true(std::vector<StringRef>{"alpha"_sr} ==
+              util::split_str("alpha"_sr, ',', 0));
+  assert_true(std::vector<StringRef>{"alpha,bravo,charlie"_sr} ==
+              util::split_str("alpha,bravo,charlie"_sr, ',', 1));
 }
 
 void test_util_rstrip(void) {
   BlockAllocator balloc(4096, 4096);
 
-  assert_stdstring_equal(
-      "alpha", util::rstrip(balloc, StringRef::from_lit("alpha")).str());
-  assert_stdstring_equal(
-      "alpha", util::rstrip(balloc, StringRef::from_lit("alpha ")).str());
-  assert_stdstring_equal(
-      "alpha", util::rstrip(balloc, StringRef::from_lit("alpha \t")).str());
-  assert_stdstring_equal("",
-                         util::rstrip(balloc, StringRef::from_lit("")).str());
-  assert_stdstring_equal(
-      "", util::rstrip(balloc, StringRef::from_lit("\t\t\t   ")).str());
+  assert_stdsv_equal("alpha"sv, util::rstrip(balloc, "alpha"_sr));
+  assert_stdsv_equal("alpha"sv, util::rstrip(balloc, "alpha "_sr));
+  assert_stdsv_equal("alpha"sv, util::rstrip(balloc, "alpha \t"_sr));
+  assert_stdsv_equal(""sv, util::rstrip(balloc, ""_sr));
+  assert_stdsv_equal(""sv, util::rstrip(balloc, "\t\t\t   "_sr));
 }
 
 } // namespace shrpx

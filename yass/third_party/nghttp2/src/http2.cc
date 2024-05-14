@@ -35,107 +35,107 @@ namespace http2 {
 StringRef get_reason_phrase(unsigned int status_code) {
   switch (status_code) {
   case 100:
-    return StringRef::from_lit("Continue");
+    return "Continue"_sr;
   case 101:
-    return StringRef::from_lit("Switching Protocols");
+    return "Switching Protocols"_sr;
   case 103:
-    return StringRef::from_lit("Early Hints");
+    return "Early Hints"_sr;
   case 200:
-    return StringRef::from_lit("OK");
+    return "OK"_sr;
   case 201:
-    return StringRef::from_lit("Created");
+    return "Created"_sr;
   case 202:
-    return StringRef::from_lit("Accepted");
+    return "Accepted"_sr;
   case 203:
-    return StringRef::from_lit("Non-Authoritative Information");
+    return "Non-Authoritative Information"_sr;
   case 204:
-    return StringRef::from_lit("No Content");
+    return "No Content"_sr;
   case 205:
-    return StringRef::from_lit("Reset Content");
+    return "Reset Content"_sr;
   case 206:
-    return StringRef::from_lit("Partial Content");
+    return "Partial Content"_sr;
   case 300:
-    return StringRef::from_lit("Multiple Choices");
+    return "Multiple Choices"_sr;
   case 301:
-    return StringRef::from_lit("Moved Permanently");
+    return "Moved Permanently"_sr;
   case 302:
-    return StringRef::from_lit("Found");
+    return "Found"_sr;
   case 303:
-    return StringRef::from_lit("See Other");
+    return "See Other"_sr;
   case 304:
-    return StringRef::from_lit("Not Modified");
+    return "Not Modified"_sr;
   case 305:
-    return StringRef::from_lit("Use Proxy");
-  // case 306: return StringRef::from_lit("(Unused)");
+    return "Use Proxy"_sr;
+  // case 306: return "(Unused)"_sr;
   case 307:
-    return StringRef::from_lit("Temporary Redirect");
+    return "Temporary Redirect"_sr;
   case 308:
-    return StringRef::from_lit("Permanent Redirect");
+    return "Permanent Redirect"_sr;
   case 400:
-    return StringRef::from_lit("Bad Request");
+    return "Bad Request"_sr;
   case 401:
-    return StringRef::from_lit("Unauthorized");
+    return "Unauthorized"_sr;
   case 402:
-    return StringRef::from_lit("Payment Required");
+    return "Payment Required"_sr;
   case 403:
-    return StringRef::from_lit("Forbidden");
+    return "Forbidden"_sr;
   case 404:
-    return StringRef::from_lit("Not Found");
+    return "Not Found"_sr;
   case 405:
-    return StringRef::from_lit("Method Not Allowed");
+    return "Method Not Allowed"_sr;
   case 406:
-    return StringRef::from_lit("Not Acceptable");
+    return "Not Acceptable"_sr;
   case 407:
-    return StringRef::from_lit("Proxy Authentication Required");
+    return "Proxy Authentication Required"_sr;
   case 408:
-    return StringRef::from_lit("Request Timeout");
+    return "Request Timeout"_sr;
   case 409:
-    return StringRef::from_lit("Conflict");
+    return "Conflict"_sr;
   case 410:
-    return StringRef::from_lit("Gone");
+    return "Gone"_sr;
   case 411:
-    return StringRef::from_lit("Length Required");
+    return "Length Required"_sr;
   case 412:
-    return StringRef::from_lit("Precondition Failed");
+    return "Precondition Failed"_sr;
   case 413:
-    return StringRef::from_lit("Payload Too Large");
+    return "Payload Too Large"_sr;
   case 414:
-    return StringRef::from_lit("URI Too Long");
+    return "URI Too Long"_sr;
   case 415:
-    return StringRef::from_lit("Unsupported Media Type");
+    return "Unsupported Media Type"_sr;
   case 416:
-    return StringRef::from_lit("Requested Range Not Satisfiable");
+    return "Requested Range Not Satisfiable"_sr;
   case 417:
-    return StringRef::from_lit("Expectation Failed");
+    return "Expectation Failed"_sr;
   case 421:
-    return StringRef::from_lit("Misdirected Request");
+    return "Misdirected Request"_sr;
   case 425:
     // https://tools.ietf.org/html/rfc8470
-    return StringRef::from_lit("Too Early");
+    return "Too Early"_sr;
   case 426:
-    return StringRef::from_lit("Upgrade Required");
+    return "Upgrade Required"_sr;
   case 428:
-    return StringRef::from_lit("Precondition Required");
+    return "Precondition Required"_sr;
   case 429:
-    return StringRef::from_lit("Too Many Requests");
+    return "Too Many Requests"_sr;
   case 431:
-    return StringRef::from_lit("Request Header Fields Too Large");
+    return "Request Header Fields Too Large"_sr;
   case 451:
-    return StringRef::from_lit("Unavailable For Legal Reasons");
+    return "Unavailable For Legal Reasons"_sr;
   case 500:
-    return StringRef::from_lit("Internal Server Error");
+    return "Internal Server Error"_sr;
   case 501:
-    return StringRef::from_lit("Not Implemented");
+    return "Not Implemented"_sr;
   case 502:
-    return StringRef::from_lit("Bad Gateway");
+    return "Bad Gateway"_sr;
   case 503:
-    return StringRef::from_lit("Service Unavailable");
+    return "Service Unavailable"_sr;
   case 504:
-    return StringRef::from_lit("Gateway Timeout");
+    return "Gateway Timeout"_sr;
   case 505:
-    return StringRef::from_lit("HTTP Version Not Supported");
+    return "HTTP Version Not Supported"_sr;
   case 511:
-    return StringRef::from_lit("Network Authentication Required");
+    return "Network Authentication Required"_sr;
   default:
     return StringRef{};
   }
@@ -144,104 +144,104 @@ StringRef get_reason_phrase(unsigned int status_code) {
 StringRef stringify_status(BlockAllocator &balloc, unsigned int status_code) {
   switch (status_code) {
   case 100:
-    return StringRef::from_lit("100");
+    return "100"_sr;
   case 101:
-    return StringRef::from_lit("101");
+    return "101"_sr;
   case 103:
-    return StringRef::from_lit("103");
+    return "103"_sr;
   case 200:
-    return StringRef::from_lit("200");
+    return "200"_sr;
   case 201:
-    return StringRef::from_lit("201");
+    return "201"_sr;
   case 202:
-    return StringRef::from_lit("202");
+    return "202"_sr;
   case 203:
-    return StringRef::from_lit("203");
+    return "203"_sr;
   case 204:
-    return StringRef::from_lit("204");
+    return "204"_sr;
   case 205:
-    return StringRef::from_lit("205");
+    return "205"_sr;
   case 206:
-    return StringRef::from_lit("206");
+    return "206"_sr;
   case 300:
-    return StringRef::from_lit("300");
+    return "300"_sr;
   case 301:
-    return StringRef::from_lit("301");
+    return "301"_sr;
   case 302:
-    return StringRef::from_lit("302");
+    return "302"_sr;
   case 303:
-    return StringRef::from_lit("303");
+    return "303"_sr;
   case 304:
-    return StringRef::from_lit("304");
+    return "304"_sr;
   case 305:
-    return StringRef::from_lit("305");
-  // case 306: return StringRef::from_lit("306");
+    return "305"_sr;
+  // case 306: return "306"_sr;
   case 307:
-    return StringRef::from_lit("307");
+    return "307"_sr;
   case 308:
-    return StringRef::from_lit("308");
+    return "308"_sr;
   case 400:
-    return StringRef::from_lit("400");
+    return "400"_sr;
   case 401:
-    return StringRef::from_lit("401");
+    return "401"_sr;
   case 402:
-    return StringRef::from_lit("402");
+    return "402"_sr;
   case 403:
-    return StringRef::from_lit("403");
+    return "403"_sr;
   case 404:
-    return StringRef::from_lit("404");
+    return "404"_sr;
   case 405:
-    return StringRef::from_lit("405");
+    return "405"_sr;
   case 406:
-    return StringRef::from_lit("406");
+    return "406"_sr;
   case 407:
-    return StringRef::from_lit("407");
+    return "407"_sr;
   case 408:
-    return StringRef::from_lit("408");
+    return "408"_sr;
   case 409:
-    return StringRef::from_lit("409");
+    return "409"_sr;
   case 410:
-    return StringRef::from_lit("410");
+    return "410"_sr;
   case 411:
-    return StringRef::from_lit("411");
+    return "411"_sr;
   case 412:
-    return StringRef::from_lit("412");
+    return "412"_sr;
   case 413:
-    return StringRef::from_lit("413");
+    return "413"_sr;
   case 414:
-    return StringRef::from_lit("414");
+    return "414"_sr;
   case 415:
-    return StringRef::from_lit("415");
+    return "415"_sr;
   case 416:
-    return StringRef::from_lit("416");
+    return "416"_sr;
   case 417:
-    return StringRef::from_lit("417");
+    return "417"_sr;
   case 421:
-    return StringRef::from_lit("421");
+    return "421"_sr;
   case 426:
-    return StringRef::from_lit("426");
+    return "426"_sr;
   case 428:
-    return StringRef::from_lit("428");
+    return "428"_sr;
   case 429:
-    return StringRef::from_lit("429");
+    return "429"_sr;
   case 431:
-    return StringRef::from_lit("431");
+    return "431"_sr;
   case 451:
-    return StringRef::from_lit("451");
+    return "451"_sr;
   case 500:
-    return StringRef::from_lit("500");
+    return "500"_sr;
   case 501:
-    return StringRef::from_lit("501");
+    return "501"_sr;
   case 502:
-    return StringRef::from_lit("502");
+    return "502"_sr;
   case 503:
-    return StringRef::from_lit("503");
+    return "503"_sr;
   case 504:
-    return StringRef::from_lit("504");
+    return "504"_sr;
   case 505:
-    return StringRef::from_lit("505");
+    return "505"_sr;
   case 511:
-    return StringRef::from_lit("511");
+    return "511"_sr;
   default:
     return util::make_string_ref_uint(balloc, status_code);
   }
@@ -278,27 +278,16 @@ void copy_url_component(std::string &dest, const http_parser_url *u, int field,
   }
 }
 
-Headers::value_type to_header(const uint8_t *name, size_t namelen,
-                              const uint8_t *value, size_t valuelen,
+Headers::value_type to_header(const StringRef &name, const StringRef &value,
                               bool no_index, int32_t token) {
-  return Header(std::string(reinterpret_cast<const char *>(name), namelen),
-                std::string(reinterpret_cast<const char *>(value), valuelen),
-                no_index, token);
+  return Header(std::string{std::begin(name), std::end(name)},
+                std::string{std::begin(value), std::end(value)}, no_index,
+                token);
 }
 
-void add_header(Headers &nva, const uint8_t *name, size_t namelen,
-                const uint8_t *value, size_t valuelen, bool no_index,
-                int32_t token) {
-  if (valuelen > 0) {
-    size_t i, j;
-    for (i = 0; i < valuelen && (value[i] == ' ' || value[i] == '\t'); ++i)
-      ;
-    for (j = valuelen - 1; j > i && (value[j] == ' ' || value[j] == '\t'); --j)
-      ;
-    value += i;
-    valuelen -= i + (valuelen - j - 1);
-  }
-  nva.push_back(to_header(name, namelen, value, valuelen, no_index, token));
+void add_header(Headers &nva, const StringRef &name, const StringRef &value,
+                bool no_index, int32_t token) {
+  nva.push_back(to_header(name, value, no_index, token));
 }
 
 const Headers::value_type *get_header(const Headers &nva, const char *name) {
@@ -313,56 +302,6 @@ const Headers::value_type *get_header(const Headers &nva, const char *name) {
 
 bool non_empty_value(const HeaderRefs::value_type *nv) {
   return nv && !nv->value.empty();
-}
-
-namespace {
-nghttp2_nv make_nv_internal(const std::string &name, const std::string &value,
-                            bool no_index, uint8_t nv_flags) {
-  uint8_t flags;
-
-  flags =
-      nv_flags | (no_index ? NGHTTP2_NV_FLAG_NO_INDEX : NGHTTP2_NV_FLAG_NONE);
-
-  return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
-          value.size(), flags};
-}
-} // namespace
-
-namespace {
-nghttp2_nv make_nv_internal(const StringRef &name, const StringRef &value,
-                            bool no_index, uint8_t nv_flags) {
-  uint8_t flags;
-
-  flags =
-      nv_flags | (no_index ? NGHTTP2_NV_FLAG_NO_INDEX : NGHTTP2_NV_FLAG_NONE);
-
-  return {(uint8_t *)name.c_str(), (uint8_t *)value.c_str(), name.size(),
-          value.size(), flags};
-}
-} // namespace
-
-nghttp2_nv make_nv(const std::string &name, const std::string &value,
-                   bool no_index) {
-  return make_nv_internal(name, value, no_index, NGHTTP2_NV_FLAG_NONE);
-}
-
-nghttp2_nv make_nv(const StringRef &name, const StringRef &value,
-                   bool no_index) {
-  return make_nv_internal(name, value, no_index, NGHTTP2_NV_FLAG_NONE);
-}
-
-nghttp2_nv make_nv_nocopy(const std::string &name, const std::string &value,
-                          bool no_index) {
-  return make_nv_internal(name, value, no_index,
-                          NGHTTP2_NV_FLAG_NO_COPY_NAME |
-                              NGHTTP2_NV_FLAG_NO_COPY_VALUE);
-}
-
-nghttp2_nv make_nv_nocopy(const StringRef &name, const StringRef &value,
-                          bool no_index) {
-  return make_nv_internal(name, value, no_index,
-                          NGHTTP2_NV_FLAG_NO_COPY_NAME |
-                              NGHTTP2_NV_FLAG_NO_COPY_VALUE);
 }
 
 namespace {
@@ -459,8 +398,8 @@ void copy_headers_to_nva_internal(std::vector<nghttp2_nv> &nva,
       it_via = it;
       break;
     }
-    nva.push_back(
-        make_nv_internal(kv->name, kv->value, kv->no_index, nv_flags));
+    nva.push_back(make_field_flags(kv->name, kv->value,
+                                   nv_flags | no_index(kv->no_index)));
   }
 }
 } // namespace
@@ -617,7 +556,7 @@ void dump_nv(FILE *out, const Headers &nva) {
 
 void dump_nv(FILE *out, const HeaderRefs &nva) {
   for (auto &nv : nva) {
-    fprintf(out, "%s: %s\n", nv.name.c_str(), nv.value.c_str());
+    fprintf(out, "%s: %s\n", nv.name.data(), nv.value.data());
   }
   fputc('\n', out);
   fflush(out);
@@ -665,7 +604,7 @@ StringRef rewrite_location_uri(BlockAllocator &balloc, const StringRef &uri,
   }
 
   auto iov = make_byte_ref(balloc, len + 1);
-  auto p = iov.base;
+  auto p = std::begin(iov);
 
   if (!request_authority.empty()) {
     p = std::copy(std::begin(upstream_scheme), std::end(upstream_scheme), p);
@@ -690,7 +629,7 @@ StringRef rewrite_location_uri(BlockAllocator &balloc, const StringRef &uri,
 
   *p = '\0';
 
-  return StringRef{iov.base, p};
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 int parse_http_status_code(const StringRef &src) {
@@ -714,18 +653,14 @@ int parse_http_status_code(const StringRef &src) {
   return status;
 }
 
-int lookup_token(const StringRef &name) {
-  return lookup_token(name.byte(), name.size());
-}
-
 // This function was generated by genheaderfunc.py.  Inspired by h2o
 // header lookup.  https://github.com/h2o/h2o
-int lookup_token(const uint8_t *name, size_t namelen) {
-  switch (namelen) {
+int lookup_token(const StringRef &name) {
+  switch (name.size()) {
   case 2:
     switch (name[1]) {
     case 'e':
-      if (util::streq_l("t", name, 1)) {
+      if (util::streq("t"_sr, name, 1)) {
         return HD_TE;
       }
       break;
@@ -734,7 +669,7 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 3:
     switch (name[2]) {
     case 'a':
-      if (util::streq_l("vi", name, 2)) {
+      if (util::streq("vi"_sr, name, 2)) {
         return HD_VIA;
       }
       break;
@@ -743,17 +678,17 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 4:
     switch (name[3]) {
     case 'e':
-      if (util::streq_l("dat", name, 3)) {
+      if (util::streq("dat"_sr, name, 3)) {
         return HD_DATE;
       }
       break;
     case 'k':
-      if (util::streq_l("lin", name, 3)) {
+      if (util::streq("lin"_sr, name, 3)) {
         return HD_LINK;
       }
       break;
     case 't':
-      if (util::streq_l("hos", name, 3)) {
+      if (util::streq("hos"_sr, name, 3)) {
         return HD_HOST;
       }
       break;
@@ -762,12 +697,12 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 5:
     switch (name[4]) {
     case 'h':
-      if (util::streq_l(":pat", name, 4)) {
+      if (util::streq(":pat"_sr, name, 4)) {
         return HD__PATH;
       }
       break;
     case 't':
-      if (util::streq_l(":hos", name, 4)) {
+      if (util::streq(":hos"_sr, name, 4)) {
         return HD__HOST;
       }
       break;
@@ -776,17 +711,17 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 6:
     switch (name[5]) {
     case 'e':
-      if (util::streq_l("cooki", name, 5)) {
+      if (util::streq("cooki"_sr, name, 5)) {
         return HD_COOKIE;
       }
       break;
     case 'r':
-      if (util::streq_l("serve", name, 5)) {
+      if (util::streq("serve"_sr, name, 5)) {
         return HD_SERVER;
       }
       break;
     case 't':
-      if (util::streq_l("expec", name, 5)) {
+      if (util::streq("expec"_sr, name, 5)) {
         return HD_EXPECT;
       }
       break;
@@ -795,30 +730,30 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 7:
     switch (name[6]) {
     case 'c':
-      if (util::streq_l("alt-sv", name, 6)) {
+      if (util::streq("alt-sv"_sr, name, 6)) {
         return HD_ALT_SVC;
       }
       break;
     case 'd':
-      if (util::streq_l(":metho", name, 6)) {
+      if (util::streq(":metho"_sr, name, 6)) {
         return HD__METHOD;
       }
       break;
     case 'e':
-      if (util::streq_l(":schem", name, 6)) {
+      if (util::streq(":schem"_sr, name, 6)) {
         return HD__SCHEME;
       }
-      if (util::streq_l("upgrad", name, 6)) {
+      if (util::streq("upgrad"_sr, name, 6)) {
         return HD_UPGRADE;
       }
       break;
     case 'r':
-      if (util::streq_l("traile", name, 6)) {
+      if (util::streq("traile"_sr, name, 6)) {
         return HD_TRAILER;
       }
       break;
     case 's':
-      if (util::streq_l(":statu", name, 6)) {
+      if (util::streq(":statu"_sr, name, 6)) {
         return HD__STATUS;
       }
       break;
@@ -827,12 +762,12 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 8:
     switch (name[7]) {
     case 'n':
-      if (util::streq_l("locatio", name, 7)) {
+      if (util::streq("locatio"_sr, name, 7)) {
         return HD_LOCATION;
       }
       break;
     case 'y':
-      if (util::streq_l("priorit", name, 7)) {
+      if (util::streq("priorit"_sr, name, 7)) {
         return HD_PRIORITY;
       }
       break;
@@ -841,12 +776,12 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 9:
     switch (name[8]) {
     case 'd':
-      if (util::streq_l("forwarde", name, 8)) {
+      if (util::streq("forwarde"_sr, name, 8)) {
         return HD_FORWARDED;
       }
       break;
     case 'l':
-      if (util::streq_l(":protoco", name, 8)) {
+      if (util::streq(":protoco"_sr, name, 8)) {
         return HD__PROTOCOL;
       }
       break;
@@ -855,27 +790,27 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 10:
     switch (name[9]) {
     case 'a':
-      if (util::streq_l("early-dat", name, 9)) {
+      if (util::streq("early-dat"_sr, name, 9)) {
         return HD_EARLY_DATA;
       }
       break;
     case 'e':
-      if (util::streq_l("keep-aliv", name, 9)) {
+      if (util::streq("keep-aliv"_sr, name, 9)) {
         return HD_KEEP_ALIVE;
       }
       break;
     case 'n':
-      if (util::streq_l("connectio", name, 9)) {
+      if (util::streq("connectio"_sr, name, 9)) {
         return HD_CONNECTION;
       }
       break;
     case 't':
-      if (util::streq_l("user-agen", name, 9)) {
+      if (util::streq("user-agen"_sr, name, 9)) {
         return HD_USER_AGENT;
       }
       break;
     case 'y':
-      if (util::streq_l(":authorit", name, 9)) {
+      if (util::streq(":authorit"_sr, name, 9)) {
         return HD__AUTHORITY;
       }
       break;
@@ -884,7 +819,7 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 12:
     switch (name[11]) {
     case 'e':
-      if (util::streq_l("content-typ", name, 11)) {
+      if (util::streq("content-typ"_sr, name, 11)) {
         return HD_CONTENT_TYPE;
       }
       break;
@@ -893,7 +828,7 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 13:
     switch (name[12]) {
     case 'l':
-      if (util::streq_l("cache-contro", name, 12)) {
+      if (util::streq("cache-contro"_sr, name, 12)) {
         return HD_CACHE_CONTROL;
       }
       break;
@@ -902,12 +837,12 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 14:
     switch (name[13]) {
     case 'h':
-      if (util::streq_l("content-lengt", name, 13)) {
+      if (util::streq("content-lengt"_sr, name, 13)) {
         return HD_CONTENT_LENGTH;
       }
       break;
     case 's':
-      if (util::streq_l("http2-setting", name, 13)) {
+      if (util::streq("http2-setting"_sr, name, 13)) {
         return HD_HTTP2_SETTINGS;
       }
       break;
@@ -916,17 +851,17 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 15:
     switch (name[14]) {
     case 'e':
-      if (util::streq_l("accept-languag", name, 14)) {
+      if (util::streq("accept-languag"_sr, name, 14)) {
         return HD_ACCEPT_LANGUAGE;
       }
       break;
     case 'g':
-      if (util::streq_l("accept-encodin", name, 14)) {
+      if (util::streq("accept-encodin"_sr, name, 14)) {
         return HD_ACCEPT_ENCODING;
       }
       break;
     case 'r':
-      if (util::streq_l("x-forwarded-fo", name, 14)) {
+      if (util::streq("x-forwarded-fo"_sr, name, 14)) {
         return HD_X_FORWARDED_FOR;
       }
       break;
@@ -935,7 +870,7 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 16:
     switch (name[15]) {
     case 'n':
-      if (util::streq_l("proxy-connectio", name, 15)) {
+      if (util::streq("proxy-connectio"_sr, name, 15)) {
         return HD_PROXY_CONNECTION;
       }
       break;
@@ -944,22 +879,22 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 17:
     switch (name[16]) {
     case 'e':
-      if (util::streq_l("if-modified-sinc", name, 16)) {
+      if (util::streq("if-modified-sinc"_sr, name, 16)) {
         return HD_IF_MODIFIED_SINCE;
       }
       break;
     case 'g':
-      if (util::streq_l("transfer-encodin", name, 16)) {
+      if (util::streq("transfer-encodin"_sr, name, 16)) {
         return HD_TRANSFER_ENCODING;
       }
       break;
     case 'o':
-      if (util::streq_l("x-forwarded-prot", name, 16)) {
+      if (util::streq("x-forwarded-prot"_sr, name, 16)) {
         return HD_X_FORWARDED_PROTO;
       }
       break;
     case 'y':
-      if (util::streq_l("sec-websocket-ke", name, 16)) {
+      if (util::streq("sec-websocket-ke"_sr, name, 16)) {
         return HD_SEC_WEBSOCKET_KEY;
       }
       break;
@@ -968,7 +903,7 @@ int lookup_token(const uint8_t *name, size_t namelen) {
   case 20:
     switch (name[19]) {
     case 't':
-      if (util::streq_l("sec-websocket-accep", name, 19)) {
+      if (util::streq("sec-websocket-accep"_sr, name, 19)) {
         return HD_SEC_WEBSOCKET_ACCEPT;
       }
       break;
@@ -1384,7 +1319,8 @@ std::string path_join(const StringRef &base_path, const StringRef &base_query,
                       const StringRef &rel_path, const StringRef &rel_query) {
   BlockAllocator balloc(1024, 1024);
 
-  return path_join(balloc, base_path, base_query, rel_path, rel_query).str();
+  return std::string{
+      path_join(balloc, base_path, base_query, rel_path, rel_query)};
 }
 
 bool expect_response_body(int status_code) {
@@ -1400,25 +1336,21 @@ bool expect_response_body(int method_token, int status_code) {
   return method_token != HTTP_HEAD && expect_response_body(status_code);
 }
 
-int lookup_method_token(const StringRef &name) {
-  return lookup_method_token(name.byte(), name.size());
-}
-
 // This function was generated by genmethodfunc.py.
-int lookup_method_token(const uint8_t *name, size_t namelen) {
-  switch (namelen) {
+int lookup_method_token(const StringRef &name) {
+  switch (name.size()) {
   case 3:
     switch (name[2]) {
     case 'L':
-      if (util::streq_l("AC", name, 2)) {
+      if (util::streq("AC"_sr, name, 2)) {
         return HTTP_ACL;
       }
       break;
     case 'T':
-      if (util::streq_l("GE", name, 2)) {
+      if (util::streq("GE"_sr, name, 2)) {
         return HTTP_GET;
       }
-      if (util::streq_l("PU", name, 2)) {
+      if (util::streq("PU"_sr, name, 2)) {
         return HTTP_PUT;
       }
       break;
@@ -1427,33 +1359,33 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 4:
     switch (name[3]) {
     case 'D':
-      if (util::streq_l("BIN", name, 3)) {
+      if (util::streq("BIN"_sr, name, 3)) {
         return HTTP_BIND;
       }
-      if (util::streq_l("HEA", name, 3)) {
+      if (util::streq("HEA"_sr, name, 3)) {
         return HTTP_HEAD;
       }
       break;
     case 'E':
-      if (util::streq_l("MOV", name, 3)) {
+      if (util::streq("MOV"_sr, name, 3)) {
         return HTTP_MOVE;
       }
       break;
     case 'K':
-      if (util::streq_l("LIN", name, 3)) {
+      if (util::streq("LIN"_sr, name, 3)) {
         return HTTP_LINK;
       }
-      if (util::streq_l("LOC", name, 3)) {
+      if (util::streq("LOC"_sr, name, 3)) {
         return HTTP_LOCK;
       }
       break;
     case 'T':
-      if (util::streq_l("POS", name, 3)) {
+      if (util::streq("POS"_sr, name, 3)) {
         return HTTP_POST;
       }
       break;
     case 'Y':
-      if (util::streq_l("COP", name, 3)) {
+      if (util::streq("COP"_sr, name, 3)) {
         return HTTP_COPY;
       }
       break;
@@ -1462,23 +1394,23 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 5:
     switch (name[4]) {
     case 'E':
-      if (util::streq_l("MERG", name, 4)) {
+      if (util::streq("MERG"_sr, name, 4)) {
         return HTTP_MERGE;
       }
-      if (util::streq_l("PURG", name, 4)) {
+      if (util::streq("PURG"_sr, name, 4)) {
         return HTTP_PURGE;
       }
-      if (util::streq_l("TRAC", name, 4)) {
+      if (util::streq("TRAC"_sr, name, 4)) {
         return HTTP_TRACE;
       }
       break;
     case 'H':
-      if (util::streq_l("PATC", name, 4)) {
+      if (util::streq("PATC"_sr, name, 4)) {
         return HTTP_PATCH;
       }
       break;
     case 'L':
-      if (util::streq_l("MKCO", name, 4)) {
+      if (util::streq("MKCO"_sr, name, 4)) {
         return HTTP_MKCOL;
       }
       break;
@@ -1487,41 +1419,41 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 6:
     switch (name[5]) {
     case 'D':
-      if (util::streq_l("REBIN", name, 5)) {
+      if (util::streq("REBIN"_sr, name, 5)) {
         return HTTP_REBIND;
       }
-      if (util::streq_l("UNBIN", name, 5)) {
+      if (util::streq("UNBIN"_sr, name, 5)) {
         return HTTP_UNBIND;
       }
       break;
     case 'E':
-      if (util::streq_l("DELET", name, 5)) {
+      if (util::streq("DELET"_sr, name, 5)) {
         return HTTP_DELETE;
       }
-      if (util::streq_l("SOURC", name, 5)) {
+      if (util::streq("SOURC"_sr, name, 5)) {
         return HTTP_SOURCE;
       }
       break;
     case 'H':
-      if (util::streq_l("SEARC", name, 5)) {
+      if (util::streq("SEARC"_sr, name, 5)) {
         return HTTP_SEARCH;
       }
       break;
     case 'K':
-      if (util::streq_l("UNLIN", name, 5)) {
+      if (util::streq("UNLIN"_sr, name, 5)) {
         return HTTP_UNLINK;
       }
-      if (util::streq_l("UNLOC", name, 5)) {
+      if (util::streq("UNLOC"_sr, name, 5)) {
         return HTTP_UNLOCK;
       }
       break;
     case 'T':
-      if (util::streq_l("REPOR", name, 5)) {
+      if (util::streq("REPOR"_sr, name, 5)) {
         return HTTP_REPORT;
       }
       break;
     case 'Y':
-      if (util::streq_l("NOTIF", name, 5)) {
+      if (util::streq("NOTIF"_sr, name, 5)) {
         return HTTP_NOTIFY;
       }
       break;
@@ -1530,17 +1462,17 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 7:
     switch (name[6]) {
     case 'H':
-      if (util::streq_l("MSEARC", name, 6)) {
+      if (util::streq("MSEARC"_sr, name, 6)) {
         return HTTP_MSEARCH;
       }
       break;
     case 'S':
-      if (util::streq_l("OPTION", name, 6)) {
+      if (util::streq("OPTION"_sr, name, 6)) {
         return HTTP_OPTIONS;
       }
       break;
     case 'T':
-      if (util::streq_l("CONNEC", name, 6)) {
+      if (util::streq("CONNEC"_sr, name, 6)) {
         return HTTP_CONNECT;
       }
       break;
@@ -1549,12 +1481,12 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 8:
     switch (name[7]) {
     case 'D':
-      if (util::streq_l("PROPFIN", name, 7)) {
+      if (util::streq("PROPFIN"_sr, name, 7)) {
         return HTTP_PROPFIND;
       }
       break;
     case 'T':
-      if (util::streq_l("CHECKOU", name, 7)) {
+      if (util::streq("CHECKOU"_sr, name, 7)) {
         return HTTP_CHECKOUT;
       }
       break;
@@ -1563,12 +1495,12 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 9:
     switch (name[8]) {
     case 'E':
-      if (util::streq_l("SUBSCRIB", name, 8)) {
+      if (util::streq("SUBSCRIB"_sr, name, 8)) {
         return HTTP_SUBSCRIBE;
       }
       break;
     case 'H':
-      if (util::streq_l("PROPPATC", name, 8)) {
+      if (util::streq("PROPPATC"_sr, name, 8)) {
         return HTTP_PROPPATCH;
       }
       break;
@@ -1577,12 +1509,12 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 10:
     switch (name[9]) {
     case 'R':
-      if (util::streq_l("MKCALENDA", name, 9)) {
+      if (util::streq("MKCALENDA"_sr, name, 9)) {
         return HTTP_MKCALENDAR;
       }
       break;
     case 'Y':
-      if (util::streq_l("MKACTIVIT", name, 9)) {
+      if (util::streq("MKACTIVIT"_sr, name, 9)) {
         return HTTP_MKACTIVITY;
       }
       break;
@@ -1591,7 +1523,7 @@ int lookup_method_token(const uint8_t *name, size_t namelen) {
   case 11:
     switch (name[10]) {
     case 'E':
-      if (util::streq_l("UNSUBSCRIB", name, 10)) {
+      if (util::streq("UNSUBSCRIB"_sr, name, 10)) {
         return HTTP_UNSUBSCRIBE;
       }
       break;
@@ -1611,17 +1543,17 @@ StringRef get_pure_path_component(const StringRef &uri) {
   int rv;
 
   http_parser_url u{};
-  rv = http_parser_parse_url(uri.c_str(), uri.size(), 0, &u);
+  rv = http_parser_parse_url(uri.data(), uri.size(), 0, &u);
   if (rv != 0) {
     return StringRef{};
   }
 
   if (u.field_set & (1 << UF_PATH)) {
     auto &f = u.field_data[UF_PATH];
-    return StringRef{uri.c_str() + f.off, f.len};
+    return StringRef{uri.data() + f.off, f.len};
   }
 
-  return StringRef::from_lit("/");
+  return "/"_sr;
 }
 
 int construct_push_component(BlockAllocator &balloc, StringRef &scheme,
@@ -1636,7 +1568,7 @@ int construct_push_component(BlockAllocator &balloc, StringRef &scheme,
 
   http_parser_url u{};
 
-  rv = http_parser_parse_url(uri.c_str(), uri.size(), 0, &u);
+  rv = http_parser_parse_url(uri.data(), uri.size(), 0, &u);
 
   if (rv != 0) {
     if (uri[0] == '/') {
@@ -1653,18 +1585,18 @@ int construct_push_component(BlockAllocator &balloc, StringRef &scheme,
     }
   } else {
     if (u.field_set & (1 << UF_SCHEMA)) {
-      scheme = util::get_uri_field(uri.c_str(), u, UF_SCHEMA);
+      scheme = util::get_uri_field(uri.data(), u, UF_SCHEMA);
     }
 
     if (u.field_set & (1 << UF_HOST)) {
-      auto auth = util::get_uri_field(uri.c_str(), u, UF_HOST);
+      auto auth = util::get_uri_field(uri.data(), u, UF_HOST);
       auto len = auth.size();
       auto port_exists = u.field_set & (1 << UF_PORT);
       if (port_exists) {
         len += 1 + str_size("65535");
       }
       auto iov = make_byte_ref(balloc, len + 1);
-      auto p = iov.base;
+      auto p = std::begin(iov);
       p = std::copy(std::begin(auth), std::end(auth), p);
       if (port_exists) {
         *p++ = ':';
@@ -1672,23 +1604,23 @@ int construct_push_component(BlockAllocator &balloc, StringRef &scheme,
       }
       *p = '\0';
 
-      authority = StringRef{iov.base, p};
+      authority = StringRef{std::span{std::begin(iov), p}};
     }
 
     if (u.field_set & (1 << UF_PATH)) {
       auto &f = u.field_data[UF_PATH];
-      rel = StringRef{uri.c_str() + f.off, f.len};
+      rel = StringRef{uri.data() + f.off, f.len};
     } else {
-      rel = StringRef::from_lit("/");
+      rel = "/"_sr;
     }
 
     if (u.field_set & (1 << UF_QUERY)) {
       auto &f = u.field_data[UF_QUERY];
-      relq = StringRef{uri.c_str() + f.off, f.len};
+      relq = StringRef{uri.data() + f.off, f.len};
     }
   }
 
-  path = http2::path_join(balloc, base, StringRef{}, rel, relq);
+  path = path_join(balloc, base, StringRef{}, rel, relq);
 
   return 0;
 }
@@ -1737,7 +1669,7 @@ StringRef path_join(BlockAllocator &balloc, const StringRef &base_path,
       balloc, std::max(static_cast<size_t>(1), base_path.size()) +
                   rel_path.size() + 1 +
                   std::max(base_query.size(), rel_query.size()) + 1);
-  auto p = res.base;
+  auto p = std::begin(res);
 
   if (rel_path.empty()) {
     if (base_path.empty()) {
@@ -1751,12 +1683,12 @@ StringRef path_join(BlockAllocator &balloc, const StringRef &base_path,
         p = std::copy(std::begin(base_query), std::end(base_query), p);
       }
       *p = '\0';
-      return StringRef{res.base, p};
+      return StringRef{std::span{std::begin(res), p}};
     }
     *p++ = '?';
     p = std::copy(std::begin(rel_query), std::end(rel_query), p);
     *p = '\0';
-    return StringRef{res.base, p};
+    return StringRef{std::span{std::begin(res), p}};
   }
 
   auto first = std::begin(rel_path);
@@ -1777,31 +1709,31 @@ StringRef path_join(BlockAllocator &balloc, const StringRef &base_path,
     if (*first == '.') {
       if (first + 1 == last) {
         if (*(p - 1) != '/') {
-          p = eat_file(res.base, p);
+          p = eat_file(std::begin(res), p);
         }
         break;
       }
       if (*(first + 1) == '/') {
         if (*(p - 1) != '/') {
-          p = eat_file(res.base, p);
+          p = eat_file(std::begin(res), p);
         }
         first += 2;
         continue;
       }
       if (*(first + 1) == '.') {
         if (first + 2 == last) {
-          p = eat_dir(res.base, p);
+          p = eat_dir(std::begin(res), p);
           break;
         }
         if (*(first + 2) == '/') {
-          p = eat_dir(res.base, p);
+          p = eat_dir(std::begin(res), p);
           first += 3;
           continue;
         }
       }
     }
     if (*(p - 1) != '/') {
-      p = eat_file(res.base, p);
+      p = eat_file(std::begin(res), p);
     }
     auto slash = std::find(first, last, '/');
     if (slash == last) {
@@ -1818,7 +1750,7 @@ StringRef path_join(BlockAllocator &balloc, const StringRef &base_path,
     p = std::copy(std::begin(rel_query), std::end(rel_query), p);
   }
   *p = '\0';
-  return StringRef{res.base, p};
+  return StringRef{std::span{std::begin(res), p}};
 }
 
 StringRef normalize_path(BlockAllocator &balloc, const StringRef &path,
@@ -1834,7 +1766,7 @@ StringRef normalize_path(BlockAllocator &balloc, const StringRef &path,
 
   // includes last terminal NULL.
   auto result = make_byte_ref(balloc, path.size() + 1);
-  auto p = result.base;
+  auto p = std::begin(result);
 
   auto it = std::begin(path);
   for (; it + 2 < std::end(path);) {
@@ -1864,8 +1796,8 @@ StringRef normalize_path(BlockAllocator &balloc, const StringRef &path,
   p = std::copy(it, std::end(path), p);
   *p = '\0';
 
-  return path_join(balloc, StringRef{}, StringRef{}, StringRef{result.base, p},
-                   query);
+  return path_join(balloc, StringRef{}, StringRef{},
+                   StringRef{std::span{std::begin(result), p}}, query);
 }
 
 StringRef normalize_path_colon(BlockAllocator &balloc, const StringRef &path,
@@ -1881,7 +1813,7 @@ StringRef normalize_path_colon(BlockAllocator &balloc, const StringRef &path,
 
   // includes last terminal NULL.
   auto result = make_byte_ref(balloc, path.size() + 1);
-  auto p = result.base;
+  auto p = std::begin(result);
 
   auto it = std::begin(path);
   for (; it + 2 < std::end(path);) {
@@ -1911,14 +1843,14 @@ StringRef normalize_path_colon(BlockAllocator &balloc, const StringRef &path,
   p = std::copy(it, std::end(path), p);
   *p = '\0';
 
-  return path_join(balloc, StringRef{}, StringRef{}, StringRef{result.base, p},
-                   query);
+  return path_join(balloc, StringRef{}, StringRef{},
+                   StringRef{std::span{std::begin(result), p}}, query);
 }
 
 std::string normalize_path(const StringRef &path, const StringRef &query) {
   BlockAllocator balloc(1024, 1024);
 
-  return normalize_path(balloc, path, query).str();
+  return std::string{normalize_path(balloc, path, query)};
 }
 
 StringRef rewrite_clean_path(BlockAllocator &balloc, const StringRef &src) {
@@ -1938,15 +1870,15 @@ StringRef rewrite_clean_path(BlockAllocator &balloc, const StringRef &src) {
 
 StringRef copy_lower(BlockAllocator &balloc, const StringRef &src) {
   auto iov = make_byte_ref(balloc, src.size() + 1);
-  auto p = iov.base;
+  auto p = std::begin(iov);
   p = std::copy(std::begin(src), std::end(src), p);
   *p = '\0';
-  util::inp_strlower(iov.base, p);
-  return StringRef{iov.base, p};
+  util::inp_strlower(std::begin(iov), p);
+  return StringRef{std::span{std::begin(iov), p}};
 }
 
 bool contains_trailers(const StringRef &s) {
-  constexpr auto trailers = StringRef::from_lit("trailers");
+  constexpr auto trailers = "trailers"_sr;
 
   for (auto p = std::begin(s), end = std::end(s);; ++p) {
     p = std::find_if(p, end, [](char c) { return c != ' ' && c != '\t'; });
@@ -1971,18 +1903,18 @@ bool contains_trailers(const StringRef &s) {
 }
 
 StringRef make_websocket_accept_token(uint8_t *dest, const StringRef &key) {
-  static constexpr uint8_t magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  std::array<uint8_t, base64::encode_length(16) + str_size(magic)> s;
+  static constexpr char magic[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  std::array<char, base64::encode_length(16) + str_size(magic)> s;
   auto p = std::copy(std::begin(key), std::end(key), std::begin(s));
   std::copy_n(magic, str_size(magic), p);
 
   std::array<uint8_t, 20> h;
-  if (util::sha1(h.data(), StringRef{std::begin(s), std::end(s)}) != 0) {
+  if (util::sha1(h.data(), StringRef{s}) != 0) {
     return StringRef{};
   }
 
   auto end = base64::encode(std::begin(h), std::end(h), dest);
-  return StringRef{dest, end};
+  return StringRef{std::span{dest, end}};
 }
 
 bool legacy_http1(int major, int minor) {

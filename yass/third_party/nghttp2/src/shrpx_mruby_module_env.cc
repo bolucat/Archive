@@ -90,7 +90,7 @@ mrb_value env_get_remote_addr(mrb_state *mrb, mrb_value self) {
 
   auto &ipaddr = handler->get_ipaddr();
 
-  return mrb_str_new(mrb, ipaddr.c_str(), ipaddr.size());
+  return mrb_str_new(mrb, ipaddr.data(), ipaddr.size());
 }
 } // namespace
 
@@ -114,7 +114,7 @@ mrb_value env_get_server_addr(mrb_state *mrb, mrb_value self) {
   auto handler = upstream->get_client_handler();
   auto faddr = handler->get_upstream_addr();
 
-  return mrb_str_new(mrb, faddr->host.c_str(), faddr->host.size());
+  return mrb_str_new(mrb, faddr->host.data(), faddr->host.size());
 }
 } // namespace
 
@@ -137,7 +137,7 @@ mrb_value env_get_tls_sni(mrb_state *mrb, mrb_value self) {
   auto handler = upstream->get_client_handler();
   auto sni = handler->get_tls_sni();
 
-  return mrb_str_new(mrb, sni.c_str(), sni.size());
+  return mrb_str_new(mrb, sni.data(), sni.size());
 }
 } // namespace
 
@@ -172,11 +172,10 @@ mrb_value env_get_tls_client_fingerprint_md(mrb_state *mrb, const EVP_MD *md) {
     mrb_raise(mrb, E_RUNTIME_ERROR, "could not compute client fingerprint");
   }
 
-  // TODO Use template version of format_hex
   auto &balloc = downstream->get_block_allocator();
   auto f = util::format_hex(balloc,
-                            StringRef{std::begin(buf), std::begin(buf) + slen});
-  return mrb_str_new(mrb, f.c_str(), f.size());
+                            std::span{buf.data(), static_cast<size_t>(slen)});
+  return mrb_str_new(mrb, f.data(), f.size());
 }
 } // namespace
 
@@ -219,7 +218,7 @@ mrb_value env_get_tls_client_subject_name(mrb_state *mrb, mrb_value self) {
 #if !OPENSSL_3_0_0_API
   X509_free(x);
 #endif // !OPENSSL_3_0_0_API
-  return mrb_str_new(mrb, name.c_str(), name.size());
+  return mrb_str_new(mrb, name.data(), name.size());
 }
 } // namespace
 
@@ -249,7 +248,7 @@ mrb_value env_get_tls_client_issuer_name(mrb_state *mrb, mrb_value self) {
 #if !OPENSSL_3_0_0_API
   X509_free(x);
 #endif // !OPENSSL_3_0_0_API
-  return mrb_str_new(mrb, name.c_str(), name.size());
+  return mrb_str_new(mrb, name.data(), name.size());
 }
 } // namespace
 
@@ -279,7 +278,7 @@ mrb_value env_get_tls_client_serial(mrb_state *mrb, mrb_value self) {
 #if !OPENSSL_3_0_0_API
   X509_free(x);
 #endif // !OPENSSL_3_0_0_API
-  return mrb_str_new(mrb, sn.c_str(), sn.size());
+  return mrb_str_new(mrb, sn.data(), sn.size());
 }
 } // namespace
 
@@ -403,10 +402,9 @@ mrb_value env_get_tls_session_id(mrb_state *mrb, mrb_value self) {
   unsigned int session_id_length = 0;
   auto session_id = SSL_SESSION_get_id(session, &session_id_length);
 
-  // TODO Use template version of util::format_hex.
   auto &balloc = downstream->get_block_allocator();
-  auto id = util::format_hex(balloc, StringRef{session_id, session_id_length});
-  return mrb_str_new(mrb, id.c_str(), id.size());
+  auto id = util::format_hex(balloc, std::span{session_id, session_id_length});
+  return mrb_str_new(mrb, id.data(), id.size());
 }
 } // namespace
 
@@ -433,7 +431,7 @@ mrb_value env_get_alpn(mrb_state *mrb, mrb_value self) {
   auto upstream = downstream->get_upstream();
   auto handler = upstream->get_client_handler();
   auto alpn = handler->get_alpn();
-  return mrb_str_new(mrb, alpn.c_str(), alpn.size());
+  return mrb_str_new(mrb, alpn.data(), alpn.size());
 }
 } // namespace
 

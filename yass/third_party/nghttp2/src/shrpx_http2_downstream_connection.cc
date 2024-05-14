@@ -295,11 +295,11 @@ int Http2DownstreamConnection::push_request_headers() {
               httpconf.add_request_headers.size());
 
   if (req.connect_proto == ConnectProto::WEBSOCKET) {
-    nva.push_back(http2::make_nv_ll(":method", "CONNECT"));
-    nva.push_back(http2::make_nv_ll(":protocol", "websocket"));
+    nva.push_back(http2::make_field(":method"_sr, "CONNECT"_sr));
+    nva.push_back(http2::make_field(":protocol"_sr, "websocket"_sr));
   } else {
-    nva.push_back(http2::make_nv_ls_nocopy(
-        ":method", http2::to_method_string(req.method)));
+    nva.push_back(
+        http2::make_field(":method"_sr, http2::to_method_string(req.method)));
   }
 
   if (!req.regular_connect_method()) {
@@ -308,25 +308,25 @@ int Http2DownstreamConnection::push_request_headers() {
     auto addr = http2session_->get_addr();
     assert(addr);
     // We will handle more protocol scheme upgrade in the future.
-    if (addr->tls && addr->upgrade_scheme && req.scheme == "http") {
-      nva.push_back(http2::make_nv_ll(":scheme", "https"));
+    if (addr->tls && addr->upgrade_scheme && req.scheme == "http"_sr) {
+      nva.push_back(http2::make_field(":scheme"_sr, "https"_sr));
     } else {
-      nva.push_back(http2::make_nv_ls_nocopy(":scheme", req.scheme));
+      nva.push_back(http2::make_field(":scheme"_sr, req.scheme));
     }
 
     if (req.method == HTTP_OPTIONS && req.path.empty()) {
-      nva.push_back(http2::make_nv_ll(":path", "*"));
+      nva.push_back(http2::make_field(":path"_sr, "*"_sr));
     } else {
-      nva.push_back(http2::make_nv_ls_nocopy(":path", req.path));
+      nva.push_back(http2::make_field(":path"_sr, req.path));
     }
 
     if (!req.no_authority || req.connect_proto != ConnectProto::NONE) {
-      nva.push_back(http2::make_nv_ls_nocopy(":authority", authority));
+      nva.push_back(http2::make_field(":authority"_sr, authority));
     } else {
-      nva.push_back(http2::make_nv_ls_nocopy("host", authority));
+      nva.push_back(http2::make_field("host"_sr, authority));
     }
   } else {
-    nva.push_back(http2::make_nv_ls_nocopy(":authority", authority));
+    nva.push_back(http2::make_field(":authority"_sr, authority));
   }
 
   auto &fwdconf = httpconf.forwarded;
@@ -354,7 +354,7 @@ int Http2DownstreamConnection::push_request_headers() {
   auto conn = handler->get_connection();
 
   if (conn->tls.ssl && !SSL_is_init_finished(conn->tls.ssl)) {
-    nva.push_back(http2::make_nv_ll("early-data", "1"));
+    nva.push_back(http2::make_field("early-data"_sr, "1"_sr));
   }
 #endif // NGHTTP2_GENUINE_OPENSSL || NGHTTP2_OPENSSL_IS_BORINGSSL
 
@@ -377,15 +377,14 @@ int Http2DownstreamConnection::push_request_headers() {
         if (value.empty()) {
           value = fwd->value;
         } else {
-          value = concat_string_ref(balloc, fwd->value,
-                                    StringRef::from_lit(", "), value);
+          value = concat_string_ref(balloc, fwd->value, ", "_sr, value);
         }
       }
 
-      nva.push_back(http2::make_nv_ls_nocopy("forwarded", value));
+      nva.push_back(http2::make_field("forwarded"_sr, value));
     }
   } else if (fwd) {
-    nva.push_back(http2::make_nv_ls_nocopy("forwarded", fwd->value));
+    nva.push_back(http2::make_field("forwarded"_sr, fwd->value));
   }
 
   auto xff = xffconf.strip_incoming ? nullptr
@@ -395,14 +394,13 @@ int Http2DownstreamConnection::push_request_headers() {
     StringRef xff_value;
     const auto &addr = upstream->get_client_handler()->get_ipaddr();
     if (xff) {
-      xff_value = concat_string_ref(balloc, xff->value,
-                                    StringRef::from_lit(", "), addr);
+      xff_value = concat_string_ref(balloc, xff->value, ", "_sr, addr);
     } else {
       xff_value = addr;
     }
-    nva.push_back(http2::make_nv_ls_nocopy("x-forwarded-for", xff_value));
+    nva.push_back(http2::make_field("x-forwarded-for"_sr, xff_value));
   } else if (xff) {
-    nva.push_back(http2::make_nv_ls_nocopy("x-forwarded-for", xff->value));
+    nva.push_back(http2::make_field("x-forwarded-for"_sr, xff->value));
   }
 
   if (!config->http2_proxy && !req.regular_connect_method()) {
@@ -414,21 +412,20 @@ int Http2DownstreamConnection::push_request_headers() {
       StringRef xfp_value;
       // We use same protocol with :scheme header field
       if (xfp) {
-        xfp_value = concat_string_ref(balloc, xfp->value,
-                                      StringRef::from_lit(", "), req.scheme);
+        xfp_value = concat_string_ref(balloc, xfp->value, ", "_sr, req.scheme);
       } else {
         xfp_value = req.scheme;
       }
-      nva.push_back(http2::make_nv_ls_nocopy("x-forwarded-proto", xfp_value));
+      nva.push_back(http2::make_field("x-forwarded-proto"_sr, xfp_value));
     } else if (xfp) {
-      nva.push_back(http2::make_nv_ls_nocopy("x-forwarded-proto", xfp->value));
+      nva.push_back(http2::make_field("x-forwarded-proto"_sr, xfp->value));
     }
   }
 
   auto via = req.fs.header(http2::HD_VIA);
   if (httpconf.no_via) {
     if (via) {
-      nva.push_back(http2::make_nv_ls_nocopy("via", (*via).value));
+      nva.push_back(http2::make_field("via"_sr, (*via).value));
     }
   } else {
     size_t vialen = 16;
@@ -437,7 +434,7 @@ int Http2DownstreamConnection::push_request_headers() {
     }
 
     auto iov = make_byte_ref(balloc, vialen + 1);
-    auto p = iov.base;
+    auto p = std::begin(iov);
 
     if (via) {
       p = std::copy(std::begin(via->value), std::end(via->value), p);
@@ -446,7 +443,8 @@ int Http2DownstreamConnection::push_request_headers() {
     p = http::create_via_header_value(p, req.http_major, req.http_minor);
     *p = '\0';
 
-    nva.push_back(http2::make_nv_ls_nocopy("via", StringRef{iov.base, p}));
+    nva.push_back(
+        http2::make_field("via"_sr, StringRef{std::span{std::begin(iov), p}}));
   }
 
   auto te = req.fs.header(http2::HD_TE);
@@ -454,22 +452,23 @@ int Http2DownstreamConnection::push_request_headers() {
   // "trailers".  We just forward "trailers".
   // TODO more strict handling required here.
   if (te && http2::contains_trailers(te->value)) {
-    nva.push_back(http2::make_nv_ll("te", "trailers"));
+    nva.push_back(http2::make_field("te"_sr, "trailers"_sr));
   }
 
   for (auto &p : httpconf.add_request_headers) {
-    nva.push_back(http2::make_nv_nocopy(p.name, p.value));
+    nva.push_back(http2::make_field(p.name, p.value));
   }
 
   if (LOG_ENABLED(INFO)) {
     std::stringstream ss;
     for (auto &nv : nva) {
-      if (util::streq_l("authorization", nv.name, nv.namelen)) {
-        ss << TTY_HTTP_HD << StringRef{nv.name, nv.namelen} << TTY_RST
-           << ": <redacted>\n";
+      auto name = StringRef{nv.name, nv.namelen};
+
+      if ("authorization"_sr == name) {
+        ss << TTY_HTTP_HD << name << TTY_RST << ": <redacted>\n";
         continue;
       }
-      ss << TTY_HTTP_HD << StringRef{nv.name, nv.namelen} << TTY_RST << ": "
+      ss << TTY_HTTP_HD << name << TTY_RST << ": "
          << StringRef{nv.value, nv.valuelen} << "\n";
     }
     DCLOG(INFO, this) << "HTTP request headers\n" << ss.str();
