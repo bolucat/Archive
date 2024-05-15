@@ -2,11 +2,12 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-rc.17
+#### 1.9.0-rc.18
 
 * Add custom prefix support in EDNS0 client subnet options
 * Fix hysteria2 crash
 * Fix `store_rdrc` corrupted
+* Update quic-go to v0.43.1
 * Fixes and improvements
 
 #### 1.9.0-rc.16
