@@ -49,6 +49,15 @@ static void ReforgeHttpRequestImpl(std::string* header,
     if (key == "Proxy-Connection") {
       continue;
     }
+    if (key == "Proxy-Authorization") {
+      continue;
+    }
+    if (additional_headers) {
+      auto has_key = [&](const std::pair<std::string, std::string>& rhs) { return rhs.first == key; };
+      if (std::find_if(additional_headers->begin(), additional_headers->end(), has_key) != additional_headers->end()) {
+        continue;
+      }
+    }
     ss << key << ": " << value << "\r\n";
   }
   if (additional_headers) {
@@ -265,6 +274,9 @@ void HttpRequestParser::ProcessHeaders(const quiche::BalsaHeaders& headers) {
     if (key == "Content-Type") {
       content_type_ = std::string(value);
     }
+    if (key == "Connection") {
+      connection_ = std::string(value);
+    }
   }
 }
 
@@ -314,6 +326,11 @@ void HttpRequestParser::OnRequestFirstLineInput(std::string_view /*line_input*/,
     status_ = ParserStatus::Error;
     error_message_ = "HPE_INVALID_VERSION";
     return;
+  }
+  if (version_input == "HTTP/1.1") {
+    connection_ = "Keep-Alive";
+  } else {
+    connection_ = "Close";
   }
 }
 
@@ -481,6 +498,12 @@ int HttpRequestParser::OnReadHttpRequestURL(http_parser* p, const char* buf, siz
     }
     self->http_is_connect_ = true;
   }
+
+  if (p->http_major == 1 && p->http_minor == 1) {
+    self->connection_ = "Keep-Alive";
+  } else {
+    self->connection_ = "Close";
+  }
   return 0;
 }
 
@@ -525,6 +548,9 @@ int HttpRequestParser::OnReadHttpRequestHeaderValue(http_parser* parser, const c
   }
   if (self->http_field_ == "Content-Type") {
     self->content_type_ = std::string(buf, len);
+  }
+  if (self->http_field_ == "Connection") {
+    self->connection_ = std::string(buf, len);
   }
   return 0;
 }
