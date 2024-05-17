@@ -60,6 +60,7 @@
   "Sort by delay": "Sort by delay",
   "Sort by name": "Sort by name",
   "Delay check URL": "Delay check URL",
+  "Delay check to cancel fixed": "Delay check to cancel fixed",
   "Proxy basic": "Proxy basic",
   "Proxy detail": "Proxy detail",
   "Filter": "Filter",
@@ -214,6 +215,8 @@
   "System and Mixed Can Only be Used in Service Mode": "System and Mixed Can Only be Used in Service Mode",
   "Information: Please make sure that the Clash Verge Service is installed and enabled": "Information: Please make sure that the Clash Verge Service is installed and enabled",
 
+  "Match Case": "Match Case",
+  "Match Whole Word": "Match Whole Word",
   "Use Regular Expression": "Use Regular Expression",
 
   "External Controller Address Modified": "External Controller Address Modified",

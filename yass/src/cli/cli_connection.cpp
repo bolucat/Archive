@@ -114,24 +114,7 @@ bool DataFrameSource::Send(absl::string_view frame_header, size_t payload_length
   }
 
   const int64_t result = connection_->OnReadyToSend(concatenated);
-  // Write encountered error.
-  if (result < 0) {
-    connection_->OnConnectionError(http2::adapter::Http2VisitorInterface::ConnectionError::kSendError);
-    return false;
-  }
-
-  // Write blocked.
-  if (result == 0) {
-    connection_->blocked_stream_ = stream_id_;
-    return false;
-  }
-
-  if (static_cast<size_t>(result) < concatenated.size()) {
-    // Probably need to handle this better within this test class.
-    QUICHE_LOG(DFATAL) << "DATA frame not fully flushed. Connection will be corrupt!";
-    connection_->OnConnectionError(http2::adapter::Http2VisitorInterface::ConnectionError::kSendError);
-    return false;
-  }
+  DCHECK_EQ(static_cast<size_t>(result), concatenated.size());
 
   if (!payload_length) {
     return true;
@@ -189,12 +172,6 @@ void CliConnection::start() {
   upstream_writable_ = false;
   downstream_readable_ = true;
 
-  int ret = resolver_.Init();
-  if (ret < 0) {
-    LOG(WARNING) << "resolver initialize failure";
-    close();
-    return;
-  }
   ReadMethodSelect();
 }
 
@@ -206,27 +183,12 @@ void CliConnection::close() {
           << " disconnected with client at stage: " << CliConnection::state_to_str(CurrentState());
   asio::error_code ec;
   closed_ = true;
-  resolver_.Cancel();
+  resolver_.Reset();
   downlink_->close(ec);
   if (ec) {
     VLOG(1) << "close() error: " << ec;
   }
   if (channel_) {
-#ifdef HAVE_QUICHE
-    if (adapter_) {
-      if (data_frame_) {
-        data_frame_->set_last_frame(true);
-        adapter_->ResumeStream(stream_id_);
-        SendIfNotProcessing();
-        data_frame_ = nullptr;
-        stream_id_ = 0;
-      }
-      adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::HTTP2_NO_ERROR, ""sv);
-      DCHECK(adapter_->want_write());
-      SendIfNotProcessing();
-      WriteUpstreamInPipe();
-    }
-#endif
     channel_->close();
   }
   on_disconnect();
@@ -234,6 +196,7 @@ void CliConnection::close() {
 
 #ifdef HAVE_QUICHE
 void CliConnection::SendIfNotProcessing() {
+  DCHECK(!http2_in_recv_callback_);
   if (!processing_responses_) {
     processing_responses_ = true;
     adapter_->Send();
@@ -291,8 +254,6 @@ bool CliConnection::OnEndStream(StreamId stream_id) {
     stream_id_ = 0;
     adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::HTTP2_NO_ERROR, ""sv);
     DCHECK(adapter_->want_write());
-    SendIfNotProcessing();
-    WriteUpstreamInPipe();
   }
   return true;
 }
@@ -310,8 +271,12 @@ bool CliConnection::OnCloseStream(StreamId stream_id, http2::adapter::Http2Error
   return true;
 }
 
-void CliConnection::OnConnectionError(ConnectionError /*error*/) {
-  disconnected(asio::error::connection_aborted);
+void CliConnection::OnConnectionError(ConnectionError error) {
+  LOG(INFO) << "Connection (client) " << connection_id() << " http2 connection error: " << (int)error;
+  data_frame_ = nullptr;
+  stream_id_ = 0;
+  adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::HTTP2_NO_ERROR, ""sv);
+  DCHECK(adapter_->want_write());
 }
 
 bool CliConnection::OnFrameHeader(StreamId stream_id, size_t /*length*/, uint8_t /*type*/, uint8_t /*flags*/) {
@@ -728,6 +693,12 @@ asio::error_code CliConnection::OnReadHttpRequest(std::shared_ptr<IOBuf> buf) {
       http_keep_alive_remaining_bytes_ += parser.content_length() + header.size() - buf->length();
       VLOG(3) << "Connection (client) " << connection_id() << " Host: " << http_host_ << " PORT: " << http_port_
               << " KEEPALIVE: " << std::boolalpha << http_is_keep_alive_;
+      if (parser.transfer_encoding_is_chunked()) {
+        // See #957
+        LOG(WARNING) << "Connection (client) " << connection_id()
+                     << " detected chunked transfer encoding, disabling keep alive handling";
+        http_is_keep_alive_ = false;
+      }
     } else {
       VLOG(3) << "Connection (client) " << connection_id() << " CONNECT: " << http_host_ << " PORT: " << http_port_;
     }
@@ -1041,14 +1012,21 @@ try_again:
 #ifdef HAVE_QUICHE
   if (adapter_) {
     absl::string_view remaining_buffer(reinterpret_cast<const char*>(buf->data()), buf->length());
-    while (!remaining_buffer.empty()) {
-      int result = adapter_->ProcessBytes(remaining_buffer);
+    while (!remaining_buffer.empty() && adapter_->want_read()) {
+      http2_in_recv_callback_ = true;
+      int64_t result = adapter_->ProcessBytes(remaining_buffer);
+      http2_in_recv_callback_ = false;
       if (result < 0) {
-        ec = asio::error::connection_refused;
-        disconnected(ec);
-        return nullptr;
+        /* handled in OnConnectionError inside ProcessBytes call */
+        goto out;
       }
       remaining_buffer = remaining_buffer.substr(result);
+    }
+    // don't want read anymore (after goaway sent)
+    if (UNLIKELY(!remaining_buffer.empty())) {
+      ec = asio::error::connection_refused;
+      disconnected(ec);
+      return nullptr;
     }
     // not enough buffer for recv window
     if (downstream_.byte_length() < H2_STREAM_WINDOW_SIZE) {
@@ -1867,26 +1845,40 @@ void CliConnection::OnCmdConnect(const std::string& domain_name, uint16_t port) 
   DCHECK_LE(domain_name.size(), (unsigned int)TLSEXT_MAXLEN_host_name);
 
   if (CIPHER_METHOD_IS_SOCKS_NON_DOMAIN_NAME(method())) {
+    VLOG(1) << "Connection (client) " << connection_id() << " resolving domain name " << domain_name << " locally";
     scoped_refptr<CliConnection> self(this);
-    resolver_.AsyncResolve(domain_name, port,
-                           [this, self](const asio::error_code& ec, asio::ip::tcp::resolver::results_type results) {
-                             // Cancelled, safe to ignore
-                             if (UNLIKELY(ec == asio::error::operation_aborted)) {
-                               return;
-                             }
-                             if (closed_) {
-                               return;
-                             }
-                             if (ec) {
-                               disconnected(ec);
-                               return;
-                             }
-                             for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
-                               ss_request_ = std::make_unique<ss::request>(*iter);
-                               OnConnect();
-                               break;
-                             }
-                           });
+    int ret = resolver_.Init();
+    if (ret < 0) {
+      LOG(WARNING) << "resolver initialize failure";
+      OnDisconnect(asio::error::host_not_found);
+      return;
+    }
+    resolver_.AsyncResolve(
+        domain_name, port,
+        [this, self, domain_name](const asio::error_code& ec, asio::ip::tcp::resolver::results_type results) {
+          resolver_.Reset();
+          // Cancelled, safe to ignore
+          if (UNLIKELY(ec == asio::error::operation_aborted)) {
+            return;
+          }
+          if (closed_) {
+            return;
+          }
+          if (ec) {
+            OnDisconnect(ec);
+            return;
+          }
+          asio::ip::tcp::endpoint endpoint;
+          for (auto iter = std::begin(results); iter != std::end(results); ++iter) {
+            endpoint = iter->endpoint();
+            break;
+          }
+          DCHECK(!endpoint.address().is_unspecified());
+          VLOG(1) << "Connection (client) " << connection_id() << " resolved domain name " << domain_name << " to "
+                  << endpoint.address();
+          ss_request_ = std::make_unique<ss::request>(endpoint);
+          OnConnect();
+        });
     return;
   }
   ss_request_ = std::make_unique<ss::request>(domain_name, port);
@@ -2229,16 +2221,6 @@ void CliConnection::disconnected(asio::error_code ec) {
   scoped_refptr<CliConnection> self(this);
   VLOG(1) << "Connection (client) " << connection_id() << " upstream: lost connection with: " << remote_domain()
           << " due to " << ec;
-#ifdef HAVE_QUICHE
-  if (data_frame_) {
-    data_frame_->set_last_frame(true);
-    adapter_->ResumeStream(stream_id_);
-    SendIfNotProcessing();
-    data_frame_ = nullptr;
-    stream_id_ = 0;
-    WriteUpstreamInPipe();
-  }
-#endif
   upstream_readable_ = false;
   upstream_writable_ = false;
   channel_->close();

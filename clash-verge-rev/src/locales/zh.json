@@ -60,6 +60,7 @@
   "Sort by delay": "按延迟排序",
   "Sort by name": "按名称排序",
   "Delay check URL": "延迟测试链接",
+  "Delay check to cancel fixed": "进行延迟测试，以取消固定",
   "Proxy basic": "隐藏节点细节",
   "Proxy detail": "展示节点细节",
   "Filter": "过滤节点",
@@ -214,6 +215,8 @@
   "System and Mixed Can Only be Used in Service Mode": "System 和 Mixed 只能在服务模式下使用",
   "Information: Please make sure that the Clash Verge Service is installed and enabled": "提示信息: 请确保 Clash Verge Service 已安装并启用",
 
+  "Match Case": "区分大小写",
+  "Match Whole Word": "全字匹配",
   "Use Regular Expression": "使用正则表达式",
 
   "External Controller Address Modified": "外部控制器监听地址已修改",
