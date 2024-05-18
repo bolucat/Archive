@@ -13,19 +13,12 @@ use nix::ioctl_readwrite;
 use once_cell::sync::Lazy;
 use socket2::{Protocol, SockAddr};
 
-use super::pfvar::{
-    in6_addr,
-    in_addr,
-    pf_addr,
-    pfioc_natlook,
-    pfioc_states,
-    pfsync_state,
-    sockaddr_in,
-    sockaddr_in6,
-    PF_OUT,
-};
+use super::pfvar::{in6_addr, in_addr, pfioc_natlook, pfioc_states, sockaddr_in, sockaddr_in6, PF_OUT};
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use super::pfvar::{pf_addr, pfsync_state};
 
 ioctl_readwrite!(ioc_natlook, 'D', 23, pfioc_natlook);
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 ioctl_readwrite!(ioc_getstates, 'D', 25, pfioc_states);
 
 pub struct PacketFilter {
@@ -60,6 +53,7 @@ impl PacketFilter {
     pub fn natlook(&self, bind_addr: &SocketAddr, peer_addr: &SocketAddr, proto: Protocol) -> io::Result<SocketAddr> {
         match proto {
             Protocol::TCP => self.tcp_natlook(bind_addr, peer_addr, proto),
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             Protocol::UDP => self.udp_natlook(bind_addr, peer_addr, proto),
             _ => Err(io::ErrorKind::InvalidInput.into()),
         }
@@ -210,6 +204,7 @@ impl PacketFilter {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     fn udp_natlook(&self, bind_addr: &SocketAddr, peer_addr: &SocketAddr, _proto: Protocol) -> io::Result<SocketAddr> {
         unsafe {
             // Get all states

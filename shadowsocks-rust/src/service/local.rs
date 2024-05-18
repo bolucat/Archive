@@ -1001,6 +1001,9 @@ pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = Exi
             }
         }
 
+        #[cfg(not(feature = "local-online-config"))]
+        let _ = service_config;
+
         // Fetch servers from remote for the first time
         #[cfg(feature = "local-online-config")]
         if let Some(ref online_config) = service_config.online_config {

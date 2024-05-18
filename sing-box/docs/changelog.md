@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.9.0-rc.19
+
+* Fixes and improvements
+
+#### 1.8.14
+
+* Fix hysteria2 panic
+* Fixes and improvements
+
 #### 1.9.0-rc.18
 
 * Add custom prefix support in EDNS0 client subnet options
