@@ -364,30 +364,25 @@ func updateConfigs(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateGeoDatabases(w http.ResponseWriter, r *http.Request) {
-	if updater.UpdatingGeo.Load() {
-		render.Status(r, http.StatusBadRequest)
-		render.JSON(w, r, newError("updating..."))
-		return
-	}
-
 	err := updater.UpdateGeoDatabases()
 	if err != nil {
-		render.Status(r, http.StatusBadRequest)
+		log.Errorln("[REST-API] update GEO databases failed: %v", err)
+		render.Status(r, http.StatusInternalServerError)
 		render.JSON(w, r, newError(err.Error()))
 		return
 	}
 
-	go func() {
-		cfg, err := executor.ParseWithPath(C.Path.Config())
-		if err != nil {
-			log.Errorln("[REST-API] update GEO databases failed: %v", err)
-			return
-		}
+	cfg, err := executor.ParseWithPath(C.Path.Config())
+	if err != nil {
+		log.Errorln("[REST-API] update GEO databases failed: %v", err)
+		render.Status(r, http.StatusInternalServerError)
+		render.JSON(w, r, newError("Error parsing configuration"))
+		return
+	}
 
-		log.Warnln("[REST-API] update GEO databases successful, apply config...")
+	log.Warnln("[GEO] update GEO databases success, applying config")
 
-		executor.ApplyConfig(cfg, false)
-	}()
+	executor.ApplyConfig(cfg, false)
 
 	render.NoContent(w, r)
 }

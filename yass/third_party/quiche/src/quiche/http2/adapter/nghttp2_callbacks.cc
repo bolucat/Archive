@@ -17,8 +17,13 @@ namespace http2 {
 namespace adapter {
 namespace callbacks {
 
-ssize_t OnReadyToSend(nghttp2_session* /* session */, const uint8_t* data,
-                      size_t length, int flags, void* user_data) {
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+nghttp2_ssize
+#else
+ssize_t
+#endif
+OnReadyToSend(nghttp2_session* /* session */, const uint8_t* data,
+              size_t length, int flags, void* user_data) {
   QUICHE_CHECK_NE(user_data, nullptr);
   auto* visitor = static_cast<Http2VisitorInterface*>(user_data);
   const int64_t result = visitor->OnReadyToSend(ToStringView(data, length));
@@ -318,9 +323,14 @@ int OnUnpackExtensionCallback(nghttp2_session* /*session*/, void** /*payload*/,
   return 0;
 }
 
-ssize_t OnPackExtensionCallback(nghttp2_session* /*session*/, uint8_t* buf,
-                                size_t len, const nghttp2_frame* frame,
-                                void* user_data) {
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+nghttp2_ssize
+#else
+ssize_t
+#endif
+OnPackExtensionCallback(nghttp2_session* /*session*/, uint8_t* buf,
+                        size_t len, const nghttp2_frame* frame,
+                        void* user_data) {
   QUICHE_CHECK_NE(user_data, nullptr);
   auto* source = static_cast<MetadataSource*>(frame->ext.payload);
   if (source == nullptr) {
@@ -352,7 +362,11 @@ nghttp2_session_callbacks_unique_ptr Create() {
   nghttp2_session_callbacks* callbacks;
   nghttp2_session_callbacks_new(&callbacks);
 
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  nghttp2_session_callbacks_set_send_callback2(callbacks, &OnReadyToSend);
+#else
   nghttp2_session_callbacks_set_send_callback(callbacks, &OnReadyToSend);
+#endif
   nghttp2_session_callbacks_set_on_begin_frame_callback(callbacks,
                                                         &OnBeginFrame);
   nghttp2_session_callbacks_set_on_frame_recv_callback(callbacks,
@@ -374,8 +388,13 @@ nghttp2_session_callbacks_unique_ptr Create() {
   nghttp2_session_callbacks_set_error_callback2(callbacks, &OnError);
   nghttp2_session_callbacks_set_send_data_callback(
       callbacks, &DataFrameSourceSendCallback);
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  nghttp2_session_callbacks_set_pack_extension_callback2(
+      callbacks, &OnPackExtensionCallback);
+#else
   nghttp2_session_callbacks_set_pack_extension_callback(
       callbacks, &OnPackExtensionCallback);
+#endif
   nghttp2_session_callbacks_set_unpack_extension_callback(
       callbacks, &OnUnpackExtensionCallback);
   nghttp2_session_callbacks_set_on_extension_chunk_recv_callback(

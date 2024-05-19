@@ -81,11 +81,13 @@ bool NgHttp2Adapter::IsServerSession() const {
 }
 
 int64_t NgHttp2Adapter::ProcessBytes(absl::string_view bytes) {
-  const int64_t processed_bytes = session_->ProcessBytes(bytes);
-  if (processed_bytes < 0) {
+  const int64_t status = session_->ProcessBytes(bytes);
+  if (nghttp2_is_fatal(status)) {
+    QUICHE_LOG(WARNING) << "nghttp2_session_mem_recv returned "
+                        << nghttp2_strerror(status);
     visitor_.OnConnectionError(ConnectionError::kParseError);
   }
-  return processed_bytes;
+  return status;
 }
 
 void NgHttp2Adapter::SubmitSettings(absl::Span<const Http2Setting> settings) {
@@ -166,8 +168,9 @@ void NgHttp2Adapter::SubmitMetadata(Http2StreamId stream_id,
 
 int NgHttp2Adapter::Send() {
   const int result = nghttp2_session_send(session_->raw_ptr());
-  if (result != 0) {
-    QUICHE_VLOG(1) << "nghttp2_session_send returned " << result;
+  if (nghttp2_is_fatal(result)) {
+    QUICHE_LOG(WARNING) << "nghttp2_session_send returned "
+                        << nghttp2_strerror(result);
     visitor_.OnConnectionError(ConnectionError::kSendError);
   }
   return result;
@@ -222,9 +225,10 @@ void NgHttp2Adapter::SubmitRst(Http2StreamId stream_id,
   int status =
       nghttp2_submit_rst_stream(session_->raw_ptr(), NGHTTP2_FLAG_NONE,
                                 stream_id, static_cast<uint32_t>(error_code));
-  if (status < 0) {
+  if (nghttp2_is_fatal(status)) {
     QUICHE_LOG(WARNING) << "Reset stream failed: " << stream_id
-                        << " with status code " << status;
+                        << " with status code " << nghttp2_strerror(status);
+    visitor_.OnConnectionError(ConnectionError::kSendError);
   }
 }
 
@@ -234,17 +238,31 @@ int32_t NgHttp2Adapter::SubmitRequest(
     void* stream_user_data) {
   QUICHE_DCHECK_EQ(end_stream, data_source == nullptr);
   auto nvs = GetNghttp2Nvs(headers);
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  std::unique_ptr<nghttp2_data_provider2> provider =
+      MakeDataProvider(data_source.get());
+#else
   std::unique_ptr<nghttp2_data_provider> provider =
       MakeDataProvider(data_source.get());
+#endif
 
-  int32_t stream_id =
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  int32_t result =
+      nghttp2_submit_request2(session_->raw_ptr(), nullptr, nvs.data(),
+                              nvs.size(), provider.get(), stream_user_data);
+#else
+  int32_t result =
       nghttp2_submit_request(session_->raw_ptr(), nullptr, nvs.data(),
                              nvs.size(), provider.get(), stream_user_data);
-  sources_.emplace(stream_id, std::move(data_source));
+#endif
   QUICHE_VLOG(1) << "Submitted request with " << nvs.size()
                  << " request headers and user data " << stream_user_data
-                 << "; resulted in stream " << stream_id;
-  return stream_id;
+                 << "; resulted in stream " << result;
+  if (result < 0) {
+    return result;
+  }
+  sources_.emplace(result, std::move(data_source));
+  return result;
 }
 
 int NgHttp2Adapter::SubmitResponse(Http2StreamId stream_id,
@@ -253,13 +271,23 @@ int NgHttp2Adapter::SubmitResponse(Http2StreamId stream_id,
                                    bool end_stream) {
   QUICHE_DCHECK_EQ(end_stream, data_source == nullptr);
   auto nvs = GetNghttp2Nvs(headers);
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  std::unique_ptr<nghttp2_data_provider2> provider =
+      MakeDataProvider(data_source.get());
+#else
   std::unique_ptr<nghttp2_data_provider> provider =
       MakeDataProvider(data_source.get());
+#endif
 
   sources_.emplace(stream_id, std::move(data_source));
 
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  int result = nghttp2_submit_response2(session_->raw_ptr(), stream_id,
+                                        nvs.data(), nvs.size(), provider.get());
+#else
   int result = nghttp2_submit_response(session_->raw_ptr(), stream_id,
                                        nvs.data(), nvs.size(), provider.get());
+#endif
   QUICHE_VLOG(1) << "Submitted response with " << nvs.size()
                  << " response headers; result = " << result;
   return result;
@@ -286,7 +314,13 @@ void* NgHttp2Adapter::GetStreamUserData(Http2StreamId stream_id) {
 }
 
 bool NgHttp2Adapter::ResumeStream(Http2StreamId stream_id) {
-  return 0 == nghttp2_session_resume_data(session_->raw_ptr(), stream_id);
+  int status = nghttp2_session_resume_data(session_->raw_ptr(), stream_id);
+  if (nghttp2_is_fatal(status)) {
+    QUICHE_LOG(WARNING) << "nghttp2_session_resume_data returned "
+                        << nghttp2_strerror(status);
+    visitor_.OnConnectionError(ConnectionError::kSendError);
+  }
+  return 0 == status;
 }
 
 void NgHttp2Adapter::FrameNotSent(Http2StreamId stream_id, uint8_t frame_type) {

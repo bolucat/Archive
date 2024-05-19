@@ -61,7 +61,7 @@ const META_ALPHA_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-x64": "mihomo-darwin-amd64-compatible",
   "darwin-arm64": "mihomo-darwin-arm64",
   "linux-x64": "mihomo-linux-amd64-compatible",
   "linux-ia32": "mihomo-linux-386",
@@ -101,14 +101,14 @@ async function getLatestAlphaVersion() {
 /* ======= clash meta stable ======= */
 const META_VERSION_URL =
   "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt";
-const META_URL_PREFIX = `https://github.com/clash-verge-rev/mihomo/releases/download`;
+const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
 let META_VERSION;
 
 const META_MAP = {
   "win32-x64": "mihomo-windows-amd64-compatible",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64",
+  "darwin-x64": "mihomo-darwin-amd64-compatible",
   "darwin-arm64": "mihomo-darwin-arm64",
   "linux-x64": "mihomo-linux-amd64-compatible",
   "linux-ia32": "mihomo-linux-386",

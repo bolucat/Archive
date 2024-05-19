@@ -13,11 +13,16 @@ namespace {
 const size_t kFrameHeaderSize = 9;
 }
 
-ssize_t DataFrameSourceReadCallback(nghttp2_session* /* session */,
-                                    int32_t /* stream_id */, uint8_t* /* buf */,
-                                    size_t length, uint32_t* data_flags,
-                                    nghttp2_data_source* source,
-                                    void* /* user_data */) {
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+nghttp2_ssize
+#else
+ssize_t
+#endif
+DataFrameSourceReadCallback(nghttp2_session* /* session */,
+                            int32_t /* stream_id */, uint8_t* /* buf */,
+                            size_t length, uint32_t* data_flags,
+                            nghttp2_data_source* source,
+                            void* /* user_data */) {
   *data_flags |= NGHTTP2_DATA_FLAG_NO_COPY;
   auto* frame_source = static_cast<DataFrameSource*>(source->ptr);
   auto [result_length, done] = frame_source->SelectPayloadLength(length);
@@ -47,12 +52,20 @@ int DataFrameSourceSendCallback(nghttp2_session* /* session */,
 
 }  // namespace callbacks
 
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+std::unique_ptr<nghttp2_data_provider2> MakeDataProvider(
+#else
 std::unique_ptr<nghttp2_data_provider> MakeDataProvider(
+#endif
     DataFrameSource* source) {
   if (source == nullptr) {
     return nullptr;
   }
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  auto provider = std::make_unique<nghttp2_data_provider2>();
+#else
   auto provider = std::make_unique<nghttp2_data_provider>();
+#endif
   provider->source.ptr = source;
   provider->read_callback = &callbacks::DataFrameSourceReadCallback;
   return provider;

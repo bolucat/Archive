@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/common/atomic"
@@ -19,8 +18,7 @@ import (
 )
 
 var (
-	updateGeoMux sync.Mutex
-	UpdatingGeo  atomic.Bool
+	UpdatingGeo atomic.Bool
 )
 
 func updateGeoDatabases() error {
@@ -100,22 +98,17 @@ func updateGeoDatabases() error {
 	return nil
 }
 
+var ErrGetDatabaseUpdateSkip = errors.New("GEO database is updating, skip")
+
 func UpdateGeoDatabases() error {
 	log.Infoln("[GEO] Start updating GEO database")
 
-	updateGeoMux.Lock()
-
 	if UpdatingGeo.Load() {
-		updateGeoMux.Unlock()
-		return errors.New("GEO database is updating, skip")
+		return ErrGetDatabaseUpdateSkip
 	}
 
 	UpdatingGeo.Store(true)
-	updateGeoMux.Unlock()
-
-	defer func() {
-		UpdatingGeo.Store(false)
-	}()
+	defer UpdatingGeo.Store(false)
 
 	log.Infoln("[GEO] Updating GEO database")
 
@@ -144,17 +137,16 @@ func getUpdateTime() (err error, time time.Time) {
 	return nil, fileInfo.ModTime()
 }
 
-func RegisterGeoUpdater() {
+func RegisterGeoUpdater(onSuccess func()) {
 	if C.GeoUpdateInterval <= 0 {
 		log.Errorln("[GEO] Invalid update interval: %d", C.GeoUpdateInterval)
 		return
 	}
 
-	ticker := time.NewTicker(time.Duration(C.GeoUpdateInterval) * time.Hour)
-	defer ticker.Stop()
-
-	log.Infoln("[GEO] update GEO database every %d hours", C.GeoUpdateInterval)
 	go func() {
+		ticker := time.NewTicker(time.Duration(C.GeoUpdateInterval) * time.Hour)
+		defer ticker.Stop()
+
 		err, lastUpdate := getUpdateTime()
 		if err != nil {
 			log.Errorln("[GEO] Get GEO database update time error: %s", err.Error())
@@ -167,13 +159,17 @@ func RegisterGeoUpdater() {
 			if err := UpdateGeoDatabases(); err != nil {
 				log.Errorln("[GEO] Failed to update GEO database: %s", err.Error())
 				return
+			} else {
+				onSuccess()
 			}
 		}
 
 		for range ticker.C {
+			log.Infoln("[GEO] updating database every %d hours", C.GeoUpdateInterval)
 			if err := UpdateGeoDatabases(); err != nil {
 				log.Errorln("[GEO] Failed to update GEO database: %s", err.Error())
-				return
+			} else {
+				onSuccess()
 			}
 		}
 	}()

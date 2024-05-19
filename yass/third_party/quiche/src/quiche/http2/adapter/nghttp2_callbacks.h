@@ -16,8 +16,13 @@ namespace callbacks {
 // Http2VisitorInterface.
 
 // Callback once the library is ready to send serialized frames.
-ssize_t OnReadyToSend(nghttp2_session* session, const uint8_t* data,
-                      size_t length, int flags, void* user_data);
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+nghttp2_ssize
+#else
+ssize_t
+#endif
+OnReadyToSend(nghttp2_session* session, const uint8_t* data,
+              size_t length, int flags, void* user_data);
 
 // Callback once a frame header has been received.
 int OnBeginFrame(nghttp2_session* session, const nghttp2_frame_hd* header,
@@ -73,9 +78,14 @@ int OnUnpackExtensionCallback(nghttp2_session* session, void** payload,
 
 // Invoked when nghttp2 is ready to pack an extension payload. Returns the
 // number of bytes serialized to |buf|.
-ssize_t OnPackExtensionCallback(nghttp2_session* session, uint8_t* buf,
-                                size_t len, const nghttp2_frame* frame,
-                                void* user_data);
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+nghttp2_ssize
+#else
+ssize_t
+#endif
+OnPackExtensionCallback(nghttp2_session* session, uint8_t* buf,
+                        size_t len, const nghttp2_frame* frame,
+                        void* user_data);
 
 // Invoked when the library has an error message to deliver.
 int OnError(nghttp2_session* session, int lib_error_code, const char* msg,

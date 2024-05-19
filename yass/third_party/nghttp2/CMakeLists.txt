@@ -24,7 +24,7 @@
 
 cmake_minimum_required(VERSION 3.14)
 # XXX using 1.8.90 instead of 1.9.0-DEV
-project(nghttp2 VERSION 1.62.0)
+project(nghttp2 VERSION 1.62.1)
 
 # See versioning rule:
 #  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
@@ -299,13 +299,7 @@ include(CheckTypeSize)
 # AC_TYPE_SIZE_T
 check_type_size("ssize_t" SIZEOF_SSIZE_T)
 if(SIZEOF_SSIZE_T STREQUAL "")
-  # ssize_t is a signed type in POSIX storing at least -1.
-  # Set it to "int" to match the behavior of AC_TYPE_SSIZE_T (autotools).
-  if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(ssize_t ptrdiff_t)
-  else()
-    set(ssize_t int)
-  endif()
+  set(ssize_t ptrdiff_t)
 endif()
 # AC_TYPE_UINT8_T
 # AC_TYPE_UINT16_T

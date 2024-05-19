@@ -32,9 +32,15 @@ NgHttp2Session::~NgHttp2Session() {
 }
 
 int64_t NgHttp2Session::ProcessBytes(absl::string_view bytes) {
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  return nghttp2_session_mem_recv2(
+      session_.get(), reinterpret_cast<const uint8_t*>(bytes.data()),
+      bytes.size());
+#else
   return nghttp2_session_mem_recv(
       session_.get(), reinterpret_cast<const uint8_t*>(bytes.data()),
       bytes.size());
+#endif
 }
 
 int NgHttp2Session::Consume(Http2StreamId stream_id, size_t num_bytes) {

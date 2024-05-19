@@ -228,7 +228,8 @@ void ServerConnection::SendIfNotProcessing() {
   DCHECK(!http2_in_recv_callback_);
   if (!processing_responses_) {
     processing_responses_ = true;
-    adapter_->Send();
+    while (adapter_->want_write() && adapter_->Send() == 0) {
+    }
     processing_responses_ = false;
   }
 }
@@ -365,8 +366,7 @@ void ServerConnection::OnConnectionError(ConnectionError error) {
   LOG(INFO) << "Connection (server) " << connection_id() << " http2 connection error: " << (int)error;
   data_frame_ = nullptr;
   stream_id_ = 0;
-  adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::HTTP2_NO_ERROR, ""sv);
-  DCHECK(adapter_->want_write());
+  OnDisconnect(asio::error::invalid_argument);
 }
 
 bool ServerConnection::OnFrameHeader(StreamId stream_id, size_t /*length*/, uint8_t /*type*/, uint8_t /*flags*/) {
@@ -1085,11 +1085,14 @@ void ServerConnection::WriteStreamInPipe() {
 
   /* recursively send the remainings */
   while (true) {
-    auto buf = GetNextDownstreamBuf(ec, &bytes_transferred);
+    bool downstream_blocked;
+    auto buf = GetNextDownstreamBuf(ec, &bytes_transferred, &downstream_blocked);
     size_t read = buf ? buf->length() : 0;
     if (ec == asio::error::try_again || ec == asio::error::would_block) {
-      ec = asio::error_code();
-      try_again = true;
+      if (!downstream_blocked) {
+        ec = asio::error_code();
+        try_again = true;
+      }
     } else if (ec) {
       /* not downstream error */
       ec = asio::error_code();
@@ -1170,7 +1173,10 @@ void ServerConnection::WriteStreamInPipe() {
   ProcessSentData(ec, wbytes_transferred);
 }
 
-std::shared_ptr<IOBuf> ServerConnection::GetNextDownstreamBuf(asio::error_code& ec, size_t* bytes_transferred) {
+std::shared_ptr<IOBuf> ServerConnection::GetNextDownstreamBuf(asio::error_code& ec,
+                                                              size_t* bytes_transferred,
+                                                              bool* downstream_blocked) {
+  *downstream_blocked = false;
   if (!downstream_.empty()) {
     DCHECK(!downstream_.front()->empty());
     ec = asio::error_code();
@@ -1193,9 +1199,20 @@ std::shared_ptr<IOBuf> ServerConnection::GetNextDownstreamBuf(asio::error_code& 
     return nullptr;
   }
 
-  std::shared_ptr<IOBuf> buf = IOBuf::create(SOCKET_BUF_SIZE);
+  std::shared_ptr<IOBuf> buf;
   size_t read;
+
+#ifdef HAVE_QUICHE
+  if (data_frame_ && !data_frame_->empty()) {
+    VLOG(2) << "Connection (client) " << connection_id() << " has pending data to send downstream, defer reading";
+    *downstream_blocked = true;
+    ec = asio::error::try_again;
+    goto out;
+  }
+#endif
+
   do {
+    buf = IOBuf::create(SOCKET_BUF_SIZE);
     ec = asio::error_code();
     read = channel_->read_some(buf, ec);
     if (ec == asio::error::interrupted) {
@@ -1241,13 +1258,16 @@ std::shared_ptr<IOBuf> ServerConnection::GetNextDownstreamBuf(asio::error_code& 
 
 out:
 #ifdef HAVE_QUICHE
-  if (data_frame_ && *bytes_transferred) {
+  if (data_frame_) {
     data_frame_->SetSendCompletionCallback(std::function<void()>());
     adapter_->ResumeStream(stream_id_);
     SendIfNotProcessing();
   }
 #endif
   if (downstream_.empty()) {
+    if (read) {
+      *downstream_blocked = true;
+    }
     if (!ec) {
       ec = asio::error::try_again;
     }
@@ -1560,8 +1580,8 @@ void ServerConnection::OnConnect() {
     }
     int submit_result =
         adapter_->SubmitResponse(stream_id_, GenerateHeaders(headers, 200), std::move(data_frame), false);
-    if (submit_result != 0) {
-      OnDisconnect(asio::error::connection_aborted);
+    if (submit_result < 0) {
+      adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::INTERNAL_ERROR, ""sv);
     }
   } else
 #endif
