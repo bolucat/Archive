@@ -2,9 +2,10 @@
 icon: material/alert-decagram
 ---
 
-#### 1.9.0-rc.19
+#### 1.9.0-rc.20
 
-* Fixes and improvements
+* Prioritize `*_route_address` in linux auto-route
+* Fix `*_route_address` in darwin auto-route
 
 #### 1.8.14
 
