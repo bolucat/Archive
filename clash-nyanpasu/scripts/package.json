@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "dependencies": {
     "@actions/github": "6.0.0",
+    "@types/figlet": "1.5.8",
+    "figlet": "1.7.0",
     "telegraf": "4.16.3"
   },
   "devDependencies": {
@@ -13,6 +15,7 @@
     "fs-extra": "11.2.0",
     "https-proxy-agent": "7.0.4",
     "node-fetch": "3.3.2",
-    "picocolors": "1.0.1"
+    "picocolors": "1.0.1",
+    "telegram": "2.21.2"
   }
 }
