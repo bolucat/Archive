@@ -33,7 +33,7 @@ RUN case "$TARGETARCH" in \
     && echo "CC=$CC" \
     && rustup override set stable \
     && rustup target add "$RUST_TARGET" \
-    && RUSTFLAGS="-C linker=$CC" CC=$CC cargo build --target "$RUST_TARGET" --release --features "local-tun local-redir stream-cipher aead-cipher-2022" \
+    && RUSTFLAGS="-C linker=$CC" CC=$CC cargo build --target "$RUST_TARGET" --release --features "full" \
     && mv target/$RUST_TARGET/release/ss* target/release/
 
 FROM alpine:3.17 AS sslocal

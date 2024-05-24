@@ -14,6 +14,8 @@ import {
   MuiDialogActions,
   MuiDialogContent,
   MuiDialogTitle,
+  MuiLinearProgress,
+  MuiMenu,
   MuiPaper,
   MuiSwitch,
 } from "./themeComponents";
@@ -77,6 +79,8 @@ export const createMDYTheme = (themeSchema: ThemeSchema) => {
       MuiDialogActions,
       MuiDialogContent,
       MuiDialogTitle,
+      MuiLinearProgress,
+      MuiMenu,
       MuiPaper,
       MuiSwitch,
     },
