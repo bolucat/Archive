@@ -3,7 +3,7 @@ FROM --platform=$BUILDPLATFORM rust:1.67.1-alpine3.17 AS builder
 ARG TARGETARCH
 
 RUN set -x \
-    && apk add --no-cache build-base
+    && apk add --no-cache build-base cmake
 
 WORKDIR /root/shadowsocks-rust
 
@@ -33,6 +33,7 @@ RUN case "$TARGETARCH" in \
     && echo "CC=$CC" \
     && rustup override set stable \
     && rustup target add "$RUST_TARGET" \
+    && cargo install --force --locked bindgen-cli \
     && RUSTFLAGS="-C linker=$CC" CC=$CC cargo build --target "$RUST_TARGET" --release --features "full" \
     && mv target/$RUST_TARGET/release/ss* target/release/
 

@@ -64,6 +64,18 @@ export const useClash = () => {
     await getProfiles.mutate();
   };
 
+  const updateProfile = async (uid: string, option?: Profile.Option) => {
+    await tauri.updateProfile(uid, option);
+
+    await getProfiles.mutate();
+  };
+
+  const deleteProfile = async (uid: string) => {
+    await tauri.deleteProfile(uid);
+
+    await getProfiles.mutate();
+  };
+
   const getProfileFile = async (id?: string) => {
     if (id) {
       const result = await tauri.readProfileFile(id);
@@ -101,8 +113,12 @@ export const useClash = () => {
     setProfiles,
     setProfilesConfig,
     createProfile,
+    updateProfile,
+    deleteProfile,
     importProfile,
+    viewProfile: tauri.viewProfile,
     getProfileFile,
     getRuntimeLogs,
+    setProfileFile: tauri.saveProfileFile,
   };
 };
