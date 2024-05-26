@@ -932,7 +932,7 @@ dependencies = [
  "windows-sys 0.52.0",
  "winreg 0.52.0",
  "wry",
- "zip 2.0.0",
+ "zip 2.1.0",
  "zip-extensions",
 ]
 
@@ -5109,18 +5109,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.202"
+version = "1.0.203"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "226b61a0d411b2ba5ff6d7f73a476ac4f8bb900373459cd00fab8512828ba395"
+checksum = "7253ab4de971e72fb7be983802300c30b5a7f0c2e56fab8abfc6a214307c0094"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.202"
+version = "1.0.203"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6048858004bcff69094cd972ed40a32500f153bd3be9f716b2eed2e8217c4838"
+checksum = "500cbc0ebeb6f46627f50f3f5811ccf6bf00643be300b4c3eabc0ef55dc5b5ba"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7833,9 +7833,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fccb210625924ecbbe92f9bb497d04b167b64fe5540cec75f10b16e0c51ee92b"
+checksum = "e2568cd0f20e86cd9a7349fe05178f7bd22f22724678448ae5a9bac266df2689"
 dependencies = [
  "aes",
  "arbitrary",
@@ -7849,6 +7849,7 @@ dependencies = [
  "hmac",
  "indexmap 2.2.6",
  "lzma-rs",
+ "memchr",
  "pbkdf2 0.12.2",
  "rand 0.8.5",
  "sha1",
