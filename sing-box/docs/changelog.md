@@ -2,6 +2,28 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.1
+
+* Add tailing comma support in JSON configuration
+* Add simple auto redirect for Android **1**
+* Add bittorrent sniffer **2**
+
+**1**:
+
+It allows you to use redirect inbound in the sing-box Android client
+and automatically configures IPv4 TCP redirection via su.
+
+This may alleviate the symptoms of some OCD patients who think that
+redirect can effectively save power compared to the system HTTP Proxy.
+
+See [Redirect](/configuration/inbound/redirect/).
+
+**2**:
+
+It doesn't exactly work right now. Do not use it for anything other than blocking bittorrent traffics.
+
+See [Protocol Sniff](/configuration/route/sniff/).
+
 ### 1.9.0
 
 * Fixes and improvements
