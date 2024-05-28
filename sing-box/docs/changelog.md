@@ -6,7 +6,7 @@ icon: material/alert-decagram
 
 * Add tailing comma support in JSON configuration
 * Add simple auto redirect for Android **1**
-* Add bittorrent sniffer **2**
+* Add BitTorrent sniffer **2**
 
 **1**:
 
@@ -19,8 +19,6 @@ redirect can effectively save power compared to the system HTTP Proxy.
 See [Redirect](/configuration/inbound/redirect/).
 
 **2**:
-
-It doesn't exactly work right now. Do not use it for anything other than blocking bittorrent traffics.
 
 See [Protocol Sniff](/configuration/route/sniff/).
 
