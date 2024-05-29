@@ -8,7 +8,9 @@ set -e
 
 #cd /suyu
 
-ccache -sv
+ccache -s
+
+git submodule update --init --recursive
 
 rm -rf build
 mkdir -p build && cd build

@@ -2,6 +2,17 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.2
+
+* Move auto redirect to Tun **1**
+* Fixes and improvements
+
+**1**:
+
+Linux support are added.
+
+See [Tun](/configuration/inbound/tun/#auto_redirect).
+
 #### 1.10.0-alpha.1
 
 * Add tailing comma support in JSON configuration
