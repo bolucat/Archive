@@ -13,10 +13,15 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
+	"github.com/sagernet/sing/common"
+	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/x/list"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -27,12 +32,18 @@ const (
 
 type tunAutoRedirect struct {
 	myInboundAdapter
-	tunOptions    *tun.Options
-	iptablesPath  string
-	androidSu     bool
-	suPath        string
-	enableIPv6    bool
-	ip6tablesPath string
+	tunOptions      *tun.Options
+	interfaceFinder control.InterfaceFinder
+	networkMonitor  tun.NetworkUpdateMonitor
+	networkCallback *list.Element[tun.NetworkUpdateCallback]
+	enableIPv4      bool
+	enableIPv6      bool
+	localAddresses4 []netip.Prefix
+	localAddresses6 []netip.Prefix
+	iptablesPath    string
+	ip6tablesPath   string
+	androidSu       bool
+	suPath          string
 }
 
 func newAutoRedirect(t *Tun) (*tunAutoRedirect, error) {
@@ -47,39 +58,41 @@ func newAutoRedirect(t *Tun) (*tunAutoRedirect, error) {
 			router:   t.router,
 			logger:   t.logger,
 			tag:      t.tag,
-			listenOptions: option.ListenOptions{
-				Listen: option.NewListenAddress(netip.AddrFrom4([4]byte{127, 0, 0, 1})),
-			},
 		},
-		tunOptions: &t.tunOptions,
+		tunOptions:      &t.tunOptions,
+		interfaceFinder: t.router.InterfaceFinder(),
+		networkMonitor:  t.router.NetworkMonitor(),
 	}
 	server.connHandler = server
-	if C.IsAndroid {
-		server.iptablesPath = "/system/bin/iptables"
-		userId := os.Getuid()
-		if userId != 0 {
-			var (
-				suPath string
-				err    error
-			)
-			if t.platformInterface != nil {
-				suPath, err = exec.LookPath("/bin/su")
-			} else {
-				suPath, err = exec.LookPath("su")
+	if len(t.tunOptions.Inet4Address) > 0 {
+		server.enableIPv4 = true
+		if C.IsAndroid {
+			server.iptablesPath = "/system/bin/iptables"
+			userId := os.Getuid()
+			if userId != 0 {
+				var (
+					suPath string
+					err    error
+				)
+				if t.platformInterface != nil {
+					suPath, err = exec.LookPath("/bin/su")
+				} else {
+					suPath, err = exec.LookPath("su")
+				}
+				if err == nil {
+					server.androidSu = true
+					server.suPath = suPath
+				} else {
+					return nil, E.Extend(E.Cause(err, "root permission is required for auto redirect"), os.Getenv("PATH"))
+				}
 			}
-			if err == nil {
-				server.androidSu = true
-				server.suPath = suPath
-			} else {
-				return nil, E.Extend(E.Cause(err, "root permission is required for auto redirect"), os.Getenv("PATH"))
+		} else {
+			iptablesPath, err := exec.LookPath("iptables")
+			if err != nil {
+				return nil, E.Cause(err, "iptables is required")
 			}
+			server.iptablesPath = iptablesPath
 		}
-	} else {
-		iptablesPath, err := exec.LookPath("iptables")
-		if err != nil {
-			return nil, E.Cause(err, "iptables is required")
-		}
-		server.iptablesPath = iptablesPath
 	}
 	if !C.IsAndroid && len(t.tunOptions.Inet6Address) > 0 {
 		err := server.initializeIP6Tables()
@@ -87,6 +100,15 @@ func newAutoRedirect(t *Tun) (*tunAutoRedirect, error) {
 			t.logger.Debug("device has no ip6tables nat support: ", err)
 		}
 	}
+	var listenAddr netip.Addr
+	if C.IsAndroid {
+		listenAddr = netip.AddrFrom4([4]byte{127, 0, 0, 1})
+	} else if server.enableIPv6 {
+		listenAddr = netip.IPv6Unspecified()
+	} else {
+		listenAddr = netip.IPv4Unspecified()
+	}
+	server.listenOptions.Listen = option.NewListenAddress(listenAddr)
 	return server, nil
 }
 
@@ -95,7 +117,7 @@ func (t *tunAutoRedirect) initializeIP6Tables() error {
 	if err != nil {
 		return err
 	}
-	output, err := exec.Command(ip6tablesPath, "-t nat -L", tableNameOutput).CombinedOutput()
+	/*output, err := exec.Command(ip6tablesPath, "-t nat -L", tableNameOutput).CombinedOutput()
 	switch exitErr := err.(type) {
 	case nil:
 	case *exec.ExitError:
@@ -104,7 +126,7 @@ func (t *tunAutoRedirect) initializeIP6Tables() error {
 		}
 	default:
 		return err
-	}
+	}*/
 	t.ip6tablesPath = ip6tablesPath
 	t.enableIPv6 = true
 	return nil
@@ -115,13 +137,21 @@ func (t *tunAutoRedirect) Start(tunName string) error {
 	if err != nil {
 		return E.Cause(err, "start redirect server")
 	}
-	t.cleanupIPTables(t.iptablesPath)
+	if t.enableIPv4 {
+		t.cleanupIPTables(t.iptablesPath)
+	}
 	if t.enableIPv6 {
 		t.cleanupIPTables(t.ip6tablesPath)
 	}
-	err = t.setupIPTables(t.iptablesPath, tunName)
+	err = t.updateInterfaces(false)
 	if err != nil {
 		return err
+	}
+	if t.enableIPv4 {
+		err = t.setupIPTables(t.iptablesPath, tunName)
+		if err != nil {
+			return err
+		}
 	}
 	if t.enableIPv6 {
 		err = t.setupIPTables(t.ip6tablesPath, tunName)
@@ -129,11 +159,57 @@ func (t *tunAutoRedirect) Start(tunName string) error {
 			return err
 		}
 	}
+	t.networkCallback = t.networkMonitor.RegisterCallback(func() {
+		rErr := t.updateInterfaces(true)
+		if rErr != nil {
+			t.logger.Error("recreate prerouting rules: ", rErr)
+		}
+	})
+	return nil
+}
+
+func (t *tunAutoRedirect) updateInterfaces(recreate bool) error {
+	addresses := common.Filter(common.FlatMap(common.Filter(t.interfaceFinder.Interfaces(), func(it control.Interface) bool {
+		return it.Name != t.tunOptions.Name
+	}), func(it control.Interface) []netip.Prefix {
+		return it.Addresses
+	}), func(it netip.Prefix) bool {
+		address := it.Addr()
+		return !(address.IsLoopback() || address.IsLinkLocalUnicast())
+	})
+	oldLocalAddresses4 := t.localAddresses4
+	oldLocalAddresses6 := t.localAddresses6
+	localAddresses4 := common.Filter(addresses, func(it netip.Prefix) bool { return it.Addr().Is4() })
+	localAddresses6 := common.Filter(addresses, func(it netip.Prefix) bool { return it.Addr().Is6() })
+	t.localAddresses4 = localAddresses4
+	t.localAddresses6 = localAddresses6
+	if !recreate || t.androidSu {
+		return nil
+	}
+	if t.enableIPv4 {
+		if !slices.Equal(localAddresses4, oldLocalAddresses4) {
+			err := t.setupIPTablesPreRouting(t.iptablesPath, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if t.enableIPv6 {
+		if !slices.Equal(localAddresses6, oldLocalAddresses6) {
+			err := t.setupIPTablesPreRouting(t.ip6tablesPath, true)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
 func (t *tunAutoRedirect) Close() error {
-	t.cleanupIPTables(t.iptablesPath)
+	t.networkMonitor.UnregisterCallback(t.networkCallback)
+	if t.enableIPv4 {
+		t.cleanupIPTables(t.iptablesPath)
+	}
 	if t.enableIPv6 {
 		t.cleanupIPTables(t.ip6tablesPath)
 	}
@@ -186,7 +262,7 @@ func (t *tunAutoRedirect) setupIPTables(iptablesPath string, tunName string) err
 			return err
 		}
 		// PREROUTING
-		err = t.setupIPTablesPreRouting(iptablesPath)
+		err = t.setupIPTablesPreRouting(iptablesPath, false)
 		if err != nil {
 			return err
 		}
@@ -194,8 +270,13 @@ func (t *tunAutoRedirect) setupIPTables(iptablesPath string, tunName string) err
 	return nil
 }
 
-func (t *tunAutoRedirect) setupIPTablesPreRouting(iptablesPath string) error {
-	err := t.runShell(iptablesPath, "-t nat -N", tableNamePreRouteing)
+func (t *tunAutoRedirect) setupIPTablesPreRouting(iptablesPath string, recreate bool) error {
+	var err error
+	if !recreate {
+		err = t.runShell(iptablesPath, "-t nat -N", tableNamePreRouteing)
+	} else {
+		err = t.runShell(iptablesPath, "-t nat -F", tableNamePreRouteing)
+	}
 	if err != nil {
 		return err
 	}
@@ -225,7 +306,7 @@ func (t *tunAutoRedirect) setupIPTablesPreRouting(iptablesPath string) error {
 	if len(t.tunOptions.ExcludeInterface) > 0 {
 		for _, name := range t.tunOptions.ExcludeInterface {
 			err = t.runShell(iptablesPath, "-t nat -A", tableNamePreRouteing,
-				"-o", name, "-j RETURN")
+				"-i", name, "-j RETURN")
 			if err != nil {
 				return err
 			}
@@ -240,15 +321,16 @@ func (t *tunAutoRedirect) setupIPTablesPreRouting(iptablesPath string) error {
 			}
 		}
 	}
-	for _, netIf := range t.router.(adapter.Router).InterfaceFinder().Interfaces() {
-		for _, addr := range netIf.Addresses {
-			if (t.iptablesPath == iptablesPath) != addr.Addr().Is4() {
-				continue
-			}
-			err = t.runShell(iptablesPath, "-t nat -A", tableNamePreRouteing, "-d", addr.String(), "-j RETURN")
-			if err != nil {
-				return err
-			}
+	var addresses []netip.Prefix
+	if t.iptablesPath == iptablesPath {
+		addresses = t.localAddresses4
+	} else {
+		addresses = t.localAddresses6
+	}
+	for _, address := range addresses {
+		err = t.runShell(iptablesPath, "-t nat -A", tableNamePreRouteing, "-d", address.String(), "-j RETURN")
+		if err != nil {
+			return err
 		}
 	}
 	if len(routeAddress) > 0 {
@@ -262,7 +344,7 @@ func (t *tunAutoRedirect) setupIPTablesPreRouting(iptablesPath string) error {
 	} else if len(t.tunOptions.IncludeInterface) > 0 || len(t.tunOptions.IncludeUID) > 0 {
 		for _, name := range t.tunOptions.IncludeInterface {
 			err = t.runShell(iptablesPath, "-t nat -A", tableNamePreRouteing,
-				"-o", name, "-p tcp -j REDIRECT --to-ports", M.AddrPortFromNet(t.tcpListener.Addr()).Port())
+				"-i", name, "-p tcp -j REDIRECT --to-ports", M.AddrPortFromNet(t.tcpListener.Addr()).Port())
 			if err != nil {
 				return err
 			}

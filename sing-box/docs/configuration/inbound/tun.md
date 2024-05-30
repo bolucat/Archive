@@ -88,8 +88,8 @@ icon: material/new-box
       "match_domain": []
     }
   },
-  
-  ... // Listen Fields
+  ...
+  // Listen Fields
 }
 ```
 
@@ -150,7 +150,7 @@ Enforce strict routing rules when `auto_route` is enabled:
 *In Linux*:
 
 * Let unsupported network unreachable
-* Route all connections to tun
+* Make ICMP traffic route to tun instead of upstream interfaces
 
 It prevents address leaks and makes DNS hijacking work on Android.
 

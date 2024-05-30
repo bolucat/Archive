@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.3
+
+* Fix auto redirect **1**
+
+**1**:
+
+Tun inbound with `auto_route` and `auto_redirect` now works as expected on routers without intervention.
+
 #### 1.10.0-alpha.2
 
 * Move auto redirect to Tun **1**
