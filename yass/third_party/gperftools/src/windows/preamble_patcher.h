@@ -50,7 +50,7 @@
 // bytes of the function. Considering the worst case scenario, we need 4
 // bytes + the max instruction size + 5 more bytes for our jump back to
 // the original code. With that in mind, 32 is a good number :)
-#ifdef _M_X64
+#if defined(_M_X64) || defined(_M_ARM64)
 // In 64-bit mode we may need more room.  In 64-bit mode all jumps must be
 // within +/-2GB of RIP.  Because of this limitation we may need to use a
 // trampoline to jump to the replacement function if it is further than 2GB
@@ -64,7 +64,7 @@
 #endif
 
 // Determines if this is a 64-bit binary.
-#ifdef _M_X64
+#if defined(_M_X64) || defined(_M_ARM64)
 static const bool kIs64BitBinary = true;
 #else
 static const bool kIs64BitBinary = false;

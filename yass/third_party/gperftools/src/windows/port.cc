@@ -103,7 +103,7 @@ extern "C" PERFTOOLS_DLL_DECL void WriteToStderr(const char* buf, int len) {
 #pragma comment(linker, "/INCLUDE:__tls_used")
 #pragma comment(linker, "/INCLUDE:_p_thread_callback_tcmalloc")
 #pragma comment(linker, "/INCLUDE:_p_process_term_tcmalloc")
-#elif defined(_M_X64)
+#elif defined(_M_X64) || defined(_M_ARM64)
 #pragma comment(linker, "/INCLUDE:_tls_used")
 #pragma comment(linker, "/INCLUDE:p_thread_callback_tcmalloc")
 #pragma comment(linker, "/INCLUDE:p_process_term_tcmalloc")
@@ -161,7 +161,7 @@ void (NTAPI *p_thread_callback_tcmalloc)(
 int (*p_process_term_tcmalloc)(void) = on_process_term;
 #pragma data_seg(pop, old_seg)
 }  // extern "C"
-#elif defined(_M_X64)
+#elif defined(_M_X64) || defined(_M_ARM64)
 // In x64, the PE loader looks for callbacks in a constant segment
 #pragma const_seg(push, oldseg)
 #pragma const_seg(".CRT$XLB")

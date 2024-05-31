@@ -101,7 +101,7 @@ InstructionType MiniDisassembler::Disassemble(
 void MiniDisassembler::Initialize() {
   operand_is_32_bits_ = operand_default_is_32_bits_;
   address_is_32_bits_ = address_default_is_32_bits_;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(_M_ARM64)
   operand_default_support_64_bits_ = true;
 #else
   operand_default_support_64_bits_ = false;

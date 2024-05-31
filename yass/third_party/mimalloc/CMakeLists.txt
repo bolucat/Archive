@@ -340,10 +340,6 @@ if (MSVC AND MSVC_VERSION GREATER_EQUAL 1914)
   list(APPEND mi_cflags /Zc:__cplusplus)
 endif()
 
-if(MINGW)
-  add_definitions(-D_WIN32_WINNT=0x600)
-endif()
-
 # extra needed libraries
 
 # we prefer -l<lib> test over `find_library` as sometimes core libraries

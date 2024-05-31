@@ -13,6 +13,9 @@ terms of the MIT license. A copy of the license can be found in the file
 #include "mimalloc/prim.h"
 #include <stdio.h>   // fputs, stderr
 
+#ifndef ERROR_COMMITMENT_MINIMUM
+#define ERROR_COMMITMENT_MINIMUM 635
+#endif
 
 //---------------------------------------------
 // Dynamically bind Windows API points for portability

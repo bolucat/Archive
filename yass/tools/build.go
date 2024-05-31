@@ -876,6 +876,13 @@ func buildStageGenerateBuildScript() {
 		if msvcTargetArchFlag == "arm" || msvcTargetArchFlag == "arm64" {
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DCMAKE_ASM_FLAGS=--target=%s", targetTriple))
 		}
+
+		if msvcCrtLinkageFlag == "dynamic" && (msvcTargetArchFlag == "x86" || msvcTargetArchFlag == "x64") {
+			cmakeArgs = append(cmakeArgs, "-DUSE_TCMALLOC=on")
+		}
+		// if msvcCrtLinkageFlag == "dynamic" {
+		// 	cmakeArgs = append(cmakeArgs, "-DUSE_MIMALLOC=on")
+		// }
 	}
 
 	if systemNameFlag == "darwin" {
@@ -945,6 +952,13 @@ func buildStageGenerateBuildScript() {
 		if mingwDir != clangPath {
 			getAndFixMinGWLibunwind(mingwDir)
 		}
+
+		if targetAbi == "i686" || targetAbi == "x86_64" {
+			cmakeArgs = append(cmakeArgs, "-DUSE_TCMALLOC=on")
+		}
+		// if !mingwAllowXpFlag && targetAbi != "i686" {
+		// 	cmakeArgs = append(cmakeArgs, "-DUSE_MIMALLOC=on")
+		// }
 	}
 
 	if systemNameFlag == "ios" {
@@ -2223,7 +2237,7 @@ func postStateArchives() map[string][]string {
 	var dllPaths []string
 	var dbgPaths []string
 
-	if systemNameFlag == "windows" {
+	if systemNameFlag == "windows" || systemNameFlag == "mingw" {
 		entries, _ := ioutil.ReadDir("./")
 		for _, entry := range entries {
 			name := entry.Name()

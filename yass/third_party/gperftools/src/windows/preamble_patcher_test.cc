@@ -74,7 +74,7 @@ namespace {
 // call it within a function, otherwise the compiler will just reuse the
 // last calculated incremented value.
 int __declspec(noinline) IncrementNumber(int i) {
-#ifdef _M_X64
+#if defined(_M_X64) || defined(_M_ARM64)
   __int64 i2 = i + 1;
   return (int) i2;
 #else

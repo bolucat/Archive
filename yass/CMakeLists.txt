@@ -436,14 +436,14 @@ option(OPTIMIZED_PROTOC "Force protobuf compiler to be built with optimization" 
 
 cmake_dependent_option(
   USE_TCMALLOC "Build with tcmalloc" OFF
-  "LINUX" OFF)
+  "LINUX OR WIN32" OFF)
 cmake_dependent_option(
   USE_SYSTEM_TCMALLOC "Build with system or vendored tcmalloc" OFF
   USE_TCMALLOC OFF)
 
 cmake_dependent_option(
   USE_MIMALLOC "Use mimalloc" OFF
-  "NOT USE_TCMALLOC; NOT WIN32; NOT IOS; NOT ANDROID; NOT OHOS" OFF)
+  "NOT USE_TCMALLOC; NOT IOS; NOT ANDROID; NOT OHOS" OFF)
 
 cmake_dependent_option(
   USE_SYSTEM_MIMALLOC "Use system or vendored mimalloc" OFF
@@ -2345,6 +2345,15 @@ if (USE_TCMALLOC AND NOT USE_SYSTEM_TCMALLOC)
     message(WARNING "tcmalloc: arch ${CMAKE_SYSTEM_PROCESSOR} is not supported, disabling...")
     set(USE_TCMALLOC OFF)
   endif()
+  if (MSVC AND NOT MSVC_CRT_LINKAGE STREQUAL "dynamic")
+    message(WARNING "tcmalloc: static crt build is not supported, disabling...")
+    set(USE_TCMALLOC OFF)
+  endif()
+  # FIXME untested on an woa machine
+  if (WIN32 AND OS_AARCH64)
+    message(WARNING "tcmalloc: aarch64 build on windows is not supported, disabling...")
+    set(USE_TCMALLOC OFF)
+  endif()
 endif()
 
 if (USE_SYSTEM_TCMALLOC)
@@ -2374,7 +2383,7 @@ if (USE_SYSTEM_TCMALLOC AND USE_TCMALLOC)
     ${TCMALLOC_LIB}
     ${SUPPORT_LIBS}
     )
-elseif (USE_TCMALLOC)
+elseif (USE_TCMALLOC AND NOT WIN32)
   message(STATUS "Compiling with bundled tcmalloc support")
 
   set(GPERFTOOLS_BUILD_DEBUGALLOC OFF CACHE BOOL "")
@@ -2402,19 +2411,77 @@ elseif (USE_TCMALLOC)
     ${TCMALLOC_LIB}
     ${SUPPORT_LIBS}
     )
+elseif (USE_TCMALLOC AND WIN32)
+  message(STATUS "Compiling with bundled tcmalloc support")
+
+  set(GPERFTOOLS_BUILD_DEBUGALLOC OFF CACHE BOOL "")
+  set(gperftools_build_minimal ON CACHE BOOL "")
+  set(gperftools_build_benchmark OFF CACHE BOOL "")
+  set(GPERFTOOLS_BUILD_STATIC OFF CACHE BOOL "")
+  set(GPERFTOOLS_ENABLE_INSTALL OFF CACHE BOOL "")
+  set(GPERFTOOLS_BUILD_TESTING OFF CACHE BOOL "")
+  add_subdirectory(third_party/gperftools EXCLUDE_FROM_ALL)
+
+  list(APPEND YASS_APP_FEATURES "tcmalloc_minimal (dll)")
+
+  set(TCMALLOC_LIB tcmalloc_minimal)
+
+  set_target_properties(tcmalloc_minimal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties(tcmalloc_minimal PROPERTIES PREFIX "")
+
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(TCMALLOC_DLL_SUFFIX "32")
+  else()
+    set(TCMALLOC_DLL_SUFFIX "")
+  endif()
+  set_target_properties(tcmalloc_minimal PROPERTIES OUTPUT_NAME "tcmalloc${TCMALLOC_DLL_SUFFIX}")
+
+  set(SUPPORT_DEFINITIONS
+    HAVE_TCMALLOC
+    ${SUPPORT_DEFINITIONS}
+  )
+  set(SUPPORT_INCLUDE_DIRS
+    ${CMAKE_CURRENT_BINARY_DIR}/third_party/gperftools
+    third_party/gperftools/src
+    ${SUPPORT_INCLUDE_DIRS}
+  )
+  set(SUPPORT_LIBS
+    ${TCMALLOC_LIB}
+    ${SUPPORT_LIBS}
+    )
+
+  install(TARGETS tcmalloc_minimal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
   # patching manually, see tcmalloc's README_windows.txt
   if (MSVC)
-    add_link_options(/INCLUDE:__tcmalloc)
+    if (OS_X86)
+      add_link_options(/INCLUDE:__tcmalloc)
+    else()
+      add_link_options(/INCLUDE:_tcmalloc)
+    endif()
   endif()
   if (MINGW)
-    add_link_options(-Wl,-u__tcmalloc)
+    if (OS_X86)
+      add_link_options(-Wl,-u__tcmalloc)
+    else()
+      add_link_options(-Wl,-u_tcmalloc)
+    endif()
+    # reduce the binary size
+    target_link_options(tcmalloc_minimal PRIVATE "-s")
   endif()
 endif()
 
 # *****************************************************************************************
 #           mimalloc Library
 # *****************************************************************************************
+
+# FIXME limitation of mimalloc-redirect library
+if (USE_MIMALLOC AND NOT USE_SYSTEM_MIMALLOC)
+  if (WIN32 AND ALLOW_XP AND OS_X86)
+    message(WARNING "mimalloc: windows xp is not supported, disabling...")
+    set(USE_MIMALLOC OFF)
+  endif()
+endif()
 
 if (USE_SYSTEM_MIMALLOC)
   find_package(PkgConfig)
@@ -2449,7 +2516,7 @@ if (USE_MIMALLOC AND USE_SYSTEM_MIMALLOC)
     ${MIMALLOC_LIB}
   )
 
-elseif(USE_MIMALLOC)
+elseif(USE_MIMALLOC AND NOT WIN32)
   message(STATUS "Compiling with bundled mimalloc support")
 
   set(MI_BUILD_STATIC ON CACHE INTERNAL "")
@@ -2462,6 +2529,8 @@ elseif(USE_MIMALLOC)
   target_compile_definitions(mimalloc-static PRIVATE MI_USE_ENVIRON=0)
 
   set(MIMALLOC_LIB mimalloc-static)
+  add_library(mimalloc_override OBJECT src/mimalloc.cc)
+  target_link_libraries(mimalloc_override PRIVATE mimalloc-static)
 
   set(SUPPORT_DEFINITIONS
     HAVE_MIMALLOC
@@ -2473,7 +2542,76 @@ elseif(USE_MIMALLOC)
     )
 
   list(APPEND YASS_APP_FEATURES "mimalloc")
+elseif(USE_MIMALLOC AND WIN32)
+  message(STATUS "Compiling with bundled mimalloc support")
+
+  set(MI_BUILD_STATIC OFF CACHE INTERNAL "")
+  set(MI_BUILD_SHARED ON CACHE INTERNAL "")
+  set(MI_BUILD_OBJECT OFF CACHE INTERNAL "")
+  set(MI_BUILD_TESTS OFF CACHE INTERNAL "")
+  set(MI_ENABLE_INSTALL OFF CACHE INTERNAL "")
+  set(MI_LIBC_MUSL "${USE_MUSL}" CACHE INTERNAL "")
+  add_subdirectory(third_party/mimalloc EXCLUDE_FROM_ALL)
+  target_compile_definitions(mimalloc PRIVATE MI_USE_ENVIRON=0)
+  target_compile_definitions(mimalloc PRIVATE _DLL=1)
+
+  set(MIMALLOC_LIB mimalloc)
+
+  set_target_properties(mimalloc PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties(mimalloc PROPERTIES PREFIX "")
+  set_target_properties(mimalloc PROPERTIES OUTPUT_NAME "mimalloc-override")
+
+  set(USE_MIMALLOC_MINJECT ON)
+
+  set(SUPPORT_DEFINITIONS
+    HAVE_MIMALLOC
+    ${SUPPORT_DEFINITIONS}
+  )
+  set(SUPPORT_LIBS
+    ${SUPPORT_LIBS}
+    ${MIMALLOC_LIB}
+    )
+
+  add_library(mimalloc_override OBJECT src/mimalloc.cc)
+  target_link_libraries(mimalloc_override PRIVATE mimalloc)
+
+  install(TARGETS mimalloc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+  # On windows, link and copy the mimalloc redirection dll too.
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(MIMALLOC_REDIRECT_SUFFIX "32")
+  else()
+    set(MIMALLOC_REDIRECT_SUFFIX "")
+  endif()
+  install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mimalloc/bin/mimalloc-redirect${MIMALLOC_REDIRECT_SUFFIX}.dll" DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+  set(SUPPORT_LIBS
+    ${SUPPORT_LIBS}
+    mimalloc_override
+    )
+
+  list(APPEND YASS_APP_FEATURES "mimalloc (dll)")
 endif()
+
+function(minject_patch_exetuable target_name)
+  if (NOT USE_MIMALLOC_MINJECT)
+    return()
+  endif()
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(MINJECT_EXETUABLE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mimalloc/bin/minject32.exe")
+  else()
+    set(MINJECT_EXETUABLE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/mimalloc/bin/minject.exe")
+  endif()
+
+  if (${CMAKE_HOST_SYSTEM_NAME} MATCHES "Windows")
+    set(WINE_PREFIX)
+  else()
+    set(WINE_PREFIX wine)
+  endif()
+  add_custom_command(TARGET ${target_name} POST_BUILD
+    COMMAND ${WINE_PREFIX} "${MINJECT_EXETUABLE}" --force --inplace $<TARGET_FILE:${target_name}>
+    COMMENT "minject ${target_name}")
+endfunction()
 
 # *****************************************************************************************
 #           re2 Library
@@ -3978,6 +4116,7 @@ if (CLI)
   add_executable(yass_cli
     src/cli/cli.cpp
   )
+  minject_patch_exetuable(yass_cli)
 
   if (WIN32)
     set(CLI_MSVC_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/yass_cli.manifest")
@@ -4029,6 +4168,7 @@ if (SERVER)
   add_executable(yass_server
     src/server/server.cpp
     )
+  minject_patch_exetuable(yass_server)
 
   if (WIN32)
     set(SERVER_MSVC_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/yass_server.manifest")
@@ -4245,6 +4385,7 @@ if (GUI)
           ${SRC_FILES}
           ${GUI_USE_FILE}
           )
+      minject_patch_exetuable(${APP_NAME})
     endif()
 
     target_include_directories(${APP_NAME} PRIVATE
@@ -4757,6 +4898,7 @@ if (BUILD_TESTS)
     endif()
   else()
     add_executable(yass_test ${yass_test_SOURCE})
+    minject_patch_exetuable(yass_test)
   endif()
   if (USE_LEVELDB)
     target_sources(yass_test PRIVATE third_party/leveldb_test.cc)
@@ -4895,6 +5037,7 @@ if (BUILD_BENCHMARKS)
   else()
     add_executable(yass_benchmark
       ${yass_benchmark_SOURCE})
+    minject_patch_exetuable(yass_benchmark)
   endif()
   target_include_directories(yass_benchmark PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/src
