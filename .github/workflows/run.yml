@@ -40,6 +40,7 @@ jobs:
           mv yuzu .github
           mv yuzu-mainline .github
           mv yuzu-android .github
+          mv unlock-music .github
           # Clean Repository
           rm -rf *
           export GCRS="git clone --depth 1 --recurse-submodules"
@@ -116,7 +117,7 @@ jobs:
           ${GCRS} https://github.com/the1812/Bilibili-Evolved bb-evolved
           ${GCRS} https://github.com/rachpt/lanzou-gui lanzou-gui
           ${GCRS} https://github.com/gaozhangmin/aliyunpan aliyunpan
-          ${GCRS} https://git.unlock-music.dev/um/web unlock-music
+          ## ${GCRS} https://git.unlock-music.dev/um/web unlock-music
           ${GCRS} https://github.com/filebrowser/filebrowser filebrowser
           ${GCRS} https://github.com/nilaoda/N_m3u8DL-CLI m3u8-cli
           ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
@@ -140,6 +141,7 @@ jobs:
           mv .github/yuzu .
           mv .github/yuzu-mainline .
           mv .github/yuzu-android .
+          mv .github/unlock-music .
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
