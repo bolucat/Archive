@@ -1,4 +1,4 @@
-﻿using v2rayN.Models;
+﻿using v2rayN.Enums;
 
 namespace v2rayN
 {
@@ -106,7 +106,6 @@ namespace v2rayN
             @"https://speed.cloudflare.com/__down?bytes=100000000",
             @"https://speed.cloudflare.com/__down?bytes=10000000",
             @"http://cachefly.cachefly.net/50mb.test",
-            @"http://cachefly.cachefly.net/100mb.test",
             @"http://cachefly.cachefly.net/10mb.test"
         };
 

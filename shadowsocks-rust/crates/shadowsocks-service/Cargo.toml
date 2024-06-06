@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-service"
-version = "1.19.0"
+version = "1.19.2"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -93,7 +93,7 @@ local-tunnel = ["local"]
 # Enable socks4 protocol for sslocal
 local-socks4 = ["local"]
 # Enable Tun interface protocol for sslocal
-local-tun = ["local", "etherparse", "tun", "smoltcp"]
+local-tun = ["local", "etherparse", "tun2", "smoltcp"]
 # Enable Fake DNS
 local-fake-dns = ["local", "trust-dns", "sled", "bson"]
 # sslocal support online URL (SIP008 Online Configuration Delivery)
@@ -148,7 +148,7 @@ tokio = { version = "1.5", features = [
 tokio-native-tls = { version = "0.3", optional = true }
 native-tls = { version = "0.2.8", optional = true, features = ["alpn"] }
 webpki-roots = { version = "0.26", optional = true }
-tokio-rustls = { version = "0.26", optional = true }
+tokio-rustls = { version = "0.25", optional = true }
 rustls-native-certs = { version = "0.7", optional = true }
 async-trait = "0.1"
 
@@ -167,7 +167,7 @@ ipnet = "2.9"
 iprange = "0.6"
 regex = "1.4"
 
-tun = { version = "0.6", optional = true, features = ["async"] }
+tun2 = { version = "1", optional = true, features = ["async"] }
 etherparse = { version = "0.15", optional = true }
 smoltcp = { version = "0.11", optional = true, default-features = false, features = [
     "std",

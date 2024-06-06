@@ -57,7 +57,7 @@ func newRawServer(base *baseTransporter) (*RawServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	relayer, err := NewRelayClient(base.cfg.TransportType, base)
+	relayer, err := newRelayClient(base)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +80,7 @@ func (s *RawServer) ListenAndServe() error {
 			return err
 		}
 		go func(c net.Conn) {
+			defer c.Close()
 			if err := s.RelayTCPConn(c, s.relayer.TCPHandShake); err != nil {
 				s.l.Errorf("RelayTCPConn error: %s", err.Error())
 			}

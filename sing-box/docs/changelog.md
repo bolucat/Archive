@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.7
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.5
 
 * Improve auto-redirect **1**

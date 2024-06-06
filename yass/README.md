@@ -5,9 +5,12 @@
 [![GitHub release (latest by SemVer)](https://img.shields.io/github/downloads/Chilledheart/yass/latest/total)](https://github.com/Chilledheart/yass/releases/latest)
 
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/Chilledheart/yass)](https://github.com/Chilledheart/yass/releases)
-[![aur yass-proxy](https://img.shields.io/aur/version/yass-proxy)](https://aur.archlinux.org/packages/yass-proxy)
-[![aur yass-proxy-cli](https://img.shields.io/aur/version/yass-proxy-cli)](https://aur.archlinux.org/packages/yass-proxy-cli)
 [![homebrew cask](https://img.shields.io/homebrew/cask/v/yass)](https://formulae.brew.sh/cask/yass)
+
+[![aur yass-proxy](https://img.shields.io/aur/version/yass-proxy)](https://aur.archlinux.org/packages/yass-proxy)
+[![aur yass-proxy-gtk3](https://img.shields.io/aur/version/yass-proxy-gtk3)](https://aur.archlinux.org/packages/yass-proxy-gtk3)
+[![aur yass-proxy-qt6](https://img.shields.io/aur/version/yass-proxy-qt6)](https://aur.archlinux.org/packages/yass-proxy-qt6)
+[![aur yass-proxy-cli](https://img.shields.io/aur/version/yass-proxy-cli)](https://aur.archlinux.org/packages/yass-proxy-cli)
 
 yass is an efficient forward proxy client supporting http/socks4/socks4a/socks5 protocol running on PC and mobile devices.
 
@@ -30,7 +33,7 @@ See [Protecting Chrome Traffic with Hybrid Kyber KEM](https://blog.chromium.org/
 ### Prebuilt binaries
 - Android [download apk](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-android-release-arm64-1.10.4.apk) or [download 32-bit apk](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-android-release-arm-1.10.4.apk)
 - iOS [join via TestFlight](https://testflight.apple.com/join/6AkiEq09)
-- Windows [download installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-win7-release-x86_64-1.10.4-system-installer.exe) or [download 32-bit installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-winxp-release-i686-1.10.4-system-installer.exe) [(require vc 2010 runtime)][vs2010_x86] or [download woa arm64 installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-release-aarch64-1.10.4-system-installer.exe)
+- Windows [download installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-win7-release-x86_64-1.10.4-system-installer.exe) [(require KB2999226 below windows 10)][KB2999226] or [download 32-bit installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-winxp-release-i686-1.10.4-system-installer.exe) [(require vc 2010 runtime)][vs2010_x86] or [download woa arm64 installer](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-mingw-release-aarch64-1.10.4-system-installer.exe)
 - macOS [download intel dmg](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-macos-release-x64-1.10.4.dmg) or [download apple silicon dmg](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-macos-release-arm64-1.10.4.dmg)
 > via homebrew: `brew install --cask yass`
 - Linux [download rpm](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass.el7.x86_64.1.10.4.rpm) or [download deb](https://github.com/Chilledheart/yass/releases/download/1.10.4/yass-ubuntu-16.04-xenial_amd64.1.10.4.deb)
@@ -107,4 +110,5 @@ See more at manpage _yass_server(1)_
 See [Server Usage](https://github.com/Chilledheart/yass/wiki/Usage:-server-setup) for more.
 
 [license-link]: LICENSE
+[KB2999226]: https://support.microsoft.com/en-us/topic/update-for-universal-c-runtime-in-windows-c0514201-7fe6-95a3-b0a5-287930f3560c
 [vs2010_x86]: https://download.microsoft.com/download/1/6/5/165255E7-1014-4D0A-B094-B6A430A6BFFC/vcredist_x86.exe

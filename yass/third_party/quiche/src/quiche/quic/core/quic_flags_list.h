@@ -21,6 +21,8 @@ QUIC_FLAG(quic_reloadable_flag_quic_block_until_settings_received_copt, true)
 QUIC_FLAG(quic_reloadable_flag_quic_no_write_control_frame_upon_connection_close, true)
 // If true, HTTP/2 HEADERS frames will use two additional bytes of HPACK overhead per header in their SpdyHeadersIR::size() estimate. This flag is latched in SpdyHeadersIR to ensure a consistent size() value for a const SpdyHeadersIR regardless of flag state.
 QUIC_FLAG(quic_reloadable_flag_http2_add_hpack_overhead_bytes2, true)
+// If true, QUIC BBR2 will use a 0.91 PROBE_DOWN gain by default.
+QUIC_FLAG(quic_reloadable_flag_quic_bbr2_enable_bbpd_by_default, false)
 // If true, QUIC server will not respond to gQUIC probing packet(PING + PADDING) but treat it as a regular packet.
 QUIC_FLAG(quic_reloadable_flag_quic_ignore_gquic_probing, true)
 // If true, QUIC will default enable MTU discovery at server, with a target of 1450 bytes.
@@ -40,7 +42,7 @@ QUIC_FLAG(quic_reloadable_flag_quic_gfe_allow_alps_new_codepoint, true)
 // If true, an endpoint does not detect path degrading or blackholing until handshake gets confirmed.
 QUIC_FLAG(quic_reloadable_flag_quic_no_path_degrading_before_handshake_confirmed, true)
 // If true, bundle qpack decoder data with other frames opportunistically.
-QUIC_FLAG(quic_restart_flag_quic_opport_bundle_qpack_decoder_data5, false)
+QUIC_FLAG(quic_restart_flag_quic_opport_bundle_qpack_decoder_data5, true)
 // If true, default-enable 5RTO blachole detection.
 QUIC_FLAG(quic_reloadable_flag_quic_default_enable_5rto_blackhole_detection2, true)
 // If true, disable QUIC version Q046.
@@ -73,12 +75,12 @@ QUIC_FLAG(quic_reloadable_flag_quic_priority_respect_incremental, false)
 QUIC_FLAG(quic_reloadable_flag_quic_disable_batch_write, false)
 // If true, set burst token to 2 in cwnd bootstrapping experiment.
 QUIC_FLAG(quic_reloadable_flag_quic_conservative_bursts, false)
-// If true, the HTTP/3 decoder will decode METADATA frames and not treat them as Unknown.
-QUIC_FLAG(quic_reloadable_flag_quic_enable_http3_metadata_decoding, true)
 // If true, use BBRv2 as the default congestion controller. Takes precedence over --quic_default_to_bbr.
 QUIC_FLAG(quic_reloadable_flag_quic_default_to_bbr_v2, false)
 // If true, use a LRU cache to record client addresses of packets received on server\'s original address.
 QUIC_FLAG(quic_reloadable_flag_quic_use_received_client_addresses_cache, true)
+// If true, use improved QPACK compression algorithm.
+QUIC_FLAG(quic_reloadable_flag_quic_better_qpack_compression, true)
 // If true, uses conservative cwnd gain and pacing gain when cwnd gets bootstrapped.
 QUIC_FLAG(quic_reloadable_flag_quic_conservative_cwnd_and_pacing_gains, false)
 // If true, when TicketCrypter fails to encrypt a session ticket, quic::TlsServerHandshaker will send a placeholder ticket, instead of an empty one, to the client.

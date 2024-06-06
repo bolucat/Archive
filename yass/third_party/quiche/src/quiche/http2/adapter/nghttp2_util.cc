@@ -1,7 +1,11 @@
 #include "quiche/http2/adapter/nghttp2_util.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -161,8 +165,13 @@ InvalidFrameError ToInvalidFrameError(int error) {
 
 class Nghttp2DataFrameSource : public DataFrameSource {
  public:
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  Nghttp2DataFrameSource(nghttp2_data_provider2 provider,
+                         nghttp2_send_data_callback send_data, void* user_data)
+#else
   Nghttp2DataFrameSource(nghttp2_data_provider provider,
                          nghttp2_send_data_callback send_data, void* user_data)
+#endif
       : provider_(std::move(provider)),
         send_data_(std::move(send_data)),
         user_data_(user_data) {}
@@ -207,15 +216,25 @@ class Nghttp2DataFrameSource : public DataFrameSource {
   bool send_fin() const override { return send_fin_; }
 
  private:
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  nghttp2_data_provider2 provider_;
+#else
   nghttp2_data_provider provider_;
+#endif
   nghttp2_send_data_callback send_data_;
   void* user_data_;
   bool send_fin_ = false;
 };
 
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+std::unique_ptr<DataFrameSource> MakeZeroCopyDataFrameSource(
+    nghttp2_data_provider2 provider, void* user_data,
+    nghttp2_send_data_callback send_data) {
+#else
 std::unique_ptr<DataFrameSource> MakeZeroCopyDataFrameSource(
     nghttp2_data_provider provider, void* user_data,
     nghttp2_send_data_callback send_data) {
+#endif
   return std::make_unique<Nghttp2DataFrameSource>(
       std::move(provider), std::move(send_data), user_data);
 }

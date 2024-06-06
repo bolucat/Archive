@@ -57,7 +57,11 @@ func (c *MwssClient) initNewSession(ctx context.Context, addr string) (*smux.Ses
 
 func (s *MwssClient) TCPHandShake(remote *lb.Node) (net.Conn, error) {
 	t1 := time.Now()
-	mwssc, err := s.muxTP.Dial(context.TODO(), remote.Address+"/handshake/")
+	addr, err := s.cfg.GetWSRemoteAddr(remote.Address)
+	if err != nil {
+		return nil, err
+	}
+	mwssc, err := s.muxTP.Dial(context.TODO(), addr)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +85,7 @@ func newMwssServer(base *baseTransporter) (*MwssServer, error) {
 		WssServer:     wssServer,
 		muxServerImpl: newMuxServer(base.cfg.Listen, base.l.Named("mwss")),
 	}
-	s.e.GET("/handshake/", echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
+	s.e.GET(base.cfg.GetWSHandShakePath(), echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
 	return s, nil
 }
 

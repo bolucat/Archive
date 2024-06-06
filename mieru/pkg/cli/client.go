@@ -23,10 +23,11 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
+	"os"
 	"os/exec"
 	"runtime/pprof"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,10 +39,10 @@ import (
 	"github.com/enfein/mieru/pkg/metrics"
 	"github.com/enfein/mieru/pkg/protocolv2"
 	"github.com/enfein/mieru/pkg/socks5"
+	"github.com/enfein/mieru/pkg/socks5client"
 	"github.com/enfein/mieru/pkg/stderror"
 	"github.com/enfein/mieru/pkg/util"
 	"github.com/enfein/mieru/pkg/util/sockopts"
-	"golang.org/x/net/proxy"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
@@ -86,7 +87,15 @@ func RegisterClientCommands() {
 	RegisterCallback(
 		[]string{"", "test"},
 		func(s []string) error {
-			return unexpectedArgsError(s, 2)
+			if len(s) > 3 {
+				return fmt.Errorf("usage: mieru test [URL]. More than 1 URL is provided")
+			}
+			if len(s) == 3 {
+				if !strings.HasPrefix(s[2], "http://") && !strings.HasPrefix(s[2], "https://") {
+					return fmt.Errorf("provided URL is invalid, it must start with %q or %q", "http://", "https://")
+				}
+			}
+			return nil
 		},
 		clientTestFunc,
 	)
@@ -236,7 +245,7 @@ var clientHelpFunc = func(s []string) error {
 				help: "Check mieru client status.",
 			},
 			{
-				cmd:  "test",
+				cmd:  "test [URL]",
 				help: "Test mieru client connection to the Internet via proxy server.",
 			},
 			{
@@ -334,6 +343,8 @@ var clientStartFunc = func(s []string) error {
 	if errors.Is(cmd.Err, exec.ErrDot) {
 		cmd.Err = nil
 	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf(stderror.StartClientFailedErr, err)
 	}
@@ -612,17 +623,9 @@ var clientTestFunc = func(s []string) error {
 		return fmt.Errorf(stderror.GetClientConfigFailedErr, err)
 	}
 
-	proxyURL, err := url.Parse(fmt.Sprintf("socks5://127.0.0.1:%d", config.GetSocks5Port()))
-	if err != nil {
-		return fmt.Errorf("failed to parse proxy URL: %w", err)
-	}
-	dialer, err := proxy.FromURL(proxyURL, proxy.Direct)
-	if err != nil {
-		return fmt.Errorf("failed to create proxy dialer: %w", err)
-	}
 	httpClient := &http.Client{
 		Transport: &http.Transport{
-			Dial: dialer.Dial,
+			Dial: socks5client.Dial(fmt.Sprintf("socks5://127.0.0.1:%d", config.GetSocks5Port()), socks5client.ConnectCmd),
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return nil
@@ -630,8 +633,12 @@ var clientTestFunc = func(s []string) error {
 		Timeout: appctl.RPCTimeout,
 	}
 
+	destination := "https://google.com/generate_204"
+	if len(s) == 3 {
+		destination = s[2]
+	}
 	beginTime := time.Now()
-	resp, err := httpClient.Get("https://google.com/generate_204")
+	resp, err := httpClient.Get(destination)
 	if err != nil {
 		return err
 	}
@@ -640,10 +647,10 @@ var clientTestFunc = func(s []string) error {
 	defer resp.Body.Close()
 	io.ReadAll(resp.Body)
 
-	if resp.StatusCode != 204 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("received unexpected status code %d after %v", resp.StatusCode, d)
 	}
-	log.Infof("Connected to https://google.com after %v", d)
+	log.Infof("Connected to %q after %v", destination, d)
 	return nil
 }
 

@@ -1,4 +1,5 @@
 ﻿using System.Windows.Input;
+using v2rayN.Enums;
 
 namespace v2rayN.Models
 {
@@ -186,7 +187,7 @@ namespace v2rayN.Models
         public string domainStrategy4Singbox { get; set; }
         public string domainMatcher { get; set; }
         public string routingIndexId { get; set; }
-        public bool enableRoutingAdvanced { get; set; }        
+        public bool enableRoutingAdvanced { get; set; }
     }
 
     [Serializable]

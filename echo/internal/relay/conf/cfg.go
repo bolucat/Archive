@@ -3,6 +3,7 @@ package conf
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/Ehco1996/ehco/internal/constant"
 
@@ -11,9 +12,16 @@ import (
 )
 
 const (
-	ProtocolHTTP = "http"
-	ProtocolTLS  = "tls"
+	ProtocolHTTP         = "http"
+	ProtocolTLS          = "tls"
+	WS_HANDSHAKE_PATH    = "handshake"
+	WS_QUERY_REMOTE_ADDR = "remote_addr"
 )
+
+type WSConfig struct {
+	Path       string `json:"path,omitempty"`
+	RemoteAddr string `json:"remote_addr,omitempty"`
+}
 
 type Config struct {
 	Listen        string   `json:"listen"`
@@ -22,9 +30,28 @@ type Config struct {
 	TCPRemotes    []string `json:"tcp_remotes"`
 	UDPRemotes    []string `json:"udp_remotes"`
 
-	Label            string   `json:"label,omitempty"`
-	MaxConnection    int      `json:"max_connection,omitempty"`
-	BlockedProtocols []string `json:"blocked_protocols,omitempty"`
+	Label            string    `json:"label,omitempty"`
+	MaxConnection    int       `json:"max_connection,omitempty"`
+	BlockedProtocols []string  `json:"blocked_protocols,omitempty"`
+	WSConfig         *WSConfig `json:"ws_config,omitempty"`
+}
+
+func (r *Config) GetWSHandShakePath() string {
+	if r.WSConfig != nil && r.WSConfig.Path != "" {
+		return r.WSConfig.Path
+	}
+	return WS_HANDSHAKE_PATH
+}
+
+func (r *Config) GetWSRemoteAddr(baseAddr string) (string, error) {
+	addr, err := url.JoinPath(baseAddr, r.GetWSHandShakePath())
+	if err != nil {
+		return "", err
+	}
+	if r.WSConfig != nil && r.WSConfig.RemoteAddr != "" {
+		addr += fmt.Sprintf("?%s=%s", WS_QUERY_REMOTE_ADDR, r.WSConfig.RemoteAddr)
+	}
+	return addr, nil
 }
 
 func (r *Config) Validate() error {

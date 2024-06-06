@@ -105,6 +105,20 @@ class QUICHE_EXPORT NgHttp2Adapter : public Http2Adapter {
     return 0;
   }
 
+  // Delegates a DATA frame read callback to either the visitor or a registered
+  // DataFrameSource.
+#if NGHTTP2_VERSION_NUM >= 0x013c00
+  nghttp2_ssize
+#else
+  ssize_t
+#endif
+  DelegateReadCallback(int32_t stream_id, size_t max_length, uint32_t* data_flags);
+
+  // Delegates a DATA frame send callback to either the visitor or a registered
+  // DataFrameSource.
+  int DelegateSendCallback(int32_t stream_id, const uint8_t* framehd,
+                           size_t length);
+
  private:
   class NotifyingMetadataSource;
 

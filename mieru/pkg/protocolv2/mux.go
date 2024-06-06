@@ -23,7 +23,6 @@ import (
 	mrand "math/rand"
 	"net"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,23 +37,21 @@ import (
 )
 
 const (
-	idleUnderlayTickerInterval  = 5 * time.Second
-	userCipherCacheWarmInterval = 15 * time.Second
+	idleUnderlayTickerInterval = 5 * time.Second
 )
 
 // Mux manages the sessions and underlays.
 type Mux struct {
 	// ---- common fields ----
-	isClient              bool
-	endpoints             []UnderlayProperties
-	underlays             []Underlay
-	chAccept              chan net.Conn
-	chAcceptErr           chan error
-	used                  bool
-	done                  chan struct{}
-	mu                    sync.Mutex
-	cleaner               *time.Ticker
-	userCipherCacheWarmer *time.Ticker
+	isClient    bool
+	endpoints   []UnderlayProperties
+	underlays   []Underlay
+	chAccept    chan net.Conn
+	chAcceptErr chan error
+	used        bool
+	done        chan struct{}
+	mu          sync.Mutex
+	cleaner     *time.Ticker
 
 	// ---- client fields ----
 	password        []byte
@@ -74,13 +71,12 @@ func NewMux(isClinet bool) *Mux {
 		log.Infof("Initializing server multiplexer")
 	}
 	mux := &Mux{
-		isClient:              isClinet,
-		underlays:             make([]Underlay, 0),
-		chAccept:              make(chan net.Conn, sessionChanCapacity),
-		chAcceptErr:           make(chan error, 1), // non-blocking
-		done:                  make(chan struct{}),
-		cleaner:               time.NewTicker(idleUnderlayTickerInterval),
-		userCipherCacheWarmer: time.NewTicker(userCipherCacheWarmInterval),
+		isClient:    isClinet,
+		underlays:   make([]Underlay, 0),
+		chAccept:    make(chan net.Conn, sessionChanCapacity),
+		chAcceptErr: make(chan error, 1), // non-blocking
+		done:        make(chan struct{}),
+		cleaner:     time.NewTicker(idleUnderlayTickerInterval),
 	}
 
 	// Run maintenance tasks in the background.
@@ -89,13 +85,14 @@ func NewMux(isClinet bool) *Mux {
 			select {
 			case <-mux.cleaner.C:
 				mux.mu.Lock()
-				mux.cleanUnderlay()
+				if isClinet {
+					mux.cleanUnderlay(true)
+				} else {
+					mux.cleanUnderlay(false)
+				}
 				mux.mu.Unlock()
-			case <-mux.userCipherCacheWarmer.C:
-				mux.warmUserCipherCache()
 			case <-mux.done:
 				mux.cleaner.Stop()
-				mux.userCipherCacheWarmer.Stop()
 				return
 			}
 		}
@@ -268,7 +265,7 @@ func (m *Mux) DialContext(ctx context.Context) (net.Conn, error) {
 	var err error
 
 	// Try to find a underlay for the session.
-	m.cleanUnderlay()
+	m.cleanUnderlay(true)
 	underlay := m.maybePickExistingUnderlay()
 	if underlay == nil {
 		underlay, err = m.newUnderlay(ctx)
@@ -401,7 +398,7 @@ func (m *Mux) acceptUnderlayLoop(ctx context.Context, properties UnderlayPropert
 				log.Debugf("Created new server underlay %v", underlay)
 				m.mu.Lock()
 				m.underlays = append(m.underlays, underlay)
-				m.cleanUnderlay()
+				m.cleanUnderlay(false)
 				m.mu.Unlock()
 				UnderlayPassiveOpens.Add(1)
 				currEst := UnderlayCurrEstablished.Add(1)
@@ -456,7 +453,7 @@ func (m *Mux) acceptUnderlayLoop(ctx context.Context, properties UnderlayPropert
 		log.Infof("Created new server underlay %v", underlay)
 		m.mu.Lock()
 		m.underlays = append(m.underlays, underlay)
-		m.cleanUnderlay()
+		m.cleanUnderlay(false)
 		m.mu.Unlock()
 		UnderlayPassiveOpens.Add(1)
 		currEst := UnderlayCurrEstablished.Add(1)
@@ -608,67 +605,32 @@ func (m *Mux) maybePickExistingUnderlay() Underlay {
 
 // cleanUnderlay removes closed underlays.
 // This method MUST be called only when holding the mu lock.
-func (m *Mux) cleanUnderlay() {
+func (m *Mux) cleanUnderlay(alsoDisableIdleUnderlay bool) {
 	remaining := make([]Underlay, 0)
-	cnt := 0
+	disable := 0
+	close := 0
 	for _, underlay := range m.underlays {
 		select {
 		case <-underlay.Done():
 		default:
-			if underlay.Scheduler().Idle() {
+			if alsoDisableIdleUnderlay && underlay.NSessions() == 0 {
+				if underlay.Scheduler().TryDisable() {
+					disable++
+				}
+			}
+			if underlay.NSessions() == 0 && underlay.Scheduler().Idle() {
 				underlay.Close()
-				cnt++
+				close++
 			} else {
 				remaining = append(remaining, underlay)
 			}
 		}
 	}
 	m.underlays = remaining
-	if cnt > 0 {
-		log.Debugf("Mux cleaned %d underlays", cnt)
+	if disable > 0 {
+		log.Debugf("Mux disabled scheduling from %d underlays", disable)
 	}
-}
-
-func (m *Mux) warmUserCipherCache() {
-	if m.isClient {
-		return
-	}
-
-	m.mu.Lock()
-	userList := make([]*appctlpb.User, len(m.users))
-	i := 0
-	for _, user := range m.users {
-		userList[i] = user
-		i++
-	}
-	m.mu.Unlock()
-
-	warmSingleUser := func(user *appctlpb.User) {
-		password, err := hex.DecodeString(user.GetHashedPassword())
-		if err != nil {
-			return
-		}
-		if len(password) == 0 {
-			password = cipher.HashPassword([]byte(user.GetPassword()), []byte(user.GetName()))
-		}
-		cipher.BlockCipherListFromPassword(password, true)
-	}
-
-	cpus := runtime.NumCPU()
-	if len(userList) <= cpus {
-		for _, user := range userList {
-			warmSingleUser(user)
-		}
-	} else {
-		// Do parallel.
-		for i := 0; i < cpus; i++ {
-			go func(userList []*appctlpb.User, workerID int, nWorker int) {
-				for j := 0; j < len(userList); j++ {
-					if j%nWorker == workerID {
-						warmSingleUser(userList[j])
-					}
-				}
-			}(userList, i, cpus)
-		}
+	if close > 0 {
+		log.Debugf("Mux cleaned %d underlays", close)
 	}
 }

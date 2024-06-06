@@ -3,6 +3,7 @@ using ReactiveUI.Fody.Helpers;
 using Splat;
 using System.Reactive;
 using System.Windows;
+using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Models;
 using v2rayN.Resx;
@@ -263,7 +264,7 @@ namespace v2rayN.ViewModels
             var needReboot = (EnableStatistics != _config.guiItem.enableStatistics
                             || EnableDragDropSort != _config.uiItem.enableDragDropSort
                             || EnableHWA != _config.guiItem.enableHWA
-                            || CurrentFontFamily != _config.uiItem.currentFontFamily);  
+                            || CurrentFontFamily != _config.uiItem.currentFontFamily);
 
             //if (Utile.IsNullOrEmpty(Kcpmtu.ToString()) || !Utile.IsNumeric(Kcpmtu.ToString())
             //       || Utile.IsNullOrEmpty(Kcptti.ToString()) || !Utile.IsNumeric(Kcptti.ToString())

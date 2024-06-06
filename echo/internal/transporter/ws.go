@@ -8,6 +8,7 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 
 	"github.com/Ehco1996/ehco/internal/conn"
 	"github.com/Ehco1996/ehco/internal/constant"
@@ -37,7 +38,11 @@ func newWsClient(base *baseTransporter) (*WsClient, error) {
 
 func (s *WsClient) TCPHandShake(remote *lb.Node) (net.Conn, error) {
 	t1 := time.Now()
-	wsc, _, _, err := s.dialer.Dial(context.TODO(), remote.Address+"/handshake/")
+	addr, err := s.cfg.GetWSRemoteAddr(remote.Address)
+	if err != nil {
+		return nil, err
+	}
+	wsc, _, _, err := s.dialer.Dial(context.TODO(), addr)
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +73,13 @@ func newWsServer(base *baseTransporter) (*WsServer, error) {
 		},
 	}
 	e := web.NewEchoServer()
+	e.Use(web.NginxLogMiddleware(zap.S().Named("ws-server")))
+
 	e.GET("/", echo.WrapHandler(web.MakeIndexF()))
-	e.GET("/handshake/", echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
+	e.GET(base.cfg.GetWSHandShakePath(), echo.WrapHandler(http.HandlerFunc(s.HandleRequest)))
+
 	s.e = e
-	relayer, err := NewRelayClient(base.cfg.TransportType, base)
+	relayer, err := newRelayClient(base)
 	if err != nil {
 		return nil, err
 	}
