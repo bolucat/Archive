@@ -165,3 +165,27 @@ export namespace Connection {
     connections?: Item[];
   }
 }
+
+export interface LogMessage {
+  type: string;
+  time?: string;
+  payload: string;
+}
+
+export interface ProviderRules {
+  behavior: string;
+  format: string;
+  name: string;
+  ruleCount: number;
+  type: string;
+  updatedAt: string;
+  vehicleType: string;
+}
+
+export interface ProviderItem {
+  name: string;
+  type: string;
+  proxies: Clash.Proxy[];
+  updatedAt: string;
+  vehicleType: string;
+}

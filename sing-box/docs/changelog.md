@@ -2,6 +2,21 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.8
+
+* Drop support for go1.18 and go1.19 **1**
+* Update quic-go to v0.45.0
+* Update Hysteria2 BBR congestion control
+* Fixes and improvements
+
+**1**:
+
+Due to maintenance difficulties, sing-box 1.10.0 requires at least Go 1.20 to compile.
+
+### 1.9.1
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.7
 
 * Fixes and improvements

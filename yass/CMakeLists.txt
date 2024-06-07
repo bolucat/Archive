@@ -505,7 +505,7 @@ cmake_dependent_option(USE_QT6
   "GUI AND NOT WIN32 AND NOT APPLE AND NOT OHOS AND NOT ANDROID" OFF)
 
 cmake_dependent_option(USE_GTK4
-  "Build with gtk4 (GUI)" ON
+  "Build with gtk4 (GUI)" OFF
   "GUI AND NOT USE_QT6 AND NOT WIN32 AND NOT APPLE AND NOT OHOS AND NOT ANDROID" OFF)
 
 # Dynamic users are supported from version 235
@@ -2151,7 +2151,7 @@ elseif (GUI)
 
     # fix up for loongarch64 gtk support
     # see https://github.com/microcai/gentoo-zh/pull/4486
-    if (CMAKE_SYSTEM_PROCESSOR STREQUAL "loongarch64")
+    if (USE_GTK4 AND CMAKE_SYSTEM_PROCESSOR STREQUAL "loongarch64")
       message(STATUS "Blacklist gtk4 for loongarch64 target")
       set(USE_GTK4 OFF)
     endif()
@@ -4632,6 +4632,10 @@ if (GUI)
         file(GLOB QM_FILES "${CMAKE_CURRENT_SOURCE_DIR}/src/qt6/lang/yass_*.qm")
         target_sources(${APP_NAME} PRIVATE ${QM_FILES} "${CMAKE_CURRENT_SOURCE_DIR}/src/qt6/lang/lang.qrc")
       endif()
+      # dummy place holder
+      install(FILES src/qt6/yass.placeholder.mo
+        DESTINATION share/locale/en/LC_MESSAGES
+        RENAME yass.mo)
     else()
       add_executable(${APP_NAME} WIN32 ${GUI_OPTIONS}
           ${SRC_FILES}

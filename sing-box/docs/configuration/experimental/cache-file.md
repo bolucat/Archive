@@ -1,3 +1,7 @@
+---
+icon: material/new-box
+---
+
 !!! question "Since sing-box 1.8.0"
 
 !!! quote "Changes in sing-box 1.9.0"
