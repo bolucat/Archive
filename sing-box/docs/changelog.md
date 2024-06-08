@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.9
+
+* Fixes and improvements
+
+### 1.9.2
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.8
 
 * Drop support for go1.18 and go1.19 **1**

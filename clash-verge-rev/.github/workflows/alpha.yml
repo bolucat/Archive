@@ -43,27 +43,23 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install Tauri CLI
+        run: cargo install --git https://github.com/tauri-apps/tauri --branch 1.x tauri-cli
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v4
         name: Install pnpm
         with:
-          version: 9
           run_install: false
 
       - name: Pnpm install and check
         run: |
           pnpm i
           pnpm check ${{ matrix.target }}
-
-      - name: Download and install Apple intermediate certificates
-        if: matrix.os == 'macos-latest'
-        run: |
-          curl -O https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
-          sudo security add-trusted-cert -d -r trustRoot -k ${HOME}/Library/Keychains/login.keychain-db DeveloperIDG2CA.cer
 
       - name: Tauri build
         uses: tauri-apps/tauri-action@v0
@@ -75,17 +71,16 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          #加入以下内容为提交app到apple认证，当前会报错，已发邮件与apple沟通
-          #APPLE_ID: ${{ secrets.APPLE_ID }}
-          #APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          #APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: alpha
           releaseName: "Clash Verge Rev Alpha"
           releaseBody: "More new features are now supported."
           releaseDraft: false
           prerelease: true
-          tauriScript: pnpm
+          tauriScript: cargo tauri
           args: --target ${{ matrix.target }}
 
       - name: Portable Bundle
@@ -129,17 +124,6 @@ jobs:
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
 
       - name: Upload Release
-        if: startsWith(matrix.target, 'x86_64')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: alpha
-          name: "Clash Verge Rev Alpha"
-          body: "More new features are now supported."
-          prerelease: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage*
-
-      - name: Upload Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: alpha
@@ -178,15 +162,17 @@ jobs:
         with:
           workspaces: src-tauri
 
+      - name: Install Tauri CLI
+        run: cargo install --git https://github.com/tauri-apps/tauri --branch 1.x tauri-cli
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - uses: pnpm/action-setup@v3
+      - uses: pnpm/action-setup@v4
         name: Install pnpm
         with:
-          version: 9
           run_install: false
 
       - name: Pnpm install and check
@@ -210,7 +196,7 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tauriScript: pnpm
+          tauriScript: cargo tauri
           args: --target ${{ matrix.target }}
 
       - name: Rename

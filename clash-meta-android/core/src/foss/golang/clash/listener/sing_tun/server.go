@@ -24,6 +24,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/ranges"
+	"golang.org/x/exp/slices"
 )
 
 var InterfaceName = "Meta"
@@ -59,13 +60,23 @@ func CalculateInterfaceName(name string) (tunName string) {
 	if err != nil {
 		return
 	}
-	var tunIndex int
+	tunIndex := 0
+	indexArr := make([]int, 0, len(interfaces))
 	for _, netInterface := range interfaces {
 		if strings.HasPrefix(netInterface.Name, tunName) {
 			index, parseErr := strconv.ParseInt(netInterface.Name[len(tunName):], 10, 16)
 			if parseErr == nil {
-				tunIndex = int(index) + 1
+				indexArr = append(indexArr, int(index))
 			}
+		}
+	}
+	slices.Sort(indexArr)
+	indexArr = slices.Compact(indexArr)
+	for _, index := range indexArr {
+		if index == tunIndex {
+			tunIndex += 1
+		} else { // indexArr already sorted and distinct, so this tunIndex nobody used
+			break
 		}
 	}
 	tunName = F.ToString(tunName, tunIndex)

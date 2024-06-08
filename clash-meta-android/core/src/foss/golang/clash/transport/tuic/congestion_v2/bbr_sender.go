@@ -9,7 +9,7 @@ import (
 	"github.com/metacubex/quic-go"
 	"github.com/metacubex/quic-go/congestion"
 
-	"github.com/zhangyunhao116/fastrand"
+	"github.com/metacubex/randv2"
 )
 
 // BbrSender implements BBR congestion control algorithm.  BBR aims to estimate
@@ -62,7 +62,7 @@ const (
 	// Flag.
 	defaultStartupFullLossCount  = 8
 	quicBbr2DefaultLossThreshold = 0.02
-	maxBbrBurstPackets           = 3
+	maxBbrBurstPackets           = 10
 )
 
 type bbrMode int
@@ -334,6 +334,8 @@ func (b *bbrSender) OnPacketSent(
 	}
 
 	b.sampler.OnPacketSent(sentTime, packetNumber, bytes, bytesInFlight, isRetransmittable)
+
+	b.maybeAppLimited(bytesInFlight)
 }
 
 // CanSend implements the SendAlgorithm interface.
@@ -412,8 +414,6 @@ func (b *bbrSender) OnCongestionEventEx(priorInFlight congestion.ByteCount, even
 	// empty. If acked_packets is empty, it's the send state of the largest
 	// packet in lost_packets.
 	var lastPacketSendState sendTimeState
-
-	b.maybeApplimited(priorInFlight)
 
 	// Update bytesInFlight
 	b.bytesInFlight = priorInFlight
@@ -541,7 +541,7 @@ func (b *bbrSender) setDrainGain(drainGain float64) {
 	b.drainGain = drainGain
 }
 
-// What's the current estimated bandwidth in bytes per second.
+// Get the current bandwidth estimate. Note that Bandwidth is in bits per second.
 func (b *bbrSender) bandwidthEstimate() Bandwidth {
 	return b.maxBandwidth.GetBest()
 }
@@ -620,7 +620,7 @@ func (b *bbrSender) enterProbeBandwidthMode(now time.Time) {
 	// Pick a random offset for the gain cycle out of {0, 2..7} range. 1 is
 	// excluded because in that case increased gain and decreased gain would not
 	// follow each other.
-	b.cycleCurrentOffset = int(fastrand.Int31n(congestion.PacketsPerConnectionID)) % (gainCycleLength - 1)
+	b.cycleCurrentOffset = int(randv2.Int32N(congestion.PacketsPerConnectionID)) % (gainCycleLength - 1)
 	if b.cycleCurrentOffset >= 1 {
 		b.cycleCurrentOffset += 1
 	}
@@ -700,14 +700,13 @@ func (b *bbrSender) checkIfFullBandwidthReached(lastPacketSendState *sendTimeSta
 	}
 }
 
-func (b *bbrSender) maybeApplimited(bytesInFlight congestion.ByteCount) {
+func (b *bbrSender) maybeAppLimited(bytesInFlight congestion.ByteCount) {
 	congestionWindow := b.GetCongestionWindow()
 	if bytesInFlight >= congestionWindow {
 		return
 	}
 	availableBytes := congestionWindow - bytesInFlight
-	drainLimited := b.mode == bbrModeDrain && bytesInFlight > congestionWindow/2
-	if !drainLimited || availableBytes > maxBbrBurstPackets*b.maxDatagramSize {
+	if availableBytes > maxBbrBurstPackets*b.maxDatagramSize {
 		b.sampler.OnAppLimited()
 	}
 }
