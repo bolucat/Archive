@@ -1,10 +1,9 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
-import { IconButton, Tooltip } from "@mui/material";
+import { Box, IconButton, Tooltip } from "@mui/material";
 import { InfoRounded } from "@mui/icons-material";
 import {
-  Box,
   InputAdornment,
   List,
   ListItem,
@@ -19,12 +18,22 @@ import { getSystemProxy, getAutotemProxy } from "@/services/cmds";
 import { BaseDialog, DialogRef, Notice, Switch } from "@/components/base";
 import { Edit } from "@mui/icons-material";
 import { EditorViewer } from "@/components/profile/editor-viewer";
+import { BaseFieldset } from "@/components/base/base-fieldset";
+import getSystem from "@/utils/get-system";
 const DEFAULT_PAC = `function FindProxyForURL(url, host) {
   return "PROXY 127.0.0.1:%mixed-port%; SOCKS5 127.0.0.1:%mixed-port%; DIRECT;";
 }`;
 
 export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
+  let validReg;
+  if (getSystem() === "windows") {
+    validReg =
+      /^(\*?\w+(\.\w+)*|\d{1,3}(\.\d{1,3}){0,2}\.\*|\d{1,3}(\.\d{1,3}){3})(;(\*?\w+(\.\w+)*|\d{1,3}(\.\d{1,3}){0,2}\.\*|\d{1,3}(\.\d{1,3}){3}))*$/;
+  } else {
+    validReg =
+      /^((\*\.)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}|(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?|([a-fA-F0-9:]+:+)+[a-fA-F0-9]+(\/\d{1,3})?)(,((\*\.)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}|(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?|([a-fA-F0-9:]+:+)+[a-fA-F0-9]+(\/\d{1,3})?))*$/;
+  }
 
   const [open, setOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -92,7 +101,10 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
     if (value.pac_content !== pac_file_content) {
       patch.pac_file_content = value.pac_content;
     }
-
+    if (value.bypass && !validReg.test(value.bypass)) {
+      Notice.error(t("Invalid Bypass Format"));
+      return;
+    }
     try {
       await patchVerge(patch);
       setOpen(false);
@@ -113,16 +125,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
       onOk={onSave}
     >
       <List>
-        <Box
-          sx={{
-            border: "1px solid #bbb",
-            borderRadius: "5px",
-            padding: "8px",
-          }}
-        >
-          <Typography variant="body1" sx={{ fontSize: "18px" }}>
-            {t("Current System Proxy")}
-          </Typography>
+        <BaseFieldset label={t("Current System Proxy")} padding="15px 10px">
           <FlexBox>
             <Typography className="label">{t("Enable status")}</Typography>
             <Typography className="value">
@@ -145,7 +148,13 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
               </FlexBox>
             </>
           )}
-        </Box>
+          {value.pac && (
+            <FlexBox>
+              <Typography className="label">{t("PAC URL")}</Typography>
+              <Typography className="value">{autoproxy?.url || "-"}</Typography>
+            </FlexBox>
+          )}
+        </BaseFieldset>
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Use PAC Mode")} />
           <Switch
@@ -192,30 +201,23 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
             }}
           />
         </ListItem>
-
         {!value.pac && (
           <>
-            <FlexBox>
-              <Typography className="label">{t("Proxy Bypass")}</Typography>
-            </FlexBox>
-            <FlexBox>
-              <TextField
-                disabled={!enabled}
-                size="small"
-                autoComplete="off"
-                multiline
-                rows={4}
-                sx={{ width: "100%" }}
-                value={value.bypass}
-                placeholder={sysproxy?.bypass || `-`}
-                onChange={(e) =>
-                  setValue((v) => ({ ...v, bypass: e.target.value }))
-                }
-              />
-            </FlexBox>
-            <FlexBox>
-              <Typography className="label">{t("Bypass")}</Typography>
-            </FlexBox>
+            <ListItemText primary={t("Proxy Bypass")} />
+            <TextField
+              error={value.bypass ? !validReg.test(value.bypass) : false}
+              disabled={!enabled}
+              size="small"
+              autoComplete="off"
+              multiline
+              rows={4}
+              sx={{ width: "100%" }}
+              value={value.bypass}
+              onChange={(e) => {
+                setValue((v) => ({ ...v, bypass: e.target.value }));
+              }}
+            />
+            <ListItemText primary={t("Bypass")} />
             <FlexBox>
               <TextField
                 disabled={true}
@@ -229,7 +231,6 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
             </FlexBox>
           </>
         )}
-
         {value.pac && (
           <>
             <ListItem sx={{ padding: "5px 2px", alignItems: "start" }}>
@@ -265,13 +266,6 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
               />
             </ListItem>
           </>
-        )}
-
-        {value.pac && (
-          <FlexBox>
-            <Typography className="label">{t("PAC URL")}</Typography>
-            <Typography className="value">{autoproxy?.url || "-"}</Typography>
-          </FlexBox>
         )}
       </List>
     </BaseDialog>
