@@ -354,8 +354,11 @@ int QuicProxyClientSocket::DoSendRequest() {
 
   if (proxy_delegate_) {
     HttpRequestHeaders proxy_delegate_headers;
-    proxy_delegate_->OnBeforeTunnelRequest(proxy_chain_, proxy_chain_index_,
-                                           &proxy_delegate_headers);
+    int result = proxy_delegate_->OnBeforeTunnelRequest(
+        proxy_chain_, proxy_chain_index_, &proxy_delegate_headers);
+    if (result < 0) {
+      return result;
+    }
     if (proxy_delegate_headers.HasHeader("fastopen")) {
       proxy_delegate_headers.RemoveHeader("fastopen");
       // TODO(klzgrad): look into why Fast Open does not work.

@@ -50,7 +50,6 @@ TRIPLES = {
     "i386": "i386-linux-gnu",
     "armhf": "arm-linux-gnueabihf",
     "arm64": "aarch64-linux-gnu",
-    "armel": "arm-linux-gnueabi",
     "mipsel": "mipsel-linux-gnu",
     "mips64el": "mips64el-linux-gnuabi64",
     "riscv64": "riscv64-linux-gnu",
@@ -109,10 +108,6 @@ DEBIAN_PACKAGES_ARCH = {
         "libitm1",
         "liblsan0",
         "libtsan0",
-        "libubsan1",
-    ],
-    "armel": [
-        "libasan6",
         "libubsan1",
     ],
     "mipsel": [],
@@ -321,8 +316,16 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
     )
 
     # Do not use pthread_cond_clockwait as it was introduced in glibc 2.30.
-    cppconfig_h = os.path.join(install_root, "usr", "include", TRIPLES[arch],
-                               "c++", "10", "bits", "c++config.h")
+    cppconfig_h = os.path.join(
+        install_root,
+        "usr",
+        "include",
+        TRIPLES[arch],
+        "c++",
+        "10",
+        "bits",
+        "c++config.h",
+    )
     replace_in_file(cppconfig_h,
                     r"(#define\s+_GLIBCXX_USE_PTHREAD_COND_CLOCKWAIT)",
                     r"// \1")
@@ -447,7 +450,8 @@ def cleanup_jail_symlinks(install_root: str) -> None:
                     # Compute the relative path from the symlink to the target.
                     relative_path = os.path.relpath(
                         os.path.join(install_root, target_path.strip("/")),
-                        os.path.dirname(full_path))
+                        os.path.dirname(full_path),
+                    )
                     # Verify that the target exists inside the install_root.
                     joined_path = os.path.join(os.path.dirname(full_path),
                                                relative_path)
@@ -483,6 +487,7 @@ def verify_library_deps(install_root: str) -> None:
             output = subprocess.check_output(cmd_readelf).decode()
             for line in output.split("\n"):
                 if "NEEDED" in line:
+                    print(file, line)
                     needed_libs.add(line.split("[")[1].split("]")[0])
 
     missing_libs = needed_libs - shared_libs
@@ -500,16 +505,16 @@ def build_sysroot(arch: str) -> None:
     verify_library_deps(install_root)
 
 
-def upload_sysroot(arch: str) -> None:
+def upload_sysroot(arch: str) -> str:
     tarball_path = os.path.join(BUILD_DIR,
                                 f"{DISTRO}_{RELEASE}_{arch}_sysroot.tar.xz")
-    sha = hash_file(hashlib.sha1(), tarball_path)
-
-    destination_url = f"gs://chrome-linux-sysroot/toolchain/{sha}/"
     command = [
-        "gsutil.py", "cp", "-a", "public-read", tarball_path, destination_url
+        "upload_to_google_storage_first_class.py",
+        "--bucket",
+        "chrome-linux-sysroot",
+        tarball_path,
     ]
-    subprocess.run(command, check=True)
+    return subprocess.check_output(command).decode("utf-8")
 
 
 def verify_package_listing(file_path: str, output_file: str,

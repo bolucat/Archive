@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-service"
-version = "1.19.2"
+version = "1.19.3"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -162,7 +162,7 @@ hickory-resolver = { version = "0.24", optional = true, features = [
     "serde-config",
 ] }
 
-idna = "0.5"
+idna = "1.0"
 ipnet = "2.9"
 iprange = "0.6"
 regex = "1.4"

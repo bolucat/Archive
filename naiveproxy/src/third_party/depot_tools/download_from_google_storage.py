@@ -45,10 +45,30 @@ MIGRATION_TOGGLE_FILE_SUFFIX = '_is_first_class_gcs'
 def construct_migration_file_name(gcs_object_name):
     # Remove any forward slashes
     gcs_file_name = gcs_object_name.replace('/', '_')
-    # Remove any extensions
-    gcs_file_name = gcs_file_name.split('.')[0]
+    # Remove any dots
+    gcs_file_name = gcs_file_name.replace('.', '_')
 
     return f'.{gcs_file_name}{MIGRATION_TOGGLE_FILE_SUFFIX}'
+
+
+def set_executable_bit(output_filename, file_url, gsutil):
+    # Set executable bit.
+    code, err = 0, ''
+    if sys.platform == 'cygwin':
+        # Under cygwin, mark all files as executable. The executable flag in
+        # Google Storage will not be set when uploading from Windows, so if
+        # this script is running under cygwin and we're downloading an
+        # executable, it will be unrunnable from inside cygwin without this.
+        st = os.stat(output_filename)
+        os.chmod(output_filename, st.st_mode | stat.S_IEXEC)
+    elif sys.platform != 'win32':
+        # On non-Windows platforms, key off of the custom header
+        # "x-goog-meta-executable".
+        code, out, err = gsutil.check_call('stat', file_url)
+        if re.search(r'executable:\s*1', out):
+            st = os.stat(output_filename)
+            os.chmod(output_filename, st.st_mode | stat.S_IEXEC)
+    return code, err
 
 
 class InvalidFileError(IOError):
@@ -399,24 +419,10 @@ def _downloader_worker_thread(thread_num,
                 os.remove(extract_dir + '.tmp')
         if os.path.exists(migration_file_name):
             os.remove(migration_file_name)
-        # Set executable bit.
-        if sys.platform == 'cygwin':
-            # Under cygwin, mark all files as executable. The executable flag in
-            # Google Storage will not be set when uploading from Windows, so if
-            # this script is running under cygwin and we're downloading an
-            # executable, it will be unrunnable from inside cygwin without this.
-            st = os.stat(output_filename)
-            os.chmod(output_filename, st.st_mode | stat.S_IEXEC)
-        elif sys.platform != 'win32':
-            # On non-Windows platforms, key off of the custom header
-            # "x-goog-meta-executable".
-            code, out, err = gsutil.check_call('stat', file_url)
-            if code != 0:
-                out_q.put('%d> %s' % (thread_num, err))
-                ret_codes.put((code, err))
-            elif re.search(r'executable:\s*1', out):
-                st = os.stat(output_filename)
-                os.chmod(output_filename, st.st_mode | stat.S_IEXEC)
+        code, err = set_executable_bit(output_filename, file_url, gsutil)
+        if code != 0:
+            out_q.put('%d> %s' % (thread_num, err))
+            ret_codes.put((code, err))
 
 
 class PrinterThread(threading.Thread):

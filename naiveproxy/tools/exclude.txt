@@ -10,6 +10,7 @@
 *.golden
 *.javap*
 *.pyc
+build/linux/debian_*
 net/data/[!s]*
 net/data/s[!s]*
 net/data/ssl/[!ce]*
@@ -20,3 +21,4 @@ third_party/boringssl/src/crypto/hpke/test-vectors.json
 third_party/boringssl/src/crypto/cipher_extra/test
 third_party/boringssl/src/third_party/googletest
 third_party/boringssl/src/third_party/wycheproof_testvectors
+third_party/libc++/src/test

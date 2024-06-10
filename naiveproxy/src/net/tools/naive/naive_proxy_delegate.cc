@@ -64,17 +64,17 @@ NaiveProxyDelegate::NaiveProxyDelegate(
 
 NaiveProxyDelegate::~NaiveProxyDelegate() = default;
 
-void NaiveProxyDelegate::OnBeforeTunnelRequest(
+Error NaiveProxyDelegate::OnBeforeTunnelRequest(
     const ProxyChain& proxy_chain,
     size_t chain_index,
     HttpRequestHeaders* extra_headers) {
   // Not possible to negotiate padding capability given the underlying
   // protocols.
   if (proxy_chain.is_direct())
-    return;
+    return OK;
   CHECK_EQ(proxy_chain.length(), 1u) << "Multi-hop proxy not supported";
   if (proxy_chain.GetProxyServer(chain_index).is_socks())
-    return;
+    return OK;
 
   // Sends client-side padding header regardless of server support
   std::string padding(base::RandInt(16, 32), '~');
@@ -87,6 +87,8 @@ void NaiveProxyDelegate::OnBeforeTunnelRequest(
     extra_headers->SetHeader("fastopen", "1");
   }
   extra_headers->MergeFrom(extra_headers_);
+
+  return OK;
 }
 
 std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(

@@ -119,7 +119,7 @@ if (is_fuchsia) {
 # have a Rust toolchain, so we need a fallback to C++ for it until it removes
 # its dependency on //base.
 #
-# TODO(crbug.com/1280708): Drop toolchain_has_rust and move the C++ parser into
+# TODO(crbug.com/40811643): Drop toolchain_has_rust and move the C++ parser into
 # components/nacl to just run in-process there. Don't compile base::JSONReader
 # on NaCL at all.
 build_rust_json_reader = toolchain_has_rust && enable_rust_json
@@ -253,7 +253,6 @@ component("base") {
     "base64url.cc",
     "base64url.h",
     "base_switches.h",
-    "big_endian.cc",
     "big_endian.h",
     "bit_cast.h",
     "bits.h",
@@ -748,6 +747,7 @@ component("base") {
     "task/sequence_manager/task_queue_impl.h",
     "task/sequence_manager/task_queue_selector.cc",
     "task/sequence_manager/task_queue_selector.h",
+    "task/sequence_manager/task_time_observer.cc",
     "task/sequence_manager/task_time_observer.h",
     "task/sequence_manager/tasks.cc",
     "task/sequence_manager/tasks.h",
@@ -936,6 +936,7 @@ component("base") {
     "traits_bag.h",
     "tuple.h",
     "types/always_false.h",
+    "types/cxx23_is_scoped_enum.h",
     "types/cxx23_to_underlying.h",
     "types/expected.h",
     "types/expected_internal.h",
@@ -1298,6 +1299,8 @@ component("base") {
       "android/token_android.h",
       "android/trace_event_binding.cc",
       "android/trace_event_binding.h",
+      "android/unguessable_token_android.cc",
+      "android/unguessable_token_android.h",
     ]
     deps += [ "//build:robolectric_buildflags" ]
     public_deps += [ "//third_party/jni_zero:jni_zero" ]
@@ -1404,7 +1407,7 @@ component("base") {
 
     # These only need to be public deps because of includes of their headers
     # by public //base headers, which requires they be on the include path.
-    # TODO(https://crbug.com/841171): Move these back to |deps|.
+    # TODO(crbug.com/40575514): Move these back to |deps|.
     public_deps += [
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.component.runner:fuchsia.component.runner_hlcpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.intl:fuchsia.intl_hlcpp",
@@ -1448,7 +1451,7 @@ component("base") {
   # cannot easily depend on BoringSSL due to the nacl_io library, so NaCl builds
   # still retain a dedicated local implementation of the functionality.
   #
-  # TODO(crbug.com/702997) Use only boringssl when NaCl is removed.
+  # TODO(crbug.com/40511454) Use only boringssl when NaCl is removed.
   sources += [
     "hash/md5.h",
     "hash/md5_constexpr.h",
@@ -2477,7 +2480,7 @@ buildflag_header("debugging_buildflags") {
   enable_lldbinit_warning =
       is_debug && strip_absolute_paths_from_debug_symbols && is_mac
 
-  # TODO(crbug.com/1420774): Try and enable these checks on Android too.
+  # TODO(crbug.com/40258939): Try and enable these checks on Android too.
   enable_commandline_sequence_checks =
       (is_debug || dcheck_always_on) && !is_android
 

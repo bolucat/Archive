@@ -43,7 +43,7 @@ class NaiveProxyDelegate : public ProxyDelegate {
       const ProxyRetryInfoMap& proxy_retry_info) override {}
 
   // This only affects h2 proxy client socket.
-  void OnBeforeTunnelRequest(const ProxyChain& proxy_chain,
+  Error OnBeforeTunnelRequest(const ProxyChain& proxy_chain,
                              size_t chain_index,
                              HttpRequestHeaders* extra_headers) override;
 

@@ -435,7 +435,7 @@ int send_safer(conn_info_t &conn_info, char type, const char *data, int len)  //
         if (cipher_mode == cipher_xor) {
             send_data_buf2[0] ^= gro_xor[0];
             send_data_buf2[1] ^= gro_xor[1];
-        } else if (cipher_mode == cipher_aes128cbc || cipher_mode == cipher_aes128cbc) {
+        } else if (cipher_mode == cipher_aes128cbc || cipher_mode == cipher_aes128cfb) {
             aes_ecb_encrypt1(send_data_buf2);
         }
     }
@@ -586,7 +586,7 @@ int recv_safer_multi(conn_info_t &conn_info, vector<char> &type_arr, vector<stri
             if (cipher_mode == cipher_xor) {
                 recv_data[0] ^= gro_xor[0];
                 recv_data[1] ^= gro_xor[1];
-            } else if (cipher_mode == cipher_aes128cbc || cipher_mode == cipher_aes128cbc) {
+            } else if (cipher_mode == cipher_aes128cbc || cipher_mode == cipher_aes128cfb) {
                 aes_ecb_decrypt1(recv_data);
             }
             single_len = read_u16(recv_data);
