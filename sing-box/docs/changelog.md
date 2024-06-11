@@ -2,8 +2,9 @@
 icon: material/alert-decagram
 ---
 
-#### 1.10.0-alpha.11
+#### 1.10.0-alpha.12
 
+* Fix auto-redirect not configuring nftables forward chain correctly
 * Fixes and improvements
 
 ### 1.9.3

@@ -70,14 +70,7 @@ use serde::{Deserialize, Serialize};
 use shadowsocks::relay::socks5::Address;
 use shadowsocks::{
     config::{
-        ManagerAddr,
-        Mode,
-        ReplayAttackPolicy,
-        ServerAddr,
-        ServerConfig,
-        ServerSource,
-        ServerUser,
-        ServerUserManager,
+        ManagerAddr, Mode, ReplayAttackPolicy, ServerAddr, ServerConfig, ServerSource, ServerUser, ServerUserManager,
         ServerWeight,
     },
     crypto::CipherKind,
@@ -234,6 +227,10 @@ struct SSConfig {
     #[cfg(feature = "local-online-config")]
     #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<u32>,
+
+    #[cfg(feature = "local-online-config")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    online_config: Option<SSOnlineConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -404,6 +401,13 @@ struct SSServerExtConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     outbound_bind_interface: Option<String>,
+}
+
+#[cfg(feature = "local-online-config")]
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct SSOnlineConfig {
+    config_url: String,
+    update_interval: Option<u64>,
 }
 
 /// Server config type
@@ -1237,6 +1241,17 @@ impl LocalInstanceConfig {
     }
 }
 
+/// OnlineConfiguration (SIP008)
+/// https://shadowsocks.org/doc/sip008.html
+#[cfg(feature = "local-online-config")]
+#[derive(Debug, Clone)]
+pub struct OnlineConfig {
+    /// SIP008 URL
+    pub config_url: String,
+    /// Update interval, 3600s by default
+    pub update_interval: Option<Duration>,
+}
+
 /// Configuration
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -1341,6 +1356,11 @@ pub struct Config {
     /// Workers in runtime
     /// It should be replaced with metrics APIs: https://github.com/tokio-rs/tokio/issues/4073
     pub worker_count: usize,
+
+    /// OnlineConfiguration (SIP008)
+    /// https://shadowsocks.org/doc/sip008.html
+    #[cfg(feature = "local-online-config")]
+    pub online_config: Option<OnlineConfig>,
 }
 
 /// Configuration parsing error kind
@@ -1462,6 +1482,9 @@ impl Config {
             config_path: None,
 
             worker_count: 1,
+
+            #[cfg(feature = "local-online-config")]
+            online_config: None,
         }
     }
 
@@ -2352,6 +2375,14 @@ impl Config {
             nconfig.acl = Some(acl);
         }
 
+        #[cfg(feature = "local-online-config")]
+        if let Some(online_config) = config.online_config {
+            nconfig.online_config = Some(OnlineConfig {
+                config_url: online_config.config_url,
+                update_interval: online_config.update_interval.map(Duration::from_secs),
+            });
+        }
+
         Ok(nconfig)
     }
 
@@ -3088,6 +3119,15 @@ impl fmt::Display for Config {
         // ACL
         if let Some(ref acl) = self.acl {
             jconf.acl = Some(acl.file_path().to_str().unwrap().to_owned());
+        }
+
+        // OnlineConfig
+        #[cfg(feature = "local-online-config")]
+        if let Some(ref online_config) = self.online_config {
+            jconf.online_config = Some(SSOnlineConfig {
+                config_url: online_config.config_url.clone(),
+                update_interval: online_config.update_interval.as_ref().map(Duration::as_secs),
+            });
         }
 
         write!(f, "{}", json5::to_string(&jconf).unwrap())
