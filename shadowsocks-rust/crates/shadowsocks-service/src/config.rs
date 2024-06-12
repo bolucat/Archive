@@ -70,7 +70,14 @@ use serde::{Deserialize, Serialize};
 use shadowsocks::relay::socks5::Address;
 use shadowsocks::{
     config::{
-        ManagerAddr, Mode, ReplayAttackPolicy, ServerAddr, ServerConfig, ServerSource, ServerUser, ServerUserManager,
+        ManagerAddr,
+        Mode,
+        ReplayAttackPolicy,
+        ServerAddr,
+        ServerConfig,
+        ServerSource,
+        ServerUser,
+        ServerUserManager,
         ServerWeight,
     },
     crypto::CipherKind,
@@ -1352,11 +1359,6 @@ pub struct Config {
     /// This is normally for auto-reloading if implementation supports.
     pub config_path: Option<PathBuf>,
 
-    #[doc(hidden)]
-    /// Workers in runtime
-    /// It should be replaced with metrics APIs: https://github.com/tokio-rs/tokio/issues/4073
-    pub worker_count: usize,
-
     /// OnlineConfiguration (SIP008)
     /// https://shadowsocks.org/doc/sip008.html
     #[cfg(feature = "local-online-config")]
@@ -1480,8 +1482,6 @@ impl Config {
             balancer: BalancerConfig::default(),
 
             config_path: None,
-
-            worker_count: 1,
 
             #[cfg(feature = "local-online-config")]
             online_config: None,

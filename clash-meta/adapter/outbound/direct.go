@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/netip"
+	"os"
+	"strconv"
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/dialer"
@@ -12,6 +14,8 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/constant/features"
 )
+
+var DisableLoopBackDetector, _ = strconv.ParseBool(os.Getenv("DISABLE_LOOPBACK_DETECTOR"))
 
 type Direct struct {
 	*Base
@@ -25,7 +29,7 @@ type DirectOption struct {
 
 // DialContext implements C.ProxyAdapter
 func (d *Direct) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	if !features.CMFA {
+	if !features.CMFA && !DisableLoopBackDetector {
 		if err := d.loopBack.CheckConn(metadata); err != nil {
 			return nil, err
 		}
@@ -41,7 +45,7 @@ func (d *Direct) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 
 // ListenPacketContext implements C.ProxyAdapter
 func (d *Direct) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	if !features.CMFA {
+	if !features.CMFA && !DisableLoopBackDetector {
 		if err := d.loopBack.CheckPacketConn(metadata); err != nil {
 			return nil, err
 		}

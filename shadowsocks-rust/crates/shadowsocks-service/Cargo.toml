@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-service"
-version = "1.19.3"
+version = "1.19.4"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -98,7 +98,15 @@ local-tun = ["local", "etherparse", "tun2", "smoltcp"]
 local-fake-dns = ["local", "trust-dns", "sled", "bson"]
 # sslocal support online URL (SIP008 Online Configuration Delivery)
 # https://shadowsocks.org/doc/sip008.html
-local-online-config = ["local", "local-http", "mime", "http"]
+local-online-config = [
+    "local",
+    "local-http",
+    "mime",
+    "http",
+    "flate2",
+    "brotli",
+    "zstd",
+]
 
 # Enable Stream Cipher Protocol
 # WARN: Stream Cipher Protocol is proved to be insecure
@@ -136,7 +144,7 @@ rand = { version = "0.8", features = ["small_rng"] }
 sled = { version = "0.34.7", optional = true }
 
 futures = "0.3"
-tokio = { version = "1.5", features = [
+tokio = { version = "1.38", features = [
     "io-util",
     "macros",
     "net",
@@ -167,7 +175,11 @@ idna = "1.0"
 ipnet = "2.9"
 iprange = "0.6"
 regex = "1.4"
+
 mime = { version = "0.3", optional = true }
+flate2 = { version = "1.0", optional = true }
+brotli = { version = "6.0", optional = true }
+zstd = { version = "0.13", optional = true }
 
 tun2 = { version = "1", optional = true, features = ["async"] }
 etherparse = { version = "0.15", optional = true }

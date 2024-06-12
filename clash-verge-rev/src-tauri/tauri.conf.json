@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
   "package": {
     "productName": "Clash Verge",
-    "version": "1.6.5"
+    "version": "1.6.6"
   },
   "build": {
     "distDir": "../dist",
@@ -22,8 +22,9 @@
         "icons/icon.ico"
       ],
       "resources": ["resources"],
+      "publisher": "Clash Verge Rev",
       "externalBin": ["sidecar/clash-meta", "sidecar/clash-meta-alpha"],
-      "copyright": "© 2022 zzzgydi All Rights Reserved",
+      "copyright": "GNU General Public License v3.0",
       "category": "DeveloperTool",
       "shortDescription": "A Clash Meta GUI based on tauri.",
       "longDescription": "A Clash Meta GUI based on tauri."

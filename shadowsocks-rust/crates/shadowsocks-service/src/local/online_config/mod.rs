@@ -13,12 +13,15 @@ use crate::{
     local::{context::ServiceContext, http::HttpClient, loadbalancing::PingBalancer},
 };
 
-use futures::StreamExt;
-use http_body_util::BodyExt;
+use http::StatusCode;
 use log::{debug, error, trace, warn};
 use mime::Mime;
 use shadowsocks::config::ServerSource;
 use tokio::time;
+
+use self::content_encoding::{read_body, ContentEncoding};
+
+mod content_encoding;
 
 /// OnlineConfigService builder pattern
 pub struct OnlineConfigServiceBuilder {
@@ -87,6 +90,7 @@ impl OnlineConfigService {
 
         let req = match hyper::Request::builder()
             .header("User-Agent", SHADOWSOCKS_USER_AGENT)
+            .header("Accept-Encoding", "deflate, gzip, br, zstd")
             .method("GET")
             .uri(&self.config_url)
             .body(String::new())
@@ -98,7 +102,7 @@ impl OnlineConfigService {
             }
         };
 
-        let rsp = match self.http_client.send_request(self.context.clone(), req, None).await {
+        let mut rsp = match self.http_client.send_request(self.context.clone(), req, None).await {
             Ok(r) => r,
             Err(err) => {
                 error!("server-loader task failed to get {}, error: {}", self.config_url, err);
@@ -106,7 +110,22 @@ impl OnlineConfigService {
             }
         };
 
+        trace!("sever-loader task fetch response: {:?}", rsp);
+
         let fetch_time = Instant::now();
+
+        // Check status=200
+        if rsp.status() != StatusCode::OK {
+            error!(
+                "server-loader task failed to get {}, status: {}",
+                self.config_url,
+                rsp.status()
+            );
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("status: {}", rsp.status()),
+            ));
+        }
 
         // Content-Type: application/json; charset=utf-8
         // mandatory in standard SIP008
@@ -139,32 +158,21 @@ impl OnlineConfigService {
             }
         }
 
-        let mut collected_body = Vec::new();
-        if let Some(content_length) = rsp.headers().get(http::header::CONTENT_LENGTH) {
-            if let Ok(content_length) = content_length.to_str() {
-                if let Ok(content_length) = content_length.parse::<usize>() {
-                    collected_body.reserve(content_length);
+        let content_encoding = match rsp.headers().get(http::header::CONTENT_ENCODING) {
+            None => ContentEncoding::Identity,
+            Some(ce) => match ContentEncoding::try_from(ce) {
+                Ok(ce) => ce,
+                Err(..) => {
+                    error!("unrecognized Content-Encoding: {:?}", ce);
+                    return Err(io::Error::new(io::ErrorKind::Other, "unrecognized Content-Encoding"));
                 }
-            }
+            },
         };
 
-        let mut body = rsp.into_data_stream();
-        while let Some(data) = body.next().await {
-            match data {
-                Ok(data) => collected_body.extend_from_slice(&data),
-                Err(err) => {
-                    error!(
-                        "server-loader task failed to read body, url: {}, error: {}",
-                        self.config_url, err
-                    );
-                    return Err(io::Error::new(io::ErrorKind::Other, err));
-                }
-            }
-        }
-
-        let parsed_body = match String::from_utf8(collected_body) {
+        let body = read_body(content_encoding, &mut rsp).await?;
+        let parsed_body = match String::from_utf8(body) {
             Ok(b) => b,
-            Err(..) => return Err(io::Error::new(io::ErrorKind::Other, "body contains non-utf8 bytes").into()),
+            Err(..) => return Err(io::Error::new(io::ErrorKind::Other, "body contains non-utf8 bytes")),
         };
 
         let online_config = match Config::load_from_str(&parsed_body, ConfigType::OnlineConfig) {
@@ -174,7 +182,7 @@ impl OnlineConfigService {
                     "server-loader task failed to load from url: {}, error: {}",
                     self.config_url, err
                 );
-                return Err(io::Error::new(io::ErrorKind::Other, err).into());
+                return Err(io::Error::new(io::ErrorKind::Other, err));
             }
         };
 
@@ -183,7 +191,7 @@ impl OnlineConfigService {
                 "server-loader task failed to load from url: {}, error: {}",
                 self.config_url, err
             );
-            return Err(io::Error::new(io::ErrorKind::Other, err).into());
+            return Err(io::Error::new(io::ErrorKind::Other, err));
         }
 
         let after_read_time = Instant::now();
