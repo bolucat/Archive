@@ -1,34 +1,67 @@
 import LogoSvg from "@/assets/image/logo.svg?react";
-import getSystem from "@/utils/get-system";
-import { motion } from "framer-motion";
-import { useRef } from "react";
-import { UpdateButton } from "./update-button";
-
-const OS = getSystem();
+import { AnimatePresence, Variants, motion } from "framer-motion";
+import { classNames } from "@/utils";
+import { CSSProperties } from "react";
+import styles from "./animated-logo.module.scss";
+import { useNyanpasu } from "@nyanpasu/interface";
 
 const Logo = motion(LogoSvg);
 
-export default function AnimatedLogo() {
-  const constraintsRef = useRef<HTMLDivElement>(null);
+const transition = {
+  type: "spring",
+  stiffness: 260,
+  damping: 20,
+};
+
+const motionVariants: { [name: string]: Variants } = {
+  default: {
+    initial: {
+      opacity: 0,
+      scale: 0.5,
+      transition,
+    },
+    animate: {
+      opacity: 1,
+      scale: 1,
+      transition,
+    },
+    exit: {
+      opacity: 0,
+      scale: 0.5,
+      transition,
+    },
+    whileHover: {
+      scale: 1.1,
+      transition,
+    },
+  },
+  none: {
+    initial: {},
+    animate: {},
+    exit: {},
+  },
+};
+
+export default function AnimatedLogo({
+  className,
+  style,
+  disbaleMotion,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  disbaleMotion?: boolean;
+}) {
+  const { nyanpasuConfig } = useNyanpasu();
+
+  const disbale = disbaleMotion ?? nyanpasuConfig?.lighten_animation_effects;
 
   return (
-    <div className="the-logo" ref={constraintsRef}>
+    <AnimatePresence initial={false}>
       <Logo
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1 }}
-        whileHover={{ scale: 1.1 }}
-        transition={{
-          type: "spring",
-          stiffness: 260,
-          damping: 20,
-        }}
-        drag
-        dragConstraints={constraintsRef}
+        className={classNames(styles.LogoSchema, className)}
+        variants={motionVariants[disbale ? "none" : "default"]}
+        style={style}
       />
-
-      {!(OS === "windows" && WIN_PORTABLE) && (
-        <UpdateButton className="the-newbtn" />
-      )}
-    </div>
+    </AnimatePresence>
   );
 }
