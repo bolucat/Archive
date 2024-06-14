@@ -52,7 +52,7 @@
  		+ sizeof(struct nf_conn_act_ct_ext)
  #endif
 +#ifdef CONFIG_NF_CONNTRACK_DSCPREMARK_EXT
-+	    + sizeof(struct nf_ct_dscpremark_ext)
++ 		+ sizeof(struct nf_ct_dscpremark_ext)
 +#endif
  	;
  }

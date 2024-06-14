@@ -17,25 +17,25 @@
 +void ifb_update_offload_stats(struct net_device *dev, struct pcpu_sw_netstats *offload_stats)
 +{
 +	struct ifb_dev_private *dp;
-+   struct ifb_q_private *txp;
++	struct ifb_q_private *txp;
 +
-+   if (!dev || !offload_stats) {
-+   	return;
-+   }
++	if (!dev || !offload_stats) {
++ 		return;
++	}
 +
-+   if (!(dev->priv_flags_ext & IFF_EXT_IFB)) {
-+       return;
-+   }
++	if (!(dev->priv_flags_ext & IFF_EXT_IFB)) {
++		return;
++	}
 +
-+   dp = netdev_priv(dev);
-+   txp = dp->tx_private;
++	dp = netdev_priv(dev);
++	txp = dp->tx_private;
 +
-+   u64_stats_update_begin(&txp->rx_stats.sync);
-+   txp->rx_stats.packets += u64_stats_read(&offload_stats->rx_packets);
-+   txp->rx_stats.bytes += u64_stats_read(&offload_stats->rx_bytes);
-+   txp->tx_stats.packets += u64_stats_read(&offload_stats->tx_packets);
-+   txp->tx_stats.bytes += u64_stats_read(&offload_stats->tx_bytes);
-+   u64_stats_update_end(&txp->rx_stats.sync);
++	u64_stats_update_begin(&txp->rx_stats.sync);
++	txp->rx_stats.packets += u64_stats_read(&offload_stats->rx_packets);
++	txp->rx_stats.bytes += u64_stats_read(&offload_stats->rx_bytes);
++	txp->tx_stats.packets += u64_stats_read(&offload_stats->tx_packets);
++	txp->tx_stats.bytes += u64_stats_read(&offload_stats->tx_bytes);
++	u64_stats_update_end(&txp->rx_stats.sync);
 +}
 +EXPORT_SYMBOL(ifb_update_offload_stats);
 +

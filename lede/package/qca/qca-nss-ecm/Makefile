@@ -3,9 +3,9 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=qca-nss-ecm
 PKG_RELEASE=1
 
-PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/qca-nss-ecm.git
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_DATE:=2023-10-20
+PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/qca-nss-ecm.git
 PKG_SOURCE_VERSION:=82b27915fffdbe2cdb2d4eb70e5736ccf92e2560
 PKG_MIRROR_HASH:=643895cb187cacfcde337c19dc5a34512acc225c0db1813a15cc1b66523835c4
 
@@ -19,7 +19,7 @@ define KernelPackage/qca-nss-ecm
   SECTION:=kernel
   CATEGORY:=Kernel modules
   SUBMENU:=Network Support
-  DEPENDS:=@(TARGET_qualcommax||TARGET_ipq60xx) \
+  DEPENDS:=@TARGET_qualcommax \
   		   +@NSS_DRV_IPV6_ENABLE \
 		   +@NSS_DRV_PPE_ENABLE \
 		   +@NSS_DRV_TUN6RD_ENABLE \
@@ -28,8 +28,8 @@ define KernelPackage/qca-nss-ecm
 		   +@NSS_DRV_VIRT_IF_ENABLE \
 		   +@NSS_DRV_WIFI_ENABLE \
 		   +kmod-qca-nss-drv \
-    	   +kmod-nf-conntrack \
-		   +kmod-ppp +kmod-pppoe +kmod-pptp +kmod-bonding \
+    	   +kmod-bonding +kmod-nf-conntrack \
+		   +kmod-ppp +kmod-pppoe +kmod-pptp \
 		   +PACKAGE_kmod-pppol2tp:kmod-pppol2tp \
 		   +PACKAGE_kmod-qca-mcs:kmod-qca-mcs \
 		   +PACKAGE_kmod-nat46:kmod-nat46 \
@@ -63,7 +63,7 @@ EXTRA_CFLAGS+= \
 		 -I$(STAGING_DIR)/usr/include/qca-mcs \
 		 -I$(STAGING_DIR)/usr/include/nat46
 
-ifneq (, $(findstring $(CONFIG_TARGET_BOARD), "qualcommax" "ipq60xx"))
+ifeq ($(BOARD),qualcommax)
 ECM_MAKE_OPTS+=ECM_FRONT_END_NSS_ENABLE=y \
 			   ECM_FRONT_END_SFE_ENABLE=n \
 			   ECM_NON_PORTED_SUPPORT_ENABLE=y \
@@ -150,10 +150,10 @@ define Build/Compile
 	+$(MAKE) -C "$(LINUX_DIR)" $(strip $(ECM_MAKE_OPTS)) \
 		CROSS_COMPILE="$(TARGET_CROSS)" \
 		ARCH="$(LINUX_KARCH)" \
+		$(KERNEL_MAKE_FLAGS) \
 		M="$(PKG_BUILD_DIR)" \
 		EXTRA_CFLAGS="$(EXTRA_CFLAGS) -Wno-error=unused-function " \
 		SoC=$(SOC) \
-		$(KERNEL_MAKE_FLAGS) \
 		$(PKG_JOBS) \
 		modules
 endef

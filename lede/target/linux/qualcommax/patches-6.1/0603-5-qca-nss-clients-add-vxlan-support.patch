@@ -25,7 +25,7 @@
  {
  	struct net *net = dev_net(vxlan->dev);
  	struct sk_buff *skb;
-+   struct vxlan_fdb_event vfe;
++	struct vxlan_fdb_event vfe;
  	int err = -ENOBUFS;
  
  	skb = nlmsg_new(vxlan_nlmsg_size(), GFP_ATOMIC);
@@ -38,7 +38,7 @@
 +	vfe.rdst = rd;
 +	ether_addr_copy(vfe.eth_addr, fdb->eth_addr);
 +	atomic_notifier_call_chain(&vxlan_fdb_notifier_list, type, (void *)&vfe);
-+   return;
++	return;
  errout:
  	if (err < 0)
  		rtnl_set_sk_err(net, RTNLGRP_NEIGH, err);
@@ -65,7 +65,7 @@
  			goto out_unlock;
  		}
  
-+    	/* Reset the skb_iif to Tunnels interface index */
++		/* Reset the skb_iif to Tunnels interface index */
 +		skb->skb_iif = dev->ifindex;
 +
  		tos = ip_tunnel_ecn_encap(tos, old_iph, skb);
@@ -79,7 +79,7 @@
 +		/* Reset the skb_iif to Tunnels interface index */
 +		skb->skb_iif = dev->ifindex;
 +
-+       udp_tunnel6_xmit_skb(ndst, sock6->sock->sk, skb, dev,
++		udp_tunnel6_xmit_skb(ndst, sock6->sock->sk, skb, dev,
  				     &local_ip.sin6.sin6_addr,
  				     &dst->sin6.sin6_addr, tos, ttl,
  				     label, src_port, dst_port, !udp_sum);

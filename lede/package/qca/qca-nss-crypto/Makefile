@@ -3,9 +3,9 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=qca-nss-crypto
 PKG_RELEASE:=1
 
-PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-crypto.git
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_DATE:=2022-12-15
+PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-crypto.git
 PKG_SOURCE_VERSION:=3c5a574ce99d7f0b9f892002020f1bf9bfc57a81
 PKG_MIRROR_HASH:=ff487c5574481f548eef7b61129fa7be1d83ae285dcc3356a06be237440d8782
 
@@ -56,13 +56,11 @@ endif
 define Build/Compile
 	+$(MAKE) -C "$(LINUX_DIR)" \
 		CC="$(TARGET_CC)" \
-		CROSS_COMPILE="$(TARGET_CROSS)" \
-		ARCH="$(LINUX_KARCH)" \
+		$(KERNEL_MAKE_FLAGS) \
 		M="$(PKG_BUILD_DIR)" \
 		EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
 		NSS_CRYPTO_DIR=$(NSS_CRYPTO_DIR) \
 		SoC=$(SOC) \
-		$(KERNEL_MAKE_FLAGS) \
 		$(PKG_JOBS) \
 		modules
 endef

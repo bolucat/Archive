@@ -1,11 +1,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=qca-nss-drv
-PKG_RELEASE:=$(AUTORELEASE)
+PKG_RELEASE:=1
 
-PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-drv.git
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_DATE:=2023-08-06
+PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/nss-drv.git
 PKG_SOURCE_VERSION:=1ab184034529539f61093184a67d4454cb3eb352
 PKG_MIRROR_HASH:=6aa081c0853d3e3b6d78eee588a0967e540b2317d15aef3c3f6f7129925653f7
 
@@ -67,7 +67,7 @@ define KernelPackage/qca-nss-drv
   SECTION:=kernel
   CATEGORY:=Kernel modules
   SUBMENU:=Network Devices
-  DEPENDS:=@(TARGET_qualcommax||TARGET_ipq60xx) +kmod-qca-nss-dp
+  DEPENDS:=@TARGET_qualcommax +kmod-qca-nss-dp
   TITLE:=Qualcomm NSS core driver
   FILES:=$(PKG_BUILD_DIR)/qca-nss-drv.ko
   AUTOLOAD:=$(call AutoLoad,32,qca-nss-drv)
@@ -89,7 +89,6 @@ define KernelPackage/qca-nss-drv/install
 	$(INSTALL_BIN) ./files/qca-nss-drv.conf $(1)/etc/config/nss
 	$(INSTALL_BIN) ./files/qca-nss-drv.hotplug $(1)/etc/hotplug.d/firmware/10-qca-nss-fw
 	$(INSTALL_BIN) ./files/qca-nss-drv.debug $(1)/lib/debug/qca-nss-drv
-
 endef
 
 define KernelPackage/qca-nss-drv/Description
@@ -107,7 +106,7 @@ endif
 define Build/InstallDev
 	mkdir -p $(1)/usr/include/qca-nss-drv
 	$(CP) $(PKG_BUILD_DIR)/exports/* $(1)/usr/include/qca-nss-drv/
-ifneq (, $(findstring $(subtarget), "ipq807x" "ipq807x_64" "ipq60xx" "ipq60xx_64" "ipq50xx" "ipq50xx_64"))
+ifneq (, $(findstring $(subtarget), "ipq807x" "ipq60xx"))
 	$(RM) $(1)/usr/include/qca-nss-drv/nss_ipsecmgr.h
 	# $(INSTALL_DIR) $(1)/usr/include/qca-nss-clients
 	# $(CP) $(NSS_CLIENTS_DIR)/exports/nss_ipsecmgr.h $(1)/usr/include/qca-nss-clients/.
@@ -120,7 +119,7 @@ EXTRA_CFLAGS+= -I$(STAGING_DIR)/usr/include/qca-nss-gmac \
 			   -Wno-unused-variable \
 			   -Wno-error=unused-function
 
-ifneq (, $(findstring $(CONFIG_TARGET_BOARD), "qualcommax" "ipq60xx"))
+ifeq ($(BOARD),qualcommax)
 EXTRA_CFLAGS+= -DNSS_MEM_PROFILE_MEDIUM
 endif
 
@@ -265,11 +264,10 @@ endef
 define Build/Compile
 	+$(MAKE) -C "$(LINUX_DIR)" $(strip $(DRV_MAKE_OPTS)) \
 		CROSS_COMPILE="$(TARGET_CROSS)" \
-		ARCH="$(LINUX_KARCH)" \
+		$(KERNEL_MAKE_FLAGS) \
 		M="$(PKG_BUILD_DIR)" \
 		EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
 		SoC=$(SOC) \
-		$(KERNEL_MAKE_FLAGS) \
 		$(PKG_JOBS) \
 		modules
 endef

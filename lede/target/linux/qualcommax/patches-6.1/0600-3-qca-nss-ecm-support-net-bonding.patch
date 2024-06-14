@@ -42,7 +42,7 @@
 +   /* QCA NSS ECM bonding support */
 +   if (bond->id != (~0U))
 +       clear_bit(bond->id, &bond_id_mask);
-+	/* QCA NSS ECM bonding support */
++   /* QCA NSS ECM bonding support */
  }
  
  void bond_setup(struct net_device *bond_dev)
@@ -56,7 +56,7 @@
 +       bond->id = (u32)ffz(bond_id_mask);
 +       set_bit(bond->id, &bond_id_mask);
 +   }
-+	/* QCA NSS ECM bonding support - End */
++   /* QCA NSS ECM bonding support - End */
 +
  out:
  	rtnl_unlock();
@@ -67,7 +67,7 @@
  	spinlock_t ipsec_lock;
  #endif /* CONFIG_XFRM_OFFLOAD */
  	struct bpf_prog *xdp_prog;
-+   u32    id; /* QCA NSS ECM bonding support */
++	u32    id; /* QCA NSS ECM bonding support */
  };
  
  #define bond_slave_get_rcu(dev) \

@@ -232,7 +232,7 @@ Signed-off-by: Shivani Soni <quic_soni@quicinc.com>
 +		slave_dev = mlo_info->bond_get_mlo_tx_netdev(bond_mlo_ctx, dst_mac);
 +	}
 +
-+        return slave_dev;
++	return slave_dev;
 +}
 +
  /* bond_get_tx_dev - Calculate egress interface for a given packet.
@@ -329,9 +329,9 @@ Signed-off-by: Shivani Soni <quic_soni@quicinc.com>
 @@ -6104,6 +6224,15 @@ static void bond_destructor(struct net_d
     if (bond->id != (~0U))
         clear_bit(bond->id, &bond_id_mask);
- 	/* QCA NSS ECM bonding support */
+    /* QCA NSS ECM bonding support */
 +
-+   /*
++	/*
 +	 * Wifi driver registered callback to destroy wiphy for MLO bond netdevice
 +	 */
 +	if (bond_is_mlo_device(bond_dev)) {
@@ -465,9 +465,9 @@ Signed-off-by: Shivani Soni <quic_soni@quicinc.com>
 @@ -268,6 +285,8 @@ struct bonding {
  #endif /* CONFIG_XFRM_OFFLOAD */
  	struct bpf_prog *xdp_prog;
-    u32    id; /* QCA NSS ECM bonding support */
-+    /* MLO mode info */
-+    struct mlo_bond_info mlo_info;
+ 	u32    id; /* QCA NSS ECM bonding support */
++	/* MLO mode info */
++	struct mlo_bond_info mlo_info;
  };
  
  #define bond_slave_get_rcu(dev) \

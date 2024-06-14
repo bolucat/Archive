@@ -497,7 +497,7 @@
  	unsigned long long	priv_flags;
 -	const struct net_device_ops *netdev_ops;
 +	unsigned int		priv_flags_ext;
-+   const struct net_device_ops *netdev_ops;
++	const struct net_device_ops *netdev_ops;
  	int			ifindex;
  	unsigned short		gflags;
  	unsigned short		hard_header_len;

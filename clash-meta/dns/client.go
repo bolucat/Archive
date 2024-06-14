@@ -9,9 +9,7 @@ import (
 	"strings"
 
 	"github.com/metacubex/mihomo/component/ca"
-	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/resolver"
-	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/metacubex/randv2"
@@ -20,13 +18,11 @@ import (
 
 type client struct {
 	*D.Client
-	r            *Resolver
-	port         string
-	host         string
-	iface        string
-	proxyAdapter C.ProxyAdapter
-	proxyName    string
-	addr         string
+	r      *Resolver
+	port   string
+	host   string
+	dialer *dnsDialer
+	addr   string
 }
 
 var _ dnsClient = (*client)(nil)
@@ -73,14 +69,8 @@ func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) 
 		network = "tcp"
 	}
 
-	var options []dialer.Option
-	if c.iface != "" {
-		options = append(options, dialer.WithInterface(c.iface))
-	}
-
-	dialHandler := getDialHandler(c.r, c.proxyAdapter, c.proxyName, options...)
 	addr := net.JoinHostPort(ip.String(), c.port)
-	conn, err := dialHandler(ctx, network, addr)
+	conn, err := c.dialer.DialContext(ctx, network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +105,7 @@ func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) 
 			tcpClient.Net = "tcp"
 			network = "tcp"
 			log.Debugln("[DNS] Truncated reply from %s:%s for %s over UDP, retrying over TCP", c.host, c.port, m.Question[0].String())
-			dConn.Conn, err = dialHandler(ctx, network, addr)
+			dConn.Conn, err = c.dialer.DialContext(ctx, network, addr)
 			if err != nil {
 				ch <- result{msg, err}
 				return

@@ -34,19 +34,10 @@ platform_do_upgrade() {
 	redmi,ax5-jdcloud)
 		kernelname="0:HLOS"
 		rootfsname="rootfs"
-		emmc_do_upgrade "$1"
+		mmc_do_upgrade "$1"
 		;;
 	*)
 		default_do_upgrade "$1"
 		;;
 	esac
-}
-
-platform_copy_config() {
-	case "$(board_name)" in
-	redmi,ax5-jdcloud)
-		emmc_copy_config
-		;;
-	esac
-	return 0;
 }
