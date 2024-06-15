@@ -93,17 +93,25 @@ jobs:
           # qt6 sits on epel repo, disabling
           # - container: 'centos9'
           #   gui_variant: qt6
-          - container: 'opensuse15'
-            gui_variant: gtk3
-          - container: 'opensuse15'
-            gui_variant: qt5
-          # - container: 'opensuse15'
-          #   gui_variant: gtk4
           # - container: 'fedora39'
           #   gui_variant: gtk3
           # - container: 'fedora39'
           #   gui_variant: gtk4
-          - container: 'fedora39'
+          # https://rpmfind.net/linux/rpm2html/search.php?query=glibc-devel&submit=Search+...&system=&arch=
+          # glibc: 2.38 for fedora39
+          # glibc: 2.39 for fedora40
+          # - container: 'fedora39'
+          #   gui_variant: qt6
+          # for opensuse users, you can use centos7's rpm packages
+          # - container: 'opensuse15'
+          #   gui_variant: gtk3
+          # - container: 'opensuse15'
+          #   gui_variant: qt5
+          # - container: 'opensuse15'
+          #   gui_variant: gtk4
+          # except for qt6 package
+          # glibc: 2.31 for opensuse15.5
+          - container: 'opensuse15'
             gui_variant: qt6
     runs-on: ubuntu-22.04
     needs: docker_publish
@@ -161,7 +169,6 @@ jobs:
           echo "CXX=${{ github.workspace }}/third_party/llvm-build/Release+Asserts/bin/clang++" >> $GITHUB_ENV
           echo "USE_CLANG=1" >> $GITHUB_ENV
       - name: Set c++ standard library environment
-        if: ${{ matrix.container == 'centos7' || matrix.container == 'centos8' || matrix.container == 'opensuse15' }}
         run: |
           # use custom libc++
           echo "USE_LIBCXX=1" >> $GITHUB_ENV

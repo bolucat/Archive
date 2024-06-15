@@ -33,6 +33,8 @@ data class Proxy(
         Hysteria2(false),
         Tuic(false),
         WireGuard(false),
+        Dns(false),
+        Ssh(false),
 
 
         Relay(true),

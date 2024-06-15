@@ -5,20 +5,16 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"net/netip"
 	"strings"
 
 	"github.com/metacubex/mihomo/component/ca"
-	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/log"
 
-	"github.com/metacubex/randv2"
 	D "github.com/miekg/dns"
 )
 
 type client struct {
 	*D.Client
-	r      *Resolver
 	port   string
 	host   string
 	dialer *dnsDialer
@@ -45,31 +41,12 @@ func (c *client) Address() string {
 }
 
 func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) {
-	var (
-		ip  netip.Addr
-		err error
-	)
-	if c.r == nil {
-		// a default ip dns
-		if ip, err = netip.ParseAddr(c.host); err != nil {
-			return nil, fmt.Errorf("dns %s not a valid ip", c.host)
-		}
-	} else {
-		ips, err := resolver.LookupIPWithResolver(ctx, c.host, c.r)
-		if err != nil {
-			return nil, fmt.Errorf("use default dns resolve failed: %w", err)
-		} else if len(ips) == 0 {
-			return nil, fmt.Errorf("%w: %s", resolver.ErrIPNotFound, c.host)
-		}
-		ip = ips[randv2.IntN(len(ips))]
-	}
-
 	network := "udp"
 	if strings.HasPrefix(c.Client.Net, "tcp") {
 		network = "tcp"
 	}
 
-	addr := net.JoinHostPort(ip.String(), c.port)
+	addr := net.JoinHostPort(c.host, c.port)
 	conn, err := c.dialer.DialContext(ctx, network, addr)
 	if err != nil {
 		return nil, err

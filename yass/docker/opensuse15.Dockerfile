@@ -1,4 +1,4 @@
-FROM opensuse/leap:15
+FROM opensuse/leap:15.5
 
 # get from content of https://cli.github.com/packages/rpm/gh-cli.repo
 RUN rpm --import 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x23F3D4EA75716059'
@@ -10,7 +10,7 @@ RUN zypper cc -a && \
     git make python3 bash coreutils gh \
     rpm-build rpm-devel rpmlint diffutils patch rpmdevtools \
     cmake ninja pkg-config perl golang \
-    gtk3-devel gtk4-devel libqt5-qtbase-devel \
+    gtk3-devel gtk4-devel libqt5-qtbase-devel qt6-base-devel \
     zlib-devel c-ares-devel libnghttp2-devel curl-devel \
     http-parser-devel mbedtls-devel && \
   zypper cc -a
