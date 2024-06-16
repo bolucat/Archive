@@ -8,7 +8,11 @@ type TunInboundOptions struct {
 	GSO                    bool                   `json:"gso,omitempty"`
 	Address                Listable[netip.Prefix] `json:"address,omitempty"`
 	AutoRoute              bool                   `json:"auto_route,omitempty"`
+	IPRoute2TableIndex     int                    `json:"iproute2_table_index,omitempty"`
+	IPRoute2RuleIndex      int                    `json:"iproute2_rule_index,omitempty"`
 	AutoRedirect           bool                   `json:"auto_redirect,omitempty"`
+	AutoRedirectInputMark  uint32                 `json:"auto_redirect_input_mark,omitempty"`
+	AutoRedirectOutputMark uint32                 `json:"auto_redirect_output_mark,omitempty"`
 	StrictRoute            bool                   `json:"strict_route,omitempty"`
 	RouteAddress           Listable[netip.Prefix] `json:"route_address,omitempty"`
 	RouteAddressSet        Listable[string]       `json:"route_address_set,omitempty"`
@@ -29,16 +33,16 @@ type TunInboundOptions struct {
 	Platform               *TunPlatformOptions    `json:"platform,omitempty"`
 	InboundOptions
 
-	// Deprecated: merged to `address`
+	// Deprecated: merged to Address
 	Inet4Address Listable[netip.Prefix] `json:"inet4_address,omitempty"`
-	// Deprecated: merged to `address`
+	// Deprecated: merged to Address
 	Inet6Address Listable[netip.Prefix] `json:"inet6_address,omitempty"`
-	// Deprecated: merged to `route_address`
+	// Deprecated: merged to RouteAddress
 	Inet4RouteAddress Listable[netip.Prefix] `json:"inet4_route_address,omitempty"`
-	// Deprecated: merged to `route_address`
+	// Deprecated: merged to RouteAddress
 	Inet6RouteAddress Listable[netip.Prefix] `json:"inet6_route_address,omitempty"`
-	// Deprecated: merged to `route_exclude_address`
+	// Deprecated: merged to RouteExcludeAddress
 	Inet4RouteExcludeAddress Listable[netip.Prefix] `json:"inet4_route_exclude_address,omitempty"`
-	// Deprecated: merged to `route_exclude_address`
+	// Deprecated: merged to RouteExcludeAddress
 	Inet6RouteExcludeAddress Listable[netip.Prefix] `json:"inet6_route_exclude_address,omitempty"`
 }

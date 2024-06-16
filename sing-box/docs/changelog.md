@@ -2,6 +2,26 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.13
+
+* TUN address fields are merged **1**
+* Add route address set support for auto-redirect **2**
+
+**1**:
+
+See [Migration](/migration/#tun-address-fields-are-merged).
+
+**2**:
+
+The new feature will allow you to configure the destination IP CIDR rules
+in the specified rule-sets to the firewall automatically.
+
+Specified or unspecified destinations will bypass the sing-box routes to get better performance
+(for example, keep hardware offloading of direct traffics on the router).
+
+See [route_address_set](/configuration/inbound/tun/#route_address_set)
+and [route_exclude_address_set](/configuration/inbound/tun/#route_exclude_address_set).
+
 #### 1.10.0-alpha.12
 
 * Fix auto-redirect not configuring nftables forward chain correctly
