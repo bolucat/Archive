@@ -34,13 +34,29 @@ export const AppDrawer = ({ isDrawer }: { isDrawer?: boolean }) => {
         data-windrag
       >
         <div
-          className="w-full h-full max-w-32 max-h-32 ml-auto mr-auto"
-          data-windrag
+          className={classNames(
+            "flex items-center justify-center gap-4 ",
+            isDrawer && "mx-2",
+          )}
         >
-          <AnimatedLogo className="w-full h-full" data-windrag />
+          <div
+            className={classNames(
+              isDrawer && "w-10 h-10",
+              "w-full h-full max-w-32 max-h-32 ml-auto mr-auto",
+            )}
+            data-windrag
+          >
+            <AnimatedLogo className="w-full h-full" data-windrag />
+          </div>
+
+          {isDrawer && (
+            <div className="text-lg text-nowrap font-bold mt-1" data-windrag>
+              Clash Nyanpasu
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hidden">
           {Object.entries(routes).map(([name, { path, icon }]) => {
             return (
               <RouteListItem key={name} name={name} path={path} icon={icon} />

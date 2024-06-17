@@ -99,6 +99,7 @@ type DNSRule interface {
 type RuleSet interface {
 	Name() string
 	StartContext(ctx context.Context, startContext RuleSetStartContext) error
+	PostStart() error
 	Metadata() RuleSetMetadata
 	ExtractIPSet() []*netipx.IPSet
 	IncRef()

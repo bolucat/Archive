@@ -26,7 +26,7 @@ require (
 	github.com/sagernet/gvisor v0.0.0-20240428053021-e691de28565f
 	github.com/sagernet/quic-go v0.45.0-beta.2
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.5.0-alpha.10.0.20240615025518-3de31664ce39
+	github.com/sagernet/sing v0.5.0-alpha.11
 	github.com/sagernet/sing-dns v0.3.0-beta.5
 	github.com/sagernet/sing-mux v0.2.0
 	github.com/sagernet/sing-quic v0.2.0-beta.9

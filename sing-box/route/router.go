@@ -725,6 +725,14 @@ func (r *Router) PostStart() error {
 			return E.Cause(err, "initialize rule[", i, "]")
 		}
 	}
+	for _, ruleSet := range r.ruleSets {
+		monitor.Start("post start rule_set[", ruleSet.Name(), "]")
+		err := ruleSet.PostStart()
+		monitor.Finish()
+		if err != nil {
+			return E.Cause(err, "post start rule_set[", ruleSet.Name(), "]")
+		}
+	}
 	r.started = true
 	return nil
 }

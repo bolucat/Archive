@@ -14,6 +14,10 @@ class YASSWindow {
   ~YASSWindow();
 
  private:
+  void CreateStatusIcon();
+#ifdef HAVE_APP_INDICATOR
+  void CreateAppIndicator();
+#endif
   static YASSWindow* window;
 
  private:
@@ -51,6 +55,15 @@ class YASSWindow {
 
   GtkStatusbar* status_bar_;
   std::string last_status_msg_;
+
+  // tray icon
+  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+  GtkStatusIcon* tray_icon_ = nullptr;
+  G_GNUC_END_IGNORE_DEPRECATIONS
+
+#ifdef HAVE_APP_INDICATOR
+  GObject* tray_indicator_;
+#endif
 
  public:
   std::string GetServerHost();
