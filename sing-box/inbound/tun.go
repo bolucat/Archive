@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -206,30 +207,32 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 		if err != nil {
 			return nil, E.Cause(err, "initialize auto-redirect")
 		}
-		var markMode bool
-		for _, routeAddressSet := range options.RouteAddressSet {
-			ruleSet, loaded := router.RuleSet(routeAddressSet)
-			if !loaded {
-				return nil, E.New("parse route_address_set: rule-set not found: ", routeAddressSet)
+		if runtime.GOOS != "android" {
+			var markMode bool
+			for _, routeAddressSet := range options.RouteAddressSet {
+				ruleSet, loaded := router.RuleSet(routeAddressSet)
+				if !loaded {
+					return nil, E.New("parse route_address_set: rule-set not found: ", routeAddressSet)
+				}
+				ruleSet.IncRef()
+				inbound.routeRuleSet = append(inbound.routeRuleSet, ruleSet)
+				markMode = true
 			}
-			ruleSet.IncRef()
-			inbound.routeRuleSet = append(inbound.routeRuleSet, ruleSet)
-			markMode = true
-		}
-		for _, routeExcludeAddressSet := range options.RouteExcludeAddressSet {
-			ruleSet, loaded := router.RuleSet(routeExcludeAddressSet)
-			if !loaded {
-				return nil, E.New("parse route_exclude_address_set: rule-set not found: ", routeExcludeAddressSet)
+			for _, routeExcludeAddressSet := range options.RouteExcludeAddressSet {
+				ruleSet, loaded := router.RuleSet(routeExcludeAddressSet)
+				if !loaded {
+					return nil, E.New("parse route_exclude_address_set: rule-set not found: ", routeExcludeAddressSet)
+				}
+				ruleSet.IncRef()
+				inbound.routeExcludeRuleSet = append(inbound.routeExcludeRuleSet, ruleSet)
+				markMode = true
 			}
-			ruleSet.IncRef()
-			inbound.routeExcludeRuleSet = append(inbound.routeExcludeRuleSet, ruleSet)
-			markMode = true
-		}
-		if markMode {
-			inbound.tunOptions.AutoRedirectMarkMode = true
-			err = router.RegisterAutoRedirectOutputMark(inbound.tunOptions.AutoRedirectOutputMark)
-			if err != nil {
-				return nil, err
+			if markMode {
+				inbound.tunOptions.AutoRedirectMarkMode = true
+				err = router.RegisterAutoRedirectOutputMark(inbound.tunOptions.AutoRedirectOutputMark)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -337,7 +340,21 @@ func (t *Tun) PostStart() error {
 	monitor := taskmonitor.New(t.logger, C.StartTimeout)
 	if t.autoRedirect != nil {
 		t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
+		for _, routeRuleSet := range t.routeRuleSet {
+			ipSets := routeRuleSet.ExtractIPSet()
+			if len(ipSets) == 0 {
+				t.logger.Warn("route_address_set: no destination IP CIDR rules found in rule-set: ", routeRuleSet.Name())
+			}
+			t.routeAddressSet = append(t.routeAddressSet, ipSets...)
+		}
 		t.routeExcludeAddressSet = common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)
+		for _, routeExcludeRuleSet := range t.routeExcludeRuleSet {
+			ipSets := routeExcludeRuleSet.ExtractIPSet()
+			if len(ipSets) == 0 {
+				t.logger.Warn("route_address_set: no destination IP CIDR rules found in rule-set: ", routeExcludeRuleSet.Name())
+			}
+			t.routeExcludeAddressSet = append(t.routeExcludeAddressSet, ipSets...)
+		}
 		monitor.Start("initiating auto-redirect")
 		err := t.autoRedirect.Start()
 		monitor.Finish()
