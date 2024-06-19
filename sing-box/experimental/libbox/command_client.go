@@ -25,8 +25,8 @@ type CommandClientOptions struct {
 type CommandClientHandler interface {
 	Connected()
 	Disconnected(message string)
-	ClearLog()
-	WriteLog(messageList StringIterator)
+	ClearLogs()
+	WriteLogs(messageList StringIterator)
 	WriteStatus(message *StatusMessage)
 	WriteGroups(message OutboundGroupIterator)
 	InitializeClashMode(modeList StringIterator, currentMode string)

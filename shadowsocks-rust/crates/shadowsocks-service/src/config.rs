@@ -70,14 +70,7 @@ use serde::{Deserialize, Serialize};
 use shadowsocks::relay::socks5::Address;
 use shadowsocks::{
     config::{
-        ManagerAddr,
-        Mode,
-        ReplayAttackPolicy,
-        ServerAddr,
-        ServerConfig,
-        ServerSource,
-        ServerUser,
-        ServerUserManager,
+        ManagerAddr, Mode, ReplayAttackPolicy, ServerAddr, ServerConfig, ServerSource, ServerUser, ServerUserManager,
         ServerWeight,
     },
     crypto::CipherKind,
@@ -1864,6 +1857,12 @@ impl Config {
             }
         }
 
+        let server_source = match config_type {
+            ConfigType::Local | ConfigType::Server | ConfigType::Manager => ServerSource::Configuration,
+            #[cfg(feature = "local-online-config")]
+            ConfigType::OnlineConfig => ServerSource::OnlineConfig,
+        };
+
         // Standard config
         // Server
         match (config.server, config.server_port, config.password, &config.method) {
@@ -1906,7 +1905,7 @@ impl Config {
                 };
 
                 let mut nsvr = ServerConfig::new(addr, password, method);
-                nsvr.set_source(ServerSource::Configuration);
+                nsvr.set_source(server_source);
                 nsvr.set_mode(global_mode);
 
                 if let Some(ref p) = config.plugin {
@@ -2026,7 +2025,7 @@ impl Config {
                 };
 
                 let mut nsvr = ServerConfig::new(addr, password, method);
-                nsvr.set_source(ServerSource::Configuration);
+                nsvr.set_source(server_source);
 
                 // Extensible Identity Header, Users
                 if let Some(users) = svr.users {

@@ -124,9 +124,9 @@ func (c *CommandClient) handleLogConn(conn net.Conn) {
 				c.handler.Disconnected(err.Error())
 				return
 			}
-			c.handler.WriteLog(newIterator(messages))
+			c.handler.WriteLogs(newIterator(messages))
 		case 1:
-			c.handler.ClearLog()
+			c.handler.ClearLogs()
 		}
 	}
 }
