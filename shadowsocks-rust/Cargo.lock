@@ -3215,7 +3215,7 @@ dependencies = [
 
 [[package]]
 name = "shadowsocks-rust"
-version = "1.20.1"
+version = "1.20.2"
 dependencies = [
  "base64 0.22.1",
  "build-time",
@@ -3256,7 +3256,7 @@ dependencies = [
 
 [[package]]
 name = "shadowsocks-service"
-version = "1.20.1"
+version = "1.20.2"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -3273,6 +3273,7 @@ dependencies = [
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
+ "httparse",
  "hyper",
  "idna 1.0.0",
  "ipnet",
