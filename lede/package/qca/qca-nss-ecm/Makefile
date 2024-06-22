@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=qca-nss-ecm
-PKG_RELEASE=1
+PKG_RELEASE=2
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_DATE:=2023-10-20
@@ -28,10 +28,11 @@ define KernelPackage/qca-nss-ecm
 		   +@NSS_DRV_VIRT_IF_ENABLE \
 		   +@NSS_DRV_WIFI_ENABLE \
 		   +kmod-qca-nss-drv \
-    	 +kmod-bonding +kmod-nf-conntrack +kmod-nat46 \
+    	   +kmod-bonding +kmod-nf-conntrack \
 		   +kmod-ppp +kmod-pppoe +kmod-pptp \
 		   +PACKAGE_kmod-pppol2tp:kmod-pppol2tp \
 		   +PACKAGE_kmod-qca-mcs:kmod-qca-mcs \
+		   +PACKAGE_kmod-nat46:kmod-nat46 \
 		   +PACKAGE_kmod-vxlan:kmod-vxlan
   TITLE:=QCA NSS Enhanced Connection Manager (ECM)
   FILES:=$(PKG_BUILD_DIR)/ecm.ko

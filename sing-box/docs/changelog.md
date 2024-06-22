@@ -2,9 +2,17 @@
 icon: material/alert-decagram
 ---
 
-#### 1.10.0-alpha.15
+#### 1.10.0-alpha.16
 
+* Add custom options for `auto-route` and `auto-redirect` **1**
 * Fixes and improvements
+
+**1**:
+
+See [iproute2_table_index](/configuration/inbound/tun/#iproute2_table_index),
+[iproute2_rule_index](/configuration/inbound/tun/#iproute2_rule_index),
+[auto_redirect_input_mark](/configuration/inbound/tun/#auto_redirect_input_mark) and
+[auto_redirect_output_mark](/configuration/inbound/tun/#auto_redirect_output_mark).
 
 #### 1.10.0-alpha.13
 

@@ -199,7 +199,7 @@ publish_docs:
 
 docs_install:
 	python -m venv venv
-	source ./venv/bin/active && pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
+	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.*" mkdocs-static-i18n=="1.2.*"
 
 clean:
 	rm -rf bin dist sing-box
