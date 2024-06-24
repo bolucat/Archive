@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Web;
 using v2rayN.Enums;
 using v2rayN.Handler.Fmt;
 using v2rayN.Models;
@@ -1355,17 +1356,26 @@ namespace v2rayN.Handler
         public static int AddSubItem(Config config, string url)
         {
             //already exists
-            if (SQLiteHelper.Instance.Table<SubItem>().Where(e => e.url == url).Count() > 0)
+            if (SQLiteHelper.Instance.Table<SubItem>().Any(e => e.url == url))
             {
                 return 0;
             }
-
             SubItem subItem = new()
             {
                 id = string.Empty,
-                remarks = "import_sub",
                 url = url
             };
+
+            try
+            {
+                var uri = new Uri(url);
+                var queryVars = HttpUtility.ParseQueryString(uri.Query);
+                subItem.remarks = queryVars["remarks"] ?? "import_sub";
+            }
+            catch (UriFormatException)
+            {
+                return 0;
+            }
 
             return AddSubItem(config, subItem);
         }
@@ -1615,7 +1625,7 @@ namespace v2rayN.Handler
 
         public static int InitBuiltinRouting(Config config, bool blImportAdvancedRules = false)
         {
-            var ver = "V2-";
+            var ver = "V3-";
             var items = LazyConfig.Instance.RoutingItems();
             if (blImportAdvancedRules || items.Where(t => t.remarks.StartsWith(ver)).ToList().Count <= 0)
             {

@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Data;
+using System.Net;
 using System.Net.NetworkInformation;
 using v2rayN.Enums;
 using v2rayN.Models;
@@ -120,7 +121,8 @@ namespace v2rayN.Handler.CoreConfig
                 var listen = "::";
                 singboxConfig.inbounds = [];
 
-                if (!_config.tunModeItem.enableTun || _config.tunModeItem.enableTun && _config.tunModeItem.enableExInbound)
+                if (!_config.tunModeItem.enableTun
+                    || (_config.tunModeItem.enableTun && _config.tunModeItem.enableExInbound && _config.runningCoreType == ECoreType.sing_box))
                 {
                     var inbound = new Inbound4Sbox()
                     {
@@ -191,7 +193,7 @@ namespace v2rayN.Handler.CoreConfig
                     tunInbound.strict_route = _config.tunModeItem.strictRoute;
                     tunInbound.stack = _config.tunModeItem.stack;
                     tunInbound.sniff = _config.inbound[0].sniffingEnabled;
-                    tunInbound.sniff_override_destination = _config.inbound[0].routeOnly ? false : _config.inbound[0].sniffingEnabled;
+                    //tunInbound.sniff_override_destination = _config.inbound[0].routeOnly ? false : _config.inbound[0].sniffingEnabled;
                     if (_config.tunModeItem.enableIPv6Address == false)
                     {
                         tunInbound.inet6_address = null;
@@ -844,12 +846,14 @@ namespace v2rayN.Handler.CoreConfig
                            .ToList();
             if (lstDomain != null && lstDomain.Count > 0)
             {
+                //var strategy = dns4Sbox.servers.Where(t => !Utils.IsNullOrEmpty(t.strategy)).Select(t => t.strategy).FirstOrDefault();
                 var tag = "local_local";
                 dns4Sbox.servers.Add(new()
                 {
                     tag = tag,
                     address = "223.5.5.5",
                     detour = Global.DirectTag,
+                    //strategy = strategy
                 });
                 dns4Sbox.rules.Add(new()
                 {
@@ -868,7 +872,7 @@ namespace v2rayN.Handler.CoreConfig
                 singboxConfig.experimental ??= new Experimental4Sbox();
                 singboxConfig.experimental.clash_api = new Clash_Api4Sbox()
                 {
-                    external_controller = $"{Global.Loopback}:{LazyConfig.Instance.StatePort}",
+                    external_controller = $"{Global.Loopback}:{LazyConfig.Instance.StatePort2}",
                 };
             }
 
@@ -886,6 +890,10 @@ namespace v2rayN.Handler.CoreConfig
 
         private int ConvertGeo2Ruleset(SingboxConfig singboxConfig)
         {
+            static void AddRuleSets(List<string> ruleSets, List<string>? rule_set)
+            {
+                if (rule_set != null) ruleSets.AddRange(rule_set);
+            }
             var geosite = "geosite";
             var geoip = "geoip";
             var ruleSets = new List<string>();
@@ -895,13 +903,13 @@ namespace v2rayN.Handler.CoreConfig
             {
                 rule.rule_set = rule?.geosite?.Select(t => $"{geosite}-{t}").ToList();
                 rule.geosite = null;
-                ruleSets.AddRange(rule.rule_set);
+                AddRuleSets(ruleSets, rule.rule_set);
             }
             foreach (var rule in singboxConfig.route.rules.Where(t => t.geoip?.Count > 0).ToList() ?? [])
             {
                 rule.rule_set = rule?.geoip?.Select(t => $"{geoip}-{t}").ToList();
                 rule.geoip = null;
-                ruleSets.AddRange(rule.rule_set);
+                AddRuleSets(ruleSets, rule.rule_set);
             }
 
             //convert dns geosite & geoip to ruleset
@@ -917,7 +925,15 @@ namespace v2rayN.Handler.CoreConfig
             }
             foreach (var dnsRule in singboxConfig.dns?.rules.Where(t => t.rule_set?.Count > 0).ToList() ?? [])
             {
-                ruleSets.AddRange(dnsRule.rule_set);
+                AddRuleSets(ruleSets, dnsRule.rule_set);
+            }
+            //rules in rules
+            foreach (var item in singboxConfig.dns?.rules.Where(t => t.rules?.Count > 0).Select(t => t.rules).ToList() ?? [])
+            {
+                foreach (var item2 in item ?? [])
+                {
+                    AddRuleSets(ruleSets, item2.rule_set);
+                }
             }
 
             //load custom ruleset file
@@ -943,6 +959,7 @@ namespace v2rayN.Handler.CoreConfig
             singboxConfig.route.rule_set = [];
             foreach (var item in new HashSet<string>(ruleSets))
             {
+                if (Utils.IsNullOrEmpty(item)) { continue; }
                 var customRuleset = customRulesets.FirstOrDefault(t => t.tag != null && t.tag.Equals(item));
                 if (customRuleset != null)
                 {
@@ -955,7 +972,9 @@ namespace v2rayN.Handler.CoreConfig
                         type = "remote",
                         format = "binary",
                         tag = item,
-                        url = string.Format(Global.SingboxRulesetUrl, item.StartsWith(geosite) ? geosite : geoip, item),
+                        url = item.StartsWith(geosite) ?
+                                string.Format(Global.SingboxRulesetUrlGeosite, item) :
+                                string.Format(Global.SingboxRulesetUrlGeoip, item.Replace($"{geoip}-", "")),
                         download_detour = Global.ProxyTag
                     });
                 }

@@ -2,6 +2,27 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.17
+
+* Some chaotic changes **1**
+* `rule_set_ipcidr_match_source` rule items are renamed **2**
+* Add `rule_set_ip_cidr_accept_empty` DNS address filter rule item **3**
+* Update quic-go to v0.45.1
+* Fixes and improvements
+
+**1**:
+
+Something may be broken, please actively report problems with this version.
+
+**2**:
+
+`rule_set_ipcidr_match_source` route and DNS rule items are renamed to
+`rule_set_ip_cidr_match_source` and will be remove in sing-box 1.11.0.
+
+**3**:
+
+See [DNS Rule](/configuration/dns/rule/#rule_set_ip_cidr_accept_empty).
+
 #### 1.10.0-alpha.16
 
 * Add custom options for `auto-route` and `auto-redirect` **1**
