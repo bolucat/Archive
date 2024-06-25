@@ -390,8 +390,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
 elseif(APPLE)
   message(WARNING "OSX __thread support is known to call malloc which makes "
                     "it unsafe to use from malloc replacement")
-elseif(MINGW)
-  message(WARNING "mingw doesn't really support tls")
+elseif(MINGW AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  message(WARNING "mingw (gcc) doesn't really support tls")
 elseif(MSVC)
   check_c_source_compiles("static __declspec(thread) int p = 0; int main() {}" HAVE_TLS)
 else()
