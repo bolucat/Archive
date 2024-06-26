@@ -2,6 +2,28 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.18
+
+* Add new `inline` rule-set type **1**
+* Add auto reload support for local rule-set
+* Update fsnotify usages **2**
+* Fixes and improvements
+
+**1**:
+
+The new [rule-set] type inline (which also becomes the default type)
+allows you to write headless rules directly without creating a rule-set file.
+
+[rule-set]: /configuration/rule-set/
+
+**2**:
+
+sing-box now uses fsnotify correctly and will not cancel watching
+if the target file is deleted or recreated via rename (e.g. `mv`).
+
+This affects all path options that support reload, including
+`tls.certificate_path`, `tls.key_path`, `tls.ech.key_path` and `rule_set.path`.
+
 #### 1.10.0-alpha.17
 
 * Some chaotic changes **1**
@@ -449,7 +471,7 @@ See [Address Filter Fields](/configuration/dns/rule#address-filter-fields).
 Important changes since 1.7:
 
 * Migrate cache file from Clash API to independent options **1**
-* Introducing [Rule Set](/configuration/rule-set/) **2**
+* Introducing [rule-set](/configuration/rule-set/) **2**
 * Add `sing-box geoip`, `sing-box geosite` and `sing-box rule-set` commands **3**
 * Allow nested logical rules **4**
 * Independent `source_ip_is_private` and `ip_is_private` rules **5**
@@ -469,7 +491,7 @@ See [Cache File](/configuration/experimental/cache-file/) and
 
 **2**:
 
-Rule set is independent collections of rules that can be compiled into binaries to improve performance.
+rule-set is independent collections of rules that can be compiled into binaries to improve performance.
 Compared to legacy GeoIP and Geosite resources,
 it can include more types of rules, load faster,
 use less memory, and update automatically.
@@ -477,16 +499,16 @@ use less memory, and update automatically.
 See [Route#rule_set](/configuration/route/#rule_set),
 [Route Rule](/configuration/route/rule/),
 [DNS Rule](/configuration/dns/rule/),
-[Rule Set](/configuration/rule-set/),
+[rule-set](/configuration/rule-set/),
 [Source Format](/configuration/rule-set/source-format/) and
 [Headless Rule](/configuration/rule-set/headless-rule/).
 
-For GEO resources migration, see [Migrate GeoIP to rule sets](/migration/#migrate-geoip-to-rule-sets) and
-[Migrate Geosite to rule sets](/migration/#migrate-geosite-to-rule-sets).
+For GEO resources migration, see [Migrate GeoIP to rule-sets](/migration/#migrate-geoip-to-rule-sets) and
+[Migrate Geosite to rule-sets](/migration/#migrate-geosite-to-rule-sets).
 
 **3**:
 
-New commands manage GeoIP, Geosite and rule set resources, and help you migrate GEO resources to rule sets.
+New commands manage GeoIP, Geosite and rule-set resources, and help you migrate GEO resources to rule-sets.
 
 **4**:
 
@@ -683,7 +705,7 @@ This change is intended to break incorrect usage and essentially requires no act
 
 **1**:
 
-Now the rules in the `rule_set` rule item can be logically considered to be merged into the rule using rule sets,
+Now the rules in the `rule_set` rule item can be logically considered to be merged into the rule using rule-sets,
 rather than completely following the AND logic.
 
 #### 1.8.0-alpha.5
@@ -699,7 +721,7 @@ Since GeoIP was deprecated, we made this rule independent, see [Migration](/migr
 #### 1.8.0-alpha.1
 
 * Migrate cache file from Clash API to independent options **1**
-* Introducing [Rule Set](/configuration/rule-set/) **2**
+* Introducing [rule-set](/configuration/rule-set/) **2**
 * Add `sing-box geoip`, `sing-box geosite` and `sing-box rule-set` commands **3**
 * Allow nested logical rules **4**
 
@@ -710,7 +732,7 @@ See [Cache File](/configuration/experimental/cache-file/) and
 
 **2**:
 
-Rule set is independent collections of rules that can be compiled into binaries to improve performance.
+rule-set is independent collections of rules that can be compiled into binaries to improve performance.
 Compared to legacy GeoIP and Geosite resources,
 it can include more types of rules, load faster,
 use less memory, and update automatically.
@@ -718,16 +740,16 @@ use less memory, and update automatically.
 See [Route#rule_set](/configuration/route/#rule_set),
 [Route Rule](/configuration/route/rule/),
 [DNS Rule](/configuration/dns/rule/),
-[Rule Set](/configuration/rule-set/),
+[rule-set](/configuration/rule-set/),
 [Source Format](/configuration/rule-set/source-format/) and
 [Headless Rule](/configuration/rule-set/headless-rule/).
 
-For GEO resources migration, see [Migrate GeoIP to rule sets](/migration/#migrate-geoip-to-rule-sets) and
-[Migrate Geosite to rule sets](/migration/#migrate-geosite-to-rule-sets).
+For GEO resources migration, see [Migrate GeoIP to rule-sets](/migration/#migrate-geoip-to-rule-sets) and
+[Migrate Geosite to rule-sets](/migration/#migrate-geosite-to-rule-sets).
 
 **3**:
 
-New commands manage GeoIP, Geosite and rule set resources, and help you migrate GEO resources to rule sets.
+New commands manage GeoIP, Geosite and rule-set resources, and help you migrate GEO resources to rule-sets.
 
 **4**:
 

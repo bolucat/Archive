@@ -534,7 +534,10 @@ func (r *Router) Start() error {
 
 	if r.needPackageManager && r.platformInterface == nil {
 		monitor.Start("initialize package manager")
-		packageManager, err := tun.NewPackageManager(r)
+		packageManager, err := tun.NewPackageManager(tun.PackageManagerOptions{
+			Callback: r,
+			Logger:   r.logger,
+		})
 		monitor.Finish()
 		if err != nil {
 			return E.Cause(err, "create package manager")

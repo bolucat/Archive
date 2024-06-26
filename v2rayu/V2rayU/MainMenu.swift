@@ -27,6 +27,7 @@ class MenuController: NSObject, NSMenuDelegate {
     @IBOutlet weak var v2rayStatusItem: NSMenuItem!
     @IBOutlet weak var serverItems: NSMenuItem!
     @IBOutlet weak var newVersionItem: NSMenuItem!
+    @IBOutlet weak var routingMenu: NSMenu!
 
     // when menu.xib loaded
     override func awakeFromNib() {
@@ -38,6 +39,8 @@ class MenuController: NSObject, NSMenuDelegate {
         // hide new version
         newVersionItem.isHidden = true
 
+        self.showRouring();
+        
         // windowWillClose Notification
         NotificationCenter.default.addObserver(self, selector: #selector(configWindowWillClose(notification:)), name: NSWindow.willCloseNotification, object: nil)
     }
@@ -120,6 +123,23 @@ class MenuController: NSObject, NSMenuDelegate {
                 self.serverItems.submenu = _subMenus
                 // fix: must be used from main thread only
                 configWindow.reloadData()
+            }
+        }
+    }
+    
+    func showRouring() {
+        let routingRule = Int(UserDefaults.get(forKey: .routingRule) ?? "0") ?? 0
+        DispatchQueue.main.async {
+            // 假设 routingMenu 已经连接并且有一个子菜单
+            if self.routingMenu.items != nil {
+                // 确保 routingMenu 已经连接
+                for item in self.routingMenu.items {
+                    if item.tag == routingRule {
+                        item.state = .on
+                    } else {
+                        item.state = .off
+                    }
+                }
             }
         }
     }
@@ -214,18 +234,21 @@ class MenuController: NSObject, NSMenuDelegate {
     @IBAction func openPreferenceGeneral(_ sender: NSMenuItem) {
         DispatchQueue.main.async {
             preferencesWindowController.show(preferencePane: .generalTab)
+            showDock(state: true)
         }
     }
 
     @IBAction func openPreferenceSubscribe(_ sender: NSMenuItem) {
         DispatchQueue.main.async {
             preferencesWindowController.show(preferencePane: .subscribeTab)
+            showDock(state: true)
         }
     }
 
     @IBAction func openPreferencePac(_ sender: NSMenuItem) {
         DispatchQueue.main.async {
             preferencesWindowController.show(preferencePane: .pacTab)
+            showDock(state: true)
         }
     }
 
@@ -246,8 +269,9 @@ class MenuController: NSObject, NSMenuDelegate {
         guard let object = notification.object as? NSWindow else {
             return
         }
-
-        if object.title == "V2rayU" {
+        print("configWindowWillClose",object.title,object)
+        let allow_titles = ["V2rayU","About","Pac","Subscription","General","Advance","Dns","Routing"]
+        if allow_titles.contains(object.title) {
            showDock(state: false)
         }
     }
@@ -268,7 +292,20 @@ class MenuController: NSObject, NSMenuDelegate {
         UserDefaults.set(forKey: .runMode, value: RunMode.pac.rawValue)
         V2rayLaunch.restartV2ray()
     }
+    
+    @IBAction func goRouting(_ sender: NSMenuItem) {
+        DispatchQueue.main.async {
+            preferencesWindowController.show(preferencePane: .routingTab)
+            showDock(state: true)
+        }
+    }
 
+    @IBAction func switchRouting(_ sender: NSMenuItem) {
+        UserDefaults.set(forKey: .routingRule, value: String(sender.tag));
+        self.showRouring();
+        V2rayLaunch.restartV2ray()
+    }
+    
     @IBAction func switchGlobalMode(_ sender: NSMenuItem) {
         UserDefaults.set(forKey: .runMode, value: RunMode.global.rawValue)
         V2rayLaunch.restartV2ray()

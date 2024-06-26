@@ -17,6 +17,7 @@ type _RuleSet struct {
 	Type          string        `json:"type"`
 	Tag           string        `json:"tag"`
 	Format        string        `json:"format"`
+	InlineOptions PlainRuleSet  `json:"-"`
 	LocalOptions  LocalRuleSet  `json:"-"`
 	RemoteOptions RemoteRuleSet `json:"-"`
 }
@@ -26,12 +27,15 @@ type RuleSet _RuleSet
 func (r RuleSet) MarshalJSON() ([]byte, error) {
 	var v any
 	switch r.Type {
+	case "", C.RuleSetTypeInline:
+		r.Type = ""
+		v = r.InlineOptions
 	case C.RuleSetTypeLocal:
 		v = r.LocalOptions
 	case C.RuleSetTypeRemote:
 		v = r.RemoteOptions
 	default:
-		return nil, E.New("unknown rule set type: " + r.Type)
+		return nil, E.New("unknown rule-set type: " + r.Type)
 	}
 	return MarshallObjects((_RuleSet)(r), v)
 }
@@ -44,23 +48,28 @@ func (r *RuleSet) UnmarshalJSON(bytes []byte) error {
 	if r.Tag == "" {
 		return E.New("missing tag")
 	}
-	switch r.Format {
-	case "":
-		return E.New("missing format")
-	case C.RuleSetFormatSource, C.RuleSetFormatBinary:
-	default:
-		return E.New("unknown rule set format: " + r.Format)
+	if r.Type != C.RuleSetTypeInline {
+		switch r.Format {
+		case "":
+			return E.New("missing format")
+		case C.RuleSetFormatSource, C.RuleSetFormatBinary:
+		default:
+			return E.New("unknown rule-set format: " + r.Format)
+		}
+	} else {
+		r.Format = ""
 	}
 	var v any
 	switch r.Type {
+	case "", C.RuleSetTypeInline:
+		r.Type = C.RuleSetTypeInline
+		v = &r.InlineOptions
 	case C.RuleSetTypeLocal:
 		v = &r.LocalOptions
 	case C.RuleSetTypeRemote:
 		v = &r.RemoteOptions
-	case "":
-		return E.New("missing type")
 	default:
-		return E.New("unknown rule set type: " + r.Type)
+		return E.New("unknown rule-set type: " + r.Type)
 	}
 	err = UnmarshallExcluded(bytes, (*_RuleSet)(r), v)
 	if err != nil {
@@ -188,7 +197,7 @@ func (r PlainRuleSetCompat) MarshalJSON() ([]byte, error) {
 	case C.RuleSetVersion1:
 		v = r.Options
 	default:
-		return nil, E.New("unknown rule set version: ", r.Version)
+		return nil, E.New("unknown rule-set version: ", r.Version)
 	}
 	return MarshallObjects((_PlainRuleSetCompat)(r), v)
 }
@@ -203,9 +212,9 @@ func (r *PlainRuleSetCompat) UnmarshalJSON(bytes []byte) error {
 	case C.RuleSetVersion1:
 		v = &r.Options
 	case 0:
-		return E.New("missing rule set version")
+		return E.New("missing rule-set version")
 	default:
-		return E.New("unknown rule set version: ", r.Version)
+		return E.New("unknown rule-set version: ", r.Version)
 	}
 	err = UnmarshallExcluded(bytes, (*_PlainRuleSetCompat)(r), v)
 	if err != nil {
@@ -214,15 +223,13 @@ func (r *PlainRuleSetCompat) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-func (r PlainRuleSetCompat) Upgrade() PlainRuleSet {
-	var result PlainRuleSet
+func (r PlainRuleSetCompat) Upgrade() (PlainRuleSet, error) {
 	switch r.Version {
 	case C.RuleSetVersion1:
-		result = r.Options
 	default:
-		panic("unknown rule set version: " + F.ToString(r.Version))
+		return PlainRuleSet{}, E.New("unknown rule-set version: " + F.ToString(r.Version))
 	}
-	return result
+	return r.Options, nil
 }
 
 type PlainRuleSet struct {

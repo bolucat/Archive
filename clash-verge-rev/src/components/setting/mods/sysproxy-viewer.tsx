@@ -1,8 +1,6 @@
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
-import { Box, IconButton, Tooltip } from "@mui/material";
-import { InfoRounded } from "@mui/icons-material";
 import {
   InputAdornment,
   List,
@@ -20,6 +18,7 @@ import { Edit } from "@mui/icons-material";
 import { EditorViewer } from "@/components/profile/editor-viewer";
 import { BaseFieldset } from "@/components/base/base-fieldset";
 import getSystem from "@/utils/get-system";
+import { TooltipIcon } from "@/components/base/base-tooltip-icon";
 const DEFAULT_PAC = `function FindProxyForURL(url, host) {
   return "PROXY 127.0.0.1:%mixed-port%; SOCKS5 127.0.0.1:%mixed-port%; DIRECT;";
 }`;
@@ -166,20 +165,17 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
         </ListItem>
 
         <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("Proxy Guard")} />
-          <Tooltip title={t("Proxy Guard Info")}>
-            <IconButton color="inherit" size="small">
-              <InfoRounded
-                fontSize="inherit"
-                style={{ cursor: "pointer", opacity: 0.75 }}
-              />
-            </IconButton>
-          </Tooltip>
+          <ListItemText
+            primary={t("Proxy Guard")}
+            sx={{ maxWidth: "fit-content" }}
+          />
+          <TooltipIcon title={t("Proxy Guard Info")} />
           <Switch
             edge="end"
             disabled={!enabled}
             checked={value.guard}
             onChange={(_, e) => setValue((v) => ({ ...v, guard: e }))}
+            sx={{ marginLeft: "auto" }}
           />
         </ListItem>
 

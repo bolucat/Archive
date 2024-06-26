@@ -296,7 +296,7 @@ check_c_source_compiles("
   "
   use_omit_leaf_fp)
 
-if (use_omit_leaf_fp)
+if (use_omit_leaf_fp AND NOT MSVC)
   add_compile_options(-fno-omit-frame-pointer -momit-leaf-frame-pointer)
 endif()
 

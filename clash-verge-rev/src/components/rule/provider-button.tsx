@@ -79,11 +79,9 @@ export const ProviderButton = () => {
               variant="contained"
               size="small"
               onClick={async () => {
-                Object.entries(data || {}).forEach(
-                  async ([key, item], index) => {
-                    await handleUpdate(key, index);
-                  }
-                );
+                Object.entries(data || {}).forEach(async ([key], index) => {
+                  await handleUpdate(key, index);
+                });
               }}
             >
               {t("Update All")}
@@ -92,7 +90,7 @@ export const ProviderButton = () => {
         }
         contentSx={{ width: 400 }}
         disableOk
-        cancelBtn={t("Cancel")}
+        cancelBtn={t("Close")}
         onClose={() => setOpen(false)}
         onCancel={() => setOpen(false)}
       >

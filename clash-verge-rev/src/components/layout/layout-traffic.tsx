@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, Typography } from "@mui/material";
 import {
   ArrowDownward,
@@ -13,6 +13,8 @@ import { useVisibility } from "@/hooks/use-visibility";
 import parseTraffic from "@/utils/parse-traffic";
 import useSWRSubscription from "swr/subscription";
 import { createSockette } from "@/utils/websocket";
+import { useTranslation } from "react-i18next";
+import { isDebugEnabled, gc } from "@/services/api";
 
 interface MemoryUsage {
   inuse: number;
@@ -21,6 +23,7 @@ interface MemoryUsage {
 
 // setup the traffic
 export const LayoutTraffic = () => {
+  const { t } = useTranslation();
   const { clashInfo } = useClashInfo();
   const { verge } = useVerge();
 
@@ -29,6 +32,12 @@ export const LayoutTraffic = () => {
 
   const trafficRef = useRef<TrafficRef>(null);
   const pageVisible = useVisibility();
+  const [isDebug, setIsDebug] = useState(false);
+
+  useEffect(() => {
+    isDebugEnabled().then((flag) => setIsDebug(flag));
+    return () => {};
+  }, [isDebug]);
 
   // https://swr.vercel.app/docs/subscription#deduplication
   // useSWRSubscription auto deduplicates to one subscription per key per entire app
@@ -110,12 +119,16 @@ export const LayoutTraffic = () => {
   const [down, downUnit] = parseTraffic(traffic.down);
   const [inuse, inuseUnit] = parseTraffic(memory.inuse);
 
+  const boxStyle: any = {
+    display: "flex",
+    alignItems: "center",
+    whiteSpace: "nowrap",
+  };
   const iconStyle: any = {
     sx: { mr: "8px", fontSize: 16 },
   };
   const valStyle: any = {
     component: "span",
-    // color: "primary",
     textAlign: "center",
     sx: { flex: "1 1 56px", userSelect: "none" },
   };
@@ -128,15 +141,18 @@ export const LayoutTraffic = () => {
   };
 
   return (
-    <Box position="relative" onClick={trafficRef.current?.toggleStyle}>
+    <Box position="relative">
       {trafficGraph && pageVisible && (
-        <div style={{ width: "100%", height: 60, marginBottom: 6 }}>
+        <div
+          style={{ width: "100%", height: 60, marginBottom: 6 }}
+          onClick={trafficRef.current?.toggleStyle}
+        >
           <TrafficGraph ref={trafficRef} />
         </div>
       )}
 
       <Box display="flex" flexDirection="column" gap={0.75}>
-        <Box display="flex" alignItems="center" whiteSpace="nowrap">
+        <Box title={t("Upload Speed")} {...boxStyle}>
           <ArrowUpward
             {...iconStyle}
             color={+up > 0 ? "secondary" : "disabled"}
@@ -147,7 +163,7 @@ export const LayoutTraffic = () => {
           <Typography {...unitStyle}>{upUnit}/s</Typography>
         </Box>
 
-        <Box display="flex" alignItems="center" whiteSpace="nowrap">
+        <Box title={t("Download Speed")} {...boxStyle}>
           <ArrowDownward
             {...iconStyle}
             color={+down > 0 ? "primary" : "disabled"}
@@ -160,12 +176,15 @@ export const LayoutTraffic = () => {
 
         {displayMemory && (
           <Box
-            display="flex"
-            alignItems="center"
-            whiteSpace="nowrap"
-            title="Memory Usage"
+            title={t(isDebug ? "Memory Cleanup" : "Memory Usage")}
+            {...boxStyle}
+            sx={{ cursor: isDebug ? "pointer" : "auto" }}
+            color={isDebug ? "success.main" : "disabled"}
+            onClick={async () => {
+              isDebug && (await gc());
+            }}
           >
-            <MemoryOutlined {...iconStyle} color="disabled" />
+            <MemoryOutlined {...iconStyle} />
             <Typography {...valStyle}>{inuse}</Typography>
             <Typography {...unitStyle}>{inuseUnit}</Typography>
           </Box>
