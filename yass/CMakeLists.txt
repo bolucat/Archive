@@ -2951,6 +2951,10 @@ elseif (USE_MBEDTLS)
     ${SUPPORT_DEFINITIONS}
   )
   set(SUPPORT_LIBS mbedcrypto ${SUPPORT_LIBS})
+
+  if (COMPILER_CLANG)
+    target_compile_options(mbedcrypto PRIVATE -Wno-switch-default)
+  endif()
 endif()
 
 # *****************************************************************************************
@@ -3382,6 +3386,7 @@ elseif (USE_NGHTTP2)
     target_compile_options(nghttp2_static PRIVATE -Wno-implicit-fallthrough)
     if (CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 16.0)
       target_compile_options(nghttp2_static PRIVATE -Wno-unsafe-buffer-usage)
+      target_compile_options(nghttp2_static PRIVATE -Wno-extra-semi)
     endif()
     target_compile_options(nghttp2_static PRIVATE -Wno-documentation)
     target_compile_options(nghttp2_static PRIVATE -Wno-documentation-unknown-command)
@@ -3389,6 +3394,7 @@ elseif (USE_NGHTTP2)
     target_compile_options(nghttp2_static PRIVATE -Wno-shorten-64-to-32)
     target_compile_options(nghttp2_static PRIVATE -Wno-extra-semi-stmt)
     target_compile_options(nghttp2_static PRIVATE -Wno-covered-switch-default)
+    target_compile_options(nghttp2_static PRIVATE -Wno-switch-default)
   endif()
   set(NGHTTP2_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/third_party/nghttp2/lib/includes
@@ -3559,16 +3565,10 @@ endif()
 # *****************************************************************************************
 
 if (COMPILER_GCC OR COMPILER_CLANG)
-  # Note clang-cl is odd and sets both CLANG and MSVC. We base our configuration
-  # primarily on our normal Clang one.
-  add_compile_options(-Werror -Wformat=2 -Wsign-compare -Wmissing-field-initializers -Wwrite-strings -Wvla -Wno-shadow)
-  if (COMPILER_APPLE_CLANG)
-    add_compile_options(-Wno-error=shorten-64-to-32)
-  endif()
+  # Werror warning
+  add_compile_options(-Werror -Wformat=2 -Wsign-compare -Wmissing-field-initializers -Wwrite-strings -Wvla)
 
-  # clang-cl warning
-  add_compile_options(-Wno-unused-parameter -Wno-error=unused-parameter)
-
+  # all warnings
   if (MSVC)
     # clang-cl sets different default warnings than clang. It also treats -Wall
     # as -Weverything, to match MSVC. Instead -W3 is the alias for -Wall.
@@ -3578,6 +3578,17 @@ if (COMPILER_GCC OR COMPILER_CLANG)
     add_compile_options(-fno-common)
   else()
     add_compile_options(-Wall -fno-common)
+  endif()
+
+  # extra warnings
+  add_compile_options(-Wextra)
+
+  # gcc and clang warning
+  add_compile_options(-Wno-unused-parameter -Wno-shadow)
+
+  # apple clang warnings
+  if (COMPILER_APPLE_CLANG)
+    add_compile_options(-Wno-shorten-64-to-32)
   endif()
 
   # honor it. Suppress it here to compensate. See https://crbug.com/772117.
@@ -3593,11 +3604,9 @@ if (COMPILER_GCC OR COMPILER_CLANG)
     add_compile_options(-Wno-free-nonheap-object)
   endif()
 
-  if (COMPILER_CLANG OR CMAKE_C_COMPILER_VERSION VERSION_GREATER "7.0.0")
-    add_compile_options(-Wimplicit-fallthrough)
-  endif()
+  add_compile_options(-Wimplicit-fallthrough)
 
-  if (COMPILER_CLANG OR CMAKE_C_COMPILER_VERSION VERSION_GREATER "16.0.0")
+  if (COMPILER_CLANG AND CMAKE_C_COMPILER_VERSION VERSION_GREATER 16.0)
     add_compile_options(-Wextra-semi)
   endif()
 
@@ -3620,9 +3629,6 @@ if (COMPILER_GCC OR COMPILER_CLANG)
   if (COMPILER_CLANG)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wmissing-prototypes>)
   endif()
-
-  ## extra warnings
-  add_compile_options(-Wextra)
 
   if (COMPILER_CLANG)
     add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-inconsistent-missing-override>)

@@ -1177,9 +1177,12 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
 
 // Base class for iterating the headers in a BalsaHeaders object, returning a
 // pair of string_view's for each header.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 class QUICHE_EXPORT BalsaHeaders::iterator_base
     : public std::iterator<std::forward_iterator_tag,
                            std::pair<absl::string_view, absl::string_view>> {
+#pragma GCC diagnostic pop
  public:
   iterator_base() : headers_(nullptr), idx_(0) {}
 
