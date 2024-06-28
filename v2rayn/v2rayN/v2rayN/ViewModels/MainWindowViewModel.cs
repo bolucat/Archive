@@ -243,6 +243,9 @@ namespace v2rayN.ViewModels
         [Reactive]
         public string CurrentLanguage { get; set; }
 
+        [Reactive]
+        public bool ShowCalshUI { get; set; }
+
         #endregion UI
 
         #region Init
@@ -261,9 +264,16 @@ namespace v2rayN.ViewModels
             SelectedMoveToGroup = new();
             SelectedRouting = new();
             SelectedServer = new();
-            if (_config.tunModeItem.enableTun && Utils.IsAdministrator())
+            if (_config.tunModeItem.enableTun)
             {
-                EnableTun = true;
+                if (Utils.IsAdministrator())
+                {
+                    EnableTun = true;
+                }
+                else
+                {
+                    _config.tunModeItem.enableTun = EnableTun = false;
+                }
             }
             _subId = _config.subIndexId;
 
@@ -562,6 +572,7 @@ namespace v2rayN.ViewModels
             AutoHideStartup();
 
             _showInTaskbar = true;
+            _config.clashUIItem.showInTaskbar = _showInTaskbar;
         }
 
         private void Init()
@@ -1502,7 +1513,12 @@ namespace v2rayN.ViewModels
                 Application.Current?.Dispatcher.Invoke((Action)(() =>
                 {
                     BlReloadEnabled = true;
-                })); 
+                    ShowCalshUI = (_config.runningCoreType is ECoreType.clash or ECoreType.clash_meta or ECoreType.mihomo);
+                    if (ShowCalshUI) {
+                        Locator.Current.GetService<ClashProxiesViewModel>()?.ProxiesReload();
+                    }
+                }));
+                
             });
         }
 
@@ -1515,7 +1531,7 @@ namespace v2rayN.ViewModels
                 //ConfigHandler.SaveConfig(_config, false);
 
                 ChangeSystemProxyStatus(_config.sysProxyType, false);
-            }); 
+            });
         }
 
         private void CloseCore()
@@ -1547,7 +1563,7 @@ namespace v2rayN.ViewModels
         private void ChangeSystemProxyStatus(ESysProxyType type, bool blChange)
         {
             SysProxyHandle.UpdateSysProxy(_config, _config.tunModeItem.enableTun ? true : false);
-            _noticeHandler?.SendMessage(ResUI.TipChangeSystemProxy + _config.sysProxyType.ToString(), true);
+            _noticeHandler?.SendMessage($"{ResUI.TipChangeSystemProxy} - {_config.sysProxyType.ToString()}", true);
 
             Application.Current?.Dispatcher.Invoke((Action)(() =>
             {
@@ -1673,6 +1689,7 @@ namespace v2rayN.ViewModels
                 //Utile.RegWriteValue(Global.MyRegPath, Utile.WindowHwndKey, Convert.ToString((long)windowHandle));
             }
             _showInTaskbar = bl;
+            _config.clashUIItem.showInTaskbar = _showInTaskbar;
         }
 
         private void RestoreUI()

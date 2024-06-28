@@ -689,55 +689,6 @@
          </layout>
         </widget>
        </item>
-       <item>
-        <widget class="QGroupBox" name="groupBox3">
-         <property name="title">
-          <string>Switch core</string>
-         </property>
-         <layout class="QHBoxLayout" name="horizontalLayout_21">
-          <item>
-           <spacer name="horizontalSpacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item>
-           <widget class="QRadioButton" name="switch_core_v2ray">
-            <property name="text">
-             <string notr="true">Xray</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QRadioButton" name="switch_core_sing_box">
-            <property name="text">
-             <string notr="true">sing-box</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <spacer name="horizontalSpacer_2">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-         </layout>
-        </widget>
-       </item>
       </layout>
      </widget>
      <widget class="QWidget" name="tab_6">
@@ -805,44 +756,6 @@
          <property name="text">
           <string>Skip TLS certificate authentication by default (allowInsecure)</string>
          </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="horizontalGroupBox3">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
-         </property>
-         <layout class="QHBoxLayout" name="horizontalLayout_14">
-          <item>
-           <widget class="QLabel" name="label_2">
-            <property name="text">
-             <string>Enable hook.js</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QComboBox" name="enable_js_hook">
-            <item>
-             <property name="text">
-              <string notr="true">Disable</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string notr="true">Enable</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string notr="true">Enable + load std module</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-         </layout>
         </widget>
        </item>
        <item>

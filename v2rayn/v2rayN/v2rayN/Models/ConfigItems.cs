@@ -216,11 +216,14 @@ namespace v2rayN.Models
     public class ClashUIItem
     {
         public ERuleMode ruleMode { get; set; }
+        public bool showInTaskbar { get; set; }
+        public bool enableIPv6 { get; set; }
+        public bool enableMixinContent { get; set; }
         public int proxiesSorting { get; set; }
         public bool proxiesAutoRefresh { get; set; }
-        public int AutoDelayTestInterval { get; set; } = 10;
+        public int proxiesAutoDelayTestInterval { get; set; } = 10;
         public int connectionsSorting { get; set; }
         public bool connectionsAutoRefresh { get; set; }
-
+        public int connectionsRefreshInterval { get; set; } = 2;
     }
 }

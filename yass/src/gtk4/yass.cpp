@@ -53,20 +53,31 @@ static void about_activated(GSimpleAction* action, GVariant* parameter, gpointer
 }
 
 static void quit_activated(GSimpleAction* action, GVariant* parameter, gpointer app) {
+  LOG(WARNING) << "Quit Action is clicked";
   YASSGtk_APP(app)->thiz->Exit();
 }
 
-static GActionEntry app_entries[] = {{"option", option_activated, NULL, NULL, NULL},
-                                     {"about", about_activated, NULL, NULL, NULL},
-                                     {"quit", quit_activated, NULL, NULL, NULL}};
+static GActionEntry app_entries[] = {{"option", option_activated, nullptr, nullptr, nullptr},
+                                     {"about", about_activated, nullptr, nullptr, nullptr},
+                                     {"quit", quit_activated, nullptr, nullptr, nullptr}};
 
 static void yass_app_startup(GApplication* app) {
-  const char* quit_accels[2] = {"<Ctrl>Q", NULL};
+  const char* quit_accels[2] = {"<Ctrl>Q", nullptr};
 
   G_APPLICATION_CLASS(yass_app_parent_class)->startup(app);
 
   g_action_map_add_action_entries(G_ACTION_MAP(app), app_entries, G_N_ELEMENTS(app_entries), app);
   gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.quit", quit_accels);
+}
+
+static void yass_app_shutdown(GApplication* app) {
+#if GLIB_VERSION_MIN_REQUIRED >= (G_ENCODE_VERSION(2, 78))
+  const char* quit_accels[2] = {"<Ctrl>Q", nullptr};
+
+  g_action_map_remove_action_entries(G_ACTION_MAP(app), app_entries, G_N_ELEMENTS(app_entries));
+#endif
+
+  G_APPLICATION_CLASS(yass_app_parent_class)->shutdown(app);
 }
 
 static void yass_app_activate(GApplication* app) {
@@ -75,11 +86,14 @@ static void yass_app_activate(GApplication* app) {
 
 static void yass_app_class_init(YASSGtkAppClass* cls) {
   G_APPLICATION_CLASS(cls)->startup = yass_app_startup;
+  G_APPLICATION_CLASS(cls)->shutdown = yass_app_shutdown;
   G_APPLICATION_CLASS(cls)->activate = yass_app_activate;
 }
 
 YASSGtkApp* yass_app_new(void) {
-  return YASSGtk_APP(g_object_new(yass_app_get_type(), "application-id", kAppId, NULL));
+  auto app = YASSGtk_APP(g_object_new(yass_app_get_type(), "application-id", kAppId, nullptr));
+  g_set_application_name(kAppName);
+  return app;
 }
 }  // extern "C"
 
@@ -135,6 +149,17 @@ int main(int argc, const char** argv) {
 
   SetUpGLibLogHandler();
 
+  const int32_t gtk_version =
+      (gtk_get_major_version() * 10000) + (gtk_get_minor_version() * 100) + gtk_get_micro_version();
+  const bool no_gtk_environment_variable = getenv("GDK_DEBUG") == nullptr && getenv("GSK_RENDERER") == nullptr;
+  // after gtk4 4.13.8, llvmpipe render will be ignored and cairo is picked
+  if (gtk_version < 41308 && no_gtk_environment_variable) {
+    LOG(WARNING) << "Falling back to cairo render for old gtk (" << gtk_version << ")";
+    // buggy opengl accelerator for gtk4 see #1027
+    // disable opengl accelerator for now
+    setenv("GSK_RENDERER", "cairo", 1);
+  }
+
   auto app = YASSApp::create();
 
   mApp = app.get();
@@ -144,7 +169,8 @@ int main(int argc, const char** argv) {
 
 YASSApp::YASSApp() : impl_(G_APPLICATION(yass_app_new())), idle_source_(g_timeout_source_new(200)) {
   YASSGtk_APP(impl_)->thiz = this;
-  g_set_application_name(kAppName);
+
+  gtk_init();
 
   auto idle_handler = [](gpointer user_data) -> gboolean {
     if (!mApp) {
@@ -211,16 +237,24 @@ int YASSApp::ApplicationRun(int argc, char** argv) {
 
   if (ret) {
     LOG(WARNING) << "app exited with code " << ret;
-  } else {
-    LOG(WARNING) << "Application exiting";
   }
 
-#if 0
+  LOG(WARNING) << "Application exiting";
+
+  delete main_window_;
+  g_object_unref(impl_);
+  impl_ = nullptr;
+
+  // Cleanup opengl's context prior to pango cleanup
+  if (auto context = gdk_gl_context_get_current()) {
+    LOG(WARNING) << "Removing remaining OpenGL context: " << context;
+    gdk_display_close(gdk_gl_context_get_display(context));
+  }
+
   // Memory leak clean up path
   pango_cairo_font_map_set_default(nullptr);
   cairo_debug_reset_static_data();
   FcFini();
-#endif
 
   PrintMallocStats();
 
@@ -235,7 +269,7 @@ void YASSApp::Exit() {
   g_source_destroy(idle_source_);
   g_source_destroy(exit_int_source_);
   g_source_destroy(exit_term_source_);
-  g_application_quit(G_APPLICATION(impl_));
+  main_window_->close();
 }
 
 void YASSApp::OnIdle() {

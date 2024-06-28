@@ -144,18 +144,6 @@
         <translation>取消</translation>
     </message>
     <message>
-        <source>Switch core</source>
-        <translation>切换核心</translation>
-    </message>
-    <message>
-        <source>Confirmation</source>
-        <translation>确认</translation>
-    </message>
-    <message>
-        <source>Switching the core to %1, click &quot;Yes&quot; to complete the switch and the program will restart. This feature may be unstable, please do not switch frequently.</source>
-        <translation>将核心切换到 %1。点击 &quot;是&quot; 完成切换，程序将重新启动。此功能可能不稳定，请不要频繁切换。</translation>
-    </message>
-    <message>
         <source>System proxy format</source>
         <translation>系统代理格式</translation>
     </message>
@@ -178,10 +166,6 @@
     <message>
         <source>Ignore TLS errors when updating subscription</source>
         <translation>更新订阅时忽略 TLS 错误</translation>
-    </message>
-    <message>
-        <source>Enable hook.js</source>
-        <translation>启用 hook.js 功能</translation>
     </message>
     <message>
         <source>Hide dashboard at startup</source>
@@ -488,25 +472,6 @@ For NekoBox, this rewrites the underlying(localhost) DNS in Tun Mode, normal mod
     <message>
         <source>Reality short id. Accept only one value.</source>
         <translation>Reality short id. 只接受一个值。</translation>
-    </message>
-</context>
-<context>
-    <name>DialogFirstSetup</name>
-    <message>
-        <source>First time setup</source>
-        <translation>首次设置</translation>
-    </message>
-    <message>
-        <source>It looks like you are using this software for the first time, please select a core.
-
-These settings can be changed later.</source>
-        <translation>看来您是第一次使用该软件，请选择内核。
-
-这些设置可以稍后更改。</translation>
-    </message>
-    <message>
-        <source>Quit</source>
-        <translation>退出</translation>
     </message>
 </context>
 <context>

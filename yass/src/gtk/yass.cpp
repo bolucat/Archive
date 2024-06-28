@@ -106,8 +106,11 @@ YASSApp::YASSApp()
   gdk_init(nullptr, nullptr);
   gtk_init(nullptr, nullptr);
 
-  auto activate = []() { mApp->OnActivate(); };
-  g_signal_connect(impl_, "activate", G_CALLBACK(activate), NULL);
+  auto activate = [](GApplication* self, gpointer pointer) {
+    auto app = (YASSApp*)pointer;
+    app->OnActivate();
+  };
+  g_signal_connect(impl_, "activate", G_CALLBACK(*activate), this);
 
   auto idle_handler = [](gpointer user_data) -> gboolean {
     if (!mApp) {
@@ -176,9 +179,11 @@ int YASSApp::ApplicationRun(int argc, char** argv) {
     LOG(WARNING) << "app exited with code " << ret;
   }
 
-  delete main_window_;
-
   LOG(WARNING) << "Application exiting";
+
+  delete main_window_;
+  g_object_unref(impl_);
+  impl_ = nullptr;
 
   // Memory leak clean up path
   pango_cairo_font_map_set_default(nullptr);

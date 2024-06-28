@@ -217,33 +217,6 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
         }
     });
 
-    // switch core
-    ui->switch_core_v2ray->setChecked(!IS_NEKO_BOX);
-    ui->switch_core_sing_box->setChecked(IS_NEKO_BOX);
-    auto switch_core_on_click = [=] {
-        int neko_core_new;
-        if (sender() == ui->switch_core_sing_box) {
-            if (IS_NEKO_BOX) return;
-            neko_core_new = NekoGui::CoreType::SING_BOX;
-        } else {
-            if (!IS_NEKO_BOX) return;
-            neko_core_new = NekoGui::CoreType::V2RAY;
-        }
-        QString core_name_new = dynamic_cast<QRadioButton *>(sender())->text();
-        if (QMessageBox::question(this, tr("Confirmation"),
-                                  tr("Switching the core to %1, click \"Yes\" to complete the switch and the program will restart. This feature may be unstable, please do not switch frequently.")
-                                      .arg(core_name_new)) == QMessageBox::StandardButton::Yes) {
-            QFile file;
-            file.setFileName("groups/coreType");
-            file.open(QIODevice::ReadWrite | QIODevice::Truncate);
-            file.write(Int2String(neko_core_new).toUtf8());
-            file.close();
-            MW_dialog_message("", "RestartProgram");
-        }
-    };
-    connect(ui->switch_core_v2ray, &QRadioButton::clicked, this, switch_core_on_click);
-    connect(ui->switch_core_sing_box, &QRadioButton::clicked, this, switch_core_on_click);
-
     // Mux
     D_LOAD_INT(mux_concurrency)
     D_LOAD_COMBO_STRING(mux_protocol)
@@ -255,7 +228,6 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
     ui->utlsFingerprint->addItems(IS_NEKO_BOX ? Preset::SingBox::UtlsFingerPrint : Preset::Xray::UtlsFingerPrint);
 
     D_LOAD_BOOL(skip_cert)
-    ui->enable_js_hook->setCurrentIndex(NekoGui::dataStore->enable_js_hook);
     ui->utlsFingerprint->setCurrentText(NekoGui::dataStore->utlsFingerprint);
 }
 
@@ -331,7 +303,6 @@ void DialogBasicSettings::accept() {
     // Security
 
     D_SAVE_BOOL(skip_cert)
-    NekoGui::dataStore->enable_js_hook = ui->enable_js_hook->currentIndex();
     NekoGui::dataStore->utlsFingerprint = ui->utlsFingerprint->currentText();
 
     // 关闭连接统计，停止刷新前清空记录。
