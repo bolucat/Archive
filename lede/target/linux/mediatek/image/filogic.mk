@@ -196,6 +196,15 @@ define Device/bananapi_bpi-r4
 endef
 TARGET_DEVICES += bananapi_bpi-r4
 
+define Device/bananapi_bpi-r4-poe
+  DEVICE_MODEL := BPi-R4 2.5GE
+  DEVICE_DTS := mt7988a-bananapi-bpi-r4-poe
+  DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-poe
+  $(call Device/bananapi_bpi-r4-common)
+  DEVICE_PACKAGES += mt7988-2p5g-phy-firmware
+endef
+TARGET_DEVICES += bananapi_bpi-r4-poe
+
 define Device/cetron_ct3003
   DEVICE_VENDOR := Cetron
   DEVICE_MODEL := CT3003

@@ -149,6 +149,7 @@ pub struct DownloadStatus {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(private_interfaces)]
 pub struct ChunkStatus {
     pub state: ChunkThreadState,
     pub start: usize,
@@ -425,7 +426,7 @@ impl<F: Fn(DownloaderState)> Downloader<F> {
         Ok(())
     }
 
-    async fn start(&self) -> Result<(), DownloaderError> {
+    pub async fn start(&self) -> Result<(), DownloaderError> {
         let result = self.download().await;
         match result {
             Ok(_) => Ok(()),
