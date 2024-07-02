@@ -40,9 +40,15 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX OR CMAKE_C_COMPILER_ID MA
     set(WPICKY_ENABLE "-W")
   endif()
 
-  list(APPEND WPICKY_ENABLE
-    -Wall
-  )
+  if (MSVC)
+    list(APPEND WPICKY_ENABLE
+      -W3
+    )
+  else()
+    list(APPEND WPICKY_ENABLE
+      -Wall
+    )
+  endif()
 
   # ----------------------------------
   # Add new options here, if in doubt:

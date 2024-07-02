@@ -29,6 +29,7 @@
 namespace asio {
 namespace detail {
 
+#if _WIN32_WINNT < 0x0600
 void win_static_mutex::init()
 {
   int error = do_init();
@@ -37,12 +38,6 @@ void win_static_mutex::init()
   asio::detail::throw_error(ec, "static_mutex");
 }
 
-#if _WIN32_WINNT >= 0x0601
-int win_static_mutex::do_init()
-{
-  return 0;
-}
-#else // _WIN32_WINNT >= 0x0601
 int win_static_mutex::do_init()
 {
   using namespace std; // For sprintf.
@@ -131,7 +126,7 @@ int win_static_mutex::do_init()
   ::CloseHandle(mutex);
   return 0;
 }
-#endif // _WIN32_WINNT >= 0x0601
+#endif // _WIN32_WINNT < 0x0600
 
 } // namespace detail
 } // namespace asio

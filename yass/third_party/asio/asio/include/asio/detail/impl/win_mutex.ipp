@@ -36,13 +36,13 @@ win_mutex::win_mutex()
   asio::detail::throw_error(ec, "mutex");
 }
 
-#if _WIN32_WINNT >= 0x0601
+#if _WIN32_WINNT >= 0x0600
 int win_mutex::do_init()
 {
   ::InitializeSRWLock(&srwlock_);
   return 0;
 }
-#else // _WIN32_WINNT >= 0x0601
+#else // _WIN32_WINNT >= 0x0600
 int win_mutex::do_init()
 {
 #if defined(__MINGW32__)
@@ -80,7 +80,7 @@ int win_mutex::do_init()
   return 0;
 #endif
 }
-#endif // _WIN32_WINNT >= 0x0601
+#endif // _WIN32_WINNT >= 0x0600
 
 } // namespace detail
 } // namespace asio

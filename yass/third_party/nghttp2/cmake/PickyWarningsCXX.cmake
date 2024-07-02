@@ -33,7 +33,11 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID 
   # WPICKY_ENABLE = Options we want to enable as-is.
   # WPICKY_DETECT = Options we want to test first and enable if available.
 
-  set(WPICKY_ENABLE "-Wall")
+  if (MSVC)
+    set(WPICKY_ENABLE "-W3")
+  else()
+    set(WPICKY_ENABLE "-Wall")
+  endif()
 
   # ----------------------------------
   # Add new options here, if in doubt:
