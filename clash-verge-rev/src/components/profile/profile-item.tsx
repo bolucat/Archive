@@ -71,7 +71,7 @@ export const ProfileItem = (props: Props) => {
   const from = parseUrl(itemData.url);
   const description = itemData.desc;
   const expire = parseExpire(extra?.expire);
-  const progress = Math.round(((download + upload) * 100) / (total + 0.1));
+  const progress = Math.round(((download + upload) * 100) / (total + 0.01) + 1);
 
   const loading = loadingCache[itemData.uid] ?? false;
 
@@ -211,27 +211,27 @@ export const ProfileItem = (props: Props) => {
     {
       label: "Edit Rules",
       handler: onEditRules,
-      disabled: option?.rules === null,
+      disabled: !option?.rules,
     },
-    // {
-    //   label: "Edit Proxies",
-    //   handler: onEditProxies,
-    //   disabled: option?.proxies === null,
-    // },
-    // {
-    //   label: "Edit Groups",
-    //   handler: onEditGroups,
-    //   disabled: option?.groups === null,
-    // },
+    {
+      label: "Edit Proxies",
+      handler: onEditProxies,
+      disabled: !option?.proxies,
+    },
+    {
+      label: "Edit Groups",
+      handler: onEditGroups,
+      disabled: !option?.groups,
+    },
     {
       label: "Extend Config",
       handler: onEditMerge,
-      disabled: option?.merge === null,
+      disabled: !option?.merge,
     },
     {
       label: "Extend Script",
       handler: onEditScript,
-      disabled: option?.script === null,
+      disabled: !option?.script,
     },
     { label: "Open File", handler: onOpenFile, disabled: false },
     { label: "Update", handler: () => onUpdate(0), disabled: false },
@@ -252,27 +252,27 @@ export const ProfileItem = (props: Props) => {
     {
       label: "Edit Rules",
       handler: onEditRules,
-      disabled: option?.rules === null,
+      disabled: !option?.rules,
     },
-    // {
-    //   label: "Edit Proxies",
-    //   handler: onEditProxies,
-    //   disabled: option?.proxies === null,
-    // },
-    // {
-    //   label: "Edit Groups",
-    //   handler: onEditGroups,
-    //   disabled: option?.groups === null,
-    // },
+    {
+      label: "Edit Proxies",
+      handler: onEditProxies,
+      disabled: !option?.proxies,
+    },
+    {
+      label: "Edit Groups",
+      handler: onEditGroups,
+      disabled: !option?.groups,
+    },
     {
       label: "Extend Config",
       handler: onEditMerge,
-      disabled: option?.merge === null,
+      disabled: !option?.merge,
     },
     {
       label: "Extend Script",
       handler: onEditScript,
-      disabled: option?.script === null,
+      disabled: !option?.script,
     },
     { label: "Open File", handler: onOpenFile, disabled: false },
     {
@@ -429,7 +429,7 @@ export const ProfileItem = (props: Props) => {
         <LinearProgress
           variant="determinate"
           value={progress}
-          style={{ opacity: progress > 0 ? 1 : 0 }}
+          style={{ opacity: total > 0 ? 1 : 0 }}
         />
       </ProfileBox>
 
@@ -483,6 +483,8 @@ export const ProfileItem = (props: Props) => {
         onClose={() => setFileOpen(false)}
       />
       <RulesEditorViewer
+        groupsUid={option?.groups ?? ""}
+        mergeUid={option?.merge ?? ""}
         profileUid={uid}
         property={option?.rules ?? ""}
         open={rulesOpen}
@@ -501,10 +503,10 @@ export const ProfileItem = (props: Props) => {
       />
       <EditorViewer
         open={groupsOpen}
-        initialData={readProfileFile(option?.proxies ?? "")}
+        initialData={readProfileFile(option?.groups ?? "")}
         language="yaml"
         onSave={async (prev, curr) => {
-          await saveProfileFile(option?.proxies ?? "", curr ?? "");
+          await saveProfileFile(option?.groups ?? "", curr ?? "");
           onSave && onSave(prev, curr);
         }}
         onClose={() => setGroupsOpen(false)}

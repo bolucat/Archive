@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useLockFn } from "ahooks";
 import yaml from "js-yaml";
 import { useTranslation } from "react-i18next";
@@ -36,8 +36,12 @@ import getSystem from "@/utils/get-system";
 import { RuleItem } from "@/components/profile/rule-item";
 import { BaseSearchBox } from "../base/base-search-box";
 import { Virtuoso } from "react-virtuoso";
+import MonacoEditor from "react-monaco-editor";
+import { useThemeMode } from "@/services/states";
 
 interface Props {
+  groupsUid: string;
+  mergeUid: string;
   profileUid: string;
   title?: string | ReactNode;
   property: string;
@@ -228,10 +232,22 @@ const rules: {
 const builtinProxyPolicies = ["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
 export const RulesEditorViewer = (props: Props) => {
-  const { title, profileUid, property, open, onClose, onSave } = props;
+  const {
+    title,
+    groupsUid,
+    mergeUid,
+    profileUid,
+    property,
+    open,
+    onClose,
+    onSave,
+  } = props;
   const { t } = useTranslation();
+  const themeMode = useThemeMode();
 
   const [prevData, setPrevData] = useState("");
+  const [currData, setCurrData] = useState("");
+  const [visible, setVisible] = useState(true);
   const [match, setMatch] = useState(() => (_: string) => true);
 
   const [ruleType, setRuleType] = useState<(typeof rules)[number]>(rules[0]);
@@ -246,6 +262,11 @@ export const RulesEditorViewer = (props: Props) => {
   const [prependSeq, setPrependSeq] = useState<string[]>([]);
   const [appendSeq, setAppendSeq] = useState<string[]>([]);
   const [deleteSeq, setDeleteSeq] = useState<string[]>([]);
+
+  const filteredRuleList = useMemo(
+    () => ruleList.filter((rule) => match(rule)),
+    [ruleList, match]
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -281,36 +302,78 @@ export const RulesEditorViewer = (props: Props) => {
   };
   const fetchContent = async () => {
     let data = await readProfileFile(property);
-    let obj = yaml.load(data) as { prepend: []; append: []; delete: [] };
+    let obj = yaml.load(data) as { prepend: []; append: []; delete: [] } | null;
 
-    setPrependSeq(obj.prepend || []);
-    setAppendSeq(obj.append || []);
-    setDeleteSeq(obj.delete || []);
+    setPrependSeq(obj?.prepend || []);
+    setAppendSeq(obj?.append || []);
+    setDeleteSeq(obj?.delete || []);
+
     setPrevData(data);
+    setCurrData(data);
   };
+
+  useEffect(() => {
+    if (currData === "") return;
+    if (visible !== true) return;
+
+    let obj = yaml.load(currData) as {
+      prepend: [];
+      append: [];
+      delete: [];
+    } | null;
+    setPrependSeq(obj?.prepend || []);
+    setAppendSeq(obj?.append || []);
+    setDeleteSeq(obj?.delete || []);
+  }, [visible]);
+
+  useEffect(() => {
+    if (prependSeq && appendSeq && deleteSeq)
+      setCurrData(
+        yaml.dump({ prepend: prependSeq, append: appendSeq, delete: deleteSeq })
+      );
+  }, [prependSeq, appendSeq, deleteSeq]);
 
   const fetchProfile = async () => {
     let data = await readProfileFile(profileUid);
-    let groupsObj = yaml.load(data) as { "proxy-groups": [] };
-    let rulesObj = yaml.load(data) as { rules: [] };
-    let ruleSetObj = yaml.load(data) as { "rule-providers": [] };
-    let subRuleObj = yaml.load(data) as { "sub-rules": [] };
+    let groupsData = await readProfileFile(groupsUid);
+    let mergeData = await readProfileFile(mergeUid);
+    let globalMergeData = await readProfileFile("Merge");
+
+    let rulesObj = yaml.load(data) as { rules: [] } | null;
+
+    let originGroupsObj = yaml.load(data) as { "proxy-groups": [] } | null;
+    let originGroups = originGroupsObj?.["proxy-groups"] || [];
+    let moreGroupsObj = yaml.load(groupsData) as { "proxy-groups": [] } | null;
+    let moreGroups = moreGroupsObj?.["proxy-groups"] || [];
+    let groups = originGroups.concat(moreGroups);
+
+    let originRuleSetObj = yaml.load(data) as { "rule-providers": {} } | null;
+    let originRuleSet = originRuleSetObj?.["rule-providers"] || {};
+    let moreRuleSetObj = yaml.load(mergeData) as {
+      "rule-providers": {};
+    } | null;
+    let moreRuleSet = moreRuleSetObj?.["rule-providers"] || {};
+    let globalRuleSetObj = yaml.load(globalMergeData) as {
+      "rule-providers": {};
+    } | null;
+    let globalRuleSet = globalRuleSetObj?.["rule-providers"] || {};
+    let ruleSet = Object.assign({}, originRuleSet, moreRuleSet, globalRuleSet);
+
+    let originSubRuleObj = yaml.load(data) as { "sub-rules": {} } | null;
+    let originSubRule = originSubRuleObj?.["sub-rules"] || {};
+    let moreSubRuleObj = yaml.load(mergeData) as { "sub-rules": {} } | null;
+    let moreSubRule = moreSubRuleObj?.["sub-rules"] || {};
+    let globalSubRuleObj = yaml.load(globalMergeData) as {
+      "sub-rules": {};
+    } | null;
+    let globalSubRule = globalSubRuleObj?.["sub-rules"] || {};
+    let subRule = Object.assign({}, originSubRule, moreSubRule, globalSubRule);
     setProxyPolicyList(
-      builtinProxyPolicies.concat(
-        groupsObj["proxy-groups"]
-          ? groupsObj["proxy-groups"].map((item: any) => item.name)
-          : []
-      )
+      builtinProxyPolicies.concat(groups.map((group: any) => group.name))
     );
-    setRuleList(rulesObj.rules || []);
-    setRuleSetList(
-      ruleSetObj["rule-providers"]
-        ? Object.keys(ruleSetObj["rule-providers"])
-        : []
-    );
-    setSubRuleList(
-      subRuleObj["sub-rules"] ? Object.keys(subRuleObj["sub-rules"]) : []
-    );
+    setRuleSetList(Object.keys(ruleSet));
+    setSubRuleList(Object.keys(subRule));
+    setRuleList(rulesObj?.rules || []);
   };
 
   useEffect(() => {
@@ -326,18 +389,14 @@ export const RulesEditorViewer = (props: Props) => {
       throw new Error(t("Invalid Rule"));
     }
 
-    return `${ruleType.name}${
-      ruleContent ? "," + ruleContent : ""
-    },${proxyPolicy}${ruleType.noResolve && noResolve ? ",no-resolve" : ""}`;
+    const condition = ruleType.required ?? true ? ruleContent : "";
+    return `${ruleType.name}${condition ? "," + condition : ""},${proxyPolicy}${
+      ruleType.noResolve && noResolve ? ",no-resolve" : ""
+    }`;
   };
 
   const handleSave = useLockFn(async () => {
     try {
-      let currData = yaml.dump({
-        prepend: prependSeq,
-        append: appendSeq,
-        delete: deleteSeq,
-      });
       await saveProfileFile(property, currData);
       onSave?.(prevData, currData);
       onClose();
@@ -348,229 +407,292 @@ export const RulesEditorViewer = (props: Props) => {
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-      <DialogTitle>{title ?? t("Edit Rules")}</DialogTitle>
+      <DialogTitle>
+        {
+          <Box display="flex" justifyContent="space-between">
+            {t("Edit Rules")}
+            <Box>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => {
+                  setVisible((prev) => !prev);
+                }}
+              >
+                {visible ? t("Advanced") : t("Visible")}
+              </Button>
+            </Box>
+          </Box>
+        }
+      </DialogTitle>
 
-      <DialogContent sx={{ display: "flex", width: "auto", height: "100vh" }}>
-        <List
-          sx={{
-            height: "calc(100% - 16px)",
-            width: "50%",
-            padding: "0 10px",
-          }}
-        >
-          <Item>
-            <ListItemText primary={t("Rule Type")} />
-            <Autocomplete
-              size="small"
-              sx={{ minWidth: "240px" }}
-              renderInput={(params) => <TextField {...params} />}
-              options={rules}
-              value={ruleType}
-              getOptionLabel={(option) => option.name}
-              renderOption={(props, option) => (
-                <li {...props} title={t(option.name)}>
-                  {option.name}
-                </li>
-              )}
-              onChange={(_, value) => value && setRuleType(value)}
-            />
-          </Item>
-          <Item sx={{ display: !(ruleType.required ?? true) ? "none" : "" }}>
-            <ListItemText primary={t("Rule Content")} />
-
-            {ruleType.name === "RULE-SET" && (
-              <Autocomplete
-                size="small"
-                sx={{ minWidth: "240px" }}
-                renderInput={(params) => <TextField {...params} />}
-                options={ruleSetList}
-                value={ruleContent}
-                onChange={(_, value) => value && setRuleContent(value)}
-              />
-            )}
-            {ruleType.name === "SUB-RULE" && (
-              <Autocomplete
-                size="small"
-                sx={{ minWidth: "240px" }}
-                renderInput={(params) => <TextField {...params} />}
-                options={subRuleList}
-                value={ruleContent}
-                onChange={(_, value) => value && setRuleContent(value)}
-              />
-            )}
-            {ruleType.name !== "RULE-SET" && ruleType.name !== "SUB-RULE" && (
-              <TextField
-                autoComplete="off"
-                size="small"
-                sx={{ minWidth: "240px" }}
-                value={ruleContent}
-                required={ruleType.required ?? true}
-                error={(ruleType.required ?? true) && !ruleContent}
-                placeholder={ruleType.example}
-                onChange={(e) => setRuleContent(e.target.value)}
-              />
-            )}
-          </Item>
-          <Item>
-            <ListItemText primary={t("Proxy Policy")} />
-            <Autocomplete
-              size="small"
-              sx={{ minWidth: "240px" }}
-              renderInput={(params) => <TextField {...params} />}
-              options={proxyPolicyList}
-              value={proxyPolicy}
-              renderOption={(props, option) => (
-                <li {...props} title={t(option)}>
-                  {option}
-                </li>
-              )}
-              onChange={(_, value) => value && setProxyPolicy(value)}
-            />
-          </Item>
-          {ruleType.noResolve && (
-            <Item>
-              <ListItemText primary={t("No Resolve")} />
-              <Switch
-                checked={noResolve}
-                onChange={() => setNoResolve(!noResolve)}
-              />
-            </Item>
-          )}
-          <Item>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={() => {
-                try {
-                  let raw = validateRule();
-                  if (prependSeq.includes(raw)) return;
-                  setPrependSeq([...prependSeq, raw]);
-                } catch (err: any) {
-                  Notice.error(err.message || err.toString());
-                }
+      <DialogContent
+        sx={{ display: "flex", width: "auto", height: "calc(100vh - 185px)" }}
+      >
+        {visible ? (
+          <>
+            <List
+              sx={{
+                width: "50%",
+                padding: "0 10px",
               }}
             >
-              {t("Prepend Rule")}
-            </Button>
-          </Item>
-          <Item>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={() => {
-                try {
-                  let raw = validateRule();
-                  if (appendSeq.includes(raw)) return;
-                  setAppendSeq([...appendSeq, raw]);
-                } catch (err: any) {
-                  Notice.error(err.message || err.toString());
-                }
-              }}
-            >
-              {t("Append Rule")}
-            </Button>
-          </Item>
-        </List>
+              <Item>
+                <ListItemText primary={t("Rule Type")} />
+                <Autocomplete
+                  size="small"
+                  sx={{ minWidth: "240px" }}
+                  renderInput={(params) => <TextField {...params} />}
+                  options={rules}
+                  value={ruleType}
+                  getOptionLabel={(option) => option.name}
+                  renderOption={(props, option) => (
+                    <li {...props} title={t(option.name)}>
+                      {option.name}
+                    </li>
+                  )}
+                  onChange={(_, value) => value && setRuleType(value)}
+                />
+              </Item>
+              <Item
+                sx={{ display: !(ruleType.required ?? true) ? "none" : "" }}
+              >
+                <ListItemText primary={t("Rule Content")} />
 
-        <List
-          sx={{ height: "calc(100% - 16px)", width: "50%", padding: "0 10px" }}
-        >
-          <BaseSearchBox
-            matchCase={false}
-            onSearch={(match) => setMatch(() => match)}
-          />
-          <Virtuoso
-            style={{ height: "calc(100% - 16px)", marginTop: "8px" }}
-            totalCount={
-              ruleList.length +
-              (prependSeq.length > 0 ? 1 : 0) +
-              (appendSeq.length > 0 ? 1 : 0)
-            }
-            increaseViewportBy={256}
-            itemContent={(index) => {
-              let shift = prependSeq.length > 0 ? 1 : 0;
-              if (prependSeq.length > 0 && index === 0) {
-                return (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={onPrependDragEnd}
-                  >
-                    <SortableContext
-                      items={prependSeq.map((x) => {
-                        return x;
-                      })}
-                    >
-                      {prependSeq.map((item, index) => {
-                        return (
-                          <RuleItem
-                            key={`${item}-${index}`}
-                            type="prepend"
-                            ruleRaw={item}
-                            onDelete={() => {
-                              setPrependSeq(
-                                prependSeq.filter((v) => v !== item)
-                              );
-                            }}
-                          />
-                        );
-                      })}
-                    </SortableContext>
-                  </DndContext>
-                );
-              } else if (index < ruleList.length + shift) {
-                let newIndex = index - shift;
-                return (
-                  <RuleItem
-                    key={`${ruleList[newIndex]}-${index}`}
-                    type={
-                      deleteSeq.includes(ruleList[newIndex])
-                        ? "delete"
-                        : "original"
-                    }
-                    ruleRaw={ruleList[newIndex]}
-                    onDelete={() => {
-                      if (deleteSeq.includes(ruleList[newIndex])) {
-                        setDeleteSeq(
-                          deleteSeq.filter((v) => v !== ruleList[newIndex])
-                        );
-                      } else {
-                        setDeleteSeq((prev) => [...prev, ruleList[newIndex]]);
-                      }
-                    }}
+                {ruleType.name === "RULE-SET" && (
+                  <Autocomplete
+                    size="small"
+                    sx={{ minWidth: "240px" }}
+                    renderInput={(params) => <TextField {...params} />}
+                    options={ruleSetList}
+                    value={ruleContent}
+                    onChange={(_, value) => value && setRuleContent(value)}
                   />
-                );
-              } else {
-                return (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={onAppendDragEnd}
-                  >
-                    <SortableContext
-                      items={appendSeq.map((x) => {
-                        return x;
-                      })}
-                    >
-                      {appendSeq.map((item, index) => {
-                        return (
-                          <RuleItem
-                            key={`${item}-${index}`}
-                            type="append"
-                            ruleRaw={item}
-                            onDelete={() => {
-                              setAppendSeq(appendSeq.filter((v) => v !== item));
-                            }}
-                          />
-                        );
-                      })}
-                    </SortableContext>
-                  </DndContext>
-                );
-              }
+                )}
+                {ruleType.name === "SUB-RULE" && (
+                  <Autocomplete
+                    size="small"
+                    sx={{ minWidth: "240px" }}
+                    renderInput={(params) => <TextField {...params} />}
+                    options={subRuleList}
+                    value={ruleContent}
+                    onChange={(_, value) => value && setRuleContent(value)}
+                  />
+                )}
+                {ruleType.name !== "RULE-SET" &&
+                  ruleType.name !== "SUB-RULE" && (
+                    <TextField
+                      autoComplete="off"
+                      size="small"
+                      sx={{ minWidth: "240px" }}
+                      value={ruleContent}
+                      required={ruleType.required ?? true}
+                      error={(ruleType.required ?? true) && !ruleContent}
+                      placeholder={ruleType.example}
+                      onChange={(e) => setRuleContent(e.target.value)}
+                    />
+                  )}
+              </Item>
+              <Item>
+                <ListItemText primary={t("Proxy Policy")} />
+                <Autocomplete
+                  size="small"
+                  sx={{ minWidth: "240px" }}
+                  renderInput={(params) => <TextField {...params} />}
+                  options={proxyPolicyList}
+                  value={proxyPolicy}
+                  renderOption={(props, option) => (
+                    <li {...props} title={t(option)}>
+                      {option}
+                    </li>
+                  )}
+                  onChange={(_, value) => value && setProxyPolicy(value)}
+                />
+              </Item>
+              {ruleType.noResolve && (
+                <Item>
+                  <ListItemText primary={t("No Resolve")} />
+                  <Switch
+                    checked={noResolve}
+                    onChange={() => setNoResolve(!noResolve)}
+                  />
+                </Item>
+              )}
+              <Item>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => {
+                    try {
+                      let raw = validateRule();
+                      if (prependSeq.includes(raw)) return;
+                      setPrependSeq([...prependSeq, raw]);
+                    } catch (err: any) {
+                      Notice.error(err.message || err.toString());
+                    }
+                  }}
+                >
+                  {t("Prepend Rule")}
+                </Button>
+              </Item>
+              <Item>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => {
+                    try {
+                      let raw = validateRule();
+                      if (appendSeq.includes(raw)) return;
+                      setAppendSeq([...appendSeq, raw]);
+                    } catch (err: any) {
+                      Notice.error(err.message || err.toString());
+                    }
+                  }}
+                >
+                  {t("Append Rule")}
+                </Button>
+              </Item>
+            </List>
+
+            <List
+              sx={{
+                width: "50%",
+                padding: "0 10px",
+              }}
+            >
+              <BaseSearchBox
+                matchCase={false}
+                onSearch={(match) => setMatch(() => match)}
+              />
+              <Virtuoso
+                style={{ height: "calc(100% - 24px)", marginTop: "8px" }}
+                totalCount={
+                  filteredRuleList.length +
+                  (prependSeq.length > 0 ? 1 : 0) +
+                  (appendSeq.length > 0 ? 1 : 0)
+                }
+                increaseViewportBy={256}
+                itemContent={(index) => {
+                  let shift = prependSeq.length > 0 ? 1 : 0;
+                  if (prependSeq.length > 0 && index === 0) {
+                    return (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={onPrependDragEnd}
+                      >
+                        <SortableContext
+                          items={prependSeq.map((x) => {
+                            return x;
+                          })}
+                        >
+                          {prependSeq.map((item, index) => {
+                            return (
+                              <RuleItem
+                                key={`${item}-${index}`}
+                                type="prepend"
+                                ruleRaw={item}
+                                onDelete={() => {
+                                  setPrependSeq(
+                                    prependSeq.filter((v) => v !== item)
+                                  );
+                                }}
+                              />
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  } else if (index < filteredRuleList.length + shift) {
+                    let newIndex = index - shift;
+                    return (
+                      <RuleItem
+                        key={`${filteredRuleList[newIndex]}-${index}`}
+                        type={
+                          deleteSeq.includes(filteredRuleList[newIndex])
+                            ? "delete"
+                            : "original"
+                        }
+                        ruleRaw={filteredRuleList[newIndex]}
+                        onDelete={() => {
+                          if (deleteSeq.includes(filteredRuleList[newIndex])) {
+                            setDeleteSeq(
+                              deleteSeq.filter(
+                                (v) => v !== filteredRuleList[newIndex]
+                              )
+                            );
+                          } else {
+                            setDeleteSeq((prev) => [
+                              ...prev,
+                              filteredRuleList[newIndex],
+                            ]);
+                          }
+                        }}
+                      />
+                    );
+                  } else {
+                    return (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={onAppendDragEnd}
+                      >
+                        <SortableContext
+                          items={appendSeq.map((x) => {
+                            return x;
+                          })}
+                        >
+                          {appendSeq.map((item, index) => {
+                            return (
+                              <RuleItem
+                                key={`${item}-${index}`}
+                                type="append"
+                                ruleRaw={item}
+                                onDelete={() => {
+                                  setAppendSeq(
+                                    appendSeq.filter((v) => v !== item)
+                                  );
+                                }}
+                              />
+                            );
+                          })}
+                        </SortableContext>
+                      </DndContext>
+                    );
+                  }
+                }}
+              />
+            </List>
+          </>
+        ) : (
+          <MonacoEditor
+            height="100%"
+            language="yaml"
+            value={currData}
+            theme={themeMode === "light" ? "vs" : "vs-dark"}
+            options={{
+              tabSize: 2, // 根据语言类型设置缩进大小
+              minimap: {
+                enabled: document.documentElement.clientWidth >= 1500, // 超过一定宽度显示minimap滚动条
+              },
+              mouseWheelZoom: true, // 按住Ctrl滚轮调节缩放比例
+              quickSuggestions: {
+                strings: true, // 字符串类型的建议
+                comments: true, // 注释类型的建议
+                other: true, // 其他类型的建议
+              },
+              padding: {
+                top: 33, // 顶部padding防止遮挡snippets
+              },
+              fontFamily: `Fira Code, JetBrains Mono, Roboto Mono, "Source Code Pro", Consolas, Menlo, Monaco, monospace, "Courier New", "Apple Color Emoji"${
+                getSystem() === "windows" ? ", twemoji mozilla" : ""
+              }`,
+              fontLigatures: true, // 连字符
+              smoothScrolling: true, // 平滑滚动
             }}
+            onChange={(value) => setCurrData(value)}
           />
-        </List>
+        )}
       </DialogContent>
 
       <DialogActions>

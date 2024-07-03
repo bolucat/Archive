@@ -39,7 +39,7 @@ const (
 	ruleItemFinal uint8 = 0xFF
 )
 
-func Read(reader io.Reader, recovery bool) (ruleSet option.PlainRuleSet, err error) {
+func Read(reader io.Reader, recover bool) (ruleSet option.PlainRuleSet, err error) {
 	var magicBytes [3]byte
 	_, err = io.ReadFull(reader, magicBytes[:])
 	if err != nil {
@@ -68,7 +68,7 @@ func Read(reader io.Reader, recovery bool) (ruleSet option.PlainRuleSet, err err
 	}
 	ruleSet.Rules = make([]option.HeadlessRule, length)
 	for i := uint64(0); i < length; i++ {
-		ruleSet.Rules[i], err = readRule(bReader, recovery)
+		ruleSet.Rules[i], err = readRule(bReader, recover)
 		if err != nil {
 			err = E.Cause(err, "read rule[", i, "]")
 			return
@@ -101,10 +101,14 @@ func Write(writer io.Writer, ruleSet option.PlainRuleSet) error {
 			return err
 		}
 	}
+	err = bWriter.Flush()
+	if err != nil {
+		return err
+	}
 	return zWriter.Close()
 }
 
-func readRule(reader varbin.Reader, recovery bool) (rule option.HeadlessRule, err error) {
+func readRule(reader varbin.Reader, recover bool) (rule option.HeadlessRule, err error) {
 	var ruleType uint8
 	err = binary.Read(reader, binary.BigEndian, &ruleType)
 	if err != nil {
@@ -113,10 +117,10 @@ func readRule(reader varbin.Reader, recovery bool) (rule option.HeadlessRule, er
 	switch ruleType {
 	case 0:
 		rule.Type = C.RuleTypeDefault
-		rule.DefaultOptions, err = readDefaultRule(reader, recovery)
+		rule.DefaultOptions, err = readDefaultRule(reader, recover)
 	case 1:
 		rule.Type = C.RuleTypeLogical
-		rule.LogicalOptions, err = readLogicalRule(reader, recovery)
+		rule.LogicalOptions, err = readLogicalRule(reader, recover)
 	default:
 		err = E.New("unknown rule type: ", ruleType)
 	}
@@ -134,7 +138,7 @@ func writeRule(writer varbin.Writer, rule option.HeadlessRule) error {
 	}
 }
 
-func readDefaultRule(reader varbin.Reader, recovery bool) (rule option.DefaultHeadlessRule, err error) {
+func readDefaultRule(reader varbin.Reader, recover bool) (rule option.DefaultHeadlessRule, err error) {
 	var lastItemType uint8
 	for {
 		var itemType uint8
@@ -161,6 +165,9 @@ func readDefaultRule(reader varbin.Reader, recovery bool) (rule option.DefaultHe
 				return
 			}
 			rule.DomainMatcher = matcher
+			if recover {
+				rule.Domain, rule.DomainSuffix = matcher.Dump()
+			}
 		case ruleItemDomainKeyword:
 			rule.DomainKeyword, err = readRuleItemString(reader)
 		case ruleItemDomainRegex:
@@ -170,7 +177,7 @@ func readDefaultRule(reader varbin.Reader, recovery bool) (rule option.DefaultHe
 			if err != nil {
 				return
 			}
-			if recovery {
+			if recover {
 				rule.SourceIPCIDR = common.Map(rule.SourceIPSet.Prefixes(), netip.Prefix.String)
 			}
 		case ruleItemIPCIDR:
@@ -178,7 +185,7 @@ func readDefaultRule(reader varbin.Reader, recovery bool) (rule option.DefaultHe
 			if err != nil {
 				return
 			}
-			if recovery {
+			if recover {
 				rule.IPCIDR = common.Map(rule.IPSet.Prefixes(), netip.Prefix.String)
 			}
 		case ruleItemSourcePort:

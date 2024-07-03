@@ -92,6 +92,12 @@ func (b *baseTransporter) RelayTCPConn(c net.Conn, handshakeF TCPHandShakeF) err
 	if err != nil {
 		return err
 	}
+	defer rc.Close()
+
+	// rate limit
+	if b.cfg.MaxReadRateKbps > 0 {
+		c = conn.NewRateLimitedConn(c, b.cfg.MaxReadRateKbps)
+	}
 
 	b.l.Infof("RelayTCPConn from %s to %s", c.LocalAddr(), remote.Address)
 	relayConn := conn.NewRelayConn(
@@ -103,5 +109,6 @@ func (b *baseTransporter) RelayTCPConn(c net.Conn, handshakeF TCPHandShakeF) err
 
 func (b *baseTransporter) HealthCheck(ctx context.Context) (int64, error) {
 	remote := b.GetRemote().Clone()
-	return remote.HandShakeDuration.Milliseconds(), b.relayer.HealthCheck(ctx, remote)
+	err := b.relayer.HealthCheck(ctx, remote)
+	return int64(remote.HandShakeDuration.Milliseconds()), err
 }

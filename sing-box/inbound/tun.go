@@ -356,7 +356,7 @@ func (t *Tun) PostStart() error {
 			}
 			t.routeExcludeAddressSet = append(t.routeExcludeAddressSet, ipSets...)
 		}
-		monitor.Start("initiating auto-redirect")
+		monitor.Start("initialize auto-redirect")
 		err := t.autoRedirect.Start()
 		monitor.Finish()
 		if err != nil {

@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.19
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.18
 
 * Add new `inline` rule-set type **1**
