@@ -194,6 +194,7 @@ These two concepts are notable: `input` and `output`. The `input` is the data so
 支持的 `input` 输入格式：
 
 - **text**：纯文本 IP 和 CIDR（例如：`1.1.1.1` 或 `1.0.0.0/24`）
+- **stdin**：从 standard input 获取纯文本 IP 和 CIDR（例如：`1.1.1.1` 或 `1.0.0.0/24`）
 - **private**：局域网和私有网络 CIDR（例如：`192.168.0.0/16` 和 `127.0.0.0/8`）
 - **cutter**：用于裁剪前置步骤中的数据
 - **v2rayGeoIPDat**：V2Ray GeoIP dat 格式（`geoip.dat`）
@@ -207,6 +208,7 @@ These two concepts are notable: `input` and `output`. The `input` is the data so
 支持的 `output` 输出格式：
 
 - **text**：纯文本 CIDR（例如：`1.0.0.0/24`）
+- **stdout**：将纯文本 CIDR 输出到 standard output（例如：`1.0.0.0/24`）
 - **v2rayGeoIPDat**：V2Ray GeoIP dat 格式（`geoip.dat`，适用于 [V2Ray](https://github.com/v2fly/v2ray-core)、[Xray-core](https://github.com/XTLS/Xray-core) 和 [Trojan-Go](https://github.com/p4gefau1t/trojan-go)）
 - **maxmindMMDB**：MaxMind mmdb 数据格式（`GeoLite2-Country.mmdb`，适用于 [Clash](https://github.com/Dreamacro/clash) 和 [Leaf](https://github.com/eycorsican/leaf)）
 - **singboxSRS**：sing-box SRS 格式（`geoip-cn.srs`，适用于 [sing-box](https://github.com/SagerNet/sing-box)）
@@ -261,6 +263,7 @@ All available input formats:
   - maxmindGeoLite2CountryCSV (Convert MaxMind GeoLite2 country CSV data to other formats)
   - singboxSRS (Convert sing-box SRS data to other formats)
   - private (Convert LAN and private network CIDR to other formats)
+  - stdin (Accept plaintext IP & CIDR from standard input, separated by newline)
   - text (Convert plaintext IP & CIDR to other formats)
   - clashRuleSetClassical (Convert classical type of Clash RuleSet to other formats (just processing IP & CIDR lines))
   - clashRuleSet (Convert ipcidr type of Clash RuleSet to other formats)
@@ -275,6 +278,7 @@ All available output formats:
   - clashRuleSet (Convert data to ipcidr type of Clash RuleSet)
   - surgeRuleSet (Convert data to Surge RuleSet)
   - text (Convert data to plaintext CIDR format)
+  - stdout (Convert data to plaintext CIDR format and output to standard output)
 ```
 
 ## License

@@ -24,12 +24,14 @@ import {
   saveProfileFile,
 } from "@/services/cmds";
 import { Notice } from "@/components/base";
+import { GroupsEditorViewer } from "@/components/profile/groups-editor-viewer";
 import { RulesEditorViewer } from "@/components/profile/rules-editor-viewer";
 import { EditorViewer } from "@/components/profile/editor-viewer";
 import { ProfileBox } from "./profile-box";
 import parseTraffic from "@/utils/parse-traffic";
 import { ConfirmViewer } from "@/components/profile/confirm-viewer";
 import { open } from "@tauri-apps/api/shell";
+import { ProxiesEditorViewer } from "./proxies-editor-viewer";
 const round = keyframes`
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -491,24 +493,20 @@ export const ProfileItem = (props: Props) => {
         onSave={onSave}
         onClose={() => setRulesOpen(false)}
       />
-      <EditorViewer
+      <ProxiesEditorViewer
+        profileUid={uid}
+        property={option?.proxies ?? ""}
         open={proxiesOpen}
-        initialData={readProfileFile(option?.proxies ?? "")}
-        language="yaml"
-        onSave={async (prev, curr) => {
-          await saveProfileFile(option?.proxies ?? "", curr ?? "");
-          onSave && onSave(prev, curr);
-        }}
+        onSave={onSave}
         onClose={() => setProxiesOpen(false)}
       />
-      <EditorViewer
+      <GroupsEditorViewer
+        mergeUid={option?.merge ?? ""}
+        proxiesUid={option?.proxies ?? ""}
+        profileUid={uid}
+        property={option?.groups ?? ""}
         open={groupsOpen}
-        initialData={readProfileFile(option?.groups ?? "")}
-        language="yaml"
-        onSave={async (prev, curr) => {
-          await saveProfileFile(option?.groups ?? "", curr ?? "");
-          onSave && onSave(prev, curr);
-        }}
+        onSave={onSave}
         onClose={() => setGroupsOpen(false)}
       />
       <EditorViewer

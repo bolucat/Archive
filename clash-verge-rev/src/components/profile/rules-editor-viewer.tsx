@@ -43,7 +43,6 @@ interface Props {
   groupsUid: string;
   mergeUid: string;
   profileUid: string;
-  title?: string | ReactNode;
   property: string;
   open: boolean;
   onClose: () => void;
@@ -232,22 +231,14 @@ const rules: {
 const builtinProxyPolicies = ["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
 export const RulesEditorViewer = (props: Props) => {
-  const {
-    title,
-    groupsUid,
-    mergeUid,
-    profileUid,
-    property,
-    open,
-    onClose,
-    onSave,
-  } = props;
+  const { groupsUid, mergeUid, profileUid, property, open, onClose, onSave } =
+    props;
   const { t } = useTranslation();
   const themeMode = useThemeMode();
 
   const [prevData, setPrevData] = useState("");
   const [currData, setCurrData] = useState("");
-  const [visible, setVisible] = useState(true);
+  const [visualization, setVisualization] = useState(true);
   const [match, setMatch] = useState(() => (_: string) => true);
 
   const [ruleType, setRuleType] = useState<(typeof rules)[number]>(rules[0]);
@@ -302,7 +293,7 @@ export const RulesEditorViewer = (props: Props) => {
   };
   const fetchContent = async () => {
     let data = await readProfileFile(property);
-    let obj = yaml.load(data) as { prepend: []; append: []; delete: [] } | null;
+    let obj = yaml.load(data) as ISeqProfileConfig | null;
 
     setPrependSeq(obj?.prepend || []);
     setAppendSeq(obj?.append || []);
@@ -314,38 +305,51 @@ export const RulesEditorViewer = (props: Props) => {
 
   useEffect(() => {
     if (currData === "") return;
-    if (visible !== true) return;
+    if (visualization !== true) return;
 
-    let obj = yaml.load(currData) as {
-      prepend: [];
-      append: [];
-      delete: [];
-    } | null;
+    let obj = yaml.load(currData) as ISeqProfileConfig | null;
     setPrependSeq(obj?.prepend || []);
     setAppendSeq(obj?.append || []);
     setDeleteSeq(obj?.delete || []);
-  }, [visible]);
+  }, [visualization]);
 
   useEffect(() => {
     if (prependSeq && appendSeq && deleteSeq)
       setCurrData(
-        yaml.dump({ prepend: prependSeq, append: appendSeq, delete: deleteSeq })
+        yaml.dump(
+          { prepend: prependSeq, append: appendSeq, delete: deleteSeq },
+          {
+            forceQuotes: true,
+          }
+        )
       );
   }, [prependSeq, appendSeq, deleteSeq]);
 
   const fetchProfile = async () => {
-    let data = await readProfileFile(profileUid);
-    let groupsData = await readProfileFile(groupsUid);
-    let mergeData = await readProfileFile(mergeUid);
-    let globalMergeData = await readProfileFile("Merge");
+    let data = await readProfileFile(profileUid); // 原配置文件
+    let groupsData = await readProfileFile(groupsUid); // groups配置文件
+    let mergeData = await readProfileFile(mergeUid); // merge配置文件
+    let globalMergeData = await readProfileFile("Merge"); // global merge配置文件
 
     let rulesObj = yaml.load(data) as { rules: [] } | null;
 
     let originGroupsObj = yaml.load(data) as { "proxy-groups": [] } | null;
     let originGroups = originGroupsObj?.["proxy-groups"] || [];
-    let moreGroupsObj = yaml.load(groupsData) as { "proxy-groups": [] } | null;
-    let moreGroups = moreGroupsObj?.["proxy-groups"] || [];
-    let groups = originGroups.concat(moreGroups);
+    let moreGroupsObj = yaml.load(groupsData) as ISeqProfileConfig | null;
+    let morePrependGroups = moreGroupsObj?.["prepend"] || [];
+    let moreAppendGroups = moreGroupsObj?.["append"] || [];
+    let moreDeleteGroups =
+      moreGroupsObj?.["delete"] || ([] as string[] | { name: string }[]);
+    let groups = morePrependGroups.concat(
+      originGroups.filter((group: any) => {
+        if (group.name) {
+          return !moreDeleteGroups.includes(group.name);
+        } else {
+          return !moreDeleteGroups.includes(group);
+        }
+      }),
+      moreAppendGroups
+    );
 
     let originRuleSetObj = yaml.load(data) as { "rule-providers": {} } | null;
     let originRuleSet = originRuleSetObj?.["rule-providers"] || {};
@@ -377,6 +381,7 @@ export const RulesEditorViewer = (props: Props) => {
   };
 
   useEffect(() => {
+    if (!open) return;
     fetchContent();
     fetchProfile();
   }, [open]);
@@ -416,10 +421,10 @@ export const RulesEditorViewer = (props: Props) => {
                 variant="contained"
                 size="small"
                 onClick={() => {
-                  setVisible((prev) => !prev);
+                  setVisualization((prev) => !prev);
                 }}
               >
-                {visible ? t("Advanced") : t("Visible")}
+                {visualization ? t("Advanced") : t("Visualization")}
               </Button>
             </Box>
           </Box>
@@ -429,7 +434,7 @@ export const RulesEditorViewer = (props: Props) => {
       <DialogContent
         sx={{ display: "flex", width: "auto", height: "calc(100vh - 185px)" }}
       >
-        {visible ? (
+        {visualization ? (
           <>
             <List
               sx={{

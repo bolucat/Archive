@@ -86,8 +86,8 @@ importers:
         specifier: 15.2.7
         version: 15.2.7
       npm-run-all2:
-        specifier: 6.2.0
-        version: 6.2.0
+        specifier: 6.2.2
+        version: 6.2.2
       postcss:
         specifier: 8.4.39
         version: 8.4.39
@@ -107,8 +107,8 @@ importers:
         specifier: 2.0.1
         version: 2.0.1(prettier@3.3.2)
       react-devtools:
-        specifier: 5.3.0
-        version: 5.3.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
+        specifier: 5.3.1
+        version: 5.3.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       stylelint:
         specifier: 16.6.1
         version: 16.6.1(typescript@5.5.3)
@@ -178,7 +178,7 @@ importers:
         version: 11.11.5(@emotion/react@11.11.4(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1))(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
       '@generouted/react-router':
         specifier: 1.19.5
-        version: 1.19.5(react-router-dom@6.24.0(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
+        version: 1.19.5(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
       '@juggle/resize-observer':
         specifier: 3.4.0
         version: 3.4.0
@@ -258,8 +258,8 @@ importers:
         specifier: 9.0.1
         version: 9.0.1(react@19.0.0-rc-fb9a90fa48-20240614)(types-react@19.0.0-rc.1)
       react-router-dom:
-        specifier: 6.24.0
-        version: 6.24.0(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
+        specifier: 6.24.1
+        version: 6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
       react-transition-group:
         specifier: 4.4.5
         version: 4.4.5(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
@@ -1442,8 +1442,8 @@ packages:
   '@popperjs/core@2.11.8':
     resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
 
-  '@remix-run/router@1.17.0':
-    resolution: {integrity: sha512-2D6XaHEVvkCn682XBnipbJjgZUU7xjLtA4dGJRBVUKpEaDYOZMENZoZjAOSb7qirxt5RupjzZxz4fK2FO+EFPw==}
+  '@remix-run/router@1.17.1':
+    resolution: {integrity: sha512-mCOMec4BKd6BRGBZeSnGiIgwsbLGp3yhVqAD8H+PxiRNEHgDpZb8J1TnrSDlg97t0ySKMQJTHCWBCmBpSmkF6Q==}
     engines: {node: '>=14.0.0'}
 
   '@rollup/pluginutils@5.1.0':
@@ -4281,9 +4281,9 @@ packages:
     resolution: {integrity: sha512-dMxCf+zZ+3zeQZXKxmyuCKlIDPGuv8EF940xbkC4kQVDTtqoh6rJFO+JTKSA6/Rwi0getWmtuy4Itup0AMcaDQ==}
     engines: {node: ^14.17.0 || ^16.13.0 || >=18.0.0}
 
-  npm-run-all2@6.2.0:
-    resolution: {integrity: sha512-wA7yVIkthe6qJBfiJ2g6aweaaRlw72itsFGF6HuwCHKwtwAx/4BY1vVpk6bw6lS8RLMsexoasOkd0aYOmsFG7Q==}
-    engines: {node: ^14.18.0 || >=16.0.0, npm: '>= 8'}
+  npm-run-all2@6.2.2:
+    resolution: {integrity: sha512-Q+alQAGIW7ZhKcxLt8GcSi3h3ryheD6xnmXahkMRVM5LYmajcUrSITm8h+OPC9RYWMV2GR0Q1ntTUCfxaNoOJw==}
+    engines: {node: ^14.18.0 || ^16.13.0 || >=18.0.0, npm: '>= 8'}
     hasBin: true
 
   npm-run-path@2.0.2:
@@ -4709,11 +4709,11 @@ packages:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
 
-  react-devtools-core@5.3.0:
-    resolution: {integrity: sha512-IG3T+azv48Oc5VLdHR4XdBNKNZIUOKRtx0sJMRvb++Zom/uqtx73j6u37JCsIBNIaq6vA7RPH5Bbcf/Wj53KXA==}
+  react-devtools-core@5.3.1:
+    resolution: {integrity: sha512-7FSb9meX0btdBQLwdFOwt6bGqvRPabmVMMslv8fgoSPqXyuGpgQe36kx8gR86XPw7aV1yVouTp6fyZ0EH+NfUw==}
 
-  react-devtools@5.3.0:
-    resolution: {integrity: sha512-m7M+bBKlFM/dPfdHkM0Rcp0cqu8GrFDs3OPYq3nZ6OcWIfvQxrtPP/JayzVuf3KoPt5r/fA50F1HChEbikDKyQ==}
+  react-devtools@5.3.1:
+    resolution: {integrity: sha512-RcSV/u+lPChcTB+A4fij0xkE204yzKdAsGUFy6+DrfUzWSawB+cu0n3WLmJcJXQ/VnmjSUlIrqmVLicRhT/gLA==}
     hasBin: true
 
   react-dom@19.0.0-rc-fb9a90fa48-20240614:
@@ -4791,15 +4791,15 @@ packages:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
 
-  react-router-dom@6.24.0:
-    resolution: {integrity: sha512-960sKuau6/yEwS8e+NVEidYQb1hNjAYM327gjEyXlc6r3Skf2vtwuJ2l7lssdegD2YjoKG5l8MsVyeTDlVeY8g==}
+  react-router-dom@6.24.1:
+    resolution: {integrity: sha512-U19KtXqooqw967Vw0Qcn5cOvrX5Ejo9ORmOtJMzYWtCT4/WOfFLIZGGsVLxcd9UkBO0mSTZtXqhZBsWlHr7+Sg==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: npm:react@rc
       react-dom: npm:react-dom@rc
 
-  react-router@6.24.0:
-    resolution: {integrity: sha512-sQrgJ5bXk7vbcC4BxQxeNa5UmboFm35we1AFK0VvQaz9g0LzxEIuLOhHIoZ8rnu9BO21ishGeL9no1WB76W/eg==}
+  react-router@6.24.1:
+    resolution: {integrity: sha512-PTXFXGK2pyXpHzVo3rR9H7ip4lSPZZc0bHG5CARmj65fTT6qG7sTngmb6lcYu1gf3y/8KxORoy9yn59pGpCnpg==}
     engines: {node: '>=14.0.0'}
     peerDependencies:
       react: npm:react@rc
@@ -6338,12 +6338,12 @@ snapshots:
       postcss: 7.0.32
       purgecss: 2.3.0
 
-  '@generouted/react-router@1.19.5(react-router-dom@6.24.0(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
+  '@generouted/react-router@1.19.5(react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)(vite@5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))':
     dependencies:
       fast-glob: 3.3.2
       generouted: 1.19.5(vite@5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0))
       react: 19.0.0-rc-fb9a90fa48-20240614
-      react-router-dom: 6.24.0(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
+      react-router-dom: 6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614)
       vite: 5.3.3(@types/node@20.14.9)(less@4.2.0)(sass@1.77.6)(stylus@0.62.0)
 
   '@humanwhocodes/config-array@0.11.14':
@@ -6769,7 +6769,7 @@ snapshots:
 
   '@popperjs/core@2.11.8': {}
 
-  '@remix-run/router@1.17.0': {}
+  '@remix-run/router@1.17.1': {}
 
   '@rollup/pluginutils@5.1.0(rollup@4.17.2)':
     dependencies:
@@ -9911,7 +9911,7 @@ snapshots:
 
   npm-normalize-package-bin@3.0.1: {}
 
-  npm-run-all2@6.2.0:
+  npm-run-all2@6.2.2:
     dependencies:
       ansi-styles: 6.2.1
       cross-spawn: 7.0.3
@@ -10330,7 +10330,7 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
-  react-devtools-core@5.3.0(bufferutil@4.0.8)(utf-8-validate@5.0.10):
+  react-devtools-core@5.3.1(bufferutil@4.0.8)(utf-8-validate@5.0.10):
     dependencies:
       shell-quote: 1.8.1
       ws: 7.5.9(bufferutil@4.0.8)(utf-8-validate@5.0.10)
@@ -10338,13 +10338,13 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  react-devtools@5.3.0(bufferutil@4.0.8)(utf-8-validate@5.0.10):
+  react-devtools@5.3.1(bufferutil@4.0.8)(utf-8-validate@5.0.10):
     dependencies:
       cross-spawn: 5.1.0
       electron: 23.3.13
       internal-ip: 6.2.0
       minimist: 1.2.8
-      react-devtools-core: 5.3.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
+      react-devtools-core: 5.3.1(bufferutil@4.0.8)(utf-8-validate@5.0.10)
       update-notifier: 2.5.0
     transitivePeerDependencies:
       - bufferutil
@@ -10417,16 +10417,16 @@ snapshots:
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-dom: 19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614)
 
-  react-router-dom@6.24.0(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614):
+  react-router-dom@6.24.1(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614):
     dependencies:
-      '@remix-run/router': 1.17.0
+      '@remix-run/router': 1.17.1
       react: 19.0.0-rc-fb9a90fa48-20240614
       react-dom: 19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614)
-      react-router: 6.24.0(react@19.0.0-rc-fb9a90fa48-20240614)
+      react-router: 6.24.1(react@19.0.0-rc-fb9a90fa48-20240614)
 
-  react-router@6.24.0(react@19.0.0-rc-fb9a90fa48-20240614):
+  react-router@6.24.1(react@19.0.0-rc-fb9a90fa48-20240614):
     dependencies:
-      '@remix-run/router': 1.17.0
+      '@remix-run/router': 1.17.1
       react: 19.0.0-rc-fb9a90fa48-20240614
 
   react-transition-group@4.4.5(react-dom@19.0.0-rc-fb9a90fa48-20240614(react@19.0.0-rc-fb9a90fa48-20240614))(react@19.0.0-rc-fb9a90fa48-20240614):

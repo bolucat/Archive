@@ -32,21 +32,21 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             verge.clash_core.clone(),
             verge.enable_tun_mode.unwrap_or(false),
             verge.enable_builtin_enhanced.unwrap_or(true),
-            verge.verge_socks_enabled.unwrap_or(true),
-            verge.verge_http_enabled.unwrap_or(true),
+            verge.verge_socks_enabled.unwrap_or(false),
+            verge.verge_http_enabled.unwrap_or(false),
         )
     };
     #[cfg(not(target_os = "windows"))]
     let redir_enabled = {
         let verge = Config::verge();
         let verge = verge.latest();
-        verge.verge_redir_enabled.unwrap_or(true)
+        verge.verge_redir_enabled.unwrap_or(false)
     };
     #[cfg(target_os = "linux")]
     let tproxy_enabled = {
         let verge = Config::verge();
         let verge = verge.latest();
-        verge.verge_tproxy_enabled.unwrap_or(true)
+        verge.verge_tproxy_enabled.unwrap_or(false)
     };
 
     // 从profiles里拿东西
@@ -59,6 +59,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
         groups_item,
         global_merge,
         global_script,
+        profile_name,
     ) = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
@@ -123,6 +124,12 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
                 data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
             });
 
+        let name = profiles
+            .get_item(&profiles.get_current().unwrap_or_default())
+            .ok()
+            .and_then(|item| item.name.clone())
+            .unwrap_or_default();
+
         (
             current,
             merge,
@@ -132,6 +139,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             groups,
             global_merge,
             global_script,
+            name,
         )
     };
 
@@ -147,7 +155,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     if let ChainType::Script(script) = global_script.data {
         let mut logs = vec![];
 
-        match use_script(script, config.to_owned()) {
+        match use_script(script, config.to_owned(), profile_name.to_owned()) {
             Ok((res_config, res_logs)) => {
                 exists_keys.extend(use_keys(&res_config));
                 config = res_config;
@@ -180,7 +188,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     if let ChainType::Script(script) = script_item.data {
         let mut logs = vec![];
 
-        match use_script(script, config.to_owned()) {
+        match use_script(script, config.to_owned(), profile_name.to_owned()) {
             Ok((res_config, res_logs)) => {
                 exists_keys.extend(use_keys(&res_config));
                 config = res_config;
@@ -239,7 +247,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
             .for_each(|item| {
                 log::debug!(target: "app", "run builtin script {}", item.uid);
                 if let ChainType::Script(script) = item.data {
-                    match use_script(script, config.to_owned()) {
+                    match use_script(script, config.to_owned(), "".to_string()) {
                         Ok((res_config, _)) => {
                             config = res_config;
                         }

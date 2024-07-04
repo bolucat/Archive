@@ -199,9 +199,62 @@ interface IVergeTestItem {
 }
 
 interface ISeqProfileConfig {
-  prepend: string[];
-  append: string[];
-  delete: string[];
+  prepend: [];
+  append: [];
+  delete: [];
+}
+
+interface IProxyGroupConfig {
+  name: string;
+  type: "select" | "url-test" | "fallback" | "load-balance" | "relay";
+  proxies?: string[];
+  use?: string[];
+  url?: string;
+  interval?: number;
+  lazy?: boolean;
+  timeout?: number;
+  "max-failed-times"?: number;
+  "disable-udp"?: boolean;
+  "interface-name": string;
+  "routing-mark"?: number;
+  "include-all"?: boolean;
+  "include-all-proxies"?: boolean;
+  "include-all-providers"?: boolean;
+  filter?: string;
+  "exclude-filter"?: string;
+  "exclude-type"?: string;
+  "expected-status"?: number;
+  hidden?: boolean;
+  icon?: string;
+}
+
+interface IProxyConfig {
+  name: string;
+  type:
+    | "ss"
+    | "ssr"
+    | "direct"
+    | "dns"
+    | "snell"
+    | "http"
+    | "trojan"
+    | "hysteria"
+    | "hysteria2"
+    | "tuic"
+    | "wireguard"
+    | "ssh"
+    | "socks5"
+    | "vmess"
+    | "vless";
+  server: string;
+  port: number;
+  "ip-version"?: string;
+  udp?: boolean;
+  "interface-name"?: string;
+  "routing-mark"?: number;
+  tfo?: boolean;
+  mptcp?: boolean;
+  "dialer-proxy"?: string;
 }
 
 interface IVergeConfig {
