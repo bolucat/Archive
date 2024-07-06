@@ -223,7 +223,7 @@ interface IProxyGroupConfig {
   filter?: string;
   "exclude-filter"?: string;
   "exclude-type"?: string;
-  "expected-status"?: number;
+  "expected-status"?: string;
   hidden?: boolean;
   icon?: string;
 }
@@ -243,7 +243,7 @@ interface HttpOptions {
   method?: string;
   path?: string[];
   headers?: {
-    [key: string]: string;
+    [key: string]: string[];
   };
 }
 
@@ -262,7 +262,38 @@ interface RealityOptions {
 }
 
 type NetworkType = "ws" | "http" | "h2" | "grpc";
-
+type CipherType =
+  | "none"
+  | "auto"
+  | "dummy"
+  | "aes-128-gcm"
+  | "aes-192-gcm"
+  | "aes-256-gcm"
+  | "lea-128-gcm"
+  | "lea-192-gcm"
+  | "lea-256-gcm"
+  | "aes-128-gcm-siv"
+  | "aes-256-gcm-siv"
+  | "2022-blake3-aes-128-gcm"
+  | "2022-blake3-aes-256-gcm"
+  | "aes-128-cfb"
+  | "aes-192-cfb"
+  | "aes-256-cfb"
+  | "aes-128-ctr"
+  | "aes-192-ctr"
+  | "aes-256-ctr"
+  | "chacha20"
+  | "chacha20-ietf"
+  | "chacha20-ietf-poly1305"
+  | "2022-blake3-chacha20-poly1305"
+  | "rabbit128-poly1305"
+  | "xchacha20-ietf-poly1305"
+  | "xchacha20"
+  | "aegis-128l"
+  | "aegis-256"
+  | "aez-384"
+  | "deoxys-ii-256-128"
+  | "rc4-md5";
 // base
 interface IProxyBaseConfig {
   tfo?: boolean;
@@ -294,7 +325,9 @@ interface IProxyHttpConfig extends IProxyBaseConfig {
   sni?: string;
   "skip-cert-verify"?: boolean;
   fingerprint?: string;
-  headers?: {};
+  headers?: {
+    [key: string]: string;
+  };
 }
 // socks5
 interface IProxySocks5Config extends IProxyBaseConfig {
@@ -399,7 +432,9 @@ interface IProxyVlessConfig extends IProxyBaseConfig {
   "grpc-opts"?: GrpcOptions;
   "ws-opts"?: WsOptions;
   "ws-path"?: string;
-  "ws-headers"?: {};
+  "ws-headers"?: {
+    [key: string]: string;
+  };
   "skip-cert-verify"?: boolean;
   fingerprint?: string;
   servername?: string;
@@ -413,7 +448,7 @@ interface IProxyVmessConfig extends IProxyBaseConfig {
   port?: number;
   uuid?: string;
   alterId?: number;
-  cipher?: string;
+  cipher?: CipherType;
   udp?: boolean;
   network?: NetworkType;
   tls?: boolean;
@@ -516,7 +551,7 @@ interface IProxyShadowsocksConfig extends IProxyBaseConfig {
   server?: string;
   port?: number;
   password?: string;
-  cipher?: string;
+  cipher?: CipherType;
   udp?: boolean;
   plugin?: "obfs" | "v2ray-plugin" | "shadow-tls" | "restls";
   "plugin-opts"?: {
@@ -526,7 +561,9 @@ interface IProxyShadowsocksConfig extends IProxyBaseConfig {
     path?: string;
     tls?: string;
     fingerprint?: string;
-    headers?: {};
+    headers?: {
+      [key: string]: string;
+    };
     "skip-cert-verify"?: boolean;
     version?: number;
     mux?: boolean;
@@ -546,7 +583,7 @@ interface IProxyshadowsocksRConfig extends IProxyBaseConfig {
   server?: string;
   port?: number;
   password?: string;
-  cipher?: string;
+  cipher?: CipherType;
   obfs?: string;
   "obfs-param"?: string;
   protocol?: string;

@@ -61,9 +61,17 @@ export const ProxiesEditorViewer = (props: Props) => {
   const [appendSeq, setAppendSeq] = useState<IProxyConfig[]>([]);
   const [deleteSeq, setDeleteSeq] = useState<string[]>([]);
 
+  const filteredPrependSeq = useMemo(
+    () => prependSeq.filter((proxy) => match(proxy.name)),
+    [prependSeq, match]
+  );
   const filteredProxyList = useMemo(
     () => proxyList.filter((proxy) => match(proxy.name)),
     [proxyList, match]
+  );
+  const filteredAppendSeq = useMemo(
+    () => appendSeq.filter((proxy) => match(proxy.name)),
+    [appendSeq, match]
   );
 
   const sensors = useSensors(
@@ -119,7 +127,31 @@ export const ProxiesEditorViewer = (props: Props) => {
       }
     }
   };
-
+  const handleParse = () => {
+    let proxies = [] as IProxyConfig[];
+    let names: string[] = [];
+    let uris = "";
+    try {
+      uris = atob(proxyUri);
+    } catch {
+      uris = proxyUri;
+    }
+    uris
+      .trim()
+      .split("\n")
+      .forEach((uri) => {
+        try {
+          let proxy = parseUri(uri.trim());
+          if (!names.includes(proxy.name)) {
+            proxies.push(proxy);
+            names.push(proxy.name);
+          }
+        } catch (err: any) {
+          Notice.error(err.message || err.toString());
+        }
+      });
+    return proxies;
+  };
   const fetchProfile = async () => {
     let data = await readProfileFile(profileUid);
 
@@ -228,7 +260,6 @@ export const ProxiesEditorViewer = (props: Props) => {
                     placeholder={t("Use newlines for multiple uri")}
                     fullWidth
                     rows={9}
-                    sx={{ height: "100px" }}
                     multiline
                     size="small"
                     onChange={(e) => setProxyUri(e.target.value)}
@@ -240,18 +271,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                   fullWidth
                   variant="contained"
                   onClick={() => {
-                    let proxies = [] as IProxyConfig[];
-                    proxyUri
-                      .trim()
-                      .split("\n")
-                      .forEach((uri) => {
-                        try {
-                          let proxy = parseUri(uri.trim());
-                          proxies.push(proxy);
-                        } catch (err: any) {
-                          Notice.error(err.message || err.toString());
-                        }
-                      });
+                    let proxies = handleParse();
                     setPrependSeq([...prependSeq, ...proxies]);
                   }}
                 >
@@ -263,18 +283,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                   fullWidth
                   variant="contained"
                   onClick={() => {
-                    let proxies = [] as IProxyConfig[];
-                    proxyUri
-                      .trim()
-                      .split("\n")
-                      .forEach((uri) => {
-                        try {
-                          let proxy = parseUri(uri.trim());
-                          proxies.push(proxy);
-                        } catch (err: any) {
-                          Notice.error(err.message || err.toString());
-                        }
-                      });
+                    let proxies = handleParse();
                     setAppendSeq([...appendSeq, ...proxies]);
                   }}
                 >
@@ -297,13 +306,13 @@ export const ProxiesEditorViewer = (props: Props) => {
                 style={{ height: "calc(100% - 24px)", marginTop: "8px" }}
                 totalCount={
                   filteredProxyList.length +
-                  (prependSeq.length > 0 ? 1 : 0) +
-                  (appendSeq.length > 0 ? 1 : 0)
+                  (filteredPrependSeq.length > 0 ? 1 : 0) +
+                  (filteredAppendSeq.length > 0 ? 1 : 0)
                 }
                 increaseViewportBy={256}
                 itemContent={(index) => {
-                  let shift = prependSeq.length > 0 ? 1 : 0;
-                  if (prependSeq.length > 0 && index === 0) {
+                  let shift = filteredPrependSeq.length > 0 ? 1 : 0;
+                  if (filteredPrependSeq.length > 0 && index === 0) {
                     return (
                       <DndContext
                         sensors={sensors}
@@ -311,11 +320,11 @@ export const ProxiesEditorViewer = (props: Props) => {
                         onDragEnd={onPrependDragEnd}
                       >
                         <SortableContext
-                          items={prependSeq.map((x) => {
+                          items={filteredPrependSeq.map((x) => {
                             return x.name;
                           })}
                         >
-                          {prependSeq.map((item, index) => {
+                          {filteredPrependSeq.map((item, index) => {
                             return (
                               <ProxyItem
                                 key={`${item.name}-${index}`}
@@ -371,11 +380,11 @@ export const ProxiesEditorViewer = (props: Props) => {
                         onDragEnd={onAppendDragEnd}
                       >
                         <SortableContext
-                          items={appendSeq.map((x) => {
+                          items={filteredAppendSeq.map((x) => {
                             return x.name;
                           })}
                         >
-                          {appendSeq.map((item, index) => {
+                          {filteredAppendSeq.map((item, index) => {
                             return (
                               <ProxyItem
                                 key={`${item.name}-${index}`}
