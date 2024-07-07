@@ -188,7 +188,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText primary={t("Guard Duration")} />
           <TextField
-            autoComplete="off"
+            autoComplete="new-password"
             disabled={!enabled}
             size="small"
             value={value.duration}
@@ -219,7 +219,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
           <>
             <ListItemText primary={t("Proxy Bypass")} />
             <TextField
-              autoComplete="off"
+              autoComplete="new-password"
               error={value.bypass ? !validReg.test(value.bypass) : false}
               disabled={!enabled}
               size="small"
@@ -234,7 +234,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
             <ListItemText primary={t("Bypass")} />
             <FlexBox>
               <TextField
-                autoComplete="off"
+                autoComplete="new-password"
                 disabled={true}
                 size="small"
                 multiline
@@ -261,20 +261,22 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
               >
                 {t("Edit")} PAC
               </Button>
-              <EditorViewer
-                open={editorOpen}
-                title={`${t("Edit")} PAC`}
-                initialData={Promise.resolve(value.pac_content ?? "")}
-                language="javascript"
-                onSave={(_prev, curr) => {
-                  let pac = DEFAULT_PAC;
-                  if (curr && curr.trim().length > 0) {
-                    pac = curr;
-                  }
-                  setValue((v) => ({ ...v, pac_content: pac }));
-                }}
-                onClose={() => setEditorOpen(false)}
-              />
+              {editorOpen && (
+                <EditorViewer
+                  open={true}
+                  title={`${t("Edit")} PAC`}
+                  initialData={Promise.resolve(value.pac_content ?? "")}
+                  language="javascript"
+                  onSave={(_prev, curr) => {
+                    let pac = DEFAULT_PAC;
+                    if (curr && curr.trim().length > 0) {
+                      pac = curr;
+                    }
+                    setValue((v) => ({ ...v, pac_content: pac }));
+                  }}
+                  onClose={() => setEditorOpen(false)}
+                />
+              )}
             </ListItem>
           </>
         )}

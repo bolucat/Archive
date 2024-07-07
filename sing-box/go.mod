@@ -30,11 +30,11 @@ require (
 	github.com/sagernet/sing-dns v0.3.0-beta.10
 	github.com/sagernet/sing-mux v0.2.0
 	github.com/sagernet/sing-quic v0.2.0-beta.12
-	github.com/sagernet/sing-shadowsocks v0.2.6
+	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.1.4
 	github.com/sagernet/sing-tun v0.4.0-beta.13.0.20240703164908-1f043289199d
-	github.com/sagernet/sing-vmess v0.1.11
+	github.com/sagernet/sing-vmess v0.1.12
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/tfo-go v0.0.0-20231209031829-7b5343ac1dc6
 	github.com/sagernet/utls v1.5.4
@@ -98,5 +98,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	lukechampine.com/blake3 v1.2.1 // indirect
+	lukechampine.com/blake3 v1.3.0 // indirect
 )

@@ -2,6 +2,11 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.20
+
+* Add DTLS sniffer
+* Fixes and improvements
+
 #### 1.10.0-alpha.19
 
 * Add `rule-set decompile` command

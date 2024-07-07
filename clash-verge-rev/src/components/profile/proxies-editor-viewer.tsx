@@ -256,7 +256,7 @@ export const ProxiesEditorViewer = (props: Props) => {
               >
                 <Item>
                   <TextField
-                    autoComplete="off"
+                    autoComplete="new-password"
                     placeholder={t("Use newlines for multiple uri")}
                     fullWidth
                     rows={9}
@@ -298,10 +298,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                 padding: "0 10px",
               }}
             >
-              <BaseSearchBox
-                matchCase={false}
-                onSearch={(match) => setMatch(() => match)}
-              />
+              <BaseSearchBox onSearch={(match) => setMatch(() => match)} />
               <Virtuoso
                 style={{ height: "calc(100% - 24px)", marginTop: "8px" }}
                 totalCount={
