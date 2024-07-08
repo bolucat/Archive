@@ -18,6 +18,7 @@ import { Notice } from "@/components/base";
 import { nanoid } from "nanoid";
 import { appWindow } from "@tauri-apps/api/window";
 import getSystem from "@/utils/get-system";
+import debounce from "@/utils/debounce";
 
 import * as monaco from "monaco-editor";
 import MonacoEditor from "react-monaco-editor";
@@ -144,12 +145,19 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
     }
   });
 
+  const editorResize = debounce(() => {
+    editorRef.current?.layout();
+    setTimeout(() => editorRef.current?.layout(), 500);
+  }, 100);
+
   useEffect(() => {
-    const unlistenResized = appWindow.onResized(() => {
+    const onResized = debounce(() => {
+      editorResize();
       appWindow.isMaximized().then((maximized) => {
         setIsMaximized(() => maximized);
       });
-    });
+    }, 100);
+    const unlistenResized = appWindow.onResized(onResized);
 
     return () => {
       unlistenResized.then((fn) => fn());
@@ -162,7 +170,13 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
     <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
       <DialogTitle>{title}</DialogTitle>
 
-      <DialogContent sx={{ width: "auto", height: "calc(100vh - 185px)" }}>
+      <DialogContent
+        sx={{
+          width: "auto",
+          height: "calc(100vh - 185px)",
+          overflow: "hidden",
+        }}
+      >
         <MonacoEditor
           language={language}
           theme={themeMode === "light" ? "vs" : "vs-dark"}
@@ -215,9 +229,7 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
             size="medium"
             color="inherit"
             title={t(isMaximized ? "Minimize" : "Maximize")}
-            onClick={() =>
-              appWindow.toggleMaximize().then(() => editorRef.current?.layout())
-            }
+            onClick={() => appWindow.toggleMaximize().then(editorResize)}
           >
             {isMaximized ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
           </IconButton>

@@ -17,6 +17,7 @@ using System.Windows.Media;
 using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Handler.Fmt;
+using v2rayN.Handler.Statistics;
 using v2rayN.Models;
 using v2rayN.Resx;
 using v2rayN.Views;
@@ -612,6 +613,10 @@ namespace v2rayN.ViewModels
 
         private void UpdateHandler(bool notify, string msg)
         {
+            if (!_showInTaskbar)
+            {
+                return;
+            }
             _noticeHandler?.SendMessage(msg);
             if (notify)
             {

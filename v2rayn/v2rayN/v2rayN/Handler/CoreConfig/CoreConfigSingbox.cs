@@ -1,4 +1,5 @@
 ﻿using System.Data;
+using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
 using v2rayN.Enums;
@@ -825,7 +826,7 @@ namespace v2rayN.Handler.CoreConfig
                 }
                 singboxConfig.dns = dns4Sbox;
 
-                GenDnsDomains(node, singboxConfig);
+                GenDnsDomains(node, singboxConfig, item?.domainStrategy4Freedom);
             }
             catch (Exception ex)
             {
@@ -834,7 +835,7 @@ namespace v2rayN.Handler.CoreConfig
             return 0;
         }
 
-        private int GenDnsDomains(ProfileItem? node, SingboxConfig singboxConfig)
+        private int GenDnsDomains(ProfileItem? node, SingboxConfig singboxConfig, string? strategy)
         {
             var dns4Sbox = singboxConfig.dns ?? new();
             dns4Sbox.servers ??= [];
@@ -846,7 +847,7 @@ namespace v2rayN.Handler.CoreConfig
                 tag = tag,
                 address = "223.5.5.5",
                 detour = Global.DirectTag,
-                //strategy = strategy
+                strategy = strategy
             });
 
             var lstDomain = singboxConfig.outbounds
@@ -966,27 +967,41 @@ namespace v2rayN.Handler.CoreConfig
                 }
             }
 
+            //Local srs files address
+            var localSrss = Utils.GetBinPath("srss");
+
             //Add ruleset srs
             singboxConfig.route.rule_set = [];
             foreach (var item in new HashSet<string>(ruleSets))
             {
                 if (Utils.IsNullOrEmpty(item)) { continue; }
                 var customRuleset = customRulesets.FirstOrDefault(t => t.tag != null && t.tag.Equals(item));
-                if (customRuleset != null)
+                if (customRuleset is null)
                 {
-                    singboxConfig.route.rule_set.Add(customRuleset);
-                }
-                else
-                {
-                    singboxConfig.route.rule_set.Add(new()
+                    var pathSrs = Path.Combine(localSrss, $"{item}.srs");
+                    if (File.Exists(pathSrs))
                     {
-                        type = "remote",
-                        format = "binary",
-                        tag = item,
-                        url = string.Format(Global.SingboxRulesetUrl, item.StartsWith(geosite) ? geosite : geoip, item),                       
-                        download_detour = Global.ProxyTag
-                    });
+                        customRuleset = new()
+                        {
+                            type = "local",
+                            format = "binary",
+                            tag = item,
+                            path = pathSrs
+                        };
+                    }
+                    else
+                    {
+                        customRuleset = new()
+                        {
+                            type = "remote",
+                            format = "binary",
+                            tag = item,
+                            url = string.Format(Global.SingboxRulesetUrl, item.StartsWith(geosite) ? geosite : geoip, item),
+                            download_detour = Global.ProxyTag
+                        };
+                    }
                 }
+                singboxConfig.route.rule_set.Add(customRuleset);
             }
 
             return 0;
@@ -1129,7 +1144,7 @@ namespace v2rayN.Handler.CoreConfig
                     singboxConfig.route.rules.Add(rule);
                 }
 
-                GenDnsDomains(null, singboxConfig);
+                GenDnsDomains(null, singboxConfig, null);
                 //var dnsServer = singboxConfig.dns?.servers.FirstOrDefault();
                 //if (dnsServer != null)
                 //{
