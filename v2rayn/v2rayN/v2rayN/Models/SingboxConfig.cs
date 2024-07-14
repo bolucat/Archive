@@ -50,6 +50,7 @@
         public bool? ip_is_private { get; set; }
         public string? client_subnet { get; set; }
         public bool? invert { get; set; }
+        public string? clash_mode { get; set; }
         public List<string>? inbound { get; set; }
         public List<string>? protocol { get; set; }
         public List<string>? network { get; set; }
@@ -130,6 +131,8 @@
         public Multiplex4Sbox? multiplex { get; set; }
         public Transport4Sbox? transport { get; set; }
         public HyObfs4Sbox? obfs { get; set; }
+        public List<string>? outbounds { get; set; }
+        public bool? interrupt_exist_connections { get; set; }
     }
 
     public class Tls4Sbox
