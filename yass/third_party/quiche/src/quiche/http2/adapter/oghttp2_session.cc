@@ -531,8 +531,8 @@ OgHttp2Session::ProcessBytesImpl(absl::string_view bytes) {
 int OgHttp2Session::Consume(Http2StreamId stream_id, size_t num_bytes) {
   auto it = stream_map_.find(stream_id);
   if (it == stream_map_.end()) {
-    QUICHE_LOG(ERROR) << "Stream " << stream_id << " not found when consuming "
-                      << num_bytes << " bytes";
+    QUICHE_VLOG(1) << "Stream " << stream_id << " not found when consuming "
+                   << num_bytes << " bytes";
   } else {
     it->second.window_manager.MarkDataFlushed(num_bytes);
   }
@@ -994,6 +994,30 @@ void OgHttp2Session::SerializeMetadata(Http2StreamId stream_id,
   }
 }
 
+void OgHttp2Session::SerializeMetadata(Http2StreamId stream_id) {
+  const uint32_t max_payload_size =
+      std::min(kMaxAllowedMetadataFrameSize, max_frame_payload_);
+  auto payload_buffer = std::make_unique<uint8_t[]>(max_payload_size);
+
+  while (true) {
+    auto [written, end_metadata] = visitor_.PackMetadataForStream(
+        stream_id, payload_buffer.get(), max_payload_size);
+    if (written < 0) {
+      // Unable to pack any metadata.
+      return;
+    }
+    QUICHE_DCHECK_LE(static_cast<size_t>(written), max_payload_size);
+    auto payload = absl::string_view(
+        reinterpret_cast<const char*>(payload_buffer.get()), written);
+    EnqueueFrame(std::make_unique<spdy::SpdyUnknownIR>(
+        stream_id, kMetadataFrameType, end_metadata ? kMetadataEndFlag : 0u,
+        std::string(payload)));
+    if (end_metadata) {
+      return;
+    }
+  }
+}
+
 int32_t OgHttp2Session::SubmitRequest(
     absl::Span<const Header> headers,
     std::unique_ptr<DataFrameSource> data_source, bool end_stream,
@@ -1034,7 +1058,7 @@ int OgHttp2Session::SubmitTrailer(Http2StreamId stream_id,
   } else {
     // Save trailers so they can be written once data is done.
     state.trailers =
-        std::make_unique<spdy::Http2HeaderBlock>(ToHeaderBlock(trailers));
+        std::make_unique<quiche::HttpHeaderBlock>(ToHeaderBlock(trailers));
     trailers_ready_.insert(stream_id);
   }
   return 0;
@@ -1043,6 +1067,10 @@ int OgHttp2Session::SubmitTrailer(Http2StreamId stream_id,
 void OgHttp2Session::SubmitMetadata(Http2StreamId stream_id,
                                     std::unique_ptr<MetadataSource> source) {
   SerializeMetadata(stream_id, std::move(source));
+}
+
+void OgHttp2Session::SubmitMetadata(Http2StreamId stream_id) {
+  SerializeMetadata(stream_id);
 }
 
 void OgHttp2Session::SubmitSettings(absl::Span<const Http2Setting> settings) {
@@ -1116,16 +1144,6 @@ void OgHttp2Session::OnDataFrameHeader(spdy::SpdyStreamId stream_id,
         stream_id, spdy::ERROR_CODE_PROTOCOL_ERROR));
     return;
   }
-
-  // Validate against the content-length if it exists.
-  if (iter->second.remaining_content_length.has_value()) {
-    if (length > *iter->second.remaining_content_length) {
-      HandleContentLengthError(stream_id);
-      iter->second.remaining_content_length.reset();
-    } else {
-      *iter->second.remaining_content_length -= length;
-    }
-  }
 }
 
 void OgHttp2Session::OnStreamFrameData(spdy::SpdyStreamId stream_id,
@@ -1133,7 +1151,20 @@ void OgHttp2Session::OnStreamFrameData(spdy::SpdyStreamId stream_id,
   // Count the data against flow control, even if the stream is unknown.
   MarkDataBuffered(stream_id, len);
 
-  if (!stream_map_.contains(stream_id) || streams_reset_.contains(stream_id)) {
+  auto iter = stream_map_.find(stream_id);
+  if (iter == stream_map_.end()) {
+    return;
+  }
+  // Validate against the content-length if it exists.
+  if (iter->second.remaining_content_length.has_value()) {
+    if (len > *iter->second.remaining_content_length) {
+      HandleContentLengthError(stream_id);
+      iter->second.remaining_content_length.reset();
+    } else {
+      *iter->second.remaining_content_length -= len;
+    }
+  }
+  if (streams_reset_.contains(stream_id)) {
     // If the stream was unknown due to a protocol error, the visitor was
     // informed in OnDataFrameHeader().
     return;
@@ -1763,7 +1794,7 @@ void OgHttp2Session::SendWindowUpdate(Http2StreamId stream_id,
 }
 
 void OgHttp2Session::SendHeaders(Http2StreamId stream_id,
-                                 spdy::Http2HeaderBlock headers,
+                                 quiche::HttpHeaderBlock headers,
                                  bool end_stream) {
   auto frame =
       std::make_unique<spdy::SpdyHeadersIR>(stream_id, std::move(headers));
@@ -1772,7 +1803,7 @@ void OgHttp2Session::SendHeaders(Http2StreamId stream_id,
 }
 
 void OgHttp2Session::SendTrailers(Http2StreamId stream_id,
-                                  spdy::Http2HeaderBlock trailers) {
+                                  quiche::HttpHeaderBlock trailers) {
   auto frame =
       std::make_unique<spdy::SpdyHeadersIR>(stream_id, std::move(trailers));
   frame->set_fin(true);
@@ -1822,7 +1853,7 @@ OgHttp2Session::StreamStateMap::iterator OgHttp2Session::CreateStream(
 }
 
 void OgHttp2Session::StartRequest(Http2StreamId stream_id,
-                                  spdy::Http2HeaderBlock headers,
+                                  quiche::HttpHeaderBlock headers,
                                   std::unique_ptr<DataFrameSource> data_source,
                                   void* user_data, bool end_stream) {
   if (received_goaway_) {

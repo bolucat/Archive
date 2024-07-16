@@ -11,9 +11,9 @@
 #include "quiche/http2/adapter/data_source.h"
 #include "quiche/http2/adapter/http2_protocol.h"
 #include "quiche/http2/adapter/mock_http2_visitor.h"
+#include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/common/platform/api/quiche_test.h"
-#include "quiche/spdy/core/http2_header_block.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
 namespace http2 {
@@ -70,6 +70,14 @@ class QUICHE_NO_EXPORT TestVisitor
   void SetEndData(Http2StreamId stream_id, bool end_stream);
   void SimulateError(Http2StreamId stream_id);
 
+  std::pair<int64_t, bool> PackMetadataForStream(Http2StreamId stream_id,
+                                                 uint8_t* dest,
+                                                 size_t dest_len) override;
+
+  // Test methods to manipulate the metadata payload to send for a stream.
+  void AppendMetadataForStream(Http2StreamId stream_id,
+                               const quiche::HttpHeaderBlock& payload);
+
   const std::string& data() { return data_; }
   void Clear() { data_.clear(); }
 
@@ -90,6 +98,7 @@ class QUICHE_NO_EXPORT TestVisitor
   std::string data_;
   absl::flat_hash_map<Http2StreamId, std::vector<std::string>> metadata_map_;
   absl::flat_hash_map<Http2StreamId, DataPayload> data_map_;
+  absl::flat_hash_map<Http2StreamId, std::string> outbound_metadata_map_;
   size_t send_limit_ = std::numeric_limits<size_t>::max();
   bool is_write_blocked_ = false;
   bool has_write_error_ = false;
@@ -113,7 +122,7 @@ class QUICHE_NO_EXPORT VisitorDataSource : public DataFrameSource {
 
 class QUICHE_NO_EXPORT TestMetadataSource : public MetadataSource {
  public:
-  explicit TestMetadataSource(const spdy::Http2HeaderBlock& entries);
+  explicit TestMetadataSource(const quiche::HttpHeaderBlock& entries);
 
   size_t NumFrames(size_t max_frame_size) const override {
     // Round up to the next frame.

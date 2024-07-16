@@ -9,10 +9,12 @@
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/moqt/moqt_messages.h"
 #include "quiche/quic/moqt/moqt_subscribe_windows.h"
+#include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/common/quiche_callbacks.h"
 
 namespace moqt {
@@ -67,16 +69,14 @@ class LocalTrack {
   }
 
   void AddWindow(uint64_t subscribe_id, uint64_t start_group,
-                 uint64_t start_object) {
-    windows_.AddWindow(subscribe_id, start_group, start_object);
-  }
+                 uint64_t start_object);
+
+  void AddWindow(uint64_t subscribe_id, uint64_t start_group,
+                 uint64_t start_object, uint64_t end_group);
 
   void AddWindow(uint64_t subscribe_id, uint64_t start_group,
                  uint64_t start_object, uint64_t end_group,
-                 uint64_t end_object) {
-    windows_.AddWindow(subscribe_id, start_group, start_object, end_group,
-                       end_object);
-  }
+                 uint64_t end_object);
 
   void DeleteWindow(uint64_t subscribe_id) {
     windows_.RemoveWindow(subscribe_id);
@@ -86,12 +86,9 @@ class LocalTrack {
   // by one.
   const FullSequence& next_sequence() const { return next_sequence_; }
 
-  // Updates next_sequence_ if |sequence| is larger.
-  void SentSequence(FullSequence sequence) {
-    if (next_sequence_ <= sequence) {
-      next_sequence_ = {sequence.group, sequence.object + 1};
-    }
-  }
+  // Updates next_sequence_ if |sequence| is larger. Updates max_object_ids_
+  // if relevant.
+  void SentSequence(FullSequence sequence, MoqtObjectStatus status);
 
   bool HasSubscriber() const { return !windows_.IsEmpty(); }
 
@@ -102,6 +99,9 @@ class LocalTrack {
   MoqtForwardingPreference forwarding_preference() const {
     return forwarding_preference_;
   }
+
+  void set_announce_cancel() { announce_canceled_ = true; }
+  bool canceled() const { return announce_canceled_; }
 
  private:
   // This only needs to track subscriptions to current and future objects;
@@ -116,7 +116,16 @@ class LocalTrack {
   // By recording the highest observed sequence number, MoQT can interpret
   // relative sequence numbers in SUBSCRIBEs.
   FullSequence next_sequence_ = {0, 0};
+  // The object ID of each EndOfGroup object received, indexed by group ID.
+  // Entry does not exist, if no kGroupDoesNotExist, EndOfGroup, or
+  // EndOfTrack has been received for that group.
+  absl::flat_hash_map<uint64_t, uint64_t> max_object_ids_;
   Visitor* visitor_;
+
+  // If true, the session has received ANNOUNCE_CANCELED for this namespace.
+  // Additional subscribes will be a protocol error, and the track can be
+  // destroyed once all active subscribes end.
+  bool announce_canceled_ = false;
 };
 
 // A track on the peer to which the session has subscribed.
@@ -134,6 +143,7 @@ class RemoteTrack {
     virtual void OnObjectFragment(
         const FullTrackName& full_track_name, uint64_t group_sequence,
         uint64_t object_sequence, uint64_t object_send_order,
+        MoqtObjectStatus object_status,
         MoqtForwardingPreference forwarding_preference,
         absl::string_view object, bool end_of_message) = 0;
     // TODO(martinduke): Add final sequence numbers
@@ -154,13 +164,7 @@ class RemoteTrack {
   // forwarding preference to the value indicated by the incoming encoding.
   // Otherwise, returns true if the incoming object does not violate the rule
   // that the preference is consistent.
-  bool CheckForwardingPreference(MoqtForwardingPreference preference) {
-    if (forwarding_preference_.has_value()) {
-      return forwarding_preference_.value() == preference;
-    }
-    forwarding_preference_ = preference;
-    return true;
-  }
+  bool CheckForwardingPreference(MoqtForwardingPreference preference);
 
  private:
   // TODO: There is no accounting for the number of outstanding subscribes,

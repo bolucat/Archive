@@ -30,10 +30,12 @@ TEST_F(LocalTrackTest, Queries) {
   EXPECT_EQ(track_.track_alias(), std::nullopt);
   EXPECT_EQ(track_.visitor(), &visitor_);
   EXPECT_EQ(track_.next_sequence(), FullSequence(4, 1));
-  track_.SentSequence(FullSequence(4, 0));
+  track_.SentSequence(FullSequence(4, 0), MoqtObjectStatus::kNormal);
   EXPECT_EQ(track_.next_sequence(), FullSequence(4, 1));  // no change
-  track_.SentSequence(FullSequence(4, 1));
+  track_.SentSequence(FullSequence(4, 1), MoqtObjectStatus::kNormal);
   EXPECT_EQ(track_.next_sequence(), FullSequence(4, 2));
+  track_.SentSequence(FullSequence(4, 2), MoqtObjectStatus::kEndOfGroup);
+  EXPECT_EQ(track_.next_sequence(), FullSequence(5, 0));
   EXPECT_FALSE(track_.HasSubscriber());
   EXPECT_EQ(track_.forwarding_preference(), MoqtForwardingPreference::kTrack);
 }
@@ -50,6 +52,37 @@ TEST_F(LocalTrackTest, AddGetDeleteWindow) {
   EXPECT_EQ(track_.GetWindow(1), nullptr);
   track_.DeleteWindow(0);
   EXPECT_EQ(track_.GetWindow(0), nullptr);
+}
+
+TEST_F(LocalTrackTest, GroupSubscriptionUsesMaxObjectId) {
+  // Populate max_object_ids_
+  track_.SentSequence(FullSequence(0, 0), MoqtObjectStatus::kEndOfGroup);
+  track_.SentSequence(FullSequence(1, 0), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(1, 1), MoqtObjectStatus::kEndOfGroup);
+  track_.SentSequence(FullSequence(2, 0), MoqtObjectStatus::kGroupDoesNotExist);
+  track_.SentSequence(FullSequence(3, 0), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(3, 1), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(3, 2), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(3, 3), MoqtObjectStatus::kEndOfGroup);
+  track_.SentSequence(FullSequence(4, 0), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(4, 1), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(4, 2), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(4, 3), MoqtObjectStatus::kNormal);
+  track_.SentSequence(FullSequence(4, 4), MoqtObjectStatus::kNormal);
+  EXPECT_EQ(track_.next_sequence(), FullSequence(4, 5));
+  track_.AddWindow(0, 1, 1, 3);
+  SubscribeWindow* window = track_.GetWindow(0);
+  EXPECT_TRUE(window->InWindow(FullSequence(3, 3)));
+  EXPECT_FALSE(window->InWindow(FullSequence(3, 4)));
+  // End on an empty group.
+  track_.AddWindow(1, 1, 1, 2);
+  window = track_.GetWindow(1);
+  EXPECT_TRUE(window->InWindow(FullSequence(1, 1)));
+  // End on an group in progress.
+  track_.AddWindow(2, 1, 1, 4);
+  window = track_.GetWindow(2);
+  EXPECT_TRUE(window->InWindow(FullSequence(4, 9)));
+  EXPECT_FALSE(window->InWindow(FullSequence(5, 0)));
 }
 
 TEST_F(LocalTrackTest, ShouldSend) {

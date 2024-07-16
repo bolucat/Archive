@@ -7,8 +7,8 @@
 
 #include "absl/strings/str_format.h"
 #include "quiche/http2/adapter/http2_visitor_interface.h"
+#include "quiche/http2/hpack/hpack_encoder.h"
 #include "quiche/common/quiche_data_reader.h"
-#include "quiche/spdy/core/hpack/hpack_encoder.h"
 #include "quiche/spdy/core/spdy_protocol.h"
 
 namespace http2 {
@@ -17,6 +17,12 @@ namespace test {
 namespace {
 
 using ConnectionError = Http2VisitorInterface::ConnectionError;
+
+std::string EncodeHeaders(const quiche::HttpHeaderBlock& entries) {
+  spdy::HpackEncoder encoder;
+  encoder.DisableCompression();
+  return encoder.EncodeHeaderBlock(entries);
+}
 
 }  // anonymous namespace
 
@@ -96,6 +102,28 @@ void TestVisitor::SimulateError(Http2StreamId stream_id) {
   payload.return_error = true;
 }
 
+std::pair<int64_t, bool> TestVisitor::PackMetadataForStream(
+    Http2StreamId stream_id, uint8_t* dest, size_t dest_len) {
+  auto it = outbound_metadata_map_.find(stream_id);
+  if (it == outbound_metadata_map_.end()) {
+    return {-1, false};
+  }
+  const size_t to_copy = std::min(it->second.size(), dest_len);
+  auto* src = reinterpret_cast<uint8_t*>(it->second.data());
+  std::copy(src, src + to_copy, dest);
+  it->second = it->second.substr(to_copy);
+  if (it->second.empty()) {
+    outbound_metadata_map_.erase(it);
+    return {to_copy, true};
+  }
+  return {to_copy, false};
+}
+
+void TestVisitor::AppendMetadataForStream(
+    Http2StreamId stream_id, const quiche::HttpHeaderBlock& payload) {
+  outbound_metadata_map_.insert({stream_id, EncodeHeaders(payload)});
+}
+
 VisitorDataSource::VisitorDataSource(Http2VisitorInterface& visitor,
                                      Http2StreamId stream_id)
     : visitor_(visitor), stream_id_(stream_id) {}
@@ -115,13 +143,7 @@ bool VisitorDataSource::Send(absl::string_view frame_header,
   return visitor_.SendDataFrame(stream_id_, frame_header, payload_length);
 }
 
-std::string EncodeHeaders(const spdy::Http2HeaderBlock& entries) {
-  spdy::HpackEncoder encoder;
-  encoder.DisableCompression();
-  return encoder.EncodeHeaderBlock(entries);
-}
-
-TestMetadataSource::TestMetadataSource(const spdy::Http2HeaderBlock& entries)
+TestMetadataSource::TestMetadataSource(const quiche::HttpHeaderBlock& entries)
     : encoded_entries_(EncodeHeaders(entries)) {
   remaining_ = encoded_entries_;
 }

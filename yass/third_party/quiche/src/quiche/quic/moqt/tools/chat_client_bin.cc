@@ -105,9 +105,14 @@ class ChatClient {
       session_is_open_ = false;
       return;
     }
-    session_->PublishObject(my_track_name_, next_sequence_.group++,
+    session_->PublishObject(my_track_name_, next_sequence_.group,
+                            next_sequence_.object++, /*object_send_order=*/0,
+                            moqt::MoqtObjectStatus::kNormal, input_message);
+    session_->PublishObject(my_track_name_, next_sequence_.group,
                             next_sequence_.object, /*object_send_order=*/0,
-                            input_message, true);
+                            moqt::MoqtObjectStatus::kEndOfGroup, "");
+    ++next_sequence_.group;
+    next_sequence_.object = 0;
   }
 
   bool session_is_open() const { return session_is_open_; }
@@ -129,7 +134,9 @@ class ChatClient {
 
   class QUICHE_EXPORT RemoteTrackVisitor : public moqt::RemoteTrack::Visitor {
    public:
-    RemoteTrackVisitor(ChatClient* client) : client_(client) {}
+    RemoteTrackVisitor(ChatClient* client) : client_(client) {
+      cli_ = client->cli_.get();
+    }
 
     void OnReply(const moqt::FullTrackName& full_track_name,
                  std::optional<absl::string_view> reason_phrase) override {
@@ -150,6 +157,7 @@ class ChatClient {
     void OnObjectFragment(
         const moqt::FullTrackName& full_track_name, uint64_t group_sequence,
         uint64_t object_sequence, uint64_t /*object_send_order*/,
+        moqt::MoqtObjectStatus /*status*/,
         moqt::MoqtForwardingPreference /*forwarding_preference*/,
         absl::string_view object, bool end_of_message) override {
       if (!end_of_message) {
@@ -293,9 +301,9 @@ class ChatClient {
         auto new_user = other_users_.emplace(
             std::make_pair(user, ChatUser(to_subscribe, group_sequence)));
         ChatUser& user_record = new_user.first->second;
-        session_->SubscribeRelative(user_record.full_track_name.track_namespace,
-                                    user_record.full_track_name.track_name, 0,
-                                    0, visitor);
+        session_->SubscribeCurrentGroup(
+            user_record.full_track_name.track_namespace,
+            user_record.full_track_name.track_name, visitor);
         subscribes_to_make_++;
       } else {
         if (it->second.from_group == group_sequence) {
