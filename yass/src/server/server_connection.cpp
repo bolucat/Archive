@@ -64,7 +64,7 @@ static bool VerifyProxyAuthorizationIdentity(std::string_view auth) {
   }
   auth.remove_prefix(kBasicAuthPrefix.size());
   std::string pass;
-  if (!Base64Decode(auth, &pass)) {
+  if (!Base64Decode(auth, &pass, Base64DecodePolicy::kForgiving)) {
     return false;
   }
   return pass == absl::StrCat(absl::GetFlag(FLAGS_username), ":", absl::GetFlag(FLAGS_password));
@@ -581,7 +581,7 @@ void ServerConnection::OnReadHandshakeViaHttps() {
   HttpRequestParser parser;
 
   bool ok;
-  int nparsed = parser.Parse(buf, &ok);
+  int nparsed = parser.Parse(*buf, &ok);
   if (nparsed) {
     VLOG(3) << "Connection (server) " << connection_id()
             << " http: " << std::string(reinterpret_cast<const char*>(buf->data()), nparsed);
