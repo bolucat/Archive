@@ -2,9 +2,14 @@
 icon: material/alert-decagram
 ---
 
-#### 1.10.0-alpha.21
+#### 1.10.0-alpha.22
 
+* Optimize memory usages of rule-sets **1**
 * Fixes and improvements
+
+**1**
+
+See [Source Format](/configuration/rule-set/source-format/#version).
 
 #### 1.10.0-alpha.20
 

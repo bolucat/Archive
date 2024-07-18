@@ -202,6 +202,10 @@ function gen_outbound(flag, node, tag, proxy_table)
 					path = node.httpupgrade_path or "/",
 					host = node.httpupgrade_host
 				} or nil,
+				splithttpSettings = (node.transport == "splithttp") and {
+					path = node.splithttp_path or "/",
+					host = node.splithttp_host
+				} or nil,
 			} or nil,
 			settings = {
 				vnext = (node.protocol == "vmess" or node.protocol == "vless") and {
@@ -477,6 +481,12 @@ function gen_config_server(node)
 						path = node.httpupgrade_path or "/",
 						host = node.httpupgrade_host
 					} or nil,
+					splithttpSettings = (node.transport == "splithttp") and {
+						path = node.splithttp_path or "/",
+						host = node.splithttp_host,
+						maxUploadSize = node.splithttp_maxuploadsize,
+						maxConcurrentUploads = node.splithttp_maxconcurrentuploads
+					} or nil,
 					sockopt = {
 						acceptProxyProtocol = (node.acceptProxyProtocol and node.acceptProxyProtocol == "1") and true or false
 					}
@@ -567,13 +577,7 @@ function gen_config(var)
 
 	local xray_settings = uci:get_all(appname, "@global_xray[0]") or {}
 
-	local nodes = {}
-	if node_id then
-		local node = uci:get_all(appname, node_id)
-		if node then
-			nodes[node_id] = node
-		end
-	end
+	local node = node_id and uci:get_all(appname, node_id) or nil
 	local balancers = {}
 	local rules = {}
 
@@ -623,11 +627,11 @@ function gen_config(var)
 			settings = {network = "tcp,udp", followRedirect = true},
 			streamSettings = {sockopt = {tproxy = "tproxy"}},
 			sniffing = {
-				enabled = xray_settings.sniffing == "1" and true or false,
+				enabled = xray_settings.sniffing_override_dest == "1" or node.protocol == "_shunt",
 				destOverride = {"http", "tls", "quic", (remote_dns_fake) and "fakedns"},
 				metadataOnly = false,
-				routeOnly = (xray_settings.sniffing == "1" and xray_settings.route_only == "1") and true or nil,
-				domainsExcluded = (xray_settings.sniffing == "1" and xray_settings.route_only == "0") and get_domain_excluded() or nil
+				routeOnly = node.protocol == "_shunt" and xray_settings.sniffing_override_dest ~= "1" or nil,
+				domainsExcluded = xray_settings.sniffing_override_dest == "1" and get_domain_excluded() or nil
 			}
 		}
 		local tcp_inbound = api.clone(inbound)
@@ -682,9 +686,7 @@ function gen_config(var)
 				end
 			end
 		end
-		if fallback_node_id == "" then
-			fallback_node_id = nil
-		end
+		if fallback_node_id == "" then fallback_node_id = nil end
 		if fallback_node_id then
 			local is_new_node = true
 			for _, outbound in ipairs(outbounds) do
@@ -720,7 +722,7 @@ function gen_config(var)
 				fallbackTag = fallback_node_id,
 				strategy = { type = _node.balancingStrategy or "random" }
 			})
-			if _node.balancingStrategy == "leastPing" then
+			if _node.balancingStrategy == "leastPing" or fallback_node_id then
 				if not observatory then
 					observatory = {
 						subjectSelector = { "blc-" },
@@ -766,12 +768,11 @@ function gen_config(var)
 		return default_outTag
 	end
 
-	for k, v in pairs(nodes) do
+	if node then
 		if server_host and server_port then
-			v.address = server_host
-			v.port = server_port
+			node.address = server_host
+			node.port = server_port
 		end
-		local node = v
 		if node.protocol == "_shunt" then
 			local proxy_tag = "main"
 			local proxy_node_id = node["main_node"]
@@ -962,6 +963,7 @@ function gen_config(var)
 						if outboundTag and outboundTag ~= "nil" then
 							table.insert(dns_domain_rules, api.clone(domain_table))
 						end
+						if #domains == 0 then domains = nil end
 					end
 					local ip = nil
 					if e.ip_list then
@@ -970,6 +972,7 @@ function gen_config(var)
 							if w:find("#") == 1 then return end
 							table.insert(ip, w)
 						end)
+						if #ip == 0 then ip = nil end
 					end
 					local source = nil
 					if e.source then

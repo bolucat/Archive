@@ -194,7 +194,7 @@ type PlainRuleSetCompat _PlainRuleSetCompat
 func (r PlainRuleSetCompat) MarshalJSON() ([]byte, error) {
 	var v any
 	switch r.Version {
-	case C.RuleSetVersion1:
+	case C.RuleSetVersion1, C.RuleSetVersion2:
 		v = r.Options
 	default:
 		return nil, E.New("unknown rule-set version: ", r.Version)
@@ -209,7 +209,7 @@ func (r *PlainRuleSetCompat) UnmarshalJSON(bytes []byte) error {
 	}
 	var v any
 	switch r.Version {
-	case C.RuleSetVersion1:
+	case C.RuleSetVersion1, C.RuleSetVersion2:
 		v = &r.Options
 	case 0:
 		return E.New("missing rule-set version")
@@ -225,7 +225,7 @@ func (r *PlainRuleSetCompat) UnmarshalJSON(bytes []byte) error {
 
 func (r PlainRuleSetCompat) Upgrade() (PlainRuleSet, error) {
 	switch r.Version {
-	case C.RuleSetVersion1:
+	case C.RuleSetVersion1, C.RuleSetVersion2:
 	default:
 		return PlainRuleSet{}, E.New("unknown rule-set version: " + F.ToString(r.Version))
 	}
