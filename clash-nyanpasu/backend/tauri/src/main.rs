@@ -13,6 +13,7 @@ extern crate objc;
 
 mod cmds;
 mod config;
+mod consts;
 mod core;
 mod enhance;
 mod feat;
@@ -183,6 +184,7 @@ fn main() -> std::io::Result<()> {
             cmds::select_proxy,
             cmds::update_proxy_provider,
             cmds::restart_application,
+            cmds::collect_envs,
         ]);
 
     #[cfg(target_os = "macos")]

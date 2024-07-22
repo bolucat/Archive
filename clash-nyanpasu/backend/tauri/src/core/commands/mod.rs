@@ -6,9 +6,15 @@ use tauri::utils::platform::current_exe;
 
 use crate::utils;
 
+mod migrate;
+
 #[derive(Parser, Debug)]
-#[command(name = "clash-nyanpasu", version, about, long_about = None)]
+#[command(name = "clash-nyanpasu", version, about, long_about = None, disable_version_flag = true)]
+/// Clash Nyanpasu is a GUI client for Clash.
 pub struct Cli {
+    /// Print the version
+    #[clap(short = 'v', long, default_value = "false")]
+    version: bool,
     #[command(subcommand)]
     command: Option<Commands>,
     #[arg(raw = true)]
@@ -17,9 +23,12 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    #[command(about = "Migrate home directory to another path.")]
-    MigrateHomeDir { target_path: String },
-    #[command(about = "A launch bridge to resolve the delay exit issue.")]
+    /// Migrate home directory to another path.
+    MigrateHomeDir {
+        target_path: String,
+    },
+    Collect,
+    /// A launch bridge to resolve the delay exit issue.
     Launch {
         #[arg(raw = true)]
         args: Vec<String>,
@@ -40,11 +49,14 @@ impl Drop for DelayedExitGuard {
 
 pub fn parse() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    if cli.version {
+        print_version_info();
+    }
     if let Some(commands) = &cli.command {
         let guard = DelayedExitGuard::new();
         match commands {
             Commands::MigrateHomeDir { target_path } => {
-                self::handler::migrate_home_dir_handler(target_path).unwrap();
+                migrate::migrate_home_dir_handler(target_path).unwrap();
             }
             Commands::Launch { args } => {
                 let _ = utils::init::check_singleton().unwrap();
@@ -64,6 +76,10 @@ pub fn parse() -> anyhow::Result<()> {
                 // args.extend(vec!["--".to_string()]);
                 std::process::Command::new(path).args(args).spawn().unwrap();
             }
+            Commands::Collect => {
+                let envs = crate::utils::collect::collect_envs().unwrap();
+                println!("{:#?}", envs);
+            }
         }
         drop(guard);
         std::process::exit(0);
@@ -71,84 +87,75 @@ pub fn parse() -> anyhow::Result<()> {
     Ok(()) // bypass
 }
 
-mod handler {
-    #[cfg(target_os = "windows")]
-    pub fn migrate_home_dir_handler(target_path: &str) -> anyhow::Result<()> {
-        use crate::utils::{self, dirs};
-        use anyhow::Context;
-        use deelevate::{PrivilegeLevel, Token};
-        use std::{path::PathBuf, process::Command, str::FromStr, thread, time::Duration};
-        use sysinfo::System;
-        use tauri::utils::platform::current_exe;
-        println!("target path {}", target_path);
+fn print_version_info() {
+    use crate::consts::*;
+    use ansi_str::AnsiStr;
+    use chrono::{DateTime, Utc};
+    use colored::*;
+    use timeago::Formatter;
+    let build_info = &BUILD_INFO;
 
-        let token = Token::with_current_process()?;
-        if let PrivilegeLevel::NotPrivileged = token.privilege_level()? {
-            eprintln!("Please run this command as admin to prevent authority issue.");
-            std::process::exit(1);
-        }
+    let now = Utc::now();
+    let formatter = Formatter::new();
+    let commit_time = formatter.convert_chrono(
+        DateTime::parse_from_rfc3339(build_info.commit_date).unwrap(),
+        now,
+    );
+    let commit_time_width = commit_time.len() + build_info.commit_date.len() + 3;
+    let build_time = formatter.convert_chrono(
+        DateTime::parse_from_rfc3339(build_info.build_date).unwrap(),
+        now,
+    );
+    let build_time_width = build_time.len() + build_info.build_date.len() + 3;
+    let commit_info_width = build_info.commit_hash.len() + build_info.commit_author.len() + 4;
+    let col_width = commit_info_width
+        .max(commit_time_width)
+        .max(build_time_width)
+        .max(build_info.build_platform.len())
+        .max(build_info.rustc_version.len())
+        .max(build_info.llvm_version.len())
+        + 2;
+    let header_width = col_width + 16;
+    println!(
+        "{} v{} ({} Build)\n",
+        build_info.app_name,
+        build_info.pkg_version,
+        build_info.build_profile.yellow()
+    );
+    println!("╭{:─^width$}╮", " Build Information ", width = header_width);
 
-        let current_home_dir = dirs::app_home_dir()?;
-        let target_home_dir = PathBuf::from_str(target_path)?;
+    let mut line = format!(
+        "{} by {}",
+        build_info.commit_hash.green(),
+        build_info.commit_author.blue()
+    );
 
-        // 1. waiting for app exited
-        println!("waiting for app exited.");
-        let placeholder = dirs::get_single_instance_placeholder();
-        let mut single_instance: single_instance::SingleInstance;
-        loop {
-            single_instance = single_instance::SingleInstance::new(&placeholder)
-                .context("failed to create single instance")?;
-            if single_instance.is_single() {
-                break;
-            }
-            thread::sleep(Duration::from_secs(1));
-        }
+    let mut pad = col_width - line.ansi_strip().len();
+    println!("│{:>14}: {}{}│", "Commit Info", line, " ".repeat(pad));
 
-        // 2. kill all related processes.
-        let related_names = [
-            "clash-verge-service",
-            "clash-nyanpasu-service", // for upcoming v1.6.x
-            "clash-rs",
-            "mihomo",
-            "mihomo-alpha",
-            "clash",
-        ];
-        let sys = System::new_all();
-        'outer: for process in sys.processes().values() {
-            let mut process_name = process.name();
-            if process_name.ends_with(".exe") {
-                process_name = &process_name[..process_name.len() - 4]; // remove .exe
-            }
-            for name in related_names.iter() {
-                if process_name.ends_with(name) {
-                    println!(
-                        "Process found: {} should be killed. killing...",
-                        process_name
-                    );
-                    if !process.kill() {
-                        eprintln!("failed to kill {}.", process_name)
-                    }
-                    continue 'outer;
-                }
-            }
-        }
+    line = format!("{} ({})", commit_time.red(), build_info.commit_date.cyan());
+    pad = col_width - line.ansi_strip().len();
+    println!("│{:>14}: {}{}│", "Commit Time", line, " ".repeat(pad));
 
-        // 3. do config migrate and update the registry.
-        utils::init::do_config_migration(&current_home_dir, &target_home_dir)?;
-        utils::winreg::set_app_dir(target_home_dir.as_path())?;
-        println!("migration finished. starting application...");
-        drop(single_instance); // release single instance lock
+    line = format!("{} ({})", build_time.red(), build_info.build_date.cyan());
+    pad = col_width - line.ansi_strip().len();
+    println!("│{:>14}: {}{}│", "Build Time", line, " ".repeat(pad));
 
-        let app_path = current_exe()?;
-        thread::spawn(move || {
-            Command::new(app_path).spawn().unwrap();
-        });
-        thread::sleep(Duration::from_secs(5));
-        Ok(())
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn migrate_home_dir_handler(_target_path: &str) -> anyhow::Result<()> {
-        Ok(())
-    }
+    println!(
+        "│{:>14}: {:<col_width$}│",
+        "Build Target",
+        build_info.build_platform.bright_yellow()
+    );
+    println!(
+        "│{:>14}: {:<col_width$}│",
+        "Rust Version",
+        build_info.rustc_version.bright_yellow()
+    );
+    println!(
+        "│{:>14}: {:<col_width$}│",
+        "LLVM Version",
+        build_info.llvm_version.bright_yellow()
+    );
+    println!("╰{:─^width$}╯", "", width = header_width);
+    std::process::exit(0);
 }
