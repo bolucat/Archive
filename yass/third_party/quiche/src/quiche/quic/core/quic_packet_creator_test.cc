@@ -2932,22 +2932,13 @@ TEST_F(QuicPacketCreatorMultiplePacketsTest,
   QuicStreamId stream_id = QuicUtils::GetFirstBidirectionalStreamId(
       framer_.transport_version(), Perspective::IS_CLIENT);
 
-  if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data5)) {
-    EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(stream_id))
-        .WillOnce(Return(data.length() - 1));
-  } else {
-    EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(_)).Times(0);
-  }
+  EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(stream_id))
+      .WillOnce(Return(data.length() - 1));
 
   QuicConsumedData consumed = creator_.ConsumeData(stream_id, data, 0u, FIN);
 
-  if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data5)) {
-    EXPECT_EQ(consumed.bytes_consumed, data.length() - 1);
-    EXPECT_FALSE(consumed.fin_consumed);
-  } else {
-    EXPECT_EQ(consumed.bytes_consumed, data.length());
-    EXPECT_TRUE(consumed.fin_consumed);
-  }
+  EXPECT_EQ(consumed.bytes_consumed, data.length() - 1);
+  EXPECT_FALSE(consumed.fin_consumed);
 }
 
 // Tests the case that after bundling data, send window is exactly as big as
@@ -2962,12 +2953,8 @@ TEST_F(QuicPacketCreatorMultiplePacketsTest,
   QuicStreamId stream_id = QuicUtils::GetFirstBidirectionalStreamId(
       framer_.transport_version(), Perspective::IS_CLIENT);
 
-  if (GetQuicRestartFlag(quic_opport_bundle_qpack_decoder_data5)) {
-    EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(stream_id))
-        .WillOnce(Return(data.length()));
-  } else {
-    EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(_)).Times(0);
-  }
+  EXPECT_CALL(delegate_, GetFlowControlSendWindowSize(stream_id))
+      .WillOnce(Return(data.length()));
 
   QuicConsumedData consumed = creator_.ConsumeData(stream_id, data, 0u, FIN);
 
@@ -4159,7 +4146,7 @@ TEST_F(QuicPacketCreatorMultiplePacketsTest,
 
   QuicSocketAddress peer_addr1(QuicIpAddress::Any4(), 12346);
   EXPECT_CALL(delegate_, OnSerializedPacket(_))
-      .WillOnce(Invoke([=](SerializedPacket packet) {
+      .WillOnce(Invoke([=, this](SerializedPacket packet) {
         EXPECT_EQ(peer_addr, packet.peer_address);
         ASSERT_EQ(1u, packet.retransmittable_frames.size());
         EXPECT_EQ(STREAM_FRAME, packet.retransmittable_frames.front().type);

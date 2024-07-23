@@ -4,7 +4,17 @@ icon: material/alert-decagram
 
 #### 1.10.0-alpha.23
 
+* Add Chromium support for QUIC sniffer
+* Add client type detect support for QUIC sniffer **1**
 * Fixes and improvements
+
+**1**:
+
+Now the QUIC sniffer can correctly extract the server name from Chromium requests and
+can identify common QUIC clients, including
+Chromium, Safari, Firefox, quic-go (including uquic disguised as Chrome).
+
+See [Protocol Sniff](/configuration/route/sniff/) and [Route Rule](/configuration/route/rule/#client).
 
 #### 1.10.0-alpha.22
 

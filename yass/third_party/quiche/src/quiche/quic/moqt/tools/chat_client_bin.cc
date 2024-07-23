@@ -26,6 +26,8 @@
 #include "quiche/quic/core/quic_server_id.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_outgoing_queue.h"
+#include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/moqt/moqt_track.h"
 #include "quiche/quic/moqt/tools/moqt_client.h"
@@ -37,6 +39,9 @@
 #include "quiche/quic/tools/quic_url.h"
 #include "quiche/common/platform/api/quiche_command_line_flags.h"
 #include "quiche/common/platform/api/quiche_export.h"
+#include "quiche/common/platform/api/quiche_mem_slice.h"
+#include "quiche/common/quiche_buffer_allocator.h"
+#include "quiche/common/simple_buffer_allocator.h"
 
 DEFINE_QUICHE_COMMAND_LINE_FLAG(
     bool, disable_certificate_verification, false,
@@ -105,20 +110,15 @@ class ChatClient {
       session_is_open_ = false;
       return;
     }
-    session_->PublishObject(my_track_name_, next_sequence_.group,
-                            next_sequence_.object++, /*object_send_order=*/0,
-                            moqt::MoqtObjectStatus::kNormal, input_message);
-    session_->PublishObject(my_track_name_, next_sequence_.group,
-                            next_sequence_.object, /*object_send_order=*/0,
-                            moqt::MoqtObjectStatus::kEndOfGroup, "");
-    ++next_sequence_.group;
-    next_sequence_.object = 0;
+    quiche::QuicheMemSlice message_slice(quiche::QuicheBuffer::Copy(
+        quiche::SimpleBufferAllocator::Get(), input_message));
+    queue_->AddObject(std::move(message_slice), /*key=*/true);
   }
 
   bool session_is_open() const { return session_is_open_; }
   bool is_syncing() const {
     return !catalog_group_.has_value() || subscribes_to_make_ > 0 ||
-           !session_->HasSubscribers(my_track_name_);
+           (queue_ != nullptr && queue_->HasSubscribers());
   }
 
   void RunEventLoop() {
@@ -156,7 +156,7 @@ class ChatClient {
 
     void OnObjectFragment(
         const moqt::FullTrackName& full_track_name, uint64_t group_sequence,
-        uint64_t object_sequence, uint64_t /*object_send_order*/,
+        uint64_t object_sequence, moqt::MoqtPriority /*publisher_priority*/,
         moqt::MoqtObjectStatus /*status*/,
         moqt::MoqtForwardingPreference /*forwarding_preference*/,
         absl::string_view object, bool end_of_message) override {
@@ -202,10 +202,9 @@ class ChatClient {
       std::cout << "Failed to connect.\n";
       return false;
     }
-    // By not sending a visitor, the application will not fulfill subscriptions
-    // to previous objects.
-    session_->AddLocalTrack(my_track_name_,
-                            moqt::MoqtForwardingPreference::kObject, nullptr);
+    queue_ = std::make_shared<moqt::MoqtOutgoingQueue>(
+        client_->session(), my_track_name_,
+        moqt::MoqtForwardingPreference::kObject);
     moqt::MoqtOutgoingAnnounceCallback announce_callback =
         [&](absl::string_view track_namespace,
             std::optional<moqt::MoqtAnnounceErrorReason> reason) {
@@ -354,7 +353,7 @@ class ChatClient {
   std::unique_ptr<RemoteTrackVisitor> remote_track_visitor_;
 
   // Handling incoming and outgoing messages
-  moqt::FullSequence next_sequence_ = {0, 0};
+  std::shared_ptr<moqt::MoqtOutgoingQueue> queue_;
 
   // Used when chat output goes to file.
   std::ofstream output_file_;

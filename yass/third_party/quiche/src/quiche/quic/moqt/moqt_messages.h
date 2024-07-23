@@ -19,6 +19,7 @@
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/common/platform/api/quiche_export.h"
 
 namespace moqt {
@@ -28,7 +29,7 @@ inline constexpr quic::ParsedQuicVersionVector GetMoqtSupportedQuicVersions() {
 }
 
 enum class MoqtVersion : uint64_t {
-  kDraft04 = 0xff000004,
+  kDraft05 = 0xff000005,
   kUnrecognizedVersionForTests = 0xfe0000ff,
 };
 
@@ -80,6 +81,13 @@ enum class QUICHE_EXPORT MoqtError : uint64_t {
   kGoawayTimeout = 0x10,
 };
 
+// Error codes used by MoQT to reset streams.
+// TODO: update with spec-defined error codes once those are available, see
+// <https://github.com/moq-wg/moq-transport/issues/481>.
+inline constexpr uint64_t kResetCodeUnknown = 0x00;
+inline constexpr uint64_t kResetCodeSubscriptionGone = 0x01;
+inline constexpr uint64_t kResetCodeTimedOut = 0x02;
+
 enum class QUICHE_EXPORT MoqtRole : uint64_t {
   kPublisher = 0x1,
   kSubscriber = 0x2,
@@ -129,6 +137,12 @@ struct FullTrackName {
   }
   template <typename H>
   friend H AbslHashValue(H h, const FullTrackName& m);
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const FullTrackName& track_name) {
+    absl::Format(&sink, "(%s; %s)", track_name.track_namespace,
+                 track_name.track_name);
+  }
 };
 
 template <typename H>
@@ -151,6 +165,7 @@ struct FullSequence {
     return (group < other.group ||
             (group == other.group && object <= other.object));
   }
+  bool operator>(const FullSequence& other) const { return !(*this <= other); }
   FullSequence& operator=(FullSequence other) {
     group = other.group;
     object = other.object;
@@ -209,7 +224,7 @@ struct QUICHE_EXPORT MoqtObject {
   uint64_t track_alias;
   uint64_t group_id;
   uint64_t object_id;
-  uint64_t object_send_order;
+  MoqtPriority publisher_priority;
   MoqtObjectStatus object_status;
   MoqtForwardingPreference forwarding_preference;
   std::optional<uint64_t> payload_length;
@@ -228,6 +243,8 @@ struct QUICHE_EXPORT MoqtSubscribe {
   uint64_t track_alias;
   std::string track_namespace;
   std::string track_name;
+  MoqtPriority subscriber_priority;
+  std::optional<MoqtDeliveryOrder> group_order;
   // The combinations of these that have values indicate the filter type.
   // SG: Start Group; SO: Start Object; EG: End Group; EO: End Object;
   // (none): KLatestObject
@@ -252,6 +269,7 @@ struct QUICHE_EXPORT MoqtSubscribeOk {
   uint64_t subscribe_id;
   // The message uses ms, but expires is in us.
   quic::QuicTimeDelta expires = quic::QuicTimeDelta::FromMilliseconds(0);
+  MoqtDeliveryOrder group_order;
   // If ContextExists on the wire is zero, largest_id has no value.
   std::optional<FullSequence> largest_id;
 };
@@ -296,6 +314,7 @@ struct QUICHE_EXPORT MoqtSubscribeUpdate {
   uint64_t start_object;
   std::optional<uint64_t> end_group;
   std::optional<uint64_t> end_object;
+  MoqtPriority subscriber_priority;
   std::optional<std::string> authorization_info;
 };
 
@@ -325,6 +344,19 @@ enum class QUICHE_EXPORT MoqtTrackStatusCode : uint64_t {
   kFinished = 0x3,
   kStatusNotAvailable = 0x4,
 };
+
+inline bool DoesTrackStatusImplyHavingData(MoqtTrackStatusCode code) {
+  switch (code) {
+    case MoqtTrackStatusCode::kInProgress:
+    case MoqtTrackStatusCode::kFinished:
+      return true;
+    case MoqtTrackStatusCode::kDoesNotExist:
+    case MoqtTrackStatusCode::kNotYetBegun:
+    case MoqtTrackStatusCode::kStatusNotAvailable:
+      return false;
+  }
+  return false;
+}
 
 struct QUICHE_EXPORT MoqtTrackStatus {
   std::string track_namespace;

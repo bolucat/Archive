@@ -18,8 +18,10 @@
 #include "quiche/quic/core/quic_data_writer.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/common/platform/api/quiche_bug_tracker.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_buffer_allocator.h"
 #include "quiche/common/quiche_data_writer.h"
 #include "quiche/common/simple_buffer_allocator.h"
@@ -124,6 +126,20 @@ QuicheBuffer Serialize(Ts... data) {
   return *std::move(buffer);
 }
 
+WireUint8 WireDeliveryOrder(std::optional<MoqtDeliveryOrder> delivery_order) {
+  if (!delivery_order.has_value()) {
+    return WireUint8(0x00);
+  }
+  switch (*delivery_order) {
+    case MoqtDeliveryOrder::kAscending:
+      return WireUint8(0x01);
+    case MoqtDeliveryOrder::kDescending:
+      return WireUint8(0x02);
+  }
+  QUICHE_NOTREACHED();
+  return WireUint8(0xff);
+}
+
 }  // namespace
 
 quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
@@ -176,7 +192,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
                  ? Serialize(WireVarInt62(message_type),
                              WireVarInt62(message.subscribe_id),
                              WireVarInt62(message.track_alias),
-                             WireVarInt62(message.object_send_order),
+                             WireUint8(message.publisher_priority),
                              WireVarInt62(message.group_id),
                              WireVarInt62(message.object_id),
                              WireVarInt62(*message.payload_length),
@@ -184,7 +200,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
                  : Serialize(WireVarInt62(message_type),
                              WireVarInt62(message.subscribe_id),
                              WireVarInt62(message.track_alias),
-                             WireVarInt62(message.object_send_order),
+                             WireUint8(message.publisher_priority),
                              WireVarInt62(message.group_id),
                              WireVarInt62(message.object_id),
                              WireVarInt62(*message.payload_length));
@@ -194,7 +210,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
                              WireVarInt62(message.subscribe_id),
                              WireVarInt62(message.track_alias),
                              WireVarInt62(message.group_id),
-                             WireVarInt62(message.object_send_order),
+                             WireUint8(message.publisher_priority),
                              WireVarInt62(message.object_id),
                              WireVarInt62(*message.payload_length),
                              WireVarInt62(message.object_status))
@@ -202,7 +218,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
                              WireVarInt62(message.subscribe_id),
                              WireVarInt62(message.track_alias),
                              WireVarInt62(message.group_id),
-                             WireVarInt62(message.object_send_order),
+                             WireUint8(message.publisher_priority),
                              WireVarInt62(message.object_id),
                              WireVarInt62(*message.payload_length));
     case MoqtForwardingPreference::kObject:
@@ -211,7 +227,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
           WireVarInt62(message_type), WireVarInt62(message.subscribe_id),
           WireVarInt62(message.track_alias), WireVarInt62(message.group_id),
           WireVarInt62(message.object_id),
-          WireVarInt62(message.object_send_order),
+          WireUint8(message.publisher_priority),
           WireVarInt62(message.object_status));
   }
 }
@@ -227,7 +243,7 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectDatagram(
       WireVarInt62(MoqtMessageType::kObjectDatagram),
       WireVarInt62(message.subscribe_id), WireVarInt62(message.track_alias),
       WireVarInt62(message.group_id), WireVarInt62(message.object_id),
-      WireVarInt62(message.object_send_order),
+      WireUint8(message.publisher_priority),
       WireVarInt62(static_cast<uint64_t>(message.object_status)),
       WireBytes(payload));
 }
@@ -287,7 +303,9 @@ quiche::QuicheBuffer MoqtFramer::SerializeSubscribe(
           WireVarInt62(message.subscribe_id), WireVarInt62(message.track_alias),
           WireStringWithVarInt62Length(message.track_namespace),
           WireStringWithVarInt62Length(message.track_name),
-          WireVarInt62(filter_type), WireVarInt62(string_params.size()),
+          WireUint8(message.subscriber_priority),
+          WireDeliveryOrder(message.group_order), WireVarInt62(filter_type),
+          WireVarInt62(string_params.size()),
           WireSpan<WireStringParameter>(string_params));
     case MoqtFilterType::kAbsoluteStart:
       return Serialize(
@@ -295,7 +313,9 @@ quiche::QuicheBuffer MoqtFramer::SerializeSubscribe(
           WireVarInt62(message.subscribe_id), WireVarInt62(message.track_alias),
           WireStringWithVarInt62Length(message.track_namespace),
           WireStringWithVarInt62Length(message.track_name),
-          WireVarInt62(filter_type), WireVarInt62(*message.start_group),
+          WireUint8(message.subscriber_priority),
+          WireDeliveryOrder(message.group_order), WireVarInt62(filter_type),
+          WireVarInt62(*message.start_group),
           WireVarInt62(*message.start_object),
           WireVarInt62(string_params.size()),
           WireSpan<WireStringParameter>(string_params));
@@ -305,7 +325,9 @@ quiche::QuicheBuffer MoqtFramer::SerializeSubscribe(
           WireVarInt62(message.subscribe_id), WireVarInt62(message.track_alias),
           WireStringWithVarInt62Length(message.track_namespace),
           WireStringWithVarInt62Length(message.track_name),
-          WireVarInt62(filter_type), WireVarInt62(*message.start_group),
+          WireUint8(message.subscriber_priority),
+          WireDeliveryOrder(message.group_order), WireVarInt62(filter_type),
+          WireVarInt62(*message.start_group),
           WireVarInt62(*message.start_object), WireVarInt62(*message.end_group),
           WireVarInt62(message.end_object.has_value() ? *message.end_object + 1
                                                       : 0),
@@ -323,13 +345,14 @@ quiche::QuicheBuffer MoqtFramer::SerializeSubscribeOk(
     return Serialize(WireVarInt62(MoqtMessageType::kSubscribeOk),
                      WireVarInt62(message.subscribe_id),
                      WireVarInt62(message.expires.ToMilliseconds()),
-                     WireUint8(1), WireVarInt62(message.largest_id->group),
+                     WireDeliveryOrder(message.group_order), WireUint8(1),
+                     WireVarInt62(message.largest_id->group),
                      WireVarInt62(message.largest_id->object));
   }
   return Serialize(WireVarInt62(MoqtMessageType::kSubscribeOk),
                    WireVarInt62(message.subscribe_id),
                    WireVarInt62(message.expires.ToMilliseconds()),
-                   WireUint8(0));
+                   WireDeliveryOrder(message.group_order), WireUint8(0));
 }
 
 quiche::QuicheBuffer MoqtFramer::SerializeSubscribeError(
@@ -383,7 +406,8 @@ quiche::QuicheBuffer MoqtFramer::SerializeSubscribeUpdate(
       WireVarInt62(MoqtMessageType::kSubscribeUpdate),
       WireVarInt62(message.subscribe_id), WireVarInt62(message.start_group),
       WireVarInt62(message.start_object), WireVarInt62(end_group),
-      WireVarInt62(end_object), WireSpan<WireStringParameter>(string_params));
+      WireVarInt62(end_object), WireUint8(message.subscriber_priority),
+      WireSpan<WireStringParameter>(string_params));
 }
 
 quiche::QuicheBuffer MoqtFramer::SerializeAnnounce(
