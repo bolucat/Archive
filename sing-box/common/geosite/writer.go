@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"sort"
 
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/varbin"
 )
 
@@ -31,15 +30,24 @@ func Write(writer varbin.Writer, domains map[string][]Item) error {
 		return err
 	}
 
-	err = varbin.Write(writer, binary.BigEndian, common.Map(keys, func(it string) *geositeMetadata {
-		return &geositeMetadata{
-			Code:   it,
-			Index:  uint64(index[it]),
-			Length: uint64(len(domains[it])),
-		}
-	}))
+	_, err = varbin.WriteUvarint(writer, uint64(len(keys)))
 	if err != nil {
 		return err
+	}
+
+	for _, code := range keys {
+		err = varbin.Write(writer, binary.BigEndian, code)
+		if err != nil {
+			return err
+		}
+		_, err = varbin.WriteUvarint(writer, uint64(index[code]))
+		if err != nil {
+			return err
+		}
+		_, err = varbin.WriteUvarint(writer, uint64(len(domains[code])))
+		if err != nil {
+			return err
+		}
 	}
 
 	_, err = writer.Write(content.Bytes())

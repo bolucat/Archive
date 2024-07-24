@@ -5,17 +5,20 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/varbin"
 )
 
 type Reader struct {
-	reader       io.ReadSeeker
-	domainIndex  map[string]int
-	domainLength map[string]int
+	access         sync.Mutex
+	reader         io.ReadSeeker
+	bufferedReader *bufio.Reader
+	metadataIndex  int64
+	domainIndex    map[string]int
+	domainLength   map[string]int
 }
 
 func Open(path string) (*Reader, []string, error) {
@@ -45,7 +48,8 @@ type geositeMetadata struct {
 }
 
 func (r *Reader) readMetadata() error {
-	reader := bufio.NewReader(r.reader)
+	counter := &readCounter{Reader: r.reader}
+	reader := bufio.NewReader(counter)
 	version, err := reader.ReadByte()
 	if err != nil {
 		return err
@@ -53,21 +57,39 @@ func (r *Reader) readMetadata() error {
 	if version != 0 {
 		return E.New("unknown version")
 	}
-	metadataEntries, err := varbin.ReadValue[[]geositeMetadata](reader, binary.BigEndian)
+	entryLength, err := binary.ReadUvarint(reader)
 	if err != nil {
 		return err
 	}
+	keys := make([]string, entryLength)
 	domainIndex := make(map[string]int)
 	domainLength := make(map[string]int)
-	for _, entry := range metadataEntries {
-		domainIndex[entry.Code] = int(entry.Index)
-		domainLength[entry.Code] = int(entry.Length)
+	for i := 0; i < int(entryLength); i++ {
+		var (
+			code       string
+			codeIndex  uint64
+			codeLength uint64
+		)
+		code, err = varbin.ReadValue[string](reader, binary.BigEndian)
+		if err != nil {
+			return err
+		}
+		keys[i] = code
+		codeIndex, err = binary.ReadUvarint(reader)
+		if err != nil {
+			return err
+		}
+		codeLength, err = binary.ReadUvarint(reader)
+		if err != nil {
+			return err
+		}
+		domainIndex[code] = int(codeIndex)
+		domainLength[code] = int(codeLength)
 	}
 	r.domainIndex = domainIndex
 	r.domainLength = domainLength
-	if reader.Buffered() > 0 {
-		return common.Error(r.reader.Seek(int64(-reader.Buffered()), io.SeekCurrent))
-	}
+	r.metadataIndex = counter.count - int64(reader.Buffered())
+	r.bufferedReader = reader
 	return nil
 }
 
@@ -76,17 +98,17 @@ func (r *Reader) Read(code string) ([]Item, error) {
 	if !exists {
 		return nil, E.New("code ", code, " not exists!")
 	}
-	_, err := r.reader.Seek(int64(index), io.SeekCurrent)
+	_, err := r.reader.Seek(r.metadataIndex+int64(index), io.SeekStart)
 	if err != nil {
 		return nil, err
 	}
-	counter := &readCounter{Reader: r.reader}
-	domain, err := varbin.ReadValue[[]Item](bufio.NewReader(counter), binary.BigEndian)
+	r.bufferedReader.Reset(r.reader)
+	itemList := make([]Item, r.domainLength[code])
+	err = varbin.Read(r.bufferedReader, binary.BigEndian, &itemList)
 	if err != nil {
 		return nil, err
 	}
-	_, err = r.reader.Seek(int64(-index)-counter.count, io.SeekCurrent)
-	return domain, err
+	return itemList, nil
 }
 
 func (r *Reader) Upstream() any {
