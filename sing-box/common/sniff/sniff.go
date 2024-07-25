@@ -40,9 +40,10 @@ func PeekStream(ctx context.Context, metadata *adapter.InboundContext, conn net.
 		}
 		for _, sniffer := range sniffers {
 			err = sniffer(ctx, metadata, bytes.NewReader(buffer.Bytes()))
-			if err != nil {
-				errors = append(errors, err)
+			if err == nil {
+				return nil
 			}
+			errors = append(errors, err)
 		}
 	}
 	return E.Errors(errors...)
@@ -52,9 +53,10 @@ func PeekPacket(ctx context.Context, metadata *adapter.InboundContext, packet []
 	var errors []error
 	for _, sniffer := range sniffers {
 		err := sniffer(ctx, metadata, packet)
-		if err != nil {
-			errors = append(errors, err)
+		if err == nil {
+			return nil
 		}
+		errors = append(errors, err)
 	}
 	return E.Errors(errors...)
 }

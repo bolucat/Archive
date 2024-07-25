@@ -2,7 +2,7 @@ use crate::core::handle;
 use anyhow::Result;
 use nyanpasu_utils::dirs::{suggest_config_dir, suggest_data_dir};
 use once_cell::sync::Lazy;
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, fs, path::PathBuf};
 use tauri::{
     api::path::{home_dir, resource_dir},
     Env,
@@ -30,10 +30,10 @@ pub static APP_DIR_PLACEHOLDER: Lazy<Cow<'static, str>> = Lazy::new(|| {
     }
 });
 
-static CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
-static NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
-static PROFILE_YAML: &str = "profiles.yaml";
-static STORAGE_DB: &str = "storage.db";
+pub const CLASH_CFG_GUARD_OVERRIDES: &str = "clash-guard-overrides.yaml";
+pub const NYANPASU_CONFIG: &str = "nyanpasu-config.yaml";
+pub const PROFILE_YAML: &str = "profiles.yaml";
+pub const STORAGE_DB: &str = "storage.db";
 
 /// portable flag
 #[allow(unused)]
@@ -90,6 +90,12 @@ pub fn app_config_dir() -> Result<PathBuf> {
     }
     suggest_config_dir(&APP_DIR_PLACEHOLDER)
         .ok_or(anyhow::anyhow!("failed to get the app config dir"))
+        .and_then(|dir| {
+            if !dir.exists() {
+                fs::create_dir_all(&dir)?;
+            }
+            Ok(dir)
+        })
 }
 
 pub fn app_data_dir() -> Result<PathBuf> {
@@ -103,10 +109,25 @@ pub fn app_data_dir() -> Result<PathBuf> {
             let app_dir = app_exe
                 .parent()
                 .ok_or(anyhow::anyhow!("failed to check the old portable app dir"))?;
-            return Ok(PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME));
+
+            let data_dir = PathBuf::from(app_dir).join(".data").join(PREVIOUS_APP_NAME);
+
+            if !data_dir.exists() {
+                fs::create_dir_all(&data_dir)?;
+            }
+
+            return Ok(data_dir);
         }
     }
-    suggest_data_dir(&APP_DIR_PLACEHOLDER).ok_or(anyhow::anyhow!("failed to get the app data dir"))
+
+    suggest_data_dir(&APP_DIR_PLACEHOLDER)
+        .ok_or(anyhow::anyhow!("failed to get the app data dir"))
+        .and_then(|dir| {
+            if !dir.exists() {
+                fs::create_dir_all(&dir)?;
+            }
+            Ok(dir)
+        })
 }
 
 pub fn old_app_home_dir() -> Result<PathBuf> {

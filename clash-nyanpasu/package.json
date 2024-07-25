@@ -5,8 +5,8 @@
   "license": "GPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "run-p web:devtools tauri:dev",
-    "dev:diff": "run-p web:devtools tauri:diff",
+    "dev": "run-p -r web:devtools tauri:dev",
+    "dev:diff": "run-p -r web:devtools tauri:diff",
     "build": "tauri build -c ./backend/tauri/tauri.conf.json",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",
@@ -91,7 +91,7 @@
     "eslint-plugin-react": "7.34.3",
     "lint-staged": "15.2.7",
     "npm-run-all2": "6.2.2",
-    "postcss": "8.4.39",
+    "postcss": "8.4.40",
     "postcss-html": "1.7.0",
     "postcss-import": "16.1.0",
     "postcss-scss": "4.0.9",
@@ -105,7 +105,7 @@
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.4.1",
-    "tailwindcss": "3.4.6",
+    "tailwindcss": "3.4.7",
     "tsx": "4.16.2",
     "typescript": "5.5.4"
   },

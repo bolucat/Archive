@@ -12,15 +12,9 @@ import (
 )
 
 const (
-	trackerConnectFlag = iota
-	trackerAnnounceFlag
-	trackerScrapeFlag
-
-	trackerProtocolID = 0x41727101980
-
-	trackerConnectMinSize  = 16
-	trackerAnnounceMinSize = 20
-	trackerScrapeMinSize   = 8
+	trackerConnectFlag    = 0
+	trackerProtocolID     = 0x41727101980
+	trackerConnectMinSize = 16
 )
 
 // BitTorrent detects if the stream is a BitTorrent connection.
@@ -91,19 +85,15 @@ func UTP(_ context.Context, metadata *adapter.InboundContext, packet []byte) err
 // UDPTracker detects if the packet is a UDP Tracker Protocol packet.
 // For the UDP Tracker Protocol specification, see https://www.bittorrent.org/beps/bep_0015.html
 func UDPTracker(_ context.Context, metadata *adapter.InboundContext, packet []byte) error {
-	switch {
-	case len(packet) >= trackerConnectMinSize &&
-		binary.BigEndian.Uint64(packet[:8]) == trackerProtocolID &&
-		binary.BigEndian.Uint32(packet[8:12]) == trackerConnectFlag:
-		fallthrough
-	case len(packet) >= trackerAnnounceMinSize &&
-		binary.BigEndian.Uint32(packet[8:12]) == trackerAnnounceFlag:
-		fallthrough
-	case len(packet) >= trackerScrapeMinSize &&
-		binary.BigEndian.Uint32(packet[8:12]) == trackerScrapeFlag:
-		metadata.Protocol = C.ProtocolBitTorrent
-		return nil
-	default:
+	if len(packet) < trackerConnectMinSize {
 		return os.ErrInvalid
 	}
+	if binary.BigEndian.Uint64(packet[:8]) != trackerProtocolID {
+		return os.ErrInvalid
+	}
+	if binary.BigEndian.Uint32(packet[8:12]) != trackerConnectFlag {
+		return os.ErrInvalid
+	}
+	metadata.Protocol = C.ProtocolBitTorrent
+	return nil
 }

@@ -1,13 +1,17 @@
+import { classNames } from "@/utils";
+import { Bolt } from "@mui/icons-material";
+import { CircularProgress } from "@mui/material";
+import clsx from "clsx";
 import { memo, useState } from "react";
 import FeatureChip from "./feature-chip";
 import { getColorForDelay } from "./utils";
-import { classNames } from "@/utils";
-import { CircularProgress } from "@mui/material";
 
 export const DelayChip = memo(function DelayChip({
+  className,
   delay,
   onClick,
 }: {
+  className?: string;
   delay: number;
   onClick: () => Promise<void>;
 }) {
@@ -25,6 +29,7 @@ export const DelayChip = memo(function DelayChip({
 
   return (
     <FeatureChip
+      className={clsx(className, loading && "!visible")}
       sx={{
         ml: "auto",
         color: getColorForDelay(delay),
@@ -33,11 +38,17 @@ export const DelayChip = memo(function DelayChip({
         <>
           <span
             className={classNames(
-              "transition-opacity",
+              "transition-opacity flex items-center px-[1px]",
               loading ? "opacity-0" : "opacity-1",
             )}
           >
-            {delay ? `${delay} ms` : "timeout"}
+            {delay === -1 ? (
+              <Bolt className="scale-[0.6]" />
+            ) : !!delay && delay < 10000 ? (
+              `${delay} ms`
+            ) : (
+              "timeout"
+            )}
           </span>
 
           <CircularProgress

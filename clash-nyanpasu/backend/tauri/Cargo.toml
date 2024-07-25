@@ -15,6 +15,7 @@ serde = "1"
 simd-json = "0.13"
 chrono = "0.4"
 rustc_version = "0.4"
+semver = "1.0"
 
 [dependencies]
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils" }
@@ -108,6 +109,7 @@ timeago = "0.4"
 ansi-str = "0.8"
 humansize = "2.1.3"
 convert_case = "0.6.0"
+os_pipe = "1.2.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25.0"

@@ -5,15 +5,13 @@
 | [nami](https://github.com/txthinking/nami) | A clean and tidy decentralized package manager |
 | [joker](https://github.com/txthinking/joker) | Joker can turn process into daemon. Zero-Configuration |
 | [nico](https://github.com/txthinking/nico) | Nico can work with brook wsserver together |
-| [zhen](https://github.com/txthinking/zhen) | zhen - process and cron manager |
+| [z](https://github.com/txthinking/z) | z - process manager |
 | [tun2brook](https://github.com/txthinking/tun2brook) | Proxy all traffic just one line command |
 | [mad](https://github.com/txthinking/mad) | Generate root CA and derivative certificate for any domains and any IPs |
 | [hancock](https://github.com/txthinking/hancock) | Manage multiple remote servers and execute commands remotely |
 | [sshexec](https://github.com/txthinking/sshexec) | A command-line tool to execute remote command through ssh |
 | [jb](https://github.com/txthinking/jb) | write script in an easier way than bash |
 | [bash](https://github.com/txthinking/bash) | Many one-click scripts |
-| [pacman](https://archlinux.org/packages/extra/x86_64/brook/) | `pacman -S brook` |
-| [brew](https://formulae.brew.sh/formula/brook) | `brew install brook` |
 | [docker](https://hub.docker.com/r/txthinking/brook) | `docker run txthinking/brook` | 
 
 | Resources | Description |
