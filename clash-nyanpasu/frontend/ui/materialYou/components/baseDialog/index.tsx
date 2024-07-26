@@ -1,9 +1,3 @@
-import { useClickPosition } from "@/hooks";
-import { cn } from "@/utils";
-import LoadingButton from "@mui/lab/LoadingButton";
-import { Button, Divider } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
-import * as Dialog from "@radix-ui/react-dialog";
 import { useLockFn } from "ahooks";
 import useDebounceFn from "ahooks/lib/useDebounceFn";
 import { AnimatePresence, motion } from "framer-motion";
@@ -15,6 +9,12 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useClickPosition } from "@/hooks";
+import { cn } from "@/utils";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { Button, Divider } from "@mui/material";
+import { alpha, useTheme } from "@mui/material/styles";
+import * as Portal from "@radix-ui/react-portal";
 
 export interface BaseDialogProps {
   title: ReactNode;
@@ -103,109 +103,99 @@ export const BaseDialog = ({
   }, [open]);
 
   return (
-    <Dialog.Root>
-      <AnimatePresence>
-        {mounted && (
-          <Dialog.Portal forceMount>
-            <Dialog.Overlay asChild onClick={handleClose}>
-              <motion.div
-                className="fixed inset-0 z-50 backdrop-brightness-50"
-                animate={open ? "open" : "closed"}
-                initial={{
-                  opacity: 0,
-                }}
-                variants={{
-                  open: {
-                    opacity: 1,
-                  },
-                  closed: {
-                    opacity: 0,
-                  },
-                }}
-              />
-            </Dialog.Overlay>
+    <AnimatePresence initial={false}>
+      {mounted && (
+        <Portal.Root className="fixed left-0 top-0 z-50 h-dvh w-full">
+          <motion.div
+            className="absolute inset-0 z-50 backdrop-blur-xl"
+            style={{
+              backgroundColor: alpha(palette.primary[palette.mode], 0.1),
+            }}
+            animate={open ? "open" : "closed"}
+            initial={{ opacity: 0 }}
+            variants={{
+              open: { opacity: 1 },
+              closed: { opacity: 0 },
+            }}
+            onClick={handleClose}
+          />
 
-            <Dialog.Content forceMount>
-              <motion.div
-                className={cn(
-                  "fixed z-50 rounded-3xl shadow-lg min-w-96",
-                  palette.mode === "dark" ? "text-white" : "text-black",
-                )}
-                style={{
-                  backgroundColor: palette.background.paper,
-                }}
-                animate={open ? "open" : "closed"}
-                initial={{
-                  opacity: 0,
-                  scale: 0,
-                  top: "50%",
-                  left: "50%",
-                  translateX: "-50%",
-                  translateY: "-50%",
-                  x: offset.x / 2,
-                  y: offset.y / 2,
-                }}
-                variants={{
-                  open: {
-                    opacity: 1,
-                    scale: 1,
-                    x: 0,
-                    y: 0,
-                  },
-                  closed: {
-                    opacity: 0,
-                    scale: 0,
-                    x: offset.x / 2,
-                    y: offset.y / 2,
-                  },
-                }}
-                transition={{
-                  type: "spring",
-                  bounce: 0,
-                  duration: 0.35,
-                }}
-              >
-                <Dialog.Title className="text-xl m-4">{title}</Dialog.Title>
+          <motion.div
+            className={cn(
+              "absolute left-[50%] top-[50%] z-50 min-w-96 rounded-3xl shadow",
+              palette.mode === "dark"
+                ? "text-white shadow-zinc-900"
+                : "text-black",
+            )}
+            style={{
+              backgroundColor: palette.background.default,
+            }}
+            animate={open ? "open" : "closed"}
+            initial={{
+              opacity: 0.3,
+              scale: 0,
+              x: offset.x - window.innerWidth / 2,
+              y: offset.y - window.innerHeight / 2,
+              translateX: "-50%",
+              translateY: "-50%",
+            }}
+            variants={{
+              open: {
+                opacity: 1,
+                scale: 1,
+                x: 0,
+                y: 0,
+              },
+              closed: {
+                opacity: 0.3,
+                scale: 0,
+                x: offset.x - window.innerWidth / 2,
+                y: offset.y - window.innerHeight / 2,
+              },
+            }}
+            transition={{
+              type: "spring",
+              bounce: 0,
+              duration: 0.35,
+            }}
+          >
+            <div className="m-4 text-xl">{title}</div>
 
-                {divider && <Divider />}
+            {divider && <Divider />}
 
-                <div
-                  className="p-4 overflow-x-hidden overflow-y-auto"
-                  style={{
-                    maxHeight: "calc(100vh - 160px)",
-                    ...contentStyle,
-                  }}
+            <div
+              className="relative overflow-y-auto overflow-x-hidden p-4"
+              style={{
+                maxHeight: "calc(100vh - 200px)",
+                ...contentStyle,
+              }}
+            >
+              {children}
+            </div>
+
+            {divider && <Divider />}
+
+            <div className="m-2 flex justify-end gap-2">
+              {onClose && (
+                <Button variant="outlined" onClick={handleClose}>
+                  {close || t("Close")}
+                </Button>
+              )}
+
+              {onOk && (
+                <LoadingButton
+                  disabled={loading || disabledOk}
+                  loading={okLoading || loading}
+                  variant="contained"
+                  onClick={handleOk}
                 >
-                  {children}
-                </div>
-
-                {divider && <Divider />}
-
-                <div className="flex gap-2 justify-end m-2">
-                  {onClose && (
-                    <Button variant="outlined" onClick={handleClose}>
-                      {close || t("Close")}
-                    </Button>
-                  )}
-
-                  {onOk && (
-                    <LoadingButton
-                      disabled={loading || disabledOk}
-                      loading={okLoading || loading}
-                      variant="contained"
-                      onClick={handleOk}
-                    >
-                      {ok || t("Ok")}
-                    </LoadingButton>
-                  )}
-                </div>
-              </motion.div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        )}
-      </AnimatePresence>
-    </Dialog.Root>
+                  {ok || t("Ok")}
+                </LoadingButton>
+              )}
+            </div>
+          </motion.div>
+        </Portal.Root>
+      )}
+    </AnimatePresence>
   );
 };
-
-export const BaseDialogTrigger = Dialog.Trigger;

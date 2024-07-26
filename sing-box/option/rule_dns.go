@@ -111,7 +111,7 @@ type _DefaultDNSRule struct {
 type DefaultDNSRule _DefaultDNSRule
 
 func (r *DefaultDNSRule) UnmarshalJSON(bytes []byte) error {
-	err := json.Unmarshal(bytes, (*_DefaultDNSRule)(r))
+	err := json.UnmarshalDisallowUnknownFields(bytes, (*_DefaultDNSRule)(r))
 	if err != nil {
 		return err
 	}
