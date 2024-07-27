@@ -251,7 +251,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   // content/app/content_main.cc: RunContentProcess()
-#if BUILDFLAG(IS_APPLE) && BUILDFLAG(USE_ALLOCATOR_SHIM)
+#if BUILDFLAG(IS_APPLE) && PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
   // The static initializer function for initializing PartitionAlloc
   // InitializeDefaultMallocZoneWithPartitionAlloc() would be removed by the
   // linker if allocator_shim.o is not referenced by the following call,

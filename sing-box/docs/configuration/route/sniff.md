@@ -4,9 +4,9 @@ icon: material/new-box
 
 !!! quote "Changes in sing-box 1.10.0"
 
-    :material-plus: QUIC client type detect support for QUIC
-    :material-plus: Chromium support for QUIC
-    :material-plus: BitTorrent support
+    :material-plus: QUIC client type detect support for QUIC  
+    :material-plus: Chromium support for QUIC  
+    :material-plus: BitTorrent support  
     :material-plus: DTLS support
 
 If enabled in the inbound, the protocol and domain name (if present) of by the connection can be sniffed.

@@ -3,9 +3,11 @@ package provider
 import (
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/metacubex/mihomo/component/trie"
 	C "github.com/metacubex/mihomo/constant"
+	P "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
 )
 
@@ -13,6 +15,10 @@ type domainStrategy struct {
 	count      int
 	domainTrie *trie.DomainTrie[struct{}]
 	domainSet  *trie.DomainSet
+}
+
+func (d *domainStrategy) Behavior() P.RuleBehavior {
+	return P.Domain
 }
 
 func (d *domainStrategy) ShouldFindProcess() bool {
@@ -38,6 +44,10 @@ func (d *domainStrategy) Reset() {
 }
 
 func (d *domainStrategy) Insert(rule string) {
+	if strings.ContainsRune(rule, '/') {
+		log.Warnln("invalid domain:[%s]", rule)
+		return
+	}
 	err := d.domainTrie.Insert(rule, struct{}{})
 	if err != nil {
 		log.Warnln("invalid domain:[%s]", rule)
@@ -51,12 +61,12 @@ func (d *domainStrategy) FinishInsert() {
 	d.domainTrie = nil
 }
 
-func (d *domainStrategy) FromMrs(r io.Reader) error {
-	domainSet, count, err := trie.ReadDomainSetBin(r)
+func (d *domainStrategy) FromMrs(r io.Reader, count int) error {
+	domainSet, err := trie.ReadDomainSetBin(r)
 	if err != nil {
 		return err
 	}
-	d.count = int(count)
+	d.count = count
 	d.domainSet = domainSet
 	return nil
 }
@@ -65,7 +75,7 @@ func (d *domainStrategy) WriteMrs(w io.Writer) error {
 	if d.domainSet == nil {
 		return errors.New("nil domainSet")
 	}
-	return d.domainSet.WriteBin(w, int64(d.count))
+	return d.domainSet.WriteBin(w)
 }
 
 var _ mrsRuleStrategy = (*domainStrategy)(nil)

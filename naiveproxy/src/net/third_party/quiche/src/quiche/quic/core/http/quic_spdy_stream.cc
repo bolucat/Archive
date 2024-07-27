@@ -213,9 +213,7 @@ QuicSpdyStream::QuicSpdyStream(QuicStreamId id, QuicSpdySession* spdy_session,
       decoder_(http_decoder_visitor_.get()),
       sequencer_offset_(0),
       is_decoder_processing_input_(false),
-      ack_listener_(nullptr),
-      last_sent_priority_(
-          QuicStreamPriority::Default(spdy_session->priority_type())) {
+      ack_listener_(nullptr) {
   QUICHE_DCHECK_EQ(session()->connection(), spdy_session->connection());
   QUICHE_DCHECK_EQ(transport_version(), spdy_session->transport_version());
   QUICHE_DCHECK(!QuicUtils::IsCryptoStreamId(transport_version(), id));
@@ -249,9 +247,7 @@ QuicSpdyStream::QuicSpdyStream(PendingStream* pending,
       decoder_(http_decoder_visitor_.get()),
       sequencer_offset_(sequencer()->NumBytesConsumed()),
       is_decoder_processing_input_(false),
-      ack_listener_(nullptr),
-      last_sent_priority_(
-          QuicStreamPriority::Default(spdy_session->priority_type())) {
+      ack_listener_(nullptr) {
   QUICHE_DCHECK_EQ(session()->connection(), spdy_session->connection());
   QUICHE_DCHECK_EQ(transport_version(), spdy_session->transport_version());
   QUICHE_DCHECK(!QuicUtils::IsCryptoStreamId(transport_version(), id()));
@@ -534,9 +530,6 @@ void QuicSpdyStream::OnStreamHeadersPriority(
     const spdy::SpdyStreamPrecedence& precedence) {
   QUICHE_DCHECK_EQ(Perspective::IS_SERVER,
                    session()->connection()->perspective());
-  if (session()->priority_type() != QuicPriorityType::kHttp) {
-    return;
-  }
   SetPriority(QuicStreamPriority(HttpStreamPriority{
       precedence.spdy3_priority(), HttpStreamPriority::kDefaultIncremental}));
 }
@@ -591,10 +584,19 @@ void QuicSpdyStream::OnHeadersDecoded(QuicHeaderList headers,
 
   OnStreamHeaderList(/* fin = */ false, headers_payload_length_, headers);
 
+  header_decoding_delay_ = QuicTime::Delta::Zero();
+
   if (blocked_on_decoding_headers_) {
     blocked_on_decoding_headers_ = false;
     // Continue decoding HTTP/3 frames.
     OnDataAvailable();
+    const QuicTime now = session()->GetClock()->ApproximateNow();
+    if (!header_block_received_time_.IsInitialized() ||
+        now < header_block_received_time_) {
+      QUICHE_BUG(QuicSpdyStream_time_flows_backwards);
+    } else {
+      header_decoding_delay_ = now - header_block_received_time_;
+    }
   }
 }
 
@@ -613,7 +615,7 @@ void QuicSpdyStream::MaybeSendPriorityUpdateFrame() {
       session()->perspective() != Perspective::IS_CLIENT) {
     return;
   }
-  if (spdy_session_->priority_type() != QuicPriorityType::kHttp) {
+  if (priority().type() != QuicPriorityType::kHttp) {
     return;
   }
 
@@ -724,8 +726,6 @@ void QuicSpdyStream::OnTrailingHeadersComplete(
 }
 
 void QuicSpdyStream::RegisterMetadataVisitor(MetadataVisitor* visitor) {
-  QUIC_BUG_IF(Metadata visitor requires http3 metadata flag,
-              !GetQuicReloadableFlag(quic_enable_http3_metadata_decoding));
   metadata_visitor_ = visitor;
 }
 
@@ -737,9 +737,6 @@ void QuicSpdyStream::OnPriorityFrame(
     const spdy::SpdyStreamPrecedence& precedence) {
   QUICHE_DCHECK_EQ(Perspective::IS_SERVER,
                    session()->connection()->perspective());
-  if (session()->priority_type() != QuicPriorityType::kHttp) {
-    return;
-  }
   SetPriority(QuicStreamPriority(HttpStreamPriority{
       precedence.spdy3_priority(), HttpStreamPriority::kDefaultIncremental}));
 }
@@ -1140,6 +1137,7 @@ bool QuicSpdyStream::OnHeadersFrameEnd() {
   // |qpack_decoded_headers_accumulator_| is already reset.
   if (qpack_decoded_headers_accumulator_) {
     blocked_on_decoding_headers_ = true;
+    header_block_received_time_ = session()->GetClock()->ApproximateNow();
     return false;
   }
 
@@ -1460,7 +1458,7 @@ void QuicSpdyStream::ConvertToWebTransportDataStream(
 QuicSpdyStream::WebTransportDataStream::WebTransportDataStream(
     QuicSpdyStream* stream, WebTransportSessionId session_id)
     : session_id(session_id),
-      adapter(stream->spdy_session_, stream, stream->sequencer()) {}
+      adapter(stream->spdy_session_, stream, stream->sequencer(), session_id) {}
 
 void QuicSpdyStream::HandleReceivedDatagram(absl::string_view payload) {
   if (datagram_visitor_ == nullptr) {
@@ -1710,7 +1708,7 @@ QuicByteCount QuicSpdyStream::GetMaxDatagramSize() const {
 }
 
 void QuicSpdyStream::HandleBodyAvailable() {
-  if (!capsule_parser_) {
+  if (!capsule_parser_ || !uses_capsules()) {
     OnBodyAvailable();
     return;
   }

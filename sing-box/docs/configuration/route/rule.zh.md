@@ -4,9 +4,9 @@ icon: material/alert-decagram
 
 !!! quote "sing-box 1.10.0 中的更改"
 
-    :material-plus: [client](#client)
+    :material-plus: [client](#client)  
     :material-delete-clock: [rule_set_ipcidr_match_source](#rule_set_ipcidr_match_source)  
-    :material-plus: [rule_set_ip_cidr_match_source](#rule_set_ip_cidr_match_source)  
+    :material-plus: [rule_set_ip_cidr_match_source](#rule_set_ip_cidr_match_source)
 
 !!! quote "sing-box 1.8.0 中的更改"
 

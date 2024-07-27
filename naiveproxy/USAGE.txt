@@ -59,7 +59,7 @@ Options:
 
     PROXY = PROXY-CHAIN | SOCKS-PROXY
     PROXY-CHAIN = <PROXY-URI>[","<PROXY-CHAIN>] 
-    PROXY-URI = <PROXY-PROTO>"://"<USER>":"<PASS>"@"<HOSTNAME>[":"<PORT>]
+    PROXY-URI = <PROXY-PROTO>"://"[<USER>":"<PASS>"@"]<HOSTNAME>[":"<PORT>]
     PROXY-PROTO = "http" | "https" | "quic"
     SOCKS-PROXY = "socks://"<HOSTNAME>[":"<PORT>]
 

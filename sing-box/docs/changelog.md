@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-alpha.27
+
+* Fixes and improvements
+
 #### 1.10.0-alpha.25
 
 * Add AdGuard DNS Filter support **1**

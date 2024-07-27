@@ -63,14 +63,14 @@ func convertRuleSet(sourcePath string) error {
 		return err
 	}
 	var outputPath string
-	if flagRuleSetCompileOutput == flagRuleSetCompileDefaultOutput {
+	if flagRuleSetConvertOutput == flagRuleSetCompileDefaultOutput {
 		if strings.HasSuffix(sourcePath, ".txt") {
 			outputPath = sourcePath[:len(sourcePath)-4] + ".srs"
 		} else {
 			outputPath = sourcePath + ".srs"
 		}
 	} else {
-		outputPath = flagRuleSetCompileOutput
+		outputPath = flagRuleSetConvertOutput
 	}
 	outputFile, err := os.Create(outputPath)
 	if err != nil {
