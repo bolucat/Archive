@@ -12,3 +12,5 @@ _binary_supplementary_ca_bundle_crt_start:
 
 _binary_supplementary_ca_bundle_crt_end:
 .previous
+
+.include "cet.64.s"

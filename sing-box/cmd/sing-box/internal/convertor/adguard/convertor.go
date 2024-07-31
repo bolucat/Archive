@@ -29,17 +29,17 @@ type agdguardRuleLine struct {
 
 func Convert(reader io.Reader) ([]option.HeadlessRule, error) {
 	scanner := bufio.NewScanner(reader)
-	var ruleLines []agdguardRuleLine
+	var (
+		ruleLines    []agdguardRuleLine
+		ignoredLines int
+	)
+parseLine:
 	for scanner.Scan() {
 		ruleLine := scanner.Text()
-		idx := strings.Index(ruleLine, "#")
-		if idx != -1 {
-			ruleLine = ruleLine[:idx]
-		}
-		ruleLine = strings.TrimSpace(ruleLine)
-		if ruleLine == "" || ruleLine[0] == '!' {
+		if ruleLine == "" || ruleLine[0] == '!' || ruleLine[0] == '#' {
 			continue
 		}
+		originRuleLine := ruleLine
 		if M.IsDomainName(ruleLine) {
 			ruleLines = append(ruleLines, agdguardRuleLine{
 				ruleLine:    ruleLine,
@@ -74,26 +74,26 @@ func Convert(reader io.Reader) ([]option.HeadlessRule, error) {
 			params := common.SubstringAfter(ruleLine, "$")
 			for _, param := range strings.Split(params, ",") {
 				paramParts := strings.Split(param, "=")
-				if len(paramParts) > 2 {
-					continue
-				}
 				var ignored bool
-				switch paramParts[0] {
-				case "app", "network":
-					// maybe support by package_name/process_name
-				case "dnstype":
-					// maybe support by query_type
-				case "important":
-					ignored = true
-					isImportant = true
-				case "dnsrewrite":
-					if len(paramParts) == 2 && M.ParseAddr(paramParts[1]).IsUnspecified() {
+				if len(paramParts) > 0 && len(paramParts) <= 2 {
+					switch paramParts[0] {
+					case "app", "network":
+						// maybe support by package_name/process_name
+					case "dnstype":
+						// maybe support by query_type
+					case "important":
 						ignored = true
+						isImportant = true
+					case "dnsrewrite":
+						if len(paramParts) == 2 && M.ParseAddr(paramParts[1]).IsUnspecified() {
+							ignored = true
+						}
 					}
 				}
 				if !ignored {
-					log.Warn("ignored unsupported rule with modifier: ", paramParts[0], ": ", ruleLine)
-					continue
+					ignoredLines++
+					log.Debug("ignored unsupported rule with modifier: ", paramParts[0], ": ", ruleLine)
+					continue parseLine
 				}
 			}
 			ruleLine = common.SubstringBefore(ruleLine, "$")
@@ -119,7 +119,8 @@ func Convert(reader io.Reader) ([]option.HeadlessRule, error) {
 		if strings.HasPrefix(ruleLine, "/") && strings.HasSuffix(ruleLine, "/") {
 			ruleLine = ruleLine[1 : len(ruleLine)-1]
 			if ignoreIPCIDRRegexp(ruleLine) {
-				log.Warn("ignored unsupported rule with IPCIDR regexp: ", ruleLine)
+				ignoredLines++
+				log.Debug("ignored unsupported rule with IPCIDR regexp: ", ruleLine)
 				continue
 			}
 			isRegexp = true
@@ -128,29 +129,47 @@ func Convert(reader io.Reader) ([]option.HeadlessRule, error) {
 				ruleLine = common.SubstringAfter(ruleLine, "://")
 			}
 			if strings.Contains(ruleLine, "/") {
-				log.Warn("ignored unsupported rule with path: ", ruleLine)
-				// skip PATH rules
+				ignoredLines++
+				log.Debug("ignored unsupported rule with path: ", ruleLine)
+				continue
+			}
+			if strings.Contains(ruleLine, "##") {
+				ignoredLines++
+				log.Debug("ignored unsupported rule with element hiding: ", ruleLine)
+				continue
+			}
+			if strings.Contains(ruleLine, "#$#") {
+				ignoredLines++
+				log.Debug("ignored unsupported rule with element hiding: ", ruleLine)
 				continue
 			}
 			var domainCheck string
-			if ruleLine[0] == '.' || ruleLine[0] == '-' {
+			if strings.HasPrefix(ruleLine, ".") || strings.HasPrefix(ruleLine, "-") {
 				domainCheck = "r" + ruleLine
 			} else {
 				domainCheck = ruleLine
 			}
-			domainCheck = strings.ReplaceAll(domainCheck, "*", "x")
-			if !M.IsDomainName(domainCheck) {
-				_, ipErr := parseADGuardIPCIDRLine(ruleLine)
-				if ipErr == nil {
-					log.Warn("ignored unsupported rule with IPCIDR: ", ruleLine)
+			if ruleLine == "" {
+				ignoredLines++
+				log.Debug("ignored unsupported rule with empty domain", originRuleLine)
+				continue
+			} else {
+				domainCheck = strings.ReplaceAll(domainCheck, "*", "x")
+				if !M.IsDomainName(domainCheck) {
+					_, ipErr := parseADGuardIPCIDRLine(ruleLine)
+					if ipErr == nil {
+						ignoredLines++
+						log.Debug("ignored unsupported rule with IPCIDR: ", ruleLine)
+						continue
+					}
+					if M.ParseSocksaddr(domainCheck).Port != 0 {
+						log.Debug("ignored unsupported rule with port: ", ruleLine)
+					} else {
+						log.Debug("ignored unsupported rule with invalid domain: ", ruleLine)
+					}
+					ignoredLines++
 					continue
 				}
-				if M.ParseSocksaddr(domainCheck).Port != 0 {
-					log.Warn("ignored unsupported rule with port: ", ruleLine)
-				} else {
-					log.Warn("ignored unsupported rule with invalid domain: ", ruleLine)
-				}
-				continue
 			}
 		}
 		ruleLines = append(ruleLines, agdguardRuleLine{
@@ -264,6 +283,7 @@ func Convert(reader io.Reader) ([]option.HeadlessRule, error) {
 			},
 		}
 	}
+	log.Info("parsed rules: ", len(ruleLines), "/", len(ruleLines)+ignoredLines)
 	return []option.HeadlessRule{currentRule}, nil
 }
 
