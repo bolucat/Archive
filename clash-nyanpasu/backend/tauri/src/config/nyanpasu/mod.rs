@@ -10,7 +10,7 @@ pub use self::clash_strategy::{ClashStrategy, ExternalControllerPortStrategy};
 pub use logging::LoggingLevel;
 
 // TODO: when support sing-box, remove this struct
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum ClashCore {
     #[serde(rename = "clash", alias = "clash-premium")]
     ClashPremium,
@@ -86,6 +86,15 @@ impl TryFrom<&nyanpasu_utils::core::CoreType> for ClashCore {
             _ => Err(anyhow::anyhow!("unsupported core type")),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxiesSelectorMode {
+    Hidden,
+    #[default]
+    Normal,
+    Submenu,
 }
 
 /// ### `verge.yaml` schema
@@ -198,7 +207,7 @@ pub struct IVerge {
     pub clash_strategy: Option<ClashStrategy>,
 
     /// 是否启用代理托盘选择
-    pub clash_tray_selector: Option<bool>,
+    pub clash_tray_selector: Option<ProxiesSelectorMode>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -292,7 +301,7 @@ impl IVerge {
             // auto_log_clean: Some(60 * 24 * 7), // 7 days 自动清理日记
             max_log_files: Some(7), // 7 days
             enable_auto_check_update: Some(true),
-            clash_tray_selector: Some(true),
+            clash_tray_selector: Some(ProxiesSelectorMode::default()),
             enable_service_mode: Some(false),
             ..Self::default()
         }
