@@ -128,8 +128,9 @@ fn main() -> std::io::Result<()> {
                         .unwrap();
                 });
             }
+
             log_err!(tauri_plugin_deep_link::register(
-                "clash-nyanpasu",
+                &["clash-nyanpasu", "clash"],
                 move |request| {
                     log::info!(target: "app", "scheme request received: {:?}", &request);
                     resolve::create_window(&handle.clone()); // create window if not exists

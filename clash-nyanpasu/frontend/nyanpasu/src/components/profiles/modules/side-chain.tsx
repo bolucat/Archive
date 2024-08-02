@@ -1,5 +1,9 @@
 import { useLockFn } from "ahooks";
 import { useAtomValue } from "jotai";
+import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { formatError } from "@/utils";
+import { message } from "@/utils/notification";
 import { Add } from "@mui/icons-material";
 import { alpha, ListItemButton, useTheme } from "@mui/material";
 import { Profile, useClash } from "@nyanpasu/interface";
@@ -12,37 +16,48 @@ export interface SideChainProps {
 }
 
 export const SideChain = ({ onChainEdit }: SideChainProps) => {
+  const { t } = useTranslation();
+
   const { palette } = useTheme();
 
   const isGlobalChainCurrent = useAtomValue(atomGlobalChainCurrent);
 
-  const currnetProfile = useAtomValue(atomChainsSelected);
+  const currentProfileUid = useAtomValue(atomChainsSelected);
 
-  const {
-    getProfiles,
-    setProfilesConfig,
-    setProfiles,
-    getRuntimeLogs: { mutate: mutateRuntimeLogs },
-  } = useClash();
+  const { getProfiles, setProfilesConfig, setProfiles } = useClash();
 
   const { scripts } = filterProfiles(getProfiles.data?.items);
+
+  const currentProfile = useMemo(() => {
+    return getProfiles.data?.items?.find(
+      (item) => item.uid === currentProfileUid,
+    );
+  }, [getProfiles.data?.items, currentProfileUid]);
 
   const handleChainClick = useLockFn(async (uid: string) => {
     const chains = isGlobalChainCurrent
       ? (getProfiles.data?.chain ?? [])
-      : (currnetProfile?.chains ?? []);
+      : (currentProfile?.chains ?? []);
 
     const updatedChains = chains.includes(uid)
       ? chains.filter((chain) => chain !== uid)
       : [...chains, uid];
 
-    if (isGlobalChainCurrent) {
-      await setProfilesConfig({ chain: updatedChains });
-    } else {
-      await setProfiles(uid, { chains: updatedChains });
+    try {
+      if (isGlobalChainCurrent) {
+        await setProfilesConfig({ chain: updatedChains });
+      } else {
+        if (!currentProfile?.uid) {
+          return;
+        }
+        await setProfiles(currentProfile!.uid, { chains: updatedChains });
+      }
+    } catch (e) {
+      message(`Apply error: ${formatError(e)}`, {
+        type: "error",
+        title: t("Error"),
+      });
     }
-
-    mutateRuntimeLogs();
   });
 
   return (
@@ -50,7 +65,7 @@ export const SideChain = ({ onChainEdit }: SideChainProps) => {
       {scripts?.map((item, index) => {
         const selected = isGlobalChainCurrent
           ? getProfiles.data?.chain?.includes(item.uid)
-          : currnetProfile?.chains?.includes(item.uid);
+          : currentProfile?.chains?.includes(item.uid);
 
         return (
           <ChainItem

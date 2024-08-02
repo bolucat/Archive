@@ -1,23 +1,25 @@
 import { useTranslation } from "react-i18next";
-import { useMessage } from "@/hooks/use-notification";
 import getSystem from "@/utils/get-system";
+import { message } from "@/utils/notification";
 import { Button, List, ListItem, ListItemText } from "@mui/material";
 import { pullupUWPTool } from "@nyanpasu/interface";
 import { BaseCard, MenuItem, SwitchItem } from "@nyanpasu/ui";
 import { clash } from "./modules";
 
-const { createBooleanProps, createMenuProps } = clash;
+const { useBooleanProps: createBooleanProps, useMenuProps: createMenuProps } =
+  clash;
 
 const isWIN = getSystem() === "windows";
 
 export const SettingClashBase = () => {
   const { t } = useTranslation();
+  // const [coreType] = useCoreType();
 
   const clickUWP = async () => {
     try {
       await pullupUWPTool();
     } catch (e) {
-      useMessage(`Failed to Open UWP Tools.\n${JSON.stringify(e)}`, {
+      message(`Failed to Open UWP Tools.\n${JSON.stringify(e)}`, {
         title: t("Error"),
         type: "error",
       });

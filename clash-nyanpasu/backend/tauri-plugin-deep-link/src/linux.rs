@@ -9,7 +9,7 @@ use dirs::data_dir;
 
 use crate::ID;
 
-pub fn register<F: FnMut(String) + Send + 'static>(scheme: &str, handler: F) -> Result<()> {
+pub fn register<F: FnMut(String) + Send + 'static>(schemes: &[&str], handler: F) -> Result<()> {
     listen(handler)?;
 
     let mut target = data_dir()
@@ -18,68 +18,76 @@ pub fn register<F: FnMut(String) + Send + 'static>(scheme: &str, handler: F) -> 
 
     create_dir_all(&target)?;
 
-    let exe = tauri_utils::platform::current_exe()?;
+    for (i, scheme) in schemes.iter().enumerate() {
+        let exe = tauri_utils::platform::current_exe()?;
 
-    let file_name = format!(
-        "{}-handler.desktop",
-        exe.file_name()
-            .ok_or_else(|| Error::new(
-                ErrorKind::NotFound,
-                "Couldn't get file name of curent executable.",
-            ))?
-            .to_string_lossy()
-    );
+        let file_name = format!(
+            "{}-handler-{}.desktop",
+            exe.file_name()
+                .ok_or_else(|| Error::new(
+                    ErrorKind::NotFound,
+                    "Couldn't get file name of curent executable.",
+                ))?
+                .to_string_lossy(),
+            i
+        );
 
-    target.push(&file_name);
+        target.push(&file_name);
 
-    let mime_types = format!("x-scheme-handler/{};", scheme);
+        let mime_types = format!("x-scheme-handler/{};", scheme);
 
-    let mut file = File::create(&target)?;
-    file.write_all(
-        format!(
-            include_str!("template.desktop"),
-            name = ID
-                .get()
-                .expect("Called register() before prepare()")
-                .split('.')
-                .last()
-                .unwrap(),
-            exec = std::env::var("APPIMAGE").unwrap_or_else(|_| exe.display().to_string()),
-            mime_types = mime_types
-        )
-        .as_bytes(),
-    )?;
+        let mut file = File::create(&target)?;
+        file.write_all(
+            format!(
+                include_str!("template.desktop"),
+                name = ID
+                    .get()
+                    .expect("Called register() before prepare()")
+                    .split('.')
+                    .last()
+                    .unwrap(),
+                exec = std::env::var("APPIMAGE").unwrap_or_else(|_| exe.display().to_string()),
+                mime_types = mime_types
+            )
+            .as_bytes(),
+        )?;
 
-    target.pop();
+        Command::new("update-desktop-database")
+            .arg(&target)
+            .status()?;
 
-    Command::new("update-desktop-database")
-        .arg(target)
-        .status()?;
+        Command::new("xdg-mime")
+            .args(["default", &file_name, scheme])
+            .status()?;
 
-    Command::new("xdg-mime")
-        .args(["default", &file_name, scheme])
-        .status()?;
+        target.pop();
+    }
 
     Ok(())
 }
 
-pub fn unregister(_scheme: &str) -> Result<()> {
+pub fn unregister(schemes: &[&str]) -> Result<()> {
     let mut target =
         data_dir().ok_or_else(|| Error::new(ErrorKind::NotFound, "data directory not found."))?;
 
     target.push("applications");
-    target.push(format!(
-        "{}-handler.desktop",
-        tauri_utils::platform::current_exe()?
-            .file_name()
-            .ok_or_else(|| Error::new(
-                ErrorKind::NotFound,
-                "Couldn't get file name of curent executable.",
-            ))?
-            .to_string_lossy()
-    ));
 
-    remove_file(&target)?;
+    for (i, _) in schemes.iter().enumerate() {
+        target.push(format!(
+            "{}-handler-{}.desktop",
+            tauri_utils::platform::current_exe()?
+                .file_name()
+                .ok_or_else(|| Error::new(
+                    ErrorKind::NotFound,
+                    "Couldn't get file name of curent executable.",
+                ))?
+                .to_string_lossy(),
+            i
+        ));
+
+        remove_file(&target)?;
+        target.pop();
+    }
 
     Ok(())
 }

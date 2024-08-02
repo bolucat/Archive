@@ -7,7 +7,7 @@ mod utils;
 
 pub use self::chain::ScriptType;
 use self::{chain::*, field::*, merge::*, script::*, tun::*};
-use crate::config::Config;
+use crate::config::{nyanpasu::ClashCore, Config};
 use indexmap::IndexMap;
 use serde_yaml::Mapping;
 use std::collections::HashSet;
@@ -23,7 +23,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
         let verge = Config::verge();
         let verge = verge.latest();
         (
-            verge.clash_core.clone(),
+            verge.clash_core,
             verge.enable_tun_mode.unwrap_or(false),
             verge.enable_builtin_enhanced.unwrap_or(true),
             verge.enable_clash_fields.unwrap_or(true),
@@ -119,13 +119,13 @@ pub async fn enhance() -> (Mapping, Vec<String>, IndexMap<String, Logs>) {
     if enable_builtin {
         for item in ChainItem::builtin()
             .into_iter()
-            .filter(|(s, _)| s.is_support(clash_core.as_ref()))
+            .filter(|(s, _)| s.contains(*clash_core.as_ref().unwrap_or(&ClashCore::default())))
             .map(|(_, c)| c)
         {
             log::debug!(target: "app", "run builtin script {}", item.uid);
 
             if let ChainTypeWrapper::Script(script) = item.data {
-                let (res, logs) = script_runner
+                let (res, _) = script_runner
                     .process_script(script, config.to_owned())
                     .await;
                 match res {

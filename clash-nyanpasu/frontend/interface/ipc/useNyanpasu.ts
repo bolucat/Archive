@@ -11,6 +11,7 @@ import { useClash } from "./useClash";
  * Data from tauri backend.
  */
 export const useNyanpasu = (options?: {
+  onSuccess?: (data?: VergeConfig) => void;
   onUpdate?: (data?: VergeConfig) => void;
   onError?: (error: any) => void;
 }) => {
@@ -19,6 +20,9 @@ export const useNyanpasu = (options?: {
   const { data, error, mutate } = useSWR<VergeConfig>(
     "nyanpasuConfig",
     service.getNyanpasuConfig,
+    {
+      onSuccess: options?.onSuccess,
+    },
   );
 
   const setNyanpasuConfig = async (payload: Partial<VergeConfig>) => {

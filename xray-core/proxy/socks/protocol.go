@@ -69,12 +69,20 @@ func (s *ServerSession) handshake4(cmd byte, reader io.Reader, writer io.Writer)
 	if _, err := ReadUntilNull(reader); /* user id */ err != nil {
 		return nil, err
 	}
+	// Sock4a domain
 	if address.IP()[0] == 0x00 {
 		domain, err := ReadUntilNull(reader)
 		if err != nil {
 			return nil, errors.New("failed to read domain for socks 4a").Base(err)
 		}
 		address = net.DomainAddress(domain)
+		// Check if the client sends an IP address as domain
+		if len(domain) > 0 && (domain[0] >= '0' && domain[0] <= '9') {
+			addr := net.ParseAddress(domain)
+			if addr.Family().IsIP() {
+				address = addr
+			}
+		}
 	}
 
 	switch cmd {
