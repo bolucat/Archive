@@ -2,6 +2,7 @@ use crate::utils::{dirs, help};
 use anyhow::Result;
 // use log::LevelFilter;
 use enumflags2::bitflags;
+use semver::Op;
 use serde::{Deserialize, Serialize};
 mod clash_strategy;
 pub mod logging;
@@ -97,6 +98,25 @@ pub enum ProxiesSelectorMode {
     #[default]
     Normal,
     Submenu,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TunStack {
+    System,
+    #[default]
+    Gvisor,
+    Mixed,
+}
+
+impl AsRef<str> for TunStack {
+    fn as_ref(&self) -> &str {
+        match self {
+            TunStack::System => "system",
+            TunStack::Gvisor => "gvisor",
+            TunStack::Mixed => "mixed",
+        }
+    }
 }
 
 /// ### `verge.yaml` schema
@@ -210,6 +230,12 @@ pub struct IVerge {
 
     /// 是否启用代理托盘选择
     pub clash_tray_selector: Option<ProxiesSelectorMode>,
+
+    pub always_on_top: Option<bool>,
+
+    /// Tun 堆栈选择
+    /// TODO: 弃用此字段，转移到 clash config 里
+    pub tun_stack: Option<TunStack>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -305,6 +331,7 @@ impl IVerge {
             enable_auto_check_update: Some(true),
             clash_tray_selector: Some(ProxiesSelectorMode::default()),
             enable_service_mode: Some(false),
+            always_on_top: Some(false),
             ..Self::default()
         }
     }
@@ -364,5 +391,7 @@ impl IVerge {
         patch!(window_size_state);
         patch!(clash_strategy);
         patch!(clash_tray_selector);
+        patch!(tun_stack);
+        patch!(always_on_top);
     }
 }

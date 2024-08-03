@@ -45,6 +45,8 @@ export interface VergeConfig {
   clash_strategy?: {
     external_controller_port_strategy: "fixed" | "random" | "allow_fallback";
   };
+  tun_stack?: "system" | "gvisor" | "mixed";
+  always_on_top?: boolean;
 }
 
 export interface ClashInfo {

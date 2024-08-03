@@ -203,3 +203,11 @@ export const save_window_size_state = async () => {
 export const collect_envs = async () => {
   return await invoke<EnvInfos>("collect_envs");
 };
+
+export const getRuntimeYaml = async () => {
+  return await invoke<string>("get_runtime_yaml");
+};
+
+export const getServerPort = async () => {
+  return await invoke<number>("get_server_port");
+};

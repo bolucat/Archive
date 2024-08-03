@@ -16,6 +16,7 @@
 package congestion
 
 import (
+	"fmt"
 	mrand "math/rand"
 	"sync"
 	"time"
@@ -60,13 +61,13 @@ const (
 )
 
 const (
+	timeFormat = "15:04:05.999"
+
 	maxDatagramSize = 1500
 
 	// The minimum CWND to ensure delayed acks don't reduce bandwidth measurements.
 	// Does not inflate the pacing rate.
-	//
-	// We use TCP initial CWND specified in RFC 6928.
-	defaultMinimumCongestionWindow = 10 * maxDatagramSize
+	defaultMinimumCongestionWindow = 16 * maxDatagramSize
 
 	defaultInitialCongestionWindow = 32 * maxDatagramSize
 
@@ -121,16 +122,24 @@ type AckedPacketInfo struct {
 	ReceiveTimestamp time.Time
 }
 
+func (i AckedPacketInfo) String() string {
+	return fmt.Sprintf("AckedPacketInfo{PacketNumber=%d, BytesAcked=%d, ReceiveTimestamp=%s}", i.PacketNumber, i.BytesAcked, i.ReceiveTimestamp.Format(timeFormat))
+}
+
 type LostPacketInfo struct {
 	PacketNumber int64
 	BytesLost    int64
+}
+
+func (i LostPacketInfo) String() string {
+	return fmt.Sprintf("LostPacketInfo{PacketNumber=%d, BytesLost=%d}", i.PacketNumber, i.BytesLost)
 }
 
 type BBRSender struct {
 	mu sync.Mutex
 
 	// Additional context of this BBRSender. Used in the log.
-	logContext string
+	loggingContext string
 
 	rttStats *RTTStats
 
@@ -290,10 +299,9 @@ type BBRSender struct {
 	minRTTSinceLastProbeRTT     time.Duration
 }
 
-func NewBBRSender(logContext string) *BBRSender {
-	return &BBRSender{
-		logContext:                   logContext,
-		rttStats:                     NewRTTStats(),
+func NewBBRSender(loggingContext string, rttStats *RTTStats) *BBRSender {
+	s := &BBRSender{
+		loggingContext:               loggingContext,
 		mode:                         modeStartUp,
 		sampler:                      NewBandwidthSampler(),
 		maxBandwidth:                 NewWindowedFilter(bandwidthFilterWindowSize, 0, MaxFilter[int64]),
@@ -312,6 +320,12 @@ func NewBBRSender(logContext string) *BBRSender {
 		initialConservationInStartup: stateConservation,
 		minRTTSinceLastProbeRTT:      infDuration,
 	}
+	if rttStats != nil {
+		s.rttStats = rttStats
+	} else {
+		s.rttStats = NewRTTStats()
+	}
+	return s
 }
 
 func (b *BBRSender) SetInitialCongestionWindowInPackets(congestionWindow int64) {
@@ -326,6 +340,10 @@ func (b *BBRSender) InSlowStart() bool {
 }
 
 func (b *BBRSender) OnPacketSent(sentTime time.Time, bytesInFlight int64, packetNumber int64, bytes int64, hasRetransmittableData bool) {
+	if log.IsLevelEnabled(log.TraceLevel) {
+		log.Tracef("[BBRSender %s] OnPacketSent(bytesInFlight=%d, packetNumber=%d, bytes=%d)", b.loggingContext, bytesInFlight, packetNumber, bytes)
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -390,6 +408,17 @@ func (b *BBRSender) AdjustNetworkParameters(bandwidth int64, rtt time.Duration) 
 }
 
 func (b *BBRSender) OnCongestionEvent(priorInFlight int64, eventTime time.Time, ackedPackets []AckedPacketInfo, lostPackets []LostPacketInfo) {
+	for _, ack := range ackedPackets {
+		if log.IsLevelEnabled(log.TraceLevel) {
+			log.Tracef("[BBRSender %s] OnCongestionEvent(priorInFlight=%d, ackedPacket=%v)", b.loggingContext, priorInFlight, ack)
+		}
+	}
+	for _, lost := range lostPackets {
+		if log.IsLevelEnabled(log.TraceLevel) {
+			log.Tracef("[BBRSender %s] OnCongestionEvent(priorInFlight=%d, lostPacket=%v)", b.loggingContext, priorInFlight, lost)
+		}
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -535,10 +564,10 @@ func (b *BBRSender) UpdateBandwidthAndMinRTT(now time.Time, ackedPackets []Acked
 	for _, acked := range ackedPackets {
 		bandwidthSample := b.sampler.OnPacketAcknowledged(now, acked.PacketNumber)
 		if log.IsLevelEnabled(log.TraceLevel) {
-			log.Tracef("[BBRSender %s] Acknowledged packet %d produced %v", b.logContext, acked.PacketNumber, bandwidthSample)
+			log.Tracef("[BBRSender %s] Acknowledged packet %d produced %v", b.loggingContext, acked.PacketNumber, bandwidthSample)
 		}
 		if bandwidthSample.bandwidth < 0 {
-			log.Debugf("[BBRSender %s] Acknowledged packet %d produced negative bandwidth %d B/s. Sample is dropped.", b.logContext, acked.PacketNumber, bandwidthSample.bandwidth)
+			log.Debugf("[BBRSender %s] Acknowledged packet %d produced negative bandwidth %d B/s. Sample is dropped.", b.loggingContext, acked.PacketNumber, bandwidthSample.bandwidth)
 			continue
 		}
 		b.lastSampleIsAppLimited = bandwidthSample.isAppLimited

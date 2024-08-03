@@ -63,14 +63,9 @@ object Utils {
     }
 
     fun parseInt(str: String?, default: Int): Int {
-        str ?: return default
-        return try {
-            Integer.parseInt(str)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            default
-        }
+        return str?.toIntOrNull() ?: default
     }
+
 
     /**
      * get text from clipboard
@@ -102,13 +97,9 @@ object Utils {
      * base64 decode
      */
     fun decode(text: String?): String {
-        tryDecodeBase64(text)?.let { return it }
-        if (text?.endsWith('=')==true) {
-            // try again for some loosely formatted base64
-            tryDecodeBase64(text.trimEnd('='))?.let { return it }
-        }
-        return ""
+        return tryDecodeBase64(text) ?: text?.trimEnd('=')?.let { tryDecodeBase64(it) } ?: ""
     }
+
 
     fun tryDecodeBase64(text: String?): String? {
         try {
@@ -389,9 +380,9 @@ object Utils {
     }
 
     fun getDarkModeStatus(context: Context): Boolean {
-        val mode = context.resources.configuration.uiMode and UI_MODE_NIGHT_MASK
-        return mode != UI_MODE_NIGHT_NO
+        return context.resources.configuration.uiMode and UI_MODE_NIGHT_MASK != UI_MODE_NIGHT_NO
     }
+
 
     fun setNightMode(context: Context) {
         when (settingsStorage?.decodeString(AppConfig.PREF_UI_MODE_NIGHT, "0")) {
@@ -412,18 +403,21 @@ object Utils {
         }
     }
 
-    fun getLocale(): Locale =
-        when (settingsStorage?.decodeString(AppConfig.PREF_LANGUAGE) ?: "auto") {
-            "auto" ->  getSysLocale()
-            "en" -> Locale("en")
-            "zh-rCN" -> Locale("zh", "CN")
-            "zh-rTW" -> Locale("zh", "TW")
+    fun getLocale(): Locale {
+        val lang = settingsStorage?.decodeString(AppConfig.PREF_LANGUAGE) ?: "auto"
+        return when (lang) {
+            "auto" -> getSysLocale()
+            "en" -> Locale.ENGLISH
+            "zh-rCN" -> Locale.CHINA
+            "zh-rTW" -> Locale.TRADITIONAL_CHINESE
             "vi" -> Locale("vi")
             "ru" -> Locale("ru")
             "fa" -> Locale("fa")
             "bn" -> Locale("bn")
             else -> getSysLocale()
         }
+    }
+
 
     private fun getSysLocale(): Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         LocaleList.getDefault()[0]
