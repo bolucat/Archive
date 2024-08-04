@@ -211,3 +211,31 @@ export const getRuntimeYaml = async () => {
 export const getServerPort = async () => {
   return await invoke<number>("get_server_port");
 };
+
+export const setTrayIcon = async (
+  mode: "tun" | "system_proxy" | "normal",
+  path?: string,
+) => {
+  return await invoke<void>("set_tray_icon", { mode, path });
+};
+
+export const isTrayIconSet = async (
+  mode: "tun" | "system_proxy" | "normal",
+) => {
+  return await invoke<boolean>("is_tray_icon_set", {
+    mode,
+  });
+};
+
+export const getCoreStatus = async () => {
+  return await invoke<
+    ["Running" | { Stopped: string | null }, number, "normal" | "service"]
+  >("get_core_status");
+};
+
+export const urlDelayTest = async (url: string, expectedStatus: number) => {
+  return await invoke<number | null>("url_delay_test", {
+    url,
+    expectedStatus,
+  });
+};

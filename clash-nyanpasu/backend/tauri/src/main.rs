@@ -27,6 +27,7 @@ use crate::{
     utils::{init, resolve},
 };
 use tauri::{api, Manager, SystemTray};
+use utils::resolve::reset_window_open_counter;
 
 rust_i18n::i18n!("../../locales");
 
@@ -58,9 +59,6 @@ fn main() -> std::io::Result<()> {
     #[cfg(feature = "deadlock-detection")]
     deadlock_detection();
 
-    // Parse commands
-    cmds::parse().unwrap();
-
     // Should be in first place in order prevent single instance check block everything
     #[cfg(feature = "verge-dev")]
     tauri_plugin_deep_link::prepare("moe.elaina.clash.nyanpasu.dev");
@@ -77,6 +75,11 @@ fn main() -> std::io::Result<()> {
     };
     #[cfg(target_os = "macos")]
     let custom_schema: Option<url::Url> = None;
+
+    if custom_schema.is_none() {
+        // Parse commands
+        cmds::parse().unwrap();
+    }
 
     // 单例检测
     let single_instance_result = utils::init::check_singleton();
@@ -225,6 +228,10 @@ fn main() -> std::io::Result<()> {
             ipc::restart_application,
             ipc::collect_envs,
             ipc::get_server_port,
+            ipc::set_tray_icon,
+            ipc::is_tray_icon_set,
+            ipc::get_core_status,
+            ipc::url_delay_test,
         ]);
 
     #[cfg(target_os = "macos")]
@@ -267,6 +274,7 @@ fn main() -> std::io::Result<()> {
             if label == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    reset_window_open_counter();
                     let _ = resolve::save_window_state(app_handle, true);
 
                     if let Some(win) = app_handle.get_window("main") {
@@ -284,6 +292,7 @@ fn main() -> std::io::Result<()> {
                     }
                     tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
                         // log::info!(target: "app", "window close requested");
+                        reset_window_open_counter();
                         let _ = resolve::save_window_state(app_handle, true);
                     }
                     tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {

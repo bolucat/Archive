@@ -14,8 +14,17 @@ use crate::{
 use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
-use std::net::TcpListener;
+use std::{
+    net::TcpListener,
+    sync::atomic::{AtomicU16, Ordering},
+};
 use tauri::{api::process::Command, async_runtime::block_on, App, AppHandle, Manager};
+
+static OPEN_WINDOWS_COUNTER: AtomicU16 = AtomicU16::new(0);
+
+pub fn reset_window_open_counter() {
+    OPEN_WINDOWS_COUNTER.store(0, Ordering::Release);
+}
 
 #[cfg(target_os = "macos")]
 fn set_window_controls_pos(window: cocoa::base::id, x: f64, y: f64) {
@@ -70,6 +79,11 @@ pub fn find_unused_port() -> Result<u16> {
 
 /// handle something when start app
 pub fn resolve_setup(app: &mut App) {
+    app.listen_global("react_app_mounted", move |_| {
+        tracing::debug!("Frontend React App is mounted, reset open window counter");
+        reset_window_open_counter()
+    });
+
     #[cfg(target_os = "macos")]
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
@@ -113,6 +127,8 @@ pub fn resolve_setup(app: &mut App) {
     log_err!(CoreManager::global().init());
 
     log::trace!("init system tray");
+    #[cfg(windows)]
+    tray::icon::resize_images(crate::utils::help::get_max_scale_factor()); // generate latest cache icon by current scale factor
     log_err!(tray::Tray::update_systray(&app.app_handle()));
 
     let silent_start = { Config::verge().data().enable_silent_start };
@@ -144,9 +160,11 @@ pub fn resolve_reset() {
 /// create main window
 pub fn create_window(app_handle: &AppHandle) {
     if let Some(window) = app_handle.get_window("main") {
-        trace_err!(window.unminimize(), "set win unminimize");
-        trace_err!(window.show(), "set win visible");
-        trace_err!(window.set_focus(), "set win focus");
+        if OPEN_WINDOWS_COUNTER.load(Ordering::Acquire) == 0 {
+            trace_err!(window.unminimize(), "set win unminimize");
+            trace_err!(window.show(), "set win visible");
+            trace_err!(window.set_focus(), "set win focus");
+        }
         return;
     }
 
@@ -259,27 +277,11 @@ pub fn create_window(app_handle: &AppHandle) {
                 if center.unwrap_or(true) {
                     trace_err!(win.center(), "set win center");
                 }
-
-                // log::trace!("try to create window");
-                // let app_handle = app_handle.clone();
-
-                // 加点延迟避免界面闪一下
-                //     tauri::async_runtime::spawn(async move {
-                //         // sleep(Duration::from_millis(888)).await;
-
-                //         if let Some(window) = app_handle.get_window("main") {
-                //             trace_err!(set_shadow(&window, true), "set win shadow");
-                //             trace_err!(window.show(), "set win visible");
-                //             trace_err!(window.unminimize(), "set win unminimize");
-                //             trace_err!(window.set_focus(), "set win focus");
-                //         } else {
-                //             log::error!(target: "app", "failed to create window, get_window is None")
-                //         }
-                //     });
                 #[cfg(debug_assertions)]
                 {
                     win.open_devtools();
                 }
+                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
             }
             Err(err) => log::error!(target: "app", "failed to create window, {err}"),
         }
@@ -317,6 +319,7 @@ pub fn create_window(app_handle: &AppHandle) {
                         set_controls_and_log_error(&app_handle_clone, "main");
                     }
                 });
+                OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
             }
             Err(err) => {
                 log::error!(target: "app", "failed to create window, {err}");
@@ -325,7 +328,14 @@ pub fn create_window(app_handle: &AppHandle) {
     }
 
     #[cfg(target_os = "linux")]
-    crate::log_err!(builder.decorations(true).transparent(false).build());
+    match builder.decorations(true).transparent(false).build() {
+        Ok(_) => {
+            OPEN_WINDOWS_COUNTER.fetch_add(1, Ordering::Release);
+        }
+        Err(err) => {
+            log::error!(target: "app", "failed to create window, {err}");
+        }
+    }
 
     #[cfg(target_os = "windows")]
     {
@@ -355,6 +365,7 @@ pub fn create_window(app_handle: &AppHandle) {
 pub fn close_window(app_handle: &AppHandle) {
     if let Some(window) = app_handle.get_window("main") {
         trace_err!(window.close(), "close window");
+        reset_window_open_counter()
     }
 }
 

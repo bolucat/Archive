@@ -1,7 +1,8 @@
-import { useLockFn, useSetState } from "ahooks";
+import { useLockFn, useMemoizedFn, useSetState } from "ahooks";
+import clsx from "clsx";
 import dayjs from "dayjs";
-import { motion } from "framer-motion";
-import { memo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/notification";
 import parseTraffic from "@/utils/parse-traffic";
@@ -222,9 +223,20 @@ export const ProfileItem = memo(function ProfileItem({
               />
             )}
 
-            <div className="text-sm">
-              {item.updated! > 0 ? dayjs(item.updated! * 1000).fromNow() : ""}
-            </div>
+            <TextCarousel
+              className="w-30 flex h-6 items-center"
+              nodes={[
+                !!item.updated && (
+                  <TimeSpan ts={item.updated!} k="Subscription Updated At" />
+                ),
+                !!item.extra?.expire && (
+                  <TimeSpan
+                    ts={item.extra!.expire!}
+                    k="Subscription Expires In"
+                  />
+                ),
+              ]}
+            ></TextCarousel>
           </div>
 
           <div>
@@ -232,19 +244,22 @@ export const ProfileItem = memo(function ProfileItem({
             <p className="truncate">{item.desc}</p>
           </div>
 
-          {isRemote && (
-            <div className="flex items-center justify-between gap-4">
-              <div className="w-full">
-                <LinearProgress variant="determinate" value={progress} />
-              </div>
-
-              <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
-                <div className="text-sm font-bold">
-                  {((used / total) * 100).toFixed(2)}%
-                </div>
-              </Tooltip>
+          <div
+            className={clsx(
+              "flex items-center justify-between gap-4",
+              !isRemote && "invisible",
+            )}
+          >
+            <div className="w-full">
+              <LinearProgress variant="determinate" value={progress} />
             </div>
-          )}
+
+            <Tooltip title={`${parseTraffic(used)} / ${parseTraffic(total)}`}>
+              <div className="text-sm font-bold">
+                {((used / total) * 100).toFixed(2)}%
+              </div>
+            </Tooltip>
+          </div>
 
           <div className="flex justify-end gap-2">
             <Button
@@ -322,5 +337,67 @@ export const ProfileItem = memo(function ProfileItem({
     </>
   );
 });
+
+function TimeSpan({ ts, k }: { ts: number; k: string }) {
+  const time = dayjs(ts * 1000);
+  const { t } = useTranslation();
+  return (
+    <Tooltip title={time.format("YYYY/MM/DD HH:mm:ss")}>
+      <div className="animate-marquee h-fit whitespace-nowrap text-right text-sm font-medium">
+        {t(k, {
+          time: time.fromNow(),
+        })}
+      </div>
+    </Tooltip>
+  );
+}
+
+function TextCarousel(props: { nodes: React.ReactNode[]; className?: string }) {
+  const [index, setIndex] = useState(0);
+  const nodes = useMemo(
+    () => props.nodes.filter((item) => !!item),
+    [props.nodes],
+  );
+
+  const nextNode = useMemoizedFn(() => {
+    setIndex((i) => (i + 1) % nodes.length);
+  });
+
+  useEffect(() => {
+    if (nodes.length <= 1) {
+      return;
+    }
+    const timer = setInterval(() => {
+      nextNode();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [index, nextNode, nodes.length]);
+  if (nodes.length === 0) {
+    return null;
+  }
+  return (
+    <div
+      className={cn("overflow-hidden", props.className)}
+      onClick={() => nextNode()}
+    >
+      <AnimatePresence mode="wait">
+        {nodes.map(
+          (node, i) =>
+            i == index && (
+              <motion.div
+                className="h-full w-full"
+                key={index}
+                initial={{ y: 40, opacity: 0, scale: 0.8 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: -40, opacity: 0, scale: 0.8 }}
+              >
+                {node}
+              </motion.div>
+            ),
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default ProfileItem;

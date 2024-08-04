@@ -17,7 +17,7 @@ use tracing_attributes::instrument;
 use url::Url;
 pub static SERVER_PORT: Lazy<u16> = Lazy::new(|| port_scanner::request_open_port().unwrap());
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CacheIcon {
     /// should be encoded as base64
     url: String,
@@ -63,6 +63,7 @@ async fn cache_icon_inner<'n>(url: &str) -> Result<CacheFile<'n>> {
     Ok(data)
 }
 
+#[tracing_attributes::instrument]
 async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
     match cache_icon_inner(&query.url).await {
         Ok(data) => {
@@ -73,6 +74,7 @@ async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
             response
         }
         Err(e) => {
+            tracing::error!("{}", e);
             let mut response = Response::new(Body::from(e.to_string()));
             *response.status_mut() = StatusCode::BAD_REQUEST;
             response
@@ -80,9 +82,26 @@ async fn cache_icon(query: Query<CacheIcon>) -> Response<Body> {
     }
 }
 
+#[derive(Deserialize)]
+struct TrayIconReq {
+    mode: crate::core::tray::icon::TrayIcon,
+}
+
+async fn tray_icon(query: Query<TrayIconReq>) -> Response<Body> {
+    let mode = query.mode;
+    let icon = crate::core::tray::icon::get_raw_icon(mode);
+    let mut response = Response::new(Body::from(icon));
+    response
+        .headers_mut()
+        .insert("content-type", "image/png".parse().unwrap());
+    response
+}
+
 #[instrument]
 pub async fn run(port: u16) -> std::io::Result<()> {
-    let app = Router::new().route("/cache/icon", get(cache_icon));
+    let app = Router::new()
+        .route("/cache/icon", get(cache_icon))
+        .route("/tray/icon", get(tray_icon));
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     tracing::debug!(
         "internal http server listening on {}",

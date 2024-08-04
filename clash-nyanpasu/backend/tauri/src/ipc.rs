@@ -15,10 +15,12 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use indexmap::IndexMap;
 use log::debug;
+use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
-use std::collections::VecDeque;
+use std::{borrow::Cow, collections::VecDeque, path::PathBuf};
 use sysproxy::Sysproxy;
+use tray::icon::TrayIcon;
 
 use tauri::api::dialog::FileDialogBuilder;
 
@@ -214,8 +216,23 @@ pub fn get_runtime_logs() -> CmdResult<IndexMap<String, Logs>> {
 }
 
 #[tauri::command]
+pub async fn get_core_status<'n>() -> CmdResult<(Cow<'n, CoreState>, i64, RunType)> {
+    Ok(CoreManager::global().status().await)
+}
+
+#[tauri::command]
+pub async fn url_delay_test(url: &str, expected_status: u16) -> CmdResult<Option<u64>> {
+    Ok(crate::utils::net::url_delay_test(url, expected_status).await)
+}
+
+#[tauri::command]
+#[tracing_attributes::instrument]
 pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
-    wrap_err!(feat::patch_clash(payload).await)?;
+    tracing::debug!("patch_clash_config: {payload:?}");
+    if let Err(e) = feat::patch_clash(payload).await {
+        tracing::error!("{e}");
+        return Err(format!("{e}"));
+    }
     feat::update_proxies_buff(None);
     Ok(())
 }
@@ -504,6 +521,23 @@ pub mod uwp {
     pub async fn invoke_uwp_tool() -> CmdResult {
         wrap_err!(win_uwp::invoke_uwptools().await)
     }
+}
+
+#[tauri::command]
+pub async fn set_tray_icon(
+    app_handle: tauri::AppHandle,
+    mode: TrayIcon,
+    path: Option<PathBuf>,
+) -> CmdResult {
+    wrap_err!(crate::core::tray::icon::set_icon(mode, path))?;
+    wrap_err!(crate::core::tray::Tray::update_part(&app_handle))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn is_tray_icon_set(mode: TrayIcon) -> CmdResult<bool> {
+    let icon_path = wrap_err!(crate::utils::dirs::tray_icons_path(mode.as_str()))?;
+    Ok(tokio::fs::metadata(icon_path).await.is_ok())
 }
 
 pub mod service {
