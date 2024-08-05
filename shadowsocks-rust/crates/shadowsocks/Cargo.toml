@@ -49,7 +49,7 @@ security-replay-attack-detect = ["bloomfilter"]
 log = "0.4"
 
 libc = "0.2.141"
-bytes = "1.6"
+bytes = "1.7"
 cfg-if = "1"
 byte_string = "1.0"
 base64 = "0.22"
@@ -99,7 +99,7 @@ shadowsocks-crypto = { version = "0.5.4", features = [] }
 tokio-tfo = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",

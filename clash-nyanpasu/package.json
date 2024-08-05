@@ -8,6 +8,7 @@
     "dev": "run-p -r web:devtools tauri:dev",
     "dev:diff": "run-p -r web:devtools tauri:diff",
     "build": "tauri build -c ./backend/tauri/tauri.conf.json",
+    "build:debug": "tauri build -f verge-dev deadlock-detection -d -c \"{ \\\"tauri\\\" : { \\\"updater\\\": { \\\"active\\\": false } }} \"",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
     "tauri": "tauri",
     "tauri:dev": "tauri dev -c ./backend/tauri/tauri.conf.json",
@@ -92,7 +93,7 @@
     "stylelint-config-standard": "36.0.1",
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
-    "stylelint-scss": "6.4.1",
+    "stylelint-scss": "6.5.0",
     "tailwindcss": "3.4.7",
     "tsx": "4.16.5",
     "typescript": "5.5.4"

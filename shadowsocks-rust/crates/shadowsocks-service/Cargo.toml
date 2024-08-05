@@ -137,7 +137,7 @@ arc-swap = "1.7"
 
 spin = { version = "0.9" }
 lru_time_cache = "0.11"
-bytes = "1.6"
+bytes = "1.7"
 byte_string = "1.0"
 byteorder = "1.5"
 rand = { version = "0.8", features = ["small_rng"] }
@@ -212,7 +212,7 @@ shadowsocks = { version = "1.20.1", path = "../shadowsocks", default-features = 
 nix = { version = "0.29", features = ["ioctl"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Networking_WinSock"] }
+windows-sys = { version = "0.59", features = ["Win32_Networking_WinSock"] }
 
 [dev-dependencies]
 byteorder = "1.5"
