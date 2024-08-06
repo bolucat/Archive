@@ -108,9 +108,42 @@
       "type": "text",
       "action": "add",
       "args": {
+        "inputDir": "./data",
+        "onlyIPType": "ipv4",
+        "removePrefixesInLine": [
+          "iptables -A INPUT -s",
+          "iptables -A INPUT -d"
+        ],
+        "removeSuffixesInLine": ["-j ACCEPT", "-j DROP"]
+      }
+    },
+    {
+      "type": "text",
+      "action": "add",
+      "args": {
         "name": "mylist",
         "uri": "./an/example/dir/mycidr.txt",
         "onlyIPType": "ipv6"
+      }
+    },
+    {
+      "type": "text",
+      "action": "add",
+      "args": {
+        "name": "mylist",
+        "uri": "./an/example/dir/mycidr.txt",
+        "onlyIPType": "ipv6",
+        "removePrefixesInLine": ["allow from", "deny from"]
+      }
+    },
+    {
+      "type": "text",
+      "action": "add",
+      "args": {
+        "name": "mylist",
+        "uri": "./an/example/dir/mycidr.txt",
+        "onlyIPType": "ipv6",
+        "removeSuffixesInLine": [";", ","]
       }
     },
     {
@@ -244,6 +277,43 @@
       }
     },
     {
+      "type": "text",
+      "action": "output",
+      "args": {
+        "outputDir": "./publish",
+        "onlyIPType": "ipv6",
+        "addPrefixInLine": "iptables -A INPUT -d ",
+        "addSuffixInLine": " -j DROP"
+      }
+    },
+    {
+      "type": "text",
+      "action": "output",
+      "args": {
+        "addPrefixInLine": "deny from "
+      }
+    },
+    {
+      "type": "text",
+      "action": "output",
+      "args": {
+        "outputDir": "./output/nginx/allow",
+        "outputExtension": ".conf",
+        "addPrefixInLine": "allow ",
+        "addSuffixInLine": ";"
+      }
+    },
+    {
+      "type": "text",
+      "action": "output",
+      "args": {
+        "outputDir": "./output/nginx/deny",
+        "outputExtension": ".conf",
+        "addPrefixInLine": "deny ",
+        "addSuffixInLine": ";"
+      }
+    },
+    {
       "type": "stdout",
       "action": "output"
     },
@@ -291,6 +361,13 @@
       "args": {
         "wantedList": ["cn", "private", "test"],
         "onlyIPType": "ipv4"
+      }
+    },
+    {
+      "type": "surgeRuleSet",
+      "action": "output",
+      "args": {
+        "addSuffixInLine": ",no-resolve"
       }
     }
   ]
