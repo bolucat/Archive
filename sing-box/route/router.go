@@ -549,8 +549,8 @@ func (r *Router) Start() error {
 			if err != nil {
 				return E.Cause(err, "start package manager")
 			}
-			r.packageManager = packageManager
 		}
+		r.packageManager = packageManager
 	}
 
 	for i, rule := range r.dnsRules {

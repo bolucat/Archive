@@ -239,7 +239,7 @@ rm -rf %{buildroot}
 ninja install
 rm -rf %{buildroot}/%{_datadir}/doc
 cd ..
-desktop-file-validate %{buildroot}%{_datadir}/applications/it.gui.yass.desktop
+desktop-file-validate %{buildroot}%{_datadir}/applications/io.github.chilledheart.yass.desktop
 %find_lang %{name}
 
 %post
@@ -252,16 +252,16 @@ update-desktop-database
 %dir /usr/share/applications/
 %dir /usr/share/pixmaps/
 %{_bindir}/yass
-%{_datadir}/applications/it.gui.yass.desktop
-%{_datadir}/pixmaps/it.gui.yass.png
-%{_datadir}/icons/hicolor/16x16/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/22x22/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/24x24/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/32x32/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/48x48/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/128x128/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/256x256/apps/it.gui.yass.png
-%{_datadir}/icons/hicolor/512x512/apps/it.gui.yass.png
+%{_datadir}/applications/io.github.chilledheart.yass.desktop
+%{_datadir}/pixmaps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/16x16/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/22x22/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/24x24/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/32x32/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/48x48/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/128x128/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/256x256/apps/io.github.chilledheart.yass.png
+%{_datadir}/icons/hicolor/512x512/apps/io.github.chilledheart.yass.png
 
 %package server
 Summary: Lightweight and Secure http/socks4/socks5 Proxy (Server Side)
@@ -317,6 +317,11 @@ for embedded devices and low end boxes.
 %systemd_postun_with_restart yass-redir.service
 
 %changelog
+* Wed Aug 7 2024 Chilledheart <keeyou-cn@outlook.com> - 1.12.3-1
+  - gtk4: fix crash
+* Wed Aug 7 2024 Chilledheart <keeyou-cn@outlook.com> - 1.12.2-1
+  - transfer: optimize rate limit algorithm
+  - replace app id
 * Fri Jul 26 2024 Chilledheart <keeyou-cn@outlook.com> - 1.12.1-1
   - ui: lower veritical spacing to 6 pixels
   - gtk4: close dialogs on signal SIGINT

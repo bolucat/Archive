@@ -1,4 +1,4 @@
-id: it.gui.yass
+id: io.github.chilledheart.yass
 runtime: org.kde.Platform
 runtime-version: '5.15-23.08'
 sdk: org.kde.Sdk
@@ -11,6 +11,8 @@ finish-args:
   - --device=dri
   - --filesystem=~/.yass
   - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=com.canonical.indicator.application
+  - --talk-name=org.ayatana.indicator.application
 modules:
   - name: yass
     buildsystem: cmake-ninja
@@ -22,6 +24,5 @@ modules:
       - -DCLI=off
       - -DSERVER=off
     sources:
-      - type: archive
-        url: file://PWD/yass-TAG_NAME.tar.bz2
-        sha256: SHA256
+      - type: dir
+        path: ../
