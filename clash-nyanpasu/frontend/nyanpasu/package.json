@@ -29,7 +29,7 @@
     "dayjs": "1.11.12",
     "framer-motion": "12.0.0-alpha.0",
     "i18next": "23.12.2",
-    "jotai": "2.9.1",
+    "jotai": "2.9.2",
     "material-react-table": "2.13.1",
     "monaco-editor": "0.50.0",
     "mui-color-input": "3.0.0",
@@ -38,7 +38,7 @@
     "react-error-boundary": "4.0.13",
     "react-fast-marquee": "1.6.5",
     "react-hook-form-mui": "7.0.1",
-    "react-i18next": "15.0.0",
+    "react-i18next": "15.0.1",
     "react-markdown": "9.0.1",
     "react-router-dom": "6.26.0",
     "react-split-grid": "1.0.4",
@@ -48,7 +48,7 @@
   "devDependencies": {
     "@emotion/babel-plugin": "11.12.0",
     "@emotion/react": "11.13.0",
-    "@iconify/json": "2.2.234",
+    "@iconify/json": "2.2.235",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "@vitejs/plugin-react": "4.3.1",
@@ -59,10 +59,10 @@
     "tailwindcss-textshadow": "2.1.3",
     "unplugin-auto-import": "0.18.2",
     "unplugin-icons": "0.19.2",
-    "vite": "5.3.5",
+    "vite": "5.4.0",
     "vite-plugin-monaco-editor": "1.1.3",
     "vite-plugin-sass-dts": "1.3.25",
     "vite-plugin-svgr": "4.2.0",
-    "vite-tsconfig-paths": "4.3.2"
+    "vite-tsconfig-paths": "5.0.0"
   }
 }
