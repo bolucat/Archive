@@ -6,7 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
-import com.tbruyelle.rxpermissions.RxPermissions
+import com.tbruyelle.rxpermissions3.RxPermissions
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
@@ -21,14 +21,12 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 class AboutActivity : BaseActivity() {
-    private lateinit var binding: ActivityAboutBinding
+    private val binding by lazy {ActivityAboutBinding.inflate(layoutInflater)}
     private val extDir by lazy { File(Utils.backupPath(this)) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAboutBinding.inflate(layoutInflater)
-        val view = binding.root
-        setContentView(view)
+        setContentView(binding.root)
 
         title = getString(R.string.title_about)
 

@@ -1,5 +1,4 @@
-﻿using MaterialDesignThemes.Wpf;
-using ReactiveUI;
+﻿using ReactiveUI;
 using Splat;
 using System.ComponentModel;
 using System.Reactive.Disposables;
@@ -19,6 +18,7 @@ namespace v2rayN.Views
     public partial class MainWindow
     {
         private static Config _config;
+        private NoticeHandler _noticeHandler;
 
         public MainWindow()
         {
@@ -30,7 +30,10 @@ namespace v2rayN.Views
             this.Closing += MainWindow_Closing;
             this.PreviewKeyDown += MainWindow_PreviewKeyDown;
 
-            ViewModel = new MainWindowViewModel(MainSnackbar.MessageQueue, null);
+            _noticeHandler = new NoticeHandler(MainSnackbar.MessageQueue);
+            Locator.CurrentMutable.RegisterLazySingleton(() => _noticeHandler, typeof(NoticeHandler));
+
+            ViewModel = new MainWindowViewModel(UpdateViewHandler);
             Locator.CurrentMutable.RegisterLazySingleton(() => ViewModel, typeof(MainWindowViewModel));
 
             this.WhenActivated(disposables =>
@@ -177,6 +180,42 @@ namespace v2rayN.Views
 
             RestoreUI();
             AddHelpMenuItem();
+        }
+
+        private bool UpdateViewHandler(EViewAction action, object? obj)
+        {
+            if (action == EViewAction.AddServerWindow)
+            {
+                if (obj is null) return false;
+                return (new AddServerWindow((ProfileItem)obj)).ShowDialog() ?? false;
+            }
+            else if (action == EViewAction.AddServer2Window)
+            {
+                if (obj is null) return false;
+                return (new AddServer2Window((ProfileItem)obj)).ShowDialog() ?? false;
+            }
+            else if (action == EViewAction.DNSSettingWindow)
+            {
+                return (new DNSSettingWindow().ShowDialog() ?? false);
+            }
+            else if (action == EViewAction.RoutingSettingWindow)
+            {
+                return (new RoutingSettingWindow().ShowDialog() ?? false);
+            }
+            else if (action == EViewAction.OptionSettingWindow)
+            {
+                return (new OptionSettingWindow().ShowDialog() ?? false);
+            }
+            else if (action == EViewAction.GlobalHotkeySettingWindow)
+            {
+                return (new GlobalHotkeySettingWindow().ShowDialog() ?? false);
+            }
+            else if (action == EViewAction.SubSettingWindow)
+            {
+                return (new SubSettingWindow().ShowDialog() ?? false);
+            }
+
+            return true;
         }
 
         #region Event

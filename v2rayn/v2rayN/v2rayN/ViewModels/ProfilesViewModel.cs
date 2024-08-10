@@ -1,6 +1,5 @@
 using DynamicData;
 using DynamicData.Binding;
-using MaterialDesignThemes.Wpf;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Splat;
@@ -8,26 +7,24 @@ using System.Reactive;
 using System.Reactive.Linq;
 using System.Text;
 using System.Windows;
+using v2rayN.Base;
 using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Handler.Fmt;
 using v2rayN.Handler.Statistics;
 using v2rayN.Models;
 using v2rayN.Resx;
-using v2rayN.Views;
 
 namespace v2rayN.ViewModels
 {
-    public class ProfilesViewModel : ReactiveObject
+    public class ProfilesViewModel : MyReactiveObject
     {
         #region private prop
 
         private List<ProfileItem> _lstProfile;
         private string _serverFilter = string.Empty;
-        private static Config _config;
-        private NoticeHandler? _noticeHandler;
+
         private Dictionary<string, bool> _dicHeaderSort = new();
-        private Action<EViewAction> _updateView;
 
         #endregion private prop
 
@@ -103,12 +100,12 @@ namespace v2rayN.ViewModels
 
         #region Init
 
-        public ProfilesViewModel(Action<EViewAction> updateView)
+        public ProfilesViewModel(Func<EViewAction, object?, bool>? updateView)
         {
+            _config = LazyConfig.Instance.GetConfig();
+            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
             _updateView = updateView;
 
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
-            _config = LazyConfig.Instance.GetConfig();
             MessageBus.Current.Listen<string>(Global.CommandRefreshProfiles).Subscribe(x => RefreshServersBiz());
 
             SelectedProfile = new();
@@ -328,7 +325,7 @@ namespace v2rayN.ViewModels
 
             RefreshServers();
 
-            _updateView(EViewAction.ProfilesFocus);
+            _updateView?.Invoke(EViewAction.ProfilesFocus, null);
         }
 
         private void ServerFilterChanged(bool c)
@@ -485,11 +482,11 @@ namespace v2rayN.ViewModels
             bool? ret = false;
             if (eConfigType == EConfigType.Custom)
             {
-                ret = (new AddServer2Window(item)).ShowDialog();
+                ret = _updateView?.Invoke(EViewAction.AddServer2Window, item);
             }
             else
             {
-                ret = (new AddServerWindow(item)).ShowDialog();
+                ret = _updateView?.Invoke(EViewAction.AddServerWindow, item);
             }
             if (ret == true)
             {
@@ -507,8 +504,7 @@ namespace v2rayN.ViewModels
             {
                 return;
             }
-
-            if (UI.ShowYesNo(ResUI.RemoveServer) == MessageBoxResult.No)
+            if (_updateView?.Invoke(EViewAction.ShowYesNo, null) == false)
             {
                 return;
             }
@@ -595,7 +591,7 @@ namespace v2rayN.ViewModels
             SetDefaultServer(SelectedServer.ID);
         }
 
-        public async void ShareServer()
+        public void ShareServer()
         {
             var item = LazyConfig.Instance.GetProfileItem(SelectedProfile.indexId);
             if (item is null)
@@ -608,14 +604,8 @@ namespace v2rayN.ViewModels
             {
                 return;
             }
-            var img = QRCodeHelper.GetQRCode(url);
-            var dialog = new QrcodeView()
-            {
-                imgQrcode = { Source = img },
-                txtContent = { Text = url },
-            };
 
-            await DialogHost.Show(dialog, "RootDialog");
+            _updateView?.Invoke(EViewAction.ShareServer, url);
         }
 
         private void SetDefaultMultipleServer(ECoreType coreType)
@@ -783,8 +773,7 @@ namespace v2rayN.ViewModels
                     return;
                 }
             }
-            var ret = (new SubEditWindow(item)).ShowDialog();
-            if (ret == true)
+            if (_updateView?.Invoke(EViewAction.SubEditWindow, item) == true)
             {
                 RefreshSubscriptions();
                 SubSelectedChanged(true);

@@ -10,7 +10,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
-import com.tbruyelle.rxpermissions.RxPermissions
+import com.tbruyelle.rxpermissions3.RxPermissions
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
@@ -23,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class RoutingSettingsFragment : Fragment() {
-    private lateinit var binding: FragmentRoutingSettingsBinding
+    private val binding by lazy { FragmentRoutingSettingsBinding.inflate(layoutInflater) }
     companion object {
         private const val routing_arg = "routing_arg"
     }
@@ -33,7 +33,6 @@ class RoutingSettingsFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?,
                               savedInstanceState: Bundle?): View? {
         // Inflate the layout for this fragment
-        binding = FragmentRoutingSettingsBinding.inflate(layoutInflater)
         return binding.root// inflater.inflate(R.layout.fragment_routing_settings, container, false)
     }
 

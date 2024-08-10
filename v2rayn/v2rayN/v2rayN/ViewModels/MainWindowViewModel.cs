@@ -1,5 +1,4 @@
 using DynamicData.Binding;
-using MaterialDesignThemes.Wpf;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Splat;
@@ -11,23 +10,21 @@ using System.Reactive.Linq;
 using System.Text;
 using System.Windows;
 using System.Windows.Media;
+using v2rayN.Base;
 using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Handler.Statistics;
 using v2rayN.Models;
 using v2rayN.Resx;
-using v2rayN.Views;
 
 namespace v2rayN.ViewModels
 {
-    public class MainWindowViewModel : ReactiveObject
+    public class MainWindowViewModel : MyReactiveObject
     {
         #region private prop
 
         private CoreHandler _coreHandler;
-        private static Config _config;
-        private NoticeHandler? _noticeHandler;
-        private Action<EViewAction> _updateView;
+
         private bool _showInTaskbar;
 
         #endregion private prop
@@ -171,15 +168,13 @@ namespace v2rayN.ViewModels
 
         #region Init
 
-        public MainWindowViewModel(ISnackbarMessageQueue snackbarMessageQueue, Action<EViewAction> updateView)
+        public MainWindowViewModel(Func<EViewAction, object?, bool>? updateView)
         {
-            _updateView = updateView;
-            ThreadPool.RegisterWaitForSingleObject(App.ProgramStarted, OnProgramStarted, null, -1, false);
-
-            _noticeHandler = new NoticeHandler(snackbarMessageQueue);
-            Locator.CurrentMutable.RegisterLazySingleton(() => _noticeHandler, typeof(NoticeHandler));
             _config = LazyConfig.Instance.GetConfig();
+            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _updateView = updateView;
 
+            ThreadPool.RegisterWaitForSingleObject(App.ProgramStarted, OnProgramStarted, null, -1, false);
             MessageBus.Current.Listen<string>(Global.CommandRefreshProfiles).Subscribe(x => RefreshServersBiz());
 
             SelectedRouting = new();
@@ -309,7 +304,7 @@ namespace v2rayN.ViewModels
             });
             GlobalHotkeySettingCmd = ReactiveCommand.Create(() =>
             {
-                if ((new GlobalHotkeySettingWindow()).ShowDialog() == true)
+                if (_updateView?.Invoke(EViewAction.GlobalHotkeySettingWindow, null) == true)
                 {
                     _noticeHandler?.Enqueue(ResUI.OperationSuccess);
                 }
@@ -446,7 +441,7 @@ namespace v2rayN.ViewModels
                 }
                 if (_config.uiItem.enableAutoAdjustMainLvColWidth)
                 {
-                    _updateView(EViewAction.AdjustMainLvColWidth);
+                    _updateView?.Invoke(EViewAction.AdjustMainLvColWidth, null);
                 }
             }
         }
@@ -612,11 +607,11 @@ namespace v2rayN.ViewModels
             bool? ret = false;
             if (eConfigType == EConfigType.Custom)
             {
-                ret = (new AddServer2Window(item)).ShowDialog();
+                ret = _updateView?.Invoke(EViewAction.AddServer2Window, item);
             }
             else
             {
-                ret = (new AddServerWindow(item)).ShowDialog();
+                ret = _updateView?.Invoke(EViewAction.AddServerWindow, item);
             }
             if (ret == true)
             {
@@ -736,7 +731,7 @@ namespace v2rayN.ViewModels
 
         private void SubSetting()
         {
-            if ((new SubSettingWindow()).ShowDialog() == true)
+            if (_updateView?.Invoke(EViewAction.SubSettingWindow, null) == true)
             {
                 RefreshSubscriptions();
             }
@@ -753,7 +748,7 @@ namespace v2rayN.ViewModels
 
         private void OptionSetting()
         {
-            var ret = (new OptionSettingWindow()).ShowDialog();
+            var ret = _updateView?.Invoke(EViewAction.OptionSettingWindow, null);
             if (ret == true)
             {
                 //RefreshServers();
@@ -763,7 +758,7 @@ namespace v2rayN.ViewModels
 
         private void RoutingSetting()
         {
-            var ret = (new RoutingSettingWindow()).ShowDialog();
+            var ret = _updateView?.Invoke(EViewAction.RoutingSettingWindow, null);
             if (ret == true)
             {
                 ConfigHandler.InitBuiltinRouting(_config);
@@ -775,7 +770,7 @@ namespace v2rayN.ViewModels
 
         private void DNSSetting()
         {
-            var ret = (new DNSSettingWindow()).ShowDialog();
+            var ret = _updateView?.Invoke(EViewAction.DNSSettingWindow, null);
             if (ret == true)
             {
                 Reload();

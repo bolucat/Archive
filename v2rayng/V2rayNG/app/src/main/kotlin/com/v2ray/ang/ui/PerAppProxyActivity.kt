@@ -23,12 +23,14 @@ import com.v2ray.ang.util.MmkvManager
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import rx.android.schedulers.AndroidSchedulers
-import rx.schedulers.Schedulers
+import io.reactivex.rxjava3.android.schedulers.AndroidSchedulers
+import io.reactivex.rxjava3.schedulers.Schedulers
 import java.text.Collator
 
 class PerAppProxyActivity : BaseActivity() {
-    private lateinit var binding: ActivityBypassListBinding
+    private val binding by lazy {
+        ActivityBypassListBinding.inflate(layoutInflater)
+    }
 
     private var adapter: PerAppProxyAdapter? = null
     private var appsAll: List<AppInfo>? = null
@@ -36,9 +38,7 @@ class PerAppProxyActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityBypassListBinding.inflate(layoutInflater)
-        val view = binding.root
-        setContentView(view)
+        setContentView(binding.root)
 
         val dividerItemDecoration = DividerItemDecoration(this, LinearLayoutManager.VERTICAL)
         binding.recyclerView.addItemDecoration(dividerItemDecoration)
@@ -188,12 +188,10 @@ class PerAppProxyActivity : BaseActivity() {
         if (searchItem != null) {
             val searchView = searchItem.actionView as SearchView
             searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    return false
-                }
+                override fun onQueryTextSubmit(query: String?): Boolean = false
 
                 override fun onQueryTextChange(newText: String?): Boolean {
-                    filterProxyApp(newText?:"")
+                    filterProxyApp(newText.orEmpty())
                     return false
                 }
             })
@@ -250,9 +248,7 @@ class PerAppProxyActivity : BaseActivity() {
 
     private fun importProxyApp() {
         val content = Utils.getClipboard(applicationContext)
-        if (TextUtils.isEmpty(content)) {
-            return
-        }
+        if (TextUtils.isEmpty(content)) return
         selectProxyApp(content, false)
         toast(R.string.toast_success)
     }
@@ -274,9 +270,7 @@ class PerAppProxyActivity : BaseActivity() {
             } else {
                 content
             }
-            if (TextUtils.isEmpty(proxyApps)) {
-                return false
-            }
+            if (TextUtils.isEmpty(proxyApps)) return false
 
             adapter?.blacklist?.clear()
 
@@ -316,12 +310,8 @@ class PerAppProxyActivity : BaseActivity() {
 
     private fun inProxyApps(proxyApps: String, packageName: String, force: Boolean): Boolean {
         if (force) {
-            if (packageName == "com.google.android.webview") {
-                return false
-            }
-            if (packageName.startsWith("com.google")) {
-                return true
-            }
+            if (packageName == "com.google.android.webview") return false
+            if (packageName.startsWith("com.google")) return true
         }
 
         return proxyApps.indexOf(packageName) >= 0

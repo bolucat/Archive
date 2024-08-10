@@ -1,8 +1,7 @@
 import { useThrottle } from "ahooks";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import CloseConnectionsButton from "@/components/connections/close-connections-button";
-import ConnectionsTable from "@/components/connections/connections-table";
+import { SearchTermCtx } from "@/components/connections/connection-search-term";
 import HeaderSearch from "@/components/connections/header-search";
 import { BasePage } from "@nyanpasu/ui";
 
@@ -14,22 +13,21 @@ export const Connections = () => {
   const throttledSearchTerm = useThrottle(searchTerm, { wait: 150 });
 
   return (
-    <BasePage
-      title={t("Connections")}
-      full
-      header={
-        <div className="max-h-96">
-          <HeaderSearch
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      }
-    >
-      <ConnectionsTable searchTerm={throttledSearchTerm} />
-
-      <CloseConnectionsButton />
-    </BasePage>
+    <SearchTermCtx.Provider value={throttledSearchTerm}>
+      <BasePage
+        title={t("Connections")}
+        full
+        header={
+          <div className="max-h-96">
+            <HeaderSearch
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        }
+        children={() => import("@/components/connections/connection-page")}
+      ></BasePage>
+    </SearchTermCtx.Provider>
   );
 };
 

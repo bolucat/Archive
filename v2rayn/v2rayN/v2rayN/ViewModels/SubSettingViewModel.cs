@@ -1,23 +1,19 @@
 ﻿using DynamicData;
 using DynamicData.Binding;
-using MaterialDesignThemes.Wpf;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Splat;
 using System.Reactive;
-using System.Windows;
+using v2rayN.Base;
+using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Models;
 using v2rayN.Resx;
-using v2rayN.Views;
 
 namespace v2rayN.ViewModels
 {
-    public class SubSettingViewModel : ReactiveObject
+    public class SubSettingViewModel : MyReactiveObject
     {
-        private static Config _config;
-        private NoticeHandler? _noticeHandler;
-
         private IObservableCollection<SubItem> _subItems = new ObservableCollectionExtended<SubItem>();
         public IObservableCollection<SubItem> SubItems => _subItems;
 
@@ -32,10 +28,11 @@ namespace v2rayN.ViewModels
         public ReactiveCommand<Unit, Unit> SubShareCmd { get; }
         public bool IsModified { get; set; }
 
-        public SubSettingViewModel(Window view)
+        public SubSettingViewModel(Func<EViewAction, object?, bool>? updateView)
         {
             _config = LazyConfig.Instance.GetConfig();
             _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _updateView = updateView;
 
             SelectedSource = new();
 
@@ -59,10 +56,8 @@ namespace v2rayN.ViewModels
             }, canEditRemove);
             SubShareCmd = ReactiveCommand.Create(() =>
             {
-                SubShare();
+                _updateView?.Invoke(EViewAction.SubShare, SelectedSource?.url);
             }, canEditRemove);
-
-            Utils.SetDarkBorder(view, _config.uiItem.followSystemTheme ? !Utils.IsLightTheme() : _config.uiItem.colorModeDark);
         }
 
         public void RefreshSubItems()
@@ -86,8 +81,7 @@ namespace v2rayN.ViewModels
                     return;
                 }
             }
-            var ret = (new SubEditWindow(item)).ShowDialog();
-            if (ret == true)
+            if (_updateView?.Invoke(EViewAction.SubEditWindow, item) == true)
             {
                 RefreshSubItems();
                 IsModified = true;
@@ -96,7 +90,7 @@ namespace v2rayN.ViewModels
 
         private void DeleteSub()
         {
-            if (UI.ShowYesNo(ResUI.RemoveServer) == MessageBoxResult.No)
+            if (_updateView?.Invoke(EViewAction.ShowYesNo, null) == false)
             {
                 return;
             }
@@ -108,22 +102,6 @@ namespace v2rayN.ViewModels
             RefreshSubItems();
             _noticeHandler?.Enqueue(ResUI.OperationSuccess);
             IsModified = true;
-        }
-
-        private async void SubShare()
-        {
-            if (Utils.IsNullOrEmpty(SelectedSource?.url))
-            {
-                return;
-            }
-            var img = QRCodeHelper.GetQRCode(SelectedSource?.url);
-            var dialog = new QrcodeView()
-            {
-                imgQrcode = { Source = img },
-                txtContent = { Text = SelectedSource?.url },
-            };
-
-            await DialogHost.Show(dialog, "SubDialog");
         }
     }
 }
