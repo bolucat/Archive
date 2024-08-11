@@ -4,15 +4,9 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatError } from "@/utils";
 import { message } from "@/utils/notification";
-import LoadingButton from "@mui/lab/LoadingButton";
 import { Box, List, ListItem } from "@mui/material";
-import {
-  ClashCore,
-  useClash,
-  useNyanpasu,
-  VergeConfig,
-} from "@nyanpasu/interface";
-import { BaseCard, ExpandMore } from "@nyanpasu/ui";
+import { ClashCore, useClash, useNyanpasu } from "@nyanpasu/interface";
+import { BaseCard, ExpandMore, LoadingButton } from "@nyanpasu/ui";
 import { ClashCoreItem } from "./modules/clash-core";
 
 export const SettingClashCore = () => {
@@ -20,8 +14,6 @@ export const SettingClashCore = () => {
 
   const loading = useReactive({
     mask: false,
-    restart: false,
-    check: false,
   });
 
   const [expand, setExpand] = useState(false);
@@ -32,7 +24,6 @@ export const SettingClashCore = () => {
     getClashCore,
     restartSidecar,
     getLatestCore,
-    updateCore,
   } = useNyanpasu({
     onLatestCoreError: (error) => {
       message(`Fetch latest core failed: ${formatError(error)}`, {
@@ -84,10 +75,8 @@ export const SettingClashCore = () => {
     }
   });
 
-  const handleRestart = useLockFn(async () => {
+  const handleRestart = async () => {
     try {
-      loading.restart = true;
-
       await restartSidecar();
 
       message(t("Successfully restart core"), {
@@ -99,47 +88,19 @@ export const SettingClashCore = () => {
         type: "error",
         title: t("Error"),
       });
-    } finally {
-      loading.restart = false;
     }
-  });
+  };
 
-  const handleCheckUpdates = useLockFn(async () => {
+  const handleCheckUpdates = async () => {
     try {
-      loading.check = true;
-
       await getLatestCore.mutate();
     } catch (e) {
       message("Fetch failed, please check your internet connection.", {
         type: "error",
         title: t("Error"),
       });
-    } finally {
-      loading.check = false;
     }
-  });
-
-  const handleUpdateCore = useLockFn(
-    async (core: Required<VergeConfig>["clash_core"]) => {
-      try {
-        loading.mask = true;
-
-        await updateCore(core);
-
-        message(`Successfully update core ${core}`, {
-          type: "info",
-          title: t("Success"),
-        });
-      } catch (e) {
-        message(`Update failed.`, {
-          type: "error",
-          title: t("Error"),
-        });
-      } finally {
-        loading.mask = false;
-      }
-    },
-  );
+  };
 
   const mergeCores = useMemo(() => {
     return getClashCore.data?.map((item) => {
@@ -167,7 +128,6 @@ export const SettingClashCore = () => {
           return (
             <motion.div
               key={index}
-              initial={false}
               animate={show ? "open" : "closed"}
               variants={{
                 open: {
@@ -181,12 +141,16 @@ export const SettingClashCore = () => {
                   scale: 0.7,
                 },
               }}
+              transition={{
+                type: "spring",
+                bounce: 0,
+                duration: 0.35,
+              }}
             >
               <ClashCoreItem
                 data={item}
                 selected={item.core == nyanpasuConfig?.clash_core}
                 onClick={() => changeClashCore(item.core)}
-                onUpdate={() => handleUpdateCore(item.core)}
               />
             </motion.div>
           );
@@ -201,17 +165,13 @@ export const SettingClashCore = () => {
           }}
         >
           <Box display="flex" gap={1}>
-            <LoadingButton
-              variant="outlined"
-              loading={loading.restart}
-              onClick={handleRestart}
-            >
+            <LoadingButton variant="outlined" onClick={handleRestart}>
               {t("Restart")}
             </LoadingButton>
 
             <LoadingButton
-              loading={loading.check || getLatestCore.isLoading}
               variant="contained"
+              loading={getLatestCore.isLoading}
               onClick={handleCheckUpdates}
             >
               {t("Check Updates")}

@@ -4,6 +4,7 @@ import {
   ClashConfig,
   ClashInfo,
   EnvInfos,
+  InspectUpdater,
   Profile,
   Proxies,
   SystemProxy,
@@ -109,7 +110,11 @@ export const fetchLatestCoreVersions = async () => {
 export const updateCore = async (
   coreType: Required<VergeConfig>["clash_core"],
 ) => {
-  return await invoke<void>("update_core", { coreType });
+  return await invoke<number>("update_core", { coreType });
+};
+
+export const inspectUpdater = async (updaterId: number) => {
+  return await invoke<InspectUpdater>("inspect_updater", { updaterId });
 };
 
 export const pullupUWPTool = async () => {

@@ -1,6 +1,7 @@
 package splithttp
 
 import (
+	"bytes"
 	"context"
 	gotls "crypto/tls"
 	"io"
@@ -117,7 +118,7 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 					return nil, err
 				}
 
-				var udpConn *net.UDPConn
+				var udpConn net.PacketConn
 				var udpAddr *net.UDPAddr
 
 				switch c := conn.(type) {
@@ -138,7 +139,11 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 						return nil, err
 					}
 				default:
-					return nil, errors.New("unsupported connection type: %T", conn)
+					udpConn = &internet.FakePacketConn{c}
+					udpAddr, err = net.ResolveUDPAddr("udp", c.RemoteAddr().String())
+					if err != nil {
+						return nil, err
+					}
 				}
 
 				return quic.DialEarly(ctx, udpConn, udpAddr, tlsCfg, cfg)
@@ -217,8 +222,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	}
 
 	sessionIdUuid := uuid.New()
-	requestURL.Path = transportConfiguration.GetNormalizedPath(sessionIdUuid.String(), true)
-	baseURL := requestURL.String()
+	requestURL.Path = transportConfiguration.GetNormalizedPath() + sessionIdUuid.String()
+	requestURL.RawQuery = transportConfiguration.GetNormalizedQuery()
 
 	httpClient := getHTTPClient(ctx, dest, streamSettings)
 
@@ -247,9 +252,16 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 			go func() {
 				defer requestsLimiter.Signal()
 
+				// this intentionally makes a shallow-copy of the struct so we
+				// can reassign Path (potentially concurrently)
+				url := requestURL
+				url.Path += "/" + strconv.FormatInt(seq, 10)
+				// reassign query to get different padding
+				url.RawQuery = transportConfiguration.GetNormalizedQuery()
+
 				err := httpClient.SendUploadRequest(
 					context.WithoutCancel(ctx),
-					baseURL+"/"+strconv.FormatInt(seq, 10),
+					url.String(),
 					&buf.MultiBufferContainer{MultiBuffer: chunk},
 					int64(chunk.Len()),
 				)
@@ -271,26 +283,38 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		}
 	}()
 
-	lazyRawDownload, remoteAddr, localAddr, err := httpClient.OpenDownload(context.WithoutCancel(ctx), baseURL)
+	lazyRawDownload, remoteAddr, localAddr, err := httpClient.OpenDownload(context.WithoutCancel(ctx), requestURL.String())
 	if err != nil {
 		return nil, err
 	}
 
 	lazyDownload := &LazyReader{
 		CreateReader: func() (io.ReadCloser, error) {
-			// skip "ooooooooook" response
-			trashHeader := []byte{0}
-			for {
-				_, err := io.ReadFull(lazyRawDownload, trashHeader)
-				if err != nil {
-					return nil, errors.New("failed to read initial response").Base(err)
-				}
-				if trashHeader[0] == 'k' {
-					break
-				}
+			// skip "ok" response
+			trashHeader := []byte{0, 0}
+			_, err := io.ReadFull(lazyRawDownload, trashHeader)
+			if err != nil {
+				return nil, errors.New("failed to read initial response").Base(err)
 			}
 
-			return lazyRawDownload, nil
+			if bytes.Equal(trashHeader, []byte("ok")) {
+				return lazyRawDownload, nil
+			}
+
+			// we read some garbage byte that may not have been "ok" at
+			// all. return a reader that replays what we have read so far
+			reader := io.MultiReader(
+				bytes.NewReader(trashHeader),
+				lazyRawDownload,
+			)
+			readCloser := struct {
+				io.Reader
+				io.Closer
+			}{
+				Reader: reader,
+				Closer: lazyRawDownload,
+			}
+			return readCloser, nil
 		},
 	}
 

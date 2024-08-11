@@ -22,7 +22,7 @@
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
     "@tauri-apps/api": "1.6.0",
-    "ahooks": "3.8.0",
+    "ahooks": "3.8.1",
     "allotment": "1.20.2",
     "axios": "1.7.3",
     "country-code-emoji": "2.3.0",
@@ -43,7 +43,7 @@
     "react-router-dom": "6.26.0",
     "react-split-grid": "1.0.4",
     "swr": "2.2.5",
-    "virtua": "0.33.4"
+    "virtua": "0.33.5"
   },
   "devDependencies": {
     "@emotion/babel-plugin": "11.12.0",

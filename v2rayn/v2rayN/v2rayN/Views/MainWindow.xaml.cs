@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using v2rayN.Enums;
 using v2rayN.Handler;
 using v2rayN.Models;
@@ -35,6 +36,8 @@ namespace v2rayN.Views
 
             ViewModel = new MainWindowViewModel(UpdateViewHandler);
             Locator.CurrentMutable.RegisterLazySingleton(() => ViewModel, typeof(MainWindowViewModel));
+
+            MainFormHandler.Instance.RegisterGlobalHotkey(_config, OnHotkeyHandler, null);
 
             this.WhenActivated(disposables =>
             {
@@ -105,10 +108,8 @@ namespace v2rayN.Views
                 this.BindCommand(ViewModel, vm => vm.SubUpdateCmd, v => v.menuSubUpdate2).DisposeWith(disposables);
                 this.BindCommand(ViewModel, vm => vm.SubUpdateViaProxyCmd, v => v.menuSubUpdateViaProxy2).DisposeWith(disposables);
 
-                this.OneWayBind(ViewModel, vm => vm.NotifyIcon, v => v.tbNotify.Icon).DisposeWith(disposables);
                 this.OneWayBind(ViewModel, vm => vm.RunningServerToolTipText, v => v.tbNotify.ToolTipText).DisposeWith(disposables);
                 this.OneWayBind(ViewModel, vm => vm.NotifyLeftClickCmd, v => v.tbNotify.LeftClickCommand).DisposeWith(disposables);
-                this.OneWayBind(ViewModel, vm => vm.AppIcon, v => v.Icon).DisposeWith(disposables);
 
                 //status bar
                 this.OneWayBind(ViewModel, vm => vm.InboundDisplay, v => v.txtInboundDisplay.Text).DisposeWith(disposables);
@@ -182,48 +183,122 @@ namespace v2rayN.Views
             AddHelpMenuItem();
         }
 
+        #region Event
+
         private bool UpdateViewHandler(EViewAction action, object? obj)
         {
-            if (action == EViewAction.AddServerWindow)
+            switch (action)
             {
-                if (obj is null) return false;
-                return (new AddServerWindow((ProfileItem)obj)).ShowDialog() ?? false;
-            }
-            else if (action == EViewAction.AddServer2Window)
-            {
-                if (obj is null) return false;
-                return (new AddServer2Window((ProfileItem)obj)).ShowDialog() ?? false;
-            }
-            else if (action == EViewAction.DNSSettingWindow)
-            {
-                return (new DNSSettingWindow().ShowDialog() ?? false);
-            }
-            else if (action == EViewAction.RoutingSettingWindow)
-            {
-                return (new RoutingSettingWindow().ShowDialog() ?? false);
-            }
-            else if (action == EViewAction.OptionSettingWindow)
-            {
-                return (new OptionSettingWindow().ShowDialog() ?? false);
-            }
-            else if (action == EViewAction.GlobalHotkeySettingWindow)
-            {
-                return (new GlobalHotkeySettingWindow().ShowDialog() ?? false);
-            }
-            else if (action == EViewAction.SubSettingWindow)
-            {
-                return (new SubSettingWindow().ShowDialog() ?? false);
+                case EViewAction.AddServerWindow:
+                    if (obj is null) return false;
+                    return (new AddServerWindow((ProfileItem)obj)).ShowDialog() ?? false;
+
+                case EViewAction.AddServer2Window:
+                    if (obj is null) return false;
+                    return (new AddServer2Window((ProfileItem)obj)).ShowDialog() ?? false;
+
+                case EViewAction.DNSSettingWindow:
+                    return (new DNSSettingWindow().ShowDialog() ?? false);
+
+                case EViewAction.RoutingSettingWindow:
+                    return (new RoutingSettingWindow().ShowDialog() ?? false);
+
+                case EViewAction.OptionSettingWindow:
+                    return (new OptionSettingWindow().ShowDialog() ?? false);
+
+                case EViewAction.GlobalHotkeySettingWindow:
+                    return (new GlobalHotkeySettingWindow().ShowDialog() ?? false);
+
+                case EViewAction.SubSettingWindow:
+                    return (new SubSettingWindow().ShowDialog() ?? false);
+
+                case EViewAction.ShowHideWindow:
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        ShowHideWindow((bool?)obj);
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.DispatcherStatistics:
+                    if (obj is null) return false;
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        ViewModel?.SetStatisticsResult((ServerSpeedItem)obj);
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.DispatcherServerAvailability:
+                    if (obj is null) return false;
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        ViewModel?.TestServerAvailabilityResult((string)obj);
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.DispatcherReload:
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        ViewModel?.ReloadResult();
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.DispatcherRefreshServersBiz:
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        ViewModel?.RefreshServersBiz();
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.DispatcherRefreshIcon:
+                    Application.Current?.Dispatcher.Invoke((() =>
+                    {
+                        tbNotify.Icon = MainFormHandler.Instance.GetNotifyIcon(_config);
+                        this.Icon = MainFormHandler.Instance.GetAppIcon(_config);
+                    }), DispatcherPriority.Normal);
+                    break;
+
+                case EViewAction.Shutdown:
+                    Application.Current.Shutdown();
+                    break;
+
+                case EViewAction ScanScreenTask:
+                    ScanScreenTaskAsync().ContinueWith(_ => { });
+                    break;
             }
 
             return true;
         }
 
-        #region Event
+        private void OnHotkeyHandler(EGlobalHotkey e)
+        {
+            switch (e)
+            {
+                case EGlobalHotkey.ShowForm:
+                    ShowHideWindow(null);
+                    break;
+
+                case EGlobalHotkey.SystemProxyClear:
+                    ViewModel?.SetListenerType(ESysProxyType.ForcedClear);
+                    break;
+
+                case EGlobalHotkey.SystemProxySet:
+                    ViewModel?.SetListenerType(ESysProxyType.ForcedChange);
+                    break;
+
+                case EGlobalHotkey.SystemProxyUnchanged:
+                    ViewModel?.SetListenerType(ESysProxyType.Unchanged);
+                    break;
+
+                case EGlobalHotkey.SystemProxyPac:
+                    ViewModel?.SetListenerType(ESysProxyType.Pac);
+                    break;
+            }
+        }
 
         private void MainWindow_Closing(object? sender, CancelEventArgs e)
         {
             e.Cancel = true;
-            ViewModel?.ShowHideWindow(false);
+            ShowHideWindow(false);
         }
 
         private void menuExit_Click(object sender, RoutedEventArgs e)
@@ -253,7 +328,7 @@ namespace v2rayN.Views
                         break;
 
                     case Key.S:
-                        ViewModel?.ScanScreenTaskAsync().ContinueWith(_ => { });
+                        ScanScreenTaskAsync().ContinueWith(_ => { });
                         break;
                 }
             }
@@ -269,7 +344,7 @@ namespace v2rayN.Views
         private void menuClose_Click(object sender, RoutedEventArgs e)
         {
             StorageUI();
-            ViewModel?.ShowHideWindow(false);
+            ShowHideWindow(false);
         }
 
         private void menuPromotion_Click(object sender, RoutedEventArgs e)
@@ -287,9 +362,44 @@ namespace v2rayN.Views
             Utils.ProcessStart(Utils.GetBinPath("EnableLoopback.exe"));
         }
 
+        public async Task ScanScreenTaskAsync()
+        {
+            ShowHideWindow(false);
+
+            var dpiXY = QRCodeHelper.GetDpiXY(Application.Current.MainWindow);
+            string result = await Task.Run(() =>
+            {
+                return QRCodeHelper.ScanScreen(dpiXY.Item1, dpiXY.Item2);
+            });
+
+            ShowHideWindow(true);
+
+            ViewModel?.ScanScreenTaskAsync(result);
+        }
+
         #endregion Event
 
         #region UI
+
+        public void ShowHideWindow(bool? blShow)
+        {
+            var bl = blShow ?? !_config.uiItem.showInTaskbar;
+            if (bl)
+            {
+                Application.Current.MainWindow.Show();
+                if (Application.Current.MainWindow.WindowState == WindowState.Minimized)
+                {
+                    Application.Current.MainWindow.WindowState = WindowState.Normal;
+                }
+                Application.Current.MainWindow.Activate();
+                Application.Current.MainWindow.Focus();
+            }
+            else
+            {
+                Application.Current.MainWindow.Hide();
+            }
+            _config.uiItem.showInTaskbar = bl;
+        }
 
         private void RestoreUI()
         {
