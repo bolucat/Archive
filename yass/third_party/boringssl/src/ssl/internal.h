@@ -1018,17 +1018,9 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
                                         size_t *out_consumed,
                                         uint8_t *out_alert, Span<uint8_t> in);
 
-// ssl_seal_align_prefix_len returns the length of the prefix before the start
-// of the bulk of the ciphertext when sealing a record with |ssl|. Callers may
-// use this to align buffers.
-//
-// Note when TLS 1.0 CBC record-splitting is enabled, this includes the one byte
-// record and is the offset into second record's ciphertext. Thus sealing a
-// small record may result in a smaller output than this value.
-//
-// TODO(davidben): Is this alignment valuable? Record-splitting makes this a
-// mess.
-size_t ssl_seal_align_prefix_len(const SSL *ssl);
+// ssl_needs_record_splitting returns one if |ssl|'s current outgoing cipher
+// state needs record-splitting and zero otherwise.
+bool ssl_needs_record_splitting(const SSL *ssl);
 
 // tls_seal_record seals a new record of type |type| and body |in| and writes it
 // to |out|. At most |max_out| bytes will be written. It returns true on success
@@ -1044,26 +1036,25 @@ size_t ssl_seal_align_prefix_len(const SSL *ssl);
 bool tls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
                      uint8_t type, const uint8_t *in, size_t in_len);
 
-enum dtls1_use_epoch_t {
-  dtls1_use_previous_epoch,
-  dtls1_use_current_epoch,
-};
+// dtls_record_header_write_len returns the length of the record header that
+// will be written at |epoch|.
+size_t dtls_record_header_write_len(const SSL *ssl, uint16_t epoch);
 
 // dtls_max_seal_overhead returns the maximum overhead, in bytes, of sealing a
 // record.
-size_t dtls_max_seal_overhead(const SSL *ssl, enum dtls1_use_epoch_t use_epoch);
+size_t dtls_max_seal_overhead(const SSL *ssl, uint16_t epoch);
 
 // dtls_seal_prefix_len returns the number of bytes of prefix to reserve in
 // front of the plaintext when sealing a record in-place.
-size_t dtls_seal_prefix_len(const SSL *ssl, enum dtls1_use_epoch_t use_epoch);
+size_t dtls_seal_prefix_len(const SSL *ssl, uint16_t epoch);
 
-// dtls_seal_record implements |tls_seal_record| for DTLS. |use_epoch| selects
-// which epoch's cipher state to use. Unlike |tls_seal_record|, |in| and |out|
-// may alias but, if they do, |in| must be exactly |dtls_seal_prefix_len| bytes
+// dtls_seal_record implements |tls_seal_record| for DTLS. |epoch| selects which
+// epoch's cipher state to use. Unlike |tls_seal_record|, |in| and |out| may
+// alias but, if they do, |in| must be exactly |dtls_seal_prefix_len| bytes
 // ahead of |out|.
 bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
                       uint8_t type, const uint8_t *in, size_t in_len,
-                      enum dtls1_use_epoch_t use_epoch);
+                      uint16_t epoch);
 
 // ssl_process_alert processes |in| as an alert and updates |ssl|'s shutdown
 // state. It returns one of |ssl_open_record_discard|, |ssl_open_record_error|,
@@ -2944,7 +2935,7 @@ struct SSL3_STATE {
 };
 
 // lengths of messages
-#define DTLS1_RT_HEADER_LENGTH 13
+#define DTLS1_RT_MAX_HEADER_LENGTH 13
 
 #define DTLS1_HM_HEADER_LENGTH 12
 
@@ -3023,6 +3014,11 @@ struct DTLS1_STATE {
   // save last sequence number for retransmissions
   uint64_t last_write_sequence = 0;
   UniquePtr<SSLAEADContext> last_aead_write_ctx;
+
+
+  // In DTLS 1.3, this contains the write AEAD for the initial encryption level.
+  // TODO(crbug.com/boringssl/715): Drop this when it is no longer needed.
+  UniquePtr<SSLAEADContext> initial_aead_write_ctx;
 
   // incoming_messages is a ring buffer of incoming handshake messages that have
   // yet to be processed. The front of the ring buffer is message number
@@ -3379,7 +3375,7 @@ int dtls1_write_app_data(SSL *ssl, bool *out_needs_handshake,
 // dtls1_write_record sends a record. It returns one on success and <= 0 on
 // error.
 int dtls1_write_record(SSL *ssl, int type, Span<const uint8_t> in,
-                       enum dtls1_use_epoch_t use_epoch);
+                       uint16_t epoch);
 
 int dtls1_retransmit_outgoing_messages(SSL *ssl);
 bool dtls1_parse_fragment(CBS *cbs, struct hm_header_st *out_hdr,

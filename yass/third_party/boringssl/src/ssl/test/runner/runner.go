@@ -1835,6 +1835,8 @@ var tlsVersions = []tlsVersion{
 		version:     VersionTLS13,
 		excludeFlag: "-no-tls13",
 		hasQUIC:     true,
+		hasDTLS:     true,
+		versionDTLS: VersionDTLS125Experimental,
 		versionWire: VersionTLS13,
 	},
 }
@@ -2353,7 +2355,7 @@ read alert 1 0
 		{
 			protocol:      dtls,
 			name:          "DisableEverything-DTLS",
-			flags:         []string{"-no-tls12", "-no-tls1"},
+			flags:         []string{"-no-tls13", "-no-tls12", "-no-tls1"},
 			shouldFail:    true,
 			expectedError: ":NO_SUPPORTED_VERSIONS_ENABLED:",
 		},
@@ -3219,10 +3221,13 @@ read alert 1 0
 			},
 			resumeSession: true,
 		},
+		// TODO(crbug.com/boringssl/715): This test and the next shouldn't be
+		// restricted to a max version of TLS 1.2, but they're broken in DTLS 1.3.
 		{
 			protocol: dtls,
 			name:     "DTLS-SendExtraFinished",
 			config: Config{
+				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
 					SendExtraFinished: true,
 				},
@@ -3234,6 +3239,7 @@ read alert 1 0
 			protocol: dtls,
 			name:     "DTLS-SendExtraFinished-Reordered",
 			config: Config{
+				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
 					MaxHandshakeRecordLength:  2,
 					ReorderHandshakeFragments: true,
@@ -3704,6 +3710,25 @@ read alert 1 0
 		shouldFail:    true,
 		expectedError: ":UNEXPECTED_COMPATIBILITY_MODE:",
 	})
+
+	// Clients should reject DTLS 1.3 ServerHellos that echo the legacy
+	// session ID.
+	testCases = append(testCases, testCase{
+		protocol:      dtls,
+		name:          "DTLS13CompatibilityMode-EchoSessionID",
+		resumeSession: true,
+		config: Config{
+			MaxVersion: VersionTLS12,
+		},
+		resumeConfig: &Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				DTLS13EchoSessionID: true,
+			},
+		},
+		shouldFail:    true,
+		expectedError: ":DECODE_ERROR:",
+	})
 }
 
 func addTestForCipherSuite(suite testCipherSuite, ver tlsVersion, protocol protocol) {
@@ -3767,51 +3792,53 @@ func addTestForCipherSuite(suite testCipherSuite, ver tlsVersion, protocol proto
 	// Verify exporters interoperate.
 	exportKeyingMaterial := 1024
 
-	testCases = append(testCases, testCase{
-		testType: serverTest,
-		protocol: protocol,
-		name:     prefix + ver.name + "-" + suite.name + "-server",
-		config: Config{
-			MinVersion:           ver.version,
-			MaxVersion:           ver.version,
-			CipherSuites:         []uint16{suite.id},
-			Credential:           cert,
-			PreSharedKey:         []byte(psk),
-			PreSharedKeyIdentity: pskIdentity,
-			Bugs: ProtocolBugs{
-				AdvertiseAllConfiguredCiphers: true,
+	if ver.version != VersionTLS13 || !ver.hasDTLS {
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + ver.name + "-" + suite.name + "-server",
+			config: Config{
+				MinVersion:           ver.version,
+				MaxVersion:           ver.version,
+				CipherSuites:         []uint16{suite.id},
+				Credential:           cert,
+				PreSharedKey:         []byte(psk),
+				PreSharedKeyIdentity: pskIdentity,
+				Bugs: ProtocolBugs{
+					AdvertiseAllConfiguredCiphers: true,
+				},
 			},
-		},
-		shimCertificate:      cert,
-		flags:                flags,
-		resumeSession:        true,
-		shouldFail:           shouldFail,
-		expectedError:        expectedServerError,
-		exportKeyingMaterial: exportKeyingMaterial,
-	})
+			shimCertificate:      cert,
+			flags:                flags,
+			resumeSession:        true,
+			shouldFail:           shouldFail,
+			expectedError:        expectedServerError,
+			exportKeyingMaterial: exportKeyingMaterial,
+		})
 
-	testCases = append(testCases, testCase{
-		testType: clientTest,
-		protocol: protocol,
-		name:     prefix + ver.name + "-" + suite.name + "-client",
-		config: Config{
-			MinVersion:           ver.version,
-			MaxVersion:           ver.version,
-			CipherSuites:         serverCipherSuites,
-			Credential:           cert,
-			PreSharedKey:         []byte(psk),
-			PreSharedKeyIdentity: pskIdentity,
-			Bugs: ProtocolBugs{
-				IgnorePeerCipherPreferences: shouldFail,
-				SendCipherSuite:             sendCipherSuite,
+		testCases = append(testCases, testCase{
+			testType: clientTest,
+			protocol: protocol,
+			name:     prefix + ver.name + "-" + suite.name + "-client",
+			config: Config{
+				MinVersion:           ver.version,
+				MaxVersion:           ver.version,
+				CipherSuites:         serverCipherSuites,
+				Credential:           cert,
+				PreSharedKey:         []byte(psk),
+				PreSharedKeyIdentity: pskIdentity,
+				Bugs: ProtocolBugs{
+					IgnorePeerCipherPreferences: shouldFail,
+					SendCipherSuite:             sendCipherSuite,
+				},
 			},
-		},
-		flags:                flags,
-		resumeSession:        true,
-		shouldFail:           shouldFail,
-		expectedError:        expectedClientError,
-		exportKeyingMaterial: exportKeyingMaterial,
-	})
+			flags:                flags,
+			resumeSession:        true,
+			shouldFail:           shouldFail,
+			expectedError:        expectedClientError,
+			exportKeyingMaterial: exportKeyingMaterial,
+		})
+	}
 
 	if shouldFail {
 		return
@@ -4876,6 +4903,7 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 	}
 
 	// TLS 1.3 basic handshake shapes. DTLS 1.3 isn't supported yet.
+	// TODO(crbug.com/boringssl/715): Enable these tests.
 	if config.protocol != dtls {
 		tests = append(tests, testCase{
 			name: "TLS13-1RTT-Client",
@@ -6146,8 +6174,8 @@ read alert 1 0
 		}
 	}
 	if config.protocol == dtls {
-		// TODO(davidben): DTLS 1.3 will want a similar thing for
-		// HelloRetryRequest.
+		// TODO(crbug.com/boringssl/715): DTLS 1.3 will want a similar
+		// thing for HelloRetryRequest.
 		tests = append(tests, testCase{
 			name: "SkipHelloVerifyRequest",
 			config: Config{
@@ -6579,7 +6607,8 @@ func addVersionNegotiationTests() {
 		name:     "VersionTooLow-DTLS",
 		config: Config{
 			Bugs: ProtocolBugs{
-				SendClientVersion: 0xffff,
+				SendClientVersion:     0xffff,
+				OmitSupportedVersions: true,
 			},
 		},
 		shouldFail:    true,
@@ -8201,7 +8230,7 @@ func addExtensionTests() {
 						},
 						flags: []string{
 							"-max-version",
-							strconv.Itoa(int(ver.versionWire)),
+							ver.shimFlag(protocol),
 							"-quic-transport-params",
 							base64FlagValue([]byte{3, 4}),
 							"-quic-use-legacy-codepoint", useCodepointFlag,
@@ -8516,8 +8545,10 @@ func addExtensionTests() {
 			differentSCTList = append(differentSCTList, testSCTList...)
 			differentSCTList[len(differentSCTList)-1] ^= 1
 
-			// The SCT extension did not specify that it must only be sent on resumption as it
-			// should have, so test that we tolerate but ignore it.
+			// The SCT extension did not specify that it must only be sent on the inital handshake as it
+			// should have, so test that we tolerate but ignore it. This is only an issue pre-1.3, since
+			// SCTs are sent in the CertificateEntry message in 1.3, whereas they were previously sent
+			// in an extension in the ServerHello pre-1.3.
 			testCases = append(testCases, testCase{
 				protocol: protocol,
 				name:     "SendSCTListOnResume-" + suffix,
@@ -17343,6 +17374,56 @@ write hs 4
 			},
 		})
 
+		// Test that we successfully rewind the TLS state machine and disable ECH in the
+		// case that the select_cert_cb signals that ECH is not possible for the SNI in
+		// ClientHelloInner.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + "ECH-Server-FailCallbackNeedRewind",
+			config: Config{
+				ServerName:      "secret.example",
+				ClientECHConfig: echConfig.ECHConfig,
+			},
+			flags: []string{
+				"-async",
+				"-fail-early-callback-ech-rewind",
+				"-ech-server-config", base64FlagValue(echConfig.ECHConfig.Raw),
+				"-ech-server-key", base64FlagValue(echConfig.Key),
+				"-ech-is-retry-config", "1",
+				"-expect-server-name", "public.example",
+			},
+			expectations: connectionExpectations{
+				echAccepted: false,
+			},
+		})
+
+		// Test that we correctly handle falling back to a ClientHelloOuter with
+		// no SNI (public name).
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     prefix + "ECH-Server-RewindWithNoPublicName",
+			config: Config{
+				ServerName:      "secret.example",
+				ClientECHConfig: echConfig.ECHConfig,
+				Bugs: ProtocolBugs{
+					OmitPublicName: true,
+				},
+			},
+			flags: []string{
+				"-async",
+				"-fail-early-callback-ech-rewind",
+				"-ech-server-config", base64FlagValue(echConfig.ECHConfig.Raw),
+				"-ech-server-key", base64FlagValue(echConfig.Key),
+				"-ech-is-retry-config", "1",
+				"-expect-no-server-name",
+			},
+			expectations: connectionExpectations{
+				echAccepted: false,
+			},
+		})
+
 		// Test ECH-enabled server with two ECHConfigs can decrypt client's ECH when
 		// it uses the second ECHConfig.
 		testCases = append(testCases, testCase{
@@ -19867,6 +19948,38 @@ func addCompliancePolicyTests() {
 				})
 			}
 		}
+
+		// AES-256-GCM is the most preferred.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     "Compliance-cnsa202407-" + protocol.String() + "-AES-256-preferred",
+			config: Config{
+				MinVersion:   VersionTLS13,
+				MaxVersion:   VersionTLS13,
+				CipherSuites: []uint16{TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384},
+			},
+			flags: []string{
+				"-cnsa-202407",
+			},
+			expectations: connectionExpectations{cipher: TLS_AES_256_GCM_SHA384},
+		})
+
+		// AES-128-GCM is preferred over ChaCha20-Poly1305.
+		testCases = append(testCases, testCase{
+			testType: serverTest,
+			protocol: protocol,
+			name:     "Compliance-cnsa202407-" + protocol.String() + "-AES-128-preferred",
+			config: Config{
+				MinVersion:   VersionTLS13,
+				MaxVersion:   VersionTLS13,
+				CipherSuites: []uint16{TLS_CHACHA20_POLY1305_SHA256, TLS_AES_128_GCM_SHA256},
+			},
+			flags: []string{
+				"-cnsa-202407",
+			},
+			expectations: connectionExpectations{cipher: TLS_AES_128_GCM_SHA256},
+		})
 	}
 }
 
@@ -20609,6 +20722,27 @@ func checkTests() {
 	}
 }
 
+// TODO(crbug.com/boringssl/715): Once our DTLS 1.3 implementation supports
+// resumption, remove this filter.
+func filterTests() {
+	tests := make([]testCase, 0, len(testCases))
+	isDTLS13ResumptionTest := func(test testCase) bool {
+		if !test.resumeSession {
+			return false
+		}
+		if test.protocol != dtls {
+			return false
+		}
+		return test.config.MaxVersion == VersionTLS13 || test.config.MinVersion == VersionTLS13 || test.expectations.version == VersionTLS13
+	}
+	for _, test := range testCases {
+		if !isDTLS13ResumptionTest(test) {
+			tests = append(tests, test)
+		}
+	}
+	testCases = tests
+}
+
 func main() {
 	flag.Parse()
 	var err error
@@ -20694,6 +20828,7 @@ func main() {
 	testCases = append(testCases, toAppend...)
 
 	checkTests()
+	filterTests()
 
 	dispatcher, err := newShimDispatcher()
 	if err != nil {

@@ -2,17 +2,14 @@ name: build-image
 
 on:
   schedule:
-    # 每天 UTC 时间 00:00 自动触发构建
     - cron: "0 0 * * *"
   push:
     tags:
       - "*"
-    branches:
-      - master
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "pkg/**"
+  workflow_run:
+    workflows: ["check-code"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -20,6 +17,7 @@ env:
 
 jobs:
   prepare-matrix:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -30,26 +28,27 @@ jobs:
           echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
 
   build-bin:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.21"
         id: go
 
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v4
-
-      # cache golang build
+      # Updated cache step
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-${{ hashFiles('go.sum') }}
+            ${{ runner.os }}-go-
 
       - name: build
         run: |
