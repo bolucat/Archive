@@ -5,7 +5,8 @@ WORKDIR /app
 COPY go.* ./
 RUN go mod download
 COPY . ./
-RUN go build -v -o pingtunnel
+RUN go mod tidy
+RUN cd cmd && go build -v -o pingtunnel && mv pingtunnel ../
 
 FROM debian
 COPY --from=build-env /app/pingtunnel .

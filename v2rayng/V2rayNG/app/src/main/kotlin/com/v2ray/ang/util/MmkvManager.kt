@@ -21,12 +21,14 @@ object MmkvManager {
     const val KEY_SELECTED_SERVER = "SELECTED_SERVER"
     const val KEY_ANG_CONFIGS = "ANG_CONFIGS"
 
-    private val mainStorage by lazy { MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE) }
+    val mainStorage by lazy { MMKV.mmkvWithID(ID_MAIN, MMKV.MULTI_PROCESS_MODE) }
+    val settingsStorage by lazy { MMKV.mmkvWithID(ID_SETTING, MMKV.MULTI_PROCESS_MODE) }
     private val serverStorage by lazy { MMKV.mmkvWithID(ID_SERVER_CONFIG, MMKV.MULTI_PROCESS_MODE) }
     private val profileStorage by lazy { MMKV.mmkvWithID(ID_PROFILE_CONFIG, MMKV.MULTI_PROCESS_MODE) }
     private val serverAffStorage by lazy { MMKV.mmkvWithID(ID_SERVER_AFF, MMKV.MULTI_PROCESS_MODE) }
-    private val subStorage by lazy { MMKV.mmkvWithID(ID_SUB, MMKV.MULTI_PROCESS_MODE) }
+    val subStorage by lazy { MMKV.mmkvWithID(ID_SUB, MMKV.MULTI_PROCESS_MODE) }
     private val assetStorage by lazy { MMKV.mmkvWithID(ID_ASSET, MMKV.MULTI_PROCESS_MODE) }
+    val serverRawStorage by lazy { MMKV.mmkvWithID(ID_SERVER_RAW, MMKV.MULTI_PROCESS_MODE) }
 
     fun decodeServerList(): MutableList<String> {
         val json = mainStorage?.decodeString(KEY_ANG_CONFIGS)
@@ -147,7 +149,7 @@ object MmkvManager {
         }
         val uri = URI(Utils.fixIllegalUrl(url))
         val subItem = SubscriptionItem()
-        subItem.remarks = Utils.urlDecode(uri.fragment ?: "import sub")
+        subItem.remarks = uri.fragment ?: "import sub"
         subItem.url = url
         subStorage?.encode(Utils.getUuid(), Gson().toJson(subItem))
         return 1
@@ -191,11 +193,19 @@ object MmkvManager {
         serverAffStorage?.clearAll()
     }
 
-    fun removeInvalidServer() {
-        serverAffStorage?.allKeys()?.forEach { key ->
-            decodeServerAffiliationInfo(key)?.let { aff ->
+    fun removeInvalidServer(guid: String) {
+        if (guid.isNotEmpty()) {
+            decodeServerAffiliationInfo(guid)?.let { aff ->
                 if (aff.testDelayMillis < 0L) {
-                    removeServer(key)
+                    removeServer(guid)
+                }
+            }
+        } else {
+            serverAffStorage?.allKeys()?.forEach { key ->
+                decodeServerAffiliationInfo(key)?.let { aff ->
+                    if (aff.testDelayMillis < 0L) {
+                        removeServer(key)
+                    }
                 }
             }
         }
