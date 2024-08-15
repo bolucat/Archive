@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 21
         targetSdk = 34
-        versionCode = 580
-        versionName = "1.8.36"
+        versionCode = 582
+        versionName = "1.8.37"
         multiDexEnabled = true
         splits {
             abi {
@@ -130,7 +130,6 @@ dependencies {
     implementation(libs.language.json)
     implementation(libs.quickie.bundled)
     implementation(libs.core)
-    // Updating these 2 dependencies may cause some errors. Be careful.
     implementation(libs.work.runtime.ktx)
     implementation(libs.work.multiprocess)
 }

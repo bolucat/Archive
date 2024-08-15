@@ -101,7 +101,7 @@ namespace v2rayN.ViewModels
 
         public ProfilesViewModel(Func<EViewAction, object?, bool>? updateView)
         {
-            _config = LazyConfig.Instance.GetConfig();
+            _config = LazyConfig.Instance.Config;
             _noticeHandler = Locator.Current.GetService<NoticeHandler>();
             _updateView = updateView;
 
@@ -302,6 +302,11 @@ namespace v2rayN.ViewModels
             catch
             {
             }
+        }
+
+        public void AutofitColumnWidth()
+        {
+            _updateView?.Invoke(EViewAction.AdjustMainLvColWidth, null);
         }
 
         #endregion Actions
@@ -612,6 +617,7 @@ namespace v2rayN.ViewModels
             }
             if (indexId == _config.indexId)
             {
+                RefreshServers();
                 Reload();
             }
             else

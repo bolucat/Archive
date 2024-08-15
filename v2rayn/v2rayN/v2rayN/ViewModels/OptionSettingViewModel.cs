@@ -107,7 +107,7 @@ namespace v2rayN.ViewModels
 
         public OptionSettingViewModel(Func<EViewAction, object?, bool>? updateView)
         {
-            _config = LazyConfig.Instance.GetConfig();
+            _config = LazyConfig.Instance.Config;
             _noticeHandler = Locator.Current.GetService<NoticeHandler>();
             _updateView = updateView;
 
@@ -302,17 +302,6 @@ namespace v2rayN.ViewModels
             _config.hysteriaItem.down_mbps = hyDownMbps;
             _config.coreBasicItem.enableFragment = enableFragment;
 
-            //Kcp
-            //_config.kcpItem.mtu = Kcpmtu;
-            //_config.kcpItem.tti = Kcptti;
-            //_config.kcpItem.uplinkCapacity = KcpuplinkCapacity;
-            //_config.kcpItem.downlinkCapacity = KcpdownlinkCapacity;
-            //_config.kcpItem.readBufferSize = KcpreadBufferSize;
-            //_config.kcpItem.writeBufferSize = KcpwriteBufferSize;
-            //_config.kcpItem.congestion = Kcpcongestion;
-
-            //UI
-            Utils.SetAutoRun(Global.AutoRunRegPath, Global.AutoRunName, AutoRun);
             _config.guiItem.autoRun = AutoRun;
             _config.guiItem.enableStatistics = EnableStatistics;
             _config.guiItem.keepOlderDedupl = KeepOlderDedupl;

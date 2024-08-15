@@ -222,6 +222,7 @@ namespace v2rayN.Views
             });
 
             this.Title = $"{profileItem.configType}";
+            WindowsUtils.SetDarkBorder(this, LazyConfig.Instance.Config.uiItem.followSystemTheme ? !WindowsUtils.IsLightTheme() : LazyConfig.Instance.Config.uiItem.colorModeDark);
         }
 
         private bool UpdateViewHandler(EViewAction action, object? obj)

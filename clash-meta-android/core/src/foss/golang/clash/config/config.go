@@ -38,6 +38,7 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/log"
 	R "github.com/metacubex/mihomo/rules"
+	RC "github.com/metacubex/mihomo/rules/common"
 	RP "github.com/metacubex/mihomo/rules/provider"
 	T "github.com/metacubex/mihomo/tunnel"
 
@@ -163,8 +164,8 @@ type IPTables struct {
 type Sniffer struct {
 	Enable          bool
 	Sniffers        map[snifferTypes.Type]SNIFF.SnifferConfig
-	ForceDomain     *trie.DomainSet
-	SkipDomain      *trie.DomainSet
+	ForceDomain     []C.Rule
+	SkipDomain      []C.Rule
 	ForceDnsMapping bool
 	ParsePureIp     bool
 }
@@ -338,7 +339,9 @@ type RawConfig struct {
 	FindProcessMode         P.FindProcessMode `yaml:"find-process-mode" json:"find-process-mode"`
 	GlobalClientFingerprint string            `yaml:"global-client-fingerprint"`
 	GlobalUA                string            `yaml:"global-ua"`
+	KeepAliveIdle           int               `yaml:"keep-alive-idle"`
 	KeepAliveInterval       int               `yaml:"keep-alive-interval"`
+	DisableKeepAlive        bool              `yaml:"disable-keep-alive"`
 
 	Sniffer       RawSniffer                `yaml:"sniffer" json:"sniffer"`
 	ProxyProvider map[string]map[string]any `yaml:"proxy-providers"`
@@ -624,7 +627,7 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 		}
 	}
 
-	config.Sniffer, err = parseSniffer(rawCfg.Sniffer)
+	config.Sniffer, err = parseSniffer(rawCfg.Sniffer, rules, ruleProviders)
 	if err != nil {
 		return nil, err
 	}
@@ -649,9 +652,14 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 	C.ASNUrl = cfg.GeoXUrl.ASN
 	C.GeodataMode = cfg.GeodataMode
 	C.UA = cfg.GlobalUA
+
+	if cfg.KeepAliveIdle != 0 {
+		N.KeepAliveIdle = time.Duration(cfg.KeepAliveIdle) * time.Second
+	}
 	if cfg.KeepAliveInterval != 0 {
 		N.KeepAliveInterval = time.Duration(cfg.KeepAliveInterval) * time.Second
 	}
+	N.DisableKeepAlive = cfg.DisableKeepAlive
 
 	updater.ExternalUIPath = cfg.ExternalUI
 	// checkout externalUI exist
@@ -675,6 +683,11 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 	}
 	if cfg.ExternalUIURL != "" {
 		updater.ExternalUIURL = cfg.ExternalUIURL
+	}
+
+	err := updater.PrepareUIPath()
+	if err != nil {
+		log.Errorln("PrepareUIPath error: %s", err)
 	}
 
 	return &General{
@@ -1395,27 +1408,21 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie[resolver.HostValue], rul
 			return nil, err
 		}
 
-		var host *trie.DomainTrie[struct{}]
-		// fake ip skip host filter
-		if len(cfg.FakeIPFilter) != 0 {
-			host = trie.New[struct{}]()
-			for _, domain := range cfg.FakeIPFilter {
-				_ = host.Insert(domain, struct{}{})
-			}
-			host.Optimize()
-		}
-
+		var fakeIPTrie *trie.DomainTrie[struct{}]
 		if len(dnsCfg.Fallback) != 0 {
-			if host == nil {
-				host = trie.New[struct{}]()
-			}
+			fakeIPTrie = trie.New[struct{}]()
 			for _, fb := range dnsCfg.Fallback {
 				if net.ParseIP(fb.Addr) != nil {
 					continue
 				}
-				_ = host.Insert(fb.Addr, struct{}{})
+				_ = fakeIPTrie.Insert(fb.Addr, struct{}{})
 			}
-			host.Optimize()
+		}
+
+		// fake ip skip host filter
+		host, err := parseDomain(cfg.FakeIPFilter, fakeIPTrie, rules, ruleProviders)
+		if err != nil {
+			return nil, err
 		}
 
 		pool, err := fakeip.New(fakeip.Options{
@@ -1542,7 +1549,7 @@ func parseTuicServer(rawTuic RawTuicServer, general *General) error {
 	return nil
 }
 
-func parseSniffer(snifferRaw RawSniffer) (*Sniffer, error) {
+func parseSniffer(snifferRaw RawSniffer, rules []C.Rule, ruleProviders map[string]providerTypes.RuleProvider) (*Sniffer, error) {
 	sniffer := &Sniffer{
 		Enable:          snifferRaw.Enable,
 		ForceDnsMapping: snifferRaw.ForceDnsMapping,
@@ -1605,23 +1612,83 @@ func parseSniffer(snifferRaw RawSniffer) (*Sniffer, error) {
 
 	sniffer.Sniffers = loadSniffer
 
-	forceDomainTrie := trie.New[struct{}]()
-	for _, domain := range snifferRaw.ForceDomain {
-		err := forceDomainTrie.Insert(domain, struct{}{})
-		if err != nil {
-			return nil, fmt.Errorf("error domian[%s] in force-domain, error:%v", domain, err)
-		}
+	forceDomain, err := parseDomain(snifferRaw.ForceDomain, nil, rules, ruleProviders)
+	if err != nil {
+		return nil, fmt.Errorf("error in force-domain, error:%w", err)
 	}
-	sniffer.ForceDomain = forceDomainTrie.NewDomainSet()
+	sniffer.ForceDomain = forceDomain
 
-	skipDomainTrie := trie.New[struct{}]()
-	for _, domain := range snifferRaw.SkipDomain {
-		err := skipDomainTrie.Insert(domain, struct{}{})
-		if err != nil {
-			return nil, fmt.Errorf("error domian[%s] in force-domain, error:%v", domain, err)
-		}
+	skipDomain, err := parseDomain(snifferRaw.SkipDomain, nil, rules, ruleProviders)
+	if err != nil {
+		return nil, fmt.Errorf("error in skip-domain, error:%w", err)
 	}
-	sniffer.SkipDomain = skipDomainTrie.NewDomainSet()
+	sniffer.SkipDomain = skipDomain
 
 	return sniffer, nil
+}
+
+func parseDomain(domains []string, domainTrie *trie.DomainTrie[struct{}], rules []C.Rule, ruleProviders map[string]providerTypes.RuleProvider) (domainRules []C.Rule, err error) {
+	var rule C.Rule
+	for _, domain := range domains {
+		domainLower := strings.ToLower(domain)
+		if strings.Contains(domainLower, "geosite:") {
+			subkeys := strings.Split(domain, ":")
+			subkeys = subkeys[1:]
+			subkeys = strings.Split(subkeys[0], ",")
+			for _, country := range subkeys {
+				found := false
+				for _, rule = range rules {
+					if rule.RuleType() == C.GEOSITE {
+						if strings.EqualFold(country, rule.Payload()) {
+							found = true
+							domainRules = append(domainRules, rule)
+						}
+					}
+				}
+				if !found {
+					rule, err = RC.NewGEOSITE(country, "")
+					if err != nil {
+						return nil, err
+					}
+					domainRules = append(domainRules, rule)
+				}
+			}
+		} else if strings.Contains(domainLower, "rule-set:") {
+			subkeys := strings.Split(domain, ":")
+			subkeys = subkeys[1:]
+			subkeys = strings.Split(subkeys[0], ",")
+			for _, domainSetName := range subkeys {
+				if rp, ok := ruleProviders[domainSetName]; !ok {
+					return nil, fmt.Errorf("not found rule-set: %s", domainSetName)
+				} else {
+					switch rp.Behavior() {
+					case providerTypes.IPCIDR:
+						return nil, fmt.Errorf("rule provider type error, except domain,actual %s", rp.Behavior())
+					case providerTypes.Classical:
+						log.Warnln("%s provider is %s, only matching it contain domain rule", rp.Name(), rp.Behavior())
+					default:
+					}
+				}
+				rule, err = RP.NewRuleSet(domainSetName, "", true)
+				if err != nil {
+					return nil, err
+				}
+
+				domainRules = append(domainRules, rule)
+			}
+		} else {
+			if domainTrie == nil {
+				domainTrie = trie.New[struct{}]()
+			}
+			err = domainTrie.Insert(domain, struct{}{})
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if !domainTrie.IsEmpty() {
+		rule = RP.NewDomainSet(domainTrie.NewDomainSet(), "")
+		domainRules = append(domainRules, rule)
+	}
+	return
 }

@@ -41,7 +41,7 @@ namespace v2rayN.ViewModels
 
         public RoutingRuleSettingViewModel(RoutingItem routingItem, Func<EViewAction, object?, bool>? updateView)
         {
-            _config = LazyConfig.Instance.GetConfig();
+            _config = LazyConfig.Instance.Config;
             _noticeHandler = Locator.Current.GetService<NoticeHandler>();
             _updateView = updateView;
             SelectedSource = new();
@@ -295,7 +295,7 @@ namespace v2rayN.ViewModels
                 return;
             }
 
-            DownloadHandle downloadHandle = new DownloadHandle();
+            DownloadHandler downloadHandle = new DownloadHandler();
             var result = downloadHandle.TryDownloadString(url, true, "").Result;
             if (AddBatchRoutingRules(SelectedRouting, result) == 0)
             {

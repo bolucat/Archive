@@ -1,6 +1,8 @@
-# 简介
+# 配置说明
 
-本项目使用的配置文件格式为 `json`，其中包含 `input` 和 `output` 两个数组，每个数组包含一个或多个输入/输出格式的具体配置。
+## 总览
+
+本项目使用的配置文件格式为 `json`，其中包含 `input` 和 `output` 两个数组，每个数组包含一个或多个输入或输出格式的具体配置。
 
 ```json
 {
@@ -8,6 +10,8 @@
   "output": []
 }
 ```
+
+## 支持的输入或输出格式
 
 支持的 `input` 输入格式：
 
@@ -41,16 +45,16 @@
 
 ## `input` 输入格式配置项
 
-### **clashRuleSet**：ipcidr 类型的 Clash RuleSet
+### **clashRuleSet**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：Clash `ipcidr` 类型的 ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：Clash `ipcidr` 类型的 ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -87,16 +91,16 @@
 }
 ```
 
-### **clashRuleSetClassical**：classical 类型的 Clash RuleSet
+### **clashRuleSetClassical**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：Clash `classical` 类型的 ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：Clash `classical` 类型的 ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -133,13 +137,13 @@
 }
 ```
 
-### **cutter**：用于裁剪前置步骤中的数据
+### **cutter**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值只能是 `remove`（移除 IP 地址）
-- args：（必须）
-  - wantedList：（可选，数组）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值只能是 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **wantedList**：（必须，数组）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -162,17 +166,17 @@
 }
 ```
 
-### **json**：JSON 数据格式
+### **json**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：JSON 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
-  - jsonPath：（必须，数组）项目 [@tidwall/gjson](https://github.com/tidwall/gjson) 定义的 JSON 数据读取路径，用于从 JSON 格式数据中提取需要的 IPv4 地址 和 IPv6 地址，语法参考：[https://github.com/tidwall/gjson/blob/master/SYNTAX.md](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：JSON 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+  - **jsonPath**：（必须，数组）项目 [@tidwall/gjson](https://github.com/tidwall/gjson) 定义的 JSON 数据读取路径，用于从 JSON 格式数据中提取需要的 IPv4 地址 和 IPv6 地址，语法参考：[https://github.com/tidwall/gjson/blob/master/SYNTAX.md](https://github.com/tidwall/gjson/blob/master/SYNTAX.md)
 
 ```jsonc
 {
@@ -212,15 +216,15 @@
 }
 ```
 
-### **maxmindGeoLite2ASNCSV**：MaxMind GeoLite2 ASN CSV 数据格式（`GeoLite2-ASN-CSV.zip`）
+### **maxmindGeoLite2ASNCSV**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（可选）
-  - ipv4：（可选）MaxMind GeoLite2 ASN IPv4 文件路径（`GeoLite2-ASN-Blocks-IPv4.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - ipv6:（可选）MaxMind GeoLite2 ASN IPv6 文件路径（`GeoLite2-ASN-Blocks-IPv6.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - wantedList：（可选）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（可选）
+  - **ipv4**：（可选）MaxMind GeoLite2 ASN IPv4 文件路径（`GeoLite2-ASN-Blocks-IPv4.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **ipv6**：（可选）MaxMind GeoLite2 ASN IPv6 文件路径（`GeoLite2-ASN-Blocks-IPv6.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **wantedList**：（可选）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 // 默认使用文件：
@@ -266,16 +270,16 @@
 }
 ```
 
-### **maxmindGeoLite2CountryCSV**：MaxMind GeoLite2 country CSV 数据格式（`GeoLite2-Country-CSV.zip`）
+### **maxmindGeoLite2CountryCSV**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（可选）
-  - country：（可续）MaxMind GeoLite2 Country CSV location 文件路径（`GeoLite2-Country-Locations-en.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - ipv4：（可选）MaxMind GeoLite2 Country IPv4 文件路径（`GeoLite2-Country-Blocks-IPv4.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - ipv6:（可选）MaxMind GeoLite2 Country IPv6 文件路径（`GeoLite2-Country-Blocks-IPv6.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - wantedList：（可选）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（可选）
+  - **country**：（可续）MaxMind GeoLite2 Country CSV location 文件路径（`GeoLite2-Country-Locations-en.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **ipv4**：（可选）MaxMind GeoLite2 Country IPv4 文件路径（`GeoLite2-Country-Blocks-IPv4.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **ipv6**：（可选）MaxMind GeoLite2 Country IPv6 文件路径（`GeoLite2-Country-Blocks-IPv6.csv`），可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **wantedList**：（可选）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 // 默认使用文件：
@@ -321,14 +325,14 @@
 }
 ```
 
-### **maxmindMMDB**：MaxMind GeoLite2 country mmdb 数据格式（`GeoLite2-Country.mmdb`）
+### **maxmindMMDB**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（可选）
-  - uri：（可选）MaxMind GeoLite2 Country mmdb 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。
-  - wantedList：（可选）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（可选）
+  - **uri**：（可选）MaxMind GeoLite2 Country mmdb 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。
+  - **wantedList**：（可选）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 // 默认使用文件：
@@ -373,16 +377,16 @@
 }
 ```
 
-### **mihomoMRS**：mihomo MRS 数据格式（`geoip-cn.mrs`）
+### **mihomoMRS**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：mihomo MRS 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称;不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：mihomo MRS 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称;不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -419,10 +423,10 @@
 }
 ```
 
-### **private**：局域网和私有网络 CIDR（例如：`192.168.0.0/16` 和 `127.0.0.0/8`）
+### **private**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
 
 > `private` 默认添加或移除的 CIDR 地址，见 [private.go](https://github.com/Loyalsoldier/geoip/blob/HEAD/plugin/special/private.go#L16-L36)
 
@@ -440,16 +444,16 @@
 }
 ```
 
-### **singboxSRS**：sing-box SRS 数据格式（`geoip-cn.srs`）
+### **singboxSRS**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：sing-box SRS 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：sing-box SRS 格式文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -486,13 +490,13 @@
 }
 ```
 
-### **stdin**：从 standard input 获取纯文本 IP 和 CIDR（例如：`1.1.1.1` 或 `1.0.0.0/24`）
+### **stdin**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：（必须）类别名称
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：（必须）类别名称
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 {
@@ -515,16 +519,16 @@
 }
 ```
 
-### **surgeRuleSet**：Surge RuleSet
+### **surgeRuleSet**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：Surge ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：Surge ruleset 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`。
 
 ```jsonc
 {
@@ -561,18 +565,18 @@
 }
 ```
 
-### **text**：纯文本 IP 和 CIDR（例如：`1.1.1.1` 或 `1.0.0.0/24`）
+### **text**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - name：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
-  - uri：纯文本 txt 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - inputDir：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
-  - removePrefixesInLine：（可选，数组）每一行需要移除的字符串前缀
-  - removeSuffixesInLine：（可选，数组）每一行需要移除的字符串后缀
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **name**：类别名称。（不能与 `inputDir` 同时使用；需要与 `uri` 同时使用）
+  - **uri**：纯文本 txt 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **inputDir**：需要遍历的输入目录（不遍历子目录）。（遍历的文件名作为类别名称；不能与 `name` 和 `uri` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。（与 `inputDir` 同时使用）
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+  - **removePrefixesInLine**：（可选，数组）每一行需要移除的字符串前缀
+  - **removeSuffixesInLine**：（可选，数组）每一行需要移除的字符串后缀
 
 ```jsonc
 {
@@ -627,14 +631,14 @@
 }
 ```
 
-### **v2rayGeoIPDat**：V2Ray GeoIP dat 数据格式（`geoip.dat`）
+### **v2rayGeoIPDat**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
-- args：（必须）
-  - uri：（必须）V2Ray dat 格式 geoip 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
-  - wantedList：（可选，数组）指定需要的类别/文件。
-  - onlyIPType：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值为 `add`（添加 IP 地址）或 `remove`（移除 IP 地址）
+- **args**：（必须）
+  - **uri**：（必须）V2Ray dat 格式 geoip 文件路径，可为本地文件路径或远程 `http`、`https` 文件 URL。（不能与 `inputDir` 同时使用；需要与 `name` 同时使用）
+  - **wantedList**：（可选，数组）指定需要的类别/文件。
+  - **onlyIPType**：（可选）只处理的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 {
@@ -671,15 +675,15 @@
 
 ## `output` 输出格式配置项
 
-### **clashRuleSet**：ipcidr 类型的 Clash RuleSet
+### **clashRuleSet**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - outputExtension：（可选）输出文件的扩展名
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **outputExtension**：（可选）输出文件的扩展名
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 // 默认输出目录 ./output/clash/ipcidr
@@ -725,15 +729,15 @@
 }
 ```
 
-### **clashRuleSetClassical**：classical 类型的 Clash RuleSet
+### **clashRuleSetClassical**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - outputExtension：（可选）输出文件的扩展名
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **outputExtension**：（可选）输出文件的扩展名
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 // 默认输出目录 ./output/clash/classical
@@ -779,13 +783,13 @@
 }
 ```
 
-### **lookup**：从指定的列表中查找指定的 IP 或 CIDR，将结果输出到 standard output
+### **lookup**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（必须）
-  - search：（必须）指定需要查询的 IP 或 CIDR
-  - searchList：（可选，数组）从指定的类别中查询
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（必须）
+  - **search**：（必须）指定需要查询的 IP 或 CIDR
+  - **searchList**：（可选，数组）从指定的类别中查询
 
 ```jsonc
 {
@@ -810,16 +814,16 @@
 }
 ```
 
-### **maxmindMMDB**：MaxMind mmdb 数据格式（`GeoLite2-Country.mmdb`）
+### **maxmindMMDB**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputName：（可选）输出的文件名
-  - outputDir：（可选）输出目录
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
-  - wantedList：（可选，数组）指定需要输出的类别
-  - overwriteList：（可选，数组）指定最后写入的类别（原因见👇）
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputName**：（可选）输出的文件名
+  - **outputDir**：（可选）输出目录
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **overwriteList**：（可选，数组）指定最后写入的类别（原因见👇）
 
 > 由于 MaxMind mmdb 文件格式的限制，当不同列表的 IP 或 CIDR 数据有交集或重复项时，后写入的列表的 IP 或 CIDR 数据会覆盖（overwrite）之前已写入的列表的数据。譬如，IP 1.1.1.1 同属于列表 `AU` 和列表 `Cloudflare`。如果 `Cloudflare` 在 `AU` 之后写入，则 IP `1.1.1.1` 归属于列表 `Cloudflare`。
 >
@@ -868,14 +872,14 @@
 }
 ```
 
-### **mihomoMRS**：mihomo MRS 数据格式（`geoip-cn.mrs`）
+### **mihomoMRS**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 // 默认输出目录 ./output/mrs
@@ -906,14 +910,14 @@
 }
 ```
 
-### **singboxSRS**：sing-box SRS 数据格式（`geoip-cn.srs`）
+### **singboxSRS**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 // 默认输出目录 ./output/srs
@@ -944,13 +948,13 @@
 }
 ```
 
-### **stdout**：将纯文本 CIDR 输出到 standard output（例如：`1.0.0.0/24`）
+### **stdout**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 {
@@ -979,15 +983,15 @@
 }
 ```
 
-### **surgeRuleSet**：Surge RuleSet
+### **surgeRuleSet**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - outputExtension：（可选）输出的文件的扩展名
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **outputExtension**：（可选）输出的文件的扩展名
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
 
 ```jsonc
 // 默认输出目录 ./output/surge
@@ -1033,17 +1037,17 @@
 }
 ```
 
-### **text**：纯文本 CIDR（例如：`1.0.0.0/24`）
+### **text**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputDir：（可选）输出目录
-  - outputExtension：（可选）输出的文件的扩展名
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
-  - addPrefixInLine：（可选）给输出的每一行添加的字符串前缀
-  - addSuffixInLine：（可选）给输出的每一行添加的字符串后缀
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputDir**：（可选）输出目录
+  - **outputExtension**：（可选）输出的文件的扩展名
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+  - **addPrefixInLine**：（可选）给输出的每一行添加的字符串前缀
+  - **addSuffixInLine**：（可选）给输出的每一行添加的字符串后缀
 
 ```jsonc
 // 默认输出目录 ./output/text
@@ -1099,16 +1103,16 @@
 }
 ```
 
-### **v2rayGeoIPDat**：V2Ray GeoIP dat 数据格式（`geoip.dat`）
+### **v2rayGeoIPDat**
 
-- type：（必须）输入格式的名称
-- action：（必须）操作类型，值必须为 `output`
-- args：（可选）
-  - outputName：（可选）输出的文件名
-  - outputDir：（可选）输出目录
-  - wantedList：（可选，数组）指定需要输出的类别
-  - onlyIPType：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
-  - oneFilePerList：（可选）每个类别输出为一个单独的文件，值为 `true` 或 `false`（默认值）
+- **type**：（必须）输入格式的名称
+- **action**：（必须）操作类型，值必须为 `output`
+- **args**：（可选）
+  - **outputName**：（可选）输出的文件名
+  - **outputDir**：（可选）输出目录
+  - **wantedList**：（可选，数组）指定需要输出的类别
+  - **onlyIPType**：（可选）输出的 IP 地址类型，值为 `ipv4` 或 `ipv6`
+  - **oneFilePerList**：（可选）每个类别输出为一个单独的文件，值为 `true` 或 `false`（默认值）
 
 ```jsonc
 // 默认输出目录 ./output/dat
@@ -1157,8 +1161,8 @@
   "type": "v2rayGeoIPDat",
   "action": "output",
   "args": {
-    "wantedList": ["telegram", "google"], // 只输出 telegram、google、cloudflare
-    "onlyIPType": "ipv4",                 // 只输出 telegram、google、cloudflare 类别的 IPv4 地址
+    "wantedList": ["telegram", "google"], // 只输出 telegram、google
+    "onlyIPType": "ipv4",                 // 只输出 telegram、google 类别的 IPv4 地址
     "oneFilePerList": true                // 每个类别输出为一个单独的文件
   }
 }

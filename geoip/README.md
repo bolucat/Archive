@@ -28,7 +28,7 @@ This project releases various formats of GeoIP files automatically every Thursda
 
 > 如果无法访问域名 `raw.githubusercontent.com`，可以使用第二个地址 `cdn.jsdelivr.net`。
 > 如果无法访问域名 `cdn.jsdelivr.net`，可以将其替换为 `fastly.jsdelivr.net`。
-> 
+>
 > *.sha256sum 为校验文件。
 
 ### V2Ray dat 格式文件
@@ -155,7 +155,7 @@ MaxMind 官方版**国家/地区**类型 mmdb 文件：
 
 > 适用于 [Clash](https://github.com/Dreamacro/clash)、[mihomo](https://github.com/MetaCubeX/mihomo/tree/Meta)、[Shadowrocket](https://apps.apple.com/us/app/id932747118)、[Quantumult X](https://apps.apple.com/us/app/id1443988620)、[Surge](https://nssurge.com)、[Leaf](https://github.com/eycorsican/leaf)。
 
-> 适用于 [Nginx](https://nginx.org)，需要配合 [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) 模块使用。只保留了 `country` 下的 `iso_code`（两位英文字母表示的国家/地区代码）。
+> 适用于 [Nginx](https://nginx.org)，需要配合 [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) 模块使用。只保留了 `country` 下的 `iso_code`（两位英文字母表示的国家/地区代码）字段。
 
 - **GeoLite2-Country.mmdb**：
   - [https://raw.githubusercontent.com/Loyalsoldier/geoip/release/GeoLite2-Country.mmdb](https://raw.githubusercontent.com/Loyalsoldier/geoip/release/GeoLite2-Country.mmdb)
@@ -179,7 +179,7 @@ MaxMind 官方版 **ASN** 类型 mmdb 文件：
 
 > 适用于 [Clash](https://github.com/Dreamacro/clash)、[mihomo](https://github.com/MetaCubeX/mihomo/tree/Meta)、[Shadowrocket](https://apps.apple.com/us/app/id932747118)、[Quantumult X](https://apps.apple.com/us/app/id1443988620)、[Surge](https://nssurge.com)、[Leaf](https://github.com/eycorsican/leaf)。
 
-> 适用于 [Nginx](https://nginx.org)，需要配合 [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) 模块使用。只保留了 `country` 下的 `iso_code`（两位英文字母表示的国家/地区代码）。
+> 适用于 [Nginx](https://nginx.org)，需要配合 [ngx_http_geoip2_module](https://github.com/leev/ngx_http_geoip2_module) 模块使用。只保留了 `country` 下的 `iso_code`（两位英文字母表示的国家/地区代码）字段。
 
 - **Country.mmdb**：
   - [https://raw.githubusercontent.com/Loyalsoldier/geoip/release/Country.mmdb](https://raw.githubusercontent.com/Loyalsoldier/geoip/release/Country.mmdb)
@@ -482,7 +482,16 @@ These two concepts are notable: `input` and `output`. The `input` is the data so
 
 ## CLI 功能展示
 
-可通过 `go install -v github.com/Loyalsoldier/geoip@latest` 直接安装 CLI。
+可通过 `go install -v github.com/Loyalsoldier/geoip@latest` 直接安装 CLI 工具。
+
+CLI 提供的功能如下：
+
+- 列出支持的 `input` 和 `output` 格式（`list`）
+- GeoIP 数据格式转换（`convert`）
+- 查找 IP 或 CIDR 所在类别（`lookup`）
+- 去重和合并 IP 与 CIDR（`merge`）
+
+### 总览
 
 ```bash
 $ ./geoip
@@ -503,6 +512,8 @@ Flags:
 
 Use "geoip [command] --help" for more information about a command.
 ```
+
+### 列出支持的 `input` 和 `output` 格式（`list`）
 
 ```bash
 $ ./geoip list
@@ -536,6 +547,8 @@ All available output formats:
   - v2rayGeoIPDat (Convert data to V2Ray GeoIP dat format)
 ```
 
+### 去重和合并 IP 与 CIDR（`merge`）
+
 ```bash
 $ curl -s https://core.telegram.org/resources/cidr.txt | ./geoip merge -t ipv4
 91.105.192.0/23
@@ -546,6 +559,8 @@ $ curl -s https://core.telegram.org/resources/cidr.txt | ./geoip merge -t ipv4
 149.154.160.0/20
 185.76.151.0/24
 ```
+
+### GeoIP 数据格式转换（`convert`）
 
 ```bash
 $ ./geoip convert -c config.json
@@ -578,6 +593,8 @@ $ ./geoip convert -c config.json
 2021/08/29 12:11:50 ✅ [mihomoMRS] facebook.txt --> output/mrs
 2021/08/29 12:11:50 ✅ [mihomoMRS] fastly.txt --> output/mrs
 ```
+
+### 查找 IP 或 CIDR 所在类别（`lookup`）
 
 ```bash
 # lookup one IP from local file

@@ -9,6 +9,8 @@ import (
 
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/component/trie"
+	C "github.com/metacubex/mihomo/constant"
+	RP "github.com/metacubex/mihomo/rules/provider"
 
 	"github.com/sagernet/bbolt"
 	"github.com/stretchr/testify/assert"
@@ -150,11 +152,12 @@ func TestPool_CycleUsed(t *testing.T) {
 func TestPool_Skip(t *testing.T) {
 	ipnet := netip.MustParsePrefix("192.168.0.1/29")
 	tree := trie.New[struct{}]()
-	tree.Insert("example.com", struct{}{})
+	assert.NoError(t, tree.Insert("example.com", struct{}{}))
+	assert.False(t, tree.IsEmpty())
 	pools, tempfile, err := createPools(Options{
 		IPNet: ipnet,
 		Size:  10,
-		Host:  tree,
+		Host:  []C.Rule{RP.NewDomainSet(tree.NewDomainSet(), "")},
 	})
 	assert.Nil(t, err)
 	defer os.Remove(tempfile)
