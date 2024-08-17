@@ -1,4 +1,5 @@
 using MaterialDesignThemes.Wpf;
+using Microsoft.Win32;
 using ReactiveUI;
 using Splat;
 using System.Reactive.Disposables;
@@ -86,7 +87,9 @@ namespace v2rayN.Views
 
                 //servers export
                 this.BindCommand(ViewModel, vm => vm.Export2ClientConfigCmd, v => v.menuExport2ClientConfig).DisposeWith(disposables);
+                this.BindCommand(ViewModel, vm => vm.Export2ClientConfigClipboardCmd, v => v.menuExport2ClientConfigClipboard).DisposeWith(disposables);
                 this.BindCommand(ViewModel, vm => vm.Export2ShareUrlCmd, v => v.menuExport2ShareUrl).DisposeWith(disposables);
+                this.BindCommand(ViewModel, vm => vm.Export2ShareUrlBase64Cmd, v => v.menuExport2ShareUrlBase64).DisposeWith(disposables);
             });
 
             RestoreUI();
@@ -120,6 +123,21 @@ namespace v2rayN.Views
                     {
                         return false;
                     }
+                    break;
+
+                case EViewAction.SaveFileDialog:
+                    if (obj is null) return false;
+                    SaveFileDialog fileDialog = new()
+                    {
+                        Filter = "Config|*.json",
+                        FilterIndex = 2,
+                        RestoreDirectory = true
+                    };
+                    if (fileDialog.ShowDialog() != true)
+                    {
+                        return false;
+                    }
+                    ViewModel?.Export2ClientConfigResult(fileDialog.FileName, (ProfileItem)obj);
                     break;
 
                 case EViewAction.AddServerWindow:
@@ -188,7 +206,7 @@ namespace v2rayN.Views
             }
             else
             {
-                ViewModel?.EditServer(false, EConfigType.Custom);
+                ViewModel?.EditServer(EConfigType.Custom);
             }
         }
 
@@ -220,11 +238,11 @@ namespace v2rayN.Views
                         break;
 
                     case Key.C:
-                        ViewModel?.Export2ShareUrl();
+                        ViewModel?.Export2ShareUrl(false);
                         break;
 
                     case Key.D:
-                        ViewModel?.EditServer(false, EConfigType.Custom);
+                        ViewModel?.EditServer(EConfigType.Custom);
                         break;
 
                     case Key.F:

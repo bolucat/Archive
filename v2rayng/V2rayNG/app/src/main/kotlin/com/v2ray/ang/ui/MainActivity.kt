@@ -32,7 +32,6 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityMainBinding
 import com.v2ray.ang.dto.EConfigType
-import com.v2ray.ang.extension.isNetworkConnected
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.service.V2RayServiceManager
@@ -199,14 +198,10 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
     }
 
     fun startV2Ray() {
-        if (isNetworkConnected) {
-            if (MmkvManager.mainStorage?.decodeString(MmkvManager.KEY_SELECTED_SERVER).isNullOrEmpty()) {
-                return
-            }
-            V2RayServiceManager.startV2Ray(this)
-        } else {
-            ToastCompat.makeText(this, getString(R.string.connection_test_fail), Toast.LENGTH_LONG).show()
+        if (MmkvManager.mainStorage?.decodeString(MmkvManager.KEY_SELECTED_SERVER).isNullOrEmpty()) {
+            return
         }
+        V2RayServiceManager.startV2Ray(this)
     }
 
     fun restartV2Ray() {
@@ -236,12 +231,12 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         if (searchItem != null) {
             val searchView = searchItem.actionView as SearchView
             searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-                override fun onQueryTextSubmit(query: String?): Boolean {
-                    mainViewModel.filterConfig(query.orEmpty())
+                override fun onQueryTextSubmit(query: String?): Boolean = false
+
+                override fun onQueryTextChange(newText: String?): Boolean {
+                    mainViewModel.filterConfig(newText.orEmpty())
                     return false
                 }
-
-                override fun onQueryTextChange(newText: String?): Boolean = false
             })
 
             searchView.setOnCloseListener {

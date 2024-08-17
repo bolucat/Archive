@@ -11,8 +11,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 21
         targetSdk = 34
-        versionCode = 582
-        versionName = "1.8.37"
+        versionCode = 583
+        versionName = "1.8.38"
         multiDexEnabled = true
         splits {
             abi {
@@ -68,12 +68,9 @@ android {
                     "universal"
 
                 output.outputFileName = "v2rayNG_${variant.versionName}_${abi}.apk"
-                if(versionCodes.containsKey(abi))
-                {
+                if (versionCodes.containsKey(abi)) {
                     output.versionCodeOverride = (1000000 * versionCodes[abi]!!).plus(variant.versionCode)
-                }
-                else
-                {
+                } else {
                     return@forEach
                 }
             }
@@ -92,7 +89,7 @@ android {
 }
 
 dependencies {
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar","*.jar"))))
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar", "*.jar"))))
     testImplementation(libs.junit)
 
     implementation(libs.flexbox)
