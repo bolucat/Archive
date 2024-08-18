@@ -17,4 +17,13 @@ ScopedJavaLocalRef<jobject> ArrayToList(JNIEnv* env,
   return nullptr;
 }
 
+ScopedJavaLocalRef<jobjectArray> MapToArray(JNIEnv* env,
+                                            const JavaRef<jobject>& map) {
+  return nullptr;
+}
+ScopedJavaLocalRef<jobject> ArrayToMap(JNIEnv* env,
+                                       const JavaRef<jobjectArray>& array) {
+  return nullptr;
+}
+
 }  // namespace jni_zero

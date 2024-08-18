@@ -28,9 +28,9 @@ cd -
 echo $CLANG_REVISION >third_party/llvm-build/Release+Asserts/cr_build_revision
 if [ ! -d third_party/llvm-build/Release+Asserts/bin ]; then
   mkdir -p third_party/llvm-build/Release+Asserts
-  clang_path="clang-$CLANG_REVISION.tgz"
+  clang_path="clang-$CLANG_REVISION.tar.xz"
   clang_url="https://commondatastorage.googleapis.com/chromium-browser-clang/$WITH_CLANG/$clang_path"
-  curl "$clang_url" | tar xzf - -C third_party/llvm-build/Release+Asserts
+  curl "$clang_url" | tar xJf - -C third_party/llvm-build/Release+Asserts
 fi
 
 # sccache

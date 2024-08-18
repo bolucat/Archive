@@ -21,7 +21,7 @@
 #include "quiche/quic/platform/api/quic_export.h"
 #include "quiche/quic/platform/api/quic_exported_stats.h"
 #include "quiche/quic/platform/api/quic_flags.h"
-#include "quiche/spdy/core/http2_header_block.h"
+#include "quiche/common/http/http_header_block.h"
 
 namespace quic {
 
@@ -53,7 +53,7 @@ class QUICHE_EXPORT QpackEncoder : public QpackDecoderStreamReceiver::Delegate {
   // |*encoder_stream_sent_byte_count| will be set to the number of bytes sent
   // on the encoder stream to insert dynamic table entries.
   std::string EncodeHeaderList(QuicStreamId stream_id,
-                               const spdy::Http2HeaderBlock& header_list,
+                               const quiche::HttpHeaderBlock& header_list,
                                QuicByteCount* encoder_stream_sent_byte_count);
 
   // Set maximum dynamic table capacity to |maximum_dynamic_table_capacity|,
@@ -137,7 +137,7 @@ class QUICHE_EXPORT QpackEncoder : public QpackDecoderStreamReceiver::Delegate {
   // absolute indices.  Returned representation objects may have
   // absl::string_views pointing to strings owned by |*header_list|.
   Representations FirstPassEncode(
-      QuicStreamId stream_id, const spdy::Http2HeaderBlock& header_list,
+      QuicStreamId stream_id, const quiche::HttpHeaderBlock& header_list,
       QpackBlockingManager::IndexSet* referred_indices,
       QuicByteCount* encoder_stream_sent_byte_count);
 
@@ -155,10 +155,6 @@ class QUICHE_EXPORT QpackEncoder : public QpackDecoderStreamReceiver::Delegate {
   uint64_t maximum_blocked_streams_;
   QpackBlockingManager blocking_manager_;
   int header_list_count_;
-
-  // Latched value of reloadable_flag_quic_better_qpack_compression.
-  const bool better_compression_ =
-      GetQuicReloadableFlag(quic_better_qpack_compression);
 };
 
 // QpackEncoder::DecoderStreamErrorDelegate implementation that does nothing.

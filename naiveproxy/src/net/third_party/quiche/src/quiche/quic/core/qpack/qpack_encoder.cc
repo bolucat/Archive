@@ -78,7 +78,7 @@ QpackEncoder::Representation QpackEncoder::EncodeLiteralHeaderField(
 }
 
 QpackEncoder::Representations QpackEncoder::FirstPassEncode(
-    QuicStreamId stream_id, const spdy::Http2HeaderBlock& header_list,
+    QuicStreamId stream_id, const quiche::HttpHeaderBlock& header_list,
     QpackBlockingManager::IndexSet* referred_indices,
     QuicByteCount* encoder_stream_sent_byte_count) {
   // If previous instructions are buffered in |encoder_stream_sender_|,
@@ -176,14 +176,6 @@ QpackEncoder::Representations QpackEncoder::FirstPassEncode(
         }
 
         // Match cannot be used.
-
-        if (!better_compression_) {
-          // Encode entry as string literals.
-          representations.push_back(EncodeLiteralHeaderField(name, value));
-          break;
-        }
-
-        QUIC_RELOADABLE_FLAG_COUNT(quic_better_qpack_compression);
 
         QpackEncoderHeaderTable::MatchResult match_result_name_only =
             header_table_.FindHeaderName(name);
@@ -397,7 +389,7 @@ std::string QpackEncoder::SecondPassEncode(
 }
 
 std::string QpackEncoder::EncodeHeaderList(
-    QuicStreamId stream_id, const spdy::Http2HeaderBlock& header_list,
+    QuicStreamId stream_id, const quiche::HttpHeaderBlock& header_list,
     QuicByteCount* encoder_stream_sent_byte_count) {
   // Keep track of all dynamic table indices that this header block refers to so
   // that it can be passed to QpackBlockingManager.

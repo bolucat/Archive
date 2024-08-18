@@ -98,6 +98,10 @@ source_set("libc++abi") {
 
   # libc++abi depends on libc++ internals.
   include_dirs = [ "//third_party/libc++/src/src" ]
+
+  if (use_libcxx_modules) {
+    configs -= [ "//build/config/compiler:libcxx_module" ]
+  }
   if (!is_apple) {
     sources -= [
       "//third_party/libc++abi/src/src/cxa_exception.cpp",

@@ -26,7 +26,7 @@
 #include "net/base/url_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/log/net_log.h"
-#include "net/third_party/quiche/src/quiche/spdy/core/hpack/hpack_constants.h"
+#include "net/third_party/quiche/src/quiche/http2/hpack/hpack_constants.h"
 #include "net/tools/naive/naive_protocol.h"
 #include "net/tools/naive/naive_proxy_delegate.h"
 #include "url/gurl.h"

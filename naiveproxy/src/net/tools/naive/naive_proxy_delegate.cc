@@ -18,7 +18,7 @@
 #include "net/base/proxy_string_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
-#include "net/third_party/quiche/src/quiche/spdy/core/hpack/hpack_constants.h"
+#include "net/third_party/quiche/src/quiche/http2/hpack/hpack_constants.h"
 
 namespace net {
 namespace {

@@ -10,8 +10,8 @@ namespace net {
 namespace android {
 
 void VerifyX509CertChain(const std::vector<std::string>& cert_chain,
-                         base::StringPiece auth_type,
-                         base::StringPiece host,
+                         std::string_view auth_type,
+                         std::string_view host,
                          CertVerifyStatusAndroid* status,
                          bool* is_issued_by_known_root,
                          std::vector<std::string>* verified_chain) {
@@ -23,7 +23,7 @@ void AddTestRootCertificate(const uint8_t* cert, size_t len) {
 void ClearTestRootCertificates() {
 }
 
-bool IsCleartextPermitted(base::StringPiece host) {
+bool IsCleartextPermitted(std::string_view host) {
   return true;
 }
 
@@ -31,7 +31,7 @@ bool HaveOnlyLoopbackAddresses() {
   return false;
 }
 
-bool GetMimeTypeFromExtension(base::StringPiece extension,
+bool GetMimeTypeFromExtension(std::string_view extension,
                               std::string* result) {
   return false;
 }

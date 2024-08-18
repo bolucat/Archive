@@ -168,12 +168,6 @@ if (is_fuchsia) {
   }
 }
 
-if (enable_pkeys && is_debug) {
-  config("no_stack_protector") {
-    cflags = [ "-fno-stack-protector" ]
-  }
-}
-
 buildflag_header("ios_cronet_buildflags") {
   header = "ios_cronet_buildflags.h"
   header_dir = "base/message_loop"
@@ -276,6 +270,7 @@ component("base") {
     "containers/map_util.h",
     "containers/small_map.h",
     "containers/span.h",
+    "containers/span_or_size.h",
     "containers/span_reader.h",
     "containers/span_writer.h",
     "containers/stack.h",
@@ -576,6 +571,8 @@ component("base") {
     "profiler/stack_sampler.h",
     "profiler/stack_sampling_profiler.cc",
     "profiler/stack_sampling_profiler.h",
+    "profiler/stack_unwind_data.cc",
+    "profiler/stack_unwind_data.h",
     "profiler/suspendable_thread_delegate.h",
     "profiler/thread_delegate.h",
     "profiler/unwinder.cc",
@@ -583,6 +580,7 @@ component("base") {
     "rand_util.cc",
     "rand_util.h",
     "ranges/algorithm.h",
+    "ranges/from_range.h",
     "ranges/functional.h",
     "ranges/ranges.h",
     "run_loop.cc",
@@ -629,7 +627,6 @@ component("base") {
     "strings/string_number_conversions.cc",
     "strings/string_number_conversions.h",
     "strings/string_number_conversions_internal.h",
-    "strings/string_piece.h",
     "strings/string_split.cc",
     "strings/string_split.h",
     "strings/string_split_internal.h",
@@ -825,7 +822,6 @@ component("base") {
     "task/thread_pool/worker_thread_waitable_event.cc",
     "task/thread_pool/worker_thread_waitable_event.h",
     "task/updateable_sequenced_task_runner.h",
-    "template_util.h",
     "test/scoped_logging_settings.h",
     "test/spin_wait.h",
     "third_party/cityhash/city.cc",
@@ -1063,6 +1059,10 @@ component("base") {
     "//build/config/compiler:compiler_buildflags",
     "//third_party/modp_b64",
   ]
+  if (!is_nacl) {
+    # Used by metrics/crc32, except on NaCl builds.
+    deps += [ "//third_party/zlib" ]
+  }
 
   # `raw_ptr` cannot be made a component due to CRT symbol issues.
   # Its gateway to being a component is through `//base`, so we have
@@ -1110,7 +1110,7 @@ component("base") {
     ]
 
     # Base provides conversions between CXX types and base types (e.g.
-    # StringPiece).
+    # std::string_view).
     public_deps += [ "//build/rust:cxx_cppdeps" ]
   }
 
@@ -1265,7 +1265,6 @@ component("base") {
       "android/jni_string.h",
       "android/jni_utils.cc",
       "android/jni_utils.h",
-      "android/jni_weak_ref.cc",
       "android/jni_weak_ref.h",
       "android/library_loader/library_loader_hooks.cc",
       "android/library_loader/library_loader_hooks.h",
@@ -1281,6 +1280,17 @@ component("base") {
     deps += [ "//build:robolectric_buildflags" ]
     public_deps += [ "//third_party/jni_zero:jni_zero" ]
   }  # is_android || is_robolectric
+
+  if (is_android && !is_robolectric) {
+    # The robolectic toolchain doesn't provide the NDK headers required for data
+    # and function type definitions used by BinderApi et al.
+    sources += [
+      "android/binder.cc",
+      "android/binder.h",
+      "android/binder_box.cc",
+      "android/binder_box.h",
+    ]
+  }
 
   # Chromeos.
   if (is_chromeos) {
@@ -2517,7 +2527,7 @@ buildflag_header("protected_memory_buildflags") {
   header_dir = "base/memory"
 
   # Currently Protected Memory is only supported on Windows.
-  protected_memory_enabled = is_win
+  protected_memory_enabled = !is_component_build && is_win
 
   flags = [ "PROTECTED_MEMORY_ENABLED=$protected_memory_enabled" ]
 }
@@ -2560,6 +2570,8 @@ buildflag_header("sanitizer_buildflags") {
 
   flags = [
     "IS_HWASAN=$is_hwasan",
+    "IS_UBSAN=$is_ubsan",
+    "IS_UBSAN_SECURITY=$is_ubsan_security",
     "USING_SANITIZER=$using_sanitizer",
   ]
 }

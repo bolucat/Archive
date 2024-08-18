@@ -306,7 +306,7 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
     # earliest supported version of glibc (2.26).
     features_h = os.path.join(install_root, "usr", "include", "features.h")
     replace_in_file(features_h, r"(#define\s+__GLIBC_MINOR__)", r"\1 26 //")
-		
+
     # fcntl64() was introduced in glibc 2.28. Make sure to use fcntl() instead.
     fcntl_h = os.path.join(install_root, "usr", "include", "fcntl.h")
     replace_in_file(
