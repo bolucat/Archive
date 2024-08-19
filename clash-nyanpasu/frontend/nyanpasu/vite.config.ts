@@ -69,6 +69,12 @@ export default defineConfig(({ command }) => {
       monaco({ languageWorkers: ["editorWorkerService", "typescript"] }),
       isDev && devtools(),
     ],
+    resolve: {
+      alias: {
+        "@nyanpasu/ui": path.resolve("../ui/src"),
+        "@nyanpasu/interface": path.resolve("../interface/src"),
+      },
+    },
     optimizeDeps: {
       entries: ["./src/pages/**/*.tsx", "./src/main.tsx"],
       include: ["@emotion/styled"],

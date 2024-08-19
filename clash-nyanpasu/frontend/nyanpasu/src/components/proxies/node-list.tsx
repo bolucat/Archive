@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -59,28 +60,34 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
       }
     }
   }, [
+    data?.global,
     data?.groups,
+    getCurrentMode.global,
     proxyGroup.selector,
-    getCurrentMode,
     proxyGroupSort,
-    setGroup,
   ]);
 
   useEffect(() => {
     sortGroup();
   }, [sortGroup]);
 
-  const { column } = useBreakpoint({
-    sm: 1,
-    md: 1,
-    lg: 2,
-    xl: 3,
-    default: 4,
-  });
+  const breakpoint = useBreakpoint();
+  const column = useMemo(() => {
+    switch (breakpoint) {
+      case "xs":
+      case "sm":
+        return 1;
+      case "md":
+      case "lg":
+        return 2;
+      case "xl":
+        return 4;
+    }
+  }, [breakpoint]);
 
   const [renderList, setRenderList] = useState<RenderClashProxy[][]>([]);
 
-  const updateRenderList = () => {
+  const updateRenderList = useCallback(() => {
     if (!group?.all) return;
 
     const nodeNames: string[] = [];
@@ -114,13 +121,13 @@ export const NodeList = forwardRef(function NodeList({}, ref) {
     );
 
     setRenderList(list);
-  };
+  }, [column, group?.all]);
 
   useEffect(() => {
     startTransition(() => {
       updateRenderList();
     });
-  }, [group?.all, column]);
+  }, [group?.all, column, updateRenderList]);
 
   const hendleClick = (node: string) => {
     if (!getCurrentMode.global) {
