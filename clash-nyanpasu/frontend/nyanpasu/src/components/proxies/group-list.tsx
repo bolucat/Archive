@@ -1,14 +1,16 @@
 import { useAtom } from "jotai";
-import { memo, useMemo } from "react";
+import { memo, RefObject, useMemo } from "react";
 import useSWR from "swr";
 import { Virtualizer } from "virtua";
 import { proxyGroupAtom } from "@/store";
 import {
+  alpha,
   ListItem,
   ListItemButton,
   ListItemButtonProps,
   ListItemIcon,
   ListItemText,
+  useTheme,
 } from "@mui/material";
 import { getServerPort, useClashCore } from "@nyanpasu/interface";
 import { LazyImage } from "@nyanpasu/ui";
@@ -42,8 +44,17 @@ const IconRender = memo(function IconRender({ icon }: { icon: string }) {
   );
 });
 
-export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
+export interface GroupListProps extends ListItemButtonProps {
+  scrollRef: RefObject<HTMLElement>;
+}
+
+export const GroupList = ({
+  scrollRef,
+  ...listItemButtonProps
+}: GroupListProps) => {
   const { data } = useClashCore();
+
+  const { palette } = useTheme();
 
   const [proxyGroup, setProxyGroup] = useAtom(proxyGroupAtom);
 
@@ -52,13 +63,20 @@ export const GroupList = (listItemButtonProps: ListItemButtonProps) => {
   };
 
   return (
-    <Virtualizer>
+    <Virtualizer scrollRef={scrollRef}>
       {data?.groups?.map((group, index) => {
+        const selected = index === proxyGroup.selector;
+
         return (
           <ListItem key={index} disablePadding>
             <ListItemButton
-              selected={index === proxyGroup.selector}
+              selected={selected}
               onClick={() => handleSelect(index)}
+              sx={{
+                backgroundColor: selected
+                  ? `${alpha(palette.primary.main, 0.3)} !important`
+                  : undefined,
+              }}
               {...listItemButtonProps}
             >
               {group.icon && <IconRender icon={group.icon} />}

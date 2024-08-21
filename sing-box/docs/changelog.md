@@ -8,6 +8,10 @@ icon: material/alert-decagram
 
     If your company or organization is willing to help us return to the App Store, please [contact us](mailto:contact@sagernet.org).
 
+#### 1.10.0-beta.4
+
+* Fixes and improvements
+
 #### 1.10.0-beta.3
 
 * Add SSH sniffer
