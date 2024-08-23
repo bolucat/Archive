@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sagernet/cors"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
@@ -29,7 +30,6 @@ import (
 	"github.com/sagernet/ws/wsutil"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
 )
 
@@ -90,11 +90,16 @@ func NewServer(ctx context.Context, router adapter.Router, logFactory log.Observ
 	if options.StoreMode || options.StoreSelected || options.StoreFakeIP || options.CacheFile != "" || options.CacheID != "" {
 		return nil, E.New("cache_file and related fields in Clash API is deprecated in sing-box 1.8.0, use experimental.cache_file instead.")
 	}
+	allowedOrigins := options.AccessControlAllowOrigin
+	if len(allowedOrigins) == 0 {
+		allowedOrigins = []string{"*"}
+	}
 	cors := cors.New(cors.Options{
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders: []string{"Content-Type", "Authorization"},
-		MaxAge:         300,
+		AllowedOrigins:      allowedOrigins,
+		AllowedMethods:      []string{"GET", "POST", "PUT", "PATCH", "DELETE"},
+		AllowedHeaders:      []string{"Content-Type", "Authorization"},
+		AllowPrivateNetwork: options.AccessControlAllowPrivateNetwork,
+		MaxAge:              300,
 	})
 	chiRouter.Use(cors.Handler)
 	chiRouter.Group(func(r chi.Router) {
@@ -277,10 +282,11 @@ func authentication(serverSecret string) func(next http.Handler) http.Handler {
 
 func hello(redirect bool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if redirect {
-			http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
-		} else {
+		contentType := r.Header.Get("Content-Type")
+		if !redirect || contentType == "application/json" {
 			render.JSON(w, r, render.M{"hello": "clash"})
+		} else {
+			http.Redirect(w, r, "/ui/", http.StatusTemporaryRedirect)
 		}
 	}
 }
