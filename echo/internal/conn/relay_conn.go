@@ -9,12 +9,20 @@ import (
 	"net"
 	"time"
 
-	"github.com/Ehco1996/ehco/internal/constant"
 	"github.com/Ehco1996/ehco/internal/lb"
 	"github.com/Ehco1996/ehco/internal/metrics"
+	"github.com/Ehco1996/ehco/internal/relay/conf"
 	"github.com/Ehco1996/ehco/pkg/buffer"
 	"github.com/Ehco1996/ehco/pkg/bytes"
 	"go.uber.org/zap"
+)
+
+const (
+	shortHashLength = 7
+)
+
+var (
+	ErrIdleTimeout = errors.New("connection closed due to idle timeout")
 )
 
 // RelayConn is the interface that represents a relay connection.
@@ -63,6 +71,7 @@ type relayConnImpl struct {
 	HandshakeDuration time.Duration
 	RelayLabel        string `json:"relay_label"`
 	ConnType          string `json:"conn_type"`
+	Options           *conf.Options
 }
 
 func WithRelayLabel(relayLabel string) RelayConnOption {
@@ -95,18 +104,31 @@ func WithLogger(l *zap.SugaredLogger) RelayConnOption {
 	}
 }
 
+func WithRelayOptions(opts *conf.Options) RelayConnOption {
+	return func(rci *relayConnImpl) {
+		rci.Options = opts
+	}
+}
+
 func (rc *relayConnImpl) Transport() error {
-	defer rc.Close() // nolint: errcheck
-	cl := rc.l.Named(shortHashSHA256(rc.GetFlow()))
-	cl.Debugf("transport start, stats: %s", rc.Stats.String())
+	defer func() {
+		err := rc.Close()
+		if err != nil {
+			rc.l.Errorf("error closing relay connection: %s", err.Error())
+		}
+	}()
+	rc.l = rc.l.Named(shortHashSHA256(rc.GetFlow()))
+	rc.l.Debugf("transport start")
 	c1 := newInnerConn(rc.clientConn, rc)
+	c1.l = rc.l.Named("client")
 	c2 := newInnerConn(rc.remoteConn, rc)
+	c2.l = rc.l.Named("remote")
 	rc.StartTime = time.Now().Local()
 	err := copyConn(c1, c2)
 	if err != nil {
-		cl.Errorf("transport error: %s", err.Error())
+		rc.l.Errorf("transport error: %s", err.Error())
 	}
-	cl.Debugf("transport end, stats: %s", rc.Stats.String())
+	rc.l.Debugf("transport end: stats: %s", rc.Stats.String())
 	rc.EndTime = time.Now().Local()
 	return err
 }
@@ -115,7 +137,7 @@ func (rc *relayConnImpl) Close() error {
 	err1 := rc.clientConn.Close()
 	err2 := rc.remoteConn.Close()
 	rc.Closed = true
-	return combineErrorsAndMuteEOF(err1, err2)
+	return combineErrorsAndMuteIDLE(err1, err2)
 }
 
 // functions that for web ui
@@ -142,11 +164,11 @@ func (rc *relayConnImpl) GetConnType() string {
 	return rc.ConnType
 }
 
-func combineErrorsAndMuteEOF(err1, err2 error) error {
-	if err1 == io.EOF {
+func combineErrorsAndMuteIDLE(err1, err2 error) error {
+	if err1 == ErrIdleTimeout {
 		err1 = nil
 	}
-	if err2 == io.EOF {
+	if err2 == ErrIdleTimeout {
 		return nil
 	}
 	if err1 != nil && err2 != nil {
@@ -180,13 +202,14 @@ func (s *Stats) String() string {
 // note that innerConn is a wrapper around net.Conn to allow io.Copy to be used
 type innerConn struct {
 	net.Conn
-	lastActive time.Time
 
-	rc *relayConnImpl
+	lastActive time.Time
+	rc         *relayConnImpl
+	l          *zap.SugaredLogger
 }
 
 func newInnerConn(conn net.Conn, rc *relayConnImpl) *innerConn {
-	return &innerConn{Conn: conn, rc: rc, lastActive: time.Now()}
+	return &innerConn{Conn: conn, rc: rc, lastActive: time.Now().Local()}
 }
 
 func (c *innerConn) recordStats(n int, isRead bool) {
@@ -208,37 +231,35 @@ func (c *innerConn) recordStats(n int, isRead bool) {
 
 func (c *innerConn) Read(p []byte) (n int, err error) {
 	for {
-		deadline := time.Now().Add(constant.ReadTimeOut)
+		deadline := time.Now().Add(c.rc.Options.ReadTimeout)
 		if err := c.Conn.SetReadDeadline(deadline); err != nil {
 			return 0, err
 		}
 		n, err = c.Conn.Read(p)
 		if err == nil {
 			c.recordStats(n, true)
-			c.lastActive = time.Now()
-			return
+			c.lastActive = time.Now().Local()
+			return n, err
 		} else {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				if time.Since(c.lastActive) > constant.IdleTimeOut {
-					c.rc.l.Debugf("read idle,close remote: %s", c.rc.remote.Label)
-					return 0, io.EOF
+				since := time.Since(c.lastActive)
+				if since > c.rc.Options.IdleTimeout {
+					c.l.Debugf("Read idle, close remote: %s", c.rc.remote.Label)
+					return 0, ErrIdleTimeout
 				}
 				continue
 			}
-			return n, err
+			return 0, err
 		}
 	}
 }
 
 func (c *innerConn) Write(p []byte) (n int, err error) {
-	if time.Since(c.lastActive) > constant.IdleTimeOut {
-		c.rc.l.Debugf("write idle,close remote: %s", c.rc.remote.Label)
-		return 0, io.EOF
-	}
 	n, err = c.Conn.Write(p)
-	c.recordStats(n, false) // false for write operation
-	if err != nil {
-		c.lastActive = time.Now()
+	if err == nil {
+		c.recordStats(n, false)
+		now := time.Now().Local()
+		c.lastActive = now
 	}
 	return
 }
@@ -265,28 +286,29 @@ func shortHashSHA256(input string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(input))
 	hash := hasher.Sum(nil)
-	return hex.EncodeToString(hash)[:7]
+	return hex.EncodeToString(hash)[:shortHashLength]
 }
 
 func copyConn(conn1, conn2 *innerConn) error {
-	buf := buffer.BufferPool.Get()
-	defer buffer.BufferPool.Put(buf)
+	buf1 := buffer.BufferPool.Get()
+	defer buffer.BufferPool.Put(buf1)
+	buf2 := buffer.BufferPool.Get()
+	defer buffer.BufferPool.Put(buf2)
+
 	errCH := make(chan error, 1)
 	// copy conn1 to conn2,read from conn1 and write to conn2
 	go func() {
-		_, err := io.CopyBuffer(conn2, conn1, buf)
+		_, err := io.CopyBuffer(conn2, conn1, buf1)
 		_ = conn2.CloseWrite() // all data is written to conn2 now, so close the write side of conn2 to send eof
 		errCH <- err
 	}()
 
 	// reverse copy conn2 to conn1,read from conn2 and write to conn1
-	buf2 := buffer.BufferPool.Get()
-	defer buffer.BufferPool.Put(buf2)
 	_, err := io.CopyBuffer(conn1, conn2, buf2)
 	_ = conn1.CloseWrite()
 
 	err2 := <-errCH
 	_ = conn1.CloseRead()
 	_ = conn2.CloseRead()
-	return combineErrorsAndMuteEOF(err, err2)
+	return combineErrorsAndMuteIDLE(err, err2)
 }

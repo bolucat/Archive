@@ -82,7 +82,7 @@ func (s *RawServer) ListenAndServe(ctx context.Context) error {
 	s.tcpLis = ts
 
 	if s.cfg.Options != nil && s.cfg.Options.EnableUDP {
-		udpLis, err := conn.NewUDPListener(ctx, s.cfg.Listen)
+		udpLis, err := conn.NewUDPListener(ctx, s.cfg)
 		if err != nil {
 			return err
 		}
@@ -107,10 +107,13 @@ func (s *RawServer) ListenAndServe(ctx context.Context) error {
 }
 
 func (s *RawServer) listenUDP(ctx context.Context) error {
-	s.l.Infof("Start UDP server at %s", s.cfg.Listen)
 	for {
 		c, err := s.udpLis.Accept()
 		if err != nil {
+			// Check if the error is due to context cancellation
+			if errors.Is(err, context.Canceled) {
+				return nil // Return without logging the error
+			}
 			s.l.Errorf("UDP accept error: %v", err)
 			return err
 		}
