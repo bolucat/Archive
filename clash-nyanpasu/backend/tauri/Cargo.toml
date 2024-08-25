@@ -32,7 +32,7 @@ ctrlc = "3.4.2"
 dunce = "1.0.4"
 nanoid = "0.4.0"
 chrono = "0.4.31"
-sysinfo = "0.30"
+sysinfo = "0.31"
 sysproxy = { git = "https://github.com/zzzgydi/sysproxy-rs.git", version = "0.3" }
 serde_json = "1.0"
 serde_yaml = "0.9"
@@ -46,6 +46,7 @@ serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
+  "updater",
   "fs-all",
   "clipboard-all",
   "os-all",
@@ -55,7 +56,6 @@ tauri = { version = "1.5.4", features = [
   "shell-all",
   "system-tray",
   "window-all",
-  "updater",
 ] }
 window-vibrancy = { version = "0.5.0" }
 window-shadows = { version = "0.2.2" }
@@ -76,7 +76,7 @@ rs-snowflake = "0.6"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
 runas = "1.2.0"
-backon = "0.4.1"
+backon = { version = "0.5", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"
 rfd = "0.10" # should bump to v0.14 when clarify why the rfd v0.10 from tauri breaks build
@@ -122,11 +122,11 @@ os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
 boa_engine.workspace = true
-oxc_parser = "0.24"
-oxc_allocator = "0.24"
-oxc_span = "0.24"
-oxc_ast = "0.24"
-oxc_syntax = "0.24"
+oxc_parser = "0.25"
+oxc_allocator = "0.25"
+oxc_span = "0.25"
+oxc_ast = "0.25"
+oxc_syntax = "0.25"
 mlua = { version = "0.9", features = [
   "lua54",
   "async",

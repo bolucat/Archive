@@ -22,7 +22,7 @@
     "@radix-ui/react-scroll-area": "1.1.0",
     "@tauri-apps/api": "1.6.0",
     "@types/d3": "7.4.3",
-    "@types/react": "18.3.3",
+    "@types/react": "18.3.4",
     "@vitejs/plugin-react": "4.3.1",
     "ahooks": "3.8.1",
     "d3": "7.9.0",
@@ -31,11 +31,11 @@
     "react-error-boundary": "4.0.13",
     "react-i18next": "15.0.1",
     "react-use": "17.5.1",
-    "vite": "5.4.1",
+    "vite": "5.4.2",
     "vite-tsconfig-paths": "5.0.1"
   },
   "devDependencies": {
-    "@emotion/react": "11.13.0",
+    "@emotion/react": "11.13.3",
     "@types/d3-interpolate-path": "2.0.3",
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
