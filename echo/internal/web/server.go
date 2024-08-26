@@ -103,13 +103,13 @@ func NewServer(
 	e.GET("/", s.index)
 	e.GET("/connections/", s.ListConnections)
 	e.GET("/rules/", s.ListRules)
-	e.GET("/clash_proxy_provider/", s.HandleClashProxyProvider)
 
 	// api group
 	api := e.Group("/api/v1")
 	api.GET("/config/", s.CurrentConfig)
 	api.POST("/config/reload/", s.HandleReload)
 	api.GET("/health_check/", s.HandleHealthCheck)
+	api.GET("/node_metrics/", s.GetNodeMetrics)
 	return s, nil
 }
 

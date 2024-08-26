@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Ehco1996/ehco/internal/config"
+	"github.com/Ehco1996/ehco/internal/cmgr"
 	"github.com/Ehco1996/ehco/internal/constant"
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
@@ -28,58 +28,14 @@ func (s *Server) index(c echo.Context) error {
 		GitRevision string
 		BuildTime   string
 		StartTime   string
-		SubConfigs  []*config.SubConfig
 	}{
 		Version:     constant.Version,
 		GitBranch:   constant.GitBranch,
 		GitRevision: constant.GitRevision,
 		BuildTime:   constant.BuildTime,
 		StartTime:   constant.StartTime.Format("2006-01-02 15:04:05"),
-		SubConfigs:  s.cfg.SubConfigs,
 	}
 	return c.Render(http.StatusOK, "index.html", data)
-}
-
-func (s *Server) HandleClashProxyProvider(c echo.Context) error {
-	subName := c.QueryParam("sub_name")
-	if subName == "" {
-		return c.String(http.StatusBadRequest, "sub_name is empty")
-	}
-	grouped, _ := strconv.ParseBool(c.QueryParam("grouped")) // defaults to false if parameter is missing or invalid
-
-	return s.handleClashProxyProvider(c, subName, grouped)
-}
-
-func (s *Server) handleClashProxyProvider(c echo.Context, subName string, grouped bool) error {
-	if s.Reloader != nil {
-		if err := s.Reloader.Reload(true); err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-	} else {
-		s.l.Debugf("Reloader is nil this should not happen")
-		return echo.NewHTTPError(http.StatusBadRequest, "should not happen error happen :)")
-	}
-
-	clashSubList, err := s.cfg.GetClashSubList()
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	for _, clashSub := range clashSubList {
-		if clashSub.Name == subName {
-			var clashCfgBuf []byte
-			if grouped {
-				clashCfgBuf, err = clashSub.ToGroupedClashConfigYaml()
-			} else {
-				clashCfgBuf, err = clashSub.ToClashConfigYaml()
-			}
-			if err != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"message": err.Error()})
-			}
-			return c.String(http.StatusOK, string(clashCfgBuf))
-		}
-	}
-	msg := fmt.Sprintf("sub_name=%s not found", subName)
-	return c.JSON(http.StatusBadRequest, map[string]string{"message": msg})
 }
 
 func (s *Server) HandleReload(c echo.Context) error {
@@ -164,4 +120,21 @@ func (s *Server) ListRules(c echo.Context) error {
 	return c.Render(http.StatusOK, "rule_list.html", map[string]interface{}{
 		"Configs": s.cfg.RelayConfigs,
 	})
+}
+
+func (s *Server) GetNodeMetrics(c echo.Context) error {
+	req := &cmgr.QueryNodeMetricsReq{TimeRange: c.QueryParam("time_range")}
+	num := c.QueryParam("num")
+	if num != "" {
+		n, err := strconv.Atoi(num)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		req.Num = n
+	}
+	metrics, err := s.connMgr.QueryNodeMetrics(c.Request().Context(), req)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, metrics)
 }

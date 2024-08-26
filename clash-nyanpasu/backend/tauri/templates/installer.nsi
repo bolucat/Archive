@@ -48,6 +48,8 @@ ${StrLoc}
 !define UNINSTALLERSIGNCOMMAND "{{uninstaller_sign_cmd}}"
 !define ESTIMATEDSIZE "{{estimated_size}}"
 
+Var ProgramDataPathVar
+
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
 OutFile "${OUTFILE}"
@@ -381,6 +383,23 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+!define FOLDERID_ProgramData "{62AB5D82-FDC1-4DC3-A9DD-070D1D495D97}"
+!macro GetProgramDataPath
+    ; 调用SHGetKnownFolderIDList获取PIDL
+    System::Call 'shell32::SHGetKnownFolderIDList(g"${FOLDERID_ProgramData}", i0x1000, i0, *i.r1)i.r0'
+    ${If} $0 = 0
+        ; 调用SHGetPathFromIDList将PIDL转换为路径
+        System::Call 'shell32::SHGetPathFromIDList(ir1,t.r0)'
+        StrCpy $ProgramDataPathVar $0 ; 将结果保存到变量
+        ; DetailPrint "ProgramData Path: $ProgramDataPathVar"
+        
+        ; 释放PIDL内存
+        System::Call 'ole32::CoTaskMemFree(ir1)'
+    ${Else}
+        DetailPrint "Failed to get ProgramData path, error code: $0"
+    ${EndIf}
+!macroend
+
 Var PassiveMode
 Function .onInit
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -428,6 +447,7 @@ FunctionEnd
   !endif
   Pop $R0
   ${If} $R0 = 0
+      DetailPrint "${Process} is running"
       IfSilent kill${ID} 0
       ${IfThen} $PassiveMode != 1 ${|} MessageBox MB_OKCANCEL "${Process} is running, ok to kill?" IDOK kill${ID} IDCANCEL cancel${ID} ${|}
       kill${ID}:
@@ -468,9 +488,9 @@ FunctionEnd
   !insertmacro CheckNyanpasuProcess "mihomo-alpha.exe" "6"
 !macroend
 
-Section CheckProcesses
-  !insertmacro CheckAllNyanpasuProcesses
-SectionEnd
+; Section CheckProcesses
+;   !insertmacro CheckAllNyanpasuProcesses
+; SectionEnd
 
 Section EarlyChecks
   ; Abort silent installer if downgrades is disabled
@@ -589,9 +609,30 @@ SectionEnd
 ;   app_check_done:
 ; !macroend
 
-Section Install
-  SetOutPath $INSTDIR
+!macro StopCoreByService
+  ; 构建服务可执行文件的完整路径
+  StrCpy $1 "$ProgramDataPathVar\nyanpasu-service\data\nyanpasu-service.exe"
 
+  ; 检查文件是否存在
+  IfFileExists "$1" 0 SkipStopCore
+
+  ; 文件存在，执行停止核心服务
+  nsExec::ExecToLog '"$1" rpc stop-core'
+  Pop $0  ; 弹出命令执行的返回值
+  ${If} $0 == "0"
+    DetailPrint "Core service stopped successfully."
+  ${Else}
+    DetailPrint "Core stop failed with exit code $0"
+  ${EndIf}
+  SkipStopCore:
+    ; 如果文件不存在，打印错误
+    DetailPrint "Nyanpasu Service is not installed, skipping stop-core"
+!macroend
+
+Section Install
+  !insertmacro GetProgramDataPath
+  !insertmacro StopCoreByService
+  SetOutPath $INSTDIR
   !insertmacro CheckAllNyanpasuProcesses
   ; !insertmacro CheckIfAppIsRunning
 
@@ -708,7 +749,36 @@ FunctionEnd
   ${EndIf}
 !macroend
 
+!macro StopAndRemoveServiceDirectory
+  ; 构建服务路径
+  StrCpy $1 "$ProgramDataPathVar\nyanpasu-service\data\nyanpasu-service.exe"
+
+  ; 检查服务可执行文件是否存在
+  IfFileExists "$1" 0 Skip
+  nsExec::ExecToLog '"$1" stop'
+  Pop $0
+  DetailPrint "Stopping service with exit code $0"
+
+  ; 检查停止服务是否成功（假设0, 100, 102为成功）
+  IntCmp $0 0 0 StopFailed StopFailed
+  IntCmp $0 100 0 StopFailed StopFailed
+  IntCmp $0 102 0 StopFailed StopFailed
+  StopFailed:
+    Abort "Failed to stop the service. Aborting installation."
+
+  ; 如果服务成功停止，继续检查目录是否存在并删除
+  StrCpy $2 "$ProgramDataPathVar\nyanpasu-service"
+  IfFileExists "$2\*" 0 Skip
+  RMDir /r "$2"
+  DetailPrint "Removed service directory successfully"
+
+  Skip:
+    DetailPrint "Service directory does not exist, skipping stop and remove service directory"
+!macroend
+
 Section Uninstall
+  !insertmacro GetProgramDataPath
+  !insertmacro StopAndRemoveServiceDirectory
   !insertmacro CheckAllNyanpasuProcesses
   ; !insertmacro CheckIfAppIsRunning
   

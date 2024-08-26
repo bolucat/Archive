@@ -12,6 +12,7 @@ import ProxyGroupName from "@/components/proxies/proxy-group-name";
 import ScrollCurrentNode from "@/components/proxies/scroll-current-node";
 import SortSelector from "@/components/proxies/sort-selector";
 import { proxyGroupAtom } from "@/store";
+import { Check } from "@mui/icons-material";
 import {
   alpha,
   Box,
@@ -71,13 +72,14 @@ export default function ProxyPage() {
     return (
       <Box display="flex" alignItems="center" gap={1}>
         <ButtonGroup size="small">
-          {Object.entries(getCurrentMode).map(([key, value], index) => (
+          {Object.entries(getCurrentMode).map(([key, enabled]) => (
             <Button
-              key={index}
-              variant={value ? "contained" : "outlined"}
+              key={key}
+              variant={enabled ? "contained" : "outlined"}
               onClick={() => handleSwitch(key)}
               sx={{ textTransform: "capitalize" }}
             >
+              {enabled && <Check className="-ml-2 mr-[0.1rem] scale-75" />}
               {t(key)}
             </Button>
           ))}
