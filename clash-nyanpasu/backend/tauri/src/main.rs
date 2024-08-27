@@ -21,6 +21,7 @@ mod feat;
 mod ipc;
 mod server;
 mod utils;
+
 use crate::{
     config::Config,
     core::handle::Handle,
@@ -63,14 +64,14 @@ fn main() -> std::io::Result<()> {
     // Custom scheme check
     #[cfg(not(target_os = "macos"))]
     // on macos the plugin handles this (macos doesn't use cli args for the url)
-    let custom_schema = match std::env::args().nth(1) {
+    let custom_scheme = match std::env::args().nth(1) {
         Some(url) => url::Url::parse(&url).ok(),
         None => None,
     };
     #[cfg(target_os = "macos")]
-    let custom_schema: Option<url::Url> = None;
+    let custom_scheme: Option<url::Url> = None;
 
-    if custom_schema.is_none() {
+    if custom_scheme.is_none() {
         // Parse commands
         cmds::parse().unwrap();
     };
@@ -135,7 +136,7 @@ fn main() -> std::io::Result<()> {
             let handle = app.handle().clone();
             // For start new app from schema
             #[cfg(not(target_os = "macos"))]
-            if let Some(url) = custom_schema {
+            if let Some(url) = custom_scheme {
                 log::info!(target: "app", "started with schema");
                 resolve::create_window(&handle.clone());
                 while !is_window_opened() {
@@ -241,6 +242,7 @@ fn main() -> std::io::Result<()> {
             ipc::get_core_status,
             ipc::url_delay_test,
             ipc::get_ipsb_asn,
+            ipc::open_that,
         ]);
 
     #[cfg(target_os = "macos")]
@@ -266,7 +268,6 @@ fn main() -> std::io::Result<()> {
     let app = builder
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
-
     app.run(|app_handle, e| match e {
         tauri::RunEvent::ExitRequested { api, .. } => {
             api.prevent_exit();
@@ -276,23 +277,14 @@ fn main() -> std::io::Result<()> {
             api::process::kill_children();
             app_handle.exit(0);
         }
-        #[cfg(target_os = "macos")]
-        tauri::RunEvent::WindowEvent { label, event, .. } => {
-            use tauri::Manager;
-
-            if label == "main" {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    reset_window_open_counter();
-                    let _ = resolve::save_window_state(app_handle, true);
-
-                    if let Some(win) = app_handle.get_window("main") {
-                        let _ = win.hide();
-                    }
+        tauri::RunEvent::Updater(tauri::UpdaterEvent::Downloaded) => {
+            resolve::resolve_reset();
+            nyanpasu_utils::runtime::block_on(async {
+                if let Err(e) = crate::core::CoreManager::global().stop_core().await {
+                    log::error!(target: "app", "failed to stop core while dispatch updater: {}", e);
                 }
-            }
+            });
         }
-        #[cfg(not(target_os = "macos"))]
         tauri::RunEvent::WindowEvent { label, event, .. } => {
             if label == "main" {
                 match event {

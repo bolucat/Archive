@@ -1,5 +1,3 @@
-//go:build premium
-
 package main
 
 //#include "bridge.h"
@@ -25,7 +23,6 @@ func init() {
 		defer log.UnSubscribe(sub)
 
 		for msg := range sub {
-
 			cPayload := C.CString(msg.Payload)
 
 			switch msg.LogLevel {

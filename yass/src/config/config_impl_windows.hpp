@@ -16,7 +16,8 @@
 
 #include "core/utils.hpp"
 
-#define DEFAULT_CONFIG_KEY L"SOFTWARE\\YetAnotherShadowSocket"
+// TODO Allow to override it
+static constexpr const wchar_t kYassSubkeyName[] = L"SOFTWARE\\YetAnotherShadowSocket";
 
 namespace {
 
@@ -38,6 +39,16 @@ typedef unsigned __int64 QWORD;
 // documented in
 // https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-dtyp/ac050bbf-a821-4fab-bccf-d95d892f428f
 static_assert(sizeof(QWORD) == sizeof(uint64_t), "A QWORD is a 64-bit unsigned integer.");
+
+bool HasValue(HKEY hkey, const std::string& value, DWORD* type, DWORD* size) {
+  std::wstring wvalue = SysUTF8ToWide(value);
+
+  if (::RegQueryValueExW(hkey /* HKEY */, wvalue.c_str() /* lpValueName */, nullptr /* lpReserved */, type /* lpType */,
+                         nullptr /* lpData */, size /* lpcbData */) != ERROR_SUCCESS) {
+    return false;
+  }
+  return true;
+}
 
 bool ReadValue(HKEY hkey, const std::string& value, DWORD* type, std::vector<BYTE>* output) {
   DWORD BufferSize;
@@ -84,7 +95,7 @@ class ConfigImplWindows : public ConfigImpl {
     dontread_ = dontread;
 
     DWORD disposition;
-    const wchar_t* subkey = DEFAULT_CONFIG_KEY;  // Allow to override it ?
+    constexpr const wchar_t* subkey = kYassSubkeyName;
     // KEY_WOW64_64KEY: Indicates that an application on 32-bit Windows should:
     // Access a 64-bit key from either a 32-bit or 64-bit application.
     // Background: The registry in 64-bit versions of Windows is divided into
@@ -125,6 +136,39 @@ class ConfigImplWindows : public ConfigImpl {
     }
     return ret;
   }
+
+  bool HasKeyStringImpl(const std::string& key) override {
+    DWORD type, size;
+
+    return HasValue(hkey_, key, &type, &size) && (type == REG_SZ || type == REG_EXPAND_SZ) &&
+           size % sizeof(wchar_t) == 0;
+  }
+
+  bool HasKeyBoolImpl(const std::string& key) override { return HasKeyUint32Impl(key); }
+
+  bool HasKeyUint32Impl(const std::string& key) override {
+    DWORD type, size;
+
+    return HasValue(hkey_, key, &type, &size) && (type == REG_DWORD || type == REG_BINARY) && size == sizeof(uint32_t);
+  }
+
+  bool HasKeyUint64Impl(const std::string& key) override {
+    DWORD type, size;
+
+    if (HasValue(hkey_, key, &type, &size) && (type == REG_QWORD || type == REG_BINARY) && size == sizeof(uint64_t)) {
+      return true;
+    }
+
+    if (HasValue(hkey_, key, &type, &size) && (type == REG_DWORD || type == REG_BINARY) && size == sizeof(uint32_t)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  bool HasKeyInt32Impl(const std::string& key) override { return HasKeyUint32Impl(key); }
+
+  bool HasKeyInt64Impl(const std::string& key) override { return HasKeyUint64Impl(key); }
 
   bool ReadImpl(const std::string& key, std::string* value) override {
     DWORD type;

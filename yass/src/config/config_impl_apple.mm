@@ -22,8 +22,14 @@ using namespace gurl_base::apple;
 
 // Because a suite manages the defaults of a specified app group, a suite name
 // must be distinct from your app’s main bundle identifier.
-static const char* kYassSuiteName = "it.gui.yass.suite";
-static const char* kYassKeyName = "YASSConfiguration";
+// stored at ~/Library/Preferences/it.gui.yass.suite.plist
+// TODO Allow to override it
+static constexpr const char kYassSuiteName[] = "it.gui.yass.suite";
+static constexpr const char kYassKeyName[] = "YASSConfiguration";
+
+// assert memory safe for CFDictionaryGetValueIfPresent calls
+static_assert(sizeof(CFNumberRef) == sizeof(CFStringRef));
+static_assert(sizeof(CFBooleanRef) == sizeof(CFStringRef));
 
 namespace config {
 
@@ -67,6 +73,54 @@ bool ConfigImplApple::CloseImpl() {
   write_root_.reset();
 
   return true;
+}
+
+bool ConfigImplApple::HasKeyStringImpl(const std::string& key) {
+  CFStringRef obj;
+  if (CFDictionaryGetValueIfPresent(root_, SysUTF8ToCFStringRef(key).get(), (const void**)&obj) &&
+      CFGetTypeID(obj) == CFStringGetTypeID()) {
+    return true;
+  }
+  return false;
+}
+
+bool ConfigImplApple::HasKeyBoolImpl(const std::string& key) {
+  CFBooleanRef obj;
+  if (CFDictionaryGetValueIfPresent(root_, SysUTF8ToCFStringRef(key).get(), (const void**)&obj) &&
+      CFGetTypeID(obj) == CFBooleanGetTypeID()) {
+    return true;
+  }
+  return false;
+}
+
+bool ConfigImplApple::HasKeyUint32Impl(const std::string& key) {
+  return HasKeyInt32Impl(key);
+}
+
+bool ConfigImplApple::HasKeyUint64Impl(const std::string& key) {
+  return HasKeyInt64Impl(key);
+}
+
+bool ConfigImplApple::HasKeyInt32Impl(const std::string& key) {
+  CFNumberRef obj;
+  if (CFDictionaryGetValueIfPresent(root_, SysUTF8ToCFStringRef(key).get(), (const void**)&obj) &&
+      CFGetTypeID(obj) == CFNumberGetTypeID() &&
+      (CFNumberGetType(obj) == kCFNumberSInt32Type || CFNumberGetType(obj) == kCFNumberSInt16Type ||
+       CFNumberGetType(obj) == kCFNumberSInt8Type)) {
+    return true;
+  }
+  return false;
+}
+
+bool ConfigImplApple::HasKeyInt64Impl(const std::string& key) {
+  CFNumberRef obj;
+  if (CFDictionaryGetValueIfPresent(root_, SysUTF8ToCFStringRef(key).get(), (const void**)&obj) &&
+      CFGetTypeID(obj) == CFNumberGetTypeID() &&
+      (CFNumberGetType(obj) == kCFNumberSInt64Type || CFNumberGetType(obj) == kCFNumberSInt32Type ||
+       CFNumberGetType(obj) == kCFNumberSInt16Type || CFNumberGetType(obj) == kCFNumberSInt8Type)) {
+    return true;
+  }
+  return false;
 }
 
 bool ConfigImplApple::ReadImpl(const std::string& key, std::string* value) {
@@ -169,7 +223,7 @@ bool ConfigImplApple::WriteImpl(const std::string& key, int64_t value) {
 }
 
 bool ConfigImplApple::DeleteImpl(const std::string& key) {
-  if (CFDictionaryGetValueIfPresent(write_root_, SysUTF8ToCFStringRef(key).get(), nullptr)) {
+  if (CFDictionaryContainsKey(write_root_, SysUTF8ToCFStringRef(key).get())) {
     CFDictionaryRemoveValue(write_root_, SysUTF8ToCFStringRef(key).get());
     return true;
   }

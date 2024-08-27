@@ -1,5 +1,3 @@
-//go:build !premium
-
 package tun
 
 import (

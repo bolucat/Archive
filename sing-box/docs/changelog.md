@@ -8,8 +8,9 @@ icon: material/alert-decagram
 
     If your company or organization is willing to help us return to the App Store, please [contact us](mailto:contact@sagernet.org).
 
-#### 1.10.0-beta.4
+#### 1.10.0-beta.5
 
+* Add PNA support for [Clash API](/configuration/experimental/clash-api/)
 * Fixes and improvements
 
 #### 1.10.0-beta.3

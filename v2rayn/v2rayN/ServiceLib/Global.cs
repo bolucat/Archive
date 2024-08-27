@@ -4,6 +4,7 @@
     {
         #region const
 
+        public const string AppName = "v2rayN";
         public const string GithubUrl = "https://github.com";
         public const string GithubApiUrl = "https://api.github.com/repos";
         public const string V2flyCoreUrl = "https://github.com/v2fly/v2ray-core/releases";
@@ -59,6 +60,7 @@
         public const string InboundAPIProtocol = "dokodemo-door";
         public const string HttpProtocol = "http://";
         public const string HttpsProtocol = "https://";
+        public const string SocksProtocol = "socks://";
 
         public const string UserEMail = "t@t.tt";
         public const string AutoRunRegPath = @"Software\Microsoft\Windows\CurrentVersion\Run";

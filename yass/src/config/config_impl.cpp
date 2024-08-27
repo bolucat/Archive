@@ -95,7 +95,9 @@ std::unique_ptr<ConfigImpl> ConfigImpl::Create() {
   std::cerr << "using option from file: " << configfile << std::endl;
   return std::make_unique<ConfigImplLocal>(configfile);
 #else
-  const char* const configfile = "~/.yass/config.json";
+  // TODO Allow to override it
+  // TODO support XDG_CONFIG_HOME? (freedesktop)
+  static constexpr const std::string_view configfile = "~/.yass/config.json";
   std::cerr << "using option from file: " << configfile << std::endl;
   return std::make_unique<ConfigImplLocal>(configfile);
 #endif
@@ -119,6 +121,36 @@ bool ConfigImpl::Close() {
     std::cerr << "closed config" << std::endl;
   }
   return ret;
+}
+
+template <>
+bool ConfigImpl::HasKey<std::string>(const std::string& key) {
+  return HasKeyStringImpl(key);
+}
+
+template <>
+bool ConfigImpl::HasKey<bool>(const std::string& key) {
+  return HasKeyBoolImpl(key);
+}
+
+template <>
+bool ConfigImpl::HasKey<uint32_t>(const std::string& key) {
+  return HasKeyUint32Impl(key);
+}
+
+template <>
+bool ConfigImpl::HasKey<uint64_t>(const std::string& key) {
+  return HasKeyUint64Impl(key);
+}
+
+template <>
+bool ConfigImpl::HasKey<int32_t>(const std::string& key) {
+  return HasKeyInt32Impl(key);
+}
+
+template <>
+bool ConfigImpl::HasKey<int64_t>(const std::string& key) {
+  return HasKeyInt64Impl(key);
 }
 
 template <typename T>

@@ -28,11 +28,13 @@
 using json = nlohmann::json;
 using namespace yass;
 
+static constexpr const size_t kReadBufferSize = 32768u;
+
 namespace config {
 
 class ConfigImplLocal : public ConfigImpl {
  public:
-  ConfigImplLocal(const std::string& path) : path_(ExpandUser(path)) {}
+  ConfigImplLocal(std::string_view path) : path_(ExpandUser(path)) {}
   ~ConfigImplLocal() override {}
 
  protected:
@@ -41,20 +43,21 @@ class ConfigImplLocal : public ConfigImpl {
     dontread_ = dontread;
 
     do {
-      static constexpr const size_t kBufferSize = 32768;
-      std::vector<uint8_t> buffer;
-      buffer.resize(kBufferSize);
+      char buffer[kReadBufferSize];
 
-      ssize_t ret = ReadFileToBuffer(path_, make_span(buffer));
+      ssize_t ret = ReadFileToBuffer(path_, as_writable_bytes(make_span(buffer)));
       if (ret <= 0) {
         std::cerr << "configure file failed to read: " << path_ << std::endl;
         break;
       }
-      buffer.resize(ret);
-      root_ = json::parse(buffer, nullptr, false);
+      if (ret == static_cast<ssize_t>(sizeof(buffer))) {
+        std::cerr << "configure file is too large: " << path_ << std::endl;
+        break;
+      }
+      std::string_view json_content(buffer, ret);
+      root_ = json::parse(json_content, nullptr, false);
       if (root_.is_discarded() || !root_.is_object()) {
-        std::cerr << "bad config file: " << path_ << " content: \"" << std::string_view((const char*)buffer.data(), ret)
-                  << "\"" << std::endl;
+        std::cerr << "bad config file: " << path_ << " content: \"" << json_content << "\"" << std::endl;
         break;
       }
       std::cerr << "loaded from config file: " << path_ << std::endl;
@@ -94,6 +97,26 @@ class ConfigImplLocal : public ConfigImpl {
 
     path_.clear();
     return true;
+  }
+
+  bool HasKeyStringImpl(const std::string& key) override { return root_.contains(key) && root_[key].is_string(); }
+
+  bool HasKeyBoolImpl(const std::string& key) override { return root_.contains(key) && root_[key].is_boolean(); }
+
+  bool HasKeyUint32Impl(const std::string& key) override {
+    return root_.contains(key) && root_[key].is_number_unsigned() && root_[key].is_number_integer();
+  }
+
+  bool HasKeyUint64Impl(const std::string& key) override {
+    return root_.contains(key) && root_[key].is_number_unsigned() && root_[key].is_number_integer();
+  }
+
+  bool HasKeyInt32Impl(const std::string& key) override {
+    return root_.contains(key) && root_[key].is_number_integer();
+  }
+
+  bool HasKeyInt64Impl(const std::string& key) override {
+    return root_.contains(key) && root_[key].is_number_integer();
   }
 
   bool ReadImpl(const std::string& key, std::string* value) override {

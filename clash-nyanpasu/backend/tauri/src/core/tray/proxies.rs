@@ -211,6 +211,8 @@ pub fn setup_proxies() {
 }
 
 mod platform_impl {
+    use std::sync::atomic::AtomicBool;
+
     use super::{ProxySelectAction, TrayProxyItem};
     use crate::{
         config::nyanpasu::ProxiesSelectorMode,
@@ -234,7 +236,14 @@ mod platform_impl {
             );
             if let Some(now) = group.current.clone() {
                 if now == item.as_str() {
-                    sub_item = sub_item.selected();
+                    #[cfg(target_os = "linux")]
+                    {
+                        sub_item.title = super::super::utils::selected_title(item);
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        sub_item = sub_item.selected();
+                    }
                 }
             }
 
@@ -289,14 +298,23 @@ mod platform_impl {
         }
     }
 
+    static TRAY_ITEM_UPDATE_BARRIER: AtomicBool = AtomicBool::new(false);
+
+    #[tracing_attributes::instrument]
     pub fn update_selected_proxies(actions: &[ProxySelectAction]) {
+        if TRAY_ITEM_UPDATE_BARRIER.load(std::sync::atomic::Ordering::Acquire) {
+            warn!("tray item update is in progress, skip this update");
+            return;
+        }
         let tray = Handle::global()
             .app_handle
             .lock()
             .as_ref()
             .unwrap()
             .tray_handle();
+        TRAY_ITEM_UPDATE_BARRIER.store(true, std::sync::atomic::Ordering::Release);
         for action in actions {
+            tracing::debug!("update selected proxies: {:?}", action);
             let from = format!(
                 "select_proxy_{}_{}",
                 base64_standard.encode(&action.0),
@@ -310,7 +328,14 @@ mod platform_impl {
 
             match tray.try_get_item(&from) {
                 Some(item) => {
-                    let _ = item.set_selected(false);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = item.set_selected(false);
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = item.set_title(action.1.clone());
+                    }
                 }
                 None => {
                     warn!("failed to deselect, item not found: {}", from);
@@ -318,13 +343,21 @@ mod platform_impl {
             }
             match tray.try_get_item(&to) {
                 Some(item) => {
-                    let _ = item.set_selected(true);
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        let _ = item.set_selected(true);
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        let _ = item.set_title(super::super::utils::selected_title(&action.2));
+                    }
                 }
                 None => {
                     warn!("failed to select, item not found: {}", to);
                 }
             }
         }
+        TRAY_ITEM_UPDATE_BARRIER.store(false, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -351,6 +384,7 @@ pub fn on_system_tray_event(event: &str) {
     let wrapper = move || -> anyhow::Result<()> {
         let group = String::from_utf8(base64_standard.decode(parts[2])?)?;
         let name = String::from_utf8(base64_standard.decode(parts[3])?)?;
+        tracing::debug!("received select proxy event: {} {}", group, name);
         tauri::async_runtime::block_on(async move {
             ProxiesGuard::global()
                 .select_proxy(&group, &name)
