@@ -5,8 +5,6 @@ use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use log::{debug, error, info};
 use shadowsocks::{
-    lookup_then,
-    net::UdpSocket as ShadowUdpSocket,
     relay::{socks5::Address, udprelay::MAXIMUM_UDP_PAYLOAD_SIZE},
     ServerAddr,
 };
@@ -15,8 +13,74 @@ use tokio::{net::UdpSocket, time};
 use crate::local::{
     context::ServiceContext,
     loadbalancing::PingBalancer,
-    net::{UdpAssociationManager, UdpInboundWrite},
+    net::{udp::listener::create_standard_udp_listener, UdpAssociationManager, UdpInboundWrite},
 };
+
+pub struct TunnelUdpServerBuilder {
+    context: Arc<ServiceContext>,
+    client_config: ServerAddr,
+    time_to_live: Option<Duration>,
+    capacity: Option<usize>,
+    balancer: PingBalancer,
+    forward_addr: Address,
+    #[cfg(target_os = "macos")]
+    launchd_socket_name: Option<String>,
+}
+
+impl TunnelUdpServerBuilder {
+    pub(crate) fn new(
+        context: Arc<ServiceContext>,
+        client_config: ServerAddr,
+        time_to_live: Option<Duration>,
+        capacity: Option<usize>,
+        balancer: PingBalancer,
+        forward_addr: Address,
+    ) -> TunnelUdpServerBuilder {
+        TunnelUdpServerBuilder {
+            context,
+            client_config,
+            time_to_live,
+            capacity,
+            balancer,
+            forward_addr,
+            #[cfg(target_os = "macos")]
+            launchd_socket_name: None,
+        }
+    }
+
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    pub fn set_launchd_socket_name(&mut self, n: String) {
+        self.launchd_socket_name = Some(n);
+    }
+
+    pub async fn build(self) -> io::Result<TunnelUdpServer> {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "macos")] {
+                let socket = if let Some(launchd_socket_name) = self.launchd_socket_name {
+                    use tokio::net::UdpSocket as TokioUdpSocket;
+                    use crate::net::launch_activate_socket::get_launch_activate_udp_socket;
+
+                    let std_socket = get_launch_activate_udp_socket(&launchd_socket_name, true)?;
+                    TokioUdpSocket::from_std(std_socket)?
+                } else {
+                    create_standard_udp_listener(&self.context, &self.client_config).await?.into()
+                };
+            } else {
+                let socket = create_standard_udp_listener(&self.context, &self.client_config).await?.into();
+            }
+        }
+
+        Ok(TunnelUdpServer {
+            context: self.context,
+            time_to_live: self.time_to_live,
+            capacity: self.capacity,
+            listener: Arc::new(socket),
+            balancer: self.balancer,
+            forward_addr: self.forward_addr,
+        })
+    }
+}
 
 #[derive(Clone)]
 struct TunnelUdpInboundWriter {
@@ -30,51 +94,33 @@ impl UdpInboundWrite for TunnelUdpInboundWriter {
     }
 }
 
-pub struct UdpTunnel {
+pub struct TunnelUdpServer {
     context: Arc<ServiceContext>,
     time_to_live: Option<Duration>,
     capacity: Option<usize>,
+    listener: Arc<UdpSocket>,
+    balancer: PingBalancer,
+    forward_addr: Address,
 }
 
-impl UdpTunnel {
-    pub fn new(context: Arc<ServiceContext>, time_to_live: Option<Duration>, capacity: Option<usize>) -> UdpTunnel {
-        UdpTunnel {
-            context,
-            time_to_live,
-            capacity,
-        }
+impl TunnelUdpServer {
+    /// Get server's local address
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.local_addr()
     }
 
-    pub async fn run(
-        &mut self,
-        client_config: &ServerAddr,
-        balancer: PingBalancer,
-        forward_addr: &Address,
-    ) -> io::Result<()> {
-        let socket = match *client_config {
-            ServerAddr::SocketAddr(ref saddr) => {
-                ShadowUdpSocket::listen_with_opts(saddr, self.context.accept_opts()).await?
-            }
-            ServerAddr::DomainName(ref dname, port) => {
-                lookup_then!(self.context.context_ref(), dname, port, |addr| {
-                    ShadowUdpSocket::listen_with_opts(&addr, self.context.accept_opts()).await
-                })?
-                .1
-            }
-        };
-        let socket: UdpSocket = socket.into();
+    /// Start serving
+    pub async fn run(self) -> io::Result<()> {
+        info!("shadowsocks UDP tunnel listening on {}", self.listener.local_addr()?);
 
-        info!("shadowsocks UDP tunnel listening on {}", socket.local_addr()?);
-
-        let listener = Arc::new(socket);
         let (mut manager, cleanup_interval, mut keepalive_rx) = UdpAssociationManager::new(
             self.context.clone(),
             TunnelUdpInboundWriter {
-                inbound: listener.clone(),
+                inbound: self.listener.clone(),
             },
             self.time_to_live,
             self.capacity,
-            balancer,
+            self.balancer,
         );
 
         let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
@@ -92,7 +138,7 @@ impl UdpTunnel {
                     manager.keep_alive(&peer_addr).await;
                 }
 
-                recv_result = listener.recv_from(&mut buffer) => {
+                recv_result = self.listener.recv_from(&mut buffer) => {
                     let (n, peer_addr) = match recv_result {
                         Ok(s) => s,
                         Err(err) => {
@@ -114,13 +160,13 @@ impl UdpTunnel {
                     }
 
                     let data = &buffer[..n];
-                    if let Err(err) = manager.send_to(peer_addr, forward_addr.clone(), data)
+                    if let Err(err) = manager.send_to(peer_addr, self.forward_addr.clone(), data)
                         .await
                     {
                         debug!(
                             "udp packet relay {} -> {} with {} bytes failed, error: {}",
                             peer_addr,
-                            forward_addr,
+                            self.forward_addr,
                             data.len(),
                             err
                         );

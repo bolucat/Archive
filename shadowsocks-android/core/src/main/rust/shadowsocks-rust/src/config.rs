@@ -8,25 +8,29 @@ use std::{
     str::FromStr,
 };
 
-use cfg_if::cfg_if;
 use clap::ArgMatches;
 use directories::ProjectDirs;
 use serde::Deserialize;
 
 /// Default configuration file path
-pub fn get_default_config_path() -> Option<PathBuf> {
+pub fn get_default_config_path(config_file: &str) -> Option<PathBuf> {
     // config.json in the current working directory ($PWD)
+    let config_files = vec![config_file, "config.json"];
     if let Ok(mut path) = env::current_dir() {
-        path.push("config.json");
-
-        if path.exists() {
-            return Some(path);
+        for filename in &config_files {
+            path.push(filename);
+            if path.exists() {
+                return Some(path);
+            }
+            path.pop();
         }
     } else {
         // config.json in the current working directory (relative path)
-        let relative_path = PathBuf::from("config.json");
-        if relative_path.exists() {
-            return Some(relative_path);
+        for filename in &config_files {
+            let relative_path = PathBuf::from(filename);
+            if relative_path.exists() {
+                return Some(relative_path);
+            }
         }
     }
 
@@ -38,10 +42,12 @@ pub fn get_default_config_path() -> Option<PathBuf> {
         // Windows: {FOLDERID_RoamingAppData}/shadowsocks/shadowsocks-rust/config/config.json
 
         let mut config_path = project_dirs.config_dir().to_path_buf();
-        config_path.push("config.json");
-
-        if config_path.exists() {
-            return Some(config_path);
+        for filename in &config_files {
+            config_path.push(filename);
+            if config_path.exists() {
+                return Some(config_path);
+            }
+            config_path.pop();
         }
     }
 
@@ -51,17 +57,22 @@ pub fn get_default_config_path() -> Option<PathBuf> {
     if let Ok(base_directories) = xdg::BaseDirectories::with_prefix("shadowsocks-rust") {
         // $XDG_CONFIG_HOME/shadowsocks-rust/config.json
         // for dir in $XDG_CONFIG_DIRS; $dir/shadowsocks-rust/config.json
-        if let Some(config_path) = base_directories.find_config_file("config.json") {
-            return Some(config_path);
+        for filename in &config_files {
+            if let Some(config_path) = base_directories.find_config_file(filename) {
+                return Some(config_path);
+            }
         }
     }
 
     // UNIX global configuration file
     #[cfg(unix)]
     {
-        let global_config_path = Path::new("/etc/shadowsocks-rust/config.json");
-        if global_config_path.exists() {
-            return Some(global_config_path.to_path_buf());
+        for filename in &config_files {
+            let path_str = "/etc/shadowsocks-rust/".to_owned() + filename;
+            let global_config_path = Path::new(&path_str);
+            if global_config_path.exists() {
+                return Some(global_config_path.to_path_buf());
+            }
         }
     }
 
@@ -209,25 +220,15 @@ pub struct LogFormatConfig {
 }
 
 /// Runtime mode (Tokio)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum RuntimeMode {
     /// Single-Thread Runtime
+    #[cfg_attr(not(feature = "multi-threaded"), default)]
     SingleThread,
     /// Multi-Thread Runtime
     #[cfg(feature = "multi-threaded")]
+    #[cfg_attr(feature = "multi-threaded", default)]
     MultiThread,
-}
-
-impl Default for RuntimeMode {
-    fn default() -> RuntimeMode {
-        cfg_if! {
-            if #[cfg(feature = "multi-threaded")] {
-                RuntimeMode::MultiThread
-            } else {
-                RuntimeMode::SingleThread
-            }
-        }
-    }
 }
 
 /// Parse `RuntimeMode` from string error

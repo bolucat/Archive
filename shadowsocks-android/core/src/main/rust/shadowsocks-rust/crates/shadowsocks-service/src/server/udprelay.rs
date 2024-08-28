@@ -3,7 +3,7 @@
 use std::{
     cell::RefCell,
     io::{self, ErrorKind},
-    net::{SocketAddr, SocketAddrV6},
+    net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
@@ -15,22 +15,21 @@ use lru_time_cache::LruCache;
 use rand::{rngs::SmallRng, Rng, SeedableRng};
 use shadowsocks::{
     config::ServerUser,
-    crypto::{CipherCategory, CipherKind},
+    crypto::CipherCategory,
     lookup_then,
-    net::{AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket},
+    net::{get_ip_stack_capabilities, AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket},
     relay::{
         socks5::Address,
         udprelay::{options::UdpSocketControlData, ProxySocket, MAXIMUM_UDP_PAYLOAD_SIZE},
     },
     ServerConfig,
 };
-use tokio::{sync::mpsc, task::JoinHandle, time};
+use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle, time};
+#[cfg(windows)]
+use windows_sys::Win32::Networking::WinSock::WSAEAFNOSUPPORT;
 
 use crate::net::{
-    packet_window::PacketWindowFilter,
-    utils::to_ipv4_mapped,
-    MonProxySocket,
-    UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE,
+    packet_window::PacketWindowFilter, utils::to_ipv4_mapped, MonProxySocket, UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE,
     UDP_ASSOCIATION_SEND_CHANNEL_SIZE,
 };
 
@@ -81,24 +80,25 @@ impl NatMap {
     }
 }
 
+/// UDP server instance
 pub struct UdpServer {
     context: Arc<ServiceContext>,
     assoc_map: NatMap,
     keepalive_tx: mpsc::Sender<NatKey>,
     keepalive_rx: mpsc::Receiver<NatKey>,
     time_to_live: Duration,
-    accept_opts: AcceptOpts,
-    worker_count: usize,
+    listener: Arc<MonProxySocket>,
+    svr_cfg: ServerConfig,
 }
 
 impl UdpServer {
-    pub fn new(
+    pub(crate) async fn new(
         context: Arc<ServiceContext>,
-        method: CipherKind,
+        svr_cfg: ServerConfig,
         time_to_live: Option<Duration>,
         capacity: Option<usize>,
         accept_opts: AcceptOpts,
-    ) -> UdpServer {
+    ) -> io::Result<UdpServer> {
         let time_to_live = time_to_live.unwrap_or(crate::DEFAULT_UDP_EXPIRY_DURATION);
 
         fn create_assoc_map<K, V>(time_to_live: Duration, capacity: Option<usize>) -> LruCache<K, V>
@@ -111,7 +111,7 @@ impl UdpServer {
             }
         }
 
-        let assoc_map = match method.category() {
+        let assoc_map = match svr_cfg.method().category() {
             CipherCategory::None | CipherCategory::Aead => {
                 NatMap::Association(create_assoc_map(time_to_live, capacity))
             }
@@ -123,38 +123,44 @@ impl UdpServer {
 
         let (keepalive_tx, keepalive_rx) = mpsc::channel(UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE);
 
-        UdpServer {
+        let socket = ProxySocket::bind_with_opts(context.context(), &svr_cfg, accept_opts).await?;
+        let socket = MonProxySocket::from_socket(socket, context.flow_stat());
+        let listener = Arc::new(socket);
+
+        Ok(UdpServer {
             context,
             assoc_map,
             keepalive_tx,
             keepalive_rx,
             time_to_live,
-            accept_opts,
-            worker_count: 1,
-        }
+            listener,
+            svr_cfg,
+        })
     }
 
-    #[inline]
-    pub fn set_worker_count(&mut self, worker_count: usize) {
-        self.worker_count = worker_count;
+    /// Server's configuration
+    pub fn server_config(&self) -> &ServerConfig {
+        &self.svr_cfg
     }
 
-    pub async fn run(mut self, svr_cfg: &ServerConfig) -> io::Result<()> {
-        let socket = ProxySocket::bind_with_opts(self.context.context(), svr_cfg, self.accept_opts.clone()).await?;
+    /// Server's listen address
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.get_ref().local_addr()
+    }
 
+    /// Start server's accept loop
+    pub async fn run(mut self) -> io::Result<()> {
         info!(
-            "shadowsocks udp server listening on {}",
-            socket.local_addr().expect("listener.local_addr"),
+            "shadowsocks udp server listening on {}, inbound address {}",
+            self.local_addr().expect("listener.local_addr"),
+            self.svr_cfg.addr(),
         );
-
-        let socket = MonProxySocket::from_socket(socket, self.context.flow_stat());
-        let listener = Arc::new(socket);
 
         let mut cleanup_timer = time::interval(self.time_to_live);
 
         let mut orx_opt = None;
 
-        let cpus = self.worker_count;
+        let cpus = Handle::current().metrics().num_workers();
         let mut other_receivers = Vec::new();
         if cpus > 1 {
             let (otx, orx) = mpsc::channel((cpus - 1) * 16);
@@ -165,7 +171,7 @@ impl UdpServer {
 
             for _ in 1..cpus {
                 let otx = otx.clone();
-                let listener = listener.clone();
+                let listener = self.listener.clone();
                 let context = self.context.clone();
 
                 other_receivers.push(tokio::spawn(async move {
@@ -178,9 +184,10 @@ impl UdpServer {
                                 None => continue,
                             };
 
-                        if let Err(..) = otx
+                        if (otx
                             .send((peer_addr, target_addr, control, Bytes::copy_from_slice(&buffer[..n])))
-                            .await
+                            .await)
+                            .is_err()
                         {
                             // If Result is error, the channel receiver is closed. We should exit the task.
                             break;
@@ -220,6 +227,8 @@ impl UdpServer {
         }
 
         let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
+        // Make a clone to self.listener to avoid borrowing self
+        let listener = self.listener.clone();
         loop {
             tokio::select! {
                 _ = cleanup_timer.tick() => {
@@ -407,7 +416,7 @@ impl UdpAssociation {
     }
 
     fn try_send(&self, data: UdpAssociationSendMessage) -> io::Result<()> {
-        if let Err(..) = self.sender.try_send(data) {
+        if self.sender.try_send(data).is_err() {
             let err = io::Error::new(ErrorKind::Other, "udp relay channel full");
             return Err(err);
         }
@@ -550,7 +559,7 @@ impl UdpAssociationContext {
                             Some(..) => unreachable!("client_session_id is not None but aead-cipher-2022 is not enabled"),
                         };
 
-                        if let Err(..) = self.keepalive_tx.try_send(nat_key) {
+                        if self.keepalive_tx.try_send(nat_key).is_err() {
                             debug!("udp relay {:?} keep-alive failed, channel full or closed", nat_key);
                         } else {
                             self.keepalive_flag = false;
@@ -626,7 +635,7 @@ impl UdpAssociationContext {
                 return;
             }
 
-            session_context.client_user = control.user.clone();
+            session_context.client_user.clone_from(&control.user);
         }
 
         if let Err(err) = self.dispatch_received_outbound_packet(target_addr, data).await {
@@ -652,22 +661,44 @@ impl UdpAssociationContext {
         }
     }
 
-    async fn send_received_outbound_packet(&mut self, mut target_addr: SocketAddr, data: &[u8]) -> io::Result<()> {
-        const UDP_SOCKET_SUPPORT_DUAL_STACK: bool = cfg!(any(
-            target_os = "linux",
-            target_os = "android",
-            target_os = "macos",
-            target_os = "ios",
-            target_os = "watchos",
-            target_os = "tvos",
-            target_os = "freebsd",
-            // target_os = "dragonfly",
-            // target_os = "netbsd",
-            target_os = "windows",
-        ));
+    async fn send_received_outbound_packet(&mut self, original_target_addr: SocketAddr, data: &[u8]) -> io::Result<()> {
+        let ip_stack_caps = get_ip_stack_capabilities();
 
-        let socket = if UDP_SOCKET_SUPPORT_DUAL_STACK {
-            match self.outbound_ipv6_socket {
+        let target_addr = match original_target_addr {
+            SocketAddr::V4(ref v4) => {
+                // If IPv4-mapped-IPv6 is supported.
+                // Converts IPv4 address to IPv4-mapped-IPv6
+                // All sockets will be created in IPv6 (nearly all modern OS supports IPv6 sockets)
+                if ip_stack_caps.support_ipv4_mapped_ipv6 {
+                    SocketAddr::new(v4.ip().to_ipv6_mapped().into(), v4.port())
+                } else {
+                    original_target_addr
+                }
+            }
+            SocketAddr::V6(ref v6) => {
+                // If IPv6 is not supported. Try to map it back to IPv4.
+                if !ip_stack_caps.support_ipv6 || !ip_stack_caps.support_ipv4_mapped_ipv6 {
+                    match v6.ip().to_ipv4_mapped() {
+                        Some(v4) => SocketAddr::new(v4.into(), v6.port()),
+                        None => original_target_addr,
+                    }
+                } else {
+                    original_target_addr
+                }
+            }
+        };
+
+        let socket = match target_addr {
+            SocketAddr::V4(..) => match self.outbound_ipv4_socket {
+                Some(ref mut socket) => socket,
+                None => {
+                    let socket =
+                        OutboundUdpSocket::connect_any_with_opts(AddrFamily::Ipv4, self.context.connect_opts_ref())
+                            .await?;
+                    self.outbound_ipv4_socket.insert(socket)
+                }
+            },
+            SocketAddr::V6(..) => match self.outbound_ipv6_socket {
                 Some(ref mut socket) => socket,
                 None => {
                     let socket =
@@ -675,49 +706,24 @@ impl UdpAssociationContext {
                             .await?;
                     self.outbound_ipv6_socket.insert(socket)
                 }
-            }
-        } else {
-            match target_addr {
-                SocketAddr::V4(..) => match self.outbound_ipv4_socket {
-                    Some(ref mut socket) => socket,
-                    None => {
-                        let socket =
-                            OutboundUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref())
-                                .await?;
-                        self.outbound_ipv4_socket.insert(socket)
-                    }
-                },
-                SocketAddr::V6(..) => match self.outbound_ipv6_socket {
-                    Some(ref mut socket) => socket,
-                    None => {
-                        let socket =
-                            OutboundUdpSocket::connect_any_with_opts(&target_addr, self.context.connect_opts_ref())
-                                .await?;
-                        self.outbound_ipv6_socket.insert(socket)
-                    }
-                },
-            }
+            },
         };
 
-        if UDP_SOCKET_SUPPORT_DUAL_STACK {
-            if let SocketAddr::V4(saddr) = target_addr {
-                let mapped_ip = saddr.ip().to_ipv6_mapped();
-                target_addr = SocketAddr::V6(SocketAddrV6::new(mapped_ip, saddr.port(), 0, 0));
+        match socket.send_to(data, target_addr).await {
+            Ok(n) => {
+                if n != data.len() {
+                    warn!(
+                        "{} -> {} sent {} bytes != expected {} bytes",
+                        self.peer_addr,
+                        target_addr,
+                        n,
+                        data.len()
+                    );
+                }
+                Ok(())
             }
+            Err(err) => Err(err),
         }
-
-        let n = socket.send_to(data, target_addr).await?;
-        if n != data.len() {
-            warn!(
-                "{} -> {} sent {} bytes != expected {} bytes",
-                self.peer_addr,
-                target_addr,
-                n,
-                data.len()
-            );
-        }
-
-        Ok(())
     }
 
     async fn send_received_respond_packet(&mut self, mut addr: Address, data: &[u8]) {
@@ -777,7 +783,7 @@ impl UdpAssociationContext {
                 control.client_session_id = client_session.client_session_id;
                 control.server_session_id = self.server_session_id;
                 control.packet_id = self.server_packet_id;
-                control.user = client_session.client_user.clone();
+                control.user.clone_from(&client_session.client_user);
 
                 if let Err(err) = self
                     .inbound

@@ -25,7 +25,7 @@ dnl Do not change user variables!
 dnl https://www.gnu.org/software/automake/manual/html_node/Flag-Variables-Ordering.html
 
 AC_PREREQ(2.61)
-AC_INIT([nghttp2], [1.62.1], [t-tujikawa@users.sourceforge.net])
+AC_INIT([nghttp2], [1.63.0], [t-tujikawa@users.sourceforge.net])
 AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])
@@ -45,7 +45,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 dnl See versioning rule:
 dnl  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
 AC_SUBST(LT_CURRENT, 42)
-AC_SUBST(LT_REVISION, 1)
+AC_SUBST(LT_REVISION, 2)
 AC_SUBST(LT_AGE, 28)
 
 major=`echo $PACKAGE_VERSION |cut -d. -f1 | sed -e "s/[^0-9]//g"`
@@ -126,6 +126,11 @@ AC_ARG_WITH([libcares],
     [AS_HELP_STRING([--with-libcares],
                     [Use libc-ares [default=check]])],
     [request_libcares=$withval], [request_libcares=check])
+
+AC_ARG_WITH([wolfssl],
+    [AS_HELP_STRING([--with-wolfssl],
+                    [Use wolfSSL [default=check]])],
+    [request_wolfssl=$withval], [request_wolfssl=check])
 
 AC_ARG_WITH([openssl],
     [AS_HELP_STRING([--with-openssl],
@@ -333,7 +338,7 @@ case "$host_os" in
   *android*)
     android_build=yes
     # android does not need -pthread, but needs following 2 libs for C++
-    APPLDFLAGS="$APPLDFLAGS -lstdc++ -latomic"
+    APPLDFLAGS="$APPLDFLAGS -latomic"
     ;;
   *)
     PTHREAD_LDFLAGS="-pthread"
@@ -411,9 +416,15 @@ if test "x${request_libev}" = "xyes" &&
   AC_MSG_ERROR([libev was requested (--with-libev) but not found])
 fi
 
+if test "x${request_openssl}" = "xyes" &&
+   test "x${request_wolfssl}" = "xyes"; then
+  AC_MSG_ERROR([Requesting both OpenSSL and wolfSSL is not allowed])
+fi
+
 # openssl (for src)
 have_openssl=no
-if test "x${request_openssl}" != "xno"; then
+if test "x${request_openssl}" != "xno" &&
+   test "x${request_wolfssl}" != "xyes"; then
   PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.1.1],
                     [have_openssl=yes], [have_openssl=no])
   if test "x${have_openssl}" = "xno"; then
@@ -462,6 +473,45 @@ if test "x${request_openssl}" = "xyes" &&
   AC_MSG_ERROR([openssl was requested (--with-openssl) but not found])
 fi
 
+# wolfSSL (for src)
+have_wolfssl=no
+if test "x${request_wolfssl}" != "xno" &&
+   test "x${request_openssl}" != "xyes" &&
+   test "x${have_openssl}" != "xyes"; then
+  PKG_CHECK_MODULES([WOLFSSL], [wolfssl >= 5.7.0],
+                    [have_wolfssl=yes], [have_wolfssl=no])
+  if test "x${have_wolfssl}" = "xno"; then
+    AC_MSG_NOTICE($WOLFSSL_PKG_ERRORS)
+  else
+    AC_DEFINE([HAVE_WOLFSSL], [1],
+              [Define to 1 if you have 'wolfssl' library.])
+
+    save_CFLAGS="$CFLAGS"
+    save_LIBS="$LIBS"
+    CFLAGS="$WOLFSSL_CFLAGS $CFLAGS"
+    LIBS="$WOLFSSL_LIBS $LIBS"
+
+    have_wolfssl_quic=no
+    AC_MSG_CHECKING([for wolfSSL QUIC])
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+      #include <wolfssl/options.h>
+      #include <wolfssl/openssl/ssl.h>
+    ]], [[
+      SSL_provide_quic_data(NULL, 0, NULL, 0);
+    ]])],
+    [AC_MSG_RESULT([yes]); have_wolfssl_quic=yes],
+    [AC_MSG_RESULT([no]); have_wolfssl_quic=no])
+
+    CFLAGS="$save_CFLAGS"
+    LIBS="$save_LIBS"
+  fi
+fi
+
+if test "x${request_wolfssl}" = "xyes" &&
+   test "x${have_wolfssl}" != "xyes"; then
+  AC_MSG_ERROR([wolfSSL was requested (--with-wolfssl) but not found])
+fi
+
 # c-ares (for src)
 have_libcares=no
 if test "x${request_libcares}" != "xno"; then
@@ -490,6 +540,28 @@ fi
 if test "x${request_libngtcp2}" = "xyes" &&
    test "x${have_libngtcp2}" != "xyes"; then
   AC_MSG_ERROR([libngtcp2 was requested (--with-libngtcp2) but not found])
+fi
+
+# ngtcp2_crypto_wolfssl (for src)
+have_libngtcp2_crypto_wolfssl=no
+if test "x${have_wolfssl_quic}" = "xyes" &&
+   test "x${request_libngtcp2}" != "xno"; then
+  PKG_CHECK_MODULES([LIBNGTCP2_CRYPTO_WOLFSSL],
+                    [libngtcp2_crypto_wolfssl >= 1.0.0],
+                    [have_libngtcp2_crypto_wolfssl=yes],
+                    [have_libngtcp2_crypto_wolfssl=no])
+  if test "x${have_libngtcp2_crypto_wolfssl}" = "xno"; then
+    AC_MSG_NOTICE($LIBNGTCP2_CRYPTO_WOLFSSL_PKG_ERRORS)
+  else
+    AC_DEFINE([HAVE_LIBNGTCP2_CRYPTO_WOLFSSL], [1],
+              [Define to 1 if you have `libngtcp2_crypto_wolfssl` library.])
+  fi
+fi
+
+if test "x${have_wolfssl_quic}" = "xyes" &&
+   test "x${request_libngtcp2}" = "xyes" &&
+   test "x${have_libngtcp2_crypto_wolfssl}" != "xyes"; then
+  AC_MSG_ERROR([libngtcp2_crypto_wolfssl was requested (--with-libngtcp2) but not found])
 fi
 
 # ngtcp2_crypto_quictls (for src)
@@ -751,7 +823,7 @@ fi
 enable_app=no
 if test "x${request_app}" != "xno" &&
    test "x${have_zlib}" = "xyes" &&
-   test "x${have_openssl}" = "xyes" &&
+   (test "x${have_openssl}" = "xyes" || test "x${have_wolfssl}" = "xyes") &&
    test "x${have_libev}" = "xyes" &&
    test "x${have_libcares}" = "xyes"; then
   enable_app=yes
@@ -768,7 +840,8 @@ AM_CONDITIONAL([ENABLE_APP], [ test "x${enable_app}" = "xyes" ])
 enable_http3=no
 if test "x${request_http3}" != "xno" &&
    test "x${have_libngtcp2}" = "xyes" &&
-   (test "x${have_libngtcp2_crypto_quictls}" = "xyes" ||
+   (test "x${have_libngtcp2_crypto_wolfssl}" = "xyes" ||
+    test "x${have_libngtcp2_crypto_quictls}" = "xyes" ||
     test "x${have_libngtcp2_crypto_boringssl}" = "xyes") &&
    test "x${have_libnghttp3}" = "xyes"; then
   enable_http3=yes
@@ -945,6 +1018,7 @@ AC_CHECK_FUNCS([ \
   memmove \
   memset \
   mkostemp \
+  pipe2 \
   socket \
   sqrt \
   strchr \
@@ -1170,6 +1244,7 @@ AC_MSG_NOTICE([summary of build options:
     Test:
       Failmalloc:     ${enable_failmalloc}
     Libs:
+      wolfSSL:        ${have_wolfssl} (CFLAGS='${WOLFSSL_CFLAGS}' LIBS='${WOLFSSL_LIBS}')
       OpenSSL:        ${have_openssl} (CFLAGS='${OPENSSL_CFLAGS}' LIBS='${OPENSSL_LIBS}')
       Libxml2:        ${have_libxml2} (CFLAGS='${LIBXML2_CFLAGS}' LIBS='${LIBXML2_LIBS}')
       Libev:          ${have_libev} (CFLAGS='${LIBEV_CFLAGS}' LIBS='${LIBEV_LIBS}')

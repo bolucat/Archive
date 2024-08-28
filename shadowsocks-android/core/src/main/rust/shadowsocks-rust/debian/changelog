@@ -1,3 +1,259 @@
+shadowsocks-rust (1.20.4) unstable; urgency=medium
+
+  ## Features
+
+  - #1616 `local`: Allow configuring SOCKS5 `UDP_ASSOCIATE` address
+  - #1607 Published in MacPorts: https://ports.macports.org/port/shadowsocks-rust/
+  - #1613 `ProxyServerStream::from_stream` made public
+
+  ## Bug Fixes
+
+  - #1612 `server`: Properly exit server instance if any of the sub-tasks exited
+
+shadowsocks-rust (1.20.3) unstable; urgency=medium
+
+  ## Features
+
+  - `local`: Ping Balancer scores replaced standard deviation with median absolute deviation, which should help focusing less on outlying observations in latency samples.
+
+  ## Bug Fixes
+
+  - #1589 `local-tun`: Removes linking to [`SetInterfaceDnsSettings`](https://learn.microsoft.com/en-us/windows/win32/api/netioapi/nf-netioapi-setinterfacednssettings) on Windows
+
+shadowsocks-rust (1.20.2) unstable; urgency=medium
+
+  ## Features
+
+  - #1560 PingBalancer check Firefox portal allowing `200` HTTP status
+
+shadowsocks-rust (1.20.1) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - `local-online-config`: SIP008 auto reload configuration task will add online servers without replacing the existed ones. This bug will eventually cause `sslocal` consumes too many memories and get OOM killed.
+
+  Users are encourage to update to this version if using 1.19.4 to 1.20.0.
+
+  ## Features
+
+  - `shadowsocks-service`: Updated [`rustls`](https://crates.io/crates/rustls) to v0.23 with [`ring`](https://crates.io/crates/ring) backend.
+  - `local-redir`, `server`: Better approach to check current platform IP stack capabilities like Go (IPv4, IPv6, IPv4-mapped-IPv6 supports).
+  - Explicitly enable dual-stack if listen addresses (`server`, `local_address`) are IPv4-mapped-IPv6, by setting `IPV6_V6ONLY=0`.
+
+shadowsocks-rust (1.20.0) unstable; urgency=medium
+
+  ## Breaking Changes
+
+  - #887 shadowsocks stream cipher (`TABLE`) doesn't need to make a derived key instead of using user's predefined key directly. This change will make shadowsocks-rust not going to be compatible with its older version. Users who are using `TABLE` cipher should upgrade all your local and server instances to the latest version of shadowsocks-rust. On the other hand, `TABLE` cipher is marked deprecated because it is vulnerable, users **must** migrate to other more secured methods immediately.
+
+shadowsocks-rust (1.19.4) unstable; urgency=medium
+
+  ## Features
+
+  - `local-online-config`: Making HTTP requests with `local-http`'s HttpClient implementation, mainly for supporting `outbound_*` socket configurations.
+
+  ## Miscellaneous
+
+  - Fixed build failures on some platforms.
+
+shadowsocks-rust (1.19.3) unstable; urgency=medium
+
+  ## Breaking Changes
+
+  - Feature `dns-over-h3` moved from feature `full` to `full-extra`. DNS over H3 is still an experimental feature.
+  - `local-fake-dns`: Disabled compression (zstd), which seems to be deprecated by [`sled`](https://crates.io/crates/sled).
+
+  ## Features
+
+  - `local-online-config`: Set 30s timeout for update HTTP requests.
+
+shadowsocks-rust (1.19.2) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - `local-tun`: `tun2` handles IP packet information automatically.
+
+shadowsocks-rust (1.19.1) unstable; urgency=medium
+
+  ## Features
+
+  - Rollback `rustls` to v0.22, v0.23 first introduced `aws-lc` as the default crypto implementation, but it cannot be built on some targets if there are still older versions of `rustls` in the dependency tree.
+  - `local-tun`: Switch from `tun` to `tun2`, which is a fork of `tun`. `tun` seems to be abandoned.
+
+  ## Bug Fixes
+
+  - #1539 `local-fake-dns`: Query Response Message has to include the original Query and flags.
+
+shadowsocks-rust (1.19.0) unstable; urgency=medium
+
+  ## Features
+
+  - #302 `sslocal` support SIP008 Online Configuration. Pull `servers` from remote servers automatically. (Experimental)
+  - Add `basic`, `full`, `full-extra` features makes building command line arguments shorter
+  
+  ## Bug Fixes
+
+  - #1525 Check `"users"` in server configuration if `method` doesn't support AEAD-2022 EIH.
+  - #1528 Fixed FreeBSD build.
+
+  ## Miscellaneous
+
+  - Snap: Add alias names like `sslocal`, `ssserver`, ...
+  - `local-tun` feature could be enabled even if target platform is not supported.
+
+  ## BREAKING
+
+  - Minimal Supported Rust Version (MSRV) is v1.74
+
+shadowsocks-rust (1.18.4) unstable; urgency=medium
+
+  ## Features
+
+  - #1495 Binaries support `--plugin-mode` command line argument
+  - `local-tun` is enabled by default for Windows targets in CI builds
+
+  ## Bug Fixes
+
+  - #1516 `local-dns` UDP client support AEAD-2022 protocol properly
+
+shadowsocks-rust (1.18.3) unstable; urgency=medium
+
+  ## Features
+
+  - #1466 Support `outbound_fwmark` in server side to split outbound tunnel
+  - #1467 Default build for `*-windows-*` targets includes `sswinservice`
+  - `local-fakedns`: Add a basic implementation of Fake-DNS, which will allocate IPs from pool for DNS queries. This experimental feature could be useful when using `local-tun`, `local-redir` or other features that could only receive IP destinations, the domain name that is resolved by the Fake-DNS will be translated from IP back to domain name when connecting to the remote.
+  - #1500 Add `launchd_udp_socket_name`, `launchd_tcp_socket_name` to basic config format
+
+  ## Bug Fixes
+
+  - Fixed build on OpenBSD
+  - #1491 Fixed per-server outbound options not taking effect
+  - #1509 `local-tun` TCP socket creation made non-blocking
+
+shadowsocks-rust (1.18.2) unstable; urgency=medium
+
+  ## Features
+
+  - `local-tun`: Support `tun_interface_destination` configuration key
+
+  ## Bug Fixes
+
+  - `local`: macOS launch activate sockets set non-blocking
+
+shadowsocks-rust (1.18.1) unstable; urgency=medium
+
+  ## Features
+
+  - Default logging framework changed to [`tracing-subscriber`](https://crates.io/crates/tracing-subscriber), which:
+    - Support libraries that log with both [`tracing`](https://crates.io/crates/tracing), and [`log`](https://crates.io/crates/log).
+    - NOTE: `--log-config` parameter will apply only to [`log4rs`](https://crates.io/crates/log4rs), which doesn't support the `tracing` framework.
+
+  ## Bug Fixes
+
+  - #1425 Enable `EDNS(0)` by default for hickory-dns resolver.
+
+  ## NOTE
+
+  - [`clap`](https://crates.io/crates/clap) upgraded MSRV (Minimal Supported Rust Version) to v1.74 since v4.5.0. This project will have to stay in v4.4 until the next major release.
+
+ -- ty <zonyitoo@gmail.com> Sun, 18 Feb 2024 22:05:00 +0800
+
+shadowsocks-rust (1.18.0) unstable; urgency=medium
+
+  Mostly identical to v1.17.2, except that:
+
+  - Minimal Supported Rust Version (MSRV) upgraded from v1.64 to v1.71
+  - #1259 Fixed Snapcraft build. `base` changed to `core22`, auto-build architecture changed to [`arm64`, `amd64`, `armhf`]
+  - #1426 MIPS targets removed from release build, because MIPS targets are now downgraded to TIER 3
+
+ -- ty <zonyitoo@gmail.com> Thu, 08 Feb 2024 00:00:00 +0800
+
+shadowsocks-rust (1.17.2) unstable; urgency=medium
+
+  ## Features
+
+  - `local`: `socks` local server will support SOCKS5, SOCKS4a, HTTP proxy protocols when `local-http`, `local-socks4` features are enabled
+  - `local`: Support setting `udp_mtu` in configuration file to actively reject `packet.size > MTU`
+
+  ## Bug Fixes
+
+  - #1378 dns-over-tls/https with rustls add dependencies to certs
+  - #1381 Set the incoming socket buffer sizes properly on the listen socket
+  - #1414 TUN synchronize SYN packet and Socket creation
+
+shadowsocks-rust (1.17.1) unstable; urgency=medium
+
+  ## Features
+
+  - #1330 `local`: Support macOS launch activate socket (https://developer.apple.com/documentation/xpc/1505523-launch_activate_socket)
+  - #1357 `local`: Upgrade hyper (https://crates.io/crates/hyper) to v1.0
+
+  ## Bug Fixes
+
+  - #1328 `run_as_user` aborts if any error occurs
+
+  ## Miscellaneous
+
+  - Minor improvements for `local-tun` on Windows
+  - Upgrade `shadowsocks-crypto` that supports `sm4-gcm`, `sm4-ccm` non-standard AEAD ciphers
+
+shadowsocks-rust (1.17.0) unstable; urgency=medium
+
+  ## Features
+
+  - Trust-DNS is rebranded to Hickory-DNS https://github.com/hickory-dns/hickory-dns/releases/tag/v0.24.0
+  - Experimental: Support DNS-over-H3 (Try with configuration `"dns": "google_h3"` and compile with feature `"dns-over-h3"`)
+  - #1319 Allow configuring `local-dns` client cache size
+  - Experimental: `local-tun` supports Windows with [Wintun](https://www.wintun.net/)
+
+shadowsocks-rust (1.16.2) unstable; urgency=medium
+
+  ## Features
+
+  - `ssurl`: #1287 Support SIP008 links
+  - `ssserver`: #1293 Disable UDP dual-stack outbound socket when IPv6 is not supported
+  - `sswinservice`: #1292 Support Windows Service
+
+shadowsocks-rust (1.16.1) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - #1285 [Regression fix] local DNS uses mode `tcp_and_udp` by default
+
+shadowsocks-rust (1.16.0) unstable; urgency=medium
+
+  ## Features
+
+  - `local-redir`: #1159 Linux Redirect (TCP) supports dual-stack listener
+  - #1156 Support Multipath-TCP
+  - DNS resolver (with `trust-dns` enabled) support outbound socket configurations, like `outbound-fwmark`, `outbound-bind-addr`, ...
+  - #1127 Support SIP003u, UDP plugins
+  - #1185 Support creating servers with builder pattern to allow users to retrieve the actual listening address of the server listeners
+  - #1204 Support reading default configuration files `local.json`, `server.json` and `manager.json`
+  - #1229 Support configuring DNS cache size with `--dns-cache-size` in command line options and `dns_cache_size` in configuration file
+  - #1266 Support Network Adapters' `FriendlyName` on Windows in `outbound_bind_interface`
+
+  ## Bug Fixes
+
+  - #1239 Fixed misaligned read in shadowsocks' socks5 protocol implementation. It may cause panics compiled by rustc newer than 1.68.
+  - #1234 PingBalancer shouldn't check TCP mode by default
+  - #1221 Compatible with Linux Kernels that doesn't support `IP6T_SO_ORIGINAL_DST`
+  - #1254 Fixed Tree-Rule detector for REGEX rules that ends with `$`
+
+  ## Miscellaneous
+
+  - Docker: #1149 Changed binary path to `/usr/bin` from `/usr/local/bin` preventing being overwritten by K8S mount
+  - Snap: Add `network-control` plug for `tun` protocol
+
+ -- ty <zonyitoo@gmail.com>  Sat, 27 Aug 2023 00:20:00
+
+shadowsocks-rust (1.15.4) unstable; urgency=medium
+
+  ## Bug Fixed
+
+  - #1239 Fixed misaligned read in shadowsocks' socks5 protocol implementation. It may cause panics compiled by rustc newer than 1.68.
+
 shadowsocks-rust (1.15.3) unstable; urgency=medium
 
   ## Features

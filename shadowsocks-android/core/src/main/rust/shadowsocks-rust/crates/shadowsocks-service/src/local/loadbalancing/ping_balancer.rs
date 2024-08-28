@@ -18,7 +18,7 @@ use byte_string::ByteStr;
 use futures::future;
 use log::{debug, error, info, trace, warn};
 use shadowsocks::{
-    config::Mode,
+    config::{Mode, ServerSource},
     plugin::{Plugin, PluginMode},
     relay::{
         socks5::Address,
@@ -35,7 +35,7 @@ use tokio::{
     time,
 };
 
-use crate::local::context::ServiceContext;
+use crate::{config::ServerInstanceConfig, local::context::ServiceContext};
 
 use super::{
     server_data::ServerIdent,
@@ -82,8 +82,9 @@ impl PingBalancerBuilder {
         }
     }
 
-    pub fn add_server(&mut self, server: ServerConfig) {
+    pub fn add_server(&mut self, server: ServerInstanceConfig) {
         let ident = ServerIdent::new(
+            self.context.clone(),
             server,
             self.max_server_rtt,
             self.check_interval * EXPECTED_CHECK_POINTS_IN_CHECK_WINDOW,
@@ -242,7 +243,7 @@ impl PingBalancerContext {
         check_interval: Duration,
         check_best_interval: Option<Duration>,
     ) -> io::Result<(Arc<PingBalancerContext>, PingBalancerContextTask)> {
-        let plugin_abortable = if mode.enable_tcp() {
+        let plugin_abortable = {
             // Start plugins for TCP proxies
 
             let mut plugins = Vec::with_capacity(servers.len());
@@ -301,8 +302,6 @@ impl PingBalancerContext {
 
                 Some(plugin_abortable)
             }
-        } else {
-            None
         };
 
         let (best_tcp_idx, best_udp_idx) = PingBalancerBuilder::find_best_idx(&servers, mode);
@@ -722,19 +721,57 @@ impl PingBalancer {
     }
 
     /// Reset servers in load balancer. Designed for auto-reloading configuration file.
-    pub async fn reset_servers(&self, servers: Vec<ServerConfig>) -> io::Result<()> {
+    pub async fn reset_servers(
+        &self,
+        servers: Vec<ServerInstanceConfig>,
+        replace_server_sources: &[ServerSource],
+    ) -> io::Result<()> {
         let old_context = self.inner.context.load();
 
-        let servers = servers
+        let mut old_servers = old_context.servers.clone();
+        let mut idx = 0;
+        while idx < old_servers.len() {
+            let source_match = replace_server_sources
+                .iter()
+                .any(|src| *src == old_servers[idx].server_config().source());
+            if source_match {
+                old_servers.swap_remove(idx);
+            } else {
+                idx += 1;
+            }
+        }
+
+        trace!(
+            "ping balancer going to replace {} servers (total: {}) with {} servers, sources: {:?}",
+            old_context.servers.len() - old_servers.len(),
+            old_context.servers.len(),
+            servers.len(),
+            replace_server_sources
+        );
+
+        let mut servers = servers
             .into_iter()
             .map(|s| {
                 Arc::new(ServerIdent::new(
+                    old_context.context.clone(),
                     s,
                     old_context.max_server_rtt,
                     old_context.check_interval * EXPECTED_CHECK_POINTS_IN_CHECK_WINDOW,
                 ))
             })
             .collect::<Vec<Arc<ServerIdent>>>();
+
+        // Recreate a new instance for old servers (old server instance may still being held by clients)
+        for old_server in old_servers {
+            servers.push(Arc::new(ServerIdent::new(
+                old_context.context.clone(),
+                old_server.server_instance_config().clone(),
+                old_context.max_server_rtt,
+                old_context.check_interval * EXPECTED_CHECK_POINTS_IN_CHECK_WINDOW,
+            )));
+        }
+
+        trace!("ping balancer merged {} new servers", servers.len());
 
         let (shared_context, task_abortable) = PingBalancerContext::new(
             servers,
@@ -781,29 +818,41 @@ struct PingChecker {
 impl PingChecker {
     /// Checks server's score and update into `ServerScore<E>`
     async fn check_update_score(self) {
-        let score = match self.check_delay().await {
-            Ok(d) => match self.server_type {
-                ServerType::Tcp => self.server.tcp_score().push_score(Score::Latency(d)).await,
-                ServerType::Udp => self.server.udp_score().push_score(Score::Latency(d)).await,
-            },
-            // Penalty
-            Err(..) => match self.server_type {
-                ServerType::Tcp => self.server.tcp_score().push_score(Score::Errored).await,
-                ServerType::Udp => self.server.udp_score().push_score(Score::Errored).await,
-            },
+        let server_score = match self.server_type {
+            ServerType::Tcp => self.server.tcp_score(),
+            ServerType::Udp => self.server.udp_score(),
         };
 
-        trace!(
-            "updated remote {} server {} (score: {})",
-            self.server_type,
-            self.server.server_config().addr(),
-            score
-        );
+        let (score, stat_data) = match self.check_delay().await {
+            Ok(d) => server_score.push_score_fetch_statistic(Score::Latency(d)).await,
+            // Penalty
+            Err(..) => server_score.push_score_fetch_statistic(Score::Errored).await,
+        };
+
+        if stat_data.fail_rate > 0.8 {
+            warn!(
+                "balancer: checked & updated remote {} server {} (score: {}), {:?}",
+                self.server_type,
+                ServerConfigFormatter::new(self.server.server_config()),
+                score,
+                stat_data,
+            );
+        } else {
+            debug!(
+                "balancer: checked & updated remote {} server {} (score: {}), {:?}",
+                self.server_type,
+                ServerConfigFormatter::new(self.server.server_config()),
+                score,
+                stat_data,
+            );
+        }
     }
 
     /// Detect TCP connectivity with Chromium [Network Portal Detection](https://www.chromium.org/chromium-os/chromiumos-design-docs/network-portal-detection)
     #[allow(dead_code)]
     async fn check_request_tcp_chromium(&self) -> io::Result<()> {
+        use std::io::{Error, ErrorKind};
+
         static GET_BODY: &[u8] =
             b"GET /generate_204 HTTP/1.1\r\nHost: clients3.google.com\r\nConnection: close\r\nAccept: */*\r\n\r\n";
 
@@ -813,7 +862,7 @@ impl PingChecker {
             self.context.context(),
             self.server.server_config(),
             &addr,
-            self.context.connect_opts_ref(),
+            self.server.connect_opts_ref(),
         )
         .await?;
         stream.write_all(GET_BODY).await?;
@@ -823,27 +872,28 @@ impl PingChecker {
         let mut buf = Vec::new();
         reader.read_until(b'\n', &mut buf).await?;
 
-        static EXPECTED_HTTP_STATUS_LINE: &[u8] = b"HTTP/1.1 204 No Content\r\n";
-        if buf != EXPECTED_HTTP_STATUS_LINE {
-            use std::io::{Error, ErrorKind};
+        let mut headers = [httparse::EMPTY_HEADER; 1];
+        let mut response = httparse::Response::new(&mut headers);
 
-            debug!(
-                "unexpected response from http://clients3.google.com/generate_204, {:?}",
-                ByteStr::new(&buf)
-            );
-
-            let err = Error::new(
-                ErrorKind::InvalidData,
-                "unexpected response from http://clients3.google.com/generate_204",
-            );
-            return Err(err);
+        if let Ok(..) = response.parse(&buf) {
+            if matches!(response.code, Some(204)) {
+                return Ok(());
+            }
         }
 
-        Ok(())
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "unexpected response from http://clients3.google.com/generate_204, {:?}",
+                ByteStr::new(&buf)
+            ),
+        ))
     }
 
     /// Detect TCP connectivity with Firefox's http://detectportal.firefox.com/success.txt
     async fn check_request_tcp_firefox(&self) -> io::Result<()> {
+        use std::io::{Error, ErrorKind};
+
         static GET_BODY: &[u8] =
             b"GET /success.txt HTTP/1.1\r\nHost: detectportal.firefox.com\r\nConnection: close\r\nAccept: */*\r\n\r\n";
 
@@ -853,7 +903,7 @@ impl PingChecker {
             self.context.context(),
             self.server.server_config(),
             &addr,
-            self.context.connect_opts_ref(),
+            self.server.connect_opts_ref(),
         )
         .await?;
         stream.write_all(GET_BODY).await?;
@@ -863,23 +913,22 @@ impl PingChecker {
         let mut buf = Vec::new();
         reader.read_until(b'\n', &mut buf).await?;
 
-        static EXPECTED_HTTP_STATUS_LINE: &[u8] = b"HTTP/1.1 200 OK\r\n";
-        if buf != EXPECTED_HTTP_STATUS_LINE {
-            use std::io::{Error, ErrorKind};
+        let mut headers = [httparse::EMPTY_HEADER; 1];
+        let mut response = httparse::Response::new(&mut headers);
 
-            debug!(
-                "unexpected response from http://detectportal.firefox.com/success.txt, {:?}",
-                ByteStr::new(&buf)
-            );
-
-            let err = Error::new(
-                ErrorKind::InvalidData,
-                "unexpected response from http://detectportal.firefox.com/success.txt",
-            );
-            return Err(err);
+        if let Ok(..) = response.parse(&buf) {
+            if matches!(response.code, Some(200) | Some(204)) {
+                return Ok(());
+            }
         }
 
-        Ok(())
+        Err(Error::new(
+            ErrorKind::InvalidData,
+            format!(
+                "unexpected response from http://detectportal.firefox.com/success.txt, {:?}",
+                ByteStr::new(&buf)
+            ),
+        ))
     }
 
     async fn check_request_udp(&self) -> io::Result<()> {
@@ -898,10 +947,12 @@ impl PingChecker {
 
         let addr = Address::SocketAddress(SocketAddr::new(Ipv4Addr::new(8, 8, 8, 8).into(), 53));
 
-        let svr_cfg = self.server.server_config();
-
-        let client =
-            ProxySocket::connect_with_opts(self.context.context(), svr_cfg, self.context.connect_opts_ref()).await?;
+        let client = ProxySocket::connect_with_opts(
+            self.context.context(),
+            self.server.server_config(),
+            self.server.connect_opts_ref(),
+        )
+        .await?;
 
         let mut control = UdpSocketControlData::default();
         control.client_session_id = rand::random::<u64>();
@@ -947,7 +998,7 @@ impl PingChecker {
                 trace!(
                     "checked remote {} server {} latency with {} ms",
                     self.server_type,
-                    self.server.server_config().addr(),
+                    ServerConfigFormatter::new(self.server.server_config()),
                     elapsed
                 );
                 Ok(elapsed)
@@ -956,7 +1007,7 @@ impl PingChecker {
                 debug!(
                     "failed to check {} server {}, error: {}",
                     self.server_type,
-                    self.server.server_config().addr(),
+                    ServerConfigFormatter::new(self.server.server_config()),
                     err
                 );
 
@@ -970,7 +1021,7 @@ impl PingChecker {
                 trace!(
                     "checked remote {} server {} latency timeout, elapsed {} ms",
                     self.server_type,
-                    self.server.server_config().addr(),
+                    ServerConfigFormatter::new(self.server.server_config()),
                     elapsed
                 );
 

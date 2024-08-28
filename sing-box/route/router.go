@@ -852,7 +852,7 @@ func (r *Router) RouteConnection(ctx context.Context, conn net.Conn, metadata ad
 		conn = deadline.NewConn(conn)
 	}
 
-	if metadata.InboundOptions.SniffEnabled {
+	if metadata.InboundOptions.SniffEnabled && !sniff.Skip(metadata) {
 		buffer := buf.NewPacket()
 		err := sniff.PeekStream(
 			ctx,

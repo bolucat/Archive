@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    future::Future,
     io::{self, ErrorKind},
     mem,
     net::{IpAddr, SocketAddr},
@@ -13,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use log::{error, trace};
+use log::{debug, error, trace};
 use shadowsocks::{net::TcpSocketOpts, relay::socks5::Address};
 use smoltcp::{
     iface::{Config as InterfaceConfig, Interface, SocketHandle, SocketSet},
@@ -21,12 +22,12 @@ use smoltcp::{
     socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer, State as TcpState},
     storage::RingBuffer,
     time::{Duration as SmolDuration, Instant as SmolInstant},
-    wire::{IpAddress, IpCidr, Ipv4Address, Ipv6Address, TcpPacket},
+    wire::{HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv6Address, TcpPacket},
 };
 use spin::Mutex as SpinMutex;
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
-    sync::mpsc,
+    sync::{mpsc, oneshot},
 };
 
 use crate::{
@@ -88,6 +89,7 @@ type SharedTcpConnectionControl = Arc<SpinMutex<TcpSocketControl>>;
 struct TcpSocketCreation {
     control: SharedTcpConnectionControl,
     socket: TcpSocket<'static>,
+    socket_created_tx: oneshot::Sender<()>,
 }
 
 struct TcpConnection {
@@ -117,7 +119,7 @@ impl TcpConnection {
         socket_creation_tx: &mpsc::UnboundedSender<TcpSocketCreation>,
         manager_notify: Arc<ManagerNotify>,
         tcp_opts: &TcpSocketOpts,
-    ) -> TcpConnection {
+    ) -> impl Future<Output = TcpConnection> {
         let send_buffer_size = tcp_opts.send_buffer_size.unwrap_or(DEFAULT_TCP_SEND_BUFFER_SIZE);
         let recv_buffer_size = tcp_opts.recv_buffer_size.unwrap_or(DEFAULT_TCP_RECV_BUFFER_SIZE);
 
@@ -129,15 +131,19 @@ impl TcpConnection {
             recv_state: TcpSocketState::Normal,
             send_state: TcpSocketState::Normal,
         }));
-
+        let (tx, rx) = oneshot::channel();
         let _ = socket_creation_tx.send(TcpSocketCreation {
             control: control.clone(),
             socket,
+            socket_created_tx: tx,
         });
-
-        TcpConnection {
-            control,
-            manager_notify,
+        async move {
+            // waiting socket add to SocketSet
+            let _ = rx.await;
+            TcpConnection {
+                control,
+                manager_notify,
+            }
         }
     }
 }
@@ -239,6 +245,7 @@ pub struct TcpTun {
     balancer: PingBalancer,
     iface_rx: mpsc::UnboundedReceiver<Vec<u8>>,
     iface_tx: mpsc::UnboundedSender<Vec<u8>>,
+    iface_tx_avail: Arc<AtomicBool>,
 }
 
 impl Drop for TcpTun {
@@ -255,11 +262,11 @@ impl TcpTun {
         capabilities.medium = Medium::Ip;
         capabilities.max_transmission_unit = mtu as usize;
 
-        let (mut device, iface_rx, iface_tx) = VirtTunDevice::new(capabilities);
+        let (mut device, iface_rx, iface_tx, iface_tx_avail) = VirtTunDevice::new(capabilities);
 
-        let mut iface_config = InterfaceConfig::default();
+        let mut iface_config = InterfaceConfig::new(HardwareAddress::Ip);
         iface_config.random_seed = rand::random();
-        let mut iface = Interface::new(iface_config, &mut device);
+        let mut iface = Interface::new(iface_config, &mut device, SmolInstant::now());
         iface.update_ip_addrs(|ip_addrs| {
             ip_addrs
                 .push(IpCidr::new(IpAddress::v4(0, 0, 0, 1), 0))
@@ -291,169 +298,184 @@ impl TcpTun {
         let manager_handle = {
             let manager_running = manager_running.clone();
 
-            thread::spawn(move || {
-                let TcpSocketManager {
-                    ref mut device,
-                    ref mut iface,
-                    ref mut sockets,
-                    ref mut socket_creation_rx,
-                    ..
-                } = manager;
+            thread::Builder::new()
+                .name("smoltcp-poll".to_owned())
+                .spawn(move || {
+                    let TcpSocketManager {
+                        ref mut device,
+                        ref mut iface,
+                        ref mut sockets,
+                        ref mut socket_creation_rx,
+                        ..
+                    } = manager;
 
-                let mut socket_set = SocketSet::new(vec![]);
+                    let mut socket_set = SocketSet::new(vec![]);
 
-                while manager_running.load(Ordering::Relaxed) {
-                    while let Ok(TcpSocketCreation { control, socket }) = socket_creation_rx.try_recv() {
-                        let handle = socket_set.add(socket);
-                        sockets.insert(handle, control);
-                    }
-
-                    let before_poll = SmolInstant::now();
-                    let updated_sockets = iface.poll(before_poll, device, &mut socket_set);
-
-                    if updated_sockets {
-                        trace!("VirtDevice::poll costed {}", SmolInstant::now() - before_poll);
-                    }
-
-                    // Check all the sockets' status
-                    let mut sockets_to_remove = Vec::new();
-
-                    for (socket_handle, control) in sockets.iter() {
-                        let socket_handle = *socket_handle;
-                        let socket = socket_set.get_mut::<TcpSocket>(socket_handle);
-                        let mut control = control.lock();
-
-                        // Remove the socket only when it is in the closed state.
-                        if socket.state() == TcpState::Closed {
-                            sockets_to_remove.push(socket_handle);
-
-                            control.send_state = TcpSocketState::Closed;
-                            control.recv_state = TcpSocketState::Closed;
-
-                            if let Some(waker) = control.send_waker.take() {
-                                waker.wake();
-                            }
-                            if let Some(waker) = control.recv_waker.take() {
-                                waker.wake();
-                            }
-
-                            trace!("closed TCP connection");
-                            continue;
-                        }
-
-                        // SHUT_WR
-                        if matches!(control.send_state, TcpSocketState::Close) {
-                            trace!("closing TCP Write Half, {:?}", socket.state());
-
-                            // Close the socket. Set to FIN state
-                            socket.close();
-                            control.send_state = TcpSocketState::Closing;
-
-                            // We can still process the pending buffer.
-                        }
-
-                        // Check if readable
-                        let mut wake_receiver = false;
-                        while socket.can_recv() && !control.recv_buffer.is_full() {
-                            let result = socket.recv(|buffer| {
-                                let n = control.recv_buffer.enqueue_slice(buffer);
-                                (n, ())
-                            });
-
-                            match result {
-                                Ok(..) => {
-                                    wake_receiver = true;
-                                }
-                                Err(err) => {
-                                    error!("socket recv error: {:?}, {:?}", err, socket.state());
-
-                                    // Don't know why. Abort the connection.
-                                    socket.abort();
-
-                                    if matches!(control.recv_state, TcpSocketState::Normal) {
-                                        control.recv_state = TcpSocketState::Closed;
-                                    }
-                                    wake_receiver = true;
-
-                                    // The socket will be recycled in the next poll.
-                                    break;
-                                }
-                            }
-                        }
-
-                        // If socket is not in ESTABLISH, FIN-WAIT-1, FIN-WAIT-2,
-                        // the local client have closed our receiver.
-                        if matches!(control.recv_state, TcpSocketState::Normal)
-                            && !socket.may_recv()
-                            && !matches!(
-                                socket.state(),
-                                TcpState::SynReceived | TcpState::Established | TcpState::FinWait1 | TcpState::FinWait2
-                            )
+                    while manager_running.load(Ordering::Relaxed) {
+                        while let Ok(TcpSocketCreation {
+                            control,
+                            socket,
+                            socket_created_tx: socket_create_tx,
+                        }) = socket_creation_rx.try_recv()
                         {
-                            trace!("closed TCP Read Half, {:?}", socket.state());
-
-                            // Let TcpConnection::poll_read returns EOF.
-                            control.recv_state = TcpSocketState::Closed;
-                            wake_receiver = true;
+                            let handle = socket_set.add(socket);
+                            let _ = socket_create_tx.send(());
+                            sockets.insert(handle, control);
                         }
 
-                        if wake_receiver && control.recv_waker.is_some() {
-                            if let Some(waker) = control.recv_waker.take() {
-                                waker.wake();
-                            }
+                        let before_poll = SmolInstant::now();
+                        let updated_sockets = iface.poll(before_poll, device, &mut socket_set);
+
+                        if updated_sockets {
+                            trace!("VirtDevice::poll costed {}", SmolInstant::now() - before_poll);
                         }
 
-                        // Check if writable
-                        let mut wake_sender = false;
-                        while socket.can_send() && !control.send_buffer.is_empty() {
-                            let result = socket.send(|buffer| {
-                                let n = control.send_buffer.dequeue_slice(buffer);
-                                (n, ())
-                            });
+                        // Check all the sockets' status
+                        let mut sockets_to_remove = Vec::new();
 
-                            match result {
-                                Ok(..) => {
-                                    wake_sender = true;
+                        for (socket_handle, control) in sockets.iter() {
+                            let socket_handle = *socket_handle;
+                            let socket = socket_set.get_mut::<TcpSocket>(socket_handle);
+                            let mut control = control.lock();
+
+                            // Remove the socket only when it is in the closed state.
+                            if socket.state() == TcpState::Closed {
+                                sockets_to_remove.push(socket_handle);
+
+                                control.send_state = TcpSocketState::Closed;
+                                control.recv_state = TcpSocketState::Closed;
+
+                                if let Some(waker) = control.send_waker.take() {
+                                    waker.wake();
                                 }
-                                Err(err) => {
-                                    error!("socket send error: {:?}, {:?}", err, socket.state());
+                                if let Some(waker) = control.recv_waker.take() {
+                                    waker.wake();
+                                }
 
-                                    // Don't know why. Abort the connection.
-                                    socket.abort();
+                                trace!("closed TCP connection");
+                                continue;
+                            }
 
-                                    if matches!(control.send_state, TcpSocketState::Normal) {
-                                        control.send_state = TcpSocketState::Closed;
+                            // SHUT_WR
+                            if matches!(control.send_state, TcpSocketState::Close) {
+                                trace!("closing TCP Write Half, {:?}", socket.state());
+
+                                // Close the socket. Set to FIN state
+                                socket.close();
+                                control.send_state = TcpSocketState::Closing;
+
+                                // We can still process the pending buffer.
+                            }
+
+                            // Check if readable
+                            let mut wake_receiver = false;
+                            while socket.can_recv() && !control.recv_buffer.is_full() {
+                                let result = socket.recv(|buffer| {
+                                    let n = control.recv_buffer.enqueue_slice(buffer);
+                                    (n, ())
+                                });
+
+                                match result {
+                                    Ok(..) => {
+                                        wake_receiver = true;
                                     }
-                                    wake_sender = true;
+                                    Err(err) => {
+                                        error!("socket recv error: {:?}, {:?}", err, socket.state());
 
-                                    // The socket will be recycled in the next poll.
-                                    break;
+                                        // Don't know why. Abort the connection.
+                                        socket.abort();
+
+                                        if matches!(control.recv_state, TcpSocketState::Normal) {
+                                            control.recv_state = TcpSocketState::Closed;
+                                        }
+                                        wake_receiver = true;
+
+                                        // The socket will be recycled in the next poll.
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // If socket is not in ESTABLISH, FIN-WAIT-1, FIN-WAIT-2,
+                            // the local client have closed our receiver.
+                            if matches!(control.recv_state, TcpSocketState::Normal)
+                                && !socket.may_recv()
+                                && !matches!(
+                                    socket.state(),
+                                    TcpState::Listen
+                                        | TcpState::SynReceived
+                                        | TcpState::Established
+                                        | TcpState::FinWait1
+                                        | TcpState::FinWait2
+                                )
+                            {
+                                trace!("closed TCP Read Half, {:?}", socket.state());
+
+                                // Let TcpConnection::poll_read returns EOF.
+                                control.recv_state = TcpSocketState::Closed;
+                                wake_receiver = true;
+                            }
+
+                            if wake_receiver && control.recv_waker.is_some() {
+                                if let Some(waker) = control.recv_waker.take() {
+                                    waker.wake();
+                                }
+                            }
+
+                            // Check if writable
+                            let mut wake_sender = false;
+                            while socket.can_send() && !control.send_buffer.is_empty() {
+                                let result = socket.send(|buffer| {
+                                    let n = control.send_buffer.dequeue_slice(buffer);
+                                    (n, ())
+                                });
+
+                                match result {
+                                    Ok(..) => {
+                                        wake_sender = true;
+                                    }
+                                    Err(err) => {
+                                        error!("socket send error: {:?}, {:?}", err, socket.state());
+
+                                        // Don't know why. Abort the connection.
+                                        socket.abort();
+
+                                        if matches!(control.send_state, TcpSocketState::Normal) {
+                                            control.send_state = TcpSocketState::Closed;
+                                        }
+                                        wake_sender = true;
+
+                                        // The socket will be recycled in the next poll.
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if wake_sender && control.send_waker.is_some() {
+                                if let Some(waker) = control.send_waker.take() {
+                                    waker.wake();
                                 }
                             }
                         }
 
-                        if wake_sender && control.send_waker.is_some() {
-                            if let Some(waker) = control.send_waker.take() {
-                                waker.wake();
+                        for socket_handle in sockets_to_remove {
+                            sockets.remove(&socket_handle);
+                            socket_set.remove(socket_handle);
+                        }
+
+                        if !device.recv_available() {
+                            let next_duration = iface
+                                .poll_delay(before_poll, &socket_set)
+                                .unwrap_or(SmolDuration::from_millis(5));
+                            if next_duration != SmolDuration::ZERO {
+                                thread::park_timeout(Duration::from(next_duration));
                             }
                         }
                     }
 
-                    for socket_handle in sockets_to_remove {
-                        sockets.remove(&socket_handle);
-                        socket_set.remove(socket_handle);
-                    }
-
-                    let next_duration = iface
-                        .poll_delay(before_poll, &socket_set)
-                        .unwrap_or(SmolDuration::from_millis(5));
-                    if next_duration != SmolDuration::ZERO {
-                        thread::park_timeout(Duration::from(next_duration));
-                    }
-                }
-
-                trace!("VirtDevice::poll thread exited");
-            })
+                    trace!("VirtDevice::poll thread exited");
+                })
+                .unwrap()
         };
 
         let manager_notify = Arc::new(ManagerNotify::new(manager_handle.thread().clone()));
@@ -467,6 +489,7 @@ impl TcpTun {
             balancer,
             iface_rx,
             iface_tx,
+            iface_tx_avail,
         }
     }
 
@@ -497,7 +520,7 @@ impl TcpTun {
                 return Err(io::Error::new(ErrorKind::Other, format!("listen error: {:?}", err)));
             }
 
-            trace!("created TCP connection for {} <-> {}", src_addr, dst_addr);
+            debug!("created TCP connection for {} <-> {}", src_addr, dst_addr);
 
             let connection = TcpConnection::new(
                 socket,
@@ -510,6 +533,7 @@ impl TcpTun {
             let context = self.context.clone();
             let balancer = self.balancer.clone();
             tokio::spawn(async move {
+                let connection = connection.await;
                 if let Err(err) = handle_redir_client(context, balancer, connection, src_addr, dst_addr).await {
                     error!("TCP tunnel failure, {} <-> {}, error: {}", src_addr, dst_addr, err);
                 }
@@ -520,11 +544,12 @@ impl TcpTun {
     }
 
     pub async fn drive_interface_state(&mut self, frame: &[u8]) {
-        if let Err(..) = self.iface_tx.send(frame.to_vec()) {
+        if self.iface_tx.send(frame.to_vec()).is_err() {
             panic!("interface send channel closed unexpectly");
         }
 
         // Wake up and poll the interface.
+        self.iface_tx_avail.store(true, Ordering::Release);
         self.manager_notify.notify();
     }
 
@@ -554,7 +579,8 @@ async fn establish_client_tcp_redir<'a>(
     let server = balancer.best_tcp_server();
     let svr_cfg = server.server_config();
 
-    let mut remote = AutoProxyClientStream::connect(context, &server, addr).await?;
+    let mut remote =
+        AutoProxyClientStream::connect_with_opts(context, &server, addr, server.connect_opts_ref()).await?;
     establish_tcp_tunnel(svr_cfg, &mut stream, &mut remote, peer_addr, addr).await
 }
 

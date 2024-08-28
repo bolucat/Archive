@@ -9,7 +9,7 @@ RUN apt-get update && \
         zlib1g-dev libev-dev libjemalloc-dev ruby-dev libc-ares-dev bison \
         libelf-dev libbrotli-dev
 
-RUN git clone --recursive --depth 1 -b v1.26.0 https://github.com/aws/aws-lc && \
+RUN git clone --recursive --shallow-submodules --depth 1 -b v1.34.2 https://github.com/aws/aws-lc && \
     cd aws-lc && \
     cmake -B build -DDISABLE_GO=ON && \
     make -j$(nproc) -C build && \
@@ -17,19 +17,20 @@ RUN git clone --recursive --depth 1 -b v1.26.0 https://github.com/aws/aws-lc && 
     cd .. && \
     rm -rf aws-lc
 
-RUN git clone --recursive --depth 1 -b v1.3.0 https://github.com/ngtcp2/nghttp3 && \
+RUN git clone --recursive --shallow-submodules --depth 1 -b v1.5.0 https://github.com/ngtcp2/nghttp3 && \
     cd nghttp3 && \
     autoreconf -i && \
-    ./configure --enable-lib-only && \
+    ./configure --disable-dependency-tracking --enable-lib-only && \
     make -j$(nproc) && \
     make install-strip && \
     cd .. && \
     rm -rf nghttp3
 
-RUN git clone --recursive --depth 1 -b v1.5.0 https://github.com/ngtcp2/ngtcp2 && \
+RUN git clone --recursive --shallow-submodules --depth 1 -b v1.7.0 https://github.com/ngtcp2/ngtcp2 && \
     cd ngtcp2 && \
     autoreconf -i && \
-    ./configure --enable-lib-only --with-boringssl \
+    ./configure --disable-dependency-tracking --enable-lib-only \
+        --with-boringssl \
         LIBTOOL_LDFLAGS="-static-libtool-libs" \
         BORINGSSL_LIBS="-l:libssl.a -l:libcrypto.a" \
         PKG_CONFIG_PATH="/usr/local/lib64/pkgconfig" && \
@@ -38,16 +39,17 @@ RUN git clone --recursive --depth 1 -b v1.5.0 https://github.com/ngtcp2/ngtcp2 &
     cd .. && \
     rm -rf ngtcp2
 
-RUN git clone --depth 1 -b v1.3.0 https://github.com/libbpf/libbpf && \
+RUN git clone --depth 1 -b v1.4.5 https://github.com/libbpf/libbpf && \
     cd libbpf && \
     PREFIX=/usr/local make -C src install && \
     cd .. && \
     rm -rf libbpf
 
-RUN git clone --recursive --depth 1 -b $NGHTTP2_BRANCH https://github.com/nghttp2/nghttp2 && \
+RUN git clone --recursive --shallow-submodules --depth 1 -b $NGHTTP2_BRANCH https://github.com/nghttp2/nghttp2 && \
     cd nghttp2 && \
     autoreconf -i && \
-    ./configure --disable-examples --disable-hpack-tools \
+    ./configure --disable-dependency-tracking --disable-examples \
+        --disable-hpack-tools \
         --with-mruby \
         --enable-http3 --with-libbpf \
         --with-libbrotlienc --with-libbrotlidec \

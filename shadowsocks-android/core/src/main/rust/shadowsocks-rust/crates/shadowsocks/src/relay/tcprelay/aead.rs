@@ -1,6 +1,6 @@
 //! AEAD packet I/O facilities
 //!
-//! AEAD protocol is defined in <https://shadowsocks.org/en/spec/AEAD.html>.
+//! AEAD protocol is defined in <https://shadowsocks.org/doc/aead.html>.
 //!
 //! ```plain
 //! TCP request (before encryption)
@@ -37,7 +37,6 @@ use std::{
     pin::Pin,
     slice,
     task::{self, Poll},
-    u16,
 };
 
 use byte_string::ByteStr;
@@ -306,7 +305,7 @@ impl DecryptedReader {
         };
 
         if plen > MAX_PACKET_SIZE {
-            // https://shadowsocks.org/en/spec/AEAD-Ciphers.html
+            // https://shadowsocks.org/doc/aead.html
             //
             // AEAD TCP protocol have reserved the higher two bits for future use
             return Err(ProtocolError::DataTooLong(plen));

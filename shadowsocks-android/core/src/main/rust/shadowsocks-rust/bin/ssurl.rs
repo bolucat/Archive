@@ -1,7 +1,9 @@
-//! SIP002 URL Scheme
+//! SIP002 and SIP008 URL Schemes
 //!
 //! SS-URI = "ss://" userinfo "@" hostname ":" port [ "/" ] [ "?" plugin ] [ "#" tag ]
 //! userinfo = websafe-base64-encode-utf8(method  ":" password)
+
+use std::process::ExitCode;
 
 use clap::{Arg, ArgAction, Command, ValueHint};
 use qrcode::{types::Color, QrCode};
@@ -72,8 +74,29 @@ fn decode(encoded: &str, need_qrcode: bool) {
     }
 }
 
-fn main() {
-    let app = Command::new("ssurl")
+#[cfg(feature = "utility-url-outline")]
+fn decode_outline(remote: &str, need_qrcode: bool) {
+    // Protect from using http and other non-ssconf links in reqwest call
+    if !remote.starts_with("ssconf") {
+        println!("Incorrect link format");
+        return;
+    }
+
+    let url = remote.replace("ssconf", "https");
+    let svrconfig = ServerConfig::from_url(reqwest::blocking::get(url).unwrap().text().unwrap().as_str()).unwrap();
+
+    let mut config = Config::new(ConfigType::Server);
+    config.server.push(ServerInstanceConfig::with_server_config(svrconfig));
+
+    println!("{config}");
+
+    if need_qrcode {
+        print_qrcode(remote);
+    }
+}
+
+fn main() -> ExitCode {
+    let mut app = Command::new("ssurl")
         .version(VERSION)
         .about("Encode and decode ShadowSocks URL")
         .arg(
@@ -83,7 +106,7 @@ fn main() {
                 .action(ArgAction::Set)
                 .value_hint(ValueHint::FilePath)
                 .conflicts_with("DECODE_CONFIG_PATH")
-                .required_unless_present("DECODE_CONFIG_PATH")
+                .required_unless_present_any(["DECODE_CONFIG_PATH", "OUTLINE_CONFIG_URL"])
                 .help("Encode the server configuration in the provided JSON file"),
         )
         .arg(
@@ -92,8 +115,8 @@ fn main() {
                 .long("decode")
                 .action(ArgAction::Set)
                 .value_hint(ValueHint::FilePath)
-                .required_unless_present("ENCODE_CONFIG_PATH")
-                .help("Decode the server configuration from the provide ShadowSocks URL"),
+                .required_unless_present_any(["ENCODE_CONFIG_PATH", "OUTLINE_CONFIG_URL"])
+                .help("Decode the server configuration from the provided ShadowSocks URL"),
         )
         .arg(
             Arg::new("QRCODE")
@@ -102,15 +125,38 @@ fn main() {
                 .action(ArgAction::SetTrue)
                 .help("Generate the QRCode with the provided configuration"),
         );
+
+    if cfg!(feature = "utility-url-outline") {
+        app = app.arg(
+            Arg::new("OUTLINE_CONFIG_URL")
+                .short('o')
+                .long("outline")
+                .value_hint(ValueHint::Url)
+                .required_unless_present_any(["ENCODE_CONFIG_PATH", "DECODE_CONFIG_PATH"])
+                .help("Fetch and decode config from ssconf URL used by Outline"),
+        );
+    }
+
     let matches = app.get_matches();
 
     let need_qrcode = matches.get_flag("QRCODE");
 
     if let Some(file) = matches.get_one::<String>("ENCODE_CONFIG_PATH") {
         encode(file, need_qrcode);
-    } else if let Some(encoded) = matches.get_one::<String>("DECODE_CONFIG_PATH") {
-        decode(encoded, need_qrcode);
-    } else {
-        println!("Use -h for more detail");
+        return ExitCode::SUCCESS;
     }
+
+    if let Some(encoded) = matches.get_one::<String>("DECODE_CONFIG_PATH") {
+        decode(encoded, need_qrcode);
+        return ExitCode::SUCCESS;
+    }
+
+    #[cfg(feature = "utility-url-outline")]
+    if let Some(remote) = matches.get_one::<String>("OUTLINE_CONFIG_URL") {
+        decode_outline(remote, need_qrcode);
+        return ExitCode::SUCCESS;
+    }
+
+    println!("Use -h for more detail");
+    ExitCode::FAILURE
 }

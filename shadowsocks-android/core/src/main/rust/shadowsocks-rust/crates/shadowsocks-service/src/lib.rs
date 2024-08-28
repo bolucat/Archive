@@ -51,7 +51,7 @@
 use std::time::Duration;
 
 #[cfg(feature = "local")]
-pub use self::local::{create as create_local, run as run_local};
+pub use self::local::run as run_local;
 
 #[cfg(feature = "manager")]
 pub use self::manager::run as run_manager;
@@ -70,12 +70,13 @@ pub mod net;
 #[cfg(feature = "server")]
 pub mod server;
 mod sys;
+mod utils;
 
 /// Default UDP association's expire duration
 #[allow(dead_code)]
 const DEFAULT_UDP_EXPIRY_DURATION: Duration = Duration::from_secs(5 * 60);
 
-#[cfg(feature = "trust-dns")]
+#[cfg(feature = "hickory-dns")]
 fn hint_support_default_system_resolver() -> bool {
     // Nearly all *nix system have /etc/resolv.conf, except Android.
     // macOS have to use system provided resolver.

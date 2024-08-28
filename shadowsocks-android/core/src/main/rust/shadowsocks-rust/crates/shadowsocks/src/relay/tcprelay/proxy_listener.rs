@@ -39,7 +39,7 @@ impl ProxyListener {
         svr_cfg: &ServerConfig,
         accept_opts: AcceptOpts,
     ) -> io::Result<ProxyListener> {
-        let listener = match svr_cfg.external_addr() {
+        let listener = match svr_cfg.tcp_external_addr() {
             ServerAddr::SocketAddr(sa) => TcpListener::bind_with_opts(sa, accept_opts).await?,
             ServerAddr::DomainName(domain, port) => {
                 lookup_then!(&context, domain, *port, |addr| {
@@ -78,7 +78,7 @@ impl ProxyListener {
         let stream = map_fn(stream);
 
         // Create a ProxyServerStream and read the target address from it
-        let stream = ProxyServerStream::from_stream(
+        let stream = ProxyServerStream::from_stream_with_user_manager(
             self.context.clone(),
             stream,
             self.method,

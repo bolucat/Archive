@@ -17,10 +17,11 @@ import { atomIsDrawer } from "@/store";
 import { classNames } from "@/utils";
 import { useTheme } from "@mui/material";
 import { Experimental_CssVarsProvider as CssVarsProvider } from "@mui/material/styles";
-import { useBreakpoint } from "@nyanpasu/ui";
+import { cn, useBreakpoint } from "@nyanpasu/ui";
 import { emit } from "@tauri-apps/api/event";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
+import customParseFormat from "dayjs/plugin/customParseFormat";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { useAtom } from "jotai";
 import { useEffect } from "react";
@@ -29,6 +30,7 @@ import { SWRConfig } from "swr";
 import styles from "./_app.module.scss";
 
 dayjs.extend(relativeTime);
+dayjs.extend(customParseFormat);
 
 export default function App() {
   const { theme } = useCustomTheme();
@@ -73,7 +75,7 @@ export default function App() {
 
         <AppContainer isDrawer={isDrawer}>
           <PageTransition
-            className={isDrawer ? "the-content-small" : "the-content"}
+            className={cn("absolute inset-4 top-10", !isDrawer && "left-0")}
           />
         </AppContainer>
       </CssVarsProvider>

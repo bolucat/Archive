@@ -1,6 +1,5 @@
 use std::{
-    io,
-    mem,
+    io, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     os::unix::io::{AsRawFd, RawFd},
     pin::Pin,
@@ -21,8 +20,7 @@ use tokio_tfo::TfoStream;
 use crate::net::{
     sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
     udp::{BatchRecvMessage, BatchSendMessage},
-    AddrFamily,
-    ConnectOpts,
+    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
@@ -170,6 +168,14 @@ pub fn set_tcp_fastopen<S: AsRawFd>(socket: &S) -> io::Result<()> {
     Ok(())
 }
 
+/// Create a TCP socket for listening
+pub async fn create_inbound_tcp_socket(bind_addr: &SocketAddr, _accept_opts: &AcceptOpts) -> io::Result<TcpSocket> {
+    match bind_addr {
+        SocketAddr::V4(..) => TcpSocket::new_v4(),
+        SocketAddr::V6(..) => TcpSocket::new_v6(),
+    }
+}
+
 /// Disable IP fragmentation
 #[inline]
 pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> io::Result<()> {
@@ -217,8 +223,8 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
     Ok(())
 }
 
-/// Create a `UdpSocket` for connecting to `addr`
-#[inline(always)]
+/// Create a `UdpSocket` with specific address family
+#[inline]
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
         (AddrFamily::Ipv4, Some(IpAddr::V4(ip))) => SocketAddr::new(ip.into(), 0),
@@ -227,11 +233,18 @@ pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) ->
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
 
+    bind_outbound_udp_socket(&bind_addr, config).await
+}
+
+/// Create a `UdpSocket` binded to `bind_addr`
+pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, _config: &ConnectOpts) -> io::Result<UdpSocket> {
+    let af = AddrFamily::from(bind_addr);
+
     let socket = if af != AddrFamily::Ipv6 {
         UdpSocket::bind(bind_addr).await?
     } else {
-        let socket = Socket::new(Domain::for_address(bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
-        socket_bind_dual_stack(&socket, &bind_addr, false)?;
+        let socket = Socket::new(Domain::for_address(*bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
+        socket_bind_dual_stack(&socket, bind_addr, false)?;
 
         // UdpSocket::from_std requires socket to be non-blocked
         socket.set_nonblocking(true)?;
@@ -275,7 +288,7 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
         return Ok(0);
     }
 
-    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Acquire) {
+    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Relaxed) {
         recvmsg_fallback(sock, &mut msgs[0])?;
         return Ok(1);
     }
@@ -313,7 +326,7 @@ pub fn batch_recvmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchRecvMessage<'_>]) ->
         let err = io::Error::last_os_error();
         if let Some(libc::ENOSYS) = err.raw_os_error() {
             debug!("recvmmsg is not supported, fallback to recvmsg, error: {:?}", err);
-            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Release);
+            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Relaxed);
 
             recvmsg_fallback(sock, &mut msgs[0])?;
             return Ok(1);
@@ -358,7 +371,7 @@ pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) ->
         return Ok(0);
     }
 
-    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Acquire) {
+    if !SUPPORT_BATCH_SEND_RECV_MSG.load(Ordering::Relaxed) {
         sendmsg_fallback(sock, &mut msgs[0])?;
         return Ok(1);
     }
@@ -387,7 +400,7 @@ pub fn batch_sendmsg<S: AsRawFd>(sock: &S, msgs: &mut [BatchSendMessage<'_>]) ->
         let err = io::Error::last_os_error();
         if let Some(libc::ENOSYS) = err.raw_os_error() {
             debug!("sendmmsg is not supported, fallback to sendmsg, error: {:?}", err);
-            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Release);
+            SUPPORT_BATCH_SEND_RECV_MSG.store(false, Ordering::Relaxed);
 
             sendmsg_fallback(sock, &mut msgs[0])?;
             return Ok(1);

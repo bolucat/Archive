@@ -4,6 +4,7 @@
 //! LICENSE MIT
 
 use std::{
+    fmt::{self, Debug},
     future::Future,
     io,
     pin::Pin,
@@ -11,18 +12,29 @@ use std::{
 };
 
 use futures::ready;
+use log::{debug, trace};
 use pin_project::pin_project;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::crypto::{CipherCategory, CipherKind};
 
-#[derive(Debug)]
 struct CopyBuffer {
     read_done: bool,
     pos: usize,
     cap: usize,
     amt: u64,
     buf: Box<[u8]>,
+}
+
+impl Debug for CopyBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("CopyBuffer")
+            .field("read_done", &self.read_done)
+            .field("pos", &self.pos)
+            .field("cap", &self.cap)
+            .field("amt", &self.amt)
+            .finish_non_exhaustive()
+    }
 }
 
 impl CopyBuffer {
@@ -43,8 +55,8 @@ impl CopyBuffer {
         mut writer: Pin<&mut W>,
     ) -> Poll<io::Result<u64>>
     where
-        R: AsyncRead + ?Sized,
-        W: AsyncWrite + ?Sized,
+        R: AsyncRead + Unpin + ?Sized,
+        W: AsyncWrite + Unpin + ?Sized,
     {
         loop {
             // If our buffer is empty, then we need to read some data to
@@ -90,9 +102,12 @@ impl CopyBuffer {
 /// A future that asynchronously copies the entire contents of a reader into a
 /// writer.
 #[derive(Debug)]
+#[pin_project]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 struct Copy<'a, R: ?Sized, W: ?Sized> {
+    #[pin]
     reader: &'a mut R,
+    #[pin]
     writer: &'a mut W,
     buf: CopyBuffer,
 }
@@ -104,11 +119,9 @@ where
 {
     type Output = io::Result<u64>;
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
-        let me = &mut *self;
-
-        me.buf
-            .poll_copy(cx, Pin::new(&mut *me.reader), Pin::new(&mut *me.writer))
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<u64>> {
+        let this = self.project();
+        this.buf.poll_copy(cx, this.reader, this.writer)
     }
 }
 
@@ -121,7 +134,7 @@ where
     Copy {
         reader,
         writer,
-        buf: CopyBuffer::new(encrypted_read_buffer_size(method)),
+        buf: CopyBuffer::new(plain_read_buffer_size(method)),
     }
     .await
 }
@@ -140,17 +153,6 @@ where
     .await
 }
 
-fn encrypted_read_buffer_size(method: CipherKind) -> usize {
-    match method.category() {
-        CipherCategory::Aead => super::aead::MAX_PACKET_SIZE + method.tag_len(),
-        #[cfg(feature = "stream-cipher")]
-        CipherCategory::Stream => 1 << 14,
-        CipherCategory::None => 1 << 14,
-        #[cfg(feature = "aead-cipher-2022")]
-        CipherCategory::Aead2022 => super::aead_2022::MAX_PACKET_SIZE + method.tag_len(),
-    }
-}
-
 fn plain_read_buffer_size(method: CipherKind) -> usize {
     match method.category() {
         CipherCategory::Aead => super::aead::MAX_PACKET_SIZE,
@@ -162,18 +164,13 @@ fn plain_read_buffer_size(method: CipherKind) -> usize {
     }
 }
 
-/// Create a buffer for reading from shadowsocks' encrypted channel
-#[inline]
-pub fn alloc_encrypted_read_buffer(method: CipherKind) -> Box<[u8]> {
-    vec![0u8; encrypted_read_buffer_size(method)].into_boxed_slice()
-}
-
 /// Create a buffer for reading from plain channel (not encrypted), for copying data into encrypted channel
 #[inline]
 pub fn alloc_plain_read_buffer(method: CipherKind) -> Box<[u8]> {
     vec![0u8; plain_read_buffer_size(method)].into_boxed_slice()
 }
 
+#[derive(Debug)]
 enum TransferState {
     Running(CopyBuffer),
     ShuttingDown(u64),
@@ -208,7 +205,6 @@ where
             }
             TransferState::ShuttingDown(count) => {
                 ready!(w.as_mut().poll_shutdown(cx))?;
-
                 *state = TransferState::Done(*count);
             }
             TransferState::Done(count) => return Poll::Ready(Ok(*count)),
@@ -216,14 +212,13 @@ where
     }
 }
 
-impl<'a, A, B> Future for CopyBidirectional<'a, A, B>
+impl<A, B> CopyBidirectional<'_, A, B>
 where
     A: AsyncRead + AsyncWrite + Unpin + ?Sized,
     B: AsyncRead + AsyncWrite + Unpin + ?Sized,
 {
-    type Output = io::Result<(u64, u64)>;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    #[inline(always)]
+    fn poll_impl(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<(u64, u64)>> {
         // Unpack self into mut refs to each field to avoid borrow check issues.
         let CopyBidirectionalProj {
             mut a,
@@ -241,6 +236,38 @@ where
         let b_to_a = ready!(poll_b_to_a);
 
         Poll::Ready(Ok((a_to_b, b_to_a)))
+    }
+}
+
+impl<'a, A, B> Future for CopyBidirectional<'a, A, B>
+where
+    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
+    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
+{
+    type Output = io::Result<(u64, u64)>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.as_mut().poll_impl(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(r) => {
+                match r {
+                    Ok(..) => {
+                        trace!(
+                            "copy bidirection ends, a_to_b: {:?}, b_to_a: {:?}",
+                            self.a_to_b,
+                            self.b_to_a
+                        );
+                    }
+                    Err(ref err) => {
+                        debug!(
+                            "copy bidirection ends with error: {}, a_to_b: {:?}, b_to_a: {:?}",
+                            err, self.a_to_b, self.b_to_a
+                        );
+                    }
+                }
+                Poll::Ready(r)
+            }
+        }
     }
 }
 
@@ -275,7 +302,7 @@ pub async fn copy_encrypted_bidirectional<E, P>(
     method: CipherKind,
     encrypted: &mut E,
     plain: &mut P,
-) -> Result<(u64, u64), std::io::Error>
+) -> io::Result<(u64, u64)>
 where
     E: AsyncRead + AsyncWrite + Unpin + ?Sized,
     P: AsyncRead + AsyncWrite + Unpin + ?Sized,
@@ -283,8 +310,49 @@ where
     CopyBidirectional {
         a: encrypted,
         b: plain,
-        a_to_b: TransferState::Running(CopyBuffer::new(encrypted_read_buffer_size(method))),
+        a_to_b: TransferState::Running(CopyBuffer::new(plain_read_buffer_size(method))),
         b_to_a: TransferState::Running(CopyBuffer::new(plain_read_buffer_size(method))),
+    }
+    .await
+}
+
+/// Copies data in both directions
+///
+/// This function returns a future that will read from both streams,
+/// writing any data read to the opposing stream.
+/// This happens in both directions concurrently.
+///
+/// If an EOF is observed on one stream, [`shutdown()`] will be invoked on
+/// the other, and reading from that stream will stop. Copying of data in
+/// the other direction will continue.
+///
+/// The future will complete successfully once both directions of communication has been shut down.
+/// A direction is shut down when the reader reports EOF,
+/// at which point [`shutdown()`] is called on the corresponding writer. When finished,
+/// it will return a tuple of the number of bytes copied from encrypted to plain
+/// and the number of bytes copied from plain to encrypted, in that order.
+///
+/// [`shutdown()`]: tokio::io::AsyncWriteExt::shutdown
+///
+/// # Errors
+///
+/// The future will immediately return an error if any IO operation any of the streams
+/// returns an error. Some data read from either stream may be lost (not
+/// written to the other stream) in this case.
+///
+/// # Return value
+///
+/// Returns a tuple of bytes copied on both directions
+pub async fn copy_bidirectional<A, B>(a: &mut A, b: &mut B) -> io::Result<(u64, u64)>
+where
+    A: AsyncRead + AsyncWrite + Unpin + ?Sized,
+    B: AsyncRead + AsyncWrite + Unpin + ?Sized,
+{
+    CopyBidirectional {
+        a,
+        b,
+        a_to_b: TransferState::Running(CopyBuffer::new(8192)),
+        b_to_a: TransferState::Running(CopyBuffer::new(8192)),
     }
     .await
 }

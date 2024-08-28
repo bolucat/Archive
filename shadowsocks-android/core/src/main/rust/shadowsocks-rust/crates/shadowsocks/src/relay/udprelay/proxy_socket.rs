@@ -23,11 +23,7 @@ use crate::{
 };
 
 use super::crypto_io::{
-    decrypt_client_payload,
-    decrypt_server_payload,
-    encrypt_client_payload,
-    encrypt_server_payload,
-    ProtocolError,
+    decrypt_client_payload, decrypt_server_payload, encrypt_client_payload, encrypt_server_payload, ProtocolError,
     ProtocolResult,
 };
 
@@ -98,9 +94,14 @@ impl ProxySocket {
     ) -> ProxySocketResult<ProxySocket> {
         // Note: Plugins doesn't support UDP relay
 
-        let socket = ShadowUdpSocket::connect_server_with_opts(&context, svr_cfg.addr(), opts).await?;
+        let socket = ShadowUdpSocket::connect_server_with_opts(&context, svr_cfg.udp_external_addr(), opts).await?;
 
-        trace!("connected udp remote {} with {:?}", svr_cfg.addr(), opts);
+        trace!(
+            "connected udp remote {} (outbound: {}) with {:?}",
+            svr_cfg.addr(),
+            svr_cfg.udp_external_addr(),
+            opts
+        );
 
         Ok(ProxySocket::from_socket(
             UdpSocketType::Client,
@@ -158,7 +159,7 @@ impl ProxySocket {
         opts: AcceptOpts,
     ) -> ProxySocketResult<ProxySocket> {
         // Plugins doesn't support UDP
-        let socket = match svr_cfg.addr() {
+        let socket = match svr_cfg.udp_external_addr() {
             ServerAddr::SocketAddr(sa) => ShadowUdpSocket::listen_with_opts(sa, opts).await?,
             ServerAddr::DomainName(domain, port) => {
                 lookup_then!(&context, domain, *port, |addr| {
@@ -217,7 +218,7 @@ impl ProxySocket {
             .map_err(Into::into)
     }
 
-    /// Send a UDP packet to addr through proxy
+    /// Send a UDP packet to addr through proxy with `ControlData`
     pub async fn send_with_ctrl(
         &self,
         addr: &Address,
@@ -256,11 +257,19 @@ impl ProxySocket {
     }
 
     /// poll family functions
-    /// the send_timeout is ignored.
+    ///
+    /// Send a UDP packet to addr through proxy
+    ///
+    /// NOTE: the `send_timeout` is ignored.
     pub fn poll_send(&self, addr: &Address, payload: &[u8], cx: &mut Context<'_>) -> Poll<ProxySocketResult<usize>> {
         self.poll_send_with_ctrl(addr, &DEFAULT_SOCKET_CONTROL, payload, cx)
     }
 
+    /// poll family functions
+    ///
+    /// Send a UDP packet to addr through proxy with `ControlData`
+    ///
+    /// NOTE: the `send_timeout` is ignored.
     pub fn poll_send_with_ctrl(
         &self,
         addr: &Address,
@@ -294,6 +303,11 @@ impl ProxySocket {
         }
     }
 
+    /// poll family functions
+    ///
+    /// Send a UDP packet to addr through proxy `target`
+    ///
+    /// NOTE: the `send_timeout` is ignored.
     pub fn poll_send_to(
         &self,
         target: SocketAddr,
@@ -304,6 +318,11 @@ impl ProxySocket {
         self.poll_send_to_with_ctrl(target, addr, &DEFAULT_SOCKET_CONTROL, payload, cx)
     }
 
+    /// poll family functions
+    ///
+    /// Send a UDP packet to addr through proxy `target` with `ControlData`
+    ///
+    /// NOTE: the `send_timeout` is ignored.
     pub fn poll_send_to_with_ctrl(
         &self,
         target: SocketAddr,
@@ -336,11 +355,14 @@ impl ProxySocket {
         }
     }
 
+    /// poll family functions
+    ///
+    /// Check if socket is ready to `send`, or writable.
     pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<ProxySocketResult<()>> {
         self.socket.poll_send_ready(cx).map_err(|x| x.into())
     }
 
-    /// Send a UDP packet to target from proxy
+    /// Send a UDP packet to target through proxy `target`
     pub async fn send_to<A: ToSocketAddrs>(
         &self,
         target: A,
@@ -352,7 +374,7 @@ impl ProxySocket {
             .map_err(Into::into)
     }
 
-    /// Send a UDP packet to target from proxy
+    /// Send a UDP packet to target through proxy `target`
     pub async fn send_to_with_ctrl<A: ToSocketAddrs>(
         &self,
         target: A,
@@ -453,6 +475,7 @@ impl ProxySocket {
     /// This function will use `recv_buf` to store intermediate data, so it has to be big enough to store the whole shadowsocks' packet
     ///
     /// It is recommended to allocate a buffer to have at least 65536 bytes.
+    #[allow(clippy::type_complexity)]
     pub async fn recv_from(&self, recv_buf: &mut [u8]) -> ProxySocketResult<(usize, SocketAddr, Address, usize)> {
         self.recv_from_with_ctrl(recv_buf)
             .await
@@ -464,6 +487,7 @@ impl ProxySocket {
     /// This function will use `recv_buf` to store intermediate data, so it has to be big enough to store the whole shadowsocks' packet
     ///
     /// It is recommended to allocate a buffer to have at least 65536 bytes.
+    #[allow(clippy::type_complexity)]
     pub async fn recv_from_with_ctrl(
         &self,
         recv_buf: &mut [u8],
@@ -497,6 +521,7 @@ impl ProxySocket {
 
     /// poll family functions.
     /// the recv_timeout is ignored.
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv(
         &self,
         cx: &mut Context<'_>,
@@ -507,6 +532,7 @@ impl ProxySocket {
     }
 
     /// poll family functions
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv_with_ctrl(
         &self,
         cx: &mut Context<'_>,
@@ -522,6 +548,8 @@ impl ProxySocket {
         }
     }
 
+    /// poll family functions
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from(
         &self,
         cx: &mut Context<'_>,
@@ -531,6 +559,8 @@ impl ProxySocket {
             .map(|r| r.map(|(n, sa, a, rn, _)| (n, sa, a, rn)))
     }
 
+    /// poll family functions
+    #[allow(clippy::type_complexity)]
     pub fn poll_recv_from_with_ctrl(
         &self,
         cx: &mut Context<'_>,
@@ -545,6 +575,7 @@ impl ProxySocket {
         }
     }
 
+    /// poll family functions
     pub fn poll_recv_ready(&self, cx: &mut Context<'_>) -> Poll<ProxySocketResult<()>> {
         self.socket.poll_recv_ready(cx).map_err(|x| x.into())
     }

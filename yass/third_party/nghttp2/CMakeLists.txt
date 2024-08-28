@@ -24,12 +24,12 @@
 
 cmake_minimum_required(VERSION 3.14)
 # XXX using 1.8.90 instead of 1.9.0-DEV
-project(nghttp2 VERSION 1.62.1)
+project(nghttp2 VERSION 1.63.0 LANGUAGES C)
 
 # See versioning rule:
 #  https://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
 set(LT_CURRENT  42)
-set(LT_REVISION 1)
+set(LT_REVISION 2)
 set(LT_AGE      28)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
@@ -56,6 +56,7 @@ include(CMakeDependentOption)
 
 # Auto-detection of features that can be toggled
 if(NOT ENABLE_LIB_ONLY)
+  enable_language(CXX)
   find_package(Libev 4.11)
   find_package(Libcares 1.7.5)
   find_package(ZLIB 1.2.3)
@@ -99,11 +100,23 @@ if(ENABLE_DOC)
 endif()
 
 if (ENABLE_APP)
-  find_package(OpenSSL 1.1.1)
+  if(WITH_WOLFSSL)
+    find_package(WolfSSL 5.7.0)
+  else()
+    find_package(OpenSSL 1.1.1)
+  endif()
   find_package(Libngtcp2 1.0.0)
-  find_package(Libngtcp2_crypto_quictls 1.0.0)
-  if(LIBNGTCP2_CRYPTO_QUICTLS_FOUND)
-    set(HAVE_LIBNGTCP2_CRYPTO_QUICTLS 1)
+  if(OPENSSL_FOUND)
+    find_package(Libngtcp2_crypto_quictls 1.0.0)
+    if(LIBNGTCP2_CRYPTO_QUICTLS_FOUND)
+      set(HAVE_LIBNGTCP2_CRYPTO_QUICTLS 1)
+    endif()
+  endif()
+  if(WOLFSSL_FOUND)
+    find_package(Libngtcp2_crypto_wolfssl 1.0.0)
+    if(LIBNGTCP2_CRYPTO_WOLFSSL_FOUND)
+      set(HAVE_LIBNGTCP2_CRYPTO_WOLFSSL 1)
+    endif()
   endif()
   find_package(Libnghttp3 1.1.0)
   if(WITH_LIBBPF)
@@ -128,30 +141,31 @@ else()
   set(HINT_NORETURN)
 endif()
 
-include(ExtractValidFlags)
-foreach(_cxx1x_flag -std=c++20)
-  extract_valid_cxx_flags(_cxx1x_flag_supported ${_cxx1x_flag})
-  if(_cxx1x_flag_supported)
-    set(CXX1XCXXFLAGS ${_cxx1x_flag})
-    break()
-  endif()
-endforeach()
+if(NOT ENABLE_LIB_ONLY)
+  include(ExtractValidFlags)
+  foreach(_cxx1x_flag -std=c++20)
+    extract_valid_cxx_flags(_cxx1x_flag_supported ${_cxx1x_flag})
+    if(_cxx1x_flag_supported)
+      set(CXX1XCXXFLAGS ${_cxx1x_flag})
+      break()
+    endif()
+  endforeach()
 
-include(CMakePushCheckState)
-include(CheckCXXSourceCompiles)
-cmake_push_check_state()
-set(CMAKE_REQUIRED_DEFINITIONS "${CXX1XCXXFLAGS}")
-# Check that std::future is available.
-check_cxx_source_compiles("
-#include <vector>
-#include <future>
-int main() { std::vector<std::future<int>> v; }" HAVE_STD_FUTURE)
-# Check that std::map::emplace is available for g++-4.7.
-check_cxx_source_compiles("
-#include <map>
-int main() { std::map<int, int>().emplace(1, 2); }" HAVE_STD_MAP_EMPLACE)
-cmake_pop_check_state()
-
+  include(CMakePushCheckState)
+  include(CheckCXXSourceCompiles)
+  cmake_push_check_state()
+  set(CMAKE_REQUIRED_DEFINITIONS "${CXX1XCXXFLAGS}")
+  # Check that std::future is available.
+  check_cxx_source_compiles("
+  #include <vector>
+  #include <future>
+  int main() { std::vector<std::future<int>> v; }" HAVE_STD_FUTURE)
+  # Check that std::map::emplace is available for g++-4.7.
+  check_cxx_source_compiles("
+  #include <map>
+  int main() { std::map<int, int>().emplace(1, 2); }" HAVE_STD_MAP_EMPLACE)
+  cmake_pop_check_state()
+endif()
 
 # Checks for libraries.
 # Additional libraries required for programs under src directory.
@@ -176,7 +190,7 @@ endif()
 # openssl (for src)
 include(CheckSymbolExists)
 set(HAVE_OPENSSL    ${OPENSSL_FOUND})
-if(OPENSSL_FOUND)
+if(NOT ENABLE_LIB_ONLY AND OPENSSL_FOUND)
   set(OPENSSL_INCLUDE_DIRS  ${OPENSSL_INCLUDE_DIR})
   cmake_push_check_state()
   set(CMAKE_REQUIRED_INCLUDES   "${OPENSSL_INCLUDE_DIR}")
@@ -194,6 +208,22 @@ if(OPENSSL_FOUND)
 else()
   set(OPENSSL_INCLUDE_DIRS  "")
   set(OPENSSL_LIBRARIES     "")
+endif()
+# wolfSSL (for src)
+set(HAVE_WOLFSSL ${WOLFSSL_FOUND})
+if(WOLFSSL_FOUND)
+  set(WOLFSSL_INCLUDE_DIRS ${WOLFSSL_INCLUDE_DIR})
+  cmake_push_check_state()
+  set(CMAKE_REQUIRED_INCLUDES   "${WOLFSSL_INCLUDE_DIR}")
+  set(CMAKE_REQUIRED_LIBRARIES  "${WOLFSSL_LIBRARIES}")
+  check_symbol_exists(SSL_provide_quic_data "wolfssl/options.h;wolfssl/ssl.h" HAVE_WOLFSSL_SSL_PROVIDE_QUIC_DATA)
+  if(NOT HAVE_WOLFSSL_SSL_PROVIDE_QUIC_DATA)
+    message(WARNING "wolfSSL in ${WOLFSSL_LIBRARIES} does not have SSL_provide_quic_data.  HTTP/3 support cannot be enabled")
+  endif()
+  cmake_pop_check_state()
+else()
+  set(WOLFSSL_INCLUDE_DIRS "")
+  set(WOLFSSL_LIBRARIES    "")
 endif()
 # libev (for src)
 set(HAVE_LIBEV      ${LIBEV_FOUND})
@@ -247,13 +277,16 @@ int main() { enum bpf_stats_type foo; (void)foo; }" HAVE_BPF_STATS_TYPE)
 endif()
 
 # The nghttp, nghttpd and nghttpx under src depend on zlib, OpenSSL and libev
-if(ENABLE_APP AND NOT (ZLIB_FOUND AND OPENSSL_FOUND AND LIBEV_FOUND))
+if(ENABLE_APP AND NOT (ZLIB_FOUND AND (OPENSSL_FOUND OR WOLFSSL_FOUND) AND LIBEV_FOUND))
   message(FATAL_ERROR "Applications were requested (ENABLE_APP=1) but dependencies are not met.")
 endif()
 
-# HTTP/3 requires quictls/openssl, libngtcp2, libngtcp2_crypto_quictls
-# and libnghttp3.
-if(ENABLE_HTTP3 AND NOT (HAVE_SSL_PROVIDE_QUIC_DATA AND LIBNGTCP2_FOUND AND LIBNGTCP2_CRYPTO_QUICTLS_FOUND AND LIBNGHTTP3_FOUND))
+# HTTP/3 requires libngtcp2 + (quictls/openssl +
+# libngtcp2_crypto_quictls or wolfSSL + libngtcp2_crypto_wolfssl) and
+# libnghttp3.
+if(ENABLE_HTTP3 AND NOT (LIBNGTCP2_FOUND AND LIBNGHTTP3_FOUND AND
+      ((HAVE_SSL_PROVIDE_QUIC_DATA AND LIBNGTCP2_CRYPTO_QUICTLS_FOUND) OR
+	(HAVE_WOLFSSL_SSL_PROVIDE_QUIC_DATA AND LIBNGTCP2_CRYPTO_WOLFSSL_FOUND))))
   message(FATAL_ERROR "HTTP/3 was requested (ENABLE_HTTP3=1) but dependencies are not met.")
 endif()
 
@@ -326,6 +359,7 @@ check_function_exists(_Exit     HAVE__EXIT)
 check_function_exists(accept4   HAVE_ACCEPT4)
 check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
 check_function_exists(mkostemp  HAVE_MKOSTEMP)
+check_function_exists(pipe2     HAVE_PIPE2)
 
 check_symbol_exists(GetTickCount64 sysinfoapi.h HAVE_GETTICKCOUNT64)
 

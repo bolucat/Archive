@@ -12,8 +12,6 @@ use byte_string::ByteStr;
 use bytes::{BufMut, BytesMut};
 use log::{debug, error, info, trace};
 use shadowsocks::{
-    lookup_then,
-    net::UdpSocket as ShadowUdpSocket,
     relay::{
         socks5::{Address, UdpAssociateHeader},
         udprelay::MAXIMUM_UDP_PAYLOAD_SIZE,
@@ -26,10 +24,72 @@ use crate::{
     local::{
         context::ServiceContext,
         loadbalancing::PingBalancer,
-        net::{UdpAssociationManager, UdpInboundWrite},
+        net::{udp::listener::create_standard_udp_listener, UdpAssociationManager, UdpInboundWrite},
     },
     net::utils::to_ipv4_mapped,
 };
+
+pub struct Socks5UdpServerBuilder {
+    context: Arc<ServiceContext>,
+    client_config: ServerAddr,
+    time_to_live: Option<Duration>,
+    capacity: Option<usize>,
+    balancer: PingBalancer,
+    #[cfg(target_os = "macos")]
+    launchd_socket_name: Option<String>,
+}
+
+impl Socks5UdpServerBuilder {
+    pub(crate) fn new(
+        context: Arc<ServiceContext>,
+        client_config: ServerAddr,
+        time_to_live: Option<Duration>,
+        capacity: Option<usize>,
+        balancer: PingBalancer,
+    ) -> Socks5UdpServerBuilder {
+        Socks5UdpServerBuilder {
+            context,
+            client_config,
+            time_to_live,
+            capacity,
+            balancer,
+            #[cfg(target_os = "macos")]
+            launchd_socket_name: None,
+        }
+    }
+
+    /// macOS launchd activate socket
+    #[cfg(target_os = "macos")]
+    pub fn set_launchd_socket_name(&mut self, n: String) {
+        self.launchd_socket_name = Some(n);
+    }
+
+    pub async fn build(self) -> io::Result<Socks5UdpServer> {
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "macos")] {
+                let socket = if let Some(launchd_socket_name) = self.launchd_socket_name {
+                    use tokio::net::UdpSocket as TokioUdpSocket;
+                    use crate::net::launch_activate_socket::get_launch_activate_udp_socket;
+
+                    let std_socket = get_launch_activate_udp_socket(&launchd_socket_name, true)?;
+                    TokioUdpSocket::from_std(std_socket)?
+                } else {
+                    create_standard_udp_listener(&self.context, &self.client_config).await?.into()
+                };
+            } else {
+                let socket = create_standard_udp_listener(&self.context, &self.client_config).await?.into();
+            }
+        }
+
+        Ok(Socks5UdpServer {
+            context: self.context,
+            time_to_live: self.time_to_live,
+            capacity: self.capacity,
+            listener: Arc::new(socket),
+            balancer: self.balancer,
+        })
+    }
+}
 
 #[derive(Clone)]
 struct Socks5UdpInboundWriter {
@@ -67,50 +127,33 @@ impl UdpInboundWrite for Socks5UdpInboundWriter {
     }
 }
 
+/// SOCKS5 UDP server instance
 pub struct Socks5UdpServer {
     context: Arc<ServiceContext>,
     time_to_live: Option<Duration>,
     capacity: Option<usize>,
+    listener: Arc<UdpSocket>,
+    balancer: PingBalancer,
 }
 
 impl Socks5UdpServer {
-    pub fn new(
-        context: Arc<ServiceContext>,
-        time_to_live: Option<Duration>,
-        capacity: Option<usize>,
-    ) -> Socks5UdpServer {
-        Socks5UdpServer {
-            context,
-            time_to_live,
-            capacity,
-        }
+    /// Server's listen address
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.listener.local_addr()
     }
 
-    pub async fn run(&self, client_config: &ServerAddr, balancer: PingBalancer) -> io::Result<()> {
-        let socket = match *client_config {
-            ServerAddr::SocketAddr(ref saddr) => {
-                ShadowUdpSocket::listen_with_opts(saddr, self.context.accept_opts()).await?
-            }
-            ServerAddr::DomainName(ref dname, port) => {
-                lookup_then!(self.context.context_ref(), dname, port, |addr| {
-                    ShadowUdpSocket::listen_with_opts(&addr, self.context.accept_opts()).await
-                })?
-                .1
-            }
-        };
-        let socket: UdpSocket = socket.into();
+    /// Run server accept loop
+    pub async fn run(self) -> io::Result<()> {
+        info!("shadowsocks socks5 UDP listening on {}", self.listener.local_addr()?);
 
-        info!("shadowsocks socks5 UDP listening on {}", socket.local_addr()?);
-
-        let listener = Arc::new(socket);
         let (mut manager, cleanup_interval, mut keepalive_rx) = UdpAssociationManager::new(
             self.context.clone(),
             Socks5UdpInboundWriter {
-                inbound: listener.clone(),
+                inbound: self.listener.clone(),
             },
             self.time_to_live,
             self.capacity,
-            balancer,
+            self.balancer,
         );
 
         let mut buffer = [0u8; MAXIMUM_UDP_PAYLOAD_SIZE];
@@ -128,7 +171,7 @@ impl Socks5UdpServer {
                     manager.keep_alive(&peer_addr).await;
                 }
 
-                recv_result = listener.recv_from(&mut buffer) => {
+                recv_result = self.listener.recv_from(&mut buffer) => {
                     let (n, peer_addr) = match recv_result {
                         Ok(s) => s,
                         Err(err) => {

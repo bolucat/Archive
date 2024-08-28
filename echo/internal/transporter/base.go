@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/sagernet/sing-box/common/sniff"
+	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
+	"go.uber.org/zap"
+
 	"github.com/Ehco1996/ehco/internal/cmgr"
 	"github.com/Ehco1996/ehco/internal/conn"
 	"github.com/Ehco1996/ehco/internal/constant"
 	"github.com/Ehco1996/ehco/internal/lb"
 	"github.com/Ehco1996/ehco/internal/metrics"
 	"github.com/Ehco1996/ehco/internal/relay/conf"
-	"github.com/sagernet/sing-box/common/sniff"
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
-
-	"go.uber.org/zap"
 )
 
 var _ RelayServer = &BaseRelayServer{}
@@ -43,8 +43,10 @@ func newBaseRelayServer(cfg *conf.Config, cmgr cmgr.Cmgr) (*BaseRelayServer, err
 	}, nil
 }
 
-func (b *BaseRelayServer) RelayTCPConn(ctx context.Context, c net.Conn) error {
-	remote := b.remotes.Next().Clone()
+func (b *BaseRelayServer) RelayTCPConn(ctx context.Context, c net.Conn, remote *lb.Node) error {
+	if remote == nil {
+		remote = b.remotes.Next().Clone()
+	}
 	metrics.CurConnectionCount.WithLabelValues(remote.Label, metrics.METRIC_CONN_TYPE_TCP).Inc()
 	defer metrics.CurConnectionCount.WithLabelValues(remote.Label, metrics.METRIC_CONN_TYPE_TCP).Dec()
 
@@ -69,8 +71,10 @@ func (b *BaseRelayServer) RelayTCPConn(ctx context.Context, c net.Conn) error {
 	return b.handleRelayConn(c, rc, remote, metrics.METRIC_CONN_TYPE_TCP)
 }
 
-func (b *BaseRelayServer) RelayUDPConn(ctx context.Context, c net.Conn) error {
-	remote := b.remotes.Next().Clone()
+func (b *BaseRelayServer) RelayUDPConn(ctx context.Context, c net.Conn, remote *lb.Node) error {
+	if remote == nil {
+		remote = b.remotes.Next().Clone()
+	}
 	metrics.CurConnectionCount.WithLabelValues(remote.Label, metrics.METRIC_CONN_TYPE_UDP).Inc()
 	defer metrics.CurConnectionCount.WithLabelValues(remote.Label, metrics.METRIC_CONN_TYPE_UDP).Dec()
 

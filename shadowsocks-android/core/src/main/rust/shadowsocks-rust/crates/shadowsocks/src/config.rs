@@ -33,6 +33,7 @@ const USER_KEY_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::G
         .with_decode_padding_mode(base64::engine::DecodePaddingMode::Indifferent),
 );
 
+#[cfg(feature = "aead-cipher-2022")]
 const AEAD2022_PASSWORD_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
     &base64::alphabet::STANDARD,
     base64::engine::GeneralPurposeConfig::new()
@@ -300,6 +301,15 @@ impl Default for ServerUserManager {
     }
 }
 
+/// The source of the ServerConfig
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ServerSource {
+    Default,       //< Default source, created in code
+    Configuration, //< Created from configuration
+    CommandLine,   //< Created from command line
+    OnlineConfig,  //< Created from online configuration (SIP008)
+}
+
 /// Configuration for a server
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
@@ -339,6 +349,9 @@ pub struct ServerConfig {
 
     /// Weight
     weight: ServerWeight,
+
+    /// Source
+    source: ServerSource,
 }
 
 #[cfg(feature = "aead-cipher-2022")]
@@ -391,6 +404,14 @@ where
     P: Into<String>,
 {
     let password = password.into();
+
+    #[cfg(feature = "stream-cipher")]
+    if method == CipherKind::SS_TABLE {
+        // TABLE cipher doesn't need key derivation.
+        // Reference implemenation: shadowsocks-libev, shadowsocks (Python)
+        let enc_key = password.clone().into_bytes().into_boxed_slice();
+        return (password, enc_key, Vec::new());
+    }
 
     #[cfg(feature = "aead-cipher-2022")]
     if method_support_eih(method) {
@@ -451,6 +472,7 @@ impl ServerConfig {
             id: None,
             mode: Mode::TcpAndUdp, // Server serves TCP & UDP by default
             weight: ServerWeight::new(),
+            source: ServerSource::Default,
         }
     }
 
@@ -541,9 +563,24 @@ impl ServerConfig {
         self.plugin_addr.as_ref()
     }
 
-    /// Get server's external address
-    pub fn external_addr(&self) -> &ServerAddr {
-        self.plugin_addr.as_ref().unwrap_or(&self.addr)
+    /// Get server's TCP external address
+    pub fn tcp_external_addr(&self) -> &ServerAddr {
+        if let Some(plugin) = self.plugin() {
+            if plugin.plugin_mode.enable_tcp() {
+                return self.plugin_addr.as_ref().unwrap_or(&self.addr);
+            }
+        }
+        &self.addr
+    }
+
+    /// Get server's UDP external address
+    pub fn udp_external_addr(&self) -> &ServerAddr {
+        if let Some(plugin) = self.plugin() {
+            if plugin.plugin_mode.enable_udp() {
+                return self.plugin_addr.as_ref().unwrap_or(&self.addr);
+            }
+        }
+        &self.addr
     }
 
     /// Set timeout
@@ -602,6 +639,16 @@ impl ServerConfig {
         self.weight = weight;
     }
 
+    /// Get server's source
+    pub fn source(&self) -> ServerSource {
+        self.source
+    }
+
+    /// Set server's source
+    pub fn set_source(&mut self, source: ServerSource) {
+        self.source = source;
+    }
+
     /// Get URL for QRCode
     /// ```plain
     /// ss:// + base64(method:password@host:port)
@@ -617,7 +664,7 @@ impl ServerConfig {
             if #[cfg(feature = "aead-cipher-2022")] {
                 let user_info = if !self.method().is_aead_2022() {
                     let user_info = format!("{}:{}", self.method(), self.password());
-                    URL_PASSWORD_BASE64_ENGINE.encode(&user_info)
+                    URL_PASSWORD_BASE64_ENGINE.encode(user_info)
                 } else {
                     format!("{}:{}", self.method(), percent_encoding::utf8_percent_encode(self.password(), percent_encoding::NON_ALPHANUMERIC))
                 };
@@ -790,6 +837,7 @@ impl ServerConfig {
                             plugin: p.to_owned(),
                             plugin_opts: vsp.next().map(ToOwned::to_owned),
                             plugin_args: Vec::new(), // SIP002 doesn't have arguments for plugins
+                            plugin_mode: Mode::TcpOnly, // SIP002 doesn't support SIP003u
                         };
                         svrconfig.set_plugin(plugin);
                     }
@@ -798,7 +846,10 @@ impl ServerConfig {
         }
 
         if let Some(frag) = parsed.fragment() {
-            svrconfig.set_remarks(frag);
+            match percent_encoding::percent_decode_str(frag).decode_utf8() {
+                Ok(m) => svrconfig.set_remarks(m),
+                Err(..) => svrconfig.set_remarks(frag),
+            }
         }
 
         Ok(svrconfig)
@@ -1074,13 +1125,14 @@ impl From<PathBuf> for ManagerAddr {
 }
 
 /// Policy for handling replay attack requests
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Default)]
 pub enum ReplayAttackPolicy {
     /// Default strategy based on protocol
     ///
     /// SIP022 (AEAD-2022): Reject
     /// SIP004 (AEAD): Ignore
     /// Stream: Ignore
+    #[default]
     Default,
     /// Ignore it completely
     Ignore,
@@ -1088,12 +1140,6 @@ pub enum ReplayAttackPolicy {
     Detect,
     /// Try to detect replay attack and reject the request
     Reject,
-}
-
-impl Default for ReplayAttackPolicy {
-    fn default() -> ReplayAttackPolicy {
-        ReplayAttackPolicy::Default
-    }
 }
 
 impl Display for ReplayAttackPolicy {

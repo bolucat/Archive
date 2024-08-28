@@ -13,7 +13,7 @@ use crate::{
     server::SERVER_DEFAULT_KEEPALIVE_TIMEOUT,
 };
 
-pub use self::server::Manager;
+pub use self::server::{Manager, ManagerBuilder};
 
 pub mod server;
 
@@ -31,7 +31,7 @@ pub async fn run(config: Config) -> io::Result<()> {
         }
     }
 
-    let mut manager = Manager::new(config.manager.expect("missing manager config"));
+    let mut manager_builder = ManagerBuilder::new(config.manager.expect("missing manager config"));
 
     let mut connect_opts = ConnectOpts {
         #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -51,6 +51,8 @@ pub async fn run(config: Config) -> io::Result<()> {
     connect_opts.tcp.nodelay = config.no_delay;
     connect_opts.tcp.fastopen = config.fast_open;
     connect_opts.tcp.keepalive = config.keep_alive.or(Some(SERVER_DEFAULT_KEEPALIVE_TIMEOUT));
+    connect_opts.tcp.mptcp = config.mptcp;
+    connect_opts.udp.mtu = config.udp_mtu;
 
     let mut accept_opts = AcceptOpts {
         ipv6_only: config.ipv6_only,
@@ -61,26 +63,32 @@ pub async fn run(config: Config) -> io::Result<()> {
     accept_opts.tcp.nodelay = config.no_delay;
     accept_opts.tcp.fastopen = config.fast_open;
     accept_opts.tcp.keepalive = config.keep_alive.or(Some(SERVER_DEFAULT_KEEPALIVE_TIMEOUT));
+    accept_opts.tcp.mptcp = config.mptcp;
+    accept_opts.udp.mtu = config.udp_mtu;
 
-    if let Some(resolver) = build_dns_resolver(config.dns, config.ipv6_first, &connect_opts).await {
-        manager.set_dns_resolver(Arc::new(resolver));
+    if let Some(resolver) =
+        build_dns_resolver(config.dns, config.ipv6_first, config.dns_cache_size, &connect_opts).await
+    {
+        manager_builder.set_dns_resolver(Arc::new(resolver));
     }
-    manager.set_ipv6_first(config.ipv6_first);
+    manager_builder.set_ipv6_first(config.ipv6_first);
 
-    manager.set_connect_opts(connect_opts);
-    manager.set_accept_opts(accept_opts);
+    manager_builder.set_connect_opts(connect_opts);
+    manager_builder.set_accept_opts(accept_opts);
 
     if let Some(c) = config.udp_max_associations {
-        manager.set_udp_capacity(c);
+        manager_builder.set_udp_capacity(c);
     }
 
     if let Some(d) = config.udp_timeout {
-        manager.set_udp_expiry_duration(d);
+        manager_builder.set_udp_expiry_duration(d);
     }
 
     if let Some(acl) = config.acl {
-        manager.set_acl(Arc::new(acl));
+        manager_builder.set_acl(Arc::new(acl));
     }
+
+    let manager = manager_builder.build().await?;
 
     for svr_inst in config.server {
         manager.add_server(svr_inst.config).await;

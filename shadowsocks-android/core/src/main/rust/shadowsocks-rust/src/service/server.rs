@@ -1,11 +1,14 @@
 //! Server launchers
 
-use std::{net::IpAddr, path::PathBuf, process::ExitCode, time::Duration};
+use std::{future::Future, net::IpAddr, path::PathBuf, process::ExitCode, time::Duration};
 
 use clap::{builder::PossibleValuesParser, Arg, ArgAction, ArgGroup, ArgMatches, Command, ValueHint};
 use futures::future::{self, Either};
 use log::{info, trace};
-use tokio::{self, runtime::Builder};
+use tokio::{
+    self,
+    runtime::{Builder, Runtime},
+};
 
 use shadowsocks_service::{
     acl::AccessControl,
@@ -22,8 +25,7 @@ use shadowsocks_service::{
 use crate::logging;
 use crate::{
     config::{Config as ServiceConfig, RuntimeMode},
-    monitor,
-    vparser,
+    monitor, vparser,
 };
 
 /// Defines command line options
@@ -37,7 +39,7 @@ pub fn define_command_line_options(mut app: Command) -> Command {
                 .action(ArgAction::Set)
                 .value_parser(clap::value_parser!(PathBuf))
                 .value_hint(ValueHint::FilePath)
-                .help("Shadowsocks configuration file (https://shadowsocks.org/guide/configs.html)"),
+                .help("Shadowsocks configuration file (https://shadowsocks.org/doc/configs.html)"),
         )
         .arg(
             Arg::new("OUTBOUND_BIND_ADDR")
@@ -118,7 +120,15 @@ pub fn define_command_line_options(mut app: Command) -> Command {
                 .action(ArgAction::Set)
                 .value_hint(ValueHint::CommandName)
                 .requires("SERVER_ADDR")
-                .help("SIP003 (https://shadowsocks.org/guide/sip003.html) plugin"),
+                .help("SIP003 (https://shadowsocks.org/doc/sip003.html) plugin"),
+        )
+        .arg(
+            Arg::new("PLUGIN_MODE")
+                .long("plugin-mode")
+                .num_args(1)
+                .action(ArgAction::Set)
+                .requires("PLUGIN")
+                .help("SIP003/SIP003u plugin mode, must be one of `tcp_only` (default), `udp_only` and `tcp_and_udp`"),
         )
         .arg(
             Arg::new("PLUGIN_OPT")
@@ -131,9 +141,11 @@ pub fn define_command_line_options(mut app: Command) -> Command {
         .arg(Arg::new("MANAGER_ADDR").long("manager-addr").num_args(1).action(ArgAction::Set).value_parser(vparser::parse_manager_addr).alias("manager-address").help("ShadowSocks Manager (ssmgr) address, could be \"IP:Port\", \"Domain:Port\" or \"/path/to/unix.sock\""))
         .arg(Arg::new("ACL").long("acl").num_args(1).action(ArgAction::Set).value_hint(ValueHint::FilePath).help("Path to ACL (Access Control List)"))
         .arg(Arg::new("DNS").long("dns").num_args(1).action(ArgAction::Set).help("DNS nameservers, formatted like [(tcp|udp)://]host[:port][,host[:port]]..., or unix:///path/to/dns, or predefined keys like \"google\", \"cloudflare\""))
+        .arg(Arg::new("DNS_CACHE_SIZE").long("dns-cache-size").num_args(1).action(ArgAction::Set).value_parser(clap::value_parser!(usize)).help("DNS cache size in number of records. Works when trust-dns DNS backend is enabled."))
         .arg(Arg::new("TCP_NO_DELAY").long("tcp-no-delay").alias("no-delay").action(ArgAction::SetTrue).help("Set TCP_NODELAY option for sockets"))
         .arg(Arg::new("TCP_FAST_OPEN").long("tcp-fast-open").alias("fast-open").action(ArgAction::SetTrue).help("Enable TCP Fast Open (TFO)"))
         .arg(Arg::new("TCP_KEEP_ALIVE").long("tcp-keep-alive").num_args(1).action(ArgAction::Set).value_parser(clap::value_parser!(u64)).help("Set TCP keep alive timeout seconds"))
+        .arg(Arg::new("TCP_MULTIPATH").long("tcp-multipath").alias("mptcp").action(ArgAction::SetTrue).help("Enable Multipath-TCP (MPTCP)"))
         .arg(Arg::new("UDP_TIMEOUT").long("udp-timeout").num_args(1).action(ArgAction::Set).value_parser(clap::value_parser!(u64)).help("Timeout seconds for UDP relay"))
         .arg(Arg::new("UDP_MAX_ASSOCIATIONS").long("udp-max-associations").num_args(1).action(ArgAction::Set).value_parser(clap::value_parser!(usize)).help("Maximum associations to be kept simultaneously for UDP relay"))
         .arg(Arg::new("INBOUND_SEND_BUFFER_SIZE").long("inbound-send-buffer-size").num_args(1).action(ArgAction::Set).value_parser(clap::value_parser!(u32)).help("Set inbound sockets' SO_SNDBUF option"))
@@ -266,12 +278,12 @@ pub fn define_command_line_options(mut app: Command) -> Command {
     app
 }
 
-/// Program entrance `main`
-pub fn main(matches: &ArgMatches) -> ExitCode {
+/// Create `Runtime` and `main` entry
+pub fn create(matches: &ArgMatches) -> Result<(Runtime, impl Future<Output = ExitCode>), ExitCode> {
     let (config, runtime) = {
         let config_path_opt = matches.get_one::<PathBuf>("CONFIG").cloned().or_else(|| {
             if !matches.contains_id("SERVER_CONFIG") {
-                match crate::config::get_default_config_path() {
+                match crate::config::get_default_config_path("server.json") {
                     None => None,
                     Some(p) => {
                         println!("loading default config {p:?}");
@@ -288,7 +300,7 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
                 Ok(c) => c,
                 Err(err) => {
                     eprintln!("loading config {config_path:?}, {err}");
-                    return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+                    return Err(crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into());
                 }
             },
             None => ServiceConfig::default(),
@@ -312,7 +324,7 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
                 Ok(cfg) => cfg,
                 Err(err) => {
                     eprintln!("loading config {cpath:?}, {err}");
-                    return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+                    return Err(crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into());
                 }
             },
             None => Config::new(ConfigType::Server),
@@ -353,6 +365,13 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
                     plugin: p,
                     plugin_opts: matches.get_one::<String>("PLUGIN_OPT").cloned(),
                     plugin_args: Vec::new(),
+                    plugin_mode: matches
+                        .get_one::<String>("PLUGIN_MODE")
+                        .map(|x| {
+                            x.parse::<Mode>()
+                                .expect("plugin-mode must be one of `tcp_only` (default), `udp_only` and `tcp_and_udp`")
+                        })
+                        .unwrap_or(Mode::TcpOnly),
                 };
 
                 sc.set_plugin(plugin);
@@ -382,6 +401,10 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
 
         if let Some(keep_alive) = matches.get_one::<u64>("TCP_KEEP_ALIVE") {
             config.keep_alive = Some(Duration::from_secs(*keep_alive));
+        }
+
+        if matches.get_flag("TCP_MULTIPATH") {
+            config.mptcp = true;
         }
 
         #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -421,7 +444,7 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
                 Ok(acl) => acl,
                 Err(err) => {
                     eprintln!("loading ACL \"{acl_file}\", {err}");
-                    return crate::EXIT_CODE_LOAD_ACL_FAILURE.into();
+                    return Err(crate::EXIT_CODE_LOAD_ACL_FAILURE.into());
                 }
             };
             config.acl = Some(acl);
@@ -429,6 +452,10 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
 
         if let Some(dns) = matches.get_one::<String>("DNS") {
             config.set_dns_formatted(dns).expect("dns");
+        }
+
+        if let Some(dns_cache_size) = matches.get_one::<usize>("DNS_CACHE_SIZE") {
+            config.dns_cache_size = Some(*dns_cache_size);
         }
 
         if matches.get_flag("IPV6_FIRST") {
@@ -466,14 +493,14 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
             eprintln!(
                 "missing proxy servers, consider specifying it by \
                     --server-addr, --encrypt-method, --password command line option, \
-                        or configuration file, check more details in https://shadowsocks.org/guide/configs.html"
+                        or configuration file, check more details in https://shadowsocks.org/doc/configs.html"
             );
-            return crate::EXIT_CODE_INSUFFICIENT_PARAMS.into();
+            return Err(crate::EXIT_CODE_INSUFFICIENT_PARAMS.into());
         }
 
         if let Err(err) = config.check_integrity() {
             eprintln!("config integrity check failed, {err}");
-            return crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into();
+            return Err(crate::EXIT_CODE_LOAD_CONFIG_FAILURE.into());
         }
 
         #[cfg(unix)]
@@ -484,35 +511,33 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
 
         #[cfg(unix)]
         if let Some(uname) = matches.get_one::<String>("USER") {
-            crate::sys::run_as_user(uname);
+            if let Err(err) = crate::sys::run_as_user(uname) {
+                eprintln!("failed to change as user, error: {err}");
+                return Err(crate::EXIT_CODE_INSUFFICIENT_PARAMS.into());
+            }
         }
 
         info!("shadowsocks server {} build {}", crate::VERSION, crate::BUILD_TIME);
 
-        let mut worker_count = 1;
         let mut builder = match service_config.runtime.mode {
             RuntimeMode::SingleThread => Builder::new_current_thread(),
             #[cfg(feature = "multi-threaded")]
             RuntimeMode::MultiThread => {
                 let mut builder = Builder::new_multi_thread();
                 if let Some(worker_threads) = service_config.runtime.worker_count {
-                    worker_count = worker_threads;
                     builder.worker_threads(worker_threads);
-                } else {
-                    worker_count = num_cpus::get();
                 }
 
                 builder
             }
         };
-        config.worker_count = worker_count;
 
         let runtime = builder.enable_all().build().expect("create tokio Runtime");
 
         (config, runtime)
     };
 
-    runtime.block_on(async move {
+    let main_fut = async move {
         let abort_signal = monitor::create_signal_monitor();
         let server = run_server(config);
 
@@ -533,7 +558,18 @@ pub fn main(matches: &ArgMatches) -> ExitCode {
             // The abort signal future resolved. Means we should just exit.
             Either::Right(_) => ExitCode::SUCCESS,
         }
-    })
+    };
+
+    Ok((runtime, main_fut))
+}
+
+/// Program entrance `main`
+#[inline]
+pub fn main(matches: &ArgMatches) -> ExitCode {
+    match create(matches) {
+        Ok((runtime, main_fut)) => runtime.block_on(main_fut),
+        Err(code) => code,
+    }
 }
 
 #[cfg(test)]

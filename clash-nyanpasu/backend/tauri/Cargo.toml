@@ -46,6 +46,7 @@ serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
 relative-path = "1.9"
 tauri = { version = "1.5.4", features = [
+  "dialog-all",
   "updater",
   "fs-all",
   "clipboard-all",
@@ -75,7 +76,7 @@ dyn-clone = "1.0.16"
 rs-snowflake = "0.6"
 thiserror = { workspace = true }
 simd-json = "0.13.8"
-runas = "1.2.0"
+runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 backon = { version = "1.0.1", features = ["tokio-sleep"] }
 rust-i18n = "3"
 adler = "1.0.2"

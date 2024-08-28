@@ -4,7 +4,7 @@
 
 use std::net::{IpAddr, SocketAddr};
 
-#[cfg(feature = "local-tun")]
+#[cfg(any(feature = "local-tun", feature = "local-fake-dns"))]
 use ipnet::IpNet;
 #[cfg(feature = "local-redir")]
 use shadowsocks_service::config::RedirType;
@@ -52,11 +52,11 @@ value_parser_type!(parse_cipher_kind, CipherKind, "invalid cipher");
 pub fn parse_server_url(v: &str) -> Result<ServerConfig, String> {
     match ServerConfig::from_url(v) {
         Ok(t) => Ok(t),
-        Err(..) => Err("should be SIP002 (https://shadowsocks.org/guide/sip002.html) format".to_owned()),
+        Err(..) => Err("should be SIP002 (https://shadowsocks.org/doc/sip002.html) format".to_owned()),
     }
 }
 
-#[cfg(feature = "local-tun")]
+#[cfg(any(feature = "local-tun", feature = "local-fake-dns"))]
 pub fn parse_ipnet(v: &str) -> Result<IpNet, String> {
     match v.parse::<IpNet>() {
         Err(..) => Err("should be a CIDR address like 10.1.2.3/24".to_owned()),

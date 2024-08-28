@@ -51,12 +51,12 @@ export const AppContainer = ({
 
         <Allotment.Pane visible={true} className={styles.container}>
           {OS === "windows" && (
-            <LayoutControl className="!z-top fixed right-6 top-1.5" />
+            <LayoutControl className="!z-top fixed right-4 top-2" />
           )}
 
           {OS === "macos" && (
             <div
-              className="z-top fixed left-6 top-3 h-8 w-[4.5rem] rounded-full"
+              className="z-top fixed left-4 top-3 h-8 w-[4.5rem] rounded-full"
               style={{ backgroundColor: alpha(palette.primary.main, 0.1) }}
             />
           )}

@@ -10,9 +10,12 @@ use shadowsocks::{
     context::{Context, SharedContext},
     crypto::CipherKind,
     dns_resolver::DnsResolver,
-    manager::protocol::{
-        self, AddRequest, AddResponse, ErrorResponse, ListResponse, ManagerRequest, PingResponse, RemoveRequest,
-        RemoveResponse, ServerUserConfig, StatRequest,
+    manager::{
+        datagram::ManagerSocketAddr,
+        protocol::{
+            self, AddRequest, AddResponse, ErrorResponse, ListResponse, ManagerRequest, PingResponse, RemoveRequest,
+            RemoveResponse, ServerUserConfig, StatRequest,
+        },
     },
     net::{AcceptOpts, ConnectOpts},
     plugin::PluginConfig,
@@ -24,7 +27,7 @@ use crate::{
     acl::AccessControl,
     config::{ManagerConfig, ManagerServerHost, ManagerServerMode, SecurityConfig},
     net::FlowStat,
-    server::Server,
+    server::ServerBuilder,
 };
 
 enum ServerInstanceMode {
@@ -61,10 +64,9 @@ impl ServerInstance {
     }
 }
 
-/// Manager server
-pub struct Manager {
+/// Manager server builder
+pub struct ManagerBuilder {
     context: SharedContext,
-    servers: Mutex<HashMap<u16, ServerInstance>>,
     svr_cfg: ManagerConfig,
     connect_opts: ConnectOpts,
     accept_opts: AcceptOpts,
@@ -73,20 +75,18 @@ pub struct Manager {
     acl: Option<Arc<AccessControl>>,
     ipv6_first: bool,
     security: SecurityConfig,
-    worker_count: usize,
 }
 
-impl Manager {
-    /// Create a new manager server from configuration
-    pub fn new(svr_cfg: ManagerConfig) -> Manager {
-        Manager::with_context(svr_cfg, Context::new_shared(ServerType::Server))
+impl ManagerBuilder {
+    /// Create a new manager server builder from configuration
+    pub fn new(svr_cfg: ManagerConfig) -> ManagerBuilder {
+        ManagerBuilder::with_context(svr_cfg, Context::new_shared(ServerType::Server))
     }
 
-    /// Create a new manager server with context and configuration
-    pub(crate) fn with_context(svr_cfg: ManagerConfig, context: SharedContext) -> Manager {
-        Manager {
+    /// Create a new manager server builder with context and configuration
+    pub(crate) fn with_context(svr_cfg: ManagerConfig, context: SharedContext) -> ManagerBuilder {
+        ManagerBuilder {
             context,
-            servers: Mutex::new(HashMap::new()),
             svr_cfg,
             connect_opts: ConnectOpts::default(),
             accept_opts: AcceptOpts::default(),
@@ -95,7 +95,6 @@ impl Manager {
             acl: None,
             ipv6_first: false,
             security: SecurityConfig::default(),
-            worker_count: 1,
         }
     }
 
@@ -145,23 +144,58 @@ impl Manager {
         self.security = security;
     }
 
-    /// Set runtime worker count
-    ///
-    /// Should be replaced with tokio's metric API when it is stablized.
-    /// https://github.com/tokio-rs/tokio/issues/4073
-    pub fn set_worker_count(&mut self, worker_count: usize) {
-        self.worker_count = worker_count;
+    /// Build the manager server instance
+    pub async fn build(self) -> io::Result<Manager> {
+        let listener = ManagerListener::bind(&self.context, &self.svr_cfg.addr).await?;
+        Ok(Manager {
+            context: self.context,
+            servers: Mutex::new(HashMap::new()),
+            svr_cfg: self.svr_cfg,
+            connect_opts: self.connect_opts,
+            accept_opts: self.accept_opts,
+            udp_expiry_duration: self.udp_expiry_duration,
+            udp_capacity: self.udp_capacity,
+            acl: self.acl,
+            ipv6_first: self.ipv6_first,
+            security: self.security,
+            listener,
+        })
+    }
+}
+
+/// Manager server
+pub struct Manager {
+    context: SharedContext,
+    servers: Mutex<HashMap<u16, ServerInstance>>,
+    svr_cfg: ManagerConfig,
+    connect_opts: ConnectOpts,
+    accept_opts: AcceptOpts,
+    udp_expiry_duration: Option<Duration>,
+    udp_capacity: Option<usize>,
+    acl: Option<Arc<AccessControl>>,
+    ipv6_first: bool,
+    security: SecurityConfig,
+    listener: ManagerListener,
+}
+
+impl Manager {
+    /// Manager server's configuration
+    pub fn manager_config(&self) -> &ManagerConfig {
+        &self.svr_cfg
+    }
+
+    /// Manager server's listen address
+    pub fn local_addr(&self) -> io::Result<ManagerSocketAddr> {
+        self.listener.local_addr()
     }
 
     /// Start serving
-    pub async fn run(self) -> io::Result<()> {
-        let mut listener = ManagerListener::bind(&self.context, &self.svr_cfg.addr).await?;
-
-        let local_addr = listener.local_addr()?;
+    pub async fn run(mut self) -> io::Result<()> {
+        let local_addr = self.listener.local_addr()?;
         info!("shadowsocks manager server listening on {}", local_addr);
 
         loop {
-            let (req, peer_addr) = match listener.recv_from().await {
+            let (req, peer_addr) = match self.listener.recv_from().await {
                 Ok(r) => r,
                 Err(err) => {
                     error!("manager recv_from error: {}", err);
@@ -174,31 +208,32 @@ impl Manager {
             match req {
                 ManagerRequest::Add(ref req) => match self.handle_add(req).await {
                     Ok(rsp) => {
-                        let _ = listener.send_to(&rsp, &peer_addr).await;
+                        let _ = self.listener.send_to(&rsp, &peer_addr).await;
                     }
                     Err(err) => {
                         error!("add server_port: {} failed, error: {}", req.server_port, err);
                         let rsp = ErrorResponse(err);
-                        let _ = listener.send_to(&rsp, &peer_addr).await;
+                        let _ = self.listener.send_to(&rsp, &peer_addr).await;
                     }
                 },
                 ManagerRequest::Remove(ref req) => {
                     let rsp = self.handle_remove(req).await;
-                    let _ = listener.send_to(&rsp, &peer_addr).await;
+                    let _ = self.listener.send_to(&rsp, &peer_addr).await;
                 }
                 ManagerRequest::List(..) => {
                     let rsp = self.handle_list().await;
-                    let _ = listener.send_to(&rsp, &peer_addr).await;
+                    let _ = self.listener.send_to(&rsp, &peer_addr).await;
                 }
                 ManagerRequest::Ping(..) => {
                     let rsp = self.handle_ping().await;
-                    let _ = listener.send_to(&rsp, &peer_addr).await;
+                    let _ = self.listener.send_to(&rsp, &peer_addr).await;
                 }
                 ManagerRequest::Stat(ref stat) => self.handle_stat(stat).await,
             }
         }
     }
 
+    /// Add a server programatically
     pub async fn add_server(&self, svr_cfg: ServerConfig) {
         match self.svr_cfg.server_mode {
             ManagerServerMode::Builtin => self.add_server_builtin(svr_cfg).await,
@@ -212,33 +247,31 @@ impl Manager {
         //
         // * AccessControlList
         // * DNS Resolver
-        let mut server = Server::new(svr_cfg.clone());
+        let mut server_builder = ServerBuilder::new(svr_cfg.clone());
 
-        server.set_connect_opts(self.connect_opts.clone());
-        server.set_accept_opts(self.accept_opts.clone());
-        server.set_dns_resolver(self.context.dns_resolver().clone());
+        server_builder.set_connect_opts(self.connect_opts.clone());
+        server_builder.set_accept_opts(self.accept_opts.clone());
+        server_builder.set_dns_resolver(self.context.dns_resolver().clone());
 
         if let Some(d) = self.udp_expiry_duration {
-            server.set_udp_expiry_duration(d);
+            server_builder.set_udp_expiry_duration(d);
         }
 
         if let Some(c) = self.udp_capacity {
-            server.set_udp_capacity(c);
+            server_builder.set_udp_capacity(c);
         }
 
         if let Some(ref acl) = self.acl {
-            server.set_acl(acl.clone());
+            server_builder.set_acl(acl.clone());
         }
 
         if self.ipv6_first {
-            server.set_ipv6_first(self.ipv6_first);
+            server_builder.set_ipv6_first(self.ipv6_first);
         }
 
-        server.set_security_config(&self.security);
+        server_builder.set_security_config(&self.security);
 
-        server.set_worker_count(self.worker_count);
-
-        let server_port = server.config().addr().port();
+        let server_port = server_builder.server_config().addr().port();
 
         let mut servers = self.servers.lock().await;
         // Close existed server
@@ -246,11 +279,18 @@ impl Manager {
             info!(
                 "closed managed server listening on {}, inbound address {}",
                 v.svr_cfg.addr(),
-                v.svr_cfg.external_addr()
+                v.svr_cfg.tcp_external_addr()
             );
         }
 
-        let flow_stat = server.flow_stat();
+        let flow_stat = server_builder.flow_stat();
+        let server = match server_builder.build().await {
+            Ok(s) => s,
+            Err(err) => {
+                error!("failed to start server ({}), error: {}", svr_cfg.addr(), err);
+                return;
+            }
+        };
 
         let abortable = tokio::spawn(async move { server.run().await });
 
@@ -265,7 +305,7 @@ impl Manager {
 
     #[cfg(unix)]
     fn server_pid_path(&self, port: u16) -> PathBuf {
-        let pid_file_name = format!("shadowsocks-server-{}.pid", port);
+        let pid_file_name = format!("shadowsocks-server-{port}.pid");
         let mut pid_path = self.svr_cfg.server_working_directory.clone();
         pid_path.push(&pid_file_name);
         pid_path
@@ -273,7 +313,7 @@ impl Manager {
 
     #[cfg(unix)]
     fn server_config_path(&self, port: u16) -> PathBuf {
-        let config_file_name = format!("shadowsocks-server-{}.json", port);
+        let config_file_name = format!("shadowsocks-server-{port}.json");
         let mut config_file_path = self.svr_cfg.server_working_directory.clone();
         config_file_path.push(&config_file_name);
         config_file_path
@@ -291,7 +331,7 @@ impl Manager {
         if pid_path.exists() {
             if let Ok(mut pid_file) = File::open(&pid_path) {
                 let mut pid_content = String::new();
-                if let Ok(..) = pid_file.read_to_string(&mut pid_content) {
+                if pid_file.read_to_string(&mut pid_content).is_ok() {
                     let pid_content = pid_content.trim();
 
                     match pid_content.parse::<libc::pid_t>() {
@@ -309,8 +349,8 @@ impl Manager {
 
         let server_config_path = self.server_config_path(port);
 
-        let _ = fs::remove_file(&pid_path);
-        let _ = fs::remove_file(&server_config_path);
+        let _ = fs::remove_file(pid_path);
+        let _ = fs::remove_file(server_config_path);
     }
 
     #[cfg(unix)]
@@ -344,6 +384,10 @@ impl Manager {
         let server_instance = ServerInstanceConfig {
             config: svr_cfg.clone(),
             acl: None, // Set with --acl command line argument
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            outbound_fwmark: None,
+            outbound_bind_addr: None,
+            outbound_bind_interface: None,
         };
 
         let mut config = Config::new(ConfigType::Server);
@@ -351,9 +395,14 @@ impl Manager {
 
         trace!("created standalone server with config {:?}", config);
 
-        let config_file_content = format!("{}", config);
+        let config_file_content = format!("{config}");
 
-        match OpenOptions::new().write(true).create(true).open(&config_file_path) {
+        match OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&config_file_path)
+        {
             Err(err) => {
                 error!(
                     "failed to open {} for writing, error: {}",
@@ -420,7 +469,7 @@ impl Manager {
                 Err(..) => {
                     error!("unrecognized method \"{}\", req: {:?}", m, req);
 
-                    let err = format!("unrecognized method \"{}\"", m);
+                    let err = format!("unrecognized method \"{m}\"");
                     return Ok(AddResponse(err));
                 }
             },
@@ -434,6 +483,18 @@ impl Manager {
                 plugin: plugin.clone(),
                 plugin_opts: req.plugin_opts.clone(),
                 plugin_args: Vec::new(),
+                plugin_mode: match req.plugin_mode {
+                    None => Mode::TcpOnly,
+                    Some(ref mode) => match mode.parse::<Mode>() {
+                        Ok(m) => m,
+                        Err(..) => {
+                            error!("unrecognized plugin_mode \"{}\", req: {:?}", mode, req);
+
+                            let err = format!("unrecognized plugin_mode \"{}\"", mode);
+                            return Ok(AddResponse(err));
+                        }
+                    },
+                },
             };
             svr_cfg.set_plugin(p);
         } else if let Some(ref plugin) = self.svr_cfg.plugin {
@@ -447,7 +508,7 @@ impl Manager {
                 Err(..) => {
                     error!("unrecognized mode \"{}\", req: {:?}", mode, req);
 
-                    let err = format!("unrecognized mode \"{}\"", mode);
+                    let err = format!("unrecognized mode \"{mode}\"");
                     return Ok(AddResponse(err));
                 }
             },
@@ -526,6 +587,7 @@ impl Manager {
                 no_delay: None,
                 plugin: None,
                 plugin_opts: None,
+                plugin_mode: None,
                 mode: None,
                 users,
             };

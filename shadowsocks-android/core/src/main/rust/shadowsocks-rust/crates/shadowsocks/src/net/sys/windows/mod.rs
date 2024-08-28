@@ -1,17 +1,24 @@
 use std::{
-    ffi::{c_void, CString},
+    cell::RefCell,
+    collections::HashMap,
+    ffi::{c_void, CStr, CString, OsString},
     io::{self, ErrorKind},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    os::windows::io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket},
+    os::windows::{
+        ffi::OsStringExt,
+        io::{AsRawSocket, FromRawSocket, IntoRawSocket, RawSocket},
+    },
     pin::Pin,
-    ptr,
+    ptr, slice,
     task::{self, Poll},
+    time::{Duration, Instant},
 };
 
+use bytes::BytesMut;
 use log::{error, warn};
 use pin_project::pin_project;
-use socket2::{Domain, Protocol, Socket, TcpKeepalive, Type};
+use socket2::{Domain, Protocol, SockAddr, Socket, TcpKeepalive, Type};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpSocket, TcpStream as TokioTcpStream, UdpSocket},
@@ -20,24 +27,15 @@ use tokio_tfo::TfoStream;
 use windows_sys::{
     core::PCSTR,
     Win32::{
-        Foundation::BOOL,
-        NetworkManagement::IpHelper::if_nametoindex,
+        Foundation::{BOOL, ERROR_BUFFER_OVERFLOW, ERROR_NO_DATA, ERROR_SUCCESS},
+        NetworkManagement::IpHelper::{
+            if_nametoindex, GetAdaptersAddresses, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_DNS_SERVER,
+            GAA_FLAG_SKIP_MULTICAST, GAA_FLAG_SKIP_UNICAST, IP_ADAPTER_ADDRESSES_LH,
+        },
         Networking::WinSock::{
-            setsockopt,
-            WSAGetLastError,
-            WSAIoctl,
-            IPPROTO_IP,
-            IPPROTO_IPV6,
-            IPPROTO_TCP,
-            IPV6_MTU_DISCOVER,
-            IPV6_UNICAST_IF,
-            IP_MTU_DISCOVER,
-            IP_PMTUDISC_DO,
-            IP_UNICAST_IF,
-            SIO_UDP_CONNRESET,
-            SOCKET,
-            SOCKET_ERROR,
-            TCP_FASTOPEN,
+            htonl, setsockopt, WSAGetLastError, WSAIoctl, AF_UNSPEC, IPPROTO_IP, IPPROTO_IPV6, IPPROTO_TCP,
+            IPV6_MTU_DISCOVER, IPV6_UNICAST_IF, IP_MTU_DISCOVER, IP_PMTUDISC_DO, IP_UNICAST_IF, SIO_UDP_CONNRESET,
+            SOCKET, SOCKET_ERROR, TCP_FASTOPEN,
         },
     },
 };
@@ -48,8 +46,7 @@ const FALSE: BOOL = 0;
 use crate::net::{
     is_dual_stack_addr,
     sys::{set_common_sockopt_for_connect, socket_bind_dual_stack},
-    AddrFamily,
-    ConnectOpts,
+    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
@@ -68,7 +65,7 @@ impl TcpStream {
 
         // Binds to a specific network interface (device)
         if let Some(ref iface) = opts.bind_interface {
-            set_ip_unicast_if(&socket, addr, iface)?;
+            set_ip_unicast_if(&socket, &addr, iface)?;
         }
 
         set_common_sockopt_for_connect(addr, &socket, opts)?;
@@ -188,42 +185,166 @@ pub fn set_tcp_fastopen<S: AsRawSocket>(socket: &S) -> io::Result<()> {
     Ok(())
 }
 
-fn set_ip_unicast_if<S: AsRawSocket>(socket: &S, addr: SocketAddr, iface: &str) -> io::Result<()> {
-    let handle = socket.as_raw_socket() as SOCKET;
+/// Create a TCP socket for listening
+pub async fn create_inbound_tcp_socket(bind_addr: &SocketAddr, _accept_opts: &AcceptOpts) -> io::Result<TcpSocket> {
+    match bind_addr {
+        SocketAddr::V4(..) => TcpSocket::new_v4(),
+        SocketAddr::V6(..) => TcpSocket::new_v6(),
+    }
+}
+
+fn find_adapter_interface_index(addr: &SocketAddr, iface: &str) -> io::Result<Option<u32>> {
+    // https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses
+
+    let ip = addr.ip();
 
     unsafe {
-        // Windows if_nametoindex requires a C-string for interface name
-        let ifname = CString::new(iface).expect("iface");
+        let mut ip_adapter_addresses_buffer = BytesMut::with_capacity(15 * 1024);
+        ip_adapter_addresses_buffer.set_len(15 * 1024);
 
-        // https://docs.microsoft.com/en-us/previous-versions/windows/hardware/drivers/ff553788(v=vs.85)
-        let if_index = if_nametoindex(ifname.as_ptr() as PCSTR);
-        if if_index == 0 {
-            // If the if_nametoindex function fails and returns zero, it is not possible to determine an error code.
-            error!("if_nametoindex {} fails", iface);
-            return Err(io::Error::new(ErrorKind::InvalidInput, "invalid interface name"));
+        let mut ip_adapter_addresses_buffer_size: u32 = ip_adapter_addresses_buffer.len() as u32;
+        loop {
+            let ret = GetAdaptersAddresses(
+                AF_UNSPEC as u32,
+                GAA_FLAG_SKIP_UNICAST | GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+                ptr::null(),
+                ip_adapter_addresses_buffer.as_mut_ptr() as *mut _,
+                &mut ip_adapter_addresses_buffer_size as *mut _,
+            );
+
+            match ret {
+                ERROR_SUCCESS => break,
+                ERROR_BUFFER_OVERFLOW => {
+                    // resize buffer to ip_adapter_addresses_buffer_size
+                    ip_adapter_addresses_buffer.resize(ip_adapter_addresses_buffer_size as usize, 0);
+                    continue;
+                }
+                ERROR_NO_DATA => return Ok(None),
+                _ => {
+                    let err = io::Error::new(
+                        ErrorKind::Other,
+                        format!("GetAdaptersAddresses failed with error: {}", ret),
+                    );
+                    return Err(err);
+                }
+            }
         }
 
+        // IP_ADAPTER_ADDRESSES_LH is a linked-list
+        let mut current_ip_adapter_address: *mut IP_ADAPTER_ADDRESSES_LH =
+            ip_adapter_addresses_buffer.as_mut_ptr() as *mut _;
+        while !current_ip_adapter_address.is_null() {
+            let ip_adapter_address: &IP_ADAPTER_ADDRESSES_LH = &*current_ip_adapter_address;
+
+            // Friendly Name
+            let friendly_name_len: usize = libc::wcslen(ip_adapter_address.FriendlyName);
+            let friendly_name_slice: &[u16] = slice::from_raw_parts(ip_adapter_address.FriendlyName, friendly_name_len);
+            let friendly_name_os = OsString::from_wide(friendly_name_slice); // UTF-16 to UTF-8
+            if let Some(friendly_name) = friendly_name_os.to_str() {
+                if friendly_name == iface {
+                    match ip {
+                        IpAddr::V4(..) => return Ok(Some(ip_adapter_address.Anonymous1.Anonymous.IfIndex)),
+                        IpAddr::V6(..) => return Ok(Some(ip_adapter_address.Ipv6IfIndex)),
+                    }
+                }
+            }
+
+            // Adapter Name
+            let adapter_name = CStr::from_ptr(ip_adapter_address.AdapterName as *mut _ as *const _);
+            if adapter_name.to_bytes() == iface.as_bytes() {
+                match ip {
+                    IpAddr::V4(..) => return Ok(Some(ip_adapter_address.Anonymous1.Anonymous.IfIndex)),
+                    IpAddr::V6(..) => return Ok(Some(ip_adapter_address.Ipv6IfIndex)),
+                }
+            }
+
+            current_ip_adapter_address = ip_adapter_address.Next;
+        }
+    }
+
+    Ok(None)
+}
+
+fn find_interface_index_cached(addr: &SocketAddr, iface: &str) -> io::Result<u32> {
+    const INDEX_EXPIRE_DURATION: Duration = Duration::from_secs(5);
+
+    thread_local! {
+        static INTERFACE_INDEX_CACHE: RefCell<HashMap<String, (u32, Instant)>> =
+            RefCell::new(HashMap::new());
+    }
+
+    let cache_index = INTERFACE_INDEX_CACHE.with(|cache| cache.borrow().get(iface).cloned());
+    if let Some((idx, insert_time)) = cache_index {
+        // short-path, cache hit for most cases
+        let now = Instant::now();
+        if now - insert_time < INDEX_EXPIRE_DURATION {
+            return Ok(idx);
+        }
+    }
+
+    // Get from API GetAdaptersAddresses
+    let idx = match find_adapter_interface_index(addr, iface)? {
+        Some(idx) => idx,
+        None => unsafe {
+            // Windows if_nametoindex requires a C-string for interface name
+            let ifname = CString::new(iface).expect("iface");
+
+            // https://docs.microsoft.com/en-us/previous-versions/windows/hardware/drivers/ff553788(v=vs.85)
+            let if_index = if_nametoindex(ifname.as_ptr() as PCSTR);
+            if if_index == 0 {
+                // If the if_nametoindex function fails and returns zero, it is not possible to determine an error code.
+                error!("if_nametoindex {} fails", iface);
+                return Err(io::Error::new(ErrorKind::InvalidInput, "invalid interface name"));
+            }
+
+            if_index
+        },
+    };
+
+    INTERFACE_INDEX_CACHE.with(|cache| {
+        cache.borrow_mut().insert(iface.to_owned(), (idx, Instant::now()));
+    });
+
+    Ok(idx)
+}
+
+fn set_ip_unicast_if<S: AsRawSocket>(socket: &S, addr: &SocketAddr, iface: &str) -> io::Result<()> {
+    let handle = socket.as_raw_socket() as SOCKET;
+
+    let if_index = find_interface_index_cached(addr, iface)?;
+
+    unsafe {
         // https://docs.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options
         let ret = match addr {
-            SocketAddr::V4(..) => setsockopt(
-                handle,
-                IPPROTO_IP as i32,
-                IP_UNICAST_IF as i32,
-                &if_index as *const _ as PCSTR,
-                mem::size_of_val(&if_index) as i32,
-            ),
-            SocketAddr::V6(..) => setsockopt(
-                handle,
-                IPPROTO_IPV6 as i32,
-                IPV6_UNICAST_IF as i32,
-                &if_index as *const _ as PCSTR,
-                mem::size_of_val(&if_index) as i32,
-            ),
+            SocketAddr::V4(..) => {
+                // Interface index is in network byte order for IPPROTO_IP.
+                let if_index = htonl(if_index);
+                setsockopt(
+                    handle,
+                    IPPROTO_IP as i32,
+                    IP_UNICAST_IF as i32,
+                    &if_index as *const _ as PCSTR,
+                    mem::size_of_val(&if_index) as i32,
+                )
+            }
+            SocketAddr::V6(..) => {
+                // Interface index is in host byte order for IPPROTO_IPV6.
+                setsockopt(
+                    handle,
+                    IPPROTO_IPV6 as i32,
+                    IPV6_UNICAST_IF as i32,
+                    &if_index as *const _ as PCSTR,
+                    mem::size_of_val(&if_index) as i32,
+                )
+            }
         };
 
         if ret == SOCKET_ERROR {
             let err = io::Error::from_raw_os_error(WSAGetLastError());
-            error!("set IP_UNICAST_IF / IPV6_UNICAST_IF error: {}", err);
+            error!(
+                "set IP_UNICAST_IF / IPV6_UNICAST_IF interface: {}, index: {}, error: {}",
+                iface, if_index, err
+            );
             return Err(err);
         }
     }
@@ -353,55 +474,82 @@ pub async fn create_outbound_udp_socket(af: AddrFamily, opts: &ConnectOpts) -> i
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
 
-    let socket = if af != AddrFamily::Ipv6 {
-        UdpSocket::bind(bind_addr).await?
-    } else {
-        let socket = Socket::new(Domain::for_address(bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
-        socket_bind_dual_stack(&socket, &bind_addr, false)?;
+    bind_outbound_udp_socket(&bind_addr, opts).await
+}
 
-        // UdpSocket::from_std requires socket to be non-blocked
-        socket.set_nonblocking(true)?;
-        UdpSocket::from_std(socket.into())?
-    };
+/// Create a `UdpSocket` binded to `bind_addr`
+pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, opts: &ConnectOpts) -> io::Result<UdpSocket> {
+    let af = AddrFamily::from(bind_addr);
+
+    let socket = Socket::new(Domain::for_address(*bind_addr), Type::DGRAM, Some(Protocol::UDP))?;
+
+    if let Some(ref iface) = opts.bind_interface {
+        set_ip_unicast_if(&socket, bind_addr, iface)?;
+    }
+
+    // bind() should be called after IP_UNICAST_IF
+    if af != AddrFamily::Ipv6 {
+        let bind_addr = SockAddr::from(*bind_addr);
+        socket.bind(&bind_addr)?;
+    } else {
+        socket_bind_dual_stack(&socket, bind_addr, false)?;
+    }
+
+    socket.set_nonblocking(true)?;
+    let socket = UdpSocket::from_std(socket.into())?;
 
     if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
         warn!("failed to disable IP fragmentation, error: {}", err);
     }
     disable_connection_reset(&socket)?;
 
-    if let Some(ref iface) = opts.bind_interface {
-        set_ip_unicast_if(&socket, bind_addr, iface)?;
-    }
-
     Ok(socket)
 }
 
-pub fn set_common_sockopt_after_connect<S: AsRawSocket>(stream: &S, opts: &ConnectOpts) -> io::Result<()> {
+#[inline(always)]
+fn socket_call_warp<S: AsRawSocket, F: FnOnce(&Socket) -> io::Result<()>>(stream: &S, f: F) -> io::Result<()> {
     let socket = unsafe { Socket::from_raw_socket(stream.as_raw_socket()) };
-
-    macro_rules! try_sockopt {
-        ($socket:ident . $func:ident ($($arg:expr),*)) => {
-            match $socket . $func ($($arg),*) {
-                Ok(e) => e,
-                Err(err) => {
-                    let _ = socket.into_raw_socket();
-                    return Err(err);
-                }
-            }
-        };
-    }
-
-    if opts.tcp.nodelay {
-        try_sockopt!(socket.set_nodelay(true));
-    }
-
-    if let Some(keepalive_duration) = opts.tcp.keepalive {
-        let keepalive = TcpKeepalive::new()
-            .with_time(keepalive_duration)
-            .with_interval(keepalive_duration);
-        try_sockopt!(socket.set_tcp_keepalive(&keepalive));
-    }
-
+    let result = f(&socket);
     let _ = socket.into_raw_socket();
+    result
+}
+
+pub fn set_common_sockopt_after_connect<S: AsRawSocket>(stream: &S, opts: &ConnectOpts) -> io::Result<()> {
+    socket_call_warp(stream, |socket| set_common_sockopt_after_connect_impl(socket, opts))
+}
+
+fn set_common_sockopt_after_connect_impl(socket: &Socket, opts: &ConnectOpts) -> io::Result<()> {
+    if opts.tcp.nodelay {
+        socket.set_nodelay(true)?;
+    }
+
+    if let Some(intv) = opts.tcp.keepalive {
+        let keepalive = TcpKeepalive::new().with_time(intv).with_interval(intv);
+        socket.set_tcp_keepalive(&keepalive)?;
+    }
+
+    Ok(())
+}
+
+pub fn set_common_sockopt_after_accept<S: AsRawSocket>(stream: &S, opts: &AcceptOpts) -> io::Result<()> {
+    socket_call_warp(stream, |socket| set_common_sockopt_after_accept_impl(socket, opts))
+}
+
+fn set_common_sockopt_after_accept_impl(socket: &Socket, opts: &AcceptOpts) -> io::Result<()> {
+    if let Some(buf_size) = opts.tcp.send_buffer_size {
+        socket.set_send_buffer_size(buf_size as usize)?;
+    }
+
+    if let Some(buf_size) = opts.tcp.recv_buffer_size {
+        socket.set_recv_buffer_size(buf_size as usize)?;
+    }
+
+    socket.set_nodelay(opts.tcp.nodelay)?;
+
+    if let Some(intv) = opts.tcp.keepalive {
+        let keepalive = TcpKeepalive::new().with_time(intv).with_interval(intv);
+        socket.set_tcp_keepalive(&keepalive)?;
+    }
+
     Ok(())
 }

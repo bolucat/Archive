@@ -1,0 +1,39 @@
+name: Build MSRV
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_LOG: "trace"
+
+jobs:
+  buid-test-check:
+    strategy:
+      matrix:
+        platform:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - if: ${{ runner.os == 'Windows' }}
+        uses: ilammy/setup-nasm@v1
+      - name: Install Rust
+        run: |
+          rustup set profile minimal
+          rustup toolchain install 1.74
+          rustup default 1.74
+          rustup override set 1.74
+      - name: Build with All Features Enabled (Unix)
+        if: ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
+        run: cargo build --verbose --features "full-extra local-flow-stat utility-url-outline"
+      - name: Build with All Features Enabled (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: cargo build --verbose --features "full-extra local-flow-stat utility-url-outline winservice"

@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-rust"
-version = "1.15.3"
+version = "1.20.4"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -9,7 +9,7 @@ documentation = "https://docs.rs/shadowsocks-rust"
 keywords = ["shadowsocks", "proxy", "socks", "socks5", "firewall"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.64"
+rust-version = "1.74"
 
 [badges]
 maintenance = { status = "passively-maintained" }
@@ -39,11 +39,13 @@ name = "ssservice"
 path = "bin/ssservice.rs"
 required-features = ["service"]
 
+[[bin]]
+name = "sswinservice"
+path = "bin/sswinservice.rs"
+required-features = ["winservice"]
+
 [workspace]
-members = [
-    "crates/shadowsocks",
-    "crates/shadowsocks-service",
-]
+members = ["crates/shadowsocks", "crates/shadowsocks-service"]
 
 [profile.release]
 lto = "fat"
@@ -55,7 +57,7 @@ strip = true
 [features]
 default = [
     "logging",
-    "trust-dns",
+    "hickory-dns",
     "local",
     "server",
     "manager",
@@ -68,6 +70,43 @@ default = [
     "aead-cipher-2022",
 ]
 
+# Basic Features
+basic = ["logging", "hickory-dns", "local", "server", "multi-threaded"]
+
+# All Suggested Features
+full = [
+    "logging",
+    "hickory-dns",
+    "dns-over-tls",
+    "dns-over-https",
+    "local",
+    "server",
+    "manager",
+    "utility",
+    "service",
+    "local-http",
+    "local-http-rustls",
+    "local-tunnel",
+    "local-socks4",
+    "local-dns",
+    "local-redir",
+    "local-tun",
+    "local-fake-dns",
+    "local-online-config",
+    "multi-threaded",
+    "stream-cipher",
+    "aead-cipher-2022",
+]
+
+# Full features with extra (non-stable)
+full-extra = [
+    "full",
+    "dns-over-h3",
+    "aead-cipher-extra",
+    "aead-cipher-2022-extra",
+    "security-replay-attack-detect",
+]
+
 # Enable local server
 local = ["shadowsocks-service/local"]
 # Enable remote server
@@ -78,14 +117,23 @@ manager = ["shadowsocks-service/manager"]
 utility = ["qrcode"]
 # Enable service
 service = ["local", "server", "manager"]
+# Enable Windows Service
+winservice = ["service", "windows-service"]
 
-# Enables trust-dns for replacing tokio's builtin DNS resolver
-trust-dns = ["shadowsocks-service/trust-dns"]
+# Enables Hickory-DNS for replacing tokio's builtin DNS resolver
+hickory-dns = ["shadowsocks-service/hickory-dns"]
+# Hickory-DNS was renamed from Trust-DNS, keep compatibility.
+trust-dns = ["hickory-dns"]
 dns-over-tls = ["shadowsocks-service/dns-over-tls"]
+dns-over-native-tls = ["shadowsocks-service/dns-over-native-tls"]
+dns-over-native-tls-vendored = [
+    "shadowsocks-service/dns-over-native-tls-vendored",
+]
 dns-over-https = ["shadowsocks-service/dns-over-https"]
+dns-over-h3 = ["shadowsocks-service/dns-over-h3"]
 
 # Enable logging output
-logging = ["log4rs"]
+logging = ["log4rs", "tracing", "tracing-subscriber", "time"]
 
 # Enable DNS-relay
 local-dns = ["local", "shadowsocks-service/local-dns"]
@@ -94,7 +142,14 @@ local-dns = ["local", "shadowsocks-service/local-dns"]
 local-flow-stat = ["local", "shadowsocks-service/local-flow-stat"]
 # Enable HTTP protocol for sslocal
 local-http = ["local", "shadowsocks-service/local-http"]
-local-http-native-tls = ["local-http", "shadowsocks-service/local-http-native-tls"]
+local-http-native-tls = [
+    "local-http",
+    "shadowsocks-service/local-http-native-tls",
+]
+local-http-native-tls-vendored = [
+    "local-http",
+    "shadowsocks-service/local-http-native-tls-vendored",
+]
 local-http-rustls = ["local-http", "shadowsocks-service/local-http-rustls"]
 # Enable REDIR protocol for sslocal
 # (transparent proxy)
@@ -105,6 +160,18 @@ local-tunnel = ["local", "shadowsocks-service/local-tunnel"]
 local-socks4 = ["local", "shadowsocks-service/local-socks4"]
 # Enable Tun interface protocol for sslocal
 local-tun = ["local", "shadowsocks-service/local-tun", "ipnet"]
+# Enable Fake DNS for sslocal
+local-fake-dns = ["local", "shadowsocks-service/local-fake-dns", "ipnet"]
+# sslocal support online URL (SIP008 Online Configuration Delivery)
+# https://shadowsocks.org/doc/sip008.html
+local-online-config = [
+    "local",
+    "mime",
+    "shadowsocks-service/local-online-config",
+]
+
+# ssurl support outline (ssconf) URL
+utility-url-outline = ["reqwest"]
 
 # Enable jemalloc for binaries
 jemalloc = ["jemallocator"]
@@ -133,33 +200,47 @@ aead-cipher-2022 = ["shadowsocks-service/aead-cipher-2022"]
 aead-cipher-2022-extra = ["shadowsocks-service/aead-cipher-2022-extra"]
 
 # Enable detection against replay attack (Stream / AEAD)
-security-replay-attack-detect = ["shadowsocks-service/security-replay-attack-detect"]
-replay-attack-detect = ["security-replay-attack-detect"] # Backward compatibility. DO NOT USE.
+security-replay-attack-detect = [
+    "shadowsocks-service/security-replay-attack-detect",
+]
+replay-attack-detect = [
+    "security-replay-attack-detect",
+] # Backward compatibility. DO NOT USE.
 
 [dependencies]
 log = "0.4"
 log4rs = { version = "1.2", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", optional = true, features = [
+    "std",
+    "fmt",
+    "env-filter",
+    "time",
+    "local-time",
+] }
+time = { version = "0.3", optional = true }
+
 serde = { version = "1.0", features = ["derive"] }
 json5 = "0.4"
 thiserror = "1.0"
-base64 = "0.21"
+base64 = "0.22"
+mime = { version = "0.3", optional = true }
 
-clap = { version = "4.1", features = ["wrap_help", "suggestions"] }
+clap = { version = "4.5", features = ["wrap_help", "suggestions"] }
 cfg-if = "1"
-qrcode = { version = "0.12", default-features = false, optional = true }
-sysexits = "0.4"
+qrcode = { version = "0.14", default-features = false, optional = true }
+sysexits = "0.8"
 build-time = "0.1"
-directories = "4.0"
-xdg = "2.4"
-rpassword = "7.0"
+directories = "5.0"
+xdg = "2.5"
+rpassword = "7.3"
 libc = { version = "0.2", features = ["extra_traits"] }
 rand = "0.8"
 
 futures = "0.3"
 tokio = { version = "1", features = ["rt", "signal"] }
-num_cpus = "1.15"
 
-ipnet = { version = "2.7", optional = true }
+ipnet = { version = "2.9", optional = true }
 
 mimalloc = { version = "0.1", default-features = false, optional = true }
 tcmalloc = { version = "0.3", optional = true }
@@ -167,13 +248,36 @@ jemallocator = { version = "0.5", optional = true }
 snmalloc-rs = { version = "0.3", optional = true }
 rpmalloc = { version = "0.2", optional = true }
 
-shadowsocks-service = { version = "1.15.0", path = "./crates/shadowsocks-service" }
+shadowsocks-service = { version = "1.20.4", path = "./crates/shadowsocks-service" }
+
+windows-service = { version = "0.7", optional = true }
 
 [target.'cfg(unix)'.dependencies]
-daemonize = "0.4"
+daemonize = "0.5"
+
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+reqwest = { version = "0.12", features = [
+    "blocking",
+    "rustls-tls",
+    "rustls-tls-native-roots",
+    "deflate",
+    "gzip",
+    "brotli",
+    "zstd",
+], default-features = false, optional = true }
+
+[target.'cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
+reqwest = { version = "0.12", features = [
+    "blocking",
+    "native-tls-vendored",
+    "deflate",
+    "gzip",
+    "brotli",
+    "zstd",
+], optional = true }
 
 [dev-dependencies]
-byteorder = "1.3"
-env_logger = "0.10"
+byteorder = "1.5"
+env_logger = "0.11"
 byte_string = "1.0"
 tokio = { version = "1", features = ["net", "time", "macros", "io-util"] }
