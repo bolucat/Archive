@@ -21,12 +21,12 @@ import (
 	"github.com/metacubex/mihomo/component/profile"
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/component/resolver"
-	SNI "github.com/metacubex/mihomo/component/sniffer"
+	"github.com/metacubex/mihomo/component/sniffer"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/component/trie"
 	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/listener"
@@ -91,6 +91,7 @@ func ApplyConfig(cfg *config.Config, force bool) {
 		}
 	}
 
+	updateExperimental(cfg.Experimental)
 	updateUsers(cfg.Users)
 	updateProxies(cfg.Proxies, cfg.Providers)
 	updateRules(cfg.Rules, cfg.SubRules, cfg.RuleProviders)
@@ -100,9 +101,8 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	updateNTP(cfg.NTP)
 	updateDNS(cfg.DNS, cfg.General.IPv6)
 	updateListeners(cfg.General, cfg.Listeners, force)
+	updateTun(cfg.General) // tun should not care "force"
 	updateIPTables(cfg)
-	updateTun(cfg.General)
-	updateExperimental(cfg)
 	updateTunnels(cfg.Tunnels)
 
 	tunnel.OnInnerLoading()
@@ -147,19 +147,31 @@ func GetGeneral() *config.General {
 			LanDisAllowedIPs:  inbound.DisAllowedIPs(),
 			AllowLan:          listener.AllowLan(),
 			BindAddress:       listener.BindAddress(),
+			InboundTfo:        inbound.Tfo(),
+			InboundMPTCP:      inbound.MPTCP(),
 		},
-		Controller:        config.Controller{},
-		Mode:              tunnel.Mode(),
-		LogLevel:          log.Level(),
-		IPv6:              !resolver.DisableIPv6,
-		GeodataMode:       G.GeodataMode(),
-		GeoAutoUpdate:     G.GeoAutoUpdate(),
-		GeoUpdateInterval: G.GeoUpdateInterval(),
-		GeodataLoader:     G.LoaderName(),
-		GeositeMatcher:    G.SiteMatcherName(),
-		Interface:         dialer.DefaultInterface.Load(),
-		Sniffing:          tunnel.IsSniffing(),
-		TCPConcurrent:     dialer.GetTcpConcurrent(),
+		Mode:         tunnel.Mode(),
+		UnifiedDelay: adapter.UnifiedDelay.Load(),
+		LogLevel:     log.Level(),
+		IPv6:         !resolver.DisableIPv6,
+		Interface:    dialer.DefaultInterface.Load(),
+		RoutingMark:  int(dialer.DefaultRoutingMark.Load()),
+		GeoXUrl: config.GeoXUrl{
+			GeoIp:   C.GeoIpUrl,
+			Mmdb:    C.MmdbUrl,
+			ASN:     C.ASNUrl,
+			GeoSite: C.GeoSiteUrl,
+		},
+		GeoAutoUpdate:           G.GeoAutoUpdate(),
+		GeoUpdateInterval:       G.GeoUpdateInterval(),
+		GeodataMode:             G.GeodataMode(),
+		GeodataLoader:           G.LoaderName(),
+		GeositeMatcher:          G.SiteMatcherName(),
+		TCPConcurrent:           dialer.GetTcpConcurrent(),
+		FindProcessMode:         tunnel.FindProcessMode(),
+		Sniffing:                tunnel.IsSniffing(),
+		GlobalClientFingerprint: tlsC.GetGlobalFingerprint(),
+		GlobalUA:                C.UA,
 	}
 
 	return general
@@ -182,9 +194,6 @@ func updateListeners(general *config.General, listeners map[string]C.InboundList
 	listener.ReCreateHTTP(general.Port, tunnel.Tunnel)
 	listener.ReCreateSocks(general.SocksPort, tunnel.Tunnel)
 	listener.ReCreateRedir(general.RedirPort, tunnel.Tunnel)
-	if !features.CMFA {
-		listener.ReCreateAutoRedir(general.EBpf.AutoRedir, tunnel.Tunnel)
-	}
 	listener.ReCreateTProxy(general.TProxyPort, tunnel.Tunnel)
 	listener.ReCreateMixed(general.MixedPort, tunnel.Tunnel)
 	listener.ReCreateShadowSocks(general.ShadowSocksConfig, tunnel.Tunnel)
@@ -192,14 +201,18 @@ func updateListeners(general *config.General, listeners map[string]C.InboundList
 	listener.ReCreateTuic(general.TuicServer, tunnel.Tunnel)
 }
 
-func updateExperimental(c *config.Config) {
-	if c.Experimental.QUICGoDisableGSO {
+func updateTun(general *config.General) {
+	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
+}
+
+func updateExperimental(c *config.Experimental) {
+	if c.QUICGoDisableGSO {
 		_ = os.Setenv("QUIC_GO_DISABLE_GSO", strconv.FormatBool(true))
 	}
-	if c.Experimental.QUICGoDisableECN {
+	if c.QUICGoDisableECN {
 		_ = os.Setenv("QUIC_GO_DISABLE_ECN", strconv.FormatBool(true))
 	}
-	dialer.GetIP4PEnable(c.Experimental.IP4PEnable)
+	dialer.GetIP4PEnable(c.IP4PEnable)
 }
 
 func updateNTP(c *config.NTP) {
@@ -222,25 +235,20 @@ func updateDNS(c *config.DNS, generalIPv6 bool) {
 		return
 	}
 	cfg := dns.Config{
-		Main:         c.NameServer,
-		Fallback:     c.Fallback,
-		IPv6:         c.IPv6 && generalIPv6,
-		IPv6Timeout:  c.IPv6Timeout,
-		EnhancedMode: c.EnhancedMode,
-		Pool:         c.FakeIPRange,
-		Hosts:        c.Hosts,
-		FallbackFilter: dns.FallbackFilter{
-			GeoIP:     c.FallbackFilter.GeoIP,
-			GeoIPCode: c.FallbackFilter.GeoIPCode,
-			IPCIDR:    c.FallbackFilter.IPCIDR,
-			Domain:    c.FallbackFilter.Domain,
-			GeoSite:   c.FallbackFilter.GeoSite,
-		},
-		Default:        c.DefaultNameserver,
-		Policy:         c.NameServerPolicy,
-		ProxyServer:    c.ProxyServerNameserver,
-		Tunnel:         tunnel.Tunnel,
-		CacheAlgorithm: c.CacheAlgorithm,
+		Main:                 c.NameServer,
+		Fallback:             c.Fallback,
+		IPv6:                 c.IPv6 && generalIPv6,
+		IPv6Timeout:          c.IPv6Timeout,
+		EnhancedMode:         c.EnhancedMode,
+		Pool:                 c.FakeIPRange,
+		Hosts:                c.Hosts,
+		FallbackIPFilter:     c.FallbackIPFilter,
+		FallbackDomainFilter: c.FallbackDomainFilter,
+		Default:              c.DefaultNameserver,
+		Policy:               c.NameServerPolicy,
+		ProxyServer:          c.ProxyServerNameserver,
+		Tunnel:               tunnel.Tunnel,
+		CacheAlgorithm:       c.CacheAlgorithm,
 	}
 
 	r := dns.NewResolver(cfg)
@@ -352,33 +360,18 @@ func hcCompatibleProvider(proxyProviders map[string]provider.ProxyProvider) {
 	}
 
 }
-func updateTun(general *config.General) {
-	if general == nil {
-		return
+
+func updateSniffer(snifferConfig *sniffer.Config) {
+	dispatcher, err := sniffer.NewDispatcher(snifferConfig)
+	if err != nil {
+		log.Warnln("initial sniffer failed, err:%v", err)
 	}
-	listener.ReCreateTun(general.Tun, tunnel.Tunnel)
-	listener.ReCreateRedirToTun(general.EBpf.RedirectToTun)
-}
 
-func updateSniffer(sniffer *config.Sniffer) {
-	if sniffer.Enable {
-		dispatcher, err := SNI.NewSnifferDispatcher(
-			sniffer.Sniffers, sniffer.ForceDomain, sniffer.SkipDomain,
-			sniffer.ForceDnsMapping, sniffer.ParsePureIp,
-		)
-		if err != nil {
-			log.Warnln("initial sniffer failed, err:%v", err)
-		}
+	tunnel.UpdateSniffer(dispatcher)
 
-		tunnel.UpdateSniffer(dispatcher)
+	if snifferConfig.Enable {
 		log.Infoln("Sniffer is loaded and working")
 	} else {
-		dispatcher, err := SNI.NewCloseSnifferDispatcher()
-		if err != nil {
-			log.Warnln("initial sniffer failed, err:%v", err)
-		}
-
-		tunnel.UpdateSniffer(dispatcher)
 		log.Infoln("Sniffer is closed")
 	}
 }

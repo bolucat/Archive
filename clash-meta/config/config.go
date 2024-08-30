@@ -1473,7 +1473,7 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie[resolver.HostValue], rul
 			if err != nil {
 				return nil, fmt.Errorf("load GeoIP dns fallback filter error, %w", err)
 			}
-			dnsCfg.FallbackIPFilter = append(dnsCfg.FallbackIPFilter, matcher)
+			dnsCfg.FallbackIPFilter = append(dnsCfg.FallbackIPFilter, matcher.DnsFallbackFilter())
 		}
 		if len(cfg.FallbackFilter.IPCIDR) > 0 {
 			cidrSet := cidr.NewIpCidrSet()
@@ -1802,7 +1802,7 @@ func parseIPRuleSet(domainSetName string, adapterName string, ruleProviders map[
 		default:
 		}
 	}
-	return RP.NewRuleSet(domainSetName, adapterName, true)
+	return RP.NewRuleSet(domainSetName, adapterName, false, true)
 }
 
 func parseDomainRuleSet(domainSetName string, adapterName string, ruleProviders map[string]providerTypes.RuleProvider) (C.DomainMatcher, error) {
@@ -1817,5 +1817,5 @@ func parseDomainRuleSet(domainSetName string, adapterName string, ruleProviders 
 		default:
 		}
 	}
-	return RP.NewRuleSet(domainSetName, adapterName, true)
+	return RP.NewRuleSet(domainSetName, adapterName, false, true)
 }

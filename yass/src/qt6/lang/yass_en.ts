@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1">
+<TS version="2.1" language="en_US">
 <context>
     <name>OptionDialog</name>
     <message>
@@ -43,19 +43,15 @@
 <context>
     <name>TrayIcon</name>
     <message>
-        <source>Option</source>
+        <source>&amp;Show</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Exit</source>
+        <source>&amp;Option...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>File</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Show</source>
+        <source>E&amp;xit</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -84,30 +80,6 @@
 </context>
 <context>
     <name>YASSWindow</name>
-    <message>
-        <source>YASS</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Option</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Exit</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>File</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>About</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Help</source>
-        <translation type="unfinished"></translation>
-    </message>
     <message>
         <source>Start</source>
         <translation type="unfinished"></translation>
@@ -223,6 +195,30 @@
     <message>
         <source>GUI Variant: </source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Option...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>E&amp;xit</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;File</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;Help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>&amp;About...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>YASS</source>
+        <translation>YASS (Yet Another Shadow Socket)</translation>
     </message>
 </context>
 </TS>

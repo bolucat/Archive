@@ -66,6 +66,8 @@ cargo {
                     throw GradleException("No any python version detected. You should install the python first to compile project.")
                 }
             }
+            // https://developer.android.com/guide/practices/page-sizes#other-build-systems
+            spec.environment("RUST_ANDROID_GRADLE_CC_LINK_ARG", "-Wl,-z,max-page-size=16384,-soname,lib$libname.so")
             spec.environment("RUST_ANDROID_GRADLE_LINKER_WRAPPER_PY", "$projectDir/$module/../linker-wrapper.py")
             spec.environment("RUST_ANDROID_GRADLE_TARGET", "target/${toolchain.target}/$profile/lib$libname.so")
         }
@@ -101,7 +103,7 @@ dependencies {
     api("androidx.work:work-runtime-ktx:$workVersion")
     api("com.google.android.gms:play-services-oss-licenses:17.1.0")
     api("com.google.code.gson:gson:2.11.0")
-    api("com.google.firebase:firebase-analytics-ktx:22.1.0")
+    api("com.google.firebase:firebase-analytics:22.1.0")
     api("com.google.firebase:firebase-crashlytics:19.0.3")
     api("com.jakewharton.timber:timber:5.0.1")
     api("dnsjava:dnsjava:3.6.1")

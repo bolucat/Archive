@@ -76,7 +76,7 @@ jobs:
         with:
           path: |
             third_party/crashpad
-          key: ${{ runner.os }}-msvc-dynamic-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}
+          key: ${{ runner.os }}-msvc-dynamic-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-stripped
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.20.0'
@@ -97,7 +97,7 @@ jobs:
           scripts\download-curl-msvc.bat ${{ matrix.arch }}
       - name: "Download dependency: cmake (chocolatey)"
         run: |
-          REM choco install -y cmake.portable --version=3.28.5
+          REM choco install -y cmake.portable --version=3.28.6
           cmake --version
       - name: "Download dependency: ninja (chocolatey)"
         run: |
@@ -106,7 +106,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
         with:
-          python-version: '3.11'
+          python-version: '>=3.8'
       - name: Download and Build Crashpad (include depot_tools)
         if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
         shell: bash
@@ -192,7 +192,7 @@ jobs:
           scripts\download-toolchain.bat
       - name: "Download dependency: cmake (chocolatey)"
         run: |
-          REM choco install -y cmake.portable --version=3.28.5
+          REM choco install -y cmake.portable --version=3.28.6
           cmake --version
       - name: "Download dependency: ninja (chocolatey)"
         run: |

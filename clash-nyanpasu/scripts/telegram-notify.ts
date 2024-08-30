@@ -4,6 +4,7 @@ import path from "path";
 import { mkdirp } from "fs-extra";
 import { getOctokit } from "@actions/github";
 import { version } from "../package.json";
+import { array2text } from "./utils";
 import { downloadFile } from "./utils/download";
 import { TEMP_DIR } from "./utils/env";
 import { consola } from "./utils/logger";
@@ -49,6 +50,11 @@ const isValidFormat = (fileName: string): boolean => {
   return resourceFormats.some((format) => fileName.endsWith(format));
 };
 
+const repoinfo = {
+  owner: "LibNyanpasu",
+  repo: "clash-nyanpasu",
+};
+
 (async () => {
   await client.start({
     botAuthToken: TELEGRAM_TOKEN,
@@ -58,11 +64,10 @@ const isValidFormat = (fileName: string): boolean => {
 
   const content = nightlyBuild
     ? await github.rest.repos.getReleaseByTag({
-        owner: "LibNyanpasu",
-        repo: "clash-nyanpasu",
+        ...repoinfo,
         tag: "pre-release",
       })
-    : await github.rest.repos.getLatestRelease();
+    : await github.rest.repos.getLatestRelease(repoinfo);
 
   const downloadTasks: Promise<void>[] = [];
 
@@ -106,17 +111,13 @@ const isValidFormat = (fileName: string): boolean => {
   if (!nightlyBuild) {
     consola.start("Staring upload tasks (release)");
 
-    await client.sendFile(TELEGRAM_TO, {
-      file: reourceMappping,
-      forceDocument: true,
-      caption: [
+    await client.sendMessage(TELEGRAM_TO, {
+      message: array2text([
         `Clash Nyanpasu ${version} Released!`,
         "",
         "Check out on GitHub:",
         ` - https://github.com/LibNyanpasu/clash-nyanpasu/releases/tag/v${version}`,
-      ],
-      workers: 16,
-      progressCallback: (progress) => consola.start(`Uploading ${progress}`),
+      ]),
     });
 
     consola.success("Upload finished (release)");
