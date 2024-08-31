@@ -185,6 +185,22 @@ class OverrideSettingsDesign(
                 empty = R.string.default_
             )
 
+            editableText(
+                value = configuration::externalController,
+                adapter = NullableTextAdapter.String,
+                title = R.string.external_controller,
+                placeholder = R.string.dont_modify,
+                empty = R.string.default_
+            )
+
+            editableText(
+                value = configuration::secret,
+                adapter = NullableTextAdapter.String,
+                title = R.string.secret,
+                placeholder = R.string.dont_modify,
+                empty = R.string.default_
+            )
+
             selectableList(
                 value = configuration::mode,
                 values = arrayOf(

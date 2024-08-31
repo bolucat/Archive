@@ -1,7 +1,7 @@
 package config
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 
 	"github.com/metacubex/mihomo/constant"
@@ -31,7 +31,7 @@ func ReadOverride(slot OverrideSlot) string {
 			return defaultPersistOverride
 		}
 
-		buf, err := ioutil.ReadAll(file)
+		buf, err := io.ReadAll(file)
 		if err != nil {
 			return defaultPersistOverride
 		}

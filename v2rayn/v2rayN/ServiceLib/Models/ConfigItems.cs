@@ -198,10 +198,19 @@
     }
 
     [Serializable]
+    public class Mux4RayItem
+    {
+        public int? concurrency { get; set; }
+        public int? xudpConcurrency { get; set; }
+        public string? xudpProxyUDP443 { get; set; }
+    }
+
+    [Serializable]
     public class Mux4SboxItem
     {
         public string protocol { get; set; }
         public int max_connections { get; set; }
+        public bool? padding { get; set; }
     }
 
     [Serializable]

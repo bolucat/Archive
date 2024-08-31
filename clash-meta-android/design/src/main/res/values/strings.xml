@@ -144,6 +144,8 @@
     <string name="mode">Mode</string>
     <string name="log_level">Log Level</string>
     <string name="ipv6">IPv6</string>
+    <string name="external_controller">External Controller</string>
+    <string name="secret">Secret</string>
     <string name="hosts">Hosts</string>
     <string name="sideload_geoip">Sideload GEOIP</string>
     <string name="sideload_geoip_summary">External GEOIP database</string>

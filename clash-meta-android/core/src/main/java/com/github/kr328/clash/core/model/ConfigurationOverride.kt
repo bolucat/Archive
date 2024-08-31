@@ -41,6 +41,12 @@ data class ConfigurationOverride(
     @SerialName("ipv6")
     var ipv6: Boolean? = null,
 
+    @SerialName("external-controller")
+    var externalController: String? = "127.0.0.1:0",
+
+    @SerialName("secret")
+    var secret: String? = null,
+
     @SerialName("hosts")
     var hosts: Map<String, String>? = null,
 
