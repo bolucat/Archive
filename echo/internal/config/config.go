@@ -16,8 +16,9 @@ import (
 )
 
 type Config struct {
-	PATH string
+	PATH string `json:"-"`
 
+	NodeLabel   string `json:"node_label,omitempty"`
 	WebHost     string `json:"web_host,omitempty"`
 	WebPort     int    `json:"web_port,omitempty"`
 	WebToken    string `json:"web_token,omitempty"`
@@ -105,7 +106,7 @@ func (c *Config) Adjust() error {
 	}
 	// init tls when need
 	for _, r := range c.RelayConfigs {
-		if r.ListenType == constant.RelayTypeWSS {
+		if r.ListenType == constant.RelayTypeWSS || r.TransportType == constant.RelayTypeWSS {
 			if err := tls.InitTlsCfg(); err != nil {
 				return err
 			}

@@ -27,5 +27,6 @@
     "rpcPort": 1989,
     "socks5Port": 1080,
     "loggingLevel": "DEBUG",
-    "socks5ListenLAN": true
+    "socks5ListenLAN": true,
+    "socks5Authentication": []
 }
