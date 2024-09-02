@@ -15,6 +15,8 @@
 #if !defined(HAS_STRPTIME)
 #if !defined(_MSC_VER) && !defined(__MINGW32__) && !defined(__VXWORKS__)
 #define HAS_STRPTIME 1  // Assume everyone else has strptime().
+#else
+#define HAS_STRPTIME 0
 #endif
 #endif
 

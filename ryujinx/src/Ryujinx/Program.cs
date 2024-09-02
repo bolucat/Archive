@@ -7,6 +7,7 @@ using Ryujinx.Common.Configuration;
 using Ryujinx.Common.GraphicsDriver;
 using Ryujinx.Common.Logging;
 using Ryujinx.Common.SystemInterop;
+using Ryujinx.Graphics.Vulkan.MoltenVK;
 using Ryujinx.Modules;
 using Ryujinx.SDL2.Common;
 using Ryujinx.UI.Common;
@@ -80,6 +81,11 @@ namespace Ryujinx.Ava
             // Parse arguments
             CommandLineState.ParseArguments(args);
 
+            if (OperatingSystem.IsMacOS())
+            {
+                MVKInitialization.InitializeResolver();
+            }
+
             // Delete backup files after updating.
             Task.Run(Updater.CleanupUpdate);
 
@@ -111,8 +117,8 @@ namespace Ryujinx.Ava
             // Logging system information.
             PrintSystemInfo();
 
-            // Enable OGL multithreading on the driver, when available.
-            DriverUtilities.ToggleOGLThreading(ConfigurationState.Instance.Graphics.BackendThreading == BackendThreading.Off);
+            // Enable OGL multithreading on the driver, and some other flags.
+            DriverUtilities.InitDriverConfig(ConfigurationState.Instance.Graphics.BackendThreading == BackendThreading.Off);
 
             // Check if keys exists.
             if (!File.Exists(Path.Combine(AppDataManager.KeysDirPath, "prod.keys")))

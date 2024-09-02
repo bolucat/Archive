@@ -17,13 +17,19 @@
 
 #include <windows.h>
 
+#if defined(_MSC_VER)
 // MSVC header dbghelp.h has a warning for an ignored typedef.
 #pragma warning(push)
 #pragma warning(disable:4091)
+#endif
 #include <dbghelp.h>
+#if defined(_MSC_VER)
 #pragma warning(pop)
+#endif
 
+#if defined(_MSC_VER)
 #pragma comment(lib, "dbghelp.lib")
+#endif
 
 #include <algorithm>
 #include <cstring>

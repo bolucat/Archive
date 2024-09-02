@@ -56,7 +56,7 @@ static RtlCaptureStackBackTrace_Function* const RtlCaptureStackBackTrace_fn =
 // Load the function we need at static init time, where we don't have
 // to worry about someone else holding the loader's lock.
 static RtlCaptureStackBackTrace_Function* const RtlCaptureStackBackTrace_fn =
-    (RtlCaptureStackBackTrace_Function*)GetProcAddress(
+    (RtlCaptureStackBackTrace_Function*)(void*)GetProcAddress(
         GetModuleHandleA("ntdll.dll"), "RtlCaptureStackBackTrace");
 #endif  // WINAPI_PARTITION_APP && !WINAPI_PARTITION_DESKTOP
 
