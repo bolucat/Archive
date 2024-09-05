@@ -71,13 +71,6 @@ namespace ServiceLib.ViewModels
         public ReactiveCommand<Unit, Unit> ClearServerStatisticsCmd { get; }
         public ReactiveCommand<Unit, Unit> OpenTheFileLocationCmd { get; }
 
-        //CheckUpdate
-        public ReactiveCommand<Unit, Unit> CheckUpdateNCmd { get; }
-
-        public ReactiveCommand<Unit, Unit> CheckUpdateXrayCoreCmd { get; }
-        public ReactiveCommand<Unit, Unit> CheckUpdateClashMetaCoreCmd { get; }
-        public ReactiveCommand<Unit, Unit> CheckUpdateSingBoxCoreCmd { get; }
-        public ReactiveCommand<Unit, Unit> CheckUpdateGeoCmd { get; }
         public ReactiveCommand<Unit, Unit> ReloadCmd { get; }
 
         [Reactive]
@@ -295,28 +288,6 @@ namespace ServiceLib.ViewModels
                 Utils.ProcessStart("Explorer", $"/select,{Utils.GetConfigPath()}");
             });
 
-            //CheckUpdate
-            CheckUpdateNCmd = ReactiveCommand.Create(() =>
-            {
-                CheckUpdateN();
-            });
-            CheckUpdateXrayCoreCmd = ReactiveCommand.Create(() =>
-            {
-                CheckUpdateCore(ECoreType.Xray, null);
-            });
-            CheckUpdateClashMetaCoreCmd = ReactiveCommand.Create(() =>
-            {
-                CheckUpdateCore(ECoreType.mihomo, false);
-            });
-            CheckUpdateSingBoxCoreCmd = ReactiveCommand.Create(() =>
-            {
-                CheckUpdateCore(ECoreType.sing_box, null);
-            });
-            CheckUpdateGeoCmd = ReactiveCommand.Create(() =>
-            {
-                CheckUpdateGeo();
-            });
-
             ReloadCmd = ReactiveCommand.Create(() =>
             {
                 Reload();
@@ -391,7 +362,7 @@ namespace ServiceLib.ViewModels
 
         private void UpdateTaskHandler(bool success, string msg)
         {
-            _noticeHandler?.SendMessage(msg);
+            _noticeHandler?.SendMessageEx(msg);
             if (success)
             {
                 var indexIdOld = _config.indexId;
@@ -631,7 +602,7 @@ namespace ServiceLib.ViewModels
             }
             (new UpdateHandler()).RunAvailabilityCheck(async (bool success, string msg) =>
             {
-                _noticeHandler?.SendMessage(msg, true);
+                _noticeHandler?.SendMessageEx(msg);
 
                 if (!_config.uiItem.showInTaskbar)
                 {
@@ -718,99 +689,6 @@ namespace ServiceLib.ViewModels
 
         #endregion Setting
 
-        #region CheckUpdate
-
-        private void CheckUpdateN()
-        {
-            //Check for standalone windows .Net version
-            if (Utils.IsWindows()
-                && File.Exists(Path.Combine(Utils.StartupPath(), "wpfgfx_cor3.dll"))
-                && File.Exists(Path.Combine(Utils.StartupPath(), "D3DCompiler_47_cor3.dll"))
-                )
-            {
-                _noticeHandler?.SendMessageAndEnqueue(ResUI.UpdateStandalonePackageTip);
-                return;
-            }
-
-            void _updateUI(bool success, string msg)
-            {
-                _noticeHandler?.SendMessage(msg);
-                if (success)
-                {
-                    try
-                    {
-                        var fileName = msg;
-                        Process process = new()
-                        {
-                            StartInfo = new ProcessStartInfo
-                            {
-                                FileName = "v2rayUpgrade",
-                                Arguments = fileName.AppendQuotes(),
-                                WorkingDirectory = Utils.StartupPath()
-                            }
-                        };
-                        process.Start();
-                        if (process.Id > 0)
-                        {
-                            MyAppExitAsync(false);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _noticeHandler?.SendMessage(ex.Message);
-                    }
-                }
-            }
-            (new UpdateHandler()).CheckUpdateGuiN(_config, _updateUI, _config.guiItem.checkPreReleaseUpdate);
-        }
-
-        private void CheckUpdateCore(ECoreType type, bool? preRelease)
-        {
-            void _updateUI(bool success, string msg)
-            {
-                _noticeHandler?.SendMessage(msg);
-                if (success)
-                {
-                    CloseCore();
-
-                    string fileName = Utils.GetTempPath(Utils.GetDownloadFileName(msg));
-                    string toPath = Utils.GetBinPath("", type.ToString());
-
-                    if (fileName.Contains(".tar.gz"))
-                    {
-                        //It's too complicated to unzip. TODO
-                    }
-                    else if (fileName.Contains(".gz"))
-                    {
-                        FileManager.UncompressedFile(fileName, toPath, type.ToString());
-                    }
-                    else
-                    {
-                        FileManager.ZipExtractToFile(fileName, toPath, _config.guiItem.ignoreGeoUpdateCore ? "geo" : "");
-                    }
-
-                    _noticeHandler?.SendMessage(ResUI.MsgUpdateV2rayCoreSuccessfullyMore);
-
-                    Reload();
-
-                    _noticeHandler?.SendMessage(ResUI.MsgUpdateV2rayCoreSuccessfully);
-
-                    if (File.Exists(fileName))
-                    {
-                        File.Delete(fileName);
-                    }
-                }
-            }
-            (new UpdateHandler()).CheckUpdateCore(type, _config, _updateUI, preRelease ?? _config.guiItem.checkPreReleaseUpdate);
-        }
-
-        private void CheckUpdateGeo()
-        {
-            (new UpdateHandler()).UpdateGeoFileAll(_config, UpdateTaskHandler);
-        }
-
-        #endregion CheckUpdate
-
         #region core job
 
         public void Reload()
@@ -881,7 +759,7 @@ namespace ServiceLib.ViewModels
         private async Task ChangeSystemProxyStatusAsync(ESysProxyType type, bool blChange)
         {
             await _updateView?.Invoke(EViewAction.UpdateSysProxy, _config.tunModeItem.enableTun ? true : false);
-            _noticeHandler?.SendMessage($"{ResUI.TipChangeSystemProxy} - {_config.systemProxyItem.sysProxyType.ToString()}", true);
+            _noticeHandler?.SendMessageEx($"{ResUI.TipChangeSystemProxy} - {_config.systemProxyItem.sysProxyType.ToString()}");
 
             BlSystemProxyClear = (type == ESysProxyType.ForcedClear);
             BlSystemProxySet = (type == ESysProxyType.ForcedChange);
@@ -941,7 +819,7 @@ namespace ServiceLib.ViewModels
 
             if (ConfigHandler.SetDefaultRouting(_config, item) == 0)
             {
-                _noticeHandler?.SendMessage(ResUI.TipChangeRouting, true);
+                _noticeHandler?.SendMessageEx(ResUI.TipChangeRouting);
                 Reload();
                 await _updateView?.Invoke(EViewAction.DispatcherRefreshIcon, null);
             }
