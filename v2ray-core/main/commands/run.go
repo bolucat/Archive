@@ -14,6 +14,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/cmdarg"
 	"github.com/v2fly/v2ray-core/v5/common/platform"
 	"github.com/v2fly/v2ray-core/v5/main/commands/base"
+	"github.com/v2fly/v2ray-core/v5/main/plugins"
 )
 
 // CmdRun runs V2Ray with config
@@ -75,12 +76,26 @@ func setConfigFlags(cmd *base.Command) {
 
 func executeRun(cmd *base.Command, args []string) {
 	setConfigFlags(cmd)
+	var pluginFuncs []func() error
+	for _, plugin := range plugins.Plugins {
+		if f := plugin(cmd); f != nil {
+			pluginFuncs = append(pluginFuncs, f)
+		}
+	}
 	cmd.Flag.Parse(args)
 	printVersion()
 	configFiles = getConfigFilePath()
 	server, err := startV2Ray()
 	if err != nil {
 		base.Fatalf("Failed to start: %s", err)
+	}
+
+	for _, f := range pluginFuncs {
+		go func(f func() error) {
+			if err := f(); err != nil {
+				log.Print(err)
+			}
+		}(f)
 	}
 
 	if err := server.Start(); err != nil {

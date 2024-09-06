@@ -23,6 +23,7 @@ nyanpasu-ipc = { git = "https://github.com/LibNyanpasu/nyanpasu-service.git", fe
 ] }
 nyanpasu-utils = { git = "https://github.com/LibNyanpasu/nyanpasu-utils.git" }
 boa_utils = { path = "../boa_utils" } # should be removed when boa support console customize
+pretty_assertions = "1.4.0"
 which = "6"
 anyhow = "1.0"
 dirs = "5.0.1"
@@ -123,11 +124,11 @@ os_pipe = "1.2.0"
 whoami = "1.5.1"
 atomic_enum = "0.3.0"
 boa_engine.workspace = true
-oxc_parser = "0.26"
-oxc_allocator = "0.26"
-oxc_span = "0.26"
-oxc_ast = "0.26"
-oxc_syntax = "0.26"
+oxc_parser = "0.27"
+oxc_allocator = "0.27"
+oxc_span = "0.27"
+oxc_ast = "0.27"
+oxc_syntax = "0.27"
 mlua = { version = "0.9", features = [
   "lua54",
   "async",

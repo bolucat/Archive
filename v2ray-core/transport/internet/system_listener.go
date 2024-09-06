@@ -36,29 +36,35 @@ func (l *combinedListener) Close() error {
 	return l.Listener.Close()
 }
 
+func getRawControlFunc(network, address string, ctx context.Context, sockopt *SocketConfig, controllers []controller) func(fd uintptr) {
+	return func(fd uintptr) {
+		if sockopt != nil {
+			if err := applyInboundSocketOptions(network, fd, sockopt); err != nil {
+				newError("failed to apply socket options to incoming connection").Base(err).WriteToLog(session.ExportIDToError(ctx))
+			}
+		}
+
+		setReusePort(fd) // nolint: staticcheck
+
+		for _, controller := range controllers {
+			if err := controller(network, address, fd); err != nil {
+				newError("failed to apply external controller").Base(err).WriteToLog(session.ExportIDToError(ctx))
+			}
+		}
+	}
+}
+
 func getControlFunc(ctx context.Context, sockopt *SocketConfig, controllers []controller) func(network, address string, c syscall.RawConn) error {
 	return func(network, address string, c syscall.RawConn) error {
-		return c.Control(func(fd uintptr) {
-			if sockopt != nil {
-				if err := applyInboundSocketOptions(network, fd, sockopt); err != nil {
-					newError("failed to apply socket options to incoming connection").Base(err).WriteToLog(session.ExportIDToError(ctx))
-				}
-			}
-
-			setReusePort(fd) // nolint: staticcheck
-
-			for _, controller := range controllers {
-				if err := controller(network, address, fd); err != nil {
-					newError("failed to apply external controller").Base(err).WriteToLog(session.ExportIDToError(ctx))
-				}
-			}
-		})
+		return c.Control(getRawControlFunc(network, address, ctx, sockopt, controllers))
 	}
 }
 
 func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *SocketConfig) (net.Listener, error) {
 	var lc net.ListenConfig
 	var network, address string
+	var l net.Listener
+	var err error
 	// callback is called after the Listen function returns
 	// this is used to wrap the listener and do some post processing
 	callback := func(l net.Listener, err error) (net.Listener, error) {
@@ -92,6 +98,14 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 				fullAddr := make([]byte, len(syscall.RawSockaddrUnix{}.Path))
 				copy(fullAddr, address[1:])
 				address = string(fullAddr)
+			}
+		} else if strings.HasPrefix(address, "/dev/fd/") {
+			// socket activation
+			l, err = activateSocket(address, func(network, address string, fd uintptr) {
+				getRawControlFunc(network, address, ctx, sockopt, dl.controllers)(fd)
+			})
+			if err != nil {
+				return nil, err
 			}
 		} else {
 			// normal unix domain socket
@@ -133,13 +147,18 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 		}
 	}
 
-	l, err := lc.Listen(ctx, network, address)
-	l, err = callback(l, err)
-	if err == nil && sockopt != nil && sockopt.AcceptProxyProtocol {
+	if l == nil {
+		l, err = lc.Listen(ctx, network, address)
+		l, err = callback(l, err)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if sockopt != nil && sockopt.AcceptProxyProtocol {
 		policyFunc := func(upstream net.Addr) (proxyproto.Policy, error) { return proxyproto.REQUIRE, nil }
 		l = &proxyproto.Listener{Listener: l, Policy: policyFunc}
 	}
-	return l, err
+	return l, nil
 }
 
 func (dl *DefaultListener) ListenPacket(ctx context.Context, addr net.Addr, sockopt *SocketConfig) (net.PacketConn, error) {

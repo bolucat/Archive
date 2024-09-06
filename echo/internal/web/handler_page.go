@@ -1,13 +1,10 @@
 package web
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
-	"github.com/Ehco1996/ehco/internal/cmgr/ms"
 	"github.com/Ehco1996/ehco/internal/config"
 	"github.com/Ehco1996/ehco/internal/constant"
 	"github.com/labstack/echo/v4"
@@ -40,44 +37,6 @@ func (s *Server) index(c echo.Context) error {
 		Cfg:         *s.cfg,
 	}
 	return c.Render(http.StatusOK, "index.html", data)
-}
-
-func (s *Server) HandleReload(c echo.Context) error {
-	if s.Reloader == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, "reload not support")
-	}
-	err := s.Reloader.Reload(true)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	if _, err := c.Response().Write([]byte("reload success")); err != nil {
-		s.l.Errorf("write response meet err=%v", err)
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return nil
-}
-
-func (s *Server) HandleHealthCheck(c echo.Context) error {
-	relayLabel := c.QueryParam("relay_label")
-	if relayLabel == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, "relay_label is required")
-	}
-	latency, err := s.HealthCheck(c.Request().Context(), relayLabel)
-	if err != nil {
-		res := HealthCheckResp{Message: err.Error(), ErrorCode: -1}
-		return c.JSON(http.StatusBadRequest, res)
-	}
-	return c.JSON(http.StatusOK, HealthCheckResp{Message: "connect success", Latency: latency})
-}
-
-func (s *Server) CurrentConfig(c echo.Context) error {
-	ret, err := json.Marshal(s.cfg)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	return c.JSONBlob(http.StatusOK, ret)
 }
 
 func (s *Server) ListConnections(c echo.Context) error {
@@ -126,36 +85,12 @@ func (s *Server) ListRules(c echo.Context) error {
 	})
 }
 
-func (s *Server) GetNodeMetrics(c echo.Context) error {
-	startTS := time.Now().Unix() - 60
-	if c.QueryParam("start_ts") != "" {
-		star, err := strconv.ParseInt(c.QueryParam("start_ts"), 10, 64)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-		startTS = star
-	}
-	endTS := time.Now().Unix()
-	if c.QueryParam("end_ts") != "" {
-		end, err := strconv.ParseInt(c.QueryParam("end_ts"), 10, 64)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-		endTS = end
-	}
-	req := &ms.QueryNodeMetricsReq{StartTimestamp: startTS, EndTimestamp: endTS}
-	latest := c.QueryParam("latest")
-	if latest != "" {
-		r, err := strconv.ParseBool(latest)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-		req.Latest = r
-	}
+func (s *Server) RuleMetrics(c echo.Context) error {
+	return c.Render(http.StatusOK, "rule_metrics.html", map[string]interface{}{
+		"Configs": s.cfg.RelayConfigs,
+	})
+}
 
-	metrics, err := s.connMgr.QueryNodeMetrics(c.Request().Context(), req)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-	return c.JSON(http.StatusOK, metrics)
+func (s *Server) LogsPage(c echo.Context) error {
+	return c.Render(http.StatusOK, "logs.html", nil)
 }

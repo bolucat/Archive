@@ -9,7 +9,7 @@ use std::{
     fs,
     io::BufRead,
     net::{Ipv4Addr, Ipv6Addr},
-    os::unix::io::RawFd,
+    os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd},
     process::{Command, Output},
     str::FromStr,
 };
@@ -152,7 +152,7 @@ impl Setup {
         Ok(false)
     }
 
-    fn write_buffer_to_fd(fd: RawFd, data: &[u8]) -> Result<(), Error> {
+    fn write_buffer_to_fd(fd: &OwnedFd, data: &[u8]) -> Result<(), Error> {
         let mut written = 0;
         loop {
             if written >= data.len() {
@@ -163,10 +163,10 @@ impl Setup {
         Ok(())
     }
 
-    fn write_nameserver(fd: RawFd) -> Result<(), Error> {
+    fn write_nameserver(fd: &OwnedFd) -> Result<(), Error> {
         let data = "nameserver 198.18.0.1\n".as_bytes();
         Self::write_buffer_to_fd(fd, data)?;
-        nix::sys::stat::fchmod(fd, nix::sys::stat::Mode::from_bits(0o444).unwrap())?;
+        nix::sys::stat::fchmod(fd.as_raw_fd(), nix::sys::stat::Mode::from_bits(0o444).unwrap())?;
         Ok(())
     }
 
@@ -176,7 +176,9 @@ impl Setup {
             nix::fcntl::OFlag::O_RDWR | nix::fcntl::OFlag::O_CLOEXEC | nix::fcntl::OFlag::O_CREAT,
             nix::sys::stat::Mode::from_bits(0o644).unwrap(),
         )?;
-        Self::write_nameserver(fd)?;
+        let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        Self::write_nameserver(&owned_fd)?;
+        fd = owned_fd.into_raw_fd();
         let source = format!("/proc/self/fd/{}", fd);
         if Ok(())
             != nix::mount::mount(
@@ -197,7 +199,9 @@ impl Setup {
                 nix::fcntl::OFlag::O_WRONLY | nix::fcntl::OFlag::O_CLOEXEC | nix::fcntl::OFlag::O_TRUNC,
                 nix::sys::stat::Mode::from_bits(0o644).unwrap(),
             )?;
-            Self::write_nameserver(fd)?;
+            let owned_fd = unsafe { OwnedFd::from_raw_fd(fd) };
+            Self::write_nameserver(&owned_fd)?;
+            fd = owned_fd.into_raw_fd();
         } else {
             self.unmount_resolvconf = true;
         }
@@ -235,7 +239,7 @@ impl Setup {
         Ok(())
     }
 
-    fn setup_and_handle_signals(&mut self, read_from_child: RawFd, write_to_parent: RawFd) {
+    fn setup_and_handle_signals(&mut self, read_from_child: RawFd, write_to_parent: OwnedFd) {
         if let Err(e) = (|| -> Result<(), Error> {
             nix::unistd::close(read_from_child)?;
             run_iproute(
@@ -263,10 +267,10 @@ impl Setup {
             self.add_tunnel_routes()?;
 
             // Signal to child that we are done setting up everything.
-            if nix::unistd::write(write_to_parent, &[1])? != 1 {
+            if nix::unistd::write(&write_to_parent, &[1])? != 1 {
                 return Err("Failed to write to pipe".into());
             }
-            nix::unistd::close(write_to_parent)?;
+            nix::unistd::close(write_to_parent.into_raw_fd())?;
 
             // Now wait for the termination signals.
             let mut mask = nix::sys::signal::SigSet::empty();
@@ -275,7 +279,7 @@ impl Setup {
             mask.add(nix::sys::signal::SIGQUIT);
             mask.thread_block().unwrap();
 
-            let mut fd = nix::sys::signalfd::SignalFd::new(&mask).unwrap();
+            let fd = nix::sys::signalfd::SignalFd::new(&mask).unwrap();
             loop {
                 let res = fd.read_signal().unwrap().unwrap();
                 let signo = nix::sys::signal::Signal::try_from(res.ssi_signo as i32).unwrap();
@@ -311,17 +315,17 @@ impl Setup {
         match fork::fork() {
             Ok(Fork::Child) => {
                 prctl::set_death_signal(nix::sys::signal::SIGINT as isize).unwrap();
-                self.setup_and_handle_signals(read_from_child, write_to_parent);
+                self.setup_and_handle_signals(read_from_child.into_raw_fd(), write_to_parent);
                 std::process::exit(0);
             }
             Ok(Fork::Parent(child)) => {
                 self.child = child;
-                nix::unistd::close(write_to_parent)?;
+                nix::unistd::close(write_to_parent.into_raw_fd())?;
                 let mut buf = [0];
-                if nix::unistd::read(read_from_child, &mut buf)? != 1 {
+                if nix::unistd::read(read_from_child.as_raw_fd(), &mut buf)? != 1 {
                     return Err("Failed to read from pipe".into());
                 }
-                nix::unistd::close(read_from_child)?;
+                nix::unistd::close(read_from_child.into_raw_fd())?;
 
                 Ok(())
             }
