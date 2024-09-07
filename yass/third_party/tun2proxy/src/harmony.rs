@@ -2,8 +2,6 @@
 
 use crate::{error::Error, tun2proxy::TunToProxy, tun_to_proxy, NetworkInterface, Options, Proxy};
 use std::ffi::CStr;
-use std::io::Error as IoError;
-use std::os::fd::RawFd;
 
 #[allow(non_camel_case_types)]
 type c_int = std::os::raw::c_int;
@@ -51,7 +49,11 @@ pub unsafe extern "C" fn tun2proxy_init(
         let options = Options::new().with_dns_addr(Some(dns_addr)).with_mtu(tun_mtu as usize);
         let options = if dns_over_tcp != 0 { options.with_dns_over_tcp() } else { options };
 
-        let dup_tun_fd = dup_fd(tun_fd)?;
+        // TODO: for nix newer than 0.29
+        // use std::os::fd::{BorrowedFd, IntoRawFd};
+        // let dup_tun_fd = nix::unistd::dup(BorrowedFd::borrow_raw(tun_fd))?;
+        // let interface = NetworkInterface::Fd(dup_tun_fd.into_raw_fd());
+        let dup_tun_fd = nix::unistd::dup(tun_fd)?;
         let interface = NetworkInterface::Fd(dup_tun_fd);
         let tun2proxy = tun_to_proxy(&interface, &proxy, options)?;
         Ok::<TunToProxy, Error>(tun2proxy)
@@ -125,12 +127,4 @@ pub unsafe extern "C" fn tun2proxy_destroy(tun2proxy_ptr: *mut c_char) -> () {
     }
     let ptr = tun2proxy_ptr as *mut TunToProxy;
     let _tun2proxy = unsafe { Box::from_raw(ptr) };
-}
-
-fn dup_fd(fd: RawFd) -> Result<RawFd, Error> {
-    let dup_fd = unsafe { libc::dup(fd) };
-    if dup_fd < 0 {
-        return Err(Error::Io(IoError::last_os_error()));
-    }
-    Ok(dup_fd)
 }

@@ -6,8 +6,6 @@ use jni::{
     sys::{jboolean, jint, jlong},
     JNIEnv,
 };
-use std::io::Error as IoError;
-use std::os::fd::RawFd;
 
 /// # Safety
 ///
@@ -52,7 +50,11 @@ pub unsafe extern "C" fn Java_it_gui_yass_MainActivity_tun2ProxyInit(
         let options = Options::new().with_dns_addr(Some(dns_addr)).with_mtu(tun_mtu as usize);
         let options = if dns_over_tcp != 0 { options.with_dns_over_tcp() } else { options };
 
-        let dup_tun_fd = dup_fd(tun_fd)?;
+        // TODO: for nix newer than 0.29
+        // use std::os::fd::{BorrowedFd, IntoRawFd};
+        // let dup_tun_fd = nix::unistd::dup(BorrowedFd::borrow_raw(tun_fd))?;
+        // let interface = NetworkInterface::Fd(dup_tun_fd.into_raw_fd());
+        let dup_tun_fd = nix::unistd::dup(tun_fd)?;
         let interface = NetworkInterface::Fd(dup_tun_fd);
         let tun2proxy = tun_to_proxy(&interface, &proxy, options)?;
         Ok::<TunToProxy, Error>(tun2proxy)
@@ -129,12 +131,4 @@ unsafe fn get_java_string<'a>(env: &'a mut JNIEnv, string: &'a JString) -> Resul
     let str_ptr = env.get_string(string)?.as_ptr();
     let s: &str = std::ffi::CStr::from_ptr(str_ptr).to_str()?;
     Ok(s)
-}
-
-fn dup_fd(fd: RawFd) -> Result<RawFd, Error> {
-    let dup_fd = unsafe { libc::dup(fd) };
-    if dup_fd < 0 {
-        return Err(Error::Io(IoError::last_os_error()));
-    }
-    Ok(dup_fd)
 }

@@ -98,8 +98,8 @@ importers:
         specifier: 4.6.2
         version: 4.6.2(eslint@8.57.0)
       knip:
-        specifier: 5.29.2
-        version: 5.29.2(@types/node@22.5.4)(typescript@5.5.4)
+        specifier: 5.30.0
+        version: 5.30.0(@types/node@22.5.4)(typescript@5.5.4)
       lint-staged:
         specifier: 15.2.9
         version: 15.2.9
@@ -206,6 +206,9 @@ importers:
       '@material/material-color-utilities':
         specifier: 0.3.0
         version: 0.3.0
+      '@monaco-editor/react':
+        specifier: 4.6.0
+        version: 4.6.0(monaco-editor@0.51.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)
       '@mui/icons-material':
         specifier: 5.16.7
         version: 5.16.7(@mui/material@5.16.7(@emotion/react@11.13.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(@emotion/styled@11.13.0(@emotion/react@11.13.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
@@ -224,6 +227,9 @@ importers:
       '@tauri-apps/api':
         specifier: 1.6.0
         version: 1.6.0
+      '@types/json-schema':
+        specifier: 7.0.15
+        version: 7.0.15
       ahooks:
         specifier: 3.8.1
         version: 3.8.1(react@19.0.0-rc-e948a5ac-20240807)
@@ -245,6 +251,9 @@ importers:
       jotai:
         specifier: 2.9.3
         version: 2.9.3(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)
+      json-schema:
+        specifier: 0.4.0
+        version: 0.4.0
       material-react-table:
         specifier: 2.13.3
         version: 2.13.3(px6672jbssk23ndlae6ak2yfga)
@@ -319,7 +328,7 @@ importers:
         specifier: 2.1.1
         version: 2.1.1
       meta-json-schema:
-        specifier: github:libnyanpasu/meta-json-schema#main
+        specifier: libnyanpasu/meta-json-schema#main
         version: https://codeload.github.com/libnyanpasu/meta-json-schema/tar.gz/b4b29ee93facde4ca7da6e9c4e0cba50c3c1e074
       monaco-yaml:
         specifier: 5.2.2
@@ -440,8 +449,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(typescript@5.5.4)
       vite-plugin-dts:
-        specifier: 4.1.0
-        version: 4.1.0(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
+        specifier: 4.1.1
+        version: 4.1.1(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0))
 
   scripts:
     dependencies:
@@ -1477,6 +1486,18 @@ packages:
   '@microsoft/tsdoc@0.15.0':
     resolution: {integrity: sha512-HZpPoABogPvjeJOdzCOSJsXeL/SMCBgBZMVC3X3d7YYp2gf31MfxhUoYUNwf1ERPJOnQc0wkFn9trqI6ZEdZuA==}
 
+  '@monaco-editor/loader@1.4.0':
+    resolution: {integrity: sha512-00ioBig0x642hytVspPl7DbQyaSWRaolYie/UFNjoTdvoKPzo6xrXLhTk9ixgIKcLH5b5vDOjVNiGyY+uDCUlg==}
+    peerDependencies:
+      monaco-editor: '>= 0.21.0 < 1'
+
+  '@monaco-editor/react@4.6.0':
+    resolution: {integrity: sha512-RFkU9/i7cN2bsq/iTkurMWOEErmYcY6JiQI3Jn+WeR/FGISH8JbHERjpS9oRuSOPvDMJI0Z8nJeKkbOs9sBYQw==}
+    peerDependencies:
+      monaco-editor: '>= 0.25.0 < 1'
+      react: npm:react@rc
+      react-dom: npm:react-dom@rc
+
   '@mui/base@5.0.0-beta.40':
     resolution: {integrity: sha512-I/lGHztkCzvwlXpjD2+SNmvNQvB4227xBXhISPjEaJUXGImOQ9f3D2Yj/T3KasSI/h0MLWy74X0J6clhPmsRbQ==}
     engines: {node: '>=12.0.0'}
@@ -2497,6 +2518,9 @@ packages:
 
   '@types/js-cookie@2.2.7':
     resolution: {integrity: sha512-aLkWa0C0vO5b4Sr798E26QgOkss68Un0bLjs7u9qxzPT5CG+8DuNTffWES58YzJs3hrVAOs1wonycqEBqNJubA==}
+
+  '@types/json-schema@7.0.15':
+    resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
   '@types/json5@0.0.29':
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
@@ -4622,6 +4646,9 @@ packages:
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
+  json-schema@0.4.0:
+    resolution: {integrity: sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==}
+
   json-stable-stringify-without-jsonify@1.0.1:
     resolution: {integrity: sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==}
 
@@ -4661,8 +4688,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.29.2:
-    resolution: {integrity: sha512-NfJ3VDyV7gHvI4lVmr9PQCvC4lvrnTdaRMmtHIVBWB2GWWKj86uTw8Yfnp07M+fQeqOnX3AGPG8hjXHPlE1MEw==}
+  knip@5.30.0:
+    resolution: {integrity: sha512-QDpxtXosXK3OBnmWC2LJudjJROozAXyGzSi+aTuEx/Pf9/OKjmegQWix+X6uBYhPbMb8YEFcKWvI7qBnQCkIEA==}
     engines: {node: '>=18.6.0'}
     hasBin: true
     peerDependencies:
@@ -6090,6 +6117,9 @@ packages:
   stacktrace-js@2.0.2:
     resolution: {integrity: sha512-Je5vBeY4S1r/RnLydLl0TBTi3F2qdfWmYsGvtfZgEI+SCprPppaIhQf5nGcal4gI4cGpCV/duLcAzT1np6sQqg==}
 
+  state-local@1.0.7:
+    resolution: {integrity: sha512-HTEHMNieakEnoe33shBYcZ7NX83ACUjCu8c40iOGEZsngj9zRnkqS9j1pqQPXwobB0ZcVTk27REb7COQ0UR59w==}
+
   store2@2.14.3:
     resolution: {integrity: sha512-4QcZ+yx7nzEFiV4BMLnr/pRa5HYzNITX2ri0Zh6sT9EyQHbBHacC6YigllUPU9X3D0f/22QCgfokpKs52YRrUg==}
 
@@ -6643,8 +6673,8 @@ packages:
       vue:
         optional: true
 
-  vite-plugin-dts@4.1.0:
-    resolution: {integrity: sha512-sRlmt9k2q8MrX4F2058N3KmB6WyJ3Ao6QaExOv1X99F3j0GhPziEz1zscWQ1q2r1PeFc96L7GIUu8Pl2DPr2Hg==}
+  vite-plugin-dts@4.1.1:
+    resolution: {integrity: sha512-SxYXwJQbAZ1IMtGEcOuzzZtDWCdcV2JkU7esvpPA8E5tIWVcJB42rZwN9EdULicWGLfaXrUgPIGVSidXBTae2Q==}
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       typescript: '*'
@@ -7891,6 +7921,18 @@ snapshots:
 
   '@microsoft/tsdoc@0.15.0': {}
 
+  '@monaco-editor/loader@1.4.0(monaco-editor@0.51.0)':
+    dependencies:
+      monaco-editor: 0.51.0
+      state-local: 1.0.7
+
+  '@monaco-editor/react@4.6.0(monaco-editor@0.51.0)(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)':
+    dependencies:
+      '@monaco-editor/loader': 1.4.0(monaco-editor@0.51.0)
+      monaco-editor: 0.51.0
+      react: 19.0.0-rc-e948a5ac-20240807
+      react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)
+
   '@mui/base@5.0.0-beta.40(react-dom@19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807))(react@19.0.0-rc-e948a5ac-20240807)(types-react@19.0.0-rc.1)':
     dependencies:
       '@babel/runtime': 7.24.8
@@ -8873,6 +8915,8 @@ snapshots:
 
   '@types/js-cookie@2.2.7': {}
 
+  '@types/json-schema@7.0.15': {}
+
   '@types/json5@0.0.29': {}
 
   '@types/jsonfile@6.1.4':
@@ -9111,7 +9155,7 @@ snapshots:
 
   agent-base@7.1.1:
     dependencies:
-      debug: 4.3.4
+      debug: 4.3.7
     transitivePeerDependencies:
       - supports-color
 
@@ -11267,6 +11311,8 @@ snapshots:
 
   json-schema-traverse@1.0.0: {}
 
+  json-schema@0.4.0: {}
+
   json-stable-stringify-without-jsonify@1.0.1: {}
 
   json-stringify-safe@5.0.1:
@@ -11305,7 +11351,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.29.2(@types/node@22.5.4)(typescript@5.5.4):
+  knip@5.30.0(@types/node@22.5.4)(typescript@5.5.4):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@snyk/github-codeowners': 1.1.0
@@ -12839,6 +12885,8 @@ snapshots:
       stack-generator: 2.0.10
       stacktrace-gps: 3.1.2
 
+  state-local@1.0.7: {}
+
   store2@2.14.3: {}
 
   string-argv@0.3.2: {}
@@ -13546,14 +13594,14 @@ snapshots:
       react: 19.0.0-rc-e948a5ac-20240807
       react-dom: 19.0.0-rc-e948a5ac-20240807(react@19.0.0-rc-e948a5ac-20240807)
 
-  vite-plugin-dts@4.1.0(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
+  vite-plugin-dts@4.1.1(@types/node@22.5.4)(rollup@4.21.0)(typescript@5.5.4)(vite@5.4.3(@types/node@22.5.4)(less@4.2.0)(sass@1.78.0)(stylus@0.62.0)):
     dependencies:
       '@microsoft/api-extractor': 7.47.4(@types/node@22.5.4)
       '@rollup/pluginutils': 5.1.0(rollup@4.21.0)
       '@volar/typescript': 2.4.0
       '@vue/language-core': 2.0.29(typescript@5.5.4)
       compare-versions: 6.1.1
-      debug: 4.3.6
+      debug: 4.3.7
       kolorist: 1.8.0
       local-pkg: 0.5.0
       magic-string: 0.30.11

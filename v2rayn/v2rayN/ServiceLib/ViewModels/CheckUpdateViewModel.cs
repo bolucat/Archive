@@ -3,7 +3,6 @@ using DynamicData.Binding;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
 using Splat;
-using System.Diagnostics;
 using System.Reactive;
 
 namespace ServiceLib.ViewModels
@@ -234,21 +233,7 @@ namespace ServiceLib.ViewModels
                 {
                     return;
                 }
-
-                Process process = new()
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "v2rayUpgrade",
-                        Arguments = fileName.AppendQuotes(),
-                        WorkingDirectory = Utils.StartupPath()
-                    }
-                };
-                process.Start();
-                if (process.Id > 0)
-                {
-                    Locator.Current.GetService<MainWindowViewModel>()?.MyAppExitAsync(false);
-                }
+                Locator.Current.GetService<MainWindowViewModel>()?.V2rayUpgrade(fileName);
             }
             catch (Exception ex)
             {
