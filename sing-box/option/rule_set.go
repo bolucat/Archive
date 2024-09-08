@@ -14,9 +14,9 @@ import (
 )
 
 type _RuleSet struct {
-	Type          string        `json:"type"`
+	Type          string        `json:"type,omitempty"`
 	Tag           string        `json:"tag"`
-	Format        string        `json:"format"`
+	Format        string        `json:"format,omitempty"`
 	InlineOptions PlainRuleSet  `json:"-"`
 	LocalOptions  LocalRuleSet  `json:"-"`
 	RemoteOptions RemoteRuleSet `json:"-"`

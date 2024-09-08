@@ -11,6 +11,7 @@ icon: material/alert-decagram
 #### 1.10.0-beta.6
 
 * Add RDP sniffer
+* Fixes and improvements
 
 #### 1.10.0-beta.5
 
