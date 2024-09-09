@@ -992,6 +992,8 @@ func buildStageGenerateBuildScript() {
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DCMAKE_TOOLCHAIN_FILE=%s/../cmake/platforms/ios.toolchain.cmake", buildDir))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DDEPLOYMENT_TARGET=%s", iosVersionMinFlag))
 		platform := "OS"
+		glog.Warning("No Packaging supported for ios, disabling...")
+		noPackagingFlag = true
 		if subSystemNameFlag == "simulator" {
 			if archFlag == "x86" {
 				platform = "SIMULATOR"
@@ -1004,8 +1006,6 @@ func buildStageGenerateBuildScript() {
 			}
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DXCODE_CODESIGN_IDENTITY=%s", iosCodeSignIdentityFlag))
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DXCODE_DEPLOYMENT_TEAM=%s", iosDevelopmentTeamFlag))
-			glog.Info("No Packaging supported for simulator, disabling...")
-			noPackagingFlag = true
 		} else if subSystemNameFlag != "" {
 			glog.Fatalf("Invalid subSystemNameFlag: %s", subSystemNameFlag)
 		} else {
@@ -1018,6 +1018,7 @@ func buildStageGenerateBuildScript() {
 			}
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DXCODE_CODESIGN_IDENTITY=%s", iosCodeSignIdentityFlag))
 			cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DXCODE_DEPLOYMENT_TEAM=%s", iosDevelopmentTeamFlag))
+			cmakeArgs = append(cmakeArgs, "-DIOS_XCODE_DSYM_FOLDER_FIX=on")
 		}
 
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DPLATFORM=%s", platform))
@@ -1970,6 +1971,20 @@ func archiveMainFile(output string, prefix string, paths []string, dllPaths []st
 			"-jobs", fmt.Sprintf("%d", cmakeBuildConcurrencyFlag),
 			"-target", APPNAME, "-scheme", APPNAME}, true)
 
+		//
+		// copy dSYMs to xcarchive
+		//
+		xcarchiveSubdir := cmakeBuildTypeFlag + ".xcarchive"
+		cmdRun([]string{"rm", "-rf", filepath.Join(xcarchiveSubdir, "dSYMs", getAppName()+".dSYM")}, true)
+		cmdRun([]string{"rm", "-rf", filepath.Join(xcarchiveSubdir, "dSYMs", "YassPacketTunnel.appex.dSYM")}, true)
+
+		buildSubdir := cmakeBuildTypeFlag + "-iphoneos"
+		if subSystemNameFlag == "simulator" {
+			buildSubdir = cmakeBuildTypeFlag + "-iphonesimulator"
+		}
+		cmdRun([]string{"ditto", "-v", filepath.Join(buildSubdir, getAppName()+".dSYM"), filepath.Join(xcarchiveSubdir, "dSYMs", getAppName()+".dSYM")}, true)
+		cmdRun([]string{"ditto", "-v", filepath.Join(buildSubdir, "YassPacketTunnel.appex.dSYM"), filepath.Join(xcarchiveSubdir, "dSYMs", "YassPacketTunnel.appex.dSYM")}, true)
+
 		cmdRun([]string{"xcodebuild", "-exportArchive",
 			"-archivePath", cmakeBuildTypeFlag + ".xcarchive",
 			"-exportPath", ".",
@@ -1978,12 +1993,9 @@ func archiveMainFile(output string, prefix string, paths []string, dllPaths []st
 		if err != nil {
 			glog.Fatalf("%v", err)
 		}
+		//
 		// cleanup after exportArchive
 		//
-		buildSubdir := cmakeBuildTypeFlag + "-iphoneos"
-		if subSystemNameFlag == "simulator" {
-			buildSubdir = cmakeBuildTypeFlag + "-iphonesimulator"
-		}
 		err = os.Chdir(buildSubdir)
 		if err != nil {
 			glog.Fatalf("%v", err)
@@ -2301,19 +2313,19 @@ func postStateArchives() map[string][]string {
 		}
 		archiveFiles(debugArchive, archivePrefix, dbgPaths)
 	} else if systemNameFlag == "mingw" || systemNameFlag == "harmony" || systemNameFlag == "linux" || systemNameFlag == "freebsd" {
-		dbgPaths = append(dbgPaths, getAppName() + ".dbg")
+		dbgPaths = append(dbgPaths, getAppName()+".dbg")
 		if hasCrashpadDbg {
 			dbgPaths = append(dbgPaths, "crashpad_handler.dbg")
 		}
 		archiveFiles(debugArchive, archivePrefix, dbgPaths)
 	} else if systemNameFlag == "android" {
-		dbgPaths = append(dbgPaths, getAppName() + ".dbg")
+		dbgPaths = append(dbgPaths, getAppName()+".dbg")
 		if hasCrashpadDbg {
 			dbgPaths = append(dbgPaths, "crashpad_handler.dbg")
 		}
 		archiveFiles(debugArchive, archivePrefix, dbgPaths)
 	} else if systemNameFlag == "darwin" {
-		dbgPaths = append(dbgPaths, getAppName() + ".dSYM")
+		dbgPaths = append(dbgPaths, getAppName()+".dSYM")
 		if hasCrashpadDbg {
 			dbgPaths = append(dbgPaths, "crashpad_handler.dbg")
 		}
@@ -2326,8 +2338,8 @@ func postStateArchives() map[string][]string {
 		}
 		cmdRun([]string{"rm", "-rf", getAppName() + ".dSYM"}, true)
 		cmdRun([]string{"rm", "-rf", "YassPacketTunnel.appex.dSYM"}, true)
-		cmdRun([]string{"cp", "-r", filepath.Join(buildSubdir, getAppName()+".dSYM"), getAppName() + ".dSYM"}, true)
-		cmdRun([]string{"cp", "-r", filepath.Join(buildSubdir, "YassPacketTunnel.appex.dSYM"), "YassPacketTunnel.appex.dSYM"}, true)
+		cmdRun([]string{"ditto", "-v", filepath.Join(buildSubdir, getAppName()+".dSYM"), getAppName() + ".dSYM"}, true)
+		cmdRun([]string{"ditto", "-v", filepath.Join(buildSubdir, "YassPacketTunnel.appex.dSYM"), "YassPacketTunnel.appex.dSYM"}, true)
 		archiveFiles(debugArchive, archivePrefix, []string{getAppName() + ".dSYM", "YassPacketTunnel.appex.dSYM"})
 		dbgPaths = append(dbgPaths, getAppName()+".dSYM", "YassPacketTunnel.appex.dSYM")
 	}

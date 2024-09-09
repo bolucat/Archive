@@ -22,7 +22,7 @@
     "@mui/material": "5.16.7",
     "@radix-ui/react-portal": "1.1.1",
     "@radix-ui/react-scroll-area": "1.1.0",
-    "@tauri-apps/api": "1.6.0",
+    "@tauri-apps/api": "2.0.0-rc.4",
     "@types/d3": "7.4.3",
     "@types/react": "18.3.5",
     "@vitejs/plugin-react": "4.3.1",
@@ -44,6 +44,6 @@
     "sass": "1.78.0",
     "tailwind-merge": "2.5.2",
     "typescript-plugin-css-modules": "5.1.0",
-    "vite-plugin-dts": "4.1.1"
+    "vite-plugin-dts": "4.2.1"
   }
 }

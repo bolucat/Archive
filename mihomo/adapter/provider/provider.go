@@ -98,6 +98,10 @@ func (pp *proxySetProvider) Proxies() []C.Proxy {
 	return pp.proxies
 }
 
+func (pp *proxySetProvider) Count() int {
+	return len(pp.proxies)
+}
+
 func (pp *proxySetProvider) Touch() {
 	pp.healthCheck.touch()
 }
@@ -126,7 +130,7 @@ func (pp *proxySetProvider) getSubscriptionInfo() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*90)
 		defer cancel()
 		resp, err := mihomoHttp.HttpRequestWithProxy(ctx, pp.Vehicle().(*resource.HTTPVehicle).Url(),
-			http.MethodGet, http.Header{"User-Agent": {C.UA}}, nil, pp.Vehicle().Proxy())
+			http.MethodGet, nil, nil, pp.Vehicle().Proxy())
 		if err != nil {
 			return
 		}
@@ -265,6 +269,10 @@ func (cp *compatibleProvider) Type() types.ProviderType {
 
 func (cp *compatibleProvider) Proxies() []C.Proxy {
 	return cp.proxies
+}
+
+func (cp *compatibleProvider) Count() int {
+	return len(cp.proxies)
 }
 
 func (cp *compatibleProvider) Touch() {
