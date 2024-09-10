@@ -3,10 +3,8 @@ module cfa
 go 1.20
 
 require (
-	github.com/Kr328/tun2socket v0.0.0-20220414050025-d07c78d06d34
 	github.com/dlclark/regexp2 v1.11.4
 	github.com/metacubex/mihomo v1.7.0
-	github.com/miekg/dns v1.1.62
 	github.com/oschwald/maxminddb-golang v1.12.0
 	golang.org/x/sync v0.8.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -58,7 +56,7 @@ require (
 	github.com/metacubex/chacha v0.1.0 // indirect
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759 // indirect
 	github.com/metacubex/gvisor v0.0.0-20240320004321-933faba989ec // indirect
-	github.com/metacubex/quic-go v0.46.1-0.20240807232329-1c6cb2d67f58 // indirect
+	github.com/metacubex/quic-go v0.47.1-0.20240909010619-6b38f24bfcc4 // indirect
 	github.com/metacubex/randv2 v0.2.0 // indirect
 	github.com/metacubex/sing-quic v0.0.0-20240827003841-cd97758ed8b4 // indirect
 	github.com/metacubex/sing-shadowsocks v0.2.8 // indirect
@@ -68,6 +66,7 @@ require (
 	github.com/metacubex/sing-wireguard v0.0.0-20240826061955-1e4e67afe5cd // indirect
 	github.com/metacubex/tfo-go v0.0.0-20240830120620-c5e019b67785 // indirect
 	github.com/metacubex/utls v1.6.6 // indirect
+	github.com/miekg/dns v1.1.62 // indirect
 	github.com/mroth/weightedrand/v2 v2.1.0 // indirect
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect

@@ -51,12 +51,11 @@ var allDTLSWireVersions = []uint16{
 }
 
 const (
-	maxPlaintext       = 16384        // maximum plaintext payload length
-	maxCiphertext      = 16384 + 2048 // maximum ciphertext payload length
-	tlsRecordHeaderLen = 5            // record header length
-	// TODO(nharper): check whether this value needs to be changed for DTLS 1.3
-	dtlsRecordHeaderLen = 13
-	maxHandshake        = 65536 // maximum handshake we support (protocol max is 16 MB)
+	maxPlaintext           = 16384        // maximum plaintext payload length
+	maxCiphertext          = 16384 + 2048 // maximum ciphertext payload length
+	tlsRecordHeaderLen     = 5            // record header length
+	dtlsMaxRecordHeaderLen = 13
+	maxHandshake           = 65536 // maximum handshake we support (protocol max is 16 MB)
 
 	minVersion = VersionSSL30
 	maxVersion = VersionTLS13
@@ -159,6 +158,7 @@ const (
 	CurveP384           CurveID = 24
 	CurveP521           CurveID = 25
 	CurveX25519         CurveID = 29
+	CurveX25519MLKEM768 CurveID = 0x11ec
 	CurveX25519Kyber768 CurveID = 0x6399
 )
 
@@ -618,6 +618,16 @@ type Config struct {
 
 	CertCompressionAlgs map[uint16]CertCompressionAlg
 
+	// DTLSUseShortSeqNums specifies whether the DTLS 1.3 record header
+	// should use short (8-bit) or long (16-bit) sequence numbers. The
+	// default is to use long sequence numbers.
+	DTLSUseShortSeqNums bool
+
+	// DTLSRecordHeaderOmitLength specified whether the DTLS 1.3 record
+	// header includes a length field. The default is to include the length
+	// field.
+	DTLSRecordHeaderOmitLength bool
+
 	// Bugs specifies optional misbehaviour to be used for testing other
 	// implementations.
 	Bugs ProtocolBugs
@@ -661,9 +671,15 @@ type ProtocolBugs struct {
 	// than the negotiated one.
 	SendCurve CurveID
 
-	// InvalidECDHPoint, if true, causes the ECC points in
-	// ServerKeyExchange or ClientKeyExchange messages to be invalid.
-	InvalidECDHPoint bool
+	// ECDHPointNotOnCurve, if true, causes the ECDH points to not be on the
+	// curve.
+	ECDHPointNotOnCurve bool
+
+	// TruncateKeyShare, if true, causes key shares to be truncated by one byte.
+	TruncateKeyShare bool
+
+	// PadKeyShare, if true, causes key shares to be truncated to one byte.
+	PadKeyShare bool
 
 	// BadECDSAR controls ways in which the 'r' value of an ECDSA signature
 	// can be invalid.
@@ -1910,6 +1926,14 @@ type ProtocolBugs struct {
 	// high-order bit.
 	SetX25519HighBit bool
 
+	// LowOrderX25519Point, if true, causes X25519 key shares to be a low
+	// order point.
+	LowOrderX25519Point bool
+
+	// MLKEMEncapKeyNotReduced, if true, causes the ML-KEM encapsulation key
+	// to not be fully reduced.
+	MLKEMEncapKeyNotReduced bool
+
 	// DuplicateCompressedCertAlgs, if true, causes two, equal, certificate
 	// compression algorithm IDs to be sent.
 	DuplicateCompressedCertAlgs bool
@@ -1953,9 +1977,9 @@ type ProtocolBugs struct {
 	// hello retry.
 	FailIfHelloRetryRequested bool
 
-	// FailedIfKyberOffered will cause a server to reject a ClientHello if Kyber
-	// is supported.
-	FailIfKyberOffered bool
+	// FailIfPostQuantumOffered will cause a server to reject a ClientHello if
+	// post-quantum curves are supported.
+	FailIfPostQuantumOffered bool
 
 	// ExpectKeyShares, if not nil, lists (in order) the curves that a ClientHello
 	// should have key shares for.
@@ -1968,6 +1992,14 @@ type ProtocolBugs struct {
 	// DTLS13EchoSessionID, if true, has DTLS 1.3 servers echo the client's
 	// session ID in the ServerHello.
 	DTLS13EchoSessionID bool
+
+	// DTLSUsePlaintextRecord header, if true, has DTLS connections never
+	// use the DTLS 1.3 record header.
+	DTLSUsePlaintextRecordHeader bool
+
+	// DTLS13RecordHeaderSetCIDBit, if true, sets the Connection ID bit in
+	// the DTLS 1.3 record header.
+	DTLS13RecordHeaderSetCIDBit bool
 
 	// EncryptSessionTicketKey, if non-nil, is the ticket key to use when
 	// encrypting tickets.
@@ -2050,7 +2082,7 @@ func (c *Config) maxVersion(isDTLS bool) uint16 {
 	return ret
 }
 
-var defaultCurvePreferences = []CurveID{CurveX25519Kyber768, CurveX25519, CurveP256, CurveP384, CurveP521}
+var defaultCurvePreferences = []CurveID{CurveX25519MLKEM768, CurveX25519Kyber768, CurveX25519, CurveP256, CurveP384, CurveP521}
 
 func (c *Config) curvePreferences() []CurveID {
 	if c == nil || len(c.CurvePreferences) == 0 {

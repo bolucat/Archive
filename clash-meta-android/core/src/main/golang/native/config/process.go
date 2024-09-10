@@ -9,6 +9,7 @@ import (
 	"github.com/dlclark/regexp2"
 
 	"cfa/native/common"
+
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 
@@ -21,6 +22,7 @@ var processors = []processor{
 	patchGeneral,
 	patchProfile,
 	patchDns,
+	patchTun,
 	patchProviders,
 	validConfig,
 }
@@ -70,6 +72,12 @@ func patchDns(cfg *config.RawConfig, _ string) error {
 	if cfg.ClashForAndroid.AppendSystemDNS {
 		cfg.DNS.NameServer = append(cfg.DNS.NameServer, "dhcp://"+dns.SystemDNSPlaceholder)
 	}
+
+	return nil
+}
+
+func patchTun(cfg *config.RawConfig, _ string) error {
+	cfg.Tun.Enable = false
 
 	return nil
 }

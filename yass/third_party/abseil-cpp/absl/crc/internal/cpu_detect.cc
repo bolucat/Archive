@@ -24,12 +24,12 @@
 #include <sys/auxv.h>
 #endif
 
-#if defined(_WIN32) || defined(_WIN64)
+#if defined(_MSC_VER)
 #include <intrin.h>
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64)
-#if ABSL_HAVE_BUILTIN(__cpuid)
+#if ABSL_HAVE_BUILTIN(__cpuid) || defined(__clang__)
 // MSVC-equivalent __cpuid intrinsic declaration for clang-like compilers
 // for non-Windows build environments.
 extern void __cpuid(int[4], int);

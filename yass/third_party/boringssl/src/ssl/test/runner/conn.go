@@ -8,6 +8,7 @@ package runner
 
 import (
 	"bytes"
+	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/subtle"
@@ -19,6 +20,9 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/chacha20"
+	"golang.org/x/crypto/cryptobyte"
 )
 
 // A Conn represents a secured connection.
@@ -130,6 +134,8 @@ func (c *Conn) init() {
 	c.out.isDTLS = c.isDTLS
 	c.in.config = c.config
 	c.out.config = c.config
+	c.in.conn = c
+	c.out.conn = c
 
 	c.out.updateOutSeq()
 }
@@ -173,15 +179,16 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 type halfConn struct {
 	sync.Mutex
 
-	err         error  // first permanent error
-	version     uint16 // protocol version
-	wireVersion uint16 // wire version
-	isDTLS      bool
-	cipher      any // cipher algorithm
-	mac         macFunction
-	seq         [8]byte // 64-bit sequence number
-	outSeq      [8]byte // Mapped sequence number
-	bfree       *block  // list of free blocks
+	err                   error  // first permanent error
+	version               uint16 // protocol version
+	wireVersion           uint16 // wire version
+	isDTLS                bool
+	cipher                any // cipher algorithm
+	recordNumberEncrypter recordNumberEncrypter
+	mac                   macFunction
+	seq                   [8]byte // 64-bit sequence number
+	outSeq                [8]byte // Mapped sequence number
+	bfree                 *block  // list of free blocks
 
 	nextCipher any         // next encryption state
 	nextMac    macFunction // next MAC algorithm
@@ -193,6 +200,7 @@ type halfConn struct {
 	trafficSecret []byte
 
 	config *Config
+	conn   *Conn
 }
 
 func (hc *halfConn) setErrorLocked(err error) error {
@@ -249,7 +257,18 @@ func (hc *halfConn) useTrafficSecret(version uint16, suite *cipherSuite, secret 
 		panic("TLS: unknown version")
 	}
 	hc.version = protocolVersion
-	hc.cipher = deriveTrafficAEAD(version, suite, secret, side)
+	hc.cipher = deriveTrafficAEAD(version, suite, secret, side, hc.isDTLS)
+	if hc.isDTLS && !hc.config.Bugs.NullAllCiphers {
+		sn_key := hkdfExpandLabel(suite.hash(), secret, []byte("sn"), nil, suite.keyLen, hc.isDTLS)
+		switch suite.id {
+		case TLS_CHACHA20_POLY1305_SHA256:
+			hc.recordNumberEncrypter = newChachaRecordNumberEncrypter(sn_key)
+		case TLS_AES_128_GCM_SHA256, TLS_AES_256_GCM_SHA384:
+			hc.recordNumberEncrypter = newAESRecordNumberEncrypter(sn_key)
+		default:
+			panic("Cipher suite does not support TLS 1.3")
+		}
+	}
 	if hc.config.Bugs.NullAllCiphers {
 		hc.cipher = nullCipher{}
 	}
@@ -357,9 +376,31 @@ func (hc *halfConn) updateOutSeq() {
 	copy(hc.outSeq[:], hc.seq[:])
 }
 
-func (hc *halfConn) recordHeaderLen() int {
+// writeRecordHeaderLen returns the length of the record header that will be
+// written. Do not use this for the length of a record header when reading, as
+// that can depend on the bytes read.
+func (hc *halfConn) writeRecordHeaderLen() int {
 	if hc.isDTLS {
-		return dtlsRecordHeaderLen
+		usePlaintextHeader := hc.config.Bugs.DTLSUsePlaintextRecordHeader && hc.conn.handshakeComplete
+		if hc.version >= VersionTLS13 && hc.cipher != nil && !usePlaintextHeader {
+			// The DTLS 1.3 record header consists of a
+			// demultiplexing/type byte, some number of connection
+			// ID bytes, 1 or 2 sequence number bytes, and 0 or 2
+			// length bytes. Configuration options or protocol bugs
+			// will change these values to test all options of the
+			// DTLS 1.3 record header.
+			cidSize := 0
+			seqSize := 2
+			if hc.config.DTLSUseShortSeqNums {
+				seqSize = 1
+			}
+			lenSize := 2
+			if hc.config.DTLSRecordHeaderOmitLength {
+				lenSize = 0
+			}
+			return 1 + cidSize + seqSize + lenSize
+		}
+		return dtlsMaxRecordHeaderLen
 	}
 	return tlsRecordHeaderLen
 }
@@ -416,9 +457,7 @@ type cbcMode interface {
 // success boolean, the number of bytes to skip from the start of the record in
 // order to get the application payload, the encrypted record type (or 0
 // if there is none), and an optional alert value.
-func (hc *halfConn) decrypt(b *block) (ok bool, prefixLen int, contentType recordType, alertValue alert) {
-	recordHeaderLen := hc.recordHeaderLen()
-
+func (hc *halfConn) decrypt(seq []byte, recordHeaderLen int, b *block) (ok bool, prefixLen int, contentType recordType, alertValue alert) {
 	// pull out payload
 	payload := b.data[recordHeaderLen:]
 
@@ -429,12 +468,6 @@ func (hc *halfConn) decrypt(b *block) (ok bool, prefixLen int, contentType recor
 
 	paddingGood := byte(255)
 	explicitIVLen := 0
-
-	seq := hc.seq[:]
-	if hc.isDTLS {
-		// DTLS sequence numbers are explicit.
-		seq = b.data[3:11]
-	}
 
 	// decrypt
 	if hc.cipher != nil {
@@ -503,7 +536,7 @@ func (hc *halfConn) decrypt(b *block) (ok bool, prefixLen int, contentType recor
 			panic("unknown cipher type")
 		}
 
-		if hc.version >= VersionTLS13 && !hc.isDTLS {
+		if hc.version >= VersionTLS13 {
 			i := len(payload)
 			for i > 0 && payload[i-1] == 0 {
 				i--
@@ -572,7 +605,7 @@ func padToBlockSize(payload []byte, blockSize int, config *Config) (prefix, fina
 
 // encrypt encrypts and macs the data in b.
 func (hc *halfConn) encrypt(b *block, explicitIVLen int, typ recordType) (bool, alert) {
-	recordHeaderLen := hc.recordHeaderLen()
+	recordHeaderLen := hc.writeRecordHeaderLen()
 
 	// mac
 	if hc.mac != nil {
@@ -597,6 +630,11 @@ func (hc *halfConn) encrypt(b *block, explicitIVLen int, typ recordType) (bool, 
 			nonce := hc.outSeq[:]
 			if c.explicitNonce {
 				nonce = b.data[recordHeaderLen : recordHeaderLen+explicitIVLen]
+			}
+			usePlaintextHeader := hc.config.Bugs.DTLSUsePlaintextRecordHeader && hc.conn.handshakeComplete
+			if hc.isDTLS && hc.version >= VersionTLS13 && !usePlaintextHeader {
+				nonce = make([]byte, 8)
+				copy(nonce[2:], hc.outSeq[2:])
 			}
 			payload := b.data[recordHeaderLen+explicitIVLen:]
 			payload = payload[:payloadLen]
@@ -632,9 +670,11 @@ func (hc *halfConn) encrypt(b *block, explicitIVLen int, typ recordType) (bool, 
 	}
 
 	// update length to include MAC and any block padding needed.
-	n := len(b.data) - recordHeaderLen
-	b.data[recordHeaderLen-2] = byte(n >> 8)
-	b.data[recordHeaderLen-1] = byte(n)
+	if !hc.config.DTLSRecordHeaderOmitLength {
+		n := len(b.data) - recordHeaderLen
+		b.data[recordHeaderLen-2] = byte(n >> 8)
+		b.data[recordHeaderLen-1] = byte(n)
+	}
 	hc.incSeq(true)
 
 	return true, 0
@@ -738,6 +778,61 @@ func (hc *halfConn) splitBlock(b *block, n int) (*block, *block) {
 	return b, bb
 }
 
+type recordNumberEncrypter interface {
+	// GenerateMask takes a sample of the encrypted record and returns the
+	// mask used to encrypt and decrypt record numbers.
+	generateMask(sample []byte) []byte
+}
+
+type aesRecordNumberEncrypter struct {
+	aesCipher cipher.Block
+}
+
+func newAESRecordNumberEncrypter(key []byte) *aesRecordNumberEncrypter {
+	aesCipher, err := aes.NewCipher(key)
+	if err != nil {
+		panic("Incorrect usage of newAESRecordNumberEncrypter")
+	}
+	return &aesRecordNumberEncrypter{
+		aesCipher: aesCipher,
+	}
+}
+
+func (a *aesRecordNumberEncrypter) generateMask(sample []byte) []byte {
+	out := make([]byte, len(sample))
+	a.aesCipher.Encrypt(out, sample)
+	return out
+}
+
+type chachaRecordNumberEncrypter struct {
+	key []byte
+}
+
+func newChachaRecordNumberEncrypter(key []byte) *chachaRecordNumberEncrypter {
+	out := &chachaRecordNumberEncrypter{
+		key: key,
+	}
+	return out
+}
+
+func (c *chachaRecordNumberEncrypter) generateMask(sample []byte) []byte {
+	var counter uint32
+	nonce := make([]byte, 12)
+	sampleReader := cryptobyte.String(sample)
+	if !sampleReader.ReadUint32(&counter) || !sampleReader.CopyBytes(nonce) {
+		panic("chachaRecordNumberEncrypter.GenerateMask called with wrong size sample")
+	}
+	cipher, err := chacha20.NewUnauthenticatedCipher(c.key, nonce)
+	if err != nil {
+		panic("Failed to create chacha20 cipher for record number encryption")
+	}
+	cipher.SetCounter(counter)
+	zeroes := make([]byte, 2)
+	out := make([]byte, 2)
+	cipher.XORKeyStream(out, zeroes)
+	return out
+}
+
 func (c *Conn) useInTrafficSecret(level encryptionLevel, version uint16, suite *cipherSuite, secret []byte) error {
 	if c.hand.Len() != 0 {
 		return c.in.setErrorLocked(errors.New("tls: buffered handshake messages on cipher change"))
@@ -790,7 +885,7 @@ RestartReadRecord:
 		return c.dtlsDoReadRecord(want)
 	}
 
-	recordHeaderLen := c.in.recordHeaderLen()
+	recordHeaderLen := tlsRecordHeaderLen
 
 	if c.rawInput == nil {
 		c.rawInput = c.in.newBlock()
@@ -873,7 +968,7 @@ RestartReadRecord:
 
 	// Process message.
 	b, c.rawInput = c.in.splitBlock(b, recordHeaderLen+n)
-	ok, off, encTyp, alertValue := c.in.decrypt(b)
+	ok, off, encTyp, alertValue := c.in.decrypt(c.in.seq[:], recordHeaderLen, b)
 
 	// Handle skipping over early data.
 	if !ok && c.skipEarlyData {
@@ -1194,21 +1289,17 @@ func (c *Conn) addTLS13Padding(b *block, recordHeaderLen, recordLen int, typ rec
 	if c.out.version < VersionTLS13 || c.out.cipher == nil {
 		return recordLen
 	}
-	// TODO(nharper): DTLS 1.3 should be adding padding, but the currently
-	// implemented DTLS 1.25 doesn't include padding.
-	if !c.isDTLS {
-		paddingLen := c.config.Bugs.RecordPadding
-		if c.config.Bugs.OmitRecordContents {
-			recordLen = paddingLen
-			b.resize(recordHeaderLen + paddingLen)
-		} else {
-			recordLen += 1 + paddingLen
-			b.resize(len(b.data) + 1 + paddingLen)
-			b.data[len(b.data)-paddingLen-1] = byte(typ)
-		}
-		for i := 0; i < paddingLen; i++ {
-			b.data[len(b.data)-paddingLen+i] = 0
-		}
+	paddingLen := c.config.Bugs.RecordPadding
+	if c.config.Bugs.OmitRecordContents {
+		recordLen = paddingLen
+		b.resize(recordHeaderLen + paddingLen)
+	} else {
+		recordLen += 1 + paddingLen
+		b.resize(len(b.data) + 1 + paddingLen)
+		b.data[len(b.data)-paddingLen-1] = byte(typ)
+	}
+	for i := 0; i < paddingLen; i++ {
+		b.data[len(b.data)-paddingLen+i] = 0
 	}
 	if c, ok := c.out.cipher.(*tlsAead); ok {
 		recordLen += c.Overhead()
@@ -1217,7 +1308,7 @@ func (c *Conn) addTLS13Padding(b *block, recordHeaderLen, recordLen int, typ rec
 }
 
 func (c *Conn) doWriteRecord(typ recordType, data []byte) (n int, err error) {
-	recordHeaderLen := c.out.recordHeaderLen()
+	recordHeaderLen := c.out.writeRecordHeaderLen()
 	b := c.out.newBlock()
 	first := true
 	isClientHello := typ == recordTypeHandshake && len(data) > 0 && data[0] == typeClientHello
@@ -1621,7 +1712,7 @@ func (c *Conn) processTLS13NewSessionTicket(newSessionTicket *newSessionTicketMs
 		vers:                        c.vers,
 		wireVersion:                 c.wireVersion,
 		cipherSuite:                 cipherSuite,
-		secret:                      deriveSessionPSK(cipherSuite, c.wireVersion, c.resumptionSecret, newSessionTicket.ticketNonce),
+		secret:                      deriveSessionPSK(cipherSuite, c.wireVersion, c.resumptionSecret, newSessionTicket.ticketNonce, c.isDTLS),
 		serverCertificates:          c.peerCertificates,
 		sctList:                     c.sctList,
 		ocspResponse:                c.ocspResponse,
@@ -1680,7 +1771,7 @@ func (c *Conn) handlePostHandshakeMessage() error {
 		if c.config.Bugs.RejectUnsolicitedKeyUpdate {
 			return errors.New("tls: unexpected KeyUpdate message")
 		}
-		if err := c.useInTrafficSecret(encryptionApplication, c.in.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.in.trafficSecret)); err != nil {
+		if err := c.useInTrafficSecret(encryptionApplication, c.in.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.in.trafficSecret, c.isDTLS)); err != nil {
 			return err
 		}
 		if keyUpdate.keyUpdateRequest == keyUpdateRequested {
@@ -1714,7 +1805,7 @@ func (c *Conn) ReadKeyUpdateACK() error {
 		return errors.New("tls: received invalid KeyUpdate message")
 	}
 
-	return c.useInTrafficSecret(encryptionApplication, c.in.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.in.trafficSecret))
+	return c.useInTrafficSecret(encryptionApplication, c.in.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.in.trafficSecret, c.isDTLS))
 }
 
 func (c *Conn) Renegotiate() error {
@@ -1927,8 +2018,8 @@ func (c *Conn) exportKeyingMaterialTLS13(length int, secret, label, context []by
 	contextHash := hash.New()
 	contextHash.Write(context)
 	exporterContext := hash.New().Sum(nil)
-	derivedSecret := hkdfExpandLabel(c.cipherSuite.hash(), secret, label, exporterContext, hash.Size())
-	return hkdfExpandLabel(c.cipherSuite.hash(), derivedSecret, exporterKeyingLabel, contextHash.Sum(nil), length)
+	derivedSecret := hkdfExpandLabel(c.cipherSuite.hash(), secret, label, exporterContext, hash.Size(), c.isDTLS)
+	return hkdfExpandLabel(c.cipherSuite.hash(), derivedSecret, exporterKeyingLabel, contextHash.Sum(nil), length, c.isDTLS)
 }
 
 // ExportKeyingMaterial exports keying material from the current connection
@@ -2027,7 +2118,7 @@ func (c *Conn) SendNewSessionTicket(nonce []byte) error {
 	state := sessionState{
 		vers:                        c.vers,
 		cipherSuite:                 c.cipherSuite.id,
-		secret:                      deriveSessionPSK(c.cipherSuite, c.wireVersion, c.resumptionSecret, nonce),
+		secret:                      deriveSessionPSK(c.cipherSuite, c.wireVersion, c.resumptionSecret, nonce, c.isDTLS),
 		certificates:                peerCertificatesRaw,
 		ticketCreationTime:          c.config.time(),
 		ticketExpiration:            c.config.time().Add(time.Duration(m.ticketLifetime) * time.Second),
@@ -2074,7 +2165,7 @@ func (c *Conn) sendKeyUpdateLocked(keyUpdateRequest byte) error {
 	if err := c.flushHandshake(); err != nil {
 		return err
 	}
-	c.useOutTrafficSecret(encryptionApplication, c.out.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.out.trafficSecret))
+	c.useOutTrafficSecret(encryptionApplication, c.out.wireVersion, c.cipherSuite, updateTrafficSecret(c.cipherSuite.hash(), c.wireVersion, c.out.trafficSecret, c.isDTLS))
 	return nil
 }
 
