@@ -77,4 +77,15 @@
         <item>255.255.255.252/31</item>
         <item>255.255.255.254/32</item>
     </string-array>
+    <!-- exclude fc00::/7, fe80::/10, ff00::/8 -->
+    <string-array name="bypass_private_route6" translatable="false">
+        <item>::/1</item>
+        <item>8000::/2</item>
+        <item>c000::/3</item>
+        <item>e000::/4</item>
+        <item>f000::/5</item>
+        <item>f800::/6</item>
+        <item>fe00::/9</item>
+        <item>fec0::/10</item>
+    </string-array>
 </resources>

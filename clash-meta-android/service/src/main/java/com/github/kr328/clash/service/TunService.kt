@@ -33,7 +33,6 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         val tun = install(TunModule(self))
         val config = install(ConfigurationModule(self))
         val network = install(NetworkObserveModule(self))
-        val sideload = install(SideloadDatabaseModule(self))
 
         if (store.dynamicNotification)
             install(DynamicNotificationModule(self))
@@ -53,11 +52,6 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
                         true
                     }
                     config.onEvent {
-                        reason = it.message
-
-                        true
-                    }
-                    sideload.onEvent {
                         reason = it.message
 
                         true
@@ -132,17 +126,31 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         val device = with(Builder()) {
             // Interface address
             addAddress(TUN_GATEWAY, TUN_SUBNET_PREFIX)
+            if (store.allowIpv6) {
+                addAddress(TUN_GATEWAY6, TUN_SUBNET_PREFIX6)
+            }
 
             // Route
             if (store.bypassPrivateNetwork) {
                 resources.getStringArray(R.array.bypass_private_route).map(::parseCIDR).forEach {
                     addRoute(it.ip, it.prefix)
                 }
+                if (store.allowIpv6) {
+                    resources.getStringArray(R.array.bypass_private_route6).map(::parseCIDR).forEach {
+                        addRoute(it.ip, it.prefix)
+                    }
+                }
 
                 // Route of virtual DNS
                 addRoute(TUN_DNS, 32)
+                if (store.allowIpv6) {
+                    addRoute(TUN_DNS6, 128)
+                }
             } else {
                 addRoute(NET_ANY, 0)
+                if (store.allowIpv6) {
+                    addRoute(NET_ANY6, 0)
+                }
             }
 
             // Access Control
@@ -171,6 +179,9 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
 
             // Virtual Dns Server
             addDnsServer(TUN_DNS)
+            if (store.allowIpv6) {
+                addDnsServer(TUN_DNS6)
+            }
 
             // Open MainActivity
             setConfigureIntent(
@@ -207,9 +218,10 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
             TunModule.TunDevice(
                 fd = establish()?.detachFd()
                     ?: throw NullPointerException("Establish VPN rejected by system"),
-                gateway = "$TUN_GATEWAY/$TUN_SUBNET_PREFIX",
-                portal = TUN_PORTAL,
-                dns = if (store.dnsHijacking) NET_ANY else TUN_DNS,
+                stack = store.tunStackMode,
+                gateway = "$TUN_GATEWAY/$TUN_SUBNET_PREFIX" + if (store.allowIpv6) ",$TUN_GATEWAY6/$TUN_SUBNET_PREFIX6" else "",
+                portal = TUN_PORTAL + if (store.allowIpv6) ",$TUN_PORTAL6" else "",
+                dns = if (store.dnsHijacking) NET_ANY else (TUN_DNS + if (store.allowIpv6) ",$TUN_DNS6" else ""),
             )
         }
 
@@ -220,9 +232,14 @@ class TunService : VpnService(), CoroutineScope by CoroutineScope(Dispatchers.De
         private const val TUN_MTU = 9000
         private const val TUN_SUBNET_PREFIX = 30
         private const val TUN_GATEWAY = "172.19.0.1"
+        private const val TUN_SUBNET_PREFIX6 = 126
+        private const val TUN_GATEWAY6 = "fdfe:dcba:9876::1"
         private const val TUN_PORTAL = "172.19.0.2"
+        private const val TUN_PORTAL6 = "fdfe:dcba:9876::2"
         private const val TUN_DNS = TUN_PORTAL
+        private const val TUN_DNS6 = TUN_PORTAL6
         private const val NET_ANY = "0.0.0.0"
+        private const val NET_ANY6 = "::"
 
         private val HTTP_PROXY_LOCAL_LIST: List<String> = listOf(
             "localhost",

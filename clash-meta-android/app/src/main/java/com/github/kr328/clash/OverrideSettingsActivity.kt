@@ -45,45 +45,14 @@ class OverrideSettingsActivity : BaseActivity<OverrideSettingsDesign>() {
                                     withClash {
                                         clearOverride(Clash.OverrideSlot.Persist)
                                     }
-
-                                    service.sideloadGeoip = ""
                                 }
 
                                 finish()
-                            }
-                        }
-                        OverrideSettingsDesign.Request.EditSideloadGeoip -> {
-                            withContext(Dispatchers.IO) {
-                                val list = querySideloadProviders()
-                                val initial = service.sideloadGeoip
-                                val exist = list.any { info -> info.packageName == initial }
-
-                                service.sideloadGeoip =
-                                    design.requestSelectSideload(if (exist) initial else "", list)
                             }
                         }
                     }
                 }
             }
         }
-    }
-
-    private fun querySideloadProviders(): List<AppInfo> {
-        val apps = packageManager.getInstalledPackages(PackageManager.GET_META_DATA)
-            .filter {
-                it.applicationInfo.metaData?.containsKey(Metadata.GEOIP_FILE_NAME)
-                    ?: false
-            }
-            .map { it.toAppInfo(packageManager) }
-
-        return listOf(
-            AppInfo(
-                packageName = "",
-                label = getString(R.string.use_built_in),
-                icon = getDrawableCompat(R.drawable.ic_baseline_work)!!,
-                installTime = 0,
-                updateDate = 0,
-            )
-        ) + apps
     }
 }

@@ -5,7 +5,6 @@ import android.view.View
 import com.github.kr328.clash.core.model.ConfigurationOverride
 import com.github.kr328.clash.core.model.LogMessage
 import com.github.kr328.clash.core.model.TunnelState
-import com.github.kr328.clash.design.adapter.SideloadProviderAdapter
 import com.github.kr328.clash.design.databinding.DesignSettingsOverideBinding
 import com.github.kr328.clash.design.databinding.DialogPreferenceListBinding
 import com.github.kr328.clash.design.dialog.FullScreenDialog
@@ -23,7 +22,7 @@ class OverrideSettingsDesign(
     configuration: ConfigurationOverride
 ) : Design<OverrideSettingsDesign.Request>(context) {
     enum class Request {
-        ResetOverride, EditSideloadGeoip
+        ResetOverride
     }
 
     private val binding = DesignSettingsOverideBinding
@@ -51,49 +50,6 @@ class OverrideSettingsDesign(
             }
         }
     }
-
-    suspend fun requestSelectSideload(initial: String, apps: List<AppInfo>): String =
-        withContext(Dispatchers.Main) {
-            suspendCancellableCoroutine { ctx ->
-                val binding = DialogPreferenceListBinding
-                    .inflate(context.layoutInflater, context.root, false)
-                val adapter = SideloadProviderAdapter(context, apps, initial)
-                val dialog = FullScreenDialog(context)
-
-                dialog.setContentView(binding.root)
-
-                binding.surface = dialog.surface
-
-                binding.titleView.text = context.getString(R.string.sideload_geoip)
-
-                binding.newView.visibility = View.INVISIBLE
-
-                binding.mainList.applyLinearAdapter(context, adapter)
-
-                binding.resetView.setOnClickListener {
-                    ctx.resume("")
-
-                    dialog.dismiss()
-                }
-
-                binding.cancelView.setOnClickListener {
-                    dialog.dismiss()
-                }
-
-                binding.okView.setOnClickListener {
-                    ctx.resume(adapter.selectedPackageName)
-
-                    dialog.dismiss()
-                }
-
-                dialog.setOnDismissListener {
-                    if (!ctx.isCompleted)
-                        ctx.resume(initial)
-                }
-
-                dialog.show()
-            }
-        }
 
     init {
         binding.self = this
@@ -194,6 +150,14 @@ class OverrideSettingsDesign(
             )
 
             editableText(
+                value = configuration::externalControllerTLS,
+                adapter = NullableTextAdapter.String,
+                title = R.string.external_controller_tls,
+                placeholder = R.string.dont_modify,
+                empty = R.string.default_
+            )
+
+            editableText(
                 value = configuration::secret,
                 adapter = NullableTextAdapter.String,
                 title = R.string.secret,
@@ -246,15 +210,6 @@ class OverrideSettingsDesign(
                 title = R.string.hosts,
                 placeholder = R.string.dont_modify,
             )
-
-            clickable(
-                title = R.string.sideload_geoip,
-                summary = R.string.sideload_geoip_summary
-            ) {
-                clicked {
-                    requests.trySend(Request.EditSideloadGeoip)
-                }
-            }
 
             category(R.string.dns)
 

@@ -176,8 +176,6 @@
     <string name="format_fetching_provider">正在下载外部资源 %s</string>
     <string name="initializing">正在初始化</string>
     <string name="verifying">正在校验</string>
-    <string name="sideload_geoip">旁加载 GEOIP</string>
-    <string name="sideload_geoip_summary">外部 GEOIP 数据库</string>
     <string name="force_enable">强制启用</string>
     <string name="document">文档</string>
     <string name="clash_wiki">Clash Wiki</string>
@@ -217,6 +215,8 @@
     <string name="geoip_fallback_code">GeoIP Fallback 区域代码</string>
     <string name="allow_bypass">允许应用绕过</string>
     <string name="allow_bypass_summary">允许其他应用绕过 VPN</string>
+    <string name="allow_ipv6">允许Ipv6</string>
+    <string name="allow_ipv6_summary">通过 VpnService 代理Ipv6流量</string>
     <string name="clash_meta_wiki">Clash Meta Wiki</string>
     <string name="meta_features">Meta Features</string>
     <string name="unified_delay">Unified Delay</string>

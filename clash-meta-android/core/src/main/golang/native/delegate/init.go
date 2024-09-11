@@ -4,8 +4,6 @@ import (
 	"errors"
 	"syscall"
 
-	"cfa/blob"
-
 	"github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/log"
 
@@ -13,14 +11,12 @@ import (
 	"cfa/native/platform"
 
 	"github.com/metacubex/mihomo/component/dialer"
-	"github.com/metacubex/mihomo/component/mmdb"
 	"github.com/metacubex/mihomo/constant"
 )
 
 var errBlocked = errors.New("blocked")
 
 func Init(home, versionName string, platformVersion int) {
-	mmdb.LoadFromBytes(blob.GeoipDatabase)
 	constant.SetHomeDir(home)
 	app.ApplyVersionName(versionName)
 	app.ApplyPlatformVersion(platformVersion)

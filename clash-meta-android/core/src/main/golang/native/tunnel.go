@@ -109,16 +109,3 @@ func updateProvider(completable unsafe.Pointer, pType C.c_string, name C.c_strin
 func suspend(suspended C.int) {
 	tunnel.Suspend(suspended != 0)
 }
-
-//export installSideloadGeoip
-func installSideloadGeoip(block unsafe.Pointer, blockSize C.int) *C.char {
-	if block == nil {
-		_ = tunnel.InstallSideloadGeoip(nil)
-
-		return nil
-	}
-
-	bytes := C.GoBytes(block, blockSize)
-
-	return marshalString(tunnel.InstallSideloadGeoip(bytes))
-}

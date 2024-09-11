@@ -145,8 +145,6 @@
     <string name="log_level">Уровень логов</string>
     <string name="ipv6">IPv6</string>
     <string name="hosts">Hosts</string>
-    <string name="sideload_geoip">Загрузить GeoIP</string>
-    <string name="sideload_geoip_summary">Внешняя база GeoIP</string>
     <string name="_new">Новый</string>
     <string name="value">Значение</string>
 

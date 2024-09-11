@@ -122,6 +122,8 @@
     <string name="block_loopback_summary">Block loopback connections</string>
     <string name="allow_bypass">Allow Bypass</string>
     <string name="allow_bypass_summary">Allows all apps to bypass this VPN connection</string>
+    <string name="allow_ipv6">Allow Ipv6</string>
+    <string name="allow_ipv6_summary">Allows ipv6 traffic via VpnService</string>
     <string name="system_proxy">System Proxy</string>
     <string name="system_proxy_summary">Attach http proxy to VpnService</string>
     <string name="access_control_mode">Access Control Mode</string>
@@ -145,10 +147,9 @@
     <string name="log_level">Log Level</string>
     <string name="ipv6">IPv6</string>
     <string name="external_controller">External Controller</string>
+    <string name="external_controller_tls">External Controller TLS</string>
     <string name="secret">Secret</string>
     <string name="hosts">Hosts</string>
-    <string name="sideload_geoip">Sideload GEOIP</string>
-    <string name="sideload_geoip_summary">External GEOIP database</string>
     <string name="_new">New</string>
     <string name="value">Value</string>
 
@@ -231,6 +232,11 @@
     <string name="always_dark">Always Dark</string>
     <string name="always_light">Always Light</string>
 
+    <string name="tun_stack_mode">Stack Mode</string>
+    <string name="tun_stack_system">System Stack</string>
+    <string name="tun_stack_gvisor">Gvisor Stack</string>
+    <string name="tun_stack_mixed">Mixed Stack</string>
+
     <string name="allow_all_apps">Allow all apps</string>
     <string name="allow_selected_apps">Allow selected apps</string>
     <string name="deny_selected_apps">Deny selected apps</string>
@@ -310,6 +316,7 @@
     <string name="press_to_import">Press to import...</string>
     <string name="import_geosite_file">Import GeoSite Database</string>
     <string name="import_country_file">Import Country Database</string>
+    <string name="import_asn_file">Import ASN Database</string>
     <string name="geofile_import_failed">Import failed</string>
     <string name="geofile_unknown_db_format">Unknown Database format</string>
     <string name="geofile_unknown_db_format_message">Only %1$s are supported</string>

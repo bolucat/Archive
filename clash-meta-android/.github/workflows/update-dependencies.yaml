@@ -34,10 +34,6 @@ jobs:
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
-      
-      - name: Download GeoIP Database
-        run: |
-          ./gradlew :core:downloadGeoipDatabase
 
       - name: Install update-go-mod-replace
         run: |

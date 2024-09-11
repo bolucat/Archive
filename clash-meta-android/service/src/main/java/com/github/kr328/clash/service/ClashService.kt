@@ -27,7 +27,6 @@ class ClashService : BaseService() {
         val close = install(CloseModule(self))
         val config = install(ConfigurationModule(self))
         val network = install(NetworkObserveModule(self))
-        val sideload = install(SideloadDatabaseModule(self))
 
         if (store.dynamicNotification)
             install(DynamicNotificationModule(self))
@@ -45,11 +44,6 @@ class ClashService : BaseService() {
                         true
                     }
                     config.onEvent {
-                        reason = it.message
-
-                        true
-                    }
-                    sideload.onEvent {
                         reason = it.message
 
                         true

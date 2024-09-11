@@ -4,8 +4,6 @@ go 1.20
 
 require cfa v0.0.0
 
-require cfa/blob v0.0.0-00010101000000-000000000000 // indirect
-
 require (
 	github.com/3andne/restls-client-go v0.1.6 // indirect
 	github.com/RyuaNerin/go-krypto v1.2.4 // indirect
@@ -115,5 +113,3 @@ replace github.com/sagernet/sing => github.com/metacubex/sing v0.0.0-20240724044
 replace cfa => ../../main/golang
 
 replace github.com/metacubex/mihomo => ./clash
-
-replace cfa/blob => ../../../build/intermediates/golang_blob

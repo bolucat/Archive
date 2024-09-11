@@ -175,8 +175,6 @@
     <string name="format_fetching_provider">正在下載外部資源 %s</string>
     <string name="initializing">正在初始化</string>
     <string name="verifying">正在校驗</string>
-    <string name="sideload_geoip">旁載入 GEOIP</string>
-    <string name="sideload_geoip_summary">外部 GEOIP 資料庫</string>
     <string name="force_enable">強制啟用</string>
     <string name="document">文件</string>
     <string name="clash_wiki">Clash Wiki</string>

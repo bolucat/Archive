@@ -54,6 +54,13 @@ class MainApplication : Application() {
                 assets.open("geosite.dat").copyTo(it);
             }
         }
+        
+        val ASNFile = File(clashDir, "ASN.mmdb")
+        if(!ASNFile.exists()) {
+            FileOutputStream(ASNFile).use {
+                assets.open("ASN.mmdb").copyTo(it);
+            }
+        }
     }
 
     fun finalize() {

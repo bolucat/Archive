@@ -70,6 +70,12 @@ class MetaFeatureSettingsActivity : BaseActivity<MetaFeatureSettingsDesign>() {
                                 "*/*")
                             importGeoFile(uri, MetaFeatureSettingsDesign.Request.ImportCountry)
                         }
+                        MetaFeatureSettingsDesign.Request.ImportASN -> {
+                            val uri = startActivityForResult(
+                                ActivityResultContracts.GetContent(),
+                                "*/*")
+                            importGeoFile(uri, MetaFeatureSettingsDesign.Request.ImportASN)
+                        }
                     }
                 }
             }
@@ -107,6 +113,8 @@ class MetaFeatureSettingsActivity : BaseActivity<MetaFeatureSettingsDesign>() {
                         "geosite$ext"
                     MetaFeatureSettingsDesign.Request.ImportCountry ->
                         "country$ext"
+                    MetaFeatureSettingsDesign.Request.ImportASN ->
+                        "ASN$ext"
                     else -> ""
                 }
 

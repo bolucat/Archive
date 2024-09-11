@@ -15,7 +15,7 @@ class MetaFeatureSettingsDesign(
     configuration: ConfigurationOverride
 ) : Design<MetaFeatureSettingsDesign.Request>(context) {
     enum class Request {
-        ResetOverride, ImportGeoIp, ImportGeoSite, ImportCountry
+        ResetOverride, ImportGeoIp, ImportGeoSite, ImportCountry, ImportASN
     }
 
     private val binding = DesignSettingsMetaFeatureBinding
@@ -253,6 +253,15 @@ class MetaFeatureSettingsDesign(
             ){
                 clicked {
                     requests.trySend(Request.ImportCountry)
+                }
+            }
+            
+            clickable (
+                title = R.string.import_asn_file,
+                summary = R.string.press_to_import,
+            ){
+                clicked {
+                    requests.trySend(Request.ImportASN)
                 }
             }
         }

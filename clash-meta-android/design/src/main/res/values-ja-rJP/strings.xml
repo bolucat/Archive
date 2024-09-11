@@ -119,8 +119,6 @@
     <string name="log_level">ログレベル</string>
     <string name="ipv6">IPv6</string>
     <string name="hosts">ホスト</string>
-    <string name="sideload_geoip">GeoIPを読み込み中</string>
-    <string name="sideload_geoip_summary">外部のGeoIPデータベース</string>
     <string name="_new">新規</string>
     <string name="value">値</string>
     <string name="strategy">ポリシー</string>

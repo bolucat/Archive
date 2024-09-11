@@ -119,8 +119,6 @@
     <string name="log_level">로그 레벨</string>
     <string name="ipv6">IPv6</string>
     <string name="hosts">호스트</string>
-    <string name="sideload_geoip">Sideload GEOIP</string>
-    <string name="sideload_geoip_summary">외부 GEOIP 데이터베이스</string>
     <string name="_new">신규</string>
     <string name="value">값</string>
     <string name="strategy">정책</string>

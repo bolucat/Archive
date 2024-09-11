@@ -48,8 +48,8 @@ import { ConfigViewer } from "@/components/setting/mods/config-viewer";
 import { throttle } from "lodash-es";
 import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
 import { listen } from "@tauri-apps/api/event";
-import { readTextFile } from "@tauri-apps/api/fs";
-import { readText } from "@tauri-apps/api/clipboard";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
 
 const ProfilePage = () => {
   const { t } = useTranslation();
@@ -137,7 +137,12 @@ const ProfilePage = () => {
         mutate("getProfiles", newProfiles);
 
         const remoteItem = newProfiles.items?.find((e) => e.type === "remote");
-        if (newProfiles.current && remoteItem) {
+
+        const profilesCount = newProfiles.items?.filter(
+          (e) => e.type === "remote" || e.type === "local"
+        ).length as number;
+
+        if (remoteItem && (profilesCount == 1 || !newProfiles.current)) {
           const current = remoteItem.uid;
           await patchProfiles({ current });
           mutateLogs();
