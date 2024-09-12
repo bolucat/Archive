@@ -76,8 +76,7 @@ func Load(path string) error {
 		return err
 	}
 
-	// Start the external controller like in hub.Parse(), but we have set its
-	// default override value to end with ":0" for security.
+	// like hub.Parse()
 	hub.ApplyConfig(cfg)
 
 	app.ApplySubtitlePattern(rawCfg.ClashForAndroid.UiSubtitlePattern)

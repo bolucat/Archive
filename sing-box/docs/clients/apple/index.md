@@ -11,8 +11,7 @@ platform-specific function implementation, such as TUN transparent proxy impleme
 
     Due to problems with our Apple developer account, sing-box apps on Apple platforms are temporarily unavailable for download or update.
 
-    If your company or organization is willing to help us return to the App Store, please [contact us](mailto:contact@sagernet.org).
-
+    We are working on relisting sing-box apps to the App Store, which is expected to be done within a month.
 
 ## :material-graph: Requirements
 

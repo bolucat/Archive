@@ -52,14 +52,16 @@ func Start(fd int, stack, gateway, portal, dns string) (io.Closer, error) {
 	}
 
 	options := LC.Tun{
-		Enable:         true,
-		Device:         sing_tun.InterfaceName,
-		Stack:          tunStack,
-		DNSHijack:      dnsHijack,
-		Inet4Address:   prefix4,
-		Inet6Address:   prefix6,
-		MTU:            9000, // private const val TUN_MTU = 9000 in TunService.kt
-		FileDescriptor: fd,
+		Enable:              true,
+		Device:              sing_tun.InterfaceName,
+		Stack:               tunStack,
+		DNSHijack:           dnsHijack,
+		AutoRoute:           false, // had set route in TunService.kt
+		AutoDetectInterface: false, // implements by VpnService::protect
+		Inet4Address:        prefix4,
+		Inet6Address:        prefix6,
+		MTU:                 9000, // private const val TUN_MTU = 9000 in TunService.kt
+		FileDescriptor:      fd,
 	}
 
 	tunOptions, _ := json.Marshal(options)

@@ -18,7 +18,7 @@ func Start(listen string) (listenAt string, err error) {
 
 	listener, err = http.NewWithAuthenticate(listen, tunnel.Tunnel, false)
 	if err == nil {
-		listenAt = listener.Listener().Addr().String()
+		listenAt = listener.Address()
 	}
 
 	return

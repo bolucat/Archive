@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	P "github.com/metacubex/mihomo/adapter/provider"
 	"github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel"
@@ -18,6 +17,10 @@ type Provider struct {
 	VehicleType string `json:"vehicleType"`
 	Type        string `json:"type"`
 	UpdatedAt   int64  `json:"updatedAt"`
+}
+
+type UpdatableProvider interface {
+	UpdatedAt() time.Time
 }
 
 func QueryProviders() []*Provider {
@@ -47,7 +50,7 @@ func QueryProviders() []*Provider {
 	for _, p := range providers {
 		updatedAt := time.Time{}
 
-		if s, ok := p.(P.UpdatableProvider); ok {
+		if s, ok := p.(UpdatableProvider); ok {
 			updatedAt = s.UpdatedAt()
 		}
 

@@ -109,6 +109,9 @@ data class ConfigurationOverride(
         @SerialName("fake-ip-filter")
         var fakeIpFilter: List<String>? = null,
 
+        @SerialName("fake-ip-filter-mode")
+        var fakeIPFilterMode: FilterMode? = null,
+
         @SerialName("fallback-filter")
         val fallbackFilter: DnsFallbackFilter = DnsFallbackFilter(),
 
@@ -158,6 +161,14 @@ data class ConfigurationOverride(
 
         @SerialName("fake-ip")
         FakeIp,
+    }
+    @Serializable
+    enum class FilterMode {
+        @SerialName("blacklist")
+        BlackList,
+
+        @SerialName("whitelist")
+        WhiteList,
     }
 
     @Serializable

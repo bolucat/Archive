@@ -26,12 +26,20 @@ func Open(path string) (*Reader, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	reader := &Reader{
-		reader: content,
-	}
-	err = reader.readMetadata()
+	reader, codes, err := NewReader(content)
 	if err != nil {
 		content.Close()
+		return nil, nil, err
+	}
+	return reader, codes, nil
+}
+
+func NewReader(readSeeker io.ReadSeeker) (*Reader, []string, error) {
+	reader := &Reader{
+		reader: readSeeker,
+	}
+	err := reader.readMetadata()
+	if err != nil {
 		return nil, nil, err
 	}
 	codes := make([]string, 0, len(reader.domainIndex))

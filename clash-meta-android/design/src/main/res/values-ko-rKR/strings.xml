@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="launch_name">Clash Meta</string>
-    <string name="application_name">Clash Meta for Android</string>
     <string name="stopped">중지됨</string>
     <string name="tap_to_start">연결하려면 터치</string>
     <string name="running">연결중</string>

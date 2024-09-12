@@ -33,7 +33,7 @@ string (REGEX REPLACE "[\n\t\r]" "" COMPILE_TIME ${COMPILE_TIME})
 string(REGEX REPLACE "\"" "" COMPILE_TIME ${COMPILE_TIME})
 
 # 生成版本信息
-set(GIT_VERSION "Meta_${CURRENT_BRANCH}_${COMMIT_HASH}_${COMPILE_TIME}")
+set(GIT_VERSION "${CURRENT_BRANCH}_${COMMIT_HASH}_${COMPILE_TIME}")
 message(STATUS "version info = ${GIT_VERSION}")
 
 # 去除空格

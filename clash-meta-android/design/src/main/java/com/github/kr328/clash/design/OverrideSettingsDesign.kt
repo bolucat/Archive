@@ -334,6 +334,22 @@ class OverrideSettingsDesign(
             )
 
             selectableList(
+                value = configuration.dns::fakeIPFilterMode,
+                values = arrayOf(
+                    null,
+                    ConfigurationOverride.FilterMode.BlackList,
+                    ConfigurationOverride.FilterMode.WhiteList
+                ),
+                valuesText = arrayOf(
+                    R.string.dont_modify,
+                    R.string.blacklist,
+                    R.string.whitelist
+                ),
+                title = R.string.fakeip_filter_mode,
+                configure = dnsDependencies::add,
+            )
+
+            selectableList(
                 value = configuration.dns.fallbackFilter::geoIp,
                 values = booleanValues,
                 valuesText = booleanValuesText,

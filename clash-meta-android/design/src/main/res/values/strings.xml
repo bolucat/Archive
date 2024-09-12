@@ -1,6 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="PluralsCandidate">
-    <string name="launch_name">Clash Meta</string>
-    <string name="application_name">Clash Meta for Android</string>
+    <string name="launch_name_meta">Clash Meta</string>
+    <string name="launch_name_alpha">Clash Meta Alpha</string>
+    <string name="application_name_meta">Clash Meta for Android</string>
+    <string name="application_name_alpha">Clash Meta for Android Alpha</string>
 
     <string name="stopped">Stopped</string>
     <string name="tap_to_start">Tap to start</string>
@@ -162,6 +164,7 @@
     <string name="fallback">Fallback Name Server</string>
     <string name="default_name_server">Default Name Server</string>
     <string name="fakeip_filter">Fake-IP Filter</string>
+    <string name="fakeip_filter_mode">Fake-IP Filter Mode</string>
     <string name="geoip_fallback">GeoIP Fallback</string>
     <string name="geoip_fallback_code">GeoIP Fallback Code</string>
     <string name="ipcidr_fallback">IPCIDR Fallback</string>
@@ -183,6 +186,9 @@
 
     <string name="mapping">Real-IP to domain mapping</string>
     <string name="fakeip">Fake-IP to domain mapping</string>
+
+    <string name="blacklist">Black List</string>
+    <string name="whitelist">White List</string>
 
     <string name="off">OFF</string>
     <string name="strict">Strict</string>

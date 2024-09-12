@@ -55,7 +55,7 @@ jobs:
 
       - name: Pre-release Build
         if: success()
-        run: ./gradlew --no-daemon app:assembleMeta-AlphaRelease
+        run: ./gradlew --no-daemon app:assembleAlphaRelease
 
       # Delete old Prerelease-alpha
       - uses: dev-drprasad/delete-tag-and-release@v1.1
@@ -76,7 +76,7 @@ jobs:
         if: ${{  success() }}
         with:
           tag_name: Prerelease-alpha
-          files: app/build/outputs/apk/meta-alpha/release/*
+          files: app/build/outputs/apk/alpha/release/*
           prerelease: true
           generate_release_notes: true
 

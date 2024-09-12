@@ -9,6 +9,7 @@ import "C"
 
 import (
 	"runtime"
+	"runtime/debug"
 
 	"cfa/native/config"
 	"cfa/native/delegate"
@@ -39,6 +40,7 @@ func reset() {
 	tunnel.CloseAllConnections()
 
 	runtime.GC()
+	debug.FreeOSMemory()
 }
 
 //export forceGc
@@ -47,5 +49,6 @@ func forceGc() {
 		log.Infoln("[APP] request force GC")
 
 		runtime.GC()
+		debug.FreeOSMemory()
 	}()
 }

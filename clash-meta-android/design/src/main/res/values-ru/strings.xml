@@ -1,7 +1,4 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="PluralsCandidate">
-    <string name="launch_name">Clash Meta</string>
-    <string name="application_name">Clash Meta для Android</string>
-
     <string name="stopped">Остановлен</string>
     <string name="tap_to_start">Нажмите для запуска</string>
     <string name="running">Запущен</string>
