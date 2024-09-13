@@ -6,7 +6,7 @@ icon: material/alert-decagram
 
 * Fixes and improvements
 
-_With the help of a netizen, we are in the process of relisting sing-box apps to the App Store, which is expected to be done within a month._
+_With the help of a netizen, we are in the process of getting sing-box apps back on the App Store, which should be completed within a month (TestFlight is already available)._
 
 #### 1.10.0-beta.7
 

@@ -19,6 +19,7 @@ use nyanpasu_ipc::api::status::CoreState;
 use profile::item_type::ProfileItemType;
 use serde_yaml::Mapping;
 use std::{borrow::Cow, collections::VecDeque, path::PathBuf};
+use storage::WebStorage;
 use sysproxy::Sysproxy;
 use tauri::AppHandle;
 use tray::icon::TrayIcon;
@@ -425,6 +426,13 @@ pub async fn get_proxies() -> CmdResult<crate::core::clash::proxies::Proxies> {
 }
 
 #[tauri::command]
+pub async fn mutate_proxies() -> CmdResult<crate::core::clash::proxies::Proxies> {
+    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
+    wrap_err!(ProxiesGuard::global().update().await)?;
+    Ok(ProxiesGuard::global().read().inner().clone())
+}
+
+#[tauri::command]
 pub async fn select_proxy(group: String, name: String) -> CmdResult<()> {
     use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
     wrap_err!(ProxiesGuard::global().select_proxy(&group, &name).await)?;
@@ -659,5 +667,23 @@ pub async fn get_service_install_prompt() -> CmdResult<String> {
 #[tauri::command]
 pub fn cleanup_processes(app_handle: AppHandle) -> CmdResult {
     crate::utils::help::cleanup_processes(&app_handle);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_storage_item(key: String) -> CmdResult<Option<String>> {
+    let value = wrap_err!(crate::core::storage::Storage::global().get_item(&key))?;
+    Ok(value)
+}
+
+#[tauri::command]
+pub fn set_storage_item(key: String, value: String) -> CmdResult {
+    wrap_err!(crate::core::storage::Storage::global().set_item(&key, &value))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_storage_item(key: String) -> CmdResult {
+    wrap_err!(crate::core::storage::Storage::global().remove_item(&key))?;
     Ok(())
 }

@@ -35,7 +35,7 @@ concurrency:
   group: ${{ github.workflow }} / ${{ startsWith(github.event_name, 'pull') && github.ref_name || github.sha }}
   cancel-in-progress: ${{ startsWith(github.event_name, 'pull') }}
 env:
-  CACHE_EPOCH: 130-1
+  CACHE_EPOCH: 130-2
   GOPROXY: direct
 jobs:
   docker_publish:
@@ -249,8 +249,8 @@ jobs:
           rm -f *.tar.gz
       - name: Build TGZ packages
         run: |
-          ./tools/build --variant cli --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -nc
-          ./tools/build --variant server --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -nc
+          ./tools/build --variant cli --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -use-static-build -nc
+          ./tools/build --variant server --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -use-static-build -nc
           ./tools/build --variant gui --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -nc
       - name: Run tests
         run: |

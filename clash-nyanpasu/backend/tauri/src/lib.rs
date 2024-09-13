@@ -310,6 +310,10 @@ pub fn run() -> std::io::Result<()> {
             ipc::is_appimage,
             ipc::get_service_install_prompt,
             ipc::cleanup_processes,
+            ipc::get_storage_item,
+            ipc::set_storage_item,
+            ipc::remove_storage_item,
+            ipc::mutate_proxies,
         ]);
 
     let app = builder

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16 FATAL_ERROR)
 
 if (CMAKE_CURRENT_BINARY_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   message(FATAL_ERROR "In source-tree build not support")
@@ -435,6 +435,13 @@ include(CMakeDependentOption)
 
 option(CLI "Build with cli." ON)
 option(SERVER "Build with server." ON)
+cmake_dependent_option(
+  CLI_STATIC_BUILD "Build with static build cli." OFF
+  "CLI AND LINUX" OFF)
+cmake_dependent_option(
+  SERVER_STATIC_BUILD "Build with static build server." OFF
+  "SERVER AND LINUX" OFF)
+
 option(GUI "Build against GUI." OFF)
 
 option(BUILD_BENCHMARKS "Build with benchmark." OFF)
@@ -3238,6 +3245,10 @@ elseif (USE_JSONCPP)
     third_party/jsoncpp/src/lib_json/json_writer.cpp
     third_party/jsoncpp/src/lib_json/json_valueiterator.inl
   )
+  if (USE_LTO_CMAKE)
+    set_property(TARGET jsoncpp
+      PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  endif()
   target_compile_definitions(jsoncpp PUBLIC
     -DJSON_USE_EXCEPTION=0
   )
@@ -4042,17 +4053,19 @@ add_library(yass_core STATIC
     src/config/config.cpp
     src/config/config_core.cpp
     src/config/config_network.cpp
+    src/config/config_ptype.cpp
     src/config/config_tls.cpp
     src/config/config_impl.cpp
     src/config/config_version.cpp
     src/config/config.hpp
-    src/config/config_impl.hpp
-    src/config/config_impl_local.hpp
-    src/config/config_impl_windows.hpp
     src/config/config_core.hpp
     src/config/config_export.hpp
     src/config/config_network.hpp
+    src/config/config_ptype.hpp
     src/config/config_tls.hpp
+    src/config/config_impl.hpp
+    src/config/config_impl_local.hpp
+    src/config/config_impl_windows.hpp
     src/core/logging.cpp
     src/core/logging.hpp
     src/core/check_op.cpp
@@ -4134,6 +4147,7 @@ target_link_libraries(yass_core PUBLIC
 
 set(SUPPORT_LIBS
   yass_core
+  ${CORE_LIBS}
   ${SUPPORT_LIBS})
 
 set(files
@@ -4332,6 +4346,9 @@ if (CLI)
     set_property(TARGET yass_cli
                  PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
   endif()
+  if (CLI_STATIC_BUILD)
+    target_link_options(yass_cli PRIVATE "-static")
+  endif()
 
   if (WIN32)
     set(CLI_MSVC_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/yass_cli.manifest")
@@ -4389,6 +4406,9 @@ if (SERVER)
   if (USE_LTO_CMAKE)
     set_property(TARGET yass_server
                  PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+  endif()
+  if (SERVER_STATIC_BUILD)
+    target_link_options(yass_server PRIVATE "-static")
   endif()
 
   if (WIN32)
