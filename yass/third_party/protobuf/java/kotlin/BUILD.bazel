@@ -1,10 +1,10 @@
 load("@io_bazel_rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library")
-load("@rules_java//java:defs.bzl", "java_proto_library")
 load("@rules_jvm_external//:kt_defs.bzl", "kt_jvm_export")
-load("@rules_pkg//:mappings.bzl", "pkg_files", "strip_prefix")
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("//:protobuf_version.bzl", "PROTOBUF_JAVA_VERSION")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 load("//:protobuf.bzl", "internal_gen_kt_protos")
+load("//:protobuf_version.bzl", "PROTOBUF_JAVA_VERSION")
+load("//bazel:java_proto_library.bzl", "java_proto_library")
+load("//bazel:proto_library.bzl", "proto_library")
 
 exports_files([
     "src/test/kotlin/com/google/protobuf/Proto3Test.kt",
@@ -59,8 +59,9 @@ kt_jvm_export(
     maven_coordinates = "com.google.protobuf:protobuf-kotlin:%s" % PROTOBUF_JAVA_VERSION,
     pom_template = "//java/kotlin:pom_template.xml",
     resources = [
-        "//:built_in_runtime_protos",
+        "//:java_features_proto",
         "//:well_known_type_protos",
+        "//src/google/protobuf:descriptor_proto_srcs",
     ],
     tags = ["manual"],
     runtime_deps = [
@@ -224,7 +225,7 @@ internal_gen_kt_protos(
 internal_gen_kt_protos(
     name = "gen_kotlin_unittest",
     visibility = ["//java:__subpackages__"],
-    deps = ["//:kt_unittest"],
+    deps = ["//src/google/protobuf:kt_unittest_protos"],
 )
 
 kt_jvm_library(
@@ -240,12 +241,13 @@ kt_jvm_library(
         ":well_known_protos_kotlin",
         "//java/core",
         "//java/core:generic_test_protos_java_proto",
+        "//java/core:lite_test_protos_java_proto",
     ],
 )
 
 internal_gen_kt_protos(
     name = "gen_kotlin_proto3_unittest",
-    deps = ["//:kt_proto3_unittest"],
+    deps = ["//src/google/protobuf:kt_proto3_unittest_protos"],
 )
 
 kt_jvm_library(
@@ -262,6 +264,7 @@ kt_jvm_library(
         ":shared_runtime",
         "//java/core",
         "//java/core:generic_test_protos_java_proto",
+        "//java/core:lite_test_protos_java_proto",
     ],
 )
 
@@ -312,6 +315,7 @@ internal_gen_kt_protos(
         "//:duration_proto",
         "//:empty_proto",
         "//:field_mask_proto",
+        "//:java_features_proto",
         "//:source_context_proto",
         "//:struct_proto",
         "//:timestamp_proto",

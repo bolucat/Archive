@@ -1,19 +1,26 @@
-cmake_minimum_required(VERSION 2.8.8)
+# Note: CMake support is community-based. The maintainers do not use CMake
+# internally.
 
-if (CMAKE_VERSION VERSION_LESS "3.1")
-  add_definitions(-std=c++11)
-else()
-  set(CMAKE_CXX_STANDARD 11)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_CXX_EXTENSIONS OFF)
-endif()
+cmake_minimum_required(VERSION 3.5)
 
 if (POLICY CMP0048)
   cmake_policy(SET CMP0048 NEW)
 endif (POLICY CMP0048)
 
+if (POLICY CMP0069)
+  cmake_policy(SET CMP0069 NEW)
+endif (POLICY CMP0069)
+
+if (POLICY CMP0077)
+  cmake_policy(SET CMP0077 NEW)
+endif (POLICY CMP0077)
+
 project(googletest-distribution)
-set(GOOGLETEST_VERSION 1.9.0)
+set(GOOGLETEST_VERSION 1.12.1)
+
+if(NOT CYGWIN AND NOT MSYS AND NOT ${CMAKE_SYSTEM_NAME} STREQUAL QNX)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+endif()
 
 enable_testing()
 

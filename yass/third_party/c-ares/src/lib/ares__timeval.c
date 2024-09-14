@@ -18,18 +18,55 @@
 
 #if defined(WIN32) && !defined(MSDOS)
 
+/* cherry-picked from 1.32.2 https://github.com/c-ares/c-ares/commit/8a50fc6c */
+static struct timeval ares__tvnow_qpc(void)
+{
+  struct timeval now;
+
+  /* see https://learn.microsoft.com/en-us/windows/win32/sysinfo/acquiring-high-resolution-time-stamps */
+  /* QueryPerformanceCounters() has been around since Windows 2000, though
+   * significant fixes were made in later versions (aka Vista).  Documentation states
+   * 1 microsecond or better resolution with a rollover not less than 100 years.
+   * This differs from GetTickCount{64}() which has a resolution between 10 and
+   * 16 ms. */
+  LARGE_INTEGER freq;
+  LARGE_INTEGER current;
+
+  /* Not sure how long it takes to get the frequency, I see it recommended to
+   * cache it */
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&current);
+
+  now.tv_sec = current.QuadPart / freq.QuadPart;
+  /* We want to prevent overflows so we get the remainder, then multiply to
+   * microseconds before dividing */
+  now.tv_usec = (unsigned int)(((current.QuadPart % freq.QuadPart) * 1000000) /
+              freq.QuadPart);
+  return now;
+}
+
 struct timeval ares__tvnow(void)
 {
-  /*
-  ** GetTickCount() is available on _all_ Windows versions from W95 up
-  ** to nowadays. Returns milliseconds elapsed since last system boot,
-  ** increases monotonically and wraps once 49.7 days have elapsed.
-  */
+#if defined(_WIN32) && defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0600
+  return ares__tvnow_qpc();
+#else
+  /* if vista or later */
+  static int init = 0;
+  static void* fp = NULL;
+  if (!init) {
+    init = 1;
+    fp = (void*)GetProcAddress(GetModuleHandleW(L"Kernel32.dll"), "GetTickCount64");
+  }
+  if (fp) {
+    return ares__tvnow_qpc();
+  }
   struct timeval now;
+
   DWORD milliseconds = GetTickCount();
   now.tv_sec = milliseconds / 1000;
   now.tv_usec = (milliseconds % 1000) * 1000;
   return now;
+#endif
 }
 
 #elif defined(HAVE_CLOCK_GETTIME_MONOTONIC)

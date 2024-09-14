@@ -4,7 +4,7 @@
   <parent>
     <groupId>com.google.protobuf</groupId>
     <artifactId>protobuf-parent</artifactId>
-    <version>3.21.12</version>
+    <version>4.27.2</version>
   </parent>
 
   <artifactId>protobuf-javalite</artifactId>
@@ -47,6 +47,7 @@
         <includes>
           <include>google/protobuf/any.proto</include>
           <include>google/protobuf/api.proto</include>
+          <include>google/protobuf/descriptor.proto</include>
           <include>google/protobuf/duration.proto</include>
           <include>google/protobuf/empty.proto</include>
           <include>google/protobuf/field_mask.proto</include>
@@ -55,6 +56,12 @@
           <include>google/protobuf/timestamp.proto</include>
           <include>google/protobuf/type.proto</include>
           <include>google/protobuf/wrappers.proto</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>${protobuf.java_source.dir}</directory>
+        <includes>
+          <include>google/protobuf/java_features.proto</include>
         </includes>
       </resource>
     </resources>
@@ -125,6 +132,7 @@
                     <include>Internal.java</include>
                     <include>InvalidProtocolBufferException.java</include>
                     <include>IterableByteBufferInputStream.java</include>
+                    <include>Java8Compatibility.java</include>
                     <include>JavaType.java</include>
                     <include>LazyField.java</include>
                     <include>LazyFieldLite.java</include>
@@ -156,11 +164,11 @@
                     <include>ProtoSyntax.java</include>
                     <include>Protobuf.java</include>
                     <include>ProtobufArrayList.java</include>
-                    <include>ProtobufLists.java</include>
                     <include>ProtocolStringList.java</include>
                     <include>RawMessageInfo.java</include>
                     <include>Reader.java</include>
                     <include>RopeByteString.java</include>
+                    <include>RuntimeVersion.java</include>
                     <include>Schema.java</include>
                     <include>SchemaFactory.java</include>
                     <include>SchemaUtil.java</include>
@@ -213,6 +221,7 @@
                     <exclude>GeneratedMessageTest.java</exclude>
                     <exclude>LazyFieldTest.java</exclude>
                     <exclude>LazyStringEndToEndTest.java</exclude>
+                    <exclude>LazilyParsedMessageSetTest.java</exclude>
                     <exclude>MapForProto2Test.java</exclude>
                     <exclude>MapTest.java</exclude>
                     <exclude>MessageTest.java</exclude>
@@ -223,12 +232,13 @@
                     <exclude>Proto2ExtensionLookupSchemaTest.java</exclude>
                     <exclude>Proto2SchemaTest.java</exclude>
                     <exclude>Proto2UnknownEnumValueTest.java</exclude>
-                    <exclude>RepeatedFieldBuilderV3Test.java</exclude>
+                    <exclude>RepeatedFieldBuilderTest.java</exclude>
                     <exclude>ServiceTest.java</exclude>
-                    <exclude>SingleFieldBuilderV3Test.java</exclude>
+                    <exclude>SingleFieldBuilderTest.java</exclude>
                     <exclude>TestBadIdentifiers.java</exclude>
                     <exclude>TextFormatParseInfoTreeTest.java</exclude>
                     <exclude>TextFormatParseLocationTest.java</exclude>
+                    <exclude>TextFormatPerformanceTest.java</exclude>
                     <exclude>TextFormatTest.java</exclude>
                     <exclude>TestUtil.java</exclude>
                     <exclude>TypeRegistryTest.java</exclude>

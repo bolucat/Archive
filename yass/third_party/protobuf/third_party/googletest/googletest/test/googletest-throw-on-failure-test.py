@@ -36,7 +36,7 @@ Google Test) with different environments and command line flags.
 """
 
 import os
-import gtest_test_utils
+from googletest.test import gtest_test_utils
 
 
 # Constants.
@@ -86,7 +86,7 @@ class ThrowOnFailureTest(gtest_test_utils.TestCase):
                         variable; None if the variable should be unset.
       flag_value:       value of the --gtest_break_on_failure flag;
                         None if the flag should not be present.
-      should_fail:      True iff the program is expected to fail.
+      should_fail:      True if and only if the program is expected to fail.
     """
 
     SetEnvVar(THROW_ON_FAILURE, env_var_value)

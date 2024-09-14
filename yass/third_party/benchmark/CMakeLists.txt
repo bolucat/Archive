@@ -1,7 +1,7 @@
 # Require CMake 3.10. If available, use the policies up to CMake 3.22.
 cmake_minimum_required (VERSION 3.10...3.22)
 
-project (benchmark VERSION 1.8.4 LANGUAGES CXX)
+project (benchmark VERSION 1.9.0 LANGUAGES CXX)
 
 option(BENCHMARK_ENABLE_TESTING "Enable testing of the benchmark library." ON)
 option(BENCHMARK_ENABLE_EXCEPTIONS "Enable the use of exceptions in the benchmark library." ON)
@@ -104,7 +104,7 @@ get_git_version(GIT_VERSION)
 
 # If no git version can be determined, use the version
 # from the project() command
-if ("${GIT_VERSION}" STREQUAL "0.0.0")
+if ("${GIT_VERSION}" STREQUAL "v0.0.0")
   set(VERSION "v${benchmark_VERSION}")
 else()
   set(VERSION "${GIT_VERSION}")
@@ -138,11 +138,7 @@ if (BENCHMARK_BUILD_32_BITS)
   add_required_cxx_compiler_flag(-m32)
 endif()
 
-if (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
-  set(BENCHMARK_CXX_STANDARD 14)
-else()
-  set(BENCHMARK_CXX_STANDARD 11)
-endif()
+set(BENCHMARK_CXX_STANDARD 14)
 
 set(CMAKE_CXX_STANDARD ${BENCHMARK_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
