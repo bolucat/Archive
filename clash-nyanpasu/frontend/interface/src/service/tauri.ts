@@ -24,7 +24,7 @@ export const getClashInfo = async () => {
   return await invoke<ClashInfo | null>("get_clash_info");
 };
 
-export const patchClashInfo = async (payload: Partial<ClashConfig>) => {
+export const patchClashConfig = async (payload: Partial<ClashConfig>) => {
   return await invoke<void>("patch_clash_config", { payload });
 };
 
@@ -168,6 +168,10 @@ export const openAppDataDir = async () => {
 
 export const openCoreDir = async () => {
   return await invoke<void>("open_core_dir");
+};
+
+export const getCoreDir = async () => {
+  return await invoke<string>("get_core_dir");
 };
 
 export const openLogsDir = async () => {

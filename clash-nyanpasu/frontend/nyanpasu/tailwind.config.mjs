@@ -22,6 +22,9 @@ const getMUuiScreen = () => {
 module.exports = {
   content: ["./src/**/*.{tsx,ts}", "../ui/**/*.{tsx,ts}"],
   darkMode: "selector",
+  corePlugins: {
+    preflight: true,
+  },
   theme: {
     extend: {
       maxHeight: {
