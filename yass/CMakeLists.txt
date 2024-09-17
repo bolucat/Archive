@@ -511,13 +511,10 @@ cmake_dependent_option(
   USE_SYSTEM_ZLIB "Build with system or vendored zlib" OFF
   USE_ZLIB OFF)
 
-option(USE_JSONCPP "Build with jsoncpp library" OFF)
+option(USE_JSONCPP "Build with jsoncpp library" ON)
 cmake_dependent_option(
   USE_SYSTEM_JSONCPP "Build with system or vendered jsoncpp library" OFF
   "USE_JSONCPP AND NOT USE_LIBCXX" OFF)
-cmake_dependent_option(
-  USE_SYSTEM_JSON "Build with system or vendered nlohmann json library" OFF
-  "NOT USE_JSONCPP" OFF)
 
 option(ENABLE_FORTIFY "Enable build with Fortify Source (linux only)" OFF)
 option(ENABLE_LTO "Enable build with LTO" OFF)
@@ -2994,14 +2991,21 @@ set(SUPPORT_LIBS modp_b64 ${SUPPORT_LIBS})
 # pip install -U jinja2
 
 if (USE_SYSTEM_MBEDTLS)
-  check_library_exists(mbedcrypto mbedtls_cipher_init "" HAVE_SYSTEM_MBEDTLS)
-  if (NOT HAVE_SYSTEM_MBEDTLS)
+  find_package(PkgConfig)
+  if (PKG_CONFIG_FOUND)
+    # IMPORTED_TARGET require cmake 3.6
+    pkg_check_modules(MBEDCRYPTO mbedcrypto IMPORTED_TARGET)
+  endif()
+  if(NOT MBEDCRYPTO_FOUND)
+    check_library_exists(mbedcrypto mbedtls_cipher_init "" HAVE_SYSTEM_MBEDTLS)
+  endif()
+  if (NOT MBEDCRYPTO_FOUND AND NOT HAVE_SYSTEM_MBEDTLS)
     message(STATUS "System mbedtls not found, using bundled one")
-    set(HAVE_SYSTEM_MBEDTLS FALSE)
+    set(USE_SYSTEM_MBEDTLS FALSE)
   endif()
 endif()
 
-if (USE_SYSTEM_MBEDTLS AND USE_MBEDTLS)
+if (USE_SYSTEM_MBEDTLS)
   message(STATUS "Compiling with system mbedtls library")
   list(APPEND YASS_APP_FEATURES "system mbedtls")
   set(SUPPORT_DEFINITIONS
@@ -3009,7 +3013,11 @@ if (USE_SYSTEM_MBEDTLS AND USE_MBEDTLS)
     ${SUPPORT_DEFINITIONS}
   )
 
-  set(SUPPORT_LIBS mbedcrypto ${SUPPORT_LIBS})
+  if (MBEDCRYPTO_FOUND)
+    set(SUPPORT_LIBS PkgConfig::MBEDCRYPTO ${SUPPORT_LIBS})
+  else()
+    set(SUPPORT_LIBS mbedcrypto ${SUPPORT_LIBS})
+  endif()
 elseif (USE_MBEDTLS)
   message(STATUS "Compiling with bundled mbedtls library")
   set(USE_SHARED_MBEDTLS_LIBRARY "OFF" CACHE STRING "")
@@ -3206,6 +3214,10 @@ set(SUPPORT_LIBS asio ${SUPPORT_LIBS})
 #           jsoncpp Library
 # *****************************************************************************************
 
+if (USE_SYSTEM_JSON)
+  message(WARNING "Compiling with nlohmann json support is no longer supported, ignoring...")
+endif()
+
 if (USE_SYSTEM_JSONCPP)
   find_package(PkgConfig)
   if (PKG_CONFIG_FOUND)
@@ -3221,10 +3233,6 @@ endif()
 if (USE_SYSTEM_JSONCPP)
   message(STATUS "Compiling with system jsoncpp")
   list(APPEND YASS_APP_FEATURES "system jsoncpp")
-  set(SUPPORT_DEFINITIONS
-    HAVE_JSONCPP
-    ${SUPPORT_DEFINITIONS}
-  )
   set(CORE_LIBS PkgConfig::JSONCPP ${CORE_LIBS})
 elseif (USE_JSONCPP)
   message(STATUS "Compiling with bundled jsoncpp library")
@@ -3255,40 +3263,13 @@ elseif (USE_JSONCPP)
   target_include_directories(jsoncpp PUBLIC third_party/jsoncpp/include)
   target_include_directories(jsoncpp PRIVATE third_party/jsoncpp/src/lib_json)
   list(APPEND YASS_APP_FEATURES "jsoncpp")
-  set(SUPPORT_DEFINITIONS
-    HAVE_JSONCPP
-    ${SUPPORT_DEFINITIONS}
-  )
   set(SUPPORT_INCLUDE_DIRS
     third_party/jsoncpp/include
     ${SUPPORT_INCLUDE_DIRS}
   )
   set(CORE_LIBS jsoncpp ${CORE_LIBS})
-endif()
-
-# *****************************************************************************************
-#           nlohmann json Library
-# *****************************************************************************************
-
-if (USE_SYSTEM_JSON)
-  check_cxx_source_compiles ("
-#include <nlohmann/json.hpp>
-int main() {}
-" HAVE_SYSTEM_JSON)
-  if (NOT HAVE_SYSTEM_JSON)
-    message(STATUS "System nlohmann json library not found, using bundled one")
-    set(USE_SYSTEM_JSON FALSE)
-  endif()
-endif()
-
-if (USE_SYSTEM_JSON)
-  message(STATUS "Compiling with system nlohmann json library")
-elseif (NOT USE_JSONCPP)
-  message(STATUS "Compiling with bundled nlohmann json library")
-  set(SUPPORT_INCLUDE_DIRS
-    third_party/json/include
-    ${SUPPORT_INCLUDE_DIRS}
-  )
+else()
+  message(FATAL_ERROR "Compiling without jsoncpp support is no longer supported")
 endif()
 
 # *****************************************************************************************
@@ -4303,6 +4284,7 @@ target_include_directories(yass_net PUBLIC
 target_compile_definitions(yass_net PUBLIC
   ${SUPPORT_DEFINITIONS})
 
+target_link_directories(yass_net PUBLIC ${SUPPORT_LIB_DIRS})
 target_link_libraries(yass_net PUBLIC ${SUPPORT_LIBS})
 
 if (ANDROID)
@@ -5065,12 +5047,11 @@ endif()
 # *****************************************************************************************
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)
-  file(READ LICENSE                                         _YASS_LICENSE)
+  file(READ LICENSES/GPL-2.0                                _YASS_LICENSE)
   file(READ third_party/abseil-cpp/LICENSE                  _ABSEIL_CPP_LICENSE)
   file(READ third_party/asio/asio/LICENSE_1_0.txt           _ASIO_LICENSE)
   file(READ third_party/boringssl/src/LICENSE               _BORINGSSL_LICENSE)
   file(READ third_party/googleurl/LICENSE                   _GOOGLEURL_LICENSE)
-  file(READ third_party/json/LICENSE.MIT                    _JSON_LICENSE)
   file(READ third_party/jsoncpp/LICENSE                     _JSONCPP_LICENSE)
   file(READ third_party/leveldb/LICENSE                     _LEVELDB_LICENSE)
   file(READ third_party/libc++/trunk/LICENSE.TXT            _LIBCXX_LICENSE)
@@ -5090,7 +5071,7 @@ if(NOT CMAKE_SKIP_INSTALL_RULES)
   file(READ third_party/mimalloc/LICENSE                    _MIMALLOC_LICENSE)
 
   set(LICENSE_FILE "${CMAKE_CURRENT_BINARY_DIR}/LICENSE")
-  configure_file("LICENSE.cmake.in" "${LICENSE_FILE}" @ONLY)
+  configure_file("LICENSES/LICENSE.cmake.in" "${LICENSE_FILE}" @ONLY)
   install(FILES "${LICENSE_FILE}" DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 endif()
 
