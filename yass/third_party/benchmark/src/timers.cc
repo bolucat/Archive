@@ -17,9 +17,9 @@
 #include "internal_macros.h"
 
 #ifdef BENCHMARK_OS_WINDOWS
+struct IUnknown;
 #include <shlwapi.h>
 #undef StrCat  // Don't let StrCat in string_util.h be renamed to lstrcatA
-#include <versionhelpers.h>
 #include <windows.h>
 #else
 #include <fcntl.h>

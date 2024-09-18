@@ -104,7 +104,7 @@ jobs:
       - name: Build
         run: |
           set VCToolsVersion=
-          set Winsdk=10.0.19041.0
+          set Winsdk=10.0.22621.0
           set "WindowsSDKVersion=%Winsdk%\"
           if "${{ matrix.arch }}" == "arm64" (call :SetNewVCToolsVersion)
           set vsdevcmd=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat
@@ -235,9 +235,6 @@ jobs:
           popd
           pushd third_party/libc++abi/trunk
           patch -p1 < ../winxp.patch
-          popd
-          pushd third_party/benchmark
-          patch -p1 < ../benchmark-winxp-fix.patch
           popd
           echo "BUILD_OPTIONS=-mingw-allow-xp -enable-lto=false" >> $GITHUB_ENV
       - name: Build

@@ -32,6 +32,17 @@ define Device/armsom_sige1
 endef
 TARGET_DEVICES += armsom_sige1
 
+define Device/armsom_sige3
+  DEVICE_VENDOR := ArmSoM
+  DEVICE_MODEL := Sige3
+  SOC := rk3568
+  DEVICE_DTS := rockchip/rk3568-armsom-sige3
+  UBOOT_DEVICE_NAME := sige3-rk3568
+  IMAGE/sysupgrade.img.gz := boot-common | boot-script vop | pine64-img | gzip | append-metadata
+  DEVICE_PACKAGES := kmod-brcmfmac kmod-r8125 wpad-openssl brcmfmac-firmware-43752-sdio brcmfmac-nvram-43752-sdio -urngd
+endef
+TARGET_DEVICES += armsom_sige3
+
 define Device/codinge_xiaobao-nas-v1
   DEVICE_VENDOR := Codinge
   DEVICE_MODEL := XiaoBao NAS-I
@@ -320,6 +331,17 @@ define Device/rocktech_mpc1903
   DEVICE_PACKAGES := kmod-usb-net-smsc75xx kmod-usb-serial-cp210x -urngd
 endef
 TARGET_DEVICES += rocktech_mpc1903
+
+define Device/rumu3f_fine-3399
+  DEVICE_VENDOR := RUMU3F
+  DEVICE_MODEL := FINE 3399
+  SOC := rk3399
+  UBOOT_DEVICE_NAME := fine-3399-rk3399
+  IMAGE/sysupgrade.img.gz := boot-common | boot-script | pine64-bin | gzip | append-metadata
+  DEVICE_PACKAGES := kmod-r8168 -urngd
+endef
+TARGET_DEVICES += rumu3f_fine-3399
+
 
 define Device/scensmart_sv901-eaio
   DEVICE_VENDOR := ScenSmart

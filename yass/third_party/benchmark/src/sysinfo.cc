@@ -15,16 +15,15 @@
 #include "internal_macros.h"
 
 #ifdef BENCHMARK_OS_WINDOWS
-#if !defined(WINVER) || WINVER < 0x0600
-#undef WINVER
-#define WINVER 0x0600
-#endif  // WINVER handling
+struct IUnknown;
 #include <shlwapi.h>
 #undef StrCat  // Don't let StrCat in string_util.h be renamed to lstrcatA
-#include <versionhelpers.h>
 #include <windows.h>
 
 #include <codecvt>
+#ifndef WC_ERR_INVALID_CHARS
+#define WC_ERR_INVALID_CHARS      0x00000080  // error for invalid chars
+#endif
 #else
 #include <fcntl.h>
 #if !defined(BENCHMARK_OS_FUCHSIA) && !defined(BENCHMARK_OS_QURT)
@@ -748,8 +747,7 @@ double GetCPUCyclesPerSecond(CPUInfo::Scaling scaling) {
   // In NT, read MHz from the registry. If we fail to do so or we're in win9x
   // then make a crude estimate.
   DWORD data, data_size = sizeof(data);
-  if (IsWindowsXPOrGreater() &&
-      SUCCEEDED(
+  if (SUCCEEDED(
           SHGetValueA(HKEY_LOCAL_MACHINE,
                       "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0",
                       "~MHz", nullptr, &data, &data_size)))

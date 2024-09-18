@@ -7,20 +7,18 @@
 
     @MainActor
     public struct ImportProfileView: View {
+        @EnvironmentObject private var environments: ExtensionEnvironments
         @Environment(\.dismiss) private var dismiss
 
         @State private var isLoading = false
         @State private var selected = false
         @State private var alert: Alert?
-        @State private var connection: NWSocket?
+        @State private var connection: NWConnection?
+        @State private var socket: NWSocket?
         @State private var profiles: [LibboxProfilePreview]?
         @State private var isImporting = false
-        private let callback: () async -> Void
 
-        public init(callback: @escaping () async -> Void) {
-            self.callback = callback
-        }
-
+        public init() {}
         public var body: some View {
             VStack(alignment: .center) {
                 if !selected {
@@ -73,13 +71,33 @@
         }
 
         private func reset() {
+            if let connection {
+                connection.stateUpdateHandler = nil
+                connection.cancel()
+                self.connection = nil
+            }
+            if let socket {
+                socket.cancel()
+                self.socket = nil
+            }
             selected = false
             profiles = nil
         }
 
         private func handleEndpoint(_ endpoint: NWEndpoint) async {
             let connection = NWConnection(to: endpoint, using: NWParameters.applicationService)
-            self.connection = NWSocket(connection)
+            self.connection = connection
+            socket = NWSocket(connection)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case let .failed(error):
+                    DispatchQueue.main.async { [self] in
+                        reset()
+                        alert = Alert(error)
+                    }
+                default: break
+                }
+            }
             connection.start(queue: .global())
             do {
                 try await loopMessages()
@@ -90,13 +108,13 @@
         }
 
         private nonisolated func loopMessages() async throws {
-            guard let connection = await connection else {
+            guard let socket = await socket else {
                 return
             }
             var message: Data
             while true {
                 do {
-                    message = try connection.read()
+                    message = try socket.read()
                 } catch {
                     throw NSError(domain: "read from connection: \(error.localizedDescription)", code: 0)
                 }
@@ -133,6 +151,7 @@
                         throw error
                     }
                     try await importProfile(content!)
+                    return
                 default:
                     throw NSError(domain: "unknown message type \(message[0])", code: 0)
                 }
@@ -143,10 +162,14 @@
             guard let connection else {
                 return
             }
+            guard let socket else {
+                return
+            }
+            connection.stateUpdateHandler = nil
             let request = LibboxProfileContentRequest()
             request.profileID = profileID
             do {
-                try connection.write(request.encode())
+                try socket.write(request.encode())
                 isImporting = true
             } catch {
                 alert = Alert(error)
@@ -176,8 +199,9 @@
                 lastUpdated = Date(timeIntervalSince1970: Double(content.lastUpdated))
             }
             try await ProfileManager.create(Profile(name: content.name, type: type, path: profileConfig.relativePath, remoteURL: content.remotePath, autoUpdate: content.autoUpdate, lastUpdated: lastUpdated))
-            await callback()
+            await reset()
             await MainActor.run {
+                environments.profileUpdate.send()
                 dismiss()
             }
         }

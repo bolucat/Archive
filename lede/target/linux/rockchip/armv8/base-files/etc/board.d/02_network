@@ -26,7 +26,9 @@ rockchip_setup_interfaces()
 		ucidef_set_interfaces_lan_wan 'eth1' 'eth0'
 		;;
 	armsom,sige1|\
+	armsom,sige3|\
 	fastrhino,r66s|\
+	fine,3399|\
 	firefly,rk3568-roc-pc|\
 	friendlyarm,nanopi-r5c|\
 	hinlink,opc-h28k|\
@@ -85,12 +87,15 @@ rockchip_setup_macs()
 	case "$board" in
 	advantech,rsb4810|\
 	ariaboard,photonicat|\
+	armsom,sige1|\
+	armsom,sige3|\
 	codinge,xiaobao-nas-v1|\
 	dilusense,dlfr100|\
 	ezpro,mrkaio-m68s|\
 	ezpro,mrkaio-m68s-plus|\
 	fastrhino,r66s|\
 	fastrhino,r68s|\
+	fine,3399|\
 	firefly,rk3568-roc-pc|\
 	friendlyarm,nanopi-r2c|\
 	friendlyarm,nanopi-r2s|\

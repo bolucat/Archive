@@ -304,17 +304,6 @@ if (WIN32 AND "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 endif()
 
 # C++ feature checks
-# Determine the correct regular expression engine to use
-cxx_feature_check(STD_REGEX ${EXTRA_CXX_FLAGS})
-cxx_feature_check(GNU_POSIX_REGEX ${EXTRA_CXX_FLAGS})
-cxx_feature_check(POSIX_REGEX ${EXTRA_CXX_FLAGS})
-if(NOT HAVE_STD_REGEX AND NOT HAVE_GNU_POSIX_REGEX AND NOT HAVE_POSIX_REGEX)
-  message(FATAL_ERROR "Failed to determine the source files for the regular expression backend")
-endif()
-if (NOT BENCHMARK_ENABLE_EXCEPTIONS AND HAVE_STD_REGEX
-        AND NOT HAVE_GNU_POSIX_REGEX AND NOT HAVE_POSIX_REGEX)
-  message(WARNING "Using std::regex with exceptions disabled is not fully supported")
-endif()
 
 cxx_feature_check(STEADY_CLOCK)
 # Ensure we have pthreads

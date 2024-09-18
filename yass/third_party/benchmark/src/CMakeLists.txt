@@ -35,6 +35,9 @@ set_property(
   BENCHMARK_VERSION="${VERSION}"
 )
 
+# link with re2
+target_link_libraries(benchmark PRIVATE re2)
+
 # libpfm, if available
 if (PFM_FOUND)
   target_link_libraries(benchmark PRIVATE PFM::libpfm)

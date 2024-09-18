@@ -156,8 +156,5 @@ public class CommandClient: ObservableObject {
                 commandClient.clashMode = newMode!
             }
         }
-        
-        func write(_ message: LibboxConnections?) {
-        }
     }
 }

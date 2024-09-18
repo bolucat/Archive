@@ -14,23 +14,19 @@ public struct MainView: View {
     @State private var alert: Alert?
 
     public init() {}
-    public var body: some View {
-        if ApplicationLibrary.inPreview {
-            body1.frame(width: 1280, height: 750, alignment: .topLeading)
-        } else {
-            body1
-        }
-    }
 
-    private var body1: some View {
+    public var body: some View {
         NavigationSplitView {
             SidebarView()
+                .navigationSplitViewColumnWidth(150)
         } detail: {
             NavigationStack {
                 selection.contentView
                     .navigationTitle(selection.title)
             }
+            .navigationSplitViewColumnWidth(650)
         }
+        .frame(minHeight: 500)
         .onAppear {
             environments.postReload()
             #if !DEBUG
@@ -60,7 +56,6 @@ public struct MainView: View {
         .onReceive(environments.openSettings) {
             selection = .settings
         }
-        .formStyle(.grouped)
         .environment(\.selection, $selection)
         .environment(\.importProfile, $importProfile)
         .environment(\.importRemoteProfile, $importRemoteProfile)
