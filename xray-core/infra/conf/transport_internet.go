@@ -235,10 +235,10 @@ type SplitHTTPConfig struct {
 }
 
 type Xmux struct {
-	maxConnections *Int32Range `json:"maxConnections"`
-	maxConcurrency *Int32Range `json:"maxConcurrency"`
-	cMaxReuseTimes *Int32Range `json:"cMaxReuseTimes"`
-	cMaxLifetimeMs *Int32Range `json:"cMaxLifetimeMs"`
+	MaxConcurrency *Int32Range `json:"maxConcurrency"`
+	MaxConnections *Int32Range `json:"maxConnections"`
+	CMaxReuseTimes *Int32Range `json:"cMaxReuseTimes"`
+	CMaxLifetimeMs *Int32Range `json:"cMaxLifetimeMs"`
 }
 
 func splithttpNewRandRangeConfig(input *Int32Range) *splithttp.RandRangeConfig {
@@ -263,16 +263,16 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		c.Host = c.Headers["Host"]
 	}
 
-	if c.Xmux.maxConnections != nil && c.Xmux.maxConcurrency != nil {
+	if c.Xmux.MaxConnections != nil && c.Xmux.MaxConnections.To > 0 && c.Xmux.MaxConcurrency != nil && c.Xmux.MaxConcurrency.To > 0 {
 		return nil, errors.New("maxConnections cannot be specified together with maxConcurrency")
 	}
 
 	// Multiplexing config
 	muxProtobuf := splithttp.Multiplexing{
-		MaxConnections: splithttpNewRandRangeConfig(c.Xmux.maxConnections),
-		MaxConcurrency: splithttpNewRandRangeConfig(c.Xmux.maxConcurrency),
-		CMaxReuseTimes: splithttpNewRandRangeConfig(c.Xmux.cMaxReuseTimes),
-		CMaxLifetimeMs: splithttpNewRandRangeConfig(c.Xmux.cMaxLifetimeMs),
+		MaxConcurrency: splithttpNewRandRangeConfig(c.Xmux.MaxConcurrency),
+		MaxConnections: splithttpNewRandRangeConfig(c.Xmux.MaxConnections),
+		CMaxReuseTimes: splithttpNewRandRangeConfig(c.Xmux.CMaxReuseTimes),
+		CMaxLifetimeMs: splithttpNewRandRangeConfig(c.Xmux.CMaxLifetimeMs),
 	}
 
 	config := &splithttp.Config{
@@ -779,19 +779,19 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 }
 
 type StreamConfig struct {
-	Network             *TransportProtocol  `json:"network"`
-	Security            string              `json:"security"`
-	TLSSettings         *TLSConfig          `json:"tlsSettings"`
-	REALITYSettings     *REALITYConfig      `json:"realitySettings"`
-	TCPSettings         *TCPConfig          `json:"tcpSettings"`
-	KCPSettings         *KCPConfig          `json:"kcpSettings"`
-	WSSettings          *WebSocketConfig    `json:"wsSettings"`
-	HTTPSettings        *HTTPConfig         `json:"httpSettings"`
-	SocketSettings      *SocketConfig       `json:"sockopt"`
-	GRPCConfig          *GRPCConfig         `json:"grpcSettings"`
-	GUNConfig           *GRPCConfig         `json:"gunSettings"`
-	HTTPUPGRADESettings *HttpUpgradeConfig  `json:"httpupgradeSettings"`
-	SplitHTTPSettings   *SplitHTTPConfig    `json:"splithttpSettings"`
+	Network             *TransportProtocol `json:"network"`
+	Security            string             `json:"security"`
+	TLSSettings         *TLSConfig         `json:"tlsSettings"`
+	REALITYSettings     *REALITYConfig     `json:"realitySettings"`
+	TCPSettings         *TCPConfig         `json:"tcpSettings"`
+	KCPSettings         *KCPConfig         `json:"kcpSettings"`
+	WSSettings          *WebSocketConfig   `json:"wsSettings"`
+	HTTPSettings        *HTTPConfig        `json:"httpSettings"`
+	SocketSettings      *SocketConfig      `json:"sockopt"`
+	GRPCConfig          *GRPCConfig        `json:"grpcSettings"`
+	GUNConfig           *GRPCConfig        `json:"gunSettings"`
+	HTTPUPGRADESettings *HttpUpgradeConfig `json:"httpupgradeSettings"`
+	SplitHTTPSettings   *SplitHTTPConfig   `json:"splithttpSettings"`
 }
 
 // Build implements Buildable.
