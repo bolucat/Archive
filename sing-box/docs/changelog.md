@@ -2,7 +2,12 @@
 icon: material/alert-decagram
 ---
 
-#### 1.10.0-beta.9
+#### 1.10.0-beta.10
+
+* Add `process_path_regex` rule item
+* Fixes and improvements
+
+### 1.9.6
 
 * Fixes and improvements
 

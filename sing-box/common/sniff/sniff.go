@@ -40,21 +40,27 @@ func PeekStream(ctx context.Context, metadata *adapter.InboundContext, conn net.
 	}
 	deadline := time.Now().Add(timeout)
 	var errors []error
-	err := conn.SetReadDeadline(deadline)
-	if err != nil {
-		return E.Cause(err, "set read deadline")
-	}
-	defer conn.SetReadDeadline(time.Time{})
-	for _, sniffer := range sniffers {
-		if buffer.IsEmpty() {
-			err = sniffer(ctx, metadata, io.TeeReader(conn, buffer))
-		} else {
-			err = sniffer(ctx, metadata, io.MultiReader(bytes.NewReader(buffer.Bytes()), io.TeeReader(conn, buffer)))
+	for i := 0; ; i++ {
+		err := conn.SetReadDeadline(deadline)
+		if err != nil {
+			return E.Cause(err, "set read deadline")
 		}
-		if err == nil {
-			return nil
+		_, err = buffer.ReadOnceFrom(conn)
+		_ = conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			if i > 0 {
+				break
+			}
+			return E.Cause(err, "read payload")
 		}
-		errors = append(errors, err)
+		errors = nil
+		for _, sniffer := range sniffers {
+			err = sniffer(ctx, metadata, bytes.NewReader(buffer.Bytes()))
+			if err == nil {
+				return nil
+			}
+			errors = append(errors, err)
+		}
 	}
 	return E.Errors(errors...)
 }
