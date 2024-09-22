@@ -22,6 +22,7 @@ import (
 	"github.com/metacubex/mihomo/component/profile"
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	"github.com/metacubex/mihomo/component/resolver"
+	"github.com/metacubex/mihomo/component/resource"
 	"github.com/metacubex/mihomo/component/sniffer"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/component/trie"
@@ -172,6 +173,7 @@ func GetGeneral() *config.General {
 		Sniffing:                tunnel.IsSniffing(),
 		GlobalClientFingerprint: tlsC.GetGlobalFingerprint(),
 		GlobalUA:                mihomoHttp.UA(),
+		ETagSupport:             resource.ETag(),
 	}
 
 	return general
@@ -381,13 +383,13 @@ func updateTunnels(tunnels []LC.Tunnel) {
 }
 
 func initExternalUI() {
-	if updater.AutoUpdateUI {
+	if updater.AutoDownloadUI {
 		dirEntries, _ := os.ReadDir(updater.ExternalUIPath)
 		if len(dirEntries) > 0 {
 			log.Infoln("UI already exists, skip downloading")
 		} else {
 			log.Infoln("External UI downloading ...")
-			updater.UpdateUI()
+			updater.DownloadUI()
 		}
 	}
 }

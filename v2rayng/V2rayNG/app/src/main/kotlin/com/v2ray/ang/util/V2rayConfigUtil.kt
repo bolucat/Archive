@@ -30,7 +30,7 @@ object V2rayConfigUtil {
         try {
             val config = MmkvManager.decodeServerConfig(guid) ?: return Result(false)
             if (config.configType == EConfigType.CUSTOM) {
-                val raw = MmkvManager.serverRawStorage?.decodeString(guid)
+                val raw = MmkvManager.decodeServerRaw(guid)
                 val customConfig = if (raw.isNullOrBlank()) {
                     config.fullConfig?.toPrettyPrinting() ?: return Result(false)
                 } else {
@@ -377,6 +377,7 @@ object V2rayConfigUtil {
             val protocol = outbound.protocol
             if (protocol.equals(EConfigType.SHADOWSOCKS.name, true)
                 || protocol.equals(EConfigType.SOCKS.name, true)
+                || protocol.equals(EConfigType.HTTP.name, true)
                 || protocol.equals(EConfigType.TROJAN.name, true)
                 || protocol.equals(EConfigType.WIREGUARD.name, true)
             ) {
@@ -526,7 +527,7 @@ object V2rayConfigUtil {
             val outbound = v2rayConfig.outbounds[0]
 
             //Previous proxy
-            val prevNode = MmkvManager.getServerViaRemarks(subItem.prevProfile)
+            val prevNode = SettingsManager.getServerViaRemarks(subItem.prevProfile)
             if (prevNode != null) {
                 val prevOutbound = prevNode.getProxyOutbound()
                 if (prevOutbound != null) {
@@ -542,7 +543,7 @@ object V2rayConfigUtil {
             }
 
             //Next proxy
-            val nextNode = MmkvManager.getServerViaRemarks(subItem.nextProfile)
+            val nextNode = SettingsManager.getServerViaRemarks(subItem.nextProfile)
             if (nextNode != null) {
                 val nextOutbound = nextNode.getProxyOutbound()
                 if (nextOutbound != null) {
