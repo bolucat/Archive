@@ -2,10 +2,21 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-beta.11
+
+* Update uTLS to v1.6.7 **1**
+* Add ipk in release artifacts
+
+**1**:
+
+Some legacy chrome fingerprints have been removed and will fallback to chrome, see [utls](/configuration/shared/tls#utls).
+
 #### 1.10.0-beta.10
 
 * Add `process_path_regex` rule item
 * Fixes and improvements
+
+_The macOS standalone versions of sing-box (>=1.9.5/<1.10.0-beta.11) now silently fail and require manual granting of the **Full Disk Access** permission to system extension to start, probably due to Apple's changed security policy. We will prompt users about this in feature versions._
 
 ### 1.9.6
 

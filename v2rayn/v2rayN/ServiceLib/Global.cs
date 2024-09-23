@@ -137,25 +137,25 @@
         {
             {EConfigType.VMess,"vmess://"},
             {EConfigType.Shadowsocks,"ss://"},
-            {EConfigType.Socks,"socks://"},
+            {EConfigType.SOCKS,"socks://"},
             {EConfigType.VLESS,"vless://"},
             {EConfigType.Trojan,"trojan://"},
             {EConfigType.Hysteria2,"hysteria2://"},
-            {EConfigType.Tuic,"tuic://"},
-            {EConfigType.Wireguard,"wireguard://"}
+            {EConfigType.TUIC,"tuic://"},
+            {EConfigType.WireGuard,"wireguard://"}
         };
 
         public static readonly Dictionary<EConfigType, string> ProtocolTypes = new()
         {
             {EConfigType.VMess,"vmess"},
             {EConfigType.Shadowsocks,"shadowsocks"},
-            {EConfigType.Socks,"socks"},
-            {EConfigType.Http,"http"},
+            {EConfigType.SOCKS,"socks"},
+            {EConfigType.HTTP,"http"},
             {EConfigType.VLESS,"vless"},
             {EConfigType.Trojan,"trojan"},
             {EConfigType.Hysteria2,"hysteria2"},
-            {EConfigType.Tuic,"tuic"},
-            {EConfigType.Wireguard,"wireguard"}
+            {EConfigType.TUIC,"tuic"},
+            {EConfigType.WireGuard,"wireguard"}
         };
 
         public static readonly List<string> VmessSecurities = new() { "aes-128-gcm", "chacha20-poly1305", "auto", "none", "zero" };
@@ -166,7 +166,7 @@
         public static readonly List<string> Flows = new() { "", "xtls-rprx-vision", "xtls-rprx-vision-udp443" };
         public static readonly List<string> Networks = new() { "tcp", "kcp", "ws", "httpupgrade", "splithttp", "h2", "quic", "grpc" };
         public static readonly List<string> KcpHeaderTypes = new() { "srtp", "utp", "wechat-video", "dtls", "wireguard" };
-        public static readonly List<string> CoreTypes = new() { "v2fly", "SagerNet", "Xray", "sing_box" };
+        public static readonly List<string> CoreTypes = new() { "v2fly", "Xray", "sing_box" };//TODO
         public static readonly List<string> CoreTypes4VLESS = new() { "Xray", "sing_box" };
         public static readonly List<string> DomainStrategies = new() { "AsIs", "IPIfNonMatch", "IPOnDemand" };
         public static readonly List<string> DomainStrategies4Singbox = new() { "ipv4_only", "ipv6_only", "prefer_ipv4", "prefer_ipv6", "" };

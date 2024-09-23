@@ -36,8 +36,9 @@ namespace v2rayN.Views
             menuCheckUpdate.Click += MenuCheckUpdate_Click;
             menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
 
+            var IsAdministrator = WindowsUtils.IsAdministrator();
             MessageBus.Current.Listen<string>(Global.CommandSendSnackMsg).Subscribe(x => DelegateSnackMsg(x));
-            ViewModel = new MainWindowViewModel(UpdateViewHandler);
+            ViewModel = new MainWindowViewModel(IsAdministrator, UpdateViewHandler);
             Locator.CurrentMutable.RegisterLazySingleton(() => ViewModel, typeof(MainWindowViewModel));
 
             WindowsHandler.Instance.RegisterGlobalHotkey(_config, OnHotkeyHandler, null);
@@ -143,20 +144,7 @@ namespace v2rayN.Views
                 }
             });
 
-            var IsAdministrator = WindowsUtils.IsAdministrator();
-            ViewModel.IsAdministrator = IsAdministrator;
             this.Title = $"{Utils.GetVersion()} - {(IsAdministrator ? ResUI.RunAsAdmin : ResUI.NotRunAsAdmin)}";
-            if (_config.tunModeItem.enableTun)
-            {
-                if (IsAdministrator)
-                {
-                    ViewModel.EnableTun = true;
-                }
-                else
-                {
-                    _config.tunModeItem.enableTun = ViewModel.EnableTun = false;
-                }
-            }
 
             if (!_config.guiItem.enableHWA)
             {
@@ -505,7 +493,8 @@ namespace v2rayN.Views
         {
             var coreInfo = CoreInfoHandler.Instance.GetCoreInfo();
             foreach (var it in coreInfo
-                .Where(t => t.coreType != ECoreType.v2fly
+                .Where(t => t.coreType != ECoreType.v2fly 
+                            && t.coreType != ECoreType.SagerNet
                             && t.coreType != ECoreType.clash
                             && t.coreType != ECoreType.clash_meta
                             && t.coreType != ECoreType.hysteria))

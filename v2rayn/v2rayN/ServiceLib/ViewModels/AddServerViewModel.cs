@@ -21,7 +21,7 @@ namespace ServiceLib.ViewModels
             _noticeHandler = Locator.Current.GetService<NoticeHandler>();
             _updateView = updateView;
 
-            if (profileItem.id.IsNullOrEmpty())
+            if (profileItem.indexId.IsNullOrEmpty())
             {
                 profileItem.network = Global.DefaultNetwork;
                 profileItem.headerType = Global.None;
@@ -74,8 +74,8 @@ namespace ServiceLib.ViewModels
                     return;
                 }
             }
-            if (SelectedSource.configType != EConfigType.Socks
-                && SelectedSource.configType != EConfigType.Http)
+            if (SelectedSource.configType != EConfigType.SOCKS
+                && SelectedSource.configType != EConfigType.HTTP)
             {
                 if (Utils.IsNullOrEmpty(SelectedSource.id))
                 {

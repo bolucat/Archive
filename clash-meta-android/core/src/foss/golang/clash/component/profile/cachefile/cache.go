@@ -1,10 +1,12 @@
 package cachefile
 
 import (
+	"math"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/profile"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -19,6 +21,7 @@ var (
 
 	bucketSelected = []byte("selected")
 	bucketFakeip   = []byte("fakeip")
+	bucketETag     = []byte("etag")
 )
 
 // CacheFile store and update the cache file
@@ -69,78 +72,56 @@ func (c *CacheFile) SelectedMap() map[string]string {
 	return mapping
 }
 
-func (c *CacheFile) PutFakeip(key, value []byte) error {
+func (c *CacheFile) SetETagWithHash(url string, hash utils.HashType, etag string) {
 	if c.DB == nil {
-		return nil
+		return
 	}
 
+	lenHash := hash.Len()
+	if lenHash > math.MaxUint8 {
+		return // maybe panic is better
+	}
+
+	data := make([]byte, 1, 1+lenHash+len(etag))
+	data[0] = uint8(lenHash)
+	data = append(data, hash.Bytes()...)
+	data = append(data, etag...)
+
 	err := c.DB.Batch(func(t *bbolt.Tx) error {
-		bucket, err := t.CreateBucketIfNotExists(bucketFakeip)
+		bucket, err := t.CreateBucketIfNotExists(bucketETag)
 		if err != nil {
 			return err
 		}
-		return bucket.Put(key, value)
+
+		return bucket.Put([]byte(url), data)
 	})
 	if err != nil {
 		log.Warnln("[CacheFile] write cache to %s failed: %s", c.DB.Path(), err.Error())
+		return
 	}
-
-	return err
 }
-
-func (c *CacheFile) DelFakeipPair(ip, host []byte) error {
+func (c *CacheFile) GetETagWithHash(key string) (hash utils.HashType, etag string) {
 	if c.DB == nil {
-		return nil
+		return
 	}
-
-	err := c.DB.Batch(func(t *bbolt.Tx) error {
-		bucket, err := t.CreateBucketIfNotExists(bucketFakeip)
-		if err != nil {
-			return err
-		}
-		err = bucket.Delete(ip)
-		if len(host) > 0 {
-			if err := bucket.Delete(host); err != nil {
-				return err
+	c.DB.View(func(t *bbolt.Tx) error {
+		if bucket := t.Bucket(bucketETag); bucket != nil {
+			if v := bucket.Get([]byte(key)); v != nil {
+				if len(v) == 0 {
+					return nil
+				}
+				lenHash := int(v[0])
+				if len(v) < 1+lenHash {
+					return nil
+				}
+				hash = utils.MakeHashFromBytes(v[1 : 1+lenHash])
+				etag = string(v[1+lenHash:])
 			}
 		}
-		return err
+		return nil
 	})
-	if err != nil {
-		log.Warnln("[CacheFile] write cache to %s failed: %s", c.DB.Path(), err.Error())
-	}
 
-	return err
-}
-
-func (c *CacheFile) GetFakeip(key []byte) []byte {
-	if c.DB == nil {
-		return nil
-	}
-
-	tx, err := c.DB.Begin(false)
-	if err != nil {
-		return nil
-	}
-	defer tx.Rollback()
-
-	bucket := tx.Bucket(bucketFakeip)
-	if bucket == nil {
-		return nil
-	}
-
-	return bucket.Get(key)
-}
-
-func (c *CacheFile) FlushFakeIP() error {
-	err := c.DB.Batch(func(t *bbolt.Tx) error {
-		bucket := t.Bucket(bucketFakeip)
-		if bucket == nil {
-			return nil
-		}
-		return t.DeleteBucket(bucketFakeip)
-	})
-	return err
+	return
 }
 
 func (c *CacheFile) Close() error {

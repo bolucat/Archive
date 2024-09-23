@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"github.com/metacubex/mihomo/component/resource"
 	C "github.com/metacubex/mihomo/constant"
 	types "github.com/metacubex/mihomo/constant/provider"
+
+	"github.com/dlclark/regexp2"
 )
 
 var (
@@ -26,6 +29,15 @@ type healthCheckSchema struct {
 	ExpectedStatus string `provider:"expected-status,omitempty"`
 }
 
+type OverrideProxyNameSchema struct {
+	// matching expression for regex replacement
+	Pattern *regexp2.Regexp `provider:"pattern"`
+	// the new content after regex matching
+	Target string `provider:"target"`
+}
+
+var _ encoding.TextUnmarshaler = (*regexp2.Regexp)(nil) // ensure *regexp2.Regexp can decode direct by structure package
+
 type OverrideSchema struct {
 	TFO              *bool   `provider:"tfo,omitempty"`
 	MPTcp            *bool   `provider:"mptcp,omitempty"`
@@ -40,6 +52,8 @@ type OverrideSchema struct {
 	IPVersion        *string `provider:"ip-version,omitempty"`
 	AdditionalPrefix *string `provider:"additional-prefix,omitempty"`
 	AdditionalSuffix *string `provider:"additional-suffix,omitempty"`
+
+	ProxyName []OverrideProxyNameSchema `provider:"proxy-name,omitempty"`
 }
 
 type proxyProviderSchema struct {
@@ -97,7 +111,7 @@ func ParseProxyProvider(name string, mapping map[string]any) (types.ProxyProvide
 				return nil, fmt.Errorf("%w: %s", errSubPath, path)
 			}
 		}
-		vehicle = resource.NewHTTPVehicle(schema.URL, path, schema.Proxy, schema.Header)
+		vehicle = resource.NewHTTPVehicle(schema.URL, path, schema.Proxy, schema.Header, resource.DefaultHttpTimeout)
 	default:
 		return nil, fmt.Errorf("%w: %s", errVehicleType, schema.Type)
 	}
