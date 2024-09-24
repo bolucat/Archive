@@ -248,7 +248,6 @@ pub fn run() -> std::io::Result<()> {
             ipc::open_core_dir,
             // cmds::kill_sidecar,
             ipc::restart_sidecar,
-            ipc::grant_permission,
             // clash
             ipc::get_clash_info,
             ipc::get_clash_logs,
