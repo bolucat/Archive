@@ -9,7 +9,7 @@ func tcpKeepAlive(tcp *net.TCPConn) {
 		_ = tcp.SetKeepAlive(false)
 	} else {
 		_ = tcp.SetKeepAlive(true)
-		_ = tcp.SetKeepAlivePeriod(KeepAliveInterval.Load())
+		_ = tcp.SetKeepAlivePeriod(KeepAliveInterval())
 	}
 }
 
