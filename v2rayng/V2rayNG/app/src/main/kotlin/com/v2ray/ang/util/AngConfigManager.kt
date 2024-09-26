@@ -32,6 +32,7 @@ object AngConfigManager {
     private fun parseConfig(
         str: String?,
         subid: String,
+        subItem: SubscriptionItem?,
         removedSelectedServer: ServerConfig?
     ): Int {
         try {
@@ -40,19 +41,19 @@ object AngConfigManager {
             }
 
             val config = if (str.startsWith(EConfigType.VMESS.protocolScheme)) {
-                VmessFmt.parseVmess(str)
+                VmessFmt.parse(str)
             } else if (str.startsWith(EConfigType.SHADOWSOCKS.protocolScheme)) {
-                ShadowsocksFmt.parseShadowsocks(str)
+                ShadowsocksFmt.parse(str)
             } else if (str.startsWith(EConfigType.SOCKS.protocolScheme)) {
-                SocksFmt.parseSocks(str)
+                SocksFmt.parse(str)
             } else if (str.startsWith(EConfigType.TROJAN.protocolScheme)) {
-                TrojanFmt.parseTrojan(str)
+                TrojanFmt.parse(str)
             } else if (str.startsWith(EConfigType.VLESS.protocolScheme)) {
-                VlessFmt.parseVless(str)
+                VlessFmt.parse(str)
             } else if (str.startsWith(EConfigType.WIREGUARD.protocolScheme)) {
-                WireguardFmt.parseWireguard(str)
+                WireguardFmt.parse(str)
             } else if (str.startsWith(EConfigType.HYSTERIA2.protocolScheme)) {
-                Hysteria2Fmt.parseHysteria2(str)
+                Hysteria2Fmt.parse(str)
             } else {
                 null
             }
@@ -60,6 +61,13 @@ object AngConfigManager {
             if (config == null) {
                 return R.string.toast_incorrect_protocol
             }
+            //filter
+            if (subItem?.filter != null && subItem.filter?.isNotEmpty() == true && config.remarks.isNotEmpty()) {
+                val matched = Regex(pattern = subItem.filter ?: "")
+                    .containsMatchIn(input = config.remarks)
+                if (!matched) return -1
+            }
+
             config.subscriptionId = subid
             val guid = MmkvManager.encodeServerConfig("", config)
             if (removedSelectedServer != null &&
@@ -244,11 +252,12 @@ object AngConfigManager {
                 MmkvManager.removeServerViaSubid(subid)
             }
 
+            val subItem = MmkvManager.decodeSubscription(subid)
             var count = 0
             servers.lines()
                 .reversed()
                 .forEach {
-                    val resId = parseConfig(it, subid, removedSelectedServer)
+                    val resId = parseConfig(it, subid, subItem, removedSelectedServer)
                     if (resId == 0) {
                         count++
                     }
