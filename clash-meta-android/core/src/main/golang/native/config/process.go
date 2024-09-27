@@ -10,6 +10,7 @@ import (
 
 	"cfa/native/common"
 
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -109,10 +110,16 @@ func patchListeners(cfg *config.RawConfig, _ string) error {
 }
 
 func patchProviders(cfg *config.RawConfig, profileDir string) error {
-	forEachProviders(cfg, func(index int, total int, key string, provider map[string]any) {
-		if path, ok := provider["path"].(string); ok {
-			provider["path"] = profileDir + "/providers/" + common.ResolveAsRoot(path)
+	forEachProviders(cfg, func(index int, total int, key string, provider map[string]any, prefix string) {
+		path, _ := provider["path"].(string)
+		if len(path) > 0 {
+			path = common.ResolveAsRoot(path)
+		} else if url, ok := provider["url"].(string); ok {
+			path = prefix + "/" + utils.MakeHash([]byte(url)).String() // same as C.GetPathByHash
+		} else {
+			return // both path and url is empty, WTF???
 		}
+		provider["path"] = profileDir + "/providers/" + path
 	})
 
 	return nil

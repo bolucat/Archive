@@ -118,6 +118,8 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	tunnel.OnRunning()
 	hcCompatibleProvider(cfg.Providers)
 	initExternalUI()
+
+	resolver.ResetConnection()
 }
 
 func initInnerTcp() {
@@ -127,7 +129,7 @@ func initInnerTcp() {
 func GetGeneral() *config.General {
 	ports := listener.GetPorts()
 	var authenticator []string
-	if auth := authStore.Authenticator(); auth != nil {
+	if auth := authStore.Default.Authenticator(); auth != nil {
 		authenticator = auth.Users()
 	}
 
@@ -253,8 +255,7 @@ func updateDNS(c *config.DNS, generalIPv6 bool) {
 		CacheAlgorithm:       c.CacheAlgorithm,
 	}
 
-	r := dns.NewResolver(cfg)
-	pr := dns.NewProxyServerHostResolver(r)
+	r, pr := dns.NewResolver(cfg)
 	m := dns.NewEnhancer(cfg)
 
 	// reuse cache of old host mapper
@@ -422,7 +423,7 @@ func updateGeneral(general *config.General) {
 
 func updateUsers(users []auth.AuthUser) {
 	authenticator := auth.NewAuthenticator(users)
-	authStore.SetAuthenticator(authenticator)
+	authStore.Default.SetAuthenticator(authenticator)
 	if authenticator != nil {
 		log.Infoln("Authentication of local server updated")
 	}
@@ -444,12 +445,12 @@ func patchSelectGroup(proxies map[string]C.Proxy) {
 	}
 
 	for name, proxy := range proxies {
-		outbound, ok := proxy.(*adapter.Proxy)
+		outbound, ok := proxy.(C.Proxy)
 		if !ok {
 			continue
 		}
 
-		selector, ok := outbound.ProxyAdapter.(outboundgroup.SelectAble)
+		selector, ok := outbound.Adapter().(outboundgroup.SelectAble)
 		if !ok {
 			continue
 		}

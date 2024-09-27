@@ -15,13 +15,13 @@ import (
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/adapter/outboundgroup"
 	"github.com/metacubex/mihomo/adapter/provider"
-	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/auth"
 	"github.com/metacubex/mihomo/component/cidr"
 	"github.com/metacubex/mihomo/component/fakeip"
 	"github.com/metacubex/mihomo/component/geodata"
 	mihomoHttp "github.com/metacubex/mihomo/component/http"
+	"github.com/metacubex/mihomo/component/keepalive"
 	P "github.com/metacubex/mihomo/component/process"
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/resource"
@@ -103,6 +103,7 @@ type Controller struct {
 	ExternalController     string
 	ExternalControllerTLS  string
 	ExternalControllerUnix string
+	ExternalControllerPipe string
 	ExternalUI             string
 	ExternalDohServer      string
 	Secret                 string
@@ -364,6 +365,7 @@ type RawConfig struct {
 	LogLevel                log.LogLevel      `yaml:"log-level" json:"log-level"`
 	IPv6                    bool              `yaml:"ipv6" json:"ipv6"`
 	ExternalController      string            `yaml:"external-controller" json:"external-controller"`
+	ExternalControllerPipe  string            `yaml:"external-controller-pipe" json:"external-controller-pipe"`
 	ExternalControllerUnix  string            `yaml:"external-controller-unix" json:"external-controller-unix"`
 	ExternalControllerTLS   string            `yaml:"external-controller-tls" json:"external-controller-tls"`
 	ExternalUI              string            `yaml:"external-ui" json:"external-ui"`
@@ -697,12 +699,12 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 	resource.SetETag(cfg.ETagSupport)
 
 	if cfg.KeepAliveIdle != 0 {
-		N.KeepAliveIdle = time.Duration(cfg.KeepAliveIdle) * time.Second
+		keepalive.SetKeepAliveIdle(time.Duration(cfg.KeepAliveIdle) * time.Second)
 	}
 	if cfg.KeepAliveInterval != 0 {
-		N.KeepAliveInterval = time.Duration(cfg.KeepAliveInterval) * time.Second
+		keepalive.SetKeepAliveInterval(time.Duration(cfg.KeepAliveInterval) * time.Second)
 	}
-	N.DisableKeepAlive = cfg.DisableKeepAlive
+	keepalive.SetDisableKeepAlive(cfg.DisableKeepAlive)
 
 	// checkout externalUI exist
 	if cfg.ExternalUI != "" {
@@ -769,6 +771,7 @@ func parseController(cfg *RawConfig) (*Controller, error) {
 		ExternalController:     cfg.ExternalController,
 		ExternalUI:             cfg.ExternalUI,
 		Secret:                 cfg.Secret,
+		ExternalControllerPipe: cfg.ExternalControllerPipe,
 		ExternalControllerUnix: cfg.ExternalControllerUnix,
 		ExternalControllerTLS:  cfg.ExternalControllerTLS,
 		ExternalDohServer:      cfg.ExternalDohServer,

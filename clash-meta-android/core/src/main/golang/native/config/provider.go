@@ -6,18 +6,23 @@ import (
 	"github.com/metacubex/mihomo/config"
 )
 
-func forEachProviders(rawCfg *config.RawConfig, fun func(index int, total int, key string, provider map[string]any)) {
+const (
+	PROXIES = "proxies"
+	RULES   = "rules"
+)
+
+func forEachProviders(rawCfg *config.RawConfig, fun func(index int, total int, key string, provider map[string]any, prefix string)) {
 	total := len(rawCfg.ProxyProvider) + len(rawCfg.RuleProvider)
 	index := 0
 
 	for k, v := range rawCfg.ProxyProvider {
-		fun(index, total, k, v)
+		fun(index, total, k, v, PROXIES)
 
 		index++
 	}
 
 	for k, v := range rawCfg.RuleProvider {
-		fun(index, total, k, v)
+		fun(index, total, k, v, RULES)
 
 		index++
 	}

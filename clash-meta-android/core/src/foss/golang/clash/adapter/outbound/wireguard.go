@@ -272,6 +272,7 @@ func NewWireGuard(option WireGuardOption) (*WireGuard, error) {
 		},
 	}
 	if option.AmneziaWGOption != nil {
+		outbound.bind.SetParseReserved(false) // AmneziaWG don't need parse reserved
 		outbound.device = amnezia.NewDevice(outbound.tunDevice, outbound.bind, logger, option.Workers)
 	} else {
 		outbound.device = device.NewDevice(outbound.tunDevice, outbound.bind, logger, option.Workers)
@@ -295,7 +296,7 @@ func NewWireGuard(option WireGuardOption) (*WireGuard, error) {
 		for i := range nss {
 			nss[i].ProxyAdapter = refP
 		}
-		outbound.resolver = dns.NewResolver(dns.Config{
+		outbound.resolver, _ = dns.NewResolver(dns.Config{
 			Main: nss,
 			IPv6: has6,
 		})
