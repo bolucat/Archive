@@ -105,6 +105,7 @@
     <string name="title_url">URL</string>
     <string name="menu_item_download_file">دانلود فایل‌ها</string>
     <string name="toast_action_not_allowed">این عمل ممنوع است</string>
+    <string name="server_obfs_password">Obfs password</string>
 
     <!-- PerAppProxyActivity -->
     <string name="title_user_asset_add_url">URL را اضافه کنید</string>
@@ -256,6 +257,8 @@
     <string name="routing_settings_add_rule">Add rule</string>
     <string name="routing_settings_import_rulesets">Import ruleset</string>
     <string name="routing_settings_import_rulesets_tip">Existing rulesets will be deleted, are you sure to continue?</string>
+    <string name="routing_settings_import_rulesets_from_clipboard">Import ruleset from clipboard</string>
+    <string name="routing_settings_export_rulesets_to_clipboard">Export ruleset to clipboard</string>
     <string name="routing_settings_locked">Locked, keep this rule when import presets</string>
 
     <string name="connection_test_pending">اتصال را بررسی کنید</string>

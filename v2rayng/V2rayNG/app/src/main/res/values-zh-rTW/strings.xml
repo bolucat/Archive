@@ -105,6 +105,7 @@
     <string name="title_url">URL</string>
     <string name="menu_item_download_file">下載檔案</string>
     <string name="toast_action_not_allowed">禁止此項操作</string>
+    <string name="server_obfs_password">混淆密碼</string>
 
     <!-- PerAppProxyActivity -->
     <string name="title_user_asset_add_url">新增資產網址</string>
@@ -258,6 +259,8 @@
     <string name="routing_settings_add_rule">新增規則</string>
     <string name="routing_settings_import_rulesets">匯入預設規則集</string>
     <string name="routing_settings_import_rulesets_tip">將刪除現有的規則集，是否確定繼續？ </string>
+    <string name="routing_settings_import_rulesets_from_clipboard">從剪貼簿匯入規則集</string>
+    <string name="routing_settings_export_rulesets_to_clipboard">匯出規則集至剪貼簿</string>
     <string name="routing_settings_locked">鎖定中，匯入預設時不刪除此規則</string>
 
     <string name="connection_test_pending">"測試連線能力"</string>

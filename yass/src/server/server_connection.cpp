@@ -249,6 +249,9 @@ void ServerConnection::SendIfNotProcessing() {
 //
 bool ServerConnection::on_received_data(std::shared_ptr<IOBuf> buf) {
   if (state_ == state_stream) {
+    if (buf->empty()) {
+      return false;
+    }
     upstream_.push_back(buf);
   } else if (state_ == state_handshake) {
     if (handshake_) {
@@ -415,7 +418,7 @@ bool ServerConnection::OnDataForStream(StreamId stream_id, absl::string_view dat
       if (ec) {
         return true;
       }
-      DCHECK(buf);
+      DCHECK(buf && buf->length());
       upstream_.push_back(buf);
       ++num_padding_recv_;
     }
@@ -1095,10 +1098,14 @@ void ServerConnection::WriteStream() {
 }
 
 void ServerConnection::WriteStreamInPipe() {
-  asio::error_code ec;
   size_t bytes_transferred = 0U, wbytes_transferred = 0U;
   bool try_again = false;
   bool yield = false;
+
+  int bytes_read_without_yielding = 0;
+  uint64_t yield_after_time = GetMonotonicTime() + kYieldAfterDurationMilliseconds * 1000 * 1000;
+
+  asio::error_code ec;
 
   /* recursively send the remainings */
   while (true) {
@@ -1130,7 +1137,7 @@ void ServerConnection::WriteStreamInPipe() {
       }
     } while (false);
     buf->trimStart(written);
-    bytes_downstream_passed_without_yield_ += written;
+    bytes_read_without_yielding += written;
     wbytes_transferred += written;
     // continue to resume
     if (buf->empty()) {
@@ -1146,10 +1153,7 @@ void ServerConnection::WriteStreamInPipe() {
       ec = asio::error::try_again;
       break;
     }
-    if (GetMonotonicTime() > yield_downstream_after_time_ ||
-        bytes_downstream_passed_without_yield_ > kYieldAfterBytesRead) {
-      bytes_downstream_passed_without_yield_ = 0U;
-      yield_downstream_after_time_ = GetMonotonicTime() + kYieldAfterDurationMilliseconds * 1000 * 1000;
+    if (bytes_read_without_yielding > kYieldAfterBytesRead || GetMonotonicTime() > yield_after_time) {
       if (downstream_.empty()) {
         try_again = true;
         yield = true;
@@ -1302,6 +1306,9 @@ void ServerConnection::WriteUpstreamInPipe() {
   bool try_again = false;
   bool yield = false;
 
+  int bytes_read_without_yielding = 0;
+  uint64_t yield_after_time = GetMonotonicTime() + kYieldAfterDurationMilliseconds * 1000 * 1000;
+
   if (channel_ && channel_->write_inprogress()) {
     return;
   }
@@ -1336,6 +1343,7 @@ void ServerConnection::WriteUpstreamInPipe() {
     buf->trimStart(written);
     wbytes_transferred += written;
     if (ec == asio::error::try_again || ec == asio::error::would_block) {
+      DCHECK_EQ(0u, written);
       break;
     }
     VLOG(2) << "Connection (server) " << connection_id() << " upstream: sent request (pipe): " << written << " bytes"
@@ -1353,10 +1361,7 @@ void ServerConnection::WriteUpstreamInPipe() {
       ec = asio::error::try_again;
       break;
     }
-    if (GetMonotonicTime() > yield_upstream_after_time_ ||
-        bytes_upstream_passed_without_yield_ > kYieldAfterBytesRead) {
-      bytes_upstream_passed_without_yield_ = 0U;
-      yield_upstream_after_time_ = GetMonotonicTime() + kYieldAfterDurationMilliseconds;
+    if (bytes_read_without_yielding > kYieldAfterBytesRead || GetMonotonicTime() > yield_after_time) {
       if (upstream_.empty()) {
         try_again = true;
         yield = true;
@@ -1722,9 +1727,6 @@ void ServerConnection::connected() {
           << " remote: established upstream connection with: " << remote_domain();
   upstream_readable_ = true;
   upstream_writable_ = true;
-
-  yield_upstream_after_time_ = yield_downstream_after_time_ =
-      GetMonotonicTime() + kYieldAfterDurationMilliseconds * 1000 * 1000;
 
   WriteStreamInPipe();
   WriteUpstreamInPipe();
