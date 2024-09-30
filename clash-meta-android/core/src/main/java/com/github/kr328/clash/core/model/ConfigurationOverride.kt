@@ -47,6 +47,9 @@ data class ConfigurationOverride(
     @SerialName("external-controller-tls")
     var externalControllerTLS: String? = null,
 
+    @SerialName("external-controller-cors")
+    var externalControllerCors: ExternalControllerCors = ExternalControllerCors(),
+
     @SerialName("secret")
     var secret: String? = null,
 
@@ -208,6 +211,15 @@ data class ConfigurationOverride(
 
         @SerialName("geosite")
         var geosite: String? = null,
+    )
+
+    @Serializable
+    data class ExternalControllerCors(
+        @SerialName("allow-origins")
+        var allowOrigins: List<String>? = null,
+
+        @SerialName("allow-private-network")
+        var allowPrivateNetwork: Boolean? = null,
     )
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {

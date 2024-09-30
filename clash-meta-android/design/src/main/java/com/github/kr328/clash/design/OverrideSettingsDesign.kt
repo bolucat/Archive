@@ -157,6 +157,20 @@ class OverrideSettingsDesign(
                 empty = R.string.default_
             )
 
+            editableTextList(
+                value = configuration.externalControllerCors::allowOrigins,
+                adapter = TextAdapter.String,
+                title = R.string.allow_origins,
+                placeholder = R.string.dont_modify,
+            )
+
+            selectableList(
+                value = configuration.externalControllerCors::allowPrivateNetwork,
+                values = booleanValues,
+                valuesText = booleanValuesText,
+                title = R.string.allow_private_network,
+            )
+
             editableText(
                 value = configuration::secret,
                 adapter = NullableTextAdapter.String,

@@ -150,6 +150,8 @@
     <string name="ipv6">IPv6</string>
     <string name="external_controller">External Controller</string>
     <string name="external_controller_tls">External Controller TLS</string>
+    <string name="allow_origins">External Controller Allow Origins</string>
+    <string name="allow_private_network">External Controller Allow Private Network</string>
     <string name="secret">Secret</string>
     <string name="hosts">Hosts</string>
     <string name="_new">New</string>
