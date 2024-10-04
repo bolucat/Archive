@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.ReactiveUI;
 using Avalonia.Threading;
+using DialogHostAvalonia;
 using MsBox.Avalonia.Enums;
 using ReactiveUI;
 using Splat;
@@ -26,6 +27,7 @@ namespace v2rayN.Desktop.Views
             menuSelectAll.Click += menuSelectAll_Click;
             btnAutofitColumnWidth.Click += BtnAutofitColumnWidth_Click;
             txtServerFilter.KeyDown += TxtServerFilter_KeyDown;
+            menuStorageUI.Click += MenuStorageUI_Click;
             lstProfiles.KeyDown += LstProfiles_KeyDown;
             lstProfiles.SelectionChanged += lstProfiles_SelectionChanged;
             lstProfiles.DoubleTapped += LstProfiles_DoubleTapped;
@@ -88,7 +90,7 @@ namespace v2rayN.Desktop.Views
 
             RestoreUI();
             ViewModel?.RefreshServers();
-        }         
+        }
 
         //#region Event
 
@@ -170,8 +172,9 @@ namespace v2rayN.Desktop.Views
             {
                 return;
             }
+
             var dialog = new QrcodeView(url);
-            await dialog.ShowDialog(_window);
+            await DialogHost.Show(dialog);
         }
 
         private void lstProfiles_SelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -193,8 +196,7 @@ namespace v2rayN.Desktop.Views
             else
             {
                 ViewModel?.EditServerAsync(EConfigType.Custom);
-            }
-            StorageUI();
+            }            
         }
 
         private void LstProfiles_LoadingRow(object? sender, DataGridRowEventArgs e)
@@ -302,7 +304,6 @@ namespace v2rayN.Desktop.Views
             {
                 it.Width = new DataGridLength(1, DataGridLengthUnitType.Auto);
             }
-            StorageUI();
         }
 
         private void TxtServerFilter_KeyDown(object? sender, KeyEventArgs e)
@@ -311,6 +312,10 @@ namespace v2rayN.Desktop.Views
             {
                 ViewModel?.RefreshServers();
             }
+        }
+        private void MenuStorageUI_Click(object? sender, RoutedEventArgs e)
+        {
+            StorageUI();
         }
 
         //#endregion Event

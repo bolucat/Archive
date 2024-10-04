@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.ReactiveUI;
 using Avalonia.Threading;
+using DialogHostAvalonia;
 using ReactiveUI;
 using Splat;
 using System.ComponentModel;
@@ -19,6 +20,8 @@ namespace v2rayN.Desktop.Views
     {
         private static Config _config;
         private WindowNotificationManager? _manager;
+        private CheckUpdateView? _checkUpdateView;
+        private BackupAndRestoreView? _backupAndRestoreView;
 
         public MainWindow()
         {
@@ -34,6 +37,8 @@ namespace v2rayN.Desktop.Views
             menuSettingsSetUWP.Click += menuSettingsSetUWP_Click;
             menuPromotion.Click += menuPromotion_Click;
             menuClose.Click += menuClose_Click;
+            menuCheckUpdate.Click += MenuCheckUpdate_Click;
+            menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
 
             var IsAdministrator = true;//WindowsUtils.IsAdministrator();
             MessageBus.Current.Listen<string>(Global.CommandSendSnackMsg).Subscribe(x => DelegateSnackMsg(x));
@@ -153,7 +158,6 @@ namespace v2rayN.Desktop.Views
                 tabClashConnections2.Content ??= new ClashConnectionsView();
             }
             conTheme.Content ??= new ThemeSettingView();
-            conCheckUpdate.Content ??= new CheckUpdateView();
 
             RestoreUI();
             AddHelpMenuItem();
@@ -363,6 +367,18 @@ namespace v2rayN.Desktop.Views
             ShowHideWindow(true);
 
             //ViewModel?.ScanScreenTaskAsync(result);
+        }
+
+        private void MenuCheckUpdate_Click(object? sender, RoutedEventArgs e)
+        {
+            _checkUpdateView ??= new CheckUpdateView();
+            DialogHost.Show(_checkUpdateView);
+        }
+
+        private void MenuBackupAndRestore_Click(object? sender, RoutedEventArgs e)
+        {
+            _backupAndRestoreView ??= new BackupAndRestoreView(this);
+            DialogHost.Show(_backupAndRestoreView);
         }
 
         #endregion Event

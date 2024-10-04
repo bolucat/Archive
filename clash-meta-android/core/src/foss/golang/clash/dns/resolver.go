@@ -13,7 +13,6 @@ import (
 	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/metacubex/mihomo/component/trie"
 	C "github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
 
 	D "github.com/miekg/dns"
@@ -428,6 +427,8 @@ type Config struct {
 	Main, Fallback       []NameServer
 	Default              []NameServer
 	ProxyServer          []NameServer
+	DirectServer         []NameServer
+	DirectFollowPolicy   bool
 	IPv6                 bool
 	IPv6Timeout          uint
 	EnhancedMode         C.DNSMode
@@ -436,7 +437,6 @@ type Config struct {
 	Pool                 *fakeip.Pool
 	Hosts                *trie.DomainTrie[resolver.HostValue]
 	Policy               []Policy
-	Tunnel               provider.Tunnel
 	CacheAlgorithm       string
 }
 
@@ -448,7 +448,25 @@ func (config Config) newCache() dnsCache {
 	}
 }
 
-func NewResolver(config Config) (r *Resolver, pr *Resolver) {
+type Resolvers struct {
+	*Resolver
+	ProxyResolver  *Resolver
+	DirectResolver *Resolver
+}
+
+func (rs Resolvers) ClearCache() {
+	rs.Resolver.ClearCache()
+	rs.ProxyResolver.ClearCache()
+	rs.DirectResolver.ClearCache()
+}
+
+func (rs Resolvers) ResetConnection() {
+	rs.Resolver.ResetConnection()
+	rs.ProxyResolver.ResetConnection()
+	rs.DirectResolver.ResetConnection()
+}
+
+func NewResolver(config Config) (rs Resolvers) {
 	defaultResolver := &Resolver{
 		main:        transform(config.Default, nil),
 		cache:       config.newCache(),
@@ -482,7 +500,7 @@ func NewResolver(config Config) (r *Resolver, pr *Resolver) {
 		return
 	}
 
-	r = &Resolver{
+	r := &Resolver{
 		ipv6:        config.IPv6,
 		main:        cacheTransform(config.Main),
 		cache:       config.newCache(),
@@ -490,9 +508,10 @@ func NewResolver(config Config) (r *Resolver, pr *Resolver) {
 		ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
 	}
 	r.defaultResolver = defaultResolver
+	rs.Resolver = r
 
 	if len(config.ProxyServer) != 0 {
-		pr = &Resolver{
+		rs.ProxyResolver = &Resolver{
 			ipv6:        config.IPv6,
 			main:        cacheTransform(config.ProxyServer),
 			cache:       config.newCache(),
@@ -501,8 +520,20 @@ func NewResolver(config Config) (r *Resolver, pr *Resolver) {
 		}
 	}
 
+	if len(config.DirectServer) != 0 {
+		rs.DirectResolver = &Resolver{
+			ipv6:        config.IPv6,
+			main:        cacheTransform(config.DirectServer),
+			cache:       config.newCache(),
+			hosts:       config.Hosts,
+			ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
+		}
+	}
+
 	if len(config.Fallback) != 0 {
 		r.fallback = cacheTransform(config.Fallback)
+		r.fallbackIPFilters = config.FallbackIPFilter
+		r.fallbackDomainFilters = config.FallbackDomainFilter
 	}
 
 	if len(config.Policy) != 0 {
@@ -531,9 +562,11 @@ func NewResolver(config Config) (r *Resolver, pr *Resolver) {
 			}
 		}
 		insertPolicy(nil)
+
+		if rs.DirectResolver != nil && config.DirectFollowPolicy {
+			rs.DirectResolver.policy = r.policy
+		}
 	}
-	r.fallbackIPFilters = config.FallbackIPFilter
-	r.fallbackDomainFilters = config.FallbackDomainFilter
 
 	return
 }
