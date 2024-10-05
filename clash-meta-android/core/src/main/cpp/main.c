@@ -19,8 +19,9 @@ Java_com_github_kr328_clash_core_bridge_Bridge_nativeInit(JNIEnv *env, jobject t
 
     scoped_string _home = get_string(home);
     scoped_string _version_name = get_string(version_name);
+    char* _git_version = make_String(GIT_VERSION);
 
-    coreInit(_home, _version_name, sdk_version);
+    coreInit(_home, _version_name, _git_version, sdk_version);
 }
 
 JNIEXPORT void JNICALL
