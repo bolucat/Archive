@@ -18,7 +18,7 @@ class DuplicateSwitchCollector : public base::DuplicateSwitchHandler {
   ~DuplicateSwitchCollector() override;
 
   void ResolveDuplicate(std::string_view key,
-                        base::CommandLine::StringPieceType new_value,
+                        base::CommandLine::StringViewType new_value,
                         base::CommandLine::StringType& out_value) override;
 
   const std::vector<base::CommandLine::StringType>& GetValuesByKey(

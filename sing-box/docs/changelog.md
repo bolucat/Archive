@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.10.0-beta.12
+
+* Fixes and improvements
+
+### 1.9.7
+
+* Fixes and improvements
+
 #### 1.10.0-beta.11
 
 * Update uTLS to v1.6.7 **1**

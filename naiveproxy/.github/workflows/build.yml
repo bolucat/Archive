@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src/third_party/android_toolchain/ndk/
-          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}-a
       - run: ./get-clang.sh
       - run: EXTRA_FLAGS='target_os="android"' ./get-clang.sh
       - run: |
@@ -49,7 +49,7 @@ jobs:
             wget https://snapshot.debian.org/archive/debian/20230611T210420Z/pool/main/q/qemu/qemu-user-static_8.0%2Bdfsg-4_amd64.deb
           fi
   cache-toolchains-win:
-    runs-on: windows-2019
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Cache toolchains
@@ -179,11 +179,10 @@ jobs:
             abi: armeabi-v7a
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}" target_os="android"'
-      BUNDLE: naiveproxy-plugin-${{ github.event.release.tag_name || 'v1' }}-${{ matrix.abi }}.apk
+      BUNDLE: naiveproxy-plugin-${{ github.event.release.tag_name || 'v1.1.1.1-1' }}-${{ matrix.abi }}.apk
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: 17
@@ -204,7 +203,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src/third_party/android_toolchain/ndk/
-          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}-a
       - name: Cache sysroot
         uses: actions/cache@v4
         with:
@@ -241,7 +240,7 @@ jobs:
         working-directory: apk
         env:
           APK_ABI: ${{ matrix.abi }}
-          APK_VERSION_NAME: ${{ github.event.release.tag_name || 'v1' }}
+          APK_VERSION_NAME: ${{ github.event.release.tag_name || 'v1.1.1.1-1' }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
         run: |
           mkdir -p app/libs/$APK_ABI
@@ -261,7 +260,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   win:
     needs: cache-toolchains-win
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:

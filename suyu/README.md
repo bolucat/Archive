@@ -67,7 +67,7 @@ You can also contact any of the developers on the Chat to learn more about the c
 * __Linux__: [Releases](https://git.suyu.dev/suyu/suyu/releases)
 * __macOS__: [Releases](https://git.suyu.dev/suyu/suyu/releases)
 * __Android__: [Releases](https://git.suyu.dev/suyu/suyu/releases)
-###### We currently do not provide builds for iOS, however if you would like, you could try the experimental Sudachi Emulator and it's bigger project: [Folium](https://apps.apple.com/us/app/folium/id6498623389).
+###### We currently do not provide builds for iOS, however if you would like, you could try the experimental [Sudachi Emulator](https://sudachi.emuplace.app/) and it's bigger project: [Folium](https://apps.apple.com/us/app/folium/id6498623389).
 
 If you want daily builds then [Click here](https://git.suyu.dev/suyu/suyu/actions).
 If you don't know how to download the daily builds then [Click here](https://git.suyu.dev/suyu/suyu/raw/branch/dev/img/daily-builds.png)
@@ -87,7 +87,7 @@ For Multiplayer, we recommend using the "Yuzu Online" patch, install instruction
 
 ## Support
 
-If you have any questions, don't hesitate to ask us in our [Chat](https://chat.suyu.dev) or Subreddit, make an issue or contact a developer. We don't bite!
+If you have any questions, don't hesitate to ask us in our [Chat](https://chat.suyu.dev) or [Subreddit](https://www.reddit.com/r/suyu/), make an issue or contact a developer. We don't bite!
 
 
 ## License

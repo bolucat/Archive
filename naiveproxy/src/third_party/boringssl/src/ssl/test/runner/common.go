@@ -31,8 +31,9 @@ const (
 )
 
 const (
-	VersionDTLS10 = 0xfeff
-	VersionDTLS12 = 0xfefd
+	VersionDTLS10              = 0xfeff
+	VersionDTLS12              = 0xfefd
+	VersionDTLS125Experimental = 0xfc25
 )
 
 var allTLSWireVersions = []uint16{
@@ -44,14 +45,16 @@ var allTLSWireVersions = []uint16{
 }
 
 var allDTLSWireVersions = []uint16{
+	VersionDTLS125Experimental,
 	VersionDTLS12,
 	VersionDTLS10,
 }
 
 const (
-	maxPlaintext        = 16384        // maximum plaintext payload length
-	maxCiphertext       = 16384 + 2048 // maximum ciphertext payload length
-	tlsRecordHeaderLen  = 5            // record header length
+	maxPlaintext       = 16384        // maximum plaintext payload length
+	maxCiphertext      = 16384 + 2048 // maximum ciphertext payload length
+	tlsRecordHeaderLen = 5            // record header length
+	// TODO(nharper): check whether this value needs to be changed for DTLS 1.3
 	dtlsRecordHeaderLen = 13
 	maxHandshake        = 65536 // maximum handshake we support (protocol max is 16 MB)
 
@@ -1962,9 +1965,16 @@ type ProtocolBugs struct {
 	// when running over QUIC.
 	CompatModeWithQUIC bool
 
+	// DTLS13EchoSessionID, if true, has DTLS 1.3 servers echo the client's
+	// session ID in the ServerHello.
+	DTLS13EchoSessionID bool
+
 	// EncryptSessionTicketKey, if non-nil, is the ticket key to use when
 	// encrypting tickets.
 	EncryptSessionTicketKey *[32]byte
+
+	// OmitPublicName omits the server name extension from ClientHelloOuter.
+	OmitPublicName bool
 }
 
 func (c *Config) serverInit() {
@@ -2032,10 +2042,6 @@ func (c *Config) maxVersion(isDTLS bool) uint16 {
 		ret = c.MaxVersion
 	}
 	if isDTLS {
-		// We only implement up to DTLS 1.2.
-		if ret > VersionTLS12 {
-			return VersionTLS12
-		}
 		// There is no such thing as DTLS 1.1.
 		if ret == VersionTLS11 {
 			return VersionTLS10
@@ -2081,6 +2087,8 @@ func (c *Config) echCipherSuitePreferences() []HPKECipherSuite {
 func wireToVersion(vers uint16, isDTLS bool) (uint16, bool) {
 	if isDTLS {
 		switch vers {
+		case VersionDTLS125Experimental:
+			return VersionTLS13, true
 		case VersionDTLS12:
 			return VersionTLS12, true
 		case VersionDTLS10:

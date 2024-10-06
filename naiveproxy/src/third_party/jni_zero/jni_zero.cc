@@ -10,6 +10,10 @@
 #include "third_party/jni_zero/jni_zero_internal.h"
 #include "third_party/jni_zero/logging.h"
 
+#if defined(JNI_ZERO_MULTIPLEXING_ENABLED)
+extern const int64_t kJniZeroHashWhole;
+extern const int64_t kJniZeroHashPriority;
+#endif
 namespace jni_zero {
 namespace {
 // Until we fully migrate base's jni_android, we will maintain a copy of this
@@ -59,9 +63,6 @@ jclass GetSystemClassGlobalRef(JNIEnv* env, const char* class_name) {
 
 jclass g_object_class = nullptr;
 jclass g_string_class = nullptr;
-LeakedJavaGlobalRef<jstring> g_empty_string = nullptr;
-LeakedJavaGlobalRef<jobject> g_empty_list = nullptr;
-LeakedJavaGlobalRef<jobject> g_empty_map = nullptr;
 
 JNIEnv* AttachCurrentThread() {
   JNI_ZERO_DCHECK(g_jvm);
@@ -121,8 +122,7 @@ void InitVM(JavaVM* vm) {
   JNIEnv* env = AttachCurrentThread();
   g_object_class = GetSystemClassGlobalRef(env, "java/lang/Object");
   g_string_class = GetSystemClassGlobalRef(env, "java/lang/String");
-  g_empty_string.Reset(
-      env, ScopedJavaLocalRef<jstring>(env, env->NewString(nullptr, 0)));
+  CheckException(env);
 }
 
 void DisableJvmForTesting() {
@@ -162,7 +162,6 @@ void CheckException(JNIEnv* env) {
   if (g_exception_handler_callback) {
     return g_exception_handler_callback(env);
   }
-  env->ExceptionDescribe();
   JNI_ZERO_FLOG("jni_zero crashing due to uncaught Java exception");
 }
 

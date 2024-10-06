@@ -381,8 +381,6 @@ component("base") {
     "memory/memory_pressure_listener.h",
     "memory/memory_pressure_monitor.cc",
     "memory/memory_pressure_monitor.h",
-    "memory/nonscannable_memory.cc",
-    "memory/nonscannable_memory.h",
     "memory/page_size.h",
     "memory/platform_shared_memory_handle.cc",
     "memory/platform_shared_memory_handle.h",
@@ -422,12 +420,14 @@ component("base") {
     "memory/shared_memory_mapper.h",
     "memory/shared_memory_mapping.cc",
     "memory/shared_memory_mapping.h",
+    "memory/shared_memory_safety_checker.h",
     "memory/shared_memory_security_policy.cc",
     "memory/shared_memory_security_policy.h",
     "memory/shared_memory_tracker.cc",
     "memory/shared_memory_tracker.h",
     "memory/singleton.h",
     "memory/stack_allocated.h",
+    "memory/structured_shared_memory.h",
     "memory/unsafe_shared_memory_pool.cc",
     "memory/unsafe_shared_memory_pool.h",
     "memory/unsafe_shared_memory_region.cc",
@@ -470,6 +470,7 @@ component("base") {
     "metrics/histogram_flattener.h",
     "metrics/histogram_functions.cc",
     "metrics/histogram_functions.h",
+    "metrics/histogram_functions_internal_overloads.h",
     "metrics/histogram_macros.h",
     "metrics/histogram_macros_internal.h",
     "metrics/histogram_macros_local.h",
@@ -549,12 +550,14 @@ component("base") {
     "process/process_info.h",
     "process/set_process_title.cc",
     "process/set_process_title.h",
+    "profiler/call_stack_profile_params.h",
     "profiler/frame.cc",
     "profiler/frame.h",
     "profiler/metadata_recorder.cc",
     "profiler/metadata_recorder.h",
     "profiler/module_cache.cc",
     "profiler/module_cache.h",
+    "profiler/process_type.h",
     "profiler/profile_builder.h",
     "profiler/register_context.h",
     "profiler/sample_metadata.cc",
@@ -786,7 +789,6 @@ component("base") {
     "task/thread_pool/pooled_task_runner_delegate.h",
     "task/thread_pool/priority_queue.cc",
     "task/thread_pool/priority_queue.h",
-    "task/thread_pool/semaphore.h",
     "task/thread_pool/sequence.cc",
     "task/thread_pool/sequence.h",
     "task/thread_pool/service_thread.cc",
@@ -803,8 +805,6 @@ component("base") {
     "task/thread_pool/thread_group.h",
     "task/thread_pool/thread_group_impl.cc",
     "task/thread_pool/thread_group_impl.h",
-    "task/thread_pool/thread_group_semaphore.cc",
-    "task/thread_pool/thread_group_semaphore.h",
     "task/thread_pool/thread_group_worker_delegate.cc",
     "task/thread_pool/thread_group_worker_delegate.h",
     "task/thread_pool/thread_pool_impl.cc",
@@ -815,8 +815,6 @@ component("base") {
     "task/thread_pool/worker_thread.cc",
     "task/thread_pool/worker_thread.h",
     "task/thread_pool/worker_thread_observer.h",
-    "task/thread_pool/worker_thread_semaphore.cc",
-    "task/thread_pool/worker_thread_semaphore.h",
     "task/thread_pool/worker_thread_set.cc",
     "task/thread_pool/worker_thread_set.h",
     "task/thread_pool/worker_thread_waitable_event.cc",
@@ -1106,7 +1104,7 @@ component("base") {
   if (build_rust_base_conversions) {
     sources += [
       "containers/span_rust.h",
-      "strings/string_piece_rust.h",
+      "strings/string_view_rust.h",
     ]
 
     # Base provides conversions between CXX types and base types (e.g.
@@ -1474,7 +1472,6 @@ component("base") {
       "rand_util_nacl.cc",
       "sync_socket_nacl.cc",
       "system/sys_info_nacl.cc",
-      "task/thread_pool/semaphore/semaphore_default.cc",
       "threading/platform_thread_linux_base.cc",
       "threading/platform_thread_nacl.cc",
     ]
@@ -1552,10 +1549,6 @@ component("base") {
         "base_paths_android.cc",
         "base_paths_android.h",
       ]
-    }
-
-    if (is_linux || is_chromeos || is_android || is_fuchsia) {
-      sources += [ "task/thread_pool/semaphore/semaphore_posix.cc" ]
     }
 
     if (is_posix) {
@@ -1736,7 +1729,6 @@ component("base") {
       "synchronization/waitable_event_watcher_win.cc",
       "synchronization/waitable_event_win.cc",
       "system/sys_info_win.cc",
-      "task/thread_pool/semaphore/semaphore_win.cc",
       "threading/platform_thread_win.cc",
       "threading/platform_thread_win.h",
       "threading/thread_local_storage_win.cc",
@@ -1951,7 +1943,6 @@ component("base") {
       "strings/sys_string_conversions_apple.mm",
       "synchronization/waitable_event_apple.cc",
       "system/sys_info_apple.mm",
-      "task/thread_pool/semaphore/semaphore_apple.cc",
       "threading/platform_thread_apple.mm",
       "time/time_apple.mm",
     ]

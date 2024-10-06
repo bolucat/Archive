@@ -521,11 +521,15 @@ func (hs *serverHandshakeState) doTLS13Handshake() error {
 
 	// We've read the ClientHello, so the next record must be preceded with ChangeCipherSpec.
 	c.expectTLS13ChangeCipherSpec = true
+	sessionID := hs.clientHello.sessionID
+	if c.isDTLS && !config.Bugs.DTLS13EchoSessionID {
+		sessionID = nil
+	}
 
 	hs.hello = &serverHelloMsg{
 		isDTLS:                c.isDTLS,
 		vers:                  c.wireVersion,
-		sessionID:             hs.clientHello.sessionID,
+		sessionID:             sessionID,
 		compressionMethod:     config.Bugs.SendCompressionMethod,
 		versOverride:          config.Bugs.SendServerHelloVersion,
 		supportedVersOverride: config.Bugs.SendServerSupportedVersionExtension,
@@ -1040,7 +1044,7 @@ ResendHelloRetryRequest:
 	}
 	c.flushHandshake()
 
-	if !c.config.Bugs.SkipChangeCipherSpec && !sendHelloRetryRequest {
+	if !c.config.Bugs.SkipChangeCipherSpec && !sendHelloRetryRequest && !c.isDTLS {
 		c.writeRecord(recordTypeChangeCipherSpec, []byte{1})
 	}
 
@@ -1420,7 +1424,8 @@ ResendHelloRetryRequest:
 
 	// TODO(davidben): Allow configuring the number of tickets sent for
 	// testing.
-	if !c.config.SessionTicketsDisabled && foundKEMode {
+	// TODO(nharper): Add support for post-handshake messages in DTLS 1.3.
+	if !c.config.SessionTicketsDisabled && foundKEMode && !c.isDTLS {
 		ticketCount := 2
 		for i := 0; i < ticketCount; i++ {
 			c.SendNewSessionTicket([]byte{byte(i)})

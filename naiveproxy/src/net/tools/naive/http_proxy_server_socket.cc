@@ -274,11 +274,10 @@ int HttpProxyServerSocket::DoHeaderRead() {
 std::optional<PaddingType> HttpProxyServerSocket::ParsePaddingHeaders(
     const HttpRequestHeaders& headers) {
   bool has_padding = headers.HasHeader(kPaddingHeader);
-  std::string padding_type_request;
-  bool has_padding_type_request =
-      headers.GetHeader(kPaddingTypeRequestHeader, &padding_type_request);
+  std::optional<std::string> padding_type_request =
+      headers.GetHeader(kPaddingTypeRequestHeader);
 
-  if (!has_padding_type_request) {
+  if (!padding_type_request.has_value()) {
     // Backward compatibility with before kVariant1 when the padding-version
     // header does not exist.
     if (has_padding) {
@@ -289,7 +288,7 @@ std::optional<PaddingType> HttpProxyServerSocket::ParsePaddingHeaders(
   }
 
   std::vector<std::string_view> padding_type_strs = base::SplitStringPiece(
-      padding_type_request, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
+      *padding_type_request, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   for (std::string_view padding_type_str : padding_type_strs) {
     std::optional<PaddingType> padding_type =
         ParsePaddingType(padding_type_str);
@@ -303,7 +302,7 @@ std::optional<PaddingType> HttpProxyServerSocket::ParsePaddingHeaders(
       return padding_type;
     }
   }
-  LOG(ERROR) << "No padding type is supported: " << padding_type_request;
+  LOG(ERROR) << "No padding type is supported: " << *padding_type_request;
   return std::nullopt;
 }
 
@@ -360,10 +359,10 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
   }
 
   if (!basic_auth_.empty()) {
-    std::string proxy_auth;
-    headers.GetHeader(HttpRequestHeaders::kProxyAuthorization, &proxy_auth);
+    std::optional<std::string> proxy_auth;
+    proxy_auth = headers.GetHeader(HttpRequestHeaders::kProxyAuthorization);
     if (proxy_auth != basic_auth_) {
-      LOG(WARNING) << "Invalid Proxy-Authorization: " << proxy_auth;
+      LOG(WARNING) << "Invalid Proxy-Authorization: " << proxy_auth.value_or("");
       return ERR_INVALID_ARGUMENT;
     }
   }
@@ -378,10 +377,10 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
     std::string host;
     int port;
 
-    std::string host_str;
-    if (headers.GetHeader(HttpRequestHeaders::kHost, &host_str)) {
-      if (!ParseHostAndPort(host_str, &host, &port)) {
-        LOG(WARNING) << "Invalid Host: " << host_str;
+    std::optional<std::string> host_str = headers.GetHeader(HttpRequestHeaders::kHost);
+    if (host_str.has_value()) {
+      if (!ParseHostAndPort(*host_str, &host, &port)) {
+        LOG(WARNING) << "Invalid Host: " << *host_str;
         return ERR_INVALID_ARGUMENT;
       }
       if (port == -1) {
@@ -395,11 +394,11 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
       host = url.host();
       port = url.EffectiveIntPort();
 
-      host_str = url.host();
+      *host_str = url.host();
       if (url.has_port()) {
-        host_str.append(":").append(url.port());
+        host_str->append(":").append(url.port());
       }
-      headers.SetHeader(HttpRequestHeaders::kHost, host_str);
+      headers.SetHeader(HttpRequestHeaders::kHost, *host_str);
     }
     // Host is already known. Converts any absolute URI to relative.
     uri = url.path();

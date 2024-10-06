@@ -18,6 +18,7 @@ import (
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/x/list"
+	"github.com/sagernet/sing/service/filemanager"
 
 	"go4.org/netipx"
 )
@@ -35,7 +36,7 @@ type LocalRuleSet struct {
 	refs       atomic.Int32
 }
 
-func NewLocalRuleSet(router adapter.Router, logger logger.Logger, options option.RuleSet) (*LocalRuleSet, error) {
+func NewLocalRuleSet(ctx context.Context, router adapter.Router, logger logger.Logger, options option.RuleSet) (*LocalRuleSet, error) {
 	ruleSet := &LocalRuleSet{
 		router:     router,
 		logger:     logger,
@@ -51,7 +52,7 @@ func NewLocalRuleSet(router adapter.Router, logger logger.Logger, options option
 			return nil, err
 		}
 	} else {
-		err := ruleSet.reloadFile(options.LocalOptions.Path)
+		err := ruleSet.reloadFile(filemanager.BasePath(ctx, options.LocalOptions.Path))
 		if err != nil {
 			return nil, err
 		}

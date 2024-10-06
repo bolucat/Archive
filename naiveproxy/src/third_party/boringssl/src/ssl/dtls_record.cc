@@ -204,7 +204,8 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
     return ssl_open_record_discard;
   }
 
-  Span<const uint8_t> header = in.subspan(0, DTLS1_RT_HEADER_LENGTH);
+  Span<const uint8_t> header =
+      in.subspan(0, dtls_record_header_write_len(ssl, ssl->d1->r_epoch));
   ssl_do_msg_callback(ssl, 0 /* read */, SSL3_RT_HEADER, header);
 
   uint64_t sequence = CRYPTO_load_u64_be(sequence_bytes);
@@ -257,30 +258,40 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
   return ssl_open_record_success;
 }
 
-static const SSLAEADContext *get_write_aead(const SSL *ssl,
-                                            enum dtls1_use_epoch_t use_epoch) {
-  if (use_epoch == dtls1_use_previous_epoch) {
-    assert(ssl->d1->w_epoch >= 1);
+static SSLAEADContext *get_write_aead(const SSL *ssl, uint16_t epoch) {
+  if (epoch == 0) {
+    return ssl->d1->initial_aead_write_ctx.get();
+  }
+
+  if (epoch < ssl->d1->w_epoch) {
+    BSSL_CHECK(epoch + 1 == ssl->d1->w_epoch);
     return ssl->d1->last_aead_write_ctx.get();
   }
 
+  BSSL_CHECK(epoch == ssl->d1->w_epoch);
   return ssl->s3->aead_write_ctx.get();
 }
 
-size_t dtls_max_seal_overhead(const SSL *ssl,
-                              enum dtls1_use_epoch_t use_epoch) {
-  return DTLS1_RT_HEADER_LENGTH + get_write_aead(ssl, use_epoch)->MaxOverhead();
+size_t dtls_record_header_write_len(const SSL *ssl, uint16_t epoch) {
+  // 13 is the value of the former DTLS1_RT_HEADER_LENGTH constant.
+  return 13;
 }
 
-size_t dtls_seal_prefix_len(const SSL *ssl, enum dtls1_use_epoch_t use_epoch) {
-  return DTLS1_RT_HEADER_LENGTH +
-         get_write_aead(ssl, use_epoch)->ExplicitNonceLen();
+size_t dtls_max_seal_overhead(const SSL *ssl,
+                              uint16_t epoch) {
+  return dtls_record_header_write_len(ssl, epoch) +
+         get_write_aead(ssl, epoch)->MaxOverhead();
+}
+
+size_t dtls_seal_prefix_len(const SSL *ssl, uint16_t epoch) {
+  return dtls_record_header_write_len(ssl, epoch) +
+         get_write_aead(ssl, epoch)->ExplicitNonceLen();
 }
 
 bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
                       uint8_t type, const uint8_t *in, size_t in_len,
-                      enum dtls1_use_epoch_t use_epoch) {
-  const size_t prefix = dtls_seal_prefix_len(ssl, use_epoch);
+                      uint16_t epoch) {
+  const size_t prefix = dtls_seal_prefix_len(ssl, epoch);
   if (buffers_alias(in, in_len, out, max_out) &&
       (max_out < prefix || out + prefix != in)) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_OUTPUT_ALIASES_INPUT);
@@ -288,17 +299,16 @@ bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
   }
 
   // Determine the parameters for the current epoch.
-  uint16_t epoch = ssl->d1->w_epoch;
-  SSLAEADContext *aead = ssl->s3->aead_write_ctx.get();
+  SSLAEADContext *aead = get_write_aead(ssl, epoch);
   uint64_t *seq = &ssl->s3->write_sequence;
-  if (use_epoch == dtls1_use_previous_epoch) {
-    assert(ssl->d1->w_epoch >= 1);
-    epoch = ssl->d1->w_epoch - 1;
-    aead = ssl->d1->last_aead_write_ctx.get();
+  if (epoch < ssl->d1->w_epoch) {
     seq = &ssl->d1->last_write_sequence;
   }
+  // TODO(crbug.com/boringssl/715): If epoch is initial or handshake, the value
+  // of seq is probably wrong for a retransmission.
 
-  if (max_out < DTLS1_RT_HEADER_LENGTH) {
+  const size_t record_header_len = dtls_record_header_write_len(ssl, epoch);
+  if (max_out < record_header_len) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_BUFFER_TOO_SMALL);
     return false;
   }
@@ -326,18 +336,18 @@ bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
   }
   out[11] = ciphertext_len >> 8;
   out[12] = ciphertext_len & 0xff;
-  Span<const uint8_t> header = MakeConstSpan(out, DTLS1_RT_HEADER_LENGTH);
+  Span<const uint8_t> header = MakeConstSpan(out, record_header_len);
 
   size_t len_copy;
-  if (!aead->Seal(out + DTLS1_RT_HEADER_LENGTH, &len_copy,
-                  max_out - DTLS1_RT_HEADER_LENGTH, type, record_version,
+  if (!aead->Seal(out + record_header_len, &len_copy,
+                  max_out - record_header_len, type, record_version,
                   seq_with_epoch, header, in, in_len)) {
     return false;
   }
   assert(ciphertext_len == len_copy);
 
   (*seq)++;
-  *out_len = DTLS1_RT_HEADER_LENGTH + ciphertext_len;
+  *out_len = record_header_len + ciphertext_len;
   ssl_do_msg_callback(ssl, 1 /* write */, SSL3_RT_HEADER, header);
   return true;
 }

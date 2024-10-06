@@ -197,17 +197,11 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
   // The windows size should be twice the BDP because WINDOW_UPDATEs
   // are sent after half the window is unacknowledged.
   constexpr int kTypicalWindow = kMaxBdpMB * 2 * 1024 * 1024;
-  int http2_window_size = kTypicalWindow;
-  if (config.http2_recv_window.has_value()) {
-    http2_window_size = *config.http2_recv_window;
-    LOG(INFO) << "Overriding HTTP/2 receive window size as "
-              << http2_window_size;
-  }
   HttpNetworkSessionParams http_network_session_params;
   http_network_session_params.spdy_session_max_recv_window_size =
-      http2_window_size * 5 / 2;
+      kTypicalWindow * 2;
   http_network_session_params
-      .http2_settings[spdy::SETTINGS_INITIAL_WINDOW_SIZE] = http2_window_size;
+      .http2_settings[spdy::SETTINGS_INITIAL_WINDOW_SIZE] = kTypicalWindow;
   builder.set_http_network_session_params(http_network_session_params);
 
   builder.set_net_log(net_log);

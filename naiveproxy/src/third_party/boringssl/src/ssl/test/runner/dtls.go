@@ -62,7 +62,11 @@ func (c *Conn) dtlsDoReadRecord(want recordType) (recordType, *block, error) {
 	// version is irrelevant.)
 	if typ != recordTypeAlert {
 		if c.haveVers {
-			if vers != c.wireVersion {
+			wireVersion := c.wireVersion
+			if c.vers >= VersionTLS13 {
+				wireVersion = VersionDTLS12
+			}
+			if vers != wireVersion {
 				c.sendAlert(alertProtocolVersion)
 				return 0, nil, c.in.setErrorLocked(fmt.Errorf("dtls: received record with version %x when expecting version %x", vers, c.wireVersion))
 			}
@@ -82,7 +86,7 @@ func (c *Conn) dtlsDoReadRecord(want recordType) (recordType, *block, error) {
 	// would maintain a replay window and such.
 	if !bytes.Equal(epoch, c.in.seq[:2]) {
 		c.sendAlert(alertIllegalParameter)
-		return 0, nil, c.in.setErrorLocked(fmt.Errorf("dtls: bad epoch"))
+		return 0, nil, c.in.setErrorLocked(fmt.Errorf("dtls: bad epoch, want %x, got %x", c.in.seq[:2], epoch))
 	}
 	if bytes.Compare(seq, c.in.seq[2:]) < 0 {
 		c.sendAlert(alertIllegalParameter)
@@ -94,9 +98,9 @@ func (c *Conn) dtlsDoReadRecord(want recordType) (recordType, *block, error) {
 		c.sendAlert(alertRecordOverflow)
 		return 0, nil, c.in.setErrorLocked(fmt.Errorf("dtls: oversized record received with length %d", n))
 	}
+	b, c.rawInput = c.in.splitBlock(b, recordHeaderLen+n)
 
 	// Process message.
-	b, c.rawInput = c.in.splitBlock(b, recordHeaderLen+n)
 	ok, off, _, alertValue := c.in.decrypt(b)
 	if !ok {
 		// A real DTLS implementation would silently ignore bad records,
@@ -165,7 +169,7 @@ func (c *Conn) dtlsWriteRecord(typ recordType, data []byte) (n int, err error) {
 			}
 		}
 
-		if typ == recordTypeChangeCipherSpec {
+		if typ == recordTypeChangeCipherSpec && c.vers < VersionTLS13 {
 			err = c.out.changeCipherSpec(c.config)
 			if err != nil {
 				return n, c.sendAlertLocked(alertLevelError, err.(alert))
@@ -371,12 +375,13 @@ func (c *Conn) dtlsPackRecord(typ recordType, data []byte, mustPack bool) (n int
 			vers = VersionTLS10
 		}
 	}
+	if c.vers >= VersionTLS13 || c.out.version >= VersionTLS13 {
+		vers = VersionDTLS12
+	}
 	b.data[1] = byte(vers >> 8)
 	b.data[2] = byte(vers)
 	// DTLS records include an explicit sequence number.
 	copy(b.data[3:11], c.out.outSeq[0:])
-	b.data[11] = byte(len(data) >> 8)
-	b.data[12] = byte(len(data))
 	if explicitIVLen > 0 {
 		explicitIV := b.data[recordHeaderLen : recordHeaderLen+explicitIVLen]
 		if explicitIVIsSeq {
@@ -388,6 +393,9 @@ func (c *Conn) dtlsPackRecord(typ recordType, data []byte, mustPack bool) (n int
 		}
 	}
 	copy(b.data[recordHeaderLen+explicitIVLen:], data)
+	recordLen := c.addTLS13Padding(b, recordHeaderLen, len(data), typ)
+	b.data[11] = byte(recordLen >> 8)
+	b.data[12] = byte(recordLen)
 	c.out.encrypt(b, explicitIVLen, typ)
 
 	// Flush the current pending packet if necessary.

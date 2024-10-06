@@ -5,8 +5,7 @@
 
 #include <optional>
 #include <string>
-
-#include "base/strings/string_piece.h"
+#include <string_view>
 
 namespace net {
 const char* ToString(ClientProtocol value) {

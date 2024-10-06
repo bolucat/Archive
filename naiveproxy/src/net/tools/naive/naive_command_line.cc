@@ -18,7 +18,7 @@ DuplicateSwitchCollector::~DuplicateSwitchCollector() = default;
 
 void DuplicateSwitchCollector::ResolveDuplicate(
     std::string_view key,
-    base::CommandLine::StringPieceType new_value,
+    base::CommandLine::StringViewType new_value,
     base::CommandLine::StringType& out_value) {
   out_value = new_value;
   values_by_key_[std::string(key)].push_back(

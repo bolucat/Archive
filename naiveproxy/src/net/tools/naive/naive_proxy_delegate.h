@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 
-#include "base/strings/string_piece.h"
 #include "net/base/net_errors.h"
 #include "net/base/proxy_chain.h"
 #include "net/base/proxy_delegate.h"

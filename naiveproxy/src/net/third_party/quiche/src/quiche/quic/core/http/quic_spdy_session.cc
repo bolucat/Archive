@@ -143,6 +143,11 @@ class AlpsFrameDecoder : public HttpDecoder::Visitor {
     session_->OnAcceptChFrameReceivedViaAlps(frame);
     return true;
   }
+  bool OnOriginFrameStart(QuicByteCount /*header_length*/) override {
+    QUICHE_NOTREACHED();
+    return true;
+  }
+  bool OnOriginFrame(const OriginFrame& /*frame*/) override { return true; }
   void OnWebTransportStreamFrameType(
       QuicByteCount /*header_length*/,
       WebTransportSessionId /*session_id*/) override {
@@ -536,7 +541,8 @@ void QuicSpdySession::Initialize() {
     headers_stream_ = headers_stream.get();
     ActivateStream(std::move(headers_stream));
   } else {
-    qpack_encoder_ = std::make_unique<QpackEncoder>(this, huffman_encoding_);
+    qpack_encoder_ = std::make_unique<QpackEncoder>(this, huffman_encoding_,
+                                                    cookie_crumbling_);
     qpack_decoder_ =
         std::make_unique<QpackDecoder>(qpack_maximum_dynamic_table_capacity_,
                                        qpack_maximum_blocked_streams_, this);
@@ -776,7 +782,6 @@ void QuicSpdySession::OnHttp3GoAway(uint64_t id) {
   last_received_http3_goaway_id_ = id;
 
   if (perspective() == Perspective::IS_SERVER) {
-    // TODO(b/151749109): Cancel server pushes with push ID larger than |id|.
     return;
   }
 
