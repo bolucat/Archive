@@ -82,7 +82,7 @@ Or `quic://user:pass@example.com`, if it works better. See also [parameter usage
 * [v2rayN](https://github.com/2dust/v2rayN), GUI client, Windows
 * [NekoBox for Android](https://github.com/MatsuriDayo/NekoBoxForAndroid), Proxy toolchain, Android
 * [NekoRay / NekoBox For PC](https://github.com/MatsuriDayo/nekoray), Qt based GUI, Windows, Linux
-* [Yet Another Shadow Socket](https://github.com/Chilledheart/yass), NaïveProxy-compatible forward proxy, Android, iOS, Windows, macOS, Linux, FreeBSD 
+* [Yet Another Shadow Socket](https://github.com/Chilledheart/yass), NaïveProxy-compatible forward proxy, Android, iOS, Windows, macOS, Linux, FreeBSD
 
 ## Notes for downstream
 
@@ -114,7 +114,7 @@ Further reads and writes after `kFirstPaddings` are unpadded to avoid performanc
 
 ### H2 RST_STREAM frame padding
 
-In experiments, NaïveProxy tends to send too many RST_STREAM frames per session, an uncommon behavior from regular browsers. To solve this, an END_STREAM DATA frame padded with total length distributed in [48, 72] is prepended to the RST_STREAM frame so it looks like a HEADERS frame. The server often replies to this with a WINDOW_UPDATE because padding is accounted in flow control. Whether this results in a new uncommon behavior is still unclear. 
+In experiments, NaïveProxy tends to send too many RST_STREAM frames per session, an uncommon behavior from regular browsers. To solve this, an END_STREAM DATA frame padded with total length distributed in [48, 72] is prepended to the RST_STREAM frame so it looks like a HEADERS frame. The server often replies to this with a WINDOW_UPDATE because padding is accounted in flow control. Whether this results in a new uncommon behavior is still unclear.
 
 ### H2 HEADERS frame padding
 

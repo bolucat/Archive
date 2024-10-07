@@ -425,7 +425,7 @@ static bool ssl_can_renegotiate(const SSL *ssl) {
     return false;
   }
 
-  if (ssl->s3->have_version &&
+  if (ssl->s3->version != 0 &&
       ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
     return false;
   }
@@ -472,13 +472,20 @@ void SSL_set_handoff_mode(SSL *ssl, bool on) {
 bool SSL_get_traffic_secrets(const SSL *ssl,
                              Span<const uint8_t> *out_read_traffic_secret,
                              Span<const uint8_t> *out_write_traffic_secret) {
-  if (SSL_version(ssl) < TLS1_3_VERSION) {
-    OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_SSL_VERSION);
+  // This API is not well-defined for DTLS 1.3 (see https://crbug.com/42290608)
+  // or QUIC, where multiple epochs may be alive at once.
+  if (SSL_is_dtls(ssl) || ssl->quic_method != nullptr) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return false;
   }
 
   if (!ssl->s3->initial_handshake_complete) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_HANDSHAKE_NOT_COMPLETE);
+    return false;
+  }
+
+  if (SSL_version(ssl) < TLS1_3_VERSION) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_SSL_VERSION);
     return false;
   }
 
@@ -1693,7 +1700,7 @@ int SSL_get_verify_mode(const SSL *ssl) {
 int SSL_get_extms_support(const SSL *ssl) {
   // TLS 1.3 does not require extended master secret and always reports as
   // supporting it.
-  if (!ssl->s3->have_version) {
+  if (ssl->s3->version == 0) {
     return 0;
   }
   if (ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
@@ -1748,7 +1755,7 @@ static bool has_cert_and_key(const SSL_CREDENTIAL *cred) {
 int SSL_CTX_check_private_key(const SSL_CTX *ctx) {
   // There is no need to actually check consistency because inconsistent values
   // can never be configured.
-  return has_cert_and_key(ctx->cert->default_credential.get());
+  return has_cert_and_key(ctx->cert->legacy_credential.get());
 }
 
 int SSL_check_private_key(const SSL *ssl) {
@@ -1758,7 +1765,7 @@ int SSL_check_private_key(const SSL *ssl) {
 
   // There is no need to actually check consistency because inconsistent values
   // can never be configured.
-  return has_cert_and_key(ssl->config->cert->default_credential.get());
+  return has_cert_and_key(ssl->config->cert->legacy_credential.get());
 }
 
 long SSL_get_default_timeout(const SSL *ssl) {
@@ -1868,7 +1875,7 @@ int SSL_set_mtu(SSL *ssl, unsigned mtu) {
 }
 
 int SSL_get_secure_renegotiation_support(const SSL *ssl) {
-  if (!ssl->s3->have_version) {
+  if (ssl->s3->version == 0) {
     return 0;
   }
   return ssl_protocol_version(ssl) >= TLS1_3_VERSION ||
@@ -2550,11 +2557,11 @@ EVP_PKEY *SSL_get_privatekey(const SSL *ssl) {
     assert(ssl->config);
     return nullptr;
   }
-  return ssl->config->cert->default_credential->privkey.get();
+  return ssl->config->cert->legacy_credential->privkey.get();
 }
 
 EVP_PKEY *SSL_CTX_get0_privatekey(const SSL_CTX *ctx) {
-  return ctx->cert->default_credential->privkey.get();
+  return ctx->cert->legacy_credential->privkey.get();
 }
 
 const SSL_CIPHER *SSL_get_current_cipher(const SSL *ssl) {

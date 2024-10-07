@@ -1,6 +1,5 @@
 ﻿using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
-using Splat;
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
@@ -22,9 +21,8 @@ namespace ServiceLib.ViewModels
 
         public MsgViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
         {
-            _config = LazyConfig.Instance.Config;
+            _config = AppHandler.Instance.Config;
             _updateView = updateView;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
 
             MessageBus.Current.Listen<string>(Global.CommandSendMsgView).Subscribe(async x => await AppendQueueMsg(x));
 

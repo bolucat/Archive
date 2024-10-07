@@ -21,7 +21,7 @@ namespace v2rayN.Desktop.Views
         {
             InitializeComponent();
 
-            _config = LazyConfig.Instance.Config;
+            _config = AppHandler.Instance.Config;
             _window = window;
 
             menuSelectAll.Click += menuSelectAll_Click;
@@ -196,7 +196,7 @@ namespace v2rayN.Desktop.Views
             else
             {
                 ViewModel?.EditServerAsync(EConfigType.Custom);
-            }            
+            }
         }
 
         private void LstProfiles_LoadingRow(object? sender, DataGridRowEventArgs e)
@@ -313,6 +313,7 @@ namespace v2rayN.Desktop.Views
                 ViewModel?.RefreshServers();
             }
         }
+
         private void MenuStorageUI_Click(object? sender, RoutedEventArgs e)
         {
             StorageUI();

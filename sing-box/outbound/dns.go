@@ -188,7 +188,7 @@ func (d *DNS) newPacketConnection(ctx context.Context, conn N.PacketConn, readWa
 	fastClose, cancel := common.ContextWithCancelCause(ctx)
 	timeout := canceler.New(fastClose, cancel, C.DNSTimeout)
 	var group task.Group
-	group.Append0(func(ctx context.Context) error {
+	group.Append0(func(_ context.Context) error {
 		for {
 			var (
 				message     mDNS.Msg

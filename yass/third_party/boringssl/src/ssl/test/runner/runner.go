@@ -4973,41 +4973,76 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 		})
 	}
 
-	// TLS 1.3 basic handshake shapes. DTLS 1.3 isn't supported yet.
-	// TODO(crbug.com/boringssl/715): Enable these tests.
-	if config.protocol != dtls {
-		tests = append(tests, testCase{
-			name: "TLS13-1RTT-Client",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
-			},
-			resumeSession:        true,
-			resumeRenewedSession: true,
+	// TLS 1.3 basic handshake shapes.
+	tests = append(tests, testCase{
+		name: "TLS13-1RTT-Client",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+		},
+		resumeSession:        true,
+		resumeRenewedSession: true,
+		// 0-RTT being disabled overrides all other 0-RTT reasons.
+		flags: []string{"-expect-early-data-reason", "disabled"},
+	})
+
+	tests = append(tests, testCase{
+		testType: serverTest,
+		name:     "TLS13-1RTT-Server",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+		},
+		resumeSession:        true,
+		resumeRenewedSession: true,
+		flags: []string{
+			// TLS 1.3 uses tickets, so the session should not be
+			// cached statefully.
+			"-expect-no-session-id",
 			// 0-RTT being disabled overrides all other 0-RTT reasons.
-			flags: []string{"-expect-early-data-reason", "disabled"},
-		})
+			"-expect-early-data-reason", "disabled",
+		},
+	})
 
-		tests = append(tests, testCase{
-			testType: serverTest,
-			name:     "TLS13-1RTT-Server",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
+	tests = append(tests, testCase{
+		name: "TLS13-HelloRetryRequest-Client",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+			// P-384 requires a HelloRetryRequest against BoringSSL's default
+			// configuration. Assert this with ExpectMissingKeyShare.
+			CurvePreferences: []CurveID{CurveP384},
+			Bugs: ProtocolBugs{
+				ExpectMissingKeyShare: true,
 			},
-			resumeSession:        true,
-			resumeRenewedSession: true,
-			flags: []string{
-				// TLS 1.3 uses tickets, so the session should not be
-				// cached statefully.
-				"-expect-no-session-id",
-				// 0-RTT being disabled overrides all other 0-RTT reasons.
-				"-expect-early-data-reason", "disabled",
-			},
-		})
+		},
+		// Cover HelloRetryRequest during an ECDHE-PSK resumption.
+		resumeSession: true,
+		flags:         []string{"-expect-hrr"},
+	})
 
+	tests = append(tests, testCase{
+		testType: serverTest,
+		name:     "TLS13-HelloRetryRequest-Server",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			MinVersion: VersionTLS13,
+			// Require a HelloRetryRequest for every curve.
+			DefaultCurves: []CurveID{},
+		},
+		// Cover HelloRetryRequest during an ECDHE-PSK resumption.
+		resumeSession: true,
+		flags:         []string{"-expect-hrr"},
+	})
+
+	// TODO(crbug.com/boringssl/715): The -NoResume tests here are copies
+	// of the above tests, but without resumeSession set. These exist to
+	// test HRR in DTLS 1.3, because tests DTLS 1.3 tests with resumption
+	// enabled are skipped due to lack of support for resumption. Once we
+	// support resumption in DTLS 1.3, these can be deleted.
+	if config.protocol == dtls {
 		tests = append(tests, testCase{
-			name: "TLS13-HelloRetryRequest-Client",
+			name: "TLS13-HelloRetryRequest-Client-NoResume",
 			config: Config{
 				MaxVersion: VersionTLS13,
 				MinVersion: VersionTLS13,
@@ -5018,56 +5053,53 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 					ExpectMissingKeyShare: true,
 				},
 			},
-			// Cover HelloRetryRequest during an ECDHE-PSK resumption.
-			resumeSession: true,
-			flags:         []string{"-expect-hrr"},
+			flags: []string{"-expect-hrr"},
 		})
-
 		tests = append(tests, testCase{
 			testType: serverTest,
-			name:     "TLS13-HelloRetryRequest-Server",
+			name:     "TLS13-HelloRetryRequest-Server-NoResume",
 			config: Config{
 				MaxVersion: VersionTLS13,
 				MinVersion: VersionTLS13,
 				// Require a HelloRetryRequest for every curve.
 				DefaultCurves: []CurveID{},
 			},
-			// Cover HelloRetryRequest during an ECDHE-PSK resumption.
-			resumeSession: true,
-			flags:         []string{"-expect-hrr"},
+			flags: []string{"-expect-hrr"},
 		})
+	}
 
-		// Tests that specify a MaxEarlyDataSize don't work with QUIC.
-		if config.protocol != quic {
-			tests = append(tests, testCase{
-				testType: clientTest,
-				name:     "TLS13-EarlyData-TooMuchData-Client",
-				config: Config{
-					MaxVersion:       VersionTLS13,
-					MinVersion:       VersionTLS13,
-					MaxEarlyDataSize: 2,
+	// TLS 1.3 early data tests. DTLS 1.3 doesn't support early data yet.
+	// These tests are disabled for QUIC as well because they test features
+	// that do not apply to QUIC's use of TLS 1.3.
+	//
+	// TODO(crbug.com/boringssl/715): Enable these tests for DTLS once we
+	// support early data in DTLS 1.3.
+	if config.protocol != dtls && config.protocol != quic {
+		tests = append(tests, testCase{
+			testType: clientTest,
+			name:     "TLS13-EarlyData-TooMuchData-Client",
+			config: Config{
+				MaxVersion:       VersionTLS13,
+				MinVersion:       VersionTLS13,
+				MaxEarlyDataSize: 2,
+			},
+			resumeConfig: &Config{
+				MaxVersion:       VersionTLS13,
+				MinVersion:       VersionTLS13,
+				MaxEarlyDataSize: 2,
+				Bugs: ProtocolBugs{
+					ExpectEarlyData: [][]byte{[]byte(shimInitialWrite[:2])},
 				},
-				resumeConfig: &Config{
-					MaxVersion:       VersionTLS13,
-					MinVersion:       VersionTLS13,
-					MaxEarlyDataSize: 2,
-					Bugs: ProtocolBugs{
-						ExpectEarlyData: [][]byte{[]byte(shimInitialWrite[:2])},
-					},
-				},
-				resumeShimPrefix: shimInitialWrite[2:],
-				resumeSession:    true,
-				earlyData:        true,
-			})
-		}
+			},
+			resumeShimPrefix: shimInitialWrite[2:],
+			resumeSession:    true,
+			earlyData:        true,
+		})
 
 		// Unfinished writes can only be tested when operations are async. EarlyData
 		// can't be tested as part of an ImplicitHandshake in this case since
 		// otherwise the early data will be sent as normal data.
-		//
-		// Note application data is external in QUIC, so unfinished writes do not
-		// apply.
-		if config.async && !config.implicitHandshake && config.protocol != quic {
+		if config.async && !config.implicitHandshake {
 			tests = append(tests, testCase{
 				testType: clientTest,
 				name:     "TLS13-EarlyData-UnfinishedWrite-Client",
@@ -5106,25 +5138,23 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 		}
 
 		// Early data has no size limit in QUIC.
-		if config.protocol != quic {
-			tests = append(tests, testCase{
-				testType: serverTest,
-				name:     "TLS13-MaxEarlyData-Server",
-				config: Config{
-					MaxVersion: VersionTLS13,
-					MinVersion: VersionTLS13,
-					Bugs: ProtocolBugs{
-						SendEarlyData:           [][]byte{bytes.Repeat([]byte{1}, 14336+1)},
-						ExpectEarlyDataAccepted: true,
-					},
+		tests = append(tests, testCase{
+			testType: serverTest,
+			name:     "TLS13-MaxEarlyData-Server",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					SendEarlyData:           [][]byte{bytes.Repeat([]byte{1}, 14336+1)},
+					ExpectEarlyDataAccepted: true,
 				},
-				messageCount:  2,
-				resumeSession: true,
-				earlyData:     true,
-				shouldFail:    true,
-				expectedError: ":TOO_MUCH_READ_EARLY_DATA:",
-			})
-		}
+			},
+			messageCount:  2,
+			resumeSession: true,
+			earlyData:     true,
+			shouldFail:    true,
+			expectedError: ":TOO_MUCH_READ_EARLY_DATA:",
+		})
 	}
 
 	// TLS client auth.
@@ -6245,8 +6275,6 @@ read alert 1 0
 		}
 	}
 	if config.protocol == dtls {
-		// TODO(crbug.com/boringssl/715): DTLS 1.3 will want a similar
-		// thing for HelloRetryRequest.
 		tests = append(tests, testCase{
 			name: "SkipHelloVerifyRequest",
 			config: Config{
@@ -6255,6 +6283,29 @@ read alert 1 0
 					SkipHelloVerifyRequest: true,
 				},
 			},
+		})
+		tests = append(tests, testCase{
+			name: "DTLS13-HelloVerifyRequest",
+			config: Config{
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					ForceHelloVerifyRequest: true,
+				},
+			},
+			shouldFail:    true,
+			expectedError: ":INVALID_MESSAGE:",
+		})
+		tests = append(tests, testCase{
+			name: "DTLS13-HelloVerifyRequestEmptyCookie",
+			config: Config{
+				MinVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					ForceHelloVerifyRequest:       true,
+					EmptyHelloVerifyRequestCookie: true,
+				},
+			},
+			shouldFail:    true,
+			expectedError: ":INVALID_MESSAGE:",
 		})
 	}
 
@@ -11817,7 +11868,7 @@ func addCurveTests() {
 					},
 				})
 
-				badKeyShareLocalError := "remote error: error decoding message"
+				badKeyShareLocalError := "remote error: illegal parameter"
 				if testType == clientTest && ver.version >= VersionTLS13 {
 					// If the shim is a TLS 1.3 client and the runner sends a bad
 					// key share, the runner never reads the client's cleartext
@@ -15316,7 +15367,7 @@ func addTLS13HandshakeTests() {
 		},
 	})
 
-	// Test that the server errors on 0-RTT streams without end_of_early_data.
+	// Test that the server errors on 0-RTT streams without EndOfEarlyData.
 	// The subsequent records should fail to decrypt.
 	testCases = append(testCases, testCase{
 		testType: serverTest,
@@ -15332,6 +15383,28 @@ func addTLS13HandshakeTests() {
 		shouldFail:         true,
 		expectedLocalError: "remote error: bad record MAC",
 		expectedError:      ":BAD_DECRYPT:",
+	})
+
+	// Test that EndOfEarlyData is rejected in QUIC. Since we leave application
+	// data to the QUIC implementation, we never accept any data at all in
+	// the 0-RTT epoch, so the error is that the encryption level is rejected
+	// outright.
+	//
+	// TODO(crbug.com/42290594): Test this for DTLS 1.3 as well.
+	testCases = append(testCases, testCase{
+		protocol: quic,
+		testType: serverTest,
+		name:     "EarlyData-UnexpectedEndOfEarlyData-QUIC",
+		config: Config{
+			MaxVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				SendEndOfEarlyDataInQUICAndDTLS: true,
+			},
+		},
+		resumeSession: true,
+		earlyData:     true,
+		shouldFail:    true,
+		expectedError: ":WRONG_ENCRYPTION_LEVEL_RECEIVED:",
 	})
 
 	// Test that the server errors on 0-RTT streams with a stray handshake
@@ -15367,6 +15440,10 @@ func addTLS13HandshakeTests() {
 		earlyData:     true,
 		flags: []string{
 			"-expect-version", strconv.Itoa(VersionTLS13),
+			// EMS and RI are always reported as supported when we report
+			// TLS 1.3.
+			"-expect-extended-master-secret",
+			"-expect-secure-renegotiation",
 		},
 	})
 

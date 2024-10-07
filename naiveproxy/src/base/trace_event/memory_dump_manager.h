@@ -5,8 +5,6 @@
 #ifndef BASE_TRACE_EVENT_MEMORY_DUMP_MANAGER_H_
 #define BASE_TRACE_EVENT_MEMORY_DUMP_MANAGER_H_
 
-#include "base/trace_event/trace_event_stub.h"
-#if 0
 #include <stdint.h>
 
 #include <map>
@@ -279,5 +277,4 @@ class BASE_EXPORT MemoryDumpManager {
 }  // namespace trace_event
 }  // namespace base
 
-#endif
 #endif  // BASE_TRACE_EVENT_MEMORY_DUMP_MANAGER_H_

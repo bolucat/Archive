@@ -169,7 +169,7 @@ static bool get_key_block_lengths(const SSL *ssl, size_t *out_mac_secret_len,
                                   const SSL_CIPHER *cipher) {
   const EVP_AEAD *aead = NULL;
   if (!ssl_cipher_get_evp_aead(&aead, out_mac_secret_len, out_iv_len, cipher,
-                               ssl_protocol_version(ssl), SSL_is_dtls(ssl))) {
+                               ssl_protocol_version(ssl))) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_CIPHER_OR_HASH_UNAVAILABLE);
     return false;
   }
@@ -243,9 +243,8 @@ bool tls1_configure_aead(SSL *ssl, evp_aead_direction_t direction,
     iv = iv_override;
   }
 
-  UniquePtr<SSLAEADContext> aead_ctx =
-      SSLAEADContext::Create(direction, ssl->version, SSL_is_dtls(ssl),
-                             session->cipher, key, mac_secret, iv);
+  UniquePtr<SSLAEADContext> aead_ctx = SSLAEADContext::Create(
+      direction, ssl->s3->version, session->cipher, key, mac_secret, iv);
   if (!aead_ctx) {
     return false;
   }
@@ -334,7 +333,7 @@ int SSL_export_keying_material(SSL *ssl, uint8_t *out, size_t out_len,
                                const uint8_t *context, size_t context_len,
                                int use_context) {
   // In TLS 1.3, the exporter may be used whenever the secret has been derived.
-  if (ssl->s3->have_version && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
+  if (ssl->s3->version != 0 && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
     if (ssl->s3->exporter_secret_len == 0) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_HANDSHAKE_NOT_COMPLETE);
       return 0;

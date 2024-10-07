@@ -34,29 +34,24 @@
 
 BSSL_NAMESPACE_BEGIN
 
-SSLAEADContext::SSLAEADContext(uint16_t version_arg, bool is_dtls_arg,
-                               const SSL_CIPHER *cipher_arg)
+SSLAEADContext::SSLAEADContext(const SSL_CIPHER *cipher_arg)
     : cipher_(cipher_arg),
-      version_(version_arg),
-      is_dtls_(is_dtls_arg),
       variable_nonce_included_in_record_(false),
       random_variable_nonce_(false),
       xor_fixed_nonce_(false),
       omit_length_in_ad_(false),
       ad_is_header_(false) {
-  OPENSSL_memset(fixed_nonce_, 0, sizeof(fixed_nonce_));
   CreateRecordNumberEncrypter();
 }
 
 SSLAEADContext::~SSLAEADContext() {}
 
-UniquePtr<SSLAEADContext> SSLAEADContext::CreateNullCipher(bool is_dtls) {
-  return MakeUnique<SSLAEADContext>(0 /* version */, is_dtls,
-                                    nullptr /* cipher */);
+UniquePtr<SSLAEADContext> SSLAEADContext::CreateNullCipher() {
+  return MakeUnique<SSLAEADContext>(/*cipher=*/nullptr);
 }
 
 UniquePtr<SSLAEADContext> SSLAEADContext::Create(
-    enum evp_aead_direction_t direction, uint16_t version, bool is_dtls,
+    enum evp_aead_direction_t direction, uint16_t version,
     const SSL_CIPHER *cipher, Span<const uint8_t> enc_key,
     Span<const uint8_t> mac_key, Span<const uint8_t> fixed_iv) {
   const EVP_AEAD *aead;
@@ -64,8 +59,8 @@ UniquePtr<SSLAEADContext> SSLAEADContext::Create(
   size_t expected_mac_key_len, expected_fixed_iv_len;
   if (!ssl_protocol_version_from_wire(&protocol_version, version) ||
       !ssl_cipher_get_evp_aead(&aead, &expected_mac_key_len,
-                               &expected_fixed_iv_len, cipher, protocol_version,
-                               is_dtls) ||
+                               &expected_fixed_iv_len, cipher,
+                               protocol_version) ||
       // Ensure the caller returned correct key sizes.
       expected_fixed_iv_len != fixed_iv.size() ||
       expected_mac_key_len != mac_key.size()) {
@@ -90,13 +85,10 @@ UniquePtr<SSLAEADContext> SSLAEADContext::Create(
                             enc_key.size() + mac_key.size() + fixed_iv.size());
   }
 
-  UniquePtr<SSLAEADContext> aead_ctx =
-      MakeUnique<SSLAEADContext>(version, is_dtls, cipher);
+  UniquePtr<SSLAEADContext> aead_ctx = MakeUnique<SSLAEADContext>(cipher);
   if (!aead_ctx) {
     return nullptr;
   }
-
-  assert(aead_ctx->ProtocolVersion() == protocol_version);
 
   if (!EVP_AEAD_CTX_init_with_direction(
           aead_ctx->ctx_.get(), aead, enc_key.data(), enc_key.size(),
@@ -165,36 +157,8 @@ void SSLAEADContext::CreateRecordNumberEncrypter() {
 }
 
 UniquePtr<SSLAEADContext> SSLAEADContext::CreatePlaceholderForQUIC(
-    uint16_t version, const SSL_CIPHER *cipher) {
-  return MakeUnique<SSLAEADContext>(version, false, cipher);
-}
-
-void SSLAEADContext::SetVersionIfNullCipher(uint16_t version) {
-  if (is_null_cipher()) {
-    version_ = version;
-  }
-}
-
-uint16_t SSLAEADContext::ProtocolVersion() const {
-  uint16_t protocol_version;
-  if(!ssl_protocol_version_from_wire(&protocol_version, version_)) {
-    assert(false);
-    return 0;
-  }
-  return protocol_version;
-}
-
-uint16_t SSLAEADContext::RecordVersion() const {
-  if (version_ == 0) {
-    assert(is_null_cipher());
-    return is_dtls_ ? DTLS1_VERSION : TLS1_VERSION;
-  }
-
-  if (ProtocolVersion() <= TLS1_2_VERSION) {
-    return version_;
-  }
-
-  return is_dtls_ ? DTLS1_2_VERSION : TLS1_2_VERSION;
+    const SSL_CIPHER *cipher) {
+  return MakeUnique<SSLAEADContext>(cipher);
 }
 
 size_t SSLAEADContext::ExplicitNonceLen() const {
@@ -483,20 +447,17 @@ bool ChaChaRecordNumberEncrypter::SetKey(Span<const uint8_t> key) {
 
 bool ChaChaRecordNumberEncrypter::GenerateMask(Span<uint8_t> out,
                                                Span<const uint8_t> sample) {
-  Array<uint8_t> zeroes;
-  if (!zeroes.Init(out.size())) {
-    return false;
-  }
-  OPENSSL_memset(zeroes.data(), 0, zeroes.size());
   // RFC 9147 section 4.2.3 uses the first 4 bytes of the sample as the counter
   // and the next 12 bytes as the nonce. If we have less than 4+12=16 bytes in
-  // the sample, then we'll read past the end of the |sample| buffer.
+  // the sample, then we'll read past the end of the |sample| buffer. The
+  // counter is interpreted as little-endian per RFC 8439.
   if (sample.size() < 16) {
     return false;
   }
-  uint32_t counter = CRYPTO_load_u32_be(sample.data());
+  uint32_t counter = CRYPTO_load_u32_le(sample.data());
   Span<const uint8_t> nonce = sample.subspan(4);
-  CRYPTO_chacha_20(out.data(), zeroes.data(), zeroes.size(), key_, nonce.data(),
+  OPENSSL_memset(out.data(), 0, out.size());
+  CRYPTO_chacha_20(out.data(), out.data(), out.size(), key_, nonce.data(),
                    counter);
   return true;
 }

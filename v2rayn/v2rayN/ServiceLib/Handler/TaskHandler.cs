@@ -20,11 +20,11 @@
             await Task.Delay(60000);
             Logging.SaveLog("UpdateTaskRunSubscription");
 
-            var updateHandle = new UpdateHandler();
+            var updateHandle = new UpdateService();
             while (true)
             {
                 var updateTime = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
-                var lstSubs = LazyConfig.Instance.SubItems()
+                var lstSubs = AppHandler.Instance.SubItems()
                             .Where(t => t.autoUpdateInterval > 0)
                             .Where(t => updateTime - t.updateTime >= t.autoUpdateInterval * 60)
                             .ToList();
@@ -53,7 +53,7 @@
             //await Task.Delay(1000 * 120);
             Logging.SaveLog("UpdateTaskRunGeo");
 
-            var updateHandle = new UpdateHandler();
+            var updateHandle = new UpdateService();
             while (true)
             {
                 await Task.Delay(1000 * 3600);

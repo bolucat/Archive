@@ -19,7 +19,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <openssl/bytestring.h>
 #include <openssl/slhdsa.h>
 
 #include "../test/file_test.h"
@@ -65,21 +64,21 @@ TEST(SLHDSATest, BasicSignVerify) {
   uint8_t kContext[256] = {0};
   uint8_t signature[SLHDSA_SHA2_128S_SIGNATURE_BYTES];
   ASSERT_TRUE(SLHDSA_SHA2_128S_sign(signature, priv, kMessage, sizeof(kMessage),
-                                   nullptr, 0));
+                                    nullptr, 0));
   EXPECT_EQ(SLHDSA_SHA2_128S_verify(signature, sizeof(signature), pub, kMessage,
-                                   sizeof(kMessage), nullptr, 0),
+                                    sizeof(kMessage), nullptr, 0),
             1);
   EXPECT_EQ(SLHDSA_SHA2_128S_verify(signature, sizeof(signature), pub, kMessage,
-                                   sizeof(kMessage), kContext, 1),
+                                    sizeof(kMessage), kContext, 1),
             0);
   EXPECT_EQ(SLHDSA_SHA2_128S_verify(signature, sizeof(signature), pub, kMessage,
-                                   sizeof(kMessage), kContext, 256),
+                                    sizeof(kMessage), kContext, 256),
             0);
 
   ASSERT_TRUE(SLHDSA_SHA2_128S_sign(signature, priv, kMessage, sizeof(kMessage),
-                                   kContext, 1));
+                                    kContext, 1));
   EXPECT_EQ(SLHDSA_SHA2_128S_verify(signature, sizeof(signature), pub, kMessage,
-                                   sizeof(kMessage), kContext, 1),
+                                    sizeof(kMessage), kContext, 1),
             1);
 }
 
@@ -114,7 +113,7 @@ static void NISTSignatureGenerationFileTest(FileTest *t) {
 
   uint8_t sig[SLHDSA_SHA2_128S_SIGNATURE_BYTES];
   SLHDSA_SHA2_128S_sign_internal(sig, priv.data(), nullptr, nullptr, 0,
-                                msg.data(), msg.size(), entropy.data());
+                                 msg.data(), msg.size(), entropy.data());
 
   EXPECT_EQ(Bytes(sig), Bytes(expected_sig));
 }
@@ -134,8 +133,8 @@ static void NISTSignatureVerificationFileTest(FileTest *t) {
   ASSERT_TRUE(t->GetAttribute(&valid, "valid"));
 
   int ok = SLHDSA_SHA2_128S_verify_internal(sig.data(), sig.size(), pub.data(),
-                                           nullptr, nullptr, 0, msg.data(),
-                                           msg.size());
+                                            nullptr, nullptr, 0, msg.data(),
+                                            msg.size());
   EXPECT_EQ(ok, valid == "true");
 }
 

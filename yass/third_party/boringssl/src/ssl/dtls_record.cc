@@ -159,6 +159,18 @@ static void dtls1_bitmap_record(DTLS1_BITMAP *bitmap, uint64_t seq_num) {
   }
 }
 
+static uint16_t dtls_record_version(const SSL *ssl) {
+  if (ssl->s3->version == 0) {
+    // Before the version is determined, outgoing records use dTLS 1.0 for
+    // historical compatibility requirements.
+    return DTLS1_VERSION;
+  }
+  // DTLS 1.3 freezes the record version at DTLS 1.2. Previous ones use the
+  // version itself.
+  return ssl_protocol_version(ssl) >= TLS1_3_VERSION ? DTLS1_2_VERSION
+                                                     : ssl->s3->version;
+}
+
 // reconstruct_epoch finds the largest epoch that ends with the epoch bits from
 // |wire_epoch| that is less than or equal to |current_epoch|, to match the
 // epoch reconstruction algorithm described in RFC 9147 section 4.2.2.
@@ -283,7 +295,7 @@ static bool parse_dtls_plaintext_record_header(
     // version negotiation failure alerts.
     version_ok = (*out_version >> 8) == DTLS1_VERSION_MAJOR;
   } else {
-    version_ok = *out_version == aead->RecordVersion();
+    version_ok = *out_version == dtls_record_version(ssl);
   }
 
   if (!version_ok) {
@@ -295,7 +307,7 @@ static bool parse_dtls_plaintext_record_header(
 
   // Discard the packet if we're expecting an encrypted DTLS 1.3 record but we
   // get the old record header format.
-  if (!aead->is_null_cipher() && aead->ProtocolVersion() >= TLS1_3_VERSION) {
+  if (!aead->is_null_cipher() && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
     return false;
   }
   return true;
@@ -334,7 +346,7 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
   // used for encrypted records with DTLS 1.3. Plaintext records or DTLS 1.2
   // records use the old record header format.
   if ((type & 0xe0) == 0x20 && !aead->is_null_cipher() &&
-      aead->ProtocolVersion() >= TLS1_3_VERSION) {
+      ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
     valid_record_header = parse_dtls13_record_header(
         ssl, &cbs, in, type, &body, &sequence, &epoch, &record_header_len);
   } else {
@@ -379,7 +391,7 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
 
   // DTLS 1.3 hides the record type inside the encrypted data.
   bool has_padding =
-      !aead->is_null_cipher() && aead->ProtocolVersion() >= TLS1_3_VERSION;
+      !aead->is_null_cipher() && ssl_protocol_version(ssl) >= TLS1_3_VERSION;
   // Check the plaintext length.
   size_t plaintext_limit = SSL3_RT_MAX_PLAIN_LENGTH + (has_padding ? 1 : 0);
   if (out->size() > plaintext_limit) {
@@ -417,12 +429,12 @@ enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
 
 static SSLAEADContext *get_write_aead(const SSL *ssl, uint16_t epoch) {
   if (epoch == 0) {
-    return ssl->d1->initial_aead_write_ctx.get();
+    return ssl->d1->initial_epoch_state->aead_write_ctx.get();
   }
 
   if (epoch < ssl->d1->w_epoch) {
     BSSL_CHECK(epoch + 1 == ssl->d1->w_epoch);
-    return ssl->d1->last_aead_write_ctx.get();
+    return ssl->d1->last_epoch_state.aead_write_ctx.get();
   }
 
   BSSL_CHECK(epoch == ssl->d1->w_epoch);
@@ -432,7 +444,7 @@ static SSLAEADContext *get_write_aead(const SSL *ssl, uint16_t epoch) {
 static bool use_dtls13_record_header(const SSL *ssl, uint16_t epoch) {
   // Plaintext records in DTLS 1.3 also use the DTLSPlaintext structure for
   // backwards compatibility.
-  return ssl->s3->have_version && ssl_protocol_version(ssl) > TLS1_2_VERSION &&
+  return ssl->s3->version != 0 && ssl_protocol_version(ssl) > TLS1_2_VERSION &&
          epoch > 0;
 }
 
@@ -477,11 +489,11 @@ bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
   // Determine the parameters for the current epoch.
   SSLAEADContext *aead = get_write_aead(ssl, epoch);
   uint64_t *seq = &ssl->s3->write_sequence;
-  if (epoch < ssl->d1->w_epoch) {
-    seq = &ssl->d1->last_write_sequence;
+  if (epoch == 0) {
+    seq = &ssl->d1->initial_epoch_state->write_sequence;
+  } else if (epoch < ssl->d1->w_epoch) {
+    seq = &ssl->d1->last_epoch_state.write_sequence;
   }
-  // TODO(crbug.com/boringssl/715): If epoch is initial or handshake, the value
-  // of seq is probably wrong for a retransmission.
 
   const size_t record_header_len = dtls_record_header_write_len(ssl, epoch);
 
@@ -492,7 +504,7 @@ bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
     return false;
   }
 
-  uint16_t record_version = ssl->s3->aead_write_ctx->RecordVersion();
+  uint16_t record_version = dtls_record_version(ssl);
   uint64_t seq_with_epoch = (uint64_t{epoch} << 48) | *seq;
 
   bool dtls13_header = use_dtls13_record_header(ssl, epoch);
@@ -528,8 +540,13 @@ bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
     // |0|0|1|0|1|1|E E|
     // +-+-+-+-+-+-+-+-+
     out[0] = 0x2c | (epoch & 0x3);
+    // We always use a two-byte sequence number. A one-byte sequence number
+    // would require coordinating with the application on ACK feedback to know
+    // that the peer is not too far behind.
     out[1] = *seq >> 8;
     out[2] = *seq & 0xff;
+    // TODO(crbug.com/42290594): When we know the record is last in the packet,
+    // omit the length.
     out[3] = ciphertext_len >> 8;
     out[4] = ciphertext_len & 0xff;
     // DTLS 1.3 uses the sequence number without the epoch for the AEAD.

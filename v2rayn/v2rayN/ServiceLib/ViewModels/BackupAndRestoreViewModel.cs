@@ -22,9 +22,8 @@ namespace ServiceLib.ViewModels
 
         public BackupAndRestoreViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
         {
-            _config = LazyConfig.Instance.Config;
+            _config = AppHandler.Instance.Config;
             _updateView = updateView;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
 
             WebDavCheckCmd = ReactiveCommand.CreateFromTask(async () =>
             {

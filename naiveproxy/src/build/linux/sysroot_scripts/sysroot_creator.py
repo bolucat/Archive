@@ -461,6 +461,7 @@ def cleanup_jail_symlinks(install_root: str) -> None:
                     os.remove(full_path)
                     os.symlink(relative_path, full_path)
 
+
 def verify_library_deps(install_root: str) -> None:
     """
     Verifies if all required libraries are present in the sysroot environment.
@@ -487,7 +488,6 @@ def verify_library_deps(install_root: str) -> None:
             output = subprocess.check_output(cmd_readelf).decode()
             for line in output.split("\n"):
                 if "NEEDED" in line:
-                    print(file, line)
                     needed_libs.add(line.split("[")[1].split("]")[0])
 
     missing_libs = needed_libs - shared_libs

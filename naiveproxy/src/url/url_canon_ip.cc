@@ -154,10 +154,7 @@ CanonHostInfo::Family DoIPv4AddressToNumber(const CHAR* spec,
   while (true) {
     // If this is not the first character of a component, go to the next
     // component.
-    // XXX: On mips64el, using
-    // `current_position != host.begin && spec[current_position - 1] != '.'`
-    // would have current_position going to the negative.
-    if (current_position > host.begin && spec[current_position - 1] != '.') {
+    if (current_position != host.begin && spec[current_position - 1] != '.') {
       --current_position;
       continue;
     }

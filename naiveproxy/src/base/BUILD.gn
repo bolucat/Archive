@@ -1153,15 +1153,12 @@ component("base") {
       "android/build_info_stub.cc",
       "android/content_uri_utils.h",
       "android/content_uri_utils_stub.cc",
-      "android/jni_android.h",
       "android/library_loader/anchor_functions.h",
-      "android/library_loader/library_loader_hooks.h",
       "android/path_utils.h",
       "android/scoped_hardware_buffer_fence_sync.cc",
       "android/scoped_hardware_buffer_fence_sync.h",
       "android/scoped_hardware_buffer_handle.cc",
       "android/scoped_hardware_buffer_handle.h",
-      "android/scoped_java_ref.h",
       "android/sys_utils.h",
       "debug/stack_trace_android.cc",
       "files/file_util_android.cc",
@@ -1196,7 +1193,6 @@ component("base") {
     deps += [
       "//third_party/ashmem",
       "//third_party/cpu_features:ndk_compat",
-      "//third_party/jni_zero:jni_zero",
     ]
 
     # Needs to be a public config so that dependent targets link against it as
@@ -1276,6 +1272,8 @@ component("base") {
       "android/unguessable_token_android.h",
     ]
     deps += [ "//build:robolectric_buildflags" ]
+  }
+  if (is_android || is_robolectric) {
     public_deps += [ "//third_party/jni_zero:jni_zero" ]
   }  # is_android || is_robolectric
 

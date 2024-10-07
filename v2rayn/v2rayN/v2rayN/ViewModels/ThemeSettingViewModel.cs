@@ -5,7 +5,6 @@ using MaterialDesignColors.ColorManipulation;
 using MaterialDesignThemes.Wpf;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
-using Splat;
 using System.Reactive.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -37,8 +36,8 @@ namespace v2rayN.ViewModels
 
         public ThemeSettingViewModel()
         {
-            _config = LazyConfig.Instance.Config;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _config = AppHandler.Instance.Config;
+
             RegisterSystemColorSet(_config, Application.Current.MainWindow, (bool bl) => { ModifyTheme(bl); });
 
             BindingUI();
@@ -161,7 +160,7 @@ namespace v2rayN.ViewModels
                         _config.uiItem.currentLanguage = CurrentLanguage;
                         Thread.CurrentThread.CurrentUICulture = new(CurrentLanguage);
                         ConfigHandler.SaveConfig(_config);
-                        _noticeHandler?.Enqueue(ResUI.NeedRebootTips);
+                        NoticeHandler.Instance.Enqueue(ResUI.NeedRebootTips);
                     }
                 });
         }

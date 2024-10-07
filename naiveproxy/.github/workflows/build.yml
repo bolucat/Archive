@@ -375,40 +375,6 @@ jobs:
         run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  ios:
-    needs: cache-toolchains-mac
-    runs-on: macos-13
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [arm64]
-    env:
-      EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}" target_os="ios" ios_enable_code_signing=false'
-      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache toolchains and PGO
-        uses: actions/cache@v4
-        with:
-          path: |
-            src/third_party/llvm-build/Release+Asserts/
-            src/chrome/build/pgo_profiles/chrome-mac-*
-            src/gn/
-          key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
-      - id: ccache-timestamp
-        run: echo "CCACHE_TIMESTAMP=$(date +%s)" >>$GITHUB_OUTPUT
-      - name: Cache ccache files
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Caches/ccache
-          key: ccache-ios-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.CCACHE_TIMESTAMP }}
-          restore-keys: ccache-ios-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
-      - run: brew install ninja ccache
-      - run: pip install setuptools
-      - run: ./get-clang.sh
-      - run: ccache -z
-      - run: ./build.sh
-      - run: ccache -s
   openwrt:
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04

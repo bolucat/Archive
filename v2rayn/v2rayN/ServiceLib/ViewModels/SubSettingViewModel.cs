@@ -2,7 +2,6 @@
 using DynamicData.Binding;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
-using Splat;
 using System.Reactive;
 
 namespace ServiceLib.ViewModels
@@ -25,8 +24,8 @@ namespace ServiceLib.ViewModels
 
         public SubSettingViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
         {
-            _config = LazyConfig.Instance.Config;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _config = AppHandler.Instance.Config;
+
             _updateView = updateView;
 
             SelectedSource = new();
@@ -58,7 +57,7 @@ namespace ServiceLib.ViewModels
         public void RefreshSubItems()
         {
             _subItems.Clear();
-            _subItems.AddRange(LazyConfig.Instance.SubItems().OrderBy(t => t.sort));
+            _subItems.AddRange(AppHandler.Instance.SubItems().OrderBy(t => t.sort));
         }
 
         public async Task EditSubAsync(bool blNew)
@@ -70,7 +69,7 @@ namespace ServiceLib.ViewModels
             }
             else
             {
-                item = LazyConfig.Instance.GetSubItem(SelectedSource?.id);
+                item = AppHandler.Instance.GetSubItem(SelectedSource?.id);
                 if (item is null)
                 {
                     return;
@@ -95,7 +94,7 @@ namespace ServiceLib.ViewModels
                 ConfigHandler.DeleteSubItem(_config, it.id);
             }
             RefreshSubItems();
-            _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+            NoticeHandler.Instance.Enqueue(ResUI.OperationSuccess);
             IsModified = true;
         }
     }

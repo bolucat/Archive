@@ -73,20 +73,22 @@ static bool close_early_data(SSL_HANDSHAKE *hs, ssl_encryption_level_t level) {
   // write state. The two ClientHello sequence numbers must align, and handshake
   // write keys must be installed early to ACK the EncryptedExtensions.
   //
-  // We do not currently implement DTLS 1.3 and, in QUIC, the caller handles
-  // 0-RTT data, so we can skip installing 0-RTT keys and act as if there is one
-  // write level. If we implement DTLS 1.3, we'll need to model this better.
+  // TODO(crbug.com/42290594): We do not currently implement DTLS 1.3 and, in
+  // QUIC, the caller handles 0-RTT data, so we can skip installing 0-RTT keys
+  // and act as if there is one write level. Now that we're implementing
+  // DTLS 1.3, switch the abstraction to the DTLS/QUIC model where handshake
+  // keys write keys are installed immediately, but the TLS record layer
+  // internally waits to activate that epoch until the 0-RTT channel is closed.
   if (ssl->quic_method == nullptr) {
     if (level == ssl_encryption_initial) {
       bssl::UniquePtr<SSLAEADContext> null_ctx =
-          SSLAEADContext::CreateNullCipher(SSL_is_dtls(ssl));
+          SSLAEADContext::CreateNullCipher();
       if (!null_ctx ||
           !ssl->method->set_write_state(ssl, ssl_encryption_initial,
                                         std::move(null_ctx),
                                         /*secret_for_quic=*/{})) {
         return false;
       }
-      ssl->s3->aead_write_ctx->SetVersionIfNullCipher(ssl->version);
     } else {
       assert(level == ssl_encryption_handshake);
       if (!tls13_set_traffic_key(ssl, ssl_encryption_handshake, evp_aead_seal,
@@ -183,7 +185,7 @@ static bool check_ech_confirmation(const SSL_HANDSHAKE *hs, bool *out_accepted,
 
 static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
-  assert(ssl->s3->have_version);
+  assert(ssl->s3->version != 0);
   SSLMessage msg;
   if (!ssl->method->get_message(ssl, &msg)) {
     return ssl_hs_read_message;
@@ -437,7 +439,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
   if (!supported_versions.present ||
       !CBS_get_u16(&supported_versions.data, &version) ||
       CBS_len(&supported_versions.data) != 0 ||
-      version != ssl->version) {
+      version != ssl->s3->version) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_SECOND_SERVERHELLO_VERSION_MISMATCH);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
     return ssl_hs_error;
@@ -451,7 +453,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
       return ssl_hs_error;
     }
 
-    if (ssl->session->ssl_version != ssl->version) {
+    if (ssl->session->ssl_version != ssl->s3->version) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_OLD_SESSION_VERSION_NOT_RETURNED);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       return ssl_hs_error;
@@ -795,8 +797,9 @@ static enum ssl_hs_wait_t do_send_end_of_early_data(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
 
   if (ssl->s3->early_data_accepted) {
-    // QUIC omits the EndOfEarlyData message. See RFC 9001, section 8.3.
-    if (ssl->quic_method == nullptr) {
+    // DTLS and QUIC omit the EndOfEarlyData message. See RFC 9001, section 8.3,
+    // and RFC 9147, section 5.6.
+    if (ssl->quic_method == nullptr && !SSL_is_dtls(ssl)) {
       ScopedCBB cbb;
       CBB body;
       if (!ssl->method->init_message(ssl, cbb.get(), &body,

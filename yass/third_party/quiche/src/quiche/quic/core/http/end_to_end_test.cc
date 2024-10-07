@@ -44,6 +44,7 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/core/tls_client_handshaker.h"
 #include "quiche/quic/platform/api/quic_expect_bug.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
@@ -92,6 +93,7 @@ using spdy::SpdySerializedFrame;
 using spdy::SpdySettingsIR;
 using ::testing::_;
 using ::testing::Assign;
+using ::testing::HasSubstr;
 using ::testing::Invoke;
 using ::testing::NiceMock;
 using ::testing::UnorderedElementsAreArray;
@@ -306,8 +308,7 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
   }
 
   bool DispatcherAckEnabled() const {
-    return GetQuicRestartFlag(quic_dispatcher_ack_buffered_initial_packets) &&
-           GetQuicRestartFlag(quic_dispatcher_replace_cid_on_first_packet);
+    return GetQuicRestartFlag(quic_dispatcher_ack_buffered_initial_packets);
   }
 
   void set_smaller_flow_control_receive_window() {
@@ -1182,13 +1183,35 @@ TEST_P(EndToEndTest, HandshakeConfirmed) {
   client_->Disconnect();
 }
 
+TEST_P(EndToEndTest, InvalidSNI) {
+  if (!version_.UsesTls()) {
+    ASSERT_TRUE(Initialize());
+    return;
+  }
+
+  SetQuicFlag(quic_client_allow_invalid_sni_for_test, true);
+  server_hostname_ = "invalid!.example.com";
+  ASSERT_FALSE(Initialize());
+
+  QuicSpdySession* client_session = GetClientSession();
+  ASSERT_TRUE(client_session);
+  if (GetQuicReloadableFlag(quic_new_error_code_for_invalid_hostname)) {
+    EXPECT_THAT(client_session->error(),
+                IsError(QUIC_HANDSHAKE_FAILED_INVALID_HOSTNAME));
+    EXPECT_THAT(client_session->error_details(), HasSubstr("invalid hostname"));
+  } else {
+    EXPECT_THAT(client_session->error(), IsError(QUIC_HANDSHAKE_FAILED));
+    EXPECT_THAT(client_session->error_details(),
+                HasSubstr("select_cert_error: invalid hostname"));
+  }
+}
+
 // Two packet CHLO. The first one is buffered and acked by dispatcher, the
 // second one causes session to be created.
 TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO) {
   SetQuicFlag(quic_allow_chlo_buffering, true);
   SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 1);
-  std::string google_handshake_message(kEthernetMTU, 'a');
-  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  client_extra_copts_.push_back(kCHP1);
   ASSERT_TRUE(Initialize());
   if (!version_.HasIetfQuicFrames()) {
     return;
@@ -1335,8 +1358,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO_BothBuffered) {
 TEST_P(EndToEndTest, TestDispatcherAckWithThreePacketCHLO) {
   SetQuicFlag(quic_allow_chlo_buffering, true);
   SetQuicFlag(quic_dispatcher_max_ack_sent_per_connection, 2);
-  std::string google_handshake_message(2 * kEthernetMTU, 'a');
-  client_config_.SetGoogleHandshakeMessageToSend(google_handshake_message);
+  client_extra_copts_.push_back(kCHP2);
   ASSERT_TRUE(Initialize());
   if (!version_.HasIetfQuicFrames()) {
     return;
@@ -7842,6 +7864,26 @@ TEST_P(EndToEndTest, ClientReportsEct1) {
   server_connection->set_per_packet_options(nullptr);
   server_thread_->Resume();
   client_->Disconnect();
+}
+
+TEST_P(EndToEndTest, FixTimeouts) {
+  client_extra_copts_.push_back(kFTOE);
+  ASSERT_TRUE(Initialize());
+  if (!version_.UsesTls()) {
+    return;
+  }
+  EXPECT_TRUE(client_->client()->WaitForHandshakeConfirmed());
+  // Verify handshake timeout has been removed on both endpoints.
+  QuicConnection* client_connection = GetClientConnection();
+  EXPECT_EQ(QuicConnectionPeer::GetIdleNetworkDetector(client_connection)
+                .handshake_timeout(),
+            QuicTime::Delta::Infinite());
+  server_thread_->Pause();
+  QuicConnection* server_connection = GetServerConnection();
+  EXPECT_EQ(QuicConnectionPeer::GetIdleNetworkDetector(server_connection)
+                .handshake_timeout(),
+            QuicTime::Delta::Infinite());
+  server_thread_->Resume();
 }
 
 TEST_P(EndToEndTest, ClientMigrationAfterHalfwayServerMigration) {

@@ -13,7 +13,6 @@ namespace ServiceLib.ViewModels
     {
         #region private prop
 
-        private CoreHandler _coreHandler;
         private bool _isAdministrator { get; set; }
 
         #endregion private prop
@@ -146,8 +145,8 @@ namespace ServiceLib.ViewModels
 
         public MainWindowViewModel(bool isAdministrator, Func<EViewAction, object?, Task<bool>>? updateView)
         {
-            _config = LazyConfig.Instance.Config;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _config = AppHandler.Instance.Config;
+
             _updateView = updateView;
             _isAdministrator = isAdministrator;
 
@@ -281,7 +280,7 @@ namespace ServiceLib.ViewModels
             {
                 if (await _updateView?.Invoke(EViewAction.GlobalHotkeySettingWindow, null) == true)
                 {
-                    _noticeHandler?.Enqueue(ResUI.OperationSuccess);
+                    NoticeHandler.Instance.Enqueue(ResUI.OperationSuccess);
                 }
             });
             RebootAsAdminCmd = ReactiveCommand.Create(() =>
@@ -342,8 +341,7 @@ namespace ServiceLib.ViewModels
         {
             ConfigHandler.InitBuiltinRouting(_config);
             ConfigHandler.InitBuiltinDNS(_config);
-            _coreHandler = new CoreHandler(_config, UpdateHandler);
-            Locator.CurrentMutable.RegisterLazySingleton(() => _coreHandler, typeof(CoreHandler));
+            CoreHandler.Instance.Init(_config, UpdateHandler);
 
             if (_config.guiItem.enableStatistics)
             {
@@ -364,16 +362,16 @@ namespace ServiceLib.ViewModels
 
         private void UpdateHandler(bool notify, string msg)
         {
-            _noticeHandler?.SendMessage(msg);
+            NoticeHandler.Instance.SendMessage(msg);
             if (notify)
             {
-                _noticeHandler?.Enqueue(msg);
+                NoticeHandler.Instance.Enqueue(msg);
             }
         }
 
         private void UpdateTaskHandler(bool success, string msg)
         {
-            _noticeHandler?.SendMessageEx(msg);
+            NoticeHandler.Instance.SendMessageEx(msg);
             if (success)
             {
                 var indexIdOld = _config.indexId;
@@ -428,7 +426,7 @@ namespace ServiceLib.ViewModels
                 ProfileExHandler.Instance.SaveTo();
                 StatisticsHandler.Instance.SaveTo();
                 StatisticsHandler.Instance.Close();
-                _coreHandler.CoreStop();
+                CoreHandler.Instance.CoreStop();
 
                 Logging.SaveLog("MyAppExit End");
             }
@@ -486,7 +484,7 @@ namespace ServiceLib.ViewModels
 
         private void RefreshServersMenu()
         {
-            var lstModel = LazyConfig.Instance.ProfileItems(_config.subIndexId, "");
+            var lstModel = AppHandler.Instance.ProfileItems(_config.subIndexId, "");
 
             _servers.Clear();
             if (lstModel.Count > _config.guiItem.trayMenuServersLimit)
@@ -559,7 +557,7 @@ namespace ServiceLib.ViewModels
             {
                 RefreshSubscriptions();
                 RefreshServers();
-                _noticeHandler?.Enqueue(string.Format(ResUI.SuccessfullyImportedServerViaClipboard, ret));
+                NoticeHandler.Instance.Enqueue(string.Format(ResUI.SuccessfullyImportedServerViaClipboard, ret));
             }
         }
 
@@ -567,7 +565,7 @@ namespace ServiceLib.ViewModels
         {
             if (Utils.IsNullOrEmpty(result))
             {
-                _noticeHandler?.Enqueue(ResUI.NoValidQRcodeFound);
+                NoticeHandler.Instance.Enqueue(ResUI.NoValidQRcodeFound);
             }
             else
             {
@@ -576,7 +574,7 @@ namespace ServiceLib.ViewModels
                 {
                     RefreshSubscriptions();
                     RefreshServers();
-                    _noticeHandler?.Enqueue(ResUI.SuccessfullyImportedServerViaScan);
+                    NoticeHandler.Instance.Enqueue(ResUI.SuccessfullyImportedServerViaScan);
                 }
             }
         }
@@ -591,10 +589,10 @@ namespace ServiceLib.ViewModels
             {
                 return;
             }
-            var item = LazyConfig.Instance.GetProfileItem(indexId);
+            var item = AppHandler.Instance.GetProfileItem(indexId);
             if (item is null)
             {
-                _noticeHandler?.Enqueue(ResUI.PleaseSelectServer);
+                NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectServer);
                 return;
             }
 
@@ -629,9 +627,9 @@ namespace ServiceLib.ViewModels
             {
                 return;
             }
-            await (new UpdateHandler()).RunAvailabilityCheck(async (bool success, string msg) =>
+            await (new UpdateService()).RunAvailabilityCheck(async (bool success, string msg) =>
             {
-                _noticeHandler?.SendMessageEx(msg);
+                NoticeHandler.Instance.SendMessageEx(msg);
                 await _updateView?.Invoke(EViewAction.DispatcherServerAvailability, msg);
             });
         }
@@ -655,7 +653,7 @@ namespace ServiceLib.ViewModels
 
         public void UpdateSubscriptionProcess(string subId, bool blProxy)
         {
-            (new UpdateHandler()).UpdateSubscriptionProcess(_config, subId, blProxy, UpdateTaskHandler);
+            (new UpdateService()).UpdateSubscriptionProcess(_config, subId, blProxy, UpdateTaskHandler);
         }
 
         #endregion Subscription
@@ -750,7 +748,7 @@ namespace ServiceLib.ViewModels
                 //}
 
                 var node = ConfigHandler.GetDefaultServer(_config);
-                _coreHandler.LoadCore(node);
+                CoreHandler.Instance.LoadCore(node);
             });
         }
 
@@ -760,7 +758,7 @@ namespace ServiceLib.ViewModels
 
             ChangeSystemProxyStatusAsync(ESysProxyType.ForcedClear, false);
 
-            _coreHandler.CoreStop();
+            CoreHandler.Instance.CoreStop();
         }
 
         #endregion core job
@@ -784,7 +782,7 @@ namespace ServiceLib.ViewModels
         {
             //await _updateView?.Invoke(EViewAction.UpdateSysProxy, _config.tunModeItem.enableTun ? true : false);
             await _updateView?.Invoke(EViewAction.UpdateSysProxy, false);
-            _noticeHandler?.SendMessageEx($"{ResUI.TipChangeSystemProxy} - {_config.systemProxyItem.sysProxyType.ToString()}");
+            NoticeHandler.Instance.SendMessageEx($"{ResUI.TipChangeSystemProxy} - {_config.systemProxyItem.sysProxyType.ToString()}");
 
             BlSystemProxyClear = (type == ESysProxyType.ForcedClear);
             BlSystemProxySet = (type == ESysProxyType.ForcedChange);
@@ -809,7 +807,7 @@ namespace ServiceLib.ViewModels
             }
 
             BlRouting = true;
-            var routings = LazyConfig.Instance.RoutingItems();
+            var routings = AppHandler.Instance.RoutingItems();
             foreach (var item in routings)
             {
                 _routingItems.Add(item);
@@ -832,7 +830,7 @@ namespace ServiceLib.ViewModels
                 return;
             }
 
-            var item = LazyConfig.Instance.GetRoutingItem(SelectedRouting?.id);
+            var item = AppHandler.Instance.GetRoutingItem(SelectedRouting?.id);
             if (item is null)
             {
                 return;
@@ -844,7 +842,7 @@ namespace ServiceLib.ViewModels
 
             if (ConfigHandler.SetDefaultRouting(_config, item) == 0)
             {
-                _noticeHandler?.SendMessageEx(ResUI.TipChangeRouting);
+                NoticeHandler.Instance.SendMessageEx(ResUI.TipChangeRouting);
                 Reload();
                 await _updateView?.Invoke(EViewAction.DispatcherRefreshIcon, null);
             }
@@ -887,7 +885,7 @@ namespace ServiceLib.ViewModels
         public void InboundDisplayStaus()
         {
             StringBuilder sb = new();
-            sb.Append($"[{EInboundProtocol.socks}:{LazyConfig.Instance.GetLocalPort(EInboundProtocol.socks)}]");
+            sb.Append($"[{EInboundProtocol.socks}:{AppHandler.Instance.GetLocalPort(EInboundProtocol.socks)}]");
             sb.Append(" | ");
             //if (_config.systemProxyItem.sysProxyType == ESysProxyType.ForcedChange)
             //{
@@ -895,7 +893,7 @@ namespace ServiceLib.ViewModels
             //}
             //else
             //{
-            sb.Append($"[{EInboundProtocol.http}:{LazyConfig.Instance.GetLocalPort(EInboundProtocol.http)}]");
+            sb.Append($"[{EInboundProtocol.http}:{AppHandler.Instance.GetLocalPort(EInboundProtocol.http)}]");
             //}
             InboundDisplay = $"{ResUI.LabLocal}:{sb}";
 
@@ -904,9 +902,9 @@ namespace ServiceLib.ViewModels
                 if (_config.inbound[0].newPort4LAN)
                 {
                     StringBuilder sb2 = new();
-                    sb2.Append($"[{EInboundProtocol.socks}:{LazyConfig.Instance.GetLocalPort(EInboundProtocol.socks2)}]");
+                    sb2.Append($"[{EInboundProtocol.socks}:{AppHandler.Instance.GetLocalPort(EInboundProtocol.socks2)}]");
                     sb2.Append(" | ");
-                    sb2.Append($"[{EInboundProtocol.http}:{LazyConfig.Instance.GetLocalPort(EInboundProtocol.http2)}]");
+                    sb2.Append($"[{EInboundProtocol.http}:{AppHandler.Instance.GetLocalPort(EInboundProtocol.http2)}]");
                     InboundLanDisplay = $"{ResUI.LabLAN}:{sb2}";
                 }
                 else

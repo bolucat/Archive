@@ -27,7 +27,7 @@ config("compiler") {
 
   defines = [
     "_LIBCPP_HAS_MUSL_LIBC",
-    "__UCLIBC__",
+    #"__UCLIBC__",
     "__MUSL__",
   ]
 

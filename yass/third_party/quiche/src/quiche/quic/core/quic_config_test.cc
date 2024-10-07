@@ -476,6 +476,7 @@ TEST_P(QuicConfigTest, FillTransportParams) {
   config_.SetRetrySourceConnectionIdToSend(TestConnectionId(0x3333));
   config_.SetMinAckDelayMs(kDefaultMinAckDelayTimeMs);
   config_.SetGoogleHandshakeMessageToSend(kFakeGoogleHandshakeMessage);
+  config_.SetReliableStreamReset(true);
 
   QuicIpAddress host;
   host.FromString("127.0.3.1");
@@ -536,6 +537,8 @@ TEST_P(QuicConfigTest, FillTransportParams) {
                 &params.preferred_address->stateless_reset_token.front()),
             new_stateless_reset_token);
   EXPECT_EQ(kFakeGoogleHandshakeMessage, params.google_handshake_message);
+
+  EXPECT_TRUE(params.reliable_stream_reset);
 }
 
 TEST_P(QuicConfigTest, DNATPreferredAddress) {
@@ -623,16 +626,19 @@ TEST_P(QuicConfigTest, SupportsServerPreferredAddress) {
 TEST_P(QuicConfigTest, AddConnectionOptionsToSend) {
   QuicTagVector copt;
   copt.push_back(kNOIP);
+  copt.push_back(kFPPE);
   config_.AddConnectionOptionsToSend(copt);
   ASSERT_TRUE(config_.HasSendConnectionOptions());
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kFPPE));
 
   copt.clear();
   copt.push_back(kSPAD);
   copt.push_back(kSPA2);
   config_.AddConnectionOptionsToSend(copt);
-  ASSERT_EQ(3, config_.SendConnectionOptions().size());
+  ASSERT_EQ(4, config_.SendConnectionOptions().size());
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kNOIP));
+  EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kFPPE));
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPAD));
   EXPECT_TRUE(quic::ContainsQuicTag(config_.SendConnectionOptions(), kSPA2));
 }

@@ -16,8 +16,7 @@ namespace v2rayN.Desktop.ViewModels
 
         public AppViewModel()
         {
-            _config = LazyConfig.Instance.Config;
-            _noticeHandler = Locator.Current.GetService<NoticeHandler>();
+            _config = AppHandler.Instance.Config;
 
             AddServerViaClipboardCmd = ReactiveCommand.Create(() =>
             {

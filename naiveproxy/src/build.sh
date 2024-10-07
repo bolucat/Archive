@@ -50,6 +50,9 @@ flags="$flags"'
   fatal_linker_warnings=false
   treat_warnings_as_errors=false
 
+  is_cronet_build=true
+  chrome_pgo_phase=2
+
   enable_base_tracing=false
   use_udev=false
   use_aura=false
@@ -58,16 +61,17 @@ flags="$flags"'
   use_gtk=false
   use_platform_icu_alternatives=true
   use_glib=false
-  enable_js_protobuf=false
 
   disable_file_support=true
   enable_websockets=false
   use_kerberos=false
+  disable_file_support=true
+  disable_zstd_filter=false
   enable_mdns=false
   enable_reporting=false
   include_transport_security_state_preload_list=false
-  use_nss_certs=false
   enable_device_bound_sessions=false
+  use_nss_certs=false
 
   enable_backup_ref_ptr_support=false
   enable_dangling_raw_ptr_checks=false

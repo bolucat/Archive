@@ -17,7 +17,7 @@ namespace ServiceLib.Handler
 
         public WebDavHandler()
         {
-            _config = LazyConfig.Instance.Config;
+            _config = AppHandler.Instance.Config;
         }
 
         private async Task<bool> GetClient()
@@ -110,7 +110,7 @@ namespace ServiceLib.Handler
                 }
                 else
                 {
-                    SaveLog(result.Description);               
+                    SaveLog(result.Description);
                 }
             }
             catch (Exception ex)

@@ -16,7 +16,7 @@
 #include "net/cookies/cookie_util.h"
 #include "net/cookies/site_for_cookies.h"
 
-#if 0
+#if !BUILDFLAG(CRONET_BUILD)
 #include "mojo/public/cpp/bindings/default_construct_tag.h"
 #endif
 
@@ -60,7 +60,7 @@ std::string CookiePartitionKey::SerializedCookiePartitionKey::GetDebugString()
   return out;
 }
 
-#if 0
+#if !BUILDFLAG(CRONET_BUILD)
 CookiePartitionKey::CookiePartitionKey(mojo::DefaultConstruct::Tag) {}
 #endif
 bool CookiePartitionKey::SerializedCookiePartitionKey::has_cross_site_ancestor()

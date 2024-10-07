@@ -16,7 +16,7 @@
 #include "net/base/schemeful_site.h"
 #include "url/gurl.h"
 
-#if 0
+#if !BUILDFLAG(CRONET_BUILD)
 #include "mojo/public/cpp/bindings/default_construct_tag.h"
 #endif
 
@@ -60,7 +60,7 @@ class NET_EXPORT CookiePartitionKey {
   static AncestorChainBit BoolToAncestorChainBit(bool val);
 
   CookiePartitionKey() = delete;
-#if 0
+#if !BUILDFLAG(CRONET_BUILD)
   explicit CookiePartitionKey(mojo::DefaultConstruct::Tag);
 #endif
   CookiePartitionKey(const CookiePartitionKey& other);

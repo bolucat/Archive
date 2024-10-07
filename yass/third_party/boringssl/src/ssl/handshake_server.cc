@@ -196,7 +196,7 @@ bool ssl_client_cipher_list_contains_cipher(
 static bool negotiate_version(SSL_HANDSHAKE *hs, uint8_t *out_alert,
                               const SSL_CLIENT_HELLO *client_hello) {
   SSL *const ssl = hs->ssl;
-  assert(!ssl->s3->have_version);
+  assert(ssl->s3->version == 0);
   CBS supported_versions, versions;
   if (ssl_client_hello_get_extension(client_hello, &supported_versions,
                                      TLSEXT_TYPE_supported_versions)) {
@@ -241,14 +241,9 @@ static bool negotiate_version(SSL_HANDSHAKE *hs, uint8_t *out_alert,
     }
   }
 
-  if (!ssl_negotiate_version(hs, out_alert, &ssl->version, &versions)) {
+  if (!ssl_negotiate_version(hs, out_alert, &ssl->s3->version, &versions)) {
     return false;
   }
-
-  // At this point, the connection's version is known and |ssl->version| is
-  // fixed. Begin enforcing the record-layer version.
-  ssl->s3->have_version = true;
-  ssl->s3->aead_write_ctx->SetVersionIfNullCipher(ssl->version);
 
   // Handle FALLBACK_SCSV.
   if (ssl_client_cipher_list_contains_cipher(client_hello,
@@ -1086,7 +1081,7 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
   ScopedCBB cbb;
   CBB body, session_id_bytes;
   if (!ssl->method->init_message(ssl, cbb.get(), &body, SSL3_MT_SERVER_HELLO) ||
-      !CBB_add_u16(&body, ssl->version) ||
+      !CBB_add_u16(&body, ssl->s3->version) ||
       !CBB_add_bytes(&body, ssl->s3->server_random, SSL3_RANDOM_SIZE) ||
       !CBB_add_u8_length_prefixed(&body, &session_id_bytes) ||
       !CBB_add_bytes(&session_id_bytes, session_id.data(), session_id.size()) ||

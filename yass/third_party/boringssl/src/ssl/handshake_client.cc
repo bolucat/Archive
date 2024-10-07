@@ -179,7 +179,6 @@ enum ssl_client_hs_state_t {
   state_start_connect = 0,
   state_enter_early_data,
   state_early_reverify_server_certificate,
-  state_read_hello_verify_request,
   state_read_server_hello,
   state_tls13,
   state_read_server_certificate,
@@ -571,39 +570,27 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
 
 static enum ssl_hs_wait_t do_enter_early_data(SSL_HANDSHAKE *hs) {
   SSL *const ssl = hs->ssl;
-
-  if (SSL_is_dtls(ssl)) {
-    hs->state = state_read_hello_verify_request;
-    return ssl_hs_ok;
-  }
-
   if (!hs->early_data_offered) {
     hs->state = state_read_server_hello;
     return ssl_hs_ok;
   }
 
-  ssl->s3->aead_write_ctx->SetVersionIfNullCipher(ssl->session->ssl_version);
-  if (!ssl->method->add_change_cipher_spec(ssl)) {
-    return ssl_hs_error;
-  }
-
-  if (!tls13_init_early_key_schedule(hs, ssl->session.get()) ||
-      !tls13_derive_early_secret(hs)) {
-    return ssl_hs_error;
-  }
-
-  // Stash the early data session, so connection properties may be queried out
-  // of it.
+  // Stash the early data session and activate the early version. This must
+  // happen before |do_early_reverify_server_certificate|, so early connection
+  // properties are available to the callback. Note the early version may be
+  // overwritten later by the final version.
   hs->early_session = UpRef(ssl->session);
+  ssl->s3->version = hs->early_session->ssl_version;
   hs->state = state_early_reverify_server_certificate;
   return ssl_hs_ok;
 }
 
 static enum ssl_hs_wait_t do_early_reverify_server_certificate(SSL_HANDSHAKE *hs) {
-  if (hs->ssl->ctx->reverify_on_resume) {
-    // Don't send an alert on error. The alert be in early data, which the
-    // server may not accept anyway. It would also be a mismatch between QUIC
-    // and TCP because the QUIC early keys are deferred below.
+  SSL *const ssl = hs->ssl;
+  if (ssl->ctx->reverify_on_resume) {
+    // Don't send an alert on error. The alert would be in the clear, which the
+    // server is not expecting anyway. Alerts in between ClientHello and
+    // ServerHello cannot usefully be delivered in TLS 1.3.
     //
     // TODO(davidben): The client behavior should be to verify the certificate
     // before deciding whether to offer the session and, if invalid, decline to
@@ -619,9 +606,15 @@ static enum ssl_hs_wait_t do_early_reverify_server_certificate(SSL_HANDSHAKE *hs
     }
   }
 
+  if (!ssl->method->add_change_cipher_spec(ssl)) {
+    return ssl_hs_error;
+  }
+
   // Defer releasing the 0-RTT key to after certificate reverification, so the
   // QUIC implementation does not accidentally write data too early.
-  if (!tls13_set_traffic_key(hs->ssl, ssl_encryption_early_data, evp_aead_seal,
+  if (!tls13_init_early_key_schedule(hs, hs->early_session.get()) ||
+      !tls13_derive_early_secret(hs) ||
+      !tls13_set_traffic_key(hs->ssl, ssl_encryption_early_data, evp_aead_seal,
                              hs->early_session.get(),
                              hs->early_traffic_secret())) {
     return ssl_hs_error;
@@ -633,26 +626,12 @@ static enum ssl_hs_wait_t do_early_reverify_server_certificate(SSL_HANDSHAKE *hs
   return ssl_hs_early_return;
 }
 
-static enum ssl_hs_wait_t do_read_hello_verify_request(SSL_HANDSHAKE *hs) {
+static bool handle_hello_verify_request(SSL_HANDSHAKE *hs,
+                                        const SSLMessage &msg) {
   SSL *const ssl = hs->ssl;
-
   assert(SSL_is_dtls(ssl));
-
-  SSLMessage msg;
-  if (!ssl->method->get_message(ssl, &msg)) {
-    return ssl_hs_read_message;
-  }
-
-  if (msg.type != DTLS1_MT_HELLO_VERIFY_REQUEST) {
-    hs->state = state_read_server_hello;
-    return ssl_hs_ok;
-  }
-
-  // TODO(crbug.com/boringssl/715): At the point when we read an HVR, we don't
-  // know whether the connection is DTLS 1.2 (or earlier) or DTLS 1.3 - that's
-  // determined when we read the supported_versions in the ServerHello. If we
-  // receive HVR and then the ServerHello selects DTLS 1.3, that is an error and
-  // we should close the connection.
+  assert(msg.type == DTLS1_MT_HELLO_VERIFY_REQUEST);
+  assert(!hs->received_hello_verify_request);
 
   CBS hello_verify_request = msg.body, cookie;
   uint16_t server_version;
@@ -661,27 +640,23 @@ static enum ssl_hs_wait_t do_read_hello_verify_request(SSL_HANDSHAKE *hs) {
       CBS_len(&hello_verify_request) != 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
-    return ssl_hs_error;
+    return false;
   }
 
   if (!hs->dtls_cookie.CopyFrom(cookie)) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
-    return ssl_hs_error;
+    return false;
   }
+  hs->received_hello_verify_request = true;
 
   ssl->method->next_message(ssl);
 
   // DTLS resets the handshake buffer after HelloVerifyRequest.
   if (!hs->transcript.Init()) {
-    return ssl_hs_error;
+    return false;
   }
 
-  if (!ssl_add_client_hello(hs)) {
-    return ssl_hs_error;
-  }
-
-  hs->state = state_read_server_hello;
-  return ssl_hs_flush;
+  return ssl_add_client_hello(hs);
 }
 
 bool ssl_parse_server_hello(ParsedServerHello *out, uint8_t *out_alert,
@@ -723,6 +698,16 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_read_server_hello;
   }
 
+  if (SSL_is_dtls(ssl) && !hs->received_hello_verify_request &&
+      msg.type == DTLS1_MT_HELLO_VERIFY_REQUEST) {
+    if (!handle_hello_verify_request(hs, msg)) {
+      return ssl_hs_error;
+    }
+    hs->received_hello_verify_request = true;
+    hs->state = state_read_server_hello;
+    return ssl_hs_flush;
+  }
+
   ParsedServerHello server_hello;
   uint16_t server_version;
   uint8_t alert = SSL_AD_DECODE_ERROR;
@@ -738,29 +723,58 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  // TODO(crbug.com/boringssl/715): Check that if the server picked DTLS 1.3,
-  // that it didn't also previously send an HVR, as that is not allowed by RFC
-  // 9147. (DTLS 1.25 still uses HVR instead of HRR.) Also add a runner test to
-  // test that we handle that case properly.
-  //
-  // See
-  // https://boringssl-review.googlesource.com/c/boringssl/+/68027/3/ssl/handshake_client.cc
-  // for an example of what this check might look like.
-
-  assert(ssl->s3->have_version == ssl->s3->initial_handshake_complete);
-  if (!ssl->s3->have_version) {
-    ssl->version = server_version;
-    // At this point, the connection's version is known and ssl->version is
-    // fixed. Begin enforcing the record-layer version.
-    ssl->s3->have_version = true;
-    ssl->s3->aead_write_ctx->SetVersionIfNullCipher(ssl->version);
-  } else if (server_version != ssl->version) {
+  if (!ssl->s3->initial_handshake_complete) {
+    // |ssl->s3->version| may be set due to 0-RTT. If it was to a different
+    // value, the check below will fire.
+    assert(ssl->s3->version == 0 ||
+           (hs->early_data_offered &&
+            ssl->s3->version == hs->early_session->ssl_version));
+    ssl->s3->version = server_version;
+  } else if (server_version != ssl->s3->version) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_SSL_VERSION);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_PROTOCOL_VERSION);
     return ssl_hs_error;
   }
 
+  // If the version did not match, stop sending 0-RTT data.
+  if (hs->early_data_offered &&
+      ssl->s3->version != hs->early_session->ssl_version) {
+    // This is currently only possible by reading a TLS 1.2 (or earlier)
+    // ServerHello in response to TLS 1.3. If there is ever a TLS 1.4, or
+    // another variant of TLS 1.3, the fatal error below will need to be a clean
+    // 0-RTT reject.
+    assert(ssl_protocol_version(ssl) < TLS1_3_VERSION);
+    assert(ssl_session_protocol_version(hs->early_session.get()) >=
+           TLS1_3_VERSION);
+
+    // A TLS 1.2 server would not know to skip the early data we offered, so
+    // there is no point in continuing the handshake. Report an error code as
+    // soon as we detect this. The caller may use this error code to implement
+    // the fallback described in RFC 8446 appendix D.3.
+    //
+    // Disconnect early writes. This ensures subsequent |SSL_write| calls query
+    // the handshake which, in turn, will replay the error code rather than fail
+    // at the |write_shutdown| check. See https://crbug.com/1078515.
+    // TODO(davidben): Should all handshake errors do this? What about record
+    // decryption failures?
+    //
+    // TODO(crbug.com/42290594): Although missing from the spec, a DTLS 1.2
+    // server will already naturally skip 0-RTT data. If we implement DTLS 1.3
+    // 0-RTT, we may want a clean reject.
+    assert(!SSL_is_dtls(ssl));
+    hs->can_early_write = false;
+    OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_VERSION_ON_EARLY_DATA);
+    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_PROTOCOL_VERSION);
+    return ssl_hs_error;
+  }
+
   if (ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
+    if (hs->received_hello_verify_request) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_INVALID_MESSAGE);
+      ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_PROTOCOL_VERSION);
+      return ssl_hs_error;
+    }
+
     hs->state = state_tls13;
     return ssl_hs_ok;
   }
@@ -769,21 +783,6 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
   hs->key_shares[0].reset();
   hs->key_shares[1].reset();
   ssl_done_writing_client_hello(hs);
-
-  // A TLS 1.2 server would not know to skip the early data we offered. Report
-  // an error code sooner. The caller may use this error code to implement the
-  // fallback described in RFC 8446 appendix D.3.
-  if (hs->early_data_offered) {
-    // Disconnect early writes. This ensures subsequent |SSL_write| calls query
-    // the handshake which, in turn, will replay the error code rather than fail
-    // at the |write_shutdown| check. See https://crbug.com/1078515.
-    // TODO(davidben): Should all handshake errors do this? What about record
-    // decryption failures?
-    hs->can_early_write = false;
-    OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_VERSION_ON_EARLY_DATA);
-    ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_PROTOCOL_VERSION);
-    return ssl_hs_error;
-  }
 
   // TLS 1.2 handshakes cannot accept ECH.
   if (hs->selected_ech_config) {
@@ -846,7 +845,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       return ssl_hs_error;
     }
-    if (ssl->session->ssl_version != ssl->version) {
+    if (ssl->session->ssl_version != ssl->s3->version) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_OLD_SESSION_VERSION_NOT_RETURNED);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       return ssl_hs_error;
@@ -1956,9 +1955,6 @@ enum ssl_hs_wait_t ssl_client_handshake(SSL_HANDSHAKE *hs) {
       case state_early_reverify_server_certificate:
         ret = do_early_reverify_server_certificate(hs);
         break;
-      case state_read_hello_verify_request:
-        ret = do_read_hello_verify_request(hs);
-        break;
       case state_read_server_hello:
         ret = do_read_server_hello(hs);
         break;
@@ -2041,8 +2037,6 @@ const char *ssl_client_handshake_state(SSL_HANDSHAKE *hs) {
       return "TLS client enter_early_data";
     case state_early_reverify_server_certificate:
       return "TLS client early_reverify_server_certificate";
-    case state_read_hello_verify_request:
-      return "TLS client read_hello_verify_request";
     case state_read_server_hello:
       return "TLS client read_server_hello";
     case state_tls13:
