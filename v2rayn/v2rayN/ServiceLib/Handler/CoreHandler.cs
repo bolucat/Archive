@@ -13,12 +13,12 @@ namespace ServiceLib.Handler
         private Config _config;
         private Process? _process;
         private Process? _processPre;
-        private Action<bool, string> _updateFunc;
+        private Action<bool, string>? _updateFunc;
 
-        public void Init(Config config, Action<bool, string> update)
+        public void Init(Config config, Action<bool, string> updateFunc)
         {
             _config = config;
-            _updateFunc = update;
+            _updateFunc = updateFunc;
 
             Environment.SetEnvironmentVariable("v2ray.location.asset", Utils.GetBinPath(""), EnvironmentVariableTarget.Process);
             Environment.SetEnvironmentVariable("xray.location.asset", Utils.GetBinPath(""), EnvironmentVariableTarget.Process);
@@ -68,7 +68,7 @@ namespace ServiceLib.Handler
         public int LoadCoreConfigSpeedtest(List<ServerTestItem> selecteds)
         {
             int pid = -1;
-            var coreType = selecteds.Exists(t => t.configType == EConfigType.Hysteria2 || t.configType == EConfigType.TUIC || t.configType == EConfigType.WireGuard) ? ECoreType.sing_box : ECoreType.Xray;
+            var coreType = selecteds.Exists(t => t.ConfigType == EConfigType.Hysteria2 || t.ConfigType == EConfigType.TUIC || t.ConfigType == EConfigType.WireGuard) ? ECoreType.sing_box : ECoreType.Xray;
             string configPath = Utils.GetConfigPath(Global.CoreSpeedtestConfigFileName);
             if (CoreConfigHandler.GenerateClientSpeedtestConfig(_config, configPath, selecteds, coreType, out string msg) != 0)
             {
@@ -267,7 +267,7 @@ namespace ServiceLib.Handler
 
         private void ShowMsg(bool notify, string msg)
         {
-            _updateFunc(notify, msg);
+            _updateFunc?.Invoke(notify, msg);
         }
 
         #endregion Private
