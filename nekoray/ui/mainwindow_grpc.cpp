@@ -58,8 +58,14 @@ void MainWindow::setup_grpc() {
 inline bool speedtesting = false;
 inline QList<QThread *> speedtesting_threads = {};
 
-void MainWindow::speedtest_current_group(int mode) {
+void MainWindow::speedtest_current_group(int mode, bool test_group) {
+    if (speedtesting) {
+        MessageBoxWarning(software_name, QObject::tr("The last speed test did not exit completely, please wait. If it persists, please restart the program."));
+        return;
+    }
+
     auto profiles = get_selected_or_group();
+    if (test_group) profiles = NekoGui::profileManager->CurrentGroup()->ProfilesWithOrder();
     if (profiles.isEmpty()) return;
     auto group = NekoGui::profileManager->CurrentGroup();
     if (group->archive) return;
@@ -75,11 +81,6 @@ void MainWindow::speedtest_current_group(int mode) {
     }
 
 #ifndef NKR_NO_GRPC
-    if (speedtesting) {
-        MessageBoxWarning(software_name, "The last speed test did not exit completely, please wait. If it persists, please restart the program.");
-        return;
-    }
-
     QStringList full_test_flags;
     if (mode == libcore::FullTest) {
         auto w = new QDialog(this);

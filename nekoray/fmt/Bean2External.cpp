@@ -50,7 +50,7 @@ namespace NekoGui_fmt {
             return 1;
         };
 
-        if (!forceExternal && (proxy_type == proxy_TUIC || hopPort.trimmed().isEmpty())) {
+        if (!forceExternal) {
             // sing-box support
             return 0;
         } else {

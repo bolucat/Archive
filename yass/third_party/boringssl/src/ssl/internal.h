@@ -189,6 +189,53 @@ struct SSL_X509_METHOD;
 
 // C++ utilities.
 
+// Fill-ins for various functions in C++17.
+// TODO(crbug.com/42290600): Replace these with the standard ones when we
+// require C++17.
+
+template <typename ForwardIt>
+ForwardIt cxx17_uninitialized_default_construct_n(ForwardIt first, size_t n) {
+  using T = typename std::iterator_traits<ForwardIt>::value_type;
+  while (n > 0) {
+    new (std::addressof(*first)) T;
+    first++;
+    n--;
+  }
+  return first;
+}
+
+template <typename ForwardIt>
+ForwardIt cxx17_uninitialized_value_construct_n(ForwardIt first, size_t n) {
+  using T = typename std::iterator_traits<ForwardIt>::value_type;
+  while (n > 0) {
+    new (std::addressof(*first)) T();
+    first++;
+    n--;
+  }
+  return first;
+}
+
+template <typename InputIt, typename OutputIt>
+InputIt cxx17_uninitialized_move(InputIt first, InputIt last, OutputIt out) {
+  using OutputT = typename std::iterator_traits<OutputIt>::value_type;
+  for (; first != last; ++first) {
+    new (std::addressof(*out)) OutputT(std::move(*first));
+    ++out;
+  }
+  return out;
+}
+
+template <typename ForwardIt>
+ForwardIt cxx17_destroy_n(ForwardIt first, size_t n) {
+  using T = typename std::iterator_traits<ForwardIt>::value_type;
+  while (n > 0) {
+    first->~T();
+    first++;
+    n--;
+  }
+  return first;
+}
+
 // New behaves like |new| but uses |OPENSSL_malloc| for memory allocation. It
 // returns nullptr on allocation error. It only implements single-object
 // allocation and not new T[n].
@@ -253,8 +300,14 @@ class Array {
   size_t size() const { return size_; }
   bool empty() const { return size_ == 0; }
 
-  const T &operator[](size_t i) const { return data_[i]; }
-  T &operator[](size_t i) { return data_[i]; }
+  const T &operator[](size_t i) const {
+    BSSL_CHECK(i < size_);
+    return data_[i];
+  }
+  T &operator[](size_t i) {
+    BSSL_CHECK(i < size_);
+    return data_[i];
+  }
 
   T *begin() { return data_; }
   const T *begin() const { return data_; }
@@ -266,9 +319,7 @@ class Array {
   // Reset releases the current contents of the array and takes ownership of the
   // raw pointer supplied by the caller.
   void Reset(T *new_data, size_t new_size) {
-    for (size_t i = 0; i < size_; i++) {
-      data_[i].~T();
-    }
+    cxx17_destroy_n(data_, size_);
     OPENSSL_free(data_);
     data_ = new_data;
     size_ = new_size;
@@ -289,6 +340,38 @@ class Array {
   //
   // Note that if |T| is a primitive type like |uint8_t|, it is uninitialized.
   bool Init(size_t new_size) {
+    if (!InitUninitialized(new_size)) {
+      return false;
+    }
+    cxx17_uninitialized_default_construct_n(data_, size_);
+    return true;
+  }
+
+  // CopyFrom replaces the array with a newly-allocated copy of |in|. It returns
+  // true on success and false on error.
+  bool CopyFrom(Span<const T> in) {
+    if (!InitUninitialized(in.size())) {
+      return false;
+    }
+    std::uninitialized_copy(in.begin(), in.end(), data_);
+    return true;
+  }
+
+  // Shrink shrinks the stored size of the array to |new_size|. It crashes if
+  // the new size is larger. Note this does not shrink the allocation itself.
+  void Shrink(size_t new_size) {
+    if (new_size > size_) {
+      abort();
+    }
+    cxx17_destroy_n(data_ + new_size, size_ - new_size);
+    size_ = new_size;
+  }
+
+ private:
+  // InitUninitialized replaces the array with a newly-allocated array of
+  // |new_size| elements, but whose constructor has not yet run. On success, the
+  // elements must be constructed before returning control to the caller.
+  bool InitUninitialized(size_t new_size) {
     Reset();
     if (new_size == 0) {
       return true;
@@ -303,76 +386,56 @@ class Array {
       return false;
     }
     size_ = new_size;
-    for (size_t i = 0; i < size_; i++) {
-      new (&data_[i]) T;
-    }
     return true;
   }
 
-  // CopyFrom replaces the array with a newly-allocated copy of |in|. It returns
-  // true on success and false on error.
-  bool CopyFrom(Span<const T> in) {
-    if (!Init(in.size())) {
-      return false;
-    }
-    std::copy(in.begin(), in.end(), data_);
-    return true;
-  }
-
-  // Shrink shrinks the stored size of the array to |new_size|. It crashes if
-  // the new size is larger. Note this does not shrink the allocation itself.
-  void Shrink(size_t new_size) {
-    if (new_size > size_) {
-      abort();
-    }
-    for (size_t i = new_size; i < size_; i++) {
-      data_[i].~T();
-    }
-    size_ = new_size;
-  }
-
- private:
   T *data_ = nullptr;
   size_t size_ = 0;
 };
 
 // Vector<T> is a resizable array of elements of |T|.
-//
-// Note, for simplicity, this class currently differs from |std::vector| in that
-// |T| must be efficiently default-constructible. Allocated elements beyond the
-// end of the array are constructed and destructed.
 template <typename T>
 class Vector {
  public:
   Vector() = default;
   Vector(const Vector &) = delete;
   Vector(Vector &&other) { *this = std::move(other); }
-  ~Vector() {}
+  ~Vector() { clear(); }
 
   Vector &operator=(const Vector &) = delete;
   Vector &operator=(Vector &&other) {
-    size_ = other.size_;
-    other.size_ = 0;
-    array_ = std::move(other.array_);
+    clear();
+    std::swap(data_, other.data_);
+    std::swap(size_, other.size_);
+    std::swap(capacity_, other.capacity_);
     return *this;
   }
 
-  const T *data() const { return array_.data(); }
-  T *data() { return array_.data(); }
+  const T *data() const { return data_; }
+  T *data() { return data_; }
   size_t size() const { return size_; }
   bool empty() const { return size_ == 0; }
 
-  const T &operator[](size_t i) const { return array_[i]; }
-  T &operator[](size_t i) { return array_[i]; }
+  const T &operator[](size_t i) const {
+    BSSL_CHECK(i < size_);
+    return data_[i];
+  }
+  T &operator[](size_t i) {
+    BSSL_CHECK(i < size_);
+    return data_[i];
+  }
 
-  T *begin() { return array_.data(); }
-  const T *begin() const { return array_.data(); }
-  T *end() { return array_.data() + size_; }
-  const T *end() const { return array_.data() + size_; }
+  T *begin() { return data_; }
+  const T *begin() const { return data_; }
+  T *end() { return data_ + size_; }
+  const T *end() const { return data_ + size_; }
 
   void clear() {
+    cxx17_destroy_n(data_, size_);
+    OPENSSL_free(data_);
+    data_ = nullptr;
     size_ = 0;
-    array_.Reset();
+    capacity_ = 0;
   }
 
   // Push adds |elem| at the end of the internal array, growing if necessary. It
@@ -381,7 +444,7 @@ class Vector {
     if (!MaybeGrow()) {
       return false;
     }
-    array_[size_] = std::move(elem);
+    new (&data_[size_]) T(std::move(elem));
     size_++;
     return true;
   }
@@ -389,10 +452,14 @@ class Vector {
   // CopyFrom replaces the contents of the array with a copy of |in|. It returns
   // true on success and false on allocation error.
   bool CopyFrom(Span<const T> in) {
-    if (!array_.CopyFrom(in)) {
+    Array<T> copy;
+    if (!copy.CopyFrom(in)) {
       return false;
     }
-    size_ = in.size();
+
+    clear();
+    copy.Release(&data_, &size_);
+    capacity_ = size_;
     return true;
   }
 
@@ -400,37 +467,175 @@ class Vector {
   // If there is no room for one more element, creates a new backing array with
   // double the size of the old one and copies elements over.
   bool MaybeGrow() {
-    if (array_.size() == 0) {
-      return array_.Init(kDefaultSize);
-    }
     // No need to grow if we have room for one more T.
-    if (size_ < array_.size()) {
+    if (size_ < capacity_) {
       return true;
     }
-    // Double the array's size if it's safe to do so.
-    if (array_.size() > std::numeric_limits<size_t>::max() / 2) {
+    size_t new_capacity = kDefaultSize;
+    if (capacity_ > 0) {
+      // Double the array's size if it's safe to do so.
+      if (capacity_ > std::numeric_limits<size_t>::max() / 2) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_OVERFLOW);
+        return false;
+      }
+      new_capacity = capacity_ * 2;
+    }
+    if (new_capacity > std::numeric_limits<size_t>::max() / sizeof(T)) {
       OPENSSL_PUT_ERROR(SSL, ERR_R_OVERFLOW);
       return false;
     }
-    Array<T> new_array;
-    if (!new_array.Init(array_.size() * 2)) {
+    T *new_data =
+        reinterpret_cast<T *>(OPENSSL_malloc(new_capacity * sizeof(T)));
+    if (new_data == nullptr) {
       return false;
     }
-    for (size_t i = 0; i < array_.size(); i++) {
-      new_array[i] = std::move(array_[i]);
-    }
-    array_ = std::move(new_array);
-
+    size_t new_size = size_;
+    cxx17_uninitialized_move(begin(), end(), new_data);
+    clear();
+    data_ = new_data;
+    size_ = new_size;
+    capacity_ = new_capacity;
     return true;
   }
 
+  // data_ is a pointer to |capacity_| objects of size |T|, the first |size_| of
+  // which are constructed.
+  T *data_ = nullptr;
   // |size_| is the number of elements stored in this Vector.
   size_t size_ = 0;
-  // |array_| is the backing array. Note that |array_.size()| is this
-  // Vector's current capacity and that |size_ <= array_.size()|.
-  Array<T> array_;
+  // |capacity_| is the number of elements allocated in this Vector.
+  size_t capacity_ = 0;
   // |kDefaultSize| is the default initial size of the backing array.
   static constexpr size_t kDefaultSize = 16;
+};
+
+// A PackedSize is an integer that can store values from 0 to N, represented as
+// a minimal-width integer.
+template <size_t N>
+using PackedSize = std::conditional_t<
+    N <= 0xff, uint8_t,
+    std::conditional_t<N <= 0xffff, uint16_t,
+                       std::conditional_t<N <= 0xffffffff, uint32_t, size_t>>>;
+
+// An InplaceVector is like a Vector, but stores up to N elements inline in the
+// object. It is inspired by std::inplace_vector in C++26.
+template <typename T, size_t N>
+class InplaceVector {
+ public:
+  InplaceVector() = default;
+  InplaceVector(const InplaceVector &other) { *this = other; }
+  InplaceVector(InplaceVector &&other) { *this = std::move(other); }
+  ~InplaceVector() { clear(); }
+  InplaceVector &operator=(const InplaceVector &other) {
+    if (this != &other) {
+      CopyFrom(other);
+    }
+    return *this;
+  }
+  InplaceVector &operator=(InplaceVector &&other) {
+    clear();
+    cxx17_uninitialized_move(other.begin(), other.end(), data());
+    size_ = other.size();
+    return *this;
+  }
+
+  const T *data() const { return reinterpret_cast<const T *>(storage_); }
+  T *data() { return reinterpret_cast<T *>(storage_); }
+  size_t size() const { return size_; }
+  static constexpr size_t capacity() { return N; }
+  bool empty() const { return size_ == 0; }
+
+  const T &operator[](size_t i) const {
+    BSSL_CHECK(i < size_);
+    return data()[i];
+  }
+  T &operator[](size_t i) {
+    BSSL_CHECK(i < size_);
+    return data()[i];
+  }
+
+  T *begin() { return data(); }
+  const T *begin() const { return data(); }
+  T *end() { return data() + size_; }
+  const T *end() const { return data() + size_; }
+
+  void clear() {
+    cxx17_destroy_n(data(), size_);
+    size_ = 0;
+  }
+
+  // TryResize resizes the vector to |new_size| and returns true, or returns
+  // false if |new_size| is too large. Any newly-added elements are
+  // value-initialized.
+  bool TryResize(size_t new_size) {
+    if (new_size > capacity()) {
+      return false;
+    }
+    if (new_size < size_) {
+      cxx17_destroy_n(data() + new_size, size_ - new_size);
+    } else {
+      cxx17_uninitialized_value_construct_n(data() + size_, new_size - size_);
+    }
+    size_ = static_cast<PackedSize<N>>(new_size);
+    return true;
+  }
+
+  // TryResizeMaybeUninit behaves like |TryResize|, but newly-added elements are
+  // default-initialized, so POD types may contain uninitialized values that the
+  // caller is responsible for filling in.
+  bool TryResizeMaybeUninit(size_t new_size) {
+    if (new_size > capacity()) {
+      return false;
+    }
+    if (new_size < size_) {
+      cxx17_destroy_n(data() + new_size, size_ - new_size);
+    } else {
+      cxx17_uninitialized_default_construct_n(data() + size_, new_size - size_);
+    }
+    size_ = static_cast<PackedSize<N>>(new_size);
+    return true;
+  }
+
+  // TryCopyFrom sets the vector to a copy of |in| and returns true, or returns
+  // false if |in| is too large.
+  bool TryCopyFrom(Span<const T> in) {
+    if (in.size() > capacity()) {
+      return false;
+    }
+    clear();
+    std::uninitialized_copy(in.begin(), in.end(), data());
+    size_ = in.size();
+    return true;
+  }
+
+  // TryPushBack appends |val| to the vector and returns a pointer to the
+  // newly-inserted value, or nullptr if the vector is at capacity.
+  T *TryPushBack(T val) {
+    if (size() >= capacity()) {
+      return nullptr;
+    }
+    T *ret = &data()[size_];
+    new (ret) T(std::move(val));
+    size_++;
+    return ret;
+  }
+
+  // The following methods behave like their |Try*| counterparts, but abort the
+  // program on failure.
+  void Resize(size_t size) { BSSL_CHECK(TryResize(size)); }
+  void ResizeMaybeUninit(size_t size) {
+    BSSL_CHECK(TryResizeMaybeUninit(size));
+  }
+  void CopyFrom(Span<const T> in) { BSSL_CHECK(TryCopyFrom(in)); }
+  T &PushBack(T val) {
+    T *ret = TryPushBack(std::move(val));
+    BSSL_CHECK(ret != nullptr);
+    return *ret;
+  }
+
+ private:
+  alignas(T) char storage_[sizeof(T[N])];
+  PackedSize<N> size_ = 0;
 };
 
 // CBBFinishArray behaves like |CBB_finish| but stores the result in an Array.
@@ -937,8 +1142,8 @@ class SSLAEADContext {
   ScopedEVP_AEAD_CTX ctx_;
   // fixed_nonce_ contains any bytes of the nonce that are fixed for all
   // records.
-  uint8_t fixed_nonce_[12] = {0};
-  uint8_t fixed_nonce_len_ = 0, variable_nonce_len_ = 0;
+  InplaceVector<uint8_t, 12> fixed_nonce_;
+  uint8_t variable_nonce_len_ = 0;
   UniquePtr<RecordNumberEncrypter> rn_encrypter_;
   // variable_nonce_included_in_record_ is true if the variable nonce
   // for a record is included as a prefix before the ciphertext.
@@ -1270,12 +1475,6 @@ bool dtls_has_unprocessed_handshake_data(const SSL *ssl);
 bool tls_flush_pending_hs_data(SSL *ssl);
 
 struct DTLS_OUTGOING_MESSAGE {
-  DTLS_OUTGOING_MESSAGE() {}
-  DTLS_OUTGOING_MESSAGE(const DTLS_OUTGOING_MESSAGE &) = delete;
-  DTLS_OUTGOING_MESSAGE &operator=(const DTLS_OUTGOING_MESSAGE &) = delete;
-
-  void Clear();
-
   Array<uint8_t> data;
   uint16_t epoch = 0;
   bool is_ccs = false;
@@ -2227,8 +2426,7 @@ struct SSL_HANDSHAKE {
   uint8_t ech_config_id = 0;
 
   // session_id is the session ID in the ClientHello.
-  uint8_t session_id[SSL_MAX_SSL_SESSION_ID_LENGTH] = {0};
-  uint8_t session_id_len = 0;
+  InplaceVector<uint8_t, SSL_MAX_SSL_SESSION_ID_LENGTH> session_id;
 
   // grease_seed is the entropy for GREASE values.
   uint8_t grease_seed[ssl_grease_last_index + 1] = {0};
@@ -2574,8 +2772,7 @@ struct CERT {
 
   // sid_ctx partitions the session space within a shared session cache or
   // ticket key. Only sessions with a matching value will be accepted.
-  uint8_t sid_ctx_length = 0;
-  uint8_t sid_ctx[SSL_MAX_SID_CTX_LENGTH] = {0};
+  InplaceVector<uint8_t, SSL_MAX_SID_CTX_LENGTH> sid_ctx;
 };
 
 // |SSL_PROTOCOL_METHOD| abstracts between TLS and DTLS.
@@ -2944,18 +3141,13 @@ struct SSL3_STATE {
   // one.
   UniquePtr<SSL_HANDSHAKE> hs;
 
-  uint8_t write_traffic_secret[SSL_MAX_MD_SIZE] = {0};
-  uint8_t read_traffic_secret[SSL_MAX_MD_SIZE] = {0};
-  uint8_t exporter_secret[SSL_MAX_MD_SIZE] = {0};
-  uint8_t write_traffic_secret_len = 0;
-  uint8_t read_traffic_secret_len = 0;
-  uint8_t exporter_secret_len = 0;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> write_traffic_secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> read_traffic_secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> exporter_secret;
 
   // Connection binding to prevent renegotiation attacks
-  uint8_t previous_client_finished[12] = {0};
-  uint8_t previous_client_finished_len = 0;
-  uint8_t previous_server_finished_len = 0;
-  uint8_t previous_server_finished[12] = {0};
+  InplaceVector<uint8_t, 12> previous_client_finished;
+  InplaceVector<uint8_t, 12> previous_server_finished;
 
   uint8_t send_alert[2] = {0};
 
@@ -3113,8 +3305,8 @@ struct DTLS1_STATE {
 
   // outgoing_messages is the queue of outgoing messages from the last handshake
   // flight.
-  DTLS_OUTGOING_MESSAGE outgoing_messages[SSL_MAX_HANDSHAKE_FLIGHT];
-  uint8_t outgoing_messages_len = 0;
+  InplaceVector<DTLS_OUTGOING_MESSAGE, SSL_MAX_HANDSHAKE_FLIGHT>
+      outgoing_messages;
 
   // outgoing_written is the number of outgoing messages that have been
   // written.
@@ -3493,8 +3685,11 @@ bool tls1_configure_aead(SSL *ssl, evp_aead_direction_t direction,
 
 bool tls1_change_cipher_state(SSL_HANDSHAKE *hs,
                               evp_aead_direction_t direction);
-int tls1_generate_master_secret(SSL_HANDSHAKE *hs, uint8_t *out,
-                                Span<const uint8_t> premaster);
+
+// tls1_generate_master_secret computes the master secret from |premaster| and
+// writes it to |out|. |out| must have size |SSL3_MASTER_SECRET_SIZE|.
+bool tls1_generate_master_secret(SSL_HANDSHAKE *hs, Span<uint8_t> out,
+                                 Span<const uint8_t> premaster);
 
 // tls1_get_grouplist returns the locally-configured group preference list.
 Span<const uint16_t> tls1_get_grouplist(const SSL_HANDSHAKE *ssl);
@@ -4022,17 +4217,14 @@ struct ssl_session_st : public bssl::RefCounted<ssl_session_st> {
   // session. In TLS 1.3 and up, it is the resumption PSK for sessions handed to
   // the caller, but it stores the resumption secret when stored on |SSL|
   // objects.
-  uint8_t secret_length = 0;
-  uint8_t secret[SSL_MAX_MASTER_KEY_LENGTH] = {0};
+  bssl::InplaceVector<uint8_t, SSL_MAX_MASTER_KEY_LENGTH> secret;
 
-  // session_id - valid?
-  uint8_t session_id_length = 0;
-  uint8_t session_id[SSL_MAX_SSL_SESSION_ID_LENGTH] = {0};
+  bssl::InplaceVector<uint8_t, SSL_MAX_SSL_SESSION_ID_LENGTH> session_id;
+
   // this is used to determine whether the session is being reused in
   // the appropriate context. It is up to the application to set this,
   // via SSL_new
-  uint8_t sid_ctx_length = 0;
-  uint8_t sid_ctx[SSL_MAX_SID_CTX_LENGTH] = {0};
+  bssl::InplaceVector<uint8_t, SSL_MAX_SID_CTX_LENGTH> sid_ctx;
 
   bssl::UniquePtr<char> psk_identity;
 
@@ -4095,8 +4287,7 @@ struct ssl_session_st : public bssl::RefCounted<ssl_session_st> {
   // original_handshake_hash contains the handshake hash (either SHA-1+MD5 or
   // SHA-2, depending on TLS version) for the original, full handshake that
   // created a session. This is used by Channel IDs during resumption.
-  uint8_t original_handshake_hash[EVP_MAX_MD_SIZE] = {0};
-  uint8_t original_handshake_hash_len = 0;
+  bssl::InplaceVector<uint8_t, EVP_MAX_MD_SIZE> original_handshake_hash;
 
   uint32_t ticket_lifetime_hint = 0;  // Session lifetime hint in seconds
 

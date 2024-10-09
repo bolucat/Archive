@@ -1488,7 +1488,7 @@ Split by line.</source>
     </message>
     <message>
         <source>In and Out IP</source>
-        <translation>入口出口IP</translation>
+        <translation>入口出口 IP</translation>
     </message>
     <message>
         <source>Test Options</source>
@@ -1497,6 +1497,10 @@ Split by line.</source>
     <message>
         <source>Stop Testing</source>
         <translation>停止测试</translation>
+    </message>
+    <message>
+        <source>URL Test</source>
+        <translation>URL 测试</translation>
     </message>
 </context>
 <context>
@@ -1644,6 +1648,10 @@ Release note:
     <message>
         <source>Default</source>
         <translation>默认</translation>
+    </message>
+    <message>
+        <source>The last speed test did not exit completely, please wait. If it persists, please restart the program.</source>
+        <translation>上次速度测试未完全退出，请等待。如果问题仍然存在，请重新启动程序。</translation>
     </message>
 </context>
 <context>

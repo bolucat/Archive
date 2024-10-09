@@ -205,6 +205,19 @@
         </property>
        </widget>
       </item>
+      <item>
+       <widget class="QToolButton" name="toolButton_url_test">
+        <property name="text">
+         <string>URL Test</string>
+        </property>
+        <property name="popupMode">
+         <enum>QToolButton::InstantPopup</enum>
+        </property>
+        <property name="toolButtonStyle">
+         <enum>Qt::ToolButtonTextUnderIcon</enum>
+        </property>
+       </widget>
+      </item>
      </layout>
     </item>
     <item>
@@ -665,7 +678,7 @@
     <string notr="true">Tcp Ping</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+T</string>
+    <string notr="true">Ctrl+Alt+T</string>
    </property>
   </action>
   <action name="menu_url_test">
@@ -673,7 +686,7 @@
     <string notr="true">Url Test</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+U</string>
+    <string notr="true">Ctrl+Alt+U</string>
    </property>
   </action>
   <action name="menu_clear_test_result">
@@ -681,7 +694,7 @@
     <string>Clear Test Result</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+C</string>
+    <string notr="true">Ctrl+Alt+C</string>
    </property>
   </action>
   <action name="menu_export_config">
@@ -726,7 +739,7 @@
     <string>Remove Duplicates</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+D</string>
+    <string notr="true">Ctrl+Alt+D</string>
    </property>
   </action>
   <action name="actionfake">
@@ -774,7 +787,7 @@
     <string>Remove Unavailable</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+R</string>
+    <string notr="true">Ctrl+Alt+R</string>
    </property>
   </action>
   <action name="menu_full_test">
@@ -782,7 +795,7 @@
     <string>Full Test</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+F</string>
+    <string notr="true">Ctrl+Alt+F</string>
    </property>
   </action>
   <action name="menu_hotkey_settings">
@@ -803,7 +816,7 @@
     <string>Copy links of selected (Neko Links)</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Alt+C</string>
+    <string notr="true">Ctrl+N</string>
    </property>
   </action>
   <action name="actionfake_2">
@@ -859,7 +872,7 @@
     <string>Resolve domain</string>
    </property>
    <property name="shortcut">
-    <string notr="true">Ctrl+Shift+I</string>
+    <string notr="true">Ctrl+Alt+I</string>
    </property>
   </action>
   <action name="menu_vpn_settings">
@@ -901,6 +914,9 @@
   <action name="menu_stop_testing">
    <property name="text">
     <string>Stop Testing</string>
+   </property>
+   <property name="shortcut">
+    <string notr="true">Ctrl+Alt+S</string>
    </property>
   </action>
  </widget>

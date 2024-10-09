@@ -1498,6 +1498,10 @@ End: %2</source>
         <source>Stop Testing</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>URL Test</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ProxyItem</name>
@@ -1644,6 +1648,10 @@ Release note:
     <message>
         <source>Default</source>
         <translation>По умолчанию</translation>
+    </message>
+    <message>
+        <source>The last speed test did not exit completely, please wait. If it persists, please restart the program.</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
