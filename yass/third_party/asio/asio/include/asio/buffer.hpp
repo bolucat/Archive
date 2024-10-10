@@ -2,7 +2,7 @@
 // buffer.hpp
 // ~~~~~~~~~~
 //
-// Copyright (c) 2003-2023 Christopher M. Kohlhoff (chris at kohlhoff dot com)
+// Copyright (c) 2003-2024 Christopher M. Kohlhoff (chris at kohlhoff dot com)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -949,7 +949,7 @@ ASIO_NODISCARD inline ASIO_MUTABLE_BUFFER buffer(
 {
   return ASIO_MUTABLE_BUFFER(data, N * sizeof(PodType));
 }
- 
+
 /// Create a new modifiable buffer that represents the given POD array.
 /**
  * @returns A mutable_buffer value equivalent to:
@@ -966,7 +966,7 @@ ASIO_NODISCARD inline ASIO_MUTABLE_BUFFER buffer(
       N * sizeof(PodType) < max_size_in_bytes
       ? N * sizeof(PodType) : max_size_in_bytes);
 }
- 
+
 /// Create a new non-modifiable buffer that represents the given POD array.
 /**
  * @returns A const_buffer value equivalent to:

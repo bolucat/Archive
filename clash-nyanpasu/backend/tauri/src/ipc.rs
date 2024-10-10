@@ -116,7 +116,7 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
         }
         ProfileItemType::Remote => {
             let mut item: RemoteProfileBuilder = (serde_yaml::from_value(item))?;
-            (item.build())
+            (item.build_no_blocking().await)
                 .context("failed to build remote profile")?
                 .into()
         }
@@ -227,10 +227,10 @@ pub async fn patch_profile(uid: String, profile: Mapping) -> Result {
                     .iter()
                     .any(|chain_uid| match profiles.get_item(chain_uid) {
                         Ok(item) if item.is_local() => {
-                            item.as_local().unwrap().chains.contains(&uid)
+                            item.as_local().unwrap().chain.contains(&uid)
                         }
                         Ok(item) if item.is_remote() => {
-                            item.as_local().unwrap().chains.contains(&uid)
+                            item.as_local().unwrap().chain.contains(&uid)
                         }
                         _ => false,
                     })

@@ -2,7 +2,7 @@
 // ip/impl/address_v6.ipp
 // ~~~~~~~~~~~~~~~~~~~~~~
 //
-// Copyright (c) 2003-2023 Christopher M. Kohlhoff (chris at kohlhoff dot com)
+// Copyright (c) 2003-2024 Christopher M. Kohlhoff (chris at kohlhoff dot com)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -281,7 +281,7 @@ address_v6 make_address_v6(const char* str,
   if (asio::detail::socket_ops::inet_pton(
         ASIO_OS_DEF(AF_INET6), str, &bytes[0], &scope_id, ec) <= 0)
     return address_v6();
-  return address_v6(bytes, scope_id);
+  return address_v6(bytes, static_cast<scope_id_type>(scope_id));
 }
 
 address_v6 make_address_v6(const std::string& str)
