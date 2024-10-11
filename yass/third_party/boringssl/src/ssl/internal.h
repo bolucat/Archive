@@ -1605,6 +1605,16 @@ enum ssl_key_usage_t {
 OPENSSL_EXPORT bool ssl_cert_check_key_usage(const CBS *in,
                                              enum ssl_key_usage_t bit);
 
+// ssl_cert_extract_issuer parses the DER-encoded, X.509 certificate in |in|
+// and extracts the issuer. On success it returns true and the DER encoded
+// issuer is in |out_dn|, otherwise it returns false.
+OPENSSL_EXPORT bool ssl_cert_extract_issuer(const CBS *in, CBS *out_dn);
+
+// ssl_cert_matches_issuer parses the DER-encoded, X.509 certificate in |in|
+// and returns true if its issuer is an exact match for the DER encoded
+// distinguished name in |dn|
+bool ssl_cert_matches_issuer(const CBS *in, const CBS *dn);
+
 // ssl_cert_parse_pubkey extracts the public key from the DER-encoded, X.509
 // certificate in |in|. It returns an allocated |EVP_PKEY| or else returns
 // nullptr and pushes to the error queue.
@@ -1891,6 +1901,10 @@ struct ssl_credential_st : public bssl::RefCounted<ssl_credential_st> {
   // returns one on success and zero on error.
   bool AppendIntermediateCert(bssl::UniquePtr<CRYPTO_BUFFER> cert);
 
+  // ChainContainsIssuer returns true if |dn| is a byte for byte match with the
+  // issuer of any certificate in |chain|, false otherwise.
+  bool ChainContainsIssuer(bssl::Span<const uint8_t> dn) const;
+
   // type is the credential type and determines which other fields apply.
   bssl::SSLCredentialType type;
 
@@ -2107,18 +2121,13 @@ struct SSL_HANDSHAKE {
   // |SSL_OP_NO_*| and |SSL_CTX_set_max_proto_version| APIs.
   uint16_t max_version = 0;
 
- private:
-  size_t hash_len_ = 0;
-  uint8_t secret_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t early_traffic_secret_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t client_handshake_secret_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t server_handshake_secret_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t client_traffic_secret_0_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t server_traffic_secret_0_[SSL_MAX_MD_SIZE] = {0};
-  uint8_t expected_client_finished_[SSL_MAX_MD_SIZE] = {0};
-
- public:
-  void ResizeSecrets(size_t hash_len);
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> early_traffic_secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> client_handshake_secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> server_handshake_secret;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> client_traffic_secret_0;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> server_traffic_secret_0;
+  InplaceVector<uint8_t, SSL_MAX_MD_SIZE> expected_client_finished;
 
   // GetClientHello, on the server, returns either the normal ClientHello
   // message or the ClientHelloInner if it has been serialized to
@@ -2130,29 +2139,6 @@ struct SSL_HANDSHAKE {
   // into a handshake-owned buffer, so their lifetimes should not exceed this
   // SSL_HANDSHAKE.
   bool GetClientHello(SSLMessage *out_msg, SSL_CLIENT_HELLO *out_client_hello);
-
-  Span<uint8_t> secret() { return MakeSpan(secret_, hash_len_); }
-  Span<const uint8_t> secret() const {
-    return MakeConstSpan(secret_, hash_len_);
-  }
-  Span<uint8_t> early_traffic_secret() {
-    return MakeSpan(early_traffic_secret_, hash_len_);
-  }
-  Span<uint8_t> client_handshake_secret() {
-    return MakeSpan(client_handshake_secret_, hash_len_);
-  }
-  Span<uint8_t> server_handshake_secret() {
-    return MakeSpan(server_handshake_secret_, hash_len_);
-  }
-  Span<uint8_t> client_traffic_secret_0() {
-    return MakeSpan(client_traffic_secret_0_, hash_len_);
-  }
-  Span<uint8_t> server_traffic_secret_0() {
-    return MakeSpan(server_traffic_secret_0_, hash_len_);
-  }
-  Span<uint8_t> expected_client_finished() {
-    return MakeSpan(expected_client_finished_, hash_len_);
-  }
 
   union {
     // sent is a bitset where the bits correspond to elements of kExtensions

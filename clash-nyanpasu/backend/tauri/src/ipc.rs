@@ -106,7 +106,8 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
         .get("type")
         .and_then(|kind| serde_yaml::from_value::<ProfileItemType>(kind.clone()).ok())
         .ok_or(anyhow!("the type field is null"))?;
-    let item = serde_yaml::to_value(item).map_err(|e| e.to_string())?;
+    let item = serde_yaml::Value::Mapping(item);
+    tracing::trace!("create profile: {kind:?} with {item:?}");
     let profile: Profile = match kind {
         ProfileItemType::Local => {
             let item: LocalProfileBuilder = (serde_yaml::from_value(item))?;
@@ -133,6 +134,7 @@ pub async fn create_profile(item: Mapping, file_data: Option<String>) -> Result 
                 .into()
         }
     };
+    tracing::info!("created new profile: {:#?}", profile);
     if let Some(file_data) = file_data
         && !file_data.is_empty()
         && kind != ProfileItemType::Remote
@@ -343,8 +345,7 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u6
 
 #[tauri::command]
 pub async fn get_ipsb_asn() -> Result<Mapping> {
-    (crate::utils::net::get_ipsb_asn().await)?;
-    Ok(Mapping::new())
+    Ok(crate::utils::net::get_ipsb_asn().await?)
 }
 
 #[tauri::command]
