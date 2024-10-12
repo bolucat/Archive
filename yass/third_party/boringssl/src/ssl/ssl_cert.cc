@@ -469,9 +469,9 @@ bool ssl_cert_check_key_usage(const CBS *in, enum ssl_key_usage_t bit) {
   return true;
 }
 
-UniquePtr<STACK_OF(CRYPTO_BUFFER)> ssl_parse_client_CA_list(SSL *ssl,
-                                                            uint8_t *out_alert,
-                                                            CBS *cbs) {
+UniquePtr<STACK_OF(CRYPTO_BUFFER)> SSL_parse_CA_list(SSL *ssl,
+                                                     uint8_t *out_alert,
+                                                     CBS *cbs) {
   CRYPTO_BUFFER_POOL *const pool = ssl->ctx->pool;
 
   UniquePtr<STACK_OF(CRYPTO_BUFFER)> ret(sk_CRYPTO_BUFFER_new_null());
@@ -504,7 +504,7 @@ UniquePtr<STACK_OF(CRYPTO_BUFFER)> ssl_parse_client_CA_list(SSL *ssl,
     }
   }
 
-  if (!ssl->ctx->x509_method->check_client_CA_list(ret.get())) {
+  if (!ssl->ctx->x509_method->check_CA_list(ret.get())) {
     *out_alert = SSL_AD_DECODE_ERROR;
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     return nullptr;
@@ -513,28 +513,29 @@ UniquePtr<STACK_OF(CRYPTO_BUFFER)> ssl_parse_client_CA_list(SSL *ssl,
   return ret;
 }
 
-bool ssl_has_client_CAs(const SSL_CONFIG *cfg) {
-  const STACK_OF(CRYPTO_BUFFER) *names = cfg->client_CA.get();
-  if (names == nullptr) {
-    names = cfg->ssl->ctx->client_CA.get();
+static bool CA_names_non_empty(const STACK_OF(CRYPTO_BUFFER) *config_names,
+                               const STACK_OF(CRYPTO_BUFFER) *ctx_names) {
+  if (config_names != nullptr) {
+    return sk_CRYPTO_BUFFER_num(config_names) > 0;
   }
-  if (names == nullptr) {
-    return false;
+  if (ctx_names != nullptr) {
+    return sk_CRYPTO_BUFFER_num(ctx_names) > 0;
   }
-  return sk_CRYPTO_BUFFER_num(names) > 0;
+  return false;
 }
 
-bool ssl_add_client_CA_list(SSL_HANDSHAKE *hs, CBB *cbb) {
+
+static bool marshal_CA_names(const STACK_OF(CRYPTO_BUFFER) *config_names,
+                             const STACK_OF(CRYPTO_BUFFER) *ctx_names,
+                             CBB *cbb) {
+  const STACK_OF(CRYPTO_BUFFER) *names = config_names == nullptr ? ctx_names : config_names;
   CBB child, name_cbb;
+
   if (!CBB_add_u16_length_prefixed(cbb, &child)) {
     return false;
   }
 
-  const STACK_OF(CRYPTO_BUFFER) *names = hs->config->client_CA.get();
-  if (names == NULL) {
-    names = hs->ssl->ctx->client_CA.get();
-  }
-  if (names == NULL) {
+  if (names == nullptr) {
     return CBB_flush(cbb);
   }
 
@@ -547,6 +548,22 @@ bool ssl_add_client_CA_list(SSL_HANDSHAKE *hs, CBB *cbb) {
   }
 
   return CBB_flush(cbb);
+}
+
+bool ssl_has_client_CAs(const SSL_CONFIG *cfg) {
+  return CA_names_non_empty(cfg->client_CA.get(), cfg->ssl->ctx->client_CA.get());
+}
+
+bool ssl_has_CA_names(const SSL_CONFIG *cfg) {
+  return CA_names_non_empty(cfg->CA_names.get(), cfg->ssl->ctx->CA_names.get());
+}
+
+bool ssl_add_client_CA_list(const SSL_HANDSHAKE *hs, CBB *cbb) {
+  return marshal_CA_names(hs->config->client_CA.get(), hs->ssl->ctx->client_CA.get(), cbb);
+}
+
+bool ssl_add_CA_names(const SSL_HANDSHAKE *hs, CBB *cbb) {
+  return marshal_CA_names(hs->config->CA_names.get(), hs->ssl->ctx->CA_names.get(), cbb);
 }
 
 bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, EVP_PKEY *pkey,
