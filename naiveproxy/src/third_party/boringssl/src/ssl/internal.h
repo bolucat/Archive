@@ -155,6 +155,7 @@
 #include <utility>
 
 #include <openssl/aead.h>
+#include <openssl/aes.h>
 #include <openssl/curve25519.h>
 #include <openssl/err.h>
 #include <openssl/hpke.h>
@@ -811,6 +812,16 @@ bool tls1_prf(const EVP_MD *digest, Span<uint8_t> out,
 
 // Encryption layer.
 
+class RecordNumberEncrypter {
+ public:
+  virtual ~RecordNumberEncrypter() = default;
+  static constexpr bool kAllowUniquePtr = true;
+
+  virtual size_t KeySize() = 0;
+  virtual bool SetKey(Span<const uint8_t> key) = 0;
+  virtual bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) = 0;
+};
+
 // SSLAEADContext contains information about an AEAD that is being used to
 // encrypt an SSL connection.
 class SSLAEADContext {
@@ -916,6 +927,17 @@ class SSLAEADContext {
 
   bool GetIV(const uint8_t **out_iv, size_t *out_iv_len) const;
 
+  RecordNumberEncrypter *GetRecordNumberEncrypter() {
+    return rn_encrypter_.get();
+  }
+
+  // GenerateRecordNumberMask computes the mask used for DTLS 1.3 record number
+  // encryption (RFC 9147 section 4.2.3), writing it to |out|. The |out| buffer
+  // must be sized to AES_BLOCK_SIZE. The |sample| buffer must be at least 16
+  // bytes, as required by the AES and ChaCha20 cipher suites in RFC 9147. Extra
+  // bytes in |sample| will be ignored.
+  bool GenerateRecordNumberMask(Span<uint8_t> out, Span<const uint8_t> sample);
+
  private:
   // GetAdditionalData returns the additional data, writing into |storage| if
   // necessary.
@@ -923,6 +945,8 @@ class SSLAEADContext {
                                         uint16_t record_version,
                                         uint64_t seqnum, size_t plaintext_len,
                                         Span<const uint8_t> header);
+
+  void CreateRecordNumberEncrypter();
 
   const SSL_CIPHER *cipher_;
   ScopedEVP_AEAD_CTX ctx_;
@@ -932,6 +956,7 @@ class SSLAEADContext {
   uint8_t fixed_nonce_len_ = 0, variable_nonce_len_ = 0;
   // version_ is the wire version that should be used with this AEAD.
   uint16_t version_;
+  UniquePtr<RecordNumberEncrypter> rn_encrypter_;
   // is_dtls_ is whether DTLS is being used with this AEAD.
   bool is_dtls_;
   // variable_nonce_included_in_record_ is true if the variable nonce
@@ -951,6 +976,45 @@ class SSLAEADContext {
   bool ad_is_header_ : 1;
 };
 
+class AESRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  bool SetKey(Span<const uint8_t> key) override;
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
+
+ private:
+  AES_KEY key_;
+};
+
+class AES128RecordNumberEncrypter : public AESRecordNumberEncrypter {
+ public:
+  size_t KeySize() override;
+};
+
+class AES256RecordNumberEncrypter : public AESRecordNumberEncrypter {
+ public:
+  size_t KeySize() override;
+};
+
+class ChaChaRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  size_t KeySize() override;
+  bool SetKey(Span<const uint8_t> key) override;
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
+
+ private:
+  static const size_t kKeySize = 32;
+  uint8_t key_[kKeySize];
+};
+
+#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
+class NullRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  size_t KeySize() override;
+  bool SetKey(Span<const uint8_t> key) override;
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
+};
+#endif  // BORINGSSL_UNSAFE_FUZZER_MODE
+
 
 // DTLS replay bitmap.
 
@@ -965,6 +1029,17 @@ struct DTLS1_BITMAP {
   uint64_t max_seq_num = 0;
 };
 
+// reconstruct_seqnum takes the low order bits of a record sequence number from
+// the wire and reconstructs the full sequence number. It does so using the
+// algorithm described in section 4.2.2 of RFC 9147, where |wire_seq| is the
+// low bits of the sequence number as seen on the wire, |seq_mask| is a bitmask
+// of 8 or 16 1 bits corresponding to the length of the sequence number on the
+// wire, and |max_valid_seqnum| is the largest sequence number of a record
+// successfully deprotected in this epoch. This function returns the sequence
+// number that is numerically closest to one plus |max_valid_seqnum| that when
+// bitwise and-ed with |seq_mask| equals |wire_seq|.
+OPENSSL_EXPORT uint64_t reconstruct_seqnum(uint16_t wire_seq, uint64_t seq_mask,
+                                           uint64_t max_valid_seqnum);
 
 // Record layer.
 
@@ -1028,7 +1103,7 @@ bool ssl_needs_record_splitting(const SSL *ssl);
 // 1/n-1 record splitting and may write two records concatenated.
 //
 // For a large record, the bulk of the ciphertext will begin
-// |ssl_seal_align_prefix_len| bytes into out. Aligning |out| appropriately may
+// |tls_seal_align_prefix_len| bytes into out. Aligning |out| appropriately may
 // improve performance. It writes at most |in_len| + |SSL_max_seal_overhead|
 // bytes to |out|.
 //
@@ -1440,7 +1515,8 @@ bool tls13_finished_mac(SSL_HANDSHAKE *hs, uint8_t *out, size_t *out_len,
 // tls13_derive_session_psk calculates the PSK for this session based on the
 // resumption master secret and |nonce|. It returns true on success, and false
 // on failure.
-bool tls13_derive_session_psk(SSL_SESSION *session, Span<const uint8_t> nonce);
+bool tls13_derive_session_psk(SSL_SESSION *session, Span<const uint8_t> nonce,
+                              bool is_dtls);
 
 // tls13_write_psk_binder calculates the PSK binder value over |transcript| and
 // |msg|, and replaces the last bytes of |msg| with the resulting value. It
@@ -2936,6 +3012,22 @@ struct SSL3_STATE {
 
 // lengths of messages
 #define DTLS1_RT_MAX_HEADER_LENGTH 13
+
+// DTLS_PLAINTEXT_RECORD_HEADER_LENGTH is the length of the DTLS record header
+// for plaintext records (in DTLS 1.3) or DTLS versions <= 1.2.
+#define DTLS_PLAINTEXT_RECORD_HEADER_LENGTH 13
+
+// DTLS1_3_RECORD_HEADER_LENGTH is the length of the DTLS 1.3 record header
+// sent by BoringSSL for encrypted records. Note that received encrypted DTLS
+// 1.3 records might have a different length header.
+#define DTLS1_3_RECORD_HEADER_WRITE_LENGTH 5
+
+static_assert(DTLS1_RT_MAX_HEADER_LENGTH >= DTLS_PLAINTEXT_RECORD_HEADER_LENGTH,
+              "DTLS1_RT_MAX_HEADER_LENGTH must not be smaller than defined "
+              "record header lengths");
+static_assert(DTLS1_RT_MAX_HEADER_LENGTH >= DTLS1_3_RECORD_HEADER_WRITE_LENGTH,
+              "DTLS1_RT_MAX_HEADER_LENGTH must not be smaller than defined "
+              "record header lengths");
 
 #define DTLS1_HM_HEADER_LENGTH 12
 

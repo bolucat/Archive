@@ -26,7 +26,6 @@
 #include "quiche/quic/moqt/moqt_track.h"
 #include "quiche/quic/moqt/tools/moq_chat.h"
 #include "quiche/quic/moqt/tools/moqt_server.h"
-#include "quiche/common/simple_buffer_allocator.h"
 
 namespace moqt {
 
@@ -34,13 +33,14 @@ class ChatServer {
  public:
   ChatServer(std::unique_ptr<quic::ProofSource> proof_source,
              absl::string_view chat_id, absl::string_view output_file);
+  ~ChatServer();
 
   class RemoteTrackVisitor : public RemoteTrack::Visitor {
    public:
     explicit RemoteTrackVisitor(ChatServer* server);
     void OnReply(const moqt::FullTrackName& full_track_name,
                  std::optional<absl::string_view> reason_phrase) override;
-
+    void OnCanAckObjects(MoqtObjectAckFunction) override {}
     void OnObjectFragment(
         const moqt::FullTrackName& full_track_name, uint64_t group_sequence,
         uint64_t object_sequence, moqt::MoqtPriority /*publisher_priority*/,
@@ -77,8 +77,6 @@ class ChatServer {
 
   RemoteTrackVisitor* remote_track_visitor() { return &remote_track_visitor_; }
 
-  quiche::SimpleBufferAllocator* allocator() { return &allocator_; }
-
   MoqtOutgoingQueue* catalog() { return catalog_.get(); }
 
   void AddUser(absl::string_view username);
@@ -96,6 +94,8 @@ class ChatServer {
 
   MoqChatStrings& strings() { return strings_; }
 
+  int num_users() const { return user_queues_.size(); }
+
  private:
   absl::StatusOr<MoqtConfigureSessionCallback> IncomingSessionHandler(
       absl::string_view path);
@@ -104,14 +104,12 @@ class ChatServer {
       [&](absl::string_view path) { return IncomingSessionHandler(path); };
 
   MoqtServer server_;
+  std::list<ChatServerSessionHandler> sessions_;
   MoqChatStrings strings_;
   MoqtKnownTrackPublisher publisher_;
-  // Allocator for QuicheBuffer that contains catalog objects.
-  quiche::SimpleBufferAllocator allocator_;
   std::shared_ptr<MoqtOutgoingQueue> catalog_;
   RemoteTrackVisitor remote_track_visitor_;
   // indexed by username
-  std::list<ChatServerSessionHandler> sessions_;
   absl::flat_hash_map<std::string, std::shared_ptr<MoqtLiveRelayQueue>>
       user_queues_;
   std::string output_filename_;

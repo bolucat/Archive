@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src/third_party/android_toolchain/ndk/
-          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}-a
+          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - run: ./get-clang.sh
       - run: EXTRA_FLAGS='target_os="android"' ./get-clang.sh
       - run: |
@@ -203,7 +203,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src/third_party/android_toolchain/ndk/
-          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}-a
+          key: android-ndk-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache sysroot
         uses: actions/cache@v4
         with:

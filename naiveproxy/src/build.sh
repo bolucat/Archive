@@ -71,6 +71,8 @@ flags="$flags"'
   enable_reporting=false
   include_transport_security_state_preload_list=false
   enable_device_bound_sessions=false
+  enable_bracketed_proxy_uris=true
+
   use_nss_certs=false
 
   enable_backup_ref_ptr_support=false

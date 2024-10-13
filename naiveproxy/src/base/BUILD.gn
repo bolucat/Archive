@@ -92,12 +92,6 @@ assert(!is_nacl || is_nacl_saigo,
 assert(!is_win || is_clang,
        "only clang-cl is supported on Windows, see https://crbug.com/988071")
 
-# Determines whether libevent should be dep.
-dep_libevent = !is_fuchsia && !is_win && !is_mac && !is_nacl
-
-# Determines whether message_pump_libevent should be used.
-use_libevent = dep_libevent && !is_ios
-
 if (is_android || is_robolectric) {
   import("//build/config/android/rules.gni")
   import("//third_party/jni_zero/jni_zero.gni")
@@ -174,12 +168,7 @@ buildflag_header("ios_cronet_buildflags") {
   flags = [ "CRONET_BUILD=$is_cronet_build" ]
 }
 
-enable_message_pump_epoll = is_linux || is_chromeos || is_android
-buildflag_header("message_pump_buildflags") {
-  header = "message_pump_buildflags.h"
-  header_dir = "base/message_loop"
-  flags = [ "ENABLE_MESSAGE_PUMP_EPOLL=$enable_message_pump_epoll" ]
-}
+use_epoll = is_linux || is_chromeos || is_android
 
 # Base and everything it depends on should be a static library rather than
 # a source set. Base is more of a "library" in the classic sense in that many
@@ -805,8 +794,6 @@ component("base") {
     "task/thread_pool/thread_group.h",
     "task/thread_pool/thread_group_impl.cc",
     "task/thread_pool/thread_group_impl.h",
-    "task/thread_pool/thread_group_worker_delegate.cc",
-    "task/thread_pool/thread_group_worker_delegate.h",
     "task/thread_pool/thread_pool_impl.cc",
     "task/thread_pool/thread_pool_impl.h",
     "task/thread_pool/thread_pool_instance.cc",
@@ -817,19 +804,11 @@ component("base") {
     "task/thread_pool/worker_thread_observer.h",
     "task/thread_pool/worker_thread_set.cc",
     "task/thread_pool/worker_thread_set.h",
-    "task/thread_pool/worker_thread_waitable_event.cc",
-    "task/thread_pool/worker_thread_waitable_event.h",
     "task/updateable_sequenced_task_runner.h",
     "test/scoped_logging_settings.h",
     "test/spin_wait.h",
-    "third_party/cityhash/city.cc",
-    "third_party/cityhash/city.h",
-    "third_party/cityhash_v103/src/city_v103.cc",
-    "third_party/cityhash_v103/src/city_v103.h",
-    "third_party/icu/icu_utf.h",
     "third_party/nspr/prtime.cc",
     "third_party/nspr/prtime.h",
-    "third_party/superfasthash/superfasthash.c",
     "thread_annotations.h",
     "threading/hang_watcher.cc",
     "threading/hang_watcher.h",
@@ -920,6 +899,7 @@ component("base") {
     "types/expected_macros.h",
     "types/fixed_array.h",
     "types/id_type.h",
+    "types/is_arc_pointer.h",
     "types/is_complete.h",
     "types/is_instantiation.h",
     "types/optional_ref.h",
@@ -973,6 +953,7 @@ component("base") {
       "files/dir_reader_posix.h",
       "files/file_posix.cc",
       "files/memory_mapped_file_posix.cc",
+      "memory/protected_memory_posix.cc",
       "message_loop/watchable_io_message_pump_posix.cc",
       "message_loop/watchable_io_message_pump_posix.h",
       "posix/eintr_wrapper.h",
@@ -1048,9 +1029,11 @@ component("base") {
 
   deps = [
     ":check_version_internal",
-    ":message_pump_buildflags",
     "//base/allocator:buildflags",
+    "//base/third_party/cityhash",
+    "//base/third_party/cityhash_v103",
     "//base/third_party/double_conversion",
+    "//base/third_party/superfasthash",
     "//build:blink_buildflags",
     "//build:branding_buildflags",
     "//build:ios_buildflags",
@@ -1096,6 +1079,7 @@ component("base") {
     "//base/allocator/partition_allocator:buildflags",
     "//base/allocator/partition_allocator:raw_ptr",
     "//base/numerics:base_numerics",
+    "//base/third_party/icu",
     "//build:chromecast_buildflags",
     "//build:chromeos_buildflags",
     "//third_party/abseil-cpp:absl",
@@ -1350,6 +1334,7 @@ component("base") {
       "fuchsia/system_info.h",
       "memory/platform_shared_memory_mapper_fuchsia.cc",
       "memory/platform_shared_memory_region_fuchsia.cc",
+      "memory/protected_memory_posix.cc",
       "message_loop/message_pump_fuchsia.cc",
       "message_loop/message_pump_fuchsia.h",
       "message_loop/watchable_io_message_pump_posix.cc",
@@ -1753,6 +1738,8 @@ component("base") {
       "win/dark_mode_support.h",
       "win/default_apps_util.cc",
       "win/default_apps_util.h",
+      "win/elevation_util.cc",
+      "win/elevation_util.h",
       "win/embedded_i18n/language_selector.cc",
       "win/embedded_i18n/language_selector.h",
       "win/enum_variant.cc",
@@ -1936,6 +1923,7 @@ component("base") {
       "memory/platform_shared_memory_region_apple.cc",
       "message_loop/message_pump_apple.h",
       "message_loop/message_pump_apple.mm",
+      "native_library_apple.mm",
       "process/process_metrics_apple.cc",
       "profiler/module_cache_apple.cc",
       "strings/sys_string_conversions_apple.mm",
@@ -1992,7 +1980,6 @@ component("base") {
       "mac/scoped_sending_event.mm",
       "message_loop/message_pump_kqueue.cc",
       "message_loop/message_pump_kqueue.h",
-      "native_library_mac.mm",
       "power_monitor/battery_level_provider_mac.mm",
       "power_monitor/battery_state_sampler_mac.cc",
       "power_monitor/iopm_power_source_sampling_event_source.cc",
@@ -2048,7 +2035,6 @@ component("base") {
       "ios/ns_error_util.h",
       "ios/ns_error_util.mm",
       "ios/ns_range.h",
-      "native_library_ios.mm",
       "power_monitor/power_monitor_device_source_ios.mm",
       "process/process_metrics_ios.cc",
       "process/process_metrics_posix.cc",
@@ -2187,18 +2173,7 @@ component("base") {
     ]
   }
 
-  if (dep_libevent) {
-    deps += [ "//third_party/libevent" ]
-  }
-
-  if (use_libevent) {
-    sources += [
-      "message_loop/message_pump_libevent.cc",
-      "message_loop/message_pump_libevent.h",
-    ]
-  }
-
-  if (enable_message_pump_epoll) {
+  if (use_epoll) {
     sources += [
       "message_loop/message_pump_epoll.cc",
       "message_loop/message_pump_epoll.h",
@@ -2515,8 +2490,8 @@ buildflag_header("protected_memory_buildflags") {
   header = "protected_memory_buildflags.h"
   header_dir = "base/memory"
 
-  # Currently Protected Memory is only supported on Windows.
-  protected_memory_enabled = !is_component_build && is_win
+  protected_memory_enabled = !is_component_build && is_clang &&
+                             (is_win || is_linux || is_android || is_mac)
 
   flags = [ "PROTECTED_MEMORY_ENABLED=$protected_memory_enabled" ]
 }

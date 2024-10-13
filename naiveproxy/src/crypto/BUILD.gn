@@ -34,8 +34,6 @@ component("crypto") {
     "hmac.h",
     "openssl_util.cc",
     "openssl_util.h",
-    "p224_spake.cc",
-    "p224_spake.h",
     "random.cc",
     "random.h",
     "rsa_private_key.cc",

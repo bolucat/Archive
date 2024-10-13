@@ -130,7 +130,7 @@ The first CONNECT request to a server cannot use "Fast Open" to send payload bef
 
 ## Changes from Chromium upstream
 
-- Minimize source code and build size (1% of the original)
+- Minimize source code and build size (0.3% of the original)
 - Disable exceptions and RTTI, except on Mac and Android.
 - Support OpenWrt builds
 - (Android, Linux) Use the builtin verifier instead of the system verifier (drop dependency of NSS on Linux) and read the system trust store from (following Go's behavior in crypto/x509/root_unix.go and crypto/x509/root_linux.go):

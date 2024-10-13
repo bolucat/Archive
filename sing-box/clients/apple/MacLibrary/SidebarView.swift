@@ -35,6 +35,9 @@ public struct SidebarView: View {
                                     .tint(.textColor)
                                     .tag(NavigationPage.dashboard)
                                 NavigationPage.groups.label.tag(NavigationPage.groups)
+                                if Variant.isBeta {
+                                    NavigationPage.connections.label.tag(NavigationPage.connections)
+                                }
                             }
                             Divider()
                             ForEach(NavigationPage.macosDefaultPages, id: \.self) { it in

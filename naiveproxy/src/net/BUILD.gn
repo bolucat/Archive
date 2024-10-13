@@ -103,6 +103,7 @@ buildflag_header("buildflags") {
     "CHROME_ROOT_STORE_ONLY=$chrome_root_store_only",
     "CHROME_ROOT_STORE_SUPPORTED=$chrome_root_store_supported",
     "ENABLE_DEVICE_BOUND_SESSIONS=$enable_device_bound_sessions",
+    "ENABLE_BRACKETED_PROXY_URIS=$enable_bracketed_proxy_uris",
   ]
 }
 
@@ -134,6 +135,11 @@ buildflag_header("cronet_buildflags") {
   header = "cronet_buildflags.h"
   header_dir = "net/base"
   flags = [ "CRONET_BUILD=$is_cronet_build" ]
+}
+
+proto_library("device_bound_sessions_storage_proto") {
+  proto_in_dir = "//"
+  sources = [ "device_bound_sessions/proto/storage.proto" ]
 }
 
 component("net") {
@@ -631,14 +637,20 @@ component("net") {
     "http/http_stream_parser.h",
     "http/http_stream_pool.cc",
     "http/http_stream_pool.h",
+    "http/http_stream_pool_attempt_manager.cc",
+    "http/http_stream_pool_attempt_manager.h",
     "http/http_stream_pool_group.cc",
     "http/http_stream_pool_group.h",
     "http/http_stream_pool_handle.cc",
     "http/http_stream_pool_handle.h",
     "http/http_stream_pool_job.cc",
     "http/http_stream_pool_job.h",
+    "http/http_stream_pool_job_controller.cc",
+    "http/http_stream_pool_job_controller.h",
     "http/http_stream_pool_quic_task.cc",
     "http/http_stream_pool_quic_task.h",
+    "http/http_stream_pool_switching_info.cc",
+    "http/http_stream_pool_switching_info.h",
     "http/http_stream_request.cc",
     "http/http_stream_request.h",
     "http/http_transaction.h",
@@ -1029,6 +1041,7 @@ component("net") {
     "url_request/redirect_info.h",
     "url_request/redirect_util.cc",
     "url_request/redirect_util.h",
+    "url_request/referrer_policy.cc",
     "url_request/referrer_policy.h",
     "url_request/static_http_user_agent_settings.cc",
     "url_request/static_http_user_agent_settings.h",
@@ -1078,6 +1091,7 @@ component("net") {
     ":net_deps",
     "//build:chromeos_buildflags",
     "//components/miracle_parameter/common",
+    "//components/network_time/time_tracker",
     "//net/http:transport_security_state_generated_files",
   ]
 
@@ -1149,6 +1163,8 @@ component("net") {
     sources += [
       "device_bound_sessions/cookie_craving.cc",
       "device_bound_sessions/cookie_craving.h",
+      "device_bound_sessions/jwk_utils.cc",
+      "device_bound_sessions/jwk_utils.h",
       "device_bound_sessions/registration_fetcher.cc",
       "device_bound_sessions/registration_fetcher.h",
       "device_bound_sessions/registration_fetcher_param.cc",
@@ -1157,6 +1173,8 @@ component("net") {
       "device_bound_sessions/session.h",
       "device_bound_sessions/session_binding_utils.cc",
       "device_bound_sessions/session_binding_utils.h",
+      "device_bound_sessions/session_challenge_param.cc",
+      "device_bound_sessions/session_challenge_param.h",
       "device_bound_sessions/session_inclusion_rules.cc",
       "device_bound_sessions/session_inclusion_rules.h",
       "device_bound_sessions/session_json_utils.cc",
@@ -1170,7 +1188,11 @@ component("net") {
       "device_bound_sessions/unexportable_key_service_factory.cc",
       "device_bound_sessions/unexportable_key_service_factory.h",
     ]
-    deps += [ "//components/unexportable_keys:unexportable_keys" ]
+
+    deps += [
+      ":device_bound_sessions_storage_proto",
+      "//components/unexportable_keys:unexportable_keys",
+    ]
   }
 
   if (is_android) {
@@ -1550,6 +1572,19 @@ component("net") {
 
   if (enable_websockets) {
     sources += [
+      "server/http_connection.cc",
+      "server/http_connection.h",
+      "server/http_server.cc",
+      "server/http_server.h",
+      "server/http_server_request_info.cc",
+      "server/http_server_request_info.h",
+      "server/http_server_response_info.cc",
+      "server/http_server_response_info.h",
+      "server/web_socket.cc",
+      "server/web_socket.h",
+      "server/web_socket_encoder.cc",
+      "server/web_socket_encoder.h",
+      "server/web_socket_parse_result.h",
       "websockets/websocket_basic_handshake_stream.cc",
       "websockets/websocket_basic_handshake_stream.h",
       "websockets/websocket_basic_stream.cc",
@@ -1761,11 +1796,11 @@ source_set("net_public_deps") {
   public_deps = [
     ":buildflags",
     ":net_nqe_proto",
-    ":uri_template",
     "//base",
     "//crypto",
     "//net/third_party/quiche",
     "//net/third_party/quiche:net_quic_test_tools_proto",
+    "//net/third_party/uri_template",
     "//net/traffic_annotation",
     "//third_party/boringssl",
     "//url",
@@ -1774,19 +1809,6 @@ source_set("net_public_deps") {
   if (chrome_root_store_supported) {
     public_deps += [ "//net/cert:root_store_proto_lite" ]
   }
-}
-
-component("uri_template") {
-  sources = [
-    "third_party/uri_template/uri_template.cc",
-    "third_party/uri_template/uri_template.h",
-  ]
-  visibility = [
-    ":net_public_deps",
-    "//net/third_party/quiche",
-  ]
-  defines = [ "IS_URI_TEMPLATE_IMPL" ]
-  public_deps = [ "//base" ]
 }
 
 proto_library("net_nqe_proto") {

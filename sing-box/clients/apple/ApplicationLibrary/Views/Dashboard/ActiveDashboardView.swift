@@ -51,7 +51,7 @@ public struct ActiveDashboardView: View {
             #if os(iOS) || os(tvOS)
                 if ApplicationLibrary.inPreview || profile.status.isConnectedStrict {
                     Picker("Page", selection: $selection) {
-                        ForEach(DashboardPage.allCases) { page in
+                        ForEach(DashboardPage.enabledCases()) { page in
                             page.label
                         }
                     }
@@ -61,12 +61,15 @@ public struct ActiveDashboardView: View {
                         .navigationBarTitleDisplayMode(.inline)
                     #endif
                     TabView(selection: $selection) {
-                        ForEach(DashboardPage.allCases) { page in
+                        ForEach(DashboardPage.enabledCases()) { page in
                             page.contentView($profileList, $selectedProfileID, $systemProxyAvailable, $systemProxyEnabled)
                                 .tag(page)
                         }
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .always))
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 } else {
                     OverviewView($profileList, $selectedProfileID, $systemProxyAvailable, $systemProxyEnabled)
                 }

@@ -25,6 +25,7 @@
 ^chrome/version.gni
 ^components/miracle_parameter
 ^components/nacl/toolchain.gni
+^components/network_time
 ^components/version_info
 ^crypto
 ^ios/features.gni

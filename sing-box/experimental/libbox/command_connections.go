@@ -25,6 +25,7 @@ func (c *CommandClient) handleConnectionsConn(conn net.Conn) {
 		connections    Connections
 	)
 	for {
+		rawConnections = nil
 		err := varbin.Read(reader, binary.BigEndian, &rawConnections)
 		if err != nil {
 			c.handler.Disconnected(err.Error())

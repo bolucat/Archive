@@ -51,7 +51,7 @@ public struct EditProfileView: View {
             }
             if profile.type == .remote {
                 Section("Status") {
-                    FormTextItem("Last Updated", profile.lastUpdatedString)
+                    FormTextItem("Last Updated", profile.lastUpdated!.myFormat)
                 }
             }
             Section("Action") {
@@ -162,7 +162,7 @@ public struct EditProfileView: View {
         do {
             _ = try await ProfileManager.update(profile)
             #if os(iOS) || os(tvOS)
-                try await UIProfileUpdateTask.configure()
+                try UIProfileUpdateTask.configure()
             #else
                 try await ProfileUpdateTask.configure()
             #endif

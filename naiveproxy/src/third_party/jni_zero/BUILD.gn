@@ -31,7 +31,6 @@ component("jni_zero") {
   ]
 
   sources = [
-    "common_apis.cc",
     "common_apis.h",
     "default_conversions.cc",
     "java_refs.cc",

@@ -331,11 +331,11 @@
     "META": {"sizes": {"includes": [10]}},
     "includes": [3460],
   },
-  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/nearby_internals/resources.grd": {
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/nearby_internals/resources.grd": {
     "META": {"sizes": {"includes": [40]}},
     "includes": [3480],
   },
-  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/nearby_share/resources.grd": {
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/nearby_share/resources.grd": {
     "META": {"sizes": {"includes": [100]}},
     "includes": [3500],
   },
@@ -445,12 +445,16 @@
     "META": {"sizes": {"includes": [50],}},
     "includes": [4060],
   },
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/signin/batch_upload/resources.grd": {
+    "META": {"sizes": {"includes": [10]}},
+    "includes": [4070],
+  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/signin/profile_picker/resources.grd": {
     "META": {"sizes": {"includes": [50],}},
     "includes": [4080],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/signin/resources.grd": {
-    "META": {"sizes": {"includes": [80],}},
+    "META": {"sizes": {"includes": [90],}},
     "includes": [4100],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/support_tool/resources.grd": {
@@ -458,7 +462,7 @@
     "includes": [4120],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/tab_search/resources.grd": {
-    "META": {"sizes": {"includes": [70]}},
+    "META": {"sizes": {"includes": [90]}},
     "includes": [4140],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/tab_strip/resources.grd": {
@@ -710,6 +714,10 @@
     "META": {"sizes": {"includes": [20]}},
     "includes": [5360],
   },
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/lens/shared/resources.grd": {
+    "META": {"sizes": {"includes": [10]}},
+    "includes": [5370],
+  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/enterprise_reporting/resources.grd": {
     "META": {"sizes": {"includes": [20]}},
     "includes": [5380],
@@ -755,7 +763,7 @@
     "structures": [5600],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/test/data/webui/resources.grd": {
-    "META": {"sizes": {"includes": [2000],}},
+    "META": {"sizes": {"includes": [2500],}},
     "includes": [5620],
   },
   # END chrome/ miscellaneous section.
@@ -771,7 +779,7 @@
     "includes": [5720],
   },
   "chromeos/ash/components/emoji/emoji.grd" : {
-    "META": {"sizes": {"includes": [35],}},
+    "META": {"sizes": {"includes": [45],}},
     "includes" : [5740],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chromeos/ash/components/kiosk/vision/webui/resources.grd" : {

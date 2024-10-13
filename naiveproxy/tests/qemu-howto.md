@@ -71,7 +71,7 @@ export OPENWRT_FLAGS='arch=mipsel_24kc-static release=23.05.0 gcc_ver=12.3.0 tar
 ```
 $ wget https://downloads.openwrt.org/snapshots/targets/malta/le/lede-malta-le-vmlinux-initramfs.elf
 
-$ qemu-system-mipsel -nographic -M malta -kernel lede-malta-le-vmlinux-initramfs.elf -m 64 -device virtio-net,netdev=net0 -netdev user,id=net0,hostfwd=tcp::5555-:1080
+$ qemu-system-mipsel -nographic -M malta -kernel lede-malta-le-vmlinux-initramfs.elf -m 64 -device pcnet,netdev=net0 -netdev user,id=net0,hostfwd=tcp::5555-:1080
 ...
 (eth0 is set up by DHCP)
 
