@@ -88,15 +88,10 @@ var variantFlag string
 var mingwDir string
 var mingwAllowXpFlag bool
 
-var androidAppAbi string
-var androidAbiTarget string
 var androidApiLevel int
 
 var androidSdkDir string
 var androidNdkVer string
-
-var harmonyAppAbi string
-var harmonyAbiTarget string
 
 var harmonyNdkDir string
 
@@ -108,6 +103,11 @@ func getAppName() string {
 	} else if systemNameFlag == "mingw" {
 		return APPNAME + ".exe"
 	} else if systemNameFlag == "android" {
+		if APPNAME == "yass" {
+			return "lib" + APPNAME + ".so"
+		}
+		return APPNAME
+	} else if systemNameFlag == "harmony" {
 		if APPNAME == "yass" {
 			return "lib" + APPNAME + ".so"
 		}
@@ -206,7 +206,7 @@ func InitFlag() {
 	flag.StringVar(&androidSdkDir, "android-sdk-dir", getEnv("ANDROID_SDK_ROOT", ""), "Android SDK Home Path")
 	flag.StringVar(&androidNdkVer, "android-ndk-ver", getEnv("ANDROID_NDK_VER", "26.3.11579264"), "Android NDK Version")
 
-	flag.StringVar(&harmonyNdkDir, "harmony-ndk-dir", getEnv("HARMONY_NDK_ROOT", ""), "OpenHarmony NDK Home Path")
+	flag.StringVar(&harmonyNdkDir, "harmony-ndk-dir", getEnv("HARMONY_NDK_ROOT", ""), "OpenHarmony NDK (toolchain) Path")
 
 	flag.Parse()
 
@@ -1042,7 +1042,7 @@ func buildStageGenerateBuildScript() {
 			glog.Fatalf("Android Ndk Directory at %s demanded", NdkDir)
 		}
 		glog.Infof("Using android ndk dir %s", NdkDir)
-		androidAbiTarget, androidAppAbi = getAndroidTargetAndAppAbi(archFlag)
+		androidAbiTarget, androidAppAbi := getAndroidTargetAndAppAbi(archFlag)
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DCMAKE_TOOLCHAIN_FILE=%s/../cmake/platforms/Android.cmake", buildDir))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DANDROID_ABI=%s", androidAppAbi))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DANDROID_ABI_TARGET=%s", androidAbiTarget))
@@ -1060,13 +1060,12 @@ func buildStageGenerateBuildScript() {
 
 	if systemNameFlag == "harmony" {
 		cmakeArgs = append(cmakeArgs, "-DUSE_BUILTIN_CA_BUNDLE_CRT=off")
-		if harmonyNdkDir == "" {
-			glog.Fatalf("Harmony Ndk Directory demanded")
+		if _, err := os.Stat(harmonyNdkDir); errors.Is(err, os.ErrNotExist) {
+			glog.Fatalf("Harmony Ndk Directory at %s demanded", harmonyNdkDir)
 		}
-		harmonyAbiTarget, harmonyAppAbi = getHarmonyTargetAndAppAbi(archFlag)
+		glog.Infof("Using harmony ndk dir %s", harmonyNdkDir)
+		_, harmonyAppAbi := getHarmonyTargetAndAppAbi(archFlag)
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DCMAKE_TOOLCHAIN_FILE=%s/../cmake/platforms/Harmony.cmake", buildDir))
-		// hard-coded
-		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DOHOS_APILEVEL=%s", "9"))
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DOHOS_ARCH=%s", harmonyAppAbi))
 
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DOHOS_SDK_NATIVE=%s/native", harmonyNdkDir))
@@ -1951,6 +1950,24 @@ func archiveFiles(output string, prefix string, paths []string) {
 	}
 }
 
+func signOrCopyHapFile(inFile string, outFile string) error {
+	hapSignTool := fmt.Sprintf("%s/toolchains/lib/hap-sign-tool.jar", harmonyNdkDir)
+	keyAlias := getEnv("HARMONY_SIGNING_KEY_ALIAS", "")
+	keyPwd := getEnv("HARMONY_SIGNING_KEY_PASSWORD", "")
+	appCertFile := getEnv("HARMONY_SIGNING_CERTFILE", "")
+	profileFile := getEnv("HARMONY_SIGNING_PROFILE", "")
+	keystoreFile := getEnv("HARMONY_SIGNING_STORE_PATH", "")
+	keystorePwd := getEnv("HARMONY_SIGNING_STORE_PASSWORD", "")
+
+	if len(appCertFile) != 0 && len(profileFile) != 0 {
+		cmdRun([]string{
+			"java", "-jar", hapSignTool, "sign-app", "-keyAlias", keyAlias, "-signAlg", "SHA256withECDSA", "-mode", "localSign", "-appCertFile", appCertFile, "-profileFile", profileFile, "-inFile", inFile, "-keystoreFile", keystoreFile, "-outFile", outFile, "-keyPwd", keyPwd, "-keystorePwd", keystorePwd, "-signCode", "1"}, true)
+	} else {
+		return os.Rename(inFile, outFile)
+	}
+	return nil
+}
+
 func archiveMainFile(output string, prefix string, paths []string, dllPaths []string) {
 	if systemNameFlag == "darwin" {
 		var eulaRtf []byte
@@ -2062,6 +2079,35 @@ func archiveMainFile(output string, prefix string, paths []string, dllPaths []st
 		}
 		// stop gradle daemon after build
 		cmdRun([]string{"./gradlew", "--stop"}, true)
+		err = os.Chdir(buildDir)
+		if err != nil {
+			glog.Fatalf("%v", err)
+		}
+	} else if systemNameFlag == "harmony" && variantFlag == "gui" {
+		harmonyDir := "../harmony"
+		err := os.Chdir(harmonyDir)
+		if err != nil {
+			glog.Fatalf("%v", err)
+		}
+		var build_type string
+		if cmakeBuildTypeFlag == "Release" || cmakeBuildTypeFlag == "MinSizeRel" {
+			build_type = "release"
+		} else {
+			build_type = "debug"
+		}
+		cmdRun([]string{"hvigorw", "clean", "--no-daemon"}, true)
+		cmdRun([]string{"rm", "-rf", "entry/libs"}, true)
+		_, abi := getHarmonyTargetAndAppAbi(archFlag)
+		cmdRun([]string{"mkdir", "-p", fmt.Sprintf("entry/libs/%s", abi)}, true)
+		cmdRun([]string{"cp", "-fv", fmt.Sprintf("../build-harmony-%s/libyass.so", archFlag), fmt.Sprintf("entry/libs/%s/", abi)}, true)
+
+		cmdRun([]string{"hvigorw", "assembleHap", "--mode", "module",
+			"-p", "product=default", "-p", fmt.Sprintf("buildMode=%s", build_type), "--no-daemon"}, true)
+		// optional signning step
+		err = signOrCopyHapFile("./entry/build/default/outputs/default/entry-default-unsigned.hap", output)
+		if err != nil {
+			glog.Fatalf("%v", err)
+		}
 		err = os.Chdir(buildDir)
 		if err != nil {
 			glog.Fatalf("%v", err)
@@ -2247,6 +2293,9 @@ func postStateArchives() map[string][]string {
 	if systemNameFlag == "ios" {
 		archive = fmt.Sprintf(archiveFormat, APPNAME, "", ".ipa")
 	}
+	if systemNameFlag == "harmony" {
+		archive = fmt.Sprintf(archiveFormat, APPNAME, "", ".hap")
+	}
 	hasCrashpadExe := true
 	if _, err := os.Stat("crashpad_handler.exe"); errors.Is(err, os.ErrNotExist) {
 		hasCrashpadExe = false
@@ -2380,7 +2429,7 @@ func get7zPath() string {
 func inspectArchive(file string, files []string) {
 	if strings.HasSuffix(file, ".dmg") {
 		cmdRun([]string{"hdiutil", "imageinfo", file}, false)
-	} else if strings.HasSuffix(file, ".zip") || strings.HasSuffix(file, ".msi") || strings.HasSuffix(file, ".exe") || strings.HasSuffix(file, ".apk") || strings.HasSuffix(file, ".ipa") {
+	} else if strings.HasSuffix(file, ".zip") || strings.HasSuffix(file, ".msi") || strings.HasSuffix(file, ".exe") || strings.HasSuffix(file, ".apk") || strings.HasSuffix(file, ".ipa") || strings.HasSuffix(file, ".hap") {
 		p7z := get7zPath()
 		cmdRun([]string{p7z, "l", file}, false)
 		if strings.HasSuffix(file, ".apk") {
