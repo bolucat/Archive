@@ -174,7 +174,7 @@
 // absl::variant is a typedef of std::variant, use the feature macro
 // ABSL_USES_STD_VARIANT.
 
-#define ABSL_OPTION_USE_STD_VARIANT 2
+#define ABSL_OPTION_USE_STD_VARIANT 0
 
 // ABSL_OPTION_USE_STD_ORDERING
 //
@@ -256,6 +256,6 @@
 // checks enabled by this option may abort the program in a different way and
 // log additional information when `NDEBUG` is not defined.
 
-#define ABSL_OPTION_HARDENED 0
+#define ABSL_OPTION_HARDENED 1
 
 #endif  // ABSL_BASE_OPTIONS_H_

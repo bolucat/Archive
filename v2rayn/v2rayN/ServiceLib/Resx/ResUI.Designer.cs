@@ -3230,6 +3230,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 sing-box ruleset files source (optional) 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsSrsFilesSource {
+            get {
+                return ResourceManager.GetString("TbSettingsSrsFilesSource", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Start on boot 的本地化字符串。
         /// </summary>
         public static string TbSettingsStartBoot {
@@ -3694,6 +3703,15 @@ namespace ServiceLib.Resx {
         public static string UpdateStandalonePackageTip {
             get {
                 return ResourceManager.GetString("UpdateStandalonePackageTip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 UpgradeApp does not exist 的本地化字符串。
+        /// </summary>
+        public static string UpgradeAppNotExistTip {
+            get {
+                return ResourceManager.GetString("UpgradeAppNotExistTip", resourceCulture);
             }
         }
     }

@@ -479,6 +479,12 @@ namespace ServiceLib.Common
 
         #region 杂项
 
+        public static bool UpgradeAppExists(out string fileName)
+        {
+            fileName = Path.Combine(Utils.StartupPath(), GetExeName("AmazTool"));
+            return File.Exists(fileName);
+        }
+
         /// <summary>
         /// 取得版本
         /// </summary>
@@ -594,7 +600,7 @@ namespace ServiceLib.Common
             return await GetCliWrapOutput(filePath, arg != null ? new List<string>() { arg } : null);
         }
 
-        private static async Task<string?> GetCliWrapOutput(string filePath, IEnumerable<string>? args)
+        public static async Task<string?> GetCliWrapOutput(string filePath, IEnumerable<string>? args)
         {
             try
             {
