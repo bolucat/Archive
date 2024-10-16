@@ -44,6 +44,10 @@ namespace ServiceLib.ViewModels
         public ReactiveCommand<Unit, Unit> ClearServerStatisticsCmd { get; }
         public ReactiveCommand<Unit, Unit> OpenTheFileLocationCmd { get; }
 
+        //Presets
+        public ReactiveCommand<Unit, Unit> RegionalPresetDefaultCmd { get; }
+        public ReactiveCommand<Unit, Unit> RegionalPresetRussiaCmd { get; }
+
         public ReactiveCommand<Unit, Unit> ReloadCmd { get; }
 
         [Reactive]
@@ -181,6 +185,16 @@ namespace ServiceLib.ViewModels
                 await Reload();
             });
 
+            RegionalPresetDefaultCmd = ReactiveCommand.CreateFromTask(async () =>
+            {
+                await ApplyRegionalPreset(EPresetType.Default);
+            });
+
+            RegionalPresetRussiaCmd = ReactiveCommand.CreateFromTask(async () =>
+            {
+                await ApplyRegionalPreset(EPresetType.Russia);
+            });
+
             #endregion WhenAnyValue && ReactiveCommand
 
             AutoHideStartup();
@@ -263,7 +277,7 @@ namespace ServiceLib.ViewModels
             {
                 Logging.SaveLog("MyAppExit Begin");
                 //if (blWindowsShutDown)
-                await _updateView?.Invoke(EViewAction.UpdateSysProxy, true);
+                await SysProxyHandler.UpdateSysProxy(_config, true);
 
                 ConfigHandler.SaveConfig(_config);
                 ProfileExHandler.Instance.SaveTo();
@@ -492,12 +506,13 @@ namespace ServiceLib.ViewModels
 
             await LoadCore();
             Locator.Current.GetService<StatusBarViewModel>()?.TestServerAvailability();
+            await SysProxyHandler.UpdateSysProxy(_config, false);
             _updateView?.Invoke(EViewAction.DispatcherReload, null);
         }
 
         public void ReloadResult()
         {
-            //ChangeSystemProxyStatusAsync(_config.systemProxyItem.sysProxyType, false);
+            //Locator.Current.GetService<StatusBarViewModel>()?.ChangeSystemProxyAsync(_config.systemProxyItem.sysProxyType, false);
             BlReloadEnabled = true;
             ShowClashUI = _config.IsRunningCore(ECoreType.sing_box);
             if (ShowClashUI)
@@ -542,5 +557,20 @@ namespace ServiceLib.ViewModels
         }
 
         #endregion core job
+
+        #region Presets
+
+        public async Task ApplyRegionalPreset(EPresetType type)
+        {
+            ConfigHandler.ApplyRegionalPreset(_config, type);
+            ConfigHandler.InitRouting(_config);
+            Locator.Current.GetService<StatusBarViewModel>()?.RefreshRoutingsMenu();
+
+            ConfigHandler.SaveConfig(_config, false);
+            await new UpdateService().UpdateGeoFileAll(_config, UpdateHandler);
+            Reload();
+        }
+
+        #endregion
     }
 }

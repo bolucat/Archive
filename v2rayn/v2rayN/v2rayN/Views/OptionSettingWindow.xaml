@@ -72,7 +72,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
                         <TextBlock
@@ -95,7 +95,8 @@
                             Margin="{StaticResource Margin4}"
                             VerticalAlignment="Center"
                             Style="{StaticResource ToolbarTextBlock}"
-                            Text="{x:Static resx:ResUI.TbSettingsSocksPortTip}" />
+                            Text="{x:Static resx:ResUI.TbSettingsSocksPortTip}"
+                            TextWrapping="Wrap" />
 
                         <TextBlock
                             Grid.Row="1"
@@ -374,10 +375,11 @@
                             HorizontalAlignment="Left" />
                         <TextBlock
                             Grid.Row="17"
-                            Grid.Column="3"
+                            Grid.Column="2"
                             Margin="{StaticResource Margin8}"
                             Style="{StaticResource ToolbarTextBlock}"
-                            Text="{x:Static resx:ResUI.TbSettingsEnableFragmentTips}" />
+                            Text="{x:Static resx:ResUI.TbSettingsEnableFragmentTips}"
+                            TextWrapping="Wrap" />
                     </Grid>
                 </ScrollViewer>
             </TabItem>
@@ -506,6 +508,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Visible">
                     <Grid Grid.Row="2" Margin="{StaticResource Margin8}">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -863,6 +866,14 @@
                             Margin="{StaticResource Margin8}"
                             IsEditable="True"
                             Style="{StaticResource DefComboBox}" />
+                        <TextBlock
+                            Grid.Row="22"
+                            Grid.Column="2"
+                            Margin="{StaticResource Margin4}"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ToolbarTextBlock}"
+                            Text="{x:Static resx:ResUI.TbSettingsChinaUserTip}"
+                            TextWrapping="Wrap" />
 
                         <TextBlock
                             Grid.Row="23"
@@ -879,6 +890,39 @@
                             Margin="{StaticResource Margin8}"
                             IsEditable="True"
                             Style="{StaticResource DefComboBox}" />
+                        <TextBlock
+                            Grid.Row="23"
+                            Grid.Column="2"
+                            Margin="{StaticResource Margin4}"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ToolbarTextBlock}"
+                            Text="{x:Static resx:ResUI.TbSettingsChinaUserTip}"
+                            TextWrapping="Wrap" />
+
+                        <TextBlock
+                            Grid.Row="24"
+                            Grid.Column="0"
+                            Margin="{StaticResource Margin8}"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ToolbarTextBlock}"
+                            Text="{x:Static resx:ResUI.TbSettingsRoutingRulesSource}" />
+                        <ComboBox
+                            x:Name="cmbRoutingRulesSourceUrl"
+                            Grid.Row="24"
+                            Grid.Column="1"
+                            Width="300"
+                            Margin="{StaticResource Margin8}"
+                            IsEditable="True"
+                            Style="{StaticResource DefComboBox}" />
+                        <TextBlock
+                            Grid.Row="24"
+                            Grid.Column="2"
+                            Margin="{StaticResource Margin4}"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ToolbarTextBlock}"
+                            Text="{x:Static resx:ResUI.TbSettingsChinaUserTip}"
+                            TextWrapping="Wrap" />
+
                     </Grid>
                 </ScrollViewer>
             </TabItem>

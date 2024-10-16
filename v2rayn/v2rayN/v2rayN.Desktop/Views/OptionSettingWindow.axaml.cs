@@ -91,6 +91,10 @@ namespace v2rayN.Desktop.Views
             {
                 cmbSrsFilesSourceUrl.Items.Add(it);
             });
+            Global.RoutingRulesSources.ForEach(it =>
+            {
+                cmbRoutingRulesSourceUrl.Items.Add(it);
+            });
             foreach (EGirdOrientation it in Enum.GetValues(typeof(EGirdOrientation)))
             {
                 cmbMainGirdOrientation.Items.Add(it.ToString());
@@ -142,6 +146,7 @@ namespace v2rayN.Desktop.Views
                 this.Bind(ViewModel, vm => vm.MainGirdOrientation, v => v.cmbMainGirdOrientation.SelectedIndex).DisposeWith(disposables);
                 this.Bind(ViewModel, vm => vm.GeoFileSourceUrl, v => v.cmbGetFilesSourceUrl.SelectedValue).DisposeWith(disposables);
                 this.Bind(ViewModel, vm => vm.SrsFileSourceUrl, v => v.cmbSrsFilesSourceUrl.SelectedValue).DisposeWith(disposables);
+                this.Bind(ViewModel, vm => vm.RoutingRulesSourceUrl, v => v.cmbRoutingRulesSourceUrl.SelectedValue).DisposeWith(disposables);
 
                 this.Bind(ViewModel, vm => vm.notProxyLocalAddress, v => v.tognotProxyLocalAddress.IsChecked).DisposeWith(disposables);
                 this.Bind(ViewModel, vm => vm.systemProxyAdvancedProtocol, v => v.cmbsystemProxyAdvancedProtocol.SelectedValue).DisposeWith(disposables);
@@ -163,13 +168,10 @@ namespace v2rayN.Desktop.Views
                 this.BindCommand(ViewModel, vm => vm.SaveCmd, v => v.btnSave).DisposeWith(disposables);
             });
 
-            //if (Utils.IsWindows())
-            //{
-            //}
-            //else
-            //{
-            tabSystemproxy.IsVisible = false;
-            //}
+            if (!Utils.IsWindows())
+            {
+                tabSystemproxy.IsVisible = false;
+            }
         }
 
         private async Task<bool> UpdateViewHandler(EViewAction action, object? obj)

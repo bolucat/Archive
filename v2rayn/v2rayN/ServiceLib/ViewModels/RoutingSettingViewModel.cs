@@ -123,6 +123,17 @@ namespace ServiceLib.ViewModels
         private void BindingLockedData()
         {
             _lockedItem = ConfigHandler.GetLockedRoutingItem(_config);
+            if (_lockedItem == null)
+            {
+                _lockedItem = new RoutingItem()
+                {
+                    remarks = "locked",
+                    url = string.Empty,
+                    locked = true,
+                };
+                ConfigHandler.AddBatchRoutingRules(ref _lockedItem, Utils.GetEmbedText(Global.CustomRoutingFileName + "locked"));
+            }
+
             if (_lockedItem != null)
             {
                 _lockedRules = JsonUtils.Deserialize<List<RulesItem>>(_lockedItem.ruleSet);
@@ -286,7 +297,7 @@ namespace ServiceLib.ViewModels
 
         private async Task RoutingAdvancedImportRules()
         {
-            if (ConfigHandler.InitBuiltinRouting(_config, true) == 0)
+            if (ConfigHandler.InitRouting(_config, true) == 0)
             {
                 RefreshRoutingItems();
                 IsModified = true;

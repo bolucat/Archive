@@ -1186,6 +1186,33 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Regional presets setting 的本地化字符串。
+        /// </summary>
+        public static string menuRegionalPresets {
+            get {
+                return ResourceManager.GetString("menuRegionalPresets", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Default 的本地化字符串。
+        /// </summary>
+        public static string menuRegionalPresetsDefault {
+            get {
+                return ResourceManager.GetString("menuRegionalPresetsDefault", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Russia 的本地化字符串。
+        /// </summary>
+        public static string menuRegionalPresetsRussia {
+            get {
+                return ResourceManager.GetString("menuRegionalPresetsRussia", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Reload 的本地化字符串。
         /// </summary>
         public static string menuReload {
@@ -2726,6 +2753,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Users in China region can ignore this item 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsChinaUserTip {
+            get {
+                return ResourceManager.GetString("TbSettingsChinaUserTip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Color 的本地化字符串。
         /// </summary>
         public static string TbSettingsColor {
@@ -3163,6 +3199,15 @@ namespace ServiceLib.Resx {
         public static string TbSettingsRouteOnly {
             get {
                 return ResourceManager.GetString("TbSettingsRouteOnly", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Routing rules source (optional) 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsRoutingRulesSource {
+            get {
+                return ResourceManager.GetString("TbSettingsRoutingRulesSource", resourceCulture);
             }
         }
         

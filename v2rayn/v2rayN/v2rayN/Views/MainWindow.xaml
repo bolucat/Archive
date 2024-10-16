@@ -185,6 +185,16 @@
                                     Height="{StaticResource MenuItemHeight}"
                                     Header="{x:Static resx:ResUI.menuClearServerStatistics}" />
                                 <Separator Margin="-40,5" />
+                                <MenuItem Height="{StaticResource MenuItemHeight}" Header="{x:Static resx:ResUI.menuRegionalPresets}">
+                                    <MenuItem
+                                        x:Name="menuRegionalPresetsDefault"
+                                        Height="{StaticResource MenuItemHeight}"
+                                        Header="{x:Static resx:ResUI.menuRegionalPresetsDefault}" />
+                                    <MenuItem
+                                        x:Name="menuRegionalPresetsRussia"
+                                        Height="{StaticResource MenuItemHeight}"
+                                        Header="{x:Static resx:ResUI.menuRegionalPresetsRussia}" />
+                                </MenuItem>
                                 <MenuItem
                                     x:Name="menuBackupAndRestore"
                                     Height="{StaticResource MenuItemHeight}"

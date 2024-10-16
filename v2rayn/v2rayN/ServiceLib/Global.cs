@@ -115,13 +115,18 @@
         };
 
         public static readonly List<string> GeoFilesSources = new() {
-            GeoUrl,
+            "",
             @"https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/{0}.dat",
         };
 
         public static readonly List<string> SingboxRulesetSources = new() {
-            SingboxRulesetUrl,
+            "",
             @"https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/refs/heads/release/sing-box/rule-set-{0}/{1}.srs",
+        };
+
+        public static readonly List<string> RoutingRulesSources = new() {
+            "",
+            @"https://raw.githubusercontent.com/runetfreedom/russia-v2ray-custom-routing-list/refs/heads/main/template.json",
         };
 
         public static readonly Dictionary<string, string> UserAgentTexts = new()

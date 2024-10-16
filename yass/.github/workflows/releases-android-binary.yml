@@ -44,20 +44,25 @@ jobs:
       matrix:
         include:
           - arch: x86
+            build_type: Release
             qemu_suffix: i386
             apilevel: 24
           - arch: x64
+            build_type: Release
             qemu_suffix: amd64
             apilevel: 24
           - arch: arm
+            build_type: Release
             qemu_suffix: armel
             apilevel: 24
           - arch: arm64
+            build_type: Release
             qemu_suffix: aarch64
             apilevel: 24
     runs-on: ubuntu-20.04
     env:
       ARCH: ${{ matrix.arch }}
+      BUILD_TYPE: ${{ matrix.build_type }}
       SYSROOT: ${{ github.workspace }}/android-sysroot-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -149,15 +154,15 @@ jobs:
           rm -f third_party/llvm-build/Release+Asserts/*.tgz
       - name: Populate dependencie (cmake, overwrite)
         run: |
-          curl -L -O https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-x86_64.tar.gz
-          sudo tar -C /usr/local --strip-components=1 -xf cmake-3.28.6-linux-x86_64.tar.gz
+          curl -L -O https://github.com/Kitware/CMake/releases/download/v3.29.8/cmake-3.29.8-linux-x86_64.tar.gz
+          sudo tar -C /usr/local --strip-components=1 -xf cmake-3.29.8-linux-x86_64.tar.gz
           cmake --version
           rm -f *.tar.gz
       - name: Build TGZ packages (no build, for patching)
         run: |
           # FIXME required by next step, need to copy to current clang with ndk's libunwind.a
           ./tools/build --variant gui --arch ${{ matrix.arch }} --system android \
-            -cmake-build-type MinSizeRel -no-build -no-configure \
+            -no-build -no-configure \
             -android-sdk-dir "${ANDROID_SDK_ROOT}" -android-ndk-ver "${ANDROID_NDK_VER}"
       - name: Download and Build Crashpad (include depot_tools)
         if: ${{ steps.depot-cache.outputs.cache-hit != 'true' || steps.crashpad-cache.outputs.cache-hit != 'true' }}
@@ -194,7 +199,7 @@ jobs:
           echo "SIGNING_KEY_PASSWORD=$SIGNING_KEY_PASSWORD" >> $GITHUB_ENV
       - name: Build TGZ packages
         run: |
-          ./tools/build --variant gui --arch ${{ matrix.arch }} --system android --cmake-build-type MinSizeRel \
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system android \
             -build-benchmark -build-test \
             -android-sdk-dir "${ANDROID_SDK_ROOT}" -android-ndk-ver "${ANDROID_NDK_VER}"
       - name: Clean up keychain and provisioning profile

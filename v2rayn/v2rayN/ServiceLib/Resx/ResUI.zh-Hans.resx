@@ -953,7 +953,7 @@
     <value>导入旧的配置文件guiNConfig</value>
   </data>
   <data name="TbEnableTunAs" xml:space="preserve">
-    <value>启用Tun模式</value>
+    <value>启用Tun</value>
   </data>
   <data name="TbSettingsNewPort4LAN" xml:space="preserve">
     <value>为局域网开启新的端口</value>
@@ -1332,5 +1332,20 @@
   </data>
   <data name="TbSettingsSrsFilesSource" xml:space="preserve">
     <value>sing-box ruleset文件来源(可选)</value>
+  </data>
+  <data name="TbSettingsRoutingRulesSource" xml:space="preserve">
+    <value>路由规则集来源(可选)</value>
+  </data>
+  <data name="TbSettingsChinaUserTip" xml:space="preserve">
+    <value>中国区域用户可忽略此项</value>
+  </data>
+  <data name="menuRegionalPresets" xml:space="preserve">
+    <value>区域预置设置</value>
+  </data>
+  <data name="menuRegionalPresetsDefault" xml:space="preserve">
+    <value>默认区域</value>
+  </data>
+  <data name="menuRegionalPresetsRussia" xml:space="preserve">
+    <value>俄罗斯</value>
   </data>
 </root>

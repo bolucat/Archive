@@ -192,13 +192,19 @@ jobs:
         include:
           - container: 'alpine320'
             arch: amd64
+            build_type: MinSizeRel
           - container: 'i386-alpine320'
             arch: i386
+            build_type: MinSizeRel
           - container: 'aarch64-alpine320'
             arch: aarch64
+            build_type: MinSizeRel
           - container: 'armhf-alpine320'
             arch: armhf
+            build_type: MinSizeRel
     runs-on: ubuntu-20.04
+    env:
+      BUILD_TYPE: ${{ matrix.build_type }}
     needs: docker_publish
     steps:
       - uses: actions/checkout@v4
@@ -270,15 +276,15 @@ jobs:
           sudo apt remove libc6-i386
       - name: Populate dependencie (cmake, overwrite)
         run: |
-          curl -L -O https://github.com/Kitware/CMake/releases/download/v3.28.6/cmake-3.28.6-linux-x86_64.tar.gz
-          sudo tar -C /usr/local --strip-components=1 -xf cmake-3.28.6-linux-x86_64.tar.gz
+          curl -L -O https://github.com/Kitware/CMake/releases/download/v3.29.8/cmake-3.29.8-linux-x86_64.tar.gz
+          sudo tar -C /usr/local --strip-components=1 -xf cmake-3.29.8-linux-x86_64.tar.gz
           cmake --version
           rm -f *.tar.gz
       - name: Build TGZ packages
         run: |
-          ./tools/build --variant cli --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -use-static-build -nc
-          ./tools/build --variant server --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -use-static-build -nc
-          ./tools/build --variant gui --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test --cmake-build-type MinSizeRel -nc
+          ./tools/build --variant cli --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test -use-static-build -nc
+          ./tools/build --variant server --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test -use-static-build -nc
+          ./tools/build --variant gui --arch ${{ matrix.arch }} --system linux --subsystem musl --sysroot "${{ env.SDK_ROOT }}" -build-test -nc
       - name: Run tests (i386 and amd64)
         if: ${{ matrix.arch == 'i386' ||  matrix.arch == 'amd64' }}
         run: |
