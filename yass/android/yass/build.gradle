@@ -10,6 +10,7 @@ android {
         applicationId 'it.gui.yass'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        ndkVersion properties.getProperty("android.ndkVersion", "26.3.11579264").trim()
         versionCode properties.getProperty("YASS_VERSION", "1").trim().toInteger()
         versionName properties.getProperty("YASS_VERSION_NAME", "1.0").trim()
     }
@@ -42,10 +43,18 @@ android {
         }
     }
     buildTypes {
+        debug {
+            ndk {
+                debugSymbolLevel 'FULL' // 'SYMBOL_TABLE' for smaller size
+            }
+        }
         release {
             signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            ndk {
+                debugSymbolLevel 'FULL' // 'SYMBOL_TABLE' for smaller size
+            }
         }
     }
     // https://developer.android.com/build/configure-apk-splits

@@ -89,6 +89,7 @@ var mingwDir string
 var mingwAllowXpFlag bool
 
 var androidApiLevel int
+var androidAab bool
 
 var androidSdkDir string
 var androidNdkVer string
@@ -202,6 +203,7 @@ func InitFlag() {
 	flag.StringVar(&mingwDir, "mingw-dir", "", "MinGW Dir Path")
 	flag.BoolVar(&mingwAllowXpFlag, "mingw-allow-xp", false, "Enable Windows XP Build")
 
+	flag.BoolVar(&androidAab, "android-aab", false, "Build aab format instead of apk")
 	flag.IntVar(&androidApiLevel, "android-api", 24, "Select Android API Level")
 	flag.StringVar(&androidSdkDir, "android-sdk-dir", getEnv("ANDROID_SDK_ROOT", ""), "Android SDK Home Path")
 	flag.StringVar(&androidNdkVer, "android-ndk-ver", getEnv("ANDROID_NDK_VER", "26.3.11579264"), "Android NDK Version")
@@ -517,8 +519,8 @@ func getGNUTargetTypeAndArch(arch string, subsystem string) (string, string) {
 	return "", ""
 }
 
-func getLLVMVersion() string {
-	entries, err := ioutil.ReadDir(filepath.Join(clangPath, "lib", "clang"))
+func getClangVersion(llvmBaseDir string) string {
+	entries, err := ioutil.ReadDir(filepath.Join(llvmBaseDir, "lib", "clang"))
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
@@ -527,38 +529,25 @@ func getLLVMVersion() string {
 		llvm_version = entry.Name()
 	}
 	if llvm_version == "" {
-		glog.Fatalf("toolchain not found")
-	}
-	return llvm_version
-}
-
-func getMinGWLLVMVersion(mingwDir string) string {
-	entries, err := ioutil.ReadDir(filepath.Join(mingwDir, "lib", "clang"))
-	if err != nil {
-		glog.Fatalf("%v", err)
-	}
-	var llvm_version string
-	for _, entry := range entries {
-		llvm_version = entry.Name()
-	}
-	if llvm_version == "" {
-		glog.Fatalf("toolchain not found")
+		glog.Fatalf("toolchain not found under directory %s", llvmBaseDir)
 	}
 	return llvm_version
 }
 
 func getAndFixMinGWLibunwind(mingwDir string) {
-	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/%s/lib/windows", mingwDir, getMinGWLLVMVersion(mingwDir)), "windows")
+	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/%s/lib/windows", mingwDir, getClangVersion(mingwDir)), "windows")
 }
 
 func getAndFixAndroidLibunwind(ndkDir string) {
-	getAndFixLibunwind(fmt.Sprintf("%s/toolchains/llvm/prebuilt/%s-x86_64/lib/clang/17/lib/linux", ndkDir, runtime.GOOS), "linux")
+	llvmBaseDir := fmt.Sprintf("%s/toolchains/llvm/prebuilt/%s-x86_64", ndkDir, runtime.GOOS)
+	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/%s/lib/linux", llvmBaseDir, getClangVersion(llvmBaseDir)), "linux")
 }
 
 func getAndFixHarmonyLibunwind() {
-	// FIX Runtime
-	getAndFixLibunwind(fmt.Sprintf("%s/native/llvm/lib/clang/15.0.4/lib", harmonyNdkDir), "")
-	// FIX libunwind
+	// Fix Runtime
+	llvmBaseDir := fmt.Sprintf("%s/native/llvm", harmonyNdkDir)
+	getAndFixLibunwind(fmt.Sprintf("%s/lib/clang/%s/lib", llvmBaseDir, getClangVersion(llvmBaseDir)), "")
+	// Fix libunwind
 	target_path := fmt.Sprintf(filepath.Join(clangPath, "lib"))
 	source_path := fmt.Sprintf("%s/native/llvm/lib", harmonyNdkDir)
 	entries, err := ioutil.ReadDir(source_path)
@@ -589,23 +578,8 @@ func getAndFixLibunwind(source_path string, subdir string) {
 		glog.Fatalf("Symbolic link is not supported on windows")
 	}
 	// ln -sf $PWD/third_party/android_toolchain/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/14.0.7/lib/linux/i386 third_party/llvm-build/Release+Asserts/lib/clang/18/lib/linux
-	entries, err := ioutil.ReadDir(filepath.Join(clangPath, "lib", "clang"))
-	if err != nil {
-		glog.Fatalf("%v", err)
-	}
-	var llvm_version string
-	for _, entry := range entries {
-		llvm_version = entry.Name()
-	}
-	if llvm_version == "" {
-		glog.Fatalf("toolchain not found")
-	}
-	source_path, err = filepath.Abs(source_path)
-	if err != nil {
-		glog.Fatalf("%v", err)
-	}
-	target_path := fmt.Sprintf(filepath.Join(clangPath, "lib", "clang", llvm_version, "lib", subdir))
-	entries, err = ioutil.ReadDir(source_path)
+	target_path := fmt.Sprintf(filepath.Join(clangPath, "lib", "clang", getClangVersion(clangPath), "lib", subdir))
+	entries, err := ioutil.ReadDir(source_path)
 	if err != nil {
 		glog.Fatalf("%v", err)
 	}
@@ -973,7 +947,7 @@ func buildStageGenerateBuildScript() {
 			if targetAbi == "i686" {
 				cmakeArgs = append(cmakeArgs, "-DMINGW_MSVCRT100=ON")
 			}
-			llvm_version := getLLVMVersion()
+			llvm_version := getClangVersion(clangPath)
 			clang_rt_suffix := targetAbi
 			if targetAbi == "i686" {
 				clang_rt_suffix = "i386"
@@ -1627,7 +1601,7 @@ func postStateStripBinaries() {
 		glog.Info("Done in xcodebuild")
 		return
 	}
-	if systemNameFlag == "mingw" || systemNameFlag == "android" || systemNameFlag == "harmony" || systemNameFlag == "linux" || systemNameFlag == "freebsd" {
+	if systemNameFlag == "mingw" || systemNameFlag == "harmony" || systemNameFlag == "linux" || systemNameFlag == "freebsd" {
 		objcopy := filepath.Join(clangPath, "bin", "llvm-objcopy")
 		if runtime.GOOS == "windows" {
 			objcopy = filepath.Join(clangPath, "bin", "llvm-objcopy.exe")
@@ -2065,14 +2039,24 @@ func archiveMainFile(output string, prefix string, paths []string, dllPaths []st
 		}
 		_, abi := getAndroidTargetAndAppAbi(archFlag)
 		if cmakeBuildTypeFlag == "Release" || cmakeBuildTypeFlag == "MinSizeRel" {
-			cmdRun([]string{"./gradlew", "yass:assembleRelease", "--parallel", "--info"}, true)
-			err = os.Rename(fmt.Sprintf("./yass/build/outputs/apk/release/yass-%s-release.apk", abi), output)
+			if androidAab {
+				cmdRun([]string{"./gradlew", "yass:bundleRelease", "--parallel", "--info"}, true)
+				err = os.Rename("./yass/build/outputs/bundle/release/yass-release.aab", output)
+			} else {
+				cmdRun([]string{"./gradlew", "yass:assembleRelease", "--parallel", "--info"}, true)
+				err = os.Rename(fmt.Sprintf("./yass/build/outputs/apk/release/yass-%s-release.apk", abi), output)
+			}
 			if err != nil {
 				glog.Fatalf("%v", err)
 			}
 		} else {
-			cmdRun([]string{"./gradlew", "yass:assembleDebug", "--parallel", "--info"}, true)
-			err = os.Rename(fmt.Sprintf("./yass/build/outputs/apk/debug/yass-%s-release-unsigned.apk", abi), output)
+			if androidAab {
+				cmdRun([]string{"./gradlew", "yass:bundleDebug", "--parallel", "--info"}, true)
+				err = os.Rename("./yass/build/outputs/bundle/debug/yass-debug.aab", output)
+			} else {
+				cmdRun([]string{"./gradlew", "yass:assembleDebug", "--parallel", "--info"}, true)
+				err = os.Rename(fmt.Sprintf("./yass/build/outputs/apk/debug/yass-%s-release-unsigned.apk", abi), output)
+			}
 			if err != nil {
 				glog.Fatalf("%v", err)
 			}
@@ -2285,7 +2269,11 @@ func postStateArchives() map[string][]string {
 	archiveSuffix := fmt.Sprintf(archiveFormat, "", "", "")
 	archiveSuffix = archiveSuffix[1:]
 	if systemNameFlag == "android" && variantFlag == "gui" {
-		archive = fmt.Sprintf(archiveFormat, APPNAME, "", ".apk")
+		if androidAab {
+			archive = fmt.Sprintf(archiveFormat, APPNAME, "", ".aab")
+		} else {
+			archive = fmt.Sprintf(archiveFormat, APPNAME, "", ".apk")
+		}
 	}
 	if systemNameFlag == "darwin" {
 		archive = fmt.Sprintf(archiveFormat, APPNAME, "-unsigned", ".dmg")
@@ -2385,11 +2373,8 @@ func postStateArchives() map[string][]string {
 		}
 		archiveFiles(debugArchive, archivePrefix, dbgPaths)
 	} else if systemNameFlag == "android" {
-		dbgPaths = append(dbgPaths, getAppName()+".dbg")
-		if hasCrashpadDbg {
-			dbgPaths = append(dbgPaths, "crashpad_handler.dbg")
-		}
-		archiveFiles(debugArchive, archivePrefix, dbgPaths)
+		// nop because we produces aab now
+		dbgPaths = []string{}
 	} else if systemNameFlag == "darwin" {
 		dbgPaths = append(dbgPaths, getAppName()+".dSYM")
 		if hasCrashpadDbg {
@@ -2409,7 +2394,9 @@ func postStateArchives() map[string][]string {
 		archiveFiles(debugArchive, archivePrefix, []string{getAppName() + ".dSYM", "YassPacketTunnel.appex.dSYM"})
 		dbgPaths = append(dbgPaths, getAppName()+".dSYM", "YassPacketTunnel.appex.dSYM")
 	}
-	archives[debugArchive] = dbgPaths
+	if len(dbgPaths) > 0 {
+		archives[debugArchive] = dbgPaths
+	}
 
 	// Create openwrt Makefile
 	if subSystemNameFlag == "openwrt" && variantFlag == "cli" {
@@ -2429,14 +2416,31 @@ func get7zPath() string {
 func inspectArchive(file string, files []string) {
 	if strings.HasSuffix(file, ".dmg") {
 		cmdRun([]string{"hdiutil", "imageinfo", file}, false)
-	} else if strings.HasSuffix(file, ".zip") || strings.HasSuffix(file, ".msi") || strings.HasSuffix(file, ".exe") || strings.HasSuffix(file, ".apk") || strings.HasSuffix(file, ".ipa") || strings.HasSuffix(file, ".hap") {
+	} else if strings.HasSuffix(file, ".zip") || strings.HasSuffix(file, ".msi") || strings.HasSuffix(file, ".exe") || strings.HasSuffix(file, ".aab") || strings.HasSuffix(file, ".apk") || strings.HasSuffix(file, ".ipa") || strings.HasSuffix(file, ".hap") {
 		p7z := get7zPath()
 		cmdRun([]string{p7z, "l", file}, false)
-		if strings.HasSuffix(file, ".apk") {
+		if strings.HasSuffix(file, ".aab") {
+			// sign aab file (https://developer.android.com/tools/apksigner)
+			// FIXME hardcoded with build-tools 35.0.0
+			apksigner := filepath.Join(androidSdkDir, "build-tools", "35.0.0", "apksigner")
+			cmdRun([]string{apksigner, "sign", "-v", "--min-sdk-version", fmt.Sprintf("%d", androidApiLevel),
+				"--ks", getEnv("SIGNING_STORE_PATH", "../android/keystore/debug_keystore.jks"),
+				"--ks-pass", fmt.Sprintf("pass:%s", getEnv("SIGNING_STORE_PASSWORD", "abc123")),
+				"--ks-key-alias", getEnv("SIGNING_KEY_ALIAS", "key0"),
+				"--key-pass", fmt.Sprintf("pass:%s", getEnv("SIGNING_KEY_PASSWORD", "abc123")),
+				file}, true)
+		}
+		if strings.HasSuffix(file, ".apk") || strings.HasSuffix(file, ".aab") {
 			// check 16kb-alignment with zipalign
 			// FIXME hardcoded with build-tools 35.0.0
 			zipalign := filepath.Join(androidSdkDir, "build-tools", "35.0.0", "zipalign")
 			cmdRun([]string{zipalign, "-c", "-P", "16", "-v", "4", file}, true)
+		}
+		if strings.HasSuffix(file, ".apk") {
+			// verify signature
+			// FIXME hardcoded with build-tools 35.0.0
+			apksigner := filepath.Join(androidSdkDir, "build-tools", "35.0.0", "apksigner")
+			cmdRun([]string{apksigner, "verify", "-v", "--min-sdk-version", fmt.Sprintf("%d", androidApiLevel), file}, true)
 		}
 	} else if strings.HasSuffix(file, ".tgz") {
 		cmdRun([]string{"tar", "tvf", file}, false)
