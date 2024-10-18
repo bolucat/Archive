@@ -66,12 +66,6 @@ jobs:
           path: |
             third_party/llvm-build/Release+Asserts
           key: ${{ runner.os }}-toolchain-${{ hashFiles('CLANG_REVISION') }}-v${{ env.CACHE_EPOCH }}
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '>=1.20.0'
-          cache-dependency-path: |
-            tools/go.sum
-            third_party/boringssl/src/go.sum
       - name: Cache sysroot
         id: sysroot-cache
         uses: actions/cache@v4
@@ -79,6 +73,12 @@ jobs:
           path: |
             freebsd-${{ matrix.abi }}-${{ matrix.arch }}-toolchain
           key: freebsd-sysroot-${{ matrix.abi }}-${{ matrix.arch }}-${{ hashFiles('scripts/install-sysroot-freebsd.py') }}-v1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.20.0'
+          cache-dependency-path: |
+            tools/go.sum
+            third_party/boringssl/src/go.sum
       - name: Build build tool
         run: |
           cd tools
@@ -105,7 +105,7 @@ jobs:
           sudo tar -C /usr/local --strip-components=1 -xf cmake-3.29.8-linux-x86_64.tar.gz
           cmake --version
           rm -f *.tar.gz
-      - name: Build TGZ packages
+      - name: Build Binary
         run: |
           ./tools/build --system freebsd --arch ${{ matrix.arch }} --freebsd-abi ${{ matrix.abi }} \
             --sysroot $PWD/freebsd-${{ matrix.abi }}-${{ matrix.arch }}-toolchain \
