@@ -96,8 +96,9 @@ Cipher http over TLS are compatible.
 
 If you need custom Certificate Authority support in GUI or add other TLS-related features, [report here][frs].
 
-### Post Quantum key-agreements Support (TLS)
-Post Quantum ML-KEM key-agreements in TLS 1.3 (not enabled by default) is added on all of supported Platforms.
+### Post Quantum key-agreements for TLS 1.3
+[ML-KEM Post Quantum key-agreements][mlkem] (not enabled by default) for TLS 1.3 is supported on all platforms
+in place of obsolete [Kyber768 hybrid key-agreements][kyber].
 
 See [Protecting Chrome Traffic with Hybrid Kyber KEM](https://blog.chromium.org/2023/08/protecting-chrome-traffic-with-hybrid.html) for more.
 
@@ -169,6 +170,9 @@ Start from wiki's [Guide](https://github.com/Chilledheart/yass/wiki/Debug-Guide)
 
 [bugs]: https://github.com/Chilledheart/yass/issues/new?assignees=&labels=bug&projects=&template=bug_report.md&title=
 [frs]: https://github.com/Chilledheart/yass/issues/new?assignees=&labels=feature&projects=&template=feature_request.md&title=
+
+[mlkem]: https://datatracker.ietf.org/doc/draft-connolly-tls-mlkem-key-agreement/
+[kyber]: https://datatracker.ietf.org/doc/draft-tls-westerbaan-xyber768d00/
 
 [gtk3_rpm_url]: https://github.com/Chilledheart/yass/releases/download/1.15.0/yass-gtk3.el8.x86_64.1.15.0.rpm
 [gtk3_deb_url]: https://github.com/Chilledheart/yass/releases/download/1.15.0/yass-gtk3-ubuntu-16.04-xenial_amd64.1.15.0.deb
