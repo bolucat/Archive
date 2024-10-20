@@ -139,8 +139,7 @@ func (h *HTTPVehicle) Read(ctx context.Context, oldHash utils.HashType) (buf []b
 	}
 	defer resp.Body.Close()
 
-	if h.provider != nil {
-		subscriptionInfo := resp.Header.Get("subscription-userinfo")
+	if subscriptionInfo := resp.Header.Get("subscription-userinfo"); h.provider != nil && subscriptionInfo != "" {
 		cachefile.Cache().SetSubscriptionInfo(h.provider.Name(), subscriptionInfo)
 		h.provider.SetSubscriptionInfo(subscriptionInfo)
 	}

@@ -35,13 +35,13 @@ SDK_URL=https://downloads.openwrt.org/releases/$release/targets/$target/$subtarg
 rm -rf $SDK_PATH
 curl $SDK_URL | tar xJf -
 
-if [ "$major" -ge 22 ]; then
-cd $SDK_PATH
-else
-cd $SDK_PATH/staging_dir
+full_root=toolchain-*_gcc-${gcc_ver}_${abi}
+
+if [ "$major" -lt 22 ]; then
+  mv $SDK_PATH/staging_dir/$full_root $SDK_PATH
 fi
 
-full_root=toolchain-*_gcc-${gcc_ver}_${abi}
+cd $SDK_PATH
 cat >include.txt <<EOF
 ./include
 ./lib/*.o

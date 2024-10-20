@@ -396,6 +396,8 @@ jobs:
             openwrt: "target=sunxi subtarget=cortexa53"
             target_cpu: arm64
             extra: 'arm_cpu="cortex-a53" build_static=true use_allocator_shim=false use_partition_alloc=false'
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: aarch64_cortex-a72
             openwrt: "target=mvebu subtarget=cortexa72"
             target_cpu: arm64
@@ -404,6 +406,8 @@ jobs:
             openwrt: "target=mvebu subtarget=cortexa72"
             target_cpu: arm64
             extra: 'arm_cpu="cortex-a72" build_static=true use_allocator_shim=false use_partition_alloc=false'
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: aarch64_generic
             openwrt: "target=layerscape subtarget=armv8_64b"
             target_cpu: arm64
@@ -411,6 +415,8 @@ jobs:
             openwrt: "target=layerscape subtarget=armv8_64b"
             target_cpu: arm64
             extra: "build_static=true use_allocator_shim=false use_partition_alloc=false"
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: arm_arm1176jzf-s_vfp
             openwrt: "target=brcm2708 subtarget=bcm2708"
             target_cpu: arm
@@ -441,6 +447,8 @@ jobs:
             openwrt: "target=sunxi subtarget=cortexa7"
             target_cpu: arm
             extra: 'arm_version=0 arm_cpu="cortex-a7" arm_fpu="neon-vfpv4" arm_float_abi="hard" arm_use_neon=true build_static=true use_allocator_shim=false use_partition_alloc=false'
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: arm_cortex-a7_vfpv4
             openwrt: "target=at91 subtarget=sama7"
             target_cpu: arm
@@ -459,6 +467,8 @@ jobs:
             openwrt: "target=bcm53xx subtarget=generic"
             target_cpu: arm
             extra: 'arm_version=0 arm_cpu="cortex-a9" arm_float_abi="soft" arm_use_neon=false build_static=true use_allocator_shim=false use_partition_alloc=false'
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: arm_cortex-a9_neon
             openwrt: "target=imx6 subtarget=generic"
             target_cpu: arm
@@ -483,6 +493,8 @@ jobs:
             openwrt: "target=ramips subtarget=rt305x"
             target_cpu: mipsel
             extra: 'mips_arch_variant="r2" mips_float_abi="soft" build_static=true use_allocator_shim=false use_partition_alloc=false'
+            openwrt_release: '23.05.0'
+            openwrt_gcc_ver: '12.3.0'
           - arch: mipsel_mips32
             openwrt: "target=brcm47xx subtarget=legacy"
             target_cpu: mipsel

@@ -78,8 +78,8 @@ func (pp *proxySetProvider) Initial() error {
 	if err != nil {
 		return err
 	}
-	if pp.VehicleType() == types.HTTP {
-		pp.SetSubscriptionInfo(cachefile.Cache().GetSubscriptionInfo(pp.Name()))
+	if subscriptionInfo := cachefile.Cache().GetSubscriptionInfo(pp.Name()); subscriptionInfo != "" {
+		pp.SetSubscriptionInfo(subscriptionInfo)
 	}
 	pp.closeAllConnections()
 	return nil

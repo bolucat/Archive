@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"sync"
 
 	"github.com/shadowsocks/go-shadowsocks2/internal"
@@ -73,6 +74,9 @@ type packetConn struct {
 // NewPacketConn wraps a net.PacketConn with cipher
 func NewPacketConn(c net.PacketConn, ciph Cipher) net.PacketConn {
 	const maxPacketSize = 64 * 1024
+	if cc, ok := c.(*net.UDPConn); ok {
+		return &udpConn{UDPConn: cc, Cipher: ciph, buf: make([]byte, maxPacketSize)}
+	}
 	return &packetConn{PacketConn: c, Cipher: ciph, buf: make([]byte, maxPacketSize)}
 }
 
@@ -91,6 +95,65 @@ func (c *packetConn) WriteTo(b []byte, addr net.Addr) (int, error) {
 // ReadFrom reads from the embedded PacketConn and decrypts into b.
 func (c *packetConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	n, addr, err := c.PacketConn.ReadFrom(b)
+	if err != nil {
+		return n, addr, err
+	}
+	bb, err := Unpack(b[c.Cipher.SaltSize():], b[:n], c)
+	if err != nil {
+		return n, addr, err
+	}
+	copy(b, bb)
+	return len(bb), addr, err
+}
+
+type udpConn struct {
+	*net.UDPConn
+	Cipher
+	sync.Mutex
+	buf []byte // write lock
+}
+
+// WriteTo encrypts b and write to addr using the embedded UDPConn.
+func (c *udpConn) WriteTo(b []byte, addr net.Addr) (int, error) {
+	c.Lock()
+	defer c.Unlock()
+	buf, err := Pack(c.buf, b, c)
+	if err != nil {
+		return 0, err
+	}
+	_, err = c.UDPConn.WriteTo(buf, addr)
+	return len(b), err
+}
+
+// ReadFrom reads from the embedded UDPConn and decrypts into b.
+func (c *udpConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	n, addr, err := c.UDPConn.ReadFrom(b)
+	if err != nil {
+		return n, addr, err
+	}
+	bb, err := Unpack(b[c.Cipher.SaltSize():], b[:n], c)
+	if err != nil {
+		return n, addr, err
+	}
+	copy(b, bb)
+	return len(bb), addr, err
+}
+
+// WriteToUDPAddrPort encrypts b and write to addr using the embedded PacketConn.
+func (c *udpConn) WriteToUDPAddrPort(b []byte, addr netip.AddrPort) (int, error) {
+	c.Lock()
+	defer c.Unlock()
+	buf, err := Pack(c.buf, b, c)
+	if err != nil {
+		return 0, err
+	}
+	_, err = c.UDPConn.WriteToUDPAddrPort(buf, addr)
+	return len(b), err
+}
+
+// ReadFromUDPAddrPort reads from the embedded UDPConn and decrypts into b.
+func (c *udpConn) ReadFromUDPAddrPort(b []byte) (int, netip.AddrPort, error) {
+	n, addr, err := c.UDPConn.ReadFromUDPAddrPort(b)
 	if err != nil {
 		return n, addr, err
 	}
