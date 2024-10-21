@@ -70,10 +70,6 @@ namespace ServiceLib.ViewModels
             _config = AppHandler.Instance.Config;
             _updateView = updateView;
 
-            Init();
-
-            _config.uiItem.showInTaskbar = true;
-
             #region WhenAnyValue && ReactiveCommand
 
             //servers
@@ -203,13 +199,15 @@ namespace ServiceLib.ViewModels
 
             #endregion WhenAnyValue && ReactiveCommand
 
-            AutoHideStartup();
+            Init();
         }
 
-        private void Init()
+        private async Task Init()
         {
-            ConfigHandler.InitBuiltinRouting(_config);
-            ConfigHandler.InitBuiltinDNS(_config);
+            _config.uiItem.showInTaskbar = true;
+
+            await ConfigHandler.InitBuiltinRouting(_config);
+            await ConfigHandler.InitBuiltinDNS(_config);
             CoreHandler.Instance.Init(_config, UpdateHandler);
             TaskHandler.Instance.RegUpdateTask(_config, UpdateTaskHandler);
 
@@ -218,7 +216,8 @@ namespace ServiceLib.ViewModels
                 StatisticsHandler.Instance.Init(_config, UpdateStatisticsHandler);
             }
 
-            Reload();
+            await Reload();
+            await AutoHideStartup();
         }
 
         #endregion Init
@@ -285,7 +284,7 @@ namespace ServiceLib.ViewModels
                 //if (blWindowsShutDown)
                 await SysProxyHandler.UpdateSysProxy(_config, true);
 
-                ConfigHandler.SaveConfig(_config);
+                await ConfigHandler.SaveConfig(_config);
                 await ProfileExHandler.Instance.SaveTo();
                 await StatisticsHandler.Instance.SaveTo();
                 StatisticsHandler.Instance.Close();
@@ -371,7 +370,7 @@ namespace ServiceLib.ViewModels
                 RefreshServers();
                 if (item.indexId == _config.indexId)
                 {
-                    Reload();
+                    await Reload();
                 }
             }
         }
@@ -464,7 +463,7 @@ namespace ServiceLib.ViewModels
             if (ret == true)
             {
                 Locator.Current.GetService<StatusBarViewModel>()?.InboundDisplayStatus();
-                Reload();
+                await Reload();
             }
         }
 
@@ -473,9 +472,9 @@ namespace ServiceLib.ViewModels
             var ret = await _updateView?.Invoke(EViewAction.RoutingSettingWindow, null);
             if (ret == true)
             {
-                ConfigHandler.InitBuiltinRouting(_config);
+                await ConfigHandler.InitBuiltinRouting(_config);
                 Locator.Current.GetService<StatusBarViewModel>()?.RefreshRoutingsMenu();
-                Reload();
+                await Reload();
             }
         }
 
@@ -484,7 +483,7 @@ namespace ServiceLib.ViewModels
             var ret = await _updateView?.Invoke(EViewAction.DNSSettingWindow, null);
             if (ret == true)
             {
-                Reload();
+                await Reload();
             }
         }
 
@@ -508,7 +507,7 @@ namespace ServiceLib.ViewModels
 
         private async Task ClearServerStatistics()
         {
-            StatisticsHandler.Instance.ClearAllServerStatistics();
+            await StatisticsHandler.Instance.ClearAllServerStatistics();
             RefreshServers();
         }
 
@@ -535,6 +534,7 @@ namespace ServiceLib.ViewModels
             await LoadCore();
             Locator.Current.GetService<StatusBarViewModel>()?.TestServerAvailability();
             await SysProxyHandler.UpdateSysProxy(_config, false);
+
             _updateView?.Invoke(EViewAction.DispatcherReload, null);
         }
 
@@ -552,35 +552,29 @@ namespace ServiceLib.ViewModels
 
         private async Task LoadCore()
         {
+            //if (_config.tunModeItem.enableTun)
+            //{
+            //    Task.Delay(1000).Wait();
+            //    WindowsUtils.RemoveTunDevice();
+            //}
             await Task.Run(async () =>
             {
-                //if (_config.tunModeItem.enableTun)
-                //{
-                //    Task.Delay(1000).Wait();
-                //    WindowsUtils.RemoveTunDevice();
-                //}
-
                 var node = await ConfigHandler.GetDefaultServer(_config);
-                CoreHandler.Instance.LoadCore(node);
+                await CoreHandler.Instance.LoadCore(node);
             });
         }
 
-        public void CloseCore()
+        public async Task CloseCore()
         {
-            ConfigHandler.SaveConfig(_config, false);
+            await ConfigHandler.SaveConfig(_config, false);
             CoreHandler.Instance.CoreStop();
         }
 
-        private void AutoHideStartup()
+        private async Task AutoHideStartup()
         {
             if (_config.uiItem.autoHideStartup)
             {
-                Observable.Range(1, 1)
-                    .Delay(TimeSpan.FromSeconds(1))
-                    .Subscribe(async x =>
-                    {
-                        ShowHideWindow(false);
-                    });
+                ShowHideWindow(false);
             }
         }
 
@@ -591,12 +585,12 @@ namespace ServiceLib.ViewModels
         public async Task ApplyRegionalPreset(EPresetType type)
         {
             await ConfigHandler.ApplyRegionalPreset(_config, type);
-            ConfigHandler.InitRouting(_config);
+            await ConfigHandler.InitRouting(_config);
             Locator.Current.GetService<StatusBarViewModel>()?.RefreshRoutingsMenu();
 
-            ConfigHandler.SaveConfig(_config, false);
+            await ConfigHandler.SaveConfig(_config, false);
             await new UpdateService().UpdateGeoFileAll(_config, UpdateHandler);
-            Reload();
+            await Reload();
         }
 
         #endregion Presets

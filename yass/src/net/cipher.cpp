@@ -5,11 +5,11 @@
 
 #include <memory>
 
+#include <base/rand_util.h>
 #include "third_party/boringssl/src/include/openssl/base64.h"
 #include "third_party/boringssl/src/include/openssl/md5.h"
 
 #include "core/logging.hpp"
-#include "core/rand_util.hpp"
 #include "crypto/decrypter.hpp"
 #include "crypto/encrypter.hpp"
 #include "net/hkdf_sha1.hpp"
@@ -193,9 +193,7 @@ cipher::cipher(const std::string& key,
   key_len_ = !key.empty() ? cipher_impl::parse_key(key, key_, key_bitlen_ / 8)
                           : cipher_impl::derive_key(password, key_, key_bitlen_ / 8);
 
-#ifndef NDEBUG
   DumpHex("cipher: KEY", key_, key_len_);
-#endif
 
   tag_len_ = impl_->GetTagSize();
 }
@@ -283,9 +281,7 @@ void cipher::decrypt_salt(IOBuf* chunk) {
     chunk->trimStart(nonce_len);
     chunk->retreat(nonce_len);
     set_key_stream(nonce, nonce_len);
-#ifndef NDEBUG
     DumpHex("DE-NONCE", nonce, nonce_len);
-#endif
     return;
   }
 #endif
@@ -298,9 +294,7 @@ void cipher::decrypt_salt(IOBuf* chunk) {
   chunk->retreat(salt_len);
   set_key_aead(salt_, salt_len);
 
-#ifndef NDEBUG
   DumpHex("DE-SALT", salt_, salt_len);
-#endif
 }
 
 void cipher::encrypt_salt(IOBuf* chunk) {
@@ -311,29 +305,25 @@ void cipher::encrypt_salt(IOBuf* chunk) {
     size_t nonce_len = impl_->GetIVSize();
     VLOG(4) << "encrypt: nonce: " << nonce_len;
     uint8_t nonce[MAX_NONCE_LENGTH] = {};
-    RandBytes(nonce, nonce_len);
+    gurl_base::RandBytes(nonce, nonce_len);
     chunk->reserve(nonce_len, 0);
     chunk->prepend(nonce_len);
     memcpy(chunk->mutable_data(), nonce, nonce_len);
     set_key_stream(nonce, nonce_len);
-#ifndef NDEBUG
     DumpHex("EN-NONCE", nonce, nonce_len);
-#endif
     return;
   }
 #endif
 
   size_t salt_len = key_len_;
   VLOG(4) << "encrypt: salt: " << salt_len;
-  RandBytes(salt_, key_len_);
+  gurl_base::RandBytes(salt_, key_len_);
   chunk->reserve(salt_len, 0);
   chunk->prepend(salt_len);
   memcpy(chunk->mutable_data(), salt_, salt_len);
   set_key_aead(salt_, salt_len);
 
-#ifndef NDEBUG
   DumpHex("EN-SALT", salt_, salt_len);
-#endif
 }
 
 int cipher::chunk_decrypt_frame(uint64_t* counter, IOBuf* plaintext, IOBuf* ciphertext) const {
@@ -539,10 +529,8 @@ void cipher::set_key_stream(const uint8_t* nonce, size_t nonce_len) {
     LOG(WARNING) << "SetKey Failed";
   }
 
-#ifndef NDEBUG
   DumpHex("KEY", impl_->GetKey(), impl_->GetKeySize());
   DumpHex("IV", impl_->GetIV(), impl_->GetIVSize());
-#endif
 }
 
 void cipher::set_key_aead(const uint8_t* salt, size_t salt_len) {
@@ -565,10 +553,8 @@ void cipher::set_key_aead(const uint8_t* salt, size_t salt_len) {
     LOG(WARNING) << "SetNoncePrefix Failed";
   }
 
-#ifndef NDEBUG
   DumpHex("SKEY", impl_->GetKey(), impl_->GetKeySize());
   DumpHex("NONCE_PREFIX", impl_->GetNoncePrefix(), impl_->GetNoncePrefixSize());
-#endif
 }
 
 }  // namespace net

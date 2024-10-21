@@ -142,7 +142,7 @@ option(OFFICIAL_BUILD "Build with official build" OFF)
 
 if (OFFICIAL_BUILD)
   list(APPEND YASS_APP_FEATURES "official-build")
-  add_definitions(-DOFFICIAL_BUILD)
+  add_compile_definitions(-DOFFICIAL_BUILD)
 endif()
 
 if(MSVC)
@@ -559,7 +559,7 @@ cmake_dependent_option(
 
 if (FLATPAK_BUILD)
   list(APPEND YASS_APP_FEATURES "flatpak-build")
-  add_definitions(-DFLATPAK_BUILD)
+  add_compile_definitions(-DFLATPAK_BUILD)
 endif()
 
 cmake_dependent_option(
@@ -568,7 +568,7 @@ cmake_dependent_option(
 
 if (FLATHUB_BUILD)
   list(APPEND YASS_APP_FEATURES "flathub-build")
-  add_definitions(-DFLATHUB_BUILD)
+  add_compile_definitions(-DFLATHUB_BUILD)
 endif()
 
 # Dynamic users are supported from version 235
@@ -652,7 +652,33 @@ endif()
 if (ENABLE_ASSERTIONS)
   message(STATUS "Enabled Assertions")
   list(APPEND YASS_APP_FEATURES "assertions")
-  add_definitions(-DDCHECK_ALWAYS_ON=1)
+  add_compile_definitions(-DDCHECK_ALWAYS_ON=1)
+
+  # MSVC doesn't like _DEBUG on release builds. See PR 4379.
+  if(NOT MSVC)
+    add_compile_definitions(_DEBUG)
+  endif()
+  # On non-Debug builds cmake automatically defines NDEBUG, so we
+  # explicitly undefine it:
+  if(NOT upper_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+    add_compile_options($<$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>:-UNDEBUG>)
+    if (MSVC)
+      # Also remove /D NDEBUG to avoid MSVC warnings about conflicting defines.
+      foreach(flags_var_to_scrub
+          CMAKE_CXX_FLAGS_RELEASE
+          CMAKE_CXX_FLAGS_RELWITHDEBINFO
+          CMAKE_CXX_FLAGS_MINSIZEREL
+          CMAKE_C_FLAGS_RELEASE
+          CMAKE_C_FLAGS_RELWITHDEBINFO
+          CMAKE_C_FLAGS_MINSIZEREL)
+        string(REGEX REPLACE "(^| )[/-]D *NDEBUG($| )" " "
+          "${flags_var_to_scrub}" "${${flags_var_to_scrub}}")
+      endforeach()
+    endif()
+  endif()
+else()
+  ## Optimization flags
+  add_compile_options($<$<OR:$<CONFIG:RELEASE>,$<CONFIG:MINSIZEREL>>:-DNDEBUG>)
 endif()
 
 if (ENABLE_LTO AND IS_RELEASE_BUILD)
@@ -896,7 +922,7 @@ if(MSAN)
     add_compile_options(-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer)
     add_link_options(-fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer)
   endif()
-  add_definitions(-DMEMORY_SANITIZER)
+  add_compile_definitions(-DMEMORY_SANITIZER)
   list(APPEND YASS_APP_FEATURES "msan")
 endif()
 
@@ -914,9 +940,9 @@ if(ASAN)
     add_compile_options(-fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer)
   endif()
-  add_definitions(-DADDRESS_SANITIZER)
+  add_compile_definitions(-DADDRESS_SANITIZER)
   if (NOT APPLE AND USE_LIBCXX)
-    add_definitions(-D_LIBCPP_INSTRUMENTED_WITH_ASAN)
+    add_compile_definitions(-D_LIBCPP_INSTRUMENTED_WITH_ASAN)
   endif()
   list(APPEND YASS_APP_FEATURES "asan")
 endif()
@@ -949,7 +975,7 @@ if(TSAN)
     add_compile_options(-fsanitize=thread)
     add_link_options(-fsanitize=thread)
   endif()
-  add_definitions(-DTHREAD_SANITIZER)
+  add_compile_definitions(-DTHREAD_SANITIZER)
   list(APPEND YASS_APP_FEATURES "tsan")
 endif()
 
@@ -967,7 +993,7 @@ if(UBSAN)
     add_compile_options(-fsanitize=undefined)
     add_link_options(-fsanitize=undefined)
   endif()
-  add_definitions(-DUNDEFINED_SANITIZER)
+  add_compile_definitions(-DUNDEFINED_SANITIZER)
   list(APPEND YASS_APP_FEATURES "ubsan")
 endif()
 
@@ -1013,14 +1039,6 @@ if (NOT MSVC)
       add_link_options(-Wl,-z,max-page-size=16384)
     endif()
   endif()
-
-  ## optimization flags
-  ## TODO Changed in version 3.19: Multiple configurations can be specified for cfgs
-  ## see https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html#genex:CONFIG
-  add_compile_options(
-    "$<$<CONFIG:RELEASE>:-DNDEBUG>"
-    "$<$<CONFIG:MINSIZEREL>:-DNDEBUG>"
-  )
 
   ## can gc eliminate any unused functions and data items
   if (NOT APPLE)
@@ -1153,7 +1171,6 @@ else()
 
   ## Optimization flags
   add_compile_options($<$<AND:$<CONFIG:RELEASE>,$<COMPILE_LANGUAGE:C,CXX>>:/Zc:inline>)
-  add_compile_options($<$<AND:$<CONFIG:RELEASE>,$<COMPILE_LANGUAGE:C,CXX>>:/DNDEBUG>)
 
   ## Disable LTCG for static libraries because this setting introduces ABI incompatibility between minor compiler versions
   if (NOT MSVC_CRT_LINKAGE STREQUAL "static" AND NOT COMPILER_CLANG)
@@ -1918,7 +1935,7 @@ endif()
 # *****************************************************************************************
 
 if (USE_LIBCXX)
-  add_definitions(-DHAVE_LIBCXX)
+  add_compile_definitions(-DHAVE_LIBCXX)
   add_subdirectory(third_party/libc++ EXCLUDE_FROM_ALL)
   link_libraries(cxx ${libcxx_PUBLIC_LIBRARIES})
   set(CMAKE_REQUIRED_LIBRARIES "${CMAKE_REQUIRED_LIBRARIES} ${libcxx_PUBLIC_LIBRARIES}")
@@ -1928,9 +1945,13 @@ if (USE_LIBCXX)
     list(APPEND YASS_APP_FEATURES "msvcrt100")
   endif()
   if (MINGW_WORKAROUND)
+    if (USE_TCMALLOC)
+      # see #1127 mingw emutls patch crashes in 32-bit windows
+      message(FATAL_ERROR "mingw emutls workaround doesn't work with tcmalloc")
+    endif()
     list(APPEND YASS_APP_FEATURES "mingw atexit workaround")
   endif()
-elseif(NOT MSVC)
+elseif(LINUX AND ENABLE_ASSERTIONS)
   # Enable assertions on safety checks, also in libstdc++
   #
   # In case the C++ standard library implementation used is libstdc++, then
@@ -1938,7 +1959,7 @@ elseif(NOT MSVC)
   #
   # Enable libstdc++ hardening lightweight assertions. Those have a low
   # performance penalty but are considered a bare minimum for security.
-  add_definitions(-D_GLIBCXX_ASSERTIONS=1)
+  add_compile_definitions(-D_GLIBCXX_ASSERTIONS=1)
 endif()
 
 # *****************************************************************************************
@@ -1966,7 +1987,7 @@ int main() {
 }
 " HAVE_FLOCK)
 if (HAVE_FLOCK)
-  add_definitions(-DHAVE_FLOCK)
+  add_compile_definitions(-DHAVE_FLOCK)
 endif()
 
 if (NOT WIN32 AND NOT APPLE)
@@ -1978,16 +1999,16 @@ if (NOT WIN32 AND NOT APPLE)
   check_symbol_exists(mallinfo2 malloc.h HAVE_MALLINFO2)
 endif()
 if (HAVE_PIPE2)
-  add_definitions(-DHAVE_PIPE2)
+  add_compile_definitions(-DHAVE_PIPE2)
 endif()
 if (HAVE_DUP3)
-  add_definitions(-DHAVE_DUP3)
+  add_compile_definitions(-DHAVE_DUP3)
 endif()
 if (HAVE_MALLINFO)
-  add_definitions(-DHAVE_MALLINFO)
+  add_compile_definitions(-DHAVE_MALLINFO)
 endif()
 if (HAVE_MALLINFO2)
-  add_definitions(-DHAVE_MALLINFO2)
+  add_compile_definitions(-DHAVE_MALLINFO2)
 endif()
 if (MINGW)
   # see https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-headers/crt/_mingw.h.in#L215
@@ -2366,9 +2387,9 @@ include_directories(third_party/abseil-cpp)
 # force win32 thread model for libc++ usage
 if (MINGW AND USE_LIBCXX)
   # force non-inline emulated-tls
-  add_definitions(-DABSL_CONSUME_DLL)
+  add_compile_definitions(-DABSL_CONSUME_DLL)
   # force c++11 thread model
-  add_definitions(-DABSL_FORCE_THREAD_IDENTITY_MODE=ABSL_THREAD_IDENTITY_MODE_USE_CPP11)
+  add_compile_definitions(-DABSL_FORCE_THREAD_IDENTITY_MODE=ABSL_THREAD_IDENTITY_MODE_USE_CPP11)
 endif()
 if (ABSL_BUILD_TESTING)
   set(ABSL_USE_EXTERNAL_GOOGLETEST "ON" CACHE BOOL "")
@@ -4056,10 +4077,6 @@ add_library(yass_core STATIC
     src/config/config_impl_windows.hpp
     src/core/logging.cpp
     src/core/logging.hpp
-    src/core/check_op.cpp
-    src/core/check_op.hpp
-    src/core/check.cpp
-    src/core/check.hpp
     src/core/process_utils.hpp
     src/core/process_utils.cpp
     src/crypto/crypter_export.cpp
@@ -4072,26 +4089,16 @@ add_library(yass_core STATIC
     src/core/safe_strerror.hpp
     src/core/debug.cpp
     src/core/debug.hpp
-    src/core/rand_util.cpp
-    src/core/rand_util.hpp
     src/core/scoped_clear_last_error_win.cpp
-    src/core/ref_counted.cpp
-    src/core/ref_counted.hpp
-    src/core/thread_collision_warner.hpp
-    src/core/thread_collision_warner.cpp
-    src/core/atomic_ref_count.hpp
   )
 
 if (WIN32)
-  target_sources(yass_core PRIVATE src/core/rand_util_win.cpp)
   target_sources(yass_core PRIVATE src/core/utils_win.cpp)
 elseif (APPLE)
   target_sources(yass_core PRIVATE src/config/config_impl_apple.hpp)
   target_sources(yass_core PRIVATE src/config/config_impl_apple.mm)
-  target_sources(yass_core PRIVATE src/core/rand_util_posix.cpp)
   target_sources(yass_core PRIVATE src/core/utils_mac.mm)
 else()
-  target_sources(yass_core PRIVATE src/core/rand_util_posix.cpp)
   target_sources(yass_core PRIVATE src/core/utils_linux.cpp)
   target_sources(yass_core PRIVATE src/core/utils_freebsd.cpp)
 endif()
@@ -4119,6 +4126,7 @@ if (APPLE)
 endif()
 
 target_include_directories(yass_core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googleurl-override/polyfills
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googleurl-override
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googleurl/polyfills
   ${CMAKE_CURRENT_SOURCE_DIR}/third_party/googleurl

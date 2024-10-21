@@ -12,6 +12,9 @@
 #include <absl/flags/parse.h>
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_format.h>
+#include <base/memory/ref_counted.h>
+#include <base/memory/scoped_refptr.h>
+#include <base/rand_util.h>
 #include "third_party/boringssl/src/include/openssl/crypto.h"
 
 #ifdef _MSC_VER
@@ -29,9 +32,6 @@ ABSL_FLAG(std::string, proxy_type, "http", "proxy type, available: socks4, socks
 
 #include "cli/cli_server.hpp"
 #include "config/config.hpp"
-#include "core/rand_util.hpp"
-#include "core/ref_counted.hpp"
-#include "core/scoped_refptr.hpp"
 #include "feature.h"
 #include "net/cipher.hpp"
 #include "net/http_parser.hpp"
@@ -101,7 +101,7 @@ void GenerateRandContent(int size) {
   g_send_buffer.clear();
   g_send_buffer.reserve(0, size);
 
-  RandBytes(g_send_buffer.mutable_data(), std::min(256, size));
+  gurl_base::RandBytes(g_send_buffer.mutable_data(), std::min(256, size));
   for (int i = 1; i < size / 256; ++i) {
     memcpy(g_send_buffer.mutable_data() + 256 * i, g_send_buffer.data(), 256);
   }
@@ -110,7 +110,7 @@ void GenerateRandContent(int size) {
   g_recv_buffer = IOBuf::create(size);
 }
 
-class ContentProviderConnection : public RefCountedThreadSafe<ContentProviderConnection>, public Connection {
+class ContentProviderConnection : public gurl_base::RefCountedThreadSafe<ContentProviderConnection>, public Connection {
  public:
   static constexpr const ConnectionFactoryType Type = CONNECTION_FACTORY_CONTENT_PROVIDER;
   static constexpr const std::string_view Name = "content-provider";
@@ -873,8 +873,11 @@ int main(int argc, char** argv) {
   LOG(WARNING) << "Application starting: " << YASS_APP_TAG << " type: " << ProgramTypeToStr(pType);
   LOG(WARNING) << "Last Change: " << YASS_APP_LAST_CHANGE;
   LOG(WARNING) << "Features: " << YASS_APP_FEATURES;
+#ifdef DCHECK_ALWAYS_ON
+  LOG(WARNING) << "Assertions build (DCHECK_ALWAYS_ON #defined)";
+#endif
 #ifndef NDEBUG
-  LOG(WARNING) << "Debug build (NDEBUG not #defined)\n";
+  LOG(WARNING) << "Debug build (NDEBUG not #defined)";
 #endif
 
 #ifdef _WIN32

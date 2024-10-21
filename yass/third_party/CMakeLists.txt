@@ -101,7 +101,7 @@ add_library(url STATIC
   googleurl/base/functional/identity.h
   googleurl/base/functional/invoke.h
   googleurl/base/functional/not_fn.h
-  googleurl/base/memory/raw_ptr_exclusion.h
+  #googleurl/base/memory/raw_ptr_exclusion.h
   googleurl/base/no_destructor.h
   googleurl/base/numerics/checked_math.h
   googleurl/base/numerics/checked_math_impl.h
@@ -136,7 +136,7 @@ add_library(url STATIC
   googleurl/base/strings/string_util.cc
   googleurl/base/strings/string_util_constants.cc
   # FIXME vs2022 doesn't even compile
-  # googleurl/base/strings/utf_ostream_operators.cc
+  googleurl/base/strings/utf_ostream_operators.cc
   googleurl/base/strings/utf_string_conversion_utils.cc
   googleurl/base/strings/utf_string_conversions.cc
   # icu
@@ -170,6 +170,29 @@ add_library(url STATIC
   # googleurl/url/scheme_host_port.h
   # googleurl/url/origin.cc
   # googleurl/url/origin.h
+  googleurl-override/base/atomic_ref_count.h
+  googleurl-override/base/atomicops.h
+  googleurl-override/base/atomicops_internals_portable.h
+  googleurl-override/base/atomicops_internals_atomicword_compat.h
+  googleurl-override/base/macros/concat.h
+  googleurl-override/base/macros/if.h
+  googleurl-override/base/macros/remove_parens.h
+  googleurl-override/base/macros/uniquify.h
+  googleurl-override/base/memory/raw_ptr_exclusion.h
+  googleurl-override/base/memory/ref_counted.cc
+  googleurl-override/base/memory/ref_counted.h
+  googleurl-override/base/memory/scoped_refptr.h
+  googleurl-override/base/threading/platform_thread.cc
+  googleurl-override/base/threading/platform_thread.h
+  googleurl-override/base/threading/thread_collision_warner.cc
+  googleurl-override/base/threading/thread_collision_warner.h
+  googleurl-override/base/rand_util.h
+  googleurl-override/base/rand_util.cc
+  googleurl-override/polyfills/base/logging.h
+  googleurl-override/polyfills/base/check.h
+  googleurl-override/polyfills/base/check.cc
+  googleurl-override/polyfills/base/check_op.h
+  googleurl-override/polyfills/base/check_op.cc
   )
 
 if (WIN32)
@@ -179,9 +202,13 @@ if (WIN32)
   target_sources(url PRIVATE
     googleurl/base/strings/string_util_win.h
     googleurl/base/strings/string_util_win.cc)
+
+  target_sources(url PRIVATE googleurl-override/base/rand_util_win.cc)
 elseif(NOT APPLE)
   target_sources(url PRIVATE
     googleurl/base/strings/sys_string_conversions_posix.cc)
+  target_sources(url PRIVATE
+    googleurl-override/base/rand_util_posix.cc)
 else()
   target_sources(url PRIVATE
     googleurl-override/base/apple/scoped_cftyperef.h
@@ -191,6 +218,8 @@ else()
     googleurl-override/base/mac/scoped_ioobject.h
     googleurl-override/base/strings/sys_string_conversions_apple.mm
   )
+  target_sources(url PRIVATE
+    googleurl-override/base/rand_util_posix.cc)
   # missing apple part
 endif()
 
@@ -250,9 +279,10 @@ if (USE_LTO_CMAKE)
 endif()
 
 target_include_directories(url PUBLIC
+  googleurl-override/polyfills
   googleurl-override
-  googleurl
   googleurl/polyfills
+  googleurl
   ${CMAKE_CURRENT_SOURCE_DIR}/..
   )
 

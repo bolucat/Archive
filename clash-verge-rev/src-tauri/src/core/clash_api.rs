@@ -127,7 +127,7 @@ pub fn parse_check_output(log: String) -> String {
 #[test]
 fn test_parse_check_output() {
     let str1 = r#"xxxx\n time="2022-11-18T20:42:58+08:00" level=error msg="proxy 0: 'alpn' expected type 'string', got unconvertible type '[]interface {}'""#;
-    let str2 = r#"20:43:49 ERR [Config] configuration file test failed error=proxy 0: unsupport proxy type: hysteria path=xxx"#;
+    //let str2 = r#"20:43:49 ERR [Config] configuration file test failed error=proxy 0: unsupport proxy type: hysteria path=xxx"#;
     let str3 = r#"
     "time="2022-11-18T21:38:01+08:00" level=info msg="Start initial configuration in progress"
     time="2022-11-18T21:38:01+08:00" level=error msg="proxy 0: 'alpn' expected type 'string', got unconvertible type '[]interface {}'"
@@ -135,12 +135,8 @@ fn test_parse_check_output() {
     "#;
 
     let res1 = parse_check_output(str1.into());
-    let res2 = parse_check_output(str2.into());
+    // let res2 = parse_check_output(str2.into());
     let res3 = parse_check_output(str3.into());
-
-    println!("res1: {res1}");
-    println!("res2: {res2}");
-    println!("res3: {res3}");
 
     assert_eq!(res1, res3);
 }

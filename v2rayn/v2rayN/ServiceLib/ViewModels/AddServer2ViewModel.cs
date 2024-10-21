@@ -22,30 +22,21 @@ namespace ServiceLib.ViewModels
             _config = AppHandler.Instance.Config;
             _updateView = updateView;
 
-            if (profileItem.indexId.IsNullOrEmpty())
-            {
-                SelectedSource = profileItem;
-            }
-            else
-            {
-                SelectedSource = JsonUtils.DeepCopy(profileItem);
-            }
-            CoreType = SelectedSource?.coreType?.ToString();
-
             BrowseServerCmd = ReactiveCommand.CreateFromTask(async () =>
             {
                 _updateView?.Invoke(EViewAction.BrowseServer, null);
             });
-
             EditServerCmd = ReactiveCommand.CreateFromTask(async () =>
             {
                 await EditServer();
             });
-
             SaveServerCmd = ReactiveCommand.CreateFromTask(async () =>
             {
                 await SaveServerAsync();
             });
+
+            SelectedSource = profileItem.indexId.IsNullOrEmpty() ? profileItem : JsonUtils.DeepCopy(profileItem);
+            CoreType = SelectedSource?.coreType?.ToString();
         }
 
         private async Task SaveServerAsync()
@@ -82,7 +73,7 @@ namespace ServiceLib.ViewModels
                 return;
             }
 
-            var item = AppHandler.Instance.GetProfileItem(SelectedSource.indexId);
+            var item = await AppHandler.Instance.GetProfileItem(SelectedSource.indexId);
             item ??= SelectedSource;
             item.address = fileName;
             if (await ConfigHandler.AddCustomServer(_config, item, false) == 0)

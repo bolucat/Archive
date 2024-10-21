@@ -1,5 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "identifier": "io.github.clash-verge-rev.clash-verge-rev",
   "bundle": {
     "targets": ["deb", "rpm"],
     "linux": {
@@ -17,7 +18,14 @@
         "conflicts": ["clash-verge"],
         "obsoletes": ["clash-verge"]
       }
-    }
+    },
+    "externalBin": [
+      "./resources/clash-verge-service",
+      "./resources/install-service",
+      "./resources/uninstall-service",
+      "./sidecar/verge-mihomo",
+      "./sidecar/verge-mihomo-alpha"
+    ]
   },
   "app": {
     "trayIcon": {

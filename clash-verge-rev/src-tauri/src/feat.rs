@@ -10,28 +10,23 @@ use crate::log_err;
 use crate::utils::resolve;
 use anyhow::{bail, Result};
 use serde_yaml::{Mapping, Value};
-use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // 打开面板
 pub fn open_or_close_dashboard() {
-    let handle = handle::Handle::global();
-    let app_handle = handle.app_handle.lock();
-    if let Some(app_handle) = app_handle.as_ref() {
-        if let Some(window) = app_handle.get_webview_window("main") {
-            if let Ok(true) = window.is_focused() {
-                let _ = window.close();
-                return;
-            }
+    if let Some(window) = handle::Handle::global().get_window() {
+        if let Ok(true) = window.is_focused() {
+            let _ = window.minimize();
+            return;
         }
-        resolve::create_window(app_handle);
     }
+    resolve::create_window();
 }
 
 // 重启clash
 pub fn restart_clash_core() {
     tauri::async_runtime::spawn(async {
-        match CoreManager::global().run_core().await {
+        match CoreManager::global().restart_core().await {
             Ok(_) => {
                 handle::Handle::refresh_clash();
                 handle::Handle::notice_message("set_config::ok", "ok");
@@ -103,6 +98,12 @@ pub fn toggle_tun_mode() {
     });
 }
 
+pub fn quit(code: Option<i32>) {
+    let app_handle = handle::Handle::global().app_handle().unwrap();
+    resolve::resolve_reset();
+    app_handle.exit(code.unwrap_or(0));
+}
+
 /// 修改clash的订阅
 pub async fn patch_clash(patch: Mapping) -> Result<()> {
     Config::clash().draft().patch_config(patch.clone());
@@ -111,7 +112,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         // 激活订阅
         if patch.get("secret").is_some() || patch.get("external-controller").is_some() {
             Config::generate().await?;
-            CoreManager::global().run_core().await?;
+            CoreManager::global().restart_core().await?;
             handle::Handle::refresh_clash();
         }
 
@@ -140,6 +141,7 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 /// 一般都是一个个的修改
 pub async fn patch_verge(patch: IVerge) -> Result<()> {
     Config::verge().draft().patch_config(patch.clone());
+
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;
     let system_proxy = patch.enable_system_proxy;
@@ -150,6 +152,8 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let mixed_port = patch.verge_mixed_port;
     #[cfg(target_os = "macos")]
     let tray_icon = patch.tray_icon;
+    #[cfg(not(target_os = "macos"))]
+    let tray_icon: Option<String> = None;
     let common_tray_icon = patch.common_tray_icon;
     let sysproxy_tray_icon = patch.sysproxy_tray_icon;
     let tun_tray_icon = patch.tun_tray_icon;
@@ -165,34 +169,26 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let socks_port = patch.verge_socks_port;
     let http_enabled = patch.verge_http_enabled;
     let http_port = patch.verge_port;
-    let res = {
-        let service_mode = patch.enable_service_mode;
-        let mut generated = false;
-        if service_mode.is_some() {
-            log::debug!(target: "app", "change service mode to {}", service_mode.unwrap());
-            if !generated {
-                Config::generate().await?;
-                CoreManager::global().run_core().await?;
-                generated = true;
-            }
-        } else if tun_mode.is_some() {
-            update_core_config().await?;
+
+    let res: std::result::Result<(), anyhow::Error> = {
+        let mut should_restart_core = false;
+        let mut should_update_clash_config = false;
+        let mut should_update_launch = false;
+        let mut should_update_sysproxy = false;
+        let mut should_update_systray_part = false;
+
+        if tun_mode.is_some() {
+            should_update_clash_config = true;
         }
+
         #[cfg(not(target_os = "windows"))]
         if redir_enabled.is_some() || redir_port.is_some() {
-            if !generated {
-                Config::generate().await?;
-                CoreManager::global().run_core().await?;
-                generated = true;
-            }
+            should_restart_core = true;
         }
+
         #[cfg(target_os = "linux")]
         if tproxy_enabled.is_some() || tproxy_port.is_some() {
-            if !generated {
-                Config::generate().await?;
-                CoreManager::global().run_core().await?;
-                generated = true;
-            }
+            should_restart_core = true;
         }
         if socks_enabled.is_some()
             || http_enabled.is_some()
@@ -200,13 +196,10 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             || http_port.is_some()
             || mixed_port.is_some()
         {
-            if !generated {
-                Config::generate().await?;
-                CoreManager::global().run_core().await?;
-            }
+            should_restart_core = true;
         }
         if auto_launch.is_some() {
-            sysopt::Sysopt::global().update_launch()?;
+            should_update_launch = true;
         }
         if system_proxy.is_some()
             || proxy_bypass.is_some()
@@ -214,30 +207,39 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             || pac.is_some()
             || pac_content.is_some()
         {
-            sysopt::Sysopt::global().update_sysproxy()?;
-            sysopt::Sysopt::global().guard_proxy();
+            should_update_sysproxy = true;
         }
 
-        if let Some(true) = patch.enable_proxy_guard {
-            sysopt::Sysopt::global().guard_proxy();
+        if language.is_some()
+            || system_proxy.is_some()
+            || tun_mode.is_some()
+            || common_tray_icon.is_some()
+            || sysproxy_tray_icon.is_some()
+            || tun_tray_icon.is_some()
+            || tray_icon.is_some()
+        {
+            should_update_systray_part = true;
+        }
+        if should_restart_core {
+            Config::generate().await?;
+            CoreManager::global().restart_core().await?;
+        }
+        if should_update_clash_config {
+            update_core_config(false).await?;
+        }
+        if should_update_launch {
+            sysopt::Sysopt::global().update_launch()?;
+        }
+
+        if should_update_sysproxy {
+            sysopt::Sysopt::global().update_sysproxy().await?;
         }
 
         if let Some(hotkeys) = patch.hotkeys {
             hotkey::Hotkey::global().update(hotkeys)?;
         }
 
-        if language.is_some() {
-            handle::Handle::update_systray()?;
-        } else if system_proxy.is_some()
-            || tun_mode.is_some()
-            || common_tray_icon.is_some()
-            || sysproxy_tray_icon.is_some()
-            || tun_tray_icon.is_some()
-        {
-            handle::Handle::update_systray_part()?;
-        }
-        #[cfg(target_os = "macos")]
-        if tray_icon.is_some() {
+        if should_update_systray_part {
             handle::Handle::update_systray_part()?;
         }
 
@@ -247,6 +249,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         Ok(()) => {
             Config::verge().apply();
             Config::verge().data().save_file()?;
+
             Ok(())
         }
         Err(err) => {
@@ -288,29 +291,34 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
     };
 
     if should_update {
-        update_core_config().await?;
+        update_core_config(true).await?;
     }
 
     Ok(())
 }
 
 /// 更新订阅
-async fn update_core_config() -> Result<()> {
+async fn update_core_config(notice: bool) -> Result<()> {
     match CoreManager::global().update_config().await {
         Ok(_) => {
             handle::Handle::refresh_clash();
-            handle::Handle::notice_message("set_config::ok", "ok");
+            if notice {
+                handle::Handle::notice_message("set_config::ok", "ok");
+            }
             Ok(())
         }
         Err(err) => {
-            handle::Handle::notice_message("set_config::error", format!("{err}"));
+            if notice {
+                handle::Handle::notice_message("set_config::error", format!("{err}"));
+            }
             Err(err)
         }
     }
 }
 
 /// copy env variable
-pub fn copy_clash_env(app_handle: &AppHandle) {
+pub fn copy_clash_env() {
+    let app_handle = handle::Handle::global().app_handle().unwrap();
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7897) };
     let http_proxy = format!("http://127.0.0.1:{}", port);
     let socks5_proxy = format!("socks5://127.0.0.1:{}", port);

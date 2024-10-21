@@ -34,7 +34,7 @@ NextProto NextProtoFromString(std::string_view proto_string);
 
 std::string_view NextProtoToString(NextProto next_proto);
 
-#ifndef NDEBUG
+#if DCHECK_IS_ON()
 inline void DumpHex_Impl(const char* file, int line, const char* prefix, const uint8_t* data, uint32_t length) {
   if (!VLOG_IS_ON(4)) {
     return;
@@ -82,7 +82,7 @@ inline void DumpHex_Impl(const char* file, int line, const char* prefix, const u
 done:
   // ensure it is null-terminated
   hex_buffer[sizeof(hex_buffer) - 1] = '\0';
-  ::yass::LogMessage(file, line, -4).stream() << hex_buffer;
+  ::gurl_base::logging::LogMessage(file, line, -4).stream() << hex_buffer;
 }
 
 inline void DumpHex_Impl(const char* file, int line, const char* prefix, const net::IOBuf* buf) {
@@ -90,11 +90,11 @@ inline void DumpHex_Impl(const char* file, int line, const char* prefix, const n
   uint32_t length = buf->length();
   DumpHex_Impl(file, line, prefix, data, length);
 }
-#endif  // NDEBUG
+#endif  // DCHECK_IS_ON()
 
 }  // namespace net
 
-#ifndef NDEBUG
+#if DCHECK_IS_ON()
 #define DumpHex(...) ::net::DumpHex_Impl(__FILE__, __LINE__, __VA_ARGS__)
 #else
 #define DumpHex(...)

@@ -67,27 +67,14 @@ namespace ServiceLib.ViewModels
         public RoutingSettingViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
         {
             _config = AppHandler.Instance.Config;
-
             _updateView = updateView;
-            SelectedSource = new();
-
-            ConfigHandler.InitBuiltinRouting(_config);
-
-            enableRoutingAdvanced = _config.routingBasicItem.enableRoutingAdvanced;
-            domainStrategy = _config.routingBasicItem.domainStrategy;
-            domainMatcher = _config.routingBasicItem.domainMatcher;
-            domainStrategy4Singbox = _config.routingBasicItem.domainStrategy4Singbox;
-
-            RefreshRoutingItems();
-
-            BindingLockedData();
 
             var canEditRemove = this.WhenAnyValue(
-               x => x.SelectedSource,
-               selectedSource => selectedSource != null && !selectedSource.remarks.IsNullOrEmpty());
+                x => x.SelectedSource,
+                selectedSource => selectedSource != null && !selectedSource.remarks.IsNullOrEmpty());
 
             this.WhenAnyValue(
-                x => x.enableRoutingAdvanced)
+                    x => x.enableRoutingAdvanced)
                 .Subscribe(c => enableRoutingBasic = !enableRoutingAdvanced);
 
             RoutingBasicImportRulesCmd = ReactiveCommand.CreateFromTask(async () =>
@@ -116,13 +103,29 @@ namespace ServiceLib.ViewModels
             {
                 await SaveRoutingAsync();
             });
+
+            Init();
+        }
+
+        private async Task Init()
+        {
+            SelectedSource = new();
+
+            enableRoutingAdvanced = _config.routingBasicItem.enableRoutingAdvanced;
+            domainStrategy = _config.routingBasicItem.domainStrategy;
+            domainMatcher = _config.routingBasicItem.domainMatcher;
+            domainStrategy4Singbox = _config.routingBasicItem.domainStrategy4Singbox;
+
+            await ConfigHandler.InitBuiltinRouting(_config);
+            await RefreshRoutingItems();
+            await BindingLockedData();
         }
 
         #region locked
 
         private async Task BindingLockedData()
         {
-            _lockedItem = ConfigHandler.GetLockedRoutingItem(_config);
+            _lockedItem = await ConfigHandler.GetLockedRoutingItem(_config);
             if (_lockedItem == null)
             {
                 _lockedItem = new RoutingItem()
@@ -148,7 +151,7 @@ namespace ServiceLib.ViewModels
             }
         }
 
-        private void EndBindingLockedData()
+        private async Task EndBindingLockedData()
         {
             if (_lockedItem != null)
             {
@@ -163,7 +166,7 @@ namespace ServiceLib.ViewModels
 
                 _lockedItem.ruleSet = JsonUtils.Serialize(_lockedRules, false);
 
-                ConfigHandler.SaveRoutingItem(_config, _lockedItem);
+                await ConfigHandler.SaveRoutingItem(_config, _lockedItem);
             }
         }
 
@@ -171,11 +174,11 @@ namespace ServiceLib.ViewModels
 
         #region Refresh Save
 
-        public void RefreshRoutingItems()
+        public async Task RefreshRoutingItems()
         {
             _routingItems.Clear();
 
-            var routings = AppHandler.Instance.RoutingItems();
+            var routings = await AppHandler.Instance.RoutingItems();
             foreach (var item in routings)
             {
                 bool def = false;
@@ -206,7 +209,7 @@ namespace ServiceLib.ViewModels
             _config.routingBasicItem.domainMatcher = domainMatcher;
             _config.routingBasicItem.domainStrategy4Singbox = domainStrategy4Singbox;
 
-            EndBindingLockedData();
+            await EndBindingLockedData();
 
             if (await ConfigHandler.SaveConfig(_config) == 0)
             {
@@ -242,7 +245,7 @@ namespace ServiceLib.ViewModels
             }
             else
             {
-                item = AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
+                item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
                 if (item is null)
                 {
                     return;
@@ -250,7 +253,7 @@ namespace ServiceLib.ViewModels
             }
             if (await _updateView?.Invoke(EViewAction.RoutingRuleSettingWindow, item) == true)
             {
-                RefreshRoutingItems();
+                await RefreshRoutingItems();
                 IsModified = true;
             }
         }
@@ -268,20 +271,20 @@ namespace ServiceLib.ViewModels
             }
             foreach (var it in SelectedSources ?? [SelectedSource])
             {
-                var item = AppHandler.Instance.GetRoutingItem(it?.id);
+                var item = await AppHandler.Instance.GetRoutingItem(it?.id);
                 if (item != null)
                 {
-                    ConfigHandler.RemoveRoutingItem(item);
+                    await ConfigHandler.RemoveRoutingItem(item);
                 }
             }
 
-            RefreshRoutingItems();
+            await RefreshRoutingItems();
             IsModified = true;
         }
 
         public async Task RoutingAdvancedSetDefault()
         {
-            var item = AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
+            var item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
             if (item is null)
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);
@@ -290,7 +293,7 @@ namespace ServiceLib.ViewModels
 
             if (await ConfigHandler.SetDefaultRouting(_config, item) == 0)
             {
-                RefreshRoutingItems();
+                await RefreshRoutingItems();
                 IsModified = true;
             }
         }
@@ -299,7 +302,7 @@ namespace ServiceLib.ViewModels
         {
             if (await ConfigHandler.InitRouting(_config, true) == 0)
             {
-                RefreshRoutingItems();
+                await RefreshRoutingItems();
                 IsModified = true;
             }
         }
