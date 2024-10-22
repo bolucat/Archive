@@ -3114,7 +3114,9 @@ target_include_directories(asio_core PUBLIC
   src)
 target_include_directories(asio_core PUBLIC
   third_party/asio/asio/include
-  third_party/googleurl/polyfills)
+  third_party/googleurl-override/polyfills
+  third_party/googleurl/polyfills
+)
 target_compile_definitions(asio_core PUBLIC ASIO_STANDALONE)
 target_compile_definitions(asio_core PUBLIC ASIO_NO_TYPEID)
 target_compile_definitions(asio_core PUBLIC ASIO_NO_EXCEPTIONS)
@@ -4075,7 +4077,6 @@ add_library(yass_core STATIC
     src/config/config_impl.hpp
     src/config/config_impl_local.hpp
     src/config/config_impl_windows.hpp
-    src/core/logging.cpp
     src/core/logging.hpp
     src/core/process_utils.hpp
     src/core/process_utils.cpp
@@ -4085,11 +4086,6 @@ add_library(yass_core STATIC
     src/core/utils_fs.cpp
     src/core/utils.hpp
     src/core/utils_fs.hpp
-    src/core/safe_strerror.cpp
-    src/core/safe_strerror.hpp
-    src/core/debug.cpp
-    src/core/debug.hpp
-    src/core/scoped_clear_last_error_win.cpp
   )
 
 if (WIN32)

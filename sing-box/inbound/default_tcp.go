@@ -1,6 +1,7 @@
 package inbound
 
 import (
+	"context"
 	"net"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -71,4 +72,13 @@ func (a *myInboundAdapter) injectTCP(conn net.Conn, metadata adapter.InboundCont
 	metadata = a.createMetadata(conn, metadata)
 	a.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
 	a.connHandler.NewConnectionEx(ctx, conn, metadata, nil)
+}
+
+func (a *myInboundAdapter) routeTCP(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	metadata := a.createMetadata(conn, adapter.InboundContext{
+		Source:      source,
+		Destination: destination,
+	})
+	a.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
+	a.connHandler.NewConnectionEx(ctx, conn, metadata, onClose)
 }

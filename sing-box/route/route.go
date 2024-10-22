@@ -21,7 +21,6 @@ import (
 	"github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing-mux"
-	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-vmess"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
@@ -36,19 +35,18 @@ import (
 
 // Deprecated: use RouteConnectionEx instead.
 func (r *Router) RouteConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
-	err := r.routeConnection(ctx, conn, metadata, nil)
-	if err != nil {
-		conn.Close()
-		r.logger.ErrorContext(ctx, err)
-	}
-	return nil
+	return r.routeConnection(ctx, conn, metadata, nil)
 }
 
 func (r *Router) RouteConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	err := r.routeConnection(ctx, conn, metadata, onClose)
 	if err != nil {
 		N.CloseOnHandshakeFailure(conn, onClose, err)
-		r.logger.ErrorContext(ctx, err)
+		if E.IsClosedOrCanceled(err) {
+			r.logger.DebugContext(ctx, "connection closed: ", err)
+		} else {
+			r.logger.ErrorContext(ctx, err)
+		}
 	}
 }
 
@@ -90,14 +88,13 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 	if deadline.NeedAdditionalReadDeadline(conn) {
 		conn = deadline.NewConn(conn)
 	}
-	selectedRule, selectedRuleIndex, buffers, err := r.matchRule(ctx, &metadata, conn, nil, -1)
+	selectedRule, _, buffers, err := r.matchRule(ctx, &metadata, false, conn, nil, -1)
 	if err != nil {
 		return err
 	}
 	var selectedOutbound adapter.Outbound
 	var selectReturn bool
 	if selectedRule != nil {
-		r.logger.DebugContext(ctx, "match[", selectedRuleIndex, "] ", selectedRule.String(), " => ", selectedRule.Action().String())
 		switch action := selectedRule.Action().(type) {
 		case *rule.RuleActionRoute:
 			var loaded bool
@@ -110,16 +107,7 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 			selectReturn = true
 		case *rule.RuleActionReject:
 			buf.ReleaseMulti(buffers)
-			var rejectErr error
-			switch action.Method {
-			case C.RuleActionRejectMethodDefault:
-				rejectErr = os.ErrClosed
-			case C.RuleActionRejectMethodPortUnreachable:
-				rejectErr = syscall.ECONNREFUSED
-			case C.RuleActionRejectMethodDrop:
-				rejectErr = tun.ErrDrop
-			}
-			N.CloseOnHandshakeFailure(conn, onClose, rejectErr)
+			N.CloseOnHandshakeFailure(conn, onClose, action.Error())
 			return nil
 		}
 	}
@@ -134,7 +122,7 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		buf.ReleaseMulti(buffers)
 		return E.New("TCP is not supported by outbound: ", selectedOutbound.Tag())
 	}
-	for _, buffer := range common.Reverse(buffers) {
+	for _, buffer := range buffers {
 		conn = bufio.NewCachedConn(conn, buffer)
 	}
 	if r.clashServer != nil {
@@ -183,7 +171,11 @@ func (r *Router) RoutePacketConnection(ctx context.Context, conn N.PacketConn, m
 	err := r.routePacketConnection(ctx, conn, metadata, nil)
 	if err != nil {
 		conn.Close()
-		r.logger.ErrorContext(ctx, err)
+		if E.IsClosedOrCanceled(err) {
+			r.logger.DebugContext(ctx, "connection closed: ", err)
+		} else {
+			r.logger.ErrorContext(ctx, err)
+		}
 	}
 	return nil
 }
@@ -192,7 +184,11 @@ func (r *Router) RoutePacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	err := r.routePacketConnection(ctx, conn, metadata, onClose)
 	if err != nil {
 		N.CloseOnHandshakeFailure(conn, onClose, err)
-		r.logger.ErrorContext(ctx, err)
+		if E.IsClosedOrCanceled(err) {
+			r.logger.DebugContext(ctx, "connection closed: ", err)
+		} else {
+			r.logger.ErrorContext(ctx, err)
+		}
 	} else if onClose != nil {
 		onClose(nil)
 	}
@@ -230,13 +226,13 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 		conn = deadline.NewPacketConn(bufio.NewNetPacketConn(conn))
 	}*/
 
-	selectedRule, selectedRuleIndex, buffers, err := r.matchRule(ctx, &metadata, nil, conn, -1)
+	selectedRule, _, buffers, err := r.matchRule(ctx, &metadata, false, nil, conn, -1)
 	if err != nil {
 		return err
 	}
 	var selectedOutbound adapter.Outbound
+	var selectReturn bool
 	if selectedRule != nil {
-		r.logger.DebugContext(ctx, "match[", selectedRuleIndex, "] ", selectedRule.String(), " => ", selectedRule.Action().String())
 		switch action := selectedRule.Action().(type) {
 		case *rule.RuleActionRoute:
 			var loaded bool
@@ -247,22 +243,25 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 			}
 			metadata.UDPDisableDomainUnmapping = action.UDPDisableDomainUnmapping
 		case *rule.RuleActionReturn:
-			if r.defaultOutboundForPacketConnection == nil {
-				buf.ReleaseMulti(buffers)
-				return E.New("missing default outbound with UDP support")
-			}
-			selectedOutbound = r.defaultOutboundForPacketConnection
+			selectReturn = true
 		case *rule.RuleActionReject:
 			buf.ReleaseMulti(buffers)
 			N.CloseOnHandshakeFailure(conn, onClose, syscall.ECONNREFUSED)
 			return nil
 		}
 	}
+	if selectedRule == nil || selectReturn {
+		if r.defaultOutboundForPacketConnection == nil {
+			buf.ReleaseMulti(buffers)
+			return E.New("missing default outbound with UDP support")
+		}
+		selectedOutbound = r.defaultOutboundForPacketConnection
+	}
 	if !common.Contains(selectedOutbound.Network(), N.NetworkUDP) {
 		buf.ReleaseMulti(buffers)
 		return E.New("UDP is not supported by outbound: ", selectedOutbound.Tag())
 	}
-	for _, buffer := range common.Reverse(buffers) {
+	for _, buffer := range buffers {
 		// TODO: check if metadata.Destination == packet destination
 		conn = bufio.NewCachedPacketConn(conn, buffer, metadata.Destination)
 	}
@@ -297,8 +296,23 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 	return nil
 }
 
+func (r *Router) PreMatch(metadata adapter.InboundContext) error {
+	selectedRule, _, _, err := r.matchRule(r.ctx, &metadata, true, nil, nil, -1)
+	if err != nil {
+		return err
+	}
+	if selectedRule == nil {
+		return nil
+	}
+	rejectAction, isReject := selectedRule.Action().(*rule.RuleActionReject)
+	if !isReject {
+		return nil
+	}
+	return rejectAction.Error()
+}
+
 func (r *Router) matchRule(
-	ctx context.Context, metadata *adapter.InboundContext,
+	ctx context.Context, metadata *adapter.InboundContext, preMatch bool,
 	inputConn net.Conn, inputPacketConn N.PacketConn, ruleIndex int,
 ) (selectedRule adapter.Rule, selectedRuleIndex int, buffers []*buf.Buffer, fatalErr error) {
 	if r.processSearcher != nil && metadata.ProcessInfo == nil {
@@ -359,9 +373,9 @@ func (r *Router) matchRule(
 		metadata.IPVersion = 6
 	}
 
-	//goland:noinspection GoDeprecation
+	//nolint:staticcheck
 	if metadata.InboundOptions != common.DefaultValue[option.InboundOptions]() {
-		if metadata.InboundOptions.SniffEnabled {
+		if !preMatch && metadata.InboundOptions.SniffEnabled {
 			newBuffers, newErr := r.actionSniff(ctx, metadata, &rule.RuleActionSniff{
 				OverrideDestination: metadata.InboundOptions.SniffOverrideDestination,
 				Timeout:             time.Duration(metadata.InboundOptions.SniffTimeout),
@@ -406,14 +420,28 @@ match:
 		if !matched {
 			break
 		}
+		if !preMatch {
+			r.logger.DebugContext(ctx, "match[", currentRuleIndex, "] ", currentRule, " => ", currentRule.Action())
+		} else {
+			switch currentRule.Action().Type() {
+			case C.RuleActionTypeReject, C.RuleActionTypeResolve:
+				r.logger.DebugContext(ctx, "pre-match[", currentRuleIndex, "] ", currentRule, " => ", currentRule.Action())
+			}
+		}
 		switch action := currentRule.Action().(type) {
 		case *rule.RuleActionSniff:
-			newBuffers, newErr := r.actionSniff(ctx, metadata, action, inputConn, inputPacketConn)
-			if newErr != nil {
-				fatalErr = newErr
-				return
+			if !preMatch {
+				newBuffers, newErr := r.actionSniff(ctx, metadata, action, inputConn, inputPacketConn)
+				if newErr != nil {
+					fatalErr = newErr
+					return
+				}
+				buffers = append(buffers, newBuffers...)
+			} else {
+				selectedRule = currentRule
+				selectedRuleIndex = currentRuleIndex
+				break match
 			}
-			buffers = append(buffers, newBuffers...)
 		case *rule.RuleActionResolve:
 			fatalErr = r.actionResolve(ctx, metadata, action)
 			if fatalErr != nil {
@@ -426,7 +454,7 @@ match:
 		}
 		ruleIndex = currentRuleIndex
 	}
-	if metadata.Destination.Addr.IsUnspecified() {
+	if !preMatch && metadata.Destination.Addr.IsUnspecified() {
 		newBuffers, newErr := r.actionSniff(ctx, metadata, &rule.RuleActionSniff{}, inputConn, inputPacketConn)
 		if newErr != nil {
 			fatalErr = newErr
@@ -556,7 +584,7 @@ func (r *Router) actionSniff(
 
 func (r *Router) actionResolve(ctx context.Context, metadata *adapter.InboundContext, action *rule.RuleActionResolve) error {
 	if metadata.Destination.IsFqdn() {
-		// TODO: check if WithContext is necessary
+		metadata.DNSServer = action.Server
 		addresses, err := r.Lookup(adapter.WithContext(ctx, metadata), metadata.Destination.Fqdn, action.Strategy)
 		if err != nil {
 			return err

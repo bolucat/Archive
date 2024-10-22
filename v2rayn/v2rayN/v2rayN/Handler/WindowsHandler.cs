@@ -13,7 +13,7 @@ namespace v2rayN.Handler
         {
             try
             {
-                int index = (int)config.systemProxyItem.sysProxyType;
+                var index = (int)config.systemProxyItem.sysProxyType;
 
                 //Load from routing setting
                 var createdIcon = await GetNotifyIcon4Routing(config);
@@ -33,7 +33,7 @@ namespace v2rayN.Handler
                     0 => Properties.Resources.NotifyIcon1,
                     1 => Properties.Resources.NotifyIcon2,
                     2 => Properties.Resources.NotifyIcon3,
-                    3 => Properties.Resources.NotifyIcon2,
+                    3 => Properties.Resources.NotifyIcon4,
                     _ => Properties.Resources.NotifyIcon1, // default
                 };
             }
@@ -46,26 +46,11 @@ namespace v2rayN.Handler
 
         public System.Windows.Media.ImageSource GetAppIcon(Config config)
         {
-            int index = 1;
-            switch (config.systemProxyItem.sysProxyType)
-            {
-                case ESysProxyType.ForcedClear:
-                    index = 1;
-                    break;
-
-                case ESysProxyType.ForcedChange:
-                case ESysProxyType.Pac:
-                    index = 2;
-                    break;
-
-                case ESysProxyType.Unchanged:
-                    index = 3;
-                    break;
-            }
+            var index = (int)config.systemProxyItem.sysProxyType + 1;
             return BitmapFrame.Create(new Uri($"pack://application:,,,/Resources/NotifyIcon{index}.ico", UriKind.RelativeOrAbsolute));
         }
 
-        private async Task<Icon?>   GetNotifyIcon4Routing(Config config)
+        private async Task<Icon?> GetNotifyIcon4Routing(Config config)
         {
             try
             {

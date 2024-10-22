@@ -27,14 +27,14 @@ require (
 	github.com/sagernet/gvisor v0.0.0-20241021032506-a4324256e4a3
 	github.com/sagernet/quic-go v0.48.0-beta.1
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.5.0-rc.4.0.20241021153852-cf58af1a4627
+	github.com/sagernet/sing v0.5.0-rc.4.0.20241022031908-cd17884118cb
 	github.com/sagernet/sing-dns v0.3.0-rc.2.0.20241021154031-a59e0fbba3ce
 	github.com/sagernet/sing-mux v0.2.1-0.20241020175909-fe6153f7a9ec
 	github.com/sagernet/sing-quic v0.3.0-rc.1
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.1.4
-	github.com/sagernet/sing-tun v0.4.0-rc.4.0.20241021153919-9ae45181180d
+	github.com/sagernet/sing-tun v0.4.0-rc.4.0.20241022132441-8ae8c915af9e
 	github.com/sagernet/sing-vmess v0.1.12
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/utls v1.6.7

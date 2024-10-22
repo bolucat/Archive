@@ -132,7 +132,11 @@ func NewTCPTracker(conn net.Conn, manager *Manager, metadata adapter.InboundCont
 		outbound     string
 		outboundType string
 	)
-	if routeAction, isRouteAction := rule.Action().(*R.RuleActionRoute); isRouteAction {
+	var action adapter.RuleAction
+	if rule != nil {
+		action = rule.Action()
+	}
+	if routeAction, isRouteAction := action.(*R.RuleActionRoute); isRouteAction {
 		next = routeAction.Outbound
 	} else if defaultOutbound, err := router.DefaultOutbound(N.NetworkTCP); err == nil {
 		next = defaultOutbound.Tag()
@@ -217,7 +221,11 @@ func NewUDPTracker(conn N.PacketConn, manager *Manager, metadata adapter.Inbound
 		outbound     string
 		outboundType string
 	)
-	if routeAction, isRouteAction := rule.Action().(*R.RuleActionRoute); isRouteAction {
+	var action adapter.RuleAction
+	if rule != nil {
+		action = rule.Action()
+	}
+	if routeAction, isRouteAction := action.(*R.RuleActionRoute); isRouteAction {
 		next = routeAction.Outbound
 	} else if defaultOutbound, err := router.DefaultOutbound(N.NetworkUDP); err == nil {
 		next = defaultOutbound.Tag()

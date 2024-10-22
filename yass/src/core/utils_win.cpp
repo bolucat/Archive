@@ -172,18 +172,18 @@ static uint64_t GetMonotonicTimeQPC() {
 
   if (!started) {
     if (!QueryPerformanceFrequency(&Frequency)) {
-      LOG(WARNING) << "QueryPerformanceFrequency failed";
+      RAW_LOG(FATAL, "QueryPerformanceFrequency failed");
       return 0;
     }
     if (!QueryPerformanceCounter(&StartTime)) {
-      LOG(WARNING) << "QueryPerformanceCounter failed";
+      RAW_LOG(FATAL, "QueryPerformanceCounter failed");
       return 0;
     }
     started = true;
   }
   // Activity to be timed
   if (!QueryPerformanceCounter(&CurrentTime)) {
-    LOG(WARNING) << "QueryPerformanceCounter failed";
+    RAW_LOG(FATAL, "QueryPerformanceCounter failed");
     return 0;
   }
 
@@ -215,16 +215,6 @@ uint64_t GetMonotonicTime() {
   }
   return GetTickCount() * 1000000;
 #endif
-}
-
-static bool IsHandleConsole(HANDLE handle) {
-  DWORD mode;
-  return handle != HANDLE() && handle != INVALID_HANDLE_VALUE &&
-         (GetFileType(handle) & ~FILE_TYPE_REMOTE) == FILE_TYPE_CHAR && GetConsoleMode(handle, &mode);
-}
-
-bool IsProgramConsole(HANDLE handle) {
-  return IsHandleConsole(handle);
 }
 
 static const wchar_t* kDllWhiteList[] = {
@@ -304,7 +294,7 @@ static void CheckDynamicLibraries() {
   std::wstring exe(_MAX_PATH, L'\0');
   const auto exeLength = GetModuleFileNameW(nullptr, const_cast<wchar_t*>(exe.c_str()), exe.size() + 1);
   if (!exeLength || exeLength >= exe.size() + 1) {
-    PLOG(FATAL) << "Could not get executable path!";
+    RAW_LOG(FATAL, "Could not get executable path!");
   }
   exe.resize(exeLength);
   const auto last1 = exe.find_last_of('\\');
@@ -312,7 +302,7 @@ static void CheckDynamicLibraries() {
   const auto last = std::max((last1 == std::wstring::npos) ? -1 : static_cast<int>(last1),
                              (last2 == std::wstring::npos) ? -1 : static_cast<int>(last2));
   if (last < 0) {
-    LOG(FATAL) << "Could not get executable directory!";
+    RAW_LOG(FATAL, "Could not get executable directory!");
   }
   // In the ANSI version of this function,
   // the name is limited to MAX_PATH characters.
@@ -337,7 +327,7 @@ static void CheckDynamicLibraries() {
     if (error == ERROR_FILE_NOT_FOUND) {
       return;
     }
-    PLOG(FATAL) << "Could not enumerate executable path!";
+    RAW_LOG(FATAL, "Could not enumerate executable path!");
   }
 
   do {
@@ -351,12 +341,12 @@ static void CheckDynamicLibraries() {
       continue;
     }
     std::wostringstream os;
-    os << L"\nUnknown DLL library \"" << findData.cFileName << L"\" found in the directory with " << me << L".\n\n"
+    os << L"\nUnknown DLL library \"" << findData.cFileName << L"\" found in the directory with " << me << ".\n\n"
        << L"This may be a virus or a malicious program. \n\n"
        << L"Please remove all DLL libraries from this directory:\n\n"
        << exe.substr(0, last) << L"\n\n"
-       << "Alternatively, you can move " << me << L" to a new directory.";
-    LOG(FATAL) << SysWideToUTF8(os.str());
+       << L"Alternatively, you can move " << me << L" to a new directory.";
+    RAW_LOG(FATAL, SysWideToUTF8(os.str()).c_str());
   } while (FindNextFileW(findHandle, &findData));
   FindClose(findHandle);
 }
@@ -372,13 +362,13 @@ bool EnableSecureDllLoading() {
   if (!set_default_dll_directories) {
     // Don't assert because this is known to be missing on Windows 7 without
     // KB2533623.
-    PLOG(WARNING) << "SetDefaultDllDirectories unavailable";
+    RAW_LOG(WARNING, "SetDefaultDllDirectories unavailable");
     CheckDynamicLibraries();
     return true;
   }
 
   if (!set_default_dll_directories(LOAD_LIBRARY_SEARCH_SYSTEM32)) {
-    PLOG(WARNING) << "Encountered error calling SetDefaultDllDirectories!";
+    RAW_LOG(WARNING, "Encountered error calling SetDefaultDllDirectories!");
     CheckDynamicLibraries();
     return true;
   }
@@ -417,7 +407,7 @@ void GetWindowsVersion(int* major, int* minor, int* build_number, int* os_type) 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   if (!GetVersionExW(&version_info)) {
-    PLOG(WARNING) << "Interal error: GetVersionExW failed";
+    RAW_LOG(FATAL, "Interal error: GetVersionExW failed");
   }
 #pragma GCC diagnostic pop
 
@@ -433,7 +423,7 @@ void GetWindowsVersion(int* major, int* minor, int* build_number, int* os_type) 
   DWORD dwOsType;
   // https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getproductinfo
   if (!GetProductInfo(version_info.dwMajorVersion, version_info.dwMinorVersion, 0, 0, &dwOsType)) {
-    PLOG(WARNING) << "Interal error: GetProductInfo failed";
+    RAW_LOG(ERROR, "Interal error: GetProductInfo failed");
   }
 
   *os_type = dwOsType;
@@ -477,7 +467,7 @@ bool GetExecutablePath(std::wstring* exe_path) {
   // Insufficient space is determined by a return value equal to the size of
   // the buffer passed in.
   if (len == 0 || len == _MAX_PATH) {
-    PLOG(WARNING) << "Internal error: GetModuleFileNameW failed";
+    RAW_LOG(FATAL, "Internal error: GetModuleFileNameW failed");
     *exe_path = SysUTF8ToWide(main_exe_path);
     return false;
   }

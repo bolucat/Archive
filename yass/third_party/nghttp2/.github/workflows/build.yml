@@ -5,20 +5,20 @@ on: [push, pull_request]
 permissions: read-all
 
 env:
-  LIBBPF_VERSION: v1.4.5
+  LIBBPF_VERSION: v1.4.6
   OPENSSL1_VERSION: 1_1_1w+quic
-  OPENSSL3_VERSION: 3.1.5+quic
-  BORINGSSL_VERSION: e13f7e2ff5432205f09b4679c8a7715f1c130372
-  AWSLC_VERSION: v1.34.2
-  NGHTTP3_VERSION: v1.5.0
-  NGTCP2_VERSION: v1.7.0
+  OPENSSL3_VERSION: 3.1.7+quic
+  BORINGSSL_VERSION: 76968bb3d53982560bcf08bcd0ba3e1865fe15cd
+  AWSLC_VERSION: v1.36.1
+  NGHTTP3_VERSION: v1.6.0
+  NGTCP2_VERSION: v1.8.1
   WOLFSSL_VERSION: v5.7.2-stable
 
 jobs:
   build-cache:
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14]
+        os: [ubuntu-24.04, macos-13, macos-14]
 
     runs-on: ${{ matrix.os }}
 
@@ -104,8 +104,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install \
-          g++-12 \
-          clang-15 \
           autoconf \
           automake \
           autotools-dev \
@@ -220,7 +218,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-13, macos-14]
+        os: [ubuntu-24.04, macos-13, macos-14]
         compiler: [gcc, clang]
         buildtool: [autotools, cmake]
         http3: [http3, no-http3]
@@ -259,7 +257,7 @@ jobs:
         - openssl: awslc
           compiler: gcc
         include:
-        - os: ubuntu-22.04
+        - os: ubuntu-24.04
           compiler: clang
           buildtool: distcheck
           http3: http3
@@ -277,8 +275,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install \
-          g++-12 \
-          clang-15 \
+          g++-14 \
+          clang-18 \
           autoconf \
           automake \
           autotools-dev \
@@ -317,8 +315,8 @@ jobs:
     - name: Setup clang (Linux)
       if: runner.os == 'Linux' && matrix.compiler == 'clang'
       run: |
-        echo 'CC=clang-15' >> $GITHUB_ENV
-        echo 'CXX=clang++-15' >> $GITHUB_ENV
+        echo 'CC=clang-18' >> $GITHUB_ENV
+        echo 'CXX=clang++-18' >> $GITHUB_ENV
     - name: Setup clang (MacOS)
       if: runner.os == 'macOS' && matrix.compiler == 'clang'
       run: |
@@ -327,8 +325,8 @@ jobs:
     - name: Setup gcc (Linux)
       if: runner.os == 'Linux' && matrix.compiler == 'gcc'
       run: |
-        echo 'CC=gcc-12' >> $GITHUB_ENV
-        echo 'CXX=g++-12' >> $GITHUB_ENV
+        echo 'CC=gcc-14' >> $GITHUB_ENV
+        echo 'CXX=g++-14' >> $GITHUB_ENV
         # g++-12 is known to produce false positive warnings.
         echo 'CXXFLAGS=-Wno-restrict' >> $GITHUB_ENV
     - name: Setup gcc (MacOS)
@@ -548,7 +546,7 @@ jobs:
       matrix:
         host: [x86_64-w64-mingw32, i686-w64-mingw32]
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     env:
       HOST: ${{ matrix.host }}
@@ -558,9 +556,12 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: Linux setup
+    - name: Prepare for i386
+      if: matrix.host == 'i686-w64-mingw32'
       run: |
         sudo dpkg --add-architecture i386
+    - name: Linux setup
+      run: |
         sudo apt-get update
         sudo apt-get install \
           gcc-mingw-w64 \
@@ -581,9 +582,8 @@ jobs:
         make -j$(nproc)
         make -j$(nproc) check TESTS=""
     - name: Run tests
-      if: matrix.host == 'x86_64-w64-mingw32'
       run: |
-        export WINEPATH=/usr/x86_64-w64-mingw32/lib
+        export WINEPATH="/usr/${{ matrix.host }}/lib;$(winepath -w /usr/lib/x86_64-linux-gnu/wine/x86_64-windows)"
         cd tests
         wine main.exe
 
@@ -623,7 +623,7 @@ jobs:
     permissions:
       contents: write
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4

@@ -59,8 +59,7 @@ func (r *Router) RouteConnectionEx(ctx context.Context, conn net.Conn, metadata 
 		if err != nil {
 			err = E.Cause(err, "UoT read request")
 			r.logger.ErrorContext(ctx, "process connection from ", metadata.Source, ": ", err)
-			conn.Close()
-			onClose(err)
+			N.CloseOnHandshakeFailure(conn, onClose, err)
 			return
 		}
 		if request.IsConnect {

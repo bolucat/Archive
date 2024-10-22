@@ -83,7 +83,7 @@ func NewVMess(ctx context.Context, router adapter.Router, logger log.ContextLogg
 		}
 	}
 	if options.Transport != nil {
-		inbound.transport, err = v2ray.NewServerTransport(ctx, common.PtrValueOrDefault(options.Transport), inbound.tlsConfig, (*vmessTransportHandler)(inbound))
+		inbound.transport, err = v2ray.NewServerTransport(ctx, logger, common.PtrValueOrDefault(options.Transport), inbound.tlsConfig, (*vmessTransportHandler)(inbound))
 		if err != nil {
 			return nil, E.Cause(err, "create server transport: ", options.Transport.Type)
 		}
@@ -140,11 +140,6 @@ func (h *VMess) Close() error {
 		h.tlsConfig,
 		h.transport,
 	)
-}
-
-func (h *VMess) newTransportConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
-	h.injectTCP(conn, metadata)
-	return nil
 }
 
 func (h *VMess) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
@@ -206,9 +201,6 @@ var _ adapter.V2RayServerTransportHandler = (*vmessTransportHandler)(nil)
 
 type vmessTransportHandler VMess
 
-func (t *vmessTransportHandler) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
-	return (*VMess)(t).newTransportConnection(ctx, conn, adapter.InboundContext{
-		Source:      metadata.Source,
-		Destination: metadata.Destination,
-	})
+func (t *vmessTransportHandler) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	(*VMess)(t).routeTCP(ctx, conn, source, destination, onClose)
 }
