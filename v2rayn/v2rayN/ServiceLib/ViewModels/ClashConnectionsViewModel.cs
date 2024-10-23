@@ -31,12 +31,12 @@ namespace ServiceLib.ViewModels
         {
             _config = AppHandler.Instance.Config;
             _updateView = updateView;
-            SortingSelected = _config.clashUIItem.connectionsSorting;
-            AutoRefresh = _config.clashUIItem.connectionsAutoRefresh;
+            SortingSelected = _config.ClashUIItem.ConnectionsSorting;
+            AutoRefresh = _config.ClashUIItem.ConnectionsAutoRefresh;
 
             var canEditRemove = this.WhenAnyValue(
              x => x.SelectedSource,
-             selectedSource => selectedSource != null && Utils.IsNotEmpty(selectedSource.id));
+             selectedSource => selectedSource != null && Utils.IsNotEmpty(selectedSource.Id));
 
             this.WhenAnyValue(
               x => x.SortingSelected,
@@ -46,7 +46,7 @@ namespace ServiceLib.ViewModels
             this.WhenAnyValue(
                x => x.AutoRefresh,
                y => y == true)
-                   .Subscribe(c => { _config.clashUIItem.connectionsAutoRefresh = AutoRefresh; });
+                   .Subscribe(c => { _config.ClashUIItem.ConnectionsAutoRefresh = AutoRefresh; });
             ConnectionCloseCmd = ReactiveCommand.CreateFromTask(async () =>
             {
                 await ClashConnectionClose(false);
@@ -67,14 +67,14 @@ namespace ServiceLib.ViewModels
             Observable.Interval(TimeSpan.FromSeconds(5))
               .Subscribe(async x =>
               {
-                  if (!(AutoRefresh && _config.uiItem.showInTaskbar && _config.IsRunningCore(ECoreType.sing_box)))
+                  if (!(AutoRefresh && _config.UiItem.ShowInTaskbar && _config.IsRunningCore(ECoreType.sing_box)))
                   {
                       return;
                   }
                   var dtNow = DateTime.Now;
-                  if (_config.clashUIItem.connectionsRefreshInterval > 0)
+                  if (_config.ClashUIItem.ConnectionsRefreshInterval > 0)
                   {
-                      if ((dtNow - lastTime).Minutes % _config.clashUIItem.connectionsRefreshInterval == 0)
+                      if ((dtNow - lastTime).Minutes % _config.ClashUIItem.ConnectionsRefreshInterval == 0)
                       {
                           await GetClashConnections();
                           lastTime = dtNow;
@@ -90,9 +90,9 @@ namespace ServiceLib.ViewModels
             {
                 return;
             }
-            if (SortingSelected != _config.clashUIItem.connectionsSorting)
+            if (SortingSelected != _config.ClashUIItem.ConnectionsSorting)
             {
-                _config.clashUIItem.connectionsSorting = SortingSelected;
+                _config.ClashUIItem.ConnectionsSorting = SortingSelected;
             }
 
             await GetClashConnections();
@@ -125,18 +125,18 @@ namespace ServiceLib.ViewModels
 
                 ClashConnectionModel model = new();
 
-                model.id = item.id;
-                model.network = item.metadata.network;
-                model.type = item.metadata.type;
-                model.host = host;
+                model.Id = item.id;
+                model.Network = item.metadata.network;
+                model.Type = item.metadata.type;
+                model.Host = host;
                 var sp = (dtNow - item.start);
-                model.time = sp.TotalSeconds < 0 ? 1 : sp.TotalSeconds;
-                model.upload = item.upload;
-                model.download = item.download;
-                model.uploadTraffic = $"{Utils.HumanFy((long)item.upload)}";
-                model.downloadTraffic = $"{Utils.HumanFy((long)item.download)}";
-                model.elapsed = sp.ToString(@"hh\:mm\:ss");
-                model.chain = item.chains?.Count > 0 ? item.chains[0] : string.Empty;
+                model.Time = sp.TotalSeconds < 0 ? 1 : sp.TotalSeconds;
+                model.Upload = item.upload;
+                model.Download = item.download;
+                model.UploadTraffic = $"{Utils.HumanFy((long)item.upload)}";
+                model.DownloadTraffic = $"{Utils.HumanFy((long)item.download)}";
+                model.Elapsed = sp.ToString(@"hh\:mm\:ss");
+                model.Chain = item.chains?.Count > 0 ? item.chains[0] : string.Empty;
 
                 lstModel.Add(model);
             }
@@ -146,27 +146,27 @@ namespace ServiceLib.ViewModels
             switch (SortingSelected)
             {
                 case 0:
-                    lstModel = lstModel.OrderBy(t => t.upload / t.time).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Upload / t.Time).ToList();
                     break;
 
                 case 1:
-                    lstModel = lstModel.OrderBy(t => t.download / t.time).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Download / t.Time).ToList();
                     break;
 
                 case 2:
-                    lstModel = lstModel.OrderBy(t => t.upload).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Upload).ToList();
                     break;
 
                 case 3:
-                    lstModel = lstModel.OrderBy(t => t.download).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Download).ToList();
                     break;
 
                 case 4:
-                    lstModel = lstModel.OrderBy(t => t.time).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Time).ToList();
                     break;
 
                 case 5:
-                    lstModel = lstModel.OrderBy(t => t.host).ToList();
+                    lstModel = lstModel.OrderBy(t => t.Host).ToList();
                     break;
             }
 
@@ -183,7 +183,7 @@ namespace ServiceLib.ViewModels
                 {
                     return;
                 }
-                id = item.id;
+                id = item.Id;
             }
             else
             {

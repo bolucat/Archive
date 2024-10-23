@@ -21,7 +21,7 @@ namespace ServiceLib.Services.CoreConfig
             try
             {
                 if (node == null
-                    || node.port <= 0)
+                    || node.Port <= 0)
                 {
                     ret.Msg = ResUI.CheckServerSettings;
                     return ret;
@@ -109,36 +109,36 @@ namespace ServiceLib.Services.CoreConfig
                 var tagProxy = new List<string>();
                 foreach (var it in selecteds)
                 {
-                    if (it.configType == EConfigType.Custom)
+                    if (it.ConfigType == EConfigType.Custom)
                     {
                         continue;
                     }
-                    if (it.configType is EConfigType.Hysteria2 or EConfigType.TUIC or EConfigType.WireGuard)
+                    if (it.ConfigType is EConfigType.Hysteria2 or EConfigType.TUIC or EConfigType.WireGuard)
                     {
                         continue;
                     }
-                    if (it.port <= 0)
+                    if (it.Port <= 0)
                     {
                         continue;
                     }
-                    var item = await AppHandler.Instance.GetProfileItem(it.indexId);
+                    var item = await AppHandler.Instance.GetProfileItem(it.IndexId);
                     if (item is null)
                     {
                         continue;
                     }
-                    if (it.configType is EConfigType.VMess or EConfigType.VLESS)
+                    if (it.ConfigType is EConfigType.VMess or EConfigType.VLESS)
                     {
-                        if (Utils.IsNullOrEmpty(item.id) || !Utils.IsGuidByParse(item.id))
+                        if (Utils.IsNullOrEmpty(item.Id) || !Utils.IsGuidByParse(item.Id))
                         {
                             continue;
                         }
                     }
-                    if (item.configType == EConfigType.Shadowsocks
-                      && !Global.SsSecuritiesInSingbox.Contains(item.security))
+                    if (item.ConfigType == EConfigType.Shadowsocks
+                      && !Global.SsSecuritiesInSingbox.Contains(item.Security))
                     {
                         continue;
                     }
-                    if (item.configType == EConfigType.VLESS && !Global.Flows.Contains(item.flow))
+                    if (item.ConfigType == EConfigType.VLESS && !Global.Flows.Contains(item.Flow))
                     {
                         continue;
                     }
@@ -256,7 +256,7 @@ namespace ServiceLib.Services.CoreConfig
                     var item = await AppHandler.Instance.GetProfileItem(it.IndexId);
                     if (it.ConfigType is EConfigType.VMess or EConfigType.VLESS)
                     {
-                        if (item is null || Utils.IsNullOrEmpty(item.id) || !Utils.IsGuidByParse(item.id))
+                        if (item is null || Utils.IsNullOrEmpty(item.Id) || !Utils.IsGuidByParse(item.Id))
                         {
                             continue;
                         }
@@ -303,19 +303,19 @@ namespace ServiceLib.Services.CoreConfig
                     {
                         continue;
                     }
-                    if (item.configType == EConfigType.Shadowsocks
-                        && !Global.SsSecuritiesInXray.Contains(item.security))
+                    if (item.ConfigType == EConfigType.Shadowsocks
+                        && !Global.SsSecuritiesInXray.Contains(item.Security))
                     {
                         continue;
                     }
-                    if (item.configType == EConfigType.VLESS
-                     && !Global.Flows.Contains(item.flow))
+                    if (item.ConfigType == EConfigType.VLESS
+                     && !Global.Flows.Contains(item.Flow))
                     {
                         continue;
                     }
                     if (it.ConfigType is EConfigType.VLESS or EConfigType.Trojan
-                        && item.streamSecurity == Global.StreamSecurityReality
-                        && item.publicKey.IsNullOrEmpty())
+                        && item.StreamSecurity == Global.StreamSecurityReality
+                        && item.PublicKey.IsNullOrEmpty())
                     {
                         continue;
                     }
@@ -356,16 +356,16 @@ namespace ServiceLib.Services.CoreConfig
         {
             try
             {
-                if (_config.coreBasicItem.logEnabled)
+                if (_config.CoreBasicItem.LogEnabled)
                 {
                     var dtNow = DateTime.Now;
-                    v2rayConfig.log.loglevel = _config.coreBasicItem.loglevel;
+                    v2rayConfig.log.loglevel = _config.CoreBasicItem.Loglevel;
                     v2rayConfig.log.access = Utils.GetLogPath($"Vaccess_{dtNow:yyyy-MM-dd}.txt");
                     v2rayConfig.log.error = Utils.GetLogPath($"Verror_{dtNow:yyyy-MM-dd}.txt");
                 }
                 else
                 {
-                    v2rayConfig.log.loglevel = _config.coreBasicItem.loglevel;
+                    v2rayConfig.log.loglevel = _config.CoreBasicItem.Loglevel;
                     v2rayConfig.log.access = "";
                     v2rayConfig.log.error = "";
                 }
@@ -384,33 +384,33 @@ namespace ServiceLib.Services.CoreConfig
                 var listen = "0.0.0.0";
                 v2rayConfig.inbounds = [];
 
-                Inbounds4Ray? inbound = GetInbound(_config.inbound[0], EInboundProtocol.socks, true);
+                Inbounds4Ray? inbound = GetInbound(_config.Inbound[0], EInboundProtocol.socks, true);
                 v2rayConfig.inbounds.Add(inbound);
 
                 //http
-                Inbounds4Ray? inbound2 = GetInbound(_config.inbound[0], EInboundProtocol.http, false);
+                Inbounds4Ray? inbound2 = GetInbound(_config.Inbound[0], EInboundProtocol.http, false);
                 v2rayConfig.inbounds.Add(inbound2);
 
-                if (_config.inbound[0].allowLANConn)
+                if (_config.Inbound[0].AllowLANConn)
                 {
-                    if (_config.inbound[0].newPort4LAN)
+                    if (_config.Inbound[0].NewPort4LAN)
                     {
-                        var inbound3 = GetInbound(_config.inbound[0], EInboundProtocol.socks2, true);
+                        var inbound3 = GetInbound(_config.Inbound[0], EInboundProtocol.socks2, true);
                         inbound3.listen = listen;
                         v2rayConfig.inbounds.Add(inbound3);
 
-                        var inbound4 = GetInbound(_config.inbound[0], EInboundProtocol.http2, false);
+                        var inbound4 = GetInbound(_config.Inbound[0], EInboundProtocol.http2, false);
                         inbound4.listen = listen;
                         v2rayConfig.inbounds.Add(inbound4);
 
                         //auth
-                        if (Utils.IsNotEmpty(_config.inbound[0].user) && Utils.IsNotEmpty(_config.inbound[0].pass))
+                        if (Utils.IsNotEmpty(_config.Inbound[0].User) && Utils.IsNotEmpty(_config.Inbound[0].Pass))
                         {
                             inbound3.settings.auth = "password";
-                            inbound3.settings.accounts = new List<AccountsItem4Ray> { new AccountsItem4Ray() { user = _config.inbound[0].user, pass = _config.inbound[0].pass } };
+                            inbound3.settings.accounts = new List<AccountsItem4Ray> { new AccountsItem4Ray() { user = _config.Inbound[0].User, pass = _config.Inbound[0].Pass } };
 
                             inbound4.settings.auth = "password";
-                            inbound4.settings.accounts = new List<AccountsItem4Ray> { new AccountsItem4Ray() { user = _config.inbound[0].user, pass = _config.inbound[0].pass } };
+                            inbound4.settings.accounts = new List<AccountsItem4Ray> { new AccountsItem4Ray() { user = _config.Inbound[0].User, pass = _config.Inbound[0].Pass } };
                         }
                     }
                     else
@@ -441,12 +441,12 @@ namespace ServiceLib.Services.CoreConfig
                 return new();
             }
             inbound.tag = protocol.ToString();
-            inbound.port = inItem.localPort + (int)protocol;
+            inbound.port = inItem.LocalPort + (int)protocol;
             inbound.protocol = bSocks ? EInboundProtocol.socks.ToString() : EInboundProtocol.http.ToString();
-            inbound.settings.udp = inItem.udpEnabled;
-            inbound.sniffing.enabled = inItem.sniffingEnabled;
-            inbound.sniffing.destOverride = inItem.destOverride;
-            inbound.sniffing.routeOnly = inItem.routeOnly;
+            inbound.settings.udp = inItem.UdpEnabled;
+            inbound.sniffing.enabled = inItem.SniffingEnabled;
+            inbound.sniffing.destOverride = inItem.DestOverride;
+            inbound.sniffing.routeOnly = inItem.RouteOnly;
 
             return inbound;
         }
@@ -457,22 +457,22 @@ namespace ServiceLib.Services.CoreConfig
             {
                 if (v2rayConfig.routing?.rules != null)
                 {
-                    v2rayConfig.routing.domainStrategy = _config.routingBasicItem.domainStrategy;
-                    v2rayConfig.routing.domainMatcher = Utils.IsNullOrEmpty(_config.routingBasicItem.domainMatcher) ? null : _config.routingBasicItem.domainMatcher;
+                    v2rayConfig.routing.domainStrategy = _config.RoutingBasicItem.DomainStrategy;
+                    v2rayConfig.routing.domainMatcher = Utils.IsNullOrEmpty(_config.RoutingBasicItem.DomainMatcher) ? null : _config.RoutingBasicItem.DomainMatcher;
 
-                    if (_config.routingBasicItem.enableRoutingAdvanced)
+                    if (_config.RoutingBasicItem.EnableRoutingAdvanced)
                     {
                         var routing = await ConfigHandler.GetDefaultRouting(_config);
                         if (routing != null)
                         {
-                            if (Utils.IsNotEmpty(routing.domainStrategy))
+                            if (Utils.IsNotEmpty(routing.DomainStrategy))
                             {
-                                v2rayConfig.routing.domainStrategy = routing.domainStrategy;
+                                v2rayConfig.routing.domainStrategy = routing.DomainStrategy;
                             }
-                            var rules = JsonUtils.Deserialize<List<RulesItem>>(routing.ruleSet);
+                            var rules = JsonUtils.Deserialize<List<RulesItem>>(routing.RuleSet);
                             foreach (var item in rules)
                             {
-                                if (item.enabled)
+                                if (item.Enabled)
                                 {
                                     var item2 = JsonUtils.Deserialize<RulesItem4Ray>(JsonUtils.Serialize(item));
                                     await GenRoutingUserRule(item2, v2rayConfig);
@@ -485,7 +485,7 @@ namespace ServiceLib.Services.CoreConfig
                         var lockedItem = await ConfigHandler.GetLockedRoutingItem(_config);
                         if (lockedItem != null)
                         {
-                            var rules = JsonUtils.Deserialize<List<RulesItem>>(lockedItem.ruleSet);
+                            var rules = JsonUtils.Deserialize<List<RulesItem>>(lockedItem.RuleSet);
                             foreach (var item in rules)
                             {
                                 var item2 = JsonUtils.Deserialize<RulesItem4Ray>(JsonUtils.Serialize(item));
@@ -584,7 +584,7 @@ namespace ServiceLib.Services.CoreConfig
         {
             try
             {
-                switch (node.configType)
+                switch (node.ConfigType)
                 {
                     case EConfigType.VMess:
                         {
@@ -598,8 +598,8 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 vnextItem = outbound.settings.vnext[0];
                             }
-                            vnextItem.address = node.address;
-                            vnextItem.port = node.port;
+                            vnextItem.address = node.Address;
+                            vnextItem.port = node.Port;
 
                             UsersItem4Ray usersItem;
                             if (vnextItem.users.Count <= 0)
@@ -612,19 +612,19 @@ namespace ServiceLib.Services.CoreConfig
                                 usersItem = vnextItem.users[0];
                             }
                             //远程服务器用户ID
-                            usersItem.id = node.id;
-                            usersItem.alterId = node.alterId;
+                            usersItem.id = node.Id;
+                            usersItem.alterId = node.AlterId;
                             usersItem.email = Global.UserEMail;
-                            if (Global.VmessSecurities.Contains(node.security))
+                            if (Global.VmessSecurities.Contains(node.Security))
                             {
-                                usersItem.security = node.security;
+                                usersItem.security = node.Security;
                             }
                             else
                             {
                                 usersItem.security = Global.DefaultSecurity;
                             }
 
-                            await GenOutboundMux(node, outbound, _config.coreBasicItem.muxEnabled);
+                            await GenOutboundMux(node, outbound, _config.CoreBasicItem.MuxEnabled);
 
                             outbound.settings.servers = null;
                             break;
@@ -641,10 +641,10 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 serversItem = outbound.settings.servers[0];
                             }
-                            serversItem.address = node.address;
-                            serversItem.port = node.port;
-                            serversItem.password = node.id;
-                            serversItem.method = AppHandler.Instance.GetShadowsocksSecurities(node).Contains(node.security) ? node.security : "none";
+                            serversItem.address = node.Address;
+                            serversItem.port = node.Port;
+                            serversItem.password = node.Id;
+                            serversItem.method = AppHandler.Instance.GetShadowsocksSecurities(node).Contains(node.Security) ? node.Security : "none";
 
                             serversItem.ota = false;
                             serversItem.level = 1;
@@ -667,18 +667,18 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 serversItem = outbound.settings.servers[0];
                             }
-                            serversItem.address = node.address;
-                            serversItem.port = node.port;
+                            serversItem.address = node.Address;
+                            serversItem.port = node.Port;
                             serversItem.method = null;
                             serversItem.password = null;
 
-                            if (Utils.IsNotEmpty(node.security)
-                                && Utils.IsNotEmpty(node.id))
+                            if (Utils.IsNotEmpty(node.Security)
+                                && Utils.IsNotEmpty(node.Id))
                             {
                                 SocksUsersItem4Ray socksUsersItem = new()
                                 {
-                                    user = node.security,
-                                    pass = node.id,
+                                    user = node.Security,
+                                    pass = node.Id,
                                     level = 1
                                 };
 
@@ -702,8 +702,8 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 vnextItem = outbound.settings.vnext[0];
                             }
-                            vnextItem.address = node.address;
-                            vnextItem.port = node.port;
+                            vnextItem.address = node.Address;
+                            vnextItem.port = node.Port;
 
                             UsersItem4Ray usersItem;
                             if (vnextItem.users.Count <= 0)
@@ -715,25 +715,25 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 usersItem = vnextItem.users[0];
                             }
-                            usersItem.id = node.id;
+                            usersItem.id = node.Id;
                             usersItem.email = Global.UserEMail;
-                            usersItem.encryption = node.security;
+                            usersItem.encryption = node.Security;
 
-                            await GenOutboundMux(node, outbound, _config.coreBasicItem.muxEnabled);
+                            await GenOutboundMux(node, outbound, _config.CoreBasicItem.MuxEnabled);
 
-                            if (node.streamSecurity == Global.StreamSecurityReality
-                                || node.streamSecurity == Global.StreamSecurity)
+                            if (node.StreamSecurity == Global.StreamSecurityReality
+                                || node.StreamSecurity == Global.StreamSecurity)
                             {
-                                if (Utils.IsNotEmpty(node.flow))
+                                if (Utils.IsNotEmpty(node.Flow))
                                 {
-                                    usersItem.flow = node.flow;
+                                    usersItem.flow = node.Flow;
 
                                     await GenOutboundMux(node, outbound, false);
                                 }
                             }
-                            if (node.streamSecurity == Global.StreamSecurityReality && Utils.IsNullOrEmpty(node.flow))
+                            if (node.StreamSecurity == Global.StreamSecurityReality && Utils.IsNullOrEmpty(node.Flow))
                             {
-                                await GenOutboundMux(node, outbound, _config.coreBasicItem.muxEnabled);
+                                await GenOutboundMux(node, outbound, _config.CoreBasicItem.MuxEnabled);
                             }
 
                             outbound.settings.servers = null;
@@ -751,9 +751,9 @@ namespace ServiceLib.Services.CoreConfig
                             {
                                 serversItem = outbound.settings.servers[0];
                             }
-                            serversItem.address = node.address;
-                            serversItem.port = node.port;
-                            serversItem.password = node.id;
+                            serversItem.address = node.Address;
+                            serversItem.port = node.Port;
+                            serversItem.password = node.Id;
 
                             serversItem.ota = false;
                             serversItem.level = 1;
@@ -765,7 +765,7 @@ namespace ServiceLib.Services.CoreConfig
                         }
                 }
 
-                outbound.protocol = Global.ProtocolTypes[node.configType];
+                outbound.protocol = Global.ProtocolTypes[node.ConfigType];
                 await GenBoundStreamSettings(node, outbound.streamSettings);
             }
             catch (Exception ex)
@@ -782,9 +782,9 @@ namespace ServiceLib.Services.CoreConfig
                 if (enabled)
                 {
                     outbound.mux.enabled = true;
-                    outbound.mux.concurrency = _config.mux4RayItem.concurrency;
-                    outbound.mux.xudpConcurrency = _config.mux4RayItem.xudpConcurrency;
-                    outbound.mux.xudpProxyUDP443 = _config.mux4RayItem.xudpProxyUDP443;
+                    outbound.mux.concurrency = _config.Mux4RayItem.Concurrency;
+                    outbound.mux.xudpConcurrency = _config.Mux4RayItem.XudpConcurrency;
+                    outbound.mux.xudpProxyUDP443 = _config.Mux4RayItem.XudpProxyUDP443;
                 }
                 else
                 {
@@ -804,31 +804,31 @@ namespace ServiceLib.Services.CoreConfig
             try
             {
                 streamSettings.network = node.GetNetwork();
-                string host = node.requestHost.TrimEx();
-                string sni = node.sni;
+                string host = node.RequestHost.TrimEx();
+                string sni = node.Sni;
                 string useragent = "";
-                if (!_config.coreBasicItem.defUserAgent.IsNullOrEmpty())
+                if (!_config.CoreBasicItem.DefUserAgent.IsNullOrEmpty())
                 {
                     try
                     {
-                        useragent = Global.UserAgentTexts[_config.coreBasicItem.defUserAgent];
+                        useragent = Global.UserAgentTexts[_config.CoreBasicItem.DefUserAgent];
                     }
                     catch (KeyNotFoundException)
                     {
-                        useragent = _config.coreBasicItem.defUserAgent;
+                        useragent = _config.CoreBasicItem.DefUserAgent;
                     }
                 }
 
                 //if tls
-                if (node.streamSecurity == Global.StreamSecurity)
+                if (node.StreamSecurity == Global.StreamSecurity)
                 {
-                    streamSettings.security = node.streamSecurity;
+                    streamSettings.security = node.StreamSecurity;
 
                     TlsSettings4Ray tlsSettings = new()
                     {
-                        allowInsecure = Utils.ToBool(node.allowInsecure.IsNullOrEmpty() ? _config.coreBasicItem.defAllowInsecure.ToString().ToLower() : node.allowInsecure),
+                        allowInsecure = Utils.ToBool(node.AllowInsecure.IsNullOrEmpty() ? _config.CoreBasicItem.DefAllowInsecure.ToString().ToLower() : node.AllowInsecure),
                         alpn = node.GetAlpn(),
-                        fingerprint = node.fingerprint.IsNullOrEmpty() ? _config.coreBasicItem.defFingerprint : node.fingerprint
+                        fingerprint = node.Fingerprint.IsNullOrEmpty() ? _config.CoreBasicItem.DefFingerprint : node.Fingerprint
                     };
                     if (Utils.IsNotEmpty(sni))
                     {
@@ -842,17 +842,17 @@ namespace ServiceLib.Services.CoreConfig
                 }
 
                 //if Reality
-                if (node.streamSecurity == Global.StreamSecurityReality)
+                if (node.StreamSecurity == Global.StreamSecurityReality)
                 {
-                    streamSettings.security = node.streamSecurity;
+                    streamSettings.security = node.StreamSecurity;
 
                     TlsSettings4Ray realitySettings = new()
                     {
-                        fingerprint = node.fingerprint.IsNullOrEmpty() ? _config.coreBasicItem.defFingerprint : node.fingerprint,
+                        fingerprint = node.Fingerprint.IsNullOrEmpty() ? _config.CoreBasicItem.DefFingerprint : node.Fingerprint,
                         serverName = sni,
-                        publicKey = node.publicKey,
-                        shortId = node.shortId,
-                        spiderX = node.spiderX,
+                        publicKey = node.PublicKey,
+                        shortId = node.ShortId,
+                        spiderX = node.SpiderX,
                         show = false,
                     };
 
@@ -865,23 +865,23 @@ namespace ServiceLib.Services.CoreConfig
                     case nameof(ETransport.kcp):
                         KcpSettings4Ray kcpSettings = new()
                         {
-                            mtu = _config.kcpItem.mtu,
-                            tti = _config.kcpItem.tti
+                            mtu = _config.KcpItem.Mtu,
+                            tti = _config.KcpItem.Tti
                         };
 
-                        kcpSettings.uplinkCapacity = _config.kcpItem.uplinkCapacity;
-                        kcpSettings.downlinkCapacity = _config.kcpItem.downlinkCapacity;
+                        kcpSettings.uplinkCapacity = _config.KcpItem.UplinkCapacity;
+                        kcpSettings.downlinkCapacity = _config.KcpItem.DownlinkCapacity;
 
-                        kcpSettings.congestion = _config.kcpItem.congestion;
-                        kcpSettings.readBufferSize = _config.kcpItem.readBufferSize;
-                        kcpSettings.writeBufferSize = _config.kcpItem.writeBufferSize;
+                        kcpSettings.congestion = _config.KcpItem.Congestion;
+                        kcpSettings.readBufferSize = _config.KcpItem.ReadBufferSize;
+                        kcpSettings.writeBufferSize = _config.KcpItem.WriteBufferSize;
                         kcpSettings.header = new Header4Ray
                         {
-                            type = node.headerType
+                            type = node.HeaderType
                         };
-                        if (Utils.IsNotEmpty(node.path))
+                        if (Utils.IsNotEmpty(node.Path))
                         {
-                            kcpSettings.seed = node.path;
+                            kcpSettings.seed = node.Path;
                         }
                         streamSettings.kcpSettings = kcpSettings;
                         break;
@@ -889,7 +889,7 @@ namespace ServiceLib.Services.CoreConfig
                     case nameof(ETransport.ws):
                         WsSettings4Ray wsSettings = new();
                         wsSettings.headers = new Headers4Ray();
-                        string path = node.path;
+                        string path = node.Path;
                         if (Utils.IsNotEmpty(host))
                         {
                             wsSettings.headers.Host = host;
@@ -909,9 +909,9 @@ namespace ServiceLib.Services.CoreConfig
                     case nameof(ETransport.httpupgrade):
                         HttpupgradeSettings4Ray httpupgradeSettings = new();
 
-                        if (Utils.IsNotEmpty(node.path))
+                        if (Utils.IsNotEmpty(node.Path))
                         {
-                            httpupgradeSettings.path = node.path;
+                            httpupgradeSettings.path = node.Path;
                         }
                         if (Utils.IsNotEmpty(host))
                         {
@@ -928,9 +928,9 @@ namespace ServiceLib.Services.CoreConfig
                             maxConcurrentUploads = 10
                         };
 
-                        if (Utils.IsNotEmpty(node.path))
+                        if (Utils.IsNotEmpty(node.Path))
                         {
-                            splithttpSettings.path = node.path;
+                            splithttpSettings.path = node.Path;
                         }
                         if (Utils.IsNotEmpty(host))
                         {
@@ -947,7 +947,7 @@ namespace ServiceLib.Services.CoreConfig
                         {
                             httpSettings.host = Utils.String2List(host);
                         }
-                        httpSettings.path = node.path;
+                        httpSettings.path = node.Path;
 
                         streamSettings.httpSettings = httpSettings;
 
@@ -957,14 +957,14 @@ namespace ServiceLib.Services.CoreConfig
                         QuicSettings4Ray quicsettings = new()
                         {
                             security = host,
-                            key = node.path,
+                            key = node.Path,
                             header = new Header4Ray
                             {
-                                type = node.headerType
+                                type = node.HeaderType
                             }
                         };
                         streamSettings.quicSettings = quicsettings;
-                        if (node.streamSecurity == Global.StreamSecurity)
+                        if (node.StreamSecurity == Global.StreamSecurity)
                         {
                             if (Utils.IsNotEmpty(sni))
                             {
@@ -972,7 +972,7 @@ namespace ServiceLib.Services.CoreConfig
                             }
                             else
                             {
-                                streamSettings.tlsSettings.serverName = node.address;
+                                streamSettings.tlsSettings.serverName = node.Address;
                             }
                         }
                         break;
@@ -981,25 +981,25 @@ namespace ServiceLib.Services.CoreConfig
                         GrpcSettings4Ray grpcSettings = new()
                         {
                             authority = Utils.IsNullOrEmpty(host) ? null : host,
-                            serviceName = node.path,
-                            multiMode = node.headerType == Global.GrpcMultiMode,
-                            idle_timeout = _config.grpcItem.idle_timeout,
-                            health_check_timeout = _config.grpcItem.health_check_timeout,
-                            permit_without_stream = _config.grpcItem.permit_without_stream,
-                            initial_windows_size = _config.grpcItem.initial_windows_size,
+                            serviceName = node.Path,
+                            multiMode = node.HeaderType == Global.GrpcMultiMode,
+                            idle_timeout = _config.GrpcItem.IdleTimeout,
+                            health_check_timeout = _config.GrpcItem.HealthCheckTimeout,
+                            permit_without_stream = _config.GrpcItem.PermitWithoutStream,
+                            initial_windows_size = _config.GrpcItem.InitialWindowsSize,
                         };
                         streamSettings.grpcSettings = grpcSettings;
                         break;
 
                     default:
                         //tcp
-                        if (node.headerType == Global.TcpHeaderHttp)
+                        if (node.HeaderType == Global.TcpHeaderHttp)
                         {
                             TcpSettings4Ray tcpSettings = new()
                             {
                                 header = new Header4Ray
                                 {
-                                    type = node.headerType
+                                    type = node.HeaderType
                                 }
                             };
 
@@ -1012,9 +1012,9 @@ namespace ServiceLib.Services.CoreConfig
                             request = request.Replace("$requestUserAgent$", $"\"{useragent}\"");
                             //Path
                             string pathHttp = @"/";
-                            if (Utils.IsNotEmpty(node.path))
+                            if (Utils.IsNotEmpty(node.Path))
                             {
-                                string[] arrPath = node.path.Split(',');
+                                string[] arrPath = node.Path.Split(',');
                                 pathHttp = string.Join("\",\"", arrPath);
                             }
                             request = request.Replace("$requestPath$", $"\"{pathHttp}\"");
@@ -1037,8 +1037,8 @@ namespace ServiceLib.Services.CoreConfig
             try
             {
                 var item = await AppHandler.Instance.GetDNSItem(ECoreType.Xray);
-                var normalDNS = item?.normalDNS;
-                var domainStrategy4Freedom = item?.domainStrategy4Freedom;
+                var normalDNS = item?.NormalDNS;
+                var domainStrategy4Freedom = item?.DomainStrategy4Freedom;
                 if (Utils.IsNullOrEmpty(normalDNS))
                 {
                     normalDNS = Utils.GetEmbedText(Global.DNSV2rayNormalFileName);
@@ -1066,7 +1066,7 @@ namespace ServiceLib.Services.CoreConfig
                 }
 
                 // 追加至 dns 设置
-                if (item.useSystemHosts)
+                if (item.UseSystemHosts)
                 {
                     var systemHosts = Utils.GetSystemHosts();
                     if (systemHosts.Count > 0)
@@ -1102,12 +1102,12 @@ namespace ServiceLib.Services.CoreConfig
             var servers = dns["servers"];
             if (servers != null)
             {
-                if (Utils.IsDomain(node.address))
+                if (Utils.IsDomain(node.Address))
                 {
                     var dnsServer = new DnsServer4Ray()
                     {
-                        address = Utils.IsNullOrEmpty(dNSItem?.domainDNSAddress) ? Global.DomainDNSAddress.FirstOrDefault() : dNSItem?.domainDNSAddress,
-                        domains = [node.address]
+                        address = Utils.IsNullOrEmpty(dNSItem?.DomainDNSAddress) ? Global.DomainDNSAddress.FirstOrDefault() : dNSItem?.DomainDNSAddress,
+                        domains = [node.Address]
                     };
                     servers.AsArray().Add(JsonUtils.SerializeToNode(dnsServer));
                 }
@@ -1117,7 +1117,7 @@ namespace ServiceLib.Services.CoreConfig
 
         public async Task<int> GenStatistic(V2rayConfig v2rayConfig)
         {
-            if (_config.guiItem.enableStatistics)
+            if (_config.GuiItem.EnableStatistics)
             {
                 string tag = EInboundProtocol.api.ToString();
                 API4Ray apiObj = new();
@@ -1168,7 +1168,7 @@ namespace ServiceLib.Services.CoreConfig
         private async Task<int> GenMoreOutbounds(ProfileItem node, V2rayConfig v2rayConfig)
         {
             //fragment proxy
-            if (_config.coreBasicItem.enableFragment
+            if (_config.CoreBasicItem.EnableFragment
                 && Utils.IsNotEmpty(v2rayConfig.outbounds[0].streamSettings?.security))
             {
                 var fragmentOutbound = new Outbounds4Ray
@@ -1194,13 +1194,13 @@ namespace ServiceLib.Services.CoreConfig
                 return 0;
             }
 
-            if (node.subid.IsNullOrEmpty())
+            if (node.Subid.IsNullOrEmpty())
             {
                 return 0;
             }
             try
             {
-                var subItem = await AppHandler.Instance.GetSubItem(node.subid);
+                var subItem = await AppHandler.Instance.GetSubItem(node.Subid);
                 if (subItem is null)
                 {
                     return 0;
@@ -1211,12 +1211,12 @@ namespace ServiceLib.Services.CoreConfig
                 var txtOutbound = Utils.GetEmbedText(Global.V2raySampleOutbound);
 
                 //Previous proxy
-                var prevNode = await AppHandler.Instance.GetProfileItemViaRemarks(subItem.prevProfile);
+                var prevNode = await AppHandler.Instance.GetProfileItemViaRemarks(subItem.PrevProfile);
                 if (prevNode is not null
-                    && prevNode.configType != EConfigType.Custom
-                    && prevNode.configType != EConfigType.Hysteria2
-                    && prevNode.configType != EConfigType.TUIC
-                    && prevNode.configType != EConfigType.WireGuard)
+                    && prevNode.ConfigType != EConfigType.Custom
+                    && prevNode.ConfigType != EConfigType.Hysteria2
+                    && prevNode.ConfigType != EConfigType.TUIC
+                    && prevNode.ConfigType != EConfigType.WireGuard)
                 {
                     var prevOutbound = JsonUtils.Deserialize<Outbounds4Ray>(txtOutbound);
                     await GenOutbound(prevNode, prevOutbound);
@@ -1230,12 +1230,12 @@ namespace ServiceLib.Services.CoreConfig
                 }
 
                 //Next proxy
-                var nextNode = await AppHandler.Instance.GetProfileItemViaRemarks(subItem.nextProfile);
+                var nextNode = await AppHandler.Instance.GetProfileItemViaRemarks(subItem.NextProfile);
                 if (nextNode is not null
-                    && nextNode.configType != EConfigType.Custom
-                    && nextNode.configType != EConfigType.Hysteria2
-                    && nextNode.configType != EConfigType.TUIC
-                    && nextNode.configType != EConfigType.WireGuard)
+                    && nextNode.ConfigType != EConfigType.Custom
+                    && nextNode.ConfigType != EConfigType.Hysteria2
+                    && nextNode.ConfigType != EConfigType.TUIC
+                    && nextNode.ConfigType != EConfigType.WireGuard)
                 {
                     var nextOutbound = JsonUtils.Deserialize<Outbounds4Ray>(txtOutbound);
                     await GenOutbound(nextNode, nextOutbound);

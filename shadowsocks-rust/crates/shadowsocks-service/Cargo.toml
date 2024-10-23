@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks-service"
-version = "1.21.0"
+version = "1.21.1"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -72,7 +72,7 @@ local-dns-relay = ["local-dns"]
 # Currently is only used in Android
 local-flow-stat = ["local"]
 # Enable HTTP protocol for sslocal
-local-http = ["local", "hyper", "http-body-util"]
+local-http = ["local", "hyper", "http", "http-body-util"]
 local-http-native-tls = ["local-http", "tokio-native-tls", "native-tls"]
 local-http-native-tls-vendored = [
     "local-http-native-tls",

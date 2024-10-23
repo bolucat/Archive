@@ -40,7 +40,7 @@ namespace ServiceLib.ViewModels
 
             var canEditRemove = this.WhenAnyValue(
                 x => x.SelectedSource,
-                selectedSource => selectedSource != null && !selectedSource.outboundTag.IsNullOrEmpty());
+                selectedSource => selectedSource != null && !selectedSource.OutboundTag.IsNullOrEmpty());
 
             RuleAddCmd = ReactiveCommand.CreateFromTask(async () =>
             {
@@ -92,7 +92,7 @@ namespace ServiceLib.ViewModels
 
             SelectedSource = new();
             SelectedRouting = routingItem;
-            _rules = routingItem.id.IsNullOrEmpty() ? new() : JsonUtils.Deserialize<List<RulesItem>>(SelectedRouting.ruleSet);
+            _rules = routingItem.Id.IsNullOrEmpty() ? new() : JsonUtils.Deserialize<List<RulesItem>>(SelectedRouting.RuleSet);
 
             RefreshRulesItems();
         }
@@ -105,16 +105,16 @@ namespace ServiceLib.ViewModels
             {
                 var it = new RulesItemModel()
                 {
-                    id = item.id,
-                    outboundTag = item.outboundTag,
-                    port = item.port,
-                    network = item.network,
-                    protocols = Utils.List2String(item.protocol),
-                    inboundTags = Utils.List2String(item.inboundTag),
-                    domains = Utils.List2String(item.domain),
-                    ips = Utils.List2String(item.ip),
-                    enabled = item.enabled,
-                    remarks = item.remarks,
+                    Id = item.Id,
+                    OutboundTag = item.OutboundTag,
+                    Port = item.Port,
+                    Network = item.Network,
+                    Protocols = Utils.List2String(item.Protocol),
+                    InboundTags = Utils.List2String(item.InboundTag),
+                    Domains = Utils.List2String(item.Domain),
+                    Ips = Utils.List2String(item.Ip),
+                    Enabled = item.Enabled,
+                    Remarks = item.Remarks,
                 };
                 _rulesItems.Add(it);
             }
@@ -129,7 +129,7 @@ namespace ServiceLib.ViewModels
             }
             else
             {
-                item = _rules.FirstOrDefault(t => t.id == SelectedSource?.id);
+                item = _rules.FirstOrDefault(t => t.Id == SelectedSource?.Id);
                 if (item is null)
                 {
                     return;
@@ -147,7 +147,7 @@ namespace ServiceLib.ViewModels
 
         public async Task RuleRemoveAsync()
         {
-            if (SelectedSource is null || SelectedSource.outboundTag.IsNullOrEmpty())
+            if (SelectedSource is null || SelectedSource.OutboundTag.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);
                 return;
@@ -158,7 +158,7 @@ namespace ServiceLib.ViewModels
             }
             foreach (var it in SelectedSources ?? [SelectedSource])
             {
-                var item = _rules.FirstOrDefault(t => t.id == it?.id);
+                var item = _rules.FirstOrDefault(t => t.Id == it?.Id);
                 if (item != null)
                 {
                     _rules.Remove(item);
@@ -170,7 +170,7 @@ namespace ServiceLib.ViewModels
 
         public async Task RuleExportSelectedAsync()
         {
-            if (SelectedSource is null || SelectedSource.outboundTag.IsNullOrEmpty())
+            if (SelectedSource is null || SelectedSource.OutboundTag.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);
                 return;
@@ -179,7 +179,7 @@ namespace ServiceLib.ViewModels
             var lst = new List<RulesItem4Ray>();
             foreach (var it in SelectedSources ?? [SelectedSource])
             {
-                var item = _rules.FirstOrDefault(t => t.id == it?.id);
+                var item = _rules.FirstOrDefault(t => t.Id == it?.Id);
                 if (item != null)
                 {
                     var item2 = JsonUtils.Deserialize<RulesItem4Ray>(JsonUtils.Serialize(item));
@@ -194,13 +194,13 @@ namespace ServiceLib.ViewModels
 
         public async Task MoveRule(EMove eMove)
         {
-            if (SelectedSource is null || SelectedSource.outboundTag.IsNullOrEmpty())
+            if (SelectedSource is null || SelectedSource.OutboundTag.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);
                 return;
             }
 
-            var item = _rules.FirstOrDefault(t => t.id == SelectedSource?.id);
+            var item = _rules.FirstOrDefault(t => t.Id == SelectedSource?.Id);
             if (item == null)
             {
                 return;
@@ -214,7 +214,7 @@ namespace ServiceLib.ViewModels
 
         private async Task SaveRoutingAsync()
         {
-            string remarks = SelectedRouting.remarks;
+            string remarks = SelectedRouting.Remarks;
             if (Utils.IsNullOrEmpty(remarks))
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseFillRemarks);
@@ -223,10 +223,10 @@ namespace ServiceLib.ViewModels
             var item = SelectedRouting;
             foreach (var it in _rules)
             {
-                it.id = Utils.GetGuid(false);
+                it.Id = Utils.GetGuid(false);
             }
-            item.ruleNum = _rules.Count;
-            item.ruleSet = JsonUtils.Serialize(_rules, false);
+            item.RuleNum = _rules.Count;
+            item.RuleSet = JsonUtils.Serialize(_rules, false);
 
             if (await ConfigHandler.SaveRoutingItem(_config, item) == 0)
             {
@@ -278,7 +278,7 @@ namespace ServiceLib.ViewModels
 
         private async Task ImportRulesFromUrl()
         {
-            var url = SelectedRouting.url;
+            var url = SelectedRouting.Url;
             if (Utils.IsNullOrEmpty(url))
             {
                 NoticeHandler.Instance.Enqueue(ResUI.MsgNeedUrl);
@@ -313,7 +313,7 @@ namespace ServiceLib.ViewModels
             }
             foreach (var rule in lstRules)
             {
-                rule.id = Utils.GetGuid(false);
+                rule.Id = Utils.GetGuid(false);
             }
 
             if (blReplace)

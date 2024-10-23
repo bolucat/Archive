@@ -13,7 +13,7 @@ namespace v2rayN.Handler
         {
             try
             {
-                var index = (int)config.systemProxyItem.sysProxyType;
+                var index = (int)config.SystemProxyItem.SysProxyType;
 
                 //Load from routing setting
                 var createdIcon = await GetNotifyIcon4Routing(config);
@@ -46,7 +46,7 @@ namespace v2rayN.Handler
 
         public System.Windows.Media.ImageSource GetAppIcon(Config config)
         {
-            var index = (int)config.systemProxyItem.sysProxyType + 1;
+            var index = (int)config.SystemProxyItem.SysProxyType + 1;
             return BitmapFrame.Create(new Uri($"pack://application:,,,/Resources/NotifyIcon{index}.ico", UriKind.RelativeOrAbsolute));
         }
 
@@ -54,19 +54,19 @@ namespace v2rayN.Handler
         {
             try
             {
-                if (!config.routingBasicItem.enableRoutingAdvanced)
+                if (!config.RoutingBasicItem.EnableRoutingAdvanced)
                 {
                     return null;
                 }
 
                 var item = await ConfigHandler.GetDefaultRouting(config);
-                if (item == null || Utils.IsNullOrEmpty(item.customIcon) || !File.Exists(item.customIcon))
+                if (item == null || Utils.IsNullOrEmpty(item.CustomIcon) || !File.Exists(item.CustomIcon))
                 {
                     return null;
                 }
 
                 Color color = ColorTranslator.FromHtml("#3399CC");
-                int index = (int)config.systemProxyItem.sysProxyType;
+                int index = (int)config.SystemProxyItem.SysProxyType;
                 if (index > 0)
                 {
                     color = (new[] { Color.Red, Color.Purple, Color.DarkGreen, Color.Orange, Color.DarkSlateBlue, Color.RoyalBlue })[index - 1];
@@ -81,7 +81,7 @@ namespace v2rayN.Handler
 
                 graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 //graphics.FillRectangle(drawBrush, new Rectangle(0, 0, width, height));
-                graphics.DrawImage(new Bitmap(item.customIcon), 0, 0, width, height);
+                graphics.DrawImage(new Bitmap(item.CustomIcon), 0, 0, width, height);
                 graphics.FillEllipse(drawBrush, width / 2, width / 2, width / 2, width / 2);
 
                 Icon createdIcon = Icon.FromHandle(bitmap.GetHicon());

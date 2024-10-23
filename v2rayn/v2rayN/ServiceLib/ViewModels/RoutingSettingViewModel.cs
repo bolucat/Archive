@@ -71,7 +71,7 @@ namespace ServiceLib.ViewModels
 
             var canEditRemove = this.WhenAnyValue(
                 x => x.SelectedSource,
-                selectedSource => selectedSource != null && !selectedSource.remarks.IsNullOrEmpty());
+                selectedSource => selectedSource != null && !selectedSource.Remarks.IsNullOrEmpty());
 
             this.WhenAnyValue(
                     x => x.enableRoutingAdvanced)
@@ -111,10 +111,10 @@ namespace ServiceLib.ViewModels
         {
             SelectedSource = new();
 
-            enableRoutingAdvanced = _config.routingBasicItem.enableRoutingAdvanced;
-            domainStrategy = _config.routingBasicItem.domainStrategy;
-            domainMatcher = _config.routingBasicItem.domainMatcher;
-            domainStrategy4Singbox = _config.routingBasicItem.domainStrategy4Singbox;
+            enableRoutingAdvanced = _config.RoutingBasicItem.EnableRoutingAdvanced;
+            domainStrategy = _config.RoutingBasicItem.DomainStrategy;
+            domainMatcher = _config.RoutingBasicItem.DomainMatcher;
+            domainStrategy4Singbox = _config.RoutingBasicItem.DomainStrategy4Singbox;
 
             await ConfigHandler.InitBuiltinRouting(_config);
             await RefreshRoutingItems();
@@ -130,24 +130,24 @@ namespace ServiceLib.ViewModels
             {
                 _lockedItem = new RoutingItem()
                 {
-                    remarks = "locked",
-                    url = string.Empty,
-                    locked = true,
+                    Remarks = "locked",
+                    Url = string.Empty,
+                    Locked = true,
                 };
                 await ConfigHandler.AddBatchRoutingRules(_lockedItem, Utils.GetEmbedText(Global.CustomRoutingFileName + "locked"));
             }
 
             if (_lockedItem != null)
             {
-                _lockedRules = JsonUtils.Deserialize<List<RulesItem>>(_lockedItem.ruleSet);
-                ProxyDomain = Utils.List2String(_lockedRules[0].domain, true);
-                ProxyIP = Utils.List2String(_lockedRules[0].ip, true);
+                _lockedRules = JsonUtils.Deserialize<List<RulesItem>>(_lockedItem.RuleSet);
+                ProxyDomain = Utils.List2String(_lockedRules[0].Domain, true);
+                ProxyIP = Utils.List2String(_lockedRules[0].Ip, true);
 
-                DirectDomain = Utils.List2String(_lockedRules[1].domain, true);
-                DirectIP = Utils.List2String(_lockedRules[1].ip, true);
+                DirectDomain = Utils.List2String(_lockedRules[1].Domain, true);
+                DirectIP = Utils.List2String(_lockedRules[1].Ip, true);
 
-                BlockDomain = Utils.List2String(_lockedRules[2].domain, true);
-                BlockIP = Utils.List2String(_lockedRules[2].ip, true);
+                BlockDomain = Utils.List2String(_lockedRules[2].Domain, true);
+                BlockIP = Utils.List2String(_lockedRules[2].Ip, true);
             }
         }
 
@@ -155,16 +155,16 @@ namespace ServiceLib.ViewModels
         {
             if (_lockedItem != null)
             {
-                _lockedRules[0].domain = Utils.String2List(Utils.Convert2Comma(ProxyDomain.TrimEx()));
-                _lockedRules[0].ip = Utils.String2List(Utils.Convert2Comma(ProxyIP.TrimEx()));
+                _lockedRules[0].Domain = Utils.String2List(Utils.Convert2Comma(ProxyDomain.TrimEx()));
+                _lockedRules[0].Ip = Utils.String2List(Utils.Convert2Comma(ProxyIP.TrimEx()));
 
-                _lockedRules[1].domain = Utils.String2List(Utils.Convert2Comma(DirectDomain.TrimEx()));
-                _lockedRules[1].ip = Utils.String2List(Utils.Convert2Comma(DirectIP.TrimEx()));
+                _lockedRules[1].Domain = Utils.String2List(Utils.Convert2Comma(DirectDomain.TrimEx()));
+                _lockedRules[1].Ip = Utils.String2List(Utils.Convert2Comma(DirectIP.TrimEx()));
 
-                _lockedRules[2].domain = Utils.String2List(Utils.Convert2Comma(BlockDomain.TrimEx()));
-                _lockedRules[2].ip = Utils.String2List(Utils.Convert2Comma(BlockIP.TrimEx()));
+                _lockedRules[2].Domain = Utils.String2List(Utils.Convert2Comma(BlockDomain.TrimEx()));
+                _lockedRules[2].Ip = Utils.String2List(Utils.Convert2Comma(BlockIP.TrimEx()));
 
-                _lockedItem.ruleSet = JsonUtils.Serialize(_lockedRules, false);
+                _lockedItem.RuleSet = JsonUtils.Serialize(_lockedRules, false);
 
                 await ConfigHandler.SaveRoutingItem(_config, _lockedItem);
             }
@@ -182,21 +182,21 @@ namespace ServiceLib.ViewModels
             foreach (var item in routings)
             {
                 bool def = false;
-                if (item.id == _config.routingBasicItem.routingIndexId)
+                if (item.Id == _config.RoutingBasicItem.RoutingIndexId)
                 {
                     def = true;
                 }
 
                 var it = new RoutingItemModel()
                 {
-                    isActive = def,
-                    ruleNum = item.ruleNum,
-                    id = item.id,
-                    remarks = item.remarks,
-                    url = item.url,
-                    customIcon = item.customIcon,
-                    customRulesetPath4Singbox = item.customRulesetPath4Singbox,
-                    sort = item.sort,
+                    IsActive = def,
+                    RuleNum = item.RuleNum,
+                    Id = item.Id,
+                    Remarks = item.Remarks,
+                    Url = item.Url,
+                    CustomIcon = item.CustomIcon,
+                    CustomRulesetPath4Singbox = item.CustomRulesetPath4Singbox,
+                    Sort = item.Sort,
                 };
                 _routingItems.Add(it);
             }
@@ -204,10 +204,10 @@ namespace ServiceLib.ViewModels
 
         private async Task SaveRoutingAsync()
         {
-            _config.routingBasicItem.domainStrategy = domainStrategy;
-            _config.routingBasicItem.enableRoutingAdvanced = enableRoutingAdvanced;
-            _config.routingBasicItem.domainMatcher = domainMatcher;
-            _config.routingBasicItem.domainStrategy4Singbox = domainStrategy4Singbox;
+            _config.RoutingBasicItem.DomainStrategy = domainStrategy;
+            _config.RoutingBasicItem.EnableRoutingAdvanced = enableRoutingAdvanced;
+            _config.RoutingBasicItem.DomainMatcher = domainMatcher;
+            _config.RoutingBasicItem.DomainStrategy4Singbox = domainStrategy4Singbox;
 
             await EndBindingLockedData();
 
@@ -245,7 +245,7 @@ namespace ServiceLib.ViewModels
             }
             else
             {
-                item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
+                item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.Id);
                 if (item is null)
                 {
                     return;
@@ -260,7 +260,7 @@ namespace ServiceLib.ViewModels
 
         public async Task RoutingAdvancedRemoveAsync()
         {
-            if (SelectedSource is null || SelectedSource.remarks.IsNullOrEmpty())
+            if (SelectedSource is null || SelectedSource.Remarks.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);
                 return;
@@ -271,7 +271,7 @@ namespace ServiceLib.ViewModels
             }
             foreach (var it in SelectedSources ?? [SelectedSource])
             {
-                var item = await AppHandler.Instance.GetRoutingItem(it?.id);
+                var item = await AppHandler.Instance.GetRoutingItem(it?.Id);
                 if (item != null)
                 {
                     await ConfigHandler.RemoveRoutingItem(item);
@@ -284,7 +284,7 @@ namespace ServiceLib.ViewModels
 
         public async Task RoutingAdvancedSetDefault()
         {
-            var item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.id);
+            var item = await AppHandler.Instance.GetRoutingItem(SelectedSource?.Id);
             if (item is null)
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseSelectRules);

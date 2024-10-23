@@ -21,19 +21,19 @@
             {
                 var updateTime = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
                 var lstSubs = (await AppHandler.Instance.SubItems())
-                            .Where(t => t.autoUpdateInterval > 0)
-                            .Where(t => updateTime - t.updateTime >= t.autoUpdateInterval * 60)
+                            .Where(t => t.AutoUpdateInterval > 0)
+                            .Where(t => updateTime - t.UpdateTime >= t.AutoUpdateInterval * 60)
                             .ToList();
 
                 foreach (var item in lstSubs)
                 {
-                    await updateHandle.UpdateSubscriptionProcess(config, item.id, true, (bool success, string msg) =>
+                    await updateHandle.UpdateSubscriptionProcess(config, item.Id, true, (bool success, string msg) =>
                         {
                             updateFunc?.Invoke(success, msg);
                             if (success)
                                 Logging.SaveLog("subscription" + msg);
                         });
-                    item.updateTime = updateTime;
+                    item.UpdateTime = updateTime;
                     await ConfigHandler.AddSubItem(config, item);
 
                     await Task.Delay(5000);
@@ -55,9 +55,9 @@
                 await Task.Delay(1000 * 3600);
 
                 var dtNow = DateTime.Now;
-                if (config.guiItem.autoUpdateInterval > 0)
+                if (config.GuiItem.AutoUpdateInterval > 0)
                 {
-                    if ((dtNow - autoUpdateGeoTime).Hours % config.guiItem.autoUpdateInterval == 0)
+                    if ((dtNow - autoUpdateGeoTime).Hours % config.GuiItem.AutoUpdateInterval == 0)
                     {
                         await updateHandle.UpdateGeoFileAll(config, (bool success, string msg) =>
                         {
