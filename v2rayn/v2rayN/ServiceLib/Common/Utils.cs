@@ -228,12 +228,6 @@ namespace ServiceLib.Common
             }
         }
 
-        /// <summary>
-        /// byte 转成 有两位小数点的 方便阅读的数据   比如 2.50 MB
-        /// </summary>
-        /// <param name="amount">bytes</param>
-        /// <param name="result">转换之后的数据</param>
-        /// <param name="unit">单位</param>
         private static void ToHumanReadable(long amount, out double result, out string unit)
         {
             var factor = 1024u;
@@ -411,7 +405,6 @@ namespace ServiceLib.Common
         /// <param name="domain"></param>
         public static bool IsDomain(string? domain)
         {
-            //如果为空
             if (IsNullOrEmpty(domain))
             {
                 return false;
@@ -430,6 +423,30 @@ namespace ServiceLib.Common
                     AddressFamily.InterNetworkV6 => true,
                     _ => false,
                 };
+            }
+            return false;
+        }
+
+        public static Uri? TryUri(string url)
+        {
+            try
+            {
+                return new Uri(url);
+            }
+            catch (UriFormatException)
+            {
+                return null;
+            }
+        }
+
+        public static bool IsPrivateNetwork(string ip)
+        {
+            if (IPAddress.TryParse(ip, out var address))
+            {
+                var ipBytes = address.GetAddressBytes();
+                if (ipBytes[0] == 10) return true;
+                if (ipBytes[0] == 172 && ipBytes[1] >= 16 && ipBytes[1] <= 31) return true;
+                if (ipBytes[0] == 192 && ipBytes[1] == 168) return true;
             }
             return false;
         }
@@ -495,7 +512,7 @@ namespace ServiceLib.Common
             {
                 if (blFull)
                 {
-                    return $"{Global.AppName} - V{GetVersionInfo()} - {File.GetLastWriteTime(GetExePath()):yyyy/MM/dd}";
+                    return $"{Global.AppName} - V{GetVersionInfo()} - {RuntimeInformation.ProcessArchitecture} - {File.GetLastWriteTime(GetExePath()):yyyy/MM/dd}";
                 }
                 else
                 {
@@ -564,10 +581,6 @@ namespace ServiceLib.Common
             }
         }
 
-        /// <summary>
-        /// 获取系统hosts
-        /// </summary>
-        /// <returns></returns>
         public static Dictionary<string, string> GetSystemHosts()
         {
             var systemHosts = new Dictionary<string, string>();
@@ -634,10 +647,6 @@ namespace ServiceLib.Common
 
         #region TempPath
 
-        /// <summary>
-        /// 获取启动了应用程序的可执行文件的路径
-        /// </summary>
-        /// <returns></returns>
         public static string GetPath(string fileName)
         {
             var startupPath = StartupPath();
@@ -648,10 +657,6 @@ namespace ServiceLib.Common
             return Path.Combine(startupPath, fileName);
         }
 
-        /// <summary>
-        /// 获取启动了应用程序的可执行文件的路径及文件名
-        /// </summary>
-        /// <returns></returns>
         public static string GetExePath()
         {
             return Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? string.Empty;

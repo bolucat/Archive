@@ -108,7 +108,7 @@ namespace ServiceLib.Handler
                 EnableAutoAdjustMainLvColWidth = true
             };
             config.UiItem.MainColumnItem ??= new();
-            
+
             if (Utils.IsNullOrEmpty(config.UiItem.CurrentLanguage))
             {
                 if (Thread.CurrentThread.CurrentCulture.Name.Equals("zh-cn", StringComparison.CurrentCultureIgnoreCase))
@@ -171,18 +171,7 @@ namespace ServiceLib.Handler
         /// </summary>
         /// <param name="config"></param>
         /// <returns></returns>
-        public static async Task<int> SaveConfig(Config config, bool reload = true)
-        {
-            await ToJsonFile(config);
-
-            return 0;
-        }
-
-        /// <summary>
-        /// 存储文件
-        /// </summary>
-        /// <param name="config"></param>
-        private static async Task ToJsonFile(Config config)
+        public static async Task<int> SaveConfig(Config config)
         {
             lock (_objLock)
             {
@@ -193,7 +182,7 @@ namespace ServiceLib.Handler
                     var tempPath = $"{resPath}_temp";
                     if (JsonUtils.ToFile(config, tempPath) != 0)
                     {
-                        return;
+                        return -1;
                     }
 
                     if (File.Exists(resPath))
@@ -206,8 +195,11 @@ namespace ServiceLib.Handler
                 catch (Exception ex)
                 {
                     Logging.SaveLog("ToJsonFile", ex);
+                    return -1;
                 }
             }
+
+            return 0;
         }
 
         #endregion ConfigHandler
@@ -369,7 +361,7 @@ namespace ServiceLib.Handler
 
             config.IndexId = indexId;
 
-            await ToJsonFile(config);
+            await SaveConfig(config);
 
             return 0;
         }
@@ -380,8 +372,8 @@ namespace ServiceLib.Handler
             {
                 return 0;
             }
-            var count = await SQLiteHelper.Instance.TableAsync<ProfileItem>().CountAsync(t => t.IndexId == config.IndexId);
-            if (count > 0)
+
+            if (await SQLiteHelper.Instance.TableAsync<ProfileItem>().FirstOrDefaultAsync(t => t.IndexId == config.IndexId) != null)
             {
                 return 0;
             }
@@ -390,7 +382,7 @@ namespace ServiceLib.Handler
                 return await SetDefaultServerIndex(config, lstProfile.FirstOrDefault(t => t.Port > 0)?.IndexId);
             }
 
-            var item = await SQLiteHelper.Instance.TableAsync<ProfileItem>().Where(t => t.Port > 0).FirstOrDefaultAsync();
+            var item = await SQLiteHelper.Instance.TableAsync<ProfileItem>().FirstOrDefaultAsync(t => t.Port > 0);
             return await SetDefaultServerIndex(config, item.IndexId);
         }
 
@@ -1142,7 +1134,7 @@ namespace ServiceLib.Handler
                 await SQLiteHelper.Instance.InsertAllAsync(lstAdd);
             }
 
-            await ToJsonFile(config);
+            await SaveConfig(config);
             return countServers;
         }
 
@@ -1272,7 +1264,7 @@ namespace ServiceLib.Handler
                         counter++;
                     }
                 }
-                await ToJsonFile(config);
+                await SaveConfig(config);
                 return counter;
             }
 
@@ -1343,16 +1335,16 @@ namespace ServiceLib.Handler
                 Url = url
             };
 
-            try
+            var uri = Utils.TryUri(url);
+            if (uri == null) return -1;
+            //Do not allow http protocol
+            if (url.StartsWith(Global.HttpProtocol) && !Utils.IsPrivateNetwork(uri.IdnHost))
             {
-                var uri = new Uri(url);
-                var queryVars = Utils.ParseQueryString(uri.Query);
-                subItem.Remarks = queryVars["remarks"] ?? "import_sub";
+                return -1;
             }
-            catch (UriFormatException)
-            {
-                return 0;
-            }
+
+            var queryVars = Utils.ParseQueryString(uri.Query);
+            subItem.Remarks = queryVars["remarks"] ?? "import_sub";
 
             return await AddSubItem(config, subItem);
         }
@@ -1605,7 +1597,7 @@ namespace ServiceLib.Handler
                 config.RoutingBasicItem.RoutingIndexId = routingItem.Id;
             }
 
-            await ToJsonFile(config);
+            await SaveConfig(config);
 
             return 0;
         }
