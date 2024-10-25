@@ -83,12 +83,12 @@ impl Tray {
         let verge = Config::verge().latest().clone();
         let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
         let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
-        #[cfg(target_os = "macos")]
-        let tray_icon = verge.tray_icon.clone().unwrap_or("monochrome".to_string());
         let common_tray_icon = verge.common_tray_icon.as_ref().unwrap_or(&false);
         let sysproxy_tray_icon = verge.sysproxy_tray_icon.as_ref().unwrap_or(&false);
         let tun_tray_icon = verge.tun_tray_icon.as_ref().unwrap_or(&false);
         let tray = app_handle.tray_by_id("main").unwrap();
+        #[cfg(target_os = "macos")]
+        let tray_icon = verge.tray_icon.clone().unwrap_or("monochrome".to_string());
 
         let _ = tray.set_menu(Some(create_tray_menu(
             &app_handle,
@@ -97,28 +97,20 @@ impl Tray {
             *tun_mode,
         )?));
 
-        // let _ = tray.
-        #[cfg(target_os = "macos")]
-        match tray_icon.as_str() {
-            "monochrome" => {
-                let _ = tray.set_icon_as_template(true);
-            }
-            "colorful" => {
-                let _ = tray.set_icon_as_template(false);
-            }
-            _ => {}
-        }
-
+        let mut use_custom_icon = false;
+        #[allow(unused)]
         let mut indication_icon = if *system_proxy {
             #[cfg(target_os = "macos")]
             let mut icon = match tray_icon.as_str() {
-                "monochrome" => include_bytes!("../../icons/tray-icon-sys-mono.ico").to_vec(),
-                "colorful" => include_bytes!("../../icons/tray-icon-sys.ico").to_vec(),
+                "colorful" => {
+                    use_custom_icon = true;
+                    include_bytes!("../../icons/tray-icon-sys.ico").to_vec()
+                }
                 _ => include_bytes!("../../icons/tray-icon-sys-mono.ico").to_vec(),
             };
+
             #[cfg(not(target_os = "macos"))]
             let mut icon = include_bytes!("../../icons/tray-icon-sys.ico").to_vec();
-
             if *sysproxy_tray_icon {
                 let icon_dir_path = dirs::app_home_dir()?.join("icons");
                 let png_path = icon_dir_path.join("sysproxy.png");
@@ -128,37 +120,19 @@ impl Tray {
                 } else if png_path.exists() {
                     icon = std::fs::read(png_path).unwrap();
                 }
+                use_custom_icon = true;
             }
             icon
-        } else {
+        } else if *tun_mode {
             #[cfg(target_os = "macos")]
             let mut icon = match tray_icon.as_str() {
-                "monochrome" => include_bytes!("../../icons/tray-icon-mono.ico").to_vec(),
-                "colorful" => include_bytes!("../../icons/tray-icon.ico").to_vec(),
-                _ => include_bytes!("../../icons/tray-icon-mono.ico").to_vec(),
-            };
-            #[cfg(not(target_os = "macos"))]
-            let mut icon = include_bytes!("../../icons/tray-icon.ico").to_vec();
-            if *common_tray_icon {
-                let icon_dir_path = dirs::app_home_dir()?.join("icons");
-                let png_path = icon_dir_path.join("common.png");
-                let ico_path = icon_dir_path.join("common.ico");
-                if ico_path.exists() {
-                    icon = std::fs::read(ico_path).unwrap();
-                } else if png_path.exists() {
-                    icon = std::fs::read(png_path).unwrap();
+                "colorful" => {
+                    use_custom_icon = true;
+                    include_bytes!("../../icons/tray-icon-tun.ico").to_vec()
                 }
-            }
-            icon
-        };
-
-        if *tun_mode {
-            #[cfg(target_os = "macos")]
-            let mut icon = match tray_icon.as_str() {
-                "monochrome" => include_bytes!("../../icons/tray-icon-tun-mono.ico").to_vec(),
-                "colorful" => include_bytes!("../../icons/tray-icon-tun.ico").to_vec(),
                 _ => include_bytes!("../../icons/tray-icon-tun-mono.ico").to_vec(),
             };
+
             #[cfg(not(target_os = "macos"))]
             let mut icon = include_bytes!("../../icons/tray-icon-tun.ico").to_vec();
             if *tun_tray_icon {
@@ -170,9 +144,46 @@ impl Tray {
                 } else if png_path.exists() {
                     icon = std::fs::read(png_path).unwrap();
                 }
+                use_custom_icon = true;
             }
-            indication_icon = icon
+            icon
+        } else {
+            #[cfg(target_os = "macos")]
+            let mut icon = match tray_icon.as_str() {
+                "colorful" => {
+                    use_custom_icon = true;
+                    include_bytes!("../../icons/tray-icon.ico").to_vec()
+                }
+                _ => include_bytes!("../../icons/tray-icon-mono.ico").to_vec(),
+            };
+
+            #[cfg(not(target_os = "macos"))]
+            let mut icon = include_bytes!("../../icons/tray-icon.ico").to_vec();
+            if *common_tray_icon {
+                let icon_dir_path = dirs::app_home_dir()?.join("icons");
+                let png_path = icon_dir_path.join("common.png");
+                let ico_path = icon_dir_path.join("common.ico");
+                if ico_path.exists() {
+                    icon = std::fs::read(ico_path).unwrap();
+                } else if png_path.exists() {
+                    icon = std::fs::read(png_path).unwrap();
+                }
+                use_custom_icon = true;
+            }
+            icon
+        };
+
+        #[cfg(target_os = "macos")]
+        {
+            if use_custom_icon {
+                let _ = tray.set_icon_as_template(false);
+                let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&indication_icon)?));
+            } else {
+                let _ = tray.set_icon_as_template(true);
+            }
         }
+
+        #[cfg(not(target_os = "macos"))]
         let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&indication_icon)?));
 
         let switch_map = {
