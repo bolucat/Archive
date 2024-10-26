@@ -707,8 +707,7 @@ size="is-small" icon=" iconfont icon-help-circle-outline" style="
             <b-input v-model="trojan.path" placeholder="/" expanded />
           </b-field>
           <b-field
-v-show="trojan.net === 'ws' ||
-            trojan.net === 'h2'
+            v-show="trojan.net === 'ws' || trojan.net === 'h2'"
             label="Host"
             label-position="on-border"
           >
@@ -726,8 +725,7 @@ v-show="trojan.net === 'ws' ||
             <b-input v-model="trojan.alpn" placeholder="h2,http/1.1" expanded />
           </b-field>
           <b-field
-v-show="trojan.net === 'ws' ||
-            trojan.net === 'h2'
+            v-show="trojan.net === 'ws' || trojan.net === 'h2'"
             label="Path"
             label-position="on-border"
           >
