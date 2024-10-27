@@ -1075,7 +1075,9 @@ func buildStageGenerateBuildScript() {
 			cmakeArgs = append(cmakeArgs, "-DUSE_TCMALLOC=on")
 		} else if subsystem == "musl" {
 			cmakeArgs = append(cmakeArgs, "-DUSE_TCMALLOC=off")
-			cmakeArgs = append(cmakeArgs, "-DUSE_MIMALLOC=on")
+			// mimalloc calls madvise internally while
+			// some old system doesn't like it.
+			cmakeArgs = append(cmakeArgs, "-DUSE_MIMALLOC=off")
 		} else {
 			cmakeArgs = append(cmakeArgs, "-DUSE_TCMALLOC=off")
 			cmakeArgs = append(cmakeArgs, "-DUSE_MIMALLOC=off")

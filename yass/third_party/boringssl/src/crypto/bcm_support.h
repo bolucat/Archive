@@ -25,7 +25,10 @@
 extern "C" {
 #endif
 
-#if defined(OPENSSL_LINUX)
+#if defined(OPENSSL_LINUX) && defined(OPENSSL_LINUX_MUSL)
+#define OPENSSL_FORK_DETECTION
+#define OPENSSL_FORK_DETECTION_PTHREAD_ATFORK
+#elif defined(OPENSSL_LINUX)
 // On linux we use MADVISE instead of pthread_atfork(), due
 // to concerns about clone() being used for address space
 // duplication.
