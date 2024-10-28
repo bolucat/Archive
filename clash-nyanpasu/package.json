@@ -82,7 +82,7 @@
     "eslint-plugin-react": "7.37.2",
     "eslint-plugin-react-compiler": "0.0.0-experimental-fa06e2c-20241016",
     "eslint-plugin-react-hooks": "4.6.2",
-    "knip": "5.34.0",
+    "knip": "5.34.1",
     "lint-staged": "15.2.10",
     "npm-run-all2": "7.0.1",
     "postcss": "8.4.47",
@@ -104,7 +104,7 @@
     "tsx": "4.19.2",
     "typescript": "5.6.3"
   },
-  "packageManager": "pnpm@9.12.2+sha512.22721b3a11f81661ae1ec68ce1a7b879425a1ca5b991c975b074ac220b187ce56c708fe5db69f4c962c989452eee76c82877f4ee80f474cebd61ee13461b6228",
+  "packageManager": "pnpm@9.12.3+sha512.cce0f9de9c5a7c95bef944169cc5dfe8741abfb145078c0d508b868056848a87c81e626246cb60967cbd7fd29a6c062ef73ff840d96b3c86c40ac92cf4a813ee",
   "engines": {
     "node": "22.10.0"
   },

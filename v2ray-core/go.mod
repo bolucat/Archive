@@ -5,7 +5,7 @@ go 1.22
 toolchain go1.22.7
 
 require (
-	github.com/adrg/xdg v0.5.0
+	github.com/adrg/xdg v0.5.1
 	github.com/apernet/hysteria/core/v2 v2.4.5
 	github.com/apernet/quic-go v0.45.2-0.20240702221538-ed74cfbe8b6e
 	github.com/go-chi/chi/v5 v5.1.0
@@ -25,7 +25,7 @@ require (
 	github.com/pion/dtls/v2 v2.2.12
 	github.com/pion/transport/v2 v2.2.10
 	github.com/pires/go-proxyproto v0.8.0
-	github.com/quic-go/quic-go v0.47.0
+	github.com/quic-go/quic-go v0.48.1
 	github.com/refraction-networking/utls v1.6.7
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	github.com/stretchr/testify v1.9.0
