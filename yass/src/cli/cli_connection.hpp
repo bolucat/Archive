@@ -179,6 +179,9 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   StreamId stream_id_ = 0;
   DataFrameSource* data_frame_ = nullptr;
 
+  /// flag to mark stream is eof (recv side)
+  bool http2_stream_recv_eof_ = false;
+
  public:
   StreamId blocked_stream_ = 0;
 #endif  //  HAVE_QUICHE

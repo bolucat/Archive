@@ -21,6 +21,8 @@ jobs:
       - name: Build
         run: |
           brew install automake
+          brew install autoconf
+          brew install libtool
           make VERSION="${GITHUB_REF_NAME}" release
           make release-dmg 
           shasum -a 256 build/Release/ShadowsocksX-NG.dmg > build/Release/ShadowsocksX-NG.dmg.checksum

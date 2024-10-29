@@ -10,71 +10,153 @@
 #import <CoreImage/CoreImage.h>
 #import <AppKit/AppKit.h>
 
-void ScanQRCodeOnScreen(void) {
+void ScanQRCodeOnScreen(void) {    
+    /* check system version and permission status */
+    if (@available(macOS 10.12, *)) {
+        BOOL hasPermission = CGPreflightScreenCaptureAccess();
+        NSLog(@"Screen Recording Permission Status: %@", hasPermission ? @"Granted" : @"Not Granted");
+        
+        if (!hasPermission) {
+            NSLog(@"Requesting Screen Recording Permission...");
+            CGRequestScreenCaptureAccess();
+            
+            /* check permission status after request */
+            hasPermission = CGPreflightScreenCaptureAccess();
+            NSLog(@"Screen Recording Permission Status After Request: %@", hasPermission ? @"Granted" : @"Not Granted");
+            
+            if (!hasPermission) {
+                NSLog(@"Screen Recording Permission Denied");
+                
+                /* send notification about permission missing */
+                [[NSNotificationCenter defaultCenter]
+                 postNotificationName:@"NOTIFY_FOUND_SS_URL"
+                 object:nil
+                 userInfo:@{
+                     @"urls": @[],
+                     @"source": @"qrcode",
+                     @"error": @"Screen Recording permission required. Please grant permission in System Preferences and restart ShadowsocksX-NG"
+                 }];
+                
+                /* open system privacy settings */
+                [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"]];
+                return;
+            }
+        }
+        
+        NSLog(@"Proceeding with screen capture...");
+    }
+    
     /* displays[] Quartz display ID's */
     CGDirectDisplayID   *displays = nil;
-    
-    CGError             err = CGDisplayNoErr;
     CGDisplayCount      dspCount = 0;
     
-    /* How many active displays do we have? */
-    err = CGGetActiveDisplayList(0, NULL, &dspCount);
+    /* variables for collecting scan information */
+    NSMutableDictionary *scanInfo = [NSMutableDictionary dictionary];
+    NSMutableArray *foundSSUrls = [NSMutableArray array];
+    NSMutableArray *foundQRCodes = [NSMutableArray array];
     
-    /* If we are getting an error here then their won't be much to display. */
-    if(err != CGDisplayNoErr)
-    {
-        NSLog(@"Could not get active display count (%d)\n", err);
+    /* How many active displays do we have? */
+    CGError err = CGGetActiveDisplayList(0, NULL, &dspCount);
+    
+    if(err != CGDisplayNoErr) {
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:@"NOTIFY_FOUND_SS_URL"
+         object:nil
+         userInfo:@{
+             @"urls": @[],
+             @"source": @"qrcode",
+             @"error": @"Failed to get display list"
+         }];
         return;
     }
+    
+    scanInfo[@"displayCount"] = @(dspCount);
+    NSLog(@"Found %d displays", dspCount);
     
     /* Allocate enough memory to hold all the display IDs we have. */
     displays = calloc((size_t)dspCount, sizeof(CGDirectDisplayID));
     
     // Get the list of active displays
-    err = CGGetActiveDisplayList(dspCount,
-                                 displays,
-                                 &dspCount);
+    err = CGGetActiveDisplayList(dspCount, displays, &dspCount);
     
-    /* More error-checking here. */
-    if(err != CGDisplayNoErr)
-    {
-        NSLog(@"Could not get active display list (%d)\n", err);
+    if(err != CGDisplayNoErr) {
+        free(displays);
+        [[NSNotificationCenter defaultCenter]
+         postNotificationName:@"NOTIFY_FOUND_SS_URL"
+         object:nil
+         userInfo:@{
+             @"urls": @[],
+             @"source": @"qrcode",
+             @"error": @"Failed to get display information"
+         }];
         return;
     }
     
-    NSMutableArray* foundSSUrls = [NSMutableArray array];
-    
     CIDetector *detector = [CIDetector detectorOfType:@"CIDetectorTypeQRCode"
-                                              context:nil
-                                              options:@{ CIDetectorAccuracy:CIDetectorAccuracyHigh }];
+                                            context:nil
+                                            options:@{ CIDetectorAccuracy:CIDetectorAccuracyHigh }];
     
-    for (unsigned int displaysIndex = 0; displaysIndex < dspCount; displaysIndex++)
-    {
-        /* Make a snapshot image of the current display. */
+    int totalQRCodesFound = 0;
+    int validSSUrlsFound = 0;
+    
+    for (unsigned int displaysIndex = 0; displaysIndex < dspCount; displaysIndex++) {
         CGImageRef image = CGDisplayCreateImage(displays[displaysIndex]);
         NSArray *features = [detector featuresInImage:[CIImage imageWithCGImage:image]];
+        
+        /* count total QR codes found */
+        totalQRCodesFound += (int)features.count;
+        
         for (CIQRCodeFeature *feature in features) {
-            NSLog(@"%@", feature.messageString);
-            if ( [feature.messageString hasPrefix:@"ss://"] )
-            {
+            NSLog(@"Found QR Code: %@", feature.messageString);
+            [foundQRCodes addObject:feature.messageString];
+            
+            if ([feature.messageString hasPrefix:@"ss://"]) {
                 NSURL *url = [NSURL URLWithString:feature.messageString];
                 if (url) {
                     [foundSSUrls addObject:url];
+                    validSSUrlsFound++;
                 }
             }
         }
-         CGImageRelease(image);
+        CGImageRelease(image);
     }
     
     free(displays);
     
+    /* prepare notification information */
+    NSString *notificationTitle;
+    NSString *notificationSubtitle;
+    NSString *notificationBody;
+    
+    if (totalQRCodesFound == 0) {
+        notificationTitle = [NSString stringWithFormat:@"Scanned %d displays", dspCount];
+        notificationSubtitle = @"No QR codes found";
+        notificationBody = @"Try adjusting the QR code position on your screen";
+    } else if (validSSUrlsFound == 0) {
+        notificationTitle = [NSString stringWithFormat:@"Found %d QR code(s)", totalQRCodesFound];
+        notificationSubtitle = @"No valid Shadowsocks URLs";
+        notificationBody = @"QR codes found are not Shadowsocks configuration";
+    } else {
+        notificationTitle = [NSString stringWithFormat:@"Found %d Shadowsocks URL(s)", validSSUrlsFound];
+        notificationSubtitle = [NSString stringWithFormat:@"Scanned %d displays, found %d QR codes", dspCount, totalQRCodesFound];
+        notificationBody = @"Processing Shadowsocks configuration...";
+    }
+    
     [[NSNotificationCenter defaultCenter]
      postNotificationName:@"NOTIFY_FOUND_SS_URL"
      object:nil
-     userInfo: @{ @"urls": foundSSUrls,
-                  @"source": @"qrcode"
-                 }
-     ];
+     userInfo:@{
+         @"urls": foundSSUrls,
+         @"source": @"qrcode",
+         @"title": notificationTitle,
+         @"subtitle": notificationSubtitle,
+         @"body": notificationBody,
+         @"scanInfo": @{
+             @"displayCount": @(dspCount),
+             @"totalQRCodes": @(totalQRCodesFound),
+             @"validURLs": @(validSSUrlsFound)
+         }
+     }];
 }
 
 NSImage* createQRImage(NSString *string, NSSize size) {

@@ -248,16 +248,14 @@ bool CliConnection::OnEndHeadersForStream(http2::adapter::Http2StreamId stream_i
   }
   LOG(INFO) << "Connection (client) " << connection_id() << " for " << remote_domain() << " Padding support "
             << (padding_support_ ? "enabled" : "disabled") << " Backed by " << server_field << ".";
+
+  // we're done
+  request_map_.clear();
   return true;
 }
 
 bool CliConnection::OnEndStream(StreamId stream_id) {
-  if (stream_id == stream_id_) {
-    data_frame_ = nullptr;
-    stream_id_ = 0;
-    adapter_->SubmitGoAway(0, http2::adapter::Http2ErrorCode::HTTP2_NO_ERROR, ""sv);
-    DCHECK(adapter_->want_write());
-  }
+  http2_stream_recv_eof_ = true;
   return true;
 }
 
@@ -282,13 +280,15 @@ void CliConnection::OnConnectionError(ConnectionError error) {
 }
 
 bool CliConnection::OnFrameHeader(StreamId stream_id, size_t /*length*/, uint8_t /*type*/, uint8_t /*flags*/) {
+  if (stream_id && stream_id != stream_id_) {
+    LOG(WARNING) << "Connection (client) " << connection_id() << " refused unexpected HTTP/2 Push";
+    return false;
+  }
   return true;
 }
 
 bool CliConnection::OnBeginHeadersForStream(StreamId stream_id) {
-  if (stream_id) {
-    DCHECK_EQ(stream_id, stream_id_) << "Client only support one stream";
-  }
+  DCHECK_EQ(stream_id, stream_id_) << "Unexpected http2 request stream: " << stream_id << " expected: " << stream_id_;
   return true;
 }
 
@@ -1108,6 +1108,12 @@ out:
     // Send Control Streams
     SendIfNotProcessing();
     WriteUpstreamInPipe();
+  }
+  if (http2_stream_recv_eof_ && downstream_.empty() && !shutdown_) {
+    VLOG(2) << "Connection (client) " << connection_id() << " last data sent: shutting down";
+    shutdown_ = true;
+    asio::error_code ec;
+    downlink_->shutdown(ec);
   }
 #endif
   if (downstream_.empty()) {
@@ -2088,8 +2094,12 @@ void CliConnection::OnStreamRead(std::shared_ptr<IOBuf> buf) {
 void CliConnection::OnStreamWrite() {
   OnDownstreamWriteFlush();
 
-  /* shutdown the socket if upstream is eof and all remaining data sent */
+  /* shutdown the socket if upstream/http2 stream is eof and all remaining data sent */
+#ifdef HAVE_QUICHE
+  if (channel_ && (channel_->eof() || http2_stream_recv_eof_) && downstream_.empty() && !shutdown_) {
+#else
   if (channel_ && channel_->eof() && downstream_.empty() && !shutdown_) {
+#endif
     VLOG(2) << "Connection (client) " << connection_id() << " last data sent: shutting down";
     shutdown_ = true;
     asio::error_code ec;

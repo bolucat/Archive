@@ -627,42 +627,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSUserNotificationCenterDele
     }
     
     func handleFoundSSURL(_ note: Notification) {
-        let sendNotify = {
-            (title: String, subtitle: String, infoText: String) in
-            
+        let sendNotify = { (title: String, subtitle: String, infoText: String) in
             let userNote = NSUserNotification()
             userNote.title = title
             userNote.subtitle = subtitle
             userNote.informativeText = infoText
             userNote.soundName = NSUserNotificationDefaultSoundName
             
-            NSUserNotificationCenter.default
-                .deliver(userNote);
+            NSUserNotificationCenter.default.deliver(userNote)
         }
         
         if let userInfo = (note as NSNotification).userInfo {
-            let urls: [URL] = userInfo["urls"] as! [URL]
+            // 检查错误
+            if let error = userInfo["error"] as? String {
+                sendNotify("Scan Failed", "", error.localized)
+                return
+            }
             
-            let mgr = ServerProfileManager.instance
-            let addCount = mgr.addServerProfileByURL(urls: urls)
+            // 使用新的通知信息
+            let title = (userInfo["title"] as? String) ?? ""
+            let subtitle = (userInfo["subtitle"] as? String) ?? ""
+            let body = (userInfo["body"] as? String) ?? ""
+            
+            let urls: [URL] = userInfo["urls"] as! [URL]
+            let addCount = ServerProfileManager.instance.addServerProfileByURL(urls: urls)
             
             if addCount > 0 {
-                var subtitle: String = ""
-                if userInfo["source"] as! String == "qrcode" {
-                    subtitle = "By scan QR Code".localized
-                } else if userInfo["source"] as! String == "url" {
-                    subtitle = "By handle SS URL".localized
-                } else if userInfo["source"] as! String == "pasteboard" {
-                    subtitle = "By import from pasteboard".localized
-                }
-                
-                sendNotify("Add \(addCount) Shadowsocks Server Profile".localized, subtitle, "")
+                sendNotify(
+                    title.localized,
+                    subtitle.localized,
+                    "Successfully added \(addCount) server configuration(s)".localized
+                )
             } else {
-                if userInfo["source"] as! String == "qrcode" {
-                    sendNotify("", "", "Not found valid QRCode of shadowsocks profile".localized)
-                } else if userInfo["source"] as! String == "url" {
-                    sendNotify("", "", "Not found valid URL of shadowsocks profile".localized)
-                }
+                sendNotify(
+                    title.localized,
+                    subtitle.localized,
+                    body.localized
+                )
             }
         }
     }

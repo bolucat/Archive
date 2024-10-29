@@ -49,5 +49,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>SWBApplication</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>ShadowsocksX-NG needs Screen Recording permission to scan QR codes on your screen</string>
 </dict>
 </plist>
