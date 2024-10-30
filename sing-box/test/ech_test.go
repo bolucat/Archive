@@ -85,18 +85,9 @@ func TestECH(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
-					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						RawDefaultRule: option.RawDefaultRule{
-							Inbound: []string{"mixed-in"},
-						},
-						RuleAction: option.RuleAction{
-							Action: C.RuleActionTypeRoute,
-
-							RouteOptions: option.RouteActionOptions{
-								Outbound: "trojan-out",
-							},
-						},
+						Inbound:  []string{"mixed-in"},
+						Outbound: "trojan-out",
 					},
 				},
 			},
@@ -175,18 +166,9 @@ func TestECHQUIC(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
-					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						RawDefaultRule: option.RawDefaultRule{
-							Inbound: []string{"mixed-in"},
-						},
-						RuleAction: option.RuleAction{
-							Action: C.RuleActionTypeRoute,
-
-							RouteOptions: option.RouteActionOptions{
-								Outbound: "tuic-out",
-							},
-						},
+						Inbound:  []string{"mixed-in"},
+						Outbound: "tuic-out",
 					},
 				},
 			},
@@ -267,16 +249,8 @@ func TestECHHysteria2(t *testing.T) {
 				{
 					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						RawDefaultRule: option.RawDefaultRule{
-							Inbound: []string{"mixed-in"},
-						},
-						RuleAction: option.RuleAction{
-							Action: C.RuleActionTypeRoute,
-
-							RouteOptions: option.RouteActionOptions{
-								Outbound: "hy2-out",
-							},
-						},
+						Inbound:  []string{"mixed-in"},
+						Outbound: "hy2-out",
 					},
 				},
 			},

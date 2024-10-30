@@ -60,18 +60,9 @@ func TestTCPSlowOpen(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
-					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						RawDefaultRule: option.RawDefaultRule{
-							Inbound: []string{"mixed-in"},
-						},
-						RuleAction: option.RuleAction{
-							Action: C.RuleActionTypeRoute,
-
-							RouteOptions: option.RouteActionOptions{
-								Outbound: "ss-out",
-							},
-						},
+						Inbound:  []string{"mixed-in"},
+						Outbound: "ss-out",
 					},
 				},
 			},

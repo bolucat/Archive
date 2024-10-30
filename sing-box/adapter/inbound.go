@@ -2,11 +2,13 @@ package adapter
 
 import (
 	"context"
+	"net"
 	"net/netip"
 
 	"github.com/sagernet/sing-box/common/process"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 )
 
 type Inbound interface {
@@ -15,14 +17,11 @@ type Inbound interface {
 	Tag() string
 }
 
-type TCPInjectableInbound interface {
+type InjectableInbound interface {
 	Inbound
-	ConnectionHandlerEx
-}
-
-type UDPInjectableInbound interface {
-	Inbound
-	PacketConnectionHandlerEx
+	Network() []string
+	NewConnection(ctx context.Context, conn net.Conn, metadata InboundContext) error
+	NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata InboundContext) error
 }
 
 type InboundContext struct {
@@ -44,14 +43,10 @@ type InboundContext struct {
 
 	// cache
 
-	InboundDetour     string
-	LastInbound       string
-	OriginDestination M.Socksaddr
-	// Deprecated
-	InboundOptions            option.InboundOptions
-	UDPDisableDomainUnmapping bool
-	DNSServer                 string
-
+	InboundDetour        string
+	LastInbound          string
+	OriginDestination    M.Socksaddr
+	InboundOptions       option.InboundOptions
 	DestinationAddresses []netip.Addr
 	SourceGeoIPCode      string
 	GeoIPCode            string
@@ -94,15 +89,6 @@ func ContextFrom(ctx context.Context) *InboundContext {
 		return nil
 	}
 	return metadata.(*InboundContext)
-}
-
-func AppendContext(ctx context.Context) (context.Context, *InboundContext) {
-	metadata := ContextFrom(ctx)
-	if metadata != nil {
-		return ctx, metadata
-	}
-	metadata = new(InboundContext)
-	return WithContext(ctx, metadata), metadata
 }
 
 func ExtendContext(ctx context.Context) (context.Context, *InboundContext) {

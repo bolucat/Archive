@@ -115,7 +115,7 @@ export const useRenderList = (mode: string) => {
     });
 
     if (!useRule) return retList.slice(1);
-    return retList.filter((item) => item.group.hidden === false);
+    return retList;
   }, [headStates, proxiesData, mode, col]);
 
   return {

@@ -22,7 +22,6 @@ type PlatformInterface interface {
 	IncludeAllNetworks() bool
 	ReadWIFIState() *WIFIState
 	ClearDNSCache()
-	ReportDeprecated(feature DeprecatedNote)
 }
 
 type TunInterface interface {

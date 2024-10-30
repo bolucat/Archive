@@ -81,11 +81,8 @@ func (a *AddrPrefix) UnmarshalJSON(content []byte) error {
 	return prefixErr
 }
 
-func (a *AddrPrefix) Build() netip.Prefix {
-	if a == nil {
-		return netip.Prefix{}
-	}
-	return netip.Prefix(*a)
+func (a AddrPrefix) Build() netip.Prefix {
+	return netip.Prefix(a)
 }
 
 type NetworkList string
@@ -146,29 +143,12 @@ func (l *Listable[T]) UnmarshalJSON(content []byte) error {
 
 type DomainStrategy dns.DomainStrategy
 
-func (s DomainStrategy) String() string {
-	switch dns.DomainStrategy(s) {
-	case dns.DomainStrategyAsIS:
-		return ""
-	case dns.DomainStrategyPreferIPv4:
-		return "prefer_ipv4"
-	case dns.DomainStrategyPreferIPv6:
-		return "prefer_ipv6"
-	case dns.DomainStrategyUseIPv4:
-		return "ipv4_only"
-	case dns.DomainStrategyUseIPv6:
-		return "ipv6_only"
-	default:
-		panic(E.New("unknown domain strategy: ", s))
-	}
-}
-
 func (s DomainStrategy) MarshalJSON() ([]byte, error) {
 	var value string
 	switch dns.DomainStrategy(s) {
 	case dns.DomainStrategyAsIS:
 		value = ""
-		// value = "as_is"
+		// value = "AsIS"
 	case dns.DomainStrategyPreferIPv4:
 		value = "prefer_ipv4"
 	case dns.DomainStrategyPreferIPv6:

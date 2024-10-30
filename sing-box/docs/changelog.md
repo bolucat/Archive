@@ -2,6 +2,11 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.2
+
+* Add warnings for usage of deprecated features
+* Fixes and improvements
+
 #### 1.11.0-alpha.1
 
 * Update quic-go to v0.48.0

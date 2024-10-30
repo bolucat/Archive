@@ -23,6 +23,8 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
           - os: windows-latest
+            target: i686-pc-windows-msvc
+          - os: windows-latest
             target: aarch64-pc-windows-msvc
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -35,7 +37,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.77.0
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
@@ -139,6 +141,9 @@ jobs:
             target: x86_64-pc-windows-msvc
             arch: x64
           - os: windows-latest
+            target: i686-pc-windows-msvc
+            arch: x86
+          - os: windows-latest
             target: aarch64-pc-windows-msvc
             arch: arm64
     runs-on: ${{ matrix.os }}
@@ -235,7 +240,7 @@ jobs:
           cat > release.txt << 'EOF'
           ## 我应该下载哪个版本？
 
-          ### MacOS
+          ### MacOS (提示文件损坏或开发者无法验证请查看下面FAQ)
           - MacOS intel芯片: x64.dmg
           - MacOS apple M芯片: aarch64.dmg
 
@@ -245,18 +250,20 @@ jobs:
           ### Windows (Win7 用户请查看下面FAQ中的解决方案)
           #### 正常版本(推荐)
           - 64位: x64-setup.exe
+          - 32位: x86-setup.exe
           - arm64架构: arm64-setup.exe
-          #### 便携版问题很多不再提供
-          #### 内置Webview2版(体积较大，仅在企业版系统或无法安装webview2时使用)
+          #### 便携版(不推荐使用，无法自动更新)
+          - 64位: x64_portable.zip
+          - 32位: x86_portable.zip
+          - arm64架构: arm64_portable.zip
+          #### 内置Webview2版(体积较大，仅在企业版系统或Win7无法安装webview2时使用)
           - 64位: x64_fixed_webview2-setup.exe
+          - 32位: x86_fixed_webview2-setup.exe
           - arm64架构: arm64_fixed_webview2-setup.exe
 
           ### FAQ
 
-          - [常见问题](https://clash-verge-rev.github.io/faq/windows.html)
-
-          ### 稳定机场VPN推荐
-          - [狗狗加速](https://verge.dginv.click/#/register?code=oaxsAGo6)
+          - [FAQ](https://clash-verge-rev.github.io/faq/windows.html)
 
           Created at  ${{ env.BUILDTIME }}.
           EOF

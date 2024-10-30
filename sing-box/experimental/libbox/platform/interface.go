@@ -5,7 +5,6 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/process"
-	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/control"
@@ -26,5 +25,4 @@ type Interface interface {
 	ClearDNSCache()
 	ReadWIFIState() adapter.WIFIState
 	process.Searcher
-	deprecated.Manager
 }

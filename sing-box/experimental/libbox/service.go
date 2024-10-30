@@ -50,6 +50,7 @@ func NewService(configContent string, platformInterface PlatformInterface) (*Box
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
+	ctx = service.ContextWith[deprecated.Manager](ctx, new(deprecatedManager))
 	platformWrapper := &platformInterfaceWrapper{iif: platformInterface, useProcFS: platformInterface.UseProcFS()}
 	instance, err := box.New(box.Options{
 		Context:           ctx,
@@ -236,8 +237,4 @@ func (w *platformInterfaceWrapper) DisableColors() bool {
 
 func (w *platformInterfaceWrapper) WriteMessage(level log.Level, message string) {
 	w.iif.WriteLog(message)
-}
-
-func (w *platformInterfaceWrapper) ReportDeprecated(note deprecated.Note) {
-	w.iif.ReportDeprecated(DeprecatedNote(note))
 }

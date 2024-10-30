@@ -18,9 +18,9 @@ import { Notice } from "@/components/base";
 import { TestBox } from "./test-box";
 import delayManager from "@/services/delay";
 import { cmdTestDelay, downloadIconCache } from "@/services/cmds";
-import { UnlistenFn } from "@tauri-apps/api/event";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { useListen } from "@/hooks/use-listen";
+
 interface Props {
   id: string;
   itemData: IVergeTestItem;
@@ -47,7 +47,6 @@ export const TestItem = (props: Props) => {
   const [delay, setDelay] = useState(-1);
   const { uid, name, icon, url } = itemData;
   const [iconCachePath, setIconCachePath] = useState("");
-  const { addListener } = useListen();
 
   useEffect(() => {
     initIconCachePath();
@@ -92,7 +91,7 @@ export const TestItem = (props: Props) => {
 
   const listenTsetEvent = async () => {
     eventListener();
-    eventListener = await addListener("verge://test-all", () => {
+    eventListener = await listen("verge://test-all", () => {
       onDelay();
     });
   };

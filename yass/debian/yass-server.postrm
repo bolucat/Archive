@@ -1,0 +1,18 @@
+#!/bin/bash
+
+if [ -d "/run/systemd/system" ]; then
+    systemctl --system daemon-reload >/dev/null || :
+fi
+
+case "$1" in
+    purge | 0)
+        ;;
+
+    upgrade | [1-9]*)
+        if [ -d "/run/systemd/system" ]; then
+            systemctl try-restart yass-server.service >/dev/null || :
+        fi
+        ;;
+esac
+
+exit 0

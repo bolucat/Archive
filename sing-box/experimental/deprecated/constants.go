@@ -30,7 +30,14 @@ func (n Note) Impending() bool {
 	return versionMinor <= 1
 }
 
-func (n Note) String() string {
+func (n Note) Message() string {
+	return F.ToString(
+		n.Description, " is deprecated in sing-box ", n.DeprecatedVersion,
+		" and will be removed in sing-box ", n.ScheduledVersion, ", please checkout documentation for migration.",
+	)
+}
+
+func (n Note) MessageWithLink() string {
 	return F.ToString(
 		n.Description, " is deprecated in sing-box ", n.DeprecatedVersion,
 		" and will be removed in sing-box ", n.ScheduledVersion, ", checkout documentation for migration: ", n.MigrationLink,

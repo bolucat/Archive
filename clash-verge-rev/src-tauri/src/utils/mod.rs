@@ -1,5 +1,4 @@
 pub mod dirs;
-pub mod error;
 pub mod help;
 pub mod init;
 pub mod resolve;

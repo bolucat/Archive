@@ -1,5 +1,4 @@
-import fs from "fs";
-import fsp from "fs/promises";
+import fs from "fs-extra";
 import path from "path";
 import AdmZip from "adm-zip";
 import { createRequire } from "module";
@@ -31,14 +30,12 @@ async function resolvePortable() {
 
   const configDir = path.join(releaseDir, ".config");
 
-  if (!fs.existsSync(releaseDir)) {
+  if (!(await fs.pathExists(releaseDir))) {
     throw new Error("could not found the release dir");
   }
 
-  await fsp.mkdir(configDir, { recursive: true });
-  if (!fs.existsSync(path.join(configDir, "PORTABLE"))) {
-    await fsp.writeFile(path.join(configDir, "PORTABLE"), "");
-  }
+  await fs.mkdir(configDir);
+  await fs.createFile(path.join(configDir, "PORTABLE"));
 
   const zip = new AdmZip();
 

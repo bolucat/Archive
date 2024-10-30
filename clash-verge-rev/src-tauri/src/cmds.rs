@@ -2,7 +2,7 @@ use crate::{
     config::*,
     core::*,
     feat,
-    utils::{dirs, help},
+    utils::{dirs, help, resolve},
 };
 use crate::{ret_err, wrap_err};
 use anyhow::{Context, Result};
@@ -14,8 +14,8 @@ type CmdResult<T = ()> = Result<T, String>;
 use tauri::Manager;
 
 #[tauri::command]
-pub fn copy_clash_env() -> CmdResult {
-    feat::copy_clash_env();
+pub fn copy_clash_env(app_handle: tauri::AppHandle) -> CmdResult {
+    feat::copy_clash_env(&app_handle);
     Ok(())
 }
 
@@ -185,7 +185,7 @@ pub async fn change_clash_core(clash_core: Option<String>) -> CmdResult {
 /// restart the sidecar
 #[tauri::command]
 pub async fn restart_sidecar() -> CmdResult {
-    wrap_err!(CoreManager::global().restart_core().await)
+    wrap_err!(CoreManager::global().run_core().await)
 }
 
 /// get the system proxy
@@ -337,7 +337,7 @@ pub fn get_network_interfaces() -> Vec<String> {
     for (interface_name, _) in &networks {
         result.push(interface_name.clone());
     }
-    result
+    return result;
 }
 
 #[tauri::command]
@@ -371,8 +371,11 @@ pub fn open_devtools(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub async fn exit_app() {
-    feat::quit(Some(0));
+pub fn exit_app(app_handle: tauri::AppHandle) {
+    let _ = resolve::save_window_size_position(&app_handle, true);
+    resolve::resolve_reset();
+    app_handle.exit(0);
+    std::process::exit(0);
 }
 
 pub mod service {
@@ -382,6 +385,16 @@ pub mod service {
     #[tauri::command]
     pub async fn check_service() -> CmdResult<service::JsonResponse> {
         wrap_err!(service::check_service().await)
+    }
+
+    #[tauri::command]
+    pub async fn install_service(passwd: String) -> CmdResult {
+        wrap_err!(service::install_service(passwd).await)
+    }
+
+    #[tauri::command]
+    pub async fn uninstall_service(passwd: String) -> CmdResult {
+        wrap_err!(service::uninstall_service(passwd).await)
     }
 }
 

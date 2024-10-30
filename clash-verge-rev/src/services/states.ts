@@ -5,7 +5,7 @@ const [ThemeModeProvider, useThemeMode, useSetThemeMode] = createContextState<
   "light" | "dark"
 >("light");
 
-export const useEnableLog = () => useLocalStorage("enable-log", false);
+export const useEnableLog = () => useLocalStorage("enable-log", true);
 
 interface IConnectionSetting {
   layout: "table" | "list";

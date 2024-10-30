@@ -7,11 +7,10 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { BaseDialog, DialogRef, Notice } from "@/components/base";
 import { useUpdateState, useSetUpdateState } from "@/services/states";
-import { Event, UnlistenFn } from "@tauri-apps/api/event";
+import { listen, Event, UnlistenFn } from "@tauri-apps/api/event";
 import { portableFlag } from "@/pages/_layout";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import ReactMarkdown from "react-markdown";
-import { useListen } from "@/hooks/use-listen";
 
 let eventListener: UnlistenFn | null = null;
 
@@ -22,7 +21,6 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
 
   const updateState = useUpdateState();
   const setUpdateState = useSetUpdateState();
-  const { addListener } = useListen();
 
   const { data: updateInfo } = useSWR("checkUpdate", checkUpdate, {
     errorRetryCount: 2,
@@ -68,7 +66,7 @@ export const UpdateViewer = forwardRef<DialogRef>((props, ref) => {
     if (eventListener !== null) {
       eventListener();
     }
-    eventListener = await addListener(
+    eventListener = await listen(
       "tauri://update-download-progress",
       (e: Event<any>) => {
         setTotal(e.payload.contentLength);

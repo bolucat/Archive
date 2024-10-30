@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -27,19 +28,17 @@ import (
 	"go4.org/netipx"
 )
 
-var _ adapter.Inbound = (*TUN)(nil)
+var _ adapter.Inbound = (*Tun)(nil)
 
-type TUN struct {
-	tag    string
-	ctx    context.Context
-	router adapter.Router
-	logger log.ContextLogger
-	// Deprecated
-	inboundOptions option.InboundOptions
-	tunOptions     tun.Options
-	// Deprecated
+type Tun struct {
+	tag                         string
+	ctx                         context.Context
+	router                      adapter.Router
+	logger                      log.ContextLogger
+	inboundOptions              option.InboundOptions
+	tunOptions                  tun.Options
 	endpointIndependentNat      bool
-	udpTimeout                  time.Duration
+	udpTimeout                  int64
 	stack                       string
 	tunIf                       tun.Tun
 	tunStack                    tun.Stack
@@ -54,17 +53,20 @@ type TUN struct {
 	routeExcludeAddressSet      []*netipx.IPSet
 }
 
-func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions, platformInterface platform.Interface) (*TUN, error) {
+func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions, platformInterface platform.Interface) (*Tun, error) {
 	address := options.Address
+	var deprecatedAddressUsed bool
 	//nolint:staticcheck
 	//goland:noinspection GoDeprecation
 	if len(options.Inet4Address) > 0 {
 		address = append(address, options.Inet4Address...)
+		deprecatedAddressUsed = true
 	}
 	//nolint:staticcheck
 	//goland:noinspection GoDeprecation
 	if len(options.Inet6Address) > 0 {
 		address = append(address, options.Inet6Address...)
+		deprecatedAddressUsed = true
 	}
 	inet4Address := common.Filter(address, func(it netip.Prefix) bool {
 		return it.Addr().Is4()
@@ -78,11 +80,13 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 	//goland:noinspection GoDeprecation
 	if len(options.Inet4RouteAddress) > 0 {
 		routeAddress = append(routeAddress, options.Inet4RouteAddress...)
+		deprecatedAddressUsed = true
 	}
 	//nolint:staticcheck
 	//goland:noinspection GoDeprecation
 	if len(options.Inet6RouteAddress) > 0 {
 		routeAddress = append(routeAddress, options.Inet6RouteAddress...)
+		deprecatedAddressUsed = true
 	}
 	inet4RouteAddress := common.Filter(routeAddress, func(it netip.Prefix) bool {
 		return it.Addr().Is4()
@@ -96,11 +100,13 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 	//goland:noinspection GoDeprecation
 	if len(options.Inet4RouteExcludeAddress) > 0 {
 		routeExcludeAddress = append(routeExcludeAddress, options.Inet4RouteExcludeAddress...)
+		deprecatedAddressUsed = true
 	}
 	//nolint:staticcheck
 	//goland:noinspection GoDeprecation
 	if len(options.Inet6RouteExcludeAddress) > 0 {
 		routeExcludeAddress = append(routeExcludeAddress, options.Inet6RouteExcludeAddress...)
+		deprecatedAddressUsed = true
 	}
 	inet4RouteExcludeAddress := common.Filter(routeExcludeAddress, func(it netip.Prefix) bool {
 		return it.Addr().Is4()
@@ -108,6 +114,10 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 	inet6RouteExcludeAddress := common.Filter(routeExcludeAddress, func(it netip.Prefix) bool {
 		return it.Addr().Is6()
 	})
+
+	if deprecatedAddressUsed {
+		deprecated.Report(ctx, deprecated.OptionTUNAddressX)
+	}
 
 	tunMTU := options.MTU
 	if tunMTU == 0 {
@@ -152,7 +162,7 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 		outputMark = tun.DefaultAutoRedirectOutputMark
 	}
 
-	inbound := &TUN{
+	inbound := &Tun{
 		tag:            tag,
 		ctx:            ctx,
 		router:         router,
@@ -184,7 +194,7 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 			InterfaceMonitor:         router.InterfaceMonitor(),
 		},
 		endpointIndependentNat: options.EndpointIndependentNat,
-		udpTimeout:             udpTimeout,
+		udpTimeout:             int64(udpTimeout.Seconds()),
 		stack:                  options.Stack,
 		platformInterface:      platformInterface,
 		platformOptions:        common.PtrValueOrDefault(options.Platform),
@@ -197,7 +207,7 @@ func NewTun(ctx context.Context, router adapter.Router, logger log.ContextLogger
 		inbound.autoRedirect, err = tun.NewAutoRedirect(tun.AutoRedirectOptions{
 			TunOptions:             &inbound.tunOptions,
 			Context:                ctx,
-			Handler:                (*autoRedirectHandler)(inbound),
+			Handler:                inbound,
 			Logger:                 logger,
 			NetworkMonitor:         router.NetworkMonitor(),
 			InterfaceFinder:        router.InterfaceFinder(),
@@ -273,17 +283,17 @@ func parseRange(uidRanges []ranges.Range[uint32], rangeList []string) ([]ranges.
 	return uidRanges, nil
 }
 
-func (t *TUN) Type() string {
+func (t *Tun) Type() string {
 	return C.TypeTun
 }
 
-func (t *TUN) Tag() string {
+func (t *Tun) Tag() string {
 	return t.tag
 }
 
-func (t *TUN) Start() error {
+func (t *Tun) Start() error {
 	if C.IsAndroid && t.platformInterface == nil {
-		t.tunOptions.BuildAndroidRules(t.router.PackageManager())
+		t.tunOptions.BuildAndroidRules(t.router.PackageManager(), t)
 	}
 	if t.tunOptions.Name == "" {
 		t.tunOptions.Name = tun.CalculateInterfaceName("")
@@ -317,6 +327,7 @@ func (t *TUN) Start() error {
 		Context:                t.ctx,
 		Tun:                    tunInterface,
 		TunOptions:             t.tunOptions,
+		EndpointIndependentNat: t.endpointIndependentNat,
 		UDPTimeout:             t.udpTimeout,
 		Handler:                t,
 		Logger:                 t.logger,
@@ -338,7 +349,7 @@ func (t *TUN) Start() error {
 	return nil
 }
 
-func (t *TUN) PostStart() error {
+func (t *Tun) PostStart() error {
 	monitor := taskmonitor.New(t.logger, C.StartTimeout)
 	if t.autoRedirect != nil {
 		t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
@@ -377,7 +388,7 @@ func (t *TUN) PostStart() error {
 	return nil
 }
 
-func (t *TUN) updateRouteAddressSet(it adapter.RuleSet) {
+func (t *Tun) updateRouteAddressSet(it adapter.RuleSet) {
 	t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
 	t.routeExcludeAddressSet = common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)
 	t.autoRedirect.UpdateRouteAddressSet()
@@ -385,7 +396,7 @@ func (t *TUN) updateRouteAddressSet(it adapter.RuleSet) {
 	t.routeExcludeAddressSet = nil
 }
 
-func (t *TUN) Close() error {
+func (t *Tun) Close() error {
 	return common.Close(
 		t.tunStack,
 		t.tunIf,
@@ -393,54 +404,44 @@ func (t *TUN) Close() error {
 	)
 }
 
-func (t *TUN) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr) error {
-	return t.router.PreMatch(adapter.InboundContext{
-		Inbound:        t.tag,
-		InboundType:    C.TypeTun,
-		Network:        network,
-		Source:         source,
-		Destination:    destination,
-		InboundOptions: t.inboundOptions,
-	})
-}
-
-func (t *TUN) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+func (t *Tun) NewConnection(ctx context.Context, conn net.Conn, upstreamMetadata M.Metadata) error {
 	ctx = log.ContextWithNewID(ctx)
 	var metadata adapter.InboundContext
 	metadata.Inbound = t.tag
 	metadata.InboundType = C.TypeTun
-	metadata.Source = source
-	metadata.Destination = destination
+	metadata.Source = upstreamMetadata.Source
+	metadata.Destination = upstreamMetadata.Destination
 	metadata.InboundOptions = t.inboundOptions
-	t.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
+	if upstreamMetadata.Protocol != "" {
+		t.logger.InfoContext(ctx, "inbound ", upstreamMetadata.Protocol, " connection from ", metadata.Source)
+	} else {
+		t.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
+	}
 	t.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
-	t.router.RouteConnectionEx(ctx, conn, metadata, onClose)
+	err := t.router.RouteConnection(ctx, conn, metadata)
+	if err != nil {
+		t.NewError(ctx, err)
+	}
+	return nil
 }
 
-func (t *TUN) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+func (t *Tun) NewPacketConnection(ctx context.Context, conn N.PacketConn, upstreamMetadata M.Metadata) error {
 	ctx = log.ContextWithNewID(ctx)
 	var metadata adapter.InboundContext
 	metadata.Inbound = t.tag
 	metadata.InboundType = C.TypeTun
-	metadata.Source = source
-	metadata.Destination = destination
+	metadata.Source = upstreamMetadata.Source
+	metadata.Destination = upstreamMetadata.Destination
 	metadata.InboundOptions = t.inboundOptions
 	t.logger.InfoContext(ctx, "inbound packet connection from ", metadata.Source)
 	t.logger.InfoContext(ctx, "inbound packet connection to ", metadata.Destination)
-	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
+	err := t.router.RoutePacketConnection(ctx, conn, metadata)
+	if err != nil {
+		t.NewError(ctx, err)
+	}
+	return nil
 }
 
-type autoRedirectHandler TUN
-
-func (t *autoRedirectHandler) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
-	ctx = log.ContextWithNewID(ctx)
-	var metadata adapter.InboundContext
-	metadata.Inbound = t.tag
-	metadata.InboundType = C.TypeTun
-	metadata.Source = source
-	metadata.Destination = destination
-	metadata.InboundOptions = t.inboundOptions
-	t.logger.InfoContext(ctx, "inbound redirect connection from ", metadata.Source)
-	t.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
-	t.router.RouteConnectionEx(ctx, conn, metadata, onClose)
+func (t *Tun) NewError(ctx context.Context, err error) {
+	NewError(t.logger, ctx, err)
 }

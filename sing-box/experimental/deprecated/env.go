@@ -17,14 +17,14 @@ func NewEnvManager(logger logger.Logger) Manager {
 
 func (f *envManager) ReportDeprecated(feature Note) {
 	if !feature.Impending() {
-		f.logger.Warn(feature.String())
+		f.logger.Warn(feature.MessageWithLink())
 		return
 	}
 	enable, enableErr := strconv.ParseBool(os.Getenv("ENABLE_DEPRECATED_" + feature.EnvName))
 	if enableErr == nil && enable {
-		f.logger.Warn(feature.String())
+		f.logger.Warn(feature.MessageWithLink())
 		return
 	}
-	f.logger.Error(feature.String())
+	f.logger.Error(feature.MessageWithLink())
 	f.logger.Fatal("to continuing using this feature, set ENABLE_DEPRECATED_" + feature.EnvName + "=true")
 }

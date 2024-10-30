@@ -17,28 +17,15 @@ If you're a Windows user, you may need to perform some additional steps:
 - Make sure to add Rust and Node.js to your system's PATH. This is usually done during the installation process, but you can verify and manually add them if necessary.
 - The gnu `patch` tool should be installed
 
-When you setup `Rust` environment, Only use toolchain with `Windows MSVC` , to change settings follow command:
+### Install Node.js Packages
+
+After installing Rust and Node.js, install the necessary Node.js packages:
 
 ```shell
-rustup target add x86_64-pc-windows-msvc
-rustup set default-host x86_64-pc-windows-msvc
+pnpm i
 ```
 
-### Install Node.js Package
-
-After installing Rust and Node.js, install the necessary Node.js and Node Package Manager:
-
-```shell
-npm install pnpm -g
-```
-
-### Install Dependencies
-
-```shell
-pnpm install
-```
-
-### Download the Clash Mihomo Core Binary
+### Download the Clash Binary
 
 You have two options for downloading the clash binary:
 
@@ -62,13 +49,11 @@ pnpm dev:diff
 
 ### Build the Project
 
-To build this project:
+If you want to build the project, use:
 
 ```shell
-pnpm run build
+pnpm build
 ```
-
-The `Artifacts` will display in the `log` in the Terminal.
 
 ## Contributing Your Changes
 

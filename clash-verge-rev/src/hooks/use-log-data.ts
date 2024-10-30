@@ -11,6 +11,7 @@ export const useLogData = () => {
   const { clashInfo } = useClashInfo();
 
   const [enableLog] = useEnableLog();
+  !enableLog || !clashInfo;
 
   return useSWRSubscription<ILogItem[], any, "getClashLog" | null>(
     enableLog && clashInfo ? "getClashLog" : null,

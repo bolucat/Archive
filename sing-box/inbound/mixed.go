@@ -4,6 +4,7 @@ import (
 	std_bufio "bufio"
 	"context"
 	"net"
+	"os"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/uot"
@@ -11,7 +12,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/auth"
-	E "github.com/sagernet/sing/common/exceptions"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/http"
 	"github.com/sagernet/sing/protocol/socks"
@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	_ adapter.Inbound              = (*Mixed)(nil)
-	_ adapter.TCPInjectableInbound = (*Mixed)(nil)
+	_ adapter.Inbound           = (*Mixed)(nil)
+	_ adapter.InjectableInbound = (*Mixed)(nil)
 )
 
 type Mixed struct {
@@ -47,24 +47,20 @@ func NewMixed(ctx context.Context, router adapter.Router, logger log.ContextLogg
 	return inbound
 }
 
-func (h *Mixed) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
-	err := h.newConnection(ctx, conn, metadata, onClose)
-	N.CloseOnHandshakeFailure(conn, onClose, err)
-	if err != nil {
-		h.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", metadata.Source))
-	}
-}
-
-func (h *Mixed) newConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) error {
+func (h *Mixed) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
 	reader := std_bufio.NewReader(conn)
 	headerBytes, err := reader.Peek(1)
 	if err != nil {
-		return E.Cause(err, "peek first byte")
+		return err
 	}
 	switch headerBytes[0] {
 	case socks4.Version, socks5.Version:
-		return socks.HandleConnectionEx(ctx, conn, reader, h.authenticator, nil, h.upstreamUserHandlerEx(metadata), metadata.Source, metadata.Destination, onClose)
+		return socks.HandleConnection0(ctx, conn, reader, h.authenticator, h.upstreamUserHandler(metadata), adapter.UpstreamMetadata(metadata))
 	default:
-		return http.HandleConnectionEx(ctx, conn, reader, h.authenticator, nil, h.upstreamUserHandlerEx(metadata), metadata.Source, onClose)
+		return http.HandleConnection(ctx, conn, reader, h.authenticator, h.upstreamUserHandler(metadata), adapter.UpstreamMetadata(metadata))
 	}
+}
+
+func (h *Mixed) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
+	return os.ErrInvalid
 }

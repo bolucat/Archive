@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/baderror"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -14,15 +15,17 @@ var _ net.Conn = (*GRPCConn)(nil)
 
 type GRPCConn struct {
 	GunService
-	cache []byte
+	cancel common.ContextCancelCauseFunc
+	cache  []byte
 }
 
-func NewGRPCConn(service GunService) *GRPCConn {
+func NewGRPCConn(service GunService, cancel common.ContextCancelCauseFunc) *GRPCConn {
 	if client, isClient := service.(GunService_TunClient); isClient {
 		service = &clientConnWrapper{client}
 	}
 	return &GRPCConn{
 		GunService: service,
+		cancel:     cancel,
 	}
 }
 
@@ -35,6 +38,7 @@ func (c *GRPCConn) Read(b []byte) (n int, err error) {
 	hunk, err := c.Recv()
 	err = baderror.WrapGRPC(err)
 	if err != nil {
+		c.cancel(err)
 		return
 	}
 	n = copy(b, hunk.Data)
@@ -47,12 +51,14 @@ func (c *GRPCConn) Read(b []byte) (n int, err error) {
 func (c *GRPCConn) Write(b []byte) (n int, err error) {
 	err = baderror.WrapGRPC(c.Send(&Hunk{Data: b}))
 	if err != nil {
+		c.cancel(err)
 		return
 	}
 	return len(b), nil
 }
 
 func (c *GRPCConn) Close() error {
+	c.cancel(net.ErrClosed)
 	return nil
 }
 

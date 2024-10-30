@@ -65,7 +65,7 @@ func NewSocks(router adapter.Router, logger log.ContextLogger, tag string, optio
 }
 
 func (h *Socks) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	ctx, metadata := adapter.AppendContext(ctx)
+	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
 	switch N.NetworkName(network) {
@@ -91,7 +91,7 @@ func (h *Socks) DialContext(ctx context.Context, network string, destination M.S
 }
 
 func (h *Socks) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	ctx, metadata := adapter.AppendContext(ctx)
+	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
 	if h.uotClient != nil {
@@ -113,8 +113,6 @@ func (h *Socks) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.
 	return h.client.ListenPacket(ctx, destination)
 }
 
-// TODO
-// Deprecated
 func (h *Socks) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
 	if h.resolve {
 		return NewDirectConnection(ctx, h.router, h, conn, metadata, dns.DomainStrategyUseIPv4)
@@ -123,8 +121,6 @@ func (h *Socks) NewConnection(ctx context.Context, conn net.Conn, metadata adapt
 	}
 }
 
-// TODO
-// Deprecated
 func (h *Socks) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
 	if h.resolve {
 		return NewDirectPacketConnection(ctx, h.router, h, conn, metadata, dns.DomainStrategyUseIPv4)

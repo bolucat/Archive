@@ -98,7 +98,6 @@ func (h *Inbound) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-// Deprecated: Use rule action instead
 type InboundOptions struct {
 	SniffEnabled              bool           `json:"sniff,omitempty"`
 	SniffOverrideDestination  bool           `json:"sniff_override_destination,omitempty"`

@@ -10,7 +10,7 @@ import { useLogData } from "@/hooks/use-log-data";
 import { useEnableLog } from "@/services/states";
 import { BaseEmpty, BasePage } from "@/components/base";
 import LogItem from "@/components/log/log-item";
-import { useTheme } from "@mui/material/styles";
+import { useCustomTheme } from "@/components/layout/use-custom-theme";
 import { BaseSearchBox } from "@/components/base/base-search-box";
 import { BaseStyledSelect } from "@/components/base/base-styled-select";
 import { mutate } from "swr";
@@ -19,7 +19,7 @@ const LogPage = () => {
   const { t } = useTranslation();
   const { data: logData = [] } = useLogData();
   const [enableLog, setEnableLog] = useEnableLog();
-  const theme = useTheme();
+  const { theme } = useCustomTheme();
   const isDark = theme.palette.mode === "dark";
   const [logState, setLogState] = useState("all");
   const [match, setMatch] = useState(() => (_: string) => true);
@@ -52,19 +52,15 @@ const LogPage = () => {
             )}
           </IconButton>
 
-          {enableLog === true && (
-            <Button
-              size="small"
-              variant="contained"
-              // useSWRSubscription adds a prefix "$sub$" to the cache key
-              // https://github.com/vercel/swr/blob/1585a3e37d90ad0df8097b099db38f1afb43c95d/src/subscription/index.ts#L37
-              onClick={() => {
-                mutate("$sub$getClashLog", []);
-              }}
-            >
-              {t("Clear")}
-            </Button>
-          )}
+          <Button
+            size="small"
+            variant="contained"
+            // useSWRSubscription adds a prefix "$sub$" to the cache key
+            // https://github.com/vercel/swr/blob/1585a3e37d90ad0df8097b099db38f1afb43c95d/src/subscription/index.ts#L37
+            onClick={() => mutate("$sub$getClashLog", [])}
+          >
+            {t("Clear")}
+          </Button>
         </Box>
       }
     >
@@ -98,7 +94,7 @@ const LogPage = () => {
           bgcolor: isDark ? "#282a36" : "#ffffff",
         }}
       >
-        {filterLogs.length > 0 && enableLog === true ? (
+        {filterLogs.length > 0 ? (
           <Virtuoso
             initialTopMostItemIndex={999}
             data={filterLogs}

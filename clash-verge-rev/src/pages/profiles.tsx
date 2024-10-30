@@ -47,15 +47,13 @@ import { useProfiles } from "@/hooks/use-profiles";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
 import { throttle } from "lodash-es";
 import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
+import { listen } from "@tauri-apps/api/event";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { useLocation } from "react-router-dom";
-import { useListen } from "@/hooks/use-listen";
 
 const ProfilePage = () => {
   const { t } = useTranslation();
-  const location = useLocation();
-  const { addListener } = useListen();
+
   const [url, setUrl] = useState("");
   const [disabled, setDisabled] = useState(false);
   const [activatings, setActivatings] = useState<string[]>([]);
@@ -66,10 +64,9 @@ const ProfilePage = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-  const { current } = location.state || {};
 
   useEffect(() => {
-    const unlisten = addListener("tauri://file-drop", async (event) => {
+    const unlisten = listen("tauri://file-drop", async (event) => {
       const fileList = event.payload as string[];
       for (let file of fileList) {
         if (!file.endsWith(".yaml") && !file.endsWith(".yml")) {
@@ -135,8 +132,23 @@ const ProfilePage = () => {
       Notice.success(t("Profile Imported Successfully"));
       setUrl("");
       setLoading(false);
-      mutateProfiles();
-      await onEnhance(false);
+
+      getProfiles().then(async (newProfiles) => {
+        mutate("getProfiles", newProfiles);
+
+        const remoteItem = newProfiles.items?.find((e) => e.type === "remote");
+
+        const profilesCount = newProfiles.items?.filter(
+          (e) => e.type === "remote" || e.type === "local"
+        ).length as number;
+
+        if (remoteItem && (profilesCount == 1 || !newProfiles.current)) {
+          const current = remoteItem.uid;
+          await patchProfiles({ current });
+          mutateLogs();
+          setTimeout(() => activateSelected(), 2000);
+        }
+      });
     } catch (err: any) {
       Notice.error(err.message || err.toString());
       setLoading(false);
@@ -156,49 +168,33 @@ const ProfilePage = () => {
     }
   };
 
-  const activateProfile = async (profile: string, notifySuccess: boolean) => {
+  const onSelect = useLockFn(async (current: string, force: boolean) => {
+    if (!force && current === profiles.current) return;
     // 避免大多数情况下loading态闪烁
     const reset = setTimeout(() => {
-      setActivatings((prev) => [...prev, profile]);
+      setActivatings([...currentActivatings(), current]);
     }, 100);
-
     try {
-      await patchProfiles({ current: profile });
+      await patchProfiles({ current });
       await mutateLogs();
       closeAllConnections();
-      await activateSelected();
-      if (notifySuccess) {
+      activateSelected().then(() => {
         Notice.success(t("Profile Switched"), 1000);
-      }
+      });
     } catch (err: any) {
       Notice.error(err?.message || err.toString(), 4000);
     } finally {
       clearTimeout(reset);
       setActivatings([]);
     }
-  };
-  const onSelect = useLockFn(async (current: string, force: boolean) => {
-    if (!force && current === profiles.current) return;
-    await activateProfile(current, true);
   });
 
-  useEffect(() => {
-    (async () => {
-      if (current) {
-        mutateProfiles();
-        await activateProfile(current, false);
-      }
-    })();
-  }, current);
-
-  const onEnhance = useLockFn(async (notifySuccess: boolean) => {
+  const onEnhance = useLockFn(async () => {
     setActivatings(currentActivatings());
     try {
       await enhanceProfiles();
       mutateLogs();
-      if (notifySuccess) {
-        Notice.success(t("Profile Reactivated"), 1000);
-      }
+      Notice.success(t("Profile Reactivated"), 1000);
     } catch (err: any) {
       Notice.error(err.message || err.toString(), 3000);
     } finally {
@@ -213,7 +209,7 @@ const ProfilePage = () => {
       await deleteProfile(uid);
       mutateProfiles();
       mutateLogs();
-      current && (await onEnhance(false));
+      current && (await onEnhance());
     } catch (err: any) {
       Notice.error(err?.message || err.toString());
     } finally {
@@ -290,7 +286,7 @@ const ProfilePage = () => {
             size="small"
             color="primary"
             title={t("Reactivate Profiles")}
-            onClick={() => onEnhance(true)}
+            onClick={onEnhance}
           >
             <LocalFireDepartmentRounded />
           </IconButton>
@@ -389,7 +385,7 @@ const ProfilePage = () => {
                       onEdit={() => viewerRef.current?.edit(item)}
                       onSave={async (prev, curr) => {
                         if (prev !== curr && profiles.current === item.uid) {
-                          await onEnhance(false);
+                          await onEnhance();
                         }
                       }}
                       onDelete={() => onDelete(item.uid)}
@@ -412,7 +408,7 @@ const ProfilePage = () => {
                 id="Merge"
                 onSave={async (prev, curr) => {
                   if (prev !== curr) {
-                    await onEnhance(false);
+                    await onEnhance();
                   }
                 }}
               />
@@ -423,7 +419,7 @@ const ProfilePage = () => {
                 logInfo={chainLogs["Script"]}
                 onSave={async (prev, curr) => {
                   if (prev !== curr) {
-                    await onEnhance(false);
+                    await onEnhance();
                   }
                 }}
               />
@@ -432,13 +428,7 @@ const ProfilePage = () => {
         </Box>
       </Box>
 
-      <ProfileViewer
-        ref={viewerRef}
-        onChange={async () => {
-          mutateProfiles();
-          await onEnhance(false);
-        }}
-      />
+      <ProfileViewer ref={viewerRef} onChange={() => mutateProfiles()} />
       <ConfigViewer ref={configRef} />
     </BasePage>
   );

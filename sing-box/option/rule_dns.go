@@ -64,7 +64,7 @@ func (r DNSRule) IsValid() bool {
 	}
 }
 
-type RawDefaultDNSRule struct {
+type DefaultDNSRule struct {
 	Inbound                  Listable[string]       `json:"inbound,omitempty"`
 	IPVersion                int                    `json:"ip_version,omitempty"`
 	QueryType                Listable[DNSQueryType] `json:"query_type,omitempty"`
@@ -100,64 +100,35 @@ type RawDefaultDNSRule struct {
 	RuleSetIPCIDRMatchSource bool                   `json:"rule_set_ip_cidr_match_source,omitempty"`
 	RuleSetIPCIDRAcceptEmpty bool                   `json:"rule_set_ip_cidr_accept_empty,omitempty"`
 	Invert                   bool                   `json:"invert,omitempty"`
+	Server                   string                 `json:"server,omitempty"`
+	DisableCache             bool                   `json:"disable_cache,omitempty"`
+	RewriteTTL               *uint32                `json:"rewrite_ttl,omitempty"`
+	ClientSubnet             *AddrPrefix            `json:"client_subnet,omitempty"`
 
 	// Deprecated: renamed to rule_set_ip_cidr_match_source
 	Deprecated_RulesetIPCIDRMatchSource bool `json:"rule_set_ipcidr_match_source,omitempty"`
 }
 
-type DefaultDNSRule struct {
-	RawDefaultDNSRule
-	DNSRuleAction
-}
-
-func (r *DefaultDNSRule) MarshalJSON() ([]byte, error) {
-	return MarshallObjects(r.RawDefaultDNSRule, r.DNSRuleAction)
-}
-
-func (r *DefaultDNSRule) UnmarshalJSON(data []byte) error {
-	err := json.Unmarshal(data, &r.RawDefaultDNSRule)
-	if err != nil {
-		return err
-	}
-	//nolint:staticcheck
-	//goland:noinspection GoDeprecation
-	if r.Deprecated_RulesetIPCIDRMatchSource {
-		r.Deprecated_RulesetIPCIDRMatchSource = false
-		r.RuleSetIPCIDRMatchSource = true
-	}
-	return UnmarshallExcluded(data, &r.RawDefaultDNSRule, &r.DNSRuleAction)
-}
-
 func (r *DefaultDNSRule) IsValid() bool {
 	var defaultValue DefaultDNSRule
 	defaultValue.Invert = r.Invert
-	defaultValue.DNSRuleAction = r.DNSRuleAction
+	defaultValue.Server = r.Server
+	defaultValue.DisableCache = r.DisableCache
+	defaultValue.RewriteTTL = r.RewriteTTL
+	defaultValue.ClientSubnet = r.ClientSubnet
 	return !reflect.DeepEqual(r, defaultValue)
 }
 
-type _LogicalDNSRule struct {
-	Mode   string    `json:"mode"`
-	Rules  []DNSRule `json:"rules,omitempty"`
-	Invert bool      `json:"invert,omitempty"`
-}
-
 type LogicalDNSRule struct {
-	_LogicalDNSRule
-	DNSRuleAction
+	Mode         string      `json:"mode"`
+	Rules        []DNSRule   `json:"rules,omitempty"`
+	Invert       bool        `json:"invert,omitempty"`
+	Server       string      `json:"server,omitempty"`
+	DisableCache bool        `json:"disable_cache,omitempty"`
+	RewriteTTL   *uint32     `json:"rewrite_ttl,omitempty"`
+	ClientSubnet *AddrPrefix `json:"client_subnet,omitempty"`
 }
 
-func (r *LogicalDNSRule) MarshalJSON() ([]byte, error) {
-	return MarshallObjects(r._LogicalDNSRule, r.DNSRuleAction)
-}
-
-func (r *LogicalDNSRule) UnmarshalJSON(data []byte) error {
-	err := json.Unmarshal(data, &r._LogicalDNSRule)
-	if err != nil {
-		return err
-	}
-	return UnmarshallExcluded(data, &r._LogicalDNSRule, &r.DNSRuleAction)
-}
-
-func (r *LogicalDNSRule) IsValid() bool {
+func (r LogicalDNSRule) IsValid() bool {
 	return len(r.Rules) > 0 && common.All(r.Rules, DNSRule.IsValid)
 }

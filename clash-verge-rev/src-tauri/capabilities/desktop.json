@@ -3,9 +3,5 @@
   "platforms": ["macOS", "windows", "linux"],
   "webviews": ["main"],
   "windows": ["main"],
-  "permissions": [
-    "global-shortcut:default",
-    "updater:default",
-    "deep-link:default"
-  ]
+  "permissions": ["global-shortcut:default", "updater:default"]
 }

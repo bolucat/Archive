@@ -7,13 +7,13 @@ import (
 )
 
 type Manager interface {
-	ReportDeprecated(note Note)
+	ReportDeprecated(feature Note)
 }
 
-func Report(ctx context.Context, note Note) {
+func Report(ctx context.Context, feature Note) {
 	manager := service.FromContext[Manager](ctx)
 	if manager == nil {
 		return
 	}
-	manager.ReportDeprecated(note)
+	manager.ReportDeprecated(feature)
 }

@@ -90,18 +90,9 @@ func testTUICSelf(t *testing.T, udpStream bool, zeroRTTHandshake bool) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
-					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						RawDefaultRule: option.RawDefaultRule{
-							Inbound: []string{"mixed-in"},
-						},
-						RuleAction: option.RuleAction{
-							Action: C.RuleActionTypeRoute,
-
-							RouteOptions: option.RouteActionOptions{
-								Outbound: "tuic-out",
-							},
-						},
+						Inbound:  []string{"mixed-in"},
+						Outbound: "tuic-out",
 					},
 				},
 			},

@@ -22,21 +22,3 @@ const (
 	RuleSetVersion1 = 1 + iota
 	RuleSetVersion2
 )
-
-const (
-	RuleActionTypeRoute     = "route"
-	RuleActionTypeReturn    = "return"
-	RuleActionTypeReject    = "reject"
-	RuleActionTypeHijackDNS = "hijack-dns"
-	RuleActionTypeSniff     = "sniff"
-	RuleActionTypeResolve   = "resolve"
-)
-
-const (
-	RuleActionRejectMethodDefault            = "default"
-	RuleActionRejectMethodReset              = "reset"
-	RuleActionRejectMethodNetworkUnreachable = "network-unreachable"
-	RuleActionRejectMethodHostUnreachable    = "host-unreachable"
-	RuleActionRejectMethodPortUnreachable    = "port-unreachable"
-	RuleActionRejectMethodDrop               = "drop"
-)

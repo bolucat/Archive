@@ -194,9 +194,9 @@ const SettingVerge = ({ onError }: Props) => {
                         },
                       ],
                     });
-                    if (selected) {
-                      onChangeData({ startup_script: `${selected}` });
-                      patchVerge({ startup_script: `${selected}` });
+                    if (selected?.path.length) {
+                      onChangeData({ startup_script: `${selected.path}` });
+                      patchVerge({ startup_script: `${selected.path}` });
                     }
                   }}
                 >
@@ -243,7 +243,7 @@ const SettingVerge = ({ onError }: Props) => {
         label={t("Runtime Config")}
       />
 
-      <SettingItem onClick={openAppDir} label={t("Open Conf Dir")} />
+      <SettingItem onClick={openAppDir} label={t("Open App Dir")} />
 
       <SettingItem onClick={openCoreDir} label={t("Open Core Dir")} />
 

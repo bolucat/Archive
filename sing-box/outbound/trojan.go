@@ -99,6 +99,14 @@ func (h *Trojan) ListenPacket(ctx context.Context, destination M.Socksaddr) (net
 	}
 }
 
+func (h *Trojan) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext) error {
+	return NewConnection(ctx, h, conn, metadata)
+}
+
+func (h *Trojan) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext) error {
+	return NewPacketConnection(ctx, h, conn, metadata)
+}
+
 func (h *Trojan) InterfaceUpdated() {
 	if h.transport != nil {
 		h.transport.Close()
@@ -116,7 +124,7 @@ func (h *Trojan) Close() error {
 type trojanDialer Trojan
 
 func (h *trojanDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	ctx, metadata := adapter.AppendContext(ctx)
+	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.Outbound = h.tag
 	metadata.Destination = destination
 	var conn net.Conn

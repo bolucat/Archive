@@ -196,8 +196,8 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
                       },
                     ],
                   });
-                  if (selected) {
-                    await copyIconFile(`${selected}`, "common");
+                  if (selected?.path.length) {
+                    await copyIconFile(`${selected.path}`, "common");
                     await initIconPath();
                     onChangeData({ common_tray_icon: true });
                     patchVerge({ common_tray_icon: true });
@@ -242,8 +242,8 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
                       },
                     ],
                   });
-                  if (selected) {
-                    await copyIconFile(`${selected}`, "sysproxy");
+                  if (selected?.path.length) {
+                    await copyIconFile(`${selected.path}`, "sysproxy");
                     await initIconPath();
                     onChangeData({ sysproxy_tray_icon: true });
                     patchVerge({ sysproxy_tray_icon: true });
@@ -281,13 +281,13 @@ export const LayoutViewer = forwardRef<DialogRef>((props, ref) => {
                     multiple: false,
                     filters: [
                       {
-                        name: "Tun Icon Image",
+                        name: "Tray Icon Image",
                         extensions: ["png", "ico"],
                       },
                     ],
                   });
-                  if (selected) {
-                    await copyIconFile(`${selected}`, "tun");
+                  if (selected?.path.length) {
+                    await copyIconFile(`${selected.path}`, "tun");
                     await initIconPath();
                     onChangeData({ tun_tray_icon: true });
                     patchVerge({ tun_tray_icon: true });

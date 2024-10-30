@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 /// ### `verge.yaml` schema
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
 pub struct IVerge {
+    /// app listening port for app singleton
+    pub app_singleton_port: Option<u16>,
+
     /// app log level
     /// silent | error | warn | info | debug | trace
     pub app_log_level: Option<String>,
@@ -55,6 +58,10 @@ pub struct IVerge {
 
     /// clash tun mode
     pub enable_tun_mode: Option<bool>,
+
+    /// windows service mode
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_service_mode: Option<bool>,
 
     /// can the app auto startup
     pub enable_auto_launch: Option<bool>,
@@ -275,6 +282,7 @@ impl IVerge {
         patch!(tun_tray_icon);
 
         patch!(enable_tun_mode);
+        patch!(enable_service_mode);
         patch!(enable_auto_launch);
         patch!(enable_silent_start);
         patch!(enable_random_port);
@@ -322,7 +330,11 @@ impl IVerge {
         const SERVER_PORT: u16 = 33331;
         #[cfg(feature = "verge-dev")]
         const SERVER_PORT: u16 = 11233;
-        SERVER_PORT
+
+        match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
+            Ok(config) => config.app_singleton_port.unwrap_or(SERVER_PORT),
+            Err(_) => SERVER_PORT, // 这里就不log错误了
+        }
     }
 
     /// 获取日志等级
