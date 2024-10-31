@@ -83,7 +83,7 @@
     <string name="server_lab_short_id">ShortId</string>
     <string name="server_lab_spider_x">SpiderX</string>
     <string name="server_lab_secret_key">SecretKey</string>
-    <string name="server_lab_reserved">Reserved(Optional)</string>
+    <string name="server_lab_reserved">Reserved(Optional, separated by commas)</string>
     <string name="server_lab_local_address">Local address (optional IPv4/IPv6, separated by commas)</string>
     <string name="server_lab_local_mtu">Mtu(optional, default 1420)</string>
     <string name="toast_success">Success</string>
@@ -113,6 +113,9 @@
     <string name="msg_remark_is_duplicate">The remarks already exists</string>
     <string name="toast_action_not_allowed">Action not allowed</string>
     <string name="server_obfs_password">Obfs password</string>
+    <string name="server_lab_port_hop">Port Hopping(will override the port)</string>
+    <string name="server_lab_port_hop_interval">Port Hopping Interval</string>
+    <string name="server_lab_stream_pinsha256">pinSHA256</string>
 
     <!-- PerAppProxyActivity -->
     <string name="msg_dialog_progress">Loading</string>

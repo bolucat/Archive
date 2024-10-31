@@ -369,7 +369,11 @@ config("default") {
 
     common_flags += [ "--target=" + clang_prefix ]
     common_flags += [ "--sysroot=" + ndk_sysroot_dir ]
-    ldflags += [ "-Wl,-z,max-page-size=16384" ]
+    if (target_cpu == "arm64" || target_cpu == "x64" || target_cpu == "riscv64") {
+      ldflags += [ "-Wl,-z,max-page-size=16384" ]
+    } else {
+      ldflags += [ "-Wl,-z,max-page-size=4096" ]
+    }
   }
 
   if (mini_chromium_is_fuchsia) {

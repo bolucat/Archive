@@ -25,11 +25,13 @@ if [ "$WITH_ANDROID_IMG" -a ! -d out/sysroot-build/android/"$WITH_ANDROID_IMG"/s
   curl -O https://dl.google.com/android/repository/sys-img/android/$WITH_ANDROID_IMG.zip
   mkdir -p $WITH_ANDROID_IMG/mount
   unzip $WITH_ANDROID_IMG.zip '*/system.img' -d $WITH_ANDROID_IMG
-  sudo mount $WITH_ANDROID_IMG/*/system.img $WITH_ANDROID_IMG/mount
+  sudo mount -o ro $WITH_ANDROID_IMG/*/system.img $WITH_ANDROID_IMG/mount
   mkdir -p $SYSROOT/system/bin $SYSROOT/system/etc
-  cp $WITH_ANDROID_IMG/mount/bin/linker* $SYSROOT/system/bin
-  cp $WITH_ANDROID_IMG/mount/etc/hosts $SYSROOT/system/etc
-  cp -r $WITH_ANDROID_IMG/mount/lib* $SYSROOT/system
+  cp -v $WITH_ANDROID_IMG/mount/bin/linker* $SYSROOT/system/bin
+  cp -v $WITH_ANDROID_IMG/mount/etc/hosts $SYSROOT/system/etc
+  cp -rv $WITH_ANDROID_IMG/mount/lib* $SYSROOT/system
+  mkdir -p $SYSROOT/system/usr/share
+  cp -rv $WITH_ANDROID_IMG/mount/usr/share/zoneinfo $SYSROOT/system/usr/share/
   sudo umount $WITH_ANDROID_IMG/mount
   rm -rf $WITH_ANDROID_IMG $WITH_ANDROID_IMG.zip
 fi

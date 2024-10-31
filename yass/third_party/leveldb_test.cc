@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2023 Chilledheart  */
+/* Copyright (c) 2023-2024 Chilledheart  */
 
 #include <gtest/gtest.h>
 #include <gtest/gtest-message.h>
@@ -7,9 +7,12 @@
 #include <leveldb/db.h>
 #include <leveldb/write_batch.h>
 
+#include <base/rand_util.h>
+#include <base/process/process_handle.h>
+
 #include "core/logging.hpp"
-#include "core/process_utils.hpp"
-#include "core/rand_util.hpp"
+
+using namespace gurl_base;
 
 static std::string RandString(size_t length) {
   std::string ret;
@@ -34,13 +37,13 @@ static const char* LevelDBCompressionTypeToName(leveldb::CompressionType type) {
 static std::string LevelDBCompressionTypeToDBName(leveldb::CompressionType type) {
   switch(type) {
     case leveldb::kNoCompression:
-      return ::testing::TempDir() + "test-ldb-no" + "-" + std::to_string(GetPID());
+      return ::testing::TempDir() + "test-ldb-no" + "-" + std::to_string(GetCurrentProcId());
     case leveldb::kSnappyCompression:
-      return ::testing::TempDir() + "test-ldb-snappy" + "-" + std::to_string(GetPID());
+      return ::testing::TempDir() + "test-ldb-snappy" + "-" + std::to_string(GetCurrentProcId());
     case leveldb::kZstdCompression:
-      return ::testing::TempDir() + "test-ldb-zstd" + "-" + std::to_string(GetPID());
+      return ::testing::TempDir() + "test-ldb-zstd" + "-" + std::to_string(GetCurrentProcId());
     default:
-      return std::string("test-ldb-invalid") + "-" + std::to_string(GetPID());
+      return std::string("test-ldb-invalid") + "-" + std::to_string(GetCurrentProcId());
   }
 }
 

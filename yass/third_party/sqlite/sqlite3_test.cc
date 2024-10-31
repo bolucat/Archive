@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2023 Chilledheart  */
+/* Copyright (c) 2023-2024 Chilledheart  */
 
 #include <gtest/gtest.h>
 #include <gtest/gtest-message.h>
 #include <filesystem>
 
-#include "core/process_utils.hpp"
+#include <base/process/process_handle.h>
+
 #include "core/utils_fs.hpp"
 #include "test_util.hpp"
 #include <sqlite3.h>
 
 using namespace yass;
+
+using namespace gurl_base;
 
 enum SqliteStorageType {
   kMemory,
@@ -37,7 +40,7 @@ static std::string SqliteStorageTypeToDbName(SqliteStorageType type) {
     case kMemory:
       return kSqliteOpenInMemoryPath;
     case kDisk:
-      return ::testing::TempDir() + kSqliteMainDatabaseName + "-" + std::to_string(GetPID());
+      return ::testing::TempDir() + kSqliteMainDatabaseName + "-" + std::to_string(GetCurrentProcId());
     default:
       return "(null)";
   }

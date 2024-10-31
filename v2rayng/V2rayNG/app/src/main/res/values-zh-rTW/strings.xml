@@ -82,7 +82,7 @@
     <string name="server_lab_short_id">ShortId</string>
     <string name="server_lab_spider_x">SpiderX</string>
     <string name="server_lab_secret_key">SecretKey</string>
-    <string name="server_lab_reserved">Reserved (可選)</string>
+    <string name="server_lab_reserved">Reserved (可選，逗號隔開)</string>
     <string name="server_lab_local_address">本機位址(可選IPv4/IPv6，逗號隔開)</string>
     <string name="server_lab_local_mtu">MTU(可選, 預設1420)</string>
     <string name="toast_success">成功</string>
@@ -107,6 +107,9 @@
     <string name="menu_item_download_file">下載檔案</string>
     <string name="toast_action_not_allowed">禁止此項操作</string>
     <string name="server_obfs_password">混淆密碼</string>
+    <string name="server_lab_port_hop">跳躍連接埠(會覆蓋伺服器連接埠)</string>
+    <string name="server_lab_port_hop_interval">連接埠跳躍間隔(秒)</string>
+    <string name="server_lab_stream_pinsha256">SHA256憑證指紋</string>
 
     <!-- PerAppProxyActivity -->
     <string name="title_user_asset_add_url">新增資產網址</string>

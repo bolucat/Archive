@@ -100,7 +100,7 @@ jobs:
         with:
           path: |
             third_party/crashpad
-          key: ${{ runner.os }}-android-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-16k-alignment-no-stripped
+          key: ${{ runner.os }}-android-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-16k-alignment-for-64-bit-only
       - name: Cache gradle
         uses: actions/cache@v4
         with:
@@ -119,7 +119,7 @@ jobs:
         with:
           path: |
             ${{ env.SYSROOT }}
-          key: android-sysroot-${{ matrix.arch }}-v1
+          key: android-sysroot-${{ matrix.arch }}-v1-with-tzdata
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.20.0'
@@ -194,19 +194,24 @@ jobs:
         if: ${{ matrix.arch == 'x86' ||  matrix.arch == 'x64' }}
         run: |
           # android sysimg doesn't like resolv.conf
-          mkdir -p $SYSROOT/etc/ssl/certs $SYSROOT/dev $SYSROOT/proc $SYSROOT/data/local/tmp
+          mkdir -p $SYSROOT/sys $SYSROOT/etc/ssl/certs $SYSROOT/dev $SYSROOT/proc $SYSROOT/data/local/tmp
           bwrap --die-with-parent --ro-bind $SYSROOT / \
             --ro-bind /sys /sys \
             --ro-bind /etc/ssl/certs /etc/ssl/certs \
             --proc /proc --dev /dev \
             --unshare-all --share-net \
             --bind $PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }} /data/local/tmp \
+            --setenv ANDROID_DATA /data \
+            --setenv ANDROID_ROOT /system \
+            --setenv TMPDIR /data/local/tmp \
             /data/local/tmp/yass_test
       - name: Run tests (non x86, under qemu emulation)
         if: ${{ matrix.arch != 'x86' && matrix.arch != 'x64' }}
         run: |
           # TMPDIR is required by leveldb unittests
           qemu-${{ matrix.qemu_suffix }} -L $SYSROOT \
+            -E ANDROID_DATA=$SYSROOT/data \
+            -E ANDROID_ROOT=$SYSROOT/system \
             -E TMPDIR=$PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }} \
             $PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }}/yass_test
       - name: Install the Release certificate

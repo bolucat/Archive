@@ -1031,14 +1031,6 @@ if (NOT MSVC)
   if (ANDROID OR OHOS)
     add_definitions(-D__GNU_SOURCE=1)
   endif()
-  # support for 16k page size
-  # see ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES for ndk >= 27
-  if (ANDROID)
-    add_definitions(-D__BIONIC_NO_PAGE_SIZE_MACRO)
-    if(ANDROID_ABI STREQUAL arm64-v8a OR ANDROID_ABI STREQUAL x86_64)
-      add_link_options(-Wl,-z,max-page-size=16384)
-    endif()
-  endif()
 
   ## can gc eliminate any unused functions and data items
   if (NOT APPLE)
@@ -1498,15 +1490,6 @@ endif()
 
 # Linux-specific compiler flags setup.
 # ------------------------------------
-if ((UNIX AND NOT APPLE) AND USE_LLD)
-  if (CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" AND NOT ANDROID)
-    # Reduce the page size from 65536 in order to reduce binary size slightly
-    # by shrinking the alignment gap between segments. This also causes all
-    # segments to be mapped adjacently, which breakpad relies on.
-    add_link_options(-Wl,-z,max-page-size=4096)
-  endif()
-endif()
-
 if (USE_ICF AND (NOT APPLE OR COMPILER_CLANG) AND NOT MSVC)
   # Gold doesn't respect section alignment and breaks gcc builds with icf
   # https://sourceware.org/bugzilla/show_bug.cgi?id=17704
@@ -1638,12 +1621,6 @@ if (COMPILER_CLANG)
   # C++17 removes trigraph support, but clang still warns that it ignores
   # them when seeing them.  Don't.
   add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-Wno-trigraphs>)
-endif()
-
-# Pass flag to LLD so Android builds can allow debuggerd to properly symbolize
-# stack crashes (http://crbug.com/919499).
-if (USE_LLD AND ANDROID)
-  add_link_options(-Wl,--no-rosegment)
 endif()
 
 # TODO(crbug.com/1374347): Cleanup undefined symbol errors caught by
@@ -1859,6 +1836,10 @@ if (ANDROID)
 
   add_definitions(-DANDROID)
 
+  # https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md#weak-symbols-for-api-definitions
+  add_definitions(-D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__)
+  add_compile_options(-Werror=unguarded-availability)
+
   # The NDK has these things, but doesn't define the constants to say that it
   # does. Define them here instead.
   add_definitions(-DHAVE_SYS_UIO_H=1)
@@ -1875,10 +1856,16 @@ if (ANDROID)
   # http://crbug.com/448386
   add_link_options(-Wl,--exclude-libs=libvpx_assembly_arm.a)
 
+  # support for 16k page size
+  # see ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES for ndk >= 27
+  add_definitions(-D__BIONIC_NO_PAGE_SIZE_MACRO)
+
   # Reduce the page size from 65536 in order to reduce binary size slightly
   # by shrinking the alignment gap between segments. This also causes all
   # segments to be mapped adjacently, which breakpad relies on.
-  if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "^arm64.*" AND NOT ANDROID)
+  if(ANDROID_ABI STREQUAL arm64-v8a OR ANDROID_ABI STREQUAL x86_64 OR ANDROID_ABI STREQUAL riscv64)
+    add_link_options(-Wl,-z,max-page-size=16384)
+  else()
     add_link_options(-Wl,-z,max-page-size=4096)
   endif()
 
@@ -1917,6 +1904,12 @@ if (ANDROID)
   # Android's ABI includes the base instruction set plus the MMX, SSE, SSE2, SSE3, and SSSE3 extensions.
   if (${CMAKE_SYSTEM_PROCESSOR} MATCHES "^x86$")
     add_compile_options(-mfpmath=sse -msse3)
+  endif()
+
+  # https://github.com/android/ndk/issues/1196
+  # https://github.com/android/ndk/issues/1589
+  if (ANDROID_API_VERSION LESS 30)
+    add_link_options(-Wl,--no-rosegment)
   endif()
 endif()
 
@@ -3858,9 +3851,9 @@ if (COMPILER_GCC OR COMPILER_CLANG)
     add_compile_options(-Wthread-safety)
   endif()
 
-  ## When compiling Objective-C, warns if a method is used whose
-  ## availability is newer than the deployment target.
-  if (APPLE AND COMPILER_CLANG)
+  # Warns if a method is used whose availability is newer than the
+  # deployment target.
+  if (COMPILER_CLANG AND (APPLE OR ANDROID))
     add_compile_options(-Wunguarded-availability)
   endif()
 
