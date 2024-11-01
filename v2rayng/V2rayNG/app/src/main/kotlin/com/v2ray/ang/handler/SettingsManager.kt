@@ -1,4 +1,4 @@
-package com.v2ray.ang.util
+package com.v2ray.ang.handler
 
 import android.content.Context
 import android.text.TextUtils
@@ -9,9 +9,10 @@ import com.v2ray.ang.AppConfig.TAG_DIRECT
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RoutingType
 import com.v2ray.ang.dto.RulesetItem
-import com.v2ray.ang.util.MmkvManager.decodeServerConfig
-import com.v2ray.ang.util.MmkvManager.decodeServerList
-import com.v2ray.ang.util.MmkvManager.settingsStorage
+import com.v2ray.ang.handler.MmkvManager.decodeServerConfig
+import com.v2ray.ang.handler.MmkvManager.decodeServerList
+import com.v2ray.ang.util.JsonUtil
+import com.v2ray.ang.util.Utils
 import com.v2ray.ang.util.Utils.parseInt
 import java.util.Collections
 import kotlin.Int
@@ -145,11 +146,11 @@ object SettingsManager {
     }
 
     fun getSocksPort(): Int {
-        return parseInt(settingsStorage?.decodeString(AppConfig.PREF_SOCKS_PORT), AppConfig.PORT_SOCKS.toInt())
+        return parseInt(MmkvManager.decodeSettingsString(AppConfig.PREF_SOCKS_PORT), AppConfig.PORT_SOCKS.toInt())
     }
 
     fun getHttpPort(): Int {
-        return parseInt(settingsStorage?.decodeString(AppConfig.PREF_HTTP_PORT), AppConfig.PORT_HTTP.toInt())
+        return parseInt(MmkvManager.decodeSettingsString(AppConfig.PREF_HTTP_PORT), AppConfig.PORT_HTTP.toInt())
     }
 
 }
