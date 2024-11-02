@@ -16,15 +16,13 @@ use base64::Engine as _;
 use byte_string::ByteStr;
 use bytes::Bytes;
 use cfg_if::cfg_if;
-use log::error;
+use log::{error, warn};
 use thiserror::Error;
 use url::{self, Url};
 
-use crate::{
-    crypto::{v1::openssl_bytes_to_key, CipherKind},
-    plugin::PluginConfig,
-    relay::socks5::Address,
-};
+#[cfg(any(feature = "stream-cipher", feature = "aead-cipher"))]
+use crate::crypto::v1::openssl_bytes_to_key;
+use crate::{crypto::CipherKind, plugin::PluginConfig, relay::socks5::Address};
 
 const USER_KEY_BASE64_ENGINE: base64::engine::GeneralPurpose = base64::engine::GeneralPurpose::new(
     &base64::alphabet::STANDARD,
@@ -427,9 +425,9 @@ pub struct ServerConfig {
     source: ServerSource,
 }
 
-#[cfg(feature = "aead-cipher-2022")]
 #[inline]
 fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) {
+    #[cfg(feature = "aead-cipher-2022")]
     if method.is_aead_2022() {
         // AEAD 2022 password is a base64 form of enc_key
         match AEAD2022_PASSWORD_BASE64_ENGINE.decode(password) {
@@ -449,15 +447,21 @@ fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) {
                 panic!("{method} password {password} is not base64 encoded, error: {err}");
             }
         }
-    } else {
-        openssl_bytes_to_key(password.as_bytes(), enc_key);
-    }
-}
 
-#[cfg(not(feature = "aead-cipher-2022"))]
-#[inline]
-fn make_derived_key(_method: CipherKind, password: &str, enc_key: &mut [u8]) {
-    openssl_bytes_to_key(password.as_bytes(), enc_key);
+        return;
+    }
+
+    cfg_if! {
+        if #[cfg(any(feature = "stream-cipher", feature = "aead-cipher"))] {
+            let _ = method;
+            openssl_bytes_to_key(password.as_bytes(), enc_key);
+        } else {
+            // No default implementation.
+            let _ = password;
+            let _ = enc_key;
+            unreachable!("{method} don't know how to make a derived key");
+        }
+    }
 }
 
 /// Check if method supports Extended Identity Header
@@ -478,12 +482,28 @@ where
 {
     let password = password.into();
 
-    #[cfg(feature = "stream-cipher")]
-    if method == CipherKind::SS_TABLE {
-        // TABLE cipher doesn't need key derivation.
-        // Reference implemenation: shadowsocks-libev, shadowsocks (Python)
-        let enc_key = password.clone().into_bytes().into_boxed_slice();
-        return (password, enc_key, Vec::new());
+    match method {
+        CipherKind::NONE => {
+            // NONE method's key length is 0
+            debug_assert_eq!(method.key_len(), 0);
+
+            if !password.is_empty() {
+                warn!("method \"none\" doesn't need a password, which should be set as an empty String, but password.len() = {}", password.len());
+            }
+
+            return (password, Vec::new().into_boxed_slice(), Vec::new());
+        }
+
+        #[cfg(feature = "stream-cipher")]
+        CipherKind::SS_TABLE => {
+            // TABLE cipher doesn't need key derivation.
+            // Reference implemenation: shadowsocks-libev, shadowsocks (Python)
+            let enc_key = password.clone().into_bytes().into_boxed_slice();
+            return (password, enc_key, Vec::new());
+        }
+
+        #[allow(unreachable_patterns)]
+        _ => {}
     }
 
     #[cfg(feature = "aead-cipher-2022")]

@@ -67,7 +67,6 @@ func NewRemoteRuleSet(ctx context.Context, router adapter.Router, logger logger.
 		logger:         logger,
 		options:        options,
 		updateInterval: updateInterval,
-		cacheFile:      service.FromContext[adapter.CacheFile](ctx),
 		pauseManager:   service.FromContext[pause.Manager](ctx),
 	}
 }
@@ -81,6 +80,7 @@ func (s *RemoteRuleSet) String() string {
 }
 
 func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.HTTPStartContext) error {
+	s.cacheFile = service.FromContext[adapter.CacheFile](s.ctx)
 	var dialer N.Dialer
 	if s.options.RemoteOptions.DownloadDetour != "" {
 		outbound, loaded := s.router.Outbound(s.options.RemoteOptions.DownloadDetour)
