@@ -17,7 +17,10 @@ use shadowsocks::{
     config::ServerUser,
     crypto::CipherCategory,
     lookup_then,
-    net::{get_ip_stack_capabilities, AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket},
+    net::{
+        get_ip_stack_capabilities, AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket,
+        UdpSocket as InboundUdpSocket,
+    },
     relay::{
         socks5::Address,
         udprelay::{options::UdpSocketControlData, ProxySocket, MAXIMUM_UDP_PAYLOAD_SIZE},
@@ -25,8 +28,6 @@ use shadowsocks::{
     ServerConfig,
 };
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle, time};
-#[cfg(windows)]
-use windows_sys::Win32::Networking::WinSock::WSAEAFNOSUPPORT;
 
 use crate::net::{
     packet_window::PacketWindowFilter, utils::to_ipv4_mapped, MonProxySocket, UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE,
@@ -87,7 +88,7 @@ pub struct UdpServer {
     keepalive_tx: mpsc::Sender<NatKey>,
     keepalive_rx: mpsc::Receiver<NatKey>,
     time_to_live: Duration,
-    listener: Arc<MonProxySocket>,
+    listener: Arc<MonProxySocket<InboundUdpSocket>>,
     svr_cfg: ServerConfig,
 }
 
@@ -276,7 +277,7 @@ impl UdpServer {
 
     async fn recv_one_packet(
         context: &ServiceContext,
-        l: &MonProxySocket,
+        l: &MonProxySocket<InboundUdpSocket>,
         buffer: &mut [u8],
     ) -> Option<(usize, SocketAddr, Address, Option<UdpSocketControlData>)> {
         let (n, peer_addr, target_addr, control) = match l.recv_from_with_ctrl(buffer).await {
@@ -316,7 +317,7 @@ impl UdpServer {
 
     async fn send_packet(
         &mut self,
-        listener: &Arc<MonProxySocket>,
+        listener: &Arc<MonProxySocket<InboundUdpSocket>>,
         peer_addr: SocketAddr,
         target_addr: Address,
         control: Option<UdpSocketControlData>,
@@ -394,7 +395,7 @@ impl Drop for UdpAssociation {
 impl UdpAssociation {
     fn new_association(
         context: Arc<ServiceContext>,
-        inbound: Arc<MonProxySocket>,
+        inbound: Arc<MonProxySocket<InboundUdpSocket>>,
         peer_addr: SocketAddr,
         keepalive_tx: mpsc::Sender<NatKey>,
     ) -> UdpAssociation {
@@ -405,7 +406,7 @@ impl UdpAssociation {
     #[cfg(feature = "aead-cipher-2022")]
     fn new_session(
         context: Arc<ServiceContext>,
-        inbound: Arc<MonProxySocket>,
+        inbound: Arc<MonProxySocket<InboundUdpSocket>>,
         peer_addr: SocketAddr,
         keepalive_tx: mpsc::Sender<NatKey>,
         client_session_id: u64,
@@ -447,7 +448,7 @@ struct UdpAssociationContext {
     outbound_ipv6_socket: Option<OutboundUdpSocket>,
     keepalive_tx: mpsc::Sender<NatKey>,
     keepalive_flag: bool,
-    inbound: Arc<MonProxySocket>,
+    inbound: Arc<MonProxySocket<InboundUdpSocket>>,
     // AEAD 2022
     client_session: Option<ClientSessionContext>,
     server_session_id: u64,
@@ -472,7 +473,7 @@ fn generate_server_session_id() -> u64 {
 impl UdpAssociationContext {
     fn create(
         context: Arc<ServiceContext>,
-        inbound: Arc<MonProxySocket>,
+        inbound: Arc<MonProxySocket<InboundUdpSocket>>,
         peer_addr: SocketAddr,
         keepalive_tx: mpsc::Sender<NatKey>,
         client_session_id: Option<u64>,

@@ -19,55 +19,13 @@ const (
 	DescMaxmindMMDBOut = "Convert data to MaxMind mmdb database format"
 )
 
-var (
-	defaultOutputName = "Country.mmdb"
-	defaultOutputDir  = filepath.Join("./", "output", "maxmind")
-)
-
 func init() {
 	lib.RegisterOutputConfigCreator(TypeMaxmindMMDBOut, func(action lib.Action, data json.RawMessage) (lib.OutputConverter, error) {
-		return newMMDBOut(action, data)
+		return newMMDBOut(TypeMaxmindMMDBOut, DescMaxmindMMDBOut, action, data)
 	})
 	lib.RegisterOutputConverter(TypeMaxmindMMDBOut, &MMDBOut{
 		Description: DescMaxmindMMDBOut,
 	})
-}
-
-func newMMDBOut(action lib.Action, data json.RawMessage) (lib.OutputConverter, error) {
-	var tmp struct {
-		OutputName string     `json:"outputName"`
-		OutputDir  string     `json:"outputDir"`
-		Want       []string   `json:"wantedList"`
-		Overwrite  []string   `json:"overwriteList"`
-		Exclude    []string   `json:"excludedList"`
-		OnlyIPType lib.IPType `json:"onlyIPType"`
-	}
-
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &tmp); err != nil {
-			return nil, err
-		}
-	}
-
-	if tmp.OutputName == "" {
-		tmp.OutputName = defaultOutputName
-	}
-
-	if tmp.OutputDir == "" {
-		tmp.OutputDir = defaultOutputDir
-	}
-
-	return &MMDBOut{
-		Type:        TypeMaxmindMMDBOut,
-		Action:      action,
-		Description: DescMaxmindMMDBOut,
-		OutputName:  tmp.OutputName,
-		OutputDir:   tmp.OutputDir,
-		Want:        tmp.Want,
-		Overwrite:   tmp.Overwrite,
-		Exclude:     tmp.Exclude,
-		OnlyIPType:  tmp.OnlyIPType,
-	}, nil
 }
 
 type MMDBOut struct {
@@ -95,11 +53,30 @@ func (m *MMDBOut) GetDescription() string {
 }
 
 func (m *MMDBOut) Output(container lib.Container) error {
+	dbName := ""
+	dbDesc := ""
+	recordSize := 28
+
+	switch m.Type {
+	case TypeMaxmindMMDBOut:
+		dbName = "GeoLite2-Country"
+		dbDesc = "Customized GeoLite2 Country database"
+
+	case TypeDBIPCountryMMDBOut:
+		dbName = "DBIP-Country-Lite"
+		dbDesc = "Customized DB-IP Country Lite database"
+
+	case TypeIPInfoCountryMMDBOut:
+		dbName = "IPInfo-Country"
+		dbDesc = "Customized IPInfo Country database"
+		recordSize = 32
+	}
+
 	writer, err := mmdbwriter.New(
 		mmdbwriter.Options{
-			DatabaseType:            "GeoLite2-Country",
-			Description:             map[string]string{"en": "Customized GeoLite2 Country database"},
-			RecordSize:              24,
+			DatabaseType:            dbName,
+			Description:             map[string]string{"en": dbDesc},
+			RecordSize:              recordSize,
 			IncludeReservedNetworks: true,
 		},
 	)
@@ -200,10 +177,19 @@ func (m *MMDBOut) marshalData(writer *mmdbwriter.Tree, entry *lib.Entry) error {
 		return err
 	}
 
-	record := mmdbtype.Map{
-		"country": mmdbtype.Map{
-			"iso_code": mmdbtype.String(entry.GetName()),
-		},
+	var record mmdbtype.DataType
+	switch m.Type {
+	case TypeMaxmindMMDBOut, TypeDBIPCountryMMDBOut:
+		record = mmdbtype.Map{
+			"country": mmdbtype.Map{
+				"iso_code": mmdbtype.String(entry.GetName()),
+			},
+		}
+
+	case TypeIPInfoCountryMMDBOut:
+		record = mmdbtype.Map{
+			"country": mmdbtype.String(entry.GetName()),
+		}
 	}
 
 	for _, cidr := range entryCidr {

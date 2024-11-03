@@ -38,6 +38,7 @@ pub trait DnsResolve {
 }
 
 #[cfg(feature = "hickory-dns")]
+#[derive(Debug)]
 pub struct HickoryDnsSystemResolver {
     resolver: ArcSwap<HickoryDnsResolver>,
     #[cfg_attr(any(windows, target_os = "android"), allow(dead_code))]
@@ -285,7 +286,6 @@ impl DnsResolver {
     }
 
     /// Resolve address into `SocketAddr`s
-    #[allow(clippy::needless_lifetimes)]
     pub async fn resolve<'a>(&self, addr: &'a str, port: u16) -> io::Result<impl Iterator<Item = SocketAddr> + 'a> {
         struct ResolverLogger<'x, 'y> {
             resolver: &'x DnsResolver,

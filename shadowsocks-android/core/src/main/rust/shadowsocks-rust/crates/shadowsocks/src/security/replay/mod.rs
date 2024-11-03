@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[cfg(feature = "aead-cipher-2022")]
 use std::time::Duration;
 
@@ -15,7 +17,7 @@ use self::ppbloom::PingPongBloom;
 #[cfg(feature = "security-replay-attack-detect")]
 mod ppbloom;
 
-/// A Bloom Filter based protector against replay attach
+/// A Bloom Filter based protector against replay attack
 pub struct ReplayProtector {
     // Check for duplicated IV/Nonce, for prevent replay attack
     // https://github.com/shadowsocks/shadowsocks-org/issues/44
@@ -27,6 +29,12 @@ pub struct ReplayProtector {
     // so we only need to remember nonce that are in the valid time range
     #[cfg(feature = "aead-cipher-2022")]
     nonce_set: spin::Mutex<LruCache<Vec<u8>, ()>>,
+}
+
+impl fmt::Debug for ReplayProtector {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ReplayProtector").finish()
+    }
 }
 
 impl ReplayProtector {

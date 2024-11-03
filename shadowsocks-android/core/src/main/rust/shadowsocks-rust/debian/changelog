@@ -1,3 +1,26 @@
+shadowsocks-rust (1.21.2) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - #1730 `local-http`: HTTP Client removes Authority from Request URI only for HTTP/1.x
+
+shadowsocks-rust (1.21.1) unstable; urgency=medium
+
+  ## Bug Fixes
+
+  - #1730 `local-http`: The URI field in HTTP Request sent from `sslocal` should only contain path and query.
+
+  ## Miscellaneous
+
+  - #1702 Debian package build removes dependency of `pwgen`
+
+shadowsocks-rust (1.21.0) unstable; urgency=medium
+
+  ## Features
+
+  - #1641 `shadowsocks`: `ProxySocket` supports generic I/O socket type
+  - #1567 `shadowsocks-service`: Support OpenBSD Packet-Filter (pf)
+
 shadowsocks-rust (1.20.4) unstable; urgency=medium
 
   ## Features
