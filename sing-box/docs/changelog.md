@@ -2,8 +2,10 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-alpha.5
+#### 1.11.0-alpha.6
 
+* Update quic-go to v0.48.1
+* Set gateway for tun correctly
 * Fixes and improvements
 
 #### 1.11.0-alpha.2
@@ -47,7 +49,7 @@ Important changes since 1.9:
 The new auto-redirect feature allows TUN to automatically
 configure connection redirection to improve proxy performance.
 
-When auto-redirect is enabled, new route address set options will allow you to 
+When auto-redirect is enabled, new route address set options will allow you to
 automatically configure destination IP CIDR rules from a specified rule set to the firewall.
 
 Specified or unspecified destinations will bypass the sing-box routes to get better performance
