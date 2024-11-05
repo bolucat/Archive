@@ -307,10 +307,6 @@ class EndToEndTest : public QuicTestWithParam<TestParams> {
     return client;
   }
 
-  bool DispatcherAckEnabled() const {
-    return GetQuicRestartFlag(quic_dispatcher_ack_buffered_initial_packets);
-  }
-
   void set_smaller_flow_control_receive_window() {
     const uint32_t kClientIFCW = 64 * 1024;
     const uint32_t kServerIFCW = 1024 * 1024;
@@ -1195,15 +1191,9 @@ TEST_P(EndToEndTest, InvalidSNI) {
 
   QuicSpdySession* client_session = GetClientSession();
   ASSERT_TRUE(client_session);
-  if (GetQuicReloadableFlag(quic_new_error_code_for_invalid_hostname)) {
-    EXPECT_THAT(client_session->error(),
-                IsError(QUIC_HANDSHAKE_FAILED_INVALID_HOSTNAME));
-    EXPECT_THAT(client_session->error_details(), HasSubstr("invalid hostname"));
-  } else {
-    EXPECT_THAT(client_session->error(), IsError(QUIC_HANDSHAKE_FAILED));
-    EXPECT_THAT(client_session->error_details(),
-                HasSubstr("select_cert_error: invalid hostname"));
-  }
+  EXPECT_THAT(client_session->error(),
+              IsError(QUIC_HANDSHAKE_FAILED_INVALID_HOSTNAME));
+  EXPECT_THAT(client_session->error_details(), HasSubstr("invalid hostname"));
 }
 
 // Two packet CHLO. The first one is buffered and acked by dispatcher, the
@@ -1229,7 +1219,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO) {
   ASSERT_NE(server_connection, nullptr);
   const QuicConnectionStats& server_stats = server_connection->GetStats();
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 1u);
   } else {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
@@ -1241,7 +1231,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO) {
   EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 1u);
   EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
   } else {
     EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
@@ -1280,7 +1270,7 @@ TEST_P(EndToEndTest,
     const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
     EXPECT_EQ(dispatcher_stats.sessions_created, 1u);
 
-    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    if (version_ != ParsedQuicVersion::RFCv2()) {
       // 2 CHLO packets are enqueued, but only the 1st caused a dispatcher ACK.
       EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
       EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 2u);
@@ -1338,7 +1328,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithTwoPacketCHLO_BothBuffered) {
     EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 1u);
     EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 2u);
 
-    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    if (version_ != ParsedQuicVersion::RFCv2()) {
       // 2 CHLO packets are enqueued, but only the 1st caused a dispatcher ACK.
       EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
     } else {
@@ -1376,7 +1366,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithThreePacketCHLO) {
   ASSERT_NE(server_connection, nullptr);
   const QuicConnectionStats& server_stats = server_connection->GetStats();
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 2u);
   } else {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
@@ -1389,7 +1379,7 @@ TEST_P(EndToEndTest, TestDispatcherAckWithThreePacketCHLO) {
   EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
   EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(dispatcher_stats.packets_sent, 2u);
   } else {
     EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
@@ -1423,7 +1413,7 @@ TEST_P(EndToEndTest,
   ASSERT_NE(server_connection, nullptr);
   const QuicConnectionStats& server_stats = server_connection->GetStats();
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 1u);
   } else {
     EXPECT_EQ(server_stats.packets_sent_by_dispatcher, 0u);
@@ -1436,7 +1426,7 @@ TEST_P(EndToEndTest,
   EXPECT_EQ(dispatcher_stats.packets_enqueued_early, 2u);
   EXPECT_EQ(dispatcher_stats.packets_enqueued_chlo, 0u);
 
-  if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+  if (version_ != ParsedQuicVersion::RFCv2()) {
     EXPECT_EQ(dispatcher_stats.packets_sent, 1u);
   } else {
     EXPECT_EQ(dispatcher_stats.packets_sent, 0u);
@@ -1475,7 +1465,7 @@ TEST_P(EndToEndTest,
     const QuicDispatcherStats& dispatcher_stats = GetDispatcherStats();
     EXPECT_EQ(dispatcher_stats.sessions_created, 1u);
 
-    if (DispatcherAckEnabled() && version_ != ParsedQuicVersion::RFCv2()) {
+    if (version_ != ParsedQuicVersion::RFCv2()) {
       // Packet 1 and Packet 2's retransmission caused dispatcher ACKs.
       EXPECT_EQ(dispatcher_stats.packets_sent, 2u);
       EXPECT_EQ(dispatcher_stats.packets_processed_with_unknown_cid, 3u);
@@ -7745,6 +7735,40 @@ TEST_P(EndToEndTest, OriginalConnectionIdClearedFromMap) {
   EXPECT_EQ(QuicDispatcherPeer::GetFirstSessionIfAny(dispatcher), nullptr);
   EXPECT_EQ(QuicDispatcherPeer::FindSession(dispatcher, original), nullptr);
   server_thread_->Resume();
+}
+
+TEST_P(EndToEndTest, FlowLabelSend) {
+  SetQuicRestartFlag(quic_support_flow_label, true);
+  ASSERT_TRUE(Initialize());
+
+  const uint32_t server_flow_label = 2;
+  quiche::QuicheNotification set;
+  server_thread_->Schedule([this, &set]() {
+    QuicConnection* server_connection = GetServerConnection();
+    if (server_connection != nullptr) {
+      server_connection->set_outgoing_flow_label(server_flow_label);
+    } else {
+      ADD_FAILURE() << "Missing server connection";
+    }
+    set.Notify();
+  });
+  set.WaitForNotification();
+
+  const uint32_t client_flow_label = 1;
+  QuicConnection* client_connection = GetClientConnection();
+  client_connection->set_outgoing_flow_label(client_flow_label);
+
+  client_->SendSynchronousRequest("/foo");
+
+  if (server_address_.host().IsIPv6()) {
+    EXPECT_EQ(client_flow_label, client_connection->outgoing_flow_label());
+    EXPECT_EQ(server_flow_label, client_connection->last_received_flow_label());
+
+    server_thread_->Pause();
+    QuicConnection* server_connection = GetServerConnection();
+    EXPECT_EQ(server_flow_label, server_connection->outgoing_flow_label());
+    EXPECT_EQ(client_flow_label, server_connection->last_received_flow_label());
+  }
 }
 
 TEST_P(EndToEndTest, ServerReportsNotEct) {

@@ -166,6 +166,9 @@ class QUICHE_EXPORT QuicConnectionVisitorInterface {
   // Called when forward progress made after path degrading.
   virtual void OnForwardProgressMadeAfterPathDegrading() = 0;
 
+  // Called when forward progress made after flow label change
+  virtual void OnForwardProgressMadeAfterFlowLabelChange() = 0;
+
   // Called when the connection sends ack after
   // max_consecutive_num_packets_with_no_retransmittable_frames_ consecutive not
   // retransmittable packets sent. To instigate an ack from peer, a
@@ -870,7 +873,7 @@ class QUICHE_EXPORT QuicConnection
     return default_path_.client_connection_id;
   }
   void set_client_connection_id(QuicConnectionId client_connection_id);
-  const QuicClock* clock() const { return clock_; }
+  const QuicClock* clock() const override { return clock_; }
   QuicRandom* random_generator() const { return random_generator_; }
   QuicByteCount max_packet_length() const;
   void SetMaxPacketLength(QuicByteCount length);
@@ -1015,9 +1018,10 @@ class QUICHE_EXPORT QuicConnection
 
    private:
     QuicConnection* connection_;
-    // If true, when this flusher goes out of scope, flush connection and set
-    // retransmission alarm if there is one pending.
-    bool flush_and_set_pending_retransmission_alarm_on_delete_;
+    // If true, when this flusher goes out of scope, flush connection, set
+    // retransmission alarm if there is one pending, and update the platform
+    // alarm associated with the connection.
+    bool active_;
     // Latched connection's handshake_packet_sent_ on creation of this flusher.
     const bool handshake_packet_sent_;
   };
@@ -1436,6 +1440,28 @@ class QUICHE_EXPORT QuicConnection
     return quic_limit_new_streams_per_loop_2_;
   }
 
+  void set_outgoing_flow_label(uint32_t flow_label);
+
+  // Returns the flow label used for outgoing IPv6 packets, or 0 if no
+  // flow label will be sent.
+  uint32_t outgoing_flow_label() const { return outgoing_flow_label_; }
+
+  // Returns the flow label received on the most recent packet, or 0 if no
+  // flow label was received.
+  uint32_t last_received_flow_label() const {
+    return last_received_packet_info_.flow_label;
+  }
+
+  void EnableBlackholeAvoidanceViaFlowLabel() {
+    GenerateNewOutgoingFlowLabel();
+    enable_black_hole_avoidance_via_flow_label_ = true;
+    QUIC_CODE_COUNT(quic_black_hole_avoidance_via_flow_label_enabled);
+  }
+
+  bool enable_black_hole_avoidance_via_flow_label() const {
+    return enable_black_hole_avoidance_via_flow_label_;
+  }
+
   void OnDiscardZeroRttDecryptionKeysAlarm() override;
   void OnIdleDetectorAlarm() override;
   void OnNetworkBlackholeDetectorAlarm() override;
@@ -1458,6 +1484,10 @@ class QUICHE_EXPORT QuicConnection
       QuicErrorCode error, const std::string& error_details);
 
   bool ShouldFixTimeouts(const QuicConfig& config) const;
+
+  bool reliable_stream_reset_enabled() const {
+    return framer_.process_reset_stream_at();
+  }
 
  protected:
   // Calls cancel() on all the alarms owned by this connection.
@@ -1631,12 +1661,12 @@ class QUICHE_EXPORT QuicConnection
     BufferedPacket(const SerializedPacket& packet,
                    const QuicSocketAddress& self_address,
                    const QuicSocketAddress& peer_address,
-                   QuicEcnCodepoint ecn_codepoint);
+                   QuicEcnCodepoint ecn_codepoint, uint32_t flow_label);
     BufferedPacket(const char* encrypted_buffer,
                    QuicPacketLength encrypted_length,
                    const QuicSocketAddress& self_address,
                    const QuicSocketAddress& peer_address,
-                   QuicEcnCodepoint ecn_codepoint);
+                   QuicEcnCodepoint ecn_codepoint, uint32_t flow_label);
     // Please note, this buffered packet contains random bytes (and is not
     // *actually* a QUIC packet).
     BufferedPacket(QuicRandom& random, QuicPacketLength encrypted_length,
@@ -1653,6 +1683,7 @@ class QUICHE_EXPORT QuicConnection
     const QuicSocketAddress self_address;
     const QuicSocketAddress peer_address;
     QuicEcnCodepoint ecn_codepoint = ECN_NOT_ECT;
+    uint32_t flow_label = 0;
   };
 
   // ReceivedPacketInfo comprises the received packet information.
@@ -1662,7 +1693,7 @@ class QUICHE_EXPORT QuicConnection
     ReceivedPacketInfo(const QuicSocketAddress& destination_address,
                        const QuicSocketAddress& source_address,
                        QuicTime receipt_time, QuicByteCount length,
-                       QuicEcnCodepoint ecn_codepoint);
+                       QuicEcnCodepoint ecn_codepoint, uint32_t flow_label);
 
     QuicSocketAddress destination_address;
     QuicSocketAddress source_address;
@@ -1677,6 +1708,7 @@ class QUICHE_EXPORT QuicConnection
     QuicPacketHeader header;
     absl::InlinedVector<QuicFrameType, 1> frames;
     QuicEcnCodepoint ecn_codepoint = ECN_NOT_ECT;
+    uint32_t flow_label = 0;
     // Stores the actual address this packet is received on when it is received
     // on the preferred address. In this case, |destination_address| will
     // be overridden to the current default self address.
@@ -2122,44 +2154,50 @@ class QUICHE_EXPORT QuicConnection
                                  const QuicIpAddress& self_address,
                                  const QuicSocketAddress& destination_address,
                                  QuicPacketWriter* writer,
-                                 const QuicEcnCodepoint ecn_codepoint);
+                                 const QuicEcnCodepoint ecn_codepoint,
+                                 uint32_t flow_label);
 
   bool PeerAddressChanged() const;
 
-  QuicAlarm& ack_alarm() { return alarms_.ack_alarm(); }
-  const QuicAlarm& ack_alarm() const { return alarms_.ack_alarm(); }
-  QuicAlarm& retransmission_alarm() { return alarms_.retransmission_alarm(); }
-  const QuicAlarm& retransmission_alarm() const {
+  void GenerateNewOutgoingFlowLabel();
+
+  QuicAlarmProxy ack_alarm() { return alarms_.ack_alarm(); }
+  QuicAlarmProxy retransmission_alarm() {
     return alarms_.retransmission_alarm();
   }
-  QuicAlarm& send_alarm() { return alarms_.send_alarm(); }
-  const QuicAlarm& send_alarm() const { return alarms_.send_alarm(); }
-  QuicAlarm& mtu_discovery_alarm() { return alarms_.mtu_discovery_alarm(); }
-  const QuicAlarm& mtu_discovery_alarm() const {
-    return alarms_.mtu_discovery_alarm();
-  }
-  QuicAlarm& process_undecryptable_packets_alarm() {
+  QuicAlarmProxy send_alarm() { return alarms_.send_alarm(); }
+  QuicAlarmProxy mtu_discovery_alarm() { return alarms_.mtu_discovery_alarm(); }
+  QuicAlarmProxy process_undecryptable_packets_alarm() {
     return alarms_.process_undecryptable_packets_alarm();
   }
-  const QuicAlarm& process_undecryptable_packets_alarm() const {
-    return alarms_.process_undecryptable_packets_alarm();
-  }
-  QuicAlarm& discard_previous_one_rtt_keys_alarm() {
+  QuicAlarmProxy discard_previous_one_rtt_keys_alarm() {
     return alarms_.discard_previous_one_rtt_keys_alarm();
   }
-  const QuicAlarm& discard_previous_one_rtt_keys_alarm() const {
-    return alarms_.discard_previous_one_rtt_keys_alarm();
-  }
-  QuicAlarm& discard_zero_rtt_decryption_keys_alarm() {
+  QuicAlarmProxy discard_zero_rtt_decryption_keys_alarm() {
     return alarms_.discard_zero_rtt_decryption_keys_alarm();
   }
-  const QuicAlarm& discard_zero_rtt_decryption_keys_alarm() const {
-    return alarms_.discard_zero_rtt_decryption_keys_alarm();
-  }
-  QuicAlarm& multi_port_probing_alarm() {
+  QuicAlarmProxy multi_port_probing_alarm() {
     return alarms_.multi_port_probing_alarm();
   }
-  const QuicAlarm& multi_port_probing_alarm() const {
+
+  QuicConstAlarmProxy ack_alarm() const { return alarms_.ack_alarm(); }
+  QuicConstAlarmProxy retransmission_alarm() const {
+    return alarms_.retransmission_alarm();
+  }
+  QuicConstAlarmProxy send_alarm() const { return alarms_.send_alarm(); }
+  QuicConstAlarmProxy mtu_discovery_alarm() const {
+    return alarms_.mtu_discovery_alarm();
+  }
+  QuicConstAlarmProxy process_undecryptable_packets_alarm() const {
+    return alarms_.process_undecryptable_packets_alarm();
+  }
+  QuicConstAlarmProxy discard_previous_one_rtt_keys_alarm() const {
+    return alarms_.discard_previous_one_rtt_keys_alarm();
+  }
+  QuicConstAlarmProxy discard_zero_rtt_decryption_keys_alarm() const {
+    return alarms_.discard_zero_rtt_decryption_keys_alarm();
+  }
+  QuicConstAlarmProxy multi_port_probing_alarm() const {
     return alarms_.multi_port_probing_alarm();
   }
 
@@ -2318,6 +2356,9 @@ class QUICHE_EXPORT QuicConnection
   // close.
   bool connected_;
 
+  // True if the connection is in the CloseConnection stack.
+  bool in_close_connection_ = false;
+
   // Set to false if the connection should not send truncated connection IDs to
   // the peer, even if the peer supports it.
   bool can_truncate_connection_ids_;
@@ -2371,6 +2412,9 @@ class QUICHE_EXPORT QuicConnection
 
   // True if the peer is unreachable on the current path.
   bool is_path_degrading_;
+
+  // True if the outgoing flow label has changed since the last foward progress.
+  bool flow_label_has_changed_;
 
   // True if an ack frame is being processed.
   bool processing_ack_frame_;
@@ -2552,9 +2596,21 @@ class QUICHE_EXPORT QuicConnection
   // The ECN codepoint of the last packet to be sent to the writer, which
   // might be different from the next codepoint in per_packet_options_.
   QuicEcnCodepoint last_ecn_codepoint_sent_ = ECN_NOT_ECT;
+  // The flow label of the last packet to be sent to the writer, which
+  // might be different from the next flow label in per_packet_options_.
+  uint32_t last_flow_label_sent_ = 0;
+  // The flow label to be sent for outgoing packets.
+  uint32_t outgoing_flow_label_ = 0;
+  // The flow label of the packet with the largest packet number received
+  // from the peer.
+  uint32_t last_flow_label_received_ = 0;
+  // True if the peer is expected to change their flow label in response to
+  // a flow label change made by this connection.
+  bool expect_peer_flow_label_change_ = false;
+  // If true then flow labels will be changed when a PTO fires, or when
+  // a PTO'd packet from a peer is detected.
+  bool enable_black_hole_avoidance_via_flow_label_ = false;
 
-  // If true, the peer has indicated that it supports the RESET_STREAM_AT frame.
-  bool reliable_stream_reset_ = false;
 
   const bool quic_limit_new_streams_per_loop_2_ =
       GetQuicReloadableFlag(quic_limit_new_streams_per_loop_2);

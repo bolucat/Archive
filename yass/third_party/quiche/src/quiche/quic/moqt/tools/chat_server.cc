@@ -4,7 +4,6 @@
 
 #include "quiche/quic/moqt/tools/chat_server.h"
 
-#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -92,9 +91,8 @@ void ChatServer::RemoteTrackVisitor::OnReply(
 }
 
 void ChatServer::RemoteTrackVisitor::OnObjectFragment(
-    const moqt::FullTrackName& full_track_name, uint64_t group_sequence,
-    uint64_t object_sequence, moqt::MoqtPriority /*publisher_priority*/,
-    moqt::MoqtObjectStatus status,
+    const moqt::FullTrackName& full_track_name, moqt::FullSequence sequence,
+    moqt::MoqtPriority /*publisher_priority*/, moqt::MoqtObjectStatus status,
     moqt::MoqtForwardingPreference /*forwarding_preference*/,
     absl::string_view object, bool end_of_message) {
   if (!end_of_message) {
@@ -114,13 +112,13 @@ void ChatServer::RemoteTrackVisitor::OnObjectFragment(
     return;
   }
   if (status != MoqtObjectStatus::kNormal) {
-    it->second->AddObject(group_sequence, object_sequence, status, "");
+    it->second->AddObject(sequence, status);
     return;
   }
   if (!server_->WriteToFile(username, object)) {
     std::cout << username << ": " << object << "\n\n";
   }
-  it->second->AddObject(group_sequence, object_sequence, status, object);
+  it->second->AddObject(sequence, object);
 }
 
 ChatServer::ChatServer(std::unique_ptr<quic::ProofSource> proof_source,
@@ -170,6 +168,7 @@ void ChatServer::DeleteUser(absl::string_view username) {
   catalog_->AddObject(quiche::QuicheMemSlice(quiche::QuicheBuffer::Copy(
                           quiche::SimpleBufferAllocator::Get(), catalog_data)),
                       /*key=*/false);
+  user_queues_[username]->RemoveAllSubscriptions();
   user_queues_.erase(username);
   publisher_.Delete(strings_.GetFullTrackNameFromUsername(username));
 }

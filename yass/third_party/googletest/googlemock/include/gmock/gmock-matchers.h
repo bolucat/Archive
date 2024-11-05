@@ -1523,7 +1523,7 @@ class SomeOfArrayMatcher {
   }
 
  private:
-  const ::std::vector<T> matchers_;
+  const std::vector<std::remove_const_t<T>> matchers_;
 };
 
 template <typename T>
@@ -3805,7 +3805,7 @@ class UnorderedElementsAreArrayMatcher {
 
  private:
   UnorderedMatcherRequire::Flags match_flags_;
-  ::std::vector<T> matchers_;
+  std::vector<std::remove_const_t<T>> matchers_;
 };
 
 // Implements ElementsAreArray().
@@ -3826,7 +3826,7 @@ class ElementsAreArrayMatcher {
   }
 
  private:
-  const ::std::vector<T> matchers_;
+  const std::vector<std::remove_const_t<T>> matchers_;
 };
 
 // Given a 2-tuple matcher tm of type Tuple2Matcher and a value second
@@ -4793,9 +4793,10 @@ Pointwise(const TupleMatcher& tuple_matcher, const Container& rhs) {
 
 // Supports the Pointwise(m, {a, b, c}) syntax.
 template <typename TupleMatcher, typename T>
-inline internal::PointwiseMatcher<TupleMatcher, std::vector<T>> Pointwise(
-    const TupleMatcher& tuple_matcher, std::initializer_list<T> rhs) {
-  return Pointwise(tuple_matcher, std::vector<T>(rhs));
+inline internal::PointwiseMatcher<TupleMatcher,
+                                  std::vector<std::remove_const_t<T>>>
+Pointwise(const TupleMatcher& tuple_matcher, std::initializer_list<T> rhs) {
+  return Pointwise(tuple_matcher, std::vector<std::remove_const_t<T>>(rhs));
 }
 
 // UnorderedPointwise(pair_matcher, rhs) matches an STL-style
@@ -4957,7 +4958,7 @@ inline internal::UnorderedElementsAreArrayMatcher<T> IsSupersetOf(
 // - {1} matches IsSubsetOf({Gt(0), Lt(0)}), as 1 matches Gt(0).
 // - {1, -1} matches IsSubsetOf({Lt(0), Gt(0)}), as 1 matches Gt(0) and -1
 //   matches Lt(0).
-// - {1, 2} doesn't matches IsSubsetOf({Gt(0), Lt(0)}), even though 1 and 2 both
+// - {1, 2} doesn't match IsSubsetOf({Gt(0), Lt(0)}), even though 1 and 2 both
 //   match Gt(0). The reason is that different matchers must be used for
 //   elements in different slots of the container.
 //

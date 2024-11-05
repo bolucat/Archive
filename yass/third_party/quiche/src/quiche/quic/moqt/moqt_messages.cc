@@ -97,16 +97,24 @@ std::string MoqtMessageTypeToString(const MoqtMessageType message_type) {
       return "UNANNOUNCE";
     case MoqtMessageType::kGoAway:
       return "GOAWAY";
-    case MoqtMessageType::kSubscribeNamespace:
+    case MoqtMessageType::kSubscribeAnnounces:
       return "SUBSCRIBE_NAMESPACE";
-    case MoqtMessageType::kSubscribeNamespaceOk:
+    case MoqtMessageType::kSubscribeAnnouncesOk:
       return "SUBSCRIBE_NAMESPACE_OK";
-    case MoqtMessageType::kSubscribeNamespaceError:
+    case MoqtMessageType::kSubscribeAnnouncesError:
       return "SUBSCRIBE_NAMESPACE_ERROR";
-    case MoqtMessageType::kUnsubscribeNamespace:
+    case MoqtMessageType::kUnsubscribeAnnounces:
       return "UNSUBSCRIBE_NAMESPACE";
     case MoqtMessageType::kMaxSubscribeId:
       return "MAX_SUBSCRIBE_ID";
+    case MoqtMessageType::kFetch:
+      return "FETCH";
+    case MoqtMessageType::kFetchCancel:
+      return "FETCH_CANCEL";
+    case MoqtMessageType::kFetchOk:
+      return "FETCH_OK";
+    case MoqtMessageType::kFetchError:
+      return "FETCH_ERROR";
     case MoqtMessageType::kObjectAck:
       return "OBJECT_ACK";
   }
@@ -121,6 +129,8 @@ std::string MoqtDataStreamTypeToString(MoqtDataStreamType type) {
       return "STREAM_HEADER_TRACK";
     case MoqtDataStreamType::kStreamHeaderSubgroup:
       return "STREAM_HEADER_SUBGROUP";
+    case MoqtDataStreamType::kStreamHeaderFetch:
+      return "STREAM_HEADER_FETCH";
     case MoqtDataStreamType::kPadding:
       return "PADDING";
   }
@@ -150,6 +160,8 @@ MoqtForwardingPreference GetForwardingPreference(MoqtDataStreamType type) {
       return MoqtForwardingPreference::kTrack;
     case MoqtDataStreamType::kStreamHeaderSubgroup:
       return MoqtForwardingPreference::kSubgroup;
+    case MoqtDataStreamType::kStreamHeaderFetch:
+      return MoqtForwardingPreference::kTrack;  // This is a placeholder.
     default:
       break;
   }

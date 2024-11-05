@@ -567,381 +567,6 @@ static bool CipherListsEqual(SSL_CTX *ctx,
   return true;
 }
 
-TEST(ArrayDeathTest, BoundsChecks) {
-  Array<int> array;
-  const int v[] = {1, 2, 3, 4};
-  ASSERT_TRUE(array.CopyFrom(v));
-  EXPECT_DEATH_IF_SUPPORTED(array[4], "");
-}
-
-TEST(VectorTest, Resize) {
-  Vector<size_t> vec;
-  ASSERT_TRUE(vec.empty());
-  EXPECT_EQ(vec.size(), 0u);
-
-  ASSERT_TRUE(vec.Push(42));
-  ASSERT_TRUE(!vec.empty());
-  EXPECT_EQ(vec.size(), 1u);
-
-  // Force a resize operation to occur
-  for (size_t i = 0; i < 16; i++) {
-    ASSERT_TRUE(vec.Push(i + 1));
-  }
-
-  EXPECT_EQ(vec.size(), 17u);
-
-  // Verify that expected values are still contained in vec
-  for (size_t i = 0; i < vec.size(); i++) {
-    EXPECT_EQ(vec[i], i == 0 ? 42 : i);
-  }
-
-  // Clearing the vector should give an empty one.
-  vec.clear();
-  ASSERT_TRUE(vec.empty());
-  EXPECT_EQ(vec.size(), 0u);
-
-  ASSERT_TRUE(vec.Push(42));
-  ASSERT_TRUE(!vec.empty());
-  EXPECT_EQ(vec.size(), 1u);
-  EXPECT_EQ(vec[0], 42u);
-}
-
-TEST(VectorTest, MoveConstructor) {
-  Vector<size_t> vec;
-  for (size_t i = 0; i < 100; i++) {
-    ASSERT_TRUE(vec.Push(i));
-  }
-
-  Vector<size_t> vec_moved(std::move(vec));
-  for (size_t i = 0; i < 100; i++) {
-    EXPECT_EQ(vec_moved[i], i);
-  }
-}
-
-TEST(VectorTest, VectorContainingVectors) {
-  // Representative example of a struct that contains a Vector.
-  struct TagAndArray {
-    size_t tag;
-    Vector<size_t> vec;
-  };
-
-  Vector<TagAndArray> vec;
-  for (size_t i = 0; i < 100; i++) {
-    TagAndArray elem;
-    elem.tag = i;
-    for (size_t j = 0; j < i; j++) {
-      ASSERT_TRUE(elem.vec.Push(j));
-    }
-    ASSERT_TRUE(vec.Push(std::move(elem)));
-  }
-  EXPECT_EQ(vec.size(), static_cast<size_t>(100));
-
-  Vector<TagAndArray> vec_moved(std::move(vec));
-  EXPECT_EQ(vec_moved.size(), static_cast<size_t>(100));
-  size_t count = 0;
-  for (const TagAndArray &elem : vec_moved) {
-    // Test the square bracket operator returns the same value as iteration.
-    EXPECT_EQ(&elem, &vec_moved[count]);
-
-    EXPECT_EQ(elem.tag, count);
-    EXPECT_EQ(elem.vec.size(), count);
-    for (size_t j = 0; j < count; j++) {
-      EXPECT_EQ(elem.vec[j], j);
-    }
-    count++;
-  }
-}
-
-TEST(VectorTest, NotDefaultConstructible) {
-  struct NotDefaultConstructible {
-    explicit NotDefaultConstructible(size_t n) { array.Init(n); }
-    Array<int> array;
-  };
-
-  Vector<NotDefaultConstructible> vec;
-  vec.Push(NotDefaultConstructible(0));
-  vec.Push(NotDefaultConstructible(1));
-  vec.Push(NotDefaultConstructible(2));
-  vec.Push(NotDefaultConstructible(3));
-  EXPECT_EQ(vec.size(), 4u);
-  EXPECT_EQ(0u, vec[0].array.size());
-  EXPECT_EQ(1u, vec[1].array.size());
-  EXPECT_EQ(2u, vec[2].array.size());
-  EXPECT_EQ(3u, vec[3].array.size());
-}
-
-TEST(VectorDeathTest, BoundsChecks) {
-  Vector<int> vec;
-  ASSERT_TRUE(vec.Push(1));
-  // Within bounds of the capacity, but not the vector.
-  EXPECT_DEATH_IF_SUPPORTED(vec[1], "");
-  // Not within bounds of the capacity either.
-  EXPECT_DEATH_IF_SUPPORTED(vec[10000], "");
-}
-
-TEST(InplaceVector, Basic) {
-  InplaceVector<int, 4> vec;
-  EXPECT_TRUE(vec.empty());
-  EXPECT_EQ(0u, vec.size());
-  EXPECT_EQ(vec.begin(), vec.end());
-
-  int data3[] = {1, 2, 3};
-  ASSERT_TRUE(vec.TryCopyFrom(data3));
-  EXPECT_FALSE(vec.empty());
-  EXPECT_EQ(3u, vec.size());
-  auto iter = vec.begin();
-  EXPECT_EQ(1, vec[0]);
-  EXPECT_EQ(1, *iter);
-  iter++;
-  EXPECT_EQ(2, vec[1]);
-  EXPECT_EQ(2, *iter);
-  iter++;
-  EXPECT_EQ(3, vec[2]);
-  EXPECT_EQ(3, *iter);
-  iter++;
-  EXPECT_EQ(iter, vec.end());
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(data3));
-
-  InplaceVector<int, 4> vec2 = vec;
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(vec2));
-
-  InplaceVector<int, 4> vec3;
-  vec3 = vec;
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(vec2));
-
-  int data4[] = {1, 2, 3, 4};
-  ASSERT_TRUE(vec.TryCopyFrom(data4));
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(data4));
-
-  int data5[] = {1, 2, 3, 4, 5};
-  EXPECT_FALSE(vec.TryCopyFrom(data5));
-  EXPECT_FALSE(vec.TryResize(5));
-
-  // Shrink the vector.
-  ASSERT_TRUE(vec.TryResize(3));
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(data3));
-
-  // Enlarge it again. The new value should have been value-initialized.
-  ASSERT_TRUE(vec.TryResize(4));
-  EXPECT_EQ(vec[3], 0);
-
-  // Self-assignment should not break the vector. Indirect through a pointer to
-  // avoid tripping a compiler warning.
-  vec.CopyFrom(data4);
-  const auto *ptr = &vec;
-  vec = *ptr;
-  EXPECT_EQ(MakeConstSpan(vec), MakeConstSpan(data4));
-}
-
-TEST(InplaceVectorTest, ComplexType) {
-  InplaceVector<std::vector<int>, 4> vec_of_vecs;
-  const std::vector<int> data[] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};
-  vec_of_vecs.CopyFrom(data);
-  EXPECT_EQ(MakeConstSpan(vec_of_vecs), MakeConstSpan(data));
-
-  vec_of_vecs.Resize(2);
-  EXPECT_EQ(MakeConstSpan(vec_of_vecs), MakeConstSpan(data, 2));
-
-  vec_of_vecs.Resize(4);
-  EXPECT_EQ(4u, vec_of_vecs.size());
-  EXPECT_EQ(vec_of_vecs[0], data[0]);
-  EXPECT_EQ(vec_of_vecs[1], data[1]);
-  EXPECT_TRUE(vec_of_vecs[2].empty());
-  EXPECT_TRUE(vec_of_vecs[3].empty());
-
-  // Copy-construction.
-  InplaceVector<std::vector<int>, 4> vec_of_vecs2 = vec_of_vecs;
-  EXPECT_EQ(4u, vec_of_vecs2.size());
-  EXPECT_EQ(vec_of_vecs2[0], data[0]);
-  EXPECT_EQ(vec_of_vecs2[1], data[1]);
-  EXPECT_TRUE(vec_of_vecs2[2].empty());
-  EXPECT_TRUE(vec_of_vecs2[3].empty());
-
-  // Copy-assignment.
-  InplaceVector<std::vector<int>, 4> vec_of_vecs3;
-  vec_of_vecs3 = vec_of_vecs;
-  EXPECT_EQ(4u, vec_of_vecs3.size());
-  EXPECT_EQ(vec_of_vecs3[0], data[0]);
-  EXPECT_EQ(vec_of_vecs3[1], data[1]);
-  EXPECT_TRUE(vec_of_vecs3[2].empty());
-  EXPECT_TRUE(vec_of_vecs3[3].empty());
-
-  // Move-construction.
-  InplaceVector<std::vector<int>, 4> vec_of_vecs4 = std::move(vec_of_vecs);
-  EXPECT_EQ(4u, vec_of_vecs4.size());
-  EXPECT_EQ(vec_of_vecs4[0], data[0]);
-  EXPECT_EQ(vec_of_vecs4[1], data[1]);
-  EXPECT_TRUE(vec_of_vecs4[2].empty());
-  EXPECT_TRUE(vec_of_vecs4[3].empty());
-
-  // The elements of the original vector should have been moved-from.
-  EXPECT_EQ(4u, vec_of_vecs.size());
-  for (const auto &vec : vec_of_vecs) {
-    EXPECT_TRUE(vec.empty());
-  }
-
-  // Move-assignment.
-  InplaceVector<std::vector<int>, 4> vec_of_vecs5;
-  vec_of_vecs5 = std::move(vec_of_vecs4);
-  EXPECT_EQ(4u, vec_of_vecs5.size());
-  EXPECT_EQ(vec_of_vecs5[0], data[0]);
-  EXPECT_EQ(vec_of_vecs5[1], data[1]);
-  EXPECT_TRUE(vec_of_vecs5[2].empty());
-  EXPECT_TRUE(vec_of_vecs5[3].empty());
-
-  // The elements of the original vector should have been moved-from.
-  EXPECT_EQ(4u, vec_of_vecs4.size());
-  for (const auto &vec : vec_of_vecs4) {
-    EXPECT_TRUE(vec.empty());
-  }
-
-  std::vector<int> v = {42};
-  vec_of_vecs5.Resize(3);
-  EXPECT_TRUE(vec_of_vecs5.TryPushBack(v));
-  EXPECT_EQ(v, vec_of_vecs5[3]);
-  EXPECT_FALSE(vec_of_vecs5.TryPushBack(v));
-}
-
-TEST(InplaceVectorDeathTest, BoundsChecks) {
-  InplaceVector<int, 4> vec;
-  // The vector is currently empty.
-  EXPECT_DEATH_IF_SUPPORTED(vec[0], "");
-  int data[] = {1, 2, 3};
-  vec.CopyFrom(data);
-  // Some more out-of-bounds elements.
-  EXPECT_DEATH_IF_SUPPORTED(vec[3], "");
-  EXPECT_DEATH_IF_SUPPORTED(vec[4], "");
-  EXPECT_DEATH_IF_SUPPORTED(vec[1000], "");
-  // The vector cannot be resized past the capacity.
-  EXPECT_DEATH_IF_SUPPORTED(vec.Resize(5), "");
-  EXPECT_DEATH_IF_SUPPORTED(vec.ResizeMaybeUninit(5), "");
-  int too_much_data[] = {1, 2, 3, 4, 5};
-  EXPECT_DEATH_IF_SUPPORTED(vec.CopyFrom(too_much_data), "");
-  vec.Resize(4);
-  EXPECT_DEATH_IF_SUPPORTED(vec.PushBack(42), "");
-}
-
-TEST(ReconstructSeqnumTest, Increment) {
-  // Test simple cases from the beginning of an epoch with both 8- and 16-bit
-  // wire sequence numbers.
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0), 0u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xff, 0), 1u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xff, 0), 2u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0), 0u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xffff, 0), 1u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xffff, 0), 2u);
-
-  // When the max seen sequence number is 0, the numerically closest
-  // reconstructed sequence number could be negative. Sequence numbers are
-  // non-negative, so reconstruct_seqnum should instead return the closest
-  // non-negative number instead of returning a number congruent to that
-  // closest negative number mod 2^64.
-  EXPECT_EQ(reconstruct_seqnum(0xff, 0xff, 0), 0xffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfe, 0xff, 0), 0xfeu);
-  EXPECT_EQ(reconstruct_seqnum(0xffff, 0xffff, 0), 0xffffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfffe, 0xffff, 0), 0xfffeu);
-
-  // When the wire sequence number is less than the corresponding low bytes of
-  // the max seen sequence number, check that the next larger sequence number
-  // is reconstructed as its numerically closer than the corresponding sequence
-  // number that would keep the high order bits the same.
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0xff), 0x100u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xff, 0xff), 0x101u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xff, 0xff), 0x102u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0xffff), 0x10000u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xffff, 0xffff), 0x10001u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xffff, 0xffff), 0x10002u);
-
-  // Test cases when the wire sequence number is close to the largest magnitude
-  // that can be represented in 8 or 16 bits.
-  EXPECT_EQ(reconstruct_seqnum(0xff, 0xff, 0x2f0), 0x2ffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfe, 0xff, 0x2f0), 0x2feu);
-  EXPECT_EQ(reconstruct_seqnum(0xffff, 0xffff, 0x2f000), 0x2ffffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfffe, 0xffff, 0x2f000), 0x2fffeu);
-
-  // Test that reconstruct_seqnum can return
-  // std::numeric_limits<uint64_t>::max().
-  EXPECT_EQ(reconstruct_seqnum(0xff, 0xff, 0xffffffffffffffff),
-            std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(reconstruct_seqnum(0xff, 0xff, 0xfffffffffffffffe),
-            std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(reconstruct_seqnum(0xffff, 0xffff, 0xffffffffffffffff),
-            std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(reconstruct_seqnum(0xffff, 0xffff, 0xfffffffffffffffe),
-            std::numeric_limits<uint64_t>::max());
-}
-
-TEST(ReconstructSeqnumTest, Decrement) {
-  // Test that the sequence number 0 can be reconstructed when the max
-  // seen sequence number is greater than 0.
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0x10), 0u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0x1000), 0u);
-
-  // Test cases where the reconstructed sequence number is less than the max
-  // seen sequence number.
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0x210), 0x200u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xff, 0x210), 0x202u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0x43210), 0x40000u);
-  EXPECT_EQ(reconstruct_seqnum(2, 0xffff, 0x43210), 0x40002u);
-
-  // Test when the wire sequence number is greater than the low bits of the
-  // max seen sequence number.
-  EXPECT_EQ(reconstruct_seqnum(0xff, 0xff, 0x200), 0x1ffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfe, 0xff, 0x200), 0x1feu);
-  EXPECT_EQ(reconstruct_seqnum(0xffff, 0xffff, 0x20000), 0x1ffffu);
-  EXPECT_EQ(reconstruct_seqnum(0xfffe, 0xffff, 0x20000), 0x1fffeu);
-
-  // Test when the max seen sequence number is close to the uint64_t max value.
-  // In some cases, the closest numerical value in the integers will overflow
-  // a uint64_t. Instead of returning the closest value in Z_{2^64},
-  // reconstruct_seqnum should return the closest integer less than 2^64, even
-  // if there is a closer value greater than 2^64.
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0xffffffffffffffff),
-            0xffffffffffffff00u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xff, 0xfffffffffffffffe),
-            0xffffffffffffff00u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xff, 0xffffffffffffffff),
-            0xffffffffffffff01u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xff, 0xfffffffffffffffe),
-            0xffffffffffffff01u);
-  EXPECT_EQ(reconstruct_seqnum(0xfe, 0xff, 0xffffffffffffffff),
-            0xfffffffffffffffeu);
-  EXPECT_EQ(reconstruct_seqnum(0xfd, 0xff, 0xfffffffffffffffe),
-            0xfffffffffffffffdu);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0xffffffffffffffff),
-            0xffffffffffff0000u);
-  EXPECT_EQ(reconstruct_seqnum(0, 0xffff, 0xfffffffffffffffe),
-            0xffffffffffff0000u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xffff, 0xffffffffffffffff),
-            0xffffffffffff0001u);
-  EXPECT_EQ(reconstruct_seqnum(1, 0xffff, 0xfffffffffffffffe),
-            0xffffffffffff0001u);
-  EXPECT_EQ(reconstruct_seqnum(0xfffe, 0xffff, 0xffffffffffffffff),
-            0xfffffffffffffffeu);
-  EXPECT_EQ(reconstruct_seqnum(0xfffd, 0xffff, 0xfffffffffffffffe),
-            0xfffffffffffffffdu);
-}
-
-TEST(ReconstructSeqnumTest, Halfway) {
-  // Test wire sequence numbers that are close to halfway away from the max
-  // seen sequence number. The algorithm specifies that the output should be
-  // numerically closest to 1 plus the max seen (0x100 in the following test
-  // cases). With a max seen of 0x100 and a wire sequence of 0x81, the two
-  // closest values to 1+0x100 are 0x81 and 0x181, which are both the same
-  // amount away. The algorithm doesn't specify what to do on this edge case;
-  // our implementation chooses the larger value (0x181), on the assumption that
-  // it's more likely to be a new or larger sequence number rather than a replay
-  // or an out-of-order packet.
-  EXPECT_EQ(reconstruct_seqnum(0x80, 0xff, 0x100), 0x180u);
-  EXPECT_EQ(reconstruct_seqnum(0x81, 0xff, 0x100), 0x181u);
-  EXPECT_EQ(reconstruct_seqnum(0x82, 0xff, 0x100), 0x82u);
-
-  // Repeat these tests with 16-bit wire sequence numbers.
-  EXPECT_EQ(reconstruct_seqnum(0x8000, 0xffff, 0x10000), 0x18000u);
-  EXPECT_EQ(reconstruct_seqnum(0x8001, 0xffff, 0x10000), 0x18001u);
-  EXPECT_EQ(reconstruct_seqnum(0x8002, 0xffff, 0x10000), 0x8002u);
-}
-
 TEST(SSLTest, CipherRules) {
   for (const CipherTest &t : kCipherTests) {
     SCOPED_TRACE(t.rule);
@@ -1751,7 +1376,7 @@ static bssl::UniquePtr<EVP_PKEY> GetTestKey() {
 
 static bssl::UniquePtr<SSL_CTX> CreateContextWithTestCertificate(
     const SSL_METHOD *method) {
-  bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(TLS_method()));
+  bssl::UniquePtr<SSL_CTX> ctx(SSL_CTX_new(method));
   bssl::UniquePtr<X509> cert = GetTestCertificate();
   bssl::UniquePtr<EVP_PKEY> key = GetTestKey();
   if (!ctx || !cert || !key ||
@@ -3148,6 +2773,11 @@ class SSLVersionTest : public ::testing::TestWithParam<VersionParam> {
 
   uint16_t version() const { return GetParam().version; }
 
+  bool is_tls13() const {
+    return version() == TLS1_3_VERSION ||
+           version() == DTLS1_3_EXPERIMENTAL_VERSION;
+  }
+
   bool is_dtls() const {
     return GetParam().ssl_method == VersionParam::is_dtls;
   }
@@ -3179,22 +2809,25 @@ TEST_P(SSLVersionTest, SequenceNumber) {
 
   if (is_dtls()) {
     if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-      // Client and server write epochs should be at 3 (application data).
+      // Both client and server must be at epoch 3 (application data).
       EXPECT_EQ(EpochFromSequence(client_write_seq), 3);
       EXPECT_EQ(EpochFromSequence(server_write_seq), 3);
-      // TODO(crbug.com/42290608): The read sequences aren't checked because the
-      // SSL_get_read_sequence API needs to be reworked for DTLS 1.3.
+
+      // TODO(crbug.com/42290608): Ideally we would check the read sequence
+      // numbers and compare them against each other, but
+      // |SSL_get_read_sequence| is ill-defined right after DTLS 1.3's key
+      // change. See that function for details.
     } else {
       // Both client and server must be at epoch 1.
       EXPECT_EQ(EpochFromSequence(client_read_seq), 1);
       EXPECT_EQ(EpochFromSequence(client_write_seq), 1);
       EXPECT_EQ(EpochFromSequence(server_read_seq), 1);
       EXPECT_EQ(EpochFromSequence(server_write_seq), 1);
-    }
 
-    // The next record to be written should exceed the largest received.
-    EXPECT_GT(client_write_seq, server_read_seq);
-    EXPECT_GT(server_write_seq, client_read_seq);
+      // The next record to be written should exceed the largest received.
+      EXPECT_GT(client_write_seq, server_read_seq);
+      EXPECT_GT(server_write_seq, client_read_seq);
+    }
   } else {
     // The next record to be written should equal the next to be received.
     EXPECT_EQ(client_write_seq, server_read_seq);
@@ -3868,11 +3501,6 @@ static int SwitchSessionIDContextSNI(SSL *ssl, int *out_alert, void *arg) {
 }
 
 TEST_P(SSLVersionTest, SessionIDContext) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   static const uint8_t kContext1[] = {1};
   static const uint8_t kContext2[] = {2};
 
@@ -4009,11 +3637,6 @@ static bool GetServerTicketTime(long *out, const SSL_SESSION *session) {
 }
 
 TEST_P(SSLVersionTest, SessionTimeout) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   for (bool server_test : {false, true}) {
     SCOPED_TRACE(server_test);
 
@@ -4026,9 +3649,8 @@ TEST_P(SSLVersionTest, SessionTimeout) {
 
     // We are willing to use a longer lifetime for TLS 1.3 sessions as
     // resumptions still perform ECDHE.
-    const time_t timeout = version() == TLS1_3_VERSION
-                               ? SSL_DEFAULT_SESSION_PSK_DHE_TIMEOUT
-                               : SSL_DEFAULT_SESSION_TIMEOUT;
+    const time_t timeout = is_tls13() ? SSL_DEFAULT_SESSION_PSK_DHE_TIMEOUT
+                                      : SSL_DEFAULT_SESSION_TIMEOUT;
 
     // Both client and server must enforce session timeouts. We configure the
     // other side with a frozen clock so it never expires tickets.
@@ -4088,7 +3710,7 @@ TEST_P(SSLVersionTest, SessionTimeout) {
 
     ASSERT_EQ(session_time, g_current_time.tv_sec);
 
-    if (version() == TLS1_3_VERSION) {
+    if (is_tls13()) {
       // Renewal incorporates fresh key material in TLS 1.3, so we extend the
       // lifetime TLS 1.3.
       g_current_time.tv_sec = new_start_time + timeout - 1;
@@ -4150,11 +3772,6 @@ TEST_P(SSLVersionTest, DefaultTicketKeyInitialization) {
 }
 
 TEST_P(SSLVersionTest, DefaultTicketKeyRotation) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   static const time_t kStartTime = 1001;
   g_current_time.tv_sec = kStartTime;
 
@@ -4452,8 +4069,7 @@ TEST_P(SSLVersionTest, ALPNCipherAvailable) {
 TEST_P(SSLVersionTest, SSLClearSessionResumption) {
   // Skip this for TLS 1.3. TLS 1.3's ticket mechanism is incompatible with this
   // API pattern.
-  if (version() == TLS1_3_VERSION ||
-      version() == DTLS1_3_EXPERIMENTAL_VERSION) {
+  if (is_tls13()) {
     return;
   }
 
@@ -4858,11 +4474,6 @@ TEST_P(SSLVersionTest, GetServerName) {
   bssl::UniquePtr<SSL_SESSION> session =
       CreateClientSession(client_ctx_.get(), server_ctx_.get(), config);
 
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   // If the client resumes a session with a different name, |SSL_get_servername|
   // must return the new name.
   ASSERT_TRUE(session);
@@ -4875,11 +4486,6 @@ TEST_P(SSLVersionTest, GetServerName) {
 
 // Test that session cache mode bits are honored in the client session callback.
 TEST_P(SSLVersionTest, ClientSessionCacheMode) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   SSL_CTX_set_session_cache_mode(client_ctx_.get(), SSL_SESS_CACHE_OFF);
   EXPECT_FALSE(CreateClientSession(client_ctx_.get(), server_ctx_.get()));
 
@@ -5946,11 +5552,6 @@ TEST(SSLTest, NoCiphersAvailable) {
 }
 
 TEST_P(SSLVersionTest, SessionVersion) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   SSL_CTX_set_session_cache_mode(client_ctx_.get(), SSL_SESS_CACHE_BOTH);
   SSL_CTX_set_session_cache_mode(server_ctx_.get(), SSL_SESS_CACHE_BOTH);
 
@@ -5960,8 +5561,7 @@ TEST_P(SSLVersionTest, SessionVersion) {
   EXPECT_EQ(version(), SSL_SESSION_get_protocol_version(session.get()));
 
   // Sessions in TLS 1.3 and later should be single-use.
-  EXPECT_EQ(version() == TLS1_3_VERSION,
-            !!SSL_SESSION_should_be_single_use(session.get()));
+  EXPECT_EQ(is_tls13(), !!SSL_SESSION_should_be_single_use(session.get()));
 
   // Making fake sessions for testing works.
   session.reset(SSL_SESSION_new(client_ctx_.get()));
@@ -6603,11 +6203,6 @@ TEST_P(SSLVersionTest, VerifyBeforeCertRequest) {
 
 // Test that ticket-based sessions on the client get fake session IDs.
 TEST_P(SSLVersionTest, FakeIDsForTickets) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   SSL_CTX_set_session_cache_mode(client_ctx_.get(), SSL_SESS_CACHE_BOTH);
   SSL_CTX_set_session_cache_mode(server_ctx_.get(), SSL_SESS_CACHE_BOTH);
 
@@ -6629,8 +6224,7 @@ TEST_P(SSLVersionTest, SessionCacheThreads) {
   SSL_CTX_set_session_cache_mode(client_ctx_.get(), SSL_SESS_CACHE_BOTH);
   SSL_CTX_set_session_cache_mode(server_ctx_.get(), SSL_SESS_CACHE_BOTH);
 
-  if (version() == TLS1_3_VERSION ||
-      version() == DTLS1_3_EXPERIMENTAL_VERSION) {
+  if (is_tls13()) {
     // Our TLS 1.3 implementation does not support stateful resumption.
     ASSERT_FALSE(CreateClientSession(client_ctx_.get(), server_ctx_.get()));
     return;
@@ -6739,11 +6333,6 @@ TEST_P(SSLVersionTest, SessionCacheThreads) {
 }
 
 TEST_P(SSLVersionTest, SessionTicketThreads) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   for (bool renew_ticket : {false, true}) {
     SCOPED_TRACE(renew_ticket);
     ASSERT_NO_FATAL_FAILURE(ResetContexts());
@@ -6813,8 +6402,7 @@ TEST(SSLTest, GetCertificateThreads) {
 // performing stateful resumption will share an underlying SSL_SESSION object,
 // potentially across threads.
 TEST_P(SSLVersionTest, SessionPropertiesThreads) {
-  if (version() == TLS1_3_VERSION ||
-      version() == DTLS1_3_EXPERIMENTAL_VERSION) {
+  if (is_tls13()) {
     // Our TLS 1.3 implementation does not support stateful resumption.
     ASSERT_FALSE(CreateClientSession(client_ctx_.get(), server_ctx_.get()));
     return;
@@ -8416,11 +8004,6 @@ TEST_P(SSLVersionTest, DoubleSSLError) {
 }
 
 TEST_P(SSLVersionTest, SameKeyResume) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   uint8_t key[48];
   RAND_bytes(key, sizeof(key));
 
@@ -8458,11 +8041,6 @@ TEST_P(SSLVersionTest, SameKeyResume) {
 }
 
 TEST_P(SSLVersionTest, DifferentKeyNoResume) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   uint8_t key1[48], key2[48];
   RAND_bytes(key1, sizeof(key1));
   RAND_bytes(key2, sizeof(key2));
@@ -8501,11 +8079,6 @@ TEST_P(SSLVersionTest, DifferentKeyNoResume) {
 }
 
 TEST_P(SSLVersionTest, UnrelatedServerNoResume) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   bssl::UniquePtr<SSL_CTX> server_ctx2 = CreateContext();
   ASSERT_TRUE(server_ctx2);
   ASSERT_TRUE(UseCertAndKey(server_ctx2.get()));
@@ -8543,11 +8116,6 @@ Span<const uint8_t> SessionIDOf(const SSL* ssl) {
 }
 
 TEST_P(SSLVersionTest, TicketSessionIDsMatch) {
-  if (version() == DTLS1_3_EXPERIMENTAL_VERSION) {
-    // TODO(crbug.com/boringssl/715): Enable the rest of this test for DTLS 1.3
-    // once it supports NewSessionTickets.
-    return;
-  }
   // This checks that the session IDs at client and server match after a ticket
   // resumption. It's unclear whether this should be true, but Envoy depends
   // on it in their tests so this will give an early signal if we break it.
@@ -10023,8 +9591,7 @@ TEST_P(SSLVersionTest, KeyLog) {
   ASSERT_TRUE(Connect());
 
   // Check that we logged the secrets we expected to log.
-  if (version() == TLS1_3_VERSION ||
-      version() == DTLS1_3_EXPERIMENTAL_VERSION) {
+  if (is_tls13()) {
     EXPECT_THAT(client_log, ElementsAre(Key("CLIENT_HANDSHAKE_TRAFFIC_SECRET"),
                                         Key("CLIENT_TRAFFIC_SECRET_0"),
                                         Key("EXPORTER_SECRET"),
@@ -10182,6 +9749,33 @@ TEST(SSLTest, EarlyDataVersionMismatch) {
   // could already infer based on the version that early data will be rejected.
   EXPECT_EQ(SSL_version(client.get()), TLS1_3_VERSION);
   EXPECT_NE(SSL_get0_peer_certificates(client.get()), nullptr);
+}
+
+TEST(SSLTest, EarlyDataDisabledInDTLS13) {
+  // Set up some 0-RTT-enabled contexts.
+  bssl::UniquePtr<SSL_CTX> client_ctx(SSL_CTX_new(DTLS_method()));
+  bssl::UniquePtr<SSL_CTX> server_ctx =
+      CreateContextWithTestCertificate(DTLS_method());
+  ASSERT_TRUE(client_ctx);
+  ASSERT_TRUE(server_ctx);
+
+  SSL_CTX_set_early_data_enabled(client_ctx.get(), true);
+  SSL_CTX_set_early_data_enabled(server_ctx.get(), true);
+  SSL_CTX_set_session_cache_mode(client_ctx.get(), SSL_SESS_CACHE_BOTH);
+  SSL_CTX_set_session_cache_mode(server_ctx.get(), SSL_SESS_CACHE_BOTH);
+  ASSERT_TRUE(SSL_CTX_set_min_proto_version(client_ctx.get(),
+                                            DTLS1_3_EXPERIMENTAL_VERSION));
+  ASSERT_TRUE(SSL_CTX_set_max_proto_version(client_ctx.get(),
+                                            DTLS1_3_EXPERIMENTAL_VERSION));
+  ASSERT_TRUE(SSL_CTX_set_min_proto_version(server_ctx.get(),
+                                            DTLS1_3_EXPERIMENTAL_VERSION));
+  ASSERT_TRUE(SSL_CTX_set_max_proto_version(server_ctx.get(),
+                                            DTLS1_3_EXPERIMENTAL_VERSION));
+
+  bssl::UniquePtr<SSL_SESSION> session =
+      CreateClientSession(client_ctx.get(), server_ctx.get());
+  ASSERT_TRUE(session);
+  EXPECT_FALSE(SSL_SESSION_early_data_capable(session.get()));
 }
 
 }  // namespace

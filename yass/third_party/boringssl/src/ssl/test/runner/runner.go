@@ -1559,10 +1559,15 @@ func runTest(dispatcher *shimDispatcher, statusChan chan statusMsg, test *testCa
 				resumeConfig.MaxEarlyDataSize = 16384
 			}
 
-			// Configure the shim to send some data in early data.
-			flags = append(flags, "-on-resume-shim-writes-first")
-			if resumeConfig.Bugs.ExpectEarlyData == nil {
-				resumeConfig.Bugs.ExpectEarlyData = [][]byte{[]byte(shimInitialWrite)}
+			// In DTLS 1.3, we're setting flags to configure the client to attempt
+			// sending early data, but we expect it to realize that it's incapable
+			// of supporting early data and not send any.
+			if test.protocol != dtls {
+				// Configure the shim to send some data in early data.
+				flags = append(flags, "-on-resume-shim-writes-first")
+				if resumeConfig.Bugs.ExpectEarlyData == nil {
+					resumeConfig.Bugs.ExpectEarlyData = [][]byte{[]byte(shimInitialWrite)}
+				}
 			}
 		} else {
 			// By default, send some early data and expect half-RTT data response.
@@ -2372,8 +2377,10 @@ read alert 1 0
 		{
 			protocol: dtls,
 			testType: serverTest,
-			name:     "MTU",
+			name:     "MTU-DTLS12-AEAD",
 			config: Config{
+				MaxVersion:   VersionTLS12,
+				CipherSuites: []uint16{TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
 				Bugs: ProtocolBugs{
 					MaxPacketLength: 256,
 				},
@@ -2383,15 +2390,40 @@ read alert 1 0
 		{
 			protocol: dtls,
 			testType: serverTest,
-			name:     "MTUExceeded",
+			name:     "MTU-DTLS12-AES-CBC",
 			config: Config{
+				MaxVersion:   VersionTLS12,
+				CipherSuites: []uint16{TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256},
 				Bugs: ProtocolBugs{
-					MaxPacketLength: 255,
+					MaxPacketLength: 256,
 				},
 			},
-			flags:              []string{"-mtu", "256"},
-			shouldFail:         true,
-			expectedLocalError: "dtls: exceeded maximum packet length",
+			flags: []string{"-mtu", "256"},
+		},
+		{
+			protocol: dtls,
+			testType: serverTest,
+			name:     "MTU-DTLS12-3DES-CBC",
+			config: Config{
+				MaxVersion:   VersionTLS12,
+				CipherSuites: []uint16{TLS_RSA_WITH_3DES_EDE_CBC_SHA},
+				Bugs: ProtocolBugs{
+					MaxPacketLength: 256,
+				},
+			},
+			flags: []string{"-mtu", "256", "-cipher", "TLS_RSA_WITH_3DES_EDE_CBC_SHA"},
+		},
+		{
+			protocol: dtls,
+			testType: serverTest,
+			name:     "MTU-DTLS13",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					MaxPacketLength: 256,
+				},
+			},
+			flags: []string{"-mtu", "256"},
 		},
 		{
 			name: "EmptyCertificateList",
@@ -2475,6 +2507,99 @@ read alert 1 0
 			expectedError: ":UNEXPECTED_RECORD:",
 		},
 		{
+			name: "AppDataBeforeTLS13KeyChange",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					AppDataBeforeTLS13KeyChange: []byte("TEST MESSAGE"),
+				},
+			},
+			// The shim should fail to decrypt this record.
+			shouldFail:         true,
+			expectedError:      ":BAD_DECRYPT:",
+			expectedLocalError: "remote error: bad record MAC",
+		},
+		{
+			name: "AppDataBeforeTLS13KeyChange-Empty",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					AppDataBeforeTLS13KeyChange: []byte{},
+				},
+			},
+			// The shim should fail to decrypt this record.
+			shouldFail:         true,
+			expectedError:      ":BAD_DECRYPT:",
+			expectedLocalError: "remote error: bad record MAC",
+		},
+		{
+			protocol: dtls,
+			name:     "AppDataBeforeTLS13KeyChange-DTLS",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					AppDataBeforeTLS13KeyChange: []byte("TEST MESSAGE"),
+				},
+			},
+			// The shim will decrypt the record, because it has not
+			// yet applied the key change, but it should know to
+			// reject the record.
+			shouldFail:         true,
+			expectedError:      ":UNEXPECTED_RECORD:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			protocol: dtls,
+			name:     "AppDataBeforeTLS13KeyChange-DTLS-Empty",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					AppDataBeforeTLS13KeyChange: []byte{},
+				},
+			},
+			// The shim will decrypt the record, because it has not
+			// yet applied the key change, but it should know to
+			// reject the record.
+			shouldFail:         true,
+			expectedError:      ":UNEXPECTED_RECORD:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			name: "UnencryptedEncryptedExtensions",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					UnencryptedEncryptedExtensions: true,
+				},
+			},
+			// The shim should fail to decrypt this record.
+			shouldFail:         true,
+			expectedError:      ":DECRYPTION_FAILED_OR_BAD_RECORD_MAC:",
+			expectedLocalError: "remote error: bad record MAC",
+		},
+		{
+			protocol: dtls,
+			name:     "UnencryptedEncryptedExtensions-DTLS",
+			config: Config{
+				MinVersion: VersionTLS13,
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					UnencryptedEncryptedExtensions: true,
+				},
+			},
+			// The shim will decrypt the record, because it has not
+			// yet applied the key change, but it should know to
+			// reject new handshake data on the previous epoch.
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
 			name: "AppDataAfterChangeCipherSpec",
 			config: Config{
 				MaxVersion: VersionTLS12,
@@ -2542,41 +2667,6 @@ read alert 1 0
 			},
 			shouldFail:    true,
 			expectedError: ":TLSV1_ALERT_RECORD_OVERFLOW:",
-		},
-		{
-			protocol: dtls,
-			name:     "ReorderHandshakeFragments-Small-DTLS",
-			config: Config{
-				Bugs: ProtocolBugs{
-					ReorderHandshakeFragments: true,
-					// Small enough that every handshake message is
-					// fragmented.
-					MaxHandshakeRecordLength: 2,
-				},
-			},
-		},
-		{
-			protocol: dtls,
-			name:     "ReorderHandshakeFragments-Large-DTLS",
-			config: Config{
-				Bugs: ProtocolBugs{
-					ReorderHandshakeFragments: true,
-					// Large enough that no handshake message is
-					// fragmented.
-					MaxHandshakeRecordLength: 2048,
-				},
-			},
-		},
-		{
-			protocol: dtls,
-			name:     "MixCompleteMessageWithFragments-DTLS",
-			config: Config{
-				Bugs: ProtocolBugs{
-					ReorderHandshakeFragments:       true,
-					MixCompleteMessageWithFragments: true,
-					MaxHandshakeRecordLength:        2,
-				},
-			},
 		},
 		{
 			name: "SendInvalidRecordType",
@@ -3231,23 +3321,22 @@ read alert 1 0
 			},
 			resumeSession: true,
 		},
-		// TODO(crbug.com/boringssl/715): This test and the next shouldn't be
-		// restricted to a max version of TLS 1.2, but they're broken in DTLS 1.3.
 		{
 			protocol: dtls,
-			name:     "DTLS-SendExtraFinished",
+			name:     "DTLS12-SendExtraFinished",
 			config: Config{
 				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
 					SendExtraFinished: true,
 				},
 			},
-			shouldFail:    true,
-			expectedError: ":UNEXPECTED_RECORD:",
+			shouldFail:         true,
+			expectedError:      ":UNEXPECTED_RECORD:",
+			expectedLocalError: "remote error: unexpected message",
 		},
 		{
 			protocol: dtls,
-			name:     "DTLS-SendExtraFinished-Reordered",
+			name:     "DTLS12-SendExtraFinished-Reordered",
 			config: Config{
 				MaxVersion: VersionTLS12,
 				Bugs: ProtocolBugs{
@@ -3256,8 +3345,65 @@ read alert 1 0
 					SendExtraFinished:         true,
 				},
 			},
-			shouldFail:    true,
-			expectedError: ":UNEXPECTED_RECORD:",
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			protocol: dtls,
+			name:     "DTLS12-SendExtraFinished-Packed",
+			config: Config{
+				MaxVersion: VersionTLS12,
+				Bugs: ProtocolBugs{
+					SendExtraFinished:      true,
+					PackHandshakeFragments: 1000,
+				},
+			},
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			protocol: dtls,
+			name:     "DTLS13-SendExtraFinished",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					SendExtraFinished: true,
+				},
+			},
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			protocol: dtls,
+			name:     "DTLS13-SendExtraFinished-Reordered",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					MaxHandshakeRecordLength:  2,
+					ReorderHandshakeFragments: true,
+					SendExtraFinished:         true,
+				},
+			},
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
+		},
+		{
+			protocol: dtls,
+			name:     "DTLS13-SendExtraFinished-Packed",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				Bugs: ProtocolBugs{
+					SendExtraFinished:      true,
+					PackHandshakeFragments: 1000,
+				},
+			},
+			shouldFail:         true,
+			expectedError:      ":EXCESS_HANDSHAKE_DATA:",
+			expectedLocalError: "remote error: unexpected message",
 		},
 		{
 			testType: serverTest,
@@ -3315,6 +3461,25 @@ read alert 1 0
 		{
 			testType: serverTest,
 			name:     "KeyUpdate-ToServer",
+			config: Config{
+				MaxVersion: VersionTLS13,
+			},
+			sendKeyUpdates:   1,
+			keyUpdateRequest: keyUpdateNotRequested,
+		},
+		{
+			protocol: dtls,
+			name:     "KeyUpdate-ToClient-DTLS",
+			config: Config{
+				MaxVersion: VersionTLS13,
+			},
+			sendKeyUpdates:   1,
+			keyUpdateRequest: keyUpdateNotRequested,
+		},
+		{
+			protocol: dtls,
+			testType: serverTest,
+			name:     "KeyUpdate-ToServerDTLS",
 			config: Config{
 				MaxVersion: VersionTLS13,
 			},
@@ -5035,44 +5200,11 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 		flags:         []string{"-expect-hrr"},
 	})
 
-	// TODO(crbug.com/boringssl/715): The -NoResume tests here are copies
-	// of the above tests, but without resumeSession set. These exist to
-	// test HRR in DTLS 1.3, because tests DTLS 1.3 tests with resumption
-	// enabled are skipped due to lack of support for resumption. Once we
-	// support resumption in DTLS 1.3, these can be deleted.
-	if config.protocol == dtls {
-		tests = append(tests, testCase{
-			name: "TLS13-HelloRetryRequest-Client-NoResume",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
-				// P-384 requires a HelloRetryRequest against BoringSSL's default
-				// configuration. Assert this with ExpectMissingKeyShare.
-				CurvePreferences: []CurveID{CurveP384},
-				Bugs: ProtocolBugs{
-					ExpectMissingKeyShare: true,
-				},
-			},
-			flags: []string{"-expect-hrr"},
-		})
-		tests = append(tests, testCase{
-			testType: serverTest,
-			name:     "TLS13-HelloRetryRequest-Server-NoResume",
-			config: Config{
-				MaxVersion: VersionTLS13,
-				MinVersion: VersionTLS13,
-				// Require a HelloRetryRequest for every curve.
-				DefaultCurves: []CurveID{},
-			},
-			flags: []string{"-expect-hrr"},
-		})
-	}
-
 	// TLS 1.3 early data tests. DTLS 1.3 doesn't support early data yet.
 	// These tests are disabled for QUIC as well because they test features
 	// that do not apply to QUIC's use of TLS 1.3.
 	//
-	// TODO(crbug.com/boringssl/715): Enable these tests for DTLS once we
+	// TODO(crbug.com/42290594): Enable these tests for DTLS once we
 	// support early data in DTLS 1.3.
 	if config.protocol != dtls && config.protocol != quic {
 		tests = append(tests, testCase{
@@ -5154,6 +5286,21 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 			earlyData:     true,
 			shouldFail:    true,
 			expectedError: ":TOO_MUCH_READ_EARLY_DATA:",
+		})
+	}
+
+	// Test that early data is disabled for DTLS 1.3.
+	if config.protocol == dtls {
+		tests = append(tests, testCase{
+			testType: clientTest,
+			protocol: dtls,
+			name: "DTLS13-EarlyData",
+			config: Config{
+				MaxVersion: VersionTLS13,
+				MinVersion: VersionTLS13,
+			},
+			resumeSession: true,
+			earlyData: true,
 		})
 	}
 
@@ -5625,7 +5772,8 @@ func addStateMachineCoverageTests(config stateMachineTestConfig) {
 						}, flags...),
 						resumeSession: true,
 					})
-					if vers.version >= VersionTLS13 {
+					// TODO(crbug.com/42290594): Support 0-RTT in DTLS 1.3.
+					if vers.version >= VersionTLS13 && config.protocol != dtls {
 						tests = append(tests, testCase{
 							testType: testType,
 							name:     "EarlyData-RejectTicket-Client-Reverify" + suffix,
@@ -7882,255 +8030,258 @@ func addExtensionTests() {
 					})
 
 					// Test that ALPS is carried over on 0-RTT.
-					for _, empty := range []bool{false, true} {
-						maybeEmpty := ""
-						runnerSettings := "runner"
-						shimSettings := "shim"
-						if empty {
-							maybeEmpty = "Empty-"
-							runnerSettings = ""
-							shimSettings = ""
-						}
+					// TODO(crbug.com/42290594): Support 0-RTT in DTLS 1.3.
+					if protocol != dtls {
+						for _, empty := range []bool{false, true} {
+							maybeEmpty := ""
+							runnerSettings := "runner"
+							shimSettings := "shim"
+							if empty {
+								maybeEmpty = "Empty-"
+								runnerSettings = ""
+								shimSettings = ""
+							}
 
-						expectations = connectionExpectations{
-							peerApplicationSettingsOld: []byte(shimSettings),
-						}
-						if alpsCodePoint == ALPSUseCodepointNew {
 							expectations = connectionExpectations{
-								peerApplicationSettings: []byte(shimSettings),
+								peerApplicationSettingsOld: []byte(shimSettings),
 							}
-						}
-						testCases = append(testCases, testCase{
-							protocol:           protocol,
-							testType:           clientTest,
-							name:               fmt.Sprintf("ALPS-EarlyData-Client-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
-							skipQUICALPNConfig: true,
-							config: Config{
-								MaxVersion:          ver.version,
-								NextProtos:          []string{"proto"},
-								ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
-								ALPSUseNewCodepoint: alpsCodePoint,
-							},
-							resumeSession: true,
-							earlyData:     true,
-							flags: append([]string{
-								"-advertise-alpn", "\x05proto",
-								"-expect-alpn", "proto",
-								"-application-settings", "proto," + shimSettings,
-								"-expect-peer-application-settings", runnerSettings,
-							}, alpsFlags...),
-							expectations: expectations,
-						})
-						testCases = append(testCases, testCase{
-							protocol:           protocol,
-							testType:           serverTest,
-							name:               fmt.Sprintf("ALPS-EarlyData-Server-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
-							skipQUICALPNConfig: true,
-							config: Config{
-								MaxVersion:          ver.version,
-								NextProtos:          []string{"proto"},
-								ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
-								ALPSUseNewCodepoint: alpsCodePoint,
-							},
-							resumeSession: true,
-							earlyData:     true,
-							flags: append([]string{
-								"-select-alpn", "proto",
-								"-application-settings", "proto," + shimSettings,
-								"-expect-peer-application-settings", runnerSettings,
-							}, alpsFlags...),
-							expectations: expectations,
-						})
-
-						// Sending application settings in 0-RTT handshakes is forbidden.
-						testCases = append(testCases, testCase{
-							protocol:           protocol,
-							testType:           clientTest,
-							name:               fmt.Sprintf("ALPS-EarlyData-SendApplicationSettingsWithEarlyData-Client-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
-							skipQUICALPNConfig: true,
-							config: Config{
-								MaxVersion:          ver.version,
-								NextProtos:          []string{"proto"},
-								ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
-								Bugs: ProtocolBugs{
-									SendApplicationSettingsWithEarlyData: true,
-								},
-								ALPSUseNewCodepoint: alpsCodePoint,
-							},
-							resumeSession: true,
-							earlyData:     true,
-							flags: append([]string{
-								"-advertise-alpn", "\x05proto",
-								"-expect-alpn", "proto",
-								"-application-settings", "proto," + shimSettings,
-								"-expect-peer-application-settings", runnerSettings,
-							}, alpsFlags...),
-							expectations:       expectations,
-							shouldFail:         true,
-							expectedError:      ":UNEXPECTED_EXTENSION_ON_EARLY_DATA:",
-							expectedLocalError: "remote error: illegal parameter",
-						})
-						testCases = append(testCases, testCase{
-							protocol:           protocol,
-							testType:           serverTest,
-							name:               fmt.Sprintf("ALPS-EarlyData-SendApplicationSettingsWithEarlyData-Server-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
-							skipQUICALPNConfig: true,
-							config: Config{
-								MaxVersion:          ver.version,
-								NextProtos:          []string{"proto"},
-								ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
-								Bugs: ProtocolBugs{
-									SendApplicationSettingsWithEarlyData: true,
-								},
-								ALPSUseNewCodepoint: alpsCodePoint,
-							},
-							resumeSession: true,
-							earlyData:     true,
-							flags: append([]string{
-								"-select-alpn", "proto",
-								"-application-settings", "proto," + shimSettings,
-								"-expect-peer-application-settings", runnerSettings,
-							}, alpsFlags...),
-							expectations:       expectations,
-							shouldFail:         true,
-							expectedError:      ":UNEXPECTED_MESSAGE:",
-							expectedLocalError: "remote error: unexpected message",
-						})
-					}
-
-					// Test that the client and server each decline early data if local
-					// ALPS preferences has changed for the current connection.
-					alpsMismatchTests := []struct {
-						name                            string
-						initialSettings, resumeSettings []byte
-					}{
-						{"DifferentValues", []byte("settings1"), []byte("settings2")},
-						{"OnOff", []byte("settings"), nil},
-						{"OffOn", nil, []byte("settings")},
-						// The empty settings value should not be mistaken for ALPS not
-						// being negotiated.
-						{"OnEmpty", []byte("settings"), []byte{}},
-						{"EmptyOn", []byte{}, []byte("settings")},
-						{"EmptyOff", []byte{}, nil},
-						{"OffEmpty", nil, []byte{}},
-					}
-					for _, test := range alpsMismatchTests {
-						flags := []string{"-on-resume-expect-early-data-reason", "alps_mismatch"}
-						flags = append(flags, alpsFlags...)
-						if test.initialSettings != nil {
-							flags = append(flags, "-on-initial-application-settings", "proto,"+string(test.initialSettings))
-							flags = append(flags, "-on-initial-expect-peer-application-settings", "runner")
-						}
-						if test.resumeSettings != nil {
-							flags = append(flags, "-on-resume-application-settings", "proto,"+string(test.resumeSettings))
-							flags = append(flags, "-on-resume-expect-peer-application-settings", "runner")
-						}
-
-						expectations = connectionExpectations{
-							peerApplicationSettingsOld: test.initialSettings,
-						}
-						resumeExpectations = &connectionExpectations{
-							peerApplicationSettingsOld: test.resumeSettings,
-						}
-						if alpsCodePoint == ALPSUseCodepointNew {
-							expectations = connectionExpectations{
-								peerApplicationSettings: test.initialSettings,
+							if alpsCodePoint == ALPSUseCodepointNew {
+								expectations = connectionExpectations{
+									peerApplicationSettings: []byte(shimSettings),
+								}
 							}
-							resumeExpectations = &connectionExpectations{
-								peerApplicationSettings: test.resumeSettings,
-							}
-						}
-						// The client should not offer early data if the session is
-						// inconsistent with the new configuration. Note that if
-						// the session did not negotiate ALPS (test.initialSettings
-						// is nil), the client always offers early data.
-						if test.initialSettings != nil {
 							testCases = append(testCases, testCase{
 								protocol:           protocol,
 								testType:           clientTest,
-								name:               fmt.Sprintf("ALPS-EarlyData-Mismatch-%s-Client-%s-%s", test.name, alpsCodePoint, suffix),
+								name:               fmt.Sprintf("ALPS-EarlyData-Client-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
 								skipQUICALPNConfig: true,
 								config: Config{
 									MaxVersion:          ver.version,
-									MaxEarlyDataSize:    16384,
+									NextProtos:          []string{"proto"},
+									ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
+									ALPSUseNewCodepoint: alpsCodePoint,
+								},
+								resumeSession: true,
+								earlyData:     true,
+								flags: append([]string{
+									"-advertise-alpn", "\x05proto",
+									"-expect-alpn", "proto",
+									"-application-settings", "proto," + shimSettings,
+									"-expect-peer-application-settings", runnerSettings,
+								}, alpsFlags...),
+								expectations: expectations,
+							})
+							testCases = append(testCases, testCase{
+								protocol:           protocol,
+								testType:           serverTest,
+								name:               fmt.Sprintf("ALPS-EarlyData-Server-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
+								skipQUICALPNConfig: true,
+								config: Config{
+									MaxVersion:          ver.version,
+									NextProtos:          []string{"proto"},
+									ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
+									ALPSUseNewCodepoint: alpsCodePoint,
+								},
+								resumeSession: true,
+								earlyData:     true,
+								flags: append([]string{
+									"-select-alpn", "proto",
+									"-application-settings", "proto," + shimSettings,
+									"-expect-peer-application-settings", runnerSettings,
+								}, alpsFlags...),
+								expectations: expectations,
+							})
+
+							// Sending application settings in 0-RTT handshakes is forbidden.
+							testCases = append(testCases, testCase{
+								protocol:           protocol,
+								testType:           clientTest,
+								name:               fmt.Sprintf("ALPS-EarlyData-SendApplicationSettingsWithEarlyData-Client-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
+								skipQUICALPNConfig: true,
+								config: Config{
+									MaxVersion:          ver.version,
+									NextProtos:          []string{"proto"},
+									ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
+									Bugs: ProtocolBugs{
+										SendApplicationSettingsWithEarlyData: true,
+									},
+									ALPSUseNewCodepoint: alpsCodePoint,
+								},
+								resumeSession: true,
+								earlyData:     true,
+								flags: append([]string{
+									"-advertise-alpn", "\x05proto",
+									"-expect-alpn", "proto",
+									"-application-settings", "proto," + shimSettings,
+									"-expect-peer-application-settings", runnerSettings,
+								}, alpsFlags...),
+								expectations:       expectations,
+								shouldFail:         true,
+								expectedError:      ":UNEXPECTED_EXTENSION_ON_EARLY_DATA:",
+								expectedLocalError: "remote error: illegal parameter",
+							})
+							testCases = append(testCases, testCase{
+								protocol:           protocol,
+								testType:           serverTest,
+								name:               fmt.Sprintf("ALPS-EarlyData-SendApplicationSettingsWithEarlyData-Server-%s-%s-%s", alpsCodePoint, maybeEmpty, suffix),
+								skipQUICALPNConfig: true,
+								config: Config{
+									MaxVersion:          ver.version,
+									NextProtos:          []string{"proto"},
+									ApplicationSettings: map[string][]byte{"proto": []byte(runnerSettings)},
+									Bugs: ProtocolBugs{
+										SendApplicationSettingsWithEarlyData: true,
+									},
+									ALPSUseNewCodepoint: alpsCodePoint,
+								},
+								resumeSession: true,
+								earlyData:     true,
+								flags: append([]string{
+									"-select-alpn", "proto",
+									"-application-settings", "proto," + shimSettings,
+									"-expect-peer-application-settings", runnerSettings,
+								}, alpsFlags...),
+								expectations:       expectations,
+								shouldFail:         true,
+								expectedError:      ":UNEXPECTED_MESSAGE:",
+								expectedLocalError: "remote error: unexpected message",
+							})
+						}
+
+						// Test that the client and server each decline early data if local
+						// ALPS preferences has changed for the current connection.
+						alpsMismatchTests := []struct {
+							name                            string
+							initialSettings, resumeSettings []byte
+						}{
+							{"DifferentValues", []byte("settings1"), []byte("settings2")},
+							{"OnOff", []byte("settings"), nil},
+							{"OffOn", nil, []byte("settings")},
+							// The empty settings value should not be mistaken for ALPS not
+							// being negotiated.
+							{"OnEmpty", []byte("settings"), []byte{}},
+							{"EmptyOn", []byte{}, []byte("settings")},
+							{"EmptyOff", []byte{}, nil},
+							{"OffEmpty", nil, []byte{}},
+						}
+						for _, test := range alpsMismatchTests {
+							flags := []string{"-on-resume-expect-early-data-reason", "alps_mismatch"}
+							flags = append(flags, alpsFlags...)
+							if test.initialSettings != nil {
+								flags = append(flags, "-on-initial-application-settings", "proto,"+string(test.initialSettings))
+								flags = append(flags, "-on-initial-expect-peer-application-settings", "runner")
+							}
+							if test.resumeSettings != nil {
+								flags = append(flags, "-on-resume-application-settings", "proto,"+string(test.resumeSettings))
+								flags = append(flags, "-on-resume-expect-peer-application-settings", "runner")
+							}
+
+							expectations = connectionExpectations{
+								peerApplicationSettingsOld: test.initialSettings,
+							}
+							resumeExpectations = &connectionExpectations{
+								peerApplicationSettingsOld: test.resumeSettings,
+							}
+							if alpsCodePoint == ALPSUseCodepointNew {
+								expectations = connectionExpectations{
+									peerApplicationSettings: test.initialSettings,
+								}
+								resumeExpectations = &connectionExpectations{
+									peerApplicationSettings: test.resumeSettings,
+								}
+							}
+							// The client should not offer early data if the session is
+							// inconsistent with the new configuration. Note that if
+							// the session did not negotiate ALPS (test.initialSettings
+							// is nil), the client always offers early data.
+							if test.initialSettings != nil {
+								testCases = append(testCases, testCase{
+									protocol:           protocol,
+									testType:           clientTest,
+									name:               fmt.Sprintf("ALPS-EarlyData-Mismatch-%s-Client-%s-%s", test.name, alpsCodePoint, suffix),
+									skipQUICALPNConfig: true,
+									config: Config{
+										MaxVersion:          ver.version,
+										MaxEarlyDataSize:    16384,
+										NextProtos:          []string{"proto"},
+										ApplicationSettings: map[string][]byte{"proto": []byte("runner")},
+										ALPSUseNewCodepoint: alpsCodePoint,
+									},
+									resumeSession: true,
+									flags: append([]string{
+										"-enable-early-data",
+										"-expect-ticket-supports-early-data",
+										"-expect-no-offer-early-data",
+										"-advertise-alpn", "\x05proto",
+										"-expect-alpn", "proto",
+									}, flags...),
+									expectations:       expectations,
+									resumeExpectations: resumeExpectations,
+								})
+							}
+
+							// The server should reject early data if the session is
+							// inconsistent with the new selection.
+							testCases = append(testCases, testCase{
+								protocol:           protocol,
+								testType:           serverTest,
+								name:               fmt.Sprintf("ALPS-EarlyData-Mismatch-%s-Server-%s-%s", test.name, alpsCodePoint, suffix),
+								skipQUICALPNConfig: true,
+								config: Config{
+									MaxVersion:          ver.version,
 									NextProtos:          []string{"proto"},
 									ApplicationSettings: map[string][]byte{"proto": []byte("runner")},
 									ALPSUseNewCodepoint: alpsCodePoint,
 								},
-								resumeSession: true,
+								resumeSession:           true,
+								earlyData:               true,
+								expectEarlyDataRejected: true,
 								flags: append([]string{
-									"-enable-early-data",
-									"-expect-ticket-supports-early-data",
-									"-expect-no-offer-early-data",
-									"-advertise-alpn", "\x05proto",
-									"-expect-alpn", "proto",
+									"-select-alpn", "proto",
 								}, flags...),
 								expectations:       expectations,
 								resumeExpectations: resumeExpectations,
 							})
 						}
 
-						// The server should reject early data if the session is
-						// inconsistent with the new selection.
+						// Test that 0-RTT continues working when the shim configures
+						// ALPS but the peer does not.
 						testCases = append(testCases, testCase{
 							protocol:           protocol,
-							testType:           serverTest,
-							name:               fmt.Sprintf("ALPS-EarlyData-Mismatch-%s-Server-%s-%s", test.name, alpsCodePoint, suffix),
+							testType:           clientTest,
+							name:               fmt.Sprintf("ALPS-EarlyData-Client-ServerDecline-%s-%s", alpsCodePoint, suffix),
 							skipQUICALPNConfig: true,
 							config: Config{
 								MaxVersion:          ver.version,
 								NextProtos:          []string{"proto"},
-								ApplicationSettings: map[string][]byte{"proto": []byte("runner")},
 								ALPSUseNewCodepoint: alpsCodePoint,
 							},
-							resumeSession:           true,
-							earlyData:               true,
-							expectEarlyDataRejected: true,
+							resumeSession: true,
+							earlyData:     true,
+							flags: append([]string{
+								"-advertise-alpn", "\x05proto",
+								"-expect-alpn", "proto",
+								"-application-settings", "proto,shim",
+							}, alpsFlags...),
+						})
+						testCases = append(testCases, testCase{
+							protocol:           protocol,
+							testType:           serverTest,
+							name:               fmt.Sprintf("ALPS-EarlyData-Server-ClientNoOffe-%s-%s", alpsCodePoint, suffix),
+							skipQUICALPNConfig: true,
+							config: Config{
+								MaxVersion:          ver.version,
+								NextProtos:          []string{"proto"},
+								ALPSUseNewCodepoint: alpsCodePoint,
+							},
+							resumeSession: true,
+							earlyData:     true,
 							flags: append([]string{
 								"-select-alpn", "proto",
-							}, flags...),
-							expectations:       expectations,
-							resumeExpectations: resumeExpectations,
+								"-application-settings", "proto,shim",
+							}, alpsFlags...),
 						})
 					}
-
-					// Test that 0-RTT continues working when the shim configures
-					// ALPS but the peer does not.
-					testCases = append(testCases, testCase{
-						protocol:           protocol,
-						testType:           clientTest,
-						name:               fmt.Sprintf("ALPS-EarlyData-Client-ServerDecline-%s-%s", alpsCodePoint, suffix),
-						skipQUICALPNConfig: true,
-						config: Config{
-							MaxVersion:          ver.version,
-							NextProtos:          []string{"proto"},
-							ALPSUseNewCodepoint: alpsCodePoint,
-						},
-						resumeSession: true,
-						earlyData:     true,
-						flags: append([]string{
-							"-advertise-alpn", "\x05proto",
-							"-expect-alpn", "proto",
-							"-application-settings", "proto,shim",
-						}, alpsFlags...),
-					})
-					testCases = append(testCases, testCase{
-						protocol:           protocol,
-						testType:           serverTest,
-						name:               fmt.Sprintf("ALPS-EarlyData-Server-ClientNoOffe-%s-%s", alpsCodePoint, suffix),
-						skipQUICALPNConfig: true,
-						config: Config{
-							MaxVersion:          ver.version,
-							NextProtos:          []string{"proto"},
-							ALPSUseNewCodepoint: alpsCodePoint,
-						},
-						resumeSession: true,
-						earlyData:     true,
-						flags: append([]string{
-							"-select-alpn", "proto",
-							"-application-settings", "proto,shim",
-						}, alpsFlags...),
-					})
 				}
 			} else {
 				// Test the client rejects the ALPS extension if the server
@@ -8760,6 +8911,10 @@ func addExtensionTests() {
 				if ech && ver.version < VersionTLS13 {
 					continue
 				}
+				// TODO(crbug.com/42290594): This test is broken when run with DTLS 1.3 and ECH.
+				if protocol == dtls && ver.version >= VersionTLS13 && ech {
+					continue
+				}
 
 				test := testCase{
 					protocol:           protocol,
@@ -9071,6 +9226,13 @@ func addResumptionVersionTests() {
 				suffix := "-" + sessionVers.name + "-" + resumeVers.name
 				suffix += "-" + protocol.String()
 
+				// TODO(crbug.com/42290594): Attempting to resume a DTLS 1.3 session
+				// when the new connection is an older version is currently broken.
+				// The current implementation recomputes the PSK binder value for the
+				// second ClientHello (sent in response to HelloVerifyRequest), but
+				// the runner expects all extension values to stay byte-for-byte the
+				// same (a possible interpretation of RFC 6347 section 4.2.1).
+				isBadDTLSResumption := protocol == dtls && sessionVers.version == VersionTLS13 && resumeVers.version < VersionTLS13
 				if sessionVers.version == resumeVers.version {
 					testCases = append(testCases, testCase{
 						protocol:      protocol,
@@ -9089,7 +9251,7 @@ func addResumptionVersionTests() {
 							version: resumeVers.version,
 						},
 					})
-				} else {
+				} else if !isBadDTLSResumption {
 					testCases = append(testCases, testCase{
 						protocol:      protocol,
 						name:          "Resume-Client-Mismatch" + suffix,
@@ -9114,25 +9276,27 @@ func addResumptionVersionTests() {
 					})
 				}
 
-				testCases = append(testCases, testCase{
-					protocol:      protocol,
-					name:          "Resume-Client-NoResume" + suffix,
-					resumeSession: true,
-					config: Config{
-						MaxVersion: sessionVers.version,
-					},
-					expectations: connectionExpectations{
-						version: sessionVers.version,
-					},
-					resumeConfig: &Config{
-						MaxVersion: resumeVers.version,
-					},
-					newSessionsOnResume:  true,
-					expectResumeRejected: true,
-					resumeExpectations: &connectionExpectations{
-						version: resumeVers.version,
-					},
-				})
+				if !isBadDTLSResumption {
+					testCases = append(testCases, testCase{
+						protocol:      protocol,
+						name:          "Resume-Client-NoResume" + suffix,
+						resumeSession: true,
+						config: Config{
+							MaxVersion: sessionVers.version,
+						},
+						expectations: connectionExpectations{
+							version: sessionVers.version,
+						},
+						resumeConfig: &Config{
+							MaxVersion: resumeVers.version,
+						},
+						newSessionsOnResume:  true,
+						expectResumeRejected: true,
+						resumeExpectations: &connectionExpectations{
+							version: resumeVers.version,
+						},
+					})
+				}
 
 				testCases = append(testCases, testCase{
 					protocol:      protocol,
@@ -10115,48 +10279,55 @@ func addRenegotiationTests() {
 }
 
 func addDTLSReplayTests() {
-	// Test that sequence number replays are detected.
-	testCases = append(testCases, testCase{
-		protocol:     dtls,
-		name:         "DTLS-Replay",
-		messageCount: 200,
-		replayWrites: true,
-	})
+	for _, vers := range allVersions(dtls) {
+		// Test that sequence number replays are detected.
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "DTLS-Replay-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+			},
+			messageCount: 200,
+			replayWrites: true,
+		})
 
-	// Test the incoming sequence number skipping by values larger
-	// than the retransmit window.
-	testCases = append(testCases, testCase{
-		protocol: dtls,
-		name:     "DTLS-Replay-LargeGaps",
-		config: Config{
-			Bugs: ProtocolBugs{
-				SequenceNumberMapping: func(in uint64) uint64 {
-					return in * 1023
+		// Test the incoming sequence number skipping by values larger
+		// than the retransmit window.
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "DTLS-Replay-LargeGaps-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+				Bugs: ProtocolBugs{
+					SequenceNumberMapping: func(in uint64) uint64 {
+						return in * 1023
+					},
 				},
 			},
-		},
-		messageCount: 200,
-		replayWrites: true,
-	})
+			messageCount: 200,
+			replayWrites: true,
+		})
 
-	// Test the incoming sequence number changing non-monotonically.
-	testCases = append(testCases, testCase{
-		protocol: dtls,
-		name:     "DTLS-Replay-NonMonotonic",
-		config: Config{
-			Bugs: ProtocolBugs{
-				SequenceNumberMapping: func(in uint64) uint64 {
-					// This mapping has numbers counting backwards in groups
-					// of 256, and then jumping forwards 511 numbers.
-					return in ^ 255
+		// Test the incoming sequence number changing non-monotonically.
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "DTLS-Replay-NonMonotonic-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+				Bugs: ProtocolBugs{
+					SequenceNumberMapping: func(in uint64) uint64 {
+						// This mapping has numbers counting backwards in groups
+						// of 256, and then jumping forwards 511 numbers.
+						return in ^ 255
+					},
 				},
 			},
-		},
-		// This messageCount is large enough to make sure that the SequenceNumberMapping
-		// will reach the point where it jumps forwards after stepping backwards.
-		messageCount: 500,
-		replayWrites: true,
-	})
+			// This messageCount is large enough to make sure that the SequenceNumberMapping
+			// will reach the point where it jumps forwards after stepping backwards.
+			messageCount: 500,
+			replayWrites: true,
+		})
+	}
 }
 
 var testSignatureAlgorithms = []struct {
@@ -11479,6 +11650,73 @@ func addDTLSRetransmitTests() {
 		},
 		resumeSession: true,
 	})
+
+	// DTLS 1.3 ACK/retransmit tests
+	testCases = append(testCases, testCase{
+		protocol: dtls,
+		name:     "DTLS13-ImmediateACKs",
+		config: Config{
+			MinVersion: VersionTLS13,
+			Bugs: ProtocolBugs{
+				ACKEveryRecord: true,
+			},
+		},
+	})
+	testCases = append(testCases, testCase{
+		protocol: dtls,
+		name:     "DTLS12-RejectACKs",
+		config: Config{
+			MaxVersion: VersionTLS12,
+			Bugs: ProtocolBugs{
+				ACKEveryRecord: true,
+			},
+		},
+		shouldFail:    true,
+		expectedError: ":UNEXPECTED_RECORD:",
+	})
+}
+
+func addDTLSReorderTests() {
+	for _, vers := range allVersions(dtls) {
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "ReorderHandshakeFragments-Small-DTLS-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+				Bugs: ProtocolBugs{
+					ReorderHandshakeFragments: true,
+					// Small enough that every handshake message is
+					// fragmented.
+					MaxHandshakeRecordLength: 2,
+				},
+			},
+		})
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "ReorderHandshakeFragments-Large-DTLS-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+				Bugs: ProtocolBugs{
+					ReorderHandshakeFragments: true,
+					// Large enough that no handshake message is
+					// fragmented.
+					MaxHandshakeRecordLength: 2048,
+				},
+			},
+		})
+		testCases = append(testCases, testCase{
+			protocol: dtls,
+			name:     "MixCompleteMessageWithFragments-DTLS-" + vers.name,
+			config: Config{
+				MaxVersion: vers.version,
+				Bugs: ProtocolBugs{
+					ReorderHandshakeFragments:       true,
+					MixCompleteMessageWithFragments: true,
+					MaxHandshakeRecordLength:        2,
+				},
+			},
+		})
+	}
 }
 
 func addExportKeyingMaterialTests() {
@@ -20929,27 +21167,6 @@ func checkTests() {
 	}
 }
 
-// TODO(crbug.com/boringssl/715): Once our DTLS 1.3 implementation supports
-// resumption, remove this filter.
-func filterTests() {
-	tests := make([]testCase, 0, len(testCases))
-	isDTLS13ResumptionTest := func(test testCase) bool {
-		if !test.resumeSession {
-			return false
-		}
-		if test.protocol != dtls {
-			return false
-		}
-		return test.config.MaxVersion == VersionTLS13 || test.config.MinVersion == VersionTLS13 || test.expectations.version == VersionTLS13
-	}
-	for _, test := range testCases {
-		if !isDTLS13ResumptionTest(test) {
-			tests = append(tests, test)
-		}
-	}
-	testCases = tests
-}
-
 func main() {
 	flag.Parse()
 	var err error
@@ -20996,6 +21213,7 @@ func main() {
 	addDTLSReplayTests()
 	addSignatureAlgorithmTests()
 	addDTLSRetransmitTests()
+	addDTLSReorderTests()
 	addExportKeyingMaterialTests()
 	addExportTrafficSecretsTests()
 	addTLSUniqueTests()
@@ -21035,7 +21253,6 @@ func main() {
 	testCases = append(testCases, toAppend...)
 
 	checkTests()
-	filterTests()
 
 	dispatcher, err := newShimDispatcher()
 	if err != nil {

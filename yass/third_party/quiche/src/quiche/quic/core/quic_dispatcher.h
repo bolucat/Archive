@@ -159,8 +159,7 @@ class QUICHE_EXPORT QuicDispatcher
                           QuicConnectionIdHash>;
 
   // QuicBufferedPacketStore::VisitorInterface implementation.
-  void OnExpiredPackets(QuicConnectionId server_connection_id,
-                        QuicBufferedPacketStore::BufferedPacketList
+  void OnExpiredPackets(QuicBufferedPacketStore::BufferedPacketList
                             early_arrived_packets) override;
   HandleCidCollisionResult HandleConnectionIdCollision(
       const QuicConnectionId& original_connection_id,
@@ -426,10 +425,6 @@ class QUICHE_EXPORT QuicDispatcher
       TlsChloExtractor::State chlo_extractor_state,
       ConnectionIdGeneratorInterface* connection_id_generator,
       absl::Span<const DispatcherSentPacket> dispatcher_sent_packets);
-
-  bool ack_buffered_initial_packets() const {
-    return buffered_packets_.ack_buffered_initial_packets();
-  }
 
   QuicDispatcherStats stats_;
 

@@ -155,7 +155,6 @@
 #include <utility>
 
 #include <openssl/aead.h>
-#include <openssl/aes.h>
 #include <openssl/curve25519.h>
 #include <openssl/err.h>
 #include <openssl/hpke.h>
@@ -335,11 +334,21 @@ class Array {
   }
 
   // Init replaces the array with a newly-allocated array of |new_size|
-  // default-constructed copies of |T|. It returns true on success and false on
-  // error.
-  //
-  // Note that if |T| is a primitive type like |uint8_t|, it is uninitialized.
+  // value-constructed copies of |T|. It returns true on success and false on
+  // error. If |T| is a primitive type like |uint8_t|, value-construction means
+  // it will be zero-initialized.
   bool Init(size_t new_size) {
+    if (!InitUninitialized(new_size)) {
+      return false;
+    }
+    cxx17_uninitialized_value_construct_n(data_, size_);
+    return true;
+  }
+
+  // InitForOverwrite behaves like |Init| but it default-constructs each element
+  // instead. This means that, if |T| is a primitive type, the array will be
+  // uninitialized and thus must be filled in by the caller.
+  bool InitForOverwrite(size_t new_size) {
     if (!InitUninitialized(new_size)) {
       return false;
     }
@@ -559,39 +568,45 @@ class InplaceVector {
   T *end() { return data() + size_; }
   const T *end() const { return data() + size_; }
 
-  void clear() {
-    cxx17_destroy_n(data(), size_);
-    size_ = 0;
+  void clear() { Shrink(0); }
+
+  // Shrink resizes the vector to |new_size|, which must not be larger than the
+  // current size. Unlike |Resize|, this can be called when |T| is not
+  // default-constructible.
+  void Shrink(size_t new_size) {
+    BSSL_CHECK(new_size <= size_);
+    cxx17_destroy_n(data() + new_size, size_ - new_size);
+    size_ = static_cast<PackedSize<N>>(new_size);
   }
 
   // TryResize resizes the vector to |new_size| and returns true, or returns
   // false if |new_size| is too large. Any newly-added elements are
   // value-initialized.
   bool TryResize(size_t new_size) {
+    if (new_size <= size_) {
+      Shrink(new_size);
+      return true;
+    }
     if (new_size > capacity()) {
       return false;
     }
-    if (new_size < size_) {
-      cxx17_destroy_n(data() + new_size, size_ - new_size);
-    } else {
-      cxx17_uninitialized_value_construct_n(data() + size_, new_size - size_);
-    }
+    cxx17_uninitialized_value_construct_n(data() + size_, new_size - size_);
     size_ = static_cast<PackedSize<N>>(new_size);
     return true;
   }
 
-  // TryResizeMaybeUninit behaves like |TryResize|, but newly-added elements are
-  // default-initialized, so POD types may contain uninitialized values that the
-  // caller is responsible for filling in.
-  bool TryResizeMaybeUninit(size_t new_size) {
+  // TryResizeForOverwrite behaves like |TryResize|, but newly-added elements
+  // are default-initialized, so POD types may contain uninitialized values that
+  // the caller is responsible for filling in.
+  bool TryResizeForOverwrite(size_t new_size) {
+    if (new_size <= size_) {
+      Shrink(new_size);
+      return true;
+    }
     if (new_size > capacity()) {
       return false;
     }
-    if (new_size < size_) {
-      cxx17_destroy_n(data() + new_size, size_ - new_size);
-    } else {
-      cxx17_uninitialized_default_construct_n(data() + size_, new_size - size_);
-    }
+    cxx17_uninitialized_default_construct_n(data() + size_, new_size - size_);
     size_ = static_cast<PackedSize<N>>(new_size);
     return true;
   }
@@ -623,8 +638,8 @@ class InplaceVector {
   // The following methods behave like their |Try*| counterparts, but abort the
   // program on failure.
   void Resize(size_t size) { BSSL_CHECK(TryResize(size)); }
-  void ResizeMaybeUninit(size_t size) {
-    BSSL_CHECK(TryResizeMaybeUninit(size));
+  void ResizeForOverwrite(size_t size) {
+    BSSL_CHECK(TryResizeForOverwrite(size));
   }
   void CopyFrom(Span<const T> in) { BSSL_CHECK(TryCopyFrom(in)); }
   T &PushBack(T val) {
@@ -633,9 +648,75 @@ class InplaceVector {
     return *ret;
   }
 
+  template <typename Pred>
+  void EraseIf(Pred pred) {
+    // See if anything needs to be erased at all. This avoids a self-move.
+    auto iter = std::find_if(begin(), end(), pred);
+    if (iter == end()) {
+      return;
+    }
+
+    // Elements before the first to be erased may be left as-is.
+    size_t new_size = iter - begin();
+    // Swap all subsequent elements in if they are to be kept.
+    for (size_t i = new_size + 1; i < size(); i++) {
+      if (!pred((*this)[i])) {
+        (*this)[new_size] = std::move((*this)[i]);
+        new_size++;
+      }
+    }
+
+    Shrink(new_size);
+  }
+
  private:
   alignas(T) char storage_[sizeof(T[N])];
   PackedSize<N> size_ = 0;
+};
+
+// An MRUQueue maintains a queue of up to |N| objects of type |T|. If the queue
+// is at capacity, adding to the queue pops the least recently added element.
+template <typename T, size_t N>
+class MRUQueue {
+ public:
+  static constexpr bool kAllowUniquePtr = true;
+
+  MRUQueue() = default;
+
+  // If we ever need to make this type movable, we could. (The defaults almost
+  // work except we need |start_| to be reset when moved-from.)
+  MRUQueue(const MRUQueue &other) = delete;
+  MRUQueue &operator=(const MRUQueue &other)  = delete;
+
+  bool empty() const { return size() == 0; }
+  size_t size() const { return storage_.size(); }
+
+  T &operator[](size_t i) {
+    BSSL_CHECK(i < size());
+    return storage_[(start_ + i) % N];
+  }
+  const T &operator[](size_t i) const {
+    return (*const_cast<MRUQueue *>(this))[i];
+  }
+
+  void Clear() {
+    storage_.clear();
+    start_ = 0;
+  }
+
+  void PushBack(T t) {
+    if (storage_.size() < N) {
+      assert(start_ == 0);
+      storage_.PushBack(std::move(t));
+    } else {
+      (*this)[0] = std::move(t);
+      start_ = (start_ + 1) % N;
+    }
+  }
+
+ private:
+  InplaceVector<T, N> storage_;
+  PackedSize<N> start_ = 0;
 };
 
 // CBBFinishArray behaves like |CBB_finish| but stores the result in an Array.
@@ -1029,17 +1110,6 @@ bool tls1_prf(const EVP_MD *digest, Span<uint8_t> out,
 
 // Encryption layer.
 
-class RecordNumberEncrypter {
- public:
-  virtual ~RecordNumberEncrypter() = default;
-  static constexpr bool kAllowUniquePtr = true;
-  static constexpr size_t kMaxKeySize = 32;
-
-  virtual size_t KeySize() = 0;
-  virtual bool SetKey(Span<const uint8_t> key) = 0;
-  virtual bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) = 0;
-};
-
 // SSLAEADContext contains information about an AEAD that is being used to
 // encrypt an SSL connection.
 class SSLAEADContext {
@@ -1080,6 +1150,10 @@ class SSLAEADContext {
 
   // MaxOverhead returns the maximum overhead of calling |Seal|.
   size_t MaxOverhead() const;
+
+  // MaxSealInputLen returns the maximum length for |Seal| that can fit in
+  // |max_out| output bytes, or zero if no input may fit.
+  size_t MaxSealInputLen(size_t max_out) const;
 
   // SuffixLen calculates the suffix length written by |SealScatter| and writes
   // it to |*out_suffix_len|. It returns true on success and false on error.
@@ -1130,17 +1204,6 @@ class SSLAEADContext {
 
   bool GetIV(const uint8_t **out_iv, size_t *out_iv_len) const;
 
-  RecordNumberEncrypter *GetRecordNumberEncrypter() {
-    return rn_encrypter_.get();
-  }
-
-  // GenerateRecordNumberMask computes the mask used for DTLS 1.3 record number
-  // encryption (RFC 9147 section 4.2.3), writing it to |out|. The |out| buffer
-  // must be sized to AES_BLOCK_SIZE. The |sample| buffer must be at least 16
-  // bytes, as required by the AES and ChaCha20 cipher suites in RFC 9147. Extra
-  // bytes in |sample| will be ignored.
-  bool GenerateRecordNumberMask(Span<uint8_t> out, Span<const uint8_t> sample);
-
  private:
   // GetAdditionalData returns the additional data, writing into |storage| if
   // necessary.
@@ -1149,15 +1212,12 @@ class SSLAEADContext {
                                         uint64_t seqnum, size_t plaintext_len,
                                         Span<const uint8_t> header);
 
-  void CreateRecordNumberEncrypter();
-
   const SSL_CIPHER *cipher_;
   ScopedEVP_AEAD_CTX ctx_;
   // fixed_nonce_ contains any bytes of the nonce that are fixed for all
   // records.
   InplaceVector<uint8_t, 12> fixed_nonce_;
   uint8_t variable_nonce_len_ = 0;
-  UniquePtr<RecordNumberEncrypter> rn_encrypter_;
   // variable_nonce_included_in_record_ is true if the variable nonce
   // for a record is included as a prefix before the ciphertext.
   bool variable_nonce_included_in_record_ : 1;
@@ -1175,57 +1235,31 @@ class SSLAEADContext {
   bool ad_is_header_ : 1;
 };
 
-class AESRecordNumberEncrypter : public RecordNumberEncrypter {
- public:
-  bool SetKey(Span<const uint8_t> key) override;
-  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
-
- private:
-  AES_KEY key_;
-};
-
-class AES128RecordNumberEncrypter : public AESRecordNumberEncrypter {
- public:
-  size_t KeySize() override;
-};
-
-class AES256RecordNumberEncrypter : public AESRecordNumberEncrypter {
- public:
-  size_t KeySize() override;
-};
-
-class ChaChaRecordNumberEncrypter : public RecordNumberEncrypter {
- public:
-  size_t KeySize() override;
-  bool SetKey(Span<const uint8_t> key) override;
-  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
-
- private:
-  static const size_t kKeySize = 32;
-  uint8_t key_[kKeySize];
-};
-
-#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
-class NullRecordNumberEncrypter : public RecordNumberEncrypter {
- public:
-  size_t KeySize() override;
-  bool SetKey(Span<const uint8_t> key) override;
-  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override;
-};
-#endif  // BORINGSSL_UNSAFE_FUZZER_MODE
-
 
 // DTLS replay bitmap.
 
-// DTLS1_BITMAP maintains a sliding window of 64 sequence numbers to detect
-// replayed packets. It should be initialized by zeroing every field.
-struct DTLS1_BITMAP {
+// DTLSReplayBitmap maintains a sliding window of sequence numbers to detect
+// replayed packets.
+class DTLSReplayBitmap {
+ public:
+  // ShouldDiscard returns true if |seq_num| has been seen in
+  // |bitmap| or is stale. Otherwise it returns false.
+  bool ShouldDiscard(uint64_t seqnum) const;
+
+  // Record updates the bitmap to record receipt of sequence number
+  // |seq_num|. It slides the window forward if needed. It is an error to call
+  // this function on a stale sequence number.
+  void Record(uint64_t seqnum);
+
+  uint64_t max_seq_num() const { return max_seq_num_; }
+
+ private:
   // map is a bitset of sequence numbers that have been seen. Bit i corresponds
-  // to |max_seq_num - i|.
-  std::bitset<256> map;
-  // max_seq_num is the largest sequence number seen so far as a 64-bit
+  // to |max_seq_num_ - i|.
+  std::bitset<256> map_;
+  // max_seq_num_ is the largest sequence number seen so far as a 64-bit
   // integer.
-  uint64_t max_seq_num = 0;
+  uint64_t max_seq_num_ = 0;
 };
 
 // reconstruct_seqnum takes the low order bits of a record sequence number from
@@ -1237,10 +1271,82 @@ struct DTLS1_BITMAP {
 // successfully deprotected in this epoch. This function returns the sequence
 // number that is numerically closest to one plus |max_valid_seqnum| that when
 // bitwise and-ed with |seq_mask| equals |wire_seq|.
+//
+// |max_valid_seqnum| must be most 2^48-1, in which case the output will also be
+// at most 2^48-1.
 OPENSSL_EXPORT uint64_t reconstruct_seqnum(uint16_t wire_seq, uint64_t seq_mask,
                                            uint64_t max_valid_seqnum);
 
+
 // Record layer.
+
+class DTLSRecordNumber {
+ public:
+  static constexpr uint64_t kMaxSequence = (uint64_t{1} << 48) - 1;
+
+  DTLSRecordNumber() = default;
+  DTLSRecordNumber(uint16_t epoch, uint64_t sequence) {
+    BSSL_CHECK(sequence <= kMaxSequence);
+    combined_ = (uint64_t{epoch} << 48) | sequence;
+  }
+
+  static DTLSRecordNumber FromCombined(uint64_t combined) {
+    return DTLSRecordNumber(combined);
+  }
+
+  uint64_t combined() const { return combined_; }
+  uint16_t epoch() const { return combined_ >> 48; }
+  uint64_t sequence() const { return combined_ & kMaxSequence; }
+
+  bool HasNext() const { return sequence() < kMaxSequence; }
+  DTLSRecordNumber Next() const {
+    BSSL_CHECK(HasNext());
+    // This will not overflow into the epoch.
+    return DTLSRecordNumber::FromCombined(combined_ + 1);
+  }
+
+ private:
+  explicit DTLSRecordNumber(uint64_t combined) : combined_(combined) {}
+
+  uint64_t combined_ = 0;
+};
+
+class RecordNumberEncrypter {
+ public:
+  static constexpr bool kAllowUniquePtr = true;
+  static constexpr size_t kMaxKeySize = 32;
+
+  // Create returns a DTLS 1.3 record number encrypter for |traffic_secret|, or
+  // nullptr on error.
+  static UniquePtr<RecordNumberEncrypter> Create(
+      const SSL_CIPHER *cipher, Span<const uint8_t> traffic_secret);
+
+  virtual ~RecordNumberEncrypter() = default;
+  virtual size_t KeySize() = 0;
+  virtual bool SetKey(Span<const uint8_t> key) = 0;
+  virtual bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) = 0;
+};
+
+struct DTLSReadEpoch {
+  static constexpr bool kAllowUniquePtr = true;
+
+  // TODO(davidben): This could be made slightly more compact if |bitmap| stored
+  // a DTLSRecordNumber.
+  uint16_t epoch = 0;
+  UniquePtr<SSLAEADContext> aead;
+  UniquePtr<RecordNumberEncrypter> rn_encrypter;
+  DTLSReplayBitmap bitmap;
+};
+
+struct DTLSWriteEpoch {
+  static constexpr bool kAllowUniquePtr = true;
+
+  uint16_t epoch() const { return next_record.epoch(); }
+
+  DTLSRecordNumber next_record;
+  UniquePtr<SSLAEADContext> aead;
+  UniquePtr<RecordNumberEncrypter> rn_encrypter;
+};
 
 // ssl_record_prefix_len returns the length of the prefix before the ciphertext
 // of a record for |ssl|.
@@ -1286,8 +1392,10 @@ enum ssl_open_record_t tls_open_record(SSL *ssl, uint8_t *out_type,
 
 // dtls_open_record implements |tls_open_record| for DTLS. It only returns
 // |ssl_open_record_partial| if |in| was empty and sets |*out_consumed| to
-// zero. The caller should read one packet and try again.
+// zero. The caller should read one packet and try again. On success,
+// |*out_number| is set to the record number of the record.
 enum ssl_open_record_t dtls_open_record(SSL *ssl, uint8_t *out_type,
+                                        DTLSRecordNumber *out_number,
                                         Span<uint8_t> *out,
                                         size_t *out_consumed,
                                         uint8_t *out_alert, Span<uint8_t> in);
@@ -1322,13 +1430,18 @@ size_t dtls_max_seal_overhead(const SSL *ssl, uint16_t epoch);
 // front of the plaintext when sealing a record in-place.
 size_t dtls_seal_prefix_len(const SSL *ssl, uint16_t epoch);
 
+// dtls_seal_max_input_len returns the maximum number of input bytes that can
+// fit in a record of up to |max_out| bytes, or zero if none may fit.
+size_t dtls_seal_max_input_len(const SSL *ssl, uint16_t epoch, size_t max_out);
+
 // dtls_seal_record implements |tls_seal_record| for DTLS. |epoch| selects which
 // epoch's cipher state to use. Unlike |tls_seal_record|, |in| and |out| may
 // alias but, if they do, |in| must be exactly |dtls_seal_prefix_len| bytes
-// ahead of |out|.
-bool dtls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len, size_t max_out,
-                      uint8_t type, const uint8_t *in, size_t in_len,
-                      uint16_t epoch);
+// ahead of |out|. On success, |*out_number| is set to the record number of the
+// record.
+bool dtls_seal_record(SSL *ssl, DTLSRecordNumber *out_number, uint8_t *out,
+                      size_t *out_len, size_t max_out, uint8_t type,
+                      const uint8_t *in, size_t in_len, uint16_t epoch);
 
 // ssl_process_alert processes |in| as an alert and updates |ssl|'s shutdown
 // state. It returns one of |ssl_open_record_discard|, |ssl_open_record_error|,
@@ -1487,7 +1600,7 @@ bool dtls_has_unprocessed_handshake_data(const SSL *ssl);
 // tls_flush_pending_hs_data flushes any handshake plaintext data.
 bool tls_flush_pending_hs_data(SSL *ssl);
 
-struct DTLS_OUTGOING_MESSAGE {
+struct DTLSOutgoingMessage {
   Array<uint8_t> data;
   uint16_t epoch = 0;
   bool is_ccs = false;
@@ -1495,6 +1608,10 @@ struct DTLS_OUTGOING_MESSAGE {
 
 // dtls_clear_outgoing_messages releases all buffered outgoing messages.
 void dtls_clear_outgoing_messages(SSL *ssl);
+
+// dtls_clear_unused_write_epochs releases any write epochs that are no longer
+// needed.
+void dtls_clear_unused_write_epochs(SSL *ssl);
 
 
 // Callbacks.
@@ -2844,19 +2961,25 @@ struct SSL_PROTOCOL_METHOD {
   // on_handshake_complete is called when the handshake is complete.
   void (*on_handshake_complete)(SSL *ssl);
   // set_read_state sets |ssl|'s read cipher state and level to |aead_ctx| and
-  // |level|. In QUIC, |aead_ctx| is a placeholder object and |secret_for_quic|
-  // is the original secret. This function returns true on success and false on
-  // error.
+  // |level|. In QUIC, |aead_ctx| is a placeholder object. In TLS 1.3,
+  // |traffic_secret| is the original traffic secret. This function returns true
+  // on success and false on error.
+  //
+  // TODO(crbug.com/371998381): Take the traffic secrets as input and let the
+  // function create the SSLAEADContext.
   bool (*set_read_state)(SSL *ssl, ssl_encryption_level_t level,
                          UniquePtr<SSLAEADContext> aead_ctx,
-                         Span<const uint8_t> secret_for_quic);
+                         Span<const uint8_t> traffic_secret);
   // set_write_state sets |ssl|'s write cipher state and level to |aead_ctx| and
-  // |level|. In QUIC, |aead_ctx| is a placeholder object and |secret_for_quic|
-  // is the original secret. This function returns true on success and false on
-  // error.
+  // |level|. In QUIC, |aead_ctx| is a placeholder object In TLS 1.3,
+  // |traffic_secret| is the original traffic secret. This function returns true
+  // on success and false on error.
+  //
+  // TODO(crbug.com/371998381): Take the traffic secrets as input and let the
+  // function create the SSLAEADContext.
   bool (*set_write_state)(SSL *ssl, ssl_encryption_level_t level,
                           UniquePtr<SSLAEADContext> aead_ctx,
-                          Span<const uint8_t> secret_for_quic);
+                          Span<const uint8_t> traffic_secret);
 };
 
 // The following wrappers call |open_*| but handle |read_shutdown| correctly.
@@ -3046,8 +3169,8 @@ struct SSL3_STATE {
   // needs re-doing when in SSL_accept or SSL_connect
   int rwstate = SSL_ERROR_NONE;
 
-  enum ssl_encryption_level_t read_level = ssl_encryption_initial;
-  enum ssl_encryption_level_t write_level = ssl_encryption_initial;
+  enum ssl_encryption_level_t quic_read_level = ssl_encryption_initial;
+  enum ssl_encryption_level_t quic_write_level = ssl_encryption_initial;
 
   // version is the protocol version, or zero if the version has not yet been
   // set. In clients offering 0-RTT, this version will initially be set to the
@@ -3227,9 +3350,46 @@ static_assert(DTLS1_RT_MAX_HEADER_LENGTH >= DTLS1_3_RECORD_HEADER_WRITE_LENGTH,
 
 #define DTLS1_HM_HEADER_LENGTH 12
 
-#define DTLS1_CCS_HEADER_LENGTH 1
+// A DTLSMessageBitmap maintains a list of bits which may be marked to indicate
+// a portion of a message was received or ACKed.
+class DTLSMessageBitmap {
+ public:
+  // A Range represents a range of bits from |start|, inclusive, to |end|,
+  // exclusive.
+  struct Range {
+    size_t start = 0;
+    size_t end = 0;
 
-#define DTLS1_AL_HEADER_LENGTH 2
+    bool empty() const { return start == end; }
+    bool operator==(const Range &r) const {
+      return start == r.start && end == r.end;
+    }
+    bool operator!=(const Range &r) const { return !(*this == r); }
+  };
+
+  // Init initializes the structure with |num_bits| unmarked bits, from zero
+  // to |num_bits - 1|.
+  bool Init(size_t num_bits);
+
+  // MarkRange marks the bits from |start|, inclusive, to |end|, exclusive.
+  void MarkRange(size_t start, size_t end);
+
+  // NextUnmarkedRange returns the next range of unmarked bits, starting from
+  // |start|, inclusive. If all bits after |start| are marked, it returns an
+  // empty range.
+  Range NextUnmarkedRange(size_t start) const;
+
+  // IsComplete returns whether every bit in the bitmask has been marked.
+  bool IsComplete() const { return bytes_.empty(); }
+
+ private:
+  // bytes_ contains the unmarked bits. We maintain an invariant: if |bytes_| is
+  // not empty, some bit is unset.
+  Array<uint8_t> bytes_;
+  // first_unmarked_byte_ is the index of first byte in |bytes_| that is not
+  // 0xff. This is maintained to amortize checking if the message is complete.
+  size_t first_unmarked_byte_ = 0;
+};
 
 struct hm_header_st {
   uint8_t type;
@@ -3239,28 +3399,26 @@ struct hm_header_st {
   uint32_t frag_len;
 };
 
-// An hm_fragment is an incoming DTLS message, possibly not yet assembled.
-struct hm_fragment {
+// An DTLSIncomingMessage is an incoming DTLS message, possibly not yet
+// assembled.
+struct DTLSIncomingMessage {
   static constexpr bool kAllowUniquePtr = true;
 
-  hm_fragment() {}
-  hm_fragment(const hm_fragment &) = delete;
-  hm_fragment &operator=(const hm_fragment &) = delete;
-
-  ~hm_fragment();
+  Span<uint8_t> msg() { return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH); }
+  Span<const uint8_t> msg() const {
+    return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH);
+  }
+  size_t msg_len() const { return msg().size(); }
 
   // type is the type of the message.
   uint8_t type = 0;
   // seq is the sequence number of this message.
   uint16_t seq = 0;
-  // msg_len is the length of the message body.
-  uint32_t msg_len = 0;
-  // data is a pointer to the message, including message header. It has length
-  // |DTLS1_HM_HEADER_LENGTH| + |msg_len|.
-  uint8_t *data = nullptr;
-  // reassembly is a bitmask of |msg_len| bits corresponding to which parts of
-  // the message have been received. It is NULL if the message is complete.
-  uint8_t *reassembly = nullptr;
+  // data contains the message, including the message header of length
+  // |DTLS1_HM_HEADER_LENGTH|.
+  Array<uint8_t> data;
+  // reassembly tracks which parts of the message have been received.
+  DTLSMessageBitmap reassembly;
 };
 
 struct OPENSSL_timeval {
@@ -3268,19 +3426,25 @@ struct OPENSSL_timeval {
   uint32_t tv_usec;
 };
 
-// A DTLSEpochState object contains state about a DTLS epoch.
-struct DTLSEpochState {
-  static constexpr bool kAllowUniquePtr = true;
-
-  UniquePtr<SSLAEADContext> aead_write_ctx;
-  uint64_t write_sequence = 0;
-};
+// DTLS_MAX_EXTRA_WRITE_EPOCHS is the maximum number of additional write epochs
+// that DTLS may need to retain.
+//
+// The maximum is, as a DTLS 1.3 server, immediately after sending Finished. At
+// this point, the current epoch is the application write keys (epoch 3), but we
+// may have ServerHello (epoch 0) and EncryptedExtensions (epoch 1) to
+// retransmit. KeyUpdate does not increase this count. If the server were to
+// initiate KeyUpdate from this state, it would not apply the new epoch until
+// the client's ACKs have caught up. At that point, epochs 0 and 1 can be
+// discarded.
+#define DTLS_MAX_EXTRA_WRITE_EPOCHS 2
 
 struct DTLS1_STATE {
   static constexpr bool kAllowUniquePtr = true;
 
   DTLS1_STATE();
   ~DTLS1_STATE();
+
+  bool Init();
 
   // has_change_cipher_spec is true if we have received a ChangeCipherSpec from
   // the peer in this epoch.
@@ -3296,33 +3460,34 @@ struct DTLS1_STATE {
   // peer sent the final flight.
   bool flight_has_reply : 1;
 
-  // The current data and handshake epoch.  This is initially undefined, and
-  // starts at zero once the initial handshake is completed.
-  uint16_t r_epoch = 0;
-  uint16_t w_epoch = 0;
-
-  // records being received in the current epoch
-  DTLS1_BITMAP bitmap;
-
   uint16_t handshake_write_seq = 0;
   uint16_t handshake_read_seq = 0;
 
-  // state from the last epoch
-  DTLSEpochState last_epoch_state;
+  // read_epoch is the current DTLS read epoch.
+  DTLSReadEpoch read_epoch;
 
-  // In DTLS 1.3, this contains the write AEAD for the initial encryption level.
-  // TODO(crbug.com/boringssl/715): Drop this when it is no longer needed.
-  UniquePtr<DTLSEpochState> initial_epoch_state;
+  // next_read_epoch is the next DTLS read epoch in DTLS 1.3. It will become
+  // current once a record is received from it.
+  UniquePtr<DTLSReadEpoch> next_read_epoch;
+
+  // write_epoch is the current DTLS write epoch. Non-retransmit records will
+  // generally use this epoch.
+  // TODO(crbug.com/42290594): 0-RTT will be the exception, when implemented.
+  DTLSWriteEpoch write_epoch;
+
+  // extra_write_epochs is the collection available write epochs.
+  InplaceVector<UniquePtr<DTLSWriteEpoch>, DTLS_MAX_EXTRA_WRITE_EPOCHS>
+      extra_write_epochs;
 
   // incoming_messages is a ring buffer of incoming handshake messages that have
   // yet to be processed. The front of the ring buffer is message number
   // |handshake_read_seq|, at position |handshake_read_seq| %
   // |SSL_MAX_HANDSHAKE_FLIGHT|.
-  UniquePtr<hm_fragment> incoming_messages[SSL_MAX_HANDSHAKE_FLIGHT];
+  UniquePtr<DTLSIncomingMessage> incoming_messages[SSL_MAX_HANDSHAKE_FLIGHT];
 
   // outgoing_messages is the queue of outgoing messages from the last handshake
   // flight.
-  InplaceVector<DTLS_OUTGOING_MESSAGE, SSL_MAX_HANDSHAKE_FLIGHT>
+  InplaceVector<DTLSOutgoingMessage, SSL_MAX_HANDSHAKE_FLIGHT>
       outgoing_messages;
 
   // outgoing_written is the number of outgoing messages that have been
@@ -3663,6 +3828,7 @@ bool ssl_add_message_cbb(SSL *ssl, CBB *cbb);
 // on success and false on allocation failure.
 bool ssl_hash_message(SSL_HANDSHAKE *hs, const SSLMessage &msg);
 
+ssl_open_record_t dtls1_process_ack(SSL *ssl, uint8_t *out_alert);
 ssl_open_record_t dtls1_open_app_data(SSL *ssl, Span<uint8_t> *out,
                                       size_t *out_consumed, uint8_t *out_alert,
                                       Span<uint8_t> in);
@@ -3691,6 +3857,8 @@ unsigned int dtls1_min_mtu(void);
 bool dtls1_new(SSL *ssl);
 void dtls1_free(SSL *ssl);
 
+bool dtls1_process_handshake_fragments(SSL *ssl, uint8_t *out_alert,
+                                       Span<const uint8_t> record);
 bool dtls1_get_message(const SSL *ssl, SSLMessage *out);
 ssl_open_record_t dtls1_open_handshake(SSL *ssl, size_t *out_consumed,
                                        uint8_t *out_alert, Span<uint8_t> in);

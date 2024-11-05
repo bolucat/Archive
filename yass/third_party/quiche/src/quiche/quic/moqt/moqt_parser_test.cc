@@ -47,16 +47,22 @@ constexpr std::array kMessageTypes{
     MoqtMessageType::kClientSetup,
     MoqtMessageType::kServerSetup,
     MoqtMessageType::kGoAway,
-    MoqtMessageType::kSubscribeNamespace,
-    MoqtMessageType::kSubscribeNamespaceOk,
-    MoqtMessageType::kSubscribeNamespaceError,
-    MoqtMessageType::kUnsubscribeNamespace,
+    MoqtMessageType::kSubscribeAnnounces,
+    MoqtMessageType::kSubscribeAnnouncesOk,
+    MoqtMessageType::kSubscribeAnnouncesError,
+    MoqtMessageType::kUnsubscribeAnnounces,
     MoqtMessageType::kMaxSubscribeId,
+    MoqtMessageType::kFetch,
+    MoqtMessageType::kFetchCancel,
+    MoqtMessageType::kFetchOk,
+    MoqtMessageType::kFetchError,
     MoqtMessageType::kObjectAck,
 };
 constexpr std::array kDataStreamTypes{
     MoqtDataStreamType::kStreamHeaderTrack,
-    MoqtDataStreamType::kStreamHeaderSubgroup};
+    MoqtDataStreamType::kStreamHeaderSubgroup,
+    MoqtDataStreamType::kStreamHeaderFetch,
+};
 
 using GeneralizedMessageType =
     absl::variant<MoqtMessageType, MoqtDataStreamType>;
@@ -175,23 +181,35 @@ class MoqtParserTestVisitor : public MoqtControlParserVisitor,
   void OnGoAwayMessage(const MoqtGoAway& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeNamespaceMessage(
-      const MoqtSubscribeNamespace& message) override {
+  void OnSubscribeAnnouncesMessage(
+      const MoqtSubscribeAnnounces& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeNamespaceOkMessage(
-      const MoqtSubscribeNamespaceOk& message) override {
+  void OnSubscribeAnnouncesOkMessage(
+      const MoqtSubscribeAnnouncesOk& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeNamespaceErrorMessage(
-      const MoqtSubscribeNamespaceError& message) override {
+  void OnSubscribeAnnouncesErrorMessage(
+      const MoqtSubscribeAnnouncesError& message) override {
     OnControlMessage(message);
   }
-  void OnUnsubscribeNamespaceMessage(
-      const MoqtUnsubscribeNamespace& message) override {
+  void OnUnsubscribeAnnouncesMessage(
+      const MoqtUnsubscribeAnnounces& message) override {
     OnControlMessage(message);
   }
   void OnMaxSubscribeIdMessage(const MoqtMaxSubscribeId& message) override {
+    OnControlMessage(message);
+  }
+  void OnFetchMessage(const MoqtFetch& message) override {
+    OnControlMessage(message);
+  }
+  void OnFetchCancelMessage(const MoqtFetchCancel& message) override {
+    OnControlMessage(message);
+  }
+  void OnFetchOkMessage(const MoqtFetchOk& message) override {
+    OnControlMessage(message);
+  }
+  void OnFetchErrorMessage(const MoqtFetchError& message) override {
     OnControlMessage(message);
   }
   void OnObjectAckMessage(const MoqtObjectAck& message) override {
@@ -444,7 +462,7 @@ TEST_F(MoqtMessageSpecificTest, ThreePartObject) {
 TEST_F(MoqtMessageSpecificTest, ThreePartObjectFirstIncomplete) {
   MoqtDataParser parser(&visitor_);
   auto message = std::make_unique<StreamHeaderSubgroupMessage>();
-  EXPECT_TRUE(message->SetPayloadLength(50));
+  EXPECT_TRUE(message->SetPayloadLength(51));
 
   // first part
   parser.ProcessData(message->PacketSample().substr(0, 4), false);
@@ -458,9 +476,9 @@ TEST_F(MoqtMessageSpecificTest, ThreePartObjectFirstIncomplete) {
   EXPECT_EQ(visitor_.messages_received_, 0);
   EXPECT_TRUE(message->EqualFieldValues(*visitor_.last_message_));
   EXPECT_FALSE(visitor_.end_of_message_);
-  // The value "47" is the overall wire image size of 55 minus the non-payload
+  // The value "48" is the overall wire image size of 55 minus the non-payload
   // part of the message.
-  EXPECT_EQ(visitor_.object_payload().length(), 47);
+  EXPECT_EQ(visitor_.object_payload().length(), 48);
 
   // third part includes FIN
   parser.ProcessData("bar", true);
@@ -896,10 +914,10 @@ TEST_F(MoqtMessageSpecificTest, DataAfterFin) {
 TEST_F(MoqtMessageSpecificTest, InvalidObjectStatus) {
   MoqtDataParser parser(&visitor_);
   char stream_header_subgroup[] = {
-      0x04,                    // type field
-      0x03, 0x04, 0x05, 0x08,  // varints
-      0x07,                    // publisher priority
-      0x06, 0x00, 0x0f,        // object middler; status = 0x0f
+      0x04,              // type field
+      0x04, 0x05, 0x08,  // varints
+      0x07,              // publisher priority
+      0x06, 0x00, 0x0f,  // object middler; status = 0x0f
   };
   parser.ProcessData(
       absl::string_view(stream_header_subgroup, sizeof(stream_header_subgroup)),
@@ -1308,6 +1326,39 @@ TEST_F(MoqtMessageSpecificTest, SubscribeDoneInvalidContentExists) {
   EXPECT_TRUE(visitor_.parsing_error_.has_value());
   EXPECT_EQ(*visitor_.parsing_error_,
             "SUBSCRIBE_DONE ContentExists has invalid value");
+}
+
+TEST_F(MoqtMessageSpecificTest, FetchInvalidRange) {
+  MoqtControlParser parser(kRawQuic, visitor_);
+  FetchMessage fetch;
+  fetch.SetEndObject(1, 1);
+  parser.ProcessData(fetch.PacketSample(), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "End object comes before start object in FETCH");
+}
+
+TEST_F(MoqtMessageSpecificTest, FetchInvalidRange2) {
+  MoqtControlParser parser(kRawQuic, visitor_);
+  FetchMessage fetch;
+  fetch.SetEndObject(0, std::nullopt);
+  parser.ProcessData(fetch.PacketSample(), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "End object comes before start object in FETCH");
+}
+
+TEST_F(MoqtMessageSpecificTest, FetchInvalidGroupOrder) {
+  MoqtControlParser parser(kRawQuic, visitor_);
+  FetchMessage fetch;
+  fetch.SetGroupOrder(3);
+  parser.ProcessData(fetch.PacketSample(), false);
+  EXPECT_EQ(visitor_.messages_received_, 0);
+  EXPECT_TRUE(visitor_.parsing_error_.has_value());
+  EXPECT_EQ(*visitor_.parsing_error_,
+            "Invalid group order value in FETCH message");
 }
 
 TEST_F(MoqtMessageSpecificTest, PaddingStream) {

@@ -59,7 +59,7 @@ foreach(CompilerFlag ${CompilerFlags})
   string(REPLACE "-stdlib=libc++" "" ${CompilerFlag} "${${CompilerFlag}}")
 endforeach()
 
-set(libcxx_CR "6a68fd412b9aecd515a20a7cf84d11b598bfaf96")
+set(libcxx_CR "8e31ad42561900383e10dbefc1d3e8f38cedfbe9")
 # Fixed libc++ configuration macros are in
 # buildtools/third_party/libc++/__config_site. This config only has defines
 # that vary depending on gn args, and non-define flags.
@@ -452,6 +452,27 @@ if (NOT ${CMAKE_BUILD_TYPE} MATCHES Debug)
     ${libcxx_DEFINITIONS}
     "_LIBCPP_AVAILABILITY_CUSTOM_VERBOSE_ABORT_PROVIDED=1")
 endif()
+
+set(libc_SOURCES
+  ../llvm-libc/trunk/shared/fp_bits.h
+  ../llvm-libc/dummy.c
+)
+
+add_library(libc STATIC ${libc_SOURCES})
+
+target_compile_definitions(libc PUBLIC LIBC_NAMESPACE=__llvm_libc_cr)
+
+target_include_directories(libc PUBLIC
+  ../llvm-libc/trunk/src
+  ../llvm-libc/trunk)
+
+if (USE_LTO_CMAKE)
+  set_property(TARGET libc
+    PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
+target_link_libraries(cxx libc)
+
 if (NOT MSVC)
   set(libcxx_DEFINITIONS
     ${libcxx_DEFINITIONS}
@@ -722,6 +743,10 @@ set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} PARENT_SCOPE)
 set(CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS} PARENT_SCOPE)
 set(CMAKE_SHARED_LINKER_FLAGS ${CMAKE_SHARED_LINKER_FLAGS} PARENT_SCOPE)
 
+export(
+  TARGETS libc
+  FILE libc.cmake
+)
 if (NOT MSVC)
   export(
     TARGETS cxxabi

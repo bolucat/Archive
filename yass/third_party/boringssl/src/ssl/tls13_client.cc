@@ -73,7 +73,7 @@ static bool close_early_data(SSL_HANDSHAKE *hs, ssl_encryption_level_t level) {
   // write state. The two ClientHello sequence numbers must align, and handshake
   // write keys must be installed early to ACK the EncryptedExtensions.
   //
-  // TODO(crbug.com/42290594): We do not currently implement DTLS 1.3 and, in
+  // TODO(crbug.com/42290594): We do not support 0-RTT in DTLS 1.3 and, in
   // QUIC, the caller handles 0-RTT data, so we can skip installing 0-RTT keys
   // and act as if there is one write level. Now that we're implementing
   // DTLS 1.3, switch the abstraction to the DTLS/QUIC model where handshake
@@ -86,7 +86,7 @@ static bool close_early_data(SSL_HANDSHAKE *hs, ssl_encryption_level_t level) {
       if (!null_ctx ||
           !ssl->method->set_write_state(ssl, ssl_encryption_initial,
                                         std::move(null_ctx),
-                                        /*secret_for_quic=*/{})) {
+                                        /*traffic_secret=*/{})) {
         return false;
       }
     } else {
@@ -97,9 +97,10 @@ static bool close_early_data(SSL_HANDSHAKE *hs, ssl_encryption_level_t level) {
         return false;
       }
     }
+  } else {
+    assert(ssl->s3->quic_write_level == level);
   }
 
-  assert(ssl->s3->write_level == level);
   return true;
 }
 
@@ -347,9 +348,6 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
 }
 
 static enum ssl_hs_wait_t do_send_second_client_hello(SSL_HANDSHAKE *hs) {
-  // Any 0-RTT keys must have been discarded.
-  assert(hs->ssl->s3->write_level == ssl_encryption_initial);
-
   // Build the second ClientHelloInner, if applicable. The second ClientHello
   // uses an empty string for |enc|.
   if (hs->ssl->s3->ech_status == ssl_ech_accepted &&
@@ -1166,7 +1164,7 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
 
   // Historically, OpenSSL filled in fake session IDs for ticket-based sessions.
   // Envoy's tests depend on this, although perhaps they shouldn't.
-  session->session_id.ResizeMaybeUninit(SHA256_DIGEST_LENGTH);
+  session->session_id.ResizeForOverwrite(SHA256_DIGEST_LENGTH);
   SHA256(CBS_data(&ticket), CBS_len(&ticket), session->session_id.data());
 
   session->ticket_age_add_valid = true;

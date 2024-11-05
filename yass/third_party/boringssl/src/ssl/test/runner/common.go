@@ -70,6 +70,7 @@ const (
 	recordTypeHandshake          recordType = 22
 	recordTypeApplicationData    recordType = 23
 	recordTypePlaintextHandshake recordType = 24
+	recordTypeACK                recordType = 26
 )
 
 // TLS handshake message types.
@@ -1258,7 +1259,8 @@ type ProtocolBugs struct {
 	SendInitialRecordVersion uint16
 
 	// MaxPacketLength, if non-zero, is the maximum acceptable size for a
-	// packet.
+	// packet. The shim will also be expected to maximally fill packets in the
+	// handshake up to this limit.
 	MaxPacketLength int
 
 	// SendCipherSuite, if non-zero, is the cipher suite value that the
@@ -1282,6 +1284,14 @@ type ProtocolBugs struct {
 	// AlertAfterChangeCipherSpec, if non-zero, causes an alert to be sent
 	// immediately after ChangeCipherSpec.
 	AlertAfterChangeCipherSpec alert
+
+	// AppDataBeforeTLS13KeyChange, if not nil, causes application data to
+	// be sent immediately before the final key change in (D)TLS 1.3.
+	AppDataBeforeTLS13KeyChange []byte
+
+	// UnencryptedEncryptedExtensions, if true, causes the server to send
+	// EncryptedExtensions unencrypted, delaying the first key change.
+	UnencryptedEncryptedExtensions bool
 
 	// TimeoutSchedule is the schedule of packet drops and simulated
 	// timeouts for before each handshake leg from the peer.
@@ -1861,8 +1871,10 @@ type ProtocolBugs struct {
 	MaxReceivePlaintext int
 
 	// ExpectPackedEncryptedHandshake, if non-zero, requires that the peer maximally
-	// pack their encrypted handshake messages, fitting at most the
-	// specified number of plaintext bytes per record.
+	// pack their encrypted handshake messages, fitting at most the specified number
+	// of bytes per record. In TLS, the limit counts plaintext bytes. In DTLS, it
+	// counts packet size and checks both that fragments are packed into records and
+	// records are packed into packets.
 	ExpectPackedEncryptedHandshake int
 
 	// SendTicketLifetime, if non-zero, is the ticket lifetime to send in
@@ -2010,6 +2022,10 @@ type ProtocolBugs struct {
 	// DTLS13RecordHeaderSetCIDBit, if true, sets the Connection ID bit in
 	// the DTLS 1.3 record header.
 	DTLS13RecordHeaderSetCIDBit bool
+
+	// ACKEveryRecord sends an ACK record immediately on response to each
+	// handshake record received.
+	ACKEveryRecord bool
 
 	// EncryptSessionTicketKey, if non-nil, is the ticket key to use when
 	// encrypting tickets.

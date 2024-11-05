@@ -361,7 +361,7 @@ crypto_sources = [
     "crypto/md4/md4.c",
     "crypto/md5/md5.c",
     "crypto/mem.c",
-    "crypto/mldsa/mldsa.c",
+    "crypto/mldsa/mldsa.cc",
     "crypto/mlkem/mlkem.cc",
     "crypto/obj/obj.c",
     "crypto/obj/obj_xref.c",
@@ -874,6 +874,7 @@ crypto_test_data = [
     "crypto/poly1305/poly1305_tests.txt",
     "crypto/siphash/siphash_tests.txt",
     "crypto/slhdsa/slhdsa_keygen.txt",
+    "crypto/slhdsa/slhdsa_prehash.txt",
     "crypto/slhdsa/slhdsa_siggen.txt",
     "crypto/slhdsa/slhdsa_sigver.txt",
     "crypto/spx/spx_tests.txt",
@@ -2744,6 +2745,7 @@ ssl_test_sources = [
     "crypto/test/gtest_main.cc",
     "ssl/span_test.cc",
     "ssl/ssl_c_test.c",
+    "ssl/ssl_internal_test.cc",
     "ssl/ssl_test.cc",
 ]
 

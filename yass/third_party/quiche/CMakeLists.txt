@@ -489,8 +489,11 @@ set(quiche_quic_SOURCES
   src/quiche/quic/core/proto/cached_network_parameters_proto.h
   src/quiche/quic/core/proto/crypto_server_config_proto.h
   src/quiche/quic/core/proto/source_address_token_proto.h
+  src/quiche/quic/core/qpack/new_qpack_blocking_manager.cc
+  src/quiche/quic/core/qpack/new_qpack_blocking_manager.h
   src/quiche/quic/core/qpack/qpack_blocking_manager.cc
   src/quiche/quic/core/qpack/qpack_blocking_manager.h
+  src/quiche/quic/core/qpack/qpack_blocking_manager_shim.h
   src/quiche/quic/core/qpack/qpack_decoded_headers_accumulator.cc
   src/quiche/quic/core/qpack/qpack_decoded_headers_accumulator.h
   src/quiche/quic/core/qpack/qpack_decoder.cc

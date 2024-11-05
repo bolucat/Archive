@@ -68,3 +68,6 @@
 [submodule "third_party/jsoncpp"]
 	path = third_party/jsoncpp
 	url = https://github.com/Chilledheart/jsoncpp
+[submodule "third_party/llvm-libc/trunk"]
+	path = third_party/llvm-libc/trunk
+	url = https://chromium.googlesource.com/external/github.com/llvm/llvm-project/libc
