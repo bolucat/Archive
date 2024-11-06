@@ -11,7 +11,7 @@ import (
 func TestHysteriaSelf(t *testing.T) {
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -46,7 +46,7 @@ func TestHysteriaSelf(t *testing.T) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -75,9 +75,18 @@ func TestHysteriaSelf(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "hy-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "hy-out",
+							},
+						},
 					},
 				},
 			},
@@ -89,7 +98,7 @@ func TestHysteriaSelf(t *testing.T) {
 func TestHysteriaInbound(t *testing.T) {
 	caPem, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeHysteria,
 				HysteriaOptions: option.HysteriaInboundOptions{
@@ -140,7 +149,7 @@ func TestHysteriaOutbound(t *testing.T) {
 		},
 	})
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				MixedOptions: option.HTTPMixedInboundOptions{
@@ -151,7 +160,7 @@ func TestHysteriaOutbound(t *testing.T) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeHysteria,
 				HysteriaOptions: option.HysteriaOutboundOptions{

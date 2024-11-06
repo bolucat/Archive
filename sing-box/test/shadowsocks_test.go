@@ -99,7 +99,7 @@ func testShadowsocksInboundWithShadowsocksRust(t *testing.T, method string, pass
 		Cmd:        []string{"-s", F.ToString("127.0.0.1:", serverPort), "-b", F.ToString("0.0.0.0:", clientPort), "-m", method, "-k", password, "-U"},
 	})
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeShadowsocks,
 				ShadowsocksOptions: option.ShadowsocksInboundOptions{
@@ -124,7 +124,7 @@ func testShadowsocksOutboundWithShadowsocksRust(t *testing.T, method string, pas
 		Cmd:        []string{"-s", F.ToString("0.0.0.0:", serverPort), "-m", method, "-k", password, "-U"},
 	})
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				MixedOptions: option.HTTPMixedInboundOptions{
@@ -135,7 +135,7 @@ func testShadowsocksOutboundWithShadowsocksRust(t *testing.T, method string, pas
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeShadowsocks,
 				ShadowsocksOptions: option.ShadowsocksOutboundOptions{
@@ -154,7 +154,7 @@ func testShadowsocksOutboundWithShadowsocksRust(t *testing.T, method string, pas
 
 func testShadowsocksSelf(t *testing.T, method string, password string) {
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -177,7 +177,7 @@ func testShadowsocksSelf(t *testing.T, method string, password string) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -197,9 +197,18 @@ func testShadowsocksSelf(t *testing.T, method string, password string) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "ss-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "ss-out",
+							},
+						},
 					},
 				},
 			},
@@ -212,7 +221,7 @@ func TestShadowsocksUoT(t *testing.T) {
 	method := shadowaead_2022.List[0]
 	password := mkBase64(t, 16)
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -235,7 +244,7 @@ func TestShadowsocksUoT(t *testing.T) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -258,9 +267,18 @@ func TestShadowsocksUoT(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "ss-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "ss-out",
+							},
+						},
 					},
 				},
 			},
@@ -271,7 +289,7 @@ func TestShadowsocksUoT(t *testing.T) {
 
 func testShadowsocks2022EIH(t *testing.T, method string, password string) {
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -299,7 +317,7 @@ func testShadowsocks2022EIH(t *testing.T, method string, password string) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -319,9 +337,18 @@ func testShadowsocks2022EIH(t *testing.T, method string, password string) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "ss-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "ss-out",
+							},
+						},
 					},
 				},
 			},

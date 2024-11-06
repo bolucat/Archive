@@ -44,7 +44,7 @@ func testVMessTransportSelf(t *testing.T, server *option.V2RayTransportOptions, 
 	require.NoError(t, err)
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -80,7 +80,7 @@ func testVMessTransportSelf(t *testing.T, server *option.V2RayTransportOptions, 
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -108,9 +108,18 @@ func testVMessTransportSelf(t *testing.T, server *option.V2RayTransportOptions, 
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "vmess-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "vmess-out",
+							},
+						},
 					},
 				},
 			},
@@ -124,7 +133,7 @@ func testTrojanTransportSelf(t *testing.T, server *option.V2RayTransportOptions,
 	require.NoError(t, err)
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -160,7 +169,7 @@ func testTrojanTransportSelf(t *testing.T, server *option.V2RayTransportOptions,
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -187,9 +196,18 @@ func testTrojanTransportSelf(t *testing.T, server *option.V2RayTransportOptions,
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "vmess-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "vmess-out",
+							},
+						},
 					},
 				},
 			},
@@ -206,7 +224,7 @@ func TestVMessQUICSelf(t *testing.T) {
 	require.NoError(t, err)
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -242,7 +260,7 @@ func TestVMessQUICSelf(t *testing.T) {
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -270,9 +288,18 @@ func TestVMessQUICSelf(t *testing.T) {
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "vmess-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "vmess-out",
+							},
+						},
 					},
 				},
 			},
@@ -285,7 +312,7 @@ func testV2RayTransportNOTLSSelf(t *testing.T, transport *option.V2RayTransportO
 	user, err := uuid.DefaultGenerator.NewV4()
 	require.NoError(t, err)
 	startInstance(t, option.Options{
-		Inbounds: []option.Inbound{
+		Inbounds: []option.LegacyInbound{
 			{
 				Type: C.TypeMixed,
 				Tag:  "mixed-in",
@@ -313,7 +340,7 @@ func testV2RayTransportNOTLSSelf(t *testing.T, transport *option.V2RayTransportO
 				},
 			},
 		},
-		Outbounds: []option.Outbound{
+		LegacyOutbounds: []option.LegacyOutbound{
 			{
 				Type: C.TypeDirect,
 			},
@@ -334,9 +361,18 @@ func testV2RayTransportNOTLSSelf(t *testing.T, transport *option.V2RayTransportO
 		Route: &option.RouteOptions{
 			Rules: []option.Rule{
 				{
+					Type: C.RuleTypeDefault,
 					DefaultOptions: option.DefaultRule{
-						Inbound:  []string{"mixed-in"},
-						Outbound: "vmess-out",
+						RawDefaultRule: option.RawDefaultRule{
+							Inbound: []string{"mixed-in"},
+						},
+						RuleAction: option.RuleAction{
+							Action: C.RuleActionTypeRoute,
+
+							RouteOptions: option.RouteActionOptions{
+								Outbound: "vmess-out",
+							},
+						},
 					},
 				},
 			},

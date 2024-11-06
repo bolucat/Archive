@@ -17,6 +17,7 @@ import (
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/libbox/internal/procfs"
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
+	"github.com/sagernet/sing-box/include"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-tun"
@@ -34,28 +35,29 @@ type BoxService struct {
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	instance              *box.Box
-	platformInterface     *platformInterfaceWrapper
 	pauseManager          pause.Manager
 	urlTestHistoryStorage *urltest.HistoryStorage
+
 	servicePauseFields
 }
 
 func NewService(configContent string, platformInterface PlatformInterface) (*BoxService, error) {
-	options, err := parseConfig(configContent)
+	ctx := box.Context(context.Background(), include.InboundRegistry(), include.OutboundRegistry())
+	options, err := parseConfig(ctx, configContent)
 	if err != nil {
 		return nil, err
 	}
 	runtimeDebug.FreeOSMemory()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	ctx = filemanager.WithDefault(ctx, sWorkingPath, sTempPath, sUserID, sGroupID)
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
 	ctx = service.ContextWith[deprecated.Manager](ctx, new(deprecatedManager))
 	platformWrapper := &platformInterfaceWrapper{iif: platformInterface, useProcFS: platformInterface.UseProcFS()}
+	ctx = service.ContextWith[platform.Interface](ctx, platformWrapper)
 	instance, err := box.New(box.Options{
 		Context:           ctx,
 		Options:           options,
-		PlatformInterface: platformWrapper,
 		PlatformLogWriter: platformWrapper,
 	})
 	if err != nil {
@@ -67,7 +69,6 @@ func NewService(configContent string, platformInterface PlatformInterface) (*Box
 		ctx:                   ctx,
 		cancel:                cancel,
 		instance:              instance,
-		platformInterface:     platformWrapper,
 		urlTestHistoryStorage: urlTestHistoryStorage,
 		pauseManager:          service.FromContext[pause.Manager](ctx),
 	}, nil
@@ -103,10 +104,9 @@ var (
 )
 
 type platformInterfaceWrapper struct {
-	iif         PlatformInterface
-	useProcFS   bool
-	router      adapter.Router
-	openURLFunc func(url string)
+	iif       PlatformInterface
+	useProcFS bool
+	router    adapter.Router
 }
 
 func (w *platformInterfaceWrapper) Initialize(ctx context.Context, router adapter.Router) error {
@@ -118,12 +118,8 @@ func (w *platformInterfaceWrapper) UsePlatformAutoDetectInterfaceControl() bool 
 	return w.iif.UsePlatformAutoDetectInterfaceControl()
 }
 
-func (w *platformInterfaceWrapper) AutoDetectInterfaceControl() control.Func {
-	return func(network, address string, conn syscall.RawConn) error {
-		return control.Raw(conn, func(fd uintptr) error {
-			return w.iif.AutoDetectInterfaceControl(int32(fd))
-		})
-	}
+func (w *platformInterfaceWrapper) AutoDetectInterfaceControl(fd int) error {
+	return w.iif.AutoDetectInterfaceControl(int32(fd))
 }
 
 func (w *platformInterfaceWrapper) OpenTun(options *tun.Options, platformOptions option.TunPlatformOptions) (tun.Tun, error) {
@@ -242,8 +238,6 @@ func (w *platformInterfaceWrapper) WriteMessage(level log.Level, message string)
 	w.iif.WriteLog(message)
 }
 
-func (w *platformInterfaceWrapper) OpenURL(url string) {
-	if w.openURLFunc != nil {
-		w.openURLFunc(url)
-	}
+func (w *platformInterfaceWrapper) SendNotification(notification *platform.Notification) error {
+	return w.iif.SendNotification((*Notification)(notification))
 }

@@ -4,6 +4,24 @@ icon: material/delete-alert
 
 # Deprecated Feature List
 
+## 1.11.0
+
+#### Legacy special outbounds
+
+Legacy special outbounds (`block` / `dns`) are deprecated
+and can be replaced by rule actions,
+check [Migration](../migration/#migrate-legacy-special-outbounds-to-rule-actions).
+
+Old fields are deprecated and will be removed in sing-box 1.13.0.
+
+#### Inbound fields
+
+Inbound fields （`inbound.<sniff/domain_strategy/...>` are deprecated
+and can be replaced by rule actions,
+check [Migration](../migration/#migrate-legacy-inbound-fields-to-rule-actions).
+
+Old fields are deprecated and will be removed in sing-box 1.13.0.
+
 ## 1.10.0
 
 #### TUN address fields are merged
@@ -12,7 +30,7 @@ icon: material/delete-alert
 `inet4_route_address` and `inet6_route_address` are merged into `route_address`,
 `inet4_route_exclude_address` and `inet6_route_exclude_address` are merged into `route_exclude_address`.
 
-Old fields are deprecated and will be removed in sing-box 1.11.0.
+Old fields are deprecated and will be removed in sing-box 1.12.0.
 
 #### Match source rule items are renamed
 
@@ -32,7 +50,7 @@ check [Migration](/migration/#migrate-cache-file-from-clash-api-to-independent-o
 
 #### GeoIP
 
-GeoIP is deprecated and may be removed in the future.
+GeoIP is deprecated and will be removed in sing-box 1.12.0.
 
 The maxmind GeoIP National Database, as an IP classification database,
 is not entirely suitable for traffic bypassing,
@@ -43,7 +61,7 @@ check [Migration](/migration/#migrate-geoip-to-rule-sets).
 
 #### Geosite
 
-Geosite is deprecated and may be removed in the future.
+Geosite is deprecated and will be removed in sing-box 1.12.0.
 
 Geosite, the `domain-list-community` project maintained by V2Ray as an early traffic bypassing solution,
 suffers from a number of problems, including lack of maintenance, inaccurate rules, and difficult management.

@@ -246,6 +246,27 @@ bool CliConnection::OnEndHeadersForStream(http2::adapter::Http2StreamId stream_i
   if (it != request_map_.end()) {
     server_field = it->second;
   }
+  it = request_map_.find(":status"s);
+  if (it != request_map_.end()) {
+    std::string_view status_code_field = it->second;
+    int status_code;
+    // https://httpwg.org/specs/rfc9110.html#overview.of.status.codes
+    if (!StringToInt(status_code_field, &status_code) || status_code < 100 || status_code >= 600) {
+      LOG(INFO) << "Connection (client) " << connection_id() << " for " << remote_domain()
+                << " got response with invalid status code: " << status_code_field;
+      return false;
+    }
+    if (status_code != 200) {
+      LOG(INFO) << "Connection (client) " << connection_id() << " for " << remote_domain()
+                << " got response with unexpected status code: " << status_code << " expected: 200";
+      return false;
+    }
+  } else {
+    LOG(WARNING) << "Connection (client) " << connection_id() << " for " << remote_domain()
+                 << " got response with empty status code";
+    return false;
+  }
+
   LOG(INFO) << "Connection (client) " << connection_id() << " for " << remote_domain() << " Padding support "
             << (padding_support_ ? "enabled" : "disabled") << " Backed by " << server_field << ".";
 

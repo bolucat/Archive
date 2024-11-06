@@ -22,3 +22,17 @@ const (
 	RuleSetVersion1 = 1 + iota
 	RuleSetVersion2
 )
+
+const (
+	RuleActionTypeRoute     = "route"
+	RuleActionTypeDirect    = "direct"
+	RuleActionTypeReject    = "reject"
+	RuleActionTypeHijackDNS = "hijack-dns"
+	RuleActionTypeSniff     = "sniff"
+	RuleActionTypeResolve   = "resolve"
+)
+
+const (
+	RuleActionRejectMethodDefault = "default"
+	RuleActionRejectMethodDrop    = "drop"
+)

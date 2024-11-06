@@ -2,6 +2,38 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.7
+
+* Introducing rule actions **1**
+* Some chaotic changes **3**
+
+**1**:
+
+New rule actions replace legacy inbound fields and special outbound fields,
+and can be used for pre-matching **2**.
+see [Rule](/configuration/route/rule/),
+[Rule Action](/configuration/route/rule_action/),
+[DNS Rule](/configuration/dns/rule/) and
+[DNS Rule Action](/configuration/dns/rule_action/).
+
+For migration, see
+[Migrate legacy special outbounds to rule actions](/migration/#migrate-legacy-special-outbounds-to-rule-actions)
+and [Migrate legacy inbound fields to rule actions](/migration/#migrate-legacy-inbound-fields-to-rule-actions).
+
+**2**:
+
+Similar to Surge's pre-matching.
+
+Specifically, the new rule actions allow you to reject connections with
+TCP RST (for TCP connections) and ICMP port unreachable (for UDP packets)
+before connection established to improve tun's compatibility.
+
+See [Rule Action](/configuration/route/rule_action/).
+
+**3**:
+
+Everything existing may be broken, please actively report problems with in beta versions.
+
 #### 1.11.0-alpha.6
 
 * Update quic-go to v0.48.1
