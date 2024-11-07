@@ -97,7 +97,6 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		selectedTag         string
 		selectedDescription string
 	)
-	var selectReturn bool
 	if selectedRule != nil {
 		switch action := selectedRule.Action().(type) {
 		case *rule.RuleActionRoute:
@@ -116,8 +115,6 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		case *rule.RuleActionDirect:
 			selectedDialer = action.Dialer
 			selectedDescription = action.String()
-		case *rule.RuleActionReturn:
-			selectReturn = true
 		case *rule.RuleActionReject:
 			buf.ReleaseMulti(buffers)
 			N.CloseOnHandshakeFailure(conn, onClose, action.Error(ctx))
@@ -130,7 +127,7 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 			return nil
 		}
 	}
-	if selectedRule == nil || selectReturn {
+	if selectedRule == nil {
 		if r.defaultOutboundForConnection == nil {
 			buf.ReleaseMulti(buffers)
 			return E.New("missing default outbound with TCP support")
@@ -266,15 +263,12 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 				N.ReleaseMultiPacketBuffer(packetBuffers)
 				return E.New("UDP is not supported by outbound: ", selectedOutbound.Tag())
 			}
-			metadata.UDPDisableDomainUnmapping = action.UDPDisableDomainUnmapping
 			selectedDialer = selectedOutbound
 			selectedTag = selectedOutbound.Tag()
 			selectedDescription = F.ToString("outbound/", selectedOutbound.Type(), "[", selectedOutbound.Tag(), "]")
 		case *rule.RuleActionDirect:
 			selectedDialer = action.Dialer
 			selectedDescription = action.String()
-		case *rule.RuleActionReturn:
-			selectReturn = true
 		case *rule.RuleActionReject:
 			N.ReleaseMultiPacketBuffer(packetBuffers)
 			N.CloseOnHandshakeFailure(conn, onClose, action.Error(ctx))
@@ -468,7 +462,7 @@ match:
 			}
 		} else {
 			switch currentRule.Action().Type() {
-			case C.RuleActionTypeReject, C.RuleActionTypeResolve:
+			case C.RuleActionTypeReject:
 				ruleDescription := currentRule.String()
 				if ruleDescription != "" {
 					r.logger.DebugContext(ctx, "pre-match[", currentRuleIndex, "] ", currentRule, " => ", currentRule.Action())
@@ -478,6 +472,9 @@ match:
 			}
 		}
 		switch action := currentRule.Action().(type) {
+		case *rule.RuleActionRouteOptions:
+			metadata.UDPDisableDomainUnmapping = action.UDPDisableDomainUnmapping
+			metadata.UDPConnect = action.UDPConnect
 		case *rule.RuleActionSniff:
 			if !preMatch {
 				newBuffer, newPacketBuffers, newErr := r.actionSniff(ctx, metadata, action, inputConn, inputPacketConn)

@@ -88,11 +88,6 @@ icon: material/arrange-bring-forward
     
         ```json
         {
-          "inbound": [
-            {
-              ...
-            }
-          ],
           "route": {
             "rules": [
               {
@@ -100,14 +95,14 @@ icon: material/arrange-bring-forward
               },
               {
                 "protocol": "dns",
-                "action": "dns-hijack"
+                "action": "hijack-dns"
               }
             ]
           }
         }
         ```
 
-### 迁移入站字段到规则动作
+### 迁移旧的入站字段到规则动作
 
 入站选项已被弃用，且可以被规则动作替代。
 
@@ -155,6 +150,58 @@ icon: material/arrange-bring-forward
             "inbound": "in",
             "action": "sniff",
             "timeout": "1s"
+          }
+        ]
+      }
+    }
+    ```
+
+### 迁移旧的 DNS 路由选项到规则动作
+
+旧的 DNS 路由选项已被弃用，且可以被规则动作替代。
+
+!!! info "参考"
+
+    [DNS 规则](/zh/configuration/dns/rule/) / 
+    [DNS 规则动作](/zh/configuration/dns/rule_action/)
+
+=== ":material-card-remove: 弃用的"
+
+    ```json
+    {
+      "dns": {
+        "rules": [
+          {
+            ...,
+            
+            "server": "local",
+            "disable_cache": true,
+            "rewrite_ttl": 600,
+            "client_subnet": "1.1.1.1/24"
+          }
+        ]
+      }
+    }
+    ```
+
+=== ":material-card-multiple: 新的"
+
+    ```json
+    {
+      "dns": {
+        "rules": [
+          {
+            ...,
+            
+            "action": "route-options",
+            "disable_cache": true,
+            "rewrite_ttl": 600,
+            "client_subnet": "1.1.1.1/24"
+          },
+          {
+            ...,
+            
+            "server": "local"
           }
         ]
       }

@@ -1,33 +1,43 @@
 package option
 
 import (
+	"context"
 	"fmt"
+	"net/netip"
 	"time"
 
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	dns "github.com/sagernet/sing-dns"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
+	"github.com/sagernet/sing/common/json/badoption"
 )
 
 type _RuleAction struct {
-	Action         string              `json:"action,omitempty"`
-	RouteOptions   RouteActionOptions  `json:"-"`
-	DirectOptions  DirectActionOptions `json:"-"`
-	RejectOptions  RejectActionOptions `json:"-"`
-	SniffOptions   RouteActionSniff    `json:"-"`
-	ResolveOptions RouteActionResolve  `json:"-"`
+	Action              string                    `json:"action,omitempty"`
+	RouteOptions        RouteActionOptions        `json:"-"`
+	RouteOptionsOptions RouteOptionsActionOptions `json:"-"`
+	DirectOptions       DirectActionOptions       `json:"-"`
+	RejectOptions       RejectActionOptions       `json:"-"`
+	SniffOptions        RouteActionSniff          `json:"-"`
+	ResolveOptions      RouteActionResolve        `json:"-"`
 }
 
 type RuleAction _RuleAction
 
 func (r RuleAction) MarshalJSON() ([]byte, error) {
+	if r.Action == "" {
+		return json.Marshal(struct{}{})
+	}
 	var v any
 	switch r.Action {
 	case C.RuleActionTypeRoute:
 		r.Action = ""
 		v = r.RouteOptions
+	case C.RuleActionTypeRouteOptions:
+		v = r.RouteOptionsOptions
 	case C.RuleActionTypeDirect:
 		v = r.DirectOptions
 	case C.RuleActionTypeReject:
@@ -57,6 +67,8 @@ func (r *RuleAction) UnmarshalJSON(data []byte) error {
 	case "", C.RuleActionTypeRoute:
 		r.Action = C.RuleActionTypeRoute
 		v = &r.RouteOptions
+	case C.RuleActionTypeRouteOptions:
+		v = &r.RouteOptionsOptions
 	case C.RuleActionTypeDirect:
 		v = &r.DirectOptions
 	case C.RuleActionTypeReject:
@@ -78,19 +90,25 @@ func (r *RuleAction) UnmarshalJSON(data []byte) error {
 }
 
 type _DNSRuleAction struct {
-	Action        string                `json:"action,omitempty"`
-	RouteOptions  DNSRouteActionOptions `json:"-"`
-	RejectOptions RejectActionOptions   `json:"-"`
+	Action              string                       `json:"action,omitempty"`
+	RouteOptions        DNSRouteActionOptions        `json:"-"`
+	RouteOptionsOptions DNSRouteOptionsActionOptions `json:"-"`
+	RejectOptions       RejectActionOptions          `json:"-"`
 }
 
 type DNSRuleAction _DNSRuleAction
 
 func (r DNSRuleAction) MarshalJSON() ([]byte, error) {
+	if r.Action == "" {
+		return json.Marshal(struct{}{})
+	}
 	var v any
 	switch r.Action {
 	case C.RuleActionTypeRoute:
 		r.Action = ""
 		v = r.RouteOptions
+	case C.RuleActionTypeRouteOptions:
+		v = r.RouteOptionsOptions
 	case C.RuleActionTypeReject:
 		v = r.RejectOptions
 	default:
@@ -99,7 +117,7 @@ func (r DNSRuleAction) MarshalJSON() ([]byte, error) {
 	return badjson.MarshallObjects((_DNSRuleAction)(r), v)
 }
 
-func (r *DNSRuleAction) UnmarshalJSON(data []byte) error {
+func (r *DNSRuleAction) UnmarshalJSONContext(ctx context.Context, data []byte) error {
 	err := json.Unmarshal(data, (*_DNSRuleAction)(r))
 	if err != nil {
 		return err
@@ -109,21 +127,18 @@ func (r *DNSRuleAction) UnmarshalJSON(data []byte) error {
 	case "", C.RuleActionTypeRoute:
 		r.Action = C.RuleActionTypeRoute
 		v = &r.RouteOptions
+	case C.RuleActionTypeRouteOptions:
+		v = &r.RouteOptionsOptions
 	case C.RuleActionTypeReject:
 		v = &r.RejectOptions
 	default:
 		return E.New("unknown DNS rule action: " + r.Action)
 	}
-	if v == nil {
-		// check unknown fields
-		return json.UnmarshalDisallowUnknownFields(data, &_DNSRuleAction{})
-	}
-	return badjson.UnmarshallExcluded(data, (*_DNSRuleAction)(r), v)
+	return badjson.UnmarshallExcludedContext(ctx, data, (*_DNSRuleAction)(r), v)
 }
 
 type _RouteActionOptions struct {
-	Outbound                  string `json:"outbound"`
-	UDPDisableDomainUnmapping bool   `json:"udp_disable_domain_unmapping,omitempty"`
+	Outbound string `json:"outbound,omitempty"`
 }
 
 type RouteActionOptions _RouteActionOptions
@@ -133,28 +148,65 @@ func (r *RouteActionOptions) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	if r.Outbound == "" {
-		return E.New("missing outbound")
+	return nil
+}
+
+type _RouteOptionsActionOptions struct {
+	UDPDisableDomainUnmapping bool `json:"udp_disable_domain_unmapping,omitempty"`
+	UDPConnect                bool `json:"udp_connect,omitempty"`
+}
+
+type RouteOptionsActionOptions _RouteOptionsActionOptions
+
+func (r *RouteOptionsActionOptions) UnmarshalJSON(data []byte) error {
+	err := json.Unmarshal(data, (*_RouteOptionsActionOptions)(r))
+	if err != nil {
+		return err
+	}
+	if *r == (RouteOptionsActionOptions{}) {
+		return E.New("empty route option action")
 	}
 	return nil
 }
 
 type _DNSRouteActionOptions struct {
-	Server       string      `json:"server"`
-	DisableCache bool        `json:"disable_cache,omitempty"`
-	RewriteTTL   *uint32     `json:"rewrite_ttl,omitempty"`
-	ClientSubnet *AddrPrefix `json:"client_subnet,omitempty"`
+	Server string `json:"server,omitempty"`
+	// Deprecated: Use DNSRouteOptionsActionOptions instead.
+	DisableCache bool `json:"disable_cache,omitempty"`
+	// Deprecated: Use DNSRouteOptionsActionOptions instead.
+	RewriteTTL *uint32 `json:"rewrite_ttl,omitempty"`
+	// Deprecated: Use DNSRouteOptionsActionOptions instead.
+	ClientSubnet *badoption.Prefixable `json:"client_subnet,omitempty"`
 }
 
 type DNSRouteActionOptions _DNSRouteActionOptions
 
-func (r *DNSRouteActionOptions) UnmarshalJSON(data []byte) error {
+func (r *DNSRouteActionOptions) UnmarshalJSONContext(ctx context.Context, data []byte) error {
 	err := json.Unmarshal(data, (*_DNSRouteActionOptions)(r))
 	if err != nil {
 		return err
 	}
-	if r.Server == "" {
-		return E.New("missing server")
+	if r.DisableCache || r.RewriteTTL != nil || r.ClientSubnet != nil {
+		deprecated.Report(ctx, deprecated.OptionLegacyDNSRouteOptions)
+	}
+	return nil
+}
+
+type _DNSRouteOptionsActionOptions struct {
+	DisableCache bool                  `json:"disable_cache,omitempty"`
+	RewriteTTL   *uint32               `json:"rewrite_ttl,omitempty"`
+	ClientSubnet *badoption.Prefixable `json:"client_subnet,omitempty"`
+}
+
+type DNSRouteOptionsActionOptions _DNSRouteOptionsActionOptions
+
+func (r *DNSRouteOptionsActionOptions) UnmarshalJSON(data []byte) error {
+	err := json.Unmarshal(data, (*_DNSRouteOptionsActionOptions)(r))
+	if err != nil {
+		return err
+	}
+	if *r == (DNSRouteOptionsActionOptions{}) {
+		return E.New("empty DNS route option action")
 	}
 	return nil
 }
@@ -169,10 +221,10 @@ func (d DirectActionOptions) Descriptions() []string {
 		descriptions = append(descriptions, "bind_interface="+d.BindInterface)
 	}
 	if d.Inet4BindAddress != nil {
-		descriptions = append(descriptions, "inet4_bind_address="+d.Inet4BindAddress.Build().String())
+		descriptions = append(descriptions, "inet4_bind_address="+d.Inet4BindAddress.Build(netip.IPv4Unspecified()).String())
 	}
 	if d.Inet6BindAddress != nil {
-		descriptions = append(descriptions, "inet6_bind_address="+d.Inet6BindAddress.Build().String())
+		descriptions = append(descriptions, "inet6_bind_address="+d.Inet6BindAddress.Build(netip.IPv6Unspecified()).String())
 	}
 	if d.RoutingMark != 0 {
 		descriptions = append(descriptions, "routing_mark="+fmt.Sprintf("0x%x", d.RoutingMark))
@@ -238,8 +290,8 @@ func (r *RejectActionOptions) UnmarshalJSON(bytes []byte) error {
 }
 
 type RouteActionSniff struct {
-	Sniffer Listable[string] `json:"sniffer,omitempty"`
-	Timeout Duration         `json:"timeout,omitempty"`
+	Sniffer badoption.Listable[string] `json:"sniffer,omitempty"`
+	Timeout badoption.Duration         `json:"timeout,omitempty"`
 }
 
 type RouteActionResolve struct {

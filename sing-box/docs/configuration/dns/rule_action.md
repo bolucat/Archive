@@ -12,6 +12,8 @@ icon: material/new-box
 {
   "action": "route",  // default
   "server": "",
+  
+  // for compatibility
   "disable_cache": false,
   "rewrite_ttl": 0,
   "client_subnet": null
@@ -26,6 +28,23 @@ icon: material/new-box
 
 Tag of target server.
 
+#### disable_cache/rewrite_ttl/client_subnet
+
+!!! failure "Deprecated in sing-box 1.11.0"
+
+    Legacy route options is deprecated and will be removed in sing-box 1.12.0, check [Migration](/migration/#migrate-legacy-dns-route-options-to-rule-actions).
+
+### route-options
+
+```json
+{
+  "action": "route-options",
+  "disable_cache": false,
+  "rewrite_ttl": null,
+  "client_subnet": null
+}
+```
+
 #### disable_cache
 
 Disable cache and save cache in this query.
@@ -35,8 +54,6 @@ Disable cache and save cache in this query.
 Rewrite TTL in DNS responses.
 
 #### client_subnet
-
-!!! question "Since sing-box 1.9.0"
 
 Append a `edns0-subnet` OPT extra record with the specified IP prefix to every query by default.
 

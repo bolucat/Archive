@@ -27,8 +27,8 @@ var _ adapter.TCPInjectableInbound = (*Inbound)(nil)
 
 type Inbound struct {
 	inbound.Adapter
-	logger        logger.ContextLogger
 	router        adapter.ConnectionRouterEx
+	logger        logger.ContextLogger
 	listener      *listener.Listener
 	authenticator *auth.Authenticator
 }
@@ -37,6 +37,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	inbound := &Inbound{
 		Adapter:       inbound.NewAdapter(C.TypeSOCKS, tag),
 		router:        uot.NewRouter(router, logger),
+		logger:        logger,
 		authenticator: auth.NewAuthenticator(options.Users),
 	}
 	inbound.listener = listener.New(listener.Options{

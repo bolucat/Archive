@@ -12,6 +12,8 @@ icon: material/new-box
 {
   "action": "route",  // 默认
   "server": "",
+  
+  // 兼容性
   "disable_cache": false,
   "rewrite_ttl": 0,
   "client_subnet": null
@@ -26,6 +28,24 @@ icon: material/new-box
 
 目标 DNS 服务器的标签。
 
+#### disable_cache/rewrite_ttl/client_subnet
+
+!!! failure "自 sing-box 1.11.0 起"
+
+    旧的路由选项已弃用，且将在 sing-box 1.12.0 中移除，参阅 [迁移指南](/migration/#migrate-legacy-dns-route-options-to-rule-actions).
+
+### route-options
+
+```json
+{
+  "action": "route-options",
+  "disable_cache": false,
+  "rewrite_ttl": null,
+  "client_subnet": null
+}
+```
+
+
 #### disable_cache
 
 在此查询中禁用缓存。
@@ -35,8 +55,6 @@ icon: material/new-box
 重写 DNS 回应中的 TTL。
 
 #### client_subnet
-
-!!! question "自 sing-box 1.9.0 起"
 
 默认情况下，将带有指定 IP 前缀的 `edns0-subnet` OPT 附加记录附加到每个查询。
 

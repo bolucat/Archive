@@ -12,15 +12,23 @@ Legacy special outbounds (`block` / `dns`) are deprecated
 and can be replaced by rule actions,
 check [Migration](../migration/#migrate-legacy-special-outbounds-to-rule-actions).
 
-Old fields are deprecated and will be removed in sing-box 1.13.0.
+Old fields will be removed in sing-box 1.13.0.
 
-#### Inbound fields
+#### Legacy inbound fields
 
-Inbound fields （`inbound.<sniff/domain_strategy/...>` are deprecated
+Legacy inbound fields （`inbound.<sniff/domain_strategy/...>` are deprecated
 and can be replaced by rule actions,
 check [Migration](../migration/#migrate-legacy-inbound-fields-to-rule-actions).
 
-Old fields are deprecated and will be removed in sing-box 1.13.0.
+Old fields will be removed in sing-box 1.13.0.
+
+#### Legacy DNS route options
+
+Legacy DNS route options (`disable_cache`, `rewrite_ttl`, `client_subnet`) are deprecated
+and can be replaced by rule actions,
+check [Migration](../migration/#migrate-legacy-dns-route-options-to-rule-actions).
+
+Old fields will be removed in sing-box 1.12.0.
 
 ## 1.10.0
 
@@ -30,7 +38,7 @@ Old fields are deprecated and will be removed in sing-box 1.13.0.
 `inet4_route_address` and `inet6_route_address` are merged into `route_address`,
 `inet4_route_exclude_address` and `inet6_route_exclude_address` are merged into `route_exclude_address`.
 
-Old fields are deprecated and will be removed in sing-box 1.12.0.
+Old fields will be removed in sing-box 1.12.0.
 
 #### Match source rule items are renamed
 

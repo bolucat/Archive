@@ -26,17 +26,25 @@ icon: material/new-box
 
 目标出站的标签。
 
+### route-options
+
+```json
+{
+  "action": "route-options",
+  "udp_disable_domain_unmapping": false,
+    "udp_connect": false
+}
+```
+
 #### udp_disable_domain_unmapping
 
 如果启用，对于地址为域的 UDP 代理请求，将在响应中发送原始包地址而不是映射的域。
 
 此选项用于兼容不支持接收带有域地址的 UDP 包的客户端，如 Surge。
 
-### 拨号字段
+#### udp_connect
 
-参阅 [拨号字段](/zh/configuration/shared/dial/)。
-
-`detour` 在当前上下文中不可用。
+如果启用，将尝试将 UDP 连接 connect 到目标而不是 listen。
 
 ### reject
 
@@ -50,7 +58,7 @@ icon: material/new-box
 
 `reject` 拒绝连接。
 
-如果尚未执行 `sniif` 操作，则将使用指定方法拒绝 tun 连接。
+如果尚未执行 `sniff` 操作，则将使用指定方法拒绝 tun 连接。
 
 对于非 tun 连接和已建立的连接，将直接关闭。
 
@@ -122,9 +130,6 @@ icon: material/new-box
 DNS 解析策略，可用值有：`prefer_ipv4`、`prefer_ipv6`、`ipv4_only`、`ipv6_only`。
 
 默认使用 `dns.strategy`。
-
-需要注意的是，由于DNS的基本原理，`prefer_` 选项只会影响从 sing-box 内部发起的查询（
-除非使用 fake-ip ），而无法让发起查询的应用程序优先选择你想要的网络。
 
 #### server
 

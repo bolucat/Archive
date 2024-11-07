@@ -13,8 +13,7 @@ icon: material/new-box
 ```json
 {
   "action": "route", // default
-  "outbound": "",
-  "udp_disable_domain_unmapping": false
+  "outbound": ""
 }
 ```
 
@@ -26,6 +25,18 @@ icon: material/new-box
 
 Tag of target outbound.
 
+### route-options
+
+```json
+{
+  "action": "route-options",
+  "udp_disable_domain_unmapping": false,
+  "udp_connect": false
+}
+```
+
+`route-options` set options for routing.
+
 #### udp_disable_domain_unmapping
 
 If enabled, for UDP proxy requests addressed to a domain,
@@ -33,6 +44,10 @@ the original packet address will be sent in the response instead of the mapped d
 
 This option is used for compatibility with clients that
 do not support receiving UDP packets with domain addresses, such as Surge.
+
+#### udp_connect
+
+If enabled, attempts to connect UDP connection to the destination instead of listen.
 
 ### reject
 
@@ -46,7 +61,7 @@ do not support receiving UDP packets with domain addresses, such as Surge.
 
 `reject` reject connections
 
-The specified method is used for reject tun connections if `sniif` action has not been performed yet.
+The specified method is used for reject tun connections if `sniff` action has not been performed yet.
 
 For non-tun connections and already established connections, will just be closed.
 
@@ -118,10 +133,6 @@ Timeout for sniffing.
 DNS resolution strategy, available values are: `prefer_ipv4`, `prefer_ipv6`, `ipv4_only`, `ipv6_only`.
 
 `dns.strategy` will be used by default.
-
-It should be noted that, due to the basic principles of DNS, `prefer_` options only affect queries
-initiated from within sing-box (unless fake-ip is used),
-and cannot make applications that initiates queries give priority to the network you want.
 
 #### server
 
