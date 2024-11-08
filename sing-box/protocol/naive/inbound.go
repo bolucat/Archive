@@ -116,12 +116,12 @@ func (n *Inbound) Start() error {
 
 	if common.Contains(n.network, N.NetworkUDP) {
 		http3Server, err := ConfigureHTTP3ListenerFunc(n.listener, n, n.tlsConfig, n.logger)
-		if len(n.network) > 1 {
-			n.logger.Warn(E.Cause(err, "naive http3 disabled"))
-		} else if err != nil {
-			return err
-		} else {
+		if err == nil {
 			n.h3Server = http3Server
+		} else if len(n.network) > 1 {
+			n.logger.Warn(E.Cause(err, "naive http3 disabled"))
+		} else {
+			return err
 		}
 	}
 

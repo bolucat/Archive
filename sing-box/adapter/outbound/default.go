@@ -20,6 +20,7 @@ import (
 )
 
 func NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata adapter.InboundContext) error {
+	defer conn.Close()
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.Conn
 	var err error
@@ -40,6 +41,7 @@ func NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata a
 }
 
 func NewDirectConnection(ctx context.Context, router adapter.Router, this N.Dialer, conn net.Conn, metadata adapter.InboundContext, domainStrategy dns.DomainStrategy) error {
+	defer conn.Close()
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.Conn
 	var err error
@@ -67,6 +69,7 @@ func NewDirectConnection(ctx context.Context, router adapter.Router, this N.Dial
 }
 
 func NewPacketConnection(ctx context.Context, this N.Dialer, conn N.PacketConn, metadata adapter.InboundContext) error {
+	defer conn.Close()
 	ctx = adapter.WithContext(ctx, &metadata)
 	var (
 		outPacketConn      net.PacketConn
@@ -127,6 +130,7 @@ func NewPacketConnection(ctx context.Context, this N.Dialer, conn N.PacketConn, 
 }
 
 func NewDirectPacketConnection(ctx context.Context, router adapter.Router, this N.Dialer, conn N.PacketConn, metadata adapter.InboundContext, domainStrategy dns.DomainStrategy) error {
+	defer conn.Close()
 	ctx = adapter.WithContext(ctx, &metadata)
 	var (
 		outPacketConn      net.PacketConn

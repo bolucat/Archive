@@ -24,6 +24,8 @@ import (
 
 func NewRuleAction(router adapter.Router, logger logger.ContextLogger, action option.RuleAction) (adapter.RuleAction, error) {
 	switch action.Action {
+	case "":
+		return nil, nil
 	case C.RuleActionTypeRoute:
 		return &RuleActionRoute{
 			Outbound: action.RouteOptions.Outbound,
@@ -79,6 +81,8 @@ func NewRuleAction(router adapter.Router, logger logger.ContextLogger, action op
 
 func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) adapter.RuleAction {
 	switch action.Action {
+	case "":
+		return nil
 	case C.RuleActionTypeRoute:
 		return &RuleActionDNSRoute{
 			Server:       action.RouteOptions.Server,

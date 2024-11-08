@@ -2,9 +2,16 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-alpha.8
+#### 1.11.0-alpha.9
 
+* Improve tun compatibility **1**
 * Fixes and improvements
+
+**1**:
+
+When `gvisor` tun stack is enabled, even if the request passes routing,
+if the outbound connection establishment fails,
+the connection still does not need to be established and a TCP RST is replied.
 
 #### 1.11.0-alpha.7
 

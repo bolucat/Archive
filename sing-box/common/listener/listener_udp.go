@@ -49,9 +49,9 @@ func (l *Listener) loopUDPIn() {
 	if !l.threadUnsafePacketWriter {
 		buffer = buf.NewPacket()
 		defer buffer.Release()
+		buffer.IncRef()
+		defer buffer.DecRef()
 	}
-	buffer.IncRef()
-	defer buffer.DecRef()
 	if l.oobPacketHandler != nil {
 		oob := make([]byte, 1024)
 		for {
