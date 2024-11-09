@@ -56,7 +56,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	} else {
 		udpTimeout = C.UDPTimeout
 	}
-	inbound.udpNat = udpnat.New(inbound, inbound.preparePacketConnection, udpTimeout)
+	inbound.udpNat = udpnat.New(inbound, inbound.preparePacketConnection, udpTimeout, false)
 	inbound.listener = listener.New(listener.Options{
 		Context:           ctx,
 		Logger:            logger,

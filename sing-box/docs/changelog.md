@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.10
+
+* Fixes and improvements
+
 #### 1.11.0-alpha.9
 
 * Improve tun compatibility **1**

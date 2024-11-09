@@ -49,7 +49,7 @@ func NewTProxy(ctx context.Context, router adapter.Router, logger log.ContextLog
 	} else {
 		udpTimeout = C.UDPTimeout
 	}
-	tproxy.udpNat = udpnat.New(tproxy, tproxy.preparePacketConnection, udpTimeout)
+	tproxy.udpNat = udpnat.New(tproxy, tproxy.preparePacketConnection, udpTimeout, false)
 	tproxy.listener = listener.New(listener.Options{
 		Context:           ctx,
 		Logger:            logger,
