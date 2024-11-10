@@ -10,8 +10,6 @@ import (
 	"github.com/sagernet/sing-box/common/geoip"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-dns"
-	"github.com/sagernet/sing-tun"
-	"github.com/sagernet/sing/common/control"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/x/list"
@@ -21,7 +19,7 @@ import (
 )
 
 type Router interface {
-	NewService
+	Lifecycle
 
 	FakeIPStore() FakeIPStore
 
@@ -31,37 +29,23 @@ type Router interface {
 
 	GeoIPReader() *geoip.Reader
 	LoadGeosite(code string) (Rule, error)
-
 	RuleSet(tag string) (RuleSet, bool)
-
 	NeedWIFIState() bool
 
 	Exchange(ctx context.Context, message *mdns.Msg) (*mdns.Msg, error)
 	Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error)
 	LookupDefault(ctx context.Context, domain string) ([]netip.Addr, error)
 	ClearDNSCache()
-
-	InterfaceFinder() control.InterfaceFinder
-	UpdateInterfaces() error
-	DefaultInterface() string
-	AutoDetectInterface() bool
-	AutoDetectInterfaceFunc() control.Func
-	DefaultMark() uint32
-	RegisterAutoRedirectOutputMark(mark uint32) error
-	AutoRedirectOutputMark() uint32
-	NetworkMonitor() tun.NetworkUpdateMonitor
-	InterfaceMonitor() tun.DefaultInterfaceMonitor
-	PackageManager() tun.PackageManager
-	WIFIState() WIFIState
 	Rules() []Rule
 
-	ClashServer() ClashServer
-	SetClashServer(server ClashServer)
+	SetTracker(tracker ConnectionTracker)
 
-	V2RayServer() V2RayServer
-	SetV2RayServer(server V2RayServer)
+	ResetNetwork()
+}
 
-	ResetNetwork() error
+type ConnectionTracker interface {
+	RoutedConnection(ctx context.Context, conn net.Conn, metadata InboundContext, matchedRule Rule, matchOutbound Outbound) net.Conn
+	RoutedPacketConnection(ctx context.Context, conn N.PacketConn, metadata InboundContext, matchedRule Rule, matchOutbound Outbound) N.PacketConn
 }
 
 // Deprecated: Use ConnectionRouterEx instead.
