@@ -437,6 +437,12 @@ match:
 			}
 		}
 		switch action := currentRule.Action().(type) {
+		case *rule.RuleActionRoute:
+			metadata.UDPDisableDomainUnmapping = action.UDPDisableDomainUnmapping
+			metadata.UDPConnect = action.UDPConnect
+			selectedRule = currentRule
+			selectedRuleIndex = currentRuleIndex
+			break match
 		case *rule.RuleActionRouteOptions:
 			metadata.UDPDisableDomainUnmapping = action.UDPDisableDomainUnmapping
 			metadata.UDPConnect = action.UDPConnect
@@ -467,7 +473,12 @@ match:
 			selectedRuleIndex = currentRuleIndex
 			break match
 		}
-		ruleIndex = currentRuleIndex
+		if ruleIndex == -1 {
+			ruleIndex = currentRuleIndex
+		} else {
+			ruleIndex += currentRuleIndex
+		}
+		ruleIndex++
 	}
 	if !preMatch && metadata.Destination.Addr.IsUnspecified() {
 		newBuffer, newPacketBuffers, newErr := r.actionSniff(ctx, metadata, &rule.RuleActionSniff{}, inputConn, inputPacketConn)

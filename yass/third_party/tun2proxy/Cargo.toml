@@ -66,3 +66,6 @@ wintun = { version = "0.4", features = ["panic_on_unsent_packets"] }
 
 [build-dependencies]
 serde_json = "1.0"
+
+[patch.crates-io]
+smoltcp = { path = './patch/smoltcp-0.11.0' }

@@ -1,6 +1,4 @@
-﻿using System.Runtime.Intrinsics.X86;
-
-namespace ServiceLib.Handler
+﻿namespace ServiceLib.Handler
 {
     public sealed class CoreInfoHandler
     {
@@ -74,7 +72,7 @@ namespace ServiceLib.Handler
             {
                 CoreType = ECoreType.Xray,
                 CoreExes = new List<string> { "xray", "wxray" },
-                Arguments = "run {0}",
+                Arguments = "run -c {0}",
                 Url = Global.XrayCoreUrl,
                 ReleaseApiUrl = Global.XrayCoreUrl.Replace(Global.GithubUrl, Global.GithubApiUrl),
                 DownloadUrlWin64 = Global.XrayCoreUrl + "/download/{0}/Xray-windows-64.zip",
@@ -89,7 +87,7 @@ namespace ServiceLib.Handler
             _coreInfo.Add(new CoreInfo
             {
                 CoreType = ECoreType.mihomo,
-                CoreExes = new List<string> { $"mihomo-windows-amd64{(Avx2.X64.IsSupported ? "" : "-compatible")}", "mihomo-windows-amd64-compatible", "mihomo-windows-amd64", "mihomo-windows-386", "mihomo", "clash" },
+                CoreExes = new List<string> { "mihomo-windows-amd64-compatible", "mihomo-windows-amd64", "mihomo-linux-amd64", "mihomo", "clash" },
                 Arguments = "-f config.json" + PortableMode(),
                 Url = Global.MihomoCoreUrl,
                 ReleaseApiUrl = Global.MihomoCoreUrl.Replace(Global.GithubUrl, Global.GithubApiUrl),
@@ -105,7 +103,7 @@ namespace ServiceLib.Handler
             _coreInfo.Add(new CoreInfo
             {
                 CoreType = ECoreType.hysteria,
-                CoreExes = new List<string> { "hysteria-windows-amd64", "hysteria-windows-386", "hysteria" },
+                CoreExes = new List<string> { "hysteria-windows-amd64", "hysteria" },
                 Arguments = "",
                 Url = Global.HysteriaCoreUrl,
                 ReleaseApiUrl = Global.HysteriaCoreUrl.Replace(Global.GithubUrl, Global.GithubApiUrl),
@@ -134,7 +132,7 @@ namespace ServiceLib.Handler
             {
                 CoreType = ECoreType.sing_box,
                 CoreExes = new List<string> { "sing-box-client", "sing-box" },
-                Arguments = "run {0} --disable-color",
+                Arguments = "run -c {0} --disable-color",
                 Url = Global.SingboxCoreUrl,
                 RedirectInfo = true,
                 ReleaseApiUrl = Global.SingboxCoreUrl.Replace(Global.GithubUrl, Global.GithubApiUrl),
@@ -157,7 +155,7 @@ namespace ServiceLib.Handler
             _coreInfo.Add(new CoreInfo
             {
                 CoreType = ECoreType.hysteria2,
-                CoreExes = new List<string> { "hysteria-windows-amd64", "hysteria-windows-386", "hysteria" },
+                CoreExes = new List<string> { "hysteria-windows-amd64", "hysteria-linux-amd64", "hysteria" },
                 Arguments = "",
                 Url = Global.HysteriaCoreUrl,
                 ReleaseApiUrl = Global.HysteriaCoreUrl.Replace(Global.GithubUrl, Global.GithubApiUrl),

@@ -25,7 +25,30 @@ SUBVERSION=1
 
 TARBALLS="yass-${VERSION}.tar.gz yass-${VERSION}.tar.bz2 yass-${VERSION}.tar.xz yass-${VERSION}.tar.zst yass-${VERSION}.zip"
 
+function provide_tun2proxy_vendor_crates {
+  pushd third_party/tun2proxy
+  git checkout HEAD .cargo/config.toml
+  rm -rf vendor
+  popd
+  ./scripts/vendor-tun2proxy.sh
+  pushd third_party/tun2proxy
+  git add -f vendor
+  git add -f .cargo
+  popd
+}
+
+function provide_tun2proxy_vendor_crates_cleanup {
+  pushd third_party/tun2proxy
+  git reset .cargo
+  git reset vendor
+  rm -rf vendor
+  git checkout HEAD .cargo/config.toml
+  popd
+}
+
 rm -f yass-${VERSION}.tar ${TARBALLS}
+
+provide_tun2proxy_vendor_crates
 
 /usr/bin/git ls-files --recurse-submodules | \
   tar caf yass-${VERSION}.tar --xform="s,^,yass-${VERSION}/," -T -
@@ -43,6 +66,8 @@ rm -f yass-${VERSION}.tar
 
 /usr/bin/git ls-files --recurse-submodules | \
   bsdtar caf yass-${VERSION}.zip -s ",^,yass-${VERSION}/," -T -
+
+provide_tun2proxy_vendor_crates_cleanup
 
 echo "md5sum "
 echo "======================================================================"
