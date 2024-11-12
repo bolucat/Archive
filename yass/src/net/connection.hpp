@@ -16,6 +16,7 @@
 #include "net/asio.hpp"
 #include "net/network.hpp"
 #include "net/protocol.hpp"
+#include "net/ssl_client_session_cache.hpp"
 #include "net/ssl_server_socket.hpp"
 
 #include <absl/functional/any_invocable.h>
@@ -220,18 +221,21 @@ class Connection {
   /// \param the number of connection id
   /// \param the pointer of tlsext ctx
   /// \param the ssl client data index
+  /// \param the ssl client session cache
   void on_accept(asio::ip::tcp::socket&& socket,
                  const asio::ip::tcp::endpoint& endpoint,
                  const asio::ip::tcp::endpoint& peer_endpoint,
                  int connection_id,
                  tlsext_ctx_t* tlsext_ctx,
-                 int ssl_socket_data_index) {
+                 int ssl_socket_data_index,
+                 SSLClientSessionCache* ssl_client_session_cache) {
     downlink_->on_accept(std::move(socket));
     endpoint_ = endpoint;
     peer_endpoint_ = peer_endpoint;
     connection_id_ = connection_id;
     tlsext_ctx_.reset(tlsext_ctx);
     ssl_socket_data_index_ = ssl_socket_data_index;
+    ssl_client_session_cache_ = ssl_client_session_cache;
   }
 
   /// set callback
@@ -264,6 +268,7 @@ class Connection {
   }
 
   int ssl_socket_data_index() const { return ssl_socket_data_index_; }
+  SSLClientSessionCache* ssl_client_session_cache() const { return ssl_client_session_cache_; }
 
  protected:
   /// the peek current io
@@ -289,6 +294,8 @@ class Connection {
   std::unique_ptr<tlsext_ctx_t> tlsext_ctx_;
   /// the ssl client data index
   int ssl_socket_data_index_ = -1;
+  /// the ssl client context cache
+  SSLClientSessionCache* ssl_client_session_cache_ = nullptr;
 
   /// if https fallback
   bool upstream_https_fallback_;

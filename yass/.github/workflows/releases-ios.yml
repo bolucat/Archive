@@ -33,9 +33,11 @@ jobs:
           - arch: x64
             build_type: Release
             rust_target: x86_64-apple-ios
+            xcode_version: 16.1
           - arch: arm64
             build_type: Release
             rust_target: aarch64-apple-ios-sim
+            xcode_version: 16.1
     env:
       BUILD_TYPE: '${{ matrix.build_type }}'
     steps:
@@ -78,9 +80,9 @@ jobs:
           # brew update
           # brew install ninja cmake p7zip
           brew install ninja
-      - name: Set up Xcode to 16.0
+      - name: Set up Xcode version
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.0.app
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
       - name: Build Binary and Run tests (arm64)
         if: ${{ matrix.arch == 'arm64' }}
         run: |

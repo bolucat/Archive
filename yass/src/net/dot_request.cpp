@@ -96,8 +96,8 @@ void DoTRequest::OnSocketConnect() {
   SetTCPCongestion(socket_.native_handle(), ec);
   SetTCPKeepAlive(socket_.native_handle(), ec);
   SetSocketTcpNoDelay(&socket_, ec);
-  ssl_socket_ = SSLSocket::Create(ssl_socket_data_index_, &io_context_, &socket_, ssl_ctx_,
-                                  /*https_fallback*/ true, dot_host_);
+  ssl_socket_ = SSLSocket::Create(ssl_socket_data_index_, nullptr, &io_context_, &socket_, ssl_ctx_,
+                                  /*https_fallback*/ true, dot_host_, dot_port_);
 
   ssl_socket_->Connect([this, self](int rv) {
     asio::error_code ec;

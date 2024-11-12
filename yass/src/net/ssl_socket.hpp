@@ -15,6 +15,7 @@
 #include "net/net_errors.hpp"
 #include "net/openssl_util.hpp"
 #include "net/protocol.hpp"
+#include "net/ssl_client_session_cache.hpp"
 
 namespace net {
 
@@ -51,11 +52,13 @@ using WaitCallback = absl::AnyInvocable<void(asio::error_code ec)>;
 class SSLSocket : public gurl_base::RefCountedThreadSafe<SSLSocket> {
  public:
   SSLSocket(int ssl_socket_data_index,
+            SSLClientSessionCache* ssl_client_session_cache,
             asio::io_context* io_context,
             asio::ip::tcp::socket* socket,
             SSL_CTX* ssl_ctx,
             bool https_fallback,
-            const std::string& host_name);
+            const std::string& host_name,
+            int port);
   ~SSLSocket();
 
   SSLSocket(SSLSocket&&) = delete;
@@ -110,6 +113,13 @@ class SSLSocket : public gurl_base::RefCountedThreadSafe<SSLSocket> {
   int ssl_socket_data_index_;
   asio::io_context* io_context_;
   asio::ip::tcp::socket* stream_socket_;
+
+  SSLClientSessionCache::Key GetSessionCacheKey(std::optional<asio::ip::address> dest_ip_addr) const;
+
+  bool IsCachingEnabled() const { return ssl_client_session_cache_ != nullptr; }
+
+  std::pair<std::string, int> host_and_port_;
+  SSLClientSessionCache* ssl_client_session_cache_;
 
   CompletionOnceCallback user_connect_callback_;
   WaitCallback wait_read_callback_;

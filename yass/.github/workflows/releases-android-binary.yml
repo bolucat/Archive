@@ -48,26 +48,31 @@ jobs:
             qemu_suffix: i386
             rust_target: i686-linux-android
             apilevel: 24
+            ndk_version: 26.3.11579264
           - arch: x64
             build_type: Release
             qemu_suffix: amd64
             rust_target: x86_64-linux-android
             apilevel: 24
+            ndk_version: 26.3.11579264
           - arch: arm
             build_type: Release
             qemu_suffix: armel
             rust_target: armv7-linux-androideabi
             apilevel: 24
+            ndk_version: 26.3.11579264
           - arch: arm64
             build_type: Release
             qemu_suffix: aarch64
             rust_target: aarch64-linux-android
             apilevel: 24
+            ndk_version: 26.3.11579264
     runs-on: ubuntu-20.04
     env:
       ARCH: ${{ matrix.arch }}
       BUILD_TYPE: ${{ matrix.build_type }}
       SYSROOT: ${{ github.workspace }}/android-sysroot-${{ matrix.arch }}
+      ANDROID_NDK_VER: ${{ matrix.ndk_version }}
     steps:
       - uses: actions/checkout@v4
       - name: Checkout with shallow submodules
@@ -100,7 +105,7 @@ jobs:
         with:
           path: |
             third_party/crashpad
-          key: ${{ runner.os }}-android-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-16k-alignment-for-64-bit-only
+          key: ${{ runner.os }}-android-${{ matrix.arch }}-ndk-${{ matrix.ndk_version }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-v1
       - name: Cache gradle
         uses: actions/cache@v4
         with:
@@ -137,9 +142,6 @@ jobs:
       - name: Replace JAVA_HOME (pin to java 17)
         run: |
           echo "JAVA_HOME=${JAVA_HOME_17_X64}" >> $GITHUB_ENV
-      - name: Replace Android NDK (pin to r26c)
-        run: |
-          echo "ANDROID_NDK_VER=26.3.11579264" >> $GITHUB_ENV
       - name: "Install dependency: prebuilt clang and clang-tidy binaries"
         if: ${{ steps.toolchain-cache.outputs.cache-hit != 'true' }}
         run: |

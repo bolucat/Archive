@@ -318,6 +318,16 @@ for embedded devices and low end boxes.
 %systemd_postun_with_restart yass-redir.service
 
 %changelog
+* Tue Nov 12 2024 Chilledheart <keeyou-cn@outlook.com> - 1.16.0-1
+  - bump to chromium 132 dependents
+  - build: add an option to enable/disable assertions
+  - core: move logging and other modules to googleurl
+  - http2: handle HTTP/2 status code in response
+  - http2: handle HTTP/2 Push as soft error
+  - tls: enable reusable sessions
+  - tls: enable post quantum option for server-side
+  - tls: support both of mlkem and kyber for server-side
+  - tls: enable ALPS for HTTP/2 only
 * Wed Oct 30 2024 Chilledheart <keeyou-cn@outlook.com> - 1.15.3-1
   - http2: handle HTTP/2 Push as soft error
 * Thu Oct 24 2024 Chilledheart <keeyou-cn@outlook.com> - 1.15.2-1

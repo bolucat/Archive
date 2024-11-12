@@ -4140,6 +4140,7 @@ set(files
     src/net/x509_util.cpp
     src/net/ssl_socket.cpp
     src/net/ssl_server_socket.cpp
+    src/net/ssl_client_session_cache.cpp
     src/net/openssl_util.cpp
     src/net/base64.cpp
     src/net/cipher.cpp
@@ -4203,6 +4204,7 @@ set(hfiles
     src/net/x509_util.hpp
     src/net/ssl_socket.hpp
     src/net/ssl_server_socket.hpp
+    src/net/ssl_client_session_cache.hpp
     src/net/net_errors.hpp
     src/net/net_error_list.hpp
     src/net/openssl_util.hpp

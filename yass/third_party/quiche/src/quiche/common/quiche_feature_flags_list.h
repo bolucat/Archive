@@ -31,6 +31,7 @@ QUICHE_FLAG(bool, quiche_reloadable_flag_quic_disable_version_draft_29, false, f
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_disable_version_q046, false, true, "If true, disable QUIC version Q046.")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_disable_version_rfcv1, false, false, "If true, disable QUIC version h3 (RFCv1).")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_discard_initial_packet_with_key_dropped, false, true, "If true, discard INITIAL packet if the key has been dropped.")
+QUICHE_FLAG(bool, quiche_reloadable_flag_quic_ecn_in_first_ack, false, false, "When true, reports ECN in counts in the ACK of the a client initial that goes in the buffered packet store.")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_enable_disable_resumption, true, true, "If true, disable resumption when receiving NRES connection option.")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_enable_mtu_discovery_at_server, false, false, "If true, QUIC will default enable MTU discovery at server, with a target of 1450 bytes.")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_enable_server_on_wire_ping, true, true, "If true, enable server retransmittable on wire PING.")
@@ -55,11 +56,11 @@ QUICHE_FLAG(bool, quiche_reloadable_flag_quic_testonly_default_true, true, true,
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_use_alarm_multiplexer, false, false, "Manages all of the connection alarms via QuicAlarmMultiplexer.")
 QUICHE_FLAG(bool, quiche_reloadable_flag_quic_use_received_client_addresses_cache, true, true, "If true, use a LRU cache to record client addresses of packets received on server's original address.")
 QUICHE_FLAG(bool, quiche_restart_flag_quic_support_ect1, false, false, "When true, allows sending of QUIC packets marked ECT(1). A different flag (TBD) will actually utilize this capability to send ECT(1).")
-QUICHE_FLAG(bool, quiche_restart_flag_quic_support_flow_label, false, false, "If true, QUIC will support reading and writing IPv6 flow labels.")
+QUICHE_FLAG(bool, quiche_restart_flag_quic_support_flow_label2, false, false, "If true, QUIC will support reading and writing IPv6 flow labels.")
 QUICHE_FLAG(bool, quiche_restart_flag_quic_support_release_time_for_gso, false, false, "If true, QuicGsoBatchWriter will support release time if it is available and the process has the permission to do so.")
 QUICHE_FLAG(bool, quiche_restart_flag_quic_testonly_default_false, false, false, "A testonly restart flag that will always default to false.")
 QUICHE_FLAG(bool, quiche_restart_flag_quic_testonly_default_true, true, true, "A testonly restart flag that will always default to true.")
-QUICHE_FLAG(bool, quiche_restart_flag_quic_use_new_qpack_blocking_manager, false, false, "If true, QUIC will use NewQpackBlockingManager instead of QpackBlockingManager.")
+QUICHE_FLAG(bool, quiche_restart_flag_quic_use_new_qpack_blocking_manager, false, true, "If true, QUIC will use NewQpackBlockingManager instead of QpackBlockingManager.")
 
 #endif
 // clang-format on

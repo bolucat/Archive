@@ -45,6 +45,7 @@ jobs:
       matrix:
         arch: [x64, arm64]
         build_type: [Release]
+        xcode_version: [16.1]
     env:
       BUILD_TYPE: '${{ matrix.build_type }}'
     steps:
@@ -67,7 +68,7 @@ jobs:
         with:
           path: |
             third_party/crashpad
-          key: ${{ runner.os }}-mac-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-stripped
+          key: ${{ runner.os }}-mac-${{ matrix.arch }}-xcode-${{ matrix.xcode_version }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-stripped
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.20.0'
@@ -90,9 +91,9 @@ jobs:
           brew install ninja
           # for depot_tools (required by crashpad)
           brew install python-setuptools
-      - name: Set up Xcode to 16.0
+      - name: Set up Xcode version
         run: |
-          sudo xcode-select -s /Applications/Xcode_16.0.app
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
       - name: Build Binary (crashpad)
         if: ${{ steps.crashpad-cache.outputs.cache-hit != 'true' }}
         shell: bash

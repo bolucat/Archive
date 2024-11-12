@@ -35,6 +35,7 @@ jobs:
         arch: [x64, x86, arm64]
         crt-linkage: [dynamic]
         build_type: [Release]
+        winsdk_version: [10.0.22621.0]
     env:
       BUILD_TYPE: '${{ matrix.build_type }}'
     steps:
@@ -69,7 +70,7 @@ jobs:
         with:
           path: |
             third_party/crashpad
-          key: ${{ runner.os }}-msvc-dynamic-${{ matrix.arch }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-stripped
+          key: ${{ runner.os }}-msvc-dynamic-${{ matrix.arch }}-winsdk-${{ matrix.winsdk_version }}-crashpad-${{ hashFiles('CRASHPAD_COMMIT') }}-v${{ env.CACHE_EPOCH }}-v1
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.20.0'
@@ -104,7 +105,7 @@ jobs:
       - name: Build Binary
         run: |
           set VCToolsVersion=
-          set Winsdk=10.0.22621.0
+          set Winsdk=${{ matrix.winsdk_version }}
           set "WindowsSDKVersion=%Winsdk%\"
           if "${{ matrix.arch }}" == "arm64" (call :SetNewVCToolsVersion)
           set vsdevcmd=C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat

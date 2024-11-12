@@ -1511,7 +1511,7 @@ define KernelPackage/mlx4-core
 	CONFIG_MLX4_CORE=y \
 	CONFIG_MLX4_CORE_GEN2=y \
 	CONFIG_MLX4_DEBUG=n
-  AUTOLOAD:=$(call AutoProbe,mlx4_core mlx4_en)
+  AUTOLOAD:=$(call AutoLoad,36,mlx4_core mlx4_en,1)
 endef
 
 define KernelPackage/mlx4-core/description
@@ -1542,7 +1542,7 @@ define KernelPackage/mlx5-core
 	CONFIG_MLX5_TC_CT=n \
 	CONFIG_MLX5_TLS=n \
 	CONFIG_MLX5_VFIO_PCI=n
-  AUTOLOAD:=$(call AutoProbe,mlx5_core)
+  AUTOLOAD:=$(call AutoLoad,36,mlx5_core,1)
 endef
 
 define KernelPackage/mlx5-core/description
@@ -1571,7 +1571,7 @@ $(eval $(call KernelPackage,mlxfw))
 define KernelPackage/mlxsw-core
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Mellanox Technologies Switch ASICs support
-  DEPENDS:=+kmod-mlxfw +kmod-hwmon-core
+  DEPENDS:=@TARGET_x86_64 +kmod-mlxfw +kmod-hwmon-core
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlxsw/mlxsw_core.ko
   KCONFIG:= \
   CONFIG_MLXSW_CORE \
@@ -1606,7 +1606,7 @@ $(eval $(call KernelPackage,mlxsw-i2c))
 define KernelPackage/mlxsw-minimal
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Mellanox Technologies minimal I2C support
-  DEPENDS:=+kmod-mlxsw-core +kmod-mlxsw-i2c
+  DEPENDS:=+kmod-mlxsw-i2c
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlxsw/mlxsw_minimal.ko
   KCONFIG:=CONFIG_MLXSW_MINIMAL
   AUTOLOAD:=$(call AutoProbe,mlxsw_minimal)
@@ -1640,20 +1640,14 @@ define KernelPackage/mlxsw-spectrum
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Mellanox Technologies Spectrum family support
   DEPENDS:= \
-  +kmod-mlxsw-core +kmod-mlxsw-pci +kmod-lib-objagg +kmod-lib-parman \
+  +kmod-mlxsw-pci +kmod-lib-objagg +kmod-lib-parman \
   +kmod-ip6-tunnel +kmod-ptp +kmod-sched-act-sample +kmod-vxlan
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlxsw/mlxsw_spectrum.ko
   KCONFIG:= \
   CONFIG_MLXSW_SPECTRUM \
-  CONFIG_NET_SWITCHDEV=y \
   CONFIG_MLXSW_SPECTRUM_DCB=y \
-  CONFIG_DCB=y \
-  CONFIG_AMD_XGBE_DCB=n \
-  CONFIG_IXGBE_DCB=n \
-  CONFIG_I40E_DCB=n \
-  CONFIG_QLCNIC_DCB=n \
-  CONFIG_FSL_DPAA2_ETH_DCB=n \
-  CONFIG_FSL_DPAA2_SWITCH=n
+  CONFIG_NET_SWITCHDEV=y \
+  CONFIG_DCB=y
   AUTOLOAD:=$(call AutoProbe,mlxsw_spectrum)
 endef
 
@@ -1750,7 +1744,7 @@ define KernelPackage/igc
   DEPENDS:=@PCI_SUPPORT +kmod-ptp
   KCONFIG:=CONFIG_IGC
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/intel/igc/igc.ko
-  AUTOLOAD:=$(call AutoLoad,35,igc)
+  AUTOLOAD:=$(call AutoLoad,34,igc,1)
 endef
 
 define KernelPackage/igc/description

@@ -1606,8 +1606,8 @@ void ServerConnection::OnConnect() {
     host_name = request_.endpoint().address().to_string();
   }
   if (enable_upstream_tls_) {
-    channel_ = ssl_stream::create(ssl_socket_data_index(), *io_context_, std::string(), host_name, port, this,
-                                  upstream_https_fallback_, upstream_ssl_ctx_);
+    channel_ = ssl_stream::create(ssl_socket_data_index(), ssl_client_session_cache(), *io_context_, std::string(),
+                                  host_name, port, this, upstream_https_fallback_, upstream_ssl_ctx_);
 
   } else {
     channel_ = stream::create(*io_context_, std::string(), host_name, port, this);

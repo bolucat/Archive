@@ -4,6 +4,7 @@
 #ifndef H_NET_SSL_STREAM
 #define H_NET_SSL_STREAM
 
+#include "net/ssl_client_session_cache.hpp"
 #include "net/stream.hpp"
 
 namespace net {
@@ -20,6 +21,7 @@ class ssl_stream : public stream {
   /// construct a ssl stream object with ss protocol
   ///
   /// \param ssl_socket_data_index the ssl client data index
+  /// \param ssl_client_session_cache the ssl client session cache
   /// \param io_context the io context associated with the service
   /// \param host_ips the ip addresses used with endpoint
   /// \param host_sni the sni name used with endpoint
@@ -28,6 +30,7 @@ class ssl_stream : public stream {
   /// \param https_fallback the data channel falls back to https (alpn)
   /// \param ssl_ctx the ssl context object for tls data transfer
   ssl_stream(int ssl_socket_data_index,
+             SSLClientSessionCache* ssl_client_session_cache,
              asio::io_context& io_context,
              const std::string& host_ips,
              const std::string& host_sni,
@@ -38,8 +41,14 @@ class ssl_stream : public stream {
       : stream(io_context, host_ips, host_sni, port, channel),
         https_fallback_(https_fallback),
         enable_tls_(true),
-        ssl_socket_(
-            SSLSocket::Create(ssl_socket_data_index, &io_context, &socket_, ssl_ctx, https_fallback, host_sni)) {}
+        ssl_socket_(SSLSocket::Create(ssl_socket_data_index,
+                                      ssl_client_session_cache,
+                                      &io_context,
+                                      &socket_,
+                                      ssl_ctx,
+                                      https_fallback,
+                                      host_sni,
+                                      port)) {}
 
   ~ssl_stream() override {}
 

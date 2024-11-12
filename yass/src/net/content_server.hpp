@@ -25,6 +25,7 @@
 #include "net/connection.hpp"
 #include "net/network.hpp"
 #include "net/protocol.hpp"
+#include "net/ssl_client_session_cache.hpp"
 #include "net/ssl_socket.hpp"
 #include "net/x509_util.hpp"
 
@@ -278,7 +279,7 @@ class ContentServer {
     }
     SetSocketTcpNoDelay(&socket, ec);
     conn->on_accept(std::move(socket), ctx.endpoint, ctx.peer_endpoint, connection_id, tlsext_ctx,
-                    ssl_socket_data_index_);
+                    ssl_socket_data_index_, ssl_client_session_cache_.get());
     conn->set_disconnect_cb([this, conn]() mutable { on_disconnect(conn); });
     connection_map_.insert(std::make_pair(connection_id, conn));
     ++opened_connections_;
@@ -555,7 +556,9 @@ class ContentServer {
       SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, ::SSL_CTX_get_verify_callback(ctx));
     } else {
       SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, ::SSL_CTX_get_verify_callback(ctx));
-      SSL_CTX_set_reverify_on_resume(ctx, 1);
+      // FIXME
+      // reverify only supported on custom verify callback
+      // SSL_CTX_set_reverify_on_resume(ctx, 1);
     }
     if (ec) {
       return;
@@ -599,6 +602,7 @@ class ContentServer {
 
     client_instance_ = this;
     ssl_socket_data_index_ = SSL_get_ex_new_index(0, nullptr, nullptr, nullptr, nullptr);
+    ssl_client_session_cache_ = std::make_unique<SSLClientSessionCache>(SSLClientSessionCache::Config{});
 
     // Disable the internal session cache. Session caching is handled
     // externally (i.e. by SSLClientSessionCache).
@@ -646,6 +650,7 @@ class ContentServer {
   bool enable_tls_;
   std::string upstream_certificate_;
   bssl::UniquePtr<SSL_CTX> upstream_ssl_ctx_;
+  std::unique_ptr<SSLClientSessionCache> ssl_client_session_cache_;
 
   std::string certificate_;
   std::string private_key_;

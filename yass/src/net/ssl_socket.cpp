@@ -21,9 +21,6 @@ const int kCertVerifyPending = 1;
 const int kDefaultOpenSSLBufferSize = 17 * 1024;
 }  // namespace
 
-static constexpr const int kMaximumSSLCache = 1024;
-static absl::flat_hash_map<asio::ip::address, bssl::UniquePtr<SSL_SESSION>> g_ssl_lru_cache;
-
 static std::vector<uint8_t> SerializeNextProtos(const NextProtoVector& next_protos) {
   std::vector<uint8_t> wire_protos;
   for (const NextProto next_proto : next_protos) {
@@ -45,15 +42,26 @@ static std::vector<uint8_t> SerializeNextProtos(const NextProtoVector& next_prot
   return wire_protos;
 }
 
+inline SSLClientSessionCache::Key SSLSocket::GetSessionCacheKey(std::optional<asio::ip::address> dest_ip_addr) const {
+  SSLClientSessionCache::Key key;
+  key.server = host_and_port_;
+  key.dest_ip_addr = dest_ip_addr;
+  return key;
+}
+
 SSLSocket::SSLSocket(int ssl_socket_data_index,
+                     SSLClientSessionCache* ssl_client_session_cache,
                      asio::io_context* io_context,
                      asio::ip::tcp::socket* socket,
                      SSL_CTX* ssl_ctx,
                      bool https_fallback,
-                     const std::string& host_name)
+                     const std::string& host_name,
+                     int port)
     : ssl_socket_data_index_(ssl_socket_data_index),
       io_context_(io_context),
       stream_socket_(socket),
+      host_and_port_(host_name, port),
+      ssl_client_session_cache_(ssl_client_session_cache),
       early_data_enabled_(absl::GetFlag(FLAGS_tls13_early_data)),
       pending_read_error_(kSSLClientSocketNoPendingResult) {
   DCHECK(!ssl_);
@@ -83,6 +91,26 @@ SSLSocket::SSLSocket(int ssl_socket_data_index,
     const uint16_t kGroups[] = {postquantum_group, SSL_GROUP_X25519, SSL_GROUP_SECP256R1, SSL_GROUP_SECP384R1};
     int ret = SSL_set1_group_ids(ssl_.get(), kGroups, std::size(kGroups));
     CHECK_EQ(ret, 1) << "SSL_set1_group_ids failure";
+  }
+
+  if (IsCachingEnabled()) {
+    bssl::UniquePtr<SSL_SESSION> session =
+        ssl_client_session_cache_->Lookup(GetSessionCacheKey(/*dest_ip_addr=*/std::nullopt));
+    if (!session) {
+      // If a previous session negotiated an RSA cipher suite then it may have
+      // been inserted into the cache keyed by both hostname and resolved IP
+      // address. See https://crbug.com/969684.
+      asio::error_code ec;
+      auto ip_endpoint = stream_socket_->remote_endpoint(ec);
+      if (!ec) {
+        asio::ip::address peer_address = ip_endpoint.address();
+        session = ssl_client_session_cache_->Lookup(GetSessionCacheKey(peer_address));
+      }
+    }
+    if (session) {
+      VLOG(2) << "Reusing session at " << host_and_port_.first << ":" << host_and_port_.second;
+      SSL_set_session(ssl_.get(), session.get());
+    }
   }
 
   SSL_set_early_data_enabled(ssl_.get(), early_data_enabled_);
@@ -397,7 +425,11 @@ void SSLSocket::WaitWrite(WaitCallback&& cb) {
 }
 
 int SSLSocket::NewSessionCallback(SSL_SESSION* session) {
-  asio::ip::address ip_addr;
+  if (!IsCachingEnabled()) {
+    return 0;
+  }
+
+  std::optional<asio::ip::address> ip_addr;
   if (SSL_CIPHER_get_kx_nid(SSL_SESSION_get0_cipher(session)) == NID_kx_rsa) {
     // If RSA key exchange was used, additionally key the cache with the
     // destination IP address. Of course, if a proxy is being used, the
@@ -413,9 +445,9 @@ int SSLSocket::NewSessionCallback(SSL_SESSION* session) {
 
   // OpenSSL optionally passes ownership of |session|. Returning one signals
   // that this function has claimed it.
-  g_ssl_lru_cache[ip_addr] = bssl::UniquePtr<SSL_SESSION>(session);
-  if (g_ssl_lru_cache.size() >= kMaximumSSLCache)
-    g_ssl_lru_cache.clear();
+  VLOG(2) << "Inserting session at " << host_and_port_.first << ":" << host_and_port_.second << ":"
+          << ip_addr.has_value();
+  ssl_client_session_cache_->Insert(GetSessionCacheKey(ip_addr), bssl::UniquePtr<SSL_SESSION>(session));
   return 1;
 }
 
@@ -833,10 +865,7 @@ void SSLSocket::DoPeek() {
     // https://crbug.com/1066623.
     if (err == ERR_EARLY_DATA_REJECTED || err == ERR_WRONG_VERSION_ON_EARLY_DATA) {
       LOG(WARNING) << "Early data rejected";
-#if 0
-      context_->ssl_client_session_cache()->ClearEarlyData(
-          GetSessionCacheKey(absl::nullopt));
-#endif
+      ssl_client_session_cache_->ClearEarlyData(GetSessionCacheKey(std::nullopt));
     }
 
     handled_early_data_result_ = true;
