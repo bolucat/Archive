@@ -216,13 +216,12 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 		rule.allItems = append(rule.allItems, item)
 	}
 	if options.ClashMode != "" {
-		clashServer := service.FromContext[adapter.ClashServer](ctx)
-		item := NewClashModeItem(clashServer, options.ClashMode)
+		item := NewClashModeItem(ctx, options.ClashMode)
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
 	if len(options.NetworkType) > 0 {
-		item := NewNetworkTypeItem(networkManager, options.NetworkType)
+		item := NewNetworkTypeItem(networkManager, common.Map(options.NetworkType, option.InterfaceType.Build))
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}
