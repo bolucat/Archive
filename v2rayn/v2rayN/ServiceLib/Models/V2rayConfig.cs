@@ -348,10 +348,12 @@ namespace ServiceLib.Models
     {
         public string? path { get; set; }
         public string? host { get; set; }
+        public string? mode { get; set; }
         public string? scMaxEachPostBytes { get; set; }
         public string? scMaxConcurrentPosts { get; set; }
         public string? scMinPostsIntervalMs { get; set; }
         public Xmux4Ray? xmux { get; set; }
+        public object? extra { get; set; }
     }
 
     public class Xmux4Ray

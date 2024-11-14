@@ -945,6 +945,15 @@ namespace ServiceLib.Services.CoreConfig
                         {
                             xhttpSettings.host = host;
                         }
+                        if (Utils.IsNotEmpty(node.HeaderType) && Global.XhttpMode.Contains(node.HeaderType))
+                        {
+                            xhttpSettings.mode = node.HeaderType;
+                        }
+                        if (Utils.IsNotEmpty(node.Extra))
+                        {
+                            xhttpSettings.extra = JsonUtils.ParseJson(node.Extra);
+                        }
+
                         streamSettings.xhttpSettings = xhttpSettings;
 
                         break;

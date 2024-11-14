@@ -252,6 +252,7 @@ bool IsNotAcceptableIntermediate(const bssl::ParsedCertificate* cert, const CFSt
 static bool found_isrg_root_x1 = false;
 static bool found_isrg_root_x2 = false;
 static bool found_digicert_root_g2 = false;
+static bool found_gts_root_r4 = false;
 
 void print_openssl_error() {
   const char* file;
@@ -294,6 +295,10 @@ static bool load_ca_cert_to_x509_trust(X509_STORE* store, bssl::UniquePtr<X509> 
       if (commonName == "DigiCert Global Root G2"sv) {
         VLOG(1) << "Loading DigiCert Global Root G2 CA";
         found_digicert_root_g2 = true;
+      }
+      if (commonName == "GTS Root R4"sv) {
+        VLOG(1) << "Loading GTS Root R4 CA";
+        found_gts_root_r4 = true;
       }
     }
 
@@ -504,29 +509,71 @@ static int load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
   return 0;
 }
 
-int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
 #ifdef _WIN32
-  HCERTSTORE cert_store = NULL;
-  asio::error_code ec;
-  PCCERT_CONTEXT cert = nullptr;
-  X509_STORE* store = nullptr;
+// Returns true if the cert can be used for server authentication, based on
+// certificate properties.
+//
+// While there are a variety of certificate properties that can affect how
+// trust is computed, the main property is CERT_ENHKEY_USAGE_PROP_ID, which
+// is intersected with the certificate's EKU extension (if present).
+// The intersection is documented in the Remarks section of
+// CertGetEnhancedKeyUsage, and is as follows:
+// - No EKU property, and no EKU extension = Trusted for all purpose
+// - Either an EKU property, or EKU extension, but not both = Trusted only
+//   for the listed purposes
+// - Both an EKU property and an EKU extension = Trusted for the set
+//   intersection of the listed purposes
+// CertGetEnhancedKeyUsage handles this logic, and if an empty set is
+// returned, the distinction between the first and third case can be
+// determined by GetLastError() returning CRYPT_E_NOT_FOUND.
+//
+// See:
+// https://docs.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certgetenhancedkeyusage
+//
+// If we run into any errors reading the certificate properties, we fail
+// closed.
+bool IsCertTrustedForServerAuth(PCCERT_CONTEXT cert) {
+  DWORD usage_size = 0;
+
+  if (!CertGetEnhancedKeyUsage(cert, 0, nullptr, &usage_size)) {
+    return false;
+  }
+
+  std::vector<BYTE> usage_bytes(usage_size);
+  CERT_ENHKEY_USAGE* usage = reinterpret_cast<CERT_ENHKEY_USAGE*>(usage_bytes.data());
+  if (!CertGetEnhancedKeyUsage(cert, 0, usage, &usage_size)) {
+    return false;
+  }
+
+  if (usage->cUsageIdentifier == 0) {
+    // check GetLastError
+    HRESULT error_code = GetLastError();
+
+    switch (error_code) {
+      case CRYPT_E_NOT_FOUND:
+        return true;
+      case S_OK:
+        return false;
+      default:
+        return false;
+    }
+  }
+  for (DWORD i = 0; i < usage->cUsageIdentifier; i++) {
+    std::string_view eku = std::string_view(usage->rgpszUsageIdentifier[i]);
+    if ((eku == szOID_PKIX_KP_SERVER_AUTH) || (eku == szOID_ANY_ENHANCED_KEY_USAGE)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int load_ca_to_ssl_store_from_schannel_store(X509_STORE* store, HCERTSTORE cert_store) {
+  PCCERT_CONTEXT cert_context = NULL;
   int count = 0;
 
-  cert_store = CertOpenStore(CERT_STORE_PROV_SYSTEM, 0, NULL, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
-  if (!cert_store) {
-    PLOG(WARNING) << "CertOpenStore failed";
-    goto out;
-  }
-
-  store = SSL_CTX_get_cert_store(ssl_ctx);
-  if (!store) {
-    LOG(WARNING) << "Can't get SSL CTX cert store";
-    goto out;
-  }
-
-  while ((cert = CertEnumCertificatesInStore(cert_store, cert))) {
-    const char* data = (const char*)cert->pbCertEncoded;
-    size_t len = cert->cbCertEncoded;
+  while ((cert_context = CertEnumCertificatesInStore(cert_store, cert_context))) {
+    const char* data = reinterpret_cast<const char*>(cert_context->pbCertEncoded);
+    size_t len = cert_context->cbCertEncoded;
     bssl::UniquePtr<CRYPTO_BUFFER> buffer = net::x509_util::CreateCryptoBuffer(std::string_view(data, len));
     bssl::UniquePtr<X509> cert(X509_parse_from_buffer(buffer.get()));
     if (!cert) {
@@ -534,15 +581,81 @@ int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
       LOG(WARNING) << "Loading ca failure from: cert store";
       continue;
     }
+    if (!IsCertTrustedForServerAuth(cert_context)) {
+      char buf[4096] = {};
+      const char* const subject_name = X509_NAME_oneline(X509_get_subject_name(cert.get()), buf, sizeof(buf));
+      LOG(WARNING) << "Skip cert without server auth support: " << subject_name;
+      continue;
+    }
     if (load_ca_cert_to_x509_trust(store, std::move(cert))) {
       ++count;
     }
   }
 
-out:
-  if (cert_store) {
-    CertCloseStore(cert_store, CERT_CLOSE_STORE_FORCE_FLAG);
+  return count;
+}
+
+void GatherEnterpriseCertsForLocation(HCERTSTORE cert_store, DWORD location, LPCWSTR store_name) {
+  if (!(location == CERT_SYSTEM_STORE_LOCAL_MACHINE || location == CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY ||
+        location == CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE || location == CERT_SYSTEM_STORE_CURRENT_USER ||
+        location == CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY)) {
+    return;
   }
+
+  DWORD flags = location | CERT_STORE_OPEN_EXISTING_FLAG | CERT_STORE_READONLY_FLAG;
+
+  HCERTSTORE enterprise_root_store = NULL;
+
+  enterprise_root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, NULL, flags, store_name);
+  if (!enterprise_root_store) {
+    return;
+  }
+  // Priority of the opened cert store in the collection does not matter, so set
+  // everything to priority 0.
+  CertAddStoreToCollection(cert_store, enterprise_root_store,
+                           /*dwUpdateFlags=*/0, /*dwPriority=*/0);
+  if (!CertCloseStore(enterprise_root_store, 0)) {
+    PLOG(WARNING) << "CertCloseStore() call failed";
+  }
+}
+#endif
+
+int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
+#ifdef _WIN32
+  HCERTSTORE root_store = NULL;
+  int count = 0;
+
+  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  root_store = CertOpenStore(CERT_STORE_PROV_COLLECTION, 0, NULL, 0, nullptr);
+  if (!root_store) {
+    LOG(WARNING) << "Can't get cert store";
+    goto out;
+  }
+  // Grab the user-added roots.
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"ROOT");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"ROOT");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"ROOT");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"ROOT");
+
+  // Grab the user-added intermediates (optional).
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"CA");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"CA");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"CA");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"CA");
+
+  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
+
+  if (!CertCloseStore(root_store, 0)) {
+    PLOG(WARNING) << "CertCloseStore() call failed";
+  }
+
+out:
   LOG(INFO) << "Loaded ca from SChannel: " << count << " certificates";
   return count;
 #elif BUILDFLAG(IS_IOS)
@@ -672,6 +785,7 @@ void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
   found_isrg_root_x1 = false;
   found_isrg_root_x2 = false;
   found_digicert_root_g2 = false;
+  found_gts_root_r4 = false;
   load_ca_to_ssl_ctx_cacert(ssl_ctx);
 
 #ifdef HAVE_BUILTIN_CA_BUNDLE_CRT
@@ -708,7 +822,7 @@ void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
   }
 
   // TODO we can add the missing CA if required
-  if (!found_isrg_root_x1 || !found_isrg_root_x2 || !found_digicert_root_g2) {
+  if (!found_isrg_root_x1 || !found_isrg_root_x2 || !found_digicert_root_g2 || !found_gts_root_r4) {
     if (!found_isrg_root_x1) {
       LOG(INFO) << "Missing ISRG Root X1 CA";
     }
@@ -717,6 +831,9 @@ void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
     }
     if (!found_digicert_root_g2) {
       LOG(INFO) << "Missing DigiCert Global Root G2 CA";
+    }
+    if (!found_gts_root_r4) {
+      LOG(INFO) << "Missing GTS Root R4 CA";
     }
     std::string_view ca_content(_binary_supplementary_ca_bundle_crt_start,
                                 _binary_supplementary_ca_bundle_crt_end - _binary_supplementary_ca_bundle_crt_start);

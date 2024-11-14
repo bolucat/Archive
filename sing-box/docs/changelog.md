@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.16
+
+* Add `cache_capacity` DNS option **1**
+* Fixes and improvements
+
+**1**:
+
+See [DNS](/configuration/dns/#cache_capacity).
+
 #### 1.11.0-alpha.15
 
 * Improve multi network dialing **1**
