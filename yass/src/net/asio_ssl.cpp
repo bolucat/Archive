@@ -34,20 +34,7 @@
 #include "third_party/boringssl/src/pki/trust_store.h"
 #endif
 
-#ifdef HAVE_BUILTIN_CA_BUNDLE_CRT
-
-// Use internal ca-bundle.crt if necessary
-// we take care of the ca-bundle if windows version is below windows 8.1
-ABSL_FLAG(bool,
-          use_ca_bundle_crt,
-#if defined(_WIN32) && _WIN32_WINNT < 0x0603
-          !IsWindowsVersionBNOrGreater(6, 3, 0),
-#else
-          false,
-#endif
-          "Use internal ca-bundle.crt instead of system CA store.");
-
-#endif  // HAVE_BUILTIN_CA_BUNDLE_CRT
+ABSL_FLAG(bool, ca_native, false, "Load CA certs from the OS.");
 
 std::ostream& operator<<(std::ostream& o, asio::error_code ec) {
 #ifdef _WIN32
@@ -419,32 +406,7 @@ static int load_ca_to_ssl_ctx_path(SSL_CTX* ssl_ctx, const std::string& dir_path
   return count;
 }
 
-static int load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
-  int count = 0;
-  std::string ca_bundle = absl::GetFlag(FLAGS_cacert);
-  if (!ca_bundle.empty()) {
-    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      count += result;
-    } else {
-      print_openssl_error();
-      LOG(WARNING) << "Loading ca bundle failure from: " << ca_bundle;
-    }
-    return result;
-  }
-  std::string ca_path = absl::GetFlag(FLAGS_capath);
-  if (!ca_path.empty()) {
-    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
-      count += result;
-    }
-  }
-  return count;
-}
-
-static int load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
+static std::optional<int> load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
 #ifdef _WIN32
 #define CA_BUNDLE L"yass-ca-bundle.crt"
   // The windows version will automatically look for a CA certs file named 'ca-bundle.crt',
@@ -496,7 +458,7 @@ static int load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
 
   for (const auto& wca_bundle : ca_bundles) {
     auto ca_bundle = SysWideToUTF8(wca_bundle);
-    VLOG(1) << "Trying to load ca bundle from: " << ca_bundle;
+    VLOG(1) << "Attempt to load ca bundle from: " << ca_bundle;
     int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
     if (result > 0) {
       LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
@@ -506,7 +468,39 @@ static int load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
 #undef CA_BUNDLE
 #endif
 
-  return 0;
+  return std::nullopt;
+}
+
+static std::optional<int> load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
+  if (absl::GetFlag(FLAGS_ca_native)) {
+    int result = load_ca_to_ssl_ctx_system(ssl_ctx);
+    if (!result) {
+      LOG(WARNING) << "Loading ca bundle failure from system";
+    }
+    return result;
+  }
+  std::string ca_bundle = absl::GetFlag(FLAGS_cacert);
+  if (!ca_bundle.empty()) {
+    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
+    if (result) {
+      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+    } else {
+      print_openssl_error();
+      LOG(WARNING) << "Loading ca bundle failure from: " << ca_bundle;
+    }
+    return result;
+  }
+  std::string ca_path = absl::GetFlag(FLAGS_capath);
+  if (!ca_path.empty()) {
+    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
+    if (result) {
+      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
+    } else {
+      LOG(WARNING) << "Loading ca directory failure from: " << ca_path;
+    }
+    return result;
+  }
+  return load_ca_to_ssl_ctx_yass_ca_bundle(ssl_ctx);
 }
 
 #ifdef _WIN32
@@ -595,7 +589,7 @@ int load_ca_to_ssl_store_from_schannel_store(X509_STORE* store, HCERTSTORE cert_
   return count;
 }
 
-void GatherEnterpriseCertsForLocation(HCERTSTORE cert_store, DWORD location, LPCWSTR store_name) {
+void GatherEnterpriseCertsForLocation(LPCSTR provider, HCERTSTORE cert_store, DWORD location, LPCWSTR store_name) {
   if (!(location == CERT_SYSTEM_STORE_LOCAL_MACHINE || location == CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY ||
         location == CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE || location == CERT_SYSTEM_STORE_CURRENT_USER ||
         location == CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY)) {
@@ -606,7 +600,7 @@ void GatherEnterpriseCertsForLocation(HCERTSTORE cert_store, DWORD location, LPC
 
   HCERTSTORE enterprise_root_store = NULL;
 
-  enterprise_root_store = CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, NULL, flags, store_name);
+  enterprise_root_store = CertOpenStore(provider, 0, NULL, flags, store_name);
   if (!enterprise_root_store) {
     return;
   }
@@ -618,67 +612,24 @@ void GatherEnterpriseCertsForLocation(HCERTSTORE cert_store, DWORD location, LPC
     PLOG(WARNING) << "CertCloseStore() call failed";
   }
 }
-#endif
-
-int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
-#ifdef _WIN32
-  HCERTSTORE root_store = NULL;
-  int count = 0;
-
-  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
-  if (!store) {
-    LOG(WARNING) << "Can't get SSL CTX cert store";
-    goto out;
-  }
-  root_store = CertOpenStore(CERT_STORE_PROV_COLLECTION, 0, NULL, 0, nullptr);
-  if (!root_store) {
-    LOG(WARNING) << "Can't get cert store";
-    goto out;
-  }
-  // Grab the user-added roots.
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"ROOT");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"ROOT");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"ROOT");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"ROOT");
-
-  // Grab the user-added intermediates (optional).
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"CA");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"CA");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"CA");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
-  GatherEnterpriseCertsForLocation(root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"CA");
-
-  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
-
-  if (!CertCloseStore(root_store, 0)) {
-    PLOG(WARNING) << "CertCloseStore() call failed";
-  }
-
-out:
-  LOG(INFO) << "Loaded ca from SChannel: " << count << " certificates";
-  return count;
-#elif BUILDFLAG(IS_IOS)
-  return 0;
-#elif BUILDFLAG(IS_MAC)
-  const SecTrustSettingsDomain domain = kSecTrustSettingsDomainSystem;
+#endif  // _WIN32
+#if BUILDFLAG(IS_MAC)
+int load_ca_to_ssl_store_from_sec_trust_domain(X509_STORE* store, SecTrustSettingsDomain domain) {
   const CFStringRef policy_oid = kSecPolicyAppleSSL;
   CFArrayRef certs;
   OSStatus err;
-  asio::error_code ec;
   CFIndex size;
-  X509_STORE* store = nullptr;
   int count = 0;
 
   err = SecTrustSettingsCopyCertificates(domain, &certs);
-  if (err != errSecSuccess) {
-    LOG(ERROR) << "SecTrustSettingsCopyCertificates error: " << DescriptionFromOSStatus(err);
+  // Note: SecTrustSettingsCopyCertificates can legitimately return
+  // errSecNoTrustSettings if there are no trust settings in |domain|.
+  if (err == errSecNoTrustSettings) {
     goto out;
   }
-
-  store = SSL_CTX_get_cert_store(ssl_ctx);
-  if (!store) {
-    LOG(WARNING) << "Can't get SSL CTX cert store";
+  if (err != errSecSuccess) {
+    LOG(ERROR) << "SecTrustSettingsCopyCertificates error: " << DescriptionFromOSStatus(err) << " at domain 0x"
+               << std::hex << domain;
     goto out;
   }
 
@@ -733,10 +684,175 @@ out:
       ++count;
     }
   }
-out:
+
   CFRelease(certs);
-  LOG(INFO) << "Loaded ca from Sec: " << count << " certificates";
+
+out:
+  VLOG(1) << "Loaded ca from SecTrust: " << count << " certificates at domain 0x" << std::hex << domain;
   return count;
+}
+#endif  // BUILDFLAG(IS_MAC)
+
+int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
+#ifdef _WIN32
+  HCERTSTORE root_store = NULL;
+  int count = 0;
+
+  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  root_store = CertOpenStore(CERT_STORE_PROV_COLLECTION, 0, NULL, 0, nullptr);
+  if (!root_store) {
+    LOG(WARNING) << "Can't get cert store";
+    goto out;
+  }
+  // Grab the user-added roots.
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY,
+                                   L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE,
+                                   L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY,
+                                   L"ROOT");
+
+  // Grab the user-added intermediates (optional).
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE, L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY,
+                                   L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE,
+                                   L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY,
+                                   L"CA");
+
+  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
+
+  if (!CertCloseStore(root_store, 0)) {
+    PLOG(WARNING) << "CertCloseStore() call failed";
+  }
+
+out:
+  LOG(INFO) << "Loaded ca from SChannel: " << count << " certificates";
+  return count;
+#elif BUILDFLAG(IS_MAC)
+  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+  int count = 0;
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainSystem);
+  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
+  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
+
+out:
+  LOG(INFO) << "Loaded ca from SecTrust: " << count << " certificates";
+  return count;
+#elif BUILDFLAG(IS_IOS)
+  return 0;
+#else
+  int count = 0;
+  // cert list copied from golang src/crypto/x509/root_unix.go
+  static const char* ca_bundle_paths[] = {
+      "/etc/ssl/certs/ca-certificates.crt",      // Debian/Ubuntu/Gentoo etc.
+      "/etc/pki/tls/certs/ca-bundle.crt",        // Fedora/RHEL
+      "/etc/ssl/ca-bundle.pem",                  // OpenSUSE
+      "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
+      "/etc/ssl/cert.pem",                       // OpenBSD
+      "/usr/local/share/certs/ca-root-nss.crt",  // FreeBSD/DragonFly
+      "/etc/pki/tls/cacert.pem",                 // OpenELEC
+      "/etc/certs/ca-certificates.crt",          // Solaris 11.2+
+  };
+  for (auto ca_bundle : ca_bundle_paths) {
+    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
+    if (result > 0) {
+      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+      count += result;
+    }
+  }
+  static const char* ca_paths[] = {
+      "/etc/ssl/certs",                // SLES10/SLES11, https://golang.org/issue/12139
+      "/etc/pki/tls/certs",            // Fedora/RHEL
+      "/system/etc/security/cacerts",  // Android
+  };
+
+  for (auto ca_path : ca_paths) {
+    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
+    if (result > 0) {
+      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
+      count += result;
+    }
+  }
+  return count;
+#endif
+}
+
+int load_ca_to_ssl_ctx_system_extra(SSL_CTX* ssl_ctx) {
+#ifdef _WIN32
+  HCERTSTORE root_store = NULL;
+  int count = 0;
+
+  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  root_store = CertOpenStore(CERT_STORE_PROV_COLLECTION, 0, NULL, 0, nullptr);
+  if (!root_store) {
+    LOG(WARNING) << "Can't get cert store";
+    goto out;
+  }
+  // Grab the user-added roots.
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE,
+                                   L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER,
+                                   L"ROOT");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"ROOT");
+
+  // Grab the user-added intermediates (optional).
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store, CERT_SYSTEM_STORE_LOCAL_MACHINE,
+                                   L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY, L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE, L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER,
+                                   L"CA");
+  GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
+                                   CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"CA");
+
+  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
+
+  if (!CertCloseStore(root_store, 0)) {
+    PLOG(WARNING) << "CertCloseStore() call failed";
+  }
+
+out:
+  LOG(INFO) << "Loaded user-added ca from SChannel: " << count << " certificates";
+  return count;
+#elif BUILDFLAG(IS_MAC)
+  X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+  int count = 0;
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
+  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
+
+out:
+  LOG(INFO) << "Loaded user-added ca from SecTrust: " << count << " certificates";
+  return count;
+#elif BUILDFLAG(IS_IOS)
+  return 0;
 #else
   int count = 0;
   // cert list copied from golang src/crypto/x509/root_unix.go
@@ -786,41 +902,19 @@ void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
   found_isrg_root_x2 = false;
   found_digicert_root_g2 = false;
   found_gts_root_r4 = false;
-  load_ca_to_ssl_ctx_cacert(ssl_ctx);
+  if (load_ca_to_ssl_ctx_cacert(ssl_ctx).has_value()) {
+    goto done;
+  }
 
-#ifdef HAVE_BUILTIN_CA_BUNDLE_CRT
-  if (absl::GetFlag(FLAGS_use_ca_bundle_crt)) {
+  load_ca_to_ssl_ctx_system_extra(ssl_ctx);
+  {
     std::string_view ca_bundle_content(_binary_ca_bundle_crt_start,
                                        _binary_ca_bundle_crt_end - _binary_ca_bundle_crt_start);
     int result = load_ca_to_ssl_ctx_from_mem(ssl_ctx, ca_bundle_content);
-    LOG(WARNING) << "Builtin ca bundle loaded: " << result << " ceritificates";
-    return;
-  }
-#endif  // HAVE_BUILTIN_CA_BUNDLE_CRT
-
-  if (load_ca_to_ssl_ctx_yass_ca_bundle(ssl_ctx) == 0 && load_ca_to_ssl_ctx_system(ssl_ctx) == 0) {
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
-    LOG(WARNING) << "No ceritifcates from system loaded, probably due to outdated system image";
-#elif BUILDFLAG(IS_LINUX)
-    LOG(WARNING) << "No ceritifcates from system loaded, probably due to missing ca-certficates package";
-#elif BUILDFLAG(IS_FREEBSD)
-    LOG(WARNING) << "No ceritifcates from system loaded, probably due to missing ca_root_nss package";
-#elif BUILDFLAG(IS_IOS)
-    // nop
-#else
-    LOG(WARNING) << "No ceritifcates from system keychain loaded, trying builtin ca bundle";
-#endif
-
-#ifdef HAVE_BUILTIN_CA_BUNDLE_CRT
-    std::string_view ca_bundle_content(_binary_ca_bundle_crt_start,
-                                       _binary_ca_bundle_crt_end - _binary_ca_bundle_crt_start);
-    int result = load_ca_to_ssl_ctx_from_mem(ssl_ctx, ca_bundle_content);
-    LOG(WARNING) << "Loaded builtin ca bundle with " << result << " ceritificates";
-#else
-    LOG(WARNING) << "Attempted to load builtin ca bundle not available";
-#endif
+    LOG(INFO) << "Loaded builtin ca bundle with: " << result << " ceritificates";
   }
 
+done:
   // TODO we can add the missing CA if required
   if (!found_isrg_root_x1 || !found_isrg_root_x2 || !found_digicert_root_g2 || !found_gts_root_r4) {
     if (!found_isrg_root_x1) {

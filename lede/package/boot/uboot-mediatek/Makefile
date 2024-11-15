@@ -135,6 +135,14 @@ define U-Boot/mt7622_ubnt_unifi-6-lr
   FIP_COMPRESS:=1
 endef
 
+define U-Boot/mt7622_xiaomi_redmi-router-ax6s-ubi-loader
+  NAME:=Xiaomi Redmi Router AX6S (as UBI loader)
+  UBOOT_CONFIG:=mt7622_xiaomi_redmi-router-ax6s-ubi-loader
+  BUILD_DEVICES:=xiaomi_redmi-router-ax6s
+  BUILD_SUBTARGET:=mt7622
+  UBOOT_IMAGE:=u-boot.bin
+endef
+
 define U-Boot/mt7623a_unielec_u7623
   NAME:=UniElec U7623 (mt7623)
   BUILD_DEVICES:=unielec_u7623-02
@@ -296,6 +304,30 @@ define U-Boot/mt7986_bananapi_bpi-r3-nor
   FIP_COMPRESS:=1
 endef
 
+define U-Boot/mt7986_bananapi_bpi-r3-mini-emmc
+  NAME:=BananaPi BPi-R3
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=bananapi_bpi-r3-mini
+  UBOOT_CONFIG:=mt7986a_bpi-r3-mini-emmc
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=emmc
+  BL2_SOC:=mt7986
+  BL2_DDRTYPE:=ddr4
+  DEPENDS:=+trusted-firmware-a-mt7986-emmc-ddr4
+endef
+
+define U-Boot/mt7986_bananapi_bpi-r3-mini-snand
+  NAME:=BananaPi BPi-R3
+  BUILD_SUBTARGET:=filogic
+  BUILD_DEVICES:=bananapi_bpi-r3-mini
+  UBOOT_CONFIG:=mt7986a_bpi-r3-mini-snand
+  UBOOT_IMAGE:=u-boot.fip
+  BL2_BOOTDEV:=spim-nand-ubi
+  BL2_SOC:=mt7986
+  BL2_DDRTYPE:=ddr4
+  DEPENDS:=+trusted-firmware-a-mt7986-spim-nand-ubi-ddr4
+endef
+
 define U-Boot/mt7988_bananapi_bpi-r4-emmc
   NAME:=BananaPi BPi-R4
   BUILD_SUBTARGET:=filogic
@@ -440,6 +472,7 @@ UBOOT_TARGETS := \
 	mt7622_linksys_e8450 \
 	mt7622_rfb1 \
 	mt7622_ubnt_unifi-6-lr \
+	mt7622_xiaomi_redmi-router-ax6s-ubi-loader \
 	mt7623n_bpir2 \
 	mt7623a_unielec_u7623 \
 	mt7628_rfb \
@@ -454,6 +487,8 @@ UBOOT_TARGETS := \
 	mt7986_bananapi_bpi-r3-sdmmc \
 	mt7986_bananapi_bpi-r3-snand \
 	mt7986_bananapi_bpi-r3-nor \
+	mt7986_bananapi_bpi-r3-mini-emmc \
+	mt7986_bananapi_bpi-r3-mini-snand \
 	mt7986_rfb \
 	mt7988_bananapi_bpi-r4-emmc \
 	mt7988_bananapi_bpi-r4-sdmmc \

@@ -146,7 +146,7 @@ static const std::string kCipherMethodHelpMessage =
     absl::StrCat("Specify encrypt of method to use, one of ", kCipherMethodsStr);
 ABSL_FLAG(CipherMethodFlag, method, CipherMethodFlag(CRYPTO_DEFAULT), kCipherMethodHelpMessage);
 
-ABSL_FLAG(uint32_t, parallel_max, 512, "Maximum concurrency for parallel connections");
+ABSL_FLAG(uint32_t, parallel_max, 65535, "Maximum concurrency for parallel connections");
 ABSL_FLAG(RateFlag, limit_rate, RateFlag(0), "Limit transfer speed to RATE");
 
 #if BUILDFLAG(IS_MAC)

@@ -1008,8 +1008,6 @@ func buildStageGenerateBuildScript() {
 
 	if systemNameFlag == "android" {
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DUSE_CARES=%s", "ON"))
-		// see #751
-		cmakeArgs = append(cmakeArgs, "-DUSE_BUILTIN_CA_BUNDLE_CRT=off")
 		glog.Infof("Using android ndk version %s", androidNdkVer)
 		NdkDir := filepath.Join(androidSdkDir, "ndk", androidNdkVer)
 		if _, err := os.Stat(NdkDir); errors.Is(err, os.ErrNotExist) {
@@ -1033,7 +1031,6 @@ func buildStageGenerateBuildScript() {
 	}
 
 	if systemNameFlag == "harmony" {
-		cmakeArgs = append(cmakeArgs, "-DUSE_BUILTIN_CA_BUNDLE_CRT=off")
 		if _, err := os.Stat(harmonyNdkDir); errors.Is(err, os.ErrNotExist) {
 			glog.Fatalf("Harmony Ndk Directory at %s demanded", harmonyNdkDir)
 		}
@@ -1052,9 +1049,6 @@ func buildStageGenerateBuildScript() {
 		subsystem := subSystemNameFlag
 		if subSystemNameFlag == "openwrt" {
 			subsystem = "musl"
-		}
-		if subsystem == "musl" {
-			cmakeArgs = append(cmakeArgs, "-DUSE_BUILTIN_CA_BUNDLE_CRT=off")
 		}
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DUSE_CARES=%s", "ON"))
 		gnuType, gnuArch := getGNUTargetTypeAndArch(archFlag, subsystem)
@@ -1086,8 +1080,6 @@ func buildStageGenerateBuildScript() {
 	}
 
 	if systemNameFlag == "freebsd" && sysrootFlag != "" {
-		// depends on ca_root_nss package
-		cmakeArgs = append(cmakeArgs, "-DUSE_BUILTIN_CA_BUNDLE_CRT=off")
 		cmakeArgs = append(cmakeArgs, fmt.Sprintf("-DUSE_CARES=%s", "ON"))
 
 		var llvmTarget string

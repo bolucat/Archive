@@ -275,8 +275,8 @@ class ContentServer {
     socket.non_blocking(true, ec);
     if constexpr (T::Type == CONNECTION_FACTORY_SERVER) {
       SetTCPCongestion(socket.native_handle(), ec);
-      SetTCPKeepAlive(socket.native_handle(), ec);
     }
+    SetTCPKeepAlive(socket.native_handle(), ec);
     SetSocketTcpNoDelay(&socket, ec);
     conn->on_accept(std::move(socket), ctx.endpoint, ctx.peer_endpoint, connection_id, tlsext_ctx,
                     ssl_socket_data_index_, ssl_client_session_cache_.get());

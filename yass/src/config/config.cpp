@@ -464,7 +464,7 @@ void SetClientUsageMessage(std::string_view exec_path) {
   --method <method> Specify encrypt of method to use
   --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
   --padding_support Enable padding support
-  --use_ca_bundle_crt Use builtin ca-bundle.crt instead of system CA store
+  --ca_native Load CA certs from the OS
   --cacert <file> Tells where to use the specified certificate file to verify the peer
   --capath <dir> Tells where to use the specified certificate dir to verify the peer
   --certificate_chain_file <file> Use custom certificate chain file to verify server's certificate
@@ -487,7 +487,7 @@ void SetServerUsageMessage(std::string_view exec_path) {
   --method <method> Specify encrypt of method to use
   --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
   --padding_support Enable padding support
-  --use_ca_bundle_crt Use builtin ca-bundle.crt instead of system CA store
+  --ca_native Load CA certs from the OS
   --cacert <file> Tells where to use the specified certificate file to verify the peer
   --capath <dir> Tells where to use the specified certificate dir to verify the peer
   --certificate_chain_file <file> Use custom certificate chain file to verify server's certificate

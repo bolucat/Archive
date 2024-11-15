@@ -472,8 +472,8 @@ class stream : public gurl_base::RefCountedThreadSafe<stream> {
     connected_ = true;
     if (config::pType_IsClient()) {
       SetTCPCongestion(socket_.native_handle(), ec);
-      SetTCPKeepAlive(socket_.native_handle(), ec);
     }
+    SetTCPKeepAlive(socket_.native_handle(), ec);
     SetSocketTcpNoDelay(&socket_, ec);
 
     auto start = absl::Now();

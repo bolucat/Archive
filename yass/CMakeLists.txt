@@ -479,8 +479,6 @@ cmake_dependent_option(
   USE_SYSTEM_CARES "Build with system or vendored c-ares" OFF
   USE_CARES OFF)
 
-option(USE_BUILTIN_CA_BUNDLE_CRT "Build with embedded ca-bundle.crt support" ON)
-
 option(USE_MBEDTLS "Build with mbedtls support" ON)
 cmake_dependent_option(
   USE_SYSTEM_MBEDTLS "Build with system or vendored mbedtls" OFF
@@ -3162,55 +3160,51 @@ if (APPLE)
 endif()
 
 #
-# optional builtin ca-bundle crt support
+# required builtin ca-bundle crt support
 #
-if (USE_BUILTIN_CA_BUNDLE_CRT)
-  set(ASIO_CA_BUNDLE_CRT_SRC)
+set(ASIO_CA_BUNDLE_CRT_SRC)
 
-  if (WIN32 AND NOT OS_AARCH64)
-    enable_language(ASM_NASM)
-    set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.asm")
-  endif()
-
-  if (WIN32 AND OS_AARCH64)
-    enable_language(ASM)
-    # silence some unsed definitions' warnings
-    if (COMPILER_CLANG)
-      set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wno-unused-command-line-argument")
-    endif()
-    set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.win.s")
-  endif()
-
-  if (OHOS OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
-    enable_language(ASM)
-    # silence some unsed definitions' warnings
-    if (COMPILER_CLANG)
-      set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wno-unused-command-line-argument")
-    endif()
-    if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-      set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.m32.s")
-    else()
-      set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.s")
-    endif()
-  endif()
-
-  if (APPLE)
-    enable_language(ASM)
-    set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.apple.s")
-  endif()
-
-  if (NOT ASIO_CA_BUNDLE_CRT_SRC)
-    message(FATAL_ERROR "builtin ca bundle crt missing implementation")
-  endif()
-
-  add_library(asio_ca_bundle_crt OBJECT ${ASIO_CA_BUNDLE_CRT_SRC})
-  target_include_directories(asio_ca_bundle_crt PRIVATE third_party/ca-certificates)
-
-  list(APPEND YASS_APP_FEATURES "ca-certificates 20240203.3.98")
-  # macro used in yass_test
-  target_compile_definitions(asio PUBLIC HAVE_BUILTIN_CA_BUNDLE_CRT=1)
-  target_sources(asio PRIVATE $<TARGET_OBJECTS:asio_ca_bundle_crt>)
+if (WIN32 AND NOT OS_AARCH64)
+  enable_language(ASM_NASM)
+  set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.asm")
 endif()
+
+if (WIN32 AND OS_AARCH64)
+  enable_language(ASM)
+  # silence some unsed definitions' warnings
+  if (COMPILER_CLANG)
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wno-unused-command-line-argument")
+  endif()
+  set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.win.s")
+endif()
+
+if (OHOS OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+  enable_language(ASM)
+  # silence some unsed definitions' warnings
+  if (COMPILER_CLANG)
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wno-unused-command-line-argument")
+  endif()
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.m32.s")
+  else()
+    set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.s")
+  endif()
+endif()
+
+if (APPLE)
+  enable_language(ASM)
+  set(ASIO_CA_BUNDLE_CRT_SRC "third_party/ca-certificates/ca-bundle.crt.apple.s")
+endif()
+
+if (NOT ASIO_CA_BUNDLE_CRT_SRC)
+  message(FATAL_ERROR "builtin ca bundle crt missing implementation")
+endif()
+
+add_library(asio_ca_bundle_crt OBJECT ${ASIO_CA_BUNDLE_CRT_SRC})
+target_include_directories(asio_ca_bundle_crt PRIVATE third_party/ca-certificates)
+
+list(APPEND YASS_APP_FEATURES "ca-certificates 20240203.3.98")
+target_sources(asio PRIVATE $<TARGET_OBJECTS:asio_ca_bundle_crt>)
 
 #
 # required supplementary ca-bundle crt support

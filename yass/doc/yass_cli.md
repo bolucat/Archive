@@ -82,8 +82,8 @@ See <https://github.com/Chilledheart/yass/wiki/Usage>.
 * `--padding_support`:
   Enable padding support.
 
-* `--use_ca_bundle_crt`:
-  Use builtin ca-bundle.crt instead of system CA store.
+* `--ca_native`:
+  Load CA certs from the OS.
 
 * `--cacert` _file_:
   Tells where to use the specified certificate _file_ to verify the peer.

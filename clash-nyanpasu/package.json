@@ -76,7 +76,7 @@
     "eslint-import-resolver-alias": "1.1.2",
     "eslint-plugin-html": "8.1.2",
     "eslint-plugin-import": "2.31.0",
-    "eslint-plugin-n": "17.13.1",
+    "eslint-plugin-n": "17.13.2",
     "eslint-plugin-prettier": "5.2.1",
     "eslint-plugin-promise": "7.1.0",
     "eslint-plugin-react": "7.37.2",
@@ -100,11 +100,11 @@
     "stylelint-declaration-block-no-ignored-properties": "2.8.0",
     "stylelint-order": "6.0.4",
     "stylelint-scss": "6.9.0",
-    "tailwindcss": "3.4.14",
+    "tailwindcss": "3.4.15",
     "tsx": "4.19.2",
     "typescript": "5.6.3"
   },
-  "packageManager": "pnpm@9.13.0+sha512.beb9e2a803db336c10c9af682b58ad7181ca0fbd0d4119f2b33d5f2582e96d6c0d93c85b23869295b765170fbdaa92890c0da6ada457415039769edf3c959efe",
+  "packageManager": "pnpm@9.13.2+sha512.88c9c3864450350e65a33587ab801acf946d7c814ed1134da4a924f6df5a2120fd36b46aab68f7cd1d413149112d53c7db3a4136624cfd00ff1846a0c6cef48a",
   "engines": {
     "node": "22.11.0"
   },
