@@ -15,8 +15,39 @@ class IoQueue {
 
  public:
   IoQueue() {}
-  IoQueue(const IoQueue&) = default;
-  IoQueue& operator=(const IoQueue&) = default;
+  IoQueue(const IoQueue&) = delete;
+  IoQueue& operator=(const IoQueue&) = delete;
+  IoQueue(IoQueue&& rhs) {
+    idx_ = rhs.idx_;
+    end_idx_ = rhs.end_idx_;
+    std::swap(queue_, rhs.queue_);
+    dirty_front_ = rhs.dirty_front_;
+    rhs.idx_ = {};
+    rhs.end_idx_ = {};
+    rhs.dirty_front_ = {};
+    DCHECK(rhs.empty());
+#if DCHECK_IS_ON()
+    for (auto buf : rhs.queue_) {
+      DCHECK(!buf);
+    }
+#endif
+  }
+  IoQueue& operator=(IoQueue&& rhs) {
+    idx_ = rhs.idx_;
+    end_idx_ = rhs.end_idx_;
+    std::swap(queue_, rhs.queue_);
+    dirty_front_ = rhs.dirty_front_;
+    rhs.idx_ = {};
+    rhs.end_idx_ = {};
+    rhs.dirty_front_ = {};
+    DCHECK(rhs.empty());
+#if DCHECK_IS_ON()
+    for (auto buf : rhs.queue_) {
+      DCHECK(!buf);
+    }
+#endif
+    return *this;
+  }
 
   bool empty() const { return idx_ == end_idx_; }
 
@@ -63,6 +94,8 @@ class IoQueue {
       ret += queue_[i]->length();
     return ret;
   }
+
+  void clear() { *this = IoQueue(); }
 
  private:
   int idx_ = 0;

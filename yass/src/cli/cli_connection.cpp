@@ -1724,13 +1724,31 @@ std::shared_ptr<IOBuf> CliConnection::GetNextUpstreamBuf(asio::error_code& ec,
 
   if (http_is_keep_alive_) {
     if (http_keep_alive_remaining_bytes_ < (int64_t)read) {
-      VLOG(1) << "Connection (client) " << connection_id() << " reused for keep-alive connection";
-      // currently, we assume the host doesn't change
+      LOG(INFO) << "Connection (client) " << connection_id() << " re-used";
+      upstream_readable_ = false;
+      upstream_writable_ = false;
+      ss_request_.reset();
+      channel_->close();
+      channel_.reset();
       ec = OnReadHttpRequest(buf);
-      SetState(state_stream);
       if (ec) {
         return nullptr;
       }
+      if (http_is_connect_) {
+        ec = asio::error::invalid_argument;
+        return nullptr;
+      }
+      if (!buf->empty()) {
+        OnStreamRead(buf);
+      }
+      buf = nullptr;
+      ec = PerformCmdOpsHttp();
+      if (ec) {
+        return nullptr;
+      }
+      SetState(state_stream);
+      ec = asio::error::try_again;
+      return nullptr;
     } else {
       http_keep_alive_remaining_bytes_ -= read;
     }
@@ -2363,6 +2381,7 @@ void CliConnection::connected() {
   // Re-process the read data in pending
   if (!pending_data_.empty()) {
     auto queue = std::move(pending_data_);
+    DCHECK(pending_data_.empty());
     while (!queue.empty()) {
       auto buf = queue.front();
       queue.pop_front();

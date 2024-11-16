@@ -59,7 +59,7 @@ use std::{
 
 use cfg_if::cfg_if;
 #[cfg(feature = "hickory-dns")]
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use hickory_resolver::config::{NameServerConfig, ResolverConfig};
 #[cfg(feature = "local-tun")]
 use ipnet::IpNet;
 #[cfg(feature = "local-fake-dns")]
@@ -1935,7 +1935,17 @@ impl Config {
                     }
                 };
 
-                let mut nsvr = ServerConfig::new(addr, password, method);
+                let mut nsvr = match ServerConfig::new(addr, password, method) {
+                    Ok(svr) => svr,
+                    Err(serr) => {
+                        let err = Error::new(
+                            ErrorKind::Malformed,
+                            "server config create failed",
+                            Some(format!("{}", serr)),
+                        );
+                        return Err(err);
+                    }
+                };
                 nsvr.set_source(server_source);
                 nsvr.set_mode(global_mode);
 
@@ -2055,7 +2065,17 @@ impl Config {
                     }
                 };
 
-                let mut nsvr = ServerConfig::new(addr, password, method);
+                let mut nsvr = match ServerConfig::new(addr, password, method) {
+                    Ok(svr) => svr,
+                    Err(serr) => {
+                        let err = Error::new(
+                            ErrorKind::Malformed,
+                            "server config create failed",
+                            Some(format!("{}", serr)),
+                        );
+                        return Err(err);
+                    }
+                };
                 nsvr.set_source(server_source);
 
                 // Extensible Identity Header, Users
@@ -2464,6 +2484,8 @@ impl Config {
 
     #[cfg(any(feature = "hickory-dns", feature = "local-dns"))]
     fn parse_dns_nameservers(&mut self, nameservers: &str) -> Result<DnsConfig, Error> {
+        use hickory_resolver::proto::xfer::Protocol;
+
         #[cfg(all(unix, feature = "local-dns"))]
         if let Some(nameservers) = nameservers.strip_prefix("unix://") {
             // A special DNS server only for shadowsocks-android
