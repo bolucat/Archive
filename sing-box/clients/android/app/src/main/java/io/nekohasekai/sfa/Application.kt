@@ -22,7 +22,6 @@ class Application : Application() {
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
-
         application = this
     }
 

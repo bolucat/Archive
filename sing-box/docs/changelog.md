@@ -2,6 +2,16 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.19
+
+* Fixes and improvements
+
+### 1.10.2
+
+* Add deprecated warnings
+* Fix proxying websocket connections in HTTP/mixed inbounds
+* Fixes and improvements
+
 #### 1.11.0-alpha.18
 
 * Fixes and improvements

@@ -1724,12 +1724,9 @@ std::shared_ptr<IOBuf> CliConnection::GetNextUpstreamBuf(asio::error_code& ec,
 
   if (http_is_keep_alive_) {
     if (http_keep_alive_remaining_bytes_ < (int64_t)read) {
-      LOG(INFO) << "Connection (client) " << connection_id() << " re-used";
-      upstream_readable_ = false;
-      upstream_writable_ = false;
-      ss_request_.reset();
-      channel_->close();
-      channel_.reset();
+      DCHECK_EQ(ss::domain, ss_request_->address_type());
+      DCHECK_EQ(http_host_, ss_request_->domain_name());
+      DCHECK_EQ(http_port_, ss_request_->port());
       ec = OnReadHttpRequest(buf);
       if (ec) {
         return nullptr;
@@ -1738,17 +1735,37 @@ std::shared_ptr<IOBuf> CliConnection::GetNextUpstreamBuf(asio::error_code& ec,
         ec = asio::error::invalid_argument;
         return nullptr;
       }
-      if (!buf->empty()) {
-        OnStreamRead(buf);
+      if (buf->empty()) {
+        buf.reset();
       }
-      buf = nullptr;
-      ec = PerformCmdOpsHttp();
-      if (ec) {
+      // ss_request_ isn't updated after OnReadHttpRequest(),
+      // so we are safe to use it to tell whether the new destination is different
+      if (ss_request_->domain_name() != http_host_ || ss_request_->port() != http_port_) {
+        LOG(INFO) << "Connection (client) " << connection_id() << " re-used";
+        upstream_readable_ = false;
+        upstream_writable_ = false;
+        ss_request_.reset();
+        channel_->close();
+        channel_.reset();
+        if (buf) {
+          OnStreamRead(buf);
+          buf.reset();
+        }
+        ec = PerformCmdOpsHttp();
+        if (ec) {
+          return nullptr;
+        }
+        SetState(state_stream);
+        DCHECK(!buf);
+        ec = asio::error::try_again;
         return nullptr;
       }
+      LOG(INFO) << "Connection (client) " << connection_id() << " connect (re-used) " << remote_domain();
       SetState(state_stream);
-      ec = asio::error::try_again;
-      return nullptr;
+      if (!buf) {
+        ec = asio::error::try_again;
+        return nullptr;
+      }
     } else {
       http_keep_alive_remaining_bytes_ -= read;
     }

@@ -465,8 +465,8 @@ void SetClientUsageMessage(std::string_view exec_path) {
   --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
   --padding_support Enable padding support
   --ca_native Load CA certs from the OS
-  --cacert <file> Tells where to use the specified certificate file to verify the peer
-  --capath <dir> Tells where to use the specified certificate dir to verify the peer
+  --cacert <file> CA certificate to verify peer against
+  --capath <dir> CA directory to verify peer against
   --certificate_chain_file <file> Use custom certificate chain file to verify server's certificate
   -k, --insecure_mode Skip the verification step and proceed without checking
   --tls13_early_data Enable 0RTTI Early Data
@@ -488,8 +488,8 @@ void SetServerUsageMessage(std::string_view exec_path) {
   --limit_rate Limits the rate of response transmission to a client. Uint can be (none), k, m.
   --padding_support Enable padding support
   --ca_native Load CA certs from the OS
-  --cacert <file> Tells where to use the specified certificate file to verify the peer
-  --capath <dir> Tells where to use the specified certificate dir to verify the peer
+  --cacert <file> CA certificate to verify peer against
+  --capath <dir> CA directory to verify peer against
   --certificate_chain_file <file> Use custom certificate chain file to verify server's certificate
   --private_key_file <file> Use custom private key file to secure connection between server and client
   --private_key_password <password> Use custom private key password to decrypt server's encrypted private key

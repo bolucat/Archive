@@ -72,10 +72,10 @@ Enable padding support\.
 Load CA certs from the OS\.
 .TP
 \fB\-\-cacert\fR \fIfile\fR
-Tells where to use the specified certificate \fIfile\fR to verify the peer\.
+CA certificate \fIfile\fR to verify peer against\.
 .TP
 \fB\-\-capath\fR \fIdir\fR
-Tells where to use the specified certificate \fIdir\fR to verify the peer\.
+CA directory \fIdir\fR to verify peer against\. It is a colon separated list of directories\.
 .TP
 \fB\-\-certificate_chain_file\fR \fIfile\fR
 Use custom certificate chain provided by \fIfile\fR to verify server's private key (required by https and http2)\.
@@ -110,8 +110,11 @@ Specify \fIalgo\fR as TCP congestion control algorithm for underlying TCP connec
 See \fB/proc/sys/net/ipv4/tcp_allowed_congestion_control\fR for available options and \fBtcp\fR(7)\.
 .SH "ENVIRONMENT VARIABLES"
 .TP
-\fBYASS_CA_BUNDLE\fR
-Use as the path of ca\-bundle\.crt file\. Same effect with \fB\-\-cacert\fR \fIfile\fR\.
+\fBSSL_CERT_FILE\fR
+Use as the path of CA certificate to verify peer against\. Same effect with \fB\-\-cacert\fR \fIfile\fR\.
+.TP
+\fBSSL_CERT_DIR\fR
+Use as the path of CA directory to verify peer against\. Same effect with \fB\-\-capath\fR \fIdir\fR\. It is a colon separated list of directories\.
 .SH "COPYRIGHT"
 Copyright (C) 2019\-2024 Chilledheart\. All rights reserved\.
 .SH "SEE ALSO"

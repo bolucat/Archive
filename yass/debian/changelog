@@ -1,3 +1,15 @@
+yass (1.16.1-1) UNRELEASED; urgency=medium
+
+  * tls: add adjust system trusted CA folder for linux.
+  * tls: --capath now accepts separated list of directories.
+  * cli: handle http/1.1 keepalive for different host properly.
+  * cli: increase nofile to 65536 (systemd).
+  * network: increase parallel_max to 65535.
+  * network: apply keep alive on connections between client and browsers.
+  * tls: use builtin ca store universally.
+  * tls: ship GTS Root R4 with supplementary ca.
+
+ -- Chilledheart <keeyou-cn@outlook.com>  Mon, 18 Nov 2024 16:48:23 +0800
 yass (1.16.0-1) UNRELEASED; urgency=medium
 
   * bump to chromium 132 dependents.

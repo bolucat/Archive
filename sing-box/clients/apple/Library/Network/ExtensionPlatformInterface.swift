@@ -1,6 +1,7 @@
 import Foundation
 import Libbox
 import NetworkExtension
+import UserNotifications
 #if canImport(CoreWLAN)
     import CoreWLAN
 #endif
@@ -39,7 +40,10 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
             if let error {
                 throw error
             }
-            settings.dnsSettings = NEDNSSettings(servers: [dnsServer])
+            let dnsSettings = NEDNSSettings(servers: [dnsServer])
+            dnsSettings.matchDomains = [""]
+            dnsSettings.matchDomainsNoSearch = true
+            settings.dnsSettings = dnsSettings
 
             var ipv4Address: [String] = []
             var ipv4Mask: [String] = []
@@ -334,5 +338,29 @@ public class ExtensionPlatformInterface: NSObject, LibboxPlatformInterfaceProtoc
 
     func reset() {
         networkSettings = nil
+    }
+
+    public func send(_ notification: LibboxNotification?) throws {
+        #if !os(tvOS)
+            guard let notification else {
+                return
+            }
+            let center = UNUserNotificationCenter.current()
+            let content = UNMutableNotificationContent()
+
+            content.title = notification.title
+            content.subtitle = notification.subtitle
+            content.body = notification.body
+            if !notification.openURL.isEmpty {
+                content.userInfo["OPEN_URL"] = notification.openURL
+                content.categoryIdentifier = "OPEN_URL"
+            }
+            content.interruptionLevel = .active
+            let request = UNNotificationRequest(identifier: notification.identifier, content: content, trigger: nil)
+            try runBlocking {
+                try await center.requestAuthorization(options: [.alert])
+                try await center.add(request)
+            }
+        #endif
     }
 }

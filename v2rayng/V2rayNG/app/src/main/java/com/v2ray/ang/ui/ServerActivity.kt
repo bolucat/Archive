@@ -79,6 +79,10 @@ class ServerActivity : BaseActivity() {
     private val alpns: Array<out String> by lazy {
         resources.getStringArray(R.array.streamsecurity_alpn)
     }
+    private val xhttpMode: Array<out String> by lazy {
+        resources.getStringArray(R.array.xhttp_mode)
+    }
+
 
     // Kotlin synthetics was used, but since it is removed in 1.8. We switch to old manual approach.
     // We don't use AndroidViewBinding because, it is better to share similar logics for different
@@ -150,14 +154,18 @@ class ServerActivity : BaseActivity() {
                     ArrayAdapter(this@ServerActivity, android.R.layout.simple_spinner_item, types)
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 sp_header_type?.adapter = adapter
-                sp_header_type_title?.text = if (networks[position] == "grpc")
-                    getString(R.string.server_lab_mode_type) else
-                    getString(R.string.server_lab_head_type)
+                sp_header_type_title?.text =
+                    when (networks[position]) {
+                        "grpc" -> getString(R.string.server_lab_mode_type)
+                        "xhttp" -> getString(R.string.server_lab_xhttp_mode)
+                        else -> getString(R.string.server_lab_head_type)
+                    }.orEmpty()
                 sp_header_type?.setSelection(
                     Utils.arrayFind(
                         types,
                         when (networks[position]) {
                             "grpc" -> config?.mode
+                            "xhttp" -> config?.xhttpMode
                             else -> config?.headerType
                         }.orEmpty()
                     )
@@ -165,7 +173,7 @@ class ServerActivity : BaseActivity() {
 
                 et_request_host?.text = Utils.getEditable(
                     when (networks[position]) {
-                        "quic" -> config?.quicSecurity
+                        //"quic" -> config?.quicSecurity
                         "grpc" -> config?.authority
                         else -> config?.host
                     }.orEmpty()
@@ -173,7 +181,7 @@ class ServerActivity : BaseActivity() {
                 et_path?.text = Utils.getEditable(
                     when (networks[position]) {
                         "kcp" -> config?.seed
-                        "quic" -> config?.quicKey
+                        //"quic" -> config?.quicKey
                         "grpc" -> config?.serviceName
                         else -> config?.path
                     }.orEmpty()
@@ -185,9 +193,9 @@ class ServerActivity : BaseActivity() {
                             "tcp" -> R.string.server_lab_request_host_http
                             "ws" -> R.string.server_lab_request_host_ws
                             "httpupgrade" -> R.string.server_lab_request_host_httpupgrade
-                            "splithttp" -> R.string.server_lab_request_host_splithttp
+                            "splithttp", "xhttp" -> R.string.server_lab_request_host_xhttp
                             "h2" -> R.string.server_lab_request_host_h2
-                            "quic" -> R.string.server_lab_request_host_quic
+                            //"quic" -> R.string.server_lab_request_host_quic
                             "grpc" -> R.string.server_lab_request_host_grpc
                             else -> R.string.server_lab_request_host
                         }
@@ -200,9 +208,9 @@ class ServerActivity : BaseActivity() {
                             "kcp" -> R.string.server_lab_path_kcp
                             "ws" -> R.string.server_lab_path_ws
                             "httpupgrade" -> R.string.server_lab_path_httpupgrade
-                            "splithttp" -> R.string.server_lab_path_splithttp
+                            "splithttp", "xhttp" -> R.string.server_lab_path_xhttp
                             "h2" -> R.string.server_lab_path_h2
-                            "quic" -> R.string.server_lab_path_quic
+                            //"quic" -> R.string.server_lab_path_quic
                             "grpc" -> R.string.server_lab_path_grpc
                             else -> R.string.server_lab_path
                         }
@@ -509,6 +517,7 @@ class ServerActivity : BaseActivity() {
         profileItem.mode = transportTypes(networks[network])[type]
         profileItem.serviceName = path
         profileItem.authority = requestHost
+        profileItem.xhttpMode = transportTypes(networks[network])[type]
     }
 
     private fun saveTls(config: ProfileItem) {
@@ -544,12 +553,16 @@ class ServerActivity : BaseActivity() {
                 tcpTypes
             }
 
-            "kcp", "quic" -> {
+            "kcp" -> {
                 kcpAndQuicTypes
             }
 
             "grpc" -> {
                 grpcModes
+            }
+
+            "xhttp" -> {
+                xhttpMode
             }
 
             else -> {

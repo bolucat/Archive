@@ -83,6 +83,7 @@ public struct DashboardView: View {
     }
 
     struct DashboardView1: View {
+        @Environment(\.openURL) var openURL
         @EnvironmentObject private var environments: ExtensionEnvironments
         @EnvironmentObject private var profile: ExtensionProfile
         @State private var alert: Alert?
@@ -100,6 +101,9 @@ public struct DashboardView: View {
                 if newValue == .disconnecting || newValue == .connected {
                     Task {
                         await checkServiceError()
+                        if newValue == .connected {
+                            await checkDeprecatedNotes()
+                        }
                     }
                 } else if newValue == .connecting {
                     notStarted = true
@@ -112,6 +116,45 @@ public struct DashboardView: View {
                         }
                     }
                 }
+            }
+        }
+
+        private nonisolated func checkDeprecatedNotes() async {
+            do {
+                let reports = try LibboxNewStandaloneCommandClient()!.getDeprecatedNotes()
+                if reports.hasNext() {
+                    await MainActor.run {
+                        loopShowDeprecateNotes(reports)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    alert = Alert(error)
+                }
+            }
+        }
+
+        @MainActor
+        private func loopShowDeprecateNotes(_ reports: any LibboxDeprecatedNoteIteratorProtocol) {
+            if reports.hasNext() {
+                let report = reports.next()!
+                alert = Alert(
+                    title: Text("Deprecated Warning"),
+                    message: Text(report.message()),
+                    primaryButton: .default(Text("Documentation")) {
+                        openURL(URL(string: report.migrationLink)!)
+                        Task.detached {
+                            try await Task.sleep(nanoseconds: 300 * MSEC_PER_SEC)
+                            await loopShowDeprecateNotes(reports)
+                        }
+                    },
+                    secondaryButton: .cancel(Text("Ok")) {
+                        Task.detached {
+                            try await Task.sleep(nanoseconds: 300 * MSEC_PER_SEC)
+                            await loopShowDeprecateNotes(reports)
+                        }
+                    }
+                )
             }
         }
 

@@ -5,6 +5,7 @@ import SwiftUI
 public struct ExtensionStatusView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var commandClient = CommandClient(.status)
+
     @State private var columnCount: Int = 4
     @State private var alert: Alert?
 

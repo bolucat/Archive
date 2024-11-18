@@ -34,6 +34,12 @@
 #include "third_party/boringssl/src/pki/trust_store.h"
 #endif
 
+#if defined(_WIN32)
+#define DIR_HASH_SEPARATOR ';'
+#else
+#define DIR_HASH_SEPARATOR ':'
+#endif
+
 ABSL_FLAG(bool, ca_native, false, "Load CA certs from the OS.");
 
 std::ostream& operator<<(std::ostream& o, asio::error_code ec) {
@@ -406,21 +412,21 @@ static int load_ca_to_ssl_ctx_path(SSL_CTX* ssl_ctx, const std::string& dir_path
   return count;
 }
 
-static std::optional<int> load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
+static bool load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
 #ifdef _WIN32
 #define CA_BUNDLE L"yass-ca-bundle.crt"
   // The windows version will automatically look for a CA certs file named 'ca-bundle.crt',
   // either in the same directory as yass.exe, or in the Current Working Directory,
   // or in any folder along your PATH.
 
-  std::vector<std::filesystem::path> ca_bundles;
+  std::vector<std::filesystem::path> wca_bundles;
 
   // 1. search under executable directory
   std::wstring exe_path;
   CHECK(GetExecutablePath(&exe_path));
   std::filesystem::path exe_dir = std::filesystem::path(exe_path).parent_path();
 
-  ca_bundles.push_back(exe_dir / CA_BUNDLE);
+  wca_bundles.push_back(exe_dir / CA_BUNDLE);
 
   // 2. search under current directory
   std::wstring current_dir;
@@ -435,7 +441,7 @@ static std::optional<int> load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
     current_dir = std::wstring(buf, ret);
   }
 
-  ca_bundles.push_back(std::filesystem::path(current_dir) / CA_BUNDLE);
+  wca_bundles.push_back(std::filesystem::path(current_dir) / CA_BUNDLE);
 
   // 3. search under path directory
   std::string path;
@@ -449,58 +455,66 @@ static std::optional<int> load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
     // to by lpBuffer, not including the terminating null character.
     path = SysWideToUTF8(std::wstring(buf, ret));
   }
-  std::vector<std::string> paths = absl::StrSplit(path, ';');
+  std::vector<std::string> paths = absl::StrSplit(path, DIR_HASH_SEPARATOR);
   for (const auto& path : paths) {
     if (path.empty())
       continue;
-    ca_bundles.push_back(std::filesystem::path(path) / CA_BUNDLE);
+    wca_bundles.push_back(std::filesystem::path(path) / CA_BUNDLE);
   }
 
-  for (const auto& wca_bundle : ca_bundles) {
+  for (const auto& wca_bundle : wca_bundles) {
     auto ca_bundle = SysWideToUTF8(wca_bundle);
     VLOG(1) << "Attempt to load ca bundle from: " << ca_bundle;
     int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
     if (result > 0) {
       LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      return result;
+      return true;
     }
   }
 #undef CA_BUNDLE
 #endif
 
-  return std::nullopt;
+  return false;
 }
 
-static std::optional<int> load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
+static bool load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
+  bool loaded = false;
+  int count = 0;
   if (absl::GetFlag(FLAGS_ca_native)) {
+    loaded = true;
     int result = load_ca_to_ssl_ctx_system(ssl_ctx);
     if (!result) {
       LOG(WARNING) << "Loading ca bundle failure from system";
     }
-    return result;
+    count += result;
   }
   std::string ca_bundle = absl::GetFlag(FLAGS_cacert);
   if (!ca_bundle.empty()) {
+    loaded = true;
     int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
     if (result) {
       LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+      count += result;
     } else {
       print_openssl_error();
       LOG(WARNING) << "Loading ca bundle failure from: " << ca_bundle;
     }
-    return result;
   }
   std::string ca_path = absl::GetFlag(FLAGS_capath);
   if (!ca_path.empty()) {
-    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
-    if (result) {
-      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
-    } else {
-      LOG(WARNING) << "Loading ca directory failure from: " << ca_path;
+    loaded = true;
+    std::vector<std::string> paths = absl::StrSplit(ca_path, DIR_HASH_SEPARATOR);
+    for (const auto& path : paths) {
+      int result = load_ca_to_ssl_ctx_path(ssl_ctx, path);
+      if (result) {
+        LOG(INFO) << "Loaded ca from directory: " << path << " with " << result << " certificates";
+        count += result;
+      } else {
+        LOG(WARNING) << "Loading ca directory failure from: " << path;
+      }
     }
-    return result;
   }
-  return load_ca_to_ssl_ctx_yass_ca_bundle(ssl_ctx);
+  return loaded;
 }
 
 #ifdef _WIN32
@@ -757,14 +771,25 @@ out:
   int count = 0;
   // cert list copied from golang src/crypto/x509/root_unix.go
   static const char* ca_bundle_paths[] = {
-      "/etc/ssl/certs/ca-certificates.crt",      // Debian/Ubuntu/Gentoo etc.
-      "/etc/pki/tls/certs/ca-bundle.crt",        // Fedora/RHEL
-      "/etc/ssl/ca-bundle.pem",                  // OpenSUSE
-      "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
-      "/etc/ssl/cert.pem",                       // OpenBSD
-      "/usr/local/share/certs/ca-root-nss.crt",  // FreeBSD/DragonFly
-      "/etc/pki/tls/cacert.pem",                 // OpenELEC
-      "/etc/certs/ca-certificates.crt",          // Solaris 11.2+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+    "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Gentoo etc.
+    "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL
+    "/etc/ssl/ca-bundle.pem",                             // OpenSUSE
+    "/etc/pki/tls/cacert.pem",                            // OpenELEC
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // CentOS/RHEL 7
+    "/etc/ssl/cert.pem",                                  // Alpine Linux
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/usr/local/etc/ssl/cert.pem",             // FreeBSD
+    "/etc/ssl/cert.pem",                       // OpenBSD
+    "/usr/local/share/certs/ca-root-nss.crt",  // DragonFly
+    "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/ca-certificates.crt",      // Solaris 11.2+
+    "/etc/ssl/certs/ca-certificates.crt",  // Joyent SmartOS
+    "/etc/ssl/cacert.pem",                 // OmniOS
+#endif
   };
   for (auto ca_bundle : ca_bundle_paths) {
     int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
@@ -774,9 +799,22 @@ out:
     }
   }
   static const char* ca_paths[] = {
-      "/etc/ssl/certs",                // SLES10/SLES11, https://golang.org/issue/12139
-      "/etc/pki/tls/certs",            // Fedora/RHEL
-      "/system/etc/security/cacerts",  // Android
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
+    "/etc/pki/tls/certs",  // Fedora/RHEL
+#endif
+#if BUILDFLAG(IS_ANDROID)
+    "/system/etc/security/cacerts",     // Android system roots
+    "/data/misc/keychain/certs-added",  // User trusted CA folder
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/etc/ssl/certs",          // FreeBSD 12.2+
+    "/usr/local/share/certs",  // FreeBSD
+    "/etc/openssl/certs",      // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/CA",  // Solaris
+#endif
   };
 
   for (auto ca_path : ca_paths) {
@@ -857,14 +895,25 @@ out:
   int count = 0;
   // cert list copied from golang src/crypto/x509/root_unix.go
   static const char* ca_bundle_paths[] = {
-      "/etc/ssl/certs/ca-certificates.crt",      // Debian/Ubuntu/Gentoo etc.
-      "/etc/pki/tls/certs/ca-bundle.crt",        // Fedora/RHEL
-      "/etc/ssl/ca-bundle.pem",                  // OpenSUSE
-      "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
-      "/etc/ssl/cert.pem",                       // OpenBSD
-      "/usr/local/share/certs/ca-root-nss.crt",  // FreeBSD/DragonFly
-      "/etc/pki/tls/cacert.pem",                 // OpenELEC
-      "/etc/certs/ca-certificates.crt",          // Solaris 11.2+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+    "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Gentoo etc.
+    "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL
+    "/etc/ssl/ca-bundle.pem",                             // OpenSUSE
+    "/etc/pki/tls/cacert.pem",                            // OpenELEC
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // CentOS/RHEL 7
+    "/etc/ssl/cert.pem",                                  // Alpine Linux
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/usr/local/etc/ssl/cert.pem",             // FreeBSD
+    "/etc/ssl/cert.pem",                       // OpenBSD
+    "/usr/local/share/certs/ca-root-nss.crt",  // DragonFly
+    "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/ca-certificates.crt",      // Solaris 11.2+
+    "/etc/ssl/certs/ca-certificates.crt",  // Joyent SmartOS
+    "/etc/ssl/cacert.pem",                 // OmniOS
+#endif
   };
   for (auto ca_bundle : ca_bundle_paths) {
     int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
@@ -874,9 +923,22 @@ out:
     }
   }
   static const char* ca_paths[] = {
-      "/etc/ssl/certs",                // SLES10/SLES11, https://golang.org/issue/12139
-      "/etc/pki/tls/certs",            // Fedora/RHEL
-      "/system/etc/security/cacerts",  // Android
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
+    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
+    "/etc/pki/tls/certs",  // Fedora/RHEL
+#endif
+#if BUILDFLAG(IS_ANDROID)
+    "/system/etc/security/cacerts",     // Android system roots
+    "/data/misc/keychain/certs-added",  // User trusted CA folder
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/etc/ssl/certs",          // FreeBSD 12.2+
+    "/usr/local/share/certs",  // FreeBSD
+    "/etc/openssl/certs",      // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/CA",  // Solaris
+#endif
   };
 
   for (auto ca_path : ca_paths) {
@@ -891,18 +953,21 @@ out:
 }
 
 // loading ca certificates:
-// 1. load --capath and --cacert certificates
-// 2. load ca bundle from in sequence
-//    - builtin ca bundle if specified
-//    - yass-ca-bundle.crt if present (windows)
-//    - system ca certificates
-// 3. force fallback to builtin ca bundle if step 2 failes
+// 1. load --ca_native, --capath and --cacert certificates in sequence if specified
+// 2. if step 1 succeeds, then goto step x.
+// 3. load yass-ca-bundle.crt in path if present (windows-only)
+// 4. if step 3 succeeds, then goto step x.
+// 5. load ca bundle from in sequence
+//    - load user-added ca certificates on system
+//    - load builtin ca bundle
+//    - goto step x.
+// x. load supplementary ca bundle if necessary
 void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
   found_isrg_root_x1 = false;
   found_isrg_root_x2 = false;
   found_digicert_root_g2 = false;
   found_gts_root_r4 = false;
-  if (load_ca_to_ssl_ctx_cacert(ssl_ctx).has_value()) {
+  if (load_ca_to_ssl_ctx_cacert(ssl_ctx) || load_ca_to_ssl_ctx_yass_ca_bundle(ssl_ctx)) {
     goto done;
   }
 

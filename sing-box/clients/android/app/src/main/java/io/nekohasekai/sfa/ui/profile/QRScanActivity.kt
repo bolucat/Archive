@@ -75,16 +75,24 @@ class QRScanActivity : AbstractActivity<ActivityQrScanBinding>() {
     }
     private val onFailure: (Exception) -> Unit = {
         lifecycleScope.launch {
-            errorDialogBuilder(it).show()
+            resetAnalyzer()
+            errorDialogBuilder("MLKit error: ${it.localizedMessage}").show()
         }
     }
     private val vendorAnalyzer = Vendor.createQRCodeAnalyzer(onSuccess, onFailure)
+    private var useVendorAnalyzer = vendorAnalyzer != null
+    private fun resetAnalyzer() {
+        if (useVendorAnalyzer) {
+            useVendorAnalyzer = false
+            imageAnalysis.clearAnalyzer()
+            imageAnalyzer = ZxingQRCodeAnalyzer(onSuccess, onFailure)
+            imageAnalysis.setAnalyzer(analysisExecutor, imageAnalyzer)
+        }
+    }
+
     private lateinit var cameraProvider: ProcessCameraProvider
     private lateinit var cameraPreview: Preview
     private lateinit var camera: Camera
-
-    // prevent multiple error dialogs shows up at the same time
-    private var invalidRawDataErrorDialogShowing: Boolean = false
 
     private fun startCamera() {
         val cameraProviderFuture = try {
@@ -132,14 +140,8 @@ class QRScanActivity : AbstractActivity<ActivityQrScanBinding>() {
             importRemoteProfileFromString(value)
             return true
         } catch (e: Exception) {
-            if (invalidRawDataErrorDialogShowing) return false
-
-            invalidRawDataErrorDialogShowing = true
-
             lifecycleScope.launch {
-                errorDialogBuilder(e) { _, _ ->
-                    invalidRawDataErrorDialogShowing = false
-                }.show()
+                errorDialogBuilder(e).show()
             }
         }
         return false
@@ -155,11 +157,19 @@ class QRScanActivity : AbstractActivity<ActivityQrScanBinding>() {
         finish()
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        if (!useVendorAnalyzer) {
+            menu!!.findItem(R.id.action_use_vendor_analyzer).also {
+                it.isEnabled = false
+                it.isChecked = false
+            }
+        }
+        return true
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.qr_scan_menu, menu)
-        if (vendorAnalyzer == null) {
-            menu.findItem(R.id.action_use_vendor_analyzer).isEnabled = false
-        } else {
+        if (useVendorAnalyzer) {
             menu.findItem(R.id.action_use_vendor_analyzer).isChecked = true
         }
         return true

@@ -25,10 +25,20 @@ ABSL_FLAG(bool,
           "Or '-k', This option makes to skip the verification step and proceed without checking (Client Only)");
 ABSL_FLAG(std::string,
           cacert,
-          getenv("YASS_CA_BUNDLE") ? getenv("YASS_CA_BUNDLE") : "",
-          "Tells where to use the specified certificate file to verify the peer. "
-          "You can override it with YASS_CA_BUNDLE environment variable");
-ABSL_FLAG(std::string, capath, "", "Tells where to use the specified certificate directory to verify the peer");
+          getenv("SSL_CERT_FILE") ? getenv("SSL_CERT_FILE") : "",
+          "CA certificate to verify peer against. "
+          "You can override it with SSL_CERT_FILE environment variable.");
+ABSL_FLAG(std::string,
+          capath,
+          getenv("SSL_CERT_DIR") ? getenv("SSL_CERT_DIR") : "",
+          "CA directory to verify peer against. "
+          "You can override it with SSL_CERT_DIR environment variable. "
+#ifdef _WIN32
+          "It is a semicolon separated list of directories."
+#else
+          "It is a colon separated list of directories."
+#endif
+);
 
 ABSL_FLAG(bool, tls13_early_data, true, "Enable 0RTTI Early Data (risk at production)");
 

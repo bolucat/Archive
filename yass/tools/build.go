@@ -1155,7 +1155,7 @@ func buildStageExecuteBuildScript() {
 		if systemNameFlag == "ios" && subSystemNameFlag == "simulator" {
 			xcodeCmd := []string{"xcodebuild", "test", "-configuration", cmakeBuildTypeFlag,
 				"-jobs", fmt.Sprintf("%d", cmakeBuildConcurrencyFlag),
-				"-scheme", "yass", "-destination", "platform=iOS Simulator,name=iPhone 16 Pro"}
+				"-scheme", "yass", "-destination", "platform=iOS Simulator,name=iPhone 16"}
 			if !runTestFlag {
 				cmdRun(xcodeCmd, true)
 			}
@@ -1187,7 +1187,7 @@ func buildStageExecuteBuildScript() {
 		if systemNameFlag == "ios" && subSystemNameFlag == "simulator" {
 			xcodeCmd := []string{"xcodebuild", "test", "-configuration", cmakeBuildTypeFlag,
 				"-jobs", fmt.Sprintf("%d", cmakeBuildConcurrencyFlag),
-				"-scheme", "yass", "-destination", "platform=iOS Simulator,name=iPhone 16 Pro"}
+				"-scheme", "yass", "-destination", "platform=iOS Simulator,name=iPhone 16"}
 			cmdRun(xcodeCmd, true)
 		} else if systemNameFlag == "ios" {
 			xcodeCmd := []string{"xcodebuild", "test", "-configuration", cmakeBuildTypeFlag,

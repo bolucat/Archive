@@ -26,9 +26,9 @@
         <item>kcp</item>
         <item>ws</item>
         <item>httpupgrade</item>
+        <item>xhttp</item>
         <item>splithttp</item>
         <item>h2</item>
-        <item>quic</item>
         <item>grpc</item>
     </string-array>
 
@@ -204,5 +204,11 @@
         <item>proxy</item>
         <item>direct</item>
         <item>block</item>
+    </string-array>
+
+    <string-array name="xhttp_mode" translatable="false">
+        <item>auto</item>
+        <item>packet-up</item>
+        <item>stream-up</item>
     </string-array>
 </resources>

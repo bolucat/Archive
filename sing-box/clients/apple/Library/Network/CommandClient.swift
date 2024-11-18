@@ -14,7 +14,6 @@ public class CommandClient: ObservableObject {
     private let logMaxLines: Int
     private var commandClient: LibboxCommandClient?
     private var connectTask: Task<Void, Error>?
-
     @Published public var isConnected: Bool
     @Published public var status: LibboxStatusMessage?
     @Published public var groups: [LibboxOutboundGroup]?
@@ -173,7 +172,7 @@ public class CommandClient: ObservableObject {
             }
             DispatchQueue.main.async { [self] in
                 if commandClient.logList.count >= commandClient.logMaxLines {
-                    commandClient.logList.removeSubrange(0 ..< Int(messageList.len()))
+                    commandClient.logList.removeFirst()
                 }
                 while messageList.hasNext() {
                     commandClient.logList.append(messageList.next())

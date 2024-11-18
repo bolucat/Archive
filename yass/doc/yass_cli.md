@@ -86,10 +86,10 @@ See <https://github.com/Chilledheart/yass/wiki/Usage>.
   Load CA certs from the OS.
 
 * `--cacert` _file_:
-  Tells where to use the specified certificate _file_ to verify the peer.
+  CA certificate _file_ to verify peer against.
 
 * `--capath` _dir_:
-  Tells where to use the specified certificate _dir_ to verify the peer.
+  CA directory _dir_ to verify peer against. It is a colon separated list of directories.
 
 * `--certificate_chain_file` _file_:
   Use custom certificate chain provided by _file_ to verify server's certificate (optional by https and http2).
@@ -116,8 +116,11 @@ See <https://github.com/Chilledheart/yass/wiki/Usage>.
 
 ## ENVIRONMENT VARIABLES
 
-* `YASS_CA_BUNDLE`:
-  Use as the path of ca-bundle.crt file. Same effect with `--cacert` _file_.
+* `SSL_CERT_FILE`:
+  Use as the path of CA certificate to verify peer against. Same effect with `--cacert` _file_.
+
+* `SSL_CERT_DIR`:
+  Use as the path of CA directory to verify peer against. Same effect with `--capath` _dir_. It is a colon separated list of directories.
 
 ## COPYRIGHT
 

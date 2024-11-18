@@ -318,6 +318,15 @@ for embedded devices and low end boxes.
 %systemd_postun_with_restart yass-redir.service
 
 %changelog
+* Mon Nov 18 2024 Chilledheart <keeyou-cn@outlook.com> - 1.16.1-1
+  - tls: add adjust system trusted CA folder for linux
+  - tls: --capath now accepts separated list of directories
+  - cli: handle http/1.1 keepalive for different host properly
+  - cli: increase nofile to 65536 (systemd)
+  - network: increase parallel_max to 65535
+  - network: apply keep alive on connections between client and browsers
+  - tls: use builtin ca store universally
+  - tls: ship GTS Root R4 with supplementary ca
 * Tue Nov 12 2024 Chilledheart <keeyou-cn@outlook.com> - 1.16.0-1
   - bump to chromium 132 dependents
   - build: add an option to enable/disable assertions
