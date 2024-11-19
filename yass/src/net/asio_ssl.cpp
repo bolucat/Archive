@@ -20,7 +20,7 @@
 #include "core/utils.hpp"
 #include "net/x509_util.hpp"
 
-#ifdef _WIN32
+#if BUILDFLAG(IS_WIN)
 #include <wincrypt.h>
 #undef X509_NAME
 #elif BUILDFLAG(IS_MAC)
@@ -32,9 +32,9 @@
 #include "third_party/boringssl/src/pki/parse_name.h"
 #include "third_party/boringssl/src/pki/parsed_certificate.h"
 #include "third_party/boringssl/src/pki/trust_store.h"
-#endif
+#endif  // BUILDFLAG(IS_MAC)
 
-#if defined(_WIN32)
+#if BUILDFLAG(IS_WIN)
 #define DIR_HASH_SEPARATOR ';'
 #else
 #define DIR_HASH_SEPARATOR ':'
@@ -43,18 +43,84 @@
 ABSL_FLAG(bool, ca_native, false, "Load CA certs from the OS.");
 
 std::ostream& operator<<(std::ostream& o, asio::error_code ec) {
-#ifdef _WIN32
+#if BUILDFLAG(IS_WIN)
   return o << ec.message() << " value: " << ec.value();
 #else
   return o << ec.message();
 #endif
 }
 
+void print_openssl_error() {
+  const char* file;
+  int line;
+  while (uint32_t error = ERR_get_error_line(&file, &line)) {
+    char buf[120];
+    ERR_error_string_n(error, buf, sizeof(buf));
+    ::gurl_base::logging::LogMessage(file, line, ::gurl_base::logging::LOGGING_ERROR).stream()
+        << "OpenSSL error: " << buf;
+  }
+}
+
+static bool found_isrg_root_x1 = false;
+static bool found_isrg_root_x2 = false;
+static bool found_digicert_root_g2 = false;
+static bool found_gts_root_r4 = false;
+
+static bool load_ca_to_x509_store_from_cert(X509_STORE* store, bssl::UniquePtr<X509> cert) {
+  char buf[4096] = {};
+  const char* const subject_name = X509_NAME_oneline(X509_get_subject_name(cert.get()), buf, sizeof(buf));
+
+  if (X509_cmp_current_time(X509_get0_notBefore(cert.get())) < 0 &&
+      X509_cmp_current_time(X509_get0_notAfter(cert.get())) >= 0) {
+    // look at the CN field for ISRG Root X1 and ISRG_Root X2 ca certificates
+    int lastpos = -1;
+    for (;;) {
+      lastpos = X509_NAME_get_index_by_NID(X509_get_subject_name(cert.get()), NID_commonName, lastpos);
+      if (lastpos == -1) {
+        break;
+      }
+
+      X509_NAME_ENTRY* entry = X509_NAME_get_entry(X509_get_subject_name(cert.get()), lastpos);
+
+      const ASN1_STRING* value = X509_NAME_ENTRY_get_data(entry);
+      std::string_view commonName((const char*)ASN1_STRING_get0_data(value), ASN1_STRING_length(value));
+      using std::string_view_literals::operator""sv;
+      if (commonName == "ISRG Root X1"sv) {
+        VLOG(1) << "Loading ISRG Root X1 CA";
+        found_isrg_root_x1 = true;
+      }
+      if (commonName == "ISRG Root X2"sv) {
+        VLOG(1) << "Loading ISRG Root X2 CA";
+        found_isrg_root_x2 = true;
+      }
+      if (commonName == "DigiCert Global Root G2"sv) {
+        VLOG(1) << "Loading DigiCert Global Root G2 CA";
+        found_digicert_root_g2 = true;
+      }
+      if (commonName == "GTS Root R4"sv) {
+        VLOG(1) << "Loading GTS Root R4 CA";
+        found_gts_root_r4 = true;
+      }
+    }
+
+    if (X509_STORE_add_cert(store, cert.get()) == 1) {
+      VLOG(2) << "Loaded ca: " << subject_name;
+      return true;
+    } else {
+      print_openssl_error();
+      LOG(WARNING) << "Loading ca failure with: " << subject_name;
+    }
+  } else {
+    LOG(WARNING) << "Ignore inactive cert: " << subject_name;
+  }
+  return false;
+}
+
+namespace {
+
 #if BUILDFLAG(IS_MAC)
 
 using namespace gurl_base::apple;
-
-namespace {
 
 // The rules for interpreting trust settings are documented at:
 // https://developer.apple.com/reference/security/1400261-sectrustsettingscopytrustsetting?language=objc
@@ -239,396 +305,7 @@ bool IsNotAcceptableIntermediate(const bssl::ParsedCertificate* cert, const CFSt
   return false;
 }
 
-}  // namespace
-#endif
-
-static bool found_isrg_root_x1 = false;
-static bool found_isrg_root_x2 = false;
-static bool found_digicert_root_g2 = false;
-static bool found_gts_root_r4 = false;
-
-void print_openssl_error() {
-  const char* file;
-  int line;
-  while (uint32_t error = ERR_get_error_line(&file, &line)) {
-    char buf[120];
-    ERR_error_string_n(error, buf, sizeof(buf));
-    ::gurl_base::logging::LogMessage(file, line, ::gurl_base::logging::LOGGING_ERROR).stream()
-        << "OpenSSL error: " << buf;
-  }
-}
-
-static bool load_ca_cert_to_x509_trust(X509_STORE* store, bssl::UniquePtr<X509> cert) {
-  char buf[4096] = {};
-  const char* const subject_name = X509_NAME_oneline(X509_get_subject_name(cert.get()), buf, sizeof(buf));
-
-  if (X509_cmp_current_time(X509_get0_notBefore(cert.get())) < 0 &&
-      X509_cmp_current_time(X509_get0_notAfter(cert.get())) >= 0) {
-    // look at the CN field for ISRG Root X1 and ISRG_Root X2 ca certificates
-    int lastpos = -1;
-    for (;;) {
-      lastpos = X509_NAME_get_index_by_NID(X509_get_subject_name(cert.get()), NID_commonName, lastpos);
-      if (lastpos == -1) {
-        break;
-      }
-
-      X509_NAME_ENTRY* entry = X509_NAME_get_entry(X509_get_subject_name(cert.get()), lastpos);
-
-      const ASN1_STRING* value = X509_NAME_ENTRY_get_data(entry);
-      std::string_view commonName((const char*)ASN1_STRING_get0_data(value), ASN1_STRING_length(value));
-      using std::string_view_literals::operator""sv;
-      if (commonName == "ISRG Root X1"sv) {
-        VLOG(1) << "Loading ISRG Root X1 CA";
-        found_isrg_root_x1 = true;
-      }
-      if (commonName == "ISRG Root X2"sv) {
-        VLOG(1) << "Loading ISRG Root X2 CA";
-        found_isrg_root_x2 = true;
-      }
-      if (commonName == "DigiCert Global Root G2"sv) {
-        VLOG(1) << "Loading DigiCert Global Root G2 CA";
-        found_digicert_root_g2 = true;
-      }
-      if (commonName == "GTS Root R4"sv) {
-        VLOG(1) << "Loading GTS Root R4 CA";
-        found_gts_root_r4 = true;
-      }
-    }
-
-    if (X509_STORE_add_cert(store, cert.get()) == 1) {
-      VLOG(2) << "Loaded ca: " << subject_name;
-      return true;
-    } else {
-      print_openssl_error();
-      LOG(WARNING) << "Loading ca failure with: " << subject_name;
-    }
-  } else {
-    LOG(WARNING) << "Ignore inactive cert: " << subject_name;
-  }
-  return false;
-}
-
-static bool load_ca_content_to_x509_trust(X509_STORE* store, std::string_view cacert) {
-  bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(cacert.data(), cacert.size()));
-  bssl::UniquePtr<X509> cert(PEM_read_bio_X509(bio.get(), nullptr, 0, nullptr));
-  if (!cert) {
-    print_openssl_error();
-    LOG(WARNING) << "Loading ca failure: with " << cacert;
-    return false;
-  }
-  return load_ca_cert_to_x509_trust(store, std::move(cert));
-}
-
-static constexpr std::string_view kEndCertificateMark = "-----END CERTIFICATE-----\n";
-int load_ca_to_ssl_ctx_from_mem(SSL_CTX* ssl_ctx, std::string_view cadata) {
-  X509_STORE* store = nullptr;
-  int count = 0;
-  store = SSL_CTX_get_cert_store(ssl_ctx);
-  if (!store) {
-    LOG(WARNING) << "Can't get SSL CTX cert store";
-    goto out;
-  }
-  for (size_t pos = 0, end = pos; end < cadata.size(); pos = end) {
-    end = cadata.find(kEndCertificateMark, pos);
-    if (end == std::string_view::npos) {
-      break;
-    }
-    end += kEndCertificateMark.size();
-
-    std::string_view cacert = cadata.substr(pos, end - pos);
-    if (load_ca_content_to_x509_trust(store, cacert)) {
-      ++count;
-    }
-  }
-
-out:
-  VLOG(2) << "Loaded ca from memory: " << count << " certificates";
-  return count;
-}
-
-static int load_ca_to_ssl_ctx_bundle(SSL_CTX* ssl_ctx, const std::string& bundle_path) {
-  PlatformFile pf = OpenReadFile(bundle_path);
-  if (pf == gurl_base::kInvalidPlatformFile) {
-    return 0;
-  }
-  gurl_base::MemoryMappedFile mappedFile;
-  // take ownship of pf
-  if (!(mappedFile.Initialize(pf, gurl_base::MemoryMappedFile::Region::kWholeFile))) {
-    LOG(ERROR) << "Couldn't mmap file: " << bundle_path;
-    return 0;  // To debug http://crbug.com/445616.
-  }
-
-  std::string_view buffer(reinterpret_cast<const char*>(mappedFile.data()), mappedFile.length());
-
-  return load_ca_to_ssl_ctx_from_mem(ssl_ctx, buffer);
-}
-
-static int load_ca_to_ssl_ctx_path(SSL_CTX* ssl_ctx, const std::string& dir_path) {
-  int count = 0;
-
-#ifdef _WIN32
-  std::wstring wdir_path = SysUTF8ToWide(dir_path);
-  _WDIR* dir;
-  struct _wdirent* dent;
-  dir = _wopendir(wdir_path.c_str());
-  if (dir != nullptr) {
-    while ((dent = _wreaddir(dir)) != nullptr) {
-      if (dent->d_type != DT_REG && dent->d_type != DT_LNK) {
-        continue;
-      }
-      std::filesystem::path wca_bundle = std::filesystem::path(wdir_path) / dent->d_name;
-      std::string ca_bundle = SysWideToUTF8(wca_bundle);
-      int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-      if (result > 0) {
-        VLOG(1) << "Loaded cert from: " << ca_bundle << " with " << result << " certificates";
-        count += result;
-      }
-    }
-    _wclosedir(dir);
-  }
-#else
-  DIR* dir;
-  struct dirent* dent;
-  dir = opendir(dir_path.c_str());
-  if (dir != nullptr) {
-    while ((dent = readdir(dir)) != nullptr) {
-      if (dent->d_type != DT_REG && dent->d_type != DT_LNK) {
-        continue;
-      }
-      if (dent->d_name[0] == '.') {
-        continue;
-      }
-      std::string ca_bundle = absl::StrCat(dir_path, "/", dent->d_name);
-      int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-      if (result > 0) {
-        VLOG(1) << "Loaded ca cert from: " << ca_bundle << " with " << result << " certificates";
-        count += result;
-      }
-    }
-    closedir(dir);
-  }
-#endif
-
-  return count;
-}
-
-static bool load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
-#ifdef _WIN32
-#define CA_BUNDLE L"yass-ca-bundle.crt"
-  // The windows version will automatically look for a CA certs file named 'ca-bundle.crt',
-  // either in the same directory as yass.exe, or in the Current Working Directory,
-  // or in any folder along your PATH.
-
-  std::vector<std::filesystem::path> wca_bundles;
-
-  // 1. search under executable directory
-  std::wstring exe_path;
-  CHECK(GetExecutablePath(&exe_path));
-  std::filesystem::path exe_dir = std::filesystem::path(exe_path).parent_path();
-
-  wca_bundles.push_back(exe_dir / CA_BUNDLE);
-
-  // 2. search under current directory
-  std::wstring current_dir;
-  {
-    wchar_t buf[32767];
-    DWORD ret = GetCurrentDirectoryW(sizeof(buf), buf);
-    if (ret == 0) {
-      PLOG(FATAL) << "GetCurrentDirectoryW failed";
-    }
-    // the return value specifies the number of characters that are written to
-    // the buffer, not including the terminating null character.
-    current_dir = std::wstring(buf, ret);
-  }
-
-  wca_bundles.push_back(std::filesystem::path(current_dir) / CA_BUNDLE);
-
-  // 3. search under path directory
-  std::string path;
-  {
-    wchar_t buf[32767];
-    DWORD ret = GetEnvironmentVariableW(L"PATH", buf, sizeof(buf));
-    if (ret == 0) {
-      PLOG(FATAL) << "GetEnvironmentVariableW failed on PATH";
-    }
-    // the return value is the number of characters stored in the buffer pointed
-    // to by lpBuffer, not including the terminating null character.
-    path = SysWideToUTF8(std::wstring(buf, ret));
-  }
-  std::vector<std::string> paths = absl::StrSplit(path, DIR_HASH_SEPARATOR);
-  for (const auto& path : paths) {
-    if (path.empty())
-      continue;
-    wca_bundles.push_back(std::filesystem::path(path) / CA_BUNDLE);
-  }
-
-  for (const auto& wca_bundle : wca_bundles) {
-    auto ca_bundle = SysWideToUTF8(wca_bundle);
-    VLOG(1) << "Attempt to load ca bundle from: " << ca_bundle;
-    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      return true;
-    }
-  }
-#undef CA_BUNDLE
-#endif
-
-  return false;
-}
-
-static bool load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
-  bool loaded = false;
-  int count = 0;
-  if (absl::GetFlag(FLAGS_ca_native)) {
-    loaded = true;
-    int result = load_ca_to_ssl_ctx_system(ssl_ctx);
-    if (!result) {
-      LOG(WARNING) << "Loading ca bundle failure from system";
-    }
-    count += result;
-  }
-  std::string ca_bundle = absl::GetFlag(FLAGS_cacert);
-  if (!ca_bundle.empty()) {
-    loaded = true;
-    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-    if (result) {
-      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      count += result;
-    } else {
-      print_openssl_error();
-      LOG(WARNING) << "Loading ca bundle failure from: " << ca_bundle;
-    }
-  }
-  std::string ca_path = absl::GetFlag(FLAGS_capath);
-  if (!ca_path.empty()) {
-    loaded = true;
-    std::vector<std::string> paths = absl::StrSplit(ca_path, DIR_HASH_SEPARATOR);
-    for (const auto& path : paths) {
-      int result = load_ca_to_ssl_ctx_path(ssl_ctx, path);
-      if (result) {
-        LOG(INFO) << "Loaded ca from directory: " << path << " with " << result << " certificates";
-        count += result;
-      } else {
-        LOG(WARNING) << "Loading ca directory failure from: " << path;
-      }
-    }
-  }
-  return loaded;
-}
-
-#ifdef _WIN32
-// Returns true if the cert can be used for server authentication, based on
-// certificate properties.
-//
-// While there are a variety of certificate properties that can affect how
-// trust is computed, the main property is CERT_ENHKEY_USAGE_PROP_ID, which
-// is intersected with the certificate's EKU extension (if present).
-// The intersection is documented in the Remarks section of
-// CertGetEnhancedKeyUsage, and is as follows:
-// - No EKU property, and no EKU extension = Trusted for all purpose
-// - Either an EKU property, or EKU extension, but not both = Trusted only
-//   for the listed purposes
-// - Both an EKU property and an EKU extension = Trusted for the set
-//   intersection of the listed purposes
-// CertGetEnhancedKeyUsage handles this logic, and if an empty set is
-// returned, the distinction between the first and third case can be
-// determined by GetLastError() returning CRYPT_E_NOT_FOUND.
-//
-// See:
-// https://docs.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certgetenhancedkeyusage
-//
-// If we run into any errors reading the certificate properties, we fail
-// closed.
-bool IsCertTrustedForServerAuth(PCCERT_CONTEXT cert) {
-  DWORD usage_size = 0;
-
-  if (!CertGetEnhancedKeyUsage(cert, 0, nullptr, &usage_size)) {
-    return false;
-  }
-
-  std::vector<BYTE> usage_bytes(usage_size);
-  CERT_ENHKEY_USAGE* usage = reinterpret_cast<CERT_ENHKEY_USAGE*>(usage_bytes.data());
-  if (!CertGetEnhancedKeyUsage(cert, 0, usage, &usage_size)) {
-    return false;
-  }
-
-  if (usage->cUsageIdentifier == 0) {
-    // check GetLastError
-    HRESULT error_code = GetLastError();
-
-    switch (error_code) {
-      case CRYPT_E_NOT_FOUND:
-        return true;
-      case S_OK:
-        return false;
-      default:
-        return false;
-    }
-  }
-  for (DWORD i = 0; i < usage->cUsageIdentifier; i++) {
-    std::string_view eku = std::string_view(usage->rgpszUsageIdentifier[i]);
-    if ((eku == szOID_PKIX_KP_SERVER_AUTH) || (eku == szOID_ANY_ENHANCED_KEY_USAGE)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-int load_ca_to_ssl_store_from_schannel_store(X509_STORE* store, HCERTSTORE cert_store) {
-  PCCERT_CONTEXT cert_context = NULL;
-  int count = 0;
-
-  while ((cert_context = CertEnumCertificatesInStore(cert_store, cert_context))) {
-    const char* data = reinterpret_cast<const char*>(cert_context->pbCertEncoded);
-    size_t len = cert_context->cbCertEncoded;
-    bssl::UniquePtr<CRYPTO_BUFFER> buffer = net::x509_util::CreateCryptoBuffer(std::string_view(data, len));
-    bssl::UniquePtr<X509> cert(X509_parse_from_buffer(buffer.get()));
-    if (!cert) {
-      print_openssl_error();
-      LOG(WARNING) << "Loading ca failure from: cert store";
-      continue;
-    }
-    if (!IsCertTrustedForServerAuth(cert_context)) {
-      char buf[4096] = {};
-      const char* const subject_name = X509_NAME_oneline(X509_get_subject_name(cert.get()), buf, sizeof(buf));
-      LOG(WARNING) << "Skip cert without server auth support: " << subject_name;
-      continue;
-    }
-    if (load_ca_cert_to_x509_trust(store, std::move(cert))) {
-      ++count;
-    }
-  }
-
-  return count;
-}
-
-void GatherEnterpriseCertsForLocation(LPCSTR provider, HCERTSTORE cert_store, DWORD location, LPCWSTR store_name) {
-  if (!(location == CERT_SYSTEM_STORE_LOCAL_MACHINE || location == CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY ||
-        location == CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE || location == CERT_SYSTEM_STORE_CURRENT_USER ||
-        location == CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY)) {
-    return;
-  }
-
-  DWORD flags = location | CERT_STORE_OPEN_EXISTING_FLAG | CERT_STORE_READONLY_FLAG;
-
-  HCERTSTORE enterprise_root_store = NULL;
-
-  enterprise_root_store = CertOpenStore(provider, 0, NULL, flags, store_name);
-  if (!enterprise_root_store) {
-    return;
-  }
-  // Priority of the opened cert store in the collection does not matter, so set
-  // everything to priority 0.
-  CertAddStoreToCollection(cert_store, enterprise_root_store,
-                           /*dwUpdateFlags=*/0, /*dwPriority=*/0);
-  if (!CertCloseStore(enterprise_root_store, 0)) {
-    PLOG(WARNING) << "CertCloseStore() call failed";
-  }
-}
-#endif  // _WIN32
-#if BUILDFLAG(IS_MAC)
-int load_ca_to_ssl_store_from_sec_trust_domain(X509_STORE* store, SecTrustSettingsDomain domain) {
+int load_ca_to_x509_store_from_sec_trust_domain(X509_STORE* store, SecTrustSettingsDomain domain) {
   const CFStringRef policy_oid = kSecPolicyAppleSSL;
   CFArrayRef certs;
   OSStatus err;
@@ -694,7 +371,7 @@ int load_ca_to_ssl_store_from_sec_trust_domain(X509_STORE* store, SecTrustSettin
       continue;
     }
 
-    if (load_ca_cert_to_x509_trust(store, std::move(cert))) {
+    if (load_ca_to_x509_store_from_cert(store, std::move(cert))) {
       ++count;
     }
   }
@@ -705,10 +382,399 @@ out:
   VLOG(1) << "Loaded ca from SecTrust: " << count << " certificates at domain 0x" << std::hex << domain;
   return count;
 }
+
 #endif  // BUILDFLAG(IS_MAC)
 
-int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
-#ifdef _WIN32
+int load_ca_to_ssl_ctx_from_bundle(SSL_CTX* ssl_ctx, const std::string& bundle_path) {
+  PlatformFile pf = OpenReadFile(bundle_path);
+  if (pf == gurl_base::kInvalidPlatformFile) {
+    return 0;
+  }
+  gurl_base::MemoryMappedFile mappedFile;
+  // take ownship of pf
+  if (!(mappedFile.Initialize(pf, gurl_base::MemoryMappedFile::Region::kWholeFile))) {
+    LOG(ERROR) << "Couldn't mmap file: " << bundle_path;
+    return 0;  // To debug http://crbug.com/445616.
+  }
+
+  std::string_view buffer(reinterpret_cast<const char*>(mappedFile.data()), mappedFile.length());
+
+  return load_ca_to_ssl_ctx_from_mem(ssl_ctx, buffer);
+}
+
+int load_ca_to_ssl_ctx_from_directory(SSL_CTX* ssl_ctx, const std::string& dir_path) {
+  int count = 0;
+
+#if BUILDFLAG(IS_WIN)
+  std::wstring wdir_path = SysUTF8ToWide(dir_path);
+  _WDIR* dir;
+  struct _wdirent* dent;
+  dir = _wopendir(wdir_path.c_str());
+  if (dir != nullptr) {
+    while ((dent = _wreaddir(dir)) != nullptr) {
+      if (dent->d_type != DT_REG && dent->d_type != DT_LNK) {
+        continue;
+      }
+      std::filesystem::path wca_bundle = std::filesystem::path(wdir_path) / dent->d_name;
+      std::string ca_bundle = SysWideToUTF8(wca_bundle);
+      int result = load_ca_to_ssl_ctx_from_bundle(ssl_ctx, ca_bundle);
+      if (result > 0) {
+        VLOG(1) << "Loaded cert from: " << ca_bundle << " with " << result << " certificates";
+        count += result;
+      }
+    }
+    _wclosedir(dir);
+  }
+#else   //  BUILDFLAG(IS_WIN)
+  DIR* dir;
+  struct dirent* dent;
+  dir = opendir(dir_path.c_str());
+  if (dir != nullptr) {
+    while ((dent = readdir(dir)) != nullptr) {
+      if (dent->d_type != DT_REG && dent->d_type != DT_LNK) {
+        continue;
+      }
+      if (dent->d_name[0] == '.') {
+        continue;
+      }
+      std::string ca_bundle = absl::StrCat(dir_path, "/", dent->d_name);
+      int result = load_ca_to_ssl_ctx_from_bundle(ssl_ctx, ca_bundle);
+      if (result > 0) {
+        VLOG(1) << "Loaded ca cert from: " << ca_bundle << " with " << result << " certificates";
+        count += result;
+      }
+    }
+    closedir(dir);
+  }
+#endif  // BUILDFLAG(IS_WIN)
+
+  return count;
+}
+
+#if BUILDFLAG(IS_WIN)
+// Returns true if the cert can be used for server authentication, based on
+// certificate properties.
+//
+// While there are a variety of certificate properties that can affect how
+// trust is computed, the main property is CERT_ENHKEY_USAGE_PROP_ID, which
+// is intersected with the certificate's EKU extension (if present).
+// The intersection is documented in the Remarks section of
+// CertGetEnhancedKeyUsage, and is as follows:
+// - No EKU property, and no EKU extension = Trusted for all purpose
+// - Either an EKU property, or EKU extension, but not both = Trusted only
+//   for the listed purposes
+// - Both an EKU property and an EKU extension = Trusted for the set
+//   intersection of the listed purposes
+// CertGetEnhancedKeyUsage handles this logic, and if an empty set is
+// returned, the distinction between the first and third case can be
+// determined by GetLastError() returning CRYPT_E_NOT_FOUND.
+//
+// See:
+// https://docs.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certgetenhancedkeyusage
+//
+// If we run into any errors reading the certificate properties, we fail
+// closed.
+bool IsCertTrustedForServerAuth(PCCERT_CONTEXT cert) {
+  DWORD usage_size = 0;
+
+  if (!CertGetEnhancedKeyUsage(cert, 0, nullptr, &usage_size)) {
+    return false;
+  }
+
+  std::vector<BYTE> usage_bytes(usage_size);
+  CERT_ENHKEY_USAGE* usage = reinterpret_cast<CERT_ENHKEY_USAGE*>(usage_bytes.data());
+  if (!CertGetEnhancedKeyUsage(cert, 0, usage, &usage_size)) {
+    return false;
+  }
+
+  if (usage->cUsageIdentifier == 0) {
+    // check GetLastError
+    HRESULT error_code = GetLastError();
+
+    switch (error_code) {
+      case CRYPT_E_NOT_FOUND:
+        return true;
+      case S_OK:
+        return false;
+      default:
+        return false;
+    }
+  }
+  for (DWORD i = 0; i < usage->cUsageIdentifier; i++) {
+    std::string_view eku = std::string_view(usage->rgpszUsageIdentifier[i]);
+    if ((eku == szOID_PKIX_KP_SERVER_AUTH) || (eku == szOID_ANY_ENHANCED_KEY_USAGE)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+int load_ca_to_x509_store_from_schannel_store(X509_STORE* store, HCERTSTORE cert_store) {
+  PCCERT_CONTEXT cert_context = NULL;
+  int count = 0;
+
+  while ((cert_context = CertEnumCertificatesInStore(cert_store, cert_context))) {
+    const char* data = reinterpret_cast<const char*>(cert_context->pbCertEncoded);
+    size_t len = cert_context->cbCertEncoded;
+    bssl::UniquePtr<CRYPTO_BUFFER> buffer = net::x509_util::CreateCryptoBuffer(std::string_view(data, len));
+    bssl::UniquePtr<X509> cert(X509_parse_from_buffer(buffer.get()));
+    if (!cert) {
+      print_openssl_error();
+      LOG(WARNING) << "Loading ca failure from: cert store";
+      continue;
+    }
+    if (!IsCertTrustedForServerAuth(cert_context)) {
+      char buf[4096] = {};
+      const char* const subject_name = X509_NAME_oneline(X509_get_subject_name(cert.get()), buf, sizeof(buf));
+      LOG(WARNING) << "Skip cert without server auth support: " << subject_name;
+      continue;
+    }
+    if (load_ca_to_x509_store_from_cert(store, std::move(cert))) {
+      ++count;
+    }
+  }
+
+  return count;
+}
+
+void GatherEnterpriseCertsForLocation(LPCSTR provider, HCERTSTORE cert_store, DWORD location, LPCWSTR store_name) {
+  if (!(location == CERT_SYSTEM_STORE_LOCAL_MACHINE || location == CERT_SYSTEM_STORE_LOCAL_MACHINE_GROUP_POLICY ||
+        location == CERT_SYSTEM_STORE_LOCAL_MACHINE_ENTERPRISE || location == CERT_SYSTEM_STORE_CURRENT_USER ||
+        location == CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY)) {
+    return;
+  }
+
+  DWORD flags = location | CERT_STORE_OPEN_EXISTING_FLAG | CERT_STORE_READONLY_FLAG;
+
+  HCERTSTORE enterprise_root_store = NULL;
+
+  enterprise_root_store = CertOpenStore(provider, 0, NULL, flags, store_name);
+  if (!enterprise_root_store) {
+    return;
+  }
+  // Priority of the opened cert store in the collection does not matter, so set
+  // everything to priority 0.
+  CertAddStoreToCollection(cert_store, enterprise_root_store,
+                           /*dwUpdateFlags=*/0, /*dwPriority=*/0);
+  if (!CertCloseStore(enterprise_root_store, 0)) {
+    PLOG(WARNING) << "CertCloseStore() call failed";
+  }
+}
+#endif  //  BUILDFLAG(IS_WIN)
+
+#if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_IOS)
+int load_ca_to_ssl_ctx_from_unix_store(SSL_CTX* ssl_ctx) {
+  int count = 0;
+  // cert list copied from golang src/crypto/x509/root_unix.go
+  static const char* ca_bundle_paths[] = {
+#if BUILDFLAG(IS_LINUX)
+    "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Gentoo etc.
+    "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL
+    "/etc/ssl/ca-bundle.pem",                             // OpenSUSE
+    "/etc/pki/tls/cacert.pem",                            // OpenELEC
+    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // CentOS/RHEL 7
+    "/etc/ssl/cert.pem",                                  // Alpine Linux
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/usr/local/etc/ssl/cert.pem",             // FreeBSD
+    "/etc/ssl/cert.pem",                       // OpenBSD
+    "/usr/local/share/certs/ca-root-nss.crt",  // DragonFly
+    "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/ca-certificates.crt",      // Solaris 11.2+
+    "/etc/ssl/certs/ca-certificates.crt",  // Joyent SmartOS
+    "/etc/ssl/cacert.pem",                 // OmniOS
+#endif
+  };
+  for (auto ca_bundle : ca_bundle_paths) {
+    int result = load_ca_to_ssl_ctx_from_bundle(ssl_ctx, ca_bundle);
+    if (result > 0) {
+      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+      count += result;
+      break;
+    }
+  }
+  static const char* ca_paths[] = {
+#if BUILDFLAG(IS_LINUX)
+    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
+    "/etc/pki/tls/certs",  // Fedora/RHEL
+#endif
+#if BUILDFLAG(IS_OHOS)
+    "/etc/ssl/certs",  // OpenHarmony
+#endif
+#if BUILDFLAG(IS_ANDROID)
+    "/system/etc/security/cacerts",     // Android system roots
+    "/data/misc/keychain/certs-added",  // User trusted CA folder
+#endif
+#if BUILDFLAG(IS_BSD)
+    "/etc/ssl/certs",          // FreeBSD 12.2+
+    "/usr/local/share/certs",  // FreeBSD
+    "/etc/openssl/certs",      // NetBSD
+#endif
+#if BUILDFLAG(IS_SOLARIS)
+    "/etc/certs/CA",  // Solaris
+#endif
+  };
+
+  for (auto ca_path : ca_paths) {
+    int result = load_ca_to_ssl_ctx_from_directory(ssl_ctx, ca_path);
+    if (result > 0) {
+      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
+      count += result;
+    }
+  }
+  return count;
+}
+#endif  // !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_MAC) && !BUILDFLAG(IS_IOS)
+
+bool load_ca_to_ssl_ctx_cacert(SSL_CTX* ssl_ctx) {
+  bool loaded = false;
+  int count = 0;
+  if (absl::GetFlag(FLAGS_ca_native)) {
+    loaded = true;
+    int result = load_ca_to_ssl_ctx_from_system(ssl_ctx);
+    if (!result) {
+      LOG(WARNING) << "Loading ca bundle failure from system";
+    }
+    count += result;
+  }
+  std::string ca_bundle = absl::GetFlag(FLAGS_cacert);
+  if (!ca_bundle.empty()) {
+    loaded = true;
+    int result = load_ca_to_ssl_ctx_from_bundle(ssl_ctx, ca_bundle);
+    if (result) {
+      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+      count += result;
+    } else {
+      print_openssl_error();
+      LOG(WARNING) << "Loading ca bundle failure from: " << ca_bundle;
+    }
+  }
+  std::string ca_path = absl::GetFlag(FLAGS_capath);
+  if (!ca_path.empty()) {
+    loaded = true;
+    std::vector<std::string> paths = absl::StrSplit(ca_path, DIR_HASH_SEPARATOR);
+    for (const auto& path : paths) {
+      int result = load_ca_to_ssl_ctx_from_directory(ssl_ctx, path);
+      if (result) {
+        LOG(INFO) << "Loaded ca from directory: " << path << " with " << result << " certificates";
+        count += result;
+      } else {
+        LOG(WARNING) << "Loading ca directory failure from: " << path;
+      }
+    }
+  }
+  return loaded;
+}
+
+bool load_ca_to_ssl_ctx_yass_ca_bundle(SSL_CTX* ssl_ctx) {
+#if BUILDFLAG(IS_WIN)
+#define CA_BUNDLE L"yass-ca-bundle.crt"
+  // The windows version will automatically look for a CA certs file named 'ca-bundle.crt',
+  // either in the same directory as yass.exe, or in the Current Working Directory,
+  // or in any folder along your PATH.
+
+  std::vector<std::filesystem::path> wca_bundles;
+
+  // 1. search under executable directory
+  std::wstring exe_path;
+  CHECK(GetExecutablePath(&exe_path));
+  std::filesystem::path exe_dir = std::filesystem::path(exe_path).parent_path();
+
+  wca_bundles.push_back(exe_dir / CA_BUNDLE);
+
+  // 2. search under current directory
+  std::wstring current_dir;
+  {
+    wchar_t buf[32767];
+    DWORD ret = GetCurrentDirectoryW(sizeof(buf), buf);
+    if (ret == 0) {
+      PLOG(FATAL) << "GetCurrentDirectoryW failed";
+    }
+    // the return value specifies the number of characters that are written to
+    // the buffer, not including the terminating null character.
+    current_dir = std::wstring(buf, ret);
+  }
+
+  wca_bundles.push_back(std::filesystem::path(current_dir) / CA_BUNDLE);
+
+  // 3. search under path directory
+  std::string path;
+  {
+    wchar_t buf[32767];
+    DWORD ret = GetEnvironmentVariableW(L"PATH", buf, sizeof(buf));
+    if (ret == 0) {
+      PLOG(FATAL) << "GetEnvironmentVariableW failed on PATH";
+    }
+    // the return value is the number of characters stored in the buffer pointed
+    // to by lpBuffer, not including the terminating null character.
+    path = SysWideToUTF8(std::wstring(buf, ret));
+  }
+  std::vector<std::string> paths = absl::StrSplit(path, DIR_HASH_SEPARATOR);
+  for (const auto& path : paths) {
+    if (path.empty())
+      continue;
+    wca_bundles.push_back(std::filesystem::path(path) / CA_BUNDLE);
+  }
+
+  for (const auto& wca_bundle : wca_bundles) {
+    auto ca_bundle = SysWideToUTF8(wca_bundle);
+    VLOG(1) << "Attempt to load ca bundle from: " << ca_bundle;
+    int result = load_ca_to_ssl_ctx_from_bundle(ssl_ctx, ca_bundle);
+    if (result > 0) {
+      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
+      return true;
+    }
+  }
+#undef CA_BUNDLE
+#endif  //  BUILDFLAG(IS_WIN)
+
+  return false;
+}
+
+bool load_ca_to_x509_store_from_string(X509_STORE* store, std::string_view cacert) {
+  bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(cacert.data(), cacert.size()));
+  bssl::UniquePtr<X509> cert(PEM_read_bio_X509(bio.get(), nullptr, 0, nullptr));
+  if (!cert) {
+    print_openssl_error();
+    LOG(WARNING) << "Loading ca failure: with " << cacert;
+    return false;
+  }
+  return load_ca_to_x509_store_from_cert(store, std::move(cert));
+}
+
+}  // namespace
+
+int load_ca_to_ssl_ctx_from_mem(SSL_CTX* ssl_ctx, std::string_view cadata) {
+  static constexpr std::string_view kEndCertificateMark = "-----END CERTIFICATE-----\n";
+  X509_STORE* store = nullptr;
+  int count = 0;
+  store = SSL_CTX_get_cert_store(ssl_ctx);
+  if (!store) {
+    LOG(WARNING) << "Can't get SSL CTX cert store";
+    goto out;
+  }
+  for (size_t pos = 0, end = pos; end < cadata.size(); pos = end) {
+    end = cadata.find(kEndCertificateMark, pos);
+    if (end == std::string_view::npos) {
+      break;
+    }
+    end += kEndCertificateMark.size();
+
+    std::string_view cacert = cadata.substr(pos, end - pos);
+    if (load_ca_to_x509_store_from_string(store, cacert)) {
+      ++count;
+    }
+  }
+
+out:
+  VLOG(2) << "Loaded ca from memory: " << count << " certificates";
+  return count;
+}
+
+int load_ca_to_ssl_ctx_from_system(SSL_CTX* ssl_ctx) {
+#if BUILDFLAG(IS_WIN)
   HCERTSTORE root_store = NULL;
   int count = 0;
 
@@ -742,7 +808,7 @@ int load_ca_to_ssl_ctx_system(SSL_CTX* ssl_ctx) {
   GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_W, root_store, CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY,
                                    L"CA");
 
-  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
+  count = load_ca_to_x509_store_from_schannel_store(store, root_store);
 
   if (!CertCloseStore(root_store, 0)) {
     PLOG(WARNING) << "CertCloseStore() call failed";
@@ -758,9 +824,9 @@ out:
     LOG(WARNING) << "Can't get SSL CTX cert store";
     goto out;
   }
-  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainSystem);
-  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
-  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
+  count += load_ca_to_x509_store_from_sec_trust_domain(store, kSecTrustSettingsDomainSystem);
+  count += load_ca_to_x509_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
+  count += load_ca_to_x509_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
 
 out:
   LOG(INFO) << "Loaded ca from SecTrust: " << count << " certificates";
@@ -768,68 +834,12 @@ out:
 #elif BUILDFLAG(IS_IOS)
   return 0;
 #else
-  int count = 0;
-  // cert list copied from golang src/crypto/x509/root_unix.go
-  static const char* ca_bundle_paths[] = {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
-    "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Gentoo etc.
-    "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL
-    "/etc/ssl/ca-bundle.pem",                             // OpenSUSE
-    "/etc/pki/tls/cacert.pem",                            // OpenELEC
-    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // CentOS/RHEL 7
-    "/etc/ssl/cert.pem",                                  // Alpine Linux
-#endif
-#if BUILDFLAG(IS_BSD)
-    "/usr/local/etc/ssl/cert.pem",             // FreeBSD
-    "/etc/ssl/cert.pem",                       // OpenBSD
-    "/usr/local/share/certs/ca-root-nss.crt",  // DragonFly
-    "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
-#endif
-#if BUILDFLAG(IS_SOLARIS)
-    "/etc/certs/ca-certificates.crt",      // Solaris 11.2+
-    "/etc/ssl/certs/ca-certificates.crt",  // Joyent SmartOS
-    "/etc/ssl/cacert.pem",                 // OmniOS
-#endif
-  };
-  for (auto ca_bundle : ca_bundle_paths) {
-    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      count += result;
-    }
-  }
-  static const char* ca_paths[] = {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
-    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
-    "/etc/pki/tls/certs",  // Fedora/RHEL
-#endif
-#if BUILDFLAG(IS_ANDROID)
-    "/system/etc/security/cacerts",     // Android system roots
-    "/data/misc/keychain/certs-added",  // User trusted CA folder
-#endif
-#if BUILDFLAG(IS_BSD)
-    "/etc/ssl/certs",          // FreeBSD 12.2+
-    "/usr/local/share/certs",  // FreeBSD
-    "/etc/openssl/certs",      // NetBSD
-#endif
-#if BUILDFLAG(IS_SOLARIS)
-    "/etc/certs/CA",  // Solaris
-#endif
-  };
-
-  for (auto ca_path : ca_paths) {
-    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
-      count += result;
-    }
-  }
-  return count;
+  return load_ca_to_ssl_ctx_from_unix_store(ssl_ctx);
 #endif
 }
 
-int load_ca_to_ssl_ctx_system_extra(SSL_CTX* ssl_ctx) {
-#ifdef _WIN32
+int load_ca_to_ssl_ctx_from_system_extra(SSL_CTX* ssl_ctx) {
+#if BUILDFLAG(IS_WIN)
   HCERTSTORE root_store = NULL;
   int count = 0;
 
@@ -867,7 +877,7 @@ int load_ca_to_ssl_ctx_system_extra(SSL_CTX* ssl_ctx) {
   GatherEnterpriseCertsForLocation(CERT_STORE_PROV_SYSTEM_REGISTRY_W, root_store,
                                    CERT_SYSTEM_STORE_CURRENT_USER_GROUP_POLICY, L"CA");
 
-  count = load_ca_to_ssl_store_from_schannel_store(store, root_store);
+  count = load_ca_to_x509_store_from_schannel_store(store, root_store);
 
   if (!CertCloseStore(root_store, 0)) {
     PLOG(WARNING) << "CertCloseStore() call failed";
@@ -883,8 +893,8 @@ out:
     LOG(WARNING) << "Can't get SSL CTX cert store";
     goto out;
   }
-  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
-  count += load_ca_to_ssl_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
+  count += load_ca_to_x509_store_from_sec_trust_domain(store, kSecTrustSettingsDomainAdmin);
+  count += load_ca_to_x509_store_from_sec_trust_domain(store, kSecTrustSettingsDomainUser);
 
 out:
   LOG(INFO) << "Loaded user-added ca from SecTrust: " << count << " certificates";
@@ -892,63 +902,7 @@ out:
 #elif BUILDFLAG(IS_IOS)
   return 0;
 #else
-  int count = 0;
-  // cert list copied from golang src/crypto/x509/root_unix.go
-  static const char* ca_bundle_paths[] = {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
-    "/etc/ssl/certs/ca-certificates.crt",                 // Debian/Ubuntu/Gentoo etc.
-    "/etc/pki/tls/certs/ca-bundle.crt",                   // Fedora/RHEL
-    "/etc/ssl/ca-bundle.pem",                             // OpenSUSE
-    "/etc/pki/tls/cacert.pem",                            // OpenELEC
-    "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem",  // CentOS/RHEL 7
-    "/etc/ssl/cert.pem",                                  // Alpine Linux
-#endif
-#if BUILDFLAG(IS_BSD)
-    "/usr/local/etc/ssl/cert.pem",             // FreeBSD
-    "/etc/ssl/cert.pem",                       // OpenBSD
-    "/usr/local/share/certs/ca-root-nss.crt",  // DragonFly
-    "/etc/openssl/certs/ca-certificates.crt",  // NetBSD
-#endif
-#if BUILDFLAG(IS_SOLARIS)
-    "/etc/certs/ca-certificates.crt",      // Solaris 11.2+
-    "/etc/ssl/certs/ca-certificates.crt",  // Joyent SmartOS
-    "/etc/ssl/cacert.pem",                 // OmniOS
-#endif
-  };
-  for (auto ca_bundle : ca_bundle_paths) {
-    int result = load_ca_to_ssl_ctx_bundle(ssl_ctx, ca_bundle);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca bundle from: " << ca_bundle << " with " << result << " certificates";
-      count += result;
-    }
-  }
-  static const char* ca_paths[] = {
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_OHOS)
-    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
-    "/etc/pki/tls/certs",  // Fedora/RHEL
-#endif
-#if BUILDFLAG(IS_ANDROID)
-    "/system/etc/security/cacerts",     // Android system roots
-    "/data/misc/keychain/certs-added",  // User trusted CA folder
-#endif
-#if BUILDFLAG(IS_BSD)
-    "/etc/ssl/certs",          // FreeBSD 12.2+
-    "/usr/local/share/certs",  // FreeBSD
-    "/etc/openssl/certs",      // NetBSD
-#endif
-#if BUILDFLAG(IS_SOLARIS)
-    "/etc/certs/CA",  // Solaris
-#endif
-  };
-
-  for (auto ca_path : ca_paths) {
-    int result = load_ca_to_ssl_ctx_path(ssl_ctx, ca_path);
-    if (result > 0) {
-      LOG(INFO) << "Loaded ca from directory: " << ca_path << " with " << result << " certificates";
-      count += result;
-    }
-  }
-  return count;
+  return load_ca_to_ssl_ctx_from_unix_store(ssl_ctx);
 #endif
 }
 
@@ -971,7 +925,7 @@ void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx) {
     goto done;
   }
 
-  load_ca_to_ssl_ctx_system_extra(ssl_ctx);
+  load_ca_to_ssl_ctx_from_system_extra(ssl_ctx);
   {
     std::string_view ca_bundle_content(_binary_ca_bundle_crt_start,
                                        _binary_ca_bundle_crt_end - _binary_ca_bundle_crt_start);

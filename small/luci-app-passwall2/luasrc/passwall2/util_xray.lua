@@ -264,7 +264,8 @@ function gen_outbound(flag, node, tag, proxy_table)
 								level = 0,
 								security = (node.protocol == "vmess") and node.security or nil,
 								encryption = node.encryption or "none",
-								flow = (node.protocol == "vless" and node.tls == '1' and node.flow) and node.flow or nil
+								flow = (node.protocol == "vless" and node.tls == "1" and (node.transport == "raw" or node.transport == "tcp") and node.flow and node.flow ~= "") and node.flow or nil
+
 							}
 						}
 					}
@@ -367,7 +368,7 @@ function gen_config_server(node)
 			for i = 1, #node.uuid do
 				clients[i] = {
 					id = node.uuid[i],
-					flow = ("vless" == node.protocol and "1" == node.tls and node.flow) and node.flow or nil
+					flow = ("vless" == node.protocol and "1" == node.tls and "raw" == node.transport and node.flow and node.flow ~= "") and node.flow or nil
 				}
 			end
 			settings = {
@@ -561,11 +562,11 @@ function gen_config_server(node)
 						path = node.httpupgrade_path or "/",
 						host = node.httpupgrade_host
 					} or nil,
-					splithttpSettings = (node.transport == "splithttp") and {
-						path = node.splithttp_path or "/",
-						host = node.splithttp_host,
-						maxUploadSize = node.splithttp_maxuploadsize,
-						maxConcurrentUploads = node.splithttp_maxconcurrentuploads
+					xhttpSettings = (node.transport == "xhttp") and {
+						path = node.xhttp_path or "/",
+						host = node.xhttp_host,
+						maxUploadSize = node.xhttp_maxuploadsize,
+						maxConcurrentUploads = node.xhttp_maxconcurrentuploads
 					} or nil,
 					sockopt = {
 						acceptProxyProtocol = (node.acceptProxyProtocol and node.acceptProxyProtocol == "1") and true or false
@@ -781,13 +782,15 @@ function gen_config(var)
 		if #valid_nodes == 0 then return nil end
 
 		-- fallback node
+		local fallback_node_tag = nil
 		local fallback_node_id = _node.fallback_node
-		if fallback_node_id == "" then fallback_node_id = nil end
+		if fallback_node_id == "" or fallback_node_id == "nil" then fallback_node_id = nil end
 		if fallback_node_id then
 			local is_new_node = true
 			for _, outbound in ipairs(outbounds) do
-				if outbound.tag == fallback_node_id then
+				if outbound.tag:find("^" .. fallback_node_id) == 1 then
 					is_new_node = false
+					fallback_node_tag = outbound.tag
 					break
 				end
 			end
@@ -798,12 +801,7 @@ function gen_config(var)
 					if outbound then
 						outbound.tag = outbound.tag .. ":" .. fallback_node.remarks
 						table.insert(outbounds, outbound)
-					else
-						fallback_node_id = nil
-					end
-				else
-					if not gen_balancer(fallback_node) then
-						fallback_node_id = nil
+						fallback_node_tag = outbound.tag
 					end
 				end
 			end
@@ -811,10 +809,10 @@ function gen_config(var)
 		table.insert(balancers, {
 			tag = balancer_tag,
 			selector = valid_nodes,
-			fallbackTag = fallback_node_id,
+			fallbackTag = fallback_node_tag,
 			strategy = { type = _node.balancingStrategy or "random" }
 		})
-		if _node.balancingStrategy == "leastPing" or fallback_node_id then
+		if _node.balancingStrategy == "leastPing" or fallback_node_tag then
 			if not observatory then
 				observatory = {
 					subjectSelector = { "blc-" },
@@ -1366,7 +1364,7 @@ function gen_config(var)
 		end
 	
 		local default_dns_flag = "remote"
-		if not COMMON.default_outbound_tag or COMMON.default_outbound_tag == "direct" then
+		if (not COMMON.default_balancer_tag and not COMMON.default_outbound_tag) or COMMON.default_outbound_tag == "direct" then
 			default_dns_flag = "direct"
 		end
 	

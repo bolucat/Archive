@@ -2,6 +2,7 @@ package com.v2ray.ang.fmt
 
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.EConfigType
+import com.v2ray.ang.dto.NetworkType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean
 import com.v2ray.ang.extension.idnHost
@@ -22,37 +23,14 @@ object TrojanFmt : FmtBase() {
         config.password = uri.userInfo
 
         if (uri.rawQuery.isNullOrEmpty()) {
-            config.network = "tcp"
+            config.network = NetworkType.TCP.type
             config.security = AppConfig.TLS
             config.insecure = allowInsecure
         } else {
             val queryParam = getQueryParam(uri)
 
-            config.network = queryParam["type"] ?: "tcp"
-            config.headerType = queryParam["headerType"]
-            config.host = queryParam["host"]
-            config.path = queryParam["path"]
-
-            config.seed = queryParam["seed"]
-            config.quicSecurity = queryParam["quicSecurity"]
-            config.quicKey = queryParam["key"]
-            config.mode = queryParam["mode"]
-            config.serviceName = queryParam["serviceName"]
-            config.authority = queryParam["authority"]
-
+            getItemFormQuery(config, queryParam, allowInsecure)
             config.security = queryParam["security"] ?: AppConfig.TLS
-            config.insecure = if (queryParam["allowInsecure"].isNullOrEmpty()) {
-                allowInsecure
-            } else {
-                queryParam["allowInsecure"].orEmpty() == "1"
-            }
-            config.sni = queryParam["sni"]
-            config.fingerPrint = queryParam["fp"]
-            config.alpn = queryParam["alpn"]
-            config.publicKey = queryParam["pbk"]
-            config.shortId = queryParam["sid"]
-            config.spiderX = queryParam["spx"]
-            config.flow = queryParam["flow"]
         }
 
         return config

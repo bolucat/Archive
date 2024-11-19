@@ -124,7 +124,7 @@ jobs:
         with:
           path: |
             ${{ env.SYSROOT }}
-          key: android-sysroot-${{ matrix.arch }}-v1-with-tzdata
+          key: android-sysroot-${{ matrix.arch }}-${{ hashFiles('scripts/get-android-sys.sh') }}-v1
       - uses: actions/setup-go@v5
         with:
           go-version: '>=1.20.0'
@@ -196,10 +196,9 @@ jobs:
         if: ${{ matrix.arch == 'x86' ||  matrix.arch == 'x64' }}
         run: |
           # android sysimg doesn't like resolv.conf
-          mkdir -p $SYSROOT/sys $SYSROOT/etc/ssl/certs $SYSROOT/dev $SYSROOT/proc $SYSROOT/data/local/tmp
+          mkdir -p $SYSROOT/sys $SYSROOT/dev $SYSROOT/proc $SYSROOT/data/local/tmp
           bwrap --die-with-parent --ro-bind $SYSROOT / \
             --ro-bind /sys /sys \
-            --ro-bind /etc/ssl/certs /etc/ssl/certs \
             --proc /proc --dev /dev \
             --unshare-all --share-net \
             --bind $PWD/build-android${{ matrix.apilevel }}-${{ matrix.arch }} /data/local/tmp \

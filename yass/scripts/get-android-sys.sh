@@ -29,6 +29,7 @@ if [ "$WITH_ANDROID_IMG" -a ! -d out/sysroot-build/android/"$WITH_ANDROID_IMG"/s
   mkdir -p $SYSROOT/system/bin $SYSROOT/system/etc
   cp -v $WITH_ANDROID_IMG/mount/bin/linker* $SYSROOT/system/bin
   cp -v $WITH_ANDROID_IMG/mount/etc/hosts $SYSROOT/system/etc
+  cp -rv $WITH_ANDROID_IMG/mount/etc/security $SYSROOT/system/etc
   cp -rv $WITH_ANDROID_IMG/mount/lib* $SYSROOT/system
   mkdir -p $SYSROOT/system/usr/share
   cp -rv $WITH_ANDROID_IMG/mount/usr/share/zoneinfo $SYSROOT/system/usr/share/

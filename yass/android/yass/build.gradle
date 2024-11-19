@@ -2,6 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
+    namespace 'it.gui.yass'
 
     def Properties properties = new Properties()
     properties.load(project.rootProject.file("local.properties").newDataInputStream())
@@ -71,6 +72,7 @@ android {
     }
     buildFeatures {
         viewBinding true
+        dataBinding true
     }
     packagingOptions {
         jniLibs {
