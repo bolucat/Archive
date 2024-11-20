@@ -8,7 +8,6 @@
 #include "base/threading/hang_watcher.h"
 #include "base/trace_event/base_tracing.h"
 #include "build/build_config.h"
-#include "third_party/abseil-cpp/absl/base/attributes.h"
 
 namespace base {
 
@@ -35,15 +34,19 @@ std::ostream& operator<<(std::ostream& out,
 // or behaves as DCHECK in DCHECK-enabled builds. Unlike DUMP_WILL_BE_CHECK,
 // there is no intent to transform those into CHECKs. Used to report potential
 // performance issues.
-#define DUMP_OR_DCHECK DUMP_WILL_BE_CHECK
+//
+// TODO(crbug.com/363049758): This is temporarily a `DCHECK` to avoid getting a
+// lot of crash reports while known issues are being addressed. Change to
+// `DUMP_WILL_BE_CHECK` once known issues are addressed.
+#define DUMP_OR_DCHECK DCHECK
 
 namespace {
 
-ABSL_CONST_INIT thread_local BooleanWithOptionalStack tls_blocking_disallowed;
-ABSL_CONST_INIT thread_local BooleanWithOptionalStack tls_singleton_disallowed;
-ABSL_CONST_INIT thread_local BooleanWithOptionalStack
+constinit thread_local BooleanWithOptionalStack tls_blocking_disallowed;
+constinit thread_local BooleanWithOptionalStack tls_singleton_disallowed;
+constinit thread_local BooleanWithOptionalStack
     tls_base_sync_primitives_disallowed;
-ABSL_CONST_INIT thread_local BooleanWithOptionalStack
+constinit thread_local BooleanWithOptionalStack
     tls_cpu_intensive_work_disallowed;
 
 }  // namespace

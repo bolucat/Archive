@@ -597,8 +597,9 @@ int load_ca_to_ssl_ctx_from_unix_store(SSL_CTX* ssl_ctx) {
   }
   static const char* ca_paths[] = {
 #if BUILDFLAG(IS_LINUX)
-    "/etc/ssl/certs",      // SLES10/SLES11, https://golang.org/issue/12139
-    "/etc/pki/tls/certs",  // Fedora/RHEL
+    "/etc/ssl/certs",                                  // SLES10/SLES11, https://golang.org/issue/12139
+    "/etc/pki/tls/certs",                              // Fedora/RHEL
+    "/etc/pki/ca-trust/extracted/pem/directory-hash",  // Fedora/RHEL 9.5/10
 #endif
 #if BUILDFLAG(IS_OHOS)
     "/etc/ssl/certs",  // OpenHarmony

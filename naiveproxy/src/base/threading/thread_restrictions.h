@@ -217,6 +217,7 @@ class CrashUtil;
 }
 namespace chromeos {
 class BlockingMethodCaller;
+class ChromeOsCdmFactory;
 namespace system {
 bool IsCoreSchedulingAvailable();
 int NumberOfPhysicalCores();
@@ -246,12 +247,12 @@ class SandboxHostLinux;
 class ScopedAllowWaitForDebugURL;
 class ServiceWorkerContextClient;
 class ShellPathProvider;
+class SlowWebPreferenceCache;
 class SynchronousCompositor;
 class SynchronousCompositorHost;
 class SynchronousCompositorSyncCallBridge;
 class ScopedAllowBlockingForViewAura;
 class TextInputClientMac;
-class WebContentsImpl;
 class WebContentsViewMac;
 base::File CreateFileForDrop(base::FilePath*);
 }  // namespace content
@@ -298,6 +299,9 @@ namespace init {
 bool InitializeStaticGLBindings(GLImplementationParts);
 }
 }  // namespace gl
+namespace gpu {
+class GpuMemoryBufferImplDXGI;
+}
 namespace history_report {
 class HistoryReportJniBridge;
 }
@@ -657,7 +661,7 @@ class BASE_EXPORT ScopedAllowBlocking {
 #endif
 #if BUILDFLAG(IS_WIN)
   friend class base::win::OSInfo;
-  friend class content::WebContentsImpl;  // http://crbug.com/1262162
+  friend class content::SlowWebPreferenceCache;  // http://crbug.com/1262162
   friend class media::GpuMojoMediaClientWin;  // https://crbug.com/360642944
 #endif
 #if BUILDFLAG(IS_IOS)
@@ -799,6 +803,7 @@ class BASE_EXPORT ScopedAllowBaseSyncPrimitives {
   friend class android_webview::
       OverlayProcessorWebView;                     // http://crbug.com/341151462
   friend class blink::VideoFrameResourceProvider;  // http://crbug.com/878070
+  friend class chromeos::ChromeOsCdmFactory;       // http://crbug.com/368792274
   friend class viz::
       DisplayCompositorMemoryAndTaskController;  // http://crbug.com/341151462
   friend class viz::SkiaOutputSurfaceImpl;       // http://crbug.com/341151462
@@ -864,6 +869,7 @@ class BASE_EXPORT
   friend class content::SynchronousCompositor;
   friend class content::SynchronousCompositorHost;
   friend class content::SynchronousCompositorSyncCallBridge;
+  friend class gpu::GpuMemoryBufferImplDXGI;
   friend class media::AudioInputDevice;
   friend class media::AudioOutputDevice;
   friend class media::PaintCanvasVideoRenderer;

@@ -241,7 +241,6 @@ component("base") {
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
     "containers/contains.h",
-    "containers/dynamic_extent.h",
     "containers/enum_set.h",
     "containers/extend.h",
     "containers/fixed_flat_map.h",
@@ -292,6 +291,7 @@ component("base") {
     "export_template.h",
     "feature_list.cc",
     "feature_list.h",
+    "feature_visitor.h",
     "features.cc",
     "features.h",
     "file_version_info.h",
@@ -539,14 +539,14 @@ component("base") {
     "process/process_info.h",
     "process/set_process_title.cc",
     "process/set_process_title.h",
-    "profiler/call_stack_profile_params.h",
     "profiler/frame.cc",
     "profiler/frame.h",
     "profiler/metadata_recorder.cc",
     "profiler/metadata_recorder.h",
     "profiler/module_cache.cc",
     "profiler/module_cache.h",
-    "profiler/process_type.h",
+    "profiler/periodic_sampling_scheduler.cc",
+    "profiler/periodic_sampling_scheduler.h",
     "profiler/profile_builder.h",
     "profiler/register_context.h",
     "profiler/sample_metadata.cc",
@@ -1000,10 +1000,6 @@ component("base") {
       "threading/cross_process_platform_thread_delegate.h",
       "threading/platform_thread_cros.cc",
     ]
-  }
-
-  if (is_chromeos_ash) {
-    sources += [ "feature_visitor.h" ]
   }
 
   if (is_linux || is_chromeos || is_android) {
@@ -1468,6 +1464,7 @@ component("base") {
       "debug/crash_logging.h",
       "debug/stack_trace.cc",
       "debug/stack_trace.h",
+      "files/drive_info.h",
       "files/file_enumerator.cc",
       "files/file_enumerator.h",
       "files/file_proxy.cc",
@@ -1556,6 +1553,10 @@ component("base") {
         "files/file_util_posix.cc",
         "memory/page_size_posix.cc",
       ]
+
+      if (!is_apple) {
+        sources += [ "files/drive_info_posix.cc" ]
+      }
     }
 
     if ((is_posix && !is_ios) || is_fuchsia) {
@@ -1660,6 +1661,7 @@ component("base") {
       "enterprise_util_win.cc",
       "file_version_info_win.cc",
       "file_version_info_win.h",
+      "files/drive_info_win.cc",
       "files/file_enumerator_win.cc",
       "files/file_path_watcher_win.cc",
       "files/file_util_win.cc",
@@ -1918,6 +1920,7 @@ component("base") {
       "apple/scoped_typeref.h",
       "file_version_info_apple.h",
       "file_version_info_apple.mm",
+      "files/drive_info_apple.mm",
       "files/file_util_apple.mm",
       "memory/platform_shared_memory_mapper_apple.cc",
       "memory/platform_shared_memory_region_apple.cc",
@@ -1944,6 +1947,8 @@ component("base") {
   # Desktop Mac.
   if (is_mac) {
     sources += [
+      "apple/mach_port_rendezvous.cc",
+      "apple/mach_port_rendezvous.h",
       "enterprise_util.cc",
       "enterprise_util.h",
       "enterprise_util_mac.mm",
@@ -1955,6 +1960,11 @@ component("base") {
       "mac/authorization_util.h",
       "mac/authorization_util.mm",
       "mac/close_nocancel.cc",
+      "mac/code_signature.cc",
+      "mac/code_signature.h",
+      "mac/code_signature_spi.h",
+      "mac/info_plist_data.h",
+      "mac/info_plist_data.mm",
       "mac/launch_application.h",
       "mac/launch_application.mm",
       "mac/launch_services_spi.h",
@@ -1964,10 +1974,10 @@ component("base") {
       "mac/login_util.h",
       "mac/mac_util.h",
       "mac/mac_util.mm",
-      "mac/mach_port_rendezvous.cc",
-      "mac/mach_port_rendezvous.h",
       "mac/os_crash_dumps.cc",
       "mac/os_crash_dumps.h",
+      "mac/process_requirement.cc",
+      "mac/process_requirement.h",
       "mac/scoped_aedesc.h",
       "mac/scoped_authorizationref.h",
       "mac/scoped_authorizationref.mm",
@@ -2015,6 +2025,7 @@ component("base") {
       "ApplicationServices.framework",
       "AppKit.framework",
       "CoreFoundation.framework",
+      "DiskArbitration.framework",
       "IOKit.framework",
       "OpenDirectory.framework",
     ]
@@ -2052,12 +2063,12 @@ component("base") {
 
     if (use_blink) {
       sources += [
+        "apple/mach_port_rendezvous.cc",
+        "apple/mach_port_rendezvous.h",
         "files/file_path_watcher_kqueue.cc",
         "files/file_path_watcher_kqueue.h",
         "files/file_path_watcher_mac.cc",
         "ios/sim_header_shims.h",
-        "mac/mach_port_rendezvous.cc",
-        "mac/mach_port_rendezvous.h",
         "process/kill_ios.cc",
         "process/memory_mac.mm",
         "process/port_provider_mac.cc",

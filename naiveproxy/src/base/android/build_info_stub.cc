@@ -66,7 +66,8 @@ BuildInfo::BuildInfo(const std::vector<std::string>& params)
       vulkan_deqp_level_(0),
       is_foldable_(false),
       soc_manufacturer_(""),
-      is_debug_app_(false) {}
+      is_debug_app_(false),
+      is_desktop_(false) {}
 
 // static
 BuildInfo* BuildInfo::GetInstance() {
