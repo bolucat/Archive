@@ -1,12 +1,12 @@
 use std::{
     net::{IpAddr, SocketAddr},
-    sync::{Arc, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use rustls::{
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
-    ClientConfig,
-    crypto::ring::default_provider, DigitallySignedStruct, Error, RootCertStore, SignatureScheme,
+    crypto::ring::default_provider,
+    ClientConfig, DigitallySignedStruct, Error, RootCertStore, SignatureScheme,
 };
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio::{
@@ -94,6 +94,8 @@ fn prepare_tls_config() -> Arc<ClientConfig> {
 
 async fn async_run() -> Result<()> {
     log::info!("insecure:{}", OPTIONS.proxy_args().insecure);
+    let address = OPTIONS.proxy_args().server_addr().await?;
+    log::info!("server address: {}", address);
     let addr: SocketAddr = OPTIONS.local_addr.parse()?;
     let tcp_listener = TcpListener::from_std(new_socket(addr, false)?.into())?;
     let udp_listener = UdpSocket::from_std(new_socket(addr, true)?.into())?;
@@ -191,12 +193,8 @@ pub async fn init_tls_conn(
     connector: TlsConnector,
     server_name: ServerName<'static>,
 ) -> types::Result<TlsStream<TcpStream>> {
-    let ips: Vec<_> = lookup_host((
-        OPTIONS.proxy_args().hostname.as_str(),
-        OPTIONS.proxy_args().port,
-    ))
-    .await?
-    .collect();
+    let ip = OPTIONS.proxy_args().server_addr().await?;
+    log::info!("get server addr:{}", ip);
     #[cfg(target_os = "linux")]
     {
         let mut proxy_data = OPTIONS
@@ -206,16 +204,14 @@ pub async fn init_tls_conn(
             .unwrap()
             .lock()
             .await;
-        for ip in &ips {
-            if !proxy_data.server_ips.contains(&ip.ip()) {
-                proxy_data.server_ips.push(ip.ip());
-                if let Err(err) = proxy_data.bypass_session.add(ip.ip(), vec![]) {
-                    log::error!("add ip:{} to session failed:{}", ip, err);
-                }
+        if !proxy_data.server_ips.contains(&ip.ip()) {
+            proxy_data.server_ips.push(ip.ip());
+            if let Err(err) = proxy_data.bypass_session.add(ip.ip(), vec![]) {
+                log::error!("add ip:{} to session failed:{}", ip, err);
             }
         }
     }
-    let stream = tokio::net::TcpStream::connect(ips.as_slice()).await?;
+    let stream = tokio::net::TcpStream::connect(ip).await?;
     let conn = connector.connect(server_name, stream).await?;
     Ok(conn)
 }

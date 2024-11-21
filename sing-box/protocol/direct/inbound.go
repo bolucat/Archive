@@ -68,7 +68,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (i *Inbound) Start() error {
+func (i *Inbound) Start(stage adapter.StartStage) error {
+	if stage != adapter.StartStateStart {
+		return nil
+	}
 	return i.listener.Start()
 }
 
@@ -83,7 +86,7 @@ func (i *Inbound) NewPacketEx(buffer *buf.Buffer, source M.Socksaddr) {
 		destination = i.overrideDestination
 	case 2:
 		destination = i.overrideDestination
-		destination.Port = source.Port
+		destination.Port = i.listener.UDPAddr().Port
 	case 3:
 		destination = source
 		destination.Port = i.overrideDestination.Port
