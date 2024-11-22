@@ -10,7 +10,6 @@ type WireGuardEndpointOptions struct {
 	System     bool                             `json:"system,omitempty"`
 	Name       string                           `json:"name,omitempty"`
 	MTU        uint32                           `json:"mtu,omitempty"`
-	GSO        bool                             `json:"gso,omitempty"`
 	Address    badoption.Listable[netip.Prefix] `json:"address"`
 	PrivateKey string                           `json:"private_key"`
 	ListenPort uint16                           `json:"listen_port,omitempty"`
@@ -26,7 +25,7 @@ type WireGuardPeer struct {
 	PublicKey                   string                           `json:"public_key,omitempty"`
 	PreSharedKey                string                           `json:"pre_shared_key,omitempty"`
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
-	PersistentKeepaliveInterval badoption.Duration               `json:"persistent_keepalive_interval,omitempty"`
+	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
 	Reserved                    []uint8                          `json:"reserved,omitempty"`
 }
 

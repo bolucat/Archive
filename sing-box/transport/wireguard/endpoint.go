@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -54,11 +53,9 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 			allowedIPs: rawPeer.AllowedIPs,
 			keepalive:  rawPeer.PersistentKeepaliveInterval,
 		}
-		if !rawPeer.Endpoint.IsValid() {
-			return nil, E.New("invalid endpoint for peer ", peerIndex, ": ", rawPeer.Endpoint)
-		} else if rawPeer.Endpoint.Addr.IsValid() {
+		if rawPeer.Endpoint.Addr.IsValid() {
 			peer.endpoint = rawPeer.Endpoint.AddrPort()
-		} else {
+		} else if rawPeer.Endpoint.IsFqdn() {
 			peer.destination = rawPeer.Endpoint
 		}
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(rawPeer.PublicKey)
@@ -107,7 +104,6 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 		CreateDialer:   options.CreateDialer,
 		Name:           options.Name,
 		MTU:            options.MTU,
-		GSO:            options.GSO,
 		Address:        options.Address,
 		AllowedAddress: allowedAddresses,
 	}
@@ -126,13 +122,13 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 
 func (e *Endpoint) Start(resolve bool) error {
 	if common.Any(e.peers, func(peer peerConfig) bool {
-		return !peer.endpoint.IsValid()
+		return !peer.endpoint.IsValid() && peer.destination.IsFqdn()
 	}) {
 		if !resolve {
 			return nil
 		}
 		for peerIndex, peer := range e.peers {
-			if peer.endpoint.IsValid() {
+			if peer.endpoint.IsValid() || !peer.destination.IsFqdn() {
 				continue
 			}
 			destinationAddress, err := e.options.ResolvePeer(peer.destination.Fqdn)
@@ -235,13 +231,15 @@ type peerConfig struct {
 	publicKeyHex    string
 	preSharedKeyHex string
 	allowedIPs      []netip.Prefix
-	keepalive       time.Duration
+	keepalive       uint16
 	reserved        [3]uint8
 }
 
 func (c peerConfig) GenerateIpcLines() string {
 	ipcLines := "\npublic_key=" + c.publicKeyHex
-	ipcLines += "\nendpoint=" + c.endpoint.String()
+	if c.endpoint.IsValid() {
+		ipcLines += "\nendpoint=" + c.endpoint.String()
+	}
 	if c.preSharedKeyHex != "" {
 		ipcLines += "\npreshared_key=" + c.preSharedKeyHex
 	}
@@ -249,7 +247,7 @@ func (c peerConfig) GenerateIpcLines() string {
 		ipcLines += "\nallowed_ip=" + allowedIP.String()
 	}
 	if c.keepalive > 0 {
-		ipcLines += "\npersistent_keepalive_interval=" + F.ToString(int(c.keepalive.Seconds()))
+		ipcLines += "\npersistent_keepalive_interval=" + F.ToString(c.keepalive)
 	}
 	return ipcLines
 }

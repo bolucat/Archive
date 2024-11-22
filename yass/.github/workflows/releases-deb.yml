@@ -118,7 +118,9 @@ jobs:
       - name: Populate dependencies (deboostrap update for trixie fix)
         if: ${{ matrix.distro == 'trixie' }}
         run: |
-          curl -L -O http://mirrors.kernel.org/ubuntu/pool/main/d/debootstrap/debootstrap_1.0.132ubuntu1_all.deb
+          # TODO remove this once when moved to ubuntu 24.04
+          # from https://launchpad.net/ubuntu/noble/amd64/debootstrap
+          curl -L -O http://azure.archive.ubuntu.com/ubuntu/pool/main/d/debootstrap/debootstrap_1.0.134ubuntu1_all.deb
           sudo apt-get update -qq && sudo apt-get install -f -y $PWD/debootstrap*.deb
           rm -f *.deb
       - name: Copy sbuilrc

@@ -58,6 +58,13 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 	outbounds := m.outbounds
 	m.access.Unlock()
 	if stage == adapter.StartStateStart {
+		if m.defaultTag != "" && m.defaultOutbound == nil {
+			defaultEndpoint, loaded := m.endpoint.Get(m.defaultTag)
+			if !loaded {
+				return E.New("default outbound not found: ", m.defaultTag)
+			}
+			m.defaultOutbound = defaultEndpoint
+		}
 		return m.startOutbounds(append(outbounds, common.Map(m.endpoint.Endpoints(), func(it adapter.Endpoint) adapter.Outbound { return it })...))
 	} else {
 		for _, outbound := range outbounds {

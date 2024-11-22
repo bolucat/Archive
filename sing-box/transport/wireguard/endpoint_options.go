@@ -21,7 +21,6 @@ type EndpointOptions struct {
 	CreateDialer func(interfaceName string) N.Dialer
 	Name         string
 	MTU          uint32
-	GSO          bool
 	Address      []netip.Prefix
 	PrivateKey   string
 	ListenPort   uint16
@@ -35,6 +34,6 @@ type PeerOptions struct {
 	PublicKey                   string
 	PreSharedKey                string
 	AllowedIPs                  []netip.Prefix
-	PersistentKeepaliveInterval time.Duration
+	PersistentKeepaliveInterval uint16
 	Reserved                    []uint8
 }

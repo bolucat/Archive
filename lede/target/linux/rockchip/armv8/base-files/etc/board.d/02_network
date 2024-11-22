@@ -31,6 +31,7 @@ rockchip_setup_interfaces()
 		;;
 	armsom,sige1|\
 	armsom,sige3|\
+	armsom,sige5|\
 	armsom,sige7|\
 	fastrhino,r66s|\
 	firefly,rk3568-roc-pc|\
@@ -38,6 +39,7 @@ rockchip_setup_interfaces()
 	friendlyarm,nanopi-r5c|\
 	friendlyarm,nanopc-t6|\
 	hinlink,opc-h28k|\
+	mmbox,anas3035|\
 	radxa,e20c|\
 	radxa,e25|\
 	seewo,sv21|\
@@ -115,6 +117,7 @@ rockchip_setup_macs()
 	hinlink,opc-h66k|\
 	hinlink,opc-h68k|\
 	hinlink,opc-h69k|\
+	mmbox,anas3035|\
 	rocktech,mpc1903|\
 	rumu3f,fine-3399|\
 	seewo,srcm3588-*|\
@@ -125,6 +128,7 @@ rockchip_setup_macs()
 		;;
 	armsom,sige1|\
 	armsom,sige3|\
+	armsom,sige5|\
 	armsom,sige7|\
 	widora,mangopi-m28k|\
 	widora,mangopi-m28k-pro)
