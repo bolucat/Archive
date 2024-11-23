@@ -47,6 +47,7 @@
         public const string ClashMixinYaml = NamespaceSample + "clash_mixin_yaml";
         public const string ClashTunYaml = NamespaceSample + "clash_tun_yaml";
         public const string LinuxAutostartConfig = NamespaceSample + "linux_autostart_config";
+        public const string PacFileName = NamespaceSample + "pac";
 
         public const string DefaultSecurity = "auto";
         public const string DefaultNetwork = "tcp";
@@ -179,7 +180,7 @@
         public static readonly List<string> SsSecuritiesInXray = new() { "aes-256-gcm", "aes-128-gcm", "chacha20-poly1305", "chacha20-ietf-poly1305", "xchacha20-poly1305", "xchacha20-ietf-poly1305", "none", "plain", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305" };
         public static readonly List<string> SsSecuritiesInSingbox = new() { "aes-256-gcm", "aes-192-gcm", "aes-128-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305", "none", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305", "aes-128-ctr", "aes-192-ctr", "aes-256-ctr", "aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "rc4-md5", "chacha20-ietf", "xchacha20" };
         public static readonly List<string> Flows = new() { "", "xtls-rprx-vision", "xtls-rprx-vision-udp443" };
-        public static readonly List<string> Networks = new() { "tcp", "kcp", "ws", "httpupgrade", "xhttp", "splithttp", "h2", "quic", "grpc" };
+        public static readonly List<string> Networks = new() { "tcp", "kcp", "ws", "httpupgrade", "xhttp", "h2", "quic", "grpc" };
         public static readonly List<string> KcpHeaderTypes = new() { "srtp", "utp", "wechat-video", "dtls", "wireguard" };
         public static readonly List<string> CoreTypes = new() { "v2fly", "Xray", "sing_box" };
         public static readonly List<string> CoreTypes4VLESS = new() { "Xray", "sing_box" };

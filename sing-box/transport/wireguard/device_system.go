@@ -114,7 +114,7 @@ func (w *systemDevice) Read(bufs [][]byte, sizes []int, offset int) (count int, 
 
 func (w *systemDevice) Write(bufs [][]byte, offset int) (count int, err error) {
 	if w.batchDevice != nil {
-		return 0, w.batchDevice.BatchWrite(bufs, offset)
+		return w.batchDevice.BatchWrite(bufs, offset)
 	} else {
 		for _, packet := range bufs {
 			if tun.PacketOffset > 0 {

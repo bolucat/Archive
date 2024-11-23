@@ -60,7 +60,7 @@ func (w *systemStackDevice) Write(bufs [][]byte, offset int) (count int, err err
 			}
 		}
 		if len(w.writeBufs) > 0 {
-			return 0, w.batchDevice.BatchWrite(bufs, offset)
+			return w.batchDevice.BatchWrite(bufs, offset)
 		}
 	} else {
 		for _, packet := range bufs {
