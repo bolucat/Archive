@@ -6,11 +6,14 @@ import (
 	"net"
 	"net/netip"
 	"sync/atomic"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
+	"github.com/sagernet/sing/common/canceler"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -79,39 +82,34 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source io.Reader
 		if cachedSrc, isCached := source.(N.CachedReader); isCached {
 			cachedBuffer := cachedSrc.ReadCached()
 			if cachedBuffer != nil {
-				if !cachedBuffer.IsEmpty() {
-					dataLen := cachedBuffer.Len()
-					for _, counter := range readCounters {
-						counter(int64(dataLen))
-					}
-					_, err := destination.Write(cachedBuffer.Bytes())
-					if err != nil {
-						m.logger.ErrorContext(ctx, "connection upload payload: ", err)
-						cachedBuffer.Release()
-						if done.Swap(true) {
-							if onClose != nil {
-								onClose(err)
-							}
-							common.Close(source, destination)
-						}
-						return
-					}
-					for _, counter := range writeCounters {
-						counter(int64(dataLen))
-					}
-				}
+				dataLen := cachedBuffer.Len()
+				_, err := destination.Write(cachedBuffer.Bytes())
 				cachedBuffer.Release()
-				continue
+				if err != nil {
+					m.logger.ErrorContext(ctx, "connection upload payload: ", err)
+					if done.Swap(true) {
+						if onClose != nil {
+							onClose(err)
+						}
+					}
+					common.Close(source, destination)
+					return
+				}
+				for _, counter := range readCounters {
+					counter(int64(dataLen))
+				}
+				for _, counter := range writeCounters {
+					counter(int64(dataLen))
+				}
 			}
+			continue
 		}
 		break
 	}
-	var (
-		dstDuplex bool
-		err       error
-	)
-	_, err = bufio.CopyWithCounters(destination, source, originSource, readCounters, writeCounters)
-	if _, dstDuplex = common.Cast[N.WriteCloser](destination); dstDuplex && err == nil {
+	_, err := bufio.CopyWithCounters(destination, source, originSource, readCounters, writeCounters)
+	if err != nil {
+		common.Close(destination, source)
+	} else if _, dstDuplex := destination.(N.WriteCloser); dstDuplex {
 		N.CloseWrite(destination)
 	} else {
 		common.Close(destination)
@@ -206,6 +204,21 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 			natConn.UpdateDestination(destinationAddress)
 		}
 	}
+	var udpTimeout time.Duration
+	if metadata.UDPTimeout > 0 {
+		udpTimeout = metadata.UDPTimeout
+	} else {
+		protocol := metadata.Protocol
+		if protocol == "" {
+			protocol = C.PortProtocols[metadata.Destination.Port]
+		}
+		if protocol != "" {
+			udpTimeout = C.ProtocolTimeouts[protocol]
+		}
+	}
+	if udpTimeout > 0 {
+		ctx, conn = canceler.NewPacketConn(ctx, conn, udpTimeout)
+	}
 	destination := bufio.NewPacketConn(remotePacketConn)
 	if ctx.Done() != nil {
 		onClose = N.AppendClose(onClose, m.monitor.Add(ctx, conn))
@@ -273,11 +286,11 @@ func (m *ConnectionManager) packetConnectionCopy(ctx context.Context, source N.P
 		}
 	}
 	if !done.Swap(true) {
-		common.Close(source, destination)
 		if onClose != nil {
 			onClose(err)
 		}
 	}
+	common.Close(source, destination)
 }
 
 /*type udpHijacker struct {

@@ -1,4 +1,5 @@
-FROM nginx:stable-alpine
-WORKDIR /build
-COPY ./web /usr/share/nginx/html
+FROM busybox:latest AS builder
+WORKDIR /
+COPY ./web /usr/share/v2raya-web
+ENTRYPOINT ["/bin/httpd", "-f", "-h", "/usr/share/v2raya-web", "-p", "80"]
 EXPOSE 80

@@ -2,6 +2,19 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-alpha.23
+
+* Fixes and improvements
+
+#### 1.11.0-alpha.22
+
+* Add UDP timeout route option **1**
+* Fixes and improvements
+
+**1**:
+
+See [Rule Action](/configuration/route/rule_action/#udp_timeout).
+
 #### 1.11.0-alpha.20
 
 * Add UDP GSO support for WireGuard

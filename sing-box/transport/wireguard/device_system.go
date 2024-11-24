@@ -71,6 +71,7 @@ func (w *systemDevice) Start() error {
 		Inet6RouteAddress: common.Filter(w.options.AllowedAddress, func(it netip.Prefix) bool { return it.Addr().Is6() }),
 		InterfaceMonitor:  networkManager.InterfaceMonitor(),
 		InterfaceFinder:   networkManager.InterfaceFinder(),
+		Logger:            w.options.Logger,
 	}
 	// works with Linux, macOS with IFSCOPE routes, not tested on Windows
 	if runtime.GOOS == "darwin" {
