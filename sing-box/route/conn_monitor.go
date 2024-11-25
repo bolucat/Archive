@@ -68,6 +68,9 @@ func (m *ConnectionMonitor) Close() error {
 	m.access.Lock()
 	defer m.access.Unlock()
 	close(m.reloadChan)
+	for element := m.connections.Front(); element != nil; element = element.Next() {
+		element.Value.closer.Close()
+	}
 	return nil
 }
 
@@ -96,6 +99,7 @@ func (m *ConnectionMonitor) monitor() {
 		if len(selectCases) < m.connections.Len()+1 {
 			selectCases = make([]reflect.SelectCase, 0, m.connections.Len()+1)
 		}
+		elements = elements[:0]
 		selectCases = selectCases[:1]
 		selectCases[0] = rootCase
 		for element := m.connections.Front(); element != nil; element = element.Next() {

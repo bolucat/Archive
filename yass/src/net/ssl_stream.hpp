@@ -39,16 +39,12 @@ class ssl_stream : public stream {
              bool https_fallback,
              SSL_CTX* ssl_ctx)
       : stream(io_context, host_ips, host_sni, port, channel),
-        https_fallback_(https_fallback),
         enable_tls_(true),
-        ssl_socket_(SSLSocket::Create(ssl_socket_data_index,
-                                      ssl_client_session_cache,
-                                      &io_context,
-                                      &socket_,
-                                      ssl_ctx,
-                                      https_fallback,
-                                      host_sni,
-                                      port)) {}
+        ssl_socket_data_index_(ssl_socket_data_index),
+        ssl_client_session_cache_(ssl_client_session_cache),
+        ssl_ctx_(ssl_ctx),
+        https_fallback_(https_fallback),
+        ssl_socket_(nullptr) {}
 
   ~ssl_stream() override {}
 
@@ -72,7 +68,11 @@ class ssl_stream : public stream {
 
   void s_close(asio::error_code& ec) override {
     ec = asio::error_code();
-    ssl_socket_->Disconnect();
+    if (ssl_socket_) {
+      ssl_socket_->Disconnect();
+    } else {
+      stream::s_close(ec);
+    }
   }
 
   void on_async_connected(Channel* channel, asio::error_code ec) override {
@@ -81,6 +81,8 @@ class ssl_stream : public stream {
       return;
     }
     scoped_refptr<stream> self(this);
+    ssl_socket_ = SSLSocket::Create(ssl_socket_data_index_, ssl_client_session_cache_, &io_context_, &socket_, ssl_ctx_,
+                                    https_fallback_, host_sni_, port_);
     ssl_socket_->Connect([this, channel, self](int rv) {
       if (closed_) {
         DCHECK(!user_connect_callback_);
@@ -89,7 +91,7 @@ class ssl_stream : public stream {
       asio::error_code ec;
       if (rv < 0) {
         ec = asio::error::connection_refused;
-        on_async_connected(channel, ec);
+        stream::on_async_connected(channel, ec);
         return;
       }
 
@@ -124,8 +126,13 @@ class ssl_stream : public stream {
   }
 
  private:
-  bool https_fallback_;
   const bool enable_tls_;
+
+  const int ssl_socket_data_index_;
+  SSLClientSessionCache* const ssl_client_session_cache_;
+  SSL_CTX* const ssl_ctx_;
+
+  bool https_fallback_;
   scoped_refptr<SSLSocket> ssl_socket_;
 };
 

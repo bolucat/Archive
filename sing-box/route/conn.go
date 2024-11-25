@@ -34,7 +34,10 @@ func NewConnectionManager(logger logger.ContextLogger) *ConnectionManager {
 	}
 }
 
-func (m *ConnectionManager) Start() error {
+func (m *ConnectionManager) Start(stage adapter.StartStage) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
 	return m.monitor.Start()
 }
 
@@ -75,6 +78,7 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 
 func (m *ConnectionManager) connectionCopy(ctx context.Context, source io.Reader, destination io.Writer, direction bool, done *atomic.Bool, onClose N.CloseHandlerFunc) {
 	originSource := source
+	originDestination := destination
 	var readCounters, writeCounters []N.CountFunc
 	for {
 		source, readCounters = N.UnwrapCountReader(source, readCounters)
@@ -92,7 +96,7 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source io.Reader
 							onClose(err)
 						}
 					}
-					common.Close(source, destination)
+					common.Close(originSource, originDestination)
 					return
 				}
 				for _, counter := range readCounters {
@@ -108,17 +112,20 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source io.Reader
 	}
 	_, err := bufio.CopyWithCounters(destination, source, originSource, readCounters, writeCounters)
 	if err != nil {
-		common.Close(destination, source)
-	} else if _, dstDuplex := destination.(N.WriteCloser); dstDuplex {
-		N.CloseWrite(destination)
+		common.Close(originSource, originDestination)
+	} else if duplexDst, isDuplex := destination.(N.WriteCloser); isDuplex {
+		err = duplexDst.CloseWrite()
+		if err != nil {
+			common.Close(originSource, originDestination)
+		}
 	} else {
-		common.Close(destination)
+		common.Close(originDestination)
 	}
 	if done.Swap(true) {
 		if onClose != nil {
 			onClose(err)
 		}
-		common.Close(source, destination)
+		common.Close(originSource, originDestination)
 	}
 	if !direction {
 		if err == nil {
@@ -220,10 +227,10 @@ func (m *ConnectionManager) NewPacketConnection(ctx context.Context, this N.Dial
 		ctx, conn = canceler.NewPacketConn(ctx, conn, udpTimeout)
 	}
 	destination := bufio.NewPacketConn(remotePacketConn)
+	var done atomic.Bool
 	if ctx.Done() != nil {
 		onClose = N.AppendClose(onClose, m.monitor.Add(ctx, conn))
 	}
-	var done atomic.Bool
 	go m.packetConnectionCopy(ctx, conn, destination, false, &done, onClose)
 	go m.packetConnectionCopy(ctx, destination, conn, true, &done, onClose)
 }

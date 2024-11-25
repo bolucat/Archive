@@ -336,11 +336,11 @@ func (s *Box) preStart() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(adapter.StartStateInitialize, s.network, s.router, s.outbound, s.inbound, s.endpoint)
+	err = adapter.Start(adapter.StartStateInitialize, s.network, s.connection, s.router, s.outbound, s.inbound, s.endpoint)
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(adapter.StartStateStart, s.outbound, s.network, s.router)
+	err = adapter.Start(adapter.StartStateStart, s.outbound, s.network, s.connection, s.router)
 	if err != nil {
 		return err
 	}
@@ -364,7 +364,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(adapter.StartStatePostStart, s.outbound, s.network, s.router, s.inbound, s.endpoint)
+	err = adapter.Start(adapter.StartStatePostStart, s.outbound, s.network, s.connection, s.router, s.inbound, s.endpoint)
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(adapter.StartStateStarted, s.network, s.router, s.outbound, s.inbound, s.endpoint)
+	err = adapter.Start(adapter.StartStateStarted, s.network, s.connection, s.router, s.outbound, s.inbound, s.endpoint)
 	if err != nil {
 		return err
 	}
@@ -391,7 +391,7 @@ func (s *Box) Close() error {
 		close(s.done)
 	}
 	err := common.Close(
-		s.inbound, s.outbound, s.router, s.network,
+		s.inbound, s.outbound, s.router, s.connection, s.network,
 	)
 	for _, lifecycleService := range s.services {
 		err = E.Append(err, lifecycleService.Close(), func(err error) error {

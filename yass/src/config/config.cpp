@@ -49,6 +49,9 @@ bool ReadConfig() {
 
   config_impl->Read("doh_url", &FLAGS_doh_url);
   config_impl->Read("dot_host", &FLAGS_dot_host);
+  if (config_impl->HasKey<int32_t>("timeout")) {
+    config_impl->Read("timeout", &FLAGS_connect_timeout);
+  }
   config_impl->Read("connect_timeout", &FLAGS_connect_timeout);
   config_impl->Read("tcp_nodelay", &FLAGS_tcp_nodelay);
   config_impl->Read("limit_rate", &FLAGS_limit_rate);
@@ -123,7 +126,7 @@ bool SaveConfig() {
   static_cast<void>(config_impl->Delete("threads"));
   all_fields_written &= config_impl->Write("doh_url", FLAGS_doh_url);
   all_fields_written &= config_impl->Write("dot_host", FLAGS_dot_host);
-  all_fields_written &= config_impl->Write("timeout", FLAGS_connect_timeout);
+  static_cast<void>(config_impl->Delete("timeout"));
   all_fields_written &= config_impl->Write("connect_timeout", FLAGS_connect_timeout);
   all_fields_written &= config_impl->Write("tcp_nodelay", FLAGS_tcp_nodelay);
   all_fields_written &= config_impl->Write("limit_rate", FLAGS_limit_rate);
@@ -173,7 +176,7 @@ std::string ValidateConfig() {
   auto doh_url = absl::GetFlag(FLAGS_doh_url);
   auto dot_host = absl::GetFlag(FLAGS_dot_host);
   // auto limit_rate = absl::GetFlag(FLAGS_limit_rate);
-  // auto timeout = absl::GetFlag(FLAGS_connect_timeout);
+  auto timeout = absl::GetFlag(FLAGS_connect_timeout);
 
   // TODO validate other configurations as well
 
@@ -229,6 +232,10 @@ std::string ValidateConfig() {
     if (dot_host.size() >= TLSEXT_MAXLEN_host_name) {
       err_msg << ",Invalid DoT Host: " << dot_host;
     }
+  }
+
+  if (timeout < 0) {
+    err_msg << ",Invalid Connect Timeout: " << timeout;
   }
 
   auto ret = err_msg.str();

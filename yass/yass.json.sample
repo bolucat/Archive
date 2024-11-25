@@ -5,7 +5,7 @@
     "server": "http2.github.io",
     "server_sni": "",
     "server_port": 443,
-    "timeout": 0,
+    "connect_timeout": 2000,
     "username": "username",
     "password": "password",
     "insecure_mode": false,

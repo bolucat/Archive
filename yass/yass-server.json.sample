@@ -2,7 +2,7 @@
     "method": "http2",
     "server": "localhost",
     "server_port": 443,
-    "timeout": 0,
+    "connect_timeout": 2000,
     "username": "username",
     "password": "password",
     "private_key_file": "/etc/yass/private_key.pem",

@@ -169,6 +169,12 @@ namespace v2rayN.Desktop.Views
             {
                 tabSystemproxy.IsVisible = false;
             }
+
+            if (Utils.IsOSX())
+            {
+                togAutoRun.IsVisible = false;
+                //TODO
+            }
         }
 
         private async Task<bool> UpdateViewHandler(EViewAction action, object? obj)
@@ -202,7 +208,7 @@ namespace v2rayN.Desktop.Views
                 {
                     return lstFonts;
                 }
-                else if (Utils.IsLinux())
+                else if (Utils.IsLinux() || Utils.IsOSX())
                 {
                     var result = await Utils.GetLinuxFontFamily("zh");
                     if (result.IsNullOrEmpty())
