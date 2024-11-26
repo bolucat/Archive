@@ -970,7 +970,11 @@ int poll_error(int d, state_type state, asio::error_code& ec)
 
   pollfd fds;
   fds.fd = d;
+#ifdef POLLRDHUP
+  fds.events = POLLPRI | POLLERR | POLLHUP | POLLRDHUP;
+#else
   fds.events = POLLPRI | POLLERR | POLLHUP;
+#endif
   fds.revents = 0;
   int timeout = (state & user_set_non_blocking) ? 0 : -1;
   int result = ::poll(&fds, 1, timeout);

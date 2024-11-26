@@ -464,7 +464,7 @@ void kqueue_reactor::run(long usec, op_queue<operation>& ops)
         event_mask |= ASIO_HANDLER_REACTOR_WRITE_EVENT;
         break;
       }
-      if ((events[i].flags & (EV_ERROR | EV_OOBAND)) != 0)
+      if ((events[i].flags & (EV_ERROR | EV_EOF | EV_OOBAND)) != 0)
         event_mask |= ASIO_HANDLER_REACTOR_ERROR_EVENT;
       ASIO_HANDLER_REACTOR_EVENTS((context(),
             reinterpret_cast<uintmax_t>(ptr), event_mask));
@@ -512,7 +512,7 @@ void kqueue_reactor::run(long usec, op_queue<operation>& ops)
       {
         if (events[i].filter == filter[j])
         {
-          if (j != except_op || events[i].flags & EV_OOBAND)
+          if (j != except_op || events[i].flags & EV_OOBAND || events[i].flags & EV_EOF)
           {
             while (reactor_op* op = descriptor_data->op_queue_[j].front())
             {

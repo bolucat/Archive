@@ -171,6 +171,7 @@ void CliConnection::start() {
   upstream_writable_ = false;
   downstream_readable_ = true;
 
+  WaitStreamError();
   ReadMethodSelect();
 }
 
@@ -746,6 +747,19 @@ asio::error_code CliConnection::OnReadHttpRequest(std::shared_ptr<IOBuf> buf) {
   LOG(WARNING) << "Connection (client) " << connection_id() << " " << parser.ErrorMessage() << ": "
                << std::string(reinterpret_cast<const char*>(buf->data()), nparsed);
   return asio::error::invalid_argument;
+}
+
+void CliConnection::WaitStreamError() {
+  scoped_refptr<CliConnection> self(this);
+  downlink_->async_wait_error([this, self](asio::error_code ec) {
+    if (closed_) {
+      return;
+    }
+    if (ec == asio::error::bad_descriptor || ec == asio::error::operation_aborted) {
+      return;
+    }
+    OnDisconnect(ec);
+  });
 }
 
 void CliConnection::ReadStream(bool yield) {

@@ -71,6 +71,8 @@ class Downlink {
 
   virtual void close(asio::error_code& ec) { socket_.close(ec); }
 
+  virtual void async_wait_error(handle_t&& cb) { socket_.async_wait(asio::ip::tcp::socket::wait_error, std::move(cb)); }
+
  public:
   asio::io_context& io_context_;
   asio::ip::tcp::socket socket_;

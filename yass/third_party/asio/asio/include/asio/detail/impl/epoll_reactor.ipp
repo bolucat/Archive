@@ -168,7 +168,7 @@ int epoll_reactor::register_descriptor(socket_type descriptor,
   }
 
   epoll_event ev = { 0, { 0 } };
-  ev.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLPRI | EPOLLET;
+  ev.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLPRI | EPOLLET;
   descriptor_data->registered_events_ = ev.events;
   ev.data.ptr = descriptor_data;
   int result = epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, descriptor, &ev);
@@ -211,7 +211,7 @@ int epoll_reactor::register_internal_descriptor(
   }
 
   epoll_event ev = { 0, { 0 } };
-  ev.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLPRI | EPOLLET;
+  ev.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLPRI | EPOLLET;
   descriptor_data->registered_events_ = ev.events;
   ev.data.ptr = descriptor_data;
   int result = epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, descriptor, &ev);
@@ -530,7 +530,7 @@ void epoll_reactor::run(long usec, op_queue<operation>& ops)
         event_mask |= ASIO_HANDLER_REACTOR_READ_EVENT;
       if ((events[i].events & EPOLLOUT))
         event_mask |= ASIO_HANDLER_REACTOR_WRITE_EVENT;
-      if ((events[i].events & (EPOLLERR | EPOLLHUP)) != 0)
+      if ((events[i].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0)
         event_mask |= ASIO_HANDLER_REACTOR_ERROR_EVENT;
       ASIO_HANDLER_REACTOR_EVENTS((context(),
             reinterpret_cast<uintmax_t>(ptr), event_mask));
@@ -773,7 +773,7 @@ operation* epoll_reactor::descriptor_state::perform_io(uint32_t events)
   static const int flag[max_ops] = { EPOLLIN, EPOLLOUT, EPOLLPRI };
   for (int j = max_ops - 1; j >= 0; --j)
   {
-    if (events & (flag[j] | EPOLLERR | EPOLLHUP))
+    if (events & (flag[j] | EPOLLERR | EPOLLHUP | EPOLLRDHUP))
     {
       try_speculative_[j] = true;
       while (reactor_op* op = op_queue_[j].front())

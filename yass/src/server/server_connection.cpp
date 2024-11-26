@@ -147,6 +147,8 @@ void ServerConnection::start() {
   upstream_writable_ = false;
   downstream_readable_ = true;
 
+  WaitStreamError();
+
   scoped_refptr<ServerConnection> self(this);
   downlink_->handshake([this, self](asio::error_code ec) {
     if (closed_ || closing_) {
@@ -1072,6 +1074,19 @@ void ServerConnection::OnReadHandshakeViaSocks5() {
   }
   handshake_pending_buf_ = std::move(buf);
   WriteHandshakeResponse();
+}
+
+void ServerConnection::WaitStreamError() {
+  scoped_refptr<ServerConnection> self(this);
+  downlink_->async_wait_error([this, self](asio::error_code ec) {
+    if (closed_) {
+      return;
+    }
+    if (ec == asio::error::bad_descriptor || ec == asio::error::operation_aborted) {
+      return;
+    }
+    OnDisconnect(ec);
+  });
 }
 
 void ServerConnection::ReadStream(bool yield) {

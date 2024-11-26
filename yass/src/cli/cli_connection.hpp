@@ -278,6 +278,8 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   /// Start to read http handshake request
   asio::error_code OnReadHttpRequest(std::shared_ptr<IOBuf> buf);
 
+  /// Start wait error on stream
+  void WaitStreamError();
   /// Start to read stream
   void ReadStream(bool yield);
 

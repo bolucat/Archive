@@ -216,7 +216,7 @@ public:
       break;
     case socket_base::wait_error:
       op_type = io_uring_service::except_op;
-      poll_flags = POLLPRI | POLLERR | POLLHUP;
+      poll_flags = POLLPRI | POLLERR | POLLHUP | POLLRDHUP;
       break;
     default:
       op_type = -1;

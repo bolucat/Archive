@@ -264,6 +264,8 @@ class ServerConnection : public gurl_base::RefCountedThreadSafe<ServerConnection
   void ReadHandshakeViaSocks5();
   void OnReadHandshakeViaSocks5();
 
+  /// Start wait error on stream
+  void WaitStreamError();
   /// Start to read stream
   void ReadStream(bool yield);
   /// Write remaining buffers to stream

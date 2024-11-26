@@ -2411,7 +2411,11 @@ int poll_error(socket_type s, state_type state,
       // || defined(__SYMBIAN32__)
   pollfd fds;
   fds.fd = s;
+#ifdef POLLRDHUP
+  fds.events = POLLPRI | POLLERR | POLLHUP | POLLRDHUP;
+#else
   fds.events = POLLPRI | POLLERR | POLLHUP;
+#endif
   fds.revents = 0;
   int timeout = (state & user_set_non_blocking) ? 0 : msec;
   int result = ::poll(&fds, 1, timeout);
