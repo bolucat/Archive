@@ -42,14 +42,6 @@
 
 ABSL_FLAG(bool, ca_native, false, "Load CA certs from the OS.");
 
-std::ostream& operator<<(std::ostream& o, asio::error_code ec) {
-#if BUILDFLAG(IS_WIN)
-  return o << ec.message() << " value: " << ec.value();
-#else
-  return o << ec.message();
-#endif
-}
-
 void print_openssl_error() {
   const char* file;
   int line;

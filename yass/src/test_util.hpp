@@ -7,7 +7,7 @@
 #define _TEST_UTIL_H
 
 #include <cstring>
-#include <ostream>
+#include <iosfwd>
 
 namespace testing {
 
@@ -48,7 +48,16 @@ inline bool operator!=(const ::testing::Bytes& a, const ::testing::Bytes& b) {
   return !(a == b);
 }
 
-extern std::ostream& operator<<(std::ostream& os, ::testing::Bytes in);
+template <typename CharT, typename Traits>
+std::basic_ostream<CharT, Traits>& operator<<(std::basic_ostream<CharT, Traits>& os, ::testing::Bytes in) {
+  if (in.span_.empty()) {
+    return os << "<Empty Bytes>";
+  }
+
+  // Print a byte slice as hex.
+  os << ::testing::EncodeHex(in.span_);
+  return os;
+}
 
 }  // namespace testing
 

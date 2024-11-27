@@ -13,6 +13,10 @@
 
 #include "net/iobuf.hpp"
 
+#ifndef ASIO_NO_SSL
+#include "third_party/boringssl/src/include/openssl/ssl.h"
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma push
 // #pragma warning(pop): likely mismatch, popping warning state pushed in
@@ -33,10 +37,6 @@
 #undef _POSIX_THREADS
 #endif
 #include <asio.hpp>
-#ifndef ASIO_NO_SSL
-void print_openssl_error();
-#include "third_party/boringssl/src/include/openssl/ssl.h"
-#endif
 #include "net/asio_throw_exceptions.hpp"
 
 #pragma GCC diagnostic pop
@@ -44,8 +44,6 @@ void print_openssl_error();
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma pop
 #endif  // defined(_MSC_VER) && !defined(__clang__)
-
-extern std::ostream& operator<<(std::ostream& o, asio::error_code);
 
 /// Create a new modifiable buffer that represents the given memory range.
 /**
@@ -72,6 +70,7 @@ inline asio::ASIO_CONST_BUFFER const_buffer(const net::IOBuf& io_buf) ASIO_NOEXC
 }
 
 #ifndef ASIO_NO_SSL
+void print_openssl_error();
 void load_ca_to_ssl_ctx(SSL_CTX* ssl_ctx);
 #endif
 

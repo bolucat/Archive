@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2022 Chilledheart  */
+/* Copyright (c) 2022-2024 Chilledheart  */
 
 #include "test_util.hpp"
-
-#include <ostream>
 
 namespace testing {
 
@@ -58,16 +56,6 @@ std::string EncodeHex(span<const uint8_t> in) {
     ret += kHexDigits[b & 0xf];
   }
   return ret;
-}
-
-std::ostream& operator<<(std::ostream& os, ::testing::Bytes in) {
-  if (in.span_.empty()) {
-    return os << "<empty Bytes>";
-  }
-
-  // Print a byte slice as hex.
-  os << ::testing::EncodeHex(in.span_);
-  return os;
 }
 
 }  // namespace testing
