@@ -170,11 +170,11 @@ pub struct RxToken {
 impl phy::RxToken for RxToken {
     fn consume<R, F>(self, f: F) -> R
     where
-        F: FnOnce(&mut [u8]) -> R,
+        F: FnOnce(&[u8]) -> R,
     {
         let data: *const c_void = unsafe { (self.get_read_packet_context_data_fn)(self.context, self.read_ctx) };
         let len: c_size_t = unsafe { (self.get_read_packet_context_size_fn)(self.context, self.read_ctx) };
-        let buffer = unsafe { std::slice::from_raw_parts_mut(data as *mut u8, len as usize) };
+        let buffer = unsafe { std::slice::from_raw_parts(data as *const u8, len as usize) };
         f(buffer)
     }
 }

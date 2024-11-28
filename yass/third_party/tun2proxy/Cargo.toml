@@ -26,7 +26,7 @@ nix = { version = "0.29", default-features = false, features = [
     "user",
 ] }
 prctl = "1.0"
-smoltcp = { version = "0.11", features = ["std", "phy-tuntap_interface"] }
+smoltcp = { version = "0.12", features = ["std", "phy-tuntap_interface"] }
 socks5-impl = { version = "0.5", default-features = false }
 thiserror = "1"
 trust-dns-proto = "0.23"
@@ -66,6 +66,3 @@ wintun = { version = "0.4", features = ["panic_on_unsent_packets"] }
 
 [build-dependencies]
 serde_json = "1.0"
-
-[patch.crates-io]
-smoltcp = { path = './patch/smoltcp-0.11.0' }

@@ -76,10 +76,10 @@ commands:
             curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-defaults/golang-go_1.23~2_${BUILD_ARCH}.deb
             curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-defaults/golang-src_1.23~2_all.deb
             curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-defaults/golang-doc_1.23~2_all.deb
-            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23_1.23.1-3_all.deb
-            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-go_1.23.1-3_${BUILD_ARCH}.deb
-            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-src_1.23.1-3_all.deb
-            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-doc_1.23.1-3_all.deb
+            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23_1.23.3-2_all.deb
+            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-go_1.23.3-2_${BUILD_ARCH}.deb
+            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-src_1.23.3-2_all.deb
+            curl -O http://ftp.us.debian.org/debian/pool/main/g/golang-1.23/golang-1.23-doc_1.23.3-2_all.deb
             sudo dpkg --force-depends -i $PWD/*.deb || true
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -f
             rm -vf *.deb

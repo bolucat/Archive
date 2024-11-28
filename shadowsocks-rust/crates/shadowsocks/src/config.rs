@@ -129,7 +129,7 @@ impl FromStr for Mode {
 
 struct ModeVisitor;
 
-impl<'de> serde::de::Visitor<'de> for ModeVisitor {
+impl serde::de::Visitor<'_> for ModeVisitor {
     type Value = Mode;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -464,6 +464,8 @@ fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) -> R
         if #[cfg(any(feature = "stream-cipher", feature = "aead-cipher"))] {
             let _ = method;
             openssl_bytes_to_key(password.as_bytes(), enc_key);
+
+            Ok(())
         } else {
             // No default implementation.
             let _ = password;
@@ -471,8 +473,6 @@ fn make_derived_key(method: CipherKind, password: &str, enc_key: &mut [u8]) -> R
             unreachable!("{method} don't know how to make a derived key");
         }
     }
-
-    Ok(())
 }
 
 /// Check if method supports Extended Identity Header
@@ -1078,7 +1078,7 @@ impl Display for ServerAddr {
 
 struct ServerAddrVisitor;
 
-impl<'de> serde::de::Visitor<'de> for ServerAddrVisitor {
+impl serde::de::Visitor<'_> for ServerAddrVisitor {
     type Value = ServerAddr;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -1259,7 +1259,7 @@ impl Display for ManagerAddr {
 
 struct ManagerAddrVisitor;
 
-impl<'de> serde::de::Visitor<'de> for ManagerAddrVisitor {
+impl serde::de::Visitor<'_> for ManagerAddrVisitor {
     type Value = ManagerAddr;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

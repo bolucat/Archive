@@ -34,8 +34,8 @@ impl Default for VirtualDns {
         Self {
             next_addr: start_addr.into(),
             name_to_ip: HashMap::default(),
-            network_addr: IpAddr::from(cidr.network().address().into_address()),
-            broadcast_addr: IpAddr::from(cidr.broadcast().unwrap().into_address()),
+            network_addr: IpAddr::from(cidr.network().address()),
+            broadcast_addr: IpAddr::from(cidr.broadcast().unwrap()),
             lru_cache: LruCache::new_unbounded(),
         }
     }

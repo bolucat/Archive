@@ -10,10 +10,8 @@ use trust_dns_proto::{
     rr::{record_type::RecordType, Name, RData, Record},
 };
 
-#[cfg(feature = "use-rand")]
+#[cfg(target_os = "windows")]
 pub fn build_dns_request(domain: &str, query_type: RecordType, used_by_tcp: bool) -> Result<Vec<u8>, String> {
-    // [dependencies]
-    // rand = "0.8"
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use trust_dns_proto::op::{header::MessageType, op_code::OpCode, query::Query};
     let name = Name::from_str(domain).map_err(|e| e.to_string())?;

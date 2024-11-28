@@ -246,16 +246,11 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 	if metadata.FakeIP {
 		conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, metadata.Destination)
 	}
-	legacyOutbound, isLegacy := selectedOutbound.(adapter.PacketConnectionHandler)
-	if isLegacy {
-		err = legacyOutbound.NewPacketConnection(ctx, conn, metadata)
-		N.CloseOnHandshakeFailure(conn, onClose, err)
-		if err != nil {
-			return E.Cause(err, F.ToString("outbound/", selectedOutbound.Type(), "[", selectedOutbound.Tag(), "]"))
-		}
-		return nil
+	if outboundHandler, isHandler := selectedOutbound.(adapter.PacketConnectionHandlerEx); isHandler {
+		outboundHandler.NewPacketConnectionEx(ctx, conn, metadata, onClose)
+	} else {
+		r.connection.NewPacketConnection(ctx, selectedOutbound, conn, metadata, onClose)
 	}
-	r.connection.NewPacketConnection(ctx, selectedOutbound, conn, metadata, onClose)
 	return nil
 }
 

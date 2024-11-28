@@ -133,9 +133,9 @@ fn connection_tuple(frame: &[u8], is_closed: &mut bool) -> Result<(ConnectionInf
         let protocol = packet.next_header();
 
         let mut a = [0_u8; 4];
-        a.copy_from_slice(packet.src_addr().as_bytes());
+        a.copy_from_slice(&packet.src_addr().octets());
         let src_addr = IpAddr::from(a);
-        a.copy_from_slice(packet.dst_addr().as_bytes());
+        a.copy_from_slice(&packet.dst_addr().octets());
         let dst_addr = IpAddr::from(a);
         let header_len = packet.header_len().into();
 
@@ -154,9 +154,9 @@ fn connection_tuple(frame: &[u8], is_closed: &mut bool) -> Result<(ConnectionInf
         let protocol = packet.next_header();
 
         let mut a = [0_u8; 16];
-        a.copy_from_slice(packet.src_addr().as_bytes());
+        a.copy_from_slice(&packet.src_addr().octets());
         let src_addr = IpAddr::from(a);
-        a.copy_from_slice(packet.dst_addr().as_bytes());
+        a.copy_from_slice(&packet.dst_addr().octets());
         let dst_addr = IpAddr::from(a);
         let header_len = packet.header_len();
 
@@ -759,7 +759,7 @@ impl<'a> TunToProxy<'a> {
     }
 
     // A raw packet was received on the tunnel interface.
-    fn receive_tun(&mut self, frame: &mut [u8]) -> Result<(), Error> {
+    fn receive_tun(&mut self, frame: &[u8]) -> Result<(), Error> {
         let mut handler = || -> Result<(), Error> {
             let mut is_closed = false;
             let result = connection_tuple(frame, &mut is_closed);
