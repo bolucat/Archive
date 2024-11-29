@@ -2,9 +2,18 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-beta.3
+#### 1.11.0-beta.4
 
 * Fixes and improvements
+
+#### 1.11.0-beta.3
+
+* Add more masquerade options for hysteria2 **1**
+* Fixes and improvements
+
+**1**:
+
+See [Hysteria2](/configuration/inbound/hysteria2/#masquerade).
 
 ### 1.10.3
 

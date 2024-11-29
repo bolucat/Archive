@@ -152,7 +152,11 @@ class CheckOpResult {
   char* message_ = nullptr;
 };
 
-#if defined(OFFICIAL_BUILD) && defined(NDEBUG)
+#if defined(OFFICIAL_BUILD) && !defined(NDEBUG)
+#error "Debug builds are not expected to be optimized as official builds."
+#endif  // defined(OFFICIAL_BUILD) && !defined(NDEBUG)
+
+#if defined(OFFICIAL_BUILD) && !DCHECK_IS_ON()
 
 // Discard log strings to reduce code bloat.
 #define CHECK_OP(name, op, val1, val2) CHECK((val1)op(val2))

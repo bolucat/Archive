@@ -24,7 +24,7 @@ cat > rustc-$RUST_VER-src/config.toml.in << EOF
 
 profile = "compiler"
 # latest change id in src/bootstrap/src/utils/change_tracker.rs
-change-id = 129295
+change-id = 131075
 
 [build]
 # see https://github.com/llvm/llvm-project/issues/60115

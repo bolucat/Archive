@@ -297,10 +297,6 @@ class ServerConnection : public gurl_base::RefCountedThreadSafe<ServerConnection
   /// copy of handshake request
   ss::request request_;
 
-  /// copy of parsed connect host or host field
-  std::string http_host_;
-  /// copy of parsed connect host or host field
-  uint16_t http_port_ = 0U;
   /// copy of connect method
   bool http_is_connect_ = false;
   /// copy of connect response
@@ -349,7 +345,7 @@ class ServerConnection : public gurl_base::RefCountedThreadSafe<ServerConnection
   /// buffer of handshake header
   std::shared_ptr<IOBuf> handshake_;
   /// the queue to write upstream
-  IoQueue upstream_;
+  IoQueue<> upstream_;
   /// the flag to mark current write
   bool upstream_writable_ = false;
   /// the flag to mark current read
@@ -371,7 +367,7 @@ class ServerConnection : public gurl_base::RefCountedThreadSafe<ServerConnection
 #endif
 
   /// the queue to write downstream
-  IoQueue downstream_;
+  IoQueue<> downstream_;
   /// the flag to mark current read
   bool downstream_readable_ = false;
   /// the flag to mark current read in progress
@@ -394,7 +390,7 @@ class ServerConnection : public gurl_base::RefCountedThreadSafe<ServerConnection
 
  private:
   /// encrypt data
-  void EncryptData(IoQueue* queue, std::shared_ptr<IOBuf> plaintext);
+  void EncryptData(IoQueue<>* queue, std::shared_ptr<IOBuf> plaintext);
 
   /// encode cipher to perform data encoder for upstream
   std::unique_ptr<cipher> encoder_;

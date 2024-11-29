@@ -1,3 +1,11 @@
+---
+icon: material/alert-decagram
+---
+
+!!! quote "sing-box 1.11.0 中的更改"
+
+    :material-alert: [masquerade](#masquerade)
+
 ### 结构
 
 ```json
@@ -93,7 +101,7 @@ HTTP3 服务器认证失败时的行为 （对象配置）。
 
 | Type     | 描述      | 字段                                  |
 |----------|---------|-------------------------------------|
-| `file`   | 作为文件服务器 | `file`                              |
+| `file`   | 作为文件服务器 | `directory`                         |
 | `proxy`  | 作为反向代理  | `url`, `rewrite_host`               |
 | `string` | 返回固定响应  | `status_code`, `headers`, `content` |
 
@@ -101,7 +109,7 @@ HTTP3 服务器认证失败时的行为 （对象配置）。
 
 与 `masquerade` 冲突。
 
-#### masquerade.file
+#### masquerade.directory
 
 文件服务器根目录。
 

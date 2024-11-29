@@ -820,6 +820,10 @@ if (CMAKE_SYSTEM_PROCESSOR STREQUAL "loongarch64")
   add_definitions(-D_LOONGARCH_SZLONG=64)
 endif()
 
+if (USE_MUSL)
+  add_definitions(-D__MUSL__)
+endif()
+
 include(CrossCompile)
 # when crosscompiling import the executable targets from a file
 if (USE_HOST_TOOLS)
@@ -2424,6 +2428,7 @@ set(SUPPORT_LIBS
   absl::core_headers
   absl::flat_hash_map
   absl::flat_hash_set
+  absl::inlined_vector
   absl::flags
   absl::flags_parse
   absl::flags_marshalling
@@ -2445,6 +2450,7 @@ if (USE_LTO_CMAKE)
     absl_core_headers
     absl_flat_hash_map
     absl_flat_hash_set
+    absl_inlined_vector
     absl_flags
     absl_flags_parse
     absl_flags_marshalling

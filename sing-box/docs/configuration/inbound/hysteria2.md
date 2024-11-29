@@ -1,3 +1,11 @@
+---
+icon: material/alert-decagram
+---
+
+!!! quote "Changes in sing-box 1.11.0"
+
+    :material-alert: [masquerade](#masquerade)
+
 ### Structure
 
 ```json
@@ -96,7 +104,7 @@ HTTP3 server behavior (Object configuration) when authentication fails.
 
 | Type     | Description                 | Fields                              |
 |----------|-----------------------------|-------------------------------------|
-| `file`   | As a file server            | `file`                              |
+| `file`   | As a file server            | `directory`                         |
 | `proxy`  | As a reverse proxy          | `url`, `rewrite_host`               |
 | `string` | Reply with a fixed response | `status_code`, `headers`, `content` |
 
@@ -104,7 +112,7 @@ Conflict with `masquerade`.
 
 A 404 page will be returned if masquerade is not configured.
 
-#### masquerade.file
+#### masquerade.directory
 
 File server root directory.
 

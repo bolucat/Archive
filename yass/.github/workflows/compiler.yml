@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86]
+        arch: [x86, x64]
         crt-linkage: [dynamic]
         build_type: [Debug, RelWithDebInfo]
         winsdk_version: [10.0.22621.0]

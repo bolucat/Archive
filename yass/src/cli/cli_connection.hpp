@@ -284,10 +284,14 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   void ReadStream(bool yield);
 
   /// write method select response
-  void WriteMethodSelect();
+  void WriteMethodSelect(std::unique_ptr<socks5::method_select_response> reply);
+
   /// write handshake response
   /// \param reply the reply used to write to socket
-  void WriteHandshake();
+  void WriteHandshakeSocks5(std::unique_ptr<socks5::reply> reply);
+  void WriteHandshakeSocks4(std::unique_ptr<socks4::reply> reply);
+  void WriteHandshakeHttp();
+
   /// write to stream
   void WriteStream();
   /// write to stream (on writable event)
@@ -337,16 +341,8 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   /// copy of handshake request
   socks5::request s5_request_;
 
-  /// copy of method select response
-  socks5::method_select_response method_select_reply_;
-  /// copy of handshake response
-  socks5::reply s5_reply_;
-
   /// copy of handshake request
   socks4::request s4_request_;
-
-  /// copy of handshake response
-  socks4::reply s4_reply_;
 
   /// copy of parsed connect host or host field
   std::string http_host_;
@@ -362,7 +358,8 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   int64_t http_keep_alive_remaining_bytes_ = 0;
 
   /// copy of upstream request
-  std::unique_ptr<ss::request> ss_request_;
+  ss::request request_;
+
   /// copy of padding support
   bool padding_support_ = false;
   int num_padding_send_ = 0;
@@ -393,10 +390,10 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
 
   std::string remote_domain() const {
     std::ostringstream ss;
-    if (ss_request_->address_type() == ss::domain) {
-      ss << ss_request_->domain_name() << ":" << ss_request_->port();
+    if (request_.address_type() == ss::domain) {
+      ss << request_.domain_name() << ":" << request_.port();
     } else {
-      ss << ss_request_->endpoint();
+      ss << request_.endpoint();
     }
     return ss.str();
   }
@@ -435,7 +432,7 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   void OnUpstreamWrite(std::shared_ptr<IOBuf> buf);
 
   /// the queue to write upstream
-  IoQueue upstream_;
+  IoQueue<> upstream_;
   /// the flag to mark current write
   bool upstream_writable_ = false;
   /// the flag to mark current read
@@ -457,7 +454,7 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
 #endif
 
   /// the queue to write downstream
-  IoQueue downstream_;
+  IoQueue<> downstream_;
   /// the flag to mark current read
   bool downstream_readable_ = false;
   /// the flag to mark current read in progress
@@ -480,10 +477,10 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
 
  private:
   /// pending data
-  IoQueue pending_data_;
+  IoQueue<IOBuf, 4> pending_data_;
 
   /// encrypt data
-  void EncryptData(IoQueue* queue, std::shared_ptr<IOBuf> plaintext);
+  void EncryptData(IoQueue<>* queue, std::shared_ptr<IOBuf> plaintext);
 
   /// encode cipher to perform data encoder for upstream
   std::unique_ptr<cipher> encoder_;

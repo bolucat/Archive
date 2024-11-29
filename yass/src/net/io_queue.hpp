@@ -1,25 +1,36 @@
 // SPDX-License-Identifier: GPL-2.0
-/* Copyright (c) 2023 Chilledheart  */
+/* Copyright (c) 2023-2024 Chilledheart  */
 
 #ifndef CORE_IO_QUEUE_HPP
 #define CORE_IO_QUEUE_HPP
 
-#include <array>
+#include <absl/container/inlined_vector.h>
+#include <build/build_config.h>
 #include <memory>
 #include "net/iobuf.hpp"
 
 namespace net {
 
+template <typename X = IOBuf,
+          int DEFAULT_QUEUE_LENGTH =
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || BUILDFLAG(IS_OHOS) || defined(__MUSL__)
+              8
+#else
+              16
+#endif
+          >
 class IoQueue {
-  using T = std::shared_ptr<IOBuf>;
+  using T = std::shared_ptr<X>;
+  using Vector = absl::InlinedVector<T, DEFAULT_QUEUE_LENGTH>;
 
  public:
-  IoQueue() {}
+  IoQueue() { queue_.resize(DEFAULT_QUEUE_LENGTH); }
   IoQueue(const IoQueue&) = delete;
   IoQueue& operator=(const IoQueue&) = delete;
   IoQueue(IoQueue&& rhs) {
     idx_ = rhs.idx_;
     end_idx_ = rhs.end_idx_;
+    queue_.resize(DEFAULT_QUEUE_LENGTH);
     std::swap(queue_, rhs.queue_);
     dirty_front_ = rhs.dirty_front_;
     rhs.idx_ = {};
@@ -35,6 +46,7 @@ class IoQueue {
   IoQueue& operator=(IoQueue&& rhs) {
     idx_ = rhs.idx_;
     end_idx_ = rhs.end_idx_;
+    DCHECK(queue_.size());
     std::swap(queue_, rhs.queue_);
     dirty_front_ = rhs.dirty_front_;
     rhs.idx_ = {};
@@ -60,7 +72,10 @@ class IoQueue {
   void push_back(T buf) {
     queue_[end_idx_] = buf;
     end_idx_ = (end_idx_ + 1) % queue_.size();
-    CHECK_NE(end_idx_, idx_) << "IO queue is full";
+    if (end_idx_ == idx_) {
+      LOG(INFO) << "Current IO queue is full, enlarging by 2x to " << 2 * queue_.size();
+      enlarge_queue_by_2x();
+    }
   }
 
   void push_back(const char* data, size_t length) { push_back(IOBuf::copyBuffer(data, length)); }
@@ -98,9 +113,27 @@ class IoQueue {
   void clear() { *this = IoQueue(); }
 
  private:
+  void enlarge_queue_by_2x() {
+    DCHECK(queue_.size());
+    DCHECK_LE(queue_.size(), 32u << 10);
+    Vector new_queue;
+    new_queue.reserve(queue_.size() << 1);
+    if (idx_ < end_idx_) {
+      new_queue.insert(new_queue.end(), queue_.begin() + idx_, queue_.begin() + end_idx_);
+    } else /* if (idx_ >= end_idx_) */ {
+      new_queue.insert(new_queue.end(), queue_.begin() + idx_, queue_.end());
+      new_queue.insert(new_queue.end(), queue_.begin(), queue_.begin() + end_idx_);
+    }
+    idx_ = 0;
+    end_idx_ = queue_.size();
+    new_queue.resize(queue_.size() << 1);
+    std::swap(queue_, new_queue);
+  }
+
+ private:
   int idx_ = 0;
   int end_idx_ = 0;
-  std::array<T, 4096> queue_;
+  Vector queue_;
   bool dirty_front_ = false;
 };
 

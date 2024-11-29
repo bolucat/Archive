@@ -345,7 +345,15 @@ bool ServerConnection::OnEndHeadersForStream(http2::adapter::Http2StreamId strea
     return false;
   }
 
-  request_ = ss::request(hostname, portnum);
+  asio::error_code _ec;
+  auto addr = asio::ip::make_address(hostname.c_str(), _ec);
+  bool host_is_ip_address = !_ec;
+  if (host_is_ip_address) {
+    asio::ip::tcp::endpoint endpoint(addr, portnum);
+    request_ = {endpoint};
+  } else {
+    request_ = {hostname, portnum};
+  }
 
   bool padding_support = request_map_.find("padding"s) != request_map_.end();
   if (padding_support_ && padding_support) {
@@ -610,20 +618,20 @@ void ServerConnection::OnReadHandshakeViaHttps() {
     buf->trimStart(nparsed);
     buf->retreat(nparsed);
 
-    http_host_ = parser.host();
-    http_port_ = parser.port();
+    std::string hostname = parser.host();
+    uint16_t portnum = parser.port();
     http_is_connect_ = parser.is_connect();
 
-    if (http_port_ == 0u || http_host_.empty()) {
+    if (portnum == 0u || hostname.empty()) {
       LOG(INFO) << "Connection (server) " << connection_id() << " from: " << peer_endpoint_
                 << " https: requested invalid port or empty host";
       OnDisconnect(asio::error::invalid_argument);
       return;
     }
 
-    if (http_host_.size() > TLSEXT_MAXLEN_host_name) {
+    if (hostname.size() > TLSEXT_MAXLEN_host_name) {
       LOG(INFO) << "Connection (server) " << connection_id() << " from: " << peer_endpoint_
-                << " https: too long domain name: " << http_host_;
+                << " https: too long domain name: " << hostname;
       OnDisconnect(asio::error::invalid_argument);
       return;
     }
@@ -635,9 +643,19 @@ void ServerConnection::OnReadHandshakeViaHttps() {
       return;
     }
 
+    // Handled IPv6 literals inside HttpParser
+
     LOG(INFO) << "Connection (server) " << connection_id() << " from: " << peer_endpoint_ << " https handshake";
 
-    request_ = {http_host_, http_port_};
+    asio::error_code _ec;
+    auto addr = asio::ip::make_address(hostname, _ec);
+    bool host_is_ip_address = !_ec;
+    if (host_is_ip_address) {
+      asio::ip::tcp::endpoint endpoint(addr, portnum);
+      request_ = {endpoint};
+    } else {
+      request_ = {hostname, portnum};
+    }
 
     if (!http_is_connect_) {
       absl::flat_hash_map<std::string, std::string> via_headers;
@@ -657,9 +675,9 @@ void ServerConnection::OnReadHandshakeViaHttps() {
       buf->reserve(header.size(), 0);
       buf->prepend(header.size());
       memcpy(buf->mutable_data(), header.c_str(), header.size());
-      VLOG(3) << "Connection (server) " << connection_id() << " Host: " << http_host_ << " Port: " << http_port_;
+      VLOG(3) << "Connection (server) " << connection_id() << " Host: " << hostname << " Port: " << portnum;
     } else {
-      VLOG(3) << "Connection (server) " << connection_id() << " CONNECT: " << http_host_ << " Port: " << http_port_;
+      VLOG(3) << "Connection (server) " << connection_id() << " CONNECT: " << hostname << " Port: " << portnum;
     }
     ProcessReceivedData(buf, ec, buf->length());
   } else {
@@ -1850,7 +1868,7 @@ void ServerConnection::disconnected(asio::error_code ec) {
   }
 }
 
-void ServerConnection::EncryptData(IoQueue* queue, std::shared_ptr<IOBuf> plaintext) {
+void ServerConnection::EncryptData(IoQueue<>* queue, std::shared_ptr<IOBuf> plaintext) {
   std::shared_ptr<IOBuf> cipherbuf;
   if (queue->empty()) {
     cipherbuf = IOBuf::create(SOCKET_DEBUF_SIZE);

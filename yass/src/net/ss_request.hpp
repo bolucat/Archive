@@ -90,7 +90,16 @@ class request {
   const asio::ip::address_v6::bytes_type& address6() const { return atyp_req_.address6; }
 
   std::string domain_name() const {
-    return std::string((char*)atyp_req_.domain.domain_name, atyp_req_.domain.domain_name_len);
+    if (address_type() == ipv4) {
+      asio::ip::address_v4 address(atyp_req_.address4);
+      return address.to_string();
+    } else if (address_type() == ipv6) {
+      asio::ip::address_v6 address(atyp_req_.address6);
+      return address.to_string();
+    } else if (address_type() == domain) {
+      return std::string((char*)atyp_req_.domain.domain_name, atyp_req_.domain.domain_name_len);
+    }
+    return std::string();
   }
 
   uint16_t port() const { return (port_high_byte() << 8) | port_low_byte(); }

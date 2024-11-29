@@ -149,6 +149,7 @@ type WebSocketConfig struct {
 	Path                string            `json:"path"`
 	Headers             map[string]string `json:"headers"`
 	AcceptProxyProtocol bool              `json:"acceptProxyProtocol"`
+	HeartbeatPeriod     uint32            `json:"heartbeatPeriod"`
 }
 
 // Build implements Buildable.
@@ -178,6 +179,7 @@ func (c *WebSocketConfig) Build() (proto.Message, error) {
 		Header:              c.Headers,
 		AcceptProxyProtocol: c.AcceptProxyProtocol,
 		Ed:                  ed,
+		HeartbeatPeriod:     c.HeartbeatPeriod,
 	}
 	return config, nil
 }
@@ -236,6 +238,7 @@ type SplitHTTPConfig struct {
 	Mode                 string            `json:"mode"`
 	Extra                json.RawMessage   `json:"extra"`
 	NoGRPCHeader         bool              `json:"noGRPCHeader"`
+	KeepAlivePeriod      int64             `json:"keepAlivePeriod"`
 }
 
 type Xmux struct {
@@ -324,6 +327,7 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		Xmux:                 &muxProtobuf,
 		Mode:                 c.Mode,
 		NoGRPCHeader:         c.NoGRPCHeader,
+		KeepAlivePeriod:      c.KeepAlivePeriod,
 	}
 	var err error
 	if c.DownloadSettings != nil {

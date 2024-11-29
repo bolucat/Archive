@@ -802,11 +802,12 @@ void CliConnection::ReadStream(bool yield) {
   });
 }
 
-void CliConnection::WriteMethodSelect() {
+void CliConnection::WriteMethodSelect(std::unique_ptr<socks5::method_select_response> reply) {
   scoped_refptr<CliConnection> self(this);
-  method_select_reply_ = socks5::method_select_response_stock_reply();
-  asio::async_write(downlink_->socket_, asio::buffer(&method_select_reply_, sizeof(method_select_reply_)),
-                    [this, self](asio::error_code ec, size_t bytes_transferred) {
+  DCHECK_EQ(state_method_select, CurrentState());
+  const auto buffer = asio::buffer(reply.get(), sizeof(*reply.get()));  // workaround with clang-cl's compiler bugs
+  asio::async_write(downlink_->socket_, buffer,
+                    [this, self, r = std::move(reply)](asio::error_code ec, size_t bytes_transferred) {
                       if (closed_) {
                         return;
                       }
@@ -814,58 +815,53 @@ void CliConnection::WriteMethodSelect() {
                     });
 }
 
-void CliConnection::WriteHandshake() {
+void CliConnection::WriteHandshakeSocks5(std::unique_ptr<socks5::reply> reply) {
   scoped_refptr<CliConnection> self(this);
+  DCHECK_EQ(state_socks5_handshake, CurrentState());
+  SetState(state_stream);
+  const auto buffers = reply->buffers();  // workaround with clang-cl's compiler bugs
+  asio::async_write(downlink_->socket_, buffers,
+                    [this, self, r = std::move(reply)](asio::error_code ec, size_t bytes_transferred) {
+                      if (closed_) {
+                        return;
+                      }
+                      // mark eof
+                      if (r->status() != socks5::reply::request_granted) {
+                        shutdown_ = true;
+                        asio::error_code ec;
+                        downlink_->shutdown(ec);
+                      }
+                      ProcessSentData(ec, bytes_transferred);
+                    });
+}
 
-  switch (CurrentState()) {
-    case state_method_select:  // impossible
-    case state_socks5_handshake:
-      SetState(state_stream);
-      asio::async_write(downlink_->socket_, s5_reply_.buffers(),
-                        [this, self](asio::error_code ec, size_t bytes_transferred) {
-                          if (closed_) {
-                            return;
-                          }
-                          // mark eof
-                          if (s5_reply_.status() != socks5::reply::request_granted) {
-                            shutdown_ = true;
-                            asio::error_code ec;
-                            downlink_->shutdown(ec);
-                          }
-                          ProcessSentData(ec, bytes_transferred);
-                        });
-      break;
-    case state_socks4_handshake:
-      SetState(state_stream);
-      asio::async_write(downlink_->socket_, s4_reply_.buffers(),
-                        [this, self](asio::error_code ec, size_t bytes_transferred) {
-                          if (closed_) {
-                            return;
-                          }
-                          // mark eof
-                          if (s4_reply_.status() != socks4::reply::request_granted) {
-                            shutdown_ = true;
-                            asio::error_code ec;
-                            downlink_->shutdown(ec);
-                          }
-                          ProcessSentData(ec, bytes_transferred);
-                        });
-      break;
-    case state_http_handshake:
-      SetState(state_stream);
-      /// reply on CONNECT request
-      if (http_is_connect_) {
-        std::shared_ptr<IOBuf> buf = IOBuf::copyBuffer(http_connect_reply_.data(), http_connect_reply_.size());
-        OnDownstreamWrite(buf);
-      }
-      break;
-    case state_error:
-      break;
-    case state_stream:
-      break;
-    default:
-      LOG(FATAL) << "Connection (client) " << connection_id() << "bad state 0x" << std::hex
-                 << static_cast<int>(CurrentState()) << std::dec;
+void CliConnection::WriteHandshakeSocks4(std::unique_ptr<socks4::reply> reply) {
+  scoped_refptr<CliConnection> self(this);
+  DCHECK_EQ(state_socks4_handshake, CurrentState());
+  SetState(state_stream);
+  const auto buffers = reply->buffers();  // workaround with clang-cl's compiler bugs
+  asio::async_write(downlink_->socket_, buffers,
+                    [this, self, r = std::move(reply)](asio::error_code ec, size_t bytes_transferred) {
+                      if (closed_) {
+                        return;
+                      }
+                      // mark eof
+                      if (r->status() != socks4::reply::request_granted) {
+                        shutdown_ = true;
+                        asio::error_code ec;
+                        downlink_->shutdown(ec);
+                      }
+                      ProcessSentData(ec, bytes_transferred);
+                    });
+}
+
+void CliConnection::WriteHandshakeHttp() {
+  DCHECK_EQ(state_http_handshake, CurrentState());
+  SetState(state_stream);
+  /// reply on CONNECT request
+  if (http_is_connect_) {
+    std::shared_ptr<IOBuf> buf = IOBuf::copyBuffer(http_connect_reply_.data(), http_connect_reply_.size());
+    OnDownstreamWrite(buf);
   }
 }
 
@@ -1381,18 +1377,18 @@ void CliConnection::WriteUpstreamSocks4Request() {
   socks4::request_header header;
   header.version = socks4::version;
   header.command = socks4::cmd_connect;
-  header.port_high_byte = ss_request_->port_high_byte();
-  header.port_low_byte = ss_request_->port_low_byte();
-  if (ss_request_->address_type() == ss::domain) {
+  header.port_high_byte = request_.port_high_byte();
+  header.port_low_byte = request_.port_low_byte();
+  if (request_.address_type() == ss::domain) {
     // impossible
     CHECK(false);
-  } else if (ss_request_->address_type() == ss::ipv6) {
+  } else if (request_.address_type() == ss::ipv6) {
     // not supported
     LOG(WARNING) << "Unsupported IPv6 address for SOCKS4 server";
     OnDisconnect(asio::error::access_denied);
     return;
   } else {
-    memcpy(&header.address, &ss_request_->address4(), sizeof(header.address));
+    memcpy(&header.address, &request_.address4(), sizeof(header.address));
   }
 
   ByteRange req(reinterpret_cast<const uint8_t*>(&header), sizeof(header));
@@ -1415,16 +1411,16 @@ void CliConnection::WriteUpstreamSocks4ARequest() {
   socks4::request_header header;
   header.version = socks4::version;
   header.command = socks4::cmd_connect;
-  header.port_high_byte = ss_request_->port_high_byte();
-  header.port_low_byte = ss_request_->port_low_byte();
+  header.port_high_byte = request_.port_high_byte();
+  header.port_low_byte = request_.port_low_byte();
   std::string domain_name;
-  if (ss_request_->address_type() == ss::domain) {
-    domain_name = ss_request_->domain_name();
-  } else if (ss_request_->address_type() == ss::ipv6) {
-    asio::ip::address_v6 address(ss_request_->address6());
+  if (request_.address_type() == ss::domain) {
+    domain_name = request_.domain_name();
+  } else if (request_.address_type() == ss::ipv6) {
+    asio::ip::address_v6 address(request_.address6());
     domain_name = address.to_string();
   } else {
-    asio::ip::address_v4 address(ss_request_->address4());
+    asio::ip::address_v4 address(request_.address4());
     domain_name = address.to_string();
   }
   uint32_t address = 0x0f << 24;  // marked as SOCKS4A
@@ -1458,23 +1454,23 @@ void CliConnection::WriteUpstreamSocks5Request() {
   std::string domain_name;
 
   uint8_t address_type = socks5::ipv4;
-  if (ss_request_->address_type() == ss::domain) {
+  if (request_.address_type() == ss::domain) {
     address_type = socks5::domain;
-    domain_name = ss_request_->domain_name();
+    domain_name = request_.domain_name();
     address = as_bytes(make_span(domain_name));
-  } else if (ss_request_->address_type() == ss::ipv6) {
+  } else if (request_.address_type() == ss::ipv6) {
     address_type = socks5::ipv6;
-    address = as_bytes(make_span(ss_request_->address6()));
+    address = as_bytes(make_span(request_.address6()));
   } else {
     address_type = socks5::ipv4;
-    address = as_bytes(make_span(ss_request_->address4()));
+    address = as_bytes(make_span(request_.address4()));
   }
 
   buf->reserve(0, sizeof(address_type));
   memcpy(buf->mutable_tail(), &address_type, sizeof(address_type));
   buf->append(sizeof(address_type));
 
-  if (ss_request_->address_type() == ss::domain) {
+  if (request_.address_type() == ss::domain) {
     uint8_t address_len = address.size();
     buf->reserve(0, sizeof(address_len));
     memcpy(buf->mutable_tail(), &address_len, sizeof(address_len));
@@ -1485,8 +1481,8 @@ void CliConnection::WriteUpstreamSocks5Request() {
   memcpy(buf->mutable_tail(), address.data(), address.size());
   buf->append(address.size());
 
-  uint8_t port_high_byte = ss_request_->port_high_byte();
-  uint8_t port_low_byte = ss_request_->port_low_byte();
+  uint8_t port_high_byte = request_.port_high_byte();
+  uint8_t port_low_byte = request_.port_low_byte();
 
   buf->reserve(0, sizeof(uint16_t));
   *buf->mutable_tail() = port_high_byte;
@@ -1738,9 +1734,8 @@ std::shared_ptr<IOBuf> CliConnection::GetNextUpstreamBuf(asio::error_code& ec,
 
   if (http_is_keep_alive_) {
     if (http_keep_alive_remaining_bytes_ < (int64_t)read) {
-      DCHECK_EQ(ss::domain, ss_request_->address_type());
-      DCHECK_EQ(http_host_, ss_request_->domain_name());
-      DCHECK_EQ(http_port_, ss_request_->port());
+      DCHECK_EQ(http_host_, request_.domain_name());
+      DCHECK_EQ(http_port_, request_.port());
       ec = OnReadHttpRequest(buf);
       if (ec) {
         return nullptr;
@@ -1752,13 +1747,13 @@ std::shared_ptr<IOBuf> CliConnection::GetNextUpstreamBuf(asio::error_code& ec,
       if (buf->empty()) {
         buf.reset();
       }
-      // ss_request_ isn't updated after OnReadHttpRequest(),
+      // request_ isn't updated after OnReadHttpRequest(),
       // so we are safe to use it to tell whether the new destination is different
-      if (ss_request_->domain_name() != http_host_ || ss_request_->port() != http_port_) {
+      if (request_.domain_name() != http_host_ || request_.port() != http_port_) {
         LOG(INFO) << "Connection (client) " << connection_id() << " re-used";
         upstream_readable_ = false;
         upstream_writable_ = false;
-        ss_request_.reset();
+        request_ = {};
         channel_->close();
         channel_.reset();
         if (buf) {
@@ -1947,12 +1942,16 @@ void CliConnection::ProcessReceivedData(std::shared_ptr<IOBuf> buf, asio::error_
 
   if (!ec) {
     switch (CurrentState()) {
-      case state_method_select:
-        WriteMethodSelect();
+      case state_method_select: {
+        auto reply = std::make_unique<socks5::method_select_response>(socks5::method_select_response_stock_reply());
+        WriteMethodSelect(std::move(reply));
         break;
-      case state_socks5_handshake:
-        ec = PerformCmdOpsV5(&s5_request_, &s5_reply_);
-        WriteHandshake();
+      }
+      case state_socks5_handshake: {
+        auto reply = std::make_unique<socks5::reply>();
+        ec = PerformCmdOpsV5(&s5_request_, reply.get());
+        WriteHandshakeSocks5(std::move(reply));
+      }
         if (ec) {
           // ready to read eof after send handshake
           ReadStream(true);
@@ -1960,9 +1959,11 @@ void CliConnection::ProcessReceivedData(std::shared_ptr<IOBuf> buf, asio::error_
         }
         VLOG(2) << "Connection (client) " << connection_id() << " socks5 handshake finished";
         goto handle_stream;
-      case state_socks4_handshake:
-        ec = PerformCmdOpsV4(&s4_request_, &s4_reply_);
-        WriteHandshake();
+      case state_socks4_handshake: {
+        auto reply = std::make_unique<socks4::reply>();
+        ec = PerformCmdOpsV4(&s4_request_, reply.get());
+        WriteHandshakeSocks4(std::move(reply));
+      }
         if (ec) {
           // ready to read eof after send handshake
           ReadStream(true);
@@ -1975,7 +1976,7 @@ void CliConnection::ProcessReceivedData(std::shared_ptr<IOBuf> buf, asio::error_
         if (ec) {
           break;
         }
-        WriteHandshake();
+        WriteHandshakeHttp();
         VLOG(2) << "Connection (client) " << connection_id() << " http handshake finished";
         goto handle_stream;
       case state_stream:
@@ -2043,11 +2044,25 @@ void CliConnection::ProcessSentData(asio::error_code ec, size_t bytes_transferre
 void CliConnection::OnCmdConnect(const asio::ip::tcp::endpoint& endpoint) {
   DCHECK(!endpoint.address().is_unspecified());
   DCHECK_NE(0u, endpoint.port());
-  ss_request_ = std::make_unique<ss::request>(endpoint);
+  request_ = {endpoint};
+#if DCHECK_IS_ON()
+  if (!http_host_.empty()) {
+    CHECK_EQ(http_host_, request_.domain_name());
+    CHECK_EQ(http_port_, request_.port());
+  }
+#endif
   OnConnect();
 }
 
 void CliConnection::OnCmdConnect(const std::string& domain_name, uint16_t port) {
+  asio::error_code _ec;
+  auto addr = asio::ip::make_address(domain_name.c_str(), _ec);
+  bool host_is_ip_address = !_ec;
+  if (host_is_ip_address) {
+    asio::ip::tcp::endpoint endpoint(addr, port);
+    return OnCmdConnect(endpoint);
+  }
+
   DCHECK_LE(domain_name.size(), (unsigned int)TLSEXT_MAXLEN_host_name);
 
   if (CIPHER_METHOD_IS_SOCKS_NON_DOMAIN_NAME(method())) {
@@ -2087,14 +2102,14 @@ void CliConnection::OnCmdConnect(const std::string& domain_name, uint16_t port) 
           }
           VLOG(1) << "Connection (client) " << connection_id() << " resolved domain name " << domain_name << " to "
                   << endpoint.address();
-          ss_request_ = std::make_unique<ss::request>(endpoint);
+          request_ = {endpoint};
           OnConnect();
         });
     return;
   }
   DCHECK(!domain_name.empty());
   DCHECK_NE(0u, port);
-  ss_request_ = std::make_unique<ss::request>(domain_name, port);
+  request_ = {domain_name, port};
   OnConnect();
 }
 
@@ -2294,11 +2309,11 @@ void CliConnection::connected() {
     std::string hostname_and_port;
     std::string host;
     int port;
-    if (ss_request_->address_type() == ss::domain) {
-      host = ss_request_->domain_name();
-      port = ss_request_->port();
+    if (request_.address_type() == ss::domain) {
+      host = request_.domain_name();
+      port = request_.port();
     } else {
-      auto endpoint = ss_request_->endpoint();
+      auto endpoint = request_.endpoint();
       host = endpoint.address().to_string();
       port = endpoint.port();
     }
@@ -2345,11 +2360,11 @@ void CliConnection::connected() {
     std::string hostname_and_port;
     std::string host;
     int port;
-    if (ss_request_->address_type() == ss::domain) {
-      host = ss_request_->domain_name();
-      port = ss_request_->port();
+    if (request_.address_type() == ss::domain) {
+      host = request_.domain_name();
+      port = request_.port();
     } else {
-      auto endpoint = ss_request_->endpoint();
+      auto endpoint = request_.endpoint();
       host = endpoint.address().to_string();
       port = endpoint.port();
     }
@@ -2402,7 +2417,7 @@ void CliConnection::connected() {
           break;
       }
     } else {
-      ByteRange req(ss_request_->data(), ss_request_->length());
+      ByteRange req(request_.data(), request_.length());
       std::shared_ptr<IOBuf> buf = IOBuf::copyBuffer(req);
       // write variable address directly as ss header
       EncryptData(&upstream_, buf);
@@ -2468,7 +2483,7 @@ void CliConnection::disconnected(asio::error_code ec) {
   }
 }
 
-void CliConnection::EncryptData(IoQueue* queue, std::shared_ptr<IOBuf> plaintext) {
+void CliConnection::EncryptData(IoQueue<>* queue, std::shared_ptr<IOBuf> plaintext) {
   std::shared_ptr<IOBuf> cipherbuf;
   if (queue->empty()) {
     cipherbuf = IOBuf::create(SOCKET_DEBUF_SIZE);

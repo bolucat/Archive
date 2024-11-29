@@ -241,7 +241,7 @@ func (r *NetworkManager) UpdateInterfaces() error {
 			return it.Flags&net.FlagUp != 0
 		})
 		r.networkInterfaces.Store(newInterfaces)
-		if !slices.EqualFunc(oldInterfaces, newInterfaces, func(oldInterface adapter.NetworkInterface, newInterface adapter.NetworkInterface) bool {
+		if len(newInterfaces) > 0 && !slices.EqualFunc(oldInterfaces, newInterfaces, func(oldInterface adapter.NetworkInterface, newInterface adapter.NetworkInterface) bool {
 			return oldInterface.Interface.Index == newInterface.Interface.Index &&
 				oldInterface.Interface.Name == newInterface.Interface.Name &&
 				oldInterface.Interface.Flags == newInterface.Interface.Flags &&
