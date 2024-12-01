@@ -1,6 +1,6 @@
 [package]
 name = "clash-verge"
-version = "2.0.0"
+version = "2.0.2"
 description = "clash verge"
 authors = ["zzzgydi", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"
@@ -36,6 +36,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 sysproxy = { git = "https://github.com/clash-verge-rev/sysproxy-rs", branch = "main" }
+image = "0.25.5"
 tauri = { version = "2.1.1", features = [
     "protocol-asset",
     "devtools",

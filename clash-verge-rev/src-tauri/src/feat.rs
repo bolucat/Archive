@@ -20,12 +20,16 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 // 打开面板
 pub fn open_or_close_dashboard() {
     if let Some(window) = handle::Handle::global().get_window() {
-        if let Ok(true) = window.is_focused() {
+        // 如果窗口存在，则切换其显示状态
+        if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
-            return;
+        } else {
+            let _ = window.show();
+            let _ = window.set_focus();
         }
+    } else {
+        resolve::create_window();
     }
-    resolve::create_window();
 }
 
 // 重启clash
@@ -121,14 +125,6 @@ pub fn quit(code: Option<i32>) {
     handle::Handle::global().set_is_exiting();
     resolve::resolve_reset();
     log_err!(handle::Handle::global().get_window().unwrap().close());
-    match app_handle.save_window_state(StateFlags::all()) {
-        Ok(_) => {
-            log::info!(target: "app", "window state saved successfully");
-        }
-        Err(e) => {
-            log::error!(target: "app", "failed to save window state: {}", e);
-        }
-    };
     app_handle.exit(code.unwrap_or(0));
 }
 
@@ -141,16 +137,14 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
         if patch.get("secret").is_some() || patch.get("external-controller").is_some() {
             Config::generate().await?;
             CoreManager::global().restart_core().await?;
-            handle::Handle::refresh_clash();
         } else {
             if patch.get("mode").is_some() {
                 log_err!(handle::Handle::update_systray_part());
             }
-
             Config::runtime().latest().patch_config(patch);
-            update_core_config(false).await?;
+            CoreManager::global().update_config().await?;
         }
-
+        handle::Handle::refresh_clash();
         <Result<()>>::Ok(())
     };
     match res {
@@ -250,11 +244,11 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             should_update_systray_part = true;
         }
         if should_restart_core {
-            Config::generate().await?;
             CoreManager::global().restart_core().await?;
         }
         if should_update_clash_config {
-            update_core_config(false).await?;
+            CoreManager::global().update_config().await?;
+            handle::Handle::refresh_clash();
         }
         if should_update_launch {
             sysopt::Sysopt::global().update_launch()?;
@@ -320,29 +314,18 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
     };
 
     if should_update {
-        update_core_config(true).await?;
+        match CoreManager::global().update_config().await {
+            Ok(_) => {
+                handle::Handle::refresh_clash();
+            }
+            Err(err) => {
+                handle::Handle::notice_message("set_config::error", format!("{err}"));
+                log::error!(target: "app", "{err}");
+            }
+        }
     }
 
     Ok(())
-}
-
-/// 更新订阅
-async fn update_core_config(notice: bool) -> Result<()> {
-    match CoreManager::global().update_config().await {
-        Ok(_) => {
-            handle::Handle::refresh_clash();
-            if notice {
-                handle::Handle::notice_message("set_config::ok", "ok");
-            }
-            Ok(())
-        }
-        Err(err) => {
-            if notice {
-                handle::Handle::notice_message("set_config::error", format!("{err}"));
-            }
-            Err(err)
-        }
-    }
 }
 
 /// copy env variable
@@ -464,6 +447,12 @@ pub async fn delete_webdav_backup(filename: String) -> Result<()> {
 }
 
 pub async fn restore_webdav_backup(filename: String) -> Result<()> {
+    let verge = Config::verge();
+    let verge_data = verge.data().clone();
+    let webdav_url = verge_data.webdav_url.clone();
+    let webdav_username = verge_data.webdav_username.clone();
+    let webdav_password = verge_data.webdav_password.clone();
+
     let backup_storage_path = app_home_dir().unwrap().join(&filename);
     backup::WebDavClient::global()
         .download(filename, backup_storage_path.clone())
@@ -477,6 +466,15 @@ pub async fn restore_webdav_backup(filename: String) -> Result<()> {
     let mut zip = zip::ZipArchive::new(fs::File::open(backup_storage_path.clone())?)?;
     zip.extract(app_home_dir()?)?;
 
+    log_err!(
+        patch_verge(IVerge {
+            webdav_url: webdav_url,
+            webdav_username: webdav_username,
+            webdav_password: webdav_password,
+            ..IVerge::default()
+        })
+        .await
+    );
     // 最后删除临时文件
     fs::remove_file(backup_storage_path)?;
     Ok(())

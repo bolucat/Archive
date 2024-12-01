@@ -1,3 +1,15 @@
+yass (1.16.2-1) UNRELEASED; urgency=medium
+
+  * cli: reduce memory usage per connection.
+  * base: use DCHECK_IS_ON for check_op.
+  * net: handle ip-address like hostname correctly.
+  * net: listen to EPOLLRDHUP/POLLRDHUP events.
+  * net: fix ssl socket re-use issus when trying different endpoint.
+  * net: avoid already_open error when opening next endpoint.
+  * tls: load very first ca-bundle file only.
+  * tls: update for fedora and rhel update.
+
+ -- Chilledheart <keeyou-cn@outlook.com>  Sun, 1 Dec 2024 09:44:59 +0800
 yass (1.16.1-1) UNRELEASED; urgency=medium
 
   * tls: add adjust system trusted CA folder for linux.

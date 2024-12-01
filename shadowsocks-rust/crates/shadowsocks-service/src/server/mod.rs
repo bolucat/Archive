@@ -4,7 +4,7 @@ use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::future;
 use log::trace;
-use shadowsocks::net::{AcceptOpts, ConnectOpts};
+use shadowsocks::net::{AcceptOpts, ConnectOpts, UdpSocketOpts};
 
 use crate::{
     config::{Config, ConfigType},
@@ -67,6 +67,12 @@ pub async fn run(config: Config) -> io::Result<()> {
         bind_local_addr: config.outbound_bind_addr.map(|ip| SocketAddr::new(ip, 0)),
         bind_interface: config.outbound_bind_interface,
 
+        udp: UdpSocketOpts {
+            allow_fragmentation: config.outbound_udp_allow_fragmentation,
+
+            ..Default::default()
+        },
+
         ..Default::default()
     };
 
@@ -118,6 +124,10 @@ pub async fn run(config: Config) -> io::Result<()> {
 
         if let Some(bind_interface) = inst.outbound_bind_interface {
             connect_opts.bind_interface = Some(bind_interface);
+        }
+
+        if let Some(udp_allow_fragmentation) = inst.outbound_udp_allow_fragmentation {
+            connect_opts.udp.allow_fragmentation = udp_allow_fragmentation;
         }
 
         server_builder.set_connect_opts(connect_opts);

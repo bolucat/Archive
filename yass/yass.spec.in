@@ -318,6 +318,15 @@ for embedded devices and low end boxes.
 %systemd_postun_with_restart yass-redir.service
 
 %changelog
+* Sun Dec 1 2024 Chilledheart <keeyou-cn@outlook.com> - 1.16.2-1
+  - cli: reduce memory usage per connection
+  - base: use DCHECK_IS_ON for check_op
+  - net: handle ip-address like hostname correctly
+  - net: listen to EPOLLRDHUP/POLLRDHUP events
+  - net: fix ssl socket re-use issus when trying different endpoint
+  - net: avoid already_open error when opening next endpoint
+  - tls: load very first ca-bundle file only
+  - tls: update for fedora and rhel update
 * Mon Nov 18 2024 Chilledheart <keeyou-cn@outlook.com> - 1.16.1-1
   - tls: add adjust system trusted CA folder for linux
   - tls: --capath now accepts separated list of directories

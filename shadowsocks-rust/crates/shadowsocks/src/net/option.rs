@@ -37,6 +37,9 @@ pub struct UdpSocketOpts {
     ///
     /// NOTE: MTU includes IP header, UDP header, UDP payload
     pub mtu: Option<usize>,
+
+    /// Outbound UDP socket allows IP fragmentation
+    pub allow_fragmentation: bool,
 }
 
 /// Options for connecting to remote server
