@@ -104,7 +104,9 @@ ninja yass
 
 ## macOS
 
-1. Make sure you have both of [Xcode] and [Homebrew] installed:
+1. Make sure you have [Xcode] installed:
+
+After download _Xcode.xip_ and extract _Xcode.app_ into `/Applications` (optional)
 
 Run in `Terminal`:
 ```
@@ -113,18 +115,17 @@ xcode-select --install
 xcodebuild -runFirstLaunch
 ```
 
-Run in `Terminal`:
-```
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-2. Install the required build tools via homebrew
+2. Make sure you have [MacPorts] installed:
+
+Download pkg file from [MacPorts website][MacPorts]. Open and install it.
 
 Run in `Terminal`:
 ```
-brew install ninja cmake go p7zip
+sudo port selfupdate
+sudo port install ninja cmake go p7zip
 ```
 
-3. Compile the program with Release configuration.
+3. Compile the program with _Release_ configuration.
 ```
 git clone https://github.com/Chilledheart/yass
 cd yass
@@ -261,7 +262,7 @@ ninja yass
 [GCC]: https://gcc.gnu.org/
 [NASM]: https://www.nasm.us/
 [Xcode]: https://apps.apple.com/us/app/xcode/id497799835?mt=12
-[HomeBrew]: https://docs.brew.sh/Installation
+[MacPorts]: https://guide.macports.org/chunked/installing.macports.html
 [llvm-win64]: https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/LLVM-18.1.8-win64.exe
 [msys2]: https://www.msys2.org/
 [EPEL]: https://docs.fedoraproject.org/en-US/epel

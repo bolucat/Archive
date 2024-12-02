@@ -5094,6 +5094,7 @@ if (BUILD_TESTS)
     src/core/process_utils_test.cpp
     src/core/utils_test.cpp
     src/net/asio_ssl_test.cpp
+    src/net/io_queue_test.cpp
     src/net/cipher_test.cpp
     src/net/c-ares_test.cpp
     src/net/padding_test.cpp

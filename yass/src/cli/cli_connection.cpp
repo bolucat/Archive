@@ -1312,8 +1312,11 @@ void CliConnection::WriteUpstreamAuthRequest() {
   std::string username = absl::GetFlag(FLAGS_username);
   std::string password = absl::GetFlag(FLAGS_password);
 
-  ByteRange req(reinterpret_cast<const uint8_t*>(&header), sizeof(header));
-  std::shared_ptr<IOBuf> buf = IOBuf::copyBuffer(req);
+  std::shared_ptr<IOBuf> buf = upstream_.front();
+  buf->reserve(0, sizeof(header));
+  memcpy(buf->mutable_tail(), &header, sizeof(header));
+  buf->append(sizeof(header));
+
   buf->reserve(0, sizeof(uint8_t));
   *buf->mutable_tail() = username.size();
   buf->append(sizeof(uint8_t));
@@ -1330,7 +1333,6 @@ void CliConnection::WriteUpstreamAuthRequest() {
   memcpy(buf->mutable_tail(), password.c_str(), password.size());
   buf->append(password.size());
 
-  upstream_.replace_front(buf);
   WriteUpstreamInPipe();
 }
 
@@ -1447,8 +1449,10 @@ void CliConnection::WriteUpstreamSocks5Request() {
   header.command = socks5::cmd_connect;
   header.null_byte = 0;
 
-  ByteRange req(reinterpret_cast<const uint8_t*>(&header), sizeof(header));
-  std::shared_ptr<IOBuf> buf = IOBuf::copyBuffer(req);
+  std::shared_ptr<IOBuf> buf = upstream_.front();
+  buf->reserve(0, sizeof(header));
+  memcpy(buf->mutable_tail(), &header, sizeof(header));
+  buf->append(sizeof(header));
 
   span<const uint8_t> address;
   std::string domain_name;
@@ -1492,7 +1496,6 @@ void CliConnection::WriteUpstreamSocks5Request() {
 
   socks_handshake_ = true;
 
-  upstream_.replace_front(buf);
   WriteUpstreamInPipe();
 }
 
