@@ -198,15 +198,9 @@ YASSWindow::YASSWindow() : impl_(GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL))
   server_port_ = GTK_ENTRY(gtk_entry_new());
   username_ = GTK_ENTRY(gtk_entry_new());
   password_ = GTK_ENTRY(gtk_entry_new());
-  static constexpr const char* const method_names[] = {
-#define XX(num, name, string) string,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-
   method_ = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
 
-  for (const char* method_name : method_names) {
+  for (const char* method_name : kCipherMethodCStrs) {
     gtk_combo_box_text_append_text(method_, method_name);
   }
   local_host_ = GTK_ENTRY(gtk_entry_new());
@@ -623,15 +617,14 @@ void YASSWindow::LoadChanges() {
   gtk_entry_set_text(username_, username_str.c_str());
   gtk_entry_set_text(password_, password_str.c_str());
 
-  static const uint32_t method_ids[] = {
-#define XX(num, name, string) num,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
   unsigned int i;
-  for (i = 0; i < std::size(method_ids); ++i) {
-    if (cipher_method == method_ids[i])
+  for (i = 0; i < std::size(kCipherMethods); ++i) {
+    if (cipher_method == kCipherMethods[i])
       break;
+  }
+  // not found
+  if (i == std::size(kCipherMethods)) {
+    i = 0;
   }
 
   gtk_combo_box_set_active(GTK_COMBO_BOX(method_), i);

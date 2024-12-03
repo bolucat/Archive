@@ -14,7 +14,7 @@ using namespace net;
 
 static constexpr unsigned int kDefaultDepth = 8u;
 static constexpr unsigned int kBufferSize = 4096u;
-static constexpr const char kBuffer[kBufferSize] = {};
+static constexpr const char kBuffer[kBufferSize * 10] = {};
 
 TEST(IoQueueTest, Construct) {
   IoQueue<IOBuf, kDefaultDepth> queue;

@@ -122,14 +122,8 @@ YASSWindow::YASSWindow(QWidget* parent) : QMainWindow(parent) {
   password_ = new QLineEdit;
   password_->setEchoMode(QLineEdit::Password);
 
-  static constexpr const char* const method_names[] = {
-#define XX(num, name, string) string,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-
   method_ = new QComboBox;
-  for (const char* method_name : method_names) {
+  for (const char* method_name : kCipherMethodCStrs) {
     method_->addItem(method_name);
   }
 
@@ -384,15 +378,14 @@ void YASSWindow::LoadChanges() {
   username_->setText(QString::fromStdString(username_str));
   password_->setText(QString::fromStdString(password_str));
 
-  static const uint32_t method_ids[] = {
-#define XX(num, name, string) num,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
   unsigned int i;
-  for (i = 0; i < std::size(method_ids); ++i) {
-    if (cipher_method == method_ids[i])
+  for (i = 0; i < std::size(kCipherMethods); ++i) {
+    if (cipher_method == kCipherMethods[i])
       break;
+  }
+  // not found
+  if (i == std::size(kCipherMethods)) {
+    i = 0;
   }
 
   method_->setCurrentIndex(i);

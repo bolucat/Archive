@@ -36,6 +36,7 @@ type Outbound struct {
 	outbound.Adapter
 	ctx               context.Context
 	logger            logger.ContextLogger
+	dnsRouter         adapter.Router
 	dialer            N.Dialer
 	serverAddr        M.Socksaddr
 	user              string
@@ -57,6 +58,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, []string{N.NetworkTCP}, options.DialerOptions),
 		ctx:               ctx,
 		logger:            logger,
+		dnsRouter:         router,
 		dialer:            outboundDialer,
 		serverAddr:        options.ServerOptions.Build(),
 		user:              options.User,
@@ -187,6 +189,15 @@ func (s *Outbound) Close() error {
 }
 
 func (s *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	if destination.IsFqdn() {
+		destinationAddresses, err := s.dnsRouter.LookupDefault(ctx, destination.Fqdn)
+		if err != nil {
+			return nil, err
+		}
+		destination = M.SocksaddrFrom(destinationAddresses[0], destination.Port)
+	} else if !destination.Addr.IsValid() {
+		return nil, E.New("invalid destination: ", destination)
+	}
 	client, err := s.connect()
 	if err != nil {
 		return nil, err

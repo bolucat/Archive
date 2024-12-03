@@ -88,24 +88,30 @@ func NewDefault(networkManager adapter.NetworkManager, options option.DialerOpti
 	}
 	if networkManager != nil && options.BindInterface == "" && options.Inet4BindAddress == nil && options.Inet6BindAddress == nil {
 		defaultOptions := networkManager.DefaultOptions()
-		if defaultOptions.BindInterface != "" {
-			bindFunc := control.BindToInterface(networkManager.InterfaceFinder(), defaultOptions.BindInterface, -1)
-			dialer.Control = control.Append(dialer.Control, bindFunc)
-			listener.Control = control.Append(listener.Control, bindFunc)
-		} else if networkManager.AutoDetectInterface() {
-			if defaultOptions.NetworkStrategy != C.NetworkStrategyDefault && C.NetworkStrategy(options.NetworkStrategy) == C.NetworkStrategyDefault {
-				networkStrategy = defaultOptions.NetworkStrategy
-				networkType = defaultOptions.NetworkType
-				fallbackNetworkType = defaultOptions.FallbackNetworkType
-				networkFallbackDelay = defaultOptions.FallbackDelay
-				bindFunc := networkManager.ProtectFunc()
+		if options.BindInterface == "" {
+			if defaultOptions.BindInterface != "" {
+				bindFunc := control.BindToInterface(networkManager.InterfaceFinder(), defaultOptions.BindInterface, -1)
 				dialer.Control = control.Append(dialer.Control, bindFunc)
 				listener.Control = control.Append(listener.Control, bindFunc)
-			} else {
-				bindFunc := networkManager.AutoDetectInterfaceFunc()
-				dialer.Control = control.Append(dialer.Control, bindFunc)
-				listener.Control = control.Append(listener.Control, bindFunc)
+			} else if networkManager.AutoDetectInterface() {
+				if defaultOptions.NetworkStrategy != C.NetworkStrategyDefault && C.NetworkStrategy(options.NetworkStrategy) == C.NetworkStrategyDefault {
+					networkStrategy = defaultOptions.NetworkStrategy
+					networkType = defaultOptions.NetworkType
+					fallbackNetworkType = defaultOptions.FallbackNetworkType
+					networkFallbackDelay = defaultOptions.FallbackDelay
+					bindFunc := networkManager.ProtectFunc()
+					dialer.Control = control.Append(dialer.Control, bindFunc)
+					listener.Control = control.Append(listener.Control, bindFunc)
+				} else {
+					bindFunc := networkManager.AutoDetectInterfaceFunc()
+					dialer.Control = control.Append(dialer.Control, bindFunc)
+					listener.Control = control.Append(listener.Control, bindFunc)
+				}
 			}
+		}
+		if options.RoutingMark == 0 && defaultOptions.RoutingMark != 0 {
+			dialer.Control = control.Append(dialer.Control, control.RoutingMark(defaultOptions.RoutingMark))
+			listener.Control = control.Append(listener.Control, control.RoutingMark(defaultOptions.RoutingMark))
 		}
 	}
 	if options.ReuseAddr {

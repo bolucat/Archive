@@ -96,6 +96,13 @@ func closeHysteria2(h *Hysteria2) {
 	}
 }
 
+// ProxyInfo implements C.ProxyAdapter
+func (h *Hysteria2) ProxyInfo() C.ProxyInfo {
+	info := h.Base.ProxyInfo()
+	info.DialerProxy = h.option.DialerProxy
+	return info
+}
+
 func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	var salamanderPassword string

@@ -97,6 +97,7 @@ func (i *Inbound) NewPacketEx(buffer *buf.Buffer, source M.Socksaddr) {
 func (i *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	metadata.Inbound = i.Tag()
 	metadata.InboundType = i.Type()
+	metadata.Destination = M.SocksaddrFromNet(conn.LocalAddr())
 	switch i.overrideOption {
 	case 1:
 		metadata.Destination = i.overrideDestination
@@ -107,7 +108,9 @@ func (i *Inbound) NewConnectionEx(ctx context.Context, conn net.Conn, metadata a
 	case 3:
 		metadata.Destination.Port = i.overrideDestination.Port
 	}
-	i.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
+	if i.overrideOption != 0 {
+		i.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
+	}
 	i.router.RouteConnectionEx(ctx, conn, metadata, onClose)
 }
 

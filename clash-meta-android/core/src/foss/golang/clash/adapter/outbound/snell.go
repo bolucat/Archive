@@ -141,6 +141,13 @@ func (s *Snell) SupportUOT() bool {
 	return true
 }
 
+// ProxyInfo implements C.ProxyAdapter
+func (s *Snell) ProxyInfo() C.ProxyInfo {
+	info := s.Base.ProxyInfo()
+	info.DialerProxy = s.option.DialerProxy
+	return info
+}
+
 func NewSnell(option SnellOption) (*Snell, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	psk := []byte(option.Psk)
@@ -204,7 +211,7 @@ func NewSnell(option SnellOption) (*Snell, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			return streamConn(c, streamOption{psk, option.Version, addr, obfsOption}), nil
 		})
 	}

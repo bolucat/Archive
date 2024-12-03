@@ -170,15 +170,9 @@ YASSWindow::YASSWindow(GApplication* app) : app_(app), impl_(yass_window_new(YAS
 
   g_signal_connect(G_OBJECT(impl_->systemproxy), "toggled", G_CALLBACK(*systemproxy_callback), this);
 
-  static constexpr const char* const method_names[] = {
-#define XX(num, name, string) string,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS
   GtkComboBoxText* method = GTK_COMBO_BOX_TEXT(impl_->method);
-  for (const char* method_name : method_names) {
+  for (const char* method_name : kCipherMethodCStrs) {
     gtk_combo_box_text_append_text(method, method_name);
   }
   G_GNUC_END_IGNORE_DEPRECATIONS
@@ -490,15 +484,14 @@ void YASSWindow::LoadChanges() {
   gtk_editable_set_text(GTK_EDITABLE(impl_->username), username_str.c_str());
   gtk_editable_set_text(GTK_EDITABLE(impl_->password), password_str.c_str());
 
-  static constexpr const uint32_t method_ids[] = {
-#define XX(num, name, string) num,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
   unsigned int i;
-  for (i = 0; i < std::size(method_ids); ++i) {
-    if (cipher_method == method_ids[i])
+  for (i = 0; i < std::size(kCipherMethods); ++i) {
+    if (cipher_method == kCipherMethods[i])
       break;
+  }
+  // not found
+  if (i == std::size(kCipherMethods)) {
+    i = 0;
   }
 
   G_GNUC_BEGIN_IGNORE_DEPRECATIONS

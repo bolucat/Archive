@@ -93,6 +93,8 @@ func (t *TProxy) Close() error {
 }
 
 func (t *TProxy) NewConnectionEx(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
+	metadata.Inbound = t.Tag()
+	metadata.InboundType = t.Type()
 	metadata.Destination = M.SocksaddrFromNet(conn.LocalAddr()).Unwrap()
 	t.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
 	t.router.RouteConnectionEx(ctx, conn, metadata, onClose)

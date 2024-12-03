@@ -5,6 +5,7 @@
 
 #include <absl/flags/flag.h>
 #include <absl/strings/str_cat.h>
+#include <absl/strings/str_join.h>
 #include <stdint.h>
 #include <optional>
 #include <sstream>
@@ -142,9 +143,10 @@ ABSL_FLAG(std::string, local_host, "127.0.0.1", "Local proxy server on given hos
 ABSL_FLAG(PortFlag, local_port, PortFlag(1080), "Local proxy server on given port (Client Only)");
 ABSL_FLAG(std::string, username, "username", "Server user");
 ABSL_FLAG(std::string, password, "password", "Server password");
-static const std::string kCipherMethodHelpMessage =
-    absl::StrCat("Specify encrypt of method to use, one of ", kCipherMethodsStr);
-ABSL_FLAG(CipherMethodFlag, method, CipherMethodFlag(CRYPTO_DEFAULT), kCipherMethodHelpMessage);
+ABSL_FLAG(CipherMethodFlag,
+          method,
+          CipherMethodFlag(CRYPTO_DEFAULT),
+          absl::StrCat("Specify encrypt of method to use, one of ", absl::StrJoin(kCipherMethodStrs, ", ")));
 
 ABSL_FLAG(uint32_t, parallel_max, 65535, "Maximum concurrency for parallel connections");
 ABSL_FLAG(RateFlag, limit_rate, RateFlag(0), "Limit transfer speed to RATE");

@@ -122,6 +122,13 @@ func (ssr *ShadowSocksR) SupportWithDialer() C.NetWork {
 	return C.ALLNet
 }
 
+// ProxyInfo implements C.ProxyAdapter
+func (ssr *ShadowSocksR) ProxyInfo() C.ProxyInfo {
+	info := ssr.Base.ProxyInfo()
+	info.DialerProxy = ssr.option.DialerProxy
+	return info
+}
+
 func NewShadowSocksR(option ShadowSocksROption) (*ShadowSocksR, error) {
 	// SSR protocol compatibility
 	// https://github.com/metacubex/mihomo/pull/2056

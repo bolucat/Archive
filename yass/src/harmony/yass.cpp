@@ -975,22 +975,18 @@ static napi_value getCipher(napi_env env, napi_callback_info info) {
 }
 
 static napi_value getCipherStrings(napi_env env, napi_callback_info info) {
-  static constexpr const char* const method_names[] = {
-#define XX(num, name, string) string,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-
   napi_value results;
-  auto status = napi_create_array_with_length(env, std::size(method_names), &results);
+  constexpr const unsigned int cipher_count = std::size(kCipherMethodStrs);
+  auto status = napi_create_array_with_length(env, cipher_count, &results);
   if (status != napi_ok) {
     napi_throw_error(env, nullptr, "napi_create_array_with_length failed");
     return nullptr;
   }
 
-  for (size_t i = 0; i < std::size(method_names); ++i) {
+  for (unsigned int i = 0; i < cipher_count; ++i) {
     napi_value value;
-    auto status = napi_create_string_utf8(env, method_names[i], NAPI_AUTO_LENGTH, &value);
+    std::string_view str = kCipherMethodStrs[i];
+    auto status = napi_create_string_utf8(env, str.data(), str.size(), &value);
     if (status != napi_ok) {
       napi_throw_error(env, nullptr, "napi_create_string_utf8 failed");
       return nullptr;

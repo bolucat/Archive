@@ -61,7 +61,7 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, routeOp
 		autoDetectInterface: routeOptions.AutoDetectInterface,
 		defaultOptions: adapter.NetworkOptions{
 			BindInterface:       routeOptions.DefaultInterface,
-			RoutingMark:         routeOptions.DefaultMark,
+			RoutingMark:         uint32(routeOptions.DefaultMark),
 			NetworkStrategy:     C.NetworkStrategy(routeOptions.DefaultNetworkStrategy),
 			NetworkType:         common.Map(routeOptions.DefaultNetworkType, option.InterfaceType.Build),
 			FallbackNetworkType: common.Map(routeOptions.DefaultFallbackNetworkType, option.InterfaceType.Build),

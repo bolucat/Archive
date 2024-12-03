@@ -611,18 +611,11 @@ func (r *refProxyAdapter) SupportUDP() bool {
 	return false
 }
 
-func (r *refProxyAdapter) SupportXUDP() bool {
+func (r *refProxyAdapter) ProxyInfo() C.ProxyInfo {
 	if r.proxyAdapter != nil {
-		return r.proxyAdapter.SupportXUDP()
+		return r.proxyAdapter.ProxyInfo()
 	}
-	return false
-}
-
-func (r *refProxyAdapter) SupportTFO() bool {
-	if r.proxyAdapter != nil {
-		return r.proxyAdapter.SupportTFO()
-	}
-	return false
+	return C.ProxyInfo{}
 }
 
 func (r *refProxyAdapter) MarshalJSON() ([]byte, error) {

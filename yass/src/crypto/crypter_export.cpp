@@ -52,9 +52,3 @@ bool is_valid_cipher_method(enum cipher_method method) {
       return false;
   }
 }
-
-#define XX(num, name, string) string ", "
-static constexpr const char kCipherMethodsStrImpl[] = CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-    ;
-constexpr const std::string_view kCipherMethodsStr(kCipherMethodsStrImpl, std::size(kCipherMethodsStrImpl) - 3);

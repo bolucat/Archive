@@ -244,6 +244,13 @@ func (t *Trojan) SupportUOT() bool {
 	return true
 }
 
+// ProxyInfo implements C.ProxyAdapter
+func (t *Trojan) ProxyInfo() C.ProxyInfo {
+	info := t.Base.ProxyInfo()
+	info.DialerProxy = t.option.DialerProxy
+	return info
+}
+
 func NewTrojan(option TrojanOption) (*Trojan, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 

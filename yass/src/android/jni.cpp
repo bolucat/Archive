@@ -62,31 +62,22 @@ JNIEXPORT jobject JNICALL Java_it_gui_yass_YassUtils_getPassword(JNIEnv* env, jo
 }
 
 JNIEXPORT jint JNICALL Java_it_gui_yass_YassUtils_getCipher(JNIEnv* env, jobject obj) {
-  static constexpr const uint32_t method_ids[] = {
-#define XX(num, name, string) num,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-  int method_idx = [&](uint32_t method) -> int {
-    auto it = std::find(std::begin(method_ids), std::end(method_ids), method);
-    if (it == std::end(method_ids)) {
-      return 0;
+  const auto method = absl::GetFlag(FLAGS_method).method;
+  unsigned int i;
+  for (unsigned int i = 0; i < std::size(kCipherMethods); ++i) {
+    if (kCipherMethods[i] == method) {
+      return i;
     }
-    return it - std::begin(method_ids);
-  }(absl::GetFlag(FLAGS_method).method);
-  return method_idx;
+  }
+  // not found
+  return 0;
 }
 
 JNIEXPORT jobjectArray JNICALL Java_it_gui_yass_YassUtils_getCipherStrings(JNIEnv* env, jobject obj) {
-  static constexpr const char* const method_names[] = {
-#define XX(num, name, string) string,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
   jobjectArray jarray =
-      env->NewObjectArray(std::size(method_names), env->FindClass("java/lang/String"), env->NewStringUTF(""));
-  for (unsigned int i = 0; i < std::size(method_names); ++i) {
-    env->SetObjectArrayElement(jarray, i, env->NewStringUTF(method_names[i]));
+      env->NewObjectArray(std::size(kCipherMethodCStrs), env->FindClass("java/lang/String"), env->NewStringUTF(""));
+  for (unsigned int i = 0; i < std::size(kCipherMethodCStrs); ++i) {
+    env->SetObjectArrayElement(jarray, i, env->NewStringUTF(kCipherMethodCStrs[i]));
   }
   return jarray;
 }
@@ -139,13 +130,9 @@ JNIEXPORT jobject JNICALL Java_it_gui_yass_YassUtils_saveConfig(JNIEnv* env,
   std::string password = password_str != nullptr ? password_str : std::string();
   env->ReleaseStringUTFChars((jstring)_password, password_str);
 
-  static std::vector<cipher_method> methods_idxes = {
-#define XX(num, name, string) CRYPTO_##name,
-      CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-  };
-  DCHECK_LT((uint32_t)_method_idx, methods_idxes.size());
-  auto method = methods_idxes[_method_idx];
+  DCHECK_GE(_method_idx, 0);
+  DCHECK_LT(static_cast<uint32_t>(_method_idx), std::size(kCipherMethods));
+  auto method = kCipherMethods[_method_idx];
 
   constexpr std::string_view local_host = "0.0.0.0";
   constexpr std::string_view local_port = "0";

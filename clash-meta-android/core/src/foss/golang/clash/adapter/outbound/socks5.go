@@ -171,6 +171,13 @@ func (ss *Socks5) ListenPacketContext(ctx context.Context, metadata *C.Metadata,
 	return newPacketConn(&socksPacketConn{PacketConn: pc, rAddr: bindUDPAddr, tcpConn: c}, ss), nil
 }
 
+// ProxyInfo implements C.ProxyAdapter
+func (ss *Socks5) ProxyInfo() C.ProxyInfo {
+	info := ss.Base.ProxyInfo()
+	info.DialerProxy = ss.option.DialerProxy
+	return info
+}
+
 func NewSocks5(option Socks5Option) (*Socks5, error) {
 	var tlsConfig *tls.Config
 	if option.TLS {

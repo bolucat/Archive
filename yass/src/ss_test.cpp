@@ -12,6 +12,7 @@
 #include <absl/flags/parse.h>
 #include <absl/strings/str_cat.h>
 #include <absl/strings/str_format.h>
+#include <absl/strings/str_join.h>
 #include <base/memory/ref_counted.h>
 #include <base/memory/scoped_refptr.h>
 #include <base/rand_util.h>
@@ -27,8 +28,14 @@
 
 #ifdef HAVE_CURL
 #include <curl/curl.h>
-ABSL_FLAG(std::string, proxy_type, "http", "proxy type, available: socks4, socks4a, socks5, socks5h, http");
+static constexpr const std::string_view kAvailableProxyTypes[] = {"socks4", "socks4a", "socks5", "socks5h", "http"};
+#else
+static constexpr const std::string_view kAvailableProxyTypes[] = {"http"};
 #endif
+ABSL_FLAG(std::string,
+          proxy_type,
+          "http",
+          absl::StrCat("proxy type, available: ", absl::StrJoin(kAvailableProxyTypes, ", ")));
 
 #include "cli/cli_server.hpp"
 #include "config/config.hpp"
@@ -767,15 +774,9 @@ TEST_P(EndToEndTest, 1M) {
   SendRequestAndCheckResponse();
 }
 
-static constexpr const cipher_method kCiphers[] = {
-#define XX(num, name, string) CRYPTO_##name,
-    CIPHER_METHOD_VALID_MAP(XX)
-#undef XX
-};
-
 INSTANTIATE_TEST_SUITE_P(Ss,
                          EndToEndTest,
-                         ::testing::ValuesIn(kCiphers),
+                         ::testing::ValuesIn(kCipherMethods),
                          [](const ::testing::TestParamInfo<cipher_method>& info) -> std::string {
                            return std::string(to_cipher_method_name(info.param));
                          });
@@ -868,6 +869,16 @@ int main(int argc, char** argv) {
 
   ::testing::InitGoogleTest(&argc, argv);
   absl::ParseCommandLine(argc, argv);
+
+  // check ss_test only flags
+  bool found_proxy_type = std::find(std::begin(kAvailableProxyTypes), std::end(kAvailableProxyTypes),
+                                    absl::GetFlag(FLAGS_proxy_type)) != std::end(kAvailableProxyTypes);
+
+  if (!found_proxy_type) {
+    std::cerr << "Invalid proxy type: " << absl::GetFlag(FLAGS_proxy_type) << " expected on of "
+              << absl::StrJoin(kAvailableProxyTypes, ",") << std::endl;
+    return -1;
+  }
 
   // first line of logging
   LOG(WARNING) << "Application starting: " << YASS_APP_TAG << " type: " << ProgramTypeToStr(pType);

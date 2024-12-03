@@ -134,10 +134,24 @@ CIPHER_METHOD_MAP(XX)
 CIPHER_METHOD_MAP(XX)
 #undef XX
 
-extern const std::string_view kCipherMethodsStr;
-
 #define XX(num, name, string) constexpr const char CRYPTO_##name##_CSTR[] = string;
 CIPHER_METHOD_MAP(XX)
+#undef XX
+
+#define XX(num, name, string) static_cast<enum cipher_method>(num),
+constexpr const enum cipher_method kCipherMethods[] = {CIPHER_METHOD_VALID_MAP(XX)};
+#undef XX
+
+#define XX(num, name, string) string,
+constexpr const std::string_view kCipherMethodStrs[] = {CIPHER_METHOD_VALID_MAP(XX)};
+#undef XX
+
+#define XX(num, name, string) string,
+constexpr const char* kCipherMethodCStrs[] = {CIPHER_METHOD_VALID_MAP(XX)};
+#undef XX
+
+#define XX(num, name, string) L##string,
+constexpr const wchar_t* kCipherMethodLCStrs[] = {CIPHER_METHOD_VALID_MAP(XX)};
 #undef XX
 
 #endif  // H_CRYPTO_CRYPTER_EXPORT
