@@ -112,7 +112,7 @@ class HttpRequestParser : public quiche::BalsaVisitorInterface {
 
   bool first_byte_processed_ = false;
   bool headers_done_ = false;
-  ParserStatus status_ = ParserStatus::Ok;
+  ParserStatus status_ = ParserStatus::Paused;
   int status_code_ = 0;
   // An error message, often seemingly arbitrary to match http-parser behavior.
   std::string_view error_message_;

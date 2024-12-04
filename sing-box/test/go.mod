@@ -13,7 +13,7 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/gofrs/uuid/v5 v5.3.0
 	github.com/sagernet/quic-go v0.48.2-beta.1
-	github.com/sagernet/sing v0.6.0-beta.3
+	github.com/sagernet/sing v0.6.0-beta.5
 	github.com/sagernet/sing-dns v0.4.0-beta.1
 	github.com/sagernet/sing-quic v0.4.0-alpha.4
 	github.com/sagernet/sing-shadowsocks v0.2.7

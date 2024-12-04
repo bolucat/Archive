@@ -24,7 +24,6 @@ jobs:
           ${{ secrets.GPG_KEY }}
           echo "HOME=$HOME" >> "$GITHUB_ENV"
           EOF
-          echo "HOME=$HOME" >> "$GITHUB_ENV"
       - name: Publish release
         uses: goreleaser/goreleaser-action@v6
         with:

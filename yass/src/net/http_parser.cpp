@@ -372,6 +372,7 @@ void HttpRequestParser::HeaderDone() {
   if (status_ == ParserStatus::Error) {
     return;
   }
+  status_ = ParserStatus::Ok;
   headers_done_ = true;
 }
 
@@ -381,6 +382,7 @@ void HttpRequestParser::MessageDone() {
   if (status_ == ParserStatus::Error) {
     return;
   }
+  status_ = ParserStatus::Ok;
   framer_.Reset();
   first_byte_processed_ = false;
   headers_done_ = false;

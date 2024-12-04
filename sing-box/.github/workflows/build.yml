@@ -1,0 +1,187 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev-next
+
+jobs:
+  build:
+    name: Build binary
+    if: false
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: linux_386
+            goos: linux
+            goarch: 386
+          - name: linux_amd64
+            goos: linux
+            goarch: amd64
+          - name: linux_arm64
+            goos: linux
+            goarch: arm64
+          - name: linux_arm
+            goos: linux
+            goarch: arm
+          - name: linux_s390x
+            goos: linux
+            goarch: s390x
+          - name: linux_riscv64
+            goos: linux
+            goarch: riscv64
+          - name: linux_mips64le
+            goos: linux
+            goarch: mips64le
+          - name: windows_amd64
+            goos: windows
+            goarch: amd64
+            require_legacy_go: true
+          - name: windows_386
+            goos: windows
+            goarch: 386
+            require_legacy_go: true
+          - name: windows_arm64
+            goos: windows
+            goarch: arm64
+          - name: darwin_amd64
+            goos: darwin
+            goarch: amd64
+            require_legacy_go: true
+          - name: android_arm64
+            goos: android
+            goarch: arm64
+          - name: android_arm
+            goos: android
+            goarch: arm
+          - name: android_amd64
+            goos: android
+            goarch: amd64
+          - name: android_386
+            goos: android
+            goarch: 386
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.23
+      - name: Cache legacy Go
+        if: matrix.require_legacy_go
+        id: cache-legacy-go
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/go1.20.14
+          key: go120
+      - name: Setup legacy Go
+        if: matrix.require_legacy_go == 'true' && steps.cache-legacy-go.outputs.cache-hit != 'true'
+        run: |-
+          wget https://dl.google.com/go/go1.20.14.linux-amd64.tar.gz
+          tar -xzf go1.20.14.linux-amd64.tar.gz
+          mv go $HOME/go/go1.20.14
+      - name: Setup Android NDK
+        if: matrix.goos == 'android'
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          local-cache: true
+      - name: Setup Goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser-pro
+          version: latest
+          install-only: true
+      - name: Extract signing key
+        run: |-
+          mkdir -p $HOME/.gnupg
+          cat > $HOME/.gnupg/sagernet.key <<EOF
+          ${{ secrets.GPG_KEY }}
+          EOF
+      - name: Build
+        if: matrix.goos != 'android'
+        run: |-
+          goreleaser release --clean --split
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          NFPM_KEY_PATH: ${{ env.HOME }}/.gnupg/sagernet.key
+          NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Build Android
+        if: matrix.goos == 'android'
+        run: |-
+          go run -v ./cmd/internal/build goreleaser release --clean --split
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
+          NFPM_KEY_PATH: ${{ env.HOME }}/.gnupg/sagernet.key
+          NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: 'dist/*'
+  build_android_lib:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.23
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26c
+      - name: Setup OpenJDK
+        run: |-
+          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
+          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
+      - name: Build library
+        run: |-
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make lib_android
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Checkout dev branch
+        if: github.ref == 'refs/heads/dev-next'
+        run: |-
+          cd clients/android &&
+            git checkout dev &&
+            mkdir app/libs
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ hashFiles('**/*.gradle') }}
+      - name: Extract signing key
+        run: |-
+          cat > clients/android/local.properties <<EOF
+          ${{ secrets.LOCAL_PROPERTIES }}
+          EOF
+      - name: Build Android
+        run: |-
+          mv libbox.aar clients/android/app/libs
+          cd clients/android &&
+            ./gradlew :app:assemblePlayRelease
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android_apks
+          path: clients/android/app/build/outputs/apk/play/release/*.apk

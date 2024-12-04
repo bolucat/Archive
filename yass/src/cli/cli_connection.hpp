@@ -277,6 +277,8 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   asio::error_code OnReadSocks4Handshake(std::shared_ptr<IOBuf> buf);
   /// Start to read http handshake request
   asio::error_code OnReadHttpRequest(std::shared_ptr<IOBuf> buf);
+  /// Start to read http handshake request (after reuse)
+  asio::error_code OnReadHttpRequestAfterReuse(std::shared_ptr<IOBuf>& buf);
 
   /// Start wait error on stream
   void WaitStreamError();
@@ -356,6 +358,10 @@ class CliConnection : public gurl_base::RefCountedThreadSafe<CliConnection>,
   bool http_is_keep_alive_ = false;
   /// copy of remaining bytes in keep alive cycle
   int64_t http_keep_alive_remaining_bytes_ = 0;
+  /// remaining buffer for unhandled http keep-alive requests
+  std::shared_ptr<IOBuf> http_keep_alive_pending_buf_;
+  /// previous buffer for an incomplete http keep-alive request
+  std::shared_ptr<IOBuf> http_keep_alive_previous_buf_;
 
   /// copy of upstream request
   ss::request request_;
