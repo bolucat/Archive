@@ -61,6 +61,25 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
+	peers := common.Map(options.Peers, func(it option.LegacyWireGuardPeer) wireguard.PeerOptions {
+		return wireguard.PeerOptions{
+			Endpoint:     it.ServerOptions.Build(),
+			PublicKey:    it.PublicKey,
+			PreSharedKey: it.PreSharedKey,
+			AllowedIPs:   it.AllowedIPs,
+			// PersistentKeepaliveInterval: time.Duration(it.PersistentKeepaliveInterval),
+			Reserved: it.Reserved,
+		}
+	})
+	if len(peers) == 0 {
+		peers = []wireguard.PeerOptions{{
+			Endpoint:     options.ServerOptions.Build(),
+			PublicKey:    options.PeerPublicKey,
+			PreSharedKey: options.PreSharedKey,
+			AllowedIPs:   []netip.Prefix{netip.PrefixFrom(netip.IPv4Unspecified(), 0), netip.PrefixFrom(netip.IPv6Unspecified(), 0)},
+			Reserved:     options.Reserved,
+		}}
+	}
 	wgEndpoint, err := wireguard.NewEndpoint(wireguard.EndpointOptions{
 		Context: ctx,
 		Logger:  logger,
@@ -82,16 +101,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			}
 			return endpointAddresses[0], nil
 		},
-		Peers: common.Map(options.Peers, func(it option.LegacyWireGuardPeer) wireguard.PeerOptions {
-			return wireguard.PeerOptions{
-				Endpoint:     it.ServerOptions.Build(),
-				PublicKey:    it.PublicKey,
-				PreSharedKey: it.PreSharedKey,
-				AllowedIPs:   it.AllowedIPs,
-				// PersistentKeepaliveInterval: time.Duration(it.PersistentKeepaliveInterval),
-				Reserved: it.Reserved,
-			}
-		}),
+		Peers:   peers,
 		Workers: options.Workers,
 	})
 	if err != nil {

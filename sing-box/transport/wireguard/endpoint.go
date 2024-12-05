@@ -150,13 +150,19 @@ func (e *Endpoint) Start(resolve bool) error {
 			connectAddr netip.AddrPort
 			reserved    [3]uint8
 		)
-		peerLen := len(e.peers)
-		if peerLen == 1 {
+		if len(e.peers) == 1 {
 			isConnect = true
 			connectAddr = e.peers[0].endpoint
 			reserved = e.peers[0].reserved
 		}
 		bind = NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved)
+	}
+	if isWgListener || len(e.peers) > 1 {
+		for _, peer := range e.peers {
+			if peer.reserved != [3]uint8{} {
+				bind.SetReservedForEndpoint(peer.endpoint, peer.reserved)
+			}
+		}
 	}
 	err := e.tunDevice.Start()
 	if err != nil {

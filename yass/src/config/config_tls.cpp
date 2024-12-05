@@ -44,17 +44,8 @@ ABSL_FLAG(bool, tls13_early_data, true, "Enable 0RTTI Early Data (risk at produc
 
 ABSL_FLAG(bool,
           enable_post_quantum_kyber,
-          false,
-          "Enables post-quantum key-agreements in TLS 1.3 connections. "
-          "The use_ml_kem flag controls whether ML-KEM or Kyber is used.");
-ABSL_FLAG(bool,
-          use_ml_kem,
           true,
-          "Use ML-KEM in TLS 1.3. "
-          "Causes TLS 1.3 connections to use the ML-KEM standard instead of the Kyber "
-          "draft standard for post-quantum key-agreement. "
-          "The enable_post_quantum_kyber flag must be enabled "
-          "for this to have an effect.");
+          "Enables post-quantum key-agreements (i.e. ML-KEM) in TLS 1.3 connections.");
 
 namespace config {
 bool ReadTLSConfigFile() {

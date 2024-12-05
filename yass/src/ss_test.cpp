@@ -744,11 +744,10 @@ class EndToEndTest : public ::testing::TestWithParam<cipher_method> {
   asio::ip::tcp::endpoint local_endpoint_;
 };
 
-class EndToEndTestPostQuantumnMLKEM : public EndToEndTest {
+class EndToEndTestPostQuantumnMLKEMOnly : public EndToEndTest {
  protected:
   void SetUp() override {
-    absl::SetFlag(&FLAGS_enable_post_quantum_kyber, true);
-    absl::SetFlag(&FLAGS_use_ml_kem, true);
+    DCHECK(absl::GetFlag(FLAGS_enable_post_quantum_kyber));
     net::SSLServerSocket::TEST_set_post_quantumn_only_mode(true);
     EndToEndTest::SetUp();
   }
@@ -791,23 +790,23 @@ static constexpr const cipher_method kCiphersHttps[] = {
 // Currently github actions limit the maximum of build step to 6hr,
 // so these tests might get timed out.
 #if !(defined(MEMORY_SANITIZER) && !defined(NDEBUG))
-TEST_P(EndToEndTestPostQuantumnMLKEM, 4K) {
+TEST_P(EndToEndTestPostQuantumnMLKEMOnly, 4K) {
   GenerateRandContent(4096);
   SendRequestAndCheckResponse();
 }
 
-TEST_P(EndToEndTestPostQuantumnMLKEM, 256K) {
+TEST_P(EndToEndTestPostQuantumnMLKEMOnly, 256K) {
   GenerateRandContent(256 * 1024);
   SendRequestAndCheckResponse();
 }
 
-TEST_P(EndToEndTestPostQuantumnMLKEM, 1M) {
+TEST_P(EndToEndTestPostQuantumnMLKEMOnly, 1M) {
   GenerateRandContent(1024 * 1024);
   SendRequestAndCheckResponse();
 }
 
 INSTANTIATE_TEST_SUITE_P(Ss,
-                         EndToEndTestPostQuantumnMLKEM,
+                         EndToEndTestPostQuantumnMLKEMOnly,
                          ::testing::ValuesIn(kCiphersHttps),
                          [](const ::testing::TestParamInfo<cipher_method>& info) -> std::string {
                            return std::string(to_cipher_method_name(info.param));
