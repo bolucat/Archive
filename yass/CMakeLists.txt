@@ -4144,6 +4144,7 @@ set(files
     src/net/base64.cpp
     src/net/cipher.cpp
     src/net/iobuf.cpp
+    src/net/io_buffer.cpp
     src/net/hkdf_sha1.cpp
     src/net/hmac_sha1.cpp
     src/net/dns_addrinfo_helper.cpp
@@ -4210,6 +4211,7 @@ set(hfiles
     src/net/base64.hpp
     src/net/cipher.hpp
     src/net/iobuf.hpp
+    src/net/io_buffer.hpp
     src/net/hkdf_sha1.hpp
     src/net/hmac_sha1.hpp
     src/net/dns_addrinfo_helper.hpp

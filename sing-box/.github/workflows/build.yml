@@ -3,19 +3,23 @@ name: Build
 on:
   workflow_dispatch:
     inputs:
-      tag:
-        description: "The tag version you want to build"
+      version:
+        description: "The version name"
   push:
     branches:
       - dev-next
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 jobs:
-  calculate_tag:
+  calculate_version:
     name: Calculate version
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.calculate.outputs.tag }}
+      version: ${{ steps.calculate.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
@@ -30,13 +34,14 @@ jobs:
         run: |-
           go install -v ./cmd/internal/read_tag # TODO: remove
           git checkout dev
-          TAG=$(read_tag --nightly)
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          VERSION=$(read_tag --nightly)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
   build:
+    if: false
     name: Build binary
     runs-on: ubuntu-latest
     needs:
-      - calculate_tag
+      - calculate_version
     strategy:
       matrix:
         include:
@@ -52,6 +57,11 @@ jobs:
           - name: linux_arm
             goos: linux
             goarch: arm
+            goarm: 6
+          - name: linux_arm_v7
+            goos: linux
+            goarch: arm
+            goarm: 7
           - name: linux_s390x
             goos: linux
             goarch: s390x
@@ -85,6 +95,7 @@ jobs:
           - name: android_arm
             goos: android
             goarch: arm
+            goarm: 7
           - name: android_amd64
             goos: android
             goarch: amd64
@@ -136,16 +147,20 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag ${{ github.event.inputs.tag }}
+          git tag v${{ github.event.inputs.version }}
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
-          git tag ${{ needs.calculate_tag.outputs.tag }}
+          git tag v${{ needs.calculate_version.outputs.version }}
       - name: Build
         if: matrix.goos != 'android'
         run: |-
           goreleaser release --clean --split
         env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOPATH: ${{ env.HOME }}/go
+          GOARM: ${{ matrix.goarm }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           NFPM_KEY_PATH: ${{ env.HOME }}/.gnupg/sagernet.key
@@ -153,8 +168,12 @@ jobs:
       - name: Build Android
         if: matrix.goos == 'android'
         run: |-
-          go run -v ./cmd/internal/build goreleaser release --clean --split
+          go install -v ./cmd/internal/build
+          GOOS=$BUILD_GOOS GOARCH=$BUILD_GOARCH build goreleaser release --clean --split
         env:
+          BUILD_GOOS: ${{ matrix.goos }}
+          BUILD_GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           NFPM_KEY_PATH: ${{ env.HOME }}/.gnupg/sagernet.key
@@ -165,10 +184,11 @@ jobs:
           name: binary-${{ matrix.name }}
           path: 'dist'
   build_android:
+    if: false
     name: Build Android
     runs-on: ubuntu-latest
     needs:
-      - calculate_tag
+      - calculate_version
     steps:
       - name: Checkout
         uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
@@ -191,13 +211,11 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag ${{ github.event.inputs.tag }}
-            echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_ENV"
+          git tag v${{ github.event.inputs.version }}
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
-          git tag ${{ needs.calculate_tag.outputs.tag }}
-          echo "TAG=${{ needs.calculate_tag.outputs.tag }}" >> "$GITHUB_ENV"
+          git tag v${{ needs.calculate_version.outputs.version }}
       - name: Build library
         run: |-
           make lib_install
@@ -209,9 +227,9 @@ jobs:
       - name: Checkout dev branch
         if: github.ref == 'refs/heads/dev-next'
         run: |-
-          cd clients/android &&
-            git checkout dev &&
-            mkdir app/libs
+          cd clients/android
+          git checkout dev
+          mkdir app/libs
       - name: Gradle cache
         uses: actions/cache@v4
         with:
@@ -219,7 +237,8 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle') }}
       - name: Build Android
         run: |-
-          mv libbox.aar clients/android/app/libs
+          go run -v ./cmd/internal/update_android_version --ci
+          cp libbox.aar clients/android/app/libs
           pushd clients/android
           ./gradlew :app:assemblePlayRelease :app:assembleOtherRelease
           popd
@@ -233,15 +252,210 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-android
+          name: binary-android-apks
+          path: 'dist'
+  build_apple_library:
+    name: Build Apple library
+    runs-on: macos-15
+    needs:
+      - calculate_version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.23
+      - name: Setup Xcode
+        run: |-
+          sudo xcode-select -s /Applications/Xcode_16.2_beta_3.app
+      - name: Set tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |-
+          git tag v${{ github.event.inputs.version }}
+      - name: Set nightly tag
+        if: github.event_name != 'workflow_dispatch'
+        run: |-
+          git tag v${{ needs.calculate_version.outputs.version }}
+      - name: Build library
+        run: |-
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make lib_ios
+      - name: Upload library
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-apple
+          path: 'Libbox.xcframework'
+  build_apple:
+    name: Build Apple clients
+    runs-on: macos-15
+    needs:
+      - calculate_version
+      - build_apple_library
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS
+            scheme: SFI
+            destination: 'generic/platform=iOS'
+            archive: build/SFI.xcarchive
+            upload: SFI/Upload.plist
+          - name: macOS
+            scheme: SFM
+            destination: 'generic/platform=macOS'
+            archive: build/SFM.xcarchive
+            upload: SFI/Upload.plist
+          - name: tvOS
+            scheme: SFT
+            destination: 'generic/platform=tvOS'
+            archive: build/SFT.xcarchive
+            upload: SFI/Upload.plist
+          - name: macOS-standalone
+            scheme: SFM.System
+            destination: 'generic/platform=macOS'
+            archive: build/SFM.System.xcarchive
+            export: SFM.System/Export.plist
+            export_path: build/SFM.System
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.23
+      - name: Setup Xcode
+        run: |-
+          sudo xcode-select -s /Applications/Xcode_16.2_beta_3.app
+      - name: Set tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |-
+          git tag v${{ github.event.inputs.version }}
+          echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
+      - name: Set nightly tag
+        if: github.event_name != 'workflow_dispatch'
+        run: |-
+          git tag v${{ needs.calculate_version.outputs.version }}
+          echo "VERSION=${{ needs.calculate_version.outputs.version }}" >> "$GITHUB_ENV"
+      - name: Checkout dev branch
+        if: github.ref == 'refs/heads/dev-next'
+        run: |-
+          pushd clients/apple
+          git checkout dev
+          popd
+          go run -v ./cmd/internal/update_apple_version --ci
+      - name: Setup certificates
+        run: |-
+          CERTIFICATE_PATH=$RUNNER_TEMP/Certificates.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/certificates.keychain-db
+          echo -n "$CERTIFICATES_P12" | base64 --decode -o $CERTIFICATE_PATH
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          PROFILES_ZIP_PATH=$RUNNER_TEMP/Profiles.zip
+          echo -n "$PROVISIONING_PROFILES" | base64 --decode -o $PROFILES_ZIP_PATH
+          
+          PROFILES_PATH="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_PATH"
+          unzip $PROFILES_ZIP_PATH -d "$PROFILES_PATH"
+          
+          ASC_KEY_PATH=$RUNNER_TEMP/Key.p12
+          echo -n "$ASC_KEY" | base64 --decode -o $ASC_KEY_PATH
+          
+          xcrun notarytool store-credentials "notarytool-password" \
+            --key $ASC_KEY_PATH \
+            --key-id $ASC_KEY_ID \
+            --issuer $ASC_KEY_ISSUER_ID
+        env:
+          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          PROVISIONING_PROFILES: ${{ secrets.PROVISIONING_PROFILES }}
+          ASC_KEY: ${{ secrets.ASC_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
+      - name: Download library
+        uses: actions/download-artifact@v4
+        with:
+          name: library-apple
+          path: clients/apple/Libbox.xcframework
+      - name: Build
+        run: |-
+          cd clients/apple
+          xcodebuild archive \
+            -scheme "${{ matrix.scheme }}" \
+            -configuration Release \
+            -destination "${{ matrix.destination }}" \
+            -archivePath "${{ matrix.archive }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath $RUNNER_TEMP/Key.p12 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_KEY_ISSUER_ID
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
+      - name: Upload to App Store Connect
+        if: matrix.name != 'macOS-standalone'
+        run: |-
+          cd clients/apple
+          xcodebuild -verbose -exportArchive \
+            -archivePath "${{ matrix.archive }}" \
+            -exportOptionsPlist ${{ matrix.upload }} \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath $RUNNER_TEMP/Key.p12 \
+            -authenticationKeyID $ASC_KEY_ID \
+            -authenticationKeyIssuerID $ASC_KEY_ISSUER_ID
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
+      - name: Build image
+        if: matrix.name == 'macOS-standalone'
+        run: |-
+          pushd clients/apple
+          xcodebuild -exportArchive \
+          	-archivePath "${{ matrix.archive }}" \
+          	-exportOptionsPlist ${{ matrix.export }} \
+          	-exportPath "${{ matrix.export_path }}"
+          brew install create-dmg
+          create-dmg \
+          	--volname "sing-box" \
+          	--volicon "${{ matrix.export_path }}/SFM.app/Contents/Resources/AppIcon.icns" \
+          	--icon "SFM.app" 0 0 \
+          		--hide-extension "SFM.app" \
+          		--app-drop-link 0 0 \
+          		--skip-jenkins \
+          	SFM.dmg "${{ matrix.export_path }}/SFM.app"
+          xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"
+          popd
+          mkdir dist
+          cp clients/apple/SFM.dmg "dist/SFM-${VERSION}-universal.dmg"
+      - name: Upload image
+        if: matrix.name == 'macOS-standalone'
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-macos-dmg
           path: 'dist'
   upload:
+    if: false
     name: Upload builds
     runs-on: ubuntu-latest
     needs:
-      - calculate_tag
+      - calculate_version
       - build
       - build_android
+      - build_apple
     steps:
       - name: Checkout
         uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
@@ -263,41 +477,46 @@ jobs:
       - name: Setup ghr
         if: steps.cache-ghr.outputs.cache-hit != 'true'
         run: |-
-          git clone https://github.com/nekohasekai/ghr $HOME/ghr
-          cd $HOME/ghr && go install -v .
+          cd $HOME
+          git clone https://github.com/nekohasekai/ghr ghr
+          cd ghr
+          go install -v .
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag ${{ github.event.inputs.tag }}
-          echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_ENV"
+          git tag v${{ github.event.inputs.version }}
+          echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
-          git tag ${{ needs.calculate_tag.outputs.tag }}
-          echo "TAG=${{ needs.calculate_tag.outputs.tag }}" >> "$GITHUB_ENV"
+          git tag v${{ needs.calculate_version.outputs.version }}
+          echo "VERSION=${{ needs.calculate_version.outputs.version }}" >> "$GITHUB_ENV"
       - name: Download builds
         uses: actions/download-artifact@v4
         with:
-          path: dist/tmp
-          pattern: binary-*
-#          merge-multiple: true
+          path: dist
+          merge-multiple: true
       - name: Merge builds
         run: |-
-          mv dist/tmp/*/* dist
           goreleaser continue --merge --skip publish
           mkdir -p dist/release
-          mv dist/*.tar.gz \
-          	dist/*.zip \
-          	dist/*.deb \
-          	dist/*.rpm \
-          	dist/*_amd64.pkg.tar.zst \
-          	dist/*_arm64.pkg.tar.zst \
+          mv dist/*/*.tar.gz \
+          	dist/*/*.zip \
+          	dist/*/*.deb \
+          	dist/*/*.rpm \
+          	dist/*/*_amd64.pkg.tar.zst \
+          	dist/*/*_arm64.pkg.tar.zst \
           	dist/release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
       - name: Upload builds
         run: |-
-          ghr --replace --draft --prerelease -p 5 "$TAG" dist/release
+          export PATH="$PATH:$HOME/go/bin"
+          ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist/release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Delete artifacts
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: binary-*

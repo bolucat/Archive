@@ -166,6 +166,8 @@ add_library(url STATIC
   googleurl/url/url_parse_internal.h
   googleurl/url/url_util.cc
   googleurl/url/url_util_internal.h
+  googleurl-override/base/pickle.h
+  googleurl-override/base/pickle.cc
   # googleurl/url/scheme_host_port.cc
   # googleurl/url/scheme_host_port.h
   # googleurl/url/origin.cc
