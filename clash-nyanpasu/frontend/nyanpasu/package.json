@@ -10,7 +10,7 @@
     "serve": "vite preview"
   },
   "dependencies": {
-    "@dnd-kit/core": "6.2.0",
+    "@dnd-kit/core": "6.3.1",
     "@dnd-kit/sortable": "9.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@emotion/styled": "11.13.5",
@@ -54,9 +54,9 @@
     "@emotion/react": "11.13.5",
     "@iconify/json": "2.2.280",
     "@monaco-editor/react": "4.6.0",
-    "@tanstack/react-router": "1.85.10",
-    "@tanstack/router-devtools": "1.85.10",
-    "@tanstack/router-plugin": "1.85.9",
+    "@tanstack/react-router": "1.86.1",
+    "@tanstack/router-devtools": "1.86.1",
+    "@tanstack/router-plugin": "1.86.0",
     "@tauri-apps/plugin-clipboard-manager": "2.0.1",
     "@tauri-apps/plugin-dialog": "2.0.1",
     "@tauri-apps/plugin-fs": "2.0.3",
@@ -87,7 +87,7 @@
     "vite": "6.0.3",
     "vite-plugin-sass-dts": "1.3.29",
     "vite-plugin-svgr": "4.3.0",
-    "vite-tsconfig-paths": "5.1.3",
+    "vite-tsconfig-paths": "5.1.4",
     "zod": "3.23.8"
   }
 }

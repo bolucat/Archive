@@ -5,6 +5,20 @@ on:
     inputs:
       version:
         description: "The version name"
+      build:
+        description: "The build type"
+        required: true
+        type: choice
+        default: "All"
+        options:
+          - All
+          - Binary
+          - Android
+          - Apple
+          - iOS
+          - macOS
+          - tvOS
+          - macOS-standalone
   push:
     branches:
       - dev-next
@@ -16,7 +30,6 @@ concurrency:
 jobs:
   calculate_version:
     name: Calculate version
-    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.calculate.outputs.version }}
@@ -37,8 +50,8 @@ jobs:
           VERSION=$(read_tag --nightly)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
   build:
-    if: false
     name: Build binary
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -147,7 +160,7 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag v${{ github.event.inputs.version }}
+          git tag v${{ inputs.version }}
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
@@ -179,13 +192,14 @@ jobs:
           NFPM_KEY_PATH: ${{ env.HOME }}/.gnupg/sagernet.key
           NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       - name: Upload artifact
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.name }}
           path: 'dist'
   build_android:
-    if: false
     name: Build Android
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Android'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -211,7 +225,7 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag v${{ github.event.inputs.version }}
+          git tag v${{ inputs.version }}
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
@@ -225,7 +239,7 @@ jobs:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
       - name: Checkout dev branch
-        if: github.ref == 'refs/heads/dev-next'
+        if: github.event_name != 'workflow_dispatch'
         run: |-
           cd clients/android
           git checkout dev
@@ -235,27 +249,42 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
-      - name: Build Android
+      - name: Prepare build
         run: |-
           go run -v ./cmd/internal/update_android_version --ci
           cp libbox.aar clients/android/app/libs
-          pushd clients/android
+      - name: Build
+        if: github.event_name == 'workflow_dispatch'
+        run: |-
+          cd clients/android
           ./gradlew :app:assemblePlayRelease :app:assembleOtherRelease
-          popd
-          mkdir -p dist/release
-          cp clients/android/app/build/outputs/apk/play/release/*.apk dist/release
-          cp clients/android/app/build/outputs/apk/other/release/*-universal.apk dist/release
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+      - name: Build nightly
+        if: github.event_name != 'workflow_dispatch'
+        run: |-
+          cd clients/android
+          ./gradlew :app:assemblePlayRelease :app:assembleOtherRelease
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+      - name: Prepare upload
+        run: |-
+          mkdir -p dist/release
+          cp clients/android/app/build/outputs/apk/play/release/*.apk dist/release
+          cp clients/android/app/build/outputs/apk/other/release/*-universal.apk dist/release
       - name: Upload artifact
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: binary-android-apks
           path: 'dist'
   build_apple_library:
     name: Build Apple library
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone'
     runs-on: macos-15
     needs:
       - calculate_version
@@ -275,7 +304,7 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag v${{ github.event.inputs.version }}
+          git tag v${{ inputs.version }}
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
@@ -297,62 +326,68 @@ jobs:
       - calculate_version
       - build_apple_library
     strategy:
-      fail-fast: false
       matrix:
         include:
           - name: iOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' }}
             scheme: SFI
             destination: 'generic/platform=iOS'
             archive: build/SFI.xcarchive
             upload: SFI/Upload.plist
           - name: macOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS' }}
             scheme: SFM
             destination: 'generic/platform=macOS'
             archive: build/SFM.xcarchive
             upload: SFI/Upload.plist
           - name: tvOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'tvOS' }}
             scheme: SFT
             destination: 'generic/platform=tvOS'
             archive: build/SFT.xcarchive
             upload: SFI/Upload.plist
           - name: macOS-standalone
+            if: true
             scheme: SFM.System
             destination: 'generic/platform=macOS'
             archive: build/SFM.System.xcarchive
             export: SFM.System/Export.plist
             export_path: build/SFM.System
-
     steps:
       - name: Checkout
+        if: matrix.if
         uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
         with:
           fetch-depth: 0
           submodules: 'recursive'
       - name: Setup Go
+        if: matrix.if
         uses: actions/setup-go@v5
         with:
           go-version: ^1.23
       - name: Setup Xcode
+        if: matrix.if
         run: |-
           sudo xcode-select -s /Applications/Xcode_16.2_beta_3.app
       - name: Set tag
-        if: github.event_name == 'workflow_dispatch'
+        if: matrix.if && github.event_name == 'workflow_dispatch'
         run: |-
-          git tag v${{ github.event.inputs.version }}
-          echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
+          git tag v${{ inputs.version }}
+          echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
       - name: Set nightly tag
-        if: github.event_name != 'workflow_dispatch'
+        if: matrix.if && github.event_name != 'workflow_dispatch'
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
           echo "VERSION=${{ needs.calculate_version.outputs.version }}" >> "$GITHUB_ENV"
       - name: Checkout dev branch
-        if: github.ref == 'refs/heads/dev-next'
+        if: matrix.if && github.ref == 'refs/heads/dev-next'
         run: |-
           pushd clients/apple
           git checkout dev
           popd
           go run -v ./cmd/internal/update_apple_version --ci
       - name: Setup certificates
+        if: matrix.if
         run: |-
           CERTIFICATE_PATH=$RUNNER_TEMP/Certificates.p12
           KEYCHAIN_PATH=$RUNNER_TEMP/certificates.keychain-db
@@ -387,11 +422,13 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
       - name: Download library
+        if: matrix.if
         uses: actions/download-artifact@v4
         with:
           name: library-apple
           path: clients/apple/Libbox.xcframework
       - name: Build
+        if: matrix.if
         run: |-
           cd clients/apple
           xcodebuild archive \
@@ -407,10 +444,10 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
       - name: Upload to App Store Connect
-        if: matrix.name != 'macOS-standalone'
+        if: matrix.if && matrix.name != 'macOS-standalone' && github.event_name == 'workflow_dispatch'
         run: |-
           cd clients/apple
-          xcodebuild -verbose -exportArchive \
+          xcodebuild -exportArchive \
             -archivePath "${{ matrix.archive }}" \
             -exportOptionsPlist ${{ matrix.upload }} \
             -allowProvisioningUpdates \
@@ -421,7 +458,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
       - name: Build image
-        if: matrix.name == 'macOS-standalone'
+        if: matrix.if && matrix.name == 'macOS-standalone' && github.event_name == 'workflow_dispatch'
         run: |-
           pushd clients/apple
           xcodebuild -exportArchive \
@@ -439,17 +476,17 @@ jobs:
           	SFM.dmg "${{ matrix.export_path }}/SFM.app"
           xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"
           popd
-          mkdir dist
-          cp clients/apple/SFM.dmg "dist/SFM-${VERSION}-universal.dmg"
+          mkdir dist/release
+          cp clients/apple/SFM.dmg "dist/release/SFM-${VERSION}-universal.dmg"
       - name: Upload image
-        if: matrix.name == 'macOS-standalone'
+        if: matrix.if && matrix.name == 'macOS-standalone' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: binary-macos-dmg
           path: 'dist'
   upload:
-    if: false
     name: Upload builds
+    if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -484,8 +521,8 @@ jobs:
       - name: Set tag
         if: github.event_name == 'workflow_dispatch'
         run: |-
-          git tag v${{ github.event.inputs.version }}
-          echo "VERSION=${{ github.event.inputs.version }}" >> "$GITHUB_ENV"
+          git tag v${{ inputs.version }}
+          echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
       - name: Set nightly tag
         if: github.event_name != 'workflow_dispatch'
         run: |-
@@ -497,6 +534,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Merge builds
+        if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
         run: |-
           goreleaser continue --merge --skip publish
           mkdir -p dist/release
@@ -516,7 +554,3 @@ jobs:
           ghr --replace --draft --prerelease -p 5 "v${VERSION}" dist/release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Delete artifacts
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: binary-*
