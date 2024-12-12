@@ -43,6 +43,7 @@ jobs:
           mv unlock-music .github
           mv ryujinx .github
           mv ryujinx-release-channel .github
+          mv yass .github
           # Clean Repository
           rm -rf *
           export GCRS="git clone --depth 1 --recurse-submodules"
@@ -111,7 +112,6 @@ jobs:
           ${GCRS} https://github.com/Loyalsoldier/geoip geoip
           ${GCRS} https://github.com/17mon/china_ip_list china-ip
           ${GCRS} https://github.com/ip-scanner/cloudflare ip-scanner
-          ${GCRS} https://github.com/Chilledheart/yass yass
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -144,6 +144,7 @@ jobs:
           mv .github/unlock-music .
           mv .github/ryujinx .
           mv .github/ryujinx-release-channel .
+          mv .github/yass .
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
