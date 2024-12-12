@@ -13,7 +13,7 @@ namespace NekoGui_fmt {
                 url.setScheme("http");
             }
         } else {
-            url.setScheme(QString("socks%1").arg(socks_http_type));
+            url.setScheme(QStringLiteral("socks%1").arg(socks_http_type));
         }
         if (!name.isEmpty()) url.setFragment(name);
         if (!username.isEmpty()) url.setUserName(username);

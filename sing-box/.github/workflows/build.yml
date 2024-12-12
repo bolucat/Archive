@@ -4,9 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "The version name"
+        description: "Version name"
+        required: true
+        type: string
+      prerelease:
+        description: "Is prerelease"
+        required: true
+        type: boolean
+        default: true
       build:
-        description: "The build type"
+        description: "Build type"
         required: true
         type: choice
         default: "All"
@@ -15,16 +22,23 @@ on:
           - Binary
           - Android
           - Apple
+          - app-store
           - iOS
           - macOS
           - tvOS
           - macOS-standalone
+          - publish-android
+      macos_project_version:
+        description: "macOS project version"
+        required: false
+        type: string
   push:
     branches:
+      - main-next
       - dev-next
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.build }}
   cancel-in-progress: true
 
 jobs:
@@ -32,7 +46,8 @@ jobs:
     name: Calculate version
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.calculate.outputs.version }}
+      version: ${{ steps.outputs.outputs.version }}
+      prerelease: ${{ steps.outputs.outputs.prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
@@ -42,13 +57,22 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ^1.23
-      - name: Calculate version
-        id: calculate
+      - name: Check input version
+        if: github.event_name == 'workflow_dispatch'
         run: |-
-          go install -v ./cmd/internal/read_tag # TODO: remove
-          git checkout dev
-          VERSION=$(read_tag --nightly)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=${{ inputs.version }}" 
+          echo "prerelease=${{ inputs.prerelease }}"
+          echo "version=${{ inputs.version }}" >> "$GITHUB_ENV"
+          echo "prerelease=${{ inputs.prerelease }}" >> "$GITHUB_ENV"
+      - name: Calculate version
+        if: github.event_name != 'workflow_dispatch'
+        run: |-
+          go run -v ./cmd/internal/read_tag --nightly
+      - name: Set outputs
+        id: outputs
+        run: |-
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
   build:
     name: Build binary
     if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
@@ -158,11 +182,6 @@ jobs:
           EOF
           echo "HOME=$HOME" >> "$GITHUB_ENV"
       - name: Set tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |-
-          git tag v${{ inputs.version }}
-      - name: Set nightly tag
-        if: github.event_name != 'workflow_dispatch'
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
       - name: Build
@@ -223,11 +242,6 @@ jobs:
           sudo apt update && sudo apt install -y openjdk-17-jdk-headless
           /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
       - name: Set tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |-
-          git tag v${{ inputs.version }}
-      - name: Set nightly tag
-        if: github.event_name != 'workflow_dispatch'
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
       - name: Build library
@@ -238,33 +252,26 @@ jobs:
         env:
           JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Checkout main branch
+        if: needs.calculate_version.outputs.prerelease == 'false'
+        run: |-
+          cd clients/android
+          git checkout main
       - name: Checkout dev branch
-        if: github.event_name != 'workflow_dispatch'
+        if: needs.calculate_version.outputs.prerelease == 'true'
         run: |-
           cd clients/android
           git checkout dev
-          mkdir app/libs
       - name: Gradle cache
         uses: actions/cache@v4
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
-      - name: Prepare build
+      - name: Build
         run: |-
           go run -v ./cmd/internal/update_android_version --ci
+          mkdir clients/android/app/libs
           cp libbox.aar clients/android/app/libs
-      - name: Build
-        if: github.event_name == 'workflow_dispatch'
-        run: |-
-          cd clients/android
-          ./gradlew :app:assemblePlayRelease :app:assembleOtherRelease
-        env:
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
-      - name: Build nightly
-        if: github.event_name != 'workflow_dispatch'
-        run: |-
           cd clients/android
           ./gradlew :app:assemblePlayRelease :app:assembleOtherRelease
         env:
@@ -272,6 +279,7 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
           LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
       - name: Prepare upload
+        if: github.event_name == 'workflow_dispatch'
         run: |-
           mkdir -p dist/release
           cp clients/android/app/build/outputs/apk/play/release/*.apk dist/release
@@ -282,9 +290,73 @@ jobs:
         with:
           name: binary-android-apks
           path: 'dist'
+  publish_android:
+    name: Publish Android
+    if: github.event_name == 'workflow_dispatch' && inputs.build == 'publish-android'
+    runs-on: ubuntu-latest
+    needs:
+      - calculate_version
+    steps:
+      - name: Checkout
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4
+        with:
+          fetch-depth: 0
+          submodules: 'recursive'
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.23
+      - name: Setup Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28-beta2
+      - name: Setup OpenJDK
+        run: |-
+          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
+          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
+      - name: Set tag
+        run: |-
+          git tag v${{ needs.calculate_version.outputs.version }}
+      - name: Build library
+        run: |-
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make lib_android
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+      - name: Checkout main branch
+        if: needs.calculate_version.outputs.prerelease == 'false'
+        run: |-
+          cd clients/android
+          git checkout main
+      - name: Checkout dev branch
+        if: needs.calculate_version.outputs.prerelease == 'true'
+        run: |-
+          cd clients/android
+          git checkout dev
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ hashFiles('**/*.gradle') }}
+      - name: Build
+        run: |-
+          go run -v ./cmd/internal/update_android_version --ci
+          mkdir clients/android/app/libs
+          cp libbox.aar clients/android/app/libs
+          cd clients/android
+          echo -n "$SERVICE_ACCOUNT_CREDENTIALS" | base64 --decode > service-account-credentials.json
+          ./gradlew :app:publishPlayReleaseBundle
+        env:
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+          SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.SERVICE_ACCOUNT_CREDENTIALS }}
   build_apple_library:
     name: Build Apple library
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone'
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'app-store' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone'
     runs-on: macos-15
     needs:
       - calculate_version
@@ -302,11 +374,6 @@ jobs:
         run: |-
           sudo xcode-select -s /Applications/Xcode_16.2_beta_3.app
       - name: Set tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |-
-          git tag v${{ inputs.version }}
-      - name: Set nightly tag
-        if: github.event_name != 'workflow_dispatch'
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
       - name: Build library
@@ -329,25 +396,25 @@ jobs:
       matrix:
         include:
           - name: iOS
-            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' }}
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'app-store'|| inputs.build == 'iOS' }}
             scheme: SFI
             destination: 'generic/platform=iOS'
             archive: build/SFI.xcarchive
             upload: SFI/Upload.plist
           - name: macOS
-            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS' }}
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'app-store'|| inputs.build == 'macOS' }}
             scheme: SFM
             destination: 'generic/platform=macOS'
             archive: build/SFM.xcarchive
             upload: SFI/Upload.plist
           - name: tvOS
-            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'tvOS' }}
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'app-store'|| inputs.build == 'tvOS' }}
             scheme: SFT
             destination: 'generic/platform=tvOS'
             archive: build/SFT.xcarchive
             upload: SFI/Upload.plist
           - name: macOS-standalone
-            if: true
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS-standalone' }}
             scheme: SFM.System
             destination: 'generic/platform=macOS'
             archive: build/SFM.System.xcarchive
@@ -370,22 +437,20 @@ jobs:
         run: |-
           sudo xcode-select -s /Applications/Xcode_16.2_beta_3.app
       - name: Set tag
-        if: matrix.if && github.event_name == 'workflow_dispatch'
-        run: |-
-          git tag v${{ inputs.version }}
-          echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
-      - name: Set nightly tag
-        if: matrix.if && github.event_name != 'workflow_dispatch'
+        if: matrix.if
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
           echo "VERSION=${{ needs.calculate_version.outputs.version }}" >> "$GITHUB_ENV"
-      - name: Checkout dev branch
-        if: matrix.if && github.ref == 'refs/heads/dev-next'
+      - name: Checkout main branch
+        if: matrix.if && needs.calculate_version.outputs.prerelease == 'false'
         run: |-
-          pushd clients/apple
+          cd clients/apple
+          git checkout main
+      - name: Checkout dev branch
+        if: matrix.if && needs.calculate_version.outputs.prerelease == 'true'
+        run: |-
+          cd clients/apple
           git checkout dev
-          popd
-          go run -v ./cmd/internal/update_apple_version --ci
       - name: Setup certificates
         if: matrix.if
         run: |-
@@ -430,6 +495,7 @@ jobs:
       - name: Build
         if: matrix.if
         run: |-
+          go run -v ./cmd/internal/update_apple_version --ci
           cd clients/apple
           xcodebuild archive \
             -scheme "${{ matrix.scheme }}" \
@@ -441,6 +507,7 @@ jobs:
             -authenticationKeyID $ASC_KEY_ID \
             -authenticationKeyIssuerID $ASC_KEY_ISSUER_ID
         env:
+          MACOS_PROJECT_VERSION: ${{ inputs.macos_project_version }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_ISSUER_ID: ${{ secrets.ASC_KEY_ISSUER_ID }}
       - name: Upload to App Store Connect
@@ -474,10 +541,14 @@ jobs:
           		--app-drop-link 0 0 \
           		--skip-jenkins \
           	SFM.dmg "${{ matrix.export_path }}/SFM.app"
-          xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"
+          xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"          
+          cd "${{ matrix.archive }}"
+          zip -r SFM.dSYMs.zip dSYMs
           popd
-          mkdir dist/release
+          
+          mkdir -p dist/release
           cp clients/apple/SFM.dmg "dist/release/SFM-${VERSION}-universal.dmg"
+          cp "clients/apple/${{ matrix.archive }}/SFM.dSYMs.zip" "dist/release/SFM-${VERSION}-universal.dSYMs.zip"
       - name: Upload image
         if: matrix.if && matrix.name == 'macOS-standalone' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
@@ -486,7 +557,7 @@ jobs:
           path: 'dist'
   upload:
     name: Upload builds
-    if: always() && github.event_name == 'workflow_dispatch'
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.build != 'publish-android'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -519,12 +590,6 @@ jobs:
           cd ghr
           go install -v .
       - name: Set tag
-        if: github.event_name == 'workflow_dispatch'
-        run: |-
-          git tag v${{ inputs.version }}
-          echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
-      - name: Set nightly tag
-        if: github.event_name != 'workflow_dispatch'
         run: |-
           git tag v${{ needs.calculate_version.outputs.version }}
           echo "VERSION=${{ needs.calculate_version.outputs.version }}" >> "$GITHUB_ENV"
@@ -538,13 +603,7 @@ jobs:
         run: |-
           goreleaser continue --merge --skip publish
           mkdir -p dist/release
-          mv dist/*/*.tar.gz \
-          	dist/*/*.zip \
-          	dist/*/*.deb \
-          	dist/*/*.rpm \
-          	dist/*/*_amd64.pkg.tar.zst \
-          	dist/*/*_arm64.pkg.tar.zst \
-          	dist/release
+          mv dist/*/sing-box*{tar.gz,zip,deb,rpm,_amd64.pkg.tar.zst,_arm64.pkg.tar.zst} dist/release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

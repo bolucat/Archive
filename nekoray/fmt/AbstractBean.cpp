@@ -38,7 +38,7 @@ namespace NekoGui_fmt {
     }
 
     QString AbstractBean::DisplayTypeAndName() {
-        return QString("[%1] %2").arg(DisplayType(), DisplayName());
+        return QStringLiteral("[%1] %2").arg(DisplayType(), DisplayName());
     }
 
     void AbstractBean::ResolveDomainToIP(const std::function<void()> &onFinished) {

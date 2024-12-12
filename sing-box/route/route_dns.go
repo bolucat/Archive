@@ -120,9 +120,19 @@ func (r *Router) matchDNS(ctx context.Context, allowFakeIP bool, ruleIndex int, 
 }
 
 func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	if len(message.Question) > 0 {
-		r.dnsLogger.DebugContext(ctx, "exchange ", formatQuestion(message.Question[0].String()))
+	if len(message.Question) != 1 {
+		r.dnsLogger.WarnContext(ctx, "bad question size: ", len(message.Question))
+		responseMessage := mDNS.Msg{
+			MsgHdr: mDNS.MsgHdr{
+				Id:       message.Id,
+				Response: true,
+				Rcode:    mDNS.RcodeFormatError,
+			},
+			Question: message.Question,
+		}
+		return &responseMessage, nil
 	}
+	r.dnsLogger.DebugContext(ctx, "exchange ", formatQuestion(message.Question[0].String()))
 	var (
 		response  *mDNS.Msg
 		cached    bool
@@ -134,16 +144,14 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 		var metadata *adapter.InboundContext
 		ctx, metadata = adapter.ExtendContext(ctx)
 		metadata.Destination = M.Socksaddr{}
-		if len(message.Question) > 0 {
-			metadata.QueryType = message.Question[0].Qtype
-			switch metadata.QueryType {
-			case mDNS.TypeA:
-				metadata.IPVersion = 4
-			case mDNS.TypeAAAA:
-				metadata.IPVersion = 6
-			}
-			metadata.Domain = fqdnToDomain(message.Question[0].Name)
+		metadata.QueryType = message.Question[0].Qtype
+		switch metadata.QueryType {
+		case mDNS.TypeA:
+			metadata.IPVersion = 4
+		case mDNS.TypeAAAA:
+			metadata.IPVersion = 6
 		}
+		metadata.Domain = fqdnToDomain(message.Question[0].Name)
 		var (
 			options   dns.QueryOptions
 			rule      adapter.DNSRule
@@ -202,7 +210,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 	if err != nil {
 		return nil, err
 	}
-	if r.dnsReverseMapping != nil && len(message.Question) > 0 && response != nil && len(response.Answer) > 0 {
+	if r.dnsReverseMapping != nil && response != nil && len(response.Answer) > 0 {
 		if _, isFakeIP := transport.(adapter.FakeIPTransport); !isFakeIP {
 			for _, answer := range response.Answer {
 				switch record := answer.(type) {

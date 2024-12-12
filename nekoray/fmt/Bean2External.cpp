@@ -9,7 +9,7 @@
 #define WriteTempFile(fn, data)                                   \
     QDir dir;                                                     \
     if (!dir.exists("temp")) dir.mkdir("temp");                   \
-    QFile f(QString("temp/") + fn);                               \
+    QFile f(QStringLiteral("temp/") + fn);                               \
     bool ok = f.open(QIODevice::WriteOnly | QIODevice::Truncate); \
     if (ok) {                                                     \
         f.write(data);                                            \

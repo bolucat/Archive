@@ -349,7 +349,7 @@ namespace NekoGui {
     }
 
     QString Routing::DisplayRouting() const {
-        return QString("[Proxy] %1\n[Proxy] %2\n[Direct] %3\n[Direct] %4\n[Block] %5\n[Block] %6\n[Default Outbound] %7\n[DNS] %8")
+        return QStringLiteral("[Proxy] %1\n[Proxy] %2\n[Direct] %3\n[Direct] %4\n[Block] %5\n[Block] %6\n[Default Outbound] %7\n[DNS] %8")
             .arg(SplitLinesSkipSharp(proxy_domain).join(","), 10)
             .arg(SplitLinesSkipSharp(proxy_ip).join(","), 10)
             .arg(SplitLinesSkipSharp(direct_domain).join(","), 10)

@@ -59,7 +59,7 @@ DialogBasicSettings::DialogBasicSettings(QWidget *parent)
 
     // Common
 
-    ui->log_level->addItems(QString("trace debug info warn error fatal panic").split(" "));
+    ui->log_level->addItems(QStringLiteral("trace debug info warn error fatal panic").split(" "));
     ui->mux_protocol->addItems({"h2mux", "smux", "yamux"});
 
     refresh_auth();

@@ -239,6 +239,7 @@ void MainWindow::speedtest_current_group(int mode, bool test_group) {
         lock_return.lock();
         lock_return.unlock();
         speedtesting = false;
+        MW_show_log(QObject::tr("Speedtest finished."));
     });
 #endif
 }
@@ -263,12 +264,12 @@ void MainWindow::speedtest_current() {
 
         runOnUiThread([=] {
             if (!result.error().empty()) {
-                MW_show_log(QString("UrlTest error: %1").arg(result.error().c_str()));
+                MW_show_log(QStringLiteral("UrlTest error: %1").arg(result.error().c_str()));
             }
             if (latency <= 0) {
                 ui->label_running->setText(tr("Test Result") + ": " + tr("Unavailable"));
             } else if (latency > 0) {
-                ui->label_running->setText(tr("Test Result") + ": " + QString("%1 ms").arg(latency));
+                ui->label_running->setText(tr("Test Result") + ": " + QStringLiteral("%1 ms").arg(latency));
             }
         });
     });

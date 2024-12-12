@@ -34,6 +34,7 @@ import (
 	apicommon "github.com/enfein/mieru/v3/apis/common"
 	"github.com/enfein/mieru/v3/apis/constant"
 	"github.com/enfein/mieru/v3/pkg/appctl"
+	"github.com/enfein/mieru/v3/pkg/appctl/appctlcommon"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlgrpc"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"github.com/enfein/mieru/v3/pkg/cipher"
@@ -403,14 +404,20 @@ var clientRunFunc = func(s []string) error {
 	log.SetFormatter(&log.DaemonFormatter{})
 	appctl.SetAppStatus(appctlpb.AppStatus_STARTING)
 
-	logFile, err := log.NewClientLogFile()
-	if err == nil {
-		log.SetOutput(logFile)
-		if err = log.RemoveOldClientLogFiles(); err != nil {
-			log.Errorf("remove old client log files failed: %v", err)
-		}
+	if _, found := os.LookupEnv(appctl.EnvMieruConfigFile); found {
+		log.Debugf("log to stdout because environment variable %s is set", appctl.EnvMieruConfigFile)
+	} else if _, found := os.LookupEnv(appctl.EnvMieruConfigJSONFile); found {
+		log.Debugf("log to stdout because environment variable %s is set", appctl.EnvMieruConfigJSONFile)
 	} else {
-		log.Infof("log to stdout due to the following reason: %v", err)
+		logFile, err := log.NewClientLogFile()
+		if err == nil {
+			log.SetOutput(logFile)
+			if err = log.RemoveOldClientLogFiles(); err != nil {
+				log.Errorf("remove old client log files failed: %v", err)
+			}
+		} else {
+			log.Infof("log to stdout because: %v", err)
+		}
 	}
 
 	// Load and verify client config.
@@ -533,7 +540,7 @@ var clientRunFunc = func(s []string) error {
 				return fmt.Errorf(stderror.ParseIPFailed)
 			}
 		}
-		portBindings, err := appctl.FlatPortBindings(serverInfo.GetPortBindings())
+		portBindings, err := appctlcommon.FlatPortBindings(serverInfo.GetPortBindings())
 		if err != nil {
 			return fmt.Errorf(stderror.InvalidPortBindingsErr, err)
 		}

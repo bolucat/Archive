@@ -29,23 +29,41 @@ namespace NekoGui {
         return tun_name;
     }
 
-    void MergeJson(const QJsonObject &custom, QJsonObject &outbound) {
+    void MergeJson(QJsonObject &dst, const QJsonObject &src) {
         // 合并
-        if (custom.isEmpty()) return;
-        for (const auto &key: custom.keys()) {
-            if (outbound.contains(key)) {
-                auto v = custom[key];
-                auto v_orig = outbound[key];
-                if (v.isObject() && v_orig.isObject()) { // isObject 则合并？
-                    auto vo = v.toObject();
-                    QJsonObject vo_orig = v_orig.toObject();
-                    MergeJson(vo, vo_orig);
-                    outbound[key] = vo_orig;
+        if (src.isEmpty()) return;
+        for (const auto &key: src.keys()) {
+            auto v_src = src[key];
+            if (dst.contains(key)) {
+                auto v_dst = dst[key];
+                if (v_src.isObject() && v_dst.isObject()) { // isObject 则合并？
+                    auto v_src_obj = v_src.toObject();
+                    auto v_dst_obj = v_dst.toObject();
+                    MergeJson(v_dst_obj, v_src_obj);
+                    dst[key] = v_dst_obj;
                 } else {
-                    outbound[key] = v;
+                    dst[key] = v_src;
+                }
+            } else if (v_src.isArray()) {
+                if (key.startsWith("+")) {
+                    auto key2 = SubStrAfter(key, "+");
+                    auto v_dst = dst[key2];
+                    auto v_src_arr = v_src.toArray();
+                    auto v_dst_arr = v_dst.toArray();
+                    QJSONARRAY_ADD(v_src_arr, v_dst_arr)
+                    dst[key2] = v_src_arr;
+                } else if (key.endsWith("+")) {
+                    auto key2 = SubStrBefore(key, "+");
+                    auto v_dst = dst[key2];
+                    auto v_src_arr = v_src.toArray();
+                    auto v_dst_arr = v_dst.toArray();
+                    QJSONARRAY_ADD(v_dst_arr, v_src_arr)
+                    dst[key2] = v_dst_arr;
+                } else {
+                    dst[key] = v_src;
                 }
             } else {
-                outbound[key] = custom[key];
+                dst[key] = v_src;
             }
         }
     }
@@ -68,7 +86,7 @@ namespace NekoGui {
         }
 
         // apply custom config
-        MergeJson(QString2QJsonObject(ent->bean->custom_config), result->coreConfig);
+        MergeJson(result->coreConfig, QString2QJsonObject(ent->bean->custom_config));
 
         return result;
     }
@@ -76,7 +94,7 @@ namespace NekoGui {
     QString BuildChain(int chainId, const std::shared_ptr<BuildConfigStatus> &status) {
         auto group = profileManager->GetGroup(status->ent->gid);
         if (group == nullptr) {
-            status->result->error = QString("This profile is not in any group, your data may be corrupted.");
+            status->result->error = QStringLiteral("This profile is not in any group, your data may be corrupted.");
             return {};
         }
 
@@ -88,11 +106,11 @@ namespace NekoGui {
                 for (auto id: list) {
                     resolved += profileManager->GetProfile(id);
                     if (resolved.last() == nullptr) {
-                        status->result->error = QString("chain missing ent: %1").arg(id);
+                        status->result->error = QStringLiteral("chain missing ent: %1").arg(id);
                         break;
                     }
                     if (resolved.last()->type == "chain") {
-                        status->result->error = QString("chain in chain is not allowed: %1").arg(id);
+                        status->result->error = QStringLiteral("chain in chain is not allowed: %1").arg(id);
                         break;
                     }
                 }
@@ -109,7 +127,7 @@ namespace NekoGui {
         if (group->front_proxy_id >= 0) {
             auto fEnt = profileManager->GetProfile(group->front_proxy_id);
             if (fEnt == nullptr) {
-                status->result->error = QString("front proxy ent not found.");
+                status->result->error = QStringLiteral("front proxy ent not found.");
                 return {};
             }
             ents += resolveChain(fEnt);
@@ -342,7 +360,7 @@ namespace NekoGui {
             }
 
             // apply custom outbound settings
-            MergeJson(QString2QJsonObject(ent->bean->custom_outbound), outbound);
+            MergeJson(outbound, QString2QJsonObject(ent->bean->custom_outbound));
 
             // Bypass Lookup for the first profile
             auto serverAddress = ent->bean->serverAddress;
@@ -486,7 +504,7 @@ namespace NekoGui {
                     } else if (item.startsWith("keyword:")) {
                         domain_keyword += item.replace("keyword:", "").toLower();
                     } else {
-                        domain_full += item.toLower();
+                        domain_subdomain += item.toLower();
                     }
                 }
             }
@@ -537,7 +555,7 @@ namespace NekoGui {
         }
         dnsRules.append(QJsonObject{
             {"outbound", "any"},
-            {"server", "direct"},
+            {"server", "dns-direct"},
         });
 
         // block

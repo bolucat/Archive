@@ -5,6 +5,7 @@ import (
 	gotls "crypto/tls"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"sync"
@@ -16,7 +17,7 @@ import (
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
-	"github.com/xtls/xray-core/common/signal/semaphore"
+	"github.com/xtls/xray-core/common/signal/done"
 	"github.com/xtls/xray-core/common/uuid"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/browser_dialer"
@@ -82,23 +83,34 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 	return res.Resource.(DialerClient), res
 }
 
+func h(tlsConfig *tls.Config, realityConfig *reality.Config) int {
+	if realityConfig != nil {
+		return 2
+	}
+	if tlsConfig == nil {
+		return 1
+	}
+	if len(tlsConfig.NextProtocol) != 1 {
+		return 2
+	}
+	if tlsConfig.NextProtocol[0] == "http/1.1" {
+		return 1
+	}
+	if tlsConfig.NextProtocol[0] == "h3" {
+		return 3
+	}
+	return 2
+}
+
 func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStreamConfig) DialerClient {
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
-	isH2 := false
-	isH3 := false
-
-	if tlsConfig != nil {
-		isH2 = !(len(tlsConfig.NextProtocol) == 1 && tlsConfig.NextProtocol[0] == "http/1.1")
-		isH3 = len(tlsConfig.NextProtocol) == 1 && tlsConfig.NextProtocol[0] == "h3"
-	} else if realityConfig != nil {
-		isH2 = true
-		isH3 = false
-	}
+	isH2 := h(tlsConfig, realityConfig) == 2
+	isH3 := h(tlsConfig, realityConfig) == 3
 
 	if isH3 {
-		dest.Network = net.Network_UDP
+		dest.Network = net.Network_UDP // better to keep this line
 	}
 
 	var gotlsConfig *gotls.Config
@@ -241,17 +253,16 @@ func init() {
 }
 
 func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (stat.Connection, error) {
-	errors.LogInfo(ctx, "dialing splithttp to ", dest)
-
-	var requestURL url.URL
-
-	transportConfiguration := streamSettings.ProtocolSettings.(*Config)
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
-	scMaxConcurrentPosts := transportConfiguration.GetNormalizedScMaxConcurrentPosts()
-	scMaxEachPostBytes := transportConfiguration.GetNormalizedScMaxEachPostBytes()
-	scMinPostsIntervalMs := transportConfiguration.GetNormalizedScMinPostsIntervalMs()
+	if h(tlsConfig, realityConfig) == 3 {
+		dest.Network = net.Network_UDP
+	}
+	errors.LogInfo(ctx, "XHTTP is dialing to: ", dest)
+
+	transportConfiguration := streamSettings.ProtocolSettings.(*Config)
+	var requestURL url.URL
 
 	if tlsConfig != nil || realityConfig != nil {
 		requestURL.Scheme = "https"
@@ -259,8 +270,14 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		requestURL.Scheme = "http"
 	}
 	requestURL.Host = transportConfiguration.Host
+	if requestURL.Host == "" && tlsConfig != nil {
+		requestURL.Host = tlsConfig.ServerName
+	}
+	if requestURL.Host == "" && realityConfig != nil {
+		requestURL.Host = realityConfig.ServerName
+	}
 	if requestURL.Host == "" {
-		requestURL.Host = dest.NetAddr()
+		requestURL.Host = dest.Address.String()
 	}
 
 	sessionIdUuid := uuid.New()
@@ -269,8 +286,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	httpClient, muxRes := getHTTPClient(ctx, dest, streamSettings)
 
-	httpClient2 := httpClient
 	requestURL2 := requestURL
+	httpClient2 := httpClient
 	var muxRes2 *muxResource
 	if transportConfiguration.DownloadSettings != nil {
 		globalDialerAccess.Lock()
@@ -279,32 +296,45 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		}
 		globalDialerAccess.Unlock()
 		memory2 := streamSettings.DownloadSettings
-		httpClient2, muxRes2 = getHTTPClient(ctx, *memory2.Destination, memory2) // just panic
-		if tls.ConfigFromStreamSettings(memory2) != nil || reality.ConfigFromStreamSettings(memory2) != nil {
+		dest2 := *memory2.Destination // just panic
+		tlsConfig2 := tls.ConfigFromStreamSettings(memory2)
+		realityConfig2 := reality.ConfigFromStreamSettings(memory2)
+		if h(tlsConfig2, realityConfig2) == 3 {
+			dest2.Network = net.Network_UDP
+		}
+		errors.LogInfo(ctx, "XHTTP is downloading from: ", dest2)
+		if tlsConfig2 != nil || realityConfig2 != nil {
 			requestURL2.Scheme = "https"
 		} else {
 			requestURL2.Scheme = "http"
 		}
 		config2 := memory2.ProtocolSettings.(*Config)
 		requestURL2.Host = config2.Host
+		if requestURL2.Host == "" && tlsConfig2 != nil {
+			requestURL2.Host = tlsConfig2.ServerName
+		}
+		if requestURL2.Host == "" && realityConfig2 != nil {
+			requestURL2.Host = realityConfig2.ServerName
+		}
 		if requestURL2.Host == "" {
-			requestURL2.Host = memory2.Destination.NetAddr()
+			requestURL2.Host = dest2.Address.String()
 		}
 		requestURL2.Path = config2.GetNormalizedPath() + sessionIdUuid.String()
 		requestURL2.RawQuery = config2.GetNormalizedQuery()
+		httpClient2, muxRes2 = getHTTPClient(ctx, dest2, memory2)
 	}
 
 	mode := transportConfiguration.Mode
 	if mode == "" || mode == "auto" {
 		mode = "packet-up"
-		if (tlsConfig != nil && (len(tlsConfig.NextProtocol) != 1 || tlsConfig.NextProtocol[0] == "h2")) || realityConfig != nil {
+		if h(tlsConfig, realityConfig) == 2 {
 			mode = "stream-up"
 		}
 		if realityConfig != nil && transportConfiguration.DownloadSettings == nil {
 			mode = "stream-one"
 		}
 	}
-	errors.LogInfo(ctx, "XHTTP is using mode: "+mode)
+	errors.LogInfo(ctx, "XHTTP is using mode: ", mode)
 
 	var writer io.WriteCloser
 	var reader io.ReadCloser
@@ -358,6 +388,9 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		return stat.Connection(&conn), nil
 	}
 
+	scMaxEachPostBytes := transportConfiguration.GetNormalizedScMaxEachPostBytes()
+	scMinPostsIntervalMs := transportConfiguration.GetNormalizedScMinPostsIntervalMs()
+
 	maxUploadSize := scMaxEachPostBytes.roll()
 	// WithSizeLimit(0) will still allow single bytes to pass, and a lot of
 	// code relies on this behavior. Subtract 1 so that together with
@@ -371,54 +404,57 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	}
 
 	go func() {
-		requestsLimiter := semaphore.New(int(scMaxConcurrentPosts.roll()))
-		var requestCounter int64
+		var seq int64
+		var lastWrite time.Time
 
-		lastWrite := time.Now()
-
-		// by offloading the uploads into a buffered pipe, multiple conn.Write
-		// calls get automatically batched together into larger POST requests.
-		// without batching, bandwidth is extremely limited.
 		for {
+			wroteRequest := done.New()
+
+			ctx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+				WroteRequest: func(httptrace.WroteRequestInfo) {
+					wroteRequest.Close()
+				},
+			})
+
+			// this intentionally makes a shallow-copy of the struct so we
+			// can reassign Path (potentially concurrently)
+			url := requestURL
+			url.Path += "/" + strconv.FormatInt(seq, 10)
+			// reassign query to get different padding
+			url.RawQuery = transportConfiguration.GetNormalizedQuery()
+
+			seq += 1
+
+			if scMinPostsIntervalMs.From > 0 {
+				time.Sleep(time.Duration(scMinPostsIntervalMs.roll())*time.Millisecond - time.Since(lastWrite))
+			}
+
+			// by offloading the uploads into a buffered pipe, multiple conn.Write
+			// calls get automatically batched together into larger POST requests.
+			// without batching, bandwidth is extremely limited.
 			chunk, err := uploadPipeReader.ReadMultiBuffer()
 			if err != nil {
 				break
 			}
 
-			<-requestsLimiter.Wait()
-
-			seq := requestCounter
-			requestCounter += 1
+			lastWrite = time.Now()
 
 			go func() {
-				defer requestsLimiter.Signal()
-
-				// this intentionally makes a shallow-copy of the struct so we
-				// can reassign Path (potentially concurrently)
-				url := requestURL
-				url.Path += "/" + strconv.FormatInt(seq, 10)
-				// reassign query to get different padding
-				url.RawQuery = transportConfiguration.GetNormalizedQuery()
-
 				err := httpClient.SendUploadRequest(
 					context.WithoutCancel(ctx),
 					url.String(),
 					&buf.MultiBufferContainer{MultiBuffer: chunk},
 					int64(chunk.Len()),
 				)
+				wroteRequest.Close()
 				if err != nil {
 					errors.LogInfoInner(ctx, err, "failed to send upload")
 					uploadPipeReader.Interrupt()
 				}
 			}()
 
-			if scMinPostsIntervalMs.From > 0 {
-				roll := time.Duration(scMinPostsIntervalMs.roll()) * time.Millisecond
-				if time.Since(lastWrite) < roll {
-					time.Sleep(roll)
-				}
-
-				lastWrite = time.Now()
+			if _, ok := httpClient.(*DefaultDialerClient); ok {
+				<-wroteRequest.Wait()
 			}
 		}
 	}()

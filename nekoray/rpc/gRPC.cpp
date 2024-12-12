@@ -205,7 +205,7 @@ namespace NekoGui_rpc {
 
 #define NOT_OK      \
     *rpcOK = false; \
-    onError(QString("QNetworkReply::NetworkError code: %1\n").arg(status));
+    onError(QStringLiteral("QNetworkReply::NetworkError code: %1\n").arg(status));
 
     void Client::Exit() {
         libcore::EmptyReq request;

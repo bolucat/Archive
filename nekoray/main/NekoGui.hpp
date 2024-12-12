@@ -17,5 +17,5 @@ namespace NekoGui {
     bool IsAdmin();
 } // namespace NekoGui
 
-#define ROUTES_PREFIX_NAME QString("routes_box")
+#define ROUTES_PREFIX_NAME QStringLiteral("routes_box")
 #define ROUTES_PREFIX QString(ROUTES_PREFIX_NAME + "/")
