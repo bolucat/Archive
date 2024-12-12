@@ -12,7 +12,7 @@ android {
     namespace "io.nekohasekai.sfa"
     compileSdk 35
 
-    ndkVersion "26.2.11394342"
+    ndkVersion "28.0.12674087"
 
     ksp {
         arg("room.incremental", "true")
@@ -49,6 +49,10 @@ android {
             signingConfig signingConfigs.release
             vcsInfo.include false
         }
+    }
+
+    dependenciesInfo {
+        includeInApk = false
     }
 
     flavorDimensions "vendor"
@@ -143,18 +147,25 @@ tasks.withType(KotlinCompile.class).configureEach {
 }
 
 def getProps(String propName) {
+    def propsInEnv = System.getenv("LOCAL_PROPERTIES")
+    if (propsInEnv != null) {
+        def props = new Properties()
+        props.load(new ByteArrayInputStream(Base64.decoder.decode(propsInEnv)))
+        String value = props[propName]
+        if (value != null) {
+            return value
+        }
+    }
     def propsFile = rootProject.file("local.properties")
     if (propsFile.exists()) {
         def props = new Properties()
         props.load(new FileInputStream(propsFile))
         String value = props[propName]
-        if (value == null) {
-            return ""
+        if (value != null) {
+            return value
         }
-        return value
-    } else {
-        return ""
     }
+    return ""
 }
 
 def getVersionProps(String propName) {
@@ -163,11 +174,9 @@ def getVersionProps(String propName) {
         def props = new Properties()
         props.load(new FileInputStream(propsFile))
         String value = props[propName]
-        if (value == null) {
-            return ""
+        if (value != null) {
+            return value
         }
-        return value
-    } else {
-        return ""
     }
+    return ""
 }

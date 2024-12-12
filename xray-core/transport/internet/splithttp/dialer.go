@@ -3,6 +3,7 @@ package splithttp
 import (
 	"context"
 	gotls "crypto/tls"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptrace"
@@ -83,33 +84,31 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 	return res.Resource.(DialerClient), res
 }
 
-func h(tlsConfig *tls.Config, realityConfig *reality.Config) int {
+func decideHTTPVersion(tlsConfig *tls.Config, realityConfig *reality.Config) string {
 	if realityConfig != nil {
-		return 2
+		return "2"
 	}
 	if tlsConfig == nil {
-		return 1
+		return "1.1"
 	}
 	if len(tlsConfig.NextProtocol) != 1 {
-		return 2
+		return "2"
 	}
 	if tlsConfig.NextProtocol[0] == "http/1.1" {
-		return 1
+		return "1.1"
 	}
 	if tlsConfig.NextProtocol[0] == "h3" {
-		return 3
+		return "3"
 	}
-	return 2
+	return "2"
 }
 
 func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStreamConfig) DialerClient {
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
-	isH2 := h(tlsConfig, realityConfig) == 2
-	isH3 := h(tlsConfig, realityConfig) == 3
-
-	if isH3 {
+	httpVersion := decideHTTPVersion(tlsConfig, realityConfig)
+	if httpVersion == "3" {
 		dest.Network = net.Network_UDP // better to keep this line
 	}
 
@@ -149,7 +148,7 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 
 	var transport http.RoundTripper
 
-	if isH3 {
+	if httpVersion == "3" {
 		if keepAlivePeriod == 0 {
 			keepAlivePeriod = quicgoH3KeepAlivePeriod
 		}
@@ -205,7 +204,7 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 				return quic.DialEarly(ctx, udpConn, udpAddr, tlsCfg, cfg)
 			},
 		}
-	} else if isH2 {
+	} else if httpVersion == "2" {
 		if keepAlivePeriod == 0 {
 			keepAlivePeriod = chromeH2KeepAlivePeriod
 		}
@@ -239,8 +238,7 @@ func createHTTPClient(dest net.Destination, streamSettings *internet.MemoryStrea
 		client: &http.Client{
 			Transport: transport,
 		},
-		isH2:           isH2,
-		isH3:           isH3,
+		httpVersion:    httpVersion,
 		uploadRawPool:  &sync.Pool{},
 		dialUploadConn: dialContext,
 	}
@@ -256,10 +254,10 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	tlsConfig := tls.ConfigFromStreamSettings(streamSettings)
 	realityConfig := reality.ConfigFromStreamSettings(streamSettings)
 
-	if h(tlsConfig, realityConfig) == 3 {
+	httpVersion := decideHTTPVersion(tlsConfig, realityConfig)
+	if httpVersion == "3" {
 		dest.Network = net.Network_UDP
 	}
-	errors.LogInfo(ctx, "XHTTP is dialing to: ", dest)
 
 	transportConfiguration := streamSettings.ProtocolSettings.(*Config)
 	var requestURL url.URL
@@ -286,6 +284,19 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 	httpClient, muxRes := getHTTPClient(ctx, dest, streamSettings)
 
+	mode := transportConfiguration.Mode
+	if mode == "" || mode == "auto" {
+		mode = "packet-up"
+		if httpVersion == "2" {
+			mode = "stream-up"
+		}
+		if realityConfig != nil && transportConfiguration.DownloadSettings == nil {
+			mode = "stream-one"
+		}
+	}
+
+	errors.LogInfo(ctx, fmt.Sprintf("XHTTP is dialing to %s, mode %s, HTTP version %s, host %s", dest, mode, httpVersion, requestURL.Host))
+
 	requestURL2 := requestURL
 	httpClient2 := httpClient
 	var muxRes2 *muxResource
@@ -299,10 +310,10 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		dest2 := *memory2.Destination // just panic
 		tlsConfig2 := tls.ConfigFromStreamSettings(memory2)
 		realityConfig2 := reality.ConfigFromStreamSettings(memory2)
-		if h(tlsConfig2, realityConfig2) == 3 {
+		httpVersion2 := decideHTTPVersion(tlsConfig2, realityConfig2)
+		if httpVersion2 == "3" {
 			dest2.Network = net.Network_UDP
 		}
-		errors.LogInfo(ctx, "XHTTP is downloading from: ", dest2)
 		if tlsConfig2 != nil || realityConfig2 != nil {
 			requestURL2.Scheme = "https"
 		} else {
@@ -322,19 +333,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		requestURL2.Path = config2.GetNormalizedPath() + sessionIdUuid.String()
 		requestURL2.RawQuery = config2.GetNormalizedQuery()
 		httpClient2, muxRes2 = getHTTPClient(ctx, dest2, memory2)
+		errors.LogInfo(ctx, fmt.Sprintf("XHTTP is downloading from %s, mode %s, HTTP version %s, host %s", dest2, "stream-down", httpVersion2, requestURL2.Host))
 	}
-
-	mode := transportConfiguration.Mode
-	if mode == "" || mode == "auto" {
-		mode = "packet-up"
-		if h(tlsConfig, realityConfig) == 2 {
-			mode = "stream-up"
-		}
-		if realityConfig != nil && transportConfiguration.DownloadSettings == nil {
-			mode = "stream-one"
-		}
-	}
-	errors.LogInfo(ctx, "XHTTP is using mode: ", mode)
 
 	var writer io.WriteCloser
 	var reader io.ReadCloser
