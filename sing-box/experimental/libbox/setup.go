@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing-box/common/humanize"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
 )
 
@@ -51,6 +52,10 @@ func SetupWithUsername(basePath string, workingPath string, tempPath string, use
 	os.Chown(sWorkingPath, sUserID, sGroupID)
 	os.Chown(sTempPath, sUserID, sGroupID)
 	return nil
+}
+
+func SetLocale(localeId string) {
+	locale.Set(localeId)
 }
 
 func Version() string {

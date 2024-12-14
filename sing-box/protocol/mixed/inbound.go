@@ -110,11 +110,19 @@ func (h *Inbound) streamUserPacketConnection(ctx context.Context, conn N.PacketC
 	metadata.InboundType = h.Type()
 	user, loaded := auth.UserFromContext[string](ctx)
 	if !loaded {
-		h.logger.InfoContext(ctx, "inbound packet connection to ", metadata.Destination)
+		if !metadata.Destination.IsValid() {
+			h.logger.InfoContext(ctx, "inbound packet connection")
+		} else {
+			h.logger.InfoContext(ctx, "inbound packet connection to ", metadata.Destination)
+		}
 		h.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 		return
 	}
 	metadata.User = user
-	h.logger.InfoContext(ctx, "[", user, "] inbound packet connection to ", metadata.Destination)
+	if !metadata.Destination.IsValid() {
+		h.logger.InfoContext(ctx, "[", user, "] inbound packet connection")
+	} else {
+		h.logger.InfoContext(ctx, "[", user, "] inbound packet connection to ", metadata.Destination)
+	}
 	h.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }

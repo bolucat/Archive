@@ -100,10 +100,11 @@ findVersion:
 }
 
 func publishTestflight(ctx context.Context) error {
-	tag, err := build_shared.ReadTag()
+	tagVersion, err := build_shared.ReadTagVersion()
 	if err != nil {
 		return err
 	}
+	tag := tagVersion.VersionString()
 	client := createClient()
 
 	buildIDsResponse, _, err := client.TestFlight.ListBuildIDsForBetaGroup(ctx, groupID, nil)
@@ -146,15 +147,29 @@ func publishTestflight(ctx context.Context) error {
 				return err
 			}
 		}
-		if common.Contains(buildIDS, builds.Data[0].ID) {
-			log.Info(string(platform), " ", tag, " already published")
-			continue
+		if !common.Contains(buildIDS, builds.Data[0].ID) {
+			log.Info(string(platform), " ", tag, " publish")
+			_, err = client.TestFlight.AddBuildsToBetaGroup(ctx, groupID, []string{builds.Data[0].ID})
+			if err != nil {
+				return err
+			}
 		}
-		log.Info(string(platform), " ", tag, " publish")
-		_, err = client.TestFlight.AddBuildsToBetaGroup(ctx, groupID, []string{builds.Data[0].ID})
+		log.Info(string(platform), " ", tag, " list submissions")
+		betaSubmissions, _, err := client.TestFlight.ListBetaAppReviewSubmissions(ctx, &asc.ListBetaAppReviewSubmissionsQuery{
+			FilterBuild: []string{builds.Data[0].ID},
+		})
 		if err != nil {
 			return err
 		}
+		if len(betaSubmissions.Data) == 0 {
+			log.Info(string(platform), " ", tag, " create submission")
+			_, _, err = client.TestFlight.CreateBetaAppReviewSubmission(ctx, builds.Data[0].ID)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 	}
 	return nil
 }

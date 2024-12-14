@@ -49,7 +49,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
         intent.getStringExtra("importName")?.also { importName ->
             intent.getStringExtra("importURL")?.also { importURL ->
                 binding.name.editText?.setText(importName)
-                binding.type.text = TypedProfile.Type.Remote.name
+                binding.type.text = TypedProfile.Type.Remote.getString(this)
                 binding.remoteURL.editText?.setText(importURL)
                 binding.localFields.isVisible = false
                 binding.remoteFields.isVisible = true
@@ -60,12 +60,12 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
         binding.name.removeErrorIfNotEmpty()
         binding.type.addTextChangedListener {
             when (it) {
-                TypedProfile.Type.Local.name -> {
+                TypedProfile.Type.Local.getString(this) -> {
                     binding.localFields.isVisible = true
                     binding.remoteFields.isVisible = false
                 }
 
-                TypedProfile.Type.Remote.name -> {
+                TypedProfile.Type.Remote.getString(this) -> {
                     binding.localFields.isVisible = false
                     binding.remoteFields.isVisible = true
                     if (binding.autoUpdateInterval.text.toIntOrNull() == null) {
@@ -99,7 +99,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
             return
         }
         when (binding.type.text) {
-            TypedProfile.Type.Local.name -> {
+            TypedProfile.Type.Local.getString(this) -> {
                 when (binding.fileSourceMenu.text) {
                     FileSource.Import.formatted -> {
                         if (binding.sourceURL.showErrorIfEmpty()) {
@@ -109,7 +109,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
                 }
             }
 
-            TypedProfile.Type.Remote.name -> {
+            TypedProfile.Type.Remote.getString(this) -> {
                 if (binding.remoteURL.showErrorIfEmpty()) {
                     return
                 }
@@ -138,7 +138,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
         typedProfile.path = configFile.path
 
         when (binding.type.text) {
-            TypedProfile.Type.Local.name -> {
+            TypedProfile.Type.Local.getString(this) -> {
                 typedProfile.type = TypedProfile.Type.Local
 
                 when (binding.fileSourceMenu.text) {
@@ -165,7 +165,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
                 }
             }
 
-            TypedProfile.Type.Remote.name -> {
+            TypedProfile.Type.Remote.getString(this) -> {
                 typedProfile.type = TypedProfile.Type.Remote
                 val remoteURL = binding.remoteURL.text
                 val content = HTTPClient().use { it.getString(remoteURL) }
@@ -173,7 +173,8 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
                 configFile.writeText(content)
                 typedProfile.remoteURL = remoteURL
                 typedProfile.lastUpdated = Date()
-                typedProfile.autoUpdate = EnabledType.valueOf(binding.autoUpdate.text).boolValue
+                typedProfile.autoUpdate =
+                    EnabledType.valueOf(this, binding.autoUpdate.text).boolValue
                 binding.autoUpdateInterval.text.toIntOrNull()?.also {
                     typedProfile.autoUpdateInterval = it
                 }
