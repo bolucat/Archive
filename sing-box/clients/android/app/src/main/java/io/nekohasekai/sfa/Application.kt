@@ -31,7 +31,7 @@ class Application : Application() {
         super.onCreate()
 
         Seq.setContext(this)
-        Libbox.setLocale(Locale.getDefault().toLanguageTag())
+        Libbox.setLocale(Locale.getDefault().toLanguageTag().replace("-", "_"))
 
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {

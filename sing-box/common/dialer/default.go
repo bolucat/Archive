@@ -93,7 +93,6 @@ func NewDefault(ctx context.Context, options option.DialerOptions) (*DefaultDial
 			listener.Control = control.Append(listener.Control, bindFunc)
 		} else if networkManager.AutoDetectInterface() {
 			if platformInterface != nil {
-				println("ns create")
 				networkStrategy = (*C.NetworkStrategy)(options.NetworkStrategy)
 				if networkStrategy == nil {
 					networkStrategy = common.Ptr(C.NetworkStrategyDefault)
@@ -109,10 +108,14 @@ func NewDefault(ctx context.Context, options option.DialerOptions) (*DefaultDial
 				if networkFallbackDelay == 0 && defaultOptions.FallbackDelay != 0 {
 					networkFallbackDelay = defaultOptions.FallbackDelay
 				}
+				bindFunc := networkManager.ProtectFunc()
+				dialer.Control = control.Append(dialer.Control, bindFunc)
+				listener.Control = control.Append(listener.Control, bindFunc)
+			} else {
+				bindFunc := networkManager.AutoDetectInterfaceFunc()
+				dialer.Control = control.Append(dialer.Control, bindFunc)
+				listener.Control = control.Append(listener.Control, bindFunc)
 			}
-			bindFunc := networkManager.ProtectFunc()
-			dialer.Control = control.Append(dialer.Control, bindFunc)
-			listener.Control = control.Append(listener.Control, bindFunc)
 		}
 		if options.RoutingMark == 0 && defaultOptions.RoutingMark != 0 {
 			dialer.Control = control.Append(dialer.Control, control.RoutingMark(defaultOptions.RoutingMark))
@@ -296,9 +299,6 @@ func (d *DefaultDialer) ListenSerialInterfacePacket(ctx context.Context, destina
 	}
 	if fallbackDelay == 0 {
 		fallbackDelay = d.networkFallbackDelay
-	}
-	if !d.networkManager.AutoDetectInterface() {
-		return nil, E.New("`route.auto_detect_interface` is require by `network_strategy`")
 	}
 	network := N.NetworkUDP
 	if destination.IsIPv4() && !destination.Addr.IsUnspecified() {

@@ -990,12 +990,10 @@ run_copy_dnsmasq() {
 	mkdir -p $dnsmasq_conf_path
 	[ -s "/tmp/etc/dnsmasq.conf.${DEFAULT_DNSMASQ_CFGID}" ] && {
 		cp -r /tmp/etc/dnsmasq.conf.${DEFAULT_DNSMASQ_CFGID} $dnsmasq_conf
+		sed -i "/passwall2/d" $dnsmasq_conf
 		sed -i "/ubus/d" $dnsmasq_conf
 		sed -i "/dhcp/d" $dnsmasq_conf
 		sed -i "/port=/d" $dnsmasq_conf
-		sed -i "/conf-dir/d" $dnsmasq_conf
-		sed -i "/no-poll/d" $dnsmasq_conf
-		sed -i "/no-resolv/d" $dnsmasq_conf
 		sed -i "/server=/d" $dnsmasq_conf
 	}
 	local set_type="ipset"
@@ -1081,8 +1079,7 @@ acl_app() {
 		local ipt_tmp msg msg2
 		redir_port=11200
 		dns_port=11300
-		dnsmasq_port=11400
-		[ -n "${GLOBAL_DNSMASQ_PORT}" ] && dnsmasq_port=$(get_new_port $GLOBAL_DNSMASQ_PORT)
+		dnsmasq_port=${GLOBAL_DNSMASQ_PORT:-11400}
 		for item in $items; do
 			index=$(expr $index + 1)
 			local enabled sid remarks sources node direct_dns_query_strategy remote_dns_protocol remote_dns remote_dns_doh remote_dns_client_ip remote_dns_detour remote_fakedns remote_dns_query_strategy interface use_interface

@@ -1,9 +1,11 @@
 package io.nekohasekai.sfa.ui.profile
 
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
@@ -29,9 +31,13 @@ import java.io.InputStream
 import java.util.Date
 
 class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
-    enum class FileSource(val formatted: String) {
-        CreateNew("Create New"),
-        Import("Import");
+    enum class FileSource(@StringRes val formattedRes: Int) {
+        CreateNew(R.string.profile_source_create_new),
+        Import(R.string.profile_source_import);
+
+        fun formatted(context: Context): String {
+            return context.getString(formattedRes)
+        }
     }
 
     private val importFile =
@@ -76,12 +82,12 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
         }
         binding.fileSourceMenu.addTextChangedListener {
             when (it) {
-                FileSource.CreateNew.formatted -> {
+                FileSource.CreateNew.formatted(this) -> {
                     binding.importFileButton.isVisible = false
                     binding.sourceURL.isVisible = false
                 }
 
-                FileSource.Import.formatted -> {
+                FileSource.Import.formatted(this) -> {
                     binding.importFileButton.isVisible = true
                     binding.sourceURL.isVisible = true
                 }
@@ -101,7 +107,7 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
         when (binding.type.text) {
             TypedProfile.Type.Local.getString(this) -> {
                 when (binding.fileSourceMenu.text) {
-                    FileSource.Import.formatted -> {
+                    FileSource.Import.formatted(this) -> {
                         if (binding.sourceURL.showErrorIfEmpty()) {
                             return
                         }
@@ -142,11 +148,11 @@ class NewProfileActivity : AbstractActivity<ActivityAddProfileBinding>() {
                 typedProfile.type = TypedProfile.Type.Local
 
                 when (binding.fileSourceMenu.text) {
-                    FileSource.CreateNew.formatted -> {
+                    FileSource.CreateNew.formatted(this) -> {
                         configFile.writeText("{}")
                     }
 
-                    FileSource.Import.formatted -> {
+                    FileSource.Import.formatted(this) -> {
                         val sourceURL = binding.sourceURL.text
                         val content = if (sourceURL.startsWith("content://")) {
                             val inputStream =

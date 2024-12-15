@@ -40,7 +40,7 @@ func (d *DefaultDialer) dialParallelInterface(ctx context.Context, dialer net.Di
 			}
 		} else {
 			select {
-			case results <- dialResult{Conn: conn}:
+			case results <- dialResult{Conn: conn, primary: primary}:
 			case <-returned:
 				conn.Close()
 			}
@@ -112,7 +112,7 @@ func (d *DefaultDialer) dialParallelInterfaceFastFallback(ctx context.Context, d
 			}
 		} else {
 			select {
-			case results <- dialResult{Conn: conn}:
+			case results <- dialResult{Conn: conn, primary: primary}:
 			case <-returned:
 				if primary && time.Since(startAt) <= fallbackDelay {
 					resetFastFallback(time.Time{})
