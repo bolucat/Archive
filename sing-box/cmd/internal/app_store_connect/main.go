@@ -169,7 +169,7 @@ func publishTestflight(ctx context.Context) error {
 			if localization.Attributes == nil || localization.Attributes.WhatsNew == nil || *localization.Attributes.WhatsNew == "" {
 				log.Info(string(platform), " ", tag, " update localization")
 				_, _, err = client.TestFlight.UpdateBetaBuildLocalization(ctx, localization.ID, common.Ptr(
-					F.ToString("sing-box ", tag),
+					F.ToString("sing-box ", tagVersion.String()),
 				))
 				if err != nil {
 					return err
