@@ -274,11 +274,11 @@ load_acl() {
 			[ "$tcp_redir_ports" = "default" ] && tcp_redir_ports=$TCP_REDIR_PORTS
 			[ "$udp_redir_ports" = "default" ] && udp_redir_ports=$UDP_REDIR_PORTS
 
-			[ -n $(get_cache_var "ACL_${sid}_tcp_node") ] && tcp_node=$(get_cache_var "ACL_${sid}_tcp_node")
-			[ -n $(get_cache_var "ACL_${sid}_udp_node") ] && udp_node=$(get_cache_var "ACL_${sid}_udp_node")
-			[ -n $(get_cache_var "ACL_${sid}_tcp_port") ] && tcp_port=$(get_cache_var "ACL_${sid}_tcp_port")
-			[ -n $(get_cache_var "ACL_${sid}_udp_port") ] && udp_port=$(get_cache_var "ACL_${sid}_udp_port")
-			[ -n $(get_cache_var "ACL_${sid}_dns_port") ] && dns_redirect_port=$(get_cache_var "ACL_${sid}_dns_port")
+			[ -n "$(get_cache_var "ACL_${sid}_tcp_node")" ] && tcp_node=$(get_cache_var "ACL_${sid}_tcp_node")
+			[ -n "$(get_cache_var "ACL_${sid}_udp_node")" ] && udp_node=$(get_cache_var "ACL_${sid}_udp_node")
+			[ -n "$(get_cache_var "ACL_${sid}_tcp_port")" ] && tcp_port=$(get_cache_var "ACL_${sid}_tcp_port")
+			[ -n "$(get_cache_var "ACL_${sid}_udp_port")" ] && udp_port=$(get_cache_var "ACL_${sid}_udp_port")
+			[ -n "$(get_cache_var "ACL_${sid}_dns_port")" ] && dns_redirect_port=$(get_cache_var "ACL_${sid}_dns_port")
 
 			use_shunt_tcp=0
 			use_shunt_udp=0
@@ -957,7 +957,7 @@ add_firewall_rule() {
 		nft "insert rule $NFTABLE_NAME dstnat ip daddr @${NFTSET_LOCALLIST} jump PSW_DNS"
 		nft "insert rule $NFTABLE_NAME dstnat ip6 daddr @${NFTSET_LOCALLIST6} jump PSW_DNS"
 	else
-		nft "insert rule $NFTABLE_NAME dstnat jump PSW2_DNS"
+		nft "insert rule $NFTABLE_NAME dstnat jump PSW_DNS"
 	fi
 
 	# for ipv4 ipv6 tproxy mark

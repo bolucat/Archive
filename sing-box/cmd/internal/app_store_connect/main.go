@@ -7,13 +7,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sagernet/asc-go/asc"
 	"github.com/sagernet/sing-box/cmd/internal/build_shared"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
-
-	"github.com/cidertool/asc-go/asc"
 )
 
 func main() {
@@ -54,7 +53,7 @@ const (
 	groupID = "5c5f3b78-b7a0-40c0-bcad-e6ef87bbefda"
 )
 
-func createClient(expireDuration time.Duration) *Client {
+func createClient(expireDuration time.Duration) *asc.Client {
 	privateKey, err := os.ReadFile(os.Getenv("ASC_KEY_PATH"))
 	if err != nil {
 		log.Fatal(err)
@@ -63,7 +62,7 @@ func createClient(expireDuration time.Duration) *Client {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &Client{asc.NewClient(tokenConfig.Client())}
+	return asc.NewClient(tokenConfig.Client())
 }
 
 func fetchMacOSVersion(ctx context.Context) error {
@@ -218,33 +217,39 @@ func cancelAppStore(ctx context.Context, platform string) error {
 		return err
 	}
 	client := createClient(time.Minute)
-	log.Info(platform, " list versions")
-	versions, _, err := client.Apps.ListAppStoreVersionsForApp(ctx, appID, &asc.ListAppStoreVersionsQuery{
-		FilterPlatform: []string{string(platform)},
-	})
-	if err != nil {
-		return err
-	}
-	version := common.Find(versions.Data, func(it asc.AppStoreVersion) bool {
-		return *it.Attributes.VersionString == tag
-	})
-	if version.ID == "" {
+	for {
+		log.Info(platform, " list versions")
+		versions, response, err := client.Apps.ListAppStoreVersionsForApp(ctx, appID, &asc.ListAppStoreVersionsQuery{
+			FilterPlatform: []string{string(platform)},
+		})
+		if isRetryable(response) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		version := common.Find(versions.Data, func(it asc.AppStoreVersion) bool {
+			return *it.Attributes.VersionString == tag
+		})
+		if version.ID == "" {
+			return nil
+		}
+		log.Info(platform, " ", tag, " get submission")
+		submission, response, err := client.Submission.GetAppStoreVersionSubmissionForAppStoreVersion(ctx, version.ID, nil)
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		if isRetryable(response) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		log.Info(platform, " ", tag, " delete submission")
+		_, err = client.Submission.DeleteSubmission(ctx, submission.Data.ID)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
-	log.Info(string(platform), " ", tag, " get submission")
-	submission, response, err := client.Submission.GetAppStoreVersionSubmissionForAppStoreVersion(ctx, version.ID, nil)
-	if response != nil && response.StatusCode == http.StatusNotFound {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	log.Info(platform, " ", tag, " delete submission")
-	_, err = client.Submission.DeleteSubmission(ctx, submission.Data.ID)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func prepareAppStore(ctx context.Context) error {
@@ -321,7 +326,7 @@ func prepareAppStore(ctx context.Context) error {
 					log.Fatal(string(platform), " ", tag, " unknown state ", string(*version.Attributes.AppStoreState))
 				}
 				log.Info(string(platform), " ", tag, " update build")
-				response, err = client.UpdateBuildForAppStoreVersion(ctx, version.ID, buildID)
+				response, err = client.Apps.UpdateBuildForAppStoreVersion(ctx, version.ID, buildID)
 				if err != nil {
 					return err
 				}
@@ -427,4 +432,16 @@ func publishAppStore(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func isRetryable(response *asc.Response) bool {
+	if response == nil {
+		return false
+	}
+	switch response.StatusCode {
+	case http.StatusInternalServerError, http.StatusUnprocessableEntity:
+		return true
+	default:
+		return false
+	}
 }
