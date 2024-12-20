@@ -177,10 +177,14 @@ func selectInterfaces(networkManager adapter.NetworkManager, strategy C.NetworkS
 	case C.NetworkStrategyDefault:
 		if len(interfaceType) == 0 {
 			defaultIf := networkManager.InterfaceMonitor().DefaultInterface()
-			for _, iif := range interfaces {
-				if iif.Index == defaultIf.Index {
-					primaryInterfaces = append(primaryInterfaces, iif)
+			if defaultIf != nil {
+				for _, iif := range interfaces {
+					if iif.Index == defaultIf.Index {
+						primaryInterfaces = append(primaryInterfaces, iif)
+					}
 				}
+			} else {
+				primaryInterfaces = interfaces
 			}
 		} else {
 			primaryInterfaces = common.Filter(interfaces, func(it adapter.NetworkInterface) bool {
@@ -198,11 +202,15 @@ func selectInterfaces(networkManager adapter.NetworkManager, strategy C.NetworkS
 	case C.NetworkStrategyFallback:
 		if len(interfaceType) == 0 {
 			defaultIf := networkManager.InterfaceMonitor().DefaultInterface()
-			for _, iif := range interfaces {
-				if iif.Index == defaultIf.Index {
-					primaryInterfaces = append(primaryInterfaces, iif)
-					break
+			if defaultIf != nil {
+				for _, iif := range interfaces {
+					if iif.Index == defaultIf.Index {
+						primaryInterfaces = append(primaryInterfaces, iif)
+						break
+					}
 				}
+			} else {
+				primaryInterfaces = interfaces
 			}
 		} else {
 			primaryInterfaces = common.Filter(interfaces, func(it adapter.NetworkInterface) bool {
