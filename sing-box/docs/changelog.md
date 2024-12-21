@@ -7,7 +7,7 @@ icon: material/alert-decagram
 * Add `rule-set merge` command
 * Fixes and improvements
 
-### 1.10.4
+### 1.10.5
 
 * Fixes and improvements
 
