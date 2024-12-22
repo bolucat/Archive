@@ -301,11 +301,13 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
+          name: "SFA-${{ needs.calculate_version.outputs.version }}-arm64-v8a.apk"
           path: 'dist/release/*-arm64-v8a.apk'
       - name: Upload debug apk (universal)
         if: github.event_name != 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
+          name: "SFA-${{ needs.calculate_version.outputs.version }}-universal.apk"
           path: 'dist/release/*-universal.apk'
   publish_android:
     name: Publish Android

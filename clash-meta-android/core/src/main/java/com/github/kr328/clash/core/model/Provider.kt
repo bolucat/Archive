@@ -17,7 +17,7 @@ data class Provider(
     }
 
     enum class VehicleType {
-        HTTP, File, Compatible
+        HTTP, File, Inline, Compatible
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {

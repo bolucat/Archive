@@ -278,6 +278,7 @@
     <string name="format_provider_type">%1$s(%2$s)</string>
     <string name="rule">Rule</string>
     <string name="http">HTTP</string>
+    <string name="inline">Inline</string>
     <string name="compatible">Compatible</string>
     <string name="format_update_provider_failure">Update %1$s: %2$s</string>
     <string name="update_all">Update All</string>

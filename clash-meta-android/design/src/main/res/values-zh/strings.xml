@@ -190,6 +190,7 @@
     <string name="format_provider_type">%1$s(%2$s)</string>
     <string name="rule">规则</string>
     <string name="http">HTTP</string>
+    <string name="inline">内联</string>
     <string name="compatible">兼容</string>
     <string name="format_update_provider_failure">更新 %1$s: %2$s</string>
     <string name="update_all">更新全部</string>
@@ -216,8 +217,8 @@
     <string name="geoip_fallback_code">GeoIP Fallback 区域代码</string>
     <string name="allow_bypass">允许应用绕过</string>
     <string name="allow_bypass_summary">允许其他应用绕过 VPN</string>
-    <string name="allow_ipv6">允许Ipv6</string>
-    <string name="allow_ipv6_summary">通过 VpnService 代理Ipv6流量</string>
+    <string name="allow_ipv6">允许 Ipv6</string>
+    <string name="allow_ipv6_summary">通过 VpnService 代理 Ipv6 流量</string>
     <string name="clash_meta_wiki">Clash Meta Wiki</string>
     <string name="meta_features">Meta Features</string>
     <string name="unified_delay">Unified Delay</string>
@@ -245,10 +246,10 @@
     <string name="import_country_file">导入 Country 数据库</string>
     <string name="geofile_import_failed">导入失败</string>
     <string name="geofile_unknown_db_format">数据库类型错误</string>
-    <string name="geofile_unknown_db_format_message">只支持 %1$s 格式的Geo数据库</string>
+    <string name="geofile_unknown_db_format_message">只支持 %1$s 格式的 Geo 数据库</string>
     <string name="geofile_imported">%1$s 已导入</string>
     <string name="toast_profile_updated_complete">更新配置 %s 成功</string>
-    <string name="toast_profile_updated_failed">更新配置 %1$s 失败: %2$s</string>
+    <string name="toast_profile_updated_failed">更新配置 %1$s 失败：%2$s</string>
     <string name="external_control_activity">External Control</string>
     <string name="external_control_started">Clash.Meta 服务已启动</string>
     <string name="external_control_stopped">Clash.Meta 服务已停止</string>

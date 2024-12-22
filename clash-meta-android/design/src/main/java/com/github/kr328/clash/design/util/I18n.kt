@@ -29,6 +29,7 @@ fun Provider.type(context: Context): String {
     val vehicle = when (vehicleType) {
         Provider.VehicleType.HTTP -> context.getString(R.string.http)
         Provider.VehicleType.File -> context.getString(R.string.file)
+        Provider.VehicleType.Inline -> context.getString(R.string.inline)
         Provider.VehicleType.Compatible -> context.getString(R.string.compatible)
     }
 

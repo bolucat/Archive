@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-beta.13
+
+* Fixes and improvements
+
 #### 1.11.0-beta.12
 
 * Add `rule-set merge` command
