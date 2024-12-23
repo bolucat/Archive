@@ -1,4 +1,4 @@
-name: release macOS
+name: release Linux
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
       matrix:
         configuration: [Release]
 
-    runs-on: macos-latest 
+    runs-on: ubuntu-latest 
 
     steps:
     - name: Checkout
@@ -21,14 +21,14 @@ jobs:
     - name: Build
       run: |
         cd v2rayN 
-        chmod 755 build-osx.sh
-        ./build-osx.sh
+        chmod 755 build-linux.sh
+        ./build-linux.sh
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: v2rayN-osx
+        name: v2rayN-linux
         path: |
-          ./v2rayN/v2rayN-osx.zip
+          ./v2rayN/v2rayN-linux.zip
 
      
