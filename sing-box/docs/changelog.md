@@ -2,9 +2,22 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-beta.13
+#### 1.11.0-beta.14
 
+* Allow adding route (exclude) address sets to routes **1**
 * Fixes and improvements
+
+**1**:
+
+When `auto_redirect` is not enabled, directly add `route[_exclude]_address_set`
+to tun routes (equivalent to `route[_exclude]_address`).
+
+Note that it **doesn't work on the Android graphical client** due to
+the Android VpnService not being able to handle a large number of routes (DeadSystemException),
+but otherwise it works fine on all command line clients and Apple platforms.
+
+See [route_address_set](/configuration/inbound/tun/#route_address_set) and
+[route_exclude_address_set](/configuration/inbound/tun/#route_exclude_address_set).
 
 #### 1.11.0-beta.12
 
