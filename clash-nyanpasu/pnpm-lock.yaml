@@ -321,8 +321,8 @@ importers:
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       '@tanstack/react-query':
-        specifier: 5.62.10
-        version: 5.62.10(react@19.0.0)
+        specifier: 5.62.11
+        version: 5.62.11(react@19.0.0)
       '@tanstack/react-router':
         specifier: 1.89.2
         version: 1.89.2(@tanstack/router-generator@1.87.7)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -551,8 +551,8 @@ importers:
         specifier: 1.0.0
         version: 1.0.0
       consola:
-        specifier: 3.3.2
-        version: 3.3.2
+        specifier: 3.3.3
+        version: 3.3.3
       fs-extra:
         specifier: 11.2.0
         version: 11.2.0
@@ -572,8 +572,8 @@ importers:
         specifier: 7.4.3
         version: 7.4.3
       telegram:
-        specifier: 2.26.12
-        version: 2.26.12
+        specifier: 2.26.16
+        version: 2.26.16
       undici:
         specifier: 7.2.0
         version: 7.2.0
@@ -2717,8 +2717,8 @@ packages:
   '@tanstack/query-core@5.62.9':
     resolution: {integrity: sha512-lwePd8hNYhyQ4nM/iRQ+Wz2cDtspGeZZHFZmCzHJ7mfKXt+9S301fULiY2IR2byJYY6Z03T427E5PoVfMexHjw==}
 
-  '@tanstack/react-query@5.62.10':
-    resolution: {integrity: sha512-1e1WpHM5oGf27nWM/NWLY62/X9pbMBWa6ErWYmeuK0OqB9/g9UzA59ogiWbxCmS2wtAFQRhOdHhfSofrkhPl2g==}
+  '@tanstack/react-query@5.62.11':
+    resolution: {integrity: sha512-Xb1nw0cYMdtFmwkvH9+y5yYFhXvLRCnXoqlzSw7UkqtCVFq3cG8q+rHZ2Yz1XrC+/ysUaTqbLKJqk95mCgC1oQ==}
     peerDependencies:
       react: ^18 || ^19
 
@@ -3804,8 +3804,8 @@ packages:
   consola@2.15.3:
     resolution: {integrity: sha512-9vAdYbHj6x2fLKC4+oPH0kFzY/orMZyG2Aj+kNylHxKGJ/Ed4dpNyAQYwJOdqO4zdM7XpVHmyejQDcQHrnuXbw==}
 
-  consola@3.3.2:
-    resolution: {integrity: sha512-X3dcWPU+QeEaPrdtX3zBRQ0P0kIeEnmJV49uNtpy4N/TPnzA3grJvHftKjHuFIQNLrqBPzzykmc3fNrkQDl5yA==}
+  consola@3.3.3:
+    resolution: {integrity: sha512-Qil5KwghMzlqd51UXM0b6fyaGHtOC22scxrwrz4A2882LyUMwQjnvaedN1HAeXzphspQ6CpHkzMAWxBTUruDLg==}
     engines: {node: ^14.18.0 || >=16.10.0}
 
   conventional-changelog-angular@7.0.0:
@@ -7536,8 +7536,8 @@ packages:
     resolution: {integrity: sha512-5S7Va8hKfV7W5U6g3aYxXmlPoZVAwUMy9AOKyF2fVuZa2UD3qZjg578OrLRt8PcNN1PleVaL/5/yYATNL0ICUw==}
     engines: {node: '>=18'}
 
-  telegram@2.26.12:
-    resolution: {integrity: sha512-z29VX3el1fjRcRz/6yyyCglvRgd9OBhj7iLWOhz/VhXWmFSV5tuOOBwt48NYl0kSTgJYfT50+HzGgjwSpWLx1Q==}
+  telegram@2.26.16:
+    resolution: {integrity: sha512-5tqL9HicCxRqEi+9JjXBteVDnoZ+1ggsBFxLQTO49aXwTI2d7To7xb2vOU/ahLwgKuE+Db9ra5xDJZ76Kk0NEA==}
 
   term-size@1.2.0:
     resolution: {integrity: sha512-7dPUZQGy/+m3/wjVz3ZW5dobSoD/02NxJpoXUX0WIyjfVS3l0c+b/+9phIDFA7FHzkYtwtMFgeGZ/Y8jVTeqQQ==}
@@ -10449,7 +10449,7 @@ snapshots:
 
   '@tanstack/query-core@5.62.9': {}
 
-  '@tanstack/react-query@5.62.10(react@19.0.0)':
+  '@tanstack/react-query@5.62.11(react@19.0.0)':
     dependencies:
       '@tanstack/query-core': 5.62.9
       react: 19.0.0
@@ -11693,7 +11693,7 @@ snapshots:
 
   consola@2.15.3: {}
 
-  consola@3.3.2: {}
+  consola@3.3.3: {}
 
   conventional-changelog-angular@7.0.0:
     dependencies:
@@ -15941,7 +15941,7 @@ snapshots:
       mkdirp: 3.0.1
       yallist: 5.0.0
 
-  telegram@2.26.12:
+  telegram@2.26.16:
     dependencies:
       '@cryptography/aes': 0.1.1
       async-mutex: 0.3.2
