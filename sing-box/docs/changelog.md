@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-beta.16
+
+* Fixes and improvements
+
+### 1.10.6
+
+* Fixes and improvements
+
 #### 1.11.0-beta.14
 
 * Allow adding route (exclude) address sets to routes **1**
@@ -22,10 +30,6 @@ See [route_address_set](/configuration/inbound/tun/#route_address_set) and
 #### 1.11.0-beta.12
 
 * Add `rule-set merge` command
-* Fixes and improvements
-
-### 1.10.5
-
 * Fixes and improvements
 
 #### 1.11.0-beta.3
