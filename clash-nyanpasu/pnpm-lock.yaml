@@ -284,8 +284,8 @@ importers:
         specifier: 7.4.1
         version: 7.4.1(ezstqsbb2r4zi3rernt3lablby)
       react-i18next:
-        specifier: 15.2.0
-        version: 15.2.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: 15.3.0
+        version: 15.3.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-markdown:
         specifier: 9.0.1
         version: 9.0.1(@types/react@19.0.2)(react@19.0.0)
@@ -315,8 +315,8 @@ importers:
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.0.2)(react@19.0.0)
       '@iconify/json':
-        specifier: 2.2.289
-        version: 2.2.289
+        specifier: 2.2.290
+        version: 2.2.290
       '@monaco-editor/react':
         specifier: 4.6.0
         version: 4.6.0(monaco-editor@0.52.2)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -483,8 +483,8 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(react@19.0.0)
       react-i18next:
-        specifier: 15.2.0
-        version: 15.2.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        specifier: 15.3.0
+        version: 15.3.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react-use:
         specifier: 17.6.0
         version: 17.6.0(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -563,8 +563,8 @@ importers:
         specifier: 3.3.2
         version: 3.3.2
       octokit:
-        specifier: 4.0.2
-        version: 4.0.2
+        specifier: 4.0.3
+        version: 4.0.3
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
@@ -1751,8 +1751,8 @@ packages:
       '@vue/compiler-sfc':
         optional: true
 
-  '@iconify/json@2.2.289':
-    resolution: {integrity: sha512-wNAkS6TZsOKh+L4n96PKAqxsAPOYubIfy6/uU0dT32zYPy4mqmp7fqQVIwkLM22bnSQubAl9ynN1q71oz4lZ/g==}
+  '@iconify/json@2.2.290':
+    resolution: {integrity: sha512-M2puR3K4RPN8CoZR+X3o/5n0stfZBap7N7nSTnldNkdG9mN8RaOCZ4QO9OcuQpjIh8ouEMKJB8xES/owvby9gQ==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -2044,8 +2044,8 @@ packages:
     resolution: {integrity: sha512-nn5ozdjYQpUCZlWGuxcJY/KpxkWQs4DcbMCmKojjyrYDEAGy4Ce19NN4v5MduafTwJlbKc99UA8YhSVqq9yPZA==}
     engines: {node: '>=12.4.0'}
 
-  '@octokit/app@15.1.0':
-    resolution: {integrity: sha512-TkBr7QgOmE6ORxvIAhDbZsqPkF7RSqTY4pLTtUQCvr6dTXqvi2fFo46q3h1lxlk/sGMQjqyZ0kEahkD/NyzOHg==}
+  '@octokit/app@15.1.1':
+    resolution: {integrity: sha512-fk8xrCSPTJGpyBdBNI+DcZ224dm0aApv4vi6X7/zTmANXlegKV2Td+dJ+fd7APPaPN7R+xttUsj2Fm+AFDSfMQ==}
     engines: {node: '>= 18'}
 
   '@octokit/auth-app@7.1.0':
@@ -5725,10 +5725,6 @@ packages:
     resolution: {integrity: sha512-tqNXrS78oMOE73NMxK4EMLQsQowWf8jKooH9g7xPavRT706R6bkQJ6DY2Te7QukaZsulxa30wQ7bk0pm4XiHmA==}
     engines: {node: '>=8'}
 
-  lru-cache@10.2.2:
-    resolution: {integrity: sha512-9hp3Vp2/hFQUiIwKo8XCeFVnrg8Pk3TYNPIR7tJADKi5YfcF7vEaK7avFHTlSy3kOKYaJQaalfEo6YuXdceBOQ==}
-    engines: {node: 14 || >=16.14}
-
   lru-cache@10.4.3:
     resolution: {integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==}
 
@@ -6180,8 +6176,8 @@ packages:
     resolution: {integrity: sha512-gXah6aZrcUxjWg2zR2MwouP2eHlCBzdV4pygudehaKXSGW4v2AsRQUK+lwwXhii6KFZcunEnmSUoYp5CXibxtA==}
     engines: {node: '>= 0.4'}
 
-  octokit@4.0.2:
-    resolution: {integrity: sha512-wbqF4uc1YbcldtiBFfkSnquHtECEIpYD78YUXI6ri1Im5OO2NLo6ZVpRdbJpdnpZ05zMrVPssNiEo6JQtea+Qg==}
+  octokit@4.0.3:
+    resolution: {integrity: sha512-kfqH80Yuuux4fLbZ4SvObjCvVu89U0eCh5+fulh6tr/hJkDYS1inXDGnNJDOp312GANMEhWWMLYmjQR8MvSSMQ==}
     engines: {node: '>= 18'}
 
   ofetch@1.4.1:
@@ -6705,8 +6701,8 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18 || ^19
 
-  react-i18next@15.2.0:
-    resolution: {integrity: sha512-iJNc8111EaDtVTVMKigvBtPHyrJV+KblWG73cUxqp+WmJCcwkzhWNFXmkAD5pwP2Z4woeDj/oXDdbjDsb3Gutg==}
+  react-i18next@15.3.0:
+    resolution: {integrity: sha512-rEsdTx1L6a/XmqFHreDz4arGqjWtoGWg9IxZbScRBK5aXkTLK3rzRElifhNo/SuNIEsjLDwnhvblnlYZGckrIg==}
     peerDependencies:
       i18next: '>= 23.2.3'
       react: '>= 16.8.0'
@@ -9507,7 +9503,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.289':
+  '@iconify/json@2.2.290':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 1.1.2
@@ -9811,7 +9807,7 @@ snapshots:
 
   '@nolyfill/is-core-module@1.0.39': {}
 
-  '@octokit/app@15.1.0':
+  '@octokit/app@15.1.1':
     dependencies:
       '@octokit/auth-app': 7.1.0
       '@octokit/auth-unauthenticated': 6.1.0
@@ -9828,7 +9824,7 @@ snapshots:
       '@octokit/request': 9.1.1
       '@octokit/request-error': 6.1.1
       '@octokit/types': 13.6.2
-      lru-cache: 10.2.2
+      lru-cache: 10.4.3
       universal-github-app-jwt: 2.2.0
       universal-user-agent: 7.0.2
 
@@ -13895,8 +13891,6 @@ snapshots:
 
   lowercase-keys@2.0.0: {}
 
-  lru-cache@10.2.2: {}
-
   lru-cache@10.4.3: {}
 
   lru-cache@4.1.5:
@@ -14489,9 +14483,9 @@ snapshots:
       define-properties: 1.2.1
       es-object-atoms: 1.0.0
 
-  octokit@4.0.2:
+  octokit@4.0.3:
     dependencies:
-      '@octokit/app': 15.1.0
+      '@octokit/app': 15.1.1
       '@octokit/core': 6.1.2
       '@octokit/oauth-app': 7.1.2
       '@octokit/plugin-paginate-graphql': 5.2.2(@octokit/core@6.1.2)
@@ -14954,7 +14948,7 @@ snapshots:
     dependencies:
       react: 19.0.0
 
-  react-i18next@15.2.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  react-i18next@15.3.0(i18next@24.2.0(typescript@5.7.2))(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@babel/runtime': 7.26.0
       html-parse-stringify: 3.0.1

@@ -2,13 +2,18 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-beta.16
+#### 1.11.0-beta.19
 
 * Fixes and improvements
 
-### 1.10.6
+#### 1.11.0-beta.17
 
+* Add port hopping support for Hysteria2 **1**
 * Fixes and improvements
+
+**1**:
+
+See [Hysteria2](/configuration/outbound/hysteria2/).
 
 #### 1.11.0-beta.14
 
