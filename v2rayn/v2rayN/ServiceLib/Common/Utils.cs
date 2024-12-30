@@ -517,7 +517,7 @@ namespace ServiceLib.Common
 
         public static bool UpgradeAppExists(out string fileName)
         {
-            fileName = Path.Combine(Utils.StartupPath(), GetExeName("AmazTool"));
+            fileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, GetExeName("AmazTool"));
             return File.Exists(fileName);
         }
 
@@ -592,6 +592,9 @@ namespace ServiceLib.Common
                 {
                     return;
                 }
+
+                if (fileName.Contains(' ')) fileName = fileName.AppendQuotes();
+                if (arguments.Contains(' ')) arguments = arguments.AppendQuotes();
 
                 Process.Start(new ProcessStartInfo(fileName, arguments) { UseShellExecute = true });
             }
@@ -675,6 +678,12 @@ namespace ServiceLib.Common
         {
             try
             {
+                //When this file exists, it is equivalent to having no permission to read and write
+                if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "NotStoreConfigHere.txt")))
+                {
+                    return false;
+                }
+
                 var tempPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "guiTemps");
                 if (!Directory.Exists(tempPath))
                 {

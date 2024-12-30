@@ -584,7 +584,7 @@ local function processData(szType, content, add_mode, add_from)
 			info = info:sub(1, find_index - 1)
 		end
 
-		local hostInfo = split(base64Decode(info), "@")
+		local hostInfo = split(base64Decode(UrlDecode(info)), "@")
 		if hostInfo and #hostInfo > 0 then
 			local host_port = hostInfo[#hostInfo]
 			-- [2001:4860:4860::8888]:443
@@ -630,12 +630,9 @@ local function processData(szType, content, add_mode, add_from)
 				result.protocol = 'shadowsocks'
 			end
 
-			if result.type == "SS-Rust" and method:lower() == "chacha20-poly1305" then
-				result.method = "chacha20-ietf-poly1305"
-			end
-
-			if result.type == "Xray" and method:lower() == "chacha20-ietf-poly1305" then
-				result.method = "chacha20-poly1305"
+			if result.type ~= "Xray" then
+				result.method = (method:lower() == "chacha20-poly1305" and "chacha20-ietf-poly1305") or
+						(method:lower() == "xchacha20-poly1305" and "xchacha20-ietf-poly1305") or method
 			end
 
 			if result.plugin then
