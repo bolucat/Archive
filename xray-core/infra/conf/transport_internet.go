@@ -240,8 +240,8 @@ type XmuxConfig struct {
 	MaxConcurrency   Int32Range `json:"maxConcurrency"`
 	MaxConnections   Int32Range `json:"maxConnections"`
 	CMaxReuseTimes   Int32Range `json:"cMaxReuseTimes"`
-	CMaxLifetimeMs   Int32Range `json:"cMaxLifetimeMs"`
 	HMaxRequestTimes Int32Range `json:"hMaxRequestTimes"`
+	HMaxReusableSecs Int32Range `json:"hMaxReusableSecs"`
 	HKeepAlivePeriod int64      `json:"hKeepAlivePeriod"`
 }
 
@@ -262,7 +262,6 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		extra.Host = c.Host
 		extra.Path = c.Path
 		extra.Mode = c.Mode
-		extra.Extra = c.Extra
 		c = &extra
 	}
 
@@ -287,10 +286,10 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 	if c.Xmux == (XmuxConfig{}) {
 		c.Xmux.MaxConcurrency.From = 16
 		c.Xmux.MaxConcurrency.To = 32
-		c.Xmux.CMaxReuseTimes.From = 256
-		c.Xmux.CMaxReuseTimes.To = 512
-		c.Xmux.HMaxRequestTimes.From = 800
+		c.Xmux.HMaxRequestTimes.From = 600
 		c.Xmux.HMaxRequestTimes.To = 900
+		c.Xmux.HMaxReusableSecs.From = 1800
+		c.Xmux.HMaxReusableSecs.To = 3000
 	}
 
 	config := &splithttp.Config{
@@ -308,8 +307,8 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 			MaxConcurrency:   newRangeConfig(c.Xmux.MaxConcurrency),
 			MaxConnections:   newRangeConfig(c.Xmux.MaxConnections),
 			CMaxReuseTimes:   newRangeConfig(c.Xmux.CMaxReuseTimes),
-			CMaxLifetimeMs:   newRangeConfig(c.Xmux.CMaxLifetimeMs),
 			HMaxRequestTimes: newRangeConfig(c.Xmux.HMaxRequestTimes),
+			HMaxReusableSecs: newRangeConfig(c.Xmux.HMaxReusableSecs),
 			HKeepAlivePeriod: c.Xmux.HKeepAlivePeriod,
 		},
 	}
@@ -317,9 +316,6 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 	if c.DownloadSettings != nil {
 		if c.Mode == "stream-one" {
 			return nil, errors.New(`Can not use "downloadSettings" in "stream-one" mode.`)
-		}
-		if c.Extra != nil {
-			c.DownloadSettings.SocketSettings = nil
 		}
 		var err error
 		if config.DownloadSettings, err = c.DownloadSettings.Build(); err != nil {
@@ -689,7 +685,7 @@ type SocketConfig struct {
 	TCPCongestion        string                 `json:"tcpCongestion"`
 	TCPWindowClamp       int32                  `json:"tcpWindowClamp"`
 	TCPMaxSeg            int32                  `json:"tcpMaxSeg"`
-	TcpNoDelay           bool                   `json:"tcpNoDelay"`
+	Penetrate            bool                   `json:"penetrate"`
 	TCPUserTimeout       int32                  `json:"tcpUserTimeout"`
 	V6only               bool                   `json:"v6only"`
 	Interface            string                 `json:"interface"`
@@ -776,7 +772,7 @@ func (c *SocketConfig) Build() (*internet.SocketConfig, error) {
 		TcpCongestion:        c.TCPCongestion,
 		TcpWindowClamp:       c.TCPWindowClamp,
 		TcpMaxSeg:            c.TCPMaxSeg,
-		TcpNoDelay:           c.TcpNoDelay,
+		Penetrate:            c.Penetrate,
 		TcpUserTimeout:       c.TCPUserTimeout,
 		V6Only:               c.V6only,
 		Interface:            c.Interface,

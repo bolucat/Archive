@@ -1,24 +1,37 @@
-<img src="Shadowsocks.WPF/Resources/ssw128.png" alt="[logo]" width="48"/> Shadowsocks for Windows
+<img src="shadowsocks-csharp/Resources/ssw128.png" alt="[logo]" width="48"/> Shadowsocks for Windows
 =======================
 
-[![Build](https://github.com/shadowsocks/shadowsocks-windows/workflows/Build/badge.svg)](https://github.com/shadowsocks/shadowsocks-windows/actions?query=workflow%3ABuild)
-[![Release](https://github.com/shadowsocks/shadowsocks-windows/workflows/Release/badge.svg)](https://github.com/shadowsocks/shadowsocks-windows/actions?query=workflow%3ARelease)
+[![Build Status]][Appveyor]
+
+[中文说明]
 
 ## Features
 
-- Connect to Shadowsocks servers.
-- Automatically set system proxy.
-- SIP002 URL scheme.
-- SIP003 plugins.
-- SIP008 online configuration delivery.
+1. System proxy configuration
+2. PAC mode and global mode
+3. [GeoSite] and user rules
+4. Supports HTTP proxy
+5. Supports server auto switching
+6. Supports UDP relay (see Usage)
+7. Supports plugins
 
 ## Downloads
 
-Download from [releases](https://github.com/shadowsocks/shadowsocks-windows/releases).
+Download the latest release from [release page].
 
-## Usage
+## Requirements
 
-- 🚀
+.NET Framework 4.8 or higher, Microsoft [Visual C++ 2015 Redistributable] (x86) .
+
+## Basics
+
+1. Find Shadowsocks icon in the notification tray
+2. You can add multiple servers in servers menu
+3. Select `Enable System Proxy` menu to enable system proxy. Please disable other
+proxy addons in your browser, or set them to use system proxy
+4. You can also configure your browser proxy manually if you don't want to enable
+system proxy. Set Socks5 or HTTP proxy to 127.0.0.1:1080. You can change this
+port in `Servers -> Edit Servers`
 
 ## PAC
 
@@ -40,43 +53,118 @@ Download from [releases](https://github.com/shadowsocks/shadowsocks-windows/rele
 - To define your own PAC rules, it's recommended to use the `user-rule.txt` file.
 - You can also modify `pac.txt` directly. But your modifications won't persist after updating geosite from the upstream.
 
+For Windows10 Store and related applications, please execute the following command under Admin privilege:
+```
+netsh winhttp import proxy source=ie
+```
+
+## Server Auto Switching
+
+1. Load balance: choosing server randomly
+2. High availability: choosing the best server (low latency and packet loss)
+3. Choose By Total Package Loss: ping and choose. Please also enable
+   `Availability Statistics` in the menu if you want to use this
+4. Write your own strategy by implement IStrategy interface and send us a pull request!
+
+## UDP
+
+For UDP, you need to use SocksCap or ProxyCap to force programs you want
+to be proxied to tunnel over Shadowsocks
+
+## Multiple Instances
+
+If you want to manage multiple servers using other tools like SwitchyOmega,
+you can start multiple Shadowsocks instances. To avoid configuration conflicts,
+copy Shadowsocks to a new directory and choose a different local port.
+
+## Plugins
+
+If you would like to connect to server via a plugin, please set the plugin's
+path (relative or absolute) on Edit Servers form.
+_Note_: Forward Proxy will not be used while a plugin is enabled.
+
+Details:
+[Working with non SIP003 standard Plugin].
+
+## Global hotkeys
+
+Hotkeys could be registered automatically on startup.
+If you are using multiple instances of Shadowsocks,
+you must set different key combination for each instance.
+
+### How to input?
+
+1. Put focus in the corresponding textbox.
+2. Press the key combination that you want to use.
+3. Release all keys when you think it is ready.
+4. Your input appears in the textbox.
+
+### How to change?
+
+1. Put focus in the corresponding textbox.
+2. Press BackSpace key to clear content.
+3. Re-input new key combination.
+
+### How to deactivate?
+
+1. Clear content in the textbox that you want to deactivate,
+if you want to deactivate all, please clear all textboxes.
+2. Press OK button to confirm.
+
+### Meaning of label color
+
+- Green: This key combination is not occupied by other programs and register successfully.
+- Yellow: This key combination is occupied by other programs and you have to change to another one.
+- Transparent without color: The initial status.
+
+## Server Configuration
+
+Please visit [Servers] for more information.
+
+## Experimental
+
+[Experimental Features]
+
 ## Development
 
-- IDE: Visual Studio 2019
-- Language: C# 9.0
-- SDK: .NET 5
-
-### Build
-
-1. Clone the repository recursively.
-```bash
-$ git clone --recursive https://github.com/shadowsocks/shadowsocks-windows.git
-```
-2. Open the repository in VS2019, switch to the _Release_ configuration, and build the solution.
-
-### Contribute
-
-`PR welcome`
-
-You can use the [Source Browser](https://ss-windows.cube64128.xyz/) to review code online.
+1. Visual Studio 2019 & .NET Framework 4.8 SDK are required.
+2. It is recommended to share your idea on the Issue Board before you start to work,
+especially for feature development.
 
 ## License
 
-Shadowsocks-windows is licensed under the [GPLv3](LICENSE.txt) license.
+[GPLv3]
+
+## Open Source Components / Libraries
 
 ```
-BouncyCastle.NetCore (MIT)       https://github.com/chrishaly/bc-csharp
 Caseless.Fody (MIT)              https://github.com/Fody/Caseless
 Costura.Fody (MIT)               https://github.com/Fody/Costura
 Fody (MIT)                       https://github.com/Fody/Fody
 GlobalHotKey (GPLv3)             https://github.com/kirmir/GlobalHotKey
 MdXaml (MIT)                     https://github.com/whistyun/MdXaml
 Newtonsoft.Json (MIT)            https://www.newtonsoft.com/json
-Privoxy (GPLv2)                  https://www.privoxy.org
 ReactiveUI.WPF (MIT)             https://github.com/reactiveui/ReactiveUI
 ReactiveUI.Events.WPF (MIT)      https://github.com/reactiveui/ReactiveUI
 ReactiveUI.Fody (MIT)            https://github.com/reactiveui/ReactiveUI
 ReactiveUI.Validation (MIT)      https://github.com/reactiveui/ReactiveUI.Validation
 WPFLocalizationExtension (MS-PL) https://github.com/XAMLMarkupExtensions/WPFLocalizationExtension/
 ZXing.Net (Apache 2.0)           https://github.com/micjahn/ZXing.Net
+
+libsscrypto (GPLv2)    https://github.com/shadowsocks/libsscrypto
+Privoxy (GPLv2)        https://www.privoxy.org
+Sysproxy ()            https://github.com/Noisyfox/sysproxy
 ```
+
+
+
+[Appveyor]:     https://ci.appveyor.com/project/celeron533/shadowsocks-windows
+[Build Status]: https://ci.appveyor.com/api/projects/status/tfw57q6eecippsl5/branch/master?svg=true
+[release page]: https://github.com/shadowsocks/shadowsocks-csharp/releases
+[GeoSite]:      https://github.com/v2fly/domain-list-community
+[Servers]:      https://github.com/shadowsocks/shadowsocks/wiki/Ports-and-Clients#linux--server-side
+[中文说明]:     https://github.com/shadowsocks/shadowsocks-windows/wiki/Shadowsocks-Windows-%E4%BD%BF%E7%94%A8%E8%AF%B4%E6%98%8E
+[Visual C++ 2015 Redistributable]:     https://www.microsoft.com/en-us/download/details.aspx?id=53840
+[GPLv3]:        https://github.com/shadowsocks/shadowsocks-windows/blob/master/LICENSE.txt
+[Working with non SIP003 standard Plugin]: https://github.com/shadowsocks/shadowsocks-windows/wiki/Working-with-non-SIP003-standard-Plugin
+[Experimental Features]: https://github.com/shadowsocks/shadowsocks-windows/wiki/Experimental

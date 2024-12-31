@@ -308,7 +308,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		globalDialerAccess.Lock()
 		if streamSettings.DownloadSettings == nil {
 			streamSettings.DownloadSettings = common.Must2(internet.ToMemoryStreamConfig(transportConfiguration.DownloadSettings)).(*internet.MemoryStreamConfig)
-			if streamSettings.DownloadSettings.SocketSettings == nil {
+			if streamSettings.SocketSettings != nil && streamSettings.SocketSettings.Penetrate {
 				streamSettings.DownloadSettings.SocketSettings = streamSettings.SocketSettings
 			}
 		}
@@ -447,7 +447,8 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 
 			lastWrite = time.Now()
 
-			if xmuxClient != nil && xmuxClient.LeftRequests.Add(-1) <= 0 {
+			if xmuxClient != nil && (xmuxClient.LeftRequests.Add(-1) <= 0 ||
+				(xmuxClient.UnreusableAt != time.Time{} && lastWrite.After(xmuxClient.UnreusableAt))) {
 				httpClient, xmuxClient = getHTTPClient(ctx, dest, streamSettings)
 			}
 

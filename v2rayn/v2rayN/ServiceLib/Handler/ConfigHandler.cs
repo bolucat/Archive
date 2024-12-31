@@ -68,7 +68,7 @@ namespace ServiceLib.Handler
             config.RoutingBasicItem ??= new();
             if (Utils.IsNullOrEmpty(config.RoutingBasicItem.DomainStrategy))
             {
-                config.RoutingBasicItem.DomainStrategy = Global.DomainStrategies.First();//"IPIfNonMatch";
+                config.RoutingBasicItem.DomainStrategy = Global.DomainStrategies.First();
             }
 
             config.KcpItem ??= new KcpItem
@@ -1867,6 +1867,16 @@ namespace ServiceLib.Handler
 
                     await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.Xray, Global.DNSTemplateSources[1] + "v2ray.json"));
                     await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.sing_box, Global.DNSTemplateSources[1] + "sing_box.json"));
+
+                    return true;
+                
+                case EPresetType.Iran:
+                    config.ConstItem.GeoSourceUrl = Global.GeoFilesSources[2];
+                    config.ConstItem.SrsSourceUrl = Global.SingboxRulesetSources[2];
+                    config.ConstItem.RouteRulesTemplateSourceUrl = Global.RoutingRulesSources[2];
+
+                    await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.Xray, Global.DNSTemplateSources[2] + "v2ray.json"));
+                    await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.sing_box, Global.DNSTemplateSources[2] + "sing_box.json"));
 
                     return true;
             }
