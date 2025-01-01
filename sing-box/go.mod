@@ -29,12 +29,12 @@ require (
 	github.com/sagernet/sing v0.6.0-beta.9
 	github.com/sagernet/sing-dns v0.4.0-beta.1
 	github.com/sagernet/sing-mux v0.3.0-alpha.1
-	github.com/sagernet/sing-quic v0.4.0-beta.2
+	github.com/sagernet/sing-quic v0.4.0-beta.3
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.2.0-alpha.2
-	github.com/sagernet/sing-tun v0.6.0-beta.7.0.20241229131914-aa9d9c62966f
-	github.com/sagernet/sing-vmess v0.2.0-beta.1
+	github.com/sagernet/sing-tun v0.6.0-beta.7
+	github.com/sagernet/sing-vmess v0.2.0-beta.2
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/utls v1.6.7
 	github.com/sagernet/wireguard-go v0.0.1-beta.5

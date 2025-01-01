@@ -2,9 +2,16 @@
 icon: material/alert-decagram
 ---
 
-#### 1.11.0-beta.19
+#### 1.11.0-beta.20
 
+* Hysteria2 `ignore_client_bandwidth` behavior update **1**
 * Fixes and improvements
+
+**1**:
+
+When `up_mbps` and `down_mbps` are set, `ignore_client_bandwidth` instead denies clients from using BBR CC.
+
+See [Hysteria2](/configuration/inbound/hysteria2/#ignore_client_bandwidth).
 
 #### 1.11.0-beta.17
 

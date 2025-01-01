@@ -174,6 +174,7 @@ type realityConnWrapper struct {
 
 func (c *realityConnWrapper) ConnectionState() ConnectionState {
 	state := c.Conn.ConnectionState()
+	//nolint:staticcheck
 	return tls.ConnectionState{
 		Version:                     state.Version,
 		HandshakeComplete:           state.HandshakeComplete,

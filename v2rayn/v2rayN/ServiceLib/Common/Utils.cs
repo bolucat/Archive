@@ -530,7 +530,7 @@ namespace ServiceLib.Common
             try
             {
                 return blFull
-                    ? $"{Global.AppName} - V{GetVersionInfo()} - {RuntimeInformation.ProcessArchitecture} - {StartupPath()}"
+                    ? $"{Global.AppName} - V{GetVersionInfo()} - {RuntimeInformation.ProcessArchitecture}"
                     : $"{Global.AppName}/{GetVersionInfo()}";
             }
             catch (Exception ex)
@@ -552,6 +552,11 @@ namespace ServiceLib.Common
                 Logging.SaveLog(ex.Message, ex);
                 return "0.0";
             }
+        }
+
+        public static string GetRuntimeInfo()
+        {
+            return $"{Utils.GetVersion()} | {Utils.StartupPath()} | {Utils.GetExePath()} | {Environment.OSVersion} | {(Environment.Is64BitOperatingSystem ? 64 : 32)}";
         }
 
         /// <summary>
@@ -884,6 +889,7 @@ namespace ServiceLib.Common
         public static async Task<string?> SetLinuxChmod(string? fileName)
         {
             if (fileName.IsNullOrEmpty()) return null;
+            if (fileName.Contains(' ')) fileName = fileName.AppendQuotes();
             //File.SetUnixFileMode(fileName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             var arg = new List<string>() { "-c", $"chmod +x {fileName}" };
             return await GetCliWrapOutput("/bin/bash", arg);
@@ -901,6 +907,12 @@ namespace ServiceLib.Common
             return IsWindows()
                 ? Environment.ExpandEnvironmentVariables("%HOMEDRIVE%%HOMEPATH%")
                 : Environment.GetEnvironmentVariable("HOME");
+        }
+
+        public static async Task<string?> GetListNetworkServices()
+        {
+            var arg = new List<string>() { "-c", $"networksetup -listallnetworkservices" };
+            return await GetCliWrapOutput("/bin/bash", arg);
         }
 
         #endregion Platform
