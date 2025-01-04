@@ -1,0 +1,29 @@
+with-expecter: true
+dir: mocks
+outpkg: mocks
+packages:
+  net:
+    interfaces:
+      Conn:
+        config:
+          mockname: MockConn
+  github.com/apernet/hysteria/core/v2/server:
+    interfaces:
+      Outbound:
+        config:
+          mockname: MockOutbound
+      UDPConn:
+        config:
+          mockname: MockUDPConn
+      Authenticator:
+        config:
+          mockname: MockAuthenticator
+      EventLogger:
+        config:
+          mockname: MockEventLogger
+      TrafficLogger:
+        config:
+          mockname: MockTrafficLogger
+      RequestHook:
+        config:
+          mockname: MockRequestHook

@@ -517,10 +517,10 @@ namespace ServiceLib.Common
 
         #region 杂项
 
-        public static bool UpgradeAppExists(out string fileName)
+        public static bool UpgradeAppExists(out string upgradeFileName)
         {
-            fileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, GetExeName("AmazTool"));
-            return File.Exists(fileName);
+            upgradeFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, GetExeName("AmazTool"));
+            return File.Exists(upgradeFileName);
         }
 
         /// <summary>
@@ -589,26 +589,6 @@ namespace ServiceLib.Common
         public static bool IsGuidByParse(string strSrc)
         {
             return Guid.TryParse(strSrc, out _);
-        }
-
-        public static void ProcessStart(string? fileName, string arguments = "")
-        {
-            try
-            {
-                if (fileName.IsNullOrEmpty())
-                {
-                    return;
-                }
-
-                if (fileName.Contains(' ')) fileName = fileName.AppendQuotes();
-                if (arguments.Contains(' ')) arguments = arguments.AppendQuotes();
-
-                Process.Start(new ProcessStartInfo(fileName, arguments) { UseShellExecute = true });
-            }
-            catch (Exception ex)
-            {
-                Logging.SaveLog(_tag, ex);
-            }
         }
 
         public static Dictionary<string, string> GetSystemHosts()

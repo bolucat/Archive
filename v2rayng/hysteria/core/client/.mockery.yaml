@@ -1,0 +1,9 @@
+with-expecter: true
+inpackage: true
+dir: .
+packages:
+  github.com/apernet/hysteria/core/v2/client:
+    interfaces:
+      udpIO:
+        config:
+          mockname: mockUDPIO
