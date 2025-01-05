@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Golang
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Patch Go use 600296
+      #https://go-review.googlesource.com/c/go/+/600296
+      run: |
+       cd "$(go env GOROOT)"
+       curl "https://go-review.googlesource.com/changes/go~600296/revisions/5/patch" | base64 -d | patch --verbose -p 1
+
+    - name: Install gomobile
+      run: |
+        CGO_ENABLED=0 go install -trimpath -ldflags="-w -s"  github.com/sagernet/gomobile/cmd/gomobile@latest
+        export PATH=$PATH:~/go/bin
+        
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      id: setup-ndk
+      with:
+        ndk-version: r27
+        add-to-path: true
+        link-to-sdk: true
+        local-cache: true
+
+    - name: Restore Android Symlinks
+      run: |
+        directory="${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        find "$directory" -type l | while read link; do
+            current_target=$(readlink "$link")
+            new_target="$directory/$(basename "$current_target")"
+            ln -sf "$new_target" "$link"
+            echo "Changed $(basename "$link") from $current_target to $new_target"
+        done
+
+    - name: Build
+      run: |
+         mkdir -p assets data
+         bash gen_assets.sh download
+         cp -v data/*.dat assets/
+         gomobile init
+         go mod tidy
+         gomobile bind -v -androidapi 21 -trimpath -buildvcs=false -ldflags='-s -w -buildid=' ./
+      env:
+        ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+    - name: Upload AndroidLibXrayLite to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        file: ./libv2ray*r
+        tag: ${{ github.event.inputs.release_tag }}
+        file_glob: true

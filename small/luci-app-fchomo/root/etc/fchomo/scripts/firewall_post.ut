@@ -57,7 +57,7 @@
 	const uci = cursor();
 	uci.load(cfgname);
 
-	const common_tcpport = uci.get(cfgname, 'config', 'common_tcpport') || '20-21,22,53,80,110,143,443,465,853,873,993,995,8080,8443,9418',
+	const common_tcpport = uci.get(cfgname, 'config', 'common_tcpport') || '20-21,22,53,80,110,143,443,465,853,873,993,995,5222,8080,8443,9418',
 	      common_udpport = uci.get(cfgname, 'config', 'common_udpport') || '20-21,22,53,80,110,143,443,853,993,995,8080,8443,9418',
 	      stun_port = uci.get(cfgname, 'config', 'stun_port') || '3478,19302',
 	      tun_name = uci.get(cfgname, 'config', 'tun_name') || 'hmtun0',
@@ -77,12 +77,14 @@
 	const dnsmasq_hijacked = uci.get('dhcp', '@dnsmasq[0]', 'dns_redirect') || '0',
 	      dnsmasq_port = uci.get('dhcp', '@dnsmasq[0]', 'port') || '53';
 
-	let client_enabled, routing_tcpport, routing_udpport, routing_mode, routing_domain;
+	let client_enabled, routing_tcpport, routing_udpport, routing_mode, routing_domain, routing_dscp_mode, routing_dscp_list;
 	client_enabled = uci.get(cfgname, 'routing', 'client_enabled') || '0',
 	routing_tcpport = uci.get(cfgname, 'routing', 'routing_tcpport') || null;
 	routing_udpport = uci.get(cfgname, 'routing', 'routing_udpport') || null;
 	routing_mode = uci.get(cfgname, 'routing', 'routing_mode') || null;
 	routing_domain = uci.get(cfgname, 'routing', 'routing_domain') || '0';
+	routing_dscp_mode = uci.get(cfgname, 'routing', 'routing_dscp_mode') || null;
+	routing_dscp_list = uci.get(cfgname, 'routing', 'routing_dscp_list') || null;
 
 	if (routing_tcpport === 'common')
 		routing_tcpport = common_tcpport;
@@ -119,7 +121,7 @@
 {%- function render_acl_src(inchain, outchain): %}
 chain {{ inchain }} {
 		{% if (control_info.listen_interfaces): %}
-		meta iifname != {{ array_to_nftarr([...control_info.listen_interfaces, ...filter(['lo'], ((l) => !~index(control_info.listen_interfaces, l)))]) }} counter return
+		meta iifname != {{ array_to_nftarr(uniq([...control_info.listen_interfaces, ...['lo']])) }} counter return
 		{% endif %}
 		meta mark {{ self_mark }} counter return
 
@@ -183,6 +185,18 @@ chain {{ inchain }} {
 		ip6 daddr @inet6_china_list_addr counter return
 		{% endif %}
 		{% endif /* routing_mode */ %}
+
+		{% if (routing_dscp_mode === 'routing_dscp'): %}
+		ip dscp != @routing_dscp_list counter return
+		{% if (global_ipv6 === '1'): %}
+		ip6 dscp != @routing_dscp_list counter return
+		{% endif %}
+		{% elif (routing_dscp_mode === 'bypass_dscp'): %}
+		ip dscp @bypass_dscp_list counter return
+		{% if (global_ipv6 === '1'): %}
+		ip6 dscp @bypass_dscp_list counter return
+		{% endif %}
+		{% endif /* routing_dscp_mode */ %}
 
 		counter goto {{ outchain }}
 	}
@@ -328,6 +342,23 @@ table inet fchomo {
 	}
 	{% endif %}
 	{% endif /* routing_mode */ %}
+
+	{#- Routing DSCP #}
+	{% if (match(routing_dscp_mode, /bypass_dscp/)): %}
+	set bypass_dscp_list {
+		type dscp
+		flags interval
+		auto-merge
+		elements = { {{ join(', ', split(routing_dscp_list, ',')) }} }
+	}
+	{% elif (match(routing_dscp_mode, /routing_dscp/)): %}
+	set routing_dscp_list {
+		type dscp
+		flags interval
+		auto-merge
+		elements = { {{ join(', ', split(routing_dscp_list, ',')) }} }
+	}
+	{% endif /* routing_dscp_mode */ %}
 
 	{#- Routing port #}
 	{% if (routing_tcpport): %}

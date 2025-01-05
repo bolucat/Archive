@@ -46,7 +46,7 @@ const ucisniff = 'sniff',
       ucisubro = 'subrules';
 
 /* Hardcode options */
-const common_tcpport = uci.get(uciconf, ucifchm, 'common_tcpport') || '20-21,22,53,80,110,143,443,465,853,873,993,995,8080,8443,9418',
+const common_tcpport = uci.get(uciconf, ucifchm, 'common_tcpport') || '20-21,22,53,80,110,143,443,465,853,873,993,995,5222,8080,8443,9418',
       common_udpport = uci.get(uciconf, ucifchm, 'common_udpport') || '20-21,22,53,80,110,143,443,853,993,995,8080,8443,9418',
       stun_port = uci.get(uciconf, ucifchm, 'stun_port') || '3478,19302',
       tun_name = uci.get(uciconf, ucifchm, 'tun_name') || 'hmtun0',
@@ -76,6 +76,8 @@ const listen_interfaces = uci.get(uciconf, uciroute, 'listen_interfaces') || nul
       routing_udpport = uci.get(uciconf, uciroute, 'routing_udpport') || null,
       routing_mode = uci.get(uciconf, uciroute, 'routing_mode') || null,
       routing_domain = strToBool(uci.get(uciconf, uciroute, 'routing_domain')),
+      routing_dscp_mode = uci.get(uciconf, uciroute, 'routing_dscp_mode') || null,
+      routing_dscp_list = uci.get(uciconf, uciroute, 'routing_dscp_list') || null,
       tposh = 'c2luZ2JveA';
 
 /* WAN DNS server array */

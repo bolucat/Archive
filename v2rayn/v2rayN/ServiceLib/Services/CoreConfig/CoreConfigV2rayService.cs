@@ -154,7 +154,7 @@ namespace ServiceLib.Services.CoreConfig
                     var outbound = JsonUtils.Deserialize<Outbounds4Ray>(txtOutbound);
                     await GenOutbound(item, outbound);
                     outbound.tag = $"{Global.ProxyTag}-{tagProxy.Count + 1}";
-                    v2rayConfig.outbounds.Add(outbound);
+                    v2rayConfig.outbounds.Insert(0, outbound);
                     tagProxy.Add(outbound.tag);
                 }
                 if (tagProxy.Count <= 0)
@@ -182,15 +182,12 @@ namespace ServiceLib.Services.CoreConfig
                         rule.balancerTag = balancer.tag;
                     }
                 }
-                else
+                v2rayConfig.routing.rules.Add(new()
                 {
-                    v2rayConfig.routing.rules.Add(new()
-                    {
-                        network = "tcp,udp",
-                        balancerTag = balancer.tag,
-                        type = "field"
-                    });
-                }
+                    network = "tcp,udp",
+                    balancerTag = balancer.tag,
+                    type = "field"
+                });
 
                 ret.Success = true;
                 ret.Data = JsonUtils.Serialize(v2rayConfig);
