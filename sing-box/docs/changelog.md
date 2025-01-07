@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.11.0-beta.21
+
+* Fixes and improvements
+
 #### 1.11.0-beta.20
 
 * Hysteria2 `ignore_client_bandwidth` behavior update **1**
