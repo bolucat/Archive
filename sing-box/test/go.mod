@@ -13,8 +13,8 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/gofrs/uuid/v5 v5.3.0
 	github.com/sagernet/quic-go v0.48.2-beta.1
-	github.com/sagernet/sing v0.6.0-beta.9
-	github.com/sagernet/sing-dns v0.4.0-beta.1
+	github.com/sagernet/sing v0.6.0-beta.10
+	github.com/sagernet/sing-dns v0.4.0-beta.2
 	github.com/sagernet/sing-quic v0.4.0-beta.4
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
@@ -85,7 +85,7 @@ require (
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691 // indirect
 	github.com/sagernet/sing-mux v0.3.0-alpha.1 // indirect
 	github.com/sagernet/sing-shadowtls v0.2.0-alpha.2 // indirect
-	github.com/sagernet/sing-tun v0.6.0-beta.7 // indirect
+	github.com/sagernet/sing-tun v0.6.0-beta.8 // indirect
 	github.com/sagernet/sing-vmess v0.2.0-beta.2 // indirect
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7 // indirect
 	github.com/sagernet/utls v1.6.7 // indirect

@@ -42,7 +42,7 @@ function index()
 	end
 	entry({"admin", "services", appname, "app_update"}, cbi(appname .. "/client/app_update"), _("App Update"), 95).leaf = true
 	entry({"admin", "services", appname, "rule"}, cbi(appname .. "/client/rule"), _("Rule Manage"), 96).leaf = true
-	entry({"admin", "services", appname, "rule_list"}, cbi(appname .. "/client/rule_list"), _("Rule List"), 97).leaf = true
+	entry({"admin", "services", appname, "rule_list"}, cbi(appname .. "/client/rule_list", {autoapply = true}), _("Rule List"), 97).leaf = true
 	entry({"admin", "services", appname, "node_subscribe_config"}, cbi(appname .. "/client/node_subscribe_config")).leaf = true
 	entry({"admin", "services", appname, "node_config"}, cbi(appname .. "/client/node_config")).leaf = true
 	entry({"admin", "services", appname, "shunt_rules"}, cbi(appname .. "/client/shunt_rules")).leaf = true
@@ -109,16 +109,14 @@ function reset_config()
 end
 
 function show_menu()
-	uci:delete(appname, "@global[0]", "hide_from_luci")
-	api.uci_save(uci, appname, true)
+	api.sh_uci_del(appname, "@global[0]", "hide_from_luci", true)
 	luci.sys.call("rm -rf /tmp/luci-*")
 	luci.sys.call("/etc/init.d/rpcd restart >/dev/null")
 	luci.http.redirect(api.url())
 end
 
 function hide_menu()
-	uci:set(appname, "@global[0]", "hide_from_luci","1")
-	api.uci_save(uci, appname, true)
+	api.sh_uci_set(appname, "@global[0]", "hide_from_luci", "1", true)
 	luci.sys.call("rm -rf /tmp/luci-*")
 	luci.sys.call("/etc/init.d/rpcd restart >/dev/null")
 	luci.http.redirect(luci.dispatcher.build_url("admin", "status", "overview"))
@@ -291,7 +289,7 @@ function connect_status()
 	local socks_server = api.get_cache_var("GLOBAL_TCP_SOCKS_server")
 
 	-- 兼容 curl 8.6 time_starttransfer 错误
-	local curl_ver = luci.sys.exec("curl -V 2>/dev/null | head -n 1 | awk '{print $2}' | cut -d. -f1,2 | tr -d ' \n'") or "0"
+	local curl_ver = api.get_bin_version_cache("/usr/bin/curl", "-V 2>/dev/null | head -n 1 | awk '{print $2}' | cut -d. -f1,2 | tr -d ' \n'") or "0"
 	url = (curl_ver == "8.6") and "-w %{http_code}:%{time_appconnect} https://" .. url
 		or "-w %{http_code}:%{time_starttransfer} http://" .. url
 
@@ -304,7 +302,7 @@ function connect_status()
 			url = "-x socks5h://" .. socks_server .. " " .. url
 		end
 	end
-	local result = luci.sys.exec('curl --connect-timeout 3 -o /dev/null -I -sk ' .. url)
+	local result = luci.sys.exec('/usr/bin/curl --connect-timeout 3 -o /dev/null -I -sk ' .. url)
 	local code = tonumber(luci.sys.exec("echo -n '" .. result .. "' | awk -F ':' '{print $1}'") or "0")
 	if code ~= 0 then
 		local use_time = luci.sys.exec("echo -n '" .. result .. "' | awk -F ':' '{print $2}'")
@@ -361,8 +359,7 @@ function set_node()
 	local protocol = luci.http.formvalue("protocol")
 	local section = luci.http.formvalue("section")
 	uci:set(appname, "@global[0]", protocol .. "_node", section)
-	api.uci_save(uci, appname, true)
-	luci.sys.call("/etc/init.d/passwall restart > /dev/null 2>&1 &")
+	api.uci_save(uci, appname, true, true)
 	luci.http.redirect(api.url("log"))
 end
 
