@@ -118,8 +118,7 @@
     [Serializable]
     public class ConstItem
     {
-        public string DefIEProxyExceptions { get; set; }
-        public string SubConvertUrl { get; set; } = string.Empty;
+        public string? SubConvertUrl { get; set; }
         public string? GeoSourceUrl { get; set; }
         public string? SrsSourceUrl { get; set; }
         public string? RouteRulesTemplateSourceUrl { get; set; }

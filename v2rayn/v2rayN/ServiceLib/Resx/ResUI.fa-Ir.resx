@@ -1390,4 +1390,7 @@
   <data name="TbSettingsTheme" xml:space="preserve">
     <value>تم</value>
   </data>
+  <data name="menuCopyProxyCmdToClipboard" xml:space="preserve">
+    <value>کپی کردن دستور پروکسی در کلیپ بورد</value>
+  </data>
 </root>

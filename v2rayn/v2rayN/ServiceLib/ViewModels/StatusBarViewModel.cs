@@ -32,6 +32,7 @@ namespace ServiceLib.ViewModels
         public ReactiveCommand<Unit, Unit> AddServerViaScanCmd { get; }
         public ReactiveCommand<Unit, Unit> SubUpdateCmd { get; }
         public ReactiveCommand<Unit, Unit> SubUpdateViaProxyCmd { get; }
+        public ReactiveCommand<Unit, Unit> CopyProxyCmdToClipboardCmd { get; }
         public ReactiveCommand<Unit, Unit> NotifyLeftClickCmd { get; }
 
         #region System Proxy
@@ -128,6 +129,11 @@ namespace ServiceLib.ViewModels
                     y => y == true)
                 .Subscribe(async c => await DoEnableTun(c));
 
+            CopyProxyCmdToClipboardCmd = ReactiveCommand.CreateFromTask(async () =>
+            {
+                await CopyProxyCmdToClipboard();
+            });
+
             NotifyLeftClickCmd = ReactiveCommand.CreateFromTask(async () =>
             {
                 Locator.Current.GetService<MainWindowViewModel>()?.ShowHideWindow(null);
@@ -196,6 +202,23 @@ namespace ServiceLib.ViewModels
         private async void OnNext(string x)
         {
             await _updateView?.Invoke(EViewAction.DispatcherRefreshServersBiz, null);
+        }
+
+        private async Task CopyProxyCmdToClipboard()
+        {
+            var cmd = Utils.IsWindows() ? "set" : "export";
+            var address = $"{Global.Loopback}:{AppHandler.Instance.GetLocalPort(EInboundProtocol.socks)}";
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"{cmd} http_proxy={Global.HttpProtocol}{address}");
+            sb.AppendLine($"{cmd} https_proxy={Global.HttpProtocol}{address}");
+            sb.AppendLine($"{cmd} all_proxy={Global.Socks5Protocol}{address}");
+            sb.AppendLine("");
+            sb.AppendLine($"{cmd} HTTP_PROXY={Global.HttpProtocol}{address}");
+            sb.AppendLine($"{cmd} HTTPS_PROXY={Global.HttpProtocol}{address}");
+            sb.AppendLine($"{cmd} ALL_PROXY={Global.Socks5Protocol}{address}");
+
+            await _updateView?.Invoke(EViewAction.SetClipboardData, sb.ToString());
         }
 
         private async Task AddServerViaClipboard()
