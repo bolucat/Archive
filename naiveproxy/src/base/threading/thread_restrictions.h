@@ -202,7 +202,6 @@ class NonMainThreadImpl;
 }
 }  // namespace blink
 namespace cc {
-class CategorizedWorkerPoolImpl;
 class CategorizedWorkerPoolJob;
 class CategorizedWorkerPool;
 class CompletionEvent;
@@ -537,15 +536,9 @@ class BooleanWithOptionalStack {
 #endif
 };
 
-namespace internal {
-
-// Asserts that blocking calls are allowed in the current scope. This is an
-// internal call, external code should use ScopedBlockingCall instead, which
-// serves as a precise annotation of the scope that may/will block.
+// Asserts that blocking calls are allowed in the current scope.
 NOT_TAIL_CALLED BASE_EXPORT void AssertBlockingAllowed();
 NOT_TAIL_CALLED BASE_EXPORT void AssertBlockingDisallowedForTesting();
-
-}  // namespace internal
 
 // Disallows blocking on the current thread.
 NOT_TAIL_CALLED BASE_EXPORT void DisallowBlocking();
@@ -759,7 +752,6 @@ class BASE_EXPORT ScopedAllowBaseSyncPrimitives {
   friend class blink::VideoTrackRecorderImplContextProvider;
   friend class blink::WorkerThread;
   friend class blink::scheduler::NonMainThreadImpl;
-  friend class cc::CategorizedWorkerPoolImpl;
   friend class cc::CategorizedWorkerPoolJob;
   friend class content::BrowserMainLoop;
   friend class content::BrowserProcessIOThread;
@@ -856,7 +848,6 @@ class BASE_EXPORT
   friend class blink::RTCVideoDecoderAdapter;
   friend class blink::RTCVideoEncoder;
   friend class blink::WebRtcVideoFrameAdapter;
-  friend class cc::CategorizedWorkerPoolImpl;
   friend class cc::CategorizedWorkerPoolJob;
   friend class cc::CategorizedWorkerPool;
   friend class cc::TileTaskManagerImpl;

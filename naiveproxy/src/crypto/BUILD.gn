@@ -17,6 +17,8 @@ component("crypto") {
   sources = [
     "aead.cc",
     "aead.h",
+    "aes_cbc.cc",
+    "aes_cbc.h",
     "crypto_export.h",
     "ec_private_key.cc",
     "ec_private_key.h",
@@ -28,6 +30,8 @@ component("crypto") {
     "encryptor.h",
     "features.cc",
     "features.h",
+    "hash.cc",
+    "hash.h",
     "hkdf.cc",
     "hkdf.h",
     "hmac.cc",

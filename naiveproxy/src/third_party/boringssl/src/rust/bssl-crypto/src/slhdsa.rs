@@ -109,9 +109,9 @@ impl PrivateKey {
     ///
     /// This function returns None if `context` is longer than 255 bytes.
     pub fn sign_with_context(&self, msg: &[u8], context: &[u8]) -> Option<Vec<u8>> {
-	// Safety: the FFI function always writes exactly `SIGNATURE_BYTES` to
-	// the first argument if it suceeds. The size of the array passed as
-	// the second argument is correct.
+        // Safety: the FFI function always writes exactly `SIGNATURE_BYTES` to
+        // the first argument if it succeeds. The size of the array passed as
+        // the second argument is correct.
         unsafe {
             with_output_vec_fallible(SIGNATURE_BYTES, |signature| {
                 if bssl_sys::SLHDSA_SHA2_128S_sign(

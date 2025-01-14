@@ -318,9 +318,7 @@ int QuicProxyClientSocket::DoLoop(int last_io_result) {
         }
         break;
       default:
-        NOTREACHED_IN_MIGRATION() << "bad state";
-        rv = ERR_UNEXPECTED;
-        break;
+        NOTREACHED() << "bad state";
     }
   } while (rv != ERR_IO_PENDING && next_state_ != STATE_DISCONNECTED &&
            next_state_ != STATE_CONNECT_COMPLETE);

@@ -19,7 +19,7 @@ int OpenContentUri(const FilePath&, uint32_t) {
   return -1;
 }
 
-bool ContentUriGetFileInfo(const FilePath&, File::Info*) {
+bool ContentUriGetFileInfo(const FilePath&, FileEnumerator::FileInfo*) {
   return false;
 }
 
@@ -31,6 +31,9 @@ bool DeleteContentUri(const FilePath& content_uri) {
   return false;
 }
 
+bool IsDocumentUri(const FilePath& content_uri) {
+  return false;
+}
 }  // namespace internal
 
 std::string GetContentUriMimeType(const FilePath& content_uri) {

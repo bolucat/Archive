@@ -101,30 +101,6 @@ if (is_fuchsia) {
   import("//third_party/fuchsia-gn-sdk/src/fidl_library.gni")
 }
 
-# The Rust implementation of base::JSONReader. NaCl depends on base and doesn't
-# have a Rust toolchain, so we need a fallback to C++ for it until it removes
-# its dependency on //base.
-#
-# TODO(crbug.com/40811643): Drop toolchain_has_rust and move the C++ parser into
-# components/nacl to just run in-process there. Don't compile base::JSONReader
-# on NaCL at all.
-build_rust_json_reader = toolchain_has_rust && enable_rust_json
-
-# Rust to C++ type conversions. Also can not be enabled while NaCl depends on
-# //base.
-build_rust_base_conversions = toolchain_has_rust && enable_rust_base_conversions
-
-assert(build_rust_base_conversions || !build_rust_json_reader,
-       "Cannot enable Rust JSON decoder without also base conversions")
-
-buildflag_header("rust_buildflags") {
-  header = "rust_buildflags.h"
-  flags = [
-    "BUILD_RUST_JSON_READER=$build_rust_json_reader",
-    "BUILD_RUST_BASE_CONVERSIONS=$build_rust_base_conversions",
-  ]
-}
-
 if (is_win) {
   # This is in a separate config so the flags can be applied to dependents.
   # ldflags in GN aren't automatically inherited.
@@ -358,6 +334,7 @@ component("base") {
     "location.h",
     "logging.cc",
     "logging.h",
+    "logging/log_severity.h",
     "macros/concat.h",
     "macros/if.h",
     "macros/is_empty.h",
@@ -567,6 +544,7 @@ component("base") {
     "profiler/stack_unwind_data.h",
     "profiler/suspendable_thread_delegate.h",
     "profiler/thread_delegate.h",
+    "profiler/thread_group_profiler_client.h",
     "profiler/unwinder.cc",
     "profiler/unwinder.h",
     "rand_util.cc",
@@ -1046,10 +1024,6 @@ component("base") {
   # to provide the appropriate `#define` here.
   defines += [ "IS_RAW_PTR_IMPL" ]
 
-  if (build_rust_json_reader) {
-    deps += [ "//third_party/rust/serde_json_lenient/v0_2/wrapper" ]
-  }
-
   # native_unwinder_android is intended for use solely via a dynamic feature
   # module, to avoid increasing Chrome's executable size.
   assert_no_deps = [ ":native_unwinder_android" ]
@@ -1063,12 +1037,10 @@ component("base") {
     ":debugging_buildflags",
     ":feature_list_buildflags",
     ":ios_cronet_buildflags",
-    ":logging_buildflags",
     ":orderfile_buildflags",
     ":power_monitor_buildflags",
     ":profiler_buildflags",
     ":protected_memory_buildflags",
-    ":rust_buildflags",
     ":sanitizer_buildflags",
     ":synchronization_buildflags",
     ":tracing_buildflags",
@@ -1080,17 +1052,6 @@ component("base") {
     "//build:chromeos_buildflags",
     "//third_party/abseil-cpp:absl",
   ]
-
-  if (build_rust_base_conversions) {
-    sources += [
-      "containers/span_rust.h",
-      "strings/string_view_rust.h",
-    ]
-
-    # Base provides conversions between CXX types and base types (e.g.
-    # std::string_view).
-    public_deps += [ "//build/rust:cxx_cppdeps" ]
-  }
 
   # Needed for <atomic> if using newer C++ library than sysroot, except if
   # building inside the cros_sdk environment - use host_toolchain as a
@@ -1481,6 +1442,8 @@ component("base") {
       "files/scoped_temp_file.h",
       "json/json_file_value_serializer.cc",
       "json/json_file_value_serializer.h",
+      "logging/rust_log_integration.cc",
+      "logging/rust_log_integration.h",
       "memory/discardable_memory.cc",
       "memory/discardable_memory.h",
       "memory/discardable_memory_allocator.cc",
@@ -2475,12 +2438,6 @@ buildflag_header("feature_list_buildflags") {
   } else {
     flags = [ "ENABLE_BANNED_BASE_FEATURE_PREFIX=false" ]
   }
-}
-
-buildflag_header("logging_buildflags") {
-  header = "logging_buildflags.h"
-
-  flags = [ "ENABLE_LOG_ERROR_NOT_REACHED=$enable_log_error_not_reached" ]
 }
 
 buildflag_header("orderfile_buildflags") {

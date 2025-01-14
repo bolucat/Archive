@@ -193,17 +193,17 @@ void MoqtSession::OnDatagramReceived(absl::string_view datagram) {
   absl::string_view payload = ParseDatagram(datagram, message);
   QUICHE_DLOG(INFO) << ENDPOINT
                     << "Received OBJECT message in datagram for subscribe_id "
-                    << message.subscribe_id << " for track alias "
-                    << message.track_alias << " with sequence "
-                    << message.group_id << ":" << message.object_id
-                    << " priority " << message.publisher_priority << " length "
+                    << " for track alias " << message.track_alias
+                    << " with sequence " << message.group_id << ":"
+                    << message.object_id << " priority "
+                    << message.publisher_priority << " length "
                     << payload.size();
   auto [full_track_name, visitor] = TrackPropertiesFromAlias(message);
   if (visitor != nullptr) {
-    visitor->OnObjectFragment(full_track_name, message.group_id,
-                              message.object_id, message.publisher_priority,
-                              message.object_status,
-                              message.forwarding_preference, payload, true);
+    visitor->OnObjectFragment(
+        full_track_name, FullSequence{message.group_id, 0, message.object_id},
+        message.publisher_priority, message.object_status,
+        message.forwarding_preference, payload, true);
   }
 }
 
@@ -495,28 +495,34 @@ void MoqtSession::GrantMoreSubscribes(uint64_t num_subscribes) {
 std::pair<FullTrackName, RemoteTrack::Visitor*>
 MoqtSession::TrackPropertiesFromAlias(const MoqtObject& message) {
   auto it = remote_tracks_.find(message.track_alias);
-  RemoteTrack::Visitor* visitor = nullptr;
   if (it == remote_tracks_.end()) {
-    // SUBSCRIBE_OK has not arrived yet, but deliver it.
-    auto subscribe_it = active_subscribes_.find(message.subscribe_id);
-    if (subscribe_it == active_subscribes_.end()) {
+    ActiveSubscribe* subscribe = nullptr;
+    // SUBSCRIBE_OK has not arrived yet, but deliver the object. Indexing
+    // active_subscribes_ by track alias would make this faster if the
+    // subscriber has tons of incomplete subscribes.
+    for (auto& open_subscribe : active_subscribes_) {
+      if (open_subscribe.second.message.track_alias == message.track_alias) {
+        subscribe = &open_subscribe.second;
+        break;
+      }
+    }
+    if (subscribe == nullptr) {
       return std::pair<FullTrackName, RemoteTrack::Visitor*>(
           {FullTrackName{}, nullptr});
     }
-    ActiveSubscribe& subscribe = subscribe_it->second;
-    visitor = subscribe.visitor;
-    subscribe.received_object = true;
-    if (subscribe.forwarding_preference.has_value()) {
-      if (message.forwarding_preference != *subscribe.forwarding_preference) {
+    subscribe->received_object = true;
+    if (subscribe->forwarding_preference.has_value()) {
+      if (message.forwarding_preference != *subscribe->forwarding_preference) {
         Error(MoqtError::kProtocolViolation,
               "Forwarding preference changes mid-track");
         return std::pair<FullTrackName, RemoteTrack::Visitor*>(
             {FullTrackName{}, nullptr});
       }
     } else {
-      subscribe.forwarding_preference = message.forwarding_preference;
+      subscribe->forwarding_preference = message.forwarding_preference;
     }
-    return std::make_pair(subscribe.message.full_track_name, subscribe.visitor);
+    return std::make_pair(subscribe->message.full_track_name,
+                          subscribe->visitor);
   }
   RemoteTrack& track = it->second;
   if (!track.CheckForwardingPreference(message.forwarding_preference)) {
@@ -673,6 +679,13 @@ void MoqtSession::ControlStream::OnSubscribeMessage(
   if (PublisherHasData(**track_publisher)) {
     largest_id = (*track_publisher)->GetLargestSequence();
   }
+  if (message.start_group.has_value() && largest_id.has_value() &&
+      *message.start_group < largest_id->group) {
+    SendSubscribeError(message, SubscribeErrorCode::kInvalidRange,
+                       "SUBSCRIBE starts in previous group",
+                       message.track_alias);
+    return;
+  }
   MoqtDeliveryOrder delivery_order = (*track_publisher)->GetDeliveryOrder();
 
   MoqtPublishingMonitorInterface* monitoring = nullptr;
@@ -684,6 +697,11 @@ void MoqtSession::ControlStream::OnSubscribeMessage(
     session_->monitoring_interfaces_for_published_tracks_.erase(monitoring_it);
   }
 
+  if (session_->subscribed_track_names_.contains(track_name)) {
+    session_->Error(MoqtError::kProtocolViolation,
+                    "Duplicate subscribe for track");
+    return;
+  }
   auto subscription = std::make_unique<MoqtSession::PublishedSubscription>(
       session_, *std::move(track_publisher), message, monitoring);
   auto [it, success] = session_->published_subscriptions_.emplace(
@@ -691,6 +709,7 @@ void MoqtSession::ControlStream::OnSubscribeMessage(
   if (!success) {
     SendSubscribeError(message, SubscribeErrorCode::kInternalError,
                        "Duplicate subscribe ID", message.track_alias);
+    return;
   }
 
   MoqtSubscribeOk subscribe_ok;
@@ -889,8 +908,7 @@ void MoqtSession::IncomingDataStream::OnObjectMessage(const MoqtObject& message,
                                                       absl::string_view payload,
                                                       bool end_of_message) {
   QUICHE_DVLOG(1) << ENDPOINT << "Received OBJECT message on stream "
-                  << stream_->GetStreamId() << " for subscribe_id "
-                  << message.subscribe_id << " for track alias "
+                  << stream_->GetStreamId() << " for track alias "
                   << message.track_alias << " with sequence "
                   << message.group_id << ":" << message.object_id
                   << " priority " << message.publisher_priority
@@ -917,7 +935,9 @@ void MoqtSession::IncomingDataStream::OnObjectMessage(const MoqtObject& message,
   auto [full_track_name, visitor] = session_->TrackPropertiesFromAlias(message);
   if (visitor != nullptr) {
     visitor->OnObjectFragment(
-        full_track_name, message.group_id, message.object_id,
+        full_track_name,
+        FullSequence{message.group_id, message.subgroup_id.value_or(0),
+                     message.object_id},
         message.publisher_priority, message.object_status,
         message.forwarding_preference, payload, end_of_message);
   }
@@ -957,10 +977,12 @@ MoqtSession::PublishedSubscription::PublishedSubscription(
   }
   QUIC_DLOG(INFO) << ENDPOINT << "Created subscription for "
                   << subscribe.full_track_name;
+  session_->subscribed_track_names_.insert(subscribe.full_track_name);
 }
 
 MoqtSession::PublishedSubscription::~PublishedSubscription() {
   track_publisher_->RemoveObjectListener(this);
+  session_->subscribed_track_names_.erase(track_publisher_->GetTrackName());
 }
 
 SendStreamMap& MoqtSession::PublishedSubscription::stream_map() {
@@ -1032,6 +1054,11 @@ void MoqtSession::PublishedSubscription::OnNewObjectAvailable(
   OutgoingDataStream* stream =
       static_cast<OutgoingDataStream*>(raw_stream->visitor());
   stream->SendObjects(*this);
+}
+
+void MoqtSession::PublishedSubscription::OnTrackPublisherGone() {
+  session_->SubscribeIsDone(subscription_id_, SubscribeDoneCode::kGoingAway,
+                            "Publisher is gone");
 }
 
 void MoqtSession::PublishedSubscription::Backfill() {
@@ -1236,7 +1263,7 @@ void MoqtSession::OutgoingDataStream::SendObjects(
 
 void MoqtSession::OutgoingDataStream::SendNextObject(
     PublishedSubscription& subscription, PublishedObject object) {
-  QUICHE_DCHECK(object.sequence == next_object_);
+  QUICHE_DCHECK(next_object_ <= object.sequence);
   QUICHE_DCHECK(stream_->CanWrite());
 
   MoqtTrackPublisher& publisher = subscription.publisher();
@@ -1247,7 +1274,6 @@ void MoqtSession::OutgoingDataStream::SendNextObject(
   UpdateSendOrder(subscription);
 
   MoqtObject header;
-  header.subscribe_id = subscription_id_;
   header.track_alias = subscription.track_alias();
   header.group_id = object.sequence.group;
   header.object_id = object.sequence.object;
@@ -1262,7 +1288,9 @@ void MoqtSession::OutgoingDataStream::SendNextObject(
   header.payload_length = object.payload.length();
 
   quiche::QuicheBuffer serialized_header =
-      session_->framer_.SerializeObjectHeader(header, !stream_header_written_);
+      session_->framer_.SerializeObjectHeader(
+          header, GetMessageTypeForForwardingPreference(forwarding_preference),
+          !stream_header_written_);
   bool fin = false;
   switch (forwarding_preference) {
     case MoqtForwardingPreference::kTrack:
@@ -1271,14 +1299,17 @@ void MoqtSession::OutgoingDataStream::SendNextObject(
         ++next_object_.group;
         next_object_.object = 0;
       } else {
-        ++next_object_.object;
+        next_object_.object = header.object_id + 1;
       }
       fin = object.status == MoqtObjectStatus::kEndOfTrack ||
             !subscription.InWindow(next_object_);
       break;
 
     case MoqtForwardingPreference::kSubgroup:
-      ++next_object_.object;
+      // TODO(martinduke): EndOfGroup and EndOfTrack implies the ability to
+      // close other streams/subgroups. PublishedObject should contain a boolean
+      // if the stream is safe to close.
+      next_object_.object = header.object_id + 1;
       fin = object.status == MoqtObjectStatus::kEndOfTrack ||
             object.status == MoqtObjectStatus::kEndOfGroup ||
             object.status == MoqtObjectStatus::kEndOfSubgroup ||
@@ -1325,7 +1356,6 @@ void MoqtSession::PublishedSubscription::SendDatagram(FullSequence sequence) {
   }
 
   MoqtObject header;
-  header.subscribe_id = subscription_id_;
   header.track_alias = track_alias();
   header.group_id = object->sequence.group;
   header.object_id = object->sequence.object;

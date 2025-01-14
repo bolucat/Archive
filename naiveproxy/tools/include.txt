@@ -54,6 +54,7 @@
 ^third_party/libc++abi
 ^third_party/libevent
 ^third_party/libunwind
+^third_party/llvm-libc
 ^third_party/lss/linux_syscall_support.h
 ^third_party/modp_b64
 ^third_party/nasm

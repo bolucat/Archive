@@ -68,6 +68,7 @@ enum class QUICHE_EXPORT MoqtDataStreamType : uint64_t {
   kObjectDatagram = 0x01,
   kStreamHeaderTrack = 0x02,
   kStreamHeaderSubgroup = 0x04,
+  kStreamHeaderFetch = 0x05,
 
   // Currently QUICHE-specific.  All data on a kPadding stream is ignored.
   kPadding = 0x26d3,
@@ -88,11 +89,15 @@ enum class QUICHE_EXPORT MoqtMessageType : uint64_t {
   kTrackStatusRequest = 0x0d,
   kTrackStatus = 0x0e,
   kGoAway = 0x10,
-  kSubscribeNamespace = 0x11,
-  kSubscribeNamespaceOk = 0x12,
-  kSubscribeNamespaceError = 0x13,
-  kUnsubscribeNamespace = 0x14,
+  kSubscribeAnnounces = 0x11,
+  kSubscribeAnnouncesOk = 0x12,
+  kSubscribeAnnouncesError = 0x13,
+  kUnsubscribeAnnounces = 0x14,
   kMaxSubscribeId = 0x15,
+  kFetch = 0x16,
+  kFetchCancel = 0x17,
+  kFetchOk = 0x18,
+  kFetchError = 0x19,
   kClientSetup = 0x40,
   kServerSetup = 0x41,
 
@@ -242,6 +247,7 @@ struct FullSequence {
   bool operator>(const FullSequence& other) const { return !(*this <= other); }
   FullSequence& operator=(FullSequence other) {
     group = other.group;
+    subgroup = other.subgroup;
     object = other.object;
     return *this;
   }
@@ -260,6 +266,21 @@ struct FullSequence {
 struct SubgroupPriority {
   uint8_t publisher_priority = 0xf0;
   uint64_t subgroup_id = 0;
+
+  bool operator==(const SubgroupPriority& other) const {
+    return publisher_priority == other.publisher_priority &&
+           subgroup_id == other.subgroup_id;
+  }
+  bool operator<(const SubgroupPriority& other) const {
+    return publisher_priority < other.publisher_priority ||
+           (publisher_priority == other.publisher_priority &&
+            subgroup_id < other.subgroup_id);
+  }
+  bool operator<=(const SubgroupPriority& other) const {
+    return (publisher_priority < other.publisher_priority ||
+            (publisher_priority == other.publisher_priority &&
+             subgroup_id <= other.subgroup_id));
+  }
 };
 
 template <typename H>
@@ -304,8 +325,7 @@ MoqtObjectStatus IntegerToObjectStatus(uint64_t integer);
 // The data contained in every Object message, although the message type
 // implies some of the values.
 struct QUICHE_EXPORT MoqtObject {
-  uint64_t subscribe_id;
-  uint64_t track_alias;
+  uint64_t track_alias;  // For FETCH, this is the subscribe ID.
   uint64_t group_id;
   uint64_t object_id;
   MoqtPriority publisher_priority;
@@ -489,27 +509,55 @@ struct QUICHE_EXPORT MoqtGoAway {
   std::string new_session_uri;
 };
 
-struct QUICHE_EXPORT MoqtSubscribeNamespace {
+struct QUICHE_EXPORT MoqtSubscribeAnnounces {
   FullTrackName track_namespace;
   MoqtSubscribeParameters parameters;
 };
 
-struct QUICHE_EXPORT MoqtSubscribeNamespaceOk {
+struct QUICHE_EXPORT MoqtSubscribeAnnouncesOk {
   FullTrackName track_namespace;
 };
 
-struct QUICHE_EXPORT MoqtSubscribeNamespaceError {
+struct QUICHE_EXPORT MoqtSubscribeAnnouncesError {
   FullTrackName track_namespace;
   MoqtAnnounceErrorCode error_code;
   std::string reason_phrase;
 };
 
-struct QUICHE_EXPORT MoqtUnsubscribeNamespace {
+struct QUICHE_EXPORT MoqtUnsubscribeAnnounces {
   FullTrackName track_namespace;
 };
 
 struct QUICHE_EXPORT MoqtMaxSubscribeId {
   uint64_t max_subscribe_id;
+};
+
+struct QUICHE_EXPORT MoqtFetch {
+  uint64_t subscribe_id;
+  FullTrackName full_track_name;
+  MoqtPriority subscriber_priority;
+  std::optional<MoqtDeliveryOrder> group_order;
+  FullSequence start_object;  // subgroup is ignored
+  uint64_t end_group;
+  std::optional<uint64_t> end_object;
+  MoqtSubscribeParameters parameters;
+};
+
+struct QUICHE_EXPORT MoqtFetchCancel {
+  uint64_t subscribe_id;
+};
+
+struct QUICHE_EXPORT MoqtFetchOk {
+  uint64_t subscribe_id;
+  MoqtDeliveryOrder group_order;
+  FullSequence largest_id;  // subgroup is ignored
+  MoqtSubscribeParameters parameters;
+};
+
+struct QUICHE_EXPORT MoqtFetchError {
+  uint64_t subscribe_id;
+  SubscribeErrorCode error_code;
+  std::string reason_phrase;
 };
 
 // All of the four values in this message are encoded as varints.

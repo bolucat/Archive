@@ -1153,6 +1153,8 @@ void PartitionRoot::Init(PartitionOptions opts) {
     PA_DCHECK(!settings.use_configurable_pool || IsConfigurablePoolAvailable());
     settings.zapping_by_free_flags =
         opts.zapping_by_free_flags == PartitionOptions::kEnabled;
+    settings.eventually_zero_freed_memory =
+        opts.eventually_zero_freed_memory == PartitionOptions::kEnabled;
 
     settings.scheduler_loop_quarantine =
         opts.scheduler_loop_quarantine == PartitionOptions::kEnabled;
@@ -1209,7 +1211,7 @@ void PartitionRoot::Init(PartitionOptions opts) {
 #if PA_CONFIG(EXTRAS_REQUIRED)
     settings.extras_size = 0;
 
-    if (settings.use_cookie) {
+    if (Settings::use_cookie) {
       settings.extras_size += internal::kPartitionCookieSizeAdjustment;
     }
 
@@ -1475,7 +1477,7 @@ bool PartitionRoot::TryReallocInPlaceForDirectMap(
   }
 
   // Write a new trailing cookie.
-  if (settings.use_cookie) {
+  if (Settings::use_cookie) {
     auto* object = static_cast<unsigned char*>(SlotStartToObject(slot_start));
     internal::PartitionCookieWriteValue(object + GetSlotUsableSize(slot_span));
   }
@@ -1524,7 +1526,7 @@ bool PartitionRoot::TryReallocInPlaceForNormalBuckets(
         // PA_BUILDFLAG(DCHECKS_ARE_ON)
     // Write a new trailing cookie only when it is possible to keep track
     // raw size (otherwise we wouldn't know where to look for it later).
-    if (settings.use_cookie) {
+    if (Settings::use_cookie) {
       internal::PartitionCookieWriteValue(static_cast<unsigned char*>(object) +
                                           GetSlotUsableSize(slot_span));
     }

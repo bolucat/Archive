@@ -104,11 +104,10 @@ Error NaiveProxyDelegate::OnBeforeTunnelRequest(
 std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
     const HttpResponseHeaders& headers) {
   bool has_padding = headers.HasHeader(kPaddingHeader);
-  std::string padding_type_reply;
-  bool has_padding_type_reply =
-      headers.GetNormalizedHeader(kPaddingTypeReplyHeader, &padding_type_reply);
+  std::optional<std::string> padding_type_reply =
+      headers.GetNormalizedHeader(kPaddingTypeReplyHeader);
 
-  if (!has_padding_type_reply) {
+  if (!padding_type_reply.has_value()) {
     // Backward compatibility with before kVariant1 when the padding-version
     // header does not exist.
     if (has_padding) {
@@ -118,9 +117,9 @@ std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
     }
   }
   std::optional<PaddingType> padding_type =
-      ParsePaddingType(padding_type_reply);
+      ParsePaddingType(*padding_type_reply);
   if (!padding_type.has_value()) {
-    LOG(ERROR) << "Received invalid padding type: " << padding_type_reply;
+    LOG(ERROR) << "Received invalid padding type: " << *padding_type_reply;
   }
   return padding_type;
 }

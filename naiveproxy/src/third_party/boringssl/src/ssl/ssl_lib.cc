@@ -820,11 +820,13 @@ size_t SSL_quic_max_handshake_flight_len(const SSL *ssl,
 }
 
 enum ssl_encryption_level_t SSL_quic_read_level(const SSL *ssl) {
-  return ssl->s3->read_level;
+  assert(ssl->quic_method != nullptr);
+  return ssl->s3->quic_read_level;
 }
 
 enum ssl_encryption_level_t SSL_quic_write_level(const SSL *ssl) {
-  return ssl->s3->write_level;
+  assert(ssl->quic_method != nullptr);
+  return ssl->s3->quic_write_level;
 }
 
 int SSL_provide_quic_data(SSL *ssl, enum ssl_encryption_level_t level,
@@ -834,7 +836,7 @@ int SSL_provide_quic_data(SSL *ssl, enum ssl_encryption_level_t level,
     return 0;
   }
 
-  if (level != ssl->s3->read_level) {
+  if (level != ssl->s3->quic_read_level) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_ENCRYPTION_LEVEL_RECEIVED);
     return 0;
   }
@@ -1976,7 +1978,7 @@ int SSL_set1_group_ids(SSL *ssl, const uint16_t *group_ids,
 static bool ssl_nids_to_group_ids(Array<uint16_t> *out_group_ids,
                                   Span<const int> nids) {
   Array<uint16_t> group_ids;
-  if (!group_ids.Init(nids.size())) {
+  if (!group_ids.InitForOverwrite(nids.size())) {
     return false;
   }
 
@@ -2018,7 +2020,7 @@ static bool ssl_str_to_group_ids(Array<uint16_t> *out_group_ids,
   } while (col);
 
   Array<uint16_t> group_ids;
-  if (!group_ids.Init(count)) {
+  if (!group_ids.InitForOverwrite(count)) {
     return false;
   }
 
@@ -2933,6 +2935,13 @@ void SSL_set_renegotiate_mode(SSL *ssl, enum ssl_renegotiate_mode_t mode) {
 
 int SSL_get_ivs(const SSL *ssl, const uint8_t **out_read_iv,
                 const uint8_t **out_write_iv, size_t *out_iv_len) {
+  // No cipher suites maintain stateful internal IVs in DTLS. It would not be
+  // compatible with reordering.
+  if (SSL_is_dtls(ssl)) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
+    return 0;
+  }
+
   size_t write_iv_len;
   if (!ssl->s3->aead_read_ctx->GetIV(out_read_iv, out_iv_len) ||
       !ssl->s3->aead_write_ctx->GetIV(out_write_iv, &write_iv_len) ||
@@ -2945,30 +2954,30 @@ int SSL_get_ivs(const SSL *ssl, const uint8_t **out_read_iv,
 
 uint64_t SSL_get_read_sequence(const SSL *ssl) {
   if (SSL_is_dtls(ssl)) {
-    // TODO(crbug.com/42290608): The API for read sequences in DTLS 1.3 needs to
-    // reworked. In DTLS 1.3, the read epoch is updated once new keys are
-    // derived (before we receive a message encrypted with those keys), which
-    // results in the read epoch being ahead of the highest record received.
-    // Additionally, when we process a KeyUpdate, we will install new read keys
-    // for the new epoch, but we may receive messages from the old epoch for
-    // some time if the ACK gets lost or there is reordering.
-
-    // max_seq_num already includes the epoch. However, the current epoch may
-    // be one ahead of the highest record received, immediately after a key
-    // change.
-    assert(ssl->d1->r_epoch >= ssl->d1->bitmap.max_seq_num >> 48);
-    return ssl->d1->bitmap.max_seq_num;
+    // TODO(crbug.com/42290608): This API needs to reworked.
+    //
+    // In DTLS 1.2, right at an epoch transition, |read_epoch| may not have
+    // received any records. We will then return that sequence 0 is the highest
+    // received, but it's really -1, which is not representable. This is mostly
+    // moot because, after the handshake, we will never be in the state.
+    //
+    // In DTLS 1.3, epochs do not transition until the first record comes in.
+    // This avoids the DTLS 1.2 problem but introduces a different problem:
+    // during a KeyUpdate (which may occur in the steady state), both epochs are
+    // live. We'll likely need a new API for DTLS offload.
+    const DTLSReadEpoch *read_epoch = &ssl->d1->read_epoch;
+    return DTLSRecordNumber(read_epoch->epoch, read_epoch->bitmap.max_seq_num())
+        .combined();
   }
   return ssl->s3->read_sequence;
 }
 
 uint64_t SSL_get_write_sequence(const SSL *ssl) {
-  uint64_t ret = ssl->s3->write_sequence;
   if (SSL_is_dtls(ssl)) {
-    assert((ret >> 48) == 0);
-    ret |= uint64_t{ssl->d1->w_epoch} << 48;
+    return ssl->d1->write_epoch.next_record.combined();
   }
-  return ret;
+
+  return ssl->s3->write_sequence;
 }
 
 uint16_t SSL_get_peer_signature_algorithm(const SSL *ssl) {

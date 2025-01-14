@@ -21,7 +21,9 @@
 #include <utility>
 
 #include <openssl/aead.h>
+#include <openssl/aes.h>
 #include <openssl/bytestring.h>
+#include <openssl/chacha.h>
 #include <openssl/digest.h>
 #include <openssl/hkdf.h>
 #include <openssl/hmac.h>
@@ -166,7 +168,7 @@ static bool derive_secret_with_transcript(
     return false;
   }
 
-  out->ResizeMaybeUninit(transcript.DigestLen());
+  out->ResizeForOverwrite(transcript.DigestLen());
   return hkdf_expand_label(MakeSpan(*out), transcript.Digest(), hs->secret,
                            label, MakeConstSpan(context_hash, context_hash_len),
                            SSL_is_dtls(hs->ssl));
@@ -186,12 +188,10 @@ bool tls13_set_traffic_key(SSL *ssl, enum ssl_encryption_level_t level,
   const EVP_MD *digest = ssl_session_get_digest(session);
   bool is_dtls = SSL_is_dtls(ssl);
   UniquePtr<SSLAEADContext> traffic_aead;
-  Span<const uint8_t> secret_for_quic;
   if (ssl->quic_method != nullptr) {
     // Install a placeholder SSLAEADContext so that SSL accessors work. The
     // encryption itself will be handled by the SSL_QUIC_METHOD.
     traffic_aead = SSLAEADContext::CreatePlaceholderForQUIC(session->cipher);
-    secret_for_quic = traffic_secret;
   } else {
     // Look up cipher suite properties.
     const EVP_AEAD *aead;
@@ -220,38 +220,15 @@ bool tls13_set_traffic_key(SSL *ssl, enum ssl_encryption_level_t level,
     return false;
   }
 
-  if (is_dtls) {
-    RecordNumberEncrypter *rn_encrypter =
-        traffic_aead->GetRecordNumberEncrypter();
-    if (!rn_encrypter) {
-      return false;
-    }
-    uint8_t rne_key_buf[RecordNumberEncrypter::kMaxKeySize];
-    auto rne_key = MakeSpan(rne_key_buf).first(rn_encrypter->KeySize());
-    if (!hkdf_expand_label(rne_key, digest, traffic_secret, label_to_span("sn"),
-                           {}, is_dtls) ||
-        !rn_encrypter->SetKey(rne_key)) {
-      return false;
-    }
-  }
-
-  if (traffic_secret.size() >
-          OPENSSL_ARRAY_SIZE(ssl->s3->read_traffic_secret) ||
-      traffic_secret.size() >
-          OPENSSL_ARRAY_SIZE(ssl->s3->write_traffic_secret)) {
-    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
-    return false;
-  }
-
   if (direction == evp_aead_open) {
     if (!ssl->method->set_read_state(ssl, level, std::move(traffic_aead),
-                                     secret_for_quic)) {
+                                     traffic_secret)) {
       return false;
     }
     ssl->s3->read_traffic_secret.CopyFrom(traffic_secret);
   } else {
     if (!ssl->method->set_write_state(ssl, level, std::move(traffic_aead),
-                                      secret_for_quic)) {
+                                      traffic_secret)) {
       return false;
     }
     ssl->s3->write_traffic_secret.CopyFrom(traffic_secret);
@@ -260,6 +237,115 @@ bool tls13_set_traffic_key(SSL *ssl, enum ssl_encryption_level_t level,
   return true;
 }
 
+namespace {
+
+class AESRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  bool SetKey(Span<const uint8_t> key) override {
+    return AES_set_encrypt_key(key.data(), key.size() * 8, &key_) == 0;
+  }
+
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override {
+    if (sample.size() < AES_BLOCK_SIZE || out.size() > AES_BLOCK_SIZE) {
+      return false;
+    }
+    uint8_t mask[AES_BLOCK_SIZE];
+    AES_encrypt(sample.data(), mask, &key_);
+    OPENSSL_memcpy(out.data(), mask, out.size());
+    return true;
+  }
+
+ private:
+  AES_KEY key_;
+};
+
+class AES128RecordNumberEncrypter : public AESRecordNumberEncrypter {
+ public:
+  size_t KeySize() override { return 16; }
+};
+
+class AES256RecordNumberEncrypter : public AESRecordNumberEncrypter {
+ public:
+  size_t KeySize() override { return 32; }
+};
+
+class ChaChaRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  size_t KeySize() override { return kKeySize; }
+
+  bool SetKey(Span<const uint8_t> key) override {
+    if (key.size() != kKeySize) {
+      return false;
+    }
+    OPENSSL_memcpy(key_, key.data(), key.size());
+    return true;
+  }
+
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override {
+    // RFC 9147 section 4.2.3 uses the first 4 bytes of the sample as the
+    // counter and the next 12 bytes as the nonce. If we have less than 4+12=16
+    // bytes in the sample, then we'll read past the end of the |sample| buffer.
+    // The counter is interpreted as little-endian per RFC 8439.
+    if (sample.size() < 16) {
+      return false;
+    }
+    uint32_t counter = CRYPTO_load_u32_le(sample.data());
+    Span<const uint8_t> nonce = sample.subspan(4);
+    OPENSSL_memset(out.data(), 0, out.size());
+    CRYPTO_chacha_20(out.data(), out.data(), out.size(), key_, nonce.data(),
+                     counter);
+    return true;
+  }
+
+ private:
+  static constexpr size_t kKeySize = 32;
+  uint8_t key_[kKeySize];
+};
+
+#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
+class NullRecordNumberEncrypter : public RecordNumberEncrypter {
+ public:
+  size_t KeySize() override { return 0; }
+  bool SetKey(Span<const uint8_t> key) override { return true; }
+  bool GenerateMask(Span<uint8_t> out, Span<const uint8_t> sample) override {
+    OPENSSL_memset(out.data(), 0, out.size());
+    return true;
+  }
+};
+#endif  // BORINGSSL_UNSAFE_FUZZER_MODE
+
+}  // namespace
+
+UniquePtr<RecordNumberEncrypter> RecordNumberEncrypter::Create(
+    const SSL_CIPHER *cipher, Span<const uint8_t> traffic_secret) {
+  const EVP_MD *digest = ssl_get_handshake_digest(TLS1_3_VERSION, cipher);
+  UniquePtr<RecordNumberEncrypter> ret;
+#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
+  ret = MakeUnique<NullRecordNumberEncrypter>();
+#else
+  if (cipher->algorithm_enc == SSL_AES128GCM) {
+    ret = MakeUnique<AES128RecordNumberEncrypter>();
+  } else if (cipher->algorithm_enc == SSL_AES256GCM) {
+    ret = MakeUnique<AES256RecordNumberEncrypter>();
+  } else if (cipher->algorithm_enc == SSL_CHACHA20POLY1305) {
+    ret = MakeUnique<ChaChaRecordNumberEncrypter>();
+  } else {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+  }
+#endif  // BORINGSSL_UNSAFE_FUZZER_MODE
+  if (ret == nullptr) {
+    return nullptr;
+  }
+
+  uint8_t rne_key_buf[RecordNumberEncrypter::kMaxKeySize];
+  auto rne_key = MakeSpan(rne_key_buf).first(ret->KeySize());
+  if (!hkdf_expand_label(rne_key, digest, traffic_secret, label_to_span("sn"),
+                         {}, /*is_dtls=*/true) ||
+      !ret->SetKey(rne_key)) {
+    return nullptr;
+  }
+  return ret;
+}
 
 static const char kTLS13LabelExporter[] = "exp master";
 
@@ -472,11 +558,29 @@ static bool tls13_psk_binder(uint8_t *out, size_t *out_len,
   uint8_t context[EVP_MAX_MD_SIZE];
   unsigned context_len;
   ScopedEVP_MD_CTX ctx;
-  if (!transcript.CopyToHashContext(ctx.get(), digest) ||
-      !EVP_DigestUpdate(ctx.get(), truncated.data(),
-                        truncated.size()) ||
-      !EVP_DigestFinal_ex(ctx.get(), context, &context_len)) {
-    return false;
+  if (!is_dtls) {
+    if (!transcript.CopyToHashContext(ctx.get(), digest) ||
+        !EVP_DigestUpdate(ctx.get(), truncated.data(), truncated.size()) ||
+        !EVP_DigestFinal_ex(ctx.get(), context, &context_len)) {
+      return false;
+    }
+  } else {
+    // In DTLS 1.3, the transcript hash is computed over only the TLS 1.3
+    // handshake messages (i.e. only type and length in the header), not the
+    // full DTLSHandshake messages that are in |truncated|. This code pulls
+    // the header and body out of the truncated ClientHello and writes those
+    // to the hash context so the correct binder value is computed.
+    if (truncated.size() < DTLS1_HM_HEADER_LENGTH) {
+      return false;
+    }
+    auto header = truncated.subspan(0, 4);
+    auto body = truncated.subspan(12);
+    if (!transcript.CopyToHashContext(ctx.get(), digest) ||
+        !EVP_DigestUpdate(ctx.get(), header.data(), header.size()) ||
+        !EVP_DigestUpdate(ctx.get(), body.data(), body.size()) ||
+        !EVP_DigestFinal_ex(ctx.get(), context, &context_len)) {
+      return false;
+    }
   }
 
   if (!tls13_verify_data(out, out_len, digest, session->ssl_version, binder_key,

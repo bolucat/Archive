@@ -63,6 +63,8 @@ namespace ServiceLib.ViewModels
 
         #endregion Menu
 
+        private bool _hasNextReloadJob = false;
+
         #region Init
 
         public MainWindowViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
@@ -222,6 +224,7 @@ namespace ServiceLib.ViewModels
                 await StatisticsHandler.Instance.Init(_config, UpdateStatisticsHandler);
             }
 
+            BlReloadEnabled = true;
             await Reload();
             await AutoHideStartup();
             Locator.Current.GetService<StatusBarViewModel>()?.RefreshRoutingsMenu();
@@ -535,6 +538,13 @@ namespace ServiceLib.ViewModels
 
         public async Task Reload()
         {
+            //If there are unfinished reload job, marked with next job.
+            if (!BlReloadEnabled)
+            {
+                _hasNextReloadJob = true;
+                return;
+            }
+
             BlReloadEnabled = false;
 
             await LoadCore();
@@ -542,12 +552,19 @@ namespace ServiceLib.ViewModels
             await SysProxyHandler.UpdateSysProxy(_config, false);
 
             _updateView?.Invoke(EViewAction.DispatcherReload, null);
+
+            BlReloadEnabled = true;
+            if (_hasNextReloadJob)
+            {
+                _hasNextReloadJob = false;
+                await Reload();
+            }
         }
 
         public void ReloadResult()
         {
+            // BlReloadEnabled = true;
             //Locator.Current.GetService<StatusBarViewModel>()?.ChangeSystemProxyAsync(_config.systemProxyItem.sysProxyType, false);
-            BlReloadEnabled = true;
             ShowClashUI = _config.IsRunningCore(ECoreType.sing_box);
             if (ShowClashUI)
             {
@@ -558,16 +575,8 @@ namespace ServiceLib.ViewModels
 
         private async Task LoadCore()
         {
-            //if (_config.tunModeItem.enableTun)
-            //{
-            //    Task.Delay(1000).Wait();
-            //    WindowsUtils.RemoveTunDevice();
-            //}
-            await Task.Run(async () =>
-            {
-                var node = await ConfigHandler.GetDefaultServer(_config);
-                await CoreHandler.Instance.LoadCore(node);
-            });
+            var node = await ConfigHandler.GetDefaultServer(_config);
+            await CoreHandler.Instance.LoadCore(node);
         }
 
         public async Task CloseCore()

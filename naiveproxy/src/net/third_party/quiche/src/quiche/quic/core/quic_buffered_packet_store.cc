@@ -69,6 +69,19 @@ class ConnectionExpireAlarm : public QuicAlarm::DelegateWithoutContext {
   QuicBufferedPacketStore* connection_store_;
 };
 
+std::optional<QuicEcnCounts> SinglePacketEcnCount(
+    QuicEcnCodepoint ecn_codepoint) {
+  switch (ecn_codepoint) {
+    case ECN_CE:
+      return QuicEcnCounts(0, 0, 1);
+    case ECN_ECT0:
+      return QuicEcnCounts(1, 0, 0);
+    case ECN_ECT1:
+      return QuicEcnCounts(0, 1, 0);
+    default:
+      return std::nullopt;
+  }
+}
 }  // namespace
 
 BufferedPacket::BufferedPacket(std::unique_ptr<QuicReceivedPacket> packet,
@@ -242,11 +255,6 @@ EnqueuePacketResult QuicBufferedPacketStore::EnqueuePacket(
 
 void QuicBufferedPacketStore::MaybeAckInitialPacket(
     const ReceivedPacketInfo& packet_info, BufferedPacketList& packet_list) {
-  if (!ack_buffered_initial_packets_) {
-    return;
-  }
-
-  QUIC_RESTART_FLAG_COUNT_N(quic_dispatcher_ack_buffered_initial_packets, 1, 8);
   if (writer_ == nullptr || writer_->IsWriteBlocked() ||
       !packet_info.version.IsKnown() ||
       !packet_list.HasAttemptedToReplaceConnectionId() ||
@@ -318,7 +326,11 @@ void QuicBufferedPacketStore::MaybeAckInitialPacket(
     initial_ack_frame.packets.Add(sent_packet.received_packet_number);
   }
   initial_ack_frame.largest_acked = initial_ack_frame.packets.Max();
-
+  if (GetQuicReloadableFlag(quic_ecn_in_first_ack)) {
+    QUIC_RELOADABLE_FLAG_COUNT(quic_ecn_in_first_ack);
+    initial_ack_frame.ecn_counters =
+        SinglePacketEcnCount(packet_info.packet.ecn_codepoint());
+  }
   if (!creator.AddFrame(QuicFrame(&initial_ack_frame), NOT_RETRANSMISSION)) {
     QUIC_BUG(quic_dispatcher_add_ack_frame_failed)
         << "Unable to add ack frame to an empty packet while acking packet "
@@ -379,11 +391,6 @@ bool QuicBufferedPacketStore::HasChlosBuffered() const {
 
 const BufferedPacketList* QuicBufferedPacketStore::GetPacketList(
     const QuicConnectionId& connection_id) const {
-  if (!ack_buffered_initial_packets_) {
-    return nullptr;
-  }
-
-  QUIC_RESTART_FLAG_COUNT_N(quic_dispatcher_ack_buffered_initial_packets, 2, 8);
   auto it = buffered_session_map_.find(connection_id);
   if (it == buffered_session_map_.end()) {
     return nullptr;
@@ -511,9 +518,8 @@ void QuicBufferedPacketStore::OnExpirationTimeout() {
       break;
     }
     std::shared_ptr<BufferedPacketListNode> node_ref = node.shared_from_this();
-    QuicConnectionId connection_id = node.original_connection_id;
     RemoveFromStore(node);
-    visitor_->OnExpiredPackets(connection_id, std::move(node));
+    visitor_->OnExpiredPackets(std::move(node));
   }
   if (!buffered_sessions_.empty()) {
     MaybeSetExpirationAlarm();

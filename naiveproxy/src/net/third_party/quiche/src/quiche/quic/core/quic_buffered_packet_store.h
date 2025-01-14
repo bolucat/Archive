@@ -157,8 +157,7 @@ class QUICHE_EXPORT QuicBufferedPacketStore {
     virtual ~VisitorInterface() {}
 
     // Called for each expired connection when alarm fires.
-    virtual void OnExpiredPackets(QuicConnectionId connection_id,
-                                  BufferedPacketList early_arrived_packets) = 0;
+    virtual void OnExpiredPackets(BufferedPacketList early_arrived_packets) = 0;
 
     enum class HandleCidCollisionResult {
       kOk,
@@ -268,10 +267,6 @@ class QUICHE_EXPORT QuicBufferedPacketStore {
   const BufferedPacketList* GetPacketList(
       const QuicConnectionId& connection_id) const;
 
-  bool ack_buffered_initial_packets() const {
-    return ack_buffered_initial_packets_;
-  }
-
  private:
   friend class test::QuicBufferedPacketStorePeer;
 
@@ -342,9 +337,6 @@ class QUICHE_EXPORT QuicBufferedPacketStore {
   // This alarm fires every |connection_life_span_| to clean up
   // packets staying in the store for too long.
   std::unique_ptr<QuicAlarm> expiration_alarm_;
-
-  const bool ack_buffered_initial_packets_ =
-      GetQuicRestartFlag(quic_dispatcher_ack_buffered_initial_packets);
 };
 
 // Collects packets serialized by a QuicPacketCreator.

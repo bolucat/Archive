@@ -204,15 +204,19 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     void OnUnannounceMessage(const MoqtUnannounce& /*message*/) override {}
     void OnTrackStatusMessage(const MoqtTrackStatus& message) override {}
     void OnGoAwayMessage(const MoqtGoAway& /*message*/) override {}
-    void OnSubscribeNamespaceMessage(
-        const MoqtSubscribeNamespace& message) override {}
-    void OnSubscribeNamespaceOkMessage(
-        const MoqtSubscribeNamespaceOk& message) override {}
-    void OnSubscribeNamespaceErrorMessage(
-        const MoqtSubscribeNamespaceError& message) override {}
-    void OnUnsubscribeNamespaceMessage(
-        const MoqtUnsubscribeNamespace& message) override {}
+    void OnSubscribeAnnouncesMessage(
+        const MoqtSubscribeAnnounces& message) override {}
+    void OnSubscribeAnnouncesOkMessage(
+        const MoqtSubscribeAnnouncesOk& message) override {}
+    void OnSubscribeAnnouncesErrorMessage(
+        const MoqtSubscribeAnnouncesError& message) override {}
+    void OnUnsubscribeAnnouncesMessage(
+        const MoqtUnsubscribeAnnounces& message) override {}
     void OnMaxSubscribeIdMessage(const MoqtMaxSubscribeId& message) override;
+    void OnFetchMessage(const MoqtFetch& message) override {}
+    void OnFetchCancelMessage(const MoqtFetchCancel& message) override {}
+    void OnFetchOkMessage(const MoqtFetchOk& message) override {}
+    void OnFetchErrorMessage(const MoqtFetchError& message) override {}
     void OnObjectAckMessage(const MoqtObjectAck& message) override {
       auto subscription_it =
           session_->published_subscriptions_.find(message.subscribe_id);
@@ -306,7 +310,9 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     }
     void set_subscriber_priority(MoqtPriority priority);
 
+    // This is only called for objects that have just arrived.
     void OnNewObjectAvailable(FullSequence sequence) override;
+    void OnTrackPublisherGone() override;
     void ProcessObjectAck(const MoqtObjectAck& message) {
       if (monitoring_interface_ == nullptr) {
         return;
@@ -414,6 +420,9 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     MoqtSession* session_;
     webtransport::Stream* stream_;
     uint64_t subscription_id_;
+    // A FullSequence with the minimum object ID that should go out next. The
+    // session doesn't know what the next object ID in the stream is because
+    // the next object could be in a different subgroup or simply be skipped.
     FullSequence next_object_;
     bool stream_header_written_ = false;
     // A weak pointer to an object owned by the session.  Used to make sure the
@@ -479,13 +488,14 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   std::string error_;
 
   // All the tracks the session is subscribed to, indexed by track_alias.
-  // Multiple subscribes to the same track are recorded in a single
-  // subscription.
   absl::flat_hash_map<uint64_t, RemoteTrack> remote_tracks_;
   // Look up aliases for remote tracks by name
   absl::flat_hash_map<FullTrackName, uint64_t> remote_track_aliases_;
   uint64_t next_remote_track_alias_ = 0;
 
+  // All open incoming subscriptions, indexed by track name, used to check for
+  // duplicates.
+  absl::flat_hash_set<FullTrackName> subscribed_track_names_;
   // Application object representing the publisher for all of the tracks that
   // can be subscribed to via this connection.  Must outlive this object.
   MoqtPublisher* publisher_;

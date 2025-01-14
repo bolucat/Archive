@@ -473,6 +473,7 @@ class MockQuicConnectionVisitor : public QuicConnectionVisitorInterface {
               (override));
   MOCK_METHOD(void, OnPathDegrading, (), (override));
   MOCK_METHOD(void, OnForwardProgressMadeAfterPathDegrading, (), (override));
+  MOCK_METHOD(void, OnForwardProgressMadeAfterFlowLabelChange, (), (override));
   MOCK_METHOD(bool, WillingAndAbleToWrite, (), (const, override));
   MOCK_METHOD(bool, ShouldKeepConnectionAlive, (), (const, override));
   MOCK_METHOD(std::string, GetStreamsInfoForLogging, (), (const, override));
@@ -568,15 +569,7 @@ class MockAlarmFactory : public QuicAlarmFactory {
 
 class TestAlarmFactory : public QuicAlarmFactory {
  public:
-  class TestAlarm : public QuicAlarm {
-   public:
-    explicit TestAlarm(QuicArenaScopedPtr<QuicAlarm::Delegate> delegate)
-        : QuicAlarm(std::move(delegate)) {}
-
-    void SetImpl() override {}
-    void CancelImpl() override {}
-    using QuicAlarm::Fire;
-  };
+  using TestAlarm = MockAlarmFactory::TestAlarm;
 
   TestAlarmFactory() {}
   TestAlarmFactory(const TestAlarmFactory&) = delete;
