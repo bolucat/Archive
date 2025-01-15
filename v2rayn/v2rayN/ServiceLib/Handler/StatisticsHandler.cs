@@ -19,15 +19,13 @@
         {
             _config = config;
             _updateFunc = updateFunc;
-            if (!config.GuiItem.EnableStatistics)
+            if (config.GuiItem.EnableStatistics || _config.GuiItem.DisplayRealTimeSpeed)
             {
-                return;
+                await InitData();
+
+                _statisticsXray = new StatisticsXrayService(config, UpdateServerStatHandler);
+                _statisticsSingbox = new StatisticsSingboxService(config, UpdateServerStatHandler);
             }
-
-            await InitData();
-
-            _statisticsXray = new StatisticsXrayService(config, UpdateServerStatHandler);
-            _statisticsSingbox = new StatisticsSingboxService(config, UpdateServerStatHandler);
         }
 
         public void Close()
@@ -72,7 +70,7 @@
                 return;
             }
 
-            if(indexId == toIndexId)
+            if (indexId == toIndexId)
             {
                 return;
             }
@@ -101,7 +99,7 @@
 
         private void UpdateServerStatHandler(ServerSpeedItem server)
         {
-            UpdateServerStat(server);
+            _ = UpdateServerStat(server);
         }
 
         private async Task UpdateServerStat(ServerSpeedItem server)
