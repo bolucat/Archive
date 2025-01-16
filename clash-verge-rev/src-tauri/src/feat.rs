@@ -76,7 +76,8 @@ pub fn change_clash_mode(mode: String) {
 
                 if Config::clash().data().save_config().is_ok() {
                     handle::Handle::refresh_clash();
-                    log_err!(handle::Handle::update_systray_part());
+                    log_err!(tray::Tray::global().update_menu());
+                    log_err!(tray::Tray::global().update_icon(None));
                 }
             }
             Err(err) => log::error!(target: "app", "{err}"),
@@ -139,7 +140,8 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
             CoreManager::global().restart_core().await?;
         } else {
             if patch.get("mode").is_some() {
-                log_err!(handle::Handle::update_systray_part());
+                log_err!(tray::Tray::global().update_menu());
+                log_err!(tray::Tray::global().update_icon(None));
             }
             Config::runtime().latest().patch_config(patch);
             CoreManager::global().update_config().await?;
@@ -192,16 +194,23 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let socks_port = patch.verge_socks_port;
     let http_enabled = patch.verge_http_enabled;
     let http_port = patch.verge_port;
+    let enable_tray_speed = patch.enable_tray_speed;
 
     let res: std::result::Result<(), anyhow::Error> = {
         let mut should_restart_core = false;
         let mut should_update_clash_config = false;
         let mut should_update_launch = false;
         let mut should_update_sysproxy = false;
-        let mut should_update_systray_part = false;
+        let mut should_update_systray_icon = false;
+        let mut should_update_hotkey = false;
+        let mut should_update_systray_menu = false;
+        let mut should_update_systray_tooltip = false;
 
         if tun_mode.is_some() {
             should_update_clash_config = true;
+            should_update_systray_menu = true;
+            should_update_systray_tooltip = true;
+            should_update_systray_icon = true;
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -224,25 +233,38 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if auto_launch.is_some() {
             should_update_launch = true;
         }
-        if system_proxy.is_some()
-            || proxy_bypass.is_some()
-            || mixed_port.is_some()
-            || pac.is_some()
-            || pac_content.is_some()
-        {
+
+        if system_proxy.is_some() {
+            should_update_sysproxy = true;
+            should_update_systray_menu = true;
+            should_update_systray_tooltip = true;
+            should_update_systray_icon = true;
+        }
+
+        if proxy_bypass.is_some() || pac_content.is_some() || pac.is_some() {
             should_update_sysproxy = true;
         }
 
-        if language.is_some()
-            || system_proxy.is_some()
-            || tun_mode.is_some()
-            || common_tray_icon.is_some()
+        if language.is_some() {
+            should_update_systray_menu = true;
+        }
+        if common_tray_icon.is_some()
             || sysproxy_tray_icon.is_some()
             || tun_tray_icon.is_some()
             || tray_icon.is_some()
         {
-            should_update_systray_part = true;
+            should_update_systray_icon = true;
         }
+
+        if patch.hotkeys.is_some() {
+            should_update_hotkey = true;
+            should_update_systray_menu = true;
+        }
+
+        if enable_tray_speed.is_some() {
+            should_update_systray_icon = true;
+        }
+
         if should_restart_core {
             CoreManager::global().restart_core().await?;
         }
@@ -258,14 +280,21 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             sysopt::Sysopt::global().update_sysproxy().await?;
         }
 
-        if let Some(hotkeys) = patch.hotkeys {
-            hotkey::Hotkey::global().update(hotkeys)?;
+        if should_update_hotkey {
+            hotkey::Hotkey::global().update(patch.hotkeys.unwrap())?;
         }
 
-        if should_update_systray_part {
-            handle::Handle::update_systray_part()?;
+        if should_update_systray_menu {
+            tray::Tray::global().update_menu()?;
         }
 
+        if should_update_systray_icon {
+            tray::Tray::global().update_icon(None)?;
+        }
+
+        if should_update_systray_tooltip {
+            tray::Tray::global().update_tooltip()?;
+        }
         <Result<()>>::Ok(())
     };
     match res {
@@ -339,6 +368,8 @@ pub fn copy_clash_env() {
         format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");
     let cmd: String = format!("set http_proxy={http_proxy}\r\nset https_proxy={http_proxy}");
     let ps: String = format!("$env:HTTP_PROXY=\"{http_proxy}\"; $env:HTTPS_PROXY=\"{http_proxy}\"");
+    let nu: String =
+        format!("load-env {{ http_proxy: \"{http_proxy}\", https_proxy: \"{http_proxy}\" }}");
 
     let cliboard = app_handle.clipboard();
     let env_type = { Config::verge().latest().env_type.clone() };
@@ -357,6 +388,7 @@ pub fn copy_clash_env() {
         "bash" => cliboard.write_text(sh).unwrap_or_default(),
         "cmd" => cliboard.write_text(cmd).unwrap_or_default(),
         "powershell" => cliboard.write_text(ps).unwrap_or_default(),
+        "nushell" => cliboard.write_text(nu).unwrap_or_default(),
         _ => log::error!(target: "app", "copy_clash_env: Invalid env type! {env_type}"),
     };
 }
@@ -468,9 +500,9 @@ pub async fn restore_webdav_backup(filename: String) -> Result<()> {
 
     log_err!(
         patch_verge(IVerge {
-            webdav_url: webdav_url,
-            webdav_username: webdav_username,
-            webdav_password: webdav_password,
+            webdav_url,
+            webdav_username,
+            webdav_password,
             ..IVerge::default()
         })
         .await

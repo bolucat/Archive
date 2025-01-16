@@ -1,7 +1,7 @@
 use crate::config::IVerge;
 use crate::utils::error;
 use crate::{config::Config, config::PrfItem, core::*, utils::init, utils::server};
-use crate::{log_err, trace_err, wrap_err};
+use crate::{log_err, wrap_err};
 use anyhow::{bail, Result};
 use once_cell::sync::OnceCell;
 use percent_encoding::percent_decode_str;
@@ -92,7 +92,8 @@ pub async fn resolve_setup(app: &mut App) {
     server::embed_server();
 
     log::trace!(target: "app", "init system tray");
-    log_err!(tray::Tray::create_systray());
+    log_err!(tray::Tray::global().init());
+    log_err!(tray::Tray::global().create_systray());
 
     let silent_start = { Config::verge().data().enable_silent_start };
     if !silent_start.unwrap_or(false) {
@@ -102,7 +103,7 @@ pub async fn resolve_setup(app: &mut App) {
     log_err!(sysopt::Sysopt::global().update_sysproxy().await);
     log_err!(sysopt::Sysopt::global().init_guard_sysproxy());
 
-    log_err!(handle::Handle::update_systray_part());
+    log_err!(tray::Tray::global().update_part());
     log_err!(hotkey::Hotkey::global().init());
     log_err!(timer::Timer::global().init());
 }
@@ -110,6 +111,9 @@ pub async fn resolve_setup(app: &mut App) {
 /// reset system proxy
 pub fn resolve_reset() {
     tauri::async_runtime::block_on(async move {
+        #[cfg(target_os = "macos")]
+        tray::Tray::global().unsubscribe_traffic();
+
         log_err!(sysopt::Sysopt::global().reset_sysproxy().await);
         log_err!(CoreManager::global().stop_core().await);
         #[cfg(target_os = "macos")]
@@ -122,16 +126,16 @@ pub fn create_window() {
     let app_handle = handle::Handle::global().app_handle().unwrap();
 
     if let Some(window) = handle::Handle::global().get_window() {
-        trace_err!(window.show(), "set win visible");
-        trace_err!(window.set_focus(), "set win focus");
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.unminimize();
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
         return;
     }
 
     #[cfg(target_os = "windows")]
-    let _ = {
-        let app_handle = app_handle.clone();
-        std::thread::spawn(move || {
-            tauri::WebviewWindowBuilder::new(
+    let _ = tauri::WebviewWindowBuilder::new(
                 &app_handle,
                 "main".to_string(),
                 tauri::WebviewUrl::App("index.html".into()),
@@ -144,9 +148,8 @@ pub fn create_window() {
             .maximizable(true)
             .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
             .transparent(true)
-            .build()
-        }).join().unwrap()
-    }.unwrap();
+            .shadow(false)
+            .build();
 
     #[cfg(target_os = "macos")]
     let _ = tauri::WebviewWindowBuilder::new(
@@ -220,6 +223,8 @@ pub async fn resolve_scheme(param: String) -> Result<()> {
                     Ok(item) => {
                         let uid = item.uid.clone().unwrap();
                         let _ = wrap_err!(Config::profiles().data().append_item(item));
+                        handle::Handle::notice_message("import_sub_url::ok", uid);
+
                         app_handle
                             .notification()
                             .builder()
@@ -227,10 +232,9 @@ pub async fn resolve_scheme(param: String) -> Result<()> {
                             .body("Import profile success")
                             .show()
                             .unwrap();
-
-                        handle::Handle::notice_message("import_sub_url::ok", uid);
                     }
                     Err(e) => {
+                        handle::Handle::notice_message("import_sub_url::error", e.to_string());
                         app_handle
                             .notification()
                             .builder()
@@ -238,8 +242,6 @@ pub async fn resolve_scheme(param: String) -> Result<()> {
                             .body(format!("Import profile failed: {e}"))
                             .show()
                             .unwrap();
-                        handle::Handle::notice_message("import_sub_url::error", e.to_string());
-                        bail!("Failed to add subscriptions: {e}");
                     }
                 }
             }

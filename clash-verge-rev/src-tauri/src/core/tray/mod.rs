@@ -1,28 +1,72 @@
+use once_cell::sync::OnceCell;
+#[cfg(target_os = "macos")]
+pub mod speed_rate;
+use crate::core::clash_api::Rate;
 use crate::{
     cmds,
     config::Config,
-    feat, t,
-    utils::{
-        dirs,
-        resolve::{self, VERSION},
-    },
-};
-use anyhow::Result;
-use tauri::AppHandle;
-use tauri::{
-    menu::CheckMenuItem,
-    tray::{MouseButton, MouseButtonState, TrayIconEvent, TrayIconId},
-};
-use tauri::{
-    menu::{MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
-    Wry,
+    feat, resolve,
+    utils::resolve::VERSION,
+    utils::{dirs, i18n::t},
 };
 
+use anyhow::Result;
+#[cfg(target_os = "macos")]
+use futures::StreamExt;
+#[cfg(target_os = "macos")]
+use parking_lot::Mutex;
+#[cfg(target_os = "macos")]
+use parking_lot::RwLock;
+#[cfg(target_os = "macos")]
+pub use speed_rate::{SpeedRate, Traffic};
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+use tauri::menu::CheckMenuItem;
+use tauri::AppHandle;
+use tauri::{
+    menu::{MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
+    tray::{MouseButton, MouseButtonState, TrayIconEvent, TrayIconId},
+    Wry,
+};
+#[cfg(target_os = "macos")]
+use tokio::sync::broadcast;
+
 use super::handle;
+#[cfg(target_os = "macos")]
+pub struct Tray {
+    pub speed_rate: Arc<Mutex<Option<SpeedRate>>>,
+    shutdown_tx: Arc<RwLock<Option<broadcast::Sender<()>>>>,
+    is_subscribed: Arc<RwLock<bool>>,
+}
+
+#[cfg(not(target_os = "macos"))]
 pub struct Tray {}
 
 impl Tray {
-    pub fn create_systray() -> Result<()> {
+    pub fn global() -> &'static Tray {
+        static TRAY: OnceCell<Tray> = OnceCell::new();
+
+        #[cfg(target_os = "macos")]
+        return TRAY.get_or_init(|| Tray {
+            speed_rate: Arc::new(Mutex::new(None)),
+            shutdown_tx: Arc::new(RwLock::new(None)),
+            is_subscribed: Arc::new(RwLock::new(false)),
+        });
+
+        #[cfg(not(target_os = "macos"))]
+        return TRAY.get_or_init(|| Tray {});
+    }
+
+    pub fn init(&self) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            let mut speed_rate = self.speed_rate.lock();
+            *speed_rate = Some(SpeedRate::new());
+        }
+        Ok(())
+    }
+
+    pub fn create_systray(&self) -> Result<()> {
         let app_handle = handle::Handle::global().app_handle().unwrap();
         let tray_incon_id = TrayIconId::new("main");
         let tray = app_handle.tray_by_id(&tray_incon_id).unwrap();
@@ -65,10 +109,12 @@ impl Tray {
         Ok(())
     }
 
-    pub fn update_part() -> Result<()> {
+    /// 更新托盘菜单
+    pub fn update_menu(&self) -> Result<()> {
         let app_handle = handle::Handle::global().app_handle().unwrap();
-        let use_zh = { Config::verge().latest().language == Some("zh".into()) };
-        let version = VERSION.get().unwrap();
+        let verge = Config::verge().latest().clone();
+        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
+        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
         let mode = {
             Config::clash()
                 .latest()
@@ -79,33 +125,42 @@ impl Tray {
                 .to_owned()
         };
 
-        let verge = Config::verge().latest().clone();
-        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
-        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
-        let common_tray_icon = verge.common_tray_icon.as_ref().unwrap_or(&false);
-        let sysproxy_tray_icon = verge.sysproxy_tray_icon.as_ref().unwrap_or(&false);
-        let tun_tray_icon = verge.tun_tray_icon.as_ref().unwrap_or(&false);
         let tray = app_handle.tray_by_id("main").unwrap();
-        #[cfg(target_os = "macos")]
-        let tray_icon = verge.tray_icon.clone().unwrap_or("monochrome".to_string());
-
         let _ = tray.set_menu(Some(create_tray_menu(
             &app_handle,
             Some(mode.as_str()),
             *system_proxy,
             *tun_mode,
         )?));
+        Ok(())
+    }
 
-        #[allow(unused)]
-        let mut indication_icon = if *system_proxy && !*tun_mode {
+    /// 更新托盘图标
+    #[allow(unused_variables)]
+    pub fn update_icon(&self, rate: Option<Rate>) -> Result<()> {
+        let app_handle = handle::Handle::global().app_handle().unwrap();
+        let verge = Config::verge().latest().clone();
+        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
+        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
+
+        let common_tray_icon = verge.common_tray_icon.as_ref().unwrap_or(&false);
+        let sysproxy_tray_icon = verge.sysproxy_tray_icon.as_ref().unwrap_or(&false);
+        let tun_tray_icon = verge.tun_tray_icon.as_ref().unwrap_or(&false);
+
+        let tray = app_handle.tray_by_id("main").unwrap();
+
+        #[cfg(target_os = "macos")]
+        let tray_icon = verge.tray_icon.clone().unwrap_or("monochrome".to_string());
+
+        let icon_bytes = if *system_proxy && !*tun_mode {
             #[cfg(target_os = "macos")]
             let mut icon = match tray_icon.as_str() {
-                "colorful" => include_bytes!("../../icons/tray-icon-sys.ico").to_vec(),
-                _ => include_bytes!("../../icons/tray-icon-sys-mono.ico").to_vec(),
+                "colorful" => include_bytes!("../../../icons/tray-icon-sys.ico").to_vec(),
+                _ => include_bytes!("../../../icons/tray-icon-sys-mono.ico").to_vec(),
             };
 
             #[cfg(not(target_os = "macos"))]
-            let mut icon = include_bytes!("../../icons/tray-icon-sys.ico").to_vec();
+            let mut icon = include_bytes!("../../../icons/tray-icon-sys.ico").to_vec();
             if *sysproxy_tray_icon {
                 let icon_dir_path = dirs::app_home_dir()?.join("icons");
                 let png_path = icon_dir_path.join("sysproxy.png");
@@ -120,12 +175,12 @@ impl Tray {
         } else if *tun_mode {
             #[cfg(target_os = "macos")]
             let mut icon = match tray_icon.as_str() {
-                "colorful" => include_bytes!("../../icons/tray-icon-tun.ico").to_vec(),
-                _ => include_bytes!("../../icons/tray-icon-tun-mono.ico").to_vec(),
+                "colorful" => include_bytes!("../../../icons/tray-icon-tun.ico").to_vec(),
+                _ => include_bytes!("../../../icons/tray-icon-tun-mono.ico").to_vec(),
             };
 
             #[cfg(not(target_os = "macos"))]
-            let mut icon = include_bytes!("../../icons/tray-icon-tun.ico").to_vec();
+            let mut icon = include_bytes!("../../../icons/tray-icon-tun.ico").to_vec();
             if *tun_tray_icon {
                 let icon_dir_path = dirs::app_home_dir()?.join("icons");
                 let png_path = icon_dir_path.join("tun.png");
@@ -140,12 +195,12 @@ impl Tray {
         } else {
             #[cfg(target_os = "macos")]
             let mut icon = match tray_icon.as_str() {
-                "colorful" => include_bytes!("../../icons/tray-icon.ico").to_vec(),
-                _ => include_bytes!("../../icons/tray-icon-mono.ico").to_vec(),
+                "colorful" => include_bytes!("../../../icons/tray-icon.ico").to_vec(),
+                _ => include_bytes!("../../../icons/tray-icon-mono.ico").to_vec(),
             };
 
             #[cfg(not(target_os = "macos"))]
-            let mut icon = include_bytes!("../../icons/tray-icon.ico").to_vec();
+            let mut icon = include_bytes!("../../../icons/tray-icon.ico").to_vec();
             if *common_tray_icon {
                 let icon_dir_path = dirs::app_home_dir()?.join("icons");
                 let png_path = icon_dir_path.join("common.png");
@@ -161,14 +216,40 @@ impl Tray {
 
         #[cfg(target_os = "macos")]
         {
-            let is_template = crate::utils::help::is_monochrome_image_from_bytes(&indication_icon)
-                .unwrap_or(false);
-            let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&indication_icon)?));
+            let enable_tray_speed = Config::verge().latest().enable_tray_speed.unwrap_or(true);
+            let is_template =
+                crate::utils::help::is_monochrome_image_from_bytes(&icon_bytes).unwrap_or(false);
+
+            let icon_bytes = if enable_tray_speed {
+                let rate = rate.or_else(|| {
+                    self.speed_rate
+                        .lock()
+                        .as_ref()
+                        .and_then(|speed_rate| speed_rate.get_curent_rate())
+                });
+                SpeedRate::add_speed_text(icon_bytes, rate)?
+            } else {
+                icon_bytes
+            };
+
+            let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?));
             let _ = tray.set_icon_as_template(is_template);
         }
 
         #[cfg(not(target_os = "macos"))]
-        let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&indication_icon)?));
+        let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?));
+
+        Ok(())
+    }
+
+    /// 更新托盘提示
+    pub fn update_tooltip(&self) -> Result<()> {
+        let app_handle = handle::Handle::global().app_handle().unwrap();
+        let version = VERSION.get().unwrap();
+
+        let verge = Config::verge().latest().clone();
+        let system_proxy = verge.enable_system_proxy.as_ref().unwrap_or(&false);
+        let tun_mode = verge.enable_tun_mode.as_ref().unwrap_or(&false);
 
         let switch_map = {
             let mut map = std::collections::HashMap::new();
@@ -188,16 +269,92 @@ impl Tray {
             };
         };
 
+        let tray = app_handle.tray_by_id("main").unwrap();
         let _ = tray.set_tooltip(Some(&format!(
             "Clash Verge {version}\n{}: {}\n{}: {}\n{}: {}",
-            t!("SysProxy", "系统代理", use_zh),
+            t("SysProxy"),
             switch_map[system_proxy],
-            t!("TUN", "Tun模式", use_zh),
+            t("TUN"),
             switch_map[tun_mode],
-            t!("Profile", "当前订阅", use_zh),
+            t("Profile"),
             current_profile_name
         )));
         Ok(())
+    }
+
+    pub fn update_part(&self) -> Result<()> {
+        self.update_menu()?;
+        self.update_icon(None)?;
+        self.update_tooltip()?;
+        Ok(())
+    }
+
+    /// 订阅流量数据
+    #[cfg(target_os = "macos")]
+    pub async fn subscribe_traffic(&self) -> Result<()> {
+        log::info!(target: "app", "subscribe traffic");
+
+        // 如果已经订阅，先取消订阅
+        if *self.is_subscribed.read() {
+            self.unsubscribe_traffic();
+        }
+
+        let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
+        *self.shutdown_tx.write() = Some(shutdown_tx);
+        *self.is_subscribed.write() = true;
+
+        let speed_rate = Arc::clone(&self.speed_rate);
+        let is_subscribed = Arc::clone(&self.is_subscribed);
+
+        tauri::async_runtime::spawn(async move {
+            let mut shutdown = shutdown_rx;
+
+            'outer: loop {
+                match Traffic::get_traffic_stream().await {
+                    Ok(mut stream) => loop {
+                        tokio::select! {
+                            Some(traffic) = stream.next() => {
+                                if let Ok(traffic) = traffic {
+                                    let guard = speed_rate.lock();
+                                    let enable_tray_speed: bool = Config::verge().latest().enable_tray_speed.unwrap_or(true);
+                                    if !enable_tray_speed {
+                                        continue;
+                                    }
+                                    if let Some(sr) = guard.as_ref() {
+                                        if let Some(rate) = sr.update_and_check_changed(traffic.up, traffic.down) {
+                                            let _ = Tray::global().update_icon(Some(rate));
+                                        }
+                                    }
+                                }
+                            }
+                            _ = shutdown.recv() => break 'outer,
+                        }
+                    },
+                    Err(e) => {
+                        log::error!(target: "app", "Failed to get traffic stream: {}", e);
+                        // 如果获取流失败，等待一段时间后重试
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+                        // 检查是否应该继续重试
+                        if !*is_subscribed.read() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// 取消订阅 traffic 数据
+    #[cfg(target_os = "macos")]
+    pub fn unsubscribe_traffic(&self) {
+        log::info!(target: "app", "unsubscribe traffic");
+        *self.is_subscribed.write() = false;
+        if let Some(tx) = self.shutdown_tx.write().take() {
+            drop(tx);
+        }
     }
 }
 
@@ -208,81 +365,90 @@ fn create_tray_menu(
     tun_mode_enabled: bool,
 ) -> Result<tauri::menu::Menu<Wry>> {
     let mode = mode.unwrap_or("");
-    let use_zh = { Config::verge().latest().language == Some("zh".into()) };
     let version = VERSION.get().unwrap();
+    let hotkeys = Config::verge()
+        .latest()
+        .hotkeys
+        .as_ref()
+        .map(|h| {
+            h.iter()
+                .filter_map(|item| {
+                    let mut parts = item.split(',');
+                    match (parts.next(), parts.next()) {
+                        (Some(func), Some(key)) => Some((func.to_string(), key.to_string())),
+                        _ => None,
+                    }
+                })
+                .collect::<std::collections::HashMap<String, String>>()
+        })
+        .unwrap_or_default();
 
     let open_window = &MenuItem::with_id(
         app_handle,
         "open_window",
-        t!("Dashboard", "打开面板", use_zh),
+        t("Dashboard"),
         true,
-        None::<&str>,
+        hotkeys.get("open_or_close_dashboard").map(|s| s.as_str()),
     )
     .unwrap();
 
     let rule_mode = &CheckMenuItem::with_id(
         app_handle,
         "rule_mode",
-        t!("Rule Mode", "规则模式", use_zh),
+        t("Rule Mode"),
         true,
         mode == "rule",
-        None::<&str>,
+        hotkeys.get("clash_mode_rule").map(|s| s.as_str()),
     )
     .unwrap();
 
     let global_mode = &CheckMenuItem::with_id(
         app_handle,
         "global_mode",
-        t!("Global Mode", "全局模式", use_zh),
+        t("Global Mode"),
         true,
         mode == "global",
-        None::<&str>,
+        hotkeys.get("clash_mode_global").map(|s| s.as_str()),
     )
     .unwrap();
 
     let direct_mode = &CheckMenuItem::with_id(
         app_handle,
         "direct_mode",
-        t!("Direct Mode", "直连模式", use_zh),
+        t("Direct Mode"),
         true,
         mode == "direct",
-        None::<&str>,
+        hotkeys.get("clash_mode_direct").map(|s| s.as_str()),
     )
     .unwrap();
 
     let system_proxy = &CheckMenuItem::with_id(
         app_handle,
         "system_proxy",
-        t!("System Proxy", "系统代理", use_zh),
+        t("System Proxy"),
         true,
         system_proxy_enabled,
-        None::<&str>,
+        hotkeys.get("toggle_system_proxy").map(|s| s.as_str()),
     )
     .unwrap();
 
     let tun_mode = &CheckMenuItem::with_id(
         app_handle,
         "tun_mode",
-        t!("TUN Mode", "Tun模式", use_zh),
+        t("TUN Mode"),
         true,
         tun_mode_enabled,
-        None::<&str>,
+        hotkeys.get("toggle_tun_mode").map(|s| s.as_str()),
     )
     .unwrap();
 
-    let copy_env = &MenuItem::with_id(
-        app_handle,
-        "copy_env",
-        t!("Copy Env", "复制环境变量", use_zh),
-        true,
-        None::<&str>,
-    )
-    .unwrap();
+    let copy_env =
+        &MenuItem::with_id(app_handle, "copy_env", t("Copy Env"), true, None::<&str>).unwrap();
 
     let open_app_dir = &MenuItem::with_id(
         app_handle,
         "open_app_dir",
-        t!("Conf Dir", "配置目录", use_zh),
+        t("Conf Dir"),
         true,
         None::<&str>,
     )
@@ -291,7 +457,7 @@ fn create_tray_menu(
     let open_core_dir = &MenuItem::with_id(
         app_handle,
         "open_core_dir",
-        t!("Core Dir", "内核目录", use_zh),
+        t("Core Dir"),
         true,
         None::<&str>,
     )
@@ -300,15 +466,16 @@ fn create_tray_menu(
     let open_logs_dir = &MenuItem::with_id(
         app_handle,
         "open_logs_dir",
-        t!("Logs Dir", "日志目录", use_zh),
+        t("Logs Dir"),
         true,
         None::<&str>,
     )
     .unwrap();
+
     let open_dir = &Submenu::with_id_and_items(
         app_handle,
         "open_dir",
-        t!("Open Dir", "打开目录", use_zh),
+        t("Open Dir"),
         true,
         &[open_app_dir, open_core_dir, open_logs_dir],
     )
@@ -317,7 +484,7 @@ fn create_tray_menu(
     let restart_clash = &MenuItem::with_id(
         app_handle,
         "restart_clash",
-        t!("Restart Clash Core", "重启Clash内核", use_zh),
+        t("Restart Clash Core"),
         true,
         None::<&str>,
     )
@@ -326,7 +493,7 @@ fn create_tray_menu(
     let restart_app = &MenuItem::with_id(
         app_handle,
         "restart_app",
-        t!("Restart App", "重启App", use_zh),
+        t("Restart App"),
         true,
         None::<&str>,
     )
@@ -335,7 +502,7 @@ fn create_tray_menu(
     let app_version = &MenuItem::with_id(
         app_handle,
         "app_version",
-        format!("Version {version}"),
+        format!("{} {version}", t("Verge Version")),
         true,
         None::<&str>,
     )
@@ -344,20 +511,14 @@ fn create_tray_menu(
     let more = &Submenu::with_id_and_items(
         app_handle,
         "more",
-        t!("More", "更多", use_zh),
+        t("More"),
         true,
         &[restart_clash, restart_app, app_version],
     )
     .unwrap();
 
-    let quit = &MenuItem::with_id(
-        app_handle,
-        "quit",
-        t!("Quit", "退出", use_zh),
-        true,
-        Some("CmdOrControl+Q"),
-    )
-    .unwrap();
+    let quit =
+        &MenuItem::with_id(app_handle, "quit", t("Exit"), true, Some("CmdOrControl+Q")).unwrap();
 
     let separator = &PredefinedMenuItem::separator(app_handle).unwrap();
 

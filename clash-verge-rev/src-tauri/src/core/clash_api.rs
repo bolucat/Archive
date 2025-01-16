@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Mapping;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Rate {
+    pub up: u64,
+    pub down: u64,
+}
+
 /// PUT /configs
 /// path 是绝对路径
 pub async fn put_configs(path: &str) -> Result<()> {
@@ -21,7 +27,9 @@ pub async fn put_configs(path: &str) -> Result<()> {
     match response.status().as_u16() {
         204 => Ok(()),
         status => {
-            bail!("failed to put configs with status \"{status}\"")
+            let body = response.text().await?;
+           // print!("failed to put configs with status \"{}\"\n{}\n{}", status, url, body);
+            bail!("failed to put configs with status \"{status}\"\n{url}\n{body}");
         }
     }
 }
@@ -121,6 +129,13 @@ pub fn parse_check_output(log: String) -> String {
     }
 
     log
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_traffic_ws_url() -> Result<String> {
+    let (url, _) = clash_client_info()?;
+    let ws_url = url.replace("http://", "ws://") + "/traffic";
+    Ok(ws_url)
 }
 
 #[test]

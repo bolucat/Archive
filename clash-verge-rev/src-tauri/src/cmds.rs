@@ -4,7 +4,7 @@ use crate::{
     feat,
     utils::{dirs, help},
 };
-use crate::{ret_err, wrap_err};
+use crate::{log_err, ret_err, wrap_err};
 use anyhow::{Context, Result};
 use network_interface::NetworkInterface;
 use serde_yaml::Mapping;
@@ -28,6 +28,7 @@ pub fn get_profiles() -> CmdResult<IProfiles> {
 #[tauri::command]
 pub async fn enhance_profiles() -> CmdResult {
     wrap_err!(CoreManager::global().update_config().await)?;
+    log_err!(tray::Tray::global().update_tooltip());
     handle::Handle::refresh_clash();
     Ok(())
 }
@@ -73,7 +74,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
     match CoreManager::global().update_config().await {
         Ok(_) => {
             handle::Handle::refresh_clash();
-            let _ = handle::Handle::update_systray_part();
+            let _ = tray::Tray::global().update_tooltip();
             Config::profiles().apply();
             wrap_err!(Config::profiles().data().save_file())?;
             Ok(())

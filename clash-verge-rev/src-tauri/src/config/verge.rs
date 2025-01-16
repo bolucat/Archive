@@ -1,5 +1,6 @@
 use crate::config::DEFAULT_PAC;
 use crate::config::{deserialize_encrypted, serialize_encrypted};
+use crate::utils::i18n;
 use crate::utils::{dirs, help};
 use anyhow::Result;
 use log::LevelFilter;
@@ -175,6 +176,8 @@ pub struct IVerge {
         default
     )]
     pub webdav_password: Option<String>,
+
+    pub enable_tray_speed: Option<bool>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -202,6 +205,21 @@ pub struct IVergeTheme {
 }
 
 impl IVerge {
+    fn get_system_language() -> String {
+        let sys_lang = sys_locale::get_locale()
+            .unwrap_or_else(|| String::from("en"))
+            .to_lowercase();
+
+        let lang_code = sys_lang.split(['_', '-']).next().unwrap_or("en");
+        let supported_languages = i18n::get_supported_languages();
+
+        if supported_languages.contains(&lang_code.to_string()) {
+            lang_code.to_string()
+        } else {
+            String::from("en")
+        }
+    }
+
     pub fn new() -> Self {
         match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
             Ok(config) => config,
@@ -215,7 +233,7 @@ impl IVerge {
     pub fn template() -> Self {
         Self {
             clash_core: Some("verge-mihomo".into()),
-            language: Some("zh".into()),
+            language: Some(Self::get_system_language()),
             theme_mode: Some("system".into()),
             #[cfg(not(target_os = "windows"))]
             env_type: Some("bash".into()),
@@ -260,6 +278,7 @@ impl IVerge {
             webdav_url: None,
             webdav_username: None,
             webdav_password: None,
+            enable_tray_speed: Some(true),
             ..Self::default()
         }
     }
@@ -339,6 +358,7 @@ impl IVerge {
         patch!(webdav_url);
         patch!(webdav_username);
         patch!(webdav_password);
+        patch!(enable_tray_speed);
     }
 
     /// 在初始化前尝试拿到单例端口的值
@@ -425,6 +445,7 @@ pub struct IVergeResponse {
     pub webdav_url: Option<String>,
     pub webdav_username: Option<String>,
     pub webdav_password: Option<String>,
+    pub enable_tray_speed: Option<bool>,
 }
 
 impl From<IVerge> for IVergeResponse {
@@ -485,6 +506,7 @@ impl From<IVerge> for IVergeResponse {
             webdav_url: verge.webdav_url,
             webdav_username: verge.webdav_username,
             webdav_password: verge.webdav_password,
+            enable_tray_speed: verge.enable_tray_speed,
         }
     }
 }

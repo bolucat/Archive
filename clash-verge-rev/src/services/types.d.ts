@@ -706,6 +706,7 @@ interface IVergeConfig {
   common_tray_icon?: boolean;
   sysproxy_tray_icon?: boolean;
   tun_tray_icon?: boolean;
+  enable_tray_speed?: boolean;
   enable_tun_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_silent_start?: boolean;
@@ -723,6 +724,7 @@ interface IVergeConfig {
   verge_socks_enabled?: boolean;
   verge_http_enabled?: boolean;
   enable_proxy_guard?: boolean;
+  enable_bypass_check?: boolean;
   use_default_bypass?: boolean;
   proxy_guard_duration?: number;
   system_proxy_bypass?: string;
