@@ -65,6 +65,9 @@ type Handler struct {
 	// If true, the Via header will not be added.
 	HideVia bool `json:"hide_via,omitempty"`
 
+	// If true, the strict check preventing HTTP upstreams will be disabled.
+	DisableInsecureUpstreamsCheck bool `json:"disable_insecure_upstreams_check,omitempty"`
+
 	// Host(s) (and ports) of the proxy. When you configure a client,
 	// you will give it the host (and port) of the proxy to use.
 	Hosts caddyhttp.MatchHost `json:"hosts,omitempty"`
@@ -74,6 +77,16 @@ type Handler struct {
 
 	// How long to wait before timing out initial TCP connections.
 	DialTimeout caddy.Duration `json:"dial_timeout,omitempty"`
+
+	// Maximum number of idle connections to keep open, globally.
+	// Default: 50. Set to -1 for no limit.
+	// See https://pkg.go.dev/net/http#Transport.MaxIdleConns
+	MaxIdleConns int `json:"max_idle_conns,omitempty"`
+
+	// Maximum number of idle connections to keep open per host.
+	// Default: 0, which uses Go's default of 2.
+	// See https://pkg.go.dev/net/http#Transport.MaxIdleConnsPerHost
+	MaxIdleConnsPerHost int `json:"max_idle_conns_per_host,omitempty"`
 
 	// Optionally configure an upstream proxy to use.
 	Upstream string `json:"upstream,omitempty"`
@@ -112,9 +125,20 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		h.DialTimeout = caddy.Duration(30 * time.Second)
 	}
 
+	// Default to 50 max idle connections if not specified,
+	// or no limit if -1 is specified.
+	maxIdleConns := h.MaxIdleConns
+	if maxIdleConns == 0 {
+		maxIdleConns = 50
+	}
+	if maxIdleConns < 0 {
+		maxIdleConns = 0
+	}
+
 	h.httpTransport = &http.Transport{
 		Proxy:               http.ProxyFromEnvironment,
-		MaxIdleConns:        50,
+		MaxIdleConns:        maxIdleConns,
+		MaxIdleConnsPerHost: h.MaxIdleConnsPerHost,
 		IdleConnTimeout:     60 * time.Second,
 		TLSHandshakeTimeout: 10 * time.Second,
 	}
@@ -171,7 +195,7 @@ func (h *Handler) Provision(ctx caddy.Context) error {
 		}
 		h.upstream = upstreamURL
 
-		if !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
+		if !h.DisableInsecureUpstreamsCheck && !isLocalhost(h.upstream.Hostname()) && h.upstream.Scheme != "https" {
 			return errors.New("insecure schemes are only allowed to localhost upstreams")
 		}
 
@@ -506,6 +530,18 @@ func (h Handler) dialContextCheckACL(ctx context.Context, network, hostPort stri
 			fmt.Errorf("port %s is not allowed", port))
 	}
 
+match:
+	for _, rule := range h.aclRules {
+		if _, ok := rule.(*aclDomainRule); ok {
+			switch rule.tryMatch(nil, host) {
+			case aclDecisionDeny:
+				return nil, caddyhttp.Error(http.StatusForbidden, fmt.Errorf("disallowed host %s", host))
+			case aclDecisionAllow:
+				break match
+			}
+		}
+	}
+
 	// in case IP was provided, net.LookupIP will simply return it
 	IPs, err := net.LookupIP(host)
 	if err != nil {
@@ -593,45 +629,23 @@ func serveHiddenPage(w http.ResponseWriter, authErr error) error {
 // Hijacks the connection from ResponseWriter, writes the response and proxies data between targetConn
 // and hijacked connection.
 func serveHijack(w http.ResponseWriter, targetConn net.Conn) error {
-	clientConn, bufReader, err := http.NewResponseController(w).Hijack()
+	w.WriteHeader(http.StatusOK)
+	clientConn, brw, err := http.NewResponseController(w).Hijack()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
 			fmt.Errorf("hijack failed: %v", err))
 	}
 	defer clientConn.Close()
 	// bufReader may contain unprocessed buffered data from the client.
-	if bufReader != nil {
-		// snippet borrowed from `proxy` plugin
-		if n := bufReader.Reader.Buffered(); n > 0 {
-			rbuf, err := bufReader.Reader.Peek(n)
-			if err != nil {
-				return caddyhttp.Error(http.StatusBadGateway, err)
-			}
-			_, _ = targetConn.Write(rbuf)
-
-		}
+	// snippet borrowed from `proxy` plugin
+	if n := brw.Reader.Buffered(); n > 0 {
+		rbuf, _ := brw.Peek(n)
+		_, _ = targetConn.Write(rbuf)
 	}
-	// Since we hijacked the connection, we lost the ability to write and flush headers via w.
-	// Let's handcraft the response and send it manually.
-	res := &http.Response{
-		StatusCode: http.StatusOK,
-		Proto:      "HTTP/1.1",
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-	}
-	res.Header.Set("Server", "Caddy")
-
-	buf := bufio.NewWriter(clientConn)
-	err = res.Write(buf)
+	err = brw.Flush()
 	if err != nil {
 		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("failed to write response: %v", err))
-	}
-	err = buf.Flush()
-	if err != nil {
-		return caddyhttp.Error(http.StatusInternalServerError,
-			fmt.Errorf("failed to send response to client: %v", err))
+			fmt.Errorf("failed to flush to client: %v", err))
 	}
 
 	return dualStream(targetConn, clientConn, clientConn, false)
