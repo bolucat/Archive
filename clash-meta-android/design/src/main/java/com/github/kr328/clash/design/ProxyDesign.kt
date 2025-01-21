@@ -108,7 +108,7 @@ class ProxyDesign(
             binding.urlTestFloatView.visibility = View.GONE
         } else {
             binding.urlTestFloatView.supportImageTintList = ColorStateList.valueOf(
-                context.resolveThemedColor(R.attr.colorOnPrimary)
+                context.resolveThemedColor(com.google.android.material.R.attr.colorOnPrimary)
             )
 
             binding.pagesView.apply {

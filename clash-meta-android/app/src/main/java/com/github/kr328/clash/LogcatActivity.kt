@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 import java.io.OutputStreamWriter
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import com.github.kr328.clash.design.R
 
 class LogcatActivity : BaseActivity<LogcatDesign>() {
     private var conn: ServiceConnection? = null

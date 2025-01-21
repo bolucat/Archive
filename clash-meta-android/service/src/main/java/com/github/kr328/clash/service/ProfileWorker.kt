@@ -9,6 +9,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.github.kr328.clash.common.compat.getColorCompat
 import com.github.kr328.clash.common.compat.pendingIntentFlags
+import com.github.kr328.clash.common.compat.startForegroundCompat
 import com.github.kr328.clash.common.constants.Components
 import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.id.UndefinedIds
@@ -123,7 +124,7 @@ class ProfileWorker : BaseService() {
             .setOnlyAlertOnce(true)
             .build()
 
-        startForeground(R.id.nf_profile_worker, notification)
+        startForegroundCompat(R.id.nf_profile_worker, notification)
     }
 
     private suspend inline fun processing(name: String, block: () -> Unit) {

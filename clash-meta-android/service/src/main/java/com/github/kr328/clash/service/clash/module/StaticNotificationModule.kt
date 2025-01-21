@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.github.kr328.clash.common.compat.getColorCompat
 import com.github.kr328.clash.common.compat.pendingIntentFlags
+import com.github.kr328.clash.common.compat.startForegroundCompat
 import com.github.kr328.clash.common.constants.Components
 import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.service.R
@@ -47,7 +48,7 @@ class StaticNotificationModule(service: Service) : Module<Unit>(service) {
                 .setContentText(service.getText(R.string.running))
                 .build()
 
-            service.startForeground(R.id.nf_clash_status, notification)
+            service.startForegroundCompat(R.id.nf_clash_status, notification)
         }
     }
 
@@ -74,7 +75,7 @@ class StaticNotificationModule(service: Service) : Module<Unit>(service) {
                     .setContentTitle(service.getText(R.string.loading))
                     .build()
 
-            service.startForeground(R.id.nf_clash_status, notification)
+            service.startForegroundCompat(R.id.nf_clash_status, notification)
         }
     }
 }

@@ -12,9 +12,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import com.github.kr328.clash.design.R
 
 class PropertiesActivity : BaseActivity<PropertiesDesign>() {
     private var canceled: Boolean = false
+    private lateinit var original: Profile
 
     override suspend fun main() {
         setResult(RESULT_CANCELED)
@@ -22,7 +24,7 @@ class PropertiesActivity : BaseActivity<PropertiesDesign>() {
         val uuid = intent.uuid ?: return finish()
         val design = PropertiesDesign(this)
 
-        val original = withProfile { queryByUUID(uuid) } ?: return finish()
+        original = withProfile { queryByUUID(uuid) } ?: return finish()
 
         design.profile = original
 
@@ -71,7 +73,7 @@ class PropertiesActivity : BaseActivity<PropertiesDesign>() {
         design?.apply {
             launch {
                 if (!progressing) {
-                    if (requestExitWithoutSaving())
+                    if (original == profile || requestExitWithoutSaving())
                         finish()
                 }
             }

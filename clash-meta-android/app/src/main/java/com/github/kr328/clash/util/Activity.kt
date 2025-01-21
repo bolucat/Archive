@@ -7,14 +7,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 class ActivityResultLifecycle : LifecycleOwner {
-    private val lifecycle = LifecycleRegistry(this)
+    override val lifecycle = LifecycleRegistry(this)
 
     init {
         lifecycle.currentState = Lifecycle.State.INITIALIZED
-    }
-
-    override fun getLifecycle(): Lifecycle {
-        return lifecycle
     }
 
     suspend fun <T> use(block: suspend (lifecycle: ActivityResultLifecycle, start: () -> Unit) -> T): T {

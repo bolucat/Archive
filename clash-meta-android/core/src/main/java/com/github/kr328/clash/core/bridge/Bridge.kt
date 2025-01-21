@@ -61,7 +61,7 @@ object Bridge {
             .detachFd()
 
         val home = ctx.filesDir.resolve("clash").apply { mkdirs() }.absolutePath
-        val versionName = ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName
+        val versionName = ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "unknown"
         val sdkVersion = Build.VERSION.SDK_INT
 
         Log.d("Home = $home")

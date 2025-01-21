@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="geofile_import_failed">Nhập thất bại</string>
-    <string name="toast_profile_updated_complete">Cập nhật thành công</string>
-    <string name="toast_profile_updated_failed">Cập nhật không thành công</string>
+    <string name="toast_profile_updated_complete">Cập nhật thành công %s</string>
+    <string name="toast_profile_updated_failed">Cập nhật không thành công %1$s %2$s</string>
     <string name="press_to_import">Chạm để nhập...</string>
     <string name="meta_features">Tính năng của Clash Meta</string>
     <string name="allow_ipv6">Cho phép Ipv6</string>

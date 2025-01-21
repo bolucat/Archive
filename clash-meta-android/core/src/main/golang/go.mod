@@ -24,7 +24,7 @@ require (
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/coreos/go-iptables v0.8.0 // indirect
 	github.com/ebitengine/purego v0.8.1 // indirect
-	github.com/enfein/mieru/v3 v3.9.0 // indirect
+	github.com/enfein/mieru/v3 v3.10.0 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20230312195928-b4ce538b56f9 // indirect
 	github.com/ericlagergren/polyval v0.0.0-20220411101811-e25bc10ba391 // indirect
 	github.com/ericlagergren/siv v0.0.0-20220507050439-0b757b3aa5f1 // indirect
@@ -60,7 +60,7 @@ require (
 	github.com/metacubex/gvisor v0.0.0-20241126021258-5b028898cc5a // indirect
 	github.com/metacubex/quic-go v0.48.3-0.20241126053724-b69fea3888da // indirect
 	github.com/metacubex/randv2 v0.2.0 // indirect
-	github.com/metacubex/sing-quic v0.0.0-20240827003841-cd97758ed8b4 // indirect
+	github.com/metacubex/sing-quic v0.0.0-20250119013740-2a19cce83925 // indirect
 	github.com/metacubex/sing-shadowsocks v0.2.8 // indirect
 	github.com/metacubex/sing-shadowsocks2 v0.2.2 // indirect
 	github.com/metacubex/sing-tun v0.4.5 // indirect

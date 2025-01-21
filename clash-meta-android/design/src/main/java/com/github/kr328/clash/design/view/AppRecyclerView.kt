@@ -14,12 +14,4 @@ class AppRecyclerView @JvmOverloads constructor(
     init {
         isFocusable = false
     }
-
-    override fun onDraw(c: Canvas?) {
-        super.onDraw(c)
-    }
-
-    override fun dispatchDraw(canvas: Canvas?) {
-        super.dispatchDraw(canvas)
-    }
 }

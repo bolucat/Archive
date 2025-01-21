@@ -9,11 +9,13 @@ import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
+import com.github.kr328.clash.common.compat.registerReceiverCompat
 import com.github.kr328.clash.common.constants.Intents
 import com.github.kr328.clash.common.constants.Permissions
 import com.github.kr328.clash.remote.StatusClient
 import com.github.kr328.clash.util.startClashService
 import com.github.kr328.clash.util.stopClashService
+import com.github.kr328.clash.service.R
 
 @RequiresApi(Build.VERSION_CODES.N)
 class TileService : TileService() {
@@ -36,7 +38,7 @@ class TileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
 
-        registerReceiver(
+        registerReceiverCompat(
             receiver,
             IntentFilter().apply {
                 addAction(Intents.ACTION_CLASH_STARTED)

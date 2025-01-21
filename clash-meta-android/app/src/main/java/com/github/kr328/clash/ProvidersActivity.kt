@@ -9,6 +9,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import java.util.concurrent.TimeUnit
+import com.github.kr328.clash.design.R
 
 class ProvidersActivity : BaseActivity<ProvidersDesign>() {
     override suspend fun main() {

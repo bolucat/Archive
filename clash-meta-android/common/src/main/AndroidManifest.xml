@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.github.kr328.clash.common">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <permission
         android:name="${applicationId}.permission.RECEIVE_BROADCASTS"

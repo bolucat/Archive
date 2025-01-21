@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import com.github.kr328.clash.common.compat.registerReceiverCompat
 import com.github.kr328.clash.common.constants.Permissions
 import com.github.kr328.clash.common.log.Log
 import kotlinx.coroutines.NonCancellable
@@ -44,9 +45,9 @@ abstract class Module<E>(val service: Service) {
         }
 
         if (requireSelf) {
-            service.registerReceiver(receiver, filter, Permissions.RECEIVE_SELF_BROADCASTS, null)
+            service.registerReceiverCompat(receiver, filter, Permissions.RECEIVE_SELF_BROADCASTS, null)
         } else {
-            service.registerReceiver(receiver, filter)
+            service.registerReceiverCompat(receiver, filter)
         }
 
         receivers.add(receiver)

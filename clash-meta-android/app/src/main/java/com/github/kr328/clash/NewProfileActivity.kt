@@ -18,6 +18,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import java.util.*
+import com.github.kr328.clash.design.R
 
 class NewProfileActivity : BaseActivity<NewProfileDesign>() {
     private val self: NewProfileActivity

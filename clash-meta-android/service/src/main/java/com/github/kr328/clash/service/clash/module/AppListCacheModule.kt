@@ -11,10 +11,11 @@ import java.util.concurrent.TimeUnit
 
 class AppListCacheModule(service: Service) : Module<Unit>(service) {
     private fun PackageInfo.uniqueUidName(): String =
-        if (sharedUserId != null && sharedUserId.isNotBlank()) sharedUserId else packageName
+        if (sharedUserId?.isNotBlank() == true) sharedUserId!! else packageName
 
     private fun reload() {
         val packages = service.packageManager.getInstalledPackages(0)
+            .filter { it.applicationInfo != null }
             .groupBy { it.uniqueUidName() }
             .map { (_, v) ->
                 val info = v[0]
@@ -23,9 +24,9 @@ class AppListCacheModule(service: Service) : Module<Unit>(service) {
                     // Force use package name if only one app in a single sharedUid group
                     // Example: firefox
 
-                    info.applicationInfo.uid to info.packageName
+                    info.applicationInfo!!.uid to info.packageName
                 } else {
-                    info.applicationInfo.uid to info.uniqueUidName()
+                    info.applicationInfo!!.uid to info.uniqueUidName()
                 }
             }
 

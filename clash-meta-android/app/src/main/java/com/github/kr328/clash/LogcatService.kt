@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.github.kr328.clash.common.compat.getColorCompat
 import com.github.kr328.clash.common.compat.pendingIntentFlags
+import com.github.kr328.clash.common.compat.startForegroundCompat
 import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.common.util.intent
 import com.github.kr328.clash.core.model.LogMessage
@@ -130,17 +131,17 @@ class LogcatService : Service(), CoroutineScope by CoroutineScope(Dispatchers.De
                 NotificationChannelCompat.Builder(
                     CHANNEL_ID,
                     NotificationManagerCompat.IMPORTANCE_DEFAULT
-                ).setName(getString(R.string.clash_logcat)).build()
+                ).setName(getString(com.github.kr328.clash.design.R.string.clash_logcat)).build()
             )
     }
 
     private fun showNotification() {
         val notification = NotificationCompat
             .Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_logo_service)
-            .setColor(getColorCompat(R.color.color_clash_light))
-            .setContentTitle(getString(R.string.clash_logcat))
-            .setContentText(getString(R.string.running))
+            .setSmallIcon(com.github.kr328.clash.service.R.drawable.ic_logo_service)
+            .setColor(getColorCompat(com.github.kr328.clash.design.R.color.color_clash_light))
+            .setContentTitle(getString(com.github.kr328.clash.design.R.string.clash_logcat))
+            .setContentText(getString(com.github.kr328.clash.design.R.string.running))
             .setContentIntent(
                 PendingIntent.getActivity(
                     this,
@@ -152,7 +153,7 @@ class LogcatService : Service(), CoroutineScope by CoroutineScope(Dispatchers.De
             )
             .build()
 
-        startForeground(R.id.nf_logcat_status, notification)
+        startForegroundCompat(R.id.nf_logcat_status, notification)
     }
 
     companion object {
