@@ -112,7 +112,7 @@ class LogcatActivity : BaseActivity<LogcatDesign>() {
                     when (it) {
                         LogcatDesign.Request.Close -> {
                             stopService(LogcatService::class.intent)
-
+                            startActivity(LogsActivity::class.intent)
                             finish()
                         }
                         else -> Unit

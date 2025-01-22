@@ -19,6 +19,7 @@ type NameServerConfig struct {
 	Domains       []string
 	ExpectIPs     StringList
 	QueryStrategy string
+	fakeSNI       string
 }
 
 func (c *NameServerConfig) UnmarshalJSON(data []byte) error {
@@ -36,6 +37,7 @@ func (c *NameServerConfig) UnmarshalJSON(data []byte) error {
 		Domains       []string   `json:"domains"`
 		ExpectIPs     StringList `json:"expectIps"`
 		QueryStrategy string     `json:"queryStrategy"`
+		FakeSNI       string     `json:"fakeSNI"`
 	}
 	if err := json.Unmarshal(data, &advanced); err == nil {
 		c.Address = advanced.Address
@@ -45,6 +47,7 @@ func (c *NameServerConfig) UnmarshalJSON(data []byte) error {
 		c.Domains = advanced.Domains
 		c.ExpectIPs = advanced.ExpectIPs
 		c.QueryStrategy = advanced.QueryStrategy
+		c.fakeSNI = advanced.FakeSNI
 		return nil
 	}
 
@@ -105,6 +108,10 @@ func (c *NameServerConfig) Build() (*dns.NameServer, error) {
 		myClientIP = []byte(c.ClientIP.IP())
 	}
 
+	if c.fakeSNI != "" && (!c.Address.Family().IsDomain() || !strings.HasPrefix(c.Address.Domain(), "https+local")) {
+		return nil, errors.New("fakeSNI only works for https+local")
+	}
+
 	return &dns.NameServer{
 		Address: &net.Endpoint{
 			Network: net.Network_UDP,
@@ -117,6 +124,7 @@ func (c *NameServerConfig) Build() (*dns.NameServer, error) {
 		Geoip:             geoipList,
 		OriginalRules:     originalRules,
 		QueryStrategy:     resolveQueryStrategy(c.QueryStrategy),
+		FakeSni:           c.fakeSNI,
 	}, nil
 }
 

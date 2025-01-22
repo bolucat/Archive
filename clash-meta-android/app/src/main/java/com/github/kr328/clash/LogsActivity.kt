@@ -11,11 +11,8 @@ import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 
 class LogsActivity : BaseActivity<LogsDesign>() {
-    override suspend fun main() {
-        if (LogcatService.running) {
-            return startActivity(LogcatActivity::class.intent)
-        }
 
+    override suspend fun main() {
         val design = LogsDesign(this)
 
         setContentDesign(design)
@@ -38,7 +35,6 @@ class LogsActivity : BaseActivity<LogsDesign>() {
                     when (it) {
                         LogsDesign.Request.StartLogcat -> {
                             startActivity(LogcatActivity::class.intent)
-
                             finish()
                         }
                         LogsDesign.Request.DeleteAll -> {

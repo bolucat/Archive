@@ -3,6 +3,7 @@ package dns
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	utls "github.com/refraction-networking/utls"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/log"
@@ -23,6 +25,7 @@ import (
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/transport/internet"
 	"golang.org/x/net/dns/dnsmessage"
+	"golang.org/x/net/http2"
 )
 
 // DoHNameServer implemented DNS over HTTPS (RFC8484) Wire Format,
@@ -90,13 +93,15 @@ func NewDoHNameServer(url *url.URL, dispatcher routing.Dispatcher, queryStrategy
 }
 
 // NewDoHLocalNameServer creates DOH client object for local resolving
-func NewDoHLocalNameServer(url *url.URL, queryStrategy QueryStrategy) *DoHNameServer {
+func NewDoHLocalNameServer(url *url.URL, queryStrategy QueryStrategy, fakeSNI string) *DoHNameServer {
 	url.Scheme = "https"
 	s := baseDOHNameServer(url, "DOHL", queryStrategy)
-	tr := &http.Transport{
-		IdleConnTimeout:   90 * time.Second,
-		ForceAttemptHTTP2: true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+	if fakeSNI == "" {
+		fakeSNI = "disabled"
+	}
+	tr := &http2.Transport{
+		IdleConnTimeout: 90 * time.Second,
+		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 			dest, err := net.ParseDestination(network + ":" + addr)
 			if err != nil {
 				return nil, err
@@ -111,6 +116,17 @@ func NewDoHLocalNameServer(url *url.URL, queryStrategy QueryStrategy) *DoHNameSe
 			if err != nil {
 				return nil, err
 			}
+			utlsConfig := &utls.Config{
+				ServerName: url.Hostname(),
+			}
+			if fakeSNI != "disabled" {
+				utlsConfig.ServerName = fakeSNI
+				utlsConfig.InsecureServerNameToVerify = url.Hostname()
+			}
+			conn = utls.UClient(conn, utlsConfig, utls.HelloChrome_Auto)
+			if err := conn.(*utls.UConn).HandshakeContext(ctx); err != nil {
+				return nil, err
+			}
 			return conn, nil
 		},
 	}
@@ -118,7 +134,7 @@ func NewDoHLocalNameServer(url *url.URL, queryStrategy QueryStrategy) *DoHNameSe
 		Timeout:   time.Second * 180,
 		Transport: tr,
 	}
-	errors.LogInfo(context.Background(), "DNS: created Local DOH client for ", url.String())
+	errors.LogInfo(context.Background(), "DNS: created Local DOH client for ", url.String(), ", with fakeSNI ", fakeSNI)
 	return s
 }
 

@@ -35,7 +35,7 @@ type Client struct {
 var errExpectedIPNonMatch = errors.New("expectIPs not match")
 
 // NewServer creates a name server object according to the network destination url.
-func NewServer(ctx context.Context, dest net.Destination, dispatcher routing.Dispatcher, queryStrategy QueryStrategy) (Server, error) {
+func NewServer(ctx context.Context, dest net.Destination, dispatcher routing.Dispatcher, queryStrategy QueryStrategy, fakeSNI string) (Server, error) {
 	if address := dest.Address; address.Family().IsDomain() {
 		u, err := url.Parse(address.Domain())
 		if err != nil {
@@ -47,7 +47,7 @@ func NewServer(ctx context.Context, dest net.Destination, dispatcher routing.Dis
 		case strings.EqualFold(u.Scheme, "https"): // DOH Remote mode
 			return NewDoHNameServer(u, dispatcher, queryStrategy)
 		case strings.EqualFold(u.Scheme, "https+local"): // DOH Local mode
-			return NewDoHLocalNameServer(u, queryStrategy), nil
+			return NewDoHLocalNameServer(u, queryStrategy, fakeSNI), nil
 		case strings.EqualFold(u.Scheme, "quic+local"): // DNS-over-QUIC Local mode
 			return NewQUICNameServer(u, queryStrategy)
 		case strings.EqualFold(u.Scheme, "tcp"): // DNS-over-TCP Remote mode
@@ -84,7 +84,7 @@ func NewClient(
 
 	err := core.RequireFeatures(ctx, func(dispatcher routing.Dispatcher) error {
 		// Create a new server for each client for now
-		server, err := NewServer(ctx, ns.Address.AsDestination(), dispatcher, ns.GetQueryStrategy())
+		server, err := NewServer(ctx, ns.Address.AsDestination(), dispatcher, ns.GetQueryStrategy(), ns.FakeSni)
 		if err != nil {
 			return errors.New("failed to create nameserver").Base(err).AtWarning()
 		}
