@@ -17,7 +17,7 @@ The GUI client does not use socks5 and http proxy mode, so there is no issue wit
 
 > Note: When we talk about addresses, we mean addresses that include the port number, such as a domain address: `google.com:443`, or an IP address: `8.8.8.8:53`
 
-![x](./images/network.svg)
+![x](https://brook.app/images/network.svg)
 
 1. When an app requests a domain address, such as `google.com:443`
 2. It will first perform a DNS resolution, which means that the app will send a network request to the system-configured DNS, such as `8.8.8.8:53`, to inquire about the IP of `google.com`
@@ -32,7 +32,7 @@ In the above process, the app actually makes two network requests: one to the IP
 
 Brook has a Fake DNS feature default, which can parse the domain name out of the query requests that an app sends to the system DNS UDP 53 and decide how to respond to the app.
 
-![x](./images/brook-client.svg)
+![x](https://brook.app/images/brook-client.svg)
 
 1. When an app requests a domain name address, such as `google.com:443`
 2. A DNS resolution will be performed first. That is, the app will send a network request to the system-configured DNS, such as `8.8.8.8:53`, to inquire about the IP of `google.com`
@@ -265,6 +265,10 @@ Brook's stance on IPv6 is positive, if your server or local environment doesn't 
     - `Bypass Apple`: To prevent issues receiving Apple message notifications.
     - `Bypass China domain` or `Bypass China domain A`: The former uses `Bypass DNS` to obtain the IP, then `Bypass Geo` or other modules decide whether to bypass; the latter bypasses directly after obtaining the IP with `Bypass DNS` using A records. The latter is needed if your local does not support IPv6.
     - If you are a [Shiliew](https://www.txthinking.com/shiliew.html) user, some modules are enabled by default, which is usually sufficient.
+14. If Fake DNS works properly, this should return an IP from server DNS Server IP pool. Otherwise, your application(such as browser) may has its own DNS setting instead of use system DNS.
+    ```
+    curl https://`date +%s`.http3.ooo --http2
+    ```
 14. Search [GitHub issues](https://github.com/txthinking/brook/issues?q=is%3Aissue)
 15. Read the [blog](https://www.txthinking.com/talks/)
 16. Read the [documentation](https://brook.app)
