@@ -146,6 +146,35 @@ var OptionTUNGSO = Note{
 	EnvName:           "TUN_GSO",
 }
 
+var OptionLegacyDNSTransport = Note{
+	Name:              "legacy-dns-transport",
+	Description:       "legacy DNS transport",
+	DeprecatedVersion: "1.12.0",
+	ScheduledVersion:  "1.14.0",
+	EnvName:           "LEGACY_DNS_TRANSPORT",
+}
+
+var OptionLegacyDNSFakeIPOptions = Note{
+	Name:              "legacy-dns-fakeip-options",
+	Description:       "legacy DNS fakeip options",
+	DeprecatedVersion: "1.12.0",
+	ScheduledVersion:  "1.14.0",
+}
+
+var OptionOutboundDNSRuleItem = Note{
+	Name:              "outbound-dns-rule-item",
+	Description:       "outbound DNS rule item",
+	DeprecatedVersion: "1.12.0",
+	ScheduledVersion:  "1.14.0",
+}
+
+var OptionMissingDomainResolverInDialOptions = Note{
+	Name:              "missing-domain-resolver-in-dial-options",
+	Description:       "missing domain resolver in dial options",
+	DeprecatedVersion: "1.12.0",
+	ScheduledVersion:  "1.14.0",
+}
+
 var Options = []Note{
 	OptionBadMatchSource,
 	OptionGEOIP,
@@ -157,4 +186,8 @@ var Options = []Note{
 	OptionWireGuardOutbound,
 	OptionWireGuardGSO,
 	OptionTUNGSO,
+	OptionLegacyDNSTransport,
+	OptionLegacyDNSFakeIPOptions,
+	OptionOutboundDNSRuleItem,
+	OptionMissingDomainResolverInDialOptions,
 }

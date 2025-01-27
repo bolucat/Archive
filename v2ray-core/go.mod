@@ -18,7 +18,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/improbable-eng/grpc-web v0.15.0
 	github.com/jhump/protoreflect v1.17.0
-	github.com/miekg/dns v1.1.62
+	github.com/miekg/dns v1.1.63
 	github.com/mustafaturan/bus v1.0.2
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pion/dtls/v2 v2.2.12
@@ -41,8 +41,8 @@ require (
 	golang.org/x/net v0.34.0
 	golang.org/x/sync v0.10.0
 	golang.org/x/sys v0.29.0
-	google.golang.org/grpc v1.69.4
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/grpc v1.70.0
+	google.golang.org/protobuf v1.36.4
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20231020174304-b8a429915ff1
 	h12.io/socks v1.0.3
@@ -92,6 +92,6 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.22.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241202173237-19429a94021a // indirect
 	nhooyr.io/websocket v1.8.6 // indirect
 )
