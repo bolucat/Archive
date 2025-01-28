@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	_ "unsafe"
 )
 
 const (
@@ -134,13 +133,6 @@ func (conf *dnsConfig) nameList(name string) []string {
 		names = append(names, name)
 	}
 	return names
-}
-
-//go:linkname runtime_rand runtime.rand
-func runtime_rand() uint64
-
-func randInt() int {
-	return int(uint(runtime_rand()) >> 1) // clear sign bit
 }
 
 func avoidDNS(name string) bool {

@@ -77,13 +77,46 @@ type DialerOptions struct {
 	TCPMultiPath        bool                              `json:"tcp_multi_path,omitempty"`
 	UDPFragment         *bool                             `json:"udp_fragment,omitempty"`
 	UDPFragmentDefault  bool                              `json:"-"`
-	DomainResolver      string                            `json:"domain_resolver,omitempty"`
-	DomainStrategy      DomainStrategy                    `json:"domain_strategy,omitempty"`
+	DomainResolver      *DomainResolveOptions             `json:"domain_resolver,omitempty"`
 	NetworkStrategy     *NetworkStrategy                  `json:"network_strategy,omitempty"`
 	NetworkType         badoption.Listable[InterfaceType] `json:"network_type,omitempty"`
 	FallbackNetworkType badoption.Listable[InterfaceType] `json:"fallback_network_type,omitempty"`
 	FallbackDelay       badoption.Duration                `json:"fallback_delay,omitempty"`
 	IsWireGuardListener bool                              `json:"-"`
+
+	// Deprecated: migrated to domain resolver
+	DomainStrategy DomainStrategy `json:"domain_strategy,omitempty"`
+}
+
+type _DomainResolveOptions struct {
+	Server       string                `json:"server"`
+	Strategy     DomainStrategy        `json:"strategy,omitempty"`
+	DisableCache bool                  `json:"disable_cache,omitempty"`
+	RewriteTTL   *uint32               `json:"rewrite_ttl,omitempty"`
+	ClientSubnet *badoption.Prefixable `json:"client_subnet,omitempty"`
+}
+
+type DomainResolveOptions _DomainResolveOptions
+
+func (o DomainResolveOptions) MarshalJSON() ([]byte, error) {
+	if o.Strategy == DomainStrategy(C.DomainStrategyAsIS) &&
+		!o.DisableCache &&
+		o.RewriteTTL == nil &&
+		o.ClientSubnet == nil {
+		return json.Marshal(o.Server)
+	} else {
+		return json.Marshal((_DomainResolveOptions)(o))
+	}
+}
+
+func (o *DomainResolveOptions) UnmarshalJSON(bytes []byte) error {
+	var stringValue string
+	err := json.Unmarshal(bytes, &stringValue)
+	if err == nil {
+		o.Server = stringValue
+		return nil
+	}
+	return json.Unmarshal(bytes, (*_DomainResolveOptions)(o))
 }
 
 func (o *DialerOptions) TakeDialerOptions() DialerOptions {

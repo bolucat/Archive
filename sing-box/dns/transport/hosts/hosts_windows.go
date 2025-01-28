@@ -1,8 +1,17 @@
 package hosts
 
-import _ "unsafe"
+import (
+	"path/filepath"
 
-var DefaultPath = getSystemDirectory() + "/Drivers/etc/hosts"
+	"golang.org/x/sys/windows"
+)
 
-//go:linkname getSystemDirectory internal/syscall/windows.GetSystemDirectory
-func getSystemDirectory() string
+var DefaultPath string
+
+func init() {
+	systemDirectory, err := windows.GetSystemDirectory()
+	if err != nil {
+		systemDirectory = "C:\\Windows\\System32"
+	}
+	DefaultPath = filepath.Join(systemDirectory, "Drivers/etc/hosts")
+}

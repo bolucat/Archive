@@ -168,9 +168,9 @@ var OptionOutboundDNSRuleItem = Note{
 	ScheduledVersion:  "1.14.0",
 }
 
-var OptionMissingDomainResolverInDialOptions = Note{
-	Name:              "missing-domain-resolver-in-dial-options",
-	Description:       "missing domain resolver in dial options",
+var OptionMissingDomainResolver = Note{
+	Name:              "missing-domain-resolver",
+	Description:       "missing `route.default_domain_resolver` or `domain_resolver` in dial fields",
 	DeprecatedVersion: "1.12.0",
 	ScheduledVersion:  "1.14.0",
 }
@@ -189,5 +189,5 @@ var Options = []Note{
 	OptionLegacyDNSTransport,
 	OptionLegacyDNSFakeIPOptions,
 	OptionOutboundDNSRuleItem,
-	OptionMissingDomainResolverInDialOptions,
+	OptionMissingDomainResolver,
 }

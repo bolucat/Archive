@@ -6,8 +6,8 @@ import (
 	_ "embed"
 	"io"
 	"strings"
-	"sync"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/domain"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -22,7 +22,7 @@ var publicPrefix = []string{
 //go:embed public_suffix_list.dat
 var publicSuffix []byte
 
-var publicSuffixMatcher = sync.OnceValue(func() *domain.Matcher {
+var publicSuffixMatcher = common.OnceValue(func() *domain.Matcher {
 	matcher, err := initPublicSuffixMatcher()
 	if err != nil {
 		panic(F.ToString("error in initialize public suffix matcher"))

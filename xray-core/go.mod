@@ -9,7 +9,7 @@ require (
 	github.com/golang/mock v1.7.0-rc.1
 	github.com/google/go-cmp v0.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/miekg/dns v1.1.62
+	github.com/miekg/dns v1.1.63
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pires/go-proxyproto v0.8.0
 	github.com/quic-go/quic-go v0.49.0
@@ -28,7 +28,7 @@ require (
 	golang.org/x/sys v0.29.0
 	golang.zx2c4.com/wireguard v0.0.0-20231211153847-12269c276173
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/protobuf v1.36.4
 	gvisor.dev/gvisor v0.0.0-20240320123526-dc6abceb7ff0
 	h12.io/socks v1.0.3
 	lukechampine.com/blake3 v1.3.0

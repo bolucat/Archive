@@ -81,9 +81,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		PrivateKey: options.PrivateKey,
 		ListenPort: options.ListenPort,
 		ResolvePeer: func(domain string) (netip.Addr, error) {
-			endpointAddresses, lookupErr := ep.dnsRouter.Lookup(ctx, domain, adapter.DNSQueryOptions{
-				Strategy: C.DomainStrategy(options.DomainStrategy),
-			})
+			endpointAddresses, lookupErr := ep.dnsRouter.Lookup(ctx, domain, outboundDialer.(dialer.ResolveDialer).QueryOptions())
 			if lookupErr != nil {
 				return netip.Addr{}, lookupErr
 			}

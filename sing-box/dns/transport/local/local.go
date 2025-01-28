@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	"math/rand"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -147,7 +148,7 @@ func (t *Transport) exchangeOne(ctx context.Context, server M.Socksaddr, questio
 	}
 	request := &mDNS.Msg{
 		MsgHdr: mDNS.MsgHdr{
-			Id:                uint16(randInt()),
+			Id:                uint16(rand.Uint32()),
 			RecursionDesired:  true,
 			AuthenticatedData: ad,
 		},

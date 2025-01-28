@@ -24,71 +24,71 @@ func New(ctx context.Context, options option.DialerOptions, remoteIsDomain bool)
 		dialer N.Dialer
 		err    error
 	)
-	if options.Detour == "" {
-		dialer, err = NewDefault(ctx, options)
-		if err != nil {
-			return nil, err
-		}
-	} else {
+	if options.Detour != "" {
 		outboundManager := service.FromContext[adapter.OutboundManager](ctx)
 		if outboundManager == nil {
 			return nil, E.New("missing outbound manager")
 		}
 		dialer = NewDetour(outboundManager, options.Detour)
-	}
-	if remoteIsDomain && options.Detour == "" && options.DomainResolver == "" {
-		deprecated.Report(ctx, deprecated.OptionMissingDomainResolverInDialOptions)
-	}
-	if (options.Detour == "" && remoteIsDomain) || options.DomainResolver != "" {
-		router := service.FromContext[adapter.DNSRouter](ctx)
-		if router != nil {
-			var resolveTransport adapter.DNSTransport
-			if options.DomainResolver != "" {
-				transport, loaded := service.FromContext[adapter.DNSTransportManager](ctx).Transport(options.DomainResolver)
-				if !loaded {
-					return nil, E.New("DNS server not found: " + options.DomainResolver)
-				}
-				resolveTransport = transport
-			}
-			dialer = NewResolveDialer(
-				router,
-				dialer,
-				options.Detour == "" && !options.TCPFastOpen,
-				resolveTransport,
-				C.DomainStrategy(options.DomainStrategy),
-				time.Duration(options.FallbackDelay))
+	} else {
+		dialer, err = NewDefault(ctx, options)
+		if err != nil {
+			return nil, err
 		}
+	}
+	if remoteIsDomain && options.Detour == "" {
+		networkManager := service.FromContext[adapter.NetworkManager](ctx)
+		dnsTransport := service.FromContext[adapter.DNSTransportManager](ctx)
+		var defaultOptions adapter.NetworkOptions
+		if networkManager != nil {
+			defaultOptions = networkManager.DefaultOptions()
+		}
+		var (
+			dnsQueryOptions      adapter.DNSQueryOptions
+			resolveFallbackDelay time.Duration
+		)
+		if options.DomainResolver != nil && options.DomainResolver.Server != "" {
+			transport, loaded := dnsTransport.Transport(options.DomainResolver.Server)
+			if !loaded {
+				return nil, E.New("domain resolver not found: " + options.DomainResolver.Server)
+			}
+			var strategy C.DomainStrategy
+			if options.DomainResolver.Strategy != option.DomainStrategy(C.DomainStrategyAsIS) {
+				strategy = C.DomainStrategy(options.DomainResolver.Strategy)
+			} else if
+			//nolint:staticcheck
+			options.DomainStrategy != option.DomainStrategy(C.DomainStrategyAsIS) {
+				//nolint:staticcheck
+				strategy = C.DomainStrategy(options.DomainStrategy)
+			}
+			dnsQueryOptions = adapter.DNSQueryOptions{
+				Transport:    transport,
+				Strategy:     strategy,
+				DisableCache: options.DomainResolver.DisableCache,
+				RewriteTTL:   options.DomainResolver.RewriteTTL,
+				ClientSubnet: options.DomainResolver.ClientSubnet.Build(netip.Prefix{}),
+			}
+			resolveFallbackDelay = time.Duration(options.FallbackDelay)
+		} else if defaultOptions.DomainResolver != "" {
+			dnsQueryOptions = defaultOptions.DomainResolveOptions
+			transport, loaded := dnsTransport.Transport(defaultOptions.DomainResolver)
+			if !loaded {
+				return nil, E.New("default domain resolver not found: " + defaultOptions.DomainResolver)
+			}
+			dnsQueryOptions.Transport = transport
+			resolveFallbackDelay = time.Duration(options.FallbackDelay)
+		} else {
+			deprecated.Report(ctx, deprecated.OptionMissingDomainResolver)
+		}
+		dialer = NewResolveDialer(
+			ctx,
+			dialer,
+			options.Detour == "" && !options.TCPFastOpen,
+			dnsQueryOptions,
+			resolveFallbackDelay,
+		)
 	}
 	return dialer, nil
-}
-
-func NewDirect(ctx context.Context, options option.DialerOptions) (ParallelInterfaceDialer, error) {
-	if options.Detour != "" {
-		return nil, E.New("`detour` is not supported in direct context")
-	}
-	if options.IsWireGuardListener {
-		return NewDefault(ctx, options)
-	}
-	dialer, err := NewDefault(ctx, options)
-	if err != nil {
-		return nil, err
-	}
-	var resolveTransport adapter.DNSTransport
-	if options.DomainResolver != "" {
-		transport, loaded := service.FromContext[adapter.DNSTransportManager](ctx).Transport(options.DomainResolver)
-		if !loaded {
-			return nil, E.New("DNS server not found: " + options.DomainResolver)
-		}
-		resolveTransport = transport
-	}
-	return NewResolveParallelInterfaceDialer(
-		service.FromContext[adapter.DNSRouter](ctx),
-		dialer,
-		true,
-		resolveTransport,
-		C.DomainStrategy(options.DomainStrategy),
-		time.Duration(options.FallbackDelay),
-	), nil
 }
 
 type ParallelInterfaceDialer interface {
