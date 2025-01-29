@@ -503,6 +503,80 @@ DNS servers are refactored.
         }
         ```
 
+### Migrate outbound DNS rule items to dial fields
+
+The legacy outbound DNS rules are deprecated and can be replaced by dial fields.
+
+!!! info "References"
+    
+    [DNS rule](/configuration/dns/rule/#outbound) /
+    [Dial Fields](/configuration/shared/dial/#domain_resolver)
+
+=== ":material-card-remove: Deprecated"
+    
+    ```json
+    {
+      "dns": {
+        "servers": [
+          {
+            "address": "local",
+            "tag": "local"
+          }
+        ],
+        "rules": [
+          {
+            "outbound": "any",
+            "server": "local"
+          }
+        ]
+      },
+      "outbounds": [
+        {
+          "type": "socks",
+          "server": "example.org",
+          "server_port": 2080
+        }
+      ]
+    }
+    ```
+
+=== ":material-card-multiple: New"
+
+    ```json
+    {
+      "dns": {
+        "servers": [
+          {
+            "type": "local"
+          }
+        ]
+      },
+      "outbounds": [
+        {
+          "type": "socks",
+          "server": "example.org",
+          "server_port": 2080,
+          "domain_resolver": {
+            "server": "local",
+            "rewrite_tll": 60,
+            "client_subnet": "1.1.1.1"
+          },
+          // or "domain_resolver": "local",
+        }
+      ],
+      
+      // or
+    
+      "route": {
+        "default_domain_resolver": {
+          "server": "local",
+          "rewrite_tll": 60,
+          "client_subnet": "1.1.1.1"
+        }
+      }
+    }
+    ```
+
 ## 1.11.0
 
 ### Migrate legacy special outbounds to rule actions
