@@ -6,7 +6,7 @@ icon: material/arrange-bring-forward
 
 ### Migrate to new DNS server formats
 
-DNS servers are refactored.
+DNS servers are refactored for better performance and scalability.
 
 !!! info "References"
 
@@ -503,14 +503,15 @@ DNS servers are refactored.
         }
         ```
 
-### Migrate outbound DNS rule items to dial fields
+### Migrate outbound DNS rule items to domain resolver
 
-The legacy outbound DNS rules are deprecated and can be replaced by dial fields.
+The legacy outbound DNS rules are deprecated and can be replaced by new domain resolver options.
 
 !!! info "References"
     
     [DNS rule](/configuration/dns/rule/#outbound) /
-    [Dial Fields](/configuration/shared/dial/#domain_resolver)
+    [Dial Fields](/configuration/shared/dial/#domain_resolver) /
+    [Route](/configuration/route/#domain_resolver)
 
 === ":material-card-remove: Deprecated"
     

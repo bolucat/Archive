@@ -1,7 +1,7 @@
-﻿using Avalonia.Controls;
+using System.Reactive.Disposables;
+using Avalonia.Controls;
 using Avalonia.ReactiveUI;
 using ReactiveUI;
-using System.Reactive.Disposables;
 
 namespace v2rayN.Desktop.Views
 {
@@ -175,13 +175,6 @@ namespace v2rayN.Desktop.Views
             {
                 txbSettingsExceptionTip.IsVisible = false;
                 panSystemProxyAdvanced.IsVisible = false;
-            }
-
-            if (Utils.IsOSX())
-            {
-                tbAutoRun.IsVisible = false;
-                togAutoRun.IsVisible = false;
-                //TODO
             }
         }
 

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 
 namespace ServiceLib.Handler
@@ -83,6 +83,13 @@ namespace ServiceLib.Handler
             UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
             await CoreStop();
             await Task.Delay(100);
+
+            if (Utils.IsWindows() && _config.TunModeItem.EnableTun)
+            {
+                await Task.Delay(100);
+                await WindowsUtils.RemoveTunDevice();
+            }
+
             await CoreStart(node);
             await CoreStartPreService(node);
             if (_process != null)
@@ -239,12 +246,14 @@ namespace ServiceLib.Handler
                 {
                     proc.OutputDataReceived += (sender, e) =>
                     {
-                        if (Utils.IsNullOrEmpty(e.Data)) return;
+                        if (Utils.IsNullOrEmpty(e.Data))
+                            return;
                         UpdateFunc(false, e.Data + Environment.NewLine);
                     };
                     proc.ErrorDataReceived += (sender, e) =>
                     {
-                        if (Utils.IsNullOrEmpty(e.Data)) return;
+                        if (Utils.IsNullOrEmpty(e.Data))
+                            return;
                         UpdateFunc(false, e.Data + Environment.NewLine);
                     };
                 }
@@ -258,7 +267,8 @@ namespace ServiceLib.Handler
                     await Task.Delay(10);
                     await proc.StandardInput.WriteLineAsync(pwd);
                 }
-                if (isNeedSudo) _linuxSudoPid = proc.Id;
+                if (isNeedSudo)
+                    _linuxSudoPid = proc.Id;
 
                 if (displayLog)
                 {

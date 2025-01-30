@@ -2,7 +2,7 @@ package tf
 
 import (
 	"context"
-	"syscall"
+	"net"
 	"time"
 
 	"github.com/sagernet/sing/common/control"
@@ -10,7 +10,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func waitAck(ctx context.Context, conn syscall.Conn, fallbackDelay time.Duration) error {
+func writeAndWaitAck(ctx context.Context, conn *net.TCPConn, payload []byte, fallbackDelay time.Duration) error {
+	_, err := conn.Write(payload)
+	if err != nil {
+		return err
+	}
 	return control.Conn(conn, func(fd uintptr) error {
 		start := time.Now()
 		for {

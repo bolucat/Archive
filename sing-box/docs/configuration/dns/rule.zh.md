@@ -401,7 +401,7 @@ Available values: `wifi`, `cellular`, `ethernet` and `other`.
 
 !!! failure "已在 sing-box 1.12.0 废弃"
 
-    `outbound` 规则项已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/migration/#migrate-outbound-dns-rule-items-to-dial-fields)。
+    `outbound` 规则项已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/migration/#migrate-outbound-dns-rule-items-to-domain-resolver)。
 
 匹配出站。
 

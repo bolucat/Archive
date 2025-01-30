@@ -19,15 +19,9 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: Patch Go use 600296
-      #https://go-review.googlesource.com/c/go/+/600296
-      run: |
-       cd "$(go env GOROOT)"
-       curl "https://go-review.googlesource.com/changes/go~600296/revisions/5/patch" | base64 -d | patch --verbose -p 1
-
     - name: Install gomobile
       run: |
-        CGO_ENABLED=0 go install -trimpath -ldflags="-w -s"  github.com/sagernet/gomobile/cmd/gomobile@latest
+        go install golang.org/x/mobile/cmd/gomobile@latest
         export PATH=$PATH:~/go/bin
         
     - name: Setup Android NDK
@@ -56,7 +50,7 @@ jobs:
          cp -v data/*.dat assets/
          gomobile init
          go mod tidy
-         gomobile bind -v -androidapi 21 -trimpath -buildvcs=false -ldflags='-s -w -buildid=' ./
+         gomobile bind -v -androidapi 21 -trimpath -ldflags='-s -w -buildid=' ./
       env:
         ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 

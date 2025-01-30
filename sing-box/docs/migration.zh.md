@@ -503,14 +503,15 @@ DNS 服务器已经重构。
         }
         ```
 
-### 迁移 outbound DNS 规则项到拨号字段
+### 迁移 outbound DNS 规则项到域解析选项
 
-旧的 `outbound` DNS 规则已废弃，且可被拨号字段代替。
+旧的 `outbound` DNS 规则已废弃，且可新的域解析选项代替。
 
 !!! info "参考"
 
     [DNS 规则](/configuration/dns/rule/#outbound) /
-    [拨号字段](/configuration/shared/dial/#domain_resolver)
+    [拨号字段](/configuration/shared/dial/#domain_resolver) /
+    [路由](/configuration/route/#default_domain_resolver)
 
 === ":material-card-remove: 废弃的"
 

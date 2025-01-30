@@ -401,7 +401,7 @@ Invert match result.
 
 !!! failure "Deprecated in sing-box 1.12.0"
 
-    `outbound` rule items are deprecated and will be removed in sing-box 1.14.0, check [Migration](/migration/#migrate-outbound-dns-rule-items-to-dial-fields). 
+    `outbound` rule items are deprecated and will be removed in sing-box 1.14.0, check [Migration](/migration/#migrate-outbound-dns-rule-items-to-domain-resolver). 
 
 Match outbound.
 

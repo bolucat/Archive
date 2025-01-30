@@ -1,13 +1,10 @@
-﻿using Microsoft.Win32;
-using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
-using System.Text;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 
 namespace v2rayN
 {
@@ -62,37 +59,6 @@ namespace v2rayN
                 icon.Handle,
                 new System.Windows.Int32Rect(0, 0, icon.Width, icon.Height),
                 BitmapSizeOptions.FromEmptyOptions());
-        }
-
-        public static void RemoveTunDevice()
-        {
-            try
-            {
-                var sum = MD5.HashData(Encoding.UTF8.GetBytes("wintunsingbox_tun"));
-                var guid = new Guid(sum);
-                string pnputilPath = @"C:\Windows\System32\pnputil.exe";
-                string arg = $$""" /remove-device  "SWD\Wintun\{{{guid}}}" """;
-
-                // Try to remove the device
-                Process proc = new()
-                {
-                    StartInfo = new()
-                    {
-                        FileName = pnputilPath,
-                        Arguments = arg,
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-
-                proc.Start();
-                var output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit();
-            }
-            catch
-            {
-            }
         }
 
         public static void SetDarkBorder(Window window, string? theme)

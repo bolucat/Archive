@@ -1,14 +1,14 @@
-//go:build !(linux || darwin)
+//go:build !(linux || darwin || windows)
 
 package tf
 
 import (
 	"context"
-	"syscall"
+	"net"
 	"time"
 )
 
-func waitAck(ctx context.Context, conn syscall.Conn, fallbackDelay time.Duration) error {
+func writeAndWaitAck(ctx context.Context, conn *net.TCPConn, payload []byte, fallbackDelay time.Duration) error {
 	time.Sleep(fallbackDelay)
 	return nil
 }

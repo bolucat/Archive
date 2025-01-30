@@ -204,6 +204,7 @@ type serverConfigOutboundDirect struct {
 	BindIPv4   string `mapstructure:"bindIPv4"`
 	BindIPv6   string `mapstructure:"bindIPv6"`
 	BindDevice string `mapstructure:"bindDevice"`
+	FastOpen   bool   `mapstructure:"fastOpen"`
 }
 
 type serverConfigOutboundSOCKS5 struct {
@@ -237,6 +238,7 @@ type serverConfigMasqueradeFile struct {
 type serverConfigMasqueradeProxy struct {
 	URL         string `mapstructure:"url"`
 	RewriteHost bool   `mapstructure:"rewriteHost"`
+	Insecure    bool   `mapstructure:"insecure"`
 }
 
 type serverConfigMasqueradeString struct {
@@ -518,18 +520,18 @@ func (c *serverConfig) fillQUICConfig(hyConfig *server.Config) error {
 }
 
 func serverConfigOutboundDirectToOutbound(c serverConfigOutboundDirect) (outbounds.PluggableOutbound, error) {
-	var mode outbounds.DirectOutboundMode
+	opts := outbounds.DirectOutboundOptions{}
 	switch strings.ToLower(c.Mode) {
 	case "", "auto":
-		mode = outbounds.DirectOutboundModeAuto
+		opts.Mode = outbounds.DirectOutboundModeAuto
 	case "64":
-		mode = outbounds.DirectOutboundMode64
+		opts.Mode = outbounds.DirectOutboundMode64
 	case "46":
-		mode = outbounds.DirectOutboundMode46
+		opts.Mode = outbounds.DirectOutboundMode46
 	case "6":
-		mode = outbounds.DirectOutboundMode6
+		opts.Mode = outbounds.DirectOutboundMode6
 	case "4":
-		mode = outbounds.DirectOutboundMode4
+		opts.Mode = outbounds.DirectOutboundMode4
 	default:
 		return nil, configError{Field: "outbounds.direct.mode", Err: errors.New("unsupported mode")}
 	}
@@ -546,12 +548,14 @@ func serverConfigOutboundDirectToOutbound(c serverConfigOutboundDirect) (outboun
 		if len(c.BindIPv6) > 0 && ip6 == nil {
 			return nil, configError{Field: "outbounds.direct.bindIPv6", Err: errors.New("invalid IPv6 address")}
 		}
-		return outbounds.NewDirectOutboundBindToIPs(mode, ip4, ip6)
+		opts.BindIP4 = ip4
+		opts.BindIP6 = ip6
 	}
 	if bindDevice {
-		return outbounds.NewDirectOutboundBindToDevice(mode, c.BindDevice)
+		opts.DeviceName = c.BindDevice
 	}
-	return outbounds.NewDirectOutboundSimple(mode), nil
+	opts.FastOpen = c.FastOpen
+	return outbounds.NewDirectOutboundWithOptions(opts)
 }
 
 func serverConfigOutboundSOCKS5ToOutbound(c serverConfigOutboundSOCKS5) (outbounds.PluggableOutbound, error) {
@@ -807,6 +811,25 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return configError{Field: "masquerade.proxy.url", Err: fmt.Errorf("unsupported protocol scheme \"%s\"", u.Scheme)}
 		}
+		transport := http.DefaultTransport
+		if c.Masquerade.Proxy.Insecure {
+			transport = &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+				// use default configs from http.DefaultTransport
+				Proxy: http.ProxyFromEnvironment,
+				DialContext: (&net.Dialer{
+					Timeout:   30 * time.Second,
+					KeepAlive: 30 * time.Second,
+				}).DialContext,
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			}
+		}
 		handler = &httputil.ReverseProxy{
 			Rewrite: func(r *httputil.ProxyRequest) {
 				r.SetURL(u)
@@ -816,6 +839,7 @@ func (c *serverConfig) fillMasqHandler(hyConfig *server.Config) error {
 					r.Out.Host = r.In.Host
 				}
 			},
+			Transport: transport,
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				logger.Error("HTTP reverse proxy error", zap.Error(err))
 				w.WriteHeader(http.StatusBadGateway)

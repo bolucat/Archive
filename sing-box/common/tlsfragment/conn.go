@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"net"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sagernet/sing/common"
@@ -14,17 +13,17 @@ import (
 
 type Conn struct {
 	net.Conn
-	syscallConn        syscall.Conn
+	tcpConn            *net.TCPConn
 	ctx                context.Context
 	firstPacketWritten bool
 	fallbackDelay      time.Duration
 }
 
 func NewConn(conn net.Conn, ctx context.Context, fallbackDelay time.Duration) (*Conn, error) {
-	syscallConn, _ := N.UnwrapReader(conn).(syscall.Conn)
+	tcpConn, _ := N.UnwrapReader(conn).(*net.TCPConn)
 	return &Conn{
 		Conn:          conn,
-		syscallConn:   syscallConn,
+		tcpConn:       tcpConn,
 		ctx:           ctx,
 		fallbackDelay: fallbackDelay,
 	}, nil
@@ -37,11 +36,8 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 		}()
 		serverName := indexTLSServerName(b)
 		if serverName != nil {
-			tcpConn, isTCPConn := c.syscallConn.(interface {
-				SetNoDelay(bool) error
-			})
-			if isTCPConn {
-				err = tcpConn.SetNoDelay(true)
+			if c.tcpConn != nil {
+				err = c.tcpConn.SetNoDelay(true)
 				if err != nil {
 					return
 				}
@@ -83,25 +79,28 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 				}
 			}
 			for i := 0; i <= len(splitIndexes); i++ {
+				var payload []byte
 				if i == 0 {
-					_, err = c.Conn.Write(b[:splitIndexes[i]])
+					payload = b[:splitIndexes[i]]
 				} else if i == len(splitIndexes) {
-					_, err = c.Conn.Write(b[splitIndexes[i-1]:])
+					payload = b[splitIndexes[i-1]:]
 				} else {
-					_, err = c.Conn.Write(b[splitIndexes[i-1]:splitIndexes[i]])
+					payload = b[splitIndexes[i-1]:splitIndexes[i]]
 				}
-				if err != nil {
-					return
-				}
-				if c.syscallConn != nil && i != len(splitIndexes) {
-					err = waitAck(c.ctx, c.syscallConn, c.fallbackDelay)
+				if c.tcpConn != nil && i != len(splitIndexes) {
+					err = writeAndWaitAck(c.ctx, c.tcpConn, payload, c.fallbackDelay)
+					if err != nil {
+						return
+					}
+				} else {
+					_, err = c.Conn.Write(payload)
 					if err != nil {
 						return
 					}
 				}
 			}
-			if isTCPConn {
-				err = tcpConn.SetNoDelay(false)
+			if c.tcpConn != nil {
+				err = c.tcpConn.SetNoDelay(false)
 				if err != nil {
 					return
 				}

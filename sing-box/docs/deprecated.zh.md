@@ -15,7 +15,7 @@ DNS 服务器已重构，
 
 旧的 `outbound` DNS 规则已废弃，
 且可被拨号字段代替，
-参阅 [迁移指南](/migration/#migrate-outbound-dns-rule-items-to-dial-fields).
+参阅 [迁移指南](/migration/#migrate-outbound-dns-rule-items-to-domain-resolver).
 
 ## 1.11.0
 
