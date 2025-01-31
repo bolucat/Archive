@@ -25,9 +25,12 @@ semver = "1.0"
 # Local Dependencies
 nyanpasu-ipc = { git = "https://github.com/libnyanpasu/nyanpasu-service.git", features = [
   "client",
+  "specta",
 ] } # IPC bridge between the UI process and service process
 nyanpasu-macro = { path = "../nyanpasu-macro" }
-nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git" }
+nyanpasu-utils = { git = "https://github.com/libnyanpasu/nyanpasu-utils.git", features = [
+  "specta",
+] }
 
 # Common Utilities
 tokio = { version = "1", features = ["full"] }
@@ -83,7 +86,9 @@ backon = { version = "1.0.1", features = ["tokio-sleep"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_yaml = { version = "0.10", package = "serde_yaml_ng", git = "https://github.com/libnyanpasu/serde-yaml-ng.git" }
+serde_yaml = { version = "0.10", package = "serde_yaml_ng", branch = "feat/specta", git = "https://github.com/libnyanpasu/serde-yaml-ng.git", features = [
+  "specta",
+] }
 bincode = "1"
 bytes = { version = "1", features = ["serde"] }
 semver = "1.0"
@@ -99,7 +104,7 @@ percent-encoding = "2.3.1"
 
 # Algorithms
 uuid = "1.7.0"
-rand = "0.8"
+rand = "0.9"
 md-5 = "0.10.6"
 sha2 = "0.10"
 nanoid = "0.4.0"
@@ -115,7 +120,7 @@ dunce = "1.0.4"                                                                 
 runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
 which = "7"
-dirs = "5.0.1"
+dirs = "6"
 open = "5.0.1"
 sysinfo = "0.33"
 num_cpus = "1"
@@ -181,6 +186,19 @@ tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
 window-vibrancy = { version = "0.5.2" }
 
+# Strong typed api binding between typescript and rust
+specta-typescript = "0.0.9"
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+specta = { version = "=2.0.0-rc.22", features = [
+  "serde",
+  "serde_json",
+  "serde_yaml",
+  "uuid",
+  "url",
+  "indexmap",
+  "function",
+] }
+
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-global-shortcut = "2.2.0"
 
@@ -188,15 +206,15 @@ tauri-plugin-global-shortcut = "2.2.0"
 openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5.2"
-objc2-app-kit = { version = "0.2.2", features = [
+objc2 = "0.6.0"
+objc2-app-kit = { version = "0.3.0", features = [
   "NSApplication",
   "NSResponder",
   "NSRunningApplication",
   "NSWindow",
   "NSView",
 ] }
-objc2-foundation = { version = "0.2.2", features = ["NSGeometry"] }
+objc2-foundation = { version = "0.3.0", features = ["NSGeometry"] }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["user", "fs"] }

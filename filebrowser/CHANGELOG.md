@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## [2.32.0](https://github.com/filebrowser/filebrowser/compare/v2.31.2...v2.32.0) (2025-01-30)
+## [2.32.0](https://github.com/filebrowser/filebrowser/compare/v2.31.2...v2.32.0) (2025-01-31)
 
 
 ### Features
@@ -30,6 +30,7 @@ All notable changes to this project will be documented in this file. See [standa
 * **deps:** bump golang.org/x/crypto from 0.26.0 to 0.31.0 ([#3634](https://github.com/filebrowser/filebrowser/issues/3634)) ([e92dbb4](https://github.com/filebrowser/filebrowser/commit/e92dbb4bb8b7894264fbf0a48a641712c3b68766))
 * **deps:** bump golang.org/x/net from 0.23.0 to 0.33.0 ([#3712](https://github.com/filebrowser/filebrowser/issues/3712)) ([1194cfe](https://github.com/filebrowser/filebrowser/commit/1194cfe0097a70399c1f06cf0f514b9d70fa463c))
 * **deps:** bump vue-i18n from 9.10.2 to 9.14.2 in /frontend ([#3618](https://github.com/filebrowser/filebrowser/issues/3618)) ([0659594](https://github.com/filebrowser/filebrowser/commit/065959451d3ba12019c6151274aa4e6904cdca99))
+* fix go releaser ([ba797cd](https://github.com/filebrowser/filebrowser/commit/ba797cda3135eddb9b7165dc5ceb932399cb54df))
 * update to node 22 and pnpm ([#3616](https://github.com/filebrowser/filebrowser/issues/3616)) ([d51a343](https://github.com/filebrowser/filebrowser/commit/d51a3438201274a1b826be1b775ca1035ade20c5))
 
 ### [2.31.2](https://github.com/filebrowser/filebrowser/compare/v2.31.1...v2.31.2) (2024-10-03)
