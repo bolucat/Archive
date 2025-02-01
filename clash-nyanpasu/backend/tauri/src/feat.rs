@@ -298,6 +298,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 
         if tun_mode.is_some() {
             log::debug!(target: "app", "toggle tun mode");
+            #[allow(unused_mut)]
             let mut flag = false;
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             {
