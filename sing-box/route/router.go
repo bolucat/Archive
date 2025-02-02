@@ -162,7 +162,7 @@ func (r *Router) Start(stage adapter.StartStage) error {
 		r.started = true
 		return nil
 	case adapter.StartStateStarted:
-		for _, ruleSet := range r.ruleSetMap {
+		for _, ruleSet := range r.ruleSets {
 			ruleSet.Cleanup()
 		}
 		runtime.GC()
@@ -177,6 +177,13 @@ func (r *Router) Close() error {
 		monitor.Start("close rule[", i, "]")
 		err = E.Append(err, rule.Close(), func(err error) error {
 			return E.Cause(err, "close rule[", i, "]")
+		})
+		monitor.Finish()
+	}
+	for i, ruleSet := range r.ruleSets {
+		monitor.Start("close rule-set[", i, "]")
+		err = E.Append(err, ruleSet.Close(), func(err error) error {
+			return E.Cause(err, "close rule-set[", i, "]")
 		})
 		monitor.Finish()
 	}
