@@ -149,10 +149,6 @@ pub struct IVerge {
     /// `light` or `dark` or `system`
     pub theme_mode: Option<String>,
 
-    /// enable blur mode
-    /// maybe be able to set the alpha
-    pub theme_blur: Option<bool>,
-
     /// enable traffic graph default is true
     pub traffic_graph: Option<bool>,
 
@@ -189,7 +185,7 @@ pub struct IVerge {
     pub proxy_guard_interval: Option<u64>,
 
     /// theme setting
-    pub theme_setting: Option<IVergeTheme>,
+    pub theme_color: Option<String>,
 
     /// web ui list
     pub web_ui_list: Option<Vec<String>>,
@@ -267,24 +263,6 @@ pub struct WindowState {
     pub fullscreen: bool,
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize, specta::Type)]
-pub struct IVergeTheme {
-    pub primary_color: Option<String>,
-    pub secondary_color: Option<String>,
-    pub primary_text: Option<String>,
-    pub secondary_text: Option<String>,
-
-    pub info_color: Option<String>,
-    pub error_color: Option<String>,
-    pub warning_color: Option<String>,
-    pub success_color: Option<String>,
-
-    pub font_family: Option<String>,
-    pub css_injection: Option<String>,
-
-    pub page_transition_duration: Option<f64>,
-}
-
 impl IVerge {
     pub fn new() -> Self {
         match dirs::nyanpasu_config_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
@@ -331,7 +309,6 @@ impl IVerge {
             },
             app_log_level: Some(logging::LoggingLevel::default()),
             theme_mode: Some("system".into()),
-            theme_blur: Some(false),
             traffic_graph: Some(true),
             enable_memory_usage: Some(true),
             enable_auto_launch: Some(false),

@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { unwrapResult } from '../utils'
-import { commands, ProfileBuilder, ProfilesBuilder } from './bindings'
+import {
+  commands,
+  Profile,
+  type ProfileBuilder,
+  type ProfilesBuilder,
+} from './bindings'
 
 type URLImportParams = Parameters<typeof commands.importProfile>
 
@@ -22,68 +27,98 @@ type CreateParams =
       }
     }
 
+type ProfileHelperFn = {
+  view: () => Promise<null | undefined>
+  update: (profile: ProfileBuilder) => Promise<null | undefined>
+  drop: () => Promise<null | undefined>
+}
+
+export type ProfileQueryResult = NonNullable<
+  ReturnType<typeof useProfile>['query']['data']
+>
+
+export type ProfileQueryResultItem = Profile & Partial<ProfileHelperFn>
 /**
- * A custom hook for managing profile operations using React Query.
- * Provides functionality for CRUD operations on profiles including creation,
- * updating, reordering, and deletion.
+ * A custom hook for managing profiles with various operations including creation, updating, sorting, and deletion.
+ *
+ * @remarks
+ * This hook provides comprehensive profile management functionality through React Query:
+ * - Fetching profiles with optional helper functions
+ * - Creating/importing profiles from URLs or files
+ * - Updating existing profiles
+ * - Reordering profiles
+ * - Upserting profile configurations
+ * - Deleting profiles
+ *
+ * Each operation automatically handles cache invalidation and refetching when successful.
+ *
+ * @param options - Configuration options for the hook
+ * @param options.without_helper_fn - When true, disables the addition of helper functions to profile items
  *
  * @returns An object containing:
- * - query: {@link UseQueryResult} Hook result for fetching profiles data
- * - create: {@link UseMutationResult} Mutation for creating/importing profiles
- * - update: {@link UseMutationResult} Mutation for updating existing profiles
- * - sort: {@link UseMutationResult} Mutation for reordering profiles
- * - upsert: {@link UseMutationResult} Mutation for upserting profile configurations
- * - drop: {@link UseMutationResult} Mutation for deleting profiles
+ * - query: Query result for fetching profiles
+ * - create: Mutation for creating/importing profiles
+ * - update: Mutation for updating existing profiles
+ * - sort: Mutation for reordering profiles
+ * - upsert: Mutation for upserting profile configurations
+ * - drop: Mutation for deleting profiles
  *
  * @example
- * ```typescript
+ * ```tsx
  * const { query, create, update, sort, upsert, drop } = useProfile();
  *
  * // Fetch profiles
- * const { data, isLoading } = query;
+ * const profiles = query.data?.items;
  *
  * // Create a new profile
- * create.mutate({
- *   type: 'file',
- *   data: { item: profileData, fileData: 'config' }
- * });
+ * create.mutate({ type: 'file', data: { item: newProfile, fileData: 'config' }});
  *
  * // Update a profile
  * update.mutate({ uid: 'profile-id', profile: updatedProfile });
- *
- * // Reorder profiles
- * sort.mutate(['uid1', 'uid2', 'uid3']);
- *
- * // Upsert profile config
- * upsert.mutate(profilesConfig);
- *
- * // Delete a profile
- * drop.mutate('profile-id');
  * ```
  */
-export const useProfile = () => {
+export const useProfile = (options?: { without_helper_fn?: boolean }) => {
   const queryClient = useQueryClient()
 
+  function addHelperFn(item: Profile): Profile & ProfileHelperFn {
+    return {
+      ...item,
+      view: async () => unwrapResult(await commands.viewProfile(item.uid)),
+      update: async (profile: ProfileBuilder) =>
+        await update.mutateAsync({ uid: item.uid, profile }),
+      drop: async () => await drop.mutateAsync(item.uid),
+    }
+  }
+
   /**
-   * A React Query hook that fetches profiles data.
-   * data is the full Profile configuration, including current, chain, valid, and items fields
-   * Uses the `getProfiles` command to retrieve profile information.
+   * Retrieves and processes a list of profiles.
    *
-   * @returns {UseQueryResult} A query result object containing:
-   * - data: {
-   *     current: string | null     - Currently selected profile UID
-   *     chain: string[]            - Global chain of profile UIDs
-   *     valid: boolean             - Whether the profile configuration is valid
-   *     items: Profile[]           - Array of profile configurations
-   *   }
-   * - `isLoading`: Boolean indicating if the query is in loading state
-   * - `error`: Error object if the query failed
-   * - Other standard React Query result properties
+   * This query uses the `useQuery` hook to fetch profile data by invoking the `commands.getProfiles()` command.
+   * The raw result is first unwrapped using `unwrapResult`, and then each profile item is augmented with additional
+   * helper functions:
+   *
+   * - view: Invokes `commands.viewProfile` with the profile's UID.
+   * - update: Executes the update mutation by passing an object containing the UID and the new profile data.
+   * - drop: Executes the drop mutation using the profile's UID.
+   *
+   * @returns A promise resolving to an object containing the profile list along with the extended helper functions.
    */
   const query = useQuery({
     queryKey: ['profiles'],
     queryFn: async () => {
-      return unwrapResult(await commands.getProfiles())
+      const result = unwrapResult(await commands.getProfiles())
+
+      // Skip helper functions if without_helper_fn is set
+      if (options?.without_helper_fn) {
+        return result
+      }
+
+      return {
+        ...result,
+        items: result?.items?.map((item) => {
+          return addHelperFn(item)
+        }),
+      }
     },
   })
 
@@ -191,8 +226,10 @@ export const useProfile = () => {
    * - Automatically invalidates the 'profiles' query cache on successful mutation
    */
   const upsert = useMutation({
-    mutationFn: async (options: ProfilesBuilder) => {
-      return unwrapResult(await commands.patchProfilesConfig(options))
+    mutationFn: async (options: Partial<ProfilesBuilder>) => {
+      return unwrapResult(
+        await commands.patchProfilesConfig(options as ProfilesBuilder),
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profiles'] })
