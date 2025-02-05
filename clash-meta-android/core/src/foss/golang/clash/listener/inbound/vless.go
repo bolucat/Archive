@@ -3,13 +3,13 @@ package inbound
 import (
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
-	"github.com/metacubex/mihomo/listener/sing_vmess"
+	"github.com/metacubex/mihomo/listener/sing_vless"
 	"github.com/metacubex/mihomo/log"
 )
 
-type VmessOption struct {
+type VlessOption struct {
 	BaseOption
-	Users         []VmessUser   `inbound:"users"`
+	Users         []VlessUser   `inbound:"users"`
 	WsPath        string        `inbound:"ws-path,omitempty"`
 	Certificate   string        `inbound:"certificate,omitempty"`
 	PrivateKey    string        `inbound:"private-key,omitempty"`
@@ -17,40 +17,40 @@ type VmessOption struct {
 	MuxOption     MuxOption     `inbound:"mux-option,omitempty"`
 }
 
-type VmessUser struct {
+type VlessUser struct {
 	Username string `inbound:"username,omitempty"`
 	UUID     string `inbound:"uuid"`
-	AlterID  int    `inbound:"alterId"`
+	Flow     string `inbound:"flow,omitempty"`
 }
 
-func (o VmessOption) Equal(config C.InboundConfig) bool {
+func (o VlessOption) Equal(config C.InboundConfig) bool {
 	return optionToString(o) == optionToString(config)
 }
 
-type Vmess struct {
+type Vless struct {
 	*Base
-	config *VmessOption
+	config *VlessOption
 	l      C.MultiAddrListener
-	vs     LC.VmessServer
+	vs     LC.VlessServer
 }
 
-func NewVmess(options *VmessOption) (*Vmess, error) {
+func NewVless(options *VlessOption) (*Vless, error) {
 	base, err := NewBase(&options.BaseOption)
 	if err != nil {
 		return nil, err
 	}
-	users := make([]LC.VmessUser, len(options.Users))
+	users := make([]LC.VlessUser, len(options.Users))
 	for i, v := range options.Users {
-		users[i] = LC.VmessUser{
+		users[i] = LC.VlessUser{
 			Username: v.Username,
 			UUID:     v.UUID,
-			AlterID:  v.AlterID,
+			Flow:     v.Flow,
 		}
 	}
-	return &Vmess{
+	return &Vless{
 		Base:   base,
 		config: options,
-		vs: LC.VmessServer{
+		vs: LC.VlessServer{
 			Enable:        true,
 			Listen:        base.RawAddress(),
 			Users:         users,
@@ -64,12 +64,12 @@ func NewVmess(options *VmessOption) (*Vmess, error) {
 }
 
 // Config implements constant.InboundListener
-func (v *Vmess) Config() C.InboundConfig {
+func (v *Vless) Config() C.InboundConfig {
 	return v.config
 }
 
 // Address implements constant.InboundListener
-func (v *Vmess) Address() string {
+func (v *Vless) Address() string {
 	if v.l != nil {
 		for _, addr := range v.l.AddrList() {
 			return addr.String()
@@ -79,27 +79,27 @@ func (v *Vmess) Address() string {
 }
 
 // Listen implements constant.InboundListener
-func (v *Vmess) Listen(tunnel C.Tunnel) error {
+func (v *Vless) Listen(tunnel C.Tunnel) error {
 	var err error
-	users := make([]LC.VmessUser, len(v.config.Users))
+	users := make([]LC.VlessUser, len(v.config.Users))
 	for i, v := range v.config.Users {
-		users[i] = LC.VmessUser{
+		users[i] = LC.VlessUser{
 			Username: v.Username,
 			UUID:     v.UUID,
-			AlterID:  v.AlterID,
+			Flow:     v.Flow,
 		}
 	}
-	v.l, err = sing_vmess.New(v.vs, tunnel, v.Additions()...)
+	v.l, err = sing_vless.New(v.vs, tunnel, v.Additions()...)
 	if err != nil {
 		return err
 	}
-	log.Infoln("Vmess[%s] proxy listening at: %s", v.Name(), v.Address())
+	log.Infoln("Vless[%s] proxy listening at: %s", v.Name(), v.Address())
 	return nil
 }
 
 // Close implements constant.InboundListener
-func (v *Vmess) Close() error {
+func (v *Vless) Close() error {
 	return v.l.Close()
 }
 
-var _ C.InboundListener = (*Vmess)(nil)
+var _ C.InboundListener = (*Vless)(nil)

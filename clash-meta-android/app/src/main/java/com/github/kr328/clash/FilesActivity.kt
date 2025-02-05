@@ -81,24 +81,6 @@ class FilesActivity : BaseActivity<FilesDesign>() {
                                 client.renameDocument(it.file.id, newName)
                             }
                             is FilesDesign.Request.ImportFile -> {
-                                if (Build.VERSION.SDK_INT >= 23) {
-                                    val hasPermission = ContextCompat.checkSelfPermission(
-                                        this@FilesActivity,
-                                        Manifest.permission.READ_EXTERNAL_STORAGE
-                                    ) == PackageManager.PERMISSION_GRANTED
-
-                                    if (!hasPermission) {
-                                        val granted = startActivityForResult(
-                                            ActivityResultContracts.RequestPermission(),
-                                            Manifest.permission.READ_EXTERNAL_STORAGE,
-                                        )
-
-                                        if (!granted) {
-                                            return@onReceive
-                                        }
-                                    }
-                                }
-
                                 val uri: Uri? = startActivityForResult(
                                     ActivityResultContracts.GetContent(),
                                     "*/*"

@@ -7,16 +7,16 @@ import (
 	"github.com/metacubex/mihomo/listener/sing"
 )
 
-type VmessUser struct {
+type VlessUser struct {
 	Username string
 	UUID     string
-	AlterID  int
+	Flow     string
 }
 
-type VmessServer struct {
+type VlessServer struct {
 	Enable        bool
 	Listen        string
-	Users         []VmessUser
+	Users         []VlessUser
 	WsPath        string
 	Certificate   string
 	PrivateKey    string
@@ -24,7 +24,7 @@ type VmessServer struct {
 	MuxOption     sing.MuxOption `yaml:"mux-option" json:"mux-option,omitempty"`
 }
 
-func (t VmessServer) String() string {
+func (t VlessServer) String() string {
 	b, _ := json.Marshal(t)
 	return string(b)
 }
