@@ -279,25 +279,27 @@ func (c *Config) parseServerName() string {
 }
 
 func (r *RandCarrier) verifyPeerCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	if len(r.VerifyPeerCertInNames) > 0 {
-		certs := make([]*x509.Certificate, len(rawCerts))
-		for i, asn1Data := range rawCerts {
-			certs[i], _ = x509.ParseCertificate(asn1Data)
-		}
-		opts := x509.VerifyOptions{
-			Roots:         r.RootCAs,
-			CurrentTime:   time.Now(),
-			Intermediates: x509.NewCertPool(),
-		}
-		for _, cert := range certs[1:] {
-			opts.Intermediates.AddCert(cert)
-		}
-		for _, opts.DNSName = range r.VerifyPeerCertInNames {
-			if _, err := certs[0].Verify(opts); err == nil {
-				return nil
+	if r.VerifyPeerCertInNames != nil {
+		if len(r.VerifyPeerCertInNames) > 0 {
+			certs := make([]*x509.Certificate, len(rawCerts))
+			for i, asn1Data := range rawCerts {
+				certs[i], _ = x509.ParseCertificate(asn1Data)
+			}
+			opts := x509.VerifyOptions{
+				Roots:         r.RootCAs,
+				CurrentTime:   time.Now(),
+				Intermediates: x509.NewCertPool(),
+			}
+			for _, cert := range certs[1:] {
+				opts.Intermediates.AddCert(cert)
+			}
+			for _, opts.DNSName = range r.VerifyPeerCertInNames {
+				if _, err := certs[0].Verify(opts); err == nil {
+					return nil
+				}
 			}
 		}
-		if r.PinnedPeerCertificateChainSha256 == nil && r.PinnedPeerCertificatePublicKeySha256 == nil {
+		if r.PinnedPeerCertificateChainSha256 == nil {
 			errors.New("peer cert is invalid.")
 		}
 	}
@@ -373,6 +375,8 @@ func (c *Config) GetTLSConfig(opts ...Option) *tls.Config {
 	}
 	if len(c.VerifyPeerCertInNames) > 0 {
 		config.InsecureSkipVerify = true
+	} else {
+		randCarrier.VerifyPeerCertInNames = nil
 	}
 
 	for _, opt := range opts {

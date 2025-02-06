@@ -202,19 +202,20 @@ type Config struct {
 	// TLS Client Hello fingerprint (uTLS).
 	Fingerprint      string `protobuf:"bytes,11,opt,name=fingerprint,proto3" json:"fingerprint,omitempty"`
 	RejectUnknownSni bool   `protobuf:"varint,12,opt,name=reject_unknown_sni,json=rejectUnknownSni,proto3" json:"reject_unknown_sni,omitempty"`
-	// @Document A pinned certificate chain sha256 hash.
-	// @Document If the server's hash does not match this value, the connection will be aborted.
-	// @Document This value replace allow_insecure.
+	// @Document Some certificate chain sha256 hashes.
+	// @Document After normal validation or allow_insecure, if the server's cert chain hash does not match any of these values, the connection will be aborted.
 	// @Critical
 	PinnedPeerCertificateChainSha256 [][]byte `protobuf:"bytes,13,rep,name=pinned_peer_certificate_chain_sha256,json=pinnedPeerCertificateChainSha256,proto3" json:"pinned_peer_certificate_chain_sha256,omitempty"`
-	// @Document A pinned certificate public key sha256 hash.
-	// @Document If the server's public key hash does not match this value, the connection will be aborted.
-	// @Document This value replace allow_insecure.
+	// @Document Some certificate public key sha256 hashes.
+	// @Document After normal validation (required), if the verified cert's public key hash does not match any of these values, the connection will be aborted.
 	// @Critical
 	PinnedPeerCertificatePublicKeySha256 [][]byte `protobuf:"bytes,14,rep,name=pinned_peer_certificate_public_key_sha256,json=pinnedPeerCertificatePublicKeySha256,proto3" json:"pinned_peer_certificate_public_key_sha256,omitempty"`
 	MasterKeyLog                         string   `protobuf:"bytes,15,opt,name=master_key_log,json=masterKeyLog,proto3" json:"master_key_log,omitempty"`
 	// Lists of string as CurvePreferences values.
-	CurvePreferences      []string `protobuf:"bytes,16,rep,name=curve_preferences,json=curvePreferences,proto3" json:"curve_preferences,omitempty"`
+	CurvePreferences []string `protobuf:"bytes,16,rep,name=curve_preferences,json=curvePreferences,proto3" json:"curve_preferences,omitempty"`
+	// @Document Replaces server_name to verify the peer cert.
+	// @Document After allow_insecure (automatically), if the server's cert can't be verified by any of these names, pinned_peer_certificate_chain_sha256 will be tried.
+	// @Critical
 	VerifyPeerCertInNames []string `protobuf:"bytes,17,rep,name=verify_peer_cert_in_names,json=verifyPeerCertInNames,proto3" json:"verify_peer_cert_in_names,omitempty"`
 }
 
