@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -24,6 +25,7 @@
 #include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/common/platform/api/quiche_export.h"
+#include "quiche/web_transport/web_transport.h"
 
 namespace moqt {
 
@@ -32,11 +34,11 @@ inline constexpr quic::ParsedQuicVersionVector GetMoqtSupportedQuicVersions() {
 }
 
 enum class MoqtVersion : uint64_t {
-  kDraft06 = 0xff000006,
+  kDraft07 = 0xff000007,
   kUnrecognizedVersionForTests = 0xfe0000ff,
 };
 
-inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft06;
+inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft07;
 inline constexpr uint64_t kDefaultInitialMaxSubscribeId = 100;
 
 struct QUICHE_EXPORT MoqtSessionParameters {
@@ -66,7 +68,6 @@ inline constexpr size_t kMaxMessageHeaderSize = 2048;
 
 enum class QUICHE_EXPORT MoqtDataStreamType : uint64_t {
   kObjectDatagram = 0x01,
-  kStreamHeaderTrack = 0x02,
   kStreamHeaderSubgroup = 0x04,
   kStreamHeaderFetch = 0x05,
 
@@ -122,9 +123,10 @@ enum class QUICHE_EXPORT MoqtError : uint64_t {
 // Error codes used by MoQT to reset streams.
 // TODO: update with spec-defined error codes once those are available, see
 // <https://github.com/moq-wg/moq-transport/issues/481>.
-inline constexpr uint64_t kResetCodeUnknown = 0x00;
-inline constexpr uint64_t kResetCodeSubscriptionGone = 0x01;
-inline constexpr uint64_t kResetCodeTimedOut = 0x02;
+inline constexpr webtransport::StreamErrorCode kResetCodeUnknown = 0x00;
+inline constexpr webtransport::StreamErrorCode kResetCodeSubscriptionGone =
+    0x01;
+inline constexpr webtransport::StreamErrorCode kResetCodeTimedOut = 0x02;
 
 enum class QUICHE_EXPORT MoqtRole : uint64_t {
   kPublisher = 0x1,
@@ -157,6 +159,20 @@ enum class QUICHE_EXPORT MoqtTrackRequestParameter : uint64_t {
 enum class MoqtAnnounceErrorCode : uint64_t {
   kInternalError = 0,
   kAnnounceNotSupported = 1,
+};
+
+enum class QUICHE_EXPORT SubscribeErrorCode : uint64_t {
+  kInternalError = 0x0,
+  kInvalidRange = 0x1,
+  kRetryTrackAlias = 0x2,
+  kTrackDoesNotExist = 0x3,
+  kUnauthorized = 0x4,
+  kTimeout = 0x5,
+};
+
+struct MoqtSubscribeErrorReason {
+  SubscribeErrorCode error_code;
+  std::string reason_phrase;
 };
 
 struct MoqtAnnounceErrorReason {
@@ -305,7 +321,6 @@ struct QUICHE_EXPORT MoqtServerSetup {
 
 // These codes do not appear on the wire.
 enum class QUICHE_EXPORT MoqtForwardingPreference {
-  kTrack,
   kSubgroup,
   kDatagram,
 };
@@ -330,7 +345,6 @@ struct QUICHE_EXPORT MoqtObject {
   uint64_t object_id;
   MoqtPriority publisher_priority;
   MoqtObjectStatus object_status;
-  MoqtForwardingPreference forwarding_preference;
   std::optional<uint64_t> subgroup_id;
   uint64_t payload_length;
 };
@@ -398,15 +412,6 @@ struct QUICHE_EXPORT MoqtSubscribeOk {
   // If ContextExists on the wire is zero, largest_id has no value.
   std::optional<FullSequence> largest_id;
   MoqtSubscribeParameters parameters;
-};
-
-enum class QUICHE_EXPORT SubscribeErrorCode : uint64_t {
-  kInternalError = 0x0,
-  kInvalidRange = 0x1,
-  kRetryTrackAlias = 0x2,
-  kTrackDoesNotExist = 0x3,
-  kUnauthorized = 0x4,
-  kTimeout = 0x5,
 };
 
 struct QUICHE_EXPORT MoqtSubscribeError {
@@ -496,8 +501,7 @@ struct QUICHE_EXPORT MoqtTrackStatus {
 
 struct QUICHE_EXPORT MoqtAnnounceCancel {
   FullTrackName track_namespace;
-  // TODO: What namespace is this error code in?
-  uint64_t error_code;
+  MoqtAnnounceErrorCode error_code;
   std::string reason_phrase;
 };
 
@@ -520,7 +524,7 @@ struct QUICHE_EXPORT MoqtSubscribeAnnouncesOk {
 
 struct QUICHE_EXPORT MoqtSubscribeAnnouncesError {
   FullTrackName track_namespace;
-  MoqtAnnounceErrorCode error_code;
+  SubscribeErrorCode error_code;
   std::string reason_phrase;
 };
 
@@ -581,6 +585,9 @@ MoqtForwardingPreference GetForwardingPreference(MoqtDataStreamType type);
 
 MoqtDataStreamType GetMessageTypeForForwardingPreference(
     MoqtForwardingPreference preference);
+
+absl::Status MoqtStreamErrorToStatus(webtransport::StreamErrorCode error_code,
+                                     absl::string_view reason_phrase);
 
 }  // namespace moqt
 

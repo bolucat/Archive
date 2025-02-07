@@ -963,7 +963,7 @@ if KERNEL_CGROUPS
 		  Memory Controller, which are page-based, and can be swapped. Users of
 		  the kmem extension can use it to guarantee that no group of processes
 		  will ever exhaust kernel resources alone.
-		  
+
 	config KERNEL_MEMCG_V1
 		bool "Legacy cgroup v1 memory controller"
 		default n

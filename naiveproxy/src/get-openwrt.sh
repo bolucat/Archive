@@ -22,6 +22,12 @@ else
   path_suffix=sdk
 fi
 
+if [ "$major" -ge 24 ]; then
+  tarball_suffix=zst
+else
+  tarball_suffix=xz
+fi
+
 if [ ! "$subtarget" ]; then
   subtarget=generic
 fi
@@ -31,9 +37,13 @@ if [ "$subtarget" != generic -o "$major" -ge 22 ]; then
 else
   SDK_PATH=openwrt-$path_suffix-$release-${target}_gcc-${gcc_ver}_${abi}.Linux-x86_64
 fi
-SDK_URL=https://downloads.openwrt.org/releases/$release/targets/$target/$subtarget/$SDK_PATH.tar.xz
+SDK_URL=https://downloads.openwrt.org/releases/$release/targets/$target/$subtarget/$SDK_PATH.tar.$tarball_suffix
 rm -rf $SDK_PATH
-curl $SDK_URL | tar xJf -
+if [ $tarball_suffix = xz ]; then
+  curl $SDK_URL | tar xJf -
+elif [ $tarball_suffix = zst ]; then
+  curl $SDK_URL | tar --zstd -xf -
+fi
 
 full_root=toolchain-*_gcc-${gcc_ver}_${abi}
 

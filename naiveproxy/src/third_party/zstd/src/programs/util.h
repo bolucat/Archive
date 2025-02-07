@@ -11,23 +11,18 @@
 #ifndef UTIL_H_MODULE
 #define UTIL_H_MODULE
 
-#if defined (__cplusplus)
-extern "C" {
-#endif
-
-
 /*-****************************************
 *  Dependencies
 ******************************************/
 #include "platform.h"     /* PLATFORM_POSIX_VERSION, ZSTD_NANOSLEEP_SUPPORT, ZSTD_SETPRIORITY_SUPPORT */
 #include <stddef.h>       /* size_t, ptrdiff_t */
+#include <stdio.h>        /* FILE */
 #include <sys/types.h>    /* stat, utime */
 #include <sys/stat.h>     /* stat, chmod */
 #include "../lib/common/mem.h"          /* U64 */
 
-
 /*-************************************************************
-* Avoid fseek()'s 2GiB barrier with MSVC, macOS, *BSD, MinGW
+*  Fix fseek()'s 2GiB barrier with MSVC, macOS, *BSD, MinGW
 ***************************************************************/
 #if defined(_MSC_VER) && (_MSC_VER >= 1400)
 #  define UTIL_fseek _fseeki64
@@ -38,7 +33,6 @@ extern "C" {
 #else
 #  define UTIL_fseek fseek
 #endif
-
 
 /*-*************************************************
 *  Sleep & priority functions: Windows - Posix - others
@@ -87,6 +81,10 @@ extern "C" {
 #  define UTIL_STATIC static  /* this version may generate warnings for unused static functions; disable the relevant warning */
 #endif
 
+
+#if defined (__cplusplus)
+extern "C" {
+#endif
 
 /*-****************************************
 *  Console log

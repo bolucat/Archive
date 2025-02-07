@@ -103,8 +103,9 @@ extern "C" {
 NO_SANITIZE("cfi-icall")
 __attribute__((visibility("default"), noinline)) int close(int fd) {
   static LibcCloseFuncPtr libc_close = LoadCloseSymbol();
-  if (base::IsFDOwned(fd) && g_is_ownership_enforced)
+  if (base::IsFDOwned(fd) && g_is_ownership_enforced) {
     CrashOnFdOwnershipViolation();
+  }
   if (libc_close == nullptr) {
     RAW_LOG(ERROR, "close symbol missing\n");
     base::ImmediateCrash();
@@ -112,6 +113,6 @@ __attribute__((visibility("default"), noinline)) int close(int fd) {
   return libc_close(fd);
 }
 
-}  // extern "C"
+}       // extern "C"
 #endif  // !defined(COMPONENT_BUILD)
 #endif  // OPENWRT_BUILD_STATIC

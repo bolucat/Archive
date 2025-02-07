@@ -1,150 +1,13 @@
-/* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
- * All rights reserved.
- *
- * This package is an SSL implementation written
- * by Eric Young (eay@cryptsoft.com).
- * The implementation was written so as to conform with Netscapes SSL.
- *
- * This library is free for commercial and non-commercial use as long as
- * the following conditions are aheared to.  The following conditions
- * apply to all code found in this distribution, be it the RC4, RSA,
- * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
- * included with this distribution is covered by the same copyright terms
- * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- *
- * Copyright remains Eric Young's, and as such any Copyright notices in
- * the code are not to be removed.
- * If this package is used in a product, Eric Young should be given attribution
- * as the author of the parts of the library used.
- * This can be in the form of a textual message at program startup or
- * in documentation (online or textual) provided with the package.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    "This product includes cryptographic software written by
- *     Eric Young (eay@cryptsoft.com)"
- *    The word 'cryptographic' can be left out if the rouines from the library
- *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from
- *    the apps directory (application code) you must include an acknowledgement:
- *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- *
- * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- * The licence and distribution terms for any publically available version or
- * derivative of this code cannot be changed.  i.e. this code cannot simply be
- * copied and put under another distribution licence
- * [including the GNU Public Licence.]
- */
-/* ====================================================================
- * Copyright (c) 1998-2007 The OpenSSL Project.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *
- * 3. All advertising materials mentioning features or use of this
- *    software must display the following acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
- *
- * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For written permission, please contact
- *    openssl-core@openssl.org.
- *
- * 5. Products derived from this software may not be called "OpenSSL"
- *    nor may "OpenSSL" appear in their names without prior written
- *    permission of the OpenSSL Project.
- *
- * 6. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
- *
- * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
- * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OpenSSL PROJECT OR
- * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
- * ====================================================================
- *
- * This product includes cryptographic software written by Eric Young
- * (eay@cryptsoft.com).  This product includes software written by Tim
- * Hudson (tjh@cryptsoft.com).
- *
- */
-/* ====================================================================
- * Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED.
- *
- * Portions of the attached software ("Contribution") are developed by
- * SUN MICROSYSTEMS, INC., and are contributed to the OpenSSL project.
- *
- * The Contribution is licensed pursuant to the OpenSSL open source
- * license provided above.
- *
- * ECC cipher suite support in OpenSSL originally written by
- * Vipul Gupta and Sumit Gupta of Sun Microsystems Laboratories.
- *
- */
-/* ====================================================================
+/*
+ * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2005 Nokia. All rights reserved.
  *
- * The portions of the attached software ("Contribution") is developed by
- * Nokia Corporation and is licensed pursuant to the OpenSSL open source
- * license.
- *
- * The Contribution, originally written by Mika Kousa and Pasi Eronen of
- * Nokia Corporation, consists of the "PSK" (Pre-Shared Key) ciphersuites
- * support (see RFC 4279) to OpenSSL.
- *
- * No patent licenses or other rights except those expressly stated in
- * the OpenSSL open source license shall be deemed granted or received
- * expressly, by implication, estoppel, or otherwise.
- *
- * No assurances are provided by Nokia that the Contribution does not
- * infringe the patent or other intellectual property rights of any third
- * party or that the license provides you with all the necessary rights
- * to make use of the Contribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. IN
- * ADDITION TO THE DISCLAIMERS INCLUDED IN THE LICENSE, NOKIA
- * SPECIFICALLY DISCLAIMS ANY LIABILITY FOR CLAIMS BROUGHT BY YOU OR ANY
- * OTHER ENTITY BASED ON INFRINGEMENT OF INTELLECTUAL PROPERTY RIGHTS OR
- * OTHERWISE. */
+ * Licensed under the OpenSSL license (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://www.openssl.org/source/license.html
+ */
 
 #include <openssl/ssl.h>
 
@@ -167,8 +30,8 @@
 #include <openssl/rand.h>
 #include <openssl/x509.h>
 
-#include "internal.h"
 #include "../crypto/internal.h"
+#include "internal.h"
 
 
 BSSL_NAMESPACE_BEGIN
@@ -200,8 +63,8 @@ static bool negotiate_version(SSL_HANDSHAKE *hs, uint8_t *out_alert,
   CBS supported_versions, versions;
   if (ssl_client_hello_get_extension(client_hello, &supported_versions,
                                      TLSEXT_TYPE_supported_versions)) {
-    if (!CBS_get_u8_length_prefixed(&supported_versions, &versions) ||
-        CBS_len(&supported_versions) != 0 ||
+    if (!CBS_get_u8_length_prefixed(&supported_versions, &versions) ||  //
+        CBS_len(&supported_versions) != 0 ||                            //
         CBS_len(&versions) == 0) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
       *out_alert = SSL_AD_DECODE_ERROR;
@@ -316,12 +179,12 @@ static const SSL_CIPHER *choose_cipher(SSL_HANDSHAKE *hs,
     const SSL_CIPHER *c = sk_SSL_CIPHER_value(prio, i);
 
     size_t cipher_index;
-    if (// Check if the cipher is supported for the current version.
-        SSL_CIPHER_get_min_version(c) <= ssl_protocol_version(ssl) &&
-        ssl_protocol_version(ssl) <= SSL_CIPHER_get_max_version(c) &&
+    if (  // Check if the cipher is supported for the current version.
+        SSL_CIPHER_get_min_version(c) <= ssl_protocol_version(ssl) &&  //
+        ssl_protocol_version(ssl) <= SSL_CIPHER_get_max_version(c) &&  //
         // Check the cipher is supported for the server configuration.
-        (c->algorithm_mkey & mask_k) &&
-        (c->algorithm_auth & mask_a) &&
+        (c->algorithm_mkey & mask_k) &&  //
+        (c->algorithm_auth & mask_a) &&  //
         // Check the cipher is in the |allow| list.
         sk_SSL_CIPHER_find(allow, &cipher_index, c)) {
       if (in_group_flags != NULL && in_group_flags[i]) {
@@ -503,15 +366,16 @@ static bool is_probably_jdk11_with_tls13(const SSL_CLIENT_HELLO *client_hello) {
   // clients implement X25519.
   while (CBS_len(&supported_groups) > 0) {
     uint16_t group;
-    if (!CBS_get_u16(&supported_groups, &group) ||
+    if (!CBS_get_u16(&supported_groups, &group) ||  //
         group == SSL_GROUP_X25519) {
       return false;
     }
   }
 
-  if (// JDK 11 always sends the same contents in signature_algorithms and
-      // signature_algorithms_cert. This is unusual: signature_algorithms_cert,
-      // if omitted, is treated as if it were signature_algorithms.
+  if (  // JDK 11 always sends the same contents in signature_algorithms and
+        // signature_algorithms_cert. This is unusual:
+        // signature_algorithms_cert, if omitted, is treated as if it were
+        // signature_algorithms.
       sigalgs != sigalgs_cert ||
       // When TLS 1.2 or below is enabled, JDK 11 sends status_request_v2 iff it
       // sends status_request. This is unusual: status_request_v2 is not widely
@@ -616,8 +480,8 @@ static bool extract_sni(SSL_HANDSHAKE *hs, uint8_t *out_alert,
 
   CBS server_name_list, host_name;
   uint8_t name_type;
-  if (!CBS_get_u16_length_prefixed(&sni, &server_name_list) ||
-      !CBS_get_u8(&server_name_list, &name_type) ||
+  if (!CBS_get_u16_length_prefixed(&sni, &server_name_list) ||  //
+      !CBS_get_u8(&server_name_list, &name_type) ||             //
       // Although the server_name extension was intended to be extensible to
       // new name types and multiple names, OpenSSL 1.0.x had a bug which meant
       // different name types will cause an error. Further, RFC 4366 originally
@@ -625,16 +489,16 @@ static bool extract_sni(SSL_HANDSHAKE *hs, uint8_t *out_alert,
       // adding new name types is no longer feasible.
       //
       // Act as if the extensibility does not exist to simplify parsing.
-      !CBS_get_u16_length_prefixed(&server_name_list, &host_name) ||
-      CBS_len(&server_name_list) != 0 ||
+      !CBS_get_u16_length_prefixed(&server_name_list, &host_name) ||  //
+      CBS_len(&server_name_list) != 0 ||                              //
       CBS_len(&sni) != 0) {
     *out_alert = SSL_AD_DECODE_ERROR;
     return false;
   }
 
-  if (name_type != TLSEXT_NAMETYPE_host_name ||
-      CBS_len(&host_name) == 0 ||
-      CBS_len(&host_name) > TLSEXT_MAXLEN_host_name ||
+  if (name_type != TLSEXT_NAMETYPE_host_name ||         //
+      CBS_len(&host_name) == 0 ||                       //
+      CBS_len(&host_name) > TLSEXT_MAXLEN_host_name ||  //
       CBS_contains_zero_byte(&host_name)) {
     *out_alert = SSL_AD_UNRECOGNIZED_NAME;
     return false;
@@ -735,7 +599,7 @@ static enum ssl_hs_wait_t do_read_client_hello_after_ech(SSL_HANDSHAKE *hs) {
         return ssl_hs_error;
 
       default:
-        /* fallthrough */;
+          /* fallthrough */;
     }
   }
 
@@ -941,7 +805,8 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
     // Assign a session ID if not using session tickets.
     if (!hs->ticket_expected &&
         (ssl->ctx->session_cache_mode & SSL_SESS_CACHE_SERVER)) {
-      hs->new_session->session_id.ResizeForOverwrite(SSL3_SSL_SESSION_ID_LENGTH);
+      hs->new_session->session_id.ResizeForOverwrite(
+          SSL3_SSL_SESSION_ID_LENGTH);
       RAND_bytes(hs->new_session->session_id.data(),
                  hs->new_session->session_id.size());
     }
@@ -1042,8 +907,7 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
     OPENSSL_memcpy(ssl->s3->server_random, hints->server_random_tls12.data(),
                    SSL3_RANDOM_SIZE);
   } else {
-    struct OPENSSL_timeval now;
-    ssl_get_current_time(ssl, &now);
+    OPENSSL_timeval now = ssl_ctx_get_current_time(ssl->ctx.get());
     CRYPTO_store_u32_be(ssl->s3->server_random,
                         static_cast<uint32_t>(now.tv_sec));
     if (!RAND_bytes(ssl->s3->server_random + 4, SSL3_RANDOM_SIZE - 4)) {
@@ -1056,7 +920,7 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
   }
 
   // Implement the TLS 1.3 anti-downgrade feature.
-  if (ssl_supports_version(hs, TLS1_3_VERSION)) {
+  if (hs->max_version >= TLS1_3_VERSION) {
     if (ssl_protocol_version(ssl) == TLS1_2_VERSION) {
       if (hs->apply_jdk11_workaround) {
         // JDK 11 implements the TLS 1.3 downgrade signal, so we cannot send it
@@ -1165,9 +1029,9 @@ static enum ssl_hs_wait_t do_send_server_certificate(SSL_HANDSHAKE *hs) {
     if (alg_k & SSL_kECDHE) {
       assert(hs->new_session->group_id != 0);
       hs->key_shares[0] = SSLKeyShare::Create(hs->new_session->group_id);
-      if (!hs->key_shares[0] ||
-          !CBB_add_u8(cbb.get(), NAMED_CURVE_TYPE) ||
-          !CBB_add_u16(cbb.get(), hs->new_session->group_id) ||
+      if (!hs->key_shares[0] ||                                  //
+          !CBB_add_u8(cbb.get(), NAMED_CURVE_TYPE) ||            //
+          !CBB_add_u16(cbb.get(), hs->new_session->group_id) ||  //
           !CBB_add_u8_length_prefixed(cbb.get(), &child)) {
         return ssl_hs_error;
       }
@@ -1771,7 +1635,7 @@ static enum ssl_hs_wait_t do_read_channel_id(SSL_HANDSHAKE *hs) {
   }
 
   if (!ssl_check_message_type(ssl, msg, SSL3_MT_CHANNEL_ID) ||
-      !tls1_verify_channel_id(hs, msg) ||
+      !tls1_verify_channel_id(hs, msg) ||  //
       !ssl_hash_message(hs, msg)) {
     return ssl_hs_error;
   }
@@ -1835,13 +1699,16 @@ static enum ssl_hs_wait_t do_send_server_finished(SSL_HANDSHAKE *hs) {
         !CBB_add_u32(&body, session->timeout) ||
         !CBB_add_u16_length_prefixed(&body, &ticket) ||
         !ssl_encrypt_ticket(hs, &ticket, session) ||
+        // |ticket| may be empty to skip sending a ticket. In TLS 1.2, servers
+        // skip sending tickets by sending empty NewSessionTicket, so no special
+        // handling is needed.
         !ssl_add_message_cbb(ssl, cbb.get())) {
       return ssl_hs_error;
     }
   }
 
-  if (!ssl->method->add_change_cipher_spec(ssl) ||
-      !tls1_change_cipher_state(hs, evp_aead_seal) ||
+  if (!ssl->method->add_change_cipher_spec(ssl) ||     //
+      !tls1_change_cipher_state(hs, evp_aead_seal) ||  //
       !ssl_send_finished(hs)) {
     return ssl_hs_error;
   }

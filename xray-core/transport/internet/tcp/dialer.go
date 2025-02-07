@@ -53,7 +53,7 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 			if mitmAlpn11 {
 				tlsConfig.NextProtos[0] = "http/1.1"
 			} else {
-				tlsConfig.NextProtos = nil
+				tlsConfig.NextProtos = []string{"h2", "http/1.1"}
 			}
 		}
 		if fingerprint := tls.GetFingerprint(config.Fingerprint); fingerprint != nil {
@@ -69,13 +69,14 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 		}
 		if err != nil {
 			if isFromMitmVerify {
-				return nil, errors.New("MITM: failed to verify " + mitmServerName).Base(err).AtWarning()
+				return nil, errors.New("MITM freedom RAW TLS: failed to verify Domain Fronting certificate from " + mitmServerName).Base(err).AtWarning()
 			}
 			return nil, err
 		}
-		if isFromMitmAlpn && !mitmAlpn11 && conn.(tls.Interface).NegotiatedProtocol() == "http/1.1" {
+		negotiatedProtocol := conn.(tls.Interface).NegotiatedProtocol()
+		if isFromMitmAlpn && !mitmAlpn11 && negotiatedProtocol != "h2" {
 			conn.Close()
-			return nil, errors.New("MITM: received unexpected ALPN http/1.1 from " + mitmServerName).AtWarning()
+			return nil, errors.New("MITM freedom RAW TLS: unexpected Negotiated Protocol (" + negotiatedProtocol + ") with " + mitmServerName).AtWarning()
 		}
 	} else if config := reality.ConfigFromStreamSettings(streamSettings); config != nil {
 		if conn, err = reality.UClient(conn, config, ctx, dest); err != nil {

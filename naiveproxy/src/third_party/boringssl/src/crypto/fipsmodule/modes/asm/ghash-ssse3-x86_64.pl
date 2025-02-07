@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Copyright (c) 2019, Google Inc.
+# Copyright 2019 The BoringSSL Authors
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -156,7 +156,7 @@ sub process_rows {
     return <<____;
 	movq	\$$rows, %rax
 .Loop_row_$call_counter:
-	movdqa	($Htable), %xmm4
+	movdqu	($Htable), %xmm4
 	leaq	16($Htable), $Htable
 
 	# Right-shift %xmm2 and %xmm3 by 8 bytes.

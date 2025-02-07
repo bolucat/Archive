@@ -92,6 +92,8 @@ source_set("dns") {
     "resolve_context.h",
     "serial_worker.cc",
     "serial_worker.h",
+    "stale_host_resolver.cc",
+    "stale_host_resolver.h",
     "system_dns_config_change_notifier.cc",
     "system_dns_config_change_notifier.h",
     "test_dns_config_service.cc",

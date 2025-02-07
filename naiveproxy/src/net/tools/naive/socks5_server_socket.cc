@@ -126,7 +126,7 @@ NextProto Socks5ServerSocket::GetNegotiatedProtocol() const {
     return transport_->GetNegotiatedProtocol();
   }
   NOTREACHED();
-  return kProtoUnknown;
+  return NextProto::kProtoUnknown;
 }
 
 bool Socks5ServerSocket::GetSSLInfo(SSLInfo* ssl_info) {

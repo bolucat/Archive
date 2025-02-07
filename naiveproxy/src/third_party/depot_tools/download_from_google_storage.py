@@ -143,7 +143,8 @@ class Gsutil(object):
         if status_code_match:
             return (int(status_code_match.group(1)), out, err)
         if ('ServiceException: 401 Anonymous' in err):
-            return (401, out, err)
+            return (401, out, err + '\nTry running "gsutil.py config" to log '
+                    ' into Google Cloud Storage.')
         if ('You are attempting to access protected data with '
                 'no configured credentials.' in err):
             return (403, out, err)

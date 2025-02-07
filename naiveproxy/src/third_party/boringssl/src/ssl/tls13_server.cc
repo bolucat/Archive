@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, Google Inc.
+/* Copyright 2016 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -99,9 +99,9 @@ static bool resolve_ecdhe_secret(SSL_HANDSHAKE *hs,
 static int ssl_ext_supported_versions_add_serverhello(SSL_HANDSHAKE *hs,
                                                       CBB *out) {
   CBB contents;
-  if (!CBB_add_u16(out, TLSEXT_TYPE_supported_versions) ||
-      !CBB_add_u16_length_prefixed(out, &contents) ||
-      !CBB_add_u16(&contents, hs->ssl->s3->version) ||
+  if (!CBB_add_u16(out, TLSEXT_TYPE_supported_versions) ||  //
+      !CBB_add_u16_length_prefixed(out, &contents) ||       //
+      !CBB_add_u16(&contents, hs->ssl->s3->version) ||      //
       !CBB_flush(out)) {
     return 0;
   }
@@ -121,13 +121,13 @@ static const SSL_CIPHER *choose_tls13_cipher(
                                  ssl->config->aes_hw_override
                                      ? ssl->config->aes_hw_override_value
                                      : EVP_has_aes_hardware(),
-                                 version, ssl->config->tls13_cipher_policy);
+                                 version, ssl->config->compliance_policy);
 }
 
 static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
   SSL *const ssl = hs->ssl;
-  if (// If the client doesn't accept resumption with PSK_DHE_KE, don't send a
-      // session ticket.
+  if (  // If the client doesn't accept resumption with PSK_DHE_KE, don't send a
+        // session ticket.
       !hs->accept_psk_mode ||
       // We only implement stateless resumption in TLS 1.3, so skip sending
       // tickets if disabled.
@@ -141,6 +141,7 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
   ssl_session_rebase_time(ssl, hs->new_session.get());
 
   assert(ssl->session_ctx->num_tickets <= kMaxTickets);
+  bool sent_tickets = false;
   for (size_t i = 0; i < ssl->session_ctx->num_tickets; i++) {
     UniquePtr<SSL_SESSION> session(
         SSL_SESSION_dup(hs->new_session.get(), SSL_SESSION_INCLUDE_NONAUTH));
@@ -152,17 +153,17 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
       return false;
     }
     session->ticket_age_add_valid = true;
-    // TODO(crbug.com/42290594): Remove the SSL_is_dtls check once we support
+    // TODO(crbug.com/381113363): Remove the SSL_is_dtls check once we support
     // 0-RTT for DTLS 1.3.
     bool enable_early_data =
         ssl->enable_early_data &&
-        (!ssl->quic_method || !ssl->config->quic_early_data_context.empty()) &&
+        (!SSL_is_quic(ssl) || !ssl->config->quic_early_data_context.empty()) &&
         !SSL_is_dtls(ssl);
     if (enable_early_data) {
       // QUIC does not use the max_early_data_size parameter and always sets it
       // to a fixed value. See RFC 9001, section 4.6.1.
       session->ticket_max_early_data =
-          ssl->quic_method != nullptr ? 0xffffffff : kMaxEarlyDataAccepted;
+          SSL_is_quic(ssl) ? 0xffffffff : kMaxEarlyDataAccepted;
     }
 
     static_assert(kMaxTickets < 256, "Too many tickets");
@@ -177,10 +178,18 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
         !CBB_add_u32(&body, session->ticket_age_add) ||
         !CBB_add_u8_length_prefixed(&body, &nonce_cbb) ||
         !CBB_add_bytes(&nonce_cbb, nonce, sizeof(nonce)) ||
-        !CBB_add_u16_length_prefixed(&body, &ticket) ||
         !tls13_derive_session_psk(session.get(), nonce, SSL_is_dtls(ssl)) ||
-        !ssl_encrypt_ticket(hs, &ticket, session.get()) ||
-        !CBB_add_u16_length_prefixed(&body, &extensions)) {
+        !CBB_add_u16_length_prefixed(&body, &ticket) ||
+        !ssl_encrypt_ticket(hs, &ticket, session.get())) {
+      return false;
+    }
+
+    if (CBB_len(&ticket) == 0) {
+      // The caller decided not to encrypt a ticket. Skip the message.
+      continue;
+    }
+
+    if (!CBB_add_u16_length_prefixed(&body, &extensions)) {
       return false;
     }
 
@@ -204,9 +213,10 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
     if (!ssl_add_message_cbb(ssl, cbb.get())) {
       return false;
     }
+    sent_tickets = true;
   }
 
-  *out_sent_tickets = true;
+  *out_sent_tickets = sent_tickets;
   return true;
 }
 
@@ -247,7 +257,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  if (ssl->quic_method != nullptr && client_hello.session_id_len > 0) {
+  if (SSL_is_quic(ssl) && client_hello.session_id_len > 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_UNEXPECTED_COMPATIBILITY_MODE);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
     return ssl_hs_error;
@@ -375,8 +385,7 @@ static enum ssl_ticket_aead_result_t select_session(
   client_ticket_age -= session->ticket_age_add;
   client_ticket_age /= 1000;
 
-  struct OPENSSL_timeval now;
-  ssl_get_current_time(ssl, &now);
+  OPENSSL_timeval now = ssl_ctx_get_current_time(ssl->ctx.get());
 
   // Compute the server ticket age in seconds.
   assert(now.tv_sec >= session->time);
@@ -548,7 +557,7 @@ static enum ssl_hs_wait_t do_select_session(SSL_HANDSHAKE *hs) {
   }
 
   // Copy the QUIC early data context to the session.
-  if (ssl->enable_early_data && ssl->quic_method) {
+  if (ssl->enable_early_data && SSL_is_quic(ssl)) {
     if (!hs->new_session->quic_early_data_context.CopyFrom(
             hs->config->quic_early_data_context)) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
@@ -977,10 +986,9 @@ static enum ssl_hs_wait_t do_send_half_rtt_ticket(SSL_HANDSHAKE *hs) {
     // the wire sooner and also avoids triggering a write on |SSL_read| when
     // processing the client Finished. This requires computing the client
     // Finished early. See RFC 8446, section 4.6.1.
-    static const uint8_t kEndOfEarlyData[4] = {SSL3_MT_END_OF_EARLY_DATA, 0,
-                                               0, 0};
-    if (ssl->quic_method == nullptr &&
-        !hs->transcript.Update(kEndOfEarlyData)) {
+    static const uint8_t kEndOfEarlyData[4] = {SSL3_MT_END_OF_EARLY_DATA, 0, 0,
+                                               0};
+    if (!SSL_is_quic(ssl) && !hs->transcript.Update(kEndOfEarlyData)) {
       OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
       return ssl_hs_error;
     }
@@ -999,6 +1007,9 @@ static enum ssl_hs_wait_t do_send_half_rtt_ticket(SSL_HANDSHAKE *hs) {
 
     // Feed the predicted Finished into the transcript. This allows us to derive
     // the resumption secret early and send half-RTT tickets.
+    //
+    // TODO(crbug.com/381113363): Don't use half-RTT tickets with DTLS 1.3.
+    // TODO(crbug.com/376939532): Perhaps don't use half-RTT tickets at all.
     assert(!SSL_is_dtls(hs->ssl));
     assert(hs->expected_client_finished.size() <= 0xff);
     uint8_t header[4] = {
@@ -1020,7 +1031,7 @@ static enum ssl_hs_wait_t do_send_half_rtt_ticket(SSL_HANDSHAKE *hs) {
 static bool uses_end_of_early_data(const SSL *ssl) {
   // DTLS and QUIC omit the EndOfEarlyData message. See RFC 9001, section 8.3,
   // and RFC 9147, section 5.6.
-  return ssl->quic_method == nullptr && !SSL_is_dtls(ssl);
+  return !SSL_is_quic(ssl) && !SSL_is_dtls(ssl);
 }
 
 static enum ssl_hs_wait_t do_read_second_client_flight(SSL_HANDSHAKE *hs) {
@@ -1221,8 +1232,8 @@ static enum ssl_hs_wait_t do_read_channel_id(SSL_HANDSHAKE *hs) {
   if (!ssl->method->get_message(ssl, &msg)) {
     return ssl_hs_read_message;
   }
-  if (!ssl_check_message_type(ssl, msg, SSL3_MT_CHANNEL_ID) ||
-      !tls1_verify_channel_id(hs, msg) ||
+  if (!ssl_check_message_type(ssl, msg, SSL3_MT_CHANNEL_ID) ||  //
+      !tls1_verify_channel_id(hs, msg) ||                       //
       !ssl_hash_message(hs, msg)) {
     return ssl_hs_error;
   }
@@ -1250,7 +1261,7 @@ static enum ssl_hs_wait_t do_read_client_finished(SSL_HANDSHAKE *hs) {
   }
 
   if (!ssl->s3->early_data_accepted) {
-    if (!ssl_hash_message(hs, msg) ||
+    if (!ssl_hash_message(hs, msg) ||  //
         !tls13_derive_resumption_secret(hs)) {
       return ssl_hs_error;
     }
@@ -1263,26 +1274,29 @@ static enum ssl_hs_wait_t do_read_client_finished(SSL_HANDSHAKE *hs) {
   }
 
   ssl->method->next_message(ssl);
+  if (SSL_is_dtls(ssl)) {
+    ssl->method->schedule_ack(ssl);
+    return ssl_hs_flush;
+  }
   return ssl_hs_ok;
 }
 
 static enum ssl_hs_wait_t do_send_new_session_ticket(SSL_HANDSHAKE *hs) {
+  SSL *const ssl = hs->ssl;
   bool sent_tickets;
   if (!add_new_session_tickets(hs, &sent_tickets)) {
     return ssl_hs_error;
   }
 
   hs->tls13_state = state13_done;
-  // In TLS 1.3, the NewSessionTicket isn't flushed until the server performs a
-  // write, to prevent a non-reading client from causing the server to hang in
-  // the case of a small server write buffer. Consumers which don't write data
-  // to the client will need to do a zero-byte write if they wish to flush the
+  // In QUIC and DTLS, we can flush the ticket to the transport immediately. In
+  // TLS over TCP-like transports, we defer until the server performs a write.
+  // This prevents a non-reading client from causing the server to hang in the
+  // case of a small server write buffer. Consumers which don't write data to
+  // the client will need to do a zero-byte write if they wish to flush the
   // tickets.
-  if ((hs->ssl->quic_method != nullptr || SSL_is_dtls(hs->ssl)) &&
-      sent_tickets) {
-    return ssl_hs_flush;
-  }
-  return ssl_hs_ok;
+  bool should_flush = sent_tickets && (SSL_is_dtls(ssl) || SSL_is_quic(ssl));
+  return should_flush ? ssl_hs_flush : ssl_hs_ok;
 }
 
 enum ssl_hs_wait_t tls13_server_handshake(SSL_HANDSHAKE *hs) {

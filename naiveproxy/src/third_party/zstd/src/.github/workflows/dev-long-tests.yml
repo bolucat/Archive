@@ -263,7 +263,7 @@ jobs:
         shell: msys2 {0}
     steps:
     - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # tag=v4.1.1
-    - uses: msys2/setup-msys2@ddf331adaebd714795f1042345e6ca57bd66cea8 # tag=v2.24.1
+    - uses: msys2/setup-msys2@c52d1fa9c7492275e60fe763540fb601f5f232a1 # tag=v2.25.0
       with:
         msystem: MINGW64
         install: make

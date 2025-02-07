@@ -1,4 +1,4 @@
-/* Copyright (c) 2024, Google Inc.
+/* Copyright 2024 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,7 +29,8 @@ using bazel::tools::cpp::runfiles::Runfiles;
 std::string GetTestData(const char *path) {
 #if defined(BORINGSSL_USE_BAZEL_RUNFILES)
   std::string error;
-  std::unique_ptr<Runfiles> runfiles(Runfiles::CreateForTest(&error));
+  std::unique_ptr<Runfiles> runfiles(
+      Runfiles::CreateForTest(BAZEL_CURRENT_REPOSITORY, &error));
   if (runfiles == nullptr) {
     fprintf(stderr, "Could not initialize runfiles: %s\n", error.c_str());
     abort();

@@ -35,17 +35,17 @@ class ChatServer {
              absl::string_view chat_id, absl::string_view output_file);
   ~ChatServer();
 
-  class RemoteTrackVisitor : public RemoteTrack::Visitor {
+  class RemoteTrackVisitor : public SubscribeRemoteTrack::Visitor {
    public:
     explicit RemoteTrackVisitor(ChatServer* server);
     void OnReply(const moqt::FullTrackName& full_track_name,
+                 std::optional<FullSequence> largest_id,
                  std::optional<absl::string_view> reason_phrase) override;
     void OnCanAckObjects(MoqtObjectAckFunction) override {}
     void OnObjectFragment(
         const moqt::FullTrackName& full_track_name, FullSequence sequence,
         moqt::MoqtPriority /*publisher_priority*/,
         moqt::MoqtObjectStatus /*status*/,
-        moqt::MoqtForwardingPreference /*forwarding_preference*/,
         absl::string_view object, bool end_of_message) override;
 
    private:

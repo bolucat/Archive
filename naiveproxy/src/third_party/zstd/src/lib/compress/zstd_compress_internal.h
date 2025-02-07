@@ -343,8 +343,21 @@ struct ZSTD_CCtx_params_s {
     ZSTD_sequenceFormat_e blockDelimiters;
     int validateSequences;
 
-    /* Block splitting */
-    ZSTD_paramSwitch_e useBlockSplitter;
+    /* Block splitting
+     * @postBlockSplitter executes split analysis after sequences are produced,
+     * it's more accurate but consumes more resources.
+     * @preBlockSplitter_level splits before knowing sequences,
+     * it's more approximative but also cheaper.
+     * Valid @preBlockSplitter_level values range from 0 to 6 (included).
+     * 0 means auto, 1 means do not split,
+     * then levels are sorted in increasing cpu budget, from 2 (fastest) to 6 (slowest).
+     * Highest @preBlockSplitter_level combines well with @postBlockSplitter.
+     */
+    ZSTD_paramSwitch_e postBlockSplitter;
+    int preBlockSplitter_level;
+
+    /* Adjust the max block size*/
+    size_t maxBlockSize;
 
     /* Param for deciding whether to use row-based matchfinder */
     ZSTD_paramSwitch_e useRowMatchFinder;
@@ -367,9 +380,6 @@ struct ZSTD_CCtx_params_s {
      * It is not possible to set these parameters individually through the public API. */
     void* extSeqProdState;
     ZSTD_sequenceProducer_F extSeqProdFunc;
-
-    /* Adjust the max block size*/
-    size_t maxBlockSize;
 
     /* Controls repcode search in external sequence parsing */
     ZSTD_paramSwitch_e searchForExternalRepcodes;

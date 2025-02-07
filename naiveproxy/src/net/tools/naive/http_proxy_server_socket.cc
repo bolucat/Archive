@@ -125,7 +125,7 @@ NextProto HttpProxyServerSocket::GetNegotiatedProtocol() const {
     return transport_->GetNegotiatedProtocol();
   }
   NOTREACHED();
-  return kProtoUnknown;
+  return NextProto::kProtoUnknown;
 }
 
 bool HttpProxyServerSocket::GetSSLInfo(SSLInfo* ssl_info) {

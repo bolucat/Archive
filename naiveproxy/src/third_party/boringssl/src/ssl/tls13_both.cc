@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, Google Inc.
+/* Copyright 2016 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -169,9 +169,9 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
   }
 
   CBS context, certificate_list;
-  if (!CBS_get_u8_length_prefixed(&body, &context) ||
-      CBS_len(&context) != 0 ||
-      !CBS_get_u24_length_prefixed(&body, &certificate_list) ||
+  if (!CBS_get_u8_length_prefixed(&body, &context) ||            //
+      CBS_len(&context) != 0 ||                                  //
+      !CBS_get_u24_length_prefixed(&body, &certificate_list) ||  //
       CBS_len(&body) != 0) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
@@ -221,7 +221,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
 
     UniquePtr<CRYPTO_BUFFER> buf(
         CRYPTO_BUFFER_new_from_CBS(&certificate, ssl->ctx->pool));
-    if (!buf ||
+    if (!buf ||  //
         !PushToStack(certs.get(), std::move(buf))) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
       return false;
@@ -249,8 +249,7 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
       if (!CBS_get_u8(&status_request.data, &status_type) ||
           status_type != TLSEXT_STATUSTYPE_ocsp ||
           !CBS_get_u24_length_prefixed(&status_request.data, &ocsp_response) ||
-          CBS_len(&ocsp_response) == 0 ||
-          CBS_len(&status_request.data) != 0) {
+          CBS_len(&ocsp_response) == 0 || CBS_len(&status_request.data) != 0) {
         ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
         return false;
       }
@@ -317,7 +316,8 @@ bool tls13_process_certificate(SSL_HANDSHAKE *hs, const SSLMessage &msg,
   return true;
 }
 
-bool tls13_process_certificate_verify(SSL_HANDSHAKE *hs, const SSLMessage &msg) {
+bool tls13_process_certificate_verify(SSL_HANDSHAKE *hs,
+                                      const SSLMessage &msg) {
   SSL *const ssl = hs->ssl;
   if (hs->peer_pubkey == NULL) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
@@ -326,8 +326,8 @@ bool tls13_process_certificate_verify(SSL_HANDSHAKE *hs, const SSLMessage &msg) 
 
   CBS body = msg.body, signature;
   uint16_t signature_algorithm;
-  if (!CBS_get_u16(&body, &signature_algorithm) ||
-      !CBS_get_u16_length_prefixed(&body, &signature) ||
+  if (!CBS_get_u16(&body, &signature_algorithm) ||        //
+      !CBS_get_u16_length_prefixed(&body, &signature) ||  //
       CBS_len(&body) != 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
@@ -409,7 +409,7 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
     }
   }
 
-  if (// The request context is always empty in the handshake.
+  if (  // The request context is always empty in the handshake.
       !CBB_add_u8(body, 0) ||
       !CBB_add_u24_length_prefixed(body, &certificate_list)) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
@@ -588,7 +588,7 @@ enum ssl_private_key_result_t tls13_add_certificate_verify(SSL_HANDSHAKE *hs) {
     return sign_result;
   }
 
-  if (!CBB_did_write(&child, sig_len) ||
+  if (!CBB_did_write(&child, sig_len) ||  //
       !ssl_add_message_cbb(ssl, cbb.get())) {
     return ssl_private_key_failure;
   }
@@ -618,13 +618,31 @@ bool tls13_add_finished(SSL_HANDSHAKE *hs) {
   return true;
 }
 
-bool tls13_add_key_update(SSL *ssl, int update_requested) {
+bool tls13_add_key_update(SSL *ssl, int request_type) {
+  if (ssl->s3->key_update_pending) {
+    return true;
+  }
+
+  // We do not support multiple parallel outgoing flights. If there is an
+  // outgoing flight pending, queue the KeyUpdate for later.
+  if (SSL_is_dtls(ssl) && !ssl->d1->outgoing_messages.empty()) {
+    ssl->d1->queued_key_update = request_type == SSL_KEY_UPDATE_REQUESTED
+                                     ? QueuedKeyUpdate::kUpdateRequested
+                                     : QueuedKeyUpdate::kUpdateNotRequested;
+    return true;
+  }
+
   ScopedCBB cbb;
   CBB body_cbb;
   if (!ssl->method->init_message(ssl, cbb.get(), &body_cbb,
                                  SSL3_MT_KEY_UPDATE) ||
-      !CBB_add_u8(&body_cbb, update_requested) ||
-      !ssl_add_message_cbb(ssl, cbb.get()) ||
+      !CBB_add_u8(&body_cbb, request_type) ||
+      !ssl_add_message_cbb(ssl, cbb.get())) {
+    return false;
+  }
+
+  // In DTLS, the actual key update is deferred until KeyUpdate is ACKed.
+  if (!SSL_is_dtls(ssl) &&
       !tls13_rotate_traffic_key(ssl, evp_aead_seal)) {
     return false;
   }
@@ -633,16 +651,16 @@ bool tls13_add_key_update(SSL *ssl, int update_requested) {
   // wire. This prevents us from accumulating write obligations when read and
   // write progress at different rates. See RFC 8446, section 4.6.3.
   ssl->s3->key_update_pending = true;
-
+  ssl->method->finish_flight(ssl);
   return true;
 }
 
 static bool tls13_receive_key_update(SSL *ssl, const SSLMessage &msg) {
   CBS body = msg.body;
   uint8_t key_update_request;
-  if (!CBS_get_u8(&body, &key_update_request) ||
-      CBS_len(&body) != 0 ||
-      (key_update_request != SSL_KEY_UPDATE_NOT_REQUESTED &&
+  if (!CBS_get_u8(&body, &key_update_request) ||              //
+      CBS_len(&body) != 0 ||                                  //
+      (key_update_request != SSL_KEY_UPDATE_NOT_REQUESTED &&  //
        key_update_request != SSL_KEY_UPDATE_REQUESTED)) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
@@ -655,7 +673,6 @@ static bool tls13_receive_key_update(SSL *ssl, const SSLMessage &msg) {
 
   // Acknowledge the KeyUpdate
   if (key_update_request == SSL_KEY_UPDATE_REQUESTED &&
-      !ssl->s3->key_update_pending &&
       !tls13_add_key_update(ssl, SSL_KEY_UPDATE_NOT_REQUESTED)) {
     return false;
   }
@@ -669,13 +686,8 @@ bool tls13_post_handshake(SSL *ssl, const SSLMessage &msg) {
   }
 
   if (msg.type == SSL3_MT_KEY_UPDATE) {
-    if (SSL_is_dtls(ssl)) {
-      // TODO(crbug.com/42290594): Process post-handshake messages in DTLS 1.3.
-      return true;
-    }
     ssl->s3->key_update_count++;
-    if (ssl->quic_method != nullptr ||
-        ssl->s3->key_update_count > kMaxKeyUpdates) {
+    if (SSL_is_quic(ssl) || ssl->s3->key_update_count > kMaxKeyUpdates) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_TOO_MANY_KEY_UPDATES);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_UNEXPECTED_MESSAGE);
       return false;

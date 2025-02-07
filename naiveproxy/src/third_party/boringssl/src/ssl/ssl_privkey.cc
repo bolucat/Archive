@@ -1,58 +1,11 @@
-/* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
- * All rights reserved.
+/*
+ * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
  *
- * This package is an SSL implementation written
- * by Eric Young (eay@cryptsoft.com).
- * The implementation was written so as to conform with Netscapes SSL.
- *
- * This library is free for commercial and non-commercial use as long as
- * the following conditions are aheared to.  The following conditions
- * apply to all code found in this distribution, be it the RC4, RSA,
- * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
- * included with this distribution is covered by the same copyright terms
- * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- *
- * Copyright remains Eric Young's, and as such any Copyright notices in
- * the code are not to be removed.
- * If this package is used in a product, Eric Young should be given attribution
- * as the author of the parts of the library used.
- * This can be in the form of a textual message at program startup or
- * in documentation (online or textual) provided with the package.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    "This product includes cryptographic software written by
- *     Eric Young (eay@cryptsoft.com)"
- *    The word 'cryptographic' can be left out if the rouines from the library
- *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from
- *    the apps directory (application code) you must include an acknowledgement:
- *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- *
- * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- * The licence and distribution terms for any publically available version or
- * derivative of this code cannot be changed.  i.e. this code cannot simply be
- * copied and put under another distribution licence
- * [including the GNU Public Licence.] */
+ * Licensed under the OpenSSL license (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://www.openssl.org/source/license.html
+ */
 
 #include <openssl/ssl.h>
 
@@ -68,8 +21,8 @@
 #include <openssl/mem.h>
 #include <openssl/span.h>
 
-#include "internal.h"
 #include "../crypto/internal.h"
+#include "internal.h"
 
 
 BSSL_NAMESPACE_BEGIN
@@ -371,7 +324,7 @@ int SSL_use_RSAPrivateKey(SSL *ssl, RSA *rsa) {
   }
 
   UniquePtr<EVP_PKEY> pkey(EVP_PKEY_new());
-  if (!pkey ||
+  if (!pkey ||  //
       !EVP_PKEY_set1_RSA(pkey.get(), rsa)) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_EVP_LIB);
     return 0;
@@ -424,8 +377,7 @@ int SSL_CTX_use_RSAPrivateKey(SSL_CTX *ctx, RSA *rsa) {
   }
 
   UniquePtr<EVP_PKEY> pkey(EVP_PKEY_new());
-  if (!pkey ||
-      !EVP_PKEY_set1_RSA(pkey.get(), rsa)) {
+  if (!pkey || !EVP_PKEY_set1_RSA(pkey.get(), rsa)) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_EVP_LIB);
     return 0;
   }
@@ -701,7 +653,7 @@ static bool parse_sigalg_pairs(Array<uint16_t> *out, const int *values,
 
   for (size_t i = 0; i < num_values; i += 2) {
     const int hash_nid = values[i];
-    const int pkey_type = values[i+1];
+    const int pkey_type = values[i + 1];
 
     bool found = false;
     for (const auto &candidate : kSignatureAlgorithmsMapping) {
@@ -789,7 +741,7 @@ static bool parse_sigalgs_list(Array<uint16_t> *out, const char *str) {
   int pkey_type = 0, hash_nid = 0;
 
   // Note that the loop runs to len+1, i.e. it'll process the terminating NUL.
-  for (size_t offset = 0; offset < len+1; offset++) {
+  for (size_t offset = 0; offset < len + 1; offset++) {
     const unsigned char c = str[offset];
 
     switch (c) {
@@ -808,7 +760,7 @@ static bool parse_sigalgs_list(Array<uint16_t> *out, const char *str) {
 
         if (strcmp(buf, "RSA") == 0) {
           pkey_type = EVP_PKEY_RSA;
-        } else if (strcmp(buf, "RSA-PSS") == 0 ||
+        } else if (strcmp(buf, "RSA-PSS") == 0 ||  //
                    strcmp(buf, "PSS") == 0) {
           pkey_type = EVP_PKEY_RSA_PSS;
         } else if (strcmp(buf, "ECDSA") == 0) {
@@ -824,7 +776,7 @@ static bool parse_sigalgs_list(Array<uint16_t> *out, const char *str) {
         break;
 
       case ':':
-        OPENSSL_FALLTHROUGH;
+        [[fallthrough]];
       case 0:
         if (buf_used == 0) {
           OPENSSL_PUT_ERROR(SSL, SSL_R_INVALID_SIGNATURE_ALGORITHM);

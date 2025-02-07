@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, Google Inc.
+/* Copyright 2014 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -40,8 +40,6 @@
 #include <openssl/evp.h>
 #define OPENSSL_UNSTABLE_EXPERIMENTAL_KYBER
 #include <openssl/experimental/kyber.h>
-#define OPENSSL_UNSTABLE_EXPERIMENTAL_SPX
-#include <openssl/experimental/spx.h>
 #include <openssl/hrss.h>
 #include <openssl/mem.h>
 #include <openssl/mldsa.h>
@@ -72,7 +70,6 @@ OPENSSL_MSVC_PRAGMA(warning(pop))
 #include "../crypto/ec_extra/internal.h"
 #include "../crypto/fipsmodule/ec/internal.h"
 #include "../crypto/internal.h"
-#include "../crypto/mldsa/internal.h"
 #include "../crypto/trust_token/internal.h"
 #include "internal.h"
 
@@ -1157,27 +1154,6 @@ static bool SpeedMLDSA(const std::string &selected) {
 
   results.Print("MLDSA key generation");
 
-  auto encoded_private_key =
-      std::make_unique<uint8_t[]>(MLDSA65_PRIVATE_KEY_BYTES);
-  CBB cbb;
-  CBB_init_fixed(&cbb, encoded_private_key.get(), MLDSA65_PRIVATE_KEY_BYTES);
-  MLDSA65_marshal_private_key(&cbb, priv.get());
-
-  if (!TimeFunctionParallel(&results, [&]() -> bool {
-        CBS cbs;
-        CBS_init(&cbs, encoded_private_key.get(), MLDSA65_PRIVATE_KEY_BYTES);
-        if (!MLDSA65_parse_private_key(priv.get(), &cbs)) {
-          fprintf(stderr, "Failure in MLDSA65_parse_private_key.\n");
-          return false;
-        }
-        return true;
-      })) {
-    fprintf(stderr, "Failed to time MLDSA65_parse_private_key.\n");
-    return false;
-  }
-
-  results.Print("MLDSA parse (valid) private key");
-
   const char *message = "Hello world";
   size_t message_len = strlen(message);
   auto out_encoded_signature =
@@ -1341,52 +1317,6 @@ static bool SpeedMLKEM1024(const std::string &selected) {
   }
 
   results.Print("ML-KEM-1024 parse + encap");
-
-  return true;
-}
-
-static bool SpeedSpx(const std::string &selected) {
-  if (!selected.empty() && selected.find("spx") == std::string::npos) {
-    return true;
-  }
-
-  TimeResults results;
-  if (!TimeFunctionParallel(&results, []() -> bool {
-        uint8_t public_key[32], private_key[64];
-        SPX_generate_key(public_key, private_key);
-        return true;
-      })) {
-    return false;
-  }
-
-  results.Print("SPHINCS+-SHA2-128s key generation");
-
-  uint8_t public_key[32], private_key[64];
-  SPX_generate_key(public_key, private_key);
-  static const uint8_t kMessage[] = {0, 1, 2, 3, 4, 5};
-
-  if (!TimeFunctionParallel(&results, [&private_key]() -> bool {
-        uint8_t out[SPX_SIGNATURE_BYTES];
-        SPX_sign(out, private_key, kMessage, sizeof(kMessage), true);
-        return true;
-      })) {
-    return false;
-  }
-
-  results.Print("SPHINCS+-SHA2-128s signing");
-
-  uint8_t signature[SPX_SIGNATURE_BYTES];
-  SPX_sign(signature, private_key, kMessage, sizeof(kMessage), true);
-
-  if (!TimeFunctionParallel(&results, [&public_key, &signature]() -> bool {
-        return SPX_verify(signature, public_key, kMessage, sizeof(kMessage)) ==
-               1;
-      })) {
-    fprintf(stderr, "SPHINCS+-SHA2-128s verify failed.\n");
-    return false;
-  }
-
-  results.Print("SPHINCS+-SHA2-128s verify");
 
   return true;
 }
@@ -1933,7 +1863,6 @@ bool Speed(const std::vector<std::string> &args) {
       !SpeedMLDSA(selected) ||        //
       !SpeedMLKEM(selected) ||        //
       !SpeedMLKEM1024(selected) ||    //
-      !SpeedSpx(selected) ||          //
       !SpeedSLHDSA(selected) ||       //
       !SpeedHashToCurve(selected) ||  //
       !SpeedTrustToken("TrustToken-Exp1-Batch1", TRUST_TOKEN_experiment_v1(), 1,

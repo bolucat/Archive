@@ -432,7 +432,7 @@ class TrustStoreUnix : public PlatformTrustStore {
   static bool AddCertificatesFromBytes(std::string_view data,
                                        bssl::TrustStoreInMemory& store) {
     auto certs = X509Certificate::CreateCertificateListFromBytes(
-        base::as_bytes(base::make_span(data)), X509Certificate::FORMAT_AUTO);
+        base::as_bytes(base::span(data)), X509Certificate::FORMAT_AUTO);
     bool certs_ok = false;
     for (const auto& cert : certs) {
       bssl::CertErrors errors;

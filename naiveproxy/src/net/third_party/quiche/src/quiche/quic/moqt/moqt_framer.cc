@@ -277,15 +277,6 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
   }
   if (!is_first_in_stream) {
     switch (message_type) {
-      case MoqtDataStreamType::kStreamHeaderTrack:
-        return (message.payload_length == 0)
-                   ? Serialize(WireVarInt62(message.group_id),
-                               WireVarInt62(message.object_id),
-                               WireVarInt62(message.payload_length),
-                               WireVarInt62(message.object_status))
-                   : Serialize(WireVarInt62(message.group_id),
-                               WireVarInt62(message.object_id),
-                               WireVarInt62(message.payload_length));
       case MoqtDataStreamType::kStreamHeaderSubgroup:
         return (message.payload_length == 0)
                    ? Serialize(WireVarInt62(message.object_id),
@@ -314,21 +305,6 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectHeader(
     }
   }
   switch (message_type) {
-    case MoqtDataStreamType::kStreamHeaderTrack:
-      return (message.payload_length == 0)
-                 ? Serialize(WireVarInt62(message_type),
-                             WireVarInt62(message.track_alias),
-                             WireUint8(message.publisher_priority),
-                             WireVarInt62(message.group_id),
-                             WireVarInt62(message.object_id),
-                             WireVarInt62(message.payload_length),
-                             WireVarInt62(message.object_status))
-                 : Serialize(WireVarInt62(message_type),
-                             WireVarInt62(message.track_alias),
-                             WireUint8(message.publisher_priority),
-                             WireVarInt62(message.group_id),
-                             WireVarInt62(message.object_id),
-                             WireVarInt62(message.payload_length));
     case MoqtDataStreamType::kStreamHeaderSubgroup:
       return (message.payload_length == 0)
                  ? Serialize(WireVarInt62(message_type),
@@ -374,11 +350,6 @@ quiche::QuicheBuffer MoqtFramer::SerializeObjectDatagram(
   if (!ValidateObjectMetadata(message, MoqtDataStreamType::kObjectDatagram)) {
     QUIC_BUG(quic_bug_serialize_object_datagram_01)
         << "Object metadata is invalid";
-    return quiche::QuicheBuffer();
-  }
-  if (message.forwarding_preference != MoqtForwardingPreference::kDatagram) {
-    QUIC_BUG(quic_bug_serialize_object_datagram_02)
-        << "Only datagrams use SerializeObjectDatagram()";
     return quiche::QuicheBuffer();
   }
   if (message.payload_length != payload.length()) {

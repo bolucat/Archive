@@ -236,13 +236,13 @@ int NaiveConnection::DoConnectServer() {
     SockaddrStorage dst;
     if (peer_endpoint.GetFamily() == ADDRESS_FAMILY_IPV4 ||
         peer_endpoint.address().IsIPv4MappedIPv6()) {
-      rv = getsockopt(sd, SOL_IP, SO_ORIGINAL_DST, dst.addr, &dst.addr_len);
+      rv = getsockopt(sd, SOL_IP, SO_ORIGINAL_DST, dst.addr(), &dst.addr_len);
     } else {
-      rv = getsockopt(sd, SOL_IPV6, SO_ORIGINAL_DST, dst.addr, &dst.addr_len);
+      rv = getsockopt(sd, SOL_IPV6, SO_ORIGINAL_DST, dst.addr(), &dst.addr_len);
     }
     if (rv == 0) {
       IPEndPoint ipe;
-      if (ipe.FromSockAddr(dst.addr, dst.addr_len)) {
+      if (ipe.FromSockAddr(dst.addr(), dst.addr_len)) {
         const auto& addr = ipe.address();
         auto name = resolver_->FindNameByAddress(addr);
         if (!name.empty()) {

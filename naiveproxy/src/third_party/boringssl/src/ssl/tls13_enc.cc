@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, Google Inc.
+/* Copyright 2016 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -136,9 +136,9 @@ static bool hkdf_expand_label(Span<uint8_t> out, const EVP_MD *digest,
         label, hash);
   }
   return CRYPTO_tls13_hkdf_expand_label(
-      out.data(), out.size(), digest, secret.data(), secret.size(),
-      reinterpret_cast<const uint8_t *>(label.data()), label.size(),
-      hash.data(), hash.size()) == 1;
+             out.data(), out.size(), digest, secret.data(), secret.size(),
+             reinterpret_cast<const uint8_t *>(label.data()), label.size(),
+             hash.data(), hash.size()) == 1;
 }
 
 static const char kTLS13LabelDerived[] = "derived";
@@ -188,7 +188,7 @@ bool tls13_set_traffic_key(SSL *ssl, enum ssl_encryption_level_t level,
   const EVP_MD *digest = ssl_session_get_digest(session);
   bool is_dtls = SSL_is_dtls(ssl);
   UniquePtr<SSLAEADContext> traffic_aead;
-  if (ssl->quic_method != nullptr) {
+  if (SSL_is_quic(ssl)) {
     // Install a placeholder SSLAEADContext so that SSL accessors work. The
     // encryption itself will be handled by the SSL_QUIC_METHOD.
     traffic_aead = SSLAEADContext::CreatePlaceholderForQUIC(session->cipher);
@@ -672,12 +672,19 @@ bool ssl_ech_accept_confirmation(const SSL_HANDSHAKE *hs, Span<uint8_t> out,
     return false;
   }
 
-  auto before_zeros = msg.subspan(0, offset);
+  // We represent DTLS messages with the longer DTLS 1.2 header, but DTLS 1.3
+  // removes the extra fields from the transcript.
+  auto header = msg.subspan(0, SSL3_HM_HEADER_LENGTH);
+  size_t full_header_len =
+      SSL_is_dtls(hs->ssl) ? DTLS1_HM_HEADER_LENGTH : SSL3_HM_HEADER_LENGTH;
+  auto before_zeros = msg.subspan(full_header_len, offset - full_header_len);
   auto after_zeros = msg.subspan(offset + ECH_CONFIRMATION_SIGNAL_LEN);
+
   uint8_t context[EVP_MAX_MD_SIZE];
   unsigned context_len;
   ScopedEVP_MD_CTX ctx;
   if (!transcript.CopyToHashContext(ctx.get(), transcript.Digest()) ||
+      !EVP_DigestUpdate(ctx.get(), header.data(), header.size()) ||
       !EVP_DigestUpdate(ctx.get(), before_zeros.data(), before_zeros.size()) ||
       !EVP_DigestUpdate(ctx.get(), kZeros, ECH_CONFIRMATION_SIGNAL_LEN) ||
       !EVP_DigestUpdate(ctx.get(), after_zeros.data(), after_zeros.size()) ||

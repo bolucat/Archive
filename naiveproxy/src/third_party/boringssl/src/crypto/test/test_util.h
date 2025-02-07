@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, Google Inc.
+/* Copyright 2015 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -58,6 +58,13 @@ inline bool operator==(const Bytes &a, const Bytes &b) {
 }
 
 inline bool operator!=(const Bytes &a, const Bytes &b) { return !(a == b); }
+
+// Declassified returns a declassified copy of some input.
+inline std::vector<uint8_t> Declassified(bssl::Span<const uint8_t> in) {
+  std::vector<uint8_t> copy(in.begin(), in.end());
+  CONSTTIME_DECLASSIFY(copy.data(), copy.size());
+  return copy;
+}
 
 std::ostream &operator<<(std::ostream &os, const Bytes &in);
 

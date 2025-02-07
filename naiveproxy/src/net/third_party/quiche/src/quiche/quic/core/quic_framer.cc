@@ -5209,6 +5209,7 @@ bool QuicFramer::AppendCryptoFrame(const QuicCryptoFrame& frame,
     QUICHE_DCHECK_EQ(nullptr, frame.data_buffer);
     if (!data_producer_->WriteCryptoData(frame.level, frame.offset,
                                          frame.data_length, writer)) {
+      set_detailed_error("Writing frame data from producer failed.");
       return false;
     }
   }
@@ -6492,12 +6493,6 @@ QuicErrorCode QuicFramer::TryDecryptInitialPacketDispatcher(
   QUICHE_DCHECK(packet_number != nullptr);
   packet_number->reset();
 
-  // TODO(wub): Remove the version check once RFCv2 is supported by
-  // ParsePublicHeaderDispatcherShortHeaderLengthUnknown.
-  if (version != ParsedQuicVersion::RFCv1() &&
-      version != ParsedQuicVersion::Draft29()) {
-    return QUIC_NO_ERROR;
-  }
   if (packet.length() == 0 || format != IETF_QUIC_LONG_HEADER_PACKET ||
       !VersionHasIetfQuicFrames(version.transport_version) ||
       long_packet_type != INITIAL) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2016, Google Inc.
+/* Copyright 2016 The BoringSSL Authors
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -73,17 +73,17 @@ static bool close_early_data(SSL_HANDSHAKE *hs, ssl_encryption_level_t level) {
   // write state. The two ClientHello sequence numbers must align, and handshake
   // write keys must be installed early to ACK the EncryptedExtensions.
   //
-  // TODO(crbug.com/42290594): We do not support 0-RTT in DTLS 1.3 and, in
+  // TODO(crbug.com/381113363): We do not support 0-RTT in DTLS 1.3 and, in
   // QUIC, the caller handles 0-RTT data, so we can skip installing 0-RTT keys
   // and act as if there is one write level. Now that we're implementing
   // DTLS 1.3, switch the abstraction to the DTLS/QUIC model where handshake
   // keys write keys are installed immediately, but the TLS record layer
   // internally waits to activate that epoch until the 0-RTT channel is closed.
-  if (ssl->quic_method == nullptr) {
+  if (!SSL_is_quic(ssl)) {
     if (level == ssl_encryption_initial) {
       bssl::UniquePtr<SSLAEADContext> null_ctx =
           SSLAEADContext::CreateNullCipher();
-      if (!null_ctx ||
+      if (!null_ctx ||  //
           !ssl->method->set_write_state(ssl, ssl_encryption_initial,
                                         std::move(null_ctx),
                                         /*traffic_secret=*/{})) {
@@ -192,7 +192,7 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
   // Queue up a ChangeCipherSpec for whenever we next send something. This
   // will be before the second ClientHello. If we offered early data, this was
   // already done.
-  if (!hs->early_data_offered &&
+  if (!hs->early_data_offered &&  //
       !ssl->method->add_change_cipher_spec(ssl)) {
     return ssl_hs_error;
   }
@@ -212,7 +212,7 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
       SSL_CIPHER_get_min_version(cipher) > ssl_protocol_version(ssl) ||
       SSL_CIPHER_get_max_version(cipher) < ssl_protocol_version(ssl) ||
       !ssl_tls13_cipher_meets_policy(SSL_CIPHER_get_protocol_id(cipher),
-                                     ssl->config->tls13_cipher_policy)) {
+                                     ssl->config->compliance_policy)) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_WRONG_CIPHER_RETURNED);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
     return ssl_hs_error;
@@ -271,8 +271,8 @@ static enum ssl_hs_wait_t do_read_hello_retry_request(SSL_HANDSHAKE *hs) {
   }
   if (cookie.present) {
     CBS cookie_value;
-    if (!CBS_get_u16_length_prefixed(&cookie.data, &cookie_value) ||
-        CBS_len(&cookie_value) == 0 ||
+    if (!CBS_get_u16_length_prefixed(&cookie.data, &cookie_value) ||  //
+        CBS_len(&cookie_value) == 0 ||                                //
         CBS_len(&cookie.data) != 0) {
       OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
@@ -418,7 +418,10 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
 
   // When offering ECH, |ssl->session| is only offered in ClientHelloInner.
   const bool pre_shared_key_allowed =
-      ssl->session != nullptr && ssl->s3->ech_status != ssl_ech_rejected;
+      ssl->session != nullptr &&
+      ssl_session_get_type(ssl->session.get()) ==
+          SSLSessionType::kPreSharedKey &&
+      ssl->s3->ech_status != ssl_ech_rejected;
   SSLExtension key_share(TLSEXT_TYPE_key_share),
       pre_shared_key(TLSEXT_TYPE_pre_shared_key, pre_shared_key_allowed),
       supported_versions(TLSEXT_TYPE_supported_versions);
@@ -431,9 +434,9 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
 
   // Recheck supported_versions, in case this is after HelloRetryRequest.
   uint16_t version;
-  if (!supported_versions.present ||
-      !CBS_get_u16(&supported_versions.data, &version) ||
-      CBS_len(&supported_versions.data) != 0 ||
+  if (!supported_versions.present ||                       //
+      !CBS_get_u16(&supported_versions.data, &version) ||  //
+      CBS_len(&supported_versions.data) != 0 ||            //
       version != ssl->s3->version) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_SECOND_SERVERHELLO_VERSION_MISMATCH);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
@@ -514,8 +517,8 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
 
-  if (!tls13_advance_key_schedule(hs, dhe_secret) ||
-      !ssl_hash_message(hs, msg) ||
+  if (!tls13_advance_key_schedule(hs, dhe_secret) ||  //
+      !ssl_hash_message(hs, msg) ||                   //
       !tls13_derive_handshake_secrets(hs)) {
     return ssl_hs_error;
   }
@@ -524,7 +527,7 @@ static enum ssl_hs_wait_t do_read_server_hello(SSL_HANDSHAKE *hs) {
   // traffic keys to when the early data stream is closed. See
   // |close_early_data|. Note if the server has already rejected 0-RTT via
   // HelloRetryRequest, |in_early_data| is already false.
-  if (!hs->in_early_data || ssl->quic_method != nullptr) {
+  if (!hs->in_early_data || SSL_is_quic(ssl)) {
     if (!tls13_set_traffic_key(ssl, ssl_encryption_handshake, evp_aead_seal,
                                hs->new_session.get(),
                                hs->client_handshake_secret)) {
@@ -554,7 +557,7 @@ static enum ssl_hs_wait_t do_read_encrypted_extensions(SSL_HANDSHAKE *hs) {
   }
 
   CBS body = msg.body, extensions;
-  if (!CBS_get_u16_length_prefixed(&body, &extensions) ||
+  if (!CBS_get_u16_length_prefixed(&body, &extensions) ||  //
       CBS_len(&body) != 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
@@ -792,7 +795,7 @@ static enum ssl_hs_wait_t do_send_end_of_early_data(SSL_HANDSHAKE *hs) {
   if (ssl->s3->early_data_accepted) {
     // DTLS and QUIC omit the EndOfEarlyData message. See RFC 9001, section 8.3,
     // and RFC 9147, section 5.6.
-    if (ssl->quic_method == nullptr && !SSL_is_dtls(ssl)) {
+    if (!SSL_is_quic(ssl) && !SSL_is_dtls(ssl)) {
       ScopedCBB cbb;
       CBB body;
       if (!ssl->method->init_message(ssl, cbb.get(), &body,
@@ -1117,8 +1120,9 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
       !CBS_get_u32(body, &session->ticket_age_add) ||
       !CBS_get_u8_length_prefixed(body, &ticket_nonce) ||
       !CBS_get_u16_length_prefixed(body, &ticket) ||
+      CBS_len(&ticket) == 0 ||  //
       !session->ticket.CopyFrom(ticket) ||
-      !CBS_get_u16_length_prefixed(body, &extensions) ||
+      !CBS_get_u16_length_prefixed(body, &extensions) ||  //
       CBS_len(body) != 0) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
@@ -1154,8 +1158,7 @@ UniquePtr<SSL_SESSION> tls13_create_session_with_ticket(SSL *ssl, CBS *body) {
 
     // QUIC does not use the max_early_data_size parameter and always sets it to
     // a fixed value. See RFC 9001, section 4.6.1.
-    if (ssl->quic_method != nullptr &&
-        session->ticket_max_early_data != 0xffffffff) {
+    if (SSL_is_quic(ssl) && session->ticket_max_early_data != 0xffffffff) {
       ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
       OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
       return nullptr;

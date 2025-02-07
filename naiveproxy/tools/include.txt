@@ -45,6 +45,7 @@
 ^third_party/cpu_features
 ^third_party/depot_tools/cpplint.py
 ^third_party/depot_tools/download_from_google_storage.py
+^third_party/depot_tools/gn_helper.py
 ^third_party/depot_tools/subprocess2.py
 ^third_party/googletest/BUILD.gn
 ^third_party/googletest/src/googletest/include/gtest/gtest_prod.h
@@ -52,7 +53,6 @@
 ^third_party/jni_zero
 ^third_party/libc++
 ^third_party/libc++abi
-^third_party/libevent
 ^third_party/libunwind
 ^third_party/llvm-libc
 ^third_party/lss/linux_syscall_support.h
@@ -63,6 +63,7 @@
 ^third_party/protobuf/proto_library.gni
 ^third_party/protobuf/proto_sources.gni
 ^third_party/protobuf/src
+^third_party/simdutf
 ^third_party/zlib
 ^third_party/zstd
 ^tools/cfi

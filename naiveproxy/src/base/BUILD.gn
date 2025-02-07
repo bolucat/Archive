@@ -29,8 +29,6 @@ import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/cronet/config.gni")
 import("//build/config/dcheck_always_on.gni")
-import("//build/config/features.gni")
-import("//build/config/ios/config.gni")
 import("//build/config/logging.gni")
 import("//build/config/nacl/config.gni")
 import("//build/config/profiling/profiling.gni")
@@ -43,6 +41,9 @@ import("//build/util/process_version.gni")
 import("//build_overrides/build.gni")
 
 if (is_ios) {
+  # Used to access target_environment.
+  import("//build/config/apple/mobile_config.gni")
+
   # Used to access ios_is_app_extension variable definition.
   import("//build/config/ios/ios_sdk.gni")
 }
@@ -170,8 +171,6 @@ component("base") {
     "allocator/dispatcher/internal/dispatch_data.h",
     "allocator/dispatcher/internal/dispatcher_internal.h",
     "allocator/dispatcher/internal/tools.h",
-    "allocator/dispatcher/memory_tagging.cc",
-    "allocator/dispatcher/memory_tagging.h",
     "allocator/dispatcher/notification_data.h",
     "allocator/dispatcher/reentry_guard.cc",
     "allocator/dispatcher/reentry_guard.h",
@@ -182,6 +181,7 @@ component("base") {
     "at_exit.h",
     "atomic_ref_count.h",
     "atomic_sequence_num.h",
+    "atomicops.cc",
     "atomicops.h",
     "atomicops_internals_atomicword_compat.h",
     "atomicops_internals_portable.h",
@@ -213,6 +213,7 @@ component("base") {
     "compiler_specific.h",
     "component_export.h",
     "containers/adapters.h",
+    "containers/adapters_internal.h",
     "containers/buffer_iterator.h",
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
@@ -342,6 +343,7 @@ component("base") {
     "macros/uniquify.h",
     "memory/aligned_memory.cc",
     "memory/aligned_memory.h",
+    "memory/asan_interface.h",
     "memory/free_deleter.h",
     "memory/memory_pressure_listener.cc",
     "memory/memory_pressure_listener.h",
@@ -367,7 +369,6 @@ component("base") {
     "memory/raw_ptr_cast.h",
     "memory/raw_ptr_exclusion.h",
     "memory/raw_ref.h",
-    "memory/raw_scoped_refptr_mismatch_checker.h",
     "memory/raw_span.h",
     "memory/read_only_shared_memory_region.cc",
     "memory/read_only_shared_memory_region.h",
@@ -404,6 +405,8 @@ component("base") {
     "memory/weak_ptr.h",
     "memory/writable_shared_memory_region.cc",
     "memory/writable_shared_memory_region.h",
+    "message_loop/io_watcher.cc",
+    "message_loop/io_watcher.h",
     "message_loop/message_pump.cc",
     "message_loop/message_pump.h",
     "message_loop/message_pump_default.cc",
@@ -457,6 +460,7 @@ component("base") {
     "metrics/record_histogram_checker.h",
     "metrics/sample_map.cc",
     "metrics/sample_map.h",
+    "metrics/sample_map_iterator.h",
     "metrics/sample_vector.cc",
     "metrics/sample_vector.h",
     "metrics/single_sample_metrics.cc",
@@ -516,6 +520,7 @@ component("base") {
     "process/process_info.h",
     "process/set_process_title.cc",
     "process/set_process_title.h",
+    "profiler/core_unwinders.h",
     "profiler/frame.cc",
     "profiler/frame.h",
     "profiler/metadata_recorder.cc",
@@ -591,12 +596,14 @@ component("base") {
     "strings/pattern.h",
     "strings/safe_sprintf.cc",
     "strings/safe_sprintf.h",
+    "strings/span_printf.h",
     "strings/strcat.cc",
     "strings/strcat.h",
     "strings/strcat_internal.h",
     "strings/string_number_conversions.cc",
     "strings/string_number_conversions.h",
     "strings/string_number_conversions_internal.h",
+    "strings/string_slice.h",
     "strings/string_split.cc",
     "strings/string_split.h",
     "strings/string_split_internal.h",
@@ -627,6 +634,8 @@ component("base") {
     "supports_user_data.h",
     "synchronization/atomic_flag.cc",
     "synchronization/atomic_flag.h",
+    "synchronization/cancelable_event.cc",
+    "synchronization/cancelable_event.h",
     "synchronization/condition_variable.h",
     "synchronization/lock.cc",
     "synchronization/lock.h",
@@ -883,11 +892,13 @@ component("base") {
     "types/optional_ref.h",
     "types/optional_util.h",
     "types/pass_key.h",
+    "types/same_as_any.h",
     "types/strong_alias.h",
     "types/supports_ostream_operator.h",
     "types/to_address.h",
     "types/token_type.h",
     "types/variant_util.h",
+    "types/zip.h",
     "unguessable_token.cc",
     "unguessable_token.h",
     "uuid.cc",
@@ -1024,8 +1035,8 @@ component("base") {
   # to provide the appropriate `#define` here.
   defines += [ "IS_RAW_PTR_IMPL" ]
 
-  # native_unwinder_android is intended for use solely via a dynamic feature
-  # module, to avoid increasing Chrome's executable size.
+  # native_unwinder_android is split into a separate target to avoid pulling
+  # libunwindstack dependencies into cronet's base.
   assert_no_deps = [ ":native_unwinder_android" ]
 
   public_deps = [
@@ -1100,7 +1111,8 @@ component("base") {
       "android/scoped_hardware_buffer_fence_sync.h",
       "android/scoped_hardware_buffer_handle.cc",
       "android/scoped_hardware_buffer_handle.h",
-      "android/sys_utils.h",
+      "android/scoped_input_event.cc",
+      "android/scoped_input_event.h",
       "debug/stack_trace_android.cc",
       "files/file_util_android.cc",
       "files/scoped_file_android.cc",
@@ -1140,18 +1152,12 @@ component("base") {
     # well when doing a component build.
     public_configs = [ ":android_system_libs" ]
 
-    if (can_unwind_with_cfi_table) {
-      sources += [
-        "trace_event/cfi_backtrace_android.cc",
-        "trace_event/cfi_backtrace_android.h",
-      ]
-    }
     if (current_cpu == "arm") {
       sources += [
-        "profiler/chrome_unwind_info_android.cc",
-        "profiler/chrome_unwind_info_android.h",
-        "profiler/chrome_unwinder_android.cc",
-        "profiler/chrome_unwinder_android.h",
+        "profiler/chrome_unwind_info_android_32.cc",
+        "profiler/chrome_unwind_info_android_32.h",
+        "profiler/chrome_unwinder_android_32.cc",
+        "profiler/chrome_unwinder_android_32.h",
       ]
     }
 
@@ -1425,6 +1431,7 @@ component("base") {
       "debug/crash_logging.h",
       "debug/stack_trace.cc",
       "debug/stack_trace.h",
+      "files/drive_info.cc",
       "files/drive_info.h",
       "files/file_enumerator.cc",
       "files/file_enumerator.h",
@@ -1552,6 +1559,13 @@ component("base") {
     if (is_posix && !is_ios) {
       sources += [ "process/process_posix.cc" ]
     }
+    if (!is_win && !is_chromeos && !is_android && !is_linux) {
+      sources += [ "synchronization/cancelable_event_default.cc" ]
+    }
+
+    if (is_linux || is_chromeos || is_android) {
+      sources += [ "synchronization/cancelable_event_posix.cc" ]
+    }
 
     if (use_blink) {
       sources += [
@@ -1586,8 +1600,12 @@ component("base") {
       ]
     }
     if (use_partition_alloc) {
-      # Add stuff that doesn't work in NaCl.
+      # Add stuff that doesn't work in NaCl or other environments that disable
+      # partition_alloc.
       sources += [
+        "allocator/dispatcher/memory_tagging.cc",
+        "allocator/dispatcher/memory_tagging.h",
+
         # PartitionAlloc uses SpinLock, which doesn't work in NaCl (see below).
         "allocator/miracle_parameter.cc",
         "allocator/miracle_parameter.h",
@@ -1597,15 +1615,9 @@ component("base") {
         "allocator/partition_alloc_support.h",
       ]
     }
-
-    # Need this to pass gn check, because gn check doesn't see
-    # BUILDFLAG(USE_PARTITION_ALLOC). A linker will remove all
-    # partition_alloc code if use_partition_alloc = false because no code uses
-    # partition_alloc.
-    public_deps += [
-      "allocator/partition_allocator:partition_alloc",
-      "allocator/partition_allocator:raw_ptr",
-    ]
+    if (use_allocator_shim) {
+      public_deps += [ "allocator/partition_allocator:allocator_shim" ]
+    }
   }
 
   # Windows.
@@ -1652,6 +1664,7 @@ component("base") {
       "process/process_iterator_win.cc",
       "process/process_metrics_win.cc",
       "process/process_win.cc",
+      "profiler/core_unwinders_win.cc",
       "profiler/module_cache_win.cc",
       "profiler/native_unwinder_win.cc",
       "profiler/native_unwinder_win.h",
@@ -1672,6 +1685,7 @@ component("base") {
       "strings/string_util_win.h",
       "strings/sys_string_conversions_win.cc",
       "sync_socket_win.cc",
+      "synchronization/cancelable_event_win.cc",
       "synchronization/condition_variable_win.cc",
       "synchronization/lock_impl_win.cc",
       "synchronization/waitable_event_watcher_win.cc",
@@ -1714,6 +1728,8 @@ component("base") {
       "win/event_trace_controller.h",
       "win/event_trace_provider.cc",
       "win/event_trace_provider.h",
+      "win/hardware_check.cc",
+      "win/hardware_check.h",
       "win/hstring_reference.cc",
       "win/hstring_reference.h",
       "win/i18n.cc",
@@ -1725,10 +1741,12 @@ component("base") {
       "win/message_window.h",
       "win/nt_status.cc",
       "win/nt_status.h",
+      "win/ntsecapi_shim.h",
       "win/object_watcher.cc",
       "win/object_watcher.h",
       "win/patch_util.cc",
       "win/patch_util.h",
+      "win/pdh_shim.h",
       "win/pe_image_reader.cc",
       "win/pe_image_reader.h",
       "win/post_async_results.h",
@@ -1747,6 +1765,7 @@ component("base") {
       "win/scoped_co_mem.h",
       "win/scoped_com_initializer.cc",
       "win/scoped_com_initializer.h",
+      "win/scoped_gdi_object.cc",
       "win/scoped_gdi_object.h",
       "win/scoped_handle.cc",
       "win/scoped_handle.h",
@@ -1786,10 +1805,13 @@ component("base") {
       "win/variant_vector.h",
       "win/vector.cc",
       "win/vector.h",
+      "win/wbemidl_shim.h",
       "win/win_handle_types.h",
       "win/win_handle_types_list.inc",
       "win/win_util.cc",
       "win/win_util.h",
+      "win/winbase_shim.h",
+      "win/wincred_shim.h",
       "win/wincrypt_shim.h",
       "win/window_enumerator.cc",
       "win/window_enumerator.h",
@@ -1803,6 +1825,7 @@ component("base") {
       "win/winrt_foundation_helpers.h",
       "win/winrt_storage_util.cc",
       "win/winrt_storage_util.h",
+      "win/wintrust_shim.h",
       "win/wmi.cc",
       "win/wmi.h",
       "win/wrapped_window_proc.cc",
@@ -1970,6 +1993,7 @@ component("base") {
       "process/process_iterator_mac.cc",
       "process/process_mac.cc",
       "process/process_metrics_mac.cc",
+      "profiler/core_unwinders_mac.cc",
       "profiler/frame_pointer_unwinder.cc",
       "profiler/frame_pointer_unwinder.h",
       "profiler/stack_sampler_mac.cc",
@@ -2012,6 +2036,7 @@ component("base") {
       "power_monitor/power_monitor_device_source_ios.mm",
       "process/process_metrics_ios.cc",
       "process/process_metrics_posix.cc",
+      "profiler/core_unwinders_ios.cc",
       "profiler/stack_sampler_ios.cc",
       "system/sys_info_ios.mm",
     ]
@@ -2196,7 +2221,10 @@ component("base") {
   }
 
   if ((is_posix && !is_apple && !is_android) || is_fuchsia) {
-    sources += [ "profiler/stack_sampler_posix.cc" ]
+    sources += [
+      "profiler/core_unwinders_posix.cc",
+      "profiler/stack_sampler_posix.cc",
+    ]
   }
 
   if ((is_posix && !is_apple && !is_android && !is_chromeos) || is_fuchsia) {
@@ -2221,8 +2249,6 @@ component("base") {
       "trace_event/auto_open_close_event.h",
       "trace_event/builtin_categories.cc",
       "trace_event/builtin_categories.h",
-      "trace_event/category_registry.cc",
-      "trace_event/category_registry.h",
       "trace_event/heap_profiler.h",
       "trace_event/interned_args_helper.cc",
       "trace_event/interned_args_helper.h",
@@ -2249,13 +2275,14 @@ component("base") {
       "trace_event/memory_usage_estimator.cc",
       "trace_event/memory_usage_estimator.h",
       "trace_event/optional_trace_event.h",
+      "trace_event/perfetto_proto_appender.cc",
+      "trace_event/perfetto_proto_appender.h",
       "trace_event/process_memory_dump.cc",
       "trace_event/process_memory_dump.h",
       "trace_event/trace_arguments.cc",
       "trace_event/trace_arguments.h",
       "trace_event/trace_buffer.cc",
       "trace_event/trace_buffer.h",
-      "trace_event/trace_category.h",
       "trace_event/trace_config.cc",
       "trace_event/trace_config.h",
       "trace_event/trace_config_category_filter.cc",
@@ -2263,11 +2290,8 @@ component("base") {
       "trace_event/trace_event.h",
       "trace_event/trace_event_impl.cc",
       "trace_event/trace_event_impl.h",
-      "trace_event/trace_event_memory_overhead.cc",
-      "trace_event/trace_event_memory_overhead.h",
       "trace_event/trace_log.cc",
       "trace_event/trace_log.h",
-      "trace_event/trace_log_constants.cc",
       "trace_event/traced_value.cc",
       "trace_event/traced_value.h",
       "trace_event/traced_value_support.h",
@@ -2275,8 +2299,6 @@ component("base") {
       "trace_event/tracing_agent.h",
       "trace_event/typed_macros.h",
       "trace_event/typed_macros_embedder_support.h",
-      "trace_event/typed_macros_internal.cc",
-      "trace_event/typed_macros_internal.h",
       "tracing/perfetto_platform.cc",
       "tracing/perfetto_platform.h",
       "tracing/perfetto_task_runner.cc",
@@ -2303,8 +2325,6 @@ component("base") {
       sources += [
         "trace_event/etw_interceptor_win.cc",
         "trace_event/etw_interceptor_win.h",
-        "trace_event/trace_event_etw_export_win.cc",
-        "trace_event/trace_event_etw_export_win.h",
         "trace_event/trace_logging_minimal_win.cc",
         "trace_event/trace_logging_minimal_win.h",
       ]

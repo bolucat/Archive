@@ -1,142 +1,12 @@
-/* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
- * All rights reserved.
- *
- * This package is an SSL implementation written
- * by Eric Young (eay@cryptsoft.com).
- * The implementation was written so as to conform with Netscapes SSL.
- *
- * This library is free for commercial and non-commercial use as long as
- * the following conditions are aheared to.  The following conditions
- * apply to all code found in this distribution, be it the RC4, RSA,
- * lhash, DES, etc., code; not just the SSL code.  The SSL documentation
- * included with this distribution is covered by the same copyright terms
- * except that the holder is Tim Hudson (tjh@cryptsoft.com).
- *
- * Copyright remains Eric Young's, and as such any Copyright notices in
- * the code are not to be removed.
- * If this package is used in a product, Eric Young should be given attribution
- * as the author of the parts of the library used.
- * This can be in the form of a textual message at program startup or
- * in documentation (online or textual) provided with the package.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. All advertising materials mentioning features or use of this software
- *    must display the following acknowledgement:
- *    "This product includes cryptographic software written by
- *     Eric Young (eay@cryptsoft.com)"
- *    The word 'cryptographic' can be left out if the rouines from the library
- *    being used are not cryptographic related :-).
- * 4. If you include any Windows specific code (or a derivative thereof) from
- *    the apps directory (application code) you must include an acknowledgement:
- *    "This product includes software written by Tim Hudson (tjh@cryptsoft.com)"
- *
- * THIS SOFTWARE IS PROVIDED BY ERIC YOUNG ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- *
- * The licence and distribution terms for any publically available version or
- * derivative of this code cannot be changed.  i.e. this code cannot simply be
- * copied and put under another distribution licence
- * [including the GNU Public Licence.]
- */
-/* ====================================================================
- * Copyright (c) 1998-2007 The OpenSSL Project.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *
- * 3. All advertising materials mentioning features or use of this
- *    software must display the following acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit. (http://www.openssl.org/)"
- *
- * 4. The names "OpenSSL Toolkit" and "OpenSSL Project" must not be used to
- *    endorse or promote products derived from this software without
- *    prior written permission. For written permission, please contact
- *    openssl-core@openssl.org.
- *
- * 5. Products derived from this software may not be called "OpenSSL"
- *    nor may "OpenSSL" appear in their names without prior written
- *    permission of the OpenSSL Project.
- *
- * 6. Redistributions of any form whatsoever must retain the following
- *    acknowledgment:
- *    "This product includes software developed by the OpenSSL Project
- *    for use in the OpenSSL Toolkit (http://www.openssl.org/)"
- *
- * THIS SOFTWARE IS PROVIDED BY THE OpenSSL PROJECT ``AS IS'' AND ANY
- * EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE OpenSSL PROJECT OR
- * ITS CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
- * STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
- * OF THE POSSIBILITY OF SUCH DAMAGE.
- * ====================================================================
- *
- * This product includes cryptographic software written by Eric Young
- * (eay@cryptsoft.com).  This product includes software written by Tim
- * Hudson (tjh@cryptsoft.com).
- *
- */
-/* ====================================================================
- * Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED.
- * ECC cipher suite support in OpenSSL originally developed by
- * SUN MICROSYSTEMS, INC., and contributed to the OpenSSL project.
- */
-/* ====================================================================
+/*
+ * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
  * Copyright 2005 Nokia. All rights reserved.
  *
- * The portions of the attached software ("Contribution") is developed by
- * Nokia Corporation and is licensed pursuant to the OpenSSL open source
- * license.
- *
- * The Contribution, originally written by Mika Kousa and Pasi Eronen of
- * Nokia Corporation, consists of the "PSK" (Pre-Shared Key) ciphersuites
- * support (see RFC 4279) to OpenSSL.
- *
- * No patent licenses or other rights except those expressly stated in
- * the OpenSSL open source license shall be deemed granted or received
- * expressly, by implication, estoppel, or otherwise.
- *
- * No assurances are provided by Nokia that the Contribution does not
- * infringe the patent or other intellectual property rights of any third
- * party or that the license provides you with all the necessary rights
- * to make use of the Contribution.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. IN
- * ADDITION TO THE DISCLAIMERS INCLUDED IN THE LICENSE, NOKIA
- * SPECIFICALLY DISCLAIMS ANY LIABILITY FOR CLAIMS BROUGHT BY YOU OR ANY
- * OTHER ENTITY BASED ON INFRINGEMENT OF INTELLECTUAL PROPERTY RIGHTS OR
- * OTHERWISE.
+ * Licensed under the OpenSSL license (the "License").  You may not use
+ * this file except in compliance with the License.  You can obtain a copy
+ * in the file LICENSE in the source distribution or at
+ * https://www.openssl.org/source/license.html
  */
 
 #ifndef OPENSSL_HEADER_SSL_INTERNAL_H
@@ -188,60 +58,13 @@ struct SSL_X509_METHOD;
 
 // C++ utilities.
 
-// Fill-ins for various functions in C++17.
-// TODO(crbug.com/42290600): Replace these with the standard ones when we
-// require C++17.
-
-template <typename ForwardIt>
-ForwardIt cxx17_uninitialized_default_construct_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    new (std::addressof(*first)) T;
-    first++;
-    n--;
-  }
-  return first;
-}
-
-template <typename ForwardIt>
-ForwardIt cxx17_uninitialized_value_construct_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    new (std::addressof(*first)) T();
-    first++;
-    n--;
-  }
-  return first;
-}
-
-template <typename InputIt, typename OutputIt>
-InputIt cxx17_uninitialized_move(InputIt first, InputIt last, OutputIt out) {
-  using OutputT = typename std::iterator_traits<OutputIt>::value_type;
-  for (; first != last; ++first) {
-    new (std::addressof(*out)) OutputT(std::move(*first));
-    ++out;
-  }
-  return out;
-}
-
-template <typename ForwardIt>
-ForwardIt cxx17_destroy_n(ForwardIt first, size_t n) {
-  using T = typename std::iterator_traits<ForwardIt>::value_type;
-  while (n > 0) {
-    first->~T();
-    first++;
-    n--;
-  }
-  return first;
-}
-
 // New behaves like |new| but uses |OPENSSL_malloc| for memory allocation. It
 // returns nullptr on allocation error. It only implements single-object
 // allocation and not new T[n].
 //
 // Note: unlike |new|, this does not support non-public constructors.
 template <typename T, typename... Args>
-T *New(Args &&... args) {
+T *New(Args &&...args) {
   void *t = OPENSSL_malloc(sizeof(T));
   if (t == nullptr) {
     return nullptr;
@@ -272,7 +95,7 @@ struct DeleterImpl<T, std::enable_if_t<T::kAllowUniquePtr>> {
 // MakeUnique behaves like |std::make_unique| but returns nullptr on allocation
 // error.
 template <typename T, typename... Args>
-UniquePtr<T> MakeUnique(Args &&... args) {
+UniquePtr<T> MakeUnique(Args &&...args) {
   return UniquePtr<T>(New<T>(std::forward<Args>(args)...));
 }
 
@@ -318,7 +141,7 @@ class Array {
   // Reset releases the current contents of the array and takes ownership of the
   // raw pointer supplied by the caller.
   void Reset(T *new_data, size_t new_size) {
-    cxx17_destroy_n(data_, size_);
+    std::destroy_n(data_, size_);
     OPENSSL_free(data_);
     data_ = new_data;
     size_ = new_size;
@@ -341,7 +164,7 @@ class Array {
     if (!InitUninitialized(new_size)) {
       return false;
     }
-    cxx17_uninitialized_value_construct_n(data_, size_);
+    std::uninitialized_value_construct_n(data_, size_);
     return true;
   }
 
@@ -352,7 +175,7 @@ class Array {
     if (!InitUninitialized(new_size)) {
       return false;
     }
-    cxx17_uninitialized_default_construct_n(data_, size_);
+    std::uninitialized_default_construct_n(data_, size_);
     return true;
   }
 
@@ -372,7 +195,7 @@ class Array {
     if (new_size > size_) {
       abort();
     }
-    cxx17_destroy_n(data_ + new_size, size_ - new_size);
+    std::destroy_n(data_ + new_size, size_ - new_size);
     size_ = new_size;
   }
 
@@ -440,7 +263,7 @@ class Vector {
   const T *end() const { return data_ + size_; }
 
   void clear() {
-    cxx17_destroy_n(data_, size_);
+    std::destroy_n(data_, size_);
     OPENSSL_free(data_);
     data_ = nullptr;
     size_ = 0;
@@ -499,7 +322,7 @@ class Vector {
       return false;
     }
     size_t new_size = size_;
-    cxx17_uninitialized_move(begin(), end(), new_data);
+    std::uninitialized_move(begin(), end(), new_data);
     clear();
     data_ = new_data;
     size_ = new_size;
@@ -543,7 +366,7 @@ class InplaceVector {
   }
   InplaceVector &operator=(InplaceVector &&other) {
     clear();
-    cxx17_uninitialized_move(other.begin(), other.end(), data());
+    std::uninitialized_move(other.begin(), other.end(), data());
     size_ = other.size();
     return *this;
   }
@@ -575,7 +398,7 @@ class InplaceVector {
   // default-constructible.
   void Shrink(size_t new_size) {
     BSSL_CHECK(new_size <= size_);
-    cxx17_destroy_n(data() + new_size, size_ - new_size);
+    std::destroy_n(data() + new_size, size_ - new_size);
     size_ = static_cast<PackedSize<N>>(new_size);
   }
 
@@ -590,7 +413,7 @@ class InplaceVector {
     if (new_size > capacity()) {
       return false;
     }
-    cxx17_uninitialized_value_construct_n(data() + size_, new_size - size_);
+    std::uninitialized_value_construct_n(data() + size_, new_size - size_);
     size_ = static_cast<PackedSize<N>>(new_size);
     return true;
   }
@@ -606,7 +429,7 @@ class InplaceVector {
     if (new_size > capacity()) {
       return false;
     }
-    cxx17_uninitialized_default_construct_n(data() + size_, new_size - size_);
+    std::uninitialized_default_construct_n(data() + size_, new_size - size_);
     size_ = static_cast<PackedSize<N>>(new_size);
     return true;
   }
@@ -686,7 +509,7 @@ class MRUQueue {
   // If we ever need to make this type movable, we could. (The defaults almost
   // work except we need |start_| to be reset when moved-from.)
   MRUQueue(const MRUQueue &other) = delete;
-  MRUQueue &operator=(const MRUQueue &other)  = delete;
+  MRUQueue &operator=(const MRUQueue &other) = delete;
 
   bool empty() const { return size() == 0; }
   size_t size() const { return storage_.size(); }
@@ -832,6 +655,11 @@ bool ssl_add_supported_versions(const SSL_HANDSHAKE *hs, CBB *cbb,
 // and sets |*out_alert| to an alert to send.
 bool ssl_negotiate_version(SSL_HANDSHAKE *hs, uint8_t *out_alert,
                            uint16_t *out_version, const CBS *peer_versions);
+
+// ssl_has_final_version returns whether |ssl| has determined the final version.
+// This may be used to distinguish the predictive 0-RTT version from the final
+// one.
+bool ssl_has_final_version(const SSL *ssl);
 
 // ssl_protocol_version returns |ssl|'s protocol version. It is an error to
 // call this function before the version is determined.
@@ -1294,6 +1122,12 @@ class DTLSRecordNumber {
     return DTLSRecordNumber(combined);
   }
 
+  bool operator==(DTLSRecordNumber r) const {
+    return combined() == r.combined();
+  }
+  bool operator!=(DTLSRecordNumber r) const { return !((*this) == r); }
+  bool operator<(DTLSRecordNumber r) const { return combined() < r.combined(); }
+
   uint64_t combined() const { return combined_; }
   uint16_t epoch() const { return combined_ >> 48; }
   uint64_t sequence() const { return combined_ & kMaxSequence; }
@@ -1513,8 +1347,7 @@ class SSLKeyShare {
   // |out_ciphertext|, and sets |*out_secret| to the shared secret. On failure,
   // it returns false and sets |*out_alert| to an alert to send to the peer.
   virtual bool Encap(CBB *out_ciphertext, Array<uint8_t> *out_secret,
-                     uint8_t *out_alert,
-                     Span<const uint8_t> peer_key) = 0;
+                     uint8_t *out_alert, Span<const uint8_t> peer_key) = 0;
 
   // Decap decapsulates the symmetric secret in |ciphertext|. On success, it
   // returns true and sets |*out_secret| to the shared secret. On failure, it
@@ -1600,12 +1433,6 @@ bool dtls_has_unprocessed_handshake_data(const SSL *ssl);
 // tls_flush_pending_hs_data flushes any handshake plaintext data.
 bool tls_flush_pending_hs_data(SSL *ssl);
 
-struct DTLSOutgoingMessage {
-  Array<uint8_t> data;
-  uint16_t epoch = 0;
-  bool is_ccs = false;
-};
-
 // dtls_clear_outgoing_messages releases all buffered outgoing messages.
 void dtls_clear_outgoing_messages(SSL *ssl);
 
@@ -1678,9 +1505,6 @@ class SSLBuffer {
   uint16_t cap_ = 0;
   // inline_buf_ is a static buffer for short reads.
   uint8_t inline_buf_[SSL3_RT_HEADER_LENGTH];
-  // buf_allocated_ is true if |buf_| points to allocated data and must be freed
-  // or false if it points into |inline_buf_|.
-  bool buf_allocated_ = false;
 };
 
 // ssl_read_buffer_extend_to extends the read buffer to the desired length. For
@@ -1779,7 +1603,7 @@ bool ssl_add_CA_names(const SSL_HANDSHAKE *hs, CBB *cbb);
 // a server's leaf certificate for |hs|. Otherwise, it returns zero and pushes
 // an error on the error queue.
 bool ssl_check_leaf_certificate(SSL_HANDSHAKE *hs, EVP_PKEY *pkey,
-                               const CRYPTO_BUFFER *leaf);
+                                const CRYPTO_BUFFER *leaf);
 
 
 // TLS 1.3 key derivation.
@@ -2496,6 +2320,10 @@ struct SSL_HANDSHAKE {
   // the handshake.
   bool can_early_write : 1;
 
+  // is_early_version is true if the protocol version configured is not
+  // necessarily the final version and is just the predicted 0-RTT version.
+  bool is_early_version : 1;
+
   // next_proto_neg_seen is one of NPN was negotiated.
   bool next_proto_neg_seen : 1;
 
@@ -2596,10 +2424,9 @@ const char *ssl_server_handshake_state(SSL_HANDSHAKE *hs);
 const char *tls13_client_handshake_state(SSL_HANDSHAKE *hs);
 const char *tls13_server_handshake_state(SSL_HANDSHAKE *hs);
 
-// tls13_add_key_update queues a KeyUpdate message on |ssl|. The
-// |update_requested| argument must be one of |SSL_KEY_UPDATE_REQUESTED| or
-// |SSL_KEY_UPDATE_NOT_REQUESTED|.
-bool tls13_add_key_update(SSL *ssl, int update_requested);
+// tls13_add_key_update queues a KeyUpdate message on |ssl|. |request_type| must
+// be one of |SSL_KEY_UPDATE_REQUESTED| or |SSL_KEY_UPDATE_NOT_REQUESTED|.
+bool tls13_add_key_update(SSL *ssl, int request_type);
 
 // tls13_post_handshake processes a post-handshake message. It returns true on
 // success and false on failure.
@@ -2955,9 +2782,15 @@ struct SSL_PROTOCOL_METHOD {
   // add_change_cipher_spec adds a ChangeCipherSpec record to the pending
   // flight. It returns true on success and false on error.
   bool (*add_change_cipher_spec)(SSL *ssl);
-  // flush_flight flushes the pending flight to the transport. It returns one on
-  // success and <= 0 on error.
-  int (*flush_flight)(SSL *ssl);
+  // finish_flight marks the pending flight as finished and ready to send.
+  // |flush| must be called to write it.
+  void (*finish_flight)(SSL *ssl);
+  // schedule_ack schedules a DTLS 1.3 ACK to be sent, without an ACK delay.
+  // |flush| must be called to write it.
+  void (*schedule_ack)(SSL *ssl);
+  // flush writes any scheduled data to the transport. It returns one on success
+  // and <= 0 on error.
+  int (*flush)(SSL *ssl);
   // on_handshake_complete is called when the handshake is complete.
   void (*on_handshake_complete)(SSL *ssl);
   // set_read_state sets |ssl|'s read cipher state and level to |aead_ctx| and
@@ -3174,7 +3007,8 @@ struct SSL3_STATE {
 
   // version is the protocol version, or zero if the version has not yet been
   // set. In clients offering 0-RTT, this version will initially be set to the
-  // early version, then switched to the final version.
+  // early version, then switched to the final version. To distinguish these
+  // cases, use |ssl_has_final_version|.
   uint16_t version = 0;
 
   // early_data_skipped is the amount of early data that has been skipped by the
@@ -3223,8 +3057,10 @@ struct SSL3_STATE {
   // Channel ID and the |channel_id| field is filled in.
   bool channel_id_valid : 1;
 
-  // key_update_pending is true if we have a KeyUpdate acknowledgment
-  // outstanding.
+  // key_update_pending is true if we are in the process of sending a KeyUpdate
+  // message. As a DoS mitigation (and a requirement in DTLS), we never send
+  // more than one KeyUpdate at once. In DTLS, this tracks whether there is an
+  // unACKed KeyUpdate.
   bool key_update_pending : 1;
 
   // early_data_accepted is true if early data was accepted by the server.
@@ -3361,6 +3197,7 @@ class DTLSMessageBitmap {
     size_t end = 0;
 
     bool empty() const { return start == end; }
+    size_t size() const { return end - start; }
     bool operator==(const Range &r) const {
       return start == r.start && end == r.end;
     }
@@ -3421,9 +3258,65 @@ struct DTLSIncomingMessage {
   DTLSMessageBitmap reassembly;
 };
 
+struct DTLSOutgoingMessage {
+  size_t msg_len() const {
+    assert(!is_ccs);
+    assert(data.size() >= DTLS1_HM_HEADER_LENGTH);
+    return data.size() - DTLS1_HM_HEADER_LENGTH;
+  }
+
+  bool IsFullyAcked() const {
+    // ACKs only exist in DTLS 1.3, which does not send ChangeCipherSpec.
+    return !is_ccs && acked.IsComplete();
+  }
+
+  Array<uint8_t> data;
+  uint16_t epoch = 0;
+  bool is_ccs = false;
+  // acked tracks which bits of the message have been ACKed by the peer. If
+  // |msg_len| is zero, it tracks one bit for whether the header has been
+  // received.
+  DTLSMessageBitmap acked;
+};
+
 struct OPENSSL_timeval {
   uint64_t tv_sec;
   uint32_t tv_usec;
+};
+
+struct DTLSTimer {
+ public:
+  static constexpr uint64_t kNever = UINT64_MAX;
+
+  // StartMicroseconds schedules the timer to expire the specified number of
+  // microseconds from |now|.
+  void StartMicroseconds(OPENSSL_timeval now, uint64_t microseconds);
+
+  // Stop disables the timer.
+  void Stop();
+
+  // IsExpired returns true if the timer was set and is expired at time |now|.
+  bool IsExpired(OPENSSL_timeval now) const;
+
+  // IsSet returns true if the timer is scheduled or expired, and false if it is
+  // stopped.
+  bool IsSet() const;
+
+  // MicrosecondsRemaining returns the time remaining, in microseconds, at
+  // |now|, or |kNever| if the timer is unset.
+  uint64_t MicrosecondsRemaining(OPENSSL_timeval now) const;
+
+ private:
+  // expire_time_ is the time when the timer expires, or zero if the timer is
+  // unset.
+  //
+  // TODO(crbug.com/366284846): This is an extremely inconvenient time
+  // representation. Switch libssl to something like a 64-bit count of
+  // microseconds. While it's decidedly past 1970 now, zero is a less obviously
+  // sound distinguished value for the monotonic clock, so maybe we should use a
+  // different distinguished time, like |INT64_MAX| in the microseconds
+  // representation.
+  OPENSSL_timeval expire_time_ = {0, 0};
 };
 
 // DTLS_MAX_EXTRA_WRITE_EPOCHS is the maximum number of additional write epochs
@@ -3437,6 +3330,56 @@ struct OPENSSL_timeval {
 // the client's ACKs have caught up. At that point, epochs 0 and 1 can be
 // discarded.
 #define DTLS_MAX_EXTRA_WRITE_EPOCHS 2
+
+// DTLS_MAX_ACK_BUFFER is the maximum number of records worth of data we'll keep
+// track of with DTLS 1.3 ACKs. When we exceed this value, information about
+// stale records will be dropped. This will not break the connection but may
+// cause ACKs to perform worse and retransmit unnecessary information.
+#define DTLS_MAX_ACK_BUFFER 32
+
+// A DTLSSentRecord records information about a record we sent. Each record
+// covers all bytes from |first_msg_start| (inclusive) of |first_msg| to
+// |last_msg_end| (exclusive) of |last_msg|. Messages are referenced by index
+// into |outgoing_messages|. |last_msg_end| may be |outgoing_messages.size()| if
+// |last_msg_end| is zero.
+//
+// When the message is empty, |first_msg_start| and |last_msg_end| are
+// maintained as if there is a single bit in the message representing the
+// header. See |acked| in DTLSOutgoingMessage.
+struct DTLSSentRecord {
+  DTLSRecordNumber number;
+  PackedSize<SSL_MAX_HANDSHAKE_FLIGHT> first_msg = 0;
+  PackedSize<SSL_MAX_HANDSHAKE_FLIGHT> last_msg = 0;
+  uint32_t first_msg_start = 0;
+  uint32_t last_msg_end = 0;
+};
+
+enum class QueuedKeyUpdate {
+  kNone,
+  kUpdateNotRequested,
+  kUpdateRequested,
+};
+
+// DTLS_PREV_READ_EPOCH_EXPIRE_SECONDS is how long to retain the previous read
+// epoch in DTLS 1.3. This value is set based on the following:
+//
+// - Section 4.2.1 of RFC 9147 recommends retaining past read epochs for the
+//   default TCP MSL. This accommodates packet reordering with KeyUpdate.
+//
+// - Section 5.8.1 of RFC 9147 requires being capable of ACKing the client's
+//   final flight for at least twice the default MSL. That requires retaining
+//   epoch 2 after the handshake.
+//
+// - Section 4 of RFC 9293 defines the MSL to be two minutes.
+#define DTLS_PREV_READ_EPOCH_EXPIRE_SECONDS (4 * 60)
+
+struct DTLSPrevReadEpoch {
+  static constexpr bool kAllowUniquePtr = true;
+  DTLSReadEpoch epoch;
+  // expire is the expiration time of the read epoch, expressed as a POSIX
+  // timestamp in seconds.
+  uint64_t expire;
+};
 
 struct DTLS1_STATE {
   static constexpr bool kAllowUniquePtr = true;
@@ -3460,19 +3403,36 @@ struct DTLS1_STATE {
   // peer sent the final flight.
   bool flight_has_reply : 1;
 
+  // handshake_write_overflow and handshake_read_overflow are true if
+  // handshake_write_seq and handshake_read_seq, respectively have overflowed.
+  bool handshake_write_overflow : 1;
+  bool handshake_read_overflow : 1;
+
+  // sending_flight and sending_ack are true if we are in the process of sending
+  // a handshake flight and ACK, respectively.
+  bool sending_flight : 1;
+  bool sending_ack : 1;
+
+  // queued_key_update, if not kNone, indicates we've queued a KeyUpdate message
+  // to send after the current flight is ACKed.
+  QueuedKeyUpdate queued_key_update : 2;
+
   uint16_t handshake_write_seq = 0;
   uint16_t handshake_read_seq = 0;
 
-  // read_epoch is the current DTLS read epoch.
+  // read_epoch is the current read epoch.
   DTLSReadEpoch read_epoch;
 
-  // next_read_epoch is the next DTLS read epoch in DTLS 1.3. It will become
+  // next_read_epoch is the next read epoch in DTLS 1.3. It will become
   // current once a record is received from it.
   UniquePtr<DTLSReadEpoch> next_read_epoch;
 
+  // prev_read_epoch is the previous read epoch in DTLS 1.3.
+  UniquePtr<DTLSPrevReadEpoch> prev_read_epoch;
+
   // write_epoch is the current DTLS write epoch. Non-retransmit records will
   // generally use this epoch.
-  // TODO(crbug.com/42290594): 0-RTT will be the exception, when implemented.
+  // TODO(crbug.com/381113363): 0-RTT will be the exception, when implemented.
   DTLSWriteEpoch write_epoch;
 
   // extra_write_epochs is the collection available write epochs.
@@ -3490,6 +3450,17 @@ struct DTLS1_STATE {
   InplaceVector<DTLSOutgoingMessage, SSL_MAX_HANDSHAKE_FLIGHT>
       outgoing_messages;
 
+  // sent_records is a queue of records we sent, for processing ACKs. To save
+  // memory in the steady state, the structure is stored on the heap and dropped
+  // when empty.
+  UniquePtr<MRUQueue<DTLSSentRecord, DTLS_MAX_ACK_BUFFER>> sent_records;
+
+  // records_to_ack is a queue of received records that we should ACK. This is
+  // not stored on the heap because, in the steady state, DTLS 1.3 does not
+  // necessarily empty this list. (We probably could drop records from here once
+  // they are sufficiently old.)
+  MRUQueue<DTLSRecordNumber, DTLS_MAX_ACK_BUFFER> records_to_ack;
+
   // outgoing_written is the number of outgoing messages that have been
   // written.
   uint8_t outgoing_written = 0;
@@ -3503,12 +3474,15 @@ struct DTLS1_STATE {
   // the last time it was reset.
   unsigned num_timeouts = 0;
 
-  // Indicates when the last handshake msg or heartbeat sent will
-  // timeout.
-  struct OPENSSL_timeval next_timeout = {0, 0};
+  // retransmit_timer tracks when to schedule the next DTLS retransmit if we do
+  // not hear from the peer.
+  DTLSTimer retransmit_timer;
+
+  // ack_timer tracks when to send an ACK.
+  DTLSTimer ack_timer;
 
   // timeout_duration_ms is the timeout duration in milliseconds.
-  unsigned timeout_duration_ms = 0;
+  uint32_t timeout_duration_ms = 0;
 };
 
 // An ALPSConfig is a pair of ALPN protocol and settings value to use with ALPS.
@@ -3613,9 +3587,9 @@ struct SSL_CONFIG {
   // structure for the client to use when negotiating ECH.
   Array<uint8_t> client_ech_config_list;
 
-  // tls13_cipher_policy limits the set of ciphers that can be selected when
+  // compliance_policy limits the set of ciphers that can be selected when
   // negotiating a TLS 1.3 connection.
-  enum ssl_compliance_policy_t tls13_cipher_policy = ssl_compliance_policy_none;
+  enum ssl_compliance_policy_t compliance_policy = ssl_compliance_policy_none;
 
   // verify_mode is a bitmask of |SSL_VERIFY_*| values.
   uint8_t verify_mode = SSL_VERIFY_NONE;
@@ -3704,10 +3678,15 @@ bool ssl_is_key_type_supported(int key_type);
 // counterpart to |privkey|. Otherwise it returns false and pushes a helpful
 // message on the error queue.
 bool ssl_compare_public_and_private_key(const EVP_PKEY *pubkey,
-                                       const EVP_PKEY *privkey);
+                                        const EVP_PKEY *privkey);
 bool ssl_get_new_session(SSL_HANDSHAKE *hs);
+
+// ssl_encrypt_ticket encrypt a ticket for |session| and writes the result to
+// |out|. It returns true on success and false on error. If, on success, nothing
+// was written to |out|, the caller should skip sending a ticket.
 bool ssl_encrypt_ticket(SSL_HANDSHAKE *hs, CBB *out,
                         const SSL_SESSION *session);
+
 bool ssl_ctx_rotate_ticket_encryption_key(SSL_CTX *ctx);
 
 // ssl_session_new returns a newly-allocated blank |SSL_SESSION| or nullptr on
@@ -3727,6 +3706,20 @@ OPENSSL_EXPORT UniquePtr<SSL_SESSION> SSL_SESSION_parse(
 // session for Session-ID resumption. It returns true on success and false on
 // error.
 OPENSSL_EXPORT bool ssl_session_serialize(const SSL_SESSION *in, CBB *cbb);
+
+enum class SSLSessionType {
+  // The session is not resumable.
+  kNotResumable,
+  // The session uses a TLS 1.2 session ID.
+  kID,
+  // The session uses a TLS 1.2 ticket.
+  kTicket,
+  // The session uses a TLS 1.3 pre-shared key.
+  kPreSharedKey,
+};
+
+// ssl_session_get_type returns the type of |session|.
+SSLSessionType ssl_session_get_type(const SSL_SESSION *session);
 
 // ssl_session_is_context_valid returns whether |session|'s session ID context
 // matches the one set on |hs|.
@@ -3812,13 +3805,15 @@ bool tls_init_message(const SSL *ssl, CBB *cbb, CBB *body, uint8_t type);
 bool tls_finish_message(const SSL *ssl, CBB *cbb, Array<uint8_t> *out_msg);
 bool tls_add_message(SSL *ssl, Array<uint8_t> msg);
 bool tls_add_change_cipher_spec(SSL *ssl);
-int tls_flush_flight(SSL *ssl);
+int tls_flush(SSL *ssl);
 
 bool dtls1_init_message(const SSL *ssl, CBB *cbb, CBB *body, uint8_t type);
 bool dtls1_finish_message(const SSL *ssl, CBB *cbb, Array<uint8_t> *out_msg);
 bool dtls1_add_message(SSL *ssl, Array<uint8_t> msg);
 bool dtls1_add_change_cipher_spec(SSL *ssl);
-int dtls1_flush_flight(SSL *ssl);
+void dtls1_finish_flight(SSL *ssl);
+void dtls1_schedule_ack(SSL *ssl);
+int dtls1_flush(SSL *ssl);
 
 // ssl_add_message_cbb finishes the handshake message in |cbb| and adds it to
 // the pending flight. It returns true on success and false on error.
@@ -3828,7 +3823,9 @@ bool ssl_add_message_cbb(SSL *ssl, CBB *cbb);
 // on success and false on allocation failure.
 bool ssl_hash_message(SSL_HANDSHAKE *hs, const SSLMessage &msg);
 
-ssl_open_record_t dtls1_process_ack(SSL *ssl, uint8_t *out_alert);
+ssl_open_record_t dtls1_process_ack(SSL *ssl, uint8_t *out_alert,
+                                    DTLSRecordNumber ack_record_number,
+                                    Span<const uint8_t> data);
 ssl_open_record_t dtls1_open_app_data(SSL *ssl, Span<uint8_t> *out,
                                       size_t *out_consumed, uint8_t *out_alert,
                                       Span<uint8_t> in);
@@ -3844,20 +3841,26 @@ int dtls1_write_app_data(SSL *ssl, bool *out_needs_handshake,
 int dtls1_write_record(SSL *ssl, int type, Span<const uint8_t> in,
                        uint16_t epoch);
 
-int dtls1_retransmit_outgoing_messages(SSL *ssl);
 bool dtls1_parse_fragment(CBS *cbs, struct hm_header_st *out_hdr,
                           CBS *out_body);
-bool dtls1_check_timeout_num(SSL *ssl);
 
-void dtls1_start_timer(SSL *ssl);
+// DTLS1_MTU_TIMEOUTS is the maximum number of retransmit timeouts to expire
+// before starting to decrease the MTU.
+#define DTLS1_MTU_TIMEOUTS 2
+
+// DTLS1_MAX_TIMEOUTS is the maximum number of retransmit timeouts to expire
+// before failing the DTLS handshake.
+#define DTLS1_MAX_TIMEOUTS 12
+
 void dtls1_stop_timer(SSL *ssl);
-bool dtls1_is_timer_expired(SSL *ssl);
+
 unsigned int dtls1_min_mtu(void);
 
 bool dtls1_new(SSL *ssl);
 void dtls1_free(SSL *ssl);
 
 bool dtls1_process_handshake_fragments(SSL *ssl, uint8_t *out_alert,
+                                       DTLSRecordNumber record_number,
                                        Span<const uint8_t> record);
 bool dtls1_get_message(const SSL *ssl, SSLMessage *out);
 ssl_open_record_t dtls1_open_handshake(SSL *ssl, size_t *out_consumed,
@@ -3960,9 +3963,7 @@ bool ssl_can_write(const SSL *ssl);
 // ssl_can_read returns wheter |ssl| is allowed to read.
 bool ssl_can_read(const SSL *ssl);
 
-void ssl_get_current_time(const SSL *ssl, struct OPENSSL_timeval *out_clock);
-void ssl_ctx_get_current_time(const SSL_CTX *ctx,
-                              struct OPENSSL_timeval *out_clock);
+OPENSSL_timeval ssl_ctx_get_current_time(const SSL_CTX *ctx);
 
 // ssl_reset_error_state resets state for |SSL_get_error|.
 void ssl_reset_error_state(SSL *ssl);
@@ -4240,9 +4241,9 @@ struct ssl_ctx_st : public bssl::RefCounted<ssl_ctx_st> {
   int (*legacy_ocsp_callback)(SSL *ssl, void *arg) = nullptr;
   void *legacy_ocsp_callback_arg = nullptr;
 
-  // tls13_cipher_policy limits the set of ciphers that can be selected when
+  // compliance_policy limits the set of ciphers that can be selected when
   // negotiating a TLS 1.3 connection.
-  enum ssl_compliance_policy_t tls13_cipher_policy = ssl_compliance_policy_none;
+  enum ssl_compliance_policy_t compliance_policy = ssl_compliance_policy_none;
 
   // verify_sigalgs, if not empty, is the set of signature algorithms
   // accepted from the peer in decreasing order of preference.
@@ -4346,11 +4347,9 @@ struct ssl_st {
   // session info
 
   // initial_timeout_duration_ms is the default DTLS timeout duration in
-  // milliseconds. It's used to initialize the timer any time it's restarted.
-  //
-  // RFC 6347 states that implementations SHOULD use an initial timer value of 1
-  // second.
-  unsigned initial_timeout_duration_ms = 1000;
+  // milliseconds. It's used to initialize the timer any time it's restarted. We
+  // default to RFC 9147's recommendation for real-time applications, 400ms.
+  uint32_t initial_timeout_duration_ms = 400;
 
   // session is the configured session to be offered by the client. This session
   // is immutable.

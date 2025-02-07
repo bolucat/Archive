@@ -200,9 +200,9 @@ travis-install:
 .PHONY: clangbuild-darwin-fat
 clangbuild-darwin-fat: clean
 	clang -v
-	CXX=clang++ CC=clang CFLAGS="-Werror -Wconversion -Wno-sign-conversion -Wdocumentation -arch arm64" $(MAKE) zstd-release
+	CXX=clang++ CC=clang CFLAGS+="-Werror -Wconversion -Wno-sign-conversion -Wdocumentation -arch arm64" $(MAKE) zstd-release
 	mv programs/zstd programs/zstd_arm64
-	CXX=clang++ CC=clang CFLAGS="-Werror -Wconversion -Wno-sign-conversion -Wdocumentation -arch x86_64" $(MAKE) zstd-release
+	CXX=clang++ CC=clang CFLAGS+="-Werror -Wconversion -Wno-sign-conversion -Wdocumentation -arch x86_64" $(MAKE) zstd-release
 	mv programs/zstd programs/zstd_x64
 	lipo -create programs/zstd_x64 programs/zstd_arm64 -output programs/zstd
 
