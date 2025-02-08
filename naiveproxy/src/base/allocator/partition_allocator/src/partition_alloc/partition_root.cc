@@ -298,7 +298,6 @@ void PartitionAllocMallocInitOnce() {
   }
 
 #if defined(__MUSL__)
-  // Musl calls malloc() in pthread_atfork(), resulting in a deadlock.
   static_cast<void>(BeforeForkInParent);
   static_cast<void>(AfterForkInParent);
   static_cast<void>(AfterForkInChild);

@@ -353,13 +353,13 @@
 &dp5 {
 	status = "okay";
 	phy-handle = <&qca8081_24>;
-	label = "lan";
+	label = "wan";
 };
 
 &dp6 {
 	status = "okay";
 	phy-handle = <&qca8081_28>;
-	label = "wan";
+	label = "lan";
 };
 
 &wifi {

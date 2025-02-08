@@ -457,10 +457,11 @@ EXTRA_CFLAGS+= \
 	-I$(STAGING_DIR)/usr/include/qca-nss-drv \
 	-I$(STAGING_DIR)/usr/include/qca-nss-crypto \
 	-I$(STAGING_DIR)/usr/include/qca-nss-cfi \
-  	-I$(STAGING_DIR)/usr/include/qca-nss-ecm \
+  -I$(STAGING_DIR)/usr/include/qca-nss-ecm \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk/fal \
-	-I$(STAGING_DIR)/usr/include/nat46
+	-I$(STAGING_DIR)/usr/include/nat46 \
+	-Wno-error=enum-conversion
 
 # Build individual packages if selected
 ifneq ($(CONFIG_PACKAGE_kmod-qca-nss-drv-tun6rd),)
