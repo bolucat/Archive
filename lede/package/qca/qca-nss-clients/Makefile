@@ -457,7 +457,7 @@ EXTRA_CFLAGS+= \
 	-I$(STAGING_DIR)/usr/include/qca-nss-drv \
 	-I$(STAGING_DIR)/usr/include/qca-nss-crypto \
 	-I$(STAGING_DIR)/usr/include/qca-nss-cfi \
-  -I$(STAGING_DIR)/usr/include/qca-nss-ecm \
+  	-I$(STAGING_DIR)/usr/include/qca-nss-ecm \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk/fal \
 	-I$(STAGING_DIR)/usr/include/nat46 \
