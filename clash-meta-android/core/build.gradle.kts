@@ -62,13 +62,17 @@ afterEvaluate {
     }
 }
 
-val abis = listOf("armeabi-v7a" to "ArmeabiV7a", "arm64-v8a" to "Arm64V8a", "x86_64" to "X8664", "x86" to "X86")
+val abis = listOf("arm64-v8a" to "Arm64V8a", "armeabi-v7a" to "ArmeabiV7a", "x86" to "X86", "x86_64" to "X8664")
 
 androidComponents.onVariants { variant ->
-    afterEvaluate {
-        for ((abi, goAbi) in abis) {
-            val cmakeName = if (variant.buildType == "debug") "Debug" else "RelWithDebInfo"
-            tasks.getByName("buildCMake$cmakeName[$abi]").dependsOn(tasks.getByName("externalGolangBuild${variant.name.capitalizeUS()}$goAbi"))
+    val cmakeName = if (variant.buildType == "debug") "Debug" else "RelWithDebInfo"
+
+    abis.forEach { (abi, goAbi) ->
+        tasks.configureEach {
+            if (name.startsWith("buildCMake$cmakeName[$abi]")) {
+                dependsOn("externalGolangBuild${variant.name.capitalizeUS()}$goAbi")
+                println("Set up dependency: $name -> externalGolangBuild${variant.name.capitalizeUS()}$goAbi")
+            }
         }
     }
 }
