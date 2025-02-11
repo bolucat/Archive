@@ -1,7 +1,7 @@
 <Project>
 
     <PropertyGroup>
-        <Version>7.8.1</Version>
+        <Version>7.8.2</Version>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -28,6 +28,5 @@
 
         <UseSystemResourceKeys>true</UseSystemResourceKeys>
         <PublishSingleFile>true</PublishSingleFile>
-        <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     </PropertyGroup>
 </Project>
