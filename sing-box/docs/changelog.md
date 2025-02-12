@@ -2,11 +2,29 @@
 icon: material/alert-decagram
 ---
 
-#### 1.12.0-alpha.5
+#### 1.12.0-alpha.6
+
+* Add Tailscale endpoint **1**
+* Drop support for go1.22 **2**
+* Fixes and improvements
+
+**1**:
+
+See [Tailscale](/configuration/endpoint/tailscale/).
+
+**2**:
+
+Due to maintenance difficulties, sing-box 1.12.0 requires at least Go 1.23 to compile.
+
+For Windows 7 users, legacy binaries now continue to compile with Go 1.23 and patches from [MetaCubeX/go](https://github.com/MetaCubeX/go).
+
+### 1.11.3
 
 * Fixes and improvements
 
-### 1.11.2
+_This version overwrites 1.11.2, as incorrect binaries were released due to a bug in the continuous integration process._
+
+#### 1.12.0-alpha.5
 
 * Fixes and improvements
 
