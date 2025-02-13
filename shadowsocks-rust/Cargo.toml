@@ -120,10 +120,6 @@ hickory-dns = ["shadowsocks-service/hickory-dns"]
 # Hickory-DNS was renamed from Trust-DNS, keep compatibility.
 trust-dns = ["hickory-dns"]
 dns-over-tls = ["shadowsocks-service/dns-over-tls"]
-dns-over-native-tls = ["shadowsocks-service/dns-over-native-tls"]
-dns-over-native-tls-vendored = [
-    "shadowsocks-service/dns-over-native-tls-vendored",
-]
 dns-over-https = ["shadowsocks-service/dns-over-https"]
 dns-over-h3 = ["shadowsocks-service/dns-over-h3"]
 
@@ -229,7 +225,7 @@ cfg-if = "1"
 qrcode = { version = "0.14", default-features = false, optional = true }
 sysexits = "0.8"
 build-time = "0.1"
-directories = "5.0"
+directories = "6.0"
 xdg = "2.5"
 rpassword = "7.3"
 libc = { version = "0.2", features = ["extra_traits"] }
