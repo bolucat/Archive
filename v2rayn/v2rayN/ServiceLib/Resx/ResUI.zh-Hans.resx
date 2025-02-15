@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -926,7 +926,7 @@
     <value>速度(M/s)</value>
   </data>
   <data name="FailedToRunCore" xml:space="preserve">
-    <value>运行Core失败，请查看日志</value>
+    <value>运行 Core 失败，请查看提示信息</value>
   </data>
   <data name="LvFilter" xml:space="preserve">
     <value>别名正则过滤</value>
@@ -1369,8 +1369,8 @@
   <data name="TbSettingsHide2TrayWhenClose" xml:space="preserve">
     <value>关闭窗口时隐藏至托盘</value>
   </data>
-  <data name="TbSettingsSpeedTestPageSize" xml:space="preserve">
-    <value>测试时自动分批的每批数量（最大1000）</value>
+  <data name="TbSettingsMixedConcurrencyCount" xml:space="preserve">
+    <value>多线程测试时的并发数量</value>
   </data>
   <data name="TbSettingsExceptionTip2" xml:space="preserve">
     <value>例外：对于下列地址不使用代理配置文件。使用逗号(,)分隔。</value>

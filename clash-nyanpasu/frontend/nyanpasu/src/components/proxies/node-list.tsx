@@ -17,7 +17,8 @@ import {
   ProxyGroupItem,
   ProxyItem,
   useClashCore,
-  useNyanpasu,
+  useProxyMode,
+  useSetting,
 } from '@nyanpasu/interface'
 import { cn, useBreakpointValue } from '@nyanpasu/ui'
 import NodeCard from './node-card'
@@ -41,7 +42,7 @@ export const NodeList = forwardRef(function NodeList(
     getAllProxiesProviders,
   } = useClashCore()
 
-  const { getCurrentMode } = useNyanpasu()
+  const { value: proxyMode } = useProxyMode()
 
   const proxyGroup = useAtomValue(proxyGroupAtom)
   const proxiesFilter = useAtomValue(proxiesFilterAtom)
@@ -52,7 +53,7 @@ export const NodeList = forwardRef(function NodeList(
   const [group, setGroup] = useState<ProxyGroupItem>()
 
   const sortGroup = useCallback(() => {
-    if (!getCurrentMode.global) {
+    if (!proxyMode.global) {
       if (proxyGroup.selector !== null) {
         // eslint-disable-next-line @typescript-eslint/no-non-null-asserted-optional-chain
         const selectedGroup = data?.groups[proxyGroup.selector]!
@@ -69,12 +70,11 @@ export const NodeList = forwardRef(function NodeList(
       }
     }
   }, [
-    data?.global,
-    data?.groups,
+    proxyMode.global,
     proxyGroup.selector,
-    getCurrentMode,
+    data?.groups,
+    data?.global,
     proxyGroupSort,
-    setGroup,
   ])
 
   useEffect(() => {
@@ -132,16 +132,14 @@ export const NodeList = forwardRef(function NodeList(
   }, [group?.all, group?.name, column, deferredProxiesFilter])
 
   const handleClick = (node: string) => {
-    if (!getCurrentMode.global) {
+    if (!proxyMode.global) {
       setGroupProxy(proxyGroup.selector as number, node)
     } else {
       setGlobalProxy(node)
     }
   }
 
-  const { nyanpasuConfig } = useNyanpasu()
-
-  const disableMotion = nyanpasuConfig?.lighten_animation_effects
+  const { value: disableMotion } = useSetting('lighten_animation_effects')
 
   const vListRef = useRef<VListHandle>(null)
 

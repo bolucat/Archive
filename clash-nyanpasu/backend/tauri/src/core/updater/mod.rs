@@ -45,6 +45,7 @@ pub struct ManifestVersion {
     updated_at: String,
 }
 
+// TODO: manifest v2 should be kebad-case
 #[derive(Deserialize, Serialize, Clone, Debug, Type)]
 pub struct ManifestVersionLatest {
     mihomo: String,

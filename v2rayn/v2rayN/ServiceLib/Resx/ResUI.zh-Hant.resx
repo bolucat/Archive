@@ -927,7 +927,7 @@
     <value>速度(M/s)</value>
   </data>
   <data name="FailedToRunCore" xml:space="preserve">
-    <value>執行Core失敗，請查閲日誌</value>
+    <value>執行Core失敗，請查看提示訊息</value>
   </data>
   <data name="LvFilter" xml:space="preserve">
     <value>別名正則過濾</value>
@@ -1370,8 +1370,8 @@
   <data name="TbSettingsHide2TrayWhenClose" xml:space="preserve">
     <value>關閉視窗時隱藏至托盤</value>
   </data>
-  <data name="TbSettingsSpeedTestPageSize" xml:space="preserve">
-    <value>測試時自動分批的每批數量（最大1000）</value>
+  <data name="TbSettingsMixedConcurrencyCount" xml:space="preserve">
+    <value>多執行緒測試時的並發數量</value>
   </data>
   <data name="TbSettingsExceptionTip2" xml:space="preserve">
     <value>例外：對於下列位址不使用代理設定檔，使用逗號(,)分隔。</value>
