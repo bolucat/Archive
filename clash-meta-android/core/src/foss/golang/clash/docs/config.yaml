@@ -61,7 +61,7 @@ external-controller-tls: 0.0.0.0:9443 # RESTful API HTTPS 监听地址，需要�
 # RESTful API CORS标头配置
 external-controller-cors:
   allow-origins:
-    - *
+    - "*"
   allow-private-network: true
 
 # RESTful API Unix socket 监听地址（ windows版本大于17063也可以使用，即大于等于1803/RS4版本即可使用 ）
@@ -78,6 +78,7 @@ external-controller-pipe: \\.\pipe\mihomo
 # 配置 WEB UI 目录，使用 http://{{external-controller}}/ui 访问
 external-ui: /path/to/ui/folder/
 external-ui-name: xd
+# 目前支持下载zip,tgz格式的压缩包
 external-ui-url: "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip"
 
 # 在RESTful API端口上开启DOH服务器
@@ -863,6 +864,22 @@ proxies: # socks5
     # 可以使用的值包括 MULTIPLEXING_OFF, MULTIPLEXING_LOW, MULTIPLEXING_MIDDLE, MULTIPLEXING_HIGH。其中 MULTIPLEXING_OFF 会关闭多路复用功能。默认值为 MULTIPLEXING_LOW。
     # multiplexing: MULTIPLEXING_LOW
 
+  # anytls
+  - name: anytls
+    type: anytls
+    server: 1.2.3.4
+    port: 443
+    password: "<your password>"
+    # client-fingerprint: chrome
+    udp: true
+    # idle-session-check-interval: 30 # seconds
+    # idle-session-timeout: 30 # seconds
+    # sni: "example.com"
+    # alpn:
+    #   - h2
+    #   - http/1.1
+    # skip-cert-verify: true
+
 # dns 出站会将请求劫持到内部 dns 模块，所有请求均在内部处理
   - name: "dns-out"
     type: dns
@@ -1207,6 +1224,18 @@ listeners:
       server-names:
         - test.com
     ### 注意，对于vless listener, 至少需要填写 “certificate和private-key” 或 “reality-config” 的其中一项 ###
+
+  - name: anytls-in-1
+    type: anytls
+    port: 10818
+    listen: 0.0.0.0
+    users:
+      username1: password1
+      username2: password2
+    # "certificate" and "private-key" are required
+    certificate: ./server.crt
+    private-key: ./server.key
+    # padding-scheme: "" # https://github.com/anytls/anytls-go/blob/main/docs/protocol.md#cmdupdatepaddingscheme
 
   - name: tun-in-1
     type: tun
