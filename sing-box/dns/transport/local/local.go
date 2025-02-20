@@ -19,14 +19,11 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-func RegisterTransport(registry *dns.TransportRegistry) {
-	dns.RegisterTransport[option.LocalDNSServerOptions](registry, C.DNSTypeLocal, NewTransport)
-}
-
 var _ adapter.DNSTransport = (*Transport)(nil)
 
 type Transport struct {
 	dns.TransportAdapter
+	ctx    context.Context
 	hosts  *hosts.File
 	dialer N.Dialer
 }

@@ -256,6 +256,14 @@ type _RejectActionOptions struct {
 
 type RejectActionOptions _RejectActionOptions
 
+func (r RejectActionOptions) MarshalJSON() ([]byte, error) {
+	switch r.Method {
+	case C.RuleActionRejectMethodDefault:
+		r.Method = ""
+	}
+	return json.Marshal((_RejectActionOptions)(r))
+}
+
 func (r *RejectActionOptions) UnmarshalJSON(bytes []byte) error {
 	err := json.Unmarshal(bytes, (*_RejectActionOptions)(r))
 	if err != nil {
@@ -280,6 +288,9 @@ type RouteActionSniff struct {
 }
 
 type RouteActionResolve struct {
-	Strategy DomainStrategy `json:"strategy,omitempty"`
-	Server   string         `json:"server,omitempty"`
+	Server       string                `json:"server,omitempty"`
+	Strategy     DomainStrategy        `json:"strategy,omitempty"`
+	DisableCache bool                  `json:"disable_cache,omitempty"`
+	RewriteTTL   *uint32               `json:"rewrite_ttl,omitempty"`
+	ClientSubnet *badoption.Prefixable `json:"client_subnet,omitempty"`
 }

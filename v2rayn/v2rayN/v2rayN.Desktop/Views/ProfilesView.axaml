@@ -19,79 +19,73 @@
             <WrapPanel Margin="2" DockPanel.Dock="Top">
                 <ListBox
                     x:Name="lstGroup"
-                    MaxHeight="200"
+                    Margin="{StaticResource MarginLr4}"
                     DisplayMemberBinding="{Binding Remarks}"
                     ItemsSource="{Binding SubItems}"
-                    Theme="{DynamicResource PureCardRadioGroupListBox}" />
+                    Theme="{DynamicResource PureCardRadioGroupListBox}">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
 
                 <Button
                     x:Name="btnEditSub"
-                    Width="30"
-                    Height="30"
-                    Margin="4,0"
+                    Width="{StaticResource IconButtonWidth}"
+                    Height="{StaticResource IconButtonHeight}"
+                    Margin="{StaticResource MarginLr4}"
                     Classes="Success"
                     Theme="{DynamicResource BorderlessButton}"
                     ToolTip.Tip="{x:Static resx:ResUI.menuSubEdit}">
                     <Button.Content>
-                        <PathIcon
-                            Width="24"
-                            Height="24"
-                            Data="{StaticResource building_edit}"
-                            Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
+                        <PathIcon Data="{StaticResource building_edit}" Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
                     </Button.Content>
                 </Button>
                 <Button
                     x:Name="btnAddSub"
-                    Width="30"
-                    Height="30"
-                    Margin="4,0"
+                    Width="{StaticResource IconButtonWidth}"
+                    Height="{StaticResource IconButtonHeight}"
+                    Margin="{StaticResource MarginLr4}"
                     Classes="Success"
                     Theme="{DynamicResource BorderlessButton}"
                     ToolTip.Tip="{x:Static resx:ResUI.menuSubAdd}">
                     <Button.Content>
-                        <PathIcon
-                            Width="24"
-                            Height="24"
-                            Data="{StaticResource building_add}"
-                            Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
+                        <PathIcon Data="{StaticResource building_add}" Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
                     </Button.Content>
                 </Button>
 
                 <Button
                     x:Name="btnAutofitColumnWidth"
-                    Width="30"
-                    Height="30"
-                    Margin="4,0"
+                    Width="{StaticResource IconButtonWidth}"
+                    Height="{StaticResource IconButtonHeight}"
+                    Margin="{StaticResource MarginLr4}"
                     Classes="Success"
                     Theme="{DynamicResource BorderlessButton}"
                     ToolTip.Tip="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}">
                     <Button.Content>
-                        <PathIcon
-                            Width="24"
-                            Height="24"
-                            Data="{StaticResource building_fit}"
-                            Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
+                        <PathIcon Data="{StaticResource building_fit}" Foreground="{DynamicResource ButtonDefaultTertiaryForeground}" />
                     </Button.Content>
                 </Button>
 
                 <TextBox
                     x:Name="txtServerFilter"
                     Width="200"
-                    Margin="4,0"
+                    Margin="{StaticResource MarginLr4}"
                     VerticalContentAlignment="Center"
                     Watermark="{x:Static resx:ResUI.MsgServerTitle}" />
             </WrapPanel>
             <DataGrid
                 x:Name="lstProfiles"
                 AutoGenerateColumns="False"
-                CanUserReorderColumns="True"
                 BorderThickness="1"
+                CanUserReorderColumns="True"
                 CanUserResizeColumns="True"
                 GridLinesVisibility="All"
                 HeadersVisibility="All"
-                ScrollViewer.AllowAutoHide="False"
                 IsReadOnly="True"
-                ItemsSource="{Binding ProfileItems}">
+                ItemsSource="{Binding ProfileItems}"
+                ScrollViewer.AllowAutoHide="False">
                 <DataGrid.KeyBindings>
                     <KeyBinding Command="{Binding Export2ShareUrlCmd}" Gesture="Ctrl+C" />
                     <KeyBinding Command="{Binding SetDefaultServerCmd}" Gesture="Enter" />
@@ -163,9 +157,9 @@
                         </DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <StackPanel Margin="8,0" Orientation="Horizontal">
+                                <StackPanel Margin="{StaticResource MarginLr8}" Orientation="Horizontal">
                                     <Label
-                                        Margin="0,0,8,0"
+                                        Margin="{StaticResource MarginLr4}"
                                         Classes="Solid Red"
                                         Content="{x:Static resx:ResUI.TipActiveServer}"
                                         IsVisible="{Binding IsActive}"
@@ -211,7 +205,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock
-                                    Margin="8,0"
+                                    Margin="{StaticResource MarginLr8}"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
                                     Foreground="{Binding Delay, Converter={StaticResource DelayColorConverter}}"
