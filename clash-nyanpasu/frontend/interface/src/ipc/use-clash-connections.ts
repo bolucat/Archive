@@ -1,9 +1,6 @@
-import { useUpdateEffect } from 'ahooks'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useClashAPI } from '../service/clash-api'
-import { useClashWebSocket } from './use-clash-web-socket'
-
-const MAX_CONNECTIONS_HISTORY = 32
+import { CLASH_CONNECTIONS_QUERY_KEY } from './consts'
 
 export type ClashConnection = {
   downloadTotal: number
@@ -47,32 +44,12 @@ export type ClashConnectionMetadata = {
 }
 
 export const useClashConnections = () => {
-  const { connectionsWS } = useClashWebSocket()
-
   const queryClient = useQueryClient()
 
   const clashApi = useClashAPI()
 
-  useUpdateEffect(() => {
-    const data = JSON.parse(
-      connectionsWS.latestMessage?.data,
-    ) as ClashConnection
-
-    const currentData = queryClient.getQueryData([
-      'clash-connections',
-    ]) as ClashConnection[]
-
-    const newData = [...(currentData || []), data]
-
-    if (newData.length > MAX_CONNECTIONS_HISTORY) {
-      newData.shift()
-    }
-
-    queryClient.setQueryData(['clash-connections'], newData)
-  }, [connectionsWS.latestMessage])
-
   const query = useQuery<ClashConnection[]>({
-    queryKey: ['clash-connections'],
+    queryKey: [CLASH_CONNECTIONS_QUERY_KEY],
     queryFn: () => [],
   })
 
@@ -81,7 +58,7 @@ export const useClashConnections = () => {
       await clashApi.deleteConnections(id)
 
       const currentData = queryClient.getQueryData([
-        'clash-connections',
+        CLASH_CONNECTIONS_QUERY_KEY,
       ]) as ClashConnection[]
 
       if (id) {
@@ -98,7 +75,7 @@ export const useClashConnections = () => {
           }
 
           queryClient.setQueryData(
-            ['clash-connections'],
+            [CLASH_CONNECTIONS_QUERY_KEY],
             [...currentData.slice(0, -1), lastData],
           )
         }
@@ -109,7 +86,7 @@ export const useClashConnections = () => {
           const { downloadTotal, uploadTotal } = lastData
 
           queryClient.setQueryData(
-            ['clash-connections'],
+            [CLASH_CONNECTIONS_QUERY_KEY],
             [
               ...currentData.slice(0, -1),
               {

@@ -38,6 +38,7 @@ namespace ServiceLib
         public const string ClashTunYaml = NamespaceSample + "clash_tun_yaml";
         public const string LinuxAutostartConfig = NamespaceSample + "linux_autostart_config";
         public const string PacFileName = NamespaceSample + "pac";
+        public const string ProxySetOSXShellFileName = NamespaceSample + "proxy_set_osx_sh";
 
         public const string DefaultSecurity = "auto";
         public const string DefaultNetwork = "tcp";
@@ -71,6 +72,7 @@ namespace ServiceLib
         public const string V2RayLocalAsset = "V2RAY_LOCATION_ASSET";
         public const string XrayLocalAsset = "XRAY_LOCATION_ASSET";
         public const int SpeedTestPageSize = 1000;
+        public const string LinuxBash = "/bin/bash";
 
         public static readonly List<string> IEProxyProtocols =
         [
