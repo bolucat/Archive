@@ -34,10 +34,13 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 	switch options.Store {
 	case C.CertificateStoreSystem, "":
 		systemPool = x509.NewCertPool()
+		platformInterface := service.FromContext[platform.Interface](ctx)
 		var systemValid bool
-		for _, cert := range service.FromContext[platform.Interface](ctx).SystemCertificates() {
-			if systemPool.AppendCertsFromPEM([]byte(cert)) {
-				systemValid = true
+		if platformInterface != nil {
+			for _, cert := range platformInterface.SystemCertificates() {
+				if systemPool.AppendCertsFromPEM([]byte(cert)) {
+					systemValid = true
+				}
 			}
 		}
 		if !systemValid {

@@ -29,6 +29,8 @@ import io.nekohasekai.sagernet.utils.PackageCache
 import moe.matsuri.nb4a.*
 import moe.matsuri.nb4a.SingBoxOptions.*
 import moe.matsuri.nb4a.plugin.Plugins
+import moe.matsuri.nb4a.proxy.anytls.AnyTLSBean
+import moe.matsuri.nb4a.proxy.anytls.buildSingBoxOutboundAnyTLSBean
 import moe.matsuri.nb4a.proxy.config.ConfigBean
 import moe.matsuri.nb4a.proxy.shadowtls.ShadowTLSBean
 import moe.matsuri.nb4a.proxy.shadowtls.buildSingBoxOutboundShadowTLSBean
@@ -375,6 +377,9 @@ fun buildConfig(
                         is SSHBean ->
                             buildSingBoxOutboundSSHBean(bean).asMap()
 
+                        is AnyTLSBean ->
+                            buildSingBoxOutboundAnyTLSBean(bean).asMap()
+
                         else -> throw IllegalStateException("can't reach")
                     }
 
@@ -383,18 +388,12 @@ fun buildConfig(
 //                        val keepAliveInterval = DataStore.tcpKeepAliveInterval
 //                        val needKeepAliveInterval = keepAliveInterval !in intArrayOf(0, 15)
 
-                        if (!muxApplied && proxyEntity.needCoreMux()) {
-                            muxApplied = true
-                            currentOutbound["multiplex"] = MultiplexOptions().apply {
-                                enabled = true
-                                padding = Protocols.shouldEnableMux("padding")
-                                max_streams = DataStore.muxConcurrency
-                                protocol = when (DataStore.muxType) {
-                                    1 -> "smux"
-                                    2 -> "yamux"
-                                    else -> "h2mux"
-                                }
-                            }.asMap()
+                        if (!muxApplied) {
+                            val muxObj = proxyEntity.singMux()
+                            if (muxObj != null && muxObj.enabled) {
+                                muxApplied = true
+                                currentOutbound["multiplex"] = muxObj.asMap()
+                            }
                         }
                     }
                 }
