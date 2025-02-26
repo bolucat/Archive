@@ -71,7 +71,6 @@ impl IProfiles {
         if let Some(current) = patch.current {
             let items = self.items.as_ref().unwrap();
             let some_uid = Some(current);
-
             if items.iter().any(|e| e.uid == some_uid) {
                 self.current = some_uid;
             }
@@ -463,6 +462,25 @@ impl IProfiles {
                 None
             }
             _ => None,
+        }
+    }
+
+    /// 判断profile是否是current指向的
+    pub fn is_current_profile_index(&self, index: String) -> bool {
+        self.current == Some(index)
+    }
+
+    /// 获取所有的profiles(uid，名称)
+    pub fn all_profile_uid_and_name(&self) -> Option<Vec<(String, String)>> {
+        match self.items.as_ref() {
+            Some(items) => Some(items.iter().filter_map(|e| {
+                if let (Some(uid), Some(name)) = (e.uid.clone(), e.name.clone()) {
+                    Some((uid, name))
+                } else {
+                    None
+                }
+            }).collect()),
+            None => None,
         }
     }
 }

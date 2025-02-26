@@ -3,10 +3,12 @@ use crate::{
     config::PrfItem,
     enhance,
     utils::{dirs, help},
+    core::{handle, CoreManager},
 };
 use anyhow::{anyhow, Result};
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
+use tokio::time::{sleep, Duration};
 
 pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
 pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
@@ -64,20 +66,57 @@ impl Config {
             let script_item = PrfItem::from_script(Some("Script".to_string()))?;
             Self::profiles().data().append_item(script_item.clone())?;
         }
-        crate::log_err!(Self::generate().await);
-        if let Err(err) = Self::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err}");
 
-            let runtime_path = dirs::app_home_dir()?.join(RUNTIME_CONFIG);
-            // 如果不存在就将默认的clash文件拿过来
-            if !runtime_path.exists() {
-                help::save_yaml(
-                    &runtime_path,
-                    &Config::clash().latest().0,
-                    Some("# Clash Verge Runtime"),
-                )?;
+        // 生成运行时配置
+        crate::log_err!(Self::generate().await);
+
+        // 生成运行时配置文件并验证
+        let config_result = Self::generate_file(ConfigType::Run);
+
+        let validation_result = if let Ok(_) = config_result {
+            // 验证配置文件
+            println!("[首次启动] 开始验证配置");
+            
+            match CoreManager::global().validate_config().await {
+                Ok((is_valid, error_msg)) => {
+                    if !is_valid {
+                        println!("[首次启动] 配置验证失败，使用默认最小配置启动: {}", error_msg);
+                        CoreManager::global()
+                            .use_default_config("config_validate::boot_error", &error_msg)
+                            .await?;
+                        Some(("config_validate::boot_error", error_msg))
+                    } else {
+                        println!("[首次启动] 配置验证成功");
+                        Some(("config_validate::success", String::new()))
+                    }
+                }
+                Err(err) => {
+                    println!("[首次启动] 验证进程执行失败: {}", err);
+                    CoreManager::global()
+                        .use_default_config("config_validate::process_terminated", "")
+                        .await?;
+                    Some(("config_validate::process_terminated", String::new()))
+                }
             }
+        } else {
+            println!("[首次启动] 生成配置文件失败，使用默认配置");
+            CoreManager::global()
+                .use_default_config(
+                    "config_validate::error",
+                    "",
+                )
+                .await?;
+            Some(("config_validate::error", String::new()))
+        };
+
+        // 在单独的任务中发送通知
+        if let Some((msg_type, msg_content)) = validation_result {
+            tauri::async_runtime::spawn(async move {
+                sleep(Duration::from_secs(2)).await;
+                handle::Handle::notice_message(msg_type, &msg_content);
+            });
         }
+
         Ok(())
     }
 

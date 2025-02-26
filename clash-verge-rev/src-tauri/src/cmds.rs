@@ -13,6 +13,7 @@ use sysproxy::{Autoproxy, Sysproxy};
 type CmdResult<T = ()> = Result<T, String>;
 use reqwest_dav::list_cmd::ListFile;
 use tauri::Manager;
+use std::fs;
 
 #[tauri::command]
 pub fn copy_clash_env() -> CmdResult {
@@ -22,15 +23,30 @@ pub fn copy_clash_env() -> CmdResult {
 
 #[tauri::command]
 pub fn get_profiles() -> CmdResult<IProfiles> {
+    let _ = tray::Tray::global().update_menu();
     Ok(Config::profiles().data().clone())
 }
 
 #[tauri::command]
 pub async fn enhance_profiles() -> CmdResult {
-    wrap_err!(CoreManager::global().update_config().await)?;
-    log_err!(tray::Tray::global().update_tooltip());
-    handle::Handle::refresh_clash();
-    Ok(())
+    match CoreManager::global().update_config().await {
+        Ok((true, _)) => {
+            println!("[enhance_profiles] 配置更新成功");
+            log_err!(tray::Tray::global().update_tooltip());
+            handle::Handle::refresh_clash();
+            Ok(())
+        }
+        Ok((false, error_msg)) => {
+            println!("[enhance_profiles] 配置验证失败: {}", error_msg);
+            handle::Handle::notice_message("config_validate::error", &error_msg);
+            Ok(())
+        }
+        Err(e) => {
+            println!("[enhance_profiles] 更新过程发生错误: {}", e);
+            handle::Handle::notice_message("config_validate::process_terminated", &e.to_string());
+            Ok(())
+        }
+    }
 }
 
 #[tauri::command]
@@ -62,36 +78,80 @@ pub async fn delete_profile(index: String) -> CmdResult {
         wrap_err!(CoreManager::global().update_config().await)?;
         handle::Handle::refresh_clash();
     }
-
     Ok(())
 }
 
-/// 修改profiles的
+/// 修改profiles的配置
 #[tauri::command]
-pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult {
+pub async fn patch_profiles_config(
+    profiles: IProfiles
+) -> CmdResult<bool> {
+    println!("[cmd配置patch] 开始修改配置文件");
+    
+    // 保存当前配置，以便在验证失败时恢复
+    let current_profile = Config::profiles().latest().current.clone();
+    println!("[cmd配置patch] 当前配置: {:?}", current_profile);
+    
+    // 更新profiles配置
+    println!("[cmd配置patch] 正在更新配置草稿");
     wrap_err!({ Config::profiles().draft().patch_config(profiles) })?;
-
+    
+    // 更新配置并进行验证
     match CoreManager::global().update_config().await {
-        Ok(_) => {
+        Ok((true, _)) => {
+            println!("[cmd配置patch] 配置更新成功");
             handle::Handle::refresh_clash();
             let _ = tray::Tray::global().update_tooltip();
             Config::profiles().apply();
             wrap_err!(Config::profiles().data().save_file())?;
-            Ok(())
+            Ok(true)
         }
-        Err(err) => {
+        Ok((false, error_msg)) => {
+            println!("[cmd配置patch] 配置验证失败: {}", error_msg);
             Config::profiles().discard();
-            log::error!(target: "app", "{err}");
-            Err(format!("{err}"))
+            
+            // 如果验证失败，恢复到之前的配置
+            if let Some(prev_profile) = current_profile {
+                println!("[cmd配置patch] 尝试恢复到之前的配置: {}", prev_profile);
+                let restore_profiles = IProfiles {
+                    current: Some(prev_profile),
+                    items: None,
+                };
+                // 静默恢复，不触发验证
+                wrap_err!({ Config::profiles().draft().patch_config(restore_profiles) })?;
+                Config::profiles().apply();
+                wrap_err!(Config::profiles().data().save_file())?;
+                println!("[cmd配置patch] 成功恢复到之前的配置");
+            }
+
+            // 发送验证错误通知
+            handle::Handle::notice_message("config_validate::error", &error_msg);
+            Ok(false)
+        }
+        Err(e) => {
+            println!("[cmd配置patch] 更新过程发生错误: {}", e);
+            Config::profiles().discard();
+            handle::Handle::notice_message("config_validate::boot_error", &e.to_string());
+            Ok(false)
         }
     }
+}
+
+/// 根据profile name修改profiles
+#[tauri::command]
+pub async fn patch_profiles_config_by_profile_index(
+    _app_handle: tauri::AppHandle,
+    profile_index: String
+) -> CmdResult<bool> {
+    let profiles = IProfiles{current: Some(profile_index), items: None};
+    patch_profiles_config(profiles).await
 }
 
 /// 修改某个profile item的
 #[tauri::command]
 pub fn patch_profile(index: String, profile: PrfItem) -> CmdResult {
     wrap_err!(Config::profiles().data().patch_item(index, profile))?;
-    wrap_err!(timer::Timer::global().refresh())
+    Ok(())
 }
 
 #[tauri::command]
@@ -119,17 +179,65 @@ pub fn read_profile_file(index: String) -> CmdResult<String> {
     let data = wrap_err!(item.read_file())?;
     Ok(data)
 }
-
+/// 保存profiles的配置
 #[tauri::command]
-pub fn save_profile_file(index: String, file_data: Option<String>) -> CmdResult {
+pub async fn save_profile_file(index: String, file_data: Option<String>) -> CmdResult {
     if file_data.is_none() {
         return Ok(());
     }
 
-    let profiles = Config::profiles();
-    let profiles = profiles.latest();
-    let item = wrap_err!(profiles.get_item(&index))?;
-    wrap_err!(item.save_file(file_data.unwrap()))
+    // 在异步操作前完成所有文件操作
+    let (file_path, original_content) = {
+        let profiles = Config::profiles();
+        let profiles_guard = profiles.latest();
+        let item = wrap_err!(profiles_guard.get_item(&index))?;
+        let content = wrap_err!(item.read_file())?;
+        let path = item.file.clone().ok_or("file field is null")?;
+        let profiles_dir = wrap_err!(dirs::app_profiles_dir())?;
+        (profiles_dir.join(path), content)
+    };
+
+    // 保存新的配置文件
+    wrap_err!(fs::write(&file_path, file_data.clone().unwrap()))?;
+    
+    let file_path_str = file_path.to_string_lossy();
+    println!("[cmd配置save] 开始验证配置文件: {}", file_path_str);
+    
+    // 验证配置文件
+    match CoreManager::global().validate_config_file(&file_path_str).await {
+        Ok((true, _)) => {
+            println!("[cmd配置save] 验证成功");
+            Ok(())
+        }
+        Ok((false, error_msg)) => {
+            println!("[cmd配置save] 验证失败: {}", error_msg);
+            // 恢复原始配置文件
+            wrap_err!(fs::write(&file_path, original_content))?;
+            
+            // 智能判断是否为脚本错误
+            let is_script_error = file_path_str.ends_with(".js") || 
+                                error_msg.contains("Script syntax error") || 
+                                error_msg.contains("Script must contain a main function") ||
+                                error_msg.contains("Failed to read script file");
+            
+            if is_script_error {
+                // 脚本错误使用专门的通知处理
+                let result = (false, error_msg.clone());
+                handle_script_validation_notice(&result, "脚本文件");
+            } else {
+                // 普通配置错误使用一般通知
+                handle::Handle::notice_message("config_validate::error", &error_msg);
+            }
+            
+            Ok(())
+        }
+        Err(e) => {
+            println!("[cmd配置save] 验证过程发生错误: {}", e);
+            // 恢复原始配置文件
+            wrap_err!(fs::write(&file_path, original_content))?;
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -170,6 +278,12 @@ pub async fn patch_clash_config(payload: Mapping) -> CmdResult {
 }
 
 #[tauri::command]
+pub async fn patch_clash_mode(payload: String) -> CmdResult {
+    Ok(feat::change_clash_mode(payload))
+}
+
+
+#[tauri::command]
 pub fn get_verge_config() -> CmdResult<IVergeResponse> {
     let verge = Config::verge();
     let verge_data = verge.data().clone();
@@ -182,8 +296,23 @@ pub async fn patch_verge_config(payload: IVerge) -> CmdResult {
 }
 
 #[tauri::command]
-pub async fn change_clash_core(clash_core: Option<String>) -> CmdResult {
-    wrap_err!(CoreManager::global().change_core(clash_core).await)
+pub async fn change_clash_core(clash_core: String) -> CmdResult<Option<String>> {
+    log::info!(target: "app", "changing core to {clash_core}");
+    
+    match CoreManager::global().change_core(Some(clash_core.clone())).await {
+        Ok(_) => {
+            log::info!(target: "app", "core changed to {clash_core}");
+            handle::Handle::notice_message("config_core::change_success", &clash_core);
+            handle::Handle::refresh_clash();
+            Ok(None)
+        }
+        Err(err) => {
+            let error_msg = err.to_string();
+            log::error!(target: "app", "failed to change core: {error_msg}");
+            handle::Handle::notice_message("config_core::change_error", &error_msg);
+            Ok(Some(error_msg))
+        }
+    }
 }
 
 /// restart the sidecar
@@ -425,5 +554,55 @@ pub mod uwp {
     #[tauri::command]
     pub async fn invoke_uwp_tool() -> CmdResult {
         Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn script_validate_notice(status: String, msg: String) -> CmdResult {
+    handle::Handle::notice_message(&status, &msg);
+    Ok(())
+}
+
+/// 处理脚本验证相关的所有消息通知
+/// 统一通知接口，保持消息类型一致性
+pub fn handle_script_validation_notice(result: &(bool, String), file_type: &str) {
+    if !result.0 {
+        let error_msg = &result.1;
+        
+        // 根据错误消息内容判断错误类型
+        let status = if error_msg.starts_with("File not found:") {
+            "config_validate::file_not_found"
+        } else if error_msg.starts_with("Failed to read script file:") {
+            "config_validate::script_error"
+        } else if error_msg.starts_with("Script syntax error:") {
+            "config_validate::script_syntax_error"
+        } else if error_msg == "Script must contain a main function" {
+            "config_validate::script_missing_main"
+        } else {
+            // 如果是其他类型错误，作为一般脚本错误处理
+            "config_validate::script_error"
+        };
+        
+        log::warn!(target: "app", "{} 验证失败: {}", file_type, error_msg);
+        handle::Handle::notice_message(status, error_msg);
+    }
+}
+
+/// 验证指定脚本文件
+#[tauri::command]
+pub async fn validate_script_file(file_path: String) -> CmdResult<bool> {
+    log::info!(target: "app", "验证脚本文件: {}", file_path);
+    
+    match CoreManager::global().validate_config_file(&file_path).await {
+        Ok(result) => {
+            handle_script_validation_notice(&result, "脚本文件");
+            Ok(result.0)  // 返回验证结果布尔值
+        },
+        Err(e) => {
+            let error_msg = e.to_string();
+            log::error!(target: "app", "验证脚本文件过程发生错误: {}", error_msg);
+            handle::Handle::notice_message("config_validate::process_terminated", &error_msg);
+            Ok(false)
+        }
     }
 }

@@ -21,7 +21,7 @@ use parking_lot::RwLock;
 pub use speed_rate::{SpeedRate, Traffic};
 #[cfg(target_os = "macos")]
 use std::sync::Arc;
-use tauri::menu::CheckMenuItem;
+use tauri::menu::{CheckMenuItem, IsMenuItem};
 use tauri::AppHandle;
 use tauri::{
     menu::{MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
@@ -71,13 +71,16 @@ impl Tray {
         let tray_incon_id = TrayIconId::new("main");
         let tray = app_handle.tray_by_id(&tray_incon_id).unwrap();
 
+        #[cfg(target_os = "macos")]
+        tray.set_show_menu_on_left_click(false)?;
+
         tray.on_tray_icon_event(|_, event| {
             let tray_event = { Config::verge().latest().tray_event.clone() };
             let tray_event: String = tray_event.unwrap_or("main_window".into());
 
             #[cfg(target_os = "macos")]
             if let TrayIconEvent::Click {
-                button: MouseButton::Right,
+                button: MouseButton::Left,
                 button_state: MouseButtonState::Down,
                 ..
             } = event
@@ -124,6 +127,10 @@ impl Tray {
                 .unwrap_or("rule")
                 .to_owned()
         };
+        let profile_uid_and_name = Config::profiles()
+            .data()
+            .all_profile_uid_and_name()
+            .unwrap_or(Vec::new());
 
         let tray = app_handle.tray_by_id("main").unwrap();
         let _ = tray.set_menu(Some(create_tray_menu(
@@ -131,6 +138,7 @@ impl Tray {
             Some(mode.as_str()),
             *system_proxy,
             *tun_mode,
+            profile_uid_and_name,
         )?));
         Ok(())
     }
@@ -217,23 +225,27 @@ impl Tray {
         #[cfg(target_os = "macos")]
         {
             let enable_tray_speed = Config::verge().latest().enable_tray_speed.unwrap_or(true);
-            let is_template =
-                crate::utils::help::is_monochrome_image_from_bytes(&icon_bytes).unwrap_or(false);
-
-            let icon_bytes = if enable_tray_speed {
+            let is_colorful = tray_icon == "colorful";
+            
+            // 处理图标和速率
+            let final_icon_bytes = if enable_tray_speed {
                 let rate = rate.or_else(|| {
                     self.speed_rate
                         .lock()
                         .as_ref()
                         .and_then(|speed_rate| speed_rate.get_curent_rate())
                 });
+                
+                // 使用新的方法渲染图标和速率
                 SpeedRate::add_speed_text(icon_bytes, rate)?
             } else {
                 icon_bytes
             };
 
-            let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&icon_bytes)?));
-            let _ = tray.set_icon_as_template(is_template);
+            // 设置系统托盘图标
+            let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&final_icon_bytes)?));
+            // 只对单色图标使用 template 模式
+            let _ = tray.set_icon_as_template(!is_colorful);
         }
 
         #[cfg(not(target_os = "macos"))]
@@ -363,6 +375,7 @@ fn create_tray_menu(
     mode: Option<&str>,
     system_proxy_enabled: bool,
     tun_mode_enabled: bool,
+    profile_uid_and_name: Vec<(String, String)>,
 ) -> Result<tauri::menu::Menu<Wry>> {
     let mode = mode.unwrap_or("");
     let version = VERSION.get().unwrap();
@@ -382,6 +395,25 @@ fn create_tray_menu(
                 .collect::<std::collections::HashMap<String, String>>()
         })
         .unwrap_or_default();
+    
+    let profile_menu_items: Vec<CheckMenuItem<Wry>> = profile_uid_and_name
+        .iter()
+        .map(|(profile_uid, profile_name)| {
+        let is_current_profile = Config::profiles().data().is_current_profile_index(profile_uid.to_string());
+        CheckMenuItem::with_id(
+            app_handle,
+            &format!("profiles_{}", profile_uid),
+            t(&profile_name),
+            true,
+            is_current_profile,
+            None::<&str>,
+        )
+        .unwrap()
+    }).collect();
+    let profile_menu_items: Vec<&dyn IsMenuItem<Wry>> = profile_menu_items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<Wry>)
+        .collect();
 
     let open_window = &MenuItem::with_id(
         app_handle,
@@ -421,6 +453,14 @@ fn create_tray_menu(
         hotkeys.get("clash_mode_direct").map(|s| s.as_str()),
     )
     .unwrap();
+
+    let profiles = &Submenu::with_id_and_items(
+        app_handle, 
+        "profiles", 
+        t("Profiles"),
+        true, 
+        &profile_menu_items,
+    ).unwrap();
 
     let system_proxy = &CheckMenuItem::with_id(
         app_handle,
@@ -530,6 +570,8 @@ fn create_tray_menu(
             global_mode,
             direct_mode,
             separator,
+            profiles,
+            separator,
             system_proxy,
             tun_mode,
             copy_env,
@@ -562,6 +604,10 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
         "quit" => {
             println!("quit");
             feat::quit(Some(0));
+        },
+        id if id.starts_with("profiles_") => {
+            let profile_index = &id["profiles_".len()..];
+            feat::toggle_proxy_profile(profile_index.into());
         }
         _ => {}
     }

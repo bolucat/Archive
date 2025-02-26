@@ -46,7 +46,46 @@ func (o *DNSOptions) UnmarshalJSONContext(ctx context.Context, content []byte) e
 	}
 	legacyOptions := o.LegacyDNSOptions
 	o.LegacyDNSOptions = LegacyDNSOptions{}
-	return badjson.UnmarshallExcludedContext(ctx, content, legacyOptions, &o.RawDNSOptions)
+	err = badjson.UnmarshallExcludedContext(ctx, content, legacyOptions, &o.RawDNSOptions)
+	if err != nil {
+		return err
+	}
+	rcodeMap := make(map[string]int)
+	o.Servers = common.Filter(o.Servers, func(it NewDNSServerOptions) bool {
+		if it.Type == C.DNSTypeLegacyRcode {
+			rcodeMap[it.Tag] = it.Options.(int)
+			return false
+		}
+		return true
+	})
+	if len(rcodeMap) > 0 {
+		for i := 0; i < len(o.Rules); i++ {
+			rewriteRcode(rcodeMap, &o.Rules[i])
+		}
+	}
+	return nil
+}
+
+func rewriteRcode(rcodeMap map[string]int, rule *DNSRule) {
+	switch rule.Type {
+	case C.RuleTypeDefault:
+		rewriteRcodeAction(rcodeMap, &rule.DefaultOptions.DNSRuleAction)
+	case C.RuleTypeLogical:
+		rewriteRcodeAction(rcodeMap, &rule.LogicalOptions.DNSRuleAction)
+	}
+}
+
+func rewriteRcodeAction(rcodeMap map[string]int, ruleAction *DNSRuleAction) {
+	if ruleAction.Action != C.RuleActionTypeRoute {
+		return
+	}
+	rcode, loaded := rcodeMap[ruleAction.RouteOptions.Server]
+	if !loaded {
+		return
+	}
+	ruleAction.Action = C.RuleActionTypePredefined
+	ruleAction.PredefinedOptions.Rcode = common.Ptr(DNSRCode(rcode))
+	return
 }
 
 type DNSClientOptions struct {
@@ -87,7 +126,7 @@ func (o *NewDNSServerOptions) UnmarshalJSONContext(ctx context.Context, content 
 	}
 	registry := service.FromContext[DNSTransportOptionsRegistry](ctx)
 	if registry == nil {
-		return E.New("missing outbound options registry in context")
+		return E.New("missing DNS transport options registry in context")
 	}
 	var options any
 	switch o.Type {
@@ -102,7 +141,7 @@ func (o *NewDNSServerOptions) UnmarshalJSONContext(ctx context.Context, content 
 			return E.New("unknown transport type: ", o.Type)
 		}
 	}
-	err = badjson.UnmarshallExcludedContext(ctx, content, (*_Outbound)(o), options)
+	err = badjson.UnmarshallExcludedContext(ctx, content, (*_NewDNSServerOptions)(o), options)
 	if err != nil {
 		return err
 	}
@@ -178,12 +217,10 @@ func (o *NewDNSServerOptions) Upgrade(ctx context.Context) error {
 		if !serverAddr.IsValid() {
 			return E.New("invalid server address")
 		}
-		remoteOptions.Server = serverAddr.Addr.String()
+		remoteOptions.Server = serverAddr.AddrString()
 		if serverAddr.Port != 0 && serverAddr.Port != 53 {
 			remoteOptions.ServerPort = serverAddr.Port
 		}
-		remoteOptions.Server = serverAddr.AddrString()
-		remoteOptions.ServerPort = serverAddr.Port
 	case C.DNSTypeTCP:
 		o.Type = C.DNSTypeTCP
 		o.Options = &remoteOptions
@@ -191,19 +228,17 @@ func (o *NewDNSServerOptions) Upgrade(ctx context.Context) error {
 		if !serverAddr.IsValid() {
 			return E.New("invalid server address")
 		}
-		remoteOptions.Server = serverAddr.Addr.String()
+		remoteOptions.Server = serverAddr.AddrString()
 		if serverAddr.Port != 0 && serverAddr.Port != 53 {
 			remoteOptions.ServerPort = serverAddr.Port
 		}
-		remoteOptions.Server = serverAddr.AddrString()
-		remoteOptions.ServerPort = serverAddr.Port
 	case C.DNSTypeTLS, C.DNSTypeQUIC:
 		o.Type = serverType
 		serverAddr := M.ParseSocksaddr(serverURL.Host)
 		if !serverAddr.IsValid() {
 			return E.New("invalid server address")
 		}
-		remoteOptions.Server = serverAddr.Addr.String()
+		remoteOptions.Server = serverAddr.AddrString()
 		if serverAddr.Port != 0 && serverAddr.Port != 853 {
 			remoteOptions.ServerPort = serverAddr.Port
 		}
@@ -222,7 +257,7 @@ func (o *NewDNSServerOptions) Upgrade(ctx context.Context) error {
 		if !serverAddr.IsValid() {
 			return E.New("invalid server address")
 		}
-		httpsOptions.Server = serverAddr.Addr.String()
+		httpsOptions.Server = serverAddr.AddrString()
 		if serverAddr.Port != 0 && serverAddr.Port != 443 {
 			httpsOptions.ServerPort = serverAddr.Port
 		}
@@ -247,14 +282,8 @@ func (o *NewDNSServerOptions) Upgrade(ctx context.Context) error {
 		default:
 			return E.New("unknown rcode: ", serverURL.Host)
 		}
-		o.Type = C.DNSTypePreDefined
-		o.Options = &PredefinedDNSServerOptions{
-			Responses: []DNSResponseOptions{
-				{
-					RCode: common.Ptr(DNSRCode(rcode)),
-				},
-			},
-		}
+		o.Type = C.DNSTypeLegacyRcode
+		o.Options = rcode
 	case C.DNSTypeDHCP:
 		o.Type = C.DNSTypeDHCP
 		dhcpOptions := DHCPDNSServerOptions{}

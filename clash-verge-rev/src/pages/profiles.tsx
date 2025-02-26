@@ -27,7 +27,7 @@ import { useTranslation } from "react-i18next";
 import {
   importProfile,
   enhanceProfiles,
-  restartCore,
+  //restartCore,
   getRuntimeLogs,
   deleteProfile,
   updateProfile,
@@ -174,11 +174,11 @@ const ProfilePage = () => {
     }, 100);
 
     try {
-      await patchProfiles({ current: profile });
+      const success = await patchProfiles({ current: profile });
       await mutateLogs();
       closeAllConnections();
       await activateSelected();
-      if (notifySuccess) {
+      if (notifySuccess && success) {
         Notice.success(t("Profile Switched"), 1000);
       }
     } catch (err: any) {
@@ -367,20 +367,19 @@ const ProfilePage = () => {
           {t("New")}
         </Button>
       </Stack>
-      <Box
-        sx={{
-          pt: 1,
-          mb: 0.5,
-          pl: "10px",
-          mr: "10px",
-          height: "calc(100% - 68px)",
-          overflowY: "auto",
-        }}
+
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
       >
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={onDragEnd}
+        <Box
+          sx={{
+            pl: "10px",
+            pr: "10px",
+            height: "calc(100% - 48px)",
+            overflowY: "auto",
+          }}
         >
           <Box sx={{ mb: 1.5 }}>
             <Grid2 container spacing={{ xs: 1, lg: 1 }}>
@@ -401,8 +400,8 @@ const ProfilePage = () => {
                       onSave={async (prev, curr) => {
                         if (prev !== curr && profiles.current === item.uid) {
                           await onEnhance(false);
-                          await restartCore();
-                          Notice.success(t("Clash Core Restarted"), 1000);
+                          //  await restartCore();
+                          //   Notice.success(t("Clash Core Restarted"), 1000);
                         }
                       }}
                       onDelete={() => onDelete(item.uid)}
@@ -412,38 +411,38 @@ const ProfilePage = () => {
               </SortableContext>
             </Grid2>
           </Box>
-        </DndContext>
-        <Divider
-          variant="middle"
-          flexItem
-          sx={{ width: `calc(100% - 32px)`, borderColor: dividercolor }}
-        ></Divider>
-        <Box sx={{ mt: 1.5 }}>
-          <Grid2 container spacing={{ xs: 1, lg: 1 }}>
-            <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
-              <ProfileMore
-                id="Merge"
-                onSave={async (prev, curr) => {
-                  if (prev !== curr) {
-                    await onEnhance(false);
-                  }
-                }}
-              />
+          <Divider
+            variant="middle"
+            flexItem
+            sx={{ width: `calc(100% - 32px)`, borderColor: dividercolor }}
+          ></Divider>
+          <Box sx={{ mt: 1.5, mb: "10px" }}>
+            <Grid2 container spacing={{ xs: 1, lg: 1 }}>
+              <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
+                <ProfileMore
+                  id="Merge"
+                  onSave={async (prev, curr) => {
+                    if (prev !== curr) {
+                      await onEnhance(false);
+                    }
+                  }}
+                />
+              </Grid2>
+              <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
+                <ProfileMore
+                  id="Script"
+                  logInfo={chainLogs["Script"]}
+                  onSave={async (prev, curr) => {
+                    if (prev !== curr) {
+                      await onEnhance(false);
+                    }
+                  }}
+                />
+              </Grid2>
             </Grid2>
-            <Grid2 size={{ xs: 12, sm: 6, md: 6, lg: 6 }}>
-              <ProfileMore
-                id="Script"
-                logInfo={chainLogs["Script"]}
-                onSave={async (prev, curr) => {
-                  if (prev !== curr) {
-                    await onEnhance(false);
-                  }
-                }}
-              />
-            </Grid2>
-          </Grid2>
+          </Box>
         </Box>
-      </Box>
+      </DndContext>
 
       <ProfileViewer
         ref={viewerRef}

@@ -4,6 +4,7 @@
 //! - timer 定时器
 //! - cmds 页面调用
 //!
+use crate::cmds;
 use crate::config::*;
 use crate::core::*;
 use crate::log_err;
@@ -16,18 +17,46 @@ use std::fs;
 use tauri::Manager;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use std::env;
 
 // 打开面板
+#[allow(dead_code)]
 pub fn open_or_close_dashboard() {
+    println!("Attempting to open/close dashboard");
+    log::info!(target: "app", "Attempting to open/close dashboard");
+
     if let Some(window) = handle::Handle::global().get_window() {
+        println!("Found existing window");
+        log::info!(target: "app", "Found existing window");
+
         // 如果窗口存在，则切换其显示状态
-        if window.is_visible().unwrap_or(false) {
-            let _ = window.hide();
-        } else {
-            let _ = window.show();
-            let _ = window.set_focus();
+        match window.is_visible() {
+            Ok(visible) => {
+                println!("Window visibility status: {}", visible);
+                log::info!(target: "app", "Window visibility status: {}", visible);
+
+                if visible {
+                    println!("Attempting to hide window");
+                    log::info!(target: "app", "Attempting to hide window");
+                    let _ = window.hide();
+                } else {
+                    println!("Attempting to show and focus window");
+                    log::info!(target: "app", "Attempting to show and focus window");
+                    if window.is_minimized().unwrap_or(false) {
+                        let _ = window.unminimize();
+                    }
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            Err(e) => {
+                println!("Failed to get window visibility: {:?}", e);
+                log::error!(target: "app", "Failed to get window visibility: {:?}", e);
+            }
         }
     } else {
+        println!("No existing window found, creating new window");
+        log::info!(target: "app", "No existing window found, creating new window");
         resolve::create_window();
     }
 }
@@ -56,8 +85,37 @@ pub fn restart_app() {
         resolve::resolve_reset();
         let app_handle = handle::Handle::global().app_handle().unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1));
-        let _ = app_handle.save_window_state(StateFlags::default());
         tauri::process::restart(&app_handle.env());
+    });
+}
+
+/// 设置窗口状态监控，实时保存窗口位置和大小
+pub fn setup_window_state_monitor(app_handle: &tauri::AppHandle) {
+    let window = app_handle.get_webview_window("main").unwrap();
+    let app_handle_clone = app_handle.clone();
+    
+    // 监听窗口移动事件
+    let app_handle_move = app_handle_clone.clone();
+    window.on_window_event(move |event| {
+        match event {
+            // 窗口移动时保存状态
+            tauri::WindowEvent::Moved(_) => {
+                let _ = app_handle_move.save_window_state(StateFlags::all());
+            },
+            // 窗口调整大小时保存状态
+            tauri::WindowEvent::Resized(_) => {
+                let _ = app_handle_move.save_window_state(StateFlags::all());
+            },
+            // 其他可能改变窗口状态的事件
+            tauri::WindowEvent::ScaleFactorChanged { .. } => {
+                let _ = app_handle_move.save_window_state(StateFlags::all());
+            },
+            // 窗口关闭时保存
+            tauri::WindowEvent::CloseRequested { .. } => {
+                let _ = app_handle_move.save_window_state(StateFlags::all());
+            },
+            _ => {}
+        }
     });
 }
 
@@ -65,7 +123,6 @@ pub fn restart_app() {
 pub fn change_clash_mode(mode: String) {
     let mut mapping = Mapping::new();
     mapping.insert(Value::from("mode"), mode.clone().into());
-
     tauri::async_runtime::spawn(async move {
         log::debug!(target: "app", "change clash mode to {mode}");
 
@@ -99,6 +156,21 @@ pub fn toggle_system_proxy() {
         {
             Ok(_) => handle::Handle::refresh_verge(),
             Err(err) => log::error!(target: "app", "{err}"),
+        }
+    });
+}
+
+// 切换代理文件
+pub fn toggle_proxy_profile(profile_index: String) {
+    tauri::async_runtime::spawn(async move {
+        let app_handle = handle::Handle::global().app_handle().unwrap();
+        match cmds::patch_profiles_config_by_profile_index(app_handle, profile_index).await {
+            Ok(_) => {
+                let _ = tray::Tray::global().update_menu();
+            }
+            Err(err) => {
+                log::error!(target: "app", "{err}");
+            }
         }
     });
 }
@@ -175,6 +247,7 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
     let mixed_port = patch.verge_mixed_port;
+    let lite_mode = patch.enable_lite_mode;
     #[cfg(target_os = "macos")]
     let tray_icon = patch.tray_icon;
     #[cfg(not(target_os = "macos"))]
@@ -195,10 +268,12 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
     let http_enabled = patch.verge_http_enabled;
     let http_port = patch.verge_port;
     let enable_tray_speed = patch.enable_tray_speed;
+    let enable_global_hotkey = patch.enable_global_hotkey;
 
     let res: std::result::Result<(), anyhow::Error> = {
         let mut should_restart_core = false;
         let mut should_update_clash_config = false;
+        let mut should_update_verge_config = false;
         let mut should_update_launch = false;
         let mut should_update_sysproxy = false;
         let mut should_update_systray_icon = false;
@@ -212,12 +287,13 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             should_update_systray_tooltip = true;
             should_update_systray_icon = true;
         }
-
+        if enable_global_hotkey.is_some() {
+            should_update_verge_config = true;
+        }
         #[cfg(not(target_os = "windows"))]
         if redir_enabled.is_some() || redir_port.is_some() {
             should_restart_core = true;
         }
-
         #[cfg(target_os = "linux")]
         if tproxy_enabled.is_some() || tproxy_port.is_some() {
             should_restart_core = true;
@@ -272,6 +348,10 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
             CoreManager::global().update_config().await?;
             handle::Handle::refresh_clash();
         }
+        if should_update_verge_config {
+            Config::verge().draft().enable_global_hotkey = enable_global_hotkey;
+            handle::Handle::refresh_verge();
+        }
         if should_update_launch {
             sysopt::Sysopt::global().update_launch()?;
         }
@@ -295,6 +375,23 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
         if should_update_systray_tooltip {
             tray::Tray::global().update_tooltip()?;
         }
+
+        // 处理轻量模式切换
+        if lite_mode.is_some() {
+            if let Some(window) = handle::Handle::global().get_window() {
+                if lite_mode.unwrap() {
+                    // 完全退出 webview 进程
+                    window.close()?;  // 先关闭窗口
+                    let app_handle = handle::Handle::global().app_handle().unwrap();
+                    if let Some(webview) = app_handle.get_webview_window("main") {
+                        webview.destroy()?;  // 销毁 webview 进程
+                    }
+                } else {
+                    resolve::create_window();  // 重新创建窗口
+                }
+            }
+        }
+
         <Result<()>>::Ok(())
     };
     match res {
@@ -314,6 +411,8 @@ pub async fn patch_verge(patch: IVerge) -> Result<()> {
 /// 更新某个profile
 /// 如果更新当前订阅就激活订阅
 pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()> {
+    println!("[订阅更新] 开始更新订阅 {}", uid);
+    
     let url_opt = {
         let profiles = Config::profiles();
         let profiles = profiles.latest();
@@ -321,33 +420,44 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
         let is_remote = item.itype.as_ref().map_or(false, |s| s == "remote");
 
         if !is_remote {
-            None // 直接更新
+            println!("[订阅更新] {} 不是远程订阅，跳过更新", uid);
+            None // 非远程订阅直接更新
         } else if item.url.is_none() {
+            println!("[订阅更新] {} 缺少URL，无法更新", uid);
             bail!("failed to get the profile item url");
         } else {
+            println!("[订阅更新] {} 是远程订阅，URL: {}", uid, item.url.clone().unwrap());
             Some((item.url.clone().unwrap(), item.option.clone()))
         }
     };
 
     let should_update = match url_opt {
         Some((url, opt)) => {
+            println!("[订阅更新] 开始下载新的订阅内容");
             let merged_opt = PrfOption::merge(opt, option);
             let item = PrfItem::from_url(&url, None, None, merged_opt).await?;
+            
+            println!("[订阅更新] 更新订阅配置");
             let profiles = Config::profiles();
             let mut profiles = profiles.latest();
             profiles.update_item(uid.clone(), item)?;
 
-            Some(uid) == profiles.get_current()
+            let is_current = Some(uid.clone()) == profiles.get_current();
+            println!("[订阅更新] 是否为当前使用的订阅: {}", is_current);
+            is_current
         }
         None => true,
     };
 
     if should_update {
+        println!("[订阅更新] 更新内核配置");
         match CoreManager::global().update_config().await {
             Ok(_) => {
+                println!("[订阅更新] 更新成功");
                 handle::Handle::refresh_clash();
             }
             Err(err) => {
+                println!("[订阅更新] 更新失败: {}", err);
                 handle::Handle::notice_message("set_config::error", format!("{err}"));
                 log::error!(target: "app", "{err}");
             }
@@ -359,10 +469,13 @@ pub async fn update_profile(uid: String, option: Option<PrfOption>) -> Result<()
 
 /// copy env variable
 pub fn copy_clash_env() {
+    // 从环境变量获取IP地址，默认127.0.0.1
+    let clash_verge_rev_ip = env::var("CLASH_VERGE_REV_IP").unwrap_or_else(|_| "127.0.0.1".to_string());
+    
     let app_handle = handle::Handle::global().app_handle().unwrap();
     let port = { Config::verge().latest().verge_mixed_port.unwrap_or(7897) };
-    let http_proxy = format!("http://127.0.0.1:{}", port);
-    let socks5_proxy = format!("socks5://127.0.0.1:{}", port);
+    let http_proxy = format!("http://{clash_verge_rev_ip}:{}", port);
+    let socks5_proxy = format!("socks5://{clash_verge_rev_ip}:{}", port);
 
     let sh =
         format!("export https_proxy={http_proxy} http_proxy={http_proxy} all_proxy={socks5_proxy}");

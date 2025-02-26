@@ -120,6 +120,7 @@ interface IConnectionsItem {
     sourcePort: string;
     destinationPort: string;
     destinationIP?: string;
+    remoteDestination?: string;
     process?: string;
     processPath?: string;
   };
@@ -708,9 +709,11 @@ interface IVergeConfig {
   tun_tray_icon?: boolean;
   enable_tray_speed?: boolean;
   enable_tun_mode?: boolean;
+  enable_lite_mode?: boolean;
   enable_auto_launch?: boolean;
   enable_silent_start?: boolean;
   enable_system_proxy?: boolean;
+  enable_global_hotkey?: boolean;
   proxy_auto_config?: boolean;
   pac_file_content?: string;
   enable_random_port?: boolean;

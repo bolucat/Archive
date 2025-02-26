@@ -2,7 +2,6 @@ package hosts
 
 import (
 	"context"
-	"github.com/sagernet/sing/service/filemanager"
 	"os"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -10,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/service/filemanager"
 
 	mDNS "github.com/miekg/dns"
 )

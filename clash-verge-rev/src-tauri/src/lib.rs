@@ -6,6 +6,7 @@ mod feat;
 mod utils;
 use crate::core::hotkey;
 use crate::utils::{resolve, resolve::resolve_scheme, server};
+use config::Config;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -82,6 +83,7 @@ pub fn run() {
             // clash
             cmds::get_clash_info,
             cmds::patch_clash_config,
+            cmds::patch_clash_mode,
             cmds::change_clash_core,
             cmds::get_runtime_config,
             cmds::get_runtime_yaml,
@@ -112,6 +114,9 @@ pub fn run() {
             cmds::delete_profile,
             cmds::read_profile_file,
             cmds::save_profile_file,
+            // script validation
+            cmds::script_validate_notice,
+            cmds::validate_script_file,
             // clash api
             cmds::clash_api_get_proxy_delay,
             // backup
@@ -159,6 +164,12 @@ pub fn run() {
                         {
                             log_err!(hotkey::Hotkey::global().register("Control+Q", "quit"));
                         };
+                        {   
+                            let is_enable_global_hotkey = Config::verge().latest().enable_global_hotkey.unwrap_or(true);
+                            if !is_enable_global_hotkey {
+                                log_err!(hotkey::Hotkey::global().init())
+                            }
+                        }
                     }
                     tauri::WindowEvent::Focused(false) => {
                         #[cfg(target_os = "macos")]
@@ -169,6 +180,12 @@ pub fn run() {
                         {
                             log_err!(hotkey::Hotkey::global().unregister("Control+Q"));
                         };
+                        {   
+                            let is_enable_global_hotkey = Config::verge().latest().enable_global_hotkey.unwrap_or(true);
+                            if !is_enable_global_hotkey {
+                                log_err!(hotkey::Hotkey::global().reset())
+                            }
+                        }
                     }
                     tauri::WindowEvent::Destroyed => {
                         #[cfg(target_os = "macos")]

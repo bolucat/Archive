@@ -60,6 +60,7 @@ const SettingVerge = ({ onError }: Props) => {
     env_type,
     startup_script,
     start_page,
+    enable_lite_mode,
   } = verge ?? {};
   const configRef = useRef<DialogRef>(null);
   const hotkeyRef = useRef<DialogRef>(null);
@@ -69,7 +70,7 @@ const SettingVerge = ({ onError }: Props) => {
   const updateRef = useRef<DialogRef>(null);
   const backupRef = useRef<DialogRef>(null);
 
-  const onChangeData = (patch: Partial<IVergeConfig>) => {
+  const onChangeData = (patch: any) => {
     mutateVerge({ ...verge, ...patch }, false);
   };
 
@@ -181,7 +182,11 @@ const SettingVerge = ({ onError }: Props) => {
         >
           <Select size="small" sx={{ width: 140, "> div": { py: "7.5px" } }}>
             {routers.map((page: { label: string; path: string }) => {
-              return <MenuItem value={page.path}>{t(page.label)}</MenuItem>;
+              return (
+                <MenuItem key={page.path} value={page.path}>
+                  {t(page.label)}
+                </MenuItem>
+              );
             })}
           </Select>
         </GuardState>
@@ -291,6 +296,14 @@ const SettingVerge = ({ onError }: Props) => {
       <SettingItem onClick={onCheckUpdate} label={t("Check for Updates")} />
 
       <SettingItem onClick={openDevTools} label={t("Open Dev Tools")} />
+
+      <SettingItem
+        label={t("Lite Mode")}
+        extra={
+          <TooltipIcon title={t("Lite Mode Info")} sx={{ opacity: "0.7" }} />
+        }
+        onClick={() => patchVerge({ enable_lite_mode: true })}
+      />
 
       <SettingItem
         onClick={() => {

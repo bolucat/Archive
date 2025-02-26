@@ -2,7 +2,7 @@ use crate::core::clash_api::{get_traffic_ws_url, Rate};
 use crate::utils::help::format_bytes_speed;
 use anyhow::Result;
 use futures::Stream;
-use image::{ImageBuffer, Rgba};
+use image::{Rgba, GenericImageView, RgbaImage};
 use imageproc::drawing::draw_text_mut;
 use parking_lot::Mutex;
 use rusttype::{Font, Scale};
@@ -13,22 +13,45 @@ use tokio_tungstenite::tungstenite::Message;
 #[derive(Debug, Clone)]
 pub struct SpeedRate {
     rate: Arc<Mutex<(Rate, Rate)>>,
+    last_update: Arc<Mutex<std::time::Instant>>,
+    // 移除 base_image，不再缓存原始图像
 }
 
 impl SpeedRate {
     pub fn new() -> Self {
         Self {
             rate: Arc::new(Mutex::new((Rate::default(), Rate::default()))),
+            last_update: Arc::new(Mutex::new(std::time::Instant::now())),
         }
     }
 
     pub fn update_and_check_changed(&self, up: u64, down: u64) -> Option<Rate> {
         let mut rates = self.rate.lock();
+        let mut last_update = self.last_update.lock();
+        let now = std::time::Instant::now();
+        
+        // 限制更新频率为每秒最多2次（500ms）
+        if now.duration_since(*last_update).as_millis() < 500 {
+            return None;
+        }
+
         let (current, previous) = &mut *rates;
+
+        // 如果速率变化不大（小于10%），则不更新
+        let should_update = {
+            let up_change = (current.up as f64 - up as f64).abs() / (current.up as f64 + 1.0);
+            let down_change = (current.down as f64 - down as f64).abs() / (current.down as f64 + 1.0);
+            up_change > 0.1 || down_change > 0.1
+        };
+
+        if !should_update {
+            return None;
+        }
 
         *previous = current.clone();
         current.up = up;
         current.down = down;
+        *last_update = now;
 
         if previous != current {
             Some(current.clone())
@@ -43,92 +66,107 @@ impl SpeedRate {
         Some(current.clone())
     }
 
-    pub fn add_speed_text(icon: Vec<u8>, rate: Option<Rate>) -> Result<Vec<u8>> {
+    // 分离图标加载和速率渲染
+    pub fn add_speed_text(icon_bytes: Vec<u8>, rate: Option<Rate>) -> Result<Vec<u8>> {
         let rate = rate.unwrap_or(Rate { up: 0, down: 0 });
-        let img = image::load_from_memory(&icon)?;
-        let (width, height) = (img.width(), img.height());
-
-        let mut image = ImageBuffer::new((width as f32 * 4.0) as u32, height);
-        image::imageops::replace(&mut image, &img, 0, 0);
-
-        let font =
-            Font::try_from_bytes(include_bytes!("../../../assets/fonts/SFCompact.ttf")).unwrap();
-
-        // 修改颜色和阴影参数
-        let text_color = Rgba([255u8, 255u8, 255u8, 255u8]); // 纯白色
-        let shadow_color = Rgba([0u8, 0u8, 0u8, 180u8]); // 半透明黑色阴影
-        let base_size = height as f32 * 0.5;
-        let scale = Scale::uniform(base_size);
-
+        
+        // 加载原始图标
+        let icon_image = image::load_from_memory(&icon_bytes)?;
+        let (icon_width, icon_height) = (icon_image.width(), icon_image.height());
+        
+        // 判断是否为彩色图标
+        let is_colorful = !crate::utils::help::is_monochrome_image_from_bytes(&icon_bytes).unwrap_or(false);
+        
+        // 增加文本宽度和间距
+        let icon_text_gap = 80;  // 增加图标和文本之间的间距
+        let text_width = 520;    // 增加文本区域宽度，确保能显示完整
+        let total_width = icon_width + icon_text_gap + text_width;
+        
+        // 创建新的透明画布
+        let mut combined_image = RgbaImage::new(total_width, icon_height);
+        
+        // 将原始图标绘制到新画布的左侧
+        for y in 0..icon_height {
+            for x in 0..icon_width {
+                let pixel = icon_image.get_pixel(x, y);
+                combined_image.put_pixel(x, y, pixel);
+            }
+        }
+        
+        // 选择文本颜色
+        let (text_color, shadow_color) = if is_colorful {
+            // 彩色图标使用黑色文本和轻微白色阴影
+            (Rgba([255u8, 255u8, 255u8, 255u8]), Rgba([0u8, 0u8, 0u8, 160u8]))
+        } else {
+            // 单色图标使用白色文本和轻微黑色阴影
+            (Rgba([255u8, 255u8, 255u8, 255u8]), Rgba([0u8, 0u8, 0u8, 120u8]))
+        };
+        
+        // 减小字体大小以适应文本区域
+        let font = Font::try_from_bytes(include_bytes!("../../../assets/fonts/SF-Pro.ttf")).unwrap();
+        let font_size = icon_height as f32 * 0.6;  // 稍微减小字体
+        let scale = Scale::uniform(font_size);
+        
+        // 使用更简洁的速率格式
         let up_text = format_bytes_speed(rate.up);
         let down_text = format_bytes_speed(rate.down);
+        
+        // 计算文本位置，确保垂直间距合适
+        let text_x = icon_width + icon_text_gap;
+        let up_y = 0;
+        let down_y_offset = 32 as i32;
+        let down_y = icon_height as i32 - font_size as i32 + down_y_offset;  // 下行速率显示在下方
 
-        // 计算文本位置（保持不变）
-        let up_width = font
-            .layout(&up_text, scale, rusttype::Point { x: 0.0, y: 0.0 })
-            .map(|g| g.position().x + g.unpositioned().h_metrics().advance_width)
-            .last()
-            .unwrap_or(0.0);
-
-        let down_width = font
-            .layout(&down_text, scale, rusttype::Point { x: 0.0, y: 0.0 })
-            .map(|g| g.position().x + g.unpositioned().h_metrics().advance_width)
-            .last()
-            .unwrap_or(0.0);
-
-        let right_margin = 8;
-        let canvas_width = width * 4;
-        let up_x = canvas_width as f32 - up_width - right_margin as f32;
-        let down_x = canvas_width as f32 - down_width - right_margin as f32;
-
-        // 添加阴影效果
-        let shadow_offset = 1; // 阴影偏移量
-
-        // 绘制上行速率（先画阴影，再画文字）
+        
+        // 绘制速率文本（先阴影后文字）
+        let shadow_offset = 1;
+        
+        // 绘制上行速率
         draw_text_mut(
-            &mut image,
+            &mut combined_image,
             shadow_color,
-            up_x as i32 + shadow_offset,
-            1 + shadow_offset,
+            text_x as i32 + shadow_offset,
+            up_y + shadow_offset,
             scale,
             &font,
             &up_text,
         );
         draw_text_mut(
-            &mut image,
+            &mut combined_image,
             text_color,
-            up_x as i32,
-            1,
+            text_x as i32,
+            up_y,
             scale,
             &font,
             &up_text,
         );
-
-        // 绘制下行速率（先画阴影，再画文字）
+        
+        // 绘制下行速率
         draw_text_mut(
-            &mut image,
+            &mut combined_image,
             shadow_color,
-            down_x as i32 + shadow_offset,
-            height as i32 - (base_size as i32) - 1 + shadow_offset,
+            text_x as i32 + shadow_offset,
+            down_y + shadow_offset,
             scale,
             &font,
             &down_text,
         );
         draw_text_mut(
-            &mut image,
+            &mut combined_image,
             text_color,
-            down_x as i32,
-            height as i32 - (base_size as i32) - 1,
+            text_x as i32,
+            down_y,
             scale,
             &font,
             &down_text,
         );
-
-        let mut bytes: Vec<u8> = Vec::new();
-        let mut cursor = Cursor::new(&mut bytes);
-        image.write_to(&mut cursor, image::ImageFormat::Png)?;
+        
+        // 将结果转换为 PNG 数据
+        let mut bytes = Vec::new();
+        combined_image.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)?;
         Ok(bytes)
     }
+
 }
 
 #[derive(Debug, Clone)]
