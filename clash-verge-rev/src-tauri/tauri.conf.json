@@ -16,7 +16,7 @@
     "copyright": "GNU General Public License v3.0",
     "category": "DeveloperTool",
     "shortDescription": "Clash Verge Rev",
-    "createUpdaterArtifacts": "v1Compatible"
+    "createUpdaterArtifacts": true
   },
   "build": {
     "beforeBuildCommand": "pnpm run web:build",
@@ -25,7 +25,7 @@
     "devUrl": "http://localhost:3000/"
   },
   "productName": "Clash Verge",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "identifier": "io.github.clash-verge-rev.clash-verge-rev",
   "plugins": {
     "deep-link": {
