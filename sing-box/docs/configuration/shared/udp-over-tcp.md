@@ -69,13 +69,7 @@ Protocol version 2 uses a new magic address: `sp.v2.udp-over-tcp.arpa`
 
 **isConnect**: Set to 1 to indicates that the stream uses the connect format, 0 to disable.
 
-**ATYP / address / port**: Request destination, uses the SOCKS address format, but with different address types:
-
-| ATYP   | Address type |
-|--------|--------------|
-| `0x00` | IPv4 Address |
-| `0x01` | IPv6 Address |
-| `0x02` | Domain Name  |
+**ATYP / address / port**: Request destination, uses the SOCKS address format.
 
 ##### Connect stream format
 

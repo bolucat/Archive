@@ -11,7 +11,8 @@ import { useTranslation } from "react-i18next";
 import { BasePage, Notice } from "@/components/base";
 import { GitHub, HelpOutlineRounded, Telegram } from "@mui/icons-material";
 import { openWebUrl } from "@/services/cmds";
-import SettingVerge from "@/components/setting/setting-verge";
+import SettingVergeBasic from "@/components/setting/setting-verge-basic";
+import SettingVergeAdvanced from "@/components/setting/setting-verge-advanced";
 import SettingClash from "@/components/setting/setting-clash";
 import SettingSystem from "@/components/setting/setting-system";
 import { useThemeMode } from "@/services/states";
@@ -95,10 +96,19 @@ const SettingPage = () => {
           <Box
             sx={{
               borderRadius: 2,
+              marginBottom: 1.5,
               backgroundColor: isDark ? "#282a36" : "#ffffff",
             }}
           >
-            <SettingVerge onError={onError} />
+            <SettingVergeBasic onError={onError} />
+          </Box>
+          <Box
+            sx={{
+              borderRadius: 2,
+              backgroundColor: isDark ? "#282a36" : "#ffffff",
+            }}
+          >
+            <SettingVergeAdvanced onError={onError} />
           </Box>
         </Grid>
       </Grid>
