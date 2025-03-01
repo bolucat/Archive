@@ -1,5 +1,5 @@
-﻿using System;
-using GlobalHotKeys;
+﻿using GlobalHotKeys;
+using System;
 
 void HotKeyPressed(HotKey hotKey) =>
   Console.WriteLine($"HotKey Pressed: Id = {hotKey.Id}, Key = {hotKey.Key}, Modifiers = {hotKey.Modifiers}");

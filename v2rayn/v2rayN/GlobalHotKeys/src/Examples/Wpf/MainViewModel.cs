@@ -3,25 +3,26 @@ using System.Runtime.CompilerServices;
 
 namespace Wpf
 {
-  public class MainViewModel : INotifyPropertyChanged
-  {
-    string _text;
-    public string Text
+    public class MainViewModel : INotifyPropertyChanged
     {
-      get => _text;
-      set
-      {
-        if (this._text != value)
-        {
-          this._text = value;
-          this.OnPropertyChanged(nameof(Text));
-        }
-      }
-    }
-    
-    public event PropertyChangedEventHandler PropertyChanged;
+        private string _text;
 
-    protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
-      PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-  }
+        public string Text
+        {
+            get => _text;
+            set
+            {
+                if (this._text != value)
+                {
+                    this._text = value;
+                    this.OnPropertyChanged(nameof(Text));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null) =>
+          PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }

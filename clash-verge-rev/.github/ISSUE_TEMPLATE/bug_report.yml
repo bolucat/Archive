@@ -2,6 +2,7 @@ name: 问题反馈 / Bug report
 title: "[BUG] "
 description: 反馈你遇到的问题 / Report the issue you are experiencing
 labels: ["bug"]
+type: "Bug"
 
 body:
   - type: markdown
@@ -52,6 +53,17 @@ body:
     attributes:
       label: 操作系统版本 / OS Version
       description: 请提供你的操作系统版本，Linux请额外提供桌面环境及窗口系统 / Please provide your OS version, for Linux, please also provide the desktop environment and window system
+    validations:
+      required: true
+  - type: checkboxes
+    id: os-labels
+    attributes:
+      label: 系统标签 / OS Labels
+      description: 请选择受影响的操作系统（至少选择一个） / Please select the affected operating system(s) (select at least one)
+      options:
+        - label: windows
+        - label: macos
+        - label: linux
     validations:
       required: true
   - type: textarea

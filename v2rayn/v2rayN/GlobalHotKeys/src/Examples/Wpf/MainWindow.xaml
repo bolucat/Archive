@@ -10,7 +10,7 @@
         <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
-      
+
       <Label Content="HotKeys Pressed" />
       <TextBox Grid.Row="1" Text="{Binding Text, Mode=OneWay}" />
     </Grid>
