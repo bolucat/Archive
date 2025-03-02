@@ -56,13 +56,6 @@ jobs:
           rustup install stable --profile minimal --no-self-update
           rustup default stable
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: './backend/'
-          prefix-key: 'rust-stable'
-          key: 'macos-latest'
-          shared-key: 'release'
-
       - name: Install Rust intel target
         if: ${{ inputs.aarch64 == false }}
         run: |
@@ -127,6 +120,9 @@ jobs:
             echo "Uploading $file to release"
             gh release upload ${{ inputs.tag }} "$file" --clobber
           done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload to Github Artifact
         uses: actions/upload-artifact@v4

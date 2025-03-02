@@ -490,7 +490,7 @@ export const ProxyGroups = (props: Props) => {
           scrollerRef.current = ref as Element;
         }}
         components={{
-          Footer: () => <div style={{ height: "2px" }} />,
+          Footer: () => <div style={{ height: "8px" }} />,
         }}
         // 添加平滑滚动设置
         initialScrollTop={scrollPositionRef.current[mode]}
@@ -508,8 +508,13 @@ export const ProxyGroups = (props: Props) => {
         )}
       />
       <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
-
-      <AlphabetSelector ref={alphabetSelectorRef} style={{ maxHeight }}>
+      <AlphabetSelector
+        ref={alphabetSelectorRef}
+        style={{
+          maxHeight,
+          right: 10,
+        }}
+      >
         <div className="scroll-container">
           <div ref={letterContainerRef} className="letter-container">
             {groupFirstLetters.map((name) => (
