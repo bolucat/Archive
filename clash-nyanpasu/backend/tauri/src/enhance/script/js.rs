@@ -1,12 +1,12 @@
 use super::runner::{ProcessOutput, Runner, wrap_result};
-use crate::enhance::utils::{Logs, LogsExt, take_logs};
+use crate::enhance::utils::{LogSpan, Logs, LogsExt, take_logs};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use boa_engine::{
     Context, JsError, JsNativeError, JsValue, Source,
     builtins::promise::PromiseState,
     js_string,
-    module::{Module, ModuleLoader as BoaModuleLoader, SimpleModuleLoader},
+    module::{Module, SimpleModuleLoader},
     property::Attribute,
 };
 use boa_utils::{
@@ -17,13 +17,12 @@ use boa_utils::{
     },
 };
 use once_cell::sync::Lazy;
-use parking_lot::Mutex;
 use serde_yaml::Mapping;
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    time::Duration,
 };
 use tracing_attributes::instrument;
 use utils::wrap_script_if_not_esm;
@@ -55,16 +54,49 @@ pub enum JsRunnerError {
     Other(String),
 }
 
-pub struct BoaConsoleLogger(Arc<Mutex<Option<Logs>>>);
+pub struct BoaConsoleLogger(Logs);
 impl boa_utils::Logger for BoaConsoleLogger {
-    fn log(&self, msg: boa_utils::LogMessage, _: &Console) {
+    type Item = boa_utils::LogMessage;
+    fn log(&mut self, msg: boa_utils::LogMessage, _: &Console) {
         match msg {
-            boa_utils::LogMessage::Log(msg) => self.0.lock().as_mut().unwrap().log(msg),
-            boa_utils::LogMessage::Info(msg) => self.0.lock().as_mut().unwrap().info(msg),
-            boa_utils::LogMessage::Warn(msg) => self.0.lock().as_mut().unwrap().warn(msg),
-            boa_utils::LogMessage::Error(msg) => self.0.lock().as_mut().unwrap().error(msg),
+            boa_utils::LogMessage::Log(msg) => self.0.log(msg),
+            boa_utils::LogMessage::Info(msg) => self.0.info(msg),
+            boa_utils::LogMessage::Warn(msg) => self.0.warn(msg),
+            boa_utils::LogMessage::Error(msg) => self.0.error(msg),
         }
     }
+
+    #[inline]
+    fn take(&mut self) -> Vec<Self::Item> {
+        std::mem::take(&mut self.0)
+            .into_iter()
+            .map(|(span, msg)| match span {
+                LogSpan::Log => boa_utils::LogMessage::Log(msg),
+                LogSpan::Info => boa_utils::LogMessage::Info(msg),
+                LogSpan::Warn => boa_utils::LogMessage::Warn(msg),
+                LogSpan::Error => boa_utils::LogMessage::Error(msg),
+            })
+            .collect()
+    }
+}
+
+impl BoaConsoleLogger {
+    pub fn take(&mut self) -> Logs {
+        std::mem::take(&mut self.0)
+    }
+}
+
+#[inline]
+fn take_console_logs() -> Logs {
+    let logs = boa_utils::inspect_logger(|logger| logger.take());
+    logs.into_iter()
+        .map(|msg| match msg {
+            boa_utils::LogMessage::Log(msg) => (LogSpan::Log, msg),
+            boa_utils::LogMessage::Info(msg) => (LogSpan::Info, msg),
+            boa_utils::LogMessage::Warn(msg) => (LogSpan::Warn, msg),
+            boa_utils::LogMessage::Error(msg) => (LogSpan::Error, msg),
+        })
+        .collect()
 }
 
 pub struct JSRunner;
@@ -77,9 +109,10 @@ pub struct BoaRunner {
 
 impl BoaRunner {
     pub fn try_new() -> Result<Self> {
+        let cache_dir = crate::utils::dirs::cache_dir().unwrap();
         let loader = Rc::new(CombineModuleLoader::new(
             SimpleModuleLoader::new(CUSTOM_SCRIPTS_DIR.as_path())?,
-            HttpModuleLoader::default(),
+            HttpModuleLoader::new(cache_dir, Duration::from_secs(60 * 60 * 24 * 30)),
         ));
         let simple_loader = loader.clone_simple();
         let queue = Rc::new(Queue::default());
@@ -96,7 +129,7 @@ impl BoaRunner {
     pub fn setup_console(&self, logger: BoaConsoleLogger) -> Result<()> {
         let ctx = &mut self.ctx.borrow_mut();
         // it not concurrency safe. we should move to new boa_runtime console when it is ready for custom logger
-        boa_utils::set_logger(Arc::new(logger));
+        boa_utils::set_logger(Box::new(logger) as Box<dyn boa_utils::LoggerBox>);
         let console = Console::init(ctx);
         ctx.register_global_property(js_string!(Console::NAME), console, Attribute::all())?;
         Ok(())
@@ -180,14 +213,13 @@ impl Runner for JSRunner {
         // boa engine is single-thread runner so that we can use it in tokio::task::spawn_blocking
         let res = tokio::task::spawn_blocking(move || {
             let wrapped_fn = move || {
-                let logs = Arc::new(Mutex::new(Some(Logs::new())));
-                let logger = BoaConsoleLogger(logs.clone());
-                let boa_runner = wrap_result!(BoaRunner::try_new(), take_logs(logs));
-                wrap_result!(boa_runner.setup_console(logger), take_logs(logs));
+                let mut logger = BoaConsoleLogger(Logs::new());
+                let boa_runner = wrap_result!(BoaRunner::try_new(), logger.take());
+                wrap_result!(boa_runner.setup_console(logger), take_console_logs());
                 let config = wrap_result!(
                     serde_json::to_string(&mapping)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_logs(logs)
+                    take_console_logs()
                 );
                 let config = serde_json::to_string(&config).unwrap(); // escape the string
                 let execute_module = format!(
@@ -206,28 +238,28 @@ impl Runner for JSRunner {
                 // wrap_result!(boa_runner.execute_module(&process_module));
                 let main_module = wrap_result!(
                     boa_runner.parse_module(&execute_module, "main"),
-                    take_logs(logs)
+                    take_console_logs()
                 );
                 wrap_result!(boa_runner.execute_module(&main_module));
                 let ctx = boa_runner.get_ctx();
                 let namespace = main_module.namespace(&mut ctx.borrow_mut());
                 let result = wrap_result!(
                     namespace.get(js_string!("result"), &mut ctx.borrow_mut()),
-                    take_logs(logs)
+                    take_console_logs()
                 );
-                let mut result = wrap_result!(
+                let result = wrap_result!(
                     result
                         .as_string()
                         .ok_or_else(|| JsNativeError::typ().with_message("Expected string"))
                         .map(|str| str.to_std_string_escaped()),
-                    take_logs(logs)
+                    take_console_logs()
                 );
                 let mapping = wrap_result!(
                     serde_json::from_str(&result)
                         .map_err(|e| { std::io::Error::new(std::io::ErrorKind::InvalidData, e) }),
-                    take_logs(logs)
+                    take_console_logs()
                 );
-                (Ok::<Mapping, JsRunnerError>(mapping), take_logs(logs))
+                (Ok::<Mapping, JsRunnerError>(mapping), take_console_logs())
             };
             let (res, logs) = wrapped_fn();
             match res {
@@ -517,7 +549,9 @@ const foreignNameservers = [
                     serde_yaml::Value::Sequence(vec![
                         serde_yaml::Value::String("RULE-SET,custom-reject,REJECT".to_string()),
                         serde_yaml::Value::String("RULE-SET,custom-direct,DIRECT".to_string()),
-                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string())
+                        serde_yaml::Value::String("RULE-SET,custom-proxy,🚀".to_string()),
+                        serde_yaml::Value::String("aGVsbG8=".to_string()),
+                        serde_yaml::Value::String("d29ybGQ=".to_string()),
                     ])
                 );
                 let outs = serde_json::to_string(&logs).unwrap();

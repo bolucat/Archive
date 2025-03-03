@@ -19,22 +19,29 @@ type Client struct {
 	die       context.Context
 	dieCancel context.CancelFunc
 
-	dialOut func(ctx context.Context) (net.Conn, error)
+	dialOut util.DialOutFunc
 
-	sessionCounter  atomic.Uint64
+	sessionCounter atomic.Uint64
+
 	idleSession     *skiplist.SkipList[uint64, *Session]
 	idleSessionLock sync.Mutex
+
+	sessions     map[uint64]*Session
+	sessionsLock sync.Mutex
 
 	padding *atomic.TypedValue[*padding.PaddingFactory]
 
 	idleSessionTimeout time.Duration
+	minIdleSession     int
 }
 
-func NewClient(ctx context.Context, dialOut func(ctx context.Context) (net.Conn, error), _padding *atomic.TypedValue[*padding.PaddingFactory], idleSessionCheckInterval, idleSessionTimeout time.Duration) *Client {
+func NewClient(ctx context.Context, dialOut util.DialOutFunc, _padding *atomic.TypedValue[*padding.PaddingFactory], idleSessionCheckInterval, idleSessionTimeout time.Duration, minIdleSession int) *Client {
 	c := &Client{
+		sessions:           make(map[uint64]*Session),
 		dialOut:            dialOut,
 		padding:            _padding,
 		idleSessionTimeout: idleSessionTimeout,
+		minIdleSession:     minIdleSession,
 	}
 	if idleSessionCheckInterval <= time.Second*5 {
 		idleSessionCheckInterval = time.Second * 30
@@ -81,10 +88,16 @@ func (c *Client) CreateStream(ctx context.Context) (net.Conn, error) {
 				session.dieHook()
 			}
 		} else {
-			c.idleSessionLock.Lock()
-			session.idleSince = time.Now()
-			c.idleSession.Insert(math.MaxUint64-session.seq, session)
-			c.idleSessionLock.Unlock()
+			select {
+			case <-c.die.Done():
+				// Now client has been closed
+				go session.Close()
+			default:
+				c.idleSessionLock.Lock()
+				session.idleSince = time.Now()
+				c.idleSession.Insert(math.MaxUint64-session.seq, session)
+				c.idleSessionLock.Unlock()
+			}
 		}
 	}
 
@@ -122,14 +135,35 @@ func (c *Client) createSession(ctx context.Context) (*Session, error) {
 		c.idleSessionLock.Lock()
 		c.idleSession.Remove(math.MaxUint64 - session.seq)
 		c.idleSessionLock.Unlock()
+
+		c.sessionsLock.Lock()
+		delete(c.sessions, session.seq)
+		c.sessionsLock.Unlock()
 	}
+
+	c.sessionsLock.Lock()
+	c.sessions[session.seq] = session
+	c.sessionsLock.Unlock()
+
 	session.Run()
 	return session, nil
 }
 
 func (c *Client) Close() error {
 	c.dieCancel()
-	go c.idleCleanupExpTime(time.Now())
+
+	c.sessionsLock.Lock()
+	sessionToClose := make([]*Session, 0, len(c.sessions))
+	for seq, session := range c.sessions {
+		sessionToClose = append(sessionToClose, session)
+		delete(c.sessions, seq)
+	}
+	c.sessionsLock.Unlock()
+
+	for _, session := range sessionToClose {
+		session.Close()
+	}
+
 	return nil
 }
 
@@ -138,17 +172,30 @@ func (c *Client) idleCleanup() {
 }
 
 func (c *Client) idleCleanupExpTime(expTime time.Time) {
-	var sessionToRemove = make([]*Session, 0)
+	sessionToRemove := make([]*Session, 0, c.idleSession.Len())
 
 	c.idleSessionLock.Lock()
 	it := c.idleSession.Iterate()
+
+	activeCount := 0
 	for it.IsNotEnd() {
 		session := it.Value()
-		if session.idleSince.Before(expTime) {
-			sessionToRemove = append(sessionToRemove, session)
-			c.idleSession.Remove(it.Key())
-		}
+		key := it.Key()
 		it.MoveToNext()
+
+		if !session.idleSince.Before(expTime) {
+			activeCount++
+			continue
+		}
+
+		if activeCount < c.minIdleSession {
+			session.idleSince = time.Now()
+			activeCount++
+			continue
+		}
+
+		sessionToRemove = append(sessionToRemove, session)
+		c.idleSession.Remove(key)
 	}
 	c.idleSessionLock.Unlock()
 

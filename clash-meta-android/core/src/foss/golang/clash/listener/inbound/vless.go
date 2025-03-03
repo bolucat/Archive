@@ -1,6 +1,8 @@
 package inbound
 
 import (
+	"strings"
+
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing_vless"
@@ -9,12 +11,13 @@ import (
 
 type VlessOption struct {
 	BaseOption
-	Users         []VlessUser   `inbound:"users"`
-	WsPath        string        `inbound:"ws-path,omitempty"`
-	Certificate   string        `inbound:"certificate,omitempty"`
-	PrivateKey    string        `inbound:"private-key,omitempty"`
-	RealityConfig RealityConfig `inbound:"reality-config,omitempty"`
-	MuxOption     MuxOption     `inbound:"mux-option,omitempty"`
+	Users           []VlessUser   `inbound:"users"`
+	WsPath          string        `inbound:"ws-path,omitempty"`
+	GrpcServiceName string        `inbound:"grpc-service-name,omitempty"`
+	Certificate     string        `inbound:"certificate,omitempty"`
+	PrivateKey      string        `inbound:"private-key,omitempty"`
+	RealityConfig   RealityConfig `inbound:"reality-config,omitempty"`
+	MuxOption       MuxOption     `inbound:"mux-option,omitempty"`
 }
 
 type VlessUser struct {
@@ -51,14 +54,15 @@ func NewVless(options *VlessOption) (*Vless, error) {
 		Base:   base,
 		config: options,
 		vs: LC.VlessServer{
-			Enable:        true,
-			Listen:        base.RawAddress(),
-			Users:         users,
-			WsPath:        options.WsPath,
-			Certificate:   options.Certificate,
-			PrivateKey:    options.PrivateKey,
-			RealityConfig: options.RealityConfig.Build(),
-			MuxOption:     options.MuxOption.Build(),
+			Enable:          true,
+			Listen:          base.RawAddress(),
+			Users:           users,
+			WsPath:          options.WsPath,
+			GrpcServiceName: options.GrpcServiceName,
+			Certificate:     options.Certificate,
+			PrivateKey:      options.PrivateKey,
+			RealityConfig:   options.RealityConfig.Build(),
+			MuxOption:       options.MuxOption.Build(),
 		},
 	}, nil
 }
@@ -70,25 +74,18 @@ func (v *Vless) Config() C.InboundConfig {
 
 // Address implements constant.InboundListener
 func (v *Vless) Address() string {
+	var addrList []string
 	if v.l != nil {
 		for _, addr := range v.l.AddrList() {
-			return addr.String()
+			addrList = append(addrList, addr.String())
 		}
 	}
-	return ""
+	return strings.Join(addrList, ",")
 }
 
 // Listen implements constant.InboundListener
 func (v *Vless) Listen(tunnel C.Tunnel) error {
 	var err error
-	users := make([]LC.VlessUser, len(v.config.Users))
-	for i, v := range v.config.Users {
-		users[i] = LC.VlessUser{
-			Username: v.Username,
-			UUID:     v.UUID,
-			Flow:     v.Flow,
-		}
-	}
 	v.l, err = sing_vless.New(v.vs, tunnel, v.Additions()...)
 	if err != nil {
 		return err

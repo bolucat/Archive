@@ -57,7 +57,7 @@ require (
 	github.com/metacubex/sing-shadowsocks v0.2.8 // indirect
 	github.com/metacubex/sing-shadowsocks2 v0.2.2 // indirect
 	github.com/metacubex/sing-tun v0.4.5 // indirect
-	github.com/metacubex/sing-vmess v0.1.14-0.20250203033000-f61322b3dbe3 // indirect
+	github.com/metacubex/sing-vmess v0.1.14-0.20250228002636-abc39e113b82 // indirect
 	github.com/metacubex/sing-wireguard v0.0.0-20241126021510-0827d417b589 // indirect
 	github.com/metacubex/tfo-go v0.0.0-20241231083714-66613d49c422 // indirect
 	github.com/metacubex/utls v1.6.6 // indirect
@@ -77,7 +77,7 @@ require (
 	github.com/sagernet/fswatch v0.1.1 // indirect
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a // indirect
 	github.com/sagernet/nftables v0.3.0-beta.4 // indirect
-	github.com/sagernet/sing v0.5.1 // indirect
+	github.com/sagernet/sing v0.5.2 // indirect
 	github.com/sagernet/sing-mux v0.2.1 // indirect
 	github.com/sagernet/sing-shadowtls v0.1.5 // indirect
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7 // indirect
@@ -113,7 +113,7 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
 
-replace github.com/sagernet/sing => github.com/metacubex/sing v0.0.0-20241121030428-33b6ebc52000
+replace github.com/sagernet/sing => github.com/metacubex/sing v0.0.0-20250228041610-d94509dc612a
 
 replace cfa => ../../main/golang
 

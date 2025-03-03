@@ -4,6 +4,8 @@ mod core;
 mod enhance;
 mod feat;
 mod utils;
+mod model;
+mod module;
 use crate::core::hotkey;
 use crate::utils::{resolve, resolve::resolve_scheme, server};
 use config::Config;
@@ -146,6 +148,9 @@ pub fn run() {
             cmd::get_network_interfaces,
             cmd::restart_core,
             cmd::restart_app,
+            // 添加新的命令
+            cmd::get_running_mode,
+            cmd::install_service,
             // clash
             cmd::get_clash_info,
             cmd::patch_clash_config,
@@ -157,6 +162,8 @@ pub fn run() {
             cmd::get_runtime_logs,
             cmd::invoke_uwp_tool,
             cmd::copy_clash_env,
+            cmd::get_proxies,
+            cmd::get_providers_proxies,
             // verge
             cmd::get_verge_config,
             cmd::patch_verge_config,
@@ -191,6 +198,8 @@ pub fn run() {
             cmd::list_webdav_backup,
             cmd::delete_webdav_backup,
             cmd::restore_webdav_backup,
+            // export diagnostic info for issue reporting
+            cmd::export_diagnostic_info,
         ]);
 
     #[cfg(debug_assertions)]
