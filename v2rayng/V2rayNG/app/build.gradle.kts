@@ -12,8 +12,8 @@ android {
         applicationId = "com.v2ray.ang"
         minSdk = 21
         targetSdk = 35
-        versionCode = 634
-        versionName = "1.9.37"
+        versionCode = 635
+        versionName = "1.9.38"
         multiDexEnabled = true
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
@@ -157,9 +157,8 @@ dependencies {
     implementation(libs.gson)
 
     // Reactive and Utility Libraries
-    implementation(libs.rxjava)
-    implementation(libs.rxandroid)
-    implementation(libs.rxpermissions)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.coroutines.core)
 
     // Language and Processing Libraries
     implementation(libs.language.base)
