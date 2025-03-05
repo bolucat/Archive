@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <assert.h>
 #include <ctype.h>
@@ -391,14 +396,11 @@ int PEM_get_EVP_CIPHER_INFO(const char *header, EVP_CIPHER_INFO *cipher) {
     return 0;
   }
   header += 11;
-  if (*header != '4') {
+  if (header[0] != '4' || header[1] != ',') {
+    OPENSSL_PUT_ERROR(PEM, PEM_R_UNSUPPORTED_PROC_TYPE_VERSION);
     return 0;
   }
-  header++;
-  if (*header != ',') {
-    return 0;
-  }
-  header++;
+  header += 2;
   if (strncmp(header, "ENCRYPTED", 9) != 0) {
     OPENSSL_PUT_ERROR(PEM, PEM_R_NOT_ENCRYPTED);
     return 0;

@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -179,7 +184,7 @@ ssl_open_record_t tls_open_record(SSL *ssl, uint8_t *out_type,
   // Decrypt the body in-place.
   if (!ssl->s3->aead_read_ctx->Open(
           out, type, version, ssl->s3->read_sequence, header,
-          MakeSpan(const_cast<uint8_t *>(CBS_data(&body)), CBS_len(&body)))) {
+          Span(const_cast<uint8_t *>(CBS_data(&body)), CBS_len(&body)))) {
     if (ssl->s3->skip_early_data && !ssl->s3->aead_read_ctx->is_null_cipher()) {
       ERR_clear_error();
       return skip_early_data(ssl, out_alert, *out_consumed);
@@ -292,7 +297,7 @@ static bool do_seal_record(SSL *ssl, uint8_t *out_prefix, uint8_t *out,
   out_prefix[2] = record_version & 0xff;
   out_prefix[3] = ciphertext_len >> 8;
   out_prefix[4] = ciphertext_len & 0xff;
-  Span<const uint8_t> header = MakeSpan(out_prefix, SSL3_RT_HEADER_LENGTH);
+  Span<const uint8_t> header = Span(out_prefix, SSL3_RT_HEADER_LENGTH);
 
   // Ensure the sequence number update does not overflow.
   if (ssl->s3->write_sequence + 1 == 0) {

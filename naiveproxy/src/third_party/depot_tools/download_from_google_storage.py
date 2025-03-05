@@ -33,8 +33,7 @@ PLATFORM_MAPPING = {
     'linux': 'linux',  # Python 3.3+.
     'linux2': 'linux',  # Python < 3.3 uses "linux2" / "linux3".
     'win32': 'win',
-    'aix6': 'aix',
-    'aix7': 'aix',
+    'aix': 'aix',  # Python 3.8+
     'zos': 'zos',
 }
 

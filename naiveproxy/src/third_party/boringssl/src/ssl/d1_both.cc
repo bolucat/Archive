@@ -1,11 +1,16 @@
-/*
- * Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -891,7 +896,7 @@ static int send_flight(SSL *ssl) {
     uint32_t old_offset = ssl->d1->outgoing_offset;
 
     size_t packet_len;
-    if (!seal_next_packet(ssl, MakeSpan(packet), &packet_len)) {
+    if (!seal_next_packet(ssl, Span(packet), &packet_len)) {
       return -1;
     }
 
@@ -1001,7 +1006,7 @@ static int send_ack(SSL *ssl) {
   }
 
   ssl_do_msg_callback(ssl, /*is_write=*/1, SSL3_RT_ACK,
-                      MakeConstSpan(CBB_data(&cbb), CBB_len(&cbb)));
+                      Span(CBB_data(&cbb), CBB_len(&cbb)));
 
   int bio_ret =
       BIO_write(ssl->wbio.get(), record, static_cast<int>(record_len));

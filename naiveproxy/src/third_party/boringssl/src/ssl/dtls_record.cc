@@ -1,11 +1,16 @@
-/*
- * Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -115,7 +120,7 @@ uint64_t reconstruct_seqnum(uint16_t wire_seq, uint64_t seq_mask,
 }
 
 static Span<uint8_t> cbs_to_writable_bytes(CBS cbs) {
-  return MakeSpan(const_cast<uint8_t *>(CBS_data(&cbs)), CBS_len(&cbs));
+  return Span(const_cast<uint8_t *>(CBS_data(&cbs)), CBS_len(&cbs));
 }
 
 struct ParsedDTLSRecord {
@@ -540,8 +545,7 @@ bool dtls_seal_record(SSL *ssl, DTLSRecordNumber *out_number, uint8_t *out,
     CRYPTO_store_u64_be(out + 3, record_number.combined());
     CRYPTO_store_u16_be(out + 11, ciphertext_len);
   }
-  Span<const uint8_t> header = MakeConstSpan(out, record_header_len);
-
+  Span<const uint8_t> header(out, record_header_len);
 
   if (!write_epoch->aead->SealScatter(
           out + record_header_len, out + prefix, out + prefix + in_len, type,
@@ -556,8 +560,7 @@ bool dtls_seal_record(SSL *ssl, DTLSRecordNumber *out_number, uint8_t *out,
     // generate the mask used for encryption. For simplicity, pass in the whole
     // ciphertext as the sample - GenerateRecordNumberMask will read only what
     // it needs (and error if |sample| is too short).
-    Span<const uint8_t> sample =
-        MakeConstSpan(out + record_header_len, ciphertext_len);
+    Span<const uint8_t> sample(out + record_header_len, ciphertext_len);
     uint8_t mask[2];
     if (!write_epoch->rn_encrypter->GenerateMask(mask, sample)) {
       return false;

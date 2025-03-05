@@ -1,14 +1,21 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright 2005 Nokia. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
+
+#include <string_view>
 
 #include <openssl/buf.h>
 #include <openssl/digest.h>
@@ -125,7 +132,7 @@ bool SSLTranscript::UpdateForHelloRetryRequest() {
                              static_cast<uint8_t>(hash_len)};
   if (!EVP_DigestInit_ex(hash_.get(), Digest(), nullptr) ||
       !AddToBufferOrHash(header) ||
-      !AddToBufferOrHash(MakeConstSpan(old_hash, hash_len))) {
+      !AddToBufferOrHash(Span(old_hash, hash_len))) {
     return false;
   }
   return true;
@@ -197,21 +204,16 @@ bool SSLTranscript::GetHash(uint8_t *out, size_t *out_len) const {
 bool SSLTranscript::GetFinishedMAC(uint8_t *out, size_t *out_len,
                                    const SSL_SESSION *session,
                                    bool from_server) const {
-  static const char kClientLabel[] = "client finished";
-  static const char kServerLabel[] = "server finished";
-  auto label = from_server
-                   ? MakeConstSpan(kServerLabel, sizeof(kServerLabel) - 1)
-                   : MakeConstSpan(kClientLabel, sizeof(kClientLabel) - 1);
-
   uint8_t digest[EVP_MAX_MD_SIZE];
   size_t digest_len;
   if (!GetHash(digest, &digest_len)) {
     return false;
   }
 
+  std::string_view label = from_server ? "server finished" : "client finished";
   static const size_t kFinishedLen = 12;
-  if (!tls1_prf(Digest(), MakeSpan(out, kFinishedLen), session->secret, label,
-                MakeConstSpan(digest, digest_len), {})) {
+  if (!tls1_prf(Digest(), Span(out, kFinishedLen), session->secret, label,
+                Span(digest, digest_len), {})) {
     return false;
   }
 

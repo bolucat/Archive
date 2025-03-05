@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_PEM_H
 #define OPENSSL_HEADER_PEM_H
@@ -307,6 +312,14 @@ OPENSSL_EXPORT int PEM_ASN1_write_bio(i2d_of_void *i2d, const char *name,
 // on success. In this case, the caller retains ownership of |sk| in both
 // success and failure.
 //
+// This function will decrypt any encrypted certificates in |bp|, using |cb|,
+// but it will not decrypt encrypted private keys. Encrypted private keys are
+// instead represented as placeholder |X509_INFO| objects with an empty |x_pkey|
+// field. This allows this function to be used with inputs with unencrypted
+// certificates, but encrypted passwords, without knowing the password. However,
+// it also means that this function cannot be used to decrypt the private key
+// when the password is known.
+//
 // WARNING: If the input contains "TRUSTED CERTIFICATE" PEM blocks, this
 // function parses auxiliary properties as in |d2i_X509_AUX|. Passing untrusted
 // input to this function allows an attacker to influence those properties. See
@@ -443,5 +456,6 @@ OPENSSL_EXPORT int PEM_write_PKCS8PrivateKey(FILE *fp, const EVP_PKEY *x,
 #define PEM_R_SHORT_HEADER 112
 #define PEM_R_UNSUPPORTED_CIPHER 113
 #define PEM_R_UNSUPPORTED_ENCRYPTION 114
+#define PEM_R_UNSUPPORTED_PROC_TYPE_VERSION 115
 
 #endif  // OPENSSL_HEADER_PEM_H

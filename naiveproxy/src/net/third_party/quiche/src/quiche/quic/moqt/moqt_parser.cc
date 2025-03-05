@@ -11,7 +11,6 @@
 #include <cstring>
 #include <optional>
 #include <string>
-#include <tuple>
 
 #include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
@@ -260,21 +259,6 @@ size_t MoqtControlParser::ProcessClientSetup(quic::QuicDataReader& reader) {
     }
     auto key = static_cast<MoqtSetupParameter>(type);
     switch (key) {
-      case MoqtSetupParameter::kRole:
-        if (setup.role.has_value()) {
-          ParseError("ROLE parameter appears twice in SETUP");
-          return 0;
-        }
-        uint64_t index;
-        if (!StringViewToVarInt(value, index)) {
-          return 0;
-        }
-        if (index > static_cast<uint64_t>(MoqtRole::kRoleMax)) {
-          ParseError("Invalid ROLE parameter");
-          return 0;
-        }
-        setup.role = static_cast<MoqtRole>(index);
-        break;
       case MoqtSetupParameter::kPath:
         if (uses_web_transport_) {
           ParseError(
@@ -312,10 +296,6 @@ size_t MoqtControlParser::ProcessClientSetup(quic::QuicDataReader& reader) {
         break;
     }
   }
-  if (!setup.role.has_value()) {
-    ParseError("ROLE parameter missing from CLIENT_SETUP message");
-    return 0;
-  }
   if (!uses_web_transport_ && !setup.path.has_value()) {
     ParseError("PATH SETUP parameter missing from Client message over QUIC");
     return 0;
@@ -344,21 +324,6 @@ size_t MoqtControlParser::ProcessServerSetup(quic::QuicDataReader& reader) {
     }
     auto key = static_cast<MoqtSetupParameter>(type);
     switch (key) {
-      case MoqtSetupParameter::kRole:
-        if (setup.role.has_value()) {
-          ParseError("ROLE parameter appears twice in SETUP");
-          return 0;
-        }
-        uint64_t index;
-        if (!StringViewToVarInt(value, index)) {
-          return 0;
-        }
-        if (index > static_cast<uint64_t>(MoqtRole::kRoleMax)) {
-          ParseError("Invalid ROLE parameter");
-          return 0;
-        }
-        setup.role = static_cast<MoqtRole>(index);
-        break;
       case MoqtSetupParameter::kPath:
         ParseError("PATH parameter in SERVER_SETUP");
         return 0;
@@ -386,10 +351,6 @@ size_t MoqtControlParser::ProcessServerSetup(quic::QuicDataReader& reader) {
         // Skip over the parameter.
         break;
     }
-  }
-  if (!setup.role.has_value()) {
-    ParseError("ROLE parameter missing from SERVER_SETUP message");
-    return 0;
   }
   visitor_.OnServerSetupMessage(setup);
   return reader.PreviouslyReadPayload().length();
@@ -972,7 +933,12 @@ bool MoqtControlParser::ReadTrackNamespace(quic::QuicDataReader& reader,
   QUICHE_DCHECK(full_track_name.empty());
   uint64_t num_elements;
   if (!reader.ReadVarInt62(&num_elements)) {
-    return 0;
+    return false;
+  }
+  if (num_elements == 0 || num_elements > kMaxNamespaceElements) {
+    ParseError(MoqtError::kProtocolViolation,
+               "Invalid number of namespace elements");
+    return false;
   }
   for (uint64_t i = 0; i < num_elements; ++i) {
     absl::string_view element;

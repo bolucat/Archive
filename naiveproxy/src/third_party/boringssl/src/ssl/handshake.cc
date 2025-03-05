@@ -1,12 +1,17 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -74,7 +79,7 @@ bool SSL_HANDSHAKE::GetClientHello(SSLMessage *out_msg,
     out_msg->raw = CBS(ech_client_hello_buf);
     size_t header_len =
         SSL_is_dtls(ssl) ? DTLS1_HM_HEADER_LENGTH : SSL3_HM_HEADER_LENGTH;
-    out_msg->body = MakeConstSpan(ech_client_hello_buf).subspan(header_len);
+    out_msg->body = CBS(Span(ech_client_hello_buf).subspan(header_len));
   } else if (!ssl->method->get_message(ssl, out_msg)) {
     // The message has already been read, so this cannot fail.
     OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
@@ -198,6 +203,7 @@ bool ssl_parse_extensions(const CBS *cbs, uint8_t *out_alert,
         continue;
       }
       OPENSSL_PUT_ERROR(SSL, SSL_R_UNEXPECTED_EXTENSION);
+      ERR_add_error_dataf("extension %u", unsigned{type});
       *out_alert = SSL_AD_UNSUPPORTED_EXTENSION;
       return false;
     }
@@ -238,10 +244,8 @@ enum ssl_verify_result_t ssl_verify_peer_cert(SSL_HANDSHAKE *hs) {
           sk_CRYPTO_BUFFER_value(prev_session->certs.get(), i);
       const CRYPTO_BUFFER *new_cert =
           sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), i);
-      if (CRYPTO_BUFFER_len(old_cert) != CRYPTO_BUFFER_len(new_cert) ||
-          OPENSSL_memcmp(CRYPTO_BUFFER_data(old_cert),
-                         CRYPTO_BUFFER_data(new_cert),
-                         CRYPTO_BUFFER_len(old_cert)) != 0) {
+      if (Span(CRYPTO_BUFFER_data(old_cert), CRYPTO_BUFFER_len(old_cert)) !=
+          Span(CRYPTO_BUFFER_data(new_cert), CRYPTO_BUFFER_len(new_cert))) {
         OPENSSL_PUT_ERROR(SSL, SSL_R_SERVER_CERT_CHANGED);
         ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_ILLEGAL_PARAMETER);
         return ssl_verify_invalid;
@@ -398,11 +402,9 @@ enum ssl_hs_wait_t ssl_get_finished(SSL_HANDSHAKE *hs) {
   }
 
   if (ssl->server) {
-    ssl->s3->previous_client_finished.CopyFrom(
-        MakeConstSpan(finished, finished_len));
+    ssl->s3->previous_client_finished.CopyFrom(Span(finished, finished_len));
   } else {
-    ssl->s3->previous_server_finished.CopyFrom(
-        MakeConstSpan(finished, finished_len));
+    ssl->s3->previous_server_finished.CopyFrom(Span(finished, finished_len));
   }
 
   // The Finished message should be the end of a flight.
@@ -426,7 +428,7 @@ bool ssl_send_finished(SSL_HANDSHAKE *hs) {
                                      ssl->server)) {
     return false;
   }
-  auto finished = MakeConstSpan(finished_buf, finished_len);
+  auto finished = Span(finished_buf, finished_len);
 
   // Log the master secret, if logging is enabled.
   if (!ssl_log_secret(ssl, "CLIENT_RANDOM", session->secret)) {

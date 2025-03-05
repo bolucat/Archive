@@ -1,18 +1,24 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright 2005 Nokia. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
 #include <assert.h>
 #include <string.h>
 
+#include <string_view>
 #include <utility>
 
 #include <openssl/err.h>
@@ -31,7 +37,7 @@
 BSSL_NAMESPACE_BEGIN
 
 bool tls1_prf(const EVP_MD *digest, Span<uint8_t> out,
-              Span<const uint8_t> secret, Span<const char> label,
+              Span<const uint8_t> secret, std::string_view label,
               Span<const uint8_t> seed1, Span<const uint8_t> seed2) {
   return 1 == CRYPTO_tls1_prf(digest, out.data(), out.size(), secret.data(),
                               secret.size(), label.data(), label.size(),
@@ -66,14 +72,11 @@ static bool get_key_block_lengths(const SSL *ssl, size_t *out_mac_secret_len,
 
 static bool generate_key_block(const SSL *ssl, Span<uint8_t> out,
                                const SSL_SESSION *session) {
-  static const char kLabel[] = "key expansion";
-  auto label = MakeConstSpan(kLabel, sizeof(kLabel) - 1);
-
   const EVP_MD *digest = ssl_session_get_digest(session);
   // Note this function assumes that |session|'s key material corresponds to
   // |ssl->s3->client_random| and |ssl->s3->server_random|.
-  return tls1_prf(digest, out, session->secret, label, ssl->s3->server_random,
-                  ssl->s3->client_random);
+  return tls1_prf(digest, out, session->secret, "key expansion",
+                  ssl->s3->server_random, ssl->s3->client_random);
 }
 
 bool tls1_configure_aead(SSL *ssl, evp_aead_direction_t direction,
@@ -90,7 +93,7 @@ bool tls1_configure_aead(SSL *ssl, evp_aead_direction_t direction,
   const size_t key_block_size = 2 * (mac_secret_len + key_len + iv_len);
   if (key_block_cache->empty()) {
     if (!key_block_cache->InitForOverwrite(key_block_size) ||
-        !generate_key_block(ssl, MakeSpan(*key_block_cache), session)) {
+        !generate_key_block(ssl, Span(*key_block_cache), session)) {
       return false;
     }
   }
@@ -142,25 +145,19 @@ bool tls1_change_cipher_state(SSL_HANDSHAKE *hs,
 
 bool tls1_generate_master_secret(SSL_HANDSHAKE *hs, Span<uint8_t> out,
                                  Span<const uint8_t> premaster) {
-  static const char kMasterSecretLabel[] = "master secret";
-  static const char kExtendedMasterSecretLabel[] = "extended master secret";
   BSSL_CHECK(out.size() == SSL3_MASTER_SECRET_SIZE);
 
   const SSL *ssl = hs->ssl;
   if (hs->extended_master_secret) {
-    auto label = MakeConstSpan(kExtendedMasterSecretLabel,
-                               sizeof(kExtendedMasterSecretLabel) - 1);
     uint8_t digests[EVP_MAX_MD_SIZE];
     size_t digests_len;
     if (!hs->transcript.GetHash(digests, &digests_len) ||
-        !tls1_prf(hs->transcript.Digest(), out, premaster, label,
-                  MakeConstSpan(digests, digests_len), {})) {
+        !tls1_prf(hs->transcript.Digest(), out, premaster,
+                  "extended master secret", Span(digests, digests_len), {})) {
       return false;
     }
   } else {
-    auto label =
-        MakeConstSpan(kMasterSecretLabel, sizeof(kMasterSecretLabel) - 1);
-    if (!tls1_prf(hs->transcript.Digest(), out, premaster, label,
+    if (!tls1_prf(hs->transcript.Digest(), out, premaster, "master secret",
                   ssl->s3->client_random, ssl->s3->server_random)) {
       return false;
     }
@@ -199,13 +196,15 @@ int SSL_generate_key_block(const SSL *ssl, uint8_t *out, size_t out_len) {
     return 0;
   }
 
-  return generate_key_block(ssl, MakeSpan(out, out_len), SSL_get_session(ssl));
+  return generate_key_block(ssl, Span(out, out_len), SSL_get_session(ssl));
 }
 
 int SSL_export_keying_material(SSL *ssl, uint8_t *out, size_t out_len,
                                const char *label, size_t label_len,
                                const uint8_t *context, size_t context_len,
                                int use_context) {
+  auto out_span = Span(out, out_len);
+  std::string_view label_sv(label, label_len);
   // In TLS 1.3, the exporter may be used whenever the secret has been derived.
   if (ssl->s3->version != 0 && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
     if (ssl->s3->exporter_secret.empty()) {
@@ -216,9 +215,8 @@ int SSL_export_keying_material(SSL *ssl, uint8_t *out, size_t out_len,
       context = nullptr;
       context_len = 0;
     }
-    return tls13_export_keying_material(
-        ssl, MakeSpan(out, out_len), ssl->s3->exporter_secret,
-        MakeConstSpan(label, label_len), MakeConstSpan(context, context_len));
+    return tls13_export_keying_material(ssl, out_span, ssl->s3->exporter_secret,
+                                        label_sv, Span(context, context_len));
   }
 
   // Exporters may be used in False Start, where the handshake has progressed
@@ -253,6 +251,5 @@ int SSL_export_keying_material(SSL *ssl, uint8_t *out, size_t out_len,
 
   const SSL_SESSION *session = SSL_get_session(ssl);
   const EVP_MD *digest = ssl_session_get_digest(session);
-  return tls1_prf(digest, MakeSpan(out, out_len), session->secret,
-                  MakeConstSpan(label, label_len), seed, {});
+  return tls1_prf(digest, out_span, session->secret, label_sv, seed, {});
 }

@@ -314,6 +314,7 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
    public:
     IncomingDataStream(MoqtSession* session, webtransport::Stream* stream)
         : session_(session), stream_(stream), parser_(stream, this) {}
+    ~IncomingDataStream();
 
     // webtransport::StreamVisitor implementation.
     void OnCanRead() override;
@@ -334,6 +335,8 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
     }
 
     webtransport::Stream* stream() const { return stream_; }
+
+    void MaybeReadOneObject();
 
    private:
     friend class test::MoqtSessionPeer;
@@ -566,7 +569,8 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   webtransport::Stream* OpenDataStream(PublishedSubscription& subscription,
                                        FullSequence first_object);
   // Returns false if creation failed.
-  [[nodiscard]] bool OpenDataStream(std::shared_ptr<PublishedFetch> fetch);
+  [[nodiscard]] bool OpenDataStream(std::shared_ptr<PublishedFetch> fetch,
+                                    webtransport::SendOrder send_order);
 
   SubscribeRemoteTrack* RemoteTrackByAlias(uint64_t track_alias);
   RemoteTrack* RemoteTrackById(uint64_t subscribe_id);
@@ -666,11 +670,6 @@ class QUICHE_EXPORT MoqtSession : public webtransport::SessionVisitor {
   // result from this subscription use incoming_announce_callback.
   absl::flat_hash_map<FullTrackName, MoqtOutgoingSubscribeAnnouncesCallback>
       outgoing_subscribe_announces_;
-
-  // The role the peer advertised in its SETUP message. Initialize it to avoid
-  // an uninitialized value if no SETUP arrives or it arrives with no Role
-  // parameter, and other checks have changed/been disabled.
-  MoqtRole peer_role_ = MoqtRole::kPubSub;
 
   // The minimum subscribe ID the peer can use that is monotonically increasing.
   uint64_t next_incoming_subscribe_id_ = 0;

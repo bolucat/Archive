@@ -1,11 +1,16 @@
-/*
- * Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/evp.h>
 
@@ -47,26 +52,21 @@ static int eckey_pub_decode(EVP_PKEY *out, CBS *params, CBS *key) {
   // See RFC 5480, section 2.
 
   // The parameters are a named curve.
-  EC_KEY *eckey = NULL;
   const EC_GROUP *group = EC_KEY_parse_curve_name(params);
   if (group == NULL || CBS_len(params) != 0) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_DECODE_ERROR);
-    goto err;
+    return 0;
   }
 
-  eckey = EC_KEY_new();
-  if (eckey == NULL ||  //
-      !EC_KEY_set_group(eckey, group) ||
-      !EC_KEY_oct2key(eckey, CBS_data(key), CBS_len(key), NULL)) {
-    goto err;
+  bssl::UniquePtr<EC_KEY> eckey(EC_KEY_new());
+  if (eckey == nullptr ||  //
+      !EC_KEY_set_group(eckey.get(), group) ||
+      !EC_KEY_oct2key(eckey.get(), CBS_data(key), CBS_len(key), nullptr)) {
+    return 0;
   }
 
-  EVP_PKEY_assign_EC_KEY(out, eckey);
+  EVP_PKEY_assign_EC_KEY(out, eckey.release());
   return 1;
-
-err:
-  EC_KEY_free(eckey);
-  return 0;
 }
 
 static int eckey_pub_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {

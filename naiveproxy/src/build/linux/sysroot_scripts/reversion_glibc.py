@@ -1,7 +1,6 @@
-# Copyright 2021 The Chromium Authors
+# Copyright 2025 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
 """Rewrite incompatible default symbols in glibc.
 """
 
@@ -13,7 +12,7 @@ import subprocess
 # //chrome/installer/linux/rpm/dist_package_provides.json
 MAX_ALLOWED_GLIBC_VERSION = [2, 26]
 
-VERSION_PATTERN = re.compile(r"GLIBC_([0-9\.]+)")
+VERSION_PATTERN = re.compile("GLIBC_([0-9\.]+)")
 SECTION_PATTERN = re.compile(r"^ *\[ *[0-9]+\] +(\S+) +\S+ + ([0-9a-f]+) .*$")
 
 # Some otherwise disallowed symbols are referenced in the linux-chromeos build.
@@ -35,7 +34,7 @@ def reversion_glibc(bin_file: str) -> None:
     stdout = subprocess.check_output(
         ["readelf", "--dyn-syms", "--wide", bin_file])
     for line in stdout.decode("utf-8").split("\n"):
-        cols = re.split(r"\s+", line)
+        cols = re.split("\s+", line)
         # Skip the preamble.
         if len(cols) < 9:
             continue

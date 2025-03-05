@@ -68,7 +68,6 @@
 ^third_party/zstd
 ^tools/cfi
 ^tools/clang/scripts/update.py
-^tools/diagnosis
 ^tools/grit
 ^tools/gritsettings
 ^tools/protoc_wrapper

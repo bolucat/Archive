@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_ASN1_H
 #define OPENSSL_HEADER_ASN1_H
@@ -1181,10 +1186,6 @@ OPENSSL_EXPORT ASN1_UTCTIME *ASN1_UTCTIME_adj(ASN1_UTCTIME *s,
 // If |s| is NULL, this function validates |str| without copying it.
 OPENSSL_EXPORT int ASN1_UTCTIME_set_string(ASN1_UTCTIME *s, const char *str);
 
-// ASN1_UTCTIME_cmp_time_t compares |s| to |t|. It returns -1 if |s| < |t|, 0 if
-// they are equal, 1 if |s| > |t|, and -2 on error.
-OPENSSL_EXPORT int ASN1_UTCTIME_cmp_time_t(const ASN1_UTCTIME *s, time_t t);
-
 // ASN1_GENERALIZEDTIME_new calls |ASN1_STRING_type_new| with
 // |V_ASN1_GENERALIZEDTIME|. The resulting object contains empty contents and
 // must be initialized to be a valid GeneralizedTime.
@@ -1326,13 +1327,21 @@ OPENSSL_EXPORT int ASN1_TIME_set_string(ASN1_TIME *s, const char *str);
 OPENSSL_EXPORT int ASN1_TIME_set_string_X509(ASN1_TIME *s, const char *str);
 
 // ASN1_TIME_to_time_t converts |t| to a time_t value in |out|. On
-// success, one is returned. On failure zero is returned. This function
+// success, one is returned. On failure, zero is returned. This function
 // will fail if the time can not be represented in a time_t.
 OPENSSL_EXPORT int ASN1_TIME_to_time_t(const ASN1_TIME *t, time_t *out);
 
 // ASN1_TIME_to_posix converts |t| to a POSIX time value in |out|. On
-// success, one is returned. On failure zero is returned.
+// success, one is returned. On failure, zero is returned.
 OPENSSL_EXPORT int ASN1_TIME_to_posix(const ASN1_TIME *t, int64_t *out);
+
+// ASN1_TIME_to_posix_nonstandard converts |t| to a POSIX time value in
+// |out|. It is exactly the same as |ASN1_TIME_to_posix| but allows for
+// non-standard four-digit timezone offsets on UTC times. On success, one is
+// returned. On failure, zero is returned. |ASN1_TIME_to_posix| should normally
+// be used instead of this function.
+OPENSSL_EXPORT int ASN1_TIME_to_posix_nonstandard(
+    const ASN1_TIME *t, int64_t *out);
 
 // TODO(davidben): Expand and document function prototypes generated in macros.
 

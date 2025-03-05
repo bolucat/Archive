@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -31,6 +36,7 @@
 #include <openssl/rand.h>
 
 #include "../crypto/internal.h"
+#include "../crypto/spake2plus/internal.h"
 #include "internal.h"
 
 
@@ -436,9 +442,7 @@ static bool ext_sni_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
     if (ssl->hostname == nullptr) {
       return true;
     }
-    hostname =
-        MakeConstSpan(reinterpret_cast<const uint8_t *>(ssl->hostname.get()),
-                      strlen(ssl->hostname.get()));
+    hostname = StringAsBytes(ssl->hostname.get());
   }
 
   CBB contents, server_name_list, name;
@@ -919,6 +923,10 @@ static bool ext_sigalgs_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
   if (hs->max_version < TLS1_2_VERSION) {
     return true;
   }
+  // In PAKE mode, signature_algorithms is not used.
+  if (hs->pake_prover != nullptr) {
+    return true;
+  }
 
   CBB contents, sigalgs_cbb;
   if (!CBB_add_u16(out_compressible, TLSEXT_TYPE_signature_algorithms) ||
@@ -1102,8 +1110,7 @@ static bool ext_npn_parse_serverhello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
           ssl, &selected, &selected_len, orig_contents,
           static_cast<unsigned>(orig_len),
           ssl->ctx->next_proto_select_cb_arg) != SSL_TLSEXT_ERR_OK ||
-      !ssl->s3->next_proto_negotiated.CopyFrom(
-          MakeConstSpan(selected, selected_len))) {
+      !ssl->s3->next_proto_negotiated.CopyFrom(Span(selected, selected_len))) {
     *out_alert = SSL_AD_INTERNAL_ERROR;
     return false;
   }
@@ -1437,8 +1444,7 @@ bool ssl_negotiate_alpn(SSL_HANDSHAKE *hs, uint8_t *out_alert,
         *out_alert = SSL_AD_INTERNAL_ERROR;
         return false;
       }
-      if (!ssl->s3->alpn_selected.CopyFrom(
-              MakeConstSpan(selected, selected_len))) {
+      if (!ssl->s3->alpn_selected.CopyFrom(Span(selected, selected_len))) {
         *out_alert = SSL_AD_INTERNAL_ERROR;
         return false;
       }
@@ -1973,6 +1979,11 @@ static bool ext_psk_key_exchange_modes_add_clienthello(
   if (hs->max_version < TLS1_3_VERSION) {
     return true;
   }
+  // We do not support resumption with PAKEs, so do not offer any PSK key
+  // exchange modes, to signal the server not to send a ticket.
+  if (hs->pake_prover != nullptr) {
+    return true;
+  }
 
   CBB contents, ke_modes;
   if (!CBB_add_u16(out_compressible, TLSEXT_TYPE_psk_key_exchange_modes) ||
@@ -2120,7 +2131,9 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
   hs->key_shares[1].reset();
   hs->key_share_bytes.Reset();
 
-  if (hs->max_version < TLS1_3_VERSION) {
+  // If offering a PAKE, do not set up key shares. We do not currently support
+  // clients offering both PAKE and non-PAKE modes, including resumption.
+  if (hs->max_version < TLS1_3_VERSION || hs->pake_prover) {
     return true;
   }
 
@@ -2185,7 +2198,9 @@ bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id) {
 static bool ext_key_share_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
                                           CBB *out_compressible,
                                           ssl_client_hello_type_t type) {
-  if (hs->max_version < TLS1_3_VERSION) {
+  // If offering a PAKE, do not set up key shares. We do not currently support
+  // clients offering both PAKE and non-PAKE modes, including resumption.
+  if (hs->max_version < TLS1_3_VERSION || hs->pake_prover) {
     return true;
   }
 
@@ -2206,6 +2221,14 @@ static bool ext_key_share_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
 bool ssl_ext_key_share_parse_serverhello(SSL_HANDSHAKE *hs,
                                          Array<uint8_t> *out_secret,
                                          uint8_t *out_alert, CBS *contents) {
+  if (hs->key_shares[0] == nullptr) {
+    // If we did not offer key shares, the extension should have been rejected
+    // as unsolicited.
+    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+    return false;
+  }
+
   CBS ciphertext;
   uint16_t group_id;
   if (!CBS_get_u16(contents, &group_id) ||
@@ -2241,7 +2264,8 @@ bool ssl_ext_key_share_parse_clienthello(SSL_HANDSHAKE *hs, bool *out_found,
                                          Span<const uint8_t> *out_peer_key,
                                          uint8_t *out_alert,
                                          const SSL_CLIENT_HELLO *client_hello) {
-  // We only support connections that include an ECDHE key exchange.
+  // We only support connections that include an ECDHE key exchange, or use a
+  // PAKE.
   CBS contents;
   if (!ssl_client_hello_get_extension(client_hello, &contents,
                                       TLSEXT_TYPE_key_share)) {
@@ -2290,7 +2314,30 @@ bool ssl_ext_key_share_parse_clienthello(SSL_HANDSHAKE *hs, bool *out_found,
   return true;
 }
 
+bool ssl_ext_pake_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
+  if (hs->pake_share_bytes.empty()) {
+    return true;
+  }
+
+  CBB pake_ext, pake_msg;
+  if (!CBB_add_u16(out, TLSEXT_TYPE_pake) ||
+      !CBB_add_u16_length_prefixed(out, &pake_ext) ||
+      !CBB_add_u16(&pake_ext, SSL_PAKE_SPAKE2PLUSV1) ||
+      !CBB_add_u16_length_prefixed(&pake_ext, &pake_msg) ||
+      !CBB_add_bytes(&pake_msg, hs->pake_share_bytes.data(),
+                     hs->pake_share_bytes.size()) ||
+      !CBB_flush(out)) {
+    return false;
+  }
+  return true;
+}
+
 bool ssl_ext_key_share_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
+  if (hs->pake_verifier) {
+    // We don't add the key share extension if a PAKE is offered.
+    return true;
+  }
+
   CBB entry, ciphertext;
   if (!CBB_add_u16(out, TLSEXT_TYPE_key_share) ||
       !CBB_add_u16_length_prefixed(out, &entry) ||
@@ -2382,6 +2429,11 @@ static bool ext_supported_groups_add_clienthello(const SSL_HANDSHAKE *hs,
                                                  CBB *out_compressible,
                                                  ssl_client_hello_type_t type) {
   const SSL *const ssl = hs->ssl;
+  // In PAKE mode, supported_groups and key_share are not used.
+  if (hs->pake_prover != nullptr) {
+    return true;
+  }
+
   CBB contents, groups_bytes;
   if (!CBB_add_u16(out_compressible, TLSEXT_TYPE_supported_groups) ||
       !CBB_add_u16_length_prefixed(out_compressible, &contents) ||
@@ -2822,6 +2874,220 @@ static bool cert_compression_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
   return true;
 }
 
+// PAKEs
+//
+// See
+// https://chris-wood.github.io/draft-bmw-tls-pake13/draft-bmw-tls-pake13.html
+
+bool ssl_setup_pake_shares(SSL_HANDSHAKE *hs) {
+  hs->pake_share_bytes.Reset();
+  if (hs->max_version < TLS1_3_VERSION) {
+    return true;
+  }
+
+  Array<SSL_CREDENTIAL *> creds;
+  if (!ssl_get_credential_list(hs, &creds)) {
+    return false;
+  }
+
+  if (std::none_of(creds.begin(), creds.end(), [](SSL_CREDENTIAL *cred) {
+        return cred->type == SSLCredentialType::kSPAKE2PlusV1Client;
+      })) {
+    // If there were no configured PAKE credentials, proceed without filling
+    // in the PAKE extension.
+    return true;
+  }
+
+  // We currently do not support multiple PAKE credentials, or a mix of PAKE and
+  // non-PAKE credentials.
+  if (creds.size() != 1u) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_UNSUPPORTED_CREDENTIAL_LIST);
+    return false;
+  }
+  SSL_CREDENTIAL *cred = creds[0];
+  assert(cred->type == SSLCredentialType::kSPAKE2PlusV1Client);
+
+  hs->pake_prover = MakeUnique<spake2plus::Prover>();
+  uint8_t prover_share[spake2plus::kShareSize];
+  if (hs->pake_prover == nullptr ||
+      !hs->pake_prover->Init(cred->pake_context, cred->client_identity,
+                             cred->server_identity, cred->password_verifier_w0,
+                             cred->password_verifier_w1) ||
+      !hs->pake_prover->GenerateShare(prover_share)) {
+    return false;
+  }
+
+  hs->credential = UpRef(cred);
+
+  bssl::ScopedCBB cbb;
+  CBB shares, client_identity, server_identity, pake_message;
+  if (!CBB_init(cbb.get(), 64) ||
+      !CBB_add_u16_length_prefixed(cbb.get(), &client_identity) ||
+      !CBB_add_bytes(&client_identity, cred->client_identity.data(),
+                     cred->client_identity.size()) ||
+      !CBB_add_u16_length_prefixed(cbb.get(), &server_identity) ||
+      !CBB_add_bytes(&server_identity, cred->server_identity.data(),
+                     cred->server_identity.size()) ||
+      !CBB_add_u16_length_prefixed(cbb.get(), &shares) ||
+      !CBB_add_u16(&shares, SSL_PAKE_SPAKE2PLUSV1) ||
+      !CBB_add_u16_length_prefixed(&shares, &pake_message) ||
+      !CBB_add_bytes(&pake_message, prover_share, sizeof(prover_share))) {
+    return false;
+  }
+
+  return CBBFinishArray(cbb.get(), &hs->pake_share_bytes);
+}
+
+static bool ext_pake_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
+                                     CBB *out_compressible,
+                                     ssl_client_hello_type_t type) {
+  if (hs->pake_share_bytes.empty()) {
+    return true;
+  }
+
+  CBB pake_share_bytes;
+  if (!CBB_add_u16(out_compressible, TLSEXT_TYPE_pake) ||
+      !CBB_add_u16_length_prefixed(out_compressible, &pake_share_bytes) ||
+      !CBB_add_bytes(&pake_share_bytes, hs->pake_share_bytes.data(),
+                     hs->pake_share_bytes.size()) ||
+      !CBB_flush(out_compressible)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool ssl_ext_pake_parse_serverhello(SSL_HANDSHAKE *hs,
+                                    Array<uint8_t> *out_secret,
+                                    uint8_t *out_alert, CBS *contents) {
+  *out_alert = SSL_AD_DECODE_ERROR;
+
+  if (!hs->pake_prover) {
+    // If we did not offer a PAKE, the extension should have been rejected as
+    // unsolicited.
+    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+    return false;
+  }
+
+  CBS pake_msg;
+  uint16_t named_pake;
+  if (!CBS_get_u16(contents, &named_pake) ||
+      !CBS_get_u16_length_prefixed(contents, &pake_msg) ||
+      CBS_len(contents) != 0 ||  //
+      named_pake != SSL_PAKE_SPAKE2PLUSV1) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    return false;
+  }
+
+  // Check that the server's PAKE share consists of the right number of
+  // bytes for a PAKE share and a key confirmation message.
+  if (CBS_len(&pake_msg) != spake2plus::kShareSize + spake2plus::kConfirmSize) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+    return false;
+  }
+  Span<const uint8_t> pake_msg_span = pake_msg;
+
+  // Releasing the result of |ComputeConfirmation| lets the client confirm one
+  // PAKE guess. If all failures are used up, no more guesses are allowed.
+  if (!hs->credential->HasPAKEAttempts()) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_PAKE_EXHAUSTED);
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+    return false;
+  }
+
+  uint8_t prover_confirm[spake2plus::kConfirmSize];
+  uint8_t prover_secret[spake2plus::kSecretSize];
+  if (!hs->pake_prover->ComputeConfirmation(
+          prover_confirm, prover_secret,
+          pake_msg_span.subspan(0, spake2plus::kShareSize),
+          pake_msg_span.subspan(spake2plus::kShareSize))) {
+    // Record a failure before releasing the answer to the client.
+    hs->credential->ClaimPAKEAttempt();
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+    return false;
+  }
+
+  Array<uint8_t> secret;
+  if (!secret.CopyFrom(prover_secret)) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+    *out_alert = SSL_AD_INTERNAL_ERROR;
+    return false;
+  }
+
+  *out_secret = std::move(secret);
+  return true;
+}
+
+static bool ext_pake_parse_clienthello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
+                                       CBS *contents) {
+  if (contents == nullptr) {
+    return true;
+  }
+
+  // struct {
+  //     opaque    client_identity<0..2^16-1>;
+  //     opaque    server_identity<0..2^16-1>;
+  //     PAKEShare client_shares<0..2^16-1>;
+  // } PAKEClientHello;
+  //
+  // struct {
+  //     NamedPAKE   named_pake;
+  //     opaque      pake_message<1..2^16-1>;
+  // } PAKEShare;
+
+  *out_alert = SSL_AD_DECODE_ERROR;
+  CBS client_identity, server_identity, shares;
+  if (!CBS_get_u16_length_prefixed(contents, &client_identity) ||
+      !CBS_get_u16_length_prefixed(contents, &server_identity) ||
+      !CBS_get_u16_length_prefixed(contents, &shares) ||
+      CBS_len(contents) != 0) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    return false;
+  }
+
+  uint16_t last_named_pake = 0;
+  for (size_t i = 0; CBS_len(&shares) > 0; i++) {
+    uint16_t pake_id;
+    CBS message;
+    if (!CBS_get_u16(&shares, &pake_id) ||
+        !CBS_get_u16_length_prefixed(&shares, &message)) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+      return false;
+    }
+
+    // PAKEs must be sent in strictly monotonic order.
+    if (i > 0 && last_named_pake >= pake_id) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+      return false;
+    }
+    last_named_pake = pake_id;
+
+    // We only support one PAKE.
+    if (pake_id != SSL_PAKE_SPAKE2PLUSV1) {
+      continue;
+    }
+
+    // Save the PAKE share for the handshake logic to pick up later.
+    // TODO(crbug.com/391393404): It would be nice if the callback did not have
+    // to copy this.
+    hs->pake_share = MakeUnique<SSLPAKEShare>();
+    if (hs->pake_share == nullptr ||
+        !hs->pake_share->client_identity.CopyFrom(client_identity) ||
+        !hs->pake_share->server_identity.CopyFrom(server_identity) ||
+        !hs->pake_share->pake_message.CopyFrom(message)) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+      return false;
+    }
+    hs->pake_share->named_pake = pake_id;
+  }
+
+  return true;
+}
+
+
 // Application-level Protocol Settings
 //
 // https://tools.ietf.org/html/draft-vvv-tls-alps-01
@@ -3019,7 +3285,7 @@ bool ssl_negotiate_alps(SSL_HANDSHAKE *hs, uint8_t *out_alert,
         *out_alert = SSL_AD_DECODE_ERROR;
         return false;
       }
-      if (protocol_name == MakeConstSpan(ssl->s3->alpn_selected)) {
+      if (protocol_name == Span(ssl->s3->alpn_selected)) {
         found = true;
       }
     }
@@ -3223,6 +3489,15 @@ static const struct tls_extension kExtensions[] = {
         ext_certificate_authorities_add_clienthello,
         forbid_parse_serverhello,
         ext_certificate_authorities_parse_clienthello,
+        dont_add_serverhello,
+    },
+    {
+        TLSEXT_TYPE_pake,
+        ext_pake_add_clienthello,
+        // This extension is unencrypted and so adding and parsing it from the
+        // ServerHello is handled elsewhere.
+        forbid_parse_serverhello,
+        ext_pake_parse_clienthello,
         dont_add_serverhello,
     },
 };
@@ -3671,7 +3946,7 @@ static bool ssl_scan_serverhello_tlsext(SSL_HANDSHAKE *hs, const CBS *cbs,
     if (!(hs->extensions.sent & (1u << ext_index))) {
       // If the extension was never sent then it is illegal.
       OPENSSL_PUT_ERROR(SSL, SSL_R_UNEXPECTED_EXTENSION);
-      ERR_add_error_dataf("extension :%u", (unsigned)type);
+      ERR_add_error_dataf("extension %u", (unsigned)type);
       *out_alert = SSL_AD_UNSUPPORTED_EXTENSION;
       return false;
     }
@@ -4076,9 +4351,8 @@ bool tls1_choose_signature_algorithm(SSL_HANDSHAKE *hs,
     }
   }
 
-  Span<const uint16_t> sigalgs = cred->sigalgs.empty()
-                                     ? MakeConstSpan(kSignSignatureAlgorithms)
-                                     : cred->sigalgs;
+  Span<const uint16_t> sigalgs =
+      cred->sigalgs.empty() ? Span(kSignSignatureAlgorithms) : cred->sigalgs;
   for (uint16_t sigalg : sigalgs) {
     if (!ssl_pkey_supports_algorithm(ssl, cred->pubkey.get(), sigalg,
                                      /*is_verify=*/false)) {

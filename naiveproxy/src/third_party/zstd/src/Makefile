@@ -85,14 +85,10 @@ test:
 	$(MAKE) -C $(TESTDIR) $@
 	ZSTD=../../programs/zstd $(MAKE) -C doc/educational_decoder $@
 
-## shortest: same as `make check`
-.PHONY: shortest
-shortest:
-	$(Q)$(MAKE) -C $(TESTDIR) $@
-
 ## check: run basic tests for `zstd` cli
 .PHONY: check
-check: shortest
+check:
+	$(Q)$(MAKE) -C $(TESTDIR) $@
 
 .PHONY: automated_benchmarking
 automated_benchmarking:

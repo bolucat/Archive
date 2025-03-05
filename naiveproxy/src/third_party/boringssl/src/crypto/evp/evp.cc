@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/evp.h>
 
@@ -240,24 +245,20 @@ EVP_PKEY *EVP_PKEY_new_raw_private_key(int type, ENGINE *unused,
       break;
     default:
       OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
-      return 0;
+      return nullptr;
   }
 
-  EVP_PKEY *ret = EVP_PKEY_new();
-  if (ret == NULL) {
-    goto err;
+  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  if (ret == nullptr) {
+    return nullptr;
   }
-  evp_pkey_set_method(ret, method);
+  evp_pkey_set_method(ret.get(), method);
 
-  if (!ret->ameth->set_priv_raw(ret, in, len)) {
-    goto err;
+  if (!ret->ameth->set_priv_raw(ret.get(), in, len)) {
+    return nullptr;
   }
 
-  return ret;
-
-err:
-  EVP_PKEY_free(ret);
-  return NULL;
+  return ret.release();
 }
 
 EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *unused,
@@ -274,24 +275,20 @@ EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *unused,
       break;
     default:
       OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
-      return 0;
+      return nullptr;
   }
 
-  EVP_PKEY *ret = EVP_PKEY_new();
-  if (ret == NULL) {
-    goto err;
+  bssl::UniquePtr<EVP_PKEY> ret(EVP_PKEY_new());
+  if (ret == nullptr) {
+    return nullptr;
   }
-  evp_pkey_set_method(ret, method);
+  evp_pkey_set_method(ret.get(), method);
 
-  if (!ret->ameth->set_pub_raw(ret, in, len)) {
-    goto err;
+  if (!ret->ameth->set_pub_raw(ret.get(), in, len)) {
+    return nullptr;
   }
 
-  return ret;
-
-err:
-  EVP_PKEY_free(ret);
-  return NULL;
+  return ret.release();
 }
 
 int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, uint8_t *out,

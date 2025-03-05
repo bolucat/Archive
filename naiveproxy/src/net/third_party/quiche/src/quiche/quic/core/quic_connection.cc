@@ -33,6 +33,8 @@
 #include "quiche/quic/core/crypto/crypto_utils.h"
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
+#include "quiche/quic/core/frames/quic_ack_frequency_frame.h"
+#include "quiche/quic/core/frames/quic_immediate_ack_frame.h"
 #include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/quic_bandwidth.h"
 #include "quiche/quic/core/quic_config.h"
@@ -593,6 +595,16 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
     multi_port_stats_ = std::make_unique<MultiPortStats>();
     if (config.HasClientRequestedIndependentOption(kMPQM, perspective_)) {
       multi_port_migration_enabled_ = true;
+    }
+  }
+
+  if (config.HasMinAckDelayDraft10ToSend()) {
+    if (config.GetMinAckDelayDraft10ToSendMs() <=
+        config.GetMaxAckDelayToSendMs()) {  // MinAckDelay is valid.
+      set_can_receive_ack_frequency_immediate_ack(true);
+    } else {
+      QUIC_BUG(quic_bug_min_ack_delay_too_high)
+          << "MinAckDelay higher than MaxAckDelay";
     }
   }
 
@@ -1320,8 +1332,17 @@ bool QuicConnection::OnPacketHeader(const QuicPacketHeader& header) {
     default_path_.validated = true;
     stats_.address_validated_via_token = true;
   }
-  QUICHE_DCHECK(connected_);
-  return true;
+
+  if (!GetQuicReloadableFlag(quic_on_packet_header_return_connected)) {
+    QUICHE_DCHECK(connected_);
+    return true;
+  }
+
+  // TODO(b/389384603): Remove this when deprecating the flag.
+  if (!connected_) {
+    QUIC_CODE_COUNT(quic_connection_closed_on_packet_header);
+  }
+  return connected_;
 }
 
 bool QuicConnection::OnStreamFrame(const QuicStreamFrame& frame) {
@@ -2097,6 +2118,35 @@ bool QuicConnection::OnAckFrequencyFrame(const QuicAckFrequencyFrame& frame) {
         << "Get AckFrequencyFrame in packet number space "
         << packet_number_space;
   }
+  MaybeUpdateAckTimeout();
+  return true;
+}
+
+bool QuicConnection::OnImmediateAckFrame(const QuicImmediateAckFrame& frame) {
+  QUIC_BUG_IF(quic_bug_immediate_ack_frame_connection_closed, !connected_)
+      << "Processing IMMEDIATE_ACK frame when connection "
+         "is closed. Received packet info: "
+      << last_received_packet_info_;
+  if (debug_visitor_ != nullptr) {
+    debug_visitor_->OnImmediateAckFrame(frame);
+  }
+  if (!UpdatePacketContent(IMMEDIATE_ACK_FRAME)) {
+    return false;
+  }
+  if (!can_receive_ack_frequency_immediate_ack_) {
+    QUIC_LOG_EVERY_N_SEC(ERROR, 120) << "Got unexpected ImmediateAck Frame.";
+    return false;
+  }
+  QUIC_RELOADABLE_FLAG_COUNT_N(quic_receive_ack_frequency, 1, 2);
+  if (last_received_packet_info_.decrypted_level == ENCRYPTION_FORWARD_SECURE) {
+    uber_received_packet_manager_.OnImmediateAckFrame();
+  } else {
+    QUIC_LOG_EVERY_N_SEC(ERROR, 120)
+        << "Got ImmediateAckFrame at EncryptionLevel "
+        << EncryptionLevelToString(last_received_packet_info_.decrypted_level);
+    return false;
+  }
+  should_last_packet_instigate_acks_ = false;
   MaybeUpdateAckTimeout();
   return true;
 }
@@ -4577,10 +4627,7 @@ void QuicConnection::CloseConnection(
     return;
   }
 
-  if (GetQuicReloadableFlag(quic_avoid_nested_close_connection)) {
-    QUIC_RELOADABLE_FLAG_COUNT(quic_avoid_nested_close_connection);
-    in_close_connection_ = true;
-  }
+  in_close_connection_ = true;
   absl::Cleanup cleanup = [this]() { in_close_connection_ = false; };
 
   if (ietf_error != NO_IETF_QUIC_ERROR) {

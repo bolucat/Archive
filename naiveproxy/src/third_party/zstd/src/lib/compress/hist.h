@@ -75,7 +75,7 @@ unsigned HIST_count_simple(unsigned* count, unsigned* maxSymbolValuePtr,
                            const void* src, size_t srcSize);
 
 /*! HIST_add() :
- *  Lowest level: just add nb of occurences of characters from @src into @count.
+ *  Lowest level: just add nb of occurrences of characters from @src into @count.
  *  @count is not reset. @count array is presumed large enough (i.e. 1 KB).
  @  This function does not need any additional stack memory.
  */

@@ -1037,12 +1037,6 @@ void QuicDispatcher::OnConnectionIdRetired(
   reference_counted_session_map_.erase(server_connection_id);
 }
 
-void QuicDispatcher::OnConnectionAddedToTimeWaitList(
-    QuicConnectionId server_connection_id) {
-  QUIC_DLOG(INFO) << "Connection " << server_connection_id
-                  << " added to time wait list.";
-}
-
 void QuicDispatcher::StatelesslyTerminateConnection(
     const QuicSocketAddress& self_address,
     const QuicSocketAddress& peer_address,
@@ -1554,6 +1548,12 @@ void QuicDispatcher::MaybeResetPacketsWithNoVersion(
 
 void QuicDispatcher::MaybeSendVersionNegotiationPacket(
     const ReceivedPacketInfo& packet_info) {
+  if (GetQuicReloadableFlag(quic_no_vn_in_response_to_vn) &&
+      packet_info.form == IETF_QUIC_LONG_HEADER_PACKET &&
+      packet_info.long_packet_type == VERSION_NEGOTIATION) {
+    QUIC_RELOADABLE_FLAG_COUNT(quic_no_vn_in_response_to_vn);
+    return;
+  }
   if (crypto_config()->validate_chlo_size() &&
       packet_info.packet.length() < kMinPacketSizeForVersionNegotiation) {
     return;

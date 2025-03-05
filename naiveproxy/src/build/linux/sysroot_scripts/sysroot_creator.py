@@ -7,6 +7,7 @@ This script is used to build Debian sysroot images for building Chromium.
 """
 
 import argparse
+import collections
 import hashlib
 import lzma
 import os
@@ -25,7 +26,7 @@ RELEASE = "bullseye"
 # This number is appended to the sysroot key to cause full rebuilds.  It
 # should be incremented when removing packages or patching existing packages.
 # It should not be incremented when adding packages.
-SYSROOT_RELEASE = 2
+SYSROOT_RELEASE = 1
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -35,7 +36,7 @@ BUILD_DIR = os.path.join(CHROME_DIR, "out", "sysroot-build", RELEASE)
 # gpg keyring file generated using generate_keyring.sh
 KEYRING_FILE = os.path.join(SCRIPT_DIR, "keyring.gpg")
 
-ARCHIVE_TIMESTAMP = "20230611T210420Z"
+ARCHIVE_TIMESTAMP = "20250129T203412Z"
 
 ARCHIVE_URL = f"https://snapshot.debian.org/archive/debian/{ARCHIVE_TIMESTAMP}/"
 APT_SOURCES_LIST = [
@@ -52,6 +53,7 @@ TRIPLES = {
     "arm64": "aarch64-linux-gnu",
     "mipsel": "mipsel-linux-gnu",
     "mips64el": "mips64el-linux-gnuabi64",
+    "ppc64el": "powerpc64le-linux-gnu",
     "riscv64": "riscv64-linux-gnu",
 }
 
@@ -69,52 +71,13 @@ PACKAGES_EXT = "xz"
 RELEASE_FILE = "Release"
 RELEASE_FILE_GPG = "Release.gpg"
 
-# Packages common to all architectures.
+# List of development packages. Dependencies are automatically included.
 DEBIAN_PACKAGES = [
-    "libatomic1",
-    "libc6",
     "libc6-dev",
-    "libcrypt1",
     "libgcc-10-dev",
-    "libgcc-s1",
-    "libgomp1",
     "libstdc++-10-dev",
-    "libstdc++6",
     "linux-libc-dev",
 ]
-
-DEBIAN_PACKAGES_ARCH = {
-    "amd64": [
-        "libasan6",
-        "libitm1",
-        "liblsan0",
-        "libquadmath0",
-        "libtsan0",
-        "libubsan1",
-    ],
-    "i386": [
-        "libasan6",
-        "libitm1",
-        "libquadmath0",
-        "libubsan1",
-    ],
-    "armhf": [
-        "libasan6",
-        "libubsan1",
-    ],
-    "arm64": [
-        "libasan6",
-        "libgmp10",
-        "libitm1",
-        "liblsan0",
-        "libtsan0",
-        "libubsan1",
-    ],
-    "mipsel": [],
-    "mips64el": [],
-    "riscv64": [],
-}
-
 
 def banner(message: str) -> None:
     print("#" * 70)
@@ -232,6 +195,11 @@ def create_tarball(install_root: str, arch: str) -> None:
     banner("Creating tarball " + tarball_path)
     command = [
         "tar",
+        "--owner=0",
+        "--group=0",
+        "--numeric-owner",
+        "--sort=name",
+        "--no-xattrs",
         "-I",
         "xz -z9 -T0 --lzma2='dict=256MiB'",
         "-cf",
@@ -266,22 +234,45 @@ def generate_package_list_dist_repo(arch: str, dist: str,
 
 
 def generate_package_list(arch: str) -> dict[str, str]:
+    # Workaround for some misconfigured package dependencies.
+    BROKEN_DEPS = {
+        "libgcc1",
+        "qt6-base-abi",
+    }
+
     package_meta = {}
     for dist, repos in APT_SOURCES_LIST:
         for repo_name in repos:
             for meta in generate_package_list_dist_repo(arch, dist, repo_name):
                 package_meta[meta["Package"]] = meta
+                if "Provides" not in meta:
+                    continue
+                for provides in meta["Provides"].split(", "):
+                    if provides in package_meta:
+                        continue
+                    package_meta[provides] = meta
+
+    def add_package_dependencies(package: str) -> None:
+        if package in BROKEN_DEPS:
+            return
+        meta = package_meta[package]
+        url = ARCHIVE_URL + meta["Filename"]
+        if url in package_dict:
+            return
+        package_dict[url] = meta["SHA256"]
+        if "Depends" in meta:
+            for dep in meta["Depends"].split(", "):
+                add_package_dependencies(dep.split()[0].split(":")[0])
 
     # Read the input file and create a dictionary mapping package names to URLs
     # and checksums.
-    missing = set(DEBIAN_PACKAGES + DEBIAN_PACKAGES_ARCH[arch])
+    missing = set(DEBIAN_PACKAGES)
     package_dict: dict[str, str] = {}
     for meta in package_meta.values():
         package = meta["Package"]
         if package in missing:
             missing.remove(package)
-            url = ARCHIVE_URL + meta["Filename"]
-            package_dict[url] = meta["SHA256"]
+            add_package_dependencies(package)
     if missing:
         raise Exception(f"Missing packages: {', '.join(missing)}")
 
@@ -295,6 +286,11 @@ def generate_package_list(arch: str) -> dict[str, str]:
 
 def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
     banner("Misc Hacks & Patches")
+
+    debian_dir = os.path.join(install_root, "debian")
+    control_file = os.path.join(debian_dir, "control")
+    # Create an empty control file
+    open(control_file, "a").close()
 
     # Remove an unnecessary dependency on qtchooser.
     qtchooser_conf = os.path.join(install_root, "usr", "lib", TRIPLES[arch],
@@ -354,6 +350,9 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
         lib_path = os.path.join(install_root, "lib", TRIPLES[arch], lib)
         reversion_glibc.reversion_glibc(lib_path)
 
+    # Remove a cyclic symlink: /usr/bin/X11 -> /usr/bin
+    os.remove(os.path.join(install_root, "usr/bin/X11"))
+
 
 def replace_in_file(file_path: str, search_pattern: str,
                     replace_pattern: str) -> None:
@@ -375,10 +374,6 @@ def install_into_sysroot(build_dir: str, install_root: str,
 
     debian_dir = os.path.join(install_root, "debian")
     os.makedirs(debian_dir, exist_ok=True)
-    control_file = os.path.join(debian_dir, "control")
-    # Create an empty control file
-    open(control_file, "a").close()
-
     for package, sha256sum in packages.items():
         package_name = os.path.basename(package)
         package_path = os.path.join(debian_packages_dir, package_name)
@@ -408,15 +403,17 @@ def install_into_sysroot(build_dir: str, install_root: str,
                 raise Exception(
                     f"{message} {package_path}: {err.decode('utf-8')}")
 
-    # Prune /usr/share, leaving only pkgconfig, wayland, and wayland-protocols
+    # Prune /usr/share, leaving only allowlisted directories.
+    USR_SHARE_ALLOWLIST = {
+        "fontconfig",
+        "pkgconfig",
+        "wayland",
+        "wayland-protocols",
+    }
     usr_share = os.path.join(install_root, "usr", "share")
     for item in os.listdir(usr_share):
         full_path = os.path.join(usr_share, item)
-        if os.path.isdir(full_path) and item not in [
-                "pkgconfig",
-                "wayland",
-                "wayland-protocols",
-        ]:
+        if os.path.isdir(full_path) and item not in USR_SHARE_ALLOWLIST:
             shutil.rmtree(full_path)
 
 
@@ -443,9 +440,23 @@ def cleanup_jail_symlinks(install_root: str) -> None:
             full_path = os.path.join(root, name)
             if os.path.islink(full_path):
                 target_path = os.readlink(full_path)
+                if target_path == "/dev/null":
+                    # Some systemd services get masked by symlinking them to
+                    # /dev/null. It's safe to remove these.
+                    os.remove(full_path)
+                    continue
 
-                # Check if the symlink is absolute and points inside the
-                # install_root.
+                # If the link's target does not exist, remove this broken link.
+                if os.path.isabs(target_path):
+                    absolute_target = os.path.join(install_root,
+                                                   target_path.strip("/"))
+                else:
+                    absolute_target = os.path.join(os.path.dirname(full_path),
+                                                   target_path)
+                if not os.path.exists(absolute_target):
+                    os.remove(full_path)
+                    continue
+
                 if os.path.isabs(target_path):
                     # Compute the relative path from the symlink to the target.
                     relative_path = os.path.relpath(
@@ -462,37 +473,147 @@ def cleanup_jail_symlinks(install_root: str) -> None:
                     os.symlink(relative_path, full_path)
 
 
-def verify_library_deps(install_root: str) -> None:
+def removing_unnecessary_files(install_root, arch):
     """
-    Verifies if all required libraries are present in the sysroot environment.
+    Minimizes the sysroot by removing unnecessary files.
     """
-    # Get all shared libraries and their dependencies.
-    shared_libs = set()
-    needed_libs = set()
+    # Preserve these files.
+    gcc_triple = "i686-linux-gnu" if arch == "i386" else TRIPLES[arch]
+    ALLOWLIST = {
+        "usr/bin/cups-config",
+        f"usr/lib/gcc/{gcc_triple}/10/libgcc.a",
+        f"usr/lib/{TRIPLES[arch]}/libc_nonshared.a",
+        f"usr/lib/{TRIPLES[arch]}/libffi_pic.a",
+    }
+
+    for file in ALLOWLIST:
+        assert os.path.exists(os.path.join(install_root, file))
+
+    # Remove all executables and static libraries, and any symlinks that
+    # were pointing to them.
+    reverse_links = collections.defaultdict(list)
+    remove = []
+    for root, _, files in os.walk(install_root):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            if os.path.relpath(filepath, install_root) in ALLOWLIST:
+                continue
+            if os.path.islink(filepath):
+                target_path = os.readlink(filepath)
+                if not os.path.isabs(target_path):
+                    target_path = os.path.join(root, target_path)
+                reverse_links[os.path.realpath(target_path)].append(filepath)
+            elif "so" in filepath.split(".")[-3:]:
+                continue
+            elif os.access(filepath, os.X_OK) or filepath.endswith(".a"):
+                remove.append(filepath)
+    for filepath in remove:
+        os.remove(filepath)
+        for link in reverse_links[filepath]:
+            os.remove(link)
+
+
+def strip_sections(install_root: str, arch: str):
+    """
+    Strips all sections from ELF files except for dynamic linking and
+    essential sections. Skips static libraries (.a) and object files (.o).
+    """
+    PRESERVED_SECTIONS = {
+        ".dynamic",
+        ".dynstr",
+        ".dynsym",
+        ".gnu.version",
+        ".gnu.version_d",
+        ".gnu.version_r",
+        ".hash",
+        ".note.ABI-tag",
+        ".note.gnu.build-id",
+    }
+
     for root, _, files in os.walk(install_root):
         for file in files:
-            if ".so" not in file:
-                continue
-            path = os.path.join(root, file)
-            islink = os.path.islink(path)
-            if islink:
-                path = os.path.join(root, os.readlink(path))
-            cmd_file = ["file", path]
-            output = subprocess.check_output(cmd_file).decode()
-            if ": ELF" not in output or "shared object" not in output:
-                continue
-            shared_libs.add(file)
-            if islink:
-                continue
-            cmd_readelf = ["readelf", "-d", path]
-            output = subprocess.check_output(cmd_readelf).decode()
-            for line in output.split("\n"):
-                if "NEEDED" in line:
-                    needed_libs.add(line.split("[")[1].split("]")[0])
+            file_path = os.path.join(root, file)
 
-    missing_libs = needed_libs - shared_libs
-    if missing_libs:
-        raise Exception(f"Missing libraries: {missing_libs}")
+            if (os.access(file, os.X_OK) or file.endswith((".a", ".o"))
+                    or os.path.islink(file_path)):
+                continue
+
+            # Verify this is an ELF file
+            with open(file_path, "rb") as f:
+                magic = f.read(4)
+                if magic != b"\x7fELF":
+                    continue
+
+            # Get section headers
+            objdump_cmd = ["objdump", "-h", file_path]
+            result = subprocess.run(objdump_cmd,
+                                    check=True,
+                                    text=True,
+                                    capture_output=True)
+            section_lines = result.stdout.splitlines()
+
+            # Parse section names
+            sections = set()
+            for line in section_lines:
+                parts = line.split()
+                if len(parts) > 1 and parts[0].isdigit():
+                    sections.add(parts[1])
+
+            sections_to_remove = sections - PRESERVED_SECTIONS
+            if sections_to_remove:
+                objcopy_arch = "amd64" if arch == "i386" else arch
+                objcopy_bin = TRIPLES[objcopy_arch] + "-objcopy"
+                objcopy_cmd = ([objcopy_bin] + [
+                    f"--remove-section={section}"
+                    for section in sections_to_remove
+                ] + [file_path])
+                subprocess.run(objcopy_cmd, check=True, stderr=subprocess.PIPE)
+
+
+def record_metadata(install_root: str) -> dict[str, tuple[float, float]]:
+    """
+    Recursively walk the install_root directory and record the metadata of all
+    files. Symlinks are not followed. Returns a dictionary mapping each path
+    (relative to install_root) to its original metadata.
+    """
+    metadata = {}
+    for root, dirs, files in os.walk(install_root):
+        for name in dirs + files:
+            full_path = os.path.join(root, name)
+            rel_path = os.path.relpath(full_path, install_root)
+            st = os.lstat(full_path)
+            metadata[rel_path] = (st.st_atime, st.st_mtime)
+    return metadata
+
+
+def restore_metadata(install_root: str,
+                     old_meta: dict[str, tuple[float, float]]) -> None:
+    """
+    1. Restore the metadata of any file that exists in old_meta.
+    2. For all other files, set their timestamp to ARCHIVE_TIMESTAMP.
+    3. For all directories (including install_root), set the timestamp
+       to ARCHIVE_TIMESTAMP.
+    """
+    # Convert the timestamp to a UNIX epoch time.
+    archive_time = time.mktime(
+        time.strptime(ARCHIVE_TIMESTAMP, "%Y%m%dT%H%M%SZ"))
+
+    # Walk through the install_root, applying old_meta where available;
+    # otherwise set times to archive_time.
+    for root, dirs, files in os.walk(install_root):
+        # Directories get archive_time.
+        os.utime(root, (archive_time, archive_time))
+
+        # Files: old_meta if available, else archive_time.
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            if os.path.lexists(file_path):
+                rel_path = os.path.relpath(file_path, install_root)
+                if rel_path in old_meta:
+                    restore_time = old_meta[rel_path]
+                else:
+                    restore_time = (archive_time, archive_time)
+                os.utime(file_path, restore_time, follow_symlinks=False)
 
 
 def build_sysroot(arch: str) -> None:
@@ -500,9 +621,12 @@ def build_sysroot(arch: str) -> None:
     clear_install_dir(install_root)
     packages = generate_package_list(arch)
     install_into_sysroot(BUILD_DIR, install_root, packages)
+    old_metadata = record_metadata(install_root)
     hacks_and_patches(install_root, SCRIPT_DIR, arch)
     cleanup_jail_symlinks(install_root)
-    verify_library_deps(install_root)
+    removing_unnecessary_files(install_root, arch)
+    strip_sections(install_root, arch)
+    restore_metadata(install_root, old_metadata)
 
 
 def upload_sysroot(arch: str) -> str:

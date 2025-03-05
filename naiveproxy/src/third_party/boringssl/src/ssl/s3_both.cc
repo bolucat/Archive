@@ -1,12 +1,17 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -144,9 +149,8 @@ bool tls_flush_pending_hs_data(SSL *ssl) {
   }
 
   UniquePtr<BUF_MEM> pending_hs_data = std::move(ssl->s3->pending_hs_data);
-  auto data =
-      MakeConstSpan(reinterpret_cast<const uint8_t *>(pending_hs_data->data),
-                    pending_hs_data->length);
+  auto data = Span(reinterpret_cast<const uint8_t *>(pending_hs_data->data),
+                   pending_hs_data->length);
   if (SSL_is_quic(ssl)) {
     if ((ssl->s3->hs == nullptr || !ssl->s3->hs->hints_requested) &&
         !ssl->quic_method->add_handshake_data(ssl, ssl->s3->quic_write_level,
@@ -469,16 +473,16 @@ ssl_open_record_t tls_open_handshake(SSL *ssl, size_t *out_consumed,
     // Some dedicated error codes for protocol mixups should the application
     // wish to interpret them differently. (These do not overlap with
     // ClientHello or V2ClientHello.)
-    const char *str = reinterpret_cast<const char *>(in.data());
-    if (strncmp("GET ", str, 4) == 0 ||   //
-        strncmp("POST ", str, 5) == 0 ||  //
-        strncmp("HEAD ", str, 5) == 0 ||  //
-        strncmp("PUT ", str, 4) == 0) {
+    auto str = bssl::BytesAsStringView(in);
+    if (str.substr(0, 4) == "GET " ||   //
+        str.substr(0, 5) == "POST " ||  //
+        str.substr(0, 5) == "HEAD " ||  //
+        str.substr(0, 4) == "PUT ") {
       OPENSSL_PUT_ERROR(SSL, SSL_R_HTTP_REQUEST);
       *out_alert = 0;
       return ssl_open_record_error;
     }
-    if (strncmp("CONNE", str, 5) == 0) {
+    if (str.substr(0, 5) == "CONNE") {
       OPENSSL_PUT_ERROR(SSL, SSL_R_HTTPS_PROXY_REQUEST);
       *out_alert = 0;
       return ssl_open_record_error;

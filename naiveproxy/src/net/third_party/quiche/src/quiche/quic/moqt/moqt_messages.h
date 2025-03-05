@@ -24,6 +24,7 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/moqt/moqt_priority.h"
+#include "quiche/common/platform/api/quiche_bug_tracker.h"
 #include "quiche/common/platform/api/quiche_export.h"
 #include "quiche/web_transport/web_transport.h"
 
@@ -40,6 +41,8 @@ enum class MoqtVersion : uint64_t {
 
 inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft07;
 inline constexpr uint64_t kDefaultInitialMaxSubscribeId = 100;
+inline constexpr uint64_t kMinNamespaceElements = 1;
+inline constexpr uint64_t kMaxNamespaceElements = 32;
 
 struct QUICHE_EXPORT MoqtSessionParameters {
   // TODO: support multiple versions.
@@ -118,6 +121,8 @@ enum class QUICHE_EXPORT MoqtError : uint64_t {
   kParameterLengthMismatch = 0x5,
   kTooManySubscribes = 0x6,
   kGoawayTimeout = 0x10,
+  kControlMessageTimeout = 0x11,
+  kDataStreamTimeout = 0x12,
 };
 
 // Error codes used by MoQT to reset streams.
@@ -127,13 +132,6 @@ inline constexpr webtransport::StreamErrorCode kResetCodeUnknown = 0x00;
 inline constexpr webtransport::StreamErrorCode kResetCodeSubscriptionGone =
     0x01;
 inline constexpr webtransport::StreamErrorCode kResetCodeTimedOut = 0x02;
-
-enum class QUICHE_EXPORT MoqtRole : uint64_t {
-  kPublisher = 0x1,
-  kSubscriber = 0x2,
-  kPubSub = 0x3,
-  kRoleMax = 0x3,
-};
 
 enum class QUICHE_EXPORT MoqtSetupParameter : uint64_t {
   kRole = 0x0,
@@ -159,6 +157,7 @@ enum class QUICHE_EXPORT MoqtTrackRequestParameter : uint64_t {
 enum class MoqtAnnounceErrorCode : uint64_t {
   kInternalError = 0,
   kAnnounceNotSupported = 1,
+  kNotASubscribedNamespace = 2,
 };
 
 enum class QUICHE_EXPORT SubscribeErrorCode : uint64_t {
@@ -189,7 +188,11 @@ class FullTrackName {
   explicit FullTrackName(
       std::initializer_list<const absl::string_view> elements)
       : FullTrackName(absl::Span<const absl::string_view>(
-            std::data(elements), std::size(elements))) {}
+            std::data(elements), std::size(elements))) {
+    QUICHE_BUG_IF(Moqt_namespace_too_large_02,
+                  elements.size() > (kMaxNamespaceElements + 1))
+        << "Constructing a namespace that is too large.";
+  }
   explicit FullTrackName(absl::string_view ns, absl::string_view name)
       : FullTrackName({ns, name}) {}
   FullTrackName() : FullTrackName({}) {}
@@ -197,6 +200,9 @@ class FullTrackName {
   std::string ToString() const;
 
   void AddElement(absl::string_view element) {
+    QUICHE_BUG_IF(Moqt_namespace_too_large_01,
+                  tuple_.size() > (kMaxNamespaceElements + 1))
+        << "Constructing a namespace that is too large.";
     tuple_.push_back(std::string(element));
   }
   // Remove the last element to convert a name to a namespace.
@@ -306,7 +312,6 @@ H AbslHashValue(H h, const FullSequence& m) {
 
 struct QUICHE_EXPORT MoqtClientSetup {
   std::vector<MoqtVersion> supported_versions;
-  std::optional<MoqtRole> role;
   std::optional<std::string> path;
   std::optional<uint64_t> max_subscribe_id;
   bool supports_object_ack = false;
@@ -314,7 +319,6 @@ struct QUICHE_EXPORT MoqtClientSetup {
 
 struct QUICHE_EXPORT MoqtServerSetup {
   MoqtVersion selected_version;
-  std::optional<MoqtRole> role;
   std::optional<uint64_t> max_subscribe_id;
   bool supports_object_ack = false;
 };

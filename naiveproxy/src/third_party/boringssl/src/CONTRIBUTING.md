@@ -33,9 +33,9 @@ on commit. Run:
     chmod u+x .git/hooks/commit-msg
 
 #### Uploading changes
-To upload a change, push it to the special `refs/for/master` target:
+To upload a change, push it to the special `refs/for/main` target:
 
-    git push origin HEAD:refs/for/master
+    git push origin HEAD:refs/for/main
 
 The output will then give you a link to the change. Add `agl@google.com`,
 `davidben@google.com`, and `bbe@google.com` as reviewers.
@@ -66,3 +66,11 @@ welcome to send us a patch to be added, or request that we add you.
 Contributions made by corporations are covered by a different agreement than
 the one above, the
 [Software Grant and Corporate Contributor License Agreement](https://cla.developers.google.com/about/google-corporate).
+
+The following are Google-internal bug numbers where explicit permission from
+some authors is recorded for use of their work. (This is purely for our own
+record keeping.)
+*  27287199
+*  27287880
+*  27287883
+*  263291445

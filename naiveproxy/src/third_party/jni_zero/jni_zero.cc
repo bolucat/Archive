@@ -23,6 +23,7 @@ JavaVM* g_jvm = nullptr;
 jclass (*g_class_resolver)(JNIEnv*, const char*, const char*) = nullptr;
 
 void (*g_exception_handler_callback)(JNIEnv*) = nullptr;
+void (*g_native_to_java_callback)(const char*, const char*) = nullptr;
 
 jclass GetClassInternal(JNIEnv* env,
                         const char* class_name,
@@ -63,6 +64,9 @@ jclass GetSystemClassGlobalRef(JNIEnv* env, const char* class_name) {
 
 jclass g_object_class = nullptr;
 jclass g_string_class = nullptr;
+LeakedJavaGlobalRef<jstring> g_empty_string = nullptr;
+LeakedJavaGlobalRef<jobject> g_empty_list = nullptr;
+LeakedJavaGlobalRef<jobject> g_empty_map = nullptr;
 
 JNIEnv* AttachCurrentThread() {
   JNI_ZERO_DCHECK(g_jvm);
@@ -154,6 +158,16 @@ void SetExceptionHandler(void (*callback)(JNIEnv*)) {
   g_exception_handler_callback = callback;
 }
 
+void SetNativeToJavaCallback(void (*callback)(char const*, char const*)) {
+  g_native_to_java_callback = callback;
+}
+
+void CallNativeToJavaCallback(char const* class_name, char const* method_name) {
+  if (g_native_to_java_callback) {
+    g_native_to_java_callback(class_name, method_name);
+  }
+}
+
 void CheckException(JNIEnv* env) {
   if (!HasException(env)) {
     return;
@@ -162,6 +176,7 @@ void CheckException(JNIEnv* env) {
   if (g_exception_handler_callback) {
     return g_exception_handler_callback(env);
   }
+  env->ExceptionDescribe();
   JNI_ZERO_FLOG("jni_zero crashing due to uncaught Java exception");
 }
 

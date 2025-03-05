@@ -1,11 +1,16 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_CIPHER_H
 #define OPENSSL_HEADER_CIPHER_H
@@ -274,11 +279,25 @@ OPENSSL_EXPORT uint32_t EVP_CIPHER_mode(const EVP_CIPHER *cipher);
 // Key derivation.
 
 // EVP_BytesToKey generates a key and IV for the cipher |type| by iterating
-// |md| |count| times using |data| and |salt|. On entry, the |key| and |iv|
-// buffers must have enough space to hold a key and IV for |type|. It returns
-// the length of the key on success or zero on error.
+// |md| |count| times using |data| and an optional |salt|, writing the result to
+// |key| and |iv|. If not NULL, the |key| and |iv| buffers must have enough
+// space to hold a key and IV for |type|, as returned by |EVP_CIPHER_key_length|
+// and |EVP_CIPHER_iv_length|. This function returns the length of the key
+// (without the IV) on success or zero on error.
+//
+// If |salt| is NULL, the empty string is used as the salt. Salt lengths other
+// than 0 and 8 are not supported by this function. Either of |key| or |iv| may
+// be NULL to skip that output.
+//
+// When the total data derived is less than the size of |md|, this function
+// implements PBKDF1 from RFC 8018. Otherwise, it generalizes PBKDF1 by
+// computing prepending the previous output to |data| and re-running PBKDF1 for
+// further output.
+//
+// This function is provided for compatibility with legacy uses of PBKDF1. New
+// applications should use a more modern algorithm, such as |EVP_PBE_scrypt|.
 OPENSSL_EXPORT int EVP_BytesToKey(const EVP_CIPHER *type, const EVP_MD *md,
-                                  const uint8_t *salt, const uint8_t *data,
+                                  const uint8_t salt[8], const uint8_t *data,
                                   size_t data_len, unsigned count, uint8_t *key,
                                   uint8_t *iv);
 

@@ -1,11 +1,16 @@
-/*
- * Copyright 1999-2016 The OpenSSL Project Authors. All Rights Reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1999-2016 The OpenSSL Project Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 /* X509 v3 extension utilities */
 
@@ -119,7 +124,6 @@ int X509V3_add_value_bool(const char *name, int asn1_bool,
 
 static char *bignum_to_string(const BIGNUM *bn) {
   char *tmp, *ret;
-  size_t len;
 
   // Display large numbers in hex and small numbers in decimal. Converting to
   // decimal takes quadratic time and is no more useful than hex for large
@@ -133,20 +137,10 @@ static char *bignum_to_string(const BIGNUM *bn) {
     return NULL;
   }
 
-  len = strlen(tmp) + 3;
-  ret = reinterpret_cast<char *>(OPENSSL_malloc(len));
-  if (ret == NULL) {
-    OPENSSL_free(tmp);
-    return NULL;
-  }
-
   // Prepend "0x", but place it after the "-" if negative.
-  if (tmp[0] == '-') {
-    OPENSSL_strlcpy(ret, "-0x", len);
-    OPENSSL_strlcat(ret, tmp + 1, len);
-  } else {
-    OPENSSL_strlcpy(ret, "0x", len);
-    OPENSSL_strlcat(ret, tmp, len);
+  if (OPENSSL_asprintf(&ret, "%s0x%s", (tmp[0] == '-') ? "-" : "",
+                       (tmp[0] == '-') ? tmp + 1 : tmp) == -1) {
+    ret = nullptr;
   }
   OPENSSL_free(tmp);
   return ret;

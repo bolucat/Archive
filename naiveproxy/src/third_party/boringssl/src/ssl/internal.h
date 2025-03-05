@@ -1,13 +1,18 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2005 Nokia. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_SSL_INTERNAL_H
 #define OPENSSL_HEADER_SSL_INTERNAL_H
@@ -17,10 +22,12 @@
 #include <stdlib.h>
 
 #include <algorithm>
+#include <atomic>
 #include <bitset>
 #include <initializer_list>
 #include <limits>
 #include <new>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -37,6 +44,7 @@
 #include "../crypto/err/internal.h"
 #include "../crypto/internal.h"
 #include "../crypto/lhash/internal.h"
+#include "../crypto/spake2plus/internal.h"
 
 
 #if defined(OPENSSL_WINDOWS)
@@ -160,7 +168,7 @@ class Array {
   // value-constructed copies of |T|. It returns true on success and false on
   // error. If |T| is a primitive type like |uint8_t|, value-construction means
   // it will be zero-initialized.
-  bool Init(size_t new_size) {
+  [[nodiscard]] bool Init(size_t new_size) {
     if (!InitUninitialized(new_size)) {
       return false;
     }
@@ -171,7 +179,7 @@ class Array {
   // InitForOverwrite behaves like |Init| but it default-constructs each element
   // instead. This means that, if |T| is a primitive type, the array will be
   // uninitialized and thus must be filled in by the caller.
-  bool InitForOverwrite(size_t new_size) {
+  [[nodiscard]] bool InitForOverwrite(size_t new_size) {
     if (!InitUninitialized(new_size)) {
       return false;
     }
@@ -181,7 +189,7 @@ class Array {
 
   // CopyFrom replaces the array with a newly-allocated copy of |in|. It returns
   // true on success and false on error.
-  bool CopyFrom(Span<const T> in) {
+  [[nodiscard]] bool CopyFrom(Span<const T> in) {
     if (!InitUninitialized(in.size())) {
       return false;
     }
@@ -272,7 +280,7 @@ class Vector {
 
   // Push adds |elem| at the end of the internal array, growing if necessary. It
   // returns false when allocation fails.
-  bool Push(T elem) {
+  [[nodiscard]] bool Push(T elem) {
     if (!MaybeGrow()) {
       return false;
     }
@@ -283,7 +291,7 @@ class Vector {
 
   // CopyFrom replaces the contents of the array with a copy of |in|. It returns
   // true on success and false on allocation error.
-  bool CopyFrom(Span<const T> in) {
+  [[nodiscard]] bool CopyFrom(Span<const T> in) {
     Array<T> copy;
     if (!copy.CopyFrom(in)) {
       return false;
@@ -405,7 +413,7 @@ class InplaceVector {
   // TryResize resizes the vector to |new_size| and returns true, or returns
   // false if |new_size| is too large. Any newly-added elements are
   // value-initialized.
-  bool TryResize(size_t new_size) {
+  [[nodiscard]] bool TryResize(size_t new_size) {
     if (new_size <= size_) {
       Shrink(new_size);
       return true;
@@ -421,7 +429,7 @@ class InplaceVector {
   // TryResizeForOverwrite behaves like |TryResize|, but newly-added elements
   // are default-initialized, so POD types may contain uninitialized values that
   // the caller is responsible for filling in.
-  bool TryResizeForOverwrite(size_t new_size) {
+  [[nodiscard]] bool TryResizeForOverwrite(size_t new_size) {
     if (new_size <= size_) {
       Shrink(new_size);
       return true;
@@ -436,7 +444,7 @@ class InplaceVector {
 
   // TryCopyFrom sets the vector to a copy of |in| and returns true, or returns
   // false if |in| is too large.
-  bool TryCopyFrom(Span<const T> in) {
+  [[nodiscard]] bool TryCopyFrom(Span<const T> in) {
     if (in.size() > capacity()) {
       return false;
     }
@@ -448,7 +456,7 @@ class InplaceVector {
 
   // TryPushBack appends |val| to the vector and returns a pointer to the
   // newly-inserted value, or nullptr if the vector is at capacity.
-  T *TryPushBack(T val) {
+  [[nodiscard]] T *TryPushBack(T val) {
     if (size() >= capacity()) {
       return nullptr;
     }
@@ -554,7 +562,7 @@ template <typename T, typename Name>
 inline size_t GetAllNames(const char **out, size_t max_out,
                           Span<const char *const> fixed_names, Name(T::*name),
                           Span<const T> objects) {
-  auto span = bssl::MakeSpan(out, max_out);
+  auto span = bssl::Span(out, max_out);
   for (size_t i = 0; !span.empty() && i < fixed_names.size(); i++) {
     span[0] = fixed_names[i];
     span = span.subspan(1);
@@ -877,8 +885,8 @@ class SSLTranscript {
   bool CopyToHashContext(EVP_MD_CTX *ctx, const EVP_MD *digest) const;
 
   Span<const uint8_t> buffer() const {
-    return MakeConstSpan(reinterpret_cast<const uint8_t *>(buffer_->data),
-                         buffer_->length);
+    return Span(reinterpret_cast<const uint8_t *>(buffer_->data),
+                buffer_->length);
   }
 
   // FreeBuffer releases the handshake buffer. Subsequent calls to
@@ -932,7 +940,7 @@ class SSLTranscript {
 // as the secret and |label| as the label. |seed1| and |seed2| are concatenated
 // to form the seed parameter. It returns true on success and false on failure.
 bool tls1_prf(const EVP_MD *digest, Span<uint8_t> out,
-              Span<const uint8_t> secret, Span<const char> label,
+              Span<const uint8_t> secret, std::string_view label,
               Span<const uint8_t> seed1, Span<const uint8_t> seed2);
 
 
@@ -1466,11 +1474,9 @@ class SSLBuffer {
   bool empty() const { return size_ == 0; }
   size_t cap() const { return cap_; }
 
-  Span<uint8_t> span() { return MakeSpan(data(), size()); }
+  Span<uint8_t> span() { return Span(data(), size()); }
 
-  Span<uint8_t> remaining() {
-    return MakeSpan(data() + size(), cap() - size());
-  }
+  Span<uint8_t> remaining() { return Span(data() + size(), cap() - size()); }
 
   // Clear releases the buffer.
   void Clear();
@@ -1655,7 +1661,7 @@ bool tls13_derive_resumption_secret(SSL_HANDSHAKE *hs);
 // |exporter_secret|.
 bool tls13_export_keying_material(SSL *ssl, Span<uint8_t> out,
                                   Span<const uint8_t> secret,
-                                  Span<const char> label,
+                                  std::string_view label,
                                   Span<const uint8_t> context);
 
 // tls13_finished_mac calculates the MAC of the handshake transcript to verify
@@ -1819,6 +1825,8 @@ bool ssl_encrypt_client_hello(SSL_HANDSHAKE *hs, Span<const uint8_t> enc);
 enum class SSLCredentialType {
   kX509,
   kDelegated,
+  kSPAKE2PlusV1Client,
+  kSPAKE2PlusV1Server,
 };
 
 BSSL_NAMESPACE_END
@@ -1913,6 +1921,27 @@ struct ssl_credential_st : public bssl::RefCounted<ssl_credential_st> {
   // OCSP response to be sent to the client, if requested.
   bssl::UniquePtr<CRYPTO_BUFFER> ocsp_response;
 
+  // SPAKE2+-specific information.
+  bssl::Array<uint8_t> pake_context;
+  bssl::Array<uint8_t> client_identity;
+  bssl::Array<uint8_t> server_identity;
+  bssl::Array<uint8_t> password_verifier_w0;
+  bssl::Array<uint8_t> password_verifier_w1;  // server-only
+  bssl::Array<uint8_t> registration_record;   // client-only
+  mutable std::atomic<uint32_t> pake_limit;
+
+  // Checks whether there are still permitted PAKE attempts remaining, without
+  // changing the counter.
+  bool HasPAKEAttempts() const;
+
+  // Atomically decrement |pake_limit|. Return true if successful and false if
+  // |pake_limit| is already zero.
+  bool ClaimPAKEAttempt() const;
+
+  // Atomically increment |pake_limit|. This must be paired with a
+  // |ClaimPAKEAttempt| call.
+  void RestorePAKEAttempt() const;
+
   CRYPTO_EX_DATA ex_data;
 
   // must_match_issuer is a flag indicating that this credential should be
@@ -1936,7 +1965,8 @@ BSSL_NAMESPACE_BEGIN
 bool ssl_get_credential_list(SSL_HANDSHAKE *hs, Array<SSL_CREDENTIAL *> *out);
 
 // ssl_credential_matches_requested_issuers returns true if |cred| is a
-// usable match for any requested issuers in |hs|.
+// usable match for any requested issuers in |hs|, and false with an error
+// otherwise.
 bool ssl_credential_matches_requested_issuers(SSL_HANDSHAKE *hs,
                                               const SSL_CREDENTIAL *cred);
 
@@ -2060,6 +2090,14 @@ struct SSL_HANDSHAKE_HINTS {
   Array<uint8_t> decrypted_ticket;
   bool renew_ticket = false;
   bool ignore_ticket = false;
+};
+
+struct SSLPAKEShare {
+  static constexpr bool kAllowUniquePtr = true;
+  uint16_t named_pake;
+  Array<uint8_t> client_identity;
+  Array<uint8_t> server_identity;
+  Array<uint8_t> pake_message;
 };
 
 struct SSL_HANDSHAKE {
@@ -2392,6 +2430,18 @@ struct SSL_HANDSHAKE {
 
   // grease_seed is the entropy for GREASE values.
   uint8_t grease_seed[ssl_grease_last_index + 1] = {0};
+
+  // pake_share is the PAKE message received over the wire, if any.
+  UniquePtr<SSLPAKEShare> pake_share;
+
+  // pake_share_bytes are the bytes of the PAKEShare to send, if any.
+  Array<uint8_t> pake_share_bytes;
+
+  // pake_prover is the PAKE context for a client.
+  UniquePtr<spake2plus::Prover> pake_prover;
+
+  // pake_verifier is the PAKE context for a server.
+  UniquePtr<spake2plus::Verifier> pake_verifier;
 };
 
 // kMaxTickets is the maximum number of tickets to send immediately after the
@@ -2464,6 +2514,10 @@ bool ssl_setup_extension_permutation(SSL_HANDSHAKE *hs);
 // a single key share of the specified group.
 bool ssl_setup_key_shares(SSL_HANDSHAKE *hs, uint16_t override_group_id);
 
+// ssl_setup_pake_shares computes the client PAKE shares and saves them in |hs|.
+// It returns true on success and false on failure.
+bool ssl_setup_pake_shares(SSL_HANDSHAKE *hs);
+
 bool ssl_ext_key_share_parse_serverhello(SSL_HANDSHAKE *hs,
                                          Array<uint8_t> *out_secret,
                                          uint8_t *out_alert, CBS *contents);
@@ -2471,7 +2525,12 @@ bool ssl_ext_key_share_parse_clienthello(SSL_HANDSHAKE *hs, bool *out_found,
                                          Span<const uint8_t> *out_peer_key,
                                          uint8_t *out_alert,
                                          const SSL_CLIENT_HELLO *client_hello);
+bool ssl_ext_pake_add_serverhello(SSL_HANDSHAKE *hs, CBB *out);
 bool ssl_ext_key_share_add_serverhello(SSL_HANDSHAKE *hs, CBB *out);
+
+bool ssl_ext_pake_parse_serverhello(SSL_HANDSHAKE *hs,
+                                    Array<uint8_t> *out_secret,
+                                    uint8_t *out_alert, CBS *contents);
 
 bool ssl_ext_pre_shared_key_parse_serverhello(SSL_HANDSHAKE *hs,
                                               uint8_t *out_alert,
@@ -3241,9 +3300,9 @@ struct hm_header_st {
 struct DTLSIncomingMessage {
   static constexpr bool kAllowUniquePtr = true;
 
-  Span<uint8_t> msg() { return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH); }
+  Span<uint8_t> msg() { return Span(data).subspan(DTLS1_HM_HEADER_LENGTH); }
   Span<const uint8_t> msg() const {
-    return MakeSpan(data).subspan(DTLS1_HM_HEADER_LENGTH);
+    return Span(data).subspan(DTLS1_HM_HEADER_LENGTH);
   }
   size_t msg_len() const { return msg().size(); }
 

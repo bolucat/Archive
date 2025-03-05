@@ -1,3 +1,4 @@
+use reqwest::header::HeaderMap;
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -6,13 +7,14 @@ pub mod model;
 pub use model::{MihomoData, MihomoManager};
 
 impl MihomoManager {
-    pub fn new(mihomo_server: String) -> Self {
+    pub fn new(mihomo_server: String, headers: HeaderMap) -> Self {
         Self {
             mihomo_server,
             data: Arc::new(Mutex::new(MihomoData {
                 proxies: serde_json::Value::Null,
                 providers_proxies: serde_json::Value::Null,
             })),
+            headers: headers,
         }
     }
 
@@ -24,6 +26,10 @@ impl MihomoManager {
     fn update_providers_proxies(&self, providers_proxies: serde_json::Value) {
         let mut data = self.data.lock().unwrap();
         data.providers_proxies = providers_proxies;
+    }
+
+    pub fn get_mihomo_server(&self) -> String {
+        self.mihomo_server.clone()
     }
 
     pub fn get_proxies(&self) -> serde_json::Value {
@@ -39,6 +45,7 @@ impl MihomoManager {
     pub async fn refresh_proxies(&self) -> Result<&Self, String> {
         let url = format!("{}/proxies", self.mihomo_server);
         let response = reqwest::ClientBuilder::new()
+            .default_headers(self.headers.clone())
             .no_proxy()
             .timeout(Duration::from_secs(3))
             .build()
@@ -58,6 +65,7 @@ impl MihomoManager {
     pub async fn refresh_providers_proxies(&self) -> Result<&Self, String> {
         let url = format!("{}/providers/proxies", self.mihomo_server);
         let response = reqwest::ClientBuilder::new()
+            .default_headers(self.headers.clone())
             .no_proxy()
             .timeout(Duration::from_secs(3))
             .build()

@@ -405,8 +405,8 @@ importers:
         specifier: 10.1.6
         version: 10.1.6
       meta-json-schema:
-        specifier: 1.19.1
-        version: 1.19.1
+        specifier: 1.19.3
+        version: 1.19.3
       monaco-yaml:
         specifier: 5.3.1
         version: 5.3.1(monaco-editor@0.52.2)
@@ -435,8 +435,8 @@ importers:
         specifier: 3.2.2
         version: 3.2.2(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
       vite-plugin-sass-dts:
-        specifier: 1.3.30
-        version: 1.3.30(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
+        specifier: 1.3.31
+        version: 1.3.31(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
       vite-plugin-svgr:
         specifier: 4.3.0
         version: 4.3.0(rollup@4.34.3)(typescript@5.8.2)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0))
@@ -5874,8 +5874,8 @@ packages:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
     engines: {node: '>= 8'}
 
-  meta-json-schema@1.19.1:
-    resolution: {integrity: sha512-v4fhAmMDLx2R1HLmRF5i2kVht+hS29Nr3ezhEaobkfKpy+5GqiLosc07JHLNgxLk1pgqNmvDWVfC30+Bm2A+zg==}
+  meta-json-schema@1.19.3:
+    resolution: {integrity: sha512-jkVUw6tI/FsvIQWBkQeC21b0BVPpG5Mu99T8PefxB1Zin3oqSrSneDAgjofbORzeW1gm8RYOocj7mivyISptyQ==}
     engines: {node: '>=18', pnpm: '>=9'}
 
   micromark-core-commonmark@2.0.1:
@@ -7882,8 +7882,8 @@ packages:
     peerDependencies:
       vite: '>=2.0.0'
 
-  vite-plugin-sass-dts@1.3.30:
-    resolution: {integrity: sha512-hqhQRPESqbibtiyg89C5geK3p/HJ85jLk1bspgQsVnk0WOps5UkoUyEWYBETciP6w+IA7R0i/T85TuB7eEYg3w==}
+  vite-plugin-sass-dts@1.3.31:
+    resolution: {integrity: sha512-9egcHbUZdnCr2l1g9X2bHl6LjXv2mXb9xWRX3CVXHt/t4Io+HL5dYsBimlY4QImzbSeH26d7Bw6v0NUrQfwEDA==}
     engines: {node: '>=20'}
     peerDependencies:
       postcss: ^8
@@ -14044,7 +14044,7 @@ snapshots:
 
   merge2@1.4.1: {}
 
-  meta-json-schema@1.19.1: {}
+  meta-json-schema@1.19.3: {}
 
   micromark-core-commonmark@2.0.1:
     dependencies:
@@ -16241,7 +16241,7 @@ snapshots:
       pathe: 0.2.0
       vite: 6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)
 
-  vite-plugin-sass-dts@1.3.30(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)):
+  vite-plugin-sass-dts@1.3.31(postcss@8.5.3)(prettier@3.5.2)(sass-embedded@1.85.1)(vite@6.2.0(@types/node@22.13.9)(jiti@2.4.2)(less@4.2.0)(lightningcss@1.29.1)(sass-embedded@1.85.1)(sass@1.83.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.19.3)(yaml@2.7.0)):
     dependencies:
       postcss: 8.5.3
       postcss-js: 4.0.1(postcss@8.5.3)

@@ -13,10 +13,6 @@
 
 #include <stddef.h>  /* size_t */
 
-#if defined (__cplusplus)
-extern "C" {
-#endif
-
 #define ZSTD_SLIPBLOCK_WORKSPACESIZE 8208
 
 /* ZSTD_splitBlock():
@@ -33,9 +29,5 @@ extern "C" {
 size_t ZSTD_splitBlock(const void* blockStart, size_t blockSize,
                     int level,
                     void* workspace, size_t wkspSize);
-
-#if defined (__cplusplus)
-}
-#endif
 
 #endif /* ZSTD_PRESPLIT_H */

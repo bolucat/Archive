@@ -23,6 +23,7 @@
 #include "quiche/quic/core/frames/quic_window_update_frame.h"
 #include "quiche/quic/core/quic_connection.h"
 #include "quiche/quic/core/quic_connection_context.h"
+#include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_flow_controller.h"
 #include "quiche/quic/core/quic_stream.h"
@@ -178,15 +179,11 @@ void QuicSession::Initialize() {
     } else if (config_.HasClientSentConnectionOption(kCHP2, perspective_)) {
       config_.SetDiscardLengthToSend(kDefaultMaxPacketSize * 2);
     }
+  } else if (GetQuicReloadableFlag(quic_receive_ack_frequency) &&
+             connection_->version().HasIetfQuicFrames()) {
+    config_.SetMinAckDelayDraft10Ms(kDefaultMinAckDelayTimeMs);
   }
   connection_->SetFromConfig(config_);
-  if (perspective_ == Perspective::IS_CLIENT) {
-    if (config_.HasClientRequestedIndependentOption(kAFFE, perspective_) &&
-        version().HasIetfQuicFrames()) {
-      connection_->set_can_receive_ack_frequency_frame();
-      config_.SetMinAckDelayMs(kDefaultMinAckDelayTimeMs);
-    }
-  }
   if (perspective() == Perspective::IS_SERVER &&
       connection_->version().handshake_protocol == PROTOCOL_TLS1_3) {
     config_.SetStatelessResetTokenToSend(GetStatelessResetToken());
@@ -2333,17 +2330,19 @@ size_t QuicSession::GetNumActiveStreams() const {
          num_zombie_streams_;
 }
 
-void QuicSession::MarkConnectionLevelWriteBlocked(QuicStreamId id) {
+bool QuicSession::MarkConnectionLevelWriteBlocked(QuicStreamId id) {
+  bool ok = true;
   if (GetOrCreateStream(id) == nullptr) {
+    ok = false;
     QUIC_BUG(quic_bug_10866_11)
         << "Marking unknown stream " << id << " blocked.";
-    QUIC_LOG_FIRST_N(ERROR, 2) << QuicStackTrace();
   }
 
   QUIC_DVLOG(1) << ENDPOINT << "Adding stream " << id
                 << " to write-blocked list";
 
   write_blocked_streams_->AddStream(id);
+  return ok;
 }
 
 bool QuicSession::HasDataToWrite() const {

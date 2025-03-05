@@ -1,16 +1,16 @@
-/* Copyright 2016 The BoringSSL Authors
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
- * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
- * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
- * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+// Copyright 2016 The BoringSSL Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #include <openssl/ssl.h>
 
@@ -373,7 +373,7 @@ bool tls13_process_finished(SSL_HANDSHAKE *hs, const SSLMessage &msg,
     if (!tls13_finished_mac(hs, verify_data_buf, &len, !ssl->server)) {
       return false;
     }
-    verify_data = MakeConstSpan(verify_data_buf, len);
+    verify_data = Span(verify_data_buf, len);
   }
 
   bool finished_ok =
@@ -522,7 +522,7 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
   SSL_HANDSHAKE_HINTS *const hints = hs->hints.get();
   if (hints && !hs->hints_requested &&
       hints->cert_compression_alg_id == hs->cert_compression_alg_id &&
-      hints->cert_compression_input == MakeConstSpan(msg) &&
+      hints->cert_compression_input == Span(msg) &&
       !hints->cert_compression_output.empty()) {
     if (!CBB_add_bytes(&compressed, hints->cert_compression_output.data(),
                        hints->cert_compression_output.size())) {
@@ -538,7 +538,7 @@ bool tls13_add_certificate(SSL_HANDSHAKE *hs) {
       hints->cert_compression_alg_id = hs->cert_compression_alg_id;
       if (!hints->cert_compression_input.CopyFrom(msg) ||
           !hints->cert_compression_output.CopyFrom(
-              MakeConstSpan(CBB_data(&compressed), CBB_len(&compressed)))) {
+              Span(CBB_data(&compressed), CBB_len(&compressed)))) {
         return false;
       }
     }

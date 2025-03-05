@@ -1,20 +1,25 @@
-/*
- * Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
- * Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
- * Copyright 2005 Nokia. All rights reserved.
- *
- * Licensed under the OpenSSL license (the "License").  You may not use
- * this file except in compliance with the License.  You can obtain a copy
- * in the file LICENSE in the source distribution or at
- * https://www.openssl.org/source/license.html
- */
+// Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved.
+// Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved.
+// Copyright 2005 Nokia. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 #ifndef OPENSSL_HEADER_TLS1_H
 #define OPENSSL_HEADER_TLS1_H
 
 #include <openssl/base.h>
 
-#ifdef  __cplusplus
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -114,6 +119,10 @@ extern "C" {
 #define TLSEXT_TYPE_encrypted_client_hello 0xfe0d
 #define TLSEXT_TYPE_ech_outer_extensions 0xfd00
 
+// ExtensionType values from draft-bmw-tls-pake13. This is not an IANA defined
+// extension number.
+#define TLSEXT_TYPE_pake 0x8a3b
+
 // ExtensionType value from RFC 6962
 #define TLSEXT_TYPE_certificate_timestamp 18
 
@@ -153,14 +162,14 @@ extern "C" {
 #define TLSEXT_MAXLEN_host_name 255
 
 // PSK ciphersuites from 4279
-#define TLS1_CK_PSK_WITH_RC4_128_SHA                    0x0300008A
-#define TLS1_CK_PSK_WITH_3DES_EDE_CBC_SHA               0x0300008B
-#define TLS1_CK_PSK_WITH_AES_128_CBC_SHA                0x0300008C
-#define TLS1_CK_PSK_WITH_AES_256_CBC_SHA                0x0300008D
+#define TLS1_CK_PSK_WITH_RC4_128_SHA 0x0300008A
+#define TLS1_CK_PSK_WITH_3DES_EDE_CBC_SHA 0x0300008B
+#define TLS1_CK_PSK_WITH_AES_128_CBC_SHA 0x0300008C
+#define TLS1_CK_PSK_WITH_AES_256_CBC_SHA 0x0300008D
 
 // PSK ciphersuites from RFC 5489
-#define TLS1_CK_ECDHE_PSK_WITH_AES_128_CBC_SHA          0x0300C035
-#define TLS1_CK_ECDHE_PSK_WITH_AES_256_CBC_SHA          0x0300C036
+#define TLS1_CK_ECDHE_PSK_WITH_AES_128_CBC_SHA 0x0300C035
+#define TLS1_CK_ECDHE_PSK_WITH_AES_256_CBC_SHA 0x0300C036
 
 // Additional TLS ciphersuites from expired Internet Draft
 // draft-ietf-tls-56-bit-ciphersuites-01.txt
@@ -518,7 +527,7 @@ extern "C" {
 #define TLS_MD_MAX_CONST_SIZE 20
 
 
-#ifdef  __cplusplus
+#ifdef __cplusplus
 }  // extern C
 #endif
 
