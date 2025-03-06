@@ -50,7 +50,7 @@ namespace ServiceLib.ViewModels
         {
             DisplayOperationMsg();
             _config.WebDavItem = SelectedSource;
-            await ConfigHandler.SaveConfig(_config);
+            _ = await ConfigHandler.SaveConfig(_config);
 
             var result = await WebDavHandler.Instance.CheckConnection();
             if (result)
@@ -114,7 +114,7 @@ namespace ServiceLib.ViewModels
         public async Task LocalRestore(string fileName)
         {
             DisplayOperationMsg();
-            if (Utils.IsNullOrEmpty(fileName))
+            if (fileName.IsNullOrEmpty())
             {
                 return;
             }
@@ -151,7 +151,7 @@ namespace ServiceLib.ViewModels
                 {
                     if (Utils.UpgradeAppExists(out var upgradeFileName))
                     {
-                        ProcUtils.ProcessStart(upgradeFileName, Global.RebootAs, Utils.StartupPath());
+                        _ = ProcUtils.ProcessStart(upgradeFileName, Global.RebootAs, Utils.StartupPath());
                     }
                 }
                 service?.Shutdown(true);
@@ -164,7 +164,7 @@ namespace ServiceLib.ViewModels
 
         private async Task<bool> CreateZipFileFromDirectory(string fileName)
         {
-            if (Utils.IsNullOrEmpty(fileName))
+            if (fileName.IsNullOrEmpty())
             {
                 return false;
             }

@@ -20,85 +20,69 @@ namespace ServiceLib.Common
         #region 转换函数
 
         /// <summary>
-        /// 转逗号分隔的字符串
+        /// Convert to comma-separated string
         /// </summary>
         /// <param name="lst"></param>
         /// <param name="wrap"></param>
         /// <returns></returns>
         public static string List2String(List<string>? lst, bool wrap = false)
         {
+            if (lst == null || lst.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var separator = wrap ? "," + Environment.NewLine : ",";
+
             try
             {
-                if (lst == null)
-                {
-                    return string.Empty;
-                }
-                if (wrap)
-                {
-                    return string.Join("," + Environment.NewLine, lst);
-                }
-                else
-                {
-                    return string.Join(",", lst);
-                }
+                return string.Join(separator, lst);
             }
             catch (Exception ex)
             {
                 Logging.SaveLog(_tag, ex);
+                return string.Empty;
             }
-
-            return string.Empty;
         }
 
         /// <summary>
-        /// 逗号分隔的字符串
+        /// Comma-separated string
         /// </summary>
         /// <param name="str"></param>
         /// <returns></returns>
         public static List<string>? String2List(string? str)
         {
+            if (string.IsNullOrWhiteSpace(str))
+            {
+                return null;
+            }
+
             try
             {
-                if (str == null)
-                {
-                    return null;
-                }
-
-                str = str.Replace(Environment.NewLine, "");
+                str = str.Replace(Environment.NewLine, string.Empty);
                 return new List<string>(str.Split(',', StringSplitOptions.RemoveEmptyEntries));
             }
             catch (Exception ex)
             {
                 Logging.SaveLog(_tag, ex);
+                return null;
             }
-
-            return null;
         }
 
         /// <summary>
-        /// 逗号分隔的字符串,先排序后转List
+        /// Comma-separated string, sorted and then converted to List
         /// </summary>
         /// <param name="str"></param>
         /// <returns></returns>
         public static List<string>? String2ListSorted(string str)
         {
-            try
-            {
-                str = str.Replace(Environment.NewLine, "");
-                List<string> list = new(str.Split(',', StringSplitOptions.RemoveEmptyEntries));
-                list.Sort();
-                return list;
-            }
-            catch (Exception ex)
-            {
-                Logging.SaveLog(_tag, ex);
-            }
-
-            return null;
+            var lst = String2List(str);
+            lst?.Sort();
+            return lst;
         }
 
         /// <summary>
-        /// Base64编码
+        /// Base64 Encode
         /// </summary>
         /// <param name="plainText"></param>
         /// <returns></returns>
@@ -118,7 +102,7 @@ namespace ServiceLib.Common
         }
 
         /// <summary>
-        /// Base64解码
+        /// Base64 Decode
         /// </summary>
         /// <param name="plainText"></param>
         /// <returns></returns>
@@ -127,7 +111,10 @@ namespace ServiceLib.Common
             try
             {
                 if (plainText.IsNullOrEmpty())
+                {
                     return "";
+                }
+
                 plainText = plainText.Trim()
                     .Replace(Environment.NewLine, "")
                     .Replace("\n", "")
@@ -150,18 +137,6 @@ namespace ServiceLib.Common
             }
 
             return string.Empty;
-        }
-
-        public static int ToInt(object? obj)
-        {
-            try
-            {
-                return Convert.ToInt32(obj ?? string.Empty);
-            }
-            catch
-            {
-                return 0;
-            }
         }
 
         public static bool ToBool(object obj)
@@ -188,55 +163,25 @@ namespace ServiceLib.Common
             }
         }
 
-        private static void ToHumanReadable(long amount, out double result, out string unit)
-        {
-            var factor = 1024u;
-            //long KBs = amount / factor;
-            var KBs = amount;
-            if (KBs > 0)
-            {
-                // multi KB
-                var MBs = KBs / factor;
-                if (MBs > 0)
-                {
-                    // multi MB
-                    var GBs = MBs / factor;
-                    if (GBs > 0)
-                    {
-                        // multi GB
-                        var TBs = GBs / factor;
-                        if (TBs > 0)
-                        {
-                            result = TBs + ((GBs % factor) / (factor + 0.0));
-                            unit = "TB";
-                            return;
-                        }
-
-                        result = GBs + ((MBs % factor) / (factor + 0.0));
-                        unit = "GB";
-                        return;
-                    }
-
-                    result = MBs + ((KBs % factor) / (factor + 0.0));
-                    unit = "MB";
-                    return;
-                }
-
-                result = KBs + ((amount % factor) / (factor + 0.0));
-                unit = "KB";
-                return;
-            }
-            else
-            {
-                result = amount;
-                unit = "B";
-            }
-        }
-
         public static string HumanFy(long amount)
         {
-            ToHumanReadable(amount, out var result, out var unit);
-            return $"{result:f1} {unit}";
+            if (amount <= 0)
+            {
+                return $"{amount:f1} B";
+            }
+
+            string[] units = ["KB", "MB", "GB", "TB", "PB"];
+            var unitIndex = 0;
+            double size = amount;
+
+            // Loop and divide by 1024 until a suitable unit is found
+            while (size >= 1024 && unitIndex < units.Length - 1)
+            {
+                size /= 1024;
+                unitIndex++;
+            }
+
+            return $"{size:f1} {units[unitIndex]}";
         }
 
         public static string UrlEncode(string url)
@@ -252,7 +197,7 @@ namespace ServiceLib.Common
         public static NameValueCollection ParseQueryString(string query)
         {
             var result = new NameValueCollection(StringComparer.OrdinalIgnoreCase);
-            if (IsNullOrEmpty(query))
+            if (query.IsNullOrEmpty())
             {
                 return result;
             }
@@ -298,7 +243,7 @@ namespace ServiceLib.Common
         /// <returns></returns>
         public static string GetPunycode(string url)
         {
-            if (Utils.IsNullOrEmpty(url))
+            if (url.IsNullOrEmpty())
             {
                 return url;
             }
@@ -331,7 +276,7 @@ namespace ServiceLib.Common
 
         public static string Convert2Comma(string text)
         {
-            if (IsNullOrEmpty(text))
+            if (text.IsNullOrEmpty())
             {
                 return text;
             }
@@ -344,7 +289,7 @@ namespace ServiceLib.Common
         #region 数据检查
 
         /// <summary>
-        /// 判断输入的是否是数字
+        /// Determine if the input is a number
         /// </summary>
         /// <param name="oText"></param>
         /// <returns></returns>
@@ -353,28 +298,13 @@ namespace ServiceLib.Common
             return oText.All(char.IsNumber);
         }
 
-        public static bool IsNullOrEmpty(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return true;
-            }
-
-            return text == "null";
-        }
-
-        public static bool IsNotEmpty(string? text)
-        {
-            return !string.IsNullOrEmpty(text);
-        }
-
         /// <summary>
-        /// 验证Domain地址是否合法
+        /// Validate if the domain address is valid
         /// </summary>
         /// <param name="domain"></param>
         public static bool IsDomain(string? domain)
         {
-            if (IsNullOrEmpty(domain))
+            if (domain.IsNullOrEmpty())
             {
                 return false;
             }
@@ -491,7 +421,7 @@ namespace ServiceLib.Common
         }
 
         /// <summary>
-        /// 取得版本
+        /// Get version
         /// </summary>
         /// <returns></returns>
         public static string GetVersion(bool blFull = true)
@@ -529,7 +459,7 @@ namespace ServiceLib.Common
         }
 
         /// <summary>
-        /// 取得GUID
+        /// GUID
         /// </summary>
         /// <returns></returns>
         public static string GetGuid(bool full = true)
@@ -660,7 +590,7 @@ namespace ServiceLib.Common
         public static string GetPath(string fileName)
         {
             var startupPath = StartupPath();
-            if (IsNullOrEmpty(fileName))
+            if (fileName.IsNullOrEmpty())
             {
                 return startupPath;
             }
@@ -696,7 +626,7 @@ namespace ServiceLib.Common
                 Directory.CreateDirectory(tempPath);
             }
 
-            if (IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }
@@ -725,7 +655,7 @@ namespace ServiceLib.Common
                 Directory.CreateDirectory(tempPath);
             }
 
-            if (Utils.IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }
@@ -752,7 +682,7 @@ namespace ServiceLib.Common
                 }
             }
 
-            if (IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }
@@ -770,7 +700,7 @@ namespace ServiceLib.Common
                 Directory.CreateDirectory(tempPath);
             }
 
-            if (Utils.IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }
@@ -788,7 +718,7 @@ namespace ServiceLib.Common
                 Directory.CreateDirectory(tempPath);
             }
 
-            if (Utils.IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }
@@ -806,7 +736,7 @@ namespace ServiceLib.Common
                 Directory.CreateDirectory(tempPath);
             }
 
-            if (Utils.IsNullOrEmpty(filename))
+            if (filename.IsNullOrEmpty())
             {
                 return tempPath;
             }

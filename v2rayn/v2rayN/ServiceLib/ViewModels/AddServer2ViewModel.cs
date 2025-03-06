@@ -42,14 +42,14 @@ namespace ServiceLib.ViewModels
 
         private async Task SaveServerAsync()
         {
-            string remarks = SelectedSource.Remarks;
-            if (Utils.IsNullOrEmpty(remarks))
+            var remarks = SelectedSource.Remarks;
+            if (remarks.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.PleaseFillRemarks);
                 return;
             }
 
-            if (Utils.IsNullOrEmpty(SelectedSource.Address))
+            if (SelectedSource.Address.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.FillServerAddressCustom);
                 return;
@@ -69,7 +69,7 @@ namespace ServiceLib.ViewModels
 
         public async Task BrowseServer(string fileName)
         {
-            if (Utils.IsNullOrEmpty(fileName))
+            if (fileName.IsNullOrEmpty())
             {
                 return;
             }
@@ -80,7 +80,7 @@ namespace ServiceLib.ViewModels
             if (await ConfigHandler.AddCustomServer(_config, item, false) == 0)
             {
                 NoticeHandler.Instance.Enqueue(ResUI.SuccessfullyImportedCustomServer);
-                if (Utils.IsNotEmpty(item.IndexId))
+                if (item.IndexId.IsNotEmpty())
                 {
                     SelectedSource = JsonUtils.DeepCopy(item);
                 }
@@ -95,7 +95,7 @@ namespace ServiceLib.ViewModels
         private async Task EditServer()
         {
             var address = SelectedSource.Address;
-            if (Utils.IsNullOrEmpty(address))
+            if (address.IsNullOrEmpty())
             {
                 NoticeHandler.Instance.Enqueue(ResUI.FillServerAddressCustom);
                 return;

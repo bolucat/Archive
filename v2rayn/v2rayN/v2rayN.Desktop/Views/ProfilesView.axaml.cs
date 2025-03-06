@@ -196,7 +196,7 @@ namespace v2rayN.Desktop.Views
 
         public async Task ShareServer(string url)
         {
-            if (Utils.IsNullOrEmpty(url))
+            if (url.IsNullOrEmpty())
             {
                 return;
             }
@@ -404,7 +404,7 @@ namespace v2rayN.Desktop.Views
                 lvColumnItem.Add(new()
                 {
                     Name = (string)item2.Tag,
-                    Width = item2.IsVisible == true ? Utils.ToInt(item2.ActualWidth) : -1,
+                    Width = (int)(item2.IsVisible == true ? item2.ActualWidth : -1),
                     Index = item2.DisplayIndex
                 });
             }

@@ -14,7 +14,9 @@ namespace ServiceLib.Handler.Fmt
 
             var url = Utils.TryUri(str);
             if (url == null)
+            {
                 return null;
+            }
 
             item.Address = url.IdnHost;
             item.Port = url.Port;
@@ -24,7 +26,7 @@ namespace ServiceLib.Handler.Fmt
             var query = Utils.ParseQueryString(url.Query);
             item.Security = query["encryption"] ?? Global.None;
             item.StreamSecurity = query["security"] ?? "";
-            ResolveStdTransport(query, ref item);
+            _ = ResolveStdTransport(query, ref item);
 
             return item;
         }
@@ -32,16 +34,17 @@ namespace ServiceLib.Handler.Fmt
         public static string? ToUri(ProfileItem? item)
         {
             if (item == null)
+            {
                 return null;
-            string url = string.Empty;
+            }
 
-            string remark = string.Empty;
-            if (Utils.IsNotEmpty(item.Remarks))
+            var remark = string.Empty;
+            if (item.Remarks.IsNotEmpty())
             {
                 remark = "#" + Utils.UrlEncode(item.Remarks);
             }
             var dicQuery = new Dictionary<string, string>();
-            if (Utils.IsNotEmpty(item.Security))
+            if (item.Security.IsNotEmpty())
             {
                 dicQuery.Add("encryption", item.Security);
             }
@@ -49,7 +52,7 @@ namespace ServiceLib.Handler.Fmt
             {
                 dicQuery.Add("encryption", Global.None);
             }
-            GetStdTransport(item, Global.None, ref dicQuery);
+            _ = GetStdTransport(item, Global.None, ref dicQuery);
 
             return ToUri(EConfigType.VLESS, item.Address, item.Port, item.Id, dicQuery, remark);
         }

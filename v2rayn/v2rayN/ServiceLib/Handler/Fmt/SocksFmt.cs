@@ -24,11 +24,11 @@ namespace ServiceLib.Handler.Fmt
         public static string? ToUri(ProfileItem? item)
         {
             if (item == null)
+            {
                 return null;
-            var url = string.Empty;
-
+            }
             var remark = string.Empty;
-            if (Utils.IsNotEmpty(item.Remarks))
+            if (item.Remarks.IsNotEmpty())
             {
                 remark = "#" + Utils.UrlEncode(item.Remarks);
             }
@@ -77,7 +77,7 @@ namespace ServiceLib.Handler.Fmt
                 return null;
             }
             item.Address = arr1[1][..indexPort];
-            item.Port = Utils.ToInt(arr1[1][(indexPort + 1)..]);
+            item.Port = arr1[1][(indexPort + 1)..].ToInt();
             item.Security = arr21.First();
             item.Id = arr21[1];
 
@@ -88,7 +88,9 @@ namespace ServiceLib.Handler.Fmt
         {
             var parsedUrl = Utils.TryUri(result);
             if (parsedUrl == null)
+            {
                 return null;
+            }
 
             ProfileItem item = new()
             {

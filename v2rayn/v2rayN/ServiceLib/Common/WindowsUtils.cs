@@ -15,7 +15,7 @@ namespace ServiceLib.Common
             {
                 regKey = Registry.CurrentUser.OpenSubKey(path, false);
                 var value = regKey?.GetValue(name) as string;
-                return Utils.IsNullOrEmpty(value) ? def : value;
+                return value.IsNullOrEmpty() ? def : value;
             }
             catch (Exception ex)
             {
@@ -34,7 +34,7 @@ namespace ServiceLib.Common
             try
             {
                 regKey = Registry.CurrentUser.CreateSubKey(path);
-                if (Utils.IsNullOrEmpty(value.ToString()))
+                if (value.ToString().IsNullOrEmpty())
                 {
                     regKey?.DeleteValue(name, false);
                 }
@@ -63,7 +63,7 @@ namespace ServiceLib.Common
                 var arg = $$""" /remove-device  "SWD\Wintun\{{{guid}}}" """;
 
                 // Try to remove the device
-                await Utils.GetCliWrapOutput(pnpUtilPath, arg);
+                _ = await Utils.GetCliWrapOutput(pnpUtilPath, arg);
             }
             catch (Exception ex)
             {

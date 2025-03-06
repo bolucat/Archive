@@ -10,7 +10,7 @@ namespace ServiceLib.Common
 
         public async Task<string?> DownloadStringAsync(IWebProxy? webProxy, string url, string? userAgent, int timeout)
         {
-            if (Utils.IsNullOrEmpty(url))
+            if (url.IsNullOrEmpty())
             {
                 return null;
             }
@@ -18,7 +18,7 @@ namespace ServiceLib.Common
             Uri uri = new(url);
             //Authorization Header
             var headers = new WebHeaderCollection();
-            if (Utils.IsNotEmpty(uri.UserInfo))
+            if (uri.UserInfo.IsNotEmpty())
             {
                 headers.Add(HttpRequestHeader.Authorization, "Basic " + Utils.Base64Encode(uri.UserInfo));
             }
@@ -56,7 +56,7 @@ namespace ServiceLib.Common
 
         public async Task DownloadDataAsync4Speed(IWebProxy webProxy, string url, IProgress<string> progress, int timeout)
         {
-            if (Utils.IsNullOrEmpty(url))
+            if (url.IsNullOrEmpty())
             {
                 throw new ArgumentNullException(nameof(url));
             }
@@ -86,7 +86,7 @@ namespace ServiceLib.Common
             //};
             downloader.DownloadProgressChanged += (sender, value) =>
             {
-                var ts = (DateTime.Now - totalDatetime);
+                var ts = DateTime.Now - totalDatetime;
                 if (progress != null && ts.Seconds > totalSecond)
                 {
                     hasValue = true;
@@ -119,11 +119,11 @@ namespace ServiceLib.Common
 
         public async Task DownloadFileAsync(IWebProxy? webProxy, string url, string fileName, IProgress<double> progress, int timeout)
         {
-            if (Utils.IsNullOrEmpty(url))
+            if (url.IsNullOrEmpty())
             {
                 throw new ArgumentNullException(nameof(url));
             }
-            if (Utils.IsNullOrEmpty(fileName))
+            if (fileName.IsNullOrEmpty())
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -146,10 +146,7 @@ namespace ServiceLib.Common
             var progressPercentage = 0;
             var hasValue = false;
             await using var downloader = new Downloader.DownloadService(downloadOpt);
-            downloader.DownloadStarted += (sender, value) =>
-            {
-                progress?.Report(0);
-            };
+            downloader.DownloadStarted += (sender, value) => progress?.Report(0);
             downloader.DownloadProgressChanged += (sender, value) =>
             {
                 hasValue = true;

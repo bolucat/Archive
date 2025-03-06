@@ -23,14 +23,7 @@ namespace ServiceLib.Services
                 SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
 
                 var progress = new Progress<string>();
-                progress.ProgressChanged += (sender, value) =>
-                {
-                    if (updateFunc != null)
-                    {
-                        string msg = $"{value}";
-                        updateFunc?.Invoke(false, msg);
-                    }
-                };
+                progress.ProgressChanged += (sender, value) => updateFunc?.Invoke(false, $"{value}");
 
                 await DownloaderHelper.Instance.DownloadDataAsync4Speed(webProxy,
                       url,
@@ -56,10 +49,7 @@ namespace ServiceLib.Services
                 UpdateCompleted?.Invoke(this, new RetResult(false, $"{ResUI.Downloading}   {url}"));
 
                 var progress = new Progress<double>();
-                progress.ProgressChanged += (sender, value) =>
-                {
-                    UpdateCompleted?.Invoke(this, new RetResult(value > 100, $"...{value}%"));
-                };
+                progress.ProgressChanged += (sender, value) => UpdateCompleted?.Invoke(this, new RetResult(value > 100, $"...{value}%"));
 
                 var webProxy = await GetWebProxy(blProxy);
                 await DownloaderHelper.Instance.DownloadFileAsync(webProxy,
@@ -108,7 +98,7 @@ namespace ServiceLib.Services
             try
             {
                 var result1 = await DownloadStringAsync(url, blProxy, userAgent, 15);
-                if (Utils.IsNotEmpty(result1))
+                if (result1.IsNotEmpty())
                 {
                     return result1;
                 }
@@ -126,7 +116,7 @@ namespace ServiceLib.Services
             try
             {
                 var result2 = await DownloadStringViaDownloader(url, blProxy, userAgent, 15);
-                if (Utils.IsNotEmpty(result2))
+                if (result2.IsNotEmpty())
                 {
                     return result2;
                 }
@@ -160,7 +150,7 @@ namespace ServiceLib.Services
                     UseProxy = webProxy != null
                 });
 
-                if (Utils.IsNullOrEmpty(userAgent))
+                if (userAgent.IsNullOrEmpty())
                 {
                     userAgent = Utils.GetVersion(false);
                 }
@@ -168,7 +158,7 @@ namespace ServiceLib.Services
 
                 Uri uri = new(url);
                 //Authorization Header
-                if (Utils.IsNotEmpty(uri.UserInfo))
+                if (uri.UserInfo.IsNotEmpty())
                 {
                     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Utils.Base64Encode(uri.UserInfo));
                 }
@@ -201,7 +191,7 @@ namespace ServiceLib.Services
 
                 var webProxy = await GetWebProxy(blProxy);
 
-                if (Utils.IsNullOrEmpty(userAgent))
+                if (userAgent.IsNullOrEmpty())
                 {
                     userAgent = Utils.GetVersion(false);
                 }
@@ -263,7 +253,7 @@ namespace ServiceLib.Services
                 for (var i = 0; i < 2; i++)
                 {
                     var timer = Stopwatch.StartNew();
-                    await client.GetAsync(url, cts.Token);
+                    await client.GetAsync(url, cts.Token).ConfigureAwait(false);
                     timer.Stop();
                     oneTime.Add((int)timer.Elapsed.TotalMilliseconds);
                     await Task.Delay(100);

@@ -13,7 +13,9 @@ namespace ServiceLib.Handler.Fmt
 
             var url = Utils.TryUri(str);
             if (url == null)
+            {
                 return null;
+            }
 
             item.Address = url.IdnHost;
             item.Port = url.Port;
@@ -36,20 +38,21 @@ namespace ServiceLib.Handler.Fmt
         public static string? ToUri(ProfileItem? item)
         {
             if (item == null)
+            {
                 return null;
-            string url = string.Empty;
+            }
 
-            string remark = string.Empty;
-            if (Utils.IsNotEmpty(item.Remarks))
+            var remark = string.Empty;
+            if (item.Remarks.IsNotEmpty())
             {
                 remark = "#" + Utils.UrlEncode(item.Remarks);
             }
             var dicQuery = new Dictionary<string, string>();
-            if (Utils.IsNotEmpty(item.Sni))
+            if (item.Sni.IsNotEmpty())
             {
                 dicQuery.Add("sni", item.Sni);
             }
-            if (Utils.IsNotEmpty(item.Alpn))
+            if (item.Alpn.IsNotEmpty())
             {
                 dicQuery.Add("alpn", Utils.UrlEncode(item.Alpn));
             }

@@ -26,8 +26,8 @@ public class HotKeyManagerTests
         using var s1 = manager.Register(VirtualKeyCode.KEY_0, Modifiers.Shift);
         using var s2 = manager.Register(VirtualKeyCode.KEY_1, Modifiers.Shift);
         // assert
-        Assert.AreEqual(0, s1.Id);
-        Assert.AreEqual(1, s2.Id);
+        Assert.That(s1.Id, Is.EqualTo(0));
+        Assert.That(s2.Id, Is.EqualTo(1));
     }
 
     [Test]
@@ -40,7 +40,7 @@ public class HotKeyManagerTests
         s1.Dispose();
         using var s2 = manager.Register(VirtualKeyCode.KEY_1, Modifiers.Shift);
         // assert
-        Assert.AreEqual(0, s1.Id);
-        Assert.AreEqual(0, s2.Id);
+        Assert.That(s1.Id, Is.EqualTo(0));
+        Assert.That(s2.Id, Is.EqualTo(0));
     }
 }

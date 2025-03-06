@@ -13,7 +13,9 @@ namespace ServiceLib.Handler.Fmt
 
             var url = Utils.TryUri(str);
             if (url == null)
+            {
                 return null;
+            }
 
             item.Address = url.IdnHost;
             item.Port = url.Port;
@@ -33,29 +35,30 @@ namespace ServiceLib.Handler.Fmt
         public static string? ToUri(ProfileItem? item)
         {
             if (item == null)
+            {
                 return null;
-            string url = string.Empty;
+            }
 
-            string remark = string.Empty;
-            if (Utils.IsNotEmpty(item.Remarks))
+            var remark = string.Empty;
+            if (item.Remarks.IsNotEmpty())
             {
                 remark = "#" + Utils.UrlEncode(item.Remarks);
             }
 
             var dicQuery = new Dictionary<string, string>();
-            if (Utils.IsNotEmpty(item.PublicKey))
+            if (item.PublicKey.IsNotEmpty())
             {
                 dicQuery.Add("publickey", Utils.UrlEncode(item.PublicKey));
             }
-            if (Utils.IsNotEmpty(item.Path))
+            if (item.Path.IsNotEmpty())
             {
                 dicQuery.Add("reserved", Utils.UrlEncode(item.Path));
             }
-            if (Utils.IsNotEmpty(item.RequestHost))
+            if (item.RequestHost.IsNotEmpty())
             {
                 dicQuery.Add("address", Utils.UrlEncode(item.RequestHost));
             }
-            if (Utils.IsNotEmpty(item.ShortId))
+            if (item.ShortId.IsNotEmpty())
             {
                 dicQuery.Add("mtu", Utils.UrlEncode(item.ShortId));
             }

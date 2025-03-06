@@ -131,7 +131,7 @@ namespace ServiceLib.Handler
 
         public async Task<List<ProfileItem>?> ProfileItems(string subid)
         {
-            if (Utils.IsNullOrEmpty(subid))
+            if (subid.IsNullOrEmpty())
             {
                 return await SQLiteHelper.Instance.TableAsync<ProfileItem>().ToListAsync();
             }
@@ -153,11 +153,11 @@ namespace ServiceLib.Handler
                         from ProfileItem a
                         left join SubItem b on a.subid = b.id
                         where 1=1 ";
-            if (Utils.IsNotEmpty(subid))
+            if (subid.IsNotEmpty())
             {
                 sql += $" and a.subid = '{subid}'";
             }
-            if (Utils.IsNotEmpty(filter))
+            if (filter.IsNotEmpty())
             {
                 if (filter.Contains('\''))
                 {
@@ -171,7 +171,7 @@ namespace ServiceLib.Handler
 
         public async Task<ProfileItem?> GetProfileItem(string indexId)
         {
-            if (Utils.IsNullOrEmpty(indexId))
+            if (indexId.IsNullOrEmpty())
             {
                 return null;
             }
@@ -180,7 +180,7 @@ namespace ServiceLib.Handler
 
         public async Task<ProfileItem?> GetProfileItemViaRemarks(string? remarks)
         {
-            if (Utils.IsNullOrEmpty(remarks))
+            if (remarks.IsNullOrEmpty())
             {
                 return null;
             }

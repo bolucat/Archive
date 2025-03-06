@@ -27,11 +27,11 @@ namespace ServiceLib.Handler.Fmt
         public static string? ToUri(ProfileItem? item)
         {
             if (item == null)
+            {
                 return null;
-            string url = string.Empty;
-
-            string remark = string.Empty;
-            if (Utils.IsNotEmpty(item.Remarks))
+            }
+            var remark = string.Empty;
+            if (item.Remarks.IsNotEmpty())
             {
                 remark = "#" + Utils.UrlEncode(item.Remarks);
             }
@@ -53,12 +53,14 @@ namespace ServiceLib.Handler.Fmt
         {
             var match = UrlFinder.Match(result);
             if (!match.Success)
+            {
                 return null;
+            }
 
             ProfileItem item = new();
             var base64 = match.Groups["base64"].Value.TrimEnd('/');
             var tag = match.Groups["tag"].Value;
-            if (Utils.IsNotEmpty(tag))
+            if (tag.IsNotEmpty())
             {
                 item.Remarks = Utils.UrlDecode(tag);
             }
@@ -72,11 +74,13 @@ namespace ServiceLib.Handler.Fmt
                 return null;
             }
             if (!details.Success)
+            {
                 return null;
+            }
             item.Security = details.Groups["method"].Value;
             item.Id = details.Groups["password"].Value;
             item.Address = details.Groups["hostname"].Value;
-            item.Port = Utils.ToInt(details.Groups["port"].Value);
+            item.Port = details.Groups["port"].Value.ToInt();
             return item;
         }
 
@@ -84,7 +88,9 @@ namespace ServiceLib.Handler.Fmt
         {
             var parsedUrl = Utils.TryUri(result);
             if (parsedUrl == null)
+            {
                 return null;
+            }
 
             ProfileItem item = new()
             {
@@ -96,7 +102,7 @@ namespace ServiceLib.Handler.Fmt
             //2022-blake3
             if (rawUserInfo.Contains(':'))
             {
-                string[] userInfoParts = rawUserInfo.Split(new[] { ':' }, 2);
+                var userInfoParts = rawUserInfo.Split(new[] { ':' }, 2);
                 if (userInfoParts.Length != 2)
                 {
                     return null;
@@ -107,8 +113,8 @@ namespace ServiceLib.Handler.Fmt
             else
             {
                 // parse base64 UserInfo
-                string userInfo = Utils.Base64Decode(rawUserInfo);
-                string[] userInfoParts = userInfo.Split(new[] { ':' }, 2);
+                var userInfo = Utils.Base64Decode(rawUserInfo);
+                var userInfoParts = userInfo.Split(new[] { ':' }, 2);
                 if (userInfoParts.Length != 2)
                 {
                     return null;
@@ -122,7 +128,7 @@ namespace ServiceLib.Handler.Fmt
             {
                 //obfs-host exists
                 var obfsHost = queryParameters["plugin"]?.Split(';').FirstOrDefault(t => t.Contains("obfs-host"));
-                if (queryParameters["plugin"].Contains("obfs=http") && Utils.IsNotEmpty(obfsHost))
+                if (queryParameters["plugin"].Contains("obfs=http") && obfsHost.IsNotEmpty())
                 {
                     obfsHost = obfsHost?.Replace("obfs-host=", "");
                     item.Network = Global.DefaultNetwork;
@@ -162,7 +168,7 @@ namespace ServiceLib.Handler.Fmt
                         Security = it.method,
                         Id = it.password,
                         Address = it.server,
-                        Port = Utils.ToInt(it.server_port)
+                        Port = it.server_port.ToInt()
                     };
                     lst.Add(ssItem);
                 }

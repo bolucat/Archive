@@ -350,9 +350,6 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
         lib_path = os.path.join(install_root, "lib", TRIPLES[arch], lib)
         reversion_glibc.reversion_glibc(lib_path)
 
-    # Remove a cyclic symlink: /usr/bin/X11 -> /usr/bin
-    os.remove(os.path.join(install_root, "usr/bin/X11"))
-
 
 def replace_in_file(file_path: str, search_pattern: str,
                     replace_pattern: str) -> None:
@@ -480,10 +477,8 @@ def removing_unnecessary_files(install_root, arch):
     # Preserve these files.
     gcc_triple = "i686-linux-gnu" if arch == "i386" else TRIPLES[arch]
     ALLOWLIST = {
-        "usr/bin/cups-config",
         f"usr/lib/gcc/{gcc_triple}/10/libgcc.a",
         f"usr/lib/{TRIPLES[arch]}/libc_nonshared.a",
-        f"usr/lib/{TRIPLES[arch]}/libffi_pic.a",
     }
 
     for file in ALLOWLIST:
@@ -625,7 +620,6 @@ def build_sysroot(arch: str) -> None:
     hacks_and_patches(install_root, SCRIPT_DIR, arch)
     cleanup_jail_symlinks(install_root)
     removing_unnecessary_files(install_root, arch)
-    strip_sections(install_root, arch)
     restore_metadata(install_root, old_metadata)
 
 

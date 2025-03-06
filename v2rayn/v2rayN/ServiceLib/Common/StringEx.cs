@@ -6,7 +6,7 @@ namespace ServiceLib.Common
     {
         public static bool IsNullOrEmpty([NotNullWhen(false)] this string? value)
         {
-            return string.IsNullOrEmpty(value);
+            return string.IsNullOrEmpty(value) || string.IsNullOrWhiteSpace(value);
         }
 
         public static bool IsNullOrWhiteSpace([NotNullWhen(false)] this string? value)
@@ -22,7 +22,9 @@ namespace ServiceLib.Common
         public static bool BeginWithAny(this string s, IEnumerable<char> chars)
         {
             if (s.IsNullOrEmpty())
+            {
                 return false;
+            }
             return chars.Contains(s.First());
         }
 
@@ -36,7 +38,9 @@ namespace ServiceLib.Common
             while (reader.ReadLine() is { } line)
             {
                 if (line.IsWhiteSpace())
+                {
                     continue;
+                }
                 yield return line;
             }
         }
@@ -69,6 +73,11 @@ namespace ServiceLib.Common
         public static string AppendQuotes(this string value)
         {
             return string.IsNullOrEmpty(value) ? string.Empty : $"\"{value}\"";
+        }
+
+        public static int ToInt(this string? value, int defaultValue = 0)
+        {
+            return int.TryParse(value, out var result) ? result : defaultValue;
         }
     }
 }
