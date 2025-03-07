@@ -13,6 +13,8 @@ KEYS=(
     "B523E5F3FC4E5F2C"
     # Debian Ports Archive Automatic Signing Key (2024)
     "8D69674688B6CB36"
+    # Debian Ports Archive Automatic Signing Key (2021)
+    "5A88D659DCB811BB"
     # Debian Archive Automatic Signing Key (12/bookworm)
     "B7C5D7D6350947F8"
     # Debian Security Archive Automatic Signing Key (12/bookworm)

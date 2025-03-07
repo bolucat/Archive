@@ -690,7 +690,8 @@ def main():
     # RISCV64 only has support in debian-ports, no support in bookworm.
     if args.architecture == "riscv64":
         global ARCHIVE_URL, APT_SOURCES_LIST
-        ARCHIVE_URL = "https://snapshot.debian.org/archive/debian-ports/20230724T141507Z/"
+        # This is the last snapshot that uses glibc 2.31, similar to bullseye
+        ARCHIVE_URL = "https://snapshot.debian.org/archive/debian-ports/20210906T080750Z/"
         APT_SOURCES_LIST = [("sid", ["main"])]
 
     if args.command == "build":
