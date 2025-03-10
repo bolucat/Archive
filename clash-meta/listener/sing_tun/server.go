@@ -52,6 +52,8 @@ type Listener struct {
 	autoRedirect            tun.AutoRedirect
 	autoRedirectOutputMark  int32
 
+	cDialerInterfaceFinder dialer.InterfaceFinder
+
 	ruleUpdateCallbackCloser io.Closer
 	ruleUpdateMutex          sync.Mutex
 	routeAddressMap          map[string]*netipx.IPSet
@@ -290,12 +292,24 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		}
 		l.defaultInterfaceMonitor = defaultInterfaceMonitor
 		defaultInterfaceMonitor.RegisterCallback(func(event int) {
-			l.FlushDefaultInterface()
+			iface.FlushCache()
+			resolver.ResetConnection() // reset resolver's connection after default interface changed
 		})
 		err = defaultInterfaceMonitor.Start()
 		if err != nil {
 			err = E.Cause(err, "start DefaultInterfaceMonitor")
 			return
+		}
+
+		if options.AutoDetectInterface {
+			l.cDialerInterfaceFinder = &cDialerInterfaceFinder{
+				tunName:                 tunName,
+				defaultInterfaceMonitor: defaultInterfaceMonitor,
+			}
+			if !dialer.DefaultInterfaceFinder.CompareAndSwap(nil, l.cDialerInterfaceFinder) {
+				err = E.New("not allowed two tun listener using auto-detect-interface")
+				return
+			}
 		}
 	}
 
@@ -436,7 +450,10 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 		}
 		if tunOptions.AutoRedirectMarkMode {
 			l.autoRedirectOutputMark = int32(outputMark)
-			dialer.DefaultRoutingMark.Store(l.autoRedirectOutputMark)
+			if !dialer.DefaultRoutingMark.CompareAndSwap(0, l.autoRedirectOutputMark) {
+				err = E.New("not allowed setting global routing-mark when working with autoRedirectMarkMode")
+				return
+			}
 			l.autoRedirect.UpdateRouteAddressSet()
 			l.ruleUpdateCallbackCloser = rpTunnel.RuleUpdateCallback().Register(l.ruleUpdateCallback)
 		}
@@ -503,27 +520,34 @@ func (l *Listener) updateRule(ruleProvider provider.RuleProvider, exclude bool, 
 	}
 }
 
-func (l *Listener) FlushDefaultInterface() {
-	if l.options.AutoDetectInterface && l.defaultInterfaceMonitor != nil {
-		for _, destination := range []netip.Addr{netip.IPv4Unspecified(), netip.IPv6Unspecified(), netip.MustParseAddr("1.1.1.1")} {
-			autoDetectInterfaceName := l.defaultInterfaceMonitor.DefaultInterfaceName(destination)
-			if autoDetectInterfaceName == l.tunName {
-				log.Warnln("[TUN] Auto detect interface by %s get same name with tun", destination.String())
-			} else if autoDetectInterfaceName == "" || autoDetectInterfaceName == "<nil>" {
-				log.Warnln("[TUN] Auto detect interface by %s get empty name.", destination.String())
-			} else {
-				if old := dialer.DefaultInterface.Swap(autoDetectInterfaceName); old != autoDetectInterfaceName {
-					log.Warnln("[TUN] default interface changed by monitor, %s => %s", old, autoDetectInterfaceName)
-					iface.FlushCache()
-					resolver.ResetConnection() // reset resolver's connection after default interface changed
-				}
-				return
-			}
-		}
-		if dialer.DefaultInterface.CompareAndSwap("", "<invalid>") {
-			log.Warnln("[TUN] Auto detect interface failed, set '<invalid>' to DefaultInterface to avoid lookback")
+func (l *Listener) OnReload() {
+	if l.autoRedirectOutputMark != 0 {
+		dialer.DefaultRoutingMark.CompareAndSwap(0, l.autoRedirectOutputMark)
+	}
+	if l.cDialerInterfaceFinder != nil {
+		dialer.DefaultInterfaceFinder.CompareAndSwap(nil, l.cDialerInterfaceFinder)
+	}
+}
+
+type cDialerInterfaceFinder struct {
+	tunName                 string
+	defaultInterfaceMonitor tun.DefaultInterfaceMonitor
+}
+
+func (d *cDialerInterfaceFinder) FindInterfaceName(destination netip.Addr) string {
+	for _, dest := range []netip.Addr{destination, netip.IPv4Unspecified(), netip.IPv6Unspecified()} {
+		autoDetectInterfaceName := d.defaultInterfaceMonitor.DefaultInterfaceName(dest)
+		if autoDetectInterfaceName == d.tunName {
+			log.Warnln("[TUN] Auto detect interface for %s get same name with tun", destination.String())
+		} else if autoDetectInterfaceName == "" || autoDetectInterfaceName == "<nil>" {
+			log.Warnln("[TUN] Auto detect interface for %s get empty name.", destination.String())
+		} else {
+			log.Debugln("[TUN] Auto detect interface for %s --> %s", destination, autoDetectInterfaceName)
+			return autoDetectInterfaceName
 		}
 	}
+	log.Warnln("[TUN] Auto detect interface for %s failed, return '<invalid>' to avoid lookback", destination)
+	return "<invalid>"
 }
 
 func uidToRange(uidList []uint32) []ranges.Range[uint32] {
@@ -563,6 +587,9 @@ func (l *Listener) Close() error {
 	resolver.RemoveSystemDnsBlacklist(l.dnsServerIp...)
 	if l.autoRedirectOutputMark != 0 {
 		dialer.DefaultRoutingMark.CompareAndSwap(l.autoRedirectOutputMark, 0)
+	}
+	if l.cDialerInterfaceFinder != nil {
+		dialer.DefaultInterfaceFinder.CompareAndSwap(l.cDialerInterfaceFinder, nil)
 	}
 	return common.Close(
 		l.ruleUpdateCallbackCloser,

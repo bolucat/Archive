@@ -88,6 +88,15 @@ func ListenPacket(ctx context.Context, network, address string, rAddrPort netip.
 	if DefaultSocketHook != nil { // ignore interfaceName, routingMark when DefaultSocketHook not null (in CMFA)
 		socketHookToListenConfig(lc)
 	} else {
+		if cfg.interfaceName == "" {
+			if finder := DefaultInterfaceFinder.Load(); finder != nil {
+				cfg.interfaceName = finder.FindInterfaceName(rAddrPort.Addr())
+			}
+		}
+		if rAddrPort.Addr().Unmap().IsLoopback() {
+			// avoid "The requested address is not valid in its context."
+			cfg.interfaceName = ""
+		}
 		if cfg.interfaceName != "" {
 			bind := bindIfaceToListenConfig
 			if cfg.fallbackBind {
@@ -153,6 +162,11 @@ func dialContext(ctx context.Context, network string, destination netip.Addr, po
 	if DefaultSocketHook != nil { // ignore interfaceName, routingMark and tfo when DefaultSocketHook not null (in CMFA)
 		socketHookToToDialer(dialer)
 	} else {
+		if opt.interfaceName == "" {
+			if finder := DefaultInterfaceFinder.Load(); finder != nil {
+				opt.interfaceName = finder.FindInterfaceName(destination)
+			}
+		}
 		if opt.interfaceName != "" {
 			bind := bindIfaceToDialer
 			if opt.fallbackBind {
@@ -373,12 +387,7 @@ func (d Dialer) DialContext(ctx context.Context, network, address string) (net.C
 }
 
 func (d Dialer) ListenPacket(ctx context.Context, network, address string, rAddrPort netip.AddrPort) (net.PacketConn, error) {
-	opt := d.Opt // make a copy
-	if rAddrPort.Addr().Unmap().IsLoopback() {
-		// avoid "The requested address is not valid in its context."
-		WithInterface("")(&opt)
-	}
-	return ListenPacket(ctx, ParseNetwork(network, rAddrPort.Addr()), address, rAddrPort, WithOption(opt))
+	return ListenPacket(ctx, ParseNetwork(network, rAddrPort.Addr()), address, rAddrPort, WithOption(d.Opt))
 }
 
 func NewDialer(options ...Option) Dialer {

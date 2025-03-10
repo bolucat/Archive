@@ -512,8 +512,8 @@ func ReCreateTun(tunConf LC.Tun, tunnel C.Tunnel) {
 	}()
 
 	if tunConf.Equal(LastTunConf) {
-		if tunLister != nil {
-			tunLister.FlushDefaultInterface()
+		if tunLister != nil { // some default value in dialer maybe changed when config reload, reset at here
+			tunLister.OnReload()
 		}
 		return
 	}

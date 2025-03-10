@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-alpha.14
+
+* Fixes and improvements
+
+### 1.11.5
+
+* Fixes and improvements
+
 #### 1.12.0-alpha.13
 
 * Move `predefined` DNS server to DNS rule action **1**
