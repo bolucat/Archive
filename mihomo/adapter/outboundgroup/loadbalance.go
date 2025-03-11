@@ -95,7 +95,7 @@ func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata, op
 	if err == nil {
 		c.AppendToChains(lb)
 	} else {
-		lb.onDialFailed(proxy.Type(), err)
+		lb.onDialFailed(proxy.Type(), err, lb.healthCheck)
 	}
 
 	if N.NeedHandshake(c) {
@@ -103,7 +103,7 @@ func (lb *LoadBalance) DialContext(ctx context.Context, metadata *C.Metadata, op
 			if err == nil {
 				lb.onDialSuccess()
 			} else {
-				lb.onDialFailed(proxy.Type(), err)
+				lb.onDialFailed(proxy.Type(), err, lb.healthCheck)
 			}
 		})
 	}

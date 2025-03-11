@@ -216,8 +216,15 @@ func New(options Options) (*Box, error) {
 		} else {
 			tag = F.ToString(i)
 		}
+		endpointCtx := ctx
+		if tag != "" {
+			// TODO: remove this
+			endpointCtx = adapter.WithContext(endpointCtx, &adapter.InboundContext{
+				Outbound: tag,
+			})
+		}
 		err = endpointManager.Create(
-			ctx,
+			endpointCtx,
 			router,
 			logFactory.NewLogger(F.ToString("endpoint/", endpointOptions.Type, "[", tag, "]")),
 			tag,

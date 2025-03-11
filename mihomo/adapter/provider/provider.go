@@ -87,6 +87,7 @@ func (bp *baseProvider) RegisterHealthCheckTask(url string, expectedStatus utils
 
 func (bp *baseProvider) setProxies(proxies []C.Proxy) {
 	bp.proxies = proxies
+	bp.version += 1
 	bp.healthCheck.setProxy(proxies)
 	if bp.healthCheck.auto() {
 		go bp.healthCheck.check()
@@ -173,7 +174,7 @@ func NewProxySetProvider(name string, interval time.Duration, parser resource.Pa
 		},
 	}
 
-	fetcher := resource.NewFetcher[[]C.Proxy](name, interval, vehicle, parser, proxiesOnUpdate(pd))
+	fetcher := resource.NewFetcher[[]C.Proxy](name, interval, vehicle, parser, pd.setProxies)
 	pd.Fetcher = fetcher
 	if httpVehicle, ok := vehicle.(*resource.HTTPVehicle); ok {
 		httpVehicle.SetInRead(func(resp *http.Response) {

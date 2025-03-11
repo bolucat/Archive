@@ -10,6 +10,8 @@ icon: material/alert-decagram
 
 * Fixes and improvements
 
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+
 #### 1.12.0-alpha.13
 
 * Move `predefined` DNS server to DNS rule action **1**

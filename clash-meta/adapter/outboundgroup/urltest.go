@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
@@ -54,13 +52,13 @@ func (u *URLTest) Set(name string) error {
 	if p == nil {
 		return errors.New("proxy not exist")
 	}
-	u.selected = name
-	u.fast(false)
+	u.ForceSet(name)
 	return nil
 }
 
 func (u *URLTest) ForceSet(name string) {
 	u.selected = name
+	u.fastSingle.Reset()
 }
 
 // DialContext implements C.ProxyAdapter
@@ -70,7 +68,7 @@ func (u *URLTest) DialContext(ctx context.Context, metadata *C.Metadata, opts ..
 	if err == nil {
 		c.AppendToChains(u)
 	} else {
-		u.onDialFailed(proxy.Type(), err)
+		u.onDialFailed(proxy.Type(), err, u.healthCheck)
 	}
 
 	if N.NeedHandshake(c) {
@@ -78,7 +76,7 @@ func (u *URLTest) DialContext(ctx context.Context, metadata *C.Metadata, opts ..
 			if err == nil {
 				u.onDialSuccess()
 			} else {
-				u.onDialFailed(proxy.Type(), err)
+				u.onDialFailed(proxy.Type(), err, u.healthCheck)
 			}
 		})
 	}
@@ -88,9 +86,12 @@ func (u *URLTest) DialContext(ctx context.Context, metadata *C.Metadata, opts ..
 
 // ListenPacketContext implements C.ProxyAdapter
 func (u *URLTest) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	pc, err := u.fast(true).ListenPacketContext(ctx, metadata, u.Base.DialOptions(opts...)...)
+	proxy := u.fast(true)
+	pc, err := proxy.ListenPacketContext(ctx, metadata, u.Base.DialOptions(opts...)...)
 	if err == nil {
 		pc.AppendToChains(u)
+	} else {
+		u.onDialFailed(proxy.Type(), err, u.healthCheck)
 	}
 
 	return pc, err
@@ -101,22 +102,27 @@ func (u *URLTest) Unwrap(metadata *C.Metadata, touch bool) C.Proxy {
 	return u.fast(touch)
 }
 
-func (u *URLTest) fast(touch bool) C.Proxy {
+func (u *URLTest) healthCheck() {
+	u.fastSingle.Reset()
+	u.GroupBase.healthCheck()
+	u.fastSingle.Reset()
+}
 
-	proxies := u.GetProxies(touch)
-	if u.selected != "" {
-		for _, proxy := range proxies {
-			if !proxy.AliveForTestUrl(u.testUrl) {
-				continue
-			}
-			if proxy.Name() == u.selected {
-				u.fastNode = proxy
-				return proxy
+func (u *URLTest) fast(touch bool) C.Proxy {
+	elm, _, shared := u.fastSingle.Do(func() (C.Proxy, error) {
+		proxies := u.GetProxies(touch)
+		if u.selected != "" {
+			for _, proxy := range proxies {
+				if !proxy.AliveForTestUrl(u.testUrl) {
+					continue
+				}
+				if proxy.Name() == u.selected {
+					u.fastNode = proxy
+					return proxy, nil
+				}
 			}
 		}
-	}
 
-	elm, _, shared := u.fastSingle.Do(func() (C.Proxy, error) {
 		fast := proxies[0]
 		minDelay := fast.LastDelayForTestUrl(u.testUrl)
 		fastNotExist := true
@@ -182,31 +188,7 @@ func (u *URLTest) MarshalJSON() ([]byte, error) {
 }
 
 func (u *URLTest) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (map[string]uint16, error) {
-	var wg sync.WaitGroup
-	var lock sync.Mutex
-	mp := map[string]uint16{}
-	proxies := u.GetProxies(false)
-	for _, proxy := range proxies {
-		proxy := proxy
-		wg.Add(1)
-		go func() {
-			delay, err := proxy.URLTest(ctx, u.testUrl, expectedStatus)
-			if err == nil {
-				lock.Lock()
-				mp[proxy.Name()] = delay
-				lock.Unlock()
-			}
-
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-
-	if len(mp) == 0 {
-		return mp, fmt.Errorf("get delay: all proxies timeout")
-	} else {
-		return mp, nil
-	}
+	return u.GroupBase.URLTest(ctx, u.testUrl, expectedStatus)
 }
 
 func parseURLTestOption(config map[string]any) []urlTestOption {
