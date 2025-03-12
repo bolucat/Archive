@@ -1,6 +1,6 @@
 [package]
 name = "shadowsocks"
-version = "1.21.0"
+version = "1.22.0"
 authors = ["Shadowsocks Contributors"]
 description = "shadowsocks is a fast tunnel proxy that helps you bypass firewalls."
 repository = "https://github.com/shadowsocks/shadowsocks-rust"
@@ -9,13 +9,13 @@ documentation = "https://docs.rs/shadowsocks-core"
 keywords = ["shadowsocks", "proxy", "socks", "socks5", "firewall"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.75"
 
 [badges]
 maintenance = { status = "passively-maintained" }
 
 [features]
-default = ["hickory-dns"]
+default = ["hickory-dns", "aead-cipher"]
 
 # Uses Hickory-DNS instead of tokio's builtin DNS resolver
 hickory-dns = ["hickory-resolver", "arc-swap", "notify"]
@@ -26,19 +26,22 @@ trust-dns = ["hickory-dns"]
 # WARN: Stream Cipher Protocol is proved to be insecure
 # https://github.com/shadowsocks/shadowsocks-rust/issues/373
 # Users should always avoid using these ciphers in practice
-stream-cipher = ["shadowsocks-crypto/v1-stream"]
+stream-cipher = ["shadowsocks-crypto/v1-stream", "shadowsocks-crypto/ring"]
+
+# Enable AEAD ciphers
+aead-cipher = ["shadowsocks-crypto/v1-aead", "shadowsocks-crypto/ring"]
 
 # Enable extra AEAD ciphers
 # WARN: These non-standard AEAD ciphers are not officially supported by shadowsocks community
-aead-cipher-extra = ["shadowsocks-crypto/v1-aead-extra"]
+aead-cipher-extra = ["aead-cipher", "shadowsocks-crypto/v1-aead-extra"]
 
-# Enable AEAD 2022
 aead-cipher-2022 = [
     "shadowsocks-crypto/v2",
+    "shadowsocks-crypto/ring",
     "rand/small_rng",
     "aes",
     "lru_time_cache",
-]
+] # Enable AEAD 2022
 # Enable AEAD 2022 with extra ciphers
 aead-cipher-2022-extra = ["aead-cipher-2022", "shadowsocks-crypto/v2-extra"]
 
@@ -57,8 +60,8 @@ url = "2.5"
 once_cell = "1.17"
 spin = { version = "0.9", features = ["std"] }
 pin-project = "1.1"
-bloomfilter = { version = "1.0.8", optional = true }
-thiserror = "1.0"
+bloomfilter = { version = "3.0.0", optional = true }
+thiserror = "2.0"
 rand = { version = "0.8", optional = true }
 lru_time_cache = { version = "0.11", optional = true }
 
@@ -68,7 +71,8 @@ serde_json = "1.0"
 percent-encoding = "2.1"
 
 futures = "0.3"
-async-trait = "0.1"
+trait-variant = "0.1"
+dynosaur = "0.1.2"
 
 socket2 = { version = "0.5", features = ["all"] }
 tokio = { version = "1.9.0", features = [
@@ -82,18 +86,13 @@ tokio = { version = "1.9.0", features = [
     "time",
 ] }
 
-hickory-resolver = { version = "0.24", optional = true }
+hickory-resolver = { version = "=0.25.0-alpha.4", optional = true }
 arc-swap = { version = "1.7", optional = true }
-notify = { version = "6.0", optional = true }
+notify = { version = "7.0", optional = true }
 
 aes = { version = "0.8", optional = true }
 blake3 = "1.5"
-
-[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
-shadowsocks-crypto = { version = "0.5.4", features = ["ring"] }
-
-[target.'cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))'.dependencies]
-shadowsocks-crypto = { version = "0.5.4", features = [] }
+shadowsocks-crypto = { version = "0.5.8", default-features = false }
 
 [target.'cfg(any(windows, target_os = "linux", target_os = "android", target_os = "freebsd", target_os = "macos", target_os = "ios", target_os = "watchos", target_os = "tvos"))'.dependencies]
 tokio-tfo = "0.3"

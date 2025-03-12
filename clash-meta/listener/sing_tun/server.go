@@ -23,6 +23,7 @@ import (
 	"github.com/metacubex/mihomo/log"
 
 	tun "github.com/metacubex/sing-tun"
+	"github.com/metacubex/sing-tun/control"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -291,7 +292,12 @@ func New(options LC.Tun, tunnel C.Tunnel, additions ...inbound.Addition) (l *Lis
 			return
 		}
 		l.defaultInterfaceMonitor = defaultInterfaceMonitor
-		defaultInterfaceMonitor.RegisterCallback(func(event int) {
+		defaultInterfaceMonitor.RegisterCallback(func(defaultInterface *control.Interface, event int) {
+			if defaultInterface != nil {
+				log.Warnln("[TUN] default interface changed by monitor, => %s", defaultInterface.Name)
+			} else {
+				log.Errorln("[TUN] default interface lost by monitor")
+			}
 			iface.FlushCache()
 			resolver.ResetConnection() // reset resolver's connection after default interface changed
 		})
@@ -534,9 +540,19 @@ type cDialerInterfaceFinder struct {
 	defaultInterfaceMonitor tun.DefaultInterfaceMonitor
 }
 
+func (d *cDialerInterfaceFinder) DefaultInterfaceName(destination netip.Addr) string {
+	if netInterface, _ := DefaultInterfaceFinder.ByAddr(destination); netInterface != nil {
+		return netInterface.Name
+	}
+	if netInterface := d.defaultInterfaceMonitor.DefaultInterface(); netInterface != nil {
+		return netInterface.Name
+	}
+	return ""
+}
+
 func (d *cDialerInterfaceFinder) FindInterfaceName(destination netip.Addr) string {
 	for _, dest := range []netip.Addr{destination, netip.IPv4Unspecified(), netip.IPv6Unspecified()} {
-		autoDetectInterfaceName := d.defaultInterfaceMonitor.DefaultInterfaceName(dest)
+		autoDetectInterfaceName := d.DefaultInterfaceName(dest)
 		if autoDetectInterfaceName == d.tunName {
 			log.Warnln("[TUN] Auto detect interface for %s get same name with tun", destination.String())
 		} else if autoDetectInterfaceName == "" || autoDetectInterfaceName == "<nil>" {

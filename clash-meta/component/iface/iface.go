@@ -13,9 +13,9 @@ type Interface struct {
 	Index        int
 	MTU          int
 	Name         string
-	Addresses    []netip.Prefix
 	HardwareAddr net.HardwareAddr
 	Flags        net.Flags
+	Addresses    []netip.Prefix
 }
 
 var (
@@ -65,9 +65,9 @@ func Interfaces() (map[string]*Interface, error) {
 				Index:        iface.Index,
 				MTU:          iface.MTU,
 				Name:         iface.Name,
-				Addresses:    ipNets,
 				HardwareAddr: iface.HardwareAddr,
 				Flags:        iface.Flags,
+				Addresses:    ipNets,
 			}
 		}
 

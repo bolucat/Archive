@@ -60,7 +60,7 @@ async fn udp_tunnel_echo(
     password: &str,
     method: CipherKind,
 ) -> io::Result<()> {
-    let svr_cfg_server = ServerConfig::new(server_addr, password, method);
+    let svr_cfg_server = ServerConfig::new(server_addr, password, method).unwrap();
     let svr_cfg_local = svr_cfg_server.clone();
 
     let ctx_server = Context::new_shared(ServerType::Server);
@@ -125,7 +125,7 @@ async fn udp_tunnel_echo(
     let socket = UdpSocket::bind("0.0.0.0:0").await?;
     socket.connect(local_addr).await?;
 
-    static SEND_PAYLOAD: &[u8] = b"HELLO WORLD. \x0012345";
+    const SEND_PAYLOAD: &[u8] = b"HELLO WORLD. \x0012345";
     socket.send(SEND_PAYLOAD).await?;
 
     let mut buffer = [0u8; 65536];
@@ -136,6 +136,7 @@ async fn udp_tunnel_echo(
     Ok(())
 }
 
+#[cfg(feature = "aead-cipher")]
 #[tokio::test]
 async fn udp_tunnel_aead() {
     let _ = env_logger::try_init();

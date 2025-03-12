@@ -59,7 +59,7 @@ use std::{
 
 use cfg_if::cfg_if;
 #[cfg(feature = "hickory-dns")]
-use hickory_resolver::config::{NameServerConfig, Protocol, ResolverConfig};
+use hickory_resolver::config::{NameServerConfig, ResolverConfig};
 #[cfg(feature = "local-tun")]
 use ipnet::IpNet;
 #[cfg(feature = "local-fake-dns")]
@@ -214,6 +214,9 @@ struct SSConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     outbound_bind_interface: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outbound_udp_allow_fragmentation: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     security: Option<SSSecurityConfig>,
@@ -401,6 +404,9 @@ struct SSServerExtConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     outbound_bind_interface: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    outbound_udp_allow_fragmentation: Option<bool>,
 }
 
 #[cfg(feature = "local-online-config")]
@@ -1240,6 +1246,7 @@ pub struct ServerInstanceConfig {
     pub outbound_fwmark: Option<u32>,
     pub outbound_bind_addr: Option<IpAddr>,
     pub outbound_bind_interface: Option<String>,
+    pub outbound_udp_allow_fragmentation: Option<bool>,
 }
 
 impl ServerInstanceConfig {
@@ -1252,6 +1259,7 @@ impl ServerInstanceConfig {
             outbound_fwmark: None,
             outbound_bind_addr: None,
             outbound_bind_interface: None,
+            outbound_udp_allow_fragmentation: None,
         }
     }
 }
@@ -1336,6 +1344,8 @@ pub struct Config {
     pub outbound_bind_interface: Option<String>,
     /// Outbound sockets will `bind` to this address
     pub outbound_bind_addr: Option<IpAddr>,
+    /// Outbound UDP sockets allow IP fragmentation
+    pub outbound_udp_allow_fragmentation: bool,
     /// Path to protect callback unix address, only for Android
     #[cfg(target_os = "android")]
     pub outbound_vpn_protect_path: Option<PathBuf>,
@@ -1480,6 +1490,7 @@ impl Config {
             outbound_user_cookie: None,
             outbound_bind_interface: None,
             outbound_bind_addr: None,
+            outbound_udp_allow_fragmentation: false,
             #[cfg(target_os = "android")]
             outbound_vpn_protect_path: None,
 
@@ -1935,7 +1946,17 @@ impl Config {
                     }
                 };
 
-                let mut nsvr = ServerConfig::new(addr, password, method);
+                let mut nsvr = match ServerConfig::new(addr, password, method) {
+                    Ok(svr) => svr,
+                    Err(serr) => {
+                        let err = Error::new(
+                            ErrorKind::Malformed,
+                            "server config create failed",
+                            Some(format!("{}", serr)),
+                        );
+                        return Err(err);
+                    }
+                };
                 nsvr.set_source(server_source);
                 nsvr.set_mode(global_mode);
 
@@ -1989,6 +2010,7 @@ impl Config {
                     outbound_fwmark: config.outbound_fwmark,
                     outbound_bind_addr,
                     outbound_bind_interface: config.outbound_bind_interface.clone(),
+                    outbound_udp_allow_fragmentation: config.outbound_udp_allow_fragmentation,
                 };
 
                 nconfig.server.push(server_instance);
@@ -2055,7 +2077,17 @@ impl Config {
                     }
                 };
 
-                let mut nsvr = ServerConfig::new(addr, password, method);
+                let mut nsvr = match ServerConfig::new(addr, password, method) {
+                    Ok(svr) => svr,
+                    Err(serr) => {
+                        let err = Error::new(
+                            ErrorKind::Malformed,
+                            "server config create failed",
+                            Some(format!("{}", serr)),
+                        );
+                        return Err(err);
+                    }
+                };
                 nsvr.set_source(server_source);
 
                 // Extensible Identity Header, Users
@@ -2172,6 +2204,7 @@ impl Config {
                     outbound_fwmark: config.outbound_fwmark,
                     outbound_bind_addr,
                     outbound_bind_interface: config.outbound_bind_interface.clone(),
+                    outbound_udp_allow_fragmentation: config.outbound_udp_allow_fragmentation,
                 };
 
                 if let Some(acl_path) = svr.acl {
@@ -2200,6 +2233,10 @@ impl Config {
 
                 if let Some(ref outbound_bind_interface) = svr.outbound_bind_interface {
                     server_instance.outbound_bind_interface = Some(outbound_bind_interface.clone());
+                }
+
+                if let Some(outbound_udp_allow_fragmentation) = svr.outbound_udp_allow_fragmentation {
+                    server_instance.outbound_udp_allow_fragmentation = Some(outbound_udp_allow_fragmentation);
                 }
 
                 nconfig.server.push(server_instance);
@@ -2367,6 +2404,10 @@ impl Config {
         // Bind device / interface
         nconfig.outbound_bind_interface = config.outbound_bind_interface;
 
+        if let Some(b) = config.outbound_udp_allow_fragmentation {
+            nconfig.outbound_udp_allow_fragmentation = b;
+        }
+
         // Security
         if let Some(sec) = config.security {
             if let Some(replay_attack) = sec.replay_attack {
@@ -2464,6 +2505,8 @@ impl Config {
 
     #[cfg(any(feature = "hickory-dns", feature = "local-dns"))]
     fn parse_dns_nameservers(&mut self, nameservers: &str) -> Result<DnsConfig, Error> {
+        use hickory_resolver::proto::xfer::Protocol;
+
         #[cfg(all(unix, feature = "local-dns"))]
         if let Some(nameservers) = nameservers.strip_prefix("unix://") {
             // A special DNS server only for shadowsocks-android
@@ -3023,6 +3066,7 @@ impl fmt::Display for Config {
                         outbound_fwmark: inst.outbound_fwmark,
                         outbound_bind_addr: inst.outbound_bind_addr,
                         outbound_bind_interface: inst.outbound_bind_interface.clone(),
+                        outbound_udp_allow_fragmentation: inst.outbound_udp_allow_fragmentation,
                     });
                 }
 
@@ -3127,6 +3171,7 @@ impl fmt::Display for Config {
 
         jconf.outbound_bind_addr = self.outbound_bind_addr.map(|i| i.to_string());
         jconf.outbound_bind_interface.clone_from(&self.outbound_bind_interface);
+        jconf.outbound_udp_allow_fragmentation = Some(self.outbound_udp_allow_fragmentation);
 
         // Security
         if self.security.replay_attack.policy != ReplayAttackPolicy::default() {

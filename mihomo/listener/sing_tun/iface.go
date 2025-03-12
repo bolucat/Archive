@@ -2,11 +2,12 @@ package sing_tun
 
 import (
 	"errors"
+	"net"
 	"net/netip"
 
 	"github.com/metacubex/mihomo/component/iface"
 
-	"github.com/sagernet/sing/common/control"
+	"github.com/metacubex/sing-tun/control"
 )
 
 type defaultInterfaceFinder struct{}
@@ -33,33 +34,49 @@ func (f *defaultInterfaceFinder) Interfaces() []control.Interface {
 
 var errNoSuchInterface = errors.New("no such network interface")
 
-func (f *defaultInterfaceFinder) InterfaceIndexByName(name string) (int, error) {
+func (f *defaultInterfaceFinder) ByName(name string) (*control.Interface, error) {
 	ifaces, err := iface.Interfaces()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	for _, netInterface := range ifaces {
 		if netInterface.Name == name {
-			return netInterface.Index, nil
+			return (*control.Interface)(netInterface), nil
 		}
 	}
-	return 0, errNoSuchInterface
+	_, err = net.InterfaceByName(name)
+	if err == nil {
+		err = f.Update()
+		if err != nil {
+			return nil, err
+		}
+		return f.ByName(name)
+	}
+	return nil, errNoSuchInterface
 }
 
-func (f *defaultInterfaceFinder) InterfaceNameByIndex(index int) (string, error) {
+func (f *defaultInterfaceFinder) ByIndex(index int) (*control.Interface, error) {
 	ifaces, err := iface.Interfaces()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	for _, netInterface := range ifaces {
 		if netInterface.Index == index {
-			return netInterface.Name, nil
+			return (*control.Interface)(netInterface), nil
 		}
 	}
-	return "", errNoSuchInterface
+	_, err = net.InterfaceByIndex(index)
+	if err == nil {
+		err = f.Update()
+		if err != nil {
+			return nil, err
+		}
+		return f.ByIndex(index)
+	}
+	return nil, errNoSuchInterface
 }
 
-func (f *defaultInterfaceFinder) InterfaceByAddr(addr netip.Addr) (*control.Interface, error) {
+func (f *defaultInterfaceFinder) ByAddr(addr netip.Addr) (*control.Interface, error) {
 	ifaces, err := iface.Interfaces()
 	if err != nil {
 		return nil, err

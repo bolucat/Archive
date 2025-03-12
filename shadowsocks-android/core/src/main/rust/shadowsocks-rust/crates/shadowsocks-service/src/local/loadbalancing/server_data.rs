@@ -2,6 +2,7 @@
 
 use std::{
     fmt::{self, Debug},
+    net::SocketAddr,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -93,7 +94,6 @@ impl ServerIdent {
         max_server_rtt: Duration,
         check_window: Duration,
     ) -> ServerIdent {
-        #[allow(unused_mut)]
         let mut connect_opts = context.connect_opts_ref().clone();
 
         #[cfg(any(target_os = "linux", target_os = "android"))]
@@ -102,7 +102,7 @@ impl ServerIdent {
         }
 
         if let Some(bind_local_addr) = svr_cfg.outbound_bind_addr {
-            connect_opts.bind_local_addr = Some(bind_local_addr);
+            connect_opts.bind_local_addr = Some(SocketAddr::new(bind_local_addr, 0));
         }
 
         if let Some(ref bind_interface) = svr_cfg.outbound_bind_interface {

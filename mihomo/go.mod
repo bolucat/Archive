@@ -7,14 +7,14 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/enfein/mieru/v3 v3.11.2
+	github.com/enfein/mieru/v3 v3.12.0
 	github.com/go-chi/chi/v5 v5.2.1
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
 	github.com/gofrs/uuid/v5 v5.3.1
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905
 	github.com/klauspost/compress v1.17.9 // lastest version compatible with golang1.20
-	github.com/klauspost/cpuid/v2 v2.2.9
+	github.com/klauspost/cpuid/v2 v2.2.9 // lastest version compatible with golang1.20
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40
 	github.com/mdlayher/netlink v1.7.2
 	github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab
@@ -27,7 +27,7 @@ require (
 	github.com/metacubex/sing-quic v0.0.0-20250119013740-2a19cce83925
 	github.com/metacubex/sing-shadowsocks v0.2.8
 	github.com/metacubex/sing-shadowsocks2 v0.2.2
-	github.com/metacubex/sing-tun v0.4.5
+	github.com/metacubex/sing-tun v0.4.6-0.20250312042506-6d3b4dc05c04
 	github.com/metacubex/sing-vmess v0.1.14-0.20250228002636-abc39e113b82
 	github.com/metacubex/sing-wireguard v0.0.0-20241126021510-0827d417b589
 	github.com/metacubex/tfo-go v0.0.0-20241231083714-66613d49c422
@@ -37,7 +37,7 @@ require (
 	github.com/mroth/weightedrand/v2 v2.1.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/maxminddb-golang v1.12.0 // lastest version compatible with golang1.20
-	github.com/puzpuzpuz/xsync/v3 v3.5.0
+	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/fswatch v0.1.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
@@ -46,7 +46,7 @@ require (
 	github.com/sagernet/sing-shadowtls v0.1.5
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/samber/lo v1.49.1
-	github.com/shirou/gopsutil/v4 v4.25.1
+	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
@@ -54,13 +54,13 @@ require (
 	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7
 	go.uber.org/automaxprocs v1.6.0
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.33.0 // lastest version compatible with golang1.20
 	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // lastest version compatible with golang1.20
-	golang.org/x/net v0.35.0
-	golang.org/x/sys v0.30.0
+	golang.org/x/net v0.35.0 // lastest version compatible with golang1.20
+	golang.org/x/sys v0.30.0 // lastest version compatible with golang1.20
 	google.golang.org/protobuf v1.34.2 // lastest version compatible with golang1.20
 	gopkg.in/yaml.v3 v3.0.1
-	lukechampine.com/blake3 v1.3.0
+	lukechampine.com/blake3 v1.3.0 // lastest version compatible with golang1.20
 )
 
 require (

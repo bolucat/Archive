@@ -2,6 +2,7 @@
 
 use std::{
     io::{self, ErrorKind},
+    net::SocketAddr,
     sync::Arc,
     time::Duration,
 };
@@ -130,7 +131,7 @@ impl Server {
             vpn_protect_path: config.outbound_vpn_protect_path,
 
             bind_interface: config.outbound_bind_interface,
-            bind_local_addr: config.outbound_bind_addr,
+            bind_local_addr: config.outbound_bind_addr.map(|ip| SocketAddr::new(ip, 0)),
 
             ..Default::default()
         };
@@ -141,6 +142,7 @@ impl Server {
         connect_opts.tcp.keepalive = config.keep_alive.or(Some(LOCAL_DEFAULT_KEEPALIVE_TIMEOUT));
         connect_opts.tcp.mptcp = config.mptcp;
         connect_opts.udp.mtu = config.udp_mtu;
+        connect_opts.udp.allow_fragmentation = config.outbound_udp_allow_fragmentation;
         context.set_connect_opts(connect_opts);
 
         let mut accept_opts = AcceptOpts {

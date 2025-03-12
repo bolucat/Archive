@@ -1,6 +1,6 @@
 use std::{
     io, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     pin::Pin,
     ptr,
@@ -286,8 +286,8 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
 #[inline]
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
-        (AddrFamily::Ipv4, Some(IpAddr::V4(ip))) => SocketAddr::new(ip.into(), 0),
-        (AddrFamily::Ipv6, Some(IpAddr::V6(ip))) => SocketAddr::new(ip.into(), 0),
+        (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -310,8 +310,10 @@ pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, config: &ConnectOp
         UdpSocket::from_std(socket.into())?
     };
 
-    if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
-        warn!("failed to disable IP fragmentation, error: {}", err);
+    if !config.udp.allow_fragmentation {
+        if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
+            warn!("failed to disable IP fragmentation, error: {}", err);
+        }
     }
 
     // Any traffic except localhost should be protected

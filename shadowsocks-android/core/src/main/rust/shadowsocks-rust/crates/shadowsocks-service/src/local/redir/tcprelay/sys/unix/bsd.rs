@@ -3,7 +3,6 @@ use std::{
     net::SocketAddr,
 };
 
-use async_trait::async_trait;
 use log::warn;
 use shadowsocks::net::{is_dual_stack_addr, set_tcp_fastopen, AcceptOpts};
 use socket2::Protocol;
@@ -17,7 +16,6 @@ use crate::{
     },
 };
 
-#[async_trait]
 impl TcpListenerRedirExt for TcpListener {
     async fn bind_redir(ty: RedirType, addr: SocketAddr, accept_opts: AcceptOpts) -> io::Result<TcpListener> {
         match ty {
@@ -108,7 +106,7 @@ impl TcpStreamRedirExt for TcpStream {
 
                 PF.natlook(&bind_addr, &peer_addr, Protocol::TCP)
             }
-            #[cfg(target_os = "openbsd")] //in OpenBSD, we can get TCP destination address with getsockname()
+            #[cfg(target_os = "openbsd")] // in OpenBSD, we can get TCP destination address with getsockname()
             RedirType::PacketFilter => self.local_addr(),
             #[cfg(any(target_os = "freebsd", target_os = "macos", target_os = "ios"))]
             RedirType::IpFirewall => {

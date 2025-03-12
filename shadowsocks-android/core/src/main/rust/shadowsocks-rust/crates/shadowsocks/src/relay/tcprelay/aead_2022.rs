@@ -102,7 +102,7 @@ pub enum ProtocolError {
     DecryptLengthError,
     #[error("invalid stream type, expecting {0:#x}, but found {1:#x}")]
     InvalidStreamType(u8, u8),
-    #[error("invalid timestamp {0} - now {1} = {}", *.0 as i64 - *.1 as i64)]
+    #[error("invalid timestamp {0} - now {1} = {ts_diff}", ts_diff = *.0 as i64 - *.1 as i64)]
     InvalidTimestamp(u64, u64),
 }
 
@@ -529,7 +529,7 @@ pub struct EncryptedWriter {
 impl EncryptedWriter {
     /// Creates a new EncryptedWriter
     pub fn new(stream_ty: StreamType, method: CipherKind, key: &[u8], nonce: &[u8]) -> EncryptedWriter {
-        static EMPTY_IDENTITY: [Bytes; 0] = [];
+        const EMPTY_IDENTITY: [Bytes; 0] = [];
         EncryptedWriter::with_identity(stream_ty, method, key, nonce, &EMPTY_IDENTITY)
     }
 

@@ -468,8 +468,8 @@ pub async fn create_inbound_udp_socket(addr: &SocketAddr, ipv6_only: bool) -> io
 #[inline(always)]
 pub async fn create_outbound_udp_socket(af: AddrFamily, opts: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, opts.bind_local_addr) {
-        (AddrFamily::Ipv4, Some(IpAddr::V4(ip))) => SocketAddr::new(ip.into(), 0),
-        (AddrFamily::Ipv6, Some(IpAddr::V6(ip))) => SocketAddr::new(ip.into(), 0),
+        (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -498,8 +498,10 @@ pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, opts: &ConnectOpts
     socket.set_nonblocking(true)?;
     let socket = UdpSocket::from_std(socket.into())?;
 
-    if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
-        warn!("failed to disable IP fragmentation, error: {}", err);
+    if !opts.udp.allow_fragmentation {
+        if let Err(err) = set_disable_ip_fragmentation(af, &socket) {
+            warn!("failed to disable IP fragmentation, error: {}", err);
+        }
     }
     disable_connection_reset(&socket)?;
 

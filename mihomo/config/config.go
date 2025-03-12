@@ -428,12 +428,6 @@ type RawConfig struct {
 	ClashForAndroid RawClashForAndroid `yaml:"clash-for-android" json:"clash-for-android"`
 }
 
-var (
-	GroupsList             = list.New()
-	ProxiesList            = list.New()
-	ParsingProxiesCallback func(groupsList *list.List, proxiesList *list.List)
-)
-
 // Parse config
 func Parse(buf []byte) (*Config, error) {
 	rawCfg, err := UnmarshalRawConfig(buf)
@@ -926,12 +920,6 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 			[]providerTypes.ProxyProvider{pd},
 		)
 		proxies["GLOBAL"] = adapter.NewProxy(global)
-	}
-	ProxiesList = proxiesList
-	GroupsList = groupsList
-	if ParsingProxiesCallback != nil {
-		// refresh tray menu
-		go ParsingProxiesCallback(GroupsList, ProxiesList)
 	}
 	return proxies, providersMap, nil
 }

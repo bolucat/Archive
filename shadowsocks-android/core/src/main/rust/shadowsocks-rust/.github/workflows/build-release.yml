@@ -21,19 +21,58 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - i686-unknown-linux-musl
-          - x86_64-pc-windows-gnu
-          - x86_64-unknown-linux-gnu
-          - x86_64-unknown-linux-musl
-          - armv7-unknown-linux-musleabihf
-          - armv7-unknown-linux-gnueabihf
-          - arm-unknown-linux-gnueabi
-          - arm-unknown-linux-gnueabihf
-          - arm-unknown-linux-musleabi
-          - arm-unknown-linux-musleabihf
-          - aarch64-unknown-linux-gnu
-          - aarch64-unknown-linux-musl
+        platform:
+          - target: i686-unknown-linux-musl
+            toolchain: stable
+          - target: x86_64-pc-windows-gnu
+            toolchain: stable
+          - target: x86_64-unknown-linux-gnu
+            toolchain: stable
+          - target: x86_64-unknown-linux-musl
+            toolchain: stable
+          - target: armv7-unknown-linux-musleabihf
+            toolchain: stable
+          - target: armv7-unknown-linux-gnueabihf
+            toolchain: stable
+          - target: arm-unknown-linux-gnueabi
+            toolchain: stable
+          - target: arm-unknown-linux-gnueabihf
+            toolchain: stable
+          - target: arm-unknown-linux-musleabi
+            toolchain: stable
+          - target: arm-unknown-linux-musleabihf
+            toolchain: stable
+          - target: aarch64-unknown-linux-gnu
+            toolchain: stable
+          - target: aarch64-unknown-linux-musl
+            toolchain: stable
+          # FIXME: moka uses atomic64 by default
+          # - target: mips-unknown-linux-gnu
+          #   toolchain: nightly
+          # cross mips-*-musl images are disabled
+          # - target: mips-unknown-linux-musl
+          #   toolchain: nightly
+          # FIXME: moka uses atomic64 by default
+          # - target: mipsel-unknown-linux-gnu
+          #   toolchain: nightly
+          # cross mips-*-musl images are disabled
+          # - target: mipsel-unknown-linux-musl
+          #   toolchain: nightly
+          # FIXME: ring doesn't support mips64 CPU
+          # - target: mips64-unknown-linux-gnuabi64
+          #   toolchain: nightly
+          # - target: mips64-unknown-linux-muslabi64
+          #   toolchain: nightly
+          # - target: mips64el-unknown-linux-gnuabi64
+          #   toolchain: nightly
+          # FIXME: Link Error. 
+          #   = note: mips64el-linux-muslsf-gcc: error: crt1.o: No such file or directory
+          #           mips64el-linux-muslsf-gcc: error: crti.o: No such file or directory
+          #           mips64el-linux-muslsf-gcc: error: crtbegin.o: No such file or directory
+          #           mips64el-linux-muslsf-gcc: error: crtend.o: No such file or directory
+          #           mips64el-linux-muslsf-gcc: error: crtn.o: No such file or directory
+          # - target: mips64el-unknown-linux-muslabi64
+          #   toolchain: nightly
 
     steps:
       - uses: actions/checkout@v4
@@ -41,18 +80,17 @@ jobs:
       - name: Install Rust
         run: |
           rustup set profile minimal
-          rustup toolchain install stable
-          rustup default stable
-          rustup override set stable
-          rustup target add --toolchain stable ${{ matrix.target }}
+          rustup toolchain install ${{ matrix.platform.toolchain }}
+          rustup default ${{ matrix.platform.toolchain }}
+          rustup override set ${{ matrix.platform.toolchain }}
 
       - name: Install cross
         run: cargo install cross
 
-      - name: Build ${{ matrix.target }}
+      - name: Build ${{ matrix.platform.target }}
         timeout-minutes: 120
         run: |
-          compile_target=${{ matrix.target }}
+          compile_target=${{ matrix.platform.target }}
 
           compile_features="-f full"
 
@@ -65,10 +103,13 @@ jobs:
             if [[ "$?" == "0" ]]; then
               compile_compress="-u"
             fi
+
+            compile_nightly="-n"
+            compile_features="-Z build-std=std,panic_abort,proc_macro"
           fi
 
           cd build
-          ./build-release -t ${{ matrix.target }} $compile_features $compile_compress
+          ./build-release -t ${{ matrix.platform.target }} $compile_features $compile_compress $compile_nightly $compile_features
 
       - name: Upload Github Assets
         uses: softprops/action-gh-release@v2

@@ -15,9 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
+        platform:
+          - target: x86_64-unknown-linux-musl
+            toolchain: stable
+          - target: aarch64-unknown-linux-musl
+            toolchain: stable
 
     steps:
       - uses: actions/checkout@v4
@@ -25,18 +27,17 @@ jobs:
       - name: Install Rust
         run: |
           rustup set profile minimal
-          rustup toolchain install stable
-          rustup default stable
-          rustup override set stable
-          rustup target add --toolchain stable ${{ matrix.target }}
+          rustup toolchain install ${{ matrix.platform.toolchain }}
+          rustup default ${{ matrix.platform.toolchain }}
+          rustup override set ${{ matrix.platform.toolchain }}
 
       - name: Install cross
         run: cargo install cross
 
-      - name: Build ${{ matrix.target }}
+      - name: Build ${{ matrix.platform.target }}
         timeout-minutes: 120
         run: |
-          compile_target=${{ matrix.target }}
+          compile_target=${{ matrix.platform.target }}
 
           compile_features="-f full"
 
@@ -49,15 +50,18 @@ jobs:
             if [[ "$?" == "0" ]]; then
               compile_compress="-u"
             fi
+
+            compile_nightly="-n"
+            compile_features="-Z build-std=std,panic_abort,proc_macro"
           fi
 
           cd build
-          ./build-release -t ${{ matrix.target }} $compile_features $compile_compress
+          ./build-release -t ${{ matrix.platform.target }} $compile_features $compile_compress $compile_nightly $compile_features
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
+          name: ${{ matrix.platform.target }}
           path: build/release/*
 
   build-unix:

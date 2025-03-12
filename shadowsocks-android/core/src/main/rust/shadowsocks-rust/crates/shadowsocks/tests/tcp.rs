@@ -90,7 +90,7 @@ async fn tcp_tunnel_example(
     password: &str,
     method: CipherKind,
 ) -> io::Result<()> {
-    let svr_cfg_server = ServerConfig::new(server_addr, password, method);
+    let svr_cfg_server = ServerConfig::new(server_addr, password, method).unwrap();
     let svr_cfg_local = svr_cfg_server.clone();
 
     let ctx_server = Context::new_shared(ServerType::Server);
@@ -135,7 +135,7 @@ async fn tcp_tunnel_example(
 
     let mut client = TcpStream::connect(local_addr).await?;
 
-    static HTTP_REQUEST: &[u8] = b"GET / HTTP/1.0\r\nHost: www.example.com\r\nAccept: */*\r\nConnection: close\r\n\r\n";
+    const HTTP_REQUEST: &[u8] = b"GET / HTTP/1.0\r\nHost: www.example.com\r\nAccept: */*\r\nConnection: close\r\n\r\n";
     client.write_all(HTTP_REQUEST).await?;
 
     let mut reader = BufReader::new(client);
@@ -145,12 +145,13 @@ async fn tcp_tunnel_example(
 
     println!("{:?}", ByteStr::new(&buffer));
 
-    static HTTP_RESPONSE_STATUS: &[u8] = b"HTTP/1.0 200 OK\r\n";
+    const HTTP_RESPONSE_STATUS: &[u8] = b"HTTP/1.0 200 OK\r\n";
     assert!(buffer.starts_with(HTTP_RESPONSE_STATUS));
 
     Ok(())
 }
 
+#[cfg(feature = "aead-cipher")]
 #[tokio::test]
 async fn tcp_tunnel_aead() {
     let _ = env_logger::try_init();
@@ -180,7 +181,7 @@ async fn tcp_tunnel_none() {
 
     let server_addr = "127.0.0.1:33001".parse::<SocketAddr>().unwrap();
     let local_addr = "127.0.0.1:33101".parse::<SocketAddr>().unwrap();
-    tcp_tunnel_example(server_addr, local_addr, "p$p", CipherKind::NONE)
+    tcp_tunnel_example(server_addr, local_addr, "", CipherKind::NONE)
         .await
         .unwrap();
 }
