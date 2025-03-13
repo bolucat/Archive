@@ -13,6 +13,7 @@ import (
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
+	gost "github.com/metacubex/mihomo/transport/gost-plugin"
 	"github.com/metacubex/mihomo/transport/restls"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
 	shadowtls "github.com/metacubex/mihomo/transport/sing-shadowtls"
@@ -34,6 +35,7 @@ type ShadowSocks struct {
 	obfsMode        string
 	obfsOption      *simpleObfsOption
 	v2rayOption     *v2rayObfs.Option
+	gostOption      *gost.Option
 	shadowTLSOption *shadowtls.ShadowTLSOption
 	restlsConfig    *restlsC.Config
 }
@@ -71,6 +73,17 @@ type v2rayObfsOption struct {
 	V2rayHttpUpgradeFastOpen bool              `obfs:"v2ray-http-upgrade-fast-open,omitempty"`
 }
 
+type gostObfsOption struct {
+	Mode           string            `obfs:"mode"`
+	Host           string            `obfs:"host,omitempty"`
+	Path           string            `obfs:"path,omitempty"`
+	TLS            bool              `obfs:"tls,omitempty"`
+	Fingerprint    string            `obfs:"fingerprint,omitempty"`
+	Headers        map[string]string `obfs:"headers,omitempty"`
+	SkipCertVerify bool              `obfs:"skip-cert-verify,omitempty"`
+	Mux            bool              `obfs:"mux,omitempty"`
+}
+
 type shadowTLSOption struct {
 	Password       string `obfs:"password"`
 	Host           string `obfs:"host"`
@@ -97,7 +110,13 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 		c = obfs.NewHTTPObfs(c, ss.obfsOption.Host, port)
 	case "websocket":
 		var err error
-		c, err = v2rayObfs.NewV2rayObfs(ctx, c, ss.v2rayOption)
+		if ss.v2rayOption != nil {
+			c, err = v2rayObfs.NewV2rayObfs(ctx, c, ss.v2rayOption)
+		} else if ss.gostOption != nil {
+			c, err = gost.NewGostWebsocket(ctx, c, ss.gostOption)
+		} else {
+			return nil, fmt.Errorf("plugin options is required")
+		}
 		if err != nil {
 			return nil, fmt.Errorf("%s connect error: %w", ss.addr, err)
 		}
@@ -240,6 +259,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 	}
 
 	var v2rayOption *v2rayObfs.Option
+	var gostOption *gost.Option
 	var obfsOption *simpleObfsOption
 	var shadowTLSOpt *shadowtls.ShadowTLSOption
 	var restlsConfig *restlsC.Config
@@ -280,6 +300,28 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			v2rayOption.TLS = true
 			v2rayOption.SkipCertVerify = opts.SkipCertVerify
 			v2rayOption.Fingerprint = opts.Fingerprint
+		}
+	} else if option.Plugin == "gost-plugin" {
+		opts := gostObfsOption{Host: "bing.com", Mux: true}
+		if err := decoder.Decode(option.PluginOpts, &opts); err != nil {
+			return nil, fmt.Errorf("ss %s initialize gost-plugin error: %w", addr, err)
+		}
+
+		if opts.Mode != "websocket" {
+			return nil, fmt.Errorf("ss %s obfs mode error: %s", addr, opts.Mode)
+		}
+		obfsMode = opts.Mode
+		gostOption = &gost.Option{
+			Host:    opts.Host,
+			Path:    opts.Path,
+			Headers: opts.Headers,
+			Mux:     opts.Mux,
+		}
+
+		if opts.TLS {
+			gostOption.TLS = true
+			gostOption.SkipCertVerify = opts.SkipCertVerify
+			gostOption.Fingerprint = opts.Fingerprint
 		}
 	} else if option.Plugin == shadowtls.Mode {
 		obfsMode = shadowtls.Mode
@@ -336,6 +378,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 		option:          &option,
 		obfsMode:        obfsMode,
 		v2rayOption:     v2rayOption,
+		gostOption:      gostOption,
 		obfsOption:      obfsOption,
 		shadowTLSOption: shadowTLSOpt,
 		restlsConfig:    restlsConfig,

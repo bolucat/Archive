@@ -378,12 +378,14 @@ func handleUDPConn(packet C.PacketAdapter) {
 		return
 	}
 
-	if sniffingEnable && snifferDispatcher.Enable() {
-		snifferDispatcher.UDPSniff(packet)
-	}
-
 	key := packet.Key()
-	sender, loaded := natTable.GetOrCreate(key, newPacketSender)
+	sender, loaded := natTable.GetOrCreate(key, func() C.PacketSender {
+		sender := newPacketSender()
+		if sniffingEnable && snifferDispatcher.Enable() {
+			return snifferDispatcher.UDPSniff(packet, sender)
+		}
+		return sender
+	})
 	if !loaded {
 		dial := func() (C.PacketConn, C.WriteBackProxy, error) {
 			if err := sender.ResolveUDP(metadata); err != nil {

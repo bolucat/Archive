@@ -1,7 +1,9 @@
-use crate::config::{Config, IVerge};
-use crate::core::{handle, hotkey, sysopt, tray, CoreManager};
-use crate::log_err;
-use crate::utils::resolve;
+use crate::{
+    config::{Config, IVerge},
+    core::{handle, hotkey, sysopt, tray, CoreManager},
+    log_err,
+    utils::resolve,
+};
 use anyhow::Result;
 use serde_yaml::Mapping;
 use tauri::Manager;
@@ -73,6 +75,7 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     let http_port = patch.verge_port;
     let enable_tray_speed = patch.enable_tray_speed;
     let enable_global_hotkey = patch.enable_global_hotkey;
+    let tray_event = patch.tray_event;
 
     let res: std::result::Result<(), anyhow::Error> = {
         let mut should_restart_core = false;
@@ -84,6 +87,7 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
         let mut should_update_hotkey = false;
         let mut should_update_systray_menu = false;
         let mut should_update_systray_tooltip = false;
+        let mut should_update_systray_click_behavior = false;
 
         if tun_mode.is_some() {
             should_update_clash_config = true;
@@ -145,6 +149,10 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
             should_update_systray_icon = true;
         }
 
+        if tray_event.is_some() {
+            should_update_systray_click_behavior = true;
+        }
+
         if should_restart_core {
             CoreManager::global().restart_core().await?;
         }
@@ -178,6 +186,10 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
 
         if should_update_systray_tooltip {
             tray::Tray::global().update_tooltip()?;
+        }
+
+        if should_update_systray_click_behavior {
+            tray::Tray::global().update_click_behavior()?;
         }
 
         // 处理轻量模式切换

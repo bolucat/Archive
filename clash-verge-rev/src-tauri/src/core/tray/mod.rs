@@ -66,12 +66,18 @@ impl Tray {
     }
 
     pub fn create_systray(&self, app: &App) -> Result<()> {
-        let builder = TrayIconBuilder::with_id("main")
+        let mut builder = TrayIconBuilder::with_id("main")
             .icon(app.default_window_icon().unwrap().clone())
             .icon_as_template(false);
 
         #[cfg(any(target_os = "macos", target_os = "windows"))]
-        let builder = builder.show_menu_on_left_click(false);
+        {
+            let tray_event = { Config::verge().latest().tray_event.clone() };
+            let tray_event: String = tray_event.unwrap_or("main_window".into());
+            if tray_event.as_str() != "tray_menu" {
+                builder = builder.show_menu_on_left_click(false);
+            }
+        }
 
         let tray = builder.build(app)?;
 
@@ -79,22 +85,6 @@ impl Tray {
             let tray_event = { Config::verge().latest().tray_event.clone() };
             let tray_event: String = tray_event.unwrap_or("main_window".into());
 
-            #[cfg(target_os = "macos")]
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Down,
-                ..
-            } = event
-            {
-                match tray_event.as_str() {
-                    "system_proxy" => feat::toggle_system_proxy(),
-                    "tun_mode" => feat::toggle_tun_mode(None),
-                    "main_window" => resolve::create_window(),
-                    _ => {}
-                }
-            }
-
-            #[cfg(not(target_os = "macos"))]
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Down,
@@ -110,6 +100,19 @@ impl Tray {
             }
         });
         tray.on_menu_event(on_menu_event);
+        Ok(())
+    }
+
+    /// 更新托盘点击行为
+    pub fn update_click_behavior(&self) -> Result<()> {
+        let app_handle = handle::Handle::global().app_handle().unwrap();
+        let tray_event = { Config::verge().latest().tray_event.clone() };
+        let tray_event: String = tray_event.unwrap_or("main_window".into());
+        let tray = app_handle.tray_by_id("main").unwrap();
+        match tray_event.as_str() {
+            "tray_menu" => tray.set_show_menu_on_left_click(true)?,
+            _ => tray.set_show_menu_on_left_click(false)?,
+        }
         Ok(())
     }
 
@@ -131,7 +134,7 @@ impl Tray {
         let profile_uid_and_name = Config::profiles()
             .data()
             .all_profile_uid_and_name()
-            .unwrap_or(Vec::new());
+            .unwrap_or_default();
 
         let tray = app_handle.tray_by_id("main").unwrap();
         let _ = tray.set_menu(Some(create_tray_menu(
@@ -405,8 +408,8 @@ fn create_tray_menu(
                 .is_current_profile_index(profile_uid.to_string());
             CheckMenuItem::with_id(
                 app_handle,
-                &format!("profiles_{}", profile_uid),
-                t(&profile_name),
+                format!("profiles_{}", profile_uid),
+                t(profile_name),
                 true,
                 is_current_profile,
                 None::<&str>,

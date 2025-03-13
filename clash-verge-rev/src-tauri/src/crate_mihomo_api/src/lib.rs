@@ -15,7 +15,7 @@ impl MihomoManager {
                 proxies: serde_json::Value::Null,
                 providers_proxies: serde_json::Value::Null,
             })),
-            headers: headers,
+            headers,
         }
     }
 
@@ -52,7 +52,7 @@ impl MihomoManager {
         let client_response = reqwest::ClientBuilder::new()
             .default_headers(self.headers.clone())
             .no_proxy()
-            .timeout(Duration::from_secs(2))
+            .timeout(Duration::from_secs(60))
             .build()
             .map_err(|e| e.to_string())?
             .request(
@@ -76,7 +76,7 @@ impl MihomoManager {
             client_response.text().await.map(|text| json!(text))
         }
         .map_err(|e| e.to_string())?;
-        return Ok(response);
+        Ok(response)
     }
 
     pub async fn refresh_proxies(&self) -> Result<&Self, String> {
@@ -129,6 +129,6 @@ impl MihomoManager {
             self.mihomo_server, name, test_url, timeout
         );
         let response = self.send_request("GET", url, None).await?;
-        return Ok(response);
+        Ok(response)
     }
 }
