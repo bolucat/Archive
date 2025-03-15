@@ -4,7 +4,14 @@ icon: material/alert-decagram
 
 #### 1.12.0-alpha.16
 
+* Update `domain_resolver` behavior **1**
 * Fixes and improvements
+
+**1**:
+
+`route.default_domain_resolver` or `outbound.domain_resolver` is now optional when only one DNS server is configured.
+
+See [Dial Fields](/configuration/shared/dial/#domain_resolver).
 
 ### 1.11.5
 

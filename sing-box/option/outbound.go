@@ -99,7 +99,9 @@ type _DomainResolveOptions struct {
 type DomainResolveOptions _DomainResolveOptions
 
 func (o DomainResolveOptions) MarshalJSON() ([]byte, error) {
-	if o.Strategy == DomainStrategy(C.DomainStrategyAsIS) &&
+	if o.Server == "" {
+		return []byte("{}"), nil
+	} else if o.Strategy == DomainStrategy(C.DomainStrategyAsIS) &&
 		!o.DisableCache &&
 		o.RewriteTTL == nil &&
 		o.ClientSubnet == nil {
@@ -116,7 +118,14 @@ func (o *DomainResolveOptions) UnmarshalJSON(bytes []byte) error {
 		o.Server = stringValue
 		return nil
 	}
-	return json.Unmarshal(bytes, (*_DomainResolveOptions)(o))
+	err = json.Unmarshal(bytes, (*_DomainResolveOptions)(o))
+	if err != nil {
+		return err
+	}
+	if o.Server == "" {
+		return E.New("empty domain_resolver.server")
+	}
+	return nil
 }
 
 func (o *DialerOptions) TakeDialerOptions() DialerOptions {
