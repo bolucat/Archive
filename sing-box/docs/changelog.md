@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-alpha.17
+
+* Add NTP sniffer **1**
+* Fixes and improvements
+
+**1**:
+
+See [Protocol Sniff](/configuration/route/sniff/).
+
 #### 1.12.0-alpha.16
 
 * Update `domain_resolver` behavior **1**
