@@ -3,8 +3,9 @@
 package dns
 
 import (
-	"net"
+	"net/netip"
 	"os"
+	"strconv"
 	"syscall"
 	"unsafe"
 
@@ -23,28 +24,31 @@ func dnsReadConfig() (servers []string, err error) {
 			if err != nil {
 				continue
 			}
-			var ip net.IP
+			var ip netip.Addr
 			switch sa := sa.(type) {
 			case *syscall.SockaddrInet4:
-				ip = net.IPv4(sa.Addr[0], sa.Addr[1], sa.Addr[2], sa.Addr[3])
+				ip = netip.AddrFrom4(sa.Addr)
 			case *syscall.SockaddrInet6:
-				ip = make(net.IP, net.IPv6len)
-				copy(ip, sa.Addr[:])
-				if ip[0] == 0xfe && ip[1] == 0xc0 {
+				if sa.Addr[0] == 0xfe && sa.Addr[1] == 0xc0 {
 					// Ignore these fec0/10 ones. Windows seems to
 					// populate them as defaults on its misc rando
 					// interfaces.
 					continue
+				}
+				ip = netip.AddrFrom16(sa.Addr)
+				if sa.ZoneId != 0 {
+					ip = ip.WithZone(strconv.FormatInt(int64(sa.ZoneId), 10))
 				}
 				//continue
 			default:
 				// Unexpected type.
 				continue
 			}
-			if slices.Contains(servers, ip.String()) {
+			ipStr := ip.String()
+			if slices.Contains(servers, ipStr) {
 				continue
 			}
-			servers = append(servers, ip.String())
+			servers = append(servers, ipStr)
 		}
 	}
 	return

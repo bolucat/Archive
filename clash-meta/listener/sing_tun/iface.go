@@ -1,7 +1,6 @@
 package sing_tun
 
 import (
-	"errors"
 	"net"
 	"net/netip"
 
@@ -16,7 +15,8 @@ var DefaultInterfaceFinder control.InterfaceFinder = (*defaultInterfaceFinder)(n
 
 func (f *defaultInterfaceFinder) Update() error {
 	iface.FlushCache()
-	return nil
+	_, err := iface.Interfaces()
+	return err
 }
 
 func (f *defaultInterfaceFinder) Interfaces() []control.Interface {
@@ -32,27 +32,19 @@ func (f *defaultInterfaceFinder) Interfaces() []control.Interface {
 	return interfaces
 }
 
-var errNoSuchInterface = errors.New("no such network interface")
-
 func (f *defaultInterfaceFinder) ByName(name string) (*control.Interface, error) {
-	ifaces, err := iface.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	for _, netInterface := range ifaces {
-		if netInterface.Name == name {
-			return (*control.Interface)(netInterface), nil
-		}
-	}
-	_, err = net.InterfaceByName(name)
+	netInterface, err := iface.ResolveInterface(name)
 	if err == nil {
+		return (*control.Interface)(netInterface), nil
+	}
+	if _, err := net.InterfaceByName(name); err == nil {
 		err = f.Update()
 		if err != nil {
 			return nil, err
 		}
 		return f.ByName(name)
 	}
-	return nil, errNoSuchInterface
+	return nil, err
 }
 
 func (f *defaultInterfaceFinder) ByIndex(index int) (*control.Interface, error) {
@@ -73,20 +65,13 @@ func (f *defaultInterfaceFinder) ByIndex(index int) (*control.Interface, error) 
 		}
 		return f.ByIndex(index)
 	}
-	return nil, errNoSuchInterface
+	return nil, iface.ErrIfaceNotFound
 }
 
 func (f *defaultInterfaceFinder) ByAddr(addr netip.Addr) (*control.Interface, error) {
-	ifaces, err := iface.Interfaces()
+	netInterface, err := iface.ResolveInterfaceByAddr(addr)
 	if err != nil {
 		return nil, err
 	}
-	for _, netInterface := range ifaces {
-		for _, prefix := range netInterface.Addresses {
-			if prefix.Contains(addr) {
-				return (*control.Interface)(netInterface), nil
-			}
-		}
-	}
-	return nil, errNoSuchInterface
+	return (*control.Interface)(netInterface), nil
 }

@@ -54,7 +54,11 @@ func (c *enhanceUDPConn) WaitReadFrom() (data []byte, put func(), addr net.Addr,
 				addr = &net.UDPAddr{IP: ip[:], Port: from.Port}
 			case *windows.SockaddrInet6:
 				ip := from.Addr // copy from.Addr; ip escapes, so this line allocates 16 bytes
-				addr = &net.UDPAddr{IP: ip[:], Port: from.Port, Zone: strconv.FormatInt(int64(from.ZoneId), 10)}
+				zone := ""
+				if from.ZoneId != 0 {
+					zone = strconv.FormatInt(int64(from.ZoneId), 10)
+				}
+				addr = &net.UDPAddr{IP: ip[:], Port: from.Port, Zone: zone}
 			}
 		}
 		// udp should not convert readN == 0 to io.EOF

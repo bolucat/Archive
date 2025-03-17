@@ -118,6 +118,16 @@ export async function getAutotemProxy() {
   }>("get_auto_proxy");
 }
 
+export async function getAutoLaunchStatus() {
+  try {
+    return await invoke<boolean>("get_auto_launch_status");
+  } catch (error) {
+    console.error("获取自启动状态失败:", error);
+    // 出错时返回false作为默认值
+    return false;
+  }
+}
+
 export async function changeClashCore(clashCore: string) {
   return invoke<string | null>("change_clash_core", { clashCore });
 }

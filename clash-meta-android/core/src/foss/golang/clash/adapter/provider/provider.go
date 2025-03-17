@@ -326,13 +326,6 @@ func (cp *CompatibleProvider) Close() error {
 	return cp.compatibleProvider.Close()
 }
 
-func proxiesOnUpdate(pd *proxySetProvider) func([]C.Proxy) {
-	return func(elm []C.Proxy) {
-		pd.setProxies(elm)
-		pd.version += 1
-	}
-}
-
 func NewProxiesParser(filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema) (resource.Parser[[]C.Proxy], error) {
 	excludeFilterReg, err := regexp2.Compile(excludeFilter, regexp2.None)
 	if err != nil {

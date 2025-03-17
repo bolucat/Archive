@@ -1,5 +1,5 @@
 import useSWR, { mutate } from "swr";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   SettingsRounded,
@@ -20,6 +20,7 @@ import {
   getAutotemProxy,
   getRunningMode,
   installService,
+  getAutoLaunchStatus,
 } from "@/services/cmds";
 import { useLockFn } from "ahooks";
 import { Box, Button, Tooltip } from "@mui/material";
@@ -39,6 +40,15 @@ const SettingSystem = ({ onError }: Props) => {
     "getRunningMode",
     getRunningMode,
   );
+  const { data: autoLaunchEnabled } = useSWR("getAutoLaunchStatus", getAutoLaunchStatus);
+
+  // 当实际自启动状态与配置不同步时更新配置
+  useEffect(() => {
+    if (autoLaunchEnabled !== undefined && verge && verge.enable_auto_launch !== autoLaunchEnabled) {
+      // 静默更新配置，不触发UI刷新
+      mutateVerge({ ...verge, enable_auto_launch: autoLaunchEnabled }, false);
+    }
+  }, [autoLaunchEnabled]);
 
   // 是否以sidecar模式运行
   const isSidecarMode = runningMode === "sidecar";
@@ -181,7 +191,20 @@ const SettingSystem = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onChange={(e) => onChangeData({ enable_auto_launch: e })}
-          onGuard={(e) => patchVerge({ enable_auto_launch: e })}
+          onGuard={async (e) => {
+            try {
+              // 在应用更改之前先触发UI更新，让用户立即看到反馈
+              onChangeData({ enable_auto_launch: e });
+              await patchVerge({ enable_auto_launch: e });
+              // 更新实际状态
+              await mutate("getAutoLaunchStatus");
+              return Promise.resolve();
+            } catch (error) {
+              // 如果出错，恢复原始状态
+              onChangeData({ enable_auto_launch: !e });
+              return Promise.reject(error);
+            }
+          }}
         >
           <Switch edge="end" />
         </GuardState>

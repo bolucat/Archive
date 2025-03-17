@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -148,4 +149,25 @@ func (ranges IntRanges[T]) Range(f func(t T) bool) {
 			}
 		}
 	}
+}
+
+func (ranges IntRanges[T]) Merge() (mergedRanges IntRanges[T]) {
+	if len(ranges) == 0 {
+		return
+	}
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i].Start() < ranges[j].Start()
+	})
+	mergedRanges = ranges[:1]
+	var rangeIndex int
+	for _, r := range ranges[1:] {
+		if mergedRanges[rangeIndex].End()+1 > mergedRanges[rangeIndex].End() && // integer overflow
+			r.Start() > mergedRanges[rangeIndex].End()+1 {
+			mergedRanges = append(mergedRanges, r)
+			rangeIndex++
+		} else if r.End() > mergedRanges[rangeIndex].End() {
+			mergedRanges[rangeIndex].end = r.End()
+		}
+	}
+	return
 }

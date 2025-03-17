@@ -207,9 +207,9 @@
   "System Proxy Disabled": "系统代理已关闭，建议大多数用户打开此选项",
   "TUN Mode Service Required": "TUN模式需要服务模式，请先安装服务",
   "TUN Mode Intercept Info": "TUN模式可以接管所有应用流量，适用于特殊应用",
-  "Rule Mode Description": "基于预设规则智能判断流量走向，提供灵活的代理策略",
-  "Global Mode Description": "所有流量均通过代理服务器，适用于需要全局科学上网的场景",
-  "Direct Mode Description": "所有流量不经过代理节点，但经过Clash内核转发连接目标服务器，适用于需要通过内核进行分流的特定场景",
+  "rule Mode Description": "基于预设规则智能判断流量走向，提供灵活的代理策略",
+  "global Mode Description": "所有流量均通过代理服务器，适用于需要全局科学上网的场景",
+  "direct Mode Description": "所有流量不经过代理节点，但经过Clash内核转发连接目标服务器，适用于需要通过内核进行分流的特定场景",
   "Stack": "TUN 模式堆栈",
   "System and Mixed Can Only be Used in Service Mode": "System 和 Mixed 只能在服务模式下使用",
   "Device": "TUN 网卡名称",
@@ -479,7 +479,7 @@
   "Service Administrator Prompt": "Clash Verge 需要使用管理员权限来重新安装系统服务",
   "DNS Settings": "DNS 设置",
   "DNS Overwrite": "DNS 覆写",
-  "DNS Settings Warning": "如果你不清楚这里的设置请不要修改，并保持 DNS 设置开启",
+  "DNS Settings Warning": "如果你不清楚这里的设置请不要修改，并保持 DNS 覆写开启",
   "Enable DNS": "启用 DNS",
   "DNS Listen": "DNS 监听地址",
   "Enhanced Mode": "增强模式",
@@ -565,5 +565,9 @@
   "Failed": "测试失败",
   "Completed": "检测完成",
   "Bahamut Anime": "动画疯",
-  "Disallowed ISP": "不允许的 ISP"
+  "Disallowed ISP": "不允许的 ISP",
+  "Originals Only": "仅限原创",
+  "No (IP Banned By Disney+)": "不支持（IP被Disney+禁止）",
+  "Unsupported Country": "不支持的国家",
+  "Failed (Network Connection)": "测试失败（网络连接问题）"
 }
