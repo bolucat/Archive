@@ -19,6 +19,7 @@ import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.v2RayApplication
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.AppManagerUtil
+import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -154,7 +155,7 @@ class PerAppProxyActivity : BaseActivity() {
         toast(R.string.msg_downloading_content)
         val url = AppConfig.androidpackagenamelistUrl
         lifecycleScope.launch(Dispatchers.IO) {
-            val content = Utils.getUrlContext(url, 5000)
+            val content = HttpUtil.getUrlContent(url, 5000)
             launch(Dispatchers.Main) {
                 Log.d(ANG_PACKAGE, content)
                 selectProxyApp(content, true)

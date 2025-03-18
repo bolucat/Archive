@@ -3,6 +3,8 @@ package listener
 import (
 	"net"
 	"net/netip"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -13,6 +15,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/metacubex/tfo-go"
+	"github.com/vishvananda/netns"
 )
 
 func (l *Listener) ListenTCP() (net.Listener, error) {
@@ -36,6 +39,29 @@ func (l *Listener) ListenTCP() (net.Listener, error) {
 			return nil, E.New("MultiPath TCP requires go1.21, please recompile your binary.")
 		}
 		setMultiPathTCP(&listenConfig)
+	}
+	if l.listenOptions.NetNs != "" {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+		currentNs, err := netns.Get()
+		if err != nil {
+			return nil, E.Cause(err, "get current netns")
+		}
+		defer netns.Set(currentNs)
+		var targetNs netns.NsHandle
+		if strings.HasPrefix(l.listenOptions.NetNs, "/") {
+			targetNs, err = netns.GetFromPath(l.listenOptions.NetNs)
+		} else {
+			targetNs, err = netns.GetFromName(l.listenOptions.NetNs)
+		}
+		if err != nil {
+			return nil, E.Cause(err, "get netns ", l.listenOptions.NetNs)
+		}
+		defer targetNs.Close()
+		err = netns.Set(targetNs)
+		if err != nil {
+			return nil, E.Cause(err, "set netns to ", l.listenOptions.NetNs)
+		}
 	}
 	if l.listenOptions.TCPFastOpen {
 		var tfoConfig tfo.ListenConfig

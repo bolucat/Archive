@@ -32,7 +32,7 @@ require (
 	github.com/metacubex/sing-vmess v0.1.14-0.20250228002636-abc39e113b82
 	github.com/metacubex/sing-wireguard v0.0.0-20241126021510-0827d417b589
 	github.com/metacubex/tfo-go v0.0.0-20241231083714-66613d49c422
-	github.com/metacubex/utls v1.6.6
+	github.com/metacubex/utls v1.6.8-alpha.4
 	github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181
 	github.com/miekg/dns v1.1.63
 	github.com/mroth/weightedrand/v2 v2.1.0

@@ -1,7 +1,6 @@
 package com.v2ray.ang.ui
 
 import android.Manifest
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -39,6 +38,7 @@ import com.v2ray.ang.handler.MigrateManager
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.service.V2RayServiceManager
+import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +46,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.drakeet.support.toast.ToastCompat
-import java.util.concurrent.TimeUnit
 
 class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedListener {
     private val binding by lazy {
@@ -141,7 +140,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
 
         binding.fab.setOnClickListener {
             if (mainViewModel.isRunning.value == true) {
-                Utils.stopVService(this)
+                V2RayServiceManager.stopVService(this)
             } else if ((MmkvManager.decodeSettingsString(AppConfig.PREF_MODE) ?: VPN) == VPN) {
                 val intent = VpnService.prepare(this)
                 if (intent == null) {
@@ -270,12 +269,12 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             toast(R.string.title_file_chooser)
             return
         }
-        V2RayServiceManager.startV2Ray(this)
+        V2RayServiceManager.startVService(this)
     }
 
     fun restartV2Ray() {
         if (mainViewModel.isRunning.value == true) {
-            Utils.stopVService(this)
+            V2RayServiceManager.stopVService(this)
         }
         lifecycleScope.launch {
             delay(500)
@@ -626,7 +625,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
             }
             lifecycleScope.launch(Dispatchers.IO) {
                 val configText = try {
-                    Utils.getUrlContentWithCustomUserAgent(url)
+                    HttpUtil.getUrlContentWithUserAgent(url)
                 } catch (e: Exception) {
                     e.printStackTrace()
                     ""

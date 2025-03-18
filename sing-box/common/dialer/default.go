@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,8 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
+
+	"github.com/vishvananda/netns"
 )
 
 var (
@@ -35,6 +39,7 @@ type DefaultDialer struct {
 	udpListener            net.ListenConfig
 	udpAddr4               string
 	udpAddr6               string
+	netns                  string
 	networkManager         adapter.NetworkManager
 	networkStrategy        *C.NetworkStrategy
 	defaultNetworkStrategy bool
@@ -198,6 +203,7 @@ func NewDefault(ctx context.Context, options option.DialerOptions) (*DefaultDial
 		udpListener:            listener,
 		udpAddr4:               udpAddr4,
 		udpAddr6:               udpAddr6,
+		netns:                  options.NetNs,
 		networkManager:         networkManager,
 		networkStrategy:        networkStrategy,
 		defaultNetworkStrategy: defaultNetworkStrategy,
@@ -214,6 +220,29 @@ func (d *DefaultDialer) DialContext(ctx context.Context, network string, address
 		return nil, E.New("domain not resolved")
 	}
 	if d.networkStrategy == nil {
+		if d.netns != "" {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			currentNs, err := netns.Get()
+			if err != nil {
+				return nil, E.Cause(err, "get current netns")
+			}
+			defer netns.Set(currentNs)
+			var targetNs netns.NsHandle
+			if strings.HasPrefix(d.netns, "/") {
+				targetNs, err = netns.GetFromPath(d.netns)
+			} else {
+				targetNs, err = netns.GetFromName(d.netns)
+			}
+			if err != nil {
+				return nil, E.Cause(err, "get netns ", d.netns)
+			}
+			defer targetNs.Close()
+			err = netns.Set(targetNs)
+			if err != nil {
+				return nil, E.Cause(err, "set netns to ", d.netns)
+			}
+		}
 		switch N.NetworkName(network) {
 		case N.NetworkUDP:
 			if !address.IsIPv6() {
@@ -282,6 +311,29 @@ func (d *DefaultDialer) DialParallelInterface(ctx context.Context, network strin
 
 func (d *DefaultDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	if d.networkStrategy == nil {
+		if d.netns != "" {
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			currentNs, err := netns.Get()
+			if err != nil {
+				return nil, E.Cause(err, "get current netns")
+			}
+			defer netns.Set(currentNs)
+			var targetNs netns.NsHandle
+			if strings.HasPrefix(d.netns, "/") {
+				targetNs, err = netns.GetFromPath(d.netns)
+			} else {
+				targetNs, err = netns.GetFromName(d.netns)
+			}
+			if err != nil {
+				return nil, E.Cause(err, "get netns ", d.netns)
+			}
+			defer targetNs.Close()
+			err = netns.Set(targetNs)
+			if err != nil {
+				return nil, E.Cause(err, "set netns to ", d.netns)
+			}
+		}
 		if destination.IsIPv6() {
 			return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr6))
 		} else if destination.IsIPv4() && !destination.Addr.IsUnspecified() {

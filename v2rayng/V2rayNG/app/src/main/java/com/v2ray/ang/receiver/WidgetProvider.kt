@@ -11,7 +11,6 @@ import android.widget.RemoteViews
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.service.V2RayServiceManager
-import com.v2ray.ang.util.Utils
 
 class WidgetProvider : AppWidgetProvider() {
     /**
@@ -19,7 +18,7 @@ class WidgetProvider : AppWidgetProvider() {
      */
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
-        updateWidgetBackground(context, appWidgetManager, appWidgetIds, V2RayServiceManager.v2rayPoint.isRunning)
+        updateWidgetBackground(context, appWidgetManager, appWidgetIds, V2RayServiceManager.isRunning())
     }
 
 
@@ -57,10 +56,10 @@ class WidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (AppConfig.BROADCAST_ACTION_WIDGET_CLICK == intent.action) {
-            if (V2RayServiceManager.v2rayPoint.isRunning) {
-                Utils.stopVService(context)
+            if (V2RayServiceManager.isRunning()) {
+                V2RayServiceManager.stopVService(context)
             } else {
-                Utils.startVServiceFromToggle(context)
+                V2RayServiceManager.startVServiceFromToggle(context)
             }
         } else if (AppConfig.BROADCAST_ACTION_ACTIVITY == intent.action) {
             AppWidgetManager.getInstance(context)?.let { manager ->
