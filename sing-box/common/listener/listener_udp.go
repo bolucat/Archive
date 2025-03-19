@@ -1,19 +1,16 @@
 package listener
 
 import (
+	"context"
 	"net"
 	"net/netip"
 	"os"
-	"runtime"
-	"strings"
 
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-
-	"github.com/vishvananda/netns"
 )
 
 func (l *Listener) ListenUDP() (net.PacketConn, error) {
@@ -28,30 +25,9 @@ func (l *Listener) ListenUDP() (net.PacketConn, error) {
 	if !udpFragment {
 		lc.Control = control.Append(lc.Control, control.DisableUDPFragment())
 	}
-	if l.listenOptions.NetNs != "" {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		currentNs, err := netns.Get()
-		if err != nil {
-			return nil, E.Cause(err, "get current netns")
-		}
-		defer netns.Set(currentNs)
-		var targetNs netns.NsHandle
-		if strings.HasPrefix(l.listenOptions.NetNs, "/") {
-			targetNs, err = netns.GetFromPath(l.listenOptions.NetNs)
-		} else {
-			targetNs, err = netns.GetFromName(l.listenOptions.NetNs)
-		}
-		if err != nil {
-			return nil, E.Cause(err, "get netns ", l.listenOptions.NetNs)
-		}
-		defer targetNs.Close()
-		err = netns.Set(targetNs)
-		if err != nil {
-			return nil, E.Cause(err, "set netns to ", l.listenOptions.NetNs)
-		}
-	}
-	udpConn, err := lc.ListenPacket(l.ctx, M.NetworkFromNetAddr(N.NetworkUDP, bindAddr.Addr), bindAddr.String())
+	udpConn, err := ListenNetworkNamespace[net.PacketConn](l.listenOptions.NetNs, func() (net.PacketConn, error) {
+		return lc.ListenPacket(l.ctx, M.NetworkFromNetAddr(N.NetworkUDP, bindAddr.Addr), bindAddr.String())
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -59,6 +35,13 @@ func (l *Listener) ListenUDP() (net.PacketConn, error) {
 	l.udpAddr = bindAddr
 	l.logger.Info("udp server started at ", udpConn.LocalAddr())
 	return udpConn, err
+}
+
+func (l *Listener) ListenPacket(ctx context.Context, network string, address string) (net.PacketConn, error) {
+	return ListenNetworkNamespace[net.PacketConn](l.listenOptions.NetNs, func() (net.PacketConn, error) {
+		var listenConfig net.ListenConfig
+		return listenConfig.ListenPacket(ctx, network, address)
+	})
 }
 
 func (l *Listener) UDPAddr() M.Socksaddr {

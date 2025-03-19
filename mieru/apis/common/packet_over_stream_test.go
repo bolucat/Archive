@@ -24,8 +24,8 @@ import (
 
 func TestUDPAssociateTunnelConn(t *testing.T) {
 	in, out := testtool.BufPipe()
-	inConn := common.WrapPacketOverStream(in)
-	outConn := common.WrapPacketOverStream(out)
+	inConn := common.NewPacketOverStreamTunnel(in)
+	outConn := common.NewPacketOverStreamTunnel(out)
 
 	data := []byte{8, 9, 6, 4}
 	n, err := inConn.Write(data)

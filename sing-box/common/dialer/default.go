@@ -5,13 +5,12 @@ import (
 	"errors"
 	"net"
 	"net/netip"
-	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/conntrack"
+	"github.com/sagernet/sing-box/common/listener"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
 	"github.com/sagernet/sing-box/option"
@@ -22,8 +21,6 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
-
-	"github.com/vishvananda/netns"
 )
 
 var (
@@ -220,42 +217,21 @@ func (d *DefaultDialer) DialContext(ctx context.Context, network string, address
 		return nil, E.New("domain not resolved")
 	}
 	if d.networkStrategy == nil {
-		if d.netns != "" {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			currentNs, err := netns.Get()
-			if err != nil {
-				return nil, E.Cause(err, "get current netns")
+		return trackConn(listener.ListenNetworkNamespace[net.Conn](d.netns, func() (net.Conn, error) {
+			switch N.NetworkName(network) {
+			case N.NetworkUDP:
+				if !address.IsIPv6() {
+					return d.udpDialer4.DialContext(ctx, network, address.String())
+				} else {
+					return d.udpDialer6.DialContext(ctx, network, address.String())
+				}
 			}
-			defer netns.Set(currentNs)
-			var targetNs netns.NsHandle
-			if strings.HasPrefix(d.netns, "/") {
-				targetNs, err = netns.GetFromPath(d.netns)
-			} else {
-				targetNs, err = netns.GetFromName(d.netns)
-			}
-			if err != nil {
-				return nil, E.Cause(err, "get netns ", d.netns)
-			}
-			defer targetNs.Close()
-			err = netns.Set(targetNs)
-			if err != nil {
-				return nil, E.Cause(err, "set netns to ", d.netns)
-			}
-		}
-		switch N.NetworkName(network) {
-		case N.NetworkUDP:
 			if !address.IsIPv6() {
-				return trackConn(d.udpDialer4.DialContext(ctx, network, address.String()))
+				return DialSlowContext(&d.dialer4, ctx, network, address)
 			} else {
-				return trackConn(d.udpDialer6.DialContext(ctx, network, address.String()))
+				return DialSlowContext(&d.dialer6, ctx, network, address)
 			}
-		}
-		if !address.IsIPv6() {
-			return trackConn(DialSlowContext(&d.dialer4, ctx, network, address))
-		} else {
-			return trackConn(DialSlowContext(&d.dialer6, ctx, network, address))
-		}
+		}))
 	} else {
 		return d.DialParallelInterface(ctx, network, address, d.networkStrategy, d.networkType, d.fallbackNetworkType, d.networkFallbackDelay)
 	}
@@ -311,36 +287,15 @@ func (d *DefaultDialer) DialParallelInterface(ctx context.Context, network strin
 
 func (d *DefaultDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	if d.networkStrategy == nil {
-		if d.netns != "" {
-			runtime.LockOSThread()
-			defer runtime.UnlockOSThread()
-			currentNs, err := netns.Get()
-			if err != nil {
-				return nil, E.Cause(err, "get current netns")
-			}
-			defer netns.Set(currentNs)
-			var targetNs netns.NsHandle
-			if strings.HasPrefix(d.netns, "/") {
-				targetNs, err = netns.GetFromPath(d.netns)
+		return trackPacketConn(listener.ListenNetworkNamespace[net.PacketConn](d.netns, func() (net.PacketConn, error) {
+			if destination.IsIPv6() {
+				return d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr6)
+			} else if destination.IsIPv4() && !destination.Addr.IsUnspecified() {
+				return d.udpListener.ListenPacket(ctx, N.NetworkUDP+"4", d.udpAddr4)
 			} else {
-				targetNs, err = netns.GetFromName(d.netns)
+				return d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr4)
 			}
-			if err != nil {
-				return nil, E.Cause(err, "get netns ", d.netns)
-			}
-			defer targetNs.Close()
-			err = netns.Set(targetNs)
-			if err != nil {
-				return nil, E.Cause(err, "set netns to ", d.netns)
-			}
-		}
-		if destination.IsIPv6() {
-			return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr6))
-		} else if destination.IsIPv4() && !destination.Addr.IsUnspecified() {
-			return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP+"4", d.udpAddr4))
-		} else {
-			return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr4))
-		}
+		}))
 	} else {
 		return d.ListenSerialInterfacePacket(ctx, destination, d.networkStrategy, d.networkType, d.fallbackNetworkType, d.networkFallbackDelay)
 	}

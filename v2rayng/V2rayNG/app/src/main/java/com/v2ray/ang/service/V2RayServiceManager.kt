@@ -15,6 +15,7 @@ import com.v2ray.ang.dto.EConfigType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.V2rayConfigManager
 import com.v2ray.ang.util.MessageUtil
 import com.v2ray.ang.util.PluginUtil
@@ -41,6 +42,11 @@ object V2RayServiceManager {
             Libv2ray.initV2Env(Utils.userAssetPath(value?.get()?.getService()), Utils.getDeviceIdForXUDPBaseKey())
         }
 
+    /**
+     * Starts the V2Ray service from a toggle action.
+     * @param context The context from which the service is started.
+     * @return True if the service was started successfully, false otherwise.
+     */
     fun startVServiceFromToggle(context: Context): Boolean {
         if (MmkvManager.getSelectServer().isNullOrEmpty()) {
             context.toast(R.string.app_tile_first_use)
@@ -50,6 +56,11 @@ object V2RayServiceManager {
         return true
     }
 
+    /**
+     * Starts the V2Ray service.
+     * @param context The context from which the service is started.
+     * @param guid The GUID of the server configuration to use (optional).
+     */
     fun startVService(context: Context, guid: String? = null) {
         if (guid != null) {
             MmkvManager.setSelectServer(guid)
@@ -57,15 +68,31 @@ object V2RayServiceManager {
         startContextService(context)
     }
 
+    /**
+     * Stops the V2Ray service.
+     * @param context The context from which the service is stopped.
+     */
     fun stopVService(context: Context) {
         context.toast(R.string.toast_services_stop)
         MessageUtil.sendMsg2Service(context, AppConfig.MSG_STATE_STOP, "")
     }
 
+    /**
+     * Checks if the V2Ray service is running.
+     * @return True if the service is running, false otherwise.
+     */
     fun isRunning() = v2rayPoint.isRunning
 
+    /**
+     * Gets the name of the currently running server.
+     * @return The name of the running server.
+     */
     fun getRunningServerName() = currentConfig?.remarks.orEmpty()
 
+    /**
+     * Starts the context service for V2Ray.
+     * @param context The context from which the service is started.
+     */
     private fun startContextService(context: Context) {
         if (v2rayPoint.isRunning) return
         val guid = MmkvManager.getSelectServer() ?: return
@@ -97,8 +124,8 @@ object V2RayServiceManager {
     /**
      * Refer to the official documentation for [registerReceiver](https://developer.android.com/reference/androidx/core/content/ContextCompat#registerReceiver(android.content.Context,android.content.BroadcastReceiver,android.content.IntentFilter,int):
      * `registerReceiver(Context, BroadcastReceiver, IntentFilter, int)`.
+     * Starts the V2Ray point.
      */
-
     fun startV2rayPoint() {
         val service = getService() ?: return
         val guid = MmkvManager.getSelectServer() ?: return
@@ -141,6 +168,9 @@ object V2RayServiceManager {
         }
     }
 
+    /**
+     * Stops the V2Ray point.
+     */
     fun stopV2rayPoint() {
         val service = getService() ?: return
 
@@ -165,10 +195,19 @@ object V2RayServiceManager {
         PluginUtil.stopPlugin()
     }
 
+    /**
+     * Queries the statistics for a given tag and link.
+     * @param tag The tag to query.
+     * @param link The link to query.
+     * @return The statistics value.
+     */
     fun queryStats(tag: String, link: String): Long {
         return v2rayPoint.queryStats(tag, link)
     }
 
+    /**
+     * Measures the delay for V2Ray.
+     */
     private fun measureV2rayDelay() {
         CoroutineScope(Dispatchers.IO).launch {
             val service = getService() ?: return@launch
@@ -176,14 +215,14 @@ object V2RayServiceManager {
             var errstr = ""
             if (v2rayPoint.isRunning) {
                 try {
-                    time = v2rayPoint.measureDelay(Utils.getDelayTestUrl())
+                    time = v2rayPoint.measureDelay(SettingsManager.getDelayTestUrl())
                 } catch (e: Exception) {
                     Log.d(ANG_PACKAGE, "measureV2rayDelay: $e")
                     errstr = e.message?.substringAfter("\":") ?: "empty message"
                 }
                 if (time == -1L) {
                     try {
-                        time = v2rayPoint.measureDelay(Utils.getDelayTestUrl(true))
+                        time = v2rayPoint.measureDelay(SettingsManager.getDelayTestUrl(true))
                     } catch (e: Exception) {
                         Log.d(ANG_PACKAGE, "measureV2rayDelay: $e")
                         errstr = e.message?.substringAfter("\":") ?: "empty message"
@@ -200,6 +239,10 @@ object V2RayServiceManager {
         }
     }
 
+    /**
+     * Gets the current service instance.
+     * @return The current service instance, or null if not available.
+     */
     private fun getService(): Service? {
         return serviceControl?.get()?.getService()
     }
@@ -226,10 +269,21 @@ object V2RayServiceManager {
             return serviceControl.vpnProtect(l.toInt())
         }
 
+        /**
+         * Called by Go to emit status.
+         * @param l The status code.
+         * @param s The status message.
+         * @return The status code.
+         */
         override fun onEmitStatus(l: Long, s: String?): Long {
             return 0
         }
 
+        /**
+         * Called by Go to set up the service.
+         * @param s The setup string.
+         * @return The status code.
+         */
         override fun setup(s: String): Long {
             val serviceControl = serviceControl?.get() ?: return -1
             return try {
@@ -244,6 +298,11 @@ object V2RayServiceManager {
     }
 
     private class ReceiveMessageHandler : BroadcastReceiver() {
+        /**
+         * Handles received broadcast messages.
+         * @param ctx The context in which the receiver is running.
+         * @param intent The intent being received.
+         */
         override fun onReceive(ctx: Context?, intent: Intent?) {
             val serviceControl = serviceControl?.get() ?: return
             when (intent?.getIntExtra("key", 0)) {

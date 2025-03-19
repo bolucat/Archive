@@ -3,8 +3,6 @@ package listener
 import (
 	"net"
 	"net/netip"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -15,13 +13,15 @@ import (
 	N "github.com/sagernet/sing/common/network"
 
 	"github.com/metacubex/tfo-go"
-	"github.com/vishvananda/netns"
 )
 
 func (l *Listener) ListenTCP() (net.Listener, error) {
+	//nolint:staticcheck
+	if l.listenOptions.ProxyProtocol || l.listenOptions.ProxyProtocolAcceptNoHeader {
+		return nil, E.New("Proxy Protocol is deprecated and removed in sing-box 1.6.0")
+	}
 	var err error
 	bindAddr := M.SocksaddrFrom(l.listenOptions.Listen.Build(netip.AddrFrom4([4]byte{127, 0, 0, 1})), l.listenOptions.ListenPort)
-	var tcpListener net.Listener
 	var listenConfig net.ListenConfig
 	if l.listenOptions.TCPKeepAlive >= 0 {
 		keepIdle := time.Duration(l.listenOptions.TCPKeepAlive)
@@ -40,43 +40,19 @@ func (l *Listener) ListenTCP() (net.Listener, error) {
 		}
 		setMultiPathTCP(&listenConfig)
 	}
-	if l.listenOptions.NetNs != "" {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		currentNs, err := netns.Get()
-		if err != nil {
-			return nil, E.Cause(err, "get current netns")
-		}
-		defer netns.Set(currentNs)
-		var targetNs netns.NsHandle
-		if strings.HasPrefix(l.listenOptions.NetNs, "/") {
-			targetNs, err = netns.GetFromPath(l.listenOptions.NetNs)
+	tcpListener, err := ListenNetworkNamespace[net.Listener](l.listenOptions.NetNs, func() (net.Listener, error) {
+		if l.listenOptions.TCPFastOpen {
+			var tfoConfig tfo.ListenConfig
+			tfoConfig.ListenConfig = listenConfig
+			return tfoConfig.Listen(l.ctx, M.NetworkFromNetAddr(N.NetworkTCP, bindAddr.Addr), bindAddr.String())
 		} else {
-			targetNs, err = netns.GetFromName(l.listenOptions.NetNs)
+			return listenConfig.Listen(l.ctx, M.NetworkFromNetAddr(N.NetworkTCP, bindAddr.Addr), bindAddr.String())
 		}
-		if err != nil {
-			return nil, E.Cause(err, "get netns ", l.listenOptions.NetNs)
-		}
-		defer targetNs.Close()
-		err = netns.Set(targetNs)
-		if err != nil {
-			return nil, E.Cause(err, "set netns to ", l.listenOptions.NetNs)
-		}
+	})
+	if err != nil {
+		return nil, err
 	}
-	if l.listenOptions.TCPFastOpen {
-		var tfoConfig tfo.ListenConfig
-		tfoConfig.ListenConfig = listenConfig
-		tcpListener, err = tfoConfig.Listen(l.ctx, M.NetworkFromNetAddr(N.NetworkTCP, bindAddr.Addr), bindAddr.String())
-	} else {
-		tcpListener, err = listenConfig.Listen(l.ctx, M.NetworkFromNetAddr(N.NetworkTCP, bindAddr.Addr), bindAddr.String())
-	}
-	if err == nil {
-		l.logger.Info("tcp server started at ", tcpListener.Addr())
-	}
-	//nolint:staticcheck
-	if l.listenOptions.ProxyProtocol || l.listenOptions.ProxyProtocolAcceptNoHeader {
-		return nil, E.New("Proxy Protocol is deprecated and removed in sing-box 1.6.0")
-	}
+	l.logger.Info("tcp server started at ", tcpListener.Addr())
 	l.tcpListener = tcpListener
 	return tcpListener, err
 }
