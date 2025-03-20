@@ -2,7 +2,7 @@ use crate::{
     config::{Config, IVerge},
     core::{handle, hotkey, sysopt, tray, CoreManager},
     log_err,
-    utils::resolve,
+    module::lightweight,
 };
 use anyhow::Result;
 use serde_yaml::Mapping;
@@ -54,6 +54,7 @@ enum UpdateFlags {
     SystrayMenu = 1 << 7,
     SystrayTooltip = 1 << 8,
     SystrayClickBehavior = 1 << 9,
+    LighteWeight = 1 << 10,
 }
 
 /// Patch Verge configuration
@@ -68,7 +69,6 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     let proxy_bypass = patch.system_proxy_bypass;
     let language = patch.language;
     let mixed_port = patch.verge_mixed_port;
-    let lite_mode = patch.enable_lite_mode;
     #[cfg(target_os = "macos")]
     let tray_icon = patch.tray_icon;
     #[cfg(not(target_os = "macos"))]
@@ -92,7 +92,7 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
     let enable_global_hotkey = patch.enable_global_hotkey;
     let tray_event = patch.tray_event;
     let home_cards = patch.home_cards.clone();
-
+    let enable_auto_light_weight = patch.enable_auto_light_weight_mode;
     let res: std::result::Result<(), anyhow::Error> = {
         // Initialize with no flags set
         let mut update_flags: i32 = UpdateFlags::None as i32;
@@ -158,6 +158,10 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
             update_flags |= UpdateFlags::SystrayClickBehavior as i32;
         }
 
+        if enable_auto_light_weight.is_some() {
+            update_flags |= UpdateFlags::LighteWeight as i32;
+        }
+
         // Process updates based on flags
         if (update_flags & (UpdateFlags::RestartCore as i32)) != 0 {
             CoreManager::global().restart_core().await?;
@@ -191,13 +195,11 @@ pub async fn patch_verge(patch: IVerge, not_save_file: bool) -> Result<()> {
         if (update_flags & (UpdateFlags::SystrayClickBehavior as i32)) != 0 {
             tray::Tray::global().update_click_behavior()?;
         }
-
-        // Handle lite mode switch
-        if let Some(enable) = lite_mode {
-            if enable {
-                handle::Handle::global().destroy_window().ok();
+        if (update_flags & (UpdateFlags::LighteWeight as i32)) != 0 {
+            if enable_auto_light_weight.unwrap() {
+                lightweight::enable_auto_light_weight_mode();
             } else {
-                resolve::create_window();
+                lightweight::disable_auto_light_weight_mode();
             }
         }
 

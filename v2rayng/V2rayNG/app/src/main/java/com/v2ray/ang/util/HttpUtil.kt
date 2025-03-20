@@ -26,18 +26,18 @@ object HttpUtil {
      *
      * @param url The URL to fetch content from.
      * @param timeout The timeout value in milliseconds.
+     * @param httpPort The HTTP port to use.
      * @return The content of the URL as a string.
      */
-    fun getUrlContent(url: String, timeout: Int): String {
-        var result: String = ""
-        val conn = createProxyConnection(url, 0, timeout, timeout) ?: return result
+    fun getUrlContent(url: String, timeout: Int, httpPort: Int = 0): String? {
+        val conn = createProxyConnection(url, httpPort, timeout, timeout) ?: return null
         try {
-            result = conn.inputStream.bufferedReader().readText()
+            return conn.inputStream.bufferedReader().readText()
         } catch (_: Exception) {
         } finally {
             conn.disconnect()
         }
-        return result
+        return null
     }
 
     /**
@@ -50,7 +50,7 @@ object HttpUtil {
      * @throws IOException If an I/O error occurs.
      */
     @Throws(IOException::class)
-    fun getUrlContentWithUserAgent(url: String?, timeout: Int = 30000, httpPort: Int = 0): String {
+    fun getUrlContentWithUserAgent(url: String?, timeout: Int = 15000, httpPort: Int = 0): String {
         var currentUrl = url
         var redirects = 0
         val maxRedirects = 3
@@ -88,16 +88,16 @@ object HttpUtil {
      *
      * @param urlStr The target URL address.
      * @param port The port of the proxy server.
-     * @param connectTimeout The connection timeout in milliseconds (default is 30000 ms).
-     * @param readTimeout The read timeout in milliseconds (default is 30000 ms).
+     * @param connectTimeout The connection timeout in milliseconds (default is 15000 ms).
+     * @param readTimeout The read timeout in milliseconds (default is 15000 ms).
      * @param needStream Whether the connection needs to support streaming.
      * @return Returns a configured HttpURLConnection object, or null if it fails.
      */
     fun createProxyConnection(
         urlStr: String,
         port: Int,
-        connectTimeout: Int = 30000,
-        readTimeout: Int = 30000,
+        connectTimeout: Int = 15000,
+        readTimeout: Int = 15000,
         needStream: Boolean = false
     ): HttpURLConnection? {
 

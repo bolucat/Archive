@@ -37,7 +37,11 @@ import { BasePage } from "@/components/base";
 import { ClashInfoCard } from "@/components/home/clash-info-card";
 import { SystemInfoCard } from "@/components/home/system-info-card";
 import { useLockFn } from "ahooks";
-import { openWebUrl, patchVergeConfig } from "@/services/cmds";
+import {
+  entry_lightweight_mode,
+  openWebUrl,
+  patchVergeConfig,
+} from "@/services/cmds";
 import { TestCard } from "@/components/home/test-card";
 import { IpInfoCard } from "@/components/home/ip-info-card";
 
@@ -259,8 +263,12 @@ const HomePage = () => {
       contentStyle={{ padding: 2 }}
       header={
         <Box sx={{ display: "flex", alignItems: "center" }}>
-          <Tooltip title={t("Lite Mode")} arrow>
-            <IconButton onClick={() => patchVergeConfig({ enable_lite_mode: true })} size="small" color="inherit">
+          <Tooltip title={t("LightWeight Mode")} arrow>
+            <IconButton
+              onClick={async () => await entry_lightweight_mode()}
+              size="small"
+              color="inherit"
+            >
               <HistoryEduOutlined />
             </IconButton>
           </Tooltip>

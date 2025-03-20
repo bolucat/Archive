@@ -11,12 +11,9 @@ use crate::{
 };
 use config::Config;
 use std::sync::{Mutex, Once};
+use tauri::AppHandle;
 #[cfg(target_os = "macos")]
 use tauri::Manager;
-use tauri::{
-    menu::{Menu, MenuItem, Submenu},
-    AppHandle,
-};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -215,6 +212,8 @@ pub fn run() {
             // media unlock checker
             cmd::get_unlock_items,
             cmd::check_media_unlock,
+            // light-weight model
+            cmd::entry_lightweight_mode,
         ]);
 
     #[cfg(debug_assertions)]
@@ -225,18 +224,7 @@ pub fn run() {
     // Macos Application Menu
     #[cfg(target_os = "macos")]
     {
-        builder = builder.menu(|handle| {
-            Menu::with_items(
-                handle,
-                &[&Submenu::with_items(
-                    handle,
-                    "Menu",
-                    true,
-                    &[&MenuItem::new(handle, "Clash Verge", true, None::<String>).unwrap()],
-                )
-                .unwrap()],
-            )
-        });
+        // Temporary Achived due to cannot CMD+C/V/A
     }
 
     let app = builder
@@ -248,11 +236,12 @@ pub fn run() {
             AppHandleManager::global().init(app_handle.clone());
             #[cfg(target_os = "macos")]
             {
-                let main_window = AppHandleManager::global()
+                if let Some(window) = AppHandleManager::global()
                     .get_handle()
                     .get_webview_window("main")
-                    .unwrap();
-                let _ = main_window.set_title("Clash Verge");
+                {
+                    let _ = window.set_title("Clash Verge");
+                }
             }
         }
         #[cfg(target_os = "macos")]
@@ -283,46 +272,12 @@ pub fn run() {
                         api.prevent_close();
                         let window = core::handle::Handle::global().get_window().unwrap();
                         let _ = window.hide();
-
-                        // 检查是否启用了自动进入 Lite Mode
-                        let verge = crate::config::Config::verge();
-                        let verge_config = verge.latest();
-                        let auto_enter_lite_mode = verge_config.auto_enter_lite_mode.unwrap_or(false);
-                        
-                        if auto_enter_lite_mode {
-                            let delay_minutes = verge_config.auto_enter_lite_mode_delay.unwrap_or(10);
-                            let app_handle_clone = app_handle.clone();
-                            println!("自动进入 Lite Mode 已启用");
-                            // 启动一个线程，在指定延迟后启用 Lite Mode
-                            std::thread::spawn(move || {
-                                println!("等待 {} 分钟后自动进入 Lite Mode", delay_minutes);
-                                std::thread::sleep(std::time::Duration::from_secs(delay_minutes as u64 * 60));
-                                println!("Lite Mode 倒计时结束");
-                                
-                                // 延迟后检查窗口是否仍然隐藏，如果是，则启用 Lite Mode
-                                let window_opt = app_handle_clone.get_webview_window("main");
-                                if let Some(window) = window_opt {
-                                    if !window.is_visible().unwrap_or(true) {
-                                        println!("倒计时结束，正在进入 Lite Mode...");
-                                        // 应用 Lite Mode
-                                        if let Err(e) = tauri::async_runtime::block_on(crate::feat::patch_verge(
-                                            crate::config::IVerge {
-                                                enable_lite_mode: Some(true),
-                                                ..Default::default()
-                                            },
-                                            false
-                                        )) {
-                                            println!("Lite Mode 进入失败: {:?}", e);
-                                        }
-                                    }
-                                }
-                            });
-                        }
                     }
                     tauri::WindowEvent::Focused(true) => {
                         #[cfg(target_os = "macos")]
                         {
                             log_err!(hotkey::Hotkey::global().register("CMD+Q", "quit"));
+                            log_err!(hotkey::Hotkey::global().register("CMD+W", "hide"));
                         }
 
                         #[cfg(not(target_os = "macos"))]
@@ -343,6 +298,7 @@ pub fn run() {
                         #[cfg(target_os = "macos")]
                         {
                             log_err!(hotkey::Hotkey::global().unregister("CMD+Q"));
+                            log_err!(hotkey::Hotkey::global().unregister("CMD+W"));
                         }
                         #[cfg(not(target_os = "macos"))]
                         {
@@ -362,6 +318,7 @@ pub fn run() {
                         #[cfg(target_os = "macos")]
                         {
                             log_err!(hotkey::Hotkey::global().unregister("CMD+Q"));
+                            log_err!(hotkey::Hotkey::global().unregister("CMD+W"));
                         }
 
                         #[cfg(not(target_os = "macos"))]
