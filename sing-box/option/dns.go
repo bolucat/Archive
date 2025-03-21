@@ -191,23 +191,34 @@ func (o *DNSServerOptions) Upgrade(ctx context.Context) error {
 			serverType = C.DNSTypeUDP
 		}
 	}
-	remoteOptions := RemoteDNSServerOptions{
-		LocalDNSServerOptions: LocalDNSServerOptions{
-			DialerOptions: DialerOptions{
-				Detour: options.Detour,
-				DomainResolver: &DomainResolveOptions{
-					Server:   options.AddressResolver,
-					Strategy: options.AddressStrategy,
-				},
-				FallbackDelay: options.AddressFallbackDelay,
+	var remoteOptions RemoteDNSServerOptions
+	if options.Detour == "" {
+		remoteOptions = RemoteDNSServerOptions{
+			LocalDNSServerOptions: LocalDNSServerOptions{
+				LegacyStrategy:      options.Strategy,
+				LegacyDefaultDialer: options.Detour == "",
+				LegacyClientSubnet:  options.ClientSubnet.Build(netip.Prefix{}),
 			},
-			LegacyStrategy:      options.Strategy,
-			LegacyDefaultDialer: options.Detour == "",
-			LegacyClientSubnet:  options.ClientSubnet.Build(netip.Prefix{}),
-		},
-		LegacyAddressResolver:      options.AddressResolver,
-		LegacyAddressStrategy:      options.AddressStrategy,
-		LegacyAddressFallbackDelay: options.AddressFallbackDelay,
+			LegacyAddressResolver:      options.AddressResolver,
+			LegacyAddressStrategy:      options.AddressStrategy,
+			LegacyAddressFallbackDelay: options.AddressFallbackDelay,
+		}
+	} else {
+		remoteOptions = RemoteDNSServerOptions{
+			LocalDNSServerOptions: LocalDNSServerOptions{
+				DialerOptions: DialerOptions{
+					Detour: options.Detour,
+					DomainResolver: &DomainResolveOptions{
+						Server:   options.AddressResolver,
+						Strategy: options.AddressStrategy,
+					},
+					FallbackDelay: options.AddressFallbackDelay,
+				},
+				LegacyStrategy:      options.Strategy,
+				LegacyDefaultDialer: options.Detour == "",
+				LegacyClientSubnet:  options.ClientSubnet.Build(netip.Prefix{}),
+			},
+		}
 	}
 	switch serverType {
 	case C.DNSTypeLocal:

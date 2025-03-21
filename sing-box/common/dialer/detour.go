@@ -2,11 +2,11 @@ package dialer
 
 import (
 	"context"
-	"github.com/sagernet/sing/common"
 	"net"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"

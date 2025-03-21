@@ -2,10 +2,10 @@ package transport
 
 import (
 	"context"
-	"github.com/sagernet/sing-box/common/dialer"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"

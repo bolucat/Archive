@@ -3,10 +3,10 @@ package transport
 import (
 	"context"
 	"encoding/binary"
-	"github.com/sagernet/sing-box/common/dialer"
 	"io"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/log"

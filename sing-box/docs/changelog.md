@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.1
+
+* Fixes and improvements
+
 #### 1.12.0-alpha.18
 
 * Add wildcard SNI support for ShadowTLS inbound **1**

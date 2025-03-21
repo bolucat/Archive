@@ -3,7 +3,6 @@ package transport
 import (
 	"bytes"
 	"context"
-	"github.com/sagernet/sing-box/common/dialer"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
