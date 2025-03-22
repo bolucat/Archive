@@ -280,16 +280,11 @@ export const CurrentProxyCard = () => {
     }
   }, [currentProxy, fetchProxyData, state.displayProxy]);
 
-  // 平滑的定期刷新，使用固定间隔
+  // 监听模式变化，mode变化时刷新
   useEffect(() => {
-    fetchProxyData();
+    fetchProxyData(true);
+  }, [mode, fetchProxyData]);
 
-    const intervalId = setInterval(() => {
-      fetchProxyData();
-    }, 3000); // 使用固定的3秒间隔，平衡响应速度和性能
-
-    return () => clearInterval(intervalId);
-  }, [fetchProxyData]);
 
   // 计算要显示的代理选项 - 使用 useMemo 优化
   const proxyOptions = useMemo(() => {

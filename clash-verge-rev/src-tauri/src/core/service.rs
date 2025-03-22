@@ -7,7 +7,7 @@ use tokio::time::Duration;
 // Windows only
 
 const SERVICE_URL: &str = "http://127.0.0.1:33211";
-const REQUIRED_SERVICE_VERSION: &str = "1.0.2"; // 定义所需的服务版本号
+const REQUIRED_SERVICE_VERSION: &str = "1.0.3"; // 定义所需的服务版本号
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ResponseBody {
@@ -250,6 +250,8 @@ pub(super) async fn run_core_by_service(config_file: &PathBuf) -> Result<()> {
 
     let config_dir = dirs::app_home_dir()?;
     let config_dir = dirs::path_to_str(&config_dir)?;
+    #[cfg(target_os = "linux")]
+    let config_dir = &(config_dir.replace("/verge-mihomo", "") + "/resources");
 
     let log_path = dirs::service_log_file()?;
     let log_path = dirs::path_to_str(&log_path)?;
