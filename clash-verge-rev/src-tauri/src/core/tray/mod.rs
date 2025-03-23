@@ -94,6 +94,7 @@ impl Tray {
         tray.on_tray_icon_event(|_, event| {
             let tray_event = { Config::verge().latest().tray_event.clone() };
             let tray_event: String = tray_event.unwrap_or("main_window".into());
+            log::debug!(target: "app","tray event: {:?}", tray_event);
 
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
@@ -239,6 +240,7 @@ impl Tray {
         #[cfg(target_os = "macos")]
         {
             let enable_tray_speed = verge.enable_tray_speed.unwrap_or(true);
+            let enable_tray_icon = verge.enable_tray_icon.unwrap_or(true);
             let is_colorful = tray_icon == "colorful";
 
             let icon_hash = {
@@ -254,7 +256,7 @@ impl Tray {
                 *icon_bytes_guard = Some(icon_bytes.clone());
             }
 
-            if !enable_tray_speed {
+            if !enable_tray_speed || (!enable_tray_speed && !enable_tray_icon) {
                 let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(
                     &(*icon_bytes_guard).clone().unwrap(),
                 )?));
@@ -277,9 +279,15 @@ impl Tray {
             if *rate_guard != rate {
                 *rate_guard = rate;
 
-                let bytes = icon_bytes_guard.as_ref().unwrap();
+                let bytes = if enable_tray_icon {
+                    Some(icon_bytes_guard.as_ref().unwrap())
+                } else {
+                    None
+                };
+
                 let rate = rate_guard.as_ref();
                 let rate_bytes = SpeedRate::add_speed_text(bytes, rate).unwrap();
+
                 let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(&rate_bytes)?));
                 let _ = tray.set_icon_as_template(!is_colorful);
             }
@@ -525,6 +533,15 @@ fn create_tray_menu(
     )
     .unwrap();
 
+    let lighteweight_mode = &MenuItem::with_id(
+        app_handle,
+        "entry_lightweight_mode",
+        t("Lightweight Mode"),
+        true,
+        hotkeys.get("entry_lightweight_mode").map(|s| s.as_str()),
+    )
+    .unwrap();
+
     let copy_env =
         &MenuItem::with_id(app_handle, "copy_env", t("Copy Env"), true, None::<&str>).unwrap();
 
@@ -617,6 +634,8 @@ fn create_tray_menu(
             separator,
             system_proxy,
             tun_mode,
+            separator,
+            lighteweight_mode,
             copy_env,
             open_dir,
             more,
@@ -644,6 +663,7 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
         "open_logs_dir" => crate::log_err!(cmd::open_logs_dir()),
         "restart_clash" => feat::restart_clash_core(),
         "restart_app" => feat::restart_app(),
+        "entry_lightweight_mode" => feat::lightweight_mode(),
         "quit" => {
             println!("quit");
             feat::quit(Some(0));

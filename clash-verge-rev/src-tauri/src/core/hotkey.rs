@@ -147,6 +147,7 @@ impl Hotkey {
             "clash_mode_direct" => || feat::change_clash_mode("direct".into()),
             "toggle_system_proxy" => || feat::toggle_system_proxy(),
             "toggle_tun_mode" => || feat::toggle_tun_mode(None),
+            "entry_lightweight_mode" => || feat::lightweight_mode(),
             "quit" => || feat::quit(Some(0)),
             #[cfg(target_os = "macos")]
             "hide" => || feat::hide(),
