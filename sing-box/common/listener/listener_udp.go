@@ -37,9 +37,8 @@ func (l *Listener) ListenUDP() (net.PacketConn, error) {
 	return udpConn, err
 }
 
-func (l *Listener) ListenPacket(ctx context.Context, network string, address string) (net.PacketConn, error) {
+func (l *Listener) ListenPacket(listenConfig net.ListenConfig, ctx context.Context, network string, address string) (net.PacketConn, error) {
 	return ListenNetworkNamespace[net.PacketConn](l.listenOptions.NetNs, func() (net.PacketConn, error) {
-		var listenConfig net.ListenConfig
 		return listenConfig.ListenPacket(ctx, network, address)
 	})
 }

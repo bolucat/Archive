@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     tools:context=".ui.ServerActivity">
 
     <LinearLayout
@@ -27,7 +28,7 @@
             <EditText
                 android:id="@+id/et_id"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/view_height_dp48"
+                android:layout_height="wrap_content"
                 android:inputType="text" />
 
         </LinearLayout>
@@ -45,9 +46,11 @@
                 android:text="@string/server_lab_security3" />
 
             <Spinner
+                android:layout_marginTop="@dimen/padding_spacing_dp8"
+                android:layout_marginBottom="@dimen/padding_spacing_dp8"
                 android:id="@+id/sp_security"
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/view_height_dp48"
+                android:layout_height="wrap_content"
                 android:entries="@array/ss_securitys" />
         </LinearLayout>
 

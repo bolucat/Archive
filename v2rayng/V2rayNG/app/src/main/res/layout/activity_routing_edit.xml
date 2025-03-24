@@ -4,6 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:fitsSystemWindows="true"
     tools:context=".ui.SubSettingActivity">
 
     <LinearLayout
@@ -31,7 +32,7 @@
                 <EditText
                     android:id="@+id/et_remarks"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/view_height_dp48"
+                    android:layout_height="wrap_content"
                     android:inputType="text" />
             </LinearLayout>
 
@@ -117,7 +118,7 @@
                 <EditText
                     android:id="@+id/et_port"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/view_height_dp48"
+                    android:layout_height="wrap_content"
                     android:inputType="text" />
             </LinearLayout>
 
@@ -135,7 +136,7 @@
                 <EditText
                     android:id="@+id/et_protocol"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/view_height_dp48"
+                    android:layout_height="wrap_content"
                     android:hint="@string/routing_settings_protocol_tip"
                     android:inputType="text" />
             </LinearLayout>
@@ -154,7 +155,7 @@
                 <EditText
                     android:id="@+id/et_network"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/view_height_dp48"
+                    android:layout_height="wrap_content"
                     android:hint="@string/routing_settings_network_tip"
                     android:inputType="text" />
             </LinearLayout>
@@ -171,9 +172,11 @@
                     android:text="@string/routing_settings_outbound_tag" />
 
                 <Spinner
+                    android:layout_marginTop="@dimen/padding_spacing_dp8"
+                    android:layout_marginBottom="@dimen/padding_spacing_dp8"
                     android:id="@+id/sp_outbound_tag"
                     android:layout_width="match_parent"
-                    android:layout_height="@dimen/view_height_dp48"
+                    android:layout_height="wrap_content"
                     android:entries="@array/outbound_tag" />
             </LinearLayout>
 

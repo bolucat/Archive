@@ -126,8 +126,8 @@ nfpms:
       - deb
       - rpm
       - archlinux
-    #      - apk
-    #      - ipk
+#      - apk
+#      - ipk
     priority: extra
     contents:
       - src: release/config/config.json

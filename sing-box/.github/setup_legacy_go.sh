@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 
 VERSION="1.23.6"
+
+mkdir -p $HOME/go
+cd $HOME/go
 wget "https://dl.google.com/go/go${VERSION}.linux-amd64.tar.gz"
 tar -xzf "go${VERSION}.linux-amd64.tar.gz"
-mv go $HOME/go/go_legacy
-cd $HOME/go/go_legacy
+mv go go_legacy
+cd go_legacy
 
 # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
 # this patch file only works on golang1.23.x

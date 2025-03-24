@@ -20,25 +20,43 @@ import (
 
 func TestShadowTLS(t *testing.T) {
 	t.Run("v1", func(t *testing.T) {
-		testShadowTLS(t, 1, "", false)
+		testShadowTLS(t, 1, "", false, option.ShadowTLSWildcardSNIOff)
 	})
 	t.Run("v2", func(t *testing.T) {
-		testShadowTLS(t, 2, "hello", false)
+		testShadowTLS(t, 2, "hello", false, option.ShadowTLSWildcardSNIOff)
 	})
 	t.Run("v3", func(t *testing.T) {
-		testShadowTLS(t, 3, "hello", false)
+		testShadowTLS(t, 3, "hello", false, option.ShadowTLSWildcardSNIOff)
 	})
 	t.Run("v2-utls", func(t *testing.T) {
-		testShadowTLS(t, 2, "hello", true)
+		testShadowTLS(t, 2, "hello", true, option.ShadowTLSWildcardSNIOff)
 	})
 	t.Run("v3-utls", func(t *testing.T) {
-		testShadowTLS(t, 3, "hello", true)
+		testShadowTLS(t, 3, "hello", true, option.ShadowTLSWildcardSNIOff)
+	})
+	t.Run("v3-wildcard-sni-authed", func(t *testing.T) {
+		testShadowTLS(t, 3, "hello", false, option.ShadowTLSWildcardSNIAuthed)
+	})
+	t.Run("v3-wildcard-sni-all", func(t *testing.T) {
+		testShadowTLS(t, 3, "hello", false, option.ShadowTLSWildcardSNIAll)
+	})
+	t.Run("v3-wildcard-sni-authed-utls", func(t *testing.T) {
+		testShadowTLS(t, 3, "hello", true, option.ShadowTLSWildcardSNIAll)
+	})
+	t.Run("v3-wildcard-sni-all-utls", func(t *testing.T) {
+		testShadowTLS(t, 3, "hello", true, option.ShadowTLSWildcardSNIAll)
 	})
 }
 
-func testShadowTLS(t *testing.T, version int, password string, utlsEanbled bool) {
+func testShadowTLS(t *testing.T, version int, password string, utlsEanbled bool, wildcardSNI option.WildcardSNI) {
 	method := shadowaead_2022.List[0]
 	ssPassword := mkBase64(t, 16)
+	var clientServerName string
+	if wildcardSNI != option.ShadowTLSWildcardSNIOff {
+		clientServerName = "cloudflare.com"
+	} else {
+		clientServerName = "google.com"
+	}
 	startInstance(t, option.Options{
 		Inbounds: []option.Inbound{
 			{
@@ -68,9 +86,10 @@ func testShadowTLS(t *testing.T, version int, password string, utlsEanbled bool)
 							ServerPort: 443,
 						},
 					},
-					Version:  version,
-					Password: password,
-					Users:    []option.ShadowTLSUser{{Password: password}},
+					Version:     version,
+					Password:    password,
+					Users:       []option.ShadowTLSUser{{Password: password}},
+					WildcardSNI: wildcardSNI,
 				},
 			},
 			{
@@ -108,7 +127,7 @@ func testShadowTLS(t *testing.T, version int, password string, utlsEanbled bool)
 					OutboundTLSOptionsContainer: option.OutboundTLSOptionsContainer{
 						TLS: &option.OutboundTLSOptions{
 							Enabled:    true,
-							ServerName: "google.com",
+							ServerName: clientServerName,
 							UTLS: &option.OutboundUTLSOptions{
 								Enabled: utlsEanbled,
 							},
