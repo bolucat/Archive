@@ -34,7 +34,7 @@ jobs:
       - name: Calculate version
         if: github.event_name != 'workflow_dispatch'
         run: |-
-          go run -v ./cmd/internal/read_tag --nightly
+          go run -v ./cmd/internal/read_tag --ci --nightly
       - name: Set outputs
         id: outputs
         run: |-
@@ -116,6 +116,7 @@ jobs:
           sudo gem install fpm
           sudo apt-get install -y debsigs
           fpm -t deb \
+            --name "${NAME}" \
             -v "${{ needs.calculate_version.outputs.version }}" \
             -p "dist/${NAME}_${{ needs.calculate_version.outputs.version }}_linux_${{ matrix.debian }}.deb" \
             --architecture ${{ matrix.debian }} \
@@ -133,6 +134,7 @@ jobs:
           set -xeuo pipefail
           sudo gem install fpm
           fpm -t rpm \
+            --name "${NAME}" \
             -v "${{ needs.calculate_version.outputs.version }}" \
             -p "dist/${NAME}_${{ needs.calculate_version.outputs.version }}_linux_${{ matrix.rpm }}.rpm" \
             --architecture ${{ matrix.rpm }} \
@@ -175,6 +177,4 @@ jobs:
           merge-multiple: true
       - name: Publish packages
         run: |-
-          wget -O fury-cli.deb https://github.com/gemfury/cli/releases/download/v0.23.0/fury-cli_0.23.0_linux_amd64.deb
-          sudo dpkg -i fury-cli.deb
-          fury migrate dist --as=sagernet --api-token ${{ secrets.FURY_TOKEN }}
+          ls dist | xargs -I {} curl -F "package=@dist/{}" -u "${{ secrets.FURY_TOKEN }}" -X POST https://push.fury.io/sagernet/
