@@ -256,7 +256,7 @@ impl Tray {
                 *icon_bytes_guard = Some(icon_bytes.clone());
             }
 
-            if !enable_tray_speed || (!enable_tray_speed && !enable_tray_icon) {
+            if !enable_tray_speed {
                 let _ = tray.set_icon(Some(tauri::image::Image::from_bytes(
                     &(*icon_bytes_guard).clone().unwrap(),
                 )?));
@@ -665,7 +665,6 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
         "restart_app" => feat::restart_app(),
         "entry_lightweight_mode" => entry_lightweight_mode(),
         "quit" => {
-            println!("quit");
             feat::quit(Some(0));
         }
         id if id.starts_with("profiles_") => {

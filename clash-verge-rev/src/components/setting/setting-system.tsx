@@ -40,18 +40,25 @@ const SettingSystem = ({ onError }: Props) => {
     "getRunningMode",
     getRunningMode,
   );
-  const { data: autoLaunchEnabled } = useSWR("getAutoLaunchStatus", getAutoLaunchStatus);
+  const { data: autoLaunchEnabled } = useSWR(
+    "getAutoLaunchStatus",
+    getAutoLaunchStatus,
+  );
 
   // 当实际自启动状态与配置不同步时更新配置
   useEffect(() => {
-    if (autoLaunchEnabled !== undefined && verge && verge.enable_auto_launch !== autoLaunchEnabled) {
+    if (
+      autoLaunchEnabled !== undefined &&
+      verge &&
+      verge.enable_auto_launch !== autoLaunchEnabled
+    ) {
       // 静默更新配置，不触发UI刷新
       mutateVerge({ ...verge, enable_auto_launch: autoLaunchEnabled }, false);
     }
   }, [autoLaunchEnabled]);
 
   // 是否以sidecar模式运行
-  const isSidecarMode = runningMode === "sidecar";
+  const isSidecarMode = runningMode === "Sidecar";
 
   const sysproxyRef = useRef<DialogRef>(null);
   const tunRef = useRef<DialogRef>(null);

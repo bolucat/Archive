@@ -1,8 +1,7 @@
 use super::CmdResult;
 use crate::{
-    core::{self, handle, service, CoreManager},
+    core::{handle, CoreManager},
     module::sysinfo::PlatformSpecification,
-    wrap_err,
 };
 use once_cell::sync::Lazy;
 use std::{
@@ -45,17 +44,7 @@ pub async fn get_system_info() -> CmdResult<String> {
 /// 获取当前内核运行模式
 #[tauri::command]
 pub async fn get_running_mode() -> Result<String, String> {
-    match CoreManager::global().get_running_mode().await {
-        core::RunningMode::Service => Ok("service".to_string()),
-        core::RunningMode::Sidecar => Ok("standalone".to_string()),
-        core::RunningMode::NotRunning => Ok("not_running".to_string()),
-    }
-}
-
-/// 安装/重装系统服务
-#[tauri::command]
-pub async fn install_service() -> CmdResult {
-    wrap_err!(service::reinstall_service().await)
+    Ok(CoreManager::global().get_running_mode().await.to_string())
 }
 
 /// 获取应用的运行时间（毫秒）
