@@ -2,8 +2,10 @@ package tailscale
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"os"
@@ -212,6 +214,18 @@ func (t *Endpoint) Start(stage adapter.StartStage) error {
 	t.stack = ipStack
 
 	localBackend := t.server.ExportLocalBackend()
+	localBackend.SetHTTPTestClient(&http.Client{
+		Transport: &http.Transport{
+			ForceAttemptHTTP2: true,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return t.server.Dialer.DialContext(ctx, network, M.ParseSocksaddr(address))
+			},
+			TLSClientConfig: &tls.Config{
+				RootCAs: adapter.RootPoolFromContext(t.ctx),
+			},
+		},
+	})
+
 	perfs := &ipn.MaskedPrefs{
 		ExitNodeIPSet:      true,
 		AdvertiseRoutesSet: true,

@@ -1,6 +1,7 @@
 package com.v2ray.ang.ui
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -31,6 +32,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityMainBinding
 import com.v2ray.ang.dto.EConfigType
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MigrateManager
 import com.v2ray.ang.handler.MmkvManager
@@ -204,6 +206,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         })
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     private fun setupViewModel() {
         mainViewModel.updateListAction.observe(this) { index ->
             if (index >= 0) {
@@ -269,7 +272,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         binding.tabGroup.isVisible = true
     }
 
-    fun startV2Ray() {
+    private fun startV2Ray() {
         if (MmkvManager.getSelectServer().isNullOrEmpty()) {
             toast(R.string.title_file_chooser)
             return
@@ -277,7 +280,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
         V2RayServiceManager.startVService(this)
     }
 
-    fun restartV2Ray() {
+    private fun restartV2Ray() {
         if (mainViewModel.isRunning.value == true) {
             V2RayServiceManager.stopVService(this)
         }
@@ -503,13 +506,13 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                         }
 
                         countSub > 0 -> initGroupTab()
-                        else -> toast(R.string.toast_failure)
+                        else -> toastError(R.string.toast_failure)
                     }
                     binding.pbWaiting.hide()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    toast(R.string.toast_failure)
+                    toastError(R.string.toast_failure)
                     binding.pbWaiting.hide()
                 }
                 e.printStackTrace()
@@ -613,7 +616,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                     toast(getString(R.string.title_update_config_count, count))
                     mainViewModel.reloadServerList()
                 } else {
-                    toast(R.string.toast_failure)
+                    toastError(R.string.toast_failure)
                 }
                 binding.pbWaiting.hide()
             }
@@ -629,7 +632,7 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
                 if (ret > 0)
                     toast(getString(R.string.title_export_config_count, ret))
                 else
-                    toast(R.string.toast_failure)
+                    toastError(R.string.toast_failure)
                 binding.pbWaiting.hide()
             }
         }
@@ -759,9 +762,9 @@ class MainActivity : BaseActivity(), NavigationView.OnNavigationItemSelectedList
 //            }
 //            if (mainViewModel.appendCustomConfigServer(server)) {
 //                mainViewModel.reloadServerList()
-//                toast(R.string.toast_success)
+//                toastSuccess(R.string.toast_success)
 //            } else {
-//                toast(R.string.toast_failure)
+//                toastError(R.string.toast_failure)
 //            }
 //            //adapter.notifyItemInserted(mainViewModel.serverList.lastIndex)
 //        } catch (e: Exception) {

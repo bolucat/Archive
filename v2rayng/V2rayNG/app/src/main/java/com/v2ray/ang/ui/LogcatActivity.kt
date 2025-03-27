@@ -1,5 +1,6 @@
 package com.v2ray.ang.ui
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
@@ -11,6 +12,7 @@ import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityLogcatBinding
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -21,7 +23,7 @@ import java.io.IOException
 class LogcatActivity : BaseActivity(), SwipeRefreshLayout.OnRefreshListener {
     private val binding by lazy { ActivityLogcatBinding.inflate(layoutInflater) }
 
-    var logsetsAll: MutableList<String> = mutableListOf()
+    private var logsetsAll: MutableList<String> = mutableListOf()
     var logsets: MutableList<String> = mutableListOf()
     private val adapter by lazy { LogcatRecyclerAdapter(this) }
 
@@ -62,7 +64,7 @@ class LogcatActivity : BaseActivity(), SwipeRefreshLayout.OnRefreshListener {
                 launch(Dispatchers.Main) {
                     logsetsAll = allText.toMutableList()
                     logsets = allText.toMutableList()
-                    adapter.notifyDataSetChanged()
+                    refreshData()
                     binding.refreshLayout.isRefreshing = false
                 }
             }
@@ -84,7 +86,7 @@ class LogcatActivity : BaseActivity(), SwipeRefreshLayout.OnRefreshListener {
                 launch(Dispatchers.Main) {
                     logsetsAll.clear()
                     logsets.clear()
-                    adapter.notifyDataSetChanged()
+                    refreshData()
                 }
             }
         } catch (e: IOException) {
@@ -118,7 +120,7 @@ class LogcatActivity : BaseActivity(), SwipeRefreshLayout.OnRefreshListener {
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.copy_all -> {
             Utils.setClipboard(this, logsets.joinToString("\n"))
-            toast(R.string.toast_success)
+            toastSuccess(R.string.toast_success)
             true
         }
 
@@ -138,11 +140,16 @@ class LogcatActivity : BaseActivity(), SwipeRefreshLayout.OnRefreshListener {
             logsetsAll.filter { it.contains(key) }.toMutableList()
         }
 
-        adapter?.notifyDataSetChanged()
+        refreshData()
         return true
     }
 
     override fun onRefresh() {
         getLogcat()
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    fun refreshData() {
+        adapter.notifyDataSetChanged()
     }
 }

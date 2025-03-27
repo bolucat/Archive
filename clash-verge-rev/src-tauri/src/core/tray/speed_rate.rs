@@ -77,14 +77,15 @@ impl SpeedRate {
 
     // 分离图标加载和速率渲染
     pub fn add_speed_text<'a>(
-        icon_bytes: Option<&'a Vec<u8>>,
+        is_custom_icon: bool,
+        icon_bytes: Option<Vec<u8>>,
         rate: Option<&'a Rate>,
     ) -> Result<Vec<u8>> {
         let rate = rate.unwrap_or(&Rate { up: 0, down: 0 });
 
         let (mut icon_width, mut icon_height) = (0, 256);
-        let icon_image = if let Some(bytes) = icon_bytes {
-            let icon_image = image::load_from_memory(bytes)?;
+        let icon_image = if let Some(bytes) = icon_bytes.clone() {
+            let icon_image = image::load_from_memory(&bytes)?;
             icon_width = icon_image.width();
             icon_height = icon_image.height();
             icon_image
@@ -94,22 +95,23 @@ impl SpeedRate {
         };
 
         // 判断是否为彩色图标
-        let is_colorful = if let Some(bytes) = icon_bytes {
-            !crate::utils::help::is_monochrome_image_from_bytes(bytes).unwrap_or(false)
+        let is_colorful = if let Some(bytes) = icon_bytes.clone() {
+            !crate::utils::help::is_monochrome_image_from_bytes(&bytes).unwrap_or(false)
         } else {
             false
         };
 
-        // 增加文本宽度和间距
-        let total_width = if icon_bytes.is_some() {
-            if icon_width < 580 {
-                icon_width + 580
-            } else {
-                icon_width
-            }
-        } else {
-            580
+        let total_width = match (is_custom_icon, icon_bytes.is_some()) {
+            (true, true) => 510,
+            (true, false) => 740,
+            (false, false) => 740,
+            (false, true) => icon_width + 740,
         };
+
+        // println!(
+        //     "icon_height: {}, icon_wight: {}, total_width: {}",
+        //     icon_height, icon_width, total_width
+        // );
 
         // 创建新的透明画布
         let mut combined_image = RgbaImage::new(total_width, icon_height);
@@ -145,17 +147,30 @@ impl SpeedRate {
         let scale = ab_glyph::PxScale::from(font_size);
 
         // 使用更简洁的速率格式
-        let up_text = format_bytes_speed(rate.up);
-        let down_text = format_bytes_speed(rate.down);
+        let up_text = format!("↑ {}", format_bytes_speed(rate.up));
+        let down_text = format!("↓ {}", format_bytes_speed(rate.down));
+
+        // For test rate display
+        // let down_text = format!("↓ {}", format_bytes_speed(102 * 1020 * 1024));
 
         // 计算文本位置，确保垂直间距合适
         // 修改文本位置为居右显示
-        let up_text_width = imageproc::drawing::text_size(scale, &font, &up_text).0 as u32;
-        let down_text_width = imageproc::drawing::text_size(scale, &font, &down_text).0 as u32;
-
         // 计算右对齐的文本位置
-        let up_text_x = total_width - up_text_width;
-        let down_text_x = total_width - down_text_width;
+        // let up_text_width = imageproc::drawing::text_size(scale, &font, &up_text).0 as u32;
+        // let down_text_width = imageproc::drawing::text_size(scale, &font, &down_text).0 as u32;
+        // let up_text_x = total_width - up_text_width;
+        // let down_text_x = total_width - down_text_width;
+
+        // 计算左对齐的文本位置
+        let (up_text_x, down_text_x) = {
+            if is_custom_icon || icon_bytes.is_some() {
+                let text_left_offset = 30;
+                let left_begin = icon_width + text_left_offset;
+                (left_begin, left_begin)
+            } else {
+                (icon_width, icon_width)
+            }
+        };
 
         // 优化垂直位置，使速率显示的高度和上下间距正好等于图标大小
         let text_height = font_size as i32;

@@ -9,6 +9,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityUserAssetUrlBinding
 import com.v2ray.ang.dto.AssetUrlItem
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.Utils
 import java.io.File
@@ -21,10 +22,10 @@ class UserAssetUrlActivity : BaseActivity() {
 
     private val binding by lazy { ActivityUserAssetUrlBinding.inflate(layoutInflater) }
 
-    var del_config: MenuItem? = null
-    var save_config: MenuItem? = null
+    private var del_config: MenuItem? = null
+    private var save_config: MenuItem? = null
 
-    val extDir by lazy { File(Utils.userAssetPath(this)) }
+    private val extDir by lazy { File(Utils.userAssetPath(this)) }
     private val editAssetId by lazy { intent.getStringExtra("assetId").orEmpty() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,7 +102,7 @@ class UserAssetUrlActivity : BaseActivity() {
         }
 
         MmkvManager.encodeAsset(assetId, assetItem)
-        toast(R.string.toast_success)
+        toastSuccess(R.string.toast_success)
         finish()
         return true
     }

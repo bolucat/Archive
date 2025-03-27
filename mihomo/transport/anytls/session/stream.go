@@ -22,6 +22,9 @@ type Stream struct {
 
 	dieOnce sync.Once
 	dieHook func()
+	dieErr  error
+
+	reportOnce sync.Once
 }
 
 // newStream initiates a Stream struct
@@ -36,7 +39,11 @@ func newStream(id uint32, sess *Session) *Stream {
 
 // Read implements net.Conn
 func (s *Stream) Read(b []byte) (n int, err error) {
-	return s.pipeR.Read(b)
+	n, err = s.pipeR.Read(b)
+	if s.dieErr != nil {
+		err = s.dieErr
+	}
+	return
 }
 
 // Write implements net.Conn
@@ -54,25 +61,28 @@ func (s *Stream) Write(b []byte) (n int, err error) {
 
 // Close implements net.Conn
 func (s *Stream) Close() error {
-	if s.sessionClose() {
-		// notify remote
-		return s.sess.streamClosed(s.id)
-	} else {
-		return io.ErrClosedPipe
-	}
+	return s.CloseWithError(io.ErrClosedPipe)
 }
 
-// sessionClose close stream from session side, do not notify remote
-func (s *Stream) sessionClose() (once bool) {
+func (s *Stream) CloseWithError(err error) error {
+	// if err != io.ErrClosedPipe {
+	// 	logrus.Debugln(err)
+	// }
+	var once bool
 	s.dieOnce.Do(func() {
+		s.dieErr = err
 		s.pipeR.Close()
 		once = true
+	})
+	if once {
 		if s.dieHook != nil {
 			s.dieHook()
 			s.dieHook = nil
 		}
-	})
-	return
+		return s.sess.streamClosed(s.id)
+	} else {
+		return s.dieErr
+	}
 }
 
 func (s *Stream) SetReadDeadline(t time.Time) error {
@@ -105,6 +115,36 @@ func (s *Stream) RemoteAddr() net.Addr {
 		RemoteAddr() net.Addr
 	}); ok {
 		return ts.RemoteAddr()
+	}
+	return nil
+}
+
+// HandshakeFailure should be called when Server fail to create outbound proxy
+func (s *Stream) HandshakeFailure(err error) error {
+	var once bool
+	s.reportOnce.Do(func() {
+		once = true
+	})
+	if once && err != nil && s.sess.peerVersion >= 2 {
+		f := newFrame(cmdSYNACK, s.id)
+		f.data = []byte(err.Error())
+		if _, err := s.sess.writeFrame(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// HandshakeSuccess should be called when Server success to create outbound proxy
+func (s *Stream) HandshakeSuccess() error {
+	var once bool
+	s.reportOnce.Do(func() {
+		once = true
+	})
+	if once && s.sess.peerVersion >= 2 {
+		if _, err := s.sess.writeFrame(newFrame(cmdSYNACK, s.id)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

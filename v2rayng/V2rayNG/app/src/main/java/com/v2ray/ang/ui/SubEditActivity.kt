@@ -10,6 +10,7 @@ import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivitySubEditBinding
 import com.v2ray.ang.dto.SubscriptionItem
 import com.v2ray.ang.extension.toast
+import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.Dispatchers
@@ -18,8 +19,8 @@ import kotlinx.coroutines.launch
 class SubEditActivity : BaseActivity() {
     private val binding by lazy { ActivitySubEditBinding.inflate(layoutInflater) }
 
-    var del_config: MenuItem? = null
-    var save_config: MenuItem? = null
+    private var del_config: MenuItem? = null
+    private var save_config: MenuItem? = null
 
     private val editSubId by lazy { intent.getStringExtra("subId").orEmpty() }
 
@@ -37,7 +38,7 @@ class SubEditActivity : BaseActivity() {
     }
 
     /**
-     * bingding seleced server config
+     * binding selected server config
      */
     private fun bindingServer(subItem: SubscriptionItem): Boolean {
         binding.etRemarks.text = Utils.getEditable(subItem.remarks)
@@ -94,7 +95,7 @@ class SubEditActivity : BaseActivity() {
         }
 
         MmkvManager.encodeSubscription(editSubId, subItem)
-        toast(R.string.toast_success)
+        toastSuccess(R.string.toast_success)
         finish()
         return true
     }
