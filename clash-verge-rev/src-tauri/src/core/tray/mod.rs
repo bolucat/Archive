@@ -8,7 +8,7 @@ use crate::{
     feat,
     module::{lightweight::entry_lightweight_mode, mihomo::Rate},
     resolve,
-    utils::{dirs::find_target_icons, i18n::t, resolve::VERSION},
+    utils::{dirs::find_target_icons, i18n::t, logging::Type, resolve::VERSION},
 };
 
 use anyhow::Result;
@@ -50,7 +50,7 @@ pub struct Tray {}
 impl TrayState {
     pub fn get_common_tray_icon() -> (bool, Vec<u8>) {
         let verge = Config::verge().latest().clone();
-        let is_common_tray_icon = verge.common_tray_icon.clone().unwrap_or(false);
+        let is_common_tray_icon = verge.common_tray_icon.unwrap_or(false);
         if is_common_tray_icon {
             if let Some(common_icon_path) = find_target_icons("common").unwrap() {
                 let icon_data = fs::read(common_icon_path).unwrap();
@@ -59,7 +59,7 @@ impl TrayState {
         }
         #[cfg(target_os = "macos")]
         {
-            let tray_icon_colorful = verge.tray_icon.clone().unwrap_or("monochrome".to_string());
+            let tray_icon_colorful = verge.tray_icon.unwrap_or("monochrome".to_string());
             if tray_icon_colorful == "monochrome" {
                 (
                     false,
@@ -84,7 +84,7 @@ impl TrayState {
 
     pub fn get_sysproxy_tray_icon() -> (bool, Vec<u8>) {
         let verge = Config::verge().latest().clone();
-        let is_sysproxy_tray_icon = verge.sysproxy_tray_icon.clone().unwrap_or(false);
+        let is_sysproxy_tray_icon = verge.sysproxy_tray_icon.unwrap_or(false);
         if is_sysproxy_tray_icon {
             if let Some(sysproxy_icon_path) = find_target_icons("sysproxy").unwrap() {
                 let icon_data = fs::read(sysproxy_icon_path).unwrap();
@@ -118,7 +118,7 @@ impl TrayState {
 
     pub fn get_tun_tray_icon() -> (bool, Vec<u8>) {
         let verge = Config::verge().latest().clone();
-        let is_tun_tray_icon = verge.tun_tray_icon.clone().unwrap_or(false);
+        let is_tun_tray_icon = verge.tun_tray_icon.unwrap_or(false);
         if is_tun_tray_icon {
             if let Some(tun_icon_path) = find_target_icons("tun").unwrap() {
                 let icon_data = fs::read(tun_icon_path).unwrap();
@@ -684,9 +684,9 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
         "system_proxy" => feat::toggle_system_proxy(),
         "tun_mode" => feat::toggle_tun_mode(None),
         "copy_env" => feat::copy_clash_env(),
-        "open_app_dir" => crate::log_err!(cmd::open_app_dir()),
-        "open_core_dir" => crate::log_err!(cmd::open_core_dir()),
-        "open_logs_dir" => crate::log_err!(cmd::open_logs_dir()),
+        "open_app_dir" => crate::logging_error!(Type::Cmd, true, cmd::open_app_dir()),
+        "open_core_dir" => crate::logging_error!(Type::Cmd, true, cmd::open_core_dir()),
+        "open_logs_dir" => crate::logging_error!(Type::Cmd, true, cmd::open_logs_dir()),
         "restart_clash" => feat::restart_clash_core(),
         "restart_app" => feat::restart_app(),
         "entry_lightweight_mode" => entry_lightweight_mode(),

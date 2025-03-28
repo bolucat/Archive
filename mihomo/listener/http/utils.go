@@ -47,7 +47,7 @@ func removeExtraHTTPHostPort(req *http.Request) {
 		host = req.URL.Host
 	}
 
-	if pHost, port, err := net.SplitHostPort(host); err == nil && (port == "80" || port == "443") {
+	if pHost, port, err := net.SplitHostPort(host); err == nil && port == "80" {
 		host = pHost
 		if ip, err := netip.ParseAddr(pHost); err == nil && ip.Is6() {
 			// RFC 2617 Sec 3.2.2, for IPv6 literal
