@@ -7,13 +7,13 @@
     "./src/materialYou/themeConsts.mjs": "./src/materialYou/themeConsts.mjs"
   },
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "vite build"
+    "build": "vite build --sourcemap"
   },
   "dependencies": {
     "@material/material-color-utilities": "0.3.0",
@@ -22,19 +22,19 @@
     "@mui/material": "6.4.9",
     "@radix-ui/react-portal": "1.1.4",
     "@radix-ui/react-scroll-area": "1.2.3",
-    "@tauri-apps/api": "2.3.0",
+    "@tauri-apps/api": "2.4.0",
     "@types/d3": "7.4.3",
     "@types/react": "19.0.12",
     "@vitejs/plugin-react": "4.3.4",
     "ahooks": "3.8.4",
     "d3": "7.9.0",
     "framer-motion": "12.5.0",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "react-error-boundary": "5.0.0",
     "react-i18next": "15.4.1",
     "react-use": "17.6.0",
-    "tailwindcss": "4.0.15",
+    "tailwindcss": "4.0.17",
     "vite": "6.2.3",
     "vite-tsconfig-paths": "5.1.4"
   },

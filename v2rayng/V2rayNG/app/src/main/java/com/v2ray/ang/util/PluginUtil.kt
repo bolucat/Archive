@@ -3,7 +3,7 @@ package com.v2ray.ang.util
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
-import com.v2ray.ang.AppConfig.ANG_PACKAGE
+import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.EConfigType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.fmt.Hysteria2Fmt
@@ -13,7 +13,7 @@ import java.io.File
 
 object PluginUtil {
     private const val HYSTERIA2 = "libhysteria2.so"
-    private const val TAG = ANG_PACKAGE
+
     private val procService: ProcessService by lazy {
         ProcessService()
     }
@@ -26,13 +26,23 @@ object PluginUtil {
      * @param domainPort The domain and port information.
      */
     fun runPlugin(context: Context, config: ProfileItem?, domainPort: String?) {
-        Log.d(TAG, "runPlugin")
+        Log.i(AppConfig.TAG, "Starting plugin execution")
 
-        if (config?.configType?.equals(EConfigType.HYSTERIA2) == true) {
-            val configFile = genConfigHy2(context, config, domainPort) ?: return
-            val cmd = genCmdHy2(context, configFile)
+        if (config == null) {
+            Log.w(AppConfig.TAG, "Cannot run plugin: config is null")
+            return
+        }
+        
+        try {
+            if (config.configType == EConfigType.HYSTERIA2) {
+                Log.i(AppConfig.TAG, "Running Hysteria2 plugin")
+                val configFile = genConfigHy2(context, config, domainPort) ?: return
+                val cmd = genCmdHy2(context, configFile)
 
-            procService.runProcess(context, cmd)
+                procService.runProcess(context, cmd)
+            }
+        } catch (e: Exception) {
+            Log.e(AppConfig.TAG, "Error running plugin", e)
         }
     }
 
@@ -51,7 +61,7 @@ object PluginUtil {
      * @return The ping delay in milliseconds, or -1 if it fails.
      */
     fun realPingHy2(context: Context, config: ProfileItem?): Long {
-        Log.d(TAG, "realPingHy2")
+        Log.i(AppConfig.TAG, "realPingHy2")
         val retFailure = -1L
 
         if (config?.configType?.equals(EConfigType.HYSTERIA2) == true) {
@@ -79,18 +89,18 @@ object PluginUtil {
      * @return The generated configuration file.
      */
     private fun genConfigHy2(context: Context, config: ProfileItem, domainPort: String?): File? {
-        Log.d(TAG, "runPlugin $HYSTERIA2")
+        Log.i(AppConfig.TAG, "runPlugin $HYSTERIA2")
 
         val socksPort = domainPort?.split(":")?.last()
             .let { if (it.isNullOrEmpty()) return null else it.toInt() }
         val hy2Config = Hysteria2Fmt.toNativeConfig(config, socksPort) ?: return null
 
         val configFile = File(context.noBackupFilesDir, "hy2_${SystemClock.elapsedRealtime()}.json")
-        Log.d(TAG, "runPlugin ${configFile.absolutePath}")
+        Log.i(AppConfig.TAG, "runPlugin ${configFile.absolutePath}")
 
         configFile.parentFile?.mkdirs()
         configFile.writeText(JsonUtil.toJson(hy2Config))
-        Log.d(TAG, JsonUtil.toJson(hy2Config))
+        Log.i(AppConfig.TAG, JsonUtil.toJson(hy2Config))
 
         return configFile
     }
@@ -119,10 +129,10 @@ object PluginUtil {
      */
     private fun stopHy2() {
         try {
-            Log.d(TAG, "$HYSTERIA2 destroy")
+            Log.i(AppConfig.TAG, "$HYSTERIA2 destroy")
             procService?.stopProcess()
         } catch (e: Exception) {
-            Log.d(TAG, e.toString())
+            Log.e(AppConfig.TAG, "Failed to stop Hysteria2 process", e)
         }
     }
 }
