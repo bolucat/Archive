@@ -28,7 +28,6 @@ const (
 	DNSTypeFakeIP      = "fakeip"
 	DNSTypeDHCP        = "dhcp"
 	DNSTypeTailscale   = "tailscale"
-	DNSTypeSplitDNS    = "split-dns"
 )
 
 const (

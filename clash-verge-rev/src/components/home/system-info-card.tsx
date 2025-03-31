@@ -1,37 +1,36 @@
 import { useTranslation } from "react-i18next";
-import { Typography, Stack, Divider, Chip, IconButton } from "@mui/material";
-import { InfoOutlined, SettingsOutlined } from "@mui/icons-material";
+import { Typography, Stack, Divider, Chip, IconButton, Tooltip } from "@mui/material";
+import { 
+  InfoOutlined, 
+  SettingsOutlined, 
+  WarningOutlined, 
+  AdminPanelSettingsOutlined,
+  DnsOutlined,
+  ExtensionOutlined
+} from "@mui/icons-material";
 import { useVerge } from "@/hooks/use-verge";
 import { EnhancedCard } from "./enhanced-card";
 import useSWR from "swr";
-import { getRunningMode, getSystemInfo, installService } from "@/services/cmds";
+import { getSystemInfo, installService } from "@/services/cmds";
 import { useNavigate } from "react-router-dom";
 import { version as appVersion } from "@root/package.json";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 import { useLockFn } from "ahooks";
 import { Notice } from "@/components/base";
+import { useSystemState } from "@/hooks/use-system-state";
 
 export const SystemInfoCard = () => {
   const { t } = useTranslation();
   const { verge, patchVerge } = useVerge();
   const navigate = useNavigate();
+  const { isAdminMode, isSidecarMode, mutateRunningMode } = useSystemState();
 
   // 系统信息状态
   const [systemState, setSystemState] = useState({
     osInfo: "",
     lastCheckUpdate: "-",
   });
-
-  // 获取运行模式
-  const { data: runningMode = "Sidecar", mutate: mutateRunningMode } = useSWR(
-    "getRunningMode",
-    getRunningMode,
-    { suspense: false, revalidateOnFocus: false },
-  );
-
-  // 是否以sidecar模式运行
-  const isSidecarMode = runningMode === "Sidecar";
 
   // 初始化系统信息
   useEffect(() => {
@@ -107,13 +106,13 @@ export const SystemInfoCard = () => {
 
   // 切换自启动状态
   const toggleAutoLaunch = useCallback(async () => {
-    if (!verge) return;
+    if (!verge || isAdminMode) return;
     try {
       await patchVerge({ enable_auto_launch: !verge.enable_auto_launch });
     } catch (err) {
       console.error("切换开机自启动状态失败:", err);
     }
-  }, [verge, patchVerge]);
+  }, [verge, patchVerge, isAdminMode]);
 
   // 安装系统服务
   const onInstallService = useLockFn(async () => {
@@ -121,18 +120,20 @@ export const SystemInfoCard = () => {
       Notice.info(t("Installing Service..."), 1000);
       await installService();
       Notice.success(t("Service Installed Successfully"), 2000);
-      await mutateRunningMode();
+
+        await mutateRunningMode();
+
     } catch (err: any) {
       Notice.error(err.message || err.toString(), 3000);
     }
   });
 
-  // 点击运行模式处理
+  // 点击运行模式处理,Sidecar或纯管理员模式允许安装服务
   const handleRunningModeClick = useCallback(() => {
-    if (isSidecarMode) {
+    if (isSidecarMode || (isAdminMode && isSidecarMode)) {
       onInstallService();
     }
-  }, [isSidecarMode, onInstallService]);
+  }, [isSidecarMode, isAdminMode, onInstallService]);
 
   // 检查更新
   const onCheckUpdate = useLockFn(async () => {
@@ -158,14 +159,74 @@ export const SystemInfoCard = () => {
   // 运行模式样式
   const runningModeStyle = useMemo(
     () => ({
-      cursor: isSidecarMode ? "pointer" : "default",
-      textDecoration: isSidecarMode ? "underline" : "none",
+      // Sidecar或纯管理员模式允许安装服务
+      cursor: (isSidecarMode || (isAdminMode && isSidecarMode)) ? "pointer" : "default",
+      textDecoration: (isSidecarMode || (isAdminMode && isSidecarMode)) ? "underline" : "none",
+      display: "flex",
+      alignItems: "center",
+      gap: 0.5,
       "&:hover": {
-        opacity: isSidecarMode ? 0.7 : 1,
+        opacity: (isSidecarMode || (isAdminMode && isSidecarMode)) ? 0.7 : 1,
       },
     }),
-    [isSidecarMode],
+    [isSidecarMode, isAdminMode],
   );
+
+  // 获取模式图标和文本
+  const getModeIcon = () => {
+    if (isAdminMode) {
+      // 判断是否为组合模式（管理员+服务）
+      if (!isSidecarMode) {
+        return (
+          <>
+            <AdminPanelSettingsOutlined 
+              sx={{ color: "primary.main", fontSize: 16 }} 
+              titleAccess={t("Administrator Mode")}
+            />
+            <DnsOutlined 
+              sx={{ color: "success.main", fontSize: 16, ml: 0.5 }} 
+              titleAccess={t("Service Mode")}
+            />
+          </>
+        );
+      }
+      return (
+        <AdminPanelSettingsOutlined 
+          sx={{ color: "primary.main", fontSize: 16 }} 
+          titleAccess={t("Administrator Mode")}
+        />
+      );
+    } else if (isSidecarMode) {
+      return (
+        <ExtensionOutlined 
+          sx={{ color: "info.main", fontSize: 16 }} 
+          titleAccess={t("Sidecar Mode")}
+        />
+      );
+    } else {
+      return (
+        <DnsOutlined 
+          sx={{ color: "success.main", fontSize: 16 }} 
+          titleAccess={t("Service Mode")}
+        />
+      );
+    }
+  };
+
+  // 获取模式文本
+  const getModeText = () => {
+    if (isAdminMode) {
+      // 判断是否同时处于服务模式
+      if (!isSidecarMode) {
+        return t("Administrator + Service Mode");
+      }
+      return t("Administrator Mode");
+    } else if (isSidecarMode) {
+      return t("Sidecar Mode");
+    } else {
+      return t("Service Mode");
+    }
+  };
 
   // 只有当verge存在时才渲染内容
   if (!verge) return null;
@@ -191,21 +252,29 @@ export const SystemInfoCard = () => {
           </Typography>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">
             {t("Auto Launch")}
           </Typography>
-          <Chip
-            size="small"
-            label={autoLaunchEnabled ? t("Enabled") : t("Disabled")}
-            color={autoLaunchEnabled ? "success" : "default"}
-            variant={autoLaunchEnabled ? "filled" : "outlined"}
-            onClick={toggleAutoLaunch}
-            sx={{ cursor: "pointer" }}
-          />
+          <Stack direction="row" spacing={1} alignItems="center">
+            {isAdminMode && (
+              <Tooltip title={t("Administrator mode does not support auto launch")}>
+                <WarningOutlined sx={{ color: "warning.main", fontSize: 20 }} />
+              </Tooltip>
+            )}
+            <Chip
+              size="small"
+              label={autoLaunchEnabled ? t("Enabled") : t("Disabled")}
+              color={autoLaunchEnabled ? "success" : "default"}
+              variant={autoLaunchEnabled ? "filled" : "outlined"}
+              onClick={toggleAutoLaunch}
+              disabled={isAdminMode}
+              sx={{ cursor: isAdminMode ? "not-allowed" : "pointer" }}
+            />
+          </Stack>
         </Stack>
         <Divider />
-        <Stack direction="row" justifyContent="space-between">
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Typography variant="body2" color="text.secondary">
             {t("Running Mode")}
           </Typography>
@@ -215,7 +284,8 @@ export const SystemInfoCard = () => {
             onClick={handleRunningModeClick}
             sx={runningModeStyle}
           >
-            {isSidecarMode ? t("Sidecar Mode") : t("Service Mode")}
+            {getModeIcon()}
+            {getModeText()}
           </Typography>
         </Stack>
         <Divider />

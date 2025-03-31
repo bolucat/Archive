@@ -18,12 +18,12 @@ import { TooltipIcon } from "@/components/base/base-tooltip-icon";
 import {
   getSystemProxy,
   getAutotemProxy,
-  getRunningMode,
   installService,
   getAutoLaunchStatus,
 } from "@/services/cmds";
 import { useLockFn } from "ahooks";
-import { Box, Button, Tooltip } from "@mui/material";
+import { Button, Tooltip } from "@mui/material";
+import { useSystemState } from "@/hooks/use-system-state";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -36,15 +36,16 @@ const SettingSystem = ({ onError }: Props) => {
 
   const { data: sysproxy } = useSWR("getSystemProxy", getSystemProxy);
   const { data: autoproxy } = useSWR("getAutotemProxy", getAutotemProxy);
-  const { data: runningMode, mutate: mutateRunningMode } = useSWR(
-    "getRunningMode",
-    getRunningMode,
-  );
   const { data: autoLaunchEnabled } = useSWR(
     "getAutoLaunchStatus",
     getAutoLaunchStatus,
     { revalidateOnFocus: false }
   );
+
+  const { isAdminMode, isSidecarMode, mutateRunningMode } = useSystemState();
+
+  // 判断Tun模式是否可用 - 当处于服务模式或管理员模式时可用
+  const isTunAvailable = !isSidecarMode || isAdminMode;
 
   // 当实际自启动状态与配置不同步时更新配置
   useEffect(() => {
@@ -57,9 +58,6 @@ const SettingSystem = ({ onError }: Props) => {
       mutateVerge({ ...verge, enable_auto_launch: autoLaunchEnabled }, false);
     }
   }, [autoLaunchEnabled]);
-
-  // 是否以sidecar模式运行
-  const isSidecarMode = runningMode === "Sidecar";
 
   const sysproxyRef = useRef<DialogRef>(null);
   const tunRef = useRef<DialogRef>(null);
@@ -111,12 +109,12 @@ const SettingSystem = ({ onError }: Props) => {
               icon={SettingsRounded}
               onClick={() => tunRef.current?.open()}
             />
-            {isSidecarMode && (
+            {isSidecarMode && !isAdminMode && (
               <Tooltip title={t("TUN requires Service Mode")}>
                 <WarningRounded sx={{ color: "warning.main", mr: 1 }} />
               </Tooltip>
             )}
-            {isSidecarMode && (
+            {isSidecarMode && !isAdminMode && (
               <Tooltip title={t("Install Service")}>
                 <Button
                   variant="outlined"
@@ -138,20 +136,20 @@ const SettingSystem = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onChange={(e) => {
-            // 当在sidecar模式下禁用切换
-            if (isSidecarMode) return;
+            // 当在sidecar模式下且非管理员模式时禁用切换
+            if (isSidecarMode && !isAdminMode) return;
             onChangeData({ enable_tun_mode: e });
           }}
           onGuard={(e) => {
-            // 当在sidecar模式下禁用切换
-            if (isSidecarMode) {
+            // 当在sidecar模式下且非管理员模式时禁用切换
+            if (isSidecarMode && !isAdminMode) {
               Notice.error(t("TUN requires Service Mode"), 2000);
               return Promise.reject(new Error(t("TUN requires Service Mode")));
             }
             return patchVerge({ enable_tun_mode: e });
           }}
         >
-          <Switch edge="end" disabled={isSidecarMode} />
+          <Switch edge="end" disabled={isSidecarMode && !isAdminMode} />
         </GuardState>
       </SettingItem>
       <SettingItem
@@ -192,14 +190,32 @@ const SettingSystem = ({ onError }: Props) => {
         </GuardState>
       </SettingItem>
 
-      <SettingItem label={t("Auto Launch")}>
+      <SettingItem 
+        label={t("Auto Launch")}
+        extra={
+          isAdminMode && (
+            <Tooltip title={t("Administrator mode does not support auto launch")}>
+              <WarningRounded sx={{ color: "warning.main", mr: 1 }} />
+            </Tooltip>
+          )
+        }
+      >
         <GuardState
           value={enable_auto_launch ?? false}
           valueProps="checked"
           onCatch={onError}
           onFormat={onSwitchFormat}
-          onChange={(e) => onChangeData({ enable_auto_launch: e })}
+          onChange={(e) => {
+            // 在管理员模式下禁用更改
+            if (isAdminMode) return;
+            onChangeData({ enable_auto_launch: e });
+          }}
           onGuard={async (e) => {
+            if (isAdminMode) {
+              Notice.error(t("Administrator mode does not support auto launch"), 2000);
+              return Promise.reject(new Error(t("Administrator mode does not support auto launch")));
+            }
+            
             try {
               // 在应用更改之前先触发UI更新，让用户立即看到反馈
               onChangeData({ enable_auto_launch: e });
@@ -214,7 +230,7 @@ const SettingSystem = ({ onError }: Props) => {
             }
           }}
         >
-          <Switch edge="end" />
+          <Switch edge="end" disabled={isAdminMode} />
         </GuardState>
       </SettingItem>
 
