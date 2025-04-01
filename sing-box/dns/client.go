@@ -243,15 +243,9 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, domain string, options adapter.DNSQueryOptions, responseChecker func(responseAddrs []netip.Addr) bool) ([]netip.Addr, error) {
 	domain = FqdnToDomain(domain)
 	dnsName := dns.Fqdn(domain)
-	var strategy C.DomainStrategy
-	if options.LookupStrategy != C.DomainStrategyAsIS {
-		strategy = options.LookupStrategy
-	} else {
-		strategy = options.Strategy
-	}
-	if strategy == C.DomainStrategyIPv4Only {
+	if options.Strategy == C.DomainStrategyIPv4Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, options, responseChecker)
-	} else if strategy == C.DomainStrategyIPv6Only {
+	} else if options.Strategy == C.DomainStrategyIPv6Only {
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, options, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -277,7 +271,7 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if len(response4) == 0 && len(response6) == 0 {
 		return nil, err
 	}
-	return sortAddresses(response4, response6, strategy), nil
+	return sortAddresses(response4, response6, options.Strategy), nil
 }
 
 func (c *Client) ClearCache() {
@@ -533,26 +527,12 @@ func transportTagFromContext(ctx context.Context) (string, bool) {
 	return value, loaded
 }
 
-func FixedResponseStatus(message *dns.Msg, rcode int) *dns.Msg {
-	return &dns.Msg{
-		MsgHdr: dns.MsgHdr{
-			Id:       message.Id,
-			Rcode:    rcode,
-			Response: true,
-		},
-		Question: message.Question,
-	}
-}
-
 func FixedResponse(id uint16, question dns.Question, addresses []netip.Addr, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:                 id,
-			Response:           true,
-			Authoritative:      true,
-			RecursionDesired:   true,
-			RecursionAvailable: true,
-			Rcode:              dns.RcodeSuccess,
+			Id:       id,
+			Rcode:    dns.RcodeSuccess,
+			Response: true,
 		},
 		Question: []dns.Question{question},
 	}
@@ -585,12 +565,9 @@ func FixedResponse(id uint16, question dns.Question, addresses []netip.Addr, tim
 func FixedResponseCNAME(id uint16, question dns.Question, record string, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:                 id,
-			Response:           true,
-			Authoritative:      true,
-			RecursionDesired:   true,
-			RecursionAvailable: true,
-			Rcode:              dns.RcodeSuccess,
+			Id:       id,
+			Rcode:    dns.RcodeSuccess,
+			Response: true,
 		},
 		Question: []dns.Question{question},
 		Answer: []dns.RR{
@@ -611,12 +588,9 @@ func FixedResponseCNAME(id uint16, question dns.Question, record string, timeToL
 func FixedResponseTXT(id uint16, question dns.Question, records []string, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:                 id,
-			Response:           true,
-			Authoritative:      true,
-			RecursionDesired:   true,
-			RecursionAvailable: true,
-			Rcode:              dns.RcodeSuccess,
+			Id:       id,
+			Rcode:    dns.RcodeSuccess,
+			Response: true,
 		},
 		Question: []dns.Question{question},
 		Answer: []dns.RR{
@@ -637,12 +611,9 @@ func FixedResponseTXT(id uint16, question dns.Question, records []string, timeTo
 func FixedResponseMX(id uint16, question dns.Question, records []*net.MX, timeToLive uint32) *dns.Msg {
 	response := dns.Msg{
 		MsgHdr: dns.MsgHdr{
-			Id:                 id,
-			Response:           true,
-			Authoritative:      true,
-			RecursionDesired:   true,
-			RecursionAvailable: true,
-			Rcode:              dns.RcodeSuccess,
+			Id:       id,
+			Rcode:    dns.RcodeSuccess,
+			Response: true,
 		},
 		Question: []dns.Question{question},
 	}

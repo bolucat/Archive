@@ -25,9 +25,6 @@ const (
 	TypeTUIC         = "tuic"
 	TypeHysteria2    = "hysteria2"
 	TypeTailscale    = "tailscale"
-	TypeDERP         = "derp"
-	TypeDERPSTUN     = "derp-stun"
-	TypeResolved     = "resolved"
 )
 
 const (

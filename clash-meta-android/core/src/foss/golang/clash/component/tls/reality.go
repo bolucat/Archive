@@ -75,7 +75,15 @@ func GetRealityConn(ctx context.Context, conn net.Conn, ClientFingerprint string
 
 		//log.Debugln("REALITY hello.sessionId[:16]: %v", hello.SessionId[:16])
 
-		ecdheKey := uConn.HandshakeState.State13.EcdheKey
+		keyShareKeys := uConn.HandshakeState.State13.KeyShareKeys
+		if keyShareKeys == nil {
+			// WTF???
+			if retry > 2 {
+				return nil, errors.New("nil keyShareKeys")
+			}
+			continue // retry
+		}
+		ecdheKey := keyShareKeys.Ecdhe
 		if ecdheKey == nil {
 			// WTF???
 			if retry > 2 {

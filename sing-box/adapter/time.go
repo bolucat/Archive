@@ -3,6 +3,6 @@ package adapter
 import "time"
 
 type TimeService interface {
-	SimpleLifecycle
+	Service
 	TimeFunc() func() time.Time
 }

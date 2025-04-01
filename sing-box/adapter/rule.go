@@ -11,7 +11,7 @@ type HeadlessRule interface {
 
 type Rule interface {
 	HeadlessRule
-	SimpleLifecycle
+	Service
 	Type() string
 	Action() RuleAction
 }

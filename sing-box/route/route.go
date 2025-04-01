@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/user"
 	"strings"
 	"time"
 
@@ -60,8 +61,6 @@ func (r *Router) RouteConnectionEx(ctx context.Context, conn net.Conn, metadata 
 func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) error {
 	if r.pauseManager.IsDevicePaused() {
 		return E.New("reject connection to ", metadata.Destination, " while device paused")
-	} else if metadata.InboundType == C.TypeResolved {
-		return r.hijackDNSStream(ctx, conn, metadata)
 	}
 
 	//nolint:staticcheck
@@ -118,12 +117,14 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 			}
 		case *rule.RuleActionReject:
 			buf.ReleaseMulti(buffers)
-			return action.Error(ctx)
+			N.CloseOnHandshakeFailure(conn, onClose, action.Error(ctx))
+			return nil
 		case *rule.RuleActionHijackDNS:
 			for _, buffer := range buffers {
 				conn = bufio.NewCachedConn(conn, buffer)
 			}
-			return r.hijackDNSStream(ctx, conn, metadata)
+			r.hijackDNSStream(ctx, conn, metadata)
+			return nil
 		}
 	}
 	if selectedRule == nil {
@@ -186,8 +187,6 @@ func (r *Router) RoutePacketConnectionEx(ctx context.Context, conn N.PacketConn,
 func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) error {
 	if r.pauseManager.IsDevicePaused() {
 		return E.New("reject packet connection to ", metadata.Destination, " while device paused")
-	} else if metadata.InboundType == C.TypeResolved {
-		return r.hijackDNSPacket(ctx, conn, nil, metadata)
 	}
 	//nolint:staticcheck
 	if metadata.InboundDetour != "" {
@@ -239,10 +238,11 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 			}
 		case *rule.RuleActionReject:
 			N.ReleaseMultiPacketBuffer(packetBuffers)
-			return action.Error(ctx)
+			N.CloseOnHandshakeFailure(conn, onClose, action.Error(ctx))
+			return nil
 		case *rule.RuleActionHijackDNS:
-			return r.hijackDNSPacket(ctx, conn, packetBuffers, metadata)
-
+			r.hijackDNSPacket(ctx, conn, packetBuffers, metadata)
+			return nil
 		}
 	}
 	if selectedRule == nil || selectReturn {
@@ -305,16 +305,16 @@ func (r *Router) matchRule(
 			r.logger.InfoContext(ctx, "failed to search process: ", fErr)
 		} else {
 			if processInfo.ProcessPath != "" {
-				if processInfo.User != "" {
-					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath, ", user: ", processInfo.User)
-				} else if processInfo.UserId != -1 {
-					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath, ", user id: ", processInfo.UserId)
-				} else {
-					r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath)
-				}
+				r.logger.InfoContext(ctx, "found process path: ", processInfo.ProcessPath)
 			} else if processInfo.PackageName != "" {
 				r.logger.InfoContext(ctx, "found package name: ", processInfo.PackageName)
 			} else if processInfo.UserId != -1 {
+				if /*needUserName &&*/ true {
+					osUser, _ := user.LookupId(F.ToString(processInfo.UserId))
+					if osUser != nil {
+						processInfo.User = osUser.Username
+					}
+				}
 				if processInfo.User != "" {
 					r.logger.InfoContext(ctx, "found user: ", processInfo.User)
 				} else {

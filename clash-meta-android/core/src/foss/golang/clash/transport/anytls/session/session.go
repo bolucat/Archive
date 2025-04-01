@@ -3,9 +3,11 @@ package session
 import (
 	"crypto/md5"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
 
@@ -30,10 +32,15 @@ type Session struct {
 	die     chan struct{}
 	dieHook func()
 
+	synDone     func()
+	synDoneLock sync.Mutex
+
 	// pool
 	seq       uint64
 	idleSince time.Time
 	padding   *atomic.TypedValue[*padding.PaddingFactory]
+
+	peerVersion byte
 
 	// client
 	isClient    bool
@@ -76,7 +83,7 @@ func (s *Session) Run() {
 	}
 
 	settings := util.StringMap{
-		"v":           "1",
+		"v":           "2",
 		"client":      "mihomo/" + constant.Version,
 		"padding-md5": s.padding.Load().Md5,
 	}
@@ -105,15 +112,16 @@ func (s *Session) Close() error {
 		close(s.die)
 		once = true
 	})
-
 	if once {
 		if s.dieHook != nil {
 			s.dieHook()
+			s.dieHook = nil
 		}
 		s.streamLock.Lock()
-		for k := range s.streams {
-			s.streams[k].sessionClose()
+		for _, stream := range s.streams {
+			stream.Close()
 		}
+		s.streams = make(map[uint32]*Stream)
 		s.streamLock.Unlock()
 		return s.conn.Close()
 	} else {
@@ -131,6 +139,17 @@ func (s *Session) OpenStream() (*Stream, error) {
 	stream := newStream(sid, s)
 
 	//logrus.Debugln("stream open", sid, s.streams)
+
+	if sid >= 2 && s.peerVersion >= 2 {
+		s.synDoneLock.Lock()
+		if s.synDone != nil {
+			s.synDone()
+		}
+		s.synDone = util.NewDeadlineWatcher(time.Second*3, func() {
+			s.Close()
+		})
+		s.synDoneLock.Unlock()
+	}
 
 	if _, err := s.writeFrame(newFrame(cmdSYN, sid)); err != nil {
 		return nil, err
@@ -195,13 +214,37 @@ func (s *Session) recvLoop() error {
 				if _, ok := s.streams[sid]; !ok {
 					stream := newStream(sid, s)
 					s.streams[sid] = stream
-					if s.onNewStream != nil {
-						go s.onNewStream(stream)
-					} else {
-						go s.Close()
-					}
+					go func() {
+						if s.onNewStream != nil {
+							s.onNewStream(stream)
+						} else {
+							stream.Close()
+						}
+					}()
 				}
 				s.streamLock.Unlock()
+			case cmdSYNACK: // should be client only
+				s.synDoneLock.Lock()
+				if s.synDone != nil {
+					s.synDone()
+					s.synDone = nil
+				}
+				s.synDoneLock.Unlock()
+				if hdr.Length() > 0 {
+					buffer := pool.Get(int(hdr.Length()))
+					if _, err := io.ReadFull(s.conn, buffer); err != nil {
+						pool.Put(buffer)
+						return err
+					}
+					// report error
+					s.streamLock.RLock()
+					stream, ok := s.streams[sid]
+					s.streamLock.RUnlock()
+					if ok {
+						stream.CloseWithError(fmt.Errorf("remote: %s", string(buffer)))
+					}
+					pool.Put(buffer)
+				}
 			case cmdFIN:
 				s.streamLock.RLock()
 				stream, ok := s.streams[sid]
@@ -240,6 +283,20 @@ func (s *Session) recvLoop() error {
 								return err
 							}
 						}
+						// check client's version
+						if v, err := strconv.Atoi(m["v"]); err == nil && v >= 2 {
+							s.peerVersion = byte(v)
+							// send cmdServerSettings
+							f := newFrame(cmdServerSettings, 0)
+							f.data = util.StringMap{
+								"v": "2",
+							}.ToBytes()
+							_, err = s.writeFrame(f)
+							if err != nil {
+								pool.Put(buffer)
+								return err
+							}
+						}
 					}
 					pool.Put(buffer)
 				}
@@ -265,11 +322,34 @@ func (s *Session) recvLoop() error {
 					}
 					if s.isClient {
 						if padding.UpdatePaddingScheme(rawScheme, s.padding) {
-							log.Infoln("[Update padding succeed] %x\n", md5.Sum(rawScheme))
+							log.Debugln("[Update padding succeed] %x\n", md5.Sum(rawScheme))
 						} else {
 							log.Warnln("[Update padding failed] %x\n", md5.Sum(rawScheme))
 						}
 					}
+				}
+			case cmdHeartRequest:
+				if _, err := s.writeFrame(newFrame(cmdHeartResponse, sid)); err != nil {
+					return err
+				}
+			case cmdHeartResponse:
+				// Active keepalive checking is not implemented yet
+				break
+			case cmdServerSettings:
+				if hdr.Length() > 0 {
+					buffer := pool.Get(int(hdr.Length()))
+					if _, err := io.ReadFull(s.conn, buffer); err != nil {
+						pool.Put(buffer)
+						return err
+					}
+					if s.isClient {
+						// check server's version
+						m := util.StringMapFromBytes(buffer)
+						if v, err := strconv.Atoi(m["v"]); err == nil {
+							s.peerVersion = byte(v)
+						}
+					}
+					pool.Put(buffer)
 				}
 			default:
 				// I don't know what command it is (can't have data)
@@ -280,8 +360,10 @@ func (s *Session) recvLoop() error {
 	}
 }
 
-// notify the session that a stream has closed
 func (s *Session) streamClosed(sid uint32) error {
+	if s.IsClosed() {
+		return io.ErrClosedPipe
+	}
 	_, err := s.writeFrame(newFrame(cmdFIN, sid))
 	s.streamLock.Lock()
 	delete(s.streams, sid)

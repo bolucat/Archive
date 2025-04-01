@@ -57,17 +57,13 @@ func NewTLS(ctx context.Context, logger log.ContextLogger, tag string, options o
 	if serverAddr.Port == 0 {
 		serverAddr.Port = 853
 	}
-	return NewTLSRaw(logger, dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeTLS, tag, options.RemoteDNSServerOptions), transportDialer, serverAddr, tlsConfig), nil
-}
-
-func NewTLSRaw(logger logger.ContextLogger, adapter dns.TransportAdapter, dialer N.Dialer, serverAddr M.Socksaddr, tlsConfig tls.Config) *TLSTransport {
 	return &TLSTransport{
-		TransportAdapter: adapter,
+		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeTLS, tag, options.RemoteDNSServerOptions),
 		logger:           logger,
-		dialer:           dialer,
+		dialer:           transportDialer,
 		serverAddr:       serverAddr,
 		tlsConfig:        tlsConfig,
-	}
+	}, nil
 }
 
 func (t *TLSTransport) Start(stage adapter.StartStage) error {

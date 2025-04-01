@@ -33,7 +33,7 @@ func BaseContext(platformInterface PlatformInterface) context.Context {
 			})
 		}
 	}
-	return box.Context(context.Background(), include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), dnsRegistry, include.ServiceRegistry())
+	return box.Context(context.Background(), include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), dnsRegistry)
 }
 
 func parseConfig(ctx context.Context, configContent string) (option.Options, error) {
