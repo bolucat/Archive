@@ -4,7 +4,13 @@ icon: material/alert-decagram
 
 #### 1.12.0-beta.1
 
+* Improve `auto_redirect` **1**
 * Fixes and improvements
+
+**1**:
+
+Now `auto_redirect` fixes compatibility issues between tun and Docker bridge networks,
+see [Tun](/configuration/inbound/tun/#auto_redirect).
 
 ### 1.11.6
 

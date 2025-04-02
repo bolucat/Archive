@@ -371,19 +371,19 @@ function gen_config_server(node)
 			local fallbackStr = node.fallback_list[i]
 			if fallbackStr then
 				local tmp = {}
-				string.gsub(fallbackStr, '[^' .. "," .. ']+', function(w)
+				string.gsub(fallbackStr, '[^,]+', function(w)
 					table.insert(tmp, w)
 				end)
 				local dest = tmp[1] or ""
 				local path = tmp[2]
-				if dest:find("%.") then
-				else
+				local xver = tonumber(tmp[3])
+				if not dest:find("%.") then
 					dest = tonumber(dest)
 				end
 				fallbacks[i] = {
 					path = path,
 					dest = dest,
-					xver = 1
+					xver = xver
 				}
 			end
 		end
@@ -1158,8 +1158,6 @@ function gen_config(var)
 	end
 
 	if remote_dns_tcp_server and remote_dns_tcp_port then
-		local rules = {}
-
 		if not routing then
 			routing = {
 				domainStrategy = "IPOnDemand",
@@ -1206,7 +1204,9 @@ function gen_config(var)
 				_direct_dns.address = "tcp://" .. direct_dns_tcp_server .. ":" .. port
 			end
 
-			table.insert(dns.servers, _direct_dns)
+			if COMMON.default_outbound_tag == "direct" then
+				table.insert(dns.servers, _direct_dns)
+			end
 		end
 
 		local _remote_dns = {
@@ -1318,13 +1318,15 @@ function gen_config(var)
 			})
 		end
 
-		if direct_dns_udp_server or direct_dns_tcp_server then
-			table.insert(routing.rules, {
-				inboundTag = {
-					"dns-global-direct"
-				},
-				outboundTag = "direct"
-			})
+		if COMMON.default_outbound_tag == "direct" then
+			if direct_dns_udp_server or direct_dns_tcp_server then
+				table.insert(routing.rules, {
+					inboundTag = {
+						"dns-global-direct"
+					},
+					outboundTag = "direct"
+				})
+			end
 		end
 
 		--按分流顺序DNS
@@ -1368,16 +1370,17 @@ function gen_config(var)
 			outboundTag = dns_outbound_tag
 		})
 
-		local default_rule_index = #routing.rules > 0 and #routing.rules or 1
+		local default_rule_index = nil
 		for index, value in ipairs(routing.rules) do
 			if value.ruleTag == "default" then
 				default_rule_index = index
 				break
 			end
 		end
-		for index, value in ipairs(rules) do
-			local t = rules[#rules + 1 - index]
-			table.insert(routing.rules, default_rule_index, t)
+		if default_rule_index then
+			local default_rule = api.clone(routing.rules[default_rule_index])
+			table.remove(routing.rules, default_rule_index)
+			table.insert(routing.rules, default_rule)
 		end
 
 		local dns_hosts_len = 0

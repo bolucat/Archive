@@ -283,14 +283,16 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 				vmess["servername"] = sni
 			}
 
-			network, _ := values["net"].(string)
-			network = strings.ToLower(network)
-			if values["type"] == "http" {
-				network = "http"
-			} else if network == "http" {
-				network = "h2"
+			network, ok := values["net"].(string)
+			if ok {
+				network = strings.ToLower(network)
+				if values["type"] == "http" {
+					network = "http"
+				} else if network == "http" {
+					network = "h2"
+				}
+				vmess["network"] = network
 			}
-			vmess["network"] = network
 
 			tls, ok := values["tls"].(string)
 			if ok {
@@ -307,12 +309,12 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 			case "http":
 				headers := make(map[string]any)
 				httpOpts := make(map[string]any)
-				if host, ok := values["host"]; ok && host != "" {
-					headers["Host"] = []string{host.(string)}
+				if host, ok := values["host"].(string); ok && host != "" {
+					headers["Host"] = []string{host}
 				}
 				httpOpts["path"] = []string{"/"}
-				if path, ok := values["path"]; ok && path != "" {
-					httpOpts["path"] = []string{path.(string)}
+				if path, ok := values["path"].(string); ok && path != "" {
+					httpOpts["path"] = []string{path}
 				}
 				httpOpts["headers"] = headers
 
@@ -321,8 +323,8 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 			case "h2":
 				headers := make(map[string]any)
 				h2Opts := make(map[string]any)
-				if host, ok := values["host"]; ok && host != "" {
-					headers["Host"] = []string{host.(string)}
+				if host, ok := values["host"].(string); ok && host != "" {
+					headers["Host"] = []string{host}
 				}
 
 				h2Opts["path"] = values["path"]
@@ -334,11 +336,11 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 				headers := make(map[string]any)
 				wsOpts := make(map[string]any)
 				wsOpts["path"] = "/"
-				if host, ok := values["host"]; ok && host != "" {
-					headers["Host"] = host.(string)
+				if host, ok := values["host"].(string); ok && host != "" {
+					headers["Host"] = host
 				}
-				if path, ok := values["path"]; ok && path != "" {
-					path := path.(string)
+				if path, ok := values["path"].(string); ok && path != "" {
+					path := path
 					pathURL, err := url.Parse(path)
 					if err == nil {
 						query := pathURL.Query()
