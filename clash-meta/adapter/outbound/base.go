@@ -13,6 +13,11 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 )
 
+type ProxyAdapter interface {
+	C.ProxyAdapter
+	DialOptions(opts ...dialer.Option) []dialer.Option
+}
+
 type Base struct {
 	name   string
 	addr   string
@@ -152,6 +157,10 @@ func (b *Base) DialOptions(opts ...dialer.Option) []dialer.Option {
 	return opts
 }
 
+func (b *Base) Close() error {
+	return nil
+}
+
 type BasicOption struct {
 	TFO         bool   `proxy:"tfo,omitempty"`
 	MPTCP       bool   `proxy:"mptcp,omitempty"`
@@ -224,6 +233,7 @@ func (c *conn) ReaderReplaceable() bool {
 func NewConn(c net.Conn, a C.ProxyAdapter) C.Conn {
 	if _, ok := c.(syscall.Conn); !ok { // exclusion system conn like *net.TCPConn
 		c = N.NewDeadlineConn(c) // most conn from outbound can't handle readDeadline correctly
+		c = N.NewRefConn(c, a)   // add ref for autoCloseProxyAdapter
 	}
 	return &conn{N.NewExtendedConn(c), []string{a.Name()}, parseRemoteDestination(a.Addr())}
 }
@@ -271,6 +281,7 @@ func newPacketConn(pc net.PacketConn, a C.ProxyAdapter) C.PacketConn {
 	epc := N.NewEnhancePacketConn(pc)
 	if _, ok := pc.(syscall.Conn); !ok { // exclusion system conn like *net.UDPConn
 		epc = N.NewDeadlineEnhancePacketConn(epc) // most conn from outbound can't handle readDeadline correctly
+		epc = N.NewRefPacketConn(epc, a)          // add ref for autoCloseProxyAdapter
 	}
 	return &packetConn{epc, []string{a.Name()}, a.Name(), utils.NewUUIDV4().String(), parseRemoteDestination(a.Addr())}
 }

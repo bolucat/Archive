@@ -7,15 +7,6 @@ import (
 
 type TransportWrap struct {
 	*http2.Transport
-	netAddr
-}
-
-func (tw *TransportWrap) RemoteAddr() net.Addr {
-	return tw.remoteAddr
-}
-
-func (tw *TransportWrap) LocalAddr() net.Addr {
-	return tw.localAddr
 }
 
 type netAddr struct {
@@ -23,10 +14,10 @@ type netAddr struct {
 	localAddr  net.Addr
 }
 
-func (addr *netAddr) RemoteAddr() net.Addr {
+func (addr netAddr) RemoteAddr() net.Addr {
 	return addr.remoteAddr
 }
 
-func (addr *netAddr) LocalAddr() net.Addr {
+func (addr netAddr) LocalAddr() net.Addr {
 	return addr.localAddr
 }

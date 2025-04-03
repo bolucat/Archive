@@ -149,6 +149,9 @@ type ProxyAdapter interface {
 
 	// Unwrap extracts the proxy from a proxy-group. It returns nil when nothing to extract.
 	Unwrap(metadata *Metadata, touch bool) Proxy
+
+	// Close releasing associated resources
+	Close() error
 }
 
 type Group interface {

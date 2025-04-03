@@ -275,11 +275,11 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 			vmess["skip-cert-verify"] = false
 
 			vmess["cipher"] = "auto"
-			if cipher, ok := values["scy"]; ok && cipher != "" {
+			if cipher, ok := values["scy"].(string); ok && cipher != "" {
 				vmess["cipher"] = cipher
 			}
 
-			if sni, ok := values["sni"]; ok && sni != "" {
+			if sni, ok := values["sni"].(string); ok && sni != "" {
 				vmess["servername"] = sni
 			}
 

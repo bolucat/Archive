@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/common/atomic"
@@ -39,6 +41,9 @@ type Proxy struct {
 	alive   atomic.Bool
 	history *queue.Queue[C.DelayHistory]
 	extra   *xsync.MapOf[string, *internalProxyState]
+
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // Adapter implements C.Proxy
@@ -290,12 +295,28 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 	t = uint16(time.Since(start) / time.Millisecond)
 	return
 }
+
+func (p *Proxy) Close() error {
+	p.closeOnce.Do(func() {
+		runtime.SetFinalizer(p, nil)
+		p.closeErr = p.ProxyAdapter.Close()
+	})
+	return p.closeErr
+}
+
 func NewProxy(adapter C.ProxyAdapter) *Proxy {
-	return &Proxy{
+	proxy := &Proxy{
 		ProxyAdapter: adapter,
 		history:      queue.New[C.DelayHistory](defaultHistoriesNum),
 		alive:        atomic.NewBool(true),
 		extra:        xsync.NewMapOf[string, *internalProxyState]()}
+
+	// auto close ProxyAdapter
+	runtime.SetFinalizer(proxy, func(p *Proxy) {
+		log.Debugln("Closing outdated proxy [%s]", p.Name())
+		_ = p.Close()
+	})
+	return proxy
 }
 
 func urlToMetadata(rawURL string) (addr C.Metadata, err error) {

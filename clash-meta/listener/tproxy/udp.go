@@ -81,7 +81,7 @@ func NewUDP(addr string, tunnel C.Tunnel, additions ...inbound.Addition) (*UDPLi
 			}
 
 			dscp, _ := getDSCP(oob[:oobn])
-			additions = append(additions, inbound.WithDSCP(dscp))
+			additions := append(additions, inbound.WithDSCP(dscp)) // don't change outside additions
 
 			if rAddr.Addr().Is4() {
 				// try to unmap 4in6 address

@@ -3,7 +3,6 @@ package outbound
 import (
 	"context"
 	"errors"
-	"runtime"
 
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/dialer"
@@ -18,8 +17,7 @@ import (
 )
 
 type SingMux struct {
-	C.ProxyAdapter
-	base    ProxyBase
+	ProxyAdapter
 	client  *mux.Client
 	dialer  proxydialer.SingDialer
 	onlyTcp bool
@@ -43,25 +41,21 @@ type BrutalOption struct {
 	Down    string `proxy:"down,omitempty"`
 }
 
-type ProxyBase interface {
-	DialOptions(opts ...dialer.Option) []dialer.Option
-}
-
 func (s *SingMux) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	options := s.base.DialOptions(opts...)
+	options := s.ProxyAdapter.DialOptions(opts...)
 	s.dialer.SetDialer(dialer.NewDialer(options...))
 	c, err := s.client.DialContext(ctx, "tcp", M.ParseSocksaddrHostPort(metadata.String(), metadata.DstPort))
 	if err != nil {
 		return nil, err
 	}
-	return NewConn(CN.NewRefConn(c, s), s.ProxyAdapter), err
+	return NewConn(c, s), err
 }
 
 func (s *SingMux) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
 	if s.onlyTcp {
 		return s.ProxyAdapter.ListenPacketContext(ctx, metadata, opts...)
 	}
-	options := s.base.DialOptions(opts...)
+	options := s.ProxyAdapter.DialOptions(opts...)
 	s.dialer.SetDialer(dialer.NewDialer(options...))
 
 	// sing-mux use stream-oriented udp with a special address, so we need a net.UDPAddr
@@ -80,7 +74,7 @@ func (s *SingMux) ListenPacketContext(ctx context.Context, metadata *C.Metadata,
 	if pc == nil {
 		return nil, E.New("packetConn is nil")
 	}
-	return newPacketConn(CN.NewRefPacketConn(CN.NewThreadSafePacketConn(pc), s), s.ProxyAdapter), nil
+	return newPacketConn(CN.NewThreadSafePacketConn(pc), s), nil
 }
 
 func (s *SingMux) SupportUDP() bool {
@@ -103,11 +97,15 @@ func (s *SingMux) ProxyInfo() C.ProxyInfo {
 	return info
 }
 
-func closeSingMux(s *SingMux) {
-	_ = s.client.Close()
+// Close implements C.ProxyAdapter
+func (s *SingMux) Close() error {
+	if s.client != nil {
+		_ = s.client.Close()
+	}
+	return s.ProxyAdapter.Close()
 }
 
-func NewSingMux(option SingMuxOption, proxy C.ProxyAdapter, base ProxyBase) (C.ProxyAdapter, error) {
+func NewSingMux(option SingMuxOption, proxy ProxyAdapter) (ProxyAdapter, error) {
 	// TODO
 	// "TCP Brutal is only supported on Linux-based systems"
 
@@ -131,11 +129,9 @@ func NewSingMux(option SingMuxOption, proxy C.ProxyAdapter, base ProxyBase) (C.P
 	}
 	outbound := &SingMux{
 		ProxyAdapter: proxy,
-		base:         base,
 		client:       client,
 		dialer:       singDialer,
 		onlyTcp:      option.OnlyTcp,
 	}
-	runtime.SetFinalizer(outbound, closeSingMux)
 	return outbound, nil
 }
