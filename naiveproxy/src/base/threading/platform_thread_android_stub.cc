@@ -72,7 +72,7 @@ void PlatformThread::SetName(const std::string& name) {
   // debugger by setting the process name for the LWP.
   // We don't want to do this for the main thread because that would rename
   // the process, causing tools like killall to stop working.
-  if (PlatformThread::CurrentId() == getpid())
+  if (PlatformThread::CurrentId().raw() == getpid())
     return;
 
   // Set the name for the LWP (which gets truncated to 15 characters).

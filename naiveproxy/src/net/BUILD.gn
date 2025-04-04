@@ -4,7 +4,6 @@
 
 import("//build/buildflag_header.gni")
 import("//build/config/cast.gni")
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/cronet/config.gni")
 import("//build/config/features.gni")
@@ -242,6 +241,8 @@ component("net") {
     "base/network_interfaces.h",
     "base/network_isolation_key.cc",
     "base/network_isolation_key.h",
+    "base/network_isolation_partition.cc",
+    "base/network_isolation_partition.h",
     "base/parse_number.cc",
     "base/parse_number.h",
     "base/platform_mime_util.h",
@@ -525,6 +526,7 @@ component("net") {
     "filter/gzip_source_stream.h",
     "filter/source_stream.cc",
     "filter/source_stream.h",
+    "filter/source_stream_type.h",
     "first_party_sets/addition_overlaps_union_find.cc",
     "first_party_sets/addition_overlaps_union_find.h",
     "first_party_sets/first_party_set_entry.cc",
@@ -1112,7 +1114,6 @@ component("net") {
   deps = [
     ":cronet_buildflags",
     ":net_deps",
-    "//build:chromeos_buildflags",
     "//components/miracle_parameter/common",
     "//components/network_time/time_tracker",
     "//net/http:transport_security_state_generated_files",
@@ -1201,6 +1202,8 @@ component("net") {
       "device_bound_sessions/session_binding_utils.h",
       "device_bound_sessions/session_challenge_param.cc",
       "device_bound_sessions/session_challenge_param.h",
+      "device_bound_sessions/session_error.cc",
+      "device_bound_sessions/session_error.h",
       "device_bound_sessions/session_inclusion_rules.cc",
       "device_bound_sessions/session_inclusion_rules.h",
       "device_bound_sessions/session_json_utils.cc",
@@ -1511,6 +1514,7 @@ component("net") {
       "third_party/nss/ssl/cmpcert.cc",
       "third_party/nss/ssl/cmpcert.h",
     ]
+    deps += [ "//build:chromeos_buildflags" ]
     if (!is_castos) {
       sources += [
         "ssl/client_cert_store_nss.cc",

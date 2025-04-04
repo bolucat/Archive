@@ -176,5 +176,6 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 		}
 	}
 
+	proxy = outbound.NewAutoCloseProxyAdapter(proxy)
 	return NewProxy(proxy), nil
 }

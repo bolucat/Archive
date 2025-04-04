@@ -25,7 +25,6 @@ import("//build/buildflag_header.gni")
 import("//build/config/arm.gni")
 import("//build/config/c++/c++.gni")
 import("//build/config/cast.gni")
-import("//build/config/chromeos/ui_mode.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/cronet/config.gni")
 import("//build/config/dcheck_always_on.gni")
@@ -41,7 +40,7 @@ import("//build/util/process_version.gni")
 import("//build_overrides/build.gni")
 
 if (is_ios) {
-  # Used to access target_environment.
+  # Used to access target_environment and target_platform.
   import("//build/config/apple/mobile_config.gni")
 
   # Used to access ios_is_app_extension variable definition.
@@ -244,8 +243,6 @@ component("base") {
     "containers/unique_ptr_adapters.h",
     "containers/util.h",
     "containers/vector_buffer.h",
-    "cpu_reduction_experiment.cc",
-    "cpu_reduction_experiment.h",
     "critical_closure.h",
     "dcheck_is_on.h",
     "debug/alias.cc",
@@ -561,6 +558,8 @@ component("base") {
     "run_loop.h",
     "sampling_heap_profiler/lock_free_address_hash_set.cc",
     "sampling_heap_profiler/lock_free_address_hash_set.h",
+    "sampling_heap_profiler/lock_free_bloom_filter.cc",
+    "sampling_heap_profiler/lock_free_bloom_filter.h",
     "sampling_heap_profiler/poisson_allocation_sampler.cc",
     "sampling_heap_profiler/poisson_allocation_sampler.h",
     "sampling_heap_profiler/sampling_heap_profiler.cc",
@@ -585,6 +584,7 @@ component("base") {
     "strings/abseil_string_number_conversions.cc",
     "strings/abseil_string_number_conversions.h",
     "strings/cstring_view.h",
+    "strings/durable_string_view.h",
     "strings/escape.cc",
     "strings/escape.h",
     "strings/latin1_string_conversions.cc",
@@ -868,6 +868,8 @@ component("base") {
     "trace_event/heap_profiler_allocation_context.h",
     "trace_event/heap_profiler_allocation_context_tracker.cc",
     "trace_event/heap_profiler_allocation_context_tracker.h",
+    "trace_event/histogram_scope.cc",
+    "trace_event/histogram_scope.h",
     "trace_event/memory_allocator_dump_guid.cc",
     "trace_event/memory_allocator_dump_guid.h",
     "trace_event/named_trigger.cc",
@@ -894,6 +896,7 @@ component("base") {
     "types/same_as_any.h",
     "types/strong_alias.h",
     "types/supports_ostream_operator.h",
+    "types/supports_to_string.h",
     "types/to_address.h",
     "types/token_type.h",
     "types/variant_util.h",
@@ -1059,9 +1062,12 @@ component("base") {
     "//base/numerics:base_numerics",
     "//base/third_party/icu",
     "//build:chromecast_buildflags",
-    "//build:chromeos_buildflags",
     "//third_party/abseil-cpp:absl",
   ]
+
+  # TODO(crbug.com/354842935): Remove this dependency once other modules don't
+  # accidentally (transitively) depend on it anymore.
+  public_deps += [ "//build:chromeos_buildflags" ]
 
   # Needed for <atomic> if using newer C++ library than sysroot, except if
   # building inside the cros_sdk environment - use host_toolchain as a
@@ -1182,7 +1188,6 @@ component("base") {
   if (is_robolectric) {
     # Make jni.h available.
     configs += [ "//third_party/jdk" ]
-    deps += [ ":base_robolectric_jni" ]
   }
   if (is_robolectric) {
     sources += [
@@ -1191,6 +1196,8 @@ component("base") {
       "android/callback_android.cc",
       "android/callback_android.h",
       "android/command_line_android.cc",
+      "android/int_string_callback.cc",
+      "android/int_string_callback.h",
       "android/java_exception_reporter.cc",
       "android/java_exception_reporter.h",
       "android/jni_android.cc",
@@ -1208,8 +1215,13 @@ component("base") {
       "android/jni_utils.cc",
       "android/jni_utils.h",
       "android/jni_weak_ref.h",
+      "android/library_loader/anchor_functions.cc",
+      "android/library_loader/anchor_functions.h",
       "android/library_loader/library_loader_hooks.cc",
       "android/library_loader/library_loader_hooks.h",
+      "android/library_loader/library_prefetcher.cc",
+      "android/library_loader/library_prefetcher.h",
+      "android/library_loader/library_prefetcher_hooks.cc",
       "android/native_uma_recorder.cc",
       "android/scoped_java_ref.h",
       "android/token_android.cc",
@@ -1882,8 +1894,8 @@ component("base") {
       "apple/call_with_eh_frame.cc",
       "apple/call_with_eh_frame.h",
       "apple/call_with_eh_frame_asm.S",
-      "apple/dispatch_source_mach.cc",
-      "apple/dispatch_source_mach.h",
+      "apple/dispatch_source.cc",
+      "apple/dispatch_source.h",
       "apple/foundation_util.h",
       "apple/foundation_util.mm",
       "apple/mach_logging.cc",
@@ -1914,10 +1926,9 @@ component("base") {
       "message_loop/message_pump_apple.h",
       "message_loop/message_pump_apple.mm",
       "native_library_apple.mm",
-      "process/process_metrics_apple.cc",
+      "process/process_metrics_apple.mm",
       "profiler/module_cache_apple.cc",
       "strings/sys_string_conversions_apple.mm",
-      "synchronization/waitable_event_apple.cc",
       "system/sys_info_apple.mm",
       "threading/platform_thread_apple.mm",
       "time/time_apple.mm",
@@ -1929,6 +1940,10 @@ component("base") {
       "Foundation.framework",
       "Security.framework",
     ]
+
+    if (!is_ios || !use_blink) {
+      sources += [ "synchronization/waitable_event_apple.cc" ]
+    }
   }
 
   # Desktop Mac.
@@ -2065,11 +2080,19 @@ component("base") {
         "process/process_handle_mac.cc",
         "process/process_ios.cc",
         "process/process_iterator_mac.cc",
-        "process/process_mac.cc",
         "process/process_posix.cc",
         "sync_socket_posix.cc",
-        "synchronization/waitable_event_watcher_mac.cc",
+        "synchronization/waitable_event_posix.cc",
+        "synchronization/waitable_event_watcher_posix.cc",
       ]
+
+      if (target_platform == "tvos") {
+        # tvOS apps must be single-process. Build a Process version that does
+        # the bare minimum and does not use Mach ports.
+        sources += [ "process/process_tvos.cc" ]
+      } else {
+        sources += [ "process/process_mac.cc" ]
+      }
 
       # We include launch_mac on simulator builds so unittests can fork.
       if (target_environment == "simulator") {
@@ -2092,6 +2115,11 @@ component("base") {
       sources += [
         "message_loop/message_pump_io_ios.cc",
         "message_loop/message_pump_io_ios.h",
+      ]
+    } else if (use_blink) {
+      sources += [
+        "message_loop/message_pump_io_ios_libdispatch.cc",
+        "message_loop/message_pump_io_ios_libdispatch.h",
       ]
     } else {
       sources += [
@@ -2248,7 +2276,6 @@ component("base") {
   if (enable_base_tracing) {
     sources += [
       "trace_event/auto_open_close_event.h",
-      "trace_event/builtin_categories.cc",
       "trace_event/builtin_categories.h",
       "trace_event/heap_profiler.h",
       "trace_event/interned_args_helper.cc",
@@ -2451,7 +2478,7 @@ buildflag_header("debugging_buildflags") {
 buildflag_header("feature_list_buildflags") {
   header = "feature_list_buildflags.h"
 
-  if (is_chromeos_ash) {
+  if (is_chromeos) {
     flags = [
       "ENABLE_BANNED_BASE_FEATURE_PREFIX=true",
       "BANNED_BASE_FEATURE_PREFIX=\"CrOSLateBoot\"",
@@ -2573,10 +2600,7 @@ static_library("base_static") {
     "immediate_crash.h",
   ]
 
-  deps = [
-    ":fuzzing_buildflags",
-    "//build:chromeos_buildflags",
-  ]
+  deps = [ ":fuzzing_buildflags" ]
 
   if (is_win) {
     sources += [

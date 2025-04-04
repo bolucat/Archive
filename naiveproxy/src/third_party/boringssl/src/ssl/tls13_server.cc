@@ -318,7 +318,7 @@ static enum ssl_hs_wait_t do_select_parameters(SSL_HANDSHAKE *hs) {
   }
 
   Array<SSL_CREDENTIAL *> creds;
-  if (!ssl_get_credential_list(hs, &creds)) {
+  if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
   if (creds.empty()) {
@@ -711,7 +711,8 @@ static enum ssl_hs_wait_t do_send_hello_retry_request(SSL_HANDSHAKE *hs) {
   ScopedCBB cbb;
   CBB body, session_id, extensions;
   if (!ssl->method->init_message(ssl, cbb.get(), &body, SSL3_MT_SERVER_HELLO) ||
-      !CBB_add_u16(&body, TLS1_2_VERSION) ||
+      !CBB_add_u16(&body,
+                   SSL_is_dtls(ssl) ? DTLS1_2_VERSION : TLS1_2_VERSION) ||
       !CBB_add_bytes(&body, kHelloRetryRequest, SSL3_RANDOM_SIZE) ||
       !CBB_add_u8_length_prefixed(&body, &session_id) ||
       !CBB_add_bytes(&session_id, hs->session_id.data(),
@@ -770,8 +771,8 @@ static enum ssl_hs_wait_t do_read_second_client_hello(SSL_HANDSHAKE *hs) {
     return ssl_hs_error;
   }
   SSL_CLIENT_HELLO client_hello;
-  if (!ssl_client_hello_init(ssl, &client_hello, msg.body)) {
-    OPENSSL_PUT_ERROR(SSL, SSL_R_CLIENTHELLO_PARSE_FAILED);
+  if (!SSL_parse_client_hello(ssl, &client_hello, CBS_data(&msg.body),
+                              CBS_len(&msg.body))) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_DECODE_ERROR);
     return ssl_hs_error;
   }
@@ -907,15 +908,12 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
     }
   }
 
-  uint16_t server_hello_version = TLS1_2_VERSION;
-  if (SSL_is_dtls(ssl)) {
-    server_hello_version = DTLS1_2_VERSION;
-  }
   Array<uint8_t> server_hello;
   ScopedCBB cbb;
   CBB body, extensions, session_id;
   if (!ssl->method->init_message(ssl, cbb.get(), &body, SSL3_MT_SERVER_HELLO) ||
-      !CBB_add_u16(&body, server_hello_version) ||
+      !CBB_add_u16(&body,
+                   SSL_is_dtls(ssl) ? DTLS1_2_VERSION : TLS1_2_VERSION) ||
       !CBB_add_bytes(&body, ssl->s3->server_random,
                      sizeof(ssl->s3->server_random)) ||
       !CBB_add_u8_length_prefixed(&body, &session_id) ||
@@ -979,11 +977,6 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
   if (!ssl->s3->session_reused && !hs->pake_verifier) {
     // Determine whether to request a client certificate.
     hs->cert_request = !!(hs->config->verify_mode & SSL_VERIFY_PEER);
-    // Only request a certificate if Channel ID isn't negotiated.
-    if ((hs->config->verify_mode & SSL_VERIFY_PEER_IF_NO_OBC) &&
-        hs->channel_id_negotiated) {
-      hs->cert_request = false;
-    }
   }
 
   // Send a CertificateRequest, if necessary.

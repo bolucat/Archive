@@ -774,8 +774,6 @@ OPENSSL_EXPORT void SSL_CTX_set0_buffer_pool(SSL_CTX *ctx,
 // - Whether the peer supports the signature algorithms in the certificate chain
 // - Whether the a server certificate is compatible with the server_name
 //   extension (SNI)
-// - Whether the peer supports the certificate authority that issued the
-//   certificate
 //
 // Credentials may be configured before the handshake or dynamically in the
 // early callback (see |SSL_CTX_set_select_certificate_cb|) and certificate
@@ -838,6 +836,25 @@ OPENSSL_EXPORT int SSL_CREDENTIAL_set1_ocsp_response(SSL_CREDENTIAL *cred,
 // on success and zero on error.
 OPENSSL_EXPORT int SSL_CREDENTIAL_set1_signed_cert_timestamp_list(
     SSL_CREDENTIAL *cred, CRYPTO_BUFFER *sct_list);
+
+// SSL_CREDENTIAL_set_must_match_issuer configures whether |cred| should check
+// if the peer supports the certificate chain's issuer.
+//
+// If |match| is non-zero, |cred| will only be applicable when the certificate
+// chain is issued by some CA requested by the peer, e.g. in the
+// certificate_authorities extension. This can be used for certificate chains
+// that may not be usable by all peers, e.g. chains with fewer cross-signs or
+// issued from a newer CA.
+//
+// If |match| is zero (default), |cred| will not be conditioned on the peer's
+// requested CAs. This can be used for certificate chains that are assumed to be
+// usable by most peers.
+//
+// The credential list is tried in order, so more specific credentials that
+// enable issuer matching should generally be ordered before less specific
+// credentials that do not.
+OPENSSL_EXPORT void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred,
+                                                         int match);
 
 // SSL_CTX_add1_credential appends |cred| to |ctx|'s credential list. It returns
 // one on success and zero on error. The credential list is maintained in order
@@ -1147,17 +1164,29 @@ OPENSSL_EXPORT const EVP_MD *SSL_get_signature_algorithm_digest(
 OPENSSL_EXPORT int SSL_is_signature_algorithm_rsa_pss(uint16_t sigalg);
 
 // SSL_CTX_set_signing_algorithm_prefs configures |ctx| to use |prefs| as the
-// preference list when signing with |ctx|'s private key. It returns one on
-// success and zero on error. |prefs| should not include the internal-only value
-// |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+// preference list when signing with |ctx|'s private key in TLS 1.2 and up. It
+// returns one on success and zero on error. |prefs| should not include the
+// internal-only TLS 1.0 value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+//
+// This setting is not used in TLS 1.0 and 1.1. Those protocols always sign a
+// hardcoded algorithm (an MD5/SHA-1 concatenation for RSA, and SHA-1 for
+// ECDSA). BoringSSL will use those algorithms if and only if those versions are
+// used. To disable them, set the minimum version to TLS 1.2 (default) or
+// higher.
 OPENSSL_EXPORT int SSL_CTX_set_signing_algorithm_prefs(SSL_CTX *ctx,
                                                        const uint16_t *prefs,
                                                        size_t num_prefs);
 
 // SSL_set_signing_algorithm_prefs configures |ssl| to use |prefs| as the
-// preference list when signing with |ssl|'s private key. It returns one on
-// success and zero on error. |prefs| should not include the internal-only value
-// |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+// preference list when signing with |ssl|'s private key in TLS 1.2 and up. It
+// returns one on success and zero on error. |prefs| should not include the
+// internal-only TLS 1.0 value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+//
+// This setting is not used in TLS 1.0 and 1.1. Those protocols always sign a
+// hardcoded algorithm (an MD5/SHA-1 concatenation for RSA, and SHA-1 for
+// ECDSA). BoringSSL will use those algorithms if and only if those versions are
+// used. To disable them, set the minimum version to TLS 1.2 (default) or
+// higher.
 OPENSSL_EXPORT int SSL_set_signing_algorithm_prefs(SSL *ssl,
                                                    const uint16_t *prefs,
                                                    size_t num_prefs);
@@ -1387,24 +1416,6 @@ OPENSSL_EXPORT void SSL_CTX_set_private_key_method(
 // credential-specific state, such as a handle to the private key.
 OPENSSL_EXPORT int SSL_CREDENTIAL_set_private_key_method(
     SSL_CREDENTIAL *cred, const SSL_PRIVATE_KEY_METHOD *key_method);
-
-// SSL_CREDENTIAL_set_must_match_issuer sets the flag that this credential
-// should be considered only when it matches a peer request for a particular
-// issuer via a negotiation mechanism (such as the certificate_authorities
-// extension).
-OPENSSL_EXPORT void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred);
-
-// SSL_CREDENTIAL_clear_must_match_issuer clears the flag requiring issuer
-// matching, indicating this credential should be considered regardless of peer
-// issuer matching requests. (This is the default).
-OPENSSL_EXPORT void SSL_CREDENTIAL_clear_must_match_issuer(
-    SSL_CREDENTIAL *cred);
-
-// SSL_CREDENTIAL_must_match_issuer returns the value of the flag indicating
-// that this credential should be considered only when it matches a peer request
-// for a particular issuer via a negotiation mechanism (such as the
-// certificate_authorities extension).
-OPENSSL_EXPORT int SSL_CREDENTIAL_must_match_issuer(const SSL_CREDENTIAL *cred);
 
 // SSL_can_release_private_key returns one if |ssl| will no longer call into the
 // private key and zero otherwise. If the function returns one, the caller can
@@ -2568,10 +2579,6 @@ OPENSSL_EXPORT int SSL_get_negotiated_group(const SSL *ssl);
 // with |SSL_VERIFY_PEER|, otherwise it won't work.
 #define SSL_VERIFY_FAIL_IF_NO_PEER_CERT 0x02
 
-// SSL_VERIFY_PEER_IF_NO_OBC configures a server to request a client certificate
-// if and only if Channel ID is not negotiated.
-#define SSL_VERIFY_PEER_IF_NO_OBC 0x04
-
 // SSL_CTX_set_verify configures certificate verification behavior. |mode| is
 // one of the |SSL_VERIFY_*| values defined above. |callback| should be NULL.
 //
@@ -2847,27 +2854,44 @@ OPENSSL_EXPORT int SSL_set0_verify_cert_store(SSL *ssl, X509_STORE *store);
 OPENSSL_EXPORT int SSL_set1_verify_cert_store(SSL *ssl, X509_STORE *store);
 
 // SSL_CTX_set_verify_algorithm_prefs configures |ctx| to use |prefs| as the
-// preference list when verifying signatures from the peer's long-term key. It
-// returns one on zero on error. |prefs| should not include the internal-only
-// value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+// preference list when verifying signatures from the peer's long-term key in
+// TLS 1.2 and up. It returns one on zero on error. |prefs| should not include
+// the internal-only TLS 1.0 value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+//
+// This setting is not used in TLS 1.0 and 1.1. Those protocols always sign a
+// hardcoded algorithm (an MD5/SHA-1 concatenation for RSA, and SHA-1 for
+// ECDSA). BoringSSL will accept those algorithms if and only if those versions
+// are used. To disable them, set the minimum version to TLS 1.2 (default) or
+// higher.
 OPENSSL_EXPORT int SSL_CTX_set_verify_algorithm_prefs(SSL_CTX *ctx,
                                                       const uint16_t *prefs,
                                                       size_t num_prefs);
 
 // SSL_set_verify_algorithm_prefs configures |ssl| to use |prefs| as the
-// preference list when verifying signatures from the peer's long-term key. It
-// returns one on zero on error. |prefs| should not include the internal-only
-// value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+// preference list when verifying signatures from the peer's long-term key in
+// TLS 1.2 and up. It returns one on zero on error. |prefs| should not include
+// the internal-only TLS 1.0 value |SSL_SIGN_RSA_PKCS1_MD5_SHA1|.
+//
+// This setting is not used in TLS 1.0 and 1.1. Those protocols always sign a
+// hardcoded algorithm (an MD5/SHA-1 concatenation for RSA, and SHA-1 for
+// ECDSA). BoringSSL will accept those algorithms if and only if those versions
+// are used. To disable them, set the minimum version to TLS 1.2 (default) or
+// higher.
 OPENSSL_EXPORT int SSL_set_verify_algorithm_prefs(SSL *ssl,
                                                   const uint16_t *prefs,
                                                   size_t num_prefs);
 
 
-// Client certificate CA list.
+// Certificate authorities.
 //
-// When requesting a client certificate, a server may advertise a list of
-// certificate authorities which are accepted. These functions may be used to
-// configure this list.
+// TLS implementations can send a list of supported certificate authorities to
+// guide the peer in selecting a certificate. This was originally defined for
+// servers requesting client certificates, but TLS 1.3 generalized it to server
+// certificates with the certificate_authorities extension.
+//
+// The following functions can be used to configure and query this list. They do
+// not directly impact certificate verification, only the list of certificate
+// authorities sent to the peer.
 
 // SSL_set_client_CA_list sets |ssl|'s client certificate CA list to
 // |name_list|. It takes ownership of |name_list|.
@@ -4897,23 +4921,18 @@ OPENSSL_EXPORT int SSL_used_hello_retry_request(const SSL *ssl);
 // https://bugs.openjdk.java.net/browse/JDK-8213202
 OPENSSL_EXPORT void SSL_set_jdk11_workaround(SSL *ssl, int enable);
 
-// SSL_set_check_client_certificate_type configures whether the client, in
-// TLS 1.2 and below, will check its certificate against the server's requested
-// certificate types.
+// SSL_parse_client_hello decodes a ClientHello structure from |len| bytes in
+// |in|. On success, it returns one and writes the result to |*out|. Otherwise,
+// it returns zero. |ssl| will be saved into |*out| and determines how the
+// ClientHello is parsed, notably TLS vs DTLS. The fields in |*out| will alias
+// |in| and are only valid as long as |in| is valid and unchanged.
 //
-// By default, this option is enabled. If disabled, certificate selection within
-// the library may not function correctly. This flag is provided temporarily in
-// case of compatibility issues. It will be removed sometime after June 2024.
-OPENSSL_EXPORT void SSL_set_check_client_certificate_type(SSL *ssl, int enable);
-
-// SSL_set_check_ecdsa_curve configures whether the server, in TLS 1.2 and
-// below, will check its certificate against the client's supported ECDSA
-// curves.
-//
-// By default, this option is enabled. If disabled, certificate selection within
-// the library may not function correctly. This flag is provided temporarily in
-// case of compatibility issues. It will be removed sometime after June 2024.
-OPENSSL_EXPORT void SSL_set_check_ecdsa_curve(SSL *ssl, int enable);
+// |in| should contain just the ClientHello structure (RFC 8446 and RFC 9147),
+// excluding the handshake header and already reassembled from record layer.
+// That is, |in| should begin with the legacy_version field, not the
+// client_hello HandshakeType constant or the handshake ContentType constant.
+OPENSSL_EXPORT int SSL_parse_client_hello(const SSL *ssl, SSL_CLIENT_HELLO *out,
+                                          const uint8_t *in, size_t len);
 
 
 // Deprecated functions.

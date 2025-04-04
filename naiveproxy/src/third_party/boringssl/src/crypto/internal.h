@@ -15,7 +15,6 @@
 #ifndef OPENSSL_HEADER_CRYPTO_INTERNAL_H
 #define OPENSSL_HEADER_CRYPTO_INTERNAL_H
 
-#include <openssl/arm_arch.h>
 #include <openssl/crypto.h>
 #include <openssl/ex_data.h>
 #include <openssl/stack.h>
@@ -1082,13 +1081,9 @@ inline int boringssl_fips_break_test(const char *test) { return 0; }
 //
 //   Index 0:
 //     EDX for CPUID where EAX = 1
-//     Bit 20 is always zero
-//     Bit 28 is adjusted to reflect whether the data cache is shared between
-//       multiple logical cores
 //     Bit 30 is used to indicate an Intel CPU
 //   Index 1:
 //     ECX for CPUID where EAX = 1
-//     Bit 11 is used to indicate AMD XOP support, not SDBG
 //   Index 2:
 //     EBX for CPUID where EAX = 7, ECX = 0
 //     Bit 14 (for removed feature MPX) is used to indicate a preference for ymm
@@ -1100,7 +1095,7 @@ inline int boringssl_fips_break_test(const char *test) { return 0; }
 // and AVX512 bits in XCR0, so it is not necessary to check those. (WARNING: See
 // caveats in cpu_intel.c.)
 //
-// From C, this symbol should only be accessed with |OPENSSL_get_ia32cap|.
+// This symbol should only be accessed with |OPENSSL_get_ia32cap|.
 extern uint32_t OPENSSL_ia32cap_P[4];
 
 // OPENSSL_get_ia32cap initializes the library if needed and returns the |idx|th
@@ -1219,27 +1214,11 @@ inline int CRYPTO_is_ADX_capable(void) {
 
 // SHA-1 and SHA-256 are defined as a single extension.
 inline int CRYPTO_is_x86_SHA_capable(void) {
-  // We should check __SHA__ here, but for now we ignore it. We've run into a
-  // few places where projects build with -march=goldmont, but need a build that
-  // does not require SHA extensions:
-  //
-  // - Some CrOS toolchain definitions are incorrect and build with
-  //   -march=goldmont when targetting boards that are not Goldmont. b/320482539
-  //   tracks fixing this.
-  //
-  // - Sometimes projects build with -march=goldmont as a rough optimized
-  //   baseline. However, Intel CPU capabilities are not strictly linear, so
-  //   this does not quite work. Some combination of -mtune and
-  //   -march=x86-64-v{1,2,3,4} would be a better strategy here.
-  //
-  // - QEMU versions before 8.2 do not support SHA extensions and disable it
-  //   with a warning. Projects that target Goldmont and test on QEMU will
-  //   break. The long-term fix is to update to 8.2. A principled short-term fix
-  //   would be -march=goldmont -mno-sha, to reflect that the binary needs to
-  //   run on both QEMU-8.1-Goldmont and actual-Goldmont.
-  //
-  // TODO(b/320482539): Once the CrOS toolchain is fixed, try this again.
+#if defined(__SHA__)
+  return 1;
+#else
   return (OPENSSL_get_ia32cap(2) & (1u << 29)) != 0;
+#endif
 }
 
 // CRYPTO_cpu_perf_is_like_silvermont returns one if, based on a heuristic, the
@@ -1310,8 +1289,26 @@ inline int CRYPTO_is_VPCLMULQDQ_capable(void) {
 
 #if defined(OPENSSL_ARM) || defined(OPENSSL_AARCH64)
 
-// OPENSSL_armcap_P contains ARM CPU capabilities. From C, this should only be
-// accessed with |OPENSSL_get_armcap|.
+// ARMV7_NEON indicates support for NEON.
+#define ARMV7_NEON (1 << 0)
+
+// ARMV8_AES indicates support for hardware AES instructions.
+#define ARMV8_AES (1 << 2)
+
+// ARMV8_SHA1 indicates support for hardware SHA-1 instructions.
+#define ARMV8_SHA1 (1 << 3)
+
+// ARMV8_SHA256 indicates support for hardware SHA-256 instructions.
+#define ARMV8_SHA256 (1 << 4)
+
+// ARMV8_PMULL indicates support for carryless multiplication.
+#define ARMV8_PMULL (1 << 5)
+
+// ARMV8_SHA512 indicates support for hardware SHA-512 instructions.
+#define ARMV8_SHA512 (1 << 6)
+
+// OPENSSL_armcap_P contains ARM CPU capabilities as a bitmask of the above
+// constants. This should only be accessed with |OPENSSL_get_armcap|.
 extern uint32_t OPENSSL_armcap_P;
 
 // OPENSSL_get_armcap initializes the library if needed and returns ARM CPU

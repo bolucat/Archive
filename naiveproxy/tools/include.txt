@@ -63,6 +63,7 @@
 ^third_party/protobuf/proto_library.gni
 ^third_party/protobuf/proto_sources.gni
 ^third_party/protobuf/src
+^third_party/protobuf/third_party/utf8_range
 ^third_party/simdutf
 ^third_party/zlib
 ^third_party/zstd

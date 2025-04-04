@@ -22,6 +22,7 @@ import (
 	"github.com/metacubex/mihomo/common/buf"
 	"github.com/metacubex/mihomo/common/pool"
 	tlsC "github.com/metacubex/mihomo/component/tls"
+	C "github.com/metacubex/mihomo/constant"
 
 	"golang.org/x/net/http2"
 )
@@ -46,7 +47,7 @@ type Conn struct {
 
 	reader io.ReadCloser
 	once   sync.Once
-	close  atomic.Bool
+	closed atomic.Bool
 	err    error
 	remain int
 	br     *bufio.Reader
@@ -71,7 +72,7 @@ func (g *Conn) initReader() {
 	}
 	g.netAddr = addr
 
-	if !g.close.Load() {
+	if !g.closed.Load() {
 		g.reader = reader
 		g.br = bufio.NewReader(reader)
 	} else {
@@ -184,7 +185,7 @@ func (g *Conn) FrontHeadroom() int {
 }
 
 func (g *Conn) Close() error {
-	g.close.Store(true)
+	g.closed.Store(true)
 	var errorArr []error
 
 	if reader := g.reader; reader != nil {
@@ -225,6 +226,8 @@ func (g *Conn) SetDeadline(t time.Time) error {
 
 func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
 	dialFunc := func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
+		defer cancel()
 		pconn, err := dialFn(ctx, network, addr)
 		if err != nil {
 			return nil, err
@@ -287,8 +290,12 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 		DisableCompression: true,
 		PingTimeout:        0,
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 	wrap := &TransportWrap{
 		Transport: transport,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	return wrap
 }
@@ -315,6 +322,7 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 		ProtoMinor: 0,
 		Header:     defaultHeader,
 	}
+	request = request.WithContext(transport.ctx)
 
 	conn := &Conn{
 		initFn: func() (io.ReadCloser, netAddr, error) {

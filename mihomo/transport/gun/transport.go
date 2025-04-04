@@ -1,12 +1,26 @@
 package gun
 
 import (
-	"golang.org/x/net/http2"
+	"context"
 	"net"
+	"sync"
+
+	"golang.org/x/net/http2"
 )
 
 type TransportWrap struct {
 	*http2.Transport
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+}
+
+func (tw *TransportWrap) Close() error {
+	tw.closeOnce.Do(func() {
+		tw.cancel()
+		closeTransport(tw.Transport)
+	})
+	return nil
 }
 
 type netAddr struct {

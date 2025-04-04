@@ -282,7 +282,7 @@ int NaiveConnection::DoConnectServer() {
       proxy_info_, {}, PRIVACY_MODE_DISABLED,
       network_anonymization_key_, SecureDnsPolicy::kDisable, SocketTag(),
       net_log_, server_socket_handle_.get(), io_callback_,
-      ClientSocketPool::ProxyAuthCallback());
+      ClientSocketPool::ProxyAuthCallback(), false);
 }
 
 int NaiveConnection::DoConnectServerComplete(int result) {

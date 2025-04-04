@@ -1115,7 +1115,6 @@ pki_sources = [
     "pki/ip_util.cc",
     "pki/name_constraints.cc",
     "pki/ocsp.cc",
-    "pki/ocsp_verify_result.cc",
     "pki/parse_certificate.cc",
     "pki/parse_name.cc",
     "pki/parse_values.cc",
@@ -1139,6 +1138,7 @@ pki_sources = [
 
 pki_headers = [
     "include/openssl/pki/certificate.h",
+    "include/openssl/pki/ocsp.h",
     "include/openssl/pki/signature_verify_cache.h",
     "include/openssl/pki/verify.h",
     "include/openssl/pki/verify_error.h",
@@ -1163,8 +1163,6 @@ pki_internal_headers = [
     "pki/name_constraints.h",
     "pki/nist_pkits_unittest.h",
     "pki/ocsp.h",
-    "pki/ocsp_revocation_status.h",
-    "pki/ocsp_verify_result.h",
     "pki/parse_certificate.h",
     "pki/parse_name.h",
     "pki/parse_values.h",

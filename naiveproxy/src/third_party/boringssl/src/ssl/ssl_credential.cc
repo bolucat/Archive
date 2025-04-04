@@ -35,7 +35,8 @@ static UniquePtr<STACK_OF(CRYPTO_BUFFER)> new_leafless_chain(void) {
   return chain;
 }
 
-bool ssl_get_credential_list(SSL_HANDSHAKE *hs, Array<SSL_CREDENTIAL *> *out) {
+bool ssl_get_full_credential_list(SSL_HANDSHAKE *hs,
+                                  Array<SSL_CREDENTIAL *> *out) {
   CERT *cert = hs->config->cert.get();
   // Finish filling in the legacy credential if needed.
   if (!cert->x509_method->ssl_auto_chain_if_needed(hs)) {
@@ -595,14 +596,6 @@ void *SSL_CREDENTIAL_get_ex_data(const SSL_CREDENTIAL *cred, int idx) {
   return CRYPTO_get_ex_data(&cred->ex_data, idx);
 }
 
-void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred) {
-  cred->must_match_issuer = true;
-}
-
-void SSL_CREDENTIAL_clear_must_match_issuer(SSL_CREDENTIAL *cred) {
-  cred->must_match_issuer = false;
-}
-
-int SSL_CREDENTIAL_must_match_issuer(const SSL_CREDENTIAL *cred) {
-  return cred->must_match_issuer ? 1 : 0;
+void SSL_CREDENTIAL_set_must_match_issuer(SSL_CREDENTIAL *cred, int match) {
+  cred->must_match_issuer = !!match;
 }

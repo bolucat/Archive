@@ -25,7 +25,7 @@ require (
 	github.com/metacubex/quic-go v0.49.1-0.20250212162123-c135a4412996
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/reality v0.0.0-20250219003814-74e8d7850629
-	github.com/metacubex/sing-quic v0.0.0-20250119013740-2a19cce83925
+	github.com/metacubex/sing-quic v0.0.0-20250404030904-b2cc8aab562c
 	github.com/metacubex/sing-shadowsocks v0.2.8
 	github.com/metacubex/sing-shadowsocks2 v0.2.2
 	github.com/metacubex/sing-tun v0.4.6-0.20250402154347-cff06ec2a65b
