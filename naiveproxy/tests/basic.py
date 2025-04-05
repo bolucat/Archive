@@ -78,6 +78,8 @@ def start_naive(naive_args, config_file):
         with_qemu = 'mips64el'
     elif argv.target_cpu == 'riscv64':
         with_qemu = 'riscv64'
+    elif argv.target_cpu == 'loong64':
+        with_qemu = 'loong64'
 
     if argv.rootfs:
         if not with_qemu:
@@ -89,7 +91,7 @@ def start_naive(naive_args, config_file):
             cmdline = ['bwrap', '--die-with-parent', '--bind', argv.rootfs, '/',
                        '--proc', '/proc', '--dev', '/dev', '--chdir', '/', '/naive']
         else:
-            cmdline = [f'qemu-{with_qemu}-static',
+            cmdline = [f'qemu-{with_qemu}',
                        '-L', argv.rootfs, argv.naive]
     else:
         cmdline = [argv.naive]
@@ -104,7 +106,9 @@ def start_naive(naive_args, config_file):
         print('terminate pid', proc.pid)
         proc.terminate()
 
-    timeout = threading.Timer(10, terminate, args=(proc,))
+    # Some qemu-user tests take a while to start.
+    # See https://gitlab.com/qemu-project/qemu/-/issues/1729
+    timeout = threading.Timer(20, terminate, args=(proc,))
     timeout.start()
     while True:
         if proc.poll() is not None:

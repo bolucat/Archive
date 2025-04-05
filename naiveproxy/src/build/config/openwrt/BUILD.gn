@@ -61,6 +61,8 @@ config("compiler") {
     arch = "mips64el"
   } else if (current_cpu == "riscv64") {
     arch = "riscv64"
+  } else if (current_cpu == "loong64") {
+    arch = "loongarch64"
   } else {
     assert(false, "Architecture not supported")
   }

@@ -79,3 +79,33 @@ rm -rf $SDK_PATH
 if [ -d "$sysroot/lib/gcc/arm-openwrt-linux-muslgnueabi" ]; then
   mv "$sysroot/lib/gcc/arm-openwrt-linux-muslgnueabi" "$sysroot/lib/gcc/arm-openwrt-linux-musleabi"
 fi
+
+if [ "$arch" = "loongarch64" ]; then
+  if grep HWCAP_LOONGARCH_LSX "$sysroot/include/bits/hwcap.h"; then
+    echo "$sysroot/include/bits/hwcap.h" is already populated
+    exit 1
+  fi
+  # https://www.openwall.com/lists/musl/2025/04/03/3
+  cat >"$sysroot/include/bits/hwcap.h" <<EOF
+/* The following must match the kernel's <asm/hwcap.h>.  */
+/* HWCAP flags */
+#define HWCAP_LOONGARCH_CPUCFG          (1 << 0)
+#define HWCAP_LOONGARCH_LAM             (1 << 1)
+#define HWCAP_LOONGARCH_UAL             (1 << 2)
+#define HWCAP_LOONGARCH_FPU             (1 << 3)
+#define HWCAP_LOONGARCH_LSX             (1 << 4)
+#define HWCAP_LOONGARCH_LASX            (1 << 5)
+#define HWCAP_LOONGARCH_CRC32           (1 << 6)
+#define HWCAP_LOONGARCH_COMPLEX         (1 << 7)
+#define HWCAP_LOONGARCH_CRYPTO          (1 << 8)
+#define HWCAP_LOONGARCH_LVZ             (1 << 9)
+#define HWCAP_LOONGARCH_LBT_X86         (1 << 10)
+#define HWCAP_LOONGARCH_LBT_ARM         (1 << 11)
+#define HWCAP_LOONGARCH_LBT_MIPS        (1 << 12)
+#define HWCAP_LOONGARCH_PTW             (1 << 13)
+EOF
+
+  # https://www.openwall.com/lists/musl/2022/03/22/4
+  # But this breaks C++.
+  sed -i 's/extcontext\[\] /extcontext\[0\] /' "$sysroot/include/bits/signal.h"
+fi

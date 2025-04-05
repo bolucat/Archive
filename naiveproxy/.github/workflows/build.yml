@@ -25,7 +25,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
-            src/qemu-user-static*.deb
+            src/qemu-user*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v4
@@ -45,8 +45,8 @@ jobs:
       - run: ./get-clang.sh
       - run: EXTRA_FLAGS='target_os="android"' ./get-clang.sh
       - run: |
-          if [ ! -f qemu-user-static*.deb ]; then
-            wget https://snapshot.debian.org/archive/debian/20230611T210420Z/pool/main/q/qemu/qemu-user-static_8.0%2Bdfsg-4_amd64.deb
+          if [ ! -f qemu-user*.deb ]; then
+            wget https://snapshot.debian.org/archive/debian/20250405T083429Z/pool/main/q/qemu/qemu-user_9.2.2%2Bds-1%2Bb2_amd64.deb
           fi
   cache-toolchains-win:
     runs-on: windows-2022
@@ -97,7 +97,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, x86, arm64, arm, mipsel, mips64el, riscv64]
+        arch: [x64, x86, arm64, arm, mipsel, mips64el, riscv64, loong64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
       BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
@@ -109,7 +109,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
-            src/qemu-user-static*.deb
+            src/qemu-user*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v4
@@ -138,7 +138,7 @@ jobs:
           sudo apt update
           sudo apt install ninja-build pkg-config ccache bubblewrap
           sudo apt remove -y qemu-user-binfmt
-          sudo dpkg -i qemu-user-static*.deb
+          sudo dpkg -i qemu-user*.deb
           # libc6-i386 interferes with x86 build
           sudo apt remove libc6-i386
       - run: ./get-clang.sh
@@ -192,7 +192,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
-            src/qemu-user-static*.deb
+            src/qemu-user*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache AFDO (Android)
         uses: actions/cache@v4
@@ -222,7 +222,7 @@ jobs:
           sudo apt update
           sudo apt install ninja-build pkg-config ccache bubblewrap
           sudo apt remove -y qemu-user-binfmt
-          sudo dpkg -i qemu-user-static*.deb
+          sudo dpkg -i qemu-user*.deb
           # libc6-i386 interferes with x86 build
           sudo apt remove libc6-i386
       - run: ./get-clang.sh
@@ -510,6 +510,11 @@ jobs:
             target_cpu: riscv64
             openwrt_release: '23.05.0'
             openwrt_gcc_ver: '12.3.0'
+          - arch: loongarch64
+            openwrt: "target=loongarch64 subtarget=generic"
+            target_cpu: loong64
+            openwrt_release: '24.10.0'
+            openwrt_gcc_ver: '13.3.0'
     env:
       EXTRA_FLAGS: target_cpu="${{ matrix.target_cpu }}" target_os="openwrt" ${{ matrix.extra }} enable_shadow_metadata=false
       OPENWRT_FLAGS: arch=${{ matrix.arch }} release=${{ matrix.openwrt_release || '18.06.0' }} gcc_ver=${{ matrix.openwrt_gcc_ver || '7.3.0' }} ${{ matrix.openwrt }}
@@ -522,7 +527,7 @@ jobs:
           path: |
             src/third_party/llvm-build/Release+Asserts/
             src/gn/
-            src/qemu-user-static*.deb
+            src/qemu-user*.deb
           key: toolchains-posix-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - name: Cache PGO (Linux, OpenWrt)
         uses: actions/cache@v4
@@ -547,7 +552,7 @@ jobs:
           sudo apt update
           sudo apt install ninja-build pkg-config ccache bubblewrap
           sudo apt remove -y qemu-user-binfmt
-          sudo dpkg -i qemu-user-static*.deb
+          sudo dpkg -i qemu-user*.deb
           # libc6-i386 interferes with x86 build
           sudo apt remove libc6-i386
       - run: ./get-clang.sh

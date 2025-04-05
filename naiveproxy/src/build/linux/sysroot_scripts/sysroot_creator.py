@@ -55,6 +55,7 @@ TRIPLES = {
     "mips64el": "mips64el-linux-gnuabi64",
     "ppc64el": "powerpc64le-linux-gnu",
     "riscv64": "riscv64-linux-gnu",
+    "loong64": "loongarch64-linux-gnu",
 }
 
 REQUIRED_TOOLS = [
@@ -70,6 +71,8 @@ REQUIRED_TOOLS = [
 PACKAGES_EXT = "xz"
 RELEASE_FILE = "Release"
 RELEASE_FILE_GPG = "Release.gpg"
+
+GCC_VERSION = 10
 
 # List of development packages. Dependencies are automatically included.
 DEBIAN_PACKAGES = [
@@ -318,7 +321,7 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
         "include",
         TRIPLES[arch],
         "c++",
-        "10",
+        f"{GCC_VERSION}",
         "bits",
         "c++config.h",
     )
@@ -345,11 +348,17 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
     for lib in ["libc.so.6", "libm.so.6", "libcrypt.so.1"]:
         # RISCV64 is new and has no backward compatibility.
         # Reversioning would remove necessary symbols and cause linking failures.
-        if arch == "riscv64":
+        if arch == "riscv64" or arch == "loong64":
             continue
         lib_path = os.path.join(install_root, "lib", TRIPLES[arch], lib)
         reversion_glibc.reversion_glibc(lib_path)
 
+    if not os.path.exists(os.path.join(install_root, "lib")):
+        os.symlink(os.path.join("usr", "lib"), os.path.join(install_root, "lib"))
+
+    if (os.path.exists(os.path.join(install_root, "usr", "lib64")) and
+        not os.path.exists(os.path.join(install_root, "lib64"))):
+        os.symlink(os.path.join("usr", "lib64"), os.path.join(install_root, "lib64"))
 
 def replace_in_file(file_path: str, search_pattern: str,
                     replace_pattern: str) -> None:
@@ -477,7 +486,7 @@ def removing_unnecessary_files(install_root, arch):
     # Preserve these files.
     gcc_triple = "i686-linux-gnu" if arch == "i386" else TRIPLES[arch]
     ALLOWLIST = {
-        f"usr/lib/gcc/{gcc_triple}/10/libgcc.a",
+        f"usr/lib/gcc/{gcc_triple}/{GCC_VERSION}/libgcc.a",
         f"usr/lib/{TRIPLES[arch]}/libc_nonshared.a",
     }
 
@@ -702,11 +711,24 @@ def main():
     sanity_check()
 
     # RISCV64 only has support in debian-ports, no support in bookworm.
+    global ARCHIVE_URL, APT_SOURCES_LIST
     if args.architecture == "riscv64":
-        global ARCHIVE_URL, APT_SOURCES_LIST
         # This is the last snapshot that uses glibc 2.31, similar to bullseye
         ARCHIVE_URL = "https://snapshot.debian.org/archive/debian-ports/20210906T080750Z/"
         APT_SOURCES_LIST = [("sid", ["main"])]
+
+    if args.architecture == "loong64":
+        ARCHIVE_URL = "https://snapshot.debian.org/archive/debian-ports/20240531T134713Z/"
+        APT_SOURCES_LIST = [("sid", ["main"])]
+
+        global GCC_VERSION, DEBIAN_PACKAGES
+        GCC_VERSION = 13
+        DEBIAN_PACKAGES = [
+            "libc6-dev",
+            f"libgcc-{GCC_VERSION}-dev",
+            f"libstdc++-{GCC_VERSION}-dev",
+            "linux-libc-dev",
+        ]
 
     if args.command == "build":
         build_sysroot(args.architecture)

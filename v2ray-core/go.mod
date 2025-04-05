@@ -1,8 +1,8 @@
 module github.com/v2fly/v2ray-core/v5
 
-go 1.22
+go 1.23
 
-toolchain go1.22.7
+toolchain go1.24.2
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -13,7 +13,7 @@ require (
 	github.com/golang-collections/go-datastructures v0.0.0-20150211160725-59788d5eb259
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/gopacket v1.1.19
 	github.com/gorilla/websocket v1.5.3
 	github.com/improbable-eng/grpc-web v0.15.0
@@ -46,7 +46,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20231020174304-b8a429915ff1
 	h12.io/socks v1.0.3
-	lukechampine.com/blake3 v1.3.0
+	lukechampine.com/blake3 v1.4.0
 )
 
 require (
