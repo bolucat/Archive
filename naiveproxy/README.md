@@ -21,7 +21,7 @@ The Naïve server here works as a forward proxy and a packet length padding laye
 
 ## Download NaïveProxy
 
-Download [here](https://github.com/klzgrad/naiveproxy/releases/latest). Supported platforms include: Windows, Android (with [Exclave](https://github.com/dyhkwong/Exclave), [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid)), Linux, Mac OS, and OpenWrt ([support status](https://github.com/klzgrad/naiveproxy/wiki/OpenWrt-Support)).
+Download [here](https://github.com/klzgrad/naiveproxy/releases/latest). Supported platforms include: Windows, Android (with [Exclave](https://github.com/dyhkwong/Exclave), [husi](https://github.com/xchacha20-poly1305/husi), [NekoBox](https://github.com/MatsuriDayo/NekoBoxForAndroid)), Linux, Mac OS, and OpenWrt ([support status](https://github.com/klzgrad/naiveproxy/wiki/OpenWrt-Support)).
 
 Users should always use the latest version to keep signatures identical to Chrome.
 
@@ -79,9 +79,7 @@ Or `quic://user:pass@example.com`, if it works better. See also [parameter usage
 
 ## Third-party integration
 
-* [v2rayN](https://github.com/2dust/v2rayN), GUI client, Windows
-* [NekoBox for Android](https://github.com/MatsuriDayo/NekoBoxForAndroid), Proxy toolchain, Android
-* [NekoRay / NekoBox For PC](https://github.com/MatsuriDayo/nekoray), Qt based GUI, Windows, Linux
+* [v2rayN](https://github.com/2dust/v2rayN), GUI client
 
 ## Notes for downstream
 

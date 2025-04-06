@@ -187,7 +187,7 @@ func (l *Listener) HandleConn(conn net.Conn, tunnel C.Tunnel, additions ...inbou
 	ctx := sing.WithAdditions(context.TODO(), additions...)
 	err := l.service.NewConnection(ctx, conn, metadata.Metadata{
 		Protocol: "vmess",
-		Source:   metadata.ParseSocksaddr(conn.RemoteAddr().String()),
+		Source:   metadata.SocksaddrFromNet(conn.RemoteAddr()),
 	})
 	if err != nil {
 		_ = conn.Close()

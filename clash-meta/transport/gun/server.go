@@ -58,6 +58,7 @@ func NewServerHandler(options ServerOption) http.Handler {
 				},
 				writer: writer,
 			}
+			_ = conn.Init()
 
 			wrapper := &h2ConnWrapper{
 				// gun.Conn can't correct handle ReadDeadline
