@@ -195,6 +195,12 @@ def test_naive_once(proxy, *args, **kwargs):
 def test_naive(label, proxy, *args, **kwargs):
     RETRIES = 5
     result = None
+    if argv.target_cpu == 'arm' and not label.startswith('Default'):
+        # Arm tests are too slow in qemu-user
+        # due to https://www.openwall.com/lists/musl/2017/06/15/9
+        print('** SKIP TEST:', label, end='\n\n')
+        return
+
     for i in range(RETRIES):
         result = test_naive_once(proxy, *args, **kwargs)
         if result == 'Failed to listen':

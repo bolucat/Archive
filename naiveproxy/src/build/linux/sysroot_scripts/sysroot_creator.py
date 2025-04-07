@@ -488,6 +488,11 @@ def removing_unnecessary_files(install_root, arch):
     ALLOWLIST = {
         f"usr/lib/gcc/{gcc_triple}/{GCC_VERSION}/libgcc.a",
         f"usr/lib/{TRIPLES[arch]}/libc_nonshared.a",
+
+        # https://developers.redhat.com/articles/2021/12/17/why-glibc-234-removed-libpthread
+        f"usr/lib/{TRIPLES[arch]}/libdl.a",
+        f"usr/lib/{TRIPLES[arch]}/libpthread.a",
+        f"usr/lib/{TRIPLES[arch]}/librt.a",
     }
 
     for file in ALLOWLIST:

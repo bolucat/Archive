@@ -144,7 +144,7 @@ jobs:
       - run: ./get-clang.sh
       - run: ccache -z
       - run: ./build.sh
-      - run: ccache -s
+      - run: ccache -s && ccache --evict-older-than 1d
       - run: ../tests/basic.sh out/Release/naive
       - name: Pack naiveproxy assets
         run: |
@@ -228,7 +228,7 @@ jobs:
       - run: ./get-clang.sh
       - run: ccache -z
       - run: ./build.sh
-      - run: ccache -s
+      - run: ccache -s && ccache --evict-older-than 1d
       - run: ./get-android-sys.sh
       - run: ../tests/basic.sh out/Release/naive
       - name: Gradle cache
@@ -355,7 +355,7 @@ jobs:
       - run: ./get-clang.sh
       - run: ccache -z
       - run: ./build.sh
-      - run: ccache -s
+      - run: ccache -s && ccache --evict-older-than 1d
       - run: ../tests/basic.sh out/Release/naive
         # No real or emulated environment is available to test this.
         if: ${{ matrix.arch != 'arm64' }}
@@ -558,7 +558,7 @@ jobs:
       - run: ./get-clang.sh
       - run: ccache -z
       - run: ./build.sh
-      - run: ccache -s
+      - run: ccache -s && ccache --evict-older-than 1d
       - run: ../tests/basic.sh out/Release/naive
       - name: Pack naiveproxy assets
         run: |
