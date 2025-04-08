@@ -279,6 +279,10 @@ type RawTun struct {
 	IncludeUIDRange        []string       `yaml:"include-uid-range" json:"include-uid-range,omitempty"`
 	ExcludeUID             []uint32       `yaml:"exclude-uid" json:"exclude-uid,omitempty"`
 	ExcludeUIDRange        []string       `yaml:"exclude-uid-range" json:"exclude-uid-range,omitempty"`
+	ExcludeSrcPort         []uint16       `yaml:"exclude-src-port" json:"exclude-src-port,omitempty"`
+	ExcludeSrcPortRange    []string       `yaml:"exclude-src-port-range" json:"exclude-src-port-range,omitempty"`
+	ExcludeDstPort         []uint16       `yaml:"exclude-dst-port" json:"exclude-dst-port,omitempty"`
+	ExcludeDstPortRange    []string       `yaml:"exclude-dst-port-range" json:"exclude-dst-port-range,omitempty"`
 	IncludeAndroidUser     []int          `yaml:"include-android-user" json:"include-android-user,omitempty"`
 	IncludePackage         []string       `yaml:"include-package" json:"include-package,omitempty"`
 	ExcludePackage         []string       `yaml:"exclude-package" json:"exclude-package,omitempty"`
@@ -1560,6 +1564,10 @@ func parseTun(rawTun RawTun, general *General) error {
 		IncludeUIDRange:        rawTun.IncludeUIDRange,
 		ExcludeUID:             rawTun.ExcludeUID,
 		ExcludeUIDRange:        rawTun.ExcludeUIDRange,
+		ExcludeSrcPort:         rawTun.ExcludeSrcPort,
+		ExcludeSrcPortRange:    rawTun.ExcludeSrcPortRange,
+		ExcludeDstPort:         rawTun.ExcludeDstPort,
+		ExcludeDstPortRange:    rawTun.ExcludeDstPortRange,
 		IncludeAndroidUser:     rawTun.IncludeAndroidUser,
 		IncludePackage:         rawTun.IncludePackage,
 		ExcludePackage:         rawTun.ExcludePackage,
