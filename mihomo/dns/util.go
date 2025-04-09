@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/metacubex/mihomo/common/nnip"
 	"github.com/metacubex/mihomo/common/picker"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/resolver"
@@ -150,19 +149,24 @@ func handleMsgWithEmptyAnswer(r *D.Msg) *D.Msg {
 	return msg
 }
 
-func msgToIP(msg *D.Msg) []netip.Addr {
-	ips := []netip.Addr{}
-
+func msgToIP(msg *D.Msg) (ips []netip.Addr) {
 	for _, answer := range msg.Answer {
+		var ip netip.Addr
 		switch ans := answer.(type) {
 		case *D.AAAA:
-			ips = append(ips, nnip.IpToAddr(ans.AAAA))
+			ip, _ = netip.AddrFromSlice(ans.AAAA)
 		case *D.A:
-			ips = append(ips, nnip.IpToAddr(ans.A))
+			ip, _ = netip.AddrFromSlice(ans.A)
+		default:
+			continue
 		}
+		if !ip.IsValid() {
+			continue
+		}
+		ip = ip.Unmap()
+		ips = append(ips, ip)
 	}
-
-	return ips
+	return
 }
 
 func msgToDomain(msg *D.Msg) string {

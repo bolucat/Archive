@@ -247,8 +247,8 @@ func (wsedc *websocketWithEarlyDataConn) Read(b []byte) (int, error) {
 func (wsedc *websocketWithEarlyDataConn) Close() error {
 	wsedc.closed = true
 	wsedc.cancel()
-	if wsedc.Conn == nil {
-		return nil
+	if wsedc.Conn == nil { // is dialing or not dialed
+		return wsedc.underlay.Close()
 	}
 	return wsedc.Conn.Close()
 }

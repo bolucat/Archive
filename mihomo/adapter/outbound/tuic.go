@@ -130,7 +130,7 @@ func (t *Tuic) dialWithDialer(ctx context.Context, dialer C.Dialer) (transport *
 			return nil, nil, err
 		}
 	}
-	udpAddr, err := resolveUDPAddrWithPrefer(ctx, "udp", t.addr, t.prefer)
+	udpAddr, err := resolveUDPAddr(ctx, "udp", t.addr, t.prefer)
 	if err != nil {
 		return nil, nil, err
 	}

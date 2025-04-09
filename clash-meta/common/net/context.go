@@ -3,29 +3,26 @@ package net
 import (
 	"context"
 	"net"
+
+	"github.com/metacubex/mihomo/common/contextutils"
 )
 
 // SetupContextForConn is a helper function that starts connection I/O interrupter goroutine.
 func SetupContextForConn(ctx context.Context, conn net.Conn) (done func(*error)) {
-	var (
-		quit      = make(chan struct{})
-		interrupt = make(chan error, 1)
-	)
-	go func() {
-		select {
-		case <-quit:
-			interrupt <- nil
-		case <-ctx.Done():
-			// Close the connection, discarding the error
-			_ = conn.Close()
-			interrupt <- ctx.Err()
-		}
-	}()
+	stopc := make(chan struct{})
+	stop := contextutils.AfterFunc(ctx, func() {
+		// Close the connection, discarding the error
+		_ = conn.Close()
+		close(stopc)
+	})
 	return func(inputErr *error) {
-		close(quit)
-		if ctxErr := <-interrupt; ctxErr != nil && inputErr != nil {
-			// Return context error to user.
-			inputErr = &ctxErr
+		if !stop() {
+			// The AfterFunc was started, wait for it to complete.
+			<-stopc
+			if ctxErr := ctx.Err(); ctxErr != nil && inputErr != nil {
+				// Return context error to user.
+				inputErr = &ctxErr
+			}
 		}
 	}
 }

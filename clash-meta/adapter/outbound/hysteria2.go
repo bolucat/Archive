@@ -171,7 +171,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 		CWND:               option.CWND,
 		UdpMTU:             option.UdpMTU,
 		ServerAddress: func(ctx context.Context) (*net.UDPAddr, error) {
-			return resolveUDPAddrWithPrefer(ctx, "udp", addr, C.NewDNSPrefer(option.IPVersion))
+			return resolveUDPAddr(ctx, "udp", addr, C.NewDNSPrefer(option.IPVersion))
 		},
 	}
 
@@ -188,7 +188,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 		})
 		if len(serverAddress) > 0 {
 			clientOptions.ServerAddress = func(ctx context.Context) (*net.UDPAddr, error) {
-				return resolveUDPAddrWithPrefer(ctx, "udp", serverAddress[randv2.IntN(len(serverAddress))], C.NewDNSPrefer(option.IPVersion))
+				return resolveUDPAddr(ctx, "udp", serverAddress[randv2.IntN(len(serverAddress))], C.NewDNSPrefer(option.IPVersion))
 			}
 
 			if option.HopInterval == 0 {

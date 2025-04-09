@@ -301,7 +301,7 @@ func (w *WireGuard) resolve(ctx context.Context, address M.Socksaddr) (netip.Add
 	if address.Addr.IsValid() {
 		return address.AddrPort(), nil
 	}
-	udpAddr, err := resolveUDPAddrWithPrefer(ctx, "udp", address.String(), w.prefer)
+	udpAddr, err := resolveUDPAddr(ctx, "udp", address.String(), w.prefer)
 	if err != nil {
 		return netip.AddrPort{}, err
 	}

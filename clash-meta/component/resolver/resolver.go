@@ -196,6 +196,26 @@ func ResolveIP(ctx context.Context, host string) (netip.Addr, error) {
 	return ResolveIPWithResolver(ctx, host, DefaultResolver)
 }
 
+// ResolveIPPrefer6WithResolver same as ResolveIP, but with a resolver
+func ResolveIPPrefer6WithResolver(ctx context.Context, host string, r Resolver) (netip.Addr, error) {
+	ips, err := LookupIPWithResolver(ctx, host, r)
+	if err != nil {
+		return netip.Addr{}, err
+	} else if len(ips) == 0 {
+		return netip.Addr{}, fmt.Errorf("%w: %s", ErrIPNotFound, host)
+	}
+	ipv4s, ipv6s := SortationAddr(ips)
+	if len(ipv6s) > 0 {
+		return ipv6s[randv2.IntN(len(ipv6s))], nil
+	}
+	return ipv4s[randv2.IntN(len(ipv4s))], nil
+}
+
+// ResolveIPPrefer6 with a host, return ip and priority return TypeAAAA
+func ResolveIPPrefer6(ctx context.Context, host string) (netip.Addr, error) {
+	return ResolveIPPrefer6WithResolver(ctx, host, DefaultResolver)
+}
+
 func ResetConnection() {
 	if DefaultResolver != nil {
 		go DefaultResolver.ResetConnection()

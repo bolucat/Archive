@@ -50,7 +50,11 @@ func (c Config) Build() (*Builder, error) {
 	realityConfig.ShortIds = make(map[[8]byte]bool)
 	for i, shortIDString := range c.ShortID {
 		var shortID [8]byte
-		decodedLen, err := hex.Decode(shortID[:], []byte(shortIDString))
+		decodedLen := hex.DecodedLen(len(shortIDString))
+		if decodedLen > 8 {
+			return nil, fmt.Errorf("invalid short_id[%d]: %s", i, shortIDString)
+		}
+		decodedLen, err = hex.Decode(shortID[:], []byte(shortIDString))
 		if err != nil {
 			return nil, fmt.Errorf("decode short_id[%d] '%s': %w", i, shortIDString, err)
 		}

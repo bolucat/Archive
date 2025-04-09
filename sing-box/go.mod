@@ -3,7 +3,7 @@ module github.com/sagernet/sing-box
 go 1.23.1
 
 require (
-	github.com/anytls/sing-anytls v0.0.7
+	github.com/anytls/sing-anytls v0.0.8
 	github.com/caddyserver/certmagic v0.21.7
 	github.com/cloudflare/circl v1.6.0
 	github.com/cretz/bine v0.2.0
@@ -26,13 +26,13 @@ require (
 	github.com/sagernet/gvisor v0.0.0-20250325023245-7a9c0f5725fb
 	github.com/sagernet/quic-go v0.49.0-beta.1
 	github.com/sagernet/reality v0.0.0-20230406110435-ee17307e7691
-	github.com/sagernet/sing v0.6.6-0.20250406122223-d47540857e58
+	github.com/sagernet/sing v0.6.7-0.20250409030945-77e2a1bb577c
 	github.com/sagernet/sing-mux v0.3.1
 	github.com/sagernet/sing-quic v0.4.1
 	github.com/sagernet/sing-shadowsocks v0.2.7
 	github.com/sagernet/sing-shadowsocks2 v0.2.0
 	github.com/sagernet/sing-shadowtls v0.2.1-0.20250316154757-6f9e732e5056
-	github.com/sagernet/sing-tun v0.6.3-0.20250408151144-0f75adee2a75
+	github.com/sagernet/sing-tun v0.6.3-0.20250409030157-219c612399be
 	github.com/sagernet/sing-vmess v0.2.0
 	github.com/sagernet/smux v0.0.0-20231208180855-7041f6ea79e7
 	github.com/sagernet/tailscale v1.80.3-mod.2

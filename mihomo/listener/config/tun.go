@@ -3,9 +3,9 @@ package config
 import (
 	"net/netip"
 
-	"github.com/metacubex/mihomo/common/nnip"
 	C "github.com/metacubex/mihomo/constant"
 
+	"go4.org/netipx"
 	"golang.org/x/exp/slices"
 )
 
@@ -70,11 +70,11 @@ type Tun struct {
 func (t *Tun) Sort() {
 	slices.Sort(t.DNSHijack)
 
-	slices.SortFunc(t.Inet4Address, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6Address, nnip.PrefixCompare)
-	slices.SortFunc(t.RouteAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.Inet4Address, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6Address, netipx.ComparePrefix)
+	slices.SortFunc(t.RouteAddress, netipx.ComparePrefix)
 	slices.Sort(t.RouteAddressSet)
-	slices.SortFunc(t.RouteExcludeAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.RouteExcludeAddress, netipx.ComparePrefix)
 	slices.Sort(t.RouteExcludeAddressSet)
 	slices.Sort(t.IncludeInterface)
 	slices.Sort(t.ExcludeInterface)
@@ -86,10 +86,10 @@ func (t *Tun) Sort() {
 	slices.Sort(t.IncludePackage)
 	slices.Sort(t.ExcludePackage)
 
-	slices.SortFunc(t.Inet4RouteAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6RouteAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet4RouteExcludeAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6RouteExcludeAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.Inet4RouteAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6RouteAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet4RouteExcludeAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6RouteExcludeAddress, netipx.ComparePrefix)
 }
 
 func (t *Tun) Equal(other Tun) bool {

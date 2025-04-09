@@ -197,7 +197,7 @@ func (ss *ShadowSocks) ListenPacketWithDialer(ctx context.Context, dialer C.Dial
 			return nil, err
 		}
 	}
-	addr, err := resolveUDPAddrWithPrefer(ctx, "udp", ss.addr, ss.prefer)
+	addr, err := resolveUDPAddr(ctx, "udp", ss.addr, ss.prefer)
 	if err != nil {
 		return nil, err
 	}

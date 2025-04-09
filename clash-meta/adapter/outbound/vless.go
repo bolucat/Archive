@@ -22,7 +22,6 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
-	"github.com/metacubex/mihomo/transport/socks5"
 	"github.com/metacubex/mihomo/transport/vless"
 	"github.com/metacubex/mihomo/transport/vmess"
 
@@ -397,15 +396,15 @@ func parseVlessAddr(metadata *C.Metadata, xudp bool) *vless.DstAddr {
 	var addrType byte
 	var addr []byte
 	switch metadata.AddrType() {
-	case socks5.AtypIPv4:
+	case C.AtypIPv4:
 		addrType = vless.AtypIPv4
 		addr = make([]byte, net.IPv4len)
 		copy(addr[:], metadata.DstIP.AsSlice())
-	case socks5.AtypIPv6:
+	case C.AtypIPv6:
 		addrType = vless.AtypIPv6
 		addr = make([]byte, net.IPv6len)
 		copy(addr[:], metadata.DstIP.AsSlice())
-	case socks5.AtypDomainName:
+	case C.AtypDomainName:
 		addrType = vless.AtypDomainName
 		addr = make([]byte, len(metadata.Host)+1)
 		addr[0] = byte(len(metadata.Host))

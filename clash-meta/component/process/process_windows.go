@@ -7,7 +7,6 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/metacubex/mihomo/common/nnip"
 	"github.com/metacubex/mihomo/log"
 
 	"golang.org/x/sys/windows"
@@ -137,7 +136,8 @@ func (s *searcher) Search(b []byte, ip netip.Addr, port uint16) (uint32, error) 
 			continue
 		}
 
-		srcIP := nnip.IpToAddr(row[s.ip : s.ip+s.ipSize])
+		srcIP, _ := netip.AddrFromSlice(row[s.ip : s.ip+s.ipSize])
+		srcIP = srcIP.Unmap()
 		// windows binds an unbound udp socket to 0.0.0.0/[::] while first sendto
 		if ip != srcIP && (!srcIP.IsUnspecified() || s.tcpState != -1) {
 			continue

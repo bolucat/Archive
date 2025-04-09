@@ -20,7 +20,7 @@ func dnsReadConfig() (servers []string, err error) {
 	}
 	for _, aa := range aas {
 		// Only take interfaces whose OperStatus is IfOperStatusUp(0x01) into DNS configs.
-		if aa.IfType != windows.IfOperStatusUp {
+		if aa.OperStatus != windows.IfOperStatusUp {
 			continue
 		}
 

@@ -78,7 +78,7 @@ func (h *Hysteria) genHdc(ctx context.Context, opts ...dialer.Option) utils.Pack
 			return cDialer.ListenPacket(ctx, network, "", rAddrPort)
 		},
 		remoteAddr: func(addr string) (net.Addr, error) {
-			return resolveUDPAddrWithPrefer(ctx, "udp", addr, h.prefer)
+			return resolveUDPAddr(ctx, "udp", addr, h.prefer)
 		},
 	}
 }

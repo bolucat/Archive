@@ -92,7 +92,7 @@ object AppConfig {
     /** URLs for various resources. */
     const val GITHUB_URL = "https://github.com"
     const val GITHUB_RAW_URL = "https://raw.githubusercontent.com"
-    const val GITHUB_DOWNLOAD = "releases/latest/download"
+    const val GITHUB_DOWNLOAD_URL = "$GITHUB_URL/%s/releases/latest/download"
     const val ANDROID_PACKAGE_NAME_LIST_URL = "$GITHUB_RAW_URL/2dust/androidpackagenamelist/master/proxy.txt"
     const val APP_URL = "$GITHUB_URL/2dust/v2rayNG"
     const val APP_API_URL = "https://api.github.com/repos/2dust/v2rayNG/releases"
@@ -187,25 +187,53 @@ object AppConfig {
     val DNS_QUAD9_ADDRESSES = arrayListOf("9.9.9.9", "149.112.112.112", "2620:fe::fe", "2620:fe::9")
     val DNS_YANDEX_ADDRESSES = arrayListOf("77.88.8.8", "77.88.8.1", "2a02:6b8::feed:0ff", "2a02:6b8:0:1::feed:0ff")
 
-    val PRIVATE_IP_LIST = arrayListOf(
-        "0.0.0.0/8",
-        "10.0.0.0/8",
-        "169.254.0.0/16",
-        "172.16.0.0/12",
-        "192.0.0.0/24",
-        "192.0.2.0/24",
-        "192.88.99.0/24",
-        "192.168.0.0/16",
-        "198.18.0.0/15",
-        "198.51.100.0/24",
-        "203.0.113.0/24",
-        "224.0.0.0/4",
+    //minimum list https://serverfault.com/a/304791
+    val BYPASS_PRIVATE_IP_LIST = arrayListOf(
+        "0.0.0.0/5",
+        "8.0.0.0/7",
+        "11.0.0.0/8",
+        "12.0.0.0/6",
+        "16.0.0.0/4",
+        "32.0.0.0/3",
+        "64.0.0.0/2",
+        "128.0.0.0/3",
+        "160.0.0.0/5",
+        "168.0.0.0/6",
+        "172.0.0.0/12",
+        "172.32.0.0/11",
+        "172.64.0.0/10",
+        "172.128.0.0/9",
+        "173.0.0.0/8",
+        "174.0.0.0/7",
+        "176.0.0.0/4",
+        "192.0.0.0/9",
+        "192.128.0.0/11",
+        "192.160.0.0/13",
+        "192.169.0.0/16",
+        "192.170.0.0/15",
+        "192.172.0.0/14",
+        "192.176.0.0/12",
+        "192.192.0.0/10",
+        "193.0.0.0/8",
+        "194.0.0.0/7",
+        "196.0.0.0/6",
+        "200.0.0.0/5",
+        "208.0.0.0/4",
         "240.0.0.0/4"
     )
+
+    val PRIVATE_IP_LIST = arrayListOf(
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "224.0.0.0/4"
+    )
+
     val GEO_FILES_SOURCES = arrayListOf(
-        "$GITHUB_URL/Loyalsoldier/v2ray-rules-dat/$GITHUB_DOWNLOAD",
-        "$GITHUB_URL/runetfreedom/russia-v2ray-rules-dat/$GITHUB_DOWNLOAD",
-        "$GITHUB_URL/Chocolate4U/Iran-v2ray-rules/$GITHUB_DOWNLOAD"
+        "Loyalsoldier/v2ray-rules-dat",
+        "runetfreedom/russia-v2ray-rules-dat",
+        "Chocolate4U/Iran-v2ray-rules"
     )
 
 }

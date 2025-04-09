@@ -6,11 +6,15 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
-
-	"github.com/metacubex/mihomo/transport/socks5"
 )
 
-// Socks addr type
+// SOCKS address types as defined in RFC 1928 section 5.
+const (
+	AtypIPv4       AddrType = 1
+	AtypDomainName AddrType = 3
+	AtypIPv6       AddrType = 4
+)
+
 const (
 	TCP NetWork = iota
 	UDP
@@ -36,6 +40,21 @@ const (
 	ANYTLS
 	INNER
 )
+
+type AddrType byte
+
+func (a AddrType) String() string {
+	switch a {
+	case AtypIPv4:
+		return "IPv4"
+	case AtypDomainName:
+		return "DomainName"
+	case AtypIPv6:
+		return "IPv6"
+	default:
+		return "Unknown"
+	}
+}
 
 type NetWork int
 
@@ -207,14 +226,14 @@ func (m *Metadata) SourceValid() bool {
 	return m.SrcPort != 0 && m.SrcIP.IsValid()
 }
 
-func (m *Metadata) AddrType() int {
+func (m *Metadata) AddrType() AddrType {
 	switch true {
 	case m.Host != "" || !m.DstIP.IsValid():
-		return socks5.AtypDomainName
+		return AtypDomainName
 	case m.DstIP.Is4():
-		return socks5.AtypIPv4
+		return AtypIPv4
 	default:
-		return socks5.AtypIPv6
+		return AtypIPv6
 	}
 }
 
