@@ -341,4 +341,7 @@
     <string name="external_control_activity">External Control</string>
     <string name="external_control_started">Clash.Meta service started</string>
     <string name="external_control_stopped">Clash.Meta service stopped</string>
+
+    <string name="hide_app_icon_title">Hide App Icon</string>
+    <string name="hide_app_icon_desc">You can dial *#*#252746382#*#* to open this App</string>
 </resources>

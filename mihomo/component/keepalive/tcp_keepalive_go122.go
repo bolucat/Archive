@@ -2,9 +2,18 @@
 
 package keepalive
 
-import "net"
+import (
+	"net"
+	"time"
+)
 
-func tcpKeepAlive(tcp *net.TCPConn) {
+type TCPConn interface {
+	net.Conn
+	SetKeepAlive(keepalive bool) error
+	SetKeepAlivePeriod(d time.Duration) error
+}
+
+func tcpKeepAlive(tcp TCPConn) {
 	if DisableKeepAlive() {
 		_ = tcp.SetKeepAlive(false)
 	} else {

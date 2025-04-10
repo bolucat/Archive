@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 0
       
       - name: Checkout submodules
-        run: git submodule update --init --recursive --remote
+        run: git submodule update --init --recursive --force
 
       - name: Setup Java
         uses: actions/setup-java@v4

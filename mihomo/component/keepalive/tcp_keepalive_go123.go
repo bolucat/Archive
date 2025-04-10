@@ -4,6 +4,12 @@ package keepalive
 
 import "net"
 
+type TCPConn interface {
+	net.Conn
+	SetKeepAlive(keepalive bool) error
+	SetKeepAliveConfig(config net.KeepAliveConfig) error
+}
+
 func keepAliveConfig() net.KeepAliveConfig {
 	config := net.KeepAliveConfig{
 		Enable:   true,
@@ -18,7 +24,7 @@ func keepAliveConfig() net.KeepAliveConfig {
 	return config
 }
 
-func tcpKeepAlive(tcp *net.TCPConn) {
+func tcpKeepAlive(tcp TCPConn) {
 	if DisableKeepAlive() {
 		_ = tcp.SetKeepAlive(false)
 	} else {
