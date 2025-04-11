@@ -54,6 +54,8 @@ func resolveUDPAddr(ctx context.Context, network, address string, prefer C.DNSPr
 	if err != nil {
 		return nil, err
 	}
+
+	ip, port = resolver.LookupIP4P(ip, port)
 	return net.ResolveUDPAddr(network, net.JoinHostPort(ip.String(), port))
 }
 

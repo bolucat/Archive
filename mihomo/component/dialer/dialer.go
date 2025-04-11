@@ -7,14 +7,12 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/component/keepalive"
 	"github.com/metacubex/mihomo/component/resolver"
-	"github.com/metacubex/mihomo/log"
 )
 
 const (
@@ -138,9 +136,7 @@ func GetTcpConcurrent() bool {
 
 func dialContext(ctx context.Context, network string, destination netip.Addr, port string, opt *option) (net.Conn, error) {
 	var address string
-	if IP4PEnable {
-		destination, port = lookupIP4P(destination, port)
-	}
+	destination, port = resolver.LookupIP4P(destination, port)
 	address = net.JoinHostPort(destination.String(), port)
 
 	netDialer := opt.netDialer
@@ -395,22 +391,4 @@ func (d Dialer) ListenPacket(ctx context.Context, network, address string, rAddr
 func NewDialer(options ...Option) Dialer {
 	opt := applyOptions(options...)
 	return Dialer{Opt: *opt}
-}
-
-func GetIP4PEnable(enableIP4PConvert bool) {
-	IP4PEnable = enableIP4PConvert
-}
-
-// kanged from https://github.com/heiher/frp/blob/ip4p/client/ip4p.go
-
-func lookupIP4P(addr netip.Addr, port string) (netip.Addr, string) {
-	ip := addr.AsSlice()
-	if ip[0] == 0x20 && ip[1] == 0x01 &&
-		ip[2] == 0x00 && ip[3] == 0x00 {
-		addr = netip.AddrFrom4([4]byte{ip[12], ip[13], ip[14], ip[15]})
-		port = strconv.Itoa(int(ip[10])<<8 + int(ip[11]))
-		log.Debugln("Convert IP4P address %s to %s", ip, net.JoinHostPort(addr.String(), port))
-		return addr, port
-	}
-	return addr, port
 }
