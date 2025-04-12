@@ -155,7 +155,7 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 			Path:  v.option.HTTP2Opts.Path,
 		}
 
-		c, err = vmess.StreamH2Conn(c, h2Opts)
+		c, err = vmess.StreamH2Conn(ctx, c, h2Opts)
 	case "grpc":
 		c, err = gun.StreamGunWithConn(c, v.gunTLSConfig, v.gunConfig, v.realityConfig)
 	default:
@@ -168,10 +168,14 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 		return nil, err
 	}
 
-	return v.streamConn(c, metadata)
+	return v.streamConnContext(ctx, c, metadata)
 }
 
-func (v *Vless) streamConn(c net.Conn, metadata *C.Metadata) (conn net.Conn, err error) {
+func (v *Vless) streamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (conn net.Conn, err error) {
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
 	if metadata.NetWork == C.UDP {
 		if v.option.PacketAddr {
 			metadata = &C.Metadata{
@@ -238,7 +242,7 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 			safeConnClose(c, err)
 		}(c)
 
-		c, err = v.client.StreamConn(c, parseVlessAddr(metadata, v.option.XUDP))
+		c, err = v.streamConnContext(ctx, c, metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -292,7 +296,7 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 			safeConnClose(c, err)
 		}(c)
 
-		c, err = v.streamConn(c, metadata)
+		c, err = v.streamConnContext(ctx, c, metadata)
 		if err != nil {
 			return nil, fmt.Errorf("new vless client error: %v", err)
 		}

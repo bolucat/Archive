@@ -9,8 +9,8 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/log"
 
+	"github.com/metacubex/sing-shadowtls"
 	utls "github.com/metacubex/utls"
-	"github.com/sagernet/sing-shadowtls"
 	sing_common "github.com/sagernet/sing/common"
 )
 
@@ -45,12 +45,13 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 		return nil, err
 	}
 
-	tlsHandshake := shadowtls.DefaultTLSHandshakeFunc(option.Password, tlsConfig)
+	var clientHelloID utls.ClientHelloID
 	if len(option.ClientFingerprint) != 0 {
 		if fingerprint, exists := tlsC.GetFingerprint(option.ClientFingerprint); exists {
-			tlsHandshake = uTLSHandshakeFunc(tlsConfig, *fingerprint.ClientHelloID)
+			clientHelloID = *fingerprint.ClientHelloID
 		}
 	}
+	tlsHandshake := uTLSHandshakeFunc(tlsConfig, clientHelloID)
 	client, err := shadowtls.NewClient(shadowtls.ClientConfig{
 		Version:      option.Version,
 		Password:     option.Password,
@@ -82,6 +83,11 @@ func uTLSHandshakeFunc(config *tls.Config, clientHelloID utls.ClientHelloID) sha
 			SessionTicketsDisabled: config.SessionTicketsDisabled,
 			Renegotiation:          utls.RenegotiationSupport(config.Renegotiation),
 			SessionIDGenerator:     sessionIDGenerator,
+		}
+		var empty utls.ClientHelloID
+		if clientHelloID == empty {
+			tlsConn := utls.Client(conn, tlsConfig)
+			return tlsConn.Handshake()
 		}
 		tlsConn := utls.UClient(conn, tlsConfig, clientHelloID)
 		return tlsConn.HandshakeContext(ctx)

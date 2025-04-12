@@ -141,7 +141,6 @@ func GetTLSConfig(tlsConfig *tls.Config, fingerprint string, customCA string, cu
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig = GetGlobalTLSConfig(tlsConfig)
 		tlsConfig.VerifyPeerCertificate = verifyFingerprint(fingerprintBytes)
 		tlsConfig.InsecureSkipVerify = true
 	}

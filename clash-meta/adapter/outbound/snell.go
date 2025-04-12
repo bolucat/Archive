@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 
+	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/structure"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
@@ -41,7 +42,7 @@ type streamOption struct {
 	obfsOption *simpleObfsOption
 }
 
-func streamConn(c net.Conn, option streamOption) *snell.Snell {
+func snellStreamConn(c net.Conn, option streamOption) *snell.Snell {
 	switch option.obfsOption.Mode {
 	case "tls":
 		c = obfs.NewTLSObfs(c, option.obfsOption.Host)
@@ -54,13 +55,23 @@ func streamConn(c net.Conn, option streamOption) *snell.Snell {
 
 // StreamConnContext implements C.ProxyAdapter
 func (s *Snell) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
-	c = streamConn(c, streamOption{s.psk, s.version, s.addr, s.obfsOption})
-	if metadata.NetWork == C.UDP {
-		err := snell.WriteUDPHeader(c, s.version)
-		return c, err
-	}
-	err := snell.WriteHeader(c, metadata.String(), uint(metadata.DstPort), s.version)
+	c = snellStreamConn(c, streamOption{s.psk, s.version, s.addr, s.obfsOption})
+	err := s.writeHeaderContext(ctx, c, metadata)
 	return c, err
+}
+
+func (s *Snell) writeHeaderContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (err error) {
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
+
+	if metadata.NetWork == C.UDP {
+		err = snell.WriteUDPHeader(c, s.version)
+		return
+	}
+	err = snell.WriteHeader(c, metadata.String(), uint(metadata.DstPort), s.version)
+	return
 }
 
 // DialContext implements C.ProxyAdapter
@@ -71,8 +82,8 @@ func (s *Snell) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 			return nil, err
 		}
 
-		if err = snell.WriteHeader(c, metadata.String(), uint(metadata.DstPort), s.version); err != nil {
-			c.Close()
+		if err = s.writeHeaderContext(ctx, c, metadata); err != nil {
+			_ = c.Close()
 			return nil, err
 		}
 		return NewConn(c, s), err
@@ -120,12 +131,8 @@ func (s *Snell) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, met
 	if err != nil {
 		return nil, err
 	}
-	c = streamConn(c, streamOption{s.psk, s.version, s.addr, s.obfsOption})
 
-	err = snell.WriteUDPHeader(c, s.version)
-	if err != nil {
-		return nil, err
-	}
+	c, err = s.StreamConnContext(ctx, c, metadata)
 
 	pc := snell.PacketConn(c)
 	return newPacketConn(pc, s), nil
@@ -212,7 +219,7 @@ func NewSnell(option SnellOption) (*Snell, error) {
 				return nil, err
 			}
 
-			return streamConn(c, streamOption{psk, option.Version, addr, obfsOption}), nil
+			return snellStreamConn(c, streamOption{psk, option.Version, addr, obfsOption}), nil
 		})
 	}
 	return s, nil

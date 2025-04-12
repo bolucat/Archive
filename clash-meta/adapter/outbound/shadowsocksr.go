@@ -42,12 +42,15 @@ type ShadowSocksROption struct {
 }
 
 // StreamConnContext implements C.ProxyAdapter
-func (ssr *ShadowSocksR) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
+func (ssr *ShadowSocksR) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
 	c = ssr.obfs.StreamConn(c)
 	c = ssr.cipher.StreamConn(c)
 	var (
-		iv  []byte
-		err error
+		iv []byte
 	)
 	switch conn := c.(type) {
 	case *shadowstream.Conn:

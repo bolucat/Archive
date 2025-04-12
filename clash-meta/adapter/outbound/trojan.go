@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
@@ -110,12 +111,21 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 		c = t.ssCipher.StreamConn(c)
 	}
 
-	if metadata.NetWork == C.UDP {
-		err = t.instance.WriteHeader(c, trojan.CommandUDP, serializesSocksAddr(metadata))
-		return c, err
-	}
-	err = t.instance.WriteHeader(c, trojan.CommandTCP, serializesSocksAddr(metadata))
+	err = t.writeHeaderContext(ctx, c, metadata)
 	return c, err
+}
+
+func (t *Trojan) writeHeaderContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (err error) {
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
+	command := trojan.CommandTCP
+	if metadata.NetWork == C.UDP {
+		command = trojan.CommandUDP
+	}
+	err = t.instance.WriteHeader(c, command, serializesSocksAddr(metadata))
+	return err
 }
 
 // DialContext implements C.ProxyAdapter
@@ -131,7 +141,7 @@ func (t *Trojan) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 			c = t.ssCipher.StreamConn(c)
 		}
 
-		if err = t.instance.WriteHeader(c, trojan.CommandTCP, serializesSocksAddr(metadata)); err != nil {
+		if err = t.writeHeaderContext(ctx, c, metadata); err != nil {
 			c.Close()
 			return nil, err
 		}
@@ -184,7 +194,7 @@ func (t *Trojan) ListenPacketContext(ctx context.Context, metadata *C.Metadata, 
 			c = t.ssCipher.StreamConn(c)
 		}
 
-		err = t.instance.WriteHeader(c, trojan.CommandUDP, serializesSocksAddr(metadata))
+		err = t.writeHeaderContext(ctx, c, metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -219,7 +229,7 @@ func (t *Trojan) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, me
 		c = t.ssCipher.StreamConn(c)
 	}
 
-	err = t.instance.WriteHeader(c, trojan.CommandUDP, serializesSocksAddr(metadata))
+	err = t.writeHeaderContext(ctx, c, metadata)
 	if err != nil {
 		return nil, err
 	}

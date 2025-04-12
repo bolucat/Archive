@@ -399,9 +399,7 @@ func (q *quicPacketSender) readQuicData(b []byte) error {
 		}
 	}
 
-	_ = q.tryAssemble()
-
-	return nil
+	return q.tryAssemble()
 }
 
 func (q *quicPacketSender) tryAssemble() error {
@@ -415,7 +413,17 @@ func (q *quicPacketSender) tryAssemble() error {
 
 	if len(q.ranges) != 1 || q.ranges[0].Start() != 0 || q.ranges[0].End() != uint64(len(q.buffer)) {
 		q.lock.RUnlock()
-		return ErrNoClue
+		// incomplete fragment, just return
+		return nil
+	}
+
+	if len(q.buffer) <= 4 ||
+		// Handshake Type (1) + uint24 Length (3) + ClientHello body
+		// maxCryptoStreamOffset is in the valid range of uint16 so just ignore the q.buffer[1]
+		int(binary.BigEndian.Uint16([]byte{q.buffer[2], q.buffer[3]})+4) != len(q.buffer) {
+		q.lock.RUnlock()
+		// end of segment not reached, just return
+		return nil
 	}
 
 	domain, err := ReadClientHello(q.buffer)

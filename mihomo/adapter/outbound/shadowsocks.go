@@ -100,7 +100,7 @@ type restlsOption struct {
 }
 
 // StreamConnContext implements C.ProxyAdapter
-func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
+func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
 	useEarly := false
 	switch ss.obfsMode {
 	case "tls":
@@ -109,7 +109,6 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 		_, port, _ := net.SplitHostPort(ss.addr)
 		c = obfs.NewHTTPObfs(c, ss.obfsOption.Host, port)
 	case "websocket":
-		var err error
 		if ss.v2rayOption != nil {
 			c, err = v2rayObfs.NewV2rayObfs(ctx, c, ss.v2rayOption)
 		} else if ss.gostOption != nil {
@@ -121,14 +120,12 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 			return nil, fmt.Errorf("%s connect error: %w", ss.addr, err)
 		}
 	case shadowtls.Mode:
-		var err error
 		c, err = shadowtls.NewShadowTLS(ctx, c, ss.shadowTLSOption)
 		if err != nil {
 			return nil, err
 		}
 		useEarly = true
 	case restls.Mode:
-		var err error
 		c, err = restls.NewRestls(ctx, c, ss.restlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("%s (restls) connect error: %w", ss.addr, err)
@@ -136,6 +133,12 @@ func (ss *ShadowSocks) StreamConnContext(ctx context.Context, c net.Conn, metada
 		useEarly = true
 	}
 	useEarly = useEarly || N.NeedHandshake(c)
+	if !useEarly {
+		if ctx.Done() != nil {
+			done := N.SetupContextForConn(ctx, c)
+			defer done(&err)
+		}
+	}
 	if metadata.NetWork == C.UDP && ss.option.UDPOverTCP {
 		uotDestination := uot.RequestDestination(uint8(ss.option.UDPOverTCPVersion))
 		if useEarly {
