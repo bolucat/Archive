@@ -83,8 +83,8 @@ config DRIVER_11AX_SUPPORT
 	select WPA_MBO_SUPPORT
 
 config DRIVER_11BE_SUPPORT
- 	bool
- 	default n
+	bool
+	default n
 
 config WPA_ENABLE_WEP
 	bool "Enable support for unsecure and obsolete WEP"

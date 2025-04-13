@@ -16,9 +16,9 @@ static inline int has_feature(const char *feat)
 		return 1;
 #endif
 #ifdef CONFIG_IEEE80211BE
- 	if (!strcmp(feat, "11be"))
- 		return 1;
- #endif
+	if (!strcmp(feat, "11be"))
+		return 1;
+#endif
 #ifdef CONFIG_IEEE80211R
 	if (!strcmp(feat, "11r"))
 		return 1;

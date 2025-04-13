@@ -35,6 +35,7 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 	}
 	return &Transport{
 		TransportAdapter: dns.NewTransportAdapterWithLocalOptions(C.DNSTypeLocal, tag, options),
+		ctx:              ctx,
 		hosts:            hosts.NewFile(hosts.DefaultPath),
 		dialer:           transportDialer,
 	}, nil

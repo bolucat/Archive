@@ -111,8 +111,6 @@ github.com/metacubex/quic-go v0.49.1-0.20250212162123-c135a4412996 h1:B+AP/Pj2/j
 github.com/metacubex/quic-go v0.49.1-0.20250212162123-c135a4412996/go.mod h1:ExVjGyEwTUjCFqx+5uxgV7MOoA3fZI+th4D40H35xmY=
 github.com/metacubex/randv2 v0.2.0 h1:uP38uBvV2SxYfLj53kuvAjbND4RUDfFJjwr4UigMiLs=
 github.com/metacubex/randv2 v0.2.0/go.mod h1:kFi2SzrQ5WuneuoLLCMkABtiBu6VRrMrWFqSPyj2cxY=
-github.com/metacubex/reality v0.0.0-20250219003814-74e8d7850629 h1:aHsYiTvubfgMa3JMTDY//hDXVvFWrHg6ARckR52ttZs=
-github.com/metacubex/reality v0.0.0-20250219003814-74e8d7850629/go.mod h1:TTeIOZLdGmzc07Oedn++vWUUfkZoXLF4sEMxWuhBFr8=
 github.com/metacubex/sing v0.0.0-20250228041610-d94509dc612a h1:xjPXdDTlIKq4U/KnKpoCtkxD03T8GimtQrvHy/3dN00=
 github.com/metacubex/sing v0.0.0-20250228041610-d94509dc612a/go.mod h1:ARkL0gM13/Iv5VCZmci/NuoOlePoIsW0m7BWfln/Hak=
 github.com/metacubex/sing-quic v0.0.0-20250404030904-b2cc8aab562c h1:OB3WmMA8YPJjE36RjD9X8xlrWGJ4orxbf2R/KAE28b0=
@@ -131,8 +129,8 @@ github.com/metacubex/sing-wireguard v0.0.0-20241126021510-0827d417b589 h1:Z6bNy0
 github.com/metacubex/sing-wireguard v0.0.0-20241126021510-0827d417b589/go.mod h1:4NclTLIZuk+QkHVCGrP87rHi/y8YjgPytxTgApJNMhc=
 github.com/metacubex/tfo-go v0.0.0-20241231083714-66613d49c422 h1:zGeQt3UyNydIVrMRB97AA5WsYEau/TyCnRtTf1yUmJY=
 github.com/metacubex/tfo-go v0.0.0-20241231083714-66613d49c422/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
-github.com/metacubex/utls v1.6.8-alpha.5 h1:A9kLiUMM0GuSBqkww3eFYSKpupVrgxwKXrjBu1E7a9o=
-github.com/metacubex/utls v1.6.8-alpha.5/go.mod h1:MEZ5WO/VLKYs/s/dOzEK/mlXOQxc04ESeLzRgjmLYtk=
+github.com/metacubex/utls v1.6.8-alpha.6 h1:5ZdZNiZFkKKgEcuPOOROIc8bA4dX2VJHoY3gajSnSaU=
+github.com/metacubex/utls v1.6.8-alpha.6/go.mod h1:MEZ5WO/VLKYs/s/dOzEK/mlXOQxc04ESeLzRgjmLYtk=
 github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181 h1:hJLQviGySBuaynlCwf/oYgIxbVbGRUIKZCxdya9YrbQ=
 github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181/go.mod h1:phewKljNYiTVT31Gcif8RiCKnTUOgVWFJjccqYM8s+Y=
 github.com/miekg/dns v1.1.63 h1:8M5aAw6OMZfFXTT7K5V0Eu5YiiL8l7nUAkyN6C9YwaY=

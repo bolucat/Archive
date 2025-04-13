@@ -4,8 +4,6 @@ Signed-off-by: Gregory Greenman <gregory.greenman@intel.com>
  include/net/ieee80211_radiotap.h | 187 ++++++++++++++++++++++++++++++-
  1 file changed, 185 insertions(+), 2 deletions(-)
 
-diff --git a/include/net/ieee80211_radiotap.h b/include/net/ieee80211_radiotap.h
-index 598f53d2a3a0..0fc2667a9a5d 100644
 --- a/include/net/ieee80211_radiotap.h
 +++ b/include/net/ieee80211_radiotap.h
 @@ -1,6 +1,6 @@
@@ -32,7 +30,7 @@ index 598f53d2a3a0..0fc2667a9a5d 100644
  };
  
  /* for IEEE80211_RADIOTAP_FLAGS */
-@@ -360,6 +363,186 @@ enum ieee80211_radiotap_zero_len_psdu_type {
+@@ -360,6 +363,186 @@ enum ieee80211_radiotap_zero_len_psdu_ty
  	IEEE80211_RADIOTAP_ZERO_LEN_PSDU_VENDOR			= 0xff,
  };
  
@@ -219,5 +217,3 @@ index 598f53d2a3a0..0fc2667a9a5d 100644
  /**
   * ieee80211_get_radiotap_len - get radiotap header length
   */
--- 
-2.38.1

@@ -70,7 +70,7 @@ func dnsReadConfig(ctx context.Context, _ string) *dnsConfig {
 			dnsAddresses = append(dnsAddresses, struct {
 				ifName string
 				netip.Addr
-			}{ifName: windows.BytePtrToString(address.AdapterName), Addr: dnsServerAddr})
+			}{ifName: windows.UTF16PtrToString(address.FriendlyName), Addr: dnsServerAddr})
 		}
 	}
 	var myInterface string
