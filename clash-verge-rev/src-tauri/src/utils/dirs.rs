@@ -179,3 +179,10 @@ pub fn get_encryption_key() -> Result<Vec<u8>> {
         Ok(key)
     }
 }
+
+pub fn app_socket_path() -> Result<String> {
+    let app_dir = app_home_dir()?;
+    let socket_path = app_dir.join("mihomo.sock");
+    let socket_path = path_to_str(&socket_path)?;
+    Ok(socket_path.to_string())
+}

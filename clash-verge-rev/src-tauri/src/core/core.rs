@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use anyhow::Result;
+use mihomo_api::model::MihomoClient;
 use once_cell::sync::OnceCell;
 use std::{fmt, path::PathBuf, sync::Arc};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};

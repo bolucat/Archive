@@ -1,3 +1,5 @@
+use mihomo_api::model::MihomoClient;
+
 #[cfg(target_os = "macos")]
 use crate::AppHandleManager;
 use crate::{
@@ -74,12 +76,11 @@ pub fn quit() {
                         "enable": false
                     }
                 });
-                timeout(
-                    Duration::from_secs(1),
-                    MihomoManager::global().patch_configs(disable_tun),
-                )
-                .await
-                .is_ok()
+
+                let patch_future =
+                    async { MihomoManager::global().patch_configs(disable_tun).await };
+
+                timeout(Duration::from_secs(1), patch_future).await.is_ok()
             } else {
                 true
             };

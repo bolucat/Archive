@@ -6,6 +6,7 @@ use crate::{
     process::AsyncHandler,
     utils::{logging::Type, resolve},
 };
+use mihomo_api::model::MihomoClient;
 use serde_yaml::{Mapping, Value};
 use tauri::Manager;
 

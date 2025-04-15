@@ -51,6 +51,10 @@ impl IClashTemp {
         map.insert("ipv6".into(), true.into());
         map.insert("mode".into(), "rule".into());
         map.insert("external-controller".into(), "127.0.0.1:9097".into());
+        #[cfg(not(target_os = "windows"))]
+        map.insert("external-controller-unix".into(), "mihomo.sock".into());
+        #[cfg(target_os = "windows")]
+        map.insert("external-controller-pipe".into(), r"\\.\pipe\mihomo".into());
         let mut cors_map = Mapping::new();
         cors_map.insert("allow-private-network".into(), true.into());
         cors_map.insert("allow-origins".into(), vec!["*"].into());

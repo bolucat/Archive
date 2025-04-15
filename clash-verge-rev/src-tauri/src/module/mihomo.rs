@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::{config::Config, utils::dirs::app_socket_path};
 use mihomo_api;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::Mutex;
@@ -24,20 +24,18 @@ impl MihomoManager {
         &INSTANCE
     }
 
-    pub fn global() -> mihomo_api::MihomoManager {
+    pub fn global() -> &'static mihomo_api::MihomoManager {
         let instance = MihomoManager::__global();
-        let (current_server, headers) = MihomoManager::get_clash_client_info().unwrap();
 
-        let lock = instance.mihomo.lock().unwrap();
-        if let Some(mihomo) = lock.get() {
-            if mihomo.get_mihomo_server() == current_server {
-                return mihomo.clone();
-            }
+        let mihomo = &instance.mihomo;
+        let lock = mihomo.lock().unwrap();
+
+        if lock.get().is_none() {
+            let socket_path = MihomoManager::get_socket_path();
+            lock.set(mihomo_api::MihomoManager::new(socket_path)).ok();
         }
 
-        lock.set(mihomo_api::MihomoManager::new(current_server, headers))
-            .ok();
-        lock.get().unwrap().clone()
+        unsafe { std::mem::transmute(lock.get().unwrap()) }
     }
 }
 
@@ -66,5 +64,13 @@ impl MihomoManager {
             .to_string();
         let token = http::header::HeaderValue::from_str(&auth).unwrap();
         (ws_url, token)
+    }
+
+    fn get_socket_path() -> String {
+        #[cfg(unix)]
+        let socket_path = app_socket_path().unwrap();
+        #[cfg(windows)]
+        let socket_path = r"\\.\pipe\mihomo";
+        socket_path
     }
 }
