@@ -20,7 +20,7 @@ require (
 	github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab
 	github.com/metacubex/bart v0.19.0
 	github.com/metacubex/bbolt v0.0.0-20240822011022-aed6d4850399
-	github.com/metacubex/chacha v0.1.1
+	github.com/metacubex/chacha v0.1.2
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/quic-go v0.49.1-0.20250212162123-c135a4412996
 	github.com/metacubex/randv2 v0.2.0

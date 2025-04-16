@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	gotls "crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -117,9 +118,11 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 		case commandPaddingDirect:
 			needReturn := false
 			if vc.input != nil {
-				_, err := buffer.ReadFrom(vc.input)
+				_, err := buffer.ReadOnceFrom(vc.input)
 				if err != nil {
-					return err
+					if !errors.Is(err, io.EOF) {
+						return err
+					}
 				}
 				if vc.input.Len() == 0 {
 					needReturn = true
@@ -129,9 +132,11 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 				}
 			}
 			if vc.rawInput != nil {
-				_, err := buffer.ReadFrom(vc.rawInput)
+				_, err := buffer.ReadOnceFrom(vc.rawInput)
 				if err != nil {
-					return err
+					if !errors.Is(err, io.EOF) {
+						return err
+					}
 				}
 				needReturn = true
 				if vc.rawInput.Len() == 0 {

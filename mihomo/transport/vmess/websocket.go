@@ -467,7 +467,7 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 		}
 	}
 
-	conn = newWebsocketConn(conn, ws.StateClientSide)
+	conn = newWebsocketConn(bufferedConn, ws.StateClientSide)
 	// websocketConn can't correct handle ReadDeadline
 	// so call N.NewDeadlineConn to add a safe wrapper
 	return N.NewDeadlineConn(conn), nil
@@ -555,7 +555,7 @@ func StreamUpgradedWebsocketConn(w http.ResponseWriter, r *http.Request) (net.Co
 		w.Header().Set("Sec-Websocket-Accept", getSecAccept(r.Header.Get("Sec-WebSocket-Key")))
 	}
 	w.WriteHeader(http.StatusSwitchingProtocols)
-	if flusher, isFlusher := w.(interface{ FlushError() error }); isFlusher {
+	if flusher, isFlusher := w.(interface{ FlushError() error }); isFlusher && writeHeaderShouldFlush {
 		err = flusher.FlushError()
 		if err != nil {
 			return nil, fmt.Errorf("flush response: %w", err)

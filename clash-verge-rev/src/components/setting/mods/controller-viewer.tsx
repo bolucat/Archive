@@ -3,8 +3,9 @@ import { useLockFn } from "ahooks";
 import { useTranslation } from "react-i18next";
 import { List, ListItem, ListItemText, TextField, Typography, Box } from "@mui/material";
 import { useClashInfo } from "@/hooks/use-clash";
-import { BaseDialog, DialogRef, Notice, Switch } from "@/components/base";
+import { BaseDialog, DialogRef, Notice } from "@/components/base";
 import { useVerge } from "@/hooks/use-verge";
+import { useClash } from "@/hooks/use-clash";
 
 export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -12,43 +13,39 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
 
   const { clashInfo, patchInfo } = useClashInfo();
   const { verge, patchVerge } = useVerge();
+  const { clash } = useClash();
 
-  const [controller, setController] = useState(clashInfo?.server || "");
-  const [secret, setSecret] = useState(clashInfo?.secret || "");
+  const [controller, setController] = useState("");
+  const [secret, setSecret] = useState("");
   
-  // 获取外部控制器开关状态
-  const [enableController, setEnableController] = useState(() => {
-    const savedState = localStorage.getItem("enable_external_controller");
-    if (savedState !== null) {
-      return savedState === "true";
-    }
-    return verge?.enable_external_controller ?? true;
-  });
+  const enableController = Boolean(clash?.["external-controller"] && clash?.["external-controller"] !== "");
 
   useImperativeHandle(ref, () => ({
     open: () => {
       setOpen(true);
-      setController(clashInfo?.server || "");
-      setSecret(clashInfo?.secret || "");
-      // 从localStorage更新开关状态
-      const savedState = localStorage.getItem("enable_external_controller");
-      if (savedState !== null) {
-        setEnableController(savedState === "true");
-      } else {
-        setEnableController(verge?.enable_external_controller ?? true);
-      }
+      setController(clash?.["external-controller"] || "");
+      setSecret(clash?.secret || "");
     },
     close: () => setOpen(false),
   }));
 
   const onSave = useLockFn(async () => {
     try {
-      // 只有在启用外部控制器时才更新配置
-      if (enableController) {
-        await patchInfo({ "external-controller": controller, secret });
-      }
-      Notice.success(t("External Controller Settings Saved"), 1000);
       setOpen(false);
+      const promises = [];
+      promises.push(
+        patchInfo({ 
+          "external-controller": controller || "127.0.0.1:9097", 
+          secret 
+        })
+      );
+      
+      // 同步verge配置
+      if (controller && controller !== "") {
+        promises.push(patchVerge({ enable_external_controller: true }));
+      }
+      await Promise.all(promises);
+      Notice.success(t("External Controller Settings Saved"), 1000);
     } catch (err: any) {
       Notice.error(err.message || err.toString(), 4000);
     }
@@ -61,6 +58,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
       contentSx={{ width: 400 }}
       okBtn={t("Save")}
       cancelBtn={t("Cancel")}
+      disableOk={!enableController}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onSave}
@@ -81,7 +79,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
             size="small"
             sx={{ width: 175 }}
             value={controller}
-            placeholder="Required"
+            placeholder="127.0.0.1:9097"
             onChange={(e) => setController(e.target.value)}
             disabled={!enableController}
           />

@@ -36,21 +36,28 @@ impl UnixClient {
     ) -> Result<Value, E> {
         let uri = self.generate_unix_path(socket_path.as_str(), path).await;
 
-        let mut request_builder = Request::builder().method(method).uri(uri);
+        let mut request_builder = Request::builder().method(method.clone()).uri(uri);
 
         let body_bytes = if let Some(body) = body {
-            request_builder = request_builder.header(
-                HeaderName::from_static("Content-Type"),
-                HeaderValue::from_static("application/json"),
-            );
+            if method != Method::PUT {
+                request_builder = request_builder.header(
+                    HeaderName::from_static("Content-Type"),
+                    HeaderValue::from_static("application/json"),
+                );
+            }
             Bytes::from(serde_json::to_vec(&body)?)
         } else {
             Bytes::new()
         };
 
         let request = request_builder.body(Full::new(body_bytes))?;
-
         let response = self.client.lock().await.request(request).await?;
+
+        if method == Method::PUT {
+            let json_value = serde_json::Value::Null;
+            return Ok(json_value);
+        }
+
         let body_bytes = response.into_body().collect().await?.to_bytes();
         let json_value = serde_json::from_slice(&body_bytes)?;
 

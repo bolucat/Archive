@@ -1,23 +1,18 @@
-use crate::{model::E, sock};
+use crate::model::E;
 use hyper::Method;
 use serde_json::Value;
 use tokio_util::codec::{Framed, LinesCodec};
-use std::{sync::Arc, time::Duration};
-use tokio::{
-    time::timeout,
-    sync::Mutex,
-};
+use std::time::Duration;
+use tokio::time::timeout;
 use futures::{SinkExt, StreamExt};
 use tokio::net::windows::named_pipe::ClientOptions;
 
 pub struct WindowsClient {
-    lock: Arc<Mutex<()>>,
 }
 
 impl WindowsClient {
     pub fn new() -> Self {
         Self {
-            lock: Arc::new(Mutex::new(())),
         }
     }
 

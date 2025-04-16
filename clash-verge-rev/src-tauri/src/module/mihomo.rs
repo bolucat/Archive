@@ -1,8 +1,12 @@
-use crate::{config::Config, utils::dirs::app_socket_path};
+use crate::config::Config;
+#[cfg(unix)]
+use crate::utils::dirs::app_socket_path;
 use mihomo_api;
 use once_cell::sync::{Lazy, OnceCell};
 use std::sync::Mutex;
-use tauri::http::{HeaderMap, HeaderValue};
+use tauri::http::HeaderMap;
+#[cfg(target_os = "macos")]
+use tauri::http::HeaderValue;
 #[cfg(target_os = "macos")]
 use tokio_tungstenite::tungstenite::http;
 
@@ -70,7 +74,7 @@ impl MihomoManager {
         #[cfg(unix)]
         let socket_path = app_socket_path().unwrap();
         #[cfg(windows)]
-        let socket_path = r"\\.\pipe\mihomo";
+        let socket_path = r"\\.\pipe\mihomo".to_string();
         socket_path
     }
 }

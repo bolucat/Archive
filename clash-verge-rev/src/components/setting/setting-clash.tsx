@@ -44,6 +44,7 @@ const SettingClash = ({ onError }: Props) => {
     "log-level": logLevel,
     "unified-delay": unifiedDelay,
     dns,
+    "external-controller": externalController
   } = clash ?? {};
 
   const { enable_random_port = false, verge_mixed_port } = verge ?? {};
@@ -57,15 +58,6 @@ const SettingClash = ({ onError }: Props) => {
     }
     // 如果没有保存的状态，则从verge配置中获取
     return verge?.enable_dns_settings ?? false;
-  });
-  
-  // 添加外部控制器开关状态
-  const [enableController, setEnableController] = useState(() => {
-    const savedState = localStorage.getItem("enable_external_controller");
-    if (savedState !== null) {
-      return savedState === "true";
-    }
-    return verge?.enable_external_controller ?? true;
   });
   
   const { addListener } = useListen();
@@ -118,25 +110,14 @@ const SettingClash = ({ onError }: Props) => {
     }
   });
 
-  // 处理外部控制器开关状态变化
-  const handleControllerToggle = useLockFn(async (enable: boolean) => {
-    try {
-      setEnableController(enable);
-      localStorage.setItem("enable_external_controller", String(enable));
-      await patchVerge({ enable_external_controller: enable });
-      if (!enable) {
-        await patchInfo({ "external-controller": "", secret: "" });
-      } else {
-        // 如果开启，恢复默认值或之前的值
-        const server = clashInfo?.server || "127.0.0.1:9097";
-        await patchInfo({ "external-controller": server, secret: clashInfo?.secret || "" });
-      }
-    } catch (err: any) {
-      setEnableController(!enable);
-      localStorage.setItem("enable_external_controller", String(!enable));
-      Notice.error(err.message || err.toString());
+  // 同步外部控制器配置和开关状态
+  useEffect(() => {
+    const hasController = Boolean(externalController && externalController !== "");
+    const isEnabled = Boolean(verge?.enable_external_controller);
+    if (hasController !== isEnabled) {
+      patchVerge({ enable_external_controller: hasController });
     }
-  });
+  }, [externalController, verge?.enable_external_controller]);
 
   return (
     <SettingList title={t("Clash Setting")}>
@@ -286,26 +267,49 @@ const SettingClash = ({ onError }: Props) => {
           />
         }
       >
-        <Switch
-          edge="end"
-          checked={enableController}
-          onChange={(_, checked) => handleControllerToggle(checked)}
-        />
+        <GuardState
+          // 依据配置文件中是否有值来决定开关状态
+          value={Boolean(externalController && externalController !== "")}
+          valueProps="checked"
+          onCatch={onError}
+          onFormat={onSwitchFormat}
+          onChange={(e) => {
+            onChangeVerge({ enable_external_controller: e });
+            onChangeData({ 
+              "external-controller": e ? (externalController || "127.0.0.1:9097") : "" 
+            });
+          }}
+          onGuard={async (e) => {
+            const promises = [
+              patchVerge({ enable_external_controller: e })
+            ];
+            
+            if (!e) {
+              // 如果禁用，清空配置
+              promises.push(patchClash({ "external-controller": "" }));
+            } else if (!externalController || externalController === "") {
+              promises.push(patchClash({ "external-controller": "127.0.0.1:9097" }));
+            }
+            await Promise.all(promises);
+          }}
+        >
+          <Switch edge="end" />
+        </GuardState>
       </SettingItem>
 
       <SettingItem 
-        onClick={enableController ? () => webRef.current?.open() : undefined} 
+        onClick={(externalController && externalController !== "") ? () => webRef.current?.open() : undefined} 
         label={
           <Typography 
             component="span" 
-            color={!enableController ? "text.disabled" : "text.primary"}
+            color={(!externalController || externalController === "") ? "text.disabled" : "text.primary"}
             sx={{ fontSize: "inherit" }}
           >
             {t("Web UI")}
           </Typography>
         }
         extra={
-          !enableController && (
+          (!externalController || externalController === "") && (
             <TooltipIcon
               title={t("Web UI info")}
               sx={{ opacity: "0.7" }}
