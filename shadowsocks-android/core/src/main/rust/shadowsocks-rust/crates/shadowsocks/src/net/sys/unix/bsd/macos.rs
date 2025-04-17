@@ -22,9 +22,9 @@ use tokio::{
 use tokio_tfo::TfoStream;
 
 use crate::net::{
+    AcceptOpts, AddrFamily, ConnectOpts,
     sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
     udp::{BatchRecvMessage, BatchSendMessage},
-    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
@@ -407,7 +407,7 @@ struct msghdr_x {
     msg_datalen: libc::size_t,       //< byte length of buffer in msg_iov
 }
 
-extern "C" {
+unsafe extern "C" {
     fn recvmsg_x(s: libc::c_int, msgp: *const msghdr_x, cnt: libc::c_uint, flags: libc::c_int) -> libc::ssize_t;
     fn sendmsg_x(s: libc::c_int, msgp: *const msghdr_x, cnt: libc::c_uint, flags: libc::c_int) -> libc::ssize_t;
 }

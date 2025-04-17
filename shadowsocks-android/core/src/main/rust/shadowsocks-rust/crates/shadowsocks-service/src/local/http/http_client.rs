@@ -12,13 +12,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use http::{header::InvalidHeaderValue, HeaderValue, Method as HttpMethod, Uri, Version as HttpVersion};
+use http::{HeaderValue, Method as HttpMethod, Uri, Version as HttpVersion, header::InvalidHeaderValue};
 use hyper::{
+    Request, Response,
     body::{self, Body},
     client::conn::{http1, http2},
     http::uri::Scheme,
     rt::{Sleep, Timer},
-    Request, Response,
 };
 use log::{error, trace};
 use lru_time_cache::LruCache;
@@ -229,8 +229,7 @@ where
         if check_keep_alive(response.version(), response.headers(), false) {
             trace!(
                 "HTTP connection keep-alive for host: {}, response: {:?}",
-                host,
-                response
+                host, response
             );
             self.cache_conn
                 .lock()
@@ -284,8 +283,7 @@ where
     ) -> io::Result<HttpConnection<B>> {
         trace!(
             "HTTP making new HTTP/1.1 connection to host: {}, scheme: {}",
-            host,
-            scheme
+            host, scheme
         );
 
         let stream = ProxyHttpStream::connect_http(stream);
@@ -383,10 +381,13 @@ where
                     && (req.uri().scheme().is_some() || req.uri().authority().is_some())
                 {
                     let mut builder = Uri::builder();
-                    if let Some(path_and_query) = req.uri().path_and_query() {
-                        builder = builder.path_and_query(path_and_query.as_str());
-                    } else {
-                        builder = builder.path_and_query("/");
+                    match req.uri().path_and_query() {
+                        Some(path_and_query) => {
+                            builder = builder.path_and_query(path_and_query.as_str());
+                        }
+                        _ => {
+                            builder = builder.path_and_query("/");
+                        }
                     }
                     *(req.uri_mut()) = builder.build()?;
                 }

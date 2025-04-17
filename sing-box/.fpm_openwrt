@@ -5,6 +5,7 @@
 --description "The universal proxy platform."
 --url "https://sing-box.sagernet.org/"
 --maintainer "nekohasekai <contact-git@sekai.icu>"
+--no-deb-generate-changes
 
 --config-files /etc/config/sing-box
 --config-files /etc/sing-box/config.json
@@ -14,7 +15,6 @@
 --depends kmod-tun
 --depends firewall4
 
---after-install release/config/openwrt.postinst
 --before-remove release/config/openwrt.prerm
 
 release/config/config.json=/etc/sing-box/config.json

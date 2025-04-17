@@ -233,7 +233,7 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 // DialContext implements C.ProxyAdapter
 func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
 	// gun transport
-	if v.transport != nil && len(opts) == 0 {
+	if v.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err := gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err
@@ -287,7 +287,7 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 	}
 	var c net.Conn
 	// gun transport
-	if v.transport != nil && len(opts) == 0 {
+	if v.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err

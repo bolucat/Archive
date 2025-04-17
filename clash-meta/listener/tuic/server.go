@@ -60,6 +60,14 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	} else {
 		tlsConfig.NextProtos = []string{"h3"}
 	}
+
+	if config.MaxIdleTime == 0 {
+		config.MaxIdleTime = 15000
+	}
+	if config.AuthenticationTimeout == 0 {
+		config.AuthenticationTimeout = 1000
+	}
+
 	quicConfig := &quic.Config{
 		MaxIdleTimeout:        time.Duration(config.MaxIdleTime) * time.Millisecond,
 		MaxIncomingStreams:    ServerMaxIncomingStreams,

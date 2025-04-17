@@ -18,9 +18,9 @@ use tokio::{
 use tokio_tfo::TfoStream;
 
 use crate::net::{
+    AcceptOpts, AddrFamily, ConnectOpts,
     sys::{set_common_sockopt_after_connect, set_common_sockopt_for_connect, socket_bind_dual_stack},
     udp::{BatchRecvMessage, BatchSendMessage},
-    AcceptOpts, AddrFamily, ConnectOpts,
 };
 
 /// A `TcpStream` that supports TFO (TCP Fast Open)
@@ -237,7 +237,7 @@ pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) ->
 }
 
 /// Create a `UdpSocket` binded to `bind_addr`
-pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, _config: &ConnectOpts) -> io::Result<UdpSocket> {
+pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let af = AddrFamily::from(bind_addr);
 
     let socket = if af != AddrFamily::Ipv6 {

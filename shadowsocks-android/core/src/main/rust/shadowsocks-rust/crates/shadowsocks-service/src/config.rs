@@ -1893,7 +1893,9 @@ impl Config {
                         return Err(err);
                     }
                     None => {
-                        warn!("OnlineConfig \"version\" is missing in the configuration, assuming it is a compatible version for this project");
+                        warn!(
+                            "OnlineConfig \"version\" is missing in the configuration, assuming it is a compatible version for this project"
+                        );
                     }
                 }
             }
@@ -2467,10 +2469,7 @@ impl Config {
 
             #[cfg(feature = "hickory-dns")]
             "google" => DnsConfig::HickoryDns(ResolverConfig::google()),
-            #[cfg(all(
-                feature = "hickory-dns",
-                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
-            ))]
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-tls"))]
             "google_tls" => DnsConfig::HickoryDns(ResolverConfig::google_tls()),
             #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
             "google_https" => DnsConfig::HickoryDns(ResolverConfig::google_https()),
@@ -2479,20 +2478,14 @@ impl Config {
 
             #[cfg(feature = "hickory-dns")]
             "cloudflare" => DnsConfig::HickoryDns(ResolverConfig::cloudflare()),
-            #[cfg(all(
-                feature = "hickory-dns",
-                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
-            ))]
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-tls"))]
             "cloudflare_tls" => DnsConfig::HickoryDns(ResolverConfig::cloudflare_tls()),
             #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
             "cloudflare_https" => DnsConfig::HickoryDns(ResolverConfig::cloudflare_https()),
 
             #[cfg(feature = "hickory-dns")]
             "quad9" => DnsConfig::HickoryDns(ResolverConfig::quad9()),
-            #[cfg(all(
-                feature = "hickory-dns",
-                any(feature = "dns-over-tls", feature = "dns-over-native-tls")
-            ))]
+            #[cfg(all(feature = "hickory-dns", feature = "dns-over-tls"))]
             "quad9_tls" => DnsConfig::HickoryDns(ResolverConfig::quad9_tls()),
             #[cfg(all(feature = "hickory-dns", feature = "dns-over-https"))]
             "quad9_https" => DnsConfig::HickoryDns(ResolverConfig::quad9_https()),
@@ -2790,11 +2783,11 @@ impl fmt::Display for Config {
                 let local = &local_instance.config;
                 if let Some(ref a) = local.addr {
                     jconf.local_address = Some(match a {
-                        ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
-                        ServerAddr::DomainName(ref dm, ..) => dm.to_string(),
+                        ServerAddr::SocketAddr(sa) => sa.ip().to_string(),
+                        ServerAddr::DomainName(dm, ..) => dm.to_string(),
                     });
                     jconf.local_port = Some(match a {
-                        ServerAddr::SocketAddr(ref sa) => sa.port(),
+                        ServerAddr::SocketAddr(sa) => sa.port(),
                         ServerAddr::DomainName(.., port) => *port,
                     });
                 }
@@ -2820,11 +2813,11 @@ impl fmt::Display for Config {
 
                     let jlocal = SSLocalExtConfig {
                         local_address: local.addr.as_ref().map(|a| match a {
-                            ServerAddr::SocketAddr(ref sa) => sa.ip().to_string(),
-                            ServerAddr::DomainName(ref dm, ..) => dm.to_string(),
+                            ServerAddr::SocketAddr(sa) => sa.ip().to_string(),
+                            ServerAddr::DomainName(dm, ..) => dm.to_string(),
                         }),
                         local_port: local.addr.as_ref().map(|a| match a {
-                            ServerAddr::SocketAddr(ref sa) => sa.port(),
+                            ServerAddr::SocketAddr(sa) => sa.port(),
                             ServerAddr::DomainName(.., port) => *port,
                         }),
                         disabled: None,
@@ -2862,15 +2855,15 @@ impl fmt::Display for Config {
                         forward_address: match local.forward_addr {
                             None => None,
                             Some(ref forward_addr) => match forward_addr {
-                                Address::SocketAddress(ref sa) => Some(sa.ip().to_string()),
-                                Address::DomainNameAddress(ref dm, ..) => Some(dm.to_string()),
+                                Address::SocketAddress(sa) => Some(sa.ip().to_string()),
+                                Address::DomainNameAddress(dm, ..) => Some(dm.to_string()),
                             },
                         },
                         #[cfg(feature = "local-tunnel")]
                         forward_port: match local.forward_addr {
                             None => None,
                             Some(ref forward_addr) => match forward_addr {
-                                Address::SocketAddress(ref sa) => Some(sa.port()),
+                                Address::SocketAddress(sa) => Some(sa.port()),
                                 Address::DomainNameAddress(.., port) => Some(*port),
                             },
                         },
@@ -2878,9 +2871,9 @@ impl fmt::Display for Config {
                         local_dns_address: match local.local_dns_addr {
                             None => None,
                             Some(ref local_dns_addr) => match local_dns_addr {
-                                NameServerAddr::SocketAddr(ref sa) => Some(sa.ip().to_string()),
+                                NameServerAddr::SocketAddr(sa) => Some(sa.ip().to_string()),
                                 #[cfg(unix)]
-                                NameServerAddr::UnixSocketAddr(ref path) => {
+                                NameServerAddr::UnixSocketAddr(path) => {
                                     Some(path.to_str().expect("path is not utf-8").to_owned())
                                 }
                             },
@@ -2889,7 +2882,7 @@ impl fmt::Display for Config {
                         local_dns_port: match local.local_dns_addr {
                             None => None,
                             Some(ref local_dns_addr) => match local_dns_addr {
-                                NameServerAddr::SocketAddr(ref sa) => Some(sa.port()),
+                                NameServerAddr::SocketAddr(sa) => Some(sa.port()),
                                 #[cfg(unix)]
                                 NameServerAddr::UnixSocketAddr(..) => None,
                             },
@@ -2898,15 +2891,15 @@ impl fmt::Display for Config {
                         remote_dns_address: match local.remote_dns_addr {
                             None => None,
                             Some(ref remote_dns_addr) => match remote_dns_addr {
-                                Address::SocketAddress(ref sa) => Some(sa.ip().to_string()),
-                                Address::DomainNameAddress(ref dm, ..) => Some(dm.to_string()),
+                                Address::SocketAddress(sa) => Some(sa.ip().to_string()),
+                                Address::DomainNameAddress(dm, ..) => Some(dm.to_string()),
                             },
                         },
                         #[cfg(feature = "local-dns")]
                         remote_dns_port: match local.remote_dns_addr {
                             None => None,
                             Some(ref remote_dns_addr) => match remote_dns_addr {
-                                Address::SocketAddress(ref sa) => Some(sa.port()),
+                                Address::SocketAddress(sa) => Some(sa.port()),
                                 Address::DomainNameAddress(.., port) => Some(*port),
                             },
                         },

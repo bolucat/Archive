@@ -131,7 +131,7 @@ func (t *Trojan) writeHeaderContext(ctx context.Context, c net.Conn, metadata *C
 // DialContext implements C.ProxyAdapter
 func (t *Trojan) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
 	// gun transport
-	if t.transport != nil && len(opts) == 0 {
+	if t.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err := gun.StreamGunWithTransport(t.transport, t.gunConfig)
 		if err != nil {
 			return nil, err
@@ -181,7 +181,7 @@ func (t *Trojan) ListenPacketContext(ctx context.Context, metadata *C.Metadata, 
 	var c net.Conn
 
 	// grpc transport
-	if t.transport != nil && len(opts) == 0 {
+	if t.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err = gun.StreamGunWithTransport(t.transport, t.gunConfig)
 		if err != nil {
 			return nil, fmt.Errorf("%s connect error: %w", t.addr, err)
@@ -356,8 +356,9 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 
 		t.gunTLSConfig = tlsConfig
 		t.gunConfig = &gun.Config{
-			ServiceName: option.GrpcOpts.GrpcServiceName,
-			Host:        tOption.ServerName,
+			ServiceName:       option.GrpcOpts.GrpcServiceName,
+			Host:              tOption.ServerName,
+			ClientFingerprint: tOption.ClientFingerprint,
 		}
 	}
 

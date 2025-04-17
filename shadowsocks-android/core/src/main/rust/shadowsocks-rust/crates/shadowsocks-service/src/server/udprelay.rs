@@ -12,26 +12,26 @@ use bytes::Bytes;
 use futures::future;
 use log::{debug, error, info, trace, warn};
 use lru_time_cache::LruCache;
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::SmallRng};
 use shadowsocks::{
+    ServerConfig,
     config::ServerUser,
     crypto::CipherCategory,
     lookup_then,
     net::{
-        get_ip_stack_capabilities, AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket,
-        UdpSocket as InboundUdpSocket,
+        AcceptOpts, AddrFamily, UdpSocket as OutboundUdpSocket, UdpSocket as InboundUdpSocket,
+        get_ip_stack_capabilities,
     },
     relay::{
         socks5::Address,
-        udprelay::{options::UdpSocketControlData, ProxySocket, MAXIMUM_UDP_PAYLOAD_SIZE},
+        udprelay::{MAXIMUM_UDP_PAYLOAD_SIZE, ProxySocket, options::UdpSocketControlData},
     },
-    ServerConfig,
 };
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle, time};
 
 use crate::net::{
-    packet_window::PacketWindowFilter, utils::to_ipv4_mapped, MonProxySocket, UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE,
-    UDP_ASSOCIATION_SEND_CHANNEL_SIZE,
+    MonProxySocket, UDP_ASSOCIATION_KEEP_ALIVE_CHANNEL_SIZE, UDP_ASSOCIATION_SEND_CHANNEL_SIZE,
+    packet_window::PacketWindowFilter, utils::to_ipv4_mapped,
 };
 
 use super::context::ServiceContext;
@@ -68,11 +68,11 @@ impl NatMap {
 
     fn keep_alive(&mut self, key: &NatKey) {
         match (self, key) {
-            (NatMap::Association(ref mut m), NatKey::PeerAddr(ref peer_addr)) => {
+            (NatMap::Association(m), NatKey::PeerAddr(peer_addr)) => {
                 m.get(peer_addr);
             }
             #[cfg(feature = "aead-cipher-2022")]
-            (NatMap::Session(ref mut m), NatKey::SessionId(ref session_id)) => {
+            (NatMap::Session(m), NatKey::SessionId(session_id)) => {
                 m.get(session_id);
             }
             #[allow(unreachable_patterns)]
@@ -220,7 +220,7 @@ impl UdpServer {
         async fn multicore_recv(orx_opt: &mut Option<mpsc::Receiver<QueuedDataType>>) -> QueuedDataType {
             match orx_opt {
                 None => future::pending().await,
-                Some(ref mut orx) => match orx.recv().await {
+                Some(orx) => match orx.recv().await {
                     Some(t) => t,
                     None => unreachable!("multicore sender should keep at least 1"),
                 },
@@ -462,12 +462,17 @@ impl Drop for UdpAssociationContext {
 }
 
 thread_local! {
-    static CLIENT_SESSION_RNG: RefCell<SmallRng> = RefCell::new(SmallRng::from_entropy());
+    static CLIENT_SESSION_RNG: RefCell<SmallRng> = RefCell::new(SmallRng::from_os_rng());
 }
 
 #[inline]
 fn generate_server_session_id() -> u64 {
-    CLIENT_SESSION_RNG.with(|rng| rng.borrow_mut().gen())
+    loop {
+        let id = CLIENT_SESSION_RNG.with(|rng| rng.borrow_mut().random());
+        if id != 0 {
+            break id;
+        }
+    }
 }
 
 impl UdpAssociationContext {
@@ -747,16 +752,19 @@ impl UdpAssociationContext {
         match self.client_session {
             None => {
                 // Naive route, send data directly back to client without session
-                if let Err(err) = self.inbound.send_to(self.peer_addr, &addr, data).await {
-                    warn!(
-                        "udp failed to send back {} bytes to client {}, from target {}, error: {}",
-                        data.len(),
-                        self.peer_addr,
-                        addr,
-                        err
-                    );
-                } else {
-                    trace!("udp relay {} <- {} with {} bytes", self.peer_addr, addr, data.len());
+                match self.inbound.send_to(self.peer_addr, &addr, data).await {
+                    Err(err) => {
+                        warn!(
+                            "udp failed to send back {} bytes to client {}, from target {}, error: {}",
+                            data.len(),
+                            self.peer_addr,
+                            addr,
+                            err
+                        );
+                    }
+                    _ => {
+                        trace!("udp relay {} <- {} with {} bytes", self.peer_addr, addr, data.len());
+                    }
                 }
             }
             Some(ref client_session) => {
@@ -786,27 +794,30 @@ impl UdpAssociationContext {
                 control.packet_id = self.server_packet_id;
                 control.user.clone_from(&client_session.client_user);
 
-                if let Err(err) = self
+                match self
                     .inbound
                     .send_to_with_ctrl(self.peer_addr, &addr, &control, data)
                     .await
                 {
-                    warn!(
-                        "udp failed to send back {} bytes to client {}, from target {}, control: {:?}, error: {}",
-                        data.len(),
-                        self.peer_addr,
-                        addr,
-                        control,
-                        err
-                    );
-                } else {
-                    trace!(
-                        "udp relay {} <- {} with {} bytes, control {:?}",
-                        self.peer_addr,
-                        addr,
-                        data.len(),
-                        control
-                    );
+                    Err(err) => {
+                        warn!(
+                            "udp failed to send back {} bytes to client {}, from target {}, control: {:?}, error: {}",
+                            data.len(),
+                            self.peer_addr,
+                            addr,
+                            control,
+                            err
+                        );
+                    }
+                    _ => {
+                        trace!(
+                            "udp relay {} <- {} with {} bytes, control {:?}",
+                            self.peer_addr,
+                            addr,
+                            data.len(),
+                            control
+                        );
+                    }
                 }
             }
         }

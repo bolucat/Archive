@@ -86,6 +86,11 @@ func New(config LC.AnyTLSServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		if err != nil {
 			return nil, err
 		}
+		if len(tlsConfig.Certificates) > 0 {
+			l = tls.NewListener(l, tlsConfig)
+		} else {
+			return nil, errors.New("disallow using AnyTLS without certificates config")
+		}
 		sl.listeners = append(sl.listeners, l)
 
 		go func() {
@@ -130,8 +135,6 @@ func (l *Listener) AddrList() (addrList []net.Addr) {
 
 func (l *Listener) HandleConn(conn net.Conn, h *sing.ListenerHandler) {
 	ctx := context.TODO()
-
-	conn = tls.Server(conn, l.tlsConfig)
 	defer conn.Close()
 
 	b := buf.NewPacket()

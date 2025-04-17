@@ -50,10 +50,7 @@ impl IClashTemp {
         map.insert("allow-lan".into(), false.into());
         map.insert("ipv6".into(), true.into());
         map.insert("mode".into(), "rule".into());
-        #[cfg(not(target_os = "windows"))]
-        map.insert("external-controller-unix".into(), "mihomo.sock".into());
-        #[cfg(target_os = "windows")]
-        map.insert("external-controller-pipe".into(), r"\\.\pipe\mihomo".into());
+        map.insert("external-controller".into(), "127.0.0.1:9097".into());
         let mut cors_map = Mapping::new();
         cors_map.insert("allow-private-network".into(), true.into());
         cors_map.insert("allow-origins".into(), vec!["*"].into());
@@ -214,10 +211,6 @@ impl IClashTemp {
             .and_then(|value| match value.as_str() {
                 Some(val_str) => {
                     let val_str = val_str.trim();
-                    
-                    if val_str.is_empty() {
-                        return None;
-                    }
 
                     let val = match val_str.starts_with(':') {
                         true => format!("127.0.0.1{val_str}"),
@@ -230,15 +223,11 @@ impl IClashTemp {
                 }
                 None => None,
             })
-            .unwrap_or_else(|| String::new())
+            .unwrap_or("127.0.0.1:9097".into())
     }
 
     pub fn guard_client_ctrl(config: &Mapping) -> String {
         let value = Self::guard_server_ctrl(config);
-        if value.is_empty() {
-            return value;
-        }
-        
         match SocketAddr::from_str(value.as_str()) {
             Ok(mut socket) => {
                 if socket.ip().is_unspecified() {
@@ -246,7 +235,7 @@ impl IClashTemp {
                 }
                 socket.to_string()
             }
-            Err(_) => String::new(),
+            Err(_) => "127.0.0.1:9097".into(),
         }
     }
 }
@@ -285,12 +274,12 @@ fn test_clash_info() {
 
     assert_eq!(
         IClashTemp(IClashTemp::guard(Mapping::new())).get_client_info(),
-        get_result(7897, "")
+        get_result(7897, "127.0.0.1:9097")
     );
 
-    assert_eq!(get_case("", ""), get_result(7897, ""));
+    assert_eq!(get_case("", ""), get_result(7897, "127.0.0.1:9097"));
 
-    assert_eq!(get_case(65537, ""), get_result(1, ""));
+    assert_eq!(get_case(65537, ""), get_result(1, "127.0.0.1:9097"));
 
     assert_eq!(
         get_case(8888, "127.0.0.1:8888"),
@@ -299,7 +288,7 @@ fn test_clash_info() {
 
     assert_eq!(
         get_case(8888, "   :98888 "),
-        get_result(8888, "")
+        get_result(8888, "127.0.0.1:9097")
     );
 
     assert_eq!(
@@ -324,7 +313,7 @@ fn test_clash_info() {
 
     assert_eq!(
         get_case(8888, "192.168.1.1:80800"),
-        get_result(8888, "")
+        get_result(8888, "127.0.0.1:9097")
     );
 }
 

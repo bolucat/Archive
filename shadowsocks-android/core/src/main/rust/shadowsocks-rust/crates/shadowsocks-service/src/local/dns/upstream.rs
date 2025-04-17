@@ -12,18 +12,17 @@ use std::{
 
 use byteorder::{BigEndian, ByteOrder};
 use bytes::{BufMut, BytesMut};
-use hickory_resolver::proto::{op::Message, ProtoError, ProtoErrorKind};
+use hickory_resolver::proto::{ProtoError, ProtoErrorKind, op::Message};
 use log::{error, trace};
 use lru_time_cache::{Entry, LruCache};
-use rand::{thread_rng, Rng};
 use shadowsocks::{
     config::ServerConfig,
     context::SharedContext,
     net::{ConnectOpts, TcpStream as ShadowTcpStream, UdpSocket as ShadowUdpSocket},
     relay::{
-        tcprelay::ProxyClientStream,
-        udprelay::{options::UdpSocketControlData, ProxySocket},
         Address,
+        tcprelay::ProxyClientStream,
+        udprelay::{ProxySocket, options::UdpSocketControlData},
     },
 };
 #[cfg(unix)]
@@ -35,9 +34,9 @@ use tokio::{
 };
 
 use crate::{
-    local::net::udp::generate_client_session_id,
-    net::{packet_window::PacketWindowFilter, FlowStat, MonProxySocket, MonProxyStream},
     DEFAULT_UDP_EXPIRY_DURATION,
+    local::net::udp::generate_client_session_id,
+    net::{FlowStat, MonProxySocket, MonProxyStream, packet_window::PacketWindowFilter},
 };
 
 /// Collection of various DNS connections
@@ -139,7 +138,7 @@ impl DnsClient {
 
     async fn inner_lookup(&mut self, msg: &mut Message) -> Result<Message, ProtoError> {
         // Make a random ID
-        msg.set_id(thread_rng().gen());
+        msg.set_id(rand::random());
 
         trace!("DNS lookup {:?}", msg);
 
@@ -232,8 +231,8 @@ impl DnsClient {
         #[cfg(windows)]
         fn check_peekable<F: std::os::windows::io::AsRawSocket>(s: &mut F) -> bool {
             use windows_sys::{
+                Win32::Networking::WinSock::{MSG_PEEK, SOCKET, recv},
                 core::PSTR,
-                Win32::Networking::WinSock::{recv, MSG_PEEK, SOCKET},
             };
 
             let sock = s.as_raw_socket() as SOCKET;

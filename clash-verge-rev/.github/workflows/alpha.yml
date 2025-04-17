@@ -2,9 +2,9 @@ name: Alpha Build
 
 on:
   workflow_dispatch:
-  # schedule:
-  # UTC+8 0,6,12,18
-  # - cron: "0 16,22,4,10 * * *"
+  schedule:
+    # UTC+8 0,6,12,18
+    - cron: "0 16,22,4,10 * * *"
 permissions: write-all
 env:
   CARGO_INCREMENTAL: 0
@@ -362,9 +362,14 @@ jobs:
           sudo mv /tmp/sources.list /etc/apt/sources.list
 
           sudo dpkg --add-architecture ${{ matrix.arch }}
-          sudo apt update
+          sudo apt-get update -y
+          sudo apt-get -f install -y
 
-          sudo apt install -y \
+          sudo apt-get install -y \
+            linux-libc-dev:${{ matrix.arch }} \
+            libc6-dev:${{ matrix.arch }}
+
+          sudo apt-get install -y \
             libxslt1.1:${{ matrix.arch }} \
             libwebkit2gtk-4.1-dev:${{ matrix.arch }} \
             libayatana-appindicator3-dev:${{ matrix.arch }} \

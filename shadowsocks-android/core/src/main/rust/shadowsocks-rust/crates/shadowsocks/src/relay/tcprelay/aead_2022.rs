@@ -54,8 +54,8 @@ use std::{
 };
 
 use aes::{
-    cipher::{BlockDecrypt, BlockEncrypt, KeyInit},
     Aes128, Aes256, Block,
+    cipher::{BlockDecrypt, BlockEncrypt, KeyInit},
 };
 use byte_string::ByteStr;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -65,9 +65,9 @@ use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use super::{crypto_io::StreamType, proxy_stream::protocol::v2::SERVER_STREAM_TIMESTAMP_MAX_DIFF};
 use crate::{
-    config::{method_support_eih, ServerUserManager},
+    config::{ServerUserManager, method_support_eih},
     context::Context,
-    crypto::{v2::tcp::TcpCipher, CipherKind},
+    crypto::{CipherKind, v2::tcp::TcpCipher},
 };
 
 #[inline]
@@ -298,50 +298,53 @@ impl DecryptedReader {
         // Extensible Identity Header
         // https://github.com/Shadowsocks-NET/shadowsocks-specs/blob/main/2022-2-shadowsocks-2022-extensible-identity-headers.md
         let mut cipher = if require_eih {
-            if let Some(ref user_manager) = self.user_manager {
-                // Assume we have at least 1 EIH
-                if header_chunk.len() < 16 {
-                    error!("expecting EIH, but header chunk len: {}", header_chunk.len());
-                    return Err(ProtocolError::MissingExtendedIdentityHeader).into();
+            match self.user_manager {
+                Some(ref user_manager) => {
+                    // Assume we have at least 1 EIH
+                    if header_chunk.len() < 16 {
+                        error!("expecting EIH, but header chunk len: {}", header_chunk.len());
+                        return Err(ProtocolError::MissingExtendedIdentityHeader).into();
+                    }
+
+                    let (eih, remain_header_chunk) = header_chunk.split_at_mut(16);
+                    header_chunk = remain_header_chunk;
+
+                    let key_material = [key, salt].concat();
+                    let identity_sub_key = blake3::derive_key(AEAD2022_EIH_SUBKEY_CONTEXT, &key_material);
+                    let mut user_hash = Block::from([0u8; 16]);
+                    match self.method {
+                        CipherKind::AEAD2022_BLAKE3_AES_128_GCM => {
+                            let cipher = Aes128::new_from_slice(&identity_sub_key[0..16]).expect("AES-128");
+                            cipher.decrypt_block_b2b(Block::from_slice(eih), &mut user_hash);
+                        }
+                        CipherKind::AEAD2022_BLAKE3_AES_256_GCM => {
+                            let cipher = Aes256::new_from_slice(&identity_sub_key[0..32]).expect("AES-256");
+                            cipher.decrypt_block_b2b(Block::from_slice(eih), &mut user_hash);
+                        }
+                        _ => unreachable!("{} doesn't support EIH", self.method),
+                    }
+
+                    let user_hash = user_hash.as_slice();
+                    trace!(
+                        "server EIH {:?}, hash: {:?}",
+                        ByteStr::new(eih),
+                        ByteStr::new(user_hash)
+                    );
+
+                    match user_manager.get_user_by_hash(user_hash) {
+                        None => {
+                            return Err(ProtocolError::InvalidClientUser(Bytes::copy_from_slice(user_hash))).into();
+                        }
+                        Some(user) => {
+                            trace!("{:?} chosen by EIH", user);
+                            self.user_key = Some(Bytes::copy_from_slice(user.key()));
+                            TcpCipher::new(self.method, user.key(), salt)
+                        }
+                    }
                 }
-
-                let (eih, remain_header_chunk) = header_chunk.split_at_mut(16);
-                header_chunk = remain_header_chunk;
-
-                let key_material = [key, salt].concat();
-                let identity_sub_key = blake3::derive_key(AEAD2022_EIH_SUBKEY_CONTEXT, &key_material);
-                let mut user_hash = Block::from([0u8; 16]);
-                match self.method {
-                    CipherKind::AEAD2022_BLAKE3_AES_128_GCM => {
-                        let cipher = Aes128::new_from_slice(&identity_sub_key[0..16]).expect("AES-128");
-                        cipher.decrypt_block_b2b(Block::from_slice(eih), &mut user_hash);
-                    }
-                    CipherKind::AEAD2022_BLAKE3_AES_256_GCM => {
-                        let cipher = Aes256::new_from_slice(&identity_sub_key[0..32]).expect("AES-256");
-                        cipher.decrypt_block_b2b(Block::from_slice(eih), &mut user_hash);
-                    }
-                    _ => unreachable!("{} doesn't support EIH", self.method),
+                _ => {
+                    unreachable!("user_manager must not be None")
                 }
-
-                let user_hash = user_hash.as_slice();
-                trace!(
-                    "server EIH {:?}, hash: {:?}",
-                    ByteStr::new(eih),
-                    ByteStr::new(user_hash)
-                );
-
-                match user_manager.get_user_by_hash(user_hash) {
-                    None => {
-                        return Err(ProtocolError::InvalidClientUser(Bytes::copy_from_slice(user_hash))).into();
-                    }
-                    Some(user) => {
-                        trace!("{:?} chosen by EIH", user);
-                        self.user_key = Some(Bytes::copy_from_slice(user.key()));
-                        TcpCipher::new(self.method, user.key(), salt)
-                    }
-                }
-            } else {
-                unreachable!("user_manager must not be None")
             }
         } else {
             TcpCipher::new(self.method, key, salt)

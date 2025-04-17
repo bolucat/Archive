@@ -7,7 +7,7 @@ import {
   LanRounded,
 } from "@mui/icons-material";
 import { DialogRef, Notice, Switch } from "@/components/base";
-import { useClash, useClashInfo } from "@/hooks/use-clash";
+import { useClash } from "@/hooks/use-clash";
 import { GuardState } from "./mods/guard-state";
 import { WebUIViewer } from "./mods/web-ui-viewer";
 import { ClashPortViewer } from "./mods/clash-port-viewer";
@@ -36,7 +36,6 @@ const SettingClash = ({ onError }: Props) => {
 
   const { clash, version, mutateClash, patchClash } = useClash();
   const { verge, mutateVerge, patchVerge } = useVerge();
-  const { clashInfo, patchInfo } = useClashInfo();
 
   const {
     ipv6,
@@ -44,7 +43,6 @@ const SettingClash = ({ onError }: Props) => {
     "log-level": logLevel,
     "unified-delay": unifiedDelay,
     dns,
-    "external-controller": externalController
   } = clash ?? {};
 
   const { enable_random_port = false, verge_mixed_port } = verge ?? {};
@@ -109,15 +107,6 @@ const SettingClash = ({ onError }: Props) => {
       throw err;
     }
   });
-
-  // 同步外部控制器配置和开关状态
-  useEffect(() => {
-    const hasController = Boolean(externalController && externalController !== "");
-    const isEnabled = Boolean(verge?.enable_external_controller);
-    if (hasController !== isEnabled) {
-      patchVerge({ enable_external_controller: hasController });
-    }
-  }, [externalController, verge?.enable_external_controller]);
 
   return (
     <SettingList title={t("Clash Setting")}>
@@ -259,64 +248,11 @@ const SettingClash = ({ onError }: Props) => {
       </SettingItem>
 
       <SettingItem
-        label={t("External Controller")}
-        extra={
-          <TooltipIcon
-            icon={SettingsRounded}
-            onClick={() => ctrlRef.current?.open()}
-          />
-        }
-      >
-        <GuardState
-          // 依据配置文件中是否有值来决定开关状态
-          value={Boolean(externalController && externalController !== "")}
-          valueProps="checked"
-          onCatch={onError}
-          onFormat={onSwitchFormat}
-          onChange={(e) => {
-            onChangeVerge({ enable_external_controller: e });
-            onChangeData({ 
-              "external-controller": e ? (externalController || "127.0.0.1:9097") : "" 
-            });
-          }}
-          onGuard={async (e) => {
-            const promises = [
-              patchVerge({ enable_external_controller: e })
-            ];
-            
-            if (!e) {
-              // 如果禁用，清空配置
-              promises.push(patchClash({ "external-controller": "" }));
-            } else if (!externalController || externalController === "") {
-              promises.push(patchClash({ "external-controller": "127.0.0.1:9097" }));
-            }
-            await Promise.all(promises);
-          }}
-        >
-          <Switch edge="end" />
-        </GuardState>
-      </SettingItem>
-
-      <SettingItem 
-        onClick={(externalController && externalController !== "") ? () => webRef.current?.open() : undefined} 
-        label={
-          <Typography 
-            component="span" 
-            color={(!externalController || externalController === "") ? "text.disabled" : "text.primary"}
-            sx={{ fontSize: "inherit" }}
-          >
-            {t("Web UI")}
-          </Typography>
-        }
-        extra={
-          (!externalController || externalController === "") && (
-            <TooltipIcon
-              title={t("Web UI info")}
-              sx={{ opacity: "0.7" }}
-            />
-          )
-        }
+        onClick={() => ctrlRef.current?.open()}
+        label={t("External")}
       />
+
+      <SettingItem onClick={() => webRef.current?.open()} label={t("Web UI")} />
 
       <SettingItem
         label={t("Clash Core")}

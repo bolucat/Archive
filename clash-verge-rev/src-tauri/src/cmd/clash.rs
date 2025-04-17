@@ -2,7 +2,6 @@ use super::CmdResult;
 use crate::{
     config::*, core::*, feat, module::mihomo::MihomoManager, process::AsyncHandler, wrap_err,
 };
-use mihomo_api::model::MihomoClient;
 use serde_yaml::Mapping;
 
 /// 复制Clash环境变量
@@ -71,7 +70,6 @@ pub async fn clash_api_get_proxy_delay(
     MihomoManager::global()
         .test_proxy_delay(&name, url, timeout)
         .await
-        .map_err(|e| e.to_string())
 }
 
 /// 测试URL延迟

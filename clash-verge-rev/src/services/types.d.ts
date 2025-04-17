@@ -747,7 +747,6 @@ interface IVergeConfig {
   enable_system_proxy?: boolean;
   enable_global_hotkey?: boolean;
   enable_dns_settings?: boolean;
-  enable_external_controller?: boolean;
   proxy_auto_config?: boolean;
   pac_file_content?: string;
   proxy_host?: string;

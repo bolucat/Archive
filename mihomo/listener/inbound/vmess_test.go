@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
-	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/listener/inbound"
 	"github.com/stretchr/testify/assert"
 )
 
 func testInboundVMess(t *testing.T, inboundOptions inbound.VmessOption, outboundOptions outbound.VmessOption) {
-	userUUID := utils.NewUUIDV4().String()
+	t.Parallel()
 	inboundOptions.BaseOption = inbound.BaseOption{
 		NameStr: "vmess_inbound",
 		Listen:  "127.0.0.1",
@@ -46,6 +45,8 @@ func testInboundVMess(t *testing.T, inboundOptions inbound.VmessOption, outbound
 	defer out.Close()
 
 	tunnel.DoTest(t, out)
+
+	testSingMux(t, tunnel, out)
 }
 
 func TestInboundVMess_Basic(t *testing.T) {
@@ -54,7 +55,7 @@ func TestInboundVMess_Basic(t *testing.T) {
 	testInboundVMess(t, inboundOptions, outboundOptions)
 }
 
-func TestInboundVMess_Tls(t *testing.T) {
+func TestInboundVMess_TLS(t *testing.T) {
 	inboundOptions := inbound.VmessOption{
 		Certificate: tlsCertificate,
 		PrivateKey:  tlsPrivateKey,

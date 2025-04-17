@@ -701,7 +701,7 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
           <Item>
             <ListItemText
               primary={t("Prefer H3")}
-              secondary={t("DNS DOH uses HTTP/3")}
+              secondary={t("DNS DOH使用HTTP/3")}
             />
             <Switch
               edge="end"
@@ -713,7 +713,7 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
           <Item>
             <ListItemText
               primary={t("Respect Rules")}
-              secondary={t("DNS connections follow routing rules")}
+              secondary={t("DNS连接遵守路由规则")}
             />
             <Switch
               edge="end"
@@ -749,7 +749,7 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
           <Item>
             <ListItemText
               primary={t("Direct Nameserver Follow Policy")}
-              secondary={t("Whether to follow nameserver policy")}
+              secondary={t("是否遵循nameserver-policy")}
             />
             <Switch
               edge="end"

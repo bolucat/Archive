@@ -20,13 +20,6 @@ cat control
 tar czf ../control.tar.gz ./*
 popd
 
-mkdir data
-pushd data
-tar xf ../data.tar.gz
-rm -r usr/share/doc
-tar czf ../data.tar.gz ./*
-popd
-
 DEB_NAME=${DEB_NAME%.deb}
 tar czf $DEB_NAME.ipk control.tar.gz data.tar.gz debian-binary
 popd

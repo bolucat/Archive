@@ -171,35 +171,43 @@ object VmessFmt : FmtBase() {
         val outboundBean = OutboundBean.create(EConfigType.VMESS)
 
         outboundBean?.settings?.vnext?.first()?.let { vnext ->
-            vnext.address = profileItem.server.orEmpty()
+            vnext.address = resolveHostToIP(profileItem.server)
             vnext.port = profileItem.serverPort.orEmpty().toInt()
             vnext.users[0].id = profileItem.password.orEmpty()
             vnext.users[0].security = profileItem.method
         }
 
-        val sni = outboundBean?.streamSettings?.populateTransportSettings(
-            profileItem.network.orEmpty(),
-            profileItem.headerType,
-            profileItem.host,
-            profileItem.path,
-            profileItem.seed,
-            profileItem.quicSecurity,
-            profileItem.quicKey,
-            profileItem.mode,
-            profileItem.serviceName,
-            profileItem.authority,
-        )
+        val sni = outboundBean?.streamSettings?.let {
+            populateTransportSettings(
+                it,
+                profileItem.network.orEmpty(),
+                profileItem.headerType,
+                profileItem.host,
+                profileItem.path,
+                profileItem.seed,
+                profileItem.quicSecurity,
+                profileItem.quicKey,
+                profileItem.mode,
+                profileItem.serviceName,
+                profileItem.authority,
+                profileItem.xhttpMode,
+                profileItem.xhttpExtra
+            )
+        }
 
-        outboundBean?.streamSettings?.populateTlsSettings(
-            profileItem.security.orEmpty(),
-            profileItem.insecure == true,
-            if (profileItem.sni.isNullOrEmpty()) sni else profileItem.sni,
-            profileItem.fingerPrint,
-            profileItem.alpn,
-            null,
-            null,
-            null
-        )
+        outboundBean?.streamSettings?.let {
+            populateTlsSettings(
+                it,
+                profileItem.security.orEmpty(),
+                profileItem.insecure == true,
+                if (profileItem.sni.isNullOrEmpty()) sni else profileItem.sni,
+                profileItem.fingerPrint,
+                profileItem.alpn,
+                null,
+                null,
+                null
+            )
+        }
 
         return outboundBean
     }

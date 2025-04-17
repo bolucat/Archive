@@ -8,7 +8,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-cross:
+  build-nightly-cross:
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: full
@@ -20,8 +20,20 @@ jobs:
             toolchain: stable
           - target: aarch64-unknown-linux-musl
             toolchain: stable
+          - target: mips-unknown-linux-gnu
+            toolchain: nightly
+          - target: mipsel-unknown-linux-gnu
+            toolchain: nightly
+          - target: mips64el-unknown-linux-gnuabi64
+            toolchain: nightly
 
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+
+      - name: Install LLVM and Clang
+        run: sudo apt install -y clang
+
       - uses: actions/checkout@v4
 
       - name: Install Rust
@@ -32,7 +44,7 @@ jobs:
           rustup override set ${{ matrix.platform.toolchain }}
 
       - name: Install cross
-        run: cargo install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build ${{ matrix.platform.target }}
         timeout-minutes: 120
@@ -52,11 +64,11 @@ jobs:
             fi
 
             compile_nightly="-n"
-            compile_features="-Z build-std=std,panic_abort,proc_macro"
+            #compile_cargo_flags="-Z build-std=std,panic_abort,proc_macro"
           fi
 
           cd build
-          ./build-release -t ${{ matrix.platform.target }} $compile_features $compile_compress $compile_nightly $compile_features
+          ./build-release -t ${{ matrix.platform.target }} $compile_features $compile_compress $compile_nightly $compile_cargo_flags
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -64,7 +76,7 @@ jobs:
           name: ${{ matrix.platform.target }}
           path: build/release/*
 
-  build-unix:
+  build-nightly-unix:
     runs-on: ${{ matrix.os }}
     env:
       BUILD_EXTRA_FEATURES: "full"
@@ -105,7 +117,7 @@ jobs:
           name: ${{ matrix.target }}
           path: build/release/*
 
-  build-windows:
+  build-nightly-windows:
     runs-on: windows-latest
     env:
       RUSTFLAGS: "-C target-feature=+crt-static"

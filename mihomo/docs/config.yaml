@@ -1298,6 +1298,31 @@ listeners:
     #   password: "example"
     ### 注意，对于trojan listener, 至少需要填写 “certificate和private-key” 或 “reality-config” 或 “ss-option” 的其中一项 ###
 
+  - name: hysteria2-in-1
+    type: hysteria2
+    port: 10820 # 支持使用ports格式，例如200,302 or 200,204,401-429,501-503
+    listen: 0.0.0.0
+    # rule: sub-rule-name1 # 默认使用 rules，如果未找到 sub-rule 则直接使用 rules
+    # proxy: proxy # 如果不为空则直接将该入站流量交由指定 proxy 处理 (当 proxy 不为空时，这里的 proxy 名称必须合法，否则会出错)
+    users:
+      00000000-0000-0000-0000-000000000000: PASSWORD_0
+      00000000-0000-0000-0000-000000000001: PASSWORD_1
+    #  certificate: ./server.crt
+    #  private-key: ./server.key
+    ##  up 和 down 均不写或为 0 则使用 BBR 流控
+    #  up: "30 Mbps" # 若不写单位，默认为 Mbps
+    #  down: "200 Mbps" # 若不写单位，默认为 Mbps
+    #  obfs: salamander # 默认为空，如果填写则开启 obfs，目前仅支持 salamander
+    #  obfs-password: yourpassword
+    #  max-idle-time: 15000
+    #  alpn:
+    #    - h3
+    #  ignore-client-bandwidth: false
+    # HTTP3 服务器认证失败时的行为 （URL 字符串配置）,如果 masquerade 未配置，则返回 404 页
+    #  masquerade: file:///var/www # 作为文件服务器
+    #  masquerade: http://127.0.0.1:8080	#作为反向代理
+    #  masquerade: https://127.0.0.1:8080	#作为反向代理
+
   - name: tun-in-1
     type: tun
     # rule: sub-rule-name1 # 默认使用 rules，如果未找到 sub-rule 则直接使用 rules

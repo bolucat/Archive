@@ -15,6 +15,7 @@ import (
 	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/generater"
 	C "github.com/metacubex/mihomo/constant"
@@ -27,6 +28,7 @@ import (
 var httpPath = "/inbound_test"
 var httpData = make([]byte, 10240)
 var remoteAddr = netip.MustParseAddr("1.2.3.4")
+var userUUID = utils.NewUUIDV4().String()
 var tlsCertificate, tlsPrivateKey, tlsFingerprint, _ = N.NewRandomTLSKeyPair()
 var tlsConfigCert, _ = tls.X509KeyPair([]byte(tlsCertificate), []byte(tlsPrivateKey))
 var tlsConfig = &tls.Config{Certificates: []tls.Certificate{tlsConfigCert}, NextProtos: []string{"h2", "http/1.1"}}
@@ -209,6 +211,11 @@ func NewHttpTestTunnel() *TestTunnel {
 		},
 		CloseFn: ln.Close,
 		DoTestFn: func(t *testing.T, proxy C.ProxyAdapter) {
+			// Sequential testing for debugging
+			testFn(t, proxy, "http")
+			testFn(t, proxy, "https")
+
+			// Concurrent testing to detect stress
 			wg := sync.WaitGroup{}
 			num := 50
 			for i := 0; i < num; i++ {

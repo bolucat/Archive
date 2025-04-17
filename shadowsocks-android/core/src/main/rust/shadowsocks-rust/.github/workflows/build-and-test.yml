@@ -1,17 +1,13 @@
 name: Build & Test
 
-on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
   RUST_LOG: "trace"
 
 jobs:
-  buid-test-check:
+  build-and-test:
     strategy:
       matrix:
         platform:
@@ -28,6 +24,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: ${{ runner.os == 'Windows' }}
         uses: ilammy/setup-nasm@v1
+      - if: ${{ matrix.platform == 'ubuntu-latest' }}
+        name: Install LLVM and Clang
+        run: sudo apt install -y clang
       - name: Install Rust
         run: |
           rustup set profile minimal

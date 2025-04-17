@@ -76,7 +76,7 @@ func (s *Snell) writeHeaderContext(ctx context.Context, c net.Conn, metadata *C.
 
 // DialContext implements C.ProxyAdapter
 func (s *Snell) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	if s.version == snell.Version2 && len(opts) == 0 {
+	if s.version == snell.Version2 && dialer.IsZeroOptions(opts) {
 		c, err := s.pool.Get()
 		if err != nil {
 			return nil, err

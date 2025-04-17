@@ -115,3 +115,11 @@ func WithOption(o option) Option {
 		*opt = o
 	}
 }
+
+func IsZeroOptions(opts []Option) bool {
+	var opt option
+	for _, o := range opts {
+		o(&opt)
+	}
+	return opt == option{}
+}

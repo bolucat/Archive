@@ -8,7 +8,7 @@ use std::{
     io::{self, ErrorKind},
     net::SocketAddr,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::Duration,
 };
 
@@ -29,8 +29,8 @@ use crate::{
 use super::{
     compat::{DatagramReceive, DatagramReceiveExt, DatagramSend, DatagramSendExt, DatagramSocket},
     crypto_io::{
-        decrypt_client_payload, decrypt_server_payload, encrypt_client_payload, encrypt_server_payload, ProtocolError,
-        ProtocolResult,
+        ProtocolError, ProtocolResult, decrypt_client_payload, decrypt_server_payload, encrypt_client_payload,
+        encrypt_server_payload,
     },
 };
 
@@ -92,9 +92,7 @@ impl ProxySocket<ShadowUdpSocket> {
         context: SharedContext,
         svr_cfg: &ServerConfig,
     ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
-        ProxySocket::connect_with_opts(context, svr_cfg, &DEFAULT_CONNECT_OPTS)
-            .await
-            .map_err(Into::into)
+        ProxySocket::connect_with_opts(context, svr_cfg, &DEFAULT_CONNECT_OPTS).await
     }
 
     /// Create a client to communicate with Shadowsocks' UDP server (outbound)
@@ -127,9 +125,7 @@ impl ProxySocket<ShadowUdpSocket> {
         context: SharedContext,
         svr_cfg: &ServerConfig,
     ) -> ProxySocketResult<ProxySocket<ShadowUdpSocket>> {
-        ProxySocket::bind_with_opts(context, svr_cfg, AcceptOpts::default())
-            .await
-            .map_err(Into::into)
+        ProxySocket::bind_with_opts(context, svr_cfg, AcceptOpts::default()).await
     }
 
     /// Create a `ProxySocket` binding to a specific address (inbound)
@@ -240,9 +236,7 @@ where
     /// Send a UDP packet to addr through proxy
     #[inline]
     pub async fn send(&self, addr: &Address, payload: &[u8]) -> ProxySocketResult<usize> {
-        self.send_with_ctrl(addr, &DEFAULT_SOCKET_CONTROL, payload)
-            .await
-            .map_err(Into::into)
+        self.send_with_ctrl(addr, &DEFAULT_SOCKET_CONTROL, payload).await
     }
 
     /// Send a UDP packet to addr through proxy with `ControlData`
@@ -393,7 +387,6 @@ where
     pub async fn send_to(&self, target: SocketAddr, addr: &Address, payload: &[u8]) -> ProxySocketResult<usize> {
         self.send_to_with_ctrl(target, addr, &DEFAULT_SOCKET_CONTROL, payload)
             .await
-            .map_err(Into::into)
     }
 
     /// Send a UDP packet to target through proxy `target`
@@ -487,10 +480,7 @@ where
 
         trace!(
             "UDP server client receive from {}, control: {:?}, packet length {} bytes, payload length {} bytes",
-            addr,
-            control,
-            recv_n,
-            n
+            addr, control, recv_n, n
         );
 
         Ok((n, addr, recv_n, control))
@@ -535,11 +525,7 @@ where
 
         trace!(
             "UDP server client receive from {}, addr {}, control: {:?}, packet length {} bytes, payload length {} bytes",
-            target_addr,
-            addr,
-            control,
-            recv_n,
-            n,
+            target_addr, addr, control, recv_n, n,
         );
 
         Ok((n, target_addr, addr, recv_n, control))

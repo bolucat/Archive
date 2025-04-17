@@ -288,7 +288,7 @@ func (v *Vmess) streamConnConntext(ctx context.Context, c net.Conn, metadata *C.
 // DialContext implements C.ProxyAdapter
 func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
 	// gun transport
-	if v.transport != nil && len(opts) == 0 {
+	if v.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err := gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err
@@ -339,7 +339,7 @@ func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 	}
 	var c net.Conn
 	// gun transport
-	if v.transport != nil && len(opts) == 0 {
+	if v.transport != nil && dialer.IsZeroOptions(opts) {
 		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err

@@ -44,7 +44,7 @@ elif [[ $(command -v opkg) ]]; then
 	source /etc/os-release
 	arch="$OPENWRT_ARCH"
 	package_suffix=".ipk"
-	package_install="opkg install -y"
+	package_install="opkg update && opkg install -y"
 else
 	echo "Missing supported package manager."
 	exit 1
