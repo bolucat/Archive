@@ -45,13 +45,7 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 		return nil, err
 	}
 
-	var clientHelloID utls.ClientHelloID
-	if len(option.ClientFingerprint) != 0 {
-		if fingerprint, exists := tlsC.GetFingerprint(option.ClientFingerprint); exists {
-			clientHelloID = *fingerprint.ClientHelloID
-		}
-	}
-	tlsHandshake := uTLSHandshakeFunc(tlsConfig, clientHelloID)
+	tlsHandshake := uTLSHandshakeFunc(tlsConfig, option.ClientFingerprint)
 	client, err := shadowtls.NewClient(shadowtls.ClientConfig{
 		Version:      option.Version,
 		Password:     option.Password,
@@ -64,7 +58,7 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 	return client.DialContextConn(ctx, conn)
 }
 
-func uTLSHandshakeFunc(config *tls.Config, clientHelloID utls.ClientHelloID) shadowtls.TLSHandshakeFunc {
+func uTLSHandshakeFunc(config *tls.Config, clientFingerprint string) shadowtls.TLSHandshakeFunc {
 	return func(ctx context.Context, conn net.Conn, sessionIDGenerator shadowtls.TLSSessionIDGeneratorFunc) error {
 		tlsConfig := &utls.Config{
 			Rand:                  config.Rand,
@@ -84,12 +78,18 @@ func uTLSHandshakeFunc(config *tls.Config, clientHelloID utls.ClientHelloID) sha
 			Renegotiation:          utls.RenegotiationSupport(config.Renegotiation),
 			SessionIDGenerator:     sessionIDGenerator,
 		}
-		var empty utls.ClientHelloID
-		if clientHelloID == empty {
-			tlsConn := utls.Client(conn, tlsConfig)
-			return tlsConn.Handshake()
+		clientFingerprint := clientFingerprint
+		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
+			clientFingerprint = tlsC.GetGlobalFingerprint()
 		}
-		tlsConn := utls.UClient(conn, tlsConfig, clientHelloID)
+		if len(clientFingerprint) != 0 {
+			if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
+				clientHelloID := *fingerprint.ClientHelloID
+				tlsConn := utls.UClient(conn, tlsConfig, clientHelloID)
+				return tlsConn.HandshakeContext(ctx)
+			}
+		}
+		tlsConn := utls.Client(conn, tlsConfig)
 		return tlsConn.HandshakeContext(ctx)
 	}
 }

@@ -48,24 +48,32 @@ func testInboundTuic0(t *testing.T, inboundOptions inbound.TuicOption, outboundO
 		Port:    "0",
 	}
 	in, err := inbound.NewTuic(&inboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	tunnel := NewHttpTestTunnel()
 	defer tunnel.Close()
 
 	err = in.Listen(tunnel)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer in.Close()
 
 	addrPort, err := netip.ParseAddrPort(in.Address())
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	outboundOptions.Name = "tuic_outbound"
 	outboundOptions.Server = addrPort.Addr().String()
 	outboundOptions.Port = int(addrPort.Port())
 
 	out, err := outbound.NewTuic(outboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer out.Close()
 
 	tunnel.DoTest(t, out)

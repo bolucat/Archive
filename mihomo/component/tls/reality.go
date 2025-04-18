@@ -37,9 +37,9 @@ type RealityConfig struct {
 	ShortID   [RealityMaxShortIDLen]byte
 }
 
-func GetRealityConn(ctx context.Context, conn net.Conn, ClientFingerprint string, tlsConfig *tls.Config, realityConfig *RealityConfig) (net.Conn, error) {
+func GetRealityConn(ctx context.Context, conn net.Conn, clientFingerprint string, tlsConfig *tls.Config, realityConfig *RealityConfig) (net.Conn, error) {
 	retry := 0
-	for fingerprint, exists := GetFingerprint(ClientFingerprint); exists; retry++ {
+	for fingerprint, exists := GetFingerprint(clientFingerprint); exists; retry++ {
 		verifier := &realityVerifier{
 			serverName: tlsConfig.ServerName,
 		}

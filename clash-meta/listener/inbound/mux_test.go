@@ -32,7 +32,9 @@ func testSingMux(t *testing.T, tunnel *TestTunnel, out outbound.ProxyAdapter) {
 					Protocol: protocol,
 				}
 				out, err := outbound.NewSingMux(singMuxOption, &notCloseProxyAdapter{out})
-				assert.NoError(t, err)
+				if !assert.NoError(t, err) {
+					return
+				}
 				defer out.Close()
 
 				tunnel.DoTest(t, out)

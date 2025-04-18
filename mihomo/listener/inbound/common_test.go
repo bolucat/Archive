@@ -132,7 +132,9 @@ func NewHttpTestTunnel() *TestTunnel {
 	go http.Serve(ln, r)
 	testFn := func(t *testing.T, proxy C.ProxyAdapter, proto string) {
 		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s%s", proto, remoteAddr, httpPath), nil)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		req = req.WithContext(ctx)
 
 		var dstPort uint16 = 80
@@ -145,7 +147,9 @@ func NewHttpTestTunnel() *TestTunnel {
 			DstPort: dstPort,
 		}
 		instance, err := proxy.DialContext(ctx, metadata)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		defer instance.Close()
 
 		transport := &http.Transport{
@@ -174,14 +178,18 @@ func NewHttpTestTunnel() *TestTunnel {
 		defer client.CloseIdleConnections()
 
 		resp, err := client.Do(req)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		defer resp.Body.Close()
 
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 		data, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 		assert.Equal(t, httpData, data)
 	}
 	tunnel := &TestTunnel{
@@ -212,27 +220,31 @@ func NewHttpTestTunnel() *TestTunnel {
 		CloseFn: ln.Close,
 		DoTestFn: func(t *testing.T, proxy C.ProxyAdapter) {
 			// Sequential testing for debugging
-			testFn(t, proxy, "http")
-			testFn(t, proxy, "https")
+			t.Run("Sequential", func(t *testing.T) {
+				testFn(t, proxy, "http")
+				testFn(t, proxy, "https")
+			})
 
 			// Concurrent testing to detect stress
-			wg := sync.WaitGroup{}
-			num := 50
-			for i := 0; i < num; i++ {
-				wg.Add(1)
-				go func() {
-					testFn(t, proxy, "https")
-					defer wg.Done()
-				}()
-			}
-			for i := 0; i < num; i++ {
-				wg.Add(1)
-				go func() {
-					testFn(t, proxy, "http")
-					defer wg.Done()
-				}()
-			}
-			wg.Wait()
+			t.Run("Concurrent", func(t *testing.T) {
+				wg := sync.WaitGroup{}
+				const num = 50
+				for i := 0; i < num; i++ {
+					wg.Add(1)
+					go func() {
+						testFn(t, proxy, "https")
+						defer wg.Done()
+					}()
+				}
+				for i := 0; i < num; i++ {
+					wg.Add(1)
+					go func() {
+						testFn(t, proxy, "http")
+						defer wg.Done()
+					}()
+				}
+				wg.Wait()
+			})
 		},
 	}
 	return tunnel

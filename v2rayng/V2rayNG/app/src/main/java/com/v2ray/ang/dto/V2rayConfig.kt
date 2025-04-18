@@ -1,25 +1,18 @@
 package com.v2ray.ang.dto
 
-import android.text.TextUtils
-import com.google.gson.GsonBuilder
-import com.google.gson.JsonPrimitive
-import com.google.gson.JsonSerializationContext
-import com.google.gson.JsonSerializer
 import com.google.gson.annotations.SerializedName
-import com.google.gson.reflect.TypeToken
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean.ServersBean
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean.VnextBean
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean.VnextBean.UsersBean
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean.WireGuardBean
 import com.v2ray.ang.util.Utils
-import java.lang.reflect.Type
 
 data class V2rayConfig(
     var remarks: String? = null,
     var stats: Any? = null,
     val log: LogBean,
-    var policy: PolicyBean?,
+    var policy: PolicyBean? = null,
     val inbounds: ArrayList<InboundBean>,
     var outbounds: ArrayList<OutboundBean>,
     var dns: DnsBean? = null,
@@ -36,7 +29,7 @@ data class V2rayConfig(
     data class LogBean(
         val access: String,
         val error: String,
-        var loglevel: String?,
+        var loglevel: String? = null,
         val dnsLog: Boolean? = null
     )
 
@@ -46,7 +39,7 @@ data class V2rayConfig(
         var protocol: String,
         var listen: String? = null,
         val settings: Any? = null,
-        val sniffing: SniffingBean?,
+        val sniffing: SniffingBean? = null,
         val streamSettings: Any? = null,
         val allocate: Any? = null
     ) {
@@ -299,7 +292,8 @@ data class V2rayConfig(
                 var tcpFastOpen: Boolean? = null,
                 var tproxy: String? = null,
                 var mark: Int? = null,
-                var dialerProxy: String? = null
+                var dialerProxy: String? = null,
+                var domainStrategy: String? = null
             )
 
             data class TlsSettingsBean(
@@ -514,6 +508,18 @@ data class V2rayConfig(
             }
             return null
         }
+
+        fun ensureSockopt(): V2rayConfig.OutboundBean.StreamSettingsBean.SockoptBean {
+            val stream = streamSettings ?: V2rayConfig.OutboundBean.StreamSettingsBean().also {
+                streamSettings = it
+            }
+
+            val sockopt = stream.sockopt ?: V2rayConfig.OutboundBean.StreamSettingsBean.SockoptBean().also {
+                stream.sockopt = it
+            }
+
+            return sockopt
+        }
     }
 
     data class DnsBean(
@@ -590,4 +596,9 @@ data class V2rayConfig(
         return null
     }
 
+    fun getAllProxyOutbound(): List<OutboundBean> {
+        return outbounds.filter { outbound ->
+            EConfigType.entries.any { it.name.equals(outbound.protocol, ignoreCase = true) }
+        }
+    }
 }

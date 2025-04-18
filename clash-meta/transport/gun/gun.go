@@ -224,7 +224,7 @@ func (g *Conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
+func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
 	dialFunc := func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
 		defer cancel()
@@ -237,9 +237,13 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 			return pconn, nil
 		}
 
-		if len(Fingerprint) != 0 {
+		clientFingerprint := clientFingerprint
+		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
+			clientFingerprint = tlsC.GetGlobalFingerprint()
+		}
+		if len(clientFingerprint) != 0 {
 			if realityConfig == nil {
-				if fingerprint, exists := tlsC.GetFingerprint(Fingerprint); exists {
+				if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
 					utlsConn := tlsC.UClient(pconn, cfg, fingerprint)
 					if err := utlsConn.HandshakeContext(ctx); err != nil {
 						pconn.Close()
@@ -253,7 +257,7 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, Fingerprint string, re
 					return utlsConn, nil
 				}
 			} else {
-				realityConn, err := tlsC.GetRealityConn(ctx, pconn, Fingerprint, cfg, realityConfig)
+				realityConn, err := tlsC.GetRealityConn(ctx, pconn, clientFingerprint, cfg, realityConfig)
 				if err != nil {
 					pconn.Close()
 					return nil, err

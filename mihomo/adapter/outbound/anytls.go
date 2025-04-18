@@ -11,7 +11,6 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/anytls"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -114,9 +113,6 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 	}
 	if tlsConfig.Host == "" {
 		tlsConfig.Host = option.Server
-	}
-	if tlsC.HaveGlobalFingerprint() && len(option.ClientFingerprint) == 0 {
-		tlsConfig.ClientFingerprint = tlsC.GetGlobalFingerprint()
 	}
 	tOption.TLSConfig = tlsConfig
 

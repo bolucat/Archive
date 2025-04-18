@@ -96,13 +96,7 @@ type WSOptions struct {
 }
 
 // StreamConnContext implements C.ProxyAdapter
-func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (net.Conn, error) {
-	var err error
-
-	if tlsC.HaveGlobalFingerprint() && (len(v.option.ClientFingerprint) == 0) {
-		v.option.ClientFingerprint = tlsC.GetGlobalFingerprint()
-	}
-
+func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
 	switch v.option.Network {
 	case "ws":
 		host, port, _ := net.SplitHostPort(v.addr)
@@ -226,10 +220,10 @@ func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 	if err != nil {
 		return nil, err
 	}
-	return v.streamConnConntext(ctx, c, metadata)
+	return v.streamConnContext(ctx, c, metadata)
 }
 
-func (v *Vmess) streamConnConntext(ctx context.Context, c net.Conn, metadata *C.Metadata) (conn net.Conn, err error) {
+func (v *Vmess) streamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (conn net.Conn, err error) {
 	useEarly := N.NeedHandshake(c)
 	if !useEarly {
 		if ctx.Done() != nil {
@@ -287,9 +281,10 @@ func (v *Vmess) streamConnConntext(ctx context.Context, c net.Conn, metadata *C.
 
 // DialContext implements C.ProxyAdapter
 func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
+	var c net.Conn
 	// gun transport
 	if v.transport != nil && dialer.IsZeroOptions(opts) {
-		c, err := gun.StreamGunWithTransport(v.transport, v.gunConfig)
+		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +292,7 @@ func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 			safeConnClose(c, err)
 		}(c)
 
-		c, err = v.streamConnConntext(ctx, c, metadata)
+		c, err = v.streamConnContext(ctx, c, metadata)
 		if err != nil {
 			return nil, err
 		}
@@ -348,7 +343,7 @@ func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 			safeConnClose(c, err)
 		}(c)
 
-		c, err = v.streamConnConntext(ctx, c, metadata)
+		c, err = v.streamConnContext(ctx, c, metadata)
 		if err != nil {
 			return nil, fmt.Errorf("new vmess client error: %v", err)
 		}

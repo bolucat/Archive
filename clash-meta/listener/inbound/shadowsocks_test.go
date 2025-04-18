@@ -57,17 +57,23 @@ func testInboundShadowSocks0(t *testing.T, inboundOptions inbound.ShadowSocksOpt
 	}
 	inboundOptions.Password = password
 	in, err := inbound.NewShadowSocks(&inboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	tunnel := NewHttpTestTunnel()
 	defer tunnel.Close()
 
 	err = in.Listen(tunnel)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer in.Close()
 
 	addrPort, err := netip.ParseAddrPort(in.Address())
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	outboundOptions.Name = "shadowsocks_outbound"
 	outboundOptions.Server = addrPort.Addr().String()
@@ -75,7 +81,9 @@ func testInboundShadowSocks0(t *testing.T, inboundOptions inbound.ShadowSocksOpt
 	outboundOptions.Password = password
 
 	out, err := outbound.NewShadowSocks(outboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer out.Close()
 
 	tunnel.DoTest(t, out)

@@ -46,6 +46,7 @@ import com.v2ray.ang.fmt.TrojanFmt
 import com.v2ray.ang.fmt.VlessFmt
 import com.v2ray.ang.fmt.VmessFmt
 import com.v2ray.ang.fmt.WireguardFmt
+import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
 
@@ -149,6 +150,8 @@ object V2rayConfigManager {
             v2rayConfig.stats = null
             v2rayConfig.policy = null
         }
+
+        resolveProxyDomainsToHosts(v2rayConfig)
 
         result.status = true
         result.content = JsonUtil.toJsonPretty(v2rayConfig) ?: ""
@@ -699,13 +702,7 @@ object V2rayConfigManager {
                     updateOutboundWithGlobalSettings(prevOutbound)
                     prevOutbound.tag = TAG_PROXY + "2"
                     v2rayConfig.outbounds.add(prevOutbound)
-                    if (outbound.streamSettings == null) {
-                        outbound.streamSettings = V2rayConfig.OutboundBean.StreamSettingsBean()
-                    }
-                    outbound.streamSettings?.sockopt =
-                        V2rayConfig.OutboundBean.StreamSettingsBean.SockoptBean(
-                            dialerProxy = prevOutbound.tag
-                        )
+                    outbound.ensureSockopt().dialerProxy = prevOutbound.tag
                     domainPort = prevNode.getServerAddressAndPort()
                 }
             }
@@ -719,13 +716,7 @@ object V2rayConfigManager {
                     nextOutbound.tag = TAG_PROXY
                     v2rayConfig.outbounds.add(0, nextOutbound)
                     outbound.tag = TAG_PROXY + "1"
-                    if (nextOutbound.streamSettings == null) {
-                        nextOutbound.streamSettings = V2rayConfig.OutboundBean.StreamSettingsBean()
-                    }
-                    nextOutbound.streamSettings?.sockopt =
-                        V2rayConfig.OutboundBean.StreamSettingsBean.SockoptBean(
-                            dialerProxy = outbound.tag
-                        )
+                    nextOutbound.ensureSockopt().dialerProxy = outbound.tag
                     if (nextNode.configType == EConfigType.WIREGUARD) {
                         domainPort = nextNode.getServerAddressAndPort()
                     }
@@ -763,4 +754,37 @@ object V2rayConfigManager {
 
     }
 
+    private fun resolveProxyDomainsToHosts(v2rayConfig: V2rayConfig) {
+        val proxyOutboundList = v2rayConfig.getAllProxyOutbound()
+        val dns = v2rayConfig.dns ?: return
+
+        val newHosts = dns.hosts?.toMutableMap() ?: mutableMapOf()
+
+        val preferIpv6 = MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6) == true
+
+        for (item in proxyOutboundList) {
+            val domain = item.getServerAddress()
+            if (domain.isNullOrEmpty()) continue
+
+            if (newHosts.containsKey(domain)) continue
+
+            val resolvedIps = HttpUtil.resolveHostToIP(
+                domain,
+                preferIpv6
+            )
+
+            if (resolvedIps.isEmpty()) continue
+
+            item.ensureSockopt().domainStrategy =
+                if (preferIpv6) "UseIPv6v4" else "UseIPv4v6"
+
+            newHosts[domain] = if (resolvedIps.size == 1) {
+                resolvedIps[0]
+            } else {
+                resolvedIps
+            }
+        }
+
+        dns.hosts = newHosts
+    }
 }

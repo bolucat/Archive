@@ -9,7 +9,6 @@ import (
 
 	"github.com/metacubex/mihomo/common/atomic"
 	"github.com/metacubex/mihomo/common/buf"
-	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/anytls/padding"
 	"github.com/metacubex/mihomo/transport/anytls/session"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -83,12 +82,7 @@ func (c *Client) CreateOutboundTLSConnection(ctx context.Context) (net.Conn, err
 		b.WriteZeroN(paddingLen)
 	}
 
-	getTlsConn := func() (net.Conn, error) {
-		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
-		defer cancel()
-		return vmess.StreamTLSConn(ctx, conn, c.tlsConfig)
-	}
-	tlsConn, err := getTlsConn()
+	tlsConn, err := vmess.StreamTLSConn(ctx, conn, c.tlsConfig)
 	if err != nil {
 		conn.Close()
 		return nil, err

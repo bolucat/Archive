@@ -19,17 +19,23 @@ func testInboundAnyTLS(t *testing.T, inboundOptions inbound.AnyTLSOption, outbou
 	}
 	inboundOptions.Users = map[string]string{"test": userUUID}
 	in, err := inbound.NewAnyTLS(&inboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	tunnel := NewHttpTestTunnel()
 	defer tunnel.Close()
 
 	err = in.Listen(tunnel)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer in.Close()
 
 	addrPort, err := netip.ParseAddrPort(in.Address())
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	outboundOptions.Name = "anytls_outbound"
 	outboundOptions.Server = addrPort.Addr().String()
@@ -37,7 +43,9 @@ func testInboundAnyTLS(t *testing.T, inboundOptions inbound.AnyTLSOption, outbou
 	outboundOptions.Password = userUUID
 
 	out, err := outbound.NewAnyTLS(outboundOptions)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 	defer out.Close()
 
 	tunnel.DoTest(t, out)

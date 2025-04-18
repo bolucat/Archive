@@ -10,7 +10,6 @@ import (
 )
 
 var (
-	DefaultOptions     []Option
 	DefaultInterface   = atomic.NewTypedValue[string]("")
 	DefaultRoutingMark = atomic.NewInt32(0)
 
@@ -117,9 +116,13 @@ func WithOption(o option) Option {
 }
 
 func IsZeroOptions(opts []Option) bool {
-	var opt option
-	for _, o := range opts {
+	return applyOptions(opts...) == option{}
+}
+
+func applyOptions(options ...Option) option {
+	opt := option{}
+	for _, o := range options {
 		o(&opt)
 	}
-	return opt == option{}
+	return opt
 }
