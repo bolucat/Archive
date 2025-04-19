@@ -24,6 +24,7 @@ import {
 import { useLockFn } from "ahooks";
 import { Button, Tooltip } from "@mui/material";
 import { useSystemState } from "@/hooks/use-system-state";
+import { closeAllConnections } from "@/services/api";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -182,6 +183,9 @@ const SettingSystem = ({ onError }: Props) => {
           onFormat={onSwitchFormat}
           onChange={(e) => onChangeData({ enable_system_proxy: e })}
           onGuard={async (e) => {
+            if (!e && verge?.auto_close_connection) {
+              closeAllConnections();
+            }
             await patchVerge({ enable_system_proxy: e });
             await updateProxyStatus();
           }}
@@ -194,7 +198,7 @@ const SettingSystem = ({ onError }: Props) => {
         label={t("Auto Launch")}
         extra={
           isAdminMode && (
-            <Tooltip title={t("Administrator mode does not support auto launch")}>
+            <Tooltip title={t("Administrator mode may not support auto launch")}>
               <WarningRounded sx={{ color: "warning.main", mr: 1 }} />
             </Tooltip>
           )
@@ -206,14 +210,12 @@ const SettingSystem = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onChange={(e) => {
-            // 在管理员模式下禁用更改
-            if (isAdminMode) return;
+            // 移除管理员模式检查提示
             onChangeData({ enable_auto_launch: e });
           }}
           onGuard={async (e) => {
             if (isAdminMode) {
-              Notice.error(t("Administrator mode does not support auto launch"), 2000);
-              return Promise.reject(new Error(t("Administrator mode does not support auto launch")));
+              Notice.info(t("Administrator mode may not support auto launch"), 2000);
             }
             
             try {
@@ -230,7 +232,7 @@ const SettingSystem = ({ onError }: Props) => {
             }
           }}
         >
-          <Switch edge="end" disabled={isAdminMode} />
+          <Switch edge="end" />
         </GuardState>
       </SettingItem>
 
