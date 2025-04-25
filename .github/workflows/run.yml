@@ -44,6 +44,7 @@ jobs:
           mv ryujinx .github
           mv ryujinx-release-channel .github
           mv yass .github
+          mv suyu .github
           # Clean Repository
           rm -rf *
           export GCRS="git clone --depth 1 --recurse-submodules"
@@ -125,7 +126,7 @@ jobs:
           ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
           ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
           ${GCRS} https://github.com/DIGITALCRIMINALS/OnlyFans onlyfans
-          ${GCRS} https://git.suyu.dev/suyu/suyu suyu
+          ## ${GCRS} https://git.suyu.dev/suyu/suyu suyu            
           # Clean Git Info
           rm -rf */.git
           # Update logs
@@ -145,6 +146,7 @@ jobs:
           mv .github/ryujinx .
           mv .github/ryujinx-release-channel .
           mv .github/yass .
+          mv .github/suyu .
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
