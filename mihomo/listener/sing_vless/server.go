@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/component/ca"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -22,14 +22,13 @@ import (
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
 	"github.com/metacubex/sing-vmess/vless"
-	utls "github.com/metacubex/utls"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/metadata"
 )
 
 func init() {
 	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := common.Cast[*reality.Conn](conn)
+		tlsConn, loaded := common.Cast[*reality.Conn](conn) // *utls.Conn
 		if !loaded {
 			return
 		}
@@ -37,15 +36,7 @@ func init() {
 	})
 
 	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := common.Cast[*utls.UConn](conn)
-		if !loaded {
-			return
-		}
-		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn.Conn).Elem(), unsafe.Pointer(tlsConn.Conn)
-	})
-
-	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := common.Cast[*tlsC.UConn](conn)
+		tlsConn, loaded := common.Cast[*tlsC.UConn](conn) // *utls.UConn
 		if !loaded {
 			return
 		}
@@ -96,7 +87,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 	var httpHandler http.Handler
 
 	if config.Certificate != "" && config.PrivateKey != "" {
-		cert, err := N.ParseCert(config.Certificate, config.PrivateKey, C.Path)
+		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
 			return nil, err
 		}

@@ -5,16 +5,17 @@ import (
 	"crypto/subtle"
 	gotls "crypto/tls"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 
 	"github.com/metacubex/mihomo/common/buf"
 	N "github.com/metacubex/mihomo/common/net"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/gofrs/uuid/v5"
-	utls "github.com/metacubex/utls"
 )
 
 var (
@@ -117,9 +118,11 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 		case commandPaddingDirect:
 			needReturn := false
 			if vc.input != nil {
-				_, err := buffer.ReadFrom(vc.input)
+				_, err := buffer.ReadOnceFrom(vc.input)
 				if err != nil {
-					return err
+					if !errors.Is(err, io.EOF) {
+						return err
+					}
 				}
 				if vc.input.Len() == 0 {
 					needReturn = true
@@ -129,9 +132,11 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 				}
 			}
 			if vc.rawInput != nil {
-				_, err := buffer.ReadFrom(vc.rawInput)
+				_, err := buffer.ReadOnceFrom(vc.rawInput)
 				if err != nil {
-					return err
+					if !errors.Is(err, io.EOF) {
+						return err
+					}
 				}
 				needReturn = true
 				if vc.rawInput.Len() == 0 {
@@ -182,8 +187,8 @@ func (vc *Conn) WriteBuffer(buffer *buf.Buffer) (err error) {
 				buffer.Release()
 				return ErrNotTLS13
 			}
-		case *utls.UConn:
-			if underlying.ConnectionState().Version != utls.VersionTLS13 {
+		case *tlsC.UConn:
+			if underlying.ConnectionState().Version != tlsC.VersionTLS13 {
 				buffer.Release()
 				return ErrNotTLS13
 			}

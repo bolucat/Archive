@@ -263,6 +263,8 @@ const ProfilePage = () => {
       try {
         await updateProfile(uid);
         throttleMutate();
+      } catch (err: any) {
+        console.error(`更新订阅 ${uid} 失败:`, err);
       } finally {
         setLoadingCache((cache) => ({ ...cache, [uid]: false }));
       }
@@ -467,9 +469,12 @@ const ProfilePage = () => {
 
       <ProfileViewer
         ref={viewerRef}
-        onChange={async () => {
+        onChange={async (isActivating) => {
           mutateProfiles();
-          await onEnhance(false);
+          // 只有更改当前激活的配置时才触发全局重新加载
+          if (isActivating) {
+            await onEnhance(false);
+          }
         }}
       />
       <ConfigViewer ref={configRef} />

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"runtime"
 	"strconv"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/anytls"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -52,7 +50,7 @@ func (t *AnyTLS) DialContext(ctx context.Context, metadata *C.Metadata, opts ...
 	if err != nil {
 		return nil, err
 	}
-	return NewConn(CN.NewRefConn(c, t), t), nil
+	return NewConn(c, t), nil
 }
 
 func (t *AnyTLS) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
@@ -73,7 +71,7 @@ func (t *AnyTLS) ListenPacketContext(ctx context.Context, metadata *C.Metadata, 
 		metadata.DstIP = ip
 	}
 	destination := M.SocksaddrFromNet(metadata.UDPAddr())
-	return newPacketConn(CN.NewRefPacketConn(CN.NewThreadSafePacketConn(uot.NewLazyConn(c, uot.Request{Destination: destination})), t), t), nil
+	return newPacketConn(CN.NewThreadSafePacketConn(uot.NewLazyConn(c, uot.Request{Destination: destination})), t), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
@@ -86,6 +84,11 @@ func (t *AnyTLS) ProxyInfo() C.ProxyInfo {
 	info := t.Base.ProxyInfo()
 	info.DialerProxy = t.option.DialerProxy
 	return info
+}
+
+// Close implements C.ProxyAdapter
+func (t *AnyTLS) Close() error {
+	return t.client.Close()
 }
 
 func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
@@ -111,9 +114,6 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 	if tlsConfig.Host == "" {
 		tlsConfig.Host = option.Server
 	}
-	if tlsC.HaveGlobalFingerprint() && len(option.ClientFingerprint) == 0 {
-		tlsConfig.ClientFingerprint = tlsC.GetGlobalFingerprint()
-	}
 	tOption.TLSConfig = tlsConfig
 
 	outbound := &AnyTLS{
@@ -132,9 +132,6 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 		option: &option,
 		dialer: singDialer,
 	}
-	runtime.SetFinalizer(outbound, func(o *AnyTLS) {
-		_ = o.client.Close()
-	})
 
 	return outbound, nil
 }

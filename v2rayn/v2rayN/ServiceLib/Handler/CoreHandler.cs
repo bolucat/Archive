@@ -155,6 +155,12 @@ public class CoreHandler
     {
         try
         {
+            if (_linuxSudoPid > 0)
+            {
+                await KillProcessAsLinuxSudo();
+                _linuxSudoPid = -1;
+            }
+
             if (_process != null)
             {
                 await ProcUtils.ProcessKill(_process, true);
@@ -166,12 +172,6 @@ public class CoreHandler
                 await ProcUtils.ProcessKill(_processPre, true);
                 _processPre = null;
             }
-
-            if (_linuxSudoPid > 0)
-            {
-                await KillProcessAsLinuxSudo();
-            }
-            _linuxSudoPid = -1;
         }
         catch (Exception ex)
         {
@@ -229,9 +229,7 @@ public class CoreHandler
     {
         return _config.TunModeItem.EnableTun
                && eCoreType == ECoreType.sing_box
-               && (Utils.IsNonWindows())
-            //&& _config.TunModeItem.LinuxSudoPwd.IsNotEmpty()
-            ;
+               && Utils.IsNonWindows();
     }
 
     #endregion Private
@@ -288,13 +286,11 @@ public class CoreHandler
             }
             proc.Start();
 
-            if (isNeedSudo && _config.TunModeItem.LinuxSudoPwd.IsNotEmpty())
+            if (isNeedSudo && AppHandler.Instance.LinuxSudoPwd.IsNotEmpty())
             {
-                var pwd = DesUtils.Decrypt(_config.TunModeItem.LinuxSudoPwd);
+                await proc.StandardInput.WriteLineAsync();
                 await Task.Delay(10);
-                await proc.StandardInput.WriteLineAsync(pwd);
-                await Task.Delay(10);
-                await proc.StandardInput.WriteLineAsync(pwd);
+                await proc.StandardInput.WriteLineAsync(AppHandler.Instance.LinuxSudoPwd);
             }
             if (isNeedSudo)
                 _linuxSudoPid = proc.Id;
@@ -333,7 +329,7 @@ public class CoreHandler
         proc.StartInfo.FileName = shFilePath;
         proc.StartInfo.Arguments = "";
         proc.StartInfo.WorkingDirectory = "";
-        if (_config.TunModeItem.LinuxSudoPwd.IsNotEmpty())
+        if (AppHandler.Instance.LinuxSudoPwd.IsNotEmpty())
         {
             proc.StartInfo.StandardInputEncoding = Encoding.UTF8;
             proc.StartInfo.RedirectStandardInput = true;
@@ -342,7 +338,7 @@ public class CoreHandler
 
     private async Task KillProcessAsLinuxSudo()
     {
-        var cmdLine = $"kill {_linuxSudoPid}";
+        var cmdLine = $"pkill -P {_linuxSudoPid} ; kill {_linuxSudoPid}";
         var shFilePath = await CreateLinuxShellFile(cmdLine, "kill_as_sudo.sh");
         Process proc = new()
         {
@@ -357,15 +353,13 @@ public class CoreHandler
         };
         proc.Start();
 
-        if (_config.TunModeItem.LinuxSudoPwd.IsNotEmpty())
+        if (AppHandler.Instance.LinuxSudoPwd.IsNotEmpty())
         {
             try
             {
-                var pwd = DesUtils.Decrypt(_config.TunModeItem.LinuxSudoPwd);
+                await proc.StandardInput.WriteLineAsync();
                 await Task.Delay(10);
-                await proc.StandardInput.WriteLineAsync(pwd);
-                await Task.Delay(10);
-                await proc.StandardInput.WriteLineAsync(pwd);
+                await proc.StandardInput.WriteLineAsync(AppHandler.Instance.LinuxSudoPwd);
             }
             catch (Exception)
             {
@@ -375,7 +369,7 @@ public class CoreHandler
 
         var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await proc.WaitForExitAsync(timeout.Token);
-        await Task.Delay(3000);
+        await Task.Delay(1000);
     }
 
     private async Task<string> CreateLinuxShellFile(string cmdLine, string fileName)
@@ -389,10 +383,6 @@ public class CoreHandler
         {
             sb.AppendLine($"{cmdLine}");
         }
-        else if (_config.TunModeItem.LinuxSudoPwd.IsNullOrEmpty())
-        {
-            sb.AppendLine($"pkexec {cmdLine}");
-        }
         else
         {
             sb.AppendLine($"sudo -S {cmdLine}");
@@ -400,7 +390,7 @@ public class CoreHandler
 
         await File.WriteAllTextAsync(shFilePath, sb.ToString());
         await Utils.SetLinuxChmod(shFilePath);
-        Logging.SaveLog(shFilePath);
+        //Logging.SaveLog(shFilePath);
 
         return shFilePath;
     }

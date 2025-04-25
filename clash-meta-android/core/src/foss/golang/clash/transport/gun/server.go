@@ -43,21 +43,22 @@ func NewServerHandler(options ServerOption) http.Handler {
 			writer.WriteHeader(http.StatusOK)
 
 			conn := &Conn{
-				initFn: func() (io.ReadCloser, error) {
-					return request.Body, nil
+				initFn: func() (io.ReadCloser, netAddr, error) {
+					nAddr := netAddr{}
+					if request.RemoteAddr != "" {
+						metadata := C.Metadata{}
+						if err := metadata.SetRemoteAddress(request.RemoteAddr); err == nil {
+							nAddr.remoteAddr = net.TCPAddrFromAddrPort(metadata.AddrPort())
+						}
+					}
+					if addr, ok := request.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+						nAddr.localAddr = addr
+					}
+					return request.Body, nAddr, nil
 				},
-				writer:  writer,
-				flusher: writer.(http.Flusher),
+				writer: writer,
 			}
-			if request.RemoteAddr != "" {
-				metadata := C.Metadata{}
-				if err := metadata.SetRemoteAddress(request.RemoteAddr); err == nil {
-					conn.remoteAddr = net.TCPAddrFromAddrPort(metadata.AddrPort())
-				}
-			}
-			if addr, ok := request.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
-				conn.localAddr = addr
-			}
+			_ = conn.Init()
 
 			wrapper := &h2ConnWrapper{
 				// gun.Conn can't correct handle ReadDeadline

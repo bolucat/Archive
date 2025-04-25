@@ -3,12 +3,14 @@ package inbound_test
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"net"
 	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/listener/inbound"
+	shadowtls "github.com/metacubex/mihomo/transport/sing-shadowtls"
 
 	shadowsocks "github.com/metacubex/sing-shadowsocks"
 	"github.com/metacubex/sing-shadowsocks/shadowaead"
@@ -17,34 +19,36 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var shadowsocksCipherList = []string{shadowsocks.MethodNone}
+var noneList = []string{shadowsocks.MethodNone}
+var shadowsocksCipherLists = [][]string{noneList, shadowaead.List, shadowaead_2022.List, shadowstream.List}
+var shadowsocksCipherShortLists = [][]string{noneList, shadowaead.List[:5]} // for test shadowTLS
 var shadowsocksPassword32 string
 var shadowsocksPassword16 string
 
 func init() {
-	shadowsocksCipherList = append(shadowsocksCipherList, shadowaead.List...)
-	shadowsocksCipherList = append(shadowsocksCipherList, shadowaead_2022.List...)
-	shadowsocksCipherList = append(shadowsocksCipherList, shadowstream.List...)
 	passwordBytes := make([]byte, 32)
 	rand.Read(passwordBytes)
 	shadowsocksPassword32 = base64.StdEncoding.EncodeToString(passwordBytes)
 	shadowsocksPassword16 = base64.StdEncoding.EncodeToString(passwordBytes[:16])
 }
 
-func testInboundShadowSocks(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption) {
+func testInboundShadowSocks(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption, cipherLists [][]string) {
 	t.Parallel()
-	for _, cipher := range shadowsocksCipherList {
-		cipher := cipher
-		t.Run(cipher, func(t *testing.T) {
-			inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
-			inboundOptions.Cipher = cipher
-			outboundOptions.Cipher = cipher
-			testInboundShadowSocks0(t, inboundOptions, outboundOptions)
-		})
+	for _, cipherList := range cipherLists {
+		for i, cipher := range cipherList {
+			enableSingMux := i == 0
+			cipher := cipher
+			t.Run(cipher, func(t *testing.T) {
+				inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+				inboundOptions.Cipher = cipher
+				outboundOptions.Cipher = cipher
+				testInboundShadowSocks0(t, inboundOptions, outboundOptions, enableSingMux)
+			})
+		}
 	}
 }
 
-func testInboundShadowSocks0(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption) {
+func testInboundShadowSocks0(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption, enableSingMux bool) {
 	t.Parallel()
 	password := shadowsocksPassword32
 	if strings.Contains(inboundOptions.Cipher, "-128-") {
@@ -88,11 +92,74 @@ func testInboundShadowSocks0(t *testing.T, inboundOptions inbound.ShadowSocksOpt
 
 	tunnel.DoTest(t, out)
 
-	testSingMux(t, tunnel, out)
+	if enableSingMux {
+		testSingMux(t, tunnel, out)
+	}
 }
 
 func TestInboundShadowSocks_Basic(t *testing.T) {
 	inboundOptions := inbound.ShadowSocksOption{}
 	outboundOptions := outbound.ShadowSocksOption{}
-	testInboundShadowSocks(t, inboundOptions, outboundOptions)
+	testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherLists)
+}
+
+func testInboundShadowSocksShadowTls(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption) {
+	t.Parallel()
+	t.Run("Conn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists)
+	})
+	t.Run("UConn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		outboundOptions.ClientFingerprint = "chrome"
+		testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists)
+	})
+}
+
+func TestInboundShadowSocks_ShadowTlsv1(t *testing.T) {
+	inboundOptions := inbound.ShadowSocksOption{
+		ShadowTLS: inbound.ShadowTLS{
+			Enable:    true,
+			Version:   1,
+			Handshake: inbound.ShadowTLSHandshakeOptions{Dest: net.JoinHostPort(realityDest, "443")},
+		},
+	}
+	outboundOptions := outbound.ShadowSocksOption{
+		Plugin:     shadowtls.Mode,
+		PluginOpts: map[string]any{"host": realityDest, "fingerprint": tlsFingerprint, "version": 1},
+	}
+	testInboundShadowSocksShadowTls(t, inboundOptions, outboundOptions)
+}
+
+func TestInboundShadowSocks_ShadowTlsv2(t *testing.T) {
+	inboundOptions := inbound.ShadowSocksOption{
+		ShadowTLS: inbound.ShadowTLS{
+			Enable:    true,
+			Version:   2,
+			Password:  shadowsocksPassword16,
+			Handshake: inbound.ShadowTLSHandshakeOptions{Dest: net.JoinHostPort(realityDest, "443")},
+		},
+	}
+	outboundOptions := outbound.ShadowSocksOption{
+		Plugin:     shadowtls.Mode,
+		PluginOpts: map[string]any{"host": realityDest, "password": shadowsocksPassword16, "fingerprint": tlsFingerprint, "version": 2},
+	}
+	outboundOptions.PluginOpts["alpn"] = []string{"http/1.1"} // shadowtls v2 work confuse with http/2 server, so we set alpn to http/1.1 to pass the test
+	testInboundShadowSocksShadowTls(t, inboundOptions, outboundOptions)
+}
+
+func TestInboundShadowSocks_ShadowTlsv3(t *testing.T) {
+	inboundOptions := inbound.ShadowSocksOption{
+		ShadowTLS: inbound.ShadowTLS{
+			Enable:    true,
+			Version:   3,
+			Users:     []inbound.ShadowTLSUser{{Name: "test", Password: shadowsocksPassword16}},
+			Handshake: inbound.ShadowTLSHandshakeOptions{Dest: net.JoinHostPort(realityDest, "443")},
+		},
+	}
+	outboundOptions := outbound.ShadowSocksOption{
+		Plugin:     shadowtls.Mode,
+		PluginOpts: map[string]any{"host": realityDest, "password": shadowsocksPassword16, "fingerprint": tlsFingerprint, "version": 3},
+	}
+	testInboundShadowSocksShadowTls(t, inboundOptions, outboundOptions)
 }

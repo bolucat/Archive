@@ -3,9 +3,9 @@ package config
 import (
 	"net/netip"
 
-	"github.com/metacubex/mihomo/common/nnip"
 	C "github.com/metacubex/mihomo/constant"
 
+	"go4.org/netipx"
 	"golang.org/x/exp/slices"
 )
 
@@ -50,6 +50,10 @@ type Tun struct {
 	IncludeUIDRange        []string       `yaml:"include-uid-range" json:"include-uid-range,omitempty"`
 	ExcludeUID             []uint32       `yaml:"exclude-uid" json:"exclude-uid,omitempty"`
 	ExcludeUIDRange        []string       `yaml:"exclude-uid-range" json:"exclude-uid-range,omitempty"`
+	ExcludeSrcPort         []uint16       `yaml:"exclude-src-port" json:"exclude-src-port,omitempty"`
+	ExcludeSrcPortRange    []string       `yaml:"exclude-src-port-range" json:"exclude-src-port-range,omitempty"`
+	ExcludeDstPort         []uint16       `yaml:"exclude-dst-port" json:"exclude-dst-port,omitempty"`
+	ExcludeDstPortRange    []string       `yaml:"exclude-dst-port-range" json:"exclude-dst-port-range,omitempty"`
 	IncludeAndroidUser     []int          `yaml:"include-android-user" json:"include-android-user,omitempty"`
 	IncludePackage         []string       `yaml:"include-package" json:"include-package,omitempty"`
 	ExcludePackage         []string       `yaml:"exclude-package" json:"exclude-package,omitempty"`
@@ -66,11 +70,11 @@ type Tun struct {
 func (t *Tun) Sort() {
 	slices.Sort(t.DNSHijack)
 
-	slices.SortFunc(t.Inet4Address, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6Address, nnip.PrefixCompare)
-	slices.SortFunc(t.RouteAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.Inet4Address, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6Address, netipx.ComparePrefix)
+	slices.SortFunc(t.RouteAddress, netipx.ComparePrefix)
 	slices.Sort(t.RouteAddressSet)
-	slices.SortFunc(t.RouteExcludeAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.RouteExcludeAddress, netipx.ComparePrefix)
 	slices.Sort(t.RouteExcludeAddressSet)
 	slices.Sort(t.IncludeInterface)
 	slices.Sort(t.ExcludeInterface)
@@ -82,10 +86,10 @@ func (t *Tun) Sort() {
 	slices.Sort(t.IncludePackage)
 	slices.Sort(t.ExcludePackage)
 
-	slices.SortFunc(t.Inet4RouteAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6RouteAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet4RouteExcludeAddress, nnip.PrefixCompare)
-	slices.SortFunc(t.Inet6RouteExcludeAddress, nnip.PrefixCompare)
+	slices.SortFunc(t.Inet4RouteAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6RouteAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet4RouteExcludeAddress, netipx.ComparePrefix)
+	slices.SortFunc(t.Inet6RouteExcludeAddress, netipx.ComparePrefix)
 }
 
 func (t *Tun) Equal(other Tun) bool {

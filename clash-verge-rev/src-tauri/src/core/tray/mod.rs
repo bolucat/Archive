@@ -6,7 +6,10 @@ use crate::{
     cmd,
     config::Config,
     feat,
-    module::{lightweight::entry_lightweight_mode, mihomo::Rate},
+    module::{
+        lightweight::{entry_lightweight_mode, is_in_lightweight_mode},
+        mihomo::Rate,
+    },
     process::AsyncHandler,
     resolve,
     utils::{dirs::find_target_icons, i18n::t, logging::Type, resolve::VERSION},
@@ -206,7 +209,14 @@ impl Tray {
                 match tray_event.as_str() {
                     "system_proxy" => feat::toggle_system_proxy(),
                     "tun_mode" => feat::toggle_tun_mode(None),
-                    "main_window" => resolve::create_window(true),
+                    "main_window" => {
+                        // 如果在轻量模式中，先退出轻量模式
+                        if crate::module::lightweight::is_in_lightweight_mode() {
+                            crate::module::lightweight::exit_lightweight_mode();
+                        }
+                        // 然后创建窗口
+                        resolve::create_window(true)
+                    }
                     _ => {}
                 }
             }
@@ -247,6 +257,7 @@ impl Tray {
             .data()
             .all_profile_uid_and_name()
             .unwrap_or_default();
+        let is_lightweight_mode = is_in_lightweight_mode();
 
         let tray = app_handle.tray_by_id("main").unwrap();
         let _ = tray.set_menu(Some(create_tray_menu(
@@ -255,6 +266,7 @@ impl Tray {
             *system_proxy,
             *tun_mode,
             profile_uid_and_name,
+            is_lightweight_mode,
         )?));
         Ok(())
     }
@@ -449,6 +461,7 @@ fn create_tray_menu(
     system_proxy_enabled: bool,
     tun_mode_enabled: bool,
     profile_uid_and_name: Vec<(String, String)>,
+    is_lightweight_mode: bool,
 ) -> Result<tauri::menu::Menu<Wry>> {
     let mode = mode.unwrap_or("");
     let version = VERSION.get().unwrap();
@@ -559,11 +572,12 @@ fn create_tray_menu(
     )
     .unwrap();
 
-    let lighteweight_mode = &MenuItem::with_id(
+    let lighteweight_mode = &CheckMenuItem::with_id(
         app_handle,
         "entry_lightweight_mode",
         t("LightWeight Mode"),
         true,
+        is_lightweight_mode,
         hotkeys.get("entry_lightweight_mode").map(|s| s.as_str()),
     )
     .unwrap();
@@ -680,7 +694,14 @@ fn on_menu_event(_: &AppHandle, event: MenuEvent) {
             println!("change mode to: {}", mode);
             feat::change_clash_mode(mode.into());
         }
-        "open_window" => resolve::create_window(true),
+        "open_window" => {
+            // 如果在轻量模式中，先退出轻量模式
+            if crate::module::lightweight::is_in_lightweight_mode() {
+                crate::module::lightweight::exit_lightweight_mode();
+            }
+            // 然后创建窗口
+            resolve::create_window(true)
+        }
         "system_proxy" => feat::toggle_system_proxy(),
         "tun_mode" => feat::toggle_tun_mode(None),
         "copy_env" => feat::copy_clash_env(),

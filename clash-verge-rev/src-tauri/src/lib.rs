@@ -19,7 +19,7 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt;
-use tauri_plugin_window_state;
+use tokio::time::{timeout, Duration};
 use utils::logging::Type;
 
 /// A global singleton handle to the application.
@@ -86,13 +86,22 @@ impl AppHandleManager {
 
 #[allow(clippy::panic)]
 pub fn run() {
-    // 单例检测
+    // 单例检测 - 使用超时机制防止阻塞
     let app_exists: bool = AsyncHandler::block_on(move || async move {
-        if server::check_singleton().await.is_err() {
-            println!("app exists");
-            true
-        } else {
-            false
+        match timeout(Duration::from_secs(3), server::check_singleton()).await {
+            Ok(result) => {
+                if result.is_err() {
+                    println!("app exists");
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => {
+                // 超时处理
+                println!("singleton check timeout, assuming app doesn't exist");
+                false
+            }
         }
     });
     if app_exists {
@@ -140,8 +149,21 @@ pub fn run() {
                 });
             });
 
-            AsyncHandler::block_on(move || async move {
-                resolve::resolve_setup(app).await;
+            // 使用 block_on 但增加超时保护
+            AsyncHandler::block_on(|| async {
+                match timeout(Duration::from_secs(30), resolve::resolve_setup(app)).await {
+                    Ok(_) => {
+                        logging!(info, Type::Setup, true, "App setup completed successfully");
+                    }
+                    Err(_) => {
+                        logging!(
+                            error,
+                            Type::Setup,
+                            true,
+                            "App setup timed out, proceeding anyway"
+                        );
+                    }
+                }
             });
 
             Ok(())
@@ -161,10 +183,14 @@ pub fn run() {
             cmd::restart_app,
             // 添加新的命令
             cmd::notify_ui_ready,
+            cmd::reset_ui_ready_state,
             cmd::get_running_mode,
             cmd::get_app_uptime,
             cmd::get_auto_launch_status,
             cmd::is_admin,
+            // 添加轻量模式相关命令
+            cmd::entry_lightweight_mode,
+            cmd::exit_lightweight_mode,
             // service 管理
             cmd::install_service,
             cmd::uninstall_service,
@@ -210,6 +236,7 @@ pub fn run() {
             cmd::delete_profile,
             cmd::read_profile_file,
             cmd::save_profile_file,
+            cmd::get_next_update_time,
             // script validation
             cmd::script_validate_notice,
             cmd::validate_script_file,
@@ -303,15 +330,6 @@ pub fn run() {
                                 hotkey::Hotkey::global().register("CMD+W", "hide")
                             );
                         }
-
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            logging_error!(
-                                Type::Hotkey,
-                                true,
-                                hotkey::Hotkey::global().register("Control+Q", "quit")
-                            );
-                        };
                         {
                             let is_enable_global_hotkey = Config::verge()
                                 .latest()
@@ -336,14 +354,6 @@ pub fn run() {
                                 hotkey::Hotkey::global().unregister("CMD+W")
                             );
                         }
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            logging_error!(
-                                Type::Hotkey,
-                                true,
-                                hotkey::Hotkey::global().unregister("Control+Q")
-                            );
-                        };
                         {
                             let is_enable_global_hotkey = Config::verge()
                                 .latest()
@@ -368,15 +378,6 @@ pub fn run() {
                                 hotkey::Hotkey::global().unregister("CMD+W")
                             );
                         }
-
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            logging_error!(
-                                Type::Hotkey,
-                                true,
-                                hotkey::Hotkey::global().unregister("Control+Q")
-                            );
-                        };
                     }
                     _ => {}
                 }

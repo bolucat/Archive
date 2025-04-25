@@ -4,15 +4,16 @@ import (
 	"crypto/tls"
 	"net"
 
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/log"
 
 	utls "github.com/metacubex/utls"
 	"github.com/mroth/weightedrand/v2"
 )
 
-type UConn struct {
-	*utls.UConn
-}
+type UConn = utls.UConn
+
+const VersionTLS13 = utls.VersionTLS13
 
 type UClientHelloID struct {
 	*utls.ClientHelloID
@@ -21,13 +22,8 @@ type UClientHelloID struct {
 var initRandomFingerprint UClientHelloID
 var initUtlsClient string
 
-func UClient(c net.Conn, config *tls.Config, fingerprint UClientHelloID) *UConn {
-	utlsConn := utls.UClient(c, copyConfig(config), utls.ClientHelloID{
-		Client:  fingerprint.Client,
-		Version: fingerprint.Version,
-		Seed:    fingerprint.Seed,
-	})
-	return &UConn{UConn: utlsConn}
+func UClient(c net.Conn, config *utls.Config, fingerprint UClientHelloID) *UConn {
+	return utls.UClient(c, config, *fingerprint.ClientHelloID)
 }
 
 func GetFingerprint(ClientFingerprint string) (UClientHelloID, bool) {
@@ -95,18 +91,43 @@ func init() {
 	Fingerprints["randomized"] = UClientHelloID{&randomized}
 }
 
-func copyConfig(c *tls.Config) *utls.Config {
+func UCertificates(it tls.Certificate) utls.Certificate {
+	return utls.Certificate{
+		Certificate: it.Certificate,
+		PrivateKey:  it.PrivateKey,
+		SupportedSignatureAlgorithms: utils.Map(it.SupportedSignatureAlgorithms, func(it tls.SignatureScheme) utls.SignatureScheme {
+			return utls.SignatureScheme(it)
+		}),
+		OCSPStaple:                  it.OCSPStaple,
+		SignedCertificateTimestamps: it.SignedCertificateTimestamps,
+		Leaf:                        it.Leaf,
+	}
+}
+
+func UConfig(config *tls.Config) *utls.Config {
 	return &utls.Config{
-		RootCAs:               c.RootCAs,
-		ServerName:            c.ServerName,
-		InsecureSkipVerify:    c.InsecureSkipVerify,
-		VerifyPeerCertificate: c.VerifyPeerCertificate,
+		Rand:                  config.Rand,
+		Time:                  config.Time,
+		Certificates:          utils.Map(config.Certificates, UCertificates),
+		VerifyPeerCertificate: config.VerifyPeerCertificate,
+		RootCAs:               config.RootCAs,
+		NextProtos:            config.NextProtos,
+		ServerName:            config.ServerName,
+		InsecureSkipVerify:    config.InsecureSkipVerify,
+		CipherSuites:          config.CipherSuites,
+		MinVersion:            config.MinVersion,
+		MaxVersion:            config.MaxVersion,
+		CurvePreferences: utils.Map(config.CurvePreferences, func(it tls.CurveID) utls.CurveID {
+			return utls.CurveID(it)
+		}),
+		SessionTicketsDisabled: config.SessionTicketsDisabled,
+		Renegotiation:          utls.RenegotiationSupport(config.Renegotiation),
 	}
 }
 
 // BuildWebsocketHandshakeState it will only send http/1.1 in its ALPN.
 // Copy from https://github.com/XTLS/Xray-core/blob/main/transport/internet/tls/tls.go
-func (c *UConn) BuildWebsocketHandshakeState() error {
+func BuildWebsocketHandshakeState(c *UConn) error {
 	// Build the handshake state. This will apply every variable of the TLS of the
 	// fingerprint in the UConn
 	if err := c.BuildHandshakeState(); err != nil {

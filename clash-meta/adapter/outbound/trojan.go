@@ -295,6 +295,10 @@ func (t *Trojan) Close() error {
 func NewTrojan(option TrojanOption) (*Trojan, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 
+	if option.SNI == "" {
+		option.SNI = option.Server
+	}
+
 	t := &Trojan{
 		Base: &Base{
 			name:   option.Name,

@@ -1,17 +1,13 @@
 package ca
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	_ "embed"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	C "github.com/metacubex/mihomo/constant"
@@ -81,41 +77,7 @@ func getCertPool() *x509.CertPool {
 	return globalCertPool
 }
 
-func verifyFingerprint(fingerprint *[32]byte) func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	return func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-		// ssl pining
-		for i := range rawCerts {
-			rawCert := rawCerts[i]
-			cert, err := x509.ParseCertificate(rawCert)
-			if err == nil {
-				hash := sha256.Sum256(cert.Raw)
-				if bytes.Equal(fingerprint[:], hash[:]) {
-					return nil
-				}
-			}
-		}
-		return errNotMatch
-	}
-}
-
-func convertFingerprint(fingerprint string) (*[32]byte, error) {
-	fingerprint = strings.TrimSpace(strings.Replace(fingerprint, ":", "", -1))
-	fpByte, err := hex.DecodeString(fingerprint)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(fpByte) != 32 {
-		return nil, fmt.Errorf("fingerprint string length error,need sha256 fingerprint")
-	}
-	return (*[32]byte)(fpByte), nil
-}
-
-// GetTLSConfig specified fingerprint, customCA and customCAString
-func GetTLSConfig(tlsConfig *tls.Config, fingerprint string, customCA string, customCAString string) (*tls.Config, error) {
-	if tlsConfig == nil {
-		tlsConfig = &tls.Config{}
-	}
+func GetCertPool(customCA string, customCAString string) (*x509.CertPool, error) {
 	var certificate []byte
 	var err error
 	if len(customCA) > 0 {
@@ -131,17 +93,27 @@ func GetTLSConfig(tlsConfig *tls.Config, fingerprint string, customCA string, cu
 		if !certPool.AppendCertsFromPEM(certificate) {
 			return nil, fmt.Errorf("failed to parse certificate:\n\n %s", certificate)
 		}
-		tlsConfig.RootCAs = certPool
+		return certPool, nil
 	} else {
-		tlsConfig.RootCAs = getCertPool()
+		return getCertPool(), nil
 	}
+}
+
+// GetTLSConfig specified fingerprint, customCA and customCAString
+func GetTLSConfig(tlsConfig *tls.Config, fingerprint string, customCA string, customCAString string) (_ *tls.Config, err error) {
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{}
+	}
+	tlsConfig.RootCAs, err = GetCertPool(customCA, customCAString)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(fingerprint) > 0 {
-		var fingerprintBytes *[32]byte
-		fingerprintBytes, err = convertFingerprint(fingerprint)
+		tlsConfig.VerifyPeerCertificate, err = NewFingerprintVerifier(fingerprint)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig.VerifyPeerCertificate = verifyFingerprint(fingerprintBytes)
 		tlsConfig.InsecureSkipVerify = true
 	}
 	return tlsConfig, nil

@@ -4,14 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"runtime"
 	"strings"
+	"sync"
 	"syscall"
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/dialer"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/log"
 )
+
+type ProxyAdapter interface {
+	C.ProxyAdapter
+	DialOptions(opts ...dialer.Option) []dialer.Option
+}
 
 type Base struct {
 	name   string
@@ -152,6 +160,10 @@ func (b *Base) DialOptions(opts ...dialer.Option) []dialer.Option {
 	return opts
 }
 
+func (b *Base) Close() error {
+	return nil
+}
+
 type BasicOption struct {
 	TFO         bool   `proxy:"tfo,omitempty"`
 	MPTCP       bool   `proxy:"mptcp,omitempty"`
@@ -221,6 +233,10 @@ func (c *conn) ReaderReplaceable() bool {
 	return true
 }
 
+func (c *conn) AddRef(ref any) {
+	c.ExtendedConn = N.NewRefConn(c.ExtendedConn, ref) // add ref for autoCloseProxyAdapter
+}
+
 func NewConn(c net.Conn, a C.ProxyAdapter) C.Conn {
 	if _, ok := c.(syscall.Conn); !ok { // exclusion system conn like *net.TCPConn
 		c = N.NewDeadlineConn(c) // most conn from outbound can't handle readDeadline correctly
@@ -267,6 +283,10 @@ func (c *packetConn) ReaderReplaceable() bool {
 	return true
 }
 
+func (c *packetConn) AddRef(ref any) {
+	c.EnhancePacketConn = N.NewRefPacketConn(c.EnhancePacketConn, ref) // add ref for autoCloseProxyAdapter
+}
+
 func newPacketConn(pc net.PacketConn, a C.ProxyAdapter) C.PacketConn {
 	epc := N.NewEnhancePacketConn(pc)
 	if _, ok := pc.(syscall.Conn); !ok { // exclusion system conn like *net.UDPConn
@@ -285,4 +305,76 @@ func parseRemoteDestination(addr string) string {
 			return ""
 		}
 	}
+}
+
+type AddRef interface {
+	AddRef(ref any)
+}
+
+type autoCloseProxyAdapter struct {
+	ProxyAdapter
+	closeOnce sync.Once
+	closeErr  error
+}
+
+func (p *autoCloseProxyAdapter) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
+	c, err := p.ProxyAdapter.DialContext(ctx, metadata, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := c.(AddRef); ok {
+		c.AddRef(p)
+	}
+	return c, nil
+}
+
+func (p *autoCloseProxyAdapter) DialContextWithDialer(ctx context.Context, dialer C.Dialer, metadata *C.Metadata) (_ C.Conn, err error) {
+	c, err := p.ProxyAdapter.DialContextWithDialer(ctx, dialer, metadata)
+	if err != nil {
+		return nil, err
+	}
+	if c, ok := c.(AddRef); ok {
+		c.AddRef(p)
+	}
+	return c, nil
+}
+
+func (p *autoCloseProxyAdapter) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+	pc, err := p.ProxyAdapter.ListenPacketContext(ctx, metadata, opts...)
+	if err != nil {
+		return nil, err
+	}
+	if pc, ok := pc.(AddRef); ok {
+		pc.AddRef(p)
+	}
+	return pc, nil
+}
+
+func (p *autoCloseProxyAdapter) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	pc, err := p.ProxyAdapter.ListenPacketWithDialer(ctx, dialer, metadata)
+	if err != nil {
+		return nil, err
+	}
+	if pc, ok := pc.(AddRef); ok {
+		pc.AddRef(p)
+	}
+	return pc, nil
+}
+
+func (p *autoCloseProxyAdapter) Close() error {
+	p.closeOnce.Do(func() {
+		log.Debugln("Closing outdated proxy [%s]", p.Name())
+		runtime.SetFinalizer(p, nil)
+		p.closeErr = p.ProxyAdapter.Close()
+	})
+	return p.closeErr
+}
+
+func NewAutoCloseProxyAdapter(adapter ProxyAdapter) ProxyAdapter {
+	proxy := &autoCloseProxyAdapter{
+		ProxyAdapter: adapter,
+	}
+	// auto close ProxyAdapter
+	runtime.SetFinalizer(proxy, (*autoCloseProxyAdapter).Close)
+	return proxy
 }

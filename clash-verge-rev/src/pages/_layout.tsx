@@ -60,6 +60,18 @@ const handleNoticeMessage = (
     case "set_config::error":
       Notice.error(msg);
       break;
+    case "update_with_clash_proxy":
+      Notice.success(`${t("Update with Clash proxy successfully")} ${msg}`);
+      break;
+    case "update_retry_with_clash":
+      Notice.info(t("Update failed, retrying with Clash proxy..."));
+      break;
+    case "update_failed_even_with_clash":
+      Notice.error(`${t("Update failed even with Clash proxy")}: ${msg}`);
+      break;
+    case "update_failed":
+      Notice.error(msg);
+      break;
     case "config_validate::boot_error":
       Notice.error(`${t("Boot Config Validation Failed")} ${msg}`);
       break;
@@ -214,7 +226,6 @@ const Layout = () => {
   useEffect(() => {
     const notifyUiReady = async () => {
       try {
-        await new Promise(resolve => setTimeout(resolve, 200));
         await invoke("notify_ui_ready");
         console.log("已通知后端UI准备就绪");
       } catch (err) {
@@ -224,12 +235,20 @@ const Layout = () => {
 
     // 监听后端发送的启动完成事件
     const listenStartupCompleted = async () => {
-      const unlisten = await listen("verge://startup-completed", () => {
-        console.log("收到启动完成事件");
-      });
-      return unlisten;
+      try {
+        const unlisten = await listen("verge://startup-completed", () => {
+          console.log("收到启动完成事件，开始通知UI就绪");
+          notifyUiReady();
+        });
+        return unlisten;
+      } catch (err) {
+        console.error("监听启动完成事件失败:", err);
+        return () => {};
+      }
     };
 
+    // 初始加载时也通知一次
+    console.log("页面初始加载，通知UI就绪");
     notifyUiReady();
     const unlistenPromise = listenStartupCompleted();
 

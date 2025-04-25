@@ -1,24 +1,17 @@
 package trojan
 
 import (
-	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"sync"
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/pool"
-	"github.com/metacubex/mihomo/component/ca"
-	tlsC "github.com/metacubex/mihomo/component/tls"
-	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/socks5"
-	"github.com/metacubex/mihomo/transport/vmess"
 )
 
 const (
@@ -27,8 +20,8 @@ const (
 )
 
 var (
-	defaultALPN          = []string{"h2", "http/1.1"}
-	defaultWebsocketALPN = []string{"http/1.1"}
+	DefaultALPN          = []string{"h2", "http/1.1"}
+	DefaultWebsocketALPN = []string{"http/1.1"}
 
 	crlf = []byte{'\r', '\n'}
 )
@@ -43,115 +36,11 @@ const (
 	KeyLength = 56
 )
 
-type Option struct {
-	Password          string
-	ALPN              []string
-	ServerName        string
-	SkipCertVerify    bool
-	Fingerprint       string
-	ClientFingerprint string
-	Reality           *tlsC.RealityConfig
-}
-
-type WebsocketOption struct {
-	Host                     string
-	Port                     string
-	Path                     string
-	Headers                  http.Header
-	V2rayHttpUpgrade         bool
-	V2rayHttpUpgradeFastOpen bool
-}
-
-type Trojan struct {
-	option      *Option
-	hexPassword [KeyLength]byte
-}
-
-func (t *Trojan) StreamConn(ctx context.Context, conn net.Conn) (net.Conn, error) {
-	alpn := defaultALPN
-	if len(t.option.ALPN) != 0 {
-		alpn = t.option.ALPN
-	}
-	tlsConfig := &tls.Config{
-		NextProtos:         alpn,
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: t.option.SkipCertVerify,
-		ServerName:         t.option.ServerName,
-	}
-
-	var err error
-	tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, t.option.Fingerprint)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(t.option.ClientFingerprint) != 0 {
-		if t.option.Reality == nil {
-			utlsConn, valid := vmess.GetUTLSConn(conn, t.option.ClientFingerprint, tlsConfig)
-			if valid {
-				ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTLSTimeout)
-				defer cancel()
-
-				err := utlsConn.HandshakeContext(ctx)
-				return utlsConn, err
-			}
-		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTLSTimeout)
-			defer cancel()
-			return tlsC.GetRealityConn(ctx, conn, t.option.ClientFingerprint, tlsConfig, t.option.Reality)
-		}
-	}
-	if t.option.Reality != nil {
-		return nil, errors.New("REALITY is based on uTLS, please set a client-fingerprint")
-	}
-
-	tlsConn := tls.Client(conn, tlsConfig)
-
-	// fix tls handshake not timeout
-	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTLSTimeout)
-	defer cancel()
-
-	err = tlsConn.HandshakeContext(ctx)
-	return tlsConn, err
-}
-
-func (t *Trojan) StreamWebsocketConn(ctx context.Context, conn net.Conn, wsOptions *WebsocketOption) (net.Conn, error) {
-	alpn := defaultWebsocketALPN
-	if len(t.option.ALPN) != 0 {
-		alpn = t.option.ALPN
-	}
-
-	tlsConfig := &tls.Config{
-		NextProtos:         alpn,
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: t.option.SkipCertVerify,
-		ServerName:         t.option.ServerName,
-	}
-
-	var err error
-	tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, t.option.Fingerprint)
-	if err != nil {
-		return nil, err
-	}
-
-	return vmess.StreamWebsocketConn(ctx, conn, &vmess.WebsocketConfig{
-		Host:                     wsOptions.Host,
-		Port:                     wsOptions.Port,
-		Path:                     wsOptions.Path,
-		Headers:                  wsOptions.Headers,
-		V2rayHttpUpgrade:         wsOptions.V2rayHttpUpgrade,
-		V2rayHttpUpgradeFastOpen: wsOptions.V2rayHttpUpgradeFastOpen,
-		TLS:                      true,
-		TLSConfig:                tlsConfig,
-		ClientFingerprint:        t.option.ClientFingerprint,
-	})
-}
-
-func (t *Trojan) WriteHeader(w io.Writer, command Command, socks5Addr []byte) error {
+func WriteHeader(w io.Writer, hexPassword [KeyLength]byte, command Command, socks5Addr []byte) error {
 	buf := pool.GetBuffer()
 	defer pool.PutBuffer(buf)
 
-	buf.Write(t.hexPassword[:])
+	buf.Write(hexPassword[:])
 	buf.Write(crlf)
 
 	buf.WriteByte(command)
@@ -160,12 +49,6 @@ func (t *Trojan) WriteHeader(w io.Writer, command Command, socks5Addr []byte) er
 
 	_, err := w.Write(buf.Bytes())
 	return err
-}
-
-func (t *Trojan) PacketConn(conn net.Conn) net.PacketConn {
-	return &PacketConn{
-		Conn: conn,
-	}
 }
 
 func writePacket(w io.Writer, socks5Addr, payload []byte) (int, error) {
@@ -241,10 +124,6 @@ func ReadPacket(r io.Reader, payload []byte) (net.Addr, int, int, error) {
 	}
 
 	return uAddr, length, total - length, nil
-}
-
-func New(option *Option) *Trojan {
-	return &Trojan{option, Key(option.Password)}
 }
 
 var _ N.EnhancePacketConn = (*PacketConn)(nil)

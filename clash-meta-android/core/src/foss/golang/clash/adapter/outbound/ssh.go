@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +24,10 @@ type Ssh struct {
 	*Base
 
 	option *SshOption
-	client *sshClient // using a standalone struct to avoid its inner loop invalidate the Finalizer
+
+	config *ssh.ClientConfig
+	client *ssh.Client
+	cMutex sync.Mutex
 }
 
 type SshOption struct {
@@ -49,7 +51,7 @@ func (s *Ssh) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dia
 			return nil, err
 		}
 	}
-	client, err := s.client.connect(ctx, cDialer, s.addr)
+	client, err := s.connect(ctx, cDialer, s.addr)
 	if err != nil {
 		return nil, err
 	}
@@ -58,16 +60,10 @@ func (s *Ssh) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dia
 		return nil, err
 	}
 
-	return NewConn(N.NewRefConn(c, s), s), nil
+	return NewConn(c, s), nil
 }
 
-type sshClient struct {
-	config *ssh.ClientConfig
-	client *ssh.Client
-	cMutex sync.Mutex
-}
-
-func (s *sshClient) connect(ctx context.Context, cDialer C.Dialer, addr string) (client *ssh.Client, err error) {
+func (s *Ssh) connect(ctx context.Context, cDialer C.Dialer, addr string) (client *ssh.Client, err error) {
 	s.cMutex.Lock()
 	defer s.cMutex.Unlock()
 	if s.client != nil {
@@ -108,24 +104,21 @@ func (s *sshClient) connect(ctx context.Context, cDialer C.Dialer, addr string) 
 	return client, nil
 }
 
-func (s *sshClient) Close() error {
+// ProxyInfo implements C.ProxyAdapter
+func (s *Ssh) ProxyInfo() C.ProxyInfo {
+	info := s.Base.ProxyInfo()
+	info.DialerProxy = s.option.DialerProxy
+	return info
+}
+
+// Close implements C.ProxyAdapter
+func (s *Ssh) Close() error {
 	s.cMutex.Lock()
 	defer s.cMutex.Unlock()
 	if s.client != nil {
 		return s.client.Close()
 	}
 	return nil
-}
-
-func closeSsh(s *Ssh) {
-	_ = s.client.Close()
-}
-
-// ProxyInfo implements C.ProxyAdapter
-func (s *Ssh) ProxyInfo() C.ProxyInfo {
-	info := s.Base.ProxyInfo()
-	info.DialerProxy = s.option.DialerProxy
-	return info
 }
 
 func NewSsh(option SshOption) (*Ssh, error) {
@@ -204,11 +197,8 @@ func NewSsh(option SshOption) (*Ssh, error) {
 			prefer: C.NewDNSPrefer(option.IPVersion),
 		},
 		option: &option,
-		client: &sshClient{
-			config: &config,
-		},
+		config: &config,
 	}
-	runtime.SetFinalizer(outbound, closeSsh)
 
 	return outbound, nil
 }

@@ -14,14 +14,14 @@ import (
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	tuicCommon "github.com/metacubex/mihomo/transport/tuic/common"
 
-	"github.com/metacubex/sing-quic/hysteria2"
-
 	"github.com/metacubex/quic-go"
 	"github.com/metacubex/randv2"
+	"github.com/metacubex/sing-quic/hysteria2"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -165,7 +165,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 		ReceiveBPS:         StringToBps(option.Down),
 		SalamanderPassword: salamanderPassword,
 		Password:           option.Password,
-		TLSConfig:          tlsConfig,
+		TLSConfig:          tlsC.UConfig(tlsConfig),
 		QUICConfig:         quicConfig,
 		UDPDisabled:        false,
 		CWND:               option.CWND,

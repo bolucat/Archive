@@ -247,8 +247,8 @@ func (wsedc *websocketWithEarlyDataConn) Read(b []byte) (int, error) {
 func (wsedc *websocketWithEarlyDataConn) Close() error {
 	wsedc.closed = true
 	wsedc.cancel()
-	if wsedc.Conn == nil {
-		return nil
+	if wsedc.Conn == nil { // is dialing or not dialed
+		return wsedc.underlay.Close()
 	}
 	return wsedc.Conn.Close()
 }
@@ -326,7 +326,7 @@ func streamWebsocketWithEarlyDataConn(conn net.Conn, c *WebsocketConfig) (net.Co
 	return N.NewDeadlineConn(conn), nil
 }
 
-func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig, earlyData *bytes.Buffer) (net.Conn, error) {
+func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig, earlyData *bytes.Buffer) (_ net.Conn, err error) {
 	u, err := url.Parse(c.Path)
 	if err != nil {
 		return nil, fmt.Errorf("parse url %s error: %w", c.Path, err)
@@ -354,10 +354,14 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 			config.ServerName = uri.Host
 		}
 
-		if len(c.ClientFingerprint) != 0 {
-			if fingerprint, exists := tlsC.GetFingerprint(c.ClientFingerprint); exists {
-				utlsConn := tlsC.UClient(conn, config, fingerprint)
-				if err = utlsConn.BuildWebsocketHandshakeState(); err != nil {
+		clientFingerprint := c.ClientFingerprint
+		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
+			clientFingerprint = tlsC.GetGlobalFingerprint()
+		}
+		if len(clientFingerprint) != 0 {
+			if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
+				utlsConn := tlsC.UClient(conn, tlsC.UConfig(config), fingerprint)
+				if err = tlsC.BuildWebsocketHandshakeState(utlsConn); err != nil {
 					return nil, fmt.Errorf("parse url %s error: %w", c.Path, err)
 				}
 				conn = utlsConn
@@ -467,7 +471,7 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 		}
 	}
 
-	conn = newWebsocketConn(conn, ws.StateClientSide)
+	conn = newWebsocketConn(bufferedConn, ws.StateClientSide)
 	// websocketConn can't correct handle ReadDeadline
 	// so call N.NewDeadlineConn to add a safe wrapper
 	return N.NewDeadlineConn(conn), nil
@@ -555,7 +559,7 @@ func StreamUpgradedWebsocketConn(w http.ResponseWriter, r *http.Request) (net.Co
 		w.Header().Set("Sec-Websocket-Accept", getSecAccept(r.Header.Get("Sec-WebSocket-Key")))
 	}
 	w.WriteHeader(http.StatusSwitchingProtocols)
-	if flusher, isFlusher := w.(interface{ FlushError() error }); isFlusher {
+	if flusher, isFlusher := w.(interface{ FlushError() error }); isFlusher && writeHeaderShouldFlush {
 		err = flusher.FlushError()
 		if err != nil {
 			return nil, fmt.Errorf("flush response: %w", err)

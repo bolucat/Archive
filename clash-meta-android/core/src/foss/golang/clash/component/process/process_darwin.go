@@ -87,6 +87,7 @@ func findProcessName(network string, ip netip.Addr, port int) (uint32, string, e
 		default:
 			continue
 		}
+		srcIP = srcIP.Unmap()
 
 		if ip == srcIP {
 			// xsocket_n.so_last_pid

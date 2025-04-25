@@ -10,13 +10,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/metacubex/quic-go"
-	"github.com/metacubex/quic-go/congestion"
-	M "github.com/sagernet/sing/common/metadata"
-
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	hyCongestion "github.com/metacubex/mihomo/transport/hysteria/congestion"
@@ -25,6 +22,10 @@ import (
 	"github.com/metacubex/mihomo/transport/hysteria/pmtud_fix"
 	"github.com/metacubex/mihomo/transport/hysteria/transport"
 	"github.com/metacubex/mihomo/transport/hysteria/utils"
+
+	"github.com/metacubex/quic-go"
+	"github.com/metacubex/quic-go/congestion"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 const (
@@ -214,7 +215,7 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 		down = uint64(option.DownSpeed * mbpsToBps)
 	}
 	client, err := core.NewClient(
-		addr, ports, option.Protocol, auth, tlsConfig, quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
+		addr, ports, option.Protocol, auth, tlsC.UConfig(tlsConfig), quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
 			return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 		}, obfuscator, hopInterval, option.FastOpen,
 	)

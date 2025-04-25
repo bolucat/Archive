@@ -3,8 +3,6 @@ package adapter
 import (
 	"fmt"
 
-	tlsC "github.com/metacubex/mihomo/component/tls"
-
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/common/structure"
 	C "github.com/metacubex/mihomo/constant"
@@ -18,12 +16,12 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 	}
 
 	var (
-		proxy C.ProxyAdapter
+		proxy outbound.ProxyAdapter
 		err   error
 	)
 	switch proxyType {
 	case "ss":
-		ssOption := &outbound.ShadowSocksOption{ClientFingerprint: tlsC.GetGlobalFingerprint()}
+		ssOption := &outbound.ShadowSocksOption{}
 		err = decoder.Decode(mapping, ssOption)
 		if err != nil {
 			break
@@ -56,7 +54,6 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 				Method: "GET",
 				Path:   []string{"/"},
 			},
-			ClientFingerprint: tlsC.GetGlobalFingerprint(),
 		}
 
 		err = decoder.Decode(mapping, vmessOption)
@@ -65,7 +62,7 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 		}
 		proxy, err = outbound.NewVmess(*vmessOption)
 	case "vless":
-		vlessOption := &outbound.VlessOption{ClientFingerprint: tlsC.GetGlobalFingerprint()}
+		vlessOption := &outbound.VlessOption{}
 		err = decoder.Decode(mapping, vlessOption)
 		if err != nil {
 			break
@@ -79,7 +76,7 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 		}
 		proxy, err = outbound.NewSnell(*snellOption)
 	case "trojan":
-		trojanOption := &outbound.TrojanOption{ClientFingerprint: tlsC.GetGlobalFingerprint()}
+		trojanOption := &outbound.TrojanOption{}
 		err = decoder.Decode(mapping, trojanOption)
 		if err != nil {
 			break
@@ -170,12 +167,13 @@ func ParseProxy(mapping map[string]any) (C.Proxy, error) {
 			return nil, err
 		}
 		if muxOption.Enabled {
-			proxy, err = outbound.NewSingMux(*muxOption, proxy, proxy.(outbound.ProxyBase))
+			proxy, err = outbound.NewSingMux(*muxOption, proxy)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
 
+	proxy = outbound.NewAutoCloseProxyAdapter(proxy)
 	return NewProxy(proxy), nil
 }

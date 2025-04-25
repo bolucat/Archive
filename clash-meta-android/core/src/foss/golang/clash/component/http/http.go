@@ -69,7 +69,7 @@ func HttpRequestWithProxy(ctx context.Context, url, method string, header map[st
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			if conn, err := inner.HandleTcp(address, specialProxy); err == nil {
+			if conn, err := inner.HandleTcp(inner.GetTunnel(), address, specialProxy); err == nil {
 				return conn, nil
 			} else {
 				return dialer.DialContext(ctx, network, address)

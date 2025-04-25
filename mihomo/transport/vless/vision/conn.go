@@ -12,10 +12,10 @@ import (
 
 	"github.com/metacubex/mihomo/common/buf"
 	N "github.com/metacubex/mihomo/common/net"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/gofrs/uuid/v5"
-	utls "github.com/metacubex/utls"
 )
 
 var (
@@ -187,8 +187,8 @@ func (vc *Conn) WriteBuffer(buffer *buf.Buffer) (err error) {
 				buffer.Release()
 				return ErrNotTLS13
 			}
-		case *utls.UConn:
-			if underlying.ConnectionState().Version != utls.VersionTLS13 {
+		case *tlsC.UConn:
+			if underlying.ConnectionState().Version != tlsC.VersionTLS13 {
 				buffer.Release()
 				return ErrNotTLS13
 			}

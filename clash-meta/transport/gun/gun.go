@@ -244,7 +244,7 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint stri
 		if len(clientFingerprint) != 0 {
 			if realityConfig == nil {
 				if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
-					utlsConn := tlsC.UClient(pconn, cfg, fingerprint)
+					utlsConn := tlsC.UClient(pconn, tlsC.UConfig(cfg), fingerprint)
 					if err := utlsConn.HandshakeContext(ctx); err != nil {
 						pconn.Close()
 						return nil, err

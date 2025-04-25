@@ -6,9 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/metacubex/mihomo/common/nnip"
 	"github.com/metacubex/mihomo/component/profile/cachefile"
 	C "github.com/metacubex/mihomo/constant"
+
+	"go4.org/netipx"
 )
 
 const (
@@ -183,7 +184,7 @@ func New(options Options) (*Pool, error) {
 		hostAddr = options.IPNet.Masked().Addr()
 		gateway  = hostAddr.Next()
 		first    = gateway.Next().Next().Next() // default start with 198.18.0.4
-		last     = nnip.UnMasked(options.IPNet)
+		last     = netipx.PrefixLastIP(options.IPNet)
 	)
 
 	if !options.IPNet.IsValid() || !first.IsValid() || !first.Less(last) {

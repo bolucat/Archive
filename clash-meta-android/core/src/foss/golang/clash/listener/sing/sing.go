@@ -72,7 +72,7 @@ func NewListenerHandler(lc ListenerConfig) (h *ListenerHandler, err error) {
 		NewStreamContext: func(ctx context.Context, conn net.Conn) context.Context {
 			return ctx
 		},
-		Logger:  log.SingLogger,
+		Logger:  log.SingInfoToDebugLogger, // convert sing-mux info log to debug
 		Handler: h,
 		Padding: lc.MuxOption.Padding,
 		Brutal: mux.BrutalOptions{

@@ -1,21 +1,26 @@
 package gun
 
 import (
-	"golang.org/x/net/http2"
+	"context"
 	"net"
+	"sync"
+
+	"golang.org/x/net/http2"
 )
 
 type TransportWrap struct {
 	*http2.Transport
-	netAddr
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
 }
 
-func (tw *TransportWrap) RemoteAddr() net.Addr {
-	return tw.remoteAddr
-}
-
-func (tw *TransportWrap) LocalAddr() net.Addr {
-	return tw.localAddr
+func (tw *TransportWrap) Close() error {
+	tw.closeOnce.Do(func() {
+		tw.cancel()
+		closeTransport(tw.Transport)
+	})
+	return nil
 }
 
 type netAddr struct {
@@ -23,10 +28,10 @@ type netAddr struct {
 	localAddr  net.Addr
 }
 
-func (addr *netAddr) RemoteAddr() net.Addr {
+func (addr netAddr) RemoteAddr() net.Addr {
 	return addr.remoteAddr
 }
 
-func (addr *netAddr) LocalAddr() net.Addr {
+func (addr netAddr) LocalAddr() net.Addr {
 	return addr.localAddr
 }

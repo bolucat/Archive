@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/component/ca"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
+
 	"github.com/metacubex/quic-go"
 	"github.com/metacubex/quic-go/http3"
 	D "github.com/miekg/dns"
@@ -550,23 +552,23 @@ func (doh *dnsOverHTTPS) createTransportH3(
 		Dial: func(
 			ctx context.Context,
 
-			// Ignore the address and always connect to the one that we got
-			// from the bootstrapper.
+		// Ignore the address and always connect to the one that we got
+		// from the bootstrapper.
 			_ string,
-			tlsCfg *tls.Config,
+			tlsCfg *tlsC.Config,
 			cfg *quic.Config,
 		) (c quic.EarlyConnection, err error) {
 			return doh.dialQuic(ctx, addr, tlsCfg, cfg)
 		},
 		DisableCompression: true,
-		TLSClientConfig:    tlsConfig,
+		TLSClientConfig:    tlsC.UConfig(tlsConfig),
 		QUICConfig:         doh.getQUICConfig(),
 	}
 
 	return &http3Transport{baseTransport: rt}, nil
 }
 
-func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tlsC.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
 	ip, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
@@ -635,7 +637,7 @@ func (doh *dnsOverHTTPS) probeH3(
 	// Run probeQUIC and probeTLS in parallel and see which one is faster.
 	chQuic := make(chan error, 1)
 	chTLS := make(chan error, 1)
-	go doh.probeQUIC(ctx, addr, probeTLSCfg, chQuic)
+	go doh.probeQUIC(ctx, addr, tlsC.UConfig(probeTLSCfg), chQuic)
 	go doh.probeTLS(ctx, probeTLSCfg, chTLS)
 
 	select {
@@ -660,7 +662,7 @@ func (doh *dnsOverHTTPS) probeH3(
 
 // probeQUIC attempts to establish a QUIC connection to the specified address.
 // We run probeQUIC and probeTLS in parallel and see which one is faster.
-func (doh *dnsOverHTTPS) probeQUIC(ctx context.Context, addr string, tlsConfig *tls.Config, ch chan error) {
+func (doh *dnsOverHTTPS) probeQUIC(ctx context.Context, addr string, tlsConfig *tlsC.Config, ch chan error) {
 	startTime := time.Now()
 	conn, err := doh.dialQuic(ctx, addr, tlsConfig, doh.getQUICConfig())
 	if err != nil {

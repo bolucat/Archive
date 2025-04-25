@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/common/lru"
-	"github.com/metacubex/mihomo/common/nnip"
 	"github.com/metacubex/mihomo/component/fakeip"
 	R "github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
@@ -120,14 +119,21 @@ func withMapping(mapping *lru.LruCache[netip.Addr, string]) middleware {
 
 				switch a := ans.(type) {
 				case *D.A:
-					ip = nnip.IpToAddr(a.A)
+					ip, _ = netip.AddrFromSlice(a.A)
 					ttl = a.Hdr.Ttl
 				case *D.AAAA:
-					ip = nnip.IpToAddr(a.AAAA)
+					ip, _ = netip.AddrFromSlice(a.AAAA)
 					ttl = a.Hdr.Ttl
 				default:
 					continue
 				}
+				if !ip.IsValid() {
+					continue
+				}
+				if !ip.IsGlobalUnicast() {
+					continue
+				}
+				ip = ip.Unmap()
 
 				if ttl < 1 {
 					ttl = 1

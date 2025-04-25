@@ -1,0 +1,115 @@
+name: Test
+on:
+  push:
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
+      - ".github/ISSUE_TEMPLATE/**"
+    branches:
+      - Alpha
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - Alpha
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os:
+          - 'ubuntu-latest' # amd64 linux
+          - 'windows-latest' # amd64 windows
+          - 'macos-latest' # arm64 macos
+          - 'ubuntu-24.04-arm' # arm64 linux
+          - 'macos-13' # amd64 macos
+        go-version:
+          - '1.24'
+          - '1.23'
+          - '1.22'
+          - '1.21'
+          - '1.20'
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: 0
+      GOTOOLCHAIN: local
+      # Fix mingw trying to be smart and converting paths https://github.com/moby/moby/issues/24029#issuecomment-250412919
+      MSYS_NO_PATHCONV: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
+      # this patch file only works on golang1.24.x
+      # that means after golang1.25 release it must be changed
+      # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.24/
+      # revert:
+      # 693def151adff1af707d82d28f55dba81ceb08e1: "crypto/rand,runtime: switch RtlGenRandom for ProcessPrng"
+      # 7c1157f9544922e96945196b47b95664b1e39108: "net: remove sysSocket fallback for Windows 7"
+      # 48042aa09c2f878c4faa576948b07fe625c4707a: "syscall: remove Windows 7 console handle workaround"
+      # a17d959debdb04cd550016a3501dd09d50cd62e7: "runtime: always use LoadLibraryEx to load system libraries"
+      - name: Revert Golang1.24 commit for Windows7/8
+        if: ${{ runner.os == 'Windows' && matrix.go-version == '1.24' }}
+        run: |
+          cd $(go env GOROOT)
+          curl https://github.com/MetaCubeX/go/commit/2a406dc9f1ea7323d6ca9fccb2fe9ddebb6b1cc8.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/7b1fd7d39c6be0185fbe1d929578ab372ac5c632.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/979d6d8bab3823ff572ace26767fd2ce3cf351ae.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/ac3e93c061779dfefc0dd13a5b6e6f764a25621e.diff | patch --verbose -p 1
+
+        # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
+        # this patch file only works on golang1.23.x
+        # that means after golang1.24 release it must be changed
+        # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.23/
+        # revert:
+        # 693def151adff1af707d82d28f55dba81ceb08e1: "crypto/rand,runtime: switch RtlGenRandom for ProcessPrng"
+        # 7c1157f9544922e96945196b47b95664b1e39108: "net: remove sysSocket fallback for Windows 7"
+        # 48042aa09c2f878c4faa576948b07fe625c4707a: "syscall: remove Windows 7 console handle workaround"
+        # a17d959debdb04cd550016a3501dd09d50cd62e7: "runtime: always use LoadLibraryEx to load system libraries"
+      - name: Revert Golang1.23 commit for Windows7/8
+        if: ${{ runner.os == 'Windows' && matrix.go-version == '1.23' }}
+        run: |
+          cd $(go env GOROOT)
+          curl https://github.com/MetaCubeX/go/commit/9ac42137ef6730e8b7daca016ece831297a1d75b.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/21290de8a4c91408de7c2b5b68757b1e90af49dd.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/6a31d3fa8e47ddabc10bd97bff10d9a85f4cfb76.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/69e2eed6dd0f6d815ebf15797761c13f31213dd6.diff | patch --verbose -p 1
+
+        # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
+        # this patch file only works on golang1.22.x
+        # that means after golang1.23 release it must be changed
+        # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.22/
+        # revert:
+        # 693def151adff1af707d82d28f55dba81ceb08e1: "crypto/rand,runtime: switch RtlGenRandom for ProcessPrng"
+        # 7c1157f9544922e96945196b47b95664b1e39108: "net: remove sysSocket fallback for Windows 7"
+        # 48042aa09c2f878c4faa576948b07fe625c4707a: "syscall: remove Windows 7 console handle workaround"
+        # a17d959debdb04cd550016a3501dd09d50cd62e7: "runtime: always use LoadLibraryEx to load system libraries"
+      - name: Revert Golang1.22 commit for Windows7/8
+        if: ${{ runner.os == 'Windows' && matrix.go-version == '1.22' }}
+        run: |
+          cd $(go env GOROOT)
+          curl https://github.com/MetaCubeX/go/commit/9779155f18b6556a034f7bb79fb7fb2aad1e26a9.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/ef0606261340e608017860b423ffae5c1ce78239.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/7f83badcb925a7e743188041cb6e561fc9b5b642.diff | patch --verbose -p 1
+          curl https://github.com/MetaCubeX/go/commit/83ff9782e024cb328b690cbf0da4e7848a327f4f.diff | patch --verbose -p 1
+
+        # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
+      - name: Revert Golang1.21 commit for Windows7/8
+        if: ${{ runner.os == 'Windows' && matrix.go-version == '1.21' }}
+        run: |
+          cd $(go env GOROOT)
+          curl https://github.com/golang/go/commit/9e43850a3298a9b8b1162ba0033d4c53f8637571.diff | patch --verbose -R -p 1
+
+      - name: Test
+        run: go test ./... -v -count=1
+
+      - name: Test with tag with_gvisor
+        run: go test ./... -v -count=1 -tags "with_gvisor"

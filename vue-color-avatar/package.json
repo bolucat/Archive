@@ -14,7 +14,6 @@
     "lint:prettier": "prettier --write \"src/**/*.{md,json,html}\"",
     "lint:style": "stylelint \"src/**/*.{css,scss,vue}\"",
     "lint:ts": "tsc --noEmit --skipLibCheck",
-    "prepare": "husky install",
     "preview": "vite preview",
     "test": "jest"
   },
@@ -46,9 +45,7 @@
     "eslint-plugin-prettier": "^4.0.0",
     "eslint-plugin-simple-import-sort": "^7.0.0",
     "eslint-plugin-vue": "^8.4.1",
-    "husky": "^7.0.2",
     "jest": "^27.2.5",
-    "lint-staged": "^12.3.3",
     "prettier": "^2.5.1",
     "rollup-plugin-visualizer": "^5.5.2",
     "sass": "^1.49.7",
@@ -63,5 +60,8 @@
     "vite": "^3.0.3",
     "vue-tsc": "^0.31.2"
   },
-  "packageManager": "pnpm@10.8.0+sha512.0e82714d1b5b43c74610193cb20734897c1d00de89d0e18420aebc5977fa13d780a9cb05734624e81ebd81cc876cd464794850641c48b9544326b5622ca29971"
+  "packageManager": "pnpm@9.15.3",
+  "engines": {
+    "node": ">=18"
+  }
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
 	"strconv"
 	"sync"
 
@@ -62,7 +61,7 @@ func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 	if err != nil {
 		return nil, fmt.Errorf("dial to %s failed: %w", metadata.UDPAddr(), err)
 	}
-	return newPacketConn(CN.NewRefPacketConn(CN.NewThreadSafePacketConn(mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(c))), m), m), nil
+	return newPacketConn(CN.NewThreadSafePacketConn(mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(c))), m), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
@@ -141,16 +140,17 @@ func NewMieru(option MieruOption) (*Mieru, error) {
 		option: &option,
 		client: c,
 	}
-	runtime.SetFinalizer(outbound, closeMieru)
 	return outbound, nil
 }
 
-func closeMieru(m *Mieru) {
+// Close implements C.ProxyAdapter
+func (m *Mieru) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.client != nil && m.client.IsRunning() {
-		m.client.Stop()
+		return m.client.Stop()
 	}
+	return nil
 }
 
 func metadataToMieruNetAddrSpec(metadata *C.Metadata) mierumodel.NetAddrSpec {

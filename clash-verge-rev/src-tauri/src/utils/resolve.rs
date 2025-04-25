@@ -6,17 +6,22 @@ use crate::{
     logging, logging_error,
     module::lightweight,
     process::AsyncHandler,
-    utils::{error, init, logging::Type, server},
+    utils::{dirs, error, init, logging::Type, server},
     wrap_err,
 };
 use anyhow::{bail, Result};
 use once_cell::sync::OnceCell;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use percent_encoding::percent_decode_str;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_yaml::Mapping;
-use std::{net::TcpListener, sync::Arc};
-use tauri::{App, Manager};
+use std::{
+    net::TcpListener,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tauri::{App, Emitter, Manager};
 
 use tauri::Url;
 //#[cfg(not(target_os = "linux"))]
@@ -28,8 +33,26 @@ pub static VERSION: OnceCell<String> = OnceCell::new();
 static STATE_WIDTH: OnceCell<u32> = OnceCell::new();
 static STATE_HEIGHT: OnceCell<u32> = OnceCell::new();
 
+// 定义默认窗口尺寸常量
+const DEFAULT_WIDTH: u32 = 900;
+const DEFAULT_HEIGHT: u32 = 700;
+
 // 添加全局UI准备就绪标志
 static UI_READY: OnceCell<Arc<RwLock<bool>>> = OnceCell::new();
+
+// 窗口创建锁，防止并发创建窗口
+static WINDOW_CREATING: OnceCell<Mutex<(bool, Instant)>> = OnceCell::new();
+
+// 定义窗口状态结构体
+#[derive(Debug, Serialize, Deserialize)]
+struct WindowState {
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+fn get_window_creating_lock() -> &'static Mutex<(bool, Instant)> {
+    WINDOW_CREATING.get_or_init(|| Mutex::new((false, Instant::now())))
+}
 
 fn get_ui_ready() -> &'static Arc<RwLock<bool>> {
     UI_READY.get_or_init(|| Arc::new(RwLock::new(false)))
@@ -39,6 +62,13 @@ fn get_ui_ready() -> &'static Arc<RwLock<bool>> {
 pub fn mark_ui_ready() {
     let mut ready = get_ui_ready().write();
     *ready = true;
+}
+
+// 重置UI就绪状态
+pub fn reset_ui_ready() {
+    let mut ready = get_ui_ready().write();
+    *ready = false;
+    logging!(info, Type::Window, true, "UI就绪状态已重置");
 }
 
 pub fn find_unused_port() -> Result<u16> {
@@ -141,52 +171,83 @@ pub async fn resolve_reset_async() {
     }
 }
 
+/// 窗口创建锁守卫
+struct WindowCreateGuard;
+
+impl Drop for WindowCreateGuard {
+    fn drop(&mut self) {
+        let mut lock = get_window_creating_lock().lock();
+        lock.0 = false;
+        logging!(info, Type::Window, true, "窗口创建过程已完成，释放锁");
+    }
+}
+
 /// create main window
 pub fn create_window(is_showup: bool) {
-    // 打印 .window-state.json 文件路径
-    if let Ok(app_dir) = crate::utils::dirs::app_home_dir() {
-        let window_state_path = app_dir.join(".window-state.json");
+    // 尝试获取窗口创建锁
+    let mut creating_lock = get_window_creating_lock().lock();
+    let (is_creating, last_create_time) = *creating_lock;
+    let now = Instant::now();
+
+    // 检查是否有其他线程正在创建窗口，防止短时间内多次创建窗口导致竞态条件
+    if is_creating && now.duration_since(last_create_time) < Duration::from_secs(2) {
         logging!(
-            info,
+            warn,
             Type::Window,
             true,
-            "窗口状态文件路径: {:?}",
-            window_state_path
+            "另一个窗口创建过程正在进行中，跳过本次创建请求"
         );
+        return;
+    }
 
-        // 尝试读取窗口状态文件内容
-        if window_state_path.exists() {
-            match std::fs::read_to_string(&window_state_path) {
+    *creating_lock = (true, now);
+    drop(creating_lock);
+
+    // 创建窗口锁守卫结束时自动释放锁
+    let _guard = WindowCreateGuard;
+
+    // 打印 .window-state.json 文件路径
+    let window_state_file = dirs::app_home_dir()
+        .ok()
+        .map(|dir| dir.join(".window-state.json"));
+    logging!(
+        info,
+        Type::Window,
+        true,
+        "窗口状态文件路径: {:?}",
+        window_state_file
+    );
+
+    // 从文件加载窗口状态
+    if let Some(window_state_file_path) = window_state_file {
+        if window_state_file_path.exists() {
+            match std::fs::read_to_string(&window_state_file_path) {
                 Ok(content) => {
-                    logging!(info, Type::Window, true, "窗口状态文件内容: {}", content);
+                    logging!(
+                        debug,
+                        Type::Window,
+                        true,
+                        "读取窗口状态文件内容成功: {} 字节",
+                        content.len()
+                    );
 
-                    // 解析窗口状态文件
-                    match serde_json::from_str::<serde_json::Value>(&content) {
-                        Ok(state_json) => {
-                            if let Some(main_window) = state_json.get("main") {
-                                let width = main_window
-                                    .get("width")
-                                    .and_then(|v| v.as_u64())
-                                    .unwrap_or(0)
-                                    as u32;
-                                let height = main_window
-                                    .get("height")
-                                    .and_then(|v| v.as_u64())
-                                    .unwrap_or(0)
-                                    as u32;
+                    match serde_json::from_str::<WindowState>(&content) {
+                        Ok(window_state) => {
+                            logging!(
+                                info,
+                                Type::Window,
+                                true,
+                                "成功解析窗口状态: width={:?}, height={:?}",
+                                window_state.width,
+                                window_state.height
+                            );
 
-                                logging!(
-                                    info,
-                                    Type::Window,
-                                    true,
-                                    "窗口状态文件中的尺寸: {}x{}",
-                                    width,
-                                    height
-                                );
-
-                                // 保存读取到的尺寸，用于后续检查
-                                STATE_WIDTH.get_or_init(|| width);
-                                STATE_HEIGHT.get_or_init(|| height);
+                            // 存储窗口状态以供后续使用
+                            if let Some(width) = window_state.width {
+                                STATE_WIDTH.set(width).ok();
+                            }
+                            if let Some(height) = window_state.height {
+                                STATE_HEIGHT.set(height).ok();
                             }
                         }
                         Err(e) => {
@@ -219,78 +280,88 @@ pub fn create_window(is_showup: bool) {
     #[cfg(target_os = "macos")]
     AppHandleManager::global().set_activation_policy_regular();
 
-    if let Some(window) = handle::Handle::global().get_window() {
-        logging!(
-            info,
-            Type::Window,
-            true,
-            "Found existing window, attempting to restore visibility"
-        );
-
-        if window.is_minimized().unwrap_or(false) {
-            logging!(
-                info,
-                Type::Window,
-                true,
-                "Window is minimized, restoring window state"
-            );
-            let _ = window.unminimize();
-        }
-        let _ = window.show();
-        let _ = window.set_focus();
-        return;
+    // 检查是否从轻量模式恢复
+    let from_lightweight = crate::module::lightweight::is_in_lightweight_mode();
+    if from_lightweight {
+        logging!(info, Type::Window, true, "从轻量模式恢复窗口");
+        crate::module::lightweight::exit_lightweight_mode();
     }
 
-    // 定义默认窗口大小
-    const DEFAULT_WIDTH: u32 = 900;
-    const DEFAULT_HEIGHT: u32 = 700;
-    const MIN_WIDTH: u32 = 650;
-    const MIN_HEIGHT: u32 = 580;
+    if let Some(window) = handle::Handle::global().get_window() {
+        logging!(info, Type::Window, true, "Found existing window");
 
-    #[cfg(target_os = "windows")]
-    let window = tauri::WebviewWindowBuilder::new(
-                &app_handle,
-                "main".to_string(),
-                tauri::WebviewUrl::App("index.html".into()),
-            )
-            .title("Clash Verge")
-            .inner_size(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64)
-            .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-            .decorations(false)
-            .maximizable(true)
-            .additional_browser_args("--enable-features=msWebView2EnableDraggableRegions --disable-features=OverscrollHistoryNavigation,msExperimentalScrolling")
-            .transparent(true)
-            .shadow(true)
-            .visible(false) // 初始不可见，等待UI加载完成后再显示
-            .build();
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.unminimize();
+        }
 
+        if from_lightweight {
+            // 从轻量模式恢复需要销毁旧窗口以重建
+            logging!(info, Type::Window, true, "销毁旧窗口以重建新窗口");
+            let _ = window.close();
+
+            // 添加短暂延迟确保窗口正确关闭
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        } else {
+            // 普通情况直接显示窗口
+            let _ = window.show();
+            let _ = window.set_focus();
+            return;
+        }
+    }
+
+    let width = STATE_WIDTH.get().copied().unwrap_or(DEFAULT_WIDTH);
+    let height = STATE_HEIGHT.get().copied().unwrap_or(DEFAULT_HEIGHT);
+
+    logging!(
+        info,
+        Type::Window,
+        true,
+        "Initializing new window with size: {}x{}",
+        width,
+        height
+    );
+
+    // 根据不同平台创建不同配置的窗口
     #[cfg(target_os = "macos")]
-    let window = tauri::WebviewWindowBuilder::new(
-        &app_handle,
-        "main".to_string(),
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .decorations(true)
-    .hidden_title(true)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .inner_size(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64)
-    .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-    .visible(false) // 初始不可见，等待UI加载完成后再显示
-    .build();
+    let win_builder = {
+        // 基本配置
+        let builder = tauri::WebviewWindowBuilder::new(
+            &app_handle,
+            "main",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .title("Clash Verge")
+        .center()
+        .decorations(true)
+        .hidden_title(true) // 隐藏标题文本
+        .fullscreen(false)
+        .inner_size(width as f64, height as f64)
+        .min_inner_size(520.0, 520.0)
+        .visible(false);
 
-    #[cfg(target_os = "linux")]
-    let window = tauri::WebviewWindowBuilder::new(
+        // 尝试设置标题栏样式
+        // 注意：根据Tauri版本不同，此API可能有变化
+        // 如果编译出错，请注释掉下面这行
+        let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+
+        builder
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    let win_builder = tauri::WebviewWindowBuilder::new(
         &app_handle,
-        "main".to_string(),
+        "main",
         tauri::WebviewUrl::App("index.html".into()),
     )
     .title("Clash Verge")
-    .decorations(false)
-    .inner_size(DEFAULT_WIDTH as f64, DEFAULT_HEIGHT as f64)
-    .min_inner_size(MIN_WIDTH as f64, MIN_HEIGHT as f64)
-    .transparent(true)
-    .visible(false) // 初始不可见，等待UI加载完成后再显示
-    .build();
+    .center()
+    .fullscreen(false)
+    .inner_size(width as f64, height as f64)
+    .min_inner_size(520.0, 520.0)
+    .visible(false)
+    .decorations(false);
+
+    let window = win_builder.build();
 
     match window {
         Ok(window) => {
@@ -321,117 +392,100 @@ pub fn create_window(is_showup: bool) {
                     DEFAULT_HEIGHT
                 );
 
-                if state_width < DEFAULT_WIDTH || state_height < DEFAULT_HEIGHT {
+                // 优化窗口大小设置
+                if size.width < state_width || size.height < state_height {
                     logging!(
                         info,
                         Type::Window,
                         true,
-                        "状态文件窗口尺寸小于默认值，将使用默认尺寸: {}x{}",
-                        DEFAULT_WIDTH,
-                        DEFAULT_HEIGHT
+                        "强制设置窗口尺寸: {}x{}",
+                        state_width,
+                        state_height
                     );
 
-                    let _ = window.set_size(tauri::LogicalSize::new(
-                        DEFAULT_WIDTH as f64,
-                        DEFAULT_HEIGHT as f64,
-                    ));
-                } else if size.width != state_width || size.height != state_height {
-                    // 如果API报告的尺寸与状态文件不一致，记录日志
-                    logging!(
-                        warn,
-                        Type::Window,
-                        true,
-                        "API报告的窗口尺寸与状态文件不一致"
-                    );
+                    // 尝试不同的方式设置窗口大小
+                    let _ = window.set_size(tauri::PhysicalSize {
+                        width: state_width,
+                        height: state_height,
+                    });
+
+                    // 关键：等待短暂时间让窗口尺寸生效
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+
+                    // 再次检查窗口尺寸
+                    if let Ok(new_size) = window.inner_size() {
+                        logging!(
+                            info,
+                            Type::Window,
+                            true,
+                            "设置后API报告的窗口尺寸: {}x{}",
+                            new_size.width,
+                            new_size.height
+                        );
+                    }
                 }
             }
 
-            AsyncHandler::spawn(move || async move {
-                use tauri::Emitter;
+            // 标记此窗口是否从轻量模式恢复
+            let was_from_lightweight = from_lightweight;
 
-                logging!(info, Type::Window, true, "UI gets ready.");
+            AsyncHandler::spawn(move || async move {
+                // 处理启动完成
                 handle::Handle::global().mark_startup_completed();
 
                 if let Some(window) = app_handle_clone.get_webview_window("main") {
-                    // 检查窗口大小
-                    match window.inner_size() {
-                        Ok(size) => {
-                            let width = size.width;
-                            let height = size.height;
-
-                            let state_width = STATE_WIDTH.get().copied().unwrap_or(DEFAULT_WIDTH);
-                            let state_height =
-                                STATE_HEIGHT.get().copied().unwrap_or(DEFAULT_HEIGHT);
-
-                            logging!(
-                                info,
-                                Type::Window,
-                                true,
-                                "异步任务中窗口尺寸: {}x{}, 状态文件尺寸: {}x{}",
-                                width,
-                                height,
-                                state_width,
-                                state_height
-                            );
-                        }
-                        Err(e) => {
-                            logging!(
-                                error,
-                                Type::Window,
-                                true,
-                                "Failed to get window size: {:?}",
-                                e
-                            );
-                        }
-                    }
-
                     // 发送启动完成事件
                     let _ = window.emit("verge://startup-completed", ());
 
                     if is_showup {
-                        // 启动一个任务等待UI准备就绪再显示窗口
                         let window_clone = window.clone();
-                        AsyncHandler::spawn(move || async move {
-                            async fn wait_for_ui_ready() {
+
+                        // 从轻量模式恢复时使用较短的超时，避免卡死
+                        let timeout_seconds = if was_from_lightweight {
+                            // 从轻量模式恢复只等待2秒，确保不会卡死
+                            2
+                        } else {
+                            5
+                        };
+
+                        // 使用普通的等待方式替代事件监听，简化实现
+                        let wait_result =
+                            tokio::time::timeout(Duration::from_secs(timeout_seconds), async {
                                 while !*get_ui_ready().read() {
-                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                    tokio::time::sleep(Duration::from_millis(100)).await;
                                 }
-                            }
+                            })
+                            .await;
 
-                            match tokio::time::timeout(
-                                std::time::Duration::from_secs(5),
-                                wait_for_ui_ready(),
-                            )
-                            .await
-                            {
-                                Ok(_) => {
-                                    logging!(info, Type::Window, true, "UI准备就绪，显示窗口");
-                                }
-                                Err(_) => {
-                                    logging!(
-                                        warn,
-                                        Type::Window,
-                                        true,
-                                        "等待UI准备就绪超时，强制显示窗口"
-                                    );
-                                }
+                        // 根据结果处理
+                        match wait_result {
+                            Ok(_) => {
+                                logging!(info, Type::Window, true, "UI就绪，显示窗口");
                             }
+                            Err(_) => {
+                                logging!(
+                                    warn,
+                                    Type::Window,
+                                    true,
+                                    "等待UI就绪超时({}秒)，强制显示窗口",
+                                    timeout_seconds
+                                );
+                                // 强制设置UI就绪状态
+                                *get_ui_ready().write() = true;
+                            }
+                        }
 
-                            let _ = window_clone.show();
-                            let _ = window_clone.set_focus();
-                        });
+                        // 显示窗口
+                        let _ = window_clone.show();
+                        let _ = window_clone.set_focus();
+
+                        logging!(info, Type::Window, true, "窗口创建和显示流程已完成");
                     }
                 }
             });
         }
         Err(e) => {
-            logging!(
-                error,
-                Type::Window,
-                true,
-                "Failed to create window: {:?}",
-                e
-            );
+            logging!(error, Type::Window, true, "Failed to create window: {}", e);
         }
     }
 }

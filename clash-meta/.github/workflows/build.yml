@@ -33,23 +33,25 @@ jobs:
           - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64-compatible }
           - { goos: darwin, goarch: amd64, goamd64: v3, output: amd64 }
 
-          - { goos: linux, goarch: '386', output: '386' }
+          - { goos: linux, goarch: '386', go386: sse2, output: '386', debian: i386, rpm: i386}
+          - { goos: linux, goarch: '386', go386: softfloat, output: '386-softfloat' }
           - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-compatible, test: test }
-          - { goos: linux, goarch: amd64, goamd64: v3, output: amd64 }
-          - { goos: linux, goarch: arm64, output: arm64 }
+          - { goos: linux, goarch: amd64, goamd64: v3, output: amd64, debian: amd64, rpm: x86_64, pacman: x86_64}
+          - { goos: linux, goarch: arm64, output: arm64, debian: arm64, rpm: aarch64, pacman: aarch64}  
           - { goos: linux, goarch: arm, goarm: '5', output: armv5 }
-          - { goos: linux, goarch: arm, goarm: '6', output: armv6 }
-          - { goos: linux, goarch: arm, goarm: '7', output: armv7 }
+          - { goos: linux, goarch: arm, goarm: '6', output: armv6, debian: armel, rpm: armv6hl} 
+          - { goos: linux, goarch: arm, goarm: '7', output: armv7, debian: armhf, rpm: armv7hl, pacman: armv7hl}
           - { goos: linux, goarch: mips, gomips: hardfloat, output: mips-hardfloat }
           - { goos: linux, goarch: mips, gomips: softfloat, output: mips-softfloat }
           - { goos: linux, goarch: mipsle, gomips: hardfloat, output: mipsle-hardfloat }
           - { goos: linux, goarch: mipsle, gomips: softfloat, output: mipsle-softfloat }
           - { goos: linux, goarch: mips64, output: mips64 }
-          - { goos: linux, goarch: mips64le, output: mips64le }
-          - { goos: linux, goarch: loong64, output: loong64-abi1, abi: '1' }
-          - { goos: linux, goarch: loong64, output: loong64-abi2, abi: '2' }
-          - { goos: linux, goarch: riscv64, output: riscv64 }
-          - { goos: linux, goarch: s390x, output: s390x }
+          - { goos: linux, goarch: mips64le, output: mips64le, debian: mips64el, rpm: mips64el }
+          - { goos: linux, goarch: loong64, output: loong64-abi1, abi: '1', debian: loongarch64, rpm: loongarch64 }
+          - { goos: linux, goarch: loong64, output: loong64-abi2, abi: '2', debian: loong64, rpm: loong64 }
+          - { goos: linux, goarch: riscv64, output: riscv64, debian: riscv64, rpm: riscv64 }
+          - { goos: linux, goarch: s390x, output: s390x, debian: s390x, rpm: s390x }
+          - { goos: linux, goarch: ppc64le, output: ppc64le, debian: ppc64el, rpm: ppc64le }
 
           - { goos: windows, goarch: '386', output: '386' }
           - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-compatible }
@@ -125,11 +127,11 @@ jobs:
       with:
         go-version: ${{ matrix.jobs.goversion }}
 
-    - name: Set up Go1.23 loongarch abi1
+    - name: Set up Go1.24 loongarch abi1
       if: ${{ matrix.jobs.goarch == 'loong64' && matrix.jobs.abi == '1' }}
       run: |
-        wget -q https://github.com/MetaCubeX/loongarch64-golang/releases/download/1.23.0/go1.23.0.linux-amd64-abi1.tar.gz
-        sudo tar zxf go1.23.0.linux-amd64-abi1.tar.gz -C /usr/local
+        wget -q https://github.com/MetaCubeX/loongarch64-golang/releases/download/1.24.0/go1.24.0.linux-amd64-abi1.tar.gz
+        sudo tar zxf go1.24.0.linux-amd64-abi1.tar.gz -C /usr/local
         echo "/usr/local/go/bin" >> $GITHUB_PATH
 
       # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
@@ -194,17 +196,16 @@ jobs:
         curl https://github.com/golang/go/commit/9e43850a3298a9b8b1162ba0033d4c53f8637571.diff | patch --verbose -R -p 1
 
     - name: Set variables
-      if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
-      run: echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-      shell: bash
-
-    - name: Set variables
-      if: ${{ github.event_name != 'workflow_dispatch' && github.ref_name == 'Alpha' }}
-      run: echo "VERSION=alpha-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-      shell: bash
-
-    - name: Set Time Variable
       run: |
+        VERSION="${GITHUB_REF_NAME,,}-$(git rev-parse --short HEAD)"
+        PackageVersion="$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | sed 's/v//g' | awk -F '.' '{$NF = $NF + 1; print}' OFS='.').${VERSION/-/.}"
+        if [ -n "${{ github.event.inputs.version }}" ]; then
+          VERSION=${{ github.event.inputs.version }}
+          PackageVersion="${VERSION#v}" >> $GITHUB_ENV
+        fi
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "PackageVersion=${PackageVersion}" >> $GITHUB_ENV
+      
         echo "BUILDTIME=$(date)" >> $GITHUB_ENV
         echo "CGO_ENABLED=0" >> $GITHUB_ENV
         echo "BUILDTAG=-extldflags --static" >> $GITHUB_ENV
@@ -215,7 +216,7 @@ jobs:
       uses: nttld/setup-ndk@v1
       id: setup-ndk
       with:
-        ndk-version: r28-beta1
+        ndk-version: r29-beta1
 
     - name: Set NDK path
       if: ${{ matrix.jobs.goos == 'android' }}
@@ -233,7 +234,7 @@ jobs:
 
     - name: Update CA
       run: |
-        sudo apt-get install ca-certificates
+        sudo apt-get update && sudo apt-get install ca-certificates
         sudo update-ca-certificates
         cp -f /etc/ssl/certs/ca-certificates.crt component/ca/ca-certificates.crt
 
@@ -242,6 +243,7 @@ jobs:
         GOOS: ${{matrix.jobs.goos}}
         GOARCH: ${{matrix.jobs.goarch}}
         GOAMD64: ${{matrix.jobs.goamd64}}
+        GO386: ${{matrix.jobs.go386}}
         GOARM: ${{matrix.jobs.goarm}}
         GOMIPS: ${{matrix.jobs.gomips}}
       run: |
@@ -256,79 +258,51 @@ jobs:
           rm mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}
         fi
 
-    - name: Create DEB package
-      if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') }}
+    - name: Package DEB
+      if: matrix.jobs.debian != ''
       run: |
-        sudo apt-get install dpkg
-        if [ "${{matrix.jobs.abi}}" = "1" ]; then
-          ARCH=loongarch64
-        elif [ "${{matrix.jobs.goarm}}" = "7" ]; then
-          ARCH=armhf
-        elif [ "${{matrix.jobs.goarch}}" = "arm" ]; then
-          ARCH=armel
-        else
-          ARCH=${{matrix.jobs.goarch}}
-        fi
-        PackageVersion=$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | grep -o '"tag_name": "[^"]*' | grep -o '[^"]*$' | sed 's/v//g' )
-        if [ $(git branch | awk -F ' ' '{print $2}') = "Alpha" ]; then
-          PackageVersion="$(echo "${PackageVersion}" | awk -F '.' '{$NF = $NF + 1; print}' OFS='.')-${VERSION}"
-        fi
+        set -xeuo pipefail
+        sudo gem install fpm
+        cp .github/release/.fpm_systemd .fpm
 
-        mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/DEBIAN
-        mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/usr/bin
-        mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/usr/share/licenses/mihomo
-        mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/etc/mihomo
-        mkdir -p mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/lib/systemd/system
+        fpm -t deb \
+          -v "${PackageVersion}" \
+          -p "mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb" \
+          --architecture ${{ matrix.jobs.debian }} \
+          mihomo=/usr/bin/mihomo
 
-        cp mihomo mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/usr/bin/
-        cp LICENSE mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/usr/share/licenses/mihomo/
-        cp .github/{mihomo.service,mihomo@.service} mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/lib/systemd/system/
-
-        cat > mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/etc/mihomo/config.yaml <<EOF
-        mixed-port: 7890
-        EOF
-
-        cat > mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/DEBIAN/conffiles <<EOF
-        /etc/mihomo/config.yaml
-        EOF
-
-        cat > mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}/DEBIAN/control <<EOF
-        Package: mihomo
-        Version: ${PackageVersion}
-        Section:
-        Priority: extra
-        Architecture: ${ARCH}
-        Maintainer: MetaCubeX <none@example.com>
-        Homepage: https://wiki.metacubex.one/
-        Description: The universal proxy platform.
-        EOF
-
-        dpkg-deb -Z gzip --build mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}
-
-    - name: Convert DEB to RPM
-      if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') }}
+    - name: Package RPM
+      if: matrix.jobs.rpm != ''
       run: |
-        sudo apt-get install -y alien
-        alien --to-rpm --scripts mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb
-        mv mihomo*.rpm mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.rpm
+        set -xeuo pipefail
+        sudo gem install fpm
+        cp .github/release/.fpm_systemd .fpm
 
-    # - name: Convert DEB to PKG
-    #   if: ${{ matrix.jobs.goos == 'linux' && !contains(matrix.jobs.goarch, 'mips') && !contains(matrix.jobs.goarch, 'loong64') }}
-    #   run: |
-    #     docker pull archlinux
-    #     docker run --rm -v ./:/mnt archlinux bash -c "
-    #       pacman -Syu pkgfile base-devel --noconfirm
-    #       curl -L https://github.com/helixarch/debtap/raw/master/debtap > /usr/bin/debtap
-    #       chmod 755 /usr/bin/debtap
-    #       debtap -u 
-    #       debtap -Q /mnt/mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.deb
-    #     "
-    #     mv mihomo*.pkg.tar.zst mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.pkg.tar.zst
+        fpm -t rpm \
+          -v "${PackageVersion}" \
+          -p "mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.rpm" \
+          --architecture ${{ matrix.jobs.rpm }} \
+          mihomo=/usr/bin/mihomo
+
+    - name: Package Pacman
+      if: matrix.jobs.pacman != ''
+      run: |
+        set -xeuo pipefail
+        sudo gem install fpm
+        sudo apt-get update && sudo apt-get install -y libarchive-tools
+        cp .github/release/.fpm_systemd .fpm
+
+        fpm -t pacman \
+          -v "${PackageVersion}" \
+          -p "mihomo-${{matrix.jobs.goos}}-${{matrix.jobs.output}}-${VERSION}.pkg.tar.zst" \
+          --architecture ${{ matrix.jobs.pacman }} \
+          mihomo=/usr/bin/mihomo
 
     - name: Save version
       run: |
         echo ${VERSION} > version.txt
       shell: bash
+
     - name: Archive production artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -337,6 +311,7 @@ jobs:
           mihomo*.gz
           mihomo*.deb
           mihomo*.rpm
+          mihomo*.pkg.tar.zst
           mihomo*.zip
           version.txt
           checksums.txt
