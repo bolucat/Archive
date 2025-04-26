@@ -268,13 +268,10 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 		return nil
 	})
 	err := group.Run(ctx)
-	if len(response4) > 0 || len(response6) > 0 {
-		return sortAddresses(response4, response6, options.Strategy), nil
-	} else if err != nil {
+	if len(response4) == 0 && len(response6) == 0 {
 		return nil, err
-	} else {
-		return nil, RcodeError(dns.RcodeNameError)
 	}
+	return sortAddresses(response4, response6, options.Strategy), nil
 }
 
 func (c *Client) ClearCache() {

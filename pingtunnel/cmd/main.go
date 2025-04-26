@@ -4,8 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"github.com/esrrhs/gohome/common"
-	"github.com/esrrhs/gohome/geoip"
 	"github.com/esrrhs/gohome/loggo"
+	"github.com/esrrhs/gohome/thirdparty"
 	"github.com/esrrhs/pingtunnel"
 	"net"
 	"net/http"
@@ -146,7 +146,7 @@ func main() {
 	s5filter := flag.String("s5filter", "", "sock5 filter")
 	s5ftfile := flag.String("s5ftfile", "GeoLite2-Country.mmdb", "sock5 filter file")
 	flag.Usage = func() {
-		fmt.Printf(usage)
+		fmt.Print(usage)
 	}
 
 	flag.Parse()
@@ -215,7 +215,7 @@ func main() {
 		}
 
 		if len(*s5filter) > 0 {
-			err := geoip.Load(*s5ftfile)
+			err := thirdparty.LoadGeoip2(*s5ftfile)
 			if err != nil {
 				loggo.Error("Load Sock5 ip file ERROR: %s", err.Error())
 				return
@@ -231,7 +231,7 @@ func main() {
 				return false
 			}
 
-			ret, err := geoip.GetCountryIsoCode(taddr.IP.String())
+			ret, err := thirdparty.GetGeoipCountryIsoCode(taddr.IP.String())
 			if err != nil {
 				return false
 			}
