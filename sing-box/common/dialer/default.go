@@ -351,7 +351,7 @@ func (d *DefaultDialer) ListenPacketCompat(network, address string) (net.PacketC
 		}
 		return nil
 	})
-	return d.udpListener.ListenPacket(context.Background(), network, address)
+	return udpListener.ListenPacket(context.Background(), network, address)
 }
 
 func trackConn(conn net.Conn, err error) (net.Conn, error) {
