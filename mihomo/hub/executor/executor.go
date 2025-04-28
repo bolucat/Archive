@@ -375,9 +375,8 @@ func hcCompatibleProvider(proxyProviders map[string]provider.ProxyProvider) {
 				}
 			}()
 		}
-
 	}
-
+	wg.Wait()
 }
 
 func updateSniffer(snifferConfig *sniffer.Config) {

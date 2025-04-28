@@ -56,10 +56,11 @@ func NewQUIC(ctx context.Context, logger log.ContextLogger, tag string, options 
 		tlsConfig.SetNextProtos([]string{"doq"})
 	}
 	serverAddr := options.DNSServerAddressOptions.Build()
-	if !serverAddr.Addr.IsValid() {
-		return nil, E.New("invalid server address: ", serverAddr)
-	} else if serverAddr.Port == 0 {
+	if serverAddr.Port == 0 {
 		serverAddr.Port = 853
+	}
+	if !serverAddr.IsValid() {
+		return nil, E.New("invalid server address: ", serverAddr)
 	}
 	return &Transport{
 		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeQUIC, tag, options.RemoteDNSServerOptions),
