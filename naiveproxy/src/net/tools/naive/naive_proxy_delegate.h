@@ -54,6 +54,11 @@ class NaiveProxyDelegate : public ProxyDelegate {
   void SetProxyResolutionService(
       ProxyResolutionService* proxy_resolution_service) override {}
 
+  bool AliasRequiresProxyOverride(
+      const std::string scheme,
+      const std::vector<std::string>& dns_aliases,
+      const net::NetworkAnonymizationKey& network_anonymization_key) override;
+
   // Returns empty if the padding type has not been negotiated.
   std::optional<PaddingType> GetProxyChainPaddingType(
       const ProxyChain& proxy_chain);

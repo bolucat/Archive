@@ -103,14 +103,19 @@ class MoqtSessionPeer {
     subscribe.full_track_name = publisher->GetTrackName();
     subscribe.track_alias = track_alias;
     subscribe.subscribe_id = subscribe_id;
-    subscribe.start_group = start_group;
-    subscribe.start_object = start_object;
+    subscribe.start = FullSequence(start_group, start_object);
     subscribe.subscriber_priority = 0x80;
     session->published_subscriptions_.emplace(
         subscribe_id, std::make_unique<MoqtSession::PublishedSubscription>(
                           session, std::move(publisher), subscribe,
                           /*monitoring_interface=*/nullptr));
     return session->published_subscriptions_[subscribe_id].get();
+  }
+
+  static bool InSubscriptionWindow(MoqtObjectListener* subscription,
+                                   FullSequence sequence) {
+    return static_cast<MoqtSession::PublishedSubscription*>(subscription)
+        ->InWindow(sequence);
   }
 
   static MoqtObjectListener* GetSubscription(MoqtSession* session,
@@ -180,9 +185,10 @@ class MoqtSessionPeer {
       MoqtSession* session, webtransport::Stream* stream) {
     MoqtFetch fetch_message = {
         0,
-        FullTrackName{"foo", "bar"},
         128,
         std::nullopt,
+        std::nullopt,
+        FullTrackName{"foo", "bar"},
         FullSequence{0, 0},
         4,
         std::nullopt,
@@ -199,7 +205,7 @@ class MoqtSessionPeer {
     // Initialize the fetch task
     fetch->OnFetchResult(
         FullSequence{4, 10}, absl::OkStatus(),
-        [=, session_ptr = session, fetch_id = fetch_message.subscribe_id]() {
+        [=, session_ptr = session, fetch_id = fetch_message.fetch_id]() {
           session_ptr->CancelFetch(fetch_id);
         });
     ;
@@ -223,6 +229,11 @@ class MoqtSessionPeer {
   static quic::QuicAlarm* GetAlarm(webtransport::StreamVisitor* visitor) {
     return static_cast<MoqtSession::OutgoingDataStream*>(visitor)
         ->delivery_timeout_alarm_.get();
+  }
+
+  static quic::QuicAlarm* GetSubscribeDoneAlarm(
+      SubscribeRemoteTrack* subscription) {
+    return subscription->subscribe_done_alarm_.get();
   }
 
   static quic::QuicAlarm* GetGoAwayTimeoutAlarm(MoqtSession* session) {

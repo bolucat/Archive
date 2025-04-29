@@ -204,8 +204,8 @@ int RedirectResolver::HandleReadResult(int result) {
     record.klass = dns_protocol::kClassIN;
     record.ttl = kResolutionTtl;
     uint32_t addr = by_name->second->addr;
-    record.SetOwnedRdata(IPAddressToPackedString(
-        IPAddress(addr >> 24, addr >> 16, addr >> 8, addr)));
+    record.SetOwnedRdata(
+        IPAddress(addr >> 24, addr >> 16, addr >> 8, addr).bytes());
     response = DnsResponse(query.id(), /*is_authoritative=*/false,
                            /*answers=*/{std::move(record)},
                            /*authority_records=*/{}, /*additional_records=*/{},

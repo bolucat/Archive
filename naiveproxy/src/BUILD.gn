@@ -8,6 +8,7 @@
 # you add a new build file, there must be some path of dependencies from this
 # file to your new one or GN won't know about it.
 
+import("//build/config/cast.gni")
 import("//build/config/compiler/compiler.gni")
 import("//build/config/cronet/config.gni")
 import("//build/config/dcheck_always_on.gni")
@@ -75,9 +76,5 @@ _lines = [
            "Generated during 'gn gen' by //BUILD.gn.",
            "",
          ] + build_gn_logs
-
-# GN evaluates each .gn file once per toolchain, so restricting to default
-# toolchain will ensure write_file() is called only once.
-assert(current_toolchain == default_toolchain)
 
 write_file("$root_build_dir/gn_logs.txt", _lines)

@@ -169,6 +169,13 @@ std::optional<PaddingType> NaiveProxyDelegate::GetProxyChainPaddingType(
   return padding_type_by_server_[proxy_chain.Last()];
 }
 
+bool NaiveProxyDelegate::AliasRequiresProxyOverride(
+    const std::string scheme,
+    const std::vector<std::string>& dns_aliases,
+    const net::NetworkAnonymizationKey& network_anonymization_key) {
+  return false;
+}
+
 PaddingDetectorDelegate::PaddingDetectorDelegate(
     NaiveProxyDelegate* naive_proxy_delegate,
     const ProxyChain& proxy_chain,

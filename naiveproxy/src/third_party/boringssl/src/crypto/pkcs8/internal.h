@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef OPENSSL_HEADER_PKCS8_INTERNAL_H
-#define OPENSSL_HEADER_PKCS8_INTERNAL_H
+#ifndef OPENSSL_HEADER_CRYPTO_PKCS8_INTERNAL_H
+#define OPENSSL_HEADER_CRYPTO_PKCS8_INTERNAL_H
 
 #include <openssl/base.h>
 #include <openssl/stack.h>
@@ -100,4 +100,4 @@ int pkcs12_iterations_acceptable(uint64_t iterations);
 }  // extern C
 #endif
 
-#endif  // OPENSSL_HEADER_PKCS8_INTERNAL_H
+#endif  // OPENSSL_HEADER_CRYPTO_PKCS8_INTERNAL_H

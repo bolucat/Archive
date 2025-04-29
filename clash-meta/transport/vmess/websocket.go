@@ -351,31 +351,26 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 		}
 		if config.ServerName == "" && !config.InsecureSkipVerify { // users must set either ServerName or InsecureSkipVerify in the config.
 			config = config.Clone()
-			config.ServerName = uri.Host
+			config.ServerName = c.Host
 		}
 
-		clientFingerprint := c.ClientFingerprint
-		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
-			clientFingerprint = tlsC.GetGlobalFingerprint()
-		}
-		if len(clientFingerprint) != 0 {
-			if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
-				utlsConn := tlsC.UClient(conn, tlsC.UConfig(config), fingerprint)
-				if err = tlsC.BuildWebsocketHandshakeState(utlsConn); err != nil {
-					return nil, fmt.Errorf("parse url %s error: %w", c.Path, err)
-				}
-				conn = utlsConn
+		if clientFingerprint, ok := tlsC.GetFingerprint(c.ClientFingerprint); ok {
+			tlsConn := tlsC.UClient(conn, tlsC.UConfig(config), clientFingerprint)
+			if err = tlsC.BuildWebsocketHandshakeState(tlsConn); err != nil {
+				return nil, fmt.Errorf("parse url %s error: %w", c.Path, err)
 			}
-		} else {
-			conn = tls.Client(conn, config)
-		}
-
-		if tlsConn, ok := conn.(interface {
-			HandshakeContext(ctx context.Context) error
-		}); ok {
-			if err = tlsConn.HandshakeContext(ctx); err != nil {
+			err = tlsConn.HandshakeContext(ctx)
+			if err != nil {
 				return nil, err
 			}
+			conn = tlsConn
+		} else {
+			tlsConn := tls.Client(conn, config)
+			err = tlsConn.HandshakeContext(ctx)
+			if err != nil {
+				return nil, err
+			}
+			conn = tlsConn
 		}
 	}
 

@@ -10,7 +10,6 @@ import (
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/metacubex/sing-shadowtls"
-	utls "github.com/metacubex/utls"
 	"golang.org/x/exp/slices"
 )
 
@@ -67,26 +66,21 @@ func uTLSHandshakeFunc(config *tls.Config, clientFingerprint string) shadowtls.T
 	return func(ctx context.Context, conn net.Conn, sessionIDGenerator shadowtls.TLSSessionIDGeneratorFunc) error {
 		tlsConfig := tlsC.UConfig(config)
 		tlsConfig.SessionIDGenerator = sessionIDGenerator
-		clientFingerprint := clientFingerprint
-		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
-			clientFingerprint = tlsC.GetGlobalFingerprint()
-		}
 		if config.MaxVersion == tls.VersionTLS12 { // for ShadowTLS v1
-			clientFingerprint = ""
+			tlsConn := tlsC.Client(conn, tlsConfig)
+			return tlsConn.HandshakeContext(ctx)
 		}
-		if len(clientFingerprint) != 0 {
-			if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
-				tlsConn := tlsC.UClient(conn, tlsConfig, fingerprint)
-				if slices.Equal(tlsConfig.NextProtos, WsALPN) {
-					err := tlsC.BuildWebsocketHandshakeState(tlsConn)
-					if err != nil {
-						return err
-					}
+		if clientFingerprint, ok := tlsC.GetFingerprint(clientFingerprint); ok {
+			tlsConn := tlsC.UClient(conn, tlsConfig, clientFingerprint)
+			if slices.Equal(tlsConfig.NextProtos, WsALPN) {
+				err := tlsC.BuildWebsocketHandshakeState(tlsConn)
+				if err != nil {
+					return err
 				}
-				return tlsConn.HandshakeContext(ctx)
 			}
+			return tlsConn.HandshakeContext(ctx)
 		}
-		tlsConn := utls.Client(conn, tlsConfig)
+		tlsConn := tlsC.Client(conn, tlsConfig)
 		return tlsConn.HandshakeContext(ctx)
 	}
 }

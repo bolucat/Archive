@@ -3,9 +3,12 @@
 *_unittest.mm
 *_unittest.nc
 *_perftest.cc
+*_fuzztest.cc
 *[!s]_test.cc
+*fuzzer.*
+*fuzz/*
+*fuzzing/*
 *[a-hj-z]s_test.cc
-*fuzz*
 *org/chromium*
 *.golden
 *.javap*

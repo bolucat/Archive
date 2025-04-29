@@ -11,10 +11,14 @@ import (
 
 // NewFingerprintVerifier returns a function that verifies whether a certificate's SHA-256 fingerprint matches the given one.
 func NewFingerprintVerifier(fingerprint string) (func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error, error) {
+	switch fingerprint {
+	case "chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq", "random", "randomized": // WTF???
+		return nil, fmt.Errorf("`fingerprint` is used for TLS certificate pinning. If you need to specify the browser fingerprint, use `client-fingerprint`")
+	}
 	fingerprint = strings.TrimSpace(strings.Replace(fingerprint, ":", "", -1))
 	fpByte, err := hex.DecodeString(fingerprint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fingerprint string decode error: %w", err)
 	}
 
 	if len(fpByte) != 32 {

@@ -88,6 +88,11 @@ struct SimulationParameters {
   QuicByteCount network_queue_size = 0;
   // Duration for which the simulation is run.
   QuicTimeDelta duration = QuicTimeDelta::FromSeconds(60);
+  // Packet aggregation timeout.  If zero, this will be set to the quarter of
+  // min RTT.
+  QuicTimeDelta aggregation_timeout = QuicTimeDelta::Zero();
+  // Packet aggregation threshold.  If zero, packet aggregation is disabled.
+  QuicByteCount aggregation_threshold = 0;
 
   // Count frames as useful only if they were received `deadline` after which
   // they were generated.
@@ -311,6 +316,8 @@ class ObjectReceiver : public SubscribeRemoteTrack::Visitor {
     OnFullObject(sequence, object);
   }
 
+  void OnSubscribeDone(FullTrackName /*full_track_name*/) override {}
+
   void OnFullObject(FullSequence sequence, absl::string_view payload) {
     QUICHE_CHECK_GE(payload.size(), 8u);
     quiche::QuicheDataReader reader(payload);
@@ -389,6 +396,14 @@ class MoqtSimulator {
         adjuster_(simulator_.GetClock(), client_endpoint_.session()->session(),
                   &generator_),
         parameters_(parameters) {
+    if (parameters.aggregation_threshold > 0) {
+      QuicTimeDelta timeout = parameters.aggregation_timeout;
+      if (timeout.IsZero()) {
+        timeout = parameters.min_rtt * 0.25;
+      }
+      switch_.port_queue(2)->EnableAggregation(parameters.aggregation_threshold,
+                                               timeout);
+    }
     client_endpoint_.RecordTrace();
   }
 
@@ -406,24 +421,10 @@ class MoqtSimulator {
 
   // Runs the simulation and outputs the results to stdout.
   void Run() {
-    // Timeout for establishing the connection.
-    constexpr QuicTimeDelta kConnectionTimeout = QuicTimeDelta::FromSeconds(1);
-
     // Perform the QUIC and the MoQT handshake.
     client_session()->set_support_object_acks(true);
-    client_session()->callbacks().session_established_callback = [this] {
-      client_established_ = true;
-    };
     server_session()->set_support_object_acks(true);
-    server_session()->callbacks().session_established_callback = [this] {
-      server_established_ = true;
-    };
-    client_endpoint_.quic_session()->CryptoConnect();
-    simulator_.RunUntilOrTimeout(
-        [&]() { return client_established_ && server_established_; },
-        kConnectionTimeout);
-    QUICHE_CHECK(client_established_) << "Client failed to establish session";
-    QUICHE_CHECK(server_established_) << "Server failed to establish session";
+    RunHandshakeOrDie(simulator_, client_endpoint_, server_endpoint_);
 
     generator_.queue()->SetDeliveryOrder(parameters_.delivery_order);
     client_session()->set_publisher(&publisher_);
@@ -446,8 +447,8 @@ class MoqtSimulator {
     if (!parameters_.delivery_timeout.IsInfinite()) {
       subscription_parameters.delivery_timeout = parameters_.delivery_timeout;
     }
-    server_session()->SubscribeCurrentGroup(TrackName(), &receiver_,
-                                            subscription_parameters);
+    server_session()->JoiningFetch(TrackName(), &receiver_, 0,
+                                   subscription_parameters);
     simulator_.RunFor(parameters_.duration);
 
     // At the end, we wait for eight RTTs until the connection settles down.
@@ -516,8 +517,6 @@ class MoqtSimulator {
   MoqtBitrateAdjuster adjuster_;
   SimulationParameters parameters_;
 
-  bool client_established_ = false;
-  bool server_established_ = false;
   absl::Duration wait_at_the_end_;
 };
 
@@ -567,6 +566,23 @@ DEFINE_QUICHE_COMMAND_LINE_FLAG(
     "for the specified duration.");
 
 DEFINE_QUICHE_COMMAND_LINE_FLAG(
+    quic::QuicByteCount, aggregation_threshold,
+    moqt::test::SimulationParameters().aggregation_threshold,
+    "If non-zero, enables packet aggregation with the specified threshold (the "
+    "packets sent by publisher will be delayed until the specified number is "
+    "present).");
+
+DEFINE_QUICHE_COMMAND_LINE_FLAG(
+    absl::Duration, aggregation_timeout,
+    moqt::test::SimulationParameters().aggregation_timeout.ToAbsl(),
+    "Sets the timeout for packet aggregation; if zero, this will be set to the "
+    "quarter of min RTT.");
+
+DEFINE_QUICHE_COMMAND_LINE_FLAG(
+    absl::Duration, group_duration, absl::ZeroDuration(),
+    "If non-zero, sets the group size to match the requested duration");
+
+DEFINE_QUICHE_COMMAND_LINE_FLAG(
     std::string, output_format, "",
     R"(If non-empty, instead of the usual human-readable format,
 the tool will output the raw numbers from the simulation, formatted as
@@ -596,6 +612,17 @@ int main(int argc, char** argv) {
       quiche::GetQuicheCommandLineFlag(FLAGS_alternative_timeout);
   parameters.blackhole_duration = quic::QuicTimeDelta(
       quiche::GetQuicheCommandLineFlag(FLAGS_blackhole_duration));
+  parameters.aggregation_threshold =
+      quiche::GetQuicheCommandLineFlag(FLAGS_aggregation_threshold);
+  parameters.aggregation_timeout = quic::QuicTimeDelta(
+      quiche::GetQuicheCommandLineFlag(FLAGS_aggregation_timeout));
+
+  absl::Duration group_duration =
+      quiche::GetQuicheCommandLineFlag(FLAGS_group_duration);
+  if (group_duration > absl::ZeroDuration()) {
+    parameters.keyframe_interval =
+        absl::ToDoubleSeconds(group_duration) * parameters.fps;
+  }
 
   std::string raw_delivery_order = absl::AsciiStrToLower(
       quiche::GetQuicheCommandLineFlag(FLAGS_delivery_order));

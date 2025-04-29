@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef OPENSSL_HEADER_FIPSMODULE_DELOCATE_H
-#define OPENSSL_HEADER_FIPSMODULE_DELOCATE_H
+#ifndef OPENSSL_HEADER_CRYPTO_FIPSMODULE_DELOCATE_H
+#define OPENSSL_HEADER_CRYPTO_FIPSMODULE_DELOCATE_H
 
 #include <openssl/base.h>
 
@@ -96,4 +96,4 @@
 
 #define DEFINE_LOCAL_DATA(type, name) DEFINE_DATA(type, name, static const)
 
-#endif  // OPENSSL_HEADER_FIPSMODULE_DELOCATE_H
+#endif  // OPENSSL_HEADER_CRYPTO_FIPSMODULE_DELOCATE_H

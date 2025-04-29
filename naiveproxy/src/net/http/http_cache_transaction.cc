@@ -2,14 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "net/http/http_cache_transaction.h"
-
-#include <array>
 
 #include "base/time/time.h"
 #include "build/build_config.h"  // For IS_POSIX
@@ -19,8 +12,10 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -112,57 +107,56 @@ bool ShouldByPassCacheForFirstPartySets(
           written_at_run_id.value() < clear_at_run_id.value());
 }
 
+// If the request includes one of these request headers, then avoid caching
+// to avoid getting confused.
 struct HeaderNameAndValue {
-  const char* name;
-  const char* value;
+  std::string_view name;
+  std::optional<std::string_view> value;
 };
 
 // If the request includes one of these request headers, then avoid caching
 // to avoid getting confused.
-constexpr HeaderNameAndValue kPassThroughHeaders[] = {
-    {"if-unmodified-since", nullptr},  // causes unexpected 412s
-    {"if-match", nullptr},             // causes unexpected 412s
-    {"if-range", nullptr},
-    {nullptr, nullptr}};
+constexpr auto kPassThroughHeaders = std::to_array(
+    {HeaderNameAndValue{"if-unmodified-since",
+                        std::nullopt},              // causes unexpected 412s
+     HeaderNameAndValue{"if-match", std::nullopt},  // causes unexpected 412s
+     HeaderNameAndValue{"if-range", std::nullopt}});
 
 struct ValidationHeaderInfo {
-  const char* request_header_name;
-  const char* related_response_header_name;
+  std::string_view request_header_name;
+  std::string_view related_response_header_name;
 };
 
-constexpr auto kValidationHeaders = std::to_array<ValidationHeaderInfo>({
-    {"if-modified-since", "last-modified"},
-    {"if-none-match", "etag"},
-});
+constexpr auto kValidationHeaders = std::to_array<ValidationHeaderInfo>(
+    {{"if-modified-since", "last-modified"}, {"if-none-match", "etag"}});
 
 // If the request includes one of these request headers, then avoid reusing
 // our cached copy if any.
-constexpr HeaderNameAndValue kForceFetchHeaders[] = {
-    {"cache-control", "no-cache"},
-    {"pragma", "no-cache"},
-    {nullptr, nullptr}};
+constexpr auto kForceFetchHeaders =
+    std::to_array({HeaderNameAndValue{"cache-control", "no-cache"},
+                   HeaderNameAndValue{"pragma", "no-cache"}});
 
 // If the request includes one of these request headers, then force our
 // cached copy (if any) to be revalidated before reusing it.
-constexpr HeaderNameAndValue kForceValidateHeaders[] = {
-    {"cache-control", "max-age=0"},
-    {nullptr, nullptr}};
+constexpr auto kForceValidateHeaders =
+    std::to_array({HeaderNameAndValue{"cache-control", "max-age=0"}});
 
 bool HeaderMatches(const HttpRequestHeaders& headers,
-                   const HeaderNameAndValue* search) {
-  for (; search->name; ++search) {
-    std::optional<std::string> header_value = headers.GetHeader(search->name);
+                   base::span<const HeaderNameAndValue> search_headers) {
+  for (const auto& search_header : search_headers) {
+    std::optional<std::string> header_value =
+        headers.GetHeader(search_header.name);
     if (!header_value) {
       continue;
     }
 
-    if (!search->value) {
+    if (!search_header.value) {
       return true;
     }
 
     HttpUtil::ValuesIterator v(*header_value, ',');
     while (v.GetNext()) {
-      if (base::EqualsCaseInsensitiveASCII(v.value(), search->value)) {
+      if (base::EqualsCaseInsensitiveASCII(v.value(), *search_header.value)) {
         return true;
       }
     }
@@ -569,6 +563,14 @@ bool HttpCache::Transaction::GetLoadTimingInfo(
   // Provide the time immediately before parsing a cached entry.
   load_timing_info->receive_headers_start = read_headers_since_;
   return true;
+}
+
+void HttpCache::Transaction::PopulateLoadTimingInternalInfo(
+    LoadTimingInternalInfo* load_timing_internal_info) const {
+  const HttpTransaction* transaction = GetOwnedOrMovedNetworkTransaction();
+  if (transaction) {
+    transaction->PopulateLoadTimingInternalInfo(load_timing_internal_info);
+  }
 }
 
 bool HttpCache::Transaction::GetRemoteEndpoint(IPEndPoint* endpoint) const {
@@ -1590,6 +1592,16 @@ int HttpCache::Transaction::DoAddToEntryComplete(int result) {
     if (mode_ == READ) {
       TransitionToState(STATE_FINISH_HEADERS);
       return ERR_CACHE_MISS;
+    }
+
+    if (IsUsingURLFromNoVarySearchCache()) {
+      // The entry is probably fine, we just couldn't get a lock on it this
+      // time. The restarted request is permitted to attempt to get a cache lock
+      // for the original URL, and on successful completion may later replace
+      // the entry in the NoVarySearchCache.
+      return RestartWithoutNoVarySearchCache(
+          RestartCacheEntryAction::kDontErase,
+          NoVarySearchUseResult::kCacheLockTimeout);
     }
 
     // The cache is busy, bypass it for this transaction.
@@ -2649,7 +2661,7 @@ void HttpCache::Transaction::SetRequest(const NetLogWithSource& net_log) {
   static const struct {
     // RAW_PTR_EXCLUSION: Never allocated by PartitionAlloc (always points to
     // constexpr tables), so there is no benefit to using a raw_ptr, only cost.
-    RAW_PTR_EXCLUSION const HeaderNameAndValue* search;
+    RAW_PTR_EXCLUSION const base::span<const HeaderNameAndValue> search;
     int load_flag;
   } kSpecialHeaders[] = {
       {kPassThroughHeaders, LOAD_DISABLE_CACHE},
@@ -3242,6 +3254,13 @@ bool HttpCache::Transaction::ComputeUnusablePerCachingHeaders() {
   // override.
   auto freshness_lifetimes =
       response_.headers->GetFreshnessLifetimes(response_.response_time);
+
+  if (!recorded_response_freshness_is_zero_) {
+    base::UmaHistogramBoolean("HttpCache.ResponseFreshnessIsZero",
+                              freshness_lifetimes.freshness.is_zero());
+    recorded_response_freshness_is_zero_ = true;
+  }
+
   return freshness_lifetimes.freshness.is_zero() &&
          freshness_lifetimes.staleness.is_zero();
 }
@@ -4030,6 +4049,9 @@ bool HttpCache::Transaction::InWriters() const {
          entry_->writers()->HasTransaction(this);
 }
 
+HttpCache::Transaction::ValidationHeaders::ValidationHeaders() = default;
+HttpCache::Transaction::ValidationHeaders::~ValidationHeaders() = default;
+
 HttpCache::Transaction::NetworkTransactionInfo::NetworkTransactionInfo() =
     default;
 HttpCache::Transaction::NetworkTransactionInfo::~NetworkTransactionInfo() =
@@ -4283,6 +4305,8 @@ std::string_view HttpCache::Transaction::NoVarySearchUseResultToString(
       return "Validated";
     case kUpdated:
       return "Updated";
+    case kCacheLockTimeout:
+      return "CacheLockTimeout";
   }
 }
 

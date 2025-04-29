@@ -11,13 +11,13 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "openssl/base.h"
 #include "openssl/bytestring.h"
 #include "openssl/ssl.h"
@@ -931,24 +931,27 @@ ssl_select_cert_result_t TlsServerHandshaker::EarlySelectCertCallback(
     int use_alps_new_codepoint = 0;
 
 #if BORINGSSL_API_VERSION >= 27
-    if (GetQuicReloadableFlag(quic_gfe_allow_alps_new_codepoint)) {
-      QUIC_RELOADABLE_FLAG_COUNT(quic_gfe_allow_alps_new_codepoint);
-
-      alps_new_codepoint_received_ = SSL_early_callback_ctx_extension_get(
-          client_hello, TLSEXT_TYPE_application_settings,
-          &unused_extension_bytes, &unused_extension_len);
-      // Make sure we use the right ALPS codepoint.
-      if (alps_new_codepoint_received_) {
-        QUIC_CODE_COUNT(quic_gfe_alps_use_new_codepoint);
-        use_alps_new_codepoint = 1;
-      }
-      QUIC_DLOG(INFO) << "ALPS use new codepoint: " << use_alps_new_codepoint;
-      SSL_set_alps_use_new_codepoint(ssl(), use_alps_new_codepoint);
+    alps_new_codepoint_received_ = SSL_early_callback_ctx_extension_get(
+        client_hello, TLSEXT_TYPE_application_settings, &unused_extension_bytes,
+        &unused_extension_len);
+    // Make sure we use the right ALPS codepoint.
+    if (alps_new_codepoint_received_) {
+      QUIC_CODE_COUNT(quic_gfe_alps_use_new_codepoint);
+      use_alps_new_codepoint = 1;
     }
+    QUIC_DLOG(INFO) << "ALPS use new codepoint: " << use_alps_new_codepoint;
+    SSL_set_alps_use_new_codepoint(ssl(), use_alps_new_codepoint);
 #endif  // BORINGSSL_API_VERSION
 
     if (use_alps_new_codepoint == 0) {
       QUIC_CODE_COUNT(quic_gfe_alps_use_old_codepoint);
+
+      // Record whether the client sets the old alps codepoint extension.
+      if (SSL_early_callback_ctx_extension_get(
+              client_hello, TLSEXT_TYPE_application_settings_old,
+              &unused_extension_bytes, &unused_extension_len)) {
+        QUIC_CODE_COUNT(quic_gfe_alps_old_codepoint_received);
+      }
     }
   }
 
@@ -1067,7 +1070,7 @@ void TlsServerHandshaker::OnSelectCertificateDone(
 
   // Extract the delayed SSL config from either LocalSSLConfig or
   // HintsSSLConfig.
-  const QuicDelayedSSLConfig& delayed_ssl_config = absl::visit(
+  const QuicDelayedSSLConfig& delayed_ssl_config = std::visit(
       [](const auto& config) { return config.delayed_ssl_config; }, ssl_config);
 
   if (delayed_ssl_config.quic_transport_parameters.has_value()) {
@@ -1093,7 +1096,7 @@ void TlsServerHandshaker::OnSelectCertificateDone(
   }
 
   if (ok) {
-    if (auto* local_config = absl::get_if<LocalSSLConfig>(&ssl_config);
+    if (auto* local_config = std::get_if<LocalSSLConfig>(&ssl_config);
         local_config != nullptr) {
       if (local_config->chain && !local_config->chain->certs.empty()) {
         tls_connection_.SetCertChain(
@@ -1107,7 +1110,7 @@ void TlsServerHandshaker::OnSelectCertificateDone(
                          << ", client_address:"
                          << session()->connection()->peer_address();
       }
-    } else if (auto* hints_config = absl::get_if<HintsSSLConfig>(&ssl_config);
+    } else if (auto* hints_config = std::get_if<HintsSSLConfig>(&ssl_config);
                hints_config != nullptr) {
       select_alpn_ = std::move(hints_config->select_alpn);
       if (hints_config->configure_ssl) {
@@ -1115,6 +1118,8 @@ void TlsServerHandshaker::OnSelectCertificateDone(
                 std::move(hints_config->configure_ssl));
             !status.ok()) {
           QUIC_CODE_COUNT(quic_tls_server_set_handshake_hints_failed);
+          QUIC_TRACESTRING(
+              absl::StrCat("ConfigureSSL failed: ", status.ToString()));
           QUIC_DVLOG(1) << "SSL_set_handshake_hints failed: " << status;
         }
         select_cert_status_ = QUIC_SUCCESS;

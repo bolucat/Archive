@@ -32,20 +32,14 @@ func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn
 		return nil, err
 	}
 
-	clientFingerprint := cfg.ClientFingerprint
-	if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
-		clientFingerprint = tlsC.GetGlobalFingerprint()
-	}
-	if len(clientFingerprint) != 0 {
+	if clientFingerprint, ok := tlsC.GetFingerprint(cfg.ClientFingerprint); ok {
 		if cfg.Reality == nil {
-			if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
-				utlsConn := tlsC.UClient(conn, tlsC.UConfig(tlsConfig), fingerprint)
-				err = utlsConn.HandshakeContext(ctx)
-				if err != nil {
-					return nil, err
-				}
-				return utlsConn, nil
+			tlsConn := tlsC.UClient(conn, tlsC.UConfig(tlsConfig), clientFingerprint)
+			err = tlsConn.HandshakeContext(ctx)
+			if err != nil {
+				return nil, err
 			}
+			return tlsConn, nil
 		} else {
 			return tlsC.GetRealityConn(ctx, conn, clientFingerprint, tlsConfig, cfg.Reality)
 		}

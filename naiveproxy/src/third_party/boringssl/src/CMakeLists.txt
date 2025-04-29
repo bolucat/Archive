@@ -241,13 +241,8 @@ if(FUZZ)
     message(FATAL_ERROR "You need Clang ≥ 6.0.0")
   endif()
 
-  add_definitions(-DBORINGSSL_UNSAFE_DETERMINISTIC_MODE)
-  set(RUNNER_ARGS "-deterministic")
-
-  if(NOT NO_FUZZER_MODE)
-    add_definitions(-DBORINGSSL_UNSAFE_FUZZER_MODE)
-    set(RUNNER_ARGS ${RUNNER_ARGS} "-fuzzer" "-shim-config" "fuzzer_mode.json")
-  endif()
+  add_definitions(-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
+  set(RUNNER_ARGS "-deterministic" "-fuzzer" "-shim-config" "fuzzer_mode.json")
 
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,fuzzer-no-link -fsanitize-coverage=edge,indirect-calls")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,fuzzer-no-link -fsanitize-coverage=edge,indirect-calls")
@@ -661,7 +656,7 @@ set_property(TARGET ssl PROPERTY EXPORT_NAME SSL)
 target_link_libraries(ssl crypto)
 
 add_library(decrepit ${DECREPIT_SOURCES})
-target_link_libraries(decrepit crypto ssl)
+target_link_libraries(decrepit ssl crypto)
 
 add_library(test_support_lib STATIC
             ${TEST_SUPPORT_SOURCES} ${TEST_SUPPORT_SOURCES_ASM_USED})
@@ -691,7 +686,7 @@ target_link_libraries(ssl_test test_support_lib boringssl_gtest ssl crypto)
 add_dependencies(all_tests ssl_test)
 add_executable(decrepit_test ${DECREPIT_TEST_SOURCES})
 target_link_libraries(decrepit_test test_support_lib boringssl_gtest
-                      decrepit crypto)
+                      decrepit ssl crypto)
 add_dependencies(all_tests decrepit_test)
 
 if(APPLE)

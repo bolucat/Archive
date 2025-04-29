@@ -237,25 +237,19 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint stri
 			return pconn, nil
 		}
 
-		clientFingerprint := clientFingerprint
-		if tlsC.HaveGlobalFingerprint() && len(clientFingerprint) == 0 {
-			clientFingerprint = tlsC.GetGlobalFingerprint()
-		}
-		if len(clientFingerprint) != 0 {
+		if clientFingerprint, ok := tlsC.GetFingerprint(clientFingerprint); ok {
 			if realityConfig == nil {
-				if fingerprint, exists := tlsC.GetFingerprint(clientFingerprint); exists {
-					utlsConn := tlsC.UClient(pconn, tlsC.UConfig(cfg), fingerprint)
-					if err := utlsConn.HandshakeContext(ctx); err != nil {
-						pconn.Close()
-						return nil, err
-					}
-					state := utlsConn.ConnectionState()
-					if p := state.NegotiatedProtocol; p != http2.NextProtoTLS {
-						utlsConn.Close()
-						return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http2.NextProtoTLS)
-					}
-					return utlsConn, nil
+				tlsConn := tlsC.UClient(pconn, tlsC.UConfig(cfg), clientFingerprint)
+				if err := tlsConn.HandshakeContext(ctx); err != nil {
+					pconn.Close()
+					return nil, err
 				}
+				state := tlsConn.ConnectionState()
+				if p := state.NegotiatedProtocol; p != http2.NextProtoTLS {
+					tlsConn.Close()
+					return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http2.NextProtoTLS)
+				}
+				return tlsConn, nil
 			} else {
 				realityConn, err := tlsC.GetRealityConn(ctx, pconn, clientFingerprint, cfg, realityConfig)
 				if err != nil {

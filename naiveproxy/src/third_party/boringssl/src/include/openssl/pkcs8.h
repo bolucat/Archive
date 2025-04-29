@@ -15,7 +15,7 @@
 #ifndef OPENSSL_HEADER_PKCS8_H
 #define OPENSSL_HEADER_PKCS8_H
 
-#include <openssl/base.h>
+#include <openssl/base.h>   // IWYU pragma: export
 #include <openssl/x509.h>
 
 

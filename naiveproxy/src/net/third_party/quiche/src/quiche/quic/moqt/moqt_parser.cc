@@ -66,8 +66,6 @@ bool IsAllowedStreamType(uint64_t value) {
   return false;
 }
 
-bool IsExtensionTypeVarint(uint64_t type) { return (type % 2 == 0); }
-
 }  // namespace
 
 // The buffering philosophy is complicated, to minimize copying. Here is an
@@ -381,9 +379,6 @@ size_t MoqtControlParser::ProcessSubscribe(quic::QuicDataReader& reader) {
   }
   MoqtFilterType filter_type = static_cast<MoqtFilterType>(filter);
   switch (filter_type) {
-    case MoqtFilterType::kLatestGroup:
-      subscribe_request.start_object = 0;
-      break;
     case MoqtFilterType::kLatestObject:
       break;
     case MoqtFilterType::kAbsoluteStart:
@@ -391,8 +386,7 @@ size_t MoqtControlParser::ProcessSubscribe(quic::QuicDataReader& reader) {
       if (!reader.ReadVarInt62(&group) || !reader.ReadVarInt62(&object)) {
         return 0;
       }
-      subscribe_request.start_group = group;
-      subscribe_request.start_object = object;
+      subscribe_request.start = FullSequence(group, object);
       if (filter_type == MoqtFilterType::kAbsoluteStart) {
         break;
       }
@@ -400,7 +394,7 @@ size_t MoqtControlParser::ProcessSubscribe(quic::QuicDataReader& reader) {
         return 0;
       }
       subscribe_request.end_group = group;
-      if (subscribe_request.end_group < subscribe_request.start_group) {
+      if (*subscribe_request.end_group < subscribe_request.start->group) {
         ParseError("End group is less than start group");
         return 0;
       }
@@ -479,46 +473,34 @@ size_t MoqtControlParser::ProcessUnsubscribe(quic::QuicDataReader& reader) {
 
 size_t MoqtControlParser::ProcessSubscribeDone(quic::QuicDataReader& reader) {
   MoqtSubscribeDone subscribe_done;
-  uint8_t content_exists;
   uint64_t value;
   if (!reader.ReadVarInt62(&subscribe_done.subscribe_id) ||
       !reader.ReadVarInt62(&value) ||
-      !reader.ReadStringVarInt62(subscribe_done.reason_phrase) ||
-      !reader.ReadUInt8(&content_exists)) {
+      !reader.ReadVarInt62(&subscribe_done.stream_count) ||
+      !reader.ReadStringVarInt62(subscribe_done.reason_phrase)) {
     return 0;
   }
   subscribe_done.status_code = static_cast<SubscribeDoneCode>(value);
-  if (content_exists > 1) {
-    ParseError("SUBSCRIBE_DONE ContentExists has invalid value");
-    return 0;
-  }
-  if (content_exists == 1) {
-    subscribe_done.final_id = FullSequence();
-    if (!reader.ReadVarInt62(&subscribe_done.final_id->group) ||
-        !reader.ReadVarInt62(&subscribe_done.final_id->object)) {
-      return 0;
-    }
-  }
   visitor_.OnSubscribeDoneMessage(subscribe_done);
   return reader.PreviouslyReadPayload().length();
 }
 
 size_t MoqtControlParser::ProcessSubscribeUpdate(quic::QuicDataReader& reader) {
   MoqtSubscribeUpdate subscribe_update;
-  uint64_t end_group;
+  uint64_t start_group, start_object, end_group;
   if (!reader.ReadVarInt62(&subscribe_update.subscribe_id) ||
-      !reader.ReadVarInt62(&subscribe_update.start_group) ||
-      !reader.ReadVarInt62(&subscribe_update.start_object) ||
-      !reader.ReadVarInt62(&end_group) ||
+      !reader.ReadVarInt62(&start_group) ||
+      !reader.ReadVarInt62(&start_object) || !reader.ReadVarInt62(&end_group) ||
       !reader.ReadUInt8(&subscribe_update.subscriber_priority)) {
     return 0;
   }
   if (!ReadSubscribeParameters(reader, subscribe_update.parameters)) {
     return 0;
   }
+  subscribe_update.start = FullSequence(start_group, start_object);
   if (end_group > 0) {
     subscribe_update.end_group = end_group - 1;
-    if (subscribe_update.end_group < subscribe_update.start_group) {
+    if (subscribe_update.end_group < start_group) {
       ParseError("End group is less than start group");
       return 0;
     }
@@ -702,31 +684,56 @@ size_t MoqtControlParser::ProcessFetch(quic::QuicDataReader& reader) {
   absl::string_view track_name;
   uint8_t group_order;
   uint64_t end_object;
-  if (!reader.ReadVarInt62(&fetch.subscribe_id) ||
-      !ReadTrackNamespace(reader, fetch.full_track_name) ||
-      !reader.ReadStringPieceVarInt62(&track_name) ||
+  uint64_t type;
+  if (!reader.ReadVarInt62(&fetch.fetch_id) ||
       !reader.ReadUInt8(&fetch.subscriber_priority) ||
-      !reader.ReadUInt8(&group_order) ||
-      !reader.ReadVarInt62(&fetch.start_object.group) ||
-      !reader.ReadVarInt62(&fetch.start_object.object) ||
-      !reader.ReadVarInt62(&fetch.end_group) ||
-      !reader.ReadVarInt62(&end_object) ||
-      !ReadSubscribeParameters(reader, fetch.parameters)) {
+      !reader.ReadUInt8(&group_order) || !reader.ReadVarInt62(&type)) {
     return 0;
   }
-  // Elements that have to be translated from the literal value.
-  fetch.full_track_name.AddElement(track_name);
   if (!ParseDeliveryOrder(group_order, fetch.group_order)) {
     ParseError("Invalid group order value in FETCH message");
     return 0;
   }
-  fetch.end_object =
-      end_object == 0 ? std::optional<uint64_t>() : (end_object - 1);
-  if (fetch.end_group < fetch.start_object.group ||
-      (fetch.end_group == fetch.start_object.group &&
-       fetch.end_object.has_value() &&
-       *fetch.end_object < fetch.start_object.object)) {
-    ParseError("End object comes before start object in FETCH");
+  switch (static_cast<FetchType>(type)) {
+    case FetchType::kJoining: {
+      uint64_t joining_subscribe_id;
+      uint64_t preceding_group_offset;
+      if (!reader.ReadVarInt62(&joining_subscribe_id) ||
+          !reader.ReadVarInt62(&preceding_group_offset)) {
+        return 0;
+      }
+      fetch.joining_fetch =
+          JoiningFetch{joining_subscribe_id, preceding_group_offset};
+      break;
+    }
+    case FetchType::kStandalone: {
+      fetch.joining_fetch = std::nullopt;
+      if (!ReadTrackNamespace(reader, fetch.full_track_name) ||
+          !reader.ReadStringPieceVarInt62(&track_name) ||
+          !reader.ReadVarInt62(&fetch.start_object.group) ||
+          !reader.ReadVarInt62(&fetch.start_object.object) ||
+          !reader.ReadVarInt62(&fetch.end_group) ||
+          !reader.ReadVarInt62(&end_object)) {
+        return 0;
+      }
+      // Elements that have to be translated from the literal value.
+      fetch.full_track_name.AddElement(track_name);
+      fetch.end_object =
+          end_object == 0 ? std::optional<uint64_t>() : (end_object - 1);
+      if (fetch.end_group < fetch.start_object.group ||
+          (fetch.end_group == fetch.start_object.group &&
+           fetch.end_object.has_value() &&
+           *fetch.end_object < fetch.start_object.object)) {
+        ParseError("End object comes before start object in FETCH");
+        return 0;
+      }
+      break;
+    }
+    default:
+      ParseError("Invalid FETCH type");
+      return 0;
+  }
+  if (!ReadSubscribeParameters(reader, fetch.parameters)) {
     return 0;
   }
   visitor_.OnFetchMessage(fetch);
@@ -951,14 +958,17 @@ void MoqtDataParser::ParseError(absl::string_view reason) {
 std::optional<absl::string_view> ParseDatagram(absl::string_view data,
                                                MoqtObject& object_metadata) {
   uint64_t type_raw, object_status_raw;
+  absl::string_view extensions;
   quic::QuicDataReader reader(data);
   if (!reader.ReadVarInt62(&type_raw) ||
       !reader.ReadVarInt62(&object_metadata.track_alias) ||
       !reader.ReadVarInt62(&object_metadata.group_id) ||
       !reader.ReadVarInt62(&object_metadata.object_id) ||
-      !reader.ReadUInt8(&object_metadata.publisher_priority)) {
+      !reader.ReadUInt8(&object_metadata.publisher_priority) ||
+      !reader.ReadStringPieceVarInt62(&extensions)) {
     return std::nullopt;
   }
+  object_metadata.extension_headers = std::string(extensions);
   if (static_cast<MoqtDatagramType>(type_raw) ==
       MoqtDatagramType::kObjectStatus) {
     object_metadata.payload_length = 0;
@@ -968,30 +978,7 @@ std::optional<absl::string_view> ParseDatagram(absl::string_view data,
     object_metadata.object_status = IntegerToObjectStatus(object_status_raw);
     return "";
   }
-  uint64_t extensions_remaining;
-  if (!reader.ReadVarInt62(&extensions_remaining)) {
-    return std::nullopt;
-  }
-  while (extensions_remaining > 0) {
-    uint64_t type;
-    if (!reader.ReadVarInt62(&type)) {
-      return std::nullopt;
-    }
-    --extensions_remaining;
-    if (IsExtensionTypeVarint(type)) {
-      uint64_t value;
-      if (!reader.ReadVarInt62(&value)) {
-        return std::nullopt;
-      }
-      object_metadata.extension_headers.push_back({type, value});
-    } else {
-      absl::string_view value;
-      if (!reader.ReadStringPieceVarInt62(&value)) {
-        return std::nullopt;
-      }
-      object_metadata.extension_headers.push_back({type, std::string(value)});
-    }
-  }
+
   absl::string_view payload;
   if (!reader.ReadStringPieceVarInt62(&payload)) {
     return std::nullopt;
@@ -1098,26 +1085,20 @@ void MoqtDataParser::AdvanceParserState() {
       next_input_ = is_fetch ? kObjectId : kPublisherPriority;
       break;
     case kPublisherPriority:
-      next_input_ = is_fetch ? kExtensionCount : kObjectId;
+      next_input_ = is_fetch ? kExtensionSize : kObjectId;
       break;
     case kObjectId:
-      next_input_ = is_fetch ? kPublisherPriority : kExtensionCount;
+      next_input_ = is_fetch ? kPublisherPriority : kExtensionSize;
       break;
-    case kExtensionLength:
-      next_input_ = kExtensionPayload;
+    case kExtensionBody:
+      next_input_ = kObjectPayloadLength;
       break;
-
     case kStatus:
     case kData:
       next_input_ = is_fetch ? kGroupId : kObjectId;
       break;
 
-    case kExtensionCount:       // Either kExtensionType or
-                                // kObjectPayloadLength.
-    case kExtensionType:        // Either kExtensionVarint or kExtensionLength.
-    case kExtensionVarint:      // Either kExtensionType or
-                                // kObjectPayloadLength.
-    case kExtensionPayload:     // Either kExtensionType or
+    case kExtensionSize:        // Either kExtensionBody or
                                 // kObjectPayloadLength.
     case kObjectPayloadLength:  // Either kStatus or kData depending on length.
     case kPadding:              // Handled separately.
@@ -1198,50 +1179,12 @@ void MoqtDataParser::ParseNextItemFromStream() {
       return;
     }
 
-    case kExtensionCount: {
+    case kExtensionSize: {
       std::optional<uint64_t> value_read = ReadVarInt62NoFin();
       if (value_read.has_value()) {
-        extensions_remaining_ = *value_read;
-        next_input_ = (extensions_remaining_ == 0) ? kObjectPayloadLength
-                                                   : kExtensionType;
         metadata_.extension_headers.clear();
-      }
-      return;
-    }
-
-    case kExtensionType: {
-      std::optional<uint64_t> value_read = ReadVarInt62NoFin();
-      if (value_read.has_value()) {
-        --extensions_remaining_;
-        current_extension_.type = *value_read;
-        next_input_ = IsExtensionTypeVarint(*value_read) ? kExtensionVarint
-                                                         : kExtensionLength;
-      }
-      return;
-    }
-
-    case kExtensionVarint: {
-      std::optional<uint64_t> value_read = ReadVarInt62NoFin();
-      if (value_read.has_value()) {
-        next_input_ = (extensions_remaining_ == 0) ? kObjectPayloadLength
-                                                   : kExtensionType;
-        current_extension_.value = *value_read;
-        metadata_.extension_headers.push_back(current_extension_);
-        current_extension_.value = "";
-      }
-      return;
-    }
-
-    case kExtensionLength: {
-      std::optional<uint64_t> value_read = ReadVarInt62NoFin();
-      if (value_read.has_value()) {
-        if (*value_read > 0) {
-          next_input_ = kExtensionPayload;
-          payload_length_remaining_ = *value_read;
-        } else {
-          next_input_ = (extensions_remaining_ == 0) ? kObjectPayloadLength
-                                                     : kExtensionType;
-        }
+        payload_length_remaining_ = *value_read;
+        next_input_ = (value_read == 0) ? kObjectPayloadLength : kExtensionBody;
       }
       return;
     }
@@ -1282,7 +1225,7 @@ void MoqtDataParser::ParseNextItemFromStream() {
       return;
     }
 
-    case kExtensionPayload:
+    case kExtensionBody:
     case kData: {
       while (payload_length_remaining_ > 0) {
         quiche::ReadStream::PeekResult peek_result =
@@ -1309,17 +1252,14 @@ void MoqtDataParser::ParseNextItemFromStream() {
             AdvanceParserState();
           }
         } else {
-          std::get<std::string>(current_extension_.value)
-              .append(peek_result.peeked_data.substr(0, chunk_size));
+          absl::StrAppend(&metadata_.extension_headers,
+                          peek_result.peeked_data.substr(0, chunk_size));
           if (stream_.SkipBytes(chunk_size)) {
             ParseError("FIN received at an unexpected point in the stream");
             return;
           }
           if (done) {
-            next_input_ = (extensions_remaining_ == 0) ? kObjectPayloadLength
-                                                       : kExtensionType;
-            metadata_.extension_headers.push_back(current_extension_);
-            current_extension_.value = "";
+            AdvanceParserState();
           }
         }
       }

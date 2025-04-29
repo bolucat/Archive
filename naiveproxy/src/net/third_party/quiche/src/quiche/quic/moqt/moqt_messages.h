@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -20,7 +21,6 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
@@ -36,11 +36,11 @@ inline constexpr quic::ParsedQuicVersionVector GetMoqtSupportedQuicVersions() {
 }
 
 enum class MoqtVersion : uint64_t {
-  kDraft08 = 0xff000008,
+  kDraft10 = 0xff00000a,
   kUnrecognizedVersionForTests = 0xfe0000ff,
 };
 
-inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft08;
+inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft10;
 inline constexpr uint64_t kDefaultInitialMaxSubscribeId = 100;
 inline constexpr uint64_t kMinNamespaceElements = 1;
 inline constexpr uint64_t kMaxNamespaceElements = 32;
@@ -340,11 +340,6 @@ enum class QUICHE_EXPORT MoqtObjectStatus : uint64_t {
 
 MoqtObjectStatus IntegerToObjectStatus(uint64_t integer);
 
-struct MoqtExtensionHeader {
-  uint64_t type;
-  absl::variant<uint64_t, std::string> value;
-};
-
 // The data contained in every Object message, although the message type
 // implies some of the values.
 struct QUICHE_EXPORT MoqtObject {
@@ -352,7 +347,7 @@ struct QUICHE_EXPORT MoqtObject {
   uint64_t group_id;
   uint64_t object_id;
   MoqtPriority publisher_priority;
-  std::vector<MoqtExtensionHeader> extension_headers;
+  std::string extension_headers;  // Raw, unparsed extension headers.
   MoqtObjectStatus object_status;
   std::optional<uint64_t> subgroup_id;
   uint64_t payload_length;
@@ -360,7 +355,6 @@ struct QUICHE_EXPORT MoqtObject {
 
 enum class QUICHE_EXPORT MoqtFilterType : uint64_t {
   kNone = 0x0,
-  kLatestGroup = 0x1,
   kLatestObject = 0x2,
   kAbsoluteStart = 0x3,
   kAbsoluteRange = 0x4,
@@ -393,14 +387,11 @@ struct QUICHE_EXPORT MoqtSubscribe {
   std::optional<MoqtDeliveryOrder> group_order;
 
   // The combinations of these that have values indicate the filter type.
-  // SG: Start Group; SO: Start Object; EG: End Group;
   // (none): KLatestObject
-  // SO: kLatestGroup (must be zero)
-  // SG, SO: kAbsoluteStart
-  // SG, SO, EG: kAbsoluteRange (request whole last group)
+  // start: kAbsoluteStart
+  // start, end_group: kAbsoluteRange (request whole last group)
   // All other combinations are invalid.
-  std::optional<uint64_t> start_group;
-  std::optional<uint64_t> start_object;
+  std::optional<FullSequence> start;
   std::optional<uint64_t> end_group;
   // If the mode is kNone, the these are std::nullopt.
 
@@ -445,14 +436,13 @@ enum class QUICHE_EXPORT SubscribeDoneCode : uint64_t {
 struct QUICHE_EXPORT MoqtSubscribeDone {
   uint64_t subscribe_id;
   SubscribeDoneCode status_code;
+  uint64_t stream_count;
   std::string reason_phrase;
-  std::optional<FullSequence> final_id;
 };
 
 struct QUICHE_EXPORT MoqtSubscribeUpdate {
   uint64_t subscribe_id;
-  uint64_t start_group;
-  uint64_t start_object;
+  FullSequence start;
   std::optional<uint64_t> end_group;
   MoqtPriority subscriber_priority;
   MoqtSubscribeParameters parameters;
@@ -542,11 +532,27 @@ struct QUICHE_EXPORT MoqtMaxSubscribeId {
   uint64_t max_subscribe_id;
 };
 
+enum class QUICHE_EXPORT FetchType : uint64_t {
+  kStandalone = 0x1,
+  kJoining = 0x2,
+};
+
+struct JoiningFetch {
+  JoiningFetch(uint64_t joining_subscribe_id, uint64_t preceding_group_offset)
+      : joining_subscribe_id(joining_subscribe_id),
+        preceding_group_offset(preceding_group_offset) {}
+  uint64_t joining_subscribe_id;
+  uint64_t preceding_group_offset;
+};
+
 struct QUICHE_EXPORT MoqtFetch {
-  uint64_t subscribe_id;
-  FullTrackName full_track_name;
+  uint64_t fetch_id;
   MoqtPriority subscriber_priority;
   std::optional<MoqtDeliveryOrder> group_order;
+  // If joining_fetch has a value, then the parser will not populate the name
+  // and ranges. The session will populate them instead.
+  std::optional<JoiningFetch> joining_fetch;
+  FullTrackName full_track_name;
   FullSequence start_object;  // subgroup is ignored
   uint64_t end_group;
   std::optional<uint64_t> end_object;

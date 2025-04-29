@@ -192,6 +192,7 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
       session->ticket_max_early_data =
           SSL_is_quic(ssl) ? 0xffffffff : kMaxEarlyDataAccepted;
     }
+    session->is_resumable_across_names = ssl->resumption_across_names_enabled;
 
     static_assert(kMaxTickets < 256, "Too many tickets");
     assert(i < 256);
@@ -228,6 +229,14 @@ static bool add_new_session_tickets(SSL_HANDSHAKE *hs, bool *out_sent_tickets) {
           !CBB_flush(&extensions)) {
         return false;
       }
+    }
+
+    SSLFlags flags = 0;
+    if (session->is_resumable_across_names) {
+      flags |= kSSLFlagResumptionAcrossNames;
+    }
+    if (!ssl_add_flags_extension(&extensions, flags)) {
+      return false;
     }
 
     // Add a fake extension. See RFC 8701.

@@ -36,7 +36,7 @@
 
 
 int pkcs12_iterations_acceptable(uint64_t iterations) {
-#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
+#if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION)
   static const uint64_t kIterationsLimit = 2048;
 #else
   // Windows imposes a limit of 600K. Mozilla say: “so them increasing
@@ -528,9 +528,9 @@ static int pkcs12_check_mac(int *out_mac_ok, const char *password,
   }
 
   *out_mac_ok = CBS_mem_equal(expected_mac, hmac, hmac_len);
-#if defined(BORINGSSL_UNSAFE_FUZZER_MODE)
-  *out_mac_ok = 1;
-#endif
+  if (CRYPTO_fuzzer_mode_enabled()) {
+    *out_mac_ok = 1;
+  }
   ret = 1;
 
 err:
