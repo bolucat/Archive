@@ -373,10 +373,9 @@ func updateConfigs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		if req.Path == "" {
 			req.Path = C.Path.Config()
-		}
-		if !filepath.IsAbs(req.Path) {
+		} else if !filepath.IsLocal(req.Path) {
 			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, newError("path is not a absolute path"))
+			render.JSON(w, r, newError("path is not a valid absolute path"))
 			return
 		}
 

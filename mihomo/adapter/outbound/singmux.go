@@ -41,9 +41,7 @@ type BrutalOption struct {
 	Down    string `proxy:"down,omitempty"`
 }
 
-func (s *SingMux) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	options := s.ProxyAdapter.DialOptions(opts...)
-	s.dialer.SetDialer(dialer.NewDialer(options...))
+func (s *SingMux) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
 	c, err := s.client.DialContext(ctx, "tcp", M.ParseSocksaddrHostPort(metadata.String(), metadata.DstPort))
 	if err != nil {
 		return nil, err
@@ -51,12 +49,10 @@ func (s *SingMux) DialContext(ctx context.Context, metadata *C.Metadata, opts ..
 	return NewConn(c, s), err
 }
 
-func (s *SingMux) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+func (s *SingMux) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
 	if s.onlyTcp {
-		return s.ProxyAdapter.ListenPacketContext(ctx, metadata, opts...)
+		return s.ProxyAdapter.ListenPacketContext(ctx, metadata)
 	}
-	options := s.ProxyAdapter.DialOptions(opts...)
-	s.dialer.SetDialer(dialer.NewDialer(options...))
 
 	// sing-mux use stream-oriented udp with a special address, so we need a net.UDPAddr
 	if !metadata.Resolved() {
@@ -109,7 +105,7 @@ func NewSingMux(option SingMuxOption, proxy ProxyAdapter) (ProxyAdapter, error) 
 	// TODO
 	// "TCP Brutal is only supported on Linux-based systems"
 
-	singDialer := proxydialer.NewSingDialer(proxy, dialer.NewDialer(), option.Statistic)
+	singDialer := proxydialer.NewSingDialer(proxy, dialer.NewDialer(proxy.DialOptions()...), option.Statistic)
 	client, err := mux.NewClient(mux.Options{
 		Dialer:         singDialer,
 		Logger:         log.SingLogger,

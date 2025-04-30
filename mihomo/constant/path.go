@@ -84,7 +84,7 @@ func (p *path) IsSafePath(path string) bool {
 		return false
 	}
 
-	return !strings.Contains(rel, "..")
+	return filepath.IsLocal(rel)
 }
 
 func (p *path) GetPathByHash(prefix, name string) string {

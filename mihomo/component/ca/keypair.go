@@ -16,6 +16,7 @@ import (
 
 type Path interface {
 	Resolve(path string) string
+	IsSafePath(path string) bool
 }
 
 // LoadTLSKeyPair loads a TLS key pair from the provided certificate and private key data or file paths, supporting fallback resolution.
@@ -40,7 +41,12 @@ func LoadTLSKeyPair(certificate, privateKey string, path Path) (tls.Certificate,
 
 	certificate = path.Resolve(certificate)
 	privateKey = path.Resolve(privateKey)
-	cert, loadErr := tls.LoadX509KeyPair(certificate, privateKey)
+	var loadErr error
+	if path.IsSafePath(certificate) && path.IsSafePath(privateKey) {
+		cert, loadErr = tls.LoadX509KeyPair(certificate, privateKey)
+	} else {
+		loadErr = fmt.Errorf("path is not subpath of home directory")
+	}
 	if loadErr != nil {
 		return tls.Certificate{}, fmt.Errorf("parse certificate failed, maybe format error:%s, or path error: %s", painTextErr.Error(), loadErr.Error())
 	}

@@ -46,8 +46,8 @@ type Hysteria struct {
 	client *core.Client
 }
 
-func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	tcpConn, err := h.client.DialTCP(metadata.String(), metadata.DstPort, h.genHdc(ctx, opts...))
+func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	tcpConn, err := h.client.DialTCP(metadata.String(), metadata.DstPort, h.genHdc(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -55,20 +55,20 @@ func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata, opts .
 	return NewConn(tcpConn, h), nil
 }
 
-func (h *Hysteria) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	udpConn, err := h.client.DialUDP(h.genHdc(ctx, opts...))
+func (h *Hysteria) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	udpConn, err := h.client.DialUDP(h.genHdc(ctx))
 	if err != nil {
 		return nil, err
 	}
 	return newPacketConn(&hyPacketConn{udpConn}, h), nil
 }
 
-func (h *Hysteria) genHdc(ctx context.Context, opts ...dialer.Option) utils.PacketDialer {
+func (h *Hysteria) genHdc(ctx context.Context) utils.PacketDialer {
 	return &hyDialerWithContext{
 		ctx: context.Background(),
 		hyDialer: func(network string, rAddr net.Addr) (net.PacketConn, error) {
 			var err error
-			var cDialer C.Dialer = dialer.NewDialer(h.Base.DialOptions(opts...)...)
+			var cDialer C.Dialer = dialer.NewDialer(h.DialOptions()...)
 			if len(h.option.DialerProxy) > 0 {
 				cDialer, err = proxydialer.NewByName(h.option.DialerProxy, cDialer)
 				if err != nil {

@@ -43,8 +43,8 @@ type SshOption struct {
 	HostKeyAlgorithms    []string `proxy:"host-key-algorithms,omitempty"`
 }
 
-func (s *Ssh) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	var cDialer C.Dialer = dialer.NewDialer(s.Base.DialOptions(opts...)...)
+func (s *Ssh) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	var cDialer C.Dialer = dialer.NewDialer(s.DialOptions()...)
 	if len(s.option.DialerProxy) > 0 {
 		cDialer, err = proxydialer.NewByName(s.option.DialerProxy, cDialer)
 		if err != nil {
@@ -136,7 +136,11 @@ func NewSsh(option SshOption) (*Ssh, error) {
 		if strings.Contains(option.PrivateKey, "PRIVATE KEY") {
 			b = []byte(option.PrivateKey)
 		} else {
-			b, err = os.ReadFile(C.Path.Resolve(option.PrivateKey))
+			path := C.Path.Resolve(option.PrivateKey)
+			if !C.Path.IsSafePath(path) {
+				return nil, fmt.Errorf("path is not subpath of home directory: %s", path)
+			}
+			b, err = os.ReadFile(path)
 			if err != nil {
 				return nil, err
 			}

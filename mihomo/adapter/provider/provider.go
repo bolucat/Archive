@@ -161,7 +161,7 @@ func (pp *proxySetProvider) Close() error {
 	return pp.Fetcher.Close()
 }
 
-func NewProxySetProvider(name string, interval time.Duration, parser resource.Parser[[]C.Proxy], vehicle types.Vehicle, hc *HealthCheck) (*ProxySetProvider, error) {
+func NewProxySetProvider(name string, interval time.Duration, payload []map[string]any, parser resource.Parser[[]C.Proxy], vehicle types.Vehicle, hc *HealthCheck) (*ProxySetProvider, error) {
 	if hc.auto() {
 		go hc.process()
 	}
@@ -172,6 +172,19 @@ func NewProxySetProvider(name string, interval time.Duration, parser resource.Pa
 			proxies:     []C.Proxy{},
 			healthCheck: hc,
 		},
+	}
+
+	if len(payload) > 0 { // using as fallback proxies
+		ps := ProxySchema{Proxies: payload}
+		buf, err := yaml.Marshal(ps)
+		if err != nil {
+			return nil, err
+		}
+		proxies, err := parser(buf)
+		if err != nil {
+			return nil, err
+		}
+		pd.proxies = proxies
 	}
 
 	fetcher := resource.NewFetcher[[]C.Proxy](name, interval, vehicle, parser, pd.setProxies)

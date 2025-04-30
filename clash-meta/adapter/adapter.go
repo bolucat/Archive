@@ -17,7 +17,6 @@ import (
 	"github.com/metacubex/mihomo/common/queue"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
-	"github.com/metacubex/mihomo/component/dialer"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	"github.com/puzpuzpuz/xsync/v3"
@@ -63,8 +62,8 @@ func (p *Proxy) Dial(metadata *C.Metadata) (C.Conn, error) {
 }
 
 // DialContext implements C.ProxyAdapter
-func (p *Proxy) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	conn, err := p.ProxyAdapter.DialContext(ctx, metadata, opts...)
+func (p *Proxy) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	conn, err := p.ProxyAdapter.DialContext(ctx, metadata)
 	return conn, err
 }
 
@@ -76,8 +75,8 @@ func (p *Proxy) DialUDP(metadata *C.Metadata) (C.PacketConn, error) {
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (p *Proxy) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	pc, err := p.ProxyAdapter.ListenPacketContext(ctx, metadata, opts...)
+func (p *Proxy) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	pc, err := p.ProxyAdapter.ListenPacketContext(ctx, metadata)
 	return pc, err
 }
 

@@ -280,10 +280,10 @@ func (v *Vmess) streamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 }
 
 // DialContext implements C.ProxyAdapter
-func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
+func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
 	var c net.Conn
 	// gun transport
-	if v.transport != nil && dialer.IsZeroOptions(opts) {
+	if v.transport != nil {
 		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err
@@ -299,7 +299,7 @@ func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 
 		return NewConn(c, v), nil
 	}
-	return v.DialContextWithDialer(ctx, dialer.NewDialer(v.Base.DialOptions(opts...)...), metadata)
+	return v.DialContextWithDialer(ctx, dialer.NewDialer(v.DialOptions()...), metadata)
 }
 
 // DialContextWithDialer implements C.ProxyAdapter
@@ -323,7 +323,7 @@ func (v *Vmess) DialContextWithDialer(ctx context.Context, dialer C.Dialer, meta
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
+func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
 	// vmess use stream-oriented udp with a special address, so we need a net.UDPAddr
 	if !metadata.Resolved() {
 		ip, err := resolver.ResolveIP(ctx, metadata.Host)
@@ -334,7 +334,7 @@ func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 	}
 	var c net.Conn
 	// gun transport
-	if v.transport != nil && dialer.IsZeroOptions(opts) {
+	if v.transport != nil {
 		c, err = gun.StreamGunWithTransport(v.transport, v.gunConfig)
 		if err != nil {
 			return nil, err
@@ -349,7 +349,7 @@ func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata, o
 		}
 		return v.ListenPacketOnStreamConn(ctx, c, metadata)
 	}
-	return v.ListenPacketWithDialer(ctx, dialer.NewDialer(v.Base.DialOptions(opts...)...), metadata)
+	return v.ListenPacketWithDialer(ctx, dialer.NewDialer(v.DialOptions()...), metadata)
 }
 
 // ListenPacketWithDialer implements C.ProxyAdapter
@@ -482,7 +482,7 @@ func NewVmess(option VmessOption) (*Vmess, error) {
 	case "grpc":
 		dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var err error
-			var cDialer C.Dialer = dialer.NewDialer(v.Base.DialOptions()...)
+			var cDialer C.Dialer = dialer.NewDialer(v.DialOptions()...)
 			if len(v.option.DialerProxy) > 0 {
 				cDialer, err = proxydialer.NewByName(v.option.DialerProxy, cDialer)
 				if err != nil {

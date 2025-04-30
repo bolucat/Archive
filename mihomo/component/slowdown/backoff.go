@@ -4,9 +4,10 @@ package slowdown
 
 import (
 	"math"
-	"math/rand"
 	"sync/atomic"
 	"time"
+
+	"github.com/metacubex/randv2"
 )
 
 // Backoff is a time.Duration counter, starting at Min. After every call to
@@ -63,7 +64,7 @@ func (b *Backoff) ForAttempt(attempt float64) time.Duration {
 	minf := float64(min)
 	durf := minf * math.Pow(factor, attempt)
 	if b.Jitter {
-		durf = rand.Float64()*(durf-minf) + minf
+		durf = randv2.Float64()*(durf-minf) + minf
 	}
 	//ensure float64 wont overflow int64
 	if durf > maxInt64 {
@@ -88,6 +89,11 @@ func (b *Backoff) Reset() {
 // Attempt returns the current attempt counter value.
 func (b *Backoff) Attempt() float64 {
 	return float64(b.attempt.Load())
+}
+
+// AddAttempt adds one to the attempt counter.
+func (b *Backoff) AddAttempt() {
+	b.attempt.Add(1)
 }
 
 // Copy returns a backoff with equals constraints as the original

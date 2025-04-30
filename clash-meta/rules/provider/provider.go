@@ -133,7 +133,7 @@ func (rp *RuleSetProvider) Close() error {
 	return rp.ruleSetProvider.Close()
 }
 
-func NewRuleSetProvider(name string, behavior P.RuleBehavior, format P.RuleFormat, interval time.Duration, vehicle P.Vehicle, parse common.ParseRuleFunc) P.RuleProvider {
+func NewRuleSetProvider(name string, behavior P.RuleBehavior, format P.RuleFormat, interval time.Duration, vehicle P.Vehicle, payload []string, parse common.ParseRuleFunc) P.RuleProvider {
 	rp := &ruleSetProvider{
 		baseProvider: baseProvider{
 			behavior: behavior,
@@ -147,6 +147,9 @@ func NewRuleSetProvider(name string, behavior P.RuleBehavior, format P.RuleForma
 	}
 
 	rp.strategy = newStrategy(behavior, parse)
+	if len(payload) > 0 { // using as fallback rules
+		rp.strategy = rulesParseInline(payload, rp.strategy)
+	}
 	rp.Fetcher = resource.NewFetcher(name, interval, vehicle, func(bytes []byte) (ruleStrategy, error) {
 		return rulesParse(bytes, newStrategy(behavior, parse), format)
 	}, onUpdate)

@@ -40,8 +40,8 @@ type MieruOption struct {
 }
 
 // DialContext implements C.ProxyAdapter
-func (m *Mieru) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	if err := m.ensureClientIsRunning(opts...); err != nil {
+func (m *Mieru) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	if err := m.ensureClientIsRunning(); err != nil {
 		return nil, err
 	}
 	addr := metadataToMieruNetAddrSpec(metadata)
@@ -53,8 +53,8 @@ func (m *Mieru) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
-	if err := m.ensureClientIsRunning(opts...); err != nil {
+func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err := m.ensureClientIsRunning(); err != nil {
 		return nil, err
 	}
 	c, err := m.client.DialContext(ctx, metadata.UDPAddr())
@@ -76,7 +76,7 @@ func (m *Mieru) ProxyInfo() C.ProxyInfo {
 	return info
 }
 
-func (m *Mieru) ensureClientIsRunning(opts ...dialer.Option) error {
+func (m *Mieru) ensureClientIsRunning() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -85,7 +85,7 @@ func (m *Mieru) ensureClientIsRunning(opts ...dialer.Option) error {
 	}
 
 	// Create a dialer and add it to the client config, before starting the client.
-	var dialer C.Dialer = dialer.NewDialer(m.Base.DialOptions(opts...)...)
+	var dialer C.Dialer = dialer.NewDialer(m.DialOptions()...)
 	var err error
 	if len(m.option.DialerProxy) > 0 {
 		dialer, err = proxydialer.NewByName(m.option.DialerProxy, dialer)

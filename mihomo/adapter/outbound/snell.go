@@ -75,8 +75,8 @@ func (s *Snell) writeHeaderContext(ctx context.Context, c net.Conn, metadata *C.
 }
 
 // DialContext implements C.ProxyAdapter
-func (s *Snell) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	if s.version == snell.Version2 && dialer.IsZeroOptions(opts) {
+func (s *Snell) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	if s.version == snell.Version2 {
 		c, err := s.pool.Get()
 		if err != nil {
 			return nil, err
@@ -89,7 +89,7 @@ func (s *Snell) DialContext(ctx context.Context, metadata *C.Metadata, opts ...d
 		return NewConn(c, s), err
 	}
 
-	return s.DialContextWithDialer(ctx, dialer.NewDialer(s.Base.DialOptions(opts...)...), metadata)
+	return s.DialContextWithDialer(ctx, dialer.NewDialer(s.DialOptions()...), metadata)
 }
 
 // DialContextWithDialer implements C.ProxyAdapter
@@ -114,8 +114,8 @@ func (s *Snell) DialContextWithDialer(ctx context.Context, dialer C.Dialer, meta
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (s *Snell) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	return s.ListenPacketWithDialer(ctx, dialer.NewDialer(s.Base.DialOptions(opts...)...), metadata)
+func (s *Snell) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	return s.ListenPacketWithDialer(ctx, dialer.NewDialer(s.DialOptions()...), metadata)
 }
 
 // ListenPacketWithDialer implements C.ProxyAdapter
@@ -207,7 +207,7 @@ func NewSnell(option SnellOption) (*Snell, error) {
 	if option.Version == snell.Version2 {
 		s.pool = snell.NewPool(func(ctx context.Context) (*snell.Snell, error) {
 			var err error
-			var cDialer C.Dialer = dialer.NewDialer(s.Base.DialOptions()...)
+			var cDialer C.Dialer = dialer.NewDialer(s.DialOptions()...)
 			if len(s.option.DialerProxy) > 0 {
 				cDialer, err = proxydialer.NewByName(s.option.DialerProxy, cDialer)
 				if err != nil {

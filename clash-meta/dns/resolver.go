@@ -393,7 +393,6 @@ func (r *Resolver) ResetConnection() {
 type NameServer struct {
 	Net          string
 	Addr         string
-	Interface    string
 	ProxyAdapter C.ProxyAdapter
 	ProxyName    string
 	Params       map[string]string
@@ -407,7 +406,6 @@ func (ns NameServer) Equal(ns2 NameServer) bool {
 	}()
 	if ns.Net == ns2.Net &&
 		ns.Addr == ns2.Addr &&
-		ns.Interface == ns2.Interface &&
 		ns.ProxyAdapter == ns2.ProxyAdapter &&
 		ns.ProxyName == ns2.ProxyName &&
 		maps.Equal(ns.Params, ns2.Params) &&

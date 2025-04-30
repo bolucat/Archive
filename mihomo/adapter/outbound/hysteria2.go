@@ -68,9 +68,7 @@ type Hysteria2Option struct {
 	MaxConnectionReceiveWindow     uint64 `proxy:"max-connection-receive-window,omitempty"`
 }
 
-func (h *Hysteria2) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	options := h.Base.DialOptions(opts...)
-	h.dialer.SetDialer(dialer.NewDialer(options...))
+func (h *Hysteria2) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
 	c, err := h.client.DialConn(ctx, M.ParseSocksaddrHostPort(metadata.String(), metadata.DstPort))
 	if err != nil {
 		return nil, err
@@ -78,9 +76,7 @@ func (h *Hysteria2) DialContext(ctx context.Context, metadata *C.Metadata, opts 
 	return NewConn(c, h), nil
 }
 
-func (h *Hysteria2) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
-	options := h.Base.DialOptions(opts...)
-	h.dialer.SetDialer(dialer.NewDialer(options...))
+func (h *Hysteria2) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
 	pc, err := h.client.ListenPacket(ctx)
 	if err != nil {
 		return nil, err
@@ -108,6 +104,22 @@ func (h *Hysteria2) ProxyInfo() C.ProxyInfo {
 
 func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
+	outbound := &Hysteria2{
+		Base: &Base{
+			name:   option.Name,
+			addr:   addr,
+			tp:     C.Hysteria2,
+			udp:    true,
+			iface:  option.Interface,
+			rmark:  option.RoutingMark,
+			prefer: C.NewDNSPrefer(option.IPVersion),
+		},
+		option: &option,
+	}
+
+	singDialer := proxydialer.NewByNameSingDialer(option.DialerProxy, dialer.NewDialer(outbound.DialOptions()...))
+	outbound.dialer = singDialer
+
 	var salamanderPassword string
 	if len(option.Obfs) > 0 {
 		if option.ObfsPassword == "" {
@@ -154,8 +166,6 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 		InitialConnectionReceiveWindow: option.InitialConnectionReceiveWindow,
 		MaxConnectionReceiveWindow:     option.MaxConnectionReceiveWindow,
 	}
-
-	singDialer := proxydialer.NewByNameSingDialer(option.DialerProxy, dialer.NewDialer())
 
 	clientOptions := hysteria2.ClientOptions{
 		Context:            context.TODO(),
@@ -207,21 +217,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	outbound := &Hysteria2{
-		Base: &Base{
-			name:   option.Name,
-			addr:   addr,
-			tp:     C.Hysteria2,
-			udp:    true,
-			iface:  option.Interface,
-			rmark:  option.RoutingMark,
-			prefer: C.NewDNSPrefer(option.IPVersion),
-		},
-		option: &option,
-		client: client,
-		dialer: singDialer,
-	}
+	outbound.client = client
 
 	return outbound, nil
 }

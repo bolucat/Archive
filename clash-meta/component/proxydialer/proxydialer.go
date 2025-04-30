@@ -55,8 +55,8 @@ func (p proxyDialer) DialContext(ctx context.Context, network, address string) (
 	}
 	var conn C.Conn
 	var err error
-	if d, ok := p.dialer.(dialer.Dialer); ok { // first using old function to let mux work
-		conn, err = p.proxy.DialContext(ctx, currentMeta, dialer.WithOption(d.Opt))
+	if _, ok := p.dialer.(dialer.Dialer); ok { // first using old function to let mux work
+		conn, err = p.proxy.DialContext(ctx, currentMeta)
 	} else {
 		conn, err = p.proxy.DialContextWithDialer(ctx, p.dialer, currentMeta)
 	}
@@ -78,8 +78,8 @@ func (p proxyDialer) listenPacket(ctx context.Context, currentMeta *C.Metadata) 
 	var pc C.PacketConn
 	var err error
 	currentMeta.NetWork = C.UDP
-	if d, ok := p.dialer.(dialer.Dialer); ok { // first using old function to let mux work
-		pc, err = p.proxy.ListenPacketContext(ctx, currentMeta, dialer.WithOption(d.Opt))
+	if _, ok := p.dialer.(dialer.Dialer); ok { // first using old function to let mux work
+		pc, err = p.proxy.ListenPacketContext(ctx, currentMeta)
 	} else {
 		pc, err = p.proxy.ListenPacketWithDialer(ctx, p.dialer, currentMeta)
 	}
