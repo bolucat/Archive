@@ -242,6 +242,9 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 		response.Extra = common.Filter(response.Extra, func(it dns.RR) bool {
 			return it.Header().Rrtype != dns.TypeOPT
 		})
+		if requestEDNSOpt != nil {
+			response.SetEdns0(responseEDNSOpt.UDPSize(), responseEDNSOpt.Do())
+		}
 	}
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 	return response, err

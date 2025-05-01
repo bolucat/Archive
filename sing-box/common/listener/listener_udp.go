@@ -37,6 +37,12 @@ func (l *Listener) ListenUDP() (net.PacketConn, error) {
 	return udpConn, err
 }
 
+func (l *Listener) DialContext(dialer net.Dialer, ctx context.Context, network string, address string) (net.Conn, error) {
+	return ListenNetworkNamespace[net.Conn](l.listenOptions.NetNs, func() (net.Conn, error) {
+		return dialer.DialContext(ctx, network, address)
+	})
+}
+
 func (l *Listener) ListenPacket(listenConfig net.ListenConfig, ctx context.Context, network string, address string) (net.PacketConn, error) {
 	return ListenNetworkNamespace[net.PacketConn](l.listenOptions.NetNs, func() (net.PacketConn, error) {
 		return listenConfig.ListenPacket(ctx, network, address)

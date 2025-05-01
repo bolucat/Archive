@@ -37,13 +37,23 @@ var Path = func() *path {
 		}
 	}
 
-	return &path{homeDir: homeDir, configFile: "config.yaml", allowUnsafePath: allowUnsafePath}
+	var safePaths []string
+	for _, safePath := range strings.Split(os.Getenv("SAFE_PATHS"), ":") {
+		safePath = strings.TrimSpace(safePath)
+		if len(safePath) == 0 {
+			continue
+		}
+		safePaths = append(safePaths, safePath)
+	}
+
+	return &path{homeDir: homeDir, configFile: "config.yaml", allowUnsafePath: allowUnsafePath, safePaths: safePaths}
 }()
 
 type path struct {
 	homeDir         string
 	configFile      string
 	allowUnsafePath bool
+	safePaths       []string
 }
 
 // SetHomeDir is used to set the configuration path
@@ -72,19 +82,22 @@ func (p *path) Resolve(path string) string {
 	return path
 }
 
-// IsSafePath return true if path is a subpath of homedir
+// IsSafePath return true if path is a subpath of homedir (or in the SAFE_PATHS environment variable)
 func (p *path) IsSafePath(path string) bool {
 	if p.allowUnsafePath || features.CMFA {
 		return true
 	}
 	homedir := p.HomeDir()
 	path = p.Resolve(path)
-	rel, err := filepath.Rel(homedir, path)
-	if err != nil {
-		return false
+	safePaths := append([]string{homedir}, p.safePaths...) // add homedir to safePaths
+	for _, safePath := range safePaths {
+		if rel, err := filepath.Rel(safePath, path); err == nil {
+			if filepath.IsLocal(rel) {
+				return true
+			}
+		}
 	}
-
-	return filepath.IsLocal(rel)
+	return false
 }
 
 func (p *path) GetPathByHash(prefix, name string) string {
