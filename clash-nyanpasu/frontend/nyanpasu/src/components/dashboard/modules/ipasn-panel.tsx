@@ -1,4 +1,4 @@
-import countryCodeEmoji from 'country-code-emoji'
+import { flag as countryCodeEmoji } from 'country-emoji'
 import { useAtomValue } from 'jotai'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,14 +7,18 @@ import { atomIsDrawer } from '@/store'
 import { Visibility, VisibilityOff } from '@mui/icons-material'
 import { LoadingButton } from '@mui/lab'
 import { CircularProgress, IconButton, Paper, Tooltip } from '@mui/material'
-import Grid from '@mui/material/Grid2'
+import Grid from '@mui/material/Grid'
 import { useIPSB, useSetting } from '@nyanpasu/interface'
 import { cn } from '@nyanpasu/ui'
 
 const IP_REFRESH_SECONDS = 180
 
 const EmojiCounty = ({ countryCode }: { countryCode: string }) => {
-  const emoji = countryCodeEmoji(countryCode)
+  let emoji = countryCodeEmoji(countryCode)
+
+  if (!emoji) {
+    emoji = '🇺🇳'
+  }
 
   return (
     <div className="relative text-5xl">
@@ -61,7 +65,7 @@ export const IPASNPanel = ({ refreshCount }: { refreshCount: number }) => {
             )}
 
             <div className="flex flex-col gap-1" style={{ width: MAX_WIDTH }}>
-              <div className="text-shadow-md flex items-end justify-between text-xl font-bold">
+              <div className="flex items-end justify-between text-xl font-bold text-shadow-md">
                 <div className="truncate">{data.country}</div>
 
                 <Tooltip title={t('Click to Refresh Now')}>
