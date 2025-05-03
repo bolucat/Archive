@@ -2,8 +2,9 @@
 icon: material/alert-decagram
 ---
 
-#### 1.12.0-beta.8
+#### 1.12.0-beta.9
 
+* Update quic-go to v0.51.0
 * Fixes and improvements
 
 ### 1.11.9

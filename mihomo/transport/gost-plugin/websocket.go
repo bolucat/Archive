@@ -8,7 +8,7 @@ import (
 
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/transport/vmess"
-	smux "github.com/sagernet/smux"
+	smux "github.com/metacubex/smux"
 )
 
 // Option is options of gost websocket

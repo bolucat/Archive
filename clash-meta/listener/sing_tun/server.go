@@ -24,11 +24,11 @@ import (
 	"golang.org/x/exp/constraints"
 
 	tun "github.com/metacubex/sing-tun"
-	"github.com/metacubex/sing-tun/control"
-	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
-	F "github.com/sagernet/sing/common/format"
-	"github.com/sagernet/sing/common/ranges"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/control"
+	E "github.com/metacubex/sing/common/exceptions"
+	F "github.com/metacubex/sing/common/format"
+	"github.com/metacubex/sing/common/ranges"
 
 	"go4.org/netipx"
 	"golang.org/x/exp/maps"

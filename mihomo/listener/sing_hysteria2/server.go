@@ -24,7 +24,7 @@ import (
 	"github.com/metacubex/sing-quic/hysteria2"
 
 	"github.com/metacubex/quic-go"
-	E "github.com/sagernet/sing/common/exceptions"
+	E "github.com/metacubex/sing/common/exceptions"
 )
 
 type Listener struct {

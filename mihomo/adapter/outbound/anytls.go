@@ -15,8 +15,8 @@ import (
 	"github.com/metacubex/mihomo/transport/anytls"
 	"github.com/metacubex/mihomo/transport/vmess"
 
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/uot"
+	M "github.com/metacubex/sing/common/metadata"
+	"github.com/metacubex/sing/common/uot"
 )
 
 type AnyTLS struct {

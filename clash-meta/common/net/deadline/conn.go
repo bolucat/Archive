@@ -7,9 +7,9 @@ import (
 
 	"github.com/metacubex/mihomo/common/atomic"
 
-	"github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
-	"github.com/sagernet/sing/common/network"
+	"github.com/metacubex/sing/common/buf"
+	"github.com/metacubex/sing/common/bufio"
+	"github.com/metacubex/sing/common/network"
 )
 
 type connReadResult struct {

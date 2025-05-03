@@ -20,8 +20,8 @@ import (
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
 	vmess "github.com/metacubex/sing-vmess"
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/metadata"
 )
 
 type Listener struct {

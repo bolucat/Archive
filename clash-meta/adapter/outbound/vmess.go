@@ -25,7 +25,7 @@ import (
 
 	vmess "github.com/metacubex/sing-vmess"
 	"github.com/metacubex/sing-vmess/packetaddr"
-	M "github.com/sagernet/sing/common/metadata"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 var ErrUDPRemoteAddrMismatch = errors.New("udp packet dropped due to mismatched remote address")

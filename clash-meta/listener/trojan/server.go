@@ -20,7 +20,7 @@ import (
 	"github.com/metacubex/mihomo/transport/trojan"
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
-	"github.com/sagernet/smux"
+	"github.com/metacubex/smux"
 )
 
 type Listener struct {

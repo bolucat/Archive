@@ -25,7 +25,7 @@ import (
 
 	"github.com/metacubex/quic-go"
 	"github.com/metacubex/quic-go/congestion"
-	M "github.com/sagernet/sing/common/metadata"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 const (

@@ -11,7 +11,7 @@ import (
 	types "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/log"
 
-	"github.com/sagernet/fswatch"
+	"github.com/metacubex/fswatch"
 	"github.com/samber/lo"
 )
 

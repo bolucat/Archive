@@ -19,9 +19,9 @@ import (
 	"github.com/metacubex/mihomo/transport/anytls/padding"
 	"github.com/metacubex/mihomo/transport/anytls/session"
 
-	"github.com/sagernet/sing/common/auth"
-	"github.com/sagernet/sing/common/bufio"
-	M "github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common/auth"
+	"github.com/metacubex/sing/common/bufio"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 type Listener struct {

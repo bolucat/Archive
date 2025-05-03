@@ -6,7 +6,7 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 
-	"github.com/sagernet/sing/common/auth"
+	"github.com/metacubex/sing/common/auth"
 )
 
 type contextKey string

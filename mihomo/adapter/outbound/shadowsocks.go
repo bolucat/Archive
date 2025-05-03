@@ -20,9 +20,9 @@ import (
 	v2rayObfs "github.com/metacubex/mihomo/transport/v2ray-plugin"
 
 	shadowsocks "github.com/metacubex/sing-shadowsocks2"
-	"github.com/sagernet/sing/common/bufio"
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/uot"
+	"github.com/metacubex/sing/common/bufio"
+	M "github.com/metacubex/sing/common/metadata"
+	"github.com/metacubex/sing/common/uot"
 )
 
 type ShadowSocks struct {

@@ -26,9 +26,9 @@ import (
 	wireguard "github.com/metacubex/sing-wireguard"
 	"github.com/metacubex/wireguard-go/device"
 
-	"github.com/sagernet/sing/common/debug"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common/debug"
+	E "github.com/metacubex/sing/common/exceptions"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 type wireguardGoDevice interface {
