@@ -128,6 +128,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		TLSConfig:             tlsC.UConfig(tlsConfig),
 		QUICConfig:            quicConfig,
 		IgnoreClientBandwidth: config.IgnoreClientBandwidth,
+		UDPTimeout:            sing.UDPTimeout,
 		Handler:               h,
 		MasqueradeHandler:     masqueradeHandler,
 		CWND:                  config.CWND,

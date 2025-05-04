@@ -38,7 +38,7 @@ var Path = func() *path {
 	}
 
 	var safePaths []string
-	for _, safePath := range strings.Split(os.Getenv("SAFE_PATHS"), ":") {
+	for _, safePath := range filepath.SplitList(os.Getenv("SAFE_PATHS")) {
 		safePath = strings.TrimSpace(safePath)
 		if len(safePath) == 0 {
 			continue

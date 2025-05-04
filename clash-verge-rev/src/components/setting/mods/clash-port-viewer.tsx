@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next";
 import { useLockFn } from "ahooks";
 import { List, ListItem, ListItemText, TextField } from "@mui/material";
 import { useClashInfo } from "@/hooks/use-clash";
-import { BaseDialog, DialogRef, Notice, Switch } from "@/components/base";
+import { BaseDialog, DialogRef, Switch } from "@/components/base";
 import { useVerge } from "@/hooks/use-verge";
 import getSystem from "@/utils/get-system";
+import { showNotice } from "@/services/noticeService";
 const OS = getSystem();
 
 export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
@@ -78,18 +79,18 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
       OS === "linux" &&
       new Set([redirPort, tproxyPort, mixedPort, socksPort, port]).size !== 5
     ) {
-      Notice.error(t("Port Conflict"), 4000);
+      showNotice('error', t("Port Conflict"));
       return;
     }
     if (
       OS === "macos" &&
       new Set([redirPort, mixedPort, socksPort, port]).size !== 4
     ) {
-      Notice.error(t("Port Conflict"), 4000);
+      showNotice('error', t("Port Conflict"));
       return;
     }
     if (OS === "windows" && new Set([mixedPort, socksPort, port]).size !== 3) {
-      Notice.error(t("Port Conflict"), 4000);
+      showNotice('error', t("Port Conflict"));
       return;
     }
     try {
@@ -145,9 +146,9 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
         });
       }
       setOpen(false);
-      Notice.success(t("Clash Port Modified"), 1000);
+      showNotice('success', t("Clash Port Modified"));
     } catch (err: any) {
-      Notice.error(err.message || err.toString(), 4000);
+      showNotice('error', err.message || err.toString());
     }
   });
 
@@ -185,16 +186,18 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
             onChange={(e) =>
               setSocksPort(+e.target.value?.replace(/\D+/, "").slice(0, 5))
             }
-            InputProps={{
-              sx: { pr: 1 },
-              endAdornment: (
-                <Switch
-                  checked={socksEnabled}
-                  onChange={(_, c) => {
-                    setSocksEnabled(c);
-                  }}
-                />
-              ),
+            slotProps={{
+              input: {
+                sx: { pr: 1 },
+                endAdornment: (
+                  <Switch
+                    checked={socksEnabled}
+                    onChange={(_, c) => {
+                      setSocksEnabled(c);
+                    }}
+                  />
+                ),
+              }
             }}
           />
         </ListItem>
@@ -208,16 +211,18 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
             onChange={(e) =>
               setPort(+e.target.value?.replace(/\D+/, "").slice(0, 5))
             }
-            InputProps={{
-              sx: { pr: 1 },
-              endAdornment: (
-                <Switch
-                  checked={httpEnabled}
-                  onChange={(_, c) => {
-                    setHttpEnabled(c);
-                  }}
-                />
-              ),
+            slotProps={{
+              input: {
+                sx: { pr: 1 },
+                endAdornment: (
+                  <Switch
+                    checked={httpEnabled}
+                    onChange={(_, c) => {
+                      setHttpEnabled(c);
+                    }}
+                  />
+                ),
+              }
             }}
           />
         </ListItem>
@@ -232,16 +237,18 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
               onChange={(e) =>
                 setRedirPort(+e.target.value?.replace(/\D+/, "").slice(0, 5))
               }
-              InputProps={{
-                sx: { pr: 1 },
-                endAdornment: (
-                  <Switch
-                    checked={redirEnabled}
-                    onChange={(_, c) => {
-                      setRedirEnabled(c);
-                    }}
-                  />
-                ),
+              slotProps={{
+                input: {
+                  sx: { pr: 1 },
+                  endAdornment: (
+                    <Switch
+                      checked={redirEnabled}
+                      onChange={(_, c) => {
+                        setRedirEnabled(c);
+                      }}
+                    />
+                  ),
+                }
               }}
             />
           </ListItem>
@@ -257,16 +264,18 @@ export const ClashPortViewer = forwardRef<DialogRef>((props, ref) => {
               onChange={(e) =>
                 setTproxyPort(+e.target.value?.replace(/\D+/, "").slice(0, 5))
               }
-              InputProps={{
-                sx: { pr: 1 },
-                endAdornment: (
-                  <Switch
-                    checked={tproxyEnabled}
-                    onChange={(_, c) => {
-                      setTproxyEnabled(c);
-                    }}
-                  />
-                ),
+              slotProps={{
+                input: {
+                  sx: { pr: 1 },
+                  endAdornment: (
+                    <Switch
+                      checked={tproxyEnabled}
+                      onChange={(_, c) => {
+                        setTproxyEnabled(c);
+                      }}
+                    />
+                  ),
+                }
               }}
             />
           </ListItem>

@@ -25,9 +25,9 @@ require (
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/quic-go v0.51.1-0.20250423035655-e3948b36ce14
 	github.com/metacubex/randv2 v0.2.0
-	github.com/metacubex/sing v0.5.2
+	github.com/metacubex/sing v0.5.3-0.20250504031621-1f99e54c15b7
 	github.com/metacubex/sing-mux v0.3.2
-	github.com/metacubex/sing-quic v0.0.0-20250503063219-9663baa38af1
+	github.com/metacubex/sing-quic v0.0.0-20250504030450-1e678cb3d50b
 	github.com/metacubex/sing-shadowsocks v0.2.9
 	github.com/metacubex/sing-shadowsocks2 v0.2.3
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2

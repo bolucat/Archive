@@ -19,10 +19,11 @@ import {
   TextField,
 } from "@mui/material";
 import { createProfile, patchProfile } from "@/services/cmds";
-import { BaseDialog, Notice, Switch } from "@/components/base";
+import { BaseDialog, Switch } from "@/components/base";
 import { version } from "@root/package.json";
 import { FileInput } from "./file-input";
 import { useProfiles } from "@/hooks/use-profiles";
+import { showNotice } from "@/services/noticeService";
 
 interface Props {
   onChange: (isActivating?: boolean) => void;
@@ -140,7 +141,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
               }
             } catch (err) {
               // 首次创建/更新失败，尝试使用自身代理
-              Notice.info(t("Profile creation failed, retrying with Clash proxy..."));
+              showNotice('info', t("Profile creation failed, retrying with Clash proxy..."));
               
               // 使用自身代理的配置
               const retryItem = {
@@ -163,7 +164,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
                 await patchProfile(form.uid, { option: originalOptions });
               }
               
-              Notice.success(t("Profile creation succeeded with Clash proxy"));
+              showNotice('success', t("Profile creation succeeded with Clash proxy"));
             }
           }
           
@@ -175,7 +176,7 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
           // 只传递当前配置激活状态，让父组件决定是否需要触发配置重载
           props.onChange(isActivating);
         } catch (err: any) {
-          Notice.error(err.message || err.toString());
+          showNotice('error', err.message || err.toString());
         } finally {
           setLoading(false);
         }
@@ -281,10 +282,12 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
                   type="number"
                   placeholder="60"
                   label={t("HTTP Request Timeout")}
-                  InputProps={{
+                  slotProps={{
+                    input: {
                     endAdornment: (
                       <InputAdornment position="end">{t("seconds")}</InputAdornment>
                     ),
+                    }
                   }}
                 />
               )}
@@ -302,10 +305,12 @@ export const ProfileViewer = forwardRef<ProfileViewerRef, Props>(
                 {...field}
                 type="number"
                 label={t("Update Interval")}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">{t("mins")}</InputAdornment>
-                  ),
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">{t("mins")}</InputAdornment>
+                    ),
+                  }
                 }}
               />
             )}
