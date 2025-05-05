@@ -39,7 +39,7 @@ func (h *Outbound) UnmarshalJSONContext(ctx context.Context, content []byte) err
 		return E.New("missing outbound options registry in context")
 	}
 	switch h.Type {
-	case C.TypeBlock, C.TypeDNS:
+	case C.TypeDNS:
 		deprecated.Report(ctx, deprecated.OptionSpecialOutbounds)
 	}
 	options, loaded := registry.CreateOptions(h.Type)
@@ -72,12 +72,12 @@ type DialerOptions struct {
 	ProtectPath         string                            `json:"protect_path,omitempty"`
 	RoutingMark         FwMark                            `json:"routing_mark,omitempty"`
 	ReuseAddr           bool                              `json:"reuse_addr,omitempty"`
+	NetNs               string                            `json:"netns,omitempty"`
 	ConnectTimeout      badoption.Duration                `json:"connect_timeout,omitempty"`
 	TCPFastOpen         bool                              `json:"tcp_fast_open,omitempty"`
 	TCPMultiPath        bool                              `json:"tcp_multi_path,omitempty"`
 	UDPFragment         *bool                             `json:"udp_fragment,omitempty"`
 	UDPFragmentDefault  bool                              `json:"-"`
-	NetNs               string                            `json:"netns,omitempty"`
 	DomainResolver      *DomainResolveOptions             `json:"domain_resolver,omitempty"`
 	NetworkStrategy     *NetworkStrategy                  `json:"network_strategy,omitempty"`
 	NetworkType         badoption.Listable[InterfaceType] `json:"network_type,omitempty"`

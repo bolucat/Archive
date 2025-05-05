@@ -154,11 +154,10 @@ func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 			return err
 		}
 	}
-	var dialer net.Dialer
-	dialer.LocalAddr = destination.UDPAddr()
-	dialer.Control = control.Append(dialer.Control, control.ReuseAddr())
-	dialer.Control = control.Append(dialer.Control, redir.TProxyWriteBack())
-	packetConn, err := w.listener.DialContext(dialer, w.ctx, "udp", w.source.String())
+	var listener net.ListenConfig
+	listener.Control = control.Append(listener.Control, control.ReuseAddr())
+	listener.Control = control.Append(listener.Control, redir.TProxyWriteBack())
+	packetConn, err := w.listener.ListenPacket(listener, w.ctx, "udp", destination.String())
 	if err != nil {
 		return err
 	}

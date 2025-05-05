@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"time"
 
@@ -74,6 +75,11 @@ func NewRealityServer(ctx context.Context, logger log.Logger, options option.Inb
 	}
 
 	tlsConfig.SessionTicketsDisabled = true
+	tlsConfig.Log = func(format string, v ...any) {
+		if logger != nil {
+			logger.Trace(fmt.Sprintf(format, v...))
+		}
+	}
 	tlsConfig.Type = N.NetworkTCP
 	tlsConfig.Dest = options.Reality.Handshake.ServerOptions.Build().String()
 

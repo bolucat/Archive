@@ -2,6 +2,30 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.10
+
+* Add control options for listeners **1**
+* Fixes and improvements
+
+**1**:
+
+You can now set `bind_interface`, `routing_mark` and `reuse_addr` in Listen Fields.
+
+See [Listen Fields](/configuration/shared/listen/).
+
+### 1.11.10
+
+* Undeprecate the `block` outbound **1**
+* Fixes and improvements
+
+**1**:
+
+Since we don’t have a replacement for using the `block` outbound in selectors yet,
+we decided to temporarily undeprecate the `block` outbound until a replacement is available in the future.
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
 #### 1.12.0-beta.9
 
 * Update quic-go to v0.51.0
@@ -11,7 +35,8 @@ icon: material/alert-decagram
 
 * Fixes and improvements
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-beta.5
 
@@ -27,7 +52,8 @@ _We are temporarily unable to update sing-box apps on the App Store because the 
 Now `auto_redirect` fixes compatibility issues between TUN and Docker bridge networks,
 see [Tun](/configuration/inbound/tun/#auto_redirect).
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-beta.3
 
@@ -37,7 +63,8 @@ _We are temporarily unable to update sing-box apps on the App Store because the 
 
 * Fixes and improvements
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-beta.1
 
@@ -52,7 +79,8 @@ see [Tun](/configuration/inbound/tun/#auto_redirect).
 
 * Fixes and improvements
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-alpha.19
 
@@ -92,7 +120,8 @@ See [Dial Fields](/configuration/shared/dial/#domain_resolver).
 
 * Fixes and improvements
 
-_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we violated the rules (TestFlight users are not affected)._
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-alpha.13
 
@@ -163,7 +192,8 @@ For Windows 7 users, legacy binaries now continue to compile with Go 1.23 and pa
 
 * Fixes and improvements
 
-_This version overwrites 1.11.2, as incorrect binaries were released due to a bug in the continuous integration process._
+_This version overwrites 1.11.2, as incorrect binaries were released due to a bug in the continuous integration
+process._
 
 #### 1.12.0-alpha.5
 
