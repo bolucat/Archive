@@ -272,12 +272,18 @@ Requirements:
 ./build/build-release
 ```
 
-Then `sslocal`, `ssserver`, `ssmanager` and `ssurl` will be packaged in
+Then `sslocal`, `ssserver`, `ssmanager`, `ssservice` and `ssurl` will be packaged in
 
 - `./build/shadowsocks-${VERSION}-stable.x86_64-unknown-linux-musl.tar.xz`
 - `./build/shadowsocks-${VERSION}-stable.x86_64-pc-windows-gnu.zip`
 
 Read `Cargo.toml` for more details.
+
+For Linux with low GLIBC versions, set `CROSS_CONFIG` to CentOS based image:
+
+```bash
+export CROSS_CONFIG=Cross-centos.toml
+```
 
 ## Getting Started
 
@@ -755,6 +761,23 @@ Example configuration:
             // - uPSK is the user's PSK ("password")
             // Example:
             // "password": "3SYJ/f8nmVuzKvKglykRQDSgg10e/ADilkdRWrrY9HU=:4w0GKJ9U3Ox7CIXGU4A3LDQAqP6qrp/tUi/ilpOR9p4="
+        },
+        {
+            "...": "Any other fields",
+
+            // Some optional fields for this specific server
+
+            // Outbound socket options
+            // Linux Only (SO_MARK)
+            "outbound_fwmark": 255,
+            // FreeBSD only (SO_USER_COOKIE)
+            "outbound_user_cookie": 255,
+            // `SO_BINDTODEVICE` (Linux), `IP_BOUND_IF` (BSD), `IP_UNICAST_IF` (Windows) socket option for outbound sockets
+            "outbound_bind_interface": "eth1",
+            // Outbound socket bind() to this IP (choose a specific interface)
+            "outbound_bind_addr": "11.22.33.44",
+            // Outbound UDP socket allows IP fragmentation (default false)
+            "outbound_udp_allow_fragmentation": false,
         }
     ],
 
