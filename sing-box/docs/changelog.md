@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.11
+
+* Fixes and improvements
+
 #### 1.12.0-beta.10
 
 * Add control options for listeners **1**
