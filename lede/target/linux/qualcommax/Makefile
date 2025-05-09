@@ -8,8 +8,8 @@ KERNELNAME:=Image dtbs
 CPU_TYPE:=cortex-a53
 SUBTARGETS:=ipq50xx ipq60xx ipq807x
 
-KERNEL_PATCHVER:=6.1
-KERNEL_TESTING_PATCHVER:=6.6
+KERNEL_PATCHVER:=6.6
+KERNEL_TESTING_PATCHVER:=6.1
 
 include $(INCLUDE_DIR)/target.mk
 DEFAULT_PACKAGES += \
@@ -19,6 +19,6 @@ DEFAULT_PACKAGES += \
 	kmod-qca-nss-ecm kmod-qca-nss-drv-bridge-mgr \
 	kmod-qca-nss-drv-vlan kmod-qca-nss-drv-pppoe \
 	kmod-ath11k-ahb wpad-openssl uboot-envtools \
-	e2fsprogs f2fsck mkf2fs losetup automount
+	e2fsprogs f2fsck mkf2fs losetup automount autocore-arm
 
 $(eval $(call BuildTarget))

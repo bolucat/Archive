@@ -18,8 +18,8 @@ use log::{debug, error, trace};
 use shadowsocks::{net::TcpSocketOpts, relay::socks5::Address};
 use smoltcp::{
     iface::{Config as InterfaceConfig, Interface, PollResult, SocketHandle, SocketSet},
-    phy::{DeviceCapabilities, Medium},
-    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer, State as TcpState},
+    phy::{Checksum, DeviceCapabilities, Medium},
+    socket::tcp::{CongestionControl, Socket as TcpSocket, SocketBuffer as TcpSocketBuffer, State as TcpState},
     storage::RingBuffer,
     time::{Duration as SmolDuration, Instant as SmolInstant},
     wire::{HardwareAddress, IpAddress, IpCidr, Ipv4Address, Ipv6Address, TcpPacket},
@@ -40,11 +40,11 @@ use crate::{
     net::utils::to_ipv4_mapped,
 };
 
-use super::virt_device::VirtTunDevice;
+use super::virt_device::{TokenBuffer, VirtTunDevice};
 
-// NOTE: Default buffer could contain 20 AEAD packets
-const DEFAULT_TCP_SEND_BUFFER_SIZE: u32 = 0x3FFF * 20;
-const DEFAULT_TCP_RECV_BUFFER_SIZE: u32 = 0x3FFF * 20;
+// NOTE: Default buffer could contain 5 AEAD packets
+const DEFAULT_TCP_SEND_BUFFER_SIZE: u32 = (0x3FFFu32 * 5).next_power_of_two();
+const DEFAULT_TCP_RECV_BUFFER_SIZE: u32 = (0x3FFFu32 * 5).next_power_of_two();
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum TcpSocketState {
@@ -243,8 +243,8 @@ pub struct TcpTun {
     manager_socket_creation_tx: mpsc::UnboundedSender<TcpSocketCreation>,
     manager_running: Arc<AtomicBool>,
     balancer: PingBalancer,
-    iface_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    iface_tx: mpsc::UnboundedSender<Vec<u8>>,
+    iface_rx: mpsc::UnboundedReceiver<TokenBuffer>,
+    iface_tx: mpsc::UnboundedSender<TokenBuffer>,
     iface_tx_avail: Arc<AtomicBool>,
 }
 
@@ -261,6 +261,11 @@ impl TcpTun {
         let mut capabilities = DeviceCapabilities::default();
         capabilities.medium = Medium::Ip;
         capabilities.max_transmission_unit = mtu as usize;
+        capabilities.checksum.ipv4 = Checksum::Tx;
+        capabilities.checksum.tcp = Checksum::Tx;
+        capabilities.checksum.udp = Checksum::Tx;
+        capabilities.checksum.icmpv4 = Checksum::Tx;
+        capabilities.checksum.icmpv6 = Checksum::Tx;
 
         let (mut device, iface_rx, iface_tx, iface_tx_avail) = VirtTunDevice::new(capabilities);
 
@@ -516,6 +521,8 @@ impl TcpTun {
             socket.set_timeout(Some(SmolDuration::from_secs(7200)));
             // NO ACK delay
             // socket.set_ack_delay(None);
+            // Enable Cubic congestion control
+            socket.set_congestion_control(CongestionControl::Cubic);
 
             if let Err(err) = socket.listen(dst_addr) {
                 return Err(io::Error::new(ErrorKind::Other, format!("listen error: {:?}", err)));
@@ -544,8 +551,8 @@ impl TcpTun {
         Ok(())
     }
 
-    pub async fn drive_interface_state(&mut self, frame: &[u8]) {
-        if self.iface_tx.send(frame.to_vec()).is_err() {
+    pub async fn drive_interface_state(&mut self, frame: TokenBuffer) {
+        if self.iface_tx.send(frame).is_err() {
             panic!("interface send channel closed unexpectedly");
         }
 
@@ -554,7 +561,7 @@ impl TcpTun {
         self.manager_notify.notify();
     }
 
-    pub async fn recv_packet(&mut self) -> Vec<u8> {
+    pub async fn recv_packet(&mut self) -> TokenBuffer {
         match self.iface_rx.recv().await {
             Some(v) => v,
             None => unreachable!("channel closed unexpectedly"),

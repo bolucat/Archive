@@ -1,5 +1,6 @@
 use std::{
-    io, mem,
+    io::{self, ErrorKind},
+    mem,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd},
     pin::Pin,
@@ -55,7 +56,7 @@ impl TcpStream {
         // This is a workaround for VPNService
         #[cfg(target_os = "android")]
         if !addr.ip().is_loopback() {
-            use std::{io::ErrorKind, time::Duration};
+            use std::time::Duration;
             use tokio::time;
 
             if let Some(ref path) = opts.vpn_protect_path {
@@ -287,7 +288,18 @@ pub fn set_disable_ip_fragmentation<S: AsRawFd>(af: AddrFamily, socket: &S) -> i
 pub async fn create_outbound_udp_socket(af: AddrFamily, config: &ConnectOpts) -> io::Result<UdpSocket> {
     let bind_addr = match (af, config.bind_local_addr) {
         (AddrFamily::Ipv4, Some(SocketAddr::V4(addr))) => addr.into(),
+        (AddrFamily::Ipv4, Some(SocketAddr::V6(addr))) => {
+            // Map IPv6 bind_local_addr to IPv4 if AF is IPv4
+            match addr.ip().to_ipv4_mapped() {
+                Some(addr) => SocketAddr::new(addr.into(), 0),
+                None => return Err(io::Error::new(ErrorKind::InvalidInput, "Invalid IPv6 address")),
+            }
+        }
         (AddrFamily::Ipv6, Some(SocketAddr::V6(addr))) => addr.into(),
+        (AddrFamily::Ipv6, Some(SocketAddr::V4(addr))) => {
+            // Map IPv4 bind_local_addr to IPv6 if AF is IPv6
+            SocketAddr::new(addr.ip().to_ipv6_mapped().into(), 0)
+        }
         (AddrFamily::Ipv4, ..) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         (AddrFamily::Ipv6, ..) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
     };
@@ -320,7 +332,7 @@ pub async fn bind_outbound_udp_socket(bind_addr: &SocketAddr, config: &ConnectOp
     // This is a workaround for VPNService
     #[cfg(target_os = "android")]
     {
-        use std::{io::ErrorKind, time::Duration};
+        use std::time::Duration;
         use tokio::time;
 
         if let Some(ref path) = config.vpn_protect_path {
@@ -385,10 +397,7 @@ fn set_bindtodevice<S: AsRawFd>(socket: &S, iface: &str) -> io::Result<()> {
 
 cfg_if! {
     if #[cfg(target_os = "android")] {
-        use std::{
-            io::ErrorKind,
-            path::Path,
-        };
+        use std::path::Path;
         use tokio::io::AsyncReadExt;
 
         use super::uds::UnixStream;
