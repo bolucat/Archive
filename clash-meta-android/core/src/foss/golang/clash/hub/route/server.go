@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
+	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -186,7 +186,7 @@ func startTLS(cfg *Config) {
 
 	// handle tlsAddr
 	if len(cfg.TLSAddr) > 0 {
-		c, err := CN.ParseCert(cfg.Certificate, cfg.PrivateKey, C.Path)
+		c, err := ca.LoadTLSKeyPair(cfg.Certificate, cfg.PrivateKey, C.Path)
 		if err != nil {
 			log.Errorln("External controller tls listen error: %s", err)
 			return

@@ -14,13 +14,14 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/tuic"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/metacubex/quic-go"
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/uot"
+	M "github.com/metacubex/sing/common/metadata"
+	"github.com/metacubex/sing/common/uot"
 )
 
 type Tuic struct {
@@ -65,8 +66,8 @@ type TuicOption struct {
 }
 
 // DialContext implements C.ProxyAdapter
-func (t *Tuic) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	return t.DialContextWithDialer(ctx, dialer.NewDialer(t.Base.DialOptions(opts...)...), metadata)
+func (t *Tuic) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	return t.DialContextWithDialer(ctx, dialer.NewDialer(t.DialOptions()...), metadata)
 }
 
 // DialContextWithDialer implements C.ProxyAdapter
@@ -79,8 +80,8 @@ func (t *Tuic) DialContextWithDialer(ctx context.Context, dialer C.Dialer, metad
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (t *Tuic) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.PacketConn, err error) {
-	return t.ListenPacketWithDialer(ctx, dialer.NewDialer(t.Base.DialOptions(opts...)...), metadata)
+func (t *Tuic) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	return t.ListenPacketWithDialer(ctx, dialer.NewDialer(t.DialOptions()...), metadata)
 }
 
 // ListenPacketWithDialer implements C.ProxyAdapter
@@ -284,7 +285,7 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 	if len(option.Token) > 0 {
 		tkn := tuic.GenTKN(option.Token)
 		clientOption := &tuic.ClientOptionV4{
-			TlsConfig:             tlsConfig,
+			TlsConfig:             tlsC.UConfig(tlsConfig),
 			QuicConfig:            quicConfig,
 			Token:                 tkn,
 			UdpRelayMode:          udpRelayMode,
@@ -304,7 +305,7 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 			maxUdpRelayPacketSize = tuic.MaxFragSizeV5
 		}
 		clientOption := &tuic.ClientOptionV5{
-			TlsConfig:             tlsConfig,
+			TlsConfig:             tlsC.UConfig(tlsConfig),
 			QuicConfig:            quicConfig,
 			Uuid:                  uuid.FromStringOrNil(option.UUID),
 			Password:              option.Password,

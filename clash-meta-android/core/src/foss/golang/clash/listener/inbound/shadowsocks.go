@@ -15,6 +15,7 @@ type ShadowSocksOption struct {
 	Cipher    string    `inbound:"cipher"`
 	UDP       bool      `inbound:"udp,omitempty"`
 	MuxOption MuxOption `inbound:"mux-option,omitempty"`
+	ShadowTLS ShadowTLS `inbound:"shadow-tls,omitempty"`
 }
 
 func (o ShadowSocksOption) Equal(config C.InboundConfig) bool {
@@ -43,6 +44,7 @@ func NewShadowSocks(options *ShadowSocksOption) (*ShadowSocks, error) {
 			Cipher:    options.Cipher,
 			Udp:       options.UDP,
 			MuxOption: options.MuxOption.Build(),
+			ShadowTLS: options.ShadowTLS.Build(),
 		},
 	}, nil
 }

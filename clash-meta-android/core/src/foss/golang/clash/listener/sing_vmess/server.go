@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/reality"
@@ -20,8 +20,8 @@ import (
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
 	vmess "github.com/metacubex/sing-vmess"
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/metadata"
 )
 
 type Listener struct {
@@ -80,7 +80,7 @@ func New(config LC.VmessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 	var httpHandler http.Handler
 
 	if config.Certificate != "" && config.PrivateKey != "" {
-		cert, err := N.ParseCert(config.Certificate, config.PrivateKey, C.Path)
+		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
 			return nil, err
 		}

@@ -17,6 +17,7 @@ import (
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/generater"
 	C "github.com/metacubex/mihomo/constant"
 
@@ -29,13 +30,14 @@ var httpPath = "/inbound_test"
 var httpData = make([]byte, 10240)
 var remoteAddr = netip.MustParseAddr("1.2.3.4")
 var userUUID = utils.NewUUIDV4().String()
-var tlsCertificate, tlsPrivateKey, tlsFingerprint, _ = N.NewRandomTLSKeyPair()
+var tlsCertificate, tlsPrivateKey, tlsFingerprint, _ = ca.NewRandomTLSKeyPair(ca.KeyPairTypeP256)
 var tlsConfigCert, _ = tls.X509KeyPair([]byte(tlsCertificate), []byte(tlsPrivateKey))
 var tlsConfig = &tls.Config{Certificates: []tls.Certificate{tlsConfigCert}, NextProtos: []string{"h2", "http/1.1"}}
 var tlsClientConfig, _ = ca.GetTLSConfig(nil, tlsFingerprint, "", "")
 var realityPrivateKey, realityPublickey string
 var realityDest = "itunes.apple.com"
 var realityShortid = "10f897e26c4b9478"
+var realityRealDial = false
 
 func init() {
 	rand.Read(httpData)
@@ -205,6 +207,14 @@ func NewHttpTestTunnel() *TestTunnel {
 			if metadata.DstPort == 443 {
 				tlsConn := tls.Server(c, tlsConfig.Clone())
 				if metadata.Host == realityDest { // ignore the tls handshake error for realityDest
+					if realityRealDial {
+						rconn, err := dialer.DialContext(ctx, "tcp", metadata.RemoteAddress())
+						if err != nil {
+							panic(err)
+						}
+						N.Relay(rconn, tlsConn)
+						return
+					}
 					ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
 					defer cancel()
 					if err := tlsConn.HandshakeContext(ctx); err != nil {

@@ -58,8 +58,8 @@ func (h *Http) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Me
 }
 
 // DialContext implements C.ProxyAdapter
-func (h *Http) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	return h.DialContextWithDialer(ctx, dialer.NewDialer(h.Base.DialOptions(opts...)...), metadata)
+func (h *Http) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	return h.DialContextWithDialer(ctx, dialer.NewDialer(h.DialOptions()...), metadata)
 }
 
 // DialContextWithDialer implements C.ProxyAdapter

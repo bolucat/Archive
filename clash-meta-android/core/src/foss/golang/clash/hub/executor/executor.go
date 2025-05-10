@@ -375,9 +375,8 @@ func hcCompatibleProvider(proxyProviders map[string]provider.ProxyProvider) {
 				}
 			}()
 		}
-
 	}
-
+	wg.Wait()
 }
 
 func updateSniffer(snifferConfig *sniffer.Config) {
@@ -455,7 +454,7 @@ func updateGeneral(general *config.General, logging bool) {
 	mihomoHttp.SetUA(general.GlobalUA)
 	resource.SetETag(general.ETagSupport)
 
-	tlsC.SetGlobalUtlsClient(general.GlobalClientFingerprint)
+	tlsC.SetGlobalFingerprint(general.GlobalClientFingerprint)
 }
 
 func updateUsers(users []auth.AuthUser) {

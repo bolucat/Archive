@@ -67,8 +67,8 @@ func (ssr *ShadowSocksR) StreamConnContext(ctx context.Context, c net.Conn, meta
 }
 
 // DialContext implements C.ProxyAdapter
-func (ssr *ShadowSocksR) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (_ C.Conn, err error) {
-	return ssr.DialContextWithDialer(ctx, dialer.NewDialer(ssr.Base.DialOptions(opts...)...), metadata)
+func (ssr *ShadowSocksR) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	return ssr.DialContextWithDialer(ctx, dialer.NewDialer(ssr.DialOptions()...), metadata)
 }
 
 // DialContextWithDialer implements C.ProxyAdapter
@@ -93,8 +93,8 @@ func (ssr *ShadowSocksR) DialContextWithDialer(ctx context.Context, dialer C.Dia
 }
 
 // ListenPacketContext implements C.ProxyAdapter
-func (ssr *ShadowSocksR) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	return ssr.ListenPacketWithDialer(ctx, dialer.NewDialer(ssr.Base.DialOptions(opts...)...), metadata)
+func (ssr *ShadowSocksR) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	return ssr.ListenPacketWithDialer(ctx, dialer.NewDialer(ssr.DialOptions()...), metadata)
 }
 
 // ListenPacketWithDialer implements C.ProxyAdapter

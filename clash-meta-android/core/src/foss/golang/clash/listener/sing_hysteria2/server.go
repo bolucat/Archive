@@ -13,8 +13,9 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/adapter/outbound"
-	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/sockopt"
+	"github.com/metacubex/mihomo/component/ca"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -23,7 +24,7 @@ import (
 	"github.com/metacubex/sing-quic/hysteria2"
 
 	"github.com/metacubex/quic-go"
-	E "github.com/sagernet/sing/common/exceptions"
+	E "github.com/metacubex/sing/common/exceptions"
 )
 
 type Listener struct {
@@ -55,7 +56,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 
 	sl = &Listener{false, config, nil, nil}
 
-	cert, err := CN.ParseCert(config.Certificate, config.PrivateKey, C.Path)
+	cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +125,10 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		SendBPS:               outbound.StringToBps(config.Up),
 		ReceiveBPS:            outbound.StringToBps(config.Down),
 		SalamanderPassword:    salamanderPassword,
-		TLSConfig:             tlsConfig,
+		TLSConfig:             tlsC.UConfig(tlsConfig),
 		QUICConfig:            quicConfig,
 		IgnoreClientBandwidth: config.IgnoreClientBandwidth,
+		UDPTimeout:            sing.UDPTimeout,
 		Handler:               h,
 		MasqueradeHandler:     masqueradeHandler,
 		CWND:                  config.CWND,

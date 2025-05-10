@@ -10,13 +10,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/metacubex/quic-go"
-	"github.com/metacubex/quic-go/congestion"
-	M "github.com/sagernet/sing/common/metadata"
-
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	hyCongestion "github.com/metacubex/mihomo/transport/hysteria/congestion"
@@ -25,6 +22,10 @@ import (
 	"github.com/metacubex/mihomo/transport/hysteria/pmtud_fix"
 	"github.com/metacubex/mihomo/transport/hysteria/transport"
 	"github.com/metacubex/mihomo/transport/hysteria/utils"
+
+	"github.com/metacubex/quic-go"
+	"github.com/metacubex/quic-go/congestion"
+	M "github.com/metacubex/sing/common/metadata"
 )
 
 const (
@@ -45,8 +46,8 @@ type Hysteria struct {
 	client *core.Client
 }
 
-func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.Conn, error) {
-	tcpConn, err := h.client.DialTCP(metadata.String(), metadata.DstPort, h.genHdc(ctx, opts...))
+func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
+	tcpConn, err := h.client.DialTCP(metadata.String(), metadata.DstPort, h.genHdc(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -54,20 +55,20 @@ func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata, opts .
 	return NewConn(tcpConn, h), nil
 }
 
-func (h *Hysteria) ListenPacketContext(ctx context.Context, metadata *C.Metadata, opts ...dialer.Option) (C.PacketConn, error) {
-	udpConn, err := h.client.DialUDP(h.genHdc(ctx, opts...))
+func (h *Hysteria) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	udpConn, err := h.client.DialUDP(h.genHdc(ctx))
 	if err != nil {
 		return nil, err
 	}
 	return newPacketConn(&hyPacketConn{udpConn}, h), nil
 }
 
-func (h *Hysteria) genHdc(ctx context.Context, opts ...dialer.Option) utils.PacketDialer {
+func (h *Hysteria) genHdc(ctx context.Context) utils.PacketDialer {
 	return &hyDialerWithContext{
 		ctx: context.Background(),
 		hyDialer: func(network string, rAddr net.Addr) (net.PacketConn, error) {
 			var err error
-			var cDialer C.Dialer = dialer.NewDialer(h.Base.DialOptions(opts...)...)
+			var cDialer C.Dialer = dialer.NewDialer(h.DialOptions()...)
 			if len(h.option.DialerProxy) > 0 {
 				cDialer, err = proxydialer.NewByName(h.option.DialerProxy, cDialer)
 				if err != nil {
@@ -214,7 +215,7 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 		down = uint64(option.DownSpeed * mbpsToBps)
 	}
 	client, err := core.NewClient(
-		addr, ports, option.Protocol, auth, tlsConfig, quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
+		addr, ports, option.Protocol, auth, tlsC.UConfig(tlsConfig), quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
 			return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 		}, obfuscator, hopInterval, option.FastOpen,
 	)

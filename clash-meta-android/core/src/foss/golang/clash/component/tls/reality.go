@@ -37,9 +37,8 @@ type RealityConfig struct {
 	ShortID   [RealityMaxShortIDLen]byte
 }
 
-func GetRealityConn(ctx context.Context, conn net.Conn, clientFingerprint string, tlsConfig *tls.Config, realityConfig *RealityConfig) (net.Conn, error) {
-	retry := 0
-	for fingerprint, exists := GetFingerprint(clientFingerprint); exists; retry++ {
+func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHelloID, tlsConfig *tls.Config, realityConfig *RealityConfig) (net.Conn, error) {
+	for retry := 0; ; retry++ {
 		verifier := &realityVerifier{
 			serverName: tlsConfig.ServerName,
 		}
@@ -151,7 +150,6 @@ func GetRealityConn(ctx context.Context, conn net.Conn, clientFingerprint string
 
 		return uConn, nil
 	}
-	return nil, errors.New("unknown uTLS fingerprint")
 }
 
 func realityClientFallback(uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {

@@ -6,8 +6,8 @@ import (
 
 	C "github.com/metacubex/mihomo/constant"
 
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	M "github.com/metacubex/sing/common/metadata"
+	N "github.com/metacubex/sing/common/network"
 )
 
 type SingDialer interface {

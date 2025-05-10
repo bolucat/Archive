@@ -3,13 +3,13 @@ package tuic
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
 	"net"
 	"time"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/socks5"
 	"github.com/metacubex/mihomo/transport/tuic/common"
@@ -24,7 +24,7 @@ type ServerOption struct {
 	HandleTcpFn func(conn net.Conn, addr socks5.Addr, additions ...inbound.Addition) error
 	HandleUdpFn func(addr socks5.Addr, packet C.UDPPacket, additions ...inbound.Addition) error
 
-	TlsConfig             *tls.Config
+	TlsConfig             *tlsC.Config
 	QuicConfig            *quic.Config
 	Tokens                [][32]byte          // V4 special
 	Users                 map[[16]byte]string // V5 special

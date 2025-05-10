@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
-	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/component/ca"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -22,8 +22,8 @@ import (
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
 	"github.com/metacubex/sing-vmess/vless"
-	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/metadata"
+	"github.com/metacubex/sing/common"
+	"github.com/metacubex/sing/common/metadata"
 )
 
 func init() {
@@ -87,7 +87,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 	var httpHandler http.Handler
 
 	if config.Certificate != "" && config.PrivateKey != "" {
-		cert, err := N.ParseCert(config.Certificate, config.PrivateKey, C.Path)
+		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
 			return nil, err
 		}

@@ -13,6 +13,7 @@ type ShadowsocksServer struct {
 	Cipher    string
 	Udp       bool
 	MuxOption sing.MuxOption `yaml:"mux-option" json:"mux-option,omitempty"`
+	ShadowTLS ShadowTLS      `yaml:"shadow-tls" json:"shadow-tls,omitempty"`
 }
 
 func (t ShadowsocksServer) String() string {

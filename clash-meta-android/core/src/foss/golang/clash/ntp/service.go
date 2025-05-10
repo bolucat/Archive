@@ -9,8 +9,8 @@ import (
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/log"
 
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/ntp"
+	M "github.com/metacubex/sing/common/metadata"
+	"github.com/metacubex/sing/common/ntp"
 )
 
 var offset time.Duration
