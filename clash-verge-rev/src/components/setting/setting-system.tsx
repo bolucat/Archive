@@ -7,6 +7,7 @@ import {
   PauseRounded,
   WarningRounded,
   BuildRounded,
+  DeleteForeverRounded,
 } from "@mui/icons-material";
 import { useVerge } from "@/hooks/use-verge";
 import { DialogRef, Switch } from "@/components/base";
@@ -19,7 +20,10 @@ import {
   getSystemProxy,
   getAutotemProxy,
   installService,
-  getAutoLaunchStatus,
+  uninstallService,
+  restartCore,
+  startCore,
+  stopCore,
 } from "@/services/cmds";
 import { useLockFn } from "ahooks";
 import { Button, Tooltip } from "@mui/material";
@@ -38,28 +42,14 @@ const SettingSystem = ({ onError }: Props) => {
 
   const { data: sysproxy } = useSWR("getSystemProxy", getSystemProxy);
   const { data: autoproxy } = useSWR("getAutotemProxy", getAutotemProxy);
-  const { data: autoLaunchEnabled } = useSWR(
-    "getAutoLaunchStatus",
-    getAutoLaunchStatus,
-    { revalidateOnFocus: false }
-  );
 
-  const { isAdminMode, isSidecarMode, mutateRunningMode } = useSystemState();
+  const { isAdminMode, isSidecarMode, mutateRunningMode, isServiceOk } =
+    useSystemState();
 
   // 判断Tun模式是否可用 - 当处于服务模式或管理员模式时可用
-  const isTunAvailable = !isSidecarMode || isAdminMode;
+  const isTunAvailable = isServiceOk || (isSidecarMode && !isAdminMode);
 
-  // 当实际自启动状态与配置不同步时更新配置
-  useEffect(() => {
-    if (
-      autoLaunchEnabled !== undefined &&
-      verge &&
-      verge.enable_auto_launch !== autoLaunchEnabled
-    ) {
-      // 静默更新配置，不触发UI刷新
-      mutateVerge({ ...verge, enable_auto_launch: autoLaunchEnabled }, false);
-    }
-  }, [autoLaunchEnabled]);
+  console.log("is tun isTunAvailable:", isTunAvailable);
 
   const sysproxyRef = useRef<DialogRef>(null);
   const tunRef = useRef<DialogRef>(null);
@@ -84,18 +74,60 @@ const SettingSystem = ({ onError }: Props) => {
     await mutate("getAutotemProxy");
   };
 
-  // 安装系统服务
-  const onInstallService = useLockFn(async () => {
-    try {
-      showNotice('info', t("Installing Service..."), 1000);
-      await installService();
-      showNotice('success', t("Service Installed Successfully"), 2000);
-      // 重新获取运行模式
-      await mutateRunningMode();
-    } catch (err: any) {
-      showNotice('error', err.message || err.toString(), 3000);
+  // 抽象服务操作逻辑
+  const handleServiceOperation = useLockFn(
+    async (
+      {
+        beforeMsg,
+        action,
+        actionMsg,
+        successMsg,
+      }: {
+        beforeMsg: string;
+        action: () => Promise<void>;
+        actionMsg: string;
+        successMsg: string;
+      }
+    ) => {
+      try {
+        showNotice("info", t(beforeMsg), 1000);
+        await stopCore();
+        showNotice("info", t(actionMsg), 1000);
+        await action();
+        showNotice("success", t(successMsg), 2000);
+        showNotice("info", t("Starting Core..."), 1000);
+        await startCore();
+        await mutateRunningMode();
+      } catch (err: any) {
+        showNotice("error", err.message || err.toString(), 3000);
+        try {
+          showNotice("info", t("Try running core as Sidecar..."), 1000);
+          await startCore();
+          await mutateRunningMode();
+        } catch (e: any) {
+          showNotice("error", e?.message || e?.toString(), 3000);
+        }
+      }
     }
-  });
+  );
+
+  // 安装系统服务
+  const onInstallService = () =>
+    handleServiceOperation({
+      beforeMsg: "Stopping Core...",
+      action: installService,
+      actionMsg: "Installing Service...",
+      successMsg: "Service Installed Successfully",
+    });
+
+  // 卸载系统服务
+  const onUninstallService = () =>
+    handleServiceOperation({
+      beforeMsg: "Stopping Core...",
+      action: uninstallService,
+      actionMsg: "Uninstalling Service...",
+      successMsg: "Service Uninstalled Successfully",
+    });
 
   return (
     <SettingList title={t("System Setting")}>
@@ -111,12 +143,12 @@ const SettingSystem = ({ onError }: Props) => {
               icon={SettingsRounded}
               onClick={() => tunRef.current?.open()}
             />
-            {isSidecarMode && !isAdminMode && (
+            {!isServiceOk && !isAdminMode && (
               <Tooltip title={t("TUN requires Service Mode")}>
                 <WarningRounded sx={{ color: "warning.main", mr: 1 }} />
               </Tooltip>
             )}
-            {isSidecarMode && !isAdminMode && (
+            {!isServiceOk && !isAdminMode && (
               <Tooltip title={t("Install Service")}>
                 <Button
                   variant="outlined"
@@ -129,6 +161,21 @@ const SettingSystem = ({ onError }: Props) => {
                 </Button>
               </Tooltip>
             )}
+            {
+              isServiceOk && (
+                <Tooltip title={t("Uninstall Service")}>
+                  <Button
+                    // variant="outlined"
+                    color="secondary"
+                    size="small"
+                    onClick={onUninstallService}
+                    sx={{ mr: 1, minWidth: "32px", p: "4px" }}
+                  >
+                  <DeleteForeverRounded fontSize="small" />
+                  </Button>
+                </Tooltip>
+              )
+            }
           </>
         }
       >
@@ -138,20 +185,20 @@ const SettingSystem = ({ onError }: Props) => {
           onCatch={onError}
           onFormat={onSwitchFormat}
           onChange={(e) => {
-            // 当在sidecar模式下且非管理员模式时禁用切换
-            if (isSidecarMode && !isAdminMode) return;
+            // 非 Service 状态禁止切换
+            if (!isServiceOk) return;
             onChangeData({ enable_tun_mode: e });
           }}
           onGuard={(e) => {
-            // 当在sidecar模式下且非管理员模式时禁用切换
-            if (isSidecarMode && !isAdminMode) {
-              showNotice('error', t("TUN requires Service Mode"), 2000);
+            // 非 Service 状态禁止切换
+            if (!isServiceOk) {
+              showNotice("error", t("TUN requires Service Mode"), 2000);
               return Promise.reject(new Error(t("TUN requires Service Mode")));
             }
             return patchVerge({ enable_tun_mode: e });
           }}
         >
-          <Switch edge="end" disabled={isSidecarMode && !isAdminMode} />
+          <Switch edge="end" disabled={!isServiceOk} />
         </GuardState>
       </SettingItem>
       <SettingItem
@@ -195,11 +242,13 @@ const SettingSystem = ({ onError }: Props) => {
         </GuardState>
       </SettingItem>
 
-      <SettingItem 
+      <SettingItem
         label={t("Auto Launch")}
         extra={
           isAdminMode && (
-            <Tooltip title={t("Administrator mode may not support auto launch")}>
+            <Tooltip
+              title={t("Administrator mode may not support auto launch")}
+            >
               <WarningRounded sx={{ color: "warning.main", mr: 1 }} />
             </Tooltip>
           )
@@ -216,9 +265,13 @@ const SettingSystem = ({ onError }: Props) => {
           }}
           onGuard={async (e) => {
             if (isAdminMode) {
-              showNotice('info', t("Administrator mode may not support auto launch"), 2000);
+              showNotice(
+                "info",
+                t("Administrator mode may not support auto launch"),
+                2000,
+              );
             }
-            
+
             try {
               // 在应用更改之前先触发UI更新，让用户立即看到反馈
               onChangeData({ enable_auto_launch: e });

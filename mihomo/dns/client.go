@@ -77,7 +77,7 @@ func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) 
 		msg, _, err := c.Client.ExchangeWithConn(m, dConn)
 
 		// Resolvers MUST resend queries over TCP if they receive a truncated UDP response (with TC=1 set)!
-		if msg != nil && msg.Truncated && c.Client.Net == "" {
+		if msg != nil && msg.Truncated && network == "udp" {
 			tcpClient := *c.Client // copy a client
 			tcpClient.Net = "tcp"
 			network = "tcp"

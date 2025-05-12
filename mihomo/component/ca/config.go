@@ -83,7 +83,7 @@ func GetCertPool(customCA string, customCAString string) (*x509.CertPool, error)
 	if len(customCA) > 0 {
 		path := C.Path.Resolve(customCA)
 		if !C.Path.IsSafePath(path) {
-			return nil, fmt.Errorf("path is not subpath of home directory: %s", path)
+			return nil, C.Path.ErrNotSafePath(path)
 		}
 		certificate, err = os.ReadFile(path)
 		if err != nil {

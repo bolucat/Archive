@@ -217,8 +217,11 @@ pub fn run() {
             cmd::get_portable_flag,
             cmd::get_network_interfaces,
             cmd::get_system_hostname,
-            cmd::restart_core,
             cmd::restart_app,
+            // 内核管理
+            cmd::start_core,
+            cmd::stop_core,
+            cmd::restart_core,
             // 启动命令
             cmd::notify_ui_ready,
             cmd::update_ui_stage,
@@ -235,6 +238,7 @@ pub fn run() {
             cmd::uninstall_service,
             cmd::reinstall_service,
             cmd::repair_service,
+            cmd::is_service_available,
             // clash
             cmd::get_clash_info,
             cmd::patch_clash_config,

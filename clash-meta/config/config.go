@@ -755,7 +755,7 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 
 func parseController(cfg *RawConfig) (*Controller, error) {
 	if path := cfg.ExternalUI; path != "" && !C.Path.IsSafePath(path) {
-		return nil, fmt.Errorf("path is not subpath of home directory: %s", path)
+		return nil, C.Path.ErrNotSafePath(path)
 	}
 	return &Controller{
 		ExternalController:     cfg.ExternalController,

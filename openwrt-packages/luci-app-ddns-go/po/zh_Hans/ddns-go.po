@@ -10,35 +10,47 @@ msgstr "DDNS-GO自动获得你的公网 IPv4 或 IPv6 地址,并解析到对应�
 msgid "Base Setting"
 msgstr "基本设置"
 
-msgid "Running state"
-msgstr "运行状态"
+msgid "Status check error:"
+msgstr "状态检查错误:"
+
+msgid "Checking status..."
+msgstr "检查状态..."
 
 msgid "DDNS-GO Control panel"
 msgstr "DDNS-GO操作台"
 
+msgid "Open Web Interface"
+msgstr "打开 Web 界面"
+
 msgid "Log"
 msgstr "日志"
 
-msgid "The DDNS-GO service is running."
-msgstr "DDNS-GO服务已启动"
+msgid "Clear Logs..."
+msgstr "清除日志..."
 
-msgid "The DDNS-GO service is not running."
-msgstr "DDNS-GO服务未启动"
+msgid "Logs cleared successfully!"
+msgstr "日志清除成功！"
 
-msgid "DDNS-GO Status"
-msgstr "DDNS-GO服务状态"
+msgid "Clear Logs"
+msgstr "清除日志"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "DDNS-GO Service Not Running"
+msgstr "DDNS-GO服务未启用"
 
 msgid "Please enable the DDNS-GO service"
 msgstr "请将DDNS-GO服务启用"
 
-msgid "Click the new page to open ddns-go"
-msgstr "点击打开ddns-go后台"
+msgid "Open Web Interface"
+msgstr "打开Web界面"
 
 msgid "Set the DDNS-TO access port"
 msgstr "设置访问端口"
-
-msgid "</br>For specific usage, see:"
-msgstr "</br>具体使用方法参见："
 
 msgid "Collecting data..."
 msgstr "收集数据..."

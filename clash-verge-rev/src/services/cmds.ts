@@ -131,6 +131,14 @@ export async function changeClashCore(clashCore: string) {
   return invoke<string | null>("change_clash_core", { clashCore });
 }
 
+export async function startCore() {
+  return invoke<void>("start_core");
+}
+
+export async function stopCore() {
+  return invoke<void>("stop_core");
+}
+
 export async function restartCore() {
   return invoke<void>("restart_core");
 }
@@ -145,19 +153,19 @@ export async function getAppDir() {
 
 export async function openAppDir() {
   return invoke<void>("open_app_dir").catch((err) =>
-    showNotice('error', err?.message || err.toString()),
+    showNotice("error", err?.message || err.toString()),
   );
 }
 
 export async function openCoreDir() {
   return invoke<void>("open_core_dir").catch((err) =>
-    showNotice('error', err?.message || err.toString()),
+    showNotice("error", err?.message || err.toString()),
   );
 }
 
 export async function openLogsDir() {
   return invoke<void>("open_logs_dir").catch((err) =>
-    showNotice('error', err?.message || err.toString()),
+    showNotice("error", err?.message || err.toString()),
   );
 }
 
@@ -165,7 +173,7 @@ export const openWebUrl = async (url: string) => {
   try {
     await invoke("open_web_url", { url });
   } catch (err: any) {
-    showNotice('error', err.toString());
+    showNotice("error", err.toString());
   }
 };
 
@@ -218,7 +226,7 @@ export async function cmdTestDelay(url: string) {
 
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
-    showNotice('error', err?.message || err.toString(), 1500),
+    showNotice("error", err?.message || err.toString(), 1500),
   );
 }
 
@@ -347,6 +355,15 @@ export const repairService = async () => {
   return invoke<void>("repair_service");
 };
 
+// 系统服务是否可用
+export const isServiceAvailable = async () => {
+  try {
+    return await invoke<boolean>("is_service_available");
+  } catch (error) {
+    console.error("Service check failed:", error);
+    return false;
+  }
+};
 export const entry_lightweight_mode = async () => {
   return invoke<void>("entry_lightweight_mode");
 };

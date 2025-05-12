@@ -4,7 +4,17 @@ icon: material/alert-decagram
 
 #### 1.12.0-beta.13
 
+* Add TLS record fragment route options **1**
+* Add missing `accept_routes` option for Tailscale **2**
 * Fixes and improvements
+
+**1**:
+
+See [Route Action](/configuration/route/rule_action/#tls_record_fragment).
+
+**2**:
+
+See [Tailscale](/configuration/endpoint/tailscale/#accept_routes).
 
 #### 1.12.0-beta.10
 

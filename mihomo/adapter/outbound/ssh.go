@@ -138,7 +138,7 @@ func NewSsh(option SshOption) (*Ssh, error) {
 		} else {
 			path := C.Path.Resolve(option.PrivateKey)
 			if !C.Path.IsSafePath(path) {
-				return nil, fmt.Errorf("path is not subpath of home directory: %s", path)
+				return nil, C.Path.ErrNotSafePath(path)
 			}
 			b, err = os.ReadFile(path)
 			if err != nil {

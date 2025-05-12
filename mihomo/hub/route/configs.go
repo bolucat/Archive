@@ -371,12 +371,20 @@ func updateConfigs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if req.Path == "" {
+		if req.Path == "" { // default path unneeded any safe check
 			req.Path = C.Path.Config()
-		} else if !filepath.IsLocal(req.Path) {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, newError("path is not a valid absolute path"))
-			return
+		} else {
+			if !filepath.IsAbs(req.Path) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, newError("path is not a absolute path"))
+				return
+			}
+
+			if !C.Path.IsSafePath(req.Path) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, newError(C.Path.ErrNotSafePath(req.Path).Error()))
+				return
+			}
 		}
 
 		cfg, err = executor.ParseWithPath(req.Path)

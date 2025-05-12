@@ -65,6 +65,19 @@ pub async fn change_clash_core(clash_core: String) -> CmdResult<Option<String>> 
     }
 }
 
+/// 启动核心
+#[tauri::command]
+pub async fn start_core() -> CmdResult {
+    wrap_err!(CoreManager::global().start_core().await)
+}
+
+/// 关闭核心
+#[tauri::command]
+pub async fn stop_core() -> CmdResult {
+    wrap_err!(CoreManager::global().stop_core().await)
+}
+
+
 /// 重启核心
 #[tauri::command]
 pub async fn restart_core() -> CmdResult {
@@ -237,8 +250,7 @@ pub async fn get_dns_config_content() -> CmdResult<String> {
 /// 验证DNS配置文件
 #[tauri::command]
 pub async fn validate_dns_config() -> CmdResult<(bool, String)> {
-    use crate::core::CoreManager;
-    use crate::utils::dirs;
+    use crate::{core::CoreManager, utils::dirs};
 
     let app_dir = dirs::app_home_dir().map_err(|e| e.to_string())?;
     let dns_path = app_dir.join("dns_config.yaml");
