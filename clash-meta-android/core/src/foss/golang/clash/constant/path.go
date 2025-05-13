@@ -1,6 +1,7 @@
 package constant
 
 import (
+	"fmt"
 	"os"
 	P "path"
 	"path/filepath"
@@ -87,10 +88,8 @@ func (p *path) IsSafePath(path string) bool {
 	if p.allowUnsafePath || features.CMFA {
 		return true
 	}
-	homedir := p.HomeDir()
 	path = p.Resolve(path)
-	safePaths := append([]string{homedir}, p.safePaths...) // add homedir to safePaths
-	for _, safePath := range safePaths {
+	for _, safePath := range p.SafePaths() {
 		if rel, err := filepath.Rel(safePath, path); err == nil {
 			if filepath.IsLocal(rel) {
 				return true
@@ -98,6 +97,23 @@ func (p *path) IsSafePath(path string) bool {
 		}
 	}
 	return false
+}
+
+func (p *path) SafePaths() []string {
+	return append([]string{p.homeDir}, p.safePaths...) // add homedir to safePaths
+}
+
+func (p *path) ErrNotSafePath(path string) error {
+	return ErrNotSafePath{Path: path, SafePaths: p.SafePaths()}
+}
+
+type ErrNotSafePath struct {
+	Path      string
+	SafePaths []string
+}
+
+func (e ErrNotSafePath) Error() string {
+	return fmt.Sprintf("path is not subpath of home directory or SAFE_PATHS: %s \n allowed paths: %s", e.Path, e.SafePaths)
 }
 
 func (p *path) GetPathByHash(prefix, name string) string {

@@ -131,9 +131,9 @@ Default configuration file path probably is `/var/snap/shadowsocks-rust/common/e
 
 Download static-linked build [here](https://github.com/shadowsocks/shadowsocks-rust/releases).
 
-- `build-windows`: Build for `x86_64-pc-windows-msvc`
-- `build-linux`: Build for `x86_64-unknown-linux-gnu`, Debian 9 (Stretch), GLIBC 2.18
-- `build-docker`: Build for `x86_64-unknown-linux-musl`, `x86_64-pc-windows-gnu`, ... (statically linked)
+- Most of them are built with [cross](https://github.com/cross-rs/cross). Build environment details could be found in its README, such as glibc's version.
+- `x86_64-apple-darwin`, `aarch64-apple-darwin` are built in github's `macos-latest` image. Information could be found in [here](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners).
+- `x86_64-pc-windows-msvc` is built in github's `windows-latest` image. Information could be found in [here](https://docs.github.com/en/actions/using-github-hosted-runners/using-github-hosted-runners/about-github-hosted-runners).
 
 ### **Docker**
 
@@ -272,12 +272,18 @@ Requirements:
 ./build/build-release
 ```
 
-Then `sslocal`, `ssserver`, `ssmanager` and `ssurl` will be packaged in
+Then `sslocal`, `ssserver`, `ssmanager`, `ssservice` and `ssurl` will be packaged in
 
 - `./build/shadowsocks-${VERSION}-stable.x86_64-unknown-linux-musl.tar.xz`
 - `./build/shadowsocks-${VERSION}-stable.x86_64-pc-windows-gnu.zip`
 
 Read `Cargo.toml` for more details.
+
+For Linux with low GLIBC versions, set `CROSS_CONFIG` to CentOS based image:
+
+```bash
+export CROSS_CONFIG=Cross-centos.toml
+```
 
 ## Getting Started
 
@@ -755,6 +761,23 @@ Example configuration:
             // - uPSK is the user's PSK ("password")
             // Example:
             // "password": "3SYJ/f8nmVuzKvKglykRQDSgg10e/ADilkdRWrrY9HU=:4w0GKJ9U3Ox7CIXGU4A3LDQAqP6qrp/tUi/ilpOR9p4="
+        },
+        {
+            "...": "Any other fields",
+
+            // Some optional fields for this specific server
+
+            // Outbound socket options
+            // Linux Only (SO_MARK)
+            "outbound_fwmark": 255,
+            // FreeBSD only (SO_USER_COOKIE)
+            "outbound_user_cookie": 255,
+            // `SO_BINDTODEVICE` (Linux), `IP_BOUND_IF` (BSD), `IP_UNICAST_IF` (Windows) socket option for outbound sockets
+            "outbound_bind_interface": "eth1",
+            // Outbound socket bind() to this IP (choose a specific interface)
+            "outbound_bind_addr": "11.22.33.44",
+            // Outbound UDP socket allows IP fragmentation (default false)
+            "outbound_udp_allow_fragmentation": false,
         }
     ],
 
@@ -818,7 +841,7 @@ Example configuration:
     // Outbound socket bind() to this IP (choose a specific interface)
     "outbound_bind_addr": "11.22.33.44",
     // Outbound UDP socket allows IP fragmentation (default false)
-    "outbound_udp_allow_fragmentation": false
+    "outbound_udp_allow_fragmentation": false,
 
     // Balancer customization
     "balancer": {
@@ -837,7 +860,12 @@ Example configuration:
     "online_config": {
         "config_url": "https://path-to-online-sip008-configuration",
         // Optional. Seconds between each update to config_url. Default to 3600s
-        "update_interval": 3600
+        "update_interval": 3600,
+        // Optional. Whitelist of plugins (RECOMMENDED for all users)
+        // SECURITY: To avoid executing untrusted commands loaded from config_url
+        "allowed_plugins": [
+            "v2ray-plugin"
+        ]
     },
 
     // Service configurations

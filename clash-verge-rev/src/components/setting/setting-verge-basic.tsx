@@ -38,6 +38,10 @@ const languageOptions = Object.entries(languages).map(([code, _]) => {
     id: "Bahasa Indonesia",
     ar: "العربية",
     ko: "한국어",
+    tr: "Türkçe",
+    jp: "日本語",
+    de: "Deutsch",
+    es: "Español",
   };
   return { code, label: labels[code] };
 });

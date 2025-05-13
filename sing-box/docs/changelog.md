@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.14
+
+* Fixes and improvements
+
 #### 1.12.0-beta.13
 
 * Add TLS record fragment route options **1**

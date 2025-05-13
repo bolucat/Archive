@@ -400,6 +400,10 @@ struct SSServerExtConfig {
     outbound_fwmark: Option<u32>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg(target_os = "freebsd")]
+    outbound_user_cookie: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     outbound_bind_addr: Option<IpAddr>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -413,7 +417,10 @@ struct SSServerExtConfig {
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct SSOnlineConfig {
     config_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     update_interval: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    allowed_plugins: Option<Vec<String>>,
 }
 
 /// Server config type
@@ -1244,6 +1251,8 @@ pub struct ServerInstanceConfig {
     /// Server's outbound fwmark / address / interface to support split tunnel
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub outbound_fwmark: Option<u32>,
+    #[cfg(target_os = "freebsd")]
+    pub outbound_user_cookie: Option<u32>,
     pub outbound_bind_addr: Option<IpAddr>,
     pub outbound_bind_interface: Option<String>,
     pub outbound_udp_allow_fragmentation: Option<bool>,
@@ -1257,6 +1266,8 @@ impl ServerInstanceConfig {
             acl: None,
             #[cfg(any(target_os = "linux", target_os = "android"))]
             outbound_fwmark: None,
+            #[cfg(target_os = "freebsd")]
+            outbound_user_cookie: None,
             outbound_bind_addr: None,
             outbound_bind_interface: None,
             outbound_udp_allow_fragmentation: None,
@@ -1289,6 +1300,8 @@ pub struct OnlineConfig {
     pub config_url: String,
     /// Update interval, 3600s by default
     pub update_interval: Option<Duration>,
+    /// Allowed plugins
+    pub allowed_plugins: Option<Vec<String>>,
 }
 
 /// Configuration
@@ -1993,29 +2006,7 @@ impl Config {
                     nsvr.set_timeout(timeout);
                 }
 
-                let mut outbound_bind_addr: Option<IpAddr> = None;
-
-                if let Some(ref bind_addr) = config.outbound_bind_addr {
-                    match bind_addr.parse::<IpAddr>() {
-                        Ok(b) => outbound_bind_addr = Some(b),
-                        Err(..) => {
-                            let err = Error::new(ErrorKind::Invalid, "invalid outbound_bind_addr", None);
-                            return Err(err);
-                        }
-                    }
-                }
-
-                let server_instance = ServerInstanceConfig {
-                    config: nsvr,
-                    acl: None,
-                    #[cfg(any(target_os = "linux", target_os = "android"))]
-                    outbound_fwmark: config.outbound_fwmark,
-                    outbound_bind_addr,
-                    outbound_bind_interface: config.outbound_bind_interface.clone(),
-                    outbound_udp_allow_fragmentation: config.outbound_udp_allow_fragmentation,
-                };
-
-                nconfig.server.push(server_instance);
+                nconfig.server.push(ServerInstanceConfig::with_server_config(nsvr));
             }
             (None, None, None, Some(_)) if config_type.is_manager() => {
                 // Set the default method for manager
@@ -2187,27 +2178,7 @@ impl Config {
                     nsvr.set_weight(weight);
                 }
 
-                let mut outbound_bind_addr: Option<IpAddr> = None;
-
-                if let Some(ref bind_addr) = config.outbound_bind_addr {
-                    match bind_addr.parse::<IpAddr>() {
-                        Ok(b) => outbound_bind_addr = Some(b),
-                        Err(..) => {
-                            let err = Error::new(ErrorKind::Invalid, "invalid outbound_bind_addr", None);
-                            return Err(err);
-                        }
-                    }
-                }
-
-                let mut server_instance = ServerInstanceConfig {
-                    config: nsvr,
-                    acl: None,
-                    #[cfg(any(target_os = "linux", target_os = "android"))]
-                    outbound_fwmark: config.outbound_fwmark,
-                    outbound_bind_addr,
-                    outbound_bind_interface: config.outbound_bind_interface.clone(),
-                    outbound_udp_allow_fragmentation: config.outbound_udp_allow_fragmentation,
-                };
+                let mut server_instance = ServerInstanceConfig::with_server_config(nsvr);
 
                 if let Some(acl_path) = svr.acl {
                     let acl = match AccessControl::load_from_file(&acl_path) {
@@ -2227,6 +2198,11 @@ impl Config {
                 #[cfg(any(target_os = "linux", target_os = "android"))]
                 if let Some(outbound_fwmark) = svr.outbound_fwmark {
                     server_instance.outbound_fwmark = Some(outbound_fwmark);
+                }
+
+                #[cfg(target_os = "freebsd")]
+                if let Some(outbound_user_cookie) = svr.outbound_user_cookie {
+                    server_instance.outbound_user_cookie = Some(outbound_user_cookie);
                 }
 
                 if let Some(outbound_bind_addr) = svr.outbound_bind_addr {
@@ -2453,6 +2429,7 @@ impl Config {
             nconfig.online_config = Some(OnlineConfig {
                 config_url: online_config.config_url,
                 update_interval: online_config.update_interval.map(Duration::from_secs),
+                allowed_plugins: online_config.allowed_plugins,
             });
         }
 
@@ -3057,6 +3034,8 @@ impl fmt::Display for Config {
                             .and_then(|a| a.file_path().to_str().map(ToOwned::to_owned)),
                         #[cfg(any(target_os = "linux", target_os = "android"))]
                         outbound_fwmark: inst.outbound_fwmark,
+                        #[cfg(target_os = "freebsd")]
+                        outbound_user_cookie: inst.outbound_user_cookie,
                         outbound_bind_addr: inst.outbound_bind_addr,
                         outbound_bind_interface: inst.outbound_bind_interface.clone(),
                         outbound_udp_allow_fragmentation: inst.outbound_udp_allow_fragmentation,
@@ -3195,6 +3174,7 @@ impl fmt::Display for Config {
             jconf.online_config = Some(SSOnlineConfig {
                 config_url: online_config.config_url.clone(),
                 update_interval: online_config.update_interval.as_ref().map(Duration::as_secs),
+                allowed_plugins: online_config.allowed_plugins.clone(),
             });
         }
 

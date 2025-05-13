@@ -113,12 +113,11 @@ func ApplyConfig(cfg *config.Config, force bool) {
 	tunnel.OnInnerLoading()
 
 	initInnerTcp()
-	loadProxyProvider(cfg.Providers)
+	loadProvider(cfg.Providers)
 	updateProfile(cfg)
-	loadRuleProvider(cfg.RuleProviders)
+	loadProvider(cfg.RuleProviders)
 	runtime.GC()
 	tunnel.OnRunning()
-	hcCompatibleProvider(cfg.Providers)
 	updateUpdater(cfg)
 
 	resolver.ResetConnection()
@@ -303,78 +302,39 @@ func updateRules(rules []C.Rule, subRules map[string][]C.Rule, ruleProviders map
 	tunnel.UpdateRules(rules, subRules, ruleProviders)
 }
 
-func loadProvider(pv provider.Provider) {
-	if pv.VehicleType() == provider.Compatible {
-		return
-	} else {
-		log.Infoln("Start initial provider %s", (pv).Name())
-	}
-
-	if err := pv.Initial(); err != nil {
-		switch pv.Type() {
-		case provider.Proxy:
-			{
-				log.Errorln("initial proxy provider %s error: %v", (pv).Name(), err)
-			}
-		case provider.Rule:
-			{
-				log.Errorln("initial rule provider %s error: %v", (pv).Name(), err)
-			}
-
+func loadProvider[P provider.Provider](providers map[string]P) {
+	load := func(pv P) {
+		name := pv.Name()
+		if pv.VehicleType() == provider.Compatible {
+			log.Infoln("Start initial compatible provider %s", name)
+		} else {
+			log.Infoln("Start initial provider %s", name)
 		}
-	}
-}
 
-func loadRuleProvider(ruleProviders map[string]provider.RuleProvider) {
-	wg := sync.WaitGroup{}
-	ch := make(chan struct{}, concurrentCount)
-	for _, ruleProvider := range ruleProviders {
-		ruleProvider := ruleProvider
-		wg.Add(1)
-		ch <- struct{}{}
-		go func() {
-			defer func() { <-ch; wg.Done() }()
-			loadProvider(ruleProvider)
-
-		}()
-	}
-
-	wg.Wait()
-}
-
-func loadProxyProvider(proxyProviders map[string]provider.ProxyProvider) {
-	// limit concurrent size
-	wg := sync.WaitGroup{}
-	ch := make(chan struct{}, concurrentCount)
-	for _, proxyProvider := range proxyProviders {
-		proxyProvider := proxyProvider
-		wg.Add(1)
-		ch <- struct{}{}
-		go func() {
-			defer func() { <-ch; wg.Done() }()
-			loadProvider(proxyProvider)
-		}()
-	}
-
-	wg.Wait()
-}
-func hcCompatibleProvider(proxyProviders map[string]provider.ProxyProvider) {
-	// limit concurrent size
-	wg := sync.WaitGroup{}
-	ch := make(chan struct{}, concurrentCount)
-	for _, proxyProvider := range proxyProviders {
-		proxyProvider := proxyProvider
-		if proxyProvider.VehicleType() == provider.Compatible {
-			log.Infoln("Start initial Compatible provider %s", proxyProvider.Name())
-			wg.Add(1)
-			ch <- struct{}{}
-			go func() {
-				defer func() { <-ch; wg.Done() }()
-				if err := proxyProvider.Initial(); err != nil {
-					log.Errorln("initial Compatible provider %s error: %v", proxyProvider.Name(), err)
+		if err := pv.Initial(); err != nil {
+			switch pv.Type() {
+			case provider.Proxy:
+				{
+					log.Errorln("initial proxy provider %s error: %v", name, err)
 				}
-			}()
+			case provider.Rule:
+				{
+					log.Errorln("initial rule provider %s error: %v", name, err)
+				}
+			}
 		}
+	}
+
+	wg := sync.WaitGroup{}
+	ch := make(chan struct{}, concurrentCount)
+	for _, pv := range providers {
+		pv := pv
+		wg.Add(1)
+		ch <- struct{}{}
+		go func() {
+			defer func() { <-ch; wg.Done() }()
+			load(pv)
+		}()
 	}
 	wg.Wait()
 }

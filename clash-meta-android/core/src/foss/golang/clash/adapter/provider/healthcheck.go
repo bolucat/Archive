@@ -32,7 +32,6 @@ type HealthCheck struct {
 	url            string
 	extra          map[string]*extraOption
 	mu             sync.Mutex
-	started        atomic.Bool
 	proxies        []C.Proxy
 	interval       time.Duration
 	lazy           bool
@@ -43,13 +42,8 @@ type HealthCheck struct {
 }
 
 func (hc *HealthCheck) process() {
-	if hc.started.Load() {
-		log.Warnln("Skip start health check timer due to it's started")
-		return
-	}
-
 	ticker := time.NewTicker(hc.interval)
-	hc.start()
+	go hc.check()
 	for {
 		select {
 		case <-ticker.C:
@@ -62,7 +56,6 @@ func (hc *HealthCheck) process() {
 			}
 		case <-hc.ctx.Done():
 			ticker.Stop()
-			hc.stop()
 			return
 		}
 	}
@@ -105,10 +98,6 @@ func (hc *HealthCheck) registerHealthCheckTask(url string, expectedStatus utils.
 	option := &extraOption{filters: map[string]struct{}{}, expectedStatus: expectedStatus}
 	splitAndAddFiltersToExtra(filter, option)
 	hc.extra[url] = option
-
-	if hc.auto() && !hc.started.Load() {
-		go hc.process()
-	}
 }
 
 func splitAndAddFiltersToExtra(filter string, option *extraOption) {
@@ -129,14 +118,6 @@ func (hc *HealthCheck) auto() bool {
 
 func (hc *HealthCheck) touch() {
 	hc.lastTouch.Store(time.Now())
-}
-
-func (hc *HealthCheck) start() {
-	hc.started.Store(true)
-}
-
-func (hc *HealthCheck) stop() {
-	hc.started.Store(false)
 }
 
 func (hc *HealthCheck) check() {
