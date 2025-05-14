@@ -15,7 +15,6 @@ import iconLight from "@/assets/image/icon_light.svg?react";
 import iconDark from "@/assets/image/icon_dark.svg?react";
 import { useThemeMode, useEnableLog } from "@/services/states";
 import { LayoutItem } from "@/components/layout/layout-item";
-import { LayoutControl } from "@/components/layout/layout-control";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
@@ -24,7 +23,6 @@ import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
 import { getPortableFlag } from "@/services/cmds";
 import React from "react";
-import { TransitionGroup, CSSTransition } from "react-transition-group";
 import { useListen } from "@/hooks/use-listen";
 import { listen } from "@tauri-apps/api/event";
 import { useClashInfo } from "@/hooks/use-clash";
@@ -383,23 +381,11 @@ const Layout = () => {
 
           <div className="layout__right">
             <div className="the-bar">
-              <div
-                className="the-dragbar"
-                data-tauri-drag-region="true"
-                style={{ width: "100%" }}
-              />
-              {OS !== "macos" && <LayoutControl />}
             </div>
 
-            <TransitionGroup className="the-content">
-              <CSSTransition
-                key={location.pathname}
-                timeout={300}
-                classNames="page"
-              >
-                {React.cloneElement(routersEles, { key: location.pathname })}
-              </CSSTransition>
-            </TransitionGroup>
+            <div className="the-content">
+              {React.cloneElement(routersEles, { key: location.pathname })}
+            </div>
           </div>
         </Paper>
       </ThemeProvider>
