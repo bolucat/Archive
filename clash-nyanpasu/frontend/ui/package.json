@@ -23,7 +23,7 @@
     "@vitejs/plugin-react": "4.4.1",
     "ahooks": "3.8.4",
     "d3": "7.9.0",
-    "framer-motion": "12.10.5",
+    "framer-motion": "12.11.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-error-boundary": "6.0.0",
@@ -41,6 +41,6 @@
     "sass-embedded": "1.88.0",
     "tailwind-merge": "3.3.0",
     "typescript-plugin-css-modules": "5.1.0",
-    "vite-plugin-dts": "4.5.3"
+    "vite-plugin-dts": "4.5.4"
   }
 }

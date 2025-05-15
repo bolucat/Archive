@@ -31,7 +31,7 @@ func (l *LogLevel) UnmarshalYAML(unmarshal func(any) error) error {
 	unmarshal(&tp)
 	level, exist := LogLevelMapping[strings.ToLower(tp)]
 	if !exist {
-		return errors.New("invalid mode")
+		return errors.New("invalid log-level")
 	}
 	*l = level
 	return nil
@@ -43,7 +43,7 @@ func (l *LogLevel) UnmarshalJSON(data []byte) error {
 	json.Unmarshal(data, &tp)
 	level, exist := LogLevelMapping[strings.ToLower(tp)]
 	if !exist {
-		return errors.New("invalid mode")
+		return errors.New("invalid log-level")
 	}
 	*l = level
 	return nil
@@ -53,7 +53,7 @@ func (l *LogLevel) UnmarshalJSON(data []byte) error {
 func (l *LogLevel) UnmarshalText(data []byte) error {
 	level, exist := LogLevelMapping[strings.ToLower(string(data))]
 	if !exist {
-		return errors.New("invalid mode")
+		return errors.New("invalid log-level")
 	}
 	*l = level
 	return nil

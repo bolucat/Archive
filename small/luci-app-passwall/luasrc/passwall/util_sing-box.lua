@@ -84,6 +84,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 		local run_socks_instance = true
 		if proxy_table ~= nil and type(proxy_table) == "table" then
 			proxy_tag = proxy_table.tag or nil
+			run_socks_instance = proxy_table.run_socks_instance
 		end
 
 		if node.type ~= "sing-box" then
@@ -458,6 +459,9 @@ function gen_outbound(flag, node, tag, proxy_table)
 		if node.protocol == "anytls" then
 			protocol_table = {
 				password = (node.password and node.password ~= "") and node.password or "",
+				idle_session_check_interval = "30s",
+				idle_session_timeout = "30s",
+				min_idle_session = 5,
 				tls = tls
 			}
 		end
