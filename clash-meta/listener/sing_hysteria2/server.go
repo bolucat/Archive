@@ -2,7 +2,6 @@ package sing_hysteria2
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/common/sockopt"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -60,9 +60,16 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tls.Config{
-		MinVersion:   tls.VersionTLS13,
-		Certificates: []tls.Certificate{cert},
+	tlsConfig := &tlsC.Config{
+		MinVersion: tlsC.VersionTLS13,
+	}
+	tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+
+	if config.EchKey != "" {
+		err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(config.ALPN) > 0 {
 		tlsConfig.NextProtos = config.ALPN
@@ -125,7 +132,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		SendBPS:               outbound.StringToBps(config.Up),
 		ReceiveBPS:            outbound.StringToBps(config.Down),
 		SalamanderPassword:    salamanderPassword,
-		TLSConfig:             tlsC.UConfig(tlsConfig),
+		TLSConfig:             tlsConfig,
 		QUICConfig:            quicConfig,
 		IgnoreClientBandwidth: config.IgnoreClientBandwidth,
 		UDPTimeout:            sing.UDPTimeout,

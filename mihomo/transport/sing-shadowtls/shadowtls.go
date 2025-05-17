@@ -49,7 +49,7 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 		return nil, err
 	}
 
-	tlsHandshake := uTLSHandshakeFunc(tlsConfig, option.ClientFingerprint)
+	tlsHandshake := uTLSHandshakeFunc(tlsConfig, option.ClientFingerprint, option.Version)
 	client, err := shadowtls.NewClient(shadowtls.ClientConfig{
 		Version:      option.Version,
 		Password:     option.Password,
@@ -62,15 +62,19 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 	return client.DialContextConn(ctx, conn)
 }
 
-func uTLSHandshakeFunc(config *tls.Config, clientFingerprint string) shadowtls.TLSHandshakeFunc {
+func uTLSHandshakeFunc(config *tls.Config, clientFingerprint string, version int) shadowtls.TLSHandshakeFunc {
 	return func(ctx context.Context, conn net.Conn, sessionIDGenerator shadowtls.TLSSessionIDGeneratorFunc) error {
 		tlsConfig := tlsC.UConfig(config)
 		tlsConfig.SessionIDGenerator = sessionIDGenerator
-		if config.MaxVersion == tls.VersionTLS12 { // for ShadowTLS v1
+		if version == 1 {
+			tlsConfig.MaxVersion = tlsC.VersionTLS12 // ShadowTLS v1 only support TLS 1.2
 			tlsConn := tlsC.Client(conn, tlsConfig)
 			return tlsConn.HandshakeContext(ctx)
 		}
 		if clientFingerprint, ok := tlsC.GetFingerprint(clientFingerprint); ok {
+			if version == 2 && clientFingerprint == tlsC.HelloChrome_Auto {
+				clientFingerprint = tlsC.HelloChrome_120 // ShadowTLS v2 not work with X25519MLKEM768
+			}
 			tlsConn := tlsC.UClient(conn, tlsConfig, clientFingerprint)
 			if slices.Equal(tlsConfig.NextProtos, WsALPN) {
 				err := tlsC.BuildWebsocketHandshakeState(tlsConn)

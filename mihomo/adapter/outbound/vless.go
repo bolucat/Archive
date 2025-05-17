@@ -17,6 +17,7 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
 	tlsC "github.com/metacubex/mihomo/component/tls"
@@ -46,6 +47,7 @@ type Vless struct {
 	transport    *gun.TransportWrap
 
 	realityConfig *tlsC.RealityConfig
+	echConfig     *ech.Config
 }
 
 type VlessOption struct {
@@ -62,6 +64,7 @@ type VlessOption struct {
 	XUDP              bool              `proxy:"xudp,omitempty"`
 	PacketEncoding    string            `proxy:"packet-encoding,omitempty"`
 	Network           string            `proxy:"network,omitempty"`
+	ECHOpts           ECHOptions        `proxy:"ech-opts,omitempty"`
 	RealityOpts       RealityOptions    `proxy:"reality-opts,omitempty"`
 	HTTPOpts          HTTPOptions       `proxy:"http-opts,omitempty"`
 	HTTP2Opts         HTTP2Options      `proxy:"h2-opts,omitempty"`
@@ -88,6 +91,7 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 			V2rayHttpUpgrade:         v.option.WSOpts.V2rayHttpUpgrade,
 			V2rayHttpUpgradeFastOpen: v.option.WSOpts.V2rayHttpUpgradeFastOpen,
 			ClientFingerprint:        v.option.ClientFingerprint,
+			ECHConfig:                v.echConfig,
 			Headers:                  http.Header{},
 		}
 
@@ -151,7 +155,7 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 
 		c, err = vmess.StreamH2Conn(ctx, c, h2Opts)
 	case "grpc":
-		c, err = gun.StreamGunWithConn(c, v.gunTLSConfig, v.gunConfig, v.realityConfig)
+		c, err = gun.StreamGunWithConn(c, v.gunTLSConfig, v.gunConfig, v.echConfig, v.realityConfig)
 	default:
 		// default tcp network
 		// handle TLS
@@ -206,6 +210,7 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 			SkipCertVerify:    v.option.SkipCertVerify,
 			FingerPrint:       v.option.Fingerprint,
 			ClientFingerprint: v.option.ClientFingerprint,
+			ECH:               v.echConfig,
 			Reality:           v.realityConfig,
 			NextProtos:        v.option.ALPN,
 		}
@@ -563,6 +568,11 @@ func NewVless(option VlessOption) (*Vless, error) {
 		return nil, err
 	}
 
+	v.echConfig, err = v.option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+
 	switch option.Network {
 	case "h2":
 		if len(option.HTTP2Opts.Host) == 0 {
@@ -611,7 +621,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 		v.gunTLSConfig = tlsConfig
 		v.gunConfig = gunConfig
 
-		v.transport = gun.NewHTTP2Client(dialFn, tlsConfig, v.option.ClientFingerprint, v.realityConfig)
+		v.transport = gun.NewHTTP2Client(dialFn, tlsConfig, v.option.ClientFingerprint, v.echConfig, v.realityConfig)
 	}
 
 	return v, nil

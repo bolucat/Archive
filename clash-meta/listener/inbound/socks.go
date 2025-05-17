@@ -17,6 +17,7 @@ type SocksOption struct {
 	UDP           bool          `inbound:"udp,omitempty"`
 	Certificate   string        `inbound:"certificate,omitempty"`
 	PrivateKey    string        `inbound:"private-key,omitempty"`
+	EchKey        string        `inbound:"ech-key,omitempty"`
 	RealityConfig RealityConfig `inbound:"reality-config,omitempty"`
 }
 
@@ -89,6 +90,7 @@ func (s *Socks) Listen(tunnel C.Tunnel) error {
 				AuthStore:     s.config.Users.GetAuthStore(),
 				Certificate:   s.config.Certificate,
 				PrivateKey:    s.config.PrivateKey,
+				EchKey:        s.config.EchKey,
 				RealityConfig: s.config.RealityConfig.Build(),
 			},
 			tunnel,

@@ -127,6 +127,28 @@ func (r *Resolver) shouldIPFallback(ip netip.Addr) bool {
 	return false
 }
 
+func (r *Resolver) ResolveECH(ctx context.Context, host string) ([]byte, error) {
+	query := &D.Msg{}
+	query.SetQuestion(D.Fqdn(host), D.TypeHTTPS)
+
+	msg, err := r.ExchangeContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, rr := range msg.Answer {
+		switch resource := rr.(type) {
+		case *D.HTTPS:
+			for _, value := range resource.Value {
+				if echConfig, ok := value.(*D.SVCBECHConfig); ok {
+					return echConfig.ECH, nil
+				}
+			}
+		}
+	}
+	return nil, errors.New("no ECH config found in DNS records")
+}
+
 // ExchangeContext a batch of dns request with context.Context, and it use cache
 func (r *Resolver) ExchangeContext(ctx context.Context, m *D.Msg) (msg *D.Msg, err error) {
 	if len(m.Question) == 0 {

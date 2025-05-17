@@ -64,6 +64,7 @@ type v2rayObfsOption struct {
 	Host                     string            `obfs:"host,omitempty"`
 	Path                     string            `obfs:"path,omitempty"`
 	TLS                      bool              `obfs:"tls,omitempty"`
+	ECHOpts                  ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint              string            `obfs:"fingerprint,omitempty"`
 	Headers                  map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify           bool              `obfs:"skip-cert-verify,omitempty"`
@@ -77,6 +78,7 @@ type gostObfsOption struct {
 	Host           string            `obfs:"host,omitempty"`
 	Path           string            `obfs:"path,omitempty"`
 	TLS            bool              `obfs:"tls,omitempty"`
+	ECHOpts        ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint    string            `obfs:"fingerprint,omitempty"`
 	Headers        map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify bool              `obfs:"skip-cert-verify,omitempty"`
@@ -303,6 +305,12 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			v2rayOption.TLS = true
 			v2rayOption.SkipCertVerify = opts.SkipCertVerify
 			v2rayOption.Fingerprint = opts.Fingerprint
+
+			echConfig, err := opts.ECHOpts.Parse()
+			if err != nil {
+				return nil, fmt.Errorf("ss %s initialize v2ray-plugin error: %w", addr, err)
+			}
+			v2rayOption.ECHConfig = echConfig
 		}
 	} else if option.Plugin == "gost-plugin" {
 		opts := gostObfsOption{Host: "bing.com", Mux: true}
@@ -325,6 +333,12 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			gostOption.TLS = true
 			gostOption.SkipCertVerify = opts.SkipCertVerify
 			gostOption.Fingerprint = opts.Fingerprint
+
+			echConfig, err := opts.ECHOpts.Parse()
+			if err != nil {
+				return nil, fmt.Errorf("ss %s initialize gost-plugin error: %w", addr, err)
+			}
+			gostOption.ECHConfig = echConfig
 		}
 	} else if option.Plugin == shadowtls.Mode {
 		obfsMode = shadowtls.Mode

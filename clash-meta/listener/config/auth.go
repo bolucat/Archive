@@ -12,5 +12,6 @@ type AuthServer struct {
 	AuthStore     auth.AuthStore
 	Certificate   string
 	PrivateKey    string
+	EchKey        string
 	RealityConfig reality.Config
 }

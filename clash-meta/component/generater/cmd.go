@@ -4,12 +4,14 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/metacubex/mihomo/component/ech"
+
 	"github.com/gofrs/uuid/v5"
 )
 
 func Main(args []string) {
 	if len(args) < 1 {
-		panic("Using: generate uuid/reality-keypair/wg-keypair")
+		panic("Using: generate uuid/reality-keypair/wg-keypair/ech-keypair")
 	}
 	switch args[0] {
 	case "uuid":
@@ -33,5 +35,15 @@ func Main(args []string) {
 		}
 		fmt.Println("PrivateKey: " + privateKey.String())
 		fmt.Println("PublicKey: " + privateKey.PublicKey().String())
+	case "ech-keypair":
+		if len(args) < 2 {
+			panic("Using: generate ech-keypair <plain_server_name>")
+		}
+		configBase64, keyPem, err := ech.GenECHConfig(args[1])
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Config:", configBase64)
+		fmt.Println("Key:", keyPem)
 	}
 }

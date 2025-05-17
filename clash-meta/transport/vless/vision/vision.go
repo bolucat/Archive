@@ -45,6 +45,12 @@ func NewConn(conn connWithUpstream, userUUID *uuid.UUID) (*Conn, error) {
 		c.tlsConn = underlying
 		t = reflect.TypeOf(underlying).Elem()
 		p = unsafe.Pointer(underlying)
+	case *tlsC.Conn:
+		//log.Debugln("type *tlsC.Conn")
+		c.Conn = underlying.NetConn()
+		c.tlsConn = underlying
+		t = reflect.TypeOf(underlying).Elem()
+		p = unsafe.Pointer(underlying)
 	case *tlsC.UConn:
 		//log.Debugln("type *tlsC.UConn")
 		c.Conn = underlying.NetConn()

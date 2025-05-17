@@ -12,6 +12,7 @@ import (
 
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	"github.com/metacubex/mihomo/component/resolver"
 	tlsC "github.com/metacubex/mihomo/component/tls"
@@ -28,6 +29,9 @@ type Tuic struct {
 	*Base
 	option *TuicOption
 	client *tuic.PoolClient
+
+	tlsConfig *tlsC.Config
+	echConfig *ech.Config
 }
 
 type TuicOption struct {
@@ -48,18 +52,19 @@ type TuicOption struct {
 	DisableSni            bool     `proxy:"disable-sni,omitempty"`
 	MaxUdpRelayPacketSize int      `proxy:"max-udp-relay-packet-size,omitempty"`
 
-	FastOpen             bool   `proxy:"fast-open,omitempty"`
-	MaxOpenStreams       int    `proxy:"max-open-streams,omitempty"`
-	CWND                 int    `proxy:"cwnd,omitempty"`
-	SkipCertVerify       bool   `proxy:"skip-cert-verify,omitempty"`
-	Fingerprint          string `proxy:"fingerprint,omitempty"`
-	CustomCA             string `proxy:"ca,omitempty"`
-	CustomCAString       string `proxy:"ca-str,omitempty"`
-	ReceiveWindowConn    int    `proxy:"recv-window-conn,omitempty"`
-	ReceiveWindow        int    `proxy:"recv-window,omitempty"`
-	DisableMTUDiscovery  bool   `proxy:"disable-mtu-discovery,omitempty"`
-	MaxDatagramFrameSize int    `proxy:"max-datagram-frame-size,omitempty"`
-	SNI                  string `proxy:"sni,omitempty"`
+	FastOpen             bool       `proxy:"fast-open,omitempty"`
+	MaxOpenStreams       int        `proxy:"max-open-streams,omitempty"`
+	CWND                 int        `proxy:"cwnd,omitempty"`
+	SkipCertVerify       bool       `proxy:"skip-cert-verify,omitempty"`
+	Fingerprint          string     `proxy:"fingerprint,omitempty"`
+	CustomCA             string     `proxy:"ca,omitempty"`
+	CustomCAString       string     `proxy:"ca-str,omitempty"`
+	ReceiveWindowConn    int        `proxy:"recv-window-conn,omitempty"`
+	ReceiveWindow        int        `proxy:"recv-window,omitempty"`
+	DisableMTUDiscovery  bool       `proxy:"disable-mtu-discovery,omitempty"`
+	MaxDatagramFrameSize int        `proxy:"max-datagram-frame-size,omitempty"`
+	SNI                  string     `proxy:"sni,omitempty"`
+	ECHOpts              ECHOptions `proxy:"ech-opts,omitempty"`
 
 	UDPOverStream        bool `proxy:"udp-over-stream,omitempty"`
 	UDPOverStreamVersion int  `proxy:"udp-over-stream-version,omitempty"`
@@ -132,6 +137,10 @@ func (t *Tuic) dialWithDialer(ctx context.Context, dialer C.Dialer) (transport *
 		}
 	}
 	udpAddr, err := resolveUDPAddr(ctx, "udp", t.addr, t.prefer)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = t.echConfig.ClientHandle(ctx, t.tlsConfig)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -249,6 +258,12 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 		tlsConfig.InsecureSkipVerify = true // tls: either ServerName or InsecureSkipVerify must be specified in the tls.Config
 	}
 
+	tlsClientConfig := tlsC.UConfig(tlsConfig)
+	echConfig, err := option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+
 	switch option.UDPOverStreamVersion {
 	case uot.Version, uot.LegacyVersion:
 	case 0:
@@ -268,7 +283,9 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 			rmark:  option.RoutingMark,
 			prefer: C.NewDNSPrefer(option.IPVersion),
 		},
-		option: &option,
+		option:    &option,
+		tlsConfig: tlsClientConfig,
+		echConfig: echConfig,
 	}
 
 	clientMaxOpenStreams := int64(option.MaxOpenStreams)
@@ -285,7 +302,7 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 	if len(option.Token) > 0 {
 		tkn := tuic.GenTKN(option.Token)
 		clientOption := &tuic.ClientOptionV4{
-			TlsConfig:             tlsC.UConfig(tlsConfig),
+			TlsConfig:             tlsClientConfig,
 			QuicConfig:            quicConfig,
 			Token:                 tkn,
 			UdpRelayMode:          udpRelayMode,
@@ -305,7 +322,7 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 			maxUdpRelayPacketSize = tuic.MaxFragSizeV5
 		}
 		clientOption := &tuic.ClientOptionV5{
-			TlsConfig:             tlsC.UConfig(tlsConfig),
+			TlsConfig:             tlsClientConfig,
 			QuicConfig:            quicConfig,
 			Uuid:                  uuid.FromStringOrNil(option.UUID),
 			Password:              option.Password,

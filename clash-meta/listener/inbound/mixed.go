@@ -18,6 +18,7 @@ type MixedOption struct {
 	UDP           bool          `inbound:"udp,omitempty"`
 	Certificate   string        `inbound:"certificate,omitempty"`
 	PrivateKey    string        `inbound:"private-key,omitempty"`
+	EchKey        string        `inbound:"ech-key,omitempty"`
 	RealityConfig RealityConfig `inbound:"reality-config,omitempty"`
 }
 
@@ -69,6 +70,7 @@ func (m *Mixed) Listen(tunnel C.Tunnel) error {
 				AuthStore:     m.config.Users.GetAuthStore(),
 				Certificate:   m.config.Certificate,
 				PrivateKey:    m.config.PrivateKey,
+				EchKey:        m.config.EchKey,
 				RealityConfig: m.config.RealityConfig.Build(),
 			},
 			tunnel,

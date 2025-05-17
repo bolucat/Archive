@@ -21,6 +21,7 @@ import (
 
 	"github.com/metacubex/mihomo/common/buf"
 	N "github.com/metacubex/mihomo/common/net"
+	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/log"
 
@@ -56,6 +57,7 @@ type WebsocketConfig struct {
 	Headers                  http.Header
 	TLS                      bool
 	TLSConfig                *tls.Config
+	ECHConfig                *ech.Config
 	MaxEarlyData             int
 	EarlyDataHeaderName      string
 	ClientFingerprint        string
@@ -355,6 +357,11 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 		}
 
 		if clientFingerprint, ok := tlsC.GetFingerprint(c.ClientFingerprint); ok {
+			tlsConfig := tlsC.UConfig(config)
+			err = c.ECHConfig.ClientHandle(ctx, tlsConfig)
+			if err != nil {
+				return nil, err
+			}
 			tlsConn := tlsC.UClient(conn, tlsC.UConfig(config), clientFingerprint)
 			if err = tlsC.BuildWebsocketHandshakeState(tlsConn); err != nil {
 				return nil, fmt.Errorf("parse url %s error: %w", c.Path, err)
@@ -363,6 +370,16 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 			if err != nil {
 				return nil, err
 			}
+			conn = tlsConn
+		} else if c.ECHConfig != nil {
+			tlsConfig := tlsC.UConfig(config)
+			err = c.ECHConfig.ClientHandle(ctx, tlsConfig)
+			if err != nil {
+				return nil, err
+			}
+			tlsConn := tlsC.Client(conn, tlsConfig)
+
+			err = tlsConn.HandshakeContext(ctx)
 			conn = tlsConn
 		} else {
 			tlsConn := tls.Client(conn, config)

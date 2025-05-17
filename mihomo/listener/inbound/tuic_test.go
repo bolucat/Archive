@@ -89,4 +89,14 @@ func TestInboundTuic_TLS(t *testing.T) {
 		Fingerprint: tlsFingerprint,
 	}
 	testInboundTuic(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTuic(t, inboundOptions, outboundOptions)
+	})
 }

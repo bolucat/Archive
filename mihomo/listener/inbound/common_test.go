@@ -18,6 +18,7 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/generater"
 	C "github.com/metacubex/mihomo/constant"
 
@@ -38,6 +39,8 @@ var realityPrivateKey, realityPublickey string
 var realityDest = "itunes.apple.com"
 var realityShortid = "10f897e26c4b9478"
 var realityRealDial = false
+var echPublicSni = "public.sni"
+var echConfigBase64, echKeyPem, _ = ech.GenECHConfig(echPublicSni)
 
 func init() {
 	rand.Read(httpData)

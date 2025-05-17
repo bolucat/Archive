@@ -21,6 +21,7 @@ type VmessServer struct {
 	GrpcServiceName string
 	Certificate     string
 	PrivateKey      string
+	EchKey          string
 	RealityConfig   reality.Config
 	MuxOption       sing.MuxOption `yaml:"mux-option" json:"mux-option,omitempty"`
 }

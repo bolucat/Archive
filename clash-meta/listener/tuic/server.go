@@ -1,7 +1,6 @@
 package tuic
 
 import (
-	"crypto/tls"
 	"net"
 	"strings"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/common/sockopt"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -52,9 +52,16 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tls.Config{
-		MinVersion:   tls.VersionTLS13,
-		Certificates: []tls.Certificate{cert},
+	tlsConfig := &tlsC.Config{
+		MinVersion: tlsC.VersionTLS13,
+	}
+	tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+
+	if config.EchKey != "" {
+		err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if len(config.ALPN) > 0 {
 		tlsConfig.NextProtos = config.ALPN
@@ -125,7 +132,7 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	option := &tuic.ServerOption{
 		HandleTcpFn:           handleTcpFn,
 		HandleUdpFn:           handleUdpFn,
-		TlsConfig:             tlsC.UConfig(tlsConfig),
+		TlsConfig:             tlsConfig,
 		QuicConfig:            quicConfig,
 		CongestionController:  config.CongestionController,
 		AuthenticationTimeout: time.Duration(config.AuthenticationTimeout) * time.Millisecond,

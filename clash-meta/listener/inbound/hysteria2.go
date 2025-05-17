@@ -16,6 +16,7 @@ type Hysteria2Option struct {
 	ObfsPassword          string            `inbound:"obfs-password,omitempty"`
 	Certificate           string            `inbound:"certificate"`
 	PrivateKey            string            `inbound:"private-key"`
+	EchKey                string            `inbound:"ech-key,omitempty"`
 	MaxIdleTime           int               `inbound:"max-idle-time,omitempty"`
 	ALPN                  []string          `inbound:"alpn,omitempty"`
 	Up                    string            `inbound:"up,omitempty"`
@@ -60,6 +61,7 @@ func NewHysteria2(options *Hysteria2Option) (*Hysteria2, error) {
 			ObfsPassword:          options.ObfsPassword,
 			Certificate:           options.Certificate,
 			PrivateKey:            options.PrivateKey,
+			EchKey:                options.EchKey,
 			MaxIdleTime:           options.MaxIdleTime,
 			ALPN:                  options.ALPN,
 			Up:                    options.Up,

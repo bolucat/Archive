@@ -60,6 +60,16 @@ func TestInboundHysteria2_TLS(t *testing.T) {
 		Fingerprint: tlsFingerprint,
 	}
 	testInboundHysteria2(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundHysteria2(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundHysteria2_Salamander(t *testing.T) {
@@ -75,6 +85,16 @@ func TestInboundHysteria2_Salamander(t *testing.T) {
 		ObfsPassword: userUUID,
 	}
 	testInboundHysteria2(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundHysteria2(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundHysteria2_Brutal(t *testing.T) {
@@ -90,4 +110,14 @@ func TestInboundHysteria2_Brutal(t *testing.T) {
 		Down:        "200 Mbps",
 	}
 	testInboundHysteria2(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundHysteria2(t, inboundOptions, outboundOptions)
+	})
 }

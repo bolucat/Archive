@@ -12,6 +12,7 @@ import (
 
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
@@ -44,6 +45,9 @@ type Hysteria struct {
 
 	option *HysteriaOption
 	client *core.Client
+
+	tlsConfig *tlsC.Config
+	echConfig *ech.Config
 }
 
 func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
@@ -79,7 +83,15 @@ func (h *Hysteria) genHdc(ctx context.Context) utils.PacketDialer {
 			return cDialer.ListenPacket(ctx, network, "", rAddrPort)
 		},
 		remoteAddr: func(addr string) (net.Addr, error) {
-			return resolveUDPAddr(ctx, "udp", addr, h.prefer)
+			udpAddr, err := resolveUDPAddr(ctx, "udp", addr, h.prefer)
+			if err != nil {
+				return nil, err
+			}
+			err = h.echConfig.ClientHandle(ctx, h.tlsConfig)
+			if err != nil {
+				return nil, err
+			}
+			return udpAddr, nil
 		},
 	}
 }
@@ -93,30 +105,31 @@ func (h *Hysteria) ProxyInfo() C.ProxyInfo {
 
 type HysteriaOption struct {
 	BasicOption
-	Name                string   `proxy:"name"`
-	Server              string   `proxy:"server"`
-	Port                int      `proxy:"port,omitempty"`
-	Ports               string   `proxy:"ports,omitempty"`
-	Protocol            string   `proxy:"protocol,omitempty"`
-	ObfsProtocol        string   `proxy:"obfs-protocol,omitempty"` // compatible with Stash
-	Up                  string   `proxy:"up"`
-	UpSpeed             int      `proxy:"up-speed,omitempty"` // compatible with Stash
-	Down                string   `proxy:"down"`
-	DownSpeed           int      `proxy:"down-speed,omitempty"` // compatible with Stash
-	Auth                string   `proxy:"auth,omitempty"`
-	AuthString          string   `proxy:"auth-str,omitempty"`
-	Obfs                string   `proxy:"obfs,omitempty"`
-	SNI                 string   `proxy:"sni,omitempty"`
-	SkipCertVerify      bool     `proxy:"skip-cert-verify,omitempty"`
-	Fingerprint         string   `proxy:"fingerprint,omitempty"`
-	ALPN                []string `proxy:"alpn,omitempty"`
-	CustomCA            string   `proxy:"ca,omitempty"`
-	CustomCAString      string   `proxy:"ca-str,omitempty"`
-	ReceiveWindowConn   int      `proxy:"recv-window-conn,omitempty"`
-	ReceiveWindow       int      `proxy:"recv-window,omitempty"`
-	DisableMTUDiscovery bool     `proxy:"disable-mtu-discovery,omitempty"`
-	FastOpen            bool     `proxy:"fast-open,omitempty"`
-	HopInterval         int      `proxy:"hop-interval,omitempty"`
+	Name                string     `proxy:"name"`
+	Server              string     `proxy:"server"`
+	Port                int        `proxy:"port,omitempty"`
+	Ports               string     `proxy:"ports,omitempty"`
+	Protocol            string     `proxy:"protocol,omitempty"`
+	ObfsProtocol        string     `proxy:"obfs-protocol,omitempty"` // compatible with Stash
+	Up                  string     `proxy:"up"`
+	UpSpeed             int        `proxy:"up-speed,omitempty"` // compatible with Stash
+	Down                string     `proxy:"down"`
+	DownSpeed           int        `proxy:"down-speed,omitempty"` // compatible with Stash
+	Auth                string     `proxy:"auth,omitempty"`
+	AuthString          string     `proxy:"auth-str,omitempty"`
+	Obfs                string     `proxy:"obfs,omitempty"`
+	SNI                 string     `proxy:"sni,omitempty"`
+	ECHOpts             ECHOptions `proxy:"ech-opts,omitempty"`
+	SkipCertVerify      bool       `proxy:"skip-cert-verify,omitempty"`
+	Fingerprint         string     `proxy:"fingerprint,omitempty"`
+	ALPN                []string   `proxy:"alpn,omitempty"`
+	CustomCA            string     `proxy:"ca,omitempty"`
+	CustomCAString      string     `proxy:"ca-str,omitempty"`
+	ReceiveWindowConn   int        `proxy:"recv-window-conn,omitempty"`
+	ReceiveWindow       int        `proxy:"recv-window,omitempty"`
+	DisableMTUDiscovery bool       `proxy:"disable-mtu-discovery,omitempty"`
+	FastOpen            bool       `proxy:"fast-open,omitempty"`
+	HopInterval         int        `proxy:"hop-interval,omitempty"`
 }
 
 func (c *HysteriaOption) Speed() (uint64, uint64, error) {
@@ -161,6 +174,13 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 	} else {
 		tlsConfig.NextProtos = []string{DefaultALPN}
 	}
+
+	echConfig, err := option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+	tlsClientConfig := tlsC.UConfig(tlsConfig)
+
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     uint64(option.ReceiveWindowConn),
 		MaxStreamReceiveWindow:         uint64(option.ReceiveWindowConn),
@@ -215,7 +235,7 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 		down = uint64(option.DownSpeed * mbpsToBps)
 	}
 	client, err := core.NewClient(
-		addr, ports, option.Protocol, auth, tlsC.UConfig(tlsConfig), quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
+		addr, ports, option.Protocol, auth, tlsClientConfig, quicConfig, clientTransport, up, down, func(refBPS uint64) congestion.CongestionControl {
 			return hyCongestion.NewBrutalSender(congestion.ByteCount(refBPS))
 		}, obfuscator, hopInterval, option.FastOpen,
 	)
@@ -233,8 +253,10 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 			rmark:  option.RoutingMark,
 			prefer: C.NewDNSPrefer(option.IPVersion),
 		},
-		option: &option,
-		client: client,
+		option:    &option,
+		client:    client,
+		tlsConfig: tlsClientConfig,
+		echConfig: echConfig,
 	}
 
 	return outbound, nil

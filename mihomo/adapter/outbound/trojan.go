@@ -12,6 +12,7 @@ import (
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
@@ -32,6 +33,7 @@ type Trojan struct {
 	transport    *gun.TransportWrap
 
 	realityConfig *tlsC.RealityConfig
+	echConfig     *ech.Config
 
 	ssCipher core.Cipher
 }
@@ -48,6 +50,7 @@ type TrojanOption struct {
 	Fingerprint       string         `proxy:"fingerprint,omitempty"`
 	UDP               bool           `proxy:"udp,omitempty"`
 	Network           string         `proxy:"network,omitempty"`
+	ECHOpts           ECHOptions     `proxy:"ech-opts,omitempty"`
 	RealityOpts       RealityOptions `proxy:"reality-opts,omitempty"`
 	GrpcOpts          GrpcOptions    `proxy:"grpc-opts,omitempty"`
 	WSOpts            WSOptions      `proxy:"ws-opts,omitempty"`
@@ -77,6 +80,7 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			V2rayHttpUpgrade:         t.option.WSOpts.V2rayHttpUpgrade,
 			V2rayHttpUpgradeFastOpen: t.option.WSOpts.V2rayHttpUpgradeFastOpen,
 			ClientFingerprint:        t.option.ClientFingerprint,
+			ECHConfig:                t.echConfig,
 			Headers:                  http.Header{},
 		}
 
@@ -110,7 +114,7 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 
 		c, err = vmess.StreamWebsocketConn(ctx, c, wsOpts)
 	case "grpc":
-		c, err = gun.StreamGunWithConn(c, t.gunTLSConfig, t.gunConfig, t.realityConfig)
+		c, err = gun.StreamGunWithConn(c, t.gunTLSConfig, t.gunConfig, t.echConfig, t.realityConfig)
 	default:
 		// default tcp network
 		// handle TLS
@@ -124,6 +128,7 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			FingerPrint:       t.option.Fingerprint,
 			ClientFingerprint: t.option.ClientFingerprint,
 			NextProtos:        alpn,
+			ECH:               t.echConfig,
 			Reality:           t.realityConfig,
 		})
 	}
@@ -321,6 +326,11 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 		return nil, err
 	}
 
+	t.echConfig, err = option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+
 	if option.SSOpts.Enabled {
 		if option.SSOpts.Password == "" {
 			return nil, errors.New("empty password")
@@ -365,7 +375,7 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 			return nil, err
 		}
 
-		t.transport = gun.NewHTTP2Client(dialFn, tlsConfig, option.ClientFingerprint, t.realityConfig)
+		t.transport = gun.NewHTTP2Client(dialFn, tlsConfig, option.ClientFingerprint, t.echConfig, t.realityConfig)
 
 		t.gunTLSConfig = tlsConfig
 		t.gunConfig = &gun.Config{

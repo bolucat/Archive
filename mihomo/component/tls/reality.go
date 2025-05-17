@@ -26,7 +26,6 @@ import (
 	utls "github.com/metacubex/utls"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/hkdf"
-	"golang.org/x/exp/slices"
 	"golang.org/x/net/http2"
 )
 
@@ -39,7 +38,7 @@ type RealityConfig struct {
 	SupportX25519MLKEM768 bool
 }
 
-func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHelloID, tlsConfig *tls.Config, realityConfig *RealityConfig) (net.Conn, error) {
+func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHelloID, tlsConfig *Config, realityConfig *RealityConfig) (net.Conn, error) {
 	for retry := 0; ; retry++ {
 		verifier := &realityVerifier{
 			serverName: tlsConfig.ServerName,
@@ -51,34 +50,15 @@ func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHello
 			VerifyPeerCertificate:  verifier.VerifyPeerCertificate,
 		}
 
+		if !realityConfig.SupportX25519MLKEM768 && fingerprint == HelloChrome_Auto {
+			fingerprint = HelloChrome_120 // old reality server doesn't work with X25519MLKEM768
+		}
+
 		uConn := utls.UClient(conn, uConfig, fingerprint)
 		verifier.UConn = uConn
 		err := uConn.BuildHandshakeState()
 		if err != nil {
 			return nil, err
-		}
-
-		if !realityConfig.SupportX25519MLKEM768 {
-			// ------for X25519MLKEM768 does not work properly with the old reality server-------
-			// Iterate over extensions and check
-			for _, extension := range uConn.Extensions {
-				if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
-					ce.Curves = slices.DeleteFunc(ce.Curves, func(curveID utls.CurveID) bool {
-						return curveID == utls.X25519MLKEM768
-					})
-				}
-				if ks, ok := extension.(*utls.KeyShareExtension); ok {
-					ks.KeyShares = slices.DeleteFunc(ks.KeyShares, func(share utls.KeyShare) bool {
-						return share.Group == utls.X25519MLKEM768
-					})
-				}
-			}
-			// Rebuild the client hello
-			err = uConn.BuildHandshakeState()
-			if err != nil {
-				return nil, err
-			}
-			// --------------------------------------------------------------------
 		}
 
 		hello := uConn.HandshakeState.Hello

@@ -13,6 +13,7 @@ type TuicServer struct {
 	Users                 map[string]string `yaml:"users" json:"users,omitempty"`
 	Certificate           string            `yaml:"certificate" json:"certificate"`
 	PrivateKey            string            `yaml:"private-key" json:"private-key"`
+	EchKey                string            `yaml:"ech-key" json:"ech-key"`
 	CongestionController  string            `yaml:"congestion-controller" json:"congestion-controller,omitempty"`
 	MaxIdleTime           int               `yaml:"max-idle-time" json:"max-idle-time,omitempty"`
 	AuthenticationTimeout int               `yaml:"authentication-timeout" json:"authentication-timeout,omitempty"`

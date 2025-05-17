@@ -49,6 +49,7 @@ type Resolver interface {
 	LookupIP(ctx context.Context, host string) (ips []netip.Addr, err error)
 	LookupIPv4(ctx context.Context, host string) (ips []netip.Addr, err error)
 	LookupIPv6(ctx context.Context, host string) (ips []netip.Addr, err error)
+	ResolveECH(ctx context.Context, host string) ([]byte, error)
 	ExchangeContext(ctx context.Context, m *dns.Msg) (msg *dns.Msg, err error)
 	Invalid() bool
 	ClearCache()
@@ -214,6 +215,17 @@ func ResolveIPPrefer6WithResolver(ctx context.Context, host string, r Resolver) 
 // ResolveIPPrefer6 with a host, return ip and priority return TypeAAAA
 func ResolveIPPrefer6(ctx context.Context, host string) (netip.Addr, error) {
 	return ResolveIPPrefer6WithResolver(ctx, host, DefaultResolver)
+}
+
+func ResolveECHWithResolver(ctx context.Context, host string, r Resolver) ([]byte, error) {
+	if r != nil && r.Invalid() {
+		return r.ResolveECH(ctx, host)
+	}
+	return SystemResolver.ResolveECH(ctx, host)
+}
+
+func ResolveECH(ctx context.Context, host string) ([]byte, error) {
+	return ResolveECHWithResolver(ctx, host, DefaultResolver)
 }
 
 func ResetConnection() {

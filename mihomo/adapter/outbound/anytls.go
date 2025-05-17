@@ -28,19 +28,20 @@ type AnyTLS struct {
 
 type AnyTLSOption struct {
 	BasicOption
-	Name                     string   `proxy:"name"`
-	Server                   string   `proxy:"server"`
-	Port                     int      `proxy:"port"`
-	Password                 string   `proxy:"password"`
-	ALPN                     []string `proxy:"alpn,omitempty"`
-	SNI                      string   `proxy:"sni,omitempty"`
-	ClientFingerprint        string   `proxy:"client-fingerprint,omitempty"`
-	SkipCertVerify           bool     `proxy:"skip-cert-verify,omitempty"`
-	Fingerprint              string   `proxy:"fingerprint,omitempty"`
-	UDP                      bool     `proxy:"udp,omitempty"`
-	IdleSessionCheckInterval int      `proxy:"idle-session-check-interval,omitempty"`
-	IdleSessionTimeout       int      `proxy:"idle-session-timeout,omitempty"`
-	MinIdleSession           int      `proxy:"min-idle-session,omitempty"`
+	Name                     string     `proxy:"name"`
+	Server                   string     `proxy:"server"`
+	Port                     int        `proxy:"port"`
+	Password                 string     `proxy:"password"`
+	ALPN                     []string   `proxy:"alpn,omitempty"`
+	SNI                      string     `proxy:"sni,omitempty"`
+	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
+	ClientFingerprint        string     `proxy:"client-fingerprint,omitempty"`
+	SkipCertVerify           bool       `proxy:"skip-cert-verify,omitempty"`
+	Fingerprint              string     `proxy:"fingerprint,omitempty"`
+	UDP                      bool       `proxy:"udp,omitempty"`
+	IdleSessionCheckInterval int        `proxy:"idle-session-check-interval,omitempty"`
+	IdleSessionTimeout       int        `proxy:"idle-session-timeout,omitempty"`
+	MinIdleSession           int        `proxy:"min-idle-session,omitempty"`
 }
 
 func (t *AnyTLS) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
@@ -115,12 +116,17 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 		IdleSessionTimeout:       time.Duration(option.IdleSessionTimeout) * time.Second,
 		MinIdleSession:           option.MinIdleSession,
 	}
+	echConfig, err := option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
 	tlsConfig := &vmess.TLSConfig{
 		Host:              option.SNI,
 		SkipCertVerify:    option.SkipCertVerify,
 		NextProtos:        option.ALPN,
 		FingerPrint:       option.Fingerprint,
 		ClientFingerprint: option.ClientFingerprint,
+		ECH:               echConfig,
 	}
 	if tlsConfig.Host == "" {
 		tlsConfig.Host = option.Server

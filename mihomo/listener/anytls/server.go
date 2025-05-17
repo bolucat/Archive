@@ -3,7 +3,6 @@ package anytls
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/tls"
 	"encoding/binary"
 	"errors"
 	"net"
@@ -13,6 +12,8 @@ import (
 	"github.com/metacubex/mihomo/common/atomic"
 	"github.com/metacubex/mihomo/common/buf"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -28,7 +29,7 @@ type Listener struct {
 	closed    bool
 	config    LC.AnyTLSServer
 	listeners []net.Listener
-	tlsConfig *tls.Config
+	tlsConfig *tlsC.Config
 	userMap   map[[32]byte]string
 	padding   atomic.TypedValue[*padding.PaddingFactory]
 }
@@ -41,13 +42,20 @@ func New(config LC.AnyTLSServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		}
 	}
 
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tlsC.Config{}
 	if config.Certificate != "" && config.PrivateKey != "" {
 		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
+		tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+
+		if config.EchKey != "" {
+			err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	sl = &Listener{
@@ -87,7 +95,7 @@ func New(config LC.AnyTLSServer, tunnel C.Tunnel, additions ...inbound.Addition)
 			return nil, err
 		}
 		if len(tlsConfig.Certificates) > 0 {
-			l = tls.NewListener(l, tlsConfig)
+			l = tlsC.NewListener(l, tlsConfig)
 		} else {
 			return nil, errors.New("disallow using AnyTLS without certificates config")
 		}

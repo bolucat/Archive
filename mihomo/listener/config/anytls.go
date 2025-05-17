@@ -10,6 +10,7 @@ type AnyTLSServer struct {
 	Users         map[string]string `yaml:"users" json:"users,omitempty"`
 	Certificate   string            `yaml:"certificate" json:"certificate"`
 	PrivateKey    string            `yaml:"private-key" json:"private-key"`
+	EchKey        string            `yaml:"ech-key" json:"ech-key"`
 	PaddingScheme string            `yaml:"padding-scheme" json:"padding-scheme,omitempty"`
 }
 

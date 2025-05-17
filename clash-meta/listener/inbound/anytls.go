@@ -14,6 +14,7 @@ type AnyTLSOption struct {
 	Users         map[string]string `inbound:"users,omitempty"`
 	Certificate   string            `inbound:"certificate"`
 	PrivateKey    string            `inbound:"private-key"`
+	EchKey        string            `inbound:"ech-key,omitempty"`
 	PaddingScheme string            `inbound:"padding-scheme,omitempty"`
 }
 
@@ -42,6 +43,7 @@ func NewAnyTLS(options *AnyTLSOption) (*AnyTLS, error) {
 			Users:         options.Users,
 			Certificate:   options.Certificate,
 			PrivateKey:    options.PrivateKey,
+			EchKey:        options.EchKey,
 			PaddingScheme: options.PaddingScheme,
 		},
 	}, nil

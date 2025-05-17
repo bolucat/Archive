@@ -20,6 +20,7 @@ type TrojanServer struct {
 	GrpcServiceName string
 	Certificate     string
 	PrivateKey      string
+	EchKey          string
 	RealityConfig   reality.Config
 	MuxOption       sing.MuxOption
 	TrojanSSOption  TrojanSSOption

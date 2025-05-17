@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/transport/vmess"
 )
 
@@ -17,6 +18,7 @@ type Option struct {
 	Path                     string
 	Headers                  map[string]string
 	TLS                      bool
+	ECHConfig                *ech.Config
 	SkipCertVerify           bool
 	Fingerprint              string
 	Mux                      bool
@@ -37,6 +39,7 @@ func NewV2rayObfs(ctx context.Context, conn net.Conn, option *Option) (net.Conn,
 		Path:                     option.Path,
 		V2rayHttpUpgrade:         option.V2rayHttpUpgrade,
 		V2rayHttpUpgradeFastOpen: option.V2rayHttpUpgradeFastOpen,
+		ECHConfig:                option.ECHConfig,
 		Headers:                  header,
 	}
 
