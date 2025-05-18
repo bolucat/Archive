@@ -84,7 +84,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 
 	tlsConfig := &tlsC.Config{}
 	var realityBuilder *reality.Builder
-	var httpHandler http.Handler
+	var httpServer http.Server
 
 	if config.Certificate != "" && config.PrivateKey != "" {
 		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
@@ -119,16 +119,16 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 			}
 			sl.HandleConn(conn, tunnel, additions...)
 		})
-		httpHandler = httpMux
+		httpServer.Handler = httpMux
 		tlsConfig.NextProtos = append(tlsConfig.NextProtos, "http/1.1")
 	}
 	if config.GrpcServiceName != "" {
-		httpHandler = gun.NewServerHandler(gun.ServerOption{
+		httpServer.Handler = gun.NewServerHandler(gun.ServerOption{
 			ServiceName: config.GrpcServiceName,
 			ConnHandler: func(conn net.Conn) {
 				sl.HandleConn(conn, tunnel, additions...)
 			},
-			HttpHandler: httpHandler,
+			HttpHandler: httpServer.Handler,
 		})
 		tlsConfig.NextProtos = append([]string{"h2"}, tlsConfig.NextProtos...) // h2 must before http/1.1
 	}
@@ -144,15 +144,19 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 		if realityBuilder != nil {
 			l = realityBuilder.NewListener(l)
 		} else if len(tlsConfig.Certificates) > 0 {
-			l = tlsC.NewListener(l, tlsConfig)
+			if httpServer.Handler != nil {
+				l = tlsC.NewListenerForHttps(l, &httpServer, tlsConfig)
+			} else {
+				l = tlsC.NewListener(l, tlsConfig)
+			}
 		} else {
 			return nil, errors.New("disallow using Vless without both certificates/reality config")
 		}
 		sl.listeners = append(sl.listeners, l)
 
 		go func() {
-			if httpHandler != nil {
-				_ = http.Serve(l, httpHandler)
+			if httpServer.Handler != nil {
+				_ = httpServer.Serve(l)
 				return
 			}
 			for {

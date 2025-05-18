@@ -2,9 +2,38 @@
 icon: material/alert-decagram
 ---
 
-#### 1.12.0-beta.14
+#### 1.12.0-beta.15
+
+* Add DERP service **1**
+* Add Resolved service and DNS server **2**
+* Add SSM API service **3**
+* Fixes and improvements
+
+**1**:
+
+DERP service is a Tailscale DERP server, similar to [derper](https://pkg.go.dev/tailscale.com/cmd/derper).
+
+See [DERP Service](/configuration/service/derp/).
+
+**2**:
+
+Resolved service is a fake systemd-resolved DBUS service to receive DNS settings from other programs
+(e.g. NetworkManager) and provide DNS resolution.
+
+See [Resolved Service](/configuration/service/resolved/) and [Resolved DNS Server](/configuration/dns/server/resolved/).
+
+**3**:
+
+SSM API service is a RESTful API server for managing Shadowsocks servers.
+
+See [SSM API Service](/configuration/service/ssm-api/).
+
+### 1.11.11
 
 * Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
 
 #### 1.12.0-beta.13
 

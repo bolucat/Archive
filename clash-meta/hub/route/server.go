@@ -28,8 +28,6 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/sagernet/cors"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 var (
@@ -99,7 +97,7 @@ func SetUIPath(path string) {
 	uiPath = C.Path.Resolve(path)
 }
 
-func router(isDebug bool, secret string, dohServer string, cors Cors) http.Handler {
+func router(isDebug bool, secret string, dohServer string, cors Cors) *chi.Mux {
 	r := chi.NewRouter()
 	cors.Apply(r)
 	if isDebug {
@@ -152,8 +150,7 @@ func router(isDebug bool, secret string, dohServer string, cors Cors) http.Handl
 		r.Mount(dohServer, dohRouter())
 	}
 
-	// using h2c.NewHandler to ensure we can work in plain http2, and some tls conn is not *tls.Conn
-	return h2c.NewHandler(r, &http2.Server{})
+	return r
 }
 
 func start(cfg *Config) {
@@ -219,7 +216,7 @@ func startTLS(cfg *Config) {
 			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer, cfg.Cors),
 		}
 		tlsServer = server
-		if err = server.Serve(tlsC.NewListener(l, tlsConfig)); err != nil {
+		if err = server.Serve(tlsC.NewListenerForHttps(l, server, tlsConfig)); err != nil {
 			log.Errorln("External controller tls serve error: %s", err)
 		}
 	}

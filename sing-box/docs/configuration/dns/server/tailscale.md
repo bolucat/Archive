@@ -30,13 +30,13 @@ icon: material/new-box
 
 ==Required==
 
-The tag of the Tailscale endpoint.
+The tag of the [Tailscale Endpoint](/configuration/endpoint/tailscale).
 
 #### accept_default_resolvers
 
 Indicates whether default DNS resolvers should be accepted for fallback queries in addition to MagicDNS。
 
-if not enabled, NXDOMAIN will be returned for non-Tailscale domain queries.
+if not enabled, `NXDOMAIN` will be returned for non-Tailscale domain queries.
 
 ### Examples
 

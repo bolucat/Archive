@@ -237,14 +237,9 @@ func TestInboundVless_Reality(t *testing.T) {
 		outboundOptions.Flow = "xtls-rprx-vision"
 		testInboundVless(t, inboundOptions, outboundOptions)
 	})
-	t.Run("ECH", func(t *testing.T) {
-		inboundOptions := inboundOptions
+	t.Run("X25519MLKEM768", func(t *testing.T) {
 		outboundOptions := outboundOptions
-		inboundOptions.EchKey = echKeyPem
-		outboundOptions.ECHOpts = outbound.ECHOptions{
-			Enable: true,
-			Config: echConfigBase64,
-		}
+		outboundOptions.RealityOpts.SupportX25519MLKEM768 = true
 		testInboundVless(t, inboundOptions, outboundOptions)
 		t.Run("xtls-rprx-vision", func(t *testing.T) {
 			outboundOptions := outboundOptions
@@ -276,14 +271,9 @@ func TestInboundVless_Reality_Grpc(t *testing.T) {
 		GrpcOpts:          outbound.GrpcOptions{GrpcServiceName: "GunService"},
 	}
 	testInboundVless(t, inboundOptions, outboundOptions)
-	t.Run("ECH", func(t *testing.T) {
-		inboundOptions := inboundOptions
+	t.Run("X25519MLKEM768", func(t *testing.T) {
 		outboundOptions := outboundOptions
-		inboundOptions.EchKey = echKeyPem
-		outboundOptions.ECHOpts = outbound.ECHOptions{
-			Enable: true,
-			Config: echConfigBase64,
-		}
+		outboundOptions.RealityOpts.SupportX25519MLKEM768 = true
 		testInboundVless(t, inboundOptions, outboundOptions)
 	})
 }
