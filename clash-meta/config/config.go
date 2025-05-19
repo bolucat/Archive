@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 	_ "unsafe"
@@ -758,6 +759,9 @@ func parseGeneral(cfg *RawConfig) (*General, error) {
 func parseController(cfg *RawConfig) (*Controller, error) {
 	if path := cfg.ExternalUI; path != "" && !C.Path.IsSafePath(path) {
 		return nil, C.Path.ErrNotSafePath(path)
+	}
+	if uiName := cfg.ExternalUIName; uiName != "" && !filepath.IsLocal(uiName) {
+		return nil, fmt.Errorf("external UI name is not local: %s", uiName)
 	}
 	return &Controller{
 		ExternalController:     cfg.ExternalController,
