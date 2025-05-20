@@ -33,7 +33,9 @@ See [Listen Fields](/configuration/shared/listen/) for details.
 
 ==Required==
 
-A mapping Object from HTTP endpoints to Shadowsocks inbound tags.
+A mapping Object from HTTP endpoints to [Shadowsocks Inbound](/configuration/inbound/shadowsocks) tags.
+
+Selected Shadowsocks inbounds must be configured with [managed](/configuration/inbound/shadowsocks#managed) enabled.
 
 Example: 
 

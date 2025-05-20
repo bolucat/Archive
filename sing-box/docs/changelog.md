@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.16
+
+* Fixes and improvements
+
 #### 1.12.0-beta.15
 
 * Add DERP service **1**
