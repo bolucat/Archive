@@ -18,7 +18,7 @@ require (
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40
 	github.com/mdlayher/netlink v1.7.2
 	github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab
-	github.com/metacubex/bart v0.19.0
+	github.com/metacubex/bart v0.20.5
 	github.com/metacubex/bbolt v0.0.0-20240822011022-aed6d4850399
 	github.com/metacubex/chacha v0.1.2
 	github.com/metacubex/fswatch v0.1.1
@@ -35,7 +35,7 @@ require (
 	github.com/metacubex/sing-vmess v0.2.1
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
-	github.com/metacubex/tfo-go v0.0.0-20250503140532-decbcfccbfdf
+	github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4
 	github.com/metacubex/utls v1.7.3
 	github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
@@ -72,7 +72,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/ebitengine/purego v0.8.3-0.20250507171810-1638563e3615 // indirect
+	github.com/ebitengine/purego v0.8.3 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20250325060835-cd0defd64358 // indirect
 	github.com/ericlagergren/polyval v0.0.0-20220411101811-e25bc10ba391 // indirect
 	github.com/ericlagergren/siv v0.0.0-20220507050439-0b757b3aa5f1 // indirect

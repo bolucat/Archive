@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -313,10 +314,14 @@ func (r *NetworkManager) AutoDetectInterfaceFunc() control.Func {
 			return nil
 		}
 		bindFunc := control.BindToInterfaceFunc(r.interfaceFinder, func(network string, address string) (interfaceName string, interfaceIndex int, err error) {
+			for _, iif := range r.interfaceFinder.Interfaces() {
+				r.logger.Warn("iif ", iif.Name, ": ", fmt.Sprint(iif.Addresses))
+			}
 			remoteAddr := M.ParseSocksaddr(address).Addr
 			if remoteAddr.IsValid() {
 				iif, err := r.interfaceFinder.ByAddr(remoteAddr)
 				if err == nil {
+					r.logger.Warn("bind to interface ", iif.Name, " (", iif.Index, "): ", remoteAddr)
 					return iif.Name, iif.Index, nil
 				}
 			}
@@ -324,6 +329,7 @@ func (r *NetworkManager) AutoDetectInterfaceFunc() control.Func {
 			if defaultInterface == nil {
 				return "", -1, tun.ErrNoRoute
 			}
+			r.logger.Warn("bind to default interface ", defaultInterface.Name, " (", defaultInterface.Index, "): ", remoteAddr)
 			return defaultInterface.Name, defaultInterface.Index, nil
 		})
 		return func(network, address string, conn syscall.RawConn) error {
