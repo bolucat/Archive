@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
@@ -64,7 +63,6 @@ func NewListenerForHttps(l net.Listener, httpServer *http.Server, tlsConfig *Con
 		}
 		return c, nil
 	}, func(a any) {
-		stack := debug.Stack()
-		log.Errorln("https server panic: %s\n%s", a, stack)
+		log.Errorln("https server panic: %s", a)
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 	_ "unsafe"
@@ -174,6 +175,7 @@ type Profile struct {
 type TLS struct {
 	Certificate     string
 	PrivateKey      string
+	EchKey          string
 	CustomTrustCert []string
 }
 
@@ -360,6 +362,7 @@ type RawSniffingConfig struct {
 type RawTLS struct {
 	Certificate     string   `yaml:"certificate" json:"certificate"`
 	PrivateKey      string   `yaml:"private-key" json:"private-key"`
+	EchKey          string   `yaml:"ech-key" json:"ech-key"`
 	CustomTrustCert []string `yaml:"custom-certifactes" json:"custom-certifactes"`
 }
 
@@ -757,6 +760,9 @@ func parseController(cfg *RawConfig) (*Controller, error) {
 	if path := cfg.ExternalUI; path != "" && !C.Path.IsSafePath(path) {
 		return nil, C.Path.ErrNotSafePath(path)
 	}
+	if uiName := cfg.ExternalUIName; uiName != "" && !filepath.IsLocal(uiName) {
+		return nil, fmt.Errorf("external UI name is not local: %s", uiName)
+	}
 	return &Controller{
 		ExternalController:     cfg.ExternalController,
 		ExternalUI:             cfg.ExternalUI,
@@ -814,6 +820,7 @@ func parseTLS(cfg *RawConfig) (*TLS, error) {
 	return &TLS{
 		Certificate:     cfg.TLS.Certificate,
 		PrivateKey:      cfg.TLS.PrivateKey,
+		EchKey:          cfg.TLS.EchKey,
 		CustomTrustCert: cfg.TLS.CustomTrustCert,
 	}, nil
 }

@@ -64,6 +64,16 @@ func TestInboundTrojan_TLS(t *testing.T) {
 		Fingerprint: tlsFingerprint,
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Wss1(t *testing.T) {
@@ -80,6 +90,16 @@ func TestInboundTrojan_Wss1(t *testing.T) {
 		},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Wss2(t *testing.T) {
@@ -97,6 +117,16 @@ func TestInboundTrojan_Wss2(t *testing.T) {
 		},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Grpc1(t *testing.T) {
@@ -111,6 +141,16 @@ func TestInboundTrojan_Grpc1(t *testing.T) {
 		GrpcOpts:    outbound.GrpcOptions{GrpcServiceName: "GunService"},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Grpc2(t *testing.T) {
@@ -126,6 +166,16 @@ func TestInboundTrojan_Grpc2(t *testing.T) {
 		GrpcOpts:    outbound.GrpcOptions{GrpcServiceName: "GunService"},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Reality(t *testing.T) {
@@ -190,6 +240,16 @@ func TestInboundTrojan_TLS_TrojanSS(t *testing.T) {
 		},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundTrojan_Wss_TrojanSS(t *testing.T) {
@@ -216,4 +276,14 @@ func TestInboundTrojan_Wss_TrojanSS(t *testing.T) {
 		},
 	}
 	testInboundTrojan(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
 }

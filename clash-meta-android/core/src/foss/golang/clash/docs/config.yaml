@@ -48,6 +48,13 @@ ipv6: true # 开启 IPv6 总开关，关闭阻断所有 IPv6 链接和屏蔽 DNS
 tls:
   certificate: string # 证书 PEM 格式，或者 证书的路径
   private-key: string # 证书对应的私钥 PEM 格式，或者私钥路径
+  # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+  # ech-key: |
+  #   -----BEGIN ECH KEYS-----
+  #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+  #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+  #   dC5jb20AAA==
+  #   -----END ECH KEYS-----
   custom-certifactes:
     - |
       -----BEGIN CERTIFICATE-----
@@ -427,6 +434,10 @@ proxies: # socks5
       # 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
       # 配置指纹将实现 SSL Pining 效果
       # fingerprint: xxxx
+      # ech-opts:
+      #   enable: true # 必须手动开启
+      #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+      #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
       # skip-cert-verify: true
       # host: bing.com
       # path: "/"
@@ -527,6 +538,10 @@ proxies: # socks5
     # skip-cert-verify: true
     # servername: example.com # priority over wss host
     # network: ws
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     # ws-opts:
       # path: /path
       # headers:
@@ -599,6 +614,10 @@ proxies: # socks5
     # skip-cert-verify: true
     # fingerprint: xxxx
     # client-fingerprint: random # Available: "chrome","firefox","safari","random","none"
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
 
   - name: "vless-vision"
     type: vless
@@ -626,6 +645,7 @@ proxies: # socks5
     reality-opts:
       public-key: xxx
       short-id: xxx # optional
+      support-x25519mlkem768: false # 如果服务端支持可手动设置为true
     client-fingerprint: chrome # cannot be empty
 
   - name: "vless-reality-grpc"
@@ -645,6 +665,7 @@ proxies: # socks5
     reality-opts:
       public-key: CrrQSjAG_YkHLwvM2M-7XkKJilgL5upBKCp0od0tLhE
       short-id: 10f897e26c4b9478
+      support-x25519mlkem768: false # 如果服务端支持可手动设置为true
 
   - name: "vless-ws"
     type: vless
@@ -683,6 +704,10 @@ proxies: # socks5
     #   enabled: false
     #   method: aes-128-gcm # aes-128-gcm/aes-256-gcm/chacha20-ietf-poly1305
     #   password: "example"
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
 
   - name: trojan-grpc
     server: server
@@ -740,6 +765,10 @@ proxies: # socks5
     up: "30 Mbps" # 若不写单位，默认为 Mbps
     down: "200 Mbps" # 若不写单位，默认为 Mbps
     # sni: server.com
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     # skip-cert-verify: false
     # recv-window-conn: 12582912
     # recv-window: 52428800
@@ -763,6 +792,10 @@ proxies: # socks5
     # obfs: salamander # 默认为空，如果填写则开启 obfs，目前仅支持 salamander
     # obfs-password: yourpassword
     # sni: server.com
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     # skip-cert-verify: false
     # fingerprint: xxxx
     # alpn:
@@ -838,6 +871,10 @@ proxies: # socks5
     # skip-cert-verify: true
     # max-open-streams: 20 # default 100, too many open streams may hurt performance
     # sni: example.com
+    # ech-opts:
+    #   enable: true # 必须手动开启
+    #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
+    #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #
     # meta 和 sing-box 私有扩展，将 ss-uot 用于 udp 中继，开启此选项后 udp-relay-mode 将失效
     # 警告，与原版 tuic 不兼容！！！
@@ -1127,6 +1164,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     # certificate: ./server.crt
     # private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
 
   - name: http-in-1
     type: http
@@ -1140,6 +1184,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     # certificate: ./server.crt
     # private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
 
   - name: mixed-in-1
     type: mixed #  HTTP(S) 和 SOCKS 代理混合
@@ -1154,6 +1205,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     # certificate: ./server.crt
     # private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
 
   - name: reidr-in-1
     type: redir
@@ -1203,6 +1261,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     # certificate: ./server.crt
     # private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
     # 如果填写reality-config则开启reality（注意不可与certificate和private-key同时填写）
     # reality-config:
     #   dest: test.com:443
@@ -1225,6 +1290,13 @@ listeners:
     #   00000000-0000-0000-0000-000000000001: PASSWORD_1
     #  certificate: ./server.crt
     #  private-key: ./server.key
+    #  如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    #  ech-key: |
+    #    -----BEGIN ECH KEYS-----
+    #    ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #    madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #    dC5jb20AAA==
+    #    -----END ECH KEYS-----
     #  congestion-controller: bbr
     #  max-idle-time: 15000
     #  authentication-timeout: 1000
@@ -1256,6 +1328,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     # certificate: ./server.crt
     # private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
     # 如果填写reality-config则开启reality（注意不可与certificate和private-key同时填写）
     reality-config:
       dest: test.com:443
@@ -1276,6 +1355,13 @@ listeners:
     # "certificate" and "private-key" are required
     certificate: ./server.crt
     private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
     # padding-scheme: "" # https://github.com/anytls/anytls-go/blob/main/docs/protocol.md#cmdupdatepaddingscheme
 
   - name: trojan-in-1
@@ -1292,6 +1378,13 @@ listeners:
     # 下面两项如果填写则开启 tls（需要同时填写）
     certificate: ./server.crt
     private-key: ./server.key
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
     # 如果填写reality-config则开启reality（注意不可与certificate和private-key同时填写）
     # reality-config:
     #   dest: test.com:443
@@ -1317,6 +1410,13 @@ listeners:
       00000000-0000-0000-0000-000000000001: PASSWORD_1
     #  certificate: ./server.crt
     #  private-key: ./server.key
+    #  如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    #  ech-key: |
+    #    -----BEGIN ECH KEYS-----
+    #    ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #    madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #    dC5jb20AAA==
+    #    -----END ECH KEYS-----
     ##  up 和 down 均不写或为 0 则使用 BBR 流控
     #  up: "30 Mbps" # 若不写单位，默认为 Mbps
     #  down: "200 Mbps" # 若不写单位，默认为 Mbps

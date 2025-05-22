@@ -73,6 +73,16 @@ func TestInboundVMess_TLS(t *testing.T) {
 		Fingerprint: tlsFingerprint,
 	}
 	testInboundVMess(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundVMess(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundVMess_Ws(t *testing.T) {
@@ -160,6 +170,16 @@ func TestInboundVMess_Wss1(t *testing.T) {
 		},
 	}
 	testInboundVMess(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundVMess(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundVMess_Wss2(t *testing.T) {
@@ -178,6 +198,16 @@ func TestInboundVMess_Wss2(t *testing.T) {
 		},
 	}
 	testInboundVMess(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundVMess(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundVMess_Grpc1(t *testing.T) {
@@ -193,6 +223,16 @@ func TestInboundVMess_Grpc1(t *testing.T) {
 		GrpcOpts:    outbound.GrpcOptions{GrpcServiceName: "GunService"},
 	}
 	testInboundVMess(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundVMess(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundVMess_Grpc2(t *testing.T) {
@@ -209,6 +249,16 @@ func TestInboundVMess_Grpc2(t *testing.T) {
 		GrpcOpts:    outbound.GrpcOptions{GrpcServiceName: "GunService"},
 	}
 	testInboundVMess(t, inboundOptions, outboundOptions)
+	t.Run("ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundVMess(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundVMess_Reality(t *testing.T) {

@@ -1,10 +1,12 @@
 package outbound
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 
 	"github.com/metacubex/mihomo/component/ech"
+	"github.com/metacubex/mihomo/component/resolver"
 )
 
 type ECHOptions struct {
@@ -22,7 +24,13 @@ func (o ECHOptions) Parse() (*ech.Config, error) {
 		if err != nil {
 			return nil, fmt.Errorf("base64 decode ech config string failed: %v", err)
 		}
-		echConfig.EncryptedClientHelloConfigList = list
+		echConfig.GetEncryptedClientHelloConfigList = func(ctx context.Context, serverName string) ([]byte, error) {
+			return list, nil
+		}
+	} else {
+		echConfig.GetEncryptedClientHelloConfigList = func(ctx context.Context, serverName string) ([]byte, error) {
+			return resolver.ResolveECHWithResolver(ctx, serverName, resolver.ProxyServerHostResolver)
+		}
 	}
 	return echConfig, nil
 }

@@ -4,20 +4,24 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/metacubex/mihomo/component/resolver"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 )
 
 type Config struct {
-	GetEncryptedClientHelloConfigList func(ctx context.Context, serverName string) ([]byte, error)
+	EncryptedClientHelloConfigList []byte
 }
 
 func (cfg *Config) ClientHandle(ctx context.Context, tlsConfig *tlsC.Config) (err error) {
 	if cfg == nil {
 		return nil
 	}
-	echConfigList, err := cfg.GetEncryptedClientHelloConfigList(ctx, tlsConfig.ServerName)
-	if err != nil {
-		return fmt.Errorf("resolve ECH config error: %w", err)
+	echConfigList := cfg.EncryptedClientHelloConfigList
+	if len(echConfigList) == 0 {
+		echConfigList, err = resolver.ResolveECH(ctx, tlsConfig.ServerName)
+		if err != nil {
+			return fmt.Errorf("resolve ECH config error: %w", err)
+		}
 	}
 
 	tlsConfig.EncryptedClientHelloConfigList = echConfigList

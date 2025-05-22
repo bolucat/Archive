@@ -1,7 +1,6 @@
 package trojan
 
 import (
-	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -10,6 +9,8 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/reality"
@@ -69,16 +70,23 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 	}
 	sl = &Listener{false, config, nil, keys, pickCipher, h}
 
-	tlsConfig := &tls.Config{}
+	tlsConfig := &tlsC.Config{}
 	var realityBuilder *reality.Builder
-	var httpHandler http.Handler
+	var httpServer http.Server
 
 	if config.Certificate != "" && config.PrivateKey != "" {
 		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
+		tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+
+		if config.EchKey != "" {
+			err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	if config.RealityConfig.PrivateKey != "" {
 		if tlsConfig.Certificates != nil {
@@ -99,16 +107,16 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 			}
 			sl.HandleConn(conn, tunnel, additions...)
 		})
-		httpHandler = httpMux
+		httpServer.Handler = httpMux
 		tlsConfig.NextProtos = append(tlsConfig.NextProtos, "http/1.1")
 	}
 	if config.GrpcServiceName != "" {
-		httpHandler = gun.NewServerHandler(gun.ServerOption{
+		httpServer.Handler = gun.NewServerHandler(gun.ServerOption{
 			ServiceName: config.GrpcServiceName,
 			ConnHandler: func(conn net.Conn) {
 				sl.HandleConn(conn, tunnel, additions...)
 			},
-			HttpHandler: httpHandler,
+			HttpHandler: httpServer.Handler,
 		})
 		tlsConfig.NextProtos = append([]string{"h2"}, tlsConfig.NextProtos...) // h2 must before http/1.1
 	}
@@ -124,15 +132,19 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		if realityBuilder != nil {
 			l = realityBuilder.NewListener(l)
 		} else if len(tlsConfig.Certificates) > 0 {
-			l = tls.NewListener(l, tlsConfig)
+			if httpServer.Handler != nil {
+				l = tlsC.NewListenerForHttps(l, &httpServer, tlsConfig)
+			} else {
+				l = tlsC.NewListener(l, tlsConfig)
+			}
 		} else if !config.TrojanSSOption.Enabled {
 			return nil, errors.New("disallow using Trojan without both certificates/reality/ss config")
 		}
 		sl.listeners = append(sl.listeners, l)
 
 		go func() {
-			if httpHandler != nil {
-				_ = http.Serve(l, httpHandler)
+			if httpServer.Handler != nil {
+				_ = httpServer.Serve(l)
 				return
 			}
 			for {

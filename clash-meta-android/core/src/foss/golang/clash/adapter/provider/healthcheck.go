@@ -61,7 +61,7 @@ func (hc *HealthCheck) process() {
 	}
 }
 
-func (hc *HealthCheck) setProxy(proxies []C.Proxy) {
+func (hc *HealthCheck) setProxies(proxies []C.Proxy) {
 	hc.proxies = proxies
 }
 

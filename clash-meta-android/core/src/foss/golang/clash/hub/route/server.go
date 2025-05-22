@@ -3,7 +3,6 @@ package route
 import (
 	"bytes"
 	"crypto/subtle"
-	"crypto/tls"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
+	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -62,6 +63,7 @@ type Config struct {
 	Secret      string
 	Certificate string
 	PrivateKey  string
+	EchKey      string
 	DohServer   string
 	IsDebug     bool
 	Cors        Cors
@@ -186,7 +188,7 @@ func startTLS(cfg *Config) {
 
 	// handle tlsAddr
 	if len(cfg.TLSAddr) > 0 {
-		c, err := ca.LoadTLSKeyPair(cfg.Certificate, cfg.PrivateKey, C.Path)
+		cert, err := ca.LoadTLSKeyPair(cfg.Certificate, cfg.PrivateKey, C.Path)
 		if err != nil {
 			log.Errorln("External controller tls listen error: %s", err)
 			return
@@ -199,14 +201,22 @@ func startTLS(cfg *Config) {
 		}
 
 		log.Infoln("RESTful API tls listening at: %s", l.Addr().String())
+		tlsConfig := &tlsC.Config{}
+		tlsConfig.NextProtos = []string{"h2", "http/1.1"}
+		tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+
+		if cfg.EchKey != "" {
+			err = ech.LoadECHKey(cfg.EchKey, tlsConfig, C.Path)
+			if err != nil {
+				log.Errorln("External controller tls serve error: %s", err)
+				return
+			}
+		}
 		server := &http.Server{
 			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer, cfg.Cors),
-			TLSConfig: &tls.Config{
-				Certificates: []tls.Certificate{c},
-			},
 		}
 		tlsServer = server
-		if err = server.ServeTLS(l, "", ""); err != nil {
+		if err = server.Serve(tlsC.NewListenerForHttps(l, server, tlsConfig)); err != nil {
 			log.Errorln("External controller tls serve error: %s", err)
 		}
 	}

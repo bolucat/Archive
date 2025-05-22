@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/metacubex/mihomo/common/atomic"
 	"github.com/metacubex/mihomo/common/buf"
 	"github.com/metacubex/mihomo/common/pool"
+	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 
@@ -41,16 +41,19 @@ type DialFn = func(ctx context.Context, network, addr string) (net.Conn, error)
 
 type Conn struct {
 	initFn func() (io.ReadCloser, netAddr, error)
-	writer io.Writer
+	writer io.Writer // writer must not nil
 	closer io.Closer
 	netAddr
 
-	reader io.ReadCloser
-	once   sync.Once
-	closed atomic.Bool
-	err    error
-	remain int
-	br     *bufio.Reader
+	initOnce sync.Once
+	initErr  error
+	reader   io.ReadCloser
+	br       *bufio.Reader
+	remain   int
+
+	closeMutex sync.Mutex
+	closed     bool
+
 	// deadlines
 	deadline *time.Timer
 }
@@ -64,7 +67,7 @@ type Config struct {
 func (g *Conn) initReader() {
 	reader, addr, err := g.initFn()
 	if err != nil {
-		g.err = err
+		g.initErr = err
 		if closer, ok := g.writer.(io.Closer); ok {
 			closer.Close()
 		}
@@ -72,17 +75,21 @@ func (g *Conn) initReader() {
 	}
 	g.netAddr = addr
 
-	if !g.closed.Load() {
-		g.reader = reader
-		g.br = bufio.NewReader(reader)
-	} else {
-		reader.Close()
+	g.closeMutex.Lock()
+	defer g.closeMutex.Unlock()
+	if g.closed { // if g.Close() be called between g.initFn(), direct close the initFn returned reader
+		_ = reader.Close()
+		g.initErr = net.ErrClosed
+		return
 	}
+
+	g.reader = reader
+	g.br = bufio.NewReader(reader)
 }
 
 func (g *Conn) Init() error {
-	g.once.Do(g.initReader)
-	return g.err
+	g.initOnce.Do(g.initReader)
+	return g.initErr
 }
 
 func (g *Conn) Read(b []byte) (n int, err error) {
@@ -99,8 +106,6 @@ func (g *Conn) Read(b []byte) (n int, err error) {
 		n, err = io.ReadFull(g.br, b[:size])
 		g.remain -= n
 		return
-	} else if g.reader == nil {
-		return 0, net.ErrClosed
 	}
 
 	// 0x00 grpclength(uint32) 0x0A uleb128 payload
@@ -146,8 +151,8 @@ func (g *Conn) Write(b []byte) (n int, err error) {
 	buf.Write(b)
 
 	_, err = g.writer.Write(buf.Bytes())
-	if err == io.ErrClosedPipe && g.err != nil {
-		err = g.err
+	if err == io.ErrClosedPipe && g.initErr != nil {
+		err = g.initErr
 	}
 
 	if flusher, ok := g.writer.(http.Flusher); ok {
@@ -169,8 +174,8 @@ func (g *Conn) WriteBuffer(buffer *buf.Buffer) error {
 	binary.PutUvarint(header[6:], uint64(dataLen))
 	_, err := g.writer.Write(buffer.Bytes())
 
-	if err == io.ErrClosedPipe && g.err != nil {
-		err = g.err
+	if err == io.ErrClosedPipe && g.initErr != nil {
+		err = g.initErr
 	}
 
 	if flusher, ok := g.writer.(http.Flusher); ok {
@@ -185,7 +190,17 @@ func (g *Conn) FrontHeadroom() int {
 }
 
 func (g *Conn) Close() error {
-	g.closed.Store(true)
+	g.initOnce.Do(func() { // if initReader not called, it should not be run anymore
+		g.initErr = net.ErrClosed
+	})
+
+	g.closeMutex.Lock()
+	defer g.closeMutex.Unlock()
+	if g.closed {
+		return nil
+	}
+	g.closed = true
+
 	var errorArr []error
 
 	if reader := g.reader; reader != nil {
@@ -213,6 +228,13 @@ func (g *Conn) SetReadDeadline(t time.Time) error  { return g.SetDeadline(t) }
 func (g *Conn) SetWriteDeadline(t time.Time) error { return g.SetDeadline(t) }
 
 func (g *Conn) SetDeadline(t time.Time) error {
+	if t.IsZero() {
+		if g.deadline != nil {
+			g.deadline.Stop()
+			g.deadline = nil
+		}
+		return nil
+	}
 	d := time.Until(t)
 	if g.deadline != nil {
 		g.deadline.Reset(d)
@@ -224,7 +246,7 @@ func (g *Conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint string, realityConfig *tlsC.RealityConfig) *TransportWrap {
+func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint string, echConfig *ech.Config, realityConfig *tlsC.RealityConfig) *TransportWrap {
 	dialFunc := func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
 		defer cancel()
@@ -238,8 +260,15 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint stri
 		}
 
 		if clientFingerprint, ok := tlsC.GetFingerprint(clientFingerprint); ok {
+			tlsConfig := tlsC.UConfig(cfg)
+			err := echConfig.ClientHandle(ctx, tlsConfig)
+			if err != nil {
+				pconn.Close()
+				return nil, err
+			}
+
 			if realityConfig == nil {
-				tlsConn := tlsC.UClient(pconn, tlsC.UConfig(cfg), clientFingerprint)
+				tlsConn := tlsC.UClient(pconn, tlsConfig, clientFingerprint)
 				if err := tlsConn.HandshakeContext(ctx); err != nil {
 					pconn.Close()
 					return nil, err
@@ -251,7 +280,7 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint stri
 				}
 				return tlsConn, nil
 			} else {
-				realityConn, err := tlsC.GetRealityConn(ctx, pconn, clientFingerprint, cfg, realityConfig)
+				realityConn, err := tlsC.GetRealityConn(ctx, pconn, clientFingerprint, tlsConfig, realityConfig)
 				if err != nil {
 					pconn.Close()
 					return nil, err
@@ -266,6 +295,27 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *tls.Config, clientFingerprint stri
 		}
 		if realityConfig != nil {
 			return nil, errors.New("REALITY is based on uTLS, please set a client-fingerprint")
+		}
+
+		if echConfig != nil {
+			tlsConfig := tlsC.UConfig(cfg)
+			err := echConfig.ClientHandle(ctx, tlsConfig)
+			if err != nil {
+				pconn.Close()
+				return nil, err
+			}
+
+			conn := tlsC.Client(pconn, tlsConfig)
+			if err := conn.HandshakeContext(ctx); err != nil {
+				pconn.Close()
+				return nil, err
+			}
+			state := conn.ConnectionState()
+			if p := state.NegotiatedProtocol; p != http2.NextProtoTLS {
+				conn.Close()
+				return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http2.NextProtoTLS)
+			}
+			return conn, nil
 		}
 
 		conn := tls.Client(pconn, cfg)
@@ -345,12 +395,12 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 	return conn, nil
 }
 
-func StreamGunWithConn(conn net.Conn, tlsConfig *tls.Config, cfg *Config, realityConfig *tlsC.RealityConfig) (net.Conn, error) {
+func StreamGunWithConn(conn net.Conn, tlsConfig *tls.Config, cfg *Config, echConfig *ech.Config, realityConfig *tlsC.RealityConfig) (net.Conn, error) {
 	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return conn, nil
 	}
 
-	transport := NewHTTP2Client(dialFn, tlsConfig, cfg.ClientFingerprint, realityConfig)
+	transport := NewHTTP2Client(dialFn, tlsConfig, cfg.ClientFingerprint, echConfig, realityConfig)
 	c, err := StreamGunWithTransport(transport, cfg)
 	if err != nil {
 		return nil, err

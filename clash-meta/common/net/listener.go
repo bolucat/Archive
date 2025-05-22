@@ -34,8 +34,8 @@ func (l *handleContextListener) init() {
 						}
 					}
 				}()
-				if c, err := l.handle(l.ctx, c); err == nil {
-					l.conns <- c
+				if conn, err := l.handle(l.ctx, c); err == nil {
+					l.conns <- conn
 				} else {
 					// handle failed, close the underlying connection.
 					_ = c.Close()

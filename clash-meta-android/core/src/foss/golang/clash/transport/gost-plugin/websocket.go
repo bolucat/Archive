@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/transport/vmess"
 	smux "github.com/metacubex/smux"
 )
@@ -18,6 +19,7 @@ type Option struct {
 	Path           string
 	Headers        map[string]string
 	TLS            bool
+	ECHConfig      *ech.Config
 	SkipCertVerify bool
 	Fingerprint    string
 	Mux            bool
@@ -48,10 +50,11 @@ func NewGostWebsocket(ctx context.Context, conn net.Conn, option *Option) (net.C
 	}
 
 	config := &vmess.WebsocketConfig{
-		Host:    option.Host,
-		Port:    option.Port,
-		Path:    option.Path,
-		Headers: header,
+		Host:      option.Host,
+		Port:      option.Port,
+		Path:      option.Path,
+		ECHConfig: option.ECHConfig,
+		Headers:   header,
 	}
 
 	if option.TLS {

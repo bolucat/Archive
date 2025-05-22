@@ -57,6 +57,7 @@ func applyRoute(cfg *config.Config) {
 		Secret:      cfg.Controller.Secret,
 		Certificate: cfg.TLS.Certificate,
 		PrivateKey:  cfg.TLS.PrivateKey,
+		EchKey:      cfg.TLS.EchKey,
 		DohServer:   cfg.Controller.ExternalDohServer,
 		IsDebug:     cfg.General.LogLevel == log.DEBUG,
 		Cors: route.Cors{
