@@ -1,6 +1,8 @@
 use crate::utils::{dirs, help};
 use anyhow::Result;
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use std::{
@@ -61,6 +63,9 @@ impl IClashTemp {
                 "tauri://localhost",
                 "http://tauri.localhost",
                 "http://localhost:3000",
+                "https://yacd.metacubex.one",
+                "https://metacubex.github.io",
+                "https://board.zash.run.place",
             ]
             .into(),
         );
@@ -72,21 +77,30 @@ impl IClashTemp {
 
     // 生成随机端口（动态端口范围：1111-65535）
     fn generate_random_port() -> u16 {
-        let mut rng = OsRng;
+        let seed = Self::generate_seed();
+        let mut rng = ChaCha8Rng::from_seed(seed);
         rng.gen_range(1111..=65535)
     }
 
-    // 生成32位强密码（包含大小写字母、数字、特殊符号）
+    // 生成64位强密码（包含大小写字母、数字、特殊符号）
     fn generate_secret() -> String {
         const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;':\",.<>/?`~";
-        let mut rng = OsRng;
-        (0..32)
+        let seed = Self::generate_seed();
+        let mut rng = ChaCha8Rng::from_seed(seed);
+        (0..64)
             .map(|_| CHARS[rng.gen_range(0..CHARS.len())] as char)
             .collect()
     }
 
+    // 生成加密安全的随机种子
+    fn generate_seed() -> [u8; 32] {
+        let mut seed = [0u8; 32];
+        OsRng.fill(&mut seed as &mut [u8]);
+        seed
+    }
+
     fn guard(mut config: Mapping) -> Mapping {
-        // 生成随机控制器端口和密钥
+        // 填入随机控制器端口和密钥
         let ctrl_port = Self::generate_random_port();
         let ctrl_addr = format!("127.0.0.1:{}", ctrl_port);
         let secret = Self::generate_secret();
@@ -99,7 +113,7 @@ impl IClashTemp {
         let socks_port = Self::guard_socks_port(&config);
         let port = Self::guard_port(&config);
 
-        // 注入随机值
+        // 加注随机值
         config.insert("external-controller".into(), Value::String(ctrl_addr));
         config.insert("secret".into(), Value::String(secret));
 
@@ -120,6 +134,9 @@ impl IClashTemp {
                 "tauri://localhost",
                 "http://tauri.localhost",
                 "http://localhost:3000",
+                "https://yacd.metacubex.one",
+                "https://metacubex.github.io",
+                "https://board.zash.run.place",
             ]
             .into(),
         );

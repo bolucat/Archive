@@ -4,7 +4,6 @@ import { useVerge } from "@/hooks/use-verge";
 import { showNotice } from "@/services/noticeService";
 import {
   ContentCopy,
-  RefreshRounded,
 } from "@mui/icons-material";
 import {
   Alert,
@@ -21,23 +20,6 @@ import {
 import { useLockFn } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-// 随机端口和密码生成
-const generateRandomPort = (): number => {
-  return Math.floor(Math.random() * (65535 - 1024 + 1)) + 1024;
-};
-
-const generateRandomPassword = (length: number = 64): string => {
-  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let password = "";
-
-  for (let i = 0; i < length; i++) {
-    const randomIndex = Math.floor(Math.random() * charset.length);
-    password += charset.charAt(randomIndex);
-  }
-
-  return password;
-};
 
 export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const { t } = useTranslation();
@@ -111,23 +93,6 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
     }
   });
 
-  // 生成随机端口
-  const handleGeneratePort = useLockFn(async () => {
-    const port = generateRandomPort();
-    const host = controller.split(':')[0] || '127.0.0.1';
-    setController(`${host}:${port}`);
-    showNotice('success', t("Random port generated"), 1000);
-    return Promise.resolve();
-  });
-
-  // 生成随机 Secret
-  const handleGenerateSecret = useLockFn(async () => {
-    const password = generateRandomPassword();
-    setSecret(password);
-    showNotice('success', t("Random secret generated"), 1000);
-    return Promise.resolve();
-  });
-
   // 复制到剪贴板
   const handleCopyToClipboard = useLockFn(async (text: string, type: string) => {
     try {
@@ -172,19 +137,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
     >
       <List>
         <ListItem sx={{ padding: "5px 2px", display: "flex", justifyContent: "space-between" }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <ListItemText primary={t("External Controller")} />
-            <Tooltip title={t("Generate Random Port")}>
-              <IconButton
-                size="small"
-                onClick={handleGeneratePort}
-                color="primary"
-                disabled={isSaving || isRestarting}
-              >
-                <RefreshRounded fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
+          <ListItemText primary={t("External Controller")} />
           <Box display="flex" alignItems="center" gap={1}>
             <TextField
               autoComplete="new-password"
@@ -193,14 +146,13 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
               value={controller}
               placeholder="Required"
               onChange={(e) => setController(e.target.value)}
-              disabled={isSaving || isRestarting}
+              disabled={true}
             />
             <Tooltip title={t("Copy to clipboard")}>
               <IconButton
                 size="small"
                 onClick={() => handleCopyToClipboard(controller, "controller")}
                 color="primary"
-                disabled={isSaving || isRestarting}
               >
                 <ContentCopy fontSize="small" />
               </IconButton>
@@ -209,19 +161,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
         </ListItem>
 
         <ListItem sx={{ padding: "5px 2px", display: "flex", justifyContent: "space-between" }}>
-          <Box display="flex" alignItems="center" gap={1}>
-            <ListItemText primary={t("Core Secret")} />
-            <Tooltip title={t("Generate Random Secret")}>
-              <IconButton
-                size="small"
-                onClick={handleGenerateSecret}
-                color="primary"
-                disabled={isSaving || isRestarting}
-              >
-                <RefreshRounded fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
+          <ListItemText primary={t("Core Secret")} />
           <Box display="flex" alignItems="center" gap={1}>
             <TextField
               autoComplete="new-password"
@@ -229,17 +169,14 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
               sx={{ width: 175 }}
               value={secret}
               placeholder={t("Recommended")}
-              onChange={(e) =>
-                setSecret(e.target.value?.replace(/[^\x00-\x7F]/g, ""))
-              }
-              disabled={isSaving || isRestarting}
+              onChange={(e) => setSecret(e.target.value)}
+              disabled={true}
             />
             <Tooltip title={t("Copy to clipboard")}>
               <IconButton
                 size="small"
                 onClick={() => handleCopyToClipboard(secret, "secret")}
                 color="primary"
-                disabled={isSaving || isRestarting}
               >
                 <ContentCopy fontSize="small" />
               </IconButton>

@@ -84,7 +84,14 @@ func getCache() (*ifaceCache, error) {
 				continue // interface down
 			}
 			for _, prefix := range ipNets {
-				cache.ifTable.Insert(prefix, ifaceObj)
+				if _, ok := cache.ifTable.Get(prefix); ok {
+					// maybe two interfaces have the same prefix but different address,
+					// so we add a special /32(ipv4) or /128(ipv6) item to let ResolveInterfaceByAddr
+					// could find the correct interface
+					cache.ifTable.Insert(netip.PrefixFrom(prefix.Addr(), prefix.Addr().BitLen()), ifaceObj)
+				} else {
+					cache.ifTable.Insert(prefix, ifaceObj)
+				}
 			}
 		}
 
