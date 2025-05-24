@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
@@ -89,7 +90,8 @@ func (b Builder) NewListener(l net.Listener) net.Listener {
 		// We fixed it by calling Close() directly.
 		return realityConnWrapper{c}, nil
 	}, func(a any) {
-		log.Errorln("reality server panic: %s", a)
+		stack := debug.Stack()
+		log.Errorln("reality server panic: %s\n%s", a, stack)
 	})
 }
 

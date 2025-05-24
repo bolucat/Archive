@@ -55,7 +55,7 @@ func (m *UserManager) Add(username string, password string) error {
 	m.access.Lock()
 	defer m.access.Unlock()
 	if _, found := m.usersMap[username]; found {
-		return E.New("user", username, "already exists")
+		return E.New("user ", username, " already exists")
 	}
 	m.usersMap[username] = password
 	return m.postUpdate()

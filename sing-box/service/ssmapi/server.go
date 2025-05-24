@@ -58,7 +58,7 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
 	for i, entry := range options.Servers.Entries() {
 		inbound, loaded := inboundManager.Get(entry.Value)
 		if !loaded {
-			return nil, E.New("parse SSM server[", i, "]: inbound ", entry.Value, "not found")
+			return nil, E.New("parse SSM server[", i, "]: inbound ", entry.Value, " not found")
 		}
 		managedServer, isManaged := inbound.(adapter.ManagedSSMServer)
 		if !isManaged {

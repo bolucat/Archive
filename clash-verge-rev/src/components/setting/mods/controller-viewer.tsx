@@ -1,10 +1,8 @@
 import { BaseDialog, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
+import { patchClashConfig } from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
-import {
-  ContentCopy,
-} from "@mui/icons-material";
+import { ContentCopy } from "@mui/icons-material";
 import {
   Alert,
   Box,
@@ -18,7 +16,7 @@ import {
   Tooltip
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
@@ -26,50 +24,22 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
   const [open, setOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState<null | string>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isRestarting, setIsRestarting] = useState(false);
 
   const { clashInfo, patchInfo } = useClashInfo();
-  const { verge, patchVerge } = useVerge();
-
   const [controller, setController] = useState(clashInfo?.server || "");
   const [secret, setSecret] = useState(clashInfo?.secret || "");
 
-  const restartCoreDirectly = useLockFn(async () => {
-    try {
-      const controllerUrl = controller || clashInfo?.server || 'http://localhost:9090';
+  // 对话框打开时初始化配置
+  useImperativeHandle(ref, () => ({
+    open: async () => {
+      setOpen(true);
+      setController(clashInfo?.server || "");
+      setSecret(clashInfo?.secret || "");
+    },
+    close: () => setOpen(false),
+  }));
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      if (secret) {
-        headers['Authorization'] = `Bearer ${secret}`;
-      }
-
-      const response = await fetch(`${controllerUrl}/restart`, {
-        method: 'POST',
-        headers,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to restart core');
-      }
-
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
-      } else {
-        const text = await response.text();
-        console.log('Non-JSON response:', text);
-        return { message: 'Restart request sent successfully' };
-      }
-    } catch (err: any) {
-      console.error('Error restarting core:', err);
-      throw err;
-    }
-  });
-
+  // 保存配置
   const onSave = useLockFn(async () => {
     if (!controller.trim()) {
       showNotice('info', t("Controller address cannot be empty"), 3000);
@@ -78,16 +48,11 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
 
     try {
       setIsSaving(true);
-
       await patchInfo({ "external-controller": controller, secret });
-      await patchVerge({ "external-controller": controller, secret });
-
-      await restartCoreDirectly();
-
-      showNotice('success', t("Configuration saved and core restarted successfully"), 2000);
+      showNotice('success', t("Configuration saved successfully"), 2000);
       setOpen(false);
     } catch (err: any) {
-      showNotice('error', err.message || t("Failed to save configuration or restart core"), 4000);
+      showNotice('error', err.message || t("Failed to save configuration"), 4000);
     } finally {
       setIsSaving(false);
     }
@@ -104,32 +69,19 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
     }
   });
 
-  // 初始化对话框
-  useImperativeHandle(ref, () => ({
-    open: async () => {
-      setOpen(true);
-      // 加载现有配置
-      setController(clashInfo?.server || "");
-      setSecret(clashInfo?.secret || "");
-    },
-    close: () => setOpen(false),
-  }));
-
   return (
     <BaseDialog
       open={open}
       title={t("External Controller")}
       contentSx={{ width: 400 }}
-      okBtn={
-        isSaving ? (
-          <Box display="flex" alignItems="center" gap={1}>
-            <CircularProgress size={16} color="inherit" />
-            {t("Saving...")}
-          </Box>
-        ) : (
-          t("Save")
-        )
-      }
+      okBtn={isSaving ? (
+        <Box display="flex" alignItems="center" gap={1}>
+          <CircularProgress size={16} color="inherit" />
+          {t("Saving...")}
+        </Box>
+      ) : (
+        t("Save")
+      )}
       cancelBtn={t("Cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
@@ -140,19 +92,24 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
           <ListItemText primary={t("External Controller")} />
           <Box display="flex" alignItems="center" gap={1}>
             <TextField
-              autoComplete="new-password"
               size="small"
-              sx={{ width: 175 }}
+              sx={{
+                width: 175,
+                opacity: 0.7,
+                pointerEvents: 'none'
+              }}
               value={controller}
               placeholder="Required"
-              onChange={(e) => setController(e.target.value)}
+              onChange={() => {}}
               disabled={true}
+              inputProps={{ readOnly: true }}
             />
             <Tooltip title={t("Copy to clipboard")}>
               <IconButton
                 size="small"
                 onClick={() => handleCopyToClipboard(controller, "controller")}
                 color="primary"
+                disabled={isSaving}
               >
                 <ContentCopy fontSize="small" />
               </IconButton>
@@ -164,19 +121,24 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
           <ListItemText primary={t("Core Secret")} />
           <Box display="flex" alignItems="center" gap={1}>
             <TextField
-              autoComplete="new-password"
               size="small"
-              sx={{ width: 175 }}
+              sx={{
+                width: 175,
+                opacity: 0.7,
+                pointerEvents: 'none'
+              }}
               value={secret}
               placeholder={t("Recommended")}
-              onChange={(e) => setSecret(e.target.value)}
+              onChange={() => {}}
               disabled={true}
+              inputProps={{ readOnly: true }}
             />
             <Tooltip title={t("Copy to clipboard")}>
               <IconButton
                 size="small"
                 onClick={() => handleCopyToClipboard(secret, "secret")}
                 color="primary"
+                disabled={isSaving}
               >
                 <ContentCopy fontSize="small" />
               </IconButton>
@@ -190,10 +152,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
         autoHideDuration={2000}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
-        <Alert
-          severity="success"
-          sx={{ width: '100%' }}
-        >
+        <Alert severity="success">
           {copySuccess === "controller"
             ? t("Controller address copied to clipboard")
             : t("Secret copied to clipboard")

@@ -16,6 +16,7 @@ import (
 
 	mux "github.com/metacubex/sing-mux"
 	vmess "github.com/metacubex/sing-vmess"
+	"github.com/metacubex/sing/common"
 	"github.com/metacubex/sing/common/buf"
 	"github.com/metacubex/sing/common/bufio"
 	"github.com/metacubex/sing/common/bufio/deadline"
@@ -146,11 +147,11 @@ func (h *ListenerHandler) NewConnection(ctx context.Context, conn net.Conn, meta
 func (h *ListenerHandler) NewPacketConnection(ctx context.Context, conn network.PacketConn, metadata M.Metadata) error {
 	defer func() { _ = conn.Close() }()
 	mutex := sync.Mutex{}
-	conn2 := bufio.NewNetPacketConn(conn) // a new interface to set nil in defer
+	writer := bufio.NewNetPacketWriter(conn) // a new interface to set nil in defer
 	defer func() {
 		mutex.Lock() // this goroutine must exit after all conn.WritePacket() is not running
 		defer mutex.Unlock()
-		conn2 = nil
+		writer = nil
 	}()
 	rwOptions := network.ReadWaitOptions{}
 	readWaiter, isReadWaiter := bufio.CreatePacketReadWaiter(conn)
@@ -180,30 +181,54 @@ func (h *ListenerHandler) NewPacketConnection(ctx context.Context, conn network.
 			return err
 		}
 		cPacket := &packet{
-			conn:  &conn2,
-			mutex: &mutex,
-			rAddr: metadata.Source.UDPAddr(),
-			lAddr: conn.LocalAddr(),
-			buff:  buff,
+			writer: &writer,
+			mutex:  &mutex,
+			rAddr:  metadata.Source.UDPAddr(),
+			lAddr:  conn.LocalAddr(),
+			buff:   buff,
 		}
-
-		cMetadata := &C.Metadata{
-			NetWork: C.UDP,
-			Type:    h.Type,
-		}
-		if metadata.Source.IsIP() && metadata.Source.Fqdn == "" {
-			cMetadata.RawSrcAddr = metadata.Source.Unwrap().UDPAddr()
-		}
-		if dest.IsIP() && dest.Fqdn == "" {
-			cMetadata.RawDstAddr = dest.Unwrap().UDPAddr()
-		}
-		inbound.ApplyAdditions(cMetadata, inbound.WithDstAddr(dest), inbound.WithSrcAddr(metadata.Source), inbound.WithInAddr(conn.LocalAddr()))
-		inbound.ApplyAdditions(cMetadata, h.Additions...)
-		inbound.ApplyAdditions(cMetadata, getAdditions(ctx)...)
-
-		h.Tunnel.HandleUDPPacket(cPacket, cMetadata)
+		h.handlePacket(ctx, cPacket, metadata.Source, dest)
 	}
 	return nil
+}
+
+type localAddr interface {
+	LocalAddr() net.Addr
+}
+
+func (h *ListenerHandler) NewPacket(ctx context.Context, key netip.AddrPort, buffer *buf.Buffer, metadata M.Metadata, init func(natConn network.PacketConn) network.PacketWriter) {
+	writer := bufio.NewNetPacketWriter(init(nil))
+	mutex := sync.Mutex{}
+	cPacket := &packet{
+		writer: &writer,
+		mutex:  &mutex,
+		rAddr:  metadata.Source.UDPAddr(),
+		buff:   buffer,
+	}
+	if conn, ok := common.Cast[localAddr](writer); ok {
+		cPacket.rAddr = conn.LocalAddr()
+	} else {
+		cPacket.rAddr = metadata.Source.UDPAddr() // tun does not have real inAddr
+	}
+	h.handlePacket(ctx, cPacket, metadata.Source, metadata.Destination)
+}
+
+func (h *ListenerHandler) handlePacket(ctx context.Context, cPacket *packet, source M.Socksaddr, destination M.Socksaddr) {
+	cMetadata := &C.Metadata{
+		NetWork: C.UDP,
+		Type:    h.Type,
+	}
+	if source.IsIP() && source.Fqdn == "" {
+		cMetadata.RawSrcAddr = source.Unwrap().UDPAddr()
+	}
+	if destination.IsIP() && destination.Fqdn == "" {
+		cMetadata.RawDstAddr = destination.Unwrap().UDPAddr()
+	}
+	inbound.ApplyAdditions(cMetadata, inbound.WithDstAddr(destination), inbound.WithSrcAddr(source), inbound.WithInAddr(cPacket.InAddr()))
+	inbound.ApplyAdditions(cMetadata, h.Additions...)
+	inbound.ApplyAdditions(cMetadata, getAdditions(ctx)...)
+
+	h.Tunnel.HandleUDPPacket(cPacket, cMetadata)
 }
 
 func (h *ListenerHandler) NewError(ctx context.Context, err error) {
@@ -225,11 +250,11 @@ func ShouldIgnorePacketError(err error) bool {
 }
 
 type packet struct {
-	conn  *network.NetPacketConn
-	mutex *sync.Mutex
-	rAddr net.Addr
-	lAddr net.Addr
-	buff  *buf.Buffer
+	writer *network.NetPacketWriter
+	mutex  *sync.Mutex
+	rAddr  net.Addr
+	lAddr  net.Addr
+	buff   *buf.Buffer
 }
 
 func (c *packet) Data() []byte {
@@ -245,7 +270,7 @@ func (c *packet) WriteBack(b []byte, addr net.Addr) (n int, err error) {
 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	conn := *c.conn
+	conn := *c.writer
 	if conn == nil {
 		err = errors.New("writeBack to closed connection")
 		return

@@ -26,8 +26,9 @@ var (
 )
 
 type ifaceCache struct {
-	ifMap   map[string]*Interface
-	ifTable bart.Table[*Interface]
+	ifMapByName map[string]*Interface
+	ifMapByAddr map[netip.Addr]*Interface
+	ifTable     bart.Table[*Interface]
 }
 
 var caches = singledo.NewSingle[*ifaceCache](time.Second * 20)
@@ -40,7 +41,8 @@ func getCache() (*ifaceCache, error) {
 		}
 
 		cache := &ifaceCache{
-			ifMap: make(map[string]*Interface),
+			ifMapByName: make(map[string]*Interface),
+			ifMapByAddr: make(map[netip.Addr]*Interface),
 		}
 
 		for _, iface := range ifaces {
@@ -78,20 +80,14 @@ func getCache() (*ifaceCache, error) {
 				Flags:        iface.Flags,
 				Addresses:    ipNets,
 			}
-			cache.ifMap[iface.Name] = ifaceObj
+			cache.ifMapByName[iface.Name] = ifaceObj
 
 			if iface.Flags&net.FlagUp == 0 {
 				continue // interface down
 			}
 			for _, prefix := range ipNets {
-				if _, ok := cache.ifTable.Get(prefix); ok {
-					// maybe two interfaces have the same prefix but different address,
-					// so we add a special /32(ipv4) or /128(ipv6) item to let ResolveInterfaceByAddr
-					// could find the correct interface
-					cache.ifTable.Insert(netip.PrefixFrom(prefix.Addr(), prefix.Addr().BitLen()), ifaceObj)
-				} else {
-					cache.ifTable.Insert(prefix, ifaceObj)
-				}
+				cache.ifMapByAddr[prefix.Addr()] = ifaceObj
+				cache.ifTable.Insert(prefix, ifaceObj)
 			}
 		}
 
@@ -105,7 +101,7 @@ func Interfaces() (map[string]*Interface, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cache.ifMap, nil
+	return cache.ifMapByName, nil
 }
 
 func ResolveInterface(name string) (*Interface, error) {
@@ -127,6 +123,11 @@ func ResolveInterfaceByAddr(addr netip.Addr) (*Interface, error) {
 	if err != nil {
 		return nil, err
 	}
+	// maybe two interfaces have the same prefix but different address
+	// so direct check address equal before do a route lookup (longest prefix match)
+	if iface, ok := cache.ifMapByAddr[addr]; ok {
+		return iface, nil
+	}
 	iface, ok := cache.ifTable.Lookup(addr)
 	if !ok {
 		return nil, ErrIfaceNotFound
@@ -140,7 +141,8 @@ func IsLocalIp(addr netip.Addr) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return cache.ifTable.Contains(addr), nil
+	_, ok := cache.ifMapByAddr[addr]
+	return ok, nil
 }
 
 func FlushCache() {
