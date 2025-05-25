@@ -3,7 +3,6 @@ package statistic
 import (
 	"io"
 	"net"
-	"net/netip"
 	"time"
 
 	"github.com/metacubex/mihomo/common/atomic"
@@ -116,20 +115,8 @@ func (tt *tcpTracker) Upstream() any {
 	return tt.Conn
 }
 
-func parseRemoteDestination(addr net.Addr, conn C.Connection) string {
-	if addr != nil {
-		if addrPort, err := netip.ParseAddrPort(addr.String()); err == nil && addrPort.Addr().IsValid() {
-			return addrPort.Addr().String()
-		}
-	}
-	if conn != nil {
-		return conn.RemoteDestination()
-	}
-	return ""
-}
-
 func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool) *tcpTracker {
-	metadata.RemoteDst = parseRemoteDestination(conn.RemoteAddr(), conn)
+	metadata.RemoteDst = conn.RemoteDestination()
 
 	t := &tcpTracker{
 		Conn:    conn,
@@ -220,7 +207,7 @@ func (ut *udpTracker) Upstream() any {
 }
 
 func NewUDPTracker(conn C.PacketConn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool) *udpTracker {
-	metadata.RemoteDst = parseRemoteDestination(nil, conn)
+	metadata.RemoteDst = conn.RemoteDestination()
 
 	ut := &udpTracker{
 		PacketConn: conn,

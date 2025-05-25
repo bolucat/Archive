@@ -69,7 +69,7 @@ FOR:
 				c.netPacketConn.resultCh <- nil
 				break FOR
 			}
-		case <-c.netPacketConn.pipeDeadline.wait():
+		case <-c.netPacketConn.pipeDeadline.Wait():
 			return M.Socksaddr{}, os.ErrDeadlineExceeded
 		}
 	}
@@ -146,7 +146,7 @@ FOR:
 				c.netPacketConn.resultCh <- nil
 				break FOR
 			}
-		case <-c.netPacketConn.pipeDeadline.wait():
+		case <-c.netPacketConn.pipeDeadline.Wait():
 			return nil, M.Socksaddr{}, os.ErrDeadlineExceeded
 		}
 	}

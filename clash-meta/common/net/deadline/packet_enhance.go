@@ -52,7 +52,7 @@ FOR:
 				c.netPacketConn.resultCh <- nil
 				break FOR
 			}
-		case <-c.netPacketConn.pipeDeadline.wait():
+		case <-c.netPacketConn.pipeDeadline.Wait():
 			return nil, nil, nil, os.ErrDeadlineExceeded
 		}
 	}

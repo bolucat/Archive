@@ -185,6 +185,7 @@ const Layout = () => {
         mutate("getAutotemProxy");
       }),
 
+
       addListener("verge://notice-message", ({ payload }) =>
         handleNotice(payload as [string, string]),
       ),

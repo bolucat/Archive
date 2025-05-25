@@ -20,7 +20,7 @@ type connReadResult struct {
 type Conn struct {
 	network.ExtendedConn
 	deadline     atomic.TypedValue[time.Time]
-	pipeDeadline pipeDeadline
+	pipeDeadline PipeDeadline
 	disablePipe  atomic.Bool
 	inRead       atomic.Bool
 	resultCh     chan *connReadResult
@@ -34,7 +34,7 @@ func IsConn(conn any) bool {
 func NewConn(conn net.Conn) *Conn {
 	c := &Conn{
 		ExtendedConn: bufio.NewExtendedConn(conn),
-		pipeDeadline: makePipeDeadline(),
+		pipeDeadline: MakePipeDeadline(),
 		resultCh:     make(chan *connReadResult, 1),
 	}
 	c.resultCh <- nil
@@ -58,7 +58,7 @@ func (c *Conn) Read(p []byte) (n int, err error) {
 			c.resultCh <- nil
 			break
 		}
-	case <-c.pipeDeadline.wait():
+	case <-c.pipeDeadline.Wait():
 		return 0, os.ErrDeadlineExceeded
 	}
 
@@ -104,7 +104,7 @@ func (c *Conn) ReadBuffer(buffer *buf.Buffer) (err error) {
 			c.resultCh <- nil
 			break
 		}
-	case <-c.pipeDeadline.wait():
+	case <-c.pipeDeadline.Wait():
 		return os.ErrDeadlineExceeded
 	}
 
@@ -130,7 +130,7 @@ func (c *Conn) SetReadDeadline(t time.Time) error {
 		return c.ExtendedConn.SetReadDeadline(t)
 	}
 	c.deadline.Store(t)
-	c.pipeDeadline.set(t)
+	c.pipeDeadline.Set(t)
 	return nil
 }
 

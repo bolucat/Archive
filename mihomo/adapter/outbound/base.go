@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"syscall"
 
@@ -203,12 +202,21 @@ func NewBase(opt BaseOption) *Base {
 
 type conn struct {
 	N.ExtendedConn
-	chain                   C.Chain
-	actualRemoteDestination string
+	chain       C.Chain
+	adapterAddr string
 }
 
 func (c *conn) RemoteDestination() string {
-	return c.actualRemoteDestination
+	if remoteAddr := c.RemoteAddr(); remoteAddr != nil {
+		m := C.Metadata{}
+		if err := m.SetRemoteAddr(remoteAddr); err != nil {
+			if m.Valid() {
+				return m.String()
+			}
+		}
+	}
+	host, _, _ := net.SplitHostPort(c.adapterAddr)
+	return host
 }
 
 // Chains implements C.Connection
@@ -241,19 +249,20 @@ func NewConn(c net.Conn, a C.ProxyAdapter) C.Conn {
 	if _, ok := c.(syscall.Conn); !ok { // exclusion system conn like *net.TCPConn
 		c = N.NewDeadlineConn(c) // most conn from outbound can't handle readDeadline correctly
 	}
-	return &conn{N.NewExtendedConn(c), []string{a.Name()}, parseRemoteDestination(a.Addr())}
+	return &conn{N.NewExtendedConn(c), []string{a.Name()}, a.Addr()}
 }
 
 type packetConn struct {
 	N.EnhancePacketConn
-	chain                   C.Chain
-	adapterName             string
-	connID                  string
-	actualRemoteDestination string
+	chain       C.Chain
+	adapterName string
+	connID      string
+	adapterAddr string
 }
 
 func (c *packetConn) RemoteDestination() string {
-	return c.actualRemoteDestination
+	host, _, _ := net.SplitHostPort(c.adapterAddr)
+	return host
 }
 
 // Chains implements C.Connection
@@ -292,19 +301,7 @@ func newPacketConn(pc net.PacketConn, a C.ProxyAdapter) C.PacketConn {
 	if _, ok := pc.(syscall.Conn); !ok { // exclusion system conn like *net.UDPConn
 		epc = N.NewDeadlineEnhancePacketConn(epc) // most conn from outbound can't handle readDeadline correctly
 	}
-	return &packetConn{epc, []string{a.Name()}, a.Name(), utils.NewUUIDV4().String(), parseRemoteDestination(a.Addr())}
-}
-
-func parseRemoteDestination(addr string) string {
-	if dst, _, err := net.SplitHostPort(addr); err == nil {
-		return dst
-	} else {
-		if addrError, ok := err.(*net.AddrError); ok && strings.Contains(addrError.Err, "missing port") {
-			return dst
-		} else {
-			return ""
-		}
-	}
+	return &packetConn{epc, []string{a.Name()}, a.Name(), utils.NewUUIDV4().String(), a.Addr()}
 }
 
 type AddRef interface {

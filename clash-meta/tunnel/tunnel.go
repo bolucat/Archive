@@ -413,11 +413,6 @@ func handleUDPConn(packet C.PacketAdapter) {
 
 			pc := statistic.NewUDPTracker(rawPc, statistic.DefaultManager, metadata, rule, 0, 0, true)
 
-			if rawPc.Chains().Last() == "REJECT-DROP" {
-				_ = pc.Close()
-				return nil, nil, errors.New("rejected drop packet")
-			}
-
 			oAddrPort := metadata.AddrPort()
 			writeBackProxy := nat.NewWriteBackProxy(packet)
 
