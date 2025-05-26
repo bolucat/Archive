@@ -141,22 +141,19 @@ func handleUDPToLocal(writeBack C.WriteBack, pc N.EnhancePacketConn, sender C.Pa
 		} else if fromUDPAddr == nil {
 			fromUDPAddr = net.UDPAddrFromAddrPort(oAddrPort) // oAddrPort was Unmapped
 			log.Warnln("server return a nil *net.UDPAddr, force replace to (%s), this may be caused by a wrongly implemented server", oAddrPort)
-		} else {
-			_fromUDPAddr := *fromUDPAddr
-			fromUDPAddr = &_fromUDPAddr // make a copy
-			if fromAddr, ok := netip.AddrFromSlice(fromUDPAddr.IP); ok {
-				fromAddr = fromAddr.Unmap()
-				if fAddr.IsValid() && (oAddrPort.Addr() == fromAddr) { // oAddrPort was Unmapped
-					fromAddr = fAddr.Unmap()
-				}
-				fromUDPAddr.IP = fromAddr.AsSlice()
-				if fromAddr.Is4() {
-					fromUDPAddr.Zone = "" // only ipv6 can have the zone
-				}
-			}
 		}
 
-		_, err = writeBack.WriteBack(data, fromUDPAddr)
+		fromAddrPort := fromUDPAddr.AddrPort()
+		fromAddr := fromAddrPort.Addr().Unmap()
+
+		// restore fakeip
+		if fAddr.IsValid() && (oAddrPort.Addr() == fromAddr) { // oAddrPort was Unmapped
+			fromAddr = fAddr.Unmap()
+		}
+
+		fromAddrPort = netip.AddrPortFrom(fromAddr, fromAddrPort.Port())
+
+		_, err = writeBack.WriteBack(data, net.UDPAddrFromAddrPort(fromAddrPort))
 		if put != nil {
 			put()
 		}
