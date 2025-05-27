@@ -3,6 +3,7 @@ package outbound
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"runtime"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 )
@@ -18,6 +20,7 @@ import (
 type ProxyAdapter interface {
 	C.ProxyAdapter
 	DialOptions() []dialer.Option
+	ResolveUDP(ctx context.Context, metadata *C.Metadata) error
 }
 
 type Base struct {
@@ -159,6 +162,17 @@ func (b *Base) DialOptions() (opts []dialer.Option) {
 	return opts
 }
 
+func (b *Base) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
+	if !metadata.Resolved() {
+		ip, err := resolver.ResolveIP(ctx, metadata.Host)
+		if err != nil {
+			return fmt.Errorf("can't resolve ip: %w", err)
+		}
+		metadata.DstIP = ip
+	}
+	return nil
+}
+
 func (b *Base) Close() error {
 	return nil
 }
@@ -258,6 +272,11 @@ type packetConn struct {
 	adapterName string
 	connID      string
 	adapterAddr string
+	resolveUDP  func(ctx context.Context, metadata *C.Metadata) error
+}
+
+func (c *packetConn) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
+	return c.resolveUDP(ctx, metadata)
 }
 
 func (c *packetConn) RemoteDestination() string {
@@ -296,12 +315,12 @@ func (c *packetConn) AddRef(ref any) {
 	c.EnhancePacketConn = N.NewRefPacketConn(c.EnhancePacketConn, ref) // add ref for autoCloseProxyAdapter
 }
 
-func newPacketConn(pc net.PacketConn, a C.ProxyAdapter) C.PacketConn {
+func newPacketConn(pc net.PacketConn, a ProxyAdapter) C.PacketConn {
 	epc := N.NewEnhancePacketConn(pc)
 	if _, ok := pc.(syscall.Conn); !ok { // exclusion system conn like *net.UDPConn
 		epc = N.NewDeadlineEnhancePacketConn(epc) // most conn from outbound can't handle readDeadline correctly
 	}
-	return &packetConn{epc, []string{a.Name()}, a.Name(), utils.NewUUIDV4().String(), a.Addr()}
+	return &packetConn{epc, []string{a.Name()}, a.Name(), utils.NewUUIDV4().String(), a.Addr(), a.ResolveUDP}
 }
 
 type AddRef interface {

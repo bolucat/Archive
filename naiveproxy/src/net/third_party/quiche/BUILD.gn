@@ -30,7 +30,10 @@ import("//third_party/protobuf/proto_library.gni")
 config("quiche_internal_config") {
   cflags = []
   if (is_clang) {
-    cflags += [ "-Wno-sign-compare" ]
+    cflags += [
+      "-Wno-sign-compare",
+      "-Wno-deprecated-declarations",
+    ]
   }
 }
 

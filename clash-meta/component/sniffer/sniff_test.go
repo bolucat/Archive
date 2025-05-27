@@ -12,7 +12,7 @@ import (
 )
 
 type fakeSender struct {
-	resultCh chan *constant.Metadata
+	constant.PacketSender
 }
 
 var _ constant.PacketSender = (*fakeSender)(nil)
@@ -22,18 +22,7 @@ func (e *fakeSender) Send(packet constant.PacketAdapter) {
 	packet.Drop()
 }
 
-func (e *fakeSender) Process(constant.PacketConn, constant.WriteBackProxy) {
-	panic("not implemented")
-}
-
-func (e *fakeSender) ResolveUDP(metadata *constant.Metadata) error {
-	e.resultCh <- metadata
-	return nil
-}
-
-func (e *fakeSender) Close() {
-	panic("not implemented")
-}
+func (e *fakeSender) DoSniff(metadata *constant.Metadata) error { return nil }
 
 type fakeUDPPacket struct {
 	data  []byte
@@ -85,16 +74,17 @@ func testQuicSniffer(data []string, async bool) (string, error) {
 	}
 
 	resultCh := make(chan *constant.Metadata, 1)
-	emptySender := &fakeSender{resultCh: resultCh}
+	emptySender := &fakeSender{}
 
 	sender := q.WrapperSender(emptySender, true)
 
 	go func() {
 		meta := constant.Metadata{}
-		err = sender.ResolveUDP(&meta)
+		err := sender.DoSniff(&meta)
 		if err != nil {
 			panic(err)
 		}
+		resultCh <- &meta
 	}()
 
 	for _, d := range data {

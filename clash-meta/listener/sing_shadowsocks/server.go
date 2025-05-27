@@ -156,11 +156,7 @@ func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addi
 
 			go func() {
 				conn := bufio.NewPacketConn(ul)
-				rwOptions := network.ReadWaitOptions{
-					FrontHeadroom: network.CalculateFrontHeadroom(sl.service),
-					RearHeadroom:  network.CalculateRearHeadroom(sl.service),
-					MTU:           network.CalculateMTU(conn, sl.service),
-				}
+				rwOptions := network.NewReadWaitOptions(conn, sl.service)
 				readWaiter, isReadWaiter := bufio.CreatePacketReadWaiter(conn)
 				if isReadWaiter {
 					readWaiter.InitializeReadWaiter(rwOptions)
@@ -188,7 +184,9 @@ func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addi
 						}
 						continue
 					}
-					_ = sl.service.NewPacket(context.TODO(), conn, buff, M.Metadata{
+					ctx := context.TODO()
+					ctx = sing.WithInAddr(ctx, ul.LocalAddr())
+					_ = sl.service.NewPacket(ctx, conn, buff, M.Metadata{
 						Protocol: "shadowsocks",
 						Source:   dest,
 					})

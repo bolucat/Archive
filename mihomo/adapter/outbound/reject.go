@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"net/netip"
 	"time"
 
 	"github.com/metacubex/mihomo/common/buf"
@@ -29,7 +30,17 @@ func (r *Reject) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn,
 
 // ListenPacketContext implements C.ProxyAdapter
 func (r *Reject) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	if err := r.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	return newPacketConn(&nopPacketConn{}, r), nil
+}
+
+func (r *Reject) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
+	if !metadata.Resolved() {
+		metadata.DstIP = netip.IPv4Unspecified()
+	}
+	return nil
 }
 
 func NewRejectWithOption(option RejectOption) *Reject {

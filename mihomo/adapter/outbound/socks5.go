@@ -109,6 +109,9 @@ func (ss *Socks5) ListenPacketContext(ctx context.Context, metadata *C.Metadata)
 			return nil, err
 		}
 	}
+	if err = ss.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	c, err := cDialer.DialContext(ctx, "tcp", ss.addr)
 	if err != nil {
 		err = fmt.Errorf("%s connect error: %w", ss.addr, err)

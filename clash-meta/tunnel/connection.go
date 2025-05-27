@@ -5,11 +5,10 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
-	"github.com/metacubex/mihomo/common/lru"
 	N "github.com/metacubex/mihomo/common/net"
-	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 )
@@ -18,7 +17,11 @@ type packetSender struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	ch     chan C.PacketAdapter
-	cache  *lru.LruCache[string, netip.Addr]
+
+	// destination NAT mapping
+	originToTarget map[string]netip.Addr
+	targetToOrigin map[netip.Addr]netip.Addr
+	mappingMutex   sync.RWMutex
 }
 
 // newPacketSender return a chan based C.PacketSender
@@ -30,8 +33,72 @@ func newPacketSender() C.PacketSender {
 		ctx:    ctx,
 		cancel: cancel,
 		ch:     ch,
-		cache:  lru.New[string, netip.Addr](lru.WithSize[string, netip.Addr](senderCapacity)),
+
+		originToTarget: make(map[string]netip.Addr),
+		targetToOrigin: make(map[netip.Addr]netip.Addr),
 	}
+}
+
+func (s *packetSender) AddMapping(originMetadata *C.Metadata, metadata *C.Metadata) {
+	s.mappingMutex.Lock()
+	defer s.mappingMutex.Unlock()
+	originKey := originMetadata.String()
+	originAddr := originMetadata.DstIP
+	targetAddr := metadata.DstIP
+	if addr := s.originToTarget[originKey]; !addr.IsValid() { // overwrite only if the record is illegal
+		s.originToTarget[originKey] = targetAddr
+	}
+	if addr := s.targetToOrigin[targetAddr]; !addr.IsValid() { // overwrite only if the record is illegal
+		s.targetToOrigin[targetAddr] = originAddr
+	}
+}
+
+func (s *packetSender) RestoreReadFrom(addr netip.Addr) netip.Addr {
+	s.mappingMutex.RLock()
+	defer s.mappingMutex.RUnlock()
+	if originAddr := s.targetToOrigin[addr]; originAddr.IsValid() {
+		return originAddr
+	}
+	return addr
+}
+
+func (s *packetSender) processPacket(pc C.PacketConn, packet C.PacketAdapter) {
+	defer packet.Drop()
+	metadata := packet.Metadata()
+
+	var addr *net.UDPAddr
+
+	s.mappingMutex.RLock()
+	targetAddr := s.originToTarget[metadata.String()]
+	s.mappingMutex.RUnlock()
+
+	if targetAddr.IsValid() {
+		addr = net.UDPAddrFromAddrPort(netip.AddrPortFrom(targetAddr, metadata.DstPort))
+	}
+
+	if addr == nil {
+		originMetadata := metadata  // save origin metadata
+		metadata = metadata.Clone() // don't modify PacketAdapter's metadata
+
+		_ = preHandleMetadata(metadata) // error was pre-checked
+		metadata = metadata.Pure()
+		if metadata.Host != "" {
+			// TODO: ResolveUDP may take a long time to block the Process loop
+			//       but we want keep sequence sending so can't open a new goroutine
+			if err := pc.ResolveUDP(s.ctx, metadata); err != nil {
+				log.Warnln("[UDP] Resolve Ip error: %s", err)
+				return
+			}
+		}
+
+		if !metadata.DstIP.IsValid() {
+			log.Warnln("[UDP] Destination ip not valid: %#v", metadata)
+			return
+		}
+		s.AddMapping(originMetadata, metadata)
+		addr = metadata.UDPAddr()
+	}
+	_ = handleUDPToRemote(packet, pc, addr)
 }
 
 func (s *packetSender) Process(pc C.PacketConn, proxy C.WriteBackProxy) {
@@ -43,12 +110,7 @@ func (s *packetSender) Process(pc C.PacketConn, proxy C.WriteBackProxy) {
 			if proxy != nil {
 				proxy.UpdateWriteBack(packet)
 			}
-			if err := s.ResolveUDP(packet.Metadata()); err != nil {
-				log.Warnln("[UDP] Resolve Ip error: %s", err)
-			} else {
-				_ = handleUDPToRemote(packet, pc, packet.Metadata())
-			}
-			packet.Drop()
+			s.processPacket(pc, packet)
 		}
 	}
 }
@@ -87,25 +149,9 @@ func (s *packetSender) Close() {
 	s.dropAll()
 }
 
-func (s *packetSender) ResolveUDP(metadata *C.Metadata) (err error) {
-	// local resolve UDP dns
-	if !metadata.Resolved() {
-		ip, ok := s.cache.Get(metadata.Host)
-		if !ok {
-			ip, err = resolver.ResolveIP(s.ctx, metadata.Host)
-			if err != nil {
-				return err
-			}
-			s.cache.Set(metadata.Host, ip)
-		}
+func (s *packetSender) DoSniff(metadata *C.Metadata) error { return nil }
 
-		metadata.DstIP = ip
-	}
-	return nil
-}
-
-func handleUDPToRemote(packet C.UDPPacket, pc C.PacketConn, metadata *C.Metadata) error {
-	addr := metadata.UDPAddr()
+func handleUDPToRemote(packet C.UDPPacket, pc C.PacketConn, addr *net.UDPAddr) error {
 	if addr == nil {
 		return errors.New("udp addr invalid")
 	}
@@ -119,7 +165,7 @@ func handleUDPToRemote(packet C.UDPPacket, pc C.PacketConn, metadata *C.Metadata
 	return nil
 }
 
-func handleUDPToLocal(writeBack C.WriteBack, pc N.EnhancePacketConn, sender C.PacketSender, key string, oAddrPort netip.AddrPort, fAddr netip.Addr) {
+func handleUDPToLocal(writeBack C.WriteBack, pc C.PacketConn, sender C.PacketSender, key string, oAddrPort netip.AddrPort) {
 	defer func() {
 		sender.Close()
 		_ = pc.Close()
@@ -146,10 +192,8 @@ func handleUDPToLocal(writeBack C.WriteBack, pc N.EnhancePacketConn, sender C.Pa
 		fromAddrPort := fromUDPAddr.AddrPort()
 		fromAddr := fromAddrPort.Addr().Unmap()
 
-		// restore fakeip
-		if fAddr.IsValid() && (oAddrPort.Addr() == fromAddr) { // oAddrPort was Unmapped
-			fromAddr = fAddr.Unmap()
-		}
+		// restore DestinationNAT
+		fromAddr = sender.RestoreReadFrom(fromAddr).Unmap()
 
 		fromAddrPort = netip.AddrPortFrom(fromAddr, fromAddrPort.Port())
 

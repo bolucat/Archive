@@ -219,6 +219,10 @@ func (t *Trojan) DialContextWithDialer(ctx context.Context, dialer C.Dialer, met
 
 // ListenPacketContext implements C.ProxyAdapter
 func (t *Trojan) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err = t.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
+
 	var c net.Conn
 
 	// grpc transport
@@ -250,6 +254,9 @@ func (t *Trojan) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, me
 			return nil, err
 		}
 	}
+	if err = t.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	c, err := dialer.DialContext(ctx, "tcp", t.addr)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %w", t.addr, err)
@@ -269,12 +276,6 @@ func (t *Trojan) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, me
 // SupportWithDialer implements C.ProxyAdapter
 func (t *Trojan) SupportWithDialer() C.NetWork {
 	return C.ALLNet
-}
-
-// ListenPacketOnStreamConn implements C.ProxyAdapter
-func (t *Trojan) ListenPacketOnStreamConn(c net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
-	pc := trojan.NewPacketConn(c)
-	return newPacketConn(pc, t), err
 }
 
 // SupportUOT implements C.ProxyAdapter

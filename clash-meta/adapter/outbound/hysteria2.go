@@ -77,6 +77,9 @@ func (h *Hysteria2) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.
 }
 
 func (h *Hysteria2) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err = h.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	pc, err := h.client.ListenPacket(ctx)
 	if err != nil {
 		return nil, err

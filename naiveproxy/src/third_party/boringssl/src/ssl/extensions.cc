@@ -45,18 +45,6 @@ BSSL_NAMESPACE_BEGIN
 static bool ssl_check_clienthello_tlsext(SSL_HANDSHAKE *hs);
 static bool ssl_check_serverhello_tlsext(SSL_HANDSHAKE *hs);
 
-static int compare_uint16_t(const void *p1, const void *p2) {
-  uint16_t u1 = *((const uint16_t *)p1);
-  uint16_t u2 = *((const uint16_t *)p2);
-  if (u1 < u2) {
-    return -1;
-  } else if (u1 > u2) {
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
 // Per http://tools.ietf.org/html/rfc5246#section-7.4.1.4, there may not be
 // more than one extension of the same type in a ClientHello or ServerHello.
 // This function does an initial scan over the extensions block to filter those
@@ -100,8 +88,7 @@ static bool tls1_check_duplicate_extensions(const CBS *cbs) {
   assert(CBS_len(&extensions) == 0);
 
   // Sort the extensions and make sure there are no duplicates.
-  qsort(extension_types.data(), extension_types.size(), sizeof(uint16_t),
-        compare_uint16_t);
+  std::sort(extension_types.begin(), extension_types.end());
   for (size_t i = 1; i < num_extensions; i++) {
     if (extension_types[i - 1] == extension_types[i]) {
       return false;
@@ -3057,8 +3044,7 @@ static bool cert_compression_parse_clienthello(SSL_HANDSHAKE *hs,
     }
   }
 
-  qsort(given_alg_ids.data(), given_alg_ids.size(), sizeof(uint16_t),
-        compare_uint16_t);
+  std::sort(given_alg_ids.begin(), given_alg_ids.end());
   for (size_t i = 1; i < num_given_alg_ids; i++) {
     if (given_alg_ids[i - 1] == given_alg_ids[i]) {
       return false;

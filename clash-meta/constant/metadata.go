@@ -261,6 +261,11 @@ func (m *Metadata) Pure() *Metadata {
 	return m
 }
 
+func (m *Metadata) Clone() *Metadata {
+	copyM := *m
+	return &copyM
+}
+
 func (m *Metadata) AddrPort() netip.AddrPort {
 	return netip.AddrPortFrom(m.DstIP.Unmap(), m.DstPort)
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -520,16 +519,8 @@ func (w *WireGuard) ListenPacketContext(ctx context.Context, metadata *C.Metadat
 	if err = w.init(ctx); err != nil {
 		return nil, err
 	}
-	if (!metadata.Resolved() || w.resolver != nil) && metadata.Host != "" {
-		r := resolver.DefaultResolver
-		if w.resolver != nil {
-			r = w.resolver
-		}
-		ip, err := resolver.ResolveIPWithResolver(ctx, metadata.Host, r)
-		if err != nil {
-			return nil, errors.New("can't resolve ip")
-		}
-		metadata.DstIP = ip
+	if err = w.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
 	}
 	pc, err = w.tunDevice.ListenPacket(ctx, M.SocksaddrFrom(metadata.DstIP, metadata.DstPort).Unwrap())
 	if err != nil {
@@ -539,6 +530,21 @@ func (w *WireGuard) ListenPacketContext(ctx context.Context, metadata *C.Metadat
 		return nil, E.New("packetConn is nil")
 	}
 	return newPacketConn(pc, w), nil
+}
+
+func (w *WireGuard) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
+	if (!metadata.Resolved() || w.resolver != nil) && metadata.Host != "" {
+		r := resolver.DefaultResolver
+		if w.resolver != nil {
+			r = w.resolver
+		}
+		ip, err := resolver.ResolveIPWithResolver(ctx, metadata.Host, r)
+		if err != nil {
+			return fmt.Errorf("can't resolve ip: %w", err)
+		}
+		metadata.DstIP = ip
+	}
+	return nil
 }
 
 // IsL3Protocol implements C.ProxyAdapter

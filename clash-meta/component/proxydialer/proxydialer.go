@@ -2,7 +2,6 @@ package proxydialer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -10,7 +9,6 @@ import (
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/dialer"
-	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/tunnel"
 	"github.com/metacubex/mihomo/tunnel/statistic"
@@ -40,16 +38,15 @@ func (p proxyDialer) DialContext(ctx context.Context, network, address string) (
 		return nil, err
 	}
 	if strings.Contains(network, "udp") { // using in wireguard outbound
-		if !currentMeta.Resolved() {
-			ip, err := resolver.ResolveIP(ctx, currentMeta.Host)
-			if err != nil {
-				return nil, errors.New("can't resolve ip")
-			}
-			currentMeta.DstIP = ip
-		}
 		pc, err := p.listenPacket(ctx, currentMeta)
 		if err != nil {
 			return nil, err
+		}
+		if !currentMeta.Resolved() { // should not happen, maybe by a wrongly implemented proxy, but we can handle this (:
+			err = pc.ResolveUDP(ctx, currentMeta)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return N.NewBindPacketConn(pc, currentMeta.UDPAddr()), nil
 	}

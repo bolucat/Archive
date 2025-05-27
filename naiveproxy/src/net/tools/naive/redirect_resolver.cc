@@ -215,7 +215,8 @@ int RedirectResolver::HandleReadResult(int result) {
   if (size > buffer_->size() || !response.io_buffer()) {
     return ERR_NO_BUFFER_SPACE;
   }
-  std::memcpy(buffer_->data(), response.io_buffer()->data(), size);
+  buffer_->first(size) = response.io_buffer()->span();
+  // std::memcpy(buffer_->data(), response.io_buffer()->data(), size);
 
   return socket_->SendTo(
       buffer_.get(), size, recv_address_,

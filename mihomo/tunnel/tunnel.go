@@ -366,13 +366,7 @@ func handleUDPConn(packet C.PacketAdapter) {
 		return
 	}
 
-	// make a fAddr if request ip is fakeip
-	var fAddr netip.Addr
-	if resolver.IsExistFakeIP(metadata.DstIP) {
-		fAddr = metadata.DstIP
-	}
-
-	if err := preHandleMetadata(metadata); err != nil {
+	if err := preHandleMetadata(metadata.Clone()); err != nil { // precheck without modify metadata
 		packet.Drop()
 		log.Debugln("[Metadata PreHandle] error: %s", err)
 		return
@@ -388,10 +382,15 @@ func handleUDPConn(packet C.PacketAdapter) {
 	})
 	if !loaded {
 		dial := func() (C.PacketConn, C.WriteBackProxy, error) {
-			if err := sender.ResolveUDP(metadata); err != nil {
-				log.Warnln("[UDP] Resolve Ip error: %s", err)
+			originMetadata := metadata  // save origin metadata
+			metadata = metadata.Clone() // don't modify PacketAdapter's metadata
+
+			if err := sender.DoSniff(metadata); err != nil {
+				log.Warnln("[UDP] DoSniff error: %s", err.Error())
 				return nil, nil, err
 			}
+
+			_ = preHandleMetadata(metadata) // error was pre-checked
 
 			proxy, rule, err := resolveMetadata(metadata)
 			if err != nil {
@@ -399,10 +398,11 @@ func handleUDPConn(packet C.PacketAdapter) {
 				return nil, nil, err
 			}
 
+			dialMetadata := metadata.Pure()
 			ctx, cancel := context.WithTimeout(context.Background(), C.DefaultUDPTimeout)
 			defer cancel()
 			rawPc, err := retry(ctx, func(ctx context.Context) (C.PacketConn, error) {
-				return proxy.ListenPacketContext(ctx, metadata.Pure())
+				return proxy.ListenPacketContext(ctx, dialMetadata)
 			}, func(err error) {
 				logMetadataErr(metadata, rule, proxy, err)
 			})
@@ -413,10 +413,11 @@ func handleUDPConn(packet C.PacketAdapter) {
 
 			pc := statistic.NewUDPTracker(rawPc, statistic.DefaultManager, metadata, rule, 0, 0, true)
 
-			oAddrPort := metadata.AddrPort()
+			sender.AddMapping(originMetadata, dialMetadata)
+			oAddrPort := dialMetadata.AddrPort()
 			writeBackProxy := nat.NewWriteBackProxy(packet)
 
-			go handleUDPToLocal(writeBackProxy, pc, sender, key, oAddrPort, fAddr)
+			go handleUDPToLocal(writeBackProxy, pc, sender, key, oAddrPort)
 			return pc, writeBackProxy, nil
 		}
 

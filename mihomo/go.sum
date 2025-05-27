@@ -122,10 +122,10 @@ github.com/metacubex/sing-mux v0.3.2 h1:nJv52pyRivHcaZJKk2JgxpaVvj1GAXG81scSa9N7
 github.com/metacubex/sing-mux v0.3.2/go.mod h1:3rt1soewn0O6j89GCLmwAQFsq257u0jf2zQSPhTL3Bw=
 github.com/metacubex/sing-quic v0.0.0-20250523120938-f1a248e5ec7f h1:mP3vIm+9hRFI0C0Vl3pE0NESF/L85FDbuB0tGgUii6I=
 github.com/metacubex/sing-quic v0.0.0-20250523120938-f1a248e5ec7f/go.mod h1:JPTpf7fpnojsSuwRJExhSZSy63pVbp3VM39+zj+sAJM=
-github.com/metacubex/sing-shadowsocks v0.2.9 h1:2e++13WNN7EGjGtvrGLUzW1xrCdQbW2gIFpgw5GEw00=
-github.com/metacubex/sing-shadowsocks v0.2.9/go.mod h1:CJSEGO4FWQAWe+ZiLZxCweGdjRR60A61SIoVjdjQeBA=
-github.com/metacubex/sing-shadowsocks2 v0.2.3 h1:v3rNS/5Ywh0NIZ6VU/NmdERQIN5RePzyxCFeQsU4Cx0=
-github.com/metacubex/sing-shadowsocks2 v0.2.3/go.mod h1:/WNy/Q8ahLCoPRriWuFZFD0Jy+JNp1MEQl28Zw6SaF8=
+github.com/metacubex/sing-shadowsocks v0.2.10 h1:Pr7LDbjMANIQHl07zWgl1vDuhpsfDQUpZ8cX6DPabfg=
+github.com/metacubex/sing-shadowsocks v0.2.10/go.mod h1:MtRM0ZZjR0kaDOzy9zWSt6/4/UlrnsNBq+1FNAF4vBk=
+github.com/metacubex/sing-shadowsocks2 v0.2.4 h1:Ec0x3hHR7xkld5Z09IGh16wtUUpBb2HgqZ9DExd8Q7s=
+github.com/metacubex/sing-shadowsocks2 v0.2.4/go.mod h1:WP8+S0kqtnSbX1vlIpo5i8Irm/ijZITEPBcZ26B5unY=
 github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2 h1:gXU+MYPm7Wme3/OAY2FFzVq9d9GxPHOqu5AQfg/ddhI=
 github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2/go.mod h1:mbfboaXauKJNIHJYxQRa+NJs4JU9NZfkA+I33dS2+9E=
 github.com/metacubex/sing-tun v0.4.6-0.20250524142129-9d110c0af70c h1:Y6jk7AH5BEg9Dsvczrf/KokYsvxeKSZZlCLHg+hC4ro=

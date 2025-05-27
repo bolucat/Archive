@@ -10,6 +10,7 @@ checkout_mutter = false
 checkout_nacl = false
 checkout_openxr = false
 checkout_src_internal = false
+checkout_src_internal_infra = false
 cros_boards = ""
 cros_boards_with_qemu_images = ""
 generate_location_tags = true

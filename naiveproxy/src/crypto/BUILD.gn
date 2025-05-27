@@ -6,6 +6,10 @@ import("//build/buildflag_header.gni")
 import("//components/nacl/toolchain.gni")
 import("//crypto/features.gni")
 
+if (is_ios) {
+  import("//build/config/apple/mobile_config.gni")  # For `target_platform`
+}
+
 buildflag_header("buildflags") {
   header = "crypto_buildflags.h"
   flags = [ "USE_NSS_CERTS=$use_nss_certs" ]
@@ -37,6 +41,10 @@ component("crypto") {
     "hmac.h",
     "kdf.cc",
     "kdf.h",
+    "keypair.cc",
+    "keypair.h",
+    "obsolete/md5.cc",
+    "obsolete/md5.h",
     "openssl_util.cc",
     "openssl_util.h",
     "process_bound_string.cc",
@@ -52,6 +60,8 @@ component("crypto") {
     "secure_util.h",
     "sha2.cc",
     "sha2.h",
+    "sign.cc",
+    "sign.h",
     "signature_creator.cc",
     "signature_creator.h",
     "signature_verifier.cc",
@@ -100,12 +110,15 @@ component("crypto") {
     }
 
     frameworks = [
-      "LocalAuthentication.framework",
       "CoreFoundation.framework",
       "CryptoTokenKit.framework",
       "Foundation.framework",
       "Security.framework",
     ]
+
+    if (is_mac || (is_ios && target_platform != "tvos")) {
+      frameworks += [ "LocalAuthentication.framework" ]
+    }
   }
 
   if (is_win) {

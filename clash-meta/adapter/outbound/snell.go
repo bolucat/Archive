@@ -127,6 +127,9 @@ func (s *Snell) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, met
 			return nil, err
 		}
 	}
+	if err = s.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	c, err := dialer.DialContext(ctx, "tcp", s.addr)
 	if err != nil {
 		return nil, err

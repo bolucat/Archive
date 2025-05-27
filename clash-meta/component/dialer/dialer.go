@@ -73,7 +73,7 @@ func ListenPacket(ctx context.Context, network, address string, rAddrPort netip.
 		}
 		if opt.interfaceName == "" {
 			if finder := DefaultInterfaceFinder.Load(); finder != nil {
-				opt.interfaceName = finder.FindInterfaceName(rAddrPort.Addr())
+				opt.interfaceName = finder.FindInterfaceName(rAddrPort.Addr().Unmap())
 			}
 		}
 		if rAddrPort.Addr().Unmap().IsLoopback() {

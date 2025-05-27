@@ -362,12 +362,12 @@ class TrustStoreUnix : public PlatformTrustStore {
  public:
   TrustStoreUnix() {
     auto env = base::Environment::Create();
-    std::string env_value;
-
+    std::optional<std::string> env_value;
     std::vector<std::string> cert_filenames(kStaticRootCertFiles.begin(),
                                             kStaticRootCertFiles.end());
-    if (env->GetVar(kStaticCertFileEnv, &env_value) && !env_value.empty()) {
-      cert_filenames = {env_value};
+    env_value = env->GetVar(kStaticCertFileEnv);
+    if (env_value.has_value() && !env_value->empty()) {
+      cert_filenames = {*env_value};
     }
 
     bool cert_file_ok = false;
@@ -383,8 +383,9 @@ class TrustStoreUnix : public PlatformTrustStore {
 
     std::vector<std::string> cert_dirnames(kStaticRootCertDirs.begin(),
                                            kStaticRootCertDirs.end());
-    if (env->GetVar(kStaticCertDirsEnv, &env_value) && !env_value.empty()) {
-      cert_dirnames = base::SplitString(env_value, ":", base::TRIM_WHITESPACE,
+    env_value = env->GetVar(kStaticCertDirsEnv);
+    if (env_value.has_value() && !env_value->empty()) {
+      cert_dirnames = base::SplitString(*env_value, ":", base::TRIM_WHITESPACE,
                                         base::SPLIT_WANT_NONEMPTY);
     }
 

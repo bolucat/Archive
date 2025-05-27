@@ -94,5 +94,10 @@ int GetAddrInfoForNetwork(handles::NetworkHandle network,
   return EAI_SYSTEM;
 }
 
+void RegisterQuicConnectionClosePayload(int, base::span<uint8_t>) {
+}
+
+void UnregisterQuicConnectionClosePayload(int) {
+}
 }  // namespace android
 }  // namespace net

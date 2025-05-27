@@ -105,6 +105,9 @@ func (ssr *ShadowSocksR) ListenPacketWithDialer(ctx context.Context, dialer C.Di
 			return nil, err
 		}
 	}
+	if err = ssr.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	addr, err := resolveUDPAddr(ctx, "udp", ssr.addr, ssr.prefer)
 	if err != nil {
 		return nil, err

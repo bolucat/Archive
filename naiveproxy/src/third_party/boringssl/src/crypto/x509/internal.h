@@ -547,6 +547,18 @@ int X509_PURPOSE_get_trust(const X509_PURPOSE *xp);
 // TODO(https://crbug.com/boringssl/695): Remove this.
 int DIST_POINT_set_dpname(DIST_POINT_NAME *dpn, X509_NAME *iname);
 
+// x509_marshal_name marshals |in| as a DER-encoded, X.509 Name and writes the
+// result to |out|. It returns one on success and zero on error.
+//
+// TODO(https://crbug.com/boringssl/407): This function should be const and
+// thread-safe but is currently neither in some cases, notably if |in| was
+// mutated.
+int x509_marshal_name(CBB *out, X509_NAME *in);
+
+// x509_marshal_algorithm marshals |in| as a DER-encoded, AlgorithmIdentifier
+// and writes the result to |out|. It returns one on success and zero on error.
+int x509_marshal_algorithm(CBB *out, const X509_ALGOR *in);
+
 
 #if defined(__cplusplus)
 }  // extern C

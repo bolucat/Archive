@@ -10,11 +10,10 @@
 ^build
 ^build_overrides/build.gni
 ^build_overrides/partition_alloc.gni
+^build_overrides/protobuf.gni
 ^buildtools/deps_revisions.gni
 ^buildtools/third_party/eu-strip/bin/eu-strip
-^buildtools/third_party/libc++/BUILD.gn
-^buildtools/third_party/libc++/__assertion_handler
-^buildtools/third_party/libc++/__config_site
+^buildtools/third_party/libc++
 ^buildtools/third_party/libc++abi/BUILD.gn
 ^buildtools/third_party/libc++abi/cxa_demangle_stub.cc
 ^buildtools/third_party/libunwind/BUILD.gn
@@ -42,6 +41,10 @@
 ^third_party/brotli
 ^third_party/closure_compiler/closure_args.gni
 ^third_party/closure_compiler/compile_js.gni
+^third_party/compiler-rt/BUILD.gn
+^third_party/compiler-rt/src/lib/builtins/assembly.h
+^third_party/compiler-rt/src/lib/builtins/atomic.c
+^third_party/compiler-rt/src/lib/builtins/int_endianness.h
 ^third_party/cpu_features
 ^third_party/depot_tools/cpplint.py
 ^third_party/depot_tools/download_from_google_storage.py
