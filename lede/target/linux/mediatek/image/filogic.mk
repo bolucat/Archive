@@ -363,21 +363,6 @@ define Device/cmcc_xr30-nand
 endef
 TARGET_DEVICES += cmcc_xr30-nand
 
-define Device/cudy_tr3000-mod
-  DEVICE_VENDOR := Cudy
-  DEVICE_MODEL := TR3000
-  DEVICE_VARIANT := (U-Boot mod)
-  DEVICE_DTS := mt7981b-cudy-tr3000-mod
-  DEVICE_DTS_DIR := ../dts
-  UBINIZE_OPTS := -E 5
-  BLOCKSIZE := 128k
-  PAGESIZE := 2048
-  KERNEL_IN_UBI := 1
-  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  DEVICE_PACKAGES := kmod-usb3 kmod-mt7981-firmware mt7981-wo-firmware
-endef
-TARGET_DEVICES += cudy_tr3000-mod
-
 define Device/cudy_tr3000-v1
   DEVICE_VENDOR := Cudy
   DEVICE_MODEL := TR3000
@@ -394,6 +379,36 @@ define Device/cudy_tr3000-v1
   DEVICE_PACKAGES := kmod-usb3 kmod-mt7981-firmware mt7981-wo-firmware
 endef
 TARGET_DEVICES += cudy_tr3000-v1
+
+define Device/cudy_tr3000-mod
+  DEVICE_VENDOR := Cudy
+  DEVICE_MODEL := TR3000
+  DEVICE_VARIANT := v1 (U-Boot mod)
+  DEVICE_DTS := mt7981b-cudy-tr3000-mod
+  DEVICE_DTS_DIR := ../dts
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL_IN_UBI := 1
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := kmod-usb3 kmod-mt7981-firmware mt7981-wo-firmware
+endef
+TARGET_DEVICES += cudy_tr3000-mod
+
+define Device/cudy_tr3000-v2-mod
+  DEVICE_VENDOR := Cudy
+  DEVICE_MODEL := TR3000
+  DEVICE_VARIANT := v2 256MB (U-Boot mod)
+  DEVICE_DTS := mt7981b-cudy-tr3000-v2-mod
+  DEVICE_DTS_DIR := ../dts
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  KERNEL_IN_UBI := 1
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+  DEVICE_PACKAGES := kmod-usb3 kmod-mt7981-firmware mt7981-wo-firmware
+endef
+TARGET_DEVICES += cudy_tr3000-v2-mod
 
 define Device/fzs_5gcpe-p3
   DEVICE_VENDOR := FZS
@@ -502,6 +517,21 @@ define Device/huasifei_wh3000-emmc
   SUPPORTED_DEVICES += huasifei,wh3000
 endef
 TARGET_DEVICES += huasifei_wh3000-emmc
+
+define Device/huasifei_ws3006
+  DEVICE_VENDOR := Huasifei
+  DEVICE_MODEL := WS3006
+  DEVICE_DTS := mt7981b-huasifei-ws3006
+  DEVICE_DTS_DIR := ../dts
+  DEVICE_PACKAGES := kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware
+  UBINIZE_OPTS := -E 5
+  BLOCKSIZE := 128k
+  PAGESIZE := 2048
+  IMAGE_SIZE := 112640k
+  KERNEL_IN_UBI := 1
+  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+endef
+TARGET_DEVICES += huasifei_ws3006
 
 define Device/hf_m7986r1-emmc
   DEVICE_VENDOR := HF
