@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strings"
 	"time"
 
 	"github.com/metacubex/mihomo/common/utils"
@@ -68,7 +67,8 @@ func LookupIPv4WithResolver(ctx context.Context, host string, r Resolver) ([]net
 
 	ip, err := netip.ParseAddr(host)
 	if err == nil {
-		if ip.Is4() || ip.Is4In6() {
+		ip = ip.Unmap()
+		if ip.Is4() {
 			return []netip.Addr{ip}, nil
 		}
 		return []netip.Addr{}, ErrIPVersion
@@ -117,7 +117,8 @@ func LookupIPv6WithResolver(ctx context.Context, host string, r Resolver) ([]net
 	}
 
 	if ip, err := netip.ParseAddr(host); err == nil {
-		if strings.Contains(host, ":") {
+		ip = ip.Unmap()
+		if ip.Is6() {
 			return []netip.Addr{ip}, nil
 		}
 		return nil, ErrIPVersion
@@ -166,6 +167,7 @@ func LookupIPWithResolver(ctx context.Context, host string, r Resolver) ([]netip
 	}
 
 	if ip, err := netip.ParseAddr(host); err == nil {
+		ip = ip.Unmap()
 		return []netip.Addr{ip}, nil
 	}
 
