@@ -55,6 +55,7 @@
  - 更精细化控制自动日志清理，新增1天选项
  - Winodws 快捷键名称改为 `Clash Verge`
  - 配置加载阶段自动补全 external-controller secret 字段。
+ - 添加 TCP Concurrency (TCP并发)
 
 #### 优化了：
  - 系统代理 Bypass 设置
@@ -85,6 +86,8 @@
  - 强制为 Mihomo 配置补全并覆盖 external-controller-cors 字段，默认不允许跨域和仅本地请求，提升 cors 安全性，升级配置时自动覆盖
  - 修改 端口检测范围 （1111-65536）
  - 配置文件缺失 secret 字段时自动填充默认值 set-your-secret
+ - 优化异步处理，防止部分组件 UI 阻塞
+ - 关闭 DNS 启用
 
 #### 移除了：
  - 窗口状态管理器

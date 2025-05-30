@@ -1,0 +1,51 @@
+--- a/net/mac80211/trace.h
++++ b/net/mac80211/trace.h
+@@ -17,7 +17,7 @@
+ 
+ #define MAXNAME		32
+ #define LOCAL_ENTRY	__array(char, wiphy_name, 32)
+-#define LOCAL_ASSIGN	strlcpy(__entry->wiphy_name, wiphy_name(local->hw.wiphy), MAXNAME)
++#define LOCAL_ASSIGN	strscpy(__entry->wiphy_name, wiphy_name(local->hw.wiphy), MAXNAME)
+ #define LOCAL_PR_FMT	"%s"
+ #define LOCAL_PR_ARG	__entry->wiphy_name
+ 
+@@ -31,9 +31,15 @@
+ #define VIF_ENTRY	__field(enum nl80211_iftype, vif_type) __field(void *, sdata)	\
+ 			__field(bool, p2p)						\
+ 			__string(vif_name, sdata->name)
++#if LINUX_VERSION_IS_GEQ(6,10,0)
++#define VIF_ASSIGN	__entry->vif_type = sdata->vif.type; __entry->sdata = sdata;	\
++			__entry->p2p = sdata->vif.p2p;					\
++			__assign_str(vif_name)
++#else
+ #define VIF_ASSIGN	__entry->vif_type = sdata->vif.type; __entry->sdata = sdata;	\
+ 			__entry->p2p = sdata->vif.p2p;					\
+ 			__assign_str(vif_name, sdata->name)
++#endif
+ #define VIF_PR_FMT	" vif:%s(%d%s)"
+ #define VIF_PR_ARG	__get_str(vif_name), __entry->vif_type, __entry->p2p ? "/p2p" : ""
+ 
+--- a/net/wireless/trace.h
++++ b/net/wireless/trace.h
+@@ -24,7 +24,7 @@
+ 
+ #define MAXNAME		32
+ #define WIPHY_ENTRY	__array(char, wiphy_name, 32)
+-#define WIPHY_ASSIGN	strlcpy(__entry->wiphy_name, wiphy_name(wiphy), MAXNAME)
++#define WIPHY_ASSIGN	strscpy(__entry->wiphy_name, wiphy_name(wiphy), MAXNAME)
+ #define WIPHY_PR_FMT	"%s"
+ #define WIPHY_PR_ARG	__entry->wiphy_name
+ 
+@@ -366,7 +366,11 @@
+ 	),
+ 	TP_fast_assign(
+ 		WIPHY_ASSIGN;
++#if LINUX_VERSION_IS_GEQ(6,10,0)
++		__assign_str(vir_intf_name);
++#else
+ 		__assign_str(vir_intf_name, name ? name : "<noname>");
++#endif
+ 		__entry->type = type;
+ 	),
+ 	TP_printk(WIPHY_PR_FMT ", virtual intf name: %s, type: %d",
+
