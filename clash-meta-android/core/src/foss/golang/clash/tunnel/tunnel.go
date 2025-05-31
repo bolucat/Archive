@@ -287,17 +287,21 @@ func isHandle(t C.Type) bool {
 	return status == Running || (status == Inner && t == C.INNER)
 }
 
+func fixMetadata(metadata *C.Metadata) {
+	// first unmap dstIP
+	metadata.DstIP = metadata.DstIP.Unmap()
+	// handle IP string on host
+	if ip, err := netip.ParseAddr(metadata.Host); err == nil {
+		metadata.DstIP = ip.Unmap()
+		metadata.Host = ""
+	}
+}
+
 func needLookupIP(metadata *C.Metadata) bool {
 	return resolver.MappingEnabled() && metadata.Host == "" && metadata.DstIP.IsValid()
 }
 
 func preHandleMetadata(metadata *C.Metadata) error {
-	// handle IP string on host
-	if ip, err := netip.ParseAddr(metadata.Host); err == nil {
-		metadata.DstIP = ip
-		metadata.Host = ""
-	}
-
 	// preprocess enhanced-mode metadata
 	if needLookupIP(metadata) {
 		host, exist := resolver.FindHostByIP(metadata.DstIP)
@@ -365,14 +369,9 @@ func handleUDPConn(packet C.PacketAdapter) {
 		log.Warnln("[Metadata] not valid: %#v", metadata)
 		return
 	}
+	fixMetadata(metadata) // fix some metadata not set via metadata.SetRemoteAddr or metadata.SetRemoteAddress
 
-	// make a fAddr if request ip is fakeip
-	var fAddr netip.Addr
-	if resolver.IsExistFakeIP(metadata.DstIP) {
-		fAddr = metadata.DstIP
-	}
-
-	if err := preHandleMetadata(metadata); err != nil {
+	if err := preHandleMetadata(metadata.Clone()); err != nil { // precheck without modify metadata
 		packet.Drop()
 		log.Debugln("[Metadata PreHandle] error: %s", err)
 		return
@@ -388,10 +387,15 @@ func handleUDPConn(packet C.PacketAdapter) {
 	})
 	if !loaded {
 		dial := func() (C.PacketConn, C.WriteBackProxy, error) {
-			if err := sender.ResolveUDP(metadata); err != nil {
-				log.Warnln("[UDP] Resolve Ip error: %s", err)
+			originMetadata := metadata  // save origin metadata
+			metadata = metadata.Clone() // don't modify PacketAdapter's metadata
+
+			if err := sender.DoSniff(metadata); err != nil {
+				log.Warnln("[UDP] DoSniff error: %s", err.Error())
 				return nil, nil, err
 			}
+
+			_ = preHandleMetadata(metadata) // error was pre-checked
 
 			proxy, rule, err := resolveMetadata(metadata)
 			if err != nil {
@@ -399,10 +403,11 @@ func handleUDPConn(packet C.PacketAdapter) {
 				return nil, nil, err
 			}
 
+			dialMetadata := metadata.Pure()
 			ctx, cancel := context.WithTimeout(context.Background(), C.DefaultUDPTimeout)
 			defer cancel()
 			rawPc, err := retry(ctx, func(ctx context.Context) (C.PacketConn, error) {
-				return proxy.ListenPacketContext(ctx, metadata.Pure())
+				return proxy.ListenPacketContext(ctx, dialMetadata)
 			}, func(err error) {
 				logMetadataErr(metadata, rule, proxy, err)
 			})
@@ -413,15 +418,11 @@ func handleUDPConn(packet C.PacketAdapter) {
 
 			pc := statistic.NewUDPTracker(rawPc, statistic.DefaultManager, metadata, rule, 0, 0, true)
 
-			if rawPc.Chains().Last() == "REJECT-DROP" {
-				_ = pc.Close()
-				return nil, nil, errors.New("rejected drop packet")
-			}
-
-			oAddrPort := metadata.AddrPort()
+			sender.AddMapping(originMetadata, dialMetadata)
+			oAddrPort := dialMetadata.AddrPort()
 			writeBackProxy := nat.NewWriteBackProxy(packet)
 
-			go handleUDPToLocal(writeBackProxy, pc, sender, key, oAddrPort, fAddr)
+			go handleUDPToLocal(writeBackProxy, pc, sender, key, oAddrPort)
 			return pc, writeBackProxy, nil
 		}
 
@@ -453,6 +454,7 @@ func handleTCPConn(connCtx C.ConnContext) {
 		log.Warnln("[Metadata] not valid: %#v", metadata)
 		return
 	}
+	fixMetadata(metadata) // fix some metadata not set via metadata.SetRemoteAddr or metadata.SetRemoteAddress
 
 	preHandleFailed := false
 	if err := preHandleMetadata(metadata); err != nil {

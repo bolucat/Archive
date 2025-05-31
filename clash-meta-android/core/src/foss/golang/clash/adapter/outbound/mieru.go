@@ -54,6 +54,9 @@ func (m *Mieru) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, 
 
 // ListenPacketContext implements C.ProxyAdapter
 func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err = m.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	if err := m.ensureClientIsRunning(); err != nil {
 		return nil, err
 	}

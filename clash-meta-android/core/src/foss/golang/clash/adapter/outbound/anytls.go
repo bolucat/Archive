@@ -2,7 +2,6 @@ package outbound
 
 import (
 	"context"
-	"errors"
 	"net"
 	"strconv"
 	"time"
@@ -10,7 +9,6 @@ import (
 	CN "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
-	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/anytls"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -53,6 +51,10 @@ func (t *AnyTLS) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Con
 }
 
 func (t *AnyTLS) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err = t.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
+
 	// create tcp
 	c, err := t.client.CreateProxy(ctx, uot.RequestDestination(2))
 	if err != nil {
@@ -60,13 +62,6 @@ func (t *AnyTLS) ListenPacketContext(ctx context.Context, metadata *C.Metadata) 
 	}
 
 	// create uot on tcp
-	if !metadata.Resolved() {
-		ip, err := resolver.ResolveIP(ctx, metadata.Host)
-		if err != nil {
-			return nil, errors.New("can't resolve ip")
-		}
-		metadata.DstIP = ip
-	}
 	destination := M.SocksaddrFromNet(metadata.UDPAddr())
 	return newPacketConn(CN.NewThreadSafePacketConn(uot.NewLazyConn(c, uot.Request{Destination: destination})), t), nil
 }

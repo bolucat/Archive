@@ -3,6 +3,7 @@ package sing
 import (
 	"context"
 	"golang.org/x/exp/slices"
+	"net"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 
@@ -28,4 +29,19 @@ func getAdditions(ctx context.Context) (additions []inbound.Addition) {
 		additions = append(additions, inbound.WithInUser(user))
 	}
 	return
+}
+
+var ctxKeyInAddr = contextKey("InAddr")
+
+func WithInAddr(ctx context.Context, inAddr net.Addr) context.Context {
+	return context.WithValue(ctx, ctxKeyInAddr, inAddr)
+}
+
+func getInAddr(ctx context.Context) net.Addr {
+	if v := ctx.Value(ctxKeyInAddr); v != nil {
+		if a, ok := v.(net.Addr); ok {
+			return a
+		}
+	}
+	return nil
 }

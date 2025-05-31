@@ -2,7 +2,6 @@ package outbound
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -11,7 +10,6 @@ import (
 	"github.com/metacubex/mihomo/common/structure"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
-	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	gost "github.com/metacubex/mihomo/transport/gost-plugin"
 	"github.com/metacubex/mihomo/transport/restls"
@@ -202,6 +200,9 @@ func (ss *ShadowSocks) ListenPacketWithDialer(ctx context.Context, dialer C.Dial
 			return nil, err
 		}
 	}
+	if err = ss.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	addr, err := resolveUDPAddr(ctx, "udp", ss.addr, ss.prefer)
 	if err != nil {
 		return nil, err
@@ -230,15 +231,9 @@ func (ss *ShadowSocks) ProxyInfo() C.ProxyInfo {
 // ListenPacketOnStreamConn implements C.ProxyAdapter
 func (ss *ShadowSocks) ListenPacketOnStreamConn(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
 	if ss.option.UDPOverTCP {
-		// ss uot use stream-oriented udp with a special address, so we need a net.UDPAddr
-		if !metadata.Resolved() {
-			ip, err := resolver.ResolveIP(ctx, metadata.Host)
-			if err != nil {
-				return nil, errors.New("can't resolve ip")
-			}
-			metadata.DstIP = ip
+		if err = ss.ResolveUDP(ctx, metadata); err != nil {
+			return nil, err
 		}
-
 		destination := M.SocksaddrFromNet(metadata.UDPAddr())
 		if ss.option.UDPOverTCPVersion == uot.LegacyVersion {
 			return newPacketConn(N.NewThreadSafePacketConn(uot.NewConn(c, uot.Request{Destination: destination})), ss), nil

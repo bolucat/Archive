@@ -60,6 +60,9 @@ func (h *Hysteria) DialContext(ctx context.Context, metadata *C.Metadata) (C.Con
 }
 
 func (h *Hysteria) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
+	if err := h.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
 	udpConn, err := h.client.DialUDP(h.genHdc(ctx))
 	if err != nil {
 		return nil, err

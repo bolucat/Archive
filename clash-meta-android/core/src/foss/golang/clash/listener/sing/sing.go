@@ -187,6 +187,9 @@ func (h *ListenerHandler) NewPacketConnection(ctx context.Context, conn network.
 			lAddr:  conn.LocalAddr(),
 			buff:   buff,
 		}
+		if lAddr := getInAddr(ctx); lAddr != nil {
+			cPacket.lAddr = lAddr
+		}
 		h.handlePacket(ctx, cPacket, metadata.Source, dest)
 	}
 	return nil

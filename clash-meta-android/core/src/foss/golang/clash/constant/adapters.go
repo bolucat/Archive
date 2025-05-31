@@ -92,8 +92,7 @@ type Conn interface {
 type PacketConn interface {
 	N.EnhancePacketConn
 	Connection
-	// Deprecate WriteWithMetadata because of remote resolve DNS cause TURN failed
-	// WriteWithMetadata(p []byte, metadata *Metadata) (n int, err error)
+	ResolveUDP(ctx context.Context, metadata *Metadata) error
 }
 
 type Dialer interface {
@@ -319,10 +318,15 @@ type PacketSender interface {
 	Send(PacketAdapter)
 	// Process is a blocking loop to send PacketAdapter to PacketConn and update the WriteBackProxy
 	Process(PacketConn, WriteBackProxy)
-	// ResolveUDP do a local resolve UDP dns blocking if metadata is not resolved
-	ResolveUDP(*Metadata) error
 	// Close stop the Process loop
 	Close()
+	// DoSniff will blocking after sniffer work done
+	DoSniff(*Metadata) error
+	// AddMapping add a destination NAT record
+	AddMapping(originMetadata *Metadata, metadata *Metadata)
+	// RestoreReadFrom restore destination NAT for ReadFrom
+	// the implement must ensure returned netip.Add is valid (or just return input addr)
+	RestoreReadFrom(addr netip.Addr) netip.Addr
 }
 
 type NatTable interface {

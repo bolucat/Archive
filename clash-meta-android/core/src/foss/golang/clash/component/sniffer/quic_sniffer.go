@@ -74,24 +74,25 @@ func (sniffer *QuicSniffer) SniffData(b []byte) (string, error) {
 	return "", ErrorUnsupportedSniffer
 }
 
-func (sniffer *QuicSniffer) WrapperSender(packetSender constant.PacketSender, override bool) constant.PacketSender {
+func (sniffer *QuicSniffer) WrapperSender(packetSender constant.PacketSender, replaceDomain sniffer.ReplaceDomain) constant.PacketSender {
 	return &quicPacketSender{
-		sender:   packetSender,
-		chClose:  make(chan struct{}),
-		override: override,
+		PacketSender:  packetSender,
+		replaceDomain: replaceDomain,
+		chClose:       make(chan struct{}),
 	}
 }
 
 var _ constant.PacketSender = (*quicPacketSender)(nil)
 
 type quicPacketSender struct {
-	lock     sync.RWMutex
-	ranges   utils.IntRanges[uint64]
-	buffer   []byte
-	result   string
-	override bool
+	lock   sync.RWMutex
+	ranges utils.IntRanges[uint64]
+	buffer []byte
+	result *string
 
-	sender constant.PacketSender
+	replaceDomain sniffer.ReplaceDomain
+
+	constant.PacketSender
 
 	chClose chan struct{}
 	closed  bool
@@ -100,7 +101,7 @@ type quicPacketSender struct {
 // Send will send PacketAdapter nonblocking
 // the implement must call UDPPacket.Drop() inside Send
 func (q *quicPacketSender) Send(current constant.PacketAdapter) {
-	defer q.sender.Send(current)
+	defer q.PacketSender.Send(current)
 
 	q.lock.RLock()
 	if q.closed {
@@ -116,29 +117,27 @@ func (q *quicPacketSender) Send(current constant.PacketAdapter) {
 	}
 }
 
-// Process is a blocking loop to send PacketAdapter to PacketConn and update the WriteBackProxy
-func (q *quicPacketSender) Process(conn constant.PacketConn, proxy constant.WriteBackProxy) {
-	q.sender.Process(conn, proxy)
-}
-
-// ResolveUDP wait sniffer recv all fragments and update the domain
-func (q *quicPacketSender) ResolveUDP(data *constant.Metadata) error {
+// DoSniff wait sniffer recv all fragments and update the domain
+func (q *quicPacketSender) DoSniff(metadata *constant.Metadata) error {
 	select {
 	case <-q.chClose:
 		q.lock.RLock()
-		replaceDomain(data, q.result, q.override)
+		if q.result != nil {
+			host := *q.result
+			q.replaceDomain(metadata, host)
+		}
 		q.lock.RUnlock()
 		break
 	case <-time.After(quicWaitConn):
 		q.close()
 	}
 
-	return q.sender.ResolveUDP(data)
+	return q.PacketSender.DoSniff(metadata)
 }
 
 // Close stop the Process loop
 func (q *quicPacketSender) Close() {
-	q.sender.Close()
+	q.PacketSender.Close()
 	q.close()
 }
 
@@ -433,7 +432,7 @@ func (q *quicPacketSender) tryAssemble() error {
 	}
 
 	q.lock.Lock()
-	q.result = *domain
+	q.result = domain
 	q.closeLocked()
 	q.lock.Unlock()
 

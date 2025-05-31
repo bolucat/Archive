@@ -3,7 +3,6 @@ package outbound
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"math"
 	"net"
@@ -14,7 +13,6 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/ech"
 	"github.com/metacubex/mihomo/component/proxydialer"
-	"github.com/metacubex/mihomo/component/resolver"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/tuic"
@@ -91,6 +89,10 @@ func (t *Tuic) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_
 
 // ListenPacketWithDialer implements C.ProxyAdapter
 func (t *Tuic) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, metadata *C.Metadata) (_ C.PacketConn, err error) {
+	if err = t.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
+
 	if t.option.UDPOverStream {
 		uotDestination := uot.RequestDestination(uint8(t.option.UDPOverStreamVersion))
 		uotMetadata := *metadata
@@ -102,13 +104,6 @@ func (t *Tuic) ListenPacketWithDialer(ctx context.Context, dialer C.Dialer, meta
 		}
 
 		// tuic uos use stream-oriented udp with a special address, so we need a net.UDPAddr
-		if !metadata.Resolved() {
-			ip, err := resolver.ResolveIP(ctx, metadata.Host)
-			if err != nil {
-				return nil, errors.New("can't resolve ip")
-			}
-			metadata.DstIP = ip
-		}
 
 		destination := M.SocksaddrFromNet(metadata.UDPAddr())
 		if t.option.UDPOverStreamVersion == uot.LegacyVersion {

@@ -12,7 +12,7 @@ import (
 )
 
 type fakeSender struct {
-	resultCh chan *constant.Metadata
+	constant.PacketSender
 }
 
 var _ constant.PacketSender = (*fakeSender)(nil)
@@ -22,18 +22,7 @@ func (e *fakeSender) Send(packet constant.PacketAdapter) {
 	packet.Drop()
 }
 
-func (e *fakeSender) Process(constant.PacketConn, constant.WriteBackProxy) {
-	panic("not implemented")
-}
-
-func (e *fakeSender) ResolveUDP(metadata *constant.Metadata) error {
-	e.resultCh <- metadata
-	return nil
-}
-
-func (e *fakeSender) Close() {
-	panic("not implemented")
-}
+func (e *fakeSender) DoSniff(metadata *constant.Metadata) error { return nil }
 
 type fakeUDPPacket struct {
 	data  []byte
@@ -78,23 +67,28 @@ func asPacket(data string) constant.PacketAdapter {
 	return pktAdp
 }
 
-func testQuicSniffer(data []string, async bool) (string, error) {
+const fakeHost = "fake.host.com"
+
+func testQuicSniffer(data []string, async bool) (string, string, error) {
 	q, err := NewQuicSniffer(SnifferConfig{})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	resultCh := make(chan *constant.Metadata, 1)
-	emptySender := &fakeSender{resultCh: resultCh}
+	emptySender := &fakeSender{}
 
-	sender := q.WrapperSender(emptySender, true)
+	sender := q.WrapperSender(emptySender, func(metadata *constant.Metadata, host string) {
+		replaceDomain(metadata, host, true)
+	})
 
 	go func() {
-		meta := constant.Metadata{}
-		err = sender.ResolveUDP(&meta)
+		meta := constant.Metadata{Host: fakeHost}
+		err := sender.DoSniff(&meta)
 		if err != nil {
 			panic(err)
 		}
+		resultCh <- &meta
 	}()
 
 	for _, d := range data {
@@ -106,14 +100,15 @@ func testQuicSniffer(data []string, async bool) (string, error) {
 	}
 
 	meta := <-resultCh
-	return meta.SniffHost, nil
+	return meta.SniffHost, meta.Host, nil
 }
 
 func TestQuicHeaders(t *testing.T) {
 
 	cases := []struct {
-		input  []string
-		domain string
+		input   []string
+		domain  string
+		invalid bool
 	}{
 		//Normal domain quic sniff
 		{
@@ -171,16 +166,31 @@ func TestQuicHeaders(t *testing.T) {
 			},
 			domain: "www.google.com",
 		},
+		// invalid packet
+		{
+			input:   []string{"00000000000000000000"},
+			invalid: true,
+		},
 	}
 
 	for _, test := range cases {
-		data, err := testQuicSniffer(test.input, true)
+		data, host, err := testQuicSniffer(test.input, true)
 		assert.NoError(t, err)
 		assert.Equal(t, test.domain, data)
+		if test.invalid {
+			assert.Equal(t, fakeHost, host)
+		} else {
+			assert.Equal(t, test.domain, host)
+		}
 
-		data, err = testQuicSniffer(test.input, false)
+		data, host, err = testQuicSniffer(test.input, false)
 		assert.NoError(t, err)
 		assert.Equal(t, test.domain, data)
+		if test.invalid {
+			assert.Equal(t, fakeHost, host)
+		} else {
+			assert.Equal(t, test.domain, host)
+		}
 	}
 }
 

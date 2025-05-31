@@ -408,7 +408,7 @@ func Dial(network, address string) (*TCPConn, error) {
 	ifaceName := dialer.DefaultInterface.Load()
 	if ifaceName == "" {
 		if finder := dialer.DefaultInterfaceFinder.Load(); finder != nil {
-			ifaceName = finder.FindInterfaceName(rAddrPort.Addr())
+			ifaceName = finder.FindInterfaceName(rAddrPort.Addr().Unmap())
 		}
 	}
 	if len(ifaceName) > 0 {
