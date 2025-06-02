@@ -426,7 +426,7 @@ define KernelPackage/phy-realtek
     CONFIG_REALTEK_PHY_HWMON=y
    DEPENDS:=+kmod-libphy +kmod-hwmon-core
    FILES:=$(LINUX_DIR)/drivers/net/phy/realtek.ko@lt6.12 \
-   $(LINUX_DIR)/drivers/net/phy/realtek/realtek.ko@ge6.12
+	  $(LINUX_DIR)/drivers/net/phy/realtek/realtek.ko@ge6.12
    AUTOLOAD:=$(call AutoLoad,18,realtek,1)
 endef
 
@@ -970,7 +970,7 @@ define KernelPackage/r8169
     CONFIG_R8169 \
     CONFIG_R8169_LEDS=y@ge6.6
   FILES:=$(LINUX_DIR)/drivers/net/ethernet/realtek/r8169.ko
-  AUTOLOAD:=$(call AutoProbe,r8169)
+  AUTOLOAD:=$(call AutoProbe,r8169,1)
 endef
 
 define KernelPackage/r8169/description
@@ -1192,7 +1192,7 @@ $(eval $(call KernelPackage,iavf))
 define KernelPackage/ice
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Intel(R) Ethernet Controller E810 Series support
-  DEPENDS:=@PCI_SUPPORT +kmod-ptp +LINUX_6_12:kmod-hwmon-core +LINUX_6_12:kmod-libie
+  DEPENDS:=@PCI_SUPPORT +kmod-ptp +kmod-hwmon-core +LINUX_6_12:kmod-libie
   KCONFIG:=CONFIG_ICE \
     CONFIG_ICE_HWMON=y \
     CONFIG_ICE_HWTS=n \

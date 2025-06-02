@@ -16,7 +16,6 @@
 #include <linux/mtd/mtd.h>
 #include <linux/of_net.h>
 #include <linux/of_platform.h>
-#include "fallback-sprom.h"
 
 #define BCMA_FBS_MAX_SIZE 468
 

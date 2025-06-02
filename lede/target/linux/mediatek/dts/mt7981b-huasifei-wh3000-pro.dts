@@ -5,7 +5,6 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
-#include <dt-bindings/thermal/thermal.h>
 
 #include "mt7981.dtsi"
 
@@ -25,26 +24,15 @@
 		stdout-path = "serial0:115200n8";
 		bootargs-append = " root=PARTLABEL=rootfs rootwait";
 	};
-	
-	fan: pwm-fan {
-		compatible = "pwm-fan";
-		#cooling-cells = <2>;
-		cooling-levels = <0 63 127 191 223 255>;
-		interrupt-parent = <&pio>;
-		interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
-		pwms = <&pwm 1 40000 0>;
-		status = "okay";
-	};
-	
+
 	gpio-export {
 		compatible = "gpio-export";
 
-		gpio_modem_power {
+		modem-power {
 			gpio-export,name = "modem_power";
 			gpio-export,output = <0>;
 			gpios = <&pio 4 GPIO_ACTIVE_HIGH>;
 		};
-
 	};
 
 	gpio-keys {
@@ -78,25 +66,6 @@
 			color = <LED_COLOR_ID_GREEN>;
 			function = LED_FUNCTION_STATUS;
 			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
-		};
-	};
-};
-
-&cpu_thermal {
-	cooling-maps {
-		cpu-active-low {
-			cooling-device = <&fan 1 1>;
-			trip = <&cpu_trip_active_low>;
-		};
-
-		cpu-active-med {
-			cooling-device = <&fan 2 2>;
-			trip = <&cpu_trip_active_med>;
-		};
-
-		cpu-active-high {
-			cooling-device = <&fan 3 3>;
-			trip = <&cpu_trip_active_high>;
 		};
 	};
 };
@@ -138,6 +107,13 @@
 		interrupt-parent = <&pio>;
 		realtek,aldps-enable;
 	};
+};
+
+&fan {
+	interrupt-parent = <&pio>;
+	interrupts = <13 IRQ_TYPE_EDGE_FALLING>;
+	pwms = <&pwm 1 40000 0>;
+	status = "okay";
 };
 
 &mmc0 {
@@ -190,19 +166,26 @@
 			groups = "emmc_45";
 		};
 	};
+
 	mmc0_pins_uhs: mmc0-pins-uhs {
 		mux {
 			function = "flash";
 			groups = "emmc_45";
 		};
 	};
-	
-	pwm1_pin: pwm1-pin-g0 {
+
+	pwm1_pins: pwm1-pins {
 		mux {
 			function = "pwm";
 			groups = "pwm1_0";
 		};
 	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm1_pins>;
+	status = "okay";
 };
 
 &uart0 {
@@ -220,19 +203,6 @@
 &wifi {
 	nvmem-cells = <&eeprom_factory_0>;
 	nvmem-cell-names = "eeprom";
-	status = "okay";
-};
-
-&pwm {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pwm1_pin>;
-	status = "okay";
-};
-
-&fan {
-	pwms = <&pwm 0 40000 0>;
-	interrupt-parent = <&pio>;
-	interrupts = <29 IRQ_TYPE_EDGE_RISING>;
 	status = "okay";
 };
 

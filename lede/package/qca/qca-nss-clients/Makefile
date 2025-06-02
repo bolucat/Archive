@@ -27,7 +27,7 @@ else
   SOC=$(CONFIG_TARGET_BOARD)
 endif
 
-ifneq (, $(findstring $(subtarget), "ipq807x" "ipq807x_64" "ipq60xx" "ipq60xx_64" "ipq50xx" "ipq50xx_64"))
+ifneq (, $(findstring $(subtarget), "ipq807x" "ipq60xx" "ipq50xx"))
   DTLSMGR_DIR:=v2.0
   IPSECMGR_DIR:=v2.0
   IPSECMGR_KLIPS:= $(PKG_BUILD_DIR)/ipsecmgr/$(IPSECMGR_DIR)/plugins/klips/qca-nss-ipsec-klips.ko
@@ -462,11 +462,13 @@ EXTRA_CFLAGS+= \
 	-I$(STAGING_DIR)/usr/include/qca-nss-drv \
 	-I$(STAGING_DIR)/usr/include/qca-nss-crypto \
 	-I$(STAGING_DIR)/usr/include/qca-nss-cfi \
-  	-I$(STAGING_DIR)/usr/include/qca-nss-ecm \
+	-I$(STAGING_DIR)/usr/include/qca-nss-ecm \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk \
 	-I$(STAGING_DIR)/usr/include/qca-ssdk/fal \
 	-I$(STAGING_DIR)/usr/include/nat46 \
-	-Wno-error=enum-conversion
+	-Wno-empty-body -Wno-enum-conversion \
+	-Wno-int-conversion -Wno-unused-variable \
+	-Wno-missing-declarations -Wno-missing-prototypes
 
 # Build individual packages if selected
 ifneq ($(CONFIG_PACKAGE_kmod-qca-nss-drv-tun6rd),)
@@ -585,7 +587,7 @@ define Build/Compile
 	  CROSS_COMPILE="$(TARGET_CROSS)" \
 	  ARCH="$(LINUX_KARCH)" \
 	  M="$(PKG_BUILD_DIR)" \
-	  EXTRA_CFLAGS="$(EXTRA_CFLAGS) -Wno-missing-declarations -Wno-missing-prototypes -Wno-enum-conversion -Wno-empty-body -Wno-unused-variable -Wno-int-conversion" \
+	  EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
 	  DTLSMGR_DIR="$(DTLSMGR_DIR)" \
 	  IPSECMGR_DIR="$(IPSECMGR_DIR)" \
 	  SoC=$(SOC) \

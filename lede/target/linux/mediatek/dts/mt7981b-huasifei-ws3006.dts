@@ -2,20 +2,22 @@
 
 /dts-v1/;
 
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
 #include <dt-bindings/leds/common.h>
 
 #include "mt7981.dtsi"
 
 / {
-	model = "HUASIFEI WS3006";
+	model = "Huasifei WS3006";
 	compatible = "huasifei,ws3006", "mediatek,mt7981";
 
 	aliases {
 		label-mac-device = &gmac0;
-		led-boot = &status_led;
-		led-failsafe = &status_led;
-		led-running = &status_led;
-		led-upgrade = &status_led;
+		led-boot = &led_status;
+		led-failsafe = &led_status;
+		led-running = &led_status;
+		led-upgrade = &led_status;
 		serial0 = &uart0;
 	};
 
@@ -36,7 +38,7 @@
 	leds {
 		compatible = "gpio-leds";
 
-		status_led: led-0 {
+		led_status: led-0 {
 			label = "green:status";
 			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
 		};
@@ -73,14 +75,6 @@
 	};
 };
 
-&uart0 {
-	status = "okay";
-};
-
-&watchdog {
-	status = "okay";
-};
-
 &eth {
 	pinctrl-names = "default";
 	pinctrl-0 = <&mdio_pins>;
@@ -90,6 +84,9 @@
 		compatible = "mediatek,eth-mac";
 		reg = <0>;
 		phy-mode = "2500base-x";
+
+		nvmem-cells = <&macaddr_factory_4 1>;
+		nvmem-cell-names = "mac-address";
 
 		fixed-link {
 			speed = <2500>;
@@ -101,9 +98,11 @@
 	gmac1: mac@1 {
 		compatible = "mediatek,eth-mac";
 		reg = <1>;
-		phy-mode = "2500base-x";
 		phy-handle = <&phy0>;
-		label = "lan3";
+		phy-mode = "2500base-x";
+
+		nvmem-cells = <&macaddr_factory_4 2>;
+		nvmem-cell-names = "mac-address";
 	};
 };
 
@@ -117,7 +116,7 @@
 		interrupt-parent = <&pio>;
 		interrupts = <38 IRQ_TYPE_LEVEL_HIGH>;
 	};
-	
+
 	phy0: ethernet-phy@0 {
 		compatible = "ethernet-phy-id03a2.9461";
 		reg = <0>;
@@ -126,7 +125,7 @@
 		nvmem-cell-names = "phy-cal-data";
 	};
 
-	phy1: ethernet-phy@1 {
+	phy6: ethernet-phy@6 {
 		compatible = "ethernet-phy-ieee802.3-c45";
 		reg = <6>;
 		reset-assert-us = <100000>;
@@ -140,22 +139,16 @@
 	pinctrl-0 = <&spi0_flash_pins>;
 	status = "okay";
 
-	spi_nand: flash@0 {
+	flash@0 {
+		compatible = "spi-nand";
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "spi-nand";
 		reg = <0>;
+
 		spi-max-frequency = <52000000>;
-
-		spi-cal-enable;
-		spi-cal-mode = "read-data";
-		spi-cal-datalen = <7>;
-		spi-cal-data = /bits/ 8 <0x53 0x50 0x49 0x4E 0x41 0x4E 0x44>;
-		spi-cal-addrlen = <5>;
-		spi-cal-addr = /bits/ 32 <0x0 0x0 0x0 0x0 0x0>;
-
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;
+
 		mediatek,nmbm;
 		mediatek,bmt-max-ratio = <1>;
 		mediatek,bmt-max-reserved-blocks = <64>;
@@ -167,18 +160,18 @@
 
 			partition@0 {
 				label = "BL2";
-				reg = <0x0 0x100000>; /* 1 MiB */
+				reg = <0x0 0x100000>;
 				read-only;
 			};
 
 			partition@100000 {
 				label = "u-boot-env";
-				reg = <0x100000 0x80000>; /* 0.5 MiB */
+				reg = <0x100000 0x80000>;
 			};
 
-			factory: partition@180000 {
+			partition@180000 {
 				label = "Factory";
-				reg = <0x180000 0x200000>; /* 2 MiB */
+				reg = <0x180000 0x200000>;
 				read-only;
 
 				nvmem-layout {
@@ -189,25 +182,29 @@
 					eeprom_factory_0: eeprom@0 {
 						reg = <0x0 0x1000>;
 					};
+
+					macaddr_factory_4: macaddr@4 {
+						compatible = "mac-base";
+						reg = <0x4 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
 				};
 			};
 
 			partition@380000 {
 				label = "FIP";
-				reg = <0x380000 0x200000>; /* 2 MiB */
+				reg = <0x380000 0x200000>;
 			};
-			
+
 			partition@580000 {
 				label = "ubi";
-				reg = <0x580000 0x6e00000>; /* 110 MiB */
+				reg = <0x580000 0x6e00000>;
 			};
 
 			partition@7380000 {
 				label = "config";
-				reg = <0x7380000 0x80000>; /* 0.5 MiB */
+				reg = <0x7380000 0x80000>;
 			};
-
-			/* Leave last 12 MiB for NMBM badblock table */
 		};
 	};
 };
@@ -250,8 +247,8 @@
 		port@5 {
 			reg = <5>;
 			label = "wan";
+			phy-handle = <&phy6>;
 			phy-mode = "2500base-x";
-			phy-handle = <&phy1>;
 		};
 
 		port@6 {
@@ -267,6 +264,14 @@
 			};
 		};
 	};
+};
+
+&uart0 {
+	status = "okay";
+};
+
+&watchdog {
+	status = "okay";
 };
 
 &wifi {

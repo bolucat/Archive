@@ -24,6 +24,7 @@ platform_do_upgrade() {
 		;;
 	bananapi,bpi-r3|\
 	bananapi,bpi-r4|\
+	bananapi,bpi-r4-2g5|\
 	bananapi,bpi-r4-poe)
 		[ -e /dev/fit0 ] && fitblk /dev/fit0
 		[ -e /dev/fitrw ] && fitblk /dev/fitrw
@@ -73,6 +74,7 @@ platform_check_image() {
 	case "$board" in
 	bananapi,bpi-r3|\
 	bananapi,bpi-r4|\
+	bananapi,bpi-r4-2g5|\
 	bananapi,bpi-r4-poe)
 		[ "$magic" != "d00dfeed" ] && {
 			echo "Invalid image type."
@@ -93,6 +95,7 @@ platform_copy_config() {
 	case "$(board_name)" in
 	bananapi,bpi-r3|\
 	bananapi,bpi-r4|\
+	bananapi,bpi-r4-2g5|\
 	bananapi,bpi-r4-poe)
 		case "$(cmdline_get_var root)" in
 		/dev/mmc*)

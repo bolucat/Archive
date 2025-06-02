@@ -1,6 +1,6 @@
 --- a/nss_core.c
 +++ b/nss_core.c
-@@ -2704,7 +2704,7 @@
+@@ -2700,7 +2700,7 @@ static inline bool nss_core_skb_can_reus
  
  	if (unlikely(irqs_disabled()))
  		return false;
