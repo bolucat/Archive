@@ -27,11 +27,16 @@ type tValue[T any] struct {
 }
 
 func (t *TypedValue[T]) Load() T {
+	value, _ := t.LoadOk()
+	return value
+}
+
+func (t *TypedValue[T]) LoadOk() (_ T, ok bool) {
 	value := t.value.Load()
 	if value == nil {
-		return DefaultValue[T]()
+		return DefaultValue[T](), false
 	}
-	return value.(tValue[T]).value
+	return value.(tValue[T]).value, true
 }
 
 func (t *TypedValue[T]) Store(value T) {
@@ -47,7 +52,11 @@ func (t *TypedValue[T]) Swap(new T) T {
 }
 
 func (t *TypedValue[T]) CompareAndSwap(old, new T) bool {
-	return t.value.CompareAndSwap(tValue[T]{old}, tValue[T]{new})
+	return t.value.CompareAndSwap(tValue[T]{old}, tValue[T]{new}) ||
+		// In the edge-case where [atomic.Value.Store] is uninitialized
+		// and trying to compare with the zero value of T,
+		// then compare-and-swap with the nil any value.
+		(any(old) == any(DefaultValue[T]()) && t.value.CompareAndSwap(any(nil), tValue[T]{new}))
 }
 
 func (t *TypedValue[T]) MarshalJSON() ([]byte, error) {

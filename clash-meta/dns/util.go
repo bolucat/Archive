@@ -2,10 +2,8 @@ package dns
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
 	"strings"
 	"time"
@@ -92,44 +90,93 @@ func isIPRequest(q D.Question) bool {
 func transform(servers []NameServer, resolver *Resolver) []dnsClient {
 	ret := make([]dnsClient, 0, len(servers))
 	for _, s := range servers {
+		var c dnsClient
 		switch s.Net {
 		case "https":
-			ret = append(ret, newDoHClient(s.Addr, resolver, s.PreferH3, s.Params, s.ProxyAdapter, s.ProxyName))
-			continue
+			c = newDoHClient(s.Addr, resolver, s.PreferH3, s.Params, s.ProxyAdapter, s.ProxyName)
 		case "dhcp":
-			ret = append(ret, newDHCPClient(s.Addr))
-			continue
+			c = newDHCPClient(s.Addr)
 		case "system":
-			ret = append(ret, newSystemClient())
-			continue
+			c = newSystemClient()
 		case "rcode":
-			ret = append(ret, newRCodeClient(s.Addr))
-			continue
+			c = newRCodeClient(s.Addr)
 		case "quic":
-			if doq, err := newDoQ(resolver, s.Addr, s.ProxyAdapter, s.ProxyName); err == nil {
-				ret = append(ret, doq)
-			} else {
-				log.Fatalln("DoQ format error: %v", err)
-			}
-			continue
+			c = newDoQ(s.Addr, resolver, s.Params, s.ProxyAdapter, s.ProxyName)
+		default:
+			c = newClient(s.Addr, resolver, s.Net, s.Params, s.ProxyAdapter, s.ProxyName)
 		}
 
-		host, port, _ := net.SplitHostPort(s.Addr)
-		ret = append(ret, &client{
-			Client: &D.Client{
-				Net: s.Net,
-				TLSConfig: &tls.Config{
-					ServerName: host,
-				},
-				UDPSize: 4096,
-				Timeout: 5 * time.Second,
-			},
-			port:   port,
-			host:   host,
-			dialer: newDNSDialer(resolver, s.ProxyAdapter, s.ProxyName),
-		})
+		c = warpClientWithEdns0Subnet(c, s.Params)
+
+		if s.Params["disable-ipv4"] == "true" {
+			c = warpClientWithDisableType(c, D.TypeA)
+		}
+
+		if s.Params["disable-ipv6"] == "true" {
+			c = warpClientWithDisableType(c, D.TypeAAAA)
+		}
+
+		ret = append(ret, c)
 	}
 	return ret
+}
+
+type clientWithDisableType struct {
+	dnsClient
+	qType uint16
+}
+
+func (c clientWithDisableType) ExchangeContext(ctx context.Context, m *D.Msg) (msg *D.Msg, err error) {
+	if len(m.Question) > 0 {
+		q := m.Question[0]
+		if q.Qtype == c.qType {
+			return handleMsgWithEmptyAnswer(m), nil
+		}
+	}
+	return c.dnsClient.ExchangeContext(ctx, m)
+}
+
+func warpClientWithDisableType(c dnsClient, qType uint16) dnsClient {
+	return clientWithDisableType{c, qType}
+}
+
+type clientWithEdns0Subnet struct {
+	dnsClient
+	ecsPrefix   netip.Prefix
+	ecsOverride bool
+}
+
+func (c clientWithEdns0Subnet) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) {
+	m = m.Copy()
+	setEdns0Subnet(m, c.ecsPrefix, c.ecsOverride)
+	return c.dnsClient.ExchangeContext(ctx, m)
+}
+
+func warpClientWithEdns0Subnet(c dnsClient, params map[string]string) dnsClient {
+	var ecsPrefix netip.Prefix
+	var ecsOverride bool
+	if ecs := params["ecs"]; ecs != "" {
+		prefix, err := netip.ParsePrefix(ecs)
+		if err != nil {
+			addr, err := netip.ParseAddr(ecs)
+			if err != nil {
+				log.Warnln("DNS [%s] config with invalid ecs: %s", c.Address(), ecs)
+			} else {
+				ecsPrefix = netip.PrefixFrom(addr, addr.BitLen())
+			}
+		} else {
+			ecsPrefix = prefix
+		}
+	}
+
+	if ecsPrefix.IsValid() {
+		log.Debugln("DNS [%s] config with ecs: %s", c.Address(), ecsPrefix)
+		if params["ecs-override"] == "true" {
+			ecsOverride = true
+		}
+		return clientWithEdns0Subnet{c, ecsPrefix, ecsOverride}
+	}
+	return c
 }
 
 func handleMsgWithEmptyAnswer(r *D.Msg) *D.Msg {

@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.22
+
+* Fixes and improvements
+
 #### 1.12.0-beta.21
 
 * Fix missing `home` option for DERP service **1**

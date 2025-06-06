@@ -46,17 +46,24 @@ func RelayDnsConn(ctx context.Context, conn net.Conn, readTimeout time.Duration)
 			ctx, cancel := context.WithTimeout(ctx, DefaultDnsRelayTimeout)
 			defer cancel()
 			inData := buff[:n]
-			msg, err := relayDnsPacket(ctx, inData, buff, 0)
+			outBuff := buff[2:]
+			msg, err := relayDnsPacket(ctx, inData, outBuff, 0)
 			if err != nil {
 				return err
 			}
 
-			err = binary.Write(conn, binary.BigEndian, uint16(len(msg)))
-			if err != nil {
-				return err
+			if &msg[0] == &outBuff[0] { // msg is still in the buff
+				binary.BigEndian.PutUint16(buff[:2], uint16(len(msg)))
+				outBuff = buff[:2+len(msg)]
+			} else { // buff not big enough (WTF???)
+				newBuff := pool.Get(len(msg) + 2)
+				defer pool.Put(newBuff)
+				binary.BigEndian.PutUint16(newBuff[:2], uint16(len(msg)))
+				copy(newBuff[2:], msg)
+				outBuff = newBuff
 			}
 
-			_, err = conn.Write(msg)
+			_, err = conn.Write(outBuff)
 			if err != nil {
 				return err
 			}
