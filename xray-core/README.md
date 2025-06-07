@@ -44,7 +44,7 @@
   - [Hiddify](https://github.com/hiddify/Hiddify-Manager)
 - One Click
   - [Xray-REALITY](https://github.com/zxcvos/Xray-script), [xray-reality](https://github.com/sajjaddg/xray-reality), [reality-ezpz](https://github.com/aleskxyz/reality-ezpz)
-  - [Xray_bash_onekey](https://github.com/hello-yunshu/Xray_bash_onekey), [XTool](https://github.com/LordPenguin666/XTool)
+  - [Xray_bash_onekey](https://github.com/hello-yunshu/Xray_bash_onekey), [XTool](https://github.com/LordPenguin666/XTool), [VPainLess](https://github.com/vpainless/vpainless)
   - [v2ray-agent](https://github.com/mack-a/v2ray-agent), [Xray_onekey](https://github.com/wulabing/Xray_onekey), [ProxySU](https://github.com/proxysu/ProxySU)
 - Magisk
   - [Xray4Magisk](https://github.com/Asterisk4Magisk/Xray4Magisk)
@@ -85,6 +85,7 @@
   - [v2rayNG](https://github.com/2dust/v2rayNG)
   - [X-flutter](https://github.com/XTLS/X-flutter)
   - [SaeedDev94/Xray](https://github.com/SaeedDev94/Xray)
+  - [SimpleXray](https://github.com/lhear/SimpleXray)
 - iOS & macOS arm64
   - [Happ](https://apps.apple.com/app/happ-proxy-utility/id6504287215)
   - [Streisand](https://apps.apple.com/app/streisand/id6450534064)
