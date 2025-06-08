@@ -98,6 +98,7 @@
 - Linux
   - [v2rayA](https://github.com/v2rayA/v2rayA)
   - [Furious](https://github.com/LorenEteval/Furious)
+  - [GorzRay](https://github.com/ketetefid/GorzRay)
 
 ## Others that support VLESS, XTLS, REALITY, XUDP, PLUX...
 
@@ -109,6 +110,7 @@
   - [xray-checker](https://github.com/kutovoys/xray-checker)
 - Xray Wrapper
   - [XTLS/libXray](https://github.com/XTLS/libXray)
+  - [xtls-sdk](https://github.com/remnawave/xtls-sdk)
   - [xtlsapi](https://github.com/hiddify/xtlsapi)
   - [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite)
   - [Xray-core-python](https://github.com/LorenEteval/Xray-core-python)
@@ -124,6 +126,8 @@
 ## Contributing
 
 [Code of Conduct](https://github.com/XTLS/Xray-core/blob/main/CODE_OF_CONDUCT.md)
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/XTLS/Xray-core)
 
 ## Credits
 
