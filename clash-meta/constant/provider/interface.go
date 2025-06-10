@@ -91,9 +91,7 @@ type RuleProvider interface {
 	Provider
 	Behavior() RuleBehavior
 	Count() int
-	Match(*constant.Metadata) bool
-	ShouldResolveIP() bool
-	ShouldFindProcess() bool
+	Match(metadata *constant.Metadata, helper constant.RuleMatchHelper) bool
 	Strategy() any
 }
 

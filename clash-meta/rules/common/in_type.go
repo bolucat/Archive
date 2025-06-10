@@ -13,7 +13,7 @@ type InType struct {
 	payload string
 }
 
-func (u *InType) Match(metadata *C.Metadata) (bool, string) {
+func (u *InType) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
 	for _, tp := range u.types {
 		if metadata.Type == tp {
 			return true, u.adapter

@@ -30,7 +30,10 @@ func (ps *Process) RuleType() C.RuleType {
 	return C.ProcessPath
 }
 
-func (ps *Process) Match(metadata *C.Metadata) (bool, string) {
+func (ps *Process) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
+	if helper.FindProcess != nil {
+		helper.FindProcess()
+	}
 	if ps.nameOnly {
 		if ps.regexp != nil {
 			match, _ := ps.regexp.MatchString(metadata.Process)
@@ -52,10 +55,6 @@ func (ps *Process) Adapter() string {
 
 func (ps *Process) Payload() string {
 	return ps.process
-}
-
-func (ps *Process) ShouldFindProcess() bool {
-	return true
 }
 
 func NewProcess(process string, adapter string, nameOnly bool, regex bool) (*Process, error) {

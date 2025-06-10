@@ -14,21 +14,19 @@ import (
 )
 
 type ipcidrStrategy struct {
-	count           int
-	shouldResolveIP bool
-	cidrSet         *cidr.IpCidrSet
-	//trie            *trie.IpCidrTrie
+	count   int
+	cidrSet *cidr.IpCidrSet
+	//trie    *trie.IpCidrTrie
 }
 
 func (i *ipcidrStrategy) Behavior() P.RuleBehavior {
 	return P.IPCIDR
 }
 
-func (i *ipcidrStrategy) ShouldFindProcess() bool {
-	return false
-}
-
-func (i *ipcidrStrategy) Match(metadata *C.Metadata) bool {
+func (i *ipcidrStrategy) Match(metadata *C.Metadata, helper C.RuleMatchHelper) bool {
+	if helper.ResolveIP != nil {
+		helper.ResolveIP()
+	}
 	// return i.trie != nil && i.trie.IsContain(metadata.DstIP.AsSlice())
 	return i.cidrSet != nil && i.cidrSet.IsContain(metadata.DstIP)
 }
@@ -37,15 +35,10 @@ func (i *ipcidrStrategy) Count() int {
 	return i.count
 }
 
-func (i *ipcidrStrategy) ShouldResolveIP() bool {
-	return i.shouldResolveIP
-}
-
 func (i *ipcidrStrategy) Reset() {
 	// i.trie = trie.NewIpCidrTrie()
 	i.cidrSet = cidr.NewIpCidrSet()
 	i.count = 0
-	i.shouldResolveIP = false
 }
 
 func (i *ipcidrStrategy) Insert(rule string) {
@@ -54,7 +47,6 @@ func (i *ipcidrStrategy) Insert(rule string) {
 	if err != nil {
 		log.Warnln("invalid Ipcidr:[%s]", rule)
 	} else {
-		i.shouldResolveIP = true
 		i.count++
 	}
 }
@@ -70,9 +62,6 @@ func (i *ipcidrStrategy) FromMrs(r io.Reader, count int) error {
 	}
 	i.count = count
 	i.cidrSet = cidrSet
-	if i.count > 0 {
-		i.shouldResolveIP = true
-	}
 	return nil
 }
 

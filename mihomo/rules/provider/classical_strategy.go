@@ -10,20 +10,18 @@ import (
 )
 
 type classicalStrategy struct {
-	rules             []C.Rule
-	count             int
-	shouldResolveIP   bool
-	shouldFindProcess bool
-	parse             func(tp, payload, target string, params []string) (parsed C.Rule, parseErr error)
+	rules []C.Rule
+	count int
+	parse func(tp, payload, target string, params []string) (parsed C.Rule, parseErr error)
 }
 
 func (c *classicalStrategy) Behavior() P.RuleBehavior {
 	return P.Classical
 }
 
-func (c *classicalStrategy) Match(metadata *C.Metadata) bool {
+func (c *classicalStrategy) Match(metadata *C.Metadata, helper C.RuleMatchHelper) bool {
 	for _, rule := range c.rules {
-		if m, _ := rule.Match(metadata); m {
+		if m, _ := rule.Match(metadata, helper); m {
 			return true
 		}
 	}
@@ -35,39 +33,17 @@ func (c *classicalStrategy) Count() int {
 	return c.count
 }
 
-func (c *classicalStrategy) ShouldResolveIP() bool {
-	return c.shouldResolveIP
-}
-
-func (c *classicalStrategy) ShouldFindProcess() bool {
-	return c.shouldFindProcess
-}
-
 func (c *classicalStrategy) Reset() {
 	c.rules = nil
 	c.count = 0
-	c.shouldFindProcess = false
-	c.shouldResolveIP = false
 }
 
 func (c *classicalStrategy) Insert(rule string) {
 	ruleType, rule, params := ruleParse(rule)
-
-	if ruleType == "PROCESS-NAME" {
-		c.shouldFindProcess = true
-	}
-
 	r, err := c.parse(ruleType, rule, "", params)
 	if err != nil {
 		log.Warnln("parse classical rule error: %s", err.Error())
 	} else {
-		if r.ShouldResolveIP() {
-			c.shouldResolveIP = true
-		}
-		if r.ShouldFindProcess() {
-			c.shouldFindProcess = true
-		}
-
 		c.rules = append(c.rules, r)
 		c.count++
 	}

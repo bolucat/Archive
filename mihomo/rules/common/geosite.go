@@ -22,7 +22,7 @@ func (gs *GEOSITE) RuleType() C.RuleType {
 	return C.GEOSITE
 }
 
-func (gs *GEOSITE) Match(metadata *C.Metadata) (bool, string) {
+func (gs *GEOSITE) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
 	return gs.MatchDomain(metadata.RuleHost()), gs.adapter
 }
 

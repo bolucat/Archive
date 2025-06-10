@@ -590,10 +590,6 @@ func logMetadata(metadata *C.Metadata, rule C.Rule, remoteConn C.Connection) {
 	}
 }
 
-func shouldResolveIP(rule C.Rule, metadata *C.Metadata) bool {
-	return rule.ShouldResolveIP() && metadata.Host != "" && !metadata.DstIP.IsValid()
-}
-
 func match(metadata *C.Metadata) (C.Proxy, C.Rule, error) {
 	configMux.RLock()
 	defer configMux.RUnlock()
@@ -607,9 +603,9 @@ func match(metadata *C.Metadata) (C.Proxy, C.Rule, error) {
 		resolved = true
 	}
 
-	for _, rule := range getRules(metadata) {
-		if !resolved && shouldResolveIP(rule, metadata) {
-			func() {
+	helper := C.RuleMatchHelper{
+		ResolveIP: func() {
+			if !resolved && metadata.Host != "" && !metadata.Resolved() {
 				ctx, cancel := context.WithTimeout(context.Background(), resolver.DefaultDNSTimeout)
 				defer cancel()
 				ip, err := resolver.ResolveIP(ctx, metadata.Host)
@@ -620,37 +616,44 @@ func match(metadata *C.Metadata) (C.Proxy, C.Rule, error) {
 					metadata.DstIP = ip
 				}
 				resolved = true
-			}()
-		}
+			}
+		},
+		FindProcess: func() {
+			if attemptProcessLookup && !findProcessMode.Off() {
+				attemptProcessLookup = false
+				if !features.CMFA {
+					// normal check for process
+					uid, path, err := P.FindProcessName(metadata.NetWork.String(), metadata.SrcIP, int(metadata.SrcPort))
+					if err != nil {
+						log.Debugln("[Process] find process error for %s: %v", metadata.String(), err)
+					} else {
+						metadata.Process = filepath.Base(path)
+						metadata.ProcessPath = path
+						metadata.Uid = uid
 
-		if attemptProcessLookup && !findProcessMode.Off() && (findProcessMode.Always() || rule.ShouldFindProcess()) {
-			attemptProcessLookup = false
-			if !features.CMFA {
-				// normal check for process
-				uid, path, err := P.FindProcessName(metadata.NetWork.String(), metadata.SrcIP, int(metadata.SrcPort))
-				if err != nil {
-					log.Debugln("[Process] find process error for %s: %v", metadata.String(), err)
+						if pkg, err := P.FindPackageName(metadata); err == nil { // for android (not CMFA) package names
+							metadata.Process = pkg
+						}
+					}
 				} else {
-					metadata.Process = filepath.Base(path)
-					metadata.ProcessPath = path
-					metadata.Uid = uid
-
-					if pkg, err := P.FindPackageName(metadata); err == nil { // for android (not CMFA) package names
+					// check package names
+					pkg, err := P.FindPackageName(metadata)
+					if err != nil {
+						log.Debugln("[Process] find process error for %s: %v", metadata.String(), err)
+					} else {
 						metadata.Process = pkg
 					}
 				}
-			} else {
-				// check package names
-				pkg, err := P.FindPackageName(metadata)
-				if err != nil {
-					log.Debugln("[Process] find process error for %s: %v", metadata.String(), err)
-				} else {
-					metadata.Process = pkg
-				}
 			}
-		}
+		},
+	}
 
-		if matched, ada := rule.Match(metadata); matched {
+	if findProcessMode.Always() {
+		helper.FindProcess()
+	}
+
+	for _, rule := range getRules(metadata) {
+		if matched, ada := rule.Match(metadata, helper); matched {
 			adapter, ok := proxies[ada]
 			if !ok {
 				continue

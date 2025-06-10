@@ -16,7 +16,7 @@ func (dr *DomainRegex) RuleType() C.RuleType {
 	return C.DomainRegex
 }
 
-func (dr *DomainRegex) Match(metadata *C.Metadata) (bool, string) {
+func (dr *DomainRegex) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
 	domain := metadata.RuleHost()
 	match, _ := dr.regex.MatchString(domain)
 	return match, dr.adapter

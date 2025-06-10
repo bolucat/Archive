@@ -23,20 +23,12 @@ func (d *domainStrategy) Behavior() P.RuleBehavior {
 	return P.Domain
 }
 
-func (d *domainStrategy) ShouldFindProcess() bool {
-	return false
-}
-
-func (d *domainStrategy) Match(metadata *C.Metadata) bool {
+func (d *domainStrategy) Match(metadata *C.Metadata, helper C.RuleMatchHelper) bool {
 	return d.domainSet != nil && d.domainSet.Has(metadata.RuleHost())
 }
 
 func (d *domainStrategy) Count() int {
 	return d.count
-}
-
-func (d *domainStrategy) ShouldResolveIP() bool {
-	return false
 }
 
 func (d *domainStrategy) Reset() {

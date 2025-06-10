@@ -15,7 +15,11 @@ type ASN struct {
 	isSourceIP  bool
 }
 
-func (a *ASN) Match(metadata *C.Metadata) (bool, string) {
+func (a *ASN) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
+	if !a.noResolveIP && !a.isSourceIP && helper.ResolveIP != nil {
+		helper.ResolveIP()
+	}
+
 	ip := metadata.DstIP
 	if a.isSourceIP {
 		ip = metadata.SrcIP
@@ -47,10 +51,6 @@ func (a *ASN) Adapter() string {
 
 func (a *ASN) Payload() string {
 	return a.asn
-}
-
-func (a *ASN) ShouldResolveIP() bool {
-	return !a.noResolveIP
 }
 
 func (a *ASN) GetASN() string {

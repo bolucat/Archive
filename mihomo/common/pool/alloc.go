@@ -8,18 +8,23 @@ import (
 	"sync"
 )
 
-var defaultAllocator = NewAllocator()
+var DefaultAllocator = NewAllocator()
 
-// Allocator for incoming frames, optimized to prevent overwriting after zeroing
-type Allocator struct {
+type Allocator interface {
+	Get(size int) []byte
+	Put(buf []byte) error
+}
+
+// defaultAllocator for incoming frames, optimized to prevent overwriting after zeroing
+type defaultAllocator struct {
 	buffers [11]sync.Pool
 }
 
 // NewAllocator initiates a []byte allocator for frames less than 65536 bytes,
 // the waste(memory fragmentation) of space allocation is guaranteed to be
 // no more than 50%.
-func NewAllocator() *Allocator {
-	return &Allocator{
+func NewAllocator() Allocator {
+	return &defaultAllocator{
 		buffers: [...]sync.Pool{ // 64B -> 64K
 			{New: func() any { return new([1 << 6]byte) }},
 			{New: func() any { return new([1 << 7]byte) }},
@@ -37,7 +42,7 @@ func NewAllocator() *Allocator {
 }
 
 // Get a []byte from pool with most appropriate cap
-func (alloc *Allocator) Get(size int) []byte {
+func (alloc *defaultAllocator) Get(size int) []byte {
 	switch {
 	case size < 0:
 		panic("alloc.Get: len out of range")
@@ -87,7 +92,7 @@ func (alloc *Allocator) Get(size int) []byte {
 
 // Put returns a []byte to pool for future use,
 // which the cap must be exactly 2^n
-func (alloc *Allocator) Put(buf []byte) error {
+func (alloc *defaultAllocator) Put(buf []byte) error {
 	if cap(buf) == 0 || cap(buf) > 65536 {
 		return nil
 	}

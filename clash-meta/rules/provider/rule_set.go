@@ -10,47 +10,40 @@ import (
 
 type RuleSet struct {
 	*common.Base
-	ruleProviderName  string
-	adapter           string
-	isSrc             bool
-	noResolveIP       bool
-	shouldFindProcess bool
-}
-
-func (rs *RuleSet) ShouldFindProcess() bool {
-	if rs.shouldFindProcess {
-		return true
-	}
-	if provider, ok := rs.getProvider(); ok {
-		return provider.ShouldFindProcess()
-	}
-	return false
+	ruleProviderName string
+	adapter          string
+	isSrc            bool
+	noResolveIP      bool
 }
 
 func (rs *RuleSet) RuleType() C.RuleType {
 	return C.RuleSet
 }
 
-func (rs *RuleSet) Match(metadata *C.Metadata) (bool, string) {
+func (rs *RuleSet) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
 	if provider, ok := rs.getProvider(); ok {
 		if rs.isSrc {
 			metadata.SwapSrcDst()
 			defer metadata.SwapSrcDst()
+
+			helper.ResolveIP = nil // src mode should not resolve ip
+		} else if rs.noResolveIP {
+			helper.ResolveIP = nil
 		}
-		return provider.Match(metadata), rs.adapter
+		return provider.Match(metadata, helper), rs.adapter
 	}
 	return false, ""
 }
 
 // MatchDomain implements C.DomainMatcher
 func (rs *RuleSet) MatchDomain(domain string) bool {
-	ok, _ := rs.Match(&C.Metadata{Host: domain})
+	ok, _ := rs.Match(&C.Metadata{Host: domain}, C.RuleMatchHelper{})
 	return ok
 }
 
 // MatchIp implements C.IpMatcher
 func (rs *RuleSet) MatchIp(ip netip.Addr) bool {
-	ok, _ := rs.Match(&C.Metadata{DstIP: ip})
+	ok, _ := rs.Match(&C.Metadata{DstIP: ip}, C.RuleMatchHelper{})
 	return ok
 }
 
@@ -60,16 +53,6 @@ func (rs *RuleSet) Adapter() string {
 
 func (rs *RuleSet) Payload() string {
 	return rs.ruleProviderName
-}
-
-func (rs *RuleSet) ShouldResolveIP() bool {
-	if rs.noResolveIP {
-		return false
-	}
-	if provider, ok := rs.getProvider(); ok {
-		return provider.ShouldResolveIP()
-	}
-	return false
 }
 
 func (rs *RuleSet) ProviderNames() []string {

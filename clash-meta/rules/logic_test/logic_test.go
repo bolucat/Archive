@@ -16,12 +16,11 @@ func TestAND(t *testing.T) {
 	and, err := NewAND("((DOMAIN,baidu.com),(NETWORK,TCP),(DST-PORT,10001-65535))", "DIRECT", ParseRule)
 	assert.Equal(t, nil, err)
 	assert.Equal(t, "DIRECT", and.Adapter())
-	assert.Equal(t, false, and.ShouldResolveIP())
 	m, _ := and.Match(&C.Metadata{
 		Host:    "baidu.com",
 		NetWork: C.TCP,
 		DstPort: 20000,
-	})
+	}, C.RuleMatchHelper{})
 	assert.Equal(t, true, m)
 
 	and, err = NewAND("(DOMAIN,baidu.com),(NETWORK,TCP),(DST-PORT,10001-65535))", "DIRECT", ParseRule)
@@ -36,7 +35,7 @@ func TestNOT(t *testing.T) {
 	assert.Equal(t, nil, err)
 	m, _ := not.Match(&C.Metadata{
 		DstPort: 6100,
-	})
+	}, C.RuleMatchHelper{})
 	assert.Equal(t, false, m)
 
 	_, err = NewNOT("((DST-PORT,5600-6666),(DOMAIN,baidu.com))", "DIRECT", ParseRule)
@@ -51,7 +50,6 @@ func TestOR(t *testing.T) {
 	assert.Equal(t, nil, err)
 	m, _ := or.Match(&C.Metadata{
 		NetWork: C.TCP,
-	})
+	}, C.RuleMatchHelper{})
 	assert.Equal(t, true, m)
-	assert.Equal(t, false, or.ShouldResolveIP())
 }

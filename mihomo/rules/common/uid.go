@@ -41,7 +41,10 @@ func (u *Uid) RuleType() C.RuleType {
 	return C.Uid
 }
 
-func (u *Uid) Match(metadata *C.Metadata) (bool, string) {
+func (u *Uid) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
+	if helper.FindProcess != nil {
+		helper.FindProcess()
+	}
 	if metadata.Uid != 0 {
 		if u.uids.Check(metadata.Uid) {
 			return true, u.adapter
@@ -57,8 +60,4 @@ func (u *Uid) Adapter() string {
 
 func (u *Uid) Payload() string {
 	return u.oUid
-}
-
-func (u *Uid) ShouldFindProcess() bool {
-	return true
 }
