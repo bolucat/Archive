@@ -23,6 +23,19 @@ func (i *Int32Enum[T]) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func (i *Int32Enum[T]) MarshalYAML() (any, error) {
+	return i.Load(), nil
+}
+
+func (i *Int32Enum[T]) UnmarshalYAML(unmarshal func(any) error) error {
+	var v T
+	if err := unmarshal(&v); err != nil {
+		return err
+	}
+	i.Store(v)
+	return nil
+}
+
 func (i *Int32Enum[T]) String() string {
 	return fmt.Sprint(i.Load())
 }

@@ -2,6 +2,22 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.24
+
+* Allow `tls_fragment` and `tls_record_fragment` to be enabled together **1**
+* Also add fragment options for TLS client configuration **2**
+* Fixes and improvements
+
+**1**:
+
+For debugging only, it is recommended to disable if record fragmentation works.
+
+See [Route Action](/configuration/route/rule_action/#tls_fragment).
+
+**2**:
+
+See [TLS](/configuration/shared/tls/).
+
 #### 1.12.0-beta.23
 
 * Add loopback address support for tun **1**

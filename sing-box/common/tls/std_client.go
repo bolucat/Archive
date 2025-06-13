@@ -7,43 +7,60 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/tlsfragment"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/ntp"
 )
 
 type STDClientConfig struct {
-	config *tls.Config
+	ctx                   context.Context
+	config                *tls.Config
+	fragment              bool
+	fragmentFallbackDelay time.Duration
+	recordFragment        bool
 }
 
-func (s *STDClientConfig) ServerName() string {
-	return s.config.ServerName
+func (c *STDClientConfig) ServerName() string {
+	return c.config.ServerName
 }
 
-func (s *STDClientConfig) SetServerName(serverName string) {
-	s.config.ServerName = serverName
+func (c *STDClientConfig) SetServerName(serverName string) {
+	c.config.ServerName = serverName
 }
 
-func (s *STDClientConfig) NextProtos() []string {
-	return s.config.NextProtos
+func (c *STDClientConfig) NextProtos() []string {
+	return c.config.NextProtos
 }
 
-func (s *STDClientConfig) SetNextProtos(nextProto []string) {
-	s.config.NextProtos = nextProto
+func (c *STDClientConfig) SetNextProtos(nextProto []string) {
+	c.config.NextProtos = nextProto
 }
 
-func (s *STDClientConfig) Config() (*STDConfig, error) {
-	return s.config, nil
+func (c *STDClientConfig) Config() (*STDConfig, error) {
+	return c.config, nil
 }
 
-func (s *STDClientConfig) Client(conn net.Conn) (Conn, error) {
-	return tls.Client(conn, s.config), nil
+func (c *STDClientConfig) Client(conn net.Conn) (Conn, error) {
+	if c.recordFragment {
+		conn = tf.NewConn(conn, c.ctx, c.fragment, c.recordFragment, c.fragmentFallbackDelay)
+	}
+	return tls.Client(conn, c.config), nil
 }
 
-func (s *STDClientConfig) Clone() Config {
-	return &STDClientConfig{s.config.Clone()}
+func (c *STDClientConfig) Clone() Config {
+	return &STDClientConfig{c.ctx, c.config.Clone(), c.fragment, c.fragmentFallbackDelay, c.recordFragment}
+}
+
+func (c *STDClientConfig) ECHConfigList() []byte {
+	return c.config.EncryptedClientHelloConfigList
+}
+
+func (c *STDClientConfig) SetECHConfigList(EncryptedClientHelloConfigList []byte) {
+	c.config.EncryptedClientHelloConfigList = EncryptedClientHelloConfigList
 }
 
 func NewSTDClient(ctx context.Context, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -60,9 +77,7 @@ func NewSTDClient(ctx context.Context, serverAddress string, options option.Outb
 	var tlsConfig tls.Config
 	tlsConfig.Time = ntp.TimeFuncFromContext(ctx)
 	tlsConfig.RootCAs = adapter.RootPoolFromContext(ctx)
-	if options.DisableSNI {
-		tlsConfig.ServerName = "127.0.0.1"
-	} else {
+	if !options.DisableSNI {
 		tlsConfig.ServerName = serverName
 	}
 	if options.Insecure {
@@ -127,8 +142,10 @@ func NewSTDClient(ctx context.Context, serverAddress string, options option.Outb
 		}
 		tlsConfig.RootCAs = certPool
 	}
+	stdConfig := &STDClientConfig{ctx, &tlsConfig, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
 	if options.ECH != nil && options.ECH.Enabled {
-		return parseECHClientConfig(ctx, options, &tlsConfig)
+		return parseECHClientConfig(ctx, stdConfig, options)
+	} else {
+		return stdConfig, nil
 	}
-	return &STDClientConfig{&tlsConfig}, nil
 }
