@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.12.0-beta.25
+
+* Fixes and improvements
+
 #### 1.12.0-beta.24
 
 * Allow `tls_fragment` and `tls_record_fragment` to be enabled together **1**
