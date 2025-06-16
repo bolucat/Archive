@@ -20,7 +20,7 @@
     "@tauri-apps/api": "2.5.0",
     "@types/d3": "7.4.3",
     "@types/react": "19.1.6",
-    "@vitejs/plugin-react": "4.5.1",
+    "@vitejs/plugin-react": "4.5.2",
     "ahooks": "3.8.5",
     "d3": "7.9.0",
     "framer-motion": "12.16.0",
@@ -39,7 +39,7 @@
     "clsx": "2.1.1",
     "d3-interpolate-path": "2.3.0",
     "sass-embedded": "1.88.0",
-    "tailwind-merge": "3.3.0",
+    "tailwind-merge": "3.3.1",
     "typescript-plugin-css-modules": "5.1.0",
     "vite-plugin-dts": "4.5.4"
   }
