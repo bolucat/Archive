@@ -272,10 +272,11 @@ impl Hotkey {
 
                     if is_enable_global_hotkey {
                         f();
-                    } else if let Some(window) = app_handle.get_webview_window("main") {
+                    } else {
+                        use crate::utils::window_manager::WindowManager;
                         // 非轻量模式且未启用全局热键时，只在窗口可见且有焦点的情况下响应热键
-                        let is_visible = window.is_visible().unwrap_or(false);
-                        let is_focused = window.is_focused().unwrap_or(false);
+                        let is_visible = WindowManager::is_main_window_visible();
+                        let is_focused = WindowManager::is_main_window_focused();
 
                         if is_focused && is_visible {
                             f();
@@ -330,9 +331,9 @@ impl Hotkey {
             let func = iter.next();
             let key = iter.next();
 
-            if func.is_some() && key.is_some() {
-                let func = func.unwrap().trim();
-                let key = key.unwrap().trim();
+            if let (Some(func), Some(key)) = (func, key) {
+                let func = func.trim();
+                let key = key.trim();
                 map.insert(key, func);
             }
         });

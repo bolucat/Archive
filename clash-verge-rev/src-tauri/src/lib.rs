@@ -162,6 +162,14 @@ pub fn run() {
                 });
             });
 
+            // 窗口管理
+            logging!(info, Type::Setup, true, "初始化窗口状态管理...");
+            let window_state_plugin = tauri_plugin_window_state::Builder::new()
+                .with_filename("window_state.json")
+                .with_state_flags(tauri_plugin_window_state::StateFlags::default())
+                .build();
+            let _ = app.handle().plugin(window_state_plugin);
+
             // 异步处理
             let app_handle = app.handle().clone();
             AsyncHandler::spawn(move || async move {
@@ -255,6 +263,7 @@ pub fn run() {
             cmd::invoke_uwp_tool,
             cmd::copy_clash_env,
             cmd::get_proxies,
+            cmd::force_refresh_proxies,
             cmd::get_providers_proxies,
             cmd::save_dns_config,
             cmd::apply_dns_config,

@@ -37,7 +37,15 @@ func ToOptions(reader io.Reader, logger logger.Logger) ([]option.HeadlessRule, e
 parseLine:
 	for scanner.Scan() {
 		ruleLine := scanner.Text()
-		if ruleLine == "" || strings.HasPrefix(ruleLine, "!") || strings.HasPrefix(ruleLine, "#") {
+		if ruleLine == "" {
+			continue
+		}
+		if strings.Contains(ruleLine, "!") {
+			continue
+		}
+		if strings.Contains(ruleLine, "#") {
+			ignoredLines++
+			logger.Debug("ignored unsupported cosmetic filter: ", ruleLine)
 			continue
 		}
 		originRuleLine := ruleLine
