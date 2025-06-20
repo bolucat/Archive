@@ -22,7 +22,11 @@ func (is *IPSuffix) RuleType() C.RuleType {
 	return C.IPSuffix
 }
 
-func (is *IPSuffix) Match(metadata *C.Metadata) (bool, string) {
+func (is *IPSuffix) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
+	if !is.noResolveIP && !is.isSourceIP && helper.ResolveIP != nil {
+		helper.ResolveIP()
+	}
+
 	ip := metadata.DstIP
 	if is.isSourceIP {
 		ip = metadata.SrcIP
@@ -55,10 +59,6 @@ func (is *IPSuffix) Adapter() string {
 
 func (is *IPSuffix) Payload() string {
 	return is.payload
-}
-
-func (is *IPSuffix) ShouldResolveIP() bool {
-	return !is.noResolveIP
 }
 
 func NewIPSuffix(payload, adapter string, isSrc, noResolveIP bool) (*IPSuffix, error) {

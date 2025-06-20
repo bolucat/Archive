@@ -61,15 +61,16 @@ type dnsOverQUIC struct {
 	bytesPool      *sync.Pool
 	bytesPoolGuard sync.Mutex
 
-	addr   string
-	dialer *dnsDialer
+	addr           string
+	dialer         *dnsDialer
+	skipCertVerify bool
 }
 
 // type check
 var _ dnsClient = (*dnsOverQUIC)(nil)
 
 // newDoQ returns the DNS-over-QUIC Upstream.
-func newDoQ(resolver *Resolver, addr string, proxyAdapter C.ProxyAdapter, proxyName string) (dnsClient, error) {
+func newDoQ(addr string, resolver *Resolver, params map[string]string, proxyAdapter C.ProxyAdapter, proxyName string) *dnsOverQUIC {
 	doq := &dnsOverQUIC{
 		addr:   addr,
 		dialer: newDNSDialer(resolver, proxyAdapter, proxyName),
@@ -79,8 +80,12 @@ func newDoQ(resolver *Resolver, addr string, proxyAdapter C.ProxyAdapter, proxyN
 		},
 	}
 
+	if params["skip-cert-verify"] == "true" {
+		doq.skipCertVerify = true
+	}
+
 	runtime.SetFinalizer(doq, (*dnsOverQUIC).Close)
-	return doq, nil
+	return doq
 }
 
 // Address implements the Upstream interface for *dnsOverQUIC.
@@ -329,7 +334,7 @@ func (doq *dnsOverQUIC) openConnection(ctx context.Context) (conn quic.Connectio
 	tlsConfig := ca.GetGlobalTLSConfig(
 		&tls.Config{
 			ServerName:         host,
-			InsecureSkipVerify: false,
+			InsecureSkipVerify: doq.skipCertVerify,
 			NextProtos: []string{
 				NextProtoDQ,
 			},

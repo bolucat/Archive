@@ -21,14 +21,6 @@ var (
 type Base struct {
 }
 
-func (b *Base) ShouldFindProcess() bool {
-	return false
-}
-
-func (b *Base) ShouldResolveIP() bool {
-	return false
-}
-
 func (b *Base) ProviderNames() []string { return nil }
 
 func ParseParams(params []string) (isSrc bool, noResolve bool) {

@@ -17,7 +17,7 @@ func (d *Domain) RuleType() C.RuleType {
 	return C.Domain
 }
 
-func (d *Domain) Match(metadata *C.Metadata) (bool, string) {
+func (d *Domain) Match(metadata *C.Metadata, helper C.RuleMatchHelper) (bool, string) {
 	return metadata.RuleHost() == d.domain, d.adapter
 }
 
