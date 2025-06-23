@@ -252,7 +252,7 @@
 
 	switchcore@1b000000 {
 		compatible = "syscon", "simple-mfd";
-		reg = <0x1b000000 0x10000>;
+		reg = <0x1b000000 0x20000>;
 
 		mdio_aux: mdio-aux {
 			compatible = "realtek,rtl8380-aux-mdio";
@@ -263,11 +263,6 @@
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&mdio_aux_mdx>, <&aux_mode_mdio>;
-		};
-
-		soc_thermal: thermal {
-			compatible = "realtek,rtl8380-thermal";
-			#thermal-sensor-cells = <0>;
 		};
 	};
 
@@ -368,21 +363,5 @@
 
 		interrupt-parent = <&intc>;
 		interrupts = <20 2>;
-	};
-
-	thermal_zones: thermal-zones {
-		cpu-thermal {
-			polling-delay-passive = <1000>;
-			polling-delay = <1000>;
-			coefficients = <1000 0>;
-			thermal-sensors = <&soc_thermal>;
-			trips {
-				cpu-crit {
-					temperature = <105000>;
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-		};
 	};
 };
