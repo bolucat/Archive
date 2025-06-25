@@ -31,6 +31,7 @@
 #include "../crypto/test/test_data.h"
 #include "cert_error_params.h"
 #include "cert_errors.h"
+#include "parse_values.h"
 #include "parser.h"
 #include "pem.h"
 #include "simple_path_builder_delegate.h"

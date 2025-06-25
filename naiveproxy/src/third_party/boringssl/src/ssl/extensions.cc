@@ -2681,24 +2681,26 @@ static bool ext_trust_anchors_parse_clienthello(SSL_HANDSHAKE *hs,
 
 static bool ext_trust_anchors_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
   SSL *const ssl = hs->ssl;
-  const auto &creds = hs->config->cert->credentials;
-  if (ssl_protocol_version(ssl) < TLS1_3_VERSION ||
-      // Check if any credentials have trust anchor IDs.
-      std::none_of(creds.begin(), creds.end(), [](const auto &cred) {
-        return !cred->trust_anchor_id.empty();
-      })) {
+  if (ssl_protocol_version(ssl) < TLS1_3_VERSION) {
     return true;
   }
-  CBB contents, list;
-  if (!CBB_add_u16(out, TLSEXT_TYPE_trust_anchors) ||  //
-      !CBB_add_u16_length_prefixed(out, &contents) ||  //
+
+  const size_t old_len = CBB_len(out);
+  CBB contents, list, child;
+  if (!CBB_add_u16(out, TLSEXT_TYPE_trust_anchors) ||
+      !CBB_add_u16_length_prefixed(out, &contents) ||
       !CBB_add_u16_length_prefixed(&contents, &list)) {
     return false;
   }
-  for (const auto &cred : creds) {
+  for (const auto &cred : hs->config->cert->credentials) {
     if (!cred->trust_anchor_id.empty()) {
-      CBB child;
-      if (!CBB_add_u8_length_prefixed(&list, &child) ||  //
+      uint16_t unused_sigalg;
+      if (!ssl_check_tls13_credential_ignoring_issuer(hs, cred.get(),
+                                                      &unused_sigalg)) {
+        ERR_clear_error();
+        continue;
+      }
+      if (!CBB_add_u8_length_prefixed(&list, &child) ||
           !CBB_add_bytes(&child, cred->trust_anchor_id.data(),
                          cred->trust_anchor_id.size()) ||
           !CBB_flush(&list)) {
@@ -2706,7 +2708,17 @@ static bool ext_trust_anchors_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
       }
     }
   }
-  return CBB_flush(out);
+
+  bool empty = CBB_len(&list) == 0;
+  if (!CBB_flush(out)) {
+    return false;
+  }
+
+  // Don't send the extension if it would have been empty.
+  if (empty) {
+    CBB_discard(out, CBB_len(out) - old_len);
+  }
+  return true;
 }
 
 static bool ext_trust_anchors_parse_serverhello(SSL_HANDSHAKE *hs,

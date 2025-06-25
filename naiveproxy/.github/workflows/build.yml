@@ -123,7 +123,10 @@ jobs:
       - name: Cache sysroot
         uses: actions/cache@v4
         with:
-          path: src/out/sysroot-build/bullseye/bullseye_*
+          path: |
+            src/out/sysroot-build/bullseye/bullseye_*
+            src/out/sysroot-build/trixie/trixie_*
+            src/out/sysroot-build/sid/sid_*
           key: sysroot-linux-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - id: ccache-timestamp
         run: echo "CCACHE_TIMESTAMP=$(date +%s)" >>$GITHUB_OUTPUT
@@ -185,7 +188,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Cache toolchains (Linux, OpenWrt, Android)
         uses: actions/cache@v4
         with:

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"container/list"
 	"errors"
 	"fmt"
 	"net"
@@ -838,8 +837,6 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 		AllProxies []string
 		hasGlobal  bool
 	)
-	proxiesList := list.New()
-	groupsList := list.New()
 
 	proxies["DIRECT"] = adapter.NewProxy(outbound.NewDirect())
 	proxies["REJECT"] = adapter.NewProxy(outbound.NewReject())
@@ -861,7 +858,6 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 		proxies[proxy.Name()] = proxy
 		proxyList = append(proxyList, proxy.Name())
 		AllProxies = append(AllProxies, proxy.Name())
-		proxiesList.PushBack(mapping)
 	}
 
 	// keep the original order of ProxyGroups in config file
@@ -874,7 +870,6 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 			hasGlobal = true
 		}
 		proxyList = append(proxyList, groupName)
-		groupsList.PushBack(mapping)
 	}
 
 	// check if any loop exists and sort the ProxyGroups
@@ -1174,8 +1169,6 @@ func parseNameServer(servers []string, respectRules bool, preferH3 bool) ([]dns.
 		for _, s := range strings.Split(u.Fragment, "&") {
 			arr := strings.SplitN(s, "=", 2)
 			switch len(arr) {
-			case 0:
-				continue
 			case 1:
 				proxyName = arr[0]
 			case 2:

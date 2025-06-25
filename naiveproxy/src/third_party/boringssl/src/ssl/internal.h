@@ -1550,6 +1550,15 @@ bool ssl_get_full_credential_list(SSL_HANDSHAKE *hs,
 bool ssl_credential_matches_requested_issuers(SSL_HANDSHAKE *hs,
                                               const SSL_CREDENTIAL *cred);
 
+// ssl_check_tls13_credential_ignoring_issuer returns true if |cred| is usable
+// as the certificate in a TLS 1.3 handshake, ignoring the issuer check.
+// |out_sigalg| will be set to a matching signature algorithm if true is
+// returned.
+bool ssl_check_tls13_credential_ignoring_issuer(SSL_HANDSHAKE *hs,
+                                                const SSL_CREDENTIAL *cred,
+                                                uint16_t *out_sigalg);
+
+
 // Handshake functions.
 
 enum ssl_hs_wait_t {

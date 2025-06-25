@@ -301,7 +301,10 @@ int pkcs12_pbe_encrypt_init(CBB *out, EVP_CIPHER_CTX *ctx, int alg_nid,
     return 0;
   }
 
-  // See RFC 2898, appendix A.3.
+  // See RFC 7292, appendix C. All our supported "PBES1" schemes are the PKCS#12
+  // schemes, which use a different KDF. The true PBES1 schemes in RFC 8018 use
+  // PBKDF1, which use a very similar PBEParameter structure, but require the
+  // salt be exactly 8 bytes.
   CBB algorithm, param;
   if (!CBB_add_asn1(out, &algorithm, CBS_ASN1_SEQUENCE) ||
       !CBB_add_asn1_element(&algorithm, CBS_ASN1_OBJECT, suite->oid,

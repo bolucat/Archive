@@ -15,7 +15,7 @@
 #ifndef OPENSSL_HEADER_DIGEST_H
 #define OPENSSL_HEADER_DIGEST_H
 
-#include <openssl/base.h>   // IWYU pragma: export
+#include <openssl/base.h>  // IWYU pragma: export
 
 #if defined(__cplusplus)
 extern "C" {
@@ -285,6 +285,9 @@ OPENSSL_EXPORT int EVP_MD_nid(const EVP_MD *md);
 
 struct evp_md_pctx_ops;
 
+// env_md_ctx_st is typoed ("evp" -> "env"), but the typo comes from OpenSSL
+// and some consumers forward-declare these structures so we're leaving it
+// alone.
 struct env_md_ctx_st {
   // digest is the underlying digest function, or NULL if not set.
   const EVP_MD *digest;

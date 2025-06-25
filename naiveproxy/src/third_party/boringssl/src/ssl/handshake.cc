@@ -17,6 +17,7 @@
 
 #include <assert.h>
 
+#include <algorithm>
 #include <utility>
 
 #include <openssl/rand.h>

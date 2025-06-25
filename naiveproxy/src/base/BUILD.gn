@@ -35,7 +35,7 @@ import("//build/config/rust.gni")
 import("//build/config/sanitizers/sanitizers.gni")
 import("//build/config/sysroot.gni")
 import("//build/config/ui.gni")
-import("//build/timestamp.gni")
+import("//build/nocompile.gni")
 import("//build/util/process_version.gni")
 import("//build_overrides/build.gni")
 
@@ -113,6 +113,8 @@ if (is_android || is_robolectric) {
 if (is_fuchsia) {
   import("//third_party/fuchsia-gn-sdk/src/fidl_library.gni")
 }
+
+_build_date_header = "$target_gen_dir/generated_build_date.h"
 
 if (is_win) {
   # This is in a separate config so the flags can be applied to dependents.
@@ -226,6 +228,7 @@ component("base") {
     "component_export.h",
     "containers/adapters.h",
     "containers/adapters_internal.h",
+    "containers/auto_spanification_helper.h",
     "containers/buffer_iterator.h",
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
@@ -927,6 +930,7 @@ component("base") {
     "version.h",
     "vlog.cc",
     "vlog.h",
+    _build_date_header,
   ]
 
   # Various files that are unused in the Chromium build, but presumably here to
@@ -1079,10 +1083,6 @@ component("base") {
     "//third_party/abseil-cpp:absl",
   ]
 
-  # TODO(crbug.com/354842935): Remove this dependency once other modules don't
-  # accidentally (transitively) depend on it anymore.
-  public_deps += [ "//build:chromeos_buildflags" ]
-
   # Needed for <atomic> if using newer C++ library than sysroot, except if
   # building inside the cros_sdk environment - use host_toolchain as a
   # more robust check for this.
@@ -1167,6 +1167,13 @@ component("base") {
       "//third_party/ashmem",
       "//third_party/cpu_features:ndk_compat",
     ]
+
+    if (android_ndk_api_level >= 29) {
+      deps += [
+        ":android_info_aidl_native",
+        ":build_info_aidl_native",
+      ]
+    }
 
     if (use_clang_profiling) {
       deps += [ ":clang_profiler_jni" ]
@@ -2674,15 +2681,28 @@ static_library("base_static") {
   }
 }
 
-action("build_date") {
-  script = "write_build_date_header.py"
+if (current_toolchain == default_toolchain) {
+  # Without guarding this, we would run write_build_date_header.py once per
+  # toolchain, while getting the same output. This is expensive, so expose
+  # the per-toolchain one via :build_date, which is a cheap copy.
+  import("//build/timestamp.gni")
+  _build_date_header_internal =
+      "$target_gen_dir/generated_build_date_internal.h"
 
-  outputs = [ "$target_gen_dir/generated_build_date.h" ]
+  action("build_date_internal") {
+    script = "write_build_date_header.py"
+    outputs = [ _build_date_header_internal ]
+    args = [
+      rebase_path(_build_date_header_internal, root_build_dir),
+      build_timestamp,
+    ]
+  }
+}
 
-  args = [
-    rebase_path("$target_gen_dir/generated_build_date.h", root_build_dir),
-    build_timestamp,
-  ]
+copy("build_date") {
+  sources = [ "$root_build_dir/gen/base/generated_build_date_internal.h" ]
+  outputs = [ _build_date_header ]
+  deps = [ ":build_date_internal($default_toolchain)" ]
 }
 
 process_version("check_version_internal") {

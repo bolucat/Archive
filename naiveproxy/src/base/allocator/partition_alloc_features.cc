@@ -192,7 +192,7 @@ BASE_FEATURE_ENUM_PARAM(BackupRefPtrEnabledProcesses,
                         kBackupRefPtrEnabledProcessesParam,
                         &kPartitionAllocBackupRefPtr,
                         kPAFeatureEnabledProcessesStr,
-#if PA_BUILDFLAG(IS_MAC) && PA_BUILDFLAG(PA_ARCH_CPU_ARM64)
+#if PA_BUILDFLAG(IS_ANDROID)
                         BackupRefPtrEnabledProcesses::kNonRenderer,
 #else
                         BackupRefPtrEnabledProcesses::kAllProcesses,
@@ -487,7 +487,11 @@ BASE_FEATURE(kPartitionAllocUseSmallSingleSlotSpans,
 #if PA_CONFIG(ENABLE_SHADOW_METADATA)
 BASE_FEATURE(kPartitionAllocShadowMetadata,
              "PartitionAllocShadowMetadata",
+#if BUILDFLAG(IS_LINUX)
+             FEATURE_ENABLED_BY_DEFAULT);
+#else
              FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 constexpr FeatureParam<ShadowMetadataEnabledProcesses>::Option
     kShadowMetadataEnabledProcessesOptions[] = {

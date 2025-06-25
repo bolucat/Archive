@@ -142,8 +142,8 @@ int PKCS5_pbe2_encrypt_init(CBB *out, EVP_CIPHER_CTX *ctx,
     return 0;
   }
 
-  // See RFC 2898, appendix A.
-  CBB algorithm, param, kdf, kdf_param, cipher_cbb;
+  // See RFC 8018, appendix A.
+  CBB algorithm, param, kdf, kdf_param, prf, cipher_cbb;
   if (!CBB_add_asn1(out, &algorithm, CBS_ASN1_SEQUENCE) ||
       !CBB_add_asn1_element(&algorithm, CBS_ASN1_OBJECT, kPBES2,
                             sizeof(kPBES2)) ||
@@ -156,11 +156,14 @@ int PKCS5_pbe2_encrypt_init(CBB *out, EVP_CIPHER_CTX *ctx,
       // Specify a key length for RC2.
       (cipher_nid == NID_rc2_cbc &&
        !CBB_add_asn1_uint64(&kdf_param, EVP_CIPHER_key_length(cipher))) ||
-      // Omit the PRF. We use the default hmacWithSHA1.
-      // TODO(crbug.com/396434682): Improve this defaults.
+      // Use hmacWithSHA256 for the PRF.
+      !CBB_add_asn1(&kdf_param, &prf, CBS_ASN1_SEQUENCE) ||
+      !CBB_add_asn1_element(&prf, CBS_ASN1_OBJECT, kHMACWithSHA256,
+                            sizeof(kHMACWithSHA256)) ||
+      !CBB_add_asn1_element(&prf, CBS_ASN1_NULL, nullptr, 0) ||
       !CBB_add_asn1(&param, &cipher_cbb, CBS_ASN1_SEQUENCE) ||
       !add_cipher_oid(&cipher_cbb, cipher_nid) ||
-      // RFC 2898 says RC2-CBC and RC5-CBC-Pad use a SEQUENCE with version and
+      // RFC 8018 says RC2-CBC and RC5-CBC-Pad use a SEQUENCE with version and
       // IV, but OpenSSL always uses an OCTET STRING IV, so we do the same.
       !CBB_add_asn1_octet_string(&cipher_cbb, iv,
                                  EVP_CIPHER_iv_length(cipher)) ||
@@ -168,7 +171,7 @@ int PKCS5_pbe2_encrypt_init(CBB *out, EVP_CIPHER_CTX *ctx,
     return 0;
   }
 
-  return pkcs5_pbe2_cipher_init(ctx, cipher, EVP_sha1(), iterations, pass,
+  return pkcs5_pbe2_cipher_init(ctx, cipher, EVP_sha256(), iterations, pass,
                                 pass_len, salt, salt_len, iv,
                                 EVP_CIPHER_iv_length(cipher), 1 /* encrypt */);
 }
@@ -263,7 +266,7 @@ int PKCS5_pbe2_decrypt_init(const struct pbe_suite *suite, EVP_CIPHER_CTX *ctx,
   }
 
   // Parse the encryption scheme parameters. Note OpenSSL does not match the
-  // specification. Per RFC 2898, this should depend on the encryption scheme.
+  // specification. Per RFC 8018, this should depend on the encryption scheme.
   // In particular, RC2-CBC uses a SEQUENCE with version and IV. We align with
   // OpenSSL.
   CBS iv;

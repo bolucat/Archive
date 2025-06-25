@@ -468,6 +468,13 @@ int CBB_add_u64le(CBB *cbb, uint64_t value) {
   return CBB_add_u64(cbb, CRYPTO_bswap8(value));
 }
 
+void CBB_discard(CBB *cbb, size_t len) {
+  BSSL_CHECK(cbb->child == nullptr);
+  BSSL_CHECK(len <= CBB_len(cbb));
+  struct cbb_buffer_st *base = cbb_get_base(cbb);
+  base->len -= len;
+}
+
 void CBB_discard_child(CBB *cbb) {
   if (cbb->child == NULL) {
     return;

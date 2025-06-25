@@ -15,8 +15,15 @@ std::optional<std::string> TranslateOpenFlagsToJavaMode(uint32_t) {
   return {};
 }
 
-int OpenContentUri(const FilePath&, uint32_t) {
+base::android::ScopedJavaLocalRef<jobject> OpenContentUri(const FilePath&, uint32_t) {
+  return {};
+}
+
+int ContentUriGetFd(const base::android::JavaRef<jobject>&) {
   return -1;
+}
+
+void ContentUriClose(const base::android::JavaRef<jobject>&) {
 }
 
 bool ContentUriGetFileInfo(const FilePath&, FileEnumerator::FileInfo*) {
@@ -47,6 +54,24 @@ bool MaybeGetFileDisplayName(const FilePath& content_uri,
 
 FilePath ContentUriBuildDocumentUriUsingTree(const FilePath&,
                                              const std::string&) {
+  return {};
+}
+
+FilePath
+ContentUriGetChildDocumentOrQuery(const FilePath&,
+                                  const std::string&,
+                                  const std::string&,
+                                  bool,
+                                  bool) {
+  return {};
+}
+
+bool ContentUriIsCreateChildDocumentQuery(const FilePath&) {
+  return false;
+}
+
+FilePath
+ContentUriGetDocumentFromQuery(const FilePath&, bool) {
   return {};
 }
 }  // namespace base

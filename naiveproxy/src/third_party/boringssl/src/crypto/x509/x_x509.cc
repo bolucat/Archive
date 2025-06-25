@@ -16,6 +16,7 @@
 #include <limits.h>
 #include <stdio.h>
 
+#include <openssl/asn1.h>
 #include <openssl/asn1t.h>
 #include <openssl/bytestring.h>
 #include <openssl/evp.h>

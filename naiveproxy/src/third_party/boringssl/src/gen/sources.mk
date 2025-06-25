@@ -498,6 +498,7 @@ boringssl_crypto_sources := \
   crypto/x509/x_val.cc \
   crypto/x509/x_x509.cc \
   crypto/x509/x_x509a.cc \
+  crypto/xwing/xwing.cc \
   gen/crypto/err_data.cc
 
 boringssl_crypto_headers := \
@@ -588,7 +589,8 @@ boringssl_crypto_headers := \
   include/openssl/x509.h \
   include/openssl/x509_vfy.h \
   include/openssl/x509v3.h \
-  include/openssl/x509v3_errors.h
+  include/openssl/x509v3_errors.h \
+  include/openssl/xwing.h
 
 boringssl_crypto_internal_headers := \
   crypto/asn1/internal.h \
@@ -650,7 +652,6 @@ boringssl_crypto_internal_headers := \
   crypto/rsa/internal.h \
   crypto/spake2plus/internal.h \
   crypto/trust_token/internal.h \
-  crypto/x509/ext_dat.h \
   crypto/x509/internal.h \
   third_party/fiat/curve25519_32.h \
   third_party/fiat/curve25519_64.h \
@@ -767,9 +768,9 @@ boringssl_crypto_test_sources := \
   crypto/test/gtest_main.cc \
   crypto/thread_test.cc \
   crypto/trust_token/trust_token_test.cc \
-  crypto/x509/tab_test.cc \
   crypto/x509/x509_test.cc \
-  crypto/x509/x509_time_test.cc
+  crypto/x509/x509_time_test.cc \
+  crypto/xwing/xwing_test.cc
 
 boringssl_crypto_test_data := \
   crypto/blake2/blake2b256_tests.txt \

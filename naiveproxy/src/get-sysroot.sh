@@ -33,6 +33,7 @@ fi
 # sysroot
 case "$target_os" in
   linux)
+    RELEASE=bullseye
     case "$target_cpu" in
       x64) SYSROOT_ARCH=amd64;;
       x86) SYSROOT_ARCH=i386;;
@@ -40,11 +41,11 @@ case "$target_os" in
       arm) SYSROOT_ARCH=armhf;;
       mipsel) SYSROOT_ARCH=mipsel;;
       mips64el) SYSROOT_ARCH=mips64el;;
-      riscv64) SYSROOT_ARCH=riscv64;;
-      loong64) SYSROOT_ARCH=loong64;;
+      riscv64) SYSROOT_ARCH=riscv64; RELEASE=trixie;;
+      loong64) SYSROOT_ARCH=loong64; RELEASE=sid;;
     esac
     if [ "$SYSROOT_ARCH" ]; then
-      WITH_SYSROOT="out/sysroot-build/bullseye/bullseye_${SYSROOT_ARCH}_staging"
+      WITH_SYSROOT="out/sysroot-build/${RELEASE}/${RELEASE}_${SYSROOT_ARCH}_staging"
     fi
     # This is the case where running ./build.sh without EXTRA_FLAGS
     # wants to avoid downloading sysroots.

@@ -1,7 +1,6 @@
 package geodata
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -76,13 +75,13 @@ func LoadGeoSiteMatcher(countryCode string) (router.DomainMatcher, error) {
 	if countryCode[0] == '!' {
 		not = true
 		countryCode = countryCode[1:]
+		if countryCode == "" {
+			return nil, fmt.Errorf("country code could not be empty")
+		}
 	}
 	countryCode = strings.ToLower(countryCode)
 
 	parts := strings.Split(countryCode, "@")
-	if len(parts) == 0 {
-		return nil, errors.New("empty rule")
-	}
 	listName := strings.TrimSpace(parts[0])
 	attrVal := parts[1:]
 	attrs := parseAttrs(attrVal)

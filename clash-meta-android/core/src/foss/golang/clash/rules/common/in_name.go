@@ -2,8 +2,9 @@ package common
 
 import (
 	"fmt"
-	C "github.com/metacubex/mihomo/constant"
 	"strings"
+
+	C "github.com/metacubex/mihomo/constant"
 )
 
 type InName struct {
@@ -36,8 +37,12 @@ func (u *InName) Payload() string {
 
 func NewInName(iNames, adapter string) (*InName, error) {
 	names := strings.Split(iNames, "/")
-	if len(names) == 0 {
-		return nil, fmt.Errorf("in name couldn't be empty")
+	for i, name := range names {
+		name = strings.TrimSpace(name)
+		if len(name) == 0 {
+			return nil, fmt.Errorf("in name couldn't be empty")
+		}
+		names[i] = name
 	}
 
 	return &InName{

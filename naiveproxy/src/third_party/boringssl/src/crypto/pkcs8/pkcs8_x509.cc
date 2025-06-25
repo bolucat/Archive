@@ -1067,18 +1067,17 @@ PKCS12 *PKCS12_create(const char *password, const char *name,
                       const EVP_PKEY *pkey, X509 *cert,
                       const STACK_OF(X509) *chain, int key_nid, int cert_nid,
                       int iterations, int mac_iterations, int key_type) {
-  // TODO(crbug.com/396434682): Improve these defaults.
   if (key_nid == 0) {
-    key_nid = NID_pbe_WithSHA1And3_Key_TripleDES_CBC;
+    key_nid = NID_aes_256_cbc;
   }
   if (cert_nid == 0) {
-    cert_nid = NID_pbe_WithSHA1And40BitRC2_CBC;
+    cert_nid = NID_aes_256_cbc;
   }
   if (iterations == 0) {
     iterations = PKCS12_DEFAULT_ITER;
   }
   if (mac_iterations == 0) {
-    mac_iterations = 1;
+    mac_iterations = PKCS12_DEFAULT_ITER;
   }
   if (  // In OpenSSL, this specifies a non-standard Microsoft key usage
         // extension which we do not currently support.

@@ -145,6 +145,14 @@ extern "C" {
 #define OPENSSL_PRINTF_FORMAT_FUNC(string_index, first_to_check)
 #endif
 
+// OPENSSL_GNUC_CLANG_PRAGMA emits a pragma on GCC or clang and nothing on other
+// compilers.
+#if defined(__GNUC__) || defined(__clang__)
+#define OPENSSL_GNUC_CLANG_PRAGMA(arg) _Pragma(arg)
+#else
+#define OPENSSL_GNUC_CLANG_PRAGMA(arg)
+#endif
+
 // OPENSSL_CLANG_PRAGMA emits a pragma on clang and nothing on other compilers.
 #if defined(__clang__)
 #define OPENSSL_CLANG_PRAGMA(arg) _Pragma(arg)

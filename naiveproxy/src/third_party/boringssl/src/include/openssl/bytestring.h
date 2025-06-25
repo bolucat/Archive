@@ -597,6 +597,10 @@ OPENSSL_EXPORT int CBB_add_u64(CBB *cbb, uint64_t value);
 // It returns one on success and zero otherwise.
 OPENSSL_EXPORT int CBB_add_u64le(CBB *cbb, uint64_t value);
 
+// CBB_discard discards the last |len| bytes written to |cbb|. The process will
+// abort if |cbb| has an unflushed child, or its length is smaller than |len|.
+OPENSSL_EXPORT void CBB_discard(CBB *cbb, size_t len);
+
 // CBB_discard_child discards the current unflushed child of |cbb|. Neither the
 // child's contents nor the length prefix will be included in the output.
 OPENSSL_EXPORT void CBB_discard_child(CBB *cbb);

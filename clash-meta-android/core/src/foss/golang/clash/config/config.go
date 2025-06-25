@@ -1174,8 +1174,6 @@ func parseNameServer(servers []string, respectRules bool, preferH3 bool) ([]dns.
 		for _, s := range strings.Split(u.Fragment, "&") {
 			arr := strings.SplitN(s, "=", 2)
 			switch len(arr) {
-			case 0:
-				continue
 			case 1:
 				proxyName = arr[0]
 			case 2:

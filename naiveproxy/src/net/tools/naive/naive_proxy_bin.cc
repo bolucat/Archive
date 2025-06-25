@@ -239,7 +239,7 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
     struct NoPostQuantum : public SSLConfigService {
       SSLContextConfig GetSSLContextConfig() override {
         SSLContextConfig config;
-        config.post_quantum_override = false;
+        config.post_quantum_key_agreement_enabled = false;
         return config;
       }
 

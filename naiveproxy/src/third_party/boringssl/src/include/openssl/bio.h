@@ -809,9 +809,9 @@ OPENSSL_EXPORT int BIO_meth_set_puts(BIO_METHOD *method,
 // Using these functions is inherently unsafe and fragile. It is not possible to
 // use them in a future-proof way. See
 // https://github.com/openssl/openssl/issues/26047 for details. BoringSSL
-// implements them solely for compatibility with older versions of PostgreSQL.
-// To work around the future-proofing problems, the return values may diverge
-// from the true implementation of |BIO_s_socket|.
+// implements them solely for compatibility with Folly and older versions of
+// PostgreSQL. To work around the future-proofing problems, the return values
+// may diverge from the true implementation of |BIO_s_socket|.
 //
 // Caller should not use these functions. They are not necessary to define
 // custom |BIO_METHOD|s. Instead, callers should either:
@@ -825,6 +825,11 @@ OPENSSL_EXPORT int BIO_meth_set_puts(BIO_METHOD *method,
 // - Define a custom |BIO_METHOD| without |BIO_s_socket| at all. If not using
 //   the built-in read or write functions, |BIO_s_socket| only provides a no-op
 //   |BIO_CTRL_FLUSH| implementation. This can be implemented by the caller.
+OPENSSL_EXPORT int (*BIO_meth_get_write(const BIO_METHOD *method))(BIO *,
+                                                                   const char *,
+                                                                   int);
+OPENSSL_EXPORT int (*BIO_meth_get_read(const BIO_METHOD *method))(BIO *, char *,
+                                                                  int);
 OPENSSL_EXPORT int (*BIO_meth_get_gets(const BIO_METHOD *method))(BIO *, char *,
                                                                   int);
 OPENSSL_EXPORT int (*BIO_meth_get_puts(const BIO_METHOD *method))(BIO *,

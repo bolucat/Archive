@@ -198,10 +198,11 @@ jobs:
     - name: Set variables
       run: |
         VERSION="${GITHUB_REF_NAME,,}-$(git rev-parse --short HEAD)"
+        VERSION="${VERSION//\//-}"
         PackageVersion="$(curl -s "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest" | jq -r '.tag_name' | sed 's/v//g' | awk -F '.' '{$NF = $NF + 1; print}' OFS='.').${VERSION/-/.}"
         if [ -n "${{ github.event.inputs.version }}" ]; then
           VERSION=${{ github.event.inputs.version }}
-          PackageVersion="${VERSION#v}" >> $GITHUB_ENV
+          PackageVersion="${VERSION#v}"
         fi
         echo "VERSION=${VERSION}" >> $GITHUB_ENV
         echo "PackageVersion=${PackageVersion}" >> $GITHUB_ENV

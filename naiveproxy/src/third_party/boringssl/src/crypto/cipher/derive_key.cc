@@ -20,10 +20,8 @@
 #include <openssl/mem.h>
 
 
-#define PKCS5_SALT_LEN 8
-
 int EVP_BytesToKey(const EVP_CIPHER *type, const EVP_MD *md,
-                   const uint8_t *salt, const uint8_t *data, size_t data_len,
+                   const uint8_t salt[8], const uint8_t *data, size_t data_len,
                    unsigned count, uint8_t *key, uint8_t *iv) {
   uint8_t md_buf[EVP_MAX_MD_SIZE];
   unsigned addmd = 0;
@@ -54,7 +52,7 @@ int EVP_BytesToKey(const EVP_CIPHER *type, const EVP_MD *md,
       goto err;
     }
     if (salt != nullptr) {
-      if (!EVP_DigestUpdate(c.get(), salt, PKCS5_SALT_LEN)) {
+      if (!EVP_DigestUpdate(c.get(), salt, 8)) {
         goto err;
       }
     }
