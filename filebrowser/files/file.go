@@ -217,7 +217,6 @@ func (i *FileInfo) RealPath() string {
 	return i.Path
 }
 
-//nolint:goconst
 func (i *FileInfo) detectType(modify, saveContent, readHeader bool) error {
 	if IsNamedPipe(i.Mode) {
 		i.Type = "blob"
@@ -314,7 +313,7 @@ func (i *FileInfo) readFirstBytes() []byte {
 	}
 	defer reader.Close()
 
-	buffer := make([]byte, 512) //nolint:gomnd
+	buffer := make([]byte, 512)
 	n, err := reader.Read(buffer)
 	if err != nil && !errors.Is(err, io.EOF) {
 		log.Print(err)

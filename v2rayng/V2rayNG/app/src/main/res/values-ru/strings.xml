@@ -139,6 +139,7 @@
     <!-- Preferences -->
     <string name="title_settings">Настройки</string>
     <string name="title_advanced">Расширенные настройки</string>
+    <string name="title_core_settings">Настройки ядра</string>
     <string name="title_vpn_settings">Настройки VPN</string>
     <string name="title_pref_per_app_proxy">Прокси для выбранных приложений</string>
     <string name="summary_pref_per_app_proxy">Основной: выбранное приложение соединяется через прокси, не выбранное — напрямую;\nРежим обхода: выбранное приложение соединяется напрямую, не выбранное — через прокси.\nЕсть возможность автоматического выбора проксируемых приложений в меню.</string>
@@ -179,6 +180,8 @@
 
     <string name="title_pref_vpn_dns">VPN DNS (только IPv4/v6)</string>
     <string name="title_pref_vpn_bypass_lan">VPN пропускает LAN</string>
+
+    <string name="title_pref_vpn_interface_address">VPN частный IP</string>
 
     <string name="title_pref_domestic_dns">Внутренняя DNS (необязательно)</string>
     <string name="summary_pref_domestic_dns">DNS</string>
@@ -237,6 +240,7 @@
     <string name="title_pref_auto_update_interval">Интервал автообновления (минут, не менее 15)</string>
 
     <string name="title_core_loglevel">Подробность ведения журнала</string>
+    <string name="title_outbound_domain_resolve_method">Outbound domain pre-resolve method</string>
     <string name="title_mode">Режим</string>
     <string name="title_mode_help">Нажмите для получения дополнительной информации</string>
     <string name="title_language">Язык</string>
@@ -366,6 +370,12 @@
         <item>Как в профиле</item>
         <item>Пропускает</item>
         <item>Не пропускает</item>
+    </string-array>
+
+    <string-array name="outbound_domain_resolve_method">
+        <item>Do not resolve</item>
+        <item>Resolve and add to DNS Hosts</item>
+        <item>Resolve and replace domain</item>
     </string-array>
 
 </resources>
