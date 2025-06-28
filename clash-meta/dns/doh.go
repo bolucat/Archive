@@ -447,12 +447,12 @@ func (doh *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripp
 	return transport, nil
 }
 
-// http3Transport is a wrapper over *http3.RoundTripper that tries to optimize
+// http3Transport is a wrapper over *http3.Transport that tries to optimize
 // its behavior.  The main thing that it does is trying to force use a single
 // connection to a host instead of creating a new one all the time.  It also
 // helps mitigate race issues with quic-go.
 type http3Transport struct {
-	baseTransport *http3.RoundTripper
+	baseTransport *http3.Transport
 
 	closed bool
 	mu     sync.RWMutex
@@ -505,7 +505,7 @@ func (h *http3Transport) CloseIdleConnections() {
 // We should be able to fall back to H1/H2 in case if HTTP/3 is unavailable or
 // if it is too slow.  In order to do that, this method will run two probes
 // in parallel (one for TLS, the other one for QUIC) and if QUIC is faster it
-// will create the *http3.RoundTripper instance.
+// will create the *http3.Transport instance.
 func (doh *dnsOverHTTPS) createTransportH3(
 	ctx context.Context,
 	tlsConfig *tls.Config,
@@ -519,7 +519,7 @@ func (doh *dnsOverHTTPS) createTransportH3(
 		return nil, err
 	}
 
-	rt := &http3.RoundTripper{
+	rt := &http3.Transport{
 		Dial: func(
 			ctx context.Context,
 
@@ -528,7 +528,7 @@ func (doh *dnsOverHTTPS) createTransportH3(
 			_ string,
 			tlsCfg *tlsC.Config,
 			cfg *quic.Config,
-		) (c quic.EarlyConnection, err error) {
+		) (c *quic.Conn, err error) {
 			return doh.dialQuic(ctx, addr, tlsCfg, cfg)
 		},
 		DisableCompression: true,
@@ -539,7 +539,7 @@ func (doh *dnsOverHTTPS) createTransportH3(
 	return &http3Transport{baseTransport: rt}, nil
 }
 
-func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tlsC.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+func (doh *dnsOverHTTPS) dialQuic(ctx context.Context, addr string, tlsCfg *tlsC.Config, cfg *quic.Config) (*quic.Conn, error) {
 	ip, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err

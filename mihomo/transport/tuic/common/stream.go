@@ -9,7 +9,7 @@ import (
 )
 
 type quicStreamConn struct {
-	quic.Stream
+	*quic.Stream
 	lock  sync.Mutex
 	lAddr net.Addr
 	rAddr net.Addr
@@ -62,6 +62,6 @@ func (q *quicStreamConn) RemoteAddr() net.Addr {
 
 var _ net.Conn = (*quicStreamConn)(nil)
 
-func NewQuicStreamConn(stream quic.Stream, lAddr, rAddr net.Addr, closeDeferFn func()) net.Conn {
+func NewQuicStreamConn(stream *quic.Stream, lAddr, rAddr net.Addr, closeDeferFn func()) net.Conn {
 	return &quicStreamConn{Stream: stream, lAddr: lAddr, rAddr: rAddr, closeDeferFn: closeDeferFn}
 }

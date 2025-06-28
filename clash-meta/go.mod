@@ -7,8 +7,8 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/enfein/mieru/v3 v3.13.0
-	github.com/go-chi/chi/v5 v5.2.1
+	github.com/enfein/mieru/v3 v3.16.1
+	github.com/go-chi/chi/v5 v5.2.2
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
 	github.com/gofrs/uuid/v5 v5.3.2
@@ -23,11 +23,11 @@ require (
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
-	github.com/metacubex/quic-go v0.52.1-0.20250522021943-aef454b9e639
+	github.com/metacubex/quic-go v0.53.1-0.20250628094454-fda5262d1d9c
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/sing v0.5.4-0.20250605054047-54dc6097da29
 	github.com/metacubex/sing-mux v0.3.2
-	github.com/metacubex/sing-quic v0.0.0-20250523120938-f1a248e5ec7f
+	github.com/metacubex/sing-quic v0.0.0-20250628100430-24f13f1e846e
 	github.com/metacubex/sing-shadowsocks v0.2.11-0.20250621023810-0e9ef9dd0c92
 	github.com/metacubex/sing-shadowsocks2 v0.2.5-0.20250621023950-93d605a2143d
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
@@ -36,7 +36,7 @@ require (
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
 	github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4
-	github.com/metacubex/utls v1.7.4-0.20250610022031-808d767c8c73
+	github.com/metacubex/utls v1.7.4-0.20250628044047-8d330f8b93bf
 	github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0
@@ -45,7 +45,7 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
-	github.com/samber/lo v1.50.0
+	github.com/samber/lo v1.51.0
 	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
@@ -70,7 +70,6 @@ require (
 	github.com/ajg/form v1.5.1 // indirect
 	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/cloudflare/circl v1.3.7 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ebitengine/purego v0.8.3 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20250325060835-cd0defd64358 // indirect
@@ -88,6 +87,7 @@ require (
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/josharian/native v1.1.0 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect

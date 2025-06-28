@@ -20,7 +20,7 @@ const (
 	DefaultBBRMaxCongestionWindow = 10000
 )
 
-func GetInitialPacketSize(quicConn quic.Connection) congestion.ByteCount {
+func GetInitialPacketSize(quicConn *quic.Conn) congestion.ByteCount {
 	return congestion.ByteCount(quicConn.Config().InitialPacketSize)
 }
 

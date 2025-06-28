@@ -930,6 +930,6 @@ func bdpFromRttAndBandwidth(rtt time.Duration, bandwidth Bandwidth) congestion.B
 	return congestion.ByteCount(rtt) * congestion.ByteCount(bandwidth) / congestion.ByteCount(BytesPerSecond) / congestion.ByteCount(time.Second)
 }
 
-func GetInitialPacketSize(quicConn quic.Connection) congestion.ByteCount {
+func GetInitialPacketSize(quicConn *quic.Conn) congestion.ByteCount {
 	return congestion.ByteCount(quicConn.Config().InitialPacketSize)
 }

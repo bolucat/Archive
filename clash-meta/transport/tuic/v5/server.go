@@ -27,7 +27,7 @@ type ServerOption struct {
 	MaxUdpRelayPacketSize int
 }
 
-func NewServerHandler(option *ServerOption, quicConn quic.EarlyConnection, uuid uuid.UUID) common.ServerHandler {
+func NewServerHandler(option *ServerOption, quicConn *quic.Conn, uuid uuid.UUID) common.ServerHandler {
 	return &serverHandler{
 		ServerOption: option,
 		quicConn:     quicConn,
@@ -39,7 +39,7 @@ func NewServerHandler(option *ServerOption, quicConn quic.EarlyConnection, uuid 
 
 type serverHandler struct {
 	*ServerOption
-	quicConn quic.EarlyConnection
+	quicConn *quic.Conn
 	uuid     uuid.UUID
 
 	authCh   chan struct{}

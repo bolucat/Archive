@@ -1,3 +1,10 @@
+---
+hide:
+  - navigation
+  - toc
+---
+#
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/filebrowser/logo/master/banner.png" width="550"/>
 </p>
@@ -31,25 +38,21 @@ File Browser is a **create-your-own-cloud-kind** of software where you can insta
 
 |    Easy Login System     |     Sleek Interface      |     User Management      |
 | :----------------------: | :----------------------: | :----------------------: |
-| ![](./docs/assets/1.jpg) | ![](./docs/assets/2.jpg) | ![](./docs/assets/3.jpg) |
+| ![](./site/docs/assets/1.jpg) | ![](./site/docs/assets/2.jpg) | ![](./site/docs/assets/3.jpg) |
 
 
 |       File Editing       |     Custom Commands      |      Customization       |
 | :----------------------: | :----------------------: | :----------------------: |
-| ![](./docs/assets/4.jpg) | ![](./docs/assets/5.jpg) | ![](./docs/assets/6.jpg) |
-
-> [!CAUTION]
->
-> The **command execution** functionality has been disabled for all existent and new installations by default from version v2.33.8 and onwards, due to continuous and known security vulnerabilities. You should only use this feature if you are aware of all of the security risks involved. For more up to date information, consult issue [#5199](https://github.com/filebrowser/filebrowser/issues/5199).
+| ![](./site/docs/assets/4.jpg) | ![](./site/docs/assets/5.jpg) | ![](./site/docs/assets/6.jpg) |
 
 ## Install
 
-For information on how to install File Browser, please check [docs/installation.md](./docs/installation.md).
+For information on how to install File Browser, please check [installation](./site/docs/installation.md).
 
 ## Configuration
 
-For information on how to configure File Browser, please check [docs/configuration.md](./docs/configuration.md).
+For information on how to configure File Browser, please check [configuration](./site/docs/configuration.md).
 
 ## Contributing
 
-For information on how to contribute to the project, including how translations are managed, please check [docs/contributing.md](./docs/contributing.md).
+For information on how to contribute to the project, including how translations are managed, please check [contributing](./site/docs/contributing.md).

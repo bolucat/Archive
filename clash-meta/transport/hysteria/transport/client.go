@@ -62,7 +62,7 @@ func (ct *ClientTransport) quicPacketConn(proto string, rAddr net.Addr, serverPo
 	}
 }
 
-func (ct *ClientTransport) QUICDial(proto string, server string, serverPorts string, tlsConfig *tlsC.Config, quicConfig *quic.Config, obfs obfsPkg.Obfuscator, hopInterval time.Duration, dialer utils.PacketDialer) (quic.Connection, error) {
+func (ct *ClientTransport) QUICDial(proto string, server string, serverPorts string, tlsConfig *tlsC.Config, quicConfig *quic.Config, obfs obfsPkg.Obfuscator, hopInterval time.Duration, dialer utils.PacketDialer) (*quic.Conn, error) {
 	serverUDPAddr, err := dialer.RemoteAddr(server)
 	if err != nil {
 		return nil, err
