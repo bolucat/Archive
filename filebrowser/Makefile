@@ -3,6 +3,14 @@ include tools.mk
 
 LDFLAGS += -X "$(MODULE)/version.Version=$(VERSION)" -X "$(MODULE)/version.CommitSHA=$(VERSION_HASH)"
 
+SITE_DOCKER_FLAGS = \
+	-v $(CURDIR)/www:/docs \
+	-v $(CURDIR)/LICENSE:/docs/docs/LICENSE \
+	-v $(CURDIR)/SECURITY.md:/docs/docs/security.md \
+	-v $(CURDIR)/CHANGELOG.md:/docs/docs/changelog.md \
+	-v $(CURDIR)/CODE-OF-CONDUCT.md:/docs/docs/code-of-conduct.md \
+	-v $(CURDIR)/CONTRIBUTING.md:/docs/docs/contributing.md
+
 ## Build:
 
 .PHONY: build
@@ -55,18 +63,14 @@ bump-version: $(standard-version) ## Bump app version
 
 .PHONY: site
 site: ## Build site
-	@rm -f  site/public/*
-	@docker rm -f spot-site
-	docker build -f Dockerfile.site --progress=plain -t filebrowser.site .
-	docker run -d --name=filebrowser-site filebrowser.site
-	sleep 3
-	docker cp "filebrowser-site":/srv/site/ site/public
-	docker rm -f filebrowser-site
+	@rm -rf www/public
+	docker build -f www/Dockerfile --progress=plain -t filebrowser.site www
+	docker run --rm $(SITE_DOCKER_FLAGS) filebrowser.site build -d "public"
 
 .PHONY: site-serve
 site-serve: ## Serve site for development
-	docker build -f Dockerfile.site.dev -t filebrowser.site.dev .
-	docker run --rm -it -p 8000:8000 -v $(CURDIR)/site:/build/ -v $(CURDIR)/README.md:/tmp/README.md filebrowser.site.dev
+	docker build -f www/Dockerfile --progress=plain -t filebrowser.site www
+	docker run --rm -it -p 8000:8000 $(SITE_DOCKER_FLAGS) filebrowser.site
 
 ## Help:
 help: ## Show this help

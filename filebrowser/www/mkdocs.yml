@@ -1,31 +1,30 @@
-site_name: Filebrowser
+site_name: File Browser
 site_description: 'A web-based file browser and manager for your files'
-site_author: 'Filebrowser Community'
+site_author: 'File Browser Contributors'
 site_url: 'https://filebrowser.org'
 
 repo_name: 'filebrowser/filebrowser'
 repo_url: 'https://github.com/filebrowser/filebrowser'
-edit_uri: 'edit/master/site/docs/'
 
-copyright: 'Copyright &copy; 2025 Filebrowser Community'
+copyright: 'Copyright &copy; 2025 File Browser Contributors'
 
 theme:
   name: material
   language: en
-  logo: logo.png
-  favicon: favicon.png
+  logo: static/logo.png
+  favicon: static/favicon.png
   palette:
     - scheme: default
       primary: blue
       accent: light blue
       toggle:
-        icon: material/brightness-7
+        icon: material/lightbulb
         name: Switch to dark mode
     - scheme: slate
       primary: blue
       accent: light blue
       toggle:
-        icon: material/brightness-4
+        icon: material/lightbulb-outline
         name: Switch to light mode
 
   font:
@@ -44,8 +43,6 @@ theme:
     - search.highlight
     - search.share
     - content.code.copy
-    - content.action.edit
-    - content.action.view
     - toc.follow
     - toc.integrate
 
@@ -73,15 +70,7 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.betterem:
-      smart_enable: all
   - pymdownx.caret
-  - pymdownx.details
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
       use_pygments: true
@@ -89,11 +78,7 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.mark
   - pymdownx.smartsymbols
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:
@@ -113,9 +98,11 @@ extra:
 nav:
   - Home: index.md
   - Getting Started:
-      - Installation: installation.md
-      - Configuration: configuration.md
-      - Security: security.md
+    - Installation: installation.md
+    - Configuration: configuration.md
+    - Deployment: deployment.md
   - Contributing:
-      - Contributing: contributing.md
-      - Code of Conduct: code-of-conduct.md
+    - Contributing: contributing.md
+    - Code of Conduct: code-of-conduct.md
+    - Security Policy: security.md
+  - Changelog: changelog.md

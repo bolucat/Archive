@@ -15,13 +15,13 @@ import (
 
 type quicStreamPacketConn struct {
 	connId    uint32
-	quicConn  quic.Connection
+	quicConn  *quic.Conn
 	inputConn *N.BufferedConn
 
 	udpRelayMode          common.UdpRelayMode
 	maxUdpRelayPacketSize int
 
-	deferQuicConnFn func(quicConn quic.Connection, err error)
+	deferQuicConnFn func(quicConn *quic.Conn, err error)
 	closeDeferFn    func()
 	writeClosed     *atomic.Bool
 
@@ -57,7 +57,7 @@ func (q *quicStreamPacketConn) close() (err error) {
 		if err != nil {
 			return
 		}
-		var stream quic.SendStream
+		var stream *quic.SendStream
 		stream, err = q.quicConn.OpenUniStream()
 		if err != nil {
 			return
@@ -149,7 +149,7 @@ func (q *quicStreamPacketConn) WriteTo(p []byte, addr net.Addr) (n int, err erro
 	}
 	switch q.udpRelayMode {
 	case common.QUIC:
-		var stream quic.SendStream
+		var stream *quic.SendStream
 		stream, err = q.quicConn.OpenUniStream()
 		if err != nil {
 			return

@@ -16,7 +16,7 @@ import (
 // "-3" from quic-go's DatagramFrame.MaxDataLen
 var MaxFragSize = 1200 - PacketOverHead - 3
 
-func fragWriteNative(quicConn quic.Connection, packet Packet, buf *bytes.Buffer, fragSize int) (err error) {
+func fragWriteNative(quicConn *quic.Conn, packet Packet, buf *bytes.Buffer, fragSize int) (err error) {
 	fullPayload := packet.DATA
 	off := 0
 	fragID := uint8(0)

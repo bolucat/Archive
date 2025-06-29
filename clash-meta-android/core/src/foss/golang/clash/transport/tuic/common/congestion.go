@@ -13,7 +13,7 @@ const (
 	DefaultConnectionReceiveWindow = 67108864 // 64 MB/s
 )
 
-func SetCongestionController(quicConn quic.Connection, cc string, cwnd int) {
+func SetCongestionController(quicConn *quic.Conn, cc string, cwnd int) {
 	if cwnd == 0 {
 		cwnd = 32
 	}

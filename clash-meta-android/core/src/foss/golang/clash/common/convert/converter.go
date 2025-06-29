@@ -208,6 +208,9 @@ func ConvertsV2Ray(buf []byte) ([]map[string]any, error) {
 			if err != nil {
 				continue
 			}
+			if decodedHost, err := tryDecodeBase64([]byte(urlVLess.Host)); err == nil {
+				urlVLess.Host = string(decodedHost)
+			}
 			query := urlVLess.Query()
 			vless := make(map[string]any, 20)
 			err = handleVShareLink(names, urlVLess, scheme, vless)

@@ -41,7 +41,7 @@ type clientImpl struct {
 	*ClientOption
 	udp bool
 
-	quicConn  quic.Connection
+	quicConn  *quic.Conn
 	connMutex sync.Mutex
 
 	openStreams atomic.Int64
@@ -70,7 +70,7 @@ func (t *clientImpl) SetLastVisited(last time.Time) {
 	t.lastVisited.Store(last)
 }
 
-func (t *clientImpl) getQuicConn(ctx context.Context, dialer C.Dialer, dialFn common.DialFunc) (quic.Connection, error) {
+func (t *clientImpl) getQuicConn(ctx context.Context, dialer C.Dialer, dialFn common.DialFunc) (*quic.Conn, error) {
 	t.connMutex.Lock()
 	defer t.connMutex.Unlock()
 	if t.quicConn != nil {
@@ -80,7 +80,7 @@ func (t *clientImpl) getQuicConn(ctx context.Context, dialer C.Dialer, dialFn co
 	if err != nil {
 		return nil, err
 	}
-	var quicConn quic.Connection
+	var quicConn *quic.Conn
 	if t.ReduceRtt {
 		quicConn, err = transport.DialEarly(ctx, addr, t.TlsConfig, t.QuicConfig)
 	} else {
@@ -110,7 +110,7 @@ func (t *clientImpl) getQuicConn(ctx context.Context, dialer C.Dialer, dialFn co
 	return quicConn, nil
 }
 
-func (t *clientImpl) sendAuthentication(quicConn quic.Connection) (err error) {
+func (t *clientImpl) sendAuthentication(quicConn *quic.Conn) (err error) {
 	defer func() {
 		t.deferQuicConn(quicConn, err)
 	}()
@@ -139,12 +139,12 @@ func (t *clientImpl) sendAuthentication(quicConn quic.Connection) (err error) {
 	return nil
 }
 
-func (t *clientImpl) handleUniStream(quicConn quic.Connection) (err error) {
+func (t *clientImpl) handleUniStream(quicConn *quic.Conn) (err error) {
 	defer func() {
 		t.deferQuicConn(quicConn, err)
 	}()
 	for {
-		var stream quic.ReceiveStream
+		var stream *quic.ReceiveStream
 		stream, err = quicConn.AcceptUniStream(context.Background())
 		if err != nil {
 			return err
@@ -190,7 +190,7 @@ func (t *clientImpl) handleUniStream(quicConn quic.Connection) (err error) {
 	}
 }
 
-func (t *clientImpl) handleMessage(quicConn quic.Connection) (err error) {
+func (t *clientImpl) handleMessage(quicConn *quic.Conn) (err error) {
 	defer func() {
 		t.deferQuicConn(quicConn, err)
 	}()
@@ -245,14 +245,14 @@ func (t *clientImpl) handleMessage(quicConn quic.Connection) (err error) {
 	}
 }
 
-func (t *clientImpl) deferQuicConn(quicConn quic.Connection, err error) {
+func (t *clientImpl) deferQuicConn(quicConn *quic.Conn, err error) {
 	var netError net.Error
 	if err != nil && errors.As(err, &netError) {
 		t.forceClose(quicConn, err)
 	}
 }
 
-func (t *clientImpl) forceClose(quicConn quic.Connection, err error) {
+func (t *clientImpl) forceClose(quicConn *quic.Conn, err error) {
 	t.connMutex.Lock()
 	defer t.connMutex.Unlock()
 	if quicConn == nil {
