@@ -65,7 +65,7 @@
             <a
               class="link"
               target="_blank"
-              href="https://github.com/filebrowser/filebrowser/blob/master/docs/configuration.md#custom-branding"
+              href="https://filebrowser.org/configuration.html#command-runner"
               >{{ t("settings.documentation") }}</a
             >
           </i18n-t>
@@ -204,7 +204,7 @@
             <a
               class="link"
               target="_blank"
-              href="https://github.com/filebrowser/filebrowser/blob/master/docs/configuration.md#command-runner"
+              href="https://filebrowser.org/configuration.html#command-runner"
               >{{ t("settings.documentation") }}</a
             >
           </i18n-t>
@@ -401,7 +401,7 @@ onMounted(async () => {
 
     originalSettings.value = original;
     settings.value = newSettings;
-    shellValue.value = newSettings.shell.join("\n");
+    shellValue.value = newSettings.shell.join(" ");
   } catch (err) {
     if (err instanceof Error) {
       error.value = err;

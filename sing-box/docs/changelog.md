@@ -2,7 +2,7 @@
 icon: material/alert-decagram
 ---
 
-#### 1.12.0-beta.29
+#### 1.12.0-beta.30
 
 * Fixes and improvements
 

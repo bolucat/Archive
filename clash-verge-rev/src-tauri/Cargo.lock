@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "ab_glyph"
-version = "0.2.29"
+version = "0.2.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec3672c180e71eeaaac3a541fbbc5f5ad4def8b747c595ad30d674e43049f7b0"
+checksum = "1e0f4f6fbdc5ee39f2ede9f5f3ec79477271a6d6a2baff22310d51736bda6cea"
 dependencies = [
  "ab_glyph_rasterizer",
  "owned_ttf_parser",
@@ -1070,6 +1070,7 @@ dependencies = [
  "base64 0.22.1",
  "boa_engine",
  "chrono",
+ "dashmap 7.0.0-rc2",
  "deelevate",
  "delay_timer",
  "dirs 6.0.0",
@@ -1509,6 +1510,20 @@ dependencies = [
  "hashbrown 0.14.5",
  "lock_api",
  "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
+name = "dashmap"
+version = "7.0.0-rc2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4a1e35a65fe0538a60167f0ada6e195ad5d477f6ddae273943596d4a1a5730b"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "equivalent",
+ "hashbrown 0.15.4",
+ "lock_api",
  "parking_lot_core",
 ]
 
