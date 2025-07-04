@@ -9,10 +9,19 @@ option java_multiple_files = true;
 import "common/protoext/extensions.proto";
 import "transport/internet/tlsmirror/tlstrafficgen/config.proto";
 
+message TimeSpec {
+  uint64 base_nanoseconds = 1;
+  uint64 uniform_random_multiplier_nanoseconds = 2;
+}
+
+message TransportLayerPadding {
+  bool enabled = 1;
+}
+
 message Config {
   option (v2ray.core.common.protoext.message_opt).type = "transport";
   option (v2ray.core.common.protoext.message_opt).short_name = "tlsmirror";
-  option (v2ray.core.common.protoext.message_opt).allow_restricted_mode_load = true;
+  option (v2ray.core.common.protoext.message_opt).allow_restricted_mode_load = false;
 
   option (v2ray.core.common.protoext.message_opt).transport_original_name = "tlsmirror";
 
@@ -25,4 +34,10 @@ message Config {
   v2ray.core.transport.internet.tlsmirror.tlstrafficgen.Config embedded_traffic_generator = 5;
 
   bytes primary_key = 6;
+
+  repeated uint32 explicit_nonce_ciphersuites = 7;
+
+  TimeSpec defer_instance_derived_write_time = 8;
+
+  TransportLayerPadding transport_layer_padding = 9;
 }

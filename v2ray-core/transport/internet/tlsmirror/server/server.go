@@ -1,6 +1,8 @@
 package server
 
 import (
+	cryptoRand "crypto/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -22,6 +24,8 @@ type Server struct {
 	handler  internet.ConnHandler
 
 	ctx context.Context
+
+	explicitNonceCiphersuiteLookup *ciphersuiteLookuper
 }
 
 func (s *Server) process(conn net.Conn) {
@@ -75,19 +79,61 @@ func (s *Server) Addr() net.Addr {
 
 func (s *Server) accept(clientConn net.Conn, serverConn net.Conn) {
 	ctx, cancel := context.WithCancel(s.ctx)
-	conn := &connState{
-		ctx:        ctx,
-		done:       cancel,
-		localAddr:  clientConn.LocalAddr(),
-		remoteAddr: clientConn.RemoteAddr(),
-		primaryKey: s.config.PrimaryKey,
-		handler:    s.onIncomingReadyConnection,
-		readPipe:   make(chan []byte, 1),
+
+	firstWriteDelay := time.Duration(0)
+	if s.config.DeferInstanceDerivedWriteTime != nil {
+		firstWriteDelay = time.Duration(s.config.DeferInstanceDerivedWriteTime.BaseNanoseconds)
+		if s.config.DeferInstanceDerivedWriteTime.UniformRandomMultiplierNanoseconds > 0 {
+			uniformRandomAdd := big.NewInt(int64(s.config.DeferInstanceDerivedWriteTime.UniformRandomMultiplierNanoseconds))
+			uniformRandomAddBigInt, err := cryptoRand.Int(cryptoRand.Reader, uniformRandomAdd)
+			if err != nil {
+				newError("failed to generate random delay").Base(err).AtWarning().WriteToLog()
+				return
+			}
+			uniformRandomAddU64 := uint64(uniformRandomAddBigInt.Int64())
+			firstWriteDelay += time.Duration(uniformRandomAddU64)
+		}
 	}
 
-	conn.mirrorConn = mirrorbase.NewMirroredTLSConn(ctx, clientConn, serverConn, conn.onC2SMessage, nil, conn)
+	conn := &connState{
+		ctx:                   ctx,
+		done:                  cancel,
+		localAddr:             clientConn.LocalAddr(),
+		remoteAddr:            clientConn.RemoteAddr(),
+		primaryKey:            s.config.PrimaryKey,
+		handler:               s.onIncomingReadyConnection,
+		readPipe:              make(chan []byte, 1),
+		firstWrite:            true,
+		firstWriteDelay:       firstWriteDelay,
+		transportLayerPadding: s.config.TransportLayerPadding,
+	}
+
+	conn.mirrorConn = mirrorbase.NewMirroredTLSConn(ctx, clientConn, serverConn, conn.onC2SMessage, nil, conn,
+		s.explicitNonceCiphersuiteLookup.Lookup)
 }
 
 func (s *Server) onIncomingReadyConnection(conn internet.Connection) {
 	go s.handler(conn)
+}
+
+func NewServer(ctx context.Context, listener net.Listener, config *Config, handler internet.ConnHandler) *Server {
+	var explicitNonceCiphersuiteLookup *ciphersuiteLookuper
+	if len(config.ExplicitNonceCiphersuites) > 0 {
+		var err error
+		explicitNonceCiphersuiteLookup, err = newCipherSuiteLookuperFromUint32Array(config.ExplicitNonceCiphersuites)
+		if err != nil {
+			newError("failed to create explicit nonce ciphersuite lookuper").Base(err).AtWarning().WriteToLog()
+		}
+	} else {
+		explicitNonceCiphersuiteLookup = newEmptyCipherSuiteLookuper()
+		newError("no explicit nonce ciphersuites configured, all ciphersuites will be treated as non-explicit nonce").AtWarning().WriteToLog()
+	}
+
+	return &Server{
+		ctx:                            ctx,
+		listener:                       listener,
+		config:                         config,
+		handler:                        handler,
+		explicitNonceCiphersuiteLookup: explicitNonceCiphersuiteLookup,
+	}
 }

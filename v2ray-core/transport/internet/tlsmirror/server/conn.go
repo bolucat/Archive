@@ -31,6 +31,11 @@ type connState struct {
 	readBuffer *bytes.Buffer
 
 	protocolVersion [2]byte
+
+	firstWrite      bool
+	firstWriteDelay time.Duration
+
+	transportLayerPadding *TransportLayerPadding
 }
 
 func (s *connState) Read(b []byte) (n int, err error) {
@@ -46,6 +51,14 @@ func (s *connState) Read(b []byte) (n int, err error) {
 	case <-s.ctx.Done():
 		return 0, s.ctx.Err()
 	case data := <-s.readPipe:
+		if s.transportLayerPadding != nil && s.transportLayerPadding.Enabled {
+			var padding int
+			data, padding = Unpack(data)
+			_ = padding
+			if data == nil {
+				return 0, nil
+			}
+		}
 		s.readBuffer = bytes.NewBuffer(data)
 		n, err = s.readBuffer.Read(b)
 		if err != nil {
@@ -56,11 +69,25 @@ func (s *connState) Read(b []byte) (n int, err error) {
 }
 
 func (s *connState) Write(b []byte) (n int, err error) {
+	payloadSize := len(b)
+	if s.firstWrite && s.firstWriteDelay > 0 {
+		firstWriteDelayTimer := time.NewTimer(s.firstWriteDelay)
+		defer firstWriteDelayTimer.Stop()
+		select {
+		case <-s.ctx.Done():
+			return 0, s.ctx.Err()
+		case <-firstWriteDelayTimer.C:
+			s.firstWrite = false
+		}
+	}
+	if s.transportLayerPadding != nil && s.transportLayerPadding.Enabled {
+		b = Pack(bytes.Clone(b), 0)
+	}
 	err = s.WriteMessage(b)
 	if err != nil {
 		return 0, err
 	}
-	n = len(b)
+	n = payloadSize
 	return n, nil
 }
 
@@ -118,8 +145,13 @@ func (s *connState) onC2SMessage(message *tlsmirror.TLSRecord) (drop bool, ok er
 			s.protocolVersion = message.LegacyProtocolVersion
 		}
 
-		buffer := make([]byte, 0, len(message.Fragment)-s.decryptor.NonceSize())
-		buffer, err := s.decryptor.Open(buffer, message.Fragment)
+		explicitNonceReservedOverheadHeaderLength, err := s.mirrorConn.GetApplicationDataExplicitNonceReservedOverheadHeaderLength()
+		if err != nil {
+			return false, newError("failed to get explicit nonce reserved overhead header length").Base(err)
+		}
+
+		buffer := make([]byte, 0, len(message.Fragment)-s.decryptor.NonceSize()-explicitNonceReservedOverheadHeaderLength)
+		buffer, err = s.decryptor.Open(buffer, message.Fragment[explicitNonceReservedOverheadHeaderLength:])
 		if err != nil {
 			return false, nil
 		}
@@ -135,8 +167,13 @@ func (s *connState) onC2SMessage(message *tlsmirror.TLSRecord) (drop bool, ok er
 }
 
 func (s *connState) WriteMessage(message []byte) error {
-	buffer := make([]byte, 0, len(message)+s.decryptor.NonceSize())
-	buffer, err := s.encryptor.Seal(buffer, message)
+	explicitNonceReservedOverheadHeaderLength, err := s.mirrorConn.GetApplicationDataExplicitNonceReservedOverheadHeaderLength()
+	if err != nil {
+		return newError("failed to get explicit nonce reserved overhead header length").Base(err)
+	}
+
+	buffer := make([]byte, explicitNonceReservedOverheadHeaderLength, explicitNonceReservedOverheadHeaderLength+len(message)+s.decryptor.NonceSize())
+	buffer, err = s.encryptor.Seal(buffer, message)
 	if err != nil {
 		return newError("failed to encrypt message").Base(err)
 	}

@@ -1,7 +1,6 @@
 package tlstrafficgen
 
 import (
-	"bufio"
 	"context"
 	cryptoRand "crypto/rand"
 	"io"
@@ -10,8 +9,6 @@ import (
 	"net/url"
 	"time"
 
-	"golang.org/x/net/http2"
-
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/environment"
 	"github.com/v2fly/v2ray-core/v5/common/environment/envctx"
@@ -19,6 +16,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/serial"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/security"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tlsmirror"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/tlsmirror/httponconnection"
 )
 
 //go:generate go run github.com/v2fly/v2ray-core/v5/common/errors/errorgen
@@ -46,6 +44,23 @@ type trafficGeneratorManagedConnectionController struct {
 
 	recallCtx  context.Context
 	recallDone context.CancelFunc
+
+	invalidatedCtx  context.Context
+	invalidatedDone context.CancelFunc
+}
+
+func newTrafficGeneratorManagedConnectionController(parent context.Context) *trafficGeneratorManagedConnectionController {
+	readyCtx, readyDone := context.WithCancel(parent)
+	recallCtx, recallDone := context.WithCancel(parent)
+	invalidatedCtx, invalidatedDone := context.WithCancel(parent)
+	return &trafficGeneratorManagedConnectionController{
+		readyCtx:        readyCtx,
+		readyDone:       readyDone,
+		recallCtx:       recallCtx,
+		recallDone:      recallDone,
+		invalidatedCtx:  invalidatedCtx,
+		invalidatedDone: invalidatedDone,
+	}
 }
 
 func (t *trafficGeneratorManagedConnectionController) WaitConnectionReady() context.Context {
@@ -55,6 +70,10 @@ func (t *trafficGeneratorManagedConnectionController) WaitConnectionReady() cont
 func (t *trafficGeneratorManagedConnectionController) RecallTrafficGenerator() error {
 	t.recallDone()
 	return nil
+}
+
+func (t *trafficGeneratorManagedConnectionController) IsConnectionInvalidated() bool {
+	return t.invalidatedCtx.Err() != nil
 }
 
 // Copied from https://brandur.org/fragments/crypto-rand-float64, Thanks
@@ -74,19 +93,16 @@ func (generator *TrafficGenerator) GenerateNextTraffic(ctx context.Context) erro
 	transportEnvironment := envctx.EnvironmentFromContext(generator.ctx).(environment.TransportEnvironment)
 	dialer := transportEnvironment.OutboundDialer()
 
-	carrierConnectionReadyCtx, carrierConnectionReadyDone := context.WithCancel(generator.ctx)
-	carrierConnectionRecallCtx, carrierConnectionRecallDone := context.WithCancel(generator.ctx)
-
-	trafficController := &trafficGeneratorManagedConnectionController{
-		readyCtx:   carrierConnectionReadyCtx,
-		readyDone:  carrierConnectionReadyDone,
-		recallCtx:  carrierConnectionRecallCtx,
-		recallDone: carrierConnectionRecallDone,
-	}
+	trafficController := newTrafficGeneratorManagedConnectionController(generator.ctx)
 
 	var trafficControllerIfce tlsmirror.TrafficGeneratorManagedConnection = trafficController
 	managedConnectionContextValue := context.WithValue(generator.ctx,
 		tlsmirror.TrafficGeneratorManagedConnectionContextKey, trafficControllerIfce) // nolint:staticcheck
+
+	defer func() {
+		trafficController.invalidatedDone()
+		trafficController.readyDone()
+	}()
 
 	conn, err := dialer(managedConnectionContextValue, generator.destination, generator.tag)
 	if err != nil {
@@ -106,7 +122,7 @@ func (generator *TrafficGenerator) GenerateNextTraffic(ctx context.Context) erro
 	}
 	steps := generator.config.Steps
 	currentStep := 0
-	httpRoundTripper, err := newSingleConnectionHTTPTransport(tlsConn, alpn)
+	httpRoundTripper, err := httponconnection.NewSingleConnectionHTTPTransport(tlsConn, alpn)
 	if err != nil {
 		return newError("failed to create HTTP transport").Base(err).AtWarning()
 	}
@@ -142,22 +158,43 @@ func (generator *TrafficGenerator) GenerateNextTraffic(ctx context.Context) erro
 
 		startTime := time.Now()
 
-		resp, err := httpRoundTripper.RoundTrip(httpReq)
+		resp, err := httpRoundTripper.RoundTrip(httpReq) //nolint:bodyclose
 		if err != nil {
 			return newError("failed to send HTTP request").Base(err).AtWarning()
 		}
-		_, err = io.Copy(io.Discard, resp.Body)
-		if err != nil {
-			return newError("failed to read HTTP response body").Base(err).AtWarning()
+
+		finishRequest := func() error {
+			_, err = io.Copy(io.Discard, resp.Body)
+			if err != nil {
+				return newError("failed to read HTTP response body").Base(err).AtWarning()
+			}
+			err = resp.Body.Close()
+			if err != nil {
+				return newError("failed to close HTTP response body").Base(err).AtWarning()
+			}
+			return nil
 		}
-		err = resp.Body.Close()
-		if err != nil {
-			return newError("failed to close HTTP response body").Base(err).AtWarning()
+
+		if step.H2DoNotWaitForDownloadFinish && alpn == "h2" {
+			go func() {
+				if err := finishRequest(); err != nil {
+					newError("failed to finish request in background").Base(err).AtWarning().WriteToLog()
+				}
+			}()
+		} else {
+			if err := finishRequest(); err != nil {
+				return err
+			}
 		}
+
 		endTime := time.Now()
 
 		eclipsedTime := endTime.Sub(startTime)
-		secondToWait := float64(step.WaitAtMost-step.WaitAtLeast)*randFloat64() + float64(step.WaitAtLeast)
+		if step.WaitTime == nil {
+			step.WaitTime = &TimeSpec{}
+			newError("no wait time specified for step ", currentStep, ", using default 0 seconds").AtWarning().WriteToLog()
+		}
+		secondToWait := (float64(step.WaitTime.UniformRandomMultiplierNanoseconds)*randFloat64() + float64(step.WaitTime.BaseNanoseconds)) / float64(time.Second)
 		if eclipsedTime < time.Duration(secondToWait*float64(time.Second)) {
 			waitTime := time.Duration(secondToWait*float64(time.Second)) - eclipsedTime
 			newError("waiting for ", waitTime, " after step ", currentStep).AtDebug().WriteToLog()
@@ -173,12 +210,12 @@ func (generator *TrafficGenerator) GenerateNextTraffic(ctx context.Context) erro
 		}
 
 		if step.ConnectionReady {
-			carrierConnectionReadyDone()
+			trafficController.readyDone()
 			newError("connection ready for payload traffic").AtInfo().WriteToLog()
 		}
 
 		if step.ConnectionRecallExit {
-			if carrierConnectionRecallCtx.Err() != nil {
+			if trafficController.recallCtx.Err() != nil {
 				return tlsConn.Close()
 			}
 		}
@@ -229,71 +266,4 @@ func (generator *TrafficGenerator) tlsHandshake(conn net.Conn) (security.Conn, e
 	}
 
 	return securityEngineTyped.Client(conn)
-}
-
-type httpRequestTransport interface {
-	http.RoundTripper
-}
-
-func newHTTPRequestTransportH1(conn net.Conn) httpRequestTransport {
-	return &httpRequestTransportH1{
-		conn:      conn,
-		bufReader: bufio.NewReader(conn),
-	}
-}
-
-type httpRequestTransportH1 struct {
-	conn      net.Conn
-	bufReader *bufio.Reader
-}
-
-func (h *httpRequestTransportH1) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Proto = "HTTP/1.1"
-	req.ProtoMajor = 1
-	req.ProtoMinor = 1
-
-	err := req.Write(h.conn)
-	if err != nil {
-		return nil, err
-	}
-	return http.ReadResponse(h.bufReader, req)
-}
-
-func newHTTPRequestTransportH2(conn net.Conn) httpRequestTransport {
-	transport := &http2.Transport{}
-	clientConn, err := transport.NewClientConn(conn)
-	if err != nil {
-		return nil
-	}
-	return &httpRequestTransportH2{
-		transport:        transport,
-		clientConnection: clientConn,
-	}
-}
-
-type httpRequestTransportH2 struct {
-	transport        *http2.Transport
-	clientConnection *http2.ClientConn
-}
-
-func (h *httpRequestTransportH2) RoundTrip(request *http.Request) (*http.Response, error) {
-	request.ProtoMajor = 2
-	request.ProtoMinor = 0
-
-	response, err := h.clientConnection.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
-}
-
-func newSingleConnectionHTTPTransport(conn net.Conn, alpn string) (httpRequestTransport, error) {
-	switch alpn {
-	case "h2":
-		return newHTTPRequestTransportH2(conn), nil
-	case "http/1.1", "":
-		return newHTTPRequestTransportH1(conn), nil
-	default:
-		return nil, newError("unknown alpn: " + alpn).AtWarning()
-	}
 }

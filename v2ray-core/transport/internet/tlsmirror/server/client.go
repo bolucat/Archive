@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	cryptoRand "crypto/rand"
+	"math/big"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -50,6 +53,8 @@ type persistentMirrorTLSDialer struct {
 	trafficGenerator *tlstrafficgen.TrafficGenerator
 
 	obm outbound.Manager
+
+	explicitNonceCiphersuiteLookup *ciphersuiteLookuper
 }
 
 func (d *persistentMirrorTLSDialer) init(ctx context.Context, config *Config) error {
@@ -69,6 +74,17 @@ func (d *persistentMirrorTLSDialer) init(ctx context.Context, config *Config) er
 	d.incomingConnections = make(chan net.Conn, 4)
 	d.listener = NewOutboundListener()
 	d.outbound = NewOutbound(d.config.CarrierConnectionTag, d.listener)
+
+	if len(d.config.ExplicitNonceCiphersuites) > 0 {
+		var err error
+		d.explicitNonceCiphersuiteLookup, err = newCipherSuiteLookuperFromUint32Array(d.config.ExplicitNonceCiphersuites)
+		if err != nil {
+			return newError("failed to create explicit nonce ciphersuite lookuper").Base(err)
+		}
+	} else {
+		d.explicitNonceCiphersuiteLookup = newEmptyCipherSuiteLookuper()
+		newError("no explicit nonce ciphersuites configured, all ciphersuites will be treated as non-explicit nonce").AtWarning().WriteToLog()
+	}
 
 	go func() {
 		err := d.outbound.Start()
@@ -138,18 +154,37 @@ func (d *persistentMirrorTLSDialer) handleIncomingCarrierConnection(ctx context.
 		return
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	cconnState := &clientConnState{
-		ctx:        ctx,
-		done:       cancel,
-		localAddr:  conn.LocalAddr(),
-		remoteAddr: conn.RemoteAddr(),
-		handler:    d.handleIncomingReadyConnection,
-		primaryKey: d.config.PrimaryKey,
-		readPipe:   make(chan []byte, 1),
+	var firstWriteDelay time.Duration
+	if d.config.DeferInstanceDerivedWriteTime != nil {
+		firstWriteDelay = time.Duration(d.config.DeferInstanceDerivedWriteTime.BaseNanoseconds)
+		if d.config.DeferInstanceDerivedWriteTime.UniformRandomMultiplierNanoseconds > 0 {
+			uniformRandomAdd := big.NewInt(int64(d.config.DeferInstanceDerivedWriteTime.UniformRandomMultiplierNanoseconds))
+			uniformRandomAddBigInt, err := cryptoRand.Int(cryptoRand.Reader, uniformRandomAdd)
+			if err != nil {
+				newError("failed to generate random delay").Base(err).AtWarning().WriteToLog()
+				return
+			}
+			uniformRandomAddU64 := uint64(uniformRandomAddBigInt.Int64())
+			firstWriteDelay += time.Duration(uniformRandomAddU64)
+		}
 	}
 
-	cconnState.mirrorConn = mirrorbase.NewMirroredTLSConn(ctx, conn, forwardConn, cconnState.onC2SMessage, cconnState.onS2CMessage, conn)
+	ctx, cancel := context.WithCancel(ctx)
+	cconnState := &clientConnState{
+		ctx:                   ctx,
+		done:                  cancel,
+		localAddr:             conn.LocalAddr(),
+		remoteAddr:            conn.RemoteAddr(),
+		handler:               d.handleIncomingReadyConnection,
+		primaryKey:            d.config.PrimaryKey,
+		readPipe:              make(chan []byte, 1),
+		firstWrite:            true,
+		firstWriteDelay:       firstWriteDelay,
+		transportLayerPadding: d.config.TransportLayerPadding,
+	}
+
+	cconnState.mirrorConn = mirrorbase.NewMirroredTLSConn(ctx, conn, forwardConn, cconnState.onC2SMessage, cconnState.onS2CMessage, conn,
+		d.explicitNonceCiphersuiteLookup.Lookup)
 }
 
 type connectionContextGetter interface {
@@ -168,6 +203,14 @@ func (d *persistentMirrorTLSDialer) handleIncomingReadyConnection(conn internet.
 					case <-controller.WaitConnectionReady().Done():
 						waitedForReady = true
 						// TODO: connection might become invalid and never ready, handle this case
+						if controller.IsConnectionInvalidated() {
+							newError("connection is invalidated, skipping").AtWarning().WriteToLog()
+							return
+						}
+					case <-ctx.Done():
+						return
+					case <-d.ctx.Done():
+						return
 					}
 				}
 			}
