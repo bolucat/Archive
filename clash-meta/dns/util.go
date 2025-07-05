@@ -231,8 +231,7 @@ func batchExchange(ctx context.Context, clients []dnsClient, m *D.Msg) (msg *D.M
 	fast, ctx := picker.WithTimeout[*D.Msg](ctx, resolver.DefaultDNSTimeout)
 	defer fast.Close()
 	domain := msgToDomain(m)
-	qType, qTypeStr := msgToQtype(m)
-	var noIpMsg *D.Msg
+	_, qTypeStr := msgToQtype(m)
 	for _, client := range clients {
 		if _, isRCodeClient := client.(rcodeClient); isRCodeClient {
 			msg, err = client.ExchangeContext(ctx, m)
@@ -251,27 +250,12 @@ func batchExchange(ctx context.Context, clients []dnsClient, m *D.Msg) (msg *D.M
 			}
 			ips := msgToIP(m)
 			log.Debugln("[DNS] %s --> %s %s from %s", domain, ips, qTypeStr, client.Address())
-			switch qType {
-			case D.TypeAAAA:
-				if len(ips) == 0 {
-					noIpMsg = m
-					return nil, resolver.ErrIPNotFound
-				}
-			case D.TypeA:
-				if len(ips) == 0 {
-					noIpMsg = m
-					return nil, resolver.ErrIPNotFound
-				}
-			}
 			return m, nil
 		})
 	}
 
 	msg = fast.Wait()
 	if msg == nil {
-		if noIpMsg != nil {
-			return noIpMsg, false, nil
-		}
 		err = errors.New("all DNS requests failed")
 		if fErr := fast.Error(); fErr != nil {
 			err = fmt.Errorf("%w, first error: %w", err, fErr)
