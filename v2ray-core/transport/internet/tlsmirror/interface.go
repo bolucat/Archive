@@ -48,3 +48,24 @@ type TrafficGeneratorManagedConnection interface {
 	WaitConnectionReady() context.Context
 	IsConnectionInvalidated() bool
 }
+
+type ConnectionEnrollmentConfirmation interface {
+	VerifyConnectionEnrollment(req *EnrollmentConfirmationReq) (*EnrollmentConfirmationResp, error)
+}
+
+const EnrollmentVerificationControlConnectionPostfix = ".tlsmirror-controlconnection.v2fly.arpa"
+
+type InsertableTLSConnForEnrollment interface {
+	InsertableTLSConnEnrollmentEventReceiver
+}
+
+type InsertableTLSConnEnrollmentEventReceiver interface {
+	ConnectionEnrollmentConfirmation
+}
+
+type RemoveConnectionFunc func() error
+
+type ConnectionEnrollmentConfirmationProcessor interface {
+	ConnectionEnrollmentConfirmation
+	AddConnection(ctx context.Context, clientRandom, ServerRandom []byte, conn InsertableTLSConnForEnrollment) (RemoveConnectionFunc, error)
+}
