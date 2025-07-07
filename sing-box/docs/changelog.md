@@ -2,7 +2,19 @@
 icon: material/alert-decagram
 ---
 
-#### 1.12.0-beta.31
+#### 1.12.0-beta.33
+
+* Add firewalld compatibility for auto redirect
+* Fixes and improvements
+
+### 1.11.15
+
+* Fixes and improvements
+
+_We are temporarily unable to update sing-box apps on the App Store because the reviewer mistakenly found that we
+violated the rules (TestFlight users are not affected)._
+
+#### 1.12.0-beta.32
 
 * Improve tun performance on Apple platforms **1**
 * Fixes and improvements

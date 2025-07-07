@@ -6,9 +6,5 @@
 	<string>upload</string>
 	<key>method</key>
 	<string>app-store</string>
-	<key>manageAppVersionAndBuildNumber</key>
-	<true/>
-	<key>uploadSymbols</key>
-	<true/>
 </dict>
 </plist>
