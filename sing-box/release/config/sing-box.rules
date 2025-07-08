@@ -1,9 +1,7 @@
 polkit.addRule(function(action, subject) {
     if ((action.id == "org.freedesktop.resolve1.set-domains" ||
          action.id == "org.freedesktop.resolve1.set-default-route" ||
-         action.id == "org.freedesktop.resolve1.set-dns-servers" ||
-         action.id == "org.fedoraproject.FirewallD1.all" ||
-         action.id == "org.fedoraproject.FirewallD1.config") &&
+         action.id == "org.freedesktop.resolve1.set-dns-servers") &&
         subject.user == "sing-box") {
         return polkit.Result.YES;
     }

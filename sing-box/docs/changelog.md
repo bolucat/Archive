@@ -4,7 +4,6 @@ icon: material/alert-decagram
 
 #### 1.12.0-beta.33
 
-* Add firewalld compatibility for auto redirect
 * Fixes and improvements
 
 ### 1.11.15
