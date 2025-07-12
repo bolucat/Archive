@@ -3,11 +3,11 @@ include $(TOPDIR)/rules.mk
 PKG_NAME:=qca-ssdk
 PKG_RELEASE:=1
 
-PKG_SOURCE_URL:=https://git.codelinaro.org/clo/qsdk/oss/lklm/qca-ssdk.git
+PKG_SOURCE_URL:=https://github.com/openwrt/qca-ssdk.git
 PKG_SOURCE_PROTO:=git
-PKG_SOURCE_DATE:=2024-06-13
-PKG_SOURCE_VERSION:=c451136ba69d51d60f770365b6d6d60ff2801998
-PKG_MIRROR_HASH:=dad29c6fa3887782e57cbe169f3e2ee739a4c62dc09ec88eeab1109214cd4820
+PKG_SOURCE_DATE:=2025-05-30
+PKG_SOURCE_VERSION:=446db12b1fd3bca2e61e45cb01c4ad52cfddd95b
+PKG_MIRROR_HASH:=c2e6df159f02da78c76a2bb8b23ee35a7291d20a4d9ba22533926157966a8278
 
 PKG_FLAGS:=nonshared
 PKG_BUILD_PARALLEL:=1
@@ -42,7 +42,7 @@ EXTRA_CFLAGS:= \
 
 MAKE_FLAGS+= \
 	TARGET_NAME=$(CONFIG_TARGET_NAME) \
-	TOOL_PATH=$(TOOLCHAIN_DIR)/bin \
+	TOOL_PATH=$(firstword $(TOOLCHAIN_BIN_DIRS)) \
 	SYS_PATH=$(LINUX_DIR) \
 	TOOLPREFIX=$(TARGET_CROSS) \
 	KVER=$(LINUX_VERSION) \
@@ -54,7 +54,8 @@ MAKE_FLAGS+= \
 	SHELL="$(BASH)" \
 	PTP_FEATURE=disable SWCONFIG_FEATURE=disable \
 	ISISC_ENABLE=disable MHT_ENABLE=disable \
-	IN_QCA803X_PHY=FALSE IN_MP_PHY=FALSE \
+	IN_QCA803X_PHY=FALSE IN_QCA808X_PHY=FALSE \
+	IN_MALIBU_PHY=FALSE IN_MP_PHY=FALSE \
 	$(LNX_CONFIG_OPTS)
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq807x")
@@ -62,7 +63,8 @@ ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq807x")
 endif
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq60xx")
-    MAKE_FLAGS+= CHIP_TYPE=CPPE
+    MAKE_FLAGS+= CHIP_TYPE=CPPE \
+                 IN_AQUANTIA_PHY=TRUE
 endif
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq50xx")
@@ -100,6 +102,7 @@ define Build/InstallDev
 	$(CP) -rf $(PKG_BUILD_DIR)/include/common/*.h $(1)/usr/include/qca-ssdk
 	$(CP) -rf $(PKG_BUILD_DIR)/include/sal/os/linux/*.h $(1)/usr/include/qca-ssdk
 	$(CP) -rf $(PKG_BUILD_DIR)/include/sal/os/*.h $(1)/usr/include/qca-ssdk
+
 endef
 
 $(eval $(call KernelPackage,qca-ssdk))
