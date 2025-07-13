@@ -112,7 +112,7 @@ object BaseService {
         private var looper: Job? = null
 
         override fun getState(): Int = (data?.state ?: State.Idle).ordinal
-        override fun getProfileName(): String = data?.proxy?.profile?.name ?: "Idle"
+        override fun getProfileName(): String = data?.proxy?.profile?.formattedName ?: "Idle"
 
         override fun registerCallback(cb: IShadowsocksServiceCallback) {
             callbacks.register(cb)

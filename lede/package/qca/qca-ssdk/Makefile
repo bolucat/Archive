@@ -42,7 +42,7 @@ EXTRA_CFLAGS:= \
 
 MAKE_FLAGS+= \
 	TARGET_NAME=$(CONFIG_TARGET_NAME) \
-	TOOL_PATH=$(firstword $(TOOLCHAIN_BIN_DIRS)) \
+	TOOL_PATH=$(TOOLCHAIN_DIR)/bin \
 	SYS_PATH=$(LINUX_DIR) \
 	TOOLPREFIX=$(TARGET_CROSS) \
 	KVER=$(LINUX_VERSION) \
@@ -54,8 +54,7 @@ MAKE_FLAGS+= \
 	SHELL="$(BASH)" \
 	PTP_FEATURE=disable SWCONFIG_FEATURE=disable \
 	ISISC_ENABLE=disable MHT_ENABLE=disable \
-	IN_QCA803X_PHY=FALSE IN_QCA808X_PHY=FALSE \
-	IN_MALIBU_PHY=FALSE IN_MP_PHY=FALSE \
+	IN_QCA803X_PHY=FALSE IN_MP_PHY=FALSE \
 	$(LNX_CONFIG_OPTS)
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq807x")
@@ -63,8 +62,7 @@ ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq807x")
 endif
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq60xx")
-    MAKE_FLAGS+= CHIP_TYPE=CPPE \
-                 IN_AQUANTIA_PHY=TRUE
+    MAKE_FLAGS+= CHIP_TYPE=CPPE
 endif
 
 ifeq ($(CONFIG_TARGET_SUBTARGET), "ipq50xx")
@@ -102,7 +100,6 @@ define Build/InstallDev
 	$(CP) -rf $(PKG_BUILD_DIR)/include/common/*.h $(1)/usr/include/qca-ssdk
 	$(CP) -rf $(PKG_BUILD_DIR)/include/sal/os/linux/*.h $(1)/usr/include/qca-ssdk
 	$(CP) -rf $(PKG_BUILD_DIR)/include/sal/os/*.h $(1)/usr/include/qca-ssdk
-
 endef
 
 $(eval $(call KernelPackage,qca-ssdk))

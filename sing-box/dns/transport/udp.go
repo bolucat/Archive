@@ -60,7 +60,7 @@ func NewUDPRaw(logger logger.ContextLogger, adapter dns.TransportAdapter, dialer
 		logger:           logger,
 		dialer:           dialer,
 		serverAddr:       serverAddr,
-		udpSize:          512,
+		udpSize:          2048,
 		tcpTransport: &TCPTransport{
 			dialer:     dialer,
 			serverAddr: serverAddr,
