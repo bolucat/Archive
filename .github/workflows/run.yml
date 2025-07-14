@@ -113,6 +113,7 @@ jobs:
           ${GCRS} https://github.com/Loyalsoldier/geoip geoip
           ${GCRS} https://github.com/17mon/china_ip_list china-ip
           ${GCRS} https://github.com/ip-scanner/cloudflare ip-scanner
+          ${GCRS} https://github.com/yosebyte/nodepass nodepass
           ## Media Tools
           ${GCRS} https://github.com/nilaoda/BBDown bbdown
           ${GCRS} https://github.com/ytdl-org/youtube-dl youtube-dl
@@ -374,6 +375,7 @@ jobs:
           geoip
           china-ip
           ip-scanner
+          nodepass
           udp2raw
           udp2raw-multi
           tuic
