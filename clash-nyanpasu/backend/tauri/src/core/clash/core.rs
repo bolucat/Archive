@@ -5,7 +5,8 @@ use crate::{
     log_err,
     utils::dirs,
 };
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use camino::Utf8PathBuf;
 #[cfg(target_os = "macos")]
 use nyanpasu_ipc::api::network::set_dns::NetworkSetDnsReq;
 use nyanpasu_ipc::{
@@ -34,9 +35,6 @@ use std::{
 };
 use tokio::time::sleep;
 use tracing_attributes::instrument;
-
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -174,19 +172,19 @@ impl Instance {
                                         CommandEvent::Stdout(line) => {
                                             if is_premium {
                                                 let log = api::parse_log(line.clone());
-                                                log::info!(target: "app", "[{}]: {}", core_type, log);
+                                                log::info!(target: "app", "[{core_type}]: {log}");
                                             } else {
-                                                log::info!(target: "app", "[{}]: {}", core_type, line);
+                                                log::info!(target: "app", "[{core_type}]: {line}");
                                             }
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Stderr(line) => {
-                                            log::error!(target: "app", "[{}]: {}", core_type, line);
+                                            log::error!(target: "app", "[{core_type}]: {line}");
                                             err_buf.push(line.clone());
                                             Logger::global().set_log(line);
                                         }
                                         CommandEvent::Error(e) => {
-                                            log::error!(target: "app", "[{}]: {}", core_type, e);
+                                            log::error!(target: "app", "[{core_type}]: {e}");
                                             let err = anyhow::anyhow!(format!(
                                                 "{}\n{}",
                                                 e,
@@ -201,8 +199,7 @@ impl Instance {
                                         CommandEvent::Terminated(status) => {
                                             log::error!(
                                                 target: "app",
-                                                "core terminated with status: {:?}",
-                                                status
+                                                "core terminated with status: {status:?}"
                                             );
                                             stated_changed_at
                                                 .store(get_current_ts(), Ordering::Relaxed);
@@ -420,33 +417,27 @@ impl CoreManager {
     }
 
     /// 检查配置是否正确
-    pub fn check_config(&self) -> Result<()> {
+    pub async fn check_config(&self) -> Result<()> {
+        use nyanpasu_utils::core::instance::CoreInstance;
         let config_path = Config::generate_file(ConfigType::Check)?;
-        let config_path = dirs::path_to_str(&config_path)?;
+        let config_path = Utf8PathBuf::from_path_buf(config_path)
+            .map_err(|_| anyhow::anyhow!("failed to convert config path to utf8 path"))?;
 
         let clash_core = { Config::verge().latest().clash_core };
-        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium).to_string();
+        let clash_core = clash_core.unwrap_or(ClashCore::ClashPremium);
+        let clash_core: nyanpasu_utils::core::CoreType = (&clash_core).into();
 
         let app_dir = dirs::app_data_dir()?;
-        let app_dir = dirs::path_to_str(&app_dir)?;
+        let app_dir = Utf8PathBuf::from_path_buf(app_dir)
+            .map_err(|_| anyhow::anyhow!("failed to convert app dir to utf8 path"))?;
+        let binary_path = find_binary_path(&clash_core)?;
+        let binary_path = Utf8PathBuf::from_path_buf(binary_path)
+            .map_err(|_| anyhow::anyhow!("failed to convert binary path to utf8 path"))?;
         log::debug!(target: "app", "check config in `{clash_core}`");
-        let mut builder = std::process::Command::new(dirs::get_data_or_sidecar_path(&clash_core)?);
-        builder.args(["-t", "-d", app_dir, "-f", config_path]);
-        #[cfg(windows)]
-        let builder = builder.creation_flags(0x08000000); // CREATE_NO_WINDOW
-
-        let output = builder.output()?;
-
-        if !output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let error = api::parse_check_output(stdout.to_string());
-            let error = match !error.is_empty() {
-                true => error,
-                false => stdout.to_string(),
-            };
-            Logger::global().set_log(stdout.to_string());
-            bail!("{error}");
-        }
+        CoreInstance::check_config_(&clash_core, &config_path, &binary_path, &app_dir)
+            .await
+            .context("failed to check config")
+            .inspect_err(|e| log::error!(target: "app", "failed to check config: {e:?}"))?;
 
         Ok(())
     }
@@ -458,11 +449,11 @@ impl CoreManager {
                 let instance = self.instance.lock();
                 instance.as_ref().cloned()
             };
-            if let Some(instance) = instance.as_ref() {
-                if matches!(instance.state().await.as_ref(), CoreState::Running) {
-                    log::debug!(target: "app", "core is already running, stop it first...");
-                    instance.stop().await?;
-                }
+            if let Some(instance) = instance.as_ref()
+                && matches!(instance.state().await.as_ref(), CoreState::Running)
+            {
+                log::debug!(target: "app", "core is already running, stop it first...");
+                instance.stop().await?;
             }
         }
 
@@ -497,11 +488,11 @@ impl CoreManager {
                 let mut this = self.instance.lock();
                 this.take()
             };
-            if let Some(instance) = instance {
-                if matches!(instance.state().await.as_ref(), CoreState::Running) {
-                    log::debug!(target: "app", "core is running, stop it first...");
-                    instance.stop().await?;
-                }
+            if let Some(instance) = instance
+                && matches!(instance.state().await.as_ref(), CoreState::Running)
+            {
+                log::debug!(target: "app", "core is running, stop it first...");
+                instance.stop().await?;
             }
         }
 
@@ -548,7 +539,7 @@ impl CoreManager {
         // 更新配置
         Config::generate().await?;
 
-        self.check_config()?;
+        self.check_config().await?;
 
         // 清掉旧日志
         Logger::global().clear_log();
@@ -580,7 +571,7 @@ impl CoreManager {
         Config::generate().await?;
 
         // 检查配置是否正常
-        self.check_config()?;
+        self.check_config().await?;
 
         // 更新运行时配置
         let path = Config::generate_file(ConfigType::Run)?;
