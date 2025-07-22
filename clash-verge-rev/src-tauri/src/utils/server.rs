@@ -22,18 +22,8 @@ pub async fn check_singleton() -> Result<()> {
     let port = IVerge::get_singleton_port();
     if !local_port_available(port) {
         let argvs: Vec<String> = std::env::args().collect();
-        if argvs.len() > 1 {
-            #[cfg(not(target_os = "macos"))]
-            {
-                let param = argvs[1].as_str();
-                if param.starts_with("clash:") {
-                    let _ = reqwest::get(format!(
-                        "http://127.0.0.1:{port}/commands/scheme?param={param}"
-                    ))
-                    .await;
-                }
-            }
-        } else {
+        if argvs.len() <= 1 {
+            // 只有当没有参数时才显示窗口
             let _ = reqwest::get(format!("http://127.0.0.1:{port}/commands/visible")).await;
         }
         log::error!("failed to setup singleton listen server");

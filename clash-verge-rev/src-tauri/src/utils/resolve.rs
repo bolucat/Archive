@@ -139,9 +139,6 @@ pub async fn resolve_setup_async(app_handle: &AppHandle) {
             version.clone()
         });
     }
-
-    logging_error!(Type::Setup, true, init::init_scheme());
-
     logging_error!(Type::Setup, true, init::startup_script().await);
 
     if let Err(err) = resolve_random_port_config().await {

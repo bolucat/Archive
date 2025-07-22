@@ -182,7 +182,7 @@ func unzip(data []byte, dest string) error {
 		if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
 			return err
 		}
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode().Perm())
 		if err != nil {
 			return err
 		}
@@ -209,9 +209,6 @@ func untgz(data []byte, dest string) error {
 
 	tr := tar.NewReader(gzr)
 
-	_ = gzr.Reset(bytes.NewReader(data))
-	tr = tar.NewReader(gzr)
-
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -236,7 +233,7 @@ func untgz(data []byte, dest string) error {
 			if err = os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
 				return err
 			}
-			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode).Perm())
 			if err != nil {
 				return err
 			}

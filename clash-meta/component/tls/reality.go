@@ -86,6 +86,9 @@ func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHello
 		}
 		ecdheKey := keyShareKeys.Ecdhe
 		if ecdheKey == nil {
+			ecdheKey = keyShareKeys.MlkemEcdhe
+		}
+		if ecdheKey == nil {
 			// WTF???
 			if retry > 2 {
 				return nil, errors.New("nil ecdheKey")
@@ -167,6 +170,7 @@ type realityVerifier struct {
 //var pOffset = utils.MustOK(reflect.TypeOf((*utls.Conn)(nil)).Elem().FieldByName("peerCertificates")).Offset
 
 func (c *realityVerifier) VerifyPeerCertificate(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	//log.Debugln("REALITY localAddr: %v\t is using X25519MLKEM768 for TLS' communication: %v", c.RemoteAddr(), c.HandshakeState.ServerHello.SelectedGroup == utls.X25519MLKEM768)
 	//p, _ := reflect.TypeOf(c.Conn).Elem().FieldByName("peerCertificates")
 	//certs := *(*[]*x509.Certificate)(unsafe.Add(unsafe.Pointer(c.Conn), pOffset))
 	certs := c.Conn.PeerCertificates()

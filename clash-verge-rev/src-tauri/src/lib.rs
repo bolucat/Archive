@@ -147,8 +147,6 @@ pub fn run() {
                     .app_name(app.config().identifier.clone());
             }
             let _ = app.handle().plugin(auto_start_plugin_builder.build());
-
-            #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 logging!(info, Type::Setup, true, "注册深层链接...");
