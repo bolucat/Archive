@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,73 +16,90 @@ import (
 
 	mihomoHttp "github.com/metacubex/mihomo/component/http"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/log"
-
-	"github.com/klauspost/cpuid/v2"
 )
 
-// modify from https://github.com/AdguardTeam/AdGuardHome/blob/595484e0b3fb4c457f9bb727a6b94faa78a66c5f/internal/updater/updater.go
-// Updater is the mihomo updater.
-var (
-	goarm           string
-	gomips          string
-	amd64Compatible string
+const (
+	baseReleaseURL    = "https://github.com/MetaCubeX/mihomo/releases/latest/download/"
+	versionReleaseURL = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt"
 
-	workDir string
+	baseAlphaURL    = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/"
+	versionAlphaURL = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt"
 
-	// mu protects all fields below.
-	mu sync.Mutex
-
-	currentExeName string // 当前可执行文件
-	updateDir      string // 更新目录
-	packageName    string // 更新压缩文件
-	backupDir      string // 备份目录
-	backupExeName  string // 备份文件名
-	updateExeName  string // 更新后的可执行文件
-
-	baseURL       string = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/mihomo"
-	versionURL    string = "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt"
-	packageURL    string
-	latestVersion string
+	// MaxPackageFileSize is a maximum package file length in bytes. The largest
+	// package whose size is limited by this constant currently has the size of
+	// approximately 32 MiB.
+	MaxPackageFileSize = 32 * 1024 * 1024
 )
+
+var mihomoBaseName string
 
 func init() {
-	if runtime.GOARCH == "amd64" && cpuid.CPU.X64Level() < 3 {
-		amd64Compatible = "-compatible"
+	switch runtime.GOARCH {
+	case "arm":
+		// mihomo-linux-armv5
+		mihomoBaseName = fmt.Sprintf("mihomo-%s-%sv%s", runtime.GOOS, runtime.GOARCH, features.GOARM)
+	case "arm64":
+		if runtime.GOOS == "android" {
+			// mihomo-android-arm64-v8
+			mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-v8", runtime.GOOS, runtime.GOARCH)
+		} else {
+			// mihomo-linux-arm64
+			mihomoBaseName = fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
+		}
+	case "mips", "mipsle":
+		// mihomo-linux-mips-hardfloat
+		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOMIPS)
+	case "amd64":
+		// mihomo-linux-amd64-v1
+		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOAMD64)
+	default:
+		// mihomo-linux-386
+		// mihomo-linux-mips64
+		// mihomo-linux-riscv64
+		// mihomo-linux-s390x
+		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
 	}
-	if !strings.HasPrefix(C.Version, "alpha") {
-		baseURL = "https://github.com/MetaCubeX/mihomo/releases/latest/download/mihomo"
-		versionURL = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt"
-	}
 }
 
-type updateError struct {
-	Message string
-}
+// CoreUpdater is the mihomo updater.
+// modify from https://github.com/AdguardTeam/AdGuardHome/blob/595484e0b3fb4c457f9bb727a6b94faa78a66c5f/internal/updater/updater.go
+var CoreUpdater = coreUpdater{}
 
-func (e *updateError) Error() string {
-	return fmt.Sprintf("update error: %s", e.Message)
-}
-
-// Update performs the auto-updater.  It returns an error if the updater failed.
-// If firstRun is true, it assumes the configuration file doesn't exist.
 func UpdateCore(execPath string) (err error) {
-	mu.Lock()
-	defer mu.Unlock()
+	return CoreUpdater.Update(execPath)
+}
 
-	latestVersion, err = getLatestVersion()
+type coreUpdater struct {
+	mu sync.Mutex
+}
+
+func (u *coreUpdater) Update(currentExePath string) (err error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	_, err = os.Stat(currentExePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("check currentExePath %q: %w", currentExePath, err)
 	}
 
+	baseURL := baseAlphaURL
+	versionURL := versionAlphaURL
+	if !strings.HasPrefix(C.Version, "alpha") {
+		baseURL = baseReleaseURL
+		versionURL = versionReleaseURL
+	}
+
+	latestVersion, err := u.getLatestVersion(versionURL)
+	if err != nil {
+		return fmt.Errorf("get latest version: %w", err)
+	}
 	log.Infoln("current version %s, latest version %s", C.Version, latestVersion)
 
 	if latestVersion == C.Version {
-		err := &updateError{Message: "already using latest version"}
-		return err
+		return fmt.Errorf("update error: %s is the latest version", C.Version)
 	}
-
-	updateDownloadURL()
 
 	defer func() {
 		if err != nil {
@@ -93,31 +109,48 @@ func UpdateCore(execPath string) (err error) {
 		}
 	}()
 
-	workDir = filepath.Dir(execPath)
+	// ---- prepare ----
+	packageName := mihomoBaseName + "-" + latestVersion
+	if runtime.GOOS == "windows" {
+		packageName = packageName + ".zip"
+	} else {
+		packageName = packageName + ".gz"
+	}
+	packageURL := baseURL + packageName
+	log.Infoln("updater: updating using url: %s", packageURL)
 
-	err = prepare(execPath)
+	workDir := filepath.Dir(currentExePath)
+	backupDir := filepath.Join(workDir, "meta-backup")
+	updateDir := filepath.Join(workDir, "meta-update")
+	packagePath := filepath.Join(updateDir, packageName)
+	//log.Infoln(packagePath)
+
+	updateExeName := mihomoBaseName
+	if runtime.GOOS == "windows" {
+		updateExeName = updateExeName + ".exe"
+	}
+	log.Infoln("updateExeName: %s ", updateExeName)
+	updateExePath := filepath.Join(updateDir, updateExeName)
+	backupExePath := filepath.Join(backupDir, filepath.Base(currentExePath))
+
+	defer u.clean(updateDir)
+
+	err = u.download(updateDir, packagePath, packageURL)
 	if err != nil {
-		return fmt.Errorf("preparing: %w", err)
+		return fmt.Errorf("downloading: %w", err)
 	}
 
-	defer clean()
-
-	err = downloadPackageFile()
-	if err != nil {
-		return fmt.Errorf("downloading package file: %w", err)
-	}
-
-	err = unpack()
+	err = u.unpack(updateDir, packagePath)
 	if err != nil {
 		return fmt.Errorf("unpacking: %w", err)
 	}
 
-	err = backup()
+	err = u.backup(currentExePath, backupExePath, backupDir)
 	if err != nil {
 		return fmt.Errorf("backuping: %w", err)
 	}
 
-	err = replace()
+	err = u.replace(updateExePath, currentExePath)
 	if err != nil {
 		return fmt.Errorf("replacing: %w", err)
 	}
@@ -125,116 +158,30 @@ func UpdateCore(execPath string) (err error) {
 	return nil
 }
 
-// prepare fills all necessary fields in Updater object.
-func prepare(exePath string) (err error) {
-	updateDir = filepath.Join(workDir, "meta-update")
-	currentExeName = exePath
-	_, pkgNameOnly := filepath.Split(packageURL)
-	if pkgNameOnly == "" {
-		return fmt.Errorf("invalid PackageURL: %q", packageURL)
-	}
-
-	packageName = filepath.Join(updateDir, pkgNameOnly)
-	//log.Infoln(packageName)
-	backupDir = filepath.Join(workDir, "meta-backup")
-
-	if runtime.GOOS == "windows" {
-		updateExeName = "mihomo" + "-" + runtime.GOOS + "-" + runtime.GOARCH + amd64Compatible + ".exe"
-	} else if runtime.GOOS == "android" && runtime.GOARCH == "arm64" {
-		updateExeName = "mihomo-android-arm64-v8"
-	} else {
-		updateExeName = "mihomo" + "-" + runtime.GOOS + "-" + runtime.GOARCH + amd64Compatible
-	}
-
-	log.Infoln("updateExeName: %s ", updateExeName)
-
-	backupExeName = filepath.Join(backupDir, filepath.Base(exePath))
-	updateExeName = filepath.Join(updateDir, updateExeName)
-
-	log.Infoln(
-		"updater: updating using url: %s",
-		packageURL,
-	)
-
-	currentExeName = exePath
-	_, err = os.Stat(currentExeName)
+func (u *coreUpdater) getLatestVersion(versionURL string) (version string, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	resp, err := mihomoHttp.HttpRequest(ctx, versionURL, http.MethodGet, nil, nil)
 	if err != nil {
-		return fmt.Errorf("checking %q: %w", currentExeName, err)
+		return "", err
 	}
-
-	return nil
-}
-
-// unpack extracts the files from the downloaded archive.
-func unpack() error {
-	var err error
-	_, pkgNameOnly := filepath.Split(packageURL)
-
-	log.Infoln("updater: unpacking package")
-	if strings.HasSuffix(pkgNameOnly, ".zip") {
-		_, err = zipFileUnpack(packageName, updateDir)
-		if err != nil {
-			return fmt.Errorf(".zip unpack failed: %w", err)
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil && err == nil {
+			err = closeErr
 		}
+	}()
 
-	} else if strings.HasSuffix(pkgNameOnly, ".gz") {
-		_, err = gzFileUnpack(packageName, updateDir)
-		if err != nil {
-			return fmt.Errorf(".gz unpack failed: %w", err)
-		}
-
-	} else {
-		return fmt.Errorf("unknown package extension")
-	}
-
-	return nil
-}
-
-// backup makes a backup of the current executable file
-func backup() (err error) {
-	log.Infoln("updater: backing up current ExecFile:%s to %s", currentExeName, backupExeName)
-	_ = os.Mkdir(backupDir, 0o755)
-
-	err = os.Rename(currentExeName, backupExeName)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return "", err
 	}
-
-	return nil
+	content := strings.TrimRight(string(body), "\n")
+	return content, nil
 }
 
-// replace moves the current executable with the updated one
-func replace() error {
-	var err error
-
-	log.Infoln("replacing: %s to %s", updateExeName, currentExeName)
-	if runtime.GOOS == "windows" {
-		// rename fails with "File in use" error
-		err = copyFile(updateExeName, currentExeName)
-	} else {
-		err = os.Rename(updateExeName, currentExeName)
-	}
-	if err != nil {
-		return err
-	}
-
-	log.Infoln("updater: renamed: %s to %s", updateExeName, currentExeName)
-
-	return nil
-}
-
-// clean removes the temporary directory itself and all it's contents.
-func clean() {
-	_ = os.RemoveAll(updateDir)
-}
-
-// MaxPackageFileSize is a maximum package file length in bytes. The largest
-// package whose size is limited by this constant currently has the size of
-// approximately 32 MiB.
-const MaxPackageFileSize = 32 * 1024 * 1024
-
-// Download package file and save it to disk
-func downloadPackageFile() (err error) {
+// download package file and save it to disk
+func (u *coreUpdater) download(updateDir, packagePath, packageURL string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*90)
 	defer cancel()
 	resp, err := mihomoHttp.HttpRequest(ctx, packageURL, http.MethodGet, nil, nil)
@@ -249,15 +196,9 @@ func downloadPackageFile() (err error) {
 		}
 	}()
 
-	var r io.Reader
-	r, err = LimitReader(resp.Body, MaxPackageFileSize)
-	if err != nil {
-		return fmt.Errorf("http request failed: %w", err)
-	}
-
 	log.Debugln("updater: reading http body")
 	// This use of ReadAll is now safe, because we limited body's Reader.
-	body, err := io.ReadAll(r)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxPackageFileSize))
 	if err != nil {
 		return fmt.Errorf("io.ReadAll() failed: %w", err)
 	}
@@ -268,19 +209,79 @@ func downloadPackageFile() (err error) {
 		return fmt.Errorf("mkdir error: %w", err)
 	}
 
-	log.Debugln("updater: saving package to file %s", packageName)
-	err = os.WriteFile(packageName, body, 0o644)
+	log.Debugln("updater: saving package to file %s", packagePath)
+	err = os.WriteFile(packagePath, body, 0o644)
 	if err != nil {
 		return fmt.Errorf("os.WriteFile() failed: %w", err)
 	}
 	return nil
 }
 
+// unpack extracts the files from the downloaded archive.
+func (u *coreUpdater) unpack(updateDir, packagePath string) error {
+	log.Infoln("updater: unpacking package")
+	if strings.HasSuffix(packagePath, ".zip") {
+		_, err := u.zipFileUnpack(packagePath, updateDir)
+		if err != nil {
+			return fmt.Errorf(".zip unpack failed: %w", err)
+		}
+
+	} else if strings.HasSuffix(packagePath, ".gz") {
+		_, err := u.gzFileUnpack(packagePath, updateDir)
+		if err != nil {
+			return fmt.Errorf(".gz unpack failed: %w", err)
+		}
+
+	} else {
+		return fmt.Errorf("unknown package extension")
+	}
+
+	return nil
+}
+
+// backup makes a backup of the current executable file
+func (u *coreUpdater) backup(currentExePath, backupExePath, backupDir string) (err error) {
+	log.Infoln("updater: backing up current ExecFile:%s to %s", currentExePath, backupExePath)
+	_ = os.Mkdir(backupDir, 0o755)
+
+	err = os.Rename(currentExePath, backupExePath)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// replace moves the current executable with the updated one
+func (u *coreUpdater) replace(updateExePath, currentExePath string) error {
+	var err error
+
+	log.Infoln("replacing: %s to %s", updateExePath, currentExePath)
+	if runtime.GOOS == "windows" {
+		// rename fails with "File in use" error
+		err = u.copyFile(updateExePath, currentExePath)
+	} else {
+		err = os.Rename(updateExePath, currentExePath)
+	}
+	if err != nil {
+		return err
+	}
+
+	log.Infoln("updater: renamed: %s to %s", updateExePath, currentExePath)
+
+	return nil
+}
+
+// clean removes the temporary directory itself and all it's contents.
+func (u *coreUpdater) clean(updateDir string) {
+	_ = os.RemoveAll(updateDir)
+}
+
 // Unpack a single .gz file to the specified directory
 // Existing files are overwritten
 // All files are created inside outDir, subdirectories are not created
 // Return the output file name
-func gzFileUnpack(gzfile, outDir string) (string, error) {
+func (u *coreUpdater) gzFileUnpack(gzfile, outDir string) (string, error) {
 	f, err := os.Open(gzfile)
 	if err != nil {
 		return "", fmt.Errorf("os.Open(): %w", err)
@@ -344,7 +345,7 @@ func gzFileUnpack(gzfile, outDir string) (string, error) {
 // Existing files are overwritten
 // All files are created inside 'outDir', subdirectories are not created
 // Return the output file name
-func zipFileUnpack(zipfile, outDir string) (string, error) {
+func (u *coreUpdater) zipFileUnpack(zipfile, outDir string) (string, error) {
 	zrc, err := zip.OpenReader(zipfile)
 	if err != nil {
 		return "", fmt.Errorf("zip.OpenReader(): %w", err)
@@ -403,7 +404,7 @@ func zipFileUnpack(zipfile, outDir string) (string, error) {
 }
 
 // Copy file on disk
-func copyFile(src, dst string) error {
+func (u *coreUpdater) copyFile(src, dst string) error {
 	d, e := os.ReadFile(src)
 	if e != nil {
 		return e
@@ -413,87 +414,4 @@ func copyFile(src, dst string) error {
 		return e
 	}
 	return nil
-}
-
-func getLatestVersion() (version string, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	resp, err := mihomoHttp.HttpRequest(ctx, versionURL, http.MethodGet, nil, nil)
-	if err != nil {
-		return "", fmt.Errorf("get Latest Version fail: %w", err)
-	}
-	defer func() {
-		closeErr := resp.Body.Close()
-		if closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("get Latest Version fail: %w", err)
-	}
-	content := strings.TrimRight(string(body), "\n")
-	return content, nil
-}
-
-func updateDownloadURL() {
-	var middle string
-
-	if runtime.GOARCH == "arm" && probeGoARM() {
-		//-linux-armv7-alpha-e552b54.gz
-		middle = fmt.Sprintf("-%s-%s%s-%s", runtime.GOOS, runtime.GOARCH, goarm, latestVersion)
-	} else if runtime.GOARCH == "arm64" {
-		//-linux-arm64-alpha-e552b54.gz
-		if runtime.GOOS == "android" {
-			middle = fmt.Sprintf("-%s-%s-v8-%s", runtime.GOOS, runtime.GOARCH, latestVersion)
-		} else {
-			middle = fmt.Sprintf("-%s-%s-%s", runtime.GOOS, runtime.GOARCH, latestVersion)
-		}
-	} else if isMIPS(runtime.GOARCH) && gomips != "" {
-		middle = fmt.Sprintf("-%s-%s-%s-%s", runtime.GOOS, runtime.GOARCH, gomips, latestVersion)
-	} else {
-		middle = fmt.Sprintf("-%s-%s%s-%s", runtime.GOOS, runtime.GOARCH, amd64Compatible, latestVersion)
-	}
-
-	if runtime.GOOS == "windows" {
-		middle += ".zip"
-	} else {
-		middle += ".gz"
-	}
-	packageURL = baseURL + middle
-	//log.Infoln(packageURL)
-}
-
-// isMIPS returns true if arch is any MIPS architecture.
-func isMIPS(arch string) (ok bool) {
-	switch arch {
-	case
-		"mips",
-		"mips64",
-		"mips64le",
-		"mipsle":
-		return true
-	default:
-		return false
-	}
-}
-
-// linux only
-func probeGoARM() (ok bool) {
-	cmd := exec.Command("cat", "/proc/cpuinfo")
-	output, err := cmd.Output()
-	if err != nil {
-		log.Errorln("probe goarm error:%s", err)
-		return false
-	}
-	cpuInfo := string(output)
-	if strings.Contains(cpuInfo, "vfpv3") || strings.Contains(cpuInfo, "vfpv4") {
-		goarm = "v7"
-	} else if strings.Contains(cpuInfo, "vfp") {
-		goarm = "v6"
-	} else {
-		goarm = "v5"
-	}
-	return true
 }

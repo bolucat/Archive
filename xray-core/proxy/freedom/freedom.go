@@ -18,6 +18,7 @@ import (
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/common/signal"
 	"github.com/xtls/xray-core/common/task"
+	"github.com/xtls/xray-core/common/utils"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/dns"
 	"github.com/xtls/xray-core/features/policy"
@@ -202,7 +203,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 				writer = buf.NewWriter(conn)
 			}
 		} else {
-			writer = NewPacketWriter(conn, h, ctx, UDPOverride)
+			writer = NewPacketWriter(conn, h, ctx, UDPOverride, destination)
 			if h.config.Noises != nil {
 				errors.LogDebug(ctx, "NOISE", h.config.Noises)
 				writer = &NoisePacketWriter{
@@ -238,7 +239,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		if destination.Network == net.Network_TCP {
 			reader = buf.NewReader(conn)
 		} else {
-			reader = NewPacketReader(conn, UDPOverride)
+			reader = NewPacketReader(conn, UDPOverride, destination)
 		}
 		if err := buf.Copy(reader, output, buf.UpdateActivity(timer)); err != nil {
 			return errors.New("failed to process response").Base(err)
@@ -273,7 +274,7 @@ func isTLSConn(conn stat.Connection) bool {
 	return false
 }
 
-func NewPacketReader(conn net.Conn, UDPOverride net.Destination) buf.Reader {
+func NewPacketReader(conn net.Conn, UDPOverride net.Destination, DialDest net.Destination) buf.Reader {
 	iConn := conn
 	statConn, ok := iConn.(*stat.CounterConnection)
 	if ok {
@@ -283,10 +284,15 @@ func NewPacketReader(conn net.Conn, UDPOverride net.Destination) buf.Reader {
 	if statConn != nil {
 		counter = statConn.ReadCounter
 	}
-	if c, ok := iConn.(*internet.PacketConnWrapper); ok && UDPOverride.Address == nil && UDPOverride.Port == 0 {
+	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
+		isAddrChanged := false
+		if UDPOverride.Address != nil || UDPOverride.Port != 0 || DialDest.Address.Family().IsDomain() {
+			isAddrChanged = true
+		}
 		return &PacketReader{
 			PacketConnWrapper: c,
 			Counter:           counter,
+			IsAddrChanged:     isAddrChanged,
 		}
 	}
 	return &buf.PacketReader{Reader: conn}
@@ -295,6 +301,7 @@ func NewPacketReader(conn net.Conn, UDPOverride net.Destination) buf.Reader {
 type PacketReader struct {
 	*internet.PacketConnWrapper
 	stats.Counter
+	IsAddrChanged bool
 }
 
 func (r *PacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
@@ -306,10 +313,14 @@ func (r *PacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 		return nil, err
 	}
 	b.Resize(0, int32(n))
-	b.UDP = &net.Destination{
-		Address: net.IPAddress(d.(*net.UDPAddr).IP),
-		Port:    net.Port(d.(*net.UDPAddr).Port),
-		Network: net.Network_UDP,
+	// if udp dest addr is changed, we are unable to get the correct src addr
+	// so we don't attach src info to udp packet, break cone behavior, assuming the dial dest is the expected scr addr
+	if !r.IsAddrChanged {
+		b.UDP = &net.Destination{
+			Address: net.IPAddress(d.(*net.UDPAddr).IP),
+			Port:    net.Port(d.(*net.UDPAddr).Port),
+			Network: net.Network_UDP,
+		}
 	}
 	if r.Counter != nil {
 		r.Counter.Add(int64(n))
@@ -317,7 +328,8 @@ func (r *PacketReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 	return buf.MultiBuffer{b}, nil
 }
 
-func NewPacketWriter(conn net.Conn, h *Handler, ctx context.Context, UDPOverride net.Destination) buf.Writer {
+// DialDest means the dial target used in the dialer when creating conn
+func NewPacketWriter(conn net.Conn, h *Handler, ctx context.Context, UDPOverride net.Destination, DialDest net.Destination) buf.Writer {
 	iConn := conn
 	statConn, ok := iConn.(*stat.CounterConnection)
 	if ok {
@@ -328,12 +340,20 @@ func NewPacketWriter(conn net.Conn, h *Handler, ctx context.Context, UDPOverride
 		counter = statConn.WriteCounter
 	}
 	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
+		// If DialDest is a domain, it will be resolved in dialer
+		// check this behavior and add it to map
+		resolvedUDPAddr := utils.NewTypedSyncMap[string, net.Address]()
+		if DialDest.Address.Family().IsDomain() {
+			RemoteAddress, _, _ := net.SplitHostPort(conn.RemoteAddr().String())
+			resolvedUDPAddr.Store(DialDest.Address.String(), net.ParseAddress(RemoteAddress))
+		}
 		return &PacketWriter{
 			PacketConnWrapper: c,
 			Counter:           counter,
 			Handler:           h,
 			Context:           ctx,
 			UDPOverride:       UDPOverride,
+			resolvedUDPAddr:   resolvedUDPAddr,
 		}
 
 	}
@@ -346,6 +366,12 @@ type PacketWriter struct {
 	*Handler
 	context.Context
 	UDPOverride net.Destination
+
+	// Dest of udp packets might be a domain, we will resolve them to IP
+	// But resolver will return a random one if the domain has many IPs
+	// Resulting in these packets being sent to many different IPs randomly
+	// So, cache and keep the resolve result
+	resolvedUDPAddr *utils.TypedSyncMap[string, net.Address]
 }
 
 func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
@@ -364,10 +390,34 @@ func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 			if w.UDPOverride.Port != 0 {
 				b.UDP.Port = w.UDPOverride.Port
 			}
-			if w.Handler.config.hasStrategy() && b.UDP.Address.Family().IsDomain() {
-				ip := w.Handler.resolveIP(w.Context, b.UDP.Address.Domain(), nil)
-				if ip != nil {
+			if b.UDP.Address.Family().IsDomain() {
+				if ip, ok := w.resolvedUDPAddr.Load(b.UDP.Address.Domain()); ok {
 					b.UDP.Address = ip
+				} else {
+					ShouldUseSystemResolver := true
+					if w.Handler.config.hasStrategy() {
+						ip = w.Handler.resolveIP(w.Context, b.UDP.Address.Domain(), nil)
+						if ip != nil {
+							ShouldUseSystemResolver = false
+						}
+						// drop packet if resolve failed when forceIP
+						if ip == nil && w.Handler.config.forceIP() {
+							b.Release()
+							continue
+						}
+					}
+					if ShouldUseSystemResolver {
+						udpAddr, err := net.ResolveUDPAddr("udp", b.UDP.NetAddr())
+						if err != nil {
+							b.Release()
+							continue
+						} else {
+							ip = net.IPAddress(udpAddr.IP)
+						}
+					}
+					if ip != nil {
+						b.UDP.Address, _ = w.resolvedUDPAddr.LoadOrStore(b.UDP.Address.Domain(), ip)
+					}
 				}
 			}
 			destAddr, _ := net.ResolveUDPAddr("udp", b.UDP.NetAddr())
