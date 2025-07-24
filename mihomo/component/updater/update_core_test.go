@@ -5,6 +5,6 @@ import (
 	"testing"
 )
 
-func TestBaseName(t *testing.T) {
-	fmt.Println("mihomoBaseName =", mihomoBaseName)
+func TestCoreBaseName(t *testing.T) {
+	fmt.Println("Core base name =", DefaultCoreUpdater.CoreBaseName())
 }

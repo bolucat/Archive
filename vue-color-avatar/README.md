@@ -27,6 +27,22 @@ Features you might be interested in:
 - i18n
 - Generate multiple avatars in batch
 
+## Project Documentation
+
+Want to dive deeper into the project architecture, code organization, and technical implementation?
+
+🔍 **[Explore DeepWiki AI Documentation](https://deepwiki.com/Codennnn/vue-color-avatar)**
+
+DeepWiki uses AI technology to automatically analyze the entire project, providing:
+
+- 📋 Project architecture overview
+- 🔍 Code structure analysis
+- 💡 Core functionality insights
+- 🗺️ Component dependency diagrams
+- 🚀 Implementation details and best practices
+
+_Perfect for newcomers to get started quickly and contributors to understand the project deeply_
+
 ## Assets
 
 > **Note**  

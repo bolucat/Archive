@@ -33,49 +33,43 @@ const (
 	MaxPackageFileSize = 32 * 1024 * 1024
 )
 
-var mihomoBaseName string
+// CoreUpdater is the mihomo updater.
+// modify from https://github.com/AdguardTeam/AdGuardHome/blob/595484e0b3fb4c457f9bb727a6b94faa78a66c5f/internal/updater/updater.go
+type CoreUpdater struct {
+	mu sync.Mutex
+}
 
-func init() {
+var DefaultCoreUpdater = CoreUpdater{}
+
+func (u *CoreUpdater) CoreBaseName() string {
 	switch runtime.GOARCH {
 	case "arm":
 		// mihomo-linux-armv5
-		mihomoBaseName = fmt.Sprintf("mihomo-%s-%sv%s", runtime.GOOS, runtime.GOARCH, features.GOARM)
+		return fmt.Sprintf("mihomo-%s-%sv%s", runtime.GOOS, runtime.GOARCH, features.GOARM)
 	case "arm64":
 		if runtime.GOOS == "android" {
 			// mihomo-android-arm64-v8
-			mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-v8", runtime.GOOS, runtime.GOARCH)
+			return fmt.Sprintf("mihomo-%s-%s-v8", runtime.GOOS, runtime.GOARCH)
 		} else {
 			// mihomo-linux-arm64
-			mihomoBaseName = fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
+			return fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
 		}
 	case "mips", "mipsle":
 		// mihomo-linux-mips-hardfloat
-		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOMIPS)
+		return fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOMIPS)
 	case "amd64":
 		// mihomo-linux-amd64-v1
-		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOAMD64)
+		return fmt.Sprintf("mihomo-%s-%s-%s", runtime.GOOS, runtime.GOARCH, features.GOAMD64)
 	default:
 		// mihomo-linux-386
 		// mihomo-linux-mips64
 		// mihomo-linux-riscv64
 		// mihomo-linux-s390x
-		mihomoBaseName = fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
+		return fmt.Sprintf("mihomo-%s-%s", runtime.GOOS, runtime.GOARCH)
 	}
 }
 
-// CoreUpdater is the mihomo updater.
-// modify from https://github.com/AdguardTeam/AdGuardHome/blob/595484e0b3fb4c457f9bb727a6b94faa78a66c5f/internal/updater/updater.go
-var CoreUpdater = coreUpdater{}
-
-func UpdateCore(execPath string) (err error) {
-	return CoreUpdater.Update(execPath)
-}
-
-type coreUpdater struct {
-	mu sync.Mutex
-}
-
-func (u *coreUpdater) Update(currentExePath string) (err error) {
+func (u *CoreUpdater) Update(currentExePath string) (err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -110,6 +104,7 @@ func (u *coreUpdater) Update(currentExePath string) (err error) {
 	}()
 
 	// ---- prepare ----
+	mihomoBaseName := u.CoreBaseName()
 	packageName := mihomoBaseName + "-" + latestVersion
 	if runtime.GOOS == "windows" {
 		packageName = packageName + ".zip"
@@ -129,7 +124,7 @@ func (u *coreUpdater) Update(currentExePath string) (err error) {
 	if runtime.GOOS == "windows" {
 		updateExeName = updateExeName + ".exe"
 	}
-	log.Infoln("updateExeName: %s ", updateExeName)
+	log.Infoln("updateExeName: %s", updateExeName)
 	updateExePath := filepath.Join(updateDir, updateExeName)
 	backupExePath := filepath.Join(backupDir, filepath.Base(currentExePath))
 
@@ -158,7 +153,7 @@ func (u *coreUpdater) Update(currentExePath string) (err error) {
 	return nil
 }
 
-func (u *coreUpdater) getLatestVersion(versionURL string) (version string, err error) {
+func (u *CoreUpdater) getLatestVersion(versionURL string) (version string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	resp, err := mihomoHttp.HttpRequest(ctx, versionURL, http.MethodGet, nil, nil)
@@ -181,7 +176,7 @@ func (u *coreUpdater) getLatestVersion(versionURL string) (version string, err e
 }
 
 // download package file and save it to disk
-func (u *coreUpdater) download(updateDir, packagePath, packageURL string) (err error) {
+func (u *CoreUpdater) download(updateDir, packagePath, packageURL string) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*90)
 	defer cancel()
 	resp, err := mihomoHttp.HttpRequest(ctx, packageURL, http.MethodGet, nil, nil)
@@ -218,7 +213,7 @@ func (u *coreUpdater) download(updateDir, packagePath, packageURL string) (err e
 }
 
 // unpack extracts the files from the downloaded archive.
-func (u *coreUpdater) unpack(updateDir, packagePath string) error {
+func (u *CoreUpdater) unpack(updateDir, packagePath string) error {
 	log.Infoln("updater: unpacking package")
 	if strings.HasSuffix(packagePath, ".zip") {
 		_, err := u.zipFileUnpack(packagePath, updateDir)
@@ -240,7 +235,7 @@ func (u *coreUpdater) unpack(updateDir, packagePath string) error {
 }
 
 // backup makes a backup of the current executable file
-func (u *coreUpdater) backup(currentExePath, backupExePath, backupDir string) (err error) {
+func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (err error) {
 	log.Infoln("updater: backing up current ExecFile:%s to %s", currentExePath, backupExePath)
 	_ = os.Mkdir(backupDir, 0o755)
 
@@ -253,7 +248,7 @@ func (u *coreUpdater) backup(currentExePath, backupExePath, backupDir string) (e
 }
 
 // replace moves the current executable with the updated one
-func (u *coreUpdater) replace(updateExePath, currentExePath string) error {
+func (u *CoreUpdater) replace(updateExePath, currentExePath string) error {
 	var err error
 
 	log.Infoln("replacing: %s to %s", updateExePath, currentExePath)
@@ -273,7 +268,7 @@ func (u *coreUpdater) replace(updateExePath, currentExePath string) error {
 }
 
 // clean removes the temporary directory itself and all it's contents.
-func (u *coreUpdater) clean(updateDir string) {
+func (u *CoreUpdater) clean(updateDir string) {
 	_ = os.RemoveAll(updateDir)
 }
 
@@ -281,7 +276,7 @@ func (u *coreUpdater) clean(updateDir string) {
 // Existing files are overwritten
 // All files are created inside outDir, subdirectories are not created
 // Return the output file name
-func (u *coreUpdater) gzFileUnpack(gzfile, outDir string) (string, error) {
+func (u *CoreUpdater) gzFileUnpack(gzfile, outDir string) (string, error) {
 	f, err := os.Open(gzfile)
 	if err != nil {
 		return "", fmt.Errorf("os.Open(): %w", err)
@@ -345,7 +340,7 @@ func (u *coreUpdater) gzFileUnpack(gzfile, outDir string) (string, error) {
 // Existing files are overwritten
 // All files are created inside 'outDir', subdirectories are not created
 // Return the output file name
-func (u *coreUpdater) zipFileUnpack(zipfile, outDir string) (string, error) {
+func (u *CoreUpdater) zipFileUnpack(zipfile, outDir string) (string, error) {
 	zrc, err := zip.OpenReader(zipfile)
 	if err != nil {
 		return "", fmt.Errorf("zip.OpenReader(): %w", err)
@@ -404,7 +399,7 @@ func (u *coreUpdater) zipFileUnpack(zipfile, outDir string) (string, error) {
 }
 
 // Copy file on disk
-func (u *coreUpdater) copyFile(src, dst string) error {
+func (u *CoreUpdater) copyFile(src, dst string) error {
 	d, e := os.ReadFile(src)
 	if e != nil {
 		return e

@@ -29,7 +29,7 @@ jobs:
     strategy:
       matrix:
         jobs:
-          - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64-compatible }
+          - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64-compatible } # old style file name will be removed in next released
           - { goos: darwin, goarch: amd64, goamd64: v3, output: amd64 }
           - { goos: darwin, goarch: amd64, goamd64: v1, output: amd64-v1 }
           - { goos: darwin, goarch: amd64, goamd64: v2, output: amd64-v2 }
@@ -38,10 +38,10 @@ jobs:
 
           - { goos: linux, goarch: '386', go386: sse2, output: '386', debian: i386, rpm: i386}
           - { goos: linux, goarch: '386', go386: softfloat, output: '386-softfloat' }
-          - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-compatible}
-          - { goos: linux, goarch: amd64, goamd64: v3, output: amd64}
-          - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-v1, test: test }
-          - { goos: linux, goarch: amd64, goamd64: v2, output: amd64-v2 }
+          - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-compatible} # old style file name will be removed in next released
+          - { goos: linux, goarch: amd64, goamd64: v3, output: amd64, debian: amd64, rpm: x86_64, pacman: x86_64}
+          - { goos: linux, goarch: amd64, goamd64: v1, output: amd64-v1, debian: amd64, rpm: x86_64, pacman: x86_64, test: test }
+          - { goos: linux, goarch: amd64, goamd64: v2, output: amd64-v2, debian: amd64, rpm: x86_64, pacman: x86_64}
           - { goos: linux, goarch: amd64, goamd64: v3, output: amd64-v3, debian: amd64, rpm: x86_64, pacman: x86_64}
           - { goos: linux, goarch: arm64, output: arm64, debian: arm64, rpm: aarch64, pacman: aarch64}  
           - { goos: linux, goarch: arm, goarm: '5', output: armv5 }
@@ -60,7 +60,7 @@ jobs:
           - { goos: linux, goarch: ppc64le, output: ppc64le, debian: ppc64el, rpm: ppc64le }
 
           - { goos: windows, goarch: '386', output: '386' }
-          - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-compatible }
+          - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-compatible } # old style file name will be removed in next released
           - { goos: windows, goarch: amd64, goamd64: v3, output: amd64 }
           - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-v1 }
           - { goos: windows, goarch: amd64, goamd64: v2, output: amd64-v2 }
@@ -68,7 +68,7 @@ jobs:
           - { goos: windows, goarch: arm64, output: arm64 }
 
           - { goos: freebsd, goarch: '386', output: '386' }
-          - { goos: freebsd, goarch: amd64, goamd64: v1, output: amd64-compatible }
+          - { goos: freebsd, goarch: amd64, goamd64: v1, output: amd64-compatible } # old style file name will be removed in next released
           - { goos: freebsd, goarch: amd64, goamd64: v3, output: amd64 }
           - { goos: freebsd, goarch: amd64, goamd64: v1, output: amd64-v1 }
           - { goos: freebsd, goarch: amd64, goamd64: v2, output: amd64-v2 }

@@ -27,6 +27,22 @@
 - 国际化多语言
 - 批量生成多个头像
 
+## 深度了解项目
+
+想要深入了解项目架构、代码组织和技术实现？
+
+🔍 **[访问 DeepWiki 智能文档](https://deepwiki.com/Codennnn/vue-color-avatar)**
+
+DeepWiki 使用 AI 技术自动分析了整个项目，提供：
+
+- 📋 项目架构概览
+- 🔍 代码结构分析
+- 💡 核心功能解读
+- 🗺️ 组件依赖关系图
+- 🚀 实现细节与最佳实践
+
+_非常适合新手快速上手和贡献者深入理解项目_
+
 ## 设计资源
 
 - 设计师：[@Micah](https://www.figma.com/@Micah) on Figma
