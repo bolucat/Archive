@@ -212,7 +212,7 @@ func UpdateGeoDatabases() error {
 	return nil
 }
 
-func getUpdateTime() (err error, time time.Time) {
+func getUpdateTime() (time time.Time, err error) {
 	filesToCheck := []string{
 		C.Path.GeoIP(),
 		C.Path.MMDB(),
@@ -224,7 +224,7 @@ func getUpdateTime() (err error, time time.Time) {
 		var fileInfo os.FileInfo
 		fileInfo, err = os.Stat(file)
 		if err == nil {
-			return nil, fileInfo.ModTime()
+			return fileInfo.ModTime(), nil
 		}
 	}
 
@@ -241,7 +241,7 @@ func RegisterGeoUpdater() {
 		ticker := time.NewTicker(time.Duration(updateInterval) * time.Hour)
 		defer ticker.Stop()
 
-		err, lastUpdate := getUpdateTime()
+		lastUpdate, err := getUpdateTime()
 		if err != nil {
 			log.Errorln("[GEO] Get GEO database update time error: %s", err.Error())
 			return

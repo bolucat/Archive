@@ -100,8 +100,8 @@ github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab h1:Chbw+/31
 github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab/go.mod h1:xVKK8jC5Sd3hfh7WjmCq+HorehIbrBijaUWmcuKjPcI=
 github.com/metacubex/bart v0.20.5 h1:XkgLZ17QxfxkqKdGsojoM2Zu01mmHyyQSFzt2/calTM=
 github.com/metacubex/bart v0.20.5/go.mod h1:DCcyfP4MC+Zy7sLK7XeGuMw+P5K9mIRsYOBgiE8icsI=
-github.com/metacubex/bbolt v0.0.0-20250715134201-d343f11712df h1:pwbTEBPk7QQbxEIIynLcn4WsEnAkFiR5Wjevw44MWdk=
-github.com/metacubex/bbolt v0.0.0-20250715134201-d343f11712df/go.mod h1:+WmP0VJZDkDszvpa83HzfUp6QzARl/IKkMorH4+nODw=
+github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b h1:j7dadXD8I2KTmMt8jg1JcaP1ANL3JEObJPdANKcSYPY=
+github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b/go.mod h1:+WmP0VJZDkDszvpa83HzfUp6QzARl/IKkMorH4+nODw=
 github.com/metacubex/chacha v0.1.5 h1:fKWMb/5c7ZrY8Uoqi79PPFxl+qwR7X/q0OrsAubyX2M=
 github.com/metacubex/chacha v0.1.5/go.mod h1:Djn9bPZxLTXbJFSeyo0/qzEzQI+gUSSzttuzZM75GH8=
 github.com/metacubex/fswatch v0.1.1 h1:jqU7C/v+g0qc2RUFgmAOPoVvfl2BXXUXEumn6oQuxhU=
