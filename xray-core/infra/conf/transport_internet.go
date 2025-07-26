@@ -412,6 +412,8 @@ type TLSConfig struct {
 	MasterKeyLog                         string           `json:"masterKeyLog"`
 	ServerNameToVerify                   string           `json:"serverNameToVerify"`
 	VerifyPeerCertInNames                []string         `json:"verifyPeerCertInNames"`
+	ECHConfigList                        string           `json:"echConfigList"`
+	ECHServerKeys                        string           `json:"echServerKeys"`
 }
 
 // Build implements Buildable.
@@ -482,6 +484,16 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 		return nil, errors.PrintRemovedFeatureError(`"serverNameToVerify"`, `"verifyPeerCertInNames"`)
 	}
 	config.VerifyPeerCertInNames = c.VerifyPeerCertInNames
+
+	config.EchConfigList = c.ECHConfigList
+
+	if c.ECHServerKeys != "" {
+		EchPrivateKey, err := base64.StdEncoding.DecodeString(c.ECHServerKeys)
+		if err != nil {
+			return nil, errors.New("invalid ECH Config", c.ECHServerKeys)
+		}
+		config.EchServerKeys = EchPrivateKey
+	}
 
 	return config, nil
 }
@@ -613,6 +625,9 @@ func (c *REALITYConfig) Build() (proto.Message, error) {
 		config.MaxTimeDiff = c.MaxTimeDiff
 
 		if c.Mldsa65Seed != "" {
+			if c.Mldsa65Seed == c.PrivateKey {
+				return nil, errors.New(`"mldsa65Seed" and "privateKey" can not be the same value: `, c.Mldsa65Seed)
+			}
 			if config.Mldsa65Seed, err = base64.RawURLEncoding.DecodeString(c.Mldsa65Seed); err != nil || len(config.Mldsa65Seed) != 32 {
 				return nil, errors.New(`invalid "mldsa65Seed": `, c.Mldsa65Seed)
 			}

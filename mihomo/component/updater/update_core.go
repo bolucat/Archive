@@ -73,7 +73,7 @@ func (u *CoreUpdater) Update(currentExePath string) (err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	info, err := os.Stat(currentExePath)
+	_, err = os.Stat(currentExePath)
 	if err != nil {
 		return fmt.Errorf("check currentExePath %q: %w", currentExePath, err)
 	}
@@ -146,8 +146,6 @@ func (u *CoreUpdater) Update(currentExePath string) (err error) {
 		return fmt.Errorf("backuping: %w", err)
 	}
 
-	_ = os.Chmod(updateExePath, info.Mode())
-
 	err = u.replace(updateExePath, currentExePath)
 	if err != nil {
 		return fmt.Errorf("replacing: %w", err)
@@ -194,13 +192,6 @@ func (u *CoreUpdater) download(updateDir, packagePath, packageURL string) (err e
 		}
 	}()
 
-	log.Debugln("updater: reading http body")
-	// This use of ReadAll is now safe, because we limited body's Reader.
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxPackageFileSize))
-	if err != nil {
-		return fmt.Errorf("io.ReadAll() failed: %w", err)
-	}
-
 	log.Debugln("updateDir %s", updateDir)
 	err = os.Mkdir(updateDir, 0o755)
 	if err != nil {
@@ -208,10 +199,33 @@ func (u *CoreUpdater) download(updateDir, packagePath, packageURL string) (err e
 	}
 
 	log.Debugln("updater: saving package to file %s", packagePath)
-	err = os.WriteFile(packagePath, body, 0o644)
+	// Create the output file
+	wc, err := os.OpenFile(packagePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
 	if err != nil {
-		return fmt.Errorf("os.WriteFile() failed: %w", err)
+		return fmt.Errorf("os.OpenFile(%s): %w", packagePath, err)
 	}
+
+	defer func() {
+		closeErr := wc.Close()
+		if closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	log.Debugln("updater: reading http body")
+	// This use of io.Copy is now safe, because we limited body's Reader.
+	n, err := io.Copy(wc, io.LimitReader(resp.Body, MaxPackageFileSize))
+	if err != nil {
+		return fmt.Errorf("io.Copy(): %w", err)
+	}
+	if n == MaxPackageFileSize {
+		// Use whether n is equal to MaxPackageFileSize to determine whether the limit has been reached.
+		// It is also possible that the size of the downloaded file is exactly the same as the maximum limit,
+		// but we should not consider this too rare situation.
+		return fmt.Errorf("attempted to read more than %d bytes", MaxPackageFileSize)
+	}
+	log.Debugln("updater: downloaded package to file %s", packagePath)
+
 	return nil
 }
 
@@ -237,12 +251,19 @@ func (u *CoreUpdater) unpack(updateDir, packagePath string) error {
 	return nil
 }
 
-// backup makes a backup of the current executable file
+// backup creates a backup of the current executable file.
 func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (err error) {
 	log.Infoln("updater: backing up current ExecFile:%s to %s", currentExePath, backupExePath)
 	_ = os.Mkdir(backupDir, 0o755)
 
-	err = os.Rename(currentExePath, backupExePath)
+	// On Windows, since the running executable cannot be overwritten or deleted, it uses os.Rename to move the file to the backup path.
+	// On other platforms, it copies the file to the backup path, preserving the original file and its permissions.
+	// The backup directory is created if it does not exist.
+	if runtime.GOOS == "windows" {
+		err = os.Rename(currentExePath, backupExePath)
+	} else {
+		err = u.copyFile(currentExePath, backupExePath)
+	}
 	if err != nil {
 		return err
 	}
@@ -252,20 +273,15 @@ func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (e
 
 // replace moves the current executable with the updated one
 func (u *CoreUpdater) replace(updateExePath, currentExePath string) error {
-	var err error
-
 	log.Infoln("replacing: %s to %s", updateExePath, currentExePath)
-	if runtime.GOOS == "windows" {
-		// rename fails with "File in use" error
-		err = u.copyFile(updateExePath, currentExePath)
-	} else {
-		err = os.Rename(updateExePath, currentExePath)
-	}
+
+	// Use copyFile to retain the original file attributes
+	err := u.copyFile(updateExePath, currentExePath)
 	if err != nil {
 		return err
 	}
 
-	log.Infoln("updater: renamed: %s to %s", updateExePath, currentExePath)
+	log.Infoln("updater: copy: %s to %s", updateExePath, currentExePath)
 
 	return nil
 }
@@ -411,10 +427,15 @@ func (u *CoreUpdater) copyFile(src, dst string) (err error) {
 		}
 	}()
 
+	info, err := rc.Stat()
+	if err != nil {
+		return fmt.Errorf("rc.Stat(): %w", err)
+	}
+
 	// Create the output file
 	// If the file does not exist, creates it with permissions perm (before umask);
 	// otherwise truncates it before writing, without changing permissions.
-	wc, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	wc, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
 	if err != nil {
 		return fmt.Errorf("os.OpenFile(%s): %w", dst, err)
 	}

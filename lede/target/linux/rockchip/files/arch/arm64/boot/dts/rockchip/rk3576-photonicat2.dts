@@ -14,10 +14,9 @@
 #include <dt-bindings/thermal/thermal.h>
 #include <dt-bindings/soc/rockchip,vop2.h>
 #include "rk3576.dtsi"
-#include "rk3576-extra.dtsi"
 
 / {
-	model = "Ariaboard photonicat2";
+	model = "Ariaboard Photonicat 2";
 	compatible = "ariaboard,photonicat2", "rockchip,rk3576";
 
 	aliases {
