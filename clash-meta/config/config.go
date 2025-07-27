@@ -156,6 +156,7 @@ type DNS struct {
 	EnhancedMode          C.DNSMode
 	DefaultNameserver     []dns.NameServer
 	CacheAlgorithm        string
+	CacheMaxSize          int
 	FakeIPRange           *fakeip.Pool
 	Hosts                 *trie.DomainTrie[resolver.HostValue]
 	NameServerPolicy      []dns.Policy
@@ -223,6 +224,7 @@ type RawDNS struct {
 	FakeIPFilterMode             C.FilterMode                        `yaml:"fake-ip-filter-mode" json:"fake-ip-filter-mode"`
 	DefaultNameserver            []string                            `yaml:"default-nameserver" json:"default-nameserver"`
 	CacheAlgorithm               string                              `yaml:"cache-algorithm" json:"cache-algorithm"`
+	CacheMaxSize                 int                                 `yaml:"cache-max-size" json:"cache-max-size"`
 	NameServerPolicy             *orderedmap.OrderedMap[string, any] `yaml:"nameserver-policy" json:"nameserver-policy"`
 	ProxyServerNameserver        []string                            `yaml:"proxy-server-nameserver" json:"proxy-server-nameserver"`
 	DirectNameServer             []string                            `yaml:"direct-nameserver" json:"direct-nameserver"`
@@ -1352,6 +1354,8 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie[resolver.HostValue], rul
 		IPv6:           cfg.IPv6,
 		UseSystemHosts: cfg.UseSystemHosts,
 		EnhancedMode:   cfg.EnhancedMode,
+		CacheAlgorithm: cfg.CacheAlgorithm,
+		CacheMaxSize:   cfg.CacheMaxSize,
 	}
 	var err error
 	if dnsCfg.NameServer, err = parseNameServer(cfg.NameServer, cfg.RespectRules, cfg.PreferH3); err != nil {
@@ -1483,12 +1487,6 @@ func parseDNS(rawCfg *RawConfig, hosts *trie.DomainTrie[resolver.HostValue], rul
 
 	if cfg.UseHosts {
 		dnsCfg.Hosts = hosts
-	}
-
-	if cfg.CacheAlgorithm == "" || cfg.CacheAlgorithm == "lru" {
-		dnsCfg.CacheAlgorithm = "lru"
-	} else {
-		dnsCfg.CacheAlgorithm = "arc"
 	}
 
 	return dnsCfg, nil

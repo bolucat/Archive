@@ -230,10 +230,18 @@ func ResolveECH(ctx context.Context, host string) ([]byte, error) {
 	return ResolveECHWithResolver(ctx, host, DefaultResolver)
 }
 
+func ClearCache() {
+	if DefaultResolver != nil {
+		go DefaultResolver.ClearCache()
+	}
+	go SystemResolver.ClearCache() // SystemResolver unneeded check nil
+}
+
 func ResetConnection() {
 	if DefaultResolver != nil {
 		go DefaultResolver.ResetConnection()
 	}
+	go SystemResolver.ResetConnection() // SystemResolver unneeded check nil
 }
 
 func SortationAddr(ips []netip.Addr) (ipv4s, ipv6s []netip.Addr) {

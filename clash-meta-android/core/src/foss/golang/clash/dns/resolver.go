@@ -459,13 +459,18 @@ type Config struct {
 	Hosts                *trie.DomainTrie[resolver.HostValue]
 	Policy               []Policy
 	CacheAlgorithm       string
+	CacheMaxSize         int
 }
 
 func (config Config) newCache() dnsCache {
-	if config.CacheAlgorithm == "" || config.CacheAlgorithm == "lru" {
-		return lru.New(lru.WithSize[string, *D.Msg](4096), lru.WithStale[string, *D.Msg](true))
-	} else {
-		return arc.New(arc.WithSize[string, *D.Msg](4096))
+	if config.CacheMaxSize == 0 {
+		config.CacheMaxSize = 4096
+	}
+	switch config.CacheAlgorithm {
+	case "arc":
+		return arc.New(arc.WithSize[string, *D.Msg](config.CacheMaxSize))
+	default:
+		return lru.New(lru.WithSize[string, *D.Msg](config.CacheMaxSize), lru.WithStale[string, *D.Msg](true))
 	}
 }
 

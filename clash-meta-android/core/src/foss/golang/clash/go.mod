@@ -14,35 +14,33 @@ require (
 	github.com/gofrs/uuid/v5 v5.3.2
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905
 	github.com/klauspost/compress v1.17.9 // lastest version compatible with golang1.20
-	github.com/klauspost/cpuid/v2 v2.2.9 // lastest version compatible with golang1.20
 	github.com/lunixbochs/struc v0.0.0-20200707160740-784aaebc1d40
 	github.com/mdlayher/netlink v1.7.2
 	github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab
 	github.com/metacubex/bart v0.20.5
-	github.com/metacubex/bbolt v0.0.0-20240822011022-aed6d4850399
+	github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/quic-go v0.53.1-0.20250628094454-fda5262d1d9c
 	github.com/metacubex/randv2 v0.2.0
-	github.com/metacubex/sing v0.5.4-0.20250605054047-54dc6097da29
+	github.com/metacubex/sing v0.5.4
 	github.com/metacubex/sing-mux v0.3.2
-	github.com/metacubex/sing-quic v0.0.0-20250628100430-24f13f1e846e
-	github.com/metacubex/sing-shadowsocks v0.2.11-0.20250621023810-0e9ef9dd0c92
-	github.com/metacubex/sing-shadowsocks2 v0.2.5-0.20250621023950-93d605a2143d
+	github.com/metacubex/sing-quic v0.0.0-20250718154553-1b193bec4cbb
+	github.com/metacubex/sing-shadowsocks v0.2.11
+	github.com/metacubex/sing-shadowsocks2 v0.2.5
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.7-0.20250611091011-60774779fdd8
-	github.com/metacubex/sing-vmess v0.2.2
+	github.com/metacubex/sing-tun v0.4.7-0.20250721020617-8e7c37ed3d97
+	github.com/metacubex/sing-vmess v0.2.3
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
 	github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4
-	github.com/metacubex/utls v1.7.4-0.20250628044047-8d330f8b93bf
+	github.com/metacubex/utls v1.8.0
 	github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/maxminddb-golang v1.12.0 // lastest version compatible with golang1.20
-	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
 	github.com/samber/lo v1.51.0
@@ -87,6 +85,7 @@ require (
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/josharian/native v1.1.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect

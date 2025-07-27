@@ -32,7 +32,7 @@ func upgradeCore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = updater.UpdateCore(execPath)
+	err = updater.DefaultCoreUpdater.Update(execPath)
 	if err != nil {
 		log.Warnln("%s", err)
 		render.Status(r, http.StatusInternalServerError)
