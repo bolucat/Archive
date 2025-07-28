@@ -437,7 +437,16 @@ func (u *CoreUpdater) copyFile(src, dst string) (err error) {
 	// otherwise truncates it before writing, without changing permissions.
 	wc, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
 	if err != nil {
-		return fmt.Errorf("os.OpenFile(%s): %w", dst, err)
+		// On some file system (such as Android's /data) maybe return error: "text file busy"
+		// Let's delete the target file and recreate it
+		err = os.Remove(dst)
+		if err != nil {
+			return fmt.Errorf("os.Remove(%s): %w", dst, err)
+		}
+		wc, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return fmt.Errorf("os.OpenFile(%s): %w", dst, err)
+		}
 	}
 
 	defer func() {

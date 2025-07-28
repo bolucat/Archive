@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Box, Typography, Paper, Stack } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { closeAllConnections } from "@/services/api";
+import { closeAllConnections } from "@/services/cmds";
 import { patchClashMode } from "@/services/cmds";
 import { useVerge } from "@/hooks/use-verge";
 import {
@@ -29,7 +29,7 @@ export const ClashModeCard = () => {
         `${currentMode[0].toLocaleUpperCase()}${currentMode.slice(1)} Mode Description`,
       );
     }
-    return t("Mode Description Not Available");
+    return t("Core communication error");
   }, [currentMode]);
 
   // 模式图标映射

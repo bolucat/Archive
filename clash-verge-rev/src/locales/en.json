@@ -216,6 +216,7 @@
   "TUN Mode Disabled": "TUN mode is disabled, suitable for special applications",
   "TUN Mode Service Required": "TUN mode requires service mode, please install the service first",
   "TUN Mode Intercept Info": "TUN mode can take over all application traffic, suitable for special applications that do not follow the system proxy settings",
+  "Core communication error": "Core communication error",
   "Rule Mode Description": "Routes traffic according to preset rules, provides flexible proxy strategies",
   "Global Mode Description": "All traffic goes through proxy servers, suitable for scenarios requiring global internet access",
   "Direct Mode Description": "All traffic doesn't go through proxy nodes, but is forwarded by Clash kernel to target servers, suitable for specific scenarios requiring kernel traffic distribution",
@@ -287,6 +288,7 @@
   "Redir Port": "Redir Port",
   "Tproxy Port": "Tproxy Port",
   "External": "External",
+  "Enable External Controller": "Enable External Controller",
   "External Controller": "External Controller",
   "Core Secret": "Core Secret",
   "Recommended": "Recommended",
@@ -651,5 +653,14 @@
   "Please enter a valid url": "Please enter a valid url",
   "Add": "Add",
   "Development mode: Automatically includes Tauri and localhost origins": "Development mode: Automatically includes Tauri and localhost origins",
-  "Invalid regular expression": "Invalid regular expression"
+  "Invalid regular expression": "Invalid regular expression",
+  "Copy Version": "Copy Version",
+  "Version copied to clipboard": "Version copied to clipboard",
+  "Controller address cannot be empty": "Controller address cannot be empty",
+  "Secret cannot be empty": "Secret cannot be empty",
+  "Configuration saved successfully": "Configuration saved successfully",
+  "Failed to save configuration": "Failed to save configuration",
+  "Controller address copied to clipboard": "Controller address copied to clipboard",
+  "Secret copied to clipboard": "Secret copied to clipboard",
+  "Saving...": "Saving..."
 }

@@ -21,6 +21,8 @@ on:
 
 permissions: write-all
 env:
+  TAG_NAME: deploytest
+  TAG_CHANNEL: DeployTest
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
 concurrency:
@@ -69,6 +71,8 @@ jobs:
         with:
           workspaces: src-tauri
           save-if: false
+          cache-all-crates: false
+          shared-key: autobuild-shared
 
       - name: Install Node
         if: github.event.inputs[matrix.input] == 'true'
@@ -87,6 +91,9 @@ jobs:
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
+
+      - name: Release ${{ env.TAG_CHANNEL }} Version
+        run: pnpm release-version ${{ env.TAG_NAME }}
 
       - name: Tauri build
         if: github.event.inputs[matrix.input] == 'true'

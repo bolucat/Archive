@@ -1,6 +1,6 @@
 [package]
 name = "clash-verge"
-version = "2.3.2"
+version = "2.4.0"
 description = "clash verge"
 authors = ["zzzgydi", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"
@@ -41,6 +41,7 @@ tokio = { version = "1.46.1", features = [
   "time",
   "sync",
 ] }
+futures-util = "0.3.31"
 serde = { version = "1.0.219", features = ["derive"] }
 reqwest = { version = "0.12.22", features = ["json", "rustls-tls", "cookies"] }
 regex = "1.11.1"
@@ -70,15 +71,15 @@ getrandom = "0.3.3"
 futures = "0.3.31"
 sys-locale = "0.3.2"
 async-trait = "0.1.88"
-mihomo_api = { path = "src_crates/crate_mihomo_api" }
 libc = "0.2.174"
 gethostname = "1.0.2"
 hmac = "0.12.1"
 sha2 = "0.10.9"
 hex = "0.4.3"
 scopeguard = "1.2.0"
+kode-bridge = "0.1.6-rc"
+dashmap = "6.1.0"
 tauri-plugin-notification = "2.3.0"
-dashmap = "7.0.0-rc2"
 
 [target.'cfg(windows)'.dependencies]
 runas = "=1.2.0"
@@ -141,10 +142,3 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [dev-dependencies]
 criterion = "0.6.0"
 tempfile = "3.20.0"
-
-[workspace]
-members = ["src_crates/crate_mihomo_api"]
-
-[[bench]]
-name = "draft_benchmark"
-harness = false
