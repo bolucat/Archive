@@ -9,7 +9,6 @@ public class CoreAdminHandler
     private static readonly Lazy<CoreAdminHandler> _instance = new(() => new());
     public static CoreAdminHandler Instance => _instance.Value;
     private Config _config;
-    private readonly string _sudoAccessText = "SUDO_ACCESS_VERIFIED";
     private Action<bool, string>? _updateFunc;
     private int _linuxSudoPid = -1;
 
@@ -21,6 +20,8 @@ public class CoreAdminHandler
         }
         _config = config;
         _updateFunc = updateFunc;
+
+        await Task.CompletedTask;
     }
 
     private void UpdateFunc(bool notify, string msg)
@@ -50,20 +51,13 @@ public class CoreAdminHandler
             }
         };
 
-        var sudoVerified = false;
-        DataReceivedEventHandler dataHandler = (sender, e) =>
+        void dataHandler(object sender, DataReceivedEventArgs e)
         {
             if (e.Data.IsNotEmpty())
             {
-                if (!sudoVerified && e.Data.Contains(_sudoAccessText))
-                {
-                    sudoVerified = true;
-                    UpdateFunc(false, ResUI.SudoPwdVerfiedSuccessTip + Environment.NewLine);
-                    return;
-                }
                 UpdateFunc(false, e.Data + Environment.NewLine);
             }
-        };
+        }
 
         proc.OutputDataReceived += dataHandler;
         proc.ErrorDataReceived += dataHandler;
@@ -72,8 +66,6 @@ public class CoreAdminHandler
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
 
-        await Task.Delay(10);
-        await proc.StandardInput.WriteLineAsync(AppHandler.Instance.LinuxSudoPwd);
         await Task.Delay(10);
         await proc.StandardInput.WriteLineAsync(AppHandler.Instance.LinuxSudoPwd);
 
@@ -118,7 +110,7 @@ public class CoreAdminHandler
         }
         else
         {
-            sb.AppendLine($"sudo -S echo \"{_sudoAccessText}\" && sudo -S {cmdLine}");
+            sb.AppendLine($"sudo -S {cmdLine}");
         }
 
         await File.WriteAllTextAsync(shFilePath, sb.ToString());

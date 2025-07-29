@@ -64,7 +64,7 @@ public partial class SudoPasswordInputView : UserControl
     {
         try
         {
-            // Use sudo -S echo command to verify password
+            // Use sudo echo command to verify password
             var arg = new List<string>() { "-c", "sudo -S echo SUDO_CHECK" };
             var result = await CliWrap.Cli
                 .Wrap(Global.LinuxBash)
