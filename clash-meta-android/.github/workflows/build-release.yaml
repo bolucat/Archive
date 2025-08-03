@@ -77,6 +77,12 @@ jobs:
             git push --follow-tags
           fi
 
+      - name: Update CA
+        run: |
+          sudo apt-get update && sudo apt-get install ca-certificates
+          sudo update-ca-certificates
+          cp -f /etc/ssl/certs/ca-certificates.crt core/src/foss/golang/clash/component/ca/ca-certificates.crt
+
       - name: Signing properties
         env:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}

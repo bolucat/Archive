@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.LocalDNSTransport
 import io.nekohasekai.libbox.NetworkInterfaceIterator
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.StringIterator
@@ -20,6 +21,9 @@ import java.net.Inet6Address
 import java.net.InetSocketAddress
 import java.net.InterfaceAddress
 import java.net.NetworkInterface
+import java.security.KeyStore
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import io.nekohasekai.libbox.NetworkInterface as LibboxNetworkInterface
 
 interface PlatformInterfaceWrapper : PlatformInterface {
@@ -167,6 +171,27 @@ interface PlatformInterfaceWrapper : PlatformInterface {
             ssid = ssid.substring(1, ssid.length - 1)
         }
         return WIFIState(ssid, wifiInfo.bssid)
+    }
+
+    override fun localDNSTransport(): LocalDNSTransport? {
+        return LocalResolver
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    override fun systemCertificates(): StringIterator {
+        val certificates = mutableListOf<String>()
+        val keyStore = KeyStore.getInstance("AndroidCAStore")
+        if (keyStore != null) {
+            keyStore.load(null, null);
+            val aliases = keyStore.aliases()
+            while (aliases.hasMoreElements()) {
+                val cert = keyStore.getCertificate(aliases.nextElement())
+                certificates.add(
+                    "-----BEGIN CERTIFICATE-----\n" + Base64.encode(cert.encoded) + "\n-----END CERTIFICATE-----"
+                )
+            }
+        }
+        return StringArray(certificates.iterator())
     }
 
     private class InterfaceArray(private val iterator: Iterator<LibboxNetworkInterface>) :

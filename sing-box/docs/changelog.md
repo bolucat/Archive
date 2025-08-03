@@ -23,6 +23,7 @@ icon: material/alert-decagram
 * Improve tun performance on Apple platforms **17**
 * Update quic-go to v0.52.0
 * Update gVisor to 20250319.0
+* Update the status of graphical clients in stores **18**
 
 **1**:
 
@@ -145,6 +146,12 @@ The following data was tested using [tun_bench](https://github.com/SagerNet/sing
 | 1.12.0-rc.4 | system | 4064  | 6.45G  | 6.27G    |
 | 1.11.15     | system | 65535 | 26.2G  | 17.4G    |
 | 1.12.0-rc.4 | system | 65535 | 17.6G  | 21.0G    |
+
+**18**:
+
+We continue to experience issues updating our sing-box apps on the App Store and Play Store. 
+Until we rewrite and resubmit the apps, they are considered irrecoverable. 
+Therefore, after this release, we will not be repeating this notice unless there is new information.
 
 ### 1.11.15
 

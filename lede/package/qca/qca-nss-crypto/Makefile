@@ -16,17 +16,17 @@ include $(INCLUDE_DIR)/package.mk
 
 # v1.0 is for Akronite
 # v2.0 is for Hawkeye/Cypress/Maple
-ifneq (, $(findstring $(CONFIG_TARGET_SUBTARGET), "ipq807x" "ipq60xx"))
-NSS_CRYPTO_DIR:=v2.0
-else
+ifeq ($(BOARD),ipq806x)
 NSS_CRYPTO_DIR:=v1.0
+else
+NSS_CRYPTO_DIR:=v2.0
 endif
 
 define KernelPackage/qca-nss-crypto
 	SECTION:=kernel
 	CATEGORY:=Kernel modules
 	SUBMENU:=Cryptographic API modules
-	DEPENDS:=@TARGET_qualcommax +kmod-qca-nss-drv +TARGET_qualcommax_ipq807x:nss-eip-firmware	+TARGET_qualcommax_ipq60xx:nss-eip-firmware
+	DEPENDS:=@TARGET_qualcommax +kmod-qca-nss-drv +eip197-firmware
 	TITLE:=Kernel driver for NSS crypto driver
 	FILES:=$(PKG_BUILD_DIR)/$(NSS_CRYPTO_DIR)/src/qca-nss-crypto.ko \
 	$(PKG_BUILD_DIR)/$(NSS_CRYPTO_DIR)/tool/qca-nss-crypto-tool.ko
