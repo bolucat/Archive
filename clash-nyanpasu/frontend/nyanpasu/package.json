@@ -16,9 +16,9 @@
     "@emotion/styled": "11.14.1",
     "@juggle/resize-observer": "3.4.0",
     "@material/material-color-utilities": "0.3.0",
-    "@mui/icons-material": "7.3.0",
-    "@mui/lab": "7.0.0-beta.15",
-    "@mui/material": "7.3.0",
+    "@mui/icons-material": "7.3.1",
+    "@mui/lab": "7.0.0-beta.16",
+    "@mui/material": "7.3.1",
     "@mui/x-date-pickers": "8.9.2",
     "@nyanpasu/interface": "workspace:^",
     "@nyanpasu/ui": "workspace:^",
@@ -83,7 +83,7 @@
     "meta-json-schema": "1.19.12",
     "monaco-yaml": "5.4.0",
     "nanoid": "5.1.5",
-    "sass-embedded": "1.89.2",
+    "sass-embedded": "1.90.0",
     "shiki": "2.5.0",
     "unplugin-auto-import": "19.3.0",
     "unplugin-icons": "22.2.0",
@@ -93,6 +93,6 @@
     "vite-plugin-sass-dts": "1.3.31",
     "vite-plugin-svgr": "4.3.0",
     "vite-tsconfig-paths": "5.1.4",
-    "zod": "4.0.14"
+    "zod": "4.0.15"
   }
 }
