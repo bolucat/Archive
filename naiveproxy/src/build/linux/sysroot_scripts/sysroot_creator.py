@@ -199,6 +199,10 @@ def download_file(url: str, dest: str, retries=5) -> None:
         raise Exception(f"Failed to download file after {retries} attempts")
 
 
+def get_build_dir(arch: str) -> str:
+    return os.path.join(CHROME_DIR, "out", "sysroot-build", RELEASES[arch])
+
+
 def sanity_check(build_dir: str) -> None:
     """
     Performs sanity checks to ensure the environment is correctly set up.
@@ -344,6 +348,12 @@ def hacks_and_patches(install_root: str, script_dir: str, arch: str) -> None:
     # C23 STRTOL requires glibc >= 2.38
     replace_in_file(features_h, r"(#\s?define\s+__GLIBC_USE_C23_STRTOL)",
                     r"\1 0 //")
+
+    # riscv_hwprobe requires glibc >= 2.40
+    if arch == "riscv64":
+        os.remove(
+            os.path.join(install_root, "usr", "include", "riscv64-linux-gnu",
+                         "sys", "hwprobe.h"))
 
     # fcntl64() was introduced in glibc 2.28. Make sure to use fcntl() instead.
     fcntl_h = os.path.join(install_root, "usr", "include", "fcntl.h")
@@ -694,7 +704,8 @@ def restore_metadata(install_root: str,
                 os.utime(file_path, restore_time, follow_symlinks=False)
 
 
-def build_sysroot(arch: str, build_dir: str) -> None:
+def build_sysroot(arch: str) -> None:
+    build_dir = get_build_dir(arch)
     install_root = os.path.join(build_dir, f"{RELEASES[arch]}_{arch}_staging")
     clear_install_dir(install_root)
     packages = generate_package_list(arch, build_dir)
@@ -709,7 +720,8 @@ def build_sysroot(arch: str, build_dir: str) -> None:
     restore_metadata(install_root, old_metadata)
 
 
-def upload_sysroot(arch: str, build_dir: str) -> str:
+def upload_sysroot(arch: str) -> str:
+    build_dir = get_build_dir(arch)
     tarball_path = os.path.join(
         build_dir, f"{DISTRO}_{RELEASES[arch]}_{arch}_sysroot.tar.xz")
     command = [
@@ -770,19 +782,16 @@ def main():
     parser.add_argument("command", choices=["build", "upload"])
     parser.add_argument("architecture", choices=list(TRIPLES))
     args = parser.parse_args()
-    build_dir = os.path.join(CHROME_DIR, "out", "sysroot-build",
-                             RELEASES[args.architecture])
-
-    sanity_check(build_dir)
+    sanity_check(get_build_dir(args.architecture))
 
     global ARCHIVE_URL
     if args.architecture == "loong64":
         ARCHIVE_URL = "https://snapshot.debian.org/archive/debian-ports/20250625T074124Z/"
 
     if args.command == "build":
-        build_sysroot(args.architecture, build_dir)
+        build_sysroot(args.architecture)
     elif args.command == "upload":
-        upload_sysroot(args.architecture, build_dir)
+        upload_sysroot(args.architecture)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@
 ^components/miracle_parameter
 ^components/nacl/toolchain.gni
 ^components/network_time
+^components/unexportable_keys
 ^components/version_info
 ^crypto
 ^ios/features.gni
@@ -61,7 +62,11 @@
 ^third_party/lss/linux_syscall_support.h
 ^third_party/modp_b64
 ^third_party/nasm
-^third_party/perfetto/include/perfetto/tracing/traced_value_forward.h
+^third_party/perfetto/BUILD.gn
+^third_party/perfetto/gn
+^third_party/perfetto/include
+^third_party/perfetto/protos
+^third_party/perfetto/src
 ^third_party/protobuf/BUILD.gn
 ^third_party/protobuf/proto_library.gni
 ^third_party/protobuf/proto_sources.gni

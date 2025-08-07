@@ -5,7 +5,7 @@
 *_perftest.cc
 *_fuzztest.cc
 *[!s]_test.cc
-*fuzzer.*
+*fuzzer.[!g]*
 *fuzz/*
 *fuzzing/*
 *[a-hj-z]s_test.cc

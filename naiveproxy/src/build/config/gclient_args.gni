@@ -7,7 +7,6 @@ checkout_copybara = false
 checkout_glic_e2e_tests = false
 checkout_ios_webkit = false
 checkout_mutter = false
-checkout_nacl = false
 checkout_openxr = false
 checkout_src_internal = false
 checkout_src_internal_infra = false

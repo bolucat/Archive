@@ -138,6 +138,12 @@ buildflag_header("cronet_buildflags") {
   flags = [ "CRONET_BUILD=$is_cronet_build" ]
 }
 
+buildflag_header("disk_cache_buildflags") {
+  header = "buildflags.h"
+  header_dir = "net/disk_cache/"
+  flags = [ "ENABLE_DISK_CACHE_SQL_BACKEND=$enable_disk_cache_sql_backend" ]
+}
+
 proto_library("device_bound_sessions_storage_proto") {
   proto_in_dir = "//"
   sources = [ "device_bound_sessions/proto/storage.proto" ]
@@ -290,6 +296,8 @@ component("net") {
     "base/sockaddr_storage.cc",
     "base/sockaddr_storage.h",
     "base/sys_addrinfo.h",
+    "base/task/task_runner.cc",
+    "base/task/task_runner.h",
     "base/trace_event_stub.h",
     "base/tracing.h",
     "base/transport_info.cc",
@@ -598,7 +606,6 @@ component("net") {
     "http/http_auth_multi_round_parse.h",
     "http/http_auth_preferences.cc",
     "http/http_auth_preferences.h",
-    "http/http_auth_scheme.cc",
     "http/http_auth_scheme.h",
     "http/http_basic_state.cc",
     "http/http_basic_state.h",
@@ -675,10 +682,6 @@ component("net") {
     "http/http_stream_pool.h",
     "http/http_stream_pool_attempt_manager.cc",
     "http/http_stream_pool_attempt_manager.h",
-    "http/http_stream_pool_attempt_manager_quic_attempt.cc",
-    "http/http_stream_pool_attempt_manager_quic_attempt.h",
-    "http/http_stream_pool_attempt_manager_tcp_based_attempt.cc",
-    "http/http_stream_pool_attempt_manager_tcp_based_attempt.h",
     "http/http_stream_pool_group.cc",
     "http/http_stream_pool_group.h",
     "http/http_stream_pool_handle.cc",
@@ -689,8 +692,12 @@ component("net") {
     "http/http_stream_pool_job.h",
     "http/http_stream_pool_job_controller.cc",
     "http/http_stream_pool_job_controller.h",
+    "http/http_stream_pool_quic_attempt.cc",
+    "http/http_stream_pool_quic_attempt.h",
     "http/http_stream_pool_request_info.cc",
     "http/http_stream_pool_request_info.h",
+    "http/http_stream_pool_tcp_based_attempt.cc",
+    "http/http_stream_pool_tcp_based_attempt.h",
     "http/http_stream_request.cc",
     "http/http_stream_request.h",
     "http/http_transaction.h",
@@ -742,6 +749,8 @@ component("net") {
     "log/net_log_values.h",
     "log/net_log_with_source.cc",
     "log/net_log_with_source.h",
+    "log/trace_net_log_observer.cc",
+    "log/trace_net_log_observer.h",
     "nqe/cached_network_quality.cc",
     "nqe/cached_network_quality.h",
     "nqe/effective_connection_type.cc",
@@ -1145,6 +1154,7 @@ component("net") {
   ]
 
   public_deps = [
+    ":disk_cache_buildflags",
     ":net_export_header",
     ":net_public_deps",
     "//base",
@@ -1762,6 +1772,19 @@ component("net") {
 
   if (!is_cronet_build) {
     deps += [ "//mojo/public/cpp/bindings:default_construct_tag" ]
+  }
+
+  if (enable_disk_cache_sql_backend) {
+    sources += [
+      "disk_cache/sql/cache_entry_key.cc",
+      "disk_cache/sql/cache_entry_key.h",
+      "disk_cache/sql/sql_backend_constants.h",
+      "disk_cache/sql/sql_backend_impl.cc",
+      "disk_cache/sql/sql_backend_impl.h",
+      "disk_cache/sql/sql_persistent_store.cc",
+      "disk_cache/sql/sql_persistent_store.h",
+    ]
+    deps += [ "//sql:sql" ]
   }
 }
 

@@ -1,0 +1,166 @@
+# Copyright (C) 2017 The Android Open Source Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("../../gn/gen_perfetto_version_header.gni")
+import("../../gn/perfetto.gni")
+import("../../gn/perfetto_component.gni")
+import("../../gn/test.gni")
+import("../../gn/wasm.gni")
+
+# On standalone builds this is all the OSes we support. On chromium builds,
+# though, this really means !is_fuchsia && !is_nacl.
+_subprocess_supported =
+    is_linux || is_chromeos || is_android || is_mac || is_win
+
+perfetto_component("base") {
+  deps = [
+    "../../gn:base_platform",
+    "../../gn:default_deps",
+  ]
+  public_deps = [
+    "../../include/perfetto/base",
+    "../../include/perfetto/ext/base",
+  ]
+  sources = [
+    "android_utils.cc",
+    "base64.cc",
+    "crash_keys.cc",
+    "ctrl_c_handler.cc",
+    "event_fd.cc",
+    "file_utils.cc",
+    "getopt_compat.cc",
+    "intrusive_list.cc",
+    "intrusive_list.h",
+    "intrusive_tree.cc",
+    "intrusive_tree.h",
+    "log_ring_buffer.h",
+    "logging.cc",
+    "metatrace.cc",
+    "paged_memory.cc",
+    "periodic_task.cc",
+    "pipe.cc",
+    "scoped_mmap.cc",
+    "status.cc",
+    "string_splitter.cc",
+    "string_utils.cc",
+    "string_view.cc",
+    "string_view_splitter.cc",
+    "temp_file.cc",
+    "thread_checker.cc",
+    "thread_utils.cc",
+    "time.cc",
+    "utils.cc",
+    "uuid.cc",
+    "virtual_destructors.cc",
+    "waitable_event.cc",
+    "watchdog_posix.cc",
+    "weak_runner.cc",
+  ]
+
+  if (!is_nacl) {
+    sources += [
+      "thread_task_runner.cc",
+      "unix_task_runner.cc",
+    ]
+  }
+
+  if (_subprocess_supported) {
+    sources += [
+      "subprocess.cc",
+      "subprocess_posix.cc",
+      "subprocess_windows.cc",
+    ]
+  }
+
+  if (enable_perfetto_stderr_crash_dump) {
+    deps += [ ":debug_crash_stack_trace" ]
+  }
+}
+
+perfetto_component("clock_snapshots") {
+  deps = [ "../../gn:default_deps" ]
+  public_deps = [
+    "../../include/perfetto/ext/base",
+    "../../protos/perfetto/common:zero",
+  ]
+  sources = [ "clock_snapshots.cc" ]
+}
+
+# This target needs to be named as such because it's exposed directly in Bazel
+# and Android.bp.
+perfetto_component("perfetto_base_default_platform") {
+  deps = [
+    "../../gn:default_deps",
+    "../../include/perfetto/ext/base",
+  ]
+  sources = [ "default_platform.cc" ]
+}
+
+perfetto_component("version") {
+  deps = [
+    ":base",
+    "../../gn:default_deps",
+  ]
+  public_deps = [ "../../include/perfetto/ext/base:version" ]
+  sources = [ "version.cc" ]
+
+  if (enable_perfetto_version_gen) {
+    deps += [ ":version_gen_h" ]
+  }
+}
+
+if (enable_perfetto_version_gen) {
+  config("version_gen_config") {
+    include_dirs = [ root_gen_dir ]
+  }
+
+  # Note: the build file translators (tools/gn_utils.py) depend on the hardcoded
+  # "//src/base:version_gen_h". If you rename this target, update build file
+  # translators accordingly.
+  gen_perfetto_version_header("version_gen_h") {
+    cpp_out = "${root_gen_dir}/perfetto_version.gen.h"
+  }
+}
+
+if (enable_perfetto_stderr_crash_dump) {
+  source_set("debug_crash_stack_trace") {
+    sources = [ "debug_crash_stack_trace.cc" ]
+    deps = [
+      "../../gn:default_deps",
+      "../../include/perfetto/ext/base",
+      "../../include/perfetto/ext/base",
+    ]
+    if (is_linux || is_android) {
+      deps += [ "../../gn:libbacktrace" ]
+    }
+    cflags = [ "-Wno-deprecated" ]
+  }
+}
+
+if (enable_perfetto_ipc) {
+  # This cannot be in :base as it does not build on WASM.
+  perfetto_component("unix_socket") {
+    deps = [
+      "../../gn:default_deps",
+      "../../include/perfetto/ext/base",
+    ]
+    sources = [
+      "unix_socket.cc",
+      "vm_sockets.h",
+    ]
+    if (is_win && perfetto_build_standalone) {
+      libs = [ "Ws2_32.lib" ]
+    }
+  }
+}

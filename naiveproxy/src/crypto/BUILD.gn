@@ -31,6 +31,8 @@ component("crypto") {
     "ec_signature_creator.h",
     "ec_signature_creator_impl.cc",
     "ec_signature_creator_impl.h",
+    "evp.cc",
+    "evp.h",
     "features.cc",
     "features.h",
     "hash.cc",

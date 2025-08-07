@@ -8,7 +8,7 @@
 namespace url {
 
 bool IDNToASCII(std::u16string_view src, CanonOutputW* output) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return false;
 }
 

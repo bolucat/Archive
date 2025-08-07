@@ -12,12 +12,12 @@ class GURL;
 namespace net {
 
 bool IsSafePortablePathComponent(const base::FilePath& component) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return false;
 }
 
 bool IsSafePortableRelativePath(const base::FilePath& path) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return false;
 }
 
@@ -27,7 +27,7 @@ std::u16string GetSuggestedFilename(const GURL& url,
                                     const std::string& suggested_name,
                                     const std::string& mime_type,
                                     const std::string& default_name) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return {};
 }
 
@@ -37,7 +37,7 @@ base::FilePath GenerateFileName(const GURL& url,
                                 const std::string& suggested_name,
                                 const std::string& mime_type,
                                 const std::string& default_file_name) {
-  NOTIMPLEMENTED();
+  NOTREACHED();
   return {};
 }
 
