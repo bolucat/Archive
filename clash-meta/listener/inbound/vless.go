@@ -12,6 +12,7 @@ import (
 type VlessOption struct {
 	BaseOption
 	Users           []VlessUser   `inbound:"users"`
+	Decryption      string        `inbound:"decryption,omitempty"`
 	WsPath          string        `inbound:"ws-path,omitempty"`
 	GrpcServiceName string        `inbound:"grpc-service-name,omitempty"`
 	Certificate     string        `inbound:"certificate,omitempty"`
@@ -58,6 +59,7 @@ func NewVless(options *VlessOption) (*Vless, error) {
 			Enable:          true,
 			Listen:          base.RawAddress(),
 			Users:           users,
+			Decryption:      options.Decryption,
 			WsPath:          options.WsPath,
 			GrpcServiceName: options.GrpcServiceName,
 			Certificate:     options.Certificate,

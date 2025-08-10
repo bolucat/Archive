@@ -3,10 +3,14 @@ package outbound
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/metacubex/mihomo/common/convert"
 	N "github.com/metacubex/mihomo/common/net"
@@ -19,6 +23,7 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
 	"github.com/metacubex/mihomo/transport/vless"
+	"github.com/metacubex/mihomo/transport/vless/encryption"
 	"github.com/metacubex/mihomo/transport/vmess"
 
 	vmessSing "github.com/metacubex/sing-vmess"
@@ -30,6 +35,8 @@ type Vless struct {
 	*Base
 	client *vless.Client
 	option *VlessOption
+
+	encryption *encryption.ClientInstance
 
 	// for gun mux
 	gunTLSConfig *tls.Config
@@ -53,6 +60,7 @@ type VlessOption struct {
 	PacketAddr        bool              `proxy:"packet-addr,omitempty"`
 	XUDP              bool              `proxy:"xudp,omitempty"`
 	PacketEncoding    string            `proxy:"packet-encoding,omitempty"`
+	Encryption        string            `proxy:"encryption,omitempty"`
 	Network           string            `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions        `proxy:"ech-opts,omitempty"`
 	RealityOpts       RealityOptions    `proxy:"reality-opts,omitempty"`
@@ -163,6 +171,12 @@ func (v *Vless) streamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 	if ctx.Done() != nil {
 		done := N.SetupContextForConn(ctx, c)
 		defer done(&err)
+	}
+	if v.encryption != nil {
+		c, err = v.encryption.Handshake(c)
+		if err != nil {
+			return
+		}
 	}
 	if metadata.NetWork == C.UDP {
 		if v.option.PacketAddr {
@@ -440,6 +454,38 @@ func NewVless(option VlessOption) (*Vless, error) {
 		},
 		client: client,
 		option: &option,
+	}
+
+	if s := strings.Split(option.Encryption, "-mlkem768client-"); len(s) == 2 {
+		var minutes uint32
+		if s[0] != "1rtt" {
+			t := strings.TrimSuffix(s[0], "min")
+			if t == s[0] {
+				return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
+			}
+			var i int
+			i, err = strconv.Atoi(t)
+			if err != nil {
+				return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
+			}
+			minutes = uint32(i)
+		}
+		var b []byte
+		b, err = base64.RawURLEncoding.DecodeString(s[1])
+		if err != nil {
+			return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
+		}
+		if len(b) == 1184 {
+			v.encryption = &encryption.ClientInstance{}
+			if err = v.encryption.Init(b, time.Duration(minutes)*time.Minute); err != nil {
+				return nil, fmt.Errorf("failed to use mlkem768seed: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
+		}
+		if option.Flow != "" {
+			return nil, errors.New(`vless "encryption" doesn't support "flow" yet`)
+		}
 	}
 
 	v.realityConfig, err = v.option.RealityOpts.Parse()

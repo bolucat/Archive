@@ -112,6 +112,8 @@ public class ConfigHandler
 
         config.ConstItem ??= new ConstItem();
 
+        config.SimpleDNSItem ??= InitBuiltinSimpleDNS();
+
         config.SpeedTestItem ??= new();
         if (config.SpeedTestItem.SpeedTestTimeout < 10)
         {
@@ -262,6 +264,7 @@ public class ConfigHandler
             EConfigType.Hysteria2 => await AddHysteria2Server(config, item),
             EConfigType.TUIC => await AddTuicServer(config, item),
             EConfigType.WireGuard => await AddWireguardServer(config, item),
+            EConfigType.Anytls => await AddAnytlsServer(config, item),
             _ => -1,
         };
         return ret;
@@ -787,6 +790,35 @@ public class ConfigHandler
     }
 
     /// <summary>
+    /// Add or edit a Anytls server
+    /// Validates and processes Anytls-specific settings
+    /// </summary>
+    /// <param name="config">Current configuration</param>
+    /// <param name="profileItem">Anytls profile to add</param>
+    /// <param name="toFile">Whether to save to file</param>
+    /// <returns>0 if successful, -1 if failed</returns>
+    public static async Task<int> AddAnytlsServer(Config config, ProfileItem profileItem, bool toFile = true)
+    {
+        profileItem.ConfigType = EConfigType.Anytls;
+        profileItem.CoreType = ECoreType.sing_box;
+
+        profileItem.Address = profileItem.Address.TrimEx();
+        profileItem.Id = profileItem.Id.TrimEx();
+        profileItem.Security = profileItem.Security.TrimEx();
+        profileItem.Network = string.Empty;
+        if (profileItem.StreamSecurity.IsNullOrEmpty())
+        {
+            profileItem.StreamSecurity = Global.StreamSecurity;
+        }
+        if (profileItem.Id.IsNullOrEmpty())
+        {
+            return -1;
+        }
+        await AddServerCommon(config, profileItem, toFile);
+        return 0;
+    }
+
+    /// <summary>
     /// Sort the server list by the specified column
     /// Updates the sort order in the profile extension data
     /// </summary>
@@ -1295,6 +1327,7 @@ public class ConfigHandler
                 EConfigType.Hysteria2 => await AddHysteria2Server(config, profileItem, false),
                 EConfigType.TUIC => await AddTuicServer(config, profileItem, false),
                 EConfigType.WireGuard => await AddWireguardServer(config, profileItem, false),
+                EConfigType.Anytls => await AddAnytlsServer(config, profileItem, false),
                 _ => -1,
             };
 
@@ -1997,7 +2030,7 @@ public class ConfigHandler
 
         if (!blImportAdvancedRules && items.Count > 0)
         {
-            //migrate 
+            //migrate
             //TODO Temporary code to be removed later
             if (config.RoutingBasicItem.RoutingIndexId.IsNotEmpty())
             {
@@ -2063,18 +2096,38 @@ public class ConfigHandler
     /// <summary>
     /// Initialize built-in DNS configurations
     /// Creates default DNS items for V2Ray and sing-box
+    /// Also checks existing DNS items and disables those with empty NormalDNS
     /// </summary>
     /// <param name="config">Current configuration</param>
     /// <returns>0 if successful</returns>
     public static async Task<int> InitBuiltinDNS(Config config)
     {
         var items = await AppHandler.Instance.DNSItems();
+
+        // Check existing DNS items and disable those with empty NormalDNS
+        var needsUpdate = false;
+        foreach (var existingItem in items)
+        {
+            if (existingItem.NormalDNS.IsNullOrEmpty() && existingItem.Enabled)
+            {
+                existingItem.Enabled = false;
+                needsUpdate = true;
+            }
+        }
+
+        // Update items if any changes were made
+        if (needsUpdate)
+        {
+            await SQLiteHelper.Instance.UpdateAllAsync(items);
+        }
+
         if (items.Count <= 0)
         {
             var item = new DNSItem()
             {
                 Remarks = "V2ray",
                 CoreType = ECoreType.Xray,
+                Enabled = false,
             };
             await SaveDNSItems(config, item);
 
@@ -2082,6 +2135,7 @@ public class ConfigHandler
             {
                 Remarks = "sing-box",
                 CoreType = ECoreType.sing_box,
+                Enabled = false,
             };
             await SaveDNSItems(config, item2);
         }
@@ -2153,6 +2207,37 @@ public class ConfigHandler
 
     #endregion DNS
 
+    #region Simple DNS
+
+    public static SimpleDNSItem InitBuiltinSimpleDNS()
+    {
+        return new SimpleDNSItem()
+        {
+            UseSystemHosts = false,
+            AddCommonHosts = true,
+            FakeIP = false,
+            BlockBindingQuery = true,
+            DirectDNS = Global.DomainDirectDNSAddress.FirstOrDefault(),
+            RemoteDNS = Global.DomainRemoteDNSAddress.FirstOrDefault(),
+            SingboxOutboundsResolveDNS = Global.DomainDirectDNSAddress.FirstOrDefault(),
+            SingboxFinalResolveDNS = Global.DomainPureIPDNSAddress.FirstOrDefault()
+        };
+    }
+
+    public static async Task<SimpleDNSItem> GetExternalSimpleDNSItem(string url)
+    {
+        var downloadHandle = new DownloadService();
+        var templateContent = await downloadHandle.TryDownloadString(url, true, "");
+        if (templateContent.IsNullOrEmpty())
+            return null;
+        var template = JsonUtils.Deserialize<SimpleDNSItem>(templateContent);
+        if (template == null)
+            return null;
+        return template;
+    }
+
+    #endregion Simple DNS
+
     #region Regional Presets
 
     /// <summary>
@@ -2174,7 +2259,8 @@ public class ConfigHandler
                 await SQLiteHelper.Instance.DeleteAllAsync<DNSItem>();
                 await InitBuiltinDNS(config);
 
-                return true;
+                config.SimpleDNSItem = InitBuiltinSimpleDNS();
+                break;
 
             case EPresetType.Russia:
                 config.ConstItem.GeoSourceUrl = Global.GeoFilesSources[1];
@@ -2184,7 +2270,8 @@ public class ConfigHandler
                 await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.Xray, Global.DNSTemplateSources[1] + "v2ray.json"));
                 await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.sing_box, Global.DNSTemplateSources[1] + "sing_box.json"));
 
-                return true;
+                config.SimpleDNSItem = await GetExternalSimpleDNSItem(Global.DNSTemplateSources[1] + "simple_dns.json") ?? InitBuiltinSimpleDNS();
+                break;
 
             case EPresetType.Iran:
                 config.ConstItem.GeoSourceUrl = Global.GeoFilesSources[2];
@@ -2194,10 +2281,11 @@ public class ConfigHandler
                 await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.Xray, Global.DNSTemplateSources[2] + "v2ray.json"));
                 await SaveDNSItems(config, await GetExternalDNSItem(ECoreType.sing_box, Global.DNSTemplateSources[2] + "sing_box.json"));
 
-                return true;
+                config.SimpleDNSItem = await GetExternalSimpleDNSItem(Global.DNSTemplateSources[2] + "simple_dns.json") ?? InitBuiltinSimpleDNS();
+                break;
         }
 
-        return false;
+        return true;
     }
 
     #endregion Regional Presets

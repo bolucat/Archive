@@ -17,6 +17,7 @@ type VlessServer struct {
 	Enable          bool
 	Listen          string
 	Users           []VlessUser
+	Decryption      string
 	WsPath          string
 	GrpcServiceName string
 	Certificate     string
