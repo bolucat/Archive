@@ -88,7 +88,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 
 	sl = &Listener{config: config, service: service}
 
-	if s := strings.Split(config.Decryption, "-mlkem768seed-"); len(s) == 2 {
+	if s := strings.SplitN(config.Decryption, "-", 4); len(s) == 4 && s[2] == "mlkem768seed" {
 		var minutes uint32
 		if s[0] != "1rtt" {
 			t := strings.TrimSuffix(s[0], "min")
@@ -102,14 +102,22 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 			}
 			minutes = uint32(i)
 		}
+		var xor uint32
+		switch s[1] {
+		case "vless":
+		case "aes128xor":
+			xor = 1
+		default:
+			return nil, fmt.Errorf("invaild vless decryption value: %s", config.Decryption)
+		}
 		var b []byte
-		b, err = base64.RawURLEncoding.DecodeString(s[1])
+		b, err = base64.RawURLEncoding.DecodeString(s[3])
 		if err != nil {
 			return nil, fmt.Errorf("invaild vless decryption value: %s", config.Decryption)
 		}
-		if len(b) == 64 {
+		if len(b) == encryption.MLKEM768SeedLength {
 			sl.decryption = &encryption.ServerInstance{}
-			if err = sl.decryption.Init(b, time.Duration(minutes)*time.Minute); err != nil {
+			if err = sl.decryption.Init(b, xor, time.Duration(minutes)*time.Minute); err != nil {
 				return nil, fmt.Errorf("failed to use mlkem768seed: %w", err)
 			}
 		} else {

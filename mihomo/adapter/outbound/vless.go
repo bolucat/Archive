@@ -456,7 +456,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 		option: &option,
 	}
 
-	if s := strings.Split(option.Encryption, "-mlkem768client-"); len(s) == 2 {
+	if s := strings.SplitN(option.Encryption, "-", 4); len(s) == 4 && s[2] == "mlkem768client" {
 		var minutes uint32
 		if s[0] != "1rtt" {
 			t := strings.TrimSuffix(s[0], "min")
@@ -470,14 +470,22 @@ func NewVless(option VlessOption) (*Vless, error) {
 			}
 			minutes = uint32(i)
 		}
+		var xor uint32
+		switch s[1] {
+		case "vless":
+		case "aes128xor":
+			xor = 1
+		default:
+			return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
+		}
 		var b []byte
-		b, err = base64.RawURLEncoding.DecodeString(s[1])
+		b, err = base64.RawURLEncoding.DecodeString(s[3])
 		if err != nil {
 			return nil, fmt.Errorf("invaild vless encryption value: %s", option.Encryption)
 		}
-		if len(b) == 1184 {
+		if len(b) == encryption.MLKEM768ClientLength {
 			v.encryption = &encryption.ClientInstance{}
-			if err = v.encryption.Init(b, time.Duration(minutes)*time.Minute); err != nil {
+			if err = v.encryption.Init(b, xor, time.Duration(minutes)*time.Minute); err != nil {
 				return nil, fmt.Errorf("failed to use mlkem768seed: %w", err)
 			}
 		} else {

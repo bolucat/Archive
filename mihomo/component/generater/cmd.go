@@ -46,16 +46,16 @@ func Main(args []string) {
 		}
 		fmt.Println("Config:", configBase64)
 		fmt.Println("Key:", keyPem)
-	case "vless-mlkem768-keypair":
+	case "vless-mlkem768":
 		var seed string
 		if len(args) > 1 {
 			seed = args[1]
 		}
-		seedBase64, pubBase64, err := encryption.GenMLKEM768(seed)
+		seedBase64, clientBase64, err := encryption.GenMLKEM768(seed)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println("Seed: " + seedBase64)
-		fmt.Println("Client: " + pubBase64)
+		fmt.Println("Client: " + clientBase64)
 	}
 }

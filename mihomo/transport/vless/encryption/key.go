@@ -8,7 +8,10 @@ import (
 	"github.com/metacubex/utls/mlkem"
 )
 
-func GenMLKEM768(seedStr string) (seedBase64, pubBase64 string, err error) {
+const MLKEM768SeedLength = mlkem.SeedSize
+const MLKEM768ClientLength = mlkem.EncapsulationKeySize768
+
+func GenMLKEM768(seedStr string) (seedBase64, clientBase64 string, err error) {
 	var seed [64]byte
 	if len(seedStr) > 0 {
 		s, _ := base64.RawURLEncoding.DecodeString(seedStr)
@@ -27,6 +30,6 @@ func GenMLKEM768(seedStr string) (seedBase64, pubBase64 string, err error) {
 	key, _ := mlkem.NewDecapsulationKey768(seed[:])
 	pub := key.EncapsulationKey()
 	seedBase64 = base64.RawURLEncoding.EncodeToString(seed[:])
-	pubBase64 = base64.RawURLEncoding.EncodeToString(pub.Bytes())
+	clientBase64 = base64.RawURLEncoding.EncodeToString(pub.Bytes())
 	return
 }
