@@ -80,8 +80,7 @@ public class CoreConfigSingboxService
             ret.Msg = string.Format(ResUI.SuccessfulConfiguration, "");
             ret.Success = true;
 
-            var fullConfigTemplate = await AppHandler.Instance.GetFullConfigTemplateItem(ECoreType.sing_box);
-            ret.Data = await ApplyFullConfigTemplate(fullConfigTemplate, singboxConfig);
+            ret.Data = await ApplyFullConfigTemplate(singboxConfig);
             return ret;
         }
         catch (Exception ex)
@@ -434,8 +433,7 @@ public class CoreConfigSingboxService
 
             ret.Success = true;
 
-            var fullConfigTemplate = await AppHandler.Instance.GetFullConfigTemplateItem(ECoreType.sing_box);
-            ret.Data = await ApplyFullConfigTemplate(fullConfigTemplate, singboxConfig);
+            ret.Data = await ApplyFullConfigTemplate(singboxConfig);
             return ret;
         }
         catch (Exception ex)
@@ -628,6 +626,7 @@ public class CoreConfigSingboxService
                 var tunInbound = JsonUtils.Deserialize<Inbound4Sbox>(EmbedUtils.GetEmbedText(Global.TunSingboxInboundFileName)) ?? new Inbound4Sbox { };
                 tunInbound.interface_name = Utils.IsOSX() ? $"utun{new Random().Next(99)}" : "singbox_tun";
                 tunInbound.mtu = _config.TunModeItem.Mtu;
+                tunInbound.auto_route = _config.TunModeItem.AutoRoute;
                 tunInbound.strict_route = _config.TunModeItem.StrictRoute;
                 tunInbound.stack = _config.TunModeItem.Stack;
                 if (_config.TunModeItem.EnableIPv6Address == false)
@@ -2218,15 +2217,16 @@ public class CoreConfigSingboxService
         return 0;
     }
 
-    private async Task<string> ApplyFullConfigTemplate(FullConfigTemplateItem fullConfigTemplate, SingboxConfig singboxConfig)
+    private async Task<string> ApplyFullConfigTemplate(SingboxConfig singboxConfig)
     {
-        var fullConfigTemplateItem = fullConfigTemplate.Config;
-        if (_config.TunModeItem.EnableTun)
+        var fullConfigTemplate = await AppHandler.Instance.GetFullConfigTemplateItem(ECoreType.sing_box);
+        if (fullConfigTemplate == null || !fullConfigTemplate.Enabled)
         {
-            fullConfigTemplateItem = fullConfigTemplate.TunConfig;
+            return JsonUtils.Serialize(singboxConfig);
         }
 
-        if (!fullConfigTemplate.Enabled || fullConfigTemplateItem.IsNullOrEmpty())
+        var fullConfigTemplateItem = _config.TunModeItem.EnableTun ? fullConfigTemplate.TunConfig : fullConfigTemplate.Config;
+        if (fullConfigTemplateItem.IsNullOrEmpty())
         {
             return JsonUtils.Serialize(singboxConfig);
         }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"errors"
 	"io"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/metacubex/utls/mlkem"
-	"golang.org/x/crypto/hkdf"
 )
 
 type ServerSession struct {
@@ -24,11 +22,12 @@ type ServerSession struct {
 
 type ServerInstance struct {
 	sync.RWMutex
-	dKeyNfs  *mlkem.DecapsulationKey768
-	xor      uint32
-	minutes  time.Duration
-	sessions map[[21]byte]*ServerSession
-	stop     bool
+	nfsDKey      *mlkem.DecapsulationKey768
+	nfsEKeyBytes []byte
+	xor          uint32
+	minutes      time.Duration
+	sessions     map[[21]byte]*ServerSession
+	closed       bool
 }
 
 type ServerConn struct {
@@ -44,9 +43,12 @@ type ServerConn struct {
 	nonce      []byte
 }
 
-func (i *ServerInstance) Init(dKeyNfsData []byte, xor uint32, minutes time.Duration) (err error) {
-	i.dKeyNfs, err = mlkem.NewDecapsulationKey768(dKeyNfsData)
-	i.xor = xor
+func (i *ServerInstance) Init(nfsDKeySeed []byte, xor uint32, minutes time.Duration) (err error) {
+	i.nfsDKey, err = mlkem.NewDecapsulationKey768(nfsDKeySeed)
+	if xor > 0 {
+		i.nfsEKeyBytes = i.nfsDKey.EncapsulationKey().Bytes()
+		i.xor = xor
+	}
 	if minutes > 0 {
 		i.minutes = minutes
 		i.sessions = make(map[[21]byte]*ServerSession)
@@ -55,12 +57,13 @@ func (i *ServerInstance) Init(dKeyNfsData []byte, xor uint32, minutes time.Durat
 				time.Sleep(time.Minute)
 				now := time.Now()
 				i.Lock()
-				if i.stop {
+				if i.closed {
+					i.Unlock()
 					return
 				}
-				for index, session := range i.sessions {
+				for ticket, session := range i.sessions {
 					if now.After(session.expire) {
-						delete(i.sessions, index)
+						delete(i.sessions, ticket)
 					}
 				}
 				i.Unlock()
@@ -72,17 +75,17 @@ func (i *ServerInstance) Init(dKeyNfsData []byte, xor uint32, minutes time.Durat
 
 func (i *ServerInstance) Close() (err error) {
 	i.Lock()
-	defer i.Unlock()
-	i.stop = true
+	i.closed = true
+	i.Unlock()
 	return
 }
 
 func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
-	if i.dKeyNfs == nil {
+	if i.nfsDKey == nil {
 		return nil, errors.New("uninitialized")
 	}
-	if i.xor == 1 {
-		conn = NewXorConn(conn, i.dKeyNfs.EncapsulationKey().Bytes())
+	if i.xor > 0 {
+		conn = NewXorConn(conn, i.nfsEKeyBytes)
 	}
 	c := &ServerConn{Conn: conn}
 
@@ -109,50 +112,49 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
 		return nil, err
 	}
-	if l, _ := decodeHeader(peerHeader); l != 0 {
-		c.Conn.Write(make([]byte, randBetween(100, 1000))) // make client do new handshake
+	if l, _ := DecodeHeader(peerHeader); l != 0 {
+		noise := make([]byte, randBetween(100, 1000))
+		rand.Read(noise)
+		c.Conn.Write(noise) // make client do new handshake
 		return nil, errors.New("invalid ticket")
 	}
 
-	peerClientHello := make([]byte, 1088+1184+1)
+	peerClientHello := make([]byte, 1+1184+1088)
 	copy(peerClientHello, peerTicketHello)
 	copy(peerClientHello[53:], peerHeader)
 	if _, err := io.ReadFull(c.Conn, peerClientHello[58:]); err != nil {
 		return nil, err
 	}
-	encapsulatedNfsKey := peerClientHello[:1088]
-	eKeyPfsData := peerClientHello[1088:2272]
-	c.cipher = peerClientHello[2272]
-	if c.cipher != 0 && c.cipher != 1 {
-		return nil, errors.New("invalid cipher")
-	}
+	c.cipher = peerClientHello[0]
+	pfsEKeyBytes := peerClientHello[1:1185]
+	encapsulatedNfsKey := peerClientHello[1185:2273]
 
-	nfsKey, err := i.dKeyNfs.Decapsulate(encapsulatedNfsKey)
+	pfsEKey, err := mlkem.NewEncapsulationKey768(pfsEKeyBytes)
 	if err != nil {
 		return nil, err
 	}
-	eKeyPfs, err := mlkem.NewEncapsulationKey768(eKeyPfsData)
+	nfsKey, err := i.nfsDKey.Decapsulate(encapsulatedNfsKey)
 	if err != nil {
 		return nil, err
 	}
-	pfsKey, encapsulatedPfsKey := eKeyPfs.Encapsulate()
-	c.baseKey = append(nfsKey, pfsKey...)
+	pfsKey, encapsulatedPfsKey := pfsEKey.Encapsulate()
+	c.baseKey = append(pfsKey, nfsKey...)
 
-	authKey := make([]byte, 32)
-	hkdf.New(sha256.New, c.baseKey, encapsulatedNfsKey, eKeyPfsData).Read(authKey)
-	nonce := make([]byte, 12)
-	c.ticket = newAead(c.cipher, authKey).Seal(nil, nonce, []byte("VLESS"), encapsulatedPfsKey)
+	nonce := [12]byte{c.cipher}
+	c.ticket = NewAead(c.cipher, c.baseKey, encapsulatedPfsKey, encapsulatedNfsKey).Seal(nil, nonce[:], []byte("VLESS"), pfsEKeyBytes)
 
-	padding := randBetween(100, 1000)
+	paddingLen := randBetween(100, 1000)
 
-	serverHello := make([]byte, 1088+21+5+padding)
+	serverHello := make([]byte, 1088+21+5+paddingLen)
 	copy(serverHello, encapsulatedPfsKey)
 	copy(serverHello[1088:], c.ticket)
-	encodeHeader(serverHello[1109:], int(padding))
+	EncodeHeader(serverHello[1109:], int(paddingLen))
+	rand.Read(serverHello[1114:])
 
 	if _, err := c.Conn.Write(serverHello); err != nil {
 		return nil, err
 	}
+	// we can send more padding if needed
 
 	if i.minutes > 0 {
 		i.Lock()
@@ -178,11 +180,11 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 				if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
 					return 0, err
 				}
-				peerPadding, _ := decodeHeader(peerHeader)
-				if peerPadding == 0 {
+				peerPaddingLen, _ := DecodeHeader(peerHeader)
+				if peerPaddingLen == 0 {
 					break
 				}
-				if _, err := io.ReadFull(c.Conn, make([]byte, peerPadding)); err != nil {
+				if _, err := io.ReadFull(c.Conn, make([]byte, peerPaddingLen)); err != nil {
 					return 0, err
 				}
 			}
@@ -199,9 +201,7 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 				return 0, err
 			}
 		}
-		peerKey := make([]byte, 32)
-		hkdf.New(sha256.New, c.baseKey, c.peerRandom, c.ticket).Read(peerKey)
-		c.peerAead = newAead(c.cipher, peerKey)
+		c.peerAead = NewAead(c.cipher, c.baseKey, c.peerRandom, c.ticket)
 		c.peerNonce = make([]byte, 12)
 	}
 	if len(c.peerCache) != 0 {
@@ -212,7 +212,7 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
 		return 0, err
 	}
-	peerLength, err := decodeHeader(peerHeader) // 17~17000
+	peerLength, err := DecodeHeader(peerHeader) // 17~17000
 	if err != nil {
 		return 0, err
 	}
@@ -222,10 +222,17 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 	}
 	dst := peerData[:peerLength-16]
 	if len(dst) <= len(b) {
-		dst = b[:len(dst)] // max=8192 is recommended for peer
+		dst = b[:len(dst)] // avoids another copy()
+	}
+	var peerAead cipher.AEAD
+	if bytes.Equal(c.peerNonce, MaxNonce) {
+		peerAead = NewAead(c.cipher, c.baseKey, peerData, peerHeader)
 	}
 	_, err = c.peerAead.Open(dst[:0], c.peerNonce, peerData, peerHeader)
-	increaseNonce(c.peerNonce)
+	if peerAead != nil {
+		c.peerAead = peerAead
+	}
+	IncreaseNonce(c.peerNonce)
 	if err != nil {
 		return 0, errors.New("error")
 	}
@@ -236,31 +243,39 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 	return len(dst), nil
 }
 
-func (c *ServerConn) Write(b []byte) (int, error) { // after first Read()
+func (c *ServerConn) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
 	var data []byte
-	if c.aead == nil {
-		if c.peerRandom == nil {
-			return 0, errors.New("can not Write() first")
+	for n := 0; n < len(b); {
+		b := b[n:]
+		if len(b) > 8192 {
+			b = b[:8192] // for avoiding another copy() in client's Read()
 		}
-		data = make([]byte, 32+5+len(b)+16)
-		rand.Read(data[:32])
-		key := make([]byte, 32)
-		hkdf.New(sha256.New, c.baseKey, data[:32], c.peerRandom).Read(key)
-		c.aead = newAead(c.cipher, key)
-		c.nonce = make([]byte, 12)
-		encodeHeader(data[32:], len(b)+16)
-		c.aead.Seal(data[:37], c.nonce, b, data[32:37])
-	} else {
-		data = make([]byte, 5+len(b)+16)
-		encodeHeader(data, len(b)+16)
-		c.aead.Seal(data[:5], c.nonce, b, data[:5])
-	}
-	increaseNonce(c.nonce)
-	if _, err := c.Conn.Write(data); err != nil {
-		return 0, err
+		n += len(b)
+		if c.aead == nil {
+			if c.peerRandom == nil {
+				return 0, errors.New("empty c.peerRandom")
+			}
+			data = make([]byte, 32+5+len(b)+16)
+			rand.Read(data[:32])
+			c.aead = NewAead(c.cipher, c.baseKey, data[:32], c.peerRandom)
+			c.nonce = make([]byte, 12)
+			EncodeHeader(data[32:], len(b)+16)
+			c.aead.Seal(data[:37], c.nonce, b, data[32:37])
+		} else {
+			data = make([]byte, 5+len(b)+16)
+			EncodeHeader(data, len(b)+16)
+			c.aead.Seal(data[:5], c.nonce, b, data[:5])
+			if bytes.Equal(c.nonce, MaxNonce) {
+				c.aead = NewAead(c.cipher, c.baseKey, data[5:], data[:5])
+			}
+		}
+		IncreaseNonce(c.nonce)
+		if _, err := c.Conn.Write(data); err != nil {
+			return 0, err
+		}
 	}
 	return len(b), nil
 }
