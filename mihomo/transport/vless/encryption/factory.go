@@ -31,7 +31,7 @@ func NewClient(encryption string) (*ClientInstance, error) {
 		var xor uint32
 		switch s[1] {
 		case "vless":
-		case "aes128xor":
+		case "xored":
 			xor = 1
 		default:
 			return nil, fmt.Errorf("invaild vless encryption value: %s", encryption)
@@ -76,7 +76,7 @@ func NewServer(decryption string) (*ServerInstance, error) {
 		var xor uint32
 		switch s[1] {
 		case "vless":
-		case "aes128xor":
+		case "xored":
 			xor = 1
 		default:
 			return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)

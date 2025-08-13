@@ -47,7 +47,6 @@ func ClientHandshake(ctx context.Context, conn net.Conn, config Config) (Conn, e
 	if errors.As(err, &echErr) && len(echErr.RetryConfigList) > 0 {
 		if echConfig, isECH := config.(ECHCapableConfig); isECH {
 			echConfig.SetECHConfigList(echErr.RetryConfigList)
-			tlsConn, err = aTLS.ClientHandshake(ctx, conn, config)
 		}
 	}
 	if err != nil {

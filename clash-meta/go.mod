@@ -25,7 +25,7 @@ require (
 	github.com/metacubex/quic-go v0.54.1-0.20250730114134-a1ae705fe295
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/sing v0.5.4
-	github.com/metacubex/sing-mux v0.3.2
+	github.com/metacubex/sing-mux v0.3.3-0.20250813083925-d7c9aeaeeaac
 	github.com/metacubex/sing-quic v0.0.0-20250718154553-1b193bec4cbb
 	github.com/metacubex/sing-shadowsocks v0.2.11
 	github.com/metacubex/sing-shadowsocks2 v0.2.5

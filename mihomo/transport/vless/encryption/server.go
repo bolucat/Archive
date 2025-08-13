@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -55,12 +56,12 @@ func (i *ServerInstance) Init(nfsDKeySeed []byte, xor uint32, minutes time.Durat
 		go func() {
 			for {
 				time.Sleep(time.Minute)
-				now := time.Now()
 				i.Lock()
 				if i.closed {
 					i.Unlock()
 					return
 				}
+				now := time.Now()
 				for ticket, session := range i.sessions {
 					if now.After(session.expire) {
 						delete(i.sessions, ticket)
@@ -89,40 +90,49 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 	}
 	c := &ServerConn{Conn: conn}
 
-	peerTicketHello := make([]byte, 21+32)
-	if _, err := io.ReadFull(c.Conn, peerTicketHello); err != nil {
+	_, t, l, err := ReadAndDecodeHeader(c.Conn)
+	if err != nil {
 		return nil, err
 	}
-	if i.minutes > 0 {
+	if t == 23 {
+		return nil, errors.New("unexpected data")
+	}
+
+	if t == 0 {
+		if i.minutes == 0 {
+			return nil, errors.New("0-RTT is not allowed")
+		}
+		peerTicketHello := make([]byte, 21+32)
+		if l != len(peerTicketHello) {
+			return nil, fmt.Errorf("unexpected length %v for ticket hello", l)
+		}
+		if _, err := io.ReadFull(c.Conn, peerTicketHello); err != nil {
+			return nil, err
+		}
 		i.RLock()
 		s := i.sessions[[21]byte(peerTicketHello)]
 		i.RUnlock()
-		if s != nil {
-			if _, replay := s.randoms.LoadOrStore([32]byte(peerTicketHello[21:]), true); !replay {
-				c.cipher = s.cipher
-				c.baseKey = s.baseKey
-				c.ticket = peerTicketHello[:21]
-				c.peerRandom = peerTicketHello[21:]
-				return c, nil
-			}
+		if s == nil {
+			noise := make([]byte, randBetween(100, 1000))
+			rand.Read(noise)
+			c.Conn.Write(noise) // make client do new handshake
+			return nil, errors.New("expired ticket")
 		}
-	}
-
-	peerHeader := make([]byte, 5)
-	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
-		return nil, err
-	}
-	if l, _ := DecodeHeader(peerHeader); l != 0 {
-		noise := make([]byte, randBetween(100, 1000))
-		rand.Read(noise)
-		c.Conn.Write(noise) // make client do new handshake
-		return nil, errors.New("invalid ticket")
+		if _, replay := s.randoms.LoadOrStore([32]byte(peerTicketHello[21:]), true); replay {
+			return nil, errors.New("replay detected")
+		}
+		c.cipher = s.cipher
+		c.baseKey = s.baseKey
+		c.ticket = peerTicketHello[:21]
+		c.peerRandom = peerTicketHello[21:]
+		return c, nil
 	}
 
 	peerClientHello := make([]byte, 1+1184+1088)
-	copy(peerClientHello, peerTicketHello)
-	copy(peerClientHello[53:], peerHeader)
-	if _, err := io.ReadFull(c.Conn, peerClientHello[58:]); err != nil {
+	if l != len(peerClientHello) {
+		return nil, fmt.Errorf("unexpected length %v for client hello", l)
+	}
+	if _, err := io.ReadFull(c.Conn, peerClientHello); err != nil {
 		return nil, err
 	}
 	c.cipher = peerClientHello[0]
@@ -145,16 +155,17 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 
 	paddingLen := randBetween(100, 1000)
 
-	serverHello := make([]byte, 1088+21+5+paddingLen)
-	copy(serverHello, encapsulatedPfsKey)
-	copy(serverHello[1088:], c.ticket)
-	EncodeHeader(serverHello[1109:], int(paddingLen))
-	rand.Read(serverHello[1114:])
+	serverHello := make([]byte, 5+1088+21+5+paddingLen)
+	EncodeHeader(serverHello, 1, 1088+21)
+	copy(serverHello[5:], encapsulatedPfsKey)
+	copy(serverHello[5+1088:], c.ticket)
+	EncodeHeader(serverHello[5+1088+21:], 23, int(paddingLen))
+	rand.Read(serverHello[5+1088+21+5:])
 
 	if _, err := c.Conn.Write(serverHello); err != nil {
 		return nil, err
 	}
-	// we can send more padding if needed
+	// server can send more padding / PFS AEAD messages if needed
 
 	if i.minutes > 0 {
 		i.Lock()
@@ -173,33 +184,36 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	peerHeader := make([]byte, 5)
 	if c.peerAead == nil {
-		if c.peerRandom == nil {
+		if c.peerRandom == nil { // from 1-RTT
+			var t byte
+			var l int
+			var err error
 			for {
-				if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
+				if _, t, l, err = ReadAndDecodeHeader(c.Conn); err != nil {
 					return 0, err
 				}
-				peerPaddingLen, _ := DecodeHeader(peerHeader)
-				if peerPaddingLen == 0 {
+				if t != 23 {
 					break
 				}
-				if _, err := io.ReadFull(c.Conn, make([]byte, peerPaddingLen)); err != nil {
+				if _, err := io.ReadFull(c.Conn, make([]byte, l)); err != nil {
 					return 0, err
 				}
 			}
-			peerTicket := make([]byte, 21)
-			copy(peerTicket, peerHeader)
-			if _, err := io.ReadFull(c.Conn, peerTicket[5:]); err != nil {
+			if t != 0 {
+				return 0, fmt.Errorf("unexpected type %v, expect ticket hello", t)
+			}
+			peerTicketHello := make([]byte, 21+32)
+			if l != len(peerTicketHello) {
+				return 0, fmt.Errorf("unexpected length %v for ticket hello", l)
+			}
+			if _, err := io.ReadFull(c.Conn, peerTicketHello); err != nil {
 				return 0, err
 			}
-			if !bytes.Equal(peerTicket, c.ticket) {
+			if !bytes.Equal(peerTicketHello[:21], c.ticket) {
 				return 0, errors.New("naughty boy")
 			}
-			c.peerRandom = make([]byte, 32)
-			if _, err := io.ReadFull(c.Conn, c.peerRandom); err != nil {
-				return 0, err
-			}
+			c.peerRandom = peerTicketHello[21:]
 		}
 		c.peerAead = NewAead(c.cipher, c.baseKey, c.peerRandom, c.ticket)
 		c.peerNonce = make([]byte, 12)
@@ -209,32 +223,32 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 		c.peerCache = c.peerCache[n:]
 		return n, nil
 	}
-	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
-		return 0, err
-	}
-	peerLength, err := DecodeHeader(peerHeader) // 17~17000
+	h, t, l, err := ReadAndDecodeHeader(c.Conn) // l: 17~17000
 	if err != nil {
 		return 0, err
 	}
-	peerData := make([]byte, peerLength)
+	if t != 23 {
+		return 0, fmt.Errorf("unexpected type %v, expect encrypted data", t)
+	}
+	peerData := make([]byte, l)
 	if _, err := io.ReadFull(c.Conn, peerData); err != nil {
 		return 0, err
 	}
-	dst := peerData[:peerLength-16]
+	dst := peerData[:l-16]
 	if len(dst) <= len(b) {
 		dst = b[:len(dst)] // avoids another copy()
 	}
 	var peerAead cipher.AEAD
 	if bytes.Equal(c.peerNonce, MaxNonce) {
-		peerAead = NewAead(c.cipher, c.baseKey, peerData, peerHeader)
+		peerAead = NewAead(c.cipher, c.baseKey, peerData, h)
 	}
-	_, err = c.peerAead.Open(dst[:0], c.peerNonce, peerData, peerHeader)
+	_, err = c.peerAead.Open(dst[:0], c.peerNonce, peerData, h)
 	if peerAead != nil {
 		c.peerAead = peerAead
 	}
 	IncreaseNonce(c.peerNonce)
 	if err != nil {
-		return 0, errors.New("error")
+		return 0, err
 	}
 	if len(dst) > len(b) {
 		c.peerCache = dst[copy(b, dst):]
@@ -258,15 +272,16 @@ func (c *ServerConn) Write(b []byte) (int, error) {
 			if c.peerRandom == nil {
 				return 0, errors.New("empty c.peerRandom")
 			}
-			data = make([]byte, 32+5+len(b)+16)
-			rand.Read(data[:32])
-			c.aead = NewAead(c.cipher, c.baseKey, data[:32], c.peerRandom)
+			data = make([]byte, 5+32+5+len(b)+16)
+			EncodeHeader(data, 0, 32)
+			rand.Read(data[5 : 5+32])
+			c.aead = NewAead(c.cipher, c.baseKey, data[5:5+32], c.peerRandom)
 			c.nonce = make([]byte, 12)
-			EncodeHeader(data[32:], len(b)+16)
-			c.aead.Seal(data[:37], c.nonce, b, data[32:37])
+			EncodeHeader(data[5+32:], 23, len(b)+16)
+			c.aead.Seal(data[:5+32+5], c.nonce, b, data[5+32:5+32+5])
 		} else {
 			data = make([]byte, 5+len(b)+16)
-			EncodeHeader(data, len(b)+16)
+			EncodeHeader(data, 23, len(b)+16)
 			c.aead.Seal(data[:5], c.nonce, b, data[:5])
 			if bytes.Equal(c.nonce, MaxNonce) {
 				c.aead = NewAead(c.cipher, c.baseKey, data[5:], data[:5])

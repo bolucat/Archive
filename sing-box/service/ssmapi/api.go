@@ -2,6 +2,7 @@ package ssmapi
 
 import (
 	"net/http"
+	"strconv"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/logger"
@@ -156,7 +157,7 @@ func (s *APIServer) deleteUser(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *APIServer) getStats(writer http.ResponseWriter, request *http.Request) {
-	requireClear := chi.URLParam(request, "clear") == "true"
+	requireClear, _ := strconv.ParseBool(chi.URLParam(request, "clear"))
 
 	users := s.user.List()
 	s.traffic.ReadUsers(users)
