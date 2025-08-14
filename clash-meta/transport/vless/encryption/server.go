@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -23,12 +24,11 @@ type ServerSession struct {
 
 type ServerInstance struct {
 	sync.RWMutex
-	nfsDKey      *mlkem.DecapsulationKey768
-	nfsEKeyBytes []byte
-	xor          uint32
-	minutes      time.Duration
-	sessions     map[[21]byte]*ServerSession
-	closed       bool
+	nfsDKey  *mlkem.DecapsulationKey768
+	xorKey   []byte
+	minutes  time.Duration
+	sessions map[[21]byte]*ServerSession
+	closed   bool
 }
 
 type ServerConn struct {
@@ -45,10 +45,17 @@ type ServerConn struct {
 }
 
 func (i *ServerInstance) Init(nfsDKeySeed []byte, xor uint32, minutes time.Duration) (err error) {
+	if i.nfsDKey != nil {
+		err = errors.New("already initialized")
+		return
+	}
 	i.nfsDKey, err = mlkem.NewDecapsulationKey768(nfsDKeySeed)
+	if err != nil {
+		return
+	}
 	if xor > 0 {
-		i.nfsEKeyBytes = i.nfsDKey.EncapsulationKey().Bytes()
-		i.xor = xor
+		xorKey := sha256.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
+		i.xorKey = xorKey[:]
 	}
 	if minutes > 0 {
 		i.minutes = minutes
@@ -85,17 +92,14 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 	if i.nfsDKey == nil {
 		return nil, errors.New("uninitialized")
 	}
-	if i.xor > 0 {
-		conn = NewXorConn(conn, i.nfsEKeyBytes)
+	if i.xorKey != nil {
+		conn = NewXorConn(conn, i.xorKey)
 	}
 	c := &ServerConn{Conn: conn}
 
-	_, t, l, err := ReadAndDecodeHeader(c.Conn)
+	_, t, l, err := ReadAndDiscardPaddings(c.Conn) // allow paddings before client/ticket hello
 	if err != nil {
 		return nil, err
-	}
-	if t == 23 {
-		return nil, errors.New("unexpected data")
 	}
 
 	if t == 0 {
@@ -113,9 +117,13 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 		s := i.sessions[[21]byte(peerTicketHello)]
 		i.RUnlock()
 		if s == nil {
-			noise := make([]byte, randBetween(100, 1000))
-			rand.Read(noise)
-			c.Conn.Write(noise) // make client do new handshake
+			noises := make([]byte, randBetween(100, 1000))
+			var err error
+			for err == nil {
+				rand.Read(noises)
+				_, _, err = DecodeHeader(noises)
+			}
+			c.Conn.Write(noises) // make client do new handshake
 			return nil, errors.New("expired ticket")
 		}
 		if _, replay := s.randoms.LoadOrStore([32]byte(peerTicketHello[21:]), true); replay {
@@ -165,7 +173,7 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 	if _, err := c.Conn.Write(serverHello); err != nil {
 		return nil, err
 	}
-	// server can send more padding / PFS AEAD messages if needed
+	// server can send more paddings / PFS AEAD messages if needed
 
 	if i.minutes > 0 {
 		i.Lock()
@@ -185,20 +193,10 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 		return 0, nil
 	}
 	if c.peerAead == nil {
-		if c.peerRandom == nil { // from 1-RTT
-			var t byte
-			var l int
-			var err error
-			for {
-				if _, t, l, err = ReadAndDecodeHeader(c.Conn); err != nil {
-					return 0, err
-				}
-				if t != 23 {
-					break
-				}
-				if _, err := io.ReadFull(c.Conn, make([]byte, l)); err != nil {
-					return 0, err
-				}
+		if c.peerRandom == nil { // 1-RTT's 0-RTT
+			_, t, l, err := ReadAndDiscardPaddings(c.Conn) // allow paddings before ticket hello
+			if err != nil {
+				return 0, err
 			}
 			if t != 0 {
 				return 0, fmt.Errorf("unexpected type %v, expect ticket hello", t)

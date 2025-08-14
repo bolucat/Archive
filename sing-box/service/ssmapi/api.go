@@ -2,7 +2,6 @@ package ssmapi
 
 import (
 	"net/http"
-	"strconv"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing/common/logger"
@@ -157,18 +156,14 @@ func (s *APIServer) deleteUser(writer http.ResponseWriter, request *http.Request
 }
 
 func (s *APIServer) getStats(writer http.ResponseWriter, request *http.Request) {
-	requireClear, _ := strconv.ParseBool(chi.URLParam(request, "clear"))
+	requireClear := request.URL.Query().Get("clear") == "true"
 
 	users := s.user.List()
-	s.traffic.ReadUsers(users)
+	s.traffic.ReadUsers(users, requireClear)
 	for i := range users {
 		users[i].Password = ""
 	}
-	uplinkBytes, downlinkBytes, uplinkPackets, downlinkPackets, tcpSessions, udpSessions := s.traffic.ReadGlobal()
-
-	if requireClear {
-		s.traffic.Clear()
-	}
+	uplinkBytes, downlinkBytes, uplinkPackets, downlinkPackets, tcpSessions, udpSessions := s.traffic.ReadGlobal(requireClear)
 
 	render.JSON(writer, request, render.M{
 		"uplinkBytes":     uplinkBytes,

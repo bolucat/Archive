@@ -45,10 +45,10 @@ func DecodeHeader(h []byte) (t byte, l int, err error) {
 	} else if h[0] == 1 && h[1] == 1 && h[2] == 1 {
 		t = 1
 	} else {
-		h = nil
+		l = 0
 	}
-	if h == nil || l < 17 || l > 17000 { // TODO: TLSv1.3 max length
-		err = fmt.Errorf("invalid header: %v", h[:5])
+	if l < 17 || l > 17000 { // TODO: TLSv1.3 max length
+		err = fmt.Errorf("invalid header: %v", h[:5]) // DO NOT CHANGE: relied by client's Read()
 	}
 	return
 }
@@ -60,6 +60,17 @@ func ReadAndDecodeHeader(conn net.Conn) (h []byte, t byte, l int, err error) {
 	}
 	t, l, err = DecodeHeader(h)
 	return
+}
+
+func ReadAndDiscardPaddings(conn net.Conn) (h []byte, t byte, l int, err error) {
+	for {
+		if h, t, l, err = ReadAndDecodeHeader(conn); err != nil || t != 23 {
+			return
+		}
+		if _, err = io.ReadFull(conn, make([]byte, l)); err != nil {
+			return
+		}
+	}
 }
 
 func NewAead(c byte, secret, salt, info []byte) (aead cipher.AEAD) {
