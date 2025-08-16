@@ -65,21 +65,17 @@ func (t *DBusResolvedResolver) Close() error {
 	return nil
 }
 
-func (t *DBusResolvedResolver) Available() bool {
-	return t.resoledObject.Load() == nil
+func (t *DBusResolvedResolver) Object() any {
+	return t.resoledObject.Load()
 }
 
-func (t *DBusResolvedResolver) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+func (t *DBusResolvedResolver) Exchange(object any, ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	defaultInterface := t.interfaceMonitor.DefaultInterface()
 	if defaultInterface == nil {
 		return nil, E.New("missing default interface")
 	}
-	resolvedObject := t.resoledObject.Load()
-	if resolvedObject == nil {
-		return nil, E.New("DBus interface for resolved is not available")
-	}
 	question := message.Question[0]
-	call := resolvedObject.CallWithContext(
+	call := object.(*dbus.Object).CallWithContext(
 		ctx,
 		"org.freedesktop.resolve1.Manager.ResolveRecord",
 		0,

@@ -69,8 +69,11 @@ func (t *Transport) Close() error {
 }
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	if t.resolved != nil && t.resolved.Available() {
-		return t.resolved.Exchange(ctx, message)
+	if t.resolved != nil {
+		resolverObject := t.resolved.Object()
+		if resolverObject != nil {
+			return t.resolved.Exchange(resolverObject, ctx, message)
+		}
 	}
 	question := message.Question[0]
 	domain := dns.FqdnToDomain(question.Name)

@@ -9,6 +9,6 @@ import (
 type ResolvedResolver interface {
 	Start() error
 	Close() error
-	Available() bool
-	Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error)
+	Object() any
+	Exchange(object any, ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error)
 }
