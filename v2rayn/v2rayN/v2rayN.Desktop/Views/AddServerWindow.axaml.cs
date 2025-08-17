@@ -2,6 +2,7 @@ using System.Reactive.Disposables;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using ReactiveUI;
+using ServiceLib.Manager;
 using v2rayN.Desktop.Base;
 
 namespace v2rayN.Desktop.Views;
@@ -50,7 +51,7 @@ public partial class AddServerWindow : WindowBase<AddServerViewModel>
 
             case EConfigType.Shadowsocks:
                 gridSs.IsVisible = true;
-                cmbSecurity3.ItemsSource = AppHandler.Instance.GetShadowsocksSecurities(profileItem);
+                cmbSecurity3.ItemsSource = AppManager.Instance.GetShadowsocksSecurities(profileItem);
                 break;
 
             case EConfigType.SOCKS:

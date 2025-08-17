@@ -2,6 +2,7 @@ using System.Reactive.Disposables;
 using System.Windows;
 using System.Windows.Controls;
 using ReactiveUI;
+using ServiceLib.Manager;
 
 namespace v2rayN.Views;
 
@@ -44,7 +45,7 @@ public partial class AddServerWindow
 
             case EConfigType.Shadowsocks:
                 gridSs.Visibility = Visibility.Visible;
-                cmbSecurity3.ItemsSource = AppHandler.Instance.GetShadowsocksSecurities(profileItem);
+                cmbSecurity3.ItemsSource = AppManager.Instance.GetShadowsocksSecurities(profileItem);
                 break;
 
             case EConfigType.SOCKS:
@@ -195,7 +196,7 @@ public partial class AddServerWindow
         });
 
         this.Title = $"{profileItem.ConfigType}";
-        WindowsUtils.SetDarkBorder(this, AppHandler.Instance.Config.UiItem.CurrentTheme);
+        WindowsUtils.SetDarkBorder(this, AppManager.Instance.Config.UiItem.CurrentTheme);
     }
 
     private async Task<bool> UpdateViewHandler(EViewAction action, object? obj)

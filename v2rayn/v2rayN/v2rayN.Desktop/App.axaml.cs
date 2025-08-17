@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using ServiceLib.Manager;
 using Splat;
 using v2rayN.Desktop.Common;
 using v2rayN.Desktop.Views;
@@ -25,7 +26,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            AppHandler.Instance.InitComponents();
+            AppManager.Instance.InitComponents();
 
             desktop.Exit += OnExit;
             desktop.MainWindow = new MainWindow();

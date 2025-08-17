@@ -1,11 +1,11 @@
 namespace ServiceLib.Handler;
 
-public class SubscriptionHandler
+public static class SubscriptionHandler
 {
     public static async Task UpdateProcess(Config config, string subId, bool blProxy, Action<bool, string> updateFunc)
     {
         updateFunc?.Invoke(false, ResUI.MsgUpdateSubscriptionStart);
-        var subItem = await AppHandler.Instance.SubItems();
+        var subItem = await AppManager.Instance.SubItems();
 
         if (subItem is not { Count: > 0 })
         {

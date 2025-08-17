@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using CliWrap.Buffered;
 using DialogHostAvalonia;
+using ServiceLib.Manager;
 
 namespace v2rayN.Desktop.Views;
 
@@ -46,7 +47,7 @@ public partial class SudoPasswordInputView : UserControl
             else
             {
                 // Password verification failed, display error and let user try again
-                NoticeHandler.Instance.Enqueue(ResUI.SudoIncorrectPasswordTip);
+                NoticeManager.Instance.Enqueue(ResUI.SudoIncorrectPasswordTip);
                 txtPassword.Focus();
             }
         }

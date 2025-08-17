@@ -43,6 +43,22 @@ func init() {
 		}
 		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn.Conn).Elem(), unsafe.Pointer(tlsConn.Conn)
 	})
+
+	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
+		tlsConn, loaded := common.Cast[*encryption.ClientConn](conn)
+		if !loaded {
+			return
+		}
+		return true, tlsConn.Conn, reflect.TypeOf(tlsConn).Elem(), unsafe.Pointer(tlsConn)
+	})
+
+	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
+		tlsConn, loaded := common.Cast[*encryption.ServerConn](conn)
+		if !loaded {
+			return
+		}
+		return true, tlsConn.Conn, reflect.TypeOf(tlsConn).Elem(), unsafe.Pointer(tlsConn)
+	})
 }
 
 type Listener struct {

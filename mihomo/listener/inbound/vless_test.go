@@ -102,6 +102,11 @@ func TestInboundVless_Encryption(t *testing.T) {
 			Encryption: "8min-vless-mlkem768client-" + clientBase64,
 		}
 		testInboundVless(t, inboundOptions, outboundOptions)
+		t.Run("xtls-rprx-vision", func(t *testing.T) {
+			outboundOptions := outboundOptions
+			outboundOptions.Flow = "xtls-rprx-vision"
+			testInboundVless(t, inboundOptions, outboundOptions)
+		})
 	})
 	t.Run("-xored-", func(t *testing.T) {
 		inboundOptions := inbound.VlessOption{

@@ -20,7 +20,7 @@ public class DownloadService
     {
         try
         {
-            SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
+            SetSecurityProtocol(AppManager.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
 
             var progress = new Progress<string>();
             progress.ProgressChanged += (sender, value) => updateFunc?.Invoke(false, $"{value}");
@@ -45,7 +45,7 @@ public class DownloadService
     {
         try
         {
-            SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
+            SetSecurityProtocol(AppManager.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
             UpdateCompleted?.Invoke(this, new RetResult(false, $"{ResUI.Downloading}   {url}"));
 
             var progress = new Progress<double>();
@@ -72,7 +72,7 @@ public class DownloadService
 
     public async Task<string?> UrlRedirectAsync(string url, bool blProxy)
     {
-        SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
+        SetSecurityProtocol(AppManager.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
         var webRequestHandler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false,
@@ -142,7 +142,7 @@ public class DownloadService
     {
         try
         {
-            SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
+            SetSecurityProtocol(AppManager.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
             var webProxy = await GetWebProxy(blProxy);
             var client = new HttpClient(new SocketsHttpHandler()
             {
@@ -187,7 +187,7 @@ public class DownloadService
     {
         try
         {
-            SetSecurityProtocol(AppHandler.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
+            SetSecurityProtocol(AppManager.Instance.Config.GuiItem.EnableSecurityProtocolTls13);
 
             var webProxy = await GetWebProxy(blProxy);
 
@@ -210,70 +210,13 @@ public class DownloadService
         return null;
     }
 
-    public async Task<int> RunAvailabilityCheck(IWebProxy? webProxy)
-    {
-        var responseTime = -1;
-        try
-        {
-            webProxy ??= await GetWebProxy(true);
-            var config = AppHandler.Instance.Config;
-
-            for (var i = 0; i < 2; i++)
-            {
-                responseTime = await GetRealPingTime(config.SpeedTestItem.SpeedPingTestUrl, webProxy, 10);
-                if (responseTime > 0)
-                {
-                    break;
-                }
-                await Task.Delay(500);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog(_tag, ex);
-            return -1;
-        }
-        return responseTime;
-    }
-
-    public async Task<int> GetRealPingTime(string url, IWebProxy? webProxy, int downloadTimeout)
-    {
-        var responseTime = -1;
-        try
-        {
-            using var cts = new CancellationTokenSource();
-            cts.CancelAfter(TimeSpan.FromSeconds(downloadTimeout));
-            using var client = new HttpClient(new SocketsHttpHandler()
-            {
-                Proxy = webProxy,
-                UseProxy = webProxy != null
-            });
-
-            List<int> oneTime = new();
-            for (var i = 0; i < 2; i++)
-            {
-                var timer = Stopwatch.StartNew();
-                await client.GetAsync(url, cts.Token).ConfigureAwait(false);
-                timer.Stop();
-                oneTime.Add((int)timer.Elapsed.TotalMilliseconds);
-                await Task.Delay(100);
-            }
-            responseTime = oneTime.Where(x => x > 0).OrderBy(x => x).FirstOrDefault();
-        }
-        catch //(Exception ex)
-        {
-            //Utile.SaveLog(ex.Message, ex);
-        }
-        return responseTime;
-    }
-
     private async Task<WebProxy?> GetWebProxy(bool blProxy)
     {
         if (!blProxy)
         {
             return null;
         }
-        var port = AppHandler.Instance.GetLocalPort(EInboundProtocol.socks);
+        var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
         if (await SocketCheck(Global.Loopback, port) == false)
         {
             return null;

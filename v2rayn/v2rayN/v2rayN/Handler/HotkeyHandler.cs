@@ -4,6 +4,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using ServiceLib.Manager;
 
 namespace v2rayN.Handler;
 
@@ -29,7 +30,7 @@ public sealed class HotkeyHandler
     private void Init()
     {
         _hotkeyTriggerDic.Clear();
-        foreach (var item in AppHandler.Instance.Config.GlobalHotkeys)
+        foreach (var item in AppManager.Instance.Config.GlobalHotkeys)
         {
             if (item.KeyCode != null && (Key)item.KeyCode != Key.None)
             {

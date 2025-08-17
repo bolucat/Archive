@@ -1,6 +1,7 @@
 using System.Reactive.Disposables;
 using Avalonia.Controls;
 using ReactiveUI;
+using ServiceLib.Manager;
 using v2rayN.Desktop.Base;
 
 namespace v2rayN.Desktop.Views;
@@ -14,7 +15,7 @@ public partial class OptionSettingWindow : WindowBase<OptionSettingViewModel>
         InitializeComponent();
 
         btnCancel.Click += (s, e) => this.Close();
-        _config = AppHandler.Instance.Config;
+        _config = AppManager.Instance.Config;
 
         ViewModel = new OptionSettingViewModel(UpdateViewHandler);
 

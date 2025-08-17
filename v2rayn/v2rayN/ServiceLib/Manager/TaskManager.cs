@@ -1,9 +1,9 @@
-namespace ServiceLib.Handler;
+namespace ServiceLib.Manager;
 
-public class TaskHandler
+public class TaskManager
 {
-    private static readonly Lazy<TaskHandler> _instance = new(() => new());
-    public static TaskHandler Instance => _instance.Value;
+    private static readonly Lazy<TaskManager> _instance = new(() => new());
+    public static TaskManager Instance => _instance.Value;
 
     public void RegUpdateTask(Config config, Action<bool, string> updateFunc)
     {
@@ -29,7 +29,7 @@ public class TaskHandler
                 //Logging.SaveLog("Execute save config");
 
                 await ConfigHandler.SaveConfig(config);
-                await ProfileExHandler.Instance.SaveTo();
+                await ProfileExManager.Instance.SaveTo();
             }
 
             //Execute once 1 hour
@@ -52,7 +52,7 @@ public class TaskHandler
     private async Task UpdateTaskRunSubscription(Config config, Action<bool, string> updateFunc)
     {
         var updateTime = ((DateTimeOffset)DateTime.Now).ToUnixTimeSeconds();
-        var lstSubs = (await AppHandler.Instance.SubItems())?
+        var lstSubs = (await AppManager.Instance.SubItems())?
             .Where(t => t.AutoUpdateInterval > 0)
             .Where(t => updateTime - t.UpdateTime >= t.AutoUpdateInterval * 60)
             .ToList();
@@ -66,7 +66,7 @@ public class TaskHandler
 
         foreach (var item in lstSubs)
         {
-            await SubscriptionHandler.UpdateProcess(config, item.Id, true, (bool success, string msg) =>
+            await SubscriptionHandler.UpdateProcess(config, item.Id, true, (success, msg) =>
             {
                 updateFunc?.Invoke(success, msg);
                 if (success)
@@ -87,7 +87,7 @@ public class TaskHandler
             Logging.SaveLog("Execute update geo files");
 
             var updateHandle = new UpdateService();
-            await updateHandle.UpdateGeoFileAll(config, (bool success, string msg) =>
+            await updateHandle.UpdateGeoFileAll(config, (success, msg) =>
             {
                 updateFunc?.Invoke(false, msg);
             });
