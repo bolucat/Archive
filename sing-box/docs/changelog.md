@@ -2,6 +2,18 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.3
+
+* Improve `local` DNS server **1**
+* Fixes and improvements
+
+**1**:
+
+On Apple platforms, Windows, and Linux (when using systemd-resolved), 
+`local` DNS server now works with Tun inbound which overrides system DNS servers.
+
+See [Local DNS Server](/configuration/dns/server/local/).
+
 #### 1.13.0-alpha.2
 
 * Add `preferred_by` rule item **1**

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/metacubex/utls/mlkem"
+	"golang.org/x/crypto/sha3"
 )
 
 type ServerSession struct {
@@ -25,9 +25,10 @@ type ServerSession struct {
 type ServerInstance struct {
 	sync.RWMutex
 	nfsDKey  *mlkem.DecapsulationKey768
+	hash11   [11]byte // no more capacity
 	xorKey   []byte
 	minutes  time.Duration
-	sessions map[[21]byte]*ServerSession
+	sessions map[[32]byte]*ServerSession
 	closed   bool
 }
 
@@ -39,7 +40,7 @@ type ServerConn struct {
 	peerRandom []byte
 	peerAead   cipher.AEAD
 	peerNonce  []byte
-	peerCache  []byte
+	input      bytes.Reader // peerCache
 	aead       cipher.AEAD
 	nonce      []byte
 }
@@ -53,13 +54,15 @@ func (i *ServerInstance) Init(nfsDKeySeed []byte, xor uint32, minutes time.Durat
 	if err != nil {
 		return
 	}
+	hash256 := sha3.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
+	copy(i.hash11[:], hash256[:])
 	if xor > 0 {
-		xorKey := sha256.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
+		xorKey := sha3.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
 		i.xorKey = xorKey[:]
 	}
 	if minutes > 0 {
 		i.minutes = minutes
-		i.sessions = make(map[[21]byte]*ServerSession)
+		i.sessions = make(map[[32]byte]*ServerSession)
 		go func() {
 			for {
 				time.Sleep(time.Minute)
@@ -106,15 +109,18 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 		if i.minutes == 0 {
 			return nil, errors.New("0-RTT is not allowed")
 		}
-		peerTicketHello := make([]byte, 21+32)
+		peerTicketHello := make([]byte, 32+32)
 		if l != len(peerTicketHello) {
 			return nil, fmt.Errorf("unexpected length %v for ticket hello", l)
 		}
 		if _, err := io.ReadFull(c.Conn, peerTicketHello); err != nil {
 			return nil, err
 		}
+		if !bytes.Equal(peerTicketHello[:11], i.hash11[:]) {
+			return nil, fmt.Errorf("unexpected hash11: %v", peerTicketHello[:11])
+		}
 		i.RLock()
-		s := i.sessions[[21]byte(peerTicketHello)]
+		s := i.sessions[[32]byte(peerTicketHello)]
 		i.RUnlock()
 		if s == nil {
 			noises := make([]byte, randBetween(100, 1000))
@@ -126,26 +132,29 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 			c.Conn.Write(noises) // make client do new handshake
 			return nil, errors.New("expired ticket")
 		}
-		if _, replay := s.randoms.LoadOrStore([32]byte(peerTicketHello[21:]), true); replay {
+		if _, replay := s.randoms.LoadOrStore([32]byte(peerTicketHello[32:]), true); replay {
 			return nil, errors.New("replay detected")
 		}
 		c.cipher = s.cipher
 		c.baseKey = s.baseKey
-		c.ticket = peerTicketHello[:21]
-		c.peerRandom = peerTicketHello[21:]
+		c.ticket = peerTicketHello[:32]
+		c.peerRandom = peerTicketHello[32:]
 		return c, nil
 	}
 
-	peerClientHello := make([]byte, 1+1184+1088)
+	peerClientHello := make([]byte, 11+1+1184+1088)
 	if l != len(peerClientHello) {
 		return nil, fmt.Errorf("unexpected length %v for client hello", l)
 	}
 	if _, err := io.ReadFull(c.Conn, peerClientHello); err != nil {
 		return nil, err
 	}
-	c.cipher = peerClientHello[0]
-	pfsEKeyBytes := peerClientHello[1:1185]
-	encapsulatedNfsKey := peerClientHello[1185:2273]
+	if !bytes.Equal(peerClientHello[:11], i.hash11[:]) {
+		return nil, fmt.Errorf("unexpected hash11: %v", peerClientHello[:11])
+	}
+	c.cipher = peerClientHello[11]
+	pfsEKeyBytes := peerClientHello[11+1 : 11+1+1184]
+	encapsulatedNfsKey := peerClientHello[11+1+1184:]
 
 	pfsEKey, err := mlkem.NewEncapsulationKey768(pfsEKeyBytes)
 	if err != nil {
@@ -158,15 +167,14 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 	pfsKey, encapsulatedPfsKey := pfsEKey.Encapsulate()
 	c.baseKey = append(pfsKey, nfsKey...)
 
-	nonce := [12]byte{c.cipher}
-	c.ticket = NewAead(c.cipher, c.baseKey, encapsulatedPfsKey, encapsulatedNfsKey).Seal(nil, nonce[:], []byte("VLESS"), pfsEKeyBytes)
+	c.ticket = append(i.hash11[:], NewAead(c.cipher, c.baseKey, encapsulatedPfsKey, encapsulatedNfsKey).Seal(nil, peerClientHello[:12], []byte("VLESS"), pfsEKeyBytes)...)
 
 	paddingLen := randBetween(100, 1000)
 
 	serverHello := make([]byte, 5+1088+21+5+paddingLen)
 	EncodeHeader(serverHello, 1, 1088+21)
 	copy(serverHello[5:], encapsulatedPfsKey)
-	copy(serverHello[5+1088:], c.ticket)
+	copy(serverHello[5+1088:], c.ticket[11:])
 	EncodeHeader(serverHello[5+1088+21:], 23, int(paddingLen))
 	rand.Read(serverHello[5+1088+21+5:])
 
@@ -177,7 +185,7 @@ func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
 
 	if i.minutes > 0 {
 		i.Lock()
-		i.sessions[[21]byte(c.ticket)] = &ServerSession{
+		i.sessions[[32]byte(c.ticket)] = &ServerSession{
 			expire:  time.Now().Add(i.minutes),
 			cipher:  c.cipher,
 			baseKey: c.baseKey,
@@ -201,25 +209,23 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 			if t != 0 {
 				return 0, fmt.Errorf("unexpected type %v, expect ticket hello", t)
 			}
-			peerTicketHello := make([]byte, 21+32)
+			peerTicketHello := make([]byte, 32+32)
 			if l != len(peerTicketHello) {
 				return 0, fmt.Errorf("unexpected length %v for ticket hello", l)
 			}
 			if _, err := io.ReadFull(c.Conn, peerTicketHello); err != nil {
 				return 0, err
 			}
-			if !bytes.Equal(peerTicketHello[:21], c.ticket) {
+			if !bytes.Equal(peerTicketHello[:32], c.ticket) {
 				return 0, errors.New("naughty boy")
 			}
-			c.peerRandom = peerTicketHello[21:]
+			c.peerRandom = peerTicketHello[32:]
 		}
 		c.peerAead = NewAead(c.cipher, c.baseKey, c.peerRandom, c.ticket)
 		c.peerNonce = make([]byte, 12)
 	}
-	if len(c.peerCache) != 0 {
-		n := copy(b, c.peerCache)
-		c.peerCache = c.peerCache[n:]
-		return n, nil
+	if c.input.Len() > 0 {
+		return c.input.Read(b)
 	}
 	h, t, l, err := ReadAndDecodeHeader(c.Conn) // l: 17~17000
 	if err != nil {
@@ -249,7 +255,7 @@ func (c *ServerConn) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	if len(dst) > len(b) {
-		c.peerCache = dst[copy(b, dst):]
+		c.input.Reset(dst[copy(b, dst):])
 		dst = b // for len(dst)
 	}
 	return len(dst), nil
@@ -273,9 +279,9 @@ func (c *ServerConn) Write(b []byte) (int, error) {
 			data = make([]byte, 5+32+5+len(b)+16)
 			EncodeHeader(data, 0, 32)
 			rand.Read(data[5 : 5+32])
+			EncodeHeader(data[5+32:], 23, len(b)+16)
 			c.aead = NewAead(c.cipher, c.baseKey, data[5:5+32], c.peerRandom)
 			c.nonce = make([]byte, 12)
-			EncodeHeader(data[5+32:], 23, len(b)+16)
 			c.aead.Seal(data[:5+32+5], c.nonce, b, data[5+32:5+32+5])
 		} else {
 			data = make([]byte, 5+len(b)+16)
