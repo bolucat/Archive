@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.4
+
+* Fixes and improvements
+
+#### 1.12.2
+
+* Fixes and improvements
+
 #### 1.13.0-alpha.3
 
 * Improve `local` DNS server **1**

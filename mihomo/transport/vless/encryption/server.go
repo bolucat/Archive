@@ -54,8 +54,8 @@ func (i *ServerInstance) Init(nfsDKeySeed []byte, xor uint32, minutes time.Durat
 	if err != nil {
 		return
 	}
-	hash256 := sha3.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
-	copy(i.hash11[:], hash256[:])
+	hash32 := sha3.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
+	copy(i.hash11[:], hash32[:])
 	if xor > 0 {
 		xorKey := sha3.Sum256(i.nfsDKey.EncapsulationKey().Bytes())
 		i.xorKey = xorKey[:]
@@ -91,7 +91,7 @@ func (i *ServerInstance) Close() (err error) {
 	return
 }
 
-func (i *ServerInstance) Handshake(conn net.Conn) (net.Conn, error) {
+func (i *ServerInstance) Handshake(conn net.Conn) (*ServerConn, error) {
 	if i.nfsDKey == nil {
 		return nil, errors.New("uninitialized")
 	}

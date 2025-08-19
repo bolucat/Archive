@@ -2,14 +2,14 @@ namespace ServiceLib.Services.CoreConfig;
 
 public partial class CoreConfigSingboxService
 {
-    private async Task<int> GenDns(SingboxConfig singboxConfig)
+    private async Task<int> GenDns(ProfileItem? node, SingboxConfig singboxConfig)
     {
         try
         {
             var item = await AppManager.Instance.GetDNSItem(ECoreType.sing_box);
             if (item != null && item.Enabled == true)
             {
-                return await GenDnsCompatible(singboxConfig);
+                return await GenDnsCompatible(node, singboxConfig);
             }
 
             var simpleDNSItem = _config.SimpleDNSItem;
@@ -19,6 +19,7 @@ public partial class CoreConfigSingboxService
             singboxConfig.dns ??= new Dns4Sbox();
             singboxConfig.dns.independent_cache = true;
 
+            // final dns
             var routing = await ConfigHandler.GetDefaultRouting(_config);
             var useDirectDns = false;
             if (routing != null)
@@ -32,6 +33,17 @@ public partial class CoreConfigSingboxService
                                    lastRule.Ip?.Contains("0.0.0.0/0") == true);
             }
             singboxConfig.dns.final = useDirectDns ? Global.SingboxDirectDNSTag : Global.SingboxRemoteDNSTag;
+
+            // Tun2SocksAddress
+            if (node != null && Utils.IsDomain(node.Address))
+            {
+                singboxConfig.dns.rules ??= new List<Rule4Sbox>();
+                singboxConfig.dns.rules.Insert(0, new Rule4Sbox
+                {
+                    server = Global.SingboxOutboundResolverTag,
+                    domain = [node.Address],
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -67,26 +79,27 @@ public partial class CoreConfigSingboxService
         {
             hostsDns.predefined = Global.PredefinedHosts;
         }
-        var userHostsMap = simpleDNSItem.Hosts?
-            .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(line => !string.IsNullOrWhiteSpace(line))
-            .Where(line => line.Contains(' '))
-            .ToDictionary(
-                line =>
-                {
-                    var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    return parts[0];
-                },
-                line =>
-                {
-                    var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    var values = parts.Skip(1).ToList();
-                    return values;
-                }
-            );
 
-        if (userHostsMap != null)
+        if (!simpleDNSItem.Hosts.IsNullOrEmpty())
         {
+            var userHostsMap = simpleDNSItem.Hosts?
+                .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Where(line => line.Contains(' '))
+                .ToDictionary(
+                    line =>
+                    {
+                        var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                        return parts[0];
+                    },
+                    line =>
+                    {
+                        var parts = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                        var values = parts.Skip(1).ToList();
+                        return values;
+                    }
+                ) ?? new Dictionary<string, List<string>>();
+
             foreach (var kvp in userHostsMap)
             {
                 hostsDns.predefined[kvp.Key] = kvp.Value;
@@ -100,11 +113,11 @@ public partial class CoreConfigSingboxService
             {
                 foreach (var host in systemHosts)
                 {
-                    if (userHostsMap[host.Key] != null)
+                    if (hostsDns.predefined[host.Key] != null)
                     {
                         continue;
                     }
-                    userHostsMap[host.Key] = new List<string> { host.Value };
+                    hostsDns.predefined[host.Key] = new List<string> { host.Value };
                 }
             }
         }
@@ -289,7 +302,7 @@ public partial class CoreConfigSingboxService
         return 0;
     }
 
-    private async Task<int> GenDnsCompatible(SingboxConfig singboxConfig)
+    private async Task<int> GenDnsCompatible(ProfileItem? node, SingboxConfig singboxConfig)
     {
         try
         {
@@ -318,6 +331,17 @@ public partial class CoreConfigSingboxService
             else
             {
                 await GenDnsDomainsLegacyCompatible(singboxConfig, item);
+            }
+
+            // Tun2SocksAddress
+            if (node != null && Utils.IsDomain(node.Address))
+            {
+                singboxConfig.dns.rules ??= new List<Rule4Sbox>();
+                singboxConfig.dns.rules.Insert(0, new Rule4Sbox
+                {
+                    server = Global.SingboxFinalResolverTag,
+                    domain = [node.Address],
+                });
             }
         }
         catch (Exception ex)
