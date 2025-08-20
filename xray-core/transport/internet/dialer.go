@@ -237,6 +237,9 @@ func DialSystem(ctx context.Context, dest net.Destination, sockopt *SocketConfig
 		}
 		outboundName = ob.Name
 		origTargetAddr = ob.OriginalTarget.Address
+		if origTargetAddr == nil {
+			origTargetAddr = ob.Target.Address
+		}
 	}
 	if sockopt == nil {
 		return effectiveSystemDialer.Dial(ctx, src, dest, sockopt)

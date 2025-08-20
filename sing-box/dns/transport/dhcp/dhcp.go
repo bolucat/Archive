@@ -76,6 +76,8 @@ func NewRawTransport(transportAdapter dns.TransportAdapter, ctx context.Context,
 		dialer:           dialer,
 		logger:           logger,
 		networkManager:   service.FromContext[adapter.NetworkManager](ctx),
+		ndots:            1,
+		attempts:         2,
 	}
 }
 
@@ -83,13 +85,15 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
-	_, err := t.Fetch()
-	if err != nil {
-		t.logger.Error(E.Cause(err, "fetch DNS servers"))
-	}
 	if t.interfaceName == "" {
 		t.interfaceCallback = t.networkManager.InterfaceMonitor().RegisterCallback(t.interfaceUpdated)
 	}
+	go func() {
+		_, err := t.Fetch()
+		if err != nil {
+			t.logger.Error(E.Cause(err, "fetch DNS servers"))
+		}
+	}()
 	return nil
 }
 

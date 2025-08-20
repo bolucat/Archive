@@ -85,7 +85,7 @@ func (t *Transport) tryOneName(ctx context.Context, servers []M.Socksaddr, fqdn 
 	var lastErr error
 	for i := 0; i < t.attempts; i++ {
 		for j := 0; j < sLen; j++ {
-			server := servers[j%sLen]
+			server := servers[j]
 			question := message.Question[0]
 			question.Name = fqdn
 			response, err := t.exchangeOne(ctx, server, question, C.DNSTimeout, false, true)

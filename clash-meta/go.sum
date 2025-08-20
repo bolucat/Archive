@@ -90,8 +90,8 @@ github.com/mdlayher/netlink v1.7.2 h1:/UtM3ofJap7Vl4QWCPDGXY8d3GIY2UGSDbK+QWmY8/
 github.com/mdlayher/netlink v1.7.2/go.mod h1:xraEF7uJbxLhc5fpHL4cPe221LI2bdttWlU+ZGLfQSw=
 github.com/mdlayher/socket v0.4.1 h1:eM9y2/jlbs1M615oshPQOHZzj6R6wMT7bX5NPiQvn2U=
 github.com/mdlayher/socket v0.4.1/go.mod h1:cAqeGjoufqdxWkD7DkpyS+wcefOtmu5OQ8KuoJGIReA=
-github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab h1:Chbw+/31UC14YFNr78pESt5Vowlc62zziw05JCUqoL4=
-github.com/metacubex/amneziawg-go v0.0.0-20240922133038-fdf3a4d5a4ab/go.mod h1:xVKK8jC5Sd3hfh7WjmCq+HorehIbrBijaUWmcuKjPcI=
+github.com/metacubex/amneziawg-go v0.0.0-20250820070344-732c0c9d418a h1:c1QSGpacSeQdBdWcEKZKGuWLcqIG2wxHEygAcXuDwS4=
+github.com/metacubex/amneziawg-go v0.0.0-20250820070344-732c0c9d418a/go.mod h1:MsM/5czONyXMJ3PRr5DbQ4O/BxzAnJWOIcJdLzW6qHY=
 github.com/metacubex/ascon v0.1.0 h1:6ZWxmXYszT1XXtwkf6nxfFhc/OTtQ9R3Vyj1jN32lGM=
 github.com/metacubex/ascon v0.1.0/go.mod h1:eV5oim4cVPPdEL8/EYaTZ0iIKARH9pnhAK/fcT5Kacc=
 github.com/metacubex/bart v0.20.5 h1:XkgLZ17QxfxkqKdGsojoM2Zu01mmHyyQSFzt2/calTM=
@@ -141,8 +141,8 @@ github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4 h1:j1VRTiC9JLR4nU
 github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
 github.com/metacubex/utls v1.8.1-0.20250811145843-49b4f106169a h1:IIzlVmDoB4+7b0BUcLZaY5+AirhhLFep3PhwkAFMRnQ=
 github.com/metacubex/utls v1.8.1-0.20250811145843-49b4f106169a/go.mod h1:FdjYzVfCtgtna19hX0ER1Xsa5uJInwdQ4IcaaI98lEQ=
-github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181 h1:hJLQviGySBuaynlCwf/oYgIxbVbGRUIKZCxdya9YrbQ=
-github.com/metacubex/wireguard-go v0.0.0-20240922131502-c182e7471181/go.mod h1:phewKljNYiTVT31Gcif8RiCKnTUOgVWFJjccqYM8s+Y=
+github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f h1:FGBPRb1zUabhPhDrlKEjQ9lgIwQ6cHL4x8M9lrERhbk=
+github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f/go.mod h1:oPGcV994OGJedmmxrcK9+ni7jUEMGhR+uVQAdaduIP4=
 github.com/miekg/dns v1.1.63 h1:8M5aAw6OMZfFXTT7K5V0Eu5YiiL8l7nUAkyN6C9YwaY=
 github.com/miekg/dns v1.1.63/go.mod h1:6NGHfjhpmr5lt3XPLuyfDJi5AXbNIPM9PY6H6sF1Nfs=
 github.com/mroth/weightedrand/v2 v2.1.0 h1:o1ascnB1CIVzsqlfArQQjeMy1U0NcIbBO5rfd5E/OeU=
