@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net"
 
-	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -20,6 +19,8 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
+
+	mDNS "github.com/miekg/dns"
 )
 
 func RegisterTransport(registry *dns.TransportRegistry) {

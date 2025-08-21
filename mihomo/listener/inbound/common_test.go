@@ -21,7 +21,7 @@ import (
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/ech"
-	"github.com/metacubex/mihomo/component/generater"
+	"github.com/metacubex/mihomo/component/generator"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 
@@ -48,13 +48,12 @@ var echConfigBase64, echKeyPem, _ = ech.GenECHConfig(echPublicSni)
 
 func init() {
 	rand.Read(httpData)
-	privateKey, err := generater.GeneratePrivateKey()
+	privateKey, err := generator.GenX25519PrivateKey()
 	if err != nil {
 		panic(err)
 	}
-	publicKey := privateKey.PublicKey()
-	realityPrivateKey = base64.RawURLEncoding.EncodeToString(privateKey[:])
-	realityPublickey = base64.RawURLEncoding.EncodeToString(publicKey[:])
+	realityPrivateKey = base64.RawURLEncoding.EncodeToString(privateKey.Bytes())
+	realityPublickey = base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes())
 }
 
 type TestTunnel struct {
