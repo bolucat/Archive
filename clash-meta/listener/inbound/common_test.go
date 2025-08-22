@@ -1,6 +1,7 @@
 package inbound_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -142,6 +143,7 @@ func NewHttpTestTunnel() *TestTunnel {
 			render.PlainText(w, r, err.Error())
 			return
 		}
+		io.Copy(io.Discard, r.Body)
 		render.Data(w, r, httpData[:size])
 	})
 	h2Server := &http2.Server{}
@@ -149,7 +151,7 @@ func NewHttpTestTunnel() *TestTunnel {
 	_ = http2.ConfigureServer(&server, h2Server)
 	go server.Serve(ln)
 	testFn := func(t *testing.T, proxy C.ProxyAdapter, proto string, size int) {
-		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s%s?size=%d", proto, remoteAddr, httpPath, size), nil)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s://%s%s?size=%d", proto, remoteAddr, httpPath, size), bytes.NewReader(httpData[:size]))
 		if !assert.NoError(t, err) {
 			return
 		}
