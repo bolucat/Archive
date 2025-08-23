@@ -10,8 +10,8 @@ import (
 	"math/big"
 	"net"
 
+	"github.com/metacubex/utls/hkdf"
 	"golang.org/x/crypto/chacha20poly1305"
-	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -81,8 +81,7 @@ func ReadAndDiscardPaddings(conn net.Conn, aead cipher.AEAD, nonce []byte) (h []
 }
 
 func NewAEAD(c byte, secret, salt, info []byte) (aead cipher.AEAD) {
-	key := make([]byte, 32)
-	hkdf.New(sha3.New256, secret, salt, info).Read(key)
+	key, _ := hkdf.Key(sha3.New256, secret, salt, string(info), 32)
 	if c&1 == 1 {
 		block, _ := aes.NewCipher(key)
 		aead, _ = cipher.NewGCM(block)

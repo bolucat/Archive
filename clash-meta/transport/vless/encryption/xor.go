@@ -9,7 +9,7 @@ import (
 	"io"
 	"net"
 
-	"golang.org/x/crypto/hkdf"
+	"github.com/metacubex/utls/hkdf"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -38,7 +38,7 @@ func NewCTR(key, iv []byte, isServer bool) cipher.Stream {
 	if isServer {
 		info = "SERVER" // avoids attackers sending traffic back to the client, though the encryption layer has its own protection
 	}
-	hkdf.New(sha3.New256, key, iv, []byte(info)).Read(key) // avoids using pKey directly if attackers sent the basepoint, or whaterver they like
+	key, _ = hkdf.Key(sha3.New256, key, iv, info, 32) // avoids using pKey directly if attackers sent the basepoint, or whaterver they like
 	block, _ := aes.NewCipher(key)
 	return cipher.NewCTR(block, iv)
 }
