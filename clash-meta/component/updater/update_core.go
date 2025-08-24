@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -159,7 +160,7 @@ func (u *CoreUpdater) Update(currentExePath string, channel string, force bool) 
 		return fmt.Errorf("backuping: %w", err)
 	}
 
-	err = u.replace(updateExePath, currentExePath)
+	err = u.copyFile(updateExePath, currentExePath)
 	if err != nil {
 		return fmt.Errorf("replacing: %w", err)
 	}
@@ -280,21 +281,6 @@ func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (e
 	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-// replace moves the current executable with the updated one
-func (u *CoreUpdater) replace(updateExePath, currentExePath string) error {
-	log.Infoln("replacing: %s to %s", updateExePath, currentExePath)
-
-	// Use copyFile to retain the original file attributes
-	err := u.copyFile(updateExePath, currentExePath)
-	if err != nil {
-		return err
-	}
-
-	log.Infoln("updater: copy: %s to %s", updateExePath, currentExePath)
 
 	return nil
 }
@@ -474,5 +460,13 @@ func (u *CoreUpdater) copyFile(src, dst string) (err error) {
 		return fmt.Errorf("io.Copy(): %w", err)
 	}
 
+	if runtime.GOOS == "darwin" {
+		err = exec.Command("/usr/bin/codesign", "--sign", "-", dst).Run()
+		if err != nil {
+			log.Warnln("codesign failed: %v", err)
+		}
+	}
+
+	log.Infoln("updater: copy: %s to %s", src, dst)
 	return nil
 }

@@ -1091,10 +1091,6 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 	o.depends('tls', '1');
 	o.modalonly = true;
 
-	o = s.option(form.Flag, 'tls_ech_enable_pqss', _('Enable PQ signature schemes'));
-	o.depends('tls_ech', '1');
-	o.modalonly = true;
-
 	o = s.option(form.Value, 'tls_ech_config_path', _('ECH config path'),
 		_('The path to the ECH config, in PEM format. If empty, load from DNS will be attempted.'));
 	o.value('/etc/homeproxy/certs/client_ech_conf.pem');
@@ -1123,7 +1119,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode) {
 		o.value('random');
 		o.value('randomized');
 		o.value('safari');
-		o.depends({'tls': '1', 'type': /^((?!hysteria2?$).)+$/});
+		o.depends({'tls': '1', 'type': /^((?!hysteria2?|tuic$).)+$/});
 		o.validate = function(section_id, value) {
 			if (section_id) {
 				let tls_reality = this.map.findElement('id', 'cbid.homeproxy.%s.tls_reality'.format(section_id)).firstElementChild;
