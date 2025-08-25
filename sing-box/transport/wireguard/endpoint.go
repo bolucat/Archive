@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -119,7 +120,7 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 	}
 	natDevice, isNatDevice := tunDevice.(NatDevice)
 	if !isNatDevice {
-		natDevice = NewNATDevice(tunDevice)
+		natDevice = NewNATDevice(options.Context, options.Logger, tunDevice)
 	}
 	return &Endpoint{
 		options:        options,
@@ -243,11 +244,11 @@ func (e *Endpoint) Lookup(address netip.Addr) *device.Peer {
 	return e.allowedIPs.Lookup(address.AsSlice())
 }
 
-func (e *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
+func (e *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	if e.natDevice == nil {
 		return nil, os.ErrInvalid
 	}
-	return e.natDevice.CreateDestination(metadata, routeContext)
+	return e.natDevice.CreateDestination(metadata, routeContext, timeout)
 }
 
 func (e *Endpoint) onPauseUpdated(event int) {

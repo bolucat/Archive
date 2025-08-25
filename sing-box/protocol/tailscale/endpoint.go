@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,10 +31,10 @@ import (
 	"github.com/sagernet/sing-box/experimental/libbox/platform"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-tun/ping"
 	"github.com/sagernet/sing/common"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -87,7 +88,7 @@ type Endpoint struct {
 
 	cfg           *wgcfg.Config
 	dnsCfg        *tsDNS.Config
-	routeDomains  atomic.TypedValue[map[string]bool]
+	routeDomains  common.TypedValue[map[string]bool]
 	routePrefixes atomic.Pointer[netipx.IPSet]
 
 	acceptRoutes           bool
@@ -181,7 +182,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		},
 	}
 	return &Endpoint{
-		Adapter:                endpoint.NewAdapter(C.TypeTailscale, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMPv4, N.NetworkICMPv6}, nil),
+		Adapter:                endpoint.NewAdapter(C.TypeTailscale, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, nil),
 		ctx:                    ctx,
 		router:                 router,
 		logger:                 logger,
@@ -272,7 +273,7 @@ func (t *Endpoint) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return E.Cause(err, "update prefs")
 	}
-	t.filter = atomic.PointerForm(localBackend.ExportFilter())
+	t.filter = localBackend.ExportFilter()
 	go t.watchState()
 	return nil
 }
@@ -424,7 +425,7 @@ func (t *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return udpConn, nil
 }
 
-func (t *Endpoint) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
+func (t *Endpoint) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	tsFilter := t.filter.Load()
 	if tsFilter != nil {
 		var ipProto ipproto.Proto
@@ -433,6 +434,12 @@ func (t *Endpoint) PrepareConnection(network string, source M.Socksaddr, destina
 			ipProto = ipproto.TCP
 		case N.NetworkUDP:
 			ipProto = ipproto.UDP
+		case N.NetworkICMP:
+			if !destination.IsIPv6() {
+				ipProto = ipproto.ICMPv4
+			} else {
+				ipProto = ipproto.ICMPv6
+			}
 		}
 		response := tsFilter.Check(source.Addr, destination.Addr, destination.Port, ipProto)
 		switch response {
@@ -442,13 +449,26 @@ func (t *Endpoint) PrepareConnection(network string, source M.Socksaddr, destina
 			return nil, tun.ErrDrop
 		}
 	}
-	return t.router.PreMatch(adapter.InboundContext{
+	var ipVersion uint8
+	if !destination.IsIPv6() {
+		ipVersion = 4
+	} else {
+		ipVersion = 6
+	}
+	routeDestination, err := t.router.PreMatch(adapter.InboundContext{
 		Inbound:     t.Tag(),
 		InboundType: t.Type(),
+		IPVersion:   ipVersion,
 		Network:     network,
 		Source:      source,
 		Destination: destination,
-	}, routeContext)
+	}, routeContext, timeout)
+	if err != nil {
+		if !rule.IsRejected(err) {
+			t.logger.Warn(E.Cause(err, "link ", network, " connection from ", source.AddrString(), " to ", destination.AddrString()))
+		}
+	}
+	return routeDestination, err
 }
 
 func (t *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -491,7 +511,7 @@ func (t *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	t.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
 }
 
-func (t *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
+func (t *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	inet4Address, inet6Address := t.server.TailscaleIPs()
 	if metadata.Destination.Addr.Is4() && !inet4Address.IsValid() || metadata.Destination.Addr.Is6() && !inet6Address.IsValid() {
 		return nil, E.New("Tailscale is not ready yet")
@@ -503,6 +523,7 @@ func (t *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, rou
 		routeContext,
 		t.stack,
 		inet4Address, inet6Address,
+		timeout,
 	)
 	if err != nil {
 		return nil, err

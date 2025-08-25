@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -28,7 +29,7 @@ type OutboundWithPreferredRoutes interface {
 
 type DirectRouteOutbound interface {
 	Outbound
-	NewDirectRouteConnection(metadata InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error)
+	NewDirectRouteConnection(metadata InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error)
 }
 
 type OutboundRegistry interface {

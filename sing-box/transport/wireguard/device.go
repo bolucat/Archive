@@ -47,5 +47,5 @@ func NewDevice(options DeviceOptions) (Device, error) {
 
 type NatDevice interface {
 	Device
-	CreateDestination(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error)
+	CreateDestination(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error)
 }

@@ -19,4 +19,5 @@
 // https://github.com/XTLS/Xray-core/commit/b33555cc0a52d0af3c23d2af8fca42f8a685d9af
 // https://github.com/XTLS/Xray-core/commit/ad7140641c44239c9dcdc3d7215ea639b1f0841c
 // https://github.com/XTLS/Xray-core/commit/0199dea39988a1a1b846d0bf8598631bade40902
+// https://github.com/XTLS/Xray-core/commit/fce1195b60f48ca18a953dbd5c7d991869de9a5e
 package encryption

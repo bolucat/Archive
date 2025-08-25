@@ -12,6 +12,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/route/rule"
 	"github.com/sagernet/sing-box/transport/wireguard"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
@@ -41,7 +42,7 @@ type Endpoint struct {
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.WireGuardEndpointOptions) (adapter.Endpoint, error) {
 	ep := &Endpoint{
-		Adapter:        endpoint.NewAdapterWithDialerOptions(C.TypeWireGuard, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMPv4, N.NetworkICMPv6}, options.DialerOptions),
+		Adapter:        endpoint.NewAdapterWithDialerOptions(C.TypeWireGuard, tag, []string{N.NetworkTCP, N.NetworkUDP, N.NetworkICMP}, options.DialerOptions),
 		ctx:            ctx,
 		router:         router,
 		dnsRouter:      service.FromContext[adapter.DNSRouter](ctx),
@@ -125,14 +126,27 @@ func (w *Endpoint) Close() error {
 	return w.endpoint.Close()
 }
 
-func (w *Endpoint) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, context tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
-	return w.router.PreMatch(adapter.InboundContext{
+func (w *Endpoint) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
+	var ipVersion uint8
+	if !destination.IsIPv6() {
+		ipVersion = 4
+	} else {
+		ipVersion = 6
+	}
+	routeDestination, err := w.router.PreMatch(adapter.InboundContext{
 		Inbound:     w.Tag(),
 		InboundType: w.Type(),
+		IPVersion:   ipVersion,
 		Network:     network,
 		Source:      source,
 		Destination: destination,
-	}, context)
+	}, routeContext, timeout)
+	if err != nil {
+		if !rule.IsRejected(err) {
+			w.logger.Warn(E.Cause(err, "link ", network, " connection from ", source.AddrString(), " to ", destination.AddrString()))
+		}
+	}
+	return routeDestination, err
 }
 
 func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
@@ -222,11 +236,6 @@ func (w *Endpoint) PreferredAddress(address netip.Addr) bool {
 	return w.endpoint.Lookup(address) != nil
 }
 
-func (w *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
-	destination, err := w.endpoint.NewDirectRouteConnection(metadata, routeContext)
-	if err != nil {
-		return nil, err
-	}
-	w.logger.Info("linked ", metadata.Network, " connection to ", metadata.Destination.AddrString())
-	return destination, nil
+func (w *Endpoint) NewDirectRouteConnection(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
+	return w.endpoint.NewDirectRouteConnection(metadata, routeContext, timeout)
 }

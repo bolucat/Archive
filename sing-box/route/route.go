@@ -259,7 +259,7 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 	return nil
 }
 
-func (r *Router) PreMatch(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
+func (r *Router) PreMatch(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	selectedRule, _, _, _, err := r.matchRule(r.ctx, &metadata, true, nil, nil)
 	if err != nil {
 		return nil, err
@@ -279,17 +279,17 @@ func (r *Router) PreMatch(metadata adapter.InboundContext, routeContext tun.Dire
 			if !common.Contains(outbound.Network(), metadata.Network) {
 				return nil, E.New(metadata.Network, " is not supported by outbound: ", action.Outbound)
 			}
-			return outbound.(adapter.DirectRouteOutbound).NewDirectRouteConnection(metadata, routeContext)
+			return outbound.(adapter.DirectRouteOutbound).NewDirectRouteConnection(metadata, routeContext, timeout)
 		}
 	}
-	if metadata.Network != N.NetworkICMPv4 && metadata.Network != N.NetworkICMPv6 {
+	if selectedRule != nil || metadata.Network != N.NetworkICMP {
 		return nil, nil
 	}
 	defaultOutbound := r.outbound.Default()
 	if !common.Contains(defaultOutbound.Network(), metadata.Network) {
 		return nil, E.New(metadata.Network, " is not supported by default outbound: ", defaultOutbound.Tag())
 	}
-	return defaultOutbound.(adapter.DirectRouteOutbound).NewDirectRouteConnection(metadata, routeContext)
+	return defaultOutbound.(adapter.DirectRouteOutbound).NewDirectRouteConnection(metadata, routeContext, timeout)
 }
 
 func (r *Router) matchRule(

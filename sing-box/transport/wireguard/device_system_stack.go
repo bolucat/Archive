@@ -5,6 +5,7 @@ package wireguard
 import (
 	"context"
 	"net/netip"
+	"time"
 
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/tcpip"
@@ -159,7 +160,7 @@ func (w *systemStackDevice) writeStack(packet []byte) bool {
 	return true
 }
 
-func (w *systemStackDevice) CreateDestination(metadata adapter.InboundContext, routeContext tun.DirectRouteContext) (tun.DirectRouteDestination, error) {
+func (w *systemStackDevice) CreateDestination(metadata adapter.InboundContext, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	ctx := log.ContextWithNewID(w.ctx)
 	destination, err := ping.ConnectGVisor(
 		ctx, w.logger,
@@ -167,6 +168,7 @@ func (w *systemStackDevice) CreateDestination(metadata adapter.InboundContext, r
 		routeContext,
 		w.stack,
 		w.inet4Address, w.inet6Address,
+		timeout,
 	)
 	if err != nil {
 		return nil, err
