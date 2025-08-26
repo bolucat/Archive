@@ -482,7 +482,7 @@ match:
 				} else if len(newPacketBuffers) > 0 {
 					packetBuffers = append(packetBuffers, newPacketBuffers...)
 				}
-			} else {
+			} else if metadata.Network != N.NetworkICMP {
 				selectedRule = currentRule
 				selectedRuleIndex = currentRuleIndex
 				break match
@@ -496,8 +496,7 @@ match:
 		actionType := currentRule.Action().Type()
 		if actionType == C.RuleActionTypeRoute ||
 			actionType == C.RuleActionTypeReject ||
-			actionType == C.RuleActionTypeHijackDNS ||
-			(actionType == C.RuleActionTypeSniff && preMatch) {
+			actionType == C.RuleActionTypeHijackDNS {
 			selectedRule = currentRule
 			selectedRuleIndex = currentRuleIndex
 			break match
