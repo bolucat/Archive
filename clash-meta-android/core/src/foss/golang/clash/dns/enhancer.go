@@ -81,8 +81,8 @@ func (h *ResolverEnhancer) InsertHostByIP(ip netip.Addr, host string) {
 }
 
 func (h *ResolverEnhancer) FlushFakeIP() error {
-	if h.fakePool != nil {
-		return h.fakePool.FlushFakeIP()
+	if pool := h.fakePool; pool != nil {
+		return pool.FlushFakeIP()
 	}
 	return nil
 }

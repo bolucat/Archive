@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -31,6 +32,11 @@ const (
 	// package whose size is limited by this constant currently has the size of
 	// approximately 32 MiB.
 	MaxPackageFileSize = 32 * 1024 * 1024
+)
+
+const (
+	ReleaseChannel = "release"
+	AlphaChannel   = "alpha"
 )
 
 // CoreUpdater is the mihomo updater.
@@ -69,20 +75,28 @@ func (u *CoreUpdater) CoreBaseName() string {
 	}
 }
 
-func (u *CoreUpdater) Update(currentExePath string) (err error) {
+func (u *CoreUpdater) Update(currentExePath string, channel string, force bool) (err error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	_, err = os.Stat(currentExePath)
+	info, err := os.Stat(currentExePath)
 	if err != nil {
 		return fmt.Errorf("check currentExePath %q: %w", currentExePath, err)
 	}
 
 	baseURL := baseAlphaURL
 	versionURL := versionAlphaURL
-	if !strings.HasPrefix(C.Version, "alpha") {
+	switch strings.ToLower(channel) {
+	case ReleaseChannel:
 		baseURL = baseReleaseURL
 		versionURL = versionReleaseURL
+	case AlphaChannel:
+		break
+	default: // auto
+		if !strings.HasPrefix(C.Version, "alpha") {
+			baseURL = baseReleaseURL
+			versionURL = versionReleaseURL
+		}
 	}
 
 	latestVersion, err := u.getLatestVersion(versionURL)
@@ -91,7 +105,7 @@ func (u *CoreUpdater) Update(currentExePath string) (err error) {
 	}
 	log.Infoln("current version %s, latest version %s", C.Version, latestVersion)
 
-	if latestVersion == C.Version {
+	if latestVersion == C.Version && !force {
 		// don't change this output, some downstream dependencies on the upgrader's output fields
 		return fmt.Errorf("update error: already using latest version %s", C.Version)
 	}
@@ -136,7 +150,7 @@ func (u *CoreUpdater) Update(currentExePath string) (err error) {
 		return fmt.Errorf("downloading: %w", err)
 	}
 
-	err = u.unpack(updateDir, packagePath)
+	err = u.unpack(updateDir, packagePath, info.Mode())
 	if err != nil {
 		return fmt.Errorf("unpacking: %w", err)
 	}
@@ -146,7 +160,7 @@ func (u *CoreUpdater) Update(currentExePath string) (err error) {
 		return fmt.Errorf("backuping: %w", err)
 	}
 
-	err = u.replace(updateExePath, currentExePath)
+	err = u.copyFile(updateExePath, currentExePath)
 	if err != nil {
 		return fmt.Errorf("replacing: %w", err)
 	}
@@ -230,16 +244,16 @@ func (u *CoreUpdater) download(updateDir, packagePath, packageURL string) (err e
 }
 
 // unpack extracts the files from the downloaded archive.
-func (u *CoreUpdater) unpack(updateDir, packagePath string) error {
+func (u *CoreUpdater) unpack(updateDir, packagePath string, fileMode os.FileMode) error {
 	log.Infoln("updater: unpacking package")
 	if strings.HasSuffix(packagePath, ".zip") {
-		_, err := u.zipFileUnpack(packagePath, updateDir)
+		_, err := u.zipFileUnpack(packagePath, updateDir, fileMode)
 		if err != nil {
 			return fmt.Errorf(".zip unpack failed: %w", err)
 		}
 
 	} else if strings.HasSuffix(packagePath, ".gz") {
-		_, err := u.gzFileUnpack(packagePath, updateDir)
+		_, err := u.gzFileUnpack(packagePath, updateDir, fileMode)
 		if err != nil {
 			return fmt.Errorf(".gz unpack failed: %w", err)
 		}
@@ -271,21 +285,6 @@ func (u *CoreUpdater) backup(currentExePath, backupExePath, backupDir string) (e
 	return nil
 }
 
-// replace moves the current executable with the updated one
-func (u *CoreUpdater) replace(updateExePath, currentExePath string) error {
-	log.Infoln("replacing: %s to %s", updateExePath, currentExePath)
-
-	// Use copyFile to retain the original file attributes
-	err := u.copyFile(updateExePath, currentExePath)
-	if err != nil {
-		return err
-	}
-
-	log.Infoln("updater: copy: %s to %s", updateExePath, currentExePath)
-
-	return nil
-}
-
 // clean removes the temporary directory itself and all it's contents.
 func (u *CoreUpdater) clean(updateDir string) {
 	_ = os.RemoveAll(updateDir)
@@ -295,7 +294,7 @@ func (u *CoreUpdater) clean(updateDir string) {
 // Existing files are overwritten
 // All files are created inside outDir, subdirectories are not created
 // Return the output file name
-func (u *CoreUpdater) gzFileUnpack(gzfile, outDir string) (outputName string, err error) {
+func (u *CoreUpdater) gzFileUnpack(gzfile, outDir string, fileMode os.FileMode) (outputName string, err error) {
 	f, err := os.Open(gzfile)
 	if err != nil {
 		return "", fmt.Errorf("os.Open(): %w", err)
@@ -330,7 +329,7 @@ func (u *CoreUpdater) gzFileUnpack(gzfile, outDir string) (outputName string, er
 	outputName = filepath.Join(outDir, originalName)
 
 	// Create the output file
-	wc, err := os.OpenFile(outputName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	wc, err := os.OpenFile(outputName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fileMode)
 	if err != nil {
 		return "", fmt.Errorf("os.OpenFile(%s): %w", outputName, err)
 	}
@@ -355,7 +354,7 @@ func (u *CoreUpdater) gzFileUnpack(gzfile, outDir string) (outputName string, er
 // Existing files are overwritten
 // All files are created inside 'outDir', subdirectories are not created
 // Return the output file name
-func (u *CoreUpdater) zipFileUnpack(zipfile, outDir string) (outputName string, err error) {
+func (u *CoreUpdater) zipFileUnpack(zipfile, outDir string, fileMode os.FileMode) (outputName string, err error) {
 	zrc, err := zip.OpenReader(zipfile)
 	if err != nil {
 		return "", fmt.Errorf("zip.OpenReader(): %w", err)
@@ -394,7 +393,7 @@ func (u *CoreUpdater) zipFileUnpack(zipfile, outDir string) (outputName string, 
 	}
 
 	var wc io.WriteCloser
-	wc, err = os.OpenFile(outputName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
+	wc, err = os.OpenFile(outputName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fileMode)
 	if err != nil {
 		return "", fmt.Errorf("os.OpenFile(): %w", err)
 	}
@@ -437,7 +436,16 @@ func (u *CoreUpdater) copyFile(src, dst string) (err error) {
 	// otherwise truncates it before writing, without changing permissions.
 	wc, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
 	if err != nil {
-		return fmt.Errorf("os.OpenFile(%s): %w", dst, err)
+		// On some file system (such as Android's /data) maybe return error: "text file busy"
+		// Let's delete the target file and recreate it
+		err = os.Remove(dst)
+		if err != nil {
+			return fmt.Errorf("os.Remove(%s): %w", dst, err)
+		}
+		wc, err = os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode())
+		if err != nil {
+			return fmt.Errorf("os.OpenFile(%s): %w", dst, err)
+		}
 	}
 
 	defer func() {
@@ -452,5 +460,13 @@ func (u *CoreUpdater) copyFile(src, dst string) (err error) {
 		return fmt.Errorf("io.Copy(): %w", err)
 	}
 
+	if runtime.GOOS == "darwin" {
+		err = exec.Command("/usr/bin/codesign", "--sign", "-", dst).Run()
+		if err != nil {
+			log.Warnln("codesign failed: %v", err)
+		}
+	}
+
+	log.Infoln("updater: copy: %s to %s", src, dst)
 	return nil
 }

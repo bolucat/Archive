@@ -6,8 +6,8 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/enfein/mieru/v3 v3.19.0
-	github.com/go-chi/chi/v5 v5.2.2
+	github.com/enfein/mieru/v3 v3.19.1
+	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
 	github.com/gofrs/uuid/v5 v5.3.2
@@ -30,11 +30,11 @@ require (
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.6
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.8-0.20250826073243-05ab78f45ac4
+	github.com/metacubex/sing-tun v0.4.8-0.20250827085914-fc5681b9fc9f
 	github.com/metacubex/sing-vmess v0.2.4-0.20250822020810-4856053566f0
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
-	github.com/metacubex/tfo-go v0.0.0-20250516165257-e29c16ae41d4
+	github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617
 	github.com/metacubex/utls v1.8.1-0.20250823120917-12f5ba126142
 	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
@@ -46,7 +46,7 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7
@@ -68,7 +68,7 @@ require (
 	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/ebitengine/purego v0.8.3 // indirect
+	github.com/ebitengine/purego v0.8.4 // indirect
 	github.com/ericlagergren/aegis v0.0.0-20250325060835-cd0defd64358 // indirect
 	github.com/ericlagergren/polyval v0.0.0-20220411101811-e25bc10ba391 // indirect
 	github.com/ericlagergren/siv v0.0.0-20220507050439-0b757b3aa5f1 // indirect

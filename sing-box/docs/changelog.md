@@ -2,9 +2,20 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.7
+
+* Add reject support for ICMP echo supports **1**
+* Fixes and improvements
+
+**1**:
+
+You can now reject, drop, or directly reply to ICMP echo (ping) requests using `reject` Route Action.
+
+See [Route Action](/configuration/route/rule_action/#reject).
+
 #### 1.13.0-alpha.6
 
-* Add proxy support for ICMP echo request **1**
+* Add proxy support for ICMP echo requests **1**
 * Fixes and improvements
 
 **1**:

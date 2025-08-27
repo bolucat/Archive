@@ -30,26 +30,22 @@ type Conn struct {
 }
 
 func (vc *Conn) Read(b []byte) (int, error) {
-	if vc.received {
-		return vc.ExtendedReader.Read(b)
+	if !vc.received {
+		if err := vc.recvResponse(); err != nil {
+			return 0, err
+		}
+		vc.received = true
 	}
-
-	if err := vc.recvResponse(); err != nil {
-		return 0, err
-	}
-	vc.received = true
 	return vc.ExtendedReader.Read(b)
 }
 
 func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
-	if vc.received {
-		return vc.ExtendedReader.ReadBuffer(buffer)
+	if !vc.received {
+		if err := vc.recvResponse(); err != nil {
+			return err
+		}
+		vc.received = true
 	}
-
-	if err := vc.recvResponse(); err != nil {
-		return err
-	}
-	vc.received = true
 	return vc.ExtendedReader.ReadBuffer(buffer)
 }
 
@@ -105,26 +101,20 @@ func (vc *Conn) sendRequest(p []byte) bool {
 		}
 	}
 
-	var buffer *buf.Buffer
-	if vc.IsXTLSVisionEnabled() {
-		buffer = buf.New()
-		defer buffer.Release()
-	} else {
-		requestLen := 1  // protocol version
-		requestLen += 16 // UUID
-		requestLen += 1  // addons length
-		requestLen += len(addonsBytes)
-		requestLen += 1 // command
-		if !vc.dst.Mux {
-			requestLen += 2 // port
-			requestLen += 1 // addr type
-			requestLen += len(vc.dst.Addr)
-		}
-		requestLen += len(p)
-
-		buffer = buf.NewSize(requestLen)
-		defer buffer.Release()
+	requestLen := 1  // protocol version
+	requestLen += 16 // UUID
+	requestLen += 1  // addons length
+	requestLen += len(addonsBytes)
+	requestLen += 1 // command
+	if !vc.dst.Mux {
+		requestLen += 2 // port
+		requestLen += 1 // addr type
+		requestLen += len(vc.dst.Addr)
 	}
+	requestLen += len(p)
+
+	buffer := buf.NewSize(requestLen)
+	defer buffer.Release()
 
 	buf.Must(
 		buffer.WriteByte(Version),              // protocol version
@@ -182,10 +172,6 @@ func (vc *Conn) NeedHandshake() bool {
 	return vc.needHandshake
 }
 
-func (vc *Conn) IsXTLSVisionEnabled() bool {
-	return vc.addons != nil && vc.addons.Flow == XRV
-}
-
 // newConn return a Conn instance
 func newConn(conn net.Conn, client *Client, dst *DstAddr) (net.Conn, error) {
 	c := &Conn{
@@ -200,7 +186,7 @@ func newConn(conn net.Conn, client *Client, dst *DstAddr) (net.Conn, error) {
 	if client.Addons != nil {
 		switch client.Addons.Flow {
 		case XRV:
-			visionConn, err := vision.NewConn(c, c.id)
+			visionConn, err := vision.NewConn(c, conn, c.id)
 			if err != nil {
 				return nil, err
 			}
