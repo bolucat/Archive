@@ -3,15 +3,16 @@ package encryption
 import (
 	"crypto/cipher"
 	"crypto/ecdh"
+	"crypto/mlkem"
 	"crypto/rand"
-	"errors"
 	"io"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/metacubex/blake3"
-	"github.com/metacubex/utls/mlkem"
+	"github.com/xtls/xray-core/common/crypto"
+	"github.com/xtls/xray-core/common/errors"
+	"lukechampine.com/blake3"
 )
 
 type ClientInstance struct {
@@ -69,7 +70,7 @@ func (i *ClientInstance) Handshake(conn net.Conn) (*CommonConn, error) {
 
 	ivAndRealysLength := 16 + i.RelaysLength
 	pfsKeyExchangeLength := 18 + 1184 + 32 + 16
-	paddingLength := int(randBetween(100, 1000))
+	paddingLength := int(crypto.RandBetween(100, 1000))
 	clientHello := make([]byte, ivAndRealysLength+pfsKeyExchangeLength+paddingLength)
 
 	iv := clientHello[:16]

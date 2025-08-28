@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
-	"strings"
 	"time"
 
+	"github.com/metacubex/mihomo/common/pool"
+
 	"github.com/metacubex/blake3"
+	"github.com/metacubex/randv2"
 )
 
 type CommonConn struct {
@@ -23,36 +23,44 @@ type CommonConn struct {
 	PreWrite    []byte
 	GCM         *GCM
 	PeerPadding []byte
+	rawInput    bytes.Buffer // PeerInBytes
 	PeerGCM     *GCM
 	input       bytes.Reader // PeerCache
+}
+
+func NewCommonConn(conn net.Conn) *CommonConn {
+	return &CommonConn{
+		Conn: conn,
+	}
 }
 
 func (c *CommonConn) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	var data []byte
+	outBytes := pool.Get(5 + 8192 + 16)
+	defer pool.Put(outBytes)
 	for n := 0; n < len(b); {
 		b := b[n:]
 		if len(b) > 8192 {
 			b = b[:8192] // for avoiding another copy() in peer's Read()
 		}
 		n += len(b)
-		data = make([]byte, 5+len(b)+16)
-		EncodeHeader(data, len(b)+16)
+		headerAndData := outBytes[:5+len(b)+16]
+		EncodeHeader(headerAndData, len(b)+16)
 		max := false
 		if bytes.Equal(c.GCM.Nonce[:], MaxNonce) {
 			max = true
 		}
-		c.GCM.Seal(data[:5], nil, b, data[:5])
+		c.GCM.Seal(headerAndData[:5], nil, b, headerAndData[:5])
 		if max {
-			c.GCM = NewGCM(data[5:], c.UnitedKey)
+			c.GCM = NewGCM(headerAndData, c.UnitedKey)
 		}
 		if c.PreWrite != nil {
-			data = append(c.PreWrite, data...)
+			headerAndData = append(c.PreWrite, headerAndData...)
 			c.PreWrite = nil
 		}
-		if _, err := c.Conn.Write(data); err != nil {
+		if _, err := c.Conn.Write(headerAndData); err != nil {
 			return 0, err
 		}
 	}
@@ -85,9 +93,13 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 	if c.input.Len() > 0 {
 		return c.input.Read(b)
 	}
-	h, l, err := ReadAndDecodeHeader(c.Conn) // l: 17~17000
+	peerHeader := make([]byte, 5)
+	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
+		return 0, err
+	}
+	l, err := DecodeHeader(peerHeader) // l: 17~17000
 	if err != nil {
-		if c.Client != nil && strings.HasPrefix(err.Error(), "invalid header: ") { // client's 0-RTT
+		if c.Client != nil && errors.Is(err, ErrInvalidHeader) { // client's 0-RTT
 			c.Client.RWLock.Lock()
 			if bytes.HasPrefix(c.UnitedKey, c.Client.PfsKey) {
 				c.Client.Expire = time.Now() // expired
@@ -98,7 +110,8 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	c.Client = nil
-	peerData := make([]byte, l)
+	c.rawInput.Grow(l)
+	peerData := c.rawInput.Bytes()[:l]
 	if _, err := io.ReadFull(c.Conn, peerData); err != nil {
 		return 0, err
 	}
@@ -108,9 +121,9 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 	}
 	var newGCM *GCM
 	if bytes.Equal(c.PeerGCM.Nonce[:], MaxNonce) {
-		newGCM = NewGCM(peerData, c.UnitedKey)
+		newGCM = NewGCM(append(peerHeader, peerData...), c.UnitedKey)
 	}
-	_, err = c.PeerGCM.Open(dst[:0], nil, peerData, h)
+	_, err = c.PeerGCM.Open(dst[:0], nil, peerData, peerHeader)
 	if newGCM != nil {
 		c.PeerGCM = newGCM
 	}
@@ -180,41 +193,22 @@ func EncodeHeader(h []byte, l int) {
 	h[4] = byte(l)
 }
 
+var ErrInvalidHeader = errors.New("invalid header")
+
 func DecodeHeader(h []byte) (l int, err error) {
 	l = int(h[3])<<8 | int(h[4])
 	if h[0] != 23 || h[1] != 3 || h[2] != 3 {
 		l = 0
 	}
 	if l < 17 || l > 17000 { // TODO: TLSv1.3 max length
-		err = fmt.Errorf("invalid header: %v", h[:5]) // DO NOT CHANGE: relied by client's Read()
+		err = fmt.Errorf("%w: %v", ErrInvalidHeader, h[:5]) // DO NOT CHANGE: relied by client's Read()
 	}
 	return
-}
-
-func ReadAndDecodeHeader(conn net.Conn) (h []byte, l int, err error) {
-	h = make([]byte, 5)
-	if _, err = io.ReadFull(conn, h); err != nil {
-		return
-	}
-	l, err = DecodeHeader(h)
-	return
-}
-
-func ReadAndDiscardPaddings(conn net.Conn) (h []byte, l int, err error) {
-	for {
-		if h, l, err = ReadAndDecodeHeader(conn); err != nil {
-			return
-		}
-		if _, err = io.ReadFull(conn, make([]byte, l)); err != nil {
-			return
-		}
-	}
 }
 
 func randBetween(from int64, to int64) int64 {
 	if from == to {
 		return from
 	}
-	bigInt, _ := rand.Int(rand.Reader, big.NewInt(to-from))
-	return from + bigInt.Int64()
+	return from + randv2.Int64N(to-from)
 }

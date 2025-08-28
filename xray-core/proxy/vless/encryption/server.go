@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"crypto/cipher"
 	"crypto/ecdh"
+	"crypto/mlkem"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/metacubex/blake3"
-	"github.com/metacubex/utls/mlkem"
+	"github.com/xtls/xray-core/common/crypto"
+	"github.com/xtls/xray-core/common/errors"
+	"lukechampine.com/blake3"
 )
 
 type ServerSession struct {
@@ -146,7 +147,7 @@ func (i *ServerInstance) Handshake(conn net.Conn) (*CommonConn, error) {
 		lastCTR = NewCTR(nfsKey, iv)
 		lastCTR.XORKeyStream(relays, relays[:32])
 		if !bytes.Equal(relays[:32], i.Hash32s[j+1][:]) {
-			return nil, fmt.Errorf("unexpected hash32: %v", relays[:32])
+			return nil, errors.New("unexpected hash32: ", fmt.Sprintf("%v", relays[:32]))
 		}
 		relays = relays[32:]
 	}
@@ -177,7 +178,7 @@ func (i *ServerInstance) Handshake(conn net.Conn) (*CommonConn, error) {
 		s := i.Sessions[[16]byte(ticket)]
 		i.RWLock.RUnlock()
 		if s == nil {
-			noises := make([]byte, randBetween(1268, 2268)) // matches 1-RTT's server hello length for "random", though it is not important, just for example
+			noises := make([]byte, crypto.RandBetween(1268, 2268)) // matches 1-RTT's server hello length for "random", though it is not important, just for example
 			var err error
 			for err == nil {
 				rand.Read(noises)
@@ -237,7 +238,7 @@ func (i *ServerInstance) Handshake(conn net.Conn) (*CommonConn, error) {
 
 	pfsKeyExchangeLength := 1088 + 32 + 16
 	encryptedTicketLength := 32
-	paddingLength := int(randBetween(100, 1000))
+	paddingLength := int(crypto.RandBetween(100, 1000))
 	serverHello := make([]byte, pfsKeyExchangeLength+encryptedTicketLength+paddingLength)
 	nfsGCM.Seal(serverHello[:0], MaxNonce, pfsPublicKey, nil)
 	c.GCM.Seal(serverHello[:pfsKeyExchangeLength], nil, ticket, nil)

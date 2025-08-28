@@ -4,17 +4,22 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/metacubex/mihomo/common/pool"
-
-	"github.com/metacubex/blake3"
-	"github.com/metacubex/randv2"
+	"github.com/xtls/xray-core/common/errors"
+	"lukechampine.com/blake3"
 )
+
+var OutBytesPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 5+8192+16)
+	},
+}
 
 type CommonConn struct {
 	net.Conn
@@ -22,15 +27,16 @@ type CommonConn struct {
 	UnitedKey   []byte
 	PreWrite    []byte
 	GCM         *GCM
-	PeerPadding []byte
-	rawInput    bytes.Buffer // PeerInBytes
 	PeerGCM     *GCM
-	input       bytes.Reader // PeerCache
+	PeerPadding []byte
+	PeerInBytes []byte
+	PeerCache   []byte
 }
 
 func NewCommonConn(conn net.Conn) *CommonConn {
 	return &CommonConn{
-		Conn: conn,
+		Conn:        conn,
+		PeerInBytes: make([]byte, 5+17000), // no need to use sync.Pool, because we are always reading
 	}
 }
 
@@ -38,8 +44,8 @@ func (c *CommonConn) Write(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	outBytes := pool.Get(5 + 8192 + 16)
-	defer pool.Put(outBytes)
+	outBytes := OutBytesPool.Get().([]byte)
+	defer OutBytesPool.Put(outBytes)
 	for n := 0; n < len(b); {
 		b := b[n:]
 		if len(b) > 8192 {
@@ -90,16 +96,18 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 		}
 		c.PeerPadding = nil
 	}
-	if c.input.Len() > 0 {
-		return c.input.Read(b)
+	if len(c.PeerCache) > 0 {
+		n := copy(b, c.PeerCache)
+		c.PeerCache = c.PeerCache[n:]
+		return n, nil
 	}
-	peerHeader := make([]byte, 5)
+	peerHeader := c.PeerInBytes[:5]
 	if _, err := io.ReadFull(c.Conn, peerHeader); err != nil {
 		return 0, err
 	}
-	l, err := DecodeHeader(peerHeader) // l: 17~17000
+	l, err := DecodeHeader(c.PeerInBytes[:5]) // l: 17~17000
 	if err != nil {
-		if c.Client != nil && errors.Is(err, ErrInvalidHeader) { // client's 0-RTT
+		if c.Client != nil && strings.Contains(err.Error(), "invalid header: ") { // client's 0-RTT
 			c.Client.RWLock.Lock()
 			if bytes.HasPrefix(c.UnitedKey, c.Client.PfsKey) {
 				c.Client.Expire = time.Now() // expired
@@ -110,8 +118,7 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	c.Client = nil
-	c.rawInput.Grow(l)
-	peerData := c.rawInput.Bytes()[:l]
+	peerData := c.PeerInBytes[5 : 5+l]
 	if _, err := io.ReadFull(c.Conn, peerData); err != nil {
 		return 0, err
 	}
@@ -121,7 +128,7 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 	}
 	var newGCM *GCM
 	if bytes.Equal(c.PeerGCM.Nonce[:], MaxNonce) {
-		newGCM = NewGCM(append(peerHeader, peerData...), c.UnitedKey)
+		newGCM = NewGCM(c.PeerInBytes[:5+l], c.UnitedKey)
 	}
 	_, err = c.PeerGCM.Open(dst[:0], nil, peerData, peerHeader)
 	if newGCM != nil {
@@ -131,7 +138,7 @@ func (c *CommonConn) Read(b []byte) (int, error) {
 		return 0, err
 	}
 	if len(dst) > len(b) {
-		c.input.Reset(dst[copy(b, dst):])
+		c.PeerCache = dst[copy(b, dst):]
 		dst = b // for len(dst)
 	}
 	return len(dst), nil
@@ -166,7 +173,7 @@ func (a *GCM) Open(dst, nonce, ciphertext, additionalData []byte) ([]byte, error
 }
 
 func IncreaseNonce(nonce []byte) []byte {
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		nonce[11-i]++
 		if nonce[11-i] != 0 {
 			break
@@ -193,22 +200,13 @@ func EncodeHeader(h []byte, l int) {
 	h[4] = byte(l)
 }
 
-var ErrInvalidHeader = errors.New("invalid header")
-
 func DecodeHeader(h []byte) (l int, err error) {
 	l = int(h[3])<<8 | int(h[4])
 	if h[0] != 23 || h[1] != 3 || h[2] != 3 {
 		l = 0
 	}
 	if l < 17 || l > 17000 { // TODO: TLSv1.3 max length
-		err = fmt.Errorf("%w: %v", ErrInvalidHeader, h[:5]) // DO NOT CHANGE: relied by client's Read()
+		err = errors.New("invalid header: ", fmt.Sprintf("%v", h[:5])) // DO NOT CHANGE: relied by client's Read()
 	}
 	return
-}
-
-func randBetween(from int64, to int64) int64 {
-	if from == to {
-		return from
-	}
-	return from + randv2.Int64N(to-from)
 }

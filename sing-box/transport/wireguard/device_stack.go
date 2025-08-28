@@ -110,11 +110,17 @@ func (w *stackDevice) DialContext(ctx context.Context, network string, destinati
 	}
 	var networkProtocol tcpip.NetworkProtocolNumber
 	if destination.IsIPv4() {
+		if !w.inet4Address.IsValid() {
+			return nil, E.New("missing IPv4 local address")
+		}
 		networkProtocol = header.IPv4ProtocolNumber
 		bind.Addr = tun.AddressFromAddr(w.inet4Address)
 	} else {
+		if !w.inet6Address.IsValid() {
+			return nil, E.New("missing IPv6 local address")
+		}
 		networkProtocol = header.IPv6ProtocolNumber
-		bind.Addr = tun.AddressFromAddr(w.inet4Address)
+		bind.Addr = tun.AddressFromAddr(w.inet6Address)
 	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:

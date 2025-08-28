@@ -125,6 +125,7 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 				}
 				if vc.input.Len() == 0 {
 					needReturn = true
+					*vc.input = bytes.Reader{} // full reset
 					vc.input = nil
 				} else { // buffer is full
 					return nil
@@ -139,6 +140,7 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 				}
 				needReturn = true
 				if vc.rawInput.Len() == 0 {
+					*vc.rawInput = bytes.Buffer{} // full reset
 					vc.rawInput = nil
 				}
 			}
