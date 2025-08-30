@@ -40,9 +40,14 @@ if [[ "$?" -ne 0 ]]; then
 fi
 
 # Update mieru client with UDP config.
-./mieru apply config ${PATH_PREFIX}/client_udp.json
+if [[ -z "${MIERU_HANDSHAKE_NO_WAIT}" ]]; then
+  CLIENT_CONFIG="${PATH_PREFIX}/client_udp_handshake_standard.json"
+else
+  CLIENT_CONFIG="${PATH_PREFIX}/client_udp_handshake_no_wait.json"
+fi
+./mieru apply config ${CLIENT_CONFIG}
 if [[ "$?" -ne 0 ]]; then
-    echo "command 'mieru apply config client_udp.json' failed"
+    echo "command 'mieru apply config ${CLIENT_CONFIG}' failed"
     exit 1
 fi
 echo "mieru client config:"
@@ -59,7 +64,7 @@ fi
 sleep 2
 ./sockshttpclient -dst_host=127.0.0.1 -dst_port=8080 \
   -local_proxy_host=192.168.234.1 -local_proxy_port=1080 \
-  -test_case=reuse_conn -print_speed=1 -test_time_sec=900
+  -test_case=reuse_conn -interval_ms=1000 -print_speed=1 -test_time_sec=900
 if [ "$?" -ne "0" ]; then
     print_mieru_client_log
     print_mieru_client_thread_dump

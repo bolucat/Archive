@@ -97,6 +97,12 @@ public partial class ProfilesView
               .ObserveOn(RxApp.MainThreadScheduler)
               .Subscribe(_ => StorageUI())
               .DisposeWith(disposables);
+
+            AppEvents.AdjustMainLvColWidthRequested
+                .AsObservable()
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .Subscribe(_ => AutofitColumnWidth())
+                .DisposeWith(disposables);
         });
 
         RestoreUI();
@@ -113,14 +119,7 @@ public partial class ProfilesView
                 if (obj is null)
                     return false;
                 WindowsUtils.SetClipboardData((string)obj);
-                break;
-
-            case EViewAction.AdjustMainLvColWidth:
-                Application.Current?.Dispatcher.Invoke((() =>
-                {
-                    AutofitColumnWidth();
-                }), DispatcherPriority.Normal);
-                break;
+                break;          
 
             case EViewAction.ProfilesFocus:
                 lstProfiles.Focus();
@@ -163,15 +162,6 @@ public partial class ProfilesView
                 if (obj is null)
                     return false;
                 return (new SubEditWindow((SubItem)obj)).ShowDialog() ?? false;
-
-            case EViewAction.DispatcherSpeedTest:
-                if (obj is null)
-                    return false;
-                Application.Current?.Dispatcher.Invoke((() =>
-                {
-                    ViewModel?.SetSpeedTestResult((SpeedTestResult)obj);
-                }), DispatcherPriority.Normal);
-                break;
 
             case EViewAction.DispatcherRefreshServersBiz:
                 Application.Current?.Dispatcher.Invoke(RefreshServersBiz, DispatcherPriority.Normal);
