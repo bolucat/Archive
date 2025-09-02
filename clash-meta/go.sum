@@ -90,8 +90,8 @@ github.com/mdlayher/netlink v1.7.2 h1:/UtM3ofJap7Vl4QWCPDGXY8d3GIY2UGSDbK+QWmY8/
 github.com/mdlayher/netlink v1.7.2/go.mod h1:xraEF7uJbxLhc5fpHL4cPe221LI2bdttWlU+ZGLfQSw=
 github.com/mdlayher/socket v0.4.1 h1:eM9y2/jlbs1M615oshPQOHZzj6R6wMT7bX5NPiQvn2U=
 github.com/mdlayher/socket v0.4.1/go.mod h1:cAqeGjoufqdxWkD7DkpyS+wcefOtmu5OQ8KuoJGIReA=
-github.com/metacubex/amneziawg-go v0.0.0-20250820070344-732c0c9d418a h1:c1QSGpacSeQdBdWcEKZKGuWLcqIG2wxHEygAcXuDwS4=
-github.com/metacubex/amneziawg-go v0.0.0-20250820070344-732c0c9d418a/go.mod h1:MsM/5czONyXMJ3PRr5DbQ4O/BxzAnJWOIcJdLzW6qHY=
+github.com/metacubex/amneziawg-go v0.0.0-20250902133113-a7f637c14281 h1:09EM0sOLb2kfL0KETGhHujsBLB5iy5U/2yHRHsxf/pI=
+github.com/metacubex/amneziawg-go v0.0.0-20250902133113-a7f637c14281/go.mod h1:MsM/5czONyXMJ3PRr5DbQ4O/BxzAnJWOIcJdLzW6qHY=
 github.com/metacubex/ascon v0.1.0 h1:6ZWxmXYszT1XXtwkf6nxfFhc/OTtQ9R3Vyj1jN32lGM=
 github.com/metacubex/ascon v0.1.0/go.mod h1:eV5oim4cVPPdEL8/EYaTZ0iIKARH9pnhAK/fcT5Kacc=
 github.com/metacubex/bart v0.20.5 h1:XkgLZ17QxfxkqKdGsojoM2Zu01mmHyyQSFzt2/calTM=
