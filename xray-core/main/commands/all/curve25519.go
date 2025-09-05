@@ -21,7 +21,7 @@ func Curve25519Genkey(StdEncoding bool, input_base64 string) {
 	if len(input_base64) > 0 {
 		privateKey, _ = encoding.DecodeString(input_base64)
 		if len(privateKey) != 32 {
-			fmt.Println("invalid length of X25519 private key")
+			fmt.Println("Invalid length of X25519 private key.")
 			return
 		}
 	}
