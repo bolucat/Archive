@@ -80,7 +80,7 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                             MaterialAboutActionItem.Builder()
                                 .icon(R.drawable.ic_baseline_update_24)
                                 .text(R.string.app_version)
-                                .subText(SagerNet.appVersionNameForDisplay.value)
+                                .subText(SagerNet.appVersionNameForDisplay)
                                 .setOnClickAction {
                                     requireContext().launchCustomTab(
                                         "https://github.com/MatsuriDayo/NekoBoxForAndroid/releases"
@@ -216,7 +216,6 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                 try {
                     val client = Libcore.newHttpClient().apply {
                         modernTLS()
-                        keepAlive()
                         trySocks5(DataStore.mixedPort)
                     }
                     val response = client.newRequest().apply {
@@ -252,7 +251,7 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                                 .setMessage(
                                     context.getString(
                                         R.string.update_dialog_message,
-                                        SagerNet.appVersionNameForDisplay.value,
+                                        SagerNet.appVersionNameForDisplay,
                                         releaseName
                                     )
                                 )
@@ -267,6 +266,7 @@ class AboutFragment : ToolbarFragment(R.layout.layout_about) {
                         }
                     }
                 } catch (e: Exception) {
+                    Logs.w(e)
                     runOnMainDispatcher {
                         Toast.makeText(app, e.readableMessage, Toast.LENGTH_SHORT).show()
                     }

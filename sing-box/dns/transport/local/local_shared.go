@@ -121,7 +121,7 @@ func (t *Transport) exchangeOne(ctx context.Context, server M.Socksaddr, questio
 		Question: []mDNS.Question{question},
 		Compress: true,
 	}
-	request.SetEdns0(maxDNSPacketSize, false)
+	request.SetEdns0(buf.UDPBufferSize, false)
 	buffer := buf.Get(buf.UDPBufferSize)
 	defer buf.Put(buffer)
 	for _, network := range networks {
