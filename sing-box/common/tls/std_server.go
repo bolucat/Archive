@@ -20,15 +20,16 @@ import (
 var errInsecureUnused = E.New("tls: insecure unused")
 
 type STDServerConfig struct {
-	config          *tls.Config
-	logger          log.Logger
-	acmeService     adapter.SimpleLifecycle
-	certificate     []byte
-	key             []byte
-	certificatePath string
-	keyPath         string
-	echKeyPath      string
-	watcher         *fswatch.Watcher
+	config             *tls.Config
+	logger             log.Logger
+	kernelTx, kernelRx bool
+	acmeService        adapter.SimpleLifecycle
+	certificate        []byte
+	key                []byte
+	certificatePath    string
+	keyPath            string
+	echKeyPath         string
+	watcher            *fswatch.Watcher
 }
 
 func (c *STDServerConfig) ServerName() string {
@@ -69,8 +70,18 @@ func (c *STDServerConfig) Server(conn net.Conn) (Conn, error) {
 
 func (c *STDServerConfig) Clone() Config {
 	return &STDServerConfig{
-		config: c.config.Clone(),
+		config:   c.config.Clone(),
+		kernelTx: c.kernelTx,
+		kernelRx: c.kernelRx,
 	}
+}
+
+func (c *STDServerConfig) KernelTx() bool {
+	return c.kernelTx
+}
+
+func (c *STDServerConfig) KernelRx() bool {
+	return c.kernelRx
 }
 
 func (c *STDServerConfig) Start() error {
@@ -265,6 +276,8 @@ func NewSTDServer(ctx context.Context, logger log.Logger, options option.Inbound
 	return &STDServerConfig{
 		config:          tlsConfig,
 		logger:          logger,
+		kernelTx:        options.KernelTx,
+		kernelRx:        options.KernelRx,
 		acmeService:     acmeService,
 		certificate:     certificate,
 		key:             key,

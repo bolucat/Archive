@@ -22,6 +22,7 @@ type STDClientConfig struct {
 	fragment              bool
 	fragmentFallbackDelay time.Duration
 	recordFragment        bool
+	kernelTx, kernelRx    bool
 }
 
 func (c *STDClientConfig) ServerName() string {
@@ -52,7 +53,15 @@ func (c *STDClientConfig) Client(conn net.Conn) (Conn, error) {
 }
 
 func (c *STDClientConfig) Clone() Config {
-	return &STDClientConfig{c.ctx, c.config.Clone(), c.fragment, c.fragmentFallbackDelay, c.recordFragment}
+	return &STDClientConfig{
+		ctx:                   c.ctx,
+		config:                c.config.Clone(),
+		fragment:              c.fragment,
+		fragmentFallbackDelay: c.fragmentFallbackDelay,
+		recordFragment:        c.recordFragment,
+		kernelTx:              c.kernelTx,
+		kernelRx:              c.kernelRx,
+	}
 }
 
 func (c *STDClientConfig) ECHConfigList() []byte {
@@ -61,6 +70,14 @@ func (c *STDClientConfig) ECHConfigList() []byte {
 
 func (c *STDClientConfig) SetECHConfigList(EncryptedClientHelloConfigList []byte) {
 	c.config.EncryptedClientHelloConfigList = EncryptedClientHelloConfigList
+}
+
+func (c *STDClientConfig) KernelTx() bool {
+	return c.kernelTx
+}
+
+func (c *STDClientConfig) KernelRx() bool {
+	return c.kernelRx
 }
 
 func NewSTDClient(ctx context.Context, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -146,7 +163,15 @@ func NewSTDClient(ctx context.Context, serverAddress string, options option.Outb
 		}
 		tlsConfig.RootCAs = certPool
 	}
-	stdConfig := &STDClientConfig{ctx, &tlsConfig, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
+	stdConfig := &STDClientConfig{
+		ctx:                   ctx,
+		config:                &tlsConfig,
+		fragment:              options.Fragment,
+		fragmentFallbackDelay: time.Duration(options.FragmentFallbackDelay),
+		recordFragment:        options.RecordFragment,
+		kernelTx:              options.KernelTx,
+		kernelRx:              options.KernelRx,
+	}
 	if options.ECH != nil && options.ECH.Enabled {
 		return parseECHClientConfig(ctx, stdConfig, options)
 	} else {

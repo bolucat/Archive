@@ -29,6 +29,8 @@ type UTLSClientConfig struct {
 	fragment              bool
 	fragmentFallbackDelay time.Duration
 	recordFragment        bool
+	kernelTx              bool
+	kernelRx              bool
 }
 
 func (c *UTLSClientConfig) ServerName() string {
@@ -67,7 +69,7 @@ func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []by
 
 func (c *UTLSClientConfig) Clone() Config {
 	return &UTLSClientConfig{
-		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment,
+		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment, c.kernelTx, c.kernelRx,
 	}
 }
 
@@ -77,6 +79,14 @@ func (c *UTLSClientConfig) ECHConfigList() []byte {
 
 func (c *UTLSClientConfig) SetECHConfigList(EncryptedClientHelloConfigList []byte) {
 	c.config.EncryptedClientHelloConfigList = EncryptedClientHelloConfigList
+}
+
+func (c *UTLSClientConfig) KernelTx() bool {
+	return c.kernelTx
+}
+
+func (c *UTLSClientConfig) KernelRx() bool {
+	return c.kernelRx
 }
 
 type utlsConnWrapper struct {
@@ -214,7 +224,12 @@ func NewUTLSClient(ctx context.Context, serverAddress string, options option.Out
 	if err != nil {
 		return nil, err
 	}
-	uConfig := &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
+	uConfig := &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment, options.KernelTx, options.KernelRx}
+	if uConfig.kernelTx || uConfig.kernelRx {
+		if options.Reality != nil && options.Reality.Enabled {
+			return nil, E.New("Reality is conflict with kTLS")
+		}
+	}
 	if options.ECH != nil && options.ECH.Enabled {
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("Reality is conflict with ECH")
