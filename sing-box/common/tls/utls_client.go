@@ -14,8 +14,10 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tlsfragment"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/ntp"
 
 	utls "github.com/metacubex/utls"
@@ -29,8 +31,6 @@ type UTLSClientConfig struct {
 	fragment              bool
 	fragmentFallbackDelay time.Duration
 	recordFragment        bool
-	kernelTx              bool
-	kernelRx              bool
 }
 
 func (c *UTLSClientConfig) ServerName() string {
@@ -52,7 +52,7 @@ func (c *UTLSClientConfig) SetNextProtos(nextProto []string) {
 	c.config.NextProtos = nextProto
 }
 
-func (c *UTLSClientConfig) Config() (*STDConfig, error) {
+func (c *UTLSClientConfig) STDConfig() (*STDConfig, error) {
 	return nil, E.New("unsupported usage for uTLS")
 }
 
@@ -69,7 +69,7 @@ func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []by
 
 func (c *UTLSClientConfig) Clone() Config {
 	return &UTLSClientConfig{
-		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment, c.kernelTx, c.kernelRx,
+		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment,
 	}
 }
 
@@ -79,14 +79,6 @@ func (c *UTLSClientConfig) ECHConfigList() []byte {
 
 func (c *UTLSClientConfig) SetECHConfigList(EncryptedClientHelloConfigList []byte) {
 	c.config.EncryptedClientHelloConfigList = EncryptedClientHelloConfigList
-}
-
-func (c *UTLSClientConfig) KernelTx() bool {
-	return c.kernelTx
-}
-
-func (c *UTLSClientConfig) KernelRx() bool {
-	return c.kernelRx
 }
 
 type utlsConnWrapper struct {
@@ -149,7 +141,7 @@ func (c *utlsALPNWrapper) HandshakeContext(ctx context.Context) error {
 	return c.UConn.HandshakeContext(ctx)
 }
 
-func NewUTLSClient(ctx context.Context, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
+func NewUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
 	var serverName string
 	if options.ServerName != "" {
 		serverName = options.ServerName
@@ -224,20 +216,31 @@ func NewUTLSClient(ctx context.Context, serverAddress string, options option.Out
 	if err != nil {
 		return nil, err
 	}
-	uConfig := &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment, options.KernelTx, options.KernelRx}
-	if uConfig.kernelTx || uConfig.kernelRx {
-		if options.Reality != nil && options.Reality.Enabled {
-			return nil, E.New("Reality is conflict with kTLS")
-		}
-	}
+	var config Config = &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
 	if options.ECH != nil && options.ECH.Enabled {
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("Reality is conflict with ECH")
 		}
-		return parseECHClientConfig(ctx, uConfig, options)
-	} else {
-		return uConfig, nil
+		config, err = parseECHClientConfig(ctx, config.(ECHCapableConfig), options)
+		if err != nil {
+			return nil, err
+		}
 	}
+	if options.KernelRx || options.KernelTx {
+		if options.Reality != nil && options.Reality.Enabled {
+			return nil, E.New("Reality is conflict with kTLS")
+		}
+		if !C.IsLinux {
+			return nil, E.New("kTLS is only supported on Linux")
+		}
+		config = &KTLSClientConfig{
+			Config:   config,
+			logger:   logger,
+			kernelTx: options.KernelTx,
+			kernelRx: options.KernelRx,
+		}
+	}
+	return config, nil
 }
 
 var (

@@ -10,6 +10,7 @@ import (
 
 	"github.com/sagernet/fswatch"
 	"github.com/sagernet/sing-box/adapter"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
@@ -20,16 +21,15 @@ import (
 var errInsecureUnused = E.New("tls: insecure unused")
 
 type STDServerConfig struct {
-	config             *tls.Config
-	logger             log.Logger
-	kernelTx, kernelRx bool
-	acmeService        adapter.SimpleLifecycle
-	certificate        []byte
-	key                []byte
-	certificatePath    string
-	keyPath            string
-	echKeyPath         string
-	watcher            *fswatch.Watcher
+	config          *tls.Config
+	logger          log.Logger
+	acmeService     adapter.SimpleLifecycle
+	certificate     []byte
+	key             []byte
+	certificatePath string
+	keyPath         string
+	echKeyPath      string
+	watcher         *fswatch.Watcher
 }
 
 func (c *STDServerConfig) ServerName() string {
@@ -56,7 +56,7 @@ func (c *STDServerConfig) SetNextProtos(nextProto []string) {
 	}
 }
 
-func (c *STDServerConfig) Config() (*STDConfig, error) {
+func (c *STDServerConfig) STDConfig() (*STDConfig, error) {
 	return c.config, nil
 }
 
@@ -70,18 +70,8 @@ func (c *STDServerConfig) Server(conn net.Conn) (Conn, error) {
 
 func (c *STDServerConfig) Clone() Config {
 	return &STDServerConfig{
-		config:   c.config.Clone(),
-		kernelTx: c.kernelTx,
-		kernelRx: c.kernelRx,
+		config: c.config.Clone(),
 	}
-}
-
-func (c *STDServerConfig) KernelTx() bool {
-	return c.kernelTx
-}
-
-func (c *STDServerConfig) KernelRx() bool {
-	return c.kernelRx
 }
 
 func (c *STDServerConfig) Start() error {
@@ -171,7 +161,7 @@ func (c *STDServerConfig) Close() error {
 	return nil
 }
 
-func NewSTDServer(ctx context.Context, logger log.Logger, options option.InboundTLSOptions) (ServerConfig, error) {
+func NewSTDServer(ctx context.Context, logger log.ContextLogger, options option.InboundTLSOptions) (ServerConfig, error) {
 	if !options.Enabled {
 		return nil, nil
 	}
@@ -273,16 +263,26 @@ func NewSTDServer(ctx context.Context, logger log.Logger, options option.Inbound
 			return nil, err
 		}
 	}
-	return &STDServerConfig{
+	var config ServerConfig = &STDServerConfig{
 		config:          tlsConfig,
 		logger:          logger,
-		kernelTx:        options.KernelTx,
-		kernelRx:        options.KernelRx,
 		acmeService:     acmeService,
 		certificate:     certificate,
 		key:             key,
 		certificatePath: options.CertificatePath,
 		keyPath:         options.KeyPath,
 		echKeyPath:      echKeyPath,
-	}, nil
+	}
+	if options.KernelTx || options.KernelRx {
+		if !C.IsLinux {
+			return nil, E.New("kTLS is only supported on Linux")
+		}
+		config = &KTlSServerConfig{
+			ServerConfig: config,
+			logger:       logger,
+			kernelTx:     options.KernelTx,
+			kernelRx:     options.KernelRx,
+		}
+	}
+	return config, nil
 }

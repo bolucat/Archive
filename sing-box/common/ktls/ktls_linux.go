@@ -12,10 +12,11 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/sagernet/sing-box/common/badversion"
 	"github.com/sagernet/sing/common/control"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/shell"
 
-	"github.com/blang/semver/v4"
 	"golang.org/x/sys/unix"
 )
 
@@ -48,73 +49,89 @@ type Support struct {
 }
 
 var KernelSupport = sync.OnceValues(func() (*Support, error) {
-	_, err := os.Stat("/sys/module/tls")
-	if err != nil {
-		return nil, E.New("ktls: kernel module tls not found")
-	}
-
 	var uname unix.Utsname
-	err = unix.Uname(&uname)
+	err := unix.Uname(&uname)
 	if err != nil {
 		return nil, err
 	}
 
-	kernelVersion, err := semver.Parse(strings.Trim(string(uname.Release[:]), "\x00"))
+	kernelVersion := badversion.Parse(strings.Trim(string(uname.Release[:]), "\x00"))
 	if err != nil {
 		return nil, err
 	}
-	kernelVersion.Pre = nil
-	kernelVersion.Build = nil
-
 	var support Support
-
 	switch {
-	case kernelVersion.GTE(semver.Version{Major: 6, Minor: 14}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 6, Minor: 14}):
 		support.TLS_Version13_KeyUpdate = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 6, Minor: 1}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 6, Minor: 1}):
 		support.TLS_ARIA_GCM = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 6}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 6}):
 		support.TLS_Version13_RX = true
 		support.TLS_RX_NOPADDING = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 5, Minor: 19}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 5, Minor: 19}):
 		support.TLS_TX_ZEROCOPY = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 5, Minor: 16}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 5, Minor: 16}):
 		support.TLS_SM4 = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 5, Minor: 11}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 5, Minor: 11}):
 		support.TLS_CHACHA20_POLY1305 = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 5, Minor: 2}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 5, Minor: 2}):
 		support.TLS_AES_128_CCM = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 5, Minor: 1}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 5, Minor: 1}):
 		support.TLS_AES_256_GCM = true
 		support.TLS_Version13 = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 4, Minor: 17}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 4, Minor: 17}):
 		support.TLS_RX = true
 		fallthrough
-	case kernelVersion.GTE(semver.Version{Major: 4, Minor: 13}):
+	case kernelVersion.GreaterThanOrEqual(badversion.Version{Major: 4, Minor: 13}):
 		support.TLS = true
+	}
+
+	if support.TLS && support.TLS_Version13 {
+		_, err := os.Stat("/sys/module/tls")
+		if err != nil {
+			if os.Getuid() == 0 {
+				output, err := shell.Exec("modprobe", "tls").Read()
+				if err != nil {
+					return nil, E.Extend(E.Cause(err, "modprobe tls"), output)
+				}
+			} else {
+				return nil, E.New("ktls: kernel TLS module not loaded")
+			}
+		}
 	}
 
 	return &support, nil
 })
 
+func Load() error {
+	support, err := KernelSupport()
+	if err != nil {
+		return E.Cause(err, "ktls: check availability")
+	}
+	if !support.TLS || !support.TLS_Version13 {
+		return E.New("ktls: kernel does not support TLS 1.3")
+	}
+	return nil
+}
+
 func (c *Conn) setupKernel(txOffload, rxOffload bool) error {
 	if !txOffload && !rxOffload {
-		return nil
+		return os.ErrInvalid
 	}
 	support, err := KernelSupport()
 	if err != nil {
-		return err
+		return E.Cause(err, "check availability")
 	}
-	if !support.TLS {
-		return nil
+	if !support.TLS || !support.TLS_Version13 {
+		return E.New("kernel does not support TLS 1.3")
 	}
 	c.rawConn.Out.Lock()
 	defer c.rawConn.Out.Unlock()
@@ -122,35 +139,13 @@ func (c *Conn) setupKernel(txOffload, rxOffload bool) error {
 		return syscall.SetsockoptString(int(fd), unix.SOL_TCP, unix.TCP_ULP, "tls")
 	})
 	if err != nil {
-		return E.Cause(err, "initialize kernel TLS")
-	}
-
-	if rxOffload {
-		rxCrypto := kernelCipher(support, c.rawConn.In, *c.rawConn.CipherSuite, true)
-		if rxCrypto == nil {
-			return E.New("kTLS: unsupported cipher suite")
-		}
-		err = control.Raw(c.rawSyscallConn, func(fd uintptr) error {
-			return syscall.SetsockoptString(int(fd), unix.SOL_TLS, TLS_RX, rxCrypto.String())
-		})
-		if err != nil {
-			return err
-		}
-		if /*config.KernelRXExpectNoPad &&*/ *c.rawConn.Vers >= tls.VersionTLS13 && support.TLS_RX_NOPADDING {
-			err = control.Raw(c.rawSyscallConn, func(fd uintptr) error {
-				return syscall.SetsockoptInt(int(fd), unix.SOL_TLS, TLS_RX_EXPECT_NO_PAD, 1)
-			})
-			if err != nil {
-				return err
-			}
-		}
-		c.kernelRx = true
+		return os.NewSyscallError("setsockopt", err)
 	}
 
 	if txOffload {
 		txCrypto := kernelCipher(support, c.rawConn.Out, *c.rawConn.CipherSuite, false)
 		if txCrypto == nil {
-			return E.New("kTLS: unsupported cipher suite")
+			return E.New("unsupported cipher suite")
 		}
 		err = control.Raw(c.rawSyscallConn, func(fd uintptr) error {
 			return syscall.SetsockoptString(int(fd), unix.SOL_TLS, TLS_TX, txCrypto.String())
@@ -167,8 +162,31 @@ func (c *Conn) setupKernel(txOffload, rxOffload bool) error {
 			}
 		}
 		c.kernelTx = true
+		c.logger.DebugContext(c.ctx, "ktls: kernel TLS TX enabled")
 	}
 
+	if rxOffload {
+		rxCrypto := kernelCipher(support, c.rawConn.In, *c.rawConn.CipherSuite, true)
+		if rxCrypto == nil {
+			return E.New("unsupported cipher suite")
+		}
+		err = control.Raw(c.rawSyscallConn, func(fd uintptr) error {
+			return syscall.SetsockoptString(int(fd), unix.SOL_TLS, TLS_RX, rxCrypto.String())
+		})
+		if err != nil {
+			return err
+		}
+		if *c.rawConn.Vers >= tls.VersionTLS13 && support.TLS_RX_NOPADDING {
+			err = control.Raw(c.rawSyscallConn, func(fd uintptr) error {
+				return syscall.SetsockoptInt(int(fd), unix.SOL_TLS, TLS_RX_EXPECT_NO_PAD, 1)
+			})
+			if err != nil {
+				return err
+			}
+		}
+		c.kernelRx = true
+		c.logger.DebugContext(c.ctx, "ktls: kernel TLS RX enabled")
+	}
 	return nil
 }
 

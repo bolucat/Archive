@@ -26,11 +26,20 @@ type ReadWaitOptions = network.ReadWaitOptions
 
 var NewReadWaitOptions = network.NewReadWaitOptions
 
+type ReaderWithUpstream = network.ReaderWithUpstream
+type WithUpstreamReader = network.WithUpstreamReader
+type WriterWithUpstream = network.WriterWithUpstream
+type WithUpstreamWriter = network.WithUpstreamWriter
+type WithUpstream = common.WithUpstream
+
+var UnwrapReader = network.UnwrapReader
+var UnwrapWriter = network.UnwrapWriter
+
 func NewDeadlineConn(conn net.Conn) ExtendedConn {
-	if deadline.IsPipe(conn) || deadline.IsPipe(network.UnwrapReader(conn)) {
+	if deadline.IsPipe(conn) || deadline.IsPipe(UnwrapReader(conn)) {
 		return NewExtendedConn(conn) // pipe always have correctly deadline implement
 	}
-	if deadline.IsConn(conn) || deadline.IsConn(network.UnwrapReader(conn)) {
+	if deadline.IsConn(conn) || deadline.IsConn(UnwrapReader(conn)) {
 		return NewExtendedConn(conn) // was a *deadline.Conn
 	}
 	return deadline.NewConn(conn)

@@ -36,6 +36,7 @@ type RawConn struct {
 	PacketsSent *int64
 
 	ActiveCall *atomic.Int32
+	Tmp        *[16]byte
 }
 
 func NewRawConn(rawTLSConn tls.Conn) (*RawConn, error) {
@@ -152,6 +153,12 @@ func NewRawConn(rawTLSConn tls.Conn) (*RawConn, error) {
 		return nil, E.New("invalid Conn.activeCall")
 	}
 	conn.ActiveCall = (*atomic.Int32)(unsafe.Pointer(rawActiveCall.UnsafeAddr()))
+
+	rawTmp := rawConn.FieldByName("tmp")
+	if !rawTmp.IsValid() || rawTmp.Kind() != reflect.Array || rawTmp.Len() != 16 || rawTmp.Type().Elem().Kind() != reflect.Uint8 {
+		return nil, E.New("invalid Conn.tmp")
+	}
+	conn.Tmp = (*[16]byte)(unsafe.Pointer(rawTmp.UnsafeAddr()))
 
 	return conn, nil
 }

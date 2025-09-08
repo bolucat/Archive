@@ -4,7 +4,12 @@ icon: material/alert-decagram
 
 #### 1.13.0-alpha.9
 
+* Add kTLS support **1**
 * Fixes and improvements
+
+**1**:
+
+See [TLS](/configuration/shared/tls/).
 
 #### 1.12.4
 

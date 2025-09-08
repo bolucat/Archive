@@ -6,22 +6,43 @@ import (
 	"os"
 
 	"github.com/sagernet/sing-box/common/badtls"
-	"github.com/sagernet/sing-box/common/ktls"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
-	E "github.com/sagernet/sing/common/exceptions"
 	aTLS "github.com/sagernet/sing/common/tls"
 )
 
-func NewServer(ctx context.Context, logger log.Logger, options option.InboundTLSOptions) (ServerConfig, error) {
-	if !options.Enabled {
+type ServerOptions struct {
+	Context        context.Context
+	Logger         log.ContextLogger
+	Options        option.InboundTLSOptions
+	KTLSCompatible bool
+}
+
+func NewServer(ctx context.Context, logger log.ContextLogger, options option.InboundTLSOptions) (ServerConfig, error) {
+	return NewServerWithOptions(ServerOptions{
+		Context: ctx,
+		Logger:  logger,
+		Options: options,
+	})
+}
+
+func NewServerWithOptions(options ServerOptions) (ServerConfig, error) {
+	if !options.Options.Enabled {
 		return nil, nil
 	}
-	if options.Reality != nil && options.Reality.Enabled {
-		return NewRealityServer(ctx, logger, options)
+	if !options.KTLSCompatible {
+		if options.Options.KernelTx {
+			options.Logger.Warn("enabling kTLS TX in current scenarios will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_tx")
+		}
 	}
-	return NewSTDServer(ctx, logger, options)
+	if options.Options.KernelRx {
+		options.Logger.Warn("enabling kTLS RX will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_rx")
+	}
+	if options.Options.Reality != nil && options.Options.Reality.Enabled {
+		return NewRealityServer(options.Context, options.Logger, options.Options)
+	}
+	return NewSTDServer(options.Context, options.Logger, options.Options)
 }
 
 func ServerHandshake(ctx context.Context, conn net.Conn, config ServerConfig) (Conn, error) {
@@ -30,12 +51,6 @@ func ServerHandshake(ctx context.Context, conn net.Conn, config ServerConfig) (C
 	tlsConn, err := aTLS.ServerHandshake(ctx, conn, config)
 	if err != nil {
 		return nil, err
-	}
-	if kConfig, isKConfig := config.(KTLSCapableConfig); isKConfig && (kConfig.KernelTx() || kConfig.KernelRx()) {
-		if !C.IsLinux {
-			return nil, E.New("kTLS is only supported on Linux")
-		}
-		return ktls.NewConn(tlsConn, kConfig.KernelTx(), kConfig.KernelRx())
 	}
 	readWaitConn, err := badtls.NewReadWaitConn(tlsConn)
 	if err == nil {

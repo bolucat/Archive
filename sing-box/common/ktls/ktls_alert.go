@@ -57,13 +57,13 @@ const (
 func (c *Conn) sendAlertLocked(err uint8) error {
 	switch err {
 	case alertNoRenegotiation, alertCloseNotify:
-		c.tmp[0] = alertLevelWarning
+		c.rawConn.Tmp[0] = alertLevelWarning
 	default:
-		c.tmp[0] = alertLevelError
+		c.rawConn.Tmp[0] = alertLevelError
 	}
-	c.tmp[1] = byte(err)
+	c.rawConn.Tmp[1] = byte(err)
 
-	_, writeErr := c.writeRecordLocked(recordTypeAlert, c.tmp[0:2])
+	_, writeErr := c.writeRecordLocked(recordTypeAlert, c.rawConn.Tmp[0:2])
 	if err == alertCloseNotify {
 		// closeNotify is a special case in that it isn't an error.
 		return writeErr

@@ -2,7 +2,6 @@ package vision
 
 import (
 	"bytes"
-	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -24,15 +23,13 @@ type Conn struct {
 	net.Conn // should be *vless.Conn
 	N.ExtendedReader
 	N.ExtendedWriter
-	userUUID *uuid.UUID
+	userUUID uuid.UUID
 
-	// tlsConn and it's internal variables
-	tlsConn  net.Conn      // maybe [*tls.Conn] or other tls-like conn
+	// [*tls.Conn] or other tls-like [net.Conn]'s internal variables
 	netConn  net.Conn      // tlsConn.NetConn()
 	input    *bytes.Reader // &tlsConn.input or nil
 	rawInput *bytes.Buffer // &tlsConn.rawInput or nil
 
-	needHandshake              bool
 	packetsToFilter            int
 	isTLS                      bool
 	isTLS12orAbove             bool
@@ -46,6 +43,7 @@ type Conn struct {
 	readLastCommand            byte
 	writeFilterApplicationData bool
 	writeDirect                bool
+	writeOnceUserUUID          []byte
 }
 
 func (vc *Conn) Read(b []byte) (int, error) {
@@ -58,8 +56,8 @@ func (vc *Conn) Read(b []byte) (int, error) {
 }
 
 func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
-	toRead := buffer.FreeBytes()
 	if vc.readRemainingContent > 0 {
+		toRead := buffer.FreeBytes()
 		if vc.readRemainingContent < buffer.FreeLen() {
 			toRead = toRead[:vc.readRemainingContent]
 		}
@@ -80,12 +78,12 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 		switch vc.readLastCommand {
 		case commandPaddingContinue:
 			//if vc.isTLS || vc.packetsToFilter > 0 {
-			headerUUIDLen := 0
-			if vc.readFilterUUID {
-				headerUUIDLen = uuid.Size
+			need := PaddingHeaderLen
+			if !vc.readFilterUUID {
+				need = PaddingHeaderLen - uuid.Size
 			}
 			var header []byte
-			if need := headerUUIDLen + PaddingHeaderLen - uuid.Size; buffer.FreeLen() < need {
+			if buffer.FreeLen() < need {
 				header = make([]byte, need)
 			} else {
 				header = buffer.FreeBytes()[:need]
@@ -96,9 +94,8 @@ func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
 			}
 			if vc.readFilterUUID {
 				vc.readFilterUUID = false
-				if subtle.ConstantTimeCompare(vc.userUUID.Bytes(), header[:uuid.Size]) != 1 {
-					err = fmt.Errorf("XTLS Vision server responded unknown UUID: %s",
-						uuid.FromBytesOrNil(header[:uuid.Size]).String())
+				if !bytes.Equal(vc.userUUID.Bytes(), header[:uuid.Size]) {
+					err = fmt.Errorf("XTLS Vision server responded unknown UUID: %s", uuid.FromBytesOrNil(header[:uuid.Size]))
 					log.Errorln(err.Error())
 					return err
 				}
@@ -169,36 +166,19 @@ func (vc *Conn) Write(p []byte) (int, error) {
 }
 
 func (vc *Conn) WriteBuffer(buffer *buf.Buffer) (err error) {
-	if vc.needHandshake {
-		vc.needHandshake = false
-		if buffer.IsEmpty() {
-			ApplyPadding(buffer, commandPaddingContinue, vc.userUUID, true) // we do a long padding to hide vless header
-		} else {
-			vc.FilterTLS(buffer.Bytes())
-			ApplyPadding(buffer, commandPaddingContinue, vc.userUUID, vc.isTLS)
-		}
-		err = vc.ExtendedWriter.WriteBuffer(buffer)
-		if err != nil {
-			buffer.Release()
-			return err
-		}
-		err = vc.checkTLSVersion()
-		if err != nil {
-			buffer.Release()
-			return err
-		}
-		vc.tlsConn = nil
-		return nil
-	}
-
 	if vc.writeFilterApplicationData {
+		if buffer.IsEmpty() {
+			ApplyPadding(buffer, commandPaddingContinue, &vc.writeOnceUserUUID, true) // we do a long padding to hide vless header
+			return vc.ExtendedWriter.WriteBuffer(buffer)
+		}
+
 		vc.FilterTLS(buffer.Bytes())
 		buffers := vc.ReshapeBuffer(buffer)
 		applyPadding := true
 		for i, buffer := range buffers {
 			command := commandPaddingContinue
 			if applyPadding {
-				if vc.isTLS && buffer.Len() > 6 && bytes.Equal(buffer.To(3), tlsApplicationDataStart) {
+				if vc.isTLS && buffer.Len() > 6 && bytes.Equal(tlsApplicationDataStart, buffer.To(3)) {
 					command = commandPaddingEnd
 					if vc.enableXTLS {
 						command = commandPaddingDirect
@@ -211,7 +191,7 @@ func (vc *Conn) WriteBuffer(buffer *buf.Buffer) (err error) {
 					vc.writeFilterApplicationData = false
 					applyPadding = false
 				}
-				ApplyPadding(buffer, command, nil, vc.isTLS)
+				ApplyPadding(buffer, command, &vc.writeOnceUserUUID, vc.isTLS)
 			}
 
 			err = vc.ExtendedWriter.WriteBuffer(buffer)
@@ -234,7 +214,7 @@ func (vc *Conn) WriteBuffer(buffer *buf.Buffer) (err error) {
 }
 
 func (vc *Conn) FrontHeadroom() int {
-	if vc.readFilterUUID {
+	if vc.readFilterUUID || vc.writeOnceUserUUID != nil {
 		return PaddingHeaderLen
 	}
 	return PaddingHeaderLen - uuid.Size
@@ -245,7 +225,7 @@ func (vc *Conn) RearHeadroom() int {
 }
 
 func (vc *Conn) NeedHandshake() bool {
-	return vc.needHandshake
+	return vc.writeOnceUserUUID != nil
 }
 
 func (vc *Conn) Upstream() any {

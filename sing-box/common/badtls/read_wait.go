@@ -17,6 +17,9 @@ type ReadWaitConn struct {
 }
 
 func NewReadWaitConn(conn tls.Conn) (tls.Conn, error) {
+	if _, isReadWaitConn := conn.(N.ReadWaiter); isReadWaitConn {
+		return conn, nil
+	}
 	rawConn, err := NewRawConn(conn)
 	if err != nil {
 		return nil, err

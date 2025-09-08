@@ -537,7 +537,7 @@ func (c *Client) loadResponse(question dns.Question, transport adapter.DNSTransp
 }
 
 func MessageToAddresses(response *dns.Msg) []netip.Addr {
-	if response.Rcode != dns.RcodeSuccess {
+	if response == nil || response.Rcode != dns.RcodeSuccess {
 		return nil
 	}
 	addresses := make([]netip.Addr, 0, len(response.Answer))
