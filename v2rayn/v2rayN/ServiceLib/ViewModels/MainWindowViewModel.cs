@@ -235,6 +235,7 @@ public class MainWindowViewModel : MyReactiveObject
         {
             await StatisticsManager.Instance.Init(_config, UpdateStatisticsHandler);
         }
+        await RefreshServers();
 
         BlReloadEnabled = true;
         await Reload();
@@ -487,7 +488,7 @@ public class MainWindowViewModel : MyReactiveObject
         }
         else if (Utils.IsLinux())
         {
-            ProcUtils.ProcessStart("nautilus", path);
+            ProcUtils.ProcessStart("xdg-open", path);
         }
         else if (Utils.IsOSX())
         {

@@ -24,14 +24,14 @@ require (
 	github.com/metacubex/quic-go v0.54.1-0.20250730114134-a1ae705fe295
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
-	github.com/metacubex/sing v0.5.6-0.20250903022707-c9bf6d825f4d
+	github.com/metacubex/sing v0.5.6-0.20250904143031-f1a62fab1489
 	github.com/metacubex/sing-mux v0.3.3
-	github.com/metacubex/sing-quic v0.0.0-20250718154553-1b193bec4cbb
+	github.com/metacubex/sing-quic v0.0.0-20250909002258-06122df8f231
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.6
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.8-0.20250827085914-fc5681b9fc9f
-	github.com/metacubex/sing-vmess v0.2.4-0.20250829012208-7981a8548c79
+	github.com/metacubex/sing-tun v0.4.8-0.20250827145956-1742fc57fd9c
+	github.com/metacubex/sing-vmess v0.2.4-0.20250908094854-bc8e2a88b115
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
 	github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617
@@ -46,7 +46,7 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7

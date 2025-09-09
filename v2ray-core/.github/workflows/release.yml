@@ -120,7 +120,7 @@ jobs:
 
     steps:
       - name: Checkout codebase
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -133,9 +133,10 @@ jobs:
           echo "ASSET_NAME=$_NAME" >> $GITHUB_ENV
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: ^1.24
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
 
       - name: Get project dependencies
         run: go mod download
@@ -208,14 +209,15 @@ jobs:
     needs: build
     steps:
       - name: Checkout codebase
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: ^1.24
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
 
       - uses: actions/download-artifact@v5
         with:
@@ -286,6 +288,7 @@ jobs:
           file: build_artifacts/v2ray-extra.zip
           tag: ${{ github.ref }}
           overwrite: true
+
   buildContainer:
     if: github.event_name == 'release'
     needs: signature
@@ -310,7 +313,7 @@ jobs:
         arm64-v8a:arm64
         arm64-v8a:arm64/v8
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
 
       - name: Log in to ghcr.io
         uses: redhat-actions/podman-login@v1
