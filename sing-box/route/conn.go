@@ -341,7 +341,6 @@ func (m *ConnectionManager) connectionCopyEarlyWrite(source net.Conn, destinatio
 		return err
 	}
 	_, err = payload.ReadOnceFrom(source)
-	println(4)
 	isTimeout := E.IsTimeout(err)
 	if err != nil && !(isTimeout || errors.Is(err, io.EOF)) {
 		return E.Cause(err, "read payload")

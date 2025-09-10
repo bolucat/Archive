@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"unsafe"
 
 	"github.com/metacubex/mihomo/common/buf"
 	N "github.com/metacubex/mihomo/common/net"
@@ -36,6 +37,7 @@ type Conn struct {
 	enableXTLS                 bool
 	cipher                     uint16
 	remainingServerHello       uint16
+	readRemainingBuffer        *buf.Buffer
 	readRemainingContent       int
 	readRemainingPadding       int
 	readProcess                bool
@@ -50,29 +52,55 @@ func (vc *Conn) Read(b []byte) (int, error) {
 	if vc.readProcess {
 		buffer := buf.With(b)
 		err := vc.ReadBuffer(buffer)
+		if unsafe.SliceData(buffer.Bytes()) != unsafe.SliceData(b) { // buffer.Bytes() not at the beginning of b
+			copy(b, buffer.Bytes())
+		}
 		return buffer.Len(), err
 	}
 	return vc.ExtendedReader.Read(b)
 }
 
 func (vc *Conn) ReadBuffer(buffer *buf.Buffer) error {
-	if vc.readRemainingContent > 0 {
-		toRead := buffer.FreeBytes()
-		if vc.readRemainingContent < buffer.FreeLen() {
-			toRead = toRead[:vc.readRemainingContent]
+	if vc.readRemainingBuffer != nil {
+		_, err := buffer.ReadOnceFrom(vc.readRemainingBuffer)
+		if vc.readRemainingBuffer.IsEmpty() {
+			vc.readRemainingBuffer.Release()
+			vc.readRemainingBuffer = nil
 		}
-		n, err := vc.ExtendedReader.Read(toRead)
-		buffer.Truncate(n)
+		return err
+	}
+	if vc.readRemainingContent > 0 {
+		readSize := xrayBufSize          // at least read xrayBufSize
+		if buffer.FreeLen() > readSize { // input buffer larger than xrayBufSize, read as much as possible
+			readSize = buffer.FreeLen()
+		}
+		if readSize > vc.readRemainingContent { // don't read out of bounds
+			readSize = vc.readRemainingContent
+		}
+
+		readBuffer := buffer
+		if buffer.FreeLen() < readSize {
+			readBuffer = buf.NewSize(readSize)
+			vc.readRemainingBuffer = readBuffer
+		}
+		n, err := vc.ExtendedReader.Read(readBuffer.FreeBytes()[:readSize])
+		readBuffer.Truncate(n)
 		vc.readRemainingContent -= n
-		vc.FilterTLS(toRead)
+		vc.FilterTLS(readBuffer.Bytes())
+		if vc.readRemainingBuffer != nil {
+			innerErr := vc.ReadBuffer(buffer) // back to top but not losing err
+			if err != nil {
+				err = innerErr
+			}
+		}
 		return err
 	}
 	if vc.readRemainingPadding > 0 {
-		_, err := io.CopyN(io.Discard, vc.ExtendedReader, int64(vc.readRemainingPadding))
+		n, err := io.CopyN(io.Discard, vc.ExtendedReader, int64(vc.readRemainingPadding))
 		if err != nil {
 			return err
 		}
-		vc.readRemainingPadding = 0
+		vc.readRemainingPadding -= int(n)
 	}
 	if vc.readProcess {
 		switch vc.readLastCommand {
@@ -226,6 +254,10 @@ func (vc *Conn) RearHeadroom() int {
 
 func (vc *Conn) NeedHandshake() bool {
 	return vc.writeOnceUserUUID != nil
+}
+
+func (vc *Conn) NeedAdditionalReadDeadline() bool {
+	return true
 }
 
 func (vc *Conn) Upstream() any {

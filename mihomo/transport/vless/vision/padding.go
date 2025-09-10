@@ -44,8 +44,9 @@ func ApplyPadding(buffer *buf.Buffer, command byte, userUUID *[]byte, paddingTLS
 	log.Debugln("XTLS Vision write padding: command=%d, payloadLen=%d, paddingLen=%d", command, contentLen, paddingLen)
 }
 
+const xrayBufSize = 8192
+
 func (vc *Conn) ReshapeBuffer(buffer *buf.Buffer) []*buf.Buffer {
-	const xrayBufSize = 8192
 	if buffer.Len() <= xrayBufSize-PaddingHeaderLen {
 		return []*buf.Buffer{buffer}
 	}
