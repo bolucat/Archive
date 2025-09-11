@@ -6,6 +6,7 @@
 </p>
 <p align="center">
     <em>小白羊网盘 - powered by 阿里云盘Open.</em>
+    
 </p>
 
 <p align="center">
@@ -46,6 +47,28 @@
 
 
 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-) [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-) [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-) [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-) [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-) [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-) [![](https://img.shields.io/badge/-%E5%A3%B0%E6%98%8E-blue)](#免责声明-)
+
+
+# 小白羊近期将会带来全新更新
+超级好消息：
+沉寂已久的小白羊将会继续更新，带来更多强大功能！
+
+🚀 即将支持的功能包括：
+
+更多网盘支持：115网盘、123网盘、百度网盘、Google Drive、OneDrive、Dropbox、Box等
+
+网络共享协议：支持连接SMB、WebDAV等网络共享服务器
+
+媒体服务器集成：完美兼容Emby、Plex、Jellyfin等媒体服务器
+
+全平台覆盖：所有新功能将全部开源
+
+🎬 同时作者开发的 Apple全平台播放器BoxPlayer 会深度融合小白羊，欢迎下载体验
+
+下载链接：https://apps.apple.com/hk/app/boxplayer/id6739804060
+
+欢迎加入BoxPlayer测试群组：https://t.me/BoxPlayer456
+
 
 
 # 功能 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-)

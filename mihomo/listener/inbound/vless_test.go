@@ -120,17 +120,46 @@ func TestInboundVless_Encryption(t *testing.T) {
 			for i := range paddings {
 				padding := paddings[i].data
 				t.Run(paddings[i].name, func(t *testing.T) {
+					t.Parallel()
 					inboundOptions := inbound.VlessOption{
 						Decryption: "mlkem768x25519plus." + mode + ".600s." + padding + privateKeyBase64 + "." + seedBase64,
 					}
 					outboundOptions := outbound.VlessOption{
 						Encryption: "mlkem768x25519plus." + mode + ".0rtt." + padding + passwordBase64 + "." + clientBase64,
 					}
-					testInboundVless(t, inboundOptions, outboundOptions)
-					t.Run("xtls-rprx-vision", func(t *testing.T) {
-						outboundOptions := outboundOptions
-						outboundOptions.Flow = "xtls-rprx-vision"
+					t.Run("raw", func(t *testing.T) {
 						testInboundVless(t, inboundOptions, outboundOptions)
+						t.Run("xtls-rprx-vision", func(t *testing.T) {
+							outboundOptions := outboundOptions
+							outboundOptions.Flow = "xtls-rprx-vision"
+							testInboundVless(t, inboundOptions, outboundOptions)
+						})
+					})
+					t.Run("ws", func(t *testing.T) {
+						inboundOptions := inboundOptions
+						inboundOptions.WsPath = "/ws"
+						outboundOptions := outboundOptions
+						outboundOptions.Network = "ws"
+						outboundOptions.WSOpts = outbound.WSOptions{Path: "/ws"}
+						testInboundVless(t, inboundOptions, outboundOptions)
+						t.Run("xtls-rprx-vision", func(t *testing.T) {
+							outboundOptions := outboundOptions
+							outboundOptions.Flow = "xtls-rprx-vision"
+							testInboundVless(t, inboundOptions, outboundOptions)
+						})
+					})
+					t.Run("grpc", func(t *testing.T) {
+						inboundOptions := inboundOptions
+						inboundOptions.GrpcServiceName = "GunService"
+						outboundOptions := outboundOptions
+						outboundOptions.Network = "grpc"
+						outboundOptions.GrpcOpts = outbound.GrpcOptions{GrpcServiceName: "GunService"}
+						testInboundVless(t, inboundOptions, outboundOptions)
+						t.Run("xtls-rprx-vision", func(t *testing.T) {
+							outboundOptions := outboundOptions
+							outboundOptions.Flow = "xtls-rprx-vision"
+							testInboundVless(t, inboundOptions, outboundOptions)
+						})
 					})
 				})
 			}
@@ -149,16 +178,9 @@ func TestInboundVless_Wss1(t *testing.T) {
 		TLS:         true,
 		Fingerprint: tlsFingerprint,
 		Network:     "ws",
-		WSOpts: outbound.WSOptions{
-			Path: "/ws",
-		},
+		WSOpts:      outbound.WSOptions{Path: "/ws"},
 	}
 	testInboundVless(t, inboundOptions, outboundOptions)
-	t.Run("xtls-rprx-vision", func(t *testing.T) {
-		outboundOptions := outboundOptions
-		outboundOptions.Flow = "xtls-rprx-vision"
-		testInboundVless(t, inboundOptions, outboundOptions)
-	})
 	t.Run("ECH", func(t *testing.T) {
 		inboundOptions := inboundOptions
 		outboundOptions := outboundOptions
@@ -168,11 +190,6 @@ func TestInboundVless_Wss1(t *testing.T) {
 			Config: echConfigBase64,
 		}
 		testInboundVless(t, inboundOptions, outboundOptions)
-		t.Run("xtls-rprx-vision", func(t *testing.T) {
-			outboundOptions := outboundOptions
-			outboundOptions.Flow = "xtls-rprx-vision"
-			testInboundVless(t, inboundOptions, outboundOptions)
-		})
 	})
 }
 
@@ -187,16 +204,9 @@ func TestInboundVless_Wss2(t *testing.T) {
 		TLS:         true,
 		Fingerprint: tlsFingerprint,
 		Network:     "ws",
-		WSOpts: outbound.WSOptions{
-			Path: "/ws",
-		},
+		WSOpts:      outbound.WSOptions{Path: "/ws"},
 	}
 	testInboundVless(t, inboundOptions, outboundOptions)
-	t.Run("xtls-rprx-vision", func(t *testing.T) {
-		outboundOptions := outboundOptions
-		outboundOptions.Flow = "xtls-rprx-vision"
-		testInboundVless(t, inboundOptions, outboundOptions)
-	})
 	t.Run("ECH", func(t *testing.T) {
 		inboundOptions := inboundOptions
 		outboundOptions := outboundOptions
@@ -206,11 +216,6 @@ func TestInboundVless_Wss2(t *testing.T) {
 			Config: echConfigBase64,
 		}
 		testInboundVless(t, inboundOptions, outboundOptions)
-		t.Run("xtls-rprx-vision", func(t *testing.T) {
-			outboundOptions := outboundOptions
-			outboundOptions.Flow = "xtls-rprx-vision"
-			testInboundVless(t, inboundOptions, outboundOptions)
-		})
 	})
 }
 

@@ -64,7 +64,6 @@ type VlessOption struct {
 	HTTP2Opts         HTTP2Options      `proxy:"h2-opts,omitempty"`
 	GrpcOpts          GrpcOptions       `proxy:"grpc-opts,omitempty"`
 	WSOpts            WSOptions         `proxy:"ws-opts,omitempty"`
-	WSPath            string            `proxy:"ws-path,omitempty"`
 	WSHeaders         map[string]string `proxy:"ws-headers,omitempty"`
 	SkipCertVerify    bool              `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint       string            `proxy:"fingerprint,omitempty"`
@@ -407,7 +406,7 @@ func parseVlessAddr(metadata *C.Metadata, xudp bool) *vless.DstAddr {
 
 func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
-	if option.Network != "ws" && len(option.Flow) >= 16 {
+	if len(option.Flow) >= 16 {
 		option.Flow = option.Flow[:16]
 		if option.Flow != vless.XRV {
 			return nil, fmt.Errorf("unsupported xtls flow type: %s", option.Flow)
