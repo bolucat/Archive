@@ -48,6 +48,13 @@ func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) 
 		network = "tcp"
 	}
 
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: c.Client.TLSConfig,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	addr := net.JoinHostPort(c.host, c.port)
 	conn, err := c.dialer.DialContext(ctx, network, addr)
 	if err != nil {
@@ -66,7 +73,7 @@ func (c *client) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, error) 
 	ch := make(chan result, 1)
 	go func() {
 		if strings.HasSuffix(c.Client.Net, "tls") {
-			conn = tls.Client(conn, ca.GetGlobalTLSConfig(c.Client.TLSConfig))
+			conn = tls.Client(conn, tlsConfig)
 		}
 
 		dConn := &D.Conn{

@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -236,6 +235,11 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 	}
 	req = req.WithContext(ctx)
 
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{})
+	if err != nil {
+		return
+	}
+
 	transport := &http.Transport{
 		DialContext: func(context.Context, string, string) (net.Conn, error) {
 			return instance, nil
@@ -245,7 +249,7 @@ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.In
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig:       ca.GetGlobalTLSConfig(&tls.Config{}),
+		TLSClientConfig:       tlsConfig,
 	}
 
 	client := http.Client{

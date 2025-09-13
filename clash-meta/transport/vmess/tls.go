@@ -26,14 +26,14 @@ type ECHConfig struct {
 }
 
 func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn, error) {
-	tlsConfig := &tls.Config{
-		ServerName:         cfg.Host,
-		InsecureSkipVerify: cfg.SkipCertVerify,
-		NextProtos:         cfg.NextProtos,
-	}
-
-	var err error
-	tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, cfg.FingerPrint)
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: &tls.Config{
+			ServerName:         cfg.Host,
+			InsecureSkipVerify: cfg.SkipCertVerify,
+			NextProtos:         cfg.NextProtos,
+		},
+		Fingerprint: cfg.FingerPrint,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -193,13 +193,14 @@ func (ss *Socks5) clientHandshakeContext(ctx context.Context, c net.Conn, addr s
 func NewSocks5(option Socks5Option) (*Socks5, error) {
 	var tlsConfig *tls.Config
 	if option.TLS {
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: option.SkipCertVerify,
-			ServerName:         option.Server,
-		}
-
 		var err error
-		tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, option.Fingerprint)
+		tlsConfig, err = ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: option.SkipCertVerify,
+				ServerName:         option.Server,
+			},
+			Fingerprint: option.Fingerprint,
+		})
 		if err != nil {
 			return nil, err
 		}

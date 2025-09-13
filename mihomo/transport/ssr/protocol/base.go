@@ -8,10 +8,10 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"sync"
-	"time"
 
 	"github.com/metacubex/mihomo/common/pool"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/shadowsocks/core"
 
 	"github.com/metacubex/randv2"
@@ -49,7 +49,7 @@ func (a *authData) next() *authData {
 }
 
 func (a *authData) putAuthData(buf *bytes.Buffer) {
-	binary.Write(buf, binary.LittleEndian, uint32(time.Now().Unix()))
+	binary.Write(buf, binary.LittleEndian, uint32(ntp.Now().Unix()))
 	buf.Write(a.clientID[:])
 	binary.Write(buf, binary.LittleEndian, a.connectionID)
 }
@@ -57,7 +57,7 @@ func (a *authData) putAuthData(buf *bytes.Buffer) {
 func (a *authData) putEncryptedData(b *bytes.Buffer, userKey []byte, paddings [2]int, salt string) error {
 	encrypt := pool.Get(16)
 	defer pool.Put(encrypt)
-	binary.LittleEndian.PutUint32(encrypt, uint32(time.Now().Unix()))
+	binary.LittleEndian.PutUint32(encrypt, uint32(ntp.Now().Unix()))
 	copy(encrypt[4:], a.clientID[:])
 	binary.LittleEndian.PutUint32(encrypt[8:], a.connectionID)
 	binary.LittleEndian.PutUint16(encrypt[12:], uint16(paddings[0]))

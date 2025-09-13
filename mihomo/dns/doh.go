@@ -397,12 +397,16 @@ func (doh *dnsOverHTTPS) createTransport(ctx context.Context) (t http.RoundTripp
 		return transport, nil
 	}
 
-	tlsConfig := ca.GetGlobalTLSConfig(
-		&tls.Config{
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: &tls.Config{
 			InsecureSkipVerify:     doh.skipCertVerify,
 			MinVersion:             tls.VersionTLS12,
 			SessionTicketsDisabled: false,
-		})
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 	var nextProtos []string
 	for _, v := range doh.httpVersions {
 		nextProtos = append(nextProtos, string(v))

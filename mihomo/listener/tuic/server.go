@@ -14,6 +14,7 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/socks5"
 	"github.com/metacubex/mihomo/transport/tuic"
 
@@ -53,6 +54,7 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 		return nil, err
 	}
 	tlsConfig := &tlsC.Config{
+		Time:       ntp.Now,
 		MinVersion: tlsC.VersionTLS13,
 	}
 	tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}

@@ -39,7 +39,7 @@ var userUUID = utils.NewUUIDV4().String()
 var tlsCertificate, tlsPrivateKey, tlsFingerprint, _ = ca.NewRandomTLSKeyPair(ca.KeyPairTypeP256)
 var tlsConfigCert, _ = tls.X509KeyPair([]byte(tlsCertificate), []byte(tlsPrivateKey))
 var tlsConfig = &tls.Config{Certificates: []tls.Certificate{tlsConfigCert}, NextProtos: []string{"h2", "http/1.1"}}
-var tlsClientConfig, _ = ca.GetTLSConfig(nil, tlsFingerprint, "", "")
+var tlsClientConfig, _ = ca.GetTLSConfig(ca.Option{Fingerprint: tlsFingerprint})
 var realityPrivateKey, realityPublickey string
 var realityDest = "itunes.apple.com"
 var realityShortid = "10f897e26c4b9478"

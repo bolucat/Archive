@@ -167,10 +167,13 @@ func NewHttp(option HttpOption) (*Http, error) {
 			sni = option.SNI
 		}
 		var err error
-		tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(&tls.Config{
-			InsecureSkipVerify: option.SkipCertVerify,
-			ServerName:         sni,
-		}, option.Fingerprint)
+		tlsConfig, err = ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: option.SkipCertVerify,
+				ServerName:         sni,
+			},
+			Fingerprint: option.Fingerprint,
+		})
 		if err != nil {
 			return nil, err
 		}
