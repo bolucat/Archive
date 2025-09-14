@@ -12,7 +12,6 @@
 ^build_overrides/partition_alloc.gni
 ^build_overrides/protobuf.gni
 ^buildtools/deps_revisions.gni
-^buildtools/third_party/eu-strip/bin/eu-strip
 ^buildtools/third_party/libc++
 ^buildtools/third_party/libc++abi/BUILD.gn
 ^buildtools/third_party/libc++abi/cxa_demangle_stub.cc
@@ -23,11 +22,11 @@
 ^chrome/build/*.txt
 ^chrome/version.gni
 ^components/miracle_parameter
-^components/nacl/toolchain.gni
 ^components/network_time
 ^components/unexportable_keys
 ^components/version_info
 ^crypto
+^extensions/buildflags
 ^ios/features.gni
 ^ipc/ipc_param_traits.h
 ^net

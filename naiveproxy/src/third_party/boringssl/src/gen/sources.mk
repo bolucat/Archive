@@ -577,6 +577,7 @@ boringssl_crypto_headers := \
   include/openssl/safestack.h \
   include/openssl/service_indicator.h \
   include/openssl/sha.h \
+  include/openssl/sha2.h \
   include/openssl/siphash.h \
   include/openssl/slhdsa.h \
   include/openssl/span.h \
@@ -662,7 +663,10 @@ boringssl_crypto_internal_headers := \
   third_party/fiat/p256_32.h \
   third_party/fiat/p256_64.h \
   third_party/fiat/p256_64_msvc.h \
-  third_party/fiat/p256_bedrock.c.inc
+  third_party/fiat/p256_field.c.inc \
+  third_party/fiat/p256_field_32.br.c.inc \
+  third_party/fiat/p256_field_64.br.c.inc \
+  third_party/fiat/p256_point.br.c.inc
 
 boringssl_crypto_sources_asm := \
   crypto/curve25519/asm/x25519-asm-arm.S \
@@ -841,8 +845,10 @@ boringssl_crypto_test_data := \
   crypto/hmac/hmac_tests.txt \
   crypto/hpke/hpke_test_vectors.txt \
   crypto/kyber/kyber_tests.txt \
+  crypto/mldsa/mldsa_nist_keygen_44_tests.txt \
   crypto/mldsa/mldsa_nist_keygen_65_tests.txt \
   crypto/mldsa/mldsa_nist_keygen_87_tests.txt \
+  crypto/mldsa/mldsa_nist_siggen_44_tests.txt \
   crypto/mldsa/mldsa_nist_siggen_65_tests.txt \
   crypto/mldsa/mldsa_nist_siggen_87_tests.txt \
   crypto/mlkem/mlkem1024_decap_tests.txt \
@@ -879,6 +885,14 @@ boringssl_crypto_test_data := \
   crypto/pkcs8/test/unicode_password.p12 \
   crypto/pkcs8/test/windows.p12 \
   crypto/poly1305/poly1305_tests.txt \
+  crypto/rsa/test/rsa511.pem \
+  crypto/rsa/test/rsa511pub.pem \
+  crypto/rsa/test/rsa512.pem \
+  crypto/rsa/test/rsa512pub.pem \
+  crypto/rsa/test/rsa8192.pem \
+  crypto/rsa/test/rsa8192pub.pem \
+  crypto/rsa/test/rsa8193.pem \
+  crypto/rsa/test/rsa8193pub.pem \
   crypto/siphash/siphash_tests.txt \
   crypto/slhdsa/slhdsa_keygen.txt \
   crypto/slhdsa/slhdsa_prehash.txt \
@@ -1009,6 +1023,8 @@ boringssl_crypto_test_data := \
   third_party/wycheproof_testvectors/hmac_sha512_test.txt \
   third_party/wycheproof_testvectors/kw_test.txt \
   third_party/wycheproof_testvectors/kwp_test.txt \
+  third_party/wycheproof_testvectors/mldsa_44_standard_sign_test.txt \
+  third_party/wycheproof_testvectors/mldsa_44_standard_verify_test.txt \
   third_party/wycheproof_testvectors/mldsa_65_standard_sign_test.txt \
   third_party/wycheproof_testvectors/mldsa_65_standard_verify_test.txt \
   third_party/wycheproof_testvectors/mldsa_87_standard_sign_test.txt \

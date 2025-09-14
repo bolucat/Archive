@@ -890,6 +890,16 @@ static inline void *OPENSSL_memset(void *dst, int c, size_t n) {
 // endianness. They use |memcpy|, and so avoid alignment or strict aliasing
 // requirements on the input and output pointers.
 
+static inline uint16_t CRYPTO_load_u16_le(const void *in) {
+  uint16_t v;
+  OPENSSL_memcpy(&v, in, sizeof(v));
+  return v;
+}
+
+static inline void CRYPTO_store_u16_le(void *out, uint16_t v) {
+  OPENSSL_memcpy(out, &v, sizeof(v));
+}
+
 static inline uint16_t CRYPTO_load_u16_be(const void *in) {
   uint16_t v;
   OPENSSL_memcpy(&v, in, sizeof(v));
@@ -1448,6 +1458,9 @@ inline int CRYPTO_fuzzer_mode_enabled(void) { return 0; }
 
 // CRYPTO_addc_* returns |x + y + carry|, and sets |*out_carry| to the carry
 // bit. |carry| must be zero or one.
+
+// NOTE: Unoptimized GCC builds may compile these builtins to non-constant-time
+// code. For correct constant-time behavior, ensure builds are optimized.
 #if OPENSSL_HAS_BUILTIN(__builtin_addc)
 
 inline unsigned int CRYPTO_addc_impl(unsigned int x, unsigned int y,

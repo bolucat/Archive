@@ -7,16 +7,17 @@
 #ifndef QUICHE_QUIC_MOQT_MOQT_MESSAGES_H_
 #define QUICHE_QUIC_MOQT_MOQT_MESSAGES_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/btree_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -38,17 +39,41 @@ inline constexpr quic::ParsedQuicVersionVector GetMoqtSupportedQuicVersions() {
 }
 
 enum class MoqtVersion : uint64_t {
-  kDraft11 = 0xff00000b,
+  kDraft12 = 0xff00000c,
   kUnrecognizedVersionForTests = 0xfe0000ff,
 };
 
-inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft11;
+inline constexpr MoqtVersion kDefaultMoqtVersion = MoqtVersion::kDraft12;
 inline constexpr uint64_t kDefaultInitialMaxRequestId = 100;
 // TODO(martinduke): Implement an auth token cache.
 inline constexpr uint64_t kDefaultMaxAuthTokenCacheSize = 0;
 inline constexpr uint64_t kMinNamespaceElements = 1;
 inline constexpr uint64_t kMaxNamespaceElements = 32;
 inline constexpr size_t kMaxFullTrackNameSize = 1024;
+
+enum AuthTokenType : uint64_t {
+  kOutOfBand = 0x0,
+
+  kMaxAuthTokenType = 0x0,
+};
+
+enum AuthTokenAliasType : uint64_t {
+  kDelete = 0x0,
+  kRegister = 0x1,
+  kUseAlias = 0x2,
+  kUseValue = 0x3,
+
+  kMaxValue = 0x3,
+};
+
+struct AuthToken {
+  AuthToken(AuthTokenType token_type, absl::string_view token)
+      : type(token_type), token(token) {}
+  bool operator==(const AuthToken& other) const = default;
+
+  AuthTokenType type;
+  std::string token;
+};
 
 struct QUICHE_EXPORT MoqtSessionParameters {
   // TODO: support multiple versions.
@@ -67,15 +92,7 @@ struct QUICHE_EXPORT MoqtSessionParameters {
         max_request_id(max_request_id) {}
   MoqtSessionParameters(quic::Perspective perspective, uint64_t max_request_id)
       : perspective(perspective), max_request_id(max_request_id) {}
-  bool operator==(const MoqtSessionParameters& other) {
-    return version == other.version &&
-           deliver_partial_objects == other.deliver_partial_objects &&
-           perspective == other.perspective &&
-           using_webtrans == other.using_webtrans && path == other.path &&
-           max_request_id == other.max_request_id &&
-           max_auth_token_cache_size == other.max_auth_token_cache_size &&
-           support_object_acks == other.support_object_acks;
-  }
+  bool operator==(const MoqtSessionParameters& other) const = default;
 
   MoqtVersion version = kDefaultMoqtVersion;
   bool deliver_partial_objects = false;
@@ -85,6 +102,8 @@ struct QUICHE_EXPORT MoqtSessionParameters {
   uint64_t max_request_id = kDefaultInitialMaxRequestId;
   uint64_t max_auth_token_cache_size = kDefaultMaxAuthTokenCacheSize;
   bool support_object_acks = false;
+  // TODO(martinduke): Turn authorization_token into structured data.
+  std::vector<AuthToken> authorization_token;
 };
 
 // The maximum length of a message, excluding any OBJECT payload. This prevents
@@ -92,17 +111,107 @@ struct QUICHE_EXPORT MoqtSessionParameters {
 // are not buffered by the parser).
 inline constexpr size_t kMaxMessageHeaderSize = 2048;
 
-enum class QUICHE_EXPORT MoqtDataStreamType : uint64_t {
-  kStreamHeaderSubgroup = 0x04,
-  kStreamHeaderFetch = 0x05,
+class QUICHE_EXPORT MoqtDataStreamType {
+ public:
+  // Factory functions.
+  static std::optional<MoqtDataStreamType> FromValue(uint64_t value) {
+    MoqtDataStreamType stream_type(static_cast<StreamType>(value));
+    if (stream_type.IsFetch() || stream_type.IsPadding() ||
+        stream_type.IsSubgroup()) {
+      return stream_type;
+    }
+    return std::nullopt;
+  }
+  static MoqtDataStreamType Fetch() {
+    return MoqtDataStreamType(StreamType::kFetch);
+  }
+  static MoqtDataStreamType Padding() {
+    return MoqtDataStreamType(StreamType::kPadding);
+  }
+  static MoqtDataStreamType Subgroup(uint64_t subgroup_id,
+                                     uint64_t first_object_id,
+                                     bool no_extension_headers) {
+    if (subgroup_id == 0) {
+      return MoqtDataStreamType(
+          no_extension_headers ? StreamType::kSubgroup0NoExtensionHeaders
+                               : StreamType::kSubgroup0WithExtensionHeaders);
+    }
+    if (subgroup_id == first_object_id) {
+      return MoqtDataStreamType(
+          no_extension_headers
+              ? StreamType::kSubgroupFirstObjectNoExtensionHeaders
+              : StreamType::kSubgroupFirstObjectWithExtensionHeaders);
+    }
+    return MoqtDataStreamType(
+        no_extension_headers
+            ? StreamType::kSubgroupExplicitNoExtensionHeaders
+            : StreamType::kSubgroupExplicitWithExtensionHeaders);
+  }
+  MoqtDataStreamType(const MoqtDataStreamType& other) = default;
+  bool IsFetch() const { return value_ == StreamType::kFetch; }
+  bool IsPadding() const { return value_ == StreamType::kPadding; }
+  bool IsSubgroup() const {
+    return value_ >= StreamType::kSubgroup0NoExtensionHeaders &&
+           value_ <= StreamType::kSubgroupExplicitWithExtensionHeaders;
+  }
+  bool IsSubgroupPresent() const {
+    return value_ == StreamType::kSubgroupExplicitNoExtensionHeaders ||
+           value_ == StreamType::kSubgroupExplicitWithExtensionHeaders;
+  }
+  bool SubgroupIsZero() const {
+    return value_ == StreamType::kSubgroup0NoExtensionHeaders ||
+           value_ == StreamType::kSubgroup0WithExtensionHeaders;
+  }
+  bool SubgroupIsFirstObjectId() const {
+    return value_ == StreamType::kSubgroupFirstObjectNoExtensionHeaders ||
+           value_ == StreamType::kSubgroupFirstObjectWithExtensionHeaders;
+  }
+  bool AreExtensionHeadersPresent() const {
+    return value_ == StreamType::kSubgroup0WithExtensionHeaders ||
+           value_ == StreamType::kSubgroupFirstObjectWithExtensionHeaders ||
+           value_ == StreamType::kSubgroupExplicitWithExtensionHeaders;
+  }
+  uint64_t value() const { return static_cast<uint64_t>(value_); }
+  bool operator==(const MoqtDataStreamType& other) const = default;
+  enum class StreamType : uint64_t {
+    kFetch = 0x05,
+    kSubgroup0NoExtensionHeaders = 0x08,
+    kSubgroup0WithExtensionHeaders = 0x09,
+    kSubgroupFirstObjectNoExtensionHeaders = 0x0a,
+    kSubgroupFirstObjectWithExtensionHeaders = 0x0b,
+    kSubgroupExplicitNoExtensionHeaders = 0x0c,
+    kSubgroupExplicitWithExtensionHeaders = 0x0d,
+    kPadding = 0x26d3,
+  };
 
-  // Currently QUICHE-specific.  All data on a kPadding stream is ignored.
-  kPadding = 0x26d3,
+ private:
+  explicit MoqtDataStreamType(StreamType value) : value_(value) {}
+  const StreamType value_;
 };
 
-enum class QUICHE_EXPORT MoqtDatagramType : uint64_t {
-  kObject = 0x01,
-  kObjectStatus = 0x02,
+class QUICHE_EXPORT MoqtDatagramType {
+ public:
+  MoqtDatagramType(bool has_status, bool has_extension) : value_(0) {
+    if (has_status) {
+      value_ |= 0x02;
+    }
+    if (has_extension) {
+      value_ |= 0x01;
+    }
+  }
+  static std::optional<MoqtDatagramType> FromValue(uint64_t value) {
+    if (value <= 3) {
+      return MoqtDatagramType(value);
+    }
+    return std::nullopt;
+  }
+  bool has_status() const { return value_ & 0x02; }
+  bool has_extension() const { return value_ & 0x01; }
+  uint64_t value() const { return value_; }
+
+ private:
+  uint64_t value_;
+  explicit MoqtDatagramType(uint64_t value) : value_(value) {}
 };
 
 enum class QUICHE_EXPORT MoqtMessageType : uint64_t {
@@ -130,6 +239,9 @@ enum class QUICHE_EXPORT MoqtMessageType : uint64_t {
   kFetchOk = 0x18,
   kFetchError = 0x19,
   kRequestsBlocked = 0x1a,
+  kPublish = 0x1d,
+  kPublishOk = 0x1e,
+  kPublishError = 0x1f,
   kClientSetup = 0x20,
   kServerSetup = 0x21,
 
@@ -160,16 +272,18 @@ enum class QUICHE_EXPORT MoqtError : uint64_t {
 };
 
 // Error codes used by MoQT to reset streams.
-// TODO: update with spec-defined error codes once those are available, see
-// <https://github.com/moq-wg/moq-transport/issues/481>.
 inline constexpr webtransport::StreamErrorCode kResetCodeUnknown = 0x00;
-inline constexpr webtransport::StreamErrorCode kResetCodeSubscriptionGone =
-    0x01;
-inline constexpr webtransport::StreamErrorCode kResetCodeTimedOut = 0x02;
+inline constexpr webtransport::StreamErrorCode kResetCodeCanceled = 0x01;
+inline constexpr webtransport::StreamErrorCode kResetCodeDeliveryTimeout = 0x02;
+inline constexpr webtransport::StreamErrorCode kResetCodeSessionClosed = 0x03;
+// TODO(martinduke): This is not in the spec, but is needed. The number might
+// change.
+inline constexpr webtransport::StreamErrorCode kResetCodeMalformedTrack = 0x04;
 
 enum class QUICHE_EXPORT SetupParameter : uint64_t {
   kPath = 0x1,
   kMaxRequestId = 0x2,
+  kAuthorizationToken = 0x3,
   kMaxAuthTokenCacheSize = 0x4,
 
   // QUICHE-specific extensions.
@@ -178,37 +292,12 @@ enum class QUICHE_EXPORT SetupParameter : uint64_t {
 };
 
 enum class QUICHE_EXPORT VersionSpecificParameter : uint64_t {
-  kAuthorizationToken = 0x1,
   kDeliveryTimeout = 0x2,
+  kAuthorizationToken = 0x3,
   kMaxCacheDuration = 0x4,
 
   // QUICHE-specific extensions.
   kOackWindowSize = 0xbbf1438,
-};
-
-enum AuthTokenType : uint64_t {
-  kOutOfBand = 0x0,
-
-  kMaxAuthTokenType = 0x0,
-};
-
-enum AuthTokenAliasType : uint64_t {
-  kDelete = 0x0,
-  kRegister = 0x1,
-  kUseAlias = 0x2,
-  kUseValue = 0x3,
-
-  kMaxValue = 0x3,
-};
-
-struct AuthToken {
-  AuthToken(AuthTokenType token_type, absl::string_view token)
-      : type(token_type), token(token) {}
-  bool operator==(const AuthToken& other) const {
-    return type == other.type && token == other.token;
-  }
-  AuthTokenType type;
-  std::string token;
 };
 
 struct VersionSpecificParameters {
@@ -233,12 +322,7 @@ struct VersionSpecificParameters {
   quic::QuicTimeDelta max_cache_duration = quic::QuicTimeDelta::Infinite();
   std::optional<quic::QuicTimeDelta> oack_window_size;
 
-  bool operator==(const VersionSpecificParameters& other) const {
-    return authorization_token == other.authorization_token &&
-           delivery_timeout == other.delivery_timeout &&
-           max_cache_duration == other.max_cache_duration &&
-           oack_window_size == other.oack_window_size;
-  }
+  bool operator==(const VersionSpecificParameters& other) const = default;
 };
 
 // Used for SUBSCRIBE_ERROR, ANNOUNCE_ERROR, ANNOUNCE_CANCEL,
@@ -253,11 +337,9 @@ enum class QUICHE_EXPORT RequestErrorCode : uint64_t {
   kNamespacePrefixUnknown = 0x4,     // SUBSCRIBE_ANNOUNCES_ERROR only.
   kInvalidRange = 0x5,               // SUBSCRIBE_ERROR and FETCH_ERROR only.
   kNamespacePrefixOverlap = 0x5,     // SUBSCRIBE_ANNOUNCES_ERROR only.
-  kRetryTrackAlias = 0x6,            // SUBSCRIBE_ERROR only.
   kNoObjects = 0x6,                  // FETCH_ERROR only.
   kInvalidJoiningSubscribeId = 0x7,  // FETCH_ERROR only.
   kMalformedAuthToken = 0x10,
-  kUnknownAuthTokenAlias = 0x11,
   kExpiredAuthToken = 0x12,
 };
 
@@ -294,8 +376,14 @@ class TrackNamespace {
   size_t number_of_elements() const { return tuple_.size(); }
   // Returns the sum of the lengths of all elements in the tuple.
   size_t total_length() const { return length_; }
-  bool operator==(const TrackNamespace& other) const;
-  bool operator<(const TrackNamespace& other) const;
+
+  auto operator<=>(const TrackNamespace& other) const {
+    return std::lexicographical_compare_three_way(
+        tuple_.cbegin(), tuple_.cend(), other.tuple_.cbegin(),
+        other.tuple_.cend());
+  }
+  bool operator==(const TrackNamespace&) const = default;
+
   const std::vector<std::string>& tuple() const { return tuple_; }
 
   template <typename H>
@@ -345,13 +433,8 @@ class FullTrackName {
   }
   void set_name(absl::string_view name);
   size_t length() const { return namespace_.total_length() + name_.length(); }
-  bool operator==(const FullTrackName& other) const {
-    return name_ == other.name_ && namespace_ == other.namespace_;
-  }
-  bool operator<(const FullTrackName& other) const {
-    return namespace_ < other.namespace_ ||
-           (namespace_ == other.namespace_ && name_ < other.name_);
-  }
+
+  auto operator<=>(const FullTrackName&) const = default;
   template <typename H>
   friend H AbslHashValue(H h, const FullTrackName& m) {
     return H::combine(std::move(h), m.namespace_.tuple(), m.name_);
@@ -366,37 +449,21 @@ class FullTrackName {
   std::string name_ = "";
 };
 
-// These are absolute sequence numbers.
+// Location as defined in
+// https://moq-wg.github.io/moq-transport/draft-ietf-moq-transport.html#location-structure
 struct Location {
-  uint64_t group;
-  uint64_t subgroup;
-  uint64_t object;
-  Location() : Location(0, 0) {}
-  // There is a lot of code from before subgroups. Assume there's one subgroup
-  // with ID 0 per group.
-  Location(uint64_t group, uint64_t object) : Location(group, 0, object) {}
-  Location(uint64_t group, uint64_t subgroup, uint64_t object)
-      : group(group), subgroup(subgroup), object(object) {}
-  bool operator==(const Location& other) const {
-    return group == other.group && object == other.object;
-  }
-  // These are temporal ordering comparisons, so subgroup ID doesn't matter.
-  bool operator<(const Location& other) const {
-    return group < other.group ||
-           (group == other.group && object < other.object);
-  }
-  bool operator<=(const Location& other) const {
-    return (group < other.group ||
-            (group == other.group && object <= other.object));
-  }
-  bool operator>(const Location& other) const { return !(*this <= other); }
-  Location& operator=(Location other) {
-    group = other.group;
-    subgroup = other.subgroup;
-    object = other.object;
-    return *this;
-  }
-  Location next() const { return Location{group, subgroup, object + 1}; }
+  uint64_t group = 0;
+  uint64_t object = 0;
+
+  Location() = default;
+  Location(uint64_t group, uint64_t object) : group(group), object(object) {}
+
+  // Location order as described in
+  // https://moq-wg.github.io/moq-transport/draft-ietf-moq-transport.html#location-structure
+  auto operator<=>(const Location&) const = default;
+
+  Location next() const { return Location(group, object + 1); }
+
   template <typename H>
   friend H AbslHashValue(H h, const Location& m);
 
@@ -410,20 +477,7 @@ struct SubgroupPriority {
   uint8_t publisher_priority = 0xf0;
   uint64_t subgroup_id = 0;
 
-  bool operator==(const SubgroupPriority& other) const {
-    return publisher_priority == other.publisher_priority &&
-           subgroup_id == other.subgroup_id;
-  }
-  bool operator<(const SubgroupPriority& other) const {
-    return publisher_priority < other.publisher_priority ||
-           (publisher_priority == other.publisher_priority &&
-            subgroup_id < other.subgroup_id);
-  }
-  bool operator<=(const SubgroupPriority& other) const {
-    return (publisher_priority < other.publisher_priority ||
-            (publisher_priority == other.publisher_priority &&
-             subgroup_id <= other.subgroup_id));
-  }
+  auto operator<=>(const SubgroupPriority&) const = default;
 };
 
 template <typename H>
@@ -533,11 +587,9 @@ enum class QUICHE_EXPORT MoqtForwardingPreference {
 enum class QUICHE_EXPORT MoqtObjectStatus : uint64_t {
   kNormal = 0x0,
   kObjectDoesNotExist = 0x1,
-  kGroupDoesNotExist = 0x2,
   kEndOfGroup = 0x3,
-  kEndOfTrackAndGroup = 0x4,
-  kEndOfTrack = 0x5,
-  kInvalidObjectStatus = 0x6,
+  kEndOfTrack = 0x4,
+  kInvalidObjectStatus = 0x5,
 };
 
 MoqtObjectStatus IntegerToObjectStatus(uint64_t integer);
@@ -551,7 +603,7 @@ struct QUICHE_EXPORT MoqtObject {
   MoqtPriority publisher_priority;
   std::string extension_headers;  // Raw, unparsed extension headers.
   MoqtObjectStatus object_status;
-  std::optional<uint64_t> subgroup_id;
+  uint64_t subgroup_id;
   uint64_t payload_length;
 };
 
@@ -565,7 +617,6 @@ enum class QUICHE_EXPORT MoqtFilterType : uint64_t {
 
 struct QUICHE_EXPORT MoqtSubscribe {
   uint64_t request_id;
-  uint64_t track_alias;
   FullTrackName full_track_name;
   MoqtPriority subscriber_priority;
   std::optional<MoqtDeliveryOrder> group_order;
@@ -578,6 +629,7 @@ struct QUICHE_EXPORT MoqtSubscribe {
 
 struct QUICHE_EXPORT MoqtSubscribeOk {
   uint64_t request_id;
+  uint64_t track_alias;
   // The message uses ms, but expires is in us.
   quic::QuicTimeDelta expires = quic::QuicTimeDelta::FromMilliseconds(0);
   MoqtDeliveryOrder group_order;
@@ -590,11 +642,10 @@ struct QUICHE_EXPORT MoqtSubscribeError {
   uint64_t request_id;
   RequestErrorCode error_code;
   std::string reason_phrase;
-  uint64_t track_alias;
 };
 
 struct QUICHE_EXPORT MoqtUnsubscribe {
-  uint64_t subscribe_id;
+  uint64_t request_id;
 };
 
 enum class QUICHE_EXPORT SubscribeDoneCode : uint64_t {
@@ -605,13 +656,14 @@ enum class QUICHE_EXPORT SubscribeDoneCode : uint64_t {
   kGoingAway = 0x4,
   kExpired = 0x5,
   kTooFarBehind = 0x6,
+  kMalformedTrack = 0x7,
 };
 
 struct QUICHE_EXPORT MoqtSubscribeDone {
-  uint64_t subscribe_id;
+  uint64_t request_id;
   SubscribeDoneCode status_code;
   uint64_t stream_count;
-  std::string reason_phrase;
+  std::string error_reason;
 };
 
 struct QUICHE_EXPORT MoqtSubscribeUpdate {
@@ -624,22 +676,29 @@ struct QUICHE_EXPORT MoqtSubscribeUpdate {
 };
 
 struct QUICHE_EXPORT MoqtAnnounce {
+  uint64_t request_id;
   TrackNamespace track_namespace;
   VersionSpecificParameters parameters;
 };
 
 struct QUICHE_EXPORT MoqtAnnounceOk {
-  TrackNamespace track_namespace;
+  uint64_t request_id;
 };
 
 struct QUICHE_EXPORT MoqtAnnounceError {
-  TrackNamespace track_namespace;
+  uint64_t request_id;
   RequestErrorCode error_code;
-  std::string reason_phrase;
+  std::string error_reason;
 };
 
 struct QUICHE_EXPORT MoqtUnannounce {
   TrackNamespace track_namespace;
+};
+
+struct QUICHE_EXPORT MoqtAnnounceCancel {
+  TrackNamespace track_namespace;
+  RequestErrorCode error_code;
+  std::string error_reason;
 };
 
 enum class QUICHE_EXPORT MoqtTrackStatusCode : uint64_t {
@@ -663,22 +722,16 @@ inline bool DoesTrackStatusImplyHavingData(MoqtTrackStatusCode code) {
   return false;
 }
 
-struct QUICHE_EXPORT MoqtTrackStatus {
+struct QUICHE_EXPORT MoqtTrackStatusRequest {
+  uint64_t request_id;
   FullTrackName full_track_name;
-  MoqtTrackStatusCode status_code;
-  uint64_t last_group;
-  uint64_t last_object;
   VersionSpecificParameters parameters;
 };
 
-struct QUICHE_EXPORT MoqtAnnounceCancel {
-  TrackNamespace track_namespace;
-  RequestErrorCode error_code;
-  std::string reason_phrase;
-};
-
-struct QUICHE_EXPORT MoqtTrackStatusRequest {
-  FullTrackName full_track_name;
+struct QUICHE_EXPORT MoqtTrackStatus {
+  uint64_t request_id;
+  MoqtTrackStatusCode status_code;
+  Location largest_location;
   VersionSpecificParameters parameters;
 };
 
@@ -687,18 +740,19 @@ struct QUICHE_EXPORT MoqtGoAway {
 };
 
 struct QUICHE_EXPORT MoqtSubscribeAnnounces {
+  uint64_t request_id;
   TrackNamespace track_namespace;
   VersionSpecificParameters parameters;
 };
 
 struct QUICHE_EXPORT MoqtSubscribeAnnouncesOk {
-  TrackNamespace track_namespace;
+  uint64_t request_id;
 };
 
 struct QUICHE_EXPORT MoqtSubscribeAnnouncesError {
-  TrackNamespace track_namespace;
+  uint64_t request_id;
   RequestErrorCode error_code;
-  std::string reason_phrase;
+  std::string error_reason;
 };
 
 struct QUICHE_EXPORT MoqtUnsubscribeAnnounces {
@@ -711,50 +765,118 @@ struct QUICHE_EXPORT MoqtMaxRequestId {
 
 enum class QUICHE_EXPORT FetchType : uint64_t {
   kStandalone = 0x1,
-  kJoining = 0x2,
+  kRelativeJoining = 0x2,
+  kAbsoluteJoining = 0x3,
 };
 
-struct JoiningFetch {
-  JoiningFetch(uint64_t joining_subscribe_id, uint64_t preceding_group_offset)
-      : joining_subscribe_id(joining_subscribe_id),
-        preceding_group_offset(preceding_group_offset) {}
-  uint64_t joining_subscribe_id;
-  uint64_t preceding_group_offset;
-};
-
-struct QUICHE_EXPORT MoqtFetch {
-  uint64_t fetch_id;
-  MoqtPriority subscriber_priority;
-  std::optional<MoqtDeliveryOrder> group_order;
-  // If joining_fetch has a value, then the parser will not populate the name
-  // and ranges. The session will populate them instead.
-  std::optional<JoiningFetch> joining_fetch;
+struct StandaloneFetch {
+  StandaloneFetch() = default;
+  StandaloneFetch(FullTrackName full_track_name, Location start_object,
+                  uint64_t end_group, std::optional<uint64_t> end_object)
+      : full_track_name(full_track_name),
+        start_object(start_object),
+        end_group(end_group),
+        end_object(end_object) {}
   FullTrackName full_track_name;
   Location start_object;  // subgroup is ignored
   uint64_t end_group;
   std::optional<uint64_t> end_object;
+  bool operator==(const StandaloneFetch& other) const {
+    return full_track_name == other.full_track_name &&
+           start_object == other.start_object && end_group == other.end_group &&
+           end_object == other.end_object;
+  }
+  bool operator!=(const StandaloneFetch& other) const {
+    return !(*this == other);
+  }
+};
+
+struct JoiningFetchRelative {
+  JoiningFetchRelative(uint64_t joining_subscribe_id, uint64_t joining_start)
+      : joining_subscribe_id(joining_subscribe_id),
+        joining_start(joining_start) {}
+  uint64_t joining_subscribe_id;
+  uint64_t joining_start;
+  bool operator==(const JoiningFetchRelative& other) const {
+    return joining_subscribe_id == other.joining_subscribe_id &&
+           joining_start == other.joining_start;
+  }
+  bool operator!=(const JoiningFetchRelative& other) const {
+    return !(*this == other);
+  }
+};
+
+struct JoiningFetchAbsolute {
+  JoiningFetchAbsolute(uint64_t joining_subscribe_id, uint64_t joining_start)
+      : joining_subscribe_id(joining_subscribe_id),
+        joining_start(joining_start) {}
+  uint64_t joining_subscribe_id;
+  uint64_t joining_start;
+  bool operator==(const JoiningFetchAbsolute& other) const {
+    return joining_subscribe_id == other.joining_subscribe_id &&
+           joining_start == other.joining_start;
+  }
+  bool operator!=(const JoiningFetchAbsolute& other) const {
+    return !(*this == other);
+  }
+};
+
+struct QUICHE_EXPORT MoqtFetch {
+  uint64_t request_id;
+  MoqtPriority subscriber_priority;
+  std::optional<MoqtDeliveryOrder> group_order;
+  std::variant<StandaloneFetch, JoiningFetchRelative, JoiningFetchAbsolute>
+      fetch;
   VersionSpecificParameters parameters;
 };
 
-struct QUICHE_EXPORT MoqtFetchCancel {
-  uint64_t subscribe_id;
-};
-
 struct QUICHE_EXPORT MoqtFetchOk {
-  uint64_t subscribe_id;
+  uint64_t request_id;
   MoqtDeliveryOrder group_order;
-  Location largest_id;  // subgroup is ignored
+  bool end_of_track;
+  Location end_location;
   VersionSpecificParameters parameters;
 };
 
 struct QUICHE_EXPORT MoqtFetchError {
-  uint64_t subscribe_id;
+  uint64_t request_id;
   RequestErrorCode error_code;
-  std::string reason_phrase;
+  std::string error_reason;
+};
+
+struct QUICHE_EXPORT MoqtFetchCancel {
+  uint64_t request_id;
 };
 
 struct QUICHE_EXPORT MoqtRequestsBlocked {
   uint64_t max_request_id;
+};
+
+struct QUICHE_EXPORT MoqtPublish {
+  uint64_t request_id;
+  FullTrackName full_track_name;
+  uint64_t track_alias;
+  MoqtDeliveryOrder group_order;
+  std::optional<Location> largest_location;
+  bool forward;
+  VersionSpecificParameters parameters;
+};
+
+struct QUICHE_EXPORT MoqtPublishOk {
+  uint64_t request_id;
+  bool forward;
+  MoqtPriority subscriber_priority;
+  MoqtDeliveryOrder group_order;
+  MoqtFilterType filter_type;
+  std::optional<Location> start;
+  std::optional<uint64_t> end_group;
+  VersionSpecificParameters parameters;
+};
+
+struct QUICHE_EXPORT MoqtPublishError {
+  uint64_t request_id;
+  RequestErrorCode error_code;
+  std::string error_reason;
 };
 
 // All of the four values in this message are encoded as varints.

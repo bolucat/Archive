@@ -1557,7 +1557,6 @@ moqt_hdrs = [
     "quic/moqt/moqt_session_interface.h",
     "quic/moqt/moqt_subscribe_windows.h",
     "quic/moqt/moqt_track.h",
-    "quic/moqt/test_tools/mock_moqt_session.h",
     "quic/moqt/test_tools/moqt_framer_utils.h",
     "quic/moqt/test_tools/moqt_parser_test_visitor.h",
     "quic/moqt/test_tools/moqt_session_peer.h",
@@ -1597,8 +1596,6 @@ moqt_srcs = [
     "quic/moqt/moqt_subscribe_windows_test.cc",
     "quic/moqt/moqt_track.cc",
     "quic/moqt/moqt_track_test.cc",
-    "quic/moqt/test_tools/mock_moqt_session.cc",
-    "quic/moqt/test_tools/mock_moqt_session_test.cc",
     "quic/moqt/test_tools/moqt_framer_utils.cc",
     "quic/moqt/test_tools/moqt_simulator_harness.cc",
     "quic/moqt/tools/chat_client.cc",
@@ -1713,6 +1710,7 @@ blind_sign_auth_hdrs = [
     "blind_sign_auth/blind_sign_auth.h",
     "blind_sign_auth/blind_sign_auth_interface.h",
     "blind_sign_auth/blind_sign_auth_protos.h",
+    "blind_sign_auth/blind_sign_auth_test_data.h",
     "blind_sign_auth/blind_sign_message_interface.h",
     "blind_sign_auth/blind_sign_message_response.h",
     "blind_sign_auth/cached_blind_sign_auth.h",
@@ -1721,6 +1719,7 @@ blind_sign_auth_hdrs = [
 ]
 blind_sign_auth_srcs = [
     "blind_sign_auth/blind_sign_auth.cc",
+    "blind_sign_auth/blind_sign_auth_test_data.cc",
     "blind_sign_auth/blind_sign_message_response.cc",
     "blind_sign_auth/cached_blind_sign_auth.cc",
 ]
@@ -1728,10 +1727,12 @@ blind_sign_auth_tests_hdrs = [
 ]
 blind_sign_auth_tests_srcs = [
     "blind_sign_auth/blind_sign_auth_test.cc",
+    "blind_sign_auth/blind_sign_auth_test_data_test.cc",
     "blind_sign_auth/cached_blind_sign_auth_test.cc",
 ]
 protobuf_blind_sign_auth = [
     "blind_sign_auth/proto/any.proto",
+    "blind_sign_auth/proto/attest_and_sign.proto",
     "blind_sign_auth/proto/attestation.proto",
     "blind_sign_auth/proto/auth_and_sign.proto",
     "blind_sign_auth/proto/blind_sign_auth_options.proto",

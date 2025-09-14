@@ -519,7 +519,7 @@ jobs:
             openwrt_release: '24.10.0'
             openwrt_gcc_ver: '13.3.0'
     env:
-      EXTRA_FLAGS: target_cpu="${{ matrix.target_cpu }}" target_os="openwrt" ${{ matrix.extra }} enable_shadow_metadata=false
+      EXTRA_FLAGS: target_cpu="${{ matrix.target_cpu }}" target_os="openwrt" ${{ matrix.extra }}
       OPENWRT_FLAGS: arch=${{ matrix.arch }} release=${{ matrix.openwrt_release || '18.06.0' }} gcc_ver=${{ matrix.openwrt_gcc_ver || '7.3.0' }} ${{ matrix.openwrt }}
       BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
     steps:

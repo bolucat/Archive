@@ -51,6 +51,7 @@ perfetto_component("base") {
     "periodic_task.cc",
     "pipe.cc",
     "scoped_mmap.cc",
+    "scoped_sched_boost.cc",
     "status.cc",
     "string_splitter.cc",
     "string_utils.cc",

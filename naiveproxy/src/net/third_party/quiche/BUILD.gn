@@ -87,6 +87,10 @@ component("quiche") {
   ]
 
   defines = [ "IS_QUICHE_IMPL" ]
+
+  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
+  # enable the diagnostic by removing this line.
+  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 proto_library("net_quic_proto") {

@@ -1561,7 +1561,6 @@ moqt_hdrs = [
     "src/quiche/quic/moqt/moqt_session_interface.h",
     "src/quiche/quic/moqt/moqt_subscribe_windows.h",
     "src/quiche/quic/moqt/moqt_track.h",
-    "src/quiche/quic/moqt/test_tools/mock_moqt_session.h",
     "src/quiche/quic/moqt/test_tools/moqt_framer_utils.h",
     "src/quiche/quic/moqt/test_tools/moqt_parser_test_visitor.h",
     "src/quiche/quic/moqt/test_tools/moqt_session_peer.h",
@@ -1601,8 +1600,6 @@ moqt_srcs = [
     "src/quiche/quic/moqt/moqt_subscribe_windows_test.cc",
     "src/quiche/quic/moqt/moqt_track.cc",
     "src/quiche/quic/moqt/moqt_track_test.cc",
-    "src/quiche/quic/moqt/test_tools/mock_moqt_session.cc",
-    "src/quiche/quic/moqt/test_tools/mock_moqt_session_test.cc",
     "src/quiche/quic/moqt/test_tools/moqt_framer_utils.cc",
     "src/quiche/quic/moqt/test_tools/moqt_simulator_harness.cc",
     "src/quiche/quic/moqt/tools/chat_client.cc",
@@ -1717,6 +1714,7 @@ blind_sign_auth_hdrs = [
     "src/quiche/blind_sign_auth/blind_sign_auth.h",
     "src/quiche/blind_sign_auth/blind_sign_auth_interface.h",
     "src/quiche/blind_sign_auth/blind_sign_auth_protos.h",
+    "src/quiche/blind_sign_auth/blind_sign_auth_test_data.h",
     "src/quiche/blind_sign_auth/blind_sign_message_interface.h",
     "src/quiche/blind_sign_auth/blind_sign_message_response.h",
     "src/quiche/blind_sign_auth/cached_blind_sign_auth.h",
@@ -1725,6 +1723,7 @@ blind_sign_auth_hdrs = [
 ]
 blind_sign_auth_srcs = [
     "src/quiche/blind_sign_auth/blind_sign_auth.cc",
+    "src/quiche/blind_sign_auth/blind_sign_auth_test_data.cc",
     "src/quiche/blind_sign_auth/blind_sign_message_response.cc",
     "src/quiche/blind_sign_auth/cached_blind_sign_auth.cc",
 ]
@@ -1733,10 +1732,12 @@ blind_sign_auth_tests_hdrs = [
 ]
 blind_sign_auth_tests_srcs = [
     "src/quiche/blind_sign_auth/blind_sign_auth_test.cc",
+    "src/quiche/blind_sign_auth/blind_sign_auth_test_data_test.cc",
     "src/quiche/blind_sign_auth/cached_blind_sign_auth_test.cc",
 ]
 protobuf_blind_sign_auth = [
     "src/quiche/blind_sign_auth/proto/any.proto",
+    "src/quiche/blind_sign_auth/proto/attest_and_sign.proto",
     "src/quiche/blind_sign_auth/proto/attestation.proto",
     "src/quiche/blind_sign_auth/proto/auth_and_sign.proto",
     "src/quiche/blind_sign_auth/proto/blind_sign_auth_options.proto",

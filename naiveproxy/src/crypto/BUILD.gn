@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/buildflag_header.gni")
-import("//components/nacl/toolchain.gni")
 import("//crypto/features.gni")
 
 if (is_ios) {
@@ -25,12 +24,6 @@ component("crypto") {
     "aes_ctr.cc",
     "aes_ctr.h",
     "crypto_export.h",
-    "ec_private_key.cc",
-    "ec_private_key.h",
-    "ec_signature_creator.cc",
-    "ec_signature_creator.h",
-    "ec_signature_creator_impl.cc",
-    "ec_signature_creator_impl.h",
     "evp.cc",
     "evp.h",
     "features.cc",
@@ -64,8 +57,6 @@ component("crypto") {
     "sha2.h",
     "sign.cc",
     "sign.h",
-    "signature_creator.cc",
-    "signature_creator.h",
     "signature_verifier.cc",
     "signature_verifier.h",
     "subtle_passkey.cc",
@@ -89,20 +80,20 @@ component("crypto") {
 
   if (is_apple) {
     sources += [
-      "apple_keychain.cc",
-      "apple_keychain.h",
-      "apple_keychain_secitem.h",
-      "apple_keychain_secitem.mm",
-      "apple_keychain_util.h",
-      "apple_keychain_util.mm",
-      "apple_keychain_v2.h",
-      "apple_keychain_v2.mm",
+      "apple/keychain.cc",
+      "apple/keychain.h",
+      "apple/keychain_secitem.h",
+      "apple/keychain_secitem.mm",
+      "apple/keychain_util.h",
+      "apple/keychain_util.mm",
+      "apple/keychain_v2.h",
+      "apple/keychain_v2.mm",
     ]
 
     if (is_mac) {
       sources += [
-        "apple_keychain_seckeychain.cc",
-        "apple_keychain_seckeychain.h",
+        "apple/keychain_seckeychain.cc",
+        "apple/keychain_seckeychain.h",
         "mac_security_services_lock.cc",
         "mac_security_services_lock.h",
         "scoped_lacontext.h",
@@ -149,11 +140,10 @@ component("crypto") {
       "nss_util.h",
       "nss_util_internal.h",
     ]
-    deps += [ "//components/nacl/common:buildflags" ]
     configs += [ "//build/config/linux/nss" ]
   }
 
-  if (is_chromeos && !is_minimal_toolchain) {
+  if (is_chromeos) {
     sources += [
       "chaps_support.cc",
       "chaps_support.h",

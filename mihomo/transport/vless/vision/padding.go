@@ -47,15 +47,21 @@ func ApplyPadding(buffer *buf.Buffer, command byte, userUUID *[]byte, paddingTLS
 const xrayBufSize = 8192
 
 func (vc *Conn) ReshapeBuffer(buffer *buf.Buffer) []*buf.Buffer {
-	if buffer.Len() <= xrayBufSize-PaddingHeaderLen {
+	const bufferLimit = xrayBufSize - PaddingHeaderLen
+	if buffer.Len() < bufferLimit {
 		return []*buf.Buffer{buffer}
 	}
-	cutAt := bytes.LastIndex(buffer.Bytes(), tlsApplicationDataStart)
-	if cutAt == -1 {
-		cutAt = xrayBufSize / 2
+	options := N.NewReadWaitOptions(nil, vc)
+	var buffers []*buf.Buffer
+	for buffer.Len() >= bufferLimit {
+		cutAt := bytes.LastIndex(buffer.Bytes(), tlsApplicationDataStart)
+		if cutAt < 21 || cutAt > bufferLimit {
+			cutAt = xrayBufSize / 2
+		}
+		buffer2 := options.NewBuffer() // ensure the new buffer can send used in vc.WriteBuffer
+		buf.Must(buf.Error(buffer2.ReadFullFrom(buffer, cutAt)))
+		buffers = append(buffers, buffer2)
 	}
-	buffer2 := N.NewReadWaitOptions(nil, vc).NewBuffer() // ensure the new buffer can send used in vc.WriteBuffer
-	buffer2.Write(buffer.From(cutAt))
-	buffer.Truncate(cutAt)
-	return []*buf.Buffer{buffer, buffer2}
+	buffers = append(buffers, buffer)
+	return buffers
 }

@@ -44,13 +44,16 @@ jclass LazyGetClassInternal(JNIEnv* env,
                             const char* split_name,
                             std::atomic<jclass>* atomic_class_id) {
   jclass ret = nullptr;
-  ScopedJavaGlobalRef<jclass> clazz(
+  auto local_ref = ScopedJavaLocalRef<jclass>::Adopt(
       env, GetClassInternal(env, class_name, split_name));
-  if (atomic_class_id->compare_exchange_strong(ret, clazz.obj(),
+  jclass global_ref = static_cast<jclass>(env->NewGlobalRef(local_ref.obj()));
+  if (atomic_class_id->compare_exchange_strong(ret, global_ref,
                                                std::memory_order_acq_rel)) {
     // We intentionally leak the global ref since we are now storing it as a raw
     // pointer in |atomic_class_id|.
-    ret = clazz.Release();
+    ret = global_ref;
+  } else {
+    env->DeleteGlobalRef(global_ref);
   }
   return ret;
 }
@@ -180,12 +183,13 @@ void SetClassResolver(jclass (*resolver)(JNIEnv*, const char*, const char*)) {
 ScopedJavaLocalRef<jclass> GetClass(JNIEnv* env,
                                     const char* class_name,
                                     const char* split_name) {
-  return ScopedJavaLocalRef<jclass>(
+  return ScopedJavaLocalRef<jclass>::Adopt(
       env, GetClassInternal(env, class_name, split_name));
 }
 
 ScopedJavaLocalRef<jclass> GetClass(JNIEnv* env, const char* class_name) {
-  return ScopedJavaLocalRef<jclass>(env, GetClassInternal(env, class_name, ""));
+  return ScopedJavaLocalRef<jclass>::Adopt(
+      env, GetClassInternal(env, class_name, ""));
 }
 
 template <MethodID::Type type>
