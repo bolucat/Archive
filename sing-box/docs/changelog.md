@@ -2,8 +2,11 @@
 icon: material/alert-decagram
 ---
 
-#### 1.13.0-alpha.14
+#### 1.13.0-alpha.15
 
+* Update quic-go to v0.54.0
+* Update gVisor to v20250811
+* Update Tailscale to v1.86.5
 * Fixes and improvements
 
 #### 1.12.8

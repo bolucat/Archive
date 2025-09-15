@@ -40,13 +40,6 @@ func resolveUDPAddr(ctx context.Context, network, address string, prefer C.DNSPr
 		return nil, err
 	}
 
-	var uint16Port uint16
-	if port, err := strconv.ParseUint(port, 10, 16); err == nil {
-		uint16Port = uint16(port)
-	} else {
-		return nil, err
-	}
-
 	var ip netip.Addr
 	switch prefer {
 	case C.IPv4Only:
@@ -64,6 +57,13 @@ func resolveUDPAddr(ctx context.Context, network, address string, prefer C.DNSPr
 	}
 
 	ip, port = resolver.LookupIP4P(ip, port)
+
+	var uint16Port uint16
+	if port, err := strconv.ParseUint(port, 10, 16); err == nil {
+		uint16Port = uint16(port)
+	} else {
+		return nil, err
+	}
 	// our resolver always unmap before return, so unneeded unmap at here
 	// which is different with net.ResolveUDPAddr maybe return 4in6 address
 	// 4in6 addresses can cause some strange effects on sing-based code
