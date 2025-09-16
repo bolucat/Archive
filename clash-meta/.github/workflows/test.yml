@@ -58,7 +58,7 @@ jobs:
       # 48042aa09c2f878c4faa576948b07fe625c4707a: "syscall: remove Windows 7 console handle workaround"
       # a17d959debdb04cd550016a3501dd09d50cd62e7: "runtime: always use LoadLibraryEx to load system libraries"
       - name: Revert Golang1.25 commit for Windows7/8
-        if: ${{ matrix.jobs.goos == 'windows' && matrix.jobs.goversion == '1.25' }}
+        if: ${{ runner.os == 'Windows' && matrix.go-version == '1.25' }}
         run: |
           alias curl='curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}"'
           cd $(go env GOROOT)

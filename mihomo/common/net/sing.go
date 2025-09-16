@@ -1,9 +1,8 @@
 package net
 
 import (
-	"context"
+	"io"
 	"net"
-	"runtime"
 
 	"github.com/metacubex/mihomo/common/net/deadline"
 
@@ -56,9 +55,37 @@ type CountFunc = network.CountFunc
 
 var Pipe = deadline.Pipe
 
+func closeWrite(writer io.Closer) error {
+	if c, ok := common.Cast[network.WriteCloser](writer); ok {
+		return c.CloseWrite()
+	}
+	return writer.Close()
+}
+
 // Relay copies between left and right bidirectionally.
+// like [bufio.CopyConn] but remove unneeded [context.Context] handle and the cost of [task.Group]
 func Relay(leftConn, rightConn net.Conn) {
-	defer runtime.KeepAlive(leftConn)
-	defer runtime.KeepAlive(rightConn)
-	_ = bufio.CopyConn(context.TODO(), leftConn, rightConn)
+	defer func() {
+		_ = leftConn.Close()
+		_ = rightConn.Close()
+	}()
+
+	ch := make(chan struct{})
+	go func() {
+		_, err := bufio.Copy(leftConn, rightConn)
+		if err == nil {
+			_ = closeWrite(leftConn)
+		} else {
+			_ = leftConn.Close()
+		}
+		close(ch)
+	}()
+
+	_, err := bufio.Copy(rightConn, leftConn)
+	if err == nil {
+		_ = closeWrite(rightConn)
+	} else {
+		_ = rightConn.Close()
+	}
+	<-ch
 }

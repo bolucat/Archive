@@ -139,8 +139,8 @@ github.com/metacubex/smux v0.0.0-20250503055512-501391591dee h1:lp6hJ+4wCLZu113a
 github.com/metacubex/smux v0.0.0-20250503055512-501391591dee/go.mod h1:4bPD8HWx9jPJ9aE4uadgyN7D1/Wz3KmPy+vale8sKLE=
 github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617 h1:yN3mQ4cT9sPUciw/rO0Isc/8QlO86DB6g9SEMRgQ8Cw=
 github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617/go.mod h1:l9oLnLoEXyGZ5RVLsh7QCC5XsouTUyKk4F2nLm2DHLw=
-github.com/metacubex/utls v1.8.1-0.20250823120917-12f5ba126142 h1:csEbKOzRAxJXffOeZnnS3/kA/F55JiTbKv5jcYqCXms=
-github.com/metacubex/utls v1.8.1-0.20250823120917-12f5ba126142/go.mod h1:67I3skhEY4Sya8f1YxELwWPoeQdXqZCrWNYLvq8gn2U=
+github.com/metacubex/utls v1.8.1-0.20250916021850-3fcad0728a32 h1:endaN8dWxRofYpmJS46mPMQdzNyGEOwvXva42P8RY3I=
+github.com/metacubex/utls v1.8.1-0.20250916021850-3fcad0728a32/go.mod h1:67I3skhEY4Sya8f1YxELwWPoeQdXqZCrWNYLvq8gn2U=
 github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f h1:FGBPRb1zUabhPhDrlKEjQ9lgIwQ6cHL4x8M9lrERhbk=
 github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f/go.mod h1:oPGcV994OGJedmmxrcK9+ni7jUEMGhR+uVQAdaduIP4=
 github.com/miekg/dns v1.1.63 h1:8M5aAw6OMZfFXTT7K5V0Eu5YiiL8l7nUAkyN6C9YwaY=
