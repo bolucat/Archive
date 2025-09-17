@@ -117,7 +117,6 @@ type Cors struct {
 
 // Experimental config
 type Experimental struct {
-	Fingerprints     []string
 	QUICGoDisableGSO bool
 	QUICGoDisableECN bool
 	IP4PEnable       bool
@@ -791,7 +790,6 @@ func parseController(cfg *RawConfig) (*Controller, error) {
 
 func parseExperimental(cfg *RawConfig) (*Experimental, error) {
 	return &Experimental{
-		Fingerprints:     cfg.Experimental.Fingerprints,
 		QUICGoDisableGSO: cfg.Experimental.QUICGoDisableGSO,
 		QUICGoDisableECN: cfg.Experimental.QUICGoDisableECN,
 		IP4PEnable:       cfg.Experimental.IP4PEnable,

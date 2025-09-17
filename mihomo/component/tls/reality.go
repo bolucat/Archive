@@ -185,6 +185,7 @@ func (c *realityVerifier) VerifyPeerCertificate(rawCerts [][]byte, verifiedChain
 	opts := x509.VerifyOptions{
 		DNSName:       c.serverName,
 		Intermediates: x509.NewCertPool(),
+		CurrentTime:   ntp.Now(),
 	}
 	for _, cert := range certs[1:] {
 		opts.Intermediates.AddCert(cert)

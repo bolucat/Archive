@@ -123,7 +123,7 @@ func GetTLSConfig(opt Option) (tlsConfig *tls.Config, err error) {
 	}
 
 	if len(opt.Fingerprint) > 0 {
-		tlsConfig.VerifyPeerCertificate, err = NewFingerprintVerifier(opt.Fingerprint)
+		tlsConfig.VerifyPeerCertificate, err = NewFingerprintVerifier(opt.Fingerprint, tlsConfig.Time)
 		if err != nil {
 			return nil, err
 		}
