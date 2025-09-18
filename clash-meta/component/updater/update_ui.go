@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -308,12 +310,65 @@ func moveDir(src string, dst string) error {
 	}
 
 	for _, dirEntry := range dirEntryList {
-		err = os.Rename(filepath.Join(src, dirEntry.Name()), filepath.Join(dst, dirEntry.Name()))
+		srcDir := filepath.Join(src, dirEntry.Name())
+		dstDir := filepath.Join(dst, dirEntry.Name())
+		err = os.Rename(srcDir, dstDir)
+		if err != nil {
+			// Fallback for invalid cross-device link (errno:18).
+			if errors.Is(err, syscall.Errno(18)) {
+				err = copyDir(srcDir, dstDir)
+				_ = os.RemoveAll(srcDir)
+			}
+		}
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// copyDir copy the src directory to dst
+// modify from [os.CopyFS]
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		fpath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		newPath := filepath.Join(dst, fpath)
+
+		switch info.Mode().Type() {
+		case os.ModeDir:
+			return os.MkdirAll(newPath, info.Mode().Perm())
+		case os.ModeSymlink:
+			target, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(target, newPath)
+		case 0:
+			r, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			w, err := os.OpenFile(newPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode().Perm())
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(w, r); err != nil {
+				w.Close()
+				return &os.PathError{Op: "Copy", Path: newPath, Err: err}
+			}
+			return w.Close()
+		default:
+			return &os.PathError{Op: "CopyFS", Path: path, Err: os.ErrInvalid}
+		}
+	})
 }
 
 func inDest(fpath, dest string) bool {

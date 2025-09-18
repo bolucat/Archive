@@ -68,8 +68,6 @@ github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeN
 github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 h1:yAJXTCF9TqKcTiHJAE8dj7HMvPfh66eeA2JYW7eFpSE=
 github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38/go.mod h1:kpwsk12EmLew5upagYY7GY0pfYCcupk39gWOCRROcvE=
 github.com/google/tink/go v1.6.1 h1:t7JHqO8Ath2w2ig5vjwQYJzhGEZymedQc90lQXUBa4I=
-github.com/hashicorp/yamux v0.1.2 h1:XtB8kyFOyHXYVFnwT5C3+Bdo8gArse7j2AQ0DA0Uey8=
-github.com/hashicorp/yamux v0.1.2/go.mod h1:C+zze2n6e/7wshOZep2A70/aQU6QBRWJO/G6FT1wIns=
 github.com/ianlancetaylor/demangle v0.0.0-20200824232613-28f6c0f3b639/go.mod h1:aSSvb/t6k1mPoxDqO4vJh6VOCGPwU4O0C2/Eqndh1Sc=
 github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905 h1:q3OEI9RaN/wwcx+qgGo6ZaoJkCiDYe/gjDLfq7lQQF4=
 github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905/go.mod h1:VvGYjkZoJyKqlmT1yzakUs4mfKMNB0XdODP0+rdml6k=
@@ -119,8 +117,8 @@ github.com/metacubex/restls-client-go v0.1.7/go.mod h1:BN/U52vPw7j8VTSh2vleD/Mnm
 github.com/metacubex/sing v0.5.2/go.mod h1:ypf0mjwlZm0sKdQSY+yQvmsbWa0hNPtkeqyRMGgoN+w=
 github.com/metacubex/sing v0.5.6-0.20250912172506-82b42a287539 h1:ArXEdw7JvbL3dLc3D7kBGTDmuBBI/sNIyR3O4MlfPH8=
 github.com/metacubex/sing v0.5.6-0.20250912172506-82b42a287539/go.mod h1:ypf0mjwlZm0sKdQSY+yQvmsbWa0hNPtkeqyRMGgoN+w=
-github.com/metacubex/sing-mux v0.3.3 h1:oqCbUAJgTLsa71vfo8otW8xIhrDfbc/Y2rmtW34sQjg=
-github.com/metacubex/sing-mux v0.3.3/go.mod h1:3rt1soewn0O6j89GCLmwAQFsq257u0jf2zQSPhTL3Bw=
+github.com/metacubex/sing-mux v0.3.4-0.20250918084132-3bcf39257411 h1:CP7GHdopEHAl95jG6fogImChzhLlV2Hzw4PYKaPoX1c=
+github.com/metacubex/sing-mux v0.3.4-0.20250918084132-3bcf39257411/go.mod h1:SEJfAuykNj/ozbPqngEYqyggwSr81+L7Nu09NRD5mh4=
 github.com/metacubex/sing-quic v0.0.0-20250909002258-06122df8f231 h1:dGvo7UahC/gYBQNBoictr14baJzBjAKUAorP63QFFtg=
 github.com/metacubex/sing-quic v0.0.0-20250909002258-06122df8f231/go.mod h1:B60FxaPHjR1SeQB0IiLrgwgvKsaoASfOWdiqhLjmMGA=
 github.com/metacubex/sing-shadowsocks v0.2.12 h1:Wqzo8bYXrK5aWqxu/TjlTnYZzAKtKsaFQBdr6IHFaBE=
@@ -143,6 +141,8 @@ github.com/metacubex/utls v1.8.1-0.20250916021850-3fcad0728a32 h1:endaN8dWxRofYp
 github.com/metacubex/utls v1.8.1-0.20250916021850-3fcad0728a32/go.mod h1:67I3skhEY4Sya8f1YxELwWPoeQdXqZCrWNYLvq8gn2U=
 github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f h1:FGBPRb1zUabhPhDrlKEjQ9lgIwQ6cHL4x8M9lrERhbk=
 github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f/go.mod h1:oPGcV994OGJedmmxrcK9+ni7jUEMGhR+uVQAdaduIP4=
+github.com/metacubex/yamux v0.0.0-20250918083631-dd5f17c0be49 h1:lhlqpYHopuTLx9xQt22kSA9HtnyTDmk5XjjQVCGHe2E=
+github.com/metacubex/yamux v0.0.0-20250918083631-dd5f17c0be49/go.mod h1:MBeEa9IVBphH7vc3LNtW6ZujVXFizotPo3OEiHQ+TNU=
 github.com/miekg/dns v1.1.63 h1:8M5aAw6OMZfFXTT7K5V0Eu5YiiL8l7nUAkyN6C9YwaY=
 github.com/miekg/dns v1.1.63/go.mod h1:6NGHfjhpmr5lt3XPLuyfDJi5AXbNIPM9PY6H6sF1Nfs=
 github.com/mroth/weightedrand/v2 v2.1.0 h1:o1ascnB1CIVzsqlfArQQjeMy1U0NcIbBO5rfd5E/OeU=

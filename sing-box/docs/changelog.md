@@ -2,6 +2,13 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.16
+
+* Add curve preferences, pinned public key SHA256 and mTLS for TLS options **1**
+* Fixes and improvements
+
+See [TLS](/configuration/shared/tls/).
+
 #### 1.13.0-alpha.15
 
 * Update quic-go to v0.54.0

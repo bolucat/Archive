@@ -16,7 +16,6 @@ import (
 	"github.com/sagernet/sing-box/common/tlsfragment"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/ntp"
@@ -198,62 +197,20 @@ func NewSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
 }
 
 func verifyPublicKeySHA256(knownHashValues [][]byte, rawCerts [][]byte, timeFunc func() time.Time) error {
-	for i, rawCert := range rawCerts {
-		certificate, err := x509.ParseCertificate(rawCert)
-		if err != nil {
-			continue
-		}
+	leafCertificate, err := x509.ParseCertificate(rawCerts[0])
+	if err != nil {
+		return E.Cause(err, "failed to parse leaf certificate")
+	}
 
-		// Extract public key and hash it
-		pubKeyBytes, err := x509.MarshalPKIXPublicKey(certificate.PublicKey)
-		if err != nil {
-			continue
-		}
-		hash := sha256.Sum256(pubKeyBytes)
-
-		var matched bool
-		for _, value := range knownHashValues {
-			if bytes.Equal(value, hash[:]) {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			continue
-		}
-		if i == 0 {
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(leafCertificate.PublicKey)
+	if err != nil {
+		return E.Cause(err, "failed to marshal public key")
+	}
+	hashValue := sha256.Sum256(pubKeyBytes)
+	for _, value := range knownHashValues {
+		if bytes.Equal(value, hashValue[:]) {
 			return nil
 		}
-		certificates := make([]*x509.Certificate, i+1)
-		for j := range certificates {
-			certificate, err := x509.ParseCertificate(rawCerts[j])
-			if err != nil {
-				return err
-			}
-			certificates[j] = certificate
-		}
-		verifyOptions := x509.VerifyOptions{
-			Roots:         x509.NewCertPool(),
-			Intermediates: x509.NewCertPool(),
-		}
-		if timeFunc != nil {
-			verifyOptions.CurrentTime = timeFunc()
-		}
-		verifyOptions.Roots.AddCert(certificates[i])
-		for _, certificate := range certificates[1:] {
-			verifyOptions.Intermediates.AddCert(certificate)
-		}
-		return common.Error(certificates[0].Verify(verifyOptions))
 	}
-
-	// Generate error message with first certificate's public key hash
-	if len(rawCerts) > 0 {
-		if certificate, err := x509.ParseCertificate(rawCerts[0]); err == nil {
-			if pubKeyBytes, err := x509.MarshalPKIXPublicKey(certificate.PublicKey); err == nil {
-				hash := sha256.Sum256(pubKeyBytes)
-				return E.New("unrecognized public key: ", base64.StdEncoding.EncodeToString(hash[:]))
-			}
-		}
-	}
-	return E.New("unrecognized certificate")
+	return E.New("unrecognized remote public key: ", base64.StdEncoding.EncodeToString(hashValue[:]))
 }
