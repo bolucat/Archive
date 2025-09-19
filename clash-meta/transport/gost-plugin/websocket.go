@@ -22,6 +22,8 @@ type Option struct {
 	ECHConfig      *ech.Config
 	SkipCertVerify bool
 	Fingerprint    string
+	Certificate    string
+	PrivateKey     string
 	Mux            bool
 }
 
@@ -67,6 +69,8 @@ func NewGostWebsocket(ctx context.Context, conn net.Conn, option *Option) (net.C
 				NextProtos:         []string{"http/1.1"},
 			},
 			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err

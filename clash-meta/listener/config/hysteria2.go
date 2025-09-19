@@ -14,6 +14,8 @@ type Hysteria2Server struct {
 	ObfsPassword          string            `yaml:"obfs-password" json:"obfs-password,omitempty"`
 	Certificate           string            `yaml:"certificate" json:"certificate"`
 	PrivateKey            string            `yaml:"private-key" json:"private-key"`
+	ClientAuthType        string            `yaml:"client-auth-type" json:"client-auth-type,omitempty"`
+	ClientAuthCert        string            `yaml:"client-auth-cert" json:"client-auth-cert,omitempty"`
 	EchKey                string            `yaml:"ech-key" json:"ech-key,omitempty"`
 	MaxIdleTime           int               `yaml:"max-idle-time" json:"max-idle-time,omitempty"`
 	ALPN                  []string          `yaml:"alpn" json:"alpn,omitempty"`

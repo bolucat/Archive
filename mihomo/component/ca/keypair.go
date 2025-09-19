@@ -12,6 +12,8 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"os"
+	"time"
 )
 
 type Path interface {
@@ -56,6 +58,33 @@ func LoadTLSKeyPair(certificate, privateKey string, path Path) (tls.Certificate,
 	return cert, nil
 }
 
+func LoadCertificates(certificate string, path Path) (*x509.CertPool, error) {
+	pool := x509.NewCertPool()
+	if pool.AppendCertsFromPEM([]byte(certificate)) {
+		return pool, nil
+	}
+	painTextErr := fmt.Errorf("invalid certificate: %s", certificate)
+	if path == nil {
+		return nil, painTextErr
+	}
+
+	certificate = path.Resolve(certificate)
+	var loadErr error
+	if !path.IsSafePath(certificate) {
+		loadErr = path.ErrNotSafePath(certificate)
+	} else {
+		certPEMBlock, err := os.ReadFile(certificate)
+		if pool.AppendCertsFromPEM(certPEMBlock) {
+			return pool, nil
+		}
+		loadErr = err
+	}
+	if loadErr != nil {
+		return nil, fmt.Errorf("parse certificate failed, maybe format error:%s, or path error: %s", painTextErr.Error(), loadErr.Error())
+	}
+	return pool, nil
+}
+
 type KeyPairType string
 
 const (
@@ -85,7 +114,11 @@ func NewRandomTLSKeyPair(keyPairType KeyPairType) (certificate string, privateKe
 		return
 	}
 
-	template := x509.Certificate{SerialNumber: big.NewInt(1)}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		NotBefore:    time.Now().Add(-time.Hour * 24 * 365),
+		NotAfter:     time.Now().Add(time.Hour * 24 * 365),
+	}
 	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, key.Public(), key)
 	if err != nil {
 		return

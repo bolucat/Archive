@@ -135,6 +135,8 @@ func UConfig(config *tls.Config) *utls.Config {
 		RootCAs:               config.RootCAs,
 		NextProtos:            config.NextProtos,
 		ServerName:            config.ServerName,
+		ClientAuth:            utls.ClientAuthType(config.ClientAuth),
+		ClientCAs:             config.ClientCAs,
 		InsecureSkipVerify:    config.InsecureSkipVerify,
 		CipherSuites:          config.CipherSuites,
 		MinVersion:            config.MinVersion,

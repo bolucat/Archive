@@ -15,6 +15,8 @@ type TLSConfig struct {
 	Host              string
 	SkipCertVerify    bool
 	FingerPrint       string
+	Certificate       string
+	PrivateKey        string
 	ClientFingerprint string
 	NextProtos        []string
 	ECH               *ech.Config
@@ -33,6 +35,8 @@ func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn
 			NextProtos:         cfg.NextProtos,
 		},
 		Fingerprint: cfg.FingerPrint,
+		Certificate: cfg.Certificate,
+		PrivateKey:  cfg.PrivateKey,
 	})
 	if err != nil {
 		return nil, err

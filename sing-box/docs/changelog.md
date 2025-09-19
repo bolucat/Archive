@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.17
+
+* Fixes and improvements
+
 #### 1.13.0-alpha.16
 
 * Add curve preferences, pinned public key SHA256 and mTLS for TLS options **1**

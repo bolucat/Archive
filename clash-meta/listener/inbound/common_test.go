@@ -37,6 +37,7 @@ var httpData = make([]byte, 2*pool.RelayBufferSize)
 var remoteAddr = netip.MustParseAddr("1.2.3.4")
 var userUUID = utils.NewUUIDV4().String()
 var tlsCertificate, tlsPrivateKey, tlsFingerprint, _ = ca.NewRandomTLSKeyPair(ca.KeyPairTypeP256)
+var tlsAuthCertificate, tlsAuthPrivateKey, _, _ = ca.NewRandomTLSKeyPair(ca.KeyPairTypeP256)
 var tlsConfigCert, _ = tls.X509KeyPair([]byte(tlsCertificate), []byte(tlsPrivateKey))
 var tlsConfig = &tls.Config{Certificates: []tls.Certificate{tlsConfigCert}, NextProtos: []string{"h2", "http/1.1"}}
 var tlsClientConfig, _ = ca.GetTLSConfig(ca.Option{Fingerprint: tlsFingerprint})

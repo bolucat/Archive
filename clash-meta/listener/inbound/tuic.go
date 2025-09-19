@@ -15,6 +15,8 @@ type TuicOption struct {
 	Users                 map[string]string `inbound:"users,omitempty"`
 	Certificate           string            `inbound:"certificate"`
 	PrivateKey            string            `inbound:"private-key"`
+	ClientAuthType        string            `inbound:"client-auth-type,omitempty"`
+	ClientAuthCert        string            `inbound:"client-auth-cert,omitempty"`
 	EchKey                string            `inbound:"ech-key,omitempty"`
 	CongestionController  string            `inbound:"congestion-controller,omitempty"`
 	MaxIdleTime           int               `inbound:"max-idle-time,omitempty"`
@@ -51,6 +53,8 @@ func NewTuic(options *TuicOption) (*Tuic, error) {
 			Users:                 options.Users,
 			Certificate:           options.Certificate,
 			PrivateKey:            options.PrivateKey,
+			ClientAuthType:        options.ClientAuthType,
+			ClientAuthCert:        options.ClientAuthCert,
 			EchKey:                options.EchKey,
 			CongestionController:  options.CongestionController,
 			MaxIdleTime:           options.MaxIdleTime,

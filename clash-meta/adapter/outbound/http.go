@@ -37,6 +37,8 @@ type HttpOption struct {
 	SNI            string            `proxy:"sni,omitempty"`
 	SkipCertVerify bool              `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint    string            `proxy:"fingerprint,omitempty"`
+	Certificate    string            `proxy:"certificate,omitempty"`
+	PrivateKey     string            `proxy:"private-key,omitempty"`
 	Headers        map[string]string `proxy:"headers,omitempty"`
 }
 
@@ -173,6 +175,8 @@ func NewHttp(option HttpOption) (*Http, error) {
 				ServerName:         sni,
 			},
 			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err

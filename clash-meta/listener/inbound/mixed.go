@@ -14,12 +14,14 @@ import (
 
 type MixedOption struct {
 	BaseOption
-	Users         AuthUsers     `inbound:"users,omitempty"`
-	UDP           bool          `inbound:"udp,omitempty"`
-	Certificate   string        `inbound:"certificate,omitempty"`
-	PrivateKey    string        `inbound:"private-key,omitempty"`
-	EchKey        string        `inbound:"ech-key,omitempty"`
-	RealityConfig RealityConfig `inbound:"reality-config,omitempty"`
+	Users          AuthUsers     `inbound:"users,omitempty"`
+	UDP            bool          `inbound:"udp,omitempty"`
+	Certificate    string        `inbound:"certificate,omitempty"`
+	PrivateKey     string        `inbound:"private-key,omitempty"`
+	ClientAuthType string        `inbound:"client-auth-type,omitempty"`
+	ClientAuthCert string        `inbound:"client-auth-cert,omitempty"`
+	EchKey         string        `inbound:"ech-key,omitempty"`
+	RealityConfig  RealityConfig `inbound:"reality-config,omitempty"`
 }
 
 func (o MixedOption) Equal(config C.InboundConfig) bool {
@@ -65,13 +67,15 @@ func (m *Mixed) Listen(tunnel C.Tunnel) error {
 	for _, addr := range strings.Split(m.RawAddress(), ",") {
 		l, err := mixed.NewWithConfig(
 			LC.AuthServer{
-				Enable:        true,
-				Listen:        addr,
-				AuthStore:     m.config.Users.GetAuthStore(),
-				Certificate:   m.config.Certificate,
-				PrivateKey:    m.config.PrivateKey,
-				EchKey:        m.config.EchKey,
-				RealityConfig: m.config.RealityConfig.Build(),
+				Enable:         true,
+				Listen:         addr,
+				AuthStore:      m.config.Users.GetAuthStore(),
+				Certificate:    m.config.Certificate,
+				PrivateKey:     m.config.PrivateKey,
+				ClientAuthType: m.config.ClientAuthType,
+				ClientAuthCert: m.config.ClientAuthCert,
+				EchKey:         m.config.EchKey,
+				RealityConfig:  m.config.RealityConfig.Build(),
 			},
 			tunnel,
 			m.Additions()...,

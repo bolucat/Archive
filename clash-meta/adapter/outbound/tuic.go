@@ -55,8 +55,8 @@ type TuicOption struct {
 	CWND                 int        `proxy:"cwnd,omitempty"`
 	SkipCertVerify       bool       `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint          string     `proxy:"fingerprint,omitempty"`
-	CustomCA             string     `proxy:"ca,omitempty"`
-	CustomCAString       string     `proxy:"ca-str,omitempty"`
+	Certificate          string     `proxy:"certificate,omitempty"`
+	PrivateKey           string     `proxy:"private-key,omitempty"`
 	ReceiveWindowConn    int        `proxy:"recv-window-conn,omitempty"`
 	ReceiveWindow        int        `proxy:"recv-window,omitempty"`
 	DisableMTUDiscovery  bool       `proxy:"disable-mtu-discovery,omitempty"`
@@ -171,9 +171,9 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 			InsecureSkipVerify: option.SkipCertVerify,
 			MinVersion:         tls.VersionTLS13,
 		},
-		Fingerprint:    option.Fingerprint,
-		CustomCA:       option.CustomCA,
-		CustomCAString: option.CustomCAString,
+		Fingerprint: option.Fingerprint,
+		Certificate: option.Certificate,
+		PrivateKey:  option.PrivateKey,
 	})
 	if err != nil {
 		return nil, err

@@ -11,11 +11,13 @@ import (
 
 type AnyTLSOption struct {
 	BaseOption
-	Users         map[string]string `inbound:"users,omitempty"`
-	Certificate   string            `inbound:"certificate"`
-	PrivateKey    string            `inbound:"private-key"`
-	EchKey        string            `inbound:"ech-key,omitempty"`
-	PaddingScheme string            `inbound:"padding-scheme,omitempty"`
+	Users          map[string]string `inbound:"users,omitempty"`
+	Certificate    string            `inbound:"certificate"`
+	PrivateKey     string            `inbound:"private-key"`
+	ClientAuthType string            `inbound:"client-auth-type,omitempty"`
+	ClientAuthCert string            `inbound:"client-auth-cert,omitempty"`
+	EchKey         string            `inbound:"ech-key,omitempty"`
+	PaddingScheme  string            `inbound:"padding-scheme,omitempty"`
 }
 
 func (o AnyTLSOption) Equal(config C.InboundConfig) bool {
@@ -38,13 +40,15 @@ func NewAnyTLS(options *AnyTLSOption) (*AnyTLS, error) {
 		Base:   base,
 		config: options,
 		vs: LC.AnyTLSServer{
-			Enable:        true,
-			Listen:        base.RawAddress(),
-			Users:         options.Users,
-			Certificate:   options.Certificate,
-			PrivateKey:    options.PrivateKey,
-			EchKey:        options.EchKey,
-			PaddingScheme: options.PaddingScheme,
+			Enable:         true,
+			Listen:         base.RawAddress(),
+			Users:          options.Users,
+			Certificate:    options.Certificate,
+			PrivateKey:     options.PrivateKey,
+			ClientAuthType: options.ClientAuthType,
+			ClientAuthCert: options.ClientAuthCert,
+			EchKey:         options.EchKey,
+			PaddingScheme:  options.PaddingScheme,
 		},
 	}, nil
 }

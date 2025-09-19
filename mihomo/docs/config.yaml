@@ -48,6 +48,9 @@ ipv6: true # 开启 IPv6 总开关，关闭阻断所有 IPv6 链接和屏蔽 DNS
 tls:
   certificate: string # 证书 PEM 格式，或者 证书的路径
   private-key: string # 证书对应的私钥 PEM 格式，或者私钥路径
+  # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+  # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+  # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
   # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
   # ech-key: |
   #   -----BEGIN ECH KEYS-----
@@ -350,6 +353,9 @@ proxies: # socks5
     # password: password
     # tls: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # skip-cert-verify: true
     # udp: true
     # ip-version: ipv6
@@ -365,6 +371,9 @@ proxies: # socks5
     # skip-cert-verify: true
     # sni: custom.com
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # ip-version: dual
 
   # Snell
@@ -433,6 +442,9 @@ proxies: # socks5
       mode: websocket # no QUIC now
       # tls: true # wss
       # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+      # 下面两项如果填写则开启 mTLS（需要同时填写）
+      # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+      # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
       # ech-opts:
       #   enable: true # 必须手动开启
       #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
@@ -471,6 +483,9 @@ proxies: # socks5
       mode: websocket
       # tls: true # wss
       # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+      # 下面两项如果填写则开启 mTLS（需要同时填写）
+      # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+      # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
       # skip-cert-verify: true
       # host: bing.com
       # path: "/"
@@ -531,6 +546,9 @@ proxies: # socks5
     # udp: true
     # tls: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # client-fingerprint: chrome    # Available: "chrome","firefox","safari","ios","random", currently only support TLS transport in TCP/GRPC/WS/HTTP for VLESS/Vmess and trojan.
     # skip-cert-verify: true
     # servername: example.com # priority over wss host
@@ -558,6 +576,9 @@ proxies: # socks5
     network: h2
     tls: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     h2-opts:
       host:
         - http.example.com
@@ -593,6 +614,9 @@ proxies: # socks5
     network: grpc
     tls: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     servername: example.com
     # skip-cert-verify: true
     grpc-opts:
@@ -608,6 +632,9 @@ proxies: # socks5
     network: tcp
     servername: example.com # AKA SNI
     # skip-cert-verify: true
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # client-fingerprint: random # Available: "chrome","firefox","safari","random","none"
     # ech-opts:
@@ -625,6 +652,9 @@ proxies: # socks5
     udp: true
     flow: xtls-rprx-vision
     client-fingerprint: chrome
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # skip-cert-verify: true
 
@@ -696,6 +726,9 @@ proxies: # socks5
     servername: example.com # priority over wss host
     # skip-cert-verify: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     ws-opts:
       path: "/"
       headers:
@@ -711,6 +744,9 @@ proxies: # socks5
     password: yourpsk
     # client-fingerprint: random # Available: "chrome","firefox","safari","random","none"
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # udp: true
     # sni: example.com # aka server name
     # alpn:
@@ -735,6 +771,9 @@ proxies: # socks5
     sni: example.com
     # skip-cert-verify: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     udp: true
     grpc-opts:
       grpc-service-name: "example"
@@ -748,6 +787,9 @@ proxies: # socks5
     sni: example.com
     # skip-cert-verify: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     udp: true
     # ws-opts:
     #   path: /path
@@ -767,6 +809,9 @@ proxies: # socks5
     # sni: example.com # aka server name
     # skip-cert-verify: true
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
 
   #hysteria
   - name: "hysteria"
@@ -789,10 +834,11 @@ proxies: # socks5
     # skip-cert-verify: false
     # recv-window-conn: 12582912
     # recv-window: 52428800
-    # ca: "./my.ca"
-    # ca-str: "xyz"
     # disable-mtu-discovery: false
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # fast-open: true # 支持 TCP 快速打开，默认为 false
 
   #hysteria2
@@ -815,10 +861,11 @@ proxies: # socks5
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     # skip-cert-verify: false
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
+    # 下面两项如果填写则开启 mTLS（需要同时填写）
+    # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # alpn:
     #   - h3
-    # ca: "./my.ca"
-    # ca-str: "xyz"
     ###quic-go特殊配置项，不要随意修改除非你知道你在干什么###
     # initial-stream-receive-window： 8388608
     # max-stream-receive-window： 8388608
@@ -1197,8 +1244,11 @@ listeners:
     #   - username: aaa
     #     password: aaa
     # 下面两项如果填写则开启 tls（需要同时填写）
-    # certificate: ./server.crt
-    # private-key: ./server.key
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1217,8 +1267,11 @@ listeners:
     #   - username: aaa
     #     password: aaa
     # 下面两项如果填写则开启 tls（需要同时填写）
-    # certificate: ./server.crt
-    # private-key: ./server.key
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1238,8 +1291,11 @@ listeners:
     #   - username: aaa
     #     password: aaa
     # 下面两项如果填写则开启 tls（需要同时填写）
-    # certificate: ./server.crt
-    # private-key: ./server.key
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1294,8 +1350,11 @@ listeners:
     # ws-path: "/" # 如果不为空则开启 websocket 传输层
     # grpc-service-name: "GunService" # 如果不为空则开启 grpc 传输层
     # 下面两项如果填写则开启 tls（需要同时填写）
-    # certificate: ./server.crt
-    # private-key: ./server.key
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1333,8 +1392,11 @@ listeners:
     # users:    # tuicV5 填写（可以同时填写 token）
     #   00000000-0000-0000-0000-000000000000: PASSWORD_0
     #   00000000-0000-0000-0000-000000000001: PASSWORD_1
-    #  certificate: ./server.crt
-    #  private-key: ./server.key
+    #  certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    #  private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    #  下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    #  client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    #  client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     #  如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     #  ech-key: |
     #    -----BEGIN ECH KEYS-----
@@ -1384,8 +1446,11 @@ listeners:
     # -------------------------
     # decryption: "mlkem768x25519plus.native/xorpub/random.600s(300-600s)/0s.(padding len).(padding gap).(X25519 PrivateKey).(ML-KEM-768 Seed)..."
     # 下面两项如果填写则开启 tls（需要同时填写）
-    # certificate: ./server.crt
-    # private-key: ./server.key
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1421,8 +1486,11 @@ listeners:
       username1: password1
       username2: password2
     # "certificate" and "private-key" are required
-    certificate: ./server.crt
+    certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
     private-key: ./server.key
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1444,8 +1512,11 @@ listeners:
     # ws-path: "/" # 如果不为空则开启 websocket 传输层
     # grpc-service-name: "GunService" # 如果不为空则开启 grpc 传输层
     # 下面两项如果填写则开启 tls（需要同时填写）
-    certificate: ./server.crt
-    private-key: ./server.key
+    certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     # ech-key: |
     #   -----BEGIN ECH KEYS-----
@@ -1486,8 +1557,11 @@ listeners:
     users:
       00000000-0000-0000-0000-000000000000: PASSWORD_0
       00000000-0000-0000-0000-000000000001: PASSWORD_1
-    #  certificate: ./server.crt
-    #  private-key: ./server.key
+    #  certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    #  private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    #  下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    #  client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    #  client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
     #  如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
     #  ech-key: |
     #    -----BEGIN ECH KEYS-----

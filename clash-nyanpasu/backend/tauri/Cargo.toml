@@ -51,6 +51,7 @@ async-trait = "0.1.77"
 dyn-clone = "1.0.16"
 thiserror = { workspace = true }
 parking_lot = { version = "0.12.1" }
+fs-err = { workspace = true }                                             # for more detailed io error
 itertools = "0.14"                                                        # sweet iterator utilities
 rayon = "1.10"                                                            # for iterator parallel processing
 ambassador = "0.4.1"                                                      # for trait delegation
@@ -208,6 +209,7 @@ tauri-plugin-process = "2.2"
 tauri-plugin-updater = "2.2"
 tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
+tauri-plugin-opener = "2.5"
 window-vibrancy = { version = "0.6.0" }
 
 # Strong typed api binding between typescript and rust

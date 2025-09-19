@@ -149,13 +149,8 @@ func NewSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
 			return nil, E.New("unknown cipher_suite: ", cipherSuite)
 		}
 	}
-	if len(options.CurvePreferences) > 0 {
-		for _, curve := range options.CurvePreferences {
-			tlsConfig.CurvePreferences = append(tlsConfig.CurvePreferences, tls.CurveID(curve))
-		}
-	} else {
-		// DisableX25519MLKEM768 by default
-		tlsConfig.CurvePreferences = []tls.CurveID{tls.X25519, tls.CurveP256, tls.CurveP384, tls.CurveP521}
+	for _, curve := range options.CurvePreferences {
+		tlsConfig.CurvePreferences = append(tlsConfig.CurvePreferences, tls.CurveID(curve))
 	}
 	var certificate []byte
 	if len(options.Certificate) > 0 {

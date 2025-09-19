@@ -21,6 +21,8 @@ type Option struct {
 	ECHConfig                *ech.Config
 	SkipCertVerify           bool
 	Fingerprint              string
+	Certificate              string
+	PrivateKey               string
 	Mux                      bool
 	V2rayHttpUpgrade         bool
 	V2rayHttpUpgradeFastOpen bool
@@ -53,6 +55,8 @@ func NewV2rayObfs(ctx context.Context, conn net.Conn, option *Option) (net.Conn,
 				NextProtos:         []string{"http/1.1"},
 			},
 			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err

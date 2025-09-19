@@ -48,6 +48,8 @@ type TrojanOption struct {
 	SNI               string         `proxy:"sni,omitempty"`
 	SkipCertVerify    bool           `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint       string         `proxy:"fingerprint,omitempty"`
+	Certificate       string         `proxy:"certificate,omitempty"`
+	PrivateKey        string         `proxy:"private-key,omitempty"`
 	UDP               bool           `proxy:"udp,omitempty"`
 	Network           string         `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions     `proxy:"ech-opts,omitempty"`
@@ -108,6 +110,8 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 				ServerName:         t.option.SNI,
 			},
 			Fingerprint: t.option.Fingerprint,
+			Certificate: t.option.Certificate,
+			PrivateKey:  t.option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err
@@ -127,6 +131,8 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			Host:              t.option.SNI,
 			SkipCertVerify:    t.option.SkipCertVerify,
 			FingerPrint:       t.option.Fingerprint,
+			Certificate:       t.option.Certificate,
+			PrivateKey:        t.option.PrivateKey,
 			ClientFingerprint: t.option.ClientFingerprint,
 			NextProtos:        alpn,
 			ECH:               t.echConfig,
@@ -372,6 +378,8 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 				ServerName:         option.SNI,
 			},
 			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err

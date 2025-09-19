@@ -67,6 +67,8 @@ type VlessOption struct {
 	WSHeaders         map[string]string `proxy:"ws-headers,omitempty"`
 	SkipCertVerify    bool              `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint       string            `proxy:"fingerprint,omitempty"`
+	Certificate       string            `proxy:"certificate,omitempty"`
+	PrivateKey        string            `proxy:"private-key,omitempty"`
 	ServerName        string            `proxy:"servername,omitempty"`
 	ClientFingerprint string            `proxy:"client-fingerprint,omitempty"`
 }
@@ -103,6 +105,8 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 					NextProtos:         []string{"http/1.1"},
 				},
 				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
 			})
 			if err != nil {
 				return nil, err
@@ -206,6 +210,8 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 			Host:              host,
 			SkipCertVerify:    v.option.SkipCertVerify,
 			FingerPrint:       v.option.Fingerprint,
+			Certificate:       v.option.Certificate,
+			PrivateKey:        v.option.PrivateKey,
 			ClientFingerprint: v.option.ClientFingerprint,
 			ECH:               v.echConfig,
 			Reality:           v.realityConfig,
@@ -505,6 +511,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 					ServerName:         v.option.ServerName,
 				},
 				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
 			})
 			if err != nil {
 				return nil, err

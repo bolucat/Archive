@@ -65,6 +65,8 @@ type v2rayObfsOption struct {
 	TLS                      bool              `obfs:"tls,omitempty"`
 	ECHOpts                  ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint              string            `obfs:"fingerprint,omitempty"`
+	Certificate              string            `obfs:"certificate,omitempty"`
+	PrivateKey               string            `obfs:"private-key,omitempty"`
 	Headers                  map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify           bool              `obfs:"skip-cert-verify,omitempty"`
 	Mux                      bool              `obfs:"mux,omitempty"`
@@ -79,6 +81,8 @@ type gostObfsOption struct {
 	TLS            bool              `obfs:"tls,omitempty"`
 	ECHOpts        ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint    string            `obfs:"fingerprint,omitempty"`
+	Certificate    string            `obfs:"certificate,omitempty"`
+	PrivateKey     string            `obfs:"private-key,omitempty"`
 	Headers        map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify bool              `obfs:"skip-cert-verify,omitempty"`
 	Mux            bool              `obfs:"mux,omitempty"`
@@ -88,6 +92,8 @@ type shadowTLSOption struct {
 	Password       string   `obfs:"password,omitempty"`
 	Host           string   `obfs:"host"`
 	Fingerprint    string   `obfs:"fingerprint,omitempty"`
+	Certificate    string   `obfs:"certificate,omitempty"`
+	PrivateKey     string   `obfs:"private-key,omitempty"`
 	SkipCertVerify bool     `obfs:"skip-cert-verify,omitempty"`
 	Version        int      `obfs:"version,omitempty"`
 	ALPN           []string `obfs:"alpn,omitempty"`
@@ -302,6 +308,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			v2rayOption.TLS = true
 			v2rayOption.SkipCertVerify = opts.SkipCertVerify
 			v2rayOption.Fingerprint = opts.Fingerprint
+			v2rayOption.Certificate = opts.Certificate
+			v2rayOption.PrivateKey = opts.PrivateKey
 
 			echConfig, err := opts.ECHOpts.Parse()
 			if err != nil {
@@ -330,6 +338,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			gostOption.TLS = true
 			gostOption.SkipCertVerify = opts.SkipCertVerify
 			gostOption.Fingerprint = opts.Fingerprint
+			gostOption.Certificate = opts.Certificate
+			gostOption.PrivateKey = opts.PrivateKey
 
 			echConfig, err := opts.ECHOpts.Parse()
 			if err != nil {
@@ -350,6 +360,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			Password:          opt.Password,
 			Host:              opt.Host,
 			Fingerprint:       opt.Fingerprint,
+			Certificate:       opt.Certificate,
+			PrivateKey:        opt.PrivateKey,
 			ClientFingerprint: option.ClientFingerprint,
 			SkipCertVerify:    opt.SkipCertVerify,
 			Version:           opt.Version,

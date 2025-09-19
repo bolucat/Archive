@@ -310,14 +310,14 @@ func moveDir(src string, dst string) error {
 	}
 
 	for _, dirEntry := range dirEntryList {
-		srcDir := filepath.Join(src, dirEntry.Name())
-		dstDir := filepath.Join(dst, dirEntry.Name())
-		err = os.Rename(srcDir, dstDir)
+		srcPath := filepath.Join(src, dirEntry.Name())
+		dstPath := filepath.Join(dst, dirEntry.Name())
+		err = os.Rename(srcPath, dstPath)
 		if err != nil {
 			// Fallback for invalid cross-device link (errno:18).
 			if errors.Is(err, syscall.Errno(18)) {
-				err = copyDir(srcDir, dstDir)
-				_ = os.RemoveAll(srcDir)
+				err = copyAll(srcPath, dstPath)
+				_ = os.RemoveAll(srcPath)
 			}
 		}
 		if err != nil {
@@ -327,9 +327,9 @@ func moveDir(src string, dst string) error {
 	return nil
 }
 
-// copyDir copy the src directory to dst
+// copyAll copy the src path and any children it contains to dst
 // modify from [os.CopyFS]
-func copyDir(src, dst string) error {
+func copyAll(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
