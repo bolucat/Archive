@@ -64,6 +64,14 @@ const dashrepos_urlparams = {
 	'metacubex/razord-meta': '?host=%s&port=%s&secret=%s'
 };
 
+const log_levels = [
+	['silent', _('Silent')],
+	['error', _('Error')],
+	['warning', _('Warning')],
+	['info', _('Info')],
+	['debug', _('Debug')]
+];
+
 const glossary = {
 	proxy_group: {
 		prefmt: 'group_%s',
@@ -970,7 +978,7 @@ function renderResDownload(section_id) {
 		E('button', {
 			class: 'cbi-button cbi-button-add',
 			disabled: (type !== 'http') || null,
-			click: ui.createHandlerFn(this, function(section_type, section_id, type, url, header) {
+			click: ui.createHandlerFn(this, (section_type, section_id, type, url, header) => {
 				if (type === 'http') {
 					return downloadFile(section_type, section_id, url, header).then((res) => {
 						ui.addNotification(null, E('p', _('Download successful.')));
@@ -1070,7 +1078,7 @@ function handleRemoveIdles() {
 					E('button', {
 						class: 'cbi-button cbi-button-negative important',
 						id: 'rmidles.' + filename + '.button',
-						click: ui.createHandlerFn(this, function(filename) {
+						click: ui.createHandlerFn(this, (filename) => {
 							return removeFile(section_type, filename).then((res) => {
 								let node = document.getElementById('rmidles.' + filename + '.label');
 								node.innerHTML = '<s>%s</s>'.format(node.innerHTML);
@@ -1422,6 +1430,7 @@ return baseclass.extend({
 	stunserver,
 	dashrepos,
 	dashrepos_urlparams,
+	log_levels,
 	glossary,
 	health_checkurls,
 	inbound_type,
