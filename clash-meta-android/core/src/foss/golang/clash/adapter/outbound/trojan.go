@@ -48,6 +48,8 @@ type TrojanOption struct {
 	SNI               string         `proxy:"sni,omitempty"`
 	SkipCertVerify    bool           `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint       string         `proxy:"fingerprint,omitempty"`
+	Certificate       string         `proxy:"certificate,omitempty"`
+	PrivateKey        string         `proxy:"private-key,omitempty"`
 	UDP               bool           `proxy:"udp,omitempty"`
 	Network           string         `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions     `proxy:"ech-opts,omitempty"`
@@ -100,14 +102,17 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 		}
 
 		wsOpts.TLS = true
-		tlsConfig := &tls.Config{
-			NextProtos:         alpn,
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: t.option.SkipCertVerify,
-			ServerName:         t.option.SNI,
-		}
-
-		wsOpts.TLSConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, t.option.Fingerprint)
+		wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				NextProtos:         alpn,
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: t.option.SkipCertVerify,
+				ServerName:         t.option.SNI,
+			},
+			Fingerprint: t.option.Fingerprint,
+			Certificate: t.option.Certificate,
+			PrivateKey:  t.option.PrivateKey,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -126,6 +131,8 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			Host:              t.option.SNI,
 			SkipCertVerify:    t.option.SkipCertVerify,
 			FingerPrint:       t.option.Fingerprint,
+			Certificate:       t.option.Certificate,
+			PrivateKey:        t.option.PrivateKey,
 			ClientFingerprint: t.option.ClientFingerprint,
 			NextProtos:        alpn,
 			ECH:               t.echConfig,
@@ -363,15 +370,17 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 			return c, nil
 		}
 
-		tlsConfig := &tls.Config{
-			NextProtos:         option.ALPN,
-			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: option.SkipCertVerify,
-			ServerName:         option.SNI,
-		}
-
-		var err error
-		tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, option.Fingerprint)
+		tlsConfig, err := ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				NextProtos:         option.ALPN,
+				MinVersion:         tls.VersionTLS12,
+				InsecureSkipVerify: option.SkipCertVerify,
+				ServerName:         option.SNI,
+			},
+			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
+		})
 		if err != nil {
 			return nil, err
 		}

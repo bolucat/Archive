@@ -87,26 +87,26 @@ type WireGuardPeerOption struct {
 }
 
 type AmneziaWGOption struct {
-	JC   int    `proxy:"jc,omitempty"`
-	JMin int    `proxy:"jmin,omitempty"`
-	JMax int    `proxy:"jmax,omitempty"`
-	S1   int    `proxy:"s1,omitempty"`
-	S2   int    `proxy:"s2,omitempty"`
-	H1   uint32 `proxy:"h1,omitempty"`
-	H2   uint32 `proxy:"h2,omitempty"`
-	H3   uint32 `proxy:"h3,omitempty"`
-	H4   uint32 `proxy:"h4,omitempty"`
-
-	// AmneziaWG v1.5
-	I1    string `proxy:"i1,omitempty"`
-	I2    string `proxy:"i2,omitempty"`
-	I3    string `proxy:"i3,omitempty"`
-	I4    string `proxy:"i4,omitempty"`
-	I5    string `proxy:"i5,omitempty"`
-	J1    string `proxy:"j1,omitempty"`
-	J2    string `proxy:"j2,omitempty"`
-	J3    string `proxy:"j3,omitempty"`
-	Itime int64  `proxy:"itime,omitempty"`
+	JC    int    `proxy:"jc,omitempty"`
+	JMin  int    `proxy:"jmin,omitempty"`
+	JMax  int    `proxy:"jmax,omitempty"`
+	S1    int    `proxy:"s1,omitempty"`
+	S2    int    `proxy:"s2,omitempty"`
+	S3    int    `proxy:"s3,omitempty"`    // AmneziaWG v1.5 and v2
+	S4    int    `proxy:"s4,omitempty"`    // AmneziaWG v1.5 and v2
+	H1    string `proxy:"h1,omitempty"`    // In AmneziaWG v1.x, it was uint32, but our WeaklyTypedInput can handle this situation
+	H2    string `proxy:"h2,omitempty"`    // In AmneziaWG v1.x, it was uint32, but our WeaklyTypedInput can handle this situation
+	H3    string `proxy:"h3,omitempty"`    // In AmneziaWG v1.x, it was uint32, but our WeaklyTypedInput can handle this situation
+	H4    string `proxy:"h4,omitempty"`    // In AmneziaWG v1.x, it was uint32, but our WeaklyTypedInput can handle this situation
+	I1    string `proxy:"i1,omitempty"`    // AmneziaWG v1.5 and v2
+	I2    string `proxy:"i2,omitempty"`    // AmneziaWG v1.5 and v2
+	I3    string `proxy:"i3,omitempty"`    // AmneziaWG v1.5 and v2
+	I4    string `proxy:"i4,omitempty"`    // AmneziaWG v1.5 and v2
+	I5    string `proxy:"i5,omitempty"`    // AmneziaWG v1.5 and v2
+	J1    string `proxy:"j1,omitempty"`    // AmneziaWG v1.5 only (removed in v2)
+	J2    string `proxy:"j2,omitempty"`    // AmneziaWG v1.5 only (removed in v2)
+	J3    string `proxy:"j3,omitempty"`    // AmneziaWG v1.5 only (removed in v2)
+	Itime int64  `proxy:"itime,omitempty"` // AmneziaWG v1.5 only (removed in v2)
 }
 
 type wgSingErrorHandler struct {
@@ -412,17 +412,23 @@ func (w *WireGuard) genIpcConf(ctx context.Context, updateOnly bool) (string, er
 			if w.option.AmneziaWGOption.S2 != 0 {
 				ipcConf += "s2=" + strconv.Itoa(w.option.AmneziaWGOption.S2) + "\n"
 			}
-			if w.option.AmneziaWGOption.H1 != 0 {
-				ipcConf += "h1=" + strconv.FormatUint(uint64(w.option.AmneziaWGOption.H1), 10) + "\n"
+			if w.option.AmneziaWGOption.S3 != 0 {
+				ipcConf += "s3=" + strconv.Itoa(w.option.AmneziaWGOption.S3) + "\n"
 			}
-			if w.option.AmneziaWGOption.H2 != 0 {
-				ipcConf += "h2=" + strconv.FormatUint(uint64(w.option.AmneziaWGOption.H2), 10) + "\n"
+			if w.option.AmneziaWGOption.S4 != 0 {
+				ipcConf += "s4=" + strconv.Itoa(w.option.AmneziaWGOption.S4) + "\n"
 			}
-			if w.option.AmneziaWGOption.H3 != 0 {
-				ipcConf += "h3=" + strconv.FormatUint(uint64(w.option.AmneziaWGOption.H3), 10) + "\n"
+			if w.option.AmneziaWGOption.H1 != "" {
+				ipcConf += "h1=" + w.option.AmneziaWGOption.H1 + "\n"
 			}
-			if w.option.AmneziaWGOption.H4 != 0 {
-				ipcConf += "h4=" + strconv.FormatUint(uint64(w.option.AmneziaWGOption.H4), 10) + "\n"
+			if w.option.AmneziaWGOption.H2 != "" {
+				ipcConf += "h2=" + w.option.AmneziaWGOption.H2 + "\n"
+			}
+			if w.option.AmneziaWGOption.H3 != "" {
+				ipcConf += "h3=" + w.option.AmneziaWGOption.H3 + "\n"
+			}
+			if w.option.AmneziaWGOption.H4 != "" {
+				ipcConf += "h4=" + w.option.AmneziaWGOption.H4 + "\n"
 			}
 			if w.option.AmneziaWGOption.I1 != "" {
 				ipcConf += "i1=" + w.option.AmneziaWGOption.I1 + "\n"

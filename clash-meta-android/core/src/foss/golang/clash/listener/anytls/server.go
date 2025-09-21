@@ -17,6 +17,7 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/anytls/padding"
 	"github.com/metacubex/mihomo/transport/anytls/session"
 
@@ -42,7 +43,7 @@ func New(config LC.AnyTLSServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		}
 	}
 
-	tlsConfig := &tlsC.Config{}
+	tlsConfig := &tlsC.Config{Time: ntp.Now}
 	if config.Certificate != "" && config.PrivateKey != "" {
 		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
 		if err != nil {
@@ -56,6 +57,19 @@ func New(config LC.AnyTLSServer, tunnel C.Tunnel, additions ...inbound.Addition)
 				return nil, err
 			}
 		}
+	}
+	tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(config.ClientAuthType)
+	if len(config.ClientAuthCert) > 0 {
+		if tlsConfig.ClientAuth == tlsC.NoClientCert {
+			tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+		}
+	}
+	if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.ClientCAs = pool
 	}
 
 	sl = &Listener{

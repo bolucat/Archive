@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/metacubex/mihomo/common/pool"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/ssr/tools"
 
 	"github.com/metacubex/randv2"
@@ -182,7 +182,7 @@ func packData(buf *bytes.Buffer, data []byte) {
 }
 
 func (t *tls12Ticket) packAuthData(buf *bytes.Buffer) {
-	binary.Write(buf, binary.BigEndian, uint32(time.Now().Unix()))
+	binary.Write(buf, binary.BigEndian, uint32(ntp.Now().Unix()))
 	tools.AppendRandBytes(buf, 18)
 	buf.Write(t.hmacSHA1(buf.Bytes()[buf.Len()-22:])[:10])
 }

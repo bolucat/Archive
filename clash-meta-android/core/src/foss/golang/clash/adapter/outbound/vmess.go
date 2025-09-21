@@ -58,6 +58,8 @@ type VmessOption struct {
 	ALPN                []string       `proxy:"alpn,omitempty"`
 	SkipCertVerify      bool           `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint         string         `proxy:"fingerprint,omitempty"`
+	Certificate         string         `proxy:"certificate,omitempty"`
+	PrivateKey          string         `proxy:"private-key,omitempty"`
 	ServerName          string         `proxy:"servername,omitempty"`
 	ECHOpts             ECHOptions     `proxy:"ech-opts,omitempty"`
 	RealityOpts         RealityOptions `proxy:"reality-opts,omitempty"`
@@ -123,13 +125,16 @@ func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 
 		if v.option.TLS {
 			wsOpts.TLS = true
-			tlsConfig := &tls.Config{
-				ServerName:         host,
-				InsecureSkipVerify: v.option.SkipCertVerify,
-				NextProtos:         []string{"http/1.1"},
-			}
-
-			wsOpts.TLSConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, v.option.Fingerprint)
+			wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+				TLSConfig: &tls.Config{
+					ServerName:         host,
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					NextProtos:         []string{"http/1.1"},
+				},
+				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -178,6 +183,8 @@ func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 			Host:              host,
 			SkipCertVerify:    v.option.SkipCertVerify,
 			FingerPrint:       v.option.Fingerprint,
+			Certificate:       v.option.Certificate,
+			PrivateKey:        v.option.PrivateKey,
 			NextProtos:        []string{"h2"},
 			ClientFingerprint: v.option.ClientFingerprint,
 			Reality:           v.realityConfig,
@@ -208,6 +215,8 @@ func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 				Host:              host,
 				SkipCertVerify:    v.option.SkipCertVerify,
 				FingerPrint:       v.option.Fingerprint,
+				Certificate:       v.option.Certificate,
+				PrivateKey:        v.option.PrivateKey,
 				ClientFingerprint: v.option.ClientFingerprint,
 				ECH:               v.echConfig,
 				Reality:           v.realityConfig,
@@ -501,10 +510,15 @@ func NewVmess(option VmessOption) (*Vmess, error) {
 		}
 		var tlsConfig *tls.Config
 		if option.TLS {
-			tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(&tls.Config{
-				InsecureSkipVerify: v.option.SkipCertVerify,
-				ServerName:         v.option.ServerName,
-			}, v.option.Fingerprint)
+			tlsConfig, err = ca.GetTLSConfig(ca.Option{
+				TLSConfig: &tls.Config{
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					ServerName:         v.option.ServerName,
+				},
+				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
+			})
 			if err != nil {
 				return nil, err
 			}

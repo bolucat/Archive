@@ -7,7 +7,17 @@
 use std::borrow::Borrow;
 
 use crate::{
-    config::{nyanpasu::NetworkStatisticWidgetConfig, *},
+    config::{
+        nyanpasu::NetworkStatisticWidgetConfig,
+        profile::{
+            builder::ProfileBuilder,
+            item::{
+                LocalProfileBuilder, MergeProfileBuilder, ProfileSharedBuilder,
+                ScriptProfileBuilder,
+            },
+        },
+        *,
+    },
     core::{service::ipc::get_ipc_state, *},
     log_err,
     utils::{self, help::get_clash_external_port, resolve},
@@ -282,6 +292,13 @@ pub async fn patch_clash(patch: Mapping) -> Result<()> {
 /// 修改verge的配置
 /// 一般都是一个个的修改
 pub async fn patch_verge(patch: IVerge) -> Result<()> {
+    // Validate theme_color if it's being updated
+    if let Some(ref theme_color) = patch.theme_color {
+        if !theme_color.is_empty() && !crate::config::nyanpasu::is_hex_color(theme_color) {
+            anyhow::bail!("Invalid theme color: {}", theme_color);
+        }
+    }
+
     Config::verge().draft().patch_config(patch.clone());
     let tun_mode = patch.enable_tun_mode;
     let auto_launch = patch.enable_auto_launch;
@@ -409,15 +426,11 @@ pub async fn update_profile<T: Borrow<String>>(
     opts: Option<RemoteProfileOptionsBuilder>,
 ) -> Result<()> {
     let uid = uid.borrow();
-    let is_remote = { Config::profiles().latest().get_item(uid)?.is_remote() };
+    let profile_item = Config::profiles().latest().get_item(uid)?.clone();
+    let is_remote = profile_item.is_remote();
 
     let should_update = if is_remote {
-        let mut item = Config::profiles()
-            .latest()
-            .get_item(uid)?
-            .as_remote()
-            .unwrap()
-            .clone();
+        let mut item = profile_item.as_remote().unwrap().clone();
 
         item.subscribe(opts).await?;
         let committer = Config::profiles().auto_commit();
@@ -425,7 +438,37 @@ pub async fn update_profile<T: Borrow<String>>(
         profiles.replace_item(uid, item.into())?;
         profiles.get_current().contains(uid)
     } else {
-        false
+        // For local profiles, we need to update the timestamp
+        let committer = Config::profiles().auto_commit();
+        let mut profiles = committer.draft();
+
+        // Create a builder to update the timestamp
+        match profile_item {
+            Profile::Local(_) => {
+                let mut shared_builder = ProfileSharedBuilder::default();
+                shared_builder.updated(chrono::Local::now().timestamp() as usize);
+                let mut builder = LocalProfileBuilder::default();
+                builder.shared(shared_builder);
+                profiles.patch_item(uid.to_string(), ProfileBuilder::Local(builder))?;
+            }
+            Profile::Merge(_) => {
+                let mut shared_builder = ProfileSharedBuilder::default();
+                shared_builder.updated(chrono::Local::now().timestamp() as usize);
+                let mut builder = MergeProfileBuilder::default();
+                builder.shared(shared_builder);
+                profiles.patch_item(uid.to_string(), ProfileBuilder::Merge(builder))?;
+            }
+            Profile::Script(_) => {
+                let mut shared_builder = ProfileSharedBuilder::default();
+                shared_builder.updated(chrono::Local::now().timestamp() as usize);
+                let mut builder = ScriptProfileBuilder::default();
+                builder.shared(shared_builder);
+                profiles.patch_item(uid.to_string(), ProfileBuilder::Script(builder))?;
+            }
+            _ => {}
+        }
+
+        profiles.get_current().contains(uid)
     };
 
     if should_update {

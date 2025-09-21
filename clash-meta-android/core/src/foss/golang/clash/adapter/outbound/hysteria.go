@@ -125,9 +125,9 @@ type HysteriaOption struct {
 	ECHOpts             ECHOptions `proxy:"ech-opts,omitempty"`
 	SkipCertVerify      bool       `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint         string     `proxy:"fingerprint,omitempty"`
+	Certificate         string     `proxy:"certificate,omitempty"`
+	PrivateKey          string     `proxy:"private-key,omitempty"`
 	ALPN                []string   `proxy:"alpn,omitempty"`
-	CustomCA            string     `proxy:"ca,omitempty"`
-	CustomCAString      string     `proxy:"ca-str,omitempty"`
 	ReceiveWindowConn   int        `proxy:"recv-window-conn,omitempty"`
 	ReceiveWindow       int        `proxy:"recv-window,omitempty"`
 	DisableMTUDiscovery bool       `proxy:"disable-mtu-discovery,omitempty"`
@@ -160,14 +160,16 @@ func NewHysteria(option HysteriaOption) (*Hysteria, error) {
 		serverName = option.SNI
 	}
 
-	tlsConfig := &tls.Config{
-		ServerName:         serverName,
-		InsecureSkipVerify: option.SkipCertVerify,
-		MinVersion:         tls.VersionTLS13,
-	}
-
-	var err error
-	tlsConfig, err = ca.GetTLSConfig(tlsConfig, option.Fingerprint, option.CustomCA, option.CustomCAString)
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: option.SkipCertVerify,
+			MinVersion:         tls.VersionTLS13,
+		},
+		Fingerprint: option.Fingerprint,
+		Certificate: option.Certificate,
+		PrivateKey:  option.PrivateKey,
+	})
 	if err != nil {
 		return nil, err
 	}

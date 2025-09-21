@@ -2,8 +2,6 @@ package queue
 
 import (
 	"sync"
-
-	"github.com/samber/lo"
 )
 
 // Queue is a simple concurrent safe queue
@@ -24,33 +22,32 @@ func (q *Queue[T]) Put(items ...T) {
 }
 
 // Pop returns the head of items.
-func (q *Queue[T]) Pop() T {
+func (q *Queue[T]) Pop() (head T) {
 	if len(q.items) == 0 {
-		return lo.Empty[T]()
+		return
 	}
 
 	q.lock.Lock()
-	head := q.items[0]
+	head = q.items[0]
 	q.items = q.items[1:]
 	q.lock.Unlock()
 	return head
 }
 
 // Last returns the last of item.
-func (q *Queue[T]) Last() T {
+func (q *Queue[T]) Last() (last T) {
 	if len(q.items) == 0 {
-		return lo.Empty[T]()
+		return
 	}
 
 	q.lock.RLock()
-	last := q.items[len(q.items)-1]
+	last = q.items[len(q.items)-1]
 	q.lock.RUnlock()
 	return last
 }
 
 // Copy get the copy of queue.
-func (q *Queue[T]) Copy() []T {
-	items := []T{}
+func (q *Queue[T]) Copy() (items []T) {
 	q.lock.RLock()
 	items = append(items, q.items...)
 	q.lock.RUnlock()

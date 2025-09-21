@@ -55,8 +55,8 @@ type TuicOption struct {
 	CWND                 int        `proxy:"cwnd,omitempty"`
 	SkipCertVerify       bool       `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint          string     `proxy:"fingerprint,omitempty"`
-	CustomCA             string     `proxy:"ca,omitempty"`
-	CustomCAString       string     `proxy:"ca-str,omitempty"`
+	Certificate          string     `proxy:"certificate,omitempty"`
+	PrivateKey           string     `proxy:"private-key,omitempty"`
 	ReceiveWindowConn    int        `proxy:"recv-window-conn,omitempty"`
 	ReceiveWindow        int        `proxy:"recv-window,omitempty"`
 	DisableMTUDiscovery  bool       `proxy:"disable-mtu-discovery,omitempty"`
@@ -161,17 +161,20 @@ func (t *Tuic) ProxyInfo() C.ProxyInfo {
 func NewTuic(option TuicOption) (*Tuic, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	serverName := option.Server
-	tlsConfig := &tls.Config{
-		ServerName:         serverName,
-		InsecureSkipVerify: option.SkipCertVerify,
-		MinVersion:         tls.VersionTLS13,
-	}
 	if option.SNI != "" {
-		tlsConfig.ServerName = option.SNI
+		serverName = option.SNI
 	}
 
-	var err error
-	tlsConfig, err = ca.GetTLSConfig(tlsConfig, option.Fingerprint, option.CustomCA, option.CustomCAString)
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: &tls.Config{
+			ServerName:         serverName,
+			InsecureSkipVerify: option.SkipCertVerify,
+			MinVersion:         tls.VersionTLS13,
+		},
+		Fingerprint: option.Fingerprint,
+		Certificate: option.Certificate,
+		PrivateKey:  option.PrivateKey,
+	})
 	if err != nil {
 		return nil, err
 	}

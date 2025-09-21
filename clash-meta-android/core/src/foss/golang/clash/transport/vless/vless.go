@@ -42,7 +42,7 @@ type DstAddr struct {
 
 // Client is vless connection generator
 type Client struct {
-	uuid   *uuid.UUID
+	uuid   uuid.UUID
 	Addons *Addons
 }
 
@@ -63,7 +63,7 @@ func NewClient(uuidStr string, addons *Addons) (*Client, error) {
 	}
 
 	return &Client{
-		uuid:   &uid,
+		uuid:   uid,
 		Addons: addons,
 	}, nil
 }

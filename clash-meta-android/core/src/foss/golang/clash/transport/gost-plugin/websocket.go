@@ -22,6 +22,8 @@ type Option struct {
 	ECHConfig      *ech.Config
 	SkipCertVerify bool
 	Fingerprint    string
+	Certificate    string
+	PrivateKey     string
 	Mux            bool
 }
 
@@ -57,15 +59,19 @@ func NewGostWebsocket(ctx context.Context, conn net.Conn, option *Option) (net.C
 		Headers:   header,
 	}
 
+	var err error
 	if option.TLS {
 		config.TLS = true
-		tlsConfig := &tls.Config{
-			ServerName:         option.Host,
-			InsecureSkipVerify: option.SkipCertVerify,
-			NextProtos:         []string{"http/1.1"},
-		}
-		var err error
-		config.TLSConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, option.Fingerprint)
+		config.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				ServerName:         option.Host,
+				InsecureSkipVerify: option.SkipCertVerify,
+				NextProtos:         []string{"http/1.1"},
+			},
+			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -75,7 +81,6 @@ func NewGostWebsocket(ctx context.Context, conn net.Conn, option *Option) (net.C
 		}
 	}
 
-	var err error
 	conn, err = vmess.StreamWebsocketConn(ctx, conn, config)
 	if err != nil {
 		return nil, err

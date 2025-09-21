@@ -6,9 +6,9 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"time"
 
 	"github.com/metacubex/mihomo/common/pool"
+	"github.com/metacubex/mihomo/ntp"
 )
 
 const (
@@ -145,7 +145,7 @@ func makeClientHelloMsg(data []byte, server string) []byte {
 	buf.Write([]byte{0x03, 0x03})
 
 	// random with timestamp, sid len, sid
-	binary.Write(buf, binary.BigEndian, uint32(time.Now().Unix()))
+	binary.Write(buf, binary.BigEndian, uint32(ntp.Now().Unix()))
 	buf.Write(random)
 	buf.WriteByte(32)
 	buf.Write(sessionID)

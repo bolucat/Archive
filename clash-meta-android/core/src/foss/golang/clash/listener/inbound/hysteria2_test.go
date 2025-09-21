@@ -51,14 +51,7 @@ func testInboundHysteria2(t *testing.T, inboundOptions inbound.Hysteria2Option, 
 	tunnel.DoTest(t, out)
 }
 
-func TestInboundHysteria2_TLS(t *testing.T) {
-	inboundOptions := inbound.Hysteria2Option{
-		Certificate: tlsCertificate,
-		PrivateKey:  tlsPrivateKey,
-	}
-	outboundOptions := outbound.Hysteria2Option{
-		Fingerprint: tlsFingerprint,
-	}
+func testInboundHysteria2TLS(t *testing.T, inboundOptions inbound.Hysteria2Option, outboundOptions outbound.Hysteria2Option) {
 	testInboundHysteria2(t, inboundOptions, outboundOptions)
 	t.Run("ECH", func(t *testing.T) {
 		inboundOptions := inboundOptions
@@ -70,6 +63,38 @@ func TestInboundHysteria2_TLS(t *testing.T) {
 		}
 		testInboundHysteria2(t, inboundOptions, outboundOptions)
 	})
+	t.Run("mTLS", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.ClientAuthCert = tlsAuthCertificate
+		outboundOptions.Certificate = tlsAuthCertificate
+		outboundOptions.PrivateKey = tlsAuthPrivateKey
+		testInboundHysteria2(t, inboundOptions, outboundOptions)
+	})
+	t.Run("mTLS+ECH", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.ClientAuthCert = tlsAuthCertificate
+		outboundOptions.Certificate = tlsAuthCertificate
+		outboundOptions.PrivateKey = tlsAuthPrivateKey
+		inboundOptions.EchKey = echKeyPem
+		outboundOptions.ECHOpts = outbound.ECHOptions{
+			Enable: true,
+			Config: echConfigBase64,
+		}
+		testInboundHysteria2(t, inboundOptions, outboundOptions)
+	})
+}
+
+func TestInboundHysteria2_TLS(t *testing.T) {
+	inboundOptions := inbound.Hysteria2Option{
+		Certificate: tlsCertificate,
+		PrivateKey:  tlsPrivateKey,
+	}
+	outboundOptions := outbound.Hysteria2Option{
+		Fingerprint: tlsFingerprint,
+	}
+	testInboundHysteria2TLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundHysteria2_Salamander(t *testing.T) {
@@ -84,17 +109,7 @@ func TestInboundHysteria2_Salamander(t *testing.T) {
 		Obfs:         "salamander",
 		ObfsPassword: userUUID,
 	}
-	testInboundHysteria2(t, inboundOptions, outboundOptions)
-	t.Run("ECH", func(t *testing.T) {
-		inboundOptions := inboundOptions
-		outboundOptions := outboundOptions
-		inboundOptions.EchKey = echKeyPem
-		outboundOptions.ECHOpts = outbound.ECHOptions{
-			Enable: true,
-			Config: echConfigBase64,
-		}
-		testInboundHysteria2(t, inboundOptions, outboundOptions)
-	})
+	testInboundHysteria2TLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundHysteria2_Brutal(t *testing.T) {
@@ -109,15 +124,5 @@ func TestInboundHysteria2_Brutal(t *testing.T) {
 		Up:          "30 Mbps",
 		Down:        "200 Mbps",
 	}
-	testInboundHysteria2(t, inboundOptions, outboundOptions)
-	t.Run("ECH", func(t *testing.T) {
-		inboundOptions := inboundOptions
-		outboundOptions := outboundOptions
-		inboundOptions.EchKey = echKeyPem
-		outboundOptions.ECHOpts = outbound.ECHOptions{
-			Enable: true,
-			Config: echConfigBase64,
-		}
-		testInboundHysteria2(t, inboundOptions, outboundOptions)
-	})
+	testInboundHysteria2TLS(t, inboundOptions, outboundOptions)
 }

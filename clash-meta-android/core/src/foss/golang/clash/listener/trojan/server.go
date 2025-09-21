@@ -15,6 +15,7 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/reality"
 	"github.com/metacubex/mihomo/listener/sing"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/gun"
 	"github.com/metacubex/mihomo/transport/shadowsocks/core"
 	"github.com/metacubex/mihomo/transport/socks5"
@@ -70,7 +71,7 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 	}
 	sl = &Listener{false, config, nil, keys, pickCipher, h}
 
-	tlsConfig := &tlsC.Config{}
+	tlsConfig := &tlsC.Config{Time: ntp.Now}
 	var realityBuilder *reality.Builder
 	var httpServer http.Server
 
@@ -88,9 +89,25 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 			}
 		}
 	}
+	tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(config.ClientAuthType)
+	if len(config.ClientAuthCert) > 0 {
+		if tlsConfig.ClientAuth == tlsC.NoClientCert {
+			tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+		}
+	}
+	if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.ClientCAs = pool
+	}
 	if config.RealityConfig.PrivateKey != "" {
 		if tlsConfig.Certificates != nil {
 			return nil, errors.New("certificate is unavailable in reality")
+		}
+		if tlsConfig.ClientAuth != tlsC.NoClientCert {
+			return nil, errors.New("client-auth is unavailable in reality")
 		}
 		realityBuilder, err = config.RealityConfig.Build(tunnel)
 		if err != nil {

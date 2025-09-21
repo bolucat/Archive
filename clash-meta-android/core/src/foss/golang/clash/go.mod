@@ -6,7 +6,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/enfein/mieru/v3 v3.19.1
+	github.com/enfein/mieru/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
@@ -14,8 +14,8 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905
 	github.com/klauspost/compress v1.17.9 // lastest version compatible with golang1.20
 	github.com/mdlayher/netlink v1.7.2
-	github.com/metacubex/amneziawg-go v0.0.0-20250820070344-732c0c9d418a
-	github.com/metacubex/bart v0.20.5
+	github.com/metacubex/amneziawg-go v0.0.0-20250902133113-a7f637c14281
+	github.com/metacubex/bart v0.24.0
 	github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b
 	github.com/metacubex/blake3 v0.1.0
 	github.com/metacubex/chacha v0.1.5
@@ -24,18 +24,18 @@ require (
 	github.com/metacubex/quic-go v0.54.1-0.20250730114134-a1ae705fe295
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
-	github.com/metacubex/sing v0.5.5
-	github.com/metacubex/sing-mux v0.3.3-0.20250813083925-d7c9aeaeeaac
-	github.com/metacubex/sing-quic v0.0.0-20250718154553-1b193bec4cbb
+	github.com/metacubex/sing v0.5.6
+	github.com/metacubex/sing-mux v0.3.4
+	github.com/metacubex/sing-quic v0.0.0-20250909002258-06122df8f231
 	github.com/metacubex/sing-shadowsocks v0.2.12
-	github.com/metacubex/sing-shadowsocks2 v0.2.6
+	github.com/metacubex/sing-shadowsocks2 v0.2.7
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.7
-	github.com/metacubex/sing-vmess v0.2.4-0.20250822020810-4856053566f0
+	github.com/metacubex/sing-tun v0.4.8
+	github.com/metacubex/sing-vmess v0.2.4
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
-	github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617
-	github.com/metacubex/utls v1.8.1-0.20250823120917-12f5ba126142
+	github.com/metacubex/tfo-go v0.0.0-20250921095601-b102db4216c0
+	github.com/metacubex/utls v1.8.1-0.20250921102910-221428e5d4b2
 	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0
@@ -46,7 +46,7 @@ require (
 	github.com/samber/lo v1.51.0
 	github.com/shirou/gopsutil/v4 v4.25.1 // lastest version compatible with golang1.20
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.11.0
+	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	gitlab.com/go-extension/aes-ccm v0.0.0-20230221065045-e58665ef23c7
@@ -82,15 +82,15 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
-	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/josharian/native v1.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
 	github.com/metacubex/ascon v0.1.0 // indirect
-	github.com/metacubex/gvisor v0.0.0-20250324165734-5857f47bd43b // indirect
+	github.com/metacubex/gvisor v0.0.0-20250919004547-6122b699a301 // indirect
 	github.com/metacubex/nftables v0.0.0-20250503052935-30a69ab87793 // indirect
+	github.com/metacubex/yamux v0.0.0-20250918083631-dd5f17c0be49 // indirect
 	github.com/oasisprotocol/deoxysii v0.0.0-20220228165953-2091330c22b7 // indirect
 	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/pierrec/lz4/v4 v4.1.14 // indirect

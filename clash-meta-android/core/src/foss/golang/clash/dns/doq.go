@@ -331,15 +331,19 @@ func (doq *dnsOverQUIC) openConnection(ctx context.Context) (conn *quic.Conn, er
 		return nil, err
 	}
 
-	tlsConfig := ca.GetGlobalTLSConfig(
-		&tls.Config{
+	tlsConfig, err := ca.GetTLSConfig(ca.Option{
+		TLSConfig: &tls.Config{
 			ServerName:         host,
 			InsecureSkipVerify: doq.skipCertVerify,
 			NextProtos: []string{
 				NextProtoDQ,
 			},
 			SessionTicketsDisabled: false,
-		})
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	transport := quic.Transport{Conn: udp}
 	transport.SetCreatedConn(true) // auto close conn

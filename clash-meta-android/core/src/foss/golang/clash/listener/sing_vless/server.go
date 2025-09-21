@@ -5,9 +5,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"reflect"
 	"strings"
-	"unsafe"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/ca"
@@ -17,48 +15,20 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/reality"
 	"github.com/metacubex/mihomo/listener/sing"
-	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/gun"
 	"github.com/metacubex/mihomo/transport/vless/encryption"
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
-	"github.com/metacubex/sing-vmess/vless"
 	"github.com/metacubex/sing/common"
 	"github.com/metacubex/sing/common/metadata"
-	"github.com/metacubex/sing/common/network"
 )
-
-func init() {
-	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := network.CastReader[*reality.Conn](conn) // *utls.Conn
-		if !loaded {
-			return
-		}
-		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn).Elem(), unsafe.Pointer(tlsConn)
-	})
-
-	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := network.CastReader[*tlsC.UConn](conn) // *utls.UConn
-		if !loaded {
-			return
-		}
-		return true, tlsConn.NetConn(), reflect.TypeOf(tlsConn.Conn).Elem(), unsafe.Pointer(tlsConn.Conn)
-	})
-
-	vless.RegisterTLS(func(conn net.Conn) (loaded bool, netConn net.Conn, reflectType reflect.Type, reflectPointer unsafe.Pointer) {
-		tlsConn, loaded := network.CastReader[*encryption.CommonConn](conn)
-		if !loaded {
-			return
-		}
-		return true, tlsConn.Conn, reflect.TypeOf(tlsConn).Elem(), unsafe.Pointer(tlsConn)
-	})
-}
 
 type Listener struct {
 	closed     bool
 	config     LC.VlessServer
 	listeners  []net.Listener
-	service    *vless.Service[string]
+	service    *Service[string]
 	decryption *encryption.ServerInstance
 }
 
@@ -79,7 +49,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 		return nil, err
 	}
 
-	service := vless.NewService[string](log.SingLogger, h)
+	service := NewService[string](h)
 	service.UpdateUsers(
 		common.Map(config.Users, func(it LC.VlessUser) string {
 			return it.Username
@@ -106,7 +76,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 		}()
 	}
 
-	tlsConfig := &tlsC.Config{}
+	tlsConfig := &tlsC.Config{Time: ntp.Now}
 	var realityBuilder *reality.Builder
 	var httpServer http.Server
 
@@ -124,9 +94,25 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 			}
 		}
 	}
+	tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(config.ClientAuthType)
+	if len(config.ClientAuthCert) > 0 {
+		if tlsConfig.ClientAuth == tlsC.NoClientCert {
+			tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+		}
+	}
+	if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfig.ClientCAs = pool
+	}
 	if config.RealityConfig.PrivateKey != "" {
 		if tlsConfig.Certificates != nil {
 			return nil, errors.New("certificate is unavailable in reality")
+		}
+		if tlsConfig.ClientAuth != tlsC.NoClientCert {
+			return nil, errors.New("client-auth is unavailable in reality")
 		}
 		realityBuilder, err = config.RealityConfig.Build(tunnel)
 		if err != nil {
@@ -230,7 +216,7 @@ func (l *Listener) HandleConn(conn net.Conn, tunnel C.Tunnel, additions ...inbou
 	ctx := sing.WithAdditions(context.TODO(), additions...)
 	if l.decryption != nil {
 		var err error
-		conn, err = l.decryption.Handshake(conn)
+		conn, err = l.decryption.Handshake(conn, nil)
 		if err != nil {
 			return
 		}

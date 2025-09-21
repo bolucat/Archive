@@ -34,7 +34,12 @@ func NewClient(encryption string) (*ClientInstance, error) {
 			return nil, fmt.Errorf("invaild vless encryption value: %s", encryption)
 		}
 		var nfsPKeysBytes [][]byte
+		var paddings []string
 		for _, r := range s[3:] {
+			if len(r) < 20 {
+				paddings = append(paddings, r)
+				continue
+			}
 			b, err := base64.RawURLEncoding.DecodeString(r)
 			if err != nil {
 				return nil, fmt.Errorf("invaild vless encryption value: %s", encryption)
@@ -44,8 +49,9 @@ func NewClient(encryption string) (*ClientInstance, error) {
 			}
 			nfsPKeysBytes = append(nfsPKeysBytes, b)
 		}
+		padding := strings.Join(paddings, ".")
 		client := &ClientInstance{}
-		if err := client.Init(nfsPKeysBytes, xorMode, seconds); err != nil {
+		if err := client.Init(nfsPKeysBytes, xorMode, seconds, padding); err != nil {
 			return nil, fmt.Errorf("failed to use encryption: %w", err)
 		}
 		return client, nil
@@ -71,20 +77,27 @@ func NewServer(decryption string) (*ServerInstance, error) {
 		default:
 			return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)
 		}
-		var seconds uint32
-		if s[2] != "1rtt" {
-			t := strings.TrimSuffix(s[2], "s")
-			if t == s[0] {
-				return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)
-			}
-			i, err := strconv.Atoi(t)
+		t := strings.SplitN(strings.TrimSuffix(s[2], "s"), "-", 2)
+		i, err := strconv.Atoi(t[0])
+		if err != nil {
+			return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)
+		}
+		secondsFrom := int64(i)
+		secondsTo := int64(0)
+		if len(t) == 2 {
+			i, err = strconv.Atoi(t[1])
 			if err != nil {
 				return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)
 			}
-			seconds = uint32(i)
+			secondsTo = int64(i)
 		}
 		var nfsSKeysBytes [][]byte
+		var paddings []string
 		for _, r := range s[3:] {
+			if len(r) < 20 {
+				paddings = append(paddings, r)
+				continue
+			}
 			b, err := base64.RawURLEncoding.DecodeString(r)
 			if err != nil {
 				return nil, fmt.Errorf("invaild vless decryption value: %s", decryption)
@@ -94,8 +107,9 @@ func NewServer(decryption string) (*ServerInstance, error) {
 			}
 			nfsSKeysBytes = append(nfsSKeysBytes, b)
 		}
+		padding := strings.Join(paddings, ".")
 		server := &ServerInstance{}
-		if err := server.Init(nfsSKeysBytes, xorMode, seconds); err != nil {
+		if err := server.Init(nfsSKeysBytes, xorMode, secondsFrom, secondsTo, padding); err != nil {
 			return nil, fmt.Errorf("failed to use decryption: %w", err)
 		}
 		return server, nil

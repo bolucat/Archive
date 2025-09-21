@@ -64,10 +64,11 @@ type VlessOption struct {
 	HTTP2Opts         HTTP2Options      `proxy:"h2-opts,omitempty"`
 	GrpcOpts          GrpcOptions       `proxy:"grpc-opts,omitempty"`
 	WSOpts            WSOptions         `proxy:"ws-opts,omitempty"`
-	WSPath            string            `proxy:"ws-path,omitempty"`
 	WSHeaders         map[string]string `proxy:"ws-headers,omitempty"`
 	SkipCertVerify    bool              `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint       string            `proxy:"fingerprint,omitempty"`
+	Certificate       string            `proxy:"certificate,omitempty"`
+	PrivateKey        string            `proxy:"private-key,omitempty"`
 	ServerName        string            `proxy:"servername,omitempty"`
 	ClientFingerprint string            `proxy:"client-fingerprint,omitempty"`
 }
@@ -96,14 +97,17 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 		}
 		if v.option.TLS {
 			wsOpts.TLS = true
-			tlsConfig := &tls.Config{
-				MinVersion:         tls.VersionTLS12,
-				ServerName:         host,
-				InsecureSkipVerify: v.option.SkipCertVerify,
-				NextProtos:         []string{"http/1.1"},
-			}
-
-			wsOpts.TLSConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, v.option.Fingerprint)
+			wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+				TLSConfig: &tls.Config{
+					MinVersion:         tls.VersionTLS12,
+					ServerName:         host,
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					NextProtos:         []string{"http/1.1"},
+				},
+				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -206,6 +210,8 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 			Host:              host,
 			SkipCertVerify:    v.option.SkipCertVerify,
 			FingerPrint:       v.option.Fingerprint,
+			Certificate:       v.option.Certificate,
+			PrivateKey:        v.option.PrivateKey,
 			ClientFingerprint: v.option.ClientFingerprint,
 			ECH:               v.echConfig,
 			Reality:           v.realityConfig,
@@ -407,7 +413,7 @@ func parseVlessAddr(metadata *C.Metadata, xudp bool) *vless.DstAddr {
 
 func NewVless(option VlessOption) (*Vless, error) {
 	var addons *vless.Addons
-	if option.Network != "ws" && len(option.Flow) >= 16 {
+	if len(option.Flow) >= 16 {
 		option.Flow = option.Flow[:16]
 		if option.Flow != vless.XRV {
 			return nil, fmt.Errorf("unsupported xtls flow type: %s", option.Flow)
@@ -499,10 +505,15 @@ func NewVless(option VlessOption) (*Vless, error) {
 		}
 		var tlsConfig *tls.Config
 		if option.TLS {
-			tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(&tls.Config{
-				InsecureSkipVerify: v.option.SkipCertVerify,
-				ServerName:         v.option.ServerName,
-			}, v.option.Fingerprint)
+			tlsConfig, err = ca.GetTLSConfig(ca.Option{
+				TLSConfig: &tls.Config{
+					InsecureSkipVerify: v.option.SkipCertVerify,
+					ServerName:         v.option.ServerName,
+				},
+				Fingerprint: v.option.Fingerprint,
+				Certificate: v.option.Certificate,
+				PrivateKey:  v.option.PrivateKey,
+			})
 			if err != nil {
 				return nil, err
 			}

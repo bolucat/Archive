@@ -39,6 +39,8 @@ type Socks5Option struct {
 	UDP            bool   `proxy:"udp,omitempty"`
 	SkipCertVerify bool   `proxy:"skip-cert-verify,omitempty"`
 	Fingerprint    string `proxy:"fingerprint,omitempty"`
+	Certificate    string `proxy:"certificate,omitempty"`
+	PrivateKey     string `proxy:"private-key,omitempty"`
 }
 
 // StreamConnContext implements C.ProxyAdapter
@@ -193,13 +195,16 @@ func (ss *Socks5) clientHandshakeContext(ctx context.Context, c net.Conn, addr s
 func NewSocks5(option Socks5Option) (*Socks5, error) {
 	var tlsConfig *tls.Config
 	if option.TLS {
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: option.SkipCertVerify,
-			ServerName:         option.Server,
-		}
-
 		var err error
-		tlsConfig, err = ca.GetSpecifiedFingerprintTLSConfig(tlsConfig, option.Fingerprint)
+		tlsConfig, err = ca.GetTLSConfig(ca.Option{
+			TLSConfig: &tls.Config{
+				InsecureSkipVerify: option.SkipCertVerify,
+				ServerName:         option.Server,
+			},
+			Fingerprint: option.Fingerprint,
+			Certificate: option.Certificate,
+			PrivateKey:  option.PrivateKey,
+		})
 		if err != nil {
 			return nil, err
 		}

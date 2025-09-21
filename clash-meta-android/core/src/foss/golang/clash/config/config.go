@@ -117,7 +117,6 @@ type Cors struct {
 
 // Experimental config
 type Experimental struct {
-	Fingerprints     []string
 	QUICGoDisableGSO bool
 	QUICGoDisableECN bool
 	IP4PEnable       bool
@@ -175,6 +174,8 @@ type Profile struct {
 type TLS struct {
 	Certificate     string
 	PrivateKey      string
+	ClientAuthType  string
+	ClientAuthCert  string
 	EchKey          string
 	CustomTrustCert []string
 }
@@ -292,6 +293,7 @@ type RawTun struct {
 	ExcludePackage         []string       `yaml:"exclude-package" json:"exclude-package,omitempty"`
 	EndpointIndependentNat bool           `yaml:"endpoint-independent-nat" json:"endpoint-independent-nat,omitempty"`
 	UDPTimeout             int64          `yaml:"udp-timeout" json:"udp-timeout,omitempty"`
+	DisableICMPForwarding  bool           `yaml:"disable-icmp-forwarding" json:"disable-icmp-forwarding,omitempty"`
 	FileDescriptor         int            `yaml:"file-descriptor" json:"file-descriptor"`
 
 	Inet4RouteAddress        []netip.Prefix `yaml:"inet4-route-address" json:"inet4-route-address,omitempty"`
@@ -368,6 +370,8 @@ type RawSniffingConfig struct {
 type RawTLS struct {
 	Certificate     string   `yaml:"certificate" json:"certificate"`
 	PrivateKey      string   `yaml:"private-key" json:"private-key"`
+	ClientAuthType  string   `yaml:"client-auth-type" json:"client-auth-type"`
+	ClientAuthCert  string   `yaml:"client-auth-cert" json:"client-auth-cert"`
 	EchKey          string   `yaml:"ech-key" json:"ech-key"`
 	CustomTrustCert []string `yaml:"custom-certifactes" json:"custom-certifactes"`
 }
@@ -790,7 +794,6 @@ func parseController(cfg *RawConfig) (*Controller, error) {
 
 func parseExperimental(cfg *RawConfig) (*Experimental, error) {
 	return &Experimental{
-		Fingerprints:     cfg.Experimental.Fingerprints,
 		QUICGoDisableGSO: cfg.Experimental.QUICGoDisableGSO,
 		QUICGoDisableECN: cfg.Experimental.QUICGoDisableECN,
 		IP4PEnable:       cfg.Experimental.IP4PEnable,
@@ -828,6 +831,8 @@ func parseTLS(cfg *RawConfig) (*TLS, error) {
 	return &TLS{
 		Certificate:     cfg.TLS.Certificate,
 		PrivateKey:      cfg.TLS.PrivateKey,
+		ClientAuthType:  cfg.TLS.ClientAuthType,
+		ClientAuthCert:  cfg.TLS.ClientAuthCert,
 		EchKey:          cfg.TLS.EchKey,
 		CustomTrustCert: cfg.TLS.CustomTrustCert,
 	}, nil
@@ -1552,6 +1557,7 @@ func parseTun(rawTun RawTun, general *General) error {
 		ExcludePackage:         rawTun.ExcludePackage,
 		EndpointIndependentNat: rawTun.EndpointIndependentNat,
 		UDPTimeout:             rawTun.UDPTimeout,
+		DisableICMPForwarding:  rawTun.DisableICMPForwarding,
 		FileDescriptor:         rawTun.FileDescriptor,
 
 		Inet4RouteAddress:        rawTun.Inet4RouteAddress,

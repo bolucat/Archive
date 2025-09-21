@@ -11,6 +11,7 @@ import (
 	"github.com/metacubex/mihomo/component/dialer"
 	"github.com/metacubex/mihomo/component/proxydialer"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/ntp"
 	gost "github.com/metacubex/mihomo/transport/gost-plugin"
 	"github.com/metacubex/mihomo/transport/restls"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
@@ -64,6 +65,8 @@ type v2rayObfsOption struct {
 	TLS                      bool              `obfs:"tls,omitempty"`
 	ECHOpts                  ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint              string            `obfs:"fingerprint,omitempty"`
+	Certificate              string            `obfs:"certificate,omitempty"`
+	PrivateKey               string            `obfs:"private-key,omitempty"`
 	Headers                  map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify           bool              `obfs:"skip-cert-verify,omitempty"`
 	Mux                      bool              `obfs:"mux,omitempty"`
@@ -78,6 +81,8 @@ type gostObfsOption struct {
 	TLS            bool              `obfs:"tls,omitempty"`
 	ECHOpts        ECHOptions        `obfs:"ech-opts,omitempty"`
 	Fingerprint    string            `obfs:"fingerprint,omitempty"`
+	Certificate    string            `obfs:"certificate,omitempty"`
+	PrivateKey     string            `obfs:"private-key,omitempty"`
 	Headers        map[string]string `obfs:"headers,omitempty"`
 	SkipCertVerify bool              `obfs:"skip-cert-verify,omitempty"`
 	Mux            bool              `obfs:"mux,omitempty"`
@@ -87,6 +92,8 @@ type shadowTLSOption struct {
 	Password       string   `obfs:"password,omitempty"`
 	Host           string   `obfs:"host"`
 	Fingerprint    string   `obfs:"fingerprint,omitempty"`
+	Certificate    string   `obfs:"certificate,omitempty"`
+	PrivateKey     string   `obfs:"private-key,omitempty"`
 	SkipCertVerify bool     `obfs:"skip-cert-verify,omitempty"`
 	Version        int      `obfs:"version,omitempty"`
 	ALPN           []string `obfs:"alpn,omitempty"`
@@ -251,8 +258,9 @@ func (ss *ShadowSocks) SupportUOT() bool {
 
 func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
-	method, err := shadowsocks.CreateMethod(context.Background(), option.Cipher, shadowsocks.MethodOptions{
+	method, err := shadowsocks.CreateMethod(option.Cipher, shadowsocks.MethodOptions{
 		Password: option.Password,
+		TimeFunc: ntp.Now,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ss %s cipher: %s initialize error: %w", addr, option.Cipher, err)
@@ -300,6 +308,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			v2rayOption.TLS = true
 			v2rayOption.SkipCertVerify = opts.SkipCertVerify
 			v2rayOption.Fingerprint = opts.Fingerprint
+			v2rayOption.Certificate = opts.Certificate
+			v2rayOption.PrivateKey = opts.PrivateKey
 
 			echConfig, err := opts.ECHOpts.Parse()
 			if err != nil {
@@ -328,6 +338,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			gostOption.TLS = true
 			gostOption.SkipCertVerify = opts.SkipCertVerify
 			gostOption.Fingerprint = opts.Fingerprint
+			gostOption.Certificate = opts.Certificate
+			gostOption.PrivateKey = opts.PrivateKey
 
 			echConfig, err := opts.ECHOpts.Parse()
 			if err != nil {
@@ -348,6 +360,8 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 			Password:          opt.Password,
 			Host:              opt.Host,
 			Fingerprint:       opt.Fingerprint,
+			Certificate:       opt.Certificate,
+			PrivateKey:        opt.PrivateKey,
 			ClientFingerprint: option.ClientFingerprint,
 			SkipCertVerify:    opt.SkipCertVerify,
 			Version:           opt.Version,

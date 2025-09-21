@@ -24,18 +24,18 @@ require (
 	github.com/metacubex/quic-go v0.54.1-0.20250730114134-a1ae705fe295
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
-	github.com/metacubex/sing v0.5.6-0.20250912172506-82b42a287539
-	github.com/metacubex/sing-mux v0.3.4-0.20250918084132-3bcf39257411
+	github.com/metacubex/sing v0.5.6
+	github.com/metacubex/sing-mux v0.3.4
 	github.com/metacubex/sing-quic v0.0.0-20250909002258-06122df8f231
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.7
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.8-0.20250912172659-89eba941fb22
-	github.com/metacubex/sing-vmess v0.2.4-0.20250908094854-bc8e2a88b115
+	github.com/metacubex/sing-tun v0.4.8
+	github.com/metacubex/sing-vmess v0.2.4
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250503055512-501391591dee
-	github.com/metacubex/tfo-go v0.0.0-20250827083229-aa432b865617
-	github.com/metacubex/utls v1.8.1-0.20250916021850-3fcad0728a32
+	github.com/metacubex/tfo-go v0.0.0-20250921095601-b102db4216c0
+	github.com/metacubex/utls v1.8.1-0.20250921102910-221428e5d4b2
 	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0

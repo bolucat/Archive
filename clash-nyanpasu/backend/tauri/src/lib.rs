@@ -1,4 +1,4 @@
-#![feature(auto_traits, negative_impls, trait_alias)]
+#![feature(auto_traits, negative_impls, trait_alias, impl_trait_in_assoc_type)]
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -272,6 +272,10 @@ pub fn run() -> std::io::Result<()> {
             ipc::get_core_dir,
             // clash layer
             ipc::get_clash_ws_connections_state,
+            // window management
+            ipc::move_window_to_other_monitor,
+            ipc::center_window,
+            ipc::get_available_monitors,
             // updater layer
             ipc::check_update,
         ])
