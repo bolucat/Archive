@@ -5,25 +5,29 @@ import UserDAL from './userdal'
 export interface ITokenInfo {
   tokenfrom: 'token' | 'account'
 
-
   access_token: string
   refresh_token: string
-  expires_in: number
-  token_type: string
 
-  access_token_v2?: string
-  refresh_token_v2?: string
-  expires_in_v2?: number
-  token_type_v2?: string
+  session_expires_in: number
+  open_api_token_type: string
+  open_api_access_token: string
+  open_api_refresh_token: string
+  open_api_expires_in: number
 
   signature: string
   device_id: string
+  expires_in: number
+  token_type: string
   user_id: string
   user_name: string
+
   avatar: string
   nick_name: string
   default_drive_id: string
   default_sbox_drive_id: string
+  resource_drive_id: string
+  backup_drive_id: string
+  sbox_drive_id: string
   role: string
   status: string
   expire_time: string
@@ -39,6 +43,7 @@ export interface ITokenInfo {
   total_size: number
   spaceinfo: string
   vipname: string
+  vipIcon: string
   vipexpire: string
 
 

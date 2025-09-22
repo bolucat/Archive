@@ -10,7 +10,6 @@ import PageVideoXBTVue from './layout/PageVideoXBT.vue'
 import PageCode from './layout/PageCode.vue'
 import PageOffice from './layout/PageOffice.vue'
 import PageImage from './layout/PageImage.vue'
-import PageHelp from './layout/PageHelp.vue'
 import PageVideo from './layout/PageVideo.vue'
 import PageWorker from './layout/PageWorker.vue'
 
@@ -20,7 +19,6 @@ export default {
 
     return () => {
       if (appStore.appPage == 'PageMain') return h(PageMain)
-      if (appStore.appPage == 'PageHelp') return h(PageHelp)
       if (appStore.appPage == 'PageOffice') return h(PageOffice)
       if (appStore.appPage == 'PageVideoXBT') return h(PageVideoXBTVue)
       if (appStore.appPage == 'PageCode') return h(PageCode)

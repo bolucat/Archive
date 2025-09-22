@@ -11,6 +11,7 @@ declare interface Window {
   platform: any
   WinMsg: any
   WebToElectron: any
+  WebToWindow: any
   WebToElectronCB: any
   WebSpawnSync: any
   WebExecSync: any
@@ -26,6 +27,7 @@ declare interface Window {
   WebRelaunch: any
   WebRelaunchAria: () => Promise<number>
   WebSetProgressBar: any
+  WebGetCookies: any
   WebSetCookies: any
   WebOpenWindow: any
   WebOpenUrl: any

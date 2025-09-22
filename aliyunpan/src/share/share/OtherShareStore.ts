@@ -1,6 +1,6 @@
 import fuzzysort from 'fuzzysort'
 import { defineStore } from 'pinia'
-import { GetSelectedList, GetFocusNext, SelectAll, MouseSelectOne, KeyboardSelectOne } from '../../utils/selecthelper'
+import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, SelectAll } from '../../utils/selecthelper'
 import { HanToPin } from '../../utils/utils'
 
 
@@ -21,24 +21,25 @@ export interface IOtherShareLinkModel {
 type Item = IOtherShareLinkModel
 
 export interface OtherShareState {
-  
+
   ListLoading: boolean
-  
+
   ListDataRaw: Item[]
-  
+
   ListDataShow: Item[]
 
-  
+
   ListSelected: Set<string>
-  
+
   ListOrderKey: string
-  
+
   ListFocusKey: string
-  
+
   ListSelectKey: string
-  
+
   ListSearchKey: string
 }
+
 type State = OtherShareState
 const KEY = 'share_id'
 
@@ -58,7 +59,7 @@ const useOtherShareStore = defineStore('othershare', {
     ListDataCount(state: State): number {
       return state.ListDataShow.length
     },
-    
+
     IsListSelected(state: State): boolean {
       return state.ListSelected.size > 0
     },
@@ -74,16 +75,16 @@ const useOtherShareStore = defineStore('othershare', {
   },
 
   actions: {
-    
+
     aLoadListData(list: Item[]) {
-      
+
       let item: Item
       for (let i = 0, maxi = list.length; i < maxi; i++) {
         item = list[i]
         item.description = HanToPin(item.share_name)
       }
       this.ListDataRaw = this.mGetOrder(this.ListOrderKey, list)
-      
+
       const oldSelected = this.ListSelected
       const newSelected = new Set<string>()
       let key = ''
@@ -93,45 +94,50 @@ const useOtherShareStore = defineStore('othershare', {
       let listSelectKey = this.ListSelectKey
       for (let i = 0, maxi = list.length; i < maxi; i++) {
         key = list[i][KEY]
-        if (oldSelected.has(key)) newSelected.add(key) 
+        if (oldSelected.has(key)) newSelected.add(key)
         if (key == listFocusKey) findFocusKey = true
         if (key == listSelectKey) findSelectKey = true
       }
       if (!findFocusKey) listFocusKey = ''
       if (!findSelectKey) listSelectKey = ''
-      
-      this.$patch({ ListSelected: newSelected, ListFocusKey: listFocusKey, ListSelectKey: listSelectKey, ListSearchKey: '' })
-      this.mRefreshListDataShow(true) 
+
+      this.$patch({
+        ListSelected: newSelected,
+        ListFocusKey: listFocusKey,
+        ListSelectKey: listSelectKey,
+        ListSearchKey: ''
+      })
+      this.mRefreshListDataShow(true)
     },
-    
+
     mSearchListData(value: string) {
-      
+
       this.$patch({ ListSelected: new Set<string>(), ListFocusKey: '', ListSelectKey: '', ListSearchKey: value })
-      this.mRefreshListDataShow(true) 
+      this.mRefreshListDataShow(true)
     },
-    
+
     mOrderListData(value: string) {
-      
+
       this.$patch({ ListOrderKey: value, ListSelected: new Set<string>(), ListFocusKey: '', ListSelectKey: '' })
       this.ListDataRaw = this.mGetOrder(value, this.ListDataRaw)
-      this.mRefreshListDataShow(true) 
+      this.mRefreshListDataShow(true)
     },
     mGetOrder(order: string, list: Item[]) {
       if (order == 'state') list.sort((a, b) => a.share_msg.localeCompare(b.share_msg))
-      if (order == 'update') list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()) 
-      if (order == 'time') list.sort((a, b) => b.saved_time - a.saved_time) 
+      if (order == 'update') list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      if (order == 'time') list.sort((a, b) => b.saved_time - a.saved_time)
       return list
     },
-    
+
     mRefreshListDataShow(refreshRaw: boolean) {
       if (!refreshRaw) {
-        const listDataShow = this.ListDataShow.concat() 
+        const listDataShow = this.ListDataShow.concat()
         Object.freeze(listDataShow)
         this.ListDataShow = listDataShow
         return
       }
       if (this.ListSearchKey) {
-        
+
         const searchList: Item[] = []
         const results = fuzzysort.go(this.ListSearchKey, this.ListDataRaw, {
           threshold: -200000,
@@ -144,61 +150,77 @@ const useOtherShareStore = defineStore('othershare', {
         Object.freeze(searchList)
         this.ListDataShow = searchList
       } else {
-        
-        const listDataShow = this.ListDataRaw.concat() 
+
+        const listDataShow = this.ListDataRaw.concat()
         Object.freeze(listDataShow)
         this.ListDataShow = listDataShow
       }
-      
+
       const freezeList = this.ListDataShow
       const oldSelected = this.ListSelected
       const newSelected = new Set<string>()
       let key = ''
       for (let i = 0, maxi = freezeList.length; i < maxi; i++) {
         key = freezeList[i][KEY]
-        if (oldSelected.has(key)) newSelected.add(key) 
+        if (oldSelected.has(key)) newSelected.add(key)
       }
       this.ListSelected = newSelected
     },
 
-    
+
     mSelectAll() {
-      this.$patch({ ListSelected: SelectAll(this.ListDataShow, KEY, this.ListSelected), ListFocusKey: '', ListSelectKey: '' })
-      this.mRefreshListDataShow(false) 
+      this.$patch({
+        ListSelected: SelectAll(this.ListDataShow, KEY, this.ListSelected),
+        ListFocusKey: '',
+        ListSelectKey: ''
+      })
+      this.mRefreshListDataShow(false)
     },
+
     mMouseSelect(key: string, Ctrl: boolean, Shift: boolean) {
       if (this.ListDataShow.length == 0) return
       const data = MouseSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, '')
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
+
     mKeyboardSelect(key: string, Ctrl: boolean, Shift: boolean) {
       if (this.ListDataShow.length == 0) return
       const data = KeyboardSelectOne(this.ListDataShow, KEY, this.ListSelected, this.ListFocusKey, this.ListSelectKey, key, Ctrl, Shift, '')
       this.$patch({ ListSelected: data.selectedNew, ListFocusKey: data.focusLast, ListSelectKey: data.selectedLast })
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
 
-    
+    mRangSelect(lastkey: string, file_idList: string[]) {
+      if (this.ListDataShow.length == 0) return
+      const selectedNew = new Set<string>(this.ListSelected)
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        selectedNew.add(file_idList[i])
+      }
+      this.$patch({ ListSelected: selectedNew, ListFocusKey: lastkey, ListSelectKey: lastkey })
+      this.mRefreshListDataShow(false)
+    },
+
     GetSelected() {
       return GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
     },
-    
+
     GetSelectedFirst() {
       const list = GetSelectedList(this.ListDataShow, KEY, this.ListSelected)
       if (list.length > 0) return list[0]
       return undefined
     },
+
     mSetFocus(key: string) {
       this.ListFocusKey = key
-      this.mRefreshListDataShow(false) 
+      this.mRefreshListDataShow(false)
     },
-    
+
     mGetFocus() {
       if (!this.ListFocusKey && this.ListDataShow.length > 0) return this.ListDataShow[0][KEY]
       return this.ListFocusKey
     },
-    
+
     mGetFocusNext(position: string) {
       return GetFocusNext(this.ListDataShow, KEY, this.ListFocusKey, position, '')
     },
@@ -213,7 +235,7 @@ const useOtherShareStore = defineStore('othershare', {
         }
       }
       this.ListDataRaw = newDataList
-      this.mRefreshListDataShow(true) 
+      this.mRefreshListDataShow(true)
     }
   }
 })

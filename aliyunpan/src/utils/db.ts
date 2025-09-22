@@ -127,11 +127,18 @@ class XBYDB3 extends Dexie {
     return this.itoken.put(token, token.user_id).catch(() => {})
   }
 
+  async saveUserBatch(tokens: ITokenInfo[]): Promise<boolean | string> {
+    if (tokens.length == 0) return false
+    if (!this.isOpen()) await this.open().catch()
+    return this.itoken.bulkPut(tokens).catch()
+  }
+
   async getCache(key: string): Promise<Blob | undefined> {
     if (!this.isOpen()) await this.open().catch(() => {})
     const val = await this.icache.get(key)
     return val
   }
+
   async saveCache(key: string, data: Blob) {
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.icache.put(data, key)

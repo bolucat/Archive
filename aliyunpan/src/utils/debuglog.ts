@@ -35,7 +35,7 @@ class DebugLogC {
 
   mSaveLog(logtype: string, logmessage: string, err: any) {
     if (!logmessage && !err) return
-    if (logmessage && typeof logmessage == 'string' && logmessage.length > 500) logmessage = logmessage.substring(0, 500) + '...'
+    if (logmessage && logmessage.length > 500) logmessage = logmessage.substring(0, 500) + '...'
     const time = new Date()
     if (this.logList.length > 500) {
       this.logList.splice(400)

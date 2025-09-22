@@ -14,8 +14,11 @@ declare global {
     Prism: any
     WebUserToken: any
     WebToElectron: any
+    WebToWindow: any
     WebClearCache: any
     WebRelaunch: any
+    WebGetCookies: any
+    WebSetCookies: any
     WebClearCookies: any
     WebShutDown: any
     WebOpenWindow: any
@@ -27,16 +30,15 @@ declare global {
     UploadPort: any
     DownloadPort: any
     MainPort: any
+    MainProxyServer: any
+    MainProxyHost: any
+    MainProxyPort: any
     WinMsgToUpload: any
     WinMsgToDownload: any
     WinMsgToMain: any
-    AutoLanuchAtStartup: any
-    CheckUpdate: any
     IsMainPage: boolean
     WebSetProxy: any
     speedLimte: number
     WebSetProgressBar: any
-    Aria2cDownloadSpeed: any
-    Aria2cUploadSpeed: any
   }
 }

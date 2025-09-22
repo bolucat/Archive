@@ -6,7 +6,6 @@
 </p>
 <p align="center">
     <em>小白羊网盘 - powered by 阿里云盘Open.</em>
-    
 </p>
 
 <p align="center">
@@ -49,28 +48,6 @@
 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-) [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-) [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-) [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-) [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-) [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-) [![](https://img.shields.io/badge/-%E5%A3%B0%E6%98%8E-blue)](#免责声明-)
 
 
-# 小白羊近期将会带来全新更新
-超级好消息：
-沉寂已久的小白羊将会继续更新，带来更多强大功能！
-
-🚀 即将支持的功能包括：
-
-更多网盘支持：115网盘、123网盘、百度网盘、Google Drive、OneDrive、Dropbox、Box等
-
-网络共享协议：支持连接SMB、WebDAV等网络共享服务器
-
-媒体服务器集成：完美兼容Emby、Plex、Jellyfin等媒体服务器
-
-全平台覆盖：所有新功能将全部开源
-
-🎬 同时作者开发的 Apple全平台播放器BoxPlayer 会深度融合小白羊，欢迎下载体验
-
-下载链接：https://apps.apple.com/hk/app/boxplayer/id6739804060
-
-欢迎加入BoxPlayer测试群组：https://t.me/BoxPlayer456
-
-
-
 # 功能 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-)
 1.根据阿里云盘Open平台api开发的网盘客户端，支持win7-11，macOS，linux <br>
 
@@ -97,11 +74,8 @@
 </a>
 
 # 界面 [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-)
-![main_window](https://github.com/gaozhangmin/aliyunpan/assets/9278488/b01d09ec-9b9b-49d8-8281-aded4dbbbc3e)
-![movie_detail](https://github.com/gaozhangmin/aliyunpan/assets/9278488/f7a8d8d2-b132-4344-a193-56145199553c)
-![movie_detail1](https://github.com/gaozhangmin/aliyunpan/assets/9278488/c9aa112a-c7a2-4ac0-97c9-d0c38b4b67bf)
-![movie_page](https://github.com/gaozhangmin/aliyunpan/assets/9278488/b4bbb604-fdbd-4cf5-b191-e6a33c28eeaf)
-![album](https://github.com/gaozhangmin/aliyunpan/assets/9278488/1fe490ad-f6ee-4193-b4b6-ccb4ccb740c1)
+<img src="https://github.com/gaozhangmin/staticResource/blob/master/images/main_window.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/download_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/movie_page.png" width="270">
+<img src="https://github.com/gaozhangmin/staticResource/blob/master/images/plugin_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/settings_page.png" width="270"><img src="https://github.com/gaozhangmin/staticResource/blob/master/images/share_page.png" width="270">
 <a href="#readme">
 <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
@@ -149,24 +123,24 @@
       <img width="300" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/a850d1ed-f177-47a3-a61e-b82d46c6c47d" />
     </p>
 
-    -   点击 `Cancel` 按钮，然后去 `设置` -> `隐私与安全性` 页面，点击 `仍要打开` 按钮，然后在弹出窗口里点击 `打开` 按钮即可，以后就再也不会有任何弹窗告警了 🎉
+  -   点击 `Cancel` 按钮，然后去 `设置` -> `隐私与安全性` 页面，点击 `仍要打开` 按钮，然后在弹出窗口里点击 `打开` 按钮即可，以后就再也不会有任何弹窗告警了 🎉
 
-        <p align="center">
-          <img width="500" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/53743a9f-0b0e-49e2-9331-aabc93483f73" /> <img width="200" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/0d97a636-7018-4b9a-bd68-27c1c17f6cd8" />
-        </p>
+      <p align="center">
+        <img width="500" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/53743a9f-0b0e-49e2-9331-aabc93483f73" /> <img width="200" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/0d97a636-7018-4b9a-bd68-27c1c17f6cd8" />
+      </p>
 
-    -   如果在 `隐私与安全性` 中找不到以上选项，或启动时提示文件损坏（Apple Silicon版本）。打开 `Terminal.app`，并输入以下命令（中途可能需要输入密码），然后重启 `小白羊云盘` 即可：
+  -   如果在 `隐私与安全性` 中找不到以上选项，或启动时提示文件损坏（Apple Silicon版本）。打开 `Terminal.app`，并输入以下命令（中途可能需要输入密码），然后重启 `小白羊云盘` 即可：
 
-        ```sh
-        sudo xattr -d com.apple.quarantine /Applications/小白羊云盘.app
-        ```
+      ```sh
+      sudo xattr -d com.apple.quarantine /Applications/小白羊云盘.app
+      ```
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
 
 # 小白羊公众号 [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-)
 <p align="center">
-  <img height="360" src="https://github.com/gaozhangmin/aliyunpan/assets/9278488/b47864c8-18a0-4f6d-97c5-9b6c47e54e6c" />
+  <img height="360" src="https://github.com/gaozhangmin/staticResource/blob/master/images/qrcode_search_white.png" />
 </p>
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
@@ -187,6 +161,11 @@
 [//]: # (    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">)
 
 [//]: # (</a>)
+
+# 交流社区 [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-)
+
+#### Telegram
+[![Telegram-group](https://img.shields.io/badge/Telegram-%E7%BE%A4%E7%BB%84-blue)](https://t.me/+wjdFeQ7ZNNE1NmM1)
 
 
 # 鸣谢 [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-)

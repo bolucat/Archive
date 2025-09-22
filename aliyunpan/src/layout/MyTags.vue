@@ -52,13 +52,13 @@ export default defineComponent({
   user-select: none;
 }
 .mytags .arco-input-search {
-  height: 33px;
+  height: 30px;
   margin-right: 8px;
   margin-bottom: 4px;
 }
 .mytags .arco-input-search .arco-input-wrapper {
-  padding-left: 30px;
-  padding-right: 30px;
+  padding-left: 4px;
+  padding-right: 4px;
   font-size: 12px;
 }
 .mytags .arco-input-search .arco-input-wrapper .arco-input {
@@ -70,8 +70,8 @@ export default defineComponent({
   font-size: 12px;
 }
 .mytags .arco-input-search .arco-input-append .arco-input-search-btn {
-  height: 30px;
-  padding: 0 15px;
-  font-size: 15px;
+  height: 28px;
+  padding: 0 5px;
+  font-size: 12px;
 }
 </style>

@@ -9,7 +9,7 @@ import path from 'path'
 import fsPromises from 'fs/promises'
 
 export default class AppCache {
-  
+
   static async LoadDirSize(dir: string): Promise<number> {
     try {
       const childFiles = await fsPromises.readdir(dir, { withFileTypes: true }).catch((err: any) => {
@@ -21,13 +21,36 @@ export default class AppCache {
       let total = 0
       for (let i = 0, maxi = childFiles.length; i < maxi; i++) {
         if (childFiles[i].isFile()) {
-          
           const stat = await fsPromises.lstat(path.join(dir, childFiles[i].name)).catch(() => {
             return { size: 0 }
           })
           total += stat.size
         } else if (childFiles[i].isDirectory()) {
-          
+          total += await AppCache.LoadDirSize(path.join(dir, childFiles[i].name))
+        }
+      }
+      return total
+    } catch {
+      return 0
+    }
+  }
+
+  static async LoadCacheDirSize(dir: string): Promise<number> {
+    try {
+      const childFiles = await fsPromises.readdir(dir, { withFileTypes: true }).catch((err: any) => {
+        err = FileSystemErrorMessage(err.code, err.message)
+        DebugLog.mSaveDanger('LoadCacheDirSize失败：' + dir, err)
+        message.error(err + ' ' + dir)
+        return []
+      })
+      let total = 0
+      for (let i = 0, maxi = childFiles.length; i < maxi; i++) {
+        if (childFiles[i].isFile()) {
+          const stat = await fsPromises.lstat(path.join(dir, childFiles[i].name)).catch(() => {
+            return { size: 0 }
+          })
+          total += stat.size
+        } else if (childFiles[i].isDirectory()) {
           total += await AppCache.LoadDirSize(path.join(dir, childFiles[i].name))
         }
       }
@@ -44,20 +67,25 @@ export default class AppCache {
       .catch(() => {})
   }
 
-  
-  static async aLoadCacheSize(): Promise<void> {
+
+  static async aLoadDirSize(): Promise<void> {
     const userData = getUserData()
     if (!userData) return
     const dirSize = await AppCache.LoadDirSize(userData)
     if (dirSize > 800 * 1024 * 1024) message.warning('缓存文件夹体积较大，该去 设置 里清理了')
-
-    useSettingStore().debugCacheSize = humanSize(dirSize) 
+    useSettingStore().debugDirSize = humanSize(dirSize)
   }
 
+  static async aLoadCacheSize(): Promise<void> {
+    const userData = getUserData()
+    if (!userData) return
+    const cacheSize = await AppCache.LoadCacheDirSize(path.join(userData, 'Cache'))
+    if (cacheSize > 800 * 1024 * 1024) message.warning('缓存文件夹体积较大，该去 设置 里清理了')
+    useSettingStore().debugCacheSize = humanSize(cacheSize)
+  }
   
-  static async aClearCache(delby: string): Promise<void> {
+  static async aClearDir(delby: string): Promise<void> {
     const dir = getUserData()
-    // await AppCache.DeleteDir(path.join(dir, 'Cache'))
     if (delby == 'all') {
       // window.WebClearCache({ cache: true })
       if (window.WebClearCache)
@@ -104,5 +132,14 @@ export default class AppCache {
         window.WebRelaunch()
       })
     }
+  }
+
+  static async aClearCache(): Promise<void> {
+    const dir = getUserData()
+    await AppCache.DeleteDir(path.join(dir, 'Cache')).catch(() => {})
+    message.success('删除全部缓存数据成功，自动重启小白羊')
+    Sleep(1500).then(() => {
+      window.WebRelaunch()
+    })
   }
 }

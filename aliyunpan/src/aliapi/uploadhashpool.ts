@@ -2,8 +2,8 @@ import { IUploadingUI } from '../utils/dbupload'
 import { OpenFileHandle } from '../utils/filehelper'
 import DBCache from '../utils/dbcache'
 import Sha1WorkerPool from '../utils/sha1workerpool'
-const path = window.require('path')
-const crypto = window.require('crypto')
+import path from 'node:path'
+import crypto from 'crypto'
 
 
 const sha1PosMap = new Map<number, number>()

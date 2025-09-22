@@ -148,7 +148,7 @@ export function humanTime(value: number | string | undefined): string {
   const hourStr = (hours < 10 ? '0' : '') + String(hours)
   const minStr = (minutes < 10 ? '0' : '') + String(minutes)
   const secStr = (seconds < 10 ? '0' : '') + String(seconds)
-  return hourStr + ':' + minStr + ':' + secStr 
+  return hourStr + ':' + minStr + ':' + secStr
 }
 
 export function humanTimeFM(value: number | string | undefined): string {

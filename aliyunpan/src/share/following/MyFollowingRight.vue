@@ -1,17 +1,30 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useAppStore, useMyFollowingStore, useKeyboardStore, KeyboardState, useUserStore, useWinStore } from '../../store'
+import { h, ref } from 'vue'
+import {
+  KeyboardState,
+  useAppStore,
+  useKeyboardStore,
+  useMyFollowingStore,
+  useUserStore,
+  useWinStore
+} from '../../store'
 import FollowingDAL from './FollowingDAL'
 import { copyToClipboard, getFromClipboard, openExternal } from '../../utils/electronhelper'
-import { TestCtrl, TestKey, TestKeyboardSelect, TestKeyboardScroll, onHideRightMenuScroll } from '../../utils/keyboardhelper'
+import {
+  onHideRightMenuScroll,
+  TestCtrl,
+  TestKey,
+  TestKeyboardScroll,
+  TestKeyboardSelect
+} from '../../utils/keyboardhelper'
 import message from '../../utils/message'
 import { ArrayKeyList } from '../../utils/utils'
 import AliFollowing from '../../aliapi/following'
 import AliShare from '../../aliapi/share'
 
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
-import 'ant-design-vue/es/tooltip/style/css'
 import { modalShowShareLink } from '../../utils/modal'
+import { Modal } from '@arco-design/web-vue'
 
 const daoruModel = ref(false)
 const daoruModelLoading = ref(false)
@@ -79,16 +92,27 @@ const handleBrowserLink = () => {
 const handleDeleteSelectedLink = () => {
   const list = myfollowingStore.GetSelected()
   if (list.length == 0) {
-    message.error('没有选中任何分享链接！')
+    message.error('没有选中任何订阅链接！')
     return
   }
-  const idList = ArrayKeyList<string>('user_id', list)
-  FollowingDAL.aSetFollowingBatch(useUserStore().user_id, idList, false)
+  Modal.open({
+    title: '取消选中的订阅',
+    okText: '继续',
+    bodyStyle: { minWidth: '340px' },
+    content: () => h('div', {
+      style: 'color: red',
+      innerText: '该操作不可逆，是否继续？'
+    }),
+    onOk: async () => {
+      const idList = ArrayKeyList<string>('user_id', list)
+      await FollowingDAL.aSetFollowingBatch(useUserStore().user_id, idList, false)
+    }
+  })
 }
 const handleDaoRuLink = () => {
   daoruModel.value = true
   const txt = getFromClipboard()
-  if (txt.indexOf('.aliyundrive.com/u/') > 0) {
+  if (txt.indexOf('.aliyundrive.com/u/') > 0 || txt.indexOf('.alipan.com/u/') > 0) {
     daoruModelText.value = txt
     setTimeout(() => {
       document.getElementById('MFRDaoRuLink')?.focus()
@@ -120,24 +144,48 @@ const handleSearchEnter = (event: any) => {
 </script>
 
 <template>
-  <div style="height: 47px"></div>
+  <div style="height: 7px"></div>
+  <div class='toppanbtns' style='height: 26px'>
+    <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
+      <div class="toppannav">
+        <div class="toppannavitem" title="我的订阅">
+          <span> 我的订阅 </span>
+        </div>
+      </div>
+    </div>
+    <div class='flex flexauto'></div>
+  </div>
+  <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" :loading="myfollowingStore.ListLoading" title="F5" @click="handleRefresh"
-        ><template #icon> <i class="iconfont iconreload-1-icon" /> </template
-      ></a-button>
+      <a-button type="text" size="small" tabindex="-1" :loading="myfollowingStore.ListLoading" title="F5"
+                @click="handleRefresh">
+        <template #icon><i class="iconfont iconreload-1-icon" /></template>
+        刷新
+      </a-button>
     </div>
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink"><i class="iconfont iconlink2" />导入订阅</a-button>
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink"><i
+        class="iconfont iconlink2" />导入订阅
+      </a-button>
     </div>
     <div v-show="myfollowingStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><i class="iconfont iconcopy" />复制链接</a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><i class="iconfont iconchrome" />浏览器</a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+Delete" @click="handleDeleteSelectedLink"><i class="iconfont icondelete" />取消订阅</a-button>
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><i
+        class="iconfont iconcopy" />复制链接
+      </a-button>
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><i
+        class="iconfont iconchrome" />浏览器
+      </a-button>
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+Delete" @click="handleDeleteSelectedLink"><i
+        class="iconfont icondelete" />取消订阅
+      </a-button>
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
-      <a-input-search ref="inputsearch" tabindex="-1" size="small" title="Ctrl+F / F3 / Space" placeholder="快速筛选" :model-value="myfollowingStore.ListSearchKey" @input="(val :any)=>handleSearchInput(val as string)" @press-enter="handleSearchEnter" @keydown.esc=";($event.target as any).blur()" />
+      <a-input-search ref="inputsearch" tabindex="-1" size="small" title="Ctrl+F / F3 / Space" placeholder="快速筛选"
+                      allow-clear v-model="myfollowingStore.ListSearchKey" @clear='(e:any)=>handleSearchInput("")'
+                      @input="(val :any)=>handleSearchInput(val as string)" @press-enter="handleSearchEnter"
+                      @keydown.esc=";($event.target as any).blur()" />
     </div>
     <div></div>
   </div>
@@ -172,16 +220,27 @@ const handleSearchEnter = (event: any) => {
       :data="myfollowingStore.ListDataShow"
       :loading="myfollowingStore.ListLoading"
       tabindex="-1">
-      <template #empty><a-empty description="没有订阅任何公众号" /></template>
+      <template #empty>
+        <a-empty description="没有订阅任何公众号" />
+      </template>
       <template #item="{ item }">
         <div :key="item.user_id" class="listitemdiv">
-          <div :class="'following' + (myfollowingStore.ListSelected.has(item.user_id) ? ' selected' : '') + (myfollowingStore.ListFocusKey == item.user_id ? ' focus' : '')" @click="handleSelect(item.user_id, $event)">
-            <a-avatar :size="80" shape="square">
-              <img alt="avatar" :src="item.avatar" />
-            </a-avatar>
+          <div
+            :class="'following' + (myfollowingStore.ListSelected.has(item.user_id) ? ' selected' : '') + (myfollowingStore.ListFocusKey == item.user_id ? ' focus' : '')"
+            @click="handleSelect(item.user_id, $event)">
+            <a-avatar :size='30' :image-url='item.avatar' />
             <div class="followingmessages">
-              <div class="followingname" @click="handleOpenLink(item.user_id)">{{ item.nick_name }} <a-badge v-if="item.has_unread_message" status="processing"></a-badge></div>
-              <div v-for="msg in item.latest_messages" :key="msg.sequence_id" class="followingmessage" @click="handleOpenShare(msg.content.share.share_id, msg.content.share.share_pwd, msg.content.file_id_list)">{{ msg.createdstr }} : {{ msg.display_action }}</div>
+              <div class="followingname" @click="handleOpenLink(item.user_id)">{{ item.nick_name }}
+                <a-badge v-if="item.has_unread_message" status="processing"></a-badge>
+              </div>
+              <template v-if="item.latest_messages.length > 0">
+                <div class='followingmessage' @click='handleOpenShare(item.latest_messages[0].content.share.share_id, item.latest_messages[0].content.share.share_pwd, item.latest_messages[0].content.file_id_list)'>
+                  {{ item.latest_messages[0].createdstr }} : {{ item.latest_messages[0].display_action }}
+                  <div v-for='(file, index) in item.latest_messages[0].content.file_list' :key='index'>
+                    <span style='padding: 10px;margin-bottom: 10px;position: relative;'>{{ file.name }}</span>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -189,15 +248,18 @@ const handleSearchEnter = (event: any) => {
     </a-list>
   </div>
   <a-modal v-model:visible="daoruModel" :footer="false" :unmount-on-close="true" :mask-closable="false">
-    <template #title> 批量导入订阅 </template>
+    <template #title> 批量导入订阅</template>
     <div style="width: 500px">
       <div style="margin-bottom: 32px">
         <div class="arco-textarea-wrapper arco-textarea-scroll">
-          <textarea v-model="daoruModelText" class="arco-textarea daoruinput" placeholder="请粘贴，每行一条订阅链接，例如：https://www.aliyundrive.com/u/ec11691148db442aa7aa374ca707543c"></textarea>
+          <textarea v-model="daoruModelText" class="arco-textarea daoruinput"
+                    placeholder="请粘贴，每行一条订阅链接，例如：https://www.aliyundrive.com/u/ec11691148db442aa7aa374ca707543c"></textarea>
         </div>
       </div>
       <div class="flex" style="justify-content: center; align-items: center; margin-bottom: 0px">
-        <a-button id="MFRDaoRuLink" type="primary" size="small" tabindex="-1" :loading="daoruModelLoading" @click="handleSaveDaoRuLink">批量订阅</a-button>
+        <a-button id="MFRDaoRuLink" type="primary" size="small" tabindex="-1" :loading="daoruModelLoading"
+                  @click="handleSaveDaoRuLink">批量订阅
+        </a-button>
       </div>
     </div>
   </a-modal>
@@ -207,19 +269,22 @@ const handleSearchEnter = (event: any) => {
 .arco-list-wrapper:focus {
   outline: none;
 }
+
 .following {
   display: flex;
   flex-grow: 0;
   flex-shrink: 0;
   height: 106px;
-  padding: 12px 12px;
+  padding: 5px 5px;
   border-radius: 10px;
   border: transparent solid 1px;
   margin-right: 2px;
 }
+
 .following:hover {
   background-color: var(--listhoverbg);
 }
+
 .following.focus {
   border: rgba(var(--primary-6), 0.6) dotted 1px;
 }
@@ -233,11 +298,12 @@ const handleSearchEnter = (event: any) => {
   flex-shrink: 0;
   cursor: default;
 }
+
 .following .followingmessages {
   flex-grow: 1;
   flex-shrink: 1;
   margin-left: 12px;
-  height: 80px;
+  height: 120px;
   overflow: hidden;
 }
 
@@ -248,6 +314,7 @@ const handleSearchEnter = (event: any) => {
   display: inline-flex;
   cursor: pointer;
 }
+
 .followingname:hover,
 .followingname:active {
   color: rgb(var(--primary-6));
@@ -258,6 +325,7 @@ const handleSearchEnter = (event: any) => {
   width: 6px;
   height: 6px;
 }
+
 .followingmessage {
   font-size: 12px;
   color: var(--color-text-3);
@@ -270,6 +338,7 @@ const handleSearchEnter = (event: any) => {
   cursor: pointer;
   margin-top: 1px;
 }
+
 .followingmessage:hover,
 .followingmessage:active {
   color: rgb(var(--primary-6));

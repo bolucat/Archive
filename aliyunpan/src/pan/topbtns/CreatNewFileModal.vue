@@ -4,13 +4,17 @@ import { usePanTreeStore } from '../../store'
 import message from '../../utils/message'
 import { modalCloseAll } from '../../utils/modal'
 import { CheckFileName, ClearFileName } from '../../utils/filehelper'
-import { defineComponent, ref, reactive } from 'vue'
+import { defineComponent, reactive, ref } from 'vue'
 import PanDAL from '../pandal'
 
 export default defineComponent({
   props: {
     visible: {
       type: Boolean,
+      required: true
+    },
+    encType: {
+      type: String,
       required: true
     }
   },
@@ -71,7 +75,7 @@ export default defineComponent({
         }
 
         this.okLoading = true
-        AliUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext)
+        AliUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext, this.encType)
           .then((data) => {
             this.okLoading = false
             if (data && data == 'success') {

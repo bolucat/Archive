@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
+
 const settingStore = useSettingStore()
 const cb = (val: any) => {
   settingStore.updateStore(val)
@@ -9,20 +10,29 @@ const cb = (val: any) => {
 
 <template>
   <div class="settingcard">
-    <div class="settinghead">网盘路径</div>
+    <div class="settinghead">:优先显示文件夹</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiShowPanPath" @update:value="cb({ uiShowPanPath: $event })"></MySwitch>
-      <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
-        <template #content>
-          <div style="min-width: 400px">在顶部显示完整的文件夹路径</div>
-        </template>
-      </a-popover>
+      <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.uiShowPanRootFirst"
+                :popup-container="'#SettingDiv'" @update:model-value="cb({ uiShowPanRootFirst: $event })">
+        <a-option value="all">所有</a-option>
+        <a-option value="backup">备份盘</a-option>
+        <a-option value="resource">资源盘</a-option>
+      </a-select>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">文件夹体积</div>
+    <div class="settinghead">:顶部显示网盘路径</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiFolderSize" @update:value="cb({ uiFolderSize: $event })"></MySwitch>
+      <MySwitch :value="settingStore.uiShowPanPath" @update:value="cb({ uiShowPanPath: $event })">在顶部显示完整的文件夹路径</MySwitch>
+    </div>
+    <div class="settingspace"></div>
+    <div class="settinghead">:文件列表显示附属信息</div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiShowPanMedia" @update:value="cb({ uiShowPanMedia: $event })">在右侧文件列表中显示每个文件的（播放时长、分辨率）</MySwitch>
+    </div>
+    <div class="settingspace"></div>
+    <div class="settinghead">:自动统计文件夹体积</div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiFolderSize" @update:value="cb({ uiFolderSize: $event })">自动统计并显示文件夹的总体积</MySwitch>
       <a-popover position="bottom">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -38,7 +48,7 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">独立排序</div>
+    <div class="settinghead">:每个文件夹独立排序</div>
     <div class="settingrow">
       <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.uiFileOrderDuli" :popup-container="'#SettingDiv'" @update:model-value="cb({ uiFileOrderDuli: $event })">
         <a-option value="null">
@@ -53,8 +63,9 @@ const cb = (val: any) => {
         <a-option value="size desc">开启&默认大小 降序</a-option>
       </a-select>
     </div>
-    <div class="settingspace"></div>
-    <div class="settinghead">新建日期文件夹模板</div>
+  </div>
+  <div class="settingcard">
+    <div class="settinghead">:新建日期文件夹模板</div>
     <div class="settingrow">
       <a-input tabindex="-1" :style="{ width: '257px' }" placeholder="yyyy-MM-dd HH-mm-ss" allow-clear :model-value="settingStore.uiTimeFolderFormate" @update:model-value="cb({ uiTimeFolderFormate: $event })" />
       <a-input-number tabindex="-1" :style="{ width: '100px', marginLeft: '16px', marginTop: '-1px' }" :min="1" :model-value="settingStore.uiTimeFolderIndex" @update:model-value="cb({ uiTimeFolderIndex: $event })" />
@@ -83,8 +94,8 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">新建分享链接 有效期/提取码</div>
-    <div class="settingrow">
+    <div class="settinghead">:新建分享链接 有效期/提取码</div>
+    <div class="settingrow flex">
       <a-radio-group type="button" tabindex="-1" :model-value="settingStore.uiShareDays" @update:model-value="cb({ uiShareDays: $event })">
         <a-radio tabindex="-1" value="always">永久</a-radio>
         <a-radio tabindex="-1" value="week">一周</a-radio>
@@ -123,7 +134,7 @@ const cb = (val: any) => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">复制分享链接模板</div>
+    <div class="settinghead">:复制分享链接模板</div>
     <div class="settingrow">
       <a-input tabindex="-1" :style="{ width: '257px' }" placeholder="「NAME」URL 提取码：PWD" allow-clear :model-value="settingStore.uiShareFormate" @update:model-value="cb({ uiShareFormate: $event })" />
 
@@ -148,9 +159,10 @@ const cb = (val: any) => {
         </template>
       </a-popover>
     </div>
-    <div class="settingspace"></div>
+  </div>
+  <div class="settingcard">
     <div class="settinghead">
-      文件标记
+      :文件标记 自定义标签名
       <a-popover position="right">
         <i class="iconfont iconbulb" />
         <template #content>
@@ -176,20 +188,4 @@ const cb = (val: any) => {
   </div>
 </template>
 
-<style>
-.settinghead {
-  display: flex;
-  margin-right: 20px;
-}
-.settinghead::after {
-  width: 0;
-  height: 0;
-}
-.settinghead, .settingrow {
-  display: inline-flex;
-  width: 50%;
-  padding: 10px;
-  box-sizing: border-box;
-  vertical-align: top;
-}
-</style>
+<style></style>

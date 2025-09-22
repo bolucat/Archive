@@ -14,10 +14,10 @@ export async function GetDuplicateInfo(user_id: string, PanData: IScanDriverMode
   const resp = await AliHttp.Post(url, postData, user_id, '')
   try {
     if (AliHttp.IsSuccess(resp.code)) {
-      
+
       return '找到' + (resp.body.total_group_count || 0) + '组重复文件，包含' + (resp.body.total_group_count || 0) + '个文件，总体积' + humanSize(resp.body.total_size || 0)
-    } else {
-      DebugLog.mSaveWarning('GetDuplicateInfo err=' + (resp.code || ''))
+    } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+      DebugLog.mSaveWarning('GetDuplicateInfo err=' + (resp.code || ''), resp.body)
     }
   } catch (err: any) {
     DebugLog.mSaveDanger('GetDuplicateInfo ' + PanData.drive_id, err)
@@ -111,7 +111,7 @@ async function ApiDuplicateList(user_id: string, drive_id: string, category: str
         for (let i = 0, maxi = resp.body.items.length; i < maxi; i++) {
           const oneItems = resp.body.items[i].items as IAliFileItem[]
           for (let j = 0; j < oneItems.length; j++) {
-            const add = AliDirFileList.getFileInfo(oneItems[j], '')
+            const add = AliDirFileList.getFileInfo(user_id, oneItems[j], '')
             add.namesearch = oneItems[j].content_hash
             items.push(add)
           }
@@ -123,8 +123,8 @@ async function ApiDuplicateList(user_id: string, drive_id: string, category: str
         return undefined
       } else if (resp.body && resp.body.code) {
         message.warning('列出文件出错 ' + resp.body.code, 2)
-      } else {
-        DebugLog.mSaveWarning('ApiDuplicateList err=' + (resp.code || ''))
+      } else if (!AliHttp.HttpCodeBreak(resp.code)) {
+        DebugLog.mSaveWarning('ApiDuplicateList err=' + (resp.code || ''), resp.body)
       }
     } catch (err: any) {
       DebugLog.mSaveDanger('ApiDuplicateList ' + drive_id, err)

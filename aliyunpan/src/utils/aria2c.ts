@@ -1,4 +1,3 @@
-import AliFile from '../aliapi/file'
 import { IAliFileResp } from '../aliapi/dirfilelist'
 
 import Aria2 from 'aria2-lib'
@@ -6,19 +5,16 @@ import axios from 'axios'
 import DownDAL, { IAriaDownProgress, IStateDownFile } from '../down/DownDAL'
 import message from './message'
 import UserDAL from '../user/userdal'
-import { useSettingStore, useFootStore } from '../store'
+import { useFootStore, useSettingStore } from '../store'
 import DebugLog from './debuglog'
-import Config from './config'
+import Config from '../config'
 import AliTrash from '../aliapi/trash'
 
 import path from 'path'
-import fsPromises from 'fs/promises'
-import fs, { existsSync } from 'fs'
-import { execFile, SpawnOptions } from 'child_process'
-import net from "net"
-import M3u8DownloadDAL from "../down/m3u8/M3u8DownloadDAL"
+import fs from 'fs'
+import { getRawUrl } from './proxyhelper'
 
-const localPwd = 'S4znWTaZYQi3cpRNb'
+export const localPwd = 'S4znWTaZYQi3cpRNb'
 
 let Aria2cChangeing: boolean = false
 let Aria2EngineLocal: Aria2 | undefined = undefined
@@ -56,40 +52,14 @@ function CloseRemote() {
     if (Aria2EngineRemote) {
       try {
         Aria2EngineRemote.close().catch().then()
-      } catch {}
+      } catch {
+      }
       Aria2EngineRemote = undefined
     }
   }
 }
 
-export function portIsOccupied(port: number) {
-
-  const server = net.createServer().listen(port, '0.0.0.0')
-
-  return new Promise<number>((resolve, reject) => {
-
-    server.on('listening', () => {
-      console.log(`the server is runnint on port ${port}`)
-      server.close()
-      resolve(port) // 返回可用端口
-    })
-
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        resolve(portIsOccupied(port + 1)) // 如传入端口号被占用则 +1
-        console.log(`this port ${port} is occupied.try another.`)
-      } else {
-        console.log(err)
-        // reject(err)
-        resolve(port)
-      }
-    })
-
-  })
-
-}
-
-export function IsAria2cRemote(){
+export function IsAria2cRemote() {
   return IsAria2cOnlineRemote
 }
 
@@ -110,7 +80,7 @@ export async function AriaTest(https: boolean, host: string, port: number, secre
     .then(() => {
       return true
     })
-    .catch(function (error) {
+    .catch(function(error) {
       if (error.response && error.response.data && error.response.data.error) {
         if (error.response.data.error.message == 'Unauthorized') {
           message.error('连接失败 密码错误 ' + url + ' secret=' + secret)
@@ -125,6 +95,7 @@ export async function AriaTest(https: boolean, host: string, port: number, secre
       return false
     })
 }
+
 function Sleep(msTime: number) {
   return new Promise((resolve) =>
     setTimeout(
@@ -175,7 +146,7 @@ export async function AriaChangeToRemote() {
       const url = host + ':' + port + ' secret=' + secret
       if (!settingStore.AriaIsLocal && Aria2cRemoteRetryTime % 10 == 1) message.error('无法连接到远程Aria2 ' + url)
     } else {
-      await AriaGlobalDownSpeed()
+      await AriaGlobalSpeed()
     }
   } catch (e) {
     SetAriaOnline(false, 'remote')
@@ -184,90 +155,16 @@ export async function AriaChangeToRemote() {
   return IsAria2cOnlineRemote
 }
 
-export async function CreatLocalAria2c(aria2cPath:string, aria2cConfPath:string) {
-  try {
-    if (!existsSync(aria2cPath)) {
-      message.error('找不到Aria程序文件 ' + aria2cPath)
-      return 0
-    }
-    const options = { shell: true, windowsVerbatimArguments: true}
-    const port = await portIsOccupied(16800)
-    const subprocess = execFile(
-        '\"'+ aria2cPath + '\"',
-      [
-        '-D',
-        '--rpc-listen-port=' + port,
-        '--conf-path=' + '\"'+ aria2cConfPath + '\"',
-      ],
-      options,
-      async (error, stdout, stderr) => {
-        if (error) {
-          SetAriaOnline(false, 'local')
-          DebugLog.mSaveDanger(`启动本地aria2c失败 : ${error}`)
-          return;
-        } else {
-          await relaunchLocalAria(port);
-        }
-      }
-    );
-  } catch (e: any) {
-    SetAriaOnline(false, 'local')
-  }
-}
-
-async function relaunchLocalAria(port:number) {
-  CloseRemote()
-  try {
-    if (Aria2EngineLocal !== undefined) {
-      Aria2EngineLocal.close()
-      Aria2EngineLocal = undefined
-    }
-    const options = { host: '127.0.0.1', port, secure: false, secret: localPwd, path: '/jsonrpc' }
-    Aria2EngineLocal = new Aria2({ WebSocket: global.WebSocket, fetch: global.fetch, ...options })
-    await Sleep(500)
-    await Aria2EngineLocal.open()
-        .then(() => {
-          Aria2cLocalRelaunchTime = 0
-          SetAriaOnline(true, 'local')
-        })
-        .catch(async () => {
-          await window.WebRelaunchAria()
-          SetAriaOnline(false, 'local')
-          Aria2cLocalRelaunchTime++
-          if (Aria2cLocalRelaunchTime < 2) {
-            DebugLog.mSaveDanger('正在尝试重启Aria进程中。。。')
-          }
-        })
-    Aria2EngineLocal.on('close', () => {
-      IsAria2cOnlineLocal = false
-      if (useSettingStore().AriaIsLocal) {
-        DebugLog.mSaveDanger('Aria2本地连接已断开')
-        SetAriaOnline(false, 'local')
-      }
-    })
-
-    if (!IsAria2cOnlineLocal) {
-      const url = '127.0.0.1:16800 secret=' + localPwd
-      if (Aria2cLocalRelaunchTime < 2) DebugLog.mSaveDanger('无法连接到本地Aria2 ' + url)
-    } else {
-      await AriaGlobalDownSpeed()
-    }
-    await Sleep(1000)
-  } catch (e) {
-    SetAriaOnline(false, 'local')
-  }
-  return true
-}
 
 export async function AriaChangeToLocal() {
   CloseRemote()
-  if (Aria2cLocalRelaunchTime < 10) {
+  if (Aria2cLocalRelaunchTime < 5) {
     try {
       let port = 16800
       if (Aria2EngineLocal == undefined) {
         port = window.WebRelaunchAria ? await window.WebRelaunchAria() : 16800
-        const options = {host: '127.0.0.1', port, secure: false, secret: localPwd, path: '/jsonrpc'}
-        Aria2EngineLocal = new Aria2({WebSocket: global.WebSocket, fetch: window.fetch.bind(window), ...options})
+        const options = { host: '127.0.0.1', port, secure: false, secret: localPwd, path: '/jsonrpc' }
+        Aria2EngineLocal = new Aria2({ WebSocket: global.WebSocket, fetch: window.fetch.bind(window), ...options })
         Aria2EngineLocal.on('close', () => {
           IsAria2cOnlineLocal = false
           if (useSettingStore().AriaIsLocal) {
@@ -277,28 +174,28 @@ export async function AriaChangeToLocal() {
             SetAriaOnline(false, 'local')
           }
         })
+        Aria2EngineLocal.setMaxListeners(0)
       }
-      await Sleep(1000)
+      await Sleep(800)
       await Aria2EngineLocal.open()
-          .then(() => {
-            Aria2cLocalRelaunchTime = 0
-            SetAriaOnline(true, 'local')
-          })
-          .catch(() => {
-            SetAriaOnline(false, 'local')
-            Aria2cLocalRelaunchTime++
-            if (Aria2cLocalRelaunchTime < 2) {
-              message.info('正在尝试重启Aria进程中。。。')
-            }
-          })
+        .then(() => {
+          Aria2cLocalRelaunchTime = 0
+          SetAriaOnline(true, 'local')
+        })
+        .catch(() => {
+          SetAriaOnline(false, 'local')
+          Aria2cLocalRelaunchTime++
+          if (Aria2cLocalRelaunchTime < 2) {
+            message.info('正在尝试重启Aria进程中。。。')
+          }
+        })
 
       if (!IsAria2cOnlineLocal) {
         const url = `127.0.0.1:${port} secret=${localPwd}`
         if (Aria2cLocalRelaunchTime < 2) message.error('无法连接到本地Aria2 ' + url)
       } else {
-        await AriaGlobalDownSpeed()
+        await AriaGlobalSpeed()
       }
-      await Sleep(1000)
     } catch (e) {
       SetAriaOnline(false, 'local')
     }
@@ -308,27 +205,13 @@ export async function AriaChangeToLocal() {
   return true
 }
 
-export async function AriaGlobalDownSpeed() {
+
+export async function AriaGlobalSpeed() {
   try {
     const settingStore = useSettingStore()
     const limit = settingStore.downGlobalSpeed.toString() + (settingStore.downGlobalSpeedM == 'MB' ? 'M' : 'K')
     await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-download-limit': limit }).catch((e: any) => {
-      if (e) message.error('设置下载限速失败，Error: ' + e.message)
-      else message.info('设置下载速度成功，限速：' + limit)
-      IsAria2cOnlineLocal = false
-    })
-  } catch {
-    SetAriaOnline(false)
-  }
-}
-
-export async function AriaGlobalUploadSpeed() {
-  try {
-    const settingStore = useSettingStore()
-    const limit = settingStore.uploadGlobalSpeed.toString() + (settingStore.uploadGlobalSpeedM == 'MB' ? 'M' : 'K')
-    await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-upload-limit': limit }).catch((e: any) => {
-      if (e) message.error('上传限速失败，Error: ' + e.message)
-      else message.info('设置设置上传速度成功，限速：' + limit)
+      if (e && e.message == 'Unauthorized') message.error('Aria2密码错误(密码不要有 ^ 或特殊字符)')
       IsAria2cOnlineLocal = false
     })
   } catch {
@@ -363,33 +246,7 @@ export async function AriaGetDowningList() {
       list = list.concat(arr)
       arr = result[2][0]
       list = list.concat(arr)
-      DownDAL.mSpeedEvent(list)
-      SetAriaOnline(true)
-    }
-  } catch (e: any) {
-    DebugLog.mSaveLog('danger', 'AriaGetDowningList' + (e.message || ''), e)
-    SetAriaOnline(false)
-  }
-}
-
-
-export async function AriaGetM3u8DowningList() {
-  const multicall = [
-    ['aria2.tellActive', ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
-    ['aria2.tellWaiting', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
-    ['aria2.tellStopped', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']]
-  ]
-  try {
-    const result: any = await GetAria()?.multicall(multicall)
-    if (result) {
-      let list: IAriaDownProgress[] = []
-      let arr = result[0][0]
-      list = list.concat(arr)
-      arr = result[1][0]
-      list = list.concat(arr)
-      arr = result[2][0]
-      list = list.concat(arr)
-      M3u8DownloadDAL.mSpeedEvent(list)
+      DownDAL.mSpeedEvent(list || [])
       SetAriaOnline(true)
     }
   } catch (e: any) {
@@ -430,10 +287,10 @@ export async function AriaStopList(list: string[]) {
 
 export function AriaShoutDown() {
   if (useSettingStore().AriaIsLocal) {
-    Aria2EngineLocal?.call('aria2.forceShutdown').catch((e: any) => {})
+    Aria2EngineLocal?.call('aria2.forceShutdown').catch((e: any) => {
+    })
   }
 }
-
 
 export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
   try {
@@ -441,23 +298,24 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
     const token = UserDAL.GetUserToken(info.user_id)
     if (!token || !token.access_token) return '账号失效，操作取消'
     if (info.isDir) {
-
-      const dirfull = path.join(info.DownSavePath, info.name)
+      const dirFull = path.join(info.DownSavePath, info.name)
       if (!info.ariaRemote) {
-
-        await fsPromises.mkdir(dirfull, { recursive: true }).catch((e: any) => {
-          if (e.code && e.code === 'EPERM') e = '没有权限'
-          if (e.code && e.code === 'EBUSY') e = '文件夹被占用或锁定中'
-          if (e.message) e = e.message
-          if (typeof e == 'string' && e.indexOf('EACCES') >= 0) e = '没有权限'
-          DebugLog.mSaveLog('danger', 'AriaAddUrl创建文件夹失败：' + dirfull + ' ' + (e || ''), e)
-          return undefined
-        })
+        try {
+          await fs.promises.mkdir(dirFull, { recursive: true })
+        } catch (error: any) {
+          const errorMap: Record<string, string> = {
+            EPERM: '文件没有读取权限',
+            EBUSY: '文件被占用或锁定中',
+            EACCES: '文件没有读取权限'
+          }
+          const errorMessage = errorMap[error.code] || error.message
+          DebugLog.mSaveLog('danger', 'AriaAddUrl创建文件夹失败：' + dirFull + ' ' + (error || ''), error)
+          return errorMessage
+        }
       }
-
-      const dir: IAliFileResp = {
+      const dirInfo: IAliFileResp = {
         items: [],
-        itemsKey:new Set(),
+        itemsKey: new Set(),
         punished_file_count: 0,
         next_marker: '',
         m_user_id: info.user_id,
@@ -466,91 +324,91 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         dirName: info.name
       }
       do {
-        const isGet = await AliTrash.ApiFileListOnePageAria('name', 'ASC', dir)
-        if (!isGet) {
-          return '解析子文件列表失败，稍后重试'
-        } else {
-          if (file.Down.IsStop) {
-            dir.items.length = 0
-            return '已暂停'
-          }
-          if (dir.items.length > 0) DownDAL.aAddDownload(dir.items, dirfull, false)
-          dir.items.length = 0
+        const isGet = await AliTrash.ApiFileListOnePageAria('name', 'ASC', dirInfo)
+        if (!isGet) return '解析子文件列表失败，稍后重试'
+        if (file.Down.IsStop) {
+          dirInfo.items.length = 0
+          return '已暂停'
         }
-      } while (dir.next_marker)
-
+        if (dirInfo.items.length > 0) {
+          DownDAL.aAddDownload(dirInfo.items, dirFull, false)
+          dirInfo.items.length = 0
+        }
+      } while (dirInfo.next_marker)
       return 'downed'
     } else {
-
-      const dir = info.DownSavePath
-      const out = info.ariaRemote ? info.name : info.name + '.td'
-      const filefull = path.join(dir, info.name)
+      const dirPath = info.DownSavePath
+      const outFileName = info.ariaRemote ? info.name : info.name + '.td'
+      const fileFull = path.join(dirPath, info.name)
       if (!info.ariaRemote) {
         try {
-          const finfo = await fsPromises.stat(filefull)
-          if (finfo && finfo.size == info.size) return 'downed'
+          const fileStat = await fs.promises.stat(fileFull)
+          if (fileStat && fileStat.size == info.size) return 'downed'
           else return '本地存在重名文件，请手动删除'
-        } catch (e: any) {
-          if (e.code && e.code === 'EPERM') e = '文件没有读取权限'
-          if (e.code && e.code === 'EBUSY') e = '文件被占用或锁定中'
-          if (e.message) e = e.message
-          if (typeof e == 'string' && e.indexOf('EACCES') >= 0) e = '文件没有读取权限'
-          if (typeof e == 'string' && e.indexOf('no such file') >= 0) {
-
-          } else {
-            DebugLog.mSaveLog('danger', 'AriaAddUrl访问文件失败：' + filefull + ' ' + (e || ''), e)
-            return e
+        } catch (error: any) {
+          const errorMap: Record<string, string> = {
+            EPERM: '文件没有读取权限',
+            EBUSY: '文件被占用或锁定中',
+            EACCES: '文件没有读取权限'
           }
-        }
-
-        if (info.size == 0) {
-          try {
-
-            await (await fsPromises.open(filefull, 'w')).close().catch((e: any) => {
-              return undefined
-            })
-            return 'downed'
-          } catch {
-            return '创建空文件失败'
+          const errorMessage = errorMap[error.code] || error.message
+          if (errorMessage.indexOf('no such file') < 0) {
+            DebugLog.mSaveLog(
+              'danger',
+              `AriaAddUrl访问文件失败：${fileFull} ${errorMessage || ''}`,
+              error
+            )
+            return errorMessage
+          }
+          if (info.size == 0) {
+            try {
+              await (await fs.promises.open(fileFull, 'w')).close()
+              return 'downed'
+            } catch {
+              return '创建空文件失败'
+            }
           }
         }
       }
-
-
-      let downurl = file.Down.DownUrl
-
-      if (downurl != '' && downurl.indexOf('x-oss-expires=') > 0) {
-
-        let expires = downurl.substr(downurl.indexOf('x-oss-expires=') + 'x-oss-expires='.length)
-        expires = expires.substr(0, expires.indexOf('&'))
-        const lasttime = parseInt(expires) - Date.now() / 1000
-        const needtime = (info.size + 1) / 1024 / 1024
-        if (lasttime < 60 || lasttime < needtime + 60) downurl = ''
-      } else downurl = ''
-
-      if (!downurl) {
-        const durl = await AliFile.ApiFileDownloadUrlOpenApi(info.user_id, info.drive_id, info.file_id, 14400)
-        if (typeof durl == 'string') return '生成下载链接失败,' + durl
-        else if (!durl.url) {
-          DebugLog.mSaveLog('danger', info.file_id + '生成下载链接失败,' + JSON.stringify(durl), null)
-          return '生成下载链接失败,' + JSON.stringify(durl)
+      let downloadUrl = file.Down.DownUrl
+      if (downloadUrl && downloadUrl.includes('x-oss-expires=')) {
+        const expires = downloadUrl.split('x-oss-expires=')[1].split('&')[0]
+        const lastTime = parseInt(expires) - Date.now() / 1000
+        const needTime = (info.size + 1) / 1024 / 1024
+        if (lastTime < 60 || lastTime < needTime + 60) {
+          downloadUrl = ''
         }
-        downurl = durl.url
-        file.Down.DownUrl = downurl
+      } else {
+        downloadUrl = ''
       }
-      if (!downurl) return '生成下载链接失败0'
+      if (!downloadUrl) {
+        const durl = await getRawUrl(info.user_id, info.drive_id, info.file_id, info.encType)
+        if (typeof durl == 'string') {
+          return `生成下载链接失败, ${durl}`
+        } else if (!durl.url) {
+          DebugLog.mSaveLog('danger', `${info.file_id} 生成下载链接失败, ${JSON.stringify(durl)}`, null)
+          return `生成下载链接失败,${JSON.stringify(durl)}`
+        }
+        downloadUrl = durl.url
+        file.Down.DownUrl = downloadUrl
+      }
       if (file.Down.IsStop) return '已暂停'
-
       const split = useSettingStore().downThreadMax
       const referer = Config.referer
-      const userAgent = Config.userAgent
+      const userAgent = Config.downAgent
       const multicall = [
         ['aria2.forceRemove', info.GID],
         ['aria2.removeDownloadResult', info.GID],
-        ['aria2.addUri', [downurl], { gid: info.GID, dir, out, split, referer, 'user-agent': userAgent, 'check-certificate': 'false', 'file-allocation': 'trunc' }]
+        ['aria2.addUri', [downloadUrl], {
+          gid: info.GID, dir: dirPath, out: outFileName,
+          split, referer, 'user-agent': userAgent
+        }]
       ]
       const result: any = await GetAria()?.multicall(multicall)
-      if (result == undefined || result.length < 3 || (result[2].code != undefined && result[2].code) != 0) return '创建aria任务失败，稍后自动重试' + result[2].message
+      if (result == undefined || result.length < 3
+        || (result[2].code != undefined && result[2].code) != 0) {
+        return '创建aria任务失败，稍后自动重试' + result[2].message
+      }
       if (result[2].length == 1) return 'success'
     }
   } catch (e: any) {

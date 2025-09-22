@@ -3,110 +3,101 @@ import DebugLog from '../../utils/debuglog'
 import message from '../../utils/message'
 import fsPromises from 'fs/promises'
 import path from 'path'
+import { decodeName, encodeName } from '../../module/flow-enc/utils'
 import fs from 'fs'
-import cryptoJS from 'crypto-js'
+import FlowEnc from '../../module/flow-enc'
 
-
-export async function DoEncryption(dirPath: string, breakSmall: boolean=false,
-                                     matchExtList: string[], password:string,
-                                     keepOriginFile:boolean=false): Promise<number> {
-  const fileList: string[] = []
-  await GetAllFiles(dirPath, breakSmall, fileList)
+export async function DoJiaMi(mode: string,
+                              encType: string,
+                              encName: boolean,
+                              password: string,
+                              encPath: string,
+                              outPath: string,
+                              breakSmall: boolean,
+                              matchExtList: string[]): Promise<any> {
+  const fileList: { filePath: string, size: number }[] = []
+  await GetAllFiles(encPath, breakSmall, fileList)
   if (fileList.length == 0) {
-    message.error('选择的文件夹下找不到任何文件')
+    message.error('选择的文件夹下找不到满足条件的文件')
     return 0
   } else {
-    const targetFileList:string[] = []
-    for (let i = 0, maxi = fileList.length; i < maxi; i++) {
-      const file = fileList[i]
+    const start = Date.now()
+    // 输出文件
+    if (!fs.existsSync(outPath)) {
+      fs.mkdirSync(outPath)
+    }
+    // 临时文件
+    const tempDir = path.join(outPath, '.temp')
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir)
+    }
+    let promiseArr = []
+    for (const fileInfo of fileList) {
+      const { filePath, size } = fileInfo
+      const file = filePath.toLowerCase().trimEnd()
+      // 过滤扩展
       if (matchExtList.length > 0) {
+        let find = false
         for (let j = 0; j < matchExtList.length; j++) {
           if (file.endsWith(matchExtList[j])) {
-            targetFileList.push(file)
+            find = true
             break
           }
         }
-      } else {
-        targetFileList.push(file)
+        if (!find) continue
+      }
+      // 开始加密和解密
+      try {
+        let relativePath = filePath.substring(encPath.length)
+        const fileName = path.basename(relativePath)
+        const ext = path.extname(relativePath)
+        const childPath = path.dirname(relativePath)
+        if (mode === 'enc' && encName) {
+          const newFileName = encodeName(password, encType, fileName) + ext
+          relativePath = path.join(childPath, newFileName)
+        }
+        if (mode === 'dec') {
+          const newFileName = decodeName(password, encType, ext !== '' ? fileName.substring(0, fileName.length - ext.length) : fileName)
+          if (newFileName) {
+            relativePath = path.join(childPath, newFileName)
+          }
+        }
+        const outFilePath = path.join(outPath, relativePath)
+        const outFilePathTemp = path.join(tempDir, relativePath)
+        fs.writeFileSync(outFilePath, '')
+        fs.writeFileSync(outFilePathTemp, '')
+        // 开始加密
+        if (size === 0) {
+          continue
+        }
+        const flowEnc = new FlowEnc(password, encType, size)
+        const writeStream = fs.createWriteStream(outFilePathTemp)
+        const readStream = fs.createReadStream(filePath)
+        const promise = new Promise<void>((resolve, reject) => {
+          readStream.pipe(mode === 'enc' ? flowEnc.encryptTransform() : flowEnc.decryptTransform()).pipe(writeStream)
+          readStream.on('end', () => {
+            fs.renameSync(outFilePathTemp, outFilePath)
+            resolve()
+          })
+        })
+        promiseArr.push(promise)
+        if (promiseArr.length > 50) {
+          await Promise.all(promiseArr)
+          promiseArr = []
+        }
+      } catch (err: any) {
+        DebugLog.mSaveDanger('XM appendFile' + (err.message || '') + filePath)
       }
     }
-    if (targetFileList.length > 0) {
-      return encryptFiles(targetFileList, password, keepOriginFile)
-    } else {
-      message.error('无符合格式的待加密文件')
-      return 0
-    }
+    await Promise.all(promiseArr)
+    fs.rmSync(tempDir, { recursive: true })
+    const time = ((Date.now() - start) / 1000).toFixed(2) + 's'
+    return { count: promiseArr.length, time }
   }
 }
 
-export async function DoDecryption(dirPath: string, password:string): Promise<number> {
-  const fileList: string[] = []
-  await GetAllFiles(dirPath, false, fileList)
-  if (fileList.length == 0) {
-    message.error('选择的文件夹下找不到任何文件')
-    return 0
-  } else {
-    const targetFileList:string[] = []
-    for (let i = 0, maxi = fileList.length; i < maxi; i++) {
-      const file = fileList[i]
-      if (file.endsWith('.enc')) {
-        targetFileList.push(file)
-      }
-    }
-    if (targetFileList.length > 0) {
-      return decryptionFiles(targetFileList, password)
-    } else {
-      message.error('文件夹无待解密文件(.enc)')
-      return 0
-    }
-
-  }
-}
-
-
-function decryptionFiles(fileList:string[],  password:string):number {
-  let count = 0
-  fileList.forEach(filePath => {
-    try {
-      const data = fs.readFileSync(filePath).toString();
-      const decryptedData = cryptoJS.AES.decrypt(data, password).toString(cryptoJS.enc.Utf8);
-      const decryptedFile = filePath.replace(/\.enc$/, '');
-      fs.writeFileSync(decryptedFile, decryptedData);
-      count++
-      console.log(`文件 ${filePath} 已解密并保存到 ${decryptedFile}`);
-    } catch (err) {
-      console.error(`文件 ${filePath} 解密失败`);
-    }
-  });
-  return count;
-}
-
-
-function encryptFiles(fileList:string[],  password:string, keepOriginalFile:boolean=false):number {
-  let count = 0
-  console.log("encryptFiles", fileList, password, keepOriginalFile)
-  for (let i = 0; i < fileList.length; i++) {
-    const file = fileList[i];
-    let encryptedFile=''
-    if (keepOriginalFile) {
-      encryptedFile = file + ".enc"
-    } else {
-      encryptedFile = file
-    }
-    const data = fs.readFileSync(file); // 读取原始文件数据
-
-    // 使用 AES 对称加密算法加密文件数据
-    const encryptedData = cryptoJS.AES.encrypt(data.toString(), password).toString();
-    // 将加密后的数据写入保存加密文件的路径
-    fs.writeFileSync(encryptedFile, encryptedData);
-    count++
-    console.log(`文件 ${file} 已加密并保存到 ${encryptedFile}`);
-  }
-  return count;
-}
-
-async function GetAllFiles(dir: string, breakSmall: boolean, fileList: string[]) {
-  if (dir.endsWith(path.sep) == false) dir = dir + path.sep
+async function GetAllFiles(dir: string, breakSmall: boolean, fileList: any[]) {
+  if (!dir.endsWith(path.sep)) dir = dir + path.sep
   try {
     const childFiles = await fsPromises.readdir(dir).catch((err: any) => {
       err = FileSystemErrorMessage(err.code, err.message)
@@ -130,19 +121,21 @@ async function GetAllFiles(dir: string, breakSmall: boolean, fileList: string[])
             else if (stat.isSymbolicLink()) {
               // donothing
             } else if (stat.isFile()) {
-              if (!breakSmall || stat.size > 5 * 1024 * 1024) fileList.push(item)
+              if (!breakSmall || stat.size > 5 * 1024 * 1024) {
+                fileList.push({ filePath: item, size: stat.size })
+              }
             }
           })
           .catch()
       )
       if (allTask.length > 10) {
-        await Promise.all(allTask).catch(() => {})
+        await Promise.all(allTask).catch()
         allTask = []
       }
     }
 
     if (allTask.length > 0) {
-      await Promise.all(allTask).catch(() => {})
+      await Promise.all(allTask).catch()
       allTask = []
     }
 

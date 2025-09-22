@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useAppStore, useOtherFollowingStore, FollowingState, useKeyboardStore, KeyboardState, useMyFollowingStore, useUserStore } from '../../store'
+import {
+  FollowingState,
+  KeyboardState,
+  useAppStore,
+  useKeyboardStore,
+  useMyFollowingStore,
+  useOtherFollowingStore,
+  useUserStore
+} from '../../store'
 import FollowingDAL from './FollowingDAL'
 import { copyToClipboard, openExternal } from '../../utils/electronhelper'
 import message from '../../utils/message'
 import { TestKey } from '../../utils/keyboardhelper'
 import { IAliOtherFollowingModel } from '../../aliapi/alimodels'
+
 const otherfollowingStore = useOtherFollowingStore()
 const myfollowingStore = useMyFollowingStore()
 const appStore = useAppStore()

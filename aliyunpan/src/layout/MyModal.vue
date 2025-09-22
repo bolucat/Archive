@@ -1,58 +1,67 @@
-<script lang="ts">
+<script lang='ts'>
 import { defineComponent } from 'vue'
 import { useModalStore } from '../store'
 import UserSpaceModal from '../user/UserSpaceModal.vue'
 import CreatNewFileModal from '../pan/topbtns/CreatNewFileModal.vue'
+import CreatNewAlbumModal from '../pan/topbtns/CreatNewAlbumModal.vue'
 import RenameModal from '../pan/topbtns/RenameModal.vue'
 import RenameMultiModal from '../pan/topbtns/RenameMultiModal.vue'
 import CreatNewDirModal from '../pan/topbtns/CreatNewDirModal.vue'
-import DaoRuShareLinkModal from '../pan/topbtns/DaoRuShareLinkModal.vue'
+import DaoRuShareLinkModal from '../share/share/DaoRuShareLinkModal.vue'
 import EditShareLinkModal from '../share/share/EditShareLinkModal.vue'
-import DaoRuShareLinkMultiModal from '../pan/topbtns/DaoRuShareLinkMultiModal.vue'
+import DaoRuShareLinkMultiModal from '../share/share/DaoRuShareLinkMultiModal.vue'
 import ShowShareLinkModal from '../share/share/ShowShareLinkModal.vue'
 import SelectPanDirModal from '../pan/topbtns/SelectPanDirModal.vue'
-import CreatNewShareLinkModal from '../pan/topbtns/CreatNewShareLinkModal.vue'
+import CreatNewShareLinkModal from '../share/share/CreatNewShareLinkModal.vue'
 import ShuXingModal from '../pan/topbtns/ShuXingModal.vue'
-import ShuXingMultiModal from '../pan/topbtns/ShuXingMultiModal.vue'
 import SearchPanModal from '../pan/topbtns/SearchPanModal.vue'
 import DLNAPlayerModal from '../pan/topbtns/DLNAPlayerModal.vue'
 import M3U8DownloadModal from '../pan/topbtns/M3U8DownloadModal.vue'
 import CopyFileTreeModal from '../pan/topbtns/CopyFileTreeModal.vue'
 import ArchiveModal from '../pan/topbtns/ArchiveModal.vue'
 import ArchivePasswordModal from '../pan/topbtns/ArchivePasswordModal.vue'
-import AlphaModal from '../pan/topbtns/AlphaModal.vue'
 import UploadModal from '../pan/topbtns/UploadModal.vue'
 import DownloadModal from '../pan/topbtns/DownloadModal.vue'
-import SelectSubTitleModal from '../pan/topbtns/SelectSubTitleModal.vue'
-import CreatNewAlbumModal from "../pan/topbtns/CreatNewAlbumModal.vue";
 import MoveToAlbumModal from '../pan/topbtns/MoveToAlbumModal.vue'
+import ShowUpdateLog from '../pan/topbtns/ShowUpdateLog.vue'
+import PostModal from '../pan/topbtns/PostModal.vue'
+import UserRewardSpace from '../user/UserRewardSpace.vue'
+import PasswordModal from '../pan/topbtns/PasswordModal.vue'
+import UpdateModal from '../pan/topbtns/ShowUpdateModal.vue'
+import ShowUpdateModal from '../pan/topbtns/ShowUpdateModal.vue'
+import SelectVideoQualityModal from '../pan/topbtns/SelectVideoQualityModal.vue'
 
 export default defineComponent({
   components: {
-    MoveToAlbumModal,
-    CreatNewAlbumModal,
+    SelectVideoQualityModal,
+    ShowUpdateModal,
+    UpdateModal,
+    PasswordModal,
+    UserRewardSpace,
     UserSpaceModal,
-    CreatNewFileModal,
     RenameModal,
     RenameMultiModal,
+    MoveToAlbumModal,
+    CreatNewFileModal,
+    CreatNewAlbumModal,
     CreatNewDirModal,
+    CreatNewShareLinkModal,
     DaoRuShareLinkModal,
     EditShareLinkModal,
     DaoRuShareLinkMultiModal,
     ShowShareLinkModal,
     SelectPanDirModal,
-    CreatNewShareLinkModal,
     ShuXingModal,
-    ShuXingMultiModal,
     SearchPanModal,
     DLNAPlayerModal,
     M3U8DownloadModal,
-    AlphaModal,
     CopyFileTreeModal,
     ArchiveModal,
     ArchivePasswordModal,
     UploadModal,
-    DownloadModal
+    DownloadModal,
+    ShowUpdateLog,
+    PostModal
   },
   setup() {
     const modalStore = useModalStore()
@@ -62,27 +71,41 @@ export default defineComponent({
 </script>
 
 <template>
-  <AlphaModal />
-
   <UserSpaceModal :visible="modalStore.modalName == 'userspace'" />
-  <CreatNewFileModal :visible="modalStore.modalName == 'creatfile'" />
-  <CreatNewAlbumModal :visible="modalStore.modalName == 'createalbum'" />
-  <MoveToAlbumModal :visible="modalStore.modalName == 'movetoalubm'"  :photos_file_id='modalStore.modalData.photos_file_id' :album_id='modalStore.modalData.album_id' />
-  <CreatNewDirModal :visible="modalStore.modalName == 'creatdir'" :dirtype="modalStore.modalData.dirtype || ''" :parentdirid="modalStore.modalData.parentdirid || ''" :callback="modalStore.modalData.callback" />
-  <CreatNewShareLinkModal :visible="modalStore.modalName == 'creatshare'" :sharetype="modalStore.modalData.sharetype || ''" :filelist="modalStore.modalData.filelist || []" />
+  <UserRewardSpace :visible="modalStore.modalName == 'userrewardspace'" :user_id="modalStore.modalData.user_id || ''" />
+  <CreatNewFileModal :visible="modalStore.modalName == 'creatfile'" :encType="modalStore.modalData.encType || ''" />
+  <CreatNewAlbumModal :visible="modalStore.modalName == 'creatalbum'" />
+  <MoveToAlbumModal :visible="modalStore.modalName == 'movetoalbum'" :istree='modalStore.modalData.istree || false' />
+  <CreatNewDirModal :visible="modalStore.modalName == 'creatdir'"
+                    :dirtype="modalStore.modalData.dirtype || ''"
+                    :encType="modalStore.modalData.encType || ''"
+                    :parentdirid="modalStore.modalData.parentdirid || ''"
+                    :callback='modalStore.modalData.callback' />
+  <CreatNewShareLinkModal :visible="modalStore.modalName == 'creatshare'"
+                          :sharetype="modalStore.modalData.sharetype || ''"
+                          :driveType="modalStore.modalData.driveType || ''"
+                          :filelist='modalStore.modalData.filelist || []' />
 
-  <DaoRuShareLinkModal :visible="modalStore.modalName == 'daorushare'" />
+  <DaoRuShareLinkModal :visible="modalStore.modalName == 'daorushare'"
+                       :shareUrl="modalStore.modalData.shareUrl || ''"
+                       :sharePwd="modalStore.modalData.sharePwd || ''" />
   <DaoRuShareLinkMultiModal :visible="modalStore.modalName == 'daorusharemulti'" />
 
-  <RenameModal :visible="modalStore.modalName == 'rename'" :istree="modalStore.modalData.istree || false" />
-  <RenameMultiModal :visible="modalStore.modalName == 'renamemulti'" :istree="modalStore.modalData.istree || false" />
-  <ShuXingModal :visible="modalStore.modalName == 'shuxing'" :istree="modalStore.modalData.istree || false" />
-  <ShuXingMultiModal :visible="modalStore.modalName == 'shuxingmulti'" :istree="modalStore.modalData.istree || false" />
-  <SearchPanModal :visible="modalStore.modalName == 'searchpan'" />
+  <RenameModal :visible="modalStore.modalName == 'rename'"
+               :istree='modalStore.modalData.istree || false'
+               :ispic='modalStore.modalData.ispic || false' />
+  <RenameMultiModal :visible="modalStore.modalName == 'renamemulti'" :istree='modalStore.modalData.istree || false' />
+  <ShuXingModal :visible="modalStore.modalName == 'shuxing'"
+                :istree='modalStore.modalData.istree || false'
+                :inputselectType="modalStore.modalData.inputselectType || ''"
+                :ispic='modalStore.modalData.ispic || false' />
+  <SearchPanModal :visible="modalStore.modalName == 'searchpan'"
+                  :inputsearchType="modalStore.modalData.inputsearchType || []" />
 
   <DLNAPlayerModal :visible="modalStore.modalName == 'dlna'" />
   <M3U8DownloadModal :visible="modalStore.modalName == 'm3u8download'" />
-  <CopyFileTreeModal :visible="modalStore.modalName == 'copyfiletree'" :filelist="modalStore.modalData.filelist || []" />
+  <CopyFileTreeModal :visible="modalStore.modalName == 'copyfiletree'"
+                     :filelist='modalStore.modalData.filelist || []' />
   <ArchiveModal
     :visible="modalStore.modalName == 'archive'"
     :user_id="modalStore.modalData.user_id || ''"
@@ -102,24 +125,47 @@ export default defineComponent({
     :domain_id="modalStore.modalData.domain_id || ''"
     :ext="modalStore.modalData.ext || ''" />
 
-  <EditShareLinkModal :visible="modalStore.modalName == 'editshare'" :sharelist="modalStore.modalData.sharelist || []" />
+  <EditShareLinkModal :visible="modalStore.modalName == 'editshare'"
+                      :sharelist='modalStore.modalData.sharelist || []' />
   <ShowShareLinkModal
     :visible="modalStore.modalName == 'showshare'"
     :share_id="modalStore.modalData.share_id || ''"
     :share_pwd="modalStore.modalData.share_pwd || ''"
     :share_token="modalStore.modalData.share_token || ''"
-    :withsave="modalStore.modalData.withsave || false"
-    :file_id_list="modalStore.modalData.file_id_list || []" />
+    :withsave='modalStore.modalData.withsave || false'
+    :save_db='modalStore.modalData.save_db || false'
+    :file_id_list='modalStore.modalData.file_id_list || []' />
 
-  <UploadModal :visible="modalStore.modalName == 'upload'" :file_id="modalStore.modalData.file_id || ''" :filelist="modalStore.modalData.filelist || []" />
-  <DownloadModal :visible="modalStore.modalName == 'download'" :istree="modalStore.modalData.istree || false" />
+  <UploadModal :visible="modalStore.modalName == 'upload'"
+               :file_id="modalStore.modalData.file_id || ''"
+               :filelist='modalStore.modalData.filelist || []'
+               :ispic='modalStore.modalData.ispic || false'
+               :encType="modalStore.modalData.encType || ''" />
+  <DownloadModal :visible="modalStore.modalName == 'download'" :istree='modalStore.modalData.istree || false' />
 
   <SelectPanDirModal :visible="modalStore.modalName == 'selectpandir'"
                      :selecttype="modalStore.modalData.selecttype || ''"
                      :selectid="modalStore.modalData.selectid || ''"
-                     :category="modalStore.modalData.category"
-                     :extFilter="modalStore.modalData.extFilter"
+                     :category='modalStore.modalData.category'
+                     :extFilter='modalStore.modalData.extFilter'
                      :callback='modalStore.modalData.callback' />
+
+  <ShowUpdateLog :visible="modalStore.modalName == 'showupdatelog'" />
+  <ShowUpdateModal :visible="modalStore.modalName == 'showupdate'"
+                   :verData='modalStore.modalData.verData || {}' />
+  <SelectVideoQualityModal :visible="modalStore.modalName == 'selectvideoquality'"
+                           :file-info="modalStore.modalData.fileInfo || {}"
+                           :quality-data="modalStore.modalData.qualityData || {}"
+                           :callback="modalStore.modalData.callback" />
+
+  <PostModal :visible="modalStore.modalName == 'showpostmodal'"
+             :msg='modalStore.modalData.msg || ""'
+             :msgid='modalStore.modalData.msgid || ""' />
+
+  <PasswordModal :visible="modalStore.modalName == 'showpassword'"
+                 :optType="modalStore.modalData.optType || 'new'"
+                 :callback="modalStore.modalData.callback" />
+
 </template>
 <style>
 .modalclass .arco-modal-body {
