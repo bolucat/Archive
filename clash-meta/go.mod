@@ -22,7 +22,7 @@ require (
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
-	github.com/metacubex/kcp-go v0.0.0-20250922034656-df9a2b90cdf7
+	github.com/metacubex/kcp-go v0.0.0-20250923001605-1ba6f691c45b
 	github.com/metacubex/quic-go v0.54.1-0.20250730114134-a1ae705fe295
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
@@ -37,7 +37,7 @@ require (
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250922175018-15c9a6a78719
 	github.com/metacubex/tfo-go v0.0.0-20250921095601-b102db4216c0
-	github.com/metacubex/utls v1.8.1-0.20250921102910-221428e5d4b2
+	github.com/metacubex/utls v1.8.1-0.20250923145048-0a5bbc90dd3e
 	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0

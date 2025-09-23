@@ -11,6 +11,9 @@ namespace ServiceLib.ViewModels;
 
 public class StatusBarViewModel : MyReactiveObject
 {
+    private static readonly Lazy<StatusBarViewModel> _instance = new(() => new(null));
+    public static StatusBarViewModel Instance => _instance.Value;
+
     #region ObservableCollection
 
     public IObservableCollection<RoutingItem> RoutingItems { get; } = new ObservableCollectionExtended<RoutingItem>();
@@ -209,6 +212,26 @@ public class StatusBarViewModel : MyReactiveObject
             .ObserveOn(RxApp.MainThreadScheduler)
             .Subscribe(async result => await UpdateStatistics(result));
 
+        AppEvents.RoutingsMenuRefreshRequested
+            .AsObservable()
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(async _ => await RefreshRoutingsMenu());
+
+        AppEvents.TestServerRequested
+            .AsObservable()
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(async _ => await TestServerAvailability());
+
+        AppEvents.InboundDisplayRequested
+            .AsObservable()
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(async _ => await InboundDisplayStatus());
+
+        AppEvents.SysProxyChangeRequested
+            .AsObservable()
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(async result => await SetListenerType(result));
+
         #endregion AppEvents
 
         _ = Init();
@@ -329,7 +352,7 @@ public class StatusBarViewModel : MyReactiveObject
         {
             return;
         }
-        Locator.Current.GetService<ProfilesViewModel>()?.SetDefaultServer(SelectedServer.ID);
+        AppEvents.SetDefaultServerRequested.OnNext(SelectedServer.ID);
     }
 
     public async Task TestServerAvailability()
@@ -364,7 +387,7 @@ public class StatusBarViewModel : MyReactiveObject
 
     #region System proxy and Routings
 
-    public async Task SetListenerType(ESysProxyType type)
+    private async Task SetListenerType(ESysProxyType type)
     {
         if (_config.SystemProxyItem.SysProxyType == type)
         {
@@ -393,7 +416,7 @@ public class StatusBarViewModel : MyReactiveObject
         }
     }
 
-    public async Task RefreshRoutingsMenu()
+    private async Task RefreshRoutingsMenu()
     {
         RoutingItems.Clear();
 
@@ -501,7 +524,7 @@ public class StatusBarViewModel : MyReactiveObject
 
     #region UI
 
-    public async Task InboundDisplayStatus()
+    private async Task InboundDisplayStatus()
     {
         StringBuilder sb = new();
         sb.Append($"[{EInboundProtocol.mixed}:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}");

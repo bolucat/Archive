@@ -20,7 +20,7 @@ namespace v2rayN.Desktop.Views;
 public partial class MainWindow : WindowBase<MainWindowViewModel>
 {
     private static Config _config;
-    private WindowNotificationManager? _manager;
+    private readonly WindowNotificationManager? _manager;
     private CheckUpdateView? _checkUpdateView;
     private BackupAndRestoreView? _backupAndRestoreView;
     private bool _blCloseByUser = false;
@@ -259,7 +259,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
             case EGlobalHotkey.SystemProxySet:
             case EGlobalHotkey.SystemProxyUnchanged:
             case EGlobalHotkey.SystemProxyPac:
-                Locator.Current.GetService<StatusBarViewModel>()?.SetListenerType((ESysProxyType)((int)e - 1));
+                AppEvents.SysProxyChangeRequested.OnNext((ESysProxyType)((int)e - 1));
                 break;
         }
     }

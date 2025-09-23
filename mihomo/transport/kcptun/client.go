@@ -2,8 +2,6 @@ package kcptun
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"net"
 	"sync"
 	"time"
@@ -11,6 +9,7 @@ import (
 	"github.com/metacubex/mihomo/log"
 
 	"github.com/metacubex/kcp-go"
+	"github.com/metacubex/randv2"
 	"github.com/metacubex/smux"
 )
 
@@ -60,8 +59,7 @@ func (c *Client) createConn(ctx context.Context, dial DialFn) (*smux.Session, er
 	}
 
 	config := c.config
-	var convid uint32
-	binary.Read(rand.Reader, binary.LittleEndian, &convid)
+	convid := randv2.Uint32()
 	kcpconn, err := kcp.NewConn4(convid, addr, c.block, config.DataShard, config.ParityShard, true, conn)
 	if err != nil {
 		return nil, err
