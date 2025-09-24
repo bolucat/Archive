@@ -88,6 +88,7 @@ return view.extend({
 		ss.hm_lowcase_only = true;
 
 		ss.tab('field_general', _('General fields'));
+		ss.tab('field_vless_encryption', _('Vless Encryption fields'));
 		ss.tab('field_tls', _('TLS fields'));
 		ss.tab('field_transport', _('Transport fields'));
 		ss.tab('field_multiplex', _('Multiplex fields'));
@@ -208,8 +209,8 @@ return view.extend({
 		so.modalonly = true;
 
 		/* Mieru fields */
-		so = ss.taboption('field_general', form.Value, 'mieru_port_range', _('Port range'));
-		so.datatype = 'portrange';
+		so = ss.taboption('field_general', form.DynamicList, 'mieru_ports', _('Ports pool'));
+		so.datatype = 'or(port, portrange)';
 		so.depends('type', 'mieru');
 		so.modalonly = true;
 
@@ -419,10 +420,6 @@ return view.extend({
 		so.depends({type: /^(vmess|vless)$/});
 		so.modalonly = true;
 
-		so = ss.taboption('field_general', form.Value, 'vless_encryption', _('encryption'));
-		so.depends('type', 'vless');
-		so.modalonly = true;
-
 		/* WireGuard fields */
 		so = ss.taboption('field_general', form.Value, 'wireguard_ip', _('Local address'),
 			_('The %s address used by local machine in the Wireguard network.').format('IPv4'));
@@ -496,6 +493,7 @@ return view.extend({
 		//so.value('gost-plugin', _('gost-plugin'));
 		so.value('shadow-tls', _('shadow-tls'));
 		so.value('restls', _('restls'));
+		//so.value('kcptun', _('kcptun'));
 		so.depends('type', 'ss');
 		so.modalonly = true;
 
@@ -557,6 +555,11 @@ return view.extend({
 		so.value('2', _('v2'));
 		so.default = '2';
 		so.depends('uot', '1');
+		so.modalonly = true;
+
+		/* Vless Encryption fields */
+		so = ss.taboption('field_general', form.Value, 'vless_encryption', _('encryption'));
+		so.depends('type', 'vless');
 		so.modalonly = true;
 
 		/* TLS fields */
