@@ -1,48 +1,36 @@
-import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
-import { useTranslation } from "react-i18next";
 import {
-  Typography,
+  ArrowDownwardRounded,
+  ArrowUpwardRounded,
+  CloudDownloadRounded,
+  CloudUploadRounded,
+  LinkRounded,
+  MemoryRounded,
+} from "@mui/icons-material";
+import {
+  Box,
+  Grid,
+  PaletteColor,
   Paper,
+  Typography,
   alpha,
   useTheme,
-  PaletteColor,
-  Grid,
-  Box,
 } from "@mui/material";
-import {
-  ArrowUpwardRounded,
-  ArrowDownwardRounded,
-  MemoryRounded,
-  LinkRounded,
-  CloudUploadRounded,
-  CloudDownloadRounded,
-} from "@mui/icons-material";
+import { ReactNode, memo, useCallback, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import useSWR from "swr";
+
+import { TrafficErrorBoundary } from "@/components/common/traffic-error-boundary";
+import { useTrafficDataEnhanced } from "@/hooks/use-traffic-monitor";
+import { useVerge } from "@/hooks/use-verge";
+import { useVisibility } from "@/hooks/use-visibility";
+import { useAppData } from "@/providers/app-data-context";
+import { gc, isDebugEnabled } from "@/services/cmds";
+import parseTraffic from "@/utils/parse-traffic";
+
 import {
   EnhancedCanvasTrafficGraph,
   type EnhancedCanvasTrafficGraphRef,
-  type ITrafficItem,
 } from "./enhanced-canvas-traffic-graph";
-import { useVisibility } from "@/hooks/use-visibility";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
-import parseTraffic from "@/utils/parse-traffic";
-import { isDebugEnabled, gc } from "@/services/cmds";
-import { ReactNode } from "react";
-import { useAppData } from "@/providers/app-data-provider";
-import { useTrafficDataEnhanced } from "@/hooks/use-traffic-monitor-enhanced";
-import { TrafficErrorBoundary } from "@/components/common/traffic-error-boundary";
-import useSWR from "swr";
-
-interface MemoryUsage {
-  inuse: number;
-  oslimit?: number;
-}
-
-interface TrafficStatData {
-  uploadTotal: number;
-  downloadTotal: number;
-  activeConnections: number;
-}
 
 interface StatCardProps {
   icon: ReactNode;
@@ -63,9 +51,6 @@ declare global {
     };
   }
 }
-
-// 控制更新频率
-const CONNECTIONS_UPDATE_INTERVAL = 5000; // 5秒更新一次连接数据
 
 // 统计卡片组件 - 使用memo优化
 const CompactStatCard = memo(
@@ -159,13 +144,12 @@ CompactStatCard.displayName = "CompactStatCard";
 export const EnhancedTrafficStats = () => {
   const { t } = useTranslation();
   const theme = useTheme();
-  const { clashInfo } = useClashInfo();
   const { verge } = useVerge();
   const trafficRef = useRef<EnhancedCanvasTrafficGraphRef>(null);
   const pageVisible = useVisibility();
 
   // 使用AppDataProvider
-  const { connections, uptime } = useAppData();
+  const { connections } = useAppData();
 
   // 使用增强版的统一流量数据Hook
   const { traffic, memory, isLoading, isDataFresh, hasValidData } =
@@ -258,7 +242,7 @@ export const EnhancedTrafficStats = () => {
                 borderRadius: "4px",
               }}
             >
-              DEBUG: {!!trafficRef.current ? "图表已初始化" : "图表未初始化"}
+              DEBUG: {trafficRef.current ? "图表已初始化" : "图表未初始化"}
               <br />
               状态: {isDataFresh ? "active" : "inactive"}
               <br />

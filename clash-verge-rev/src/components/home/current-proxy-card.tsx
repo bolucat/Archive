@@ -1,38 +1,38 @@
-import { useTranslation } from "react-i18next";
 import {
-  Box,
-  Typography,
-  Chip,
-  Button,
-  alpha,
-  useTheme,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  SelectChangeEvent,
-  Tooltip,
-  IconButton,
-} from "@mui/material";
-import { useEffect, useState, useMemo, useCallback } from "react";
-import {
-  SignalWifi4Bar as SignalStrong,
+  AccessTimeRounded,
+  ChevronRight,
+  WifiOff as SignalError,
   SignalWifi3Bar as SignalGood,
   SignalWifi2Bar as SignalMedium,
-  SignalWifi1Bar as SignalWeak,
   SignalWifi0Bar as SignalNone,
-  WifiOff as SignalError,
-  ChevronRight,
-  SortRounded,
-  AccessTimeRounded,
+  SignalWifi4Bar as SignalStrong,
+  SignalWifi1Bar as SignalWeak,
   SortByAlphaRounded,
+  SortRounded,
 } from "@mui/icons-material";
+import {
+  Box,
+  Button,
+  Chip,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Select,
+  SelectChangeEvent,
+  Tooltip,
+  Typography,
+  alpha,
+  useTheme,
+} from "@mui/material";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+
 import { EnhancedCard } from "@/components/home/enhanced-card";
-import { updateProxy, deleteConnection } from "@/services/cmds";
+import { useProxySelection } from "@/hooks/use-proxy-selection";
+import { useAppData } from "@/providers/app-data-context";
 import delayManager from "@/services/delay";
-import { useVerge } from "@/hooks/use-verge";
-import { useAppData } from "@/providers/app-data-provider";
 
 // 本地存储的键名
 const STORAGE_KEY_GROUP = "clash-verge-selected-proxy-group";
@@ -45,7 +45,7 @@ interface ProxyOption {
 }
 
 // 排序类型: 默认 | 按延迟 | 按字母
-export type ProxySortType = 0 | 1 | 2;
+type ProxySortType = 0 | 1 | 2;
 
 function convertDelayColor(delayValue: number) {
   const colorStr = delayManager.formatDelayColor(delayValue);
@@ -94,8 +94,18 @@ export const CurrentProxyCard = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const theme = useTheme();
-  const { verge } = useVerge();
-  const { proxies, connections, clashConfig, refreshProxy } = useAppData();
+  const { proxies, clashConfig, refreshProxy } = useAppData();
+
+  // 统一代理选择器
+  const { handleSelectChange } = useProxySelection({
+    onSuccess: () => {
+      refreshProxy();
+    },
+    onError: (error) => {
+      console.error("代理切换失败", error);
+      refreshProxy();
+    },
+  });
 
   // 判断模式
   const mode = clashConfig?.mode?.toLowerCase() || "rule";
@@ -113,8 +123,6 @@ export const CurrentProxyCard = () => {
     proxyData: {
       groups: { name: string; now: string; all: string[] }[];
       records: Record<string, any>;
-      globalProxy: string;
-      directProxy: any;
     };
     selection: {
       group: string;
@@ -127,8 +135,6 @@ export const CurrentProxyCard = () => {
     proxyData: {
       groups: [],
       records: {},
-      globalProxy: "",
-      directProxy: { name: "DIRECT" }, // 默认值避免 undefined
     },
     selection: {
       group: "",
@@ -253,8 +259,6 @@ export const CurrentProxyCard = () => {
         proxyData: {
           groups: filteredGroups,
           records: proxies.records || {},
-          globalProxy: proxies.global?.now || "",
-          directProxy: proxies.records?.DIRECT || { name: "DIRECT" },
         },
         selection: {
           group: newGroup,
@@ -310,7 +314,7 @@ export const CurrentProxyCard = () => {
 
   // 处理代理节点变更
   const handleProxyChange = useCallback(
-    async (event: SelectChangeEvent) => {
+    (event: SelectChangeEvent) => {
       if (isDirectMode) return;
 
       const newProxy = event.target.value;
@@ -330,35 +334,15 @@ export const CurrentProxyCard = () => {
         localStorage.setItem(STORAGE_KEY_PROXY, newProxy);
       }
 
-      try {
-        await updateProxy(currentGroup, newProxy);
-
-        // 自动关闭连接设置
-        if (verge?.auto_close_connection && previousProxy) {
-          connections.data.forEach((conn: any) => {
-            if (conn.chains.includes(previousProxy)) {
-              deleteConnection(conn.id);
-            }
-          });
-        }
-
-        // 延长刷新延迟时间
-        setTimeout(() => {
-          refreshProxy();
-        }, 500);
-      } catch (error) {
-        console.error("更新代理失败", error);
-      }
+      const skipConfigSave = isGlobalMode || isDirectMode;
+      handleSelectChange(currentGroup, previousProxy, skipConfigSave)(event);
     },
     [
       isDirectMode,
       isGlobalMode,
-      state.proxyData.records,
       state.selection,
-      verge?.auto_close_connection,
-      refreshProxy,
       debouncedSetState,
-      connections.data,
+      handleSelectChange,
     ],
   );
 

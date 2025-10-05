@@ -1,8 +1,9 @@
 use super::CmdResult;
-use crate::core::{async_proxy_query::AsyncProxyQuery, EventDrivenProxyManager};
+use crate::core::{EventDrivenProxyManager, async_proxy_query::AsyncProxyQuery};
+use crate::process::AsyncHandler;
 use crate::wrap_err;
 use network_interface::NetworkInterface;
-use serde_yaml::Mapping;
+use serde_yaml_ng::Mapping;
 
 /// get the system proxy
 #[tauri::command]
@@ -30,9 +31,9 @@ pub async fn get_auto_proxy() -> CmdResult<Mapping> {
 
     let proxy_manager = EventDrivenProxyManager::global();
 
-    let current = proxy_manager.get_auto_proxy_cached();
+    let current = proxy_manager.get_auto_proxy_cached().await;
     // 异步请求更新，立即返回缓存数据
-    tokio::spawn(async move {
+    AsyncHandler::spawn(move || async move {
         let _ = proxy_manager.get_auto_proxy_async().await;
     });
 

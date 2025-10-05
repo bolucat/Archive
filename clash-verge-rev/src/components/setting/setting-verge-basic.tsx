@@ -1,26 +1,28 @@
+import { ContentCopyRounded } from "@mui/icons-material";
+import { Button, MenuItem, Select, Input } from "@mui/material";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { open } from "@tauri-apps/plugin-dialog";
-import { Button, MenuItem, Select, Input } from "@mui/material";
-import { copyClashEnv } from "@/services/cmds";
-import { useVerge } from "@/hooks/use-verge";
+
 import { DialogRef } from "@/components/base";
+import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { useVerge } from "@/hooks/use-verge";
+import { routers } from "@/pages/_routers";
+import { copyClashEnv } from "@/services/cmds";
+import { supportedLanguages } from "@/services/i18n";
+import { showNotice } from "@/services/noticeService";
+import getSystem from "@/utils/get-system";
+
+import { BackupViewer } from "./mods/backup-viewer";
+import { ConfigViewer } from "./mods/config-viewer";
+import { GuardState } from "./mods/guard-state";
+import { HotkeyViewer } from "./mods/hotkey-viewer";
+import { LayoutViewer } from "./mods/layout-viewer";
+import { MiscViewer } from "./mods/misc-viewer";
 import { SettingList, SettingItem } from "./mods/setting-comp";
 import { ThemeModeSwitch } from "./mods/theme-mode-switch";
-import { ConfigViewer } from "./mods/config-viewer";
-import { HotkeyViewer } from "./mods/hotkey-viewer";
-import { MiscViewer } from "./mods/misc-viewer";
 import { ThemeViewer } from "./mods/theme-viewer";
-import { GuardState } from "./mods/guard-state";
-import { LayoutViewer } from "./mods/layout-viewer";
 import { UpdateViewer } from "./mods/update-viewer";
-import { BackupViewer } from "./mods/backup-viewer";
-import getSystem from "@/utils/get-system";
-import { routers } from "@/pages/_routers";
-import { TooltipIcon } from "@/components/base/base-tooltip-icon";
-import { ContentCopyRounded } from "@mui/icons-material";
-import { languages } from "@/services/i18n";
-import { showNotice } from "@/services/noticeService";
 
 interface Props {
   onError?: (err: Error) => void;
@@ -28,7 +30,7 @@ interface Props {
 
 const OS = getSystem();
 
-const languageOptions = Object.entries(languages).map(([code, _]) => {
+const languageOptions = supportedLanguages.map((code) => {
   const labels: { [key: string]: string } = {
     en: "English",
     ru: "Русский",
@@ -39,8 +41,13 @@ const languageOptions = Object.entries(languages).map(([code, _]) => {
     ar: "العربية",
     ko: "한국어",
     tr: "Türkçe",
+    de: "Deutsch",
+    es: "Español",
+    jp: "日本語",
+    zhtw: "繁體中文",
   };
-  return { code, label: labels[code] };
+  const label = labels[code] || code;
+  return { code, label };
 });
 
 const SettingVergeBasic = ({ onError }: Props) => {
@@ -70,7 +77,7 @@ const SettingVergeBasic = ({ onError }: Props) => {
   const onCopyClashEnv = useCallback(async () => {
     await copyClashEnv();
     showNotice("success", t("Copy Success"), 1000);
-  }, []);
+  }, [t]);
 
   return (
     <SettingList title={t("Verge Basic Setting")}>

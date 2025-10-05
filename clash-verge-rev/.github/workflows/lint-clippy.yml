@@ -2,6 +2,7 @@ name: Clippy Lint
 
 on:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   clippy:
@@ -18,11 +19,30 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Check src-tauri changes
+        id: check_changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - 'src-tauri/**'
+
+      - name: Skip if src-tauri not changed
+        if: steps.check_changes.outputs.rust != 'true'
+        run: echo "No src-tauri changes, skipping clippy lint."
+
+      - name: Continue if src-tauri changed
+        if: steps.check_changes.outputs.rust == 'true'
+        run: echo "src-tauri changed, running clippy lint."
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
@@ -41,21 +61,25 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
 
       - name: Pnpm install and check
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
 
+      # This workflow runs linting using cargo clippy.
+      # Note: If the web build step is skipped,
+      # cargo clippy will fail to run due to missing web dist in the Tauri environment.
       - name: Build Web Assets
         run: pnpm run web:build
         env:

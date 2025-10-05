@@ -1,52 +1,61 @@
-import { useTranslation } from "react-i18next";
+import {
+  DnsOutlined,
+  HelpOutlineRounded,
+  HistoryEduOutlined,
+  RouterOutlined,
+  SettingsOutlined,
+  SpeedOutlined,
+} from "@mui/icons-material";
 import {
   Box,
   Button,
-  IconButton,
-  useTheme,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormGroup,
-  FormControlLabel,
   Checkbox,
-  Tooltip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  FormGroup,
   Grid,
+  IconButton,
+  Skeleton,
+  Tooltip,
 } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { useProfiles } from "@/hooks/use-profiles";
-import {
-  RouterOutlined,
-  SettingsOutlined,
-  DnsOutlined,
-  SpeedOutlined,
-  HelpOutlineRounded,
-  HistoryEduOutlined,
-} from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
-import { ProxyTunCard } from "@/components/home/proxy-tun-card";
-import { ClashModeCard } from "@/components/home/clash-mode-card";
-import { EnhancedTrafficStats } from "@/components/home/enhanced-traffic-stats";
-import { useState, useEffect } from "react";
-import { HomeProfileCard } from "@/components/home/home-profile-card";
-import { EnhancedCard } from "@/components/home/enhanced-card";
-import { CurrentProxyCard } from "@/components/home/current-proxy-card";
-import { BasePage } from "@/components/base";
-import { ClashInfoCard } from "@/components/home/clash-info-card";
-import { SystemInfoCard } from "@/components/home/system-info-card";
 import { useLockFn } from "ahooks";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { BasePage } from "@/components/base";
+import { ClashModeCard } from "@/components/home/clash-mode-card";
+import { CurrentProxyCard } from "@/components/home/current-proxy-card";
+import { EnhancedCard } from "@/components/home/enhanced-card";
+import { EnhancedTrafficStats } from "@/components/home/enhanced-traffic-stats";
+import { HomeProfileCard } from "@/components/home/home-profile-card";
+import { ProxyTunCard } from "@/components/home/proxy-tun-card";
+import { useProfiles } from "@/hooks/use-profiles";
+import { useVerge } from "@/hooks/use-verge";
 import { entry_lightweight_mode, openWebUrl } from "@/services/cmds";
-import { TestCard } from "@/components/home/test-card";
-import { IpInfoCard } from "@/components/home/ip-info-card";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult,
-  DroppableProvided,
-  DraggableProvided,
-} from "react-beautiful-dnd";
+
+const LazyTestCard = lazy(() =>
+  import("@/components/home/test-card").then((module) => ({
+    default: module.TestCard,
+  })),
+);
+const LazyIpInfoCard = lazy(() =>
+  import("@/components/home/ip-info-card").then((module) => ({
+    default: module.IpInfoCard,
+  })),
+);
+const LazyClashInfoCard = lazy(() =>
+  import("@/components/home/clash-info-card").then((module) => ({
+    default: module.ClashInfoCard,
+  })),
+);
+const LazySystemInfoCard = lazy(() =>
+  import("@/components/home/system-info-card").then((module) => ({
+    default: module.SystemInfoCard,
+  })),
+);
 
 // 定义首页卡片设置接口
 interface HomeCardsSettings {
@@ -63,13 +72,6 @@ interface HomeCardsSettings {
   [key: string]: boolean;
 }
 
-// 卡片配置接口，包含排序信息
-interface CardConfig {
-  id: string;
-  size: number;
-  enabled: boolean;
-}
-
 // 首页设置对话框组件接口
 interface HomeSettingsDialogProps {
   open: boolean;
@@ -77,35 +79,6 @@ interface HomeSettingsDialogProps {
   homeCards: HomeCardsSettings;
   onSave: (cards: HomeCardsSettings) => void;
 }
-
-// 确保对象符合HomeCardsSettings类型的辅助函数
-const ensureHomeCardsSettings = (obj: any): HomeCardsSettings => {
-  const defaultSettings: HomeCardsSettings = {
-    profile: true,
-    proxy: true,
-    network: true,
-    mode: true,
-    traffic: true,
-    info: false,
-    clashinfo: true,
-    systeminfo: true,
-    test: true,
-    ip: true,
-  };
-
-  if (!obj || typeof obj !== "object") return defaultSettings;
-
-  // 合并默认值和传入对象，确保所有必要属性都存在
-  return Object.keys(defaultSettings).reduce((acc, key) => {
-    return {
-      ...acc,
-      [key]:
-        typeof obj[key] === "boolean"
-          ? obj[key]
-          : defaultSettings[key as keyof HomeCardsSettings],
-    };
-  }, {} as HomeCardsSettings);
-};
 
 // 首页设置对话框组件
 const HomeSettingsDialog = ({
@@ -118,16 +91,15 @@ const HomeSettingsDialog = ({
   const [cards, setCards] = useState<HomeCardsSettings>(homeCards);
   const { patchVerge } = useVerge();
 
-  const handleToggle = (key: keyof HomeCardsSettings) => {
-    setCards((prev) => ({
+  const handleToggle = (key: string) => {
+    setCards((prev: HomeCardsSettings) => ({
       ...prev,
       [key]: !prev[key],
     }));
   };
 
   const handleSave = async () => {
-    // 明确类型为HomeCardsSettings
-    await patchVerge({ home_cards: cards as HomeCardsSettings });
+    await patchVerge({ home_cards: cards });
     onSave(cards);
     onClose();
   };
@@ -140,7 +112,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.profile}
+                checked={cards.profile || false}
                 onChange={() => handleToggle("profile")}
               />
             }
@@ -149,7 +121,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.proxy}
+                checked={cards.proxy || false}
                 onChange={() => handleToggle("proxy")}
               />
             }
@@ -158,7 +130,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.network}
+                checked={cards.network || false}
                 onChange={() => handleToggle("network")}
               />
             }
@@ -167,7 +139,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.mode}
+                checked={cards.mode || false}
                 onChange={() => handleToggle("mode")}
               />
             }
@@ -176,7 +148,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.traffic}
+                checked={cards.traffic || false}
                 onChange={() => handleToggle("traffic")}
               />
             }
@@ -185,7 +157,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.test}
+                checked={cards.test || false}
                 onChange={() => handleToggle("test")}
               />
             }
@@ -194,7 +166,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.ip}
+                checked={cards.ip || false}
                 onChange={() => handleToggle("ip")}
               />
             }
@@ -203,7 +175,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.clashinfo}
+                checked={cards.clashinfo || false}
                 onChange={() => handleToggle("clashinfo")}
               />
             }
@@ -212,7 +184,7 @@ const HomeSettingsDialog = ({
           <FormControlLabel
             control={
               <Checkbox
-                checked={cards.systeminfo}
+                checked={cards.systeminfo || false}
                 onChange={() => handleToggle("systeminfo")}
               />
             }
@@ -230,89 +202,72 @@ const HomeSettingsDialog = ({
   );
 };
 
-export const HomePage = () => {
+const HomePage = () => {
   const { t } = useTranslation();
-  const { verge, patchVerge } = useVerge();
+  const { verge } = useVerge();
   const { current, mutateProfiles } = useProfiles();
-  const theme = useTheme();
 
   // 设置弹窗的状态
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // 卡片显示状态 - 确保类型正确
-  const [homeCards, setHomeCards] = useState<HomeCardsSettings>(
-    ensureHomeCardsSettings(verge?.home_cards),
+
+  // 卡片显示状态
+  const defaultCards = useMemo<HomeCardsSettings>(
+    () => ({
+      info: false,
+      profile: true,
+      proxy: true,
+      network: true,
+      mode: true,
+      traffic: true,
+      clashinfo: true,
+      systeminfo: true,
+      test: true,
+      ip: true,
+    }),
+    [],
   );
 
-  // 卡片排序配置 - 默认为初始顺序
-  const [cardOrder, setCardOrder] = useState<string[]>(
-    // 明确断言类型
-    (verge?.card_order as string[]) || [
-      "profile",
-      "proxy",
-      "network",
-      "mode",
-      "traffic",
-      "test",
-      "ip",
-      "clashinfo",
-      "systeminfo",
-    ],
-  );
-
-  // 当homeCards变化时，确保cardOrder中只包含启用的卡片
-  useEffect(() => {
-    const enabledCards = Object.entries(homeCards)
-      .filter(([_, enabled]) => enabled)
-      .map(([id]) => id);
-
-    // 过滤掉已禁用的卡片
-    const filteredOrder = cardOrder.filter((id) => enabledCards.includes(id));
-
-    // 添加新启用但不在排序中的卡片
-    const newCards = enabledCards.filter((id) => !filteredOrder.includes(id));
-
-    setCardOrder([...filteredOrder, ...newCards]);
-  }, [homeCards]);
-
-  // 保存卡片排序
-  const saveCardOrder = useLockFn(async (order: string[]) => {
-    await patchVerge({ card_order: order } as any);
-    setCardOrder(order);
+  const [homeCards, setHomeCards] = useState<HomeCardsSettings>(() => {
+    return (verge?.home_cards as HomeCardsSettings) || defaultCards;
   });
-
-  // 处理拖拽结束
-  const handleDragEnd = (result: DropResult) => {
-    const { destination, source, draggableId } = result;
-
-    // 拖拽到无效位置或原位置，不做处理
-    if (
-      !destination ||
-      (destination.droppableId === source.droppableId &&
-        destination.index === source.index)
-    ) {
-      return;
-    }
-
-    // 重新排序
-    const newOrder = Array.from(cardOrder);
-    newOrder.splice(source.index, 1);
-    newOrder.splice(destination.index, 0, draggableId);
-
-    // 保存新顺序
-    saveCardOrder(newOrder);
-  };
 
   // 文档链接函数
   const toGithubDoc = useLockFn(() => {
     return openWebUrl("https://clash-verge-rev.github.io/index.html");
   });
 
-  // 卡片设置弹窗
-  const openSettings = () => {
+  // 新增：打开设置弹窗
+  const openSettings = useCallback(() => {
     setSettingsOpen(true);
-  };
+  }, []);
 
-  // 保存勾选设置
+  const renderCard = useCallback(
+    (cardKey: string, component: React.ReactNode, size: number = 6) => {
+      if (!homeCards[cardKey]) return null;
+
+      return (
+        <Grid size={size} key={cardKey}>
+          {component}
+        </Grid>
+      );
+    },
+    [homeCards],
+  );
+
+  const criticalCards = useMemo(
+    () => [
+      renderCard(
+        "profile",
+        <HomeProfileCard current={current} onProfileUpdated={mutateProfiles} />,
+      ),
+      renderCard("proxy", <CurrentProxyCard />),
+      renderCard("network", <NetworkSettingsCard />),
+      renderCard("mode", <ClashModeEnhancedCard />),
+    ],
+    [current, mutateProfiles, renderCard],
+  );
+
+  // 新增：保存设置时用requestIdleCallback/setTimeout
   const handleSaveSettings = (newCards: HomeCardsSettings) => {
     if (window.requestIdleCallback) {
       window.requestIdleCallback(() => setHomeCards(newCards));
@@ -321,67 +276,46 @@ export const HomePage = () => {
     }
   };
 
-  // 获取卡片配置信息
-  const getCardConfig = (id: string): CardConfig => {
-    const configs: Record<string, CardConfig> = {
-      profile: { id: "profile", size: 6, enabled: homeCards.profile },
-      proxy: { id: "proxy", size: 6, enabled: homeCards.proxy },
-      network: { id: "network", size: 6, enabled: homeCards.network },
-      mode: { id: "mode", size: 6, enabled: homeCards.mode },
-      traffic: { id: "traffic", size: 12, enabled: homeCards.traffic },
-      test: { id: "test", size: 6, enabled: homeCards.test },
-      ip: { id: "ip", size: 6, enabled: homeCards.ip },
-      clashinfo: { id: "clashinfo", size: 6, enabled: homeCards.clashinfo },
-      systeminfo: { id: "systeminfo", size: 6, enabled: homeCards.systeminfo },
-    };
-
-    if (!configs[id]) {
-      console.warn(`检测到未知卡片ID: ${id}，使用默认配置`);
-      return { id, size: 6, enabled: false };
-    }
-
-    return configs[id];
-  };
-
-  // 渲染卡片内容
-  const renderCardContent = (id: string) => {
-    switch (id) {
-      case "profile":
-        return (
-          <HomeProfileCard
-            current={current}
-            onProfileUpdated={mutateProfiles}
-          />
-        );
-      case "proxy":
-        return <CurrentProxyCard />;
-      case "network":
-        return <NetworkSettingsCard />;
-      case "mode":
-        return <ClashModeEnhancedCard />;
-      case "traffic":
-        return (
-          <EnhancedCard
-            title={t("Traffic Stats")}
-            icon={<SpeedOutlined />}
-            iconColor="secondary"
-          >
-            <EnhancedTrafficStats />
-          </EnhancedCard>
-        );
-      case "test":
-        return <TestCard />;
-      case "ip":
-        return <IpInfoCard />;
-      case "clashinfo":
-        return <ClashInfoCard />;
-      case "systeminfo":
-        return <SystemInfoCard />;
-      default:
-        console.warn(`无法渲染未知卡片: ${id}`);
-        return null;
-    }
-  };
+  const nonCriticalCards = useMemo(
+    () => [
+      renderCard(
+        "traffic",
+        <EnhancedCard
+          title={t("Traffic Stats")}
+          icon={<SpeedOutlined />}
+          iconColor="secondary"
+        >
+          <EnhancedTrafficStats />
+        </EnhancedCard>,
+        12,
+      ),
+      renderCard(
+        "test",
+        <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+          <LazyTestCard />
+        </Suspense>,
+      ),
+      renderCard(
+        "ip",
+        <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+          <LazyIpInfoCard />
+        </Suspense>,
+      ),
+      renderCard(
+        "clashinfo",
+        <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+          <LazyClashInfoCard />
+        </Suspense>,
+      ),
+      renderCard(
+        "systeminfo",
+        <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
+          <LazySystemInfoCard />
+        </Suspense>,
+      ),
+    ],
+    [t, renderCard],
+  );
 
   return (
     <BasePage
@@ -411,62 +345,11 @@ export const HomePage = () => {
         </Box>
       }
     >
-      {/* 拖拽上下文 */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Droppable
-          droppableId="home-cards"
-          isDropDisabled={false}
-          isCombineEnabled={false}
-          ignoreContainerClipping={false}
-        >
-          {(provided: DroppableProvided) => (
-            <Grid
-              container
-              spacing={1.5}
-              columns={{ xs: 6, sm: 6, md: 12 }}
-              ref={provided.innerRef}
-              {...provided.droppableProps}
-            >
-              {cardOrder
-                .filter((id) => {
-                  const config = getCardConfig(id);
-                  return homeCards[id] && config.enabled;
-                })
-                .map((id, index) => {
-                  const config = getCardConfig(id);
-                  if (!config) return null;
+      <Grid container spacing={1.5} columns={{ xs: 6, sm: 6, md: 12 }}>
+        {criticalCards}
 
-                  return (
-                    <Draggable
-                      key={id}
-                      draggableId={id}
-                      index={index}
-                      isDragDisabled={false}
-                    >
-                      {(provided: DraggableProvided) => (
-                        <Grid
-                          size={config.size}
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
-                          sx={{
-                            cursor: "grab",
-                            "&:active": {
-                              cursor: "grabbing",
-                            },
-                          }}
-                        >
-                          {renderCardContent(id)}
-                        </Grid>
-                      )}
-                    </Draggable>
-                  );
-                })}
-              {provided.placeholder}
-            </Grid>
-          )}
-        </Droppable>
-      </DragDropContext>
+        {nonCriticalCards}
+      </Grid>
 
       {/* 首页设置弹窗 */}
       <HomeSettingsDialog

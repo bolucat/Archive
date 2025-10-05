@@ -74,11 +74,14 @@ impl WebDavClient {
 
         // 获取或创建配置
         let config = {
-            let mut lock = self.config.lock();
-            if let Some(cfg) = lock.as_ref() {
-                cfg.clone()
+            // 首先检查是否已有配置
+            let existing_config = self.config.lock().as_ref().cloned();
+
+            if let Some(cfg) = existing_config {
+                cfg
             } else {
-                let verge = Config::verge().latest_ref().clone();
+                // 释放锁后获取异步配置
+                let verge = Config::verge().await.latest_ref().clone();
                 if verge.webdav_url.is_none()
                     || verge.webdav_username.is_none()
                     || verge.webdav_password.is_none()
@@ -97,7 +100,8 @@ impl WebDavClient {
                     password: verge.webdav_password.unwrap_or_default(),
                 };
 
-                *lock = Some(config.clone());
+                // 重新获取锁并存储配置
+                *self.config.lock() = Some(config.clone());
                 config
             }
         };
@@ -117,8 +121,7 @@ impl WebDavClient {
                             attempt.follow()
                         }
                     }))
-                    .build()
-                    .unwrap(),
+                    .build()?,
             )
             .set_host(config.url)
             .set_auth(reqwest_dav::Auth::Basic(config.username, config.password))
@@ -243,12 +246,17 @@ pub fn create_backup() -> Result<(String, PathBuf), Error> {
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     if let Ok(entries) = fs::read_dir(dirs::app_profiles_dir()?) {
         for entry in entries {
-            let entry = entry.unwrap();
+            let entry = entry?;
             let path = entry.path();
             if path.is_file() {
-                let backup_path = format!("profiles/{}", entry.file_name().to_str().unwrap());
+                let file_name_os = entry.file_name();
+                let file_name = file_name_os
+                    .to_str()
+                    .ok_or_else(|| anyhow::Error::msg("Invalid file name encoding"))?;
+                let backup_path = format!("profiles/{}", file_name);
                 zip.start_file(backup_path, options)?;
-                zip.write_all(fs::read(path).unwrap().as_slice())?;
+                let file_content = fs::read(&path)?;
+                zip.write_all(&file_content)?;
             }
         }
     }
@@ -256,14 +264,14 @@ pub fn create_backup() -> Result<(String, PathBuf), Error> {
     zip.write_all(fs::read(dirs::clash_path()?)?.as_slice())?;
 
     let mut verge_config: serde_json::Value =
-        serde_yaml::from_str(&fs::read_to_string(dirs::verge_path()?)?)?;
+        serde_yaml_ng::from_str(&fs::read_to_string(dirs::verge_path()?)?)?;
     if let Some(obj) = verge_config.as_object_mut() {
         obj.remove("webdav_username");
         obj.remove("webdav_password");
         obj.remove("webdav_url");
     }
     zip.start_file(dirs::VERGE_CONFIG, options)?;
-    zip.write_all(serde_yaml::to_string(&verge_config)?.as_bytes())?;
+    zip.write_all(serde_yaml_ng::to_string(&verge_config)?.as_bytes())?;
 
     zip.start_file(dirs::PROFILE_YAML, options)?;
     zip.write_all(fs::read(dirs::profiles_path()?)?.as_slice())?;

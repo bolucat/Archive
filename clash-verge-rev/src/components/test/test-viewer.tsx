@@ -1,11 +1,12 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
-import { useForm, Controller } from "react-hook-form";
 import { TextField } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { BaseDialog } from "@/components/base";
+import { useLockFn } from "ahooks";
 import { nanoid } from "nanoid";
+import { forwardRef, useImperativeHandle, useState } from "react";
+import { useForm, Controller } from "react-hook-form";
+import { useTranslation } from "react-i18next";
+
+import { BaseDialog } from "@/components/base";
+import { useVerge } from "@/hooks/use-verge";
 import { showNotice } from "@/services/noticeService";
 
 interface Props {
@@ -25,7 +26,12 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
   const [loading, setLoading] = useState(false);
   const { verge, patchVerge } = useVerge();
   const testList = verge?.test_list ?? [];
-  const { control, watch, register, ...formIns } = useForm<IVergeTestItem>({
+  const {
+    control,
+    watch: _watch,
+    register: _register,
+    ...formIns
+  } = useForm<IVergeTestItem>({
     defaultValues: {
       name: "",
       icon: "",

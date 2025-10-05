@@ -4,18 +4,18 @@ use crate::{
     utils::{dirs, logging::Type},
     wrap_err,
 };
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
 /// 打开应用程序所在目录
 #[tauri::command]
-pub fn open_app_dir() -> CmdResult<()> {
+pub async fn open_app_dir() -> CmdResult<()> {
     let app_dir = wrap_err!(dirs::app_home_dir())?;
     wrap_err!(open::that(app_dir))
 }
 
 /// 打开核心所在目录
 #[tauri::command]
-pub fn open_core_dir() -> CmdResult<()> {
+pub async fn open_core_dir() -> CmdResult<()> {
     let core_dir = wrap_err!(tauri::utils::platform::current_exe())?;
     let core_dir = core_dir.parent().ok_or("failed to get core dir")?;
     wrap_err!(open::that(core_dir))
@@ -23,7 +23,7 @@ pub fn open_core_dir() -> CmdResult<()> {
 
 /// 打开日志目录
 #[tauri::command]
-pub fn open_logs_dir() -> CmdResult<()> {
+pub async fn open_logs_dir() -> CmdResult<()> {
     let log_dir = wrap_err!(dirs::app_logs_dir())?;
     wrap_err!(open::that(log_dir))
 }
@@ -36,7 +36,7 @@ pub fn open_web_url(url: String) -> CmdResult<()> {
 
 /// 打开/关闭开发者工具
 #[tauri::command]
-pub fn open_devtools(app_handle: tauri::AppHandle) {
+pub fn open_devtools(app_handle: AppHandle) {
     if let Some(window) = app_handle.get_webview_window("main") {
         if !window.is_devtools_open() {
             window.open_devtools();
@@ -48,14 +48,14 @@ pub fn open_devtools(app_handle: tauri::AppHandle) {
 
 /// 退出应用
 #[tauri::command]
-pub fn exit_app() {
-    feat::quit();
+pub async fn exit_app() {
+    feat::quit().await;
 }
 
 /// 重启应用
 #[tauri::command]
 pub async fn restart_app() -> CmdResult<()> {
-    feat::restart_app();
+    feat::restart_app().await;
     Ok(())
 }
 
@@ -121,9 +121,8 @@ pub async fn download_icon_cache(url: String, name: String) -> CmdResult<String>
                 Err(_) => {
                     if icon_path.exists() {
                         return Ok(icon_path.to_string_lossy().to_string());
-                    } else {
-                        return Err("Failed to create temporary file".into());
                     }
+                    return Err("Failed to create temporary file".into());
                 }
             };
 
@@ -210,7 +209,7 @@ pub fn copy_icon_file(path: String, icon_info: IconInfo) -> CmdResult<String> {
 #[tauri::command]
 pub fn notify_ui_ready() -> CmdResult<()> {
     log::info!(target: "app", "前端UI已准备就绪");
-    crate::utils::resolve::mark_ui_ready();
+    crate::utils::resolve::ui::mark_ui_ready();
     Ok(())
 }
 
@@ -219,7 +218,7 @@ pub fn notify_ui_ready() -> CmdResult<()> {
 pub fn update_ui_stage(stage: String) -> CmdResult<()> {
     log::info!(target: "app", "UI加载阶段更新: {stage}");
 
-    use crate::utils::resolve::UiReadyStage;
+    use crate::utils::resolve::ui::UiReadyStage;
 
     let stage_enum = match stage.as_str() {
         "NotStarted" => UiReadyStage::NotStarted,
@@ -233,14 +232,6 @@ pub fn update_ui_stage(stage: String) -> CmdResult<()> {
         }
     };
 
-    crate::utils::resolve::update_ui_ready_stage(stage_enum);
-    Ok(())
-}
-
-/// 重置UI就绪状态
-#[tauri::command]
-pub fn reset_ui_ready_state() -> CmdResult<()> {
-    log::info!(target: "app", "重置UI就绪状态");
-    crate::utils::resolve::reset_ui_ready();
+    crate::utils::resolve::ui::update_ui_ready_stage(stage_enum);
     Ok(())
 }

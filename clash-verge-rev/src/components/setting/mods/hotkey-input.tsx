@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
-import { alpha, Box, IconButton, styled } from "@mui/material";
 import { DeleteRounded } from "@mui/icons-material";
-import { parseHotkey } from "@/utils/parse-hotkey";
+import { alpha, Box, IconButton, styled } from "@mui/material";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { parseHotkey } from "@/utils/parse-hotkey";
 
 const KeyWrapper = styled("div")(({ theme }) => ({
   position: "relative",
@@ -89,13 +90,11 @@ export const HotkeyInput = (props: Props) => {
 
         <div className="list">
           {keys.map((key, index) => (
-            <Box display="flex">
+            <Box display="flex" key={key}>
               <span className="delimiter" hidden={index === 0}>
                 +
               </span>
-              <div key={key} className="item">
-                {key}
-              </div>
+              <div className="item">{key}</div>
             </Box>
           ))}
         </div>

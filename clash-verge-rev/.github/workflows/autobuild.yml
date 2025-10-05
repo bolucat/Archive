@@ -3,8 +3,8 @@ name: Auto Build
 on:
   workflow_dispatch:
   schedule:
-    # UTC+8 0,6,12,18
-    - cron: "0 16,22,4,10 * * *"
+    # UTC+8 12:00, 18:00 -> UTC 4:00, 10:00
+    - cron: "0 4,10 * * *"
 permissions: write-all
 env:
   TAG_NAME: autobuild
@@ -18,55 +18,10 @@ concurrency:
 jobs:
   check_commit:
     name: Check Commit Needs Build
-    runs-on: ubuntu-latest
-    outputs:
-      should_run: ${{ steps.check.outputs.should_run }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if version changed or src changed
-        id: check
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          CURRENT_VERSION=$(cat package.json | jq -r '.version')
-          echo "Current version: $CURRENT_VERSION"
-
-          git checkout HEAD~1 package.json
-          PREVIOUS_VERSION=$(cat package.json | jq -r '.version')
-          echo "Previous version: $PREVIOUS_VERSION"
-
-          git checkout HEAD package.json
-
-          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          CURRENT_SRC_HASH=$(git rev-parse HEAD:src)
-          PREVIOUS_SRC_HASH=$(git rev-parse HEAD~1:src 2>/dev/null || echo "")
-          CURRENT_TAURI_HASH=$(git rev-parse HEAD:src-tauri 2>/dev/null || echo "")
-          PREVIOUS_TAURI_HASH=$(git rev-parse HEAD~1:src-tauri 2>/dev/null || echo "")
-
-          echo "Current src hash: $CURRENT_SRC_HASH"
-          echo "Previous src hash: $PREVIOUS_SRC_HASH"
-          echo "Current tauri hash: $CURRENT_TAURI_HASH"
-          echo "Previous tauri hash: $PREVIOUS_TAURI_HASH"
-
-          if [ "$CURRENT_SRC_HASH" != "$PREVIOUS_SRC_HASH" ] || [ "$CURRENT_TAURI_HASH" != "$PREVIOUS_TAURI_HASH" ]; then
-            echo "Source directories changed"
-            echo "should_run=true" >> $GITHUB_OUTPUT
-          else
-            echo "Version and source directories unchanged"
-            echo "should_run=false" >> $GITHUB_OUTPUT
-          fi
+    uses: clash-verge-rev/clash-verge-rev/.github/workflows/check-commit-needs-build.yml@dev
+    with:
+      tag_name: autobuild
+      force_build: ${{ github.event_name == 'workflow_dispatch' }}
 
   update_tag:
     name: Update tag
@@ -95,9 +50,28 @@ jobs:
           fi
         shell: bash
 
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release AutoBuild Version
+        run: pnpm release-version autobuild-latest
+
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+          VERSION=$(jq -r .version package.json)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/clash-verge-rev/clash-verge-rev/releases/download/autobuild" >> $GITHUB_ENV
         shell: bash
 
       - run: |
@@ -111,25 +85,24 @@ jobs:
           cat > release.txt << EOF
           $UPDATE_LOGS
 
-          ## 我应该下载哪个版本？
-
-          ### MacOS
-          - MacOS intel芯片: x64.dmg
-          - MacOS apple M芯片: aarch64.dmg
-
-          ### Linux
-          - Linux 64位: amd64.deb/amd64.rpm
-          - Linux arm64 architecture: arm64.deb/aarch64.rpm
-          - Linux armv7架构: armhf.deb/armhfp.rpm
+          ## 下载地址
 
           ### Windows (不再支持Win7)
           #### 正常版本(推荐)
-          - 64位: x64-setup.exe
-          - arm64架构: arm64-setup.exe
-          #### 便携版问题很多不再提供
+          - [64位(常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe) | [ARM64(不常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64-setup.exe)
+
           #### 内置Webview2版(体积较大，仅在企业版系统或无法安装webview2时使用)
-          - 64位: x64_fixed_webview2-setup.exe
-          - arm64架构: arm64_fixed_webview2-setup.exe
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64_fixed_webview2-setup.exe)
+
+          ### macOS
+          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg) | [Intel芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
+
+          ### Linux
+          #### DEB包(Debian系) 使用 apt ./路径 安装
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64.deb) | [ARMv7](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_armhf.deb)
+
+          #### RPM包(Redhat系) 使用 dnf ./路径 安装
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.rpm) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.rpm) | [ARMv7](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_armhfp.rpm)
 
           ### FAQ
           - [常见问题](https://clash-verge-rev.github.io/faq/windows.html)
@@ -152,29 +125,18 @@ jobs:
 
   clean_old_assets:
     name: Clean Old Release Assets
-    runs-on: ubuntu-latest
-    needs: update_tag
-    if: ${{ needs.update_tag.result == 'success' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Remove old assets from release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ env.TAG_NAME }}
-        run: |
-          VERSION=$(cat package.json | jq -r '.version')
-          assets=$(gh release view "$TAG_NAME" --json assets -q '.assets[].name' || true)
-          for asset in $assets; do
-            if [[ "$asset" != *"$VERSION"* ]]; then
-              echo "Deleting old asset: $asset"
-              gh release delete-asset "$TAG_NAME" "$asset" -y
-            fi
-          done
+    needs: [check_commit, update_tag]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' && needs.update_tag.result == 'success' }}
+
+    uses: clash-verge-rev/clash-verge-rev/.github/workflows/clean-old-assets.yml@dev
+    with:
+      tag_name: autobuild
+      dry_run: false
 
   autobuild-x86-windows-macos-linux:
     name: Autobuild x86 Windows, MacOS and Linux
-    needs: update_tag
+    needs: [check_commit, update_tag]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -214,6 +176,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
+      - name: Install x86 OpenSSL (macOS only)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          arch -x86_64 brew install openssl@3
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
+          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
       - uses: pnpm/action-setup@v4
         name: Install pnpm
         with:
@@ -231,9 +202,9 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version ${{ env.TAG_NAME }}
+        run: pnpm release-version autobuild-latest
 
-      - name: Tauri build
+      - name: Tauri build for Windows-macOS-Linux
         uses: tauri-apps/tauri-action@v0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
@@ -254,10 +225,12 @@ jobs:
           prerelease: true
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
+          # includeUpdaterJson: true
 
   autobuild-arm-linux:
     name: Autobuild ARM Linux
-    needs: update_tag
+    needs: [check_commit, update_tag]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -304,7 +277,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version ${{ env.TAG_NAME }}
+        run: pnpm release-version autobuild-latest
 
       - name: Setup for linux
         run: |
@@ -355,7 +328,7 @@ jobs:
             gcc-arm-linux-gnueabihf \
             g++-arm-linux-gnueabihf
 
-      - name: Build for Linux
+      - name: Tauri Build for Linux
         run: |
           export PKG_CONFIG_ALLOW_CROSS=1
           if [ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]; then
@@ -391,7 +364,8 @@ jobs:
 
   autobuild-x86-arm-windows_webview2:
     name: Autobuild x86 and ARM Windows with WebView2
-    needs: update_tag
+    needs: [check_commit, update_tag]
+    if: ${{ needs.check_commit.outputs.should_run == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -435,7 +409,7 @@ jobs:
           pnpm run prebuild ${{ matrix.target }}
 
       - name: Release ${{ env.TAG_CHANNEL }} Version
-        run: pnpm release-version ${{ env.TAG_NAME }}
+        run: pnpm release-version autobuild-latest
 
       - name: Download WebView2 Runtime
         run: |
@@ -444,7 +418,7 @@ jobs:
           Remove-Item .\src-tauri\tauri.windows.conf.json
           Rename-Item .\src-tauri\webview2.${{ matrix.arch }}.json tauri.windows.conf.json
 
-      - name: Tauri build
+      - name: Tauri build for Windows
         id: build
         uses: tauri-apps/tauri-action@v0
         env:
@@ -455,6 +429,7 @@ jobs:
         with:
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
+          # includeUpdaterJson: true
 
       - name: Rename
         run: |
@@ -489,3 +464,107 @@ jobs:
         run: pnpm portable-fixed-webview2 ${{ matrix.target }} --${{ env.TAG_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-telegram:
+    name: Notify Telegram
+    runs-on: ubuntu-latest
+    needs:
+      [
+        update_tag,
+        autobuild-x86-windows-macos-linux,
+        autobuild-arm-linux,
+        autobuild-x86-arm-windows_webview2,
+      ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch UPDATE logs
+        id: fetch_update_logs
+        run: |
+          if [ -f "UPDATELOG.md" ]; then
+            UPDATE_LOGS=$(awk '/^## v/{if(flag) exit; flag=1} flag' UPDATELOG.md)
+            if [ -n "$UPDATE_LOGS" ]; then
+              echo "Found update logs"
+              echo "UPDATE_LOGS<<EOF" >> $GITHUB_ENV
+              echo "$UPDATE_LOGS" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+            else
+              echo "No update sections found in UPDATELOG.md"
+            fi
+          else
+            echo "UPDATELOG.md file not found"
+          fi
+        shell: bash
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
+        with:
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release AutoBuild Version
+        run: pnpm release-version autobuild-latest
+
+      - name: Get Version and Release Info
+        run: |
+          sudo apt-get update
+          sudo apt-get install jq
+          echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
+          echo "DOWNLOAD_URL=https://github.com/clash-verge-rev/clash-verge-rev/releases/download/autobuild" >> $GITHUB_ENV
+          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
+
+      - name: Generate release.txt
+        run: |
+          if [ -z "$UPDATE_LOGS" ]; then
+            echo "No update logs found, using default message"
+            UPDATE_LOGS="More new features are now supported. Check for detailed changelog soon."
+          else
+            echo "Using found update logs"
+          fi
+
+          cat > release.txt << EOF
+          $UPDATE_LOGS
+
+          ## 下载地址
+
+          ### Windows (不再支持Win7)
+          #### 正常版本(推荐)
+          - [64位(常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64-setup.exe) | [ARM64(不常用)](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64-setup.exe)
+
+          #### 内置Webview2版(体积较大，仅在企业版系统或无法安装webview2时使用)
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64_fixed_webview2-setup.exe) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64_fixed_webview2-setup.exe)
+
+          ### macOS
+          - [Apple M芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.dmg) | [Intel芯片](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_x64.dmg)
+
+          ### Linux
+          #### DEB包(Debian系) 使用 apt ./路径 安装
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.deb) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_arm64.deb) | [ARMv7](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_armhf.deb)
+
+          #### RPM包(Redhat系) 使用 dnf ./路径 安装
+          - [64位](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_amd64.rpm) | [ARM64](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_aarch64.rpm) | [ARMv7](${{ env.DOWNLOAD_URL }}/Clash.Verge_${{ env.VERSION }}_armhfp.rpm)
+
+          ### FAQ
+          - [常见问题](https://clash-verge-rev.github.io/faq/windows.html)
+
+          ### 稳定机场VPN推荐
+          - [狗狗加速](https://verge.dginv.click/#/register?code=oaxsAGo6)
+
+          Created at ${{ env.BUILDTIME }}.
+          EOF
+
+      - name: Send Telegram Notification
+        run: node scripts/telegram.mjs
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          BUILD_TYPE: autobuild
+          VERSION: ${{ env.VERSION }}
+          DOWNLOAD_URL: ${{ env.DOWNLOAD_URL }}

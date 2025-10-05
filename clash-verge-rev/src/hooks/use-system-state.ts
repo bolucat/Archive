@@ -1,4 +1,5 @@
 import useSWR from "swr";
+
 import { getRunningMode, isAdmin, isServiceAvailable } from "@/services/cmds";
 
 /**
@@ -7,39 +8,57 @@ import { getRunningMode, isAdmin, isServiceAvailable } from "@/services/cmds";
  */
 export function useSystemState() {
   // 获取运行模式
-  const { data: runningMode = "Sidecar", mutate: mutateRunningMode } = useSWR(
-    "getRunningMode",
-    getRunningMode,
-    {
-      suspense: false,
-      revalidateOnFocus: false,
-    },
-  );
-
-  // 获取管理员状态
-  const { data: isAdminMode = false } = useSWR("isAdmin", isAdmin, {
+  const {
+    data: runningMode = "Sidecar",
+    mutate: mutateRunningMode,
+    isLoading: runningModeLoading,
+  } = useSWR("getRunningMode", getRunningMode, {
     suspense: false,
     revalidateOnFocus: false,
   });
-
-  // 获取系统服务状态
+  const isSidecarMode = runningMode === "Sidecar";
   const isServiceMode = runningMode === "Service";
-  const { data: isServiceOk = false } = useSWR(
-    "isServiceAvailable",
-    isServiceAvailable,
+
+  // 获取管理员状态
+  const { data: isAdminMode = false, isLoading: isAdminLoading } = useSWR(
+    "isAdmin",
+    isAdmin,
     {
       suspense: false,
       revalidateOnFocus: false,
-      isPaused: () => !isServiceMode, // 仅在 Service 模式下请求
     },
   );
+
+  const {
+    data: isServiceOk = false,
+    mutate: mutateServiceOk,
+    isLoading: isServiceLoading,
+  } = useSWR(isServiceMode ? "isServiceAvailable" : null, isServiceAvailable, {
+    suspense: false,
+    revalidateOnFocus: false,
+    onSuccess: (data) => {
+      console.log("[useSystemState] 服务状态更新:", data);
+    },
+    onError: (error) => {
+      console.error("[useSystemState] 服务状态检查失败:", error);
+    },
+    // isPaused: () => !isServiceMode, // 仅在非 Service 模式下暂停请求
+  });
+
+  const isLoading =
+    runningModeLoading || isAdminLoading || (isServiceMode && isServiceLoading);
+
+  const isTunModeAvailable = isAdminMode || isServiceOk;
 
   return {
     runningMode,
     isAdminMode,
-    isSidecarMode: runningMode === "Sidecar",
-    isServiceMode: runningMode === "Service",
+    isSidecarMode,
+    isServiceMode,
     isServiceOk,
+    isTunModeAvailable: isTunModeAvailable,
     mutateRunningMode,
+    mutateServiceOk,
+    isLoading,
   };
 }

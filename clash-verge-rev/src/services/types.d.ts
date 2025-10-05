@@ -739,7 +739,6 @@ interface IProxySnellConfig extends IProxyBaseConfig {
   psk?: string;
   udp?: boolean;
   version?: number;
-  "obfs-opts"?: {};
 }
 interface IProxyConfig
   extends IProxyBaseConfig,
@@ -779,6 +778,8 @@ interface IProxyConfig
 
 interface IVergeConfig {
   app_log_level?: "trace" | "debug" | "info" | "warn" | "error" | string;
+  app_log_max_size?: number; // KB
+  app_log_max_count?: number;
   language?: string;
   tray_event?:
     | "main_window"
@@ -822,7 +823,6 @@ interface IVergeConfig {
   verge_tproxy_enabled?: boolean;
   verge_socks_enabled?: boolean;
   verge_http_enabled?: boolean;
-  card_order?: string[];
   enable_proxy_guard?: boolean;
   enable_bypass_check?: boolean;
   use_default_bypass?: boolean;
@@ -859,12 +859,6 @@ interface IVergeConfig {
   home_cards?: Record<string, boolean>;
   enable_hover_jump_navigator?: boolean;
   enable_external_controller?: boolean;
-}
-
-interface CardConfig {
-  id: string;
-  size: number;
-  enabled: boolean;
 }
 
 interface IWebDavFile {

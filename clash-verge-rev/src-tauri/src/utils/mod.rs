@@ -1,5 +1,6 @@
 pub mod autostart;
 pub mod dirs;
+pub mod format;
 pub mod help;
 pub mod i18n;
 pub mod init;
@@ -8,5 +9,6 @@ pub mod network;
 pub mod notification;
 pub mod resolve;
 pub mod server;
+pub mod singleton;
 pub mod tmpl;
 pub mod window_manager;

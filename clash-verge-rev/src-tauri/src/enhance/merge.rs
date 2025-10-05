@@ -1,5 +1,5 @@
 use super::use_lowercase;
-use serde_yaml::{self, Mapping, Value};
+use serde_yaml_ng::{self, Mapping, Value};
 
 fn deep_merge(a: &mut Value, b: &Value) {
     match (a, b) {
@@ -18,9 +18,10 @@ pub fn use_merge(merge: Mapping, config: Mapping) -> Mapping {
 
     deep_merge(&mut config, &Value::from(merge));
 
-    let config = config.as_mapping().unwrap().clone();
-
-    config
+    config.as_mapping().cloned().unwrap_or_else(|| {
+        log::error!("Failed to convert merged config to mapping, using empty mapping");
+        Mapping::new()
+    })
 }
 
 #[test]
@@ -51,10 +52,10 @@ fn test_merge() -> anyhow::Result<()> {
     script1: test
   ";
 
-    let merge = serde_yaml::from_str::<Mapping>(merge)?;
-    let config = serde_yaml::from_str::<Mapping>(config)?;
+    let merge = serde_yaml_ng::from_str::<Mapping>(merge)?;
+    let config = serde_yaml_ng::from_str::<Mapping>(config)?;
 
-    let _ = serde_yaml::to_string(&use_merge(merge, config))?;
+    let _ = serde_yaml_ng::to_string(&use_merge(merge, config))?;
 
     Ok(())
 }

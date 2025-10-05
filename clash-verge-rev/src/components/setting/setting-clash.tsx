@@ -1,27 +1,28 @@
-import { DialogRef, Switch } from "@/components/base";
-import { TooltipIcon } from "@/components/base/base-tooltip-icon";
-import { useClash } from "@/hooks/use-clash";
-import { useListen } from "@/hooks/use-listen";
-import { useVerge } from "@/hooks/use-verge";
-import { updateGeoData } from "@/services/cmds";
-import { invoke_uwp_tool } from "@/services/cmds";
-import { showNotice } from "@/services/noticeService";
-import getSystem from "@/utils/get-system";
 import { LanRounded, SettingsRounded } from "@mui/icons-material";
 import { MenuItem, Select, TextField, Typography } from "@mui/material";
 import { invoke } from "@tauri-apps/api/core";
 import { useLockFn } from "ahooks";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { DialogRef, Switch } from "@/components/base";
+import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { useClash } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
+import { invoke_uwp_tool } from "@/services/cmds";
+import { updateGeoData } from "@/services/cmds";
+import { showNotice } from "@/services/noticeService";
+import getSystem from "@/utils/get-system";
+
 import { ClashCoreViewer } from "./mods/clash-core-viewer";
 import { ClashPortViewer } from "./mods/clash-port-viewer";
 import { ControllerViewer } from "./mods/controller-viewer";
 import { DnsViewer } from "./mods/dns-viewer";
+import { HeaderConfiguration } from "./mods/external-controller-cors";
 import { GuardState } from "./mods/guard-state";
 import { NetworkInterfaceViewer } from "./mods/network-interface-viewer";
 import { SettingItem, SettingList } from "./mods/setting-comp";
 import { WebUIViewer } from "./mods/web-ui-viewer";
-import { HeaderConfiguration } from "./mods/external-controller-cors";
 
 const isWIN = getSystem() === "windows";
 
@@ -33,24 +34,21 @@ const SettingClash = ({ onError }: Props) => {
   const { t } = useTranslation();
 
   const { clash, version, mutateClash, patchClash } = useClash();
-  const { verge, mutateVerge, patchVerge } = useVerge();
+  const { verge, patchVerge } = useVerge();
 
   const {
     ipv6,
     "allow-lan": allowLan,
     "log-level": logLevel,
     "unified-delay": unifiedDelay,
-    dns,
   } = clash ?? {};
 
-  const { enable_random_port = false, verge_mixed_port } = verge ?? {};
+  const { verge_mixed_port } = verge ?? {};
 
   // 独立跟踪DNS设置开关状态
   const [dnsSettingsEnabled, setDnsSettingsEnabled] = useState(() => {
     return verge?.enable_dns_settings ?? false;
   });
-
-  const { addListener } = useListen();
 
   const webRef = useRef<DialogRef>(null);
   const portRef = useRef<DialogRef>(null);
@@ -62,10 +60,7 @@ const SettingClash = ({ onError }: Props) => {
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
   const onChangeData = (patch: Partial<IConfigData>) => {
-    mutateClash((old) => ({ ...(old! || {}), ...patch }), false);
-  };
-  const onChangeVerge = (patch: Partial<IVergeConfig>) => {
-    mutateVerge({ ...verge, ...patch }, false);
+    mutateClash((old) => ({ ...old!, ...patch }), false);
   };
   const onUpdateGeo = async () => {
     try {

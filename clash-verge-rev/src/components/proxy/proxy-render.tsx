@@ -1,4 +1,9 @@
 import {
+  ExpandLessRounded,
+  ExpandMoreRounded,
+  InboxRounded,
+} from "@mui/icons-material";
+import {
   alpha,
   Box,
   ListItemText,
@@ -8,26 +13,24 @@ import {
   Chip,
   Tooltip,
 } from "@mui/material";
-import {
-  ExpandLessRounded,
-  ExpandMoreRounded,
-  InboxRounded,
-} from "@mui/icons-material";
-import { HeadState } from "./use-head-state";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { useVerge } from "@/hooks/use-verge";
+import { downloadIconCache } from "@/services/cmds";
+import { useThemeMode } from "@/services/states";
+
 import { ProxyHead } from "./proxy-head";
 import { ProxyItem } from "./proxy-item";
 import { ProxyItemMini } from "./proxy-item-mini";
+import { HeadState } from "./use-head-state";
 import type { IRenderItem } from "./use-render-list";
-import { useVerge } from "@/hooks/use-verge";
-import { useThemeMode } from "@/services/states";
-import { useEffect, useMemo, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { downloadIconCache } from "@/services/cmds";
-import { useTranslation } from "react-i18next";
 
 interface RenderProps {
   item: IRenderItem;
   indent: boolean;
+  isChainMode?: boolean;
   onLocation: (group: IRenderItem["group"]) => void;
   onCheckAll: (groupName: string) => void;
   onHeadState: (groupName: string, patch: Partial<HeadState>) => void;
@@ -39,8 +42,15 @@ interface RenderProps {
 
 export const ProxyRender = (props: RenderProps) => {
   const { t } = useTranslation();
-  const { indent, item, onLocation, onCheckAll, onHeadState, onChangeProxy } =
-    props;
+  const {
+    indent,
+    item,
+    onLocation,
+    onCheckAll,
+    onHeadState,
+    onChangeProxy,
+    isChainMode = false,
+  } = props;
   const { type, group, headState, proxy, proxyCol } = item;
   const { verge } = useVerge();
   const enable_group_icon = verge?.enable_group_icon ?? true;

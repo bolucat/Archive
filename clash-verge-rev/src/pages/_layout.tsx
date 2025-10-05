@@ -1,38 +1,48 @@
-import dayjs from "dayjs";
-import i18next from "i18next";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { SWRConfig, mutate } from "swr";
-import { useEffect, useCallback, useState, useRef } from "react";
-import { useTranslation } from "react-i18next";
-import { useLocation, useRoutes, useNavigate } from "react-router-dom";
 import { List, Paper, ThemeProvider, SvgIcon } from "@mui/material";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { routers } from "./_routers";
-import { getAxios } from "@/services/api";
-import { forceRefreshClashConfig } from "@/services/cmds";
-import { useVerge } from "@/hooks/use-verge";
-import LogoSvg from "@/assets/image/logo.svg?react";
-import iconLight from "@/assets/image/icon_light.svg?react";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { useLocalStorage } from "foxact/use-local-storage";
+import { useEffect, useCallback, useState, useRef } from "react";
+import React from "react";
+import { useTranslation } from "react-i18next";
+import { useLocation, useRoutes, useNavigate } from "react-router-dom";
+import { SWRConfig, mutate } from "swr";
+
 import iconDark from "@/assets/image/icon_dark.svg?react";
-import { useThemeMode, useEnableLog } from "@/services/states";
+import iconLight from "@/assets/image/icon_light.svg?react";
+import LogoSvg from "@/assets/image/logo.svg?react";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
+import { useI18n } from "@/hooks/use-i18n";
+import { useVerge } from "@/hooks/use-verge";
+import { getAxios } from "@/services/api";
+import { forceRefreshClashConfig } from "@/services/cmds";
+import { useThemeMode, useEnableLog } from "@/services/states";
 import getSystem from "@/utils/get-system";
+
+import { routers } from "./_routers";
+
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
-import React from "react";
+
 import { useListen } from "@/hooks/use-listen";
+
 import { listen } from "@tauri-apps/api/event";
+
 import { useClashInfo } from "@/hooks/use-clash";
 import { initGlobalLogService } from "@/services/global-log-service";
+
 import { invoke } from "@tauri-apps/api/core";
+
 import { showNotice } from "@/services/noticeService";
 import { NoticeManager } from "@/components/base/NoticeManager";
+import { LogLevel } from "@/hooks/use-log-data";
 
 const appWindow = getCurrentWebviewWindow();
-export let portableFlag = false;
+export const portableFlag = false;
 
 dayjs.extend(relativeTime);
 
@@ -154,11 +164,13 @@ const Layout = () => {
   const { verge } = useVerge();
   const { clashInfo } = useClashInfo();
   const [enableLog] = useEnableLog();
+  const [logLevel] = useLocalStorage<LogLevel>("log:log-level", "info");
   const { language, start_page } = verge ?? {};
+  const { switchLanguage } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const routersEles = useRoutes(routers);
-  const { addListener, setupCloseListener } = useListen();
+  const { addListener } = useListen();
   const initRef = useRef(false);
   const [themeReady, setThemeReady] = useState(false);
 
@@ -183,10 +195,9 @@ const Layout = () => {
   // 初始化全局日志服务
   useEffect(() => {
     if (clashInfo) {
-      const { server = "", secret = "" } = clashInfo;
-      initGlobalLogService(server, secret, enableLog, "info");
+      initGlobalLogService(enableLog, logLevel);
     }
-  }, [clashInfo, enableLog]);
+  }, [clashInfo, enableLog, logLevel]);
 
   // 设置监听器
   useEffect(() => {
@@ -205,6 +216,9 @@ const Layout = () => {
         mutate("getVergeConfig");
         mutate("getSystemProxy");
         mutate("getAutotemProxy");
+        // 运行模式变更时也需要刷新相关状态
+        mutate("getRunningMode");
+        mutate("isServiceAvailable");
       }),
 
       addListener("verge://notice-message", ({ payload }) =>
@@ -224,7 +238,6 @@ const Layout = () => {
       };
     };
 
-    setupCloseListener();
     const cleanupWindow = setupWindowListeners();
 
     return () => {
@@ -294,7 +307,7 @@ const Layout = () => {
         setTimeout(() => {
           try {
             initialOverlay.remove();
-          } catch (e) {
+          } catch {
             console.log("[Layout] 加载指示器已被移除");
           }
         }, 300);
@@ -376,14 +389,6 @@ const Layout = () => {
     const setupEventListener = async () => {
       try {
         console.log("[Layout] 开始监听启动完成事件");
-        const unlisten = await listen("verge://startup-completed", () => {
-          if (!hasEventTriggered) {
-            console.log("[Layout] 收到启动完成事件，开始初始化");
-            hasEventTriggered = true;
-            performInitialization();
-          }
-        });
-        return unlisten;
       } catch (err) {
         console.error("[Layout] 监听启动完成事件失败:", err);
         return () => {};
@@ -400,7 +405,7 @@ const Layout = () => {
           hasEventTriggered = true;
           performInitialization();
         }
-      } catch (err) {
+      } catch {
         console.log("[Layout] 后端尚未就绪，等待启动完成事件");
       }
     };
@@ -422,14 +427,11 @@ const Layout = () => {
       }
     }, 5000);
 
-    const unlistenPromise = setupEventListener();
-
     setTimeout(checkImmediateInitialization, 100);
 
     return () => {
       clearTimeout(backupInitialization);
       clearTimeout(emergencyInitialization);
-      unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -437,9 +439,9 @@ const Layout = () => {
   useEffect(() => {
     if (language) {
       dayjs.locale(language === "zh" ? "zh-cn" : language);
-      i18next.changeLanguage(language);
+      switchLanguage(language);
     }
-  }, [language]);
+  }, [language, switchLanguage]);
 
   useEffect(() => {
     if (start_page) {

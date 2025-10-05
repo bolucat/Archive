@@ -1,4 +1,15 @@
-use std::fmt;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "tauri-dev")] {
+        use std::fmt;
+    } else {
+        #[cfg(feature = "verge-dev")]
+        use nu_ansi_term::Color;
+        use std::{fmt, io::Write, thread};
+        use flexi_logger::DeferredNow;
+        use log::{LevelFilter, Record};
+        use flexi_logger::filter::LogLineFilter;
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
@@ -18,6 +29,8 @@ pub enum Type {
     Network,
     ProxyMode,
     Ipc,
+    // Cache,
+    ClashVergeRev,
 }
 
 impl fmt::Display for Type {
@@ -39,6 +52,8 @@ impl fmt::Display for Type {
             Type::Network => write!(f, "[Network]"),
             Type::ProxyMode => write!(f, "[ProxMode]"),
             Type::Ipc => write!(f, "[IPC]"),
+            // Type::Cache => write!(f, "[Cache]"),
+            Type::ClashVergeRev => write!(f, "[ClashVergeRev]"),
         }
     }
 }
@@ -78,22 +93,35 @@ macro_rules! trace_err {
 /// transform the error to String
 #[macro_export]
 macro_rules! wrap_err {
-    ($stat: expr) => {
+    // Case 1: Future<Result<T, E>>
+    ($stat:expr, async) => {{
+        match $stat.await {
+            Ok(a) => Ok(a),
+            Err(err) => {
+                log::error!(target: "app", "{}", err);
+                Err(err.to_string())
+            }
+        }
+    }};
+
+    // Case 2: Result<T, E>
+    ($stat:expr) => {{
         match $stat {
             Ok(a) => Ok(a),
             Err(err) => {
-                log::error!(target: "app", "{}", err.to_string());
-                Err(format!("{}", err.to_string()))
+                log::error!(target: "app", "{}", err);
+                Err(err.to_string())
             }
         }
-    };
+    }};
 }
 
 #[macro_export]
 macro_rules! logging {
     // 带 println 的版本（支持格式化参数）
     ($level:ident, $type:expr, true, $($arg:tt)*) => {
-        println!("{} {}", $type, format_args!($($arg)*));
+        // We dont need println here anymore
+        // println!("{} {}", $type, format_args!($($arg)*));
         log::$level!(target: "app", "{} {}", $type, format_args!($($arg)*));
     };
 
@@ -142,4 +170,78 @@ macro_rules! logging_error {
     ($type:expr, $fmt:literal $(, $arg:expr)*) => {
         logging_error!($type, false, $fmt $(, $arg)*);
     };
+}
+
+#[cfg(not(feature = "tauri-dev"))]
+static IGNORE_MODULES: &[&str] = &["tauri", "wry"];
+#[cfg(not(feature = "tauri-dev"))]
+pub struct NoExternModule;
+#[cfg(not(feature = "tauri-dev"))]
+impl LogLineFilter for NoExternModule {
+    fn write(
+        &self,
+        now: &mut DeferredNow,
+        record: &Record,
+        log_line_writer: &dyn flexi_logger::filter::LogLineWriter,
+    ) -> std::io::Result<()> {
+        let module_path = record.module_path().unwrap_or_default();
+        if IGNORE_MODULES.iter().any(|m| module_path.starts_with(m)) {
+            Ok(())
+        } else {
+            log_line_writer.write(now, record)
+        }
+    }
+}
+
+#[cfg(not(feature = "tauri-dev"))]
+pub fn get_log_level(log_level: &LevelFilter) -> String {
+    #[cfg(feature = "verge-dev")]
+    match log_level {
+        LevelFilter::Off => Color::Fixed(8).paint("OFF").to_string(),
+        LevelFilter::Error => Color::Red.paint("ERROR").to_string(),
+        LevelFilter::Warn => Color::Yellow.paint("WARN ").to_string(),
+        LevelFilter::Info => Color::Green.paint("INFO ").to_string(),
+        LevelFilter::Debug => Color::Blue.paint("DEBUG").to_string(),
+        LevelFilter::Trace => Color::Purple.paint("TRACE").to_string(),
+    }
+    #[cfg(not(feature = "verge-dev"))]
+    log_level.to_string()
+}
+
+#[cfg(not(feature = "tauri-dev"))]
+pub fn console_colored_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &log::Record,
+) -> std::io::Result<()> {
+    let current_thread = thread::current();
+    let thread_name = current_thread.name().unwrap_or("unnamed");
+
+    let level = get_log_level(&record.level().to_level_filter());
+    let line = record.line().unwrap_or(0);
+    write!(
+        w,
+        "[{}] {} [{}:{}] T[{}] {}",
+        now.format("%H:%M:%S%.3f"),
+        level,
+        record.module_path().unwrap_or("<unnamed>"),
+        line,
+        thread_name,
+        record.args(),
+    )
+}
+
+#[cfg(not(feature = "tauri-dev"))]
+pub fn file_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> std::io::Result<()> {
+    write!(
+        w,
+        "[{}] {} {}",
+        now.format("%Y-%m-%d %H:%M:%S%.3f"),
+        record.level(),
+        record.args(),
+    )
 }

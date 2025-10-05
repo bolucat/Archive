@@ -1,25 +1,28 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
 import {
+  Box,
+  Button,
   List,
   ListItem,
   ListItemText,
-  Box,
-  Typography,
-  Button,
   TextField,
+  Typography,
 } from "@mui/material";
-import { useClash } from "@/hooks/use-clash";
+import { useLockFn } from "ahooks";
+import type { Ref } from "react";
+import { useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
+
 import { BaseDialog, DialogRef, Switch } from "@/components/base";
-import { StackModeSwitch } from "./stack-mode-switch";
+import { useClash } from "@/hooks/use-clash";
 import { enhanceProfiles } from "@/services/cmds";
-import getSystem from "@/utils/get-system";
 import { showNotice } from "@/services/noticeService";
+import getSystem from "@/utils/get-system";
+
+import { StackModeSwitch } from "./stack-mode-switch";
 
 const OS = getSystem();
 
-export const TunViewer = forwardRef<DialogRef>((props, ref) => {
+export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
 
   const { clash, mutateClash, patchClash } = useClash();
@@ -53,7 +56,7 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
 
   const onSave = useLockFn(async () => {
     try {
-      let tun = {
+      const tun = {
         stack: values.stack,
         device:
           values.device === ""
@@ -70,7 +73,7 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
       await patchClash({ tun });
       await mutateClash(
         (old) => ({
-          ...(old! || {}),
+          ...old!,
           tun,
         }),
         false,
@@ -97,7 +100,7 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
             variant="outlined"
             size="small"
             onClick={async () => {
-              let tun = {
+              const tun = {
                 stack: "gvisor",
                 device: OS === "macos" ? "utun1024" : "Mihomo",
                 "auto-route": true,
@@ -118,7 +121,7 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
               await patchClash({ tun });
               await mutateClash(
                 (old) => ({
-                  ...(old! || {}),
+                  ...old!,
                   tun,
                 }),
                 false,
@@ -236,4 +239,4 @@ export const TunViewer = forwardRef<DialogRef>((props, ref) => {
       </List>
     </BaseDialog>
   );
-});
+}

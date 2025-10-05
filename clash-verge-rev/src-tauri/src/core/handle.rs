@@ -1,9 +1,10 @@
-use once_cell::sync::OnceCell;
+use crate::singleton;
 use parking_lot::RwLock;
 use std::{
     sync::{
+        Arc,
         atomic::{AtomicU64, Ordering},
-        mpsc, Arc,
+        mpsc,
     },
     thread,
     time::{Duration, Instant},
@@ -20,7 +21,6 @@ enum FrontendEvent {
     NoticeMessage { status: String, message: String },
     ProfileChanged { current_profile_id: String },
     TimerUpdated { profile_index: String },
-    StartupCompleted,
     ProfileUpdateStarted { uid: String },
     ProfileUpdateCompleted { uid: String },
 }
@@ -82,132 +82,128 @@ impl NotificationSystem {
 
         *self.last_emit_time.write() = Instant::now();
 
-        self.worker_handle = Some(
-            thread::Builder::new()
-                .name("frontend-notifier".into())
-                .spawn(move || {
-                    let handle = Handle::global();
+        match thread::Builder::new()
+            .name("frontend-notifier".into())
+            .spawn(move || {
+                let handle = Handle::global();
 
-                    while !handle.is_exiting() {
-                        match rx.recv_timeout(Duration::from_millis(100)) {
-                            Ok(event) => {
-                                let system_guard = handle.notification_system.read();
-                                if system_guard.as_ref().is_none() {
-                                    log::warn!("NotificationSystem not found in handle while processing event.");
-                                    continue;
-                                }
-                                let system = system_guard.as_ref().unwrap();
+                while !handle.is_exiting() {
+                    match rx.recv_timeout(Duration::from_millis(100)) {
+                        Ok(event) => {
+                            let system_guard = handle.notification_system.read();
+                            let Some(system) = system_guard.as_ref() else {
+                                log::warn!("NotificationSystem not found in handle while processing event.");
+                                continue;
+                            };
 
-                                let is_emergency = *system.emergency_mode.read();
+                            let is_emergency = *system.emergency_mode.read();
 
-                                if is_emergency {
-                                    if let FrontendEvent::NoticeMessage { ref status, .. } = event {
-                                        if status == "info" {
-                                            log::warn!(
-                                                "Emergency mode active, skipping info message"
-                                            );
-                                            continue;
+                            if is_emergency
+                                && let FrontendEvent::NoticeMessage { ref status, .. } = event
+                                    && status == "info" {
+                                        log::warn!(
+                                            "Emergency mode active, skipping info message"
+                                        );
+                                        continue;
+                                    }
+
+                            if let Some(window) = handle.get_window() {
+                                *system.last_emit_time.write() = Instant::now();
+
+                                let (event_name_str, payload_result) = match event {
+                                    FrontendEvent::RefreshClash => {
+                                        ("verge://refresh-clash-config", Ok(serde_json::json!("yes")))
+                                    }
+                                    FrontendEvent::RefreshVerge => {
+                                        ("verge://refresh-verge-config", Ok(serde_json::json!("yes")))
+                                    }
+                                    FrontendEvent::NoticeMessage { status, message } => {
+                                        match serde_json::to_value((status, message)) {
+                                            Ok(p) => ("verge://notice-message", Ok(p)),
+                                            Err(e) => {
+                                                log::error!("Failed to serialize NoticeMessage payload: {e}");
+                                                ("verge://notice-message", Err(e))
+                                            }
                                         }
                                     }
-                                }
+                                    FrontendEvent::ProfileChanged { current_profile_id } => {
+                                        ("profile-changed", Ok(serde_json::json!(current_profile_id)))
+                                    }
+                                    FrontendEvent::TimerUpdated { profile_index } => {
+                                        ("verge://timer-updated", Ok(serde_json::json!(profile_index)))
+                                    }
+                                    FrontendEvent::ProfileUpdateStarted { uid } => {
+                                        ("profile-update-started", Ok(serde_json::json!({ "uid": uid })))
+                                    }
+                                    FrontendEvent::ProfileUpdateCompleted { uid } => {
+                                        ("profile-update-completed", Ok(serde_json::json!({ "uid": uid })))
+                                    }
+                                };
 
-                                if let Some(window) = handle.get_window() {
-                                    *system.last_emit_time.write() = Instant::now();
-
-                                    let (event_name_str, payload_result) = match event {
-                                        FrontendEvent::RefreshClash => {
-                                            ("verge://refresh-clash-config", Ok(serde_json::json!("yes")))
-                                        }
-                                        FrontendEvent::RefreshVerge => {
-                                            ("verge://refresh-verge-config", Ok(serde_json::json!("yes")))
-                                        }
-                                        FrontendEvent::NoticeMessage { status, message } => {
-                                            match serde_json::to_value((status, message)) {
-                                                Ok(p) => ("verge://notice-message", Ok(p)),
-                                                Err(e) => {
-                                                    log::error!("Failed to serialize NoticeMessage payload: {e}");
-                                                    ("verge://notice-message", Err(e))
-                                                }
+                                if let Ok(payload) = payload_result {
+                                    match window.emit(event_name_str, payload) {
+                                        Ok(_) => {
+                                            system.stats.total_sent.fetch_add(1, Ordering::SeqCst);
+                                            // 记录成功发送的事件
+                                            if log::log_enabled!(log::Level::Debug) {
+                                                log::debug!("Successfully emitted event: {event_name_str}");
                                             }
                                         }
-                                        FrontendEvent::ProfileChanged { current_profile_id } => {
-                                            ("profile-changed", Ok(serde_json::json!(current_profile_id)))
-                                        }
-                                        FrontendEvent::TimerUpdated { profile_index } => {
-                                            ("verge://timer-updated", Ok(serde_json::json!(profile_index)))
-                                        }
-                                        FrontendEvent::StartupCompleted => {
-                                            ("verge://startup-completed", Ok(serde_json::json!(null)))
-                                        }
-                                        FrontendEvent::ProfileUpdateStarted { uid } => {
-                                            ("profile-update-started", Ok(serde_json::json!({ "uid": uid })))
-                                        }
-                                        FrontendEvent::ProfileUpdateCompleted { uid } => {
-                                            ("profile-update-completed", Ok(serde_json::json!({ "uid": uid })))
-                                        }
-                                    };
+                                        Err(e) => {
+                                            log::warn!("Failed to emit event {event_name_str}: {e}");
+                                            system.stats.total_errors.fetch_add(1, Ordering::SeqCst);
+                                            *system.stats.last_error_time.write() = Some(Instant::now());
 
-                                    if let Ok(payload) = payload_result {
-                                        match window.emit(event_name_str, payload) {
-                                            Ok(_) => {
-                                                system.stats.total_sent.fetch_add(1, Ordering::SeqCst);
-                                                // 记录成功发送的事件
-                                                if log::log_enabled!(log::Level::Debug) {
-                                                    log::debug!("Successfully emitted event: {event_name_str}");
-                                                }
-                                            }
-                                            Err(e) => {
-                                                log::warn!("Failed to emit event {event_name_str}: {e}");
-                                                system.stats.total_errors.fetch_add(1, Ordering::SeqCst);
-                                                *system.stats.last_error_time.write() = Some(Instant::now());
-
-                                                let errors = system.stats.total_errors.load(Ordering::SeqCst);
-                                                const EMIT_ERROR_THRESHOLD: u64 = 10;
-                                                if errors > EMIT_ERROR_THRESHOLD && !*system.emergency_mode.read() {
-                                                    log::warn!(
-                                                        "Reached {EMIT_ERROR_THRESHOLD} emit errors, entering emergency mode"
-                                                    );
-                                                    *system.emergency_mode.write() = true;
-                                                }
+                                            let errors = system.stats.total_errors.load(Ordering::SeqCst);
+                                            const EMIT_ERROR_THRESHOLD: u64 = 10;
+                                            if errors > EMIT_ERROR_THRESHOLD && !*system.emergency_mode.read() {
+                                                log::warn!(
+                                                    "Reached {EMIT_ERROR_THRESHOLD} emit errors, entering emergency mode"
+                                                );
+                                                *system.emergency_mode.write() = true;
                                             }
                                         }
-                                    } else {
-                                        system.stats.total_errors.fetch_add(1, Ordering::SeqCst);
-                                        *system.stats.last_error_time.write() = Some(Instant::now());
-                                        log::warn!("Skipped emitting event due to payload serialization error for {event_name_str}");
                                     }
                                 } else {
-                                    log::warn!("No window found, skipping event emit.");
+                                    system.stats.total_errors.fetch_add(1, Ordering::SeqCst);
+                                    *system.stats.last_error_time.write() = Some(Instant::now());
+                                    log::warn!("Skipped emitting event due to payload serialization error for {event_name_str}");
                                 }
-                                thread::sleep(Duration::from_millis(20));
+                            } else {
+                                log::warn!("No window found, skipping event emit.");
                             }
-                            Err(mpsc::RecvTimeoutError::Timeout) => {
-                                continue;
-                            }
-                            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                                log::info!(
-                                    "Notification channel disconnected, exiting worker thread"
-                                );
-                                break;
-                            }
+                            thread::sleep(Duration::from_millis(20));
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            log::info!(
+                                "Notification channel disconnected, exiting worker thread"
+                            );
+                            break;
                         }
                     }
+                }
 
-                    log::info!("Notification worker thread exiting");
-                })
-                .expect("Failed to start notification worker thread"),
-        );
+                log::info!("Notification worker thread exiting");
+            }) {
+            Ok(handle) => {
+                self.worker_handle = Some(handle);
+            }
+            Err(e) => {
+                log::error!("Failed to start notification worker thread: {e}");
+            }
+        }
     }
 
     /// 发送事件到队列
     fn send_event(&self, event: FrontendEvent) -> bool {
-        if *self.emergency_mode.read() {
-            if let FrontendEvent::NoticeMessage { ref status, .. } = event {
-                if status == "info" {
-                    log::info!("Skipping info message in emergency mode");
-                    return false;
-                }
-            }
+        if *self.emergency_mode.read()
+            && let FrontendEvent::NoticeMessage { ref status, .. } = event
+            && status == "info"
+        {
+            log::info!("Skipping info message in emergency mode");
+            return false;
         }
 
         if let Some(sender) = &self.sender {
@@ -272,16 +268,18 @@ impl Default for Handle {
     }
 }
 
+// Use singleton macro
+singleton!(Handle, HANDLE);
+
 impl Handle {
-    pub fn global() -> &'static Handle {
-        static HANDLE: OnceCell<Handle> = OnceCell::new();
-        HANDLE.get_or_init(Handle::default)
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn init(&self, app_handle: &AppHandle) {
+    pub fn init(&self, app_handle: AppHandle) {
         {
             let mut handle = self.app_handle.write();
-            *handle = Some(app_handle.clone());
+            *handle = Some(app_handle);
         }
 
         let mut system_opt = self.notification_system.write();
@@ -290,6 +288,7 @@ impl Handle {
         }
     }
 
+    /// 获取 AppHandle
     pub fn app_handle(&self) -> Option<AppHandle> {
         self.app_handle.read().clone()
     }
@@ -361,22 +360,6 @@ impl Handle {
         }
     }
 
-    pub fn notify_startup_completed() {
-        let handle = Self::global();
-        if handle.is_exiting() {
-            return;
-        }
-
-        let system_opt = handle.notification_system.read();
-        if let Some(system) = system_opt.as_ref() {
-            system.send_event(FrontendEvent::StartupCompleted);
-        } else {
-            log::warn!(
-                "Notification system not initialized when trying to send StartupCompleted event."
-            );
-        }
-    }
-
     pub fn notify_profile_update_started(uid: String) {
         let handle = Self::global();
         if handle.is_exiting() {
@@ -387,7 +370,9 @@ impl Handle {
         if let Some(system) = system_opt.as_ref() {
             system.send_event(FrontendEvent::ProfileUpdateStarted { uid });
         } else {
-            log::warn!("Notification system not initialized when trying to send ProfileUpdateStarted event.");
+            log::warn!(
+                "Notification system not initialized when trying to send ProfileUpdateStarted event."
+            );
         }
     }
 
@@ -401,7 +386,9 @@ impl Handle {
         if let Some(system) = system_opt.as_ref() {
             system.send_event(FrontendEvent::ProfileUpdateCompleted { uid });
         } else {
-            log::warn!("Notification system not initialized when trying to send ProfileUpdateCompleted event.");
+            log::warn!(
+                "Notification system not initialized when trying to send ProfileUpdateCompleted event."
+            );
         }
     }
 
@@ -466,8 +453,9 @@ impl Handle {
             info,
             Type::Frontend,
             true,
-            "发送{}条启动时累积的错误消息",
-            errors.len()
+            "发送{}条启动时累积的错误消息: {:?}",
+            errors.len(),
+            errors
         );
 
         // 启动单独线程处理启动错误，避免阻塞主线程
@@ -515,5 +503,56 @@ impl Handle {
 
     pub fn is_exiting(&self) -> bool {
         *self.is_exiting.read()
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Handle {
+    pub fn set_activation_policy(&self, policy: tauri::ActivationPolicy) -> Result<(), String> {
+        let app_handle = self.app_handle();
+        if let Some(app_handle) = app_handle.as_ref() {
+            app_handle
+                .set_activation_policy(policy)
+                .map_err(|e| e.to_string())
+        } else {
+            Err("AppHandle not initialized".to_string())
+        }
+    }
+
+    pub fn set_activation_policy_regular(&self) {
+        if let Err(e) = self.set_activation_policy(tauri::ActivationPolicy::Regular) {
+            logging!(
+                warn,
+                Type::Setup,
+                true,
+                "Failed to set regular activation policy: {}",
+                e
+            );
+        }
+    }
+
+    pub fn set_activation_policy_accessory(&self) {
+        if let Err(e) = self.set_activation_policy(tauri::ActivationPolicy::Accessory) {
+            logging!(
+                warn,
+                Type::Setup,
+                true,
+                "Failed to set accessory activation policy: {}",
+                e
+            );
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn set_activation_policy_prohibited(&self) {
+        if let Err(e) = self.set_activation_policy(tauri::ActivationPolicy::Prohibited) {
+            logging!(
+                warn,
+                Type::Setup,
+                true,
+                "Failed to set prohibited activation policy: {}",
+                e
+            );
+        }
     }
 }

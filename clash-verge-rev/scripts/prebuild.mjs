@@ -12,7 +12,7 @@ import { glob } from "glob";
 
 const cwd = process.cwd();
 const TEMP_DIR = path.join(cwd, "node_modules/.verge");
-const FORCE = process.argv.includes("--force");
+const FORCE = process.argv.includes("--force") || process.argv.includes("-f");
 
 const PLATFORM_MAP = {
   "x86_64-pc-windows-msvc": "win32",
@@ -43,7 +43,8 @@ const ARCH_MAP = {
 
 const arg1 = process.argv.slice(2)[0];
 const arg2 = process.argv.slice(2)[1];
-const target = arg1 === "--force" ? arg2 : arg1;
+let target;
+target = arg1 === "--force" || arg1 === "-f" ? arg2 : arg1;
 const { platform, arch } = target
   ? { platform: PLATFORM_MAP[target], arch: ARCH_MAP[target] }
   : process;
@@ -61,12 +62,12 @@ const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/down
 let META_ALPHA_VERSION;
 
 const META_ALPHA_MAP = {
-  "win32-x64": "mihomo-windows-amd64-compatible",
+  "win32-x64": "mihomo-windows-amd64-v2",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64-compatible",
+  "darwin-x64": "mihomo-darwin-amd64-v1",
   "darwin-arm64": "mihomo-darwin-arm64",
-  "linux-x64": "mihomo-linux-amd64-compatible",
+  "linux-x64": "mihomo-linux-amd64-v2",
   "linux-ia32": "mihomo-linux-386",
   "linux-arm64": "mihomo-linux-arm64",
   "linux-arm": "mihomo-linux-armv7",
@@ -108,12 +109,12 @@ const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`;
 let META_VERSION;
 
 const META_MAP = {
-  "win32-x64": "mihomo-windows-amd64-compatible",
+  "win32-x64": "mihomo-windows-amd64-v2",
   "win32-ia32": "mihomo-windows-386",
   "win32-arm64": "mihomo-windows-arm64",
-  "darwin-x64": "mihomo-darwin-amd64-compatible",
+  "darwin-x64": "mihomo-darwin-amd64-v2",
   "darwin-arm64": "mihomo-darwin-arm64",
-  "linux-x64": "mihomo-linux-amd64-compatible",
+  "linux-x64": "mihomo-linux-amd64-v2",
   "linux-ia32": "mihomo-linux-386",
   "linux-arm64": "mihomo-linux-arm64",
   "linux-arm": "mihomo-linux-armv7",

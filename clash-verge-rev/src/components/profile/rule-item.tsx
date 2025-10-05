@@ -1,3 +1,6 @@
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { DeleteForeverRounded, UndoRounded } from "@mui/icons-material";
 import {
   Box,
   IconButton,
@@ -6,9 +9,6 @@ import {
   alpha,
   styled,
 } from "@mui/material";
-import { DeleteForeverRounded, UndoRounded } from "@mui/icons-material";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 interface Props {
   type: "prepend" | "original" | "delete" | "append";
   ruleRaw: string;
@@ -16,13 +16,15 @@ interface Props {
 }
 
 export const RuleItem = (props: Props) => {
-  let { type, ruleRaw, onDelete } = props;
+  const { type, ruleRaw, onDelete } = props;
   const sortable = type === "prepend" || type === "append";
   const rule = ruleRaw.replace(",no-resolve", "");
 
   const ruleType = rule.match(/^[^,]+/)?.[0] ?? "";
   const proxyPolicy = rule.match(/[^,]+$/)?.[0] ?? "";
   const ruleContent = rule.slice(ruleType.length + 1, -proxyPolicy.length - 1);
+
+  const $sortable = useSortable({ id: ruleRaw });
 
   const {
     attributes,
@@ -32,7 +34,7 @@ export const RuleItem = (props: Props) => {
     transition,
     isDragging,
   } = sortable
-    ? useSortable({ id: ruleRaw })
+    ? $sortable
     : {
         attributes: {},
         listeners: {},

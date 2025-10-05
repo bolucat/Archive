@@ -151,20 +151,24 @@ pub fn find_target_icons(target: &str) -> Result<Option<String>> {
         let entry = entry?;
         let path = entry.path();
 
-        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-            if file_name.starts_with(target)
-                && (file_name.ends_with(".ico") || file_name.ends_with(".png"))
-            {
-                matching_files.push(path);
-            }
+        if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
+            && file_name.starts_with(target)
+            && (file_name.ends_with(".ico") || file_name.ends_with(".png"))
+        {
+            matching_files.push(path);
         }
     }
 
     if matching_files.is_empty() {
         Ok(None)
     } else {
-        let first = path_to_str(matching_files.first().unwrap())?;
-        Ok(Some(first.to_string()))
+        match matching_files.first() {
+            Some(first_path) => {
+                let first = path_to_str(first_path)?;
+                Ok(Some(first.to_string()))
+            }
+            None => Ok(None),
+        }
     }
 }
 

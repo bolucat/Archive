@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_yaml::{Mapping, Sequence, Value};
+use serde_yaml_ng::{Mapping, Sequence, Value};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SeqMap {
@@ -44,39 +44,39 @@ pub fn use_seq(seq: SeqMap, mut config: Mapping, field: &str) -> Mapping {
     config.insert(Value::String(field.into()), Value::Sequence(new_seq));
 
     // If this is proxies field, we also need to filter proxy-groups
-    if field == "proxies" {
-        if let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") {
-            let mut new_groups = Sequence::new();
-            for group in groups {
-                if let Value::Mapping(group_map) = group {
-                    let mut new_group = group_map.clone();
-                    if let Some(Value::Sequence(proxies)) = group_map.get("proxies") {
-                        let filtered_proxies: Sequence = proxies
-                            .iter()
-                            .filter(|p| {
-                                if let Value::String(name) = p {
-                                    !delete.contains(name)
-                                } else {
-                                    true
-                                }
-                            })
-                            .cloned()
-                            .collect();
-                        new_group.insert(
-                            Value::String("proxies".into()),
-                            Value::Sequence(filtered_proxies),
-                        );
-                    }
-                    new_groups.push(Value::Mapping(new_group));
-                } else {
-                    new_groups.push(group.clone());
+    if field == "proxies"
+        && let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups")
+    {
+        let mut new_groups = Sequence::new();
+        for group in groups {
+            if let Value::Mapping(group_map) = group {
+                let mut new_group = group_map.clone();
+                if let Some(Value::Sequence(proxies)) = group_map.get("proxies") {
+                    let filtered_proxies: Sequence = proxies
+                        .iter()
+                        .filter(|p| {
+                            if let Value::String(name) = p {
+                                !delete.contains(name)
+                            } else {
+                                true
+                            }
+                        })
+                        .cloned()
+                        .collect();
+                    new_group.insert(
+                        Value::String("proxies".into()),
+                        Value::Sequence(filtered_proxies),
+                    );
                 }
+                new_groups.push(Value::Mapping(new_group));
+            } else {
+                new_groups.push(group.clone());
             }
-            config.insert(
-                Value::String("proxy-groups".into()),
-                Value::Sequence(new_groups),
-            );
         }
+        config.insert(
+            Value::String("proxy-groups".into()),
+            Value::Sequence(new_groups),
+        );
     }
 
     config
@@ -86,9 +86,11 @@ pub fn use_seq(seq: SeqMap, mut config: Mapping, field: &str) -> Mapping {
 mod tests {
     use super::*;
     #[allow(unused_imports)]
-    use serde_yaml::Value;
+    use serde_yaml_ng::Value;
 
     #[test]
+    #[allow(clippy::unwrap_used)]
+    #[allow(clippy::expect_used)]
     fn test_delete_proxy_and_references() {
         let config_str = r#"
 proxies:
@@ -107,7 +109,8 @@ proxy-groups:
   proxies:
     - "proxy1"
 "#;
-        let mut config: Mapping = serde_yaml::from_str(config_str).unwrap();
+        let mut config: Mapping =
+            serde_yaml_ng::from_str(config_str).expect("Failed to parse test config YAML");
 
         let seq = SeqMap {
             prepend: Sequence::new(),
@@ -118,38 +121,51 @@ proxy-groups:
         config = use_seq(seq, config, "proxies");
 
         // Check if proxy1 is removed from proxies
-        let proxies = config.get("proxies").unwrap().as_sequence().unwrap();
+        let proxies = config
+            .get("proxies")
+            .expect("proxies field should exist")
+            .as_sequence()
+            .expect("proxies should be a sequence");
         assert_eq!(proxies.len(), 1);
         assert_eq!(
             proxies[0]
                 .as_mapping()
-                .unwrap()
+                .expect("proxy should be a mapping")
                 .get("name")
-                .unwrap()
+                .expect("proxy should have name")
                 .as_str()
-                .unwrap(),
+                .expect("name should be string"),
             "proxy2"
         );
 
         // Check if proxy1 is removed from all groups
-        let groups = config.get("proxy-groups").unwrap().as_sequence().unwrap();
+        let groups = config
+            .get("proxy-groups")
+            .expect("proxy-groups field should exist")
+            .as_sequence()
+            .expect("proxy-groups should be a sequence");
         let group1_proxies = groups[0]
             .as_mapping()
-            .unwrap()
+            .expect("group should be a mapping")
             .get("proxies")
-            .unwrap()
+            .expect("group should have proxies")
             .as_sequence()
-            .unwrap();
+            .expect("group proxies should be a sequence");
         let group2_proxies = groups[1]
             .as_mapping()
-            .unwrap()
+            .expect("group should be a mapping")
             .get("proxies")
-            .unwrap()
+            .expect("group should have proxies")
             .as_sequence()
-            .unwrap();
+            .expect("group proxies should be a sequence");
 
         assert_eq!(group1_proxies.len(), 1);
-        assert_eq!(group1_proxies[0].as_str().unwrap(), "proxy2");
+        assert_eq!(
+            group1_proxies[0]
+                .as_str()
+                .expect("proxy name should be string"),
+            "proxy2"
+        );
         assert_eq!(group2_proxies.len(), 0);
     }
 }

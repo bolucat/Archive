@@ -17,8 +17,8 @@ export default defineConfig({
     svgr(),
     react(),
     legacy({
+      targets: ["edge>=109", "safari>=13"],
       renderLegacyChunks: false,
-      modernTargets: ["edge>=109", "safari>=13"],
       modernPolyfills: true,
       additionalModernPolyfills: [
         "core-js/modules/es.object.has-own.js",
@@ -42,40 +42,81 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    target: "es2020",
     minify: "terser",
     chunkSizeWarningLimit: 4000,
     reportCompressedSize: false,
     sourcemap: false,
     cssCodeSplit: true,
     cssMinify: true,
+    terserOptions: {
+      compress: {
+        drop_console: false,
+        drop_debugger: true,
+        pure_funcs: ["console.debug", "console.trace"],
+        dead_code: true,
+        unused: true,
+      },
+      mangle: {
+        safari10: true,
+      },
+    },
     rollupOptions: {
       treeshake: {
         preset: "recommended",
-        moduleSideEffects: (id) => !/\.css$/.test(id),
+        moduleSideEffects: (id) => !id.endsWith(".css"),
         tryCatchDeoptimization: false,
       },
       output: {
         compact: true,
-        experimentalMinChunkSize: 30000,
+        experimentalMinChunkSize: 100000,
         dynamicImportInCjs: true,
         manualChunks(id) {
           if (id.includes("node_modules")) {
             // Monaco Editor should be a separate chunk
             if (id.includes("monaco-editor")) return "monaco-editor";
 
-            // React-related libraries (react, react-dom, react-router-dom, etc.)
+            // React core libraries
             if (
               id.includes("react") ||
               id.includes("react-dom") ||
-              id.includes("react-router-dom") ||
+              id.includes("react-router-dom")
+            ) {
+              return "react-core";
+            }
+
+            // React UI libraries
+            if (
               id.includes("react-transition-group") ||
               id.includes("react-error-boundary") ||
               id.includes("react-hook-form") ||
               id.includes("react-markdown") ||
               id.includes("react-virtuoso")
             ) {
-              return "react";
+              return "react-ui";
+            }
+
+            // Material UI libraries (grouped together)
+            if (
+              id.includes("@mui/material") ||
+              id.includes("@mui/icons-material") ||
+              id.includes("@mui/lab") ||
+              id.includes("@mui/x-data-grid")
+            ) {
+              return "mui";
+            }
+
+            // Tauri-related plugins: grouping together Tauri plugins
+            if (
+              id.includes("@tauri-apps/api") ||
+              id.includes("@tauri-apps/plugin-clipboard-manager") ||
+              id.includes("@tauri-apps/plugin-dialog") ||
+              id.includes("@tauri-apps/plugin-fs") ||
+              id.includes("@tauri-apps/plugin-global-shortcut") ||
+              id.includes("@tauri-apps/plugin-process") ||
+              id.includes("@tauri-apps/plugin-shell") ||
+              id.includes("@tauri-apps/plugin-updater")
+            ) {
+              return "tauri-plugins";
             }
 
             // Utilities chunk: group commonly used utility libraries
@@ -91,37 +132,22 @@ export default defineConfig({
               return "utils";
             }
 
-            // Tauri-related plugins: grouping together Tauri plugins
-            if (
-              id.includes("@tauri-apps/api") ||
-              id.includes("@tauri-apps/plugin-clipboard-manager") ||
-              id.includes("@tauri-apps/plugin-dialog") ||
-              id.includes("@tauri-apps/plugin-fs") ||
-              id.includes("@tauri-apps/plugin-global-shortcut") ||
-              id.includes("@tauri-apps/plugin-notification") ||
-              id.includes("@tauri-apps/plugin-process") ||
-              id.includes("@tauri-apps/plugin-shell") ||
-              id.includes("@tauri-apps/plugin-updater")
-            ) {
-              return "tauri-plugins";
+            // Group other vendor packages together to reduce small chunks
+            const pkg = id.match(/node_modules\/([^/]+)/)?.[1];
+            if (pkg) {
+              // Large packages get their own chunks
+              if (
+                pkg.includes("monaco") ||
+                pkg.includes("lodash") ||
+                pkg.includes("antd") ||
+                pkg.includes("emotion")
+              ) {
+                return `vendor-${pkg}`;
+              }
+
+              // Group all other packages together
+              return "vendor";
             }
-
-            // Material UI libraries (grouped together)
-            if (
-              id.includes("@mui/material") ||
-              id.includes("@mui/icons-material") ||
-              id.includes("@mui/lab") ||
-              id.includes("@mui/x-data-grid")
-            ) {
-              return "mui";
-            }
-
-            // Small vendor packages
-            const pkg = id.match(/node_modules\/([^\/]+)/)?.[1];
-            if (pkg && pkg.length < 8) return "small-vendors";
-
-            // Large vendor packages
-            return "large-vendor";
           }
         },
       },
@@ -133,13 +159,7 @@ export default defineConfig({
       "@root": path.resolve("."),
     },
   },
-  css: {
-    preprocessorOptions: {
-      scss: {
-        api: "modern-compiler",
-      },
-    },
-  },
+
   define: {
     OS_PLATFORM: `"${process.platform}"`,
   },

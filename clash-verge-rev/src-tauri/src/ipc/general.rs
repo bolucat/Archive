@@ -1,9 +1,15 @@
+use std::time::Duration;
+
 use kode_bridge::{
+    ClientConfig, IpcHttpClient, LegacyResponse,
     errors::{AnyError, AnyResult},
-    IpcHttpClient, LegacyResponse,
 };
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
-use std::sync::OnceLock;
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+
+use crate::{
+    logging, singleton_with_logging,
+    utils::{dirs::ipc_path, logging::Type},
+};
 
 // 定义用于URL路径的编码集合，只编码真正必要的字符
 const URL_PATH_ENCODE_SET: &AsciiSet = &CONTROLS
@@ -14,39 +20,35 @@ const URL_PATH_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'&') // 和号
     .add(b'%'); // 百分号
 
-use crate::{
-    logging,
-    utils::{dirs::ipc_path, logging::Type},
-};
-
 // Helper function to create AnyError from string
 fn create_error(msg: impl Into<String>) -> AnyError {
     Box::new(std::io::Error::other(msg.into()))
 }
 
 pub struct IpcManager {
-    ipc_path: String,
+    client: IpcHttpClient,
 }
 
-static INSTANCE: OnceLock<IpcManager> = OnceLock::new();
-
 impl IpcManager {
-    pub fn global() -> &'static IpcManager {
-        INSTANCE.get_or_init(|| {
-            let ipc_path_buf = ipc_path().unwrap();
-            let ipc_path = ipc_path_buf.to_str().unwrap_or_default();
-            let instance = IpcManager {
-                ipc_path: ipc_path.to_string(),
-            };
-            logging!(
-                info,
-                Type::Ipc,
-                true,
-                "IpcManager initialized with IPC path: {}",
-                instance.ipc_path
-            );
-            instance
-        })
+    pub fn new() -> Self {
+        logging!(info, Type::Ipc, true, "Creating new IpcManager instance");
+        let ipc_path_buf = ipc_path().unwrap_or_else(|e| {
+            logging!(error, Type::Ipc, true, "Failed to get IPC path: {}", e);
+            std::path::PathBuf::from("/tmp/clash-verge-ipc") // fallback path
+        });
+        let ipc_path = ipc_path_buf.to_str().unwrap_or_default();
+        let config = ClientConfig {
+            default_timeout: Duration::from_secs(5),
+            enable_pooling: false,
+            max_retries: 4,
+            retry_delay: Duration::from_millis(125),
+            max_concurrent_requests: 16,
+            max_requests_per_second: Some(64.0),
+            ..Default::default()
+        };
+        #[allow(clippy::unwrap_used)]
+        let client = IpcHttpClient::with_config(ipc_path, config).unwrap();
+        Self { client }
     }
 }
 
@@ -57,8 +59,7 @@ impl IpcManager {
         path: &str,
         body: Option<&serde_json::Value>,
     ) -> AnyResult<LegacyResponse> {
-        let client = IpcHttpClient::new(&self.ipc_path)?;
-        client.request(method, path, body).await
+        self.client.request(method, path, body).await
     }
 }
 
@@ -79,11 +80,10 @@ impl IpcManager {
                     Ok(response.json()?)
                 }
             }
-            "PUT" => {
+            "PUT" | "DELETE" => {
                 if response.status == 204 {
                     Ok(serde_json::json!({"code": 204}))
                 } else {
-                    // 尝试解析JSON，如果失败则返回错误信息
                     match response.json() {
                         Ok(json) => Ok(json),
                         Err(_) => Ok(serde_json::json!({
@@ -94,7 +94,14 @@ impl IpcManager {
                     }
                 }
             }
-            _ => Ok(response.json()?),
+            _ => match response.json() {
+                Ok(json) => Ok(json),
+                Err(_) => Ok(serde_json::json!({
+                    "code": response.status,
+                    "message": response.body,
+                    "error": "failed to parse response as JSON"
+                })),
+            },
         }
     }
 
@@ -190,8 +197,7 @@ impl IpcManager {
         // 测速URL不再编码，直接传递
         let url = format!("/proxies/{encoded_name}/delay?url={test_url}&timeout={timeout}");
 
-        let response = self.send_request("GET", &url, None).await;
-        response
+        self.send_request("GET", &url, None).await
     }
 
     // 版本和配置相关
@@ -271,9 +277,14 @@ impl IpcManager {
             "name": proxy
         });
 
-        let response = match self.send_request("PUT", &url, Some(&payload)).await {
-            Ok(resp) => resp,
+        // println!("group: {}, proxy: {}", group, proxy);
+        match self.send_request("PUT", &url, Some(&payload)).await {
+            Ok(_) => {
+                // println!("updateProxy response: {:?}", response);
+                Ok(())
+            }
             Err(e) => {
+                // println!("updateProxy encountered error: {}", e);
                 logging!(
                     error,
                     crate::utils::logging::Type::Ipc,
@@ -281,31 +292,8 @@ impl IpcManager {
                     "IPC: updateProxy encountered error: {} (ignored, always returning true)",
                     e
                 );
-                // Always return a successful response as serde_json::Value
-                serde_json::json!({"code": 204})
+                Ok(())
             }
-        };
-
-        if response["code"] == 204 {
-            Ok(())
-        } else {
-            let error_msg = response["message"].as_str().unwrap_or_else(|| {
-                if let Some(error) = response.get("error") {
-                    error.as_str().unwrap_or("unknown error")
-                } else {
-                    "failed to update proxy"
-                }
-            });
-
-            logging!(
-                error,
-                crate::utils::logging::Type::Ipc,
-                true,
-                "IPC: updateProxy failed: {}",
-                error_msg
-            );
-
-            Err(create_error(error_msg.to_string()))
         }
     }
 
@@ -354,8 +342,7 @@ impl IpcManager {
         // 测速URL不再编码，直接传递
         let url = format!("/group/{encoded_group_name}/delay?url={test_url}&timeout={timeout}");
 
-        let response = self.send_request("GET", &url, None).await;
-        response
+        self.send_request("GET", &url, None).await
     }
 
     // 调试相关
@@ -382,29 +369,8 @@ impl IpcManager {
         }
     }
 
-    // 流量数据相关
-    #[allow(dead_code)]
-    pub async fn get_traffic(&self) -> AnyResult<serde_json::Value> {
-        let url = "/traffic";
-        logging!(info, Type::Ipc, true, "IPC: 发送 GET 请求到 {}", url);
-        let result = self.send_request("GET", url, None).await;
-        logging!(
-            info,
-            Type::Ipc,
-            true,
-            "IPC: /traffic 请求结果: {:?}",
-            result
-        );
-        result
-    }
-
-    // 内存相关
-    #[allow(dead_code)]
-    pub async fn get_memory(&self) -> AnyResult<serde_json::Value> {
-        let url = "/memory";
-        logging!(info, Type::Ipc, true, "IPC: 发送 GET 请求到 {}", url);
-        let result = self.send_request("GET", url, None).await;
-        logging!(info, Type::Ipc, true, "IPC: /memory 请求结果: {:?}", result);
-        result
-    }
+    // 日志相关功能已迁移到 logs.rs 模块，使用流式处理
 }
+
+// Use singleton macro with logging
+singleton_with_logging!(IpcManager, INSTANCE, "IpcManager");

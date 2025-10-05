@@ -1,5 +1,5 @@
 use crate::{
-    config::{deserialize_encrypted, serialize_encrypted, DEFAULT_PAC},
+    config::{DEFAULT_PAC, deserialize_encrypted, serialize_encrypted},
     logging,
     utils::{dirs, help, i18n, logging::Type},
 };
@@ -13,6 +13,12 @@ pub struct IVerge {
     /// app log level
     /// silent | error | warn | info | debug | trace
     pub app_log_level: Option<String>,
+
+    /// app log max size in KB
+    pub app_log_max_size: Option<u64>,
+
+    /// app log max count
+    pub app_log_max_count: Option<usize>,
 
     // i18n
     pub language: Option<String>,
@@ -138,9 +144,6 @@ pub struct IVerge {
     /// 0: 不清理; 1: 1天；2: 7天; 3: 30天; 4: 90天
     pub auto_log_clean: Option<i32>,
 
-    /// 是否启用随机端口
-    pub enable_random_port: Option<bool>,
-
     /// verge 的各种 port 用于覆盖 clash 的各种 port
     #[cfg(not(target_os = "windows"))]
     pub verge_redir_port: Option<u16>,
@@ -206,9 +209,6 @@ pub struct IVerge {
 
     /// 启用外部控制器
     pub enable_external_controller: Option<bool>,
-
-    /// 服务状态跟踪
-    pub service_state: Option<crate::core::service::ServiceState>,
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
@@ -240,9 +240,9 @@ impl IVerge {
     pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo", "verge-mihomo-alpha"];
 
     /// 验证并修正配置文件中的clash_core值
-    pub fn validate_and_fix_config() -> Result<()> {
+    pub async fn validate_and_fix_config() -> Result<()> {
         let config_path = dirs::verge_path()?;
-        let mut config = match help::read_yaml::<IVerge>(&config_path) {
+        let mut config = match help::read_yaml::<IVerge>(&config_path).await {
             Ok(config) => config,
             Err(_) => Self::template(),
         };
@@ -276,7 +276,7 @@ impl IVerge {
         // 修正后保存配置
         if needs_fix {
             logging!(info, Type::Config, true, "正在保存修正后的配置文件...");
-            help::save_yaml(&config_path, &config, Some("# Clash Verge Config"))?;
+            help::save_yaml(&config_path, &config, Some("# Clash Verge Config")).await?;
             logging!(
                 info,
                 Type::Config,
@@ -284,7 +284,7 @@ impl IVerge {
                 "配置文件修正完成，需要重新加载配置"
             );
 
-            Self::reload_config_after_fix(config)?;
+            Self::reload_config_after_fix(config).await?;
         } else {
             logging!(
                 info,
@@ -299,10 +299,10 @@ impl IVerge {
     }
 
     /// 配置修正后重新加载配置
-    fn reload_config_after_fix(updated_config: IVerge) -> Result<()> {
+    async fn reload_config_after_fix(updated_config: IVerge) -> Result<()> {
         use crate::config::Config;
 
-        let config_draft = Config::verge();
+        let config_draft = Config::verge().await;
         *config_draft.draft_mut() = Box::new(updated_config.clone());
         config_draft.apply();
 
@@ -338,9 +338,15 @@ impl IVerge {
         }
     }
 
-    pub fn new() -> Self {
-        match dirs::verge_path().and_then(|path| help::read_yaml::<IVerge>(&path)) {
-            Ok(config) => config,
+    pub async fn new() -> Self {
+        match dirs::verge_path() {
+            Ok(path) => match help::read_yaml::<IVerge>(&path).await {
+                Ok(config) => config,
+                Err(err) => {
+                    log::error!(target: "app", "{err}");
+                    Self::template()
+                }
+            },
             Err(err) => {
                 log::error!(target: "app", "{err}");
                 Self::template()
@@ -350,6 +356,8 @@ impl IVerge {
 
     pub fn template() -> Self {
         Self {
+            app_log_max_size: Some(128),
+            app_log_max_count: Some(8),
             clash_core: Some("verge-mihomo".into()),
             language: Some(Self::get_system_language()),
             theme_mode: Some("system".into()),
@@ -374,7 +382,6 @@ impl IVerge {
             proxy_auto_config: Some(false),
             pac_file_content: Some(DEFAULT_PAC.into()),
             proxy_host: Some("127.0.0.1".into()),
-            enable_random_port: Some(false),
             #[cfg(not(target_os = "windows"))]
             verge_redir_port: Some(7895),
             #[cfg(not(target_os = "windows"))]
@@ -394,7 +401,7 @@ impl IVerge {
             auto_close_connection: Some(true),
             auto_check_update: Some(true),
             enable_builtin_enhanced: Some(true),
-            auto_log_clean: Some(2),
+            auto_log_clean: Some(2), // 1: 1天, 2: 7天, 3: 30天, 4: 90天
             webdav_url: None,
             webdav_username: None,
             webdav_password: None,
@@ -405,15 +412,14 @@ impl IVerge {
             auto_light_weight_minutes: Some(10),
             enable_dns_settings: Some(false),
             home_cards: None,
-            service_state: None,
             enable_external_controller: Some(false),
             ..Self::default()
         }
     }
 
     /// Save IVerge App Config
-    pub fn save_file(&self) -> Result<()> {
-        help::save_yaml(&dirs::verge_path()?, &self, Some("# Clash Verge Config"))
+    pub async fn save_file(&self) -> Result<()> {
+        help::save_yaml(&dirs::verge_path()?, &self, Some("# Clash Verge Config")).await
     }
 
     /// patch verge config
@@ -428,6 +434,9 @@ impl IVerge {
         }
 
         patch!(app_log_level);
+        patch!(app_log_max_size);
+        patch!(app_log_max_count);
+
         patch!(language);
         patch!(theme_mode);
         patch!(tray_event);
@@ -448,7 +457,6 @@ impl IVerge {
         patch!(enable_auto_launch);
         patch!(enable_silent_start);
         patch!(enable_hover_jump_navigator);
-        patch!(enable_random_port);
         #[cfg(not(target_os = "windows"))]
         patch!(verge_redir_port);
         #[cfg(not(target_os = "windows"))]
@@ -494,7 +502,6 @@ impl IVerge {
         patch!(auto_light_weight_minutes);
         patch!(enable_dns_settings);
         patch!(home_cards);
-        patch!(service_state);
         patch!(enable_external_controller);
     }
 
@@ -528,6 +535,8 @@ impl IVerge {
 #[derive(Debug, Clone, Serialize)]
 pub struct IVergeResponse {
     pub app_log_level: Option<String>,
+    pub app_log_max_size: Option<u64>,
+    pub app_log_max_count: Option<usize>,
     pub language: Option<String>,
     pub theme_mode: Option<String>,
     pub tray_event: Option<String>,
@@ -567,7 +576,6 @@ pub struct IVergeResponse {
     pub proxy_layout_column: Option<i32>,
     pub test_list: Option<Vec<IVergeTestItem>>,
     pub auto_log_clean: Option<i32>,
-    pub enable_random_port: Option<bool>,
     #[cfg(not(target_os = "windows"))]
     pub verge_redir_port: Option<u16>,
     #[cfg(not(target_os = "windows"))]
@@ -592,7 +600,6 @@ pub struct IVergeResponse {
     pub home_cards: Option<serde_json::Value>,
     pub enable_hover_jump_navigator: Option<bool>,
     pub enable_external_controller: Option<bool>,
-    pub service_state: Option<crate::core::service::ServiceState>,
 }
 
 impl From<IVerge> for IVergeResponse {
@@ -601,6 +608,8 @@ impl From<IVerge> for IVergeResponse {
         let valid_clash_core = verge.get_valid_clash_core();
         Self {
             app_log_level: verge.app_log_level,
+            app_log_max_size: verge.app_log_max_size,
+            app_log_max_count: verge.app_log_max_count,
             language: verge.language,
             theme_mode: verge.theme_mode,
             tray_event: verge.tray_event,
@@ -640,7 +649,6 @@ impl From<IVerge> for IVergeResponse {
             proxy_layout_column: verge.proxy_layout_column,
             test_list: verge.test_list,
             auto_log_clean: verge.auto_log_clean,
-            enable_random_port: verge.enable_random_port,
             #[cfg(not(target_os = "windows"))]
             verge_redir_port: verge.verge_redir_port,
             #[cfg(not(target_os = "windows"))]
@@ -665,7 +673,6 @@ impl From<IVerge> for IVergeResponse {
             home_cards: verge.home_cards,
             enable_hover_jump_navigator: verge.enable_hover_jump_navigator,
             enable_external_controller: verge.enable_external_controller,
-            service_state: verge.service_state,
         }
     }
 }

@@ -1,4 +1,7 @@
-use serde_yaml::{Mapping, Value};
+use serde_yaml_ng::{Mapping, Value};
+
+#[cfg(target_os = "macos")]
+use crate::process::AsyncHandler;
 
 macro_rules! revise {
     ($map: expr, $key: expr, $val: expr) => {
@@ -18,7 +21,7 @@ macro_rules! append {
     };
 }
 
-pub async fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
+pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     let tun_key = Value::from("tun");
     let tun_val = config.get(&tun_key);
     let mut tun_val = tun_val.map_or(Mapping::new(), |val| {
@@ -59,8 +62,10 @@ pub async fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
 
             #[cfg(target_os = "macos")]
             {
-                crate::utils::resolve::restore_public_dns().await;
-                crate::utils::resolve::set_public_dns("223.6.6.6".to_string()).await;
+                AsyncHandler::spawn(move || async move {
+                    crate::utils::resolve::dns::restore_public_dns().await;
+                    crate::utils::resolve::dns::set_public_dns("223.6.6.6".to_string()).await;
+                });
             }
         }
 
@@ -69,7 +74,9 @@ pub async fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     } else {
         // TUN未启用时，仅恢复系统DNS，不修改配置文件中的DNS设置
         #[cfg(target_os = "macos")]
-        crate::utils::resolve::restore_public_dns().await;
+        AsyncHandler::spawn(move || async move {
+            crate::utils::resolve::dns::restore_public_dns().await;
+        });
     }
 
     // 更新TUN配置

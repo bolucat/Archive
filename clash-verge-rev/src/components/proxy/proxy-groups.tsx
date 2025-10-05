@@ -1,250 +1,103 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { useLockFn } from "ahooks";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { ExpandMoreRounded } from "@mui/icons-material";
 import {
-  getConnections,
-  providerHealthCheck,
-  updateProxy,
-  deleteConnection,
-  getGroupProxyDelays,
-} from "@/services/cmds";
-import { forceRefreshProxies } from "@/services/cmds";
-import { useProfiles } from "@/hooks/use-profiles";
-import { useVerge } from "@/hooks/use-verge";
-import { BaseEmpty } from "../base";
-import { useRenderList } from "./use-render-list";
-import { ProxyRender } from "./proxy-render";
-import delayManager from "@/services/delay";
+  Alert,
+  Box,
+  Chip,
+  IconButton,
+  Menu,
+  MenuItem,
+  Snackbar,
+  Typography,
+} from "@mui/material";
+import { useLockFn } from "ahooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import useSWR from "swr";
+
+import { useProxySelection } from "@/hooks/use-proxy-selection";
+import { useVerge } from "@/hooks/use-verge";
+import { useAppData } from "@/providers/app-data-context";
+import {
+  getGroupProxyDelays,
+  getRuntimeConfig,
+  providerHealthCheck,
+  updateProxyChainConfigInRuntime,
+} from "@/services/cmds";
+import delayManager from "@/services/delay";
+
+import { BaseEmpty } from "../base";
 import { ScrollTopButton } from "../layout/scroll-top-button";
-import { Box, styled } from "@mui/material";
-import { memo } from "react";
-import { createPortal } from "react-dom";
 
-// 将选择器组件抽离出来，避免主组件重渲染时重复创建样式
-const AlphabetSelector = styled(Box)(({ theme }) => ({
-  position: "fixed",
-  right: 4,
-  top: "50%",
-  transform: "translateY(-50%)",
-  display: "flex",
-  flexDirection: "column",
-  background: "transparent",
-  zIndex: 1000,
-  gap: "2px",
-  // padding: "4px 2px",
-  willChange: "transform",
-  "&:hover": {
-    background: theme.palette.background.paper,
-    boxShadow: theme.shadows[2],
-    borderRadius: "8px",
-  },
-  "& .scroll-container": {
-    overflow: "hidden",
-    maxHeight: "inherit",
-    willChange: "transform",
-  },
-  "& .letter-container": {
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-    transition: "transform 0.2s ease",
-    willChange: "transform",
-  },
-  "& .letter": {
-    padding: "1px 4px",
-    fontSize: "12px",
-    cursor: "pointer",
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-    color: theme.palette.text.secondary,
-    position: "relative",
-    width: "1.5em",
-    height: "1.5em",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    transition: "all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)",
-    transform: "scale(1) translateZ(0)",
-    backfaceVisibility: "hidden",
-    borderRadius: "6px",
-    "&:hover": {
-      color: theme.palette.primary.main,
-      transform: "scale(1.4) translateZ(0)",
-      backgroundColor: theme.palette.action.hover,
-    },
-  },
-}));
-
-// 创建一个单独的 Tooltip 组件
-const Tooltip = styled("div")(({ theme }) => ({
-  position: "fixed",
-  background: theme.palette.background.paper,
-  padding: "4px 8px",
-  borderRadius: "6px",
-  boxShadow: theme.shadows[3],
-  whiteSpace: "nowrap",
-  fontSize: "16px",
-  color: theme.palette.text.primary,
-  pointerEvents: "none",
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    right: "-4px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    width: 0,
-    height: 0,
-    borderTop: "4px solid transparent",
-    borderBottom: "4px solid transparent",
-    borderLeft: `4px solid ${theme.palette.background.paper}`,
-  },
-}));
-
-// 抽离字母选择器子组件
-const LetterItem = memo(
-  ({
-    name,
-    onClick,
-    getFirstChar,
-    enableAutoScroll = true,
-  }: {
-    name: string;
-    onClick: (name: string) => void;
-    getFirstChar: (str: string) => string;
-    enableAutoScroll?: boolean;
-  }) => {
-    const [showTooltip, setShowTooltip] = useState(false);
-    const letterRef = useRef<HTMLDivElement>(null);
-    const [tooltipPosition, setTooltipPosition] = useState({
-      top: 0,
-      right: 0,
-    });
-    const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-    const updateTooltipPosition = useCallback(() => {
-      if (!letterRef.current) return;
-      const rect = letterRef.current.getBoundingClientRect();
-      setTooltipPosition({
-        top: rect.top + rect.height / 2,
-        right: window.innerWidth - rect.left + 8,
-      });
-    }, []);
-
-    useEffect(() => {
-      if (showTooltip) {
-        updateTooltipPosition();
-      }
-    }, [showTooltip, updateTooltipPosition]);
-
-    const handleMouseEnter = useCallback(() => {
-      setShowTooltip(true);
-      // 只有在启用自动滚动时才触发滚动
-      if (enableAutoScroll) {
-        // 添加 100ms 的延迟，避免鼠标快速划过时触发滚动
-        hoverTimeoutRef.current = setTimeout(() => {
-          onClick(name);
-        }, 100);
-      }
-    }, [name, onClick, enableAutoScroll]);
-
-    const handleMouseLeave = useCallback(() => {
-      setShowTooltip(false);
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-    }, []);
-
-    useEffect(() => {
-      return () => {
-        if (hoverTimeoutRef.current) {
-          clearTimeout(hoverTimeoutRef.current);
-        }
-      };
-    }, []);
-
-    return (
-      <>
-        <div
-          ref={letterRef}
-          className="letter"
-          onClick={() => onClick(name)}
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-        >
-          <span>{getFirstChar(name)}</span>
-        </div>
-        {showTooltip &&
-          createPortal(
-            <Tooltip
-              style={{
-                top: tooltipPosition.top,
-                right: tooltipPosition.right,
-                transform: "translateY(-50%)",
-              }}
-            >
-              {name}
-            </Tooltip>,
-            document.body,
-          )}
-      </>
-    );
-  },
-);
+import { ProxyChain } from "./proxy-chain";
+import { ProxyGroupNavigator } from "./proxy-group-navigator";
+import { ProxyRender } from "./proxy-render";
+import { useRenderList } from "./use-render-list";
 
 interface Props {
   mode: string;
+  isChainMode?: boolean;
+  chainConfigData?: string | null;
+}
+
+interface ProxyChainItem {
+  id: string;
+  name: string;
+  type?: string;
+  delay?: number;
 }
 
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
-  const { mode } = props;
-
-  const { renderList, onProxies, onHeadState } = useRenderList(mode);
+  const { mode, isChainMode = false, chainConfigData } = props;
+  const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [ruleMenuAnchor, setRuleMenuAnchor] = useState<null | HTMLElement>(
+    null,
+  );
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    open: boolean;
+    message: string;
+  }>({ open: false, message: "" });
 
   const { verge } = useVerge();
-  const { current, patchCurrent } = useProfiles();
+  const { proxies: proxiesData } = useAppData();
 
-  // 获取自动滚动开关状态，默认为 true
-  const enableAutoScroll = verge?.enable_hover_jump_navigator ?? true;
+  // 当链式代理模式且规则模式下，如果没有选择代理组，默认选择第一个
+  useEffect(() => {
+    if (
+      isChainMode &&
+      mode === "rule" &&
+      !selectedGroup &&
+      proxiesData?.groups?.length > 0
+    ) {
+      setSelectedGroup(proxiesData.groups[0].name);
+    }
+  }, [isChainMode, mode, selectedGroup, proxiesData]);
+
+  const { renderList, onProxies, onHeadState } = useRenderList(
+    mode,
+    isChainMode,
+    selectedGroup,
+  );
+
+  // 统代理选择
+  const { handleProxyGroupChange } = useProxySelection({
+    onSuccess: () => {
+      onProxies();
+    },
+    onError: (error) => {
+      console.error("代理切换失败", error);
+      onProxies();
+    },
+  });
+
   const timeout = verge?.default_latency_timeout || 10000;
 
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const scrollPositionRef = useRef<Record<string, number>>({});
   const [showScrollTop, setShowScrollTop] = useState(false);
   const scrollerRef = useRef<Element | null>(null);
-  const letterContainerRef = useRef<HTMLDivElement>(null);
-  const alphabetSelectorRef = useRef<HTMLDivElement>(null);
-  const [maxHeight, setMaxHeight] = useState("auto");
-
-  // 使用useMemo缓存字母索引数据
-  const { groupFirstLetters, letterIndexMap } = useMemo(() => {
-    const letters = new Set<string>();
-    const indexMap: Record<string, number> = {};
-
-    renderList.forEach((item, index) => {
-      if (item.type === 0) {
-        const fullName = item.group.name;
-        letters.add(fullName);
-        if (!(fullName in indexMap)) {
-          indexMap[fullName] = index;
-        }
-      }
-    });
-
-    return {
-      groupFirstLetters: Array.from(letters),
-      letterIndexMap: indexMap,
-    };
-  }, [renderList]);
-
-  // 缓存getFirstChar函数
-  const getFirstChar = useCallback((str: string) => {
-    const regex =
-      /\p{Regional_Indicator}{2}|\p{Extended_Pictographic}|\p{L}|\p{N}|./u;
-    const match = str.match(regex);
-    return match ? match[0] : str.charAt(0);
-  }, []);
 
   // 从 localStorage 恢复滚动位置
   useEffect(() => {
@@ -320,59 +173,86 @@ export const ProxyGroups = (props: Props) => {
     saveScrollPosition(0);
   }, [saveScrollPosition]);
 
-  // 处理字母点击，使用useCallback
-  const handleLetterClick = useCallback(
-    (name: string) => {
-      const index = letterIndexMap[name];
-      if (index !== undefined) {
-        virtuosoRef.current?.scrollToIndex({
-          index,
-          align: "start",
-          behavior: "smooth",
-        });
-      }
-    },
-    [letterIndexMap],
-  );
+  // 关闭重复节点警告
+  const handleCloseDuplicateWarning = useCallback(() => {
+    setDuplicateWarning({ open: false, message: "" });
+  }, []);
 
-  // 切换分组的节点代理
-  const handleChangeProxy = useLockFn(
-    async (group: IProxyGroupItem, proxy: IProxyItem) => {
+  // 获取当前选中的代理组信息
+  const getCurrentGroup = useCallback(() => {
+    if (!selectedGroup || !proxiesData?.groups) return null;
+    return proxiesData.groups.find(
+      (group: any) => group.name === selectedGroup,
+    );
+  }, [selectedGroup, proxiesData]);
+
+  // 获取可用的代理组列表
+  const getAvailableGroups = useCallback(() => {
+    return proxiesData?.groups || [];
+  }, [proxiesData]);
+
+  // 处理代理组选择菜单
+  const handleGroupMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setRuleMenuAnchor(event.currentTarget);
+  };
+
+  const handleGroupMenuClose = () => {
+    setRuleMenuAnchor(null);
+  };
+
+  const handleGroupSelect = (groupName: string) => {
+    setSelectedGroup(groupName);
+    handleGroupMenuClose();
+
+    // 在链式代理模式的规则模式下，切换代理组时清空链式代理配置
+    if (isChainMode && mode === "rule") {
+      updateProxyChainConfigInRuntime(null);
+      // 同时清空右侧链式代理配置
+      setProxyChain([]);
+    }
+  };
+
+  const currentGroup = getCurrentGroup();
+  const availableGroups = getAvailableGroups();
+
+  const handleChangeProxy = useCallback(
+    (group: IProxyGroupItem, proxy: IProxyItem) => {
+      if (isChainMode) {
+        // 使用函数式更新来避免状态延迟问题
+        setProxyChain((prev) => {
+          // 检查是否已经存在相同名称的代理，防止重复添加
+          if (prev.some((item) => item.name === proxy.name)) {
+            const warningMessage = t("Proxy node already exists in chain");
+            setDuplicateWarning({
+              open: true,
+              message: warningMessage,
+            });
+            return prev; // 返回原来的状态，不做任何更改
+          }
+
+          // 安全获取延迟数据，如果没有延迟数据则设为 undefined
+          const delay =
+            proxy.history && proxy.history.length > 0
+              ? proxy.history[proxy.history.length - 1].delay
+              : undefined;
+
+          const chainItem: ProxyChainItem = {
+            id: `${proxy.name}_${Date.now()}`,
+            name: proxy.name,
+            type: proxy.type,
+            delay: delay,
+          };
+
+          return [...prev, chainItem];
+        });
+        return;
+      }
+
       if (!["Selector", "URLTest", "Fallback"].includes(group.type)) return;
 
-      const { name, now } = group;
-      await updateProxy(name, proxy.name);
-
-      await forceRefreshProxies();
-
-      onProxies();
-
-      // 断开连接
-      if (verge?.auto_close_connection) {
-        getConnections().then(({ connections }) => {
-          connections.forEach((conn) => {
-            if (conn.chains.includes(now!)) {
-              deleteConnection(conn.id);
-            }
-          });
-        });
-      }
-
-      // 保存到selected中
-      if (!current) return;
-      if (!current.selected) current.selected = [];
-
-      const index = current.selected.findIndex(
-        (item) => item.name === group.name,
-      );
-
-      if (index < 0) {
-        current.selected.push({ name, now: proxy.name });
-      } else {
-        current.selected[index] = { name, now: proxy.name };
-      }
-      await patchCurrent({ selected: current.selected });
+      handleProxyGroupChange(group, proxy);
     },
+    [handleProxyGroupChange, isChainMode, t],
   );
 
   // 测全部延迟
@@ -445,78 +325,249 @@ export const ProxyGroups = (props: Props) => {
     }
   };
 
-  // 添加滚轮事件处理函数 - 改进为只在悬停时触发
-  const handleWheel = useCallback((e: WheelEvent) => {
-    // 只有当鼠标在字母选择器上时才处理滚轮事件
-    if (!alphabetSelectorRef.current?.contains(e.target as Node)) return;
+  // 获取运行时配置
+  const { data: runtimeConfig } = useSWR("getRuntimeConfig", getRuntimeConfig, {
+    revalidateOnFocus: false,
+    revalidateIfStale: true,
+  });
 
-    e.preventDefault();
-    if (!letterContainerRef.current) return;
+  // 获取所有代理组名称
+  const getProxyGroupNames = useCallback(() => {
+    const config = runtimeConfig as any;
+    if (!config?.["proxy-groups"]) return [];
 
-    const container = letterContainerRef.current;
-    const scrollAmount = e.deltaY;
-    const currentTransform = new WebKitCSSMatrix(container.style.transform);
-    const currentY = currentTransform.m42 || 0;
+    return config["proxy-groups"]
+      .map((group: any) => group.name)
+      .filter((name: string) => name && name.trim() !== "");
+  }, [runtimeConfig]);
 
-    const containerHeight = container.getBoundingClientRect().height;
-    const parentHeight =
-      container.parentElement?.getBoundingClientRect().height || 0;
-    const maxScroll = Math.max(0, containerHeight - parentHeight);
+  // 定位到指定的代理组
+  const handleGroupLocationByName = useCallback(
+    (groupName: string) => {
+      const index = renderList.findIndex(
+        (item) => item.type === 0 && item.group?.name === groupName,
+      );
 
-    let newY = currentY - scrollAmount;
-    newY = Math.min(0, Math.max(-maxScroll, newY));
+      if (index >= 0) {
+        virtuosoRef.current?.scrollToIndex?.({
+          index,
+          align: "start",
+          behavior: "smooth",
+        });
+      }
+    },
+    [renderList],
+  );
 
-    container.style.transform = `translateY(${newY}px)`;
-  }, []);
-
-  // 添加和移除滚轮事件监听
-  useEffect(() => {
-    const container = letterContainerRef.current?.parentElement;
-    if (container) {
-      container.addEventListener("wheel", handleWheel, { passive: false });
-      return () => {
-        container.removeEventListener("wheel", handleWheel);
-      };
-    }
-  }, [handleWheel]);
-
-  // 监听窗口大小变化
-  // layout effect runs before paint
-  useEffect(() => {
-    // 添加窗口大小变化监听和最大高度计算
-    const updateMaxHeight = () => {
-      if (!alphabetSelectorRef.current) return;
-
-      const windowHeight = window.innerHeight;
-      const bottomMargin = 60; // 底部边距
-      const topMargin = bottomMargin * 2; // 顶部边距是底部的2倍
-      const availableHeight = windowHeight - (topMargin + bottomMargin);
-
-      // 调整选择器的位置，使其偏下
-      const offsetPercentage =
-        (((topMargin - bottomMargin) / windowHeight) * 100) / 2;
-      alphabetSelectorRef.current.style.top = `calc(48% + ${offsetPercentage}vh)`;
-
-      setMaxHeight(`${availableHeight}px`);
-    };
-
-    updateMaxHeight();
-
-    window.addEventListener("resize", updateMaxHeight);
-
-    return () => {
-      window.removeEventListener("resize", updateMaxHeight);
-    };
-  }, []);
+  const proxyGroupNames = useMemo(
+    () => getProxyGroupNames(),
+    [getProxyGroupNames],
+  );
 
   if (mode === "direct") {
     return <BaseEmpty text={t("clash_mode_direct")} />;
+  }
+
+  if (isChainMode) {
+    // 获取所有代理组
+    const proxyGroups = proxiesData?.groups || [];
+
+    return (
+      <>
+        <Box sx={{ display: "flex", height: "100%", gap: 2 }}>
+          <Box sx={{ flex: 1, position: "relative" }}>
+            {/* 代理规则标题和代理组按钮栏 */}
+            {mode === "rule" && proxyGroups.length > 0 && (
+              <Box sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
+                {/* 代理规则标题 */}
+                <Box
+                  sx={{
+                    px: 2,
+                    py: 1.5,
+                    borderBottom: "1px solid",
+                    borderColor: "divider",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+                    <Typography
+                      variant="h6"
+                      sx={{ fontWeight: 600, fontSize: "16px" }}
+                    >
+                      {t("Proxy Rules")}
+                    </Typography>
+                    {currentGroup && (
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                      >
+                        <Chip
+                          size="small"
+                          label={`${currentGroup.name} (${currentGroup.type})`}
+                          variant="outlined"
+                          sx={{
+                            fontSize: "12px",
+                            maxWidth: "200px",
+                            "& .MuiChip-label": {
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            },
+                          }}
+                        />
+                      </Box>
+                    )}
+                  </Box>
+
+                  {availableGroups.length > 0 && (
+                    <IconButton
+                      size="small"
+                      onClick={handleGroupMenuOpen}
+                      sx={{
+                        border: "1px solid",
+                        borderColor: "divider",
+                        borderRadius: "4px",
+                        padding: "4px 8px",
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        sx={{ mr: 0.5, fontSize: "12px" }}
+                      >
+                        {t("Select Rules")}
+                      </Typography>
+                      <ExpandMoreRounded fontSize="small" />
+                    </IconButton>
+                  )}
+                </Box>
+              </Box>
+            )}
+
+            <Virtuoso
+              ref={virtuosoRef}
+              style={{
+                height:
+                  mode === "rule" && proxyGroups.length > 0
+                    ? "calc(100% - 80px)" // 只有标题的高度
+                    : "calc(100% - 14px)",
+              }}
+              totalCount={renderList.length}
+              increaseViewportBy={{ top: 200, bottom: 200 }}
+              overscan={150}
+              defaultItemHeight={56}
+              scrollerRef={(ref) => {
+                scrollerRef.current = ref as Element;
+              }}
+              components={{
+                Footer: () => <div style={{ height: "8px" }} />,
+              }}
+              initialScrollTop={scrollPositionRef.current[mode]}
+              computeItemKey={(index) => renderList[index].key}
+              itemContent={(index) => (
+                <ProxyRender
+                  key={renderList[index].key}
+                  item={renderList[index]}
+                  indent={mode === "rule" || mode === "script"}
+                  onLocation={handleLocation}
+                  onCheckAll={handleCheckAll}
+                  onHeadState={onHeadState}
+                  onChangeProxy={handleChangeProxy}
+                  isChainMode={isChainMode}
+                />
+              )}
+            />
+            <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
+          </Box>
+
+          <Box sx={{ width: "400px", minWidth: "300px" }}>
+            <ProxyChain
+              proxyChain={proxyChain}
+              onUpdateChain={setProxyChain}
+              chainConfigData={chainConfigData}
+              mode={mode}
+              selectedGroup={selectedGroup}
+            />
+          </Box>
+        </Box>
+
+        <Snackbar
+          open={duplicateWarning.open}
+          autoHideDuration={3000}
+          onClose={handleCloseDuplicateWarning}
+          anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        >
+          <Alert
+            onClose={handleCloseDuplicateWarning}
+            severity="warning"
+            variant="filled"
+          >
+            {duplicateWarning.message}
+          </Alert>
+        </Snackbar>
+
+        {/* 代理组选择菜单 */}
+        <Menu
+          anchorEl={ruleMenuAnchor}
+          open={Boolean(ruleMenuAnchor)}
+          onClose={handleGroupMenuClose}
+          PaperProps={{
+            sx: {
+              maxHeight: 300,
+              minWidth: 200,
+            },
+          }}
+        >
+          {availableGroups.map((group: any, index: number) => (
+            <MenuItem
+              key={group.name}
+              onClick={() => handleGroupSelect(group.name)}
+              selected={selectedGroup === group.name}
+              sx={{
+                fontSize: "14px",
+                py: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {group.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {group.type} · {group.all.length} 节点
+                </Typography>
+              </Box>
+            </MenuItem>
+          ))}
+          {availableGroups.length === 0 && (
+            <MenuItem disabled>
+              <Typography variant="body2" color="text.secondary">
+                暂无可用代理组
+              </Typography>
+            </MenuItem>
+          )}
+        </Menu>
+      </>
+    );
   }
 
   return (
     <div
       style={{ position: "relative", height: "100%", willChange: "transform" }}
     >
+      {/* 代理组导航栏 */}
+      {mode === "rule" && (
+        <ProxyGroupNavigator
+          proxyGroupNames={proxyGroupNames}
+          onGroupLocation={handleGroupLocationByName}
+        />
+      )}
+
       <Virtuoso
         ref={virtuosoRef}
         style={{ height: "calc(100% - 14px)" }}
@@ -546,22 +597,6 @@ export const ProxyGroups = (props: Props) => {
         )}
       />
       <ScrollTopButton show={showScrollTop} onClick={scrollToTop} />
-
-      <AlphabetSelector ref={alphabetSelectorRef} style={{ maxHeight }}>
-        <div className="scroll-container">
-          <div ref={letterContainerRef} className="letter-container">
-            {groupFirstLetters.map((name) => (
-              <LetterItem
-                key={name}
-                name={name}
-                onClick={handleLetterClick}
-                getFirstChar={getFirstChar}
-                enableAutoScroll={enableAutoScroll}
-              />
-            ))}
-          </div>
-        </div>
-      </AlphabetSelector>
     </div>
   );
 };
@@ -592,17 +627,5 @@ function throttle<T extends (...args: any[]) => any>(
         func(...args);
       }, remaining);
     }
-  };
-}
-
-// 保留防抖函数以兼容其他地方可能的使用
-function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number,
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<T>) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
   };
 }

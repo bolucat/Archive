@@ -1,15 +1,18 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { Box, Button, Typography } from "@mui/material";
 import { useLockFn } from "ahooks";
+import type { Ref } from "react";
+import { useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Box, Typography } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { openWebUrl } from "@/services/cmds";
+
 import { BaseDialog, BaseEmpty, DialogRef } from "@/components/base";
 import { useClashInfo } from "@/hooks/use-clash";
-import { WebUIItem } from "./web-ui-item";
+import { useVerge } from "@/hooks/use-verge";
+import { openWebUrl } from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
 
-export const WebUIViewer = forwardRef<DialogRef>((props, ref) => {
+import { WebUIItem } from "./web-ui-item";
+
+export function WebUIViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
 
   const { clashInfo } = useClashInfo();
@@ -137,4 +140,4 @@ export const WebUIViewer = forwardRef<DialogRef>((props, ref) => {
       )}
     </BaseDialog>
   );
-});
+}

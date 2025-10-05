@@ -1,21 +1,17 @@
-import useSWR from "swr";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLockFn } from "ahooks";
-import { Box, Button, IconButton, Stack, Divider, Grid } from "@mui/material";
 import {
-  DndContext,
   closestCenter,
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
-import { LoadingButton } from "@mui/lab";
 import {
   ClearRounded,
   ContentPasteRounded,
@@ -23,37 +19,43 @@ import {
   RefreshRounded,
   TextSnippetOutlined,
 } from "@mui/icons-material";
+import { LoadingButton } from "@mui/lab";
+import { Box, Button, Divider, Grid, IconButton, Stack } from "@mui/material";
+import { listen, TauriEvent } from "@tauri-apps/api/event";
+import { readText } from "@tauri-apps/plugin-clipboard-manager";
+import { readTextFile } from "@tauri-apps/plugin-fs";
+import { useLockFn } from "ahooks";
+import { throttle } from "lodash-es";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  importProfile,
-  enhanceProfiles,
-  //restartCore,
-  getRuntimeLogs,
-  deleteProfile,
-  updateProfile,
-  reorderProfile,
-  createProfile,
-} from "@/services/cmds";
-import { useSetLoadingCache, useThemeMode } from "@/services/states";
-import { closeAllConnections } from "@/services/cmds";
+import { useLocation } from "react-router-dom";
+import useSWR, { mutate } from "swr";
+
 import { BasePage, DialogRef } from "@/components/base";
+import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
+import { ProfileItem } from "@/components/profile/profile-item";
+import { ProfileMore } from "@/components/profile/profile-more";
 import {
   ProfileViewer,
   ProfileViewerRef,
 } from "@/components/profile/profile-viewer";
-import { ProfileMore } from "@/components/profile/profile-more";
-import { ProfileItem } from "@/components/profile/profile-item";
-import { useProfiles } from "@/hooks/use-profiles";
 import { ConfigViewer } from "@/components/setting/mods/config-viewer";
-import { throttle } from "lodash-es";
-import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
-import { readTextFile } from "@tauri-apps/plugin-fs";
-import { readText } from "@tauri-apps/plugin-clipboard-manager";
-import { useLocation } from "react-router-dom";
 import { useListen } from "@/hooks/use-listen";
-import { listen } from "@tauri-apps/api/event";
-import { TauriEvent } from "@tauri-apps/api/event";
+import { useProfiles } from "@/hooks/use-profiles";
+import {
+  closeAllConnections,
+  createProfile,
+  deleteProfile,
+  enhanceProfiles,
+  getProfiles,
+  //restartCore,
+  getRuntimeLogs,
+  importProfile,
+  reorderProfile,
+  updateProfile,
+} from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
+import { useSetLoadingCache, useThemeMode } from "@/services/states";
 
 // 记录profile切换状态
 const debugProfileSwitch = (action: string, profile: string, extra?: any) => {
@@ -115,41 +117,44 @@ const ProfilePage = () => {
   const pendingRequestRef = useRef<Promise<any> | null>(null);
 
   // 处理profile切换中断
-  const handleProfileInterrupt = (
-    previousSwitching: string,
-    newProfile: string,
-  ) => {
-    debugProfileSwitch(
-      "INTERRUPT_PREVIOUS",
-      previousSwitching,
-      `被 ${newProfile} 中断`,
-    );
+  const handleProfileInterrupt = useCallback(
+    (previousSwitching: string, newProfile: string) => {
+      debugProfileSwitch(
+        "INTERRUPT_PREVIOUS",
+        previousSwitching,
+        `被 ${newProfile} 中断`,
+      );
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      debugProfileSwitch("ABORT_CONTROLLER_TRIGGERED", previousSwitching);
-    }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        debugProfileSwitch("ABORT_CONTROLLER_TRIGGERED", previousSwitching);
+      }
 
-    if (pendingRequestRef.current) {
-      debugProfileSwitch("CANCEL_PENDING_REQUEST", previousSwitching);
-    }
+      if (pendingRequestRef.current) {
+        debugProfileSwitch("CANCEL_PENDING_REQUEST", previousSwitching);
+      }
 
-    setActivatings((prev) => prev.filter((id) => id !== previousSwitching));
-    showNotice(
-      "info",
-      `${t("Profile switch interrupted by new selection")}: ${previousSwitching} → ${newProfile}`,
-      3000,
-    );
-  };
+      setActivatings((prev) => prev.filter((id) => id !== previousSwitching));
+      showNotice(
+        "info",
+        `${t("Profile switch interrupted by new selection")}: ${previousSwitching} → ${newProfile}`,
+        3000,
+      );
+    },
+    [t],
+  );
 
   // 清理切换状态
-  const cleanupSwitchState = (profile: string, sequence: number) => {
-    setActivatings((prev) => prev.filter((id) => id !== profile));
-    switchingProfileRef.current = null;
-    abortControllerRef.current = null;
-    pendingRequestRef.current = null;
-    debugProfileSwitch("SWITCH_END", profile, `序列号: ${sequence}`);
-  };
+  const cleanupSwitchState = useCallback(
+    (profile: string, sequence: number) => {
+      setActivatings((prev) => prev.filter((id) => id !== profile));
+      switchingProfileRef.current = null;
+      abortControllerRef.current = null;
+      pendingRequestRef.current = null;
+      debugProfileSwitch("SWITCH_END", profile, `序列号: ${sequence}`);
+    },
+    [],
+  );
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -158,6 +163,15 @@ const ProfilePage = () => {
   );
   const { current } = location.state || {};
 
+  const {
+    profiles = {},
+    activateSelected,
+    patchProfiles,
+    mutateProfiles,
+    error,
+    isStale,
+  } = useProfiles();
+
   useEffect(() => {
     const handleFileDrop = async () => {
       const unlisten = await addListener(
@@ -165,7 +179,7 @@ const ProfilePage = () => {
         async (event: any) => {
           const paths = event.payload.paths;
 
-          for (let file of paths) {
+          for (const file of paths) {
             if (!file.endsWith(".yaml") && !file.endsWith(".yml")) {
               showNotice("error", t("Only YAML Files Supported"));
               continue;
@@ -180,7 +194,7 @@ const ProfilePage = () => {
                 self_proxy: false,
               },
             } as IProfileItem;
-            let data = await readTextFile(file);
+            const data = await readTextFile(file);
             await createProfile(item, data);
             await mutateProfiles();
           }
@@ -195,14 +209,32 @@ const ProfilePage = () => {
     return () => {
       unsubscribe.then((cleanup) => cleanup());
     };
-  }, []);
+  }, [addListener, mutateProfiles, t]);
 
-  const {
-    profiles = {},
-    activateSelected,
-    patchProfiles,
-    mutateProfiles,
-  } = useProfiles();
+  // 添加紧急恢复功能
+  const onEmergencyRefresh = useLockFn(async () => {
+    console.log("[紧急刷新] 开始强制刷新所有数据");
+
+    try {
+      // 清除所有SWR缓存
+      await mutate(() => true, undefined, { revalidate: false });
+
+      // 强制重新获取配置数据
+      await mutateProfiles(undefined, {
+        revalidate: true,
+        rollbackOnError: false,
+      });
+
+      // 等待状态稳定后增强配置
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await onEnhance(false);
+
+      showNotice("success", "数据已强制刷新", 2000);
+    } catch (error: any) {
+      console.error("[紧急刷新] 失败:", error);
+      showNotice("error", `紧急刷新失败: ${error.message}`, 4000);
+    }
+  });
 
   const { data: chainLogs = {}, mutate: mutateLogs } = useSWR(
     "getRuntimeLogs",
@@ -233,16 +265,20 @@ const ProfilePage = () => {
       return;
     }
     setLoading(true);
+
+    // 保存导入前的配置状态用于故障恢复
+    const preImportProfilesCount = profiles?.items?.length || 0;
+
     try {
       // 尝试正常导入
       await importProfile(url);
       showNotice("success", t("Profile Imported Successfully"));
       setUrl("");
-      mutateProfiles();
-      await onEnhance(false);
-    } catch (err: any) {
+
+      // 增强的刷新策略
+      await performRobustRefresh(preImportProfilesCount);
+    } catch {
       // 首次导入失败，尝试使用自身代理
-      const errmsg = err.message || err.toString();
       showNotice("info", t("Import failed, retrying with Clash proxy..."));
       try {
         // 使用自身代理尝试导入
@@ -253,8 +289,9 @@ const ProfilePage = () => {
         // 回退导入成功
         showNotice("success", t("Profile Imported with Clash proxy"));
         setUrl("");
-        mutateProfiles();
-        await onEnhance(false);
+
+        // 增强的刷新策略
+        await performRobustRefresh(preImportProfilesCount);
       } catch (retryErr: any) {
         // 回退导入也失败
         const retryErrmsg = retryErr?.message || retryErr.toString();
@@ -269,6 +306,73 @@ const ProfilePage = () => {
     }
   };
 
+  // 强化的刷新策略
+  const performRobustRefresh = async (expectedMinCount: number) => {
+    let retryCount = 0;
+    const maxRetries = 5;
+    const baseDelay = 200;
+
+    while (retryCount < maxRetries) {
+      try {
+        console.log(`[导入刷新] 第${retryCount + 1}次尝试刷新配置数据`);
+
+        // 强制刷新，绕过所有缓存
+        await mutateProfiles(undefined, {
+          revalidate: true,
+          rollbackOnError: false,
+        });
+
+        // 等待状态稳定
+        await new Promise((resolve) =>
+          setTimeout(resolve, baseDelay * (retryCount + 1)),
+        );
+
+        // 验证刷新是否成功
+        const currentProfiles = await getProfiles();
+        const currentCount = currentProfiles?.items?.length || 0;
+
+        if (currentCount > expectedMinCount) {
+          console.log(
+            `[导入刷新] 配置刷新成功，配置数量: ${expectedMinCount} -> ${currentCount}`,
+          );
+          await onEnhance(false);
+          return;
+        }
+
+        console.warn(
+          `[导入刷新] 配置数量未增加 (${currentCount}), 继续重试...`,
+        );
+        retryCount++;
+      } catch (error) {
+        console.error(`[导入刷新] 第${retryCount + 1}次刷新失败:`, error);
+        retryCount++;
+        await new Promise((resolve) =>
+          setTimeout(resolve, baseDelay * retryCount),
+        );
+      }
+    }
+
+    // 所有重试失败后的最后尝试
+    console.warn(`[导入刷新] 常规刷新失败，尝试清除缓存重新获取`);
+    try {
+      // 清除SWR缓存并重新获取
+      await mutate("getProfiles", getProfiles(), { revalidate: true });
+      await onEnhance(false);
+      showNotice(
+        "error",
+        t("Profile imported but may need manual refresh"),
+        3000,
+      );
+    } catch (finalError) {
+      console.error(`[导入刷新] 最终刷新尝试失败:`, finalError);
+      showNotice(
+        "error",
+        t("Profile imported successfully, please restart if not visible"),
+        5000,
+      );
+    }
+  };
+
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (over) {
@@ -279,151 +383,167 @@ const ProfilePage = () => {
     }
   };
 
-  const executeBackgroundTasks = async (
-    profile: string,
-    sequence: number,
-    abortController: AbortController,
-  ) => {
-    try {
-      if (
-        sequence === requestSequenceRef.current &&
-        switchingProfileRef.current === profile &&
-        !abortController.signal.aborted
-      ) {
-        await activateSelected();
-        console.log(`[Profile] 后台处理完成，序列号: ${sequence}`);
-      } else {
-        debugProfileSwitch(
-          "BACKGROUND_TASK_SKIPPED",
-          profile,
-          `序列号过期或被中断: ${sequence} vs ${requestSequenceRef.current}`,
-        );
-      }
-    } catch (err: any) {
-      console.warn("Failed to activate selected proxies:", err);
-    }
-  };
-
-  const activateProfile = async (profile: string, notifySuccess: boolean) => {
-    if (profiles.current === profile && !notifySuccess) {
-      console.log(`[Profile] 目标profile ${profile} 已经是当前配置，跳过切换`);
-      return;
-    }
-
-    const currentSequence = ++requestSequenceRef.current;
-    debugProfileSwitch("NEW_REQUEST", profile, `序列号: ${currentSequence}`);
-
-    // 处理中断逻辑
-    const previousSwitching = switchingProfileRef.current;
-    if (previousSwitching && previousSwitching !== profile) {
-      handleProfileInterrupt(previousSwitching, profile);
-    }
-
-    // 防止重复切换同一个profile
-    if (switchingProfileRef.current === profile) {
-      debugProfileSwitch("DUPLICATE_SWITCH_BLOCKED", profile);
-      return;
-    }
-
-    // 初始化切换状态
-    switchingProfileRef.current = profile;
-    debugProfileSwitch("SWITCH_START", profile, `序列号: ${currentSequence}`);
-
-    const currentAbortController = new AbortController();
-    abortControllerRef.current = currentAbortController;
-
-    setActivatings((prev) => {
-      if (prev.includes(profile)) return prev;
-      return [...prev, profile];
-    });
-
-    try {
-      console.log(
-        `[Profile] 开始切换到: ${profile}，序列号: ${currentSequence}`,
-      );
-
-      // 检查请求有效性
-      if (
-        isRequestOutdated(currentSequence, requestSequenceRef, profile) ||
-        isOperationAborted(currentAbortController, profile)
-      ) {
-        return;
-      }
-
-      // 执行切换请求
-      const requestPromise = patchProfiles(
-        { current: profile },
-        currentAbortController.signal,
-      );
-      pendingRequestRef.current = requestPromise;
-
-      const success = await requestPromise;
-
-      if (pendingRequestRef.current === requestPromise) {
-        pendingRequestRef.current = null;
-      }
-
-      // 再次检查有效性
-      if (
-        isRequestOutdated(currentSequence, requestSequenceRef, profile) ||
-        isOperationAborted(currentAbortController, profile)
-      ) {
-        return;
-      }
-
-      // 完成切换
-      await mutateLogs();
-      closeAllConnections();
-
-      if (notifySuccess && success) {
-        showNotice("success", t("Profile Switched"), 1000);
-      }
-
-      console.log(
-        `[Profile] 切换到 ${profile} 完成，序列号: ${currentSequence}，开始后台处理`,
-      );
-
-      // 延迟执行后台任务
-      setTimeout(
-        () =>
-          executeBackgroundTasks(
+  const executeBackgroundTasks = useCallback(
+    async (
+      profile: string,
+      sequence: number,
+      abortController: AbortController,
+    ) => {
+      try {
+        if (
+          sequence === requestSequenceRef.current &&
+          switchingProfileRef.current === profile &&
+          !abortController.signal.aborted
+        ) {
+          await activateSelected();
+          console.log(`[Profile] 后台处理完成，序列号: ${sequence}`);
+        } else {
+          debugProfileSwitch(
+            "BACKGROUND_TASK_SKIPPED",
             profile,
-            currentSequence,
-            currentAbortController,
-          ),
-        50,
-      );
-    } catch (err: any) {
-      if (pendingRequestRef.current) {
-        pendingRequestRef.current = null;
+            `序列号过期或被中断: ${sequence} vs ${requestSequenceRef.current}`,
+          );
+        }
+      } catch (err: any) {
+        console.warn("Failed to activate selected proxies:", err);
       }
+    },
+    [activateSelected],
+  );
 
-      // 检查是否因为中断或过期而出错
-      if (
-        isOperationAborted(currentAbortController, profile) ||
-        isRequestOutdated(currentSequence, requestSequenceRef, profile)
-      ) {
+  const activateProfile = useCallback(
+    async (profile: string, notifySuccess: boolean) => {
+      if (profiles.current === profile && !notifySuccess) {
+        console.log(
+          `[Profile] 目标profile ${profile} 已经是当前配置，跳过切换`,
+        );
         return;
       }
 
-      console.error(`[Profile] 切换失败:`, err);
-      showNotice("error", err?.message || err.toString(), 4000);
-    } finally {
-      // 只有当前profile仍然是正在切换的profile且序列号匹配时才清理状态
-      if (
-        switchingProfileRef.current === profile &&
-        currentSequence === requestSequenceRef.current
-      ) {
-        cleanupSwitchState(profile, currentSequence);
-      } else {
-        debugProfileSwitch(
-          "CLEANUP_SKIPPED",
-          profile,
-          `序列号不匹配或已被接管: ${currentSequence} vs ${requestSequenceRef.current}`,
-        );
+      const currentSequence = ++requestSequenceRef.current;
+      debugProfileSwitch("NEW_REQUEST", profile, `序列号: ${currentSequence}`);
+
+      // 处理中断逻辑
+      const previousSwitching = switchingProfileRef.current;
+      if (previousSwitching && previousSwitching !== profile) {
+        handleProfileInterrupt(previousSwitching, profile);
       }
-    }
-  };
+
+      // 防止重复切换同一个profile
+      if (switchingProfileRef.current === profile) {
+        debugProfileSwitch("DUPLICATE_SWITCH_BLOCKED", profile);
+        return;
+      }
+
+      // 初始化切换状态
+      switchingProfileRef.current = profile;
+      debugProfileSwitch("SWITCH_START", profile, `序列号: ${currentSequence}`);
+
+      const currentAbortController = new AbortController();
+      abortControllerRef.current = currentAbortController;
+
+      setActivatings((prev) => {
+        if (prev.includes(profile)) return prev;
+        return [...prev, profile];
+      });
+
+      try {
+        console.log(
+          `[Profile] 开始切换到: ${profile}，序列号: ${currentSequence}`,
+        );
+
+        // 检查请求有效性
+        if (
+          isRequestOutdated(currentSequence, requestSequenceRef, profile) ||
+          isOperationAborted(currentAbortController, profile)
+        ) {
+          return;
+        }
+
+        // 执行切换请求
+        const requestPromise = patchProfiles(
+          { current: profile },
+          currentAbortController.signal,
+        );
+        pendingRequestRef.current = requestPromise;
+
+        const success = await requestPromise;
+
+        if (pendingRequestRef.current === requestPromise) {
+          pendingRequestRef.current = null;
+        }
+
+        // 再次检查有效性
+        if (
+          isRequestOutdated(currentSequence, requestSequenceRef, profile) ||
+          isOperationAborted(currentAbortController, profile)
+        ) {
+          return;
+        }
+
+        // 完成切换
+        await mutateLogs();
+        closeAllConnections();
+
+        if (notifySuccess && success) {
+          showNotice("success", t("Profile Switched"), 1000);
+        }
+
+        console.log(
+          `[Profile] 切换到 ${profile} 完成，序列号: ${currentSequence}，开始后台处理`,
+        );
+
+        // 延迟执行后台任务
+        setTimeout(
+          () =>
+            executeBackgroundTasks(
+              profile,
+              currentSequence,
+              currentAbortController,
+            ),
+          50,
+        );
+      } catch (err: any) {
+        if (pendingRequestRef.current) {
+          pendingRequestRef.current = null;
+        }
+
+        // 检查是否因为中断或过期而出错
+        if (
+          isOperationAborted(currentAbortController, profile) ||
+          isRequestOutdated(currentSequence, requestSequenceRef, profile)
+        ) {
+          return;
+        }
+
+        console.error(`[Profile] 切换失败:`, err);
+        showNotice("error", err?.message || err.toString(), 4000);
+      } finally {
+        // 只有当前profile仍然是正在切换的profile且序列号匹配时才清理状态
+        if (
+          switchingProfileRef.current === profile &&
+          currentSequence === requestSequenceRef.current
+        ) {
+          cleanupSwitchState(profile, currentSequence);
+        } else {
+          debugProfileSwitch(
+            "CLEANUP_SKIPPED",
+            profile,
+            `序列号不匹配或已被接管: ${currentSequence} vs ${requestSequenceRef.current}`,
+          );
+        }
+      }
+    },
+    [
+      profiles,
+      patchProfiles,
+      mutateLogs,
+      t,
+      executeBackgroundTasks,
+      handleProfileInterrupt,
+      cleanupSwitchState,
+    ],
+  );
   const onSelect = async (current: string, force: boolean) => {
     // 阻止重复点击或已激活的profile
     if (switchingProfileRef.current === current) {
@@ -446,7 +566,7 @@ const ProfilePage = () => {
         await activateProfile(current, false);
       }
     })();
-  }, current);
+  }, [current, activateProfile, mutateProfiles]);
 
   const onEnhance = useLockFn(async (notifySuccess: boolean) => {
     if (switchingProfileRef.current) {
@@ -482,7 +602,9 @@ const ProfilePage = () => {
       await deleteProfile(uid);
       mutateProfiles();
       mutateLogs();
-      current && (await onEnhance(false));
+      if (current) {
+        await onEnhance(false);
+      }
     } catch (err: any) {
       showNotice("error", err?.message || err.toString());
     } finally {
@@ -618,6 +740,26 @@ const ProfilePage = () => {
           >
             <LocalFireDepartmentRounded />
           </IconButton>
+
+          {/* 故障检测和紧急恢复按钮 */}
+          {(error || isStale) && (
+            <IconButton
+              size="small"
+              color="warning"
+              title="数据异常，点击强制刷新"
+              onClick={onEmergencyRefresh}
+              sx={{
+                animation: "pulse 2s infinite",
+                "@keyframes pulse": {
+                  "0%": { opacity: 1 },
+                  "50%": { opacity: 0.5 },
+                  "100%": { opacity: 1 },
+                },
+              }}
+            >
+              <ClearRounded />
+            </IconButton>
+          )}
         </Box>
       }
     >
@@ -757,6 +899,7 @@ const ProfilePage = () => {
             </Grid>
           </Box>
         </Box>
+        <DragOverlay />
       </DndContext>
 
       <ProfileViewer

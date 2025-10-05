@@ -1,7 +1,3 @@
-import { BaseDialog, DialogRef, Switch } from "@/components/base";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
-import { showNotice } from "@/services/noticeService";
 import { ContentCopy } from "@mui/icons-material";
 import {
   Alert,
@@ -16,10 +12,15 @@ import {
   Tooltip,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { useImperativeHandle, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 
-export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
+import { BaseDialog, DialogRef, Switch } from "@/components/base";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
+import { showNotice } from "@/services/noticeService";
+
+export function ControllerViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState<null | string>(null);
@@ -91,6 +92,7 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
         setCopySuccess(type);
         setTimeout(() => setCopySuccess(null));
       } catch (err) {
+        console.warn("[ControllerViewer] copy to clipboard failed:", err);
         showNotice("error", t("Failed to copy"));
       }
     },
@@ -215,4 +217,4 @@ export const ControllerViewer = forwardRef<DialogRef>((props, ref) => {
       </Snackbar>
     </BaseDialog>
   );
-});
+}

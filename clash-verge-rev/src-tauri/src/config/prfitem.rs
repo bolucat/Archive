@@ -3,13 +3,10 @@ use crate::utils::{
     network::{NetworkManager, ProxyType},
     tmpl,
 };
-use anyhow::{bail, Context, Result};
-use reqwest::StatusCode;
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
+use serde_yaml_ng::Mapping;
 use std::{fs, time::Duration};
-
-use super::Config;
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PrfItem {
@@ -147,12 +144,15 @@ impl PrfItem {
             bail!("type should not be null");
         }
 
-        match item.itype.unwrap().as_str() {
+        let itype = item
+            .itype
+            .ok_or_else(|| anyhow::anyhow!("type should not be null"))?;
+        match itype.as_str() {
             "remote" => {
-                if item.url.is_none() {
-                    bail!("url should not be null");
-                }
-                let url = item.url.as_ref().unwrap().as_str();
+                let url = item
+                    .url
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("url should not be null"))?;
                 let name = item.name;
                 let desc = item.desc;
                 PrfItem::from_url(url, name, desc, item.option).await
@@ -160,7 +160,7 @@ impl PrfItem {
             "local" => {
                 let name = item.name.unwrap_or("Local File".into());
                 let desc = item.desc.unwrap_or("".into());
-                PrfItem::from_local(name, desc, file_data, item.option)
+                PrfItem::from_local(name, desc, file_data, item.option).await
             }
             typ => bail!("invalid profile item type \"{typ}\""),
         }
@@ -168,7 +168,7 @@ impl PrfItem {
 
     /// ## Local type
     /// create a new item from name/desc
-    pub fn from_local(
+    pub async fn from_local(
         name: String,
         desc: String,
         file_data: Option<String>,
@@ -186,37 +186,27 @@ impl PrfItem {
 
         if merge.is_none() {
             let merge_item = PrfItem::from_merge(None)?;
-            Config::profiles()
-                .data_mut()
-                .append_item(merge_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(merge_item.clone()).await?;
             merge = merge_item.uid;
         }
         if script.is_none() {
             let script_item = PrfItem::from_script(None)?;
-            Config::profiles()
-                .data_mut()
-                .append_item(script_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(script_item.clone()).await?;
             script = script_item.uid;
         }
         if rules.is_none() {
             let rules_item = PrfItem::from_rules()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(rules_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(rules_item.clone()).await?;
             rules = rules_item.uid;
         }
         if proxies.is_none() {
             let proxies_item = PrfItem::from_proxies()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(proxies_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(proxies_item.clone()).await?;
             proxies = proxies_item.uid;
         }
         if groups.is_none() {
             let groups_item = PrfItem::from_groups()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(groups_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(groups_item.clone()).await?;
             groups = groups_item.uid;
         }
         Ok(PrfItem {
@@ -275,7 +265,7 @@ impl PrfItem {
         };
 
         // 使用网络管理器发送请求
-        let resp = match NetworkManager::global()
+        let resp = match NetworkManager::new()
             .get_with_interrupt(
                 url,
                 proxy_type,
@@ -293,7 +283,7 @@ impl PrfItem {
         };
 
         let status_code = resp.status();
-        if !StatusCode::is_success(&status_code) {
+        if !status_code.is_success() {
             bail!("failed to fetch remote profile with status {status_code}")
         }
 
@@ -359,13 +349,13 @@ impl PrfItem {
         let uid = help::get_uid("R");
         let file = format!("{uid}.yaml");
         let name = name.unwrap_or(filename.unwrap_or("Remote File".into()));
-        let data = resp.text_with_charset("utf-8").await?;
+        let data = resp.text_with_charset()?;
 
         // process the charset "UTF-8 with BOM"
         let data = data.trim_start_matches('\u{feff}');
 
         // check the data whether the valid yaml format
-        let yaml = serde_yaml::from_str::<Mapping>(data)
+        let yaml = serde_yaml_ng::from_str::<Mapping>(data)
             .context("the remote profile data is invalid yaml")?;
 
         if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
@@ -374,37 +364,27 @@ impl PrfItem {
 
         if merge.is_none() {
             let merge_item = PrfItem::from_merge(None)?;
-            Config::profiles()
-                .data_mut()
-                .append_item(merge_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(merge_item.clone()).await?;
             merge = merge_item.uid;
         }
         if script.is_none() {
             let script_item = PrfItem::from_script(None)?;
-            Config::profiles()
-                .data_mut()
-                .append_item(script_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(script_item.clone()).await?;
             script = script_item.uid;
         }
         if rules.is_none() {
             let rules_item = PrfItem::from_rules()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(rules_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(rules_item.clone()).await?;
             rules = rules_item.uid;
         }
         if proxies.is_none() {
             let proxies_item = PrfItem::from_proxies()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(proxies_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(proxies_item.clone()).await?;
             proxies = proxies_item.uid;
         }
         if groups.is_none() {
             let groups_item = PrfItem::from_groups()?;
-            Config::profiles()
-                .data_mut()
-                .append_item(groups_item.clone())?;
+            crate::config::profiles::profiles_append_item_safe(groups_item.clone()).await?;
             groups = groups_item.uid;
         }
 
@@ -549,22 +529,20 @@ impl PrfItem {
 
     /// get the file data
     pub fn read_file(&self) -> Result<String> {
-        if self.file.is_none() {
-            bail!("could not find the file");
-        }
-
-        let file = self.file.clone().unwrap();
+        let file = self
+            .file
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("could not find the file"))?;
         let path = dirs::app_profiles_dir()?.join(file);
         fs::read_to_string(path).context("failed to read the file")
     }
 
     /// save the file data
     pub fn save_file(&self, data: String) -> Result<()> {
-        if self.file.is_none() {
-            bail!("could not find the file");
-        }
-
-        let file = self.file.clone().unwrap();
+        let file = self
+            .file
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("could not find the file"))?;
         let path = dirs::app_profiles_dir()?.join(file);
         fs::write(path, data.as_bytes()).context("failed to save the file")
     }

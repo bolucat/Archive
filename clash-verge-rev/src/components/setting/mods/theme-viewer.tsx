@@ -1,6 +1,4 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
+import { EditRounded } from "@mui/icons-material";
 import {
   Button,
   List,
@@ -10,14 +8,18 @@ import {
   TextField,
   useTheme,
 } from "@mui/material";
-import { useVerge } from "@/hooks/use-verge";
-import { defaultTheme, defaultDarkTheme } from "@/pages/_theme";
+import { useLockFn } from "ahooks";
+import { useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
+
 import { BaseDialog, DialogRef } from "@/components/base";
 import { EditorViewer } from "@/components/profile/editor-viewer";
-import { EditRounded } from "@mui/icons-material";
+import { useVerge } from "@/hooks/use-verge";
+import { defaultDarkTheme, defaultTheme } from "@/pages/_theme";
 import { showNotice } from "@/services/noticeService";
 
-export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
+export function ThemeViewer(props: { ref?: React.Ref<DialogRef> }) {
+  const { ref } = props;
   const { t } = useTranslation();
 
   const [open, setOpen] = useState(false);
@@ -143,7 +145,7 @@ export const ThemeViewer = forwardRef<DialogRef>((props, ref) => {
       </List>
     </BaseDialog>
   );
-});
+}
 
 const Item = styled(ListItem)(() => ({
   padding: "5px 2px",

@@ -51,13 +51,15 @@ pub async fn delete_webdav_backup(filename: String) -> Result<()> {
 
 /// Restore WebDAV backup
 pub async fn restore_webdav_backup(filename: String) -> Result<()> {
-    let verge = Config::verge();
+    let verge = Config::verge().await;
     let verge_data = verge.latest_ref().clone();
     let webdav_url = verge_data.webdav_url.clone();
     let webdav_username = verge_data.webdav_username.clone();
     let webdav_password = verge_data.webdav_password.clone();
 
-    let backup_storage_path = app_home_dir().unwrap().join(&filename);
+    let backup_storage_path = app_home_dir()
+        .map_err(|e| anyhow::anyhow!("Failed to get app home dir: {e}"))?
+        .join(&filename);
     backup::WebDavClient::global()
         .download(filename, backup_storage_path.clone())
         .await

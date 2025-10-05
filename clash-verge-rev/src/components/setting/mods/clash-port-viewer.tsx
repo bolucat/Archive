@@ -1,8 +1,3 @@
-import { BaseDialog, Switch } from "@/components/base";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useVerge } from "@/hooks/use-verge";
-import { showNotice } from "@/services/noticeService";
-import getSystem from "@/utils/get-system";
 import { Shuffle } from "@mui/icons-material";
 import {
   CircularProgress,
@@ -16,6 +11,12 @@ import {
 import { useLockFn, useRequest } from "ahooks";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { BaseDialog, Switch } from "@/components/base";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useVerge } from "@/hooks/use-verge";
+import { showNotice } from "@/services/noticeService";
+import getSystem from "@/utils/get-system";
 
 const OS = getSystem();
 
@@ -149,22 +150,6 @@ export const ClashPortViewer = forwardRef<
     // 提交保存请求
     await saveSettings({ clashConfig, vergeConfig });
   });
-
-  // 优化的数字输入处理
-  const handleNumericChange =
-    (setter: (value: number) => void) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = e.target.value.replace(/\D+/, "");
-      if (value === "") {
-        setter(0);
-        return;
-      }
-
-      const num = parseInt(value, 10);
-      if (!isNaN(num) && num >= 0 && num <= 65535) {
-        setter(num);
-      }
-    };
 
   return (
     <BaseDialog

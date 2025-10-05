@@ -1,26 +1,25 @@
 use crate::{
     cmd,
-    config::{Config, PrfItem, PrfOption},
-    core::{handle, CoreManager, *},
+    config::{Config, PrfItem, PrfOption, profiles::profiles_draft_update_item_safe},
+    core::{CoreManager, handle, tray},
     logging,
-    process::AsyncHandler,
     utils::logging::Type,
 };
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 /// Toggle proxy profile
-pub fn toggle_proxy_profile(profile_index: String) {
-    AsyncHandler::spawn(|| async move {
-        let app_handle = handle::Handle::global().app_handle().unwrap();
-        match cmd::patch_profiles_config_by_profile_index(app_handle, profile_index).await {
-            Ok(_) => {
-                let _ = tray::Tray::global().update_menu();
-            }
-            Err(err) => {
-                log::error!(target: "app", "{err}");
+pub async fn toggle_proxy_profile(profile_index: String) {
+    match cmd::patch_profiles_config_by_profile_index(profile_index).await {
+        Ok(_) => {
+            let result = tray::Tray::global().update_menu().await;
+            if let Err(err) = result {
+                logging!(error, Type::Tray, true, "更新菜单失败: {}", err);
             }
         }
-    });
+        Err(err) => {
+            log::error!(target: "app", "{err}");
+        }
+    }
 }
 
 /// Update a profile
@@ -35,7 +34,7 @@ pub async fn update_profile(
     let auto_refresh = auto_refresh.unwrap_or(true); // 默认为true，保持兼容性
 
     let url_opt = {
-        let profiles = Config::profiles();
+        let profiles = Config::profiles().await;
         let profiles = profiles.latest_ref();
         let item = profiles.get_item(&uid)?;
         let is_remote = item.itype.as_ref().is_some_and(|s| s == "remote");
@@ -50,9 +49,14 @@ pub async fn update_profile(
             log::info!(target: "app",
                 "[订阅更新] {} 是远程订阅，URL: {}",
                 uid,
-                item.url.clone().unwrap()
+                item.url.clone().ok_or_else(|| anyhow::anyhow!("Profile URL is None"))?
             );
-            Some((item.url.clone().unwrap(), item.option.clone()))
+            Some((
+                item.url
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("Profile URL is None"))?,
+                item.option.clone(),
+            ))
         }
     };
 
@@ -65,11 +69,13 @@ pub async fn update_profile(
             match PrfItem::from_url(&url, None, None, merged_opt.clone()).await {
                 Ok(item) => {
                     log::info!(target: "app", "[订阅更新] 更新订阅配置成功");
-                    let profiles = Config::profiles();
-                    let mut profiles = profiles.draft_mut();
-                    profiles.update_item(uid.clone(), item)?;
+                    let profiles = Config::profiles().await;
 
-                    let is_current = Some(uid.clone()) == profiles.get_current();
+                    // 使用Send-safe helper函数
+                    let result = profiles_draft_update_item_safe(uid.clone(), item).await;
+                    result?;
+
+                    let is_current = Some(uid.clone()) == profiles.latest_ref().get_current();
                     log::info!(target: "app", "[订阅更新] 是否为当前使用的订阅: {is_current}");
                     is_current && auto_refresh
                 }
@@ -101,9 +107,10 @@ pub async fn update_profile(
                             }
 
                             // 更新到配置
-                            let profiles = Config::profiles();
-                            let mut profiles = profiles.draft_mut();
-                            profiles.update_item(uid.clone(), item.clone())?;
+                            let profiles = Config::profiles().await;
+
+                            // 使用 Send-safe 方法进行数据操作
+                            profiles_draft_update_item_safe(uid.clone(), item.clone()).await?;
 
                             // 获取配置名称用于通知
                             let profile_name = item.name.clone().unwrap_or_else(|| uid.clone());
@@ -111,7 +118,7 @@ pub async fn update_profile(
                             // 发送通知告知用户自动更新使用了回退机制
                             handle::Handle::notice_message("update_with_clash_proxy", profile_name);
 
-                            let is_current = Some(uid.clone()) == profiles.get_current();
+                            let is_current = Some(uid.clone()) == profiles.data_ref().get_current();
                             log::info!(target: "app", "[订阅更新] 是否为当前使用的订阅: {is_current}");
                             is_current && auto_refresh
                         }
@@ -136,6 +143,15 @@ pub async fn update_profile(
             Ok(_) => {
                 logging!(info, Type::Config, true, "[订阅更新] 更新成功");
                 handle::Handle::refresh_clash();
+                if let Err(err) = cmd::proxy::force_refresh_proxies().await {
+                    logging!(
+                        error,
+                        Type::Config,
+                        true,
+                        "[订阅更新] 代理组刷新失败: {}",
+                        err
+                    );
+                }
             }
             Err(err) => {
                 logging!(error, Type::Config, true, "[订阅更新] 更新失败: {}", err);

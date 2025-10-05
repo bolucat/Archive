@@ -1,6 +1,4 @@
-import { forwardRef, useImperativeHandle, useState, useEffect } from "react";
-import { useLockFn } from "ahooks";
-import { useTranslation } from "react-i18next";
+import { RestartAltRounded } from "@mui/icons-material";
 import {
   Box,
   Button,
@@ -14,17 +12,21 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { RestartAltRounded } from "@mui/icons-material";
-import { useClash } from "@/hooks/use-clash";
-import { BaseDialog, DialogRef, Switch } from "@/components/base";
+import { invoke } from "@tauri-apps/api/core";
+import { useLockFn } from "ahooks";
 import yaml from "js-yaml";
+import type { Ref } from "react";
+import { useEffect, useImperativeHandle, useState } from "react";
+import { useTranslation } from "react-i18next";
 import MonacoEditor from "react-monaco-editor";
+
+import { BaseDialog, DialogRef, Switch } from "@/components/base";
+import { useClash } from "@/hooks/use-clash";
+import { showNotice } from "@/services/noticeService";
 import { useThemeMode } from "@/services/states";
 import getSystem from "@/utils/get-system";
-import { invoke } from "@tauri-apps/api/core";
-import { showNotice } from "@/services/noticeService";
 
-const Item = styled(ListItem)(({ theme }) => ({
+const Item = styled(ListItem)(() => ({
   padding: "5px 2px",
   "& textarea": {
     lineHeight: 1.5,
@@ -86,9 +88,9 @@ const DEFAULT_DNS_CONFIG = {
   },
 };
 
-export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
+export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
-  const { clash, mutateClash, patchClash } = useClash();
+  const { clash, mutateClash } = useClash();
   const themeMode = useThemeMode();
 
   const [open, setOpen] = useState(false);
@@ -325,7 +327,7 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
       if (!parsedYaml) return;
 
       updateValuesFromConfig(parsedYaml);
-    } catch (err: any) {
+    } catch {
       showNotice("error", t("Invalid YAML format"));
     }
   };
@@ -379,7 +381,7 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
   const formatHosts = (hosts: any): string => {
     if (!hosts || typeof hosts !== "object") return "";
 
-    let result: string[] = [];
+    const result: string[] = [];
 
     Object.entries(hosts).forEach(([domain, value]) => {
       if (Array.isArray(value)) {
@@ -1033,4 +1035,4 @@ export const DnsViewer = forwardRef<DialogRef>((props, ref) => {
       )}
     </BaseDialog>
   );
-});
+}

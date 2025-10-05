@@ -1,44 +1,32 @@
-import { useMemo, useState } from "react";
-import { Box, Button, IconButton, MenuItem } from "@mui/material";
-import { Virtuoso } from "react-virtuoso";
-import { useTranslation } from "react-i18next";
-import { useLocalStorage } from "foxact/use-local-storage";
-
 import {
   PlayCircleOutlineRounded,
   PauseCircleOutlineRounded,
 } from "@mui/icons-material";
-import { LogLevel } from "@/hooks/use-log-data";
-import { useClashInfo } from "@/hooks/use-clash";
-import { useEnableLog } from "@/services/states";
+import { Box, Button, IconButton, MenuItem } from "@mui/material";
+import { useLocalStorage } from "foxact/use-local-storage";
+import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Virtuoso } from "react-virtuoso";
+
 import { BaseEmpty, BasePage } from "@/components/base";
-import LogItem from "@/components/log/log-item";
-import { useTheme } from "@mui/material/styles";
 import { BaseSearchBox } from "@/components/base/base-search-box";
-import { BaseStyledSelect } from "@/components/base/base-styled-select";
 import { SearchState } from "@/components/base/base-search-box";
+import { BaseStyledSelect } from "@/components/base/base-styled-select";
+import LogItem from "@/components/log/log-item";
+import { LogLevel } from "@/hooks/use-log-data";
 import {
   useGlobalLogData,
   clearGlobalLogs,
   changeLogLevel,
   toggleLogEnabled,
 } from "@/services/global-log-service";
+import { useEnableLog } from "@/services/states";
 
-// 定义日志级别结构
-const LOG_LEVEL_HIERARCHY = {
-  all: ["info", "warning", "error", "debug"],
-  info: ["info", "warning", "error"],
-  warning: ["warning", "error"],
-  error: ["error"],
-  debug: ["debug"],
-};
+// 后端通过 /logs?level={level} 进行筛选，前端不再需要手动筛选日志级别
 
 const LogPage = () => {
   const { t } = useTranslation();
   const [enableLog, setEnableLog] = useEnableLog();
-  const { clashInfo } = useClashInfo();
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
   const [logLevel, setLogLevel] = useLocalStorage<LogLevel>(
     "log:log-level",
     "info",
@@ -52,37 +40,27 @@ const LogPage = () => {
       return [];
     }
 
-    const allowedTypes = LOG_LEVEL_HIERARCHY[logLevel] || [];
-
+    // Server-side filtering handles level filtering via query parameters
+    // We only need to apply search filtering here
     return logData.filter((data) => {
-      const logType = data.type?.toLowerCase() || "";
-      const isAllowedType =
-        logLevel === "all" || allowedTypes.includes(logType);
-
       // 构建完整的搜索文本，包含时间、类型和内容
       const searchText =
         `${data.time || ""} ${data.type} ${data.payload}`.toLowerCase();
 
       const matchesSearch = match(searchText);
 
-      return isAllowedType && matchesSearch;
+      return matchesSearch;
     });
-  }, [logData, logLevel, match]);
+  }, [logData, match]);
 
   const handleLogLevelChange = (newLevel: LogLevel) => {
     setLogLevel(newLevel);
-    if (clashInfo) {
-      const { server = "", secret = "" } = clashInfo;
-      changeLogLevel(newLevel, server, secret);
-    }
+    changeLogLevel(newLevel);
   };
 
-  const handleToggleLog = () => {
-    if (clashInfo) {
-      const { server = "", secret = "" } = clashInfo;
-      toggleLogEnabled(server, secret);
-      setEnableLog(!enableLog);
-    }
+  const handleToggleLog = async () => {
+    await toggleLogEnabled();
+    setEnableLog(!enableLog);
   };
 
   return (
@@ -110,17 +88,15 @@ const LogPage = () => {
             )}
           </IconButton>
 
-          {enableLog === true && (
-            <Button
-              size="small"
-              variant="contained"
-              onClick={() => {
-                clearGlobalLogs();
-              }}
-            >
-              {t("Clear")}
-            </Button>
-          )}
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => {
+              clearGlobalLogs();
+            }}
+          >
+            {t("Clear")}
+          </Button>
         </Box>
       }
     >
@@ -139,10 +115,10 @@ const LogPage = () => {
           onChange={(e) => handleLogLevelChange(e.target.value as LogLevel)}
         >
           <MenuItem value="all">ALL</MenuItem>
+          <MenuItem value="debug">DEBUG</MenuItem>
           <MenuItem value="info">INFO</MenuItem>
           <MenuItem value="warning">WARNING</MenuItem>
           <MenuItem value="error">ERROR</MenuItem>
-          <MenuItem value="debug">DEBUG</MenuItem>
         </BaseStyledSelect>
         <BaseSearchBox
           onSearch={(matcher, state) => {

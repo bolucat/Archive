@@ -1,91 +1,94 @@
+cfg_if::cfg_if! {
+    if #[cfg(not(feature = "tauri-dev"))] {
+        use crate::utils::logging::{console_colored_format, file_format, NoExternModule};
+        use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, LogSpecification, Logger};
+    }
+}
+
 use crate::{
     config::*,
     core::handle,
-    utils::{dirs, help},
+    logging,
+    process::AsyncHandler,
+    utils::{dirs, help, logging::Type},
 };
 use anyhow::Result;
 use chrono::{Local, TimeZone};
-use log::LevelFilter;
-use log4rs::{
-    append::{console::ConsoleAppender, file::FileAppender},
-    config::{Appender, Logger, Root},
-    encode::pattern::PatternEncoder,
-};
-use std::{
-    fs::{self, DirEntry},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{path::PathBuf, str::FromStr};
 use tauri_plugin_shell::ShellExt;
+use tokio::fs;
+use tokio::fs::DirEntry;
 
 /// initialize this instance's log file
-fn init_log() -> Result<()> {
-    let log_dir = dirs::app_logs_dir()?;
-    if !log_dir.exists() {
-        let _ = fs::create_dir_all(&log_dir);
-    }
-
-    let log_level = Config::verge().latest_ref().get_log_level();
-    if log_level == LevelFilter::Off {
-        return Ok(());
-    }
-
-    let local_time = Local::now().format("%Y-%m-%d-%H%M").to_string();
-    let log_file = format!("{local_time}.log");
-    let log_file = log_dir.join(log_file);
-
-    let log_pattern = match log_level {
-        LevelFilter::Trace => "{d(%Y-%m-%d %H:%M:%S)} {l} [{M}] - {m}{n}",
-        _ => "{d(%Y-%m-%d %H:%M:%S)} {l} - {m}{n}",
+#[cfg(not(feature = "tauri-dev"))]
+pub async fn init_logger() -> Result<()> {
+    // TODO 提供 runtime 级别实时修改
+    let (log_level, log_max_size, log_max_count) = {
+        let verge_guard = Config::verge().await;
+        let verge = verge_guard.latest_ref();
+        (
+            verge.get_log_level(),
+            verge.app_log_max_size.unwrap_or(128),
+            verge.app_log_max_count.unwrap_or(8),
+        )
     };
 
-    let encode = Box::new(PatternEncoder::new(log_pattern));
+    let log_dir = dirs::app_logs_dir()?;
+    let logger = Logger::with(LogSpecification::from(log_level))
+        .log_to_file(FileSpec::default().directory(log_dir).basename(""))
+        .duplicate_to_stdout(Duplicate::Debug)
+        .format(console_colored_format)
+        .format_for_files(file_format)
+        .rotate(
+            Criterion::Size(log_max_size * 1024),
+            flexi_logger::Naming::TimestampsCustomFormat {
+                current_infix: Some("latest"),
+                format: "%Y-%m-%d_%H-%M-%S",
+            },
+            Cleanup::KeepLogFiles(log_max_count),
+        )
+        .filter(Box::new(NoExternModule));
 
-    let stdout = ConsoleAppender::builder().encoder(encode.clone()).build();
-    let tofile = FileAppender::builder().encoder(encode).build(log_file)?;
+    let _handle = logger.start()?;
 
-    let mut logger_builder = Logger::builder();
-    let mut root_builder = Root::builder();
-
-    let log_more = log_level == LevelFilter::Trace || log_level == LevelFilter::Debug;
-
-    logger_builder = logger_builder.appenders(["file"]);
-    if log_more {
-        root_builder = root_builder.appenders(["file"]);
-    }
-
-    let (config, _) = log4rs::config::Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(Appender::builder().build("file", Box::new(tofile)))
-        .logger(logger_builder.additive(false).build("app", log_level))
-        .build_lossy(root_builder.build(log_level));
-
-    log4rs::init_config(config)?;
+    // TODO 全局 logger handle 控制
+    // GlobalLoggerProxy::global().set_inner(handle);
+    // TODO 提供前端设置等级，热更新等级
+    // logger.parse_new_spec(spec)
 
     Ok(())
 }
 
+// TODO flexi_logger 提供了最大保留天数，或许我们应该用内置删除log文件
 /// 删除log文件
-pub fn delete_log() -> Result<()> {
+pub async fn delete_log() -> Result<()> {
     let log_dir = dirs::app_logs_dir()?;
     if !log_dir.exists() {
         return Ok(());
     }
 
     let auto_log_clean = {
-        let verge = Config::verge();
+        let verge = Config::verge().await;
         let verge = verge.latest_ref();
         verge.auto_log_clean.unwrap_or(0)
     };
 
+    // 1: 1天, 2: 7天, 3: 30天, 4: 90天
     let day = match auto_log_clean {
-        1 => 7,
-        2 => 30,
-        3 => 90,
+        1 => 1,
+        2 => 7,
+        3 => 30,
+        4 => 90,
         _ => return Ok(()),
     };
 
-    log::debug!(target: "app", "try to delete log files, day: {day}");
+    logging!(
+        info,
+        Type::Setup,
+        true,
+        "try to delete log files, day: {}",
+        day
+    );
 
     // %Y-%m-%d to NaiveDateTime
     let parse_time_str = |s: &str| {
@@ -104,7 +107,7 @@ pub fn delete_log() -> Result<()> {
         Ok(time)
     };
 
-    let process_file = |file: DirEntry| -> Result<()> {
+    let process_file = async move |file: DirEntry| -> Result<()> {
         let file_name = file.file_name();
         let file_name = file_name.to_str().unwrap_or_default();
 
@@ -119,31 +122,33 @@ pub fn delete_log() -> Result<()> {
             let duration = now.signed_duration_since(file_time);
             if duration.num_days() > day {
                 let file_path = file.path();
-                let _ = fs::remove_file(file_path);
-                log::info!(target: "app", "delete log file: {file_name}");
+                let _ = fs::remove_file(file_path).await;
+                logging!(info, Type::Setup, true, "delete log file: {}", file_name);
             }
         }
         Ok(())
     };
 
-    for file in fs::read_dir(&log_dir)?.flatten() {
-        let _ = process_file(file);
+    let mut log_read_dir = fs::read_dir(&log_dir).await?;
+    while let Some(entry) = log_read_dir.next_entry().await? {
+        std::mem::drop(process_file(entry).await);
     }
 
     let service_log_dir = log_dir.join("service");
-    for file in fs::read_dir(service_log_dir)?.flatten() {
-        let _ = process_file(file);
+    let mut service_log_read_dir = fs::read_dir(service_log_dir).await?;
+    while let Some(entry) = service_log_read_dir.next_entry().await? {
+        std::mem::drop(process_file(entry).await);
     }
 
     Ok(())
 }
 
 /// 初始化DNS配置文件
-fn init_dns_config() -> Result<()> {
-    use serde_yaml::Value;
+async fn init_dns_config() -> Result<()> {
+    use serde_yaml_ng::Value;
 
     // 创建DNS子配置
-    let dns_config = serde_yaml::Mapping::from_iter([
+    let dns_config = serde_yaml_ng::Mapping::from_iter([
         ("enable".into(), Value::Bool(true)),
         ("listen".into(), Value::String(":53".into())),
         ("enhanced-mode".into(), Value::String("fake-ip".into())),
@@ -195,7 +200,7 @@ fn init_dns_config() -> Result<()> {
         ("fallback".into(), Value::Sequence(vec![])),
         (
             "nameserver-policy".into(),
-            Value::Mapping(serde_yaml::Mapping::new()),
+            Value::Mapping(serde_yaml_ng::Mapping::new()),
         ),
         (
             "proxy-server-nameserver".into(),
@@ -209,7 +214,7 @@ fn init_dns_config() -> Result<()> {
         ("direct-nameserver-follow-policy".into(), Value::Bool(false)),
         (
             "fallback-filter".into(),
-            Value::Mapping(serde_yaml::Mapping::from_iter([
+            Value::Mapping(serde_yaml_ng::Mapping::from_iter([
                 ("geoip".into(), Value::Bool(true)),
                 ("geoip-code".into(), Value::String("CN".into())),
                 (
@@ -232,9 +237,12 @@ fn init_dns_config() -> Result<()> {
     ]);
 
     // 获取默认DNS和host配置
-    let default_dns_config = serde_yaml::Mapping::from_iter([
+    let default_dns_config = serde_yaml_ng::Mapping::from_iter([
         ("dns".into(), Value::Mapping(dns_config)),
-        ("hosts".into(), Value::Mapping(serde_yaml::Mapping::new())),
+        (
+            "hosts".into(),
+            Value::Mapping(serde_yaml_ng::Mapping::new()),
+        ),
     ]);
 
     // 检查DNS配置文件是否存在
@@ -242,77 +250,149 @@ fn init_dns_config() -> Result<()> {
     let dns_path = app_dir.join("dns_config.yaml");
 
     if !dns_path.exists() {
-        log::info!(target: "app", "Creating default DNS config file");
+        logging!(info, Type::Setup, true, "Creating default DNS config file");
         help::save_yaml(
             &dns_path,
             &default_dns_config,
             Some("# Clash Verge DNS Config"),
-        )?;
+        )
+        .await?;
     }
+
+    Ok(())
+}
+
+/// 确保目录结构存在
+async fn ensure_directories() -> Result<()> {
+    let directories = [
+        ("app_home", dirs::app_home_dir()?),
+        ("app_profiles", dirs::app_profiles_dir()?),
+        ("app_logs", dirs::app_logs_dir()?),
+    ];
+
+    for (name, dir) in directories {
+        if !dir.exists() {
+            fs::create_dir_all(&dir).await.map_err(|e| {
+                anyhow::anyhow!("Failed to create {} directory {:?}: {}", name, dir, e)
+            })?;
+            logging!(
+                info,
+                Type::Setup,
+                true,
+                "Created {} directory: {:?}",
+                name,
+                dir
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// 初始化配置文件
+async fn initialize_config_files() -> Result<()> {
+    if let Ok(path) = dirs::clash_path()
+        && !path.exists()
+    {
+        let template = IClashTemp::template().0;
+        help::save_yaml(&path, &template, Some("# Clash Verge"))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create clash config: {}", e))?;
+        logging!(
+            info,
+            Type::Setup,
+            true,
+            "Created clash config at {:?}",
+            path
+        );
+    }
+
+    if let Ok(path) = dirs::verge_path()
+        && !path.exists()
+    {
+        let template = IVerge::template();
+        help::save_yaml(&path, &template, Some("# Clash Verge"))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create verge config: {}", e))?;
+        logging!(
+            info,
+            Type::Setup,
+            true,
+            "Created verge config at {:?}",
+            path
+        );
+    }
+
+    if let Ok(path) = dirs::profiles_path()
+        && !path.exists()
+    {
+        let template = IProfiles::template();
+        help::save_yaml(&path, &template, Some("# Clash Verge"))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create profiles config: {}", e))?;
+        logging!(
+            info,
+            Type::Setup,
+            true,
+            "Created profiles config at {:?}",
+            path
+        );
+    }
+
+    // 验证并修正verge配置
+    IVerge::validate_and_fix_config()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to validate verge config: {}", e))?;
 
     Ok(())
 }
 
 /// Initialize all the config files
 /// before tauri setup
-pub fn init_config() -> Result<()> {
-    let _ = dirs::init_portable_flag();
-    let _ = init_log();
-    let _ = delete_log();
+pub async fn init_config() -> Result<()> {
+    // We do not need init_portable_flag here anymore due to lib.rs will to the things
+    // let _ = dirs::init_portable_flag();
 
-    crate::log_err!(dirs::app_home_dir().map(|app_dir| {
-        if !app_dir.exists() {
-            let _ = fs::create_dir_all(&app_dir);
+    // We do not need init_log here anymore due to resolve will to the things
+    // if let Err(e) = init_log().await {
+    //     eprintln!("Failed to initialize logging: {}", e);
+    // }
+
+    ensure_directories().await?;
+
+    initialize_config_files().await?;
+
+    AsyncHandler::spawn(|| async {
+        if let Err(e) = delete_log().await {
+            logging!(warn, Type::Setup, true, "Failed to clean old logs: {}", e);
         }
-    }));
+        logging!(info, Type::Setup, true, "后台日志清理任务完成");
+    });
 
-    crate::log_err!(dirs::app_profiles_dir().map(|profiles_dir| {
-        if !profiles_dir.exists() {
-            let _ = fs::create_dir_all(&profiles_dir);
-        }
-    }));
-
-    crate::log_err!(dirs::clash_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(&path, &IClashTemp::template().0, Some("# Clash Vergeasu"))?;
-        }
-        <Result<()>>::Ok(())
-    }));
-
-    crate::log_err!(dirs::verge_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(&path, &IVerge::template(), Some("# Clash Verge"))?;
-        }
-        <Result<()>>::Ok(())
-    }));
-
-    // 验证并修正verge.yaml中的clash_core配置
-    crate::log_err!(IVerge::validate_and_fix_config());
-
-    crate::log_err!(dirs::profiles_path().map(|path| {
-        if !path.exists() {
-            help::save_yaml(&path, &IProfiles::template(), Some("# Clash Verge"))?;
-        }
-        <Result<()>>::Ok(())
-    }));
-
-    // 初始化DNS配置文件
-    let _ = init_dns_config();
+    if let Err(e) = init_dns_config().await {
+        logging!(
+            warn,
+            Type::Setup,
+            true,
+            "DNS config initialization failed: {}",
+            e
+        );
+    }
 
     Ok(())
 }
 
 /// initialize app resources
 /// after tauri setup
-pub fn init_resources() -> Result<()> {
+pub async fn init_resources() -> Result<()> {
     let app_dir = dirs::app_home_dir()?;
     let res_dir = dirs::app_resources_dir()?;
 
     if !app_dir.exists() {
-        let _ = fs::create_dir_all(&app_dir);
+        std::mem::drop(fs::create_dir_all(&app_dir).await);
     }
     if !res_dir.exists() {
-        let _ = fs::create_dir_all(&res_dir);
+        std::mem::drop(fs::create_dir_all(&res_dir).await);
     }
 
     let file_list = ["Country.mmdb", "geoip.dat", "geosite.dat"];
@@ -322,36 +402,49 @@ pub fn init_resources() -> Result<()> {
     for file in file_list.iter() {
         let src_path = res_dir.join(file);
         let dest_path = app_dir.join(file);
-        log::debug!(target: "app", "src_path: {src_path:?}, dest_path: {dest_path:?}");
 
-        let handle_copy = |dest: &PathBuf| {
-            match fs::copy(&src_path, dest) {
-                Ok(_) => log::debug!(target: "app", "resources copied '{file}'"),
+        let handle_copy = |src: PathBuf, dest: PathBuf, file: String| async move {
+            match fs::copy(&src, &dest).await {
+                Ok(_) => {
+                    logging!(debug, Type::Setup, true, "resources copied '{}'", file);
+                }
                 Err(err) => {
-                    log::error!(target: "app", "failed to copy resources '{file}' to '{dest:?}', {err}")
+                    logging!(
+                        error,
+                        Type::Setup,
+                        true,
+                        "failed to copy resources '{}' to '{:?}', {}",
+                        file,
+                        dest,
+                        err
+                    );
                 }
             };
         };
 
         if src_path.exists() && !dest_path.exists() {
-            handle_copy(&dest_path);
+            handle_copy(src_path.clone(), dest_path.clone(), file.to_string()).await;
             continue;
         }
 
-        let src_modified = fs::metadata(&src_path).and_then(|m| m.modified());
-        let dest_modified = fs::metadata(&dest_path).and_then(|m| m.modified());
+        let src_modified = fs::metadata(&src_path).await.and_then(|m| m.modified());
+        let dest_modified = fs::metadata(&dest_path).await.and_then(|m| m.modified());
 
         match (src_modified, dest_modified) {
             (Ok(src_modified), Ok(dest_modified)) => {
                 if src_modified > dest_modified {
-                    handle_copy(&dest_path);
-                } else {
-                    log::debug!(target: "app", "skipping resource copy '{file}'");
+                    handle_copy(src_path.clone(), dest_path.clone(), file.to_string()).await;
                 }
             }
             _ => {
-                log::debug!(target: "app", "failed to get modified '{file}'");
-                handle_copy(&dest_path);
+                logging!(
+                    debug,
+                    Type::Setup,
+                    true,
+                    "failed to get modified '{}'",
+                    file
+                );
+                handle_copy(src_path.clone(), dest_path.clone(), file.to_string()).await;
             }
         };
     }
@@ -363,7 +456,7 @@ pub fn init_resources() -> Result<()> {
 #[cfg(target_os = "windows")]
 pub fn init_scheme() -> Result<()> {
     use tauri::utils::platform::current_exe;
-    use winreg::{enums::*, RegKey};
+    use winreg::{RegKey, enums::*};
 
     let app_exe = current_exe()?;
     let app_exe = dunce::canonicalize(app_exe)?;
@@ -401,10 +494,17 @@ pub fn init_scheme() -> Result<()> {
 }
 
 pub async fn startup_script() -> Result<()> {
-    let app_handle = handle::Handle::global().app_handle().unwrap();
+    let app_handle = match handle::Handle::global().app_handle() {
+        Some(handle) => handle,
+        None => {
+            return Err(anyhow::anyhow!(
+                "app_handle not available for startup script execution"
+            ));
+        }
+    };
 
     let script_path = {
-        let verge = Config::verge();
+        let verge = Config::verge().await;
         let verge = verge.latest_ref();
         verge.startup_script.clone().unwrap_or("".to_string())
     };

@@ -1,32 +1,32 @@
-import { useEffect, useState } from "react";
+import {
+  AccessTimeOutlined,
+  CancelOutlined,
+  CheckCircleOutlined,
+  HelpOutline,
+  PendingOutlined,
+  RefreshRounded,
+} from "@mui/icons-material";
 import {
   Box,
   Button,
   Card,
-  Divider,
-  Typography,
   Chip,
-  Tooltip,
   CircularProgress,
+  Divider,
+  Grid,
+  Tooltip,
+  Typography,
   alpha,
   useTheme,
-  Grid,
 } from "@mui/material";
-import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
-import { BasePage, BaseEmpty } from "@/components/base";
 import { useLockFn } from "ahooks";
-import {
-  CheckCircleOutlined,
-  CancelOutlined,
-  HelpOutline,
-  PendingOutlined,
-  RefreshRounded,
-  AccessTimeOutlined,
-} from "@mui/icons-material";
+import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+
+import { BaseEmpty, BasePage } from "@/components/base";
 import { showNotice } from "@/services/noticeService";
 
-// 定义流媒体检测项类型
 interface UnlockItem {
   name: string;
   status: string;
@@ -34,7 +34,6 @@ interface UnlockItem {
   check_time?: string | null;
 }
 
-// 用于存储测试结果的本地存储键名
 const UNLOCK_RESULTS_STORAGE_KEY = "clash_verge_unlock_results";
 const UNLOCK_RESULTS_TIME_KEY = "clash_verge_unlock_time";
 
@@ -42,19 +41,13 @@ const UnlockPage = () => {
   const { t } = useTranslation();
   const theme = useTheme();
 
-  // 保存所有流媒体检测项的状态
   const [unlockItems, setUnlockItems] = useState<UnlockItem[]>([]);
-  // 是否正在执行全部检测
   const [isCheckingAll, setIsCheckingAll] = useState(false);
-  // 记录正在检测中的项目
   const [loadingItems, setLoadingItems] = useState<string[]>([]);
-  // 最后检测时间
-  const [lastCheckTime, setLastCheckTime] = useState<string | null>(null);
 
-  // 按首字母排序项目
-  const sortItemsByName = (items: UnlockItem[]) => {
+  const sortItemsByName = useCallback((items: UnlockItem[]) => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name));
-  };
+  }, []);
 
   // 保存测试结果到本地存储
   const saveResultsToStorage = (items: UnlockItem[], time: string | null) => {
@@ -68,7 +61,6 @@ const UnlockPage = () => {
     }
   };
 
-  // 从本地存储加载测试结果
   const loadResultsFromStorage = (): {
     items: UnlockItem[] | null;
     time: string | null;
@@ -90,39 +82,33 @@ const UnlockPage = () => {
     return { items: null, time: null };
   };
 
-  // 页面加载时获取初始检测项列表
+  const getUnlockItems = useCallback(
+    async (updateUI: boolean = true) => {
+      try {
+        const items = await invoke<UnlockItem[]>("get_unlock_items");
+        const sortedItems = sortItemsByName(items);
+
+        if (updateUI) {
+          setUnlockItems(sortedItems);
+        }
+      } catch (err: any) {
+        console.error("Failed to get unlock items:", err);
+      }
+    },
+    [sortItemsByName],
+  );
+
   useEffect(() => {
-    // 尝试从本地存储加载上次测试结果
-    const { items: storedItems, time } = loadResultsFromStorage();
+    const { items: storedItems } = loadResultsFromStorage();
 
     if (storedItems && storedItems.length > 0) {
-      // 如果有存储的结果，优先使用
       setUnlockItems(storedItems);
-      setLastCheckTime(time);
-
-      // 后台同时获取最新的初始状态（但不更新UI）
       getUnlockItems(false);
     } else {
-      // 没有存储的结果，获取初始状态
       getUnlockItems(true);
     }
-  }, []);
+  }, [getUnlockItems]);
 
-  // 获取所有解锁检测项列表
-  const getUnlockItems = async (updateUI: boolean = true) => {
-    try {
-      const items = await invoke<UnlockItem[]>("get_unlock_items");
-      const sortedItems = sortItemsByName(items);
-
-      if (updateUI) {
-        setUnlockItems(sortedItems);
-      }
-    } catch (err: any) {
-      console.error("Failed to get unlock items:", err);
-    }
-  };
-
-  // invoke加超时，防止后端卡死
   const invokeWithTimeout = async <T,>(
     cmd: string,
     args?: any,
@@ -131,7 +117,10 @@ const UnlockPage = () => {
     return Promise.race([
       invoke<T>(cmd, args),
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout")), timeout),
+        setTimeout(
+          () => reject(new Error(t("Detection timeout or failed"))),
+          timeout,
+        ),
       ),
     ]);
   };
@@ -146,15 +135,16 @@ const UnlockPage = () => {
 
       setUnlockItems(sortedItems);
       const currentTime = new Date().toLocaleString();
-      setLastCheckTime(currentTime);
 
       saveResultsToStorage(sortedItems, currentTime);
 
       setIsCheckingAll(false);
     } catch (err: any) {
       setIsCheckingAll(false);
-      showNotice("error", err?.message || err?.toString() || "检测超时或失败");
-      alert("检测超时或失败: " + (err?.message || err));
+      showNotice(
+        "error",
+        err?.message || err?.toString() || t("Detection timeout or failed"),
+      );
       console.error("Failed to check media unlock:", err);
     }
   });
@@ -177,7 +167,6 @@ const UnlockPage = () => {
 
         setUnlockItems(updatedItems);
         const currentTime = new Date().toLocaleString();
-        setLastCheckTime(currentTime);
 
         saveResultsToStorage(updatedItems, currentTime);
       }
@@ -185,13 +174,17 @@ const UnlockPage = () => {
       setLoadingItems((prev) => prev.filter((item) => item !== name));
     } catch (err: any) {
       setLoadingItems((prev) => prev.filter((item) => item !== name));
-      showNotice("error", err?.message || err?.toString() || `检测${name}失败`);
-      alert("检测超时或失败: " + (err?.message || err));
+      showNotice(
+        "error",
+        err?.message ||
+          err?.toString() ||
+          t("Detection failed for {name}").replace("{name}", name),
+      );
       console.error(`Failed to check ${name}:`, err);
     }
   });
 
-  // 获取状态对应的颜色
+  // 状态颜色
   const getStatusColor = (status: string) => {
     if (status === "Pending") return "default";
     if (status === "Yes") return "success";
@@ -209,7 +202,7 @@ const UnlockPage = () => {
     return "default";
   };
 
-  // 获取状态对应的图标
+  // 状态图标
   const getStatusIcon = (status: string) => {
     if (status === "Pending") return <PendingOutlined />;
     if (status === "Yes") return <CheckCircleOutlined />;
@@ -219,17 +212,7 @@ const UnlockPage = () => {
     return <HelpOutline />;
   };
 
-  // 获取状态对应的背景色
-  const getStatusBgColor = (status: string) => {
-    if (status === "Yes") return alpha(theme.palette.success.main, 0.05);
-    if (status === "No") return alpha(theme.palette.error.main, 0.05);
-    if (status === "Soon") return alpha(theme.palette.warning.main, 0.05);
-    if (status.includes("Failed")) return alpha(theme.palette.error.main, 0.03);
-    if (status === "Completed") return alpha(theme.palette.info.main, 0.05);
-    return "transparent";
-  };
-
-  // 获取状态对应的边框色
+  // 边框色
   const getStatusBorderColor = (status: string) => {
     if (status === "Yes") return theme.palette.success.main;
     if (status === "No") return theme.palette.error.main;
@@ -278,7 +261,7 @@ const UnlockPage = () => {
       ) : (
         <Grid container spacing={1.5} columns={{ xs: 1, sm: 2, md: 3 }}>
           {unlockItems.map((item) => (
-            <Grid size={1}>
+            <Grid size={1} key={item.name}>
               <Card
                 variant="outlined"
                 sx={{
@@ -328,16 +311,21 @@ const UnlockPage = () => {
                             minWidth: "32px",
                             width: "32px",
                             height: "32px",
-                            //p: 0,
                             borderRadius: "50%",
                           }}
                           onClick={() => checkSingleMedia(item.name)}
                         >
-                          {loadingItems.includes(item.name) ? (
-                            <CircularProgress size={16} />
-                          ) : (
-                            <RefreshRounded fontSize="small" />
-                          )}
+                          <RefreshRounded
+                            sx={{
+                              animation: loadingItems.includes(item.name)
+                                ? "spin 1s linear infinite"
+                                : "none",
+                              "@keyframes spin": {
+                                "0%": { transform: "rotate(0deg)" },
+                                "100%": { transform: "rotate(360deg)" },
+                              },
+                            }}
+                          />
                         </Button>
                       </span>
                     </Tooltip>
