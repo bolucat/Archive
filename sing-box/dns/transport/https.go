@@ -46,7 +46,7 @@ type HTTPSTransport struct {
 	destination      *url.URL
 	headers          http.Header
 	transportAccess  sync.Mutex
-	transport        *http.Transport
+	transport        *HTTPSTransportWrapper
 	transportResetAt time.Time
 }
 
@@ -61,11 +61,8 @@ func NewHTTPS(ctx context.Context, logger log.ContextLogger, tag string, options
 	if err != nil {
 		return nil, err
 	}
-	if common.Error(tlsConfig.STDConfig()) == nil && !common.Contains(tlsConfig.NextProtos(), http2.NextProtoTLS) {
-		tlsConfig.SetNextProtos(append(tlsConfig.NextProtos(), http2.NextProtoTLS))
-	}
-	if !common.Contains(tlsConfig.NextProtos(), "http/1.1") {
-		tlsConfig.SetNextProtos(append(tlsConfig.NextProtos(), "http/1.1"))
+	if len(tlsConfig.NextProtos()) == 0 {
+		tlsConfig.SetNextProtos([]string{http2.NextProtoTLS, "http/1.1"})
 	}
 	headers := options.Headers.Build()
 	host := headers.Get("Host")
@@ -123,29 +120,13 @@ func NewHTTPSRaw(
 	serverAddr M.Socksaddr,
 	tlsConfig tls.Config,
 ) *HTTPSTransport {
-	var transport *http.Transport
-	if tlsConfig != nil {
-		tlsDialer := tls.NewDialer(dialer, tlsConfig)
-		transport = &http.Transport{
-			ForceAttemptHTTP2: true,
-			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return tlsDialer.DialContext(ctx, network, serverAddr)
-			},
-		}
-	} else {
-		transport = &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return dialer.DialContext(ctx, network, serverAddr)
-			},
-		}
-	}
 	return &HTTPSTransport{
 		TransportAdapter: adapter,
 		logger:           logger,
 		dialer:           dialer,
 		destination:      destination,
 		headers:          headers,
-		transport:        transport,
+		transport:        NewHTTPSTransportWrapper(tls.NewDialer(dialer, tlsConfig), serverAddr),
 	}
 }
 

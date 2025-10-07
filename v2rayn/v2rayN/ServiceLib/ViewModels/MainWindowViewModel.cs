@@ -274,7 +274,6 @@ public class MainWindowViewModel : MyReactiveObject
 
         BlReloadEnabled = true;
         await Reload();
-        await AutoHideStartup();
     }
 
     #endregion Init
@@ -574,15 +573,6 @@ public class MainWindowViewModel : MyReactiveObject
     {
         var node = await ConfigHandler.GetDefaultServer(_config);
         await CoreManager.Instance.LoadCore(node);
-    }
-
-    private async Task AutoHideStartup()
-    {
-        if (_config.UiItem.AutoHideStartup)
-        {
-            AppEvents.ShowHideWindowRequested.Publish(false);
-        }
-        await Task.CompletedTask;
     }
 
     #endregion core job
