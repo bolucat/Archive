@@ -20,11 +20,18 @@ public partial class CoreConfigV2rayService
                     var rules = JsonUtils.Deserialize<List<RulesItem>>(routing.RuleSet);
                     foreach (var item in rules)
                     {
-                        if (item.Enabled)
+                        if (!item.Enabled)
                         {
-                            var item2 = JsonUtils.Deserialize<RulesItem4Ray>(JsonUtils.Serialize(item));
-                            await GenRoutingUserRule(item2, v2rayConfig);
+                            continue;
                         }
+
+                        if (item.RuleType == ERuleType.DNS)
+                        {
+                            continue;
+                        }
+
+                        var item2 = JsonUtils.Deserialize<RulesItem4Ray>(JsonUtils.Serialize(item));
+                        await GenRoutingUserRule(item2, v2rayConfig);
                     }
                 }
             }
@@ -128,7 +135,7 @@ public partial class CoreConfigV2rayService
 
         if (node == null
             || (!Global.XraySupportConfigType.Contains(node.ConfigType)
-            && node.ConfigType is not (EConfigType.PolicyGroup or EConfigType.ProxyChain)))
+            && !node.ConfigType.IsGroupType()))
         {
             return Global.ProxyTag;
         }
@@ -139,7 +146,7 @@ public partial class CoreConfigV2rayService
             return tag;
         }
 
-        if (node.ConfigType is EConfigType.PolicyGroup or EConfigType.ProxyChain)
+        if (node.ConfigType.IsGroupType())
         {
             var ret = await GenGroupOutbound(node, v2rayConfig, tag);
             if (ret == 0)

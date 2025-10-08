@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using ServiceLib.Common;
 
 namespace ServiceLib.Services.CoreConfig;
 
@@ -28,13 +29,14 @@ public partial class CoreConfigSingboxService(Config config)
             }
 
             ret.Msg = ResUI.InitialConfiguration;
-            
-            if (node?.ConfigType is EConfigType.PolicyGroup or EConfigType.ProxyChain)
+
+            if (node.ConfigType.IsGroupType())
             {
                 switch (node.ConfigType)
                 {
                     case EConfigType.PolicyGroup:
                         return await GenerateClientMultipleLoadConfig(node);
+
                     case EConfigType.ProxyChain:
                         return await GenerateClientChainConfig(node);
                 }

@@ -136,13 +136,21 @@ public partial class CoreConfigSingboxService
                 var rules = JsonUtils.Deserialize<List<RulesItem>>(routing.RuleSet);
                 foreach (var item1 in rules ?? [])
                 {
-                    if (item1.Enabled)
+                    if (!item1.Enabled)
                     {
-                        await GenRoutingUserRule(item1, singboxConfig);
-                        if (item1.Ip != null && item1.Ip.Count > 0)
-                        {
-                            ipRules.Add(item1);
-                        }
+                        continue;
+                    }
+
+                    if (item1.RuleType == ERuleType.DNS)
+                    {
+                        continue;
+                    }
+
+                    await GenRoutingUserRule(item1, singboxConfig);
+
+                    if (item1.Ip?.Count > 0)
+                    {
+                        ipRules.Add(item1);
                     }
                 }
             }
@@ -371,7 +379,7 @@ public partial class CoreConfigSingboxService
 
         if (node == null
             || (!Global.SingboxSupportConfigType.Contains(node.ConfigType)
-            && node.ConfigType is not (EConfigType.PolicyGroup or EConfigType.ProxyChain)))
+            && !node.ConfigType.IsGroupType()))
         {
             return Global.ProxyTag;
         }
@@ -383,7 +391,7 @@ public partial class CoreConfigSingboxService
             return tag;
         }
 
-        if (node.ConfigType is EConfigType.PolicyGroup or EConfigType.ProxyChain)
+        if (node.ConfigType.IsGroupType())
         {
             var ret = await GenGroupOutbound(node, singboxConfig, tag);
             if (ret == 0)

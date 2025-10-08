@@ -208,7 +208,7 @@ public partial class CoreConfigSingboxService
     {
         try
         {
-            if (node.ConfigType is not (EConfigType.PolicyGroup or EConfigType.ProxyChain))
+            if (!node.ConfigType.IsGroupType())
             {
                 return -1;
             }
@@ -236,9 +236,11 @@ public partial class CoreConfigSingboxService
                     }
 
                     break;
+
                 case EConfigType.ProxyChain:
                     await GenChainOutboundsList(childProfiles, singboxConfig, baseTagName);
                     break;
+
                 default:
                     break;
             }
@@ -492,7 +494,7 @@ public partial class CoreConfigSingboxService
             {
                 index++;
 
-                if (node.ConfigType is EConfigType.PolicyGroup or EConfigType.ProxyChain)
+                if (node.ConfigType.IsGroupType())
                 {
                     var (childProfiles, profileGroupItem) = await ProfileGroupItemManager.GetChildProfileItems(node.IndexId);
                     if (childProfiles.Count <= 0)
@@ -667,7 +669,7 @@ public partial class CoreConfigSingboxService
             var node = nodes[i];
             if (node == null)
                 continue;
-            if (node.ConfigType is EConfigType.PolicyGroup or EConfigType.ProxyChain)
+            if (node.ConfigType.IsGroupType())
             {
                 var (childProfiles, profileGroupItem) = await ProfileGroupItemManager.GetChildProfileItems(node.IndexId);
                 if (childProfiles.Count <= 0)
