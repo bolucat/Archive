@@ -75,5 +75,6 @@ func (h *HTTPSTransportWrapper) Clone() *HTTPSTransportWrapper {
 		http2Transport: &http2.Transport{
 			DialTLSContext: h.http2Transport.DialTLSContext,
 		},
+		fallback: h.fallback,
 	}
 }

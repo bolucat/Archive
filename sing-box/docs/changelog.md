@@ -2,9 +2,12 @@
 icon: material/alert-decagram
 ---
 
-#### 1.13.0-alpha.20
+#### 1.13.0-alpha.21
 
+* Fix missing mTLS support in client options **1**
 * Fixes and improvements
+
+See [TLS](/configuration/shared/tls/).
 
 #### 1.12.9
 
