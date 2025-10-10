@@ -123,7 +123,7 @@ jobs:
         with:
           path: |
             ~/go/go_win7
-          key: go_win7_1251
+          key: go_win7_1252
       - name: Setup Go for Windows 7
         if: matrix.legacy_win7 && steps.cache-go-for-windows7.outputs.cache-hit != 'true'
         run: |-

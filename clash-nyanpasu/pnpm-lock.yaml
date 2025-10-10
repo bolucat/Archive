@@ -104,8 +104,8 @@ importers:
         specifier: 16.4.0
         version: 16.4.0
       knip:
-        specifier: 5.64.2
-        version: 5.64.2(@types/node@24.5.2)(typescript@5.9.2)
+        specifier: 5.64.3
+        version: 5.64.3(@types/node@24.5.2)(typescript@5.9.2)
       lint-staged:
         specifier: 16.2.3
         version: 16.2.3
@@ -346,8 +346,8 @@ importers:
         specifier: 11.14.0
         version: 11.14.0(@types/react@19.1.14)(react@19.1.1)
       '@iconify/json':
-        specifier: 2.2.393
-        version: 2.2.393
+        specifier: 2.2.394
+        version: 2.2.394
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.54.0)(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -1825,8 +1825,8 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
-  '@iconify/json@2.2.393':
-    resolution: {integrity: sha512-Bpf0JrndzclsNHp4TPFm8OBjUotAAxE6S6e0Af1Riu5WroiO0cbvRr2UYAqIy58YhFUJNMxgFQV3A+GHexYf6g==}
+  '@iconify/json@2.2.394':
+    resolution: {integrity: sha512-XuI/rTjVO4rOAbRpb2DZSBzRJcWSTO8lhR0jGEzF28ROM8+vwWMpVaZVvZAeCo3Hc4BItxP+c1hOJMS1cRB5RA==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -6155,8 +6155,8 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
-  knip@5.64.2:
-    resolution: {integrity: sha512-gyIN+ZqZjyxdsocvkZx2HMy7D9+5WAgFrTM69sGg1QZ8wZuabtanhAP8ZnroctU26sQ5bO2RSPvjnOn0pRNuKw==}
+  knip@5.64.3:
+    resolution: {integrity: sha512-P9dZetEZfSBwNBFwj55CAnPAMdzVLTTscWx6rdB8eBmPqXPji8F3L+hhWi+Xp+u9O6Xp2ClRDq2JENSK8Z04Qg==}
     engines: {node: '>=18.18.0'}
     hasBin: true
     peerDependencies:
@@ -8717,9 +8717,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.1.11:
-    resolution: {integrity: sha512-WPsqwxITS2tzx1bzhIKsEs19ABD5vmCVa4xBo2tq/SrV4RNZtfws1EnCWQXM6yh8bD08a1idvkB5MZSBiZsjwg==}
-
   zod@4.1.12:
     resolution: {integrity: sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ==}
 
@@ -10267,7 +10264,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.393':
+  '@iconify/json@2.2.394':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
@@ -14931,7 +14928,7 @@ snapshots:
 
   kind-of@6.0.3: {}
 
-  knip@5.64.2(@types/node@24.5.2)(typescript@5.9.2):
+  knip@5.64.3(@types/node@24.5.2)(typescript@5.9.2):
     dependencies:
       '@nodelib/fs.walk': 1.2.8
       '@types/node': 24.5.2
@@ -14946,7 +14943,7 @@ snapshots:
       smol-toml: 1.4.2
       strip-json-comments: 5.0.2
       typescript: 5.9.2
-      zod: 4.1.11
+      zod: 4.1.12
 
   known-css-properties@0.36.0: {}
 
@@ -17831,8 +17828,6 @@ snapshots:
   zod@3.24.4: {}
 
   zod@3.25.76: {}
-
-  zod@4.1.11: {}
 
   zod@4.1.12: {}
 
