@@ -346,7 +346,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "wl-clipboard-rs",
  "x11rb",
 ]
@@ -674,7 +674,7 @@ version = "0.5.0"
 source = "git+https://github.com/libnyanpasu/auto-launch.git#729d5429dd689067047489af4a0a32f7013854c8"
 dependencies = [
  "dirs 5.0.1",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows-registry 0.3.0",
  "windows-result 0.2.0",
 ]
@@ -1017,7 +1017,7 @@ dependencies = [
  "static_assertions",
  "tap",
  "thin-vec",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "time",
 ]
 
@@ -1331,7 +1331,7 @@ dependencies = [
  "semver 1.0.27",
  "serde",
  "serde_json",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -1612,7 +1612,7 @@ dependencies = [
  "tauri-specta",
  "tempfile",
  "test-log",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "time",
  "timeago",
  "tokio",
@@ -1656,7 +1656,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
 dependencies = [
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -1688,7 +1688,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde0e0ec90c9dfb3b4b1a0891a7dcd0e2bffde2f7efed5fe7c9bb00e5bfb915e"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2303,7 +2303,7 @@ version = "0.1.0"
 source = "git+https://github.com/libnyanpasu/nyanpasu-utils.git#4165ebfecccc5606f4a1abc0bbe847cd018123dd"
 dependencies = [
  "dirs 6.0.0",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tracing",
  "windows 0.61.3",
 ]
@@ -2341,7 +2341,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "scopeguard",
  "smithay-client-toolkit 0.20.0",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "widestring 1.2.0",
  "windows 0.62.0",
  "xcb",
@@ -2364,7 +2364,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.7.4",
+ "libloading 0.8.8",
 ]
 
 [[package]]
@@ -2803,7 +2803,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2872,7 +2872,7 @@ dependencies = [
  "cfg-if",
  "document-features",
  "num-traits",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -3536,7 +3536,7 @@ dependencies = [
  "objc2-app-kit 0.3.2",
  "once_cell",
  "serde",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows-sys 0.59.0",
  "x11rb",
  "xkeysym",
@@ -4923,7 +4923,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.53.3",
 ]
 
 [[package]]
@@ -5342,7 +5342,7 @@ dependencies = [
  "once_cell",
  "png 0.17.16",
  "serde",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows-sys 0.60.2",
 ]
 
@@ -5367,7 +5367,7 @@ dependencies = [
  "rustc-hash 1.1.0",
  "spirv",
  "strum 0.26.3",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "unicode-ident",
 ]
 
@@ -5759,7 +5759,7 @@ dependencies = [
  "serde_json",
  "simd-json",
  "specta",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-util",
  "tracing",
@@ -5796,7 +5796,7 @@ dependencies = [
  "shared_child",
  "specta",
  "sysinfo",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
  "tracing-attributes",
@@ -6388,7 +6388,7 @@ dependencies = [
  "objc2-osa-kit",
  "serde",
  "serde_json",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -6408,23 +6408,24 @@ checksum = "48dd4f4a2c8405440fd0462561f0e5806bd0f77e86f51c761481bdd4018b545e"
 
 [[package]]
 name = "oxc-miette"
-version = "2.4.0"
+version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31cfb121c9d3e0f9082856927f5cff9594279c91b544f4436e4bc971563caa60"
+checksum = "5c42cefdcbebec6b0b72229ac0e02261a6770cb7ba39ccc5475a856164066db1"
 dependencies = [
  "cfg-if",
  "owo-colors",
  "oxc-miette-derive",
  "textwrap",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
+ "unicode-segmentation",
  "unicode-width",
 ]
 
 [[package]]
 name = "oxc-miette-derive"
-version = "2.4.0"
+version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6eabb57f935b454fbe0552ea0abaaf9eb0019b5fa05a7bbe7efd5bd8c765085"
+checksum = "05bbaa5b6b98826bb62b164406f703bee72c5287af9986f9c863fa8ea992b476"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6433,9 +6434,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_allocator"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a3bc07f64a774ff9d6bd4d54d29d2a057048ed2abd5e876bffc1a295ec1b355"
+checksum = "9c2294f53fe0d6a715ad1877300fe5432033db1e5804800f82ee84840bd09894"
 dependencies = [
  "allocator-api2",
  "bumpalo",
@@ -6446,9 +6447,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f45156a623e26047f4f7e4c380621193295432ac996da090543e81f731dcdd47"
+checksum = "678ce41e4a2fc2b5eb2b870a2b2dec2e0cdd9861d1bc22d19f6ce2dd2942f236"
 dependencies = [
  "bitflags 2.9.4",
  "oxc_allocator",
@@ -6463,9 +6464,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_macros"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dce015e6ed092e7f22b2429bdebeafc52d603ad02308cc36c9599474b47d21d"
+checksum = "85d18fd697fdceb2b61329e3fff5b3b61520b9a2f898714ed84345bfa0957b9e"
 dependencies = [
  "phf 0.13.1",
  "proc-macro2",
@@ -6475,9 +6476,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ast_visit"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74ea97de22e236da2350095e35fde2d390ddbb67714df11933dcc34cdd56078"
+checksum = "f4f93e36c0d169bf3c23dc4f545255a0c3b2acae23fcb963d5a59629f4444769"
 dependencies = [
  "oxc_allocator",
  "oxc_ast",
@@ -6487,15 +6488,15 @@ dependencies = [
 
 [[package]]
 name = "oxc_data_structures"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12f7029a05de883d1461a1017211716690b342ac20c197b8539a712b426ab0a1"
+checksum = "0ca52a37a6fc68321a86a169064993d7bb5ea83efe64ff0fa6f8d4718261718d"
 
 [[package]]
 name = "oxc_diagnostics"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c9b92b29ce9f356a8068eade68951e983247b7f5a7e51bb40047a20ca9c6ebf"
+checksum = "5a671bb9d9e9ef62a89e8b8f2308f511246d42ff56403831b7f0e32432861563"
 dependencies = [
  "cow-utils",
  "oxc-miette",
@@ -6504,9 +6505,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_ecmascript"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b91691a6df9a23176be896706e4b6a80b083b8af96cbb4967ec2fab804d06b4f"
+checksum = "569d276186f994866a9793fac530361995c204ee62bbcf351168352434119373"
 dependencies = [
  "cow-utils",
  "num-bigint",
@@ -6519,21 +6520,25 @@ dependencies = [
 
 [[package]]
 name = "oxc_estree"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c0c1992f1cf16115e26a06761b34f9ef1460ffa1887256b85bcdc6b8bc04517"
+checksum = "916aaf325a3156c3d12d15c88d7d0fa1049090dad5e227659b74494ccf5258db"
 
 [[package]]
 name = "oxc_index"
-version = "3.0.0"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fa07b0cfa997730afed43705766ef27792873fdf5215b1391949fec678d2392"
+checksum = "eb3e6120999627ec9703025eab7c9f410ebb7e95557632a8902ca48210416c2b"
+dependencies = [
+ "nonmax",
+ "serde",
+]
 
 [[package]]
 name = "oxc_parser"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae29814c4bc44bb6e63bdd7386ff8664e7a3e3b21dfa78e51201d3e032b0f2b6"
+checksum = "7db89e1c024fe806c90c8bae0a40b4efac5ac76c07d148b1fa93cbc0efaa50dd"
 dependencies = [
  "bitflags 2.9.4",
  "cow-utils",
@@ -6554,9 +6559,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_regular_expression"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1270bd284948924e9c4882ae6ce70ef20d33959fd33151cdde5d89c3e4e41ce"
+checksum = "4de2762ca6e1d717ed35a0e65086ea4495b0b69534fe7d3c4a846f4b53a2f231"
 dependencies = [
  "bitflags 2.9.4",
  "oxc_allocator",
@@ -6570,9 +6575,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_span"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57176a1bafa266ae12af0207f444786a611c0fa035bf62a960ec6833a860e526"
+checksum = "0f0567f9473b114f91493baab8f9c6f8bfb9e7f7767a861544c147a4eeba9e00"
 dependencies = [
  "compact_str",
  "oxc-miette",
@@ -6583,9 +6588,9 @@ dependencies = [
 
 [[package]]
 name = "oxc_syntax"
-version = "0.89.0"
+version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcbd72aa852c40eceb8624280f64ef0d405911e073855d890f7dac114f3f36a0"
+checksum = "163ca5aee9139e5b04c5848795e632dbdcb472be1b3658be4b32ff957993610d"
 dependencies = [
  "bitflags 2.9.4",
  "cow-utils",
@@ -6598,7 +6603,6 @@ dependencies = [
  "oxc_index",
  "oxc_span",
  "phf 0.13.1",
- "rustc-hash 2.1.1",
  "unicode-id-start",
 ]
 
@@ -6704,7 +6708,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1db05f56d34358a8b1066f67cbb203ee3e7ed2ba674a6263a1d5ec6db2204323"
 dependencies = [
  "memchr",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "ucd-trie",
 ]
 
@@ -7286,7 +7290,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "rustls",
  "socket2",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
  "web-time",
@@ -7307,7 +7311,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "slab",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tinyvec",
  "tracing",
  "web-time",
@@ -7324,14 +7328,14 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
 name = "quote"
-version = "1.0.40"
+version = "1.0.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
+checksum = "ce25767e7b499d1b604768e7cde645d14cc8584231ea6b295e9c9eb22c02e1d1"
 dependencies = [
  "proc-macro2",
 ]
@@ -7586,7 +7590,7 @@ checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
 dependencies = [
  "getrandom 0.2.16",
  "libredox",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -7891,7 +7895,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8581,7 +8585,7 @@ dependencies = [
  "log",
  "memmap2",
  "rustix 1.0.8",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "wayland-backend",
  "wayland-client",
  "wayland-csd-frame",
@@ -8944,9 +8948,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.37.0"
+version = "0.37.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07cec4dc2d2e357ca1e610cfb07de2fa7a10fc3e9fe89f72545f3d244ea87753"
+checksum = "16607d5caffd1c07ce073528f9ed972d88db15dd44023fa57142963be3feb11f"
 dependencies = [
  "libc",
  "memchr",
@@ -9121,7 +9125,7 @@ dependencies = [
  "tauri-runtime",
  "tauri-runtime-wry",
  "tauri-utils",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tokio",
  "tray-icon",
  "url",
@@ -9174,7 +9178,7 @@ dependencies = [
  "sha2 0.10.9",
  "syn 2.0.106",
  "tauri-utils",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "time",
  "url",
  "uuid",
@@ -9224,7 +9228,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9256,7 +9260,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-plugin-fs",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "url",
 ]
 
@@ -9277,7 +9281,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tauri-utils",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "toml 0.9.5",
  "url",
 ]
@@ -9294,7 +9298,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9311,7 +9315,7 @@ dependencies = [
  "serde_repr",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "time",
  "url",
 ]
@@ -9332,7 +9336,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "url",
  "windows 0.61.3",
  "zbus",
@@ -9353,7 +9357,7 @@ dependencies = [
  "sys-locale",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9383,7 +9387,7 @@ dependencies = [
  "shared_child",
  "tauri",
  "tauri-plugin",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tokio",
 ]
 
@@ -9411,7 +9415,7 @@ dependencies = [
  "tauri",
  "tauri-plugin",
  "tempfile",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "time",
  "tokio",
  "url",
@@ -9437,7 +9441,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri-utils",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "url",
  "webkit2gtk",
  "webview2-com",
@@ -9484,7 +9488,7 @@ dependencies = [
  "specta-typescript",
  "tauri",
  "tauri-specta-macros",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -9529,7 +9533,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "swift-rs",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "toml 0.9.5",
  "url",
  "urlpattern",
@@ -9554,7 +9558,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b1e66e07de489fe43a46678dd0b8df65e0c973909df1b60ba33874e297ba9b9"
 dependencies = [
  "quick-xml 0.37.5",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows 0.61.3",
  "windows-version",
 ]
@@ -9696,11 +9700,11 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "2.0.16"
+version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3467d614147380f2e4e374161426ff399c91084acd2363eaf549172b3d5e60c0"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
 dependencies = [
- "thiserror-impl 2.0.16",
+ "thiserror-impl 2.0.17",
 ]
 
 [[package]]
@@ -9716,9 +9720,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.16"
+version = "2.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c5e1be1c48b9172ee610da68fd9cd2770e7a4056cb3fc98710ee6906f0c7960"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10239,7 +10243,7 @@ dependencies = [
  "once_cell",
  "png 0.17.16",
  "serde",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows-sys 0.59.0",
 ]
 
@@ -10294,7 +10298,7 @@ dependencies = [
  "log",
  "rand 0.9.2",
  "sha1",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "utf-8",
 ]
 
@@ -10311,7 +10315,7 @@ dependencies = [
  "log",
  "rand 0.9.2",
  "sha1",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "utf-8",
 ]
 
@@ -11068,7 +11072,7 @@ version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36695906a1b53a3bf5c4289621efedac12b73eeb0b89e7e1a89b517302d5d75c"
 dependencies = [
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "windows 0.61.3",
  "windows-core 0.61.2",
 ]
@@ -11130,7 +11134,7 @@ dependencies = [
  "raw-window-handle",
  "rustc-hash 1.1.0",
  "smallvec",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "wgpu-core-deps-apple",
  "wgpu-core-deps-emscripten",
  "wgpu-core-deps-windows-linux-android",
@@ -11204,7 +11208,7 @@ dependencies = [
  "raw-window-handle",
  "renderdoc-sys",
  "smallvec",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "wasm-bindgen",
  "web-sys",
  "wgpu-types",
@@ -11222,7 +11226,7 @@ dependencies = [
  "bytemuck",
  "js-sys",
  "log",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "web-sys",
 ]
 
@@ -12063,7 +12067,7 @@ dependencies = [
  "os_pipe",
  "rustix 0.38.44",
  "tempfile",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "tree_magic_mini",
  "wayland-backend",
  "wayland-client",
@@ -12123,7 +12127,7 @@ dependencies = [
  "sha2 0.10.9",
  "soup3",
  "tao-macros",
- "thiserror 2.0.16",
+ "thiserror 2.0.17",
  "url",
  "webkit2gtk",
  "webkit2gtk-sys",
