@@ -3,16 +3,14 @@
 import "./assets/styles/index.scss";
 
 import { ResizeObserver } from "@juggle/resize-observer";
-if (!window.ResizeObserver) {
-  window.ResizeObserver = ResizeObserver;
-}
-
 import { ComposeContextProvider } from "foxact/compose-context-provider";
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import { MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
 import { BaseErrorBoundary } from "./components/base";
+import { WindowProvider } from "./hooks/use-window";
 import Layout from "./pages/_layout";
 import { AppDataProvider } from "./providers/app-data-provider";
 import { initializeLanguage } from "./services/i18n";
@@ -21,6 +19,10 @@ import {
   ThemeModeProvider,
   UpdateStateProvider,
 } from "./services/states";
+
+if (!window.ResizeObserver) {
+  window.ResizeObserver = ResizeObserver;
+}
 
 const mainElementId = "root";
 const container = document.getElementById(mainElementId);
@@ -60,11 +62,13 @@ const initializeApp = async () => {
       <React.StrictMode>
         <ComposeContextProvider contexts={contexts}>
           <BaseErrorBoundary>
-            <AppDataProvider>
-              <BrowserRouter>
-                <Layout />
-              </BrowserRouter>
-            </AppDataProvider>
+            <WindowProvider>
+              <AppDataProvider>
+                <BrowserRouter>
+                  <Layout />
+                </BrowserRouter>
+              </AppDataProvider>
+            </WindowProvider>
           </BaseErrorBoundary>
         </ComposeContextProvider>
       </React.StrictMode>,
@@ -89,4 +93,10 @@ window.addEventListener("error", (event) => {
 
 window.addEventListener("unhandledrejection", (event) => {
   console.error("[main.tsx] 未处理的Promise拒绝:", event.reason);
+});
+
+// 页面关闭/刷新事件
+window.addEventListener("beforeunload", async () => {
+  // 强制清理所有 WebSocket 实例, 防止内存泄漏
+  await MihomoWebSocket.cleanupAll();
 });

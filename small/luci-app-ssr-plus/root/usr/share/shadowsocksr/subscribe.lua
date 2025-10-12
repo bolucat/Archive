@@ -1187,26 +1187,21 @@ local execute = function()
 										log('丢弃无效节点: ' .. result.alias)
 									else
 										-- log('成功解析: ' .. result.type ..' 节点, ' .. result.alias)
-										result.grouphashkey = groupHash
-										cache[groupHash] = cache[groupHash] or {}
+										-- 检查重复（hashkey + alias）节点
 										cache[groupHash][result.hashkey] = cache[groupHash][result.hashkey] or {}
-
-										-- 去重逻辑：hashkey 和 alias 都相同丢弃
-										local exists = false
+										local is_duplicate = false
 										for _, r in ipairs(cache[groupHash][result.hashkey]) do
 											if r.alias == result.alias then
-									       		exists = true
+									       		is_duplicate = true
 										   		break
 											end
 										end
-
-										if exists then
-											log('丢弃重复节点: ' .. result.alias)
+										if not is_duplicate then
+											result.grouphashkey = groupHash
+											tinsert(nodeResult[index], result)
+											cache[groupHash][result.hashkey] = nodeResult[index][#nodeResult[index]]
 										else
-											-- 保存节点
-											nodeResult[index] = nodeResult[index] or {}
-											table.insert(nodeResult[index], result)
-											table.insert(cache[groupHash][result.hashkey], result)
+											log('丢弃重复节点: ' .. result.alias)
 										end
 									end
 								end

@@ -20,6 +20,8 @@ pub async fn create_backup_and_upload_webdav() -> Result<()> {
         .await
     {
         log::error!(target: "app", "Failed to upload to WebDAV: {err:#?}");
+        // 上传失败时重置客户端缓存
+        backup::WebDavClient::global().reset();
         return Err(err);
     }
 
@@ -73,7 +75,6 @@ pub async fn restore_webdav_backup(filename: String) -> Result<()> {
     zip.extract(app_home_dir()?)?;
     logging_error!(
         Type::Backup,
-        true,
         super::patch_verge(
             IVerge {
                 webdav_url,

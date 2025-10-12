@@ -2,7 +2,7 @@ use tauri::WebviewWindow;
 
 use crate::{
     core::handle,
-    logging, logging_error,
+    logging_error,
     utils::{
         logging::Type,
         resolve::window_script::{INITIAL_LOADING_OVERLAY, WINDOW_INITIAL_SCRIPT},
@@ -18,24 +18,17 @@ const MINIMAL_HEIGHT: f64 = 520.0;
 
 /// 构建新的 WebView 窗口
 pub fn build_new_window() -> Result<WebviewWindow, String> {
-    let app_handle = handle::Handle::global().app_handle().ok_or_else(|| {
-        logging!(
-            error,
-            Type::Window,
-            true,
-            "无法获取app_handle，窗口创建失败"
-        );
-        "无法获取app_handle".to_string()
-    })?;
+    let app_handle = handle::Handle::app_handle();
 
     match tauri::WebviewWindowBuilder::new(
-        &app_handle,
+        app_handle,
         "main", /* the unique window label */
         tauri::WebviewUrl::App("index.html".into()),
     )
     .title("Clash Verge")
     .center()
-    .decorations(true)
+    // Using WindowManager::prefer_system_titlebar to control if show system built-in titlebar
+    // .decorations(true)
     .fullscreen(false)
     .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
     .min_inner_size(MINIMAL_WIDTH, MINIMAL_HEIGHT)
@@ -44,7 +37,7 @@ pub fn build_new_window() -> Result<WebviewWindow, String> {
     .build()
     {
         Ok(window) => {
-            logging_error!(Type::Window, true, window.eval(INITIAL_LOADING_OVERLAY));
+            logging_error!(Type::Window, window.eval(INITIAL_LOADING_OVERLAY));
             Ok(window)
         }
         Err(e) => Err(e.to_string()),

@@ -90,7 +90,7 @@ To run on Android, check [Android_Guide](https://github.com/wangyu-/udp2raw/wiki
 ### Usage
 ```
 udp2raw-tunnel
-git version:6e1df4b39f    build date:Oct 24 2017 09:21:15
+git version:4623f878e0    build date:Nov  3 2024 23:15:46
 repository: https://github.com/wangyu-/udp2raw-tunnel
 
 usage:
@@ -98,14 +98,16 @@ usage:
     run as server : ./this_program -s -l server_listen_ip:server_port -r remote_address:remote_port  [options]
 
 common options,these options must be same on both side:
-    --raw-mode            <string>        avaliable values:faketcp(default),udp,icmp
+    --raw-mode            <string>        available values:faketcp(default),udp,icmp and easy-faketcp
     -k,--key              <string>        password to gen symetric key,default:"secret key"
-    --cipher-mode         <string>        avaliable values:aes128cbc(default),xor,none
-    --auth-mode           <string>        avaliable values:hmac_sha1,md5(default),crc32,simple,none
+    --cipher-mode         <string>        available values:aes128cfb,aes128cbc(default),xor,none
+    --auth-mode           <string>        available values:hmac_sha1,md5(default),crc32,simple,none
     -a,--auto-rule                        auto add (and delete) iptables rule
     -g,--gen-rule                         generate iptables rule then exit,so that you can copy and
                                           add it manually.overrides -a
     --disable-anti-replay                 disable anti-replay,not suggested
+    --fix-gro                             try to fix huge packet caused by GRO. this option is at an early stage.
+                                          make sure client and server are at same version.
 client options:
     --source-ip           <ip>            force source-ip for raw socket
     --source-port         <port>          force source-port for raw socket,tcp/udp only
@@ -121,6 +123,7 @@ other options:
     --disable-color                       disable log color
     --disable-bpf                         disable the kernel space filter,most time its not necessary
                                           unless you suspect there is a bug
+    --dev                 <string>        bind raw socket to a device, not necessary but improves performance
     --sock-buf            <number>        buf size for socket,>=10 and <=10240,unit:kbyte,default:1024
     --force-sock-buf                      bypass system limitation while setting sock-buf
     --seq-mode            <number>        seq increase mode for faketcp:
@@ -133,11 +136,14 @@ other options:
     --lower-level         <string>        send packets at OSI level 2, format:'if_name#dest_mac_adress'
                                           ie:'eth0#00:23:45:67:89:b9'.or try '--lower-level auto' to obtain
                                           the parameter automatically,specify it manually if 'auto' failed
+    --wait-lock                           wait for xtables lock while invoking iptables, need iptables v1.4.20+
     --gen-add                             generate iptables rule and add it permanently,then exit.overrides -g
     --keep-rule                           monitor iptables and auto re-add if necessary.implys -a
+    --hb-len              <number>        length of heart-beat packet, >=0 and <=1500
+    --mtu-warn            <number>        mtu warning threshold, unit:byte, default:1375
     --clear                               clear any iptables rules added by this program.overrides everything
+    --retry-on-error                      retry on error, allow to start udp2raw before network is initialized
     -h,--help                             print this help message
-
 ```
 
 ### Iptables rules,`-a` and `-g`

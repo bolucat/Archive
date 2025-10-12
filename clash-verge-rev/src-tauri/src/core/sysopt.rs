@@ -51,6 +51,35 @@ async fn get_bypass() -> String {
     }
 }
 
+// Uses tokio Command with CREATE_NO_WINDOW flag to avoid DLL initialization issues during shutdown
+#[cfg(target_os = "windows")]
+async fn execute_sysproxy_command(args: Vec<String>) -> Result<()> {
+    use crate::utils::dirs;
+    use anyhow::bail;
+    #[allow(unused_imports)] // Required for .creation_flags() method
+    use std::os::windows::process::CommandExt;
+    use tokio::process::Command;
+
+    let binary_path = dirs::service_path()?;
+    let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
+
+    if !sysproxy_exe.exists() {
+        bail!("sysproxy.exe not found");
+    }
+
+    let output = Command::new(sysproxy_exe)
+        .args(&args)
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW - 隐藏窗口
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        bail!("sysproxy exe run failed");
+    }
+
+    Ok(())
+}
+
 impl Default for Sysopt {
     fn default() -> Self {
         Sysopt {
@@ -148,49 +177,17 @@ impl Sysopt {
                 proxy_manager.notify_config_changed();
                 return result;
             }
-            use crate::{core::handle::Handle, utils::dirs};
-            use anyhow::bail;
-            use tauri_plugin_shell::ShellExt;
 
-            let app_handle = Handle::global()
-                .app_handle()
-                .ok_or_else(|| anyhow::anyhow!("App handle not available"))?;
-
-            let binary_path = dirs::service_path()?;
-            let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
-            if !sysproxy_exe.exists() {
-                bail!("sysproxy.exe not found");
-            }
-
-            let shell = app_handle.shell();
-            let output = if pac_enable {
+            let args = if pac_enable {
                 let address = format!("http://{proxy_host}:{pac_port}/commands/pac");
-                let sysproxy_str = sysproxy_exe
-                    .as_path()
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid sysproxy.exe path"))?;
-                shell
-                    .command(sysproxy_str)
-                    .args(["pac", address.as_str()])
-                    .output()
-                    .await?
+                vec!["pac".to_string(), address]
             } else {
                 let address = format!("{proxy_host}:{port}");
                 let bypass = get_bypass().await;
-                let sysproxy_str = sysproxy_exe
-                    .as_path()
-                    .to_str()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid sysproxy.exe path"))?;
-                shell
-                    .command(sysproxy_str)
-                    .args(["global", address.as_str(), bypass.as_ref()])
-                    .output()
-                    .await?
+                vec!["global".to_string(), address, bypass]
             };
 
-            if !output.status.success() {
-                bail!("sysproxy exe run failed");
-            }
+            execute_sysproxy_command(args).await?;
         }
         let proxy_manager = EventDrivenProxyManager::global();
         proxy_manager.notify_config_changed();
@@ -223,35 +220,7 @@ impl Sysopt {
 
         #[cfg(target_os = "windows")]
         {
-            use crate::{core::handle::Handle, utils::dirs};
-            use anyhow::bail;
-            use tauri_plugin_shell::ShellExt;
-
-            let app_handle = Handle::global()
-                .app_handle()
-                .ok_or_else(|| anyhow::anyhow!("App handle not available"))?;
-
-            let binary_path = dirs::service_path()?;
-            let sysproxy_exe = binary_path.with_file_name("sysproxy.exe");
-
-            if !sysproxy_exe.exists() {
-                bail!("sysproxy.exe not found");
-            }
-
-            let shell = app_handle.shell();
-            let sysproxy_str = sysproxy_exe
-                .as_path()
-                .to_str()
-                .ok_or_else(|| anyhow::anyhow!("Invalid sysproxy.exe path"))?;
-            let output = shell
-                .command(sysproxy_str)
-                .args(["set", "1"])
-                .output()
-                .await?;
-
-            if !output.status.success() {
-                bail!("sysproxy exe run failed");
-            }
+            execute_sysproxy_command(vec!["set".to_string(), "1".to_string()]).await?;
         }
 
         Ok(())
@@ -261,7 +230,12 @@ impl Sysopt {
     pub async fn update_launch(&self) -> Result<()> {
         let enable_auto_launch = { Config::verge().await.latest_ref().enable_auto_launch };
         let is_enable = enable_auto_launch.unwrap_or(false);
-        logging!(info, true, "Setting auto-launch state to: {:?}", is_enable);
+        logging!(
+            info,
+            Type::System,
+            "Setting auto-launch state to: {:?}",
+            is_enable
+        );
 
         // 首先尝试使用快捷方式方法
         #[cfg(target_os = "windows")]
@@ -293,16 +267,13 @@ impl Sysopt {
 
     /// 尝试使用原来的自启动方法
     fn try_original_autostart_method(&self, is_enable: bool) {
-        let Some(app_handle) = Handle::global().app_handle() else {
-            log::error!(target: "app", "App handle not available for autostart");
-            return;
-        };
+        let app_handle = Handle::app_handle();
         let autostart_manager = app_handle.autolaunch();
 
         if is_enable {
-            logging_error!(Type::System, true, "{:?}", autostart_manager.enable());
+            logging_error!(Type::System, "{:?}", autostart_manager.enable());
         } else {
-            logging_error!(Type::System, true, "{:?}", autostart_manager.disable());
+            logging_error!(Type::System, "{:?}", autostart_manager.disable());
         }
     }
 
@@ -323,9 +294,7 @@ impl Sysopt {
         }
 
         // 回退到原来的方法
-        let app_handle = Handle::global()
-            .app_handle()
-            .ok_or_else(|| anyhow::anyhow!("App handle not available"))?;
+        let app_handle = Handle::app_handle();
         let autostart_manager = app_handle.autolaunch();
 
         match autostart_manager.is_enabled() {

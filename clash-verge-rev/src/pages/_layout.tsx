@@ -1,26 +1,40 @@
-import { List, Paper, ThemeProvider, SvgIcon } from "@mui/material";
+import { List, Paper, SvgIcon, ThemeProvider } from "@mui/material";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { useLocalStorage } from "foxact/use-local-storage";
-import { useEffect, useCallback, useState, useRef } from "react";
-import React from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useRoutes, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useRoutes } from "react-router-dom";
 import { SWRConfig, mutate } from "swr";
 
 import iconDark from "@/assets/image/icon_dark.svg?react";
 import iconLight from "@/assets/image/icon_light.svg?react";
 import LogoSvg from "@/assets/image/logo.svg?react";
+import { NoticeManager } from "@/components/base/NoticeManager";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useCustomTheme } from "@/components/layout/use-custom-theme";
+import { useClashInfo } from "@/hooks/use-clash";
+import { useConnectionData } from "@/hooks/use-connection-data";
 import { useI18n } from "@/hooks/use-i18n";
+import { useListen } from "@/hooks/use-listen";
+import { useLogData } from "@/hooks/use-log-data-new";
+import { useMemoryData } from "@/hooks/use-memory-data";
+import { useTrafficData } from "@/hooks/use-traffic-data";
 import { useVerge } from "@/hooks/use-verge";
+import { useWindowDecorations } from "@/hooks/use-window";
 import { getAxios } from "@/services/api";
-import { forceRefreshClashConfig } from "@/services/cmds";
-import { useThemeMode, useEnableLog } from "@/services/states";
+import { showNotice } from "@/services/noticeService";
+import { useClashLog, useThemeMode } from "@/services/states";
 import getSystem from "@/utils/get-system";
 
 import { routers } from "./_routers";
@@ -28,18 +42,8 @@ import { routers } from "./_routers";
 import "dayjs/locale/ru";
 import "dayjs/locale/zh-cn";
 
-import { useListen } from "@/hooks/use-listen";
-
-import { listen } from "@tauri-apps/api/event";
-
-import { useClashInfo } from "@/hooks/use-clash";
-import { initGlobalLogService } from "@/services/global-log-service";
-
-import { invoke } from "@tauri-apps/api/core";
-
-import { showNotice } from "@/services/noticeService";
-import { NoticeManager } from "@/components/base/NoticeManager";
-import { LogLevel } from "@/hooks/use-log-data";
+import { WindowControls } from "@/components/controller/window-controller";
+// 删除重复导入
 
 const appWindow = getCurrentWebviewWindow();
 export const portableFlag = false;
@@ -157,14 +161,20 @@ const handleNoticeMessage = (
 };
 
 const Layout = () => {
+  useTrafficData();
+  useMemoryData();
+  useConnectionData();
+  useLogData();
   const mode = useThemeMode();
   const isDark = mode === "light" ? false : true;
   const { t } = useTranslation();
   const { theme } = useCustomTheme();
   const { verge } = useVerge();
   const { clashInfo } = useClashInfo();
-  const [enableLog] = useEnableLog();
-  const [logLevel] = useLocalStorage<LogLevel>("log:log-level", "info");
+  const [clashLog] = useClashLog();
+  const enableLog = clashLog.enable;
+  const logLevel = clashLog.logLevel;
+  // const [logLevel] = useLocalStorage<LogLevel>("log:log-level", "info");
   const { language, start_page } = verge ?? {};
   const { switchLanguage } = useI18n();
   const navigate = useNavigate();
@@ -173,6 +183,28 @@ const Layout = () => {
   const { addListener } = useListen();
   const initRef = useRef(false);
   const [themeReady, setThemeReady] = useState(false);
+
+  const windowControls = useRef<any>(null);
+  const { decorated } = useWindowDecorations();
+
+  const customTitlebar = useMemo(() => {
+    console.debug(
+      "[Layout] Titlebar rendering - decorated:",
+      decorated,
+      "| showing:",
+      !decorated,
+      "| theme mode:",
+      mode,
+    );
+    if (!decorated) {
+      return (
+        <div className="the_titlebar" data-tauri-drag-region="true">
+          <WindowControls ref={windowControls} />
+        </div>
+      );
+    }
+    return null;
+  }, [decorated, mode]);
 
   useEffect(() => {
     setThemeReady(true);
@@ -193,19 +225,17 @@ const Layout = () => {
   );
 
   // 初始化全局日志服务
-  useEffect(() => {
-    if (clashInfo) {
-      initGlobalLogService(enableLog, logLevel);
-    }
-  }, [clashInfo, enableLog, logLevel]);
+  // useEffect(() => {
+  //   if (clashInfo) {
+  //     initGlobalLogService(enableLog, logLevel);
+  //   }
+  // }, [clashInfo, enableLog, logLevel]);
 
   // 设置监听器
   useEffect(() => {
     const listeners = [
       addListener("verge://refresh-clash-config", async () => {
         await getAxios(true);
-        // 后端配置变更事件触发，强制刷新配置缓存
-        await forceRefreshClashConfig();
         mutate("getProxies");
         mutate("getVersion");
         mutate("getClashConfig");
@@ -497,6 +527,7 @@ const Layout = () => {
       }}
     >
       <ThemeProvider theme={theme}>
+        {/* 左侧底部窗口控制按钮 */}
         <NoticeManager />
         <div
           style={{
@@ -521,15 +552,16 @@ const Layout = () => {
             borderTopRightRadius: "0px",
           }}
           onContextMenu={(e) => {
-            if (
-              OS === "windows" &&
-              !["input", "textarea"].includes(
-                e.currentTarget.tagName.toLowerCase(),
-              ) &&
-              !e.currentTarget.isContentEditable
-            ) {
-              e.preventDefault();
-            }
+            // TODO: 禁止右键菜单
+            // if (
+            //   OS === "windows" &&
+            //   !["input", "textarea"].includes(
+            //     e.currentTarget.tagName.toLowerCase(),
+            //   ) &&
+            //   !e.currentTarget.isContentEditable
+            // ) {
+            //   e.preventDefault();
+            // }
           }}
           sx={[
             ({ palette }) => ({ bgcolor: palette.background.paper }),
@@ -543,54 +575,58 @@ const Layout = () => {
               : {},
           ]}
         >
-          <div className="layout__left">
-            <div className="the-logo" data-tauri-drag-region="true">
-              <div
-                data-tauri-drag-region="true"
-                style={{
-                  height: "27px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                }}
-              >
-                <SvgIcon
-                  component={isDark ? iconDark : iconLight}
+          {/* Custom titlebar - rendered only when decorated is false, memoized for performance */}
+          {customTitlebar}
+
+          <div className="layout-content">
+            <div className="layout-content__left">
+              <div className="the-logo" data-tauri-drag-region="false">
+                <div
+                  data-tauri-drag-region="true"
                   style={{
-                    height: "36px",
-                    width: "36px",
-                    marginTop: "-3px",
-                    marginRight: "5px",
-                    marginLeft: "-3px",
+                    height: "27px",
+                    display: "flex",
+                    justifyContent: "space-between",
                   }}
-                  inheritViewBox
-                />
-                <LogoSvg fill={isDark ? "white" : "black"} />
-              </div>
-              <UpdateButton className="the-newbtn" />
-            </div>
-
-            <List className="the-menu">
-              {routers.map((router) => (
-                <LayoutItem
-                  key={router.label}
-                  to={router.path}
-                  icon={router.icon}
                 >
-                  {t(router.label)}
-                </LayoutItem>
-              ))}
-            </List>
+                  <SvgIcon
+                    component={isDark ? iconDark : iconLight}
+                    style={{
+                      height: "36px",
+                      width: "36px",
+                      marginTop: "-3px",
+                      marginRight: "5px",
+                      marginLeft: "-3px",
+                    }}
+                    inheritViewBox
+                  />
+                  <LogoSvg fill={isDark ? "white" : "black"} />
+                </div>
+                <UpdateButton className="the-newbtn" />
+              </div>
 
-            <div className="the-traffic">
-              <LayoutTraffic />
+              <List className="the-menu">
+                {routers.map((router) => (
+                  <LayoutItem
+                    key={router.label}
+                    to={router.path}
+                    icon={router.icon}
+                  >
+                    {t(router.label)}
+                  </LayoutItem>
+                ))}
+              </List>
+
+              <div className="the-traffic">
+                <LayoutTraffic />
+              </div>
             </div>
-          </div>
 
-          <div className="layout__right">
-            <div className="the-bar"></div>
-
-            <div className="the-content">
-              {React.cloneElement(routersEles, { key: location.pathname })}
+            <div className="layout-content__right">
+              <div className="the-bar"></div>
+              <div className="the-content">
+                {React.cloneElement(routersEles, { key: location.pathname })}
+              </div>
             </div>
           </div>
         </Paper>

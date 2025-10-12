@@ -38,11 +38,11 @@ pub async fn get_profiles() -> CmdResult<IProfiles> {
 
     match latest_result {
         Ok(profiles) => {
-            logging!(info, Type::Cmd, false, "快速获取配置列表成功");
+            logging!(info, Type::Cmd, "快速获取配置列表成功");
             return Ok(profiles);
         }
         Err(_) => {
-            logging!(warn, Type::Cmd, true, "快速获取配置超时(500ms)");
+            logging!(warn, Type::Cmd, "快速获取配置超时(500ms)");
         }
     }
 
@@ -59,14 +59,13 @@ pub async fn get_profiles() -> CmdResult<IProfiles> {
 
     match data_result {
         Ok(profiles) => {
-            logging!(info, Type::Cmd, false, "获取draft配置列表成功");
+            logging!(info, Type::Cmd, "获取draft配置列表成功");
             return Ok(profiles);
         }
         Err(join_err) => {
             logging!(
                 error,
                 Type::Cmd,
-                true,
                 "获取draft配置任务失败或超时: {}",
                 join_err
             );
@@ -74,12 +73,7 @@ pub async fn get_profiles() -> CmdResult<IProfiles> {
     }
 
     // 策略3: fallback，尝试重新创建配置
-    logging!(
-        warn,
-        Type::Cmd,
-        true,
-        "所有获取配置策略都失败，尝试fallback"
-    );
+    logging!(warn, Type::Cmd, "所有获取配置策略都失败，尝试fallback");
 
     Ok(IProfiles::new().await)
 }
@@ -101,11 +95,11 @@ pub async fn enhance_profiles() -> CmdResult {
 /// 导入配置文件
 #[tauri::command]
 pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult {
-    logging!(info, Type::Cmd, true, "[导入订阅] 开始导入: {}", url);
+    logging!(info, Type::Cmd, "[导入订阅] 开始导入: {}", url);
 
     let import_result = tokio::time::timeout(Duration::from_secs(60), async {
         let item = PrfItem::from_url(&url, None, None, option).await?;
-        logging!(info, Type::Cmd, true, "[导入订阅] 下载完成，开始保存配置");
+        logging!(info, Type::Cmd, "[导入订阅] 下载完成，开始保存配置");
 
         let profiles = Config::profiles().await;
         let pre_count = profiles
@@ -123,19 +117,13 @@ pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult
             .as_ref()
             .map_or(0, |items| items.len());
         if post_count <= pre_count {
-            logging!(
-                error,
-                Type::Cmd,
-                true,
-                "[导入订阅] 配置未增加，导入可能失败"
-            );
+            logging!(error, Type::Cmd, "[导入订阅] 配置未增加，导入可能失败");
             return Err(anyhow::anyhow!("配置导入后数量未增加"));
         }
 
         logging!(
             info,
             Type::Cmd,
-            true,
             "[导入订阅] 配置保存成功，数量: {} -> {}",
             pre_count,
             post_count
@@ -143,13 +131,7 @@ pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult
 
         // 立即发送配置变更通知
         if let Some(uid) = &item.uid {
-            logging!(
-                info,
-                Type::Cmd,
-                true,
-                "[导入订阅] 发送配置变更通知: {}",
-                uid
-            );
+            logging!(info, Type::Cmd, "[导入订阅] 发送配置变更通知: {}", uid);
             handle::Handle::notify_profile_changed(uid.clone());
         }
 
@@ -158,9 +140,9 @@ pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult
         crate::process::AsyncHandler::spawn(move || async move {
             // 使用Send-safe helper函数
             if let Err(e) = profiles_save_file_safe().await {
-                logging!(error, Type::Cmd, true, "[导入订阅] 保存配置文件失败: {}", e);
+                logging!(error, Type::Cmd, "[导入订阅] 保存配置文件失败: {}", e);
             } else {
-                logging!(info, Type::Cmd, true, "[导入订阅] 配置文件保存成功");
+                logging!(info, Type::Cmd, "[导入订阅] 配置文件保存成功");
 
                 // 发送全局配置更新通知
                 if let Some(uid) = uid_clone {
@@ -177,15 +159,15 @@ pub async fn import_profile(url: String, option: Option<PrfOption>) -> CmdResult
 
     match import_result {
         Ok(Ok(())) => {
-            logging!(info, Type::Cmd, true, "[导入订阅] 导入完成: {}", url);
+            logging!(info, Type::Cmd, "[导入订阅] 导入完成: {}", url);
             Ok(())
         }
         Ok(Err(e)) => {
-            logging!(error, Type::Cmd, true, "[导入订阅] 导入失败: {}", e);
+            logging!(error, Type::Cmd, "[导入订阅] 导入失败: {}", e);
             Err(format!("导入订阅失败: {e}"))
         }
         Err(_) => {
-            logging!(error, Type::Cmd, true, "[导入订阅] 导入超时(60秒): {}", url);
+            logging!(error, Type::Cmd, "[导入订阅] 导入超时(60秒): {}", url);
             Err("导入订阅超时，请检查网络连接".into())
         }
     }
@@ -210,8 +192,15 @@ pub async fn reorder_profile(active_id: String, over_id: String) -> CmdResult {
 /// 创建一个新的配置文件
 #[tauri::command]
 pub async fn create_profile(item: PrfItem, file_data: Option<String>) -> CmdResult {
-    match profiles_append_item_with_filedata_safe(item, file_data).await {
-        Ok(_) => Ok(()),
+    match profiles_append_item_with_filedata_safe(item.clone(), file_data).await {
+        Ok(_) => {
+            // 发送配置变更通知
+            if let Some(uid) = &item.uid {
+                logging!(info, Type::Cmd, "[创建订阅] 发送配置变更通知: {}", uid);
+                handle::Handle::notify_profile_changed(uid.clone());
+            }
+            Ok(())
+        }
         Err(err) => match err.to_string().as_str() {
             "the file already exists" => Err("the file already exists".into()),
             _ => Err(format!("add profile error: {err}")),
@@ -235,12 +224,15 @@ pub async fn update_profile(index: String, option: Option<PrfOption>) -> CmdResu
 #[tauri::command]
 pub async fn delete_profile(index: String) -> CmdResult {
     // 使用Send-safe helper函数
-    let should_update = wrap_err!(profiles_delete_item_safe(index).await)?;
+    let should_update = wrap_err!(profiles_delete_item_safe(index.clone()).await)?;
 
     if should_update {
         match CoreManager::global().update_config().await {
             Ok(_) => {
                 handle::Handle::refresh_clash();
+                // 发送配置变更通知
+                logging!(info, Type::Cmd, "[删除订阅] 发送配置变更通知: {}", index);
+                handle::Handle::notify_profile_changed(index);
             }
             Err(e) => {
                 log::error!(target: "app", "{}", e);
@@ -255,7 +247,7 @@ pub async fn delete_profile(index: String) -> CmdResult {
 #[tauri::command]
 pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     if CURRENT_SWITCHING_PROFILE.load(Ordering::SeqCst) {
-        logging!(info, Type::Cmd, true, "当前正在切换配置，放弃请求");
+        logging!(info, Type::Cmd, "当前正在切换配置，放弃请求");
         return Ok(false);
     }
     CURRENT_SWITCHING_PROFILE.store(true, Ordering::SeqCst);
@@ -267,7 +259,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     logging!(
         info,
         Type::Cmd,
-        true,
         "开始修改配置文件，请求序列号: {}, 目标profile: {:?}",
         current_sequence,
         target_profile
@@ -278,7 +269,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
         logging!(
             info,
             Type::Cmd,
-            true,
             "获取锁后发现更新的请求 (序列号: {} < {})，放弃当前请求",
             current_sequence,
             latest_sequence
@@ -288,13 +278,13 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
 
     // 保存当前配置，以便在验证失败时恢复
     let current_profile = Config::profiles().await.latest_ref().current.clone();
-    logging!(info, Type::Cmd, true, "当前配置: {:?}", current_profile);
+    logging!(info, Type::Cmd, "当前配置: {:?}", current_profile);
 
     // 如果要切换配置，先检查目标配置文件是否有语法错误
     if let Some(new_profile) = profiles.current.as_ref()
         && current_profile.as_ref() != Some(new_profile)
     {
-        logging!(info, Type::Cmd, true, "正在切换到新配置: {}", new_profile);
+        logging!(info, Type::Cmd, "正在切换到新配置: {}", new_profile);
 
         // 获取目标配置文件路径
         let config_file_result = {
@@ -310,7 +300,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                     }
                 }
                 Err(e) => {
-                    logging!(error, Type::Cmd, true, "获取目标配置信息失败: {}", e);
+                    logging!(error, Type::Cmd, "获取目标配置信息失败: {}", e);
                     None
                 }
             }
@@ -322,7 +312,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                 logging!(
                     error,
                     Type::Cmd,
-                    true,
                     "目标配置文件不存在: {}",
                     file_path.display()
                 );
@@ -349,14 +338,13 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
 
                     match yaml_parse_result {
                         Ok(Ok(_)) => {
-                            logging!(info, Type::Cmd, true, "目标配置文件语法正确");
+                            logging!(info, Type::Cmd, "目标配置文件语法正确");
                         }
                         Ok(Err(err)) => {
                             let error_msg = format!(" {err}");
                             logging!(
                                 error,
                                 Type::Cmd,
-                                true,
                                 "目标配置文件存在YAML语法错误:{}",
                                 error_msg
                             );
@@ -368,7 +356,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                         }
                         Err(join_err) => {
                             let error_msg = format!("YAML解析任务失败: {join_err}");
-                            logging!(error, Type::Cmd, true, "{}", error_msg);
+                            logging!(error, Type::Cmd, "{}", error_msg);
                             handle::Handle::notice_message(
                                 "config_validate::yaml_parse_error",
                                 &error_msg,
@@ -379,13 +367,13 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                 }
                 Ok(Err(err)) => {
                     let error_msg = format!("无法读取目标配置文件: {err}");
-                    logging!(error, Type::Cmd, true, "{}", error_msg);
+                    logging!(error, Type::Cmd, "{}", error_msg);
                     handle::Handle::notice_message("config_validate::file_read_error", &error_msg);
                     return Ok(false);
                 }
                 Err(_) => {
                     let error_msg = "读取配置文件超时(5秒)".to_string();
-                    logging!(error, Type::Cmd, true, "{}", error_msg);
+                    logging!(error, Type::Cmd, "{}", error_msg);
                     handle::Handle::notice_message(
                         "config_validate::file_read_timeout",
                         &error_msg,
@@ -402,7 +390,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
         logging!(
             info,
             Type::Cmd,
-            true,
             "在核心操作前发现更新的请求 (序列号: {} < {})，放弃当前请求",
             current_sequence,
             latest_sequence
@@ -414,7 +401,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     logging!(
         info,
         Type::Cmd,
-        true,
         "正在更新配置草稿，序列号: {}",
         current_sequence
     );
@@ -429,7 +415,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
         logging!(
             info,
             Type::Cmd,
-            true,
             "在内核交互前发现更新的请求 (序列号: {} < {})，放弃当前请求",
             current_sequence,
             latest_sequence
@@ -442,7 +427,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
     logging!(
         info,
         Type::Cmd,
-        true,
         "开始内核配置更新，序列号: {}",
         current_sequence
     );
@@ -461,7 +445,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                 logging!(
                     info,
                     Type::Cmd,
-                    true,
                     "内核操作后发现更新的请求 (序列号: {} < {})，忽略当前结果",
                     current_sequence,
                     latest_sequence
@@ -473,7 +456,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
             logging!(
                 info,
                 Type::Cmd,
-                true,
                 "配置更新成功，序列号: {}",
                 current_sequence
             );
@@ -481,11 +463,11 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
             handle::Handle::refresh_clash();
 
             // 强制刷新代理缓存，确保profile切换后立即获取最新节点数据
-            crate::process::AsyncHandler::spawn(|| async move {
-                if let Err(e) = super::proxy::force_refresh_proxies().await {
-                    log::warn!(target: "app", "强制刷新代理缓存失败: {e}");
-                }
-            });
+            // crate::process::AsyncHandler::spawn(|| async move {
+            //     if let Err(e) = super::proxy::force_refresh_proxies().await {
+            //         log::warn!(target: "app", "强制刷新代理缓存失败: {e}");
+            //     }
+            // });
 
             if let Err(e) = Tray::global().update_tooltip().await {
                 log::warn!(target: "app", "异步更新托盘提示失败: {e}");
@@ -505,7 +487,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                 logging!(
                     info,
                     Type::Cmd,
-                    true,
                     "向前端发送配置变更事件: {}, 序列号: {}",
                     current,
                     current_sequence
@@ -517,17 +498,11 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
             Ok(true)
         }
         Ok(Ok((false, error_msg))) => {
-            logging!(warn, Type::Cmd, true, "配置验证失败: {}", error_msg);
+            logging!(warn, Type::Cmd, "配置验证失败: {}", error_msg);
             Config::profiles().await.discard();
             // 如果验证失败，恢复到之前的配置
             if let Some(prev_profile) = current_profile {
-                logging!(
-                    info,
-                    Type::Cmd,
-                    true,
-                    "尝试恢复到之前的配置: {}",
-                    prev_profile
-                );
+                logging!(info, Type::Cmd, "尝试恢复到之前的配置: {}", prev_profile);
                 let restore_profiles = IProfiles {
                     current: Some(prev_profile),
                     items: None,
@@ -547,7 +522,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                     }
                 });
 
-                logging!(info, Type::Cmd, true, "成功恢复到之前的配置");
+                logging!(info, Type::Cmd, "成功恢复到之前的配置");
             }
 
             // 发送验证错误通知
@@ -559,7 +534,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
             logging!(
                 warn,
                 Type::Cmd,
-                true,
                 "更新过程发生错误: {}, 序列号: {}",
                 e,
                 current_sequence
@@ -576,7 +550,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
             logging!(
                 error,
                 Type::Cmd,
-                true,
                 "{}, 序列号: {}",
                 timeout_msg,
                 current_sequence
@@ -587,7 +560,6 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
                 logging!(
                     info,
                     Type::Cmd,
-                    true,
                     "超时后尝试恢复到之前的配置: {}, 序列号: {}",
                     prev_profile,
                     current_sequence
@@ -615,7 +587,7 @@ pub async fn patch_profiles_config(profiles: IProfiles) -> CmdResult<bool> {
 /// 根据profile name修改profiles
 #[tauri::command]
 pub async fn patch_profiles_config_by_profile_index(profile_index: String) -> CmdResult<bool> {
-    logging!(info, Type::Cmd, true, "切换配置到: {}", profile_index);
+    logging!(info, Type::Cmd, "切换配置到: {}", profile_index);
 
     let profiles = IProfiles {
         current: Some(profile_index),

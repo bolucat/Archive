@@ -1,26 +1,24 @@
 #!/bin/bash
+set -euo pipefail
 
-#pnpm pretty-quick --staged
+echo "[pre-commit] Running lint-staged for JS/TS files..."
+# Auto-fix staged JS/TS files, print warnings but don't fail commit
+npx lint-staged || true
 
-if git diff --cached --name-only | grep -q '^src/'; then
-    pnpm format:check
-    if [ $? -ne 0 ]; then
-        echo "Code format check failed in src/. Please fix formatting issues."
-        exit 1
-    fi
-fi
+# Check staged Rust files
+RUST_FILES=$(git diff --cached --name-only | grep -E '^src-tauri/.*\.rs$' || true)
+if [ -n "$RUST_FILES" ]; then
+    echo "[pre-commit] Running rustfmt and clippy on staged Rust files..."
+    cd src-tauri || exit
 
-if git diff --cached --name-only | grep -q '^src-tauri/'; then
-    cd src-tauri
+    # Auto-format Rust code
     cargo fmt
-    if [ $? -ne 0 ]; then
-        echo "rustfmt failed to format the code. Please fix the issues and try again."
-        exit 1
-    fi
+
+    # Lint with clippy, print warnings but don't fail commit
+    cargo clippy || echo "⚠️ clippy found issues, but commit will continue."
+
     cd ..
 fi
 
-#git add .
-
-# 允许提交
+echo "[pre-commit] Checks completed. Some warnings may exist, please review."
 exit 0

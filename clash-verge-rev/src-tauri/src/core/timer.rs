@@ -64,7 +64,7 @@ impl Timer {
         if let Err(e) = self.refresh().await {
             // Reset initialization flag on error
             self.initialized.store(false, Ordering::SeqCst);
-            logging_error!(Type::Timer, false, "Failed to initialize timer: {}", e);
+            logging_error!(Type::Timer, "Failed to initialize timer: {}", e);
             return Err(e);
         }
 
@@ -136,6 +136,27 @@ impl Timer {
         }
 
         logging!(info, Type::Timer, "Timer initialization completed");
+        Ok(())
+    }
+
+    /// 每 3 秒更新系统托盘菜单，总共执行 3 次
+    pub fn add_update_tray_menu_task(&self) -> Result<()> {
+        let tid = self.timer_count.fetch_add(1, Ordering::SeqCst);
+        let delay_timer = self.delay_timer.write();
+        let task = TaskBuilder::default()
+            .set_task_id(tid)
+            .set_maximum_parallel_runnable_num(1)
+            .set_frequency_count_down_by_seconds(3, 3)
+            .spawn_async_routine(|| async move {
+                logging!(info, Type::Timer, "Updating tray menu");
+                crate::core::tray::Tray::global()
+                    .update_tray_display()
+                    .await
+            })
+            .context("failed to create update tray menu timer task")?;
+        delay_timer
+            .add_task(task)
+            .context("failed to add update tray menu timer task")?;
         Ok(())
     }
 
@@ -480,7 +501,7 @@ impl Timer {
                 }
             },
             Err(_) => {
-                logging_error!(Type::Timer, false, "Timer task timed out for uid: {}", uid);
+                logging_error!(Type::Timer, "Timer task timed out for uid: {}", uid);
             }
         }
 

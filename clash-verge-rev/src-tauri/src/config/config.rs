@@ -6,9 +6,11 @@ use crate::{
     utils::{dirs, help, logging::Type},
 };
 use anyhow::{Result, anyhow};
+use backoff::{Error as BackoffError, ExponentialBackoff};
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::sync::OnceCell;
-use tokio::time::{Duration, sleep};
+use tokio::time::sleep;
 
 pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
 pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
@@ -73,9 +75,9 @@ impl Config {
         }
         // 生成运行时配置
         if let Err(err) = Self::generate().await {
-            logging!(error, Type::Config, true, "生成运行时配置失败: {}", err);
+            logging!(error, Type::Config, "生成运行时配置失败: {}", err);
         } else {
-            logging!(info, Type::Config, true, "生成运行时配置成功");
+            logging!(info, Type::Config, "生成运行时配置成功");
         }
 
         // 生成运行时配置文件并验证
@@ -83,7 +85,7 @@ impl Config {
 
         let validation_result = if config_result.is_ok() {
             // 验证配置文件
-            logging!(info, Type::Config, true, "开始验证配置");
+            logging!(info, Type::Config, "开始验证配置");
 
             match CoreManager::global().validate_config().await {
                 Ok((is_valid, error_msg)) => {
@@ -91,7 +93,6 @@ impl Config {
                         logging!(
                             warn,
                             Type::Config,
-                            true,
                             "[首次启动] 配置验证失败，使用默认最小配置启动: {}",
                             error_msg
                         );
@@ -100,14 +101,14 @@ impl Config {
                             .await?;
                         Some(("config_validate::boot_error", error_msg))
                     } else {
-                        logging!(info, Type::Config, true, "配置验证成功");
+                        logging!(info, Type::Config, "配置验证成功");
                         // 前端没有必要知道验证成功的消息，也没有事件驱动
                         // Some(("config_validate::success", String::new()))
                         None
                     }
                 }
                 Err(err) => {
-                    logging!(warn, Type::Config, true, "验证进程执行失败: {}", err);
+                    logging!(warn, Type::Config, "验证过程执行失败: {}", err);
                     CoreManager::global()
                         .use_default_config("config_validate::process_terminated", "")
                         .await?;
@@ -115,7 +116,7 @@ impl Config {
                 }
             }
         } else {
-            logging!(warn, Type::Config, true, "生成配置文件失败，使用默认配置");
+            logging!(warn, Type::Config, "生成配置文件失败，使用默认配置");
             CoreManager::global()
                 .use_default_config("config_validate::error", "")
                 .await?;
@@ -162,6 +163,64 @@ impl Config {
         });
 
         Ok(())
+    }
+
+    pub async fn verify_config_initialization() {
+        logging!(info, Type::Setup, "Verifying config initialization...");
+
+        let backoff_strategy = ExponentialBackoff {
+            initial_interval: std::time::Duration::from_millis(100),
+            max_interval: std::time::Duration::from_secs(2),
+            max_elapsed_time: Some(std::time::Duration::from_secs(10)),
+            multiplier: 2.0,
+            ..Default::default()
+        };
+
+        let operation = || async {
+            if Config::runtime().await.latest_ref().config.is_some() {
+                logging!(
+                    info,
+                    Type::Setup,
+                    "Config initialization verified successfully"
+                );
+                return Ok::<(), BackoffError<anyhow::Error>>(());
+            }
+
+            logging!(
+                warn,
+                Type::Setup,
+                "Runtime config not found, attempting to regenerate..."
+            );
+
+            match Config::generate().await {
+                Ok(_) => {
+                    logging!(info, Type::Setup, "Config successfully regenerated");
+                    Ok(())
+                }
+                Err(e) => {
+                    logging!(warn, Type::Setup, "Failed to generate config: {}", e);
+                    Err(BackoffError::transient(e))
+                }
+            }
+        };
+
+        match backoff::future::retry(backoff_strategy, operation).await {
+            Ok(_) => {
+                logging!(
+                    info,
+                    Type::Setup,
+                    "Config initialization verified with backoff retry"
+                );
+            }
+            Err(e) => {
+                logging!(
+                    error,
+                    Type::Setup,
+                    "Failed to verify config initialization after retries: {}",
+                    e
+                );
+            }
+        }
     }
 }
 

@@ -5,7 +5,7 @@ use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::{StreamExt, wrappers::UnboundedReceiverStream};
 
 use crate::config::{Config, IVerge};
-use crate::core::async_proxy_query::AsyncProxyQuery;
+use crate::core::{async_proxy_query::AsyncProxyQuery, handle};
 use crate::logging_error;
 use crate::process::AsyncHandler;
 use crate::utils::logging::Type;
@@ -85,6 +85,7 @@ struct ProxyConfig {
     sys_enabled: bool,
     pac_enabled: bool,
     guard_enabled: bool,
+    guard_duration: u64,
 }
 
 static PROXY_MANAGER: Lazy<EventDrivenProxyManager> = Lazy::new(EventDrivenProxyManager::new);
@@ -184,15 +185,39 @@ impl EventDrivenProxyManager {
         let mut event_stream = UnboundedReceiverStream::new(event_rx);
         let mut query_stream = UnboundedReceiverStream::new(query_rx);
 
+        // 初始化定时器，用于周期性检查代理设置
+        let config = Self::get_proxy_config().await;
+        let mut guard_interval = tokio::time::interval(Duration::from_secs(config.guard_duration));
+        // 防止首次立即触发
+        guard_interval.tick().await;
+
         loop {
             tokio::select! {
                 Some(event) = event_stream.next() => {
                     log::debug!(target: "app", "处理代理事件: {event:?}");
+                    let event_clone = event.clone(); // 保存一份副本用于后续检查
                     Self::handle_event(&state, event).await;
+
+                    // 检查是否是配置变更事件，如果是，则可能需要更新定时器
+                    if matches!(event_clone, ProxyEvent::ConfigChanged | ProxyEvent::AppStarted) {
+                        let new_config = Self::get_proxy_config().await;
+                        // 重新设置定时器间隔
+                        guard_interval = tokio::time::interval(Duration::from_secs(new_config.guard_duration));
+                        // 防止首次立即触发
+                        guard_interval.tick().await;
+                    }
                 }
                 Some(query) = query_stream.next() => {
                     let result = Self::handle_query(&state).await;
                     let _ = query.response_tx.send(result);
+                }
+                _ = guard_interval.tick() => {
+                    // 定时检查代理设置
+                    let config = Self::get_proxy_config().await;
+                    if config.guard_enabled && config.sys_enabled {
+                        log::debug!(target: "app", "定时检查代理设置");
+                        Self::check_and_restore_proxy(&state).await;
+                    }
                 }
                 else => {
                     // 两个通道都关闭时退出
@@ -225,6 +250,12 @@ impl EventDrivenProxyManager {
             }
             ProxyEvent::AppStopping => {
                 log::info!(target: "app", "清理代理状态");
+                Self::update_state_timestamp(state, |s| {
+                    s.sys_enabled = false;
+                    s.pac_enabled = false;
+                    s.is_healthy = false;
+                })
+                .await;
             }
         }
     }
@@ -276,6 +307,10 @@ impl EventDrivenProxyManager {
     }
 
     async fn check_and_restore_proxy(state: &Arc<RwLock<ProxyState>>) {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过系统代理守卫检查");
+            return;
+        }
         let (sys_enabled, pac_enabled) = {
             let s = state.read().await;
             (s.sys_enabled, s.pac_enabled)
@@ -295,6 +330,11 @@ impl EventDrivenProxyManager {
     }
 
     async fn check_and_restore_pac_proxy(state: &Arc<RwLock<ProxyState>>) {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过PAC代理恢复检查");
+            return;
+        }
+
         let current = Self::get_auto_proxy_with_timeout().await;
         let expected = Self::get_expected_pac_config().await;
 
@@ -321,6 +361,11 @@ impl EventDrivenProxyManager {
     }
 
     async fn check_and_restore_sys_proxy(state: &Arc<RwLock<ProxyState>>) {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过系统代理恢复检查");
+            return;
+        }
+
         let current = Self::get_sys_proxy_with_timeout().await;
         let expected = Self::get_expected_sys_proxy().await;
 
@@ -349,6 +394,11 @@ impl EventDrivenProxyManager {
     }
 
     async fn enable_system_proxy(state: &Arc<RwLock<ProxyState>>) {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过启用系统代理");
+            return;
+        }
+
         log::info!(target: "app", "启用系统代理");
 
         let pac_enabled = state.read().await.pac_enabled;
@@ -376,17 +426,22 @@ impl EventDrivenProxyManager {
             let disabled_sys = Sysproxy::default();
             let disabled_auto = Autoproxy::default();
 
-            logging_error!(Type::System, true, disabled_auto.set_auto_proxy());
-            logging_error!(Type::System, true, disabled_sys.set_system_proxy());
+            logging_error!(Type::System, disabled_auto.set_auto_proxy());
+            logging_error!(Type::System, disabled_sys.set_system_proxy());
         }
     }
 
     async fn switch_proxy_mode(state: &Arc<RwLock<ProxyState>>, to_pac: bool) {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过代理模式切换");
+            return;
+        }
+
         log::info!(target: "app", "切换到{}模式", if to_pac { "PAC" } else { "HTTP代理" });
 
         if to_pac {
             let disabled_sys = Sysproxy::default();
-            logging_error!(Type::System, true, disabled_sys.set_system_proxy());
+            logging_error!(Type::System, disabled_sys.set_system_proxy());
 
             let expected = Self::get_expected_pac_config().await;
             if let Err(e) = Self::restore_pac_proxy(&expected.url).await {
@@ -394,7 +449,7 @@ impl EventDrivenProxyManager {
             }
         } else {
             let disabled_auto = Autoproxy::default();
-            logging_error!(Type::System, true, disabled_auto.set_auto_proxy());
+            logging_error!(Type::System, disabled_auto.set_auto_proxy());
 
             let expected = Self::get_expected_sys_proxy().await;
             if let Err(e) = Self::restore_sys_proxy(&expected).await {
@@ -439,19 +494,21 @@ impl EventDrivenProxyManager {
     }
 
     async fn get_proxy_config() -> ProxyConfig {
-        let (sys_enabled, pac_enabled, guard_enabled) = {
+        let (sys_enabled, pac_enabled, guard_enabled, guard_duration) = {
             let verge_config = Config::verge().await;
             let verge = verge_config.latest_ref();
             (
                 verge.enable_system_proxy.unwrap_or(false),
                 verge.proxy_auto_config.unwrap_or(false),
                 verge.enable_proxy_guard.unwrap_or(false),
+                verge.proxy_guard_duration.unwrap_or(30), // 默认30秒
             )
         };
         ProxyConfig {
             sys_enabled,
             pac_enabled,
             guard_enabled,
+            guard_duration,
         }
     }
 
@@ -518,6 +575,10 @@ impl EventDrivenProxyManager {
 
     #[cfg(target_os = "windows")]
     async fn restore_pac_proxy(expected_url: &str) -> Result<(), anyhow::Error> {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过PAC代理恢复");
+            return Ok(());
+        }
         Self::execute_sysproxy_command(&["pac", expected_url]).await
     }
 
@@ -538,6 +599,10 @@ impl EventDrivenProxyManager {
 
     #[cfg(target_os = "windows")]
     async fn restore_sys_proxy(expected: &Sysproxy) -> Result<(), anyhow::Error> {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(target: "app", "应用正在退出，跳过系统代理恢复");
+            return Ok(());
+        }
         let address = format!("{}:{}", expected.host, expected.port);
         Self::execute_sysproxy_command(&["global", &address, &expected.bypass]).await
     }
@@ -555,6 +620,15 @@ impl EventDrivenProxyManager {
 
     #[cfg(target_os = "windows")]
     async fn execute_sysproxy_command(args: &[&str]) -> Result<(), anyhow::Error> {
+        if handle::Handle::global().is_exiting() {
+            log::debug!(
+                target: "app",
+                "应用正在退出，取消调用 sysproxy.exe，参数: {:?}",
+                args
+            );
+            return Ok(());
+        }
+
         use crate::utils::dirs;
         #[allow(unused_imports)] // creation_flags必须
         use std::os::windows::process::CommandExt;
