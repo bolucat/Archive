@@ -407,7 +407,7 @@ return view.extend({
 		so = ss.taboption('field_general', form.ListValue, 'tuic_udp_relay_mode', _('UDP relay mode'),
 			_('UDP packet relay mode.'));
 		so.default = 'native';
-		so.value('native', _('Native'));
+		so.value('native', _('Native UDP'));
 		so.value('quic', _('QUIC'));
 		so.depends({type: 'tuic', tuic_udp_over_stream: '0'});
 		so.modalonly = true;
@@ -1264,7 +1264,7 @@ return view.extend({
 
 			switch (option) {
 				case 'file':
-					return uci.get(data[0], section_id, '.name');
+					return `${hm.HM_DIR}/${this.section.sectiontype}/` + uci.get(data[0], section_id, '.name');
 				case 'http':
 					return uci.get(data[0], section_id, 'url');
 				case 'inline':
