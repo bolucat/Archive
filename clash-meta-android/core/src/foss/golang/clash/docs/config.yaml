@@ -543,7 +543,7 @@ proxies: # socks5
     plugin: kcptun
     plugin-opts:
       key: it's a secrect # pre-shared secret between client and server
-      crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, sm4, none, null
+      crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
       mode: fast # profiles: fast3, fast2, fast, normal, manual
       conn: 1 # set num of UDP connections to server
       autoexpire: 0 # set auto expiration time(in seconds) for a single UDP connection, 0 to disable
@@ -558,7 +558,7 @@ proxies: # socks5
       acknodelay: false # flush ack immediately when a packet is received
       nodelay: 0
       interval: 50
-      resend: false
+      resend: 0
       sockbuf: 4194304 # per-socket buffer in bytes
       smuxver: 1 # specify smux version, available 1,2
       smuxbuf: 4194304 # the overall de-mux buffer in bytes
@@ -1024,8 +1024,8 @@ proxies: # socks5
   - name: mieru
     type: mieru
     server: 1.2.3.4
-    port: 2999 # 支持使用 ports 格式，例如 2999,3999 或 2999-3010,3950,3995-3999
-    # port-range: 2090-2099 # 已废弃，请使用 port
+    port: 2999
+    # port-range: 2090-2099 #（不可同时填写 port 和 port-range）
     transport: TCP # 只支持 TCP
     udp: true # 支持 UDP over TCP
     username: user
@@ -1370,7 +1370,7 @@ listeners:
     # kcp-tun:
     #   enable: false
     #   key: it's a secrect # pre-shared secret between client and server
-    #   crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, sm4, none, null
+    #   crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
     #   mode: fast # profiles: fast3, fast2, fast, normal, manual
     #   conn: 1 # set num of UDP connections to server
     #   autoexpire: 0 # set auto expiration time(in seconds) for a single UDP connection, 0 to disable
@@ -1385,7 +1385,7 @@ listeners:
     #   acknodelay: false # flush ack immediately when a packet is received
     #   nodelay: 0
     #   interval: 50
-    #   resend: false
+    #   resend: 0
     #   sockbuf: 4194304 # per-socket buffer in bytes
     #   smuxver: 1 # specify smux version, available 1,2
     #   smuxbuf: 4194304 # the overall de-mux buffer in bytes
