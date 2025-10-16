@@ -96,15 +96,14 @@ func (t *Transport) Close() error {
 
 func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	question := message.Question[0]
-	domain := dns.FqdnToDomain(question.Name)
 	if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA {
-		addresses := t.hosts.Lookup(domain)
+		addresses := t.hosts.Lookup(dns.FqdnToDomain(question.Name))
 		if len(addresses) > 0 {
 			return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
 		}
 	}
 	if !t.fallback {
-		return t.exchange(ctx, message, domain)
+		return t.exchange(ctx, message, question.Name)
 	}
 	if !C.IsIos {
 		if t.dhcpTransport != nil {
@@ -116,7 +115,7 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	}
 	if t.preferGo {
 		// Assuming the user knows what they are doing, we still execute the query which will fail.
-		return t.exchange(ctx, message, domain)
+		return t.exchange(ctx, message, question.Name)
 	}
 	if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA {
 		var network string
@@ -125,7 +124,7 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 		} else {
 			network = "ip6"
 		}
-		addresses, err := t.resolver.LookupNetIP(ctx, network, domain)
+		addresses, err := t.resolver.LookupNetIP(ctx, network, question.Name)
 		if err != nil {
 			var dnsError *net.DNSError
 			if errors.As(err, &dnsError) && dnsError.IsNotFound {

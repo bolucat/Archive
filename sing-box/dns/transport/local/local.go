@@ -53,13 +53,15 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 	switch stage {
 	case adapter.StartStateInitialize:
 		if !t.preferGo {
-			resolvedResolver, err := NewResolvedResolver(t.ctx, t.logger)
-			if err == nil {
-				err = resolvedResolver.Start()
+			if isSystemdResolvedManaged() {
+				resolvedResolver, err := NewResolvedResolver(t.ctx, t.logger)
 				if err == nil {
-					t.resolved = resolvedResolver
-				} else {
-					t.logger.Warn(E.Cause(err, "initialize resolved resolver"))
+					err = resolvedResolver.Start()
+					if err == nil {
+						t.resolved = resolvedResolver
+					} else {
+						t.logger.Warn(E.Cause(err, "initialize resolved resolver"))
+					}
 				}
 			}
 		}
@@ -82,12 +84,11 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 		}
 	}
 	question := message.Question[0]
-	domain := dns.FqdnToDomain(question.Name)
 	if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA {
-		addresses := t.hosts.Lookup(domain)
+		addresses := t.hosts.Lookup(dns.FqdnToDomain(question.Name))
 		if len(addresses) > 0 {
 			return dns.FixedResponse(message.Id, question, addresses, C.DefaultDNSTTL), nil
 		}
 	}
-	return t.exchange(ctx, message, domain)
+	return t.exchange(ctx, message, question.Name)
 }

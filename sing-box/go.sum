@@ -116,8 +116,6 @@ github.com/mdlayher/sdnotify v1.0.0 h1:Ma9XeLVN/l0qpyx1tNeMSeTjCPH6NtuD6/N9XdTlQ
 github.com/mdlayher/sdnotify v1.0.0/go.mod h1:HQUmpM4XgYkhDLtd+Uad8ZFK1T9D5+pNxnXQjCeJlGE=
 github.com/mdlayher/socket v0.5.1 h1:VZaqt6RkGkt2OE9l3GcC6nZkqD3xKeQLyfleW/uBcos=
 github.com/mdlayher/socket v0.5.1/go.mod h1:TjPLHI1UgwEv5J1B5q0zTZq12A/6H7nKmtTanQE37IQ=
-github.com/metacubex/utls v1.8.0 h1:mSYi6FMnmc5riARl5UZDmWVy710z+P5b7xuGW0lV9ac=
-github.com/metacubex/utls v1.8.0/go.mod h1:FdjYzVfCtgtna19hX0ER1Xsa5uJInwdQ4IcaaI98lEQ=
 github.com/metacubex/utls v1.8.2 h1:d7KalMZ5hnOJ6lThMz8Ykd+5dvmXH3Eoeyfv2jUuG3w=
 github.com/metacubex/utls v1.8.2/go.mod h1:kncGGVhFaoGn5M3pFe3SXhZCzsbCJayNOH4UEqTKTko=
 github.com/mholt/acmez/v3 v3.1.2 h1:auob8J/0FhmdClQicvJvuDavgd5ezwLBfKuYmynhYzc=
@@ -179,8 +177,8 @@ github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1 h1:aSwUNYUkV
 github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1/go.mod h1:P11scgTxMxVVQ8dlM27yNm3Cro40mD0+gHbnqrNGDuY=
 github.com/sagernet/smux v1.5.34-mod.2 h1:gkmBjIjlJ2zQKpLigOkFur5kBKdV6bNRoFu2WkltRQ4=
 github.com/sagernet/smux v1.5.34-mod.2/go.mod h1:0KW0+R+ycvA2INW4gbsd7BNyg+HEfLIAxa5N02/28Zc=
-github.com/sagernet/tailscale v1.86.5-sing-box-1.13-mod.3 h1:OGoHEw76F3F4keIGcOwB/5U+P1N3i+hLlgC7rvSnub0=
-github.com/sagernet/tailscale v1.86.5-sing-box-1.13-mod.3/go.mod h1:YdN/avjce8sqPFLT9E1uEh8gPewNSnC41U4ZhBJ+ACw=
+github.com/sagernet/tailscale v1.86.5-sing-box-1.13-mod.4 h1:Ceg+9Ug+qAFgEchGodlHmMOY2h7KktQQDAyuoIsPbos=
+github.com/sagernet/tailscale v1.86.5-sing-box-1.13-mod.4/go.mod h1:YdN/avjce8sqPFLT9E1uEh8gPewNSnC41U4ZhBJ+ACw=
 github.com/sagernet/wireguard-go v0.0.2-beta.1.0.20250917110311-16510ac47288 h1:E2tZFeg9mGYGQ7E7BbxMv1cU35HxwgRm6tPKI2Pp7DA=
 github.com/sagernet/wireguard-go v0.0.2-beta.1.0.20250917110311-16510ac47288/go.mod h1:WUxgxUDZoCF2sxVmW+STSxatP02Qn3FcafTiI2BLtE0=
 github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854 h1:6uUiZcDRnZSAegryaUGwPC/Fj13JSHwiTftrXhMmYOc=
