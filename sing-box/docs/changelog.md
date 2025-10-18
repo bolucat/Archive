@@ -2,6 +2,18 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.23
+
+* Fix compatibility with MPTCP **1**
+* Fixes and improvements
+
+**1**:
+
+`auto_redirect` now rejects MPTCP connections by default to fix compatibility issues,
+but you can change it to bypass the sing-box via the new `exclude_mptcp` option.
+
+See [TUN](/configuration/inbound/tun/#exclude_mptcp).
+
 #### 1.13.0-alpha.22
 
 * Update uTLS to v1.8.1 **1**

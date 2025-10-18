@@ -7,15 +7,13 @@ import (
 	"crypto/tls"
 	"strings"
 
-	"github.com/sagernet/certmagic"
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/json/badoption"
 	"github.com/sagernet/sing/common/logger"
 
+	"github.com/caddyserver/certmagic"
 	"github.com/libdns/alidns"
 	"github.com/libdns/cloudflare"
 	"github.com/mholt/acmez/v3/acme"
@@ -24,14 +22,14 @@ import (
 )
 
 type acmeWrapper struct {
-	ctx     context.Context
-	cfg     *certmagic.Config
-	cache   *certmagic.Cache
-	domains [][]string
+	ctx    context.Context
+	cfg    *certmagic.Config
+	cache  *certmagic.Cache
+	domain []string
 }
 
 func (w *acmeWrapper) Start() error {
-	return w.cfg.ManageSyncGrouped(w.ctx, w.domains)
+	return w.cfg.ManageSync(w.ctx, w.domain)
 }
 
 func (w *acmeWrapper) Close() error {
@@ -151,7 +149,5 @@ func startACME(ctx context.Context, logger logger.Logger, options option.Inbound
 			NextProtos:     []string{ACMETLS1Protocol},
 		}
 	}
-	return tlsConfig, &acmeWrapper{ctx: ctx, cfg: config, cache: cache, domains: common.Map(options.Domain, func(it badoption.Listable[string]) []string {
-		return it
-	})}, nil
+	return tlsConfig, &acmeWrapper{ctx: ctx, cfg: config, cache: cache, domain: options.Domain}, nil
 }
