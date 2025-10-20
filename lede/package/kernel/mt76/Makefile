@@ -64,7 +64,8 @@ define KernelPackage/mt76-default
   DEPENDS:= \
 	+kmod-mac80211 \
 	+@DRIVER_11AC_SUPPORT \
-	+@KERNEL_PAGE_POOL
+	+@KERNEL_PAGE_POOL \
+	@!TARGET_uml
 endef
 
 define KernelPackage/mt76
@@ -341,7 +342,8 @@ endef
 define KernelPackage/mt7996e
   $(KernelPackage/mt76-default)
   TITLE:=MediaTek MT7996E wireless driver
-  DEPENDS+=@PCI_SUPPORT +kmod-mt76-connac +kmod-hwmon-core +@DRIVER_11AX_SUPPORT +@KERNEL_RELAY
+  DEPENDS+=@PCI_SUPPORT +kmod-mt76-connac +kmod-hwmon-core +@DRIVER_11AX_SUPPORT \
+  	   +@KERNEL_RELAY
   FILES:= $(PKG_BUILD_DIR)/mt7996/mt7996e.ko
   AUTOLOAD:=$(call AutoProbe,mt7996e)
 endef
@@ -734,6 +736,11 @@ endef
 define Package/mt76-test/install
 	mkdir -p $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/tools/mt76-test $(1)/usr/sbin
+endef
+
+define Build/InstallDev
+	mkdir -p $(STAGING_DIR_IMAGE)
+	$(CP) $(PKG_BUILD_DIR)/firmware/mt7981_eeprom_mt7976_dbdc.bin $(STAGING_DIR_IMAGE)/
 endef
 
 $(eval $(call KernelPackage,mt76-core))
