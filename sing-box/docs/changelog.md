@@ -2,6 +2,25 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.25
+
+* Fixes and improvements
+
+#### 1.12.11
+
+* Fixes and improvements
+
+#### 1.13.0-alpha.24
+
+* Add Claude Code Multiplexer service **1**
+* Fixes and improvements
+
+**1**:
+
+CCM (Claude Code Multiplexer) service allows you to access your local Claude Code subscription remotely through custom tokens, eliminating the need for OAuth authentication on remote clients.
+
+See [CCM](/configuration/service/ccm).
+
 #### 1.13.0-alpha.23
 
 * Fix compatibility with MPTCP **1**

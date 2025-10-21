@@ -44,7 +44,7 @@ config TARGET_PREINIT_DISABLE_FAILSAFE
 config TARGET_PREINIT_TIMEOUT
 	int
 	prompt "Failsafe/Debug wait timeout" if PREINITOPT
-	default 2
+	default 4
 	help
 		How long to wait for failsafe mode to be entered or for
 		a debug option to be pressed before continuing with a
@@ -240,6 +240,12 @@ if VERSIONOPT
 		prompt "Support URL"
 		help
 			This an URL to provide users seeking support
+
+	config VERSION_FIRMWARE_URL
+		string
+		prompt "Firmware URL"
+		help
+			This is an URL to provide users for downloading firmware
 
 	config VERSION_PRODUCT
 		string

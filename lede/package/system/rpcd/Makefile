@@ -12,9 +12,9 @@ PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL=$(PROJECT_GIT)/project/rpcd.git
-PKG_MIRROR_HASH:=ec893786c7b1de08a260c791a15a7df471ff95d477ad1a440dc8d8bf63a0be2b
-PKG_SOURCE_DATE:=2024-12-02
-PKG_SOURCE_VERSION:=cc9a471c32e106fa9ee045540613fefdc31c5cd2
+PKG_MIRROR_HASH:=5ca6af605d29a8ea0e18c6e47ac61a03c07faca183471283fbc17947d35f907e
+PKG_SOURCE_DATE:=2025-10-03
+PKG_SOURCE_VERSION:=cfb93f105ca2b5e81c5e489076f38d5786f346ea
 PKG_MAINTAINER:=Jo-Philipp Wich <jo@mein.io>
 
 PKG_LICENSE:=ISC
@@ -39,7 +39,7 @@ endef
 
 define Package/rpcd
   $(Package/rpcd/default)
-  DEPENDS+= +libuci +libblobmsg-json +libjson-c
+  DEPENDS+= +USE_GLIBC:libcrypt-compat +libuci +libblobmsg-json +libjson-c
 endef
 
 define Package/rpcd/description
@@ -103,5 +103,5 @@ endef
 $(eval $(call BuildPackage,rpcd))
 $(eval $(call BuildPlugin,file,,Provides ubus calls for file and directory operations.))
 $(eval $(call BuildPlugin,rpcsys,,Provides ubus calls for sysupgrade and password changing.))
-$(eval $(call BuildPlugin,iwinfo,+libiwinfo,Provides ubus calls for accessing iwinfo data.))
+$(eval $(call BuildPlugin,iwinfo,+libiwinfo,Provides ubus calls for accessing iwinfo data.,libiwinfo (>=2023.01.21)))
 $(eval $(call BuildPlugin,ucode,+libucode,Allows implementing plugins using ucode scripts.))

@@ -112,7 +112,7 @@ public abstract class StandardV2RayBean extends AbstractBean {
 
     @Override
     public void serialize(ByteBufferOutput output) {
-        output.writeInt(3);
+        output.writeInt(4);
         super.serialize(output);
         output.writeString(uuid);
         output.writeString(encryption);
@@ -133,18 +133,15 @@ public abstract class StandardV2RayBean extends AbstractBean {
                 output.writeString(earlyDataHeaderName);
                 break;
             }
-            case "http": {
+            case "http":
+            case "httpupgrade": {
                 output.writeString(host);
                 output.writeString(path);
                 break;
             }
             case "grpc": {
                 output.writeString(path);
-            }
-            case "httpupgrade": {
-                output.writeString(host);
-                output.writeString(path);
-
+                break;
             }
         }
 
@@ -193,17 +190,20 @@ public abstract class StandardV2RayBean extends AbstractBean {
                 earlyDataHeaderName = input.readString();
                 break;
             }
-            case "http": {
+            case "http":
+            case "httpupgrade": {
                 host = input.readString();
                 path = input.readString();
                 break;
             }
             case "grpc": {
                 path = input.readString();
-            }
-            case "httpupgrade": {
-                host = input.readString();
-                path = input.readString();
+                if (version < 4) {
+                    // 解决老版本数据的读取问题
+                    input.readString();
+                    input.readString();
+                }
+                break;
             }
         }
 
