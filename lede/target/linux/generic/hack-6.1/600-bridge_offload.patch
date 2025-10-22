@@ -640,7 +640,7 @@ Subject: [PATCH] net/bridge: add bridge offload
 +}
 --- a/net/bridge/br_private.h
 +++ b/net/bridge/br_private.h
-@@ -271,7 +271,13 @@ struct net_bridge_fdb_entry {
+@@ -273,7 +273,13 @@ struct net_bridge_fdb_entry {
  	unsigned long			updated ____cacheline_aligned_in_smp;
  	unsigned long			used;
  
@@ -655,7 +655,7 @@ Subject: [PATCH] net/bridge: add bridge offload
  };
  
  struct net_bridge_fdb_flush_desc {
-@@ -353,6 +359,12 @@ struct net_bridge_mdb_entry {
+@@ -355,6 +361,12 @@ struct net_bridge_mdb_entry {
  	struct rcu_head			rcu;
  };
  
@@ -668,7 +668,7 @@ Subject: [PATCH] net/bridge: add bridge offload
  struct net_bridge_port {
  	struct net_bridge		*br;
  	struct net_device		*dev;
-@@ -414,6 +426,7 @@ struct net_bridge_port {
+@@ -416,6 +428,7 @@ struct net_bridge_port {
  	u16				backup_redirected_cnt;
  
  	struct bridge_stp_xstats	stp_xstats;
@@ -676,7 +676,7 @@ Subject: [PATCH] net/bridge: add bridge offload
  };
  
  #define kobj_to_brport(obj)	container_of(obj, struct net_bridge_port, kobj)
-@@ -531,6 +544,9 @@ struct net_bridge {
+@@ -534,6 +547,9 @@ struct net_bridge {
  	struct kobject			*ifobj;
  	u32				auto_cnt;
  
@@ -686,7 +686,7 @@ Subject: [PATCH] net/bridge: add bridge offload
  #ifdef CONFIG_NET_SWITCHDEV
  	/* Counter used to make sure that hardware domains get unique
  	 * identifiers in case a bridge spans multiple switchdev instances.
-@@ -566,6 +582,10 @@ struct br_input_skb_cb {
+@@ -569,6 +585,10 @@ struct br_input_skb_cb {
  #ifdef CONFIG_NETFILTER_FAMILY_BRIDGE
  	u8 br_netfilter_broute:1;
  #endif

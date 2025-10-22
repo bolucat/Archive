@@ -154,7 +154,7 @@ Signed-off-by: T.J. Mercier <tjmercier@google.com>
  
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
-@@ -4692,6 +4692,148 @@ void lru_gen_look_around(struct page_vma
+@@ -4699,6 +4699,148 @@ void lru_gen_look_around(struct page_vma
  }
  
  /******************************************************************************
@@ -303,7 +303,7 @@ Signed-off-by: T.J. Mercier <tjmercier@google.com>
   *                          the eviction
   ******************************************************************************/
  
-@@ -5397,53 +5539,6 @@ done:
+@@ -5404,53 +5546,6 @@ done:
  	pgdat->kswapd_failures = 0;
  }
  
@@ -357,7 +357,7 @@ Signed-off-by: T.J. Mercier <tjmercier@google.com>
  /******************************************************************************
   *                          state change
   ******************************************************************************/
-@@ -6089,67 +6184,6 @@ void lru_gen_exit_memcg(struct mem_cgrou
+@@ -6096,67 +6191,6 @@ void lru_gen_exit_memcg(struct mem_cgrou
  	}
  }
  

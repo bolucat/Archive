@@ -25,7 +25,7 @@ Signed-off-by: David S. Miller <davem@davemloft.net>
 
 --- a/drivers/net/phy/micrel.c
 +++ b/drivers/net/phy/micrel.c
-@@ -620,7 +620,7 @@ static int ksz8051_ksz8795_match_phy_dev
+@@ -622,7 +622,7 @@ static int ksz8051_ksz8795_match_phy_dev
  {
  	int ret;
  
@@ -34,7 +34,7 @@ Signed-off-by: David S. Miller <davem@davemloft.net>
  		return 0;
  
  	ret = phy_read(phydev, MII_BMSR);
-@@ -1455,7 +1455,7 @@ static int ksz9x31_cable_test_fault_leng
+@@ -1457,7 +1457,7 @@ static int ksz9x31_cable_test_fault_leng
  	 *
  	 * distance to fault = (VCT_DATA - 22) * 4 / cable propagation velocity
  	 */
@@ -43,7 +43,7 @@ Signed-off-by: David S. Miller <davem@davemloft.net>
  		dt = clamp(dt - 22, 0, 255);
  
  	return (dt * 400) / 10;
-@@ -1887,7 +1887,7 @@ static __always_inline int ksz886x_cable
+@@ -1889,7 +1889,7 @@ static __always_inline int ksz886x_cable
  	 */
  	dt = FIELD_GET(data_mask, status);
  

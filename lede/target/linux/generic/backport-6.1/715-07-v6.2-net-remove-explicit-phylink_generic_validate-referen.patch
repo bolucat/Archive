@@ -182,7 +182,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  	.mac_link_up		= vsc7514_phylink_mac_link_up,
 --- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-@@ -1090,7 +1090,6 @@ static void stmmac_mac_link_up(struct ph
+@@ -1095,7 +1095,6 @@ static void stmmac_mac_link_up(struct ph
  }
  
  static const struct phylink_mac_ops stmmac_phylink_mac_ops = {
@@ -202,7 +202,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  	.mac_link_up = am65_cpsw_nuss_mac_link_up,
 --- a/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
 +++ b/drivers/net/ethernet/xilinx/xilinx_axienet_main.c
-@@ -1750,7 +1750,6 @@ static void axienet_mac_link_up(struct p
+@@ -1756,7 +1756,6 @@ static void axienet_mac_link_up(struct p
  }
  
  static const struct phylink_mac_ops axienet_phylink_ops = {
@@ -226,7 +226,7 @@ Signed-off-by: Jakub Kicinski <kuba@kernel.org>
  }
 --- a/drivers/net/usb/asix_devices.c
 +++ b/drivers/net/usb/asix_devices.c
-@@ -787,7 +787,6 @@ static void ax88772_mac_link_up(struct p
+@@ -803,7 +803,6 @@ static void ax88772_mac_link_up(struct p
  }
  
  static const struct phylink_mac_ops ax88772_phylink_mac_ops = {

@@ -18,7 +18,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
 
 --- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
 +++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
-@@ -2527,9 +2527,13 @@ static void stmmac_bump_dma_threshold(st
+@@ -2532,9 +2532,13 @@ static void stmmac_bump_dma_threshold(st
   * @priv: driver private structure
   * @budget: napi budget limiting this functions packet handling
   * @queue: TX queue index
@@ -33,7 +33,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
  {
  	struct stmmac_tx_queue *tx_q = &priv->dma_conf.tx_queue[queue];
  	unsigned int bytes_compl = 0, pkts_compl = 0;
-@@ -2692,7 +2696,7 @@ static int stmmac_tx_clean(struct stmmac
+@@ -2697,7 +2701,7 @@ static int stmmac_tx_clean(struct stmmac
  
  	/* We still have pending packets, let's call for a new scheduling */
  	if (tx_q->dirty_tx != tx_q->cur_tx)
@@ -42,7 +42,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
  
  	__netif_tx_unlock_bh(netdev_get_tx_queue(priv->dev, queue));
  
-@@ -5503,12 +5507,13 @@ static int stmmac_napi_poll_tx(struct na
+@@ -5508,12 +5512,13 @@ static int stmmac_napi_poll_tx(struct na
  	struct stmmac_channel *ch =
  		container_of(napi, struct stmmac_channel, tx_napi);
  	struct stmmac_priv *priv = ch->priv_data;
@@ -57,7 +57,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
  	work_done = min(work_done, budget);
  
  	if (work_done < budget && napi_complete_done(napi, work_done)) {
-@@ -5519,6 +5524,10 @@ static int stmmac_napi_poll_tx(struct na
+@@ -5524,6 +5529,10 @@ static int stmmac_napi_poll_tx(struct na
  		spin_unlock_irqrestore(&ch->lock, flags);
  	}
  
@@ -68,7 +68,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
  	return work_done;
  }
  
-@@ -5527,12 +5536,13 @@ static int stmmac_napi_poll_rxtx(struct
+@@ -5532,12 +5541,13 @@ static int stmmac_napi_poll_rxtx(struct
  	struct stmmac_channel *ch =
  		container_of(napi, struct stmmac_channel, rxtx_napi);
  	struct stmmac_priv *priv = ch->priv_data;
@@ -83,7 +83,7 @@ Signed-off-by: Paolo Abeni <pabeni@redhat.com>
  	tx_done = min(tx_done, budget);
  
  	rx_done = stmmac_rx_zc(priv, budget, chan);
-@@ -5557,6 +5567,10 @@ static int stmmac_napi_poll_rxtx(struct
+@@ -5562,6 +5572,10 @@ static int stmmac_napi_poll_rxtx(struct
  		spin_unlock_irqrestore(&ch->lock, flags);
  	}
  
