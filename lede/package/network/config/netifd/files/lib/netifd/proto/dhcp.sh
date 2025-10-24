@@ -1,10 +1,9 @@
 #!/bin/sh
 
-[ -x /sbin/udhcpc ] || exit 0
+[ -L /sbin/udhcpc ] || exit 0
 
 . /lib/functions.sh
 . ../netifd-proto.sh
-. /lib/config/uci.sh
 init_proto "$@"
 
 proto_dhcp_init_config() {
@@ -32,18 +31,6 @@ proto_dhcp_add_sendopts() {
 	[ -n "$1" ] && append "$3" "-x $1"
 }
 
-proto_dhcp_get_default_clientid() {
-	[ -z "$1" ] && return
-
-	local iface="$1"
-	local duid
-	local iaid="0"
-
-        [ -e "/sys/class/net/$iface/ifindex" ] && iaid="$(cat "/sys/class/net/$iface/ifindex")"
-        duid="$(uci_get network @globals[0] dhcp_default_duid)"
-        [ -n "$duid" ] && printf "ff%08x%s" "$iaid" "$duid"
-}
-
 proto_dhcp_setup() {
 	local config="$1"
 	local iface="$2"
@@ -64,8 +51,7 @@ proto_dhcp_setup() {
 	[ "$defaultreqopts" = 0 ] && defaultreqopts="-o" || defaultreqopts=
 	[ "$broadcast" = 1 ] && broadcast="-B" || broadcast=
 	[ "$norelease" = 1 ] && norelease="" || norelease="-R"
-	[ -z "$clientid" ] && clientid="$(proto_dhcp_get_default_clientid "$iface")"
-	[ -n "$clientid" ] && clientid="-x 0x3d:${clientid//:/}"
+	[ -n "$clientid" ] && clientid="-x 0x3d:${clientid//:/}" || clientid="-C"
 	[ -n "$iface6rd" ] && proto_export "IFACE6RD=$iface6rd"
 	[ "$iface6rd" != 0 -a -f /lib/netifd/proto/6rd.sh ] && append dhcpopts "-O 212"
 	[ -n "$zone6rd" ] && proto_export "ZONE6RD=$zone6rd"
@@ -81,7 +67,7 @@ proto_dhcp_setup() {
 		-p /var/run/udhcpc-$iface.pid \
 		-s /lib/netifd/dhcp.script \
 		-f -t 0 -i "$iface" \
-		${ipaddr:+-r ${ipaddr/\/*/}} \
+		${ipaddr:+-r $ipaddr} \
 		${hostname:+-x "hostname:$hostname"} \
 		${vendorid:+-V "$vendorid"} \
 		$clientid $defaultreqopts $broadcast $norelease $dhcpopts

@@ -2,8 +2,10 @@
 icon: material/alert-decagram
 ---
 
-#### 1.13.0-alpha.25
+#### 1.13.0-alpha.26
 
+* Update quic-go to v0.55.0
+* Fix memory leak in hysteria2
 * Fixes and improvements
 
 #### 1.12.11

@@ -38,33 +38,32 @@
 	leds {
 		compatible = "gpio-leds";
 
-		led_status: led_status {
+		led_status: status {
 			label = "red:status";
 			gpios = <&pio 0 GPIO_ACTIVE_LOW>;
 		};
 
-		
-		led_running: running_led {
+		led_running: running {
 			label = "green:running";
 			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
 		};
 
-		led-1 {
+		internet {
 			label = "blue:internet";
 			gpios = <&pio 11 GPIO_ACTIVE_LOW>;
 		};
 
-		led-2 {
+		network1 {
 			label = "green:network1";
 			gpios = <&pio 6 GPIO_ACTIVE_LOW>;
 		};
 
-		led-3 {
+		network2 {
 			label = "green:network2";
 			gpios = <&pio 7 GPIO_ACTIVE_LOW>;
 		};
 
-		led-5 {
+		network3 {
 			label = "green:network3";
 			gpios = <&pio 9 GPIO_ACTIVE_LOW>;
 		};
@@ -129,7 +128,10 @@
 		compatible = "mediatek,eth-mac";
 		reg = <1>;
 		phy-mode = "gmii";
-		phy-handle = <&phy0>;
+		phy-handle = <&int_gbe_phy>;
+
+		nvmem-cells = <&macaddr_factory_4 2>;
+		nvmem-cell-names = "mac-address";
 	};
 };
 
@@ -142,20 +144,6 @@
 		#interrupt-cells = <1>;
 		interrupt-parent = <&pio>;
 		interrupts = <38 IRQ_TYPE_LEVEL_HIGH>;
-	};
-
-	phy0: ethernet-phy@0 {
-		compatible = "ethernet-phy-id03a2.9461";
-		reg = <0>;
-		phy-mode = "gmii";
-		nvmem-cells = <&phy_calibration>;
-		nvmem-cell-names = "phy-cal-data";
-	};
-
-	phy1: ethernet-phy@1 {
-		compatible = "ethernet-phy-ieee802.3-c45";
-		reg = <1>;
-		phy-mode = "2500base-x";
 	};
 };
 
@@ -185,18 +173,18 @@
 
 			partition@0 {
 				label = "BL2";
-				reg = <0x0 0x100000>; /* 1 MiB */
+				reg = <0x0 0x100000>;
 				read-only;
 			};
 
 			partition@100000 {
 				label = "u-boot-env";
-				reg = <0x100000 0x80000>; /* 0.5 MiB */
+				reg = <0x100000 0x80000>;
 			};
 
 			partition@180000 {
 				label = "Factory";
-				reg = <0x180000 0x200000>; /* 2 MiB */
+				reg = <0x180000 0x200000>;
 				read-only;
 
 				nvmem-layout {
@@ -218,17 +206,18 @@
 
 			partition@380000 {
 				label = "FIP";
-				reg = <0x380000 0x200000>; /* 2 MiB */
+				reg = <0x380000 0x200000>;
+				read-only;
 			};
 
 			partition@580000 {
 				label = "ubi";
-				reg = <0x580000 0xe600000>; /* 230 MiB */
+				reg = <0x580000 0x6e00000>;
 			};
 
 			partition@7380000 {
 				label = "config";
-				reg = <0x7380000 0x80000>; /* 0.5 MiB */
+				reg = <0x7380000 0x80000>;
 			};
 		};
 	};
@@ -279,7 +268,6 @@
 			label = "lan4";
 		};
 
-
 		port@6 {
 			reg = <6>;
 			label = "cpu";
@@ -308,9 +296,9 @@
 };
 
 &wifi {
-	status = "okay";
 	nvmem-cells = <&eeprom_factory_0>;
 	nvmem-cell-names = "eeprom";
+	status = "okay";
 };
 
 &xhci {

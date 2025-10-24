@@ -87,7 +87,7 @@ Signed-off-by: T.J. Mercier <tjmercier@google.com>
  					mark_page_accessed(page);
  			}
  			rss[mm_counter(page)]--;
-@@ -5237,8 +5236,8 @@ static inline void mm_account_fault(stru
+@@ -5235,8 +5234,8 @@ static inline void mm_account_fault(stru
  #ifdef CONFIG_LRU_GEN
  static void lru_gen_enter_fault(struct vm_area_struct *vma)
  {
@@ -177,7 +177,7 @@ Signed-off-by: T.J. Mercier <tjmercier@google.com>
  
 --- a/mm/vmscan.c
 +++ b/mm/vmscan.c
-@@ -3785,7 +3785,10 @@ static int should_skip_vma(unsigned long
+@@ -3778,7 +3778,10 @@ static int should_skip_vma(unsigned long
  	if (is_vm_hugetlb_page(vma))
  		return true;
  

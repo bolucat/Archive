@@ -10,6 +10,7 @@ uci_apply_defaults() {
 	cd /etc/uci-defaults || return 0
 	files="$(ls)"
 	[ -z "$files" ] && return 0
+	mkdir -p /tmp/.uci
 	applied=""
 	for file in $files; do
 		( . "./$(basename $file)" ) && applied="$applied $file"
@@ -43,7 +44,6 @@ boot() {
 	grep -q pstore /proc/filesystems && /bin/mount -o nosuid,nodev,noexec,noatime -t pstore pstore /sys/fs/pstore
 	[ "$FAILSAFE" = "true" ] && touch /tmp/.failsafe
 
-	touch /tmp/.config_pending
 	/sbin/kmodloader
 
 	[ ! -f /etc/config/wireless ] && {
@@ -51,14 +51,10 @@ boot() {
 		sleep 1
 	}
 
-	mkdir -p /tmp/.uci
-	[ -f /etc/uci-defaults/30_uboot-envtools ] && (. /etc/uci-defaults/30_uboot-envtools)
 	/bin/config_generate
-	rm -f /tmp/.config_pending
-	/sbin/wifi config
 	uci_apply_defaults
 	sync
-	
+
 	# temporary hack until configd exists
 	/sbin/reload_config
 }

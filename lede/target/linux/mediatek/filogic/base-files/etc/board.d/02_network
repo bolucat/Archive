@@ -19,6 +19,7 @@ mediatek_setup_interfaces()
 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" eth1
 		;;
 	asus,tuf-ax4200|\
+	huasifei,ws3009|\
 	jdcloud,re-cs-05|\
 	netcore,n60|\
 	netcore,n60-pro|\
@@ -66,9 +67,6 @@ mediatek_setup_interfaces()
 		;;
 	huasifei,ws3006)
 		ucidef_set_interfaces_lan_wan "lan1 lan2 eth1" "wan"
-		;;
-	huasifei,ws3009)
-		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" "eth1"
 		;;
 	mediatek,mt7986a-rfb|\
 	mediatek,mt7986b-rfb)

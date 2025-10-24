@@ -36,6 +36,7 @@ compose_rootfs_mount_options() {
 do_mount_root() {
 	mount_root start "$(compose_rootfs_mount_options)"
 	boot_run_hook preinit_mount_root
+	[ ! -f /etc/bench.log ] && touch /etc/bench.log
 	[ -f /sysupgrade.tgz -o -f /tmp/sysupgrade.tar ] && {
 		echo "- config restore -"
 		cp /etc/passwd /etc/group /etc/shadow /tmp

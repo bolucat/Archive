@@ -25,7 +25,7 @@ DEFAULT_PACKAGES += \
 	automount \
 	resize2fs \
 	partx-utils \
-	losetup htop ethtool autocore-arm
+	losetup htop autocore-arm
 
 KERNELNAME:=Image dtbs
 

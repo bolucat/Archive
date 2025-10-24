@@ -30,11 +30,12 @@ reload_service() {
 
 	init_switch
 	ubus call network reload || rv=1
+	/sbin/wifi reload_legacy
 	return $rv
 }
 
 stop_service() {
-	[ -x /sbin/wifi ] && /sbin/wifi down
+	/sbin/wifi down
 	ifdown -a
 	sleep 1
 }
