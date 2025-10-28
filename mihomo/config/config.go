@@ -157,7 +157,11 @@ type DNS struct {
 	DefaultNameserver     []dns.NameServer
 	CacheAlgorithm        string
 	CacheMaxSize          int
-	FakeIPRange           *fakeip.Pool
+	FakeIPRange           netip.Prefix
+	FakeIPPool            *fakeip.Pool
+	FakeIPRange6          netip.Prefix
+	FakeIPPool6           *fakeip.Pool
+	FakeIPSkipper         *fakeip.Skipper
 	NameServerPolicy      []dns.Policy
 	ProxyServerNameserver []dns.NameServer
 	DirectNameServer      []dns.NameServer
@@ -221,6 +225,7 @@ type RawDNS struct {
 	Listen                       string                              `yaml:"listen" json:"listen"`
 	EnhancedMode                 C.DNSMode                           `yaml:"enhanced-mode" json:"enhanced-mode"`
 	FakeIPRange                  string                              `yaml:"fake-ip-range" json:"fake-ip-range"`
+	FakeIPRange6                 string                              `yaml:"fake-ip-range6" json:"fake-ip-range6"`
 	FakeIPFilter                 []string                            `yaml:"fake-ip-filter" json:"fake-ip-filter"`
 	FakeIPFilterMode             C.FilterMode                        `yaml:"fake-ip-filter-mode" json:"fake-ip-filter-mode"`
 	DefaultNameserver            []string                            `yaml:"default-nameserver" json:"default-nameserver"`
@@ -680,13 +685,15 @@ func ParseRawConfig(rawCfg *RawConfig) (*Config, error) {
 	}
 	config.Hosts = hosts
 
+	parseIPV6(rawCfg) // must before DNS and Tun
+
 	dnsCfg, err := parseDNS(rawCfg, ruleProviders)
 	if err != nil {
 		return nil, err
 	}
 	config.DNS = dnsCfg
 
-	err = parseTun(rawCfg.Tun, config.General)
+	err = parseTun(rawCfg.Tun, dnsCfg, config.General)
 	if err != nil {
 		return nil, err
 	}
@@ -1407,13 +1414,27 @@ func parseDNS(rawCfg *RawConfig, ruleProviders map[string]providerTypes.RuleProv
 		}
 	}
 
-	fakeIPRange, err := netip.ParsePrefix(cfg.FakeIPRange)
-	T.SetFakeIPRange(fakeIPRange)
-	if cfg.EnhancedMode == C.DNSFakeIP {
+	if cfg.FakeIPRange != "" {
+		dnsCfg.FakeIPRange, err = netip.ParsePrefix(cfg.FakeIPRange)
 		if err != nil {
 			return nil, err
 		}
+		if !dnsCfg.FakeIPRange.Addr().Is4() {
+			return nil, errors.New("dns.fake-ip-range must be a IPv4 prefix")
+		}
+	}
 
+	if cfg.FakeIPRange6 != "" {
+		dnsCfg.FakeIPRange6, err = netip.ParsePrefix(cfg.FakeIPRange6)
+		if err != nil {
+			return nil, err
+		}
+		if !dnsCfg.FakeIPRange6.Addr().Is6() {
+			return nil, errors.New("dns.fake-ip-range6 must be a IPv6 prefix")
+		}
+	}
+
+	if cfg.EnhancedMode == C.DNSFakeIP {
 		var fakeIPTrie *trie.DomainTrie[struct{}]
 		if len(dnsCfg.Fallback) != 0 {
 			fakeIPTrie = trie.New[struct{}]()
@@ -1431,18 +1452,39 @@ func parseDNS(rawCfg *RawConfig, ruleProviders map[string]providerTypes.RuleProv
 			return nil, err
 		}
 
-		pool, err := fakeip.New(fakeip.Options{
-			IPNet:       fakeIPRange,
-			Size:        1000,
-			Host:        host,
-			Mode:        cfg.FakeIPFilterMode,
-			Persistence: rawCfg.Profile.StoreFakeIP,
-		})
-		if err != nil {
-			return nil, err
+		skipper := &fakeip.Skipper{
+			Host: host,
+			Mode: cfg.FakeIPFilterMode,
+		}
+		dnsCfg.FakeIPSkipper = skipper
+
+		if dnsCfg.FakeIPRange.IsValid() {
+			pool, err := fakeip.New(fakeip.Options{
+				IPNet:       dnsCfg.FakeIPRange,
+				Size:        1000,
+				Persistence: rawCfg.Profile.StoreFakeIP,
+			})
+			if err != nil {
+				return nil, err
+			}
+			dnsCfg.FakeIPPool = pool
 		}
 
-		dnsCfg.FakeIPRange = pool
+		if dnsCfg.FakeIPRange6.IsValid() {
+			pool6, err := fakeip.New(fakeip.Options{
+				IPNet:       dnsCfg.FakeIPRange6,
+				Size:        1000,
+				Persistence: rawCfg.Profile.StoreFakeIP,
+			})
+			if err != nil {
+				return nil, err
+			}
+			dnsCfg.FakeIPPool6 = pool6
+		}
+
+		if dnsCfg.FakeIPPool == nil && dnsCfg.FakeIPPool6 == nil {
+			return nil, errors.New("disallow `fake-ip-range` and `fake-ip-range6` both empty with fake-ip mode")
+		}
 	}
 
 	if len(cfg.Fallback) != 0 {
@@ -1504,16 +1546,19 @@ func parseAuthentication(rawRecords []string) []auth.AuthUser {
 	return users
 }
 
-func parseTun(rawTun RawTun, general *General) error {
-	tunAddressPrefix := T.FakeIPRange()
+func parseIPV6(rawCfg *RawConfig) {
+	if !rawCfg.IPv6 || !verifyIP6() {
+		rawCfg.DNS.FakeIPRange6 = ""
+		rawCfg.Tun.Inet6Address = nil
+	}
+}
+
+func parseTun(rawTun RawTun, dns *DNS, general *General) error {
+	tunAddressPrefix := dns.FakeIPRange
 	if !tunAddressPrefix.IsValid() {
 		tunAddressPrefix = netip.MustParsePrefix("198.18.0.1/16")
 	}
 	tunAddressPrefix = netip.PrefixFrom(tunAddressPrefix.Addr(), 30)
-
-	if !general.IPv6 || !verifyIP6() {
-		rawTun.Inet6Address = nil
-	}
 
 	general.Tun = LC.Tun{
 		Enable:              rawTun.Enable,
