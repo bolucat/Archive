@@ -21,7 +21,7 @@ WORKDIR /test
 
 # Copy binaries, data and test script into the container.
 COPY exampleapiclient mita httpserver sockshttpclient socksudpclient udpserver \
-    test/deploy/apiclient/server_tcp.json test/deploy/apiclient/server_udp.json \
+    test/deploy/apiclient/server_mix.json \
     test/deploy/apiclient/test.sh /test/
 
 # Create mita user and server config directory.
