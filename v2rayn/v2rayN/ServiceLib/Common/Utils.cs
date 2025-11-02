@@ -9,7 +9,7 @@ public class Utils
 {
     private static readonly string _tag = "Utils";
 
-    #region 转换函数
+    #region Conversion Functions
 
     /// <summary>
     /// Convert to comma-separated string
@@ -306,7 +306,10 @@ public class Utils
     public static bool IsBase64String(string? plainText)
     {
         if (plainText.IsNullOrEmpty())
+        {
             return false;
+        }
+
         var buffer = new Span<byte>(new byte[plainText.Length]);
         return Convert.TryFromBase64String(plainText, buffer, out var _);
     }
@@ -459,9 +462,9 @@ public class Utils
         return (domain, port);
     }
 
-    #endregion 转换函数
+    #endregion Conversion Functions
 
-    #region 数据检查
+    #region Data Checks
 
     /// <summary>
     /// Determine if the input is a number
@@ -520,40 +523,62 @@ public class Utils
         {
             // Loopback address check (127.0.0.1 for IPv4, ::1 for IPv6)
             if (IPAddress.IsLoopback(address))
+            {
                 return true;
+            }
 
             var ipBytes = address.GetAddressBytes();
             if (address.AddressFamily == AddressFamily.InterNetwork)
             {
                 // IPv4 private address check
                 if (ipBytes[0] == 10)
+                {
                     return true;
+                }
+
                 if (ipBytes[0] == 172 && ipBytes[1] >= 16 && ipBytes[1] <= 31)
+                {
                     return true;
+                }
+
                 if (ipBytes[0] == 192 && ipBytes[1] == 168)
+                {
                     return true;
+                }
             }
             else if (address.AddressFamily == AddressFamily.InterNetworkV6)
             {
                 // IPv6 private address check
                 // Link-local address fe80::/10
                 if (ipBytes[0] == 0xfe && (ipBytes[1] & 0xc0) == 0x80)
+                {
                     return true;
+                }
 
                 // Unique local address fc00::/7 (typically fd00::/8)
                 if ((ipBytes[0] & 0xfe) == 0xfc)
+                {
                     return true;
+                }
 
                 // Private portion in IPv4-mapped addresses ::ffff:0:0/96
                 if (address.IsIPv4MappedToIPv6)
                 {
                     var ipv4Bytes = ipBytes.Skip(12).ToArray();
                     if (ipv4Bytes[0] == 10)
+                    {
                         return true;
+                    }
+
                     if (ipv4Bytes[0] == 172 && ipv4Bytes[1] >= 16 && ipv4Bytes[1] <= 31)
+                    {
                         return true;
+                    }
+
                     if (ipv4Bytes[0] == 192 && ipv4Bytes[1] == 168)
+                    {
                         return true;
+                    }
                 }
             }
         }
@@ -561,9 +586,9 @@ public class Utils
         return false;
     }
 
-    #endregion 数据检查
+    #endregion Data Checks
 
-    #region 测速
+    #region Speed Test
 
     private static bool PortInUse(int port)
     {
@@ -616,9 +641,9 @@ public class Utils
         return 59090;
     }
 
-    #endregion 测速
+    #endregion Speed Test
 
-    #region 杂项
+    #region Miscellaneous
 
     public static bool UpgradeAppExists(out string upgradeFileName)
     {
@@ -708,10 +733,16 @@ public class Utils
                 foreach (var host in hostsList)
                 {
                     if (host.StartsWith("#"))
+                    {
                         continue;
+                    }
+
                     var hostItem = host.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                     if (hostItem.Length < 2)
+                    {
                         continue;
+                    }
+
                     systemHosts.Add(hostItem[1], hostItem[0]);
                 }
             }
@@ -762,7 +793,7 @@ public class Utils
         return null;
     }
 
-    #endregion 杂项
+    #endregion Miscellaneous
 
     #region TempPath
 

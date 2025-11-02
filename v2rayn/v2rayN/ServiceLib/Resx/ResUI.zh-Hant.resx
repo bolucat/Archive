@@ -1528,13 +1528,13 @@
     <value>添加鏈式代理</value>
   </data>
   <data name="menuAddChildServer" xml:space="preserve">
-    <value>添加子項</value>
+    <value>添加子配置</value>
   </data>
   <data name="menuRemoveChildServer" xml:space="preserve">
-    <value>刪除子項</value>
+    <value>刪除子配置</value>
   </data>
   <data name="menuServerList" xml:space="preserve">
-    <value>子項清單</value>
+    <value>子配置項</value>
   </data>
   <data name="TbFallback" xml:space="preserve">
     <value>容錯移轉</value>
@@ -1598,5 +1598,27 @@
   </data>
   <data name="TbPolicyGroupSubChildTip" xml:space="preserve">
     <value>自動從訂閱分組新增過濾後的配置</value>
+  </data>
+  <data name="TbCertPinning" xml:space="preserve">
+    <value>Certificate Pinning</value>
+  </data>
+  <data name="TbCertPinningTips" xml:space="preserve">
+    <value>Server certificate (PEM format, optional). Entering a certificate will pin it.
+Do not use the "Fetch Certificate" button when "Allow Insecure" is enabled.</value>
+  </data>
+  <data name="TbFetchCert" xml:space="preserve">
+    <value>Fetch Certificate</value>
+  </data>
+  <data name="TbFetchCertChain" xml:space="preserve">
+    <value>Fetch Certificate Chain</value>
+  </data>
+  <data name="ServerNameMustBeValidDomain" xml:space="preserve">
+    <value>Please set a valid domain</value>
+  </data>
+  <data name="CertNotSet" xml:space="preserve">
+    <value>Certificate not set</value>
+  </data>
+  <data name="CertSet" xml:space="preserve">
+    <value>Certificate set</value>
   </data>
 </root>

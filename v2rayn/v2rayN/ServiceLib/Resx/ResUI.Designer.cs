@@ -88,6 +88,24 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Certificate not set 的本地化字符串。
+        /// </summary>
+        public static string CertNotSet {
+            get {
+                return ResourceManager.GetString("CertNotSet", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Certificate set 的本地化字符串。
+        /// </summary>
+        public static string CertSet {
+            get {
+                return ResourceManager.GetString("CertSet", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Please check the Configuration settings first. 的本地化字符串。
         /// </summary>
         public static string CheckServerSettings {
@@ -1645,7 +1663,7 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
-        ///   查找类似 Server List 的本地化字符串。
+        ///   查找类似 Configuration List 的本地化字符串。
         /// </summary>
         public static string menuServerList {
             get {
@@ -2302,6 +2320,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Please set a valid domain 的本地化字符串。
+        /// </summary>
+        public static string ServerNameMustBeValidDomain {
+            get {
+                return ResourceManager.GetString("ServerNameMustBeValidDomain", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 {0} : {1}/s↑ | {2}/s↓ 的本地化字符串。
         /// </summary>
         public static string SpeedDisplayText {
@@ -2563,6 +2590,25 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Certificate Pinning 的本地化字符串。
+        /// </summary>
+        public static string TbCertPinning {
+            get {
+                return ResourceManager.GetString("TbCertPinning", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Server certificate (PEM format, optional). Entering a certificate will pin it.
+        ///Do not use the &quot;Fetch Certificate&quot; button when &quot;Allow Insecure&quot; is enabled. 的本地化字符串。
+        /// </summary>
+        public static string TbCertPinningTips {
+            get {
+                return ResourceManager.GetString("TbCertPinningTips", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Clear system proxy 的本地化字符串。
         /// </summary>
         public static string TbClearSystemProxy {
@@ -2766,6 +2812,24 @@ namespace ServiceLib.Resx {
         public static string TbFallback {
             get {
                 return ResourceManager.GetString("TbFallback", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Fetch Certificate 的本地化字符串。
+        /// </summary>
+        public static string TbFetchCert {
+            get {
+                return ResourceManager.GetString("TbFetchCert", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Fetch Certificate Chain 的本地化字符串。
+        /// </summary>
+        public static string TbFetchCertChain {
+            get {
+                return ResourceManager.GetString("TbFetchCertChain", resourceCulture);
             }
         }
         

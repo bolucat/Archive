@@ -69,30 +69,49 @@ public class ProfileItem : ReactiveObject
     public bool IsValid()
     {
         if (IsComplex())
+        {
             return true;
+        }
 
         if (Address.IsNullOrEmpty() || Port is <= 0 or >= 65536)
+        {
             return false;
+        }
 
         switch (ConfigType)
         {
             case EConfigType.VMess:
                 if (Id.IsNullOrEmpty() || !Utils.IsGuidByParse(Id))
+                {
                     return false;
+                }
+
                 break;
 
             case EConfigType.VLESS:
                 if (Id.IsNullOrEmpty() || (!Utils.IsGuidByParse(Id) && Id.Length > 30))
+                {
                     return false;
+                }
+
                 if (!Global.Flows.Contains(Flow))
+                {
                     return false;
+                }
+
                 break;
 
             case EConfigType.Shadowsocks:
                 if (Id.IsNullOrEmpty())
+                {
                     return false;
+                }
+
                 if (string.IsNullOrEmpty(Security) || !Global.SsSecuritiesInSingbox.Contains(Security))
+                {
                     return false;
+                }
+
                 break;
         }
 
@@ -141,4 +160,5 @@ public class ProfileItem : ReactiveObject
     public string Mldsa65Verify { get; set; }
     public string Extra { get; set; }
     public bool? MuxEnabled { get; set; }
+    public string Cert { get; set; }
 }
