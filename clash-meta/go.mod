@@ -16,7 +16,7 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905
 	github.com/klauspost/compress v1.17.9 // lastest version compatible with golang1.20
 	github.com/mdlayher/netlink v1.7.2
-	github.com/metacubex/amneziawg-go v0.0.0-20250902133113-a7f637c14281
+	github.com/metacubex/amneziawg-go v0.0.0-20251104174305-5a0e9f7e361d
 	github.com/metacubex/bart v0.26.0
 	github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b
 	github.com/metacubex/blake3 v0.1.0
