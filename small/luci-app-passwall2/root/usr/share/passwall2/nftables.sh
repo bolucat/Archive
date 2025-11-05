@@ -382,7 +382,7 @@ load_acl() {
 					gen_nftset $nftset_white6 ipv6_addr 3d 3d
 
 					#分流规则的IP列表(使用分流节点时导入)
-					gen_shunt_list ${node} shunt_list4 shunt_list6 ${write_ipset_direct} ${nftset_white} ${nftset_white6}
+					gen_shunt_list "${node}" shunt_list4 shunt_list6 ${write_ipset_direct} ${nftset_white} ${nftset_white6}
 				fi
 			}
 
@@ -701,7 +701,7 @@ filter_direct_node_list() {
 }
 
 add_firewall_rule() {
-	echolog "开始加载防火墙规则..."
+	echolog "开始加载 nftables 防火墙规则..."
 	gen_nft_tables
 	gen_nftset $NFTSET_LOCAL ipv4_addr 0 "-1"
 	gen_nftset $NFTSET_LAN ipv4_addr 0 "-1" $(gen_lanlist)
@@ -749,7 +749,7 @@ add_firewall_rule() {
 	gen_nftset $nftset_global_white6 ipv6_addr 0 0
 
 	#分流规则的IP列表(使用分流节点时导入)
-	gen_shunt_list ${NODE} SHUNT_LIST4 SHUNT_LIST6 ${WRITE_IPSET_DIRECT} ${nftset_global_white} ${nftset_global_white6}
+	gen_shunt_list "${NODE}" SHUNT_LIST4 SHUNT_LIST6 ${WRITE_IPSET_DIRECT} ${nftset_global_white} ${nftset_global_white6}
 
 	#  过滤所有节点IP
 	filter_vpsip > /dev/null 2>&1 &
@@ -771,10 +771,6 @@ add_firewall_rule() {
 		nft_output_chain="PSW2_OUTPUT_MANGLE"
 	fi
 
-	nft "add chain $NFTABLE_NAME PSW2_DIVERT"
-	nft "flush chain $NFTABLE_NAME PSW2_DIVERT"
-	nft "add rule $NFTABLE_NAME PSW2_DIVERT meta l4proto tcp socket transparent 1 mark set 1 counter accept"
-
 	nft "add chain $NFTABLE_NAME PSW2_DNS"
 	nft "flush chain $NFTABLE_NAME PSW2_DNS"
 	if [ $(config_t_get global dns_redirect "1") = "0" ]; then
@@ -790,8 +786,8 @@ add_firewall_rule() {
 	nft "flush chain $NFTABLE_NAME PSW2_RULE"
 	nft "add rule $NFTABLE_NAME PSW2_RULE meta mark set ct mark counter"
 	nft "add rule $NFTABLE_NAME PSW2_RULE meta mark 1 counter return"
-	nft "add rule $NFTABLE_NAME PSW2_RULE tcp flags &(fin|syn|rst|ack) == syn meta mark set mark and 0x0 xor 0x1 counter"
-	nft "add rule $NFTABLE_NAME PSW2_RULE meta l4proto udp ct state new meta mark set mark and 0x0 xor 0x1 counter"
+	nft "add rule $NFTABLE_NAME PSW2_RULE tcp flags syn meta mark set mark and 0x0 xor 0x1 counter"
+	nft "add rule $NFTABLE_NAME PSW2_RULE meta l4proto udp ct state new,related meta mark set mark and 0x0 xor 0x1 counter"
 	nft "add rule $NFTABLE_NAME PSW2_RULE ct mark set mark counter"
 
 	#ipv4 tproxy mode and udp
@@ -799,11 +795,13 @@ add_firewall_rule() {
 	nft "flush chain $NFTABLE_NAME PSW2_MANGLE"
 	nft "add rule $NFTABLE_NAME PSW2_MANGLE ip daddr @$NFTSET_LAN counter return"
 	nft "add rule $NFTABLE_NAME PSW2_MANGLE ip daddr @$NFTSET_VPS counter return"
+	nft "add rule $NFTABLE_NAME PSW2_MANGLE ct direction reply counter return"
 
 	nft "add chain $NFTABLE_NAME PSW2_OUTPUT_MANGLE"
 	nft "flush chain $NFTABLE_NAME PSW2_OUTPUT_MANGLE"
 	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip daddr @$NFTSET_LAN counter return"
 	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip daddr @$NFTSET_VPS counter return"
+	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ct direction reply counter return"
 	[ -n "$AUTO_DNS" ] && {
 		for auto_dns in $(echo $AUTO_DNS | tr ',' ' '); do
 			local dns_address=$(echo $auto_dns | awk -F '#' '{print $1}')
@@ -817,7 +815,6 @@ add_firewall_rule() {
 	# jump chains
 	nft "add rule $NFTABLE_NAME mangle_prerouting ip protocol udp counter jump PSW2_MANGLE"
 	[ -n "${is_tproxy}" ] && nft "add rule $NFTABLE_NAME mangle_prerouting ip protocol tcp counter jump PSW2_MANGLE"
-	insert_rule_before "$NFTABLE_NAME" "mangle_prerouting" "PSW2_MANGLE" "counter jump PSW2_DIVERT"
 
 	#ipv4 tcp redirect mode
 	[ -z "${is_tproxy}" ] && {
@@ -865,11 +862,13 @@ add_firewall_rule() {
 	nft "flush chain $NFTABLE_NAME PSW2_MANGLE_V6"
 	nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 ip6 daddr @$NFTSET_LAN6 counter return"
 	nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 ip6 daddr @$NFTSET_VPS6 counter return"
+	nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 ct direction reply counter return"
 
 	nft "add chain $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6"
 	nft "flush chain $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6"
 	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 ip6 daddr @$NFTSET_LAN6 counter return"
 	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 ip6 daddr @$NFTSET_VPS6 counter return"
+	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 ct direction reply counter return"
 	nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta mark 0xff counter return"
 
 	# jump chains
@@ -1067,7 +1066,7 @@ gen_include() {
 
 	local __nft=" "
 	__nft=$(cat <<- EOF
-		[ -z "\$(nft list chain $NFTABLE_NAME mangle_prerouting | grep PSW2_DIVERT)" ] && nft -f ${nft_chain_file}
+		[ -z "\$(nft list chain $NFTABLE_NAME mangle_prerouting | grep PSW2)" ] && nft -f ${nft_chain_file}
 		[ -z "${is_tproxy}" ] && {
 			PR_INDEX=\$(sh ${MY_PATH} RULE_LAST_INDEX "$NFTABLE_NAME" PSW2_NAT WAN_IP_RETURN -1)
 			if [ \$PR_INDEX -ge 0 ]; then
