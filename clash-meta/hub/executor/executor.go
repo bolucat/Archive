@@ -31,7 +31,7 @@ import (
 	"github.com/metacubex/mihomo/component/updater"
 	"github.com/metacubex/mihomo/config"
 	C "github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/provider"
+	P "github.com/metacubex/mihomo/constant/provider"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/listener"
 	authStore "github.com/metacubex/mihomo/listener/auth"
@@ -303,18 +303,18 @@ func updateHosts(tree *trie.DomainTrie[resolver.HostValue]) {
 	resolver.DefaultHosts = resolver.NewHosts(tree)
 }
 
-func updateProxies(proxies map[string]C.Proxy, providers map[string]provider.ProxyProvider) {
+func updateProxies(proxies map[string]C.Proxy, providers map[string]P.ProxyProvider) {
 	tunnel.UpdateProxies(proxies, providers)
 }
 
-func updateRules(rules []C.Rule, subRules map[string][]C.Rule, ruleProviders map[string]provider.RuleProvider) {
+func updateRules(rules []C.Rule, subRules map[string][]C.Rule, ruleProviders map[string]P.RuleProvider) {
 	tunnel.UpdateRules(rules, subRules, ruleProviders)
 }
 
-func loadProvider[P provider.Provider](providers map[string]P) {
-	load := func(pv P) {
+func loadProvider[T P.Provider](providers map[string]T) {
+	load := func(pv T) {
 		name := pv.Name()
-		if pv.VehicleType() == provider.Compatible {
+		if pv.VehicleType() == P.Compatible {
 			log.Infoln("Start initial compatible provider %s", name)
 		} else {
 			log.Infoln("Start initial provider %s", name)
@@ -322,11 +322,11 @@ func loadProvider[P provider.Provider](providers map[string]P) {
 
 		if err := pv.Initial(); err != nil {
 			switch pv.Type() {
-			case provider.Proxy:
+			case P.Proxy:
 				{
 					log.Errorln("initial proxy provider %s error: %v", name, err)
 				}
-			case provider.Rule:
+			case P.Rule:
 				{
 					log.Errorln("initial rule provider %s error: %v", name, err)
 				}
