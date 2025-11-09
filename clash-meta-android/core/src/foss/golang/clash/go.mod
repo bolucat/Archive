@@ -6,25 +6,25 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/ebitengine/purego v0.9.0
-	github.com/enfein/mieru/v3 v3.20.0
+	github.com/ebitengine/purego v0.9.1
+	github.com/enfein/mieru/v3 v3.22.1
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
-	github.com/gofrs/uuid/v5 v5.3.2
+	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang/snappy v1.0.0
 	github.com/insomniacslk/dhcp v0.0.0-20250109001534-8abf58130905
 	github.com/klauspost/compress v1.17.9 // lastest version compatible with golang1.20
 	github.com/mdlayher/netlink v1.7.2
-	github.com/metacubex/amneziawg-go v0.0.0-20250902133113-a7f637c14281
-	github.com/metacubex/bart v0.24.0
+	github.com/metacubex/amneziawg-go v0.0.0-20251104174305-5a0e9f7e361d
+	github.com/metacubex/bart v0.26.0
 	github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b
 	github.com/metacubex/blake3 v0.1.0
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
-	github.com/metacubex/kcp-go v0.0.0-20251007183319-0df1aec1639a
-	github.com/metacubex/quic-go v0.55.1-0.20251004050223-450bd9e32033
+	github.com/metacubex/kcp-go v0.0.0-20251105084629-8c93f4bf37be
+	github.com/metacubex/quic-go v0.55.1-0.20251024060151-bd465f127128
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
 	github.com/metacubex/sing v0.5.6
@@ -33,12 +33,12 @@ require (
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.7
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.8
+	github.com/metacubex/sing-tun v0.4.9
 	github.com/metacubex/sing-vmess v0.2.4
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250922175018-15c9a6a78719
-	github.com/metacubex/tfo-go v0.0.0-20250921095601-b102db4216c0
-	github.com/metacubex/utls v1.8.2
+	github.com/metacubex/tfo-go v0.0.0-20251024101424-368b42b59148
+	github.com/metacubex/utls v1.8.3
 	github.com/metacubex/wireguard-go v0.0.0-20250820062549-a6cecdd7f57f
 	github.com/miekg/dns v1.1.63 // lastest version compatible with golang1.20
 	github.com/mroth/weightedrand/v2 v2.1.0
@@ -46,7 +46,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.12.0 // lastest version compatible with golang1.20
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
-	github.com/samber/lo v1.51.0
+	github.com/samber/lo v1.52.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.11.1
 	github.com/vmihailenco/msgpack/v5 v5.4.1

@@ -50,6 +50,7 @@ public class OptionSettingViewModel : MyReactiveObject
     [Reactive] public bool EnableUpdateSubOnlyRemarksExist { get; set; }
     [Reactive] public bool AutoHideStartup { get; set; }
     [Reactive] public bool Hide2TrayWhenClose { get; set; }
+    [Reactive] public bool MacOSShowInDock { get; set; }
     [Reactive] public bool EnableDragDropSort { get; set; }
     [Reactive] public bool DoubleClick2Activate { get; set; }
     [Reactive] public int AutoUpdateInterval { get; set; }
@@ -68,6 +69,15 @@ public class OptionSettingViewModel : MyReactiveObject
     [Reactive] public string IPAPIUrl { get; set; }
 
     #endregion UI
+
+    #region UI visibility
+
+    [Reactive] public bool BlIsWindows { get; set; }
+    [Reactive] public bool BlIsLinux { get; set; }
+    [Reactive] public bool BlIsIsMacOS { get; set; }
+    [Reactive] public bool BlIsNonWindows { get; set; }
+
+    #endregion UI visibility
 
     #region System proxy
 
@@ -108,6 +118,10 @@ public class OptionSettingViewModel : MyReactiveObject
     {
         _config = AppManager.Instance.Config;
         _updateView = updateView;
+        BlIsWindows = Utils.IsWindows();
+        BlIsLinux = Utils.IsLinux();
+        BlIsIsMacOS = Utils.IsMacOS();
+        BlIsNonWindows = Utils.IsNonWindows();
 
         SaveCmd = ReactiveCommand.CreateFromTask(async () =>
         {
@@ -169,6 +183,7 @@ public class OptionSettingViewModel : MyReactiveObject
         EnableUpdateSubOnlyRemarksExist = _config.UiItem.EnableUpdateSubOnlyRemarksExist;
         AutoHideStartup = _config.UiItem.AutoHideStartup;
         Hide2TrayWhenClose = _config.UiItem.Hide2TrayWhenClose;
+        MacOSShowInDock = _config.UiItem.MacOSShowInDock;
         EnableDragDropSort = _config.UiItem.EnableDragDropSort;
         DoubleClick2Activate = _config.UiItem.DoubleClick2Activate;
         AutoUpdateInterval = _config.GuiItem.AutoUpdateInterval;
@@ -330,6 +345,7 @@ public class OptionSettingViewModel : MyReactiveObject
         _config.UiItem.EnableUpdateSubOnlyRemarksExist = EnableUpdateSubOnlyRemarksExist;
         _config.UiItem.AutoHideStartup = AutoHideStartup;
         _config.UiItem.Hide2TrayWhenClose = Hide2TrayWhenClose;
+        _config.UiItem.MacOSShowInDock = MacOSShowInDock;
         _config.GuiItem.AutoUpdateInterval = AutoUpdateInterval;
         _config.UiItem.EnableDragDropSort = EnableDragDropSort;
         _config.UiItem.DoubleClick2Activate = DoubleClick2Activate;

@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"errors"
 	"net/netip"
 
 	"github.com/metacubex/mihomo/common/lru"
@@ -31,11 +32,15 @@ func (h *ResolverEnhancer) IsExistFakeIP(ip netip.Addr) bool {
 	}
 
 	if pool := h.fakeIPPool; pool != nil {
-		return pool.Exist(ip)
+		if pool.Exist(ip) {
+			return true
+		}
 	}
 
 	if pool6 := h.fakeIPPool6; pool6 != nil {
-		return pool6.Exist(ip)
+		if pool6.Exist(ip) {
+			return true
+		}
 	}
 
 	return false
@@ -47,11 +52,15 @@ func (h *ResolverEnhancer) IsFakeIP(ip netip.Addr) bool {
 	}
 
 	if pool := h.fakeIPPool; pool != nil {
-		return pool.IPNet().Contains(ip) && ip != pool.Gateway() && ip != pool.Broadcast()
+		if pool.IPNet().Contains(ip) && ip != pool.Gateway() && ip != pool.Broadcast() {
+			return true
+		}
 	}
 
 	if pool6 := h.fakeIPPool6; pool6 != nil {
-		return pool6.IPNet().Contains(ip) && ip != pool6.Gateway() && ip != pool6.Broadcast()
+		if pool6.IPNet().Contains(ip) && ip != pool6.Gateway() && ip != pool6.Broadcast() {
+			return true
+		}
 	}
 
 	return false
@@ -63,11 +72,15 @@ func (h *ResolverEnhancer) IsFakeBroadcastIP(ip netip.Addr) bool {
 	}
 
 	if pool := h.fakeIPPool; pool != nil {
-		return pool.Broadcast() == ip
+		if pool.Broadcast() == ip {
+			return true
+		}
 	}
 
 	if pool6 := h.fakeIPPool6; pool6 != nil {
-		return pool6.Broadcast() == ip
+		if pool6.Broadcast() == ip {
+			return true
+		}
 	}
 
 	return false
@@ -102,11 +115,19 @@ func (h *ResolverEnhancer) InsertHostByIP(ip netip.Addr, host string) {
 }
 
 func (h *ResolverEnhancer) FlushFakeIP() error {
+	var errs []error
 	if pool := h.fakeIPPool; pool != nil {
-		return pool.FlushFakeIP()
+		if err := pool.FlushFakeIP(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 	if pool6 := h.fakeIPPool6; pool6 != nil {
-		return pool6.FlushFakeIP()
+		if err := pool6.FlushFakeIP(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }

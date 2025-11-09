@@ -6,8 +6,7 @@ require (
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/ebitengine/purego v0.9.0
-	github.com/enfein/mieru/v3 v3.20.0
+	github.com/enfein/mieru/v3 v3.22.1
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-chi/render v1.0.3
 	github.com/gobwas/ws v1.4.0
@@ -33,7 +32,7 @@ require (
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.7
 	github.com/metacubex/sing-shadowtls v0.0.0-20250503063515-5d9f966d17a2
-	github.com/metacubex/sing-tun v0.4.8
+	github.com/metacubex/sing-tun v0.4.9
 	github.com/metacubex/sing-vmess v0.2.4
 	github.com/metacubex/sing-wireguard v0.0.0-20250503063753-2dc62acc626f
 	github.com/metacubex/smux v0.0.0-20250922175018-15c9a6a78719

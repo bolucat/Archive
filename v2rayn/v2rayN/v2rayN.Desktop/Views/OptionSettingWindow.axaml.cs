@@ -88,6 +88,7 @@ public partial class OptionSettingWindow : WindowBase<OptionSettingViewModel>
             this.Bind(ViewModel, vm => vm.EnableUpdateSubOnlyRemarksExist, v => v.togEnableUpdateSubOnlyRemarksExist.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.AutoHideStartup, v => v.togAutoHideStartup.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.Hide2TrayWhenClose, v => v.togHide2TrayWhenClose.IsChecked).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.MacOSShowInDock, v => v.togMacOSShowInDock.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.DoubleClick2Activate, v => v.togDoubleClick2Activate.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.AutoUpdateInterval, v => v.txtautoUpdateInterval.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.CurrentFontFamily, v => v.cmbcurrentFontFamily.Text).DisposeWith(disposables);
@@ -125,34 +126,6 @@ public partial class OptionSettingWindow : WindowBase<OptionSettingViewModel>
 
             this.BindCommand(ViewModel, vm => vm.SaveCmd, v => v.btnSave).DisposeWith(disposables);
         });
-
-        if (Utils.IsWindows())
-        {
-            txbSettingsExceptionTip2.IsVisible = false;
-
-            labHide2TrayWhenClose.IsVisible = false;
-            togHide2TrayWhenClose.IsVisible = false;
-            labHide2TrayWhenCloseTip.IsVisible = false;
-            panSystemProxyUnix.IsVisible = false;
-        }
-        else if (Utils.IsLinux())
-        {
-            txbSettingsExceptionTip.IsVisible = false;
-            panSystemProxyAdvanced.IsVisible = false;
-
-            tbAutoRunTip.IsVisible = false;
-        }
-        else if (Utils.IsOSX())
-        {
-            txbSettingsExceptionTip.IsVisible = false;
-            panSystemProxyAdvanced.IsVisible = false;
-
-            tbAutoRunTip.IsVisible = false;
-
-            labHide2TrayWhenClose.IsVisible = false;
-            togHide2TrayWhenClose.IsVisible = false;
-            labHide2TrayWhenCloseTip.IsVisible = false;
-        }
     }
 
     private async Task<bool> UpdateViewHandler(EViewAction action, object? obj)

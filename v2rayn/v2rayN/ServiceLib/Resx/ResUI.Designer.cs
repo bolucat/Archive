@@ -2599,8 +2599,10 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
-        ///   查找类似 Server certificate (PEM format, optional). Entering a certificate will pin it.
-        ///Do not use the &quot;Fetch Certificate&quot; button when &quot;Allow Insecure&quot; is enabled. 的本地化字符串。
+        ///   查找类似 Server Certificate (PEM format, optional)
+        ///When specified, the certificate will be pinned, and &quot;Allow Insecure&quot; will be disabled.
+        ///
+        ///The &quot;Get Certificate&quot; action may fail if a self-signed certificate is used or if the system contains an untrusted or malicious CA. 的本地化字符串。
         /// </summary>
         public static string TbCertPinningTips {
             get {
@@ -3847,6 +3849,15 @@ namespace ServiceLib.Resx {
         public static string TbSettingsLogLevel {
             get {
                 return ResourceManager.GetString("TbSettingsLogLevel", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 macOS displays this in the Dock (requires restart) 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsMacOSShowInDock {
+            get {
+                return ResourceManager.GetString("TbSettingsMacOSShowInDock", resourceCulture);
             }
         }
         
