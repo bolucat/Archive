@@ -64,7 +64,7 @@ func withHosts(mapping *lru.LruCache[netip.Addr, string]) middleware {
 						if mapping != nil {
 							mapping.SetWithExpire(ipAddr, host, time.Now().Add(time.Second*10))
 						}
-					} else if q.Qtype == D.TypeAAAA {
+					} else if ipAddr.Is6() && q.Qtype == D.TypeAAAA {
 						rr := &D.AAAA{}
 						rr.Hdr = D.RR_Header{Name: q.Name, Rrtype: D.TypeAAAA, Class: D.ClassINET, Ttl: 10}
 						rr.AAAA = ipAddr.AsSlice()
