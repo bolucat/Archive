@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "latest": {
     "mihomo": "v1.19.16",
-    "mihomo_alpha": "alpha-2f545ef",
+    "mihomo_alpha": "alpha-0b3159b",
     "clash_rs": "v0.9.2",
     "clash_premium": "2023-09-05-gdcc8d87",
     "clash_rs_alpha": "0.9.2-alpha+sha.87c7b2c"
@@ -10,25 +10,25 @@
   "arch_template": {
     "mihomo": {
       "windows-i386": "mihomo-windows-386-{}.zip",
-      "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
       "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-      "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
       "linux-armv7": "mihomo-linux-armv5-{}.gz",
       "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
     "mihomo_alpha": {
       "windows-i386": "mihomo-windows-386-{}.zip",
-      "windows-x86_64": "mihomo-windows-amd64-compatible-{}.zip",
+      "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
       "windows-arm64": "mihomo-windows-arm64-{}.zip",
       "linux-aarch64": "mihomo-linux-arm64-{}.gz",
-      "linux-amd64": "mihomo-linux-amd64-compatible-{}.gz",
+      "linux-amd64": "mihomo-linux-amd64-v1-{}.gz",
       "linux-i386": "mihomo-linux-386-{}.gz",
       "darwin-arm64": "mihomo-darwin-arm64-{}.gz",
-      "darwin-x64": "mihomo-darwin-amd64-compatible-{}.gz",
+      "darwin-x64": "mihomo-darwin-amd64-v1-{}.gz",
       "linux-armv7": "mihomo-linux-armv5-{}.gz",
       "linux-armv7hf": "mihomo-linux-armv7-{}.gz"
     },
@@ -69,5 +69,5 @@
       "linux-armv7hf": "clash-armv7-unknown-linux-gnueabihf"
     }
   },
-  "updated_at": "2025-11-10T22:21:23.620Z"
+  "updated_at": "2025-11-11T22:21:17.993Z"
 }
