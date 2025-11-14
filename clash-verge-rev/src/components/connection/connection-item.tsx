@@ -9,7 +9,8 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
-import { closeConnections } from "tauri-plugin-mihomo-api";
+import { useTranslation } from "react-i18next";
+import { closeConnection } from "tauri-plugin-mihomo-api";
 
 import parseTraffic from "@/utils/parse-traffic";
 
@@ -26,15 +27,17 @@ const Tag = styled("span")(({ theme }) => ({
 
 interface Props {
   value: IConnectionsItem;
+  closed: boolean;
   onShowDetail?: () => void;
 }
 
 export const ConnectionItem = (props: Props) => {
-  const { value, onShowDetail } = props;
+  const { value, closed, onShowDetail } = props;
 
   const { id, metadata, chains, start, curUpload, curDownload } = value;
+  const { t } = useTranslation();
 
-  const onDelete = useLockFn(async () => closeConnections(id));
+  const onDelete = useLockFn(async () => closeConnection(id));
   const showTraffic = curUpload! >= 100 || curDownload! >= 100;
 
   return (
@@ -42,9 +45,17 @@ export const ConnectionItem = (props: Props) => {
       dense
       sx={{ borderBottom: "1px solid var(--divider-color)" }}
       secondaryAction={
-        <IconButton edge="end" color="inherit" onClick={onDelete}>
-          <CloseRounded />
-        </IconButton>
+        !closed && (
+          <IconButton
+            edge="end"
+            color="inherit"
+            onClick={onDelete}
+            title={t("connections.components.actions.closeConnection")}
+            aria-label={t("connections.components.actions.closeConnection")}
+          >
+            <CloseRounded />
+          </IconButton>
+        )
       }
     >
       <ListItemText

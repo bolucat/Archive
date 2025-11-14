@@ -45,23 +45,19 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
   // file input
   const fileDataRef = useRef<string | null>(null);
 
-  const {
-    control,
-    watch,
-    register: _register,
-    ...formIns
-  } = useForm<IProfileItem>({
-    defaultValues: {
-      type: "remote",
-      name: "",
-      desc: "",
-      url: "",
-      option: {
-        with_proxy: false,
-        self_proxy: false,
+  const { control, watch, setValue, reset, handleSubmit, getValues } =
+    useForm<IProfileItem>({
+      defaultValues: {
+        type: "remote",
+        name: "",
+        desc: "",
+        url: "",
+        option: {
+          with_proxy: false,
+          self_proxy: false,
+        },
       },
-    },
-  });
+    });
 
   useImperativeHandle(ref, () => ({
     create: () => {
@@ -71,7 +67,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
     edit: (item: IProfileItem) => {
       if (item) {
         Object.entries(item).forEach(([key, value]) => {
-          formIns.setValue(key as any, value);
+          setValue(key as any, value);
         });
       }
       setOpenType("edit");
@@ -83,15 +79,15 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
   const withProxy = watch("option.with_proxy");
 
   useEffect(() => {
-    if (selfProxy) formIns.setValue("option.with_proxy", false);
-  }, [selfProxy]);
+    if (selfProxy) setValue("option.with_proxy", false);
+  }, [selfProxy, setValue]);
 
   useEffect(() => {
-    if (withProxy) formIns.setValue("option.self_proxy", false);
-  }, [withProxy]);
+    if (withProxy) setValue("option.self_proxy", false);
+  }, [setValue, withProxy]);
 
   const handleOk = useLockFn(
-    formIns.handleSubmit(async (form) => {
+    handleSubmit(async (form) => {
       if (form.option?.timeout_seconds) {
         form.option.timeout_seconds = +form.option.timeout_seconds;
       }
@@ -148,9 +144,8 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
             }
           } catch {
             // 首次创建/更新失败，尝试使用自身代理
-            showNotice(
-              "info",
-              t("Profile creation failed, retrying with Clash proxy..."),
+            showNotice.info(
+              "profiles.modals.profileForm.feedback.notifications.creationRetry",
             );
 
             // 使用自身代理的配置
@@ -174,24 +169,23 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
               await patchProfile(form.uid, { option: originalOptions });
             }
 
-            showNotice(
-              "success",
-              t("Profile creation succeeded with Clash proxy"),
+            showNotice.success(
+              "profiles.modals.profileForm.feedback.notifications.creationSuccess",
             );
           }
         }
 
         // 成功后的操作
         setOpen(false);
-        setTimeout(() => formIns.reset(), 500);
+        setTimeout(() => reset(), 500);
         fileDataRef.current = null;
 
         // 优化：UI先关闭，异步通知父组件
         setTimeout(() => {
           onChange(isActivating);
         }, 0);
-      } catch (err: any) {
-        showNotice("error", err.message || err.toString());
+      } catch (err) {
+        showNotice.error(err);
       } finally {
         setLoading(false);
       }
@@ -202,7 +196,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
     try {
       setOpen(false);
       fileDataRef.current = null;
-      setTimeout(() => formIns.reset(), 500);
+      setTimeout(() => reset(), 500);
     } catch (e) {
       console.warn("[ProfileViewer] handleClose error:", e);
     }
@@ -224,10 +218,14 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
   return (
     <BaseDialog
       open={open}
-      title={openType === "new" ? t("Create Profile") : t("Edit Profile")}
+      title={
+        openType === "new"
+          ? t("profiles.modals.profileForm.title.create")
+          : t("profiles.modals.profileForm.title.edit")
+      }
       contentSx={{ width: 375, pb: 0, maxHeight: "80%" }}
-      okBtn={t("Save")}
-      cancelBtn={t("Cancel")}
+      okBtn={t("shared.actions.save")}
+      cancelBtn={t("shared.actions.cancel")}
       onClose={handleClose}
       onCancel={handleClose}
       onOk={handleOk}
@@ -238,8 +236,14 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         control={control}
         render={({ field }) => (
           <FormControl size="small" fullWidth sx={{ mt: 1, mb: 1 }}>
-            <InputLabel>{t("Type")}</InputLabel>
-            <Select {...field} autoFocus label={t("Type")}>
+            <InputLabel>
+              {t("profiles.modals.profileForm.fields.type")}
+            </InputLabel>
+            <Select
+              {...field}
+              autoFocus
+              label={t("profiles.modals.profileForm.fields.type")}
+            >
               <MenuItem value="remote">Remote</MenuItem>
               <MenuItem value="local">Local</MenuItem>
             </Select>
@@ -251,7 +255,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         name="name"
         control={control}
         render={({ field }) => (
-          <TextField {...text} {...field} label={t("Name")} />
+          <TextField {...text} {...field} label={t("shared.labels.name")} />
         )}
       />
 
@@ -259,7 +263,11 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
         name="desc"
         control={control}
         render={({ field }) => (
-          <TextField {...text} {...field} label={t("Descriptions")} />
+          <TextField
+            {...text}
+            {...field}
+            label={t("profiles.modals.profileForm.fields.description")}
+          />
         )}
       />
 
@@ -273,7 +281,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 {...text}
                 {...field}
                 multiline
-                label={t("Subscription URL")}
+                label={t("profiles.modals.profileForm.fields.subscriptionUrl")}
               />
             )}
           />
@@ -300,12 +308,12 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
                 {...field}
                 type="number"
                 placeholder="60"
-                label={t("HTTP Request Timeout")}
+                label={t("profiles.modals.profileForm.fields.httpTimeout")}
                 slotProps={{
                   input: {
                     endAdornment: (
                       <InputAdornment position="end">
-                        {t("seconds")}
+                        {t("shared.units.seconds")}
                       </InputAdornment>
                     ),
                   },
@@ -325,11 +333,13 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
               {...text}
               {...field}
               type="number"
-              label={t("Update Interval")}
+              label={t("profiles.modals.profileForm.fields.updateInterval")}
               slotProps={{
                 input: {
                   endAdornment: (
-                    <InputAdornment position="end">{t("mins")}</InputAdornment>
+                    <InputAdornment position="end">
+                      {t("shared.units.minutes")}
+                    </InputAdornment>
                   ),
                 },
               }}
@@ -341,7 +351,7 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
       {isLocal && openType === "new" && (
         <FileInput
           onChange={(file, val) => {
-            formIns.setValue("name", formIns.getValues("name") || file.name);
+            setValue("name", getValues("name") || file.name);
             fileDataRef.current = val;
           }}
         />
@@ -354,7 +364,9 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
             control={control}
             render={({ field }) => (
               <StyledBox>
-                <InputLabel>{t("Use System Proxy")}</InputLabel>
+                <InputLabel>
+                  {t("profiles.modals.profileForm.fields.useSystemProxy")}
+                </InputLabel>
                 <Switch checked={field.value} {...field} color="primary" />
               </StyledBox>
             )}
@@ -365,7 +377,9 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
             control={control}
             render={({ field }) => (
               <StyledBox>
-                <InputLabel>{t("Use Clash Proxy")}</InputLabel>
+                <InputLabel>
+                  {t("profiles.modals.profileForm.fields.useClashProxy")}
+                </InputLabel>
                 <Switch checked={field.value} {...field} color="primary" />
               </StyledBox>
             )}
@@ -376,7 +390,22 @@ export function ProfileViewer({ onChange, ref }: ProfileViewerProps) {
             control={control}
             render={({ field }) => (
               <StyledBox>
-                <InputLabel>{t("Accept Invalid Certs (Danger)")}</InputLabel>
+                <InputLabel>
+                  {t("profiles.modals.profileForm.fields.acceptInvalidCerts")}
+                </InputLabel>
+                <Switch checked={field.value} {...field} color="primary" />
+              </StyledBox>
+            )}
+          />
+
+          <Controller
+            name="option.allow_auto_update"
+            control={control}
+            render={({ field }) => (
+              <StyledBox>
+                <InputLabel>
+                  {t("profiles.modals.profileForm.fields.allowAutoUpdate")}
+                </InputLabel>
                 <Switch checked={field.value} {...field} color="primary" />
               </StyledBox>
             )}

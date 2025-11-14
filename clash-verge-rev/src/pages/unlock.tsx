@@ -37,6 +37,19 @@ interface UnlockItem {
 const UNLOCK_RESULTS_STORAGE_KEY = "clash_verge_unlock_results";
 const UNLOCK_RESULTS_TIME_KEY = "clash_verge_unlock_time";
 
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  Pending: "tests.statuses.test.pending",
+  Yes: "tests.statuses.test.yes",
+  No: "tests.statuses.test.no",
+  Failed: "tests.statuses.test.failed",
+  Completed: "tests.statuses.test.completed",
+  "Disallowed ISP": "tests.statuses.test.disallowedIsp",
+  "Originals Only": "tests.statuses.test.originalsOnly",
+  "No (IP Banned By Disney+)": "tests.statuses.test.noDisney",
+  "Unsupported Country/Region": "tests.statuses.test.unsupportedRegion",
+  "Failed (Network Connection)": "tests.statuses.test.failedNetwork",
+};
+
 const UnlockPage = () => {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -49,19 +62,43 @@ const UnlockPage = () => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name));
   }, []);
 
-  // 保存测试结果到本地存储
-  const saveResultsToStorage = (items: UnlockItem[], time: string | null) => {
-    try {
-      localStorage.setItem(UNLOCK_RESULTS_STORAGE_KEY, JSON.stringify(items));
-      if (time) {
-        localStorage.setItem(UNLOCK_RESULTS_TIME_KEY, time);
+  const mergeUnlockItems = useCallback(
+    (defaults: UnlockItem[], existing?: UnlockItem[] | null) => {
+      if (!existing || existing.length === 0) {
+        return defaults;
       }
-    } catch (err) {
-      console.error("Failed to save results to storage:", err);
-    }
-  };
 
-  const loadResultsFromStorage = (): {
+      const existingMap = new Map(existing.map((item) => [item.name, item]));
+      const merged = defaults.map((item) => existingMap.get(item.name) ?? item);
+
+      const mergedNameSet = new Set(merged.map((item) => item.name));
+      existing.forEach((item) => {
+        if (!mergedNameSet.has(item.name)) {
+          merged.push(item);
+        }
+      });
+
+      return merged;
+    },
+    [],
+  );
+
+  // 保存测试结果到本地存储
+  const saveResultsToStorage = useCallback(
+    (items: UnlockItem[], time: string | null) => {
+      try {
+        localStorage.setItem(UNLOCK_RESULTS_STORAGE_KEY, JSON.stringify(items));
+        if (time) {
+          localStorage.setItem(UNLOCK_RESULTS_TIME_KEY, time);
+        }
+      } catch (err) {
+        console.error("Failed to save results to storage:", err);
+      }
+    },
+    [],
+  );
+
+  const loadResultsFromStorage = useCallback((): {
     items: UnlockItem[] | null;
     time: string | null;
   } => {
@@ -80,34 +117,42 @@ const UnlockPage = () => {
     }
 
     return { items: null, time: null };
-  };
+  }, []);
 
   const getUnlockItems = useCallback(
-    async (updateUI: boolean = true) => {
+    async (
+      existingItems: UnlockItem[] | null = null,
+      existingTime: string | null = null,
+    ) => {
       try {
-        const items = await invoke<UnlockItem[]>("get_unlock_items");
-        const sortedItems = sortItemsByName(items);
+        const defaultItems = await invoke<UnlockItem[]>("get_unlock_items");
+        const mergedItems = mergeUnlockItems(defaultItems, existingItems);
+        const sortedItems = sortItemsByName(mergedItems);
 
-        if (updateUI) {
-          setUnlockItems(sortedItems);
-        }
+        setUnlockItems(sortedItems);
+        saveResultsToStorage(
+          sortedItems,
+          existingItems && existingItems.length > 0 ? existingTime : null,
+        );
       } catch (err: any) {
         console.error("Failed to get unlock items:", err);
       }
     },
-    [sortItemsByName],
+    [mergeUnlockItems, saveResultsToStorage, sortItemsByName],
   );
 
   useEffect(() => {
-    const { items: storedItems } = loadResultsFromStorage();
+    void (async () => {
+      const { items: storedItems, time: storedTime } = loadResultsFromStorage();
 
-    if (storedItems && storedItems.length > 0) {
-      setUnlockItems(storedItems);
-      getUnlockItems(false);
-    } else {
-      getUnlockItems(true);
-    }
-  }, [getUnlockItems]);
+      if (storedItems && storedItems.length > 0) {
+        setUnlockItems(sortItemsByName(storedItems));
+        await getUnlockItems(storedItems, storedTime);
+      } else {
+        await getUnlockItems();
+      }
+    })();
+  }, [getUnlockItems, loadResultsFromStorage, sortItemsByName]);
 
   const invokeWithTimeout = async <T,>(
     cmd: string,
@@ -118,7 +163,8 @@ const UnlockPage = () => {
       invoke<T>(cmd, args),
       new Promise<T>((_, reject) =>
         setTimeout(
-          () => reject(new Error(t("Detection timeout or failed"))),
+          () =>
+            reject(new Error(t("tests.unlock.page.messages.detectionTimeout"))),
           timeout,
         ),
       ),
@@ -141,10 +187,7 @@ const UnlockPage = () => {
       setIsCheckingAll(false);
     } catch (err: any) {
       setIsCheckingAll(false);
-      showNotice(
-        "error",
-        err?.message || err?.toString() || t("Detection timeout or failed"),
-      );
+      showNotice.error("tests.unlock.page.messages.detectionTimeout", err);
       console.error("Failed to check media unlock:", err);
     }
   });
@@ -174,11 +217,10 @@ const UnlockPage = () => {
       setLoadingItems((prev) => prev.filter((item) => item !== name));
     } catch (err: any) {
       setLoadingItems((prev) => prev.filter((item) => item !== name));
-      showNotice(
-        "error",
-        err?.message ||
-          err?.toString() ||
-          t("Detection failed for {name}").replace("{name}", name),
+      showNotice.error(
+        "tests.unlock.page.messages.detectionFailedWithName",
+        { name },
+        err,
       );
       console.error(`Failed to check ${name}:`, err);
     }
@@ -226,7 +268,7 @@ const UnlockPage = () => {
 
   return (
     <BasePage
-      title={t("Unlock Test")}
+      title={t("tests.unlock.page.title")}
       header={
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Button
@@ -242,7 +284,9 @@ const UnlockPage = () => {
               )
             }
           >
-            {isCheckingAll ? t("Testing...") : t("Test All")}
+            {isCheckingAll
+              ? t("tests.unlock.page.actions.testing")
+              : t("tests.page.actions.testAll")}
           </Button>
         </Box>
       }
@@ -256,7 +300,7 @@ const UnlockPage = () => {
             height: "50%",
           }}
         >
-          <BaseEmpty text={t("No unlock test items")} />
+          <BaseEmpty textKey="tests.unlock.page.empty" />
         </Box>
       ) : (
         <Grid container spacing={1.5} columns={{ xs: 1, sm: 2, md: 3 }}>
@@ -298,7 +342,7 @@ const UnlockPage = () => {
                     >
                       {item.name}
                     </Typography>
-                    <Tooltip title={t("Test")}>
+                    <Tooltip title={t("tests.components.item.actions.test")}>
                       <span>
                         <Button
                           size="small"
@@ -340,7 +384,7 @@ const UnlockPage = () => {
                     }}
                   >
                     <Chip
-                      label={t(item.status)}
+                      label={t(STATUS_LABEL_KEYS[item.status] ?? item.status)}
                       color={getStatusColor(item.status)}
                       size="small"
                       icon={getStatusIcon(item.status)}

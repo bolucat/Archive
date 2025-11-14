@@ -26,7 +26,7 @@ export const LogViewer = (props: Props) => {
 
   return (
     <Dialog open={open} onClose={onClose}>
-      <DialogTitle>{t("Script Console")}</DialogTitle>
+      <DialogTitle>{t("profiles.modals.logViewer.title")}</DialogTitle>
 
       <DialogContent
         sx={{
@@ -37,8 +37,8 @@ export const LogViewer = (props: Props) => {
           pb: 1,
         }}
       >
-        {logInfo.map(([level, log], index) => (
-          <Fragment key={index.toString()}>
+        {logInfo.map(([level, log]) => (
+          <Fragment key={`${level}-${log}`}>
             <Typography color="text.secondary" component="div">
               <Chip
                 label={level}
@@ -62,7 +62,7 @@ export const LogViewer = (props: Props) => {
 
       <DialogActions>
         <Button onClick={onClose} variant="outlined">
-          {t("Close")}
+          {t("shared.actions.close")}
         </Button>
       </DialogActions>
     </Dialog>

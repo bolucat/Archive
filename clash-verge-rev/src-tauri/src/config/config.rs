@@ -1,78 +1,102 @@
-use super::{Draft, IClashTemp, IProfiles, IRuntime, IVerge};
+use super::{IClashTemp, IProfiles, IRuntime, IVerge};
 use crate::{
+    cmd,
     config::{PrfItem, profiles_append_item_safe},
-    core::{CoreManager, handle},
-    enhance, logging,
-    utils::{dirs, help, logging::Type},
+    constants::{files, timing},
+    core::{CoreManager, handle, service, tray, validate::CoreConfigValidator},
+    enhance, logging, logging_error,
+    utils::{Draft, dirs, help, logging::Type},
 };
 use anyhow::{Result, anyhow};
 use backoff::{Error as BackoffError, ExponentialBackoff};
+use smartstring::alias::String;
 use std::path::PathBuf;
-use std::time::Duration;
 use tokio::sync::OnceCell;
 use tokio::time::sleep;
 
-pub const RUNTIME_CONFIG: &str = "clash-verge.yaml";
-pub const CHECK_CONFIG: &str = "clash-verge-check.yaml";
-
 pub struct Config {
-    clash_config: Draft<Box<IClashTemp>>,
-    verge_config: Draft<Box<IVerge>>,
-    profiles_config: Draft<Box<IProfiles>>,
-    runtime_config: Draft<Box<IRuntime>>,
+    clash_config: Draft<IClashTemp>,
+    verge_config: Draft<IVerge>,
+    profiles_config: Draft<IProfiles>,
+    runtime_config: Draft<IRuntime>,
 }
 
 impl Config {
-    pub async fn global() -> &'static Config {
+    pub async fn global() -> &'static Self {
         static CONFIG: OnceCell<Config> = OnceCell::const_new();
         CONFIG
             .get_or_init(|| async {
-                Config {
-                    clash_config: Draft::from(Box::new(IClashTemp::new().await)),
-                    verge_config: Draft::from(Box::new(IVerge::new().await)),
-                    profiles_config: Draft::from(Box::new(IProfiles::new().await)),
-                    runtime_config: Draft::from(Box::new(IRuntime::new())),
+                Self {
+                    clash_config: Draft::new(IClashTemp::new().await),
+                    verge_config: Draft::new(IVerge::new().await),
+                    profiles_config: Draft::new(IProfiles::new().await),
+                    runtime_config: Draft::new(IRuntime::new()),
                 }
             })
             .await
     }
 
-    pub async fn clash() -> Draft<Box<IClashTemp>> {
+    pub async fn clash() -> Draft<IClashTemp> {
         Self::global().await.clash_config.clone()
     }
 
-    pub async fn verge() -> Draft<Box<IVerge>> {
+    pub async fn verge() -> Draft<IVerge> {
         Self::global().await.verge_config.clone()
     }
 
-    pub async fn profiles() -> Draft<Box<IProfiles>> {
+    pub async fn profiles() -> Draft<IProfiles> {
         Self::global().await.profiles_config.clone()
     }
 
-    pub async fn runtime() -> Draft<Box<IRuntime>> {
+    pub async fn runtime() -> Draft<IRuntime> {
         Self::global().await.runtime_config.clone()
     }
 
     /// 初始化订阅
     pub async fn init_config() -> Result<()> {
-        if Self::profiles()
-            .await
-            .latest_ref()
-            .get_item(&"Merge".to_string())
-            .is_err()
+        Self::ensure_default_profile_items().await?;
+
+        // init Tun mode
+        if !cmd::system::is_admin().unwrap_or_default()
+            && service::is_service_available().await.is_err()
         {
-            let merge_item = PrfItem::from_merge(Some("Merge".to_string()))?;
-            profiles_append_item_safe(merge_item.clone()).await?;
+            let verge = Self::verge().await;
+            verge.edit_draft(|d| {
+                d.enable_tun_mode = Some(false);
+            });
+            verge.apply();
+            let _ = tray::Tray::global().update_menu().await;
+
+            // 分离数据获取和异步调用避免Send问题
+            let verge_data = Self::verge().await.latest_arc();
+            logging_error!(Type::Core, verge_data.save_file().await);
         }
-        if Self::profiles()
-            .await
-            .latest_ref()
-            .get_item(&"Script".to_string())
-            .is_err()
-        {
-            let script_item = PrfItem::from_script(Some("Script".to_string()))?;
-            profiles_append_item_safe(script_item.clone()).await?;
+
+        let validation_result = Self::generate_and_validate().await?;
+
+        if let Some((msg_type, msg_content)) = validation_result {
+            sleep(timing::STARTUP_ERROR_DELAY).await;
+            handle::Handle::notice_message(msg_type, msg_content);
         }
+
+        Ok(())
+    }
+
+    // Ensure "Merge" and "Script" profile items exist, adding them if missing.
+    async fn ensure_default_profile_items() -> Result<()> {
+        let profiles = Self::profiles().await;
+        if profiles.latest_arc().get_item("Merge").is_err() {
+            let merge_item = &mut PrfItem::from_merge(Some("Merge".into()))?;
+            profiles_append_item_safe(merge_item).await?;
+        }
+        if profiles.latest_arc().get_item("Script").is_err() {
+            let script_item = &mut PrfItem::from_script(Some("Script".into()))?;
+            profiles_append_item_safe(script_item).await?;
+        }
+        Ok(())
+    }
+
+    async fn generate_and_validate() -> Result<Option<(&'static str, String)>> {
         // 生成运行时配置
         if let Err(err) = Self::generate().await {
             logging!(error, Type::Config, "生成运行时配置失败: {}", err);
@@ -83,11 +107,11 @@ impl Config {
         // 生成运行时配置文件并验证
         let config_result = Self::generate_file(ConfigType::Run).await;
 
-        let validation_result = if config_result.is_ok() {
+        if config_result.is_ok() {
             // 验证配置文件
             logging!(info, Type::Config, "开始验证配置");
 
-            match CoreManager::global().validate_config().await {
+            match CoreConfigValidator::global().validate_config().await {
                 Ok((is_valid, error_msg)) => {
                     if !is_valid {
                         logging!(
@@ -99,12 +123,12 @@ impl Config {
                         CoreManager::global()
                             .use_default_config("config_validate::boot_error", &error_msg)
                             .await?;
-                        Some(("config_validate::boot_error", error_msg))
+                        Ok(Some(("config_validate::boot_error", error_msg)))
                     } else {
                         logging!(info, Type::Config, "配置验证成功");
                         // 前端没有必要知道验证成功的消息，也没有事件驱动
                         // Some(("config_validate::success", String::new()))
-                        None
+                        Ok(None)
                     }
                 }
                 Err(err) => {
@@ -112,7 +136,7 @@ impl Config {
                     CoreManager::global()
                         .use_default_config("config_validate::process_terminated", "")
                         .await?;
-                    Some(("config_validate::process_terminated", String::new()))
+                    Ok(Some(("config_validate::process_terminated", String::new())))
                 }
             }
         } else {
@@ -120,54 +144,42 @@ impl Config {
             CoreManager::global()
                 .use_default_config("config_validate::error", "")
                 .await?;
-            Some(("config_validate::error", String::new()))
-        };
-
-        // 在单独的任务中发送通知
-        if let Some((msg_type, msg_content)) = validation_result {
-            sleep(Duration::from_secs(2)).await;
-            handle::Handle::notice_message(msg_type, &msg_content);
+            Ok(Some(("config_validate::error", String::new())))
         }
-
-        Ok(())
     }
 
-    /// 将订阅丢到对应的文件中
     pub async fn generate_file(typ: ConfigType) -> Result<PathBuf> {
         let path = match typ {
-            ConfigType::Run => dirs::app_home_dir()?.join(RUNTIME_CONFIG),
-            ConfigType::Check => dirs::app_home_dir()?.join(CHECK_CONFIG),
+            ConfigType::Run => dirs::app_home_dir()?.join(files::RUNTIME_CONFIG),
+            ConfigType::Check => dirs::app_home_dir()?.join(files::CHECK_CONFIG),
         };
 
-        let runtime = Config::runtime().await;
-        let config = runtime
-            .latest_ref()
+        let runtime = Self::runtime().await;
+        let runtime_arc = runtime.latest_arc();
+        let config = runtime_arc
             .config
             .as_ref()
-            .ok_or(anyhow!("failed to get runtime config"))?
-            .clone();
-        drop(runtime); // 显式释放锁
+            .ok_or_else(|| anyhow!("failed to get runtime config"))?;
 
-        help::save_yaml(&path, &config, Some("# Generated by Clash Verge")).await?;
+        help::save_yaml(&path, config, Some("# Generated by Clash Verge")).await?;
         Ok(path)
     }
 
-    /// 生成订阅存好
     pub async fn generate() -> Result<()> {
         let (config, exists_keys, logs) = enhance::enhance().await;
 
-        *Config::runtime().await.draft_mut() = Box::new(IRuntime {
-            config: Some(config),
-            exists_keys,
-            chain_logs: logs,
+        Self::runtime().await.edit_draft(|d| {
+            *d = IRuntime {
+                config: Some(config),
+                exists_keys,
+                chain_logs: logs,
+            }
         });
 
         Ok(())
     }
 
     pub async fn verify_config_initialization() {
-        logging!(info, Type::Setup, "Verifying config initialization...");
-
         let backoff_strategy = ExponentialBackoff {
             initial_interval: std::time::Duration::from_millis(100),
             max_interval: std::time::Duration::from_secs(2),
@@ -177,49 +189,15 @@ impl Config {
         };
 
         let operation = || async {
-            if Config::runtime().await.latest_ref().config.is_some() {
-                logging!(
-                    info,
-                    Type::Setup,
-                    "Config initialization verified successfully"
-                );
+            if Self::runtime().await.latest_arc().config.is_some() {
                 return Ok::<(), BackoffError<anyhow::Error>>(());
             }
 
-            logging!(
-                warn,
-                Type::Setup,
-                "Runtime config not found, attempting to regenerate..."
-            );
-
-            match Config::generate().await {
-                Ok(_) => {
-                    logging!(info, Type::Setup, "Config successfully regenerated");
-                    Ok(())
-                }
-                Err(e) => {
-                    logging!(warn, Type::Setup, "Failed to generate config: {}", e);
-                    Err(BackoffError::transient(e))
-                }
-            }
+            Self::generate().await.map_err(BackoffError::transient)
         };
 
-        match backoff::future::retry(backoff_strategy, operation).await {
-            Ok(_) => {
-                logging!(
-                    info,
-                    Type::Setup,
-                    "Config initialization verified with backoff retry"
-                );
-            }
-            Err(e) => {
-                logging!(
-                    error,
-                    Type::Setup,
-                    "Failed to verify config initialization after retries: {}",
-                    e
-                );
-            }
+        if let Err(e) = backoff::future::retry(backoff_strategy, operation).await {
+            logging!(error, Type::Setup, "Config init verification failed: {}", e);
         }
     }
 }
@@ -238,8 +216,8 @@ mod tests {
     #[allow(unused_variables)]
     #[allow(clippy::expect_used)]
     fn test_prfitem_from_merge_size() {
-        let merge_item = PrfItem::from_merge(Some("Merge".to_string()))
-            .expect("Failed to create merge item in test");
+        let merge_item =
+            PrfItem::from_merge(Some("Merge".into())).expect("Failed to create merge item in test");
         let prfitem_size = mem::size_of_val(&merge_item);
         // Boxed version
         let boxed_merge_item = Box::new(merge_item);
@@ -252,7 +230,7 @@ mod tests {
     #[test]
     #[allow(unused_variables)]
     fn test_draft_size_non_boxed() {
-        let draft = Draft::from(IRuntime::new());
+        let draft = Draft::new(IRuntime::new());
         let iruntime_size = std::mem::size_of_val(&draft);
         assert_eq!(iruntime_size, std::mem::size_of::<Draft<IRuntime>>());
     }
@@ -260,7 +238,7 @@ mod tests {
     #[test]
     #[allow(unused_variables)]
     fn test_draft_size_boxed() {
-        let draft = Draft::from(Box::new(IRuntime::new()));
+        let draft = Draft::new(Box::new(IRuntime::new()));
         let box_iruntime_size = std::mem::size_of_val(&draft);
         assert_eq!(
             box_iruntime_size,

@@ -22,7 +22,7 @@ import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import { useAppData } from "@/providers/app-data-context";
 import { openWebUrl, updateProfile } from "@/services/cmds";
@@ -111,7 +111,7 @@ const ProfileDetails = ({
               noWrap
               sx={{ display: "flex", alignItems: "center" }}
             >
-              <span style={{ flexShrink: 0 }}>{t("From")}: </span>
+              <span style={{ flexShrink: 0 }}>{t("shared.labels.from")}: </span>
               {current.home ? (
                 <Link
                   component="button"
@@ -186,7 +186,7 @@ const ProfileDetails = ({
               sx={{ cursor: "pointer" }}
               onClick={onUpdateProfile}
             >
-              {t("Update Time")}:{" "}
+              {t("shared.labels.updateTime")}:{" "}
               <Box component="span" fontWeight="medium">
                 {dayjs(current.updated * 1000).format("YYYY-MM-DD HH:mm")}
               </Box>
@@ -199,7 +199,7 @@ const ProfileDetails = ({
             <Stack direction="row" alignItems="center" spacing={1}>
               <SpeedOutlined fontSize="small" color="action" />
               <Typography variant="body2" color="text.secondary">
-                {t("Used / Total")}:{" "}
+                {t("shared.labels.usedTotal")}:{" "}
                 <Box component="span" fontWeight="medium">
                   {parseTraffic(usedTraffic)} /{" "}
                   {parseTraffic(current.extra.total)}
@@ -211,7 +211,7 @@ const ProfileDetails = ({
               <Stack direction="row" alignItems="center" spacing={1}>
                 <EventOutlined fontSize="small" color="action" />
                 <Typography variant="body2" color="text.secondary">
-                  {t("Expire Time")}:{" "}
+                  {t("shared.labels.expireTime")}:{" "}
                   <Box component="span" fontWeight="medium">
                     {parseExpire(current.extra.expire)}
                   </Box>
@@ -266,10 +266,10 @@ const EmptyProfile = ({ onClick }: { onClick: () => void }) => {
         sx={{ fontSize: 60, color: "primary.main", mb: 2 }}
       />
       <Typography variant="h6" gutterBottom>
-        {t("Import")} {t("Profiles")}
+        {t("profiles.page.actions.import")} {t("profiles.page.title")}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        {t("Click to import subscription")}
+        {t("profiles.components.card.labels.clickToImport")}
       </Typography>
     </Box>
   );
@@ -292,13 +292,12 @@ export const HomeProfileCard = ({
     setUpdating(true);
     try {
       await updateProfile(current.uid, current.option);
-      showNotice("success", t("Update subscription successfully"), 1000);
       onProfileUpdated?.();
 
       // 刷新首页数据
       refreshAll();
-    } catch (err: any) {
-      showNotice("error", err.message || err.toString(), 3000);
+    } catch (err) {
+      showNotice.error(err, 3000);
     } finally {
       setUpdating(false);
     }
@@ -311,7 +310,7 @@ export const HomeProfileCard = ({
 
   // 卡片标题
   const cardTitle = useMemo(() => {
-    if (!current) return t("Profiles");
+    if (!current) return t("profiles.page.title");
 
     if (!current.home) return current.name;
 
@@ -364,7 +363,7 @@ export const HomeProfileCard = ({
         endIcon={<StorageOutlined fontSize="small" />}
         sx={{ borderRadius: 1.5 }}
       >
-        {t("Label-Profiles")}
+        {t("layout.components.navigation.tabs.proxies")}
       </Button>
     );
   }, [current, goToProfiles, t]);

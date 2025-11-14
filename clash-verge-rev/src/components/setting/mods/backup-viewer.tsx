@@ -1,128 +1,213 @@
-import { Box, Divider, Paper } from "@mui/material";
-import dayjs from "dayjs";
-import customParseFormat from "dayjs/plugin/customParseFormat";
-import type { Ref } from "react";
-import { useCallback, useImperativeHandle, useMemo, useState } from "react";
+import { LoadingButton } from "@mui/lab";
+import {
+  Button,
+  List,
+  ListItem,
+  ListItemText,
+  Stack,
+  Typography,
+} from "@mui/material";
+import { useLockFn } from "ahooks";
+import type { ReactNode, Ref } from "react";
+import { useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BaseDialog, BaseLoadingOverlay, DialogRef } from "@/components/base";
-import { listWebDavBackup } from "@/services/cmds";
+import { BaseDialog, DialogRef } from "@/components/base";
+import { createLocalBackup, createWebdavBackup } from "@/services/cmds";
+import { showNotice } from "@/services/noticeService";
 
-import { BackupConfigViewer } from "./backup-config-viewer";
-import {
-  BackupFile,
-  BackupTableViewer,
-  DEFAULT_ROWS_PER_PAGE,
-} from "./backup-table-viewer";
-dayjs.extend(customParseFormat);
+import { AutoBackupSettings } from "./auto-backup-settings";
+import { BackupHistoryViewer } from "./backup-history-viewer";
+import { BackupWebdavDialog } from "./backup-webdav-dialog";
 
-const DATE_FORMAT = "YYYY-MM-DD_HH-mm-ss";
-const FILENAME_PATTERN = /\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/;
+type BackupSource = "local" | "webdav";
 
 export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [backupFiles, setBackupFiles] = useState<BackupFile[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
+  const [busyAction, setBusyAction] = useState<BackupSource | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historySource, setHistorySource] = useState<BackupSource>("local");
+  const [historyPage, setHistoryPage] = useState(0);
+  const [webdavDialogOpen, setWebdavDialogOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
-    open: () => {
-      setOpen(true);
-    },
+    open: () => setOpen(true),
     close: () => setOpen(false),
   }));
 
-  // Handle page change
-  const handleChangePage = useCallback(
-    (_: React.MouseEvent<HTMLButtonElement> | null, page: number) => {
-      setPage(page);
-    },
-    [],
-  );
+  const openHistory = (target: BackupSource) => {
+    setHistorySource(target);
+    setHistoryPage(0);
+    setHistoryOpen(true);
+  };
 
-  const fetchAndSetBackupFiles = async () => {
+  const handleBackup = useLockFn(async (target: BackupSource) => {
     try {
-      setIsLoading(true);
-      const files = await getAllBackupFiles();
-      setBackupFiles(files);
-      setTotal(files.length);
+      setBusyAction(target);
+      if (target === "local") {
+        await createLocalBackup();
+        showNotice.success(
+          "settings.modals.backup.messages.localBackupCreated",
+        );
+      } else {
+        await createWebdavBackup();
+        showNotice.success("settings.modals.backup.messages.backupCreated");
+      }
     } catch (error) {
-      setBackupFiles([]);
-      setTotal(0);
       console.error(error);
-      // Notice.error(t("Failed to fetch backup files"));
+      showNotice.error(
+        target === "local"
+          ? "settings.modals.backup.messages.localBackupFailed"
+          : "settings.modals.backup.messages.backupFailed",
+        target === "local" ? undefined : { error },
+      );
     } finally {
-      setIsLoading(false);
+      setBusyAction(null);
     }
-  };
-
-  const getAllBackupFiles = async () => {
-    const files = await listWebDavBackup();
-    return files
-      .map((file) => {
-        const platform = file.filename.split("-")[0];
-        const fileBackupTimeStr = file.filename.match(FILENAME_PATTERN)!;
-
-        if (fileBackupTimeStr === null) {
-          return null;
-        }
-
-        const backupTime = dayjs(fileBackupTimeStr[0], DATE_FORMAT);
-        const allowApply = true;
-        return {
-          ...file,
-          platform,
-          backup_time: backupTime,
-          allow_apply: allowApply,
-        } as BackupFile;
-      })
-      .filter((item) => item !== null)
-      .sort((a, b) => (a.backup_time.isAfter(b.backup_time) ? -1 : 1));
-  };
-
-  const dataSource = useMemo<BackupFile[]>(
-    () =>
-      backupFiles.slice(
-        page * DEFAULT_ROWS_PER_PAGE,
-        page * DEFAULT_ROWS_PER_PAGE + DEFAULT_ROWS_PER_PAGE,
-      ),
-    [backupFiles, page],
-  );
+  });
 
   return (
     <BaseDialog
       open={open}
-      title={t("Backup Setting")}
-      // contentSx={{ width: 600, maxHeight: 800 }}
-      okBtn={t("")}
-      cancelBtn={t("Close")}
-      onClose={() => setOpen(false)}
-      onCancel={() => setOpen(false)}
+      title={t("settings.modals.backup.title")}
+      contentSx={{ width: { xs: 360, sm: 520 } }}
       disableOk
+      cancelBtn={t("shared.actions.close")}
+      onCancel={() => setOpen(false)}
+      onClose={() => setOpen(false)}
     >
-      <Box>
-        <BaseLoadingOverlay isLoading={isLoading} />
-        <Paper elevation={2} sx={{ padding: 2 }}>
-          <BackupConfigViewer
-            setLoading={setIsLoading}
-            onBackupSuccess={fetchAndSetBackupFiles}
-            onSaveSuccess={fetchAndSetBackupFiles}
-            onRefresh={fetchAndSetBackupFiles}
-            onInit={fetchAndSetBackupFiles}
-          />
-          <Divider sx={{ marginY: 2 }} />
-          <BackupTableViewer
-            datasource={dataSource}
-            page={page}
-            onPageChange={handleChangePage}
-            total={total}
-            onRefresh={fetchAndSetBackupFiles}
-          />
-        </Paper>
-      </Box>
+      <Stack spacing={2}>
+        <Stack
+          spacing={1}
+          sx={{
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+            borderRadius: 2,
+            p: 2,
+          }}
+        >
+          <Typography variant="subtitle1">
+            {t("settings.modals.backup.auto.title")}
+          </Typography>
+          <List disablePadding sx={{ ".MuiListItem-root": { px: 0 } }}>
+            <AutoBackupSettings />
+          </List>
+        </Stack>
+
+        <Stack
+          spacing={1}
+          sx={{
+            border: (theme) => `1px solid ${theme.palette.divider}`,
+            borderRadius: 2,
+            p: 2,
+          }}
+        >
+          <Typography variant="subtitle1">
+            {t("settings.modals.backup.manual.title")}
+          </Typography>
+          <List disablePadding sx={{ ".MuiListItem-root": { px: 0 } }}>
+            {(
+              [
+                {
+                  key: "local" as BackupSource,
+                  title: t("settings.modals.backup.tabs.local"),
+                  description: t("settings.modals.backup.manual.local"),
+                  actions: [
+                    <LoadingButton
+                      key="backup"
+                      variant="contained"
+                      size="small"
+                      loading={busyAction === "local"}
+                      onClick={() => handleBackup("local")}
+                    >
+                      {t("settings.modals.backup.actions.backup")}
+                    </LoadingButton>,
+                    <Button
+                      key="history"
+                      variant="outlined"
+                      size="small"
+                      onClick={() => openHistory("local")}
+                    >
+                      {t("settings.modals.backup.actions.viewHistory")}
+                    </Button>,
+                  ],
+                },
+                {
+                  key: "webdav" as BackupSource,
+                  title: t("settings.modals.backup.tabs.webdav"),
+                  description: t("settings.modals.backup.manual.webdav"),
+                  actions: [
+                    <LoadingButton
+                      key="backup"
+                      variant="contained"
+                      size="small"
+                      loading={busyAction === "webdav"}
+                      onClick={() => handleBackup("webdav")}
+                    >
+                      {t("settings.modals.backup.actions.backup")}
+                    </LoadingButton>,
+                    <Button
+                      key="history"
+                      variant="outlined"
+                      size="small"
+                      onClick={() => openHistory("webdav")}
+                    >
+                      {t("settings.modals.backup.actions.viewHistory")}
+                    </Button>,
+                    <Button
+                      key="configure"
+                      variant="text"
+                      size="small"
+                      onClick={() => setWebdavDialogOpen(true)}
+                    >
+                      {t("settings.modals.backup.manual.configureWebdav")}
+                    </Button>,
+                  ],
+                },
+              ] satisfies Array<{
+                key: BackupSource;
+                title: string;
+                description: string;
+                actions: ReactNode[];
+              }>
+            ).map((item, idx) => (
+              <ListItem key={item.key} disableGutters divider={idx === 0}>
+                <Stack spacing={1} sx={{ width: "100%" }}>
+                  <ListItemText
+                    primary={item.title}
+                    slotProps={{ secondary: { component: "span" } }}
+                    secondary={item.description}
+                  />
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    useFlexGap
+                    flexWrap="wrap"
+                    alignItems="center"
+                  >
+                    {item.actions}
+                  </Stack>
+                </Stack>
+              </ListItem>
+            ))}
+          </List>
+        </Stack>
+      </Stack>
+
+      <BackupHistoryViewer
+        open={historyOpen}
+        source={historySource}
+        page={historyPage}
+        onSourceChange={setHistorySource}
+        onPageChange={setHistoryPage}
+        onClose={() => setHistoryOpen(false)}
+      />
+      <BackupWebdavDialog
+        open={webdavDialogOpen}
+        onClose={() => setWebdavDialogOpen(false)}
+        onBackupSuccess={() => openHistory("webdav")}
+        setBusy={(loading) => setBusyAction(loading ? "webdav" : null)}
+      />
     </BaseDialog>
   );
 }

@@ -22,6 +22,7 @@ type AuthMethod string
 type Settings struct {
 	Key                   []byte              `json:"key"`
 	Signup                bool                `json:"signup"`
+	HideLoginButton       bool                `json:"hideLoginButton"`
 	CreateUserDir         bool                `json:"createUserDir"`
 	UserHomeBasePath      string              `json:"userHomeBasePath"`
 	Defaults              UserDefaults        `json:"defaults"`
@@ -34,6 +35,7 @@ type Settings struct {
 	MinimumPasswordLength uint                `json:"minimumPasswordLength"`
 	FileMode              fs.FileMode         `json:"fileMode"`
 	DirMode               fs.FileMode         `json:"dirMode"`
+	HideDotfiles          bool                `json:"hideDotfiles"`
 }
 
 // GetRules implements rules.Provider.

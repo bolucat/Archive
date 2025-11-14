@@ -1,19 +1,20 @@
 import {
   DndContext,
-  closestCenter,
+  DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
+import MonacoEditor from "@monaco-editor/react";
 import {
-  VerticalAlignTopRounded,
   VerticalAlignBottomRounded,
+  VerticalAlignTopRounded,
 } from "@mui/icons-material";
 import {
   Autocomplete,
@@ -32,14 +33,19 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import {
-  requestIdleCallback,
   cancelIdleCallback,
+  requestIdleCallback,
 } from "foxact/request-idle-callback";
 import yaml from "js-yaml";
-import { useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import MonacoEditor from "react-monaco-editor";
 import { Virtuoso } from "react-virtuoso";
 
 import { Switch } from "@/components/base";
@@ -51,6 +57,7 @@ import {
 } from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
 import { useThemeMode } from "@/services/states";
+import type { TranslationKey } from "@/types/generated/i18n-keys";
 import getSystem from "@/utils/get-system";
 
 import { BaseSearchBox } from "../base/base-search-box";
@@ -67,10 +74,86 @@ interface Props {
 
 const builtinProxyPolicies = ["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
 
+const PROXY_STRATEGY_LABEL_KEYS: Record<string, TranslationKey> = {
+  select: "proxies.components.enums.strategies.select",
+  "url-test": "proxies.components.enums.strategies.url-test",
+  fallback: "proxies.components.enums.strategies.fallback",
+  "load-balance": "proxies.components.enums.strategies.load-balance",
+  relay: "proxies.components.enums.strategies.relay",
+};
+
+const PROXY_POLICY_LABEL_KEYS: Record<string, TranslationKey> =
+  builtinProxyPolicies.reduce(
+    (acc, policy) => {
+      acc[policy] =
+        `proxies.components.enums.policies.${policy}` as TranslationKey;
+      return acc;
+    },
+    {} as Record<string, TranslationKey>,
+  );
+
+const normalizeDeleteSeq = (input?: unknown): string[] => {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const names = input
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      if (
+        item &&
+        typeof item === "object" &&
+        "name" in item &&
+        typeof (item as { name: unknown }).name === "string"
+      ) {
+        return (item as { name: string }).name;
+      }
+
+      return undefined;
+    })
+    .filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    );
+
+  return Array.from(new Set(names));
+};
+
+const buildGroupsYaml = (
+  prepend: IProxyGroupConfig[],
+  append: IProxyGroupConfig[],
+  deleteList: string[],
+) => {
+  return yaml.dump(
+    {
+      prepend,
+      append,
+      delete: deleteList,
+    },
+    { forceQuotes: true },
+  );
+};
+
 export const GroupsEditorViewer = (props: Props) => {
   const { mergeUid, proxiesUid, profileUid, property, open, onClose, onSave } =
     props;
   const { t } = useTranslation();
+  const translateStrategy = useCallback(
+    (value: string) =>
+      PROXY_STRATEGY_LABEL_KEYS[value]
+        ? t(PROXY_STRATEGY_LABEL_KEYS[value])
+        : value,
+    [t],
+  );
+  const translatePolicy = useCallback(
+    (value: string) =>
+      PROXY_POLICY_LABEL_KEYS[value]
+        ? t(PROXY_POLICY_LABEL_KEYS[value])
+        : value,
+    [t],
+  );
   const themeMode = useThemeMode();
   const [prevData, setPrevData] = useState("");
   const [currData, setCurrData] = useState("");
@@ -160,43 +243,55 @@ export const GroupsEditorViewer = (props: Props) => {
       }
     }
   };
-  const fetchContent = async () => {
+  const fetchContent = useCallback(async () => {
     const data = await readProfileFile(property);
     const obj = yaml.load(data) as ISeqProfileConfig | null;
 
     setPrependSeq(obj?.prepend || []);
     setAppendSeq(obj?.append || []);
-    setDeleteSeq(obj?.delete || []);
+    setDeleteSeq((prev) => {
+      const normalized = normalizeDeleteSeq(obj?.delete);
+      if (
+        normalized.length === prev.length &&
+        normalized.every((item, index) => item === prev[index])
+      ) {
+        return prev;
+      }
+      return normalized;
+    });
 
     setPrevData(data);
     setCurrData(data);
-  };
+  }, [property]);
 
   useEffect(() => {
-    if (currData === "") return;
-    if (visualization !== true) return;
+    if (currData === "" || visualization !== true) {
+      return;
+    }
 
-    const obj = yaml.load(currData) as {
-      prepend: [];
-      append: [];
-      delete: [];
-    } | null;
-    setPrependSeq(obj?.prepend || []);
-    setAppendSeq(obj?.append || []);
-    setDeleteSeq(obj?.delete || []);
-  }, [visualization]);
+    const obj = yaml.load(currData) as ISeqProfileConfig | null;
+    startTransition(() => {
+      setPrependSeq(obj?.prepend ?? []);
+      setAppendSeq(obj?.append ?? []);
+      setDeleteSeq((prev) => {
+        const normalized = normalizeDeleteSeq(obj?.delete);
+        if (
+          normalized.length === prev.length &&
+          normalized.every((item, index) => item === prev[index])
+        ) {
+          return prev;
+        }
+        return normalized;
+      });
+    });
+  }, [currData, visualization]);
 
   // 优化：异步处理大数据yaml.dump，避免UI卡死
   useEffect(() => {
     if (prependSeq && appendSeq && deleteSeq) {
       const serialize = () => {
         try {
-          setCurrData(
-            yaml.dump(
-              { prepend: prependSeq, append: appendSeq, delete: deleteSeq },
-              { forceQuotes: true },
-            ),
-          );
+          setCurrData(buildGroupsYaml(prependSeq, appendSeq, deleteSeq));
         } catch (e) {
           console.warn("[GroupsEditorViewer] yaml.dump failed:", e);
           // 防止异常导致UI卡死
@@ -210,7 +305,7 @@ export const GroupsEditorViewer = (props: Props) => {
     }
   }, [prependSeq, appendSeq, deleteSeq]);
 
-  const fetchProxyPolicy = async () => {
+  const fetchProxyPolicy = useCallback(async () => {
     const data = await readProfileFile(profileUid);
     const proxiesData = await readProfileFile(proxiesUid);
     const originGroupsObj = yaml.load(data) as {
@@ -222,32 +317,39 @@ export const GroupsEditorViewer = (props: Props) => {
     const moreProxiesObj = yaml.load(proxiesData) as ISeqProfileConfig | null;
     const morePrependProxies = moreProxiesObj?.prepend || [];
     const moreAppendProxies = moreProxiesObj?.append || [];
-    const moreDeleteProxies =
-      moreProxiesObj?.delete || ([] as string[] | { name: string }[]);
+    const moreDeleteProxies = normalizeDeleteSeq(moreProxiesObj?.delete);
 
     const proxies = morePrependProxies.concat(
       originProxies.filter((proxy: any) => {
-        if (proxy.name) {
-          return !moreDeleteProxies.includes(proxy.name);
-        } else {
-          return !moreDeleteProxies.includes(proxy);
-        }
+        const proxyName =
+          typeof proxy === "string"
+            ? proxy
+            : (proxy?.name as string | undefined);
+        return proxyName ? !moreDeleteProxies.includes(proxyName) : true;
       }),
       moreAppendProxies,
     );
 
-    setProxyPolicyList(
-      builtinProxyPolicies.concat(
-        prependSeq.map((group: IProxyGroupConfig) => group.name),
-        originGroupsObj?.["proxy-groups"]
-          .map((group: IProxyGroupConfig) => group.name)
-          .filter((name) => !deleteSeq.includes(name)) || [],
-        appendSeq.map((group: IProxyGroupConfig) => group.name),
-        proxies.map((proxy: any) => proxy.name),
-      ),
+    const proxyNames = proxies
+      .map((proxy: any) =>
+        typeof proxy === "string" ? proxy : (proxy?.name as string | undefined),
+      )
+      .filter(
+        (name): name is string => typeof name === "string" && name.length > 0,
+      );
+
+    const computedPolicyList = builtinProxyPolicies.concat(
+      prependSeq.map((group: IProxyGroupConfig) => group.name),
+      (originGroupsObj?.["proxy-groups"] || [])
+        .map((group: IProxyGroupConfig) => group.name)
+        .filter((name) => !deleteSeq.includes(name)),
+      appendSeq.map((group: IProxyGroupConfig) => group.name),
+      proxyNames,
     );
-  };
-  const fetchProfile = async () => {
+
+    setProxyPolicyList(Array.from(new Set(computedPolicyList)));
+  }, [appendSeq, deleteSeq, prependSeq, profileUid, proxiesUid]);
+  const fetchProfile = useCallback(async () => {
     const data = await readProfileFile(profileUid);
     const mergeData = await readProfileFile(mergeUid);
     const globalMergeData = await readProfileFile("Merge");
@@ -257,17 +359,17 @@ export const GroupsEditorViewer = (props: Props) => {
     } | null;
 
     const originProviderObj = yaml.load(data) as {
-      "proxy-providers": {};
+      "proxy-providers": Record<string, unknown>;
     } | null;
     const originProvider = originProviderObj?.["proxy-providers"] || {};
 
     const moreProviderObj = yaml.load(mergeData) as {
-      "proxy-providers": {};
+      "proxy-providers": Record<string, unknown>;
     } | null;
     const moreProvider = moreProviderObj?.["proxy-providers"] || {};
 
     const globalProviderObj = yaml.load(globalMergeData) as {
-      "proxy-providers": {};
+      "proxy-providers": Record<string, unknown>;
     } | null;
     const globalProvider = globalProviderObj?.["proxy-providers"] || {};
 
@@ -280,37 +382,47 @@ export const GroupsEditorViewer = (props: Props) => {
 
     setProxyProviderList(Object.keys(provider));
     setGroupList(originGroupsObj?.["proxy-groups"] || []);
-  };
-  const getInterfaceNameList = async () => {
+  }, [mergeUid, profileUid]);
+  const getInterfaceNameList = useCallback(async () => {
     const list = await getNetworkInterfaces();
     setInterfaceNameList(list);
-  };
+  }, []);
   useEffect(() => {
+    if (!open) return;
     fetchProxyPolicy();
-  }, [prependSeq, appendSeq, deleteSeq]);
+  }, [fetchProxyPolicy, open]);
+
   useEffect(() => {
     if (!open) return;
     fetchContent();
-    fetchProxyPolicy();
     fetchProfile();
     getInterfaceNameList();
-  }, [open]);
+  }, [fetchContent, fetchProfile, getInterfaceNameList, open]);
 
   const validateGroup = () => {
     const group = formIns.getValues();
     if (group.name === "") {
-      throw new Error(t("Group Name Required"));
+      throw new Error(t("profiles.modals.groupsEditor.errors.nameRequired"));
     }
   };
 
   const handleSave = useLockFn(async () => {
     try {
-      await saveProfileFile(property, currData);
-      showNotice("success", t("Saved Successfully"));
-      onSave?.(prevData, currData);
+      const nextData = visualization
+        ? buildGroupsYaml(prependSeq, appendSeq, deleteSeq)
+        : currData;
+
+      if (visualization) {
+        setCurrData(nextData);
+      }
+
+      await saveProfileFile(property, nextData);
+      showNotice.success("shared.feedback.notifications.saved");
+      setPrevData(nextData);
+      onSave?.(prevData, nextData);
       onClose();
-    } catch (err: any) {
-      showNotice("error", err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
@@ -319,7 +431,7 @@ export const GroupsEditorViewer = (props: Props) => {
       <DialogTitle>
         {
           <Box display="flex" justifyContent="space-between">
-            {t("Edit Groups")}
+            {t("profiles.modals.groupsEditor.title")}
             <Box>
               <Button
                 variant="contained"
@@ -328,7 +440,9 @@ export const GroupsEditorViewer = (props: Props) => {
                   setVisualization((prev) => !prev);
                 }}
               >
-                {visualization ? t("Advanced") : t("Visualization")}
+                {visualization
+                  ? t("shared.editorModes.advanced")
+                  : t("shared.editorModes.visualization")}
               </Button>
             </Box>
           </Box>
@@ -357,7 +471,9 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Group Type")} />
+                      <ListItemText
+                        primary={t("profiles.modals.groupsEditor.fields.type")}
+                      />
                       <Autocomplete
                         size="small"
                         sx={{ width: "calc(100% - 150px)" }}
@@ -369,9 +485,10 @@ export const GroupsEditorViewer = (props: Props) => {
                           "relay",
                         ]}
                         value={field.value}
+                        getOptionLabel={translateStrategy}
                         renderOption={(props, option) => (
-                          <li {...props} title={t(option)}>
-                            {option}
+                          <li {...props} title={translateStrategy(option)}>
+                            {translateStrategy(option)}
                           </li>
                         )}
                         onChange={(_, value) => value && field.onChange(value)}
@@ -385,7 +502,9 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Group Name")} />
+                      <ListItemText
+                        primary={t("profiles.modals.groupsEditor.fields.name")}
+                      />
                       <TextField
                         autoComplete="new-password"
                         size="small"
@@ -402,7 +521,9 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Proxy Group Icon")} />
+                      <ListItemText
+                        primary={t("profiles.modals.groupsEditor.fields.icon")}
+                      />
                       <TextField
                         autoComplete="new-password"
                         size="small"
@@ -417,7 +538,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Use Proxies")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.proxies",
+                        )}
+                      />
                       <Autocomplete
                         size="small"
                         sx={{
@@ -429,10 +554,11 @@ export const GroupsEditorViewer = (props: Props) => {
                         onChange={(_, value) => value && field.onChange(value)}
                         renderInput={(params) => <TextField {...params} />}
                         renderOption={(props, option) => (
-                          <li {...props} title={t(option)}>
-                            {option}
+                          <li {...props} title={translatePolicy(option)}>
+                            {translatePolicy(option)}
                           </li>
                         )}
+                        getOptionLabel={translatePolicy}
                       />
                     </Item>
                   )}
@@ -442,7 +568,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Use Provider")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.provider",
+                        )}
+                      />
                       <Autocomplete
                         size="small"
                         sx={{ width: "calc(100% - 150px)" }}
@@ -460,7 +590,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Health Check Url")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.healthCheckUrl",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         placeholder="https://cp.cloudflare.com/generate_204"
@@ -476,7 +610,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Expected Status")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.expectedStatus",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         placeholder="*"
@@ -494,7 +632,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Interval")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.interval",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         placeholder="300"
@@ -508,7 +650,7 @@ export const GroupsEditorViewer = (props: Props) => {
                           input: {
                             endAdornment: (
                               <InputAdornment position="end">
-                                {t("seconds")}
+                                {t("shared.units.seconds")}
                               </InputAdornment>
                             ),
                           },
@@ -522,7 +664,7 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Timeout")} />
+                      <ListItemText primary={t("shared.labels.timeout")} />
                       <TextField
                         autoComplete="new-password"
                         placeholder="5000"
@@ -536,7 +678,7 @@ export const GroupsEditorViewer = (props: Props) => {
                           input: {
                             endAdornment: (
                               <InputAdornment position="end">
-                                {t("millis")}
+                                {t("shared.units.milliseconds")}
                               </InputAdornment>
                             ),
                           },
@@ -550,7 +692,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Max Failed Times")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.maxFailedTimes",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         placeholder="5"
@@ -569,7 +715,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Interface Name")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.interfaceName",
+                        )}
+                      />
                       <Autocomplete
                         size="small"
                         sx={{ width: "calc(100% - 150px)" }}
@@ -586,7 +736,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Routing Mark")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.routingMark",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         type="number"
@@ -604,7 +758,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Filter")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.filter",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         size="small"
@@ -619,7 +777,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Exclude Filter")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.excludeFilter",
+                        )}
+                      />
                       <TextField
                         autoComplete="new-password"
                         size="small"
@@ -634,7 +796,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Exclude Type")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.excludeType",
+                        )}
+                      />
                       <Autocomplete
                         multiple
                         options={[
@@ -680,7 +846,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Include All")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.includeAll",
+                        )}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -690,7 +860,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Include All Proxies")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.includeAllProxies",
+                        )}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -700,7 +874,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Include All Providers")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.fields.includeAllProviders",
+                        )}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -710,7 +888,9 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Lazy")} />
+                      <ListItemText
+                        primary={t("profiles.modals.groupsEditor.toggles.lazy")}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -720,7 +900,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Disable UDP")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.toggles.disableUdp",
+                        )}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -730,7 +914,11 @@ export const GroupsEditorViewer = (props: Props) => {
                   control={control}
                   render={({ field }) => (
                     <Item>
-                      <ListItemText primary={t("Hidden")} />
+                      <ListItemText
+                        primary={t(
+                          "profiles.modals.groupsEditor.toggles.hidden",
+                        )}
+                      />
                       <Switch checked={field.value} {...field} />
                     </Item>
                   )}
@@ -746,16 +934,18 @@ export const GroupsEditorViewer = (props: Props) => {
                       validateGroup();
                       for (const item of [...prependSeq, ...groupList]) {
                         if (item.name === formIns.getValues().name) {
-                          throw new Error(t("Group Name Already Exists"));
+                          throw new Error(
+                            t("profiles.modals.groupsEditor.errors.nameExists"),
+                          );
                         }
                       }
                       setPrependSeq([formIns.getValues(), ...prependSeq]);
-                    } catch (err: any) {
-                      showNotice("error", err.message || err.toString());
+                    } catch (err) {
+                      showNotice.error(err);
                     }
                   }}
                 >
-                  {t("Prepend Group")}
+                  {t("profiles.modals.groupsEditor.actions.prepend")}
                 </Button>
               </Item>
               <Item>
@@ -768,16 +958,18 @@ export const GroupsEditorViewer = (props: Props) => {
                       validateGroup();
                       for (const item of [...appendSeq, ...groupList]) {
                         if (item.name === formIns.getValues().name) {
-                          throw new Error(t("Group Name Already Exists"));
+                          throw new Error(
+                            t("profiles.modals.groupsEditor.errors.nameExists"),
+                          );
                         }
                       }
                       setAppendSeq([...appendSeq, formIns.getValues()]);
-                    } catch (err: any) {
-                      showNotice("error", err.message || err.toString());
+                    } catch (err) {
+                      showNotice.error(err);
                     }
                   }}
                 >
-                  {t("Append Group")}
+                  {t("profiles.modals.groupsEditor.actions.append")}
                 </Button>
               </Item>
             </List>
@@ -811,10 +1003,10 @@ export const GroupsEditorViewer = (props: Props) => {
                             return x.name;
                           })}
                         >
-                          {filteredPrependSeq.map((item, index) => {
+                          {filteredPrependSeq.map((item) => {
                             return (
                               <GroupItem
-                                key={`${item.name}-${index}`}
+                                key={item.name}
                                 type="prepend"
                                 group={item}
                                 onDelete={() => {
@@ -834,7 +1026,7 @@ export const GroupsEditorViewer = (props: Props) => {
                     const newIndex = index - shift;
                     return (
                       <GroupItem
-                        key={`${filteredGroupList[newIndex].name}-${index}`}
+                        key={filteredGroupList[newIndex].name}
                         type={
                           deleteSeq.includes(filteredGroupList[newIndex].name)
                             ? "delete"
@@ -871,10 +1063,10 @@ export const GroupsEditorViewer = (props: Props) => {
                             return x.name;
                           })}
                         >
-                          {filteredAppendSeq.map((item, index) => {
+                          {filteredAppendSeq.map((item) => {
                             return (
                               <GroupItem
-                                key={`${item.name}-${index}`}
+                                key={item.name}
                                 type="append"
                                 group={item}
                                 onDelete={() => {
@@ -900,7 +1092,7 @@ export const GroupsEditorViewer = (props: Props) => {
             height="100%"
             language="yaml"
             value={currData}
-            theme={themeMode === "light" ? "vs" : "vs-dark"}
+            theme={themeMode === "light" ? "light" : "vs-dark"}
             options={{
               tabSize: 2, // 根据语言类型设置缩进大小
               minimap: {
@@ -921,18 +1113,18 @@ export const GroupsEditorViewer = (props: Props) => {
               fontLigatures: false, // 连字符
               smoothScrolling: true, // 平滑滚动
             }}
-            onChange={(value) => setCurrData(value)}
+            onChange={(value) => setCurrData(value ?? "")}
           />
         )}
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose} variant="outlined">
-          {t("Cancel")}
+          {t("shared.actions.cancel")}
         </Button>
 
         <Button onClick={handleSave} variant="contained">
-          {t("Save")}
+          {t("shared.actions.save")}
         </Button>
       </DialogActions>
     </Dialog>

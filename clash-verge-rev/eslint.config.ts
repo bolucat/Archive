@@ -1,5 +1,6 @@
-import eslintReact from "@eslint-react/eslint-plugin";
 import eslintJS from "@eslint/js";
+import eslintReact from "@eslint-react/eslint-plugin";
+import { defineConfig } from "eslint/config";
 import configPrettier from "eslint-config-prettier";
 import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript";
 import pluginImportX from "eslint-plugin-import-x";
@@ -7,7 +8,6 @@ import pluginPrettier from "eslint-plugin-prettier";
 import pluginReactHooks from "eslint-plugin-react-hooks";
 import pluginReactRefresh from "eslint-plugin-react-refresh";
 import pluginUnusedImports from "eslint-plugin-unused-imports";
-import { defineConfig } from "eslint/config";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
@@ -17,6 +17,7 @@ export default defineConfig([
 
     plugins: {
       js: eslintJS,
+      // @ts-expect-error -- https://github.com/typescript-eslint/typescript-eslint/issues/11543
       "react-hooks": pluginReactHooks,
       // @ts-expect-error -- https://github.com/un-ts/eslint-plugin-import-x/issues/421
       "import-x": pluginImportX,
@@ -94,9 +95,10 @@ export default defineConfig([
         "warn",
         {
           vars: "all",
-          varsIgnorePattern: "^_+$",
+          varsIgnorePattern: "^_",
           args: "after-used",
-          argsIgnorePattern: "^_+$",
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^ignore",
         },
       ],
 
@@ -129,6 +131,16 @@ export default defineConfig([
 
       // Prettier 格式化问题
       "prettier/prettier": "warn",
+    },
+  },
+  {
+    files: ["scripts/**/*.{js,mjs,cjs}", "scripts-workflow/**/*.{js,mjs,cjs}"],
+
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
     },
   },
 ]);

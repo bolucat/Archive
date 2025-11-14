@@ -1,21 +1,15 @@
+use crate::config::Config;
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose};
-use isahc::prelude::*;
-use isahc::{HttpClient, config::SslOption};
-use isahc::{
-    config::RedirectPolicy,
-    http::{
-        StatusCode, Uri,
-        header::{HeaderMap, HeaderValue, USER_AGENT},
-    },
+use reqwest::{
+    Client, Proxy, StatusCode,
+    header::{HeaderMap, HeaderValue, USER_AGENT},
 };
+use smartstring::alias::String;
 use std::time::{Duration, Instant};
 use sysproxy::Sysproxy;
 use tauri::Url;
 use tokio::sync::Mutex;
-use tokio::time::timeout;
-
-use crate::config::Config;
 
 #[derive(Debug)]
 pub struct HttpResponse {
@@ -25,7 +19,7 @@ pub struct HttpResponse {
 }
 
 impl HttpResponse {
-    pub fn new(status: StatusCode, headers: HeaderMap, body: String) -> Self {
+    pub const fn new(status: StatusCode, headers: HeaderMap, body: String) -> Self {
         Self {
             status,
             headers,
@@ -33,11 +27,11 @@ impl HttpResponse {
         }
     }
 
-    pub fn status(&self) -> StatusCode {
+    pub const fn status(&self) -> StatusCode {
         self.status
     }
 
-    pub fn headers(&self) -> &HeaderMap {
+    pub const fn headers(&self) -> &HeaderMap {
         &self.headers
     }
 
@@ -54,11 +48,17 @@ pub enum ProxyType {
 }
 
 pub struct NetworkManager {
-    self_proxy_client: Mutex<Option<HttpClient>>,
-    system_proxy_client: Mutex<Option<HttpClient>>,
-    no_proxy_client: Mutex<Option<HttpClient>>,
+    self_proxy_client: Mutex<Option<Client>>,
+    system_proxy_client: Mutex<Option<Client>>,
+    no_proxy_client: Mutex<Option<Client>>,
     last_connection_error: Mutex<Option<(Instant, String)>>,
     connection_error_count: Mutex<usize>,
+}
+
+impl Default for NetworkManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NetworkManager {
@@ -73,8 +73,7 @@ impl NetworkManager {
     }
 
     async fn record_connection_error(&self, error: &str) {
-        let mut last_error = self.last_connection_error.lock().await;
-        *last_error = Some((Instant::now(), error.to_string()));
+        *self.last_connection_error.lock().await = Some((Instant::now(), error.into()));
 
         let mut count = self.connection_error_count.lock().await;
         *count += 1;
@@ -82,13 +81,11 @@ impl NetworkManager {
 
     async fn should_reset_clients(&self) -> bool {
         let count = *self.connection_error_count.lock().await;
-        let last_error_guard = self.last_connection_error.lock().await;
-
         if count > 5 {
             return true;
         }
 
-        if let Some((time, _)) = &*last_error_guard
+        if let Some((time, _)) = &*self.last_connection_error.lock().await
             && time.elapsed() < Duration::from_secs(30)
             && count > 2
         {
@@ -107,38 +104,42 @@ impl NetworkManager {
 
     fn build_client(
         &self,
-        proxy_uri: Option<Uri>,
+        proxy_url: Option<std::string::String>,
         default_headers: HeaderMap,
         accept_invalid_certs: bool,
         timeout_secs: Option<u64>,
-    ) -> Result<HttpClient> {
-        let proxy_uri_clone = proxy_uri.clone();
-        let headers_clone = default_headers.clone();
+    ) -> Result<Client> {
+        let mut builder = Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_max_idle_per_host(0)
+            .pool_idle_timeout(None);
 
-        {
-            let mut builder = HttpClient::builder();
-
-            builder = match proxy_uri_clone {
-                Some(uri) => builder.proxy(Some(uri)),
-                None => builder.proxy(None),
-            };
-
-            for (name, value) in headers_clone.iter() {
-                builder = builder.default_header(name, value);
-            }
-
-            if accept_invalid_certs {
-                builder = builder.ssl_options(SslOption::DANGER_ACCEPT_INVALID_CERTS);
-            }
-
-            if let Some(secs) = timeout_secs {
-                builder = builder.timeout(Duration::from_secs(secs));
-            }
-
-            builder = builder.redirect_policy(RedirectPolicy::Follow);
-
-            Ok(builder.build()?)
+        // 设置代理
+        if let Some(proxy_str) = proxy_url {
+            let proxy = Proxy::all(proxy_str)?;
+            builder = builder.proxy(proxy);
+        } else {
+            builder = builder.no_proxy();
         }
+
+        builder = builder.default_headers(default_headers);
+
+        // SSL/TLS
+        if accept_invalid_certs {
+            builder = builder
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true);
+        }
+
+        // 超时设置
+        if let Some(secs) = timeout_secs {
+            builder = builder
+                .timeout(Duration::from_secs(secs))
+                .connect_timeout(Duration::from_secs(secs.min(30)));
+        }
+
+        Ok(builder.build()?)
     }
 
     pub async fn create_request(
@@ -147,24 +148,22 @@ impl NetworkManager {
         timeout_secs: Option<u64>,
         user_agent: Option<String>,
         accept_invalid_certs: bool,
-    ) -> Result<HttpClient> {
-        let proxy_uri = match proxy_type {
+    ) -> Result<Client> {
+        let proxy_url: Option<std::string::String> = match proxy_type {
             ProxyType::None => None,
             ProxyType::Localhost => {
                 let port = {
-                    let verge_port = Config::verge().await.latest_ref().verge_mixed_port;
+                    let verge_port = Config::verge().await.data_arc().verge_mixed_port;
                     match verge_port {
                         Some(port) => port,
-                        None => Config::clash().await.latest_ref().get_mixed_port(),
+                        None => Config::clash().await.data_arc().get_mixed_port(),
                     }
                 };
-                let proxy_scheme = format!("http://127.0.0.1:{port}");
-                proxy_scheme.parse::<Uri>().ok()
+                Some(format!("http://127.0.0.1:{port}"))
             }
             ProxyType::System => {
                 if let Ok(p @ Sysproxy { enable: true, .. }) = Sysproxy::get_system_proxy() {
-                    let proxy_scheme = format!("http://{}:{}", p.host, p.port);
-                    proxy_scheme.parse::<Uri>().ok()
+                    Some(format!("http://{}:{}", p.host, p.port))
                 } else {
                     None
                 }
@@ -172,15 +171,18 @@ impl NetworkManager {
         };
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_str(
-                &user_agent
-                    .unwrap_or_else(|| format!("clash-verge/v{}", env!("CARGO_PKG_VERSION"))),
-            )?,
-        );
 
-        let client = self.build_client(proxy_uri, headers, accept_invalid_certs, timeout_secs)?;
+        // 设置 User-Agent
+        if let Some(ua) = user_agent {
+            headers.insert(USER_AGENT, HeaderValue::from_str(ua.as_str())?);
+        } else {
+            headers.insert(
+                USER_AGENT,
+                HeaderValue::from_str(&format!("clash-verge/v{}", env!("CARGO_PKG_VERSION")))?,
+            );
+        }
+
+        let client = self.build_client(proxy_url, headers, accept_invalid_certs, timeout_secs)?;
 
         Ok(client)
     }
@@ -218,37 +220,37 @@ impl NetworkManager {
             no_auth.to_string()
         };
 
+        // 创建请求
         let client = self
             .create_request(proxy_type, timeout_secs, user_agent, accept_invalid_certs)
             .await?;
 
-        let timeout_duration = Duration::from_secs(timeout_secs.unwrap_or(20));
-        let response = match timeout(timeout_duration, async {
-            let mut req = isahc::Request::get(&clean_url);
+        let mut request_builder = client.get(&clean_url);
 
-            for (k, v) in extra_headers.iter() {
-                req = req.header(k, v);
-            }
+        for (key, value) in extra_headers.iter() {
+            request_builder = request_builder.header(key, value);
+        }
 
-            let mut response = client.send_async(req.body(())?).await?;
-            let status = response.status();
-            let headers = response.headers().clone();
-            let body = response.text().await?;
-            Ok::<_, anyhow::Error>(HttpResponse::new(status, headers, body))
-        })
-        .await
-        {
-            Ok(res) => res?,
-            Err(_) => {
-                self.record_connection_error(&format!("Request interrupted: {}", url))
+        let response = match request_builder.send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                self.record_connection_error(&format!("Request failed: {}", e))
                     .await;
-                return Err(anyhow::anyhow!(
-                    "Request interrupted after {}s",
-                    timeout_duration.as_secs()
-                ));
+                return Err(anyhow::anyhow!("Request failed: {}", e));
             }
         };
 
-        Ok(response)
+        let status = response.status();
+        let headers = response.headers().clone();
+        let body = match response.text().await {
+            Ok(text) => text.into(),
+            Err(e) => {
+                self.record_connection_error(&format!("Failed to read response body: {}", e))
+                    .await;
+                return Err(anyhow::anyhow!("Failed to read response body: {}", e));
+            }
+        };
+
+        Ok(HttpResponse::new(status, headers, body))
     }
 }

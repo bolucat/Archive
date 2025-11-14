@@ -31,7 +31,7 @@ import {
   Typography,
   useTheme,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import useSWR from "swr";
 import {
@@ -156,7 +156,11 @@ const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
 
       {proxy.delay !== undefined && (
         <Chip
-          label={proxy.delay > 0 ? `${proxy.delay}ms` : t("timeout") || "超时"}
+          label={
+            proxy.delay > 0
+              ? `${proxy.delay}ms`
+              : t("shared.labels.timeout") || "超时"
+          }
           size="small"
           color={
             proxy.delay > 0 && proxy.delay < 200
@@ -196,9 +200,10 @@ export const ProxyChain = ({
   const theme = useTheme();
   const { t } = useTranslation();
   const { proxies } = useAppData();
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
+  const markUnsavedChanges = useCallback(() => {
+    onMarkUnsavedChanges?.();
+  }, [onMarkUnsavedChanges]);
 
   // 获取当前代理信息以检查连接状态
   const { data: currentProxies, mutate: mutateProxies } = useSWR(
@@ -211,52 +216,26 @@ export const ProxyChain = ({
     },
   );
 
-  // 检查连接状态
-  useEffect(() => {
+  const isConnected = useMemo(() => {
     if (!currentProxies || proxyChain.length < 2) {
-      setIsConnected(false);
-      return;
+      return false;
     }
 
-    // 获取用户配置的最后一个节点
     const lastNode = proxyChain[proxyChain.length - 1];
 
-    // 根据模式确定要检查的代理组和当前选中的代理
     if (mode === "global") {
-      // 全局模式：检查 global 对象
-      if (!currentProxies.global || !currentProxies.global.now) {
-        setIsConnected(false);
-        return;
-      }
-
-      // 检查当前选中的代理是否是配置的最后一个节点
-      if (currentProxies.global.now === lastNode.name) {
-        setIsConnected(true);
-      } else {
-        setIsConnected(false);
-      }
-    } else {
-      // 规则模式：检查指定的代理组
-      if (!selectedGroup) {
-        setIsConnected(false);
-        return;
-      }
-
-      const proxyChainGroup = currentProxies.groups.find(
-        (group) => group.name === selectedGroup,
-      );
-      if (!proxyChainGroup || !proxyChainGroup.now) {
-        setIsConnected(false);
-        return;
-      }
-
-      // 检查当前选中的代理是否是配置的最后一个节点
-      if (proxyChainGroup.now === lastNode.name) {
-        setIsConnected(true);
-      } else {
-        setIsConnected(false);
-      }
+      return currentProxies.global?.now === lastNode.name;
     }
+
+    if (!selectedGroup || !Array.isArray(currentProxies.groups)) {
+      return false;
+    }
+
+    const proxyChainGroup = currentProxies.groups.find(
+      (group) => group.name === selectedGroup,
+    );
+
+    return proxyChainGroup?.now === lastNode.name;
   }, [currentProxies, proxyChain, mode, selectedGroup]);
 
   // 监听链的变化，但排除从配置加载的情况
@@ -267,10 +246,10 @@ export const ProxyChain = ({
       chainLengthRef.current !== proxyChain.length &&
       chainLengthRef.current !== 0
     ) {
-      setHasUnsavedChanges(true);
+      markUnsavedChanges();
     }
     chainLengthRef.current = proxyChain.length;
-  }, [proxyChain.length]);
+  }, [proxyChain.length, markUnsavedChanges]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -288,25 +267,20 @@ export const ProxyChain = ({
         const newIndex = proxyChain.findIndex((item) => item.id === over?.id);
 
         onUpdateChain(arrayMove(proxyChain, oldIndex, newIndex));
-        setHasUnsavedChanges(true);
+        markUnsavedChanges();
       }
     },
-    [proxyChain, onUpdateChain],
+    [proxyChain, onUpdateChain, markUnsavedChanges],
   );
 
   const handleRemoveProxy = useCallback(
     (id: string) => {
       const newChain = proxyChain.filter((item) => item.id !== id);
       onUpdateChain(newChain);
-      setHasUnsavedChanges(true);
+      markUnsavedChanges();
     },
-    [proxyChain, onUpdateChain],
+    [proxyChain, onUpdateChain, markUnsavedChanges],
   );
-
-  const handleClearAll = useCallback(() => {
-    onUpdateChain([]);
-    setHasUnsavedChanges(true);
-  }, [onUpdateChain]);
 
   const handleConnect = useCallback(async () => {
     if (isConnected) {
@@ -327,13 +301,9 @@ export const ProxyChain = ({
 
         // 清空链式代理配置UI
         // onUpdateChain([]);
-        // setHasUnsavedChanges(false);
-
-        // 强制更新连接状态
-        setIsConnected(false);
       } catch (error) {
         console.error("Failed to disconnect from proxy chain:", error);
-        alert(t("Failed to disconnect from proxy chain") || "断开链式代理失败");
+        alert(t("proxies.page.chain.disconnectFailed") || "断开链式代理失败");
       } finally {
         setIsConnecting(false);
       }
@@ -341,9 +311,7 @@ export const ProxyChain = ({
     }
 
     if (proxyChain.length < 2) {
-      alert(
-        t("Chain proxy requires at least 2 nodes") || "链式代理至少需要2个节点",
-      );
+      alert(t("proxies.page.chain.minimumNodes") || "链式代理至少需要2个节点");
       return;
     }
 
@@ -372,13 +340,10 @@ export const ProxyChain = ({
 
       // 刷新代理信息以更新连接状态
       mutateProxies();
-
-      // 清除未保存标记
-      setHasUnsavedChanges(false);
       console.log("Successfully connected to proxy chain");
     } catch (error) {
       console.error("Failed to connect to proxy chain:", error);
-      alert(t("Failed to connect to proxy chain") || "连接链式代理失败");
+      alert(t("proxies.page.chain.connectFailed") || "连接链式代理失败");
     } finally {
       setIsConnecting(false);
     }
@@ -411,7 +376,6 @@ export const ProxyChain = ({
                   delay: undefined,
                 })) || [];
               onUpdateChain(chainItems);
-              setHasUnsavedChanges(false);
             } catch (parseError) {
               console.error("Failed to parse YAML:", parseError);
               onUpdateChain([]);
@@ -435,7 +399,6 @@ export const ProxyChain = ({
                   delay: undefined,
                 })) || [];
               onUpdateChain(chainItems);
-              setHasUnsavedChanges(false);
             } catch (jsonError) {
               console.error("Failed to parse as JSON either:", jsonError);
               onUpdateChain([]);
@@ -448,7 +411,6 @@ export const ProxyChain = ({
     } else if (chainConfigData === "") {
       // Empty string means no proxies available, show empty state
       onUpdateChain([]);
-      setHasUnsavedChanges(false);
     }
   }, [chainConfigData, onUpdateChain]);
 
@@ -511,7 +473,7 @@ export const ProxyChain = ({
           mb: 2,
         }}
       >
-        <Typography variant="h6">{t("Chain Proxy Config")}</Typography>
+        <Typography variant="h6">{t("proxies.page.chain.header")}</Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           {proxyChain.length > 0 && (
             <IconButton
@@ -519,7 +481,6 @@ export const ProxyChain = ({
               onClick={() => {
                 updateProxyChainConfigInRuntime(null);
                 onUpdateChain([]);
-                setHasUnsavedChanges(false);
               }}
               sx={{
                 color: theme.palette.error.main,
@@ -527,7 +488,9 @@ export const ProxyChain = ({
                   backgroundColor: theme.palette.error.light + "20",
                 },
               }}
-              title={t("Delete Chain Config") || "删除链式配置"}
+              title={
+                t("proxies.page.actions.clearChainConfig") || "删除链式配置"
+              }
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
@@ -548,16 +511,16 @@ export const ProxyChain = ({
             }}
             title={
               proxyChain.length < 2
-                ? t("Chain proxy requires at least 2 nodes") ||
+                ? t("proxies.page.chain.minimumNodes") ||
                   "链式代理至少需要2个节点"
                 : undefined
             }
           >
             {isConnecting
-              ? t("Connecting...") || "连接中..."
+              ? t("proxies.page.actions.connecting") || "连接中..."
               : isConnected
-                ? t("Disconnect") || "断开"
-                : t("Connect") || "连接"}
+                ? t("proxies.page.actions.disconnect") || "断开"
+                : t("proxies.page.actions.connect") || "连接"}
           </Button>
         </Box>
       </Box>
@@ -567,10 +530,9 @@ export const ProxyChain = ({
         sx={{ mb: 2 }}
       >
         {proxyChain.length === 1
-          ? t(
-              "Chain proxy requires at least 2 nodes. Please add one more node.",
-            ) || "链式代理至少需要2个节点，请再添加一个节点。"
-          : t("Click nodes in order to add to proxy chain") ||
+          ? t("proxies.page.chain.minimumNodesHint") ||
+            "链式代理至少需要2个节点，请再添加一个节点。"
+          : t("proxies.page.chain.instruction") ||
             "按顺序点击节点添加到代理链中"}
       </Alert>
 
@@ -585,7 +547,7 @@ export const ProxyChain = ({
               color: theme.palette.text.secondary,
             }}
           >
-            <Typography>{t("No proxy chain configured")}</Typography>
+            <Typography>{t("proxies.page.chain.empty")}</Typography>
           </Box>
         ) : (
           <DndContext

@@ -1,5 +1,6 @@
 #[cfg(target_os = "windows")]
 use crate::process::AsyncHandler;
+use crate::{logging, utils::logging::Type};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::time::{Duration, timeout};
@@ -27,7 +28,7 @@ impl Default for AsyncSysproxy {
     fn default() -> Self {
         Self {
             enable: false,
-            host: "127.0.0.1".to_string(),
+            host: "127.0.0.1".into(),
             port: 7897,
             bypass: String::new(),
         }
@@ -41,15 +42,21 @@ impl AsyncProxyQuery {
     pub async fn get_auto_proxy() -> AsyncAutoproxy {
         match timeout(Duration::from_secs(3), Self::get_auto_proxy_impl()).await {
             Ok(Ok(proxy)) => {
-                log::debug!(target: "app", "异步获取自动代理成功: enable={}, url={}", proxy.enable, proxy.url);
+                logging!(
+                    debug,
+                    Type::Network,
+                    "异步获取自动代理成功: enable={}, url={}",
+                    proxy.enable,
+                    proxy.url
+                );
                 proxy
             }
             Ok(Err(e)) => {
-                log::warn!(target: "app", "异步获取自动代理失败: {e}");
+                logging!(warn, Type::Network, "Warning: 异步获取自动代理失败: {e}");
                 AsyncAutoproxy::default()
             }
             Err(_) => {
-                log::warn!(target: "app", "异步获取自动代理超时");
+                logging!(warn, Type::Network, "Warning: 异步获取自动代理超时");
                 AsyncAutoproxy::default()
             }
         }
@@ -59,15 +66,22 @@ impl AsyncProxyQuery {
     pub async fn get_system_proxy() -> AsyncSysproxy {
         match timeout(Duration::from_secs(3), Self::get_system_proxy_impl()).await {
             Ok(Ok(proxy)) => {
-                log::debug!(target: "app", "异步获取系统代理成功: enable={}, {}:{}", proxy.enable, proxy.host, proxy.port);
+                logging!(
+                    debug,
+                    Type::Network,
+                    "异步获取系统代理成功: enable={}, {}:{}",
+                    proxy.enable,
+                    proxy.host,
+                    proxy.port
+                );
                 proxy
             }
             Ok(Err(e)) => {
-                log::warn!(target: "app", "异步获取系统代理失败: {e}");
+                logging!(warn, Type::Network, "Warning: 异步获取系统代理失败: {e}");
                 AsyncSysproxy::default()
             }
             Err(_) => {
-                log::warn!(target: "app", "异步获取系统代理超时");
+                logging!(warn, Type::Network, "Warning: 异步获取系统代理超时");
                 AsyncSysproxy::default()
             }
         }
@@ -99,7 +113,7 @@ impl AsyncProxyQuery {
                 RegOpenKeyExW(HKEY_CURRENT_USER, key_path.as_ptr(), 0, KEY_READ, &mut hkey);
 
             if result != 0 {
-                log::debug!(target: "app", "无法打开注册表项");
+                logging!(debug, Type::Network, "无法打开注册表项");
                 return Ok(AsyncAutoproxy::default());
             }
 
@@ -125,7 +139,7 @@ impl AsyncProxyQuery {
                     .position(|&x| x == 0)
                     .unwrap_or(url_buffer.len());
                 pac_url = String::from_utf16_lossy(&url_buffer[..end_pos]);
-                log::debug!(target: "app", "从注册表读取到PAC URL: {pac_url}");
+                logging!(debug, Type::Network, "从注册表读取到PAC URL: {pac_url}");
             }
 
             // 2. 检查自动检测设置是否启用
@@ -150,10 +164,14 @@ impl AsyncProxyQuery {
                 || (detect_query_result == 0 && detect_value_type == REG_DWORD && auto_detect != 0);
 
             if pac_enabled {
-                log::debug!(target: "app", "PAC配置启用: URL={pac_url}, AutoDetect={auto_detect}");
+                logging!(
+                    debug,
+                    Type::Network,
+                    "PAC配置启用: URL={pac_url}, AutoDetect={auto_detect}"
+                );
 
                 if pac_url.is_empty() && auto_detect != 0 {
-                    pac_url = "auto-detect".to_string();
+                    pac_url = "auto-detect".into();
                 }
 
                 Ok(AsyncAutoproxy {
@@ -161,7 +179,7 @@ impl AsyncProxyQuery {
                     url: pac_url,
                 })
             } else {
-                log::debug!(target: "app", "PAC配置未启用");
+                logging!(debug, Type::Network, "PAC配置未启用");
                 Ok(AsyncAutoproxy::default())
             }
         }
@@ -177,7 +195,11 @@ impl AsyncProxyQuery {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        log::debug!(target: "app", "scutil output: {stdout}");
+        crate::logging!(
+            debug,
+            crate::utils::logging::Type::Network,
+            "scutil output: {stdout}"
+        );
 
         let mut pac_enabled = false;
         let mut pac_url = String::new();
@@ -191,12 +213,16 @@ impl AsyncProxyQuery {
                 // 正确解析包含冒号的URL
                 // 格式: "ProxyAutoConfigURLString : http://127.0.0.1:11233/commands/pac"
                 if let Some(colon_pos) = line.find(" : ") {
-                    pac_url = line[colon_pos + 3..].trim().to_string();
+                    pac_url = line[colon_pos + 3..].trim().into();
                 }
             }
         }
 
-        log::debug!(target: "app", "解析结果: pac_enabled={pac_enabled}, pac_url={pac_url}");
+        crate::logging!(
+            debug,
+            crate::utils::logging::Type::Network,
+            "解析结果: pac_enabled={pac_enabled}, pac_url={pac_url}"
+        );
 
         Ok(AsyncAutoproxy {
             enable: pac_enabled && !pac_url.is_empty(),
@@ -227,7 +253,7 @@ impl AsyncProxyQuery {
         if let Ok(output) = output
             && output.status.success()
         {
-            let mode = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let mode: String = String::from_utf8_lossy(&output.stdout).trim().into();
             if mode.contains("auto") {
                 // 获取 PAC URL
                 let pac_output = Command::new("gsettings")
@@ -238,11 +264,11 @@ impl AsyncProxyQuery {
                 if let Ok(pac_output) = pac_output
                     && pac_output.status.success()
                 {
-                    let pac_url = String::from_utf8_lossy(&pac_output.stdout)
+                    let pac_url: String = String::from_utf8_lossy(&pac_output.stdout)
                         .trim()
                         .trim_matches('\'')
                         .trim_matches('"')
-                        .to_string();
+                        .into();
 
                     if !pac_url.is_empty() {
                         return Ok(AsyncAutoproxy {
@@ -321,11 +347,12 @@ impl AsyncProxyQuery {
                 &mut buffer_size,
             );
 
-            let mut proxy_server = String::new();
-            if server_result == 0 && value_type == REG_SZ && buffer_size > 0 {
+            let proxy_server = if server_result == 0 && value_type == REG_SZ && buffer_size > 0 {
                 let end_pos = buffer.iter().position(|&x| x == 0).unwrap_or(buffer.len());
-                proxy_server = String::from_utf16_lossy(&buffer[..end_pos]);
-            }
+                String::from_utf16_lossy(&buffer[..end_pos])
+            } else {
+                String::new()
+            };
 
             // 读取代理绕过列表
             let proxy_override_name = "ProxyOverride\0".encode_utf16().collect::<Vec<u16>>();
@@ -342,28 +369,34 @@ impl AsyncProxyQuery {
                 &mut bypass_buffer_size,
             );
 
-            let mut bypass_list = String::new();
-            if override_result == 0 && bypass_value_type == REG_SZ && bypass_buffer_size > 0 {
-                let end_pos = bypass_buffer
-                    .iter()
-                    .position(|&x| x == 0)
-                    .unwrap_or(bypass_buffer.len());
-                bypass_list = String::from_utf16_lossy(&bypass_buffer[..end_pos]);
-            }
+            let bypass_list =
+                if override_result == 0 && bypass_value_type == REG_SZ && bypass_buffer_size > 0 {
+                    let end_pos = bypass_buffer
+                        .iter()
+                        .position(|&x| x == 0)
+                        .unwrap_or(bypass_buffer.len());
+                    String::from_utf16_lossy(&bypass_buffer[..end_pos])
+                } else {
+                    String::new()
+                };
 
             RegCloseKey(hkey);
 
             if !proxy_server.is_empty() {
                 // 解析服务器地址和端口
                 let (host, port) = if let Some(colon_pos) = proxy_server.rfind(':') {
-                    let host = proxy_server[..colon_pos].to_string();
+                    let host = proxy_server[..colon_pos].into();
                     let port = proxy_server[colon_pos + 1..].parse::<u16>().unwrap_or(8080);
                     (host, port)
                 } else {
                     (proxy_server, 8080)
                 };
 
-                log::debug!(target: "app", "从注册表读取到代理设置: {host}:{port}, bypass: {bypass_list}");
+                logging!(
+                    debug,
+                    Type::Network,
+                    "从注册表读取到代理设置: {host}:{port}, bypass: {bypass_list}"
+                );
 
                 Ok(AsyncSysproxy {
                     enable: true,
@@ -386,12 +419,12 @@ impl AsyncProxyQuery {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        log::debug!(target: "app", "scutil proxy output: {stdout}");
+        logging!(debug, Type::Network, "scutil proxy output: {stdout}");
 
         let mut http_enabled = false;
         let mut http_host = String::new();
         let mut http_port = 8080u16;
-        let mut exceptions = Vec::new();
+        let mut exceptions: Vec<String> = Vec::new();
 
         for line in stdout.lines() {
             let line = line.trim();
@@ -399,7 +432,7 @@ impl AsyncProxyQuery {
                 http_enabled = true;
             } else if line.contains("HTTPProxy") && !line.contains("Port") {
                 if let Some(host_part) = line.split(':').nth(1) {
-                    http_host = host_part.trim().to_string();
+                    http_host = host_part.trim().into();
                 }
             } else if line.contains("HTTPPort") {
                 if let Some(port_part) = line.split(':').nth(1)
@@ -412,7 +445,7 @@ impl AsyncProxyQuery {
                 if let Some(list_part) = line.split(':').nth(1) {
                     let list = list_part.trim();
                     if !list.is_empty() {
-                        exceptions.push(list.to_string());
+                        exceptions.push(list.into());
                     }
                 }
             }
@@ -452,9 +485,7 @@ impl AsyncProxyQuery {
         if let Ok(mode_output) = mode_output
             && mode_output.status.success()
         {
-            let mode = String::from_utf8_lossy(&mode_output.stdout)
-                .trim()
-                .to_string();
+            let mode: String = String::from_utf8_lossy(&mode_output.stdout).trim().into();
             if mode.contains("manual") {
                 // 获取HTTP代理设置
                 let host_result = Command::new("gsettings")
@@ -471,11 +502,11 @@ impl AsyncProxyQuery {
                     && host_output.status.success()
                     && port_output.status.success()
                 {
-                    let host = String::from_utf8_lossy(&host_output.stdout)
+                    let host: String = String::from_utf8_lossy(&host_output.stdout)
                         .trim()
                         .trim_matches('\'')
                         .trim_matches('"')
-                        .to_string();
+                        .into();
 
                     let port = String::from_utf8_lossy(&port_output.stdout)
                         .trim()
@@ -513,11 +544,11 @@ impl AsyncProxyQuery {
 
         // 解析主机和端口
         let (host, port) = if let Some(colon_pos) = url.rfind(':') {
-            let host = url[..colon_pos].to_string();
+            let host: String = url[..colon_pos].into();
             let port = url[colon_pos + 1..].parse::<u16>().unwrap_or(8080);
             (host, port)
         } else {
-            (url.to_string(), 8080)
+            (url.into(), 8080)
         };
 
         if host.is_empty() {

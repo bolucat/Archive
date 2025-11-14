@@ -1,3 +1,4 @@
+import MonacoEditor from "@monaco-editor/react";
 import { RestartAltRounded } from "@mui/icons-material";
 import {
   Box,
@@ -16,9 +17,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { useLockFn } from "ahooks";
 import yaml from "js-yaml";
 import type { Ref } from "react";
-import { useEffect, useImperativeHandle, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import MonacoEditor from "react-monaco-editor";
 
 import { BaseDialog, DialogRef, Switch } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
@@ -34,6 +41,91 @@ const Item = styled(ListItem)(() => ({
     resize: "vertical",
   },
 }));
+
+type NameserverPolicy = Record<string, any>;
+
+function parseNameserverPolicy(str: string): NameserverPolicy {
+  const result: NameserverPolicy = {};
+  if (!str) return result;
+
+  const ruleRegex = /\s*([^=]+?)\s*=\s*([^,]+)(?:,|$)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = ruleRegex.exec(str)) !== null) {
+    const [, domainsPart, serversPart] = match;
+
+    const domains = [domainsPart.trim()];
+    const servers = serversPart.split(";").map((s) => s.trim());
+
+    domains.forEach((domain) => {
+      result[domain] = servers;
+    });
+  }
+
+  return result;
+}
+
+function formatNameserverPolicy(policy: unknown): string {
+  if (!policy || typeof policy !== "object") return "";
+
+  return Object.entries(policy as Record<string, unknown>)
+    .map(([domain, servers]) => {
+      const serversStr = Array.isArray(servers) ? servers.join(";") : servers;
+      return `${domain}=${serversStr}`;
+    })
+    .join(", ");
+}
+
+function formatHosts(hosts: unknown): string {
+  if (!hosts || typeof hosts !== "object") return "";
+
+  const result: string[] = [];
+
+  Object.entries(hosts as Record<string, unknown>).forEach(
+    ([domain, value]) => {
+      if (Array.isArray(value)) {
+        const ipsStr = value.join(";");
+        result.push(`${domain}=${ipsStr}`);
+      } else {
+        result.push(`${domain}=${value}`);
+      }
+    },
+  );
+
+  return result.join(", ");
+}
+
+function parseHosts(str: string): NameserverPolicy {
+  const result: NameserverPolicy = {};
+  if (!str) return result;
+
+  str.split(",").forEach((item) => {
+    const parts = item.trim().split("=");
+    if (parts.length < 2) return;
+
+    const domain = parts[0].trim();
+    const valueStr = parts.slice(1).join("=").trim();
+
+    if (valueStr.includes(";")) {
+      result[domain] = valueStr
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else {
+      result[domain] = valueStr;
+    }
+  });
+
+  return result;
+}
+
+function parseList(str: string): string[] {
+  if (!str?.trim()) return [];
+  return str
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 // 默认DNS配置
 const DEFAULT_DNS_CONFIG = {
@@ -95,6 +187,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
   const [open, setOpen] = useState(false);
   const [visualization, setVisualization] = useState(true);
+  const skipYamlSyncRef = useRef(false);
   const [values, setValues] = useState<{
     enable: boolean;
     listen: string;
@@ -150,304 +243,91 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
   });
 
   // 用于YAML编辑模式
-  const [yamlContent, setYamlContent] = useState("");
-
-  useImperativeHandle(ref, () => ({
-    open: () => {
-      setOpen(true);
-      // 获取DNS配置文件并初始化表单
-      initDnsConfig();
-    },
-    close: () => setOpen(false),
-  }));
-
-  // 初始化DNS配置
-  const initDnsConfig = async () => {
-    try {
-      // 尝试从dns_config.yaml文件读取配置
-      const dnsConfigExists = await invoke<boolean>(
-        "check_dns_config_exists",
-        {},
-      );
-
-      if (dnsConfigExists) {
-        // 如果存在配置文件，加载其内容
-        const dnsConfig = await invoke<string>("get_dns_config_content", {});
-        const config = yaml.load(dnsConfig) as any;
-
-        // 更新表单数据
-        updateValuesFromConfig(config);
-        // 更新YAML编辑器内容
-        setYamlContent(dnsConfig);
-      } else {
-        // 如果不存在配置文件，使用默认值
-        resetToDefaults();
-      }
-    } catch (err) {
-      console.error("Failed to initialize DNS config", err);
-      resetToDefaults();
-    }
-  };
+  const [yamlContent, setYamlContent] = useReducer(
+    (_: string, next: string) => next,
+    "",
+  );
 
   // 从配置对象更新表单值
-  const updateValuesFromConfig = (config: any) => {
-    if (!config) return;
+  const updateValuesFromConfig = useCallback(
+    (config: any) => {
+      if (!config) return;
 
-    // 提取dns配置
-    const dnsConfig = config.dns || {};
-    // 提取hosts配置（与dns同级）
-    const hostsConfig = config.hosts || {};
+      const dnsConfig = config.dns || {};
+      const hostsConfig = config.hosts || {};
 
-    const enhancedMode =
-      dnsConfig["enhanced-mode"] || DEFAULT_DNS_CONFIG["enhanced-mode"];
-    const validEnhancedMode =
-      enhancedMode === "fake-ip" || enhancedMode === "redir-host"
-        ? enhancedMode
-        : DEFAULT_DNS_CONFIG["enhanced-mode"];
+      const enhancedMode =
+        dnsConfig["enhanced-mode"] || DEFAULT_DNS_CONFIG["enhanced-mode"];
+      const validEnhancedMode =
+        enhancedMode === "fake-ip" || enhancedMode === "redir-host"
+          ? enhancedMode
+          : DEFAULT_DNS_CONFIG["enhanced-mode"];
 
-    const fakeIpFilterMode =
-      dnsConfig["fake-ip-filter-mode"] ||
-      DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
-    const validFakeIpFilterMode =
-      fakeIpFilterMode === "blacklist" || fakeIpFilterMode === "whitelist"
-        ? fakeIpFilterMode
-        : DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
+      const fakeIpFilterMode =
+        dnsConfig["fake-ip-filter-mode"] ||
+        DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
+      const validFakeIpFilterMode =
+        fakeIpFilterMode === "blacklist" || fakeIpFilterMode === "whitelist"
+          ? fakeIpFilterMode
+          : DEFAULT_DNS_CONFIG["fake-ip-filter-mode"];
 
-    setValues({
-      enable: dnsConfig.enable ?? DEFAULT_DNS_CONFIG.enable,
-      listen: dnsConfig.listen ?? DEFAULT_DNS_CONFIG.listen,
-      enhancedMode: validEnhancedMode,
-      fakeIpRange:
-        dnsConfig["fake-ip-range"] ?? DEFAULT_DNS_CONFIG["fake-ip-range"],
-      fakeIpFilterMode: validFakeIpFilterMode,
-      preferH3: dnsConfig["prefer-h3"] ?? DEFAULT_DNS_CONFIG["prefer-h3"],
-      respectRules:
-        dnsConfig["respect-rules"] ?? DEFAULT_DNS_CONFIG["respect-rules"],
-      useHosts: dnsConfig["use-hosts"] ?? DEFAULT_DNS_CONFIG["use-hosts"],
-      useSystemHosts:
-        dnsConfig["use-system-hosts"] ?? DEFAULT_DNS_CONFIG["use-system-hosts"],
-      ipv6: dnsConfig.ipv6 ?? DEFAULT_DNS_CONFIG.ipv6,
-      fakeIpFilter:
-        dnsConfig["fake-ip-filter"]?.join(", ") ??
-        DEFAULT_DNS_CONFIG["fake-ip-filter"].join(", "),
-      nameserver:
-        dnsConfig.nameserver?.join(", ") ??
-        DEFAULT_DNS_CONFIG.nameserver.join(", "),
-      fallback:
-        dnsConfig.fallback?.join(", ") ??
-        DEFAULT_DNS_CONFIG.fallback.join(", "),
-      defaultNameserver:
-        dnsConfig["default-nameserver"]?.join(", ") ??
-        DEFAULT_DNS_CONFIG["default-nameserver"].join(", "),
-      proxyServerNameserver:
-        dnsConfig["proxy-server-nameserver"]?.join(", ") ??
-        (DEFAULT_DNS_CONFIG["proxy-server-nameserver"]?.join(", ") || ""),
-      directNameserver:
-        dnsConfig["direct-nameserver"]?.join(", ") ??
-        (DEFAULT_DNS_CONFIG["direct-nameserver"]?.join(", ") || ""),
-      directNameserverFollowPolicy:
-        dnsConfig["direct-nameserver-follow-policy"] ??
-        DEFAULT_DNS_CONFIG["direct-nameserver-follow-policy"],
-      fallbackGeoip:
-        dnsConfig["fallback-filter"]?.geoip ??
-        DEFAULT_DNS_CONFIG["fallback-filter"].geoip,
-      fallbackGeoipCode:
-        dnsConfig["fallback-filter"]?.["geoip-code"] ??
-        DEFAULT_DNS_CONFIG["fallback-filter"]["geoip-code"],
-      fallbackIpcidr:
-        dnsConfig["fallback-filter"]?.ipcidr?.join(", ") ??
-        DEFAULT_DNS_CONFIG["fallback-filter"].ipcidr.join(", "),
-      fallbackDomain:
-        dnsConfig["fallback-filter"]?.domain?.join(", ") ??
-        DEFAULT_DNS_CONFIG["fallback-filter"].domain.join(", "),
-      nameserverPolicy:
-        formatNameserverPolicy(dnsConfig["nameserver-policy"]) || "",
-      hosts: formatHosts(hostsConfig) || "",
-    });
-  };
-
-  // 重置为默认值
-  const resetToDefaults = () => {
-    setValues({
-      enable: DEFAULT_DNS_CONFIG.enable,
-      listen: DEFAULT_DNS_CONFIG.listen,
-      enhancedMode: DEFAULT_DNS_CONFIG["enhanced-mode"],
-      fakeIpRange: DEFAULT_DNS_CONFIG["fake-ip-range"],
-      fakeIpFilterMode: DEFAULT_DNS_CONFIG["fake-ip-filter-mode"],
-      preferH3: DEFAULT_DNS_CONFIG["prefer-h3"],
-      respectRules: DEFAULT_DNS_CONFIG["respect-rules"],
-      useHosts: DEFAULT_DNS_CONFIG["use-hosts"],
-      useSystemHosts: DEFAULT_DNS_CONFIG["use-system-hosts"],
-      ipv6: DEFAULT_DNS_CONFIG.ipv6,
-      fakeIpFilter: DEFAULT_DNS_CONFIG["fake-ip-filter"].join(", "),
-      defaultNameserver: DEFAULT_DNS_CONFIG["default-nameserver"].join(", "),
-      nameserver: DEFAULT_DNS_CONFIG.nameserver.join(", "),
-      fallback: DEFAULT_DNS_CONFIG.fallback.join(", "),
-      proxyServerNameserver:
-        DEFAULT_DNS_CONFIG["proxy-server-nameserver"]?.join(", ") || "",
-      directNameserver:
-        DEFAULT_DNS_CONFIG["direct-nameserver"]?.join(", ") || "",
-      directNameserverFollowPolicy:
-        DEFAULT_DNS_CONFIG["direct-nameserver-follow-policy"] || false,
-      fallbackGeoip: DEFAULT_DNS_CONFIG["fallback-filter"].geoip,
-      fallbackGeoipCode: DEFAULT_DNS_CONFIG["fallback-filter"]["geoip-code"],
-      fallbackIpcidr:
-        DEFAULT_DNS_CONFIG["fallback-filter"].ipcidr?.join(", ") || "",
-      fallbackDomain:
-        DEFAULT_DNS_CONFIG["fallback-filter"].domain?.join(", ") || "",
-      nameserverPolicy: "",
-      hosts: "",
-    });
-
-    // 更新YAML编辑器内容
-    updateYamlFromValues();
-  };
-
-  // 从表单值更新YAML内容
-  const updateYamlFromValues = () => {
-    const config: Record<string, any> = {};
-
-    const dnsConfig = generateDnsConfig();
-    if (Object.keys(dnsConfig).length > 0) {
-      config.dns = dnsConfig;
-    }
-
-    const hosts = parseHosts(values.hosts);
-    if (Object.keys(hosts).length > 0) {
-      config.hosts = hosts;
-    }
-
-    setYamlContent(yaml.dump(config, { forceQuotes: true }));
-  };
-
-  // 从YAML更新表单值
-  const updateValuesFromYaml = () => {
-    try {
-      const parsedYaml = yaml.load(yamlContent) as any;
-      if (!parsedYaml) return;
-
-      updateValuesFromConfig(parsedYaml);
-    } catch {
-      showNotice("error", t("Invalid YAML format"));
-    }
-  };
-
-  // 解析nameserver-policy为对象
-  const parseNameserverPolicy = (str: string): Record<string, any> => {
-    const result: Record<string, any> = {};
-    if (!str) return result;
-
-    // 处理geosite:xxx,yyy格式
-    const ruleRegex = /\s*([^=]+?)\s*=\s*([^,]+)(?:,|$)/g;
-    let match;
-
-    while ((match = ruleRegex.exec(str)) !== null) {
-      const [, domainsPart, serversPart] = match;
-
-      // 处理域名部分
-      let domains;
-      if (domainsPart.startsWith("geosite:")) {
-        domains = [domainsPart.trim()];
-      } else {
-        domains = [domainsPart.trim()];
-      }
-
-      // 处理服务器部分
-      const servers = serversPart.split(";").map((s) => s.trim());
-
-      // 为每个域名组分配相同的服务器列表
-      domains.forEach((domain) => {
-        result[domain] = servers;
+      setValues({
+        enable: dnsConfig.enable ?? DEFAULT_DNS_CONFIG.enable,
+        listen: dnsConfig.listen ?? DEFAULT_DNS_CONFIG.listen,
+        enhancedMode: validEnhancedMode,
+        fakeIpRange:
+          dnsConfig["fake-ip-range"] ?? DEFAULT_DNS_CONFIG["fake-ip-range"],
+        fakeIpFilterMode: validFakeIpFilterMode,
+        preferH3: dnsConfig["prefer-h3"] ?? DEFAULT_DNS_CONFIG["prefer-h3"],
+        respectRules:
+          dnsConfig["respect-rules"] ?? DEFAULT_DNS_CONFIG["respect-rules"],
+        useHosts: dnsConfig["use-hosts"] ?? DEFAULT_DNS_CONFIG["use-hosts"],
+        useSystemHosts:
+          dnsConfig["use-system-hosts"] ??
+          DEFAULT_DNS_CONFIG["use-system-hosts"],
+        ipv6: dnsConfig.ipv6 ?? DEFAULT_DNS_CONFIG.ipv6,
+        fakeIpFilter:
+          dnsConfig["fake-ip-filter"]?.join(", ") ??
+          DEFAULT_DNS_CONFIG["fake-ip-filter"].join(", "),
+        nameserver:
+          dnsConfig.nameserver?.join(", ") ??
+          DEFAULT_DNS_CONFIG.nameserver.join(", "),
+        fallback:
+          dnsConfig.fallback?.join(", ") ??
+          DEFAULT_DNS_CONFIG.fallback.join(", "),
+        defaultNameserver:
+          dnsConfig["default-nameserver"]?.join(", ") ??
+          DEFAULT_DNS_CONFIG["default-nameserver"].join(", "),
+        proxyServerNameserver:
+          dnsConfig["proxy-server-nameserver"]?.join(", ") ??
+          (DEFAULT_DNS_CONFIG["proxy-server-nameserver"]?.join(", ") || ""),
+        directNameserver:
+          dnsConfig["direct-nameserver"]?.join(", ") ??
+          (DEFAULT_DNS_CONFIG["direct-nameserver"]?.join(", ") || ""),
+        directNameserverFollowPolicy:
+          dnsConfig["direct-nameserver-follow-policy"] ??
+          DEFAULT_DNS_CONFIG["direct-nameserver-follow-policy"],
+        fallbackGeoip:
+          dnsConfig["fallback-filter"]?.geoip ??
+          DEFAULT_DNS_CONFIG["fallback-filter"].geoip,
+        fallbackGeoipCode:
+          dnsConfig["fallback-filter"]?.["geoip-code"] ??
+          DEFAULT_DNS_CONFIG["fallback-filter"]["geoip-code"],
+        fallbackIpcidr:
+          dnsConfig["fallback-filter"]?.ipcidr?.join(", ") ??
+          DEFAULT_DNS_CONFIG["fallback-filter"].ipcidr.join(", "),
+        fallbackDomain:
+          dnsConfig["fallback-filter"]?.domain?.join(", ") ??
+          DEFAULT_DNS_CONFIG["fallback-filter"].domain.join(", "),
+        nameserverPolicy:
+          formatNameserverPolicy(dnsConfig["nameserver-policy"]) || "",
+        hosts: formatHosts(hostsConfig) || "",
       });
-    }
+    },
+    [setValues],
+  );
 
-    return result;
-  };
-
-  // 格式化nameserver-policy为字符串
-  const formatNameserverPolicy = (policy: any): string => {
-    if (!policy || typeof policy !== "object") return "";
-
-    // 直接将对象转换为字符串格式
-    return Object.entries(policy)
-      .map(([domain, servers]) => {
-        const serversStr = Array.isArray(servers) ? servers.join(";") : servers;
-        return `${domain}=${serversStr}`;
-      })
-      .join(", ");
-  };
-
-  // 格式化hosts为字符串
-  const formatHosts = (hosts: any): string => {
-    if (!hosts || typeof hosts !== "object") return "";
-
-    const result: string[] = [];
-
-    Object.entries(hosts).forEach(([domain, value]) => {
-      if (Array.isArray(value)) {
-        // 处理数组格式的IP
-        const ipsStr = value.join(";");
-        result.push(`${domain}=${ipsStr}`);
-      } else {
-        // 处理单个IP或域名
-        result.push(`${domain}=${value}`);
-      }
-    });
-
-    return result.join(", ");
-  };
-
-  // 解析hosts字符串为对象
-  const parseHosts = (str: string): Record<string, any> => {
-    const result: Record<string, any> = {};
-    if (!str) return result;
-
-    str.split(",").forEach((item) => {
-      const parts = item.trim().split("=");
-      if (parts.length < 2) return;
-
-      const domain = parts[0].trim();
-      const valueStr = parts.slice(1).join("=").trim();
-
-      // 检查是否包含多个分号分隔的IP
-      if (valueStr.includes(";")) {
-        result[domain] = valueStr
-          .split(";")
-          .map((s) => s.trim())
-          .filter(Boolean);
-      } else {
-        result[domain] = valueStr;
-      }
-    });
-
-    return result;
-  };
-
-  // 初始化时设置默认YAML
-  useEffect(() => {
-    updateYamlFromValues();
-  }, []);
-
-  // 切换编辑模式时的处理
-  useEffect(() => {
-    if (visualization) {
-      updateValuesFromYaml();
-    } else {
-      updateYamlFromValues();
-    }
-  }, [visualization]);
-
-  // 解析列表字符串为数组
-  const parseList = (str: string): string[] => {
-    if (!str?.trim()) return [];
-    return str
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-  };
-
-  // 生成DNS配置对象
-  const generateDnsConfig = () => {
+  const generateDnsConfig = useCallback(() => {
     const dnsConfig: any = {
       enable: values.enable,
       listen: values.listen,
@@ -481,8 +361,132 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
     }
 
     return dnsConfig;
-  };
+  }, [values]);
 
+  const updateYamlFromValues = useCallback(() => {
+    const config: Record<string, any> = {};
+
+    const dnsConfig = generateDnsConfig();
+    if (Object.keys(dnsConfig).length > 0) {
+      config.dns = dnsConfig;
+    }
+
+    const hosts = parseHosts(values.hosts);
+    if (Object.keys(hosts).length > 0) {
+      config.hosts = hosts;
+    }
+
+    setYamlContent(yaml.dump(config, { forceQuotes: true }));
+  }, [generateDnsConfig, setYamlContent, values.hosts]);
+
+  // 重置为默认值
+  const resetToDefaults = useCallback(() => {
+    setValues({
+      enable: DEFAULT_DNS_CONFIG.enable,
+      listen: DEFAULT_DNS_CONFIG.listen,
+      enhancedMode: DEFAULT_DNS_CONFIG["enhanced-mode"],
+      fakeIpRange: DEFAULT_DNS_CONFIG["fake-ip-range"],
+      fakeIpFilterMode: DEFAULT_DNS_CONFIG["fake-ip-filter-mode"],
+      preferH3: DEFAULT_DNS_CONFIG["prefer-h3"],
+      respectRules: DEFAULT_DNS_CONFIG["respect-rules"],
+      useHosts: DEFAULT_DNS_CONFIG["use-hosts"],
+      useSystemHosts: DEFAULT_DNS_CONFIG["use-system-hosts"],
+      ipv6: DEFAULT_DNS_CONFIG.ipv6,
+      fakeIpFilter: DEFAULT_DNS_CONFIG["fake-ip-filter"].join(", "),
+      defaultNameserver: DEFAULT_DNS_CONFIG["default-nameserver"].join(", "),
+      nameserver: DEFAULT_DNS_CONFIG.nameserver.join(", "),
+      fallback: DEFAULT_DNS_CONFIG.fallback.join(", "),
+      proxyServerNameserver:
+        DEFAULT_DNS_CONFIG["proxy-server-nameserver"]?.join(", ") || "",
+      directNameserver:
+        DEFAULT_DNS_CONFIG["direct-nameserver"]?.join(", ") || "",
+      directNameserverFollowPolicy:
+        DEFAULT_DNS_CONFIG["direct-nameserver-follow-policy"] || false,
+      fallbackGeoip: DEFAULT_DNS_CONFIG["fallback-filter"].geoip,
+      fallbackGeoipCode: DEFAULT_DNS_CONFIG["fallback-filter"]["geoip-code"],
+      fallbackIpcidr:
+        DEFAULT_DNS_CONFIG["fallback-filter"].ipcidr?.join(", ") || "",
+      fallbackDomain:
+        DEFAULT_DNS_CONFIG["fallback-filter"].domain?.join(", ") || "",
+      nameserverPolicy: "",
+      hosts: "",
+    });
+
+    updateYamlFromValues();
+  }, [setValues, updateYamlFromValues]);
+
+  // 从YAML更新表单值
+  const updateValuesFromYaml = useCallback(() => {
+    try {
+      const parsedYaml = yaml.load(yamlContent) as any;
+      if (!parsedYaml) return;
+
+      skipYamlSyncRef.current = true;
+      updateValuesFromConfig(parsedYaml);
+    } catch {
+      showNotice.error("settings.modals.dns.errors.invalidYaml");
+    }
+  }, [yamlContent, updateValuesFromConfig]);
+
+  useEffect(() => {
+    if (skipYamlSyncRef.current) {
+      skipYamlSyncRef.current = false;
+      return;
+    }
+    updateYamlFromValues();
+  }, [updateYamlFromValues]);
+
+  const latestUpdateValuesFromYamlRef = useRef(updateValuesFromYaml);
+  const latestUpdateYamlFromValuesRef = useRef(updateYamlFromValues);
+
+  useEffect(() => {
+    latestUpdateValuesFromYamlRef.current = updateValuesFromYaml;
+    latestUpdateYamlFromValuesRef.current = updateYamlFromValues;
+  }, [updateValuesFromYaml, updateYamlFromValues]);
+
+  useEffect(() => {
+    if (visualization) {
+      latestUpdateValuesFromYamlRef.current();
+    } else {
+      latestUpdateYamlFromValuesRef.current();
+    }
+  }, [visualization]);
+
+  const initDnsConfig = useCallback(async () => {
+    try {
+      const dnsConfigExists = await invoke<boolean>(
+        "check_dns_config_exists",
+        {},
+      );
+
+      if (dnsConfigExists) {
+        const dnsConfig = await invoke<string>("get_dns_config_content", {});
+        const config = yaml.load(dnsConfig) as any;
+
+        updateValuesFromConfig(config);
+        setYamlContent(dnsConfig);
+      } else {
+        resetToDefaults();
+      }
+    } catch (err) {
+      console.error("Failed to initialize DNS config", err);
+      resetToDefaults();
+    }
+  }, [resetToDefaults, setYamlContent, updateValuesFromConfig]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: () => {
+        setOpen(true);
+        void initDnsConfig();
+      },
+      close: () => setOpen(false),
+    }),
+    [initDnsConfig],
+  );
+
+  // 生成DNS配置对象
   // 处理保存操作
   const onSave = useLockFn(async () => {
     try {
@@ -505,7 +509,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
         // 使用YAML编辑器的值
         const parsedConfig = yaml.load(yamlContent);
         if (typeof parsedConfig !== "object" || parsedConfig === null) {
-          throw new Error(t("Invalid configuration"));
+          throw new Error(t("settings.modals.dns.errors.invalid"));
         }
         config = parsedConfig as Record<string, any>;
       }
@@ -543,9 +547,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           }
         }
 
-        showNotice(
-          "error",
-          t("DNS configuration error") + ": " + cleanErrorMsg,
+        showNotice.error(
+          "settings.modals.dns.messages.configError",
+          cleanErrorMsg,
         );
         return;
       }
@@ -557,19 +561,19 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
       }
 
       setOpen(false);
-      showNotice("success", t("DNS settings saved"));
-    } catch (err: any) {
-      showNotice("error", err.message || err.toString());
+      showNotice.success("settings.modals.dns.messages.saved");
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
   // YAML编辑器内容变更处理
-  const handleYamlChange = (value: string) => {
+  const handleYamlChange = (value?: string) => {
     setYamlContent(value || "");
 
     // 允许YAML编辑后立即分析和更新表单值
     try {
-      const config = yaml.load(value) as any;
+      const config = yaml.load(value || "") as any;
       if (config && typeof config === "object") {
         setTimeout(() => {
           updateValuesFromConfig(config);
@@ -609,7 +613,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
       open={open}
       title={
         <Box display="flex" justifyContent="space-between" alignItems="center">
-          {t("DNS Overwrite")}
+          {t("settings.modals.dns.dialog.title")}
           <Box display="flex" alignItems="center" gap={1}>
             <Button
               variant="outlined"
@@ -618,7 +622,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
               startIcon={<RestartAltRounded />}
               onClick={resetToDefaults}
             >
-              {t("Reset to Default")}
+              {t("shared.actions.resetToDefault")}
             </Button>
             <Button
               variant="contained"
@@ -627,7 +631,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
                 setVisualization((prev) => !prev);
               }}
             >
-              {visualization ? t("Advanced") : t("Visualization")}
+              {visualization
+                ? t("shared.editorModes.advanced")
+                : t("shared.editorModes.visualization")}
             </Button>
           </Box>
         </Box>
@@ -639,8 +645,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           ? {}
           : { padding: "0 24px", display: "flex", flexDirection: "column" }),
       }}
-      okBtn={t("Save")}
-      cancelBtn={t("Cancel")}
+      okBtn={t("shared.actions.save")}
+      cancelBtn={t("shared.actions.cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onSave}
@@ -651,7 +657,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
         color="warning.main"
         sx={{ mb: 2, mt: 0, fontStyle: "italic" }}
       >
-        {t("DNS Settings Warning")}
+        {t("settings.modals.dns.dialog.warning")}
       </Typography>
 
       {visualization ? (
@@ -660,11 +666,11 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
             variant="subtitle1"
             sx={{ mt: 1, mb: 1, fontWeight: "bold" }}
           >
-            {t("DNS Settings")}
+            {t("settings.modals.dns.sections.general")}
           </Typography>
 
           <Item>
-            <ListItemText primary={t("Enable DNS")} />
+            <ListItemText primary={t("settings.modals.dns.fields.enable")} />
             <Switch
               edge="end"
               checked={values.enable}
@@ -673,7 +679,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           </Item>
 
           <Item>
-            <ListItemText primary={t("DNS Listen")} />
+            <ListItemText primary={t("settings.modals.dns.fields.listen")} />
             <TextField
               size="small"
               autoComplete="off"
@@ -685,7 +691,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           </Item>
 
           <Item>
-            <ListItemText primary={t("Enhanced Mode")} />
+            <ListItemText
+              primary={t("settings.modals.dns.fields.enhancedMode")}
+            />
             <FormControl size="small" sx={{ width: 150 }}>
               <Select
                 value={values.enhancedMode}
@@ -698,7 +706,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           </Item>
 
           <Item>
-            <ListItemText primary={t("Fake IP Range")} />
+            <ListItemText
+              primary={t("settings.modals.dns.fields.fakeIpRange")}
+            />
             <TextField
               size="small"
               autoComplete="off"
@@ -710,7 +720,9 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           </Item>
 
           <Item>
-            <ListItemText primary={t("Fake IP Filter Mode")} />
+            <ListItemText
+              primary={t("settings.modals.dns.fields.fakeIpFilterMode")}
+            />
             <FormControl size="small" sx={{ width: 150 }}>
               <Select
                 value={values.fakeIpFilterMode}
@@ -724,8 +736,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("IPv6")}
-              secondary={t("Enable IPv6 DNS resolution")}
+              primary={t("settings.modals.dns.fields.ipv6.label")}
+              secondary={t("settings.modals.dns.fields.ipv6.description")}
             />
             <Switch
               edge="end"
@@ -736,8 +748,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("Prefer H3")}
-              secondary={t("DNS DOH使用HTTP/3")}
+              primary={t("settings.modals.dns.fields.preferH3.label")}
+              secondary={t("settings.modals.dns.fields.preferH3.description")}
             />
             <Switch
               edge="end"
@@ -748,8 +760,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("Respect Rules")}
-              secondary={t("DNS connections follow routing rules")}
+              primary={t("settings.modals.dns.fields.respectRules.label")}
+              secondary={t(
+                "settings.modals.dns.fields.respectRules.description",
+              )}
             />
             <Switch
               edge="end"
@@ -760,8 +774,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("Use Hosts")}
-              secondary={t("Enable to resolve hosts through hosts file")}
+              primary={t("settings.modals.dns.fields.useHosts.label")}
+              secondary={t("settings.modals.dns.fields.useHosts.description")}
             />
             <Switch
               edge="end"
@@ -772,8 +786,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("Use System Hosts")}
-              secondary={t("Enable to resolve hosts through system hosts file")}
+              primary={t("settings.modals.dns.fields.useSystemHosts.label")}
+              secondary={t(
+                "settings.modals.dns.fields.useSystemHosts.description",
+              )}
             />
             <Switch
               edge="end"
@@ -784,8 +800,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item>
             <ListItemText
-              primary={t("Direct Nameserver Follow Policy")}
-              secondary={t("Whether to follow nameserver policy")}
+              primary={t("settings.modals.dns.fields.directPolicy.label")}
+              secondary={t(
+                "settings.modals.dns.fields.directPolicy.description",
+              )}
             />
             <Switch
               edge="end"
@@ -796,8 +814,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Default Nameserver")}
-              secondary={t("Default DNS servers used to resolve DNS servers")}
+              primary={t("settings.modals.dns.fields.defaultNameserver.label")}
+              secondary={t(
+                "settings.modals.dns.fields.defaultNameserver.description",
+              )}
             />
             <TextField
               fullWidth
@@ -813,8 +833,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Nameserver")}
-              secondary={t("List of DNS servers")}
+              primary={t("settings.modals.dns.fields.nameserver.label")}
+              secondary={t("settings.modals.dns.fields.nameserver.description")}
             />
             <TextField
               fullWidth
@@ -830,8 +850,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Fallback")}
-              secondary={t("List of fallback DNS servers")}
+              primary={t("settings.modals.dns.fields.fallback.label")}
+              secondary={t("settings.modals.dns.fields.fallback.description")}
             />
             <TextField
               fullWidth
@@ -847,8 +867,8 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Proxy Server Nameserver")}
-              secondary={t("Proxy Node Nameserver")}
+              primary={t("settings.modals.dns.fields.proxy.label")}
+              secondary={t("settings.modals.dns.fields.proxy.description")}
             />
             <TextField
               fullWidth
@@ -864,8 +884,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Direct Nameserver")}
-              secondary={t("Direct outbound Nameserver")}
+              primary={t("settings.modals.dns.fields.directNameserver.label")}
+              secondary={t(
+                "settings.modals.dns.fields.directNameserver.description",
+              )}
             />
             <TextField
               fullWidth
@@ -881,8 +903,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Fake IP Filter")}
-              secondary={t("Domains that skip fake IP resolution")}
+              primary={t("settings.modals.dns.fields.fakeIpFilter.label")}
+              secondary={t(
+                "settings.modals.dns.fields.fakeIpFilter.description",
+              )}
             />
             <TextField
               fullWidth
@@ -898,8 +922,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Nameserver Policy")}
-              secondary={t("Domain-specific DNS server")}
+              primary={t("settings.modals.dns.fields.nameserverPolicy.label")}
+              secondary={t(
+                "settings.modals.dns.fields.nameserverPolicy.description",
+              )}
             />
             <TextField
               fullWidth
@@ -917,13 +943,15 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
             variant="subtitle2"
             sx={{ mt: 2, mb: 1, fontWeight: "bold" }}
           >
-            {t("Fallback Filter Settings")}
+            {t("settings.modals.dns.sections.fallbackFilter")}
           </Typography>
 
           <Item>
             <ListItemText
-              primary={t("GeoIP Filtering")}
-              secondary={t("Enable GeoIP filtering for fallback")}
+              primary={t("settings.modals.dns.fields.geoipFiltering.label")}
+              secondary={t(
+                "settings.modals.dns.fields.geoipFiltering.description",
+              )}
             />
             <Switch
               edge="end"
@@ -933,7 +961,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           </Item>
 
           <Item>
-            <ListItemText primary={t("GeoIP Code")} />
+            <ListItemText primary={t("settings.modals.dns.fields.geoipCode")} />
             <TextField
               size="small"
               autoComplete="off"
@@ -946,8 +974,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Fallback IP CIDR")}
-              secondary={t("IP CIDRs not using fallback servers")}
+              primary={t("settings.modals.dns.fields.fallbackIpCidr.label")}
+              secondary={t(
+                "settings.modals.dns.fields.fallbackIpCidr.description",
+              )}
             />
             <TextField
               fullWidth
@@ -963,8 +993,10 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Fallback Domain")}
-              secondary={t("Domains using fallback servers")}
+              primary={t("settings.modals.dns.fields.fallbackDomain.label")}
+              secondary={t(
+                "settings.modals.dns.fields.fallbackDomain.description",
+              )}
             />
             <TextField
               fullWidth
@@ -983,13 +1015,13 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
             variant="subtitle1"
             sx={{ mt: 3, mb: 0, fontWeight: "bold" }}
           >
-            {t("Hosts Settings")}
+            {t("settings.modals.dns.sections.hosts")}
           </Typography>
 
           <Item sx={{ flexDirection: "column", alignItems: "flex-start" }}>
             <ListItemText
-              primary={t("Hosts")}
-              secondary={t("Custom domain to IP or domain mapping")}
+              primary={t("settings.modals.dns.fields.hosts.label")}
+              secondary={t("settings.modals.dns.fields.hosts.description")}
             />
             <TextField
               fullWidth
@@ -1008,7 +1040,7 @@ export function DnsViewer({ ref }: { ref?: Ref<DialogRef> }) {
           height="100vh"
           language="yaml"
           value={yamlContent}
-          theme={themeMode === "light" ? "vs" : "vs-dark"}
+          theme={themeMode === "light" ? "light" : "vs-dark"}
           className="flex-grow"
           options={{
             tabSize: 2,

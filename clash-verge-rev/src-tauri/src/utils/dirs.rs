@@ -1,8 +1,15 @@
-use crate::core::handle;
+use crate::{
+    core::{CoreManager, handle, manager::RunningMode},
+    logging,
+    utils::logging::Type,
+};
 use anyhow::Result;
+use async_trait::async_trait;
 use once_cell::sync::OnceCell;
+#[cfg(unix)]
+use std::iter;
 use std::{fs, path::PathBuf};
-use tauri::Manager;
+use tauri::Manager as _;
 
 #[cfg(not(feature = "verge-dev"))]
 pub static APP_ID: &str = "io.github.clash-verge-rev.clash-verge-rev";
@@ -46,7 +53,7 @@ pub fn app_home_dir() -> Result<PathBuf> {
         let app_exe = dunce::canonicalize(app_exe)?;
         let app_dir = app_exe
             .parent()
-            .ok_or(anyhow::anyhow!("failed to get the portable app dir"))?;
+            .ok_or_else(|| anyhow::anyhow!("failed to get the portable app dir"))?;
         return Ok(PathBuf::from(app_dir).join(".config").join(APP_ID));
     }
 
@@ -56,7 +63,11 @@ pub fn app_home_dir() -> Result<PathBuf> {
     match app_handle.path().data_dir() {
         Ok(dir) => Ok(dir.join(APP_ID)),
         Err(e) => {
-            log::error!(target: "app", "Failed to get the app home directory: {e}");
+            logging!(
+                error,
+                Type::File,
+                "Failed to get the app home directory: {e}"
+            );
             Err(anyhow::anyhow!("Failed to get the app homedirectory"))
         }
     }
@@ -70,7 +81,11 @@ pub fn app_resources_dir() -> Result<PathBuf> {
     match app_handle.path().resource_dir() {
         Ok(dir) => Ok(dir.join("resources")),
         Err(e) => {
-            log::error!(target: "app", "Failed to get the resource directory: {e}");
+            logging!(
+                error,
+                Type::File,
+                "Failed to get the resource directory: {e}"
+            );
             Err(anyhow::anyhow!("Failed to get the resource directory"))
         }
     }
@@ -88,36 +103,42 @@ pub fn app_icons_dir() -> Result<PathBuf> {
 
 pub fn find_target_icons(target: &str) -> Result<Option<String>> {
     let icons_dir = app_icons_dir()?;
-    let mut matching_files = Vec::new();
+    let icon_path = fs::read_dir(&icons_dir)?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .find(|path| {
+            let prefix_matches = path
+                .file_prefix()
+                .and_then(|p| p.to_str())
+                .is_some_and(|prefix| prefix.starts_with(target));
+            let ext_matches = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|ext| {
+                    ext.eq_ignore_ascii_case("ico") || ext.eq_ignore_ascii_case("png")
+                });
+            prefix_matches && ext_matches
+        });
 
-    for entry in fs::read_dir(icons_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if let Some(file_name) = path.file_name().and_then(|n| n.to_str())
-            && file_name.starts_with(target)
-            && (file_name.ends_with(".ico") || file_name.ends_with(".png"))
-        {
-            matching_files.push(path);
-        }
-    }
-
-    if matching_files.is_empty() {
-        Ok(None)
-    } else {
-        match matching_files.first() {
-            Some(first_path) => {
-                let first = path_to_str(first_path)?;
-                Ok(Some(first.to_string()))
-            }
-            None => Ok(None),
-        }
-    }
+    icon_path
+        .map(|path| path_to_str(&path).map(|s| s.into()))
+        .transpose()
 }
 
 /// logs dir
 pub fn app_logs_dir() -> Result<PathBuf> {
     Ok(app_home_dir()?.join("logs"))
+}
+
+// latest verge log
+pub fn app_latest_log() -> Result<PathBuf> {
+    Ok(app_logs_dir()?.join("latest.log"))
+}
+
+/// local backups dir
+pub fn local_backup_dir() -> Result<PathBuf> {
+    let dir = app_home_dir()?.join(BACKUP_DIR);
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
 pub fn clash_path() -> Result<PathBuf> {
@@ -158,11 +179,20 @@ pub fn service_log_dir() -> Result<PathBuf> {
     Ok(log_dir)
 }
 
+pub fn clash_latest_log() -> Result<PathBuf> {
+    match *CoreManager::global().get_running_mode() {
+        RunningMode::Service => Ok(service_log_dir()?.join("service_latest.log")),
+        RunningMode::Sidecar | RunningMode::NotRunning => {
+            Ok(sidecar_log_dir()?.join("sidecar_latest.log"))
+        }
+    }
+}
+
 pub fn path_to_str(path: &PathBuf) -> Result<&str> {
     let path_str = path
         .as_os_str()
         .to_str()
-        .ok_or(anyhow::anyhow!("failed to get path from {:?}", path))?;
+        .ok_or_else(|| anyhow::anyhow!("failed to get path from {:?}", path))?;
     Ok(path_str)
 }
 
@@ -192,8 +222,7 @@ pub fn get_encryption_key() -> Result<Vec<u8>> {
 
 #[cfg(unix)]
 pub fn ensure_mihomo_safe_dir() -> Option<PathBuf> {
-    ["/tmp"]
-        .iter()
+    iter::once("/tmp")
         .map(PathBuf::from)
         .find(|path| path.exists())
         .or_else(|| {
@@ -202,7 +231,11 @@ pub fn ensure_mihomo_safe_dir() -> Option<PathBuf> {
                 if home_config.exists() || fs::create_dir_all(&home_config).is_ok() {
                     Some(home_config)
                 } else {
-                    log::error!(target: "app", "Failed to create safe directory: {home_config:?}");
+                    logging!(
+                        error,
+                        Type::File,
+                        "Failed to create safe directory: {home_config:?}"
+                    );
                     None
                 }
             })
@@ -224,4 +257,19 @@ pub fn ipc_path() -> Result<PathBuf> {
 #[cfg(target_os = "windows")]
 pub fn ipc_path() -> Result<PathBuf> {
     Ok(PathBuf::from(r"\\.\pipe\verge-mihomo"))
+}
+#[async_trait]
+pub trait PathBufExec {
+    async fn remove_if_exists(&self) -> Result<()>;
+}
+
+#[async_trait]
+impl PathBufExec for PathBuf {
+    async fn remove_if_exists(&self) -> Result<()> {
+        if self.exists() {
+            tokio::fs::remove_file(self).await?;
+            logging!(info, Type::File, "Removed file: {:?}", self);
+        }
+        Ok(())
+    }
 }

@@ -1,7 +1,8 @@
+import MonacoEditor from "@monaco-editor/react";
 import {
+  CloseFullscreenRounded,
   FormatPaintRounded,
   OpenInFullRounded,
-  CloseFullscreenRounded,
 } from "@mui/icons-material";
 import {
   Button,
@@ -20,9 +21,8 @@ import metaSchema from "meta-json-schema/schemas/meta-json-schema.json";
 import * as monaco from "monaco-editor";
 import { configureMonacoYaml } from "monaco-yaml";
 import { nanoid } from "nanoid";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import MonacoEditor from "react-monaco-editor";
 import pac from "types-pac/pac.d.ts?raw";
 
 import { showNotice } from "@/services/noticeService";
@@ -63,13 +63,13 @@ const monacoInitialization = () => {
       {
         uri: "http://example.com/meta-json-schema.json",
         fileMatch: ["**/*.clash.yaml"],
-        // @ts-ignore
+        // @ts-expect-error -- meta schema JSON import does not satisfy JSONSchema7 at compile time
         schema: metaSchema as JSONSchema7,
       },
       {
         uri: "http://example.com/clash-verge-merge-json-schema.json",
         fileMatch: ["**/*.merge.yaml"],
-        // @ts-ignore
+        // @ts-expect-error -- merge schema JSON import does not satisfy JSONSchema7 at compile time
         schema: mergeSchema as JSONSchema7,
       },
     ],
@@ -87,8 +87,8 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
 
   const {
     open = false,
-    title = t("Edit File"),
-    initialData = Promise.resolve(""),
+    title,
+    initialData,
     readOnly = false,
     language = "yaml",
     schema,
@@ -97,21 +97,25 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
     onClose,
   } = props;
 
+  const resolvedTitle = title ?? t("profiles.components.menu.editFile");
+  const resolvedInitialData = useMemo(
+    () => initialData ?? Promise.resolve(""),
+    [initialData],
+  );
+
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor>(undefined);
   const prevData = useRef<string | undefined>("");
   const currData = useRef<string | undefined>("");
 
-  const editorWillMount = () => {
+  const beforeMount = () => {
     monacoInitialization(); // initialize monaco
   };
 
-  const editorDidMount = async (
-    editor: monaco.editor.IStandaloneCodeEditor,
-  ) => {
+  const onMount = async (editor: monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = editor;
 
     // retrieve initial data
-    await initialData.then((data) => {
+    await resolvedInitialData.then((data) => {
       prevData.current = data;
       currData.current = data;
 
@@ -122,36 +126,44 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
     });
   };
 
-  const handleChange = useLockFn(async (value: string | undefined) => {
+  const handleChange = useLockFn(async (_value?: string) => {
     try {
+      const value = editorRef.current?.getValue();
       currData.current = value;
       onChange?.(prevData.current, currData.current);
-    } catch (err: any) {
-      showNotice("error", err.message || err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
   const handleSave = useLockFn(async () => {
     try {
-      !readOnly && onSave?.(prevData.current, currData.current);
+      if (!readOnly) {
+        currData.current = editorRef.current?.getValue();
+        onSave?.(prevData.current, currData.current);
+      }
       onClose();
-    } catch (err: any) {
-      showNotice("error", err.message || err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
   const handleClose = useLockFn(async () => {
     try {
       onClose();
-    } catch (err: any) {
-      showNotice("error", err.message || err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
-  const editorResize = debounce(() => {
-    editorRef.current?.layout();
-    setTimeout(() => editorRef.current?.layout(), 500);
-  }, 100);
+  const editorResize = useMemo(
+    () =>
+      debounce(() => {
+        editorRef.current?.layout();
+        setTimeout(() => editorRef.current?.layout(), 500);
+      }, 100),
+    [],
+  );
 
   useEffect(() => {
     const onResized = debounce(() => {
@@ -167,11 +179,11 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
       editorRef.current?.dispose();
       editorRef.current = undefined;
     };
-  }, []);
+  }, [editorResize]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-      <DialogTitle>{title}</DialogTitle>
+      <DialogTitle>{resolvedTitle}</DialogTitle>
 
       <DialogContent
         sx={{
@@ -182,7 +194,7 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
       >
         <MonacoEditor
           language={language}
-          theme={themeMode === "light" ? "vs" : "vs-dark"}
+          theme={themeMode === "light" ? "light" : "vs-dark"}
           options={{
             tabSize: ["yaml", "javascript", "css"].includes(language) ? 2 : 4, // 根据语言类型设置缩进大小
             minimap: {
@@ -190,7 +202,9 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
             },
             mouseWheelZoom: true, // 按住Ctrl滚轮调节缩放比例
             readOnly: readOnly, // 只读模式
-            readOnlyMessage: { value: t("ReadOnlyMessage") }, // 只读模式尝试编辑时的提示信息
+            readOnlyMessage: {
+              value: t("profiles.modals.editor.messages.readOnly"),
+            }, // 只读模式尝试编辑时的提示信息
             renderValidationDecorations: "on", // 只读模式下显示校验信息
             quickSuggestions: {
               strings: true, // 字符串类型的建议
@@ -206,8 +220,8 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
             fontLigatures: false, // 连字符
             smoothScrolling: true, // 平滑滚动
           }}
-          editorWillMount={editorWillMount}
-          editorDidMount={editorDidMount}
+          beforeMount={beforeMount}
+          onMount={onMount}
           onChange={handleChange}
         />
 
@@ -219,7 +233,7 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
             size="medium"
             color="inherit"
             sx={{ display: readOnly ? "none" : "" }}
-            title={t("Format document")}
+            title={t("profiles.modals.editor.actions.format")}
             onClick={() =>
               editorRef.current
                 ?.getAction("editor.action.formatDocument")
@@ -231,7 +245,9 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
           <IconButton
             size="medium"
             color="inherit"
-            title={t(isMaximized ? "Minimize" : "Maximize")}
+            title={t(
+              isMaximized ? "shared.window.minimize" : "shared.window.maximize",
+            )}
             onClick={() => appWindow.toggleMaximize().then(editorResize)}
           >
             {isMaximized ? <CloseFullscreenRounded /> : <OpenInFullRounded />}
@@ -241,11 +257,11 @@ export const EditorViewer = <T extends Language>(props: Props<T>) => {
 
       <DialogActions>
         <Button onClick={handleClose} variant="outlined">
-          {t(readOnly ? "Close" : "Cancel")}
+          {t(readOnly ? "shared.actions.close" : "shared.actions.cancel")}
         </Button>
         {!readOnly && (
           <Button onClick={handleSave} variant="contained">
-            {t("Save")}
+            {t("shared.actions.save")}
           </Button>
         )}
       </DialogActions>

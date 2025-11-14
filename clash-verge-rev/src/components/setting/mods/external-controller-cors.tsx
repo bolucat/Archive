@@ -1,7 +1,7 @@
 import { Delete as DeleteIcon } from "@mui/icons-material";
 import { Box, Button, Divider, List, ListItem, TextField } from "@mui/material";
 import { useLockFn, useRequest } from "ahooks";
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseDialog, Switch } from "@/components/base";
@@ -140,10 +140,12 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
         manual: true,
         onSuccess: () => {
           setOpen(false);
-          showNotice("success", t("Configuration saved successfully"));
+          showNotice.success(
+            "shared.feedback.notifications.common.saveSuccess",
+          );
         },
         onError: () => {
-          showNotice("error", t("Failed to save configuration"));
+          showNotice.error("shared.feedback.notifications.common.saveFailed");
         },
       },
     );
@@ -165,13 +167,26 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
       await saveConfig();
     });
 
+    const originEntries = useMemo(() => {
+      const counts: Record<string, number> = {};
+      return corsConfig.allowOrigins.map((origin, index) => {
+        const occurrence = (counts[origin] = (counts[origin] ?? 0) + 1);
+        const keyBase = origin || "origin";
+        return {
+          origin,
+          index,
+          key: `${keyBase}-${occurrence}`,
+        };
+      });
+    }, [corsConfig.allowOrigins]);
+
     return (
       <BaseDialog
         open={open}
-        title={t("External Cors Configuration")}
+        title={t("settings.sections.externalCors.title")}
         contentSx={{ width: 500 }}
-        okBtn={loading ? t("Saving...") : t("Save")}
-        cancelBtn={t("Cancel")}
+        okBtn={loading ? t("shared.statuses.saving") : t("shared.actions.save")}
+        cancelBtn={t("shared.actions.cancel")}
         onClose={() => setOpen(false)}
         onCancel={() => setOpen(false)}
         onOk={handleSave}
@@ -185,7 +200,7 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
               width="100%"
             >
               <span style={{ fontWeight: "normal" }}>
-                {t("Allow private network access")}
+                {t("settings.sections.externalCors.fields.allowPrivateNetwork")}
               </span>
               <Switch
                 edge="end"
@@ -205,11 +220,11 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
           <ListItem sx={{ padding: "8px 0" }}>
             <div style={{ width: "100%" }}>
               <div style={{ marginBottom: 8, fontWeight: "bold" }}>
-                {t("Allowed Origins")}
+                {t("settings.sections.externalCors.fields.allowedOrigins")}
               </div>
-              {corsConfig.allowOrigins.map((origin, index) => (
+              {originEntries.map(({ origin, index, key }) => (
                 <div
-                  key={index}
+                  key={key}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -222,7 +237,9 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
                     sx={{ fontSize: 14, marginRight: 2 }}
                     value={origin}
                     onChange={(e) => handleUpdateOrigin(index, e.target.value)}
-                    placeholder={t("Please enter a valid url")}
+                    placeholder={t(
+                      "settings.sections.externalCors.placeholders.origin",
+                    )}
                     inputProps={{ style: { fontSize: 14 } }}
                   />
                   <Button
@@ -243,7 +260,7 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
                 onClick={handleAddOrigin}
                 sx={addButtonStyle}
               >
-                {t("Add")}
+                {t("settings.sections.externalCors.actions.add")}
               </Button>
 
               <div
@@ -257,7 +274,7 @@ export const HeaderConfiguration = forwardRef<ClashHeaderConfigingRef>(
                 <div
                   style={{ color: "#666", fontSize: 12, fontStyle: "italic" }}
                 >
-                  {t("Always included origins: {{urls}}", {
+                  {t("settings.sections.externalCors.messages.alwaysIncluded", {
                     urls: DEV_URLS.join(", "),
                   })}
                 </div>

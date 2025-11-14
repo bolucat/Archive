@@ -19,7 +19,7 @@ import {
 import { open } from "@tauri-apps/plugin-shell";
 import { useLockFn } from "ahooks";
 import dayjs from "dayjs";
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { mutate } from "swr";
 
@@ -36,6 +36,7 @@ import {
 } from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
 import { useLoadingCache, useSetLoadingCache } from "@/services/states";
+import type { TranslationKey } from "@/types/generated/i18n-keys";
 import parseTraffic from "@/utils/parse-traffic";
 
 import { ProfileBox } from "./profile-box";
@@ -61,6 +62,7 @@ interface Props {
 
 export const ProfileItem = (props: Props) => {
   const {
+    id,
     selected,
     activating,
     itemData,
@@ -80,11 +82,11 @@ export const ProfileItem = (props: Props) => {
     transition,
     isDragging,
   } = useSortable({
-    id: props.id,
+    id,
   });
 
   const { t } = useTranslation();
-  const [anchorEl, setAnchorEl] = useState<any>(null);
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const loadingCache = useLoadingCache();
   const setLoadingCache = useSetLoadingCache();
@@ -119,34 +121,46 @@ export const ProfileItem = (props: Props) => {
 
           // 如果已经过期，显示"更新失败"
           if (nextUpdateDate.isBefore(now)) {
-            setNextUpdateTime(t("Last Update failed"));
+            setNextUpdateTime(
+              t("profiles.components.profileItem.status.lastUpdateFailed"),
+            );
           } else {
             // 否则显示剩余时间
             const diffMinutes = nextUpdateDate.diff(now, "minute");
 
             if (diffMinutes < 60) {
               if (diffMinutes <= 0) {
-                setNextUpdateTime(`${t("Next Up")} <1m`);
+                setNextUpdateTime(
+                  `${t("profiles.components.profileItem.status.nextUp")} <1m`,
+                );
               } else {
-                setNextUpdateTime(`${t("Next Up")} ${diffMinutes}m`);
+                setNextUpdateTime(
+                  `${t("profiles.components.profileItem.status.nextUp")} ${diffMinutes}m`,
+                );
               }
             } else {
               const hours = Math.floor(diffMinutes / 60);
               const mins = diffMinutes % 60;
-              setNextUpdateTime(`${t("Next Up")} ${hours}h ${mins}m`);
+              setNextUpdateTime(
+                `${t("profiles.components.profileItem.status.nextUp")} ${hours}h ${mins}m`,
+              );
             }
           }
         } else {
           console.log(`返回的下次更新时间为空`);
-          setNextUpdateTime(t("No schedule"));
+          setNextUpdateTime(
+            t("profiles.components.profileItem.status.noSchedule"),
+          );
         }
       } catch (err) {
         console.error(`获取下次更新时间出错:`, err);
-        setNextUpdateTime(t("Unknown"));
+        setNextUpdateTime(t("profiles.components.profileItem.status.unknown"));
       }
     } else {
       console.log(`该配置未设置更新间隔或间隔为0`);
-      setNextUpdateTime(t("Auto update disabled"));
+      setNextUpdateTime(
+        t("profiles.components.profileItem.status.autoUpdateDisabled"),
+      );
     }
   });
 
@@ -166,37 +180,44 @@ export const ProfileItem = (props: Props) => {
     if (showNextUpdate) {
       fetchNextUpdateTime();
     }
-  }, [showNextUpdate, itemData.option?.update_interval, updated]);
+  }, [
+    fetchNextUpdateTime,
+    showNextUpdate,
+    itemData.option?.update_interval,
+    updated,
+  ]);
 
   // 订阅定时器更新事件
   useEffect(() => {
+    let refreshTimeout: number | undefined;
     // 处理定时器更新事件 - 这个事件专门用于通知定时器变更
-    const handleTimerUpdate = (event: any) => {
-      const updatedUid = event.payload as string;
+    const handleTimerUpdate = (event: Event) => {
+      const source = event as CustomEvent<string> & { payload?: string };
+      const updatedUid = source.detail ?? source.payload;
 
       // 只有当更新的是当前配置时才刷新显示
       if (updatedUid === itemData.uid && showNextUpdate) {
         console.log(`收到定时器更新事件: uid=${updatedUid}`);
-        setTimeout(() => {
+        if (refreshTimeout !== undefined) {
+          clearTimeout(refreshTimeout);
+        }
+        refreshTimeout = window.setTimeout(() => {
           fetchNextUpdateTime(true);
         }, 1000);
       }
     };
 
     // 只注册定时器更新事件监听
-    window.addEventListener(
-      "verge://timer-updated",
-      handleTimerUpdate as EventListener,
-    );
+    window.addEventListener("verge://timer-updated", handleTimerUpdate);
 
     return () => {
+      if (refreshTimeout !== undefined) {
+        clearTimeout(refreshTimeout);
+      }
       // 清理事件监听
-      window.removeEventListener(
-        "verge://timer-updated",
-        handleTimerUpdate as EventListener,
-      );
+      window.removeEventListener("verge://timer-updated", handleTimerUpdate);
     };
-  }, [showNextUpdate, itemData.uid]);
+  }, [fetchNextUpdateTime, itemData.uid, showNextUpdate]);
 
   // local file mode
   // remote file mode
@@ -217,11 +238,11 @@ export const ProfileItem = (props: Props) => {
   const loading = loadingCache[itemData.uid] ?? false;
 
   // interval update fromNow field
-  const [, setRefresh] = useState({});
+  const [, forceRefresh] = useReducer((value: number) => value + 1, 0);
   useEffect(() => {
     if (!hasUrl) return;
 
-    let timer: any = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const handler = () => {
       const now = Date.now();
@@ -232,7 +253,7 @@ export const ProfileItem = (props: Props) => {
       const wait = now - lastUpdate >= 36e5 ? 30e5 : 5e4;
 
       timer = setTimeout(() => {
-        setRefresh({});
+        forceRefresh();
         handler();
       }, wait);
     };
@@ -240,9 +261,12 @@ export const ProfileItem = (props: Props) => {
     handler();
 
     return () => {
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
     };
-  }, [hasUrl, updated]);
+  }, [forceRefresh, hasUrl, updated]);
 
   const [fileOpen, setFileOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -301,8 +325,8 @@ export const ProfileItem = (props: Props) => {
     setAnchorEl(null);
     try {
       await viewProfile(itemData.uid);
-    } catch (err: any) {
-      showNotice("error", err?.message || err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
@@ -330,10 +354,10 @@ export const ProfileItem = (props: Props) => {
 
     try {
       // 调用后端更新（后端会自动处理回退逻辑）
-      await updateProfile(itemData.uid, option);
+      const payload = Object.keys(option).length > 0 ? option : undefined;
+      await updateProfile(itemData.uid, payload);
 
       // 更新成功，刷新列表
-      showNotice("success", t("Update subscription successfully"));
       mutate("getProfiles");
     } catch {
       // 更新完全失败（包括后端的回退尝试）
@@ -343,91 +367,164 @@ export const ProfileItem = (props: Props) => {
     }
   });
 
-  const urlModeMenu = (
-    hasHome ? [{ label: "Home", handler: onOpenHome, disabled: false }] : []
-  ).concat([
-    { label: "Select", handler: onForceSelect, disabled: false },
-    { label: "Edit Info", handler: onEditInfo, disabled: false },
-    { label: "Edit File", handler: onEditFile, disabled: false },
+  type ContextMenuItem = {
+    label: string;
+    handler: () => void;
+    disabled: boolean;
+  };
+
+  const menuLabels: Record<string, TranslationKey> = {
+    home: "profiles.components.menu.home",
+    select: "profiles.components.menu.select",
+    editInfo: "profiles.components.menu.editInfo",
+    editFile: "profiles.components.menu.editFile",
+    editRules: "profiles.components.menu.editRules",
+    editProxies: "profiles.components.menu.editProxies",
+    editGroups: "profiles.components.menu.editGroups",
+    extendConfig: "profiles.components.menu.extendConfig",
+    extendScript: "profiles.components.menu.extendScript",
+    openFile: "profiles.components.menu.openFile",
+    update: "profiles.components.menu.update",
+    updateViaProxy: "profiles.components.menu.updateViaProxy",
+    delete: "shared.actions.delete",
+  } as const;
+
+  const urlModeMenu: ContextMenuItem[] = [
+    ...(hasHome
+      ? [
+          {
+            label: menuLabels.home,
+            handler: onOpenHome,
+            disabled: false,
+          } satisfies ContextMenuItem,
+        ]
+      : []),
     {
-      label: "Edit Rules",
+      label: menuLabels.select,
+      handler: onForceSelect,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editInfo,
+      handler: onEditInfo,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editFile,
+      handler: onEditFile,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editRules,
       handler: onEditRules,
       disabled: !option?.rules,
     },
     {
-      label: "Edit Proxies",
+      label: menuLabels.editProxies,
       handler: onEditProxies,
       disabled: !option?.proxies,
     },
     {
-      label: "Edit Groups",
+      label: menuLabels.editGroups,
       handler: onEditGroups,
       disabled: !option?.groups,
     },
     {
-      label: "Extend Config",
+      label: menuLabels.extendConfig,
       handler: onEditMerge,
       disabled: !option?.merge,
     },
     {
-      label: "Extend Script",
+      label: menuLabels.extendScript,
       handler: onEditScript,
       disabled: !option?.script,
     },
-    { label: "Open File", handler: onOpenFile, disabled: false },
-    { label: "Update", handler: () => onUpdate(0), disabled: false },
-    { label: "Update via proxy", handler: () => onUpdate(2), disabled: false },
     {
-      label: "Delete",
+      label: menuLabels.openFile,
+      handler: onOpenFile,
+      disabled: false,
+    },
+    {
+      label: menuLabels.update,
+      handler: () => onUpdate(0),
+      disabled: false,
+    },
+    {
+      label: menuLabels.updateViaProxy,
+      handler: () => onUpdate(2),
+      disabled: false,
+    },
+    {
+      label: menuLabels.delete,
       handler: () => {
         setAnchorEl(null);
         if (batchMode) {
           // If in batch mode, just toggle selection instead of showing delete confirmation
-          onSelectionChange && onSelectionChange();
+          if (onSelectionChange) {
+            onSelectionChange();
+          }
         } else {
           setConfirmOpen(true);
         }
       },
       disabled: false,
     },
-  ]);
-  const fileModeMenu = [
-    { label: "Select", handler: onForceSelect, disabled: false },
-    { label: "Edit Info", handler: onEditInfo, disabled: false },
-    { label: "Edit File", handler: onEditFile, disabled: false },
+  ];
+  const fileModeMenu: ContextMenuItem[] = [
     {
-      label: "Edit Rules",
+      label: menuLabels.select,
+      handler: onForceSelect,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editInfo,
+      handler: onEditInfo,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editFile,
+      handler: onEditFile,
+      disabled: false,
+    },
+    {
+      label: menuLabels.editRules,
       handler: onEditRules,
       disabled: !option?.rules,
     },
     {
-      label: "Edit Proxies",
+      label: menuLabels.editProxies,
       handler: onEditProxies,
       disabled: !option?.proxies,
     },
     {
-      label: "Edit Groups",
+      label: menuLabels.editGroups,
       handler: onEditGroups,
       disabled: !option?.groups,
     },
     {
-      label: "Extend Config",
+      label: menuLabels.extendConfig,
       handler: onEditMerge,
       disabled: !option?.merge,
     },
     {
-      label: "Extend Script",
+      label: menuLabels.extendScript,
       handler: onEditScript,
       disabled: !option?.script,
     },
-    { label: "Open File", handler: onOpenFile, disabled: false },
     {
-      label: "Delete",
+      label: menuLabels.openFile,
+      handler: onOpenFile,
+      disabled: false,
+    },
+    {
+      label: menuLabels.delete,
       handler: () => {
         setAnchorEl(null);
         if (batchMode) {
           // If in batch mode, just toggle selection instead of showing delete confirmation
-          onSelectionChange && onSelectionChange();
+          if (onSelectionChange) {
+            onSelectionChange();
+          }
         } else {
           setConfirmOpen(true);
         }
@@ -445,14 +542,16 @@ export const ProfileItem = (props: Props) => {
 
   // 监听自动更新事件
   useEffect(() => {
-    const handleUpdateStarted = (event: CustomEvent) => {
-      if (event.detail.uid === itemData.uid) {
+    const handleUpdateStarted = (event: Event) => {
+      const customEvent = event as CustomEvent<{ uid?: string }>;
+      if (customEvent.detail?.uid === itemData.uid) {
         setLoadingCache((cache) => ({ ...cache, [itemData.uid]: true }));
       }
     };
 
-    const handleUpdateCompleted = (event: CustomEvent) => {
-      if (event.detail.uid === itemData.uid) {
+    const handleUpdateCompleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{ uid?: string }>;
+      if (customEvent.detail?.uid === itemData.uid) {
         setLoadingCache((cache) => ({ ...cache, [itemData.uid]: false }));
         // 更新完成后刷新显示
         if (showNextUpdate) {
@@ -462,27 +561,18 @@ export const ProfileItem = (props: Props) => {
     };
 
     // 注册事件监听
-    window.addEventListener(
-      "profile-update-started",
-      handleUpdateStarted as EventListener,
-    );
-    window.addEventListener(
-      "profile-update-completed",
-      handleUpdateCompleted as EventListener,
-    );
+    window.addEventListener("profile-update-started", handleUpdateStarted);
+    window.addEventListener("profile-update-completed", handleUpdateCompleted);
 
     return () => {
       // 清理事件监听
-      window.removeEventListener(
-        "profile-update-started",
-        handleUpdateStarted as EventListener,
-      );
+      window.removeEventListener("profile-update-started", handleUpdateStarted);
       window.removeEventListener(
         "profile-update-completed",
-        handleUpdateCompleted as EventListener,
+        handleUpdateCompleted,
       );
     };
-  }, [itemData.uid, showNextUpdate]);
+  }, [fetchNextUpdateTime, itemData.uid, setLoadingCache, showNextUpdate]);
 
   return (
     <Box
@@ -507,7 +597,7 @@ export const ProfileItem = (props: Props) => {
         onContextMenu={(event) => {
           const { clientX, clientY } = event;
           setPosition({ top: clientY, left: clientX });
-          setAnchorEl(event.currentTarget);
+          setAnchorEl(event.currentTarget as HTMLElement);
           event.preventDefault();
         }}
       >
@@ -544,7 +634,9 @@ export const ProfileItem = (props: Props) => {
                 sx={{ padding: "2px", marginRight: "4px", marginLeft: "-8px" }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onSelectionChange && onSelectionChange();
+                  if (onSelectionChange) {
+                    onSelectionChange();
+                  }
                 }}
               >
                 {isSelected ? (
@@ -589,7 +681,7 @@ export const ProfileItem = (props: Props) => {
           {/* only if has url can it be updated */}
           {hasUrl && (
             <IconButton
-              title={t("Refresh")}
+              title={t("shared.actions.refresh")}
               sx={{
                 position: "absolute",
                 p: "3px",
@@ -627,7 +719,10 @@ export const ProfileItem = (props: Props) => {
                 </Typography>
               ) : (
                 hasUrl && (
-                  <Typography noWrap title={`${t("From")} ${from}`}>
+                  <Typography
+                    noWrap
+                    title={`${t("shared.labels.from")} ${from}`}
+                  >
                     {from}
                   </Typography>
                 )
@@ -647,8 +742,8 @@ export const ProfileItem = (props: Props) => {
                     textAlign="right"
                     title={
                       showNextUpdate
-                        ? t("Click to show last update time")
-                        : `${t("Update Time")}: ${parseExpire(updated)}\n${t("Click to show next update")}`
+                        ? t("profiles.components.profileItem.tooltips.showLast")
+                        : `${t("shared.labels.updateTime")}: ${parseExpire(updated)}\n${t("profiles.components.profileItem.tooltips.showNext")}`
                     }
                     sx={{
                       cursor: "pointer",
@@ -676,14 +771,16 @@ export const ProfileItem = (props: Props) => {
         {/* the third line show extra info or last updated time */}
         {hasExtra ? (
           <Box sx={{ ...boxStyle, fontSize: 14 }}>
-            <span title={t("Used / Total")}>
+            <span title={t("shared.labels.usedTotal")}>
               {parseTraffic(upload + download)} / {parseTraffic(total)}
             </span>
-            <span title={t("Expire Time")}>{expire}</span>
+            <span title={t("shared.labels.expireTime")}>{expire}</span>
           </Box>
         ) : (
           <Box sx={{ ...boxStyle, fontSize: 12, justifyContent: "flex-end" }}>
-            <span title={t("Update Time")}>{parseExpire(updated)}</span>
+            <span title={t("shared.labels.updateTime")}>
+              {parseExpire(updated)}
+            </span>
           </Box>
         )}
         <LinearProgress
@@ -718,7 +815,7 @@ export const ProfileItem = (props: Props) => {
               (theme) => {
                 return {
                   color:
-                    item.label === "Delete"
+                    item.label === menuLabels.delete
                       ? theme.palette.error.main
                       : undefined,
                 };
@@ -738,7 +835,7 @@ export const ProfileItem = (props: Props) => {
           schema="clash"
           onSave={async (prev, curr) => {
             await saveProfileFile(uid, curr ?? "");
-            onSave && onSave(prev, curr);
+            onSave?.(prev, curr);
           }}
           onClose={() => setFileOpen(false)}
         />
@@ -784,7 +881,7 @@ export const ProfileItem = (props: Props) => {
           schema="clash"
           onSave={async (prev, curr) => {
             await saveProfileFile(option?.merge ?? "", curr ?? "");
-            onSave && onSave(prev, curr);
+            onSave?.(prev, curr);
           }}
           onClose={() => setMergeOpen(false)}
         />
@@ -796,15 +893,15 @@ export const ProfileItem = (props: Props) => {
           language="javascript"
           onSave={async (prev, curr) => {
             await saveProfileFile(option?.script ?? "", curr ?? "");
-            onSave && onSave(prev, curr);
+            onSave?.(prev, curr);
           }}
           onClose={() => setScriptOpen(false)}
         />
       )}
 
       <ConfirmViewer
-        title={t("Confirm deletion")}
-        message={t("This operation is not reversible")}
+        title={t("profiles.modals.confirmDelete.title")}
+        message={t("profiles.modals.confirmDelete.message")}
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
         onConfirm={() => {

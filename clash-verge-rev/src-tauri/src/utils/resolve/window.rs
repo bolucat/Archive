@@ -1,6 +1,7 @@
 use tauri::WebviewWindow;
 
 use crate::{
+    config::Config,
     core::handle,
     logging_error,
     utils::{
@@ -17,13 +18,17 @@ const MINIMAL_WIDTH: f64 = 520.0;
 const MINIMAL_HEIGHT: f64 = 520.0;
 
 /// 构建新的 WebView 窗口
-pub fn build_new_window() -> Result<WebviewWindow, String> {
+pub async fn build_new_window() -> Result<WebviewWindow, String> {
     let app_handle = handle::Handle::app_handle();
+
+    let config = Config::verge().await;
+    let latest = config.latest_arc();
+    let start_page = latest.start_page.as_deref().unwrap_or("/");
 
     match tauri::WebviewWindowBuilder::new(
         app_handle,
         "main", /* the unique window label */
-        tauri::WebviewUrl::App("index.html".into()),
+        tauri::WebviewUrl::App(start_page.into()),
     )
     .title("Clash Verge")
     .center()

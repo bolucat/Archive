@@ -8,10 +8,11 @@ use tauri::{async_runtime, async_runtime::JoinHandle};
 pub struct AsyncHandler;
 
 impl AsyncHandler {
-    pub fn handle() -> async_runtime::RuntimeHandle {
-        async_runtime::handle()
-    }
+    // pub fn handle() -> async_runtime::RuntimeHandle {
+    //     async_runtime::handle()
+    // }
 
+    #[inline]
     #[track_caller]
     pub fn spawn<F, Fut>(f: F) -> JoinHandle<()>
     where
@@ -23,6 +24,7 @@ impl AsyncHandler {
         async_runtime::spawn(f())
     }
 
+    #[inline]
     #[track_caller]
     pub fn spawn_blocking<T, F>(f: F) -> JoinHandle<T>
     where
@@ -34,7 +36,7 @@ impl AsyncHandler {
         async_runtime::spawn_blocking(f)
     }
 
-    #[allow(dead_code)]
+    #[inline]
     #[track_caller]
     pub fn block_on<Fut>(fut: Fut) -> Fut::Output
     where

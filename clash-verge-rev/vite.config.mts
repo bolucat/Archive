@@ -1,14 +1,14 @@
-import { defineConfig } from "vite";
-import path from "path";
-import svgr from "vite-plugin-svgr";
-import react from "@vitejs/plugin-react";
+import path from "node:path";
+
 import legacy from "@vitejs/plugin-legacy";
+import react from "@vitejs/plugin-react-swc";
 import monacoEditorPlugin, {
   type IMonacoEditorOpts,
-} from "vite-plugin-monaco-editor";
-const monacoEditorPluginDefault = (monacoEditorPlugin as any).default as (
-  options: IMonacoEditorOpts,
-) => any;
+} from "vite-plugin-monaco-editor-esm";
+import svgr from "vite-plugin-svgr";
+import { defineConfig } from "vitest/config";
+const monacoEditorPluginDefault = ((monacoEditorPlugin as any).default ??
+  monacoEditorPlugin) as (options: IMonacoEditorOpts) => any;
 
 export default defineConfig({
   root: "src",
@@ -79,7 +79,7 @@ export default defineConfig({
             if (
               id.includes("react") ||
               id.includes("react-dom") ||
-              id.includes("react-router-dom")
+              id.includes("react-router")
             ) {
               return "react-core";
             }
@@ -158,6 +158,10 @@ export default defineConfig({
       "@": path.resolve("./src"),
       "@root": path.resolve("."),
     },
+  },
+  test: {
+    environment: "node",
+    include: ["**/*.{test,spec}.{ts,tsx}"],
   },
 
   define: {

@@ -1,19 +1,20 @@
 import {
   DndContext,
-  closestCenter,
+  DragEndEvent,
   KeyboardSensor,
   PointerSensor,
+  closestCenter,
   useSensor,
   useSensors,
-  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
+import MonacoEditor from "@monaco-editor/react";
 import {
-  VerticalAlignTopRounded,
   VerticalAlignBottomRounded,
+  VerticalAlignTopRounded,
 } from "@mui/icons-material";
 import {
   Box,
@@ -29,9 +30,14 @@ import {
 } from "@mui/material";
 import { useLockFn } from "ahooks";
 import yaml from "js-yaml";
-import { useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import MonacoEditor from "react-monaco-editor";
 import { Virtuoso } from "react-virtuoso";
 
 import { ProxyItem } from "@/components/profile/proxy-item";
@@ -145,7 +151,9 @@ export const ProxiesEditorViewer = (props: Props) => {
     const lines = uris.trim().split("\n");
     let idx = 0;
     const batchSize = 50;
-    function parseBatch() {
+    let parseTimer: number | undefined;
+
+    const parseBatch = () => {
       const end = Math.min(idx + batchSize, lines.length);
       for (; idx < end; idx++) {
         const uri = lines[idx];
@@ -155,24 +163,28 @@ export const ProxiesEditorViewer = (props: Props) => {
             proxies.push(proxy);
             names.push(proxy.name);
           }
-        } catch (err: any) {
+        } catch (err) {
           console.warn(
             "[ProxiesEditorViewer] parseUri failed for line:",
             uri,
-            err?.message || err,
+            err,
           );
           // 不阻塞主流程
         }
       }
       if (idx < lines.length) {
-        setTimeout(parseBatch, 0);
+        parseTimer = window.setTimeout(parseBatch, 0);
       } else {
+        if (parseTimer !== undefined) {
+          clearTimeout(parseTimer);
+          parseTimer = undefined;
+        }
         cb(proxies);
       }
-    }
+    };
     parseBatch();
   };
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     const data = await readProfileFile(profileUid);
 
     const originProxiesObj = yaml.load(data) as {
@@ -180,9 +192,9 @@ export const ProxiesEditorViewer = (props: Props) => {
     } | null;
 
     setProxyList(originProxiesObj?.proxies || []);
-  };
+  }, [profileUid]);
 
-  const fetchContent = async () => {
+  const fetchContent = useCallback(async () => {
     const data = await readProfileFile(property);
     const obj = yaml.load(data) as ISeqProfileConfig | null;
 
@@ -192,59 +204,70 @@ export const ProxiesEditorViewer = (props: Props) => {
 
     setPrevData(data);
     setCurrData(data);
-  };
+  }, [property]);
 
   useEffect(() => {
-    if (currData === "") return;
-    if (visualization !== true) return;
-
-    const obj = yaml.load(currData) as {
-      prepend: [];
-      append: [];
-      delete: [];
-    } | null;
-    setPrependSeq(obj?.prepend || []);
-    setAppendSeq(obj?.append || []);
-    setDeleteSeq(obj?.delete || []);
-  }, [visualization]);
-
-  useEffect(() => {
-    if (prependSeq && appendSeq && deleteSeq) {
-      const serialize = () => {
-        try {
-          setCurrData(
-            yaml.dump(
-              { prepend: prependSeq, append: appendSeq, delete: deleteSeq },
-              { forceQuotes: true },
-            ),
-          );
-        } catch (e) {
-          console.warn("[ProxiesEditorViewer] yaml.dump failed:", e);
-          // 防止异常导致UI卡死
-        }
-      };
-      if (window.requestIdleCallback) {
-        window.requestIdleCallback(serialize);
-      } else {
-        setTimeout(serialize, 0);
-      }
+    if (currData === "" || visualization !== true) {
+      return;
     }
+
+    const obj = yaml.load(currData) as ISeqProfileConfig | null;
+    startTransition(() => {
+      setPrependSeq(obj?.prepend ?? []);
+      setAppendSeq(obj?.append ?? []);
+      setDeleteSeq(obj?.delete ?? []);
+    });
+  }, [currData, visualization]);
+
+  useEffect(() => {
+    if (!(prependSeq && appendSeq && deleteSeq)) {
+      return;
+    }
+
+    const serialize = () => {
+      try {
+        setCurrData(
+          yaml.dump(
+            { prepend: prependSeq, append: appendSeq, delete: deleteSeq },
+            { forceQuotes: true },
+          ),
+        );
+      } catch (e) {
+        console.warn("[ProxiesEditorViewer] yaml.dump failed:", e);
+        // 防止异常导致UI卡死
+      }
+    };
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+    if (window.requestIdleCallback) {
+      idleId = window.requestIdleCallback(serialize);
+    } else {
+      timeoutId = window.setTimeout(serialize, 0);
+    }
+    return () => {
+      if (idleId !== undefined && window.cancelIdleCallback) {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [prependSeq, appendSeq, deleteSeq]);
 
   useEffect(() => {
     if (!open) return;
     fetchContent();
     fetchProfile();
-  }, [open]);
+  }, [fetchContent, fetchProfile, open]);
 
   const handleSave = useLockFn(async () => {
     try {
       await saveProfileFile(property, currData);
-      showNotice("success", t("Saved Successfully"));
+      showNotice.success("shared.feedback.notifications.saved");
       onSave?.(prevData, currData);
       onClose();
-    } catch (err: any) {
-      showNotice("error", err.toString());
+    } catch (err) {
+      showNotice.error(err);
     }
   });
 
@@ -253,7 +276,7 @@ export const ProxiesEditorViewer = (props: Props) => {
       <DialogTitle>
         {
           <Box display="flex" justifyContent="space-between">
-            {t("Edit Proxies")}
+            {t("profiles.modals.proxiesEditor.title")}
             <Box>
               <Button
                 variant="contained"
@@ -262,7 +285,9 @@ export const ProxiesEditorViewer = (props: Props) => {
                   setVisualization((prev) => !prev);
                 }}
               >
-                {visualization ? t("Advanced") : t("Visualization")}
+                {visualization
+                  ? t("shared.editorModes.advanced")
+                  : t("shared.editorModes.visualization")}
               </Button>
             </Box>
           </Box>
@@ -289,7 +314,9 @@ export const ProxiesEditorViewer = (props: Props) => {
                 <Item>
                   <TextField
                     autoComplete="new-password"
-                    placeholder={t("Use newlines for multiple uri")}
+                    placeholder={t(
+                      "profiles.modals.proxiesEditor.placeholders.multiUri",
+                    )}
                     fullWidth
                     rows={9}
                     multiline
@@ -309,7 +336,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                     });
                   }}
                 >
-                  {t("Prepend Proxy")}
+                  {t("profiles.modals.proxiesEditor.actions.prepend")}
                 </Button>
               </Item>
               <Item>
@@ -323,7 +350,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                     });
                   }}
                 >
-                  {t("Append Proxy")}
+                  {t("profiles.modals.proxiesEditor.actions.append")}
                 </Button>
               </Item>
             </List>
@@ -357,10 +384,10 @@ export const ProxiesEditorViewer = (props: Props) => {
                             return x.name;
                           })}
                         >
-                          {filteredPrependSeq.map((item, index) => {
+                          {filteredPrependSeq.map((item) => {
                             return (
                               <ProxyItem
-                                key={`${item.name}-${index}`}
+                                key={item.name}
                                 type="prepend"
                                 proxy={item}
                                 onDelete={() => {
@@ -380,7 +407,7 @@ export const ProxiesEditorViewer = (props: Props) => {
                     const newIndex = index - shift;
                     return (
                       <ProxyItem
-                        key={`${filteredProxyList[newIndex].name}-${index}`}
+                        key={filteredProxyList[newIndex].name}
                         type={
                           deleteSeq.includes(filteredProxyList[newIndex].name)
                             ? "delete"
@@ -417,10 +444,10 @@ export const ProxiesEditorViewer = (props: Props) => {
                             return x.name;
                           })}
                         >
-                          {filteredAppendSeq.map((item, index) => {
+                          {filteredAppendSeq.map((item) => {
                             return (
                               <ProxyItem
-                                key={`${item.name}-${index}`}
+                                key={item.name}
                                 type="append"
                                 proxy={item}
                                 onDelete={() => {
@@ -446,7 +473,7 @@ export const ProxiesEditorViewer = (props: Props) => {
             height="100%"
             language="yaml"
             value={currData}
-            theme={themeMode === "light" ? "vs" : "vs-dark"}
+            theme={themeMode === "light" ? "light" : "vs-dark"}
             options={{
               tabSize: 2, // 根据语言类型设置缩进大小
               minimap: {
@@ -467,18 +494,18 @@ export const ProxiesEditorViewer = (props: Props) => {
               fontLigatures: false, // 连字符
               smoothScrolling: true, // 平滑滚动
             }}
-            onChange={(value) => setCurrData(value)}
+            onChange={(value) => setCurrData(value ?? "")}
           />
         )}
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose} variant="outlined">
-          {t("Cancel")}
+          {t("shared.actions.cancel")}
         </Button>
 
         <Button onClick={handleSave} variant="contained">
-          {t("Save")}
+          {t("shared.actions.save")}
         </Button>
       </DialogActions>
     </Dialog>

@@ -16,6 +16,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,6 +38,11 @@ import {
 } from "@/services/cmds";
 import { showNotice } from "@/services/noticeService";
 import getSystem from "@/utils/get-system";
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 
 const DEFAULT_PAC = `function FindProxyForURL(url, host) {
   return "PROXY %proxy_host%:%mixed-port%; SOCKS5 %proxy_host%:%mixed-port%; DIRECT;";
@@ -130,40 +136,37 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
     errorRetryInterval: 5000,
   });
 
-  const [prevMixedPort, setPrevMixedPort] = useState(clashConfig?.mixedPort);
+  const prevMixedPortRef = useRef(clashConfig?.mixedPort);
 
   useEffect(() => {
-    if (clashConfig?.mixedPort && clashConfig.mixedPort !== prevMixedPort) {
-      setPrevMixedPort(clashConfig.mixedPort);
-      resetSystemProxy();
+    const mixedPort = clashConfig?.mixedPort;
+    if (!mixedPort || mixedPort === prevMixedPortRef.current) {
+      return;
     }
-  }, [clashConfig?.mixedPort]);
 
-  const resetSystemProxy = async () => {
-    try {
-      const currentSysProxy = await getSystemProxy();
-      const currentAutoProxy = await getAutotemProxy();
+    prevMixedPortRef.current = mixedPort;
 
-      if (value.pac ? currentAutoProxy?.enable : currentSysProxy?.enable) {
-        // 临时关闭系统代理
-        await patchVergeConfig({ enable_system_proxy: false });
+    const updateProxy = async () => {
+      try {
+        const currentSysProxy = await getSystemProxy();
+        const currentAutoProxy = await getAutotemProxy();
 
-        // 减少等待时间
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        // 重新开启系统代理
-        await patchVergeConfig({ enable_system_proxy: true });
-
-        // 更新UI状态
-        await Promise.all([
-          mutate("getSystemProxy"),
-          mutate("getAutotemProxy"),
-        ]);
+        if (value.pac ? currentAutoProxy?.enable : currentSysProxy?.enable) {
+          await patchVergeConfig({ enable_system_proxy: false });
+          await sleep(200);
+          await patchVergeConfig({ enable_system_proxy: true });
+          await Promise.all([
+            mutate("getSystemProxy"),
+            mutate("getAutotemProxy"),
+          ]);
+        }
+      } catch (err) {
+        showNotice.error(err);
       }
-    } catch (err: any) {
-      showNotice("error", err.toString());
-    }
-  };
+    };
+
+    updateProxy();
+  }, [clashConfig?.mixedPort, value.pac]);
 
   const { systemProxyAddress } = useAppData();
 
@@ -274,14 +277,11 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
 
   const onSave = useLockFn(async () => {
     if (value.duration < 1) {
-      showNotice(
-        "error",
-        t("Proxy Daemon Duration Cannot be Less than 1 Second"),
-      );
+      showNotice.error("settings.modals.sysproxy.messages.durationTooShort");
       return;
     }
     if (value.bypass && !validReg.test(value.bypass)) {
-      showNotice("error", t("Invalid Bypass Format"));
+      showNotice.error("settings.modals.sysproxy.messages.invalidBypass");
       return;
     }
 
@@ -298,7 +298,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
       !ipv6Regex.test(value.proxy_host) &&
       !hostnameRegex.test(value.proxy_host)
     ) {
-      showNotice("error", t("Invalid Proxy Host Format"));
+      showNotice.error("settings.modals.sysproxy.messages.invalidProxyHost");
       return;
     }
 
@@ -398,10 +398,10 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
             console.warn("代理状态更新失败:", err);
           }
         }, 50);
-      } catch (err: any) {
+      } catch (err) {
         console.error("配置保存失败:", err);
         mutateVerge();
-        showNotice("error", err.toString());
+        showNotice.error(err);
         // setOpen(true);
       }
     });
@@ -410,10 +410,10 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
   return (
     <BaseDialog
       open={open}
-      title={t("System Proxy Setting")}
+      title={t("settings.modals.sysproxy.title")}
       contentSx={{ width: 450, maxHeight: 565 }}
-      okBtn={t("Save")}
-      cancelBtn={t("Cancel")}
+      okBtn={t("shared.actions.save")}
+      cancelBtn={t("shared.actions.cancel")}
       onClose={() => setOpen(false)}
       onCancel={() => setOpen(false)}
       onOk={onSave}
@@ -421,28 +421,37 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
       disableOk={saving}
     >
       <List>
-        <BaseFieldset label={t("Current System Proxy")} padding="15px 10px">
+        <BaseFieldset
+          label={t("settings.modals.sysproxy.fieldsets.currentStatus")}
+          padding="15px 10px"
+        >
           <FlexBox>
-            <Typography className="label">{t("Enable status")}</Typography>
+            <Typography className="label">
+              {t("settings.modals.sysproxy.fields.enableStatus")}
+            </Typography>
             <Typography className="value">
               {value.pac
                 ? autoproxy?.enable
-                  ? t("Enabled")
-                  : t("Disabled")
+                  ? t("shared.statuses.enabled")
+                  : t("shared.statuses.disabled")
                 : sysproxy?.enable
-                  ? t("Enabled")
-                  : t("Disabled")}
+                  ? t("shared.statuses.enabled")
+                  : t("shared.statuses.disabled")}
             </Typography>
           </FlexBox>
           {!value.pac && (
             <FlexBox>
-              <Typography className="label">{t("Server Addr")}</Typography>
+              <Typography className="label">
+                {t("settings.modals.sysproxy.fields.serverAddr")}
+              </Typography>
               <Typography className="value">{getSystemProxyAddress}</Typography>
             </FlexBox>
           )}
           {value.pac && (
             <FlexBox>
-              <Typography className="label">{t("PAC URL")}</Typography>
+              <Typography className="label">
+                {t("settings.modals.sysproxy.fields.pacUrl")}
+              </Typography>
               <Typography className="value">
                 {getCurrentPacUrl || "-"}
               </Typography>
@@ -450,7 +459,9 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
           )}
         </BaseFieldset>
         <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("Proxy Host")} />
+          <ListItemText
+            primary={t("settings.modals.sysproxy.fields.proxyHost")}
+          />
           <Autocomplete
             size="small"
             sx={{ width: 150 }}
@@ -475,7 +486,9 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
           />
         </ListItem>
         <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("Use PAC Mode")} />
+          <ListItemText
+            primary={t("settings.modals.sysproxy.fields.usePacMode")}
+          />
           <Switch
             edge="end"
             disabled={!enabled}
@@ -486,10 +499,13 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
 
         <ListItem sx={{ padding: "5px 2px" }}>
           <ListItemText
-            primary={t("Proxy Guard")}
+            primary={t("settings.modals.sysproxy.fields.proxyGuard")}
             sx={{ maxWidth: "fit-content" }}
           />
-          <TooltipIcon title={t("Proxy Guard Info")} sx={{ opacity: "0.7" }} />
+          <TooltipIcon
+            title={t("settings.modals.sysproxy.tooltips.proxyGuard")}
+            sx={{ opacity: "0.7" }}
+          />
           <Switch
             edge="end"
             disabled={!enabled}
@@ -500,7 +516,9 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
         </ListItem>
 
         <ListItem sx={{ padding: "5px 2px" }}>
-          <ListItemText primary={t("Guard Duration")} />
+          <ListItemText
+            primary={t("settings.modals.sysproxy.fields.guardDuration")}
+          />
           <TextField
             disabled={!enabled}
             size="small"
@@ -521,7 +539,11 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
         </ListItem>
         {!value.pac && (
           <ListItem sx={{ padding: "5px 2px" }}>
-            <ListItemText primary={t("Always use Default Bypass")} />
+            <ListItemText
+              primary={t(
+                "settings.modals.sysproxy.fields.alwaysUseDefaultBypass",
+              )}
+            />
             <Switch
               edge="end"
               disabled={!enabled}
@@ -540,7 +562,9 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
 
         {!value.pac && !value.use_default && (
           <>
-            <ListItemText primary={t("Proxy Bypass")} />
+            <ListItemText
+              primary={t("settings.modals.sysproxy.fields.proxyBypass")}
+            />
             <TextField
               error={value.bypass ? !validReg.test(value.bypass) : false}
               disabled={!enabled}
@@ -558,7 +582,9 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
 
         {!value.pac && value.use_default && (
           <>
-            <ListItemText primary={t("Bypass")} />
+            <ListItemText
+              primary={t("settings.modals.sysproxy.fields.bypass")}
+            />
             <FlexBox>
               <TextField
                 disabled={true}
@@ -575,7 +601,7 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
         {value.pac && (
           <ListItem sx={{ padding: "5px 2px", alignItems: "start" }}>
             <ListItemText
-              primary={t("PAC Script Content")}
+              primary={t("settings.modals.sysproxy.fields.pacScriptContent")}
               sx={{ padding: "3px 0" }}
             />
             <Button
@@ -585,12 +611,12 @@ export const SysproxyViewer = forwardRef<DialogRef>((props, ref) => {
                 setEditorOpen(true);
               }}
             >
-              {t("Edit")} PAC
+              {t("settings.modals.sysproxy.actions.editPac")}
             </Button>
             {editorOpen && (
               <EditorViewer
                 open={true}
-                title={`${t("Edit")} PAC`}
+                title={t("settings.modals.sysproxy.actions.editPac")}
                 initialData={Promise.resolve(value.pac_content ?? "")}
                 language="javascript"
                 onSave={(_prev, curr) => {

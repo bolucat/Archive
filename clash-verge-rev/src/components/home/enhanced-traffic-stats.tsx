@@ -187,7 +187,7 @@ export const EnhancedTrafficStats = () => {
       uploadTotalUnit,
       downloadTotal,
       downloadTotalUnit,
-      connectionsCount: connections?.connections.length,
+      connectionsCount: connections?.activeConnections.length,
     };
   }, [traffic, memory, connections]);
 
@@ -219,42 +219,42 @@ export const EnhancedTrafficStats = () => {
     () => [
       {
         icon: <ArrowUpwardRounded fontSize="small" />,
-        title: t("Upload Speed"),
+        title: t("home.components.traffic.metrics.uploadSpeed"),
         value: parsedData.up,
         unit: `${parsedData.upUnit}/s`,
         color: "secondary" as const,
       },
       {
         icon: <ArrowDownwardRounded fontSize="small" />,
-        title: t("Download Speed"),
+        title: t("home.components.traffic.metrics.downloadSpeed"),
         value: parsedData.down,
         unit: `${parsedData.downUnit}/s`,
         color: "primary" as const,
       },
       {
         icon: <LinkRounded fontSize="small" />,
-        title: t("Active Connections"),
+        title: t("home.components.traffic.metrics.activeConnections"),
         value: parsedData.connectionsCount,
         unit: "",
         color: "success" as const,
       },
       {
         icon: <CloudUploadRounded fontSize="small" />,
-        title: t("Uploaded"),
+        title: t("shared.labels.uploaded"),
         value: parsedData.uploadTotal,
         unit: parsedData.uploadTotalUnit,
         color: "secondary" as const,
       },
       {
         icon: <CloudDownloadRounded fontSize="small" />,
-        title: t("Downloaded"),
+        title: t("shared.labels.downloaded"),
         value: parsedData.downloadTotal,
         unit: parsedData.downloadTotalUnit,
         color: "primary" as const,
       },
       {
         icon: <MemoryRounded fontSize="small" />,
-        title: t("Memory Usage"),
+        title: t("home.components.traffic.metrics.memoryUsage"),
         value: parsedData.inuse,
         unit: parsedData.inuseUnit,
         color: "error" as const,
@@ -278,7 +278,7 @@ export const EnhancedTrafficStats = () => {
           </Grid>
         )}
         {/* 统计卡片区域 */}
-        {statCards.map((card, _index) => (
+        {statCards.map((card) => (
           <Grid key={card.title} size={4}>
             <CompactStatCard {...(card as StatCardProps)} />
           </Grid>

@@ -26,12 +26,7 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
   const [loading, setLoading] = useState(false);
   const { verge, patchVerge } = useVerge();
   const testList = verge?.test_list ?? [];
-  const {
-    control,
-    watch: _watch,
-    register: _register,
-    ...formIns
-  } = useForm<IVergeTestItem>({
+  const { control, ...formIns } = useForm<IVergeTestItem>({
     defaultValues: {
       name: "",
       icon: "",
@@ -106,7 +101,7 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
         setLoading(false);
         setTimeout(() => formIns.reset(), 500);
       } catch (err: any) {
-        showNotice("error", err.message || err.toString());
+        showNotice.error(err);
         setLoading(false);
       }
     }),
@@ -129,10 +124,14 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
   return (
     <BaseDialog
       open={open}
-      title={openType === "new" ? t("Create Test") : t("Edit Test")}
+      title={
+        openType === "new"
+          ? t("tests.modals.test.title.create")
+          : t("tests.modals.test.title.edit")
+      }
       contentSx={{ width: 375, pb: 0, maxHeight: "80%" }}
-      okBtn={t("Save")}
-      cancelBtn={t("Cancel")}
+      okBtn={t("shared.actions.save")}
+      cancelBtn={t("shared.actions.cancel")}
       onClose={handleClose}
       onCancel={handleClose}
       onOk={handleOk}
@@ -142,7 +141,7 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
         name="name"
         control={control}
         render={({ field }) => (
-          <TextField {...text} {...field} label={t("Name")} />
+          <TextField {...text} {...field} label={t("shared.labels.name")} />
         )}
       />
       <Controller
@@ -154,7 +153,7 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
             {...field}
             multiline
             maxRows={5}
-            label={t("Icon")}
+            label={t("shared.labels.icon")}
           />
         )}
       />
@@ -167,7 +166,7 @@ export const TestViewer = forwardRef<TestViewerRef, Props>((props, ref) => {
             {...field}
             multiline
             maxRows={3}
-            label={t("Test URL")}
+            label={t("tests.modals.test.fields.url")}
           />
         )}
       />

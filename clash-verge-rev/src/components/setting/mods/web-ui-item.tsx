@@ -12,7 +12,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface Props {
@@ -38,6 +38,14 @@ export const WebUIItem = (props: Props) => {
   const [editValue, setEditValue] = useState(value);
   const { t } = useTranslation();
 
+  const highlightedParts = useMemo(() => {
+    const placeholderRegex = /(%host|%port|%secret)/g;
+    if (!value) {
+      return ["NULL"];
+    }
+    return value.split(placeholderRegex).filter((part) => part !== "");
+  }, [value]);
+
   if (editing || onlyEdit) {
     return (
       <>
@@ -48,11 +56,13 @@ export const WebUIItem = (props: Props) => {
             size="small"
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            placeholder={t("Support %host, %port, %secret")}
+            placeholder={t(
+              "settings.modals.webUI.messages.supportedPlaceholders",
+            )}
           />
           <IconButton
             size="small"
-            title={t("Save")}
+            title={t("shared.actions.save")}
             color="inherit"
             onClick={() => {
               onChange(editValue);
@@ -63,7 +73,7 @@ export const WebUIItem = (props: Props) => {
           </IconButton>
           <IconButton
             size="small"
-            title={t("Cancel")}
+            title={t("shared.actions.cancel")}
             color="inherit"
             onClick={() => {
               onCancel?.();
@@ -78,10 +88,26 @@ export const WebUIItem = (props: Props) => {
     );
   }
 
-  const html = value
-    ?.replace("%host", "<span>%host</span>")
-    .replace("%port", "<span>%port</span>")
-    .replace("%secret", "<span>%secret</span>");
+  const placeholderCounts: Record<string, number> = {};
+  let textCounter = 0;
+  const renderedParts = highlightedParts.map((part) => {
+    const isPlaceholder =
+      part === "%host" || part === "%port" || part === "%secret";
+
+    if (isPlaceholder) {
+      const count = placeholderCounts[part] ?? 0;
+      placeholderCounts[part] = count + 1;
+      return (
+        <span key={`placeholder-${part}-${count}`} className="placeholder">
+          {part}
+        </span>
+      );
+    }
+
+    const key = `text-${textCounter}-${part || "empty"}`;
+    textCounter += 1;
+    return <span key={key}>{part}</span>;
+  });
 
   return (
     <>
@@ -94,15 +120,16 @@ export const WebUIItem = (props: Props) => {
           sx={({ palette }) => ({
             overflow: "hidden",
             textOverflow: "ellipsis",
-            "> span": {
+            "> .placeholder": {
               color: palette.primary.main,
             },
           })}
-          dangerouslySetInnerHTML={{ __html: html || "NULL" }}
-        />
+        >
+          {renderedParts}
+        </Typography>
         <IconButton
           size="small"
-          title={t("Open URL")}
+          title={t("settings.modals.webUI.actions.openUrl")}
           color="inherit"
           onClick={() => onOpenUrl?.(value)}
         >
@@ -110,7 +137,7 @@ export const WebUIItem = (props: Props) => {
         </IconButton>
         <IconButton
           size="small"
-          title={t("Edit")}
+          title={t("shared.actions.edit")}
           color="inherit"
           onClick={() => {
             setEditing(true);
@@ -121,7 +148,7 @@ export const WebUIItem = (props: Props) => {
         </IconButton>
         <IconButton
           size="small"
-          title={t("Delete")}
+          title={t("shared.actions.delete")}
           color="inherit"
           onClick={onDelete}
         >

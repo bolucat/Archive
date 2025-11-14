@@ -24,36 +24,16 @@ macro_rules! append {
 pub fn use_tun(mut config: Mapping, enable: bool) -> Mapping {
     let tun_key = Value::from("tun");
     let tun_val = config.get(&tun_key);
-    let mut tun_val = tun_val.map_or(Mapping::new(), |val| {
-        val.as_mapping().cloned().unwrap_or(Mapping::new())
+    let mut tun_val = tun_val.map_or_else(Mapping::new, |val| {
+        val.as_mapping().cloned().unwrap_or_else(Mapping::new)
     });
 
     if enable {
-        #[cfg(target_os = "linux")]
-        {
-            let stack_key = Value::from("stack");
-            let should_override = match tun_val.get(&stack_key) {
-                Some(value) => value
-                    .as_str()
-                    .map(|stack| stack.eq_ignore_ascii_case("gvisor"))
-                    .unwrap_or(false),
-                None => true,
-            };
-
-            if should_override {
-                revise!(tun_val, "stack", "mixed");
-                log::warn!(
-                    target: "app",
-                    "gVisor TUN stack detected on Linux; falling back to 'mixed' for compatibility"
-                );
-            }
-        }
-
         // 读取DNS配置
         let dns_key = Value::from("dns");
         let dns_val = config.get(&dns_key);
-        let mut dns_val = dns_val.map_or(Mapping::new(), |val| {
-            val.as_mapping().cloned().unwrap_or(Mapping::new())
+        let mut dns_val = dns_val.map_or_else(Mapping::new, |val| {
+            val.as_mapping().cloned().unwrap_or_else(Mapping::new)
         });
         let ipv6_key = Value::from("ipv6");
         let ipv6_val = config

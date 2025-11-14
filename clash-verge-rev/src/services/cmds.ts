@@ -314,28 +314,22 @@ export async function getAppDir() {
 }
 
 export async function openAppDir() {
-  return invoke<void>("open_app_dir").catch((err) =>
-    showNotice("error", err?.message || err.toString()),
-  );
+  return invoke<void>("open_app_dir").catch((err) => showNotice.error(err));
 }
 
 export async function openCoreDir() {
-  return invoke<void>("open_core_dir").catch((err) =>
-    showNotice("error", err?.message || err.toString()),
-  );
+  return invoke<void>("open_core_dir").catch((err) => showNotice.error(err));
 }
 
 export async function openLogsDir() {
-  return invoke<void>("open_logs_dir").catch((err) =>
-    showNotice("error", err?.message || err.toString()),
-  );
+  return invoke<void>("open_logs_dir").catch((err) => showNotice.error(err));
 }
 
 export const openWebUrl = async (url: string) => {
   try {
     await invoke("open_web_url", { url });
   } catch (err: any) {
-    showNotice("error", err.toString());
+    showNotice.error(err);
   }
 };
 
@@ -377,7 +371,7 @@ export async function cmdTestDelay(url: string) {
 
 export async function invoke_uwp_tool() {
   return invoke<void>("invoke_uwp_tool").catch((err) =>
-    showNotice("error", err?.message || err.toString(), 1500),
+    showNotice.error(err, 1500),
   );
 }
 
@@ -440,12 +434,28 @@ export async function createWebdavBackup() {
   return invoke<void>("create_webdav_backup");
 }
 
+export async function createLocalBackup() {
+  return invoke<void>("create_local_backup");
+}
+
 export async function deleteWebdavBackup(filename: string) {
   return invoke<void>("delete_webdav_backup", { filename });
 }
 
+export async function deleteLocalBackup(filename: string) {
+  return invoke<void>("delete_local_backup", { filename });
+}
+
 export async function restoreWebDavBackup(filename: string) {
   return invoke<void>("restore_webdav_backup", { filename });
+}
+
+export async function restoreLocalBackup(filename: string) {
+  return invoke<void>("restore_local_backup", { filename });
+}
+
+export async function exportLocalBackup(filename: string, destination: string) {
+  return invoke<void>("export_local_backup", { filename, destination });
 }
 
 export async function saveWebdavConfig(
@@ -466,6 +476,10 @@ export async function listWebDavBackup() {
     item.filename = item.href.split("/").pop() as string;
   });
   return list;
+}
+
+export async function listLocalBackup() {
+  return invoke<ILocalBackupFile[]>("list_local_backup");
 }
 
 export async function scriptValidateNotice(status: string, msg: string) {
