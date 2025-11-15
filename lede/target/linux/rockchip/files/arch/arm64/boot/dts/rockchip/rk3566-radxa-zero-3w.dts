@@ -57,8 +57,6 @@
 	cap-mmc-highspeed;
 	max-frequency = <200000000>;
 	mmc-hs200-1_8v;
-	no-sd;
-	no-sdio;
 	non-removable;
 	pinctrl-names = "default";
 	pinctrl-0 = <&emmc_bus8 &emmc_clk &emmc_cmd &emmc_datastrobe>;
@@ -73,8 +71,6 @@
 	cap-sdio-irq;
 	keep-power-in-suspend;
 	mmc-pwrseq = <&sdio_pwrseq>;
-	no-mmc;
-	no-sd;
 	non-removable;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_clk &sdmmc1_cmd>;

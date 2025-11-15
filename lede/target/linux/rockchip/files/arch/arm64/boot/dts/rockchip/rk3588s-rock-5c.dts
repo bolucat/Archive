@@ -19,10 +19,10 @@
 		ethernet0 = &gmac1;
 		mmc0 = &sdhci;
 		mmc1 = &sdmmc;
-		led-boot = &led_green;
-		led-failsafe = &led_green;
-		led-running = &led_green;
-		led-upgrade = &led_green;
+		led-boot = &led;
+		led-failsafe = &led;
+		led-running = &led;
+		led-upgrade = &led;
 	};
 
 	chosen {
@@ -40,30 +40,19 @@
 			  "Headphone", "Headphones";
 	};
 
-	hdmi0-con {
-		compatible = "hdmi-connector";
-		type = "a";
-
-		port {
-			hdmi0_con_in: endpoint {
-				remote-endpoint = <&hdmi0_out_con>;
-			};
-		};
-	};
-
 	leds {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
 		pinctrl-0 = <&led_pins>;
 
-		led_green: led-0 {
+		led-0 {
 			color = <LED_COLOR_ID_GREEN>;
 			default-state = "on";
 			function = LED_FUNCTION_POWER;
 			gpios = <&gpio3 RK_PC4 GPIO_ACTIVE_HIGH>;
 		};
 
-		led-1 {
+		led: led-1 {
 			color = <LED_COLOR_ID_BLUE>;
 			function = LED_FUNCTION_HEARTBEAT;
 			gpios = <&gpio3 RK_PD5 GPIO_ACTIVE_HIGH>;
@@ -241,6 +230,7 @@
 };
 
 &gmac1 {
+	clock_in_out = "output";
 	phy-handle = <&rgmii_phy1>;
 	phy-mode = "rgmii-id";
 	phy-supply = <&vcc_3v3_s0>;
@@ -256,31 +246,6 @@
 
 &gpu {
 	mali-supply = <&vdd_gpu_s0>;
-	status = "okay";
-};
-
-&hdmi0 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&hdmim0_tx0_cec
-		     &hdmim1_tx0_hpd
-		     &hdmim0_tx0_scl
-		     &hdmim0_tx0_sda>;
-	status = "okay";
-};
-
-&hdmi0_in {
-	hdmi0_in_vp0: endpoint {
-		remote-endpoint = <&vp0_out_hdmi0>;
-	};
-};
-
-&hdmi0_out {
-	hdmi0_out_con: endpoint {
-		remote-endpoint = <&hdmi0_con_in>;
-	};
-};
-
-&hdptxphy0 {
 	status = "okay";
 };
 
@@ -457,10 +422,6 @@
 	status = "okay";
 };
 
-&pd_gpu {
-	domain-supply = <&vdd_gpu_s0>;
-};
-
 &pinctrl {
 	leds {
 		led_pins: led-pins {
@@ -525,8 +486,6 @@
 	bus-width = <8>;
 	mmc-hs400-1_8v;
 	mmc-hs400-enhanced-strobe;
-	no-sdio;
-	no-sd;
 	non-removable;
 	status = "okay";
 };
@@ -536,8 +495,6 @@
 	cap-mmc-highspeed;
 	cap-sd-highspeed;
 	disable-wp;
-	no-sdio;
-	no-mmc;
 	sd-uhs-sdr104;
 	vmmc-supply = <&vcc_3v3_s3>;
 	vqmmc-supply = <&vccio_sd_s0>;
@@ -879,8 +836,8 @@
 };
 
 &tsadc {
-	rockchip,hw-tshut-mode = <1>; /* tshut mode 0:CRU 1:GPIO */
-	rockchip,hw-tshut-polarity = <0>; /* tshut polarity 0:LOW 1:HIGH */
+	rockchip,hw-tshut-mode = <1>;
+	rockchip,hw-tshut-polarity = <0>;
 	status = "okay";
 };
 
@@ -898,7 +855,6 @@
 };
 
 &u2phy2_host {
-	/* connected to USB hub, which is powered by vcc_5v0 */
 	phy-supply = <&vcc_5v0>;
 	status = "okay";
 };
@@ -940,19 +896,4 @@
 
 &usb_host2_xhci {
 	status = "okay";
-};
-
-&vop_mmu {
-	status = "okay";
-};
-
-&vop {
-	status = "okay";
-};
-
-&vp0 {
-	vp0_out_hdmi0: endpoint@ROCKCHIP_VOP2_EP_HDMI0 {
-		reg = <ROCKCHIP_VOP2_EP_HDMI0>;
-		remote-endpoint = <&hdmi0_in_vp0>;
-	};
 };
