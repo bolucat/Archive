@@ -24,8 +24,13 @@
 #include "hev-socks5-misc.h"
 #include "hev-socks5-misc-priv.h"
 
+static int connect_timeout = 10000;
+static int tcp_timeout = 300000;
+static int udp_timeout = 60000;
+
 static int task_stack_size = 8192;
 static int udp_recv_buffer_size = 512 * 1024;
+static int udp_copy_buffer_nums = 10;
 
 int
 hev_socks5_task_io_yielder (HevTaskYieldType type, void *data)
@@ -314,6 +319,42 @@ hev_socks5_name_into_sockaddr6 (const char *name, int port,
 }
 
 void
+hev_socks5_set_connect_timeout (int timeout)
+{
+    connect_timeout = timeout;
+}
+
+int
+hev_socks5_get_connect_timeout (void)
+{
+    return connect_timeout;
+}
+
+void
+hev_socks5_set_tcp_timeout (int timeout)
+{
+    tcp_timeout = timeout;
+}
+
+int
+hev_socks5_get_tcp_timeout (void)
+{
+    return tcp_timeout;
+}
+
+void
+hev_socks5_set_udp_timeout (int timeout)
+{
+    udp_timeout = timeout;
+}
+
+int
+hev_socks5_get_udp_timeout (void)
+{
+    return udp_timeout;
+}
+
+void
 hev_socks5_set_task_stack_size (int stack_size)
 {
     task_stack_size = stack_size;
@@ -329,4 +370,16 @@ void
 hev_socks5_set_udp_recv_buffer_size (int buffer_size)
 {
     udp_recv_buffer_size = buffer_size;
+}
+
+void
+hev_socks5_set_udp_copy_buffer_nums (int nums)
+{
+    udp_copy_buffer_nums = nums;
+}
+
+int
+hev_socks5_get_udp_copy_buffer_nums (void)
+{
+    return udp_copy_buffer_nums;
 }

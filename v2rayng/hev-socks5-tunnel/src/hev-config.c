@@ -37,10 +37,14 @@ static int mapdns_cache_size;
 
 static char log_file[1024];
 static char pid_file[1024];
+static int max_session_count;
 static int task_stack_size = 86016;
 static int tcp_buffer_size = 65536;
-static int connect_timeout = 5000;
-static int read_write_timeout = 60000;
+static int udp_recv_buffer_size = 524288;
+static int udp_copy_buffer_nums = 10;
+static int connect_timeout = 10000;
+static int tcp_read_write_timeout = 300000;
+static int udp_read_write_timeout = 60000;
 static int limit_nofile = 65535;
 static int log_level = HEV_LOGGER_WARN;
 
@@ -172,6 +176,7 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
     const char *addr = NULL;
     const char *port = NULL;
     const char *udpm = NULL;
+    const char *udpa = NULL;
     const char *user = NULL;
     const char *pass = NULL;
     const char *mark = NULL;
@@ -204,6 +209,8 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
             addr = value;
         else if (0 == strcmp (key, "udp"))
             udpm = value;
+        else if (0 == strcmp (key, "udp-address"))
+            udpa = value;
         else if (0 == strcmp (key, "pipeline"))
             pipe = value;
         else if (0 == strcmp (key, "username"))
@@ -237,6 +244,9 @@ hev_config_parse_socks5 (yaml_document_t *doc, yaml_node_t *base)
 
     if (udpm && (strcasecmp (udpm, "udp") == 0))
         srv.udp_in_udp = 1;
+
+    if (udpa)
+        strncpy (srv.udp_addr, udpa, 256 - 1);
 
     if (user && pass) {
         strncpy (_user, user, 256 - 1);
@@ -312,6 +322,9 @@ static int
 hev_config_parse_misc (yaml_document_t *doc, yaml_node_t *base)
 {
     yaml_node_pair_t *pair;
+    int tcp_rw_timeout = -1;
+    int udp_rw_timeout = -1;
+    int rw_timeout = -1;
 
     if (!base || YAML_MAPPING_NODE != base->type)
         return -1;
@@ -338,10 +351,20 @@ hev_config_parse_misc (yaml_document_t *doc, yaml_node_t *base)
             task_stack_size = strtoul (value, NULL, 10);
         else if (0 == strcmp (key, "tcp-buffer-size"))
             tcp_buffer_size = strtoul (value, NULL, 10);
+        else if (0 == strcmp (key, "udp-recv-buffer-size"))
+            udp_recv_buffer_size = strtoul (value, NULL, 10);
+        else if (0 == strcmp (key, "udp-copy-buffer-nums"))
+            udp_copy_buffer_nums = strtoul (value, NULL, 10);
+        else if (0 == strcmp (key, "max-session-count"))
+            max_session_count = strtoul (value, NULL, 10);
         else if (0 == strcmp (key, "connect-timeout"))
             connect_timeout = strtoul (value, NULL, 10);
         else if (0 == strcmp (key, "read-write-timeout"))
-            read_write_timeout = strtoul (value, NULL, 10);
+            rw_timeout = strtoul (value, NULL, 10);
+        else if (0 == strcmp (key, "tcp-read-write-timeout"))
+            tcp_rw_timeout = strtoul (value, NULL, 10);
+        else if (0 == strcmp (key, "udp-read-write-timeout"))
+            udp_rw_timeout = strtoul (value, NULL, 10);
         else if (0 == strcmp (key, "pid-file"))
             strncpy (pid_file, value, 1024 - 1);
         else if (0 == strcmp (key, "log-file"))
@@ -352,6 +375,16 @@ hev_config_parse_misc (yaml_document_t *doc, yaml_node_t *base)
             limit_nofile = strtol (value, NULL, 10);
     }
 
+    if (tcp_rw_timeout <= 0)
+        tcp_rw_timeout = rw_timeout;
+    if (udp_rw_timeout <= 0)
+        udp_rw_timeout = rw_timeout;
+
+    if (tcp_rw_timeout > 0)
+        tcp_read_write_timeout = tcp_rw_timeout;
+    if (udp_rw_timeout > 0)
+        udp_read_write_timeout = udp_rw_timeout;
+
     return 0;
 }
 
@@ -361,6 +394,7 @@ hev_config_parse_doc (yaml_document_t *doc)
     yaml_node_t *root;
     yaml_node_pair_t *pair;
     int min_task_stack_size;
+    int udp_buffer_size;
 
     root = yaml_document_get_root_node (doc);
     if (!root || YAML_MAPPING_NODE != root->type)
@@ -398,7 +432,13 @@ hev_config_parse_doc (yaml_document_t *doc)
     if (tcp_buffer_size > TCP_SND_BUF)
         tcp_buffer_size = TCP_SND_BUF;
 
-    min_task_stack_size = TASK_STACK_SIZE + tcp_buffer_size;
+    udp_buffer_size = UDP_BUF_SIZE * udp_copy_buffer_nums;
+
+    if (tcp_buffer_size > udp_buffer_size)
+        min_task_stack_size = TASK_STACK_SIZE + tcp_buffer_size;
+    else
+        min_task_stack_size = TASK_STACK_SIZE + udp_buffer_size;
+
     if (task_stack_size < min_task_stack_size)
         task_stack_size = min_task_stack_size;
 
@@ -576,15 +616,39 @@ hev_config_get_misc_tcp_buffer_size (void)
 }
 
 int
+hev_config_get_misc_udp_recv_buffer_size (void)
+{
+    return udp_recv_buffer_size;
+}
+
+int
+hev_config_get_misc_udp_copy_buffer_nums (void)
+{
+    return udp_copy_buffer_nums;
+}
+
+int
+hev_config_get_misc_max_session_count (void)
+{
+    return max_session_count;
+}
+
+int
 hev_config_get_misc_connect_timeout (void)
 {
     return connect_timeout;
 }
 
 int
-hev_config_get_misc_read_write_timeout (void)
+hev_config_get_misc_tcp_read_write_timeout (void)
 {
-    return read_write_timeout;
+    return tcp_read_write_timeout;
+}
+
+int
+hev_config_get_misc_udp_read_write_timeout (void)
+{
+    return udp_read_write_timeout;
 }
 
 int

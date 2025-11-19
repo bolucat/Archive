@@ -20,6 +20,7 @@ struct _HevConfigServer
     short udp_in_udp;
     unsigned short port;
     unsigned char pipeline;
+    char udp_addr[256];
     char addr[256];
 };
 
@@ -48,8 +49,12 @@ int hev_config_get_mapdns_cache_size (void);
 
 int hev_config_get_misc_task_stack_size (void);
 int hev_config_get_misc_tcp_buffer_size (void);
+int hev_config_get_misc_udp_recv_buffer_size (void);
+int hev_config_get_misc_udp_copy_buffer_nums (void);
+int hev_config_get_misc_max_session_count (void);
 int hev_config_get_misc_connect_timeout (void);
-int hev_config_get_misc_read_write_timeout (void);
+int hev_config_get_misc_tcp_read_write_timeout (void);
+int hev_config_get_misc_udp_read_write_timeout (void);
 int hev_config_get_misc_limit_nofile (void);
 const char *hev_config_get_misc_pid_file (void);
 const char *hev_config_get_misc_log_file (void);

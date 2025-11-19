@@ -23,6 +23,8 @@ socks5:
   address: 127.0.0.1
   # Socks5 UDP relay mode (tcp|udp)
   udp: 'udp'
+  # Override the UDP address provided by the Socks5 server (ipv4/ipv6)
+# udp-address: ''
   # Socks5 handshake using pipeline mode
 # pipeline: false
   # Socks5 server username
@@ -49,10 +51,18 @@ socks5:
 # task-stack-size: 86016
   # tcp buffer size (bytes)
 # tcp-buffer-size: 65536
+  # udp socket recv buffer (SO_RCVBUF) size (bytes)
+# udp-recv-buffer-size: 524288
+  # number of udp buffers in splice, 1500 bytes per buffer.
+# udp-copy-buffer-nums: 10
+  # maximum session count (0: unlimited)
+# max-session-count: 0
   # connect timeout (ms)
-# connect-timeout: 5000
-  # read-write timeout (ms)
-# read-write-timeout: 60000
+# connect-timeout: 10000
+  # TCP read-write timeout (ms)
+# tcp-read-write-timeout: 300000
+  # UDP read-write timeout (ms)
+# udp-read-write-timeout: 60000
   # stdout, stderr or file-path
 # log-file: stderr
   # debug, info, warn or error

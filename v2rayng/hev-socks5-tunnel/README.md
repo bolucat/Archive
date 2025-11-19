@@ -1,6 +1,6 @@
 # HevSocks5Tunnel
 
-[![status](https://github.com/heiher/hev-socks5-tunnel/actions/workflows/build.yaml/badge.svg?branch=master&event=push)](https://github.com/heiher/hev-socks5-tunnel)
+[![status](https://github.com/heiher/hev-socks5-tunnel/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/hev-socks5-tunnel)
 
 A simple, lightweight tunnel over Socks5 proxy (tun2socks).
 
@@ -107,6 +107,8 @@ socks5:
   address: 127.0.0.1
   # Socks5 UDP relay mode (tcp|udp)
   udp: 'udp'
+  # Override the UDP address provided by the Socks5 server (ipv4/ipv6)
+# udp-address: ''
   # Socks5 handshake using pipeline mode
 # pipeline: false
   # Socks5 server username
@@ -133,10 +135,18 @@ socks5:
 # task-stack-size: 86016
   # tcp buffer size (bytes)
 # tcp-buffer-size: 65536
+  # udp socket recv buffer (SO_RCVBUF) size (bytes)
+# udp-recv-buffer-size: 524288
+  # number of udp buffers in splice, 1500 bytes per buffer.
+# udp-copy-buffer-nums: 10
+  # maximum session count (0: unlimited)
+# max-session-count: 0
   # connect timeout (ms)
-# connect-timeout: 5000
-  # read-write timeout (ms)
-# read-write-timeout: 60000
+# connect-timeout: 10000
+  # TCP read-write timeout (ms)
+# tcp-read-write-timeout: 300000
+  # UDP read-write timeout (ms)
+# udp-read-write-timeout: 60000
   # stdout, stderr or file-path
 # log-file: stderr
   # debug, info, warn or error
@@ -188,8 +198,8 @@ sudo route change -inet6 default -interface tun0
 route add 10.0.0.1/32 10.0.2.2
 
 # Route others
-route change 0.0.0.0/0 0.0.0.0 if tun0
-route change ::/0 :: if tun0
+route change 0.0.0.0/0 0.0.0.0 if tun-index
+route change ::/0 :: if tun-index
 ```
 
 #### OpenWrt 24.10+
@@ -208,8 +218,9 @@ opkg install hev-socks5-tunnel
 
 #### Low memory usage
 
-On low-memory systems like iOS, reducing the size of the TCP buffer
-and task stack can help prevent out-of-memory issues.
+On low-memory systems like iOS, reducing the size of the TCP buffer and
+task stack, as well as limiting the maximum session count, can help prevent
+out-of-memory issues.
 
 ```yaml
 misc:
@@ -217,6 +228,8 @@ misc:
   task-stack-size: 24576 # 20480 + tcp-buffer-size
   # tcp buffer size (bytes)
   tcp-buffer-size: 4096
+  # maximum session count
+  max-session-count: 1200
 ```
 
 #### Docker Compose
@@ -250,6 +263,7 @@ services:
       SOCKS5_USERNAME: user # optional, socks5 proxy username, only set when need to auth
       SOCKS5_PASSWORD: pass # optional, socks5 proxy password, only set when need to auth
       SOCKS5_UDP_MODE: udp # optional, UDP relay mode, default `udp`, other option `tcp`
+      SOCKS5_UDP_ADDR: a.b.c.d # optional, override the UDP address provided by the Socks5 server
       CONFIG_ROUTES: 1 # optional, set 0 to ignore TABLE, IPV4_INCLUDED_ROUTES and IPV4_EXCLUDED_ROUTES, with MARK defaults to 0
       IPV4_INCLUDED_ROUTES: 0.0.0.0/0 # optional, demo means proxy all traffic. for multiple network segments, join with `,` or `\n`
       IPV4_EXCLUDED_ROUTES: a.b.c.d # optional, demo means exclude traffic from the proxy itself. for multiple network segments, join with `,` or `\n`
@@ -371,4 +385,4 @@ void hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
 
 MIT
 
-[^1]: See [protocol specification](https://github.com/heiher/hev-socks5-core/tree/master?tab=readme-ov-file#udp-in-tcp). The [hev-socks5-server](https://github.com/heiher/hev-socks5-server) supports UDP relay over TCP.
+[^1]: See [protocol specification](https://github.com/heiher/hev-socks5-core/tree/main?tab=readme-ov-file#udp-in-tcp). The [hev-socks5-server](https://github.com/heiher/hev-socks5-server) supports UDP relay over TCP.

@@ -23,57 +23,6 @@
 #define task_io_yielder hev_socks5_task_io_yielder
 
 static int
-hev_socks5_client_connect_server (HevSocks5Client *self, const char *addr,
-                                  int port)
-{
-    HevSocks5Class *klass;
-    struct sockaddr_in6 saddr;
-    struct sockaddr *sap;
-    int addr_family;
-    int fd, res;
-
-    LOG_D ("%p socks5 client connect server", self);
-
-    addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
-    res = hev_socks5_name_into_sockaddr6 (addr, port, &saddr, &addr_family);
-    if (res < 0) {
-        LOG_E ("%p socks5 client resolve [%s]:%d", self, addr, port);
-        return -1;
-    }
-
-    fd = hev_socks5_socket (SOCK_STREAM);
-    if (fd < 0) {
-        LOG_E ("%p socks5 client socket", self);
-        return -1;
-    }
-
-    sap = (struct sockaddr *)&saddr;
-    klass = HEV_OBJECT_GET_CLASS (self);
-    res = klass->binder (HEV_SOCKS5 (self), fd, sap);
-    if (res < 0) {
-        LOG_E ("%p socks5 client bind", self);
-        hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
-        return -1;
-    }
-
-    res = hev_task_io_socket_connect (fd, sap, sizeof (saddr), task_io_yielder,
-                                      self);
-    if (res < 0) {
-        LOG_E ("%p socks5 client connect", self);
-        hev_task_del_fd (hev_task_self (), fd);
-        close (fd);
-        return -1;
-    }
-
-    HEV_SOCKS5 (self)->fd = fd;
-    hev_socks5_set_addr_family (HEV_SOCKS5 (self), addr_family);
-    LOG_D ("%p socks5 client connect server fd %d", self, fd);
-
-    return 0;
-}
-
-static int
 hev_socks5_client_write_auth_methods (HevSocks5Client *self)
 {
     HevSocks5Auth auth;
@@ -213,7 +162,7 @@ hev_socks5_client_read_auth_method (HevSocks5Client *self)
 
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &auth, 2, MSG_WAITALL,
                                    task_io_yielder, self);
-    if (res <= 0) {
+    if (res != 2) {
         LOG_E ("%p socks5 client read auth", self);
         return -1;
     }
@@ -236,7 +185,7 @@ hev_socks5_client_read_auth_creds (HevSocks5Client *self)
 
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res, 2, MSG_WAITALL,
                                    task_io_yielder, self);
-    if (ret <= 0) {
+    if (ret != 2) {
         LOG_E ("%p socks5 client read auth creds", self);
         return -1;
     }
@@ -268,7 +217,7 @@ hev_socks5_client_read_response (HevSocks5Client *self)
 
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res, 4, MSG_WAITALL,
                                    task_io_yielder, self);
-    if (ret <= 0) {
+    if (ret != 4) {
         LOG_E ("%p socks5 client read response", self);
         return -1;
     }
@@ -297,7 +246,7 @@ hev_socks5_client_read_response (HevSocks5Client *self)
 
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res.addr.ipv4,
                                    addrlen, MSG_WAITALL, task_io_yielder, self);
-    if (ret <= 0) {
+    if (ret != addrlen) {
         LOG_E ("%p socks5 client read addr", self);
         return -1;
     }
@@ -315,15 +264,53 @@ hev_socks5_client_read_response (HevSocks5Client *self)
 int
 hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
 {
-    int res;
+    HevSocks5Class *klass;
+    struct sockaddr_in6 saddr;
+    struct sockaddr *sap;
+    int addr_family;
+    int timeout;
+    int fd, res;
 
     LOG_D ("%p socks5 client connect [%s]:%d", self, addr, port);
 
-    res = hev_socks5_client_connect_server (self, addr, port);
+    timeout = hev_socks5_get_connect_timeout ();
+    hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
+
+    addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
+    res = hev_socks5_name_into_sockaddr6 (addr, port, &saddr, &addr_family);
     if (res < 0) {
-        LOG_E ("%p socks5 client connect", self);
+        LOG_E ("%p socks5 client resolve [%s]:%d", self, addr, port);
         return -1;
     }
+
+    fd = hev_socks5_socket (SOCK_STREAM);
+    if (fd < 0) {
+        LOG_E ("%p socks5 client socket", self);
+        return -1;
+    }
+
+    sap = (struct sockaddr *)&saddr;
+    klass = HEV_OBJECT_GET_CLASS (self);
+    res = klass->binder (HEV_SOCKS5 (self), fd, sap);
+    if (res < 0) {
+        LOG_E ("%p socks5 client bind", self);
+        hev_task_del_fd (hev_task_self (), fd);
+        close (fd);
+        return -1;
+    }
+
+    res = hev_task_io_socket_connect (fd, sap, sizeof (saddr), task_io_yielder,
+                                      self);
+    if (res < 0) {
+        LOG_E ("%p socks5 client connect", self);
+        hev_task_del_fd (hev_task_self (), fd);
+        close (fd);
+        return -1;
+    }
+
+    HEV_SOCKS5 (self)->fd = fd;
+    hev_socks5_set_addr_family (HEV_SOCKS5 (self), addr_family);
+    LOG_D ("%p socks5 client connect server fd %d", self, fd);
 
     return 0;
 }
@@ -409,10 +396,28 @@ hev_socks5_client_handshake_pipeline (HevSocks5Client *self)
 int
 hev_socks5_client_handshake (HevSocks5Client *self, int pipeline)
 {
-    if (pipeline)
-        return hev_socks5_client_handshake_pipeline (self);
+    int timeout;
+    int res;
 
-    return hev_socks5_client_handshake_standard (self);
+    timeout = hev_socks5_get_tcp_timeout ();
+    hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
+
+    if (pipeline)
+        res = hev_socks5_client_handshake_pipeline (self);
+    else
+        res = hev_socks5_client_handshake_standard (self);
+
+    switch (HEV_SOCKS5 (self)->type) {
+    case HEV_SOCKS5_TYPE_UDP_IN_TCP:
+    case HEV_SOCKS5_TYPE_UDP_IN_UDP:
+        timeout = hev_socks5_get_udp_timeout ();
+        hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
+        break;
+    default:
+        break;
+    }
+
+    return res;
 }
 
 void

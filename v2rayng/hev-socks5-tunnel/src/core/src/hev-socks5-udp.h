@@ -21,7 +21,15 @@ extern "C" {
 #define HEV_SOCKS5_UDP_TYPE (hev_socks5_udp_iface ())
 
 typedef void HevSocks5UDP;
+typedef struct _HevSocks5UDPMsg HevSocks5UDPMsg;
 typedef struct _HevSocks5UDPIface HevSocks5UDPIface;
+
+struct _HevSocks5UDPMsg
+{
+    HevSocks5Addr *addr;
+    void *buf;
+    size_t len;
+};
 
 struct _HevSocks5UDPIface
 {
@@ -33,11 +41,10 @@ void *hev_socks5_udp_iface (void);
 
 int hev_socks5_udp_get_fd (HevSocks5UDP *self);
 
-int hev_socks5_udp_sendto (HevSocks5UDP *self, const void *buf, size_t len,
-                           const HevSocks5Addr *addr);
-
-int hev_socks5_udp_recvfrom (HevSocks5UDP *self, void *buf, size_t len,
-                             HevSocks5Addr *addr);
+int hev_socks5_udp_sendmmsg (HevSocks5UDP *self, HevSocks5UDPMsg *msgv,
+                             unsigned int num);
+int hev_socks5_udp_recvmmsg (HevSocks5UDP *self, HevSocks5UDPMsg *msgv,
+                             unsigned int num, int nonblock);
 
 int hev_socks5_udp_splice (HevSocks5UDP *self, int fd);
 

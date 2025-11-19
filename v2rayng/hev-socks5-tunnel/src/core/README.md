@@ -124,13 +124,13 @@ udp_client_entry (void *data)
     hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (udp));
 
     /*
-     * HevSocks5Addr addr;
+     * HevSocks5UDPMsg msgv[num];
      *
-     * send udp packet:
-     *     hev_socks5_udp_sendto (HEV_SOCKS5_UDP (udp), data, len, &addr);
+     * send udp packets:
+     *     hev_socks5_udp_sendmmsg (HEV_SOCKS5_UDP (udp), msgv, num);
      *
-     * recv udp packet:
-     *     hev_socks5_udp_recvfrom (HEV_SOCKS5_UDP (udp), data, len, &addr);
+     * recv udp packets:
+     *     hev_socks5_udp_recvmmsg (HEV_SOCKS5_UDP (udp), msgv, num, 0);
      */
 
     hev_object_unref (HEV_OBJECT (udp));
