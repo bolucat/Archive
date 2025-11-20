@@ -1,4 +1,4 @@
-# Socratex
+# 🧱 Socratex
 
 [![MIT licensed](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![Node.js Package, Docker Image](https://github.com/Leask/socratex/actions/workflows/build.yml/badge.svg)](https://github.com/Leask/socratex/actions/workflows/build.yml)
