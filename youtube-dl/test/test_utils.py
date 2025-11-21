@@ -69,6 +69,7 @@ from youtube_dl.utils import (
     parse_iso8601,
     parse_resolution,
     parse_qs,
+    partial_application,
     pkcs1pad,
     prepend_extension,
     read_batch_urls,
@@ -664,6 +665,8 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(parse_duration('3h 11m 53s'), 11513)
         self.assertEqual(parse_duration('3 hours 11 minutes 53 seconds'), 11513)
         self.assertEqual(parse_duration('3 hours 11 mins 53 secs'), 11513)
+        self.assertEqual(parse_duration('3 hours, 11 minutes, 53 seconds'), 11513)
+        self.assertEqual(parse_duration('3 hours, 11 mins, 53 secs'), 11513)
         self.assertEqual(parse_duration('62m45s'), 3765)
         self.assertEqual(parse_duration('6m59s'), 419)
         self.assertEqual(parse_duration('49s'), 49)
@@ -682,6 +685,10 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(parse_duration('PT1H0.040S'), 3600.04)
         self.assertEqual(parse_duration('PT00H03M30SZ'), 210)
         self.assertEqual(parse_duration('P0Y0M0DT0H4M20.880S'), 260.88)
+        self.assertEqual(parse_duration('01:02:03:050'), 3723.05)
+        self.assertEqual(parse_duration('103:050'), 103.05)
+        self.assertEqual(parse_duration('1HR 3MIN'), 3780)
+        self.assertEqual(parse_duration('2hrs 3mins'), 7380)
 
     def test_fix_xml_ampersands(self):
         self.assertEqual(
@@ -894,6 +901,30 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(parse_codecs('av01.0.05M.08'), {
             'vcodec': 'av01.0.05M.08',
             'acodec': 'none',
+        })
+        self.assertEqual(parse_codecs('vp9.2'), {
+            'vcodec': 'vp9.2',
+            'acodec': 'none',
+            'dynamic_range': 'HDR10',
+        })
+        self.assertEqual(parse_codecs('vp09.02.50.10.01.09.18.09.00'), {
+            'vcodec': 'vp09.02.50.10.01.09.18.09.00',
+            'acodec': 'none',
+            'dynamic_range': 'HDR10',
+        })
+        self.assertEqual(parse_codecs('av01.0.12M.10.0.110.09.16.09.0'), {
+            'vcodec': 'av01.0.12M.10.0.110.09.16.09.0',
+            'acodec': 'none',
+            'dynamic_range': 'HDR10',
+        })
+        self.assertEqual(parse_codecs('dvhe'), {
+            'vcodec': 'dvhe',
+            'acodec': 'none',
+            'dynamic_range': 'DV',
+        })
+        self.assertEqual(parse_codecs('fLaC'), {
+            'vcodec': 'none',
+            'acodec': 'flac',
         })
         self.assertEqual(parse_codecs('theora, vorbis'), {
             'vcodec': 'theora',
@@ -1722,6 +1753,21 @@ Line 1
         self.assertEqual(join_nonempty(
             'a', 'b', 'c', 'd',
             from_dict={'a': 'c', 'c': [], 'b': 'd', 'd': None}), 'c-d')
+
+    def test_partial_application(self):
+        test_fn = partial_application(lambda x, kwarg=None: '{0}, kwarg={1!r}'.format(x, kwarg))
+        self.assertTrue(
+            callable(test_fn(kwarg=10)),
+            'missing positional parameter should apply partially')
+        self.assertEqual(
+            test_fn(10, kwarg=42), '10, kwarg=42',
+            'positionally passed argument should call function')
+        self.assertEqual(
+            test_fn(x=10), '10, kwarg=None',
+            'keyword passed positional should call function')
+        self.assertEqual(
+            test_fn(kwarg=42)(10), '10, kwarg=42',
+            'call after partial application should call the function')
 
 
 if __name__ == '__main__':
