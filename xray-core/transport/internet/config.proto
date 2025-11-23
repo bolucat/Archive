@@ -133,7 +133,7 @@ message SocketConfig {
 
   HappyEyeballsConfig happy_eyeballs = 22;
 
-  bool discard_x_forwarded_for = 23;
+  repeated string trusted_x_forwarded_for = 23;
 }
 
 message HappyEyeballsConfig {
