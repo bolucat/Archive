@@ -323,31 +323,28 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     {
         var responseTime = -1;
 
+        if (!IPAddress.TryParse(url, out var ipAddress))
+        {
+            var ipHostInfo = await Dns.GetHostEntryAsync(url);
+            ipAddress = ipHostInfo.AddressList.First();
+        }
+
+        IPEndPoint endPoint = new(ipAddress, port);
+        using Socket clientSocket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
+        var timer = Stopwatch.StartNew();
         try
         {
-            if (!IPAddress.TryParse(url, out var ipAddress))
-            {
-                var ipHostInfo = await Dns.GetHostEntryAsync(url);
-                ipAddress = ipHostInfo.AddressList.First();
-            }
-
-            IPEndPoint endPoint = new(ipAddress, port);
-            using Socket clientSocket = new(endPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-
-            var timer = Stopwatch.StartNew();
-            var result = clientSocket.BeginConnect(endPoint, null, null);
-            if (!result.AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(5)))
-            {
-                throw new TimeoutException("connect timeout (5s): " + url);
-            }
-            timer.Stop();
-            responseTime = (int)timer.Elapsed.TotalMilliseconds;
-
-            clientSocket.EndConnect(result);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await clientSocket.ConnectAsync(endPoint, cts.Token).ConfigureAwait(false);
+            responseTime = (int)timer.ElapsedMilliseconds;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Logging.SaveLog(_tag, ex);
+        }
+        finally
+        {
+            timer.Stop();
         }
         return responseTime;
     }
