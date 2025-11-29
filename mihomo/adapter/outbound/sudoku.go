@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/metacubex/mihomo/log"
+
 	"github.com/saba-futai/sudoku/apis"
 	"github.com/saba-futai/sudoku/pkg/crypto"
 	"github.com/saba-futai/sudoku/pkg/obfs/httpmask"
@@ -38,8 +40,8 @@ type SudokuOption struct {
 	AEADMethod string `proxy:"aead-method,omitempty"`
 	PaddingMin *int   `proxy:"padding-min,omitempty"`
 	PaddingMax *int   `proxy:"padding-max,omitempty"`
-	Seed       string `proxy:"seed,omitempty"`
 	TableType  string `proxy:"table-type,omitempty"` // "prefer_ascii" or "prefer_entropy"
+	HTTPMask   bool   `proxy:"http-mask,omitempty"`
 }
 
 // DialContext implements C.ProxyAdapter
@@ -120,8 +122,10 @@ func (s *Sudoku) buildConfig(metadata *C.Metadata) (*apis.ProtocolConfig, error)
 }
 
 func (s *Sudoku) streamConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.Conn, err error) {
-	if err = httpmask.WriteRandomRequestHeader(rawConn, cfg.ServerAddress); err != nil {
-		return nil, fmt.Errorf("write http mask failed: %w", err)
+	if !cfg.DisableHTTPMask {
+		if err = httpmask.WriteRandomRequestHeader(rawConn, cfg.ServerAddress); err != nil {
+			return nil, fmt.Errorf("write http mask failed: %w", err)
+		}
 	}
 
 	obfsConn := sudoku.NewConn(rawConn, cfg.Table, cfg.PaddingMin, cfg.PaddingMax, false)
@@ -163,12 +167,14 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 		return nil, fmt.Errorf("table-type must be prefer_ascii or prefer_entropy")
 	}
 
-	seed := option.Seed
-	if seed == "" {
-		seed = option.Key
+	seed := option.Key
+	if recoveredFromKey, err := crypto.RecoverPublicKey(option.Key); err == nil {
+		seed = crypto.EncodePoint(recoveredFromKey)
 	}
 
+	start := time.Now()
 	table := sudoku.NewTable(seed, tableType)
+	log.Infoln("[Sudoku] Tables initialized (%s) in %v", tableType, time.Since(start))
 
 	defaultConf := apis.DefaultConfig()
 	paddingMin := defaultConf.PaddingMin
@@ -194,6 +200,7 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 		PaddingMin:              paddingMin,
 		PaddingMax:              paddingMax,
 		HandshakeTimeoutSeconds: defaultConf.HandshakeTimeoutSeconds,
+		DisableHTTPMask:         !option.HTTPMask,
 	}
 	if option.AEADMethod != "" {
 		baseConf.AEADMethod = option.AEADMethod
