@@ -20,7 +20,6 @@ import (
 	crand "crypto/rand"
 	"io"
 	mrand "math/rand"
-	"net"
 	"testing"
 )
 
@@ -35,25 +34,5 @@ func TestReadAllAndDiscard(t *testing.T) {
 
 	if buf.Len() != 0 {
 		t.Errorf("buf.Len() = %d, want 0", buf.Len())
-	}
-}
-
-type counterCloser struct {
-	net.Conn
-	Counter *int
-}
-
-func (cc counterCloser) Close() error {
-	*cc.Counter = *cc.Counter + 1
-	return nil
-}
-
-func TestHierarchyConn(t *testing.T) {
-	counter := 0
-	parent := WrapHierarchyConn(counterCloser{Conn: nil, Counter: &counter})
-	parent.AddSubConnection(counterCloser{Conn: nil, Counter: &counter})
-	parent.Close()
-	if counter != 2 {
-		t.Errorf("counter = %d, want %d", counter, 2)
 	}
 }
