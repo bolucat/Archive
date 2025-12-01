@@ -31,12 +31,28 @@ func Handle(conn net.Conn, tunnel C.Tunnel, request *mierumodel.Request, additio
 	}
 
 	// Handle the connection with tunnel.
-	metadata := mieruRequestToMetadata(request)
-	inbound.ApplyAdditions(&metadata, additions...)
-	switch metadata.NetWork {
-	case C.TCP:
-		tunnel.HandleTCPConn(conn, &metadata)
-	case C.UDP:
+	switch request.Command {
+	case mieruconstant.Socks5ConnectCmd: // TCP
+		metadata := &C.Metadata{
+			NetWork: C.TCP,
+			Type:    C.MIERU,
+			DstPort: uint16(request.DstAddr.Port),
+		}
+		if request.DstAddr.FQDN != "" {
+			metadata.Host = request.DstAddr.FQDN
+		} else if request.DstAddr.IP != nil {
+			metadata.DstIP, _ = netip.AddrFromSlice(request.DstAddr.IP)
+			metadata.DstIP = metadata.DstIP.Unmap()
+		}
+		inbound.ApplyAdditions(
+			metadata,
+			inbound.WithInName(conn.(mierucommon.UserContext).UserName()),
+			inbound.WithSrcAddr(conn.RemoteAddr()),
+			inbound.WithInAddr(conn.LocalAddr()),
+		)
+		inbound.ApplyAdditions(metadata, additions...)
+		tunnel.HandleTCPConn(conn, metadata)
+	case mieruconstant.Socks5UDPAssociateCmd: // UDP
 		pc := mierucommon.NewPacketOverStreamTunnel(conn)
 		ep := N.NewEnhancePacketConn(pc)
 		for {
@@ -65,24 +81,6 @@ func Handle(conn net.Conn, tunnel C.Tunnel, request *mierumodel.Request, additio
 			tunnel.HandleUDPPacket(inbound.NewPacket(target, packet, C.MIERU, additions...))
 		}
 	}
-}
-
-func mieruRequestToMetadata(request *mierumodel.Request) C.Metadata {
-	m := C.Metadata{
-		DstPort: uint16(request.DstAddr.Port),
-	}
-	switch request.Command {
-	case mieruconstant.Socks5ConnectCmd:
-		m.NetWork = C.TCP
-	case mieruconstant.Socks5UDPAssociateCmd:
-		m.NetWork = C.UDP
-	}
-	if request.DstAddr.FQDN != "" {
-		m.Host = request.DstAddr.FQDN
-	} else if request.DstAddr.IP != nil {
-		m.DstIP, _ = netip.AddrFromSlice(request.DstAddr.IP)
-	}
-	return m
 }
 
 type packet struct {
