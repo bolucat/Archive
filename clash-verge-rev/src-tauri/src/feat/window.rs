@@ -1,9 +1,10 @@
 use crate::config::Config;
-use crate::core::event_driven_proxy::EventDrivenProxyManager;
 use crate::core::{CoreManager, handle, sysopt};
+use crate::module::lightweight;
 use crate::utils;
 use crate::utils::window_manager::WindowManager;
-use crate::{logging, module::lightweight, utils::logging::Type};
+use clash_verge_logging::{Type, logging};
+use tokio::time::{Duration, timeout};
 
 /// Public API: open or close the dashboard
 pub async fn open_or_close_dashboard() {
@@ -19,12 +20,11 @@ async fn open_or_close_dashboard_internal() {
 
 pub async fn quit() {
     logging!(debug, Type::System, "启动退出流程");
-    utils::server::shutdown_embedded_server();
-
-    // 获取应用句柄并设置退出标志
-    let app_handle = handle::Handle::app_handle();
+    // 设置退出标志
     handle::Handle::global().set_is_exiting();
-    EventDrivenProxyManager::global().notify_app_stopping();
+
+    utils::server::shutdown_embedded_server();
+    Config::apply_all_and_save_file().await;
 
     logging!(info, Type::System, "开始异步清理资源");
     let cleanup_result = clean_async().await;
@@ -35,58 +35,16 @@ pub async fn quit() {
         "资源清理完成，退出代码: {}",
         if cleanup_result { 0 } else { 1 }
     );
+
+    let app_handle = handle::Handle::app_handle();
     app_handle.exit(if cleanup_result { 0 } else { 1 });
 }
 
 pub async fn clean_async() -> bool {
-    use tokio::time::{Duration, timeout};
-
     logging!(info, Type::System, "开始执行异步清理操作...");
 
-    // 1. 处理TUN模式
-    let tun_task = async {
-        let tun_enabled = Config::verge()
-            .await
-            .data_arc()
-            .enable_tun_mode
-            .unwrap_or(false);
-
-        if !tun_enabled {
-            return true;
-        }
-
-        let disable_tun = serde_json::json!({ "tun": { "enable": false } });
-
-        match timeout(
-            Duration::from_millis(1000),
-            handle::Handle::mihomo()
-                .await
-                .patch_base_config(&disable_tun),
-        )
-        .await
-        {
-            Ok(Ok(_)) => {
-                logging!(info, Type::Window, "TUN模式已禁用");
-                true
-            }
-            Ok(Err(e)) => {
-                logging!(warn, Type::Window, "Warning: 禁用TUN模式失败: {e}");
-                // 超时不阻塞退出
-                true
-            }
-            Err(_) => {
-                logging!(
-                    warn,
-                    Type::Window,
-                    "Warning: 禁用TUN模式超时（可能系统正在关机），继续退出流程"
-                );
-                true
-            }
-        }
-    };
-
-    // 2. 系统代理重置
-    let proxy_task = async {
+    // 重置系统代理
+    let proxy_task = tokio::task::spawn(async {
         #[cfg(target_os = "windows")]
         {
             use sysproxy::{Autoproxy, Sysproxy};
@@ -202,15 +160,50 @@ pub async fn clean_async() -> bool {
                 }
             }
         }
-    };
+    });
 
-    // 3. 核心服务停止
-    let core_task = async {
+    // 关闭 Tun 模式 + 停止核心服务
+    let core_task = tokio::task::spawn(async {
+        logging!(info, Type::System, "disable tun");
+        let tun_enabled = Config::verge()
+            .await
+            .data_arc()
+            .enable_tun_mode
+            .unwrap_or(false);
+        if tun_enabled {
+            let disable_tun = serde_json::json!({ "tun": { "enable": false } });
+
+            logging!(info, Type::System, "send disable tun request to mihomo");
+            match timeout(
+                Duration::from_millis(1000),
+                handle::Handle::mihomo()
+                    .await
+                    .patch_base_config(&disable_tun),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    logging!(info, Type::Window, "TUN模式已禁用");
+                }
+                Ok(Err(e)) => {
+                    logging!(warn, Type::Window, "Warning: 禁用TUN模式失败: {e}");
+                }
+                Err(_) => {
+                    logging!(
+                        warn,
+                        Type::Window,
+                        "Warning: 禁用TUN模式超时（可能系统正在关机），继续退出流程"
+                    );
+                }
+            }
+        }
+
         #[cfg(target_os = "windows")]
         let stop_timeout = Duration::from_secs(2);
         #[cfg(not(target_os = "windows"))]
         let stop_timeout = Duration::from_secs(3);
 
+        logging!(info, Type::System, "stop core");
         match timeout(stop_timeout, CoreManager::global().stop_core()).await {
             Ok(_) => {
                 logging!(info, Type::Window, "core已停止");
@@ -225,11 +218,11 @@ pub async fn clean_async() -> bool {
                 true
             }
         }
-    };
+    });
 
-    // 4. DNS恢复（仅macOS）
-    #[cfg(target_os = "macos")]
-    let dns_task = async {
+    // DNS恢复（仅macOS）
+    let dns_task = tokio::task::spawn(async {
+        #[cfg(target_os = "macos")]
         match timeout(
             Duration::from_millis(1000),
             crate::utils::resolve::dns::restore_public_dns(),
@@ -245,22 +238,23 @@ pub async fn clean_async() -> bool {
                 false
             }
         }
-    };
+        #[cfg(not(target_os = "macos"))]
+        true
+    });
 
-    #[cfg(not(target_os = "macos"))]
-    let dns_task = async { true };
-
-    let tun_success = tun_task.await;
     // 并行执行清理任务
-    let (proxy_success, core_success, dns_success) = tokio::join!(proxy_task, core_task, dns_task);
+    let (proxy_result, core_result, dns_result) = tokio::join!(proxy_task, core_task, dns_task);
 
-    let all_success = tun_success && proxy_success && core_success && dns_success;
+    let proxy_success = proxy_result.unwrap_or_default();
+    let core_success = core_result.unwrap_or_default();
+    let dns_success = dns_result.unwrap_or_default();
+
+    let all_success = proxy_success && core_success && dns_success;
 
     logging!(
         info,
         Type::System,
-        "异步关闭操作完成 - TUN: {}, 代理: {}, 核心: {}, DNS: {}, 总体: {}",
-        tun_success,
+        "异步关闭操作完成 - 代理: {}, 核心: {}, DNS: {}, 总体: {}",
         proxy_success,
         core_success,
         dns_success,
@@ -268,41 +262,6 @@ pub async fn clean_async() -> bool {
     );
 
     all_success
-}
-
-pub fn clean() -> bool {
-    use crate::process::AsyncHandler;
-
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    AsyncHandler::spawn(move || async move {
-        logging!(info, Type::System, "开始执行关闭操作...");
-
-        // 使用已有的异步清理函数
-        let cleanup_result = clean_async().await;
-
-        let _ = tx.send(cleanup_result);
-    });
-
-    #[cfg(target_os = "windows")]
-    let total_timeout = std::time::Duration::from_secs(5);
-    #[cfg(not(target_os = "windows"))]
-    let total_timeout = std::time::Duration::from_secs(8);
-
-    match rx.recv_timeout(total_timeout) {
-        Ok(result) => {
-            logging!(info, Type::System, "关闭操作完成，结果: {}", result);
-            result
-        }
-        Err(_) => {
-            logging!(
-                warn,
-                Type::System,
-                "清理操作超时(可能正在关机)，返回成功避免阻塞"
-            );
-            true
-        }
-    }
 }
 
 #[cfg(target_os = "macos")]

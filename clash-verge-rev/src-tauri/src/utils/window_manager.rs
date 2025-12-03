@@ -1,8 +1,5 @@
-use crate::{
-    core::handle,
-    logging,
-    utils::{logging::Type, resolve::window::build_new_window},
-};
+use crate::{core::handle, utils::resolve::window::build_new_window};
+use clash_verge_logging::{Type, logging};
 use std::future::Future;
 use std::pin::Pin;
 use tauri::{Manager as _, WebviewWindow, Wry};
@@ -342,17 +339,19 @@ impl WindowManager {
                 return false;
             }
 
-            match build_new_window().await {
-                Ok(_) => {
+            let window = match build_new_window().await {
+                Ok(window) => {
                     logging!(info, Type::Window, "新窗口创建成功");
+                    window
                 }
                 Err(e) => {
                     logging!(error, Type::Window, "新窗口创建失败: {}", e);
                     return false;
                 }
-            }
+            };
 
-            if WindowOperationResult::Failed == Self::show_main_window().await {
+            // 直接激活刚创建的窗口，避免因防抖导致首次显示被跳过
+            if WindowOperationResult::Failed == Self::activate_window(&window) {
                 return false;
             }
 

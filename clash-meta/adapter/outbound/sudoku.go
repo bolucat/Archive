@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -14,17 +13,18 @@ import (
 	"github.com/saba-futai/sudoku/apis"
 	"github.com/saba-futai/sudoku/pkg/crypto"
 	"github.com/saba-futai/sudoku/pkg/obfs/httpmask"
-	"github.com/saba-futai/sudoku/pkg/obfs/sudoku"
+	sudokuobfs "github.com/saba-futai/sudoku/pkg/obfs/sudoku"
 
 	N "github.com/metacubex/mihomo/common/net"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
+	"github.com/metacubex/mihomo/transport/sudoku"
 )
 
 type Sudoku struct {
 	*Base
 	option   *SudokuOption
-	table    *sudoku.Table
+	table    *sudokuobfs.Table
 	baseConf apis.ProtocolConfig
 }
 
@@ -72,12 +72,45 @@ func (s *Sudoku) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Con
 
 // ListenPacketContext implements C.ProxyAdapter
 func (s *Sudoku) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
-	return nil, C.ErrNotSupport
+	if err := s.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
+
+	cfg, err := s.buildConfig(metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := s.dialer.DialContext(ctx, "tcp", s.addr)
+	if err != nil {
+		return nil, fmt.Errorf("%s connect error: %w", s.addr, err)
+	}
+
+	defer func() {
+		safeConnClose(c, err)
+	}()
+
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
+
+	c, err = s.handshakeConn(c, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if err = sudoku.WritePreface(c); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("send uot preface failed: %w", err)
+	}
+
+	return newPacketConn(N.NewThreadSafePacketConn(sudoku.NewUoTPacketConn(c)), s), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
 func (s *Sudoku) SupportUOT() bool {
-	return false // Sudoku protocol only supports TCP
+	return true
 }
 
 // ProxyInfo implements C.ProxyAdapter
@@ -101,14 +134,14 @@ func (s *Sudoku) buildConfig(metadata *C.Metadata) (*apis.ProtocolConfig, error)
 	return &cfg, nil
 }
 
-func (s *Sudoku) streamConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.Conn, err error) {
+func (s *Sudoku) handshakeConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.Conn, err error) {
 	if !cfg.DisableHTTPMask {
 		if err = httpmask.WriteRandomRequestHeader(rawConn, cfg.ServerAddress); err != nil {
 			return nil, fmt.Errorf("write http mask failed: %w", err)
 		}
 	}
 
-	obfsConn := sudoku.NewConn(rawConn, cfg.Table, cfg.PaddingMin, cfg.PaddingMax, false)
+	obfsConn := sudokuobfs.NewConn(rawConn, cfg.Table, cfg.PaddingMin, cfg.PaddingMax, false)
 	cConn, err := crypto.NewAEADConn(obfsConn, cfg.Key, cfg.AEADMethod)
 	if err != nil {
 		return nil, fmt.Errorf("setup crypto failed: %w", err)
@@ -120,7 +153,21 @@ func (s *Sudoku) streamConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.C
 		return nil, fmt.Errorf("send handshake failed: %w", err)
 	}
 
-	if err = writeTargetAddress(cConn, cfg.TargetAddress); err != nil {
+	return cConn, nil
+}
+
+func (s *Sudoku) streamConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.Conn, err error) {
+	cConn, err := s.handshakeConn(rawConn, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	addrBuf, err := sudoku.EncodeAddress(cfg.TargetAddress)
+	if err != nil {
+		return nil, fmt.Errorf("encode target address failed: %w", err)
+	}
+
+	if _, err = cConn.Write(addrBuf); err != nil {
 		cConn.Close()
 		return nil, fmt.Errorf("send target address failed: %w", err)
 	}
@@ -153,7 +200,7 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 	}
 
 	start := time.Now()
-	table := sudoku.NewTable(seed, tableType)
+	table := sudokuobfs.NewTable(seed, tableType)
 	log.Infoln("[Sudoku] Tables initialized (%s) in %v", tableType, time.Since(start))
 
 	defaultConf := apis.DefaultConfig()
@@ -191,7 +238,7 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 			name:   option.Name,
 			addr:   baseConf.ServerAddress,
 			tp:     C.Sudoku,
-			udp:    false,
+			udp:    true,
 			tfo:    option.TFO,
 			mpTcp:  option.MPTCP,
 			iface:  option.Interface,
@@ -212,41 +259,4 @@ func buildSudokuHandshakePayload(key string) [16]byte {
 	hash := sha256.Sum256([]byte(key))
 	copy(payload[8:], hash[:8])
 	return payload
-}
-
-func writeTargetAddress(w io.Writer, rawAddr string) error {
-	host, portStr, err := net.SplitHostPort(rawAddr)
-	if err != nil {
-		return err
-	}
-
-	portInt, err := net.LookupPort("tcp", portStr)
-	if err != nil {
-		return err
-	}
-
-	var buf []byte
-	if ip := net.ParseIP(host); ip != nil {
-		if ip4 := ip.To4(); ip4 != nil {
-			buf = append(buf, 0x01) // IPv4
-			buf = append(buf, ip4...)
-		} else {
-			buf = append(buf, 0x04) // IPv6
-			buf = append(buf, ip...)
-		}
-	} else {
-		if len(host) > 255 {
-			return fmt.Errorf("domain too long")
-		}
-		buf = append(buf, 0x03) // domain
-		buf = append(buf, byte(len(host)))
-		buf = append(buf, host...)
-	}
-
-	var portBytes [2]byte
-	binary.BigEndian.PutUint16(portBytes[:], uint16(portInt))
-	buf = append(buf, portBytes[:]...)
-
-	_, err = w.Write(buf)
-	return err
 }

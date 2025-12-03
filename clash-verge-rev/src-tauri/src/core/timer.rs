@@ -1,8 +1,6 @@
-use crate::{
-    config::Config, core::sysopt::Sysopt, feat, logging, logging_error, singleton,
-    utils::logging::Type,
-};
+use crate::{config::Config, feat, singleton, utils::resolve::is_resolve_done};
 use anyhow::{Context as _, Result};
+use clash_verge_logging::{Type, logging, logging_error};
 use delay_timer::prelude::{DelayTimer, DelayTimerBuilder, TaskBuilder};
 use parking_lot::RwLock;
 use smartstring::alias::String;
@@ -250,12 +248,10 @@ impl Timer {
         } // Locks are dropped here
 
         // Now perform async operations without holding locks
+        let delay_timer = self.delay_timer.write();
         for (uid, tid, interval) in operations_to_add {
-            // Re-acquire locks for individual operations
-            let delay_timer = self.delay_timer.write();
             if let Err(e) = self.add_task(&delay_timer, uid.clone(), tid, interval) {
                 logging_error!(Type::Timer, "Failed to add task for uid {}: {}", uid, e);
-
                 // Rollback on failure - remove from timer_map
                 self.timer_map.write().remove(&uid);
             } else {
@@ -392,7 +388,7 @@ impl Timer {
             .spawn_async_routine(move || {
                 let uid = uid.clone();
                 Box::pin(async move {
-                    Self::wait_until_sysopt(Duration::from_millis(1000)).await;
+                    Self::wait_until_resolve_done(Duration::from_millis(5000)).await;
                     Self::async_task(&uid).await;
                 }) as Pin<Box<dyn std::future::Future<Output = ()> + Send>>
             })
@@ -523,11 +519,11 @@ impl Timer {
         Self::emit_update_event(uid, false);
     }
 
-    async fn wait_until_sysopt(max_wait: Duration) {
+    async fn wait_until_resolve_done(max_wait: Duration) {
         let _ = timeout(max_wait, async {
-            while !Sysopt::global().is_initialed() {
-                logging!(warn, Type::Timer, "Waiting for Sysopt to be initialized...");
-                sleep(Duration::from_millis(30)).await;
+            while !is_resolve_done() {
+                logging!(debug, Type::Timer, "Waiting for resolve to be done...");
+                sleep(Duration::from_millis(200)).await;
             }
         })
         .await;

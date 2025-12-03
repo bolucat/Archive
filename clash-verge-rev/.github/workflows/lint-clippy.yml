@@ -44,7 +44,7 @@ jobs:
           echo "Manual trigger detected: skipping changes check and running clippy."
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -58,11 +58,13 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: "v1-rust"
+          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          workspaces: |
+            . -> target
           cache-all-crates: true
-          save-if: false
-          shared-key: autobuild-${{ runner.os }}-${{ matrix.target }}
-          key: ${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
         if: matrix.os == 'ubuntu-22.04'

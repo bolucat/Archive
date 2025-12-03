@@ -2,10 +2,9 @@ use crate::{
     cmd,
     config::{Config, PrfItem, PrfOption, profiles::profiles_draft_update_item_safe},
     core::{CoreManager, handle, tray},
-    logging, logging_error,
-    utils::logging::Type,
 };
 use anyhow::{Result, bail};
+use clash_verge_logging::{Type, logging, logging_error};
 use smartstring::alias::String;
 use tauri::Emitter as _;
 
@@ -119,7 +118,7 @@ async fn should_update_profile(
             "[订阅更新] {} 是远程订阅，URL: {}",
             uid,
             item.url
-                .clone()
+                .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("Profile URL is None"))?
         );
         Ok(Some((
@@ -260,9 +259,6 @@ pub async fn update_profile(
 }
 
 /// 增强配置
-pub async fn enhance_profiles() -> Result<()> {
-    crate::core::CoreManager::global()
-        .update_config()
-        .await
-        .map(|_| ())
+pub async fn enhance_profiles() -> Result<(bool, String)> {
+    crate::core::CoreManager::global().update_config().await
 }

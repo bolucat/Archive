@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-svgr/client" />
 import "./assets/styles/index.scss";
+import "./utils/monaco";
 
 import { ResizeObserver } from "@juggle/resize-observer";
 import { ComposeContextProvider } from "foxact/compose-context-provider";
@@ -13,12 +14,18 @@ import { BaseErrorBoundary } from "./components/base";
 import { router } from "./pages/_routers";
 import { AppDataProvider } from "./providers/app-data-provider";
 import { WindowProvider } from "./providers/window";
-import { initializeLanguage } from "./services/i18n";
+import { FALLBACK_LANGUAGE, initializeLanguage } from "./services/i18n";
+import {
+  preloadAppData,
+  resolveThemeMode,
+  getPreloadConfig,
+} from "./services/preload";
 import {
   LoadingCacheProvider,
   ThemeModeProvider,
   UpdateStateProvider,
 } from "./services/states";
+import { disableWebViewShortcuts } from "./utils/disable-webview-shortcuts";
 
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver;
@@ -33,23 +40,11 @@ if (!container) {
   );
 }
 
-document.addEventListener("keydown", (event) => {
-  // Disable WebView keyboard shortcuts
-  const disabledShortcuts =
-    ["F5", "F7"].includes(event.key) ||
-    (event.altKey && ["ArrowLeft", "ArrowRight"].includes(event.key)) ||
-    ((event.ctrlKey || event.metaKey) &&
-      ["F", "G", "H", "J", "P", "Q", "R", "U"].includes(
-        event.key.toUpperCase(),
-      ));
-  if (disabledShortcuts) {
-    event.preventDefault();
-  }
-});
+disableWebViewShortcuts();
 
-const initializeApp = () => {
+const initializeApp = (initialThemeMode: "light" | "dark") => {
   const contexts = [
-    <ThemeModeProvider key="theme" />,
+    <ThemeModeProvider key="theme" initialState={initialThemeMode} />,
     <LoadingCacheProvider key="loading" />,
     <UpdateStateProvider key="update" />,
   ];
@@ -70,20 +65,39 @@ const initializeApp = () => {
   );
 };
 
-initializeLanguage("zh").catch(console.error);
-initializeApp();
+const bootstrap = async () => {
+  const { initialThemeMode } = await preloadAppData();
+  initializeApp(initialThemeMode);
+};
 
-// 错误处理
+bootstrap().catch((error) => {
+  console.error(
+    "[main.tsx] App bootstrap failed, falling back to default language:",
+    error,
+  );
+  initializeLanguage(FALLBACK_LANGUAGE)
+    .catch((fallbackError) => {
+      console.error(
+        "[main.tsx] Fallback language initialization failed:",
+        fallbackError,
+      );
+    })
+    .finally(() => {
+      initializeApp(resolveThemeMode(getPreloadConfig()));
+    });
+});
+
+// Error handling
 window.addEventListener("error", (event) => {
-  console.error("[main.tsx] 全局错误:", event.error);
+  console.error("[main.tsx] Global error:", event.error);
 });
 
 window.addEventListener("unhandledrejection", (event) => {
-  console.error("[main.tsx] 未处理的Promise拒绝:", event.reason);
+  console.error("[main.tsx] Unhandled promise rejection:", event.reason);
 });
 
-// 页面关闭/刷新事件
+// Page close/refresh events
 window.addEventListener("beforeunload", () => {
-  // 同步清理所有 WebSocket 实例, 防止内存泄漏
+  // Clean up all WebSocket instances to prevent memory leaks
   MihomoWebSocket.cleanupAll();
 });

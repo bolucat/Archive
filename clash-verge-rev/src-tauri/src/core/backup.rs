@@ -1,12 +1,8 @@
 use crate::constants::files::DNS_CONFIG;
-use crate::{
-    config::Config,
-    logging,
-    process::AsyncHandler,
-    utils::{dirs, logging::Type},
-};
+use crate::{config::Config, process::AsyncHandler, utils::dirs};
 use anyhow::Error;
 use arc_swap::{ArcSwap, ArcSwapOption};
+use clash_verge_logging::{Type, logging};
 use once_cell::sync::OnceCell;
 use reqwest_dav::list_cmd::{ListEntity, ListFile};
 use smartstring::alias::String;
@@ -118,6 +114,7 @@ impl WebDavClient {
         let client = reqwest_dav::ClientBuilder::new()
             .set_agent(
                 reqwest::Client::builder()
+                    .use_rustls_tls()
                     .danger_accept_invalid_certs(true)
                     .timeout(Duration::from_secs(op.timeout()))
                     .user_agent(format!("clash-verge/{APP_VERSION} ({OS} WebDAV-Client)"))

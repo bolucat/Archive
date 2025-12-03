@@ -1,7 +1,7 @@
 use regex::Regex;
 use reqwest::Client;
 
-use crate::{logging, utils::logging::Type};
+use clash_verge_logging::{Type, logging};
 
 use super::UnlockItem;
 use super::utils::{country_code_to_emoji, get_local_date_string};
@@ -42,14 +42,14 @@ pub(super) async fn check_youtube_premium(client: &Client) -> UnlockItem {
                 }
 
                 UnlockItem {
-                    name: "Youtube Premium".to_string(),
+                    name: "YouTube Premium".to_string(),
                     status: status.to_string(),
                     region,
                     check_time: Some(get_local_date_string()),
                 }
             } else {
                 UnlockItem {
-                    name: "Youtube Premium".to_string(),
+                    name: "YouTube Premium".to_string(),
                     status: "Failed".to_string(),
                     region: None,
                     check_time: Some(get_local_date_string()),
@@ -57,7 +57,7 @@ pub(super) async fn check_youtube_premium(client: &Client) -> UnlockItem {
             }
         }
         Err(_) => UnlockItem {
-            name: "Youtube Premium".to_string(),
+            name: "YouTube Premium".to_string(),
             status: "Failed".to_string(),
             region: None,
             check_time: Some(get_local_date_string()),

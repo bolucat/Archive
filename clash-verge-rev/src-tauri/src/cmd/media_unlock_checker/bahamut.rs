@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
+use clash_verge_logging::{Type, logging};
 use regex::Regex;
 use reqwest::{Client, cookie::Jar};
-
-use crate::{logging, utils::logging::Type};
 
 use super::UnlockItem;
 use super::utils::{country_code_to_emoji, get_local_date_string};
@@ -12,6 +11,7 @@ pub(super) async fn check_bahamut_anime(client: &Client) -> UnlockItem {
     let cookie_store = Arc::new(Jar::default());
 
     let client_with_cookies = match Client::builder()
+        .use_rustls_tls()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
         .cookie_provider(Arc::clone(&cookie_store))
         .build() {

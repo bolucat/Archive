@@ -16,6 +16,7 @@ import {
   useTrafficGraphDataEnhanced,
   type ITrafficDataPoint,
 } from "@/hooks/use-traffic-monitor";
+import { debugLog } from "@/utils/debug";
 import parseTraffic from "@/utils/parse-traffic";
 
 // 流量数据项接口
@@ -109,7 +110,7 @@ export const EnhancedCanvasTrafficGraph = memo(
     const { t } = useTranslation();
 
     // 使用增强版全局流量数据管理
-    const { dataPoints, getDataForTimeRange, samplerStats } =
+    const { dataPoints, requestRange, samplerStats } =
       useTrafficGraphDataEnhanced();
 
     // 基础状态
@@ -182,8 +183,7 @@ export const EnhancedCanvasTrafficGraph = memo(
 
     // 监听数据变化
     useEffect(() => {
-      const timeRangeData = getDataForTimeRange(timeRange);
-      updateDisplayData(timeRangeData);
+      updateDisplayData(dataPoints);
 
       return () => {
         if (debounceTimeoutRef.current !== null) {
@@ -191,7 +191,11 @@ export const EnhancedCanvasTrafficGraph = memo(
           debounceTimeoutRef.current = null;
         }
       };
-    }, [dataPoints, timeRange, getDataForTimeRange, updateDisplayData]);
+    }, [dataPoints, updateDisplayData]);
+
+    useEffect(() => {
+      requestRange(timeRange);
+    }, [requestRange, timeRange]);
 
     useEffect(() => {
       if (displayData.length === 0) {
@@ -795,32 +799,43 @@ export const EnhancedCanvasTrafficGraph = memo(
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // Canvas尺寸设置
+      // Compute CSS size and pixel buffer size.
+      // Note: WebView2 on Windows may return fractional CSS sizes after maximize.
+      // We round pixel buffer to integers to avoid 1px gaps/cropping artifacts.
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const width = rect.width;
-      const height = rect.height;
+      const cssWidth = rect.width;
+      const cssHeight = rect.height;
+      const pixelWidth = Math.max(1, Math.floor(cssWidth * dpr));
+      const pixelHeight = Math.max(1, Math.floor(cssHeight * dpr));
 
-      // 只在尺寸变化时重新设置Canvas
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
-        canvas.style.width = width + "px";
-        canvas.style.height = height + "px";
+      // Keep CSS-driven sizing so the canvas stretches with its container (e.g., on maximize).
+      if (canvas.style.width !== "100%") {
+        canvas.style.width = "100%";
+      }
+      if (canvas.style.height !== "100%") {
+        canvas.style.height = "100%";
       }
 
-      // 清空画布
-      ctx.clearRect(0, 0, width, height);
+      if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+        // Reset transform before scaling to avoid cumulative scaling offsets.
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr); // map CSS units to device pixels
+      }
+
+      // Clear using CSS dimensions; context is already scaled by DPR.
+      ctx.clearRect(0, 0, cssWidth, cssHeight);
 
       // 绘制Y轴刻度线（背景层）
-      drawYAxis(ctx, width, height, displayData);
+      drawYAxis(ctx, cssWidth, cssHeight, displayData);
 
       // 绘制网格
-      drawGrid(ctx, width, height);
+      drawGrid(ctx, cssWidth, cssHeight);
 
       // 绘制时间轴
-      drawTimeAxis(ctx, width, height, displayData);
+      drawTimeAxis(ctx, cssWidth, cssHeight, displayData);
 
       // 提取流量数据
       const upValues = displayData.map((d) => d.up);
@@ -830,8 +845,8 @@ export const EnhancedCanvasTrafficGraph = memo(
       drawTrafficLine(
         ctx,
         downValues,
-        width,
-        height,
+        cssWidth,
+        cssHeight,
         colors.down,
         true,
         displayData,
@@ -841,8 +856,8 @@ export const EnhancedCanvasTrafficGraph = memo(
       drawTrafficLine(
         ctx,
         upValues,
-        width,
-        height,
+        cssWidth,
+        cssHeight,
         colors.up,
         true,
         displayData,
@@ -851,7 +866,7 @@ export const EnhancedCanvasTrafficGraph = memo(
       // 绘制悬浮高亮线
       if (tooltipData.visible && tooltipData.dataIndex >= 0) {
         const padding = GRAPH_CONFIG.padding;
-        const effectiveWidth = width - padding.left - padding.right;
+        const effectiveWidth = cssWidth - padding.left - padding.right;
         const dataX =
           padding.left +
           (tooltipData.dataIndex / (displayData.length - 1)) * effectiveWidth;
@@ -865,13 +880,13 @@ export const EnhancedCanvasTrafficGraph = memo(
         // 绘制垂直指示线
         ctx.beginPath();
         ctx.moveTo(dataX, padding.top);
-        ctx.lineTo(dataX, height - padding.bottom);
+        ctx.lineTo(dataX, cssHeight - padding.bottom);
         ctx.stroke();
 
         // 绘制水平指示线（高亮Y轴位置）
         ctx.beginPath();
         ctx.moveTo(padding.left, tooltipData.highlightY);
-        ctx.lineTo(width - padding.right, tooltipData.highlightY);
+        ctx.lineTo(cssWidth - padding.right, tooltipData.highlightY);
         ctx.stroke();
 
         ctx.restore();
@@ -1033,7 +1048,7 @@ export const EnhancedCanvasTrafficGraph = memo(
 
     // 兼容性方法
     const appendData = useCallback((data: ITrafficItem) => {
-      console.log(
+      debugLog(
         "[EnhancedCanvasTrafficGraphV2] appendData called (using global data):",
         data,
       );

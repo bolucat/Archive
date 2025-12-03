@@ -181,9 +181,9 @@ export const ProfileMore = (props: Props) => {
         <EditorViewer
           open={true}
           title={t(globalTitles[id])}
-          initialData={readProfileFile(id)}
+          initialData={() => readProfileFile(id)}
+          dataKey={id}
           language={id === "Merge" ? "yaml" : "javascript"}
-          schema={id === "Merge" ? "clash" : undefined}
           onSave={async (prev, curr) => {
             await saveProfileFile(id, curr ?? "");
             onSave?.(prev, curr);

@@ -3,12 +3,10 @@ use crate::core::sysopt::Sysopt;
 use crate::utils::resolve::ui::{self, UiReadyStage};
 use crate::{
     cmd::StringifyErr as _,
-    feat, logging,
-    utils::{
-        dirs::{self, PathBufExec as _},
-        logging::Type,
-    },
+    feat,
+    utils::dirs::{self, PathBufExec as _},
 };
+use clash_verge_logging::{Type, logging};
 use smartstring::alias::String;
 use std::path::Path;
 use tauri::{AppHandle, Manager as _};
@@ -84,8 +82,8 @@ pub async fn restart_app() -> CmdResult<()> {
 
 /// 获取便携版标识
 #[tauri::command]
-pub fn get_portable_flag() -> CmdResult<bool> {
-    Ok(*dirs::PORTABLE_FLAG.get().unwrap_or(&false))
+pub fn get_portable_flag() -> bool {
+    *dirs::PORTABLE_FLAG.get().unwrap_or(&false)
 }
 
 /// 获取应用目录
@@ -241,16 +239,14 @@ pub async fn copy_icon_file(path: String, icon_info: IconInfo) -> CmdResult<Stri
 
 /// 通知UI已准备就绪
 #[tauri::command]
-pub fn notify_ui_ready() -> CmdResult<()> {
+pub fn notify_ui_ready() {
     logging!(info, Type::Cmd, "前端UI已准备就绪");
     ui::mark_ui_ready();
-    Ok(())
 }
 
 /// UI加载阶段
 #[tauri::command]
-pub fn update_ui_stage(stage: UiReadyStage) -> CmdResult<()> {
+pub fn update_ui_stage(stage: UiReadyStage) {
     logging!(info, Type::Cmd, "UI加载阶段更新: {:?}", &stage);
     ui::update_ui_ready_stage(stage);
-    Ok(())
 }

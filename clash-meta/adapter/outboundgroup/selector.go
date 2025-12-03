@@ -108,6 +108,14 @@ func (s *Selector) selectedProxy(touch bool) C.Proxy {
 	return proxies[0]
 }
 
+func (s *Selector) Providers() []P.ProxyProvider {
+	return s.providers
+}
+
+func (s *Selector) Proxies() []C.Proxy {
+	return s.GetProxies(false)
+}
+
 func NewSelector(option *GroupCommonOption, providers []P.ProxyProvider) *Selector {
 	return &Selector{
 		GroupBase: NewGroupBase(GroupBaseOption{

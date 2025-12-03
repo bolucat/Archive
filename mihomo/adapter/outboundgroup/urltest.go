@@ -185,6 +185,14 @@ func (u *URLTest) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (u *URLTest) Providers() []P.ProxyProvider {
+	return u.providers
+}
+
+func (u *URLTest) Proxies() []C.Proxy {
+	return u.GetProxies(false)
+}
+
 func (u *URLTest) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (map[string]uint16, error) {
 	return u.GroupBase.URLTest(ctx, u.testUrl, expectedStatus)
 }

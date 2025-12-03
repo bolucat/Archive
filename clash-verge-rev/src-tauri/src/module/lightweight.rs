@@ -1,13 +1,10 @@
 use crate::{
     config::Config,
     core::{handle, timer::Timer, tray::Tray},
-    log_err, logging,
     process::AsyncHandler,
-    utils::logging::Type,
 };
 
-#[cfg(target_os = "macos")]
-use crate::logging_error;
+use clash_verge_logging::{Type, logging, logging_error};
 
 use crate::utils::window_manager::WindowManager;
 use anyhow::{Context as _, Result};
@@ -184,7 +181,7 @@ fn cancel_window_close_listener() {
 fn setup_webview_focus_listener() {
     if let Some(window) = handle::Handle::get_window() {
         let handler_id = window.listen("tauri://focus", move |_event| {
-            log_err!(cancel_light_weight_timer());
+            logging_error!(Type::Lightweight, cancel_light_weight_timer());
             logging!(
                 debug,
                 Type::Lightweight,

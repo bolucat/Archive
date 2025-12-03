@@ -1,16 +1,25 @@
-use super::{IClashTemp, IProfiles, IRuntime, IVerge};
+use super::{IClashTemp, IProfiles, IVerge};
 use crate::{
-    cmd,
     config::{PrfItem, profiles_append_item_safe},
     constants::{files, timing},
-    core::{CoreManager, handle, service, tray, validate::CoreConfigValidator},
-    enhance, logging, logging_error,
-    utils::{Draft, dirs, help, logging::Type},
+    core::{
+        CoreManager,
+        handle::{self, Handle},
+        service, tray,
+        validate::CoreConfigValidator,
+    },
+    enhance,
+    process::AsyncHandler,
+    utils::{dirs, help},
 };
 use anyhow::{Result, anyhow};
 use backoff::{Error as BackoffError, ExponentialBackoff};
+use clash_verge_draft::Draft;
+use clash_verge_logging::{Type, logging, logging_error};
+use clash_verge_types::runtime::IRuntime;
 use smartstring::alias::String;
 use std::path::PathBuf;
+use tauri_plugin_clash_verge_sysinfo::is_current_app_handle_admin;
 use tokio::sync::OnceCell;
 use tokio::time::sleep;
 
@@ -57,9 +66,10 @@ impl Config {
         Self::ensure_default_profile_items().await?;
 
         // init Tun mode
-        if !cmd::system::is_admin().unwrap_or_default()
-            && service::is_service_available().await.is_err()
-        {
+        let handle = Handle::app_handle();
+        let is_admin = is_current_app_handle_admin(handle);
+        let is_service_available = service::is_service_available().await.is_ok();
+        if !is_admin && !is_service_available {
             let verge = Self::verge().await;
             verge.edit_draft(|d| {
                 d.enable_tun_mode = Some(false);
@@ -199,6 +209,32 @@ impl Config {
         if let Err(e) = backoff::future::retry(backoff_strategy, operation).await {
             logging!(error, Type::Setup, "Config init verification failed: {}", e);
         }
+    }
+
+    // 升级草稿为正式数据，并写入文件。避免用户行为丢失。
+    // 仅在应用退出、重启、关机监听事件启用
+    pub async fn apply_all_and_save_file() {
+        logging!(info, Type::Config, "save all draft data");
+        let save_clash_task = AsyncHandler::spawn(|| async {
+            let clash = Self::clash().await;
+            clash.apply();
+            logging_error!(Type::Config, clash.data_arc().save_config().await);
+        });
+
+        let save_verge_task = AsyncHandler::spawn(|| async {
+            let verge = Self::verge().await;
+            verge.apply();
+            logging_error!(Type::Config, verge.data_arc().save_file().await);
+        });
+
+        let save_profiles_task = AsyncHandler::spawn(|| async {
+            let profiles = Self::profiles().await;
+            profiles.apply();
+            logging_error!(Type::Config, profiles.data_arc().save_file().await);
+        });
+
+        let _ = tokio::join!(save_clash_task, save_verge_task, save_profiles_task);
+        logging!(info, Type::Config, "save all draft data finished");
     }
 }
 

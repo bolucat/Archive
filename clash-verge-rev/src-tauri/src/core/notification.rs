@@ -1,9 +1,6 @@
 use super::handle::Handle;
-use crate::{
-    constants::{retry, timing},
-    logging,
-    utils::logging::Type,
-};
+use crate::constants::{retry, timing};
+use clash_verge_logging::{Type, logging};
 use parking_lot::RwLock;
 use smartstring::alias::String;
 use std::{
@@ -16,6 +13,7 @@ use std::{
 };
 use tauri::{Emitter as _, WebviewWindow};
 
+// TODO 重构或优化，避免 Clone 过多
 #[derive(Debug, Clone)]
 pub enum FrontendEvent {
     RefreshClash,
@@ -105,8 +103,6 @@ impl NotificationSystem {
         }
     }
 
-    // Clippy 似乎对 parking lot 的 RwLock 有误报，这里禁用相关警告
-    #[allow(clippy::significant_drop_tightening)]
     fn process_event(handle: &super::handle::Handle, event: FrontendEvent) {
         let binding = handle.notification_system.read();
         let system = match binding.as_ref() {
@@ -120,6 +116,7 @@ impl NotificationSystem {
 
         if let Some(window) = super::handle::Handle::get_window() {
             system.emit_to_window(&window, event);
+            drop(binding);
             thread::sleep(timing::EVENT_EMIT_DELAY);
         }
     }

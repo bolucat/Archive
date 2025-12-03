@@ -23,7 +23,7 @@ require (
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/kcp-go v0.0.0-20251111012849-7455698490e9
-	github.com/metacubex/quic-go v0.55.1-0.20251024060151-bd465f127128
+	github.com/metacubex/quic-go v0.55.1-0.20251203073212-6940cac967c2
 	github.com/metacubex/randv2 v0.2.0
 	github.com/metacubex/restls-client-go v0.1.7
 	github.com/metacubex/sing v0.5.6
@@ -43,7 +43,7 @@ require (
 	github.com/mroth/weightedrand/v2 v2.1.0
 	github.com/openacid/low v0.1.21
 	github.com/oschwald/maxminddb-golang v1.12.0 // lastest version compatible with golang1.20
-	github.com/saba-futai/sudoku v0.0.1-g
+	github.com/saba-futai/sudoku v0.0.1-i
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/netlink v0.0.0-20240612041022-b9a21c07ac6a
 	github.com/samber/lo v1.52.0

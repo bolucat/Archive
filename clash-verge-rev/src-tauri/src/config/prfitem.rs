@@ -555,32 +555,33 @@ impl PrfItem {
 
 impl PrfItem {
     /// 获取current指向的订阅的merge
-    pub fn current_merge(&self) -> Option<String> {
-        self.option.as_ref().and_then(|o| o.merge.clone())
+    pub fn current_merge(&self) -> Option<&String> {
+        self.option.as_ref().and_then(|o| o.merge.as_ref())
     }
 
     /// 获取current指向的订阅的script
-    pub fn current_script(&self) -> Option<String> {
-        self.option.as_ref().and_then(|o| o.script.clone())
+    pub fn current_script(&self) -> Option<&String> {
+        self.option.as_ref().and_then(|o| o.script.as_ref())
     }
 
     /// 获取current指向的订阅的rules
-    pub fn current_rules(&self) -> Option<String> {
-        self.option.as_ref().and_then(|o| o.rules.clone())
+    pub fn current_rules(&self) -> Option<&String> {
+        self.option.as_ref().and_then(|o| o.rules.as_ref())
     }
 
     /// 获取current指向的订阅的proxies
-    pub fn current_proxies(&self) -> Option<String> {
-        self.option.as_ref().and_then(|o| o.proxies.clone())
+    pub fn current_proxies(&self) -> Option<&String> {
+        self.option.as_ref().and_then(|o| o.proxies.as_ref())
     }
 
     /// 获取current指向的订阅的groups
-    pub fn current_groups(&self) -> Option<String> {
-        self.option.as_ref().and_then(|o| o.groups.clone())
+    pub fn current_groups(&self) -> Option<&String> {
+        self.option.as_ref().and_then(|o| o.groups.as_ref())
     }
 }
 
 // 向前兼容，默认为订阅启用自动更新
+#[allow(clippy::unnecessary_wraps)]
 const fn default_allow_auto_update() -> Option<bool> {
     Some(true)
 }

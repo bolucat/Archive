@@ -4,17 +4,14 @@ icon: material/alert-decagram
 
 #### 1.13.0-alpha.28
 
+* Update quic-go to v0.57.1
 * Fixes and improvements
 
-_We are currently unable to notarize the standalone version of SFM for unknown reasons (TestFlight users are not affected).
-Providing this update is not recommended for package managers that offer SFM standalone binaries._
+Unfortunately, for non-technical reasons, we are currently unable to notarize a standalone version of the macOS client:
+because system extensions require signatures to function, we have had to temporarily halt its release.
 
-#### 1.12.13
-
-* Fixes and improvements
-
-_We are currently unable to notarize the standalone version of SFM for unknown reasons (TestFlight users are not affected).
-Providing this update is not recommended for package managers that offer SFM standalone binaries._
+We plan to fix the App Store release issue and launch a new standalone desktop client, but until then,
+only clients on TestFlight will be available (unless you have an Apple Developer Program and compile from source code).
 
 #### 1.12.12
 

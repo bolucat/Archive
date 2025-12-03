@@ -1,18 +1,16 @@
 use crate::{
     config::{Config, IVerge},
     core::{CoreManager, handle, hotkey, sysopt, tray},
-    logging_error,
     module::{auto_backup::AutoBackupManager, lightweight},
-    utils::{draft::SharedBox, logging::Type},
 };
 use anyhow::Result;
+use clash_verge_draft::SharedBox;
+use clash_verge_logging::{Type, logging, logging_error};
 use serde_yaml_ng::Mapping;
 
 /// Patch Clash configuration
-pub async fn patch_clash(patch: Mapping) -> Result<()> {
-    Config::clash()
-        .await
-        .edit_draft(|d| d.patch_config(patch.clone()));
+pub async fn patch_clash(patch: &Mapping) -> Result<()> {
+    Config::clash().await.edit_draft(|d| d.patch_config(patch));
 
     let res = {
         // 激活订阅
@@ -107,6 +105,8 @@ fn determine_update_flags(patch: &IVerge) -> i32 {
     let enable_auto_light_weight = patch.enable_auto_light_weight_mode;
     let enable_external_controller = patch.enable_external_controller;
     let tray_inline_proxy_groups = patch.tray_inline_proxy_groups;
+    let enable_proxy_guard = patch.enable_proxy_guard;
+    let proxy_guard_duration = patch.proxy_guard_duration;
 
     if tun_mode.is_some() {
         update_flags |= UpdateFlags::ClashConfig as i32;
@@ -144,7 +144,12 @@ fn determine_update_flags(patch: &IVerge) -> i32 {
         update_flags |= UpdateFlags::SystrayIcon as i32;
     }
 
-    if proxy_bypass.is_some() || pac_content.is_some() || pac.is_some() {
+    if proxy_bypass.is_some()
+        || pac_content.is_some()
+        || pac.is_some()
+        || enable_proxy_guard.is_some()
+        || proxy_guard_duration.is_some()
+    {
         update_flags |= UpdateFlags::SysProxy as i32;
     }
 
@@ -207,6 +212,7 @@ async fn process_terminated_flags(update_flags: i32, patch: &IVerge) -> Result<(
     }
     if (update_flags & (UpdateFlags::SysProxy as i32)) != 0 {
         sysopt::Sysopt::global().update_sysproxy().await?;
+        sysopt::Sysopt::global().refresh_guard().await;
     }
     if (update_flags & (UpdateFlags::Hotkey as i32)) != 0
         && let Some(hotkeys) = &patch.hotkeys
@@ -258,6 +264,7 @@ pub async fn patch_verge(patch: &IVerge, not_save_file: bool) -> Result<()> {
     if !not_save_file {
         // 分离数据获取和异步调用
         let verge_data = Config::verge().await.data_arc();
+        logging!(info, Type::Setup, "Saving Verge configuration to file...");
         verge_data.save_file().await?;
     }
     Ok(())

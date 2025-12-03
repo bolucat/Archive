@@ -1,19 +1,23 @@
 use super::{CoreManager, RunningMode};
-use crate::config::{Config, ConfigType, IVerge};
-use crate::{
-    core::{
-        logger::CLASH_LOGGER,
-        service::{SERVICE_MANAGER, ServiceStatus},
-    },
-    logging,
-    utils::logging::Type,
+use crate::cmd::StringifyErr as _;
+use crate::config::{Config, IVerge};
+use crate::core::handle::Handle;
+use crate::core::{
+    logger::CLASH_LOGGER,
+    service::{SERVICE_MANAGER, ServiceStatus},
 };
 use anyhow::Result;
+use clash_verge_logging::{Type, logging};
+use scopeguard::defer;
 use smartstring::alias::String;
+use tauri_plugin_clash_verge_sysinfo;
 
 impl CoreManager {
     pub async fn start_core(&self) -> Result<()> {
         self.prepare_startup().await?;
+        defer! {
+            self.after_core_process();
+        }
 
         match *self.get_running_mode() {
             RunningMode::Service => self.start_core_by_service().await,
@@ -23,10 +27,16 @@ impl CoreManager {
 
     pub async fn stop_core(&self) -> Result<()> {
         CLASH_LOGGER.clear_logs().await;
+        defer! {
+            self.after_core_process();
+        }
 
         match *self.get_running_mode() {
             RunningMode::Service => self.stop_core_by_service().await,
-            RunningMode::Sidecar => self.stop_core_by_sidecar(),
+            RunningMode::Sidecar => {
+                self.stop_core_by_sidecar();
+                Ok(())
+            }
             RunningMode::NotRunning => Ok(()),
         }
     }
@@ -55,13 +65,8 @@ impl CoreManager {
         let verge_data = Config::verge().await.latest_arc();
         verge_data.save_file().await.map_err(|e| e.to_string())?;
 
-        let run_path = Config::generate_file(ConfigType::Run)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        self.apply_config(run_path)
-            .await
-            .map_err(|e| e.to_string().into())
+        self.update_config().await.stringify_err()?;
+        Ok(())
     }
 
     async fn prepare_startup(&self) -> Result<()> {
@@ -76,6 +81,14 @@ impl CoreManager {
 
         self.set_running_mode(mode);
         Ok(())
+    }
+
+    fn after_core_process(&self) {
+        let app_handle = Handle::app_handle();
+        tauri_plugin_clash_verge_sysinfo::set_app_core_mode(
+            app_handle,
+            self.get_running_mode().to_string(),
+        );
     }
 
     #[cfg(target_os = "windows")]

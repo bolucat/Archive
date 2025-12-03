@@ -13,12 +13,13 @@ use self::{
     seq::{SeqMap, use_seq},
     tun::use_tun,
 };
-use crate::constants;
 use crate::utils::dirs;
 use crate::{config::Config, utils::tmpl};
-use crate::{logging, utils::logging::Type};
-use serde_yaml_ng::Mapping;
+use crate::{config::IVerge, constants};
+use clash_verge_logging::{Type, logging};
+use serde_yaml_ng::{Mapping, Value};
 use smartstring::alias::String;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use tokio::fs;
 
@@ -89,34 +90,41 @@ impl Default for ProfileItems {
 }
 
 async fn get_config_values() -> ConfigValues {
-    let clash_config = { Config::clash().await.latest_arc().0.clone() };
+    let clash = Config::clash().await;
+    let clash_arc = clash.latest_arc();
+    let clash_config = clash_arc.0.clone();
+    drop(clash_arc);
+    drop(clash);
 
-    let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = {
-        let verge = Config::verge().await;
-        let verge = verge.latest_arc();
-        (
-            Some(verge.get_valid_clash_core()),
-            verge.enable_tun_mode.unwrap_or(false),
-            verge.enable_builtin_enhanced.unwrap_or(true),
-            verge.verge_socks_enabled.unwrap_or(false),
-            verge.verge_http_enabled.unwrap_or(false),
-            verge.enable_dns_settings.unwrap_or(false),
-        )
-    };
+    let verge = Config::verge().await;
+
+    let verge_arc = verge.latest_arc();
+    let IVerge {
+        ref enable_tun_mode,
+        ref enable_builtin_enhanced,
+        ref verge_socks_enabled,
+        ref verge_http_enabled,
+        ref enable_dns_settings,
+        ..
+    } = **verge_arc;
+
+    let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
+        Some(verge_arc.get_valid_clash_core()),
+        enable_tun_mode.unwrap_or(false),
+        enable_builtin_enhanced.unwrap_or(true),
+        verge_socks_enabled.unwrap_or(false),
+        verge_http_enabled.unwrap_or(false),
+        enable_dns_settings.unwrap_or(false),
+    );
 
     #[cfg(not(target_os = "windows"))]
-    let redir_enabled = {
-        let verge = Config::verge().await;
-        let verge = verge.latest_arc();
-        verge.verge_redir_enabled.unwrap_or(false)
-    };
+    let redir_enabled = verge_arc.verge_redir_enabled.unwrap_or(false);
 
     #[cfg(target_os = "linux")]
-    let tproxy_enabled = {
-        let verge = Config::verge().await;
-        let verge = verge.latest_arc();
-        verge.verge_tproxy_enabled.unwrap_or(false)
-    };
+    let tproxy_enabled = verge_arc.verge_tproxy_enabled.unwrap_or(false);
+
+    drop(verge_arc);
+    drop(verge);
 
     ConfigValues {
         clash_config,
@@ -135,66 +143,62 @@ async fn get_config_values() -> ConfigValues {
 
 #[allow(clippy::cognitive_complexity)]
 async fn collect_profile_items() -> ProfileItems {
-    // 从profiles里拿东西 - 先收集需要的数据，然后释放锁
-    let (current, merge_uid, script_uid, rules_uid, proxies_uid, groups_uid, name) = {
-        let current = {
-            let profiles = Config::profiles().await;
-            let profiles_clone = profiles.latest_arc();
-            profiles_clone.current_mapping().await.unwrap_or_default()
-        };
+    let profiles = Config::profiles().await;
+    let profiles_arc = profiles.latest_arc();
+    drop(profiles);
 
-        let profiles = Config::profiles().await;
-        let profiles_ref = profiles.latest_arc();
-        let current_profile_uid = match profiles_ref.get_current() {
-            Some(uid) => uid.clone(),
-            None => return ProfileItems::default(),
-        };
+    let current = profiles_arc.current_mapping().await.unwrap_or_default();
 
-        let current_item = match profiles_ref.get_item_arc(&current_profile_uid) {
-            Some(item) => item,
-            None => return ProfileItems::default(),
-        };
-
-        let merge_uid = current_item
-            .current_merge()
-            .unwrap_or_else(|| "Merge".into());
-        let script_uid = current_item
-            .current_script()
-            .unwrap_or_else(|| "Script".into());
-        let rules_uid = current_item
-            .current_rules()
-            .unwrap_or_else(|| "Rules".into());
-        let proxies_uid = current_item
-            .current_proxies()
-            .unwrap_or_else(|| "Proxies".into());
-        let groups_uid = current_item
-            .current_groups()
-            .unwrap_or_else(|| "Groups".into());
-
-        let name = profiles_ref
-            .get_item(&current_profile_uid)
-            .ok()
-            .and_then(|item| item.name.clone())
-            .unwrap_or_default();
-
-        (
-            current,
-            merge_uid,
-            script_uid,
-            rules_uid,
-            proxies_uid,
-            groups_uid,
-            name,
-        )
+    let current_profile_uid = match profiles_arc.get_current() {
+        Some(uid) => uid,
+        None => {
+            drop(profiles_arc);
+            return ProfileItems::default();
+        }
     };
 
-    // 现在获取具体的items，此时profiles锁已经释放
+    let current_item = match profiles_arc.get_item(current_profile_uid) {
+        Ok(item) => item,
+        Err(_) => {
+            drop(profiles_arc);
+            return ProfileItems::default();
+        }
+    };
+
+    let merge_uid: Cow<'_, str> = if let Some(s) = current_item.current_merge() {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned("Merge".into())
+    };
+    let script_uid: Cow<'_, str> = if let Some(s) = current_item.current_script() {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned("Script".into())
+    };
+    let rules_uid: Cow<'_, str> = if let Some(s) = current_item.current_rules() {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned("Rules".into())
+    };
+    let proxies_uid: Cow<'_, str> = if let Some(s) = current_item.current_proxies() {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned("Proxies".into())
+    };
+    let groups_uid: Cow<'_, str> = if let Some(s) = current_item.current_groups() {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned("Groups".into())
+    };
+
+    let name = profiles_arc
+        .get_item(current_profile_uid)
+        .ok()
+        .and_then(|item| item.name.clone())
+        .unwrap_or_default();
+
     let merge_item = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item(&merge_uid).ok().cloned()
-        };
+        let item = profiles_arc.get_item(&merge_uid).ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -207,11 +211,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let script_item = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item(&script_uid).ok().cloned()
-        };
+        let item = profiles_arc.get_item(&script_uid).ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -224,11 +224,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let rules_item = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item(&rules_uid).ok().cloned()
-        };
+        let item = profiles_arc.get_item(&rules_uid).ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -241,11 +237,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let proxies_item = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item(&proxies_uid).ok().cloned()
-        };
+        let item = profiles_arc.get_item(&proxies_uid).ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -258,11 +250,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let groups_item = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item(&groups_uid).ok().cloned()
-        };
+        let item = profiles_arc.get_item(&groups_uid).ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -275,11 +263,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let global_merge = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item("Merge").ok().cloned()
-        };
+        let item = profiles_arc.get_item("Merge").ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -292,11 +276,7 @@ async fn collect_profile_items() -> ProfileItems {
     });
 
     let global_script = {
-        let item = {
-            let profiles = Config::profiles().await;
-            let profiles = profiles.latest_arc();
-            profiles.get_item("Script").ok().cloned()
-        };
+        let item = profiles_arc.get_item("Script").ok().cloned();
         if let Some(item) = item {
             <Option<ChainItem>>::from_async(&item).await
         } else {
@@ -307,6 +287,8 @@ async fn collect_profile_items() -> ProfileItems {
         uid: "Script".into(),
         data: ChainType::Script(tmpl::ITEM_SCRIPT.into()),
     });
+
+    drop(profiles_arc);
 
     ProfileItems {
         config: current,
@@ -325,19 +307,19 @@ fn process_global_items(
     mut config: Mapping,
     global_merge: ChainItem,
     global_script: ChainItem,
-    profile_name: String,
+    profile_name: &String,
 ) -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     let mut result_map = HashMap::new();
     let mut exists_keys = use_keys(&config);
 
     if let ChainType::Merge(merge) = global_merge.data {
         exists_keys.extend(use_keys(&merge));
-        config = use_merge(merge, config.to_owned());
+        config = use_merge(&merge, config.to_owned());
     }
 
     if let ChainType::Script(script) = global_script.data {
         let mut logs = vec![];
-        match use_script(script, config.to_owned(), profile_name) {
+        match use_script(script, &config, profile_name) {
             Ok((res_config, res_logs)) => {
                 exists_keys.extend(use_keys(&res_config));
                 config = res_config;
@@ -361,7 +343,7 @@ fn process_profile_items(
     groups_item: ChainItem,
     merge_item: ChainItem,
     script_item: ChainItem,
-    profile_name: String,
+    profile_name: &String,
 ) -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     if let ChainType::Rules(rules) = rules_item.data {
         config = use_seq(rules, config.to_owned(), "rules");
@@ -377,12 +359,12 @@ fn process_profile_items(
 
     if let ChainType::Merge(merge) = merge_item.data {
         exists_keys.extend(use_keys(&merge));
-        config = use_merge(merge, config.to_owned());
+        config = use_merge(&merge, config.to_owned());
     }
 
     if let ChainType::Script(script) = script_item.data {
         let mut logs = vec![];
-        match use_script(script, config.to_owned(), profile_name) {
+        match use_script(script, &config, profile_name) {
             Ok((res_config, res_logs)) => {
                 exists_keys.extend(use_keys(&res_config));
                 config = res_config;
@@ -425,7 +407,7 @@ async fn merge_default_config(
             }
             #[cfg(target_os = "windows")]
             {
-                if key.as_str() == Some("redir-port") || key.as_str() == Some("tproxy-port") {
+                if key.as_str() == Some("redir-port") {
                     continue;
                 }
             }
@@ -439,6 +421,13 @@ async fn merge_default_config(
             #[cfg(target_os = "linux")]
             {
                 if key.as_str() == Some("tproxy-port") && !tproxy_enabled {
+                    config.remove("tproxy-port");
+                    continue;
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                if key.as_str() == Some("tproxy-port") {
                     config.remove("tproxy-port");
                     continue;
                 }
@@ -479,7 +468,7 @@ fn apply_builtin_scripts(
             .for_each(|item| {
                 logging!(debug, Type::Core, "run builtin script {}", item.uid);
                 if let ChainType::Script(script) = item.data {
-                    match use_script(script, config.to_owned(), "".into()) {
+                    match use_script(script, &config, &String::from("")) {
                         Ok((res_config, _)) => {
                             config = res_config;
                         }
@@ -489,6 +478,88 @@ fn apply_builtin_scripts(
                     }
                 }
             });
+    }
+
+    config
+}
+
+fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
+    const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
+
+    let proxy_names = config
+        .get("proxies")
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|item| match item {
+                    Value::Mapping(map) => map
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(|name| name.to_owned().into()),
+                    Value::String(name) => Some(name.to_owned().into()),
+                    _ => None,
+                })
+                .collect::<HashSet<String>>()
+        })
+        .unwrap_or_default();
+
+    let group_names = config
+        .get("proxy-groups")
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|item| {
+                    item.as_mapping()
+                        .and_then(|map| map.get("name"))
+                        .and_then(Value::as_str)
+                        .map(std::convert::Into::into)
+                })
+                .collect::<HashSet<String>>()
+        })
+        .unwrap_or_default();
+
+    let provider_names = config
+        .get("proxy-providers")
+        .and_then(Value::as_mapping)
+        .map(|map| {
+            map.keys()
+                .filter_map(Value::as_str)
+                .map(std::convert::Into::into)
+                .collect::<HashSet<String>>()
+        })
+        .unwrap_or_default();
+
+    let mut allowed_names = proxy_names;
+    allowed_names.extend(group_names);
+    allowed_names.extend(provider_names.iter().cloned());
+    allowed_names.extend(BUILTIN_POLICIES.iter().map(|p| (*p).into()));
+
+    if let Some(Value::Sequence(groups)) = config.get_mut("proxy-groups") {
+        for group in groups {
+            if let Some(group_map) = group.as_mapping_mut() {
+                let mut has_valid_provider = false;
+
+                if let Some(Value::Sequence(uses)) = group_map.get_mut("use") {
+                    uses.retain(|provider| match provider {
+                        Value::String(name) => {
+                            let exists = provider_names.contains(name.as_str());
+                            has_valid_provider = has_valid_provider || exists;
+                            exists
+                        }
+                        _ => false,
+                    });
+                }
+
+                if let Some(Value::Sequence(proxies)) = group_map.get_mut("proxies") {
+                    proxies.retain(|proxy| match proxy {
+                        Value::String(name) => {
+                            allowed_names.contains(name.as_str()) || has_valid_provider
+                        }
+                        _ => true,
+                    });
+                }
+            }
+        }
     }
 
     config
@@ -526,7 +597,7 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
 
 /// Enhance mode
 /// 返回最终订阅、该订阅包含的键、和script执行的结果
-pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
+pub async fn enhance() -> (Mapping, HashSet<String>, HashMap<String, ResultLog>) {
     // gather config values
     let cfg_vals = get_config_values().await;
     let ConfigValues {
@@ -557,7 +628,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
 
     // process globals
     let (config, exists_keys, result_map) =
-        process_global_items(config, global_merge, global_script, profile_name.clone());
+        process_global_items(config, global_merge, global_script, &profile_name);
 
     // process profile-specific items
     let (config, exists_keys, result_map) = process_profile_items(
@@ -569,7 +640,7 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
         groups_item,
         merge_item,
         script_item,
-        profile_name,
+        &profile_name,
     );
 
     // merge default clash config
@@ -588,15 +659,189 @@ pub async fn enhance() -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     // builtin scripts
     let mut config = apply_builtin_scripts(config, clash_core, enable_builtin);
 
+    config = cleanup_proxy_groups(config);
+
     config = use_tun(config, enable_tun);
     config = use_sort(config);
 
     // dns settings
     config = apply_dns_settings(config, enable_dns_settings).await;
 
-    let mut exists_set = HashSet::new();
-    exists_set.extend(exists_keys);
-    let exists_keys: Vec<String> = exists_set.into_iter().collect();
+    let mut exists_keys_set = HashSet::new();
+    exists_keys_set.extend(exists_keys);
 
-    (config, exists_keys, result_map)
+    (config, exists_keys_set, result_map)
+}
+
+#[allow(clippy::expect_used)]
+#[cfg(test)]
+mod tests {
+    use super::cleanup_proxy_groups;
+
+    #[test]
+    fn remove_missing_proxies_from_groups() {
+        let config_str = r#"
+proxies:
+  - name: "alive-node"
+    type: ss
+proxy-groups:
+  - name: "manual"
+    type: select
+    proxies:
+      - "alive-node"
+      - "missing-node"
+      - "DIRECT"
+  - name: "nested"
+    type: select
+    proxies:
+      - "manual"
+      - "ghost"
+"#;
+
+        let mut config: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str(config_str).expect("Failed to parse test yaml");
+        config = cleanup_proxy_groups(config);
+
+        let groups = config
+            .get("proxy-groups")
+            .and_then(|v| v.as_sequence())
+            .cloned()
+            .expect("proxy-groups should be a sequence");
+
+        let manual_group = groups
+            .iter()
+            .find(|group| {
+                group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("manual")
+            })
+            .and_then(|group| group.as_mapping())
+            .expect("manual group should exist");
+
+        let manual_proxies = manual_group
+            .get("proxies")
+            .and_then(|v| v.as_sequence())
+            .expect("manual proxies should be a sequence");
+
+        assert_eq!(manual_proxies.len(), 2);
+        assert!(
+            manual_proxies
+                .iter()
+                .any(|p| p.as_str() == Some("alive-node"))
+        );
+        assert!(manual_proxies.iter().any(|p| p.as_str() == Some("DIRECT")));
+
+        let nested_group = groups
+            .iter()
+            .find(|group| {
+                group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("nested")
+            })
+            .and_then(|group| group.as_mapping())
+            .expect("nested group should exist");
+
+        let nested_proxies = nested_group
+            .get("proxies")
+            .and_then(|v| v.as_sequence())
+            .expect("nested proxies should be a sequence");
+
+        assert_eq!(nested_proxies.len(), 1);
+        assert_eq!(nested_proxies[0].as_str(), Some("manual"));
+    }
+
+    #[test]
+    fn keep_provider_backed_groups_intact() {
+        let config_str = r#"
+proxy-providers:
+  providerA:
+    type: http
+    url: https://example.com
+    path: ./providerA.yaml
+proxies: []
+proxy-groups:
+  - name: "manual"
+    type: select
+    use:
+      - "providerA"
+      - "ghostProvider"
+    proxies:
+      - "dynamic-node"
+      - "DIRECT"
+"#;
+
+        let mut config: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str(config_str).expect("Failed to parse test yaml");
+        config = cleanup_proxy_groups(config);
+
+        let groups = config
+            .get("proxy-groups")
+            .and_then(|v| v.as_sequence())
+            .cloned()
+            .expect("proxy-groups should be a sequence");
+
+        let manual_group = groups
+            .iter()
+            .find(|group| {
+                group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("manual")
+            })
+            .and_then(|group| group.as_mapping())
+            .expect("manual group should exist");
+
+        let uses = manual_group
+            .get("use")
+            .and_then(|v| v.as_sequence())
+            .expect("use should be a sequence");
+        assert_eq!(uses.len(), 1);
+        assert_eq!(uses[0].as_str(), Some("providerA"));
+
+        let proxies = manual_group
+            .get("proxies")
+            .and_then(|v| v.as_sequence())
+            .expect("proxies should be a sequence");
+        assert_eq!(proxies.len(), 2);
+        assert!(proxies.iter().any(|p| p.as_str() == Some("dynamic-node")));
+        assert!(proxies.iter().any(|p| p.as_str() == Some("DIRECT")));
+    }
+
+    #[test]
+    fn prune_invalid_provider_and_proxies_without_provider() {
+        let config_str = r#"
+proxy-groups:
+  - name: "manual"
+    type: select
+    use:
+      - "ghost-provider"
+    proxies:
+      - "ghost-node"
+      - "DIRECT"
+"#;
+
+        let mut config: serde_yaml_ng::Mapping =
+            serde_yaml_ng::from_str(config_str).expect("Failed to parse test yaml");
+        config = cleanup_proxy_groups(config);
+
+        let groups = config
+            .get("proxy-groups")
+            .and_then(|v| v.as_sequence())
+            .cloned()
+            .expect("proxy-groups should be a sequence");
+
+        let manual_group = groups
+            .iter()
+            .find(|group| {
+                group.get("name").and_then(serde_yaml_ng::Value::as_str) == Some("manual")
+            })
+            .and_then(|group| group.as_mapping())
+            .expect("manual group should exist");
+
+        let uses = manual_group
+            .get("use")
+            .and_then(|v| v.as_sequence())
+            .expect("use should be a sequence");
+        assert_eq!(uses.len(), 0);
+
+        let proxies = manual_group
+            .get("proxies")
+            .and_then(|v| v.as_sequence())
+            .expect("proxies should be a sequence");
+        assert_eq!(proxies.len(), 1);
+        assert_eq!(proxies[0].as_str(), Some("DIRECT"));
+    }
 }

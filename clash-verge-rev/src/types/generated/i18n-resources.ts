@@ -197,6 +197,10 @@ export interface TranslationResources {
       };
     };
     logs: {
+      actions: {
+        showAscending: string;
+        showDescending: string;
+      };
       page: {
         title: string;
       };
@@ -881,6 +885,7 @@ export interface TranslationResources {
             entryLightweightMode: string;
             global: string;
             openOrCloseDashboard: string;
+            reactivateProfiles: string;
             rule: string;
             toggleSystemProxy: string;
             toggleTunMode: string;
@@ -984,6 +989,7 @@ export interface TranslationResources {
         tun: {
           fields: {
             autoDetectInterface: string;
+            autoRedirect: string;
             autoRoute: string;
             device: string;
             dnsHijack: string;
@@ -996,6 +1002,7 @@ export interface TranslationResources {
           };
           title: string;
           tooltips: {
+            autoRedirect: string;
             dnsHijack: string;
           };
         };
@@ -1200,6 +1207,7 @@ export interface TranslationResources {
         notifications: {
           common: {
             copySuccess: string;
+            refreshFailed: string;
             saveFailed: string;
             saveSuccess: string;
           };

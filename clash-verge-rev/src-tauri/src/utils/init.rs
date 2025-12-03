@@ -1,6 +1,4 @@
 // #[cfg(not(feature = "tracing"))]
-#[cfg(not(feature = "tauri-dev"))]
-use crate::utils::logging::NoModuleFilter;
 use crate::{
     config::{Config, IClashTemp, IProfiles, IVerge},
     constants,
@@ -10,16 +8,18 @@ use crate::{
     utils::{
         dirs::{self, PathBufExec as _, service_log_dir, sidecar_log_dir},
         help,
-        logging::Type,
     },
 };
 use anyhow::Result;
 use chrono::{Local, TimeZone as _};
+#[cfg(not(feature = "tauri-dev"))]
+use clash_verge_logging::NoModuleFilter;
+use clash_verge_logging::Type;
 use clash_verge_service_ipc::WriterConfig;
 use flexi_logger::writers::FileLogWriter;
 use flexi_logger::{Cleanup, Criterion, FileSpec};
 #[cfg(not(feature = "tauri-dev"))]
-use flexi_logger::{Duplicate, LogSpecBuilder, Logger};
+use flexi_logger::{Duplicate, LogSpecBuilder, Logger, LoggerHandle};
 use std::{path::PathBuf, str::FromStr as _};
 use tauri_plugin_shell::ShellExt as _;
 use tokio::fs;
@@ -27,7 +27,7 @@ use tokio::fs::DirEntry;
 
 /// initialize this instance's log file
 #[cfg(not(feature = "tauri-dev"))]
-pub async fn init_logger() -> Result<()> {
+pub async fn init_logger() -> Result<LoggerHandle> {
     // TODO 提供 runtime 级别实时修改
     let (log_level, log_max_size, log_max_count) = {
         let verge_guard = Config::verge().await;
@@ -47,11 +47,9 @@ pub async fn init_logger() -> Result<()> {
         .unwrap_or(log_level);
     spec.default(level);
     #[cfg(feature = "tracing")]
-    spec.module("tauri", log::LevelFilter::Debug);
-    #[cfg(feature = "tracing")]
-    spec.module("wry", log::LevelFilter::Off);
-    #[cfg(feature = "tracing")]
-    spec.module("tauri_plugin_mihomo", log::LevelFilter::Off);
+    spec.module("tauri", log::LevelFilter::Debug)
+        .module("wry", log::LevelFilter::Off)
+        .module("tauri_plugin_mihomo", log::LevelFilter::Off);
     let spec = spec.build();
 
     let logger = Logger::with(spec)
@@ -68,22 +66,29 @@ pub async fn init_logger() -> Result<()> {
             Cleanup::KeepLogFiles(log_max_count),
         );
     #[cfg(not(feature = "tracing"))]
-    let logger = logger.filter(Box::new(NoModuleFilter(&["wry", "tauri"])));
+    let logger = logger.filter(Box::new(NoModuleFilter(&[
+        "wry",
+        "tauri",
+        "tokio_tungstenite",
+        "tungstenite",
+    ])));
     #[cfg(feature = "tracing")]
     let logger = logger.filter(Box::new(NoModuleFilter(&[
         "wry",
         "tauri_plugin_mihomo",
+        "tokio_tungstenite",
+        "tungstenite",
         "kode_bridge",
     ])));
 
-    let _handle = logger.start()?;
+    let handle = logger.start()?;
 
     // TODO 全局 logger handle 控制
     // GlobalLoggerProxy::global().set_inner(handle);
     // TODO 提供前端设置等级，热更新等级
     // logger.parse_new_spec(spec)
 
-    Ok(())
+    Ok(handle)
 }
 
 pub async fn sidecar_writer() -> Result<FileLogWriter> {

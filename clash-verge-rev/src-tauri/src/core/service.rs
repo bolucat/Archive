@@ -1,10 +1,10 @@
 use crate::{
     config::Config,
     core::tray,
-    logging, logging_error,
-    utils::{dirs, init::service_writer_config, logging::Type},
+    utils::{dirs, init::service_writer_config},
 };
 use anyhow::{Context as _, Result, bail};
+use clash_verge_logging::{Type, logging, logging_error};
 use clash_verge_service_ipc::CoreConfig;
 use compact_str::CompactString;
 use once_cell::sync::Lazy;
@@ -136,11 +136,28 @@ async fn uninstall_service() -> Result<()> {
     let status = if linux_running_as_root() {
         StdCommand::new(&uninstall_path).status()?
     } else {
-        StdCommand::new(elevator)
+        let result = StdCommand::new(&elevator)
             .arg("sh")
             .arg("-c")
-            .arg(uninstall_shell)
-            .status()?
+            .arg(&uninstall_shell)
+            .status()?;
+
+        // 如果 pkexec 执行失败，回退到 sudo
+        if !result.success() && elevator.contains("pkexec") {
+            logging!(
+                warn,
+                Type::Service,
+                "pkexec failed with code {}, falling back to sudo",
+                result.code().unwrap_or(-1)
+            );
+            StdCommand::new("sudo")
+                .arg("sh")
+                .arg("-c")
+                .arg(&uninstall_shell)
+                .status()?
+        } else {
+            result
+        }
     };
     logging!(
         info,
@@ -177,11 +194,28 @@ async fn install_service() -> Result<()> {
     let status = if linux_running_as_root() {
         StdCommand::new(&install_path).status()?
     } else {
-        StdCommand::new(elevator)
+        let result = StdCommand::new(&elevator)
             .arg("sh")
             .arg("-c")
-            .arg(install_shell)
-            .status()?
+            .arg(&install_shell)
+            .status()?;
+
+        // 如果 pkexec 执行失败，回退到 sudo
+        if !result.success() && elevator.contains("pkexec") {
+            logging!(
+                warn,
+                Type::Service,
+                "pkexec failed with code {}, falling back to sudo",
+                result.code().unwrap_or(-1)
+            );
+            StdCommand::new("sudo")
+                .arg("sh")
+                .arg("-c")
+                .arg(&install_shell)
+                .status()?
+        } else {
+            result
+        }
     };
     logging!(
         info,
@@ -220,9 +254,10 @@ async fn reinstall_service() -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn linux_running_as_root() -> bool {
-    const ROOT_UID: u32 = 0;
-
-    unsafe { libc::geteuid() == ROOT_UID }
+    use crate::core::handle;
+    use tauri_plugin_clash_verge_sysinfo::is_current_app_handle_admin;
+    let app_handle = handle::Handle::app_handle();
+    is_current_app_handle_admin(app_handle)
 }
 
 #[cfg(target_os = "macos")]
@@ -456,12 +491,12 @@ impl ServiceManager {
         Self(ServiceStatus::Unavailable("Need Checks".into()))
     }
 
-    pub const fn config() -> Option<clash_verge_service_ipc::IpcConfig> {
-        Some(clash_verge_service_ipc::IpcConfig {
+    pub const fn config() -> clash_verge_service_ipc::IpcConfig {
+        clash_verge_service_ipc::IpcConfig {
             default_timeout: Duration::from_millis(30),
             retry_delay: Duration::from_millis(250),
             max_retries: 6,
-        })
+        }
     }
 
     pub async fn init(&mut self) -> Result<()> {
@@ -521,6 +556,13 @@ impl ServiceManager {
             ServiceStatus::InstallRequired => {
                 logging!(info, Type::Service, "需要安装服务，执行安装流程");
                 install_service().await?;
+                // compatible with older service version, force reinstall if service is unavailable
+                // wait for service server is running
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                if is_service_available().await.is_err() {
+                    logging!(info, Type::Service, "服务需要强制重装，执行强制重装流程");
+                    force_reinstall_service().await?;
+                }
                 self.0 = ServiceStatus::Ready;
             }
             ServiceStatus::UninstallRequired => {

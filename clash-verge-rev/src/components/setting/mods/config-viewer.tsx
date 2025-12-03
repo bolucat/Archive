@@ -31,10 +31,10 @@ export const ConfigViewer = forwardRef<DialogRef>((_, ref) => {
           <Chip label={t("shared.labels.readOnly")} size="small" />
         </Box>
       }
-      initialData={Promise.resolve(runtimeConfig)}
+      initialData={() => Promise.resolve(runtimeConfig)}
+      dataKey="runtime-config"
       readOnly
       language="yaml"
-      schema="clash"
       onClose={() => setOpen(false)}
     />
   );

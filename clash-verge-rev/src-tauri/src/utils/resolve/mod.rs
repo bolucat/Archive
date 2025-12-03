@@ -1,4 +1,7 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use anyhow::Result;
+use flexi_logger::LoggerHandle;
 
 use crate::{
     config::Config,
@@ -9,17 +12,36 @@ use crate::{
         sysopt,
         tray::Tray,
     },
-    logging, logging_error,
-    module::{auto_backup::AutoBackupManager, lightweight::auto_lightweight_boot, signal},
+    feat,
+    module::{auto_backup::AutoBackupManager, lightweight::auto_lightweight_boot},
     process::AsyncHandler,
-    utils::{init, logging::Type, server, window_manager::WindowManager},
+    utils::{init, server, window_manager::WindowManager},
 };
+use clash_verge_logging::{Type, logging, logging_error};
+use clash_verge_signal;
 
 pub mod dns;
 pub mod scheme;
 pub mod ui;
 pub mod window;
 pub mod window_script;
+
+static RESOLVE_DONE: AtomicBool = AtomicBool::new(false);
+
+pub async fn prioritize_initialization() -> Option<LoggerHandle> {
+    init_work_config().await;
+    init_resources().await;
+
+    #[cfg(not(feature = "tauri-dev"))]
+    {
+        logging!(info, Type::Setup, "Initializing logger");
+        init::init_logger().await.ok()
+    }
+    #[cfg(feature = "tauri-dev")]
+    {
+        None
+    }
+}
 
 pub fn resolve_setup_handle() {
     init_handle();
@@ -29,14 +51,11 @@ pub fn resolve_setup_sync() {
     AsyncHandler::spawn(|| async {
         AsyncHandler::spawn_blocking(init_scheme);
         AsyncHandler::spawn_blocking(init_embed_server);
-        AsyncHandler::spawn_blocking(init_signal);
     });
 }
 
 pub fn resolve_setup_async() {
     AsyncHandler::spawn(|| async {
-        #[cfg(not(feature = "tauri-dev"))]
-        resolve_setup_logger().await;
         logging!(
             info,
             Type::ClashVergeRev,
@@ -54,7 +73,7 @@ pub fn resolve_setup_async() {
             init_service_manager().await;
             init_core_manager().await;
             init_system_proxy().await;
-            AsyncHandler::spawn_blocking(init_system_proxy_guard);
+            init_system_proxy_guard().await;
         });
 
         let tray_init = async {
@@ -94,11 +113,6 @@ pub(super) fn init_scheme() {
     logging_error!(Type::Setup, init::init_scheme());
 }
 
-#[cfg(not(feature = "tauri-dev"))]
-pub(super) async fn resolve_setup_logger() {
-    logging_error!(Type::Setup, init::init_logger().await);
-}
-
 pub async fn resolve_scheme(param: &str) -> Result<()> {
     logging_error!(Type::Setup, scheme::resolve_scheme(param).await);
     Ok(())
@@ -132,9 +146,13 @@ pub(super) async fn init_auto_backup() {
     logging_error!(Type::Setup, AutoBackupManager::global().init().await);
 }
 
-pub(super) fn init_signal() {
+pub fn init_signal() {
     logging!(info, Type::Setup, "Initializing signal handlers...");
-    signal::register();
+    clash_verge_signal::register(
+        #[cfg(windows)]
+        handle::Handle::app_handle(),
+        feat::quit,
+    );
 }
 
 pub async fn init_work_config() {
@@ -153,7 +171,7 @@ pub(super) async fn init_verge_config() {
 }
 
 pub(super) async fn init_service_manager() {
-    clash_verge_service_ipc::set_config(ServiceManager::config()).await;
+    clash_verge_service_ipc::set_config(Some(ServiceManager::config())).await;
     if !is_service_ipc_path_exists() {
         return;
     }
@@ -173,8 +191,8 @@ pub(super) async fn init_system_proxy() {
     );
 }
 
-pub(super) fn init_system_proxy_guard() {
-    logging_error!(Type::Setup, sysopt::Sysopt::global().init_guard_sysproxy());
+pub(super) async fn init_system_proxy_guard() {
+    sysopt::Sysopt::global().refresh_guard().await;
 }
 
 pub(super) async fn refresh_tray_menu() {
@@ -193,4 +211,16 @@ pub(super) async fn init_window() {
         Handle::global().set_activation_policy_accessory();
     }
     WindowManager::create_window(!is_silent_start).await;
+}
+
+pub fn resolve_done() {
+    RESOLVE_DONE.store(true, Ordering::Release);
+}
+
+pub fn is_resolve_done() -> bool {
+    RESOLVE_DONE.load(Ordering::Acquire)
+}
+
+pub fn reset_resolve_done() {
+    RESOLVE_DONE.store(false, Ordering::Release);
 }

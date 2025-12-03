@@ -427,10 +427,12 @@
         "strictRoute": "مسیر دقیق",
         "autoDetectInterface": "تشخیص خودکار رابط",
         "dnsHijack": "ربایش DNS",
-        "mtu": "واحد حداکثر انتقال"
+        "mtu": "واحد حداکثر انتقال",
+        "autoRedirect": "Auto Redirect"
       },
       "tooltips": {
-        "dnsHijack": "Please use , to separate multiple DNS servers"
+        "dnsHijack": "Please use , to separate multiple DNS servers",
+        "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
         "applied": "تنظیمات اعمال شد"
@@ -553,7 +555,8 @@
         "toggleSystemProxy": "فعال/غیرفعال کردن پراکسی سیستم",
         "toggleTunMode": "فعال/غیرفعال کردن حالت Tun",
         "entryLightweightMode": "Entry Lightweight Mode",
-        "direct": "حالت مستقیم"
+        "direct": "حالت مستقیم",
+        "reactivateProfiles": "فعال‌سازی مجدد پروفایل‌ها"
       }
     },
     "password": {
