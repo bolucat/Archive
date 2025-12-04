@@ -27,16 +27,17 @@ type ProxyAdapter interface {
 type Base struct {
 	name   string
 	addr   string
-	iface  string
 	tp     C.AdapterType
+	pdName string
 	udp    bool
 	xudp   bool
 	tfo    bool
 	mpTcp  bool
+	iface  string
 	rmark  int
-	id     string
 	prefer C.DNSPrefer
 	dialer C.Dialer
+	id     string
 }
 
 // Name implements C.ProxyAdapter
@@ -85,6 +86,7 @@ func (b *Base) ProxyInfo() (info C.ProxyInfo) {
 	info.SMUX = false
 	info.Interface = b.iface
 	info.RoutingMark = b.rmark
+	info.ProviderName = b.pdName
 	return
 }
 
@@ -160,14 +162,18 @@ func (b *Base) Close() error {
 }
 
 type BasicOption struct {
-	TFO         bool   `proxy:"tfo,omitempty"`
-	MPTCP       bool   `proxy:"mptcp,omitempty"`
-	Interface   string `proxy:"interface-name,omitempty"`
-	RoutingMark int    `proxy:"routing-mark,omitempty"`
-	IPVersion   string `proxy:"ip-version,omitempty"`
-	DialerProxy string `proxy:"dialer-proxy,omitempty"` // don't apply this option into groups, but can set a group name in a proxy
+	TFO         bool        `proxy:"tfo,omitempty"`
+	MPTCP       bool        `proxy:"mptcp,omitempty"`
+	Interface   string      `proxy:"interface-name,omitempty"`
+	RoutingMark int         `proxy:"routing-mark,omitempty"`
+	IPVersion   C.DNSPrefer `proxy:"ip-version,omitempty"`
+	DialerProxy string      `proxy:"dialer-proxy,omitempty"` // don't apply this option into groups, but can set a group name in a proxy
 
+	//
+	// The following parameters are used internally, assign value by the structure decoder are disallowed
+	//
 	DialerForAPI C.Dialer `proxy:"-"` // the dialer used for API usage has higher priority than all the above configurations.
+	ProviderName string   `proxy:"-"`
 }
 
 func (b *BasicOption) NewDialer(opts []dialer.Option) C.Dialer {
@@ -213,6 +219,7 @@ func NewBase(opt BaseOption) *Base {
 type conn struct {
 	N.ExtendedConn
 	chain       C.Chain
+	pdChain     C.Chain
 	adapterAddr string
 }
 
@@ -234,9 +241,15 @@ func (c *conn) Chains() C.Chain {
 	return c.chain
 }
 
+// ProviderChains implements C.Connection
+func (c *conn) ProviderChains() C.Chain {
+	return c.pdChain
+}
+
 // AppendToChains implements C.Connection
 func (c *conn) AppendToChains(a C.ProxyAdapter) {
 	c.chain = append(c.chain, a.Name())
+	c.pdChain = append(c.pdChain, a.ProxyInfo().ProviderName)
 }
 
 func (c *conn) Upstream() any {
@@ -259,7 +272,7 @@ func NewConn(c net.Conn, a C.ProxyAdapter) C.Conn {
 	if _, ok := c.(syscall.Conn); !ok { // exclusion system conn like *net.TCPConn
 		c = N.NewDeadlineConn(c) // most conn from outbound can't handle readDeadline correctly
 	}
-	cc := &conn{N.NewExtendedConn(c), nil, a.Addr()}
+	cc := &conn{N.NewExtendedConn(c), nil, nil, a.Addr()}
 	cc.AppendToChains(a)
 	return cc
 }
@@ -267,6 +280,7 @@ func NewConn(c net.Conn, a C.ProxyAdapter) C.Conn {
 type packetConn struct {
 	N.EnhancePacketConn
 	chain       C.Chain
+	pdChain     C.Chain
 	adapterName string
 	connID      string
 	adapterAddr string
@@ -287,9 +301,15 @@ func (c *packetConn) Chains() C.Chain {
 	return c.chain
 }
 
+// ProviderChains implements C.Connection
+func (c *packetConn) ProviderChains() C.Chain {
+	return c.pdChain
+}
+
 // AppendToChains implements C.Connection
 func (c *packetConn) AppendToChains(a C.ProxyAdapter) {
 	c.chain = append(c.chain, a.Name())
+	c.pdChain = append(c.pdChain, a.ProxyInfo().ProviderName)
 }
 
 func (c *packetConn) LocalAddr() net.Addr {
@@ -318,7 +338,7 @@ func newPacketConn(pc net.PacketConn, a ProxyAdapter) C.PacketConn {
 	if _, ok := pc.(syscall.Conn); !ok { // exclusion system conn like *net.UDPConn
 		epc = N.NewDeadlineEnhancePacketConn(epc) // most conn from outbound can't handle readDeadline correctly
 	}
-	cpc := &packetConn{epc, nil, a.Name(), utils.NewUUIDV4().String(), a.Addr(), a.ResolveUDP}
+	cpc := &packetConn{epc, nil, nil, a.Name(), utils.NewUUIDV4().String(), a.Addr(), a.ResolveUDP}
 	cpc.AppendToChains(a)
 	return cpc
 }

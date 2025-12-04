@@ -18,6 +18,7 @@ func ParseProxy(mapping map[string]any, options ...ProxyOption) (C.Proxy, error)
 	opt := applyProxyOptions(options...)
 	basicOption := outbound.BasicOption{
 		DialerForAPI: opt.DialerForAPI,
+		ProviderName: opt.ProviderName,
 	}
 
 	var (
@@ -186,6 +187,7 @@ func ParseProxy(mapping map[string]any, options ...ProxyOption) (C.Proxy, error)
 
 type proxyOption struct {
 	DialerForAPI C.Dialer
+	ProviderName string
 }
 
 func applyProxyOptions(options ...ProxyOption) proxyOption {
@@ -201,5 +203,11 @@ type ProxyOption func(opt *proxyOption)
 func WithDialerForAPI(dialer C.Dialer) ProxyOption {
 	return func(opt *proxyOption) {
 		opt.DialerForAPI = dialer
+	}
+}
+
+func WithProviderName(name string) ProxyOption {
+	return func(opt *proxyOption) {
+		opt.ProviderName = name
 	}
 }

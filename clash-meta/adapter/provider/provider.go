@@ -156,7 +156,7 @@ func (pp *proxySetProvider) Initial() error {
 
 func (pp *proxySetProvider) closeAllConnections() {
 	statistic.DefaultManager.Range(func(c statistic.Tracker) bool {
-		for _, chain := range c.Chains() {
+		for _, chain := range c.ProviderChains() {
 			if chain == pp.Name() {
 				_ = c.Close()
 				break
@@ -330,7 +330,7 @@ func (cp *CompatibleProvider) Close() error {
 	return cp.compatibleProvider.Close()
 }
 
-func NewProxiesParser(filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema) (resource.Parser[[]C.Proxy], error) {
+func NewProxiesParser(pdName string, filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema) (resource.Parser[[]C.Proxy], error) {
 	var excludeTypeArray []string
 	if excludeType != "" {
 		excludeTypeArray = strings.Split(excludeType, "|")
@@ -448,7 +448,7 @@ func NewProxiesParser(filter string, excludeFilter string, excludeType string, d
 					}
 				}
 
-				proxy, err := adapter.ParseProxy(mapping)
+				proxy, err := adapter.ParseProxy(mapping, adapter.WithProviderName(pdName))
 				if err != nil {
 					return nil, fmt.Errorf("proxy %d error: %w", idx, err)
 				}

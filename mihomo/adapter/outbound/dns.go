@@ -158,12 +158,13 @@ func NewDnsWithOption(option DnsOption) *Dns {
 		Base: &Base{
 			name:   option.Name,
 			tp:     C.Dns,
+			pdName: option.ProviderName,
 			udp:    true,
 			tfo:    option.TFO,
 			mpTcp:  option.MPTCP,
 			iface:  option.Interface,
 			rmark:  option.RoutingMark,
-			prefer: C.NewDNSPrefer(option.IPVersion),
+			prefer: option.IPVersion,
 		},
 	}
 }
