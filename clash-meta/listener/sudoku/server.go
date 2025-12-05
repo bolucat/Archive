@@ -6,9 +6,6 @@ import (
 	"net"
 	"strings"
 
-	"github.com/saba-futai/sudoku/apis"
-	sudokuobfs "github.com/saba-futai/sudoku/pkg/obfs/sudoku"
-
 	"github.com/metacubex/mihomo/adapter/inbound"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -21,7 +18,7 @@ type Listener struct {
 	listener  net.Listener
 	addr      string
 	closed    bool
-	protoConf apis.ProtocolConfig
+	protoConf sudoku.ProtocolConfig
 }
 
 // RawAddress implements C.Listener
@@ -135,9 +132,7 @@ func New(config LC.SudokuServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		tableType = "prefer_ascii"
 	}
 
-	table := sudokuobfs.NewTable(config.Key, tableType)
-
-	defaultConf := apis.DefaultConfig()
+	defaultConf := sudoku.DefaultConfig()
 	paddingMin := defaultConf.PaddingMin
 	paddingMax := defaultConf.PaddingMax
 	if config.PaddingMin != nil {
@@ -152,18 +147,23 @@ func New(config LC.SudokuServer, tunnel C.Tunnel, additions ...inbound.Addition)
 	if config.PaddingMax == nil && config.PaddingMin != nil && paddingMax < paddingMin {
 		paddingMax = paddingMin
 	}
+	enablePureDownlink := defaultConf.EnablePureDownlink
+	if config.EnablePureDownlink != nil {
+		enablePureDownlink = *config.EnablePureDownlink
+	}
 
 	handshakeTimeout := defaultConf.HandshakeTimeoutSeconds
 	if config.HandshakeTimeoutSecond != nil {
 		handshakeTimeout = *config.HandshakeTimeoutSecond
 	}
 
-	protoConf := apis.ProtocolConfig{
+	protoConf := sudoku.ProtocolConfig{
 		Key:                     config.Key,
 		AEADMethod:              defaultConf.AEADMethod,
-		Table:                   table,
+		Table:                   sudoku.NewTable(config.Key, tableType),
 		PaddingMin:              paddingMin,
 		PaddingMax:              paddingMax,
+		EnablePureDownlink:      enablePureDownlink,
 		HandshakeTimeoutSeconds: handshakeTimeout,
 	}
 	if config.AEADMethod != "" {

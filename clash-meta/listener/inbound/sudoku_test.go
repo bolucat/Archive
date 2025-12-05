@@ -6,8 +6,11 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/outbound"
 	"github.com/metacubex/mihomo/listener/inbound"
+	"github.com/metacubex/mihomo/transport/sudoku"
 	"github.com/stretchr/testify/assert"
 )
+
+var sudokuPrivateKey, sudokuPublicKey, _ = sudoku.GenKeyPair()
 
 func testInboundSudoku(t *testing.T, inboundOptions inbound.SudokuOption, outboundOptions outbound.SudokuOption) {
 	t.Parallel()
@@ -58,6 +61,14 @@ func TestInboundSudoku_Basic(t *testing.T) {
 		Key: key,
 	}
 	testInboundSudoku(t, inboundOptions, outboundOptions)
+
+	t.Run("ed25519key", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.Key = sudokuPublicKey
+		outboundOptions.Key = sudokuPrivateKey
+		testInboundSudoku(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundSudoku_Entropy(t *testing.T) {
@@ -71,21 +82,59 @@ func TestInboundSudoku_Entropy(t *testing.T) {
 		TableType: "prefer_entropy",
 	}
 	testInboundSudoku(t, inboundOptions, outboundOptions)
+
+	t.Run("ed25519key", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.Key = sudokuPublicKey
+		outboundOptions.Key = sudokuPrivateKey
+		testInboundSudoku(t, inboundOptions, outboundOptions)
+	})
 }
 
 func TestInboundSudoku_Padding(t *testing.T) {
 	key := "test_key_padding"
-	min := 10
-	max := 100
+	paddingMin := 10
+	paddingMax := 100
 	inboundOptions := inbound.SudokuOption{
 		Key:        key,
-		PaddingMin: &min,
-		PaddingMax: &max,
+		PaddingMin: &paddingMin,
+		PaddingMax: &paddingMax,
 	}
 	outboundOptions := outbound.SudokuOption{
 		Key:        key,
-		PaddingMin: &min,
-		PaddingMax: &max,
+		PaddingMin: &paddingMin,
+		PaddingMax: &paddingMax,
 	}
 	testInboundSudoku(t, inboundOptions, outboundOptions)
+
+	t.Run("ed25519key", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.Key = sudokuPublicKey
+		outboundOptions.Key = sudokuPrivateKey
+		testInboundSudoku(t, inboundOptions, outboundOptions)
+	})
+}
+
+func TestInboundSudoku_PackedDownlink(t *testing.T) {
+	key := "test_key_packed"
+	enablePure := false
+	inboundOptions := inbound.SudokuOption{
+		Key:                key,
+		EnablePureDownlink: &enablePure,
+	}
+	outboundOptions := outbound.SudokuOption{
+		Key:                key,
+		EnablePureDownlink: &enablePure,
+	}
+	testInboundSudoku(t, inboundOptions, outboundOptions)
+
+	t.Run("ed25519key", func(t *testing.T) {
+		inboundOptions := inboundOptions
+		outboundOptions := outboundOptions
+		inboundOptions.Key = sudokuPublicKey
+		outboundOptions.Key = sudokuPrivateKey
+		testInboundSudoku(t, inboundOptions, outboundOptions)
+	})
 }
