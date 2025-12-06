@@ -2,6 +2,11 @@
 icon: material/new-box
 ---
 
+!!! quote "Changes in sing-box 1.13.0"
+
+    :material-plus: [tcp_keep_alive](#tcp_keep_alive)    
+    :material-plus: [tcp_keep_alive_interval](#tcp_keep_alive_interval)
+
 !!! quote "Changes in sing-box 1.12.0"
 
     :material-plus: [domain_resolver](#domain_resolver)  
@@ -29,8 +34,10 @@ icon: material/new-box
   "connect_timeout": "",
   "tcp_fast_open": false,
   "tcp_multi_path": false,
+  "tcp_keep_alive": "",
+  "tcp_keep_alive_interval": "",
   "udp_fragment": false,
-  
+
   "domain_resolver": "", // or {}
   "network_strategy": "",
   "network_type": [],
@@ -111,6 +118,24 @@ Enable TCP Fast Open.
     Go 1.21 required.
 
 Enable TCP Multi Path.
+
+#### tcp_keep_alive
+
+!!! question "Since sing-box 1.13.0"
+
+    Default value changed from `10m` to `5m`.
+
+TCP keep-alive initial period.
+
+`5m` will be used by default.
+
+#### tcp_keep_alive_interval
+
+!!! question "Since sing-box 1.13.0"
+
+TCP keep-alive interval.
+
+`75s` will be used by default.
 
 #### udp_fragment
 
