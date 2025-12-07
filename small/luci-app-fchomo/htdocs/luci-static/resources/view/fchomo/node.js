@@ -1321,12 +1321,24 @@ return view.extend({
 				.format('https://wiki.metacubex.one/config/proxy-providers/content/', _('Contents')));
 		so.placeholder = _('Content will not be verified, Please make sure you enter it correctly.');
 		so.load = function(section_id) {
-			return L.resolveDefault(hm.readFile(this.section.sectiontype, section_id), '');
+			const option = uci.get(data[0], section_id, 'type');
+
+			if (option === 'file')
+				return L.resolveDefault(hm.readFile(this.section.sectiontype, section_id), '');
 		}
-		so.write = L.bind(hm.writeFile, so, so.section.sectiontype);
-		so.remove = L.bind(hm.writeFile, so, so.section.sectiontype);
-		so.rmempty = false;
-		so.retain = true;
+		so.write = function(section_id, formvalue) {
+			const option = uci.get(data[0], section_id, 'type');
+
+			if (option === 'file')
+				return hm.writeFile.call(this, this.section.sectiontype, section_id, formvalue);
+		}
+		so.remove = function(section_id) {
+			const option = uci.get(data[0], section_id, 'type');
+			const cached_option = this.section.getOption('type').cfgvalue(section_id);
+
+			if (option === 'file' && cached_option === 'file')
+				return hm.writeFile.call(this, this.section.sectiontype, section_id);
+		}
 		so.depends('type', 'file');
 		so.modalonly = true;
 
@@ -1575,13 +1587,13 @@ return view.extend({
 		so = ss.option(CBIBubblesValue, '_value', _('Value'));
 		so.modalonly = false;
 
-		so = ss.option(form.ListValue, 'chain_head_sub', _('Chain head') + _(' (Destination)'));
+		so = ss.option(form.ListValue, 'chain_head_sub', _('Destination'));
 		so.load = L.bind(hm.loadProviderLabel, so, [['', _('-- Please choose --')]]);
 		so.rmempty = false;
 		so.depends('type', 'provider');
 		so.modalonly = true;
 
-		so = ss.option(form.ListValue, 'chain_head', _('Chain head') + _(' (Destination)'));
+		so = ss.option(form.ListValue, 'chain_head', _('Destination'));
 		so.load = L.bind(hm.loadNodeLabel, so, [['', _('-- Please choose --')]]);
 		so.rmempty = false;
 		so.validate = function(section_id, value) {
@@ -1595,13 +1607,13 @@ return view.extend({
 		so.depends('type', 'node');
 		so.modalonly = true;
 
-		so = ss.option(form.ListValue, 'chain_tail_group', _('Chain tail') + _(' (Transit)'));
+		so = ss.option(form.ListValue, 'chain_tail_group', _('Transit'));
 		so.load = L.bind(hm.loadProxyGroupLabel, so, [['', _('-- Please choose --')]]);
 		so.rmempty = false;
 		so.depends({chain_tail: /.+/, '!reverse': true});
 		so.modalonly = true;
 
-		so = ss.option(form.ListValue, 'chain_tail', _('Chain tail') + _(' (Transit)'));
+		so = ss.option(form.ListValue, 'chain_tail', _('Transit'));
 		so.load = L.bind(hm.loadNodeLabel, so, [['', _('-- Please choose --')]]);
 		so.rmempty = false;
 		so.validate = function(section_id, value) {

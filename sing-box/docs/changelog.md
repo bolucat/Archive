@@ -5,7 +5,7 @@ icon: material/alert-decagram
 #### 1.13.0-alpha.28
 
 * Update quic-go to v0.57.1
-* Add `tcp_keep_alive` and `tcp_keep_alive_interval` options for dial fields **1**
+* Add `disable_tcp_keep_alive`, `tcp_keep_alive` and `tcp_keep_alive_interval` options for dial fields **1**
 * Update default TCP keep-alive initial period from 10 minutes to 5 minutes
 * Fixes and improvements
 

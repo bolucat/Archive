@@ -143,7 +143,7 @@ func NewDefault(ctx context.Context, options option.DialerOptions) (*DefaultDial
 	} else {
 		dialer.Timeout = C.TCPConnectTimeout
 	}
-	if options.TCPKeepAlive >= 0 {
+	if !options.DisableTCPKeepAlive {
 		keepIdle := time.Duration(options.TCPKeepAlive)
 		if keepIdle == 0 {
 			keepIdle = C.TCPKeepAliveInitial
