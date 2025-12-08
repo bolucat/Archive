@@ -18,17 +18,11 @@ import (
 	"github.com/metacubex/sing/common/network"
 )
 
-type ListenerHandler struct {
-	*sing.ListenerHandler
-	DnsAdds               []netip.AddrPort
-	DisableICMPForwarding bool
-}
-
 func (h *ListenerHandler) ShouldHijackDns(targetAddr netip.AddrPort) bool {
 	if targetAddr.Addr().IsLoopback() && targetAddr.Port() == 53 { // cause by system stack
 		return true
 	}
-	for _, addrPort := range h.DnsAdds {
+	for _, addrPort := range h.DnsAddrPorts {
 		if addrPort == targetAddr || (addrPort.Addr().IsUnspecified() && targetAddr.Port() == 53) {
 			return true
 		}

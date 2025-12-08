@@ -2,6 +2,7 @@ package sing_tun
 
 import (
 	"context"
+	"net/netip"
 	"time"
 
 	"github.com/metacubex/mihomo/component/dialer"
@@ -17,7 +18,7 @@ import (
 func (h *ListenerHandler) PrepareConnection(network string, source M.Socksaddr, destination M.Socksaddr, routeContext tun.DirectRouteContext, timeout time.Duration) (tun.DirectRouteDestination, error) {
 	switch network {
 	case N.NetworkICMP: // our fork only send those type to PrepareConnection now
-		if h.DisableICMPForwarding || resolver.IsFakeIP(destination.Addr) { // skip fakeip and if ICMP handling is disabled
+		if h.DisableICMPForwarding || h.skipPingForwardingByAddr(destination.Addr) { // skip if ICMP handling is disabled or other condition
 			log.Infoln("[ICMP] %s %s --> %s using fake ping echo", network, source, destination)
 			return nil, nil
 		}
@@ -31,4 +32,21 @@ func (h *ListenerHandler) PrepareConnection(network string, source M.Socksaddr, 
 		return directRouteDestination, nil
 	}
 	return nil, nil
+}
+
+func (h *ListenerHandler) skipPingForwardingByAddr(addr netip.Addr) bool {
+	for _, prefix := range h.Inet4Address { // skip in interface ipv4 range
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	for _, prefix := range h.Inet6Address { // skip in interface ipv6 range
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	if resolver.IsFakeIP(addr) { // skip in fakeIp pool
+		return true
+	}
+	return false
 }
