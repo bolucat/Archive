@@ -62,20 +62,22 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
   build:
     name: Build binary
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
+    if: false  # TODO: temporarily disabled for testing
     runs-on: ubuntu-latest
     needs:
       - calculate_version
     strategy:
       matrix:
         include:
-          - { os: linux, arch: amd64, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
-          - { os: linux, arch: "386", go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
+          # Linux with naive outbound (CGO enabled with Debian Bullseye sysroot)
+          - { os: linux, arch: amd64, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64", sysroot_sha: "36a164623d03f525e3dfb783a5e9b8a00e98e1ddd2b5cff4e449bd016dd27e50", cc_target: "x86_64-linux-gnu" }
+          - { os: linux, arch: arm64, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic", sysroot_sha: "2f915d821eec27515c0c6d21b69898e23762908d8d7ccc1aa2a8f5f25e8b7e18", cc_target: "aarch64-linux-gnu", cross_pkg: "libc6-dev-arm64-cross" }
+          - { os: linux, arch: "386", naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4", sysroot_sha: "63f0e5128b84f7b0421956a4a40affa472be8da0e58caf27e9acbc84072daee7", cc_target: "i686-linux-gnu", cross_pkg: "libc6-dev-i386-cross" }
+          - { os: linux, arch: arm, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4", sysroot_sha: "47b3a0b161ca011b2b33d4fc1ef6ef269b8208a0b7e4c900700c345acdfd1814", cc_target: "arm-linux-gnueabihf", cross_pkg: "libc6-dev-armhf-cross", linker: "bfd" }
+          # Linux without naive outbound (no CGO)
           - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
-          - { os: linux, arch: arm64, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
           - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
           - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          - { os: linux, arch: arm, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
           - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
           - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
           - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
@@ -86,13 +88,10 @@ jobs:
           - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
           - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
           - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
-
-          - { os: windows, arch: amd64 }
+          # Windows 7 legacy (no naive, no CGO)
           - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: "386" }
           - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: arm64 }
-
+          # Android (naive enabled)
           - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
           - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
           - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
@@ -135,6 +134,19 @@ jobs:
         with:
           ndk-version: r28
           local-cache: true
+      - name: Download sysroot (Linux naive)
+        if: matrix.naive
+        run: |
+          set -xeuo pipefail
+          wget -q "https://commondatastorage.googleapis.com/chrome-linux-sysroot/${{ matrix.sysroot_sha }}" -O sysroot.tar.xz
+          mkdir -p /tmp/sysroot
+          tar -xf sysroot.tar.xz -C /tmp/sysroot
+      - name: Install cross compiler (Linux naive)
+        if: matrix.naive
+        run: |
+          set -xeuo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang lld ${{ matrix.cross_pkg }}
       - name: Set tag
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
@@ -143,12 +155,12 @@ jobs:
         run: |
           set -xeuo pipefail
           TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0'
-          if [[ "${{ matrix.os }}" == "android" ]]; then
+          if [[ "${{ matrix.naive }}" == "true" ]] || [[ "${{ matrix.os }}" == "android" ]]; then
             TAGS="${TAGS},with_naive_outbound"
           fi
           echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
       - name: Build
-        if: matrix.os != 'android'
+        if: matrix.os != 'android' && ! matrix.naive
         run: |
           set -xeuo pipefail
           mkdir -p dist
@@ -163,6 +175,24 @@ jobs:
           GOARM: ${{ matrix.goarm }}
           GOMIPS: ${{ matrix.gomips }}
           GOMIPS64: ${{ matrix.gomips }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Linux with naive
+        if: matrix.naive
+        run: |
+          set -xeuo pipefail
+          mkdir -p dist
+          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
+          -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0 -linkmode=external -extldflags \"-fuse-ld=${LINKER} --sysroot=/tmp/sysroot\"" \
+          ./cmd/sing-box
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          GO386: ${{ matrix.go386 }}
+          GOARM: ${{ matrix.goarm }}
+          CC: clang --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot
+          CXX: clang++ --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot
+          LINKER: ${{ matrix.linker || 'lld' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Android
         if: matrix.os == 'android'
@@ -286,7 +316,7 @@ jobs:
           path: "dist"
   build_darwin:
     name: Build Darwin binaries
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
+    if: false  # TODO: temporarily disabled for testing
     runs-on: macos-latest
     needs:
       - calculate_version
@@ -318,7 +348,10 @@ jobs:
       - name: Set build tags
         run: |
           set -xeuo pipefail
-          TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,badlinkname,tfogo_checklinkname0'
+          TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0'
+          if [[ "${{ matrix.legacy_go124 }}" != "true" ]]; then
+            TAGS="${TAGS},with_naive_outbound"
+          fi
           echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
       - name: Build
         run: |
@@ -355,25 +388,93 @@ jobs:
         with:
           name: binary-darwin_${{ matrix.arch }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
           path: "dist"
-  build_naive_linux:
-    name: Build Linux with naive outbound
+  build_windows:
+    name: Build Windows binaries
     if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
+    runs-on: windows-latest
+    needs:
+      - calculate_version
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, cc: x86_64-w64-mingw32-clang }
+          - { arch: "386", cc: i686-w64-mingw32-clang }
+          - { arch: arm64, cc: aarch64-w64-mingw32-clang }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-depth: 0
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ^1.25.4
+      - name: Cache llvm-mingw
+        id: cache-llvm-mingw
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/llvm-mingw
+          key: llvm-mingw-ucrt-x86_64
+      - name: Setup llvm-mingw
+        if: steps.cache-llvm-mingw.outputs.cache-hit != 'true'
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest" -Headers $headers
+          $asset = $release.assets | Where-Object { $_.name -like "llvm-mingw-*-ucrt-x86_64.zip" }
+          curl -Lo llvm-mingw.zip $asset.browser_download_url
+          Expand-Archive llvm-mingw.zip -DestinationPath $env:RUNNER_TEMP/llvm-mingw
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup llvm-mingw PATH
+        run: |
+          $extractedDir = Get-ChildItem -Path $env:RUNNER_TEMP/llvm-mingw -Directory | Where-Object { $_.Name -like "llvm-mingw-*" } | Select-Object -First 1
+          echo "$($extractedDir.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Set tag
+        run: |-
+          git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$env:GITHUB_ENV"
+          git tag v${{ needs.calculate_version.outputs.version }} -f
+      - name: Build
+        run: |
+          mkdir -p dist
+          go build -v -trimpath -o dist/sing-box.exe -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,badlinkname,tfogo_checklinkname0" `
+          -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0" `
+          ./cmd/sing-box
+        env:
+          CGO_ENABLED: "1"
+          CGO_LDFLAGS_ALLOW: "-Wl,-Xlink=.*"
+          GOOS: windows
+          GOARCH: ${{ matrix.arch }}
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cc }}++
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Archive
+        run: |
+          $DIR_NAME = "sing-box-${{ needs.calculate_version.outputs.version }}-windows-${{ matrix.arch }}"
+          mkdir "dist/$DIR_NAME"
+          Copy-Item LICENSE "dist/$DIR_NAME"
+          Copy-Item "dist/sing-box.exe" "dist/$DIR_NAME"
+          Compress-Archive -Path "dist/$DIR_NAME" -DestinationPath "dist/$DIR_NAME.zip"
+          Remove-Item -Recurse "dist/$DIR_NAME"
+      - name: Cleanup
+        run: Remove-Item dist/sing-box.exe
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-windows_${{ matrix.arch }}
+          path: "dist"
+  build_linux_musl:
+    name: Build Linux musl static binaries
+    if: false  # TODO: temporarily disabled for testing
     runs-on: ubuntu-latest
     needs:
       - calculate_version
     strategy:
       matrix:
         include:
-          # Linux glibc (dynamic linking with Debian Bullseye sysroot)
-          - { arch: amd64, sysroot_arch: amd64, sysroot_sha: "36a164623d03f525e3dfb783a5e9b8a00e98e1ddd2b5cff4e449bd016dd27e50", cc_target: "x86_64-linux-gnu", suffix: "-naive" }
-          - { arch: arm64, sysroot_arch: arm64, sysroot_sha: "2f915d821eec27515c0c6d21b69898e23762908d8d7ccc1aa2a8f5f25e8b7e18", cc_target: "aarch64-linux-gnu", suffix: "-naive" }
-          - { arch: "386", sysroot_arch: i386, sysroot_sha: "63f0e5128b84f7b0421956a4a40affa472be8da0e58caf27e9acbc84072daee7", cc_target: "i686-linux-gnu", suffix: "-naive" }
-          - { arch: arm, goarm: "7", sysroot_arch: armhf, sysroot_sha: "47b3a0b161ca011b2b33d4fc1ef6ef269b8208a0b7e4c900700c345acdfd1814", cc_target: "arm-linux-gnueabihf", suffix: "-naive" }
-          # Linux musl (static linking)
-          - { arch: amd64, musl: true, cc_target: "x86_64-linux-musl", suffix: "-naive-musl" }
-          - { arch: arm64, musl: true, cc_target: "aarch64-linux-musl", suffix: "-naive-musl" }
-          - { arch: "386", musl: true, cc_target: "i686-linux-musl", suffix: "-naive-musl" }
-          - { arch: arm, goarm: "7", musl: true, cc_target: "arm-linux-musleabihf", suffix: "-naive-musl" }
+          - { arch: amd64, cc_target: "x86_64-linux-musl" }
+          - { arch: arm64, cc_target: "aarch64-linux-musl" }
+          - { arch: "386", cc_target: "i686-linux-musl" }
+          - { arch: arm, goarm: "7", cc_target: "arm-linux-musleabihf" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -387,62 +488,16 @@ jobs:
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
           git tag v${{ needs.calculate_version.outputs.version }} -f
-      - name: Download sysroot (glibc)
-        if: ${{ ! matrix.musl }}
-        run: |
-          set -xeuo pipefail
-          wget -q "https://commondatastorage.googleapis.com/chrome-linux-sysroot/${{ matrix.sysroot_sha }}" -O sysroot.tar.xz
-          mkdir -p /tmp/sysroot
-          tar -xf sysroot.tar.xz -C /tmp/sysroot
-      - name: Install cross compiler (glibc)
-        if: ${{ ! matrix.musl }}
-        run: |
-          set -xeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang lld
-          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-            sudo apt-get install -y libc6-dev-arm64-cross
-          elif [[ "${{ matrix.arch }}" == "386" ]]; then
-            sudo apt-get install -y libc6-dev-i386-cross
-          elif [[ "${{ matrix.arch }}" == "arm" ]]; then
-            sudo apt-get install -y libc6-dev-armhf-cross
-          fi
       - name: Install musl cross compiler
-        if: matrix.musl
         run: |
           set -xeuo pipefail
           .github/setup_musl_cross.sh "${{ matrix.cc_target }}"
           echo "PATH=$HOME/musl-cross/bin:$PATH" >> $GITHUB_ENV
-      - name: Set build tags
-        run: |
-          set -xeuo pipefail
-          TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,badlinkname,tfogo_checklinkname0'
-          if [[ "${{ matrix.musl }}" == "true" ]]; then
-            TAGS="${TAGS},with_musl"
-          fi
-          echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
-      - name: Build (glibc)
-        if: ${{ ! matrix.musl }}
+      - name: Build
         run: |
           set -xeuo pipefail
           mkdir -p dist
-          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
-          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0 -linkmode=external -extldflags "-fuse-ld=lld --sysroot=/tmp/sysroot"' \
-          ./cmd/sing-box
-        env:
-          CGO_ENABLED: "1"
-          GOOS: linux
-          GOARCH: ${{ matrix.arch }}
-          GOARM: ${{ matrix.goarm }}
-          CC: "clang --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot"
-          CXX: "clang++ --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build (musl)
-        if: matrix.musl
-        run: |
-          set -xeuo pipefail
-          mkdir -p dist
-          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
+          go build -v -trimpath -o dist/sing-box -tags 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,with_musl,badlinkname,tfogo_checklinkname0' \
           -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0 -linkmode=external -extldflags "-static"' \
           ./cmd/sing-box
         env:
@@ -459,7 +514,7 @@ jobs:
           if [[ -n "${{ matrix.goarm }}" ]]; then
             DIR_NAME="${DIR_NAME}v${{ matrix.goarm }}"
           fi
-          DIR_NAME="${DIR_NAME}${{ matrix.suffix }}"
+          DIR_NAME="${DIR_NAME}-musl"
           echo "DIR_NAME=${DIR_NAME}" >> "${GITHUB_ENV}"
       - name: Archive
         run: |
@@ -475,11 +530,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-linux_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.suffix }}
+          name: binary-linux_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}-musl
           path: "dist"
   build_android:
     name: Build Android
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Android'
+    if: false  # TODO: temporarily disabled for testing
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -559,7 +614,7 @@ jobs:
           path: 'dist'
   publish_android:
     name: Publish Android
-    if: github.event_name == 'workflow_dispatch' && inputs.build == 'publish-android'
+    if: false  # TODO: temporarily disabled for testing
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -806,13 +861,14 @@ jobs:
           path: 'dist'
   upload:
     name: Upload builds
-    if: "!failure() && github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Binary' || inputs.build == 'Android' || inputs.build == 'Apple' || inputs.build == 'macOS-standalone')"
+    if: false  # TODO: temporarily disabled for testing
     runs-on: ubuntu-latest
     needs:
       - calculate_version
       - build
       - build_darwin
-      - build_naive_linux
+      - build_windows
+      - build_linux_musl
       - build_android
       - build_apple
     steps:
