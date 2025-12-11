@@ -1,6 +1,10 @@
 package config
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/metacubex/mihomo/listener/sing"
+)
 
 // SudokuServer describes a Sudoku inbound server configuration.
 // It is internal to the listener layer and mainly used for logging and wiring.
@@ -15,6 +19,9 @@ type SudokuServer struct {
 	HandshakeTimeoutSecond *int   `json:"handshake-timeout,omitempty"`
 	EnablePureDownlink     *bool  `json:"enable-pure-downlink,omitempty"`
 	CustomTable            string `json:"custom-table,omitempty"`
+
+	// mihomo private extension (not the part of standard Sudoku protocol)
+	MuxOption sing.MuxOption `json:"mux-option,omitempty"`
 }
 
 func (s SudokuServer) String() string {

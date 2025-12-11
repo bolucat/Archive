@@ -21,6 +21,9 @@ type SudokuOption struct {
 	HandshakeTimeoutSecond *int   `inbound:"handshake-timeout,omitempty"`
 	EnablePureDownlink     *bool  `inbound:"enable-pure-downlink,omitempty"`
 	CustomTable            string `inbound:"custom-table,omitempty"` // optional custom byte layout, e.g. xpxvvpvv
+
+	// mihomo private extension (not the part of standard Sudoku protocol)
+	MuxOption MuxOption `inbound:"mux-option,omitempty"`
 }
 
 func (o SudokuOption) Equal(config C.InboundConfig) bool {
@@ -55,6 +58,7 @@ func NewSudoku(options *SudokuOption) (*Sudoku, error) {
 		EnablePureDownlink:     options.EnablePureDownlink,
 		CustomTable:            options.CustomTable,
 	}
+	serverConf.MuxOption = options.MuxOption.Build()
 
 	return &Sudoku{
 		Base:       base,

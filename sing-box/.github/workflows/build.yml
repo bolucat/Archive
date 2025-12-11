@@ -62,7 +62,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
   build:
     name: Build binary
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -71,31 +71,31 @@ jobs:
         include:
           # Linux with naive outbound (CGO enabled with Debian Bullseye sysroot)
           - { os: linux, arch: amd64, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64", sysroot_sha: "36a164623d03f525e3dfb783a5e9b8a00e98e1ddd2b5cff4e449bd016dd27e50", cc_target: "x86_64-linux-gnu" }
-          - { os: linux, arch: arm64, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic", sysroot_sha: "2f915d821eec27515c0c6d21b69898e23762908d8d7ccc1aa2a8f5f25e8b7e18", cc_target: "aarch64-linux-gnu", cross_pkg: "libc6-dev-arm64-cross" }
+          - { os: linux, arch: arm64, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic", sysroot_sha: "2f915d821eec27515c0c6d21b69898e23762908d8d7ccc1aa2a8f5f25e8b7e18", cc_target: "aarch64-linux-gnu", cross_pkg: "libc6-dev-arm64-cross", linker: "bfd" }
           - { os: linux, arch: "386", naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4", sysroot_sha: "63f0e5128b84f7b0421956a4a40affa472be8da0e58caf27e9acbc84072daee7", cc_target: "i686-linux-gnu", cross_pkg: "libc6-dev-i386-cross" }
-          - { os: linux, arch: arm, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4", sysroot_sha: "47b3a0b161ca011b2b33d4fc1ef6ef269b8208a0b7e4c900700c345acdfd1814", cc_target: "arm-linux-gnueabihf", cross_pkg: "libc6-dev-armhf-cross", linker: "bfd" }
+          - { os: linux, arch: arm, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4", sysroot_sha: "47b3a0b161ca011b2b33d4fc1ef6ef269b8208a0b7e4c900700c345acdfd1814", cc_target: "arm-linux-gnueabihf", cross_pkg: "libc6-dev-armhf-cross binutils-arm-linux-gnueabihf", linker: "bfd" }
           # Linux without naive outbound (no CGO)
-          - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
-          - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
-          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
-          - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
-          - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
-          - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
-          - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
-          - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
-          - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
-          - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
-          - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
+          # - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
+          # - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
+          # - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
+          # - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
+          # - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
+          # - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
+          # - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
+          # - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
+          # - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
+          # - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
+          # - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
+          # - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
+          # - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
           # Windows 7 legacy (no naive, no CGO)
-          - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
-          - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
+          # - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
+          # - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
           # Android (naive enabled)
-          - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
-          - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
-          - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
-          - { os: android, arch: "386", ndk: "i686-linux-android21" }
+          # - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
+          # - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
+          # - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
+          # - { os: android, arch: "386", ndk: "i686-linux-android21" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -390,16 +390,16 @@ jobs:
           path: "dist"
   build_windows:
     name: Build Windows binaries
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
+    if: false  # TODO: temporarily disabled for testing
     runs-on: windows-latest
     needs:
       - calculate_version
     strategy:
       matrix:
         include:
-          - { arch: amd64, cc: x86_64-w64-mingw32-clang }
-          - { arch: "386", cc: i686-w64-mingw32-clang }
-          - { arch: arm64, cc: aarch64-w64-mingw32-clang }
+          - { arch: amd64 }
+          - { arch: "386" }
+          - { arch: arm64 }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -409,26 +409,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ^1.25.4
-      - name: Cache llvm-mingw
-        id: cache-llvm-mingw
-        uses: actions/cache@v4
-        with:
-          path: ${{ runner.temp }}/llvm-mingw
-          key: llvm-mingw-ucrt-x86_64
-      - name: Setup llvm-mingw
-        if: steps.cache-llvm-mingw.outputs.cache-hit != 'true'
-        run: |
-          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
-          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/mstorsjo/llvm-mingw/releases/latest" -Headers $headers
-          $asset = $release.assets | Where-Object { $_.name -like "llvm-mingw-*-ucrt-x86_64.zip" }
-          curl -Lo llvm-mingw.zip $asset.browser_download_url
-          Expand-Archive llvm-mingw.zip -DestinationPath $env:RUNNER_TEMP/llvm-mingw
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Setup llvm-mingw PATH
-        run: |
-          $extractedDir = Get-ChildItem -Path $env:RUNNER_TEMP/llvm-mingw -Directory | Where-Object { $_.Name -like "llvm-mingw-*" } | Select-Object -First 1
-          echo "$($extractedDir.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Set tag
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$env:GITHUB_ENV"
@@ -436,16 +416,13 @@ jobs:
       - name: Build
         run: |
           mkdir -p dist
-          go build -v -trimpath -o dist/sing-box.exe -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,badlinkname,tfogo_checklinkname0" `
+          go build -v -trimpath -o dist/sing-box.exe -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0" `
           -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0" `
           ./cmd/sing-box
         env:
-          CGO_ENABLED: "1"
-          CGO_LDFLAGS_ALLOW: "-Wl,-Xlink=.*"
+          CGO_ENABLED: "0"
           GOOS: windows
           GOARCH: ${{ matrix.arch }}
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cc }}++
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Archive
         run: |
@@ -464,17 +441,17 @@ jobs:
           path: "dist"
   build_linux_musl:
     name: Build Linux musl static binaries
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
     strategy:
       matrix:
         include:
-          - { arch: amd64, cc_target: "x86_64-linux-musl" }
-          - { arch: arm64, cc_target: "aarch64-linux-musl" }
-          - { arch: "386", cc_target: "i686-linux-musl" }
-          - { arch: arm, goarm: "7", cc_target: "arm-linux-musleabihf" }
+          - { arch: amd64, cc_target: "x86_64-unknown-linux-musl" }
+          - { arch: arm64, cc_target: "aarch64-unknown-linux-musl" }
+          - { arch: "386", cc_target: "i686-unknown-linux-musl" }
+          - { arch: arm, goarm: "7", cc_target: "arm-unknown-linux-musleabihf" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -488,11 +465,26 @@ jobs:
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
           git tag v${{ needs.calculate_version.outputs.version }} -f
+      - name: Get musl-cross version
+        id: musl-cross-version
+        run: |
+          MUSL_CROSS_VERSION=$(curl -s https://api.github.com/repos/cross-tools/musl-cross/releases/latest | jq -r '.tag_name')
+          echo "version=$MUSL_CROSS_VERSION" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache musl cross compiler
+        id: cache-musl-cross
+        uses: actions/cache@v4
+        with:
+          path: ~/musl-cross
+          key: musl-cross-${{ steps.musl-cross-version.outputs.version }}-${{ matrix.cc_target }}
       - name: Install musl cross compiler
+        if: steps.cache-musl-cross.outputs.cache-hit != 'true'
         run: |
           set -xeuo pipefail
-          .github/setup_musl_cross.sh "${{ matrix.cc_target }}"
-          echo "PATH=$HOME/musl-cross/bin:$PATH" >> $GITHUB_ENV
+          .github/setup_musl_cross.sh "${{ matrix.cc_target }}" "${{ steps.musl-cross-version.outputs.version }}"
+      - name: Setup musl cross compiler PATH
+        run: echo "PATH=$HOME/musl-cross/bin:$PATH" >> $GITHUB_ENV
       - name: Build
         run: |
           set -xeuo pipefail
