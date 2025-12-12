@@ -4,30 +4,26 @@ icon: material/alert-decagram
 
 #### 1.13.0-alpha.28
 
-* Update quic-go to v0.57.1
-* Add `disable_tcp_keep_alive`, `tcp_keep_alive` and `tcp_keep_alive_interval` options for dial fields **1**
+* Add naiveproxy outbound **1**
+* Add `disable_tcp_keep_alive`, `tcp_keep_alive` and `tcp_keep_alive_interval` options for dial fields **2**
 * Update default TCP keep-alive initial period from 10 minutes to 5 minutes
+* Update quic-go to v0.57.1
 * Fixes and improvements
 
 **1**:
 
+Only available on Apple platforms, Android, Windows and some Linux architectures.
+
+See [NaiveProxy outbound](/configuration/outbound/naive/).
+
+**2**:
+
 See [Dial Fields](/configuration/shared/dial/#tcp_keep_alive).
-
-__Unfortunately, for non-technical reasons, we are currently unable to notarize the standalone version of the macOS client:
-because system extensions require signatures to function, we have had to temporarily halt its release.__
-
-__We plan to fix the App Store release issue and launch a new standalone desktop client, but until then,
-only clients on TestFlight will be available (unless you have an Apple Developer Program and compile from source code).__
 
 #### 1.12.13
 
+* Fix naive inbound
 * Fixes and improvements
-
-__Unfortunately, for non-technical reasons, we are currently unable to notarize the standalone version of the macOS client:
-because system extensions require signatures to function, we have had to temporarily halt its release.__
-
-__We plan to fix the App Store release issue and launch a new standalone desktop client, but until then,
-only clients on TestFlight will be available (unless you have an Apple Developer Program and compile from source code).__
 
 #### 1.12.12
 

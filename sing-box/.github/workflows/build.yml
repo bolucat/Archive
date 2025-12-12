@@ -69,11 +69,21 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux with naive outbound (CGO enabled with Debian Bullseye sysroot)
-          - { os: linux, arch: amd64, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64", sysroot_sha: "36a164623d03f525e3dfb783a5e9b8a00e98e1ddd2b5cff4e449bd016dd27e50", cc_target: "x86_64-linux-gnu" }
-          - { os: linux, arch: arm64, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic", sysroot_sha: "2f915d821eec27515c0c6d21b69898e23762908d8d7ccc1aa2a8f5f25e8b7e18", cc_target: "aarch64-linux-gnu", cross_pkg: "libc6-dev-arm64-cross", linker: "bfd" }
-          - { os: linux, arch: "386", naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4", sysroot_sha: "63f0e5128b84f7b0421956a4a40affa472be8da0e58caf27e9acbc84072daee7", cc_target: "i686-linux-gnu", cross_pkg: "libc6-dev-i386-cross" }
-          - { os: linux, arch: arm, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4", sysroot_sha: "47b3a0b161ca011b2b33d4fc1ef6ef269b8208a0b7e4c900700c345acdfd1814", cc_target: "arm-linux-gnueabihf", cross_pkg: "libc6-dev-armhf-cross binutils-arm-linux-gnueabihf", linker: "bfd" }
+          # Linux with naive support - three variants per architecture
+          # amd64
+          - { os: linux, arch: amd64, variant: purego, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
+          - { os: linux, arch: amd64, variant: glibc, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
+          - { os: linux, arch: amd64, variant: musl, naive: true }
+          # arm64
+          - { os: linux, arch: arm64, variant: purego, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
+          - { os: linux, arch: arm64, variant: glibc, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
+          - { os: linux, arch: arm64, variant: musl, naive: true }
+          # 386 (no purego - 32-bit not supported without CGO)
+          - { os: linux, arch: "386", variant: glibc, naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
+          - { os: linux, arch: "386", variant: musl, naive: true, go386: sse2 }
+          # arm (no purego - 32-bit not supported without CGO)
+          - { os: linux, arch: arm, variant: glibc, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
+          - { os: linux, arch: arm, variant: musl, naive: true, goarm: "7" }
           # Linux without naive outbound (no CGO)
           # - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
           # - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
@@ -134,19 +144,45 @@ jobs:
         with:
           ndk-version: r28
           local-cache: true
-      - name: Download sysroot (Linux naive)
+      - name: Clone cronet-go
         if: matrix.naive
         run: |
           set -xeuo pipefail
-          wget -q "https://commondatastorage.googleapis.com/chrome-linux-sysroot/${{ matrix.sysroot_sha }}" -O sysroot.tar.xz
-          mkdir -p /tmp/sysroot
-          tar -xf sysroot.tar.xz -C /tmp/sysroot
-      - name: Install cross compiler (Linux naive)
+          CRONET_GO_VERSION=$(cat .github/CRONET_GO_VERSION)
+          git init ~/cronet-go
+          git -C ~/cronet-go remote add origin https://github.com/sagernet/cronet-go.git
+          git -C ~/cronet-go fetch --depth=1 origin "$CRONET_GO_VERSION"
+          git -C ~/cronet-go checkout FETCH_HEAD
+          git -C ~/cronet-go submodule update --init --recursive --depth=1
+      - name: Cache Chromium toolchain
+        if: matrix.naive
+        id: cache-chromium-toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/cronet-go/naiveproxy/src/third_party/llvm-build/Release+Asserts
+            ~/cronet-go/naiveproxy/src/out/sysroot-build
+          key: chromium-toolchain-${{ matrix.arch }}-${{ matrix.variant }}-${{ hashFiles('.github/CRONET_GO_VERSION') }}
+      - name: Download Chromium toolchain
         if: matrix.naive
         run: |
           set -xeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang lld ${{ matrix.cross_pkg }}
+          cd ~/cronet-go
+          if [[ "${{ matrix.variant }}" == "musl" ]]; then
+            go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl download-toolchain
+          else
+            go run ./cmd/build-naive --target=linux/${{ matrix.arch }} download-toolchain
+          fi
+      - name: Set Chromium toolchain environment
+        if: matrix.naive
+        run: |
+          set -xeuo pipefail
+          cd ~/cronet-go
+          if [[ "${{ matrix.variant }}" == "musl" ]]; then
+            go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl env >> $GITHUB_ENV
+          else
+            go run ./cmd/build-naive --target=linux/${{ matrix.arch }} env >> $GITHUB_ENV
+          fi
       - name: Set tag
         run: |-
           git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
@@ -155,12 +191,17 @@ jobs:
         run: |
           set -xeuo pipefail
           TAGS='with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,badlinkname,tfogo_checklinkname0'
-          if [[ "${{ matrix.naive }}" == "true" ]] || [[ "${{ matrix.os }}" == "android" ]]; then
+          if [[ "${{ matrix.naive }}" == "true" ]]; then
             TAGS="${TAGS},with_naive_outbound"
           fi
+          if [[ "${{ matrix.variant }}" == "purego" ]]; then
+            TAGS="${TAGS},with_purego"
+          elif [[ "${{ matrix.variant }}" == "musl" ]]; then
+            TAGS="${TAGS},with_musl"
+          fi
           echo "BUILD_TAGS=${TAGS}" >> "${GITHUB_ENV}"
-      - name: Build
-        if: matrix.os != 'android' && ! matrix.naive
+      - name: Build (purego)
+        if: matrix.variant == 'purego'
         run: |
           set -xeuo pipefail
           mkdir -p dist
@@ -176,13 +217,13 @@ jobs:
           GOMIPS: ${{ matrix.gomips }}
           GOMIPS64: ${{ matrix.gomips }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build Linux with naive
-        if: matrix.naive
+      - name: Build (glibc)
+        if: matrix.variant == 'glibc'
         run: |
           set -xeuo pipefail
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
-          -ldflags "-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0 -linkmode=external -extldflags \"-fuse-ld=${LINKER} --sysroot=/tmp/sysroot\"" \
+          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0' \
           ./cmd/sing-box
         env:
           CGO_ENABLED: "1"
@@ -190,9 +231,38 @@ jobs:
           GOARCH: ${{ matrix.arch }}
           GO386: ${{ matrix.go386 }}
           GOARM: ${{ matrix.goarm }}
-          CC: clang --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot
-          CXX: clang++ --target=${{ matrix.cc_target }} --sysroot=/tmp/sysroot
-          LINKER: ${{ matrix.linker || 'lld' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (musl)
+        if: matrix.variant == 'musl'
+        run: |
+          set -xeuo pipefail
+          mkdir -p dist
+          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
+          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0' \
+          ./cmd/sing-box
+        env:
+          CGO_ENABLED: "1"
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+          GO386: ${{ matrix.go386 }}
+          GOARM: ${{ matrix.goarm }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (non-variant)
+        if: matrix.os != 'android' && matrix.variant == ''
+        run: |
+          set -xeuo pipefail
+          mkdir -p dist
+          go build -v -trimpath -o dist/sing-box -tags "${BUILD_TAGS}" \
+          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0' \
+          ./cmd/sing-box
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          GO386: ${{ matrix.go386 }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+          GOMIPS64: ${{ matrix.gomips }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build Android
         if: matrix.os == 'android'
@@ -221,6 +291,11 @@ jobs:
             DIR_NAME="${DIR_NAME}-${{ matrix.gomips }}"
           elif [[ -n "${{ matrix.legacy_name }}" ]]; then
             DIR_NAME="${DIR_NAME}-legacy-${{ matrix.legacy_name }}"
+          fi
+          if [[ "${{ matrix.variant }}" == "glibc" ]]; then
+            DIR_NAME="${DIR_NAME}-glibc"
+          elif [[ "${{ matrix.variant }}" == "musl" ]]; then
+            DIR_NAME="${DIR_NAME}-musl"
           fi
           echo "DIR_NAME=${DIR_NAME}" >> "${GITHUB_ENV}"
           PKG_VERSION="${{ needs.calculate_version.outputs.version }}"
@@ -312,11 +387,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}
+          name: binary-${{ matrix.os }}_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}${{ matrix.go386 && format('_{0}', matrix.go386) }}${{ matrix.gomips && format('_{0}', matrix.gomips) }}${{ matrix.legacy_name && format('-legacy-{0}', matrix.legacy_name) }}${{ matrix.variant && format('-{0}', matrix.variant) }}
           path: "dist"
   build_darwin:
     name: Build Darwin binaries
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: macos-latest
     needs:
       - calculate_version
@@ -390,7 +465,7 @@ jobs:
           path: "dist"
   build_windows:
     name: Build Windows binaries
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: windows-latest
     needs:
       - calculate_version
@@ -439,94 +514,9 @@ jobs:
         with:
           name: binary-windows_${{ matrix.arch }}
           path: "dist"
-  build_linux_musl:
-    name: Build Linux musl static binaries
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
-    runs-on: ubuntu-latest
-    needs:
-      - calculate_version
-    strategy:
-      matrix:
-        include:
-          - { arch: amd64, cc_target: "x86_64-unknown-linux-musl" }
-          - { arch: arm64, cc_target: "aarch64-unknown-linux-musl" }
-          - { arch: "386", cc_target: "i686-unknown-linux-musl" }
-          - { arch: arm, goarm: "7", cc_target: "arm-unknown-linux-musleabihf" }
-    steps:
-      - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
-        with:
-          fetch-depth: 0
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.25.4
-      - name: Set tag
-        run: |-
-          git ls-remote --exit-code --tags origin v${{ needs.calculate_version.outputs.version }} || echo "PUBLISHED=false" >> "$GITHUB_ENV"
-          git tag v${{ needs.calculate_version.outputs.version }} -f
-      - name: Get musl-cross version
-        id: musl-cross-version
-        run: |
-          MUSL_CROSS_VERSION=$(curl -s https://api.github.com/repos/cross-tools/musl-cross/releases/latest | jq -r '.tag_name')
-          echo "version=$MUSL_CROSS_VERSION" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Cache musl cross compiler
-        id: cache-musl-cross
-        uses: actions/cache@v4
-        with:
-          path: ~/musl-cross
-          key: musl-cross-${{ steps.musl-cross-version.outputs.version }}-${{ matrix.cc_target }}
-      - name: Install musl cross compiler
-        if: steps.cache-musl-cross.outputs.cache-hit != 'true'
-        run: |
-          set -xeuo pipefail
-          .github/setup_musl_cross.sh "${{ matrix.cc_target }}" "${{ steps.musl-cross-version.outputs.version }}"
-      - name: Setup musl cross compiler PATH
-        run: echo "PATH=$HOME/musl-cross/bin:$PATH" >> $GITHUB_ENV
-      - name: Build
-        run: |
-          set -xeuo pipefail
-          mkdir -p dist
-          go build -v -trimpath -o dist/sing-box -tags 'with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_naive_outbound,with_musl,badlinkname,tfogo_checklinkname0' \
-          -ldflags '-s -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ needs.calculate_version.outputs.version }} -checklinkname=0 -linkmode=external -extldflags "-static"' \
-          ./cmd/sing-box
-        env:
-          CGO_ENABLED: "1"
-          GOOS: linux
-          GOARCH: ${{ matrix.arch }}
-          GOARM: ${{ matrix.goarm }}
-          CC: "${{ matrix.cc_target }}-gcc"
-          CXX: "${{ matrix.cc_target }}-g++"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set name
-        run: |-
-          DIR_NAME="sing-box-${{ needs.calculate_version.outputs.version }}-linux-${{ matrix.arch }}"
-          if [[ -n "${{ matrix.goarm }}" ]]; then
-            DIR_NAME="${DIR_NAME}v${{ matrix.goarm }}"
-          fi
-          DIR_NAME="${DIR_NAME}-musl"
-          echo "DIR_NAME=${DIR_NAME}" >> "${GITHUB_ENV}"
-      - name: Archive
-        run: |
-          set -xeuo pipefail
-          cd dist
-          mkdir -p "${DIR_NAME}"
-          cp ../LICENSE "${DIR_NAME}"
-          cp sing-box "${DIR_NAME}"
-          tar -czvf "${DIR_NAME}.tar.gz" "${DIR_NAME}"
-          rm -r "${DIR_NAME}"
-      - name: Cleanup
-        run: rm dist/sing-box
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-linux_${{ matrix.arch }}${{ matrix.goarm && format('v{0}', matrix.goarm) }}-musl
-          path: "dist"
   build_android:
     name: Build Android
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Android'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -606,7 +596,7 @@ jobs:
           path: 'dist'
   publish_android:
     name: Publish Android
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name == 'workflow_dispatch' && inputs.build == 'publish-android'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
@@ -672,7 +662,7 @@ jobs:
   build_apple:
     name: Build Apple clients
     runs-on: macos-26
-    if: false
+    if: false # github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'app-store' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone'
     needs:
       - calculate_version
     strategy:
@@ -837,7 +827,7 @@ jobs:
           		--app-drop-link 0 0 \
           		--skip-jenkins \
           	SFM.dmg "${{ matrix.export_path }}/SFM.app"
-          xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"          
+          xcrun notarytool submit "SFM.dmg" --wait --keychain-profile "notarytool-password"
           cd "${{ matrix.archive }}"
           zip -r SFM.dSYMs.zip dSYMs
           popd
@@ -853,14 +843,13 @@ jobs:
           path: 'dist'
   upload:
     name: Upload builds
-    if: false  # TODO: temporarily disabled for testing
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
     runs-on: ubuntu-latest
     needs:
       - calculate_version
       - build
       - build_darwin
       - build_windows
-      - build_linux_musl
       - build_android
       - build_apple
     steps:
