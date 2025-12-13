@@ -46,7 +46,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
       - name: Check input version
         if: github.event_name == 'workflow_dispatch'
         run: |-
@@ -69,43 +69,41 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux with naive support - three variants per architecture
-          # amd64
           - { os: linux, arch: amd64, variant: purego, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
           - { os: linux, arch: amd64, variant: glibc, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, openwrt: "x86_64" }
           - { os: linux, arch: amd64, variant: musl, naive: true }
-          # arm64
+
           - { os: linux, arch: arm64, variant: purego, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
           - { os: linux, arch: arm64, variant: glibc, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
           - { os: linux, arch: arm64, variant: musl, naive: true }
-          # 386 (no purego - 32-bit not supported without CGO)
+
           - { os: linux, arch: "386", variant: glibc, naive: true, go386: sse2, debian: i386, rpm: i386, openwrt: "i386_pentium4" }
           - { os: linux, arch: "386", variant: musl, naive: true, go386: sse2 }
-          # arm (no purego - 32-bit not supported without CGO)
+
           - { os: linux, arch: arm, variant: glibc, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
           - { os: linux, arch: arm, variant: musl, naive: true, goarm: "7" }
-          # Linux without naive outbound (no CGO)
-          # - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
-          # - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
-          # - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
-          # - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
-          # - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
-          # - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
-          # - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
-          # - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
-          # - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
-          # - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
-          # - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
-          # - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
-          # - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
-          # Windows 7 legacy (no naive, no CGO)
-          # - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
-          # - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
-          # Android (naive enabled)
-          # - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
-          # - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
-          # - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
-          # - { os: android, arch: "386", ndk: "i686-linux-android21" }
+
+          - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
+          - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
+          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
+          - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
+          - { os: linux, arch: mipsle, gomips: hardfloat, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc_24kf" }
+          - { os: linux, arch: mipsle, gomips: softfloat, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
+          - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
+          - { os: linux, arch: mips64le, gomips: hardfloat, debian: mips64el, rpm: mips64el }
+          - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
+          - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
+          - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
+          - { os: linux, arch: riscv64, debian: riscv64, rpm: riscv64, openwrt: "riscv64_generic" }
+          - { os: linux, arch: loong64, debian: loongarch64, rpm: loongarch64, openwrt: "loongarch64_generic" }
+
+          - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
+          - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
+
+          - { os: android, arch: arm64, ndk: "aarch64-linux-android21" }
+          - { os: android, arch: arm, ndk: "armv7a-linux-androideabi21" }
+          - { os: android, arch: amd64, ndk: "x86_64-linux-android21" }
+          - { os: android, arch: "386", ndk: "i686-linux-android21" }
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -115,7 +113,7 @@ jobs:
         if: ${{ ! (matrix.legacy_win7 || matrix.legacy_go124) }}
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
       - name: Setup Go 1.24
         if: matrix.legacy_go124
         uses: actions/setup-go@v5
@@ -128,7 +126,7 @@ jobs:
         with:
           path: |
             ~/go/go_win7
-          key: go_win7_1254
+          key: go_win7_1255
       - name: Setup Go for Windows 7
         if: matrix.legacy_win7 && steps.cache-go-for-windows7.outputs.cache-hit != 'true'
         run: |-
@@ -529,7 +527,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -609,7 +607,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -708,7 +706,7 @@ jobs:
         if: matrix.if
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.25.4
+          go-version: ^1.25.5
       - name: Set tag
         if: matrix.if
         run: |-
@@ -843,7 +841,7 @@ jobs:
           path: 'dist'
   upload:
     name: Upload builds
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Binary'
+    if: "!failure() && github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Binary' || inputs.build == 'Android' || inputs.build == 'Apple' || inputs.build == 'macOS-standalone')"
     runs-on: ubuntu-latest
     needs:
       - calculate_version
