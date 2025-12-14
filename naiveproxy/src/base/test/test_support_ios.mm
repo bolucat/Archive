@@ -40,11 +40,12 @@ namespace {
 void PopulateUIWindow(UIWindow* window) {
   window.backgroundColor = UIColor.whiteColor;
   [window makeKeyAndVisible];
-  CGRect bounds = UIScreen.mainScreen.bounds;
+  CGRect bounds = window.windowScene.screen.bounds;
   // Add a label with the app name.
   UILabel* label = [[UILabel alloc] initWithFrame:bounds];
   label.text = NSProcessInfo.processInfo.processName;
   label.textAlignment = NSTextAlignmentCenter;
+  label.textColor = UIColor.blackColor;
   [window addSubview:label];
 
   // An NSInternalInconsistencyException is thrown if the app doesn't have a

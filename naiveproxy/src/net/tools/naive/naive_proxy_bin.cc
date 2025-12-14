@@ -13,7 +13,6 @@
 #include "base/at_exit.h"
 #include "base/check.h"
 #include "base/command_line.h"
-#include "base/environment.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/json/json_file_value_serializer.h"
@@ -85,6 +84,12 @@
 #include "base/allocator/partition_alloc_support.h"
 #include "base/allocator/partition_allocator/src/partition_alloc/shim/allocator_shim.h"
 #endif
+
+#if BUILDFLAG(IS_APPLE)
+#if PA_BUILDFLAG(USE_ALLOCATOR_SHIM)
+#include "partition_alloc/shim/allocator_shim.h"
+#endif
+#endif  // BUILDFLAG(IS_MAC)
 
 namespace {
 
@@ -246,7 +251,6 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
     struct NoPostQuantum : public SSLConfigService {
       SSLContextConfig GetSSLContextConfig() override {
         SSLContextConfig config;
-        config.post_quantum_key_agreement_enabled = false;
         return config;
       }
 
@@ -534,7 +538,7 @@ int main(int argc, char* argv[]) {
     naive_proxies.push_back(std::move(naive_proxy));
   }
 
-  if (base::Environment::Create()->HasVar("TEST_MARK_STARTUP")) {
+  if (getenv("TEST_MARK_STARTUP") != nullptr) {
     LOG(INFO) << "TEST_MARK_STARTUP";
   }
   base::RunLoop().Run();

@@ -26,8 +26,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
-	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
 	"github.com/sagernet/cors"
 )
 
@@ -363,7 +361,7 @@ func traffic(w http.ResponseWriter, r *http.Request) {
 	var wsConn net.Conn
 	if r.Header.Get("Upgrade") == "websocket" {
 		var err error
-		wsConn, _, _, err = ws.UpgradeHTTP(r, w)
+		wsConn, _, err = wsUpgrade(r, w)
 		if err != nil {
 			return
 		}
@@ -396,7 +394,7 @@ func traffic(w http.ResponseWriter, r *http.Request) {
 			_, err = w.Write(buf.Bytes())
 			w.(http.Flusher).Flush()
 		} else {
-			err = wsutil.WriteMessage(wsConn, ws.StateServerSide, ws.OpText, buf.Bytes())
+			err = wsWriteServerText(wsConn, buf.Bytes())
 		}
 
 		if err != nil {
@@ -409,7 +407,7 @@ func memory(w http.ResponseWriter, r *http.Request) {
 	var wsConn net.Conn
 	if r.Header.Get("Upgrade") == "websocket" {
 		var err error
-		wsConn, _, _, err = ws.UpgradeHTTP(r, w)
+		wsConn, _, err = wsUpgrade(r, w)
 		if err != nil {
 			return
 		}
@@ -446,7 +444,7 @@ func memory(w http.ResponseWriter, r *http.Request) {
 			_, err = w.Write(buf.Bytes())
 			w.(http.Flusher).Flush()
 		} else {
-			err = wsutil.WriteMessage(wsConn, ws.StateServerSide, ws.OpText, buf.Bytes())
+			err = wsWriteServerText(wsConn, buf.Bytes())
 		}
 
 		if err != nil {
@@ -492,7 +490,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 	var wsConn net.Conn
 	if r.Header.Get("Upgrade") == "websocket" {
 		var err error
-		wsConn, _, _, err = ws.UpgradeHTTP(r, w)
+		wsConn, _, err = wsUpgrade(r, w)
 		if err != nil {
 			return
 		}
@@ -551,7 +549,7 @@ func getLogs(w http.ResponseWriter, r *http.Request) {
 			_, err = w.Write(buf.Bytes())
 			w.(http.Flusher).Flush()
 		} else {
-			err = wsutil.WriteMessage(wsConn, ws.StateServerSide, ws.OpText, buf.Bytes())
+			err = wsWriteServerText(wsConn, buf.Bytes())
 		}
 
 		if err != nil {

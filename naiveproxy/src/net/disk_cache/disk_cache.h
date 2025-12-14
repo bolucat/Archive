@@ -17,6 +17,7 @@
 
 #include "base/files/file.h"
 #include "base/memory/ref_counted.h"
+#include "base/sequence_checker.h"
 #include "base/strings/string_split.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
@@ -319,6 +320,9 @@ class NET_EXPORT Backend {
 
   // Returns the maximum length an individual stream can have.
   virtual int64_t MaxFileSize() const = 0;
+
+  // Called when the browser is detected to be idle.
+  virtual void OnBrowserIdle();
 
  private:
   const net::CacheType cache_type_;

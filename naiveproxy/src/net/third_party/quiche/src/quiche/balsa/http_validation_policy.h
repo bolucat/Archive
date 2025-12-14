@@ -91,6 +91,16 @@ struct QUICHE_EXPORT HttpValidationPolicy {
   // If true, the parser rejects chunked messages that don't end with
   // CR_LF_CR_LF.
   bool require_chunked_body_end_with_crlf_crlf = false;
+
+  // If SANITIZE, the parser will replace multiple consecutive spaces with
+  // a single space in the HTTP/1 first line. If REJECT, a first line
+  // containing multiple consecutive spaces will be rejected.
+  FirstLineValidationOption sanitize_firstline_spaces =
+      FirstLineValidationOption::NONE;
+
+  // If true, the parser will replace obs-fold in header field values with one
+  // or more space characters.
+  bool sanitize_obs_fold_in_header_values = false;
 };
 
 }  // namespace quiche

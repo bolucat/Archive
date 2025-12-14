@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/protozero/field.h"
 #include "src/trace_processor/storage/trace_storage.h"
 
@@ -35,7 +36,7 @@ class SystemProbesParser {
 
   explicit SystemProbesParser(TraceProcessorContext*);
 
-  void ParseProcessTree(ConstBytes);
+  void ParseProcessTree(int64_t ts, ConstBytes);
   void ParseProcessStats(int64_t ts, ConstBytes);
   void ParseSysStats(int64_t ts, ConstBytes);
   void ParseSystemInfo(ConstBytes);
@@ -64,14 +65,17 @@ class SystemProbesParser {
 
   uint32_t page_size_ = 0;
 
-  int64_t prev_read_amount = -1;
-  int64_t prev_write_amount = -1;
-  int64_t prev_discard_amount = -1;
-  int64_t prev_flush_count = -1;
-  int64_t prev_read_time = -1;
-  int64_t prev_write_time = -1;
-  int64_t prev_discard_time = -1;
-  int64_t prev_flush_time = -1;
+  struct DiskStatState {
+    int64_t prev_read_amount = -1;
+    int64_t prev_write_amount = -1;
+    int64_t prev_discard_amount = -1;
+    int64_t prev_flush_count = -1;
+    int64_t prev_read_time = -1;
+    int64_t prev_write_time = -1;
+    int64_t prev_discard_time = -1;
+    int64_t prev_flush_time = -1;
+  };
+  base::FlatHashMap<StringId, DiskStatState> disk_state_map_;
 };
 
 }  // namespace perfetto::trace_processor

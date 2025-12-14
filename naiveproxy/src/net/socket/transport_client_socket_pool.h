@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/safety_checks.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
@@ -87,6 +88,9 @@ class NET_EXPORT_PRIVATE TransportClientSocketPool
   };
 
   class NET_EXPORT_PRIVATE Request {
+    // TODO(crbug.com/422046500): Remove this macro once the bug gets fixed.
+    ADVANCED_MEMORY_SAFETY_CHECKS();
+
    public:
     // If |proxy_auth_callback| is null, proxy auth challenges will
     // result in an error.
@@ -267,7 +271,8 @@ class NET_EXPORT_PRIVATE TransportClientSocketPool
   static bool set_connect_backup_jobs_enabled(bool enabled);
 
   // NetworkChangeNotifier::IPAddressObserver methods:
-  void OnIPAddressChanged() override;
+  void OnIPAddressChanged(
+      NetworkChangeNotifier::IPAddressChangeType change_type) override;
 
   // SSLClientContext::Observer methods.
   void OnSSLConfigChanged(

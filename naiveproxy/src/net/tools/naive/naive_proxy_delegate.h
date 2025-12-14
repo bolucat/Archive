@@ -42,14 +42,15 @@ class NaiveProxyDelegate : public ProxyDelegate {
       const ProxyRetryInfoMap& proxy_retry_info) override {}
 
   // This only affects h2 proxy client socket.
-  Error OnBeforeTunnelRequest(const ProxyChain& proxy_chain,
-                              size_t chain_index,
-                              HttpRequestHeaders* extra_headers) override;
-
-  Error OnTunnelHeadersReceived(
+  base::expected<HttpRequestHeaders, Error> OnBeforeTunnelRequest(
       const ProxyChain& proxy_chain,
       size_t chain_index,
-      const HttpResponseHeaders& response_headers) override;
+      OnBeforeTunnelRequestCallback callback) override;
+
+  Error OnTunnelHeadersReceived(const ProxyChain& proxy_chain,
+                                size_t chain_index,
+                                const HttpResponseHeaders& response_headers,
+                                CompletionOnceCallback callback) override;
 
   void SetProxyResolutionService(
       ProxyResolutionService* proxy_resolution_service) override {}

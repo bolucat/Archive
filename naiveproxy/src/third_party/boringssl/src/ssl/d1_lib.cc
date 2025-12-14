@@ -36,6 +36,7 @@ DTLS1_STATE::DTLS1_STATE()
       handshake_read_overflow(false),
       sending_flight(false),
       sending_ack(false),
+      pending_flush(false),
       queued_key_update(QueuedKeyUpdate::kNone) {}
 
 DTLS1_STATE::~DTLS1_STATE() {}
@@ -68,12 +69,12 @@ bool dtls1_new(SSL *ssl) {
 void dtls1_free(SSL *ssl) {
   tls_free(ssl);
 
-  if (ssl == NULL) {
+  if (ssl == nullptr) {
     return;
   }
 
   Delete(ssl->d1);
-  ssl->d1 = NULL;
+  ssl->d1 = nullptr;
 }
 
 void DTLSTimer::StartMicroseconds(OPENSSL_timeval now, uint64_t microseconds) {

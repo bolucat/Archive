@@ -69,7 +69,7 @@ static int add_bio_cert_subjects_to_stack(STACK_OF(X509_NAME) *out, BIO *bio,
     X509_NAME *subject = X509_get_subject_name(x509.get());
     // Skip if already present in |out|. Duplicates in |to_append| will be
     // handled separately.
-    if (sk_X509_NAME_find(out, /*out_index=*/NULL, subject)) {
+    if (sk_X509_NAME_find(out, /*out_index=*/nullptr, subject)) {
       continue;
     }
 
@@ -343,9 +343,7 @@ int SSL_CTX_use_certificate_chain_file(SSL_CTX *ctx, const char *file) {
   }
 
   // When the while loop ends, it's usually just EOF.
-  uint32_t err = ERR_peek_last_error();
-  if (ERR_GET_LIB(err) == ERR_LIB_PEM &&
-      ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+  if (ERR_equals(ERR_peek_last_error(), ERR_LIB_PEM, PEM_R_NO_START_LINE)) {
     ERR_clear_error();
     return 1;
   }

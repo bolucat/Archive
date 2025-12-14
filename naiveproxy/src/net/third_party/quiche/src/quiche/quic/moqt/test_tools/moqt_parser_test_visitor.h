@@ -36,6 +36,7 @@ class MoqtParserTestVisitor : public MoqtControlParserVisitor,
     }
     last_message_ = TestMessageBase::MessageStructuredData(object);
   }
+  void OnFin() override { fin_received_ = true; }
   template <typename Message>
   void OnControlMessage(const Message& message) {
     end_of_message_ = true;
@@ -63,48 +64,54 @@ class MoqtParserTestVisitor : public MoqtControlParserVisitor,
   void OnUnsubscribeMessage(const MoqtUnsubscribe& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeDoneMessage(const MoqtSubscribeDone& message) override {
+  void OnPublishDoneMessage(const MoqtPublishDone& message) override {
     OnControlMessage(message);
   }
-  void OnAnnounceMessage(const MoqtAnnounce& message) override {
+  void OnPublishNamespaceMessage(const MoqtPublishNamespace& message) override {
     OnControlMessage(message);
   }
-  void OnAnnounceOkMessage(const MoqtAnnounceOk& message) override {
+  void OnPublishNamespaceOkMessage(
+      const MoqtPublishNamespaceOk& message) override {
     OnControlMessage(message);
   }
-  void OnAnnounceErrorMessage(const MoqtAnnounceError& message) override {
+  void OnPublishNamespaceErrorMessage(
+      const MoqtPublishNamespaceError& message) override {
     OnControlMessage(message);
   }
-  void OnAnnounceCancelMessage(const MoqtAnnounceCancel& message) override {
+  void OnPublishNamespaceDoneMessage(
+      const MoqtPublishNamespaceDone& message) override {
     OnControlMessage(message);
   }
-  void OnTrackStatusRequestMessage(
-      const MoqtTrackStatusRequest& message) override {
-    OnControlMessage(message);
-  }
-  void OnUnannounceMessage(const MoqtUnannounce& message) override {
+  void OnPublishNamespaceCancelMessage(
+      const MoqtPublishNamespaceCancel& message) override {
     OnControlMessage(message);
   }
   void OnTrackStatusMessage(const MoqtTrackStatus& message) override {
     OnControlMessage(message);
   }
+  void OnTrackStatusOkMessage(const MoqtTrackStatusOk& message) override {
+    OnControlMessage(message);
+  }
+  void OnTrackStatusErrorMessage(const MoqtTrackStatusError& message) override {
+    OnControlMessage(message);
+  }
   void OnGoAwayMessage(const MoqtGoAway& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeAnnouncesMessage(
-      const MoqtSubscribeAnnounces& message) override {
+  void OnSubscribeNamespaceMessage(
+      const MoqtSubscribeNamespace& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeAnnouncesOkMessage(
-      const MoqtSubscribeAnnouncesOk& message) override {
+  void OnSubscribeNamespaceOkMessage(
+      const MoqtSubscribeNamespaceOk& message) override {
     OnControlMessage(message);
   }
-  void OnSubscribeAnnouncesErrorMessage(
-      const MoqtSubscribeAnnouncesError& message) override {
+  void OnSubscribeNamespaceErrorMessage(
+      const MoqtSubscribeNamespaceError& message) override {
     OnControlMessage(message);
   }
-  void OnUnsubscribeAnnouncesMessage(
-      const MoqtUnsubscribeAnnounces& message) override {
+  void OnUnsubscribeNamespaceMessage(
+      const MoqtUnsubscribeNamespace& message) override {
     OnControlMessage(message);
   }
   void OnMaxRequestIdMessage(const MoqtMaxRequestId& message) override {
@@ -148,6 +155,7 @@ class MoqtParserTestVisitor : public MoqtControlParserVisitor,
   bool enable_logging_ = true;
   std::vector<std::string> object_payloads_;
   bool end_of_message_ = false;
+  bool fin_received_ = false;
   std::optional<std::string> parsing_error_;
   MoqtError parsing_error_code_;
   uint64_t messages_received_ = 0;

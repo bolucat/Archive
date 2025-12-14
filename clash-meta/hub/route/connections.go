@@ -11,8 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
-	"github.com/gobwas/ws"
-	"github.com/gobwas/ws/wsutil"
 )
 
 func connectionRouter() http.Handler {
@@ -30,7 +28,7 @@ func getConnections(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, _, _, err := ws.UpgradeHTTP(r, w)
+	conn, _, err := wsUpgrade(r, w)
 	if err != nil {
 		return
 	}
@@ -56,7 +54,7 @@ func getConnections(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 
-		return wsutil.WriteMessage(conn, ws.StateServerSide, ws.OpText, buf.Bytes())
+		return wsWriteServerText(conn, buf.Bytes())
 	}
 
 	if err := sendSnapshot(); err != nil {

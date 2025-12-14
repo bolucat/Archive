@@ -12,6 +12,7 @@
 #include <string>
 
 #include "base/containers/flat_set.h"
+#include "base/debug/alias.h"
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/field_trial_params.h"
@@ -28,6 +29,7 @@
 #include "net/base/proxy_chain.h"
 #include "net/base/request_priority.h"
 #include "net/base/session_usage.h"
+#include "net/base/task/task_runner.h"
 #include "net/http/alternative_service.h"
 #include "net/http/http_network_session.h"
 #include "net/http/http_stream_key.h"
@@ -74,6 +76,10 @@ constexpr base::FeatureParam<base::TimeDelta>
         &features::kHappyEyeballsV3,
         HttpStreamPool::kConnectionAttemptDelayParamName.data(),
         HttpStreamPool::kDefaultConnectionAttemptDelay};
+
+constexpr base::FeatureParam<bool> kEnablePriorityTaskRunner{
+    &features::kHappyEyeballsV3,
+    HttpStreamPool::kEnablePriorityTaskRunnerParamName.data(), true};
 
 constexpr base::FeatureParam<HttpStreamPool::TcpBasedAttemptDelayBehavior>
     kTcpBasedAttemptDelayBehavior{
@@ -122,6 +128,15 @@ std::ostream& operator<<(std::ostream& os, const StreamCounts& counts) {
 }
 
 }  // namespace
+
+// static
+const scoped_refptr<base::SequencedTaskRunner> HttpStreamPool::TaskRunner(
+    RequestPriority priority) {
+  if (kEnablePriorityTaskRunner.Get()) {
+    return GetTaskRunner(priority);
+  }
+  return base::SequencedTaskRunner::GetCurrentDefault();
+}
 
 // static
 base::TimeDelta HttpStreamPool::GetConnectionAttemptDelay() {
@@ -260,7 +275,17 @@ void HttpStreamPool::DecrementTotalHandedOutStreamCount() {
 }
 
 void HttpStreamPool::IncrementTotalConnectingStreamCount() {
-  CHECK(EnsureTotalActiveStreamCountBelowLimit());
+  // TODO(crbug.com/383606724): Change this `if` to CHECK() once we stabilize
+  // the implementation.
+  if (!EnsureTotalActiveStreamCountBelowLimit()) {
+    base::debug::Alias(&total_handed_out_stream_count_);
+    base::debug::Alias(&total_idle_stream_count_);
+    base::debug::Alias(&total_connecting_stream_count_);
+    NOTREACHED() << "handed_out=" << total_handed_out_stream_count_
+                 << ", idle=" << total_idle_stream_count_
+                 << ", connecting=" << total_connecting_stream_count_
+                 << ", limit=" << max_stream_sockets_per_pool_;
+  }
   ++total_connecting_stream_count_;
   TRACE_COUNTER("net.stream", "HttpStreamPoolTotalConnectingStreams",
                 total_connecting_stream_count_);
@@ -273,8 +298,17 @@ void HttpStreamPool::DecrementTotalConnectingStreamCount(size_t amount) {
                 total_connecting_stream_count_);
 }
 
-void HttpStreamPool::OnIPAddressChanged() {
+void HttpStreamPool::OnIPAddressChanged(
+    NetworkChangeNotifier::IPAddressChangeType change_type) {
   CHECK(cleanup_on_ip_address_change_);
+
+  // Ignore changes to randomly generated IPv6 temporary addresses.
+  if (base::FeatureList::IsEnabled(
+          net::features::kMaintainConnectionsOnIpv6TempAddrChange) &&
+      change_type == NetworkChangeNotifier::IP_ADDRESS_CHANGE_IPV6_TEMPADDR) {
+    return;
+  }
+
   for (const auto& group : groups_) {
     group.second->FlushWithError(ERR_NETWORK_CHANGED,
                                  StreamSocketCloseReason::kIpAddressChanged,
@@ -369,7 +403,7 @@ void HttpStreamPool::ProcessPendingRequestsInGroups() {
 
 bool HttpStreamPool::RequiresHTTP11(
     const url::SchemeHostPort& destination,
-    const NetworkAnonymizationKey& network_anonymization_key) {
+    const NetworkAnonymizationKey& network_anonymization_key) const {
   return http_network_session()->http_server_properties()->RequiresHTTP11(
       destination, network_anonymization_key);
 }
@@ -393,10 +427,12 @@ bool HttpStreamPool::CanUseQuic(
                                               /*is_websocket=*/false)) {
     return true;
   }
+
+  // Note that this does not check RequiresHTTP11(), as despite its name, it
+  // only means H2 is not allowed.
   return http_network_session()->IsQuicEnabled() &&
          enable_alternative_services &&
          GURL::SchemeIsCryptographic(destination.scheme()) &&
-         !RequiresHTTP11(destination, network_anonymization_key) &&
          !IsQuicBroken(destination, network_anonymization_key);
 }
 
@@ -531,26 +567,29 @@ base::WeakPtr<SpdySession> HttpStreamPool::FindAvailableSpdySession(
     const SpdySessionKey& spdy_session_key,
     bool enable_ip_based_pooling_for_h2,
     const NetLogWithSource& net_log) {
-  if (!GURL::SchemeIsCryptographic(stream_key.destination().scheme())) {
+  // Only SSL origins may have H2 sessions.
+  //
+  // Also ignore any live H2 sessions for origins marked as requiring HTTP/1.1.
+  // Ideally such sessions would not exist, but that is a difficult invariant to
+  // enforce globally.
+  if (!GURL::SchemeIsCryptographic(stream_key.destination().scheme()) ||
+      RequiresHTTP11(stream_key.destination(),
+                     stream_key.network_anonymization_key())) {
     return nullptr;
   }
 
-  base::WeakPtr<SpdySession> spdy_session =
-      http_network_session()->spdy_session_pool()->FindAvailableSession(
-          spdy_session_key, enable_ip_based_pooling_for_h2,
-          /*is_websocket=*/false, net_log);
-  if (spdy_session) {
-    CHECK(!RequiresHTTP11(stream_key.destination(),
-                          stream_key.network_anonymization_key()));
-  }
-  return spdy_session;
+  return http_network_session()->spdy_session_pool()->FindAvailableSession(
+      spdy_session_key, enable_ip_based_pooling_for_h2,
+      /*is_websocket=*/false, net_log);
 }
 
 void HttpStreamPool::OnPreconnectComplete(JobController* job_controller,
                                           CompletionOnceCallback callback,
                                           int rv) {
   OnJobControllerComplete(job_controller);
-  std::move(callback).Run(rv);
+  if (callback) {
+    std::move(callback).Run(rv);
+  }
 }
 
 void HttpStreamPool::CheckConsistency() {
@@ -601,7 +640,7 @@ void HttpStreamPool::CheckConsistency() {
     }
   }
 
-  base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
+  TaskRunner(IDLE)->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(&HttpStreamPool::CheckConsistency,
                      weak_ptr_factory_.GetWeakPtr()),

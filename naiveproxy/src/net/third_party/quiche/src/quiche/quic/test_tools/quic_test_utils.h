@@ -21,6 +21,7 @@
 #include "quiche/quic/core/congestion_control/loss_detection_interface.h"
 #include "quiche/quic/core/congestion_control/send_algorithm_interface.h"
 #include "quiche/quic/core/crypto/transport_parameters.h"
+#include "quiche/quic/core/frames/quic_frame.h"
 #include "quiche/quic/core/frames/quic_immediate_ack_frame.h"
 #include "quiche/quic/core/frames/quic_reset_stream_at_frame.h"
 #include "quiche/quic/core/http/http_decoder.h"
@@ -160,10 +161,11 @@ QuicEncryptedPacket* ConstructEncryptedPacket(
     QuicConnectionId source_connection_id, bool version_flag, bool reset_flag,
     uint64_t packet_number, const std::string& data);
 
-// Creates a client-to-server ZERO-RTT packet that will fail to decrypt.
-std::unique_ptr<QuicEncryptedPacket> GetUndecryptableEarlyPacket(
+// Creates a long header packet for testing.
+std::unique_ptr<QuicEncryptedPacket> MakeLongHeaderPacket(
     const ParsedQuicVersion& version,
-    const QuicConnectionId& server_connection_id);
+    const QuicConnectionId& server_connection_id, const QuicFrames& frames,
+    QuicLongHeaderType long_header_type, EncryptionLevel encryption_level);
 
 // Constructs a received packet for testing. The caller must take ownership
 // of the returned pointer.
@@ -352,7 +354,7 @@ class MockFramerVisitor : public QuicFramerVisitorInterface {
               (override));
   MOCK_METHOD(bool, OnBlockedFrame, (const QuicBlockedFrame& frame),
               (override));
-  MOCK_METHOD(bool, OnMessageFrame, (const QuicMessageFrame& frame),
+  MOCK_METHOD(bool, OnDatagramFrame, (const QuicDatagramFrame& frame),
               (override));
   MOCK_METHOD(bool, OnHandshakeDoneFrame, (const QuicHandshakeDoneFrame& frame),
               (override));
@@ -426,7 +428,7 @@ class NoOpFramerVisitor : public QuicFramerVisitorInterface {
   bool OnStreamsBlockedFrame(const QuicStreamsBlockedFrame& frame) override;
   bool OnWindowUpdateFrame(const QuicWindowUpdateFrame& frame) override;
   bool OnBlockedFrame(const QuicBlockedFrame& frame) override;
-  bool OnMessageFrame(const QuicMessageFrame& frame) override;
+  bool OnDatagramFrame(const QuicDatagramFrame& frame) override;
   bool OnHandshakeDoneFrame(const QuicHandshakeDoneFrame& frame) override;
   bool OnAckFrequencyFrame(const QuicAckFrequencyFrame& frame) override;
   bool OnImmediateAckFrame(const QuicImmediateAckFrame& frame) override;
@@ -465,7 +467,8 @@ class MockQuicConnectionVisitor : public QuicConnectionVisitorInterface {
   MOCK_METHOD(void, OnResetStreamAt, (const QuicResetStreamAtFrame& frame),
               (override));
   MOCK_METHOD(void, OnGoAway, (const QuicGoAwayFrame& frame), (override));
-  MOCK_METHOD(void, OnMessageReceived, (absl::string_view message), (override));
+  MOCK_METHOD(void, OnDatagramReceived, (absl::string_view datagram),
+              (override));
   MOCK_METHOD(void, OnHandshakeDoneReceived, (), (override));
   MOCK_METHOD(void, OnNewTokenReceived, (absl::string_view token), (override));
   MOCK_METHOD(void, OnConnectionClosed,
@@ -529,6 +532,7 @@ class MockQuicConnectionVisitor : public QuicConnectionVisitorInterface {
   MOCK_METHOD(void, MaybeBundleOpportunistically, (), (override));
   MOCK_METHOD(QuicByteCount, GetFlowControlSendWindowSize, (QuicStreamId),
               (override));
+  MOCK_METHOD(bool, MaybeMitigateWriteError, (const WriteResult&), (override));
 };
 
 class MockQuicConnectionHelper : public QuicConnectionHelperInterface {
@@ -664,8 +668,8 @@ class MockQuicConnection : public QuicConnection {
   MOCK_METHOD(void, OnStreamReset, (QuicStreamId, QuicRstStreamErrorCode),
               (override));
   MOCK_METHOD(bool, SendControlFrame, (const QuicFrame& frame), (override));
-  MOCK_METHOD(MessageStatus, SendMessage,
-              (QuicMessageId, absl::Span<quiche::QuicheMemSlice>, bool),
+  MOCK_METHOD(DatagramStatus, SendDatagram,
+              (QuicDatagramId, absl::Span<quiche::QuicheMemSlice>, bool),
               (override));
   MOCK_METHOD(bool, SendPathChallenge,
               (const QuicPathFrameBuffer&, const QuicSocketAddress&,
@@ -1370,7 +1374,7 @@ class MockQuicConnectionDebugVisitor : public QuicConnectionDebugVisitor {
 
   MOCK_METHOD(void, OnNewTokenFrame, (const QuicNewTokenFrame&), (override));
 
-  MOCK_METHOD(void, OnMessageFrame, (const QuicMessageFrame&), (override));
+  MOCK_METHOD(void, OnDatagramFrame, (const QuicDatagramFrame&), (override));
 
   MOCK_METHOD(void, OnStopSendingFrame, (const QuicStopSendingFrame&),
               (override));
@@ -1459,7 +1463,7 @@ class MockQuicPathValidationContext : public QuicPathValidationContext {
                                 const QuicSocketAddress& effective_peer_address,
                                 QuicPacketWriter* writer)
       : QuicPathValidationContext(self_address, peer_address,
-                                  effective_peer_address),
+                                  effective_peer_address, /*network=*/-1),
         writer_(writer) {}
   QuicPacketWriter* WriterToUse() override { return writer_; }
 
@@ -1939,8 +1943,8 @@ class TestPacketWriter : public QuicPacketWriter {
     return framer_.ping_frames();
   }
 
-  const std::vector<QuicMessageFrame>& message_frames() const {
-    return framer_.message_frames();
+  const std::vector<QuicDatagramFrame>& datagram_frames() const {
+    return framer_.datagram_frames();
   }
 
   const std::vector<QuicWindowUpdateFrame>& window_update_frames() const {
@@ -2144,19 +2148,17 @@ bool WriteServerVersionNegotiationProbeResponse(
 class SavingHttp3DatagramVisitor : public QuicSpdyStream::Http3DatagramVisitor {
  public:
   struct SavedHttp3Datagram {
+    bool operator==(const SavedHttp3Datagram&) const = default;
+
     QuicStreamId stream_id;
     std::string payload;
-    bool operator==(const SavedHttp3Datagram& o) const {
-      return stream_id == o.stream_id && payload == o.payload;
-    }
   };
   struct SavedUnknownCapsule {
+    bool operator==(const SavedUnknownCapsule&) const = default;
+
     QuicStreamId stream_id;
     uint64_t type;
     std::string payload;
-    bool operator==(const SavedUnknownCapsule& o) const {
-      return stream_id == o.stream_id && type == o.type && payload == o.payload;
-    }
   };
   const std::vector<SavedHttp3Datagram>& received_h3_datagrams() const {
     return received_h3_datagrams_;

@@ -63,6 +63,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("__metadata"),
     perfetto::Category("accessibility"),
     perfetto::Category("AccountFetcherService"),
+    perfetto::Category("actor").SetDescription(
+      "Events for the Actor component."),
     perfetto::Category("android.adpf"),
     perfetto::Category("android.ui.jank"),
     perfetto::Category("android_webview"),
@@ -72,16 +74,17 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("audio").SetTags("audio"),
     perfetto::Category("base").SetTags("toplevel"),
     perfetto::Category("benchmark").SetTags("input"),
+    perfetto::Category("tracing.background").SetDescription(
+      "Events related to background tracing, scenarios and triggers."),
     perfetto::Category("blink").SetTags("javascript", "rendering"),
     perfetto::Category("blink.animations"),
     perfetto::Category("blink.bindings"),
     perfetto::Category("blink.console"),
-    perfetto::Category("blink.debug.invalidation_tracking")
-        .SetDescription(
-            "Debugging events for style invalidation, related to "
-            "devtools.timeline.InvalidationTracking").SetTags("debug"),
     perfetto::Category("blink.net"),
     perfetto::Category("blink.resource"),
+    perfetto::Category("blink.task_attribution").SetDescription(
+      "Traces for Task Attribution, blink's internal mechanism for propagating "
+      "task state information across tasks and microtasks"),
     perfetto::Category("blink.user_timing"),
     perfetto::Category("blink.worker"),
     perfetto::Category("blink_style"),
@@ -112,6 +115,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("config.scheduler.record_task_post_time").SetDescription(
       "Controls details emitted by TaskAnnotator::EmitTaskTimingDetails"),
     perfetto::Category("content"),
+    perfetto::Category("content.fedcm").SetDescription(
+        "Traces for the Federated Credential Management API"),
     perfetto::Category("content_capture"),
     perfetto::Category("cronet"),
     perfetto::Category("interactions"),
@@ -130,6 +135,9 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("event"),
     perfetto::Category("exo"),
     perfetto::Category("extensions"),
+    perfetto::Category("extensions.content_verifier.debug").SetDescription(
+      "Traces for the extension file (content) verification process at "
+      "//extensions/browser/content_verifier.").SetTags("debug"),
     perfetto::Category("explore_sites"),
     perfetto::Category("FileSystem"),
     perfetto::Category("file_system_provider"),
@@ -151,6 +159,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("input").SetTags("input"),
     perfetto::Category("input.scrolling").SetTags("input"),
     perfetto::Category("io"),
+    perfetto::Category("ip_protection").SetDescription(
+      "Traces for //components/ip_protection."),
     perfetto::Category("ipc").SetTags("ipc"),
     perfetto::Category("Java"),
     perfetto::Category("jni"),
@@ -186,6 +196,11 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("omnibox"),
     perfetto::Category("oobe"),
     perfetto::Category("openscreen"),
+
+    perfetto::Category("optimization_guide").SetDescription(
+        "Includes events related to processing hints and machine learning "
+        "models by the Optimization Guide component."),
+    perfetto::Category("optimization_guide.debug").SetTags("debug"),
     perfetto::Category("ozone"),
     perfetto::Category("partition_alloc"),
     perfetto::Category("passwords"),
@@ -202,6 +217,9 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
         "to global async tracks."),
     perfetto::Category("performance_manager.cpu_metrics").SetDescription(
       "Events reporting cpu metrics computed in performance_manager"),
+    perfetto::Category("performance_manager.graph").SetDescription(
+      "Describes the performance manager graph structure with frames, pages, "
+      "processes, etc. and their properties.").SetTags("toplevel"),
     perfetto::Category("persistent_cache"),
     perfetto::Category("PlatformMalloc"),
     perfetto::Category("ppapi"),
@@ -250,6 +268,9 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("viz").SetTags("rendering"),
     perfetto::Category("vk"),
     perfetto::Category("wakeup.flow").SetTags("scheduling"),
+    perfetto::Category("waap").SetDescription(
+      "Includes events related to WaaP (Webium-as-a-Product) UI experiments as "
+      "described in //chrome/browser/waap."),
     perfetto::Category("wayland"),
     perfetto::Category("webaudio").SetTags("audio"),
     perfetto::Category("webengine.fidl"),
@@ -544,7 +565,6 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category::Group("startup,rail"),
     perfetto::Category::Group("toplevel,graphics.pipeline"),
     perfetto::Category::Group("toplevel,Java"),
-    perfetto::Category::Group("toplevel,latency"),
     perfetto::Category::Group("toplevel,mojom"),
     perfetto::Category::Group("toplevel,viz"),
     perfetto::Category::Group("toplevel.flow,mojom.flow"),

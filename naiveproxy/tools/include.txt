@@ -21,14 +21,13 @@
 ^chrome/app/theme/chromium/BRANDING
 ^chrome/build/*.txt
 ^chrome/version.gni
-^components/miracle_parameter
+^components/cbor
 ^components/network_time
 ^components/unexportable_keys
 ^components/version_info
 ^crypto
 ^extensions/buildflags
 ^ios/features.gni
-^ipc/ipc_param_traits.h
 ^net
 ^testing/gtest/include/gtest/gtest_prod.h
 ^third_party/abseil-cpp
@@ -36,7 +35,6 @@
 ^third_party/angle/src/commit_id.py
 ^third_party/angle/scripts/file_exists.py
 ^third_party/apple_apsl
-^third_party/ashmem
 ^third_party/boringssl
 ^third_party/brotli
 ^third_party/closure_compiler/closure_args.gni
@@ -79,6 +77,7 @@
 ^tools/grit
 ^tools/gritsettings
 ^tools/protoc_wrapper
+^tools/ubsan
 ^tools/update_pgo_profiles.py
 ^tools/win/DebugVisualizers
 ^url

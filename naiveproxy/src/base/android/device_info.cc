@@ -36,6 +36,7 @@ struct IDeviceInfo {
   // Available only on Android T+.
   int32_t vulkanDeqpLevel;
   bool isXr;
+  bool wasLaunchedOnLargeDisplay;
 };
 #endif
 
@@ -56,7 +57,6 @@ IDeviceInfo& get_device_info() {
 
 void Set(const IDeviceInfo& info) {
   std::optional<IDeviceInfo>& holder = get_holder();
-  DCHECK(!holder.has_value());
   holder.emplace(info);
 }
 
@@ -67,14 +67,17 @@ static void JNI_DeviceInfo_FillFields(JNIEnv* env,
                                       jboolean isFoldable,
                                       jboolean isDesktop,
                                       jint vulkanDeqpLevel,
-                                      jboolean isXr) {
+                                      jboolean isXr,
+                                      jboolean wasLaunchedOnLargeDisplay) {
   Set(IDeviceInfo{.gmsVersionCode = gmsVersionCode,
                   .isAutomotive = static_cast<bool>(isAutomotive),
                   .isDesktop = static_cast<bool>(isDesktop),
                   .isFoldable = static_cast<bool>(isFoldable),
                   .isTv = static_cast<bool>(isTV),
                   .vulkanDeqpLevel = vulkanDeqpLevel,
-                  .isXr = static_cast<bool>(isXr)});
+                  .isXr = static_cast<bool>(isXr),
+                  .wasLaunchedOnLargeDisplay =
+                      static_cast<bool>(wasLaunchedOnLargeDisplay)});
 }
 
 const std::string& gms_version_code() {
@@ -110,8 +113,31 @@ bool is_xr() {
   return get_device_info().isXr;
 }
 
+// Roughly matches the check logic in device_form_factor.h to see if the device
+// is a tablet (based on mostly elimination of other possible form-factors and
+// screen-width). Where possible, prefer using device_form_factor.h (runtime
+// check) as a first choice, but fall back to this if not feasible.
+bool is_tablet() {
+  return was_launched_on_large_display() && !is_tv() && !is_automotive() &&
+         !is_desktop() && !is_xr();
+}
+
+// This returns the cached value during initial startup. If you need this
+// evaluated at runtime, then use device_form_factor Additionally, this differs
+// from device_form_factor in that it does not guarantee that the Android
+// resource (-sw600) is respected.
+bool was_launched_on_large_display() {
+  return get_device_info().wasLaunchedOnLargeDisplay;
+}
+
+std::string device_name() {
+  JNIEnv* env = base::android::AttachCurrentThread();
+  return base::android::ConvertJavaStringToUTF8(
+      env, Java_DeviceInfo_getDeviceName(env));
+}
+
 void set_is_xr_for_testing() {
-  Java_DeviceInfo_setIsXrForTesting(AttachCurrentThread());  // IN-TEST
+  Java_DeviceInfo_setIsXrForTesting(AttachCurrentThread(), true);  // IN-TEST
   get_holder().reset();
 }
 

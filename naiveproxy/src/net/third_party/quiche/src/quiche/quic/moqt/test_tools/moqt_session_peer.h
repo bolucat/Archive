@@ -15,14 +15,13 @@
 #include "quiche/quic/core/quic_alarm.h"
 #include "quiche/quic/core/quic_alarm_factory.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/moqt/moqt_fetch_task.h"
 #include "quiche/quic/moqt/moqt_messages.h"
 #include "quiche/quic/moqt/moqt_parser.h"
 #include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/quic/moqt/moqt_session.h"
-#include "quiche/quic/moqt/moqt_subscribe_windows.h"
 #include "quiche/quic/moqt/moqt_track.h"
-#include "quiche/quic/moqt/tools/moqt_mock_visitor.h"
 #include "quiche/web_transport/test_tools/mock_web_transport.h"
 #include "quiche/web_transport/web_transport.h"
 
@@ -87,7 +86,7 @@ class MoqtSessionPeer {
   static void CreateRemoteTrack(MoqtSession* session,
                                 const MoqtSubscribe& subscribe,
                                 const std::optional<uint64_t> track_alias,
-                                SubscribeRemoteTrack::Visitor* visitor) {
+                                SubscribeVisitor* visitor) {
     auto track = std::make_unique<SubscribeRemoteTrack>(subscribe, visitor);
     if (track_alias.has_value()) {
       track->set_track_alias(*track_alias);
@@ -188,8 +187,8 @@ class MoqtSessionPeer {
         0,
         128,
         std::nullopt,
-        StandaloneFetch(FullTrackName{"foo", "bar"}, Location{0, 0}, 4,
-                        std::nullopt),
+        StandaloneFetch(FullTrackName{"foo", "bar"}, Location{0, 0},
+                        Location{4, kMaxObjectId}),
         VersionSpecificParameters(),
     };
     std::unique_ptr<MoqtFetchTask> task;
@@ -230,7 +229,7 @@ class MoqtSessionPeer {
         ->delivery_timeout_alarm_.get();
   }
 
-  static quic::QuicAlarm* GetSubscribeDoneAlarm(
+  static quic::QuicAlarm* GetPublishDoneAlarm(
       SubscribeRemoteTrack* subscription) {
     return subscription->subscribe_done_alarm_.get();
   }

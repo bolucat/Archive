@@ -17,6 +17,8 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#include <iterator>
 #include <type_traits>
 
 #include <openssl/bn.h>
@@ -309,7 +311,7 @@ static crypto_word_t word_reverse(crypto_word_t in) {
   };
 #endif
 
-  for (size_t i = 0; i < OPENSSL_ARRAY_SIZE(kMasks); i++) {
+  for (size_t i = 0; i < std::size(kMasks); i++) {
     in = ((in >> (1 << i)) & kMasks[i]) | ((in & kMasks[i]) << (1 << i));
   }
 
@@ -1635,7 +1637,7 @@ static int poly_unmarshal(struct poly *out, const uint8_t in[POLY_BYTES]) {
     return 0;
   }
 
-  // Set the final coefficient as specifed in [HRSSNIST] 1.9.2 step 6.
+  // Set the final coefficient as specified in [HRSSNIST] 1.9.2 step 6.
   uint32_t sum = 0;
   for (size_t i = 0; i < N - 1; i++) {
     sum += out->v[i];
@@ -1883,8 +1885,8 @@ static struct private_key *private_key_from_external(
 static void *malloc_align32(void **out_ptr, size_t size) {
   void *ptr = OPENSSL_malloc(size + 31);
   if (!ptr) {
-    *out_ptr = NULL;
-    return NULL;
+    *out_ptr = nullptr;
+    return nullptr;
   }
 
   *out_ptr = ptr;

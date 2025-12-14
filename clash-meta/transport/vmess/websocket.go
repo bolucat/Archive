@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
@@ -478,7 +477,7 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 		if lenSecAccept := len(secAccept); lenSecAccept != acceptSize {
 			return nil, fmt.Errorf("unexpected Sec-Websocket-Accept length: %d", lenSecAccept)
 		}
-		if getSecAccept(secKey) != secAccept {
+		if N.GetWebSocketSecAccept(secKey) != secAccept {
 			return nil, errors.New("unexpected Sec-Websocket-Accept")
 		}
 	}
@@ -487,16 +486,6 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 	// websocketConn can't correct handle ReadDeadline
 	// so call N.NewDeadlineConn to add a safe wrapper
 	return N.NewDeadlineConn(conn), nil
-}
-
-func getSecAccept(secKey string) string {
-	const magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-	const nonceSize = 24 // base64.StdEncoding.EncodedLen(nonceKeySize)
-	p := make([]byte, nonceSize+len(magic))
-	copy(p[:nonceSize], secKey)
-	copy(p[nonceSize:], magic)
-	sum := sha1.Sum(p)
-	return base64.StdEncoding.EncodeToString(sum[:])
 }
 
 func StreamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig) (net.Conn, error) {
@@ -568,7 +557,7 @@ func StreamUpgradedWebsocketConn(w http.ResponseWriter, r *http.Request) (net.Co
 	w.Header().Set("Connection", "upgrade")
 	w.Header().Set("Upgrade", "websocket")
 	if !isRaw {
-		w.Header().Set("Sec-Websocket-Accept", getSecAccept(r.Header.Get("Sec-WebSocket-Key")))
+		w.Header().Set("Sec-Websocket-Accept", N.GetWebSocketSecAccept(r.Header.Get("Sec-WebSocket-Key")))
 	}
 	w.WriteHeader(http.StatusSwitchingProtocols)
 	if flusher, isFlusher := w.(interface{ FlushError() error }); isFlusher && writeHeaderShouldFlush {

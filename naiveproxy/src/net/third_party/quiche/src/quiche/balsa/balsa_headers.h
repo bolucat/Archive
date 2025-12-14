@@ -404,6 +404,7 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
     size_t last_char_idx;
     BalsaBuffer::Blocks::size_type buffer_base_idx;
     bool skip;
+    bool has_continuation_line = false;
   };
 
   using HeaderTokenList = std::vector<absl::string_view>;
@@ -647,6 +648,11 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
   // Removes all headers starting with 'key' [case insensitive]
   void RemoveAllHeadersWithPrefix(absl::string_view prefix) override;
 
+  // Removes all headers that satisfy the predicate.
+  void RemoveHeadersIf(
+      std::function<bool(const absl::string_view, const absl::string_view)>
+          predicate);
+
   // Returns true if we have at least one header with given prefix
   // [case insensitive]. Currently for test use only.
   bool HasHeadersWithPrefix(absl::string_view prefix) const override;
@@ -825,7 +831,7 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
     }
   }
 
-  // Dump the textural representation of the header object to a string, which
+  // Dump the textual representation of the header object to a string, which
   // is suitable for writing out to logs. All CRLF will be printed out as \n.
   // This function can be called on a header object in any state. Raw header
   // data will be printed out if the header object is not completely parsed,
@@ -840,6 +846,8 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
       quiche::UnretainedCallback<bool(const absl::string_view key,
                                       const absl::string_view value)>
           fn) const override;
+
+  void FoldContinuationLines();
 
   void DumpToPrefixedString(const char* spaces, std::string* str) const;
 
@@ -1048,7 +1056,8 @@ class QUICHE_EXPORT BalsaHeaders : public HeaderApi {
   friend bool ParseHTTPFirstLine(
       char* begin, char* end, bool is_request, BalsaHeaders* headers,
       BalsaFrameEnums::ErrorCode* error_code,
-      HttpValidationPolicy::FirstLineValidationOption whitespace_option);
+      HttpValidationPolicy::FirstLineValidationOption whitespace_option,
+      HttpValidationPolicy::FirstLineValidationOption multiple_spaces_option);
 
   // Reverse iterators have been removed for lack of use, refer to
   // cl/30618773 in case they are needed.

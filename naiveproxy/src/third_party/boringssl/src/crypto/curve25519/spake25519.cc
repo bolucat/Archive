@@ -17,6 +17,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include <iterator>
+
 #include <openssl/bytestring.h>
 #include <openssl/mem.h>
 #include <openssl/rand.h>
@@ -278,8 +280,8 @@ SPAKE2_CTX *SPAKE2_CTX_new(enum spake2_role_t my_role, const uint8_t *my_name,
                            size_t their_name_len) {
   SPAKE2_CTX *ctx =
       reinterpret_cast<SPAKE2_CTX *>(OPENSSL_zalloc(sizeof(SPAKE2_CTX)));
-  if (ctx == NULL) {
-    return NULL;
+  if (ctx == nullptr) {
+    return nullptr;
   }
 
   ctx->my_role = my_role;
@@ -290,14 +292,14 @@ SPAKE2_CTX *SPAKE2_CTX_new(enum spake2_role_t my_role, const uint8_t *my_name,
   if (!CBS_stow(&my_name_cbs, &ctx->my_name, &ctx->my_name_len) ||
       !CBS_stow(&their_name_cbs, &ctx->their_name, &ctx->their_name_len)) {
     SPAKE2_CTX_free(ctx);
-    return NULL;
+    return nullptr;
   }
 
   return ctx;
 }
 
 void SPAKE2_CTX_free(SPAKE2_CTX *ctx) {
-  if (ctx == NULL) {
+  if (ctx == nullptr) {
     return;
   }
 
@@ -333,18 +335,17 @@ static const scalar kOrder = {
 // scalar_cmov copies |src| to |dest| if |mask| is all ones.
 static void scalar_cmov(scalar *dest, const scalar *src, crypto_word_t mask) {
   bn_select_words(dest->words, mask, src->words, dest->words,
-                  OPENSSL_ARRAY_SIZE(dest->words));
+                  std::size(dest->words));
 }
 
 // scalar_double sets |s| to |2×s|.
 static void scalar_double(scalar *s) {
-  bn_add_words(s->words, s->words, s->words, OPENSSL_ARRAY_SIZE(s->words));
+  bn_add_words(s->words, s->words, s->words, std::size(s->words));
 }
 
 // scalar_add sets |dest| to |dest| plus |src|.
 static void scalar_add(scalar *dest, const scalar *src) {
-  bn_add_words(dest->words, dest->words, src->words,
-               OPENSSL_ARRAY_SIZE(dest->words));
+  bn_add_words(dest->words, dest->words, src->words, std::size(dest->words));
 }
 
 int SPAKE2_generate_msg(SPAKE2_CTX *ctx, uint8_t *out, size_t *out_len,

@@ -27,11 +27,11 @@
 
 #include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
+#include "perfetto/ext/base/fixed_string_writer.h"
 #include "perfetto/ext/base/status_macros.h"
 #include "perfetto/ext/base/status_or.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/string_view.h"
-#include "perfetto/ext/base/string_writer.h"
 #include "perfetto/protozero/field.h"
 #include "perfetto/protozero/proto_decoder.h"
 #include "perfetto/public/compiler.h"
@@ -43,13 +43,16 @@
 #include "src/trace_processor/importers/common/cpu_tracker.h"
 #include "src/trace_processor/importers/common/event_tracker.h"
 #include "src/trace_processor/importers/common/flow_tracker.h"
+#include "src/trace_processor/importers/common/mapping_tracker.h"
 #include "src/trace_processor/importers/common/parser_types.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
+#include "src/trace_processor/importers/common/stack_profile_tracker.h"
 #include "src/trace_processor/importers/common/synthetic_tid.h"
 #include "src/trace_processor/importers/common/track_tracker.h"
 #include "src/trace_processor/importers/common/tracks.h"
 #include "src/trace_processor/importers/common/tracks_common.h"
 #include "src/trace_processor/importers/common/tracks_internal.h"
+#include "src/trace_processor/importers/common/virtual_memory_mapping.h"
 #include "src/trace_processor/importers/proto/args_parser.h"
 #include "src/trace_processor/importers/proto/packet_analyzer.h"
 #include "src/trace_processor/importers/proto/stack_profile_sequence_state.h"
@@ -261,7 +264,7 @@ class TrackEventEventImporter {
         category_id = storage_->InternString(decoder->name());
       } else {
         char buffer[32];
-        base::StringWriter writer(buffer, sizeof(buffer));
+        base::FixedStringWriter writer(buffer, sizeof(buffer));
         writer.AppendLiteral("unknown(");
         writer.AppendUnsignedInt(category_iids[0]);
         writer.AppendChar(')');
@@ -793,13 +796,14 @@ class TrackEventEventImporter {
 
     tables::SliceTable::RowReference slice_ref = *opt_thread_slice_ref;
     std::optional<int64_t> tts = slice_ref.thread_ts();
-    if (tts) {
-      PERFETTO_DCHECK(thread_timestamp_);
-      slice_ref.set_thread_dur(*thread_timestamp_ - *tts);
+    if (tts && thread_timestamp_) {
+      int64_t delta = *thread_timestamp_ - *tts;
+      if (delta != 0) {
+        slice_ref.set_thread_dur(delta);
+      }
     }
     std::optional<int64_t> tic = slice_ref.thread_instruction_count();
-    if (tic) {
-      PERFETTO_DCHECK(event_data_->thread_instruction_count);
+    if (tic && thread_instruction_count_) {
       slice_ref.set_thread_instruction_delta(
           *event_data_->thread_instruction_count - *tic);
     }
@@ -1139,7 +1143,8 @@ class TrackEventEventImporter {
             ->Insert({ts_, parser_->raw_legacy_event_id_, *utid_, 0})
             .id;
 
-    auto inserter = context_->args_tracker->AddArgsTo(id);
+    ArgsTracker args_tracker(context_);
+    auto inserter = args_tracker.AddArgsTo(id);
     inserter
         .AddArg(parser_->legacy_event_category_key_id_,
                 Variadic::String(category_id_))
@@ -1265,6 +1270,13 @@ class TrackEventEventImporter {
       inserter->AddArg(parser_->legacy_trace_source_id_key_id_,
                        Variadic::Integer(*legacy_trace_source_id_));
     }
+
+    // Parse callstack if present
+    // For end events, use end_callsite_id key; otherwise use callsite_id key
+    StringId callstack_key = event_.type() == TrackEvent::TYPE_SLICE_END
+                                 ? parser_->end_callsite_id_key_id_
+                                 : parser_->callsite_id_key_id_;
+    log_errors(ParseCallstack(inserter, callstack_key));
 
     ArgsParser args_writer(ts_, *inserter, *storage_, sequence_state_,
                            /*support_json=*/true);
@@ -1431,6 +1443,66 @@ class TrackEventEventImporter {
 
     inserter->AddArg(parser_->histogram_name_key_id_,
                      Variadic::String(storage_->InternString(decoder->name())));
+    return base::OkStatus();
+  }
+
+  base::Status ParseCallstack(BoundInserter* inserter, StringId key_id) {
+    // Handle interned callstack via callstack_iid
+    if (event_.has_callstack_iid()) {
+      auto* callstack_decoder = sequence_state_->LookupInternedMessage<
+          protos::pbzero::InternedData::kCallstacksFieldNumber,
+          protos::pbzero::Callstack>(event_.callstack_iid());
+      if (!callstack_decoder) {
+        return base::ErrStatus("TrackEvent with invalid callstack_iid");
+      }
+      // Get or create the callsite from the interned callstack
+      auto* stack_profile_state =
+          sequence_state_->GetCustomState<StackProfileSequenceState>();
+      if (!stack_profile_state) {
+        return base::ErrStatus(
+            "TrackEvent with callstack but no StackProfileSequenceState");
+      }
+      // Pass upid as optional - will work with or without process association
+      auto callsite_id = stack_profile_state->FindOrInsertCallstack(
+          upid_, event_.callstack_iid());
+      if (!callsite_id) {
+        return base::ErrStatus("Failed to intern callstack");
+      }
+      inserter->AddArg(key_id, Variadic::UnsignedInteger(callsite_id->value));
+      return base::OkStatus();
+    }
+
+    // Handle inline callstack
+    // Inline callstacks are simple: just function names and source locations
+    if (event_.has_callstack()) {
+      protos::pbzero::TrackEvent::Callstack::Decoder callstack(
+          event_.callstack());
+      DummyMemoryMapping* dummy_mapping =
+          parser_->GetOrCreateInlineCallstackDummyMapping();
+
+      std::optional<CallsiteId> callsite_id;
+      uint32_t depth = 0;
+      for (auto frame_it = callstack.frames(); frame_it; ++frame_it, ++depth) {
+        protos::pbzero::TrackEvent::Callstack::Frame::Decoder frame(*frame_it);
+        std::optional<base::StringView> source_file;
+        if (frame.has_source_file()) {
+          source_file = frame.source_file();
+        }
+        std::optional<uint32_t> line_number;
+        if (frame.has_line_number()) {
+          line_number = frame.line_number();
+        }
+        FrameId frame_id = dummy_mapping->InternDummyFrame(
+            frame.function_name(), source_file, line_number);
+        callsite_id = context_->stack_profile_tracker->InternCallsite(
+            callsite_id, frame_id, depth);
+      }
+      // Add the final callsite_id as an arg
+      if (callsite_id) {
+        inserter->AddArg(key_id, Variadic::UnsignedInteger(callsite_id->value));
+      }
+      return base::OkStatus();
+    }
     return base::OkStatus();
   }
 

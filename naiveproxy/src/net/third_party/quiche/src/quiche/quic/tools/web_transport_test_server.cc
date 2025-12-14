@@ -44,7 +44,7 @@ absl::StatusOr<std::unique_ptr<webtransport::SessionVisitor>> ProcessRequest(
     int count = 1;
     DeviousBatonValue initial_value =
         quiche::QuicheRandom::GetInstance()->RandUint64() % 256;
-    std::string query = url.query();
+    std::string query = std::string(url.query());
     url::Component query_component, key_component, value_component;
     query_component.begin = 0;
     query_component.len = query.size();
@@ -83,7 +83,8 @@ int Main(int argc, char** argv) {
       quiche::QuicheParseCommandLineFlags(usage, argc, argv);
 
   WebTransportOnlyBackend backend(ProcessRequest);
-  QuicServer server(quiche::CreateDefaultProofSource(), &backend);
+  QuicServer server(quiche::CreateDefaultProofSource(),
+                    /*proof_verifier=*/nullptr, &backend);
   quic::QuicSocketAddress addr(quic::QuicIpAddress::Any6(),
                                quiche::GetQuicheCommandLineFlag(FLAGS_port));
   if (!server.CreateUDPSocketAndListen(addr)) {

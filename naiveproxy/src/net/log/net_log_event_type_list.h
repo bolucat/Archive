@@ -355,6 +355,14 @@ EVENT_TYPE(PROXY_RESOLUTION_SERVICE_WAITING_FOR_INIT_PAC)
 //   {
 //      "net_error": <Net error code that resolver failed with>,
 //   }
+//
+// In the case of Windows system-based proxy resolution, the event also includes
+// WinHTTP status codes and Windows-specific error codes:
+//   {
+//      "winhttp_status": <WinHTTP status code (integer)>,
+//      "windows_error": <Windows system error code (integer)>,
+//      "proxy_info": <Debug string representation of the ProxyInfo result>,
+//   }
 EVENT_TYPE(PROXY_RESOLUTION_SERVICE_RESOLVED_PROXY_LIST)
 
 // This event is emitted after proxies marked as bad have been deprioritized.
@@ -1035,8 +1043,9 @@ EVENT_TYPE(TCP_STREAM_ATTEMPT_CONNECT)
 //   }
 EVENT_TYPE(TLS_STREAM_ATTEMPT_ALIVE)
 
-// Measures the time TlsStreamAttempt was waiting SSLConfig to be ready.
-EVENT_TYPE(TLS_STREAM_ATTEMPT_WAIT_FOR_SSL_CONFIG)
+// Measures the time TlsStreamAttempt was waiting for the ServiceEndpoint to be
+// ready.
+EVENT_TYPE(TLS_STREAM_ATTEMPT_WAIT_FOR_SERVICE_ENDPOINT)
 
 // Measures the time TlsStreamAttempt took to connect (TLS handshake).
 // For the END phase, if there was an error, the following parameters are
@@ -1365,7 +1374,16 @@ EVENT_TYPE(HTTP_STREAM_JOB_INIT_CONNECTION)
 //   }
 EVENT_TYPE(HTTP_STREAM_REQUEST_BOUND_TO_JOB)
 
+// This event indicates that while an HttpStreamFactory::Job was trying to
+// establish a connection, a matching H2 became available, likely created
+// by another HttpStreamFactory::Job(). The event parameters are:
+//   {
+//     "source_dependency": <The session id>,
+//   }
+EVENT_TYPE(HTTP_STREAM_JOB_HTTP2_SESSION_AVAILABLE)
+
 // Identifies the NetLogSource() for the Request that the Job was attached to.
+// Event is logged to both the Request and the JobController.
 // The event parameters are:
 //   {
 //      "source_dependency": <Source identifier for the Request to which we were
@@ -1399,8 +1417,6 @@ EVENT_TYPE(HTTP_STREAM_JOB_RESUMED)
 // The following parameters are attached:
 //   {
 //      "url": <String of request URL>,
-//      "url_after_host_mapping": <URL after applying hostmapping.
-//                                 Only present if different from URL>,
 //      "is_preconnect": <True if controller is created for a preconnect>,
 //      "private_mode": <Privacy mode of the request>,
 //   }
@@ -1516,8 +1532,9 @@ EVENT_TYPE(HTTP_STREAM_POOL_GROUP_HANDLE_CREATED)
 //   {
 //     "priority": <The priority of the erquest>,
 //     "allowed_bad_certs": <The list of allowed bad certs>,
-//     "enable_ip_based_pooling": <True when the request enables IP based
-//                                 pooling>,
+//     "enable_ip_based_pooling_for_h2": <True when the request enables IP based
+//                                        pooling for H2>,
+//     "allowed_alpns": <The list of allowed protocols>,
 //     "quic_version": <The QUIC version to attempt>,
 //     "source_dependency": <The source identifier of the request>
 //   }
@@ -1562,6 +1579,10 @@ EVENT_TYPE(HTTP_STREAM_POOL_ATTEMPT_MANAGER_ALIVE)
 // Some HTTP_STREAM_POOL_ATTEMPT_MANAGER_* events have the following common
 // event parameters.
 //   {
+//     "num_active_sockets": <The number of active sockets>,
+//     "num_idle_sockets": <The number of idle sockets>,
+//     "num_handed_out_sockets": <The number of handed out sockets>,
+//     "num_total_sockets": <The number of total sockets>,
 //     "num_jobs": <The number of active jobs>,
 //     "num_notified_jobs": <The number of jobs that are notified results but
 //                           are still not destroyed yet>,
@@ -1569,6 +1590,11 @@ EVENT_TYPE(HTTP_STREAM_POOL_ATTEMPT_MANAGER_ALIVE)
 //     "num_inflight_attempts": <The number of in-flight TCP/TLS attempts>,
 //     "num_slow_attempts": <The number of in-flight TCP/TLS attempts that are
 //                           treated as slow>,
+//     "num_tcp_based_attempt_slots": <The total number of slots for TCP-based
+//                           connection attempts.
+//     "enable_ip_based_pooling_for_h2": <True when the request enables IP based
+//                                        pooling for H2>,
+//     "allowed_alpns": <List of allowed ALPNs>,
 //     "quic_attempt_alive": <True when a QuicAttempt is alive>,
 //     "quic_attempt_result": <The result of a QuicAttempt, if it is already
 //                             finished>
@@ -2277,10 +2303,15 @@ EVENT_TYPE(QUIC_SESSION_POOL_JOB_BOUND_TO)
 EVENT_TYPE(BOUND_TO_QUIC_SESSION_POOL_JOB)
 
 // Measures the time taken by a DirectJob to establish a QUIC connection.
-// The event parameters are:
+// The begin event parameters are:
 //  {
 //     "require_confirmation": <True if we require handshake confirmation
 //                              in the connection>
+//  }
+//
+// The end event parameters are:
+//  {
+//     "net_error": <Net error code the connect failed with, on error>,
 //  }
 EVENT_TYPE(QUIC_SESSION_POOL_JOB_CONNECT)
 
@@ -3722,8 +3753,8 @@ EVENT_TYPE(CERT_VERIFIER_REQUEST)
 //                    being the certificate to verify and the remaining
 //                    being intermediate certificates to assist path
 //                    building.>
-//   "ocsp_response": <Optionally, a PEM encoded stapled OCSP response.>
-//   "sct_list": <Optionally, a PEM encoded SignedCertificateTimestampList.>
+//   "stapled_ocsp_response": <Optionally, a PEM encoded stapled OCSP response.>
+//   "tls_sct_list": <Optionally, a PEM encoded SignedCertificateTimestampList.>
 //   "host": <The hostname verification is being performed for.>
 //   "verifier_flags": <The CertVerifier::VerifyFlags.>
 // }
@@ -3797,8 +3828,8 @@ EVENT_TYPE(CERT_VERIFY_PROC_CREATED)
 //   "crlset_sequence": <Sequence number of the CRLSet.>
 //   "crlset_is_expired": <Boolean indicating whether the CRLSet is considered
 //                         expired.>
-//   "ocsp_response": <Optionally, a PEM encoded stapled OCSP response.>
-//   "sct_list": <Optionally, a PEM encoded SignedCertificateTimestampList.>
+//   "stapled_ocsp_response": <Optionally, a PEM encoded stapled OCSP response.>
+//   "tls_sct_list": <Optionally, a PEM encoded SignedCertificateTimestampList.>
 //   "host": <The hostname verification is being performed for.>
 //   "verify_flags": <The CertVerifyProc::VerifyFlags.>
 // }

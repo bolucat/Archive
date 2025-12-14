@@ -89,6 +89,19 @@ void StatisticsRecorder::ScopedHistogramSampleObserver::RunCallback(
   callback_.Run(event_id, histogram_name, name_hash, sample);
 }
 
+StatisticsRecorder::HistogramWaiter::HistogramWaiter(std::string_view metric_name) {
+  histogram_observer_ =
+      std::make_unique<base::StatisticsRecorder::ScopedHistogramSampleObserver>(
+          metric_name,
+          run_loop_.QuitClosure());
+}
+
+StatisticsRecorder::HistogramWaiter::~HistogramWaiter() = default;
+
+void StatisticsRecorder::HistogramWaiter::Wait() {
+  run_loop_.Run();
+}
+
 StatisticsRecorder::~StatisticsRecorder() {
   const AutoLock auto_lock(GetLock());
   DCHECK_EQ(this, top_);
@@ -577,9 +590,7 @@ StatisticsRecorder::Histograms StatisticsRecorder::WithName(
   // Erase the non-matching histograms. Note that `histograms` was passed by
   // value so we can efficiently remove the unwanted elements and return the
   // local instance.
-  histograms.erase(std::remove_if(histograms.begin(), histograms.end(),
-                                  histogram_name_does_not_contain_query),
-                   histograms.end());
+  std::erase_if(histograms, histogram_name_does_not_contain_query);
   return histograms;
 }
 

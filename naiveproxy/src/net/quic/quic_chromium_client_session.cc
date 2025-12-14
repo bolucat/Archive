@@ -66,6 +66,7 @@
 #include "net/spdy/spdy_session.h"
 #include "net/ssl/ssl_connection_status_flags.h"
 #include "net/ssl/ssl_info.h"
+#include "net/third_party/quiche/src/quiche/quic/core/crypto/crypto_protocol.h"
 #include "net/third_party/quiche/src/quiche/quic/core/quic_stream_priority.h"
 #include "net/third_party/quiche/src/quiche/quic/core/quic_types.h"
 #include "net/third_party/quiche/src/quiche/quic/core/quic_utils.h"
@@ -1264,7 +1265,7 @@ void QuicChromiumClientSession::OnOriginFrame(const quic::OriginFrame& frame) {
       return;
     }
     GURL url(base::StrCat({origin_str, "/"}));
-    if (!url.is_valid() || url.path() != "/") {
+    if (!url.is_valid() || url.GetPath() != "/") {
       continue;
     }
     url::SchemeHostPort origin(url);
@@ -1716,15 +1717,11 @@ quic::QuicSSLConfig QuicChromiumClientSession::GetSSLConfig() const {
     config.ech_config_list.assign(ech_config_list_.begin(),
                                   ech_config_list_.end());
   }
-  if (base::FeatureList::IsEnabled(features::kTLSTrustAnchorIDs)) {
-    if (!trust_anchor_ids_.empty() &&
-        !ssl_context_config.trust_anchor_ids.empty()) {
-      std::vector<uint8_t> selected_trust_anchor_ids =
-          SSLConfig::SelectTrustAnchorIDs(trust_anchor_ids_,
-                                          ssl_context_config.trust_anchor_ids);
-      config.trust_anchor_ids = std::string(selected_trust_anchor_ids.begin(),
-                                            selected_trust_anchor_ids.end());
-    }
+  if (!ssl_context_config.trust_anchor_ids.empty() &&
+      base::FeatureList::IsEnabled(features::kTLSTrustAnchorIDs)) {
+    config.trust_anchor_ids =
+        base::as_string_view(SSLConfig::SelectTrustAnchorIDs(
+            trust_anchor_ids_, ssl_context_config.trust_anchor_ids));
   }
   return config;
 }
@@ -1767,6 +1764,10 @@ void QuicChromiumClientSession::OnTlsHandshakeComplete() {
 void QuicChromiumClientSession::RegisterQuicConnectionClosePayload() {
   if (!base::FeatureList::IsEnabled(
           features::kQuicRegisterConnectionClosePayload)) {
+    return;
+  }
+  // Cannot serialize ConnectionClosePacket before handshake is confirmed.
+  if (!connection()->IsHandshakeConfirmed()) {
     return;
   }
   std::unique_ptr<quic::SerializedPacket> connection_close_packet =
@@ -2400,12 +2401,6 @@ void QuicChromiumClientSession::OnNoNewNetwork() {
   // alternate network available.
   static_cast<QuicChromiumPacketWriter*>(connection()->writer())
       ->set_force_write_blocked(true);
-
-  if (base::FeatureList::IsEnabled(features::kDisableBlackholeOnNoNewNetwork)) {
-    // Turn off the black hole detector since the writer is blocked.
-    // Blackhole will be re-enabled once a packet is sent again.
-    connection()->blackhole_detector().StopDetection(false);
-  }
 
   // Post a task to maybe close the session if the alarm fires.
   task_runner_->PostDelayedTask(
@@ -3941,11 +3936,6 @@ void QuicChromiumClientSession::Migrate(handles::NetworkHandle network,
   DVLOG(1) << "Force blocking the packet writer";
   static_cast<QuicChromiumPacketWriter*>(connection()->writer())
       ->set_force_write_blocked(true);
-  if (base::FeatureList::IsEnabled(features::kDisableBlackholeOnNoNewNetwork)) {
-    // Turn off the black hole detector since the writer is blocked.
-    // Blackhole will be re-enabled once a packet is sent again.
-    connection()->blackhole_detector().StopDetection(false);
-  }
   CompletionOnceCallback connect_callback = base::BindOnce(
       &QuicChromiumClientSession::FinishMigrate, weak_factory_.GetWeakPtr(),
       std::move(socket), peer_address, close_session_on_error,
@@ -4168,7 +4158,7 @@ QuicChromiumClientSession::Handle::GetGuaranteedLargestMessagePayload() const {
   if (!session_) {
     return 0;
   }
-  return session_->GetGuaranteedLargestMessagePayload();
+  return session_->GetGuaranteedLargestDatagramPayload();
 }
 
 const ConnectionMigrationInformation

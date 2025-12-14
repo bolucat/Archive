@@ -18,6 +18,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include <iterator>
+
 #include <openssl/bn.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
@@ -138,8 +140,8 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
   EC_JACOBIAN precomp_stack[EC_WNAF_STACK][EC_WNAF_TABLE_SIZE];
 
   // Allocated pointers, which will remain NULL unless needed.
-  EC_JACOBIAN(*precomp_alloc)[EC_WNAF_TABLE_SIZE] = NULL;
-  int8_t(*wNAF_alloc)[EC_MAX_BYTES * 8 + 1] = NULL;
+  EC_JACOBIAN(*precomp_alloc)[EC_WNAF_TABLE_SIZE] = nullptr;
+  int8_t (*wNAF_alloc)[EC_MAX_BYTES * 8 + 1] = nullptr;
 
   // These fields point either to the stack or heap buffers of the same name.
   int8_t(*wNAF)[EC_MAX_BYTES * 8 + 1];
@@ -151,12 +153,12 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
   } else {
     wNAF_alloc = reinterpret_cast<decltype(wNAF_alloc)>(
         OPENSSL_calloc(num, sizeof(wNAF_alloc[0])));
-    if (wNAF_alloc == NULL) {
+    if (wNAF_alloc == nullptr) {
       return 0;
     }
     precomp_alloc = reinterpret_cast<decltype(precomp_alloc)>(
         OPENSSL_calloc(num, sizeof(precomp_alloc[0])));
-    if (precomp_alloc == NULL) {
+    if (precomp_alloc == nullptr) {
       OPENSSL_free(wNAF_alloc);
       return 0;
     }
@@ -167,15 +169,15 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
 
   int8_t g_wNAF[EC_MAX_BYTES * 8 + 1];
   EC_JACOBIAN g_precomp[EC_WNAF_TABLE_SIZE];
-  assert(wNAF_len <= OPENSSL_ARRAY_SIZE(g_wNAF));
+  assert(wNAF_len <= std::size(g_wNAF));
   const EC_JACOBIAN *g = &group->generator.raw;
-  if (g_scalar != NULL) {
+  if (g_scalar != nullptr) {
     ec_compute_wNAF(group, g_wNAF, g_scalar, bits, EC_WNAF_WINDOW_BITS);
     compute_precomp(group, g_precomp, g, EC_WNAF_TABLE_SIZE);
   }
 
   for (size_t i = 0; i < num; i++) {
-    assert(wNAF_len <= OPENSSL_ARRAY_SIZE(wNAF[i]));
+    assert(wNAF_len <= std::size(wNAF[i]));
     ec_compute_wNAF(group, wNAF[i], &scalars[i], bits, EC_WNAF_WINDOW_BITS);
     compute_precomp(group, precomp[i], &points[i], EC_WNAF_TABLE_SIZE);
   }
@@ -187,7 +189,7 @@ int ec_GFp_mont_mul_public_batch(const EC_GROUP *group, EC_JACOBIAN *r,
       ec_GFp_mont_dbl(group, r, r);
     }
 
-    if (g_scalar != NULL && g_wNAF[k] != 0) {
+    if (g_scalar != nullptr && g_wNAF[k] != 0) {
       lookup_precomp(group, &tmp, g_precomp, g_wNAF[k]);
       if (r_is_at_infinity) {
         ec_GFp_simple_point_copy(r, &tmp);

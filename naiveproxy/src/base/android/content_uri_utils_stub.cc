@@ -30,7 +30,7 @@ bool ContentUriGetFileInfo(const FilePath&, FileEnumerator::FileInfo*) {
   return false;
 }
 
-std::vector<FileEnumerator::FileInfo> ListContentUriDirectory(const FilePath&) {
+std::vector<FileEnumerator::FileInfo> ListContentUriDirectory(const FilePath&, int) {
   return {};
 }
 

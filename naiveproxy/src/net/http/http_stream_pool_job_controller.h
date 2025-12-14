@@ -12,8 +12,10 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "base/values.h"
 #include "net/base/load_states.h"
+#include "net/base/load_timing_internal_info.h"
 #include "net/base/network_anonymization_key.h"
 #include "net/base/request_priority.h"
 #include "net/dns/public/resolve_error_info.h"
@@ -70,9 +72,11 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   NextProtoSet allowed_alpns() const override;
   const ProxyInfo& proxy_info() const override;
   const NetLogWithSource& net_log() const override;
+  const perfetto::Flow& flow() const override;
   void OnStreamReady(Job* job,
                      std::unique_ptr<HttpStream> stream,
-                     NextProto negotiated_protocol) override;
+                     NextProto negotiated_protocol,
+                     std::optional<SessionSource> session_source) override;
   void OnStreamFailed(Job* job,
                       int status,
                       const NetErrorDetails& net_error_details,
@@ -101,13 +105,19 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
     QuicSessionAliasKey quic_key;
   };
 
-  struct StreamWithProtocol {
-    StreamWithProtocol(std::unique_ptr<HttpStream> stream,
-                       NextProto negotiated_protocol);
-    ~StreamWithProtocol();
+  // Stream that is ready to be used, along with some associated metadata.
+  struct PendingStream {
+    PendingStream(std::unique_ptr<HttpStream> stream,
+                  NextProto negotiated_protocol,
+                  std::optional<SessionSource> session_source);
+    PendingStream(PendingStream&&);
+    ~PendingStream();
+
+    PendingStream& operator=(PendingStream&&);
 
     std::unique_ptr<HttpStream> stream;
     NextProto negotiated_protocol;
+    std::optional<SessionSource> session_source;
   };
 
   // Calculate an alternative endpoint for the request.
@@ -123,7 +133,7 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   // Returns an HttpStream and its negotiated protocol if there is an
   // existing session or an idle stream that can serve the request. Otherwise,
   // returns std::nullopt.
-  std::optional<StreamWithProtocol> MaybeCreateStreamFromExistingSession();
+  std::optional<PendingStream> MaybeCreateStreamFromExistingSession();
 
   // When there is a QUIC session that can serve an HttpStream for the request,
   // creates an HttpStream and returns it.
@@ -142,11 +152,10 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   // Alt-Svc but the current request is not using it.
   void StartAltSvcQuicPreconnect();
 
-  // Calls the request's Complete() and tells the delegate that `stream` is
-  // ready. Used when there is an existing QUIC/SPDY session that can serve
-  // the request.
-  void CallRequestCompleteAndStreamReady(std::unique_ptr<HttpStream> stream,
-                                         NextProto negotiated_protocol);
+  // Calls the request's Complete() and tells the delegate that a stream, now
+  // stored in `pending_stream_`, is ready. Used when there is an existing
+  // QUIC/SPDY session that can serve the request.
+  void CallRequestCompleteAndStreamReady();
 
   // Calls the request's stream failed callback.
   void CallOnStreamFailed(int status,
@@ -187,6 +196,7 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   NextProtoSet allowed_alpns_;
   const ProxyInfo proxy_info_;
   const AlternativeServiceInfo alternative_service_info_;
+  const AdvertisedAltSvcState advertised_alt_svc_state_;
 
   const HttpStreamKey origin_stream_key_;
   const QuicSessionAliasKey origin_quic_key_;
@@ -196,8 +206,11 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   const std::optional<Alternative> alternative_;
 
   const NetLogWithSource net_log_;
+  const perfetto::Flow flow_;
 
   const base::TimeTicks created_time_;
+
+  std::optional<base::TimeTicks> stream_ready_time_;
 
   // Fields specific to stream request.
   raw_ptr<HttpStreamRequest::Delegate> delegate_;
@@ -212,6 +225,13 @@ class HttpStreamPool::JobController : public HttpStreamPool::Job::Delegate,
   std::unique_ptr<Job> alternative_job_;
   // Set to `OK` when the alternative job is not needed.
   std::optional<int> alternative_job_result_;
+
+  // Populated when a stream is successfully created. Stored as a field rather
+  // than bound to a callback so that on destruction, the stream is destroyed
+  // when the controller is. Otherwise, on destruction of the network stack, if
+  // the HttpStream has any posted asynchronous tasks, they'll trigger a UAF
+  // when they're run.
+  std::optional<PendingStream> pending_stream_;
 
   base::WeakPtrFactory<JobController> weak_ptr_factory_{this};
 };

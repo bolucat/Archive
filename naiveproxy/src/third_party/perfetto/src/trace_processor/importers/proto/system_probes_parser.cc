@@ -39,6 +39,7 @@
 #include "src/trace_processor/importers/common/clock_tracker.h"
 #include "src/trace_processor/importers/common/cpu_tracker.h"
 #include "src/trace_processor/importers/common/event_tracker.h"
+#include "src/trace_processor/importers/common/import_logs_tracker.h"
 #include "src/trace_processor/importers/common/machine_tracker.h"
 #include "src/trace_processor/importers/common/metadata_tracker.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
@@ -130,10 +131,6 @@ std::optional<int> FingerprintToSdkVersion(const std::string& fingerprint) {
   return VersionStringToSdkVersion(version);
 }
 
-bool IsSupportedDiskStatDevice(const std::string& device_name) {
-  return device_name == "sda";  // Primary SCSI disk device name
-}
-
 struct ArmCpuIdentifier {
   uint32_t implementer;
   uint32_t architecture;
@@ -197,6 +194,8 @@ const char* GetProcessMemoryKey(uint32_t field_id) {
       return "locked";
     case ProcessStats::Process::kVmHwmKbFieldNumber:
       return "rss.watermark";
+    case ProcessStats::Process::kDmabufRssKbFieldNumber:
+      return "dmabuf_rss";
     default:
       return nullptr;
   }
@@ -240,34 +239,32 @@ SystemProbesParser::SystemProbesParser(TraceProcessorContext* context)
 
 void SystemProbesParser::ParseDiskStats(int64_t ts, ConstBytes blob) {
   protos::pbzero::SysStats::DiskStat::Decoder ds(blob);
+
+  // /proc/diskstats always uses 512 byte sector sizes.
   static constexpr double SECTORS_PER_MB = 2048.0;
   static constexpr double MS_PER_SEC = 1000.0;
-  std::string device_name = ds.device_name().ToStdString();
-  if (!IsSupportedDiskStatDevice(device_name)) {
-    return;
-  }
 
   static constexpr auto kBlueprint = tracks::CounterBlueprint(
-      "diskstat", tracks::UnknownUnitBlueprint(),
+      "diskstat", tracks::DynamicUnitBlueprint(),
       tracks::DimensionBlueprints(
-          tracks::StringDimensionBlueprint("device_name")),
-      tracks::DynamicNameBlueprint());
+          tracks::StringDimensionBlueprint("device_name"),
+          tracks::StringDimensionBlueprint("counter_name")),
+      tracks::FnNameBlueprint([](base::StringView device_name,
+                                 base::StringView counter_name) {
+        return base::StackString<1024>(
+            "diskstat.[%.*s].%.*s", int(device_name.size()), device_name.data(),
+            int(counter_name.size()), counter_name.data());
+      }));
 
-  base::StackString<512> tag_prefix("diskstat.[%s]", device_name.c_str());
-  auto push_counter = [&, this](const char* counter_name, double value) {
-    base::StackString<512> track_name("%s.%s", tag_prefix.c_str(),
-                                      counter_name);
-    StringId string_id = context_->storage->InternString(track_name.c_str());
+  auto push_counter = [&, this](base::StringView counter_name,
+                                base::StringView unit, double value) {
     TrackId track = context_->track_tracker->InternTrack(
-        kBlueprint, tracks::Dimensions(track_name.string_view()),
-        tracks::DynamicName(string_id));
+        kBlueprint,
+        tracks::Dimensions(base::StringView(ds.device_name()),
+                           base::StringView(counter_name)),
+        tracks::BlueprintName(), {},
+        tracks::DynamicUnit(context_->storage->InternString(unit)));
     context_->event_tracker->PushCounter(ts, value, track);
-  };
-
-  // TODO(rsavitski): with the UI now supporting rate mode for counter tracks,
-  // this is likely redundant.
-  auto calculate_throughput = [](double amount, int64_t diff) {
-    return diff == 0 ? 0 : amount * MS_PER_SEC / static_cast<double>(diff);
   };
 
   auto cur_read_amount = static_cast<int64_t>(ds.read_sectors());
@@ -279,46 +276,51 @@ void SystemProbesParser::ParseDiskStats(int64_t ts, ConstBytes blob) {
   auto cur_discard_time = static_cast<int64_t>(ds.discard_time_ms());
   auto cur_flush_time = static_cast<int64_t>(ds.flush_time_ms());
 
-  if (prev_read_amount != -1) {
+  StringId device_name_id = context_->storage->InternString(ds.device_name());
+  DiskStatState& state = disk_state_map_[device_name_id];
+  if (state.prev_read_amount != -1) {
     double read_amount =
-        static_cast<double>(cur_read_amount - prev_read_amount) /
+        static_cast<double>(cur_read_amount - state.prev_read_amount) /
         SECTORS_PER_MB;
     double write_amount =
-        static_cast<double>(cur_write_amount - prev_write_amount) /
+        static_cast<double>(cur_write_amount - state.prev_write_amount) /
         SECTORS_PER_MB;
     double discard_amount =
-        static_cast<double>(cur_discard_amount - prev_discard_amount) /
+        static_cast<double>(cur_discard_amount - state.prev_discard_amount) /
         SECTORS_PER_MB;
-    auto flush_count = static_cast<double>(cur_flush_count - prev_flush_count);
-    int64_t read_time_diff = cur_read_time - prev_read_time;
-    int64_t write_time_diff = cur_write_time - prev_write_time;
-    int64_t discard_time_diff = cur_discard_time - prev_discard_time;
+    auto flush_count =
+        static_cast<double>(cur_flush_count - state.prev_flush_count);
+    int64_t read_time_diff = cur_read_time - state.prev_read_time;
+    int64_t write_time_diff = cur_write_time - state.prev_write_time;
+    int64_t discard_time_diff = cur_discard_time - state.prev_discard_time;
     auto flush_time_diff =
-        static_cast<double>(cur_flush_time - prev_flush_time);
+        static_cast<double>(cur_flush_time - state.prev_flush_time);
 
+    auto calculate_throughput = [](double amount, int64_t diff) {
+      return diff == 0 ? 0 : amount * MS_PER_SEC / static_cast<double>(diff);
+    };
     double read_thpt = calculate_throughput(read_amount, read_time_diff);
     double write_thpt = calculate_throughput(write_amount, write_time_diff);
     double discard_thpt =
         calculate_throughput(discard_amount, discard_time_diff);
 
-    push_counter("read_amount(mg)", read_amount);
-    push_counter("read_throughput(mg/s)", read_thpt);
-    push_counter("write_amount(mg)", write_amount);
-    push_counter("write_throughput(mg/s)", write_thpt);
-    push_counter("discard_amount(mg)", discard_amount);
-    push_counter("discard_throughput(mg/s)", discard_thpt);
-    push_counter("flush_amount(count)", flush_count);
-    push_counter("flush_time(ms)", flush_time_diff);
+    push_counter("read_amount", "MB", read_amount);
+    push_counter("read_throughput", "MB/s", read_thpt);
+    push_counter("write_amount", "MB", write_amount);
+    push_counter("write_throughput", "MB/s", write_thpt);
+    push_counter("discard_amount", "MB", discard_amount);
+    push_counter("discard_throughput", "MB/s", discard_thpt);
+    push_counter("flush_amount", "count", flush_count);
+    push_counter("flush_time", "ms", flush_time_diff);
   }
-
-  prev_read_amount = cur_read_amount;
-  prev_write_amount = cur_write_amount;
-  prev_discard_amount = cur_discard_amount;
-  prev_flush_count = cur_flush_count;
-  prev_read_time = cur_read_time;
-  prev_write_time = cur_write_time;
-  prev_discard_time = cur_discard_time;
-  prev_flush_time = cur_flush_time;
+  state.prev_read_amount = cur_read_amount;
+  state.prev_write_amount = cur_write_amount;
+  state.prev_discard_amount = cur_discard_amount;
+  state.prev_flush_count = cur_flush_count;
+  state.prev_read_time = cur_read_time;
+  state.prev_write_time = cur_write_time;
+  state.prev_discard_time = cur_discard_time;
+  state.prev_flush_time = cur_flush_time;
 }
 
 void SystemProbesParser::ParseSysStats(int64_t ts, ConstBytes blob) {
@@ -428,7 +430,9 @@ void SystemProbesParser::ParseSysStats(int64_t ts, ConstBytes blob) {
     static constexpr auto kTrackBlueprint = tracks::CounterBlueprint(
         "num_irq", tracks::UnknownUnitBlueprint(),
         tracks::DimensionBlueprints(tracks::kIrqDimensionBlueprint),
-        tracks::StaticNameBlueprint("num_irq"));
+        tracks::FnNameBlueprint([](uint32_t irq) {
+          return base::StackString<1024>("num_irq (id: %u)", irq);
+        }));
     protos::pbzero::SysStats::InterruptCount::Decoder ic(*it);
     TrackId track = context_->track_tracker->InternTrack(
         kTrackBlueprint, tracks::Dimensions(ic.irq()));
@@ -440,7 +444,9 @@ void SystemProbesParser::ParseSysStats(int64_t ts, ConstBytes blob) {
     static constexpr auto kTrackBlueprint = tracks::CounterBlueprint(
         "num_softirq", tracks::UnknownUnitBlueprint(),
         tracks::DimensionBlueprints(tracks::kIrqDimensionBlueprint),
-        tracks::StaticNameBlueprint("num_softirq"));
+        tracks::FnNameBlueprint([](uint32_t irq) {
+          return base::StackString<1024>("num_softirq (id: %u)", irq);
+        }));
     protos::pbzero::SysStats::InterruptCount::Decoder ic(*it);
     TrackId track = context_->track_tracker->InternTrack(
         kTrackBlueprint, tracks::Dimensions(ic.irq()));
@@ -587,7 +593,7 @@ void SystemProbesParser::ParseCpuIdleStats(int64_t ts, ConstBytes blob) {
   }
 }
 
-void SystemProbesParser::ParseProcessTree(ConstBytes blob) {
+void SystemProbesParser::ParseProcessTree(int64_t ts, ConstBytes blob) {
   protos::pbzero::ProcessTree::Decoder ps(blob);
 
   for (auto it = ps.processes(); it; ++it) {
@@ -657,8 +663,28 @@ void SystemProbesParser::ParseProcessTree(ConstBytes blob) {
       }
       joined_cmdline = base::StringView(cmdline_str);
     }
-    UniquePid upid = context_->process_tracker->SetProcessMetadata(
-        pid, ppid, argv0, joined_cmdline);
+
+    UniquePid pupid = context_->process_tracker->GetOrCreateProcess(ppid);
+    UniquePid upid = context_->process_tracker->GetOrCreateProcess(pid);
+
+    upid = context_->process_tracker->UpdateProcessWithParent(
+        upid, pupid, /*associate_main_thread=*/true);
+
+    context_->process_tracker->SetProcessMetadata(upid, argv0, joined_cmdline);
+
+    // perfetto v50+: additionally, if we know that the "cmdline" contents are
+    // coming from the main thread's name ("comm"), then set the thread name as
+    // well. This comes up with kernel threads, which are in fact single-thread
+    // processes without a /proc/pid/cmdline. The reuse of "cmdline" for this
+    // scenario is historical, but we maintain compatibility. Note:
+    // cmdline_is_comm is not equivalent to "is a kernel thread", as the field
+    // could also be set for e.g. zombie processes.
+    if (proc.cmdline_is_comm()) {
+      auto utid = context_->process_tracker->GetOrCreateThread(pid);
+      auto thread_name_id = context_->storage->InternString(joined_cmdline);
+      context_->process_tracker->UpdateThreadName(
+          utid, thread_name_id, ThreadNamePriority::kProcessTree);
+    }
 
     if (proc.has_uid()) {
       context_->process_tracker->SetProcessUid(
@@ -677,7 +703,7 @@ void SystemProbesParser::ParseProcessTree(ConstBytes blob) {
 
     // Linux v6.4+: explicit field for whether this is a kernel thread.
     if (proc.has_is_kthread()) {
-      context_->process_tracker->AddArgsTo(upid).AddArg(
+      context_->process_tracker->AddArgsToProcess(upid).AddArg(
           is_kthread_id_, Variadic::Boolean(proc.is_kthread()));
     }
   }
@@ -700,8 +726,11 @@ void SystemProbesParser::ParseProcessTree(ConstBytes blob) {
       for (auto nstid_it = thd.nstid(); nstid_it; nstid_it++) {
         nstid.emplace_back(static_cast<int64_t>(*nstid_it));
       }
-      context_->process_tracker->UpdateNamespacedThread(tgid, tid,
-                                                        std::move(nstid));
+      if (!context_->process_tracker->UpdateNamespacedThread(
+              tgid, tid, std::move(nstid))) {
+        context_->import_logs_tracker->RecordParserError(
+            stats::namespaced_thread_missing_process, ts);
+      }
     }
   }
 }
@@ -1069,7 +1098,8 @@ void SystemProbesParser::ParseCpuInfo(ConstBytes blob) {
     }
 
     if (auto* id = std::get_if<ArmCpuIdentifier>(&cpu_info.identifier)) {
-      context_->args_tracker->AddArgsTo(ucpu)
+      ArgsTracker args_tracker(context_);
+      args_tracker.AddArgsTo(ucpu)
           .AddArg(arm_cpu_implementer,
                   Variadic::UnsignedInteger(id->implementer))
           .AddArg(arm_cpu_architecture,

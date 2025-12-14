@@ -35,16 +35,23 @@ class NET_EXPORT SessionService {
   using OnAccessCallback = base::RepeatingCallback<void(const SessionAccess&)>;
 
   // Records the outcome of an attempt to refresh.
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  // LINT.IfChange(DeviceBoundSessionRefreshResult)
   enum class RefreshResult {
-    kRefreshed,           // Refresh was successful.
-    kInitializedService,  // Service is now initialized, refresh may still be
-                          // needed.
-    kUnreachable,         // Refresh endpoint was unreachable.
-    kServerError,         // Refresh endpoint served a transient error.
-    kQuotaExceeded,       // Refresh quota exceeded.
-    kFatalError,          // Refresh failed and session was terminated. No
-                          // further refresh needed.
+    kRefreshed = 0,             // Refresh was successful.
+    kInitializedService = 1,    // Service is now initialized, refresh may still
+                                // be needed.
+    kUnreachable = 2,           // Refresh endpoint was unreachable.
+    kServerError = 3,           // Refresh endpoint served a transient error.
+    kRefreshQuotaExceeded = 4,  // Refresh quota exceeded. This is being
+                                // replaced with `kSigningQuotaExceeded`.
+    kFatalError = 5,            // Refresh failed and session was terminated. No
+                                // further refresh needed.
+    kSigningQuotaExceeded = 6,  // Signing quota exceeded.
+    kMaxValue = kSigningQuotaExceeded
   };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:DeviceBoundSessionRefreshResult)
   using RefreshCompleteCallback = base::OnceCallback<void(RefreshResult)>;
 
   // Indicates the reason for deferring. Exactly one of
@@ -71,6 +78,19 @@ class NET_EXPORT SessionService {
     std::optional<Session::Id> session_id;
   };
 
+  // Stores a signed refresh challenge as well as the inputs used for the
+  // signing. This is an optimization to avoid redundant resigning, which is
+  // slow + resource-intensive, and could also cause issues like triggering the
+  // signing quota unnecessarily.
+  struct NET_EXPORT SignedRefreshChallenge {
+    // The signed challenge that was cached.
+    std::string signed_challenge;
+    // The challenge used to generate `signed_challenge`.
+    std::string challenge;
+    // The key_id used to generate `signed_challenge`.
+    unexportable_keys::UnexportableKeyId key_id;
+  };
+
   // Returns nullptr if unexportable key provider is not supported by the
   // platform or the device.
   static std::unique_ptr<SessionService> Create(
@@ -81,17 +101,14 @@ class NET_EXPORT SessionService {
 
   virtual ~SessionService() = default;
 
-  // Called to register a new session after getting a Sec-Session-Registration
-  // header.
-  // Registration parameters to be used for creating the registration
-  // request.
-  // Isolation info to be used for registration request, this should be the
-  // same as was used for the response with the Sec-Session-Registration
-  // header.
-  // `net_log` is the log corresponding to the request receiving the
-  // Sec-Session-Registration header.
-  // 'original_request_initiator` was the initiator for the request that
-  // received the Sec-Session-Registration header.
+  // Called to register a new session after getting a
+  // Secure-Session-Registration header. Registration parameters to be used for
+  // creating the registration request. Isolation info to be used for
+  // registration request, this should be the same as was used for the response
+  // with the Secure-Session-Registration header. `net_log` is the log
+  // corresponding to the request receiving the Secure-Session-Registration
+  // header. 'original_request_initiator` was the initiator for the request that
+  // received the Secure-Session-Registration header.
   virtual void RegisterBoundSession(
       OnAccessCallback on_access_callback,
       RegistrationFetcherParam registration_params,
@@ -128,10 +145,11 @@ class NET_EXPORT SessionService {
                                       RefreshCompleteCallback callback) = 0;
 
   // Set the challenge for a bound session after getting a
-  // Sec-Session-Challenge header.
+  // Secure-Session-Challenge header.
   virtual void SetChallengeForBoundSession(
       OnAccessCallback on_access_callback,
-      const GURL& request_url,
+      const URLRequest& request,
+      const FirstPartySetMetadata& first_party_set_metadata,
       const SessionChallengeParam& param) = 0;
 
   // Get all sessions. If sessions have not yet been loaded from disk,
@@ -163,6 +181,33 @@ class NET_EXPORT SessionService {
   virtual base::ScopedClosureRunner AddObserver(
       const GURL& url,
       base::RepeatingCallback<void(const SessionAccess&)> callback) = 0;
+
+  // Get a session by key, or `nullptr` if no such session exists.
+  virtual const Session* GetSession(const SessionKey& session_key) const = 0;
+
+  // Adds a session to the service for the site `site` and with session
+  // config from `params`. `params.key_id` is ignored in favor of
+  // importing `wrapped_key`. Calls `callback` when complete with a
+  // boolean indicating whether session addition was successful.
+  virtual void AddSession(const SchemefulSite& site,
+                          SessionParams params,
+                          base::span<const uint8_t> wrapped_key,
+                          base::OnceCallback<void(bool)> callback) = 0;
+
+  // Finds the latest signed refresh challenge and relevant signing context for
+  // the `session_key`. If no challenge is found, returns nullptr.
+  virtual const SignedRefreshChallenge* GetLatestSignedRefreshChallenge(
+      const SessionKey& session_key) = 0;
+  // Sets the latest signed refresh challenge and relevant signing context for
+  // the `session_key`.
+  virtual void SetLatestSignedRefreshChallenge(
+      SessionKey session_key,
+      SignedRefreshChallenge signed_refresh_challenge) = 0;
+
+  // Whether the `site` has exceeded its signing quota.
+  virtual bool SigningQuotaExceeded(const SchemefulSite& site) = 0;
+  // Increments signing usage for this `site`.
+  virtual void AddSigningOccurrence(const SchemefulSite& site) = 0;
 
  protected:
   SessionService() = default;

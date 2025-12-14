@@ -9,13 +9,18 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_connection_id.h"
-#include "quiche/quic/core/quic_packets.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_tag.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
-#include "quiche/quic/platform/api/quic_export.h"
+#include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/common/platform/api/quiche_export.h"
+#include "quiche/common/quiche_ip_address_family.h"
 
 namespace quic {
 
@@ -260,6 +265,10 @@ class QUICHE_EXPORT QuicConfig {
   void SetGoogleHandshakeMessageToSend(std::string message);
 
   const std::optional<std::string>& GetReceivedGoogleHandshakeMessage() const;
+
+  void SetDebuggingSniToSend(const std::string& debugging_sni);
+
+  const std::optional<std::string>& GetReceivedDebuggingSni() const;
 
   // Sets initial received connection options.  All received connection options
   // will be initialized with these fields. Initial received options may only be
@@ -519,6 +528,13 @@ class QUICHE_EXPORT QuicConfig {
   bool HasReceivedRetrySourceConnectionId() const;
   QuicConnectionId ReceivedRetrySourceConnectionId() const;
 
+  uint64_t peer_reordering_threshold() const {
+    return peer_reordering_threshold_;
+  }
+  void set_peer_reordering_threshold(uint64_t peer_reordering_threshold) {
+    peer_reordering_threshold_ = peer_reordering_threshold;
+  }
+
   bool negotiated() const;
 
   void SetCreateSessionTagIndicators(QuicTagVector tags);
@@ -724,9 +740,19 @@ class QUICHE_EXPORT QuicConfig {
   // values means 'discard' data not received.
   int32_t discard_length_received_ = -1;
 
+  // A hardcoded value for reordering threshold, as if the peer had sent an
+  // ACK_FREQUENCY frame with that value.
+  uint64_t peer_reordering_threshold_ = 1;
+
   // Google internal handshake message.
   std::optional<std::string> google_handshake_message_to_send_;
   std::optional<std::string> received_google_handshake_message_;
+
+  // Debugging Server Name Indication. These fields are used to send and get the
+  // SNI in the transport parameters from client to the server for
+  // debugging purposes only.
+  std::optional<std::string> debugging_sni_to_send_;
+  std::optional<std::string> received_debugging_sni_;
 
   // Support for RESET_STREAM_AT frame.
   bool reliable_stream_reset_;

@@ -23,6 +23,7 @@
 
 #include "perfetto/base/logging.h"
 #include "src/trace_processor/importers/common/args_translation_table.h"
+#include "src/trace_processor/importers/common/import_logs_tracker.h"
 #include "src/trace_processor/importers/common/slice_tracker.h"
 #include "src/trace_processor/importers/common/slice_translation_table.h"
 #include "src/trace_processor/storage/stats.h"
@@ -43,7 +44,9 @@ SliceTracker::SliceTracker(TraceProcessorContext* context)
           context->storage->InternString("legacy_unnestable_last_begin_ts")),
       context_(context) {}
 
-SliceTracker::~SliceTracker() = default;
+SliceTracker::~SliceTracker() {
+  FlushPendingSlices();
+}
 
 std::optional<SliceId> SliceTracker::Begin(int64_t timestamp,
                                            TrackId track_id,
@@ -91,7 +94,11 @@ std::optional<SliceId> SliceTracker::Scoped(int64_t timestamp,
                                             StringId raw_name,
                                             int64_t duration,
                                             SetArgsCallback args_callback) {
-  PERFETTO_DCHECK(duration >= 0);
+  if (duration < 0) {
+    context_->import_logs_tracker->RecordParserError(
+        stats::slice_negative_duration, timestamp);
+    return std::nullopt;
+  }
 
   const StringId name =
       context_->slice_translation_table->TranslateName(raw_name);
@@ -328,8 +335,8 @@ void SliceTracker::FlushPendingSlices() {
 
   // Translate and flush all pending args.
   for (const auto& translatable_arg : translatable_args_) {
-    auto bound_inserter =
-        context_->args_tracker->AddArgsTo(translatable_arg.slice_id);
+    ArgsTracker args_tracker(context_);
+    auto bound_inserter = args_tracker.AddArgsTo(translatable_arg.slice_id);
     context_->args_translation_table->TranslateArgs(
         translatable_arg.compact_arg_set, bound_inserter);
   }

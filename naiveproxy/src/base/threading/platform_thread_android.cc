@@ -12,10 +12,11 @@
 
 #include <optional>
 
-#include "base/android/build_info.h"
+#include "base/android/android_info.h"
 #include "base/android/jni_android.h"
 #include "base/feature_list.h"
 #include "base/logging.h"
+#include "base/system/sys_info.h"
 #include "base/threading/platform_thread_internal_posix.h"
 #include "base/threading/thread_id_name_manager.h"
 
@@ -29,6 +30,17 @@ BASE_FEATURE(kIncreaseDisplayCriticalThreadPriority,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 namespace internal {
+
+// Returns true if the kDisplayCriticalThreadPriority should be boosted.
+static bool ShouldBoostDisplayCriticalThreadPriority() {
+  // ADPF-equipped Google Pixels are excluded from the study because of
+  // potential input jank. Because Finch doesn't support per-device targeting,
+  // switch this off even if the flag's on. TODO (ritownsend): make it possible
+  // to switch this back on for Pixel.
+  static bool is_google_soc = SysInfo::SocManufacturer() == "Google";
+  return !is_google_soc &&
+         base::FeatureList::IsEnabled(kIncreaseDisplayCriticalThreadPriority);
+}
 
 // - kRealtimeAudio corresponds to Android's PRIORITY_AUDIO = -16 value.
 // - kDisplay corresponds to Android's PRIORITY_DISPLAY = -4 value.
@@ -63,8 +75,7 @@ int ThreadTypeToNiceValue(const ThreadType thread_type) {
       return 0;
     case ThreadType::kDisplayCritical:
     case ThreadType::kInteractive:
-      if (base::FeatureList::IsEnabled(
-              kIncreaseDisplayCriticalThreadPriority)) {
+      if (ShouldBoostDisplayCriticalThreadPriority()) {
         return -12;
       }
       return -4;
@@ -85,8 +96,8 @@ bool SetCurrentThreadTypeForPlatform(ThreadType thread_type,
   // https://android-review.googlesource.com/c/platform/system/core/+/1975808
   // this becomes obsolete and we can avoid this starting in API level 33.
   if (thread_type == ThreadType::kRealtimeAudio &&
-      base::android::BuildInfo::GetInstance()->sdk_int() <
-          base::android::SDK_VERSION_T) {
+      base::android::android_info::sdk_int() <
+          base::android::android_info::SDK_VERSION_T) {
     JNIEnv* env = base::android::AttachCurrentThread();
     Java_ThreadUtils_setThreadPriorityAudio(env,
                                             PlatformThread::CurrentId().raw());

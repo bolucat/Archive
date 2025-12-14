@@ -69,36 +69,38 @@ NaiveProxyDelegate::NaiveProxyDelegate(
 
 NaiveProxyDelegate::~NaiveProxyDelegate() = default;
 
-Error NaiveProxyDelegate::OnBeforeTunnelRequest(
+base::expected<HttpRequestHeaders, Error>
+NaiveProxyDelegate::OnBeforeTunnelRequest(
     const ProxyChain& proxy_chain,
     size_t chain_index,
-    HttpRequestHeaders* extra_headers) {
+    OnBeforeTunnelRequestCallback callback) {
+  HttpRequestHeaders extra_headers;
   // Not possible to negotiate padding capability given the underlying
   // protocols.
   if (proxy_chain.is_direct())
-    return OK;
+    return extra_headers;
   const ProxyServer& proxy_server = proxy_chain.GetProxyServer(chain_index);
   if (proxy_server.is_socks())
-    return OK;
+    return extra_headers;
 
   // Only the last server is attempted for padding
   // because proxy chaining will corrupt the padding.
   if (chain_index != proxy_chain.length() - 1)
-    return OK;
+    return extra_headers;
 
   // Sends client-side padding header regardless of server support
   std::string padding(base::RandInt(16, 32), '~');
   FillNonindexHeaderValue(base::RandUint64(), &padding[0], padding.size());
-  extra_headers->SetHeader(kPaddingHeader, padding);
+  extra_headers.SetHeader(kPaddingHeader, padding);
 
   // Enables Fast Open in H2/H3 proxy client socket once the state of server
   // padding support is known.
   if (padding_type_by_server_[proxy_server].has_value()) {
-    extra_headers->SetHeader("fastopen", "1");
+    extra_headers.SetHeader("fastopen", "1");
   }
-  extra_headers->MergeFrom(extra_headers_);
+  extra_headers.MergeFrom(extra_headers_);
 
-  return OK;
+  return extra_headers;
 }
 
 std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
@@ -127,7 +129,8 @@ std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
 Error NaiveProxyDelegate::OnTunnelHeadersReceived(
     const ProxyChain& proxy_chain,
     size_t chain_index,
-    const HttpResponseHeaders& response_headers) {
+    const HttpResponseHeaders& response_headers,
+    CompletionOnceCallback callback) {
   // Not possible to negotiate padding capability given the underlying
   // protocols.
   if (proxy_chain.is_direct())

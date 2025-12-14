@@ -36,9 +36,11 @@ namespace base {
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
 using FileOpenMode = int;
 inline constexpr char kDevNull[] = "NUL";
+inline constexpr char kFopenReadFlag[] = "r";
 #else
 using FileOpenMode = mode_t;
 inline constexpr char kDevNull[] = "/dev/null";
+inline constexpr char kFopenReadFlag[] = "re";
 #endif
 
 constexpr FileOpenMode kFileModeInvalid = static_cast<FileOpenMode>(-1);
@@ -61,12 +63,17 @@ ssize_t Read(int fd, void* dst, size_t dst_size);
 //   succeeds, and returns the number of bytes written.
 ssize_t WriteAll(int fd, const void* buf, size_t count);
 
+// Copies all data from |fd_in| to |fd_out|. Saves the offset of |fd_in|,
+// rewinds it to the beginning, copies the content, and restores the offset.
+// |fd_in| can't be a pipe, socket of FIFO.
+base::Status CopyFileContents(int fd_in, int fd_out);
+
 ssize_t WriteAllHandle(PlatformHandle, const void* buf, size_t count);
 
 ScopedFile OpenFile(const std::string& path,
                     int flags,
                     FileOpenMode = kFileModeInvalid);
-ScopedFstream OpenFstream(const char* path, const char* mode);
+ScopedFstream OpenFstream(const std::string& path, const std::string& mode);
 
 // This is an alias for close(). It's to avoid leaking windows.h in headers.
 // Exported because ScopedFile is used in the /include/ext API by Chromium

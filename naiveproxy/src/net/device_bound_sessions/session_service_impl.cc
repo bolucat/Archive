@@ -12,6 +12,7 @@
 #include "components/unexportable_keys/unexportable_key_service.h"
 #include "net/base/features.h"
 #include "net/base/schemeful_site.h"
+#include "net/device_bound_sessions/jwk_utils.h"
 #include "net/device_bound_sessions/registration_request_param.h"
 #include "net/device_bound_sessions/session_store.h"
 #include "net/url_request/url_request.h"
@@ -21,11 +22,18 @@ namespace net::device_bound_sessions {
 
 namespace {
 
-// Parameters for the refresh quota. We currently allow 2 refreshes in 5
-// minutes. This allows sites to refresh every 5 minutes with some error
-// tolerance (e.g. a failed refresh or user cookie clearing).
-constexpr size_t kRefreshQuota = 2;
-constexpr base::TimeDelta kRefreshQuotaInterval = base::Minutes(5);
+// Parameters for the signing quota. We currently allow 6 signings in 9
+// minutes per site. Reasoning:
+// 1. This allows sites to refresh on average every 5 minutes, accounting for
+//    proactive refreshes 2 minutes before expiry, and with some error tolerance
+//    (e.g. a failed refresh or user cookie clearing) and tolerance for new
+//    registration signings.
+// 2. It's 6:9 instead of 2:3 to allow small bursts of login activity + new
+//    registrations.
+// 3. The spec notes that user agents should include quotas on registration
+//    attempts to prevent identity linking for federated sessions.
+constexpr size_t kSigningQuota = 6;
+constexpr base::TimeDelta kSigningQuotaInterval = base::Minutes(9);
 
 bool SessionMatchesFilter(
     const SchemefulSite& site,
@@ -68,7 +76,8 @@ class DebugHeaderBuilder {
         item = structured_headers::Item("server_error",
                                         structured_headers::Item::kTokenType);
         break;
-      case SessionService::RefreshResult::kQuotaExceeded:
+      case SessionService::RefreshResult::kRefreshQuotaExceeded:
+      case SessionService::RefreshResult::kSigningQuotaExceeded:
         item = structured_headers::Item("quota_exceeded",
                                         structured_headers::Item::kTokenType);
         break;
@@ -91,12 +100,54 @@ class DebugHeaderBuilder {
   structured_headers::List skipped_sessions_;
 };
 
+bool IsProactiveRefreshCandidate(
+    Session& existing_session,
+    const Session& new_session,
+    const CookieAndLineAccessResultList& maybe_stored_cookies) {
+  // Get the shortest lifetime of a bound cookie set by the current
+  // refresh request. This assumes:
+  // 1. The current refresh sets all bound cookies
+  // 2. The proactive refresh would have set the same lifetimes
+  // These assumptions are good enough for histogram logging, but likely
+  // not true for all sites.
+  base::Time current_time = base::Time::Now();
+  base::TimeDelta minimum_lifetime = base::TimeDelta::Max();
+  for (const CookieCraving& cookie_craving : new_session.cookies()) {
+    for (const CookieAndLineWithAccessResult& cookie_and_line :
+         maybe_stored_cookies) {
+      if (cookie_and_line.cookie.has_value() &&
+          cookie_craving.IsSatisfiedBy(cookie_and_line.cookie.value())) {
+        minimum_lifetime =
+            std::min(minimum_lifetime,
+                     cookie_and_line.cookie->ExpiryDate() - current_time);
+      }
+    }
+  }
+
+  base::UmaHistogramLongTimes100(
+      "Net.DeviceBoundSessions.MinimumBoundCookieLifetime", minimum_lifetime);
+
+  std::optional<base::Time> last_proactive_refresh_opportunity =
+      existing_session.TakeLastProactiveRefreshOpportunity();
+
+  if (!last_proactive_refresh_opportunity.has_value()) {
+    return false;
+  }
+
+  return minimum_lifetime >= current_time - *last_proactive_refresh_opportunity;
+}
+
+void LogProactiveRefreshAttempt(
+    SessionServiceImpl::ProactiveRefreshAttempt attempt) {
+  base::UmaHistogramEnumeration(
+      "Net.DeviceBoundSessions.ProactiveRefreshAttempt", attempt);
+}
+
 }  // namespace
 
 DeferredURLRequest::DeferredURLRequest(
-    const URLRequest* request,
     SessionService::RefreshCompleteCallback callback)
-    : request(request), callback(std::move(callback)) {}
+    : callback(std::move(callback)) {}
 
 DeferredURLRequest::DeferredURLRequest(DeferredURLRequest&& other) noexcept =
     default;
@@ -114,8 +165,7 @@ SessionServiceImpl::SessionServiceImpl(
       key_service_(key_service),
       context_(request_context),
       session_store_(store) {
-  ignore_refresh_quota_ =
-      !base::FeatureList::IsEnabled(features::kDeviceBoundSessionsRefreshQuota);
+  ignore_refresh_quota_ = !features::kDeviceBoundSessionsRefreshQuota.Get();
   CHECK(context_);
 }
 
@@ -135,6 +185,30 @@ void SessionServiceImpl::RegisterBoundSession(
     const IsolationInfo& isolation_info,
     const NetLogWithSource& net_log,
     const std::optional<url::Origin>& original_request_initiator) {
+  Session* federated_provider_session = nullptr;
+  bool is_google_subdomain_for_histograms = IsSubdomainOf(
+      registration_params.registration_endpoint().host(), "google.com");
+  if (registration_params.provider_session_id().has_value()) {
+    if (!base::FeatureList::IsEnabled(
+            features::kDeviceBoundSessionsFederatedRegistration)) {
+      // Simply ignore headers with a provider_session_id if the flag
+      // isn't enabled.
+      return;
+    }
+
+    base::expected<Session*, SessionError> provider_session_or_error =
+        GetFederatedProviderSessionIfValid(registration_params);
+    if (!provider_session_or_error.has_value()) {
+      OnRegistrationComplete(
+          std::move(on_access_callback), is_google_subdomain_for_histograms,
+          /*fetcher=*/nullptr,
+          RegistrationResult(std::move(provider_session_or_error.error())));
+      return;
+    }
+
+    federated_provider_session = provider_session_or_error.value();
+  }
+
   net::NetLogSource net_log_source_for_registration = net::NetLogSource(
       net::NetLogSourceType::URL_REQUEST, net::NetLog::Get()->NextID());
   net_log.AddEventReferencingSource(
@@ -142,21 +216,84 @@ void SessionServiceImpl::RegisterBoundSession(
       net_log_source_for_registration);
 
   const auto supported_algos = registration_params.supported_algos();
+  std::optional<GURL> provider_url = registration_params.provider_url();
   RegistrationRequestParam request_params =
       RegistrationRequestParam::CreateForRegistration(
           std::move(registration_params));
-
   std::unique_ptr<RegistrationFetcher> fetcher =
       RegistrationFetcher::CreateFetcher(
-          request_params, key_service_.get(), context_.get(), isolation_info,
-          net_log_source_for_registration, original_request_initiator);
+          request_params, *this, key_service_.get(), context_.get(),
+          isolation_info, net_log_source_for_registration,
+          original_request_initiator);
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
-  fetcher_raw->StartCreateTokenAndFetch(
-      request_params, supported_algos,
-      base::BindOnce(&SessionServiceImpl::OnRegistrationComplete,
-                     weak_factory_.GetWeakPtr(),
-                     std::move(on_access_callback)));
+
+  auto callback = base::BindOnce(
+      &SessionServiceImpl::OnRegistrationComplete, weak_factory_.GetWeakPtr(),
+      std::move(on_access_callback), is_google_subdomain_for_histograms);
+  if (federated_provider_session) {
+    fetcher_raw->StartFetchWithFederatedKey(
+        request_params, *federated_provider_session->unexportable_key_id(),
+        *provider_url, std::move(callback));
+    // `fetcher_raw` may be deleted.
+  } else {
+    fetcher_raw->StartCreateTokenAndFetch(request_params, supported_algos,
+                                          std::move(callback));
+    // `fetcher_raw` may be deleted.
+  }
+}
+
+base::expected<Session*, SessionError>
+SessionServiceImpl::GetFederatedProviderSessionIfValid(
+    const RegistrationFetcherParam& registration_params) {
+  // This is a federated session registration.
+  GURL provider_url = *registration_params.provider_url();
+  if (!provider_url.is_valid() || url::Origin::Create(provider_url).opaque()) {
+    return base::unexpected(
+        SessionError(SessionError::kInvalidFederatedSessionUrl));
+  }
+
+  SessionKey provider_key{SchemefulSite(provider_url),
+                          *registration_params.provider_session_id()};
+  Session* provider_session = GetSession(provider_key);
+
+  if (!provider_session) {
+    // Provider session not found, fail the registration.
+    return base::unexpected(SessionError(
+        SessionError::kInvalidFederatedSessionProviderSessionMissing));
+  }
+
+  if (url::Origin::Create(provider_url) != provider_session->origin()) {
+    return base::unexpected(SessionError(
+        SessionError::kInvalidFederatedSessionWrongProviderOrigin));
+  }
+
+  if (!provider_session->unexportable_key_id().has_value()) {
+    return base::unexpected(SessionError(SessionError::kInvalidFederatedKey));
+  }
+
+  unexportable_keys::ServiceErrorOr<
+      crypto::SignatureVerifier::SignatureAlgorithm>
+      algorithm =
+          key_service_->GetAlgorithm(*provider_session->unexportable_key_id());
+  if (!algorithm.has_value()) {
+    return base::unexpected(SessionError(SessionError::kInvalidFederatedKey));
+  }
+
+  unexportable_keys::ServiceErrorOr<std::vector<uint8_t>> pub_key =
+      key_service_->GetSubjectPublicKeyInfo(
+          *provider_session->unexportable_key_id());
+  if (!pub_key.has_value()) {
+    return base::unexpected(SessionError(SessionError::kInvalidFederatedKey));
+  }
+
+  std::string thumbprint = CreateJwkThumbprint(*algorithm, *pub_key);
+  if (thumbprint != *registration_params.provider_key()) {
+    return base::unexpected(
+        SessionError(SessionError::kFederatedKeyThumbprintMismatch));
+  }
+
+  return provider_session;
 }
 
 SessionServiceImpl::Observer::Observer(
@@ -183,10 +320,15 @@ void SessionServiceImpl::OnLoadSessionsComplete(
 
 void SessionServiceImpl::OnRegistrationComplete(
     OnAccessCallback on_access_callback,
+    bool is_google_subdomain_for_histograms,
     RegistrationFetcher* fetcher,
-    base::expected<SessionParams, SessionError> params_or_error) {
+    RegistrationResult registration_result) {
+  if (is_google_subdomain_for_histograms) {
+    base::UmaHistogramBoolean(
+        "Net.DeviceBoundSessions.GoogleRegistrationIsFromStandard", true);
+  }
   SessionError::ErrorType result = OnRegistrationCompleteInternal(
-      std::move(on_access_callback), fetcher, std::move(params_or_error));
+      std::move(on_access_callback), fetcher, std::move(registration_result));
   base::UmaHistogramEnumeration("Net.DeviceBoundSessions.RegistrationResult",
                                 result);
 }
@@ -225,13 +367,24 @@ std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
   if (pending_initialization_) {
     return DeferralParams();
   }
+
+  if (request->device_bound_session_usage() < SessionUsage::kNoUsage) {
+    request->set_device_bound_session_usage(SessionUsage::kNoUsage);
+  }
+
   SchemefulSite site(request->url());
   DebugHeaderBuilder debug_header_builder;
   const base::flat_map<SessionKey, RefreshResult>& previous_deferrals =
       request->device_bound_session_deferrals();
   for (const auto& [_, session] : GetSessionsForSite(site)) {
-    if (session->ShouldDeferRequest(request, first_party_set_metadata)) {
-      SessionKey session_key{site, session->id()};
+    if (!session->IsInScope(request)) {
+      continue;
+    }
+
+    SessionKey session_key{site, session->id()};
+    base::TimeDelta minimum_lifetime =
+        session->MinimumBoundCookieLifetime(request, first_party_set_metadata);
+    if (minimum_lifetime.is_zero()) {
       auto previous_deferrals_it = previous_deferrals.find(session_key);
       if (previous_deferrals_it != previous_deferrals.end()) {
         debug_header_builder.AddSkippedSession(previous_deferrals_it->first,
@@ -244,6 +397,9 @@ std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
                           *session);
       return DeferralParams(session->id());
     }
+
+    MaybeStartProactiveRefresh(request->device_bound_session_access_callback(),
+                               request, session_key, minimum_lifetime);
   }
 
   std::optional<std::string> debug_header = debug_header_builder.Build();
@@ -273,9 +429,9 @@ void SessionServiceImpl::DeferRequestForRefresh(
 
   SessionKey session_key{SchemefulSite(request->url()), *deferral.session_id};
   // For the first deferring request, create a new vector and add the request.
-  auto [it, inserted] = deferred_requests_.try_emplace(session_key.id);
-  // Add the request to the deferred list.
-  it->second.emplace_back(request, std::move(callback));
+  auto [it, inserted] = deferred_requests_.try_emplace(session_key);
+  // Add the request callback to the deferred list.
+  it->second.emplace_back(std::move(callback));
 
   auto* session = GetSession(session_key);
   CHECK(session, base::NotFatalUntil::M147);
@@ -294,9 +450,12 @@ void SessionServiceImpl::DeferRequestForRefresh(
   if (!inserted) {
     return;
   }
+  if (proactive_requests_.find(session_key) != proactive_requests_.end()) {
+    return;
+  }
 
   if (RefreshQuotaExceeded(session_key.site)) {
-    UnblockDeferredRequests(session_key, RefreshResult::kQuotaExceeded);
+    UnblockDeferredRequests(session_key, RefreshResult::kRefreshQuotaExceeded);
     return;
   }
 
@@ -312,7 +471,8 @@ void SessionServiceImpl::DeferRequestForRefresh(
       session_store_->RestoreSessionBindingKey(
           session_key,
           base::BindOnce(&SessionServiceImpl::OnSessionKeyRestored,
-                         weak_factory_.GetWeakPtr(), request, session_key,
+                         weak_factory_.GetWeakPtr(), request->GetWeakPtr(),
+                         session_key,
                          request->device_bound_session_access_callback()));
     } else {
       UnblockDeferredRequests(session_key, RefreshResult::kFatalError);
@@ -323,32 +483,55 @@ void SessionServiceImpl::DeferRequestForRefresh(
     return;
   }
 
-  RefreshSessionInternal(request, session_key, session, *key_id);
+  RefreshSessionInternal(RefreshTrigger::kMissingCookie, request, session_key,
+                         session, *key_id);
 }
 
 void SessionServiceImpl::OnRefreshRequestCompletion(
+    RefreshTrigger trigger,
     OnAccessCallback on_access_callback,
     SessionKey session_key,
     RegistrationFetcher* fetcher,
-    base::expected<SessionParams, SessionError> params_or_error) {
+    RegistrationResult registration_result) {
   SessionError::ErrorType result = OnRefreshRequestCompletionInternal(
       std::move(on_access_callback), session_key, fetcher,
-      std::move(params_or_error));
+      std::move(registration_result));
 
   Session* session = GetSession(session_key);
   if (session) {
-    session->InformOfRefreshResult(result);
+    session->InformOfRefreshResult(
+        /*was_proactive=*/trigger == RefreshTrigger::kProactive, result);
   }
 
-  base::UmaHistogramEnumeration("Net.DeviceBoundSessions.RefreshResult",
-                                result);
+  std::string histogram_base = "Net.DeviceBoundSessions.RefreshResult";
+  std::string suffix;
+  switch (trigger) {
+    case RefreshTrigger::kProactive:
+      suffix = ".Proactive";
+      break;
+    case RefreshTrigger::kMissingCookie:
+      suffix = ".MissingCookie";
+      break;
+  }
+  base::UmaHistogramEnumeration(histogram_base, result);
+  base::UmaHistogramEnumeration(histogram_base + suffix, result);
 }
 
 // Continue or restart all deferred requests for the session and remove the
-// session_id key in the map.
-void SessionServiceImpl::UnblockDeferredRequests(const SessionKey& session_key,
-                                                 RefreshResult result) {
-  auto it = deferred_requests_.find(session_key.id);
+// session key in the map.
+void SessionServiceImpl::UnblockDeferredRequests(
+    const SessionKey& session_key,
+    RefreshResult result,
+    std::optional<bool> is_proactive_refresh_candidate,
+    std::optional<base::TimeDelta> minimum_proactive_refresh_threshold) {
+  if (auto it = proactive_requests_.find(session_key);
+      it != proactive_requests_.end()) {
+    base::UmaHistogramTimes("Net.DeviceBoundSessions.ProactiveRefreshDuration",
+                            it->second.Elapsed());
+    proactive_requests_.erase(it);
+  }
+
+  auto it = deferred_requests_.find(session_key);
   if (it == deferred_requests_.end()) {
     return;
   }
@@ -356,31 +539,106 @@ void SessionServiceImpl::UnblockDeferredRequests(const SessionKey& session_key,
   auto requests = std::move(it->second);
   deferred_requests_.erase(it);
 
+  base::UmaHistogramCounts100("Net.DeviceBoundSessions.RequestDeferredCount",
+                              requests.size());
+
+  if (is_proactive_refresh_candidate.has_value() &&
+      minimum_proactive_refresh_threshold.has_value()) {
+    base::UmaHistogramLongTimes100(
+        "Net.DeviceBoundSessions.MinimumProactiveRefreshThreshold",
+        *minimum_proactive_refresh_threshold);
+    if (*is_proactive_refresh_candidate) {
+      base::UmaHistogramLongTimes100(
+          "Net.DeviceBoundSessions.MinimumProactiveRefreshThreshold.Success",
+          *minimum_proactive_refresh_threshold);
+    } else {
+      base::UmaHistogramLongTimes100(
+          "Net.DeviceBoundSessions.MinimumProactiveRefreshThreshold.Failure",
+          *minimum_proactive_refresh_threshold);
+    }
+
+    if (*is_proactive_refresh_candidate) {
+      if (*minimum_proactive_refresh_threshold <= base::Seconds(30)) {
+        base::UmaHistogramCounts100(
+            "Net.DeviceBoundSessions.ProactiveRefreshCandidateDeferredCount."
+            "ThirtySeconds",
+            requests.size());
+        for (auto& request : requests) {
+          base::UmaHistogramTimes(
+              "Net.DeviceBoundSessions."
+              "ProactiveRefreshCandidateRequestDeferredDuration.ThirtySeconds",
+              request.timer.Elapsed());
+        }
+      }
+
+      if (*minimum_proactive_refresh_threshold <= base::Minutes(1)) {
+        base::UmaHistogramCounts100(
+            "Net.DeviceBoundSessions.ProactiveRefreshCandidateDeferredCount."
+            "OneMinute",
+            requests.size());
+        for (auto& request : requests) {
+          base::UmaHistogramTimes(
+              "Net.DeviceBoundSessions."
+              "ProactiveRefreshCandidateRequestDeferredDuration.OneMinute",
+              request.timer.Elapsed());
+        }
+      }
+
+      if (*minimum_proactive_refresh_threshold <= base::Minutes(2)) {
+        base::UmaHistogramCounts100(
+            "Net.DeviceBoundSessions.ProactiveRefreshCandidateDeferredCount."
+            "TwoMinutes",
+            requests.size());
+        for (auto& request : requests) {
+          base::UmaHistogramTimes(
+              "Net.DeviceBoundSessions."
+              "ProactiveRefreshCandidateRequestDeferredDuration.TwoMinutes",
+              request.timer.Elapsed());
+        }
+      }
+    }
+  }
+
   for (auto& request : requests) {
     base::UmaHistogramTimes("Net.DeviceBoundSessions.RequestDeferredDuration",
                             request.timer.Elapsed());
+    base::UmaHistogramEnumeration("Net.DeviceBoundSessions.DeferralResult",
+                                  result);
+    if (request.timer.Elapsed() <= base::Milliseconds(1)) {
+      base::UmaHistogramEnumeration(
+          "Net.DeviceBoundSessions.DeferralResult.Instant", result);
+    } else {
+      base::UmaHistogramEnumeration(
+          "Net.DeviceBoundSessions.DeferralResult.Slow", result);
+    }
     std::move(request.callback).Run(result);
   }
 }
 
 void SessionServiceImpl::SetChallengeForBoundSession(
     OnAccessCallback on_access_callback,
-    const GURL& request_url,
+    const URLRequest& request,
+    const FirstPartySetMetadata& first_party_set_metadata,
     const SessionChallengeParam& param) {
   if (!param.session_id()) {
     return;
   }
 
-  SchemefulSite site(request_url);
-  for (const auto& [_, session] : GetSessionsForSite(site)) {
-    if (session->id().value() == param.session_id()) {
-      NotifySessionAccess(on_access_callback,
-                          SessionAccess::AccessType::kUpdate,
-                          SessionKey{site, session->id()}, *session);
-      session->set_cached_challenge(param.challenge());
-      return;
-    }
+  SessionKey session_key{SchemefulSite(request.url()),
+                         Session::Id(*param.session_id())};
+  Session* session = GetSession(session_key);
+  if (!session) {
+    return;
   }
+
+  if (features::kDeviceBoundSessionsOriginTrialFeedback.Get() &&
+      !session->CanSetBoundCookie(request, first_party_set_metadata)) {
+    return;
+  }
+
+  NotifySessionAccess(on_access_callback, SessionAccess::AccessType::kUpdate,
+                      session_key, *session);
+  session->set_cached_challenge(param.challenge());
 }
 
 void SessionServiceImpl::GetAllSessionsAsync(
@@ -411,12 +669,73 @@ void SessionServiceImpl::DeleteSessionAndNotify(
   DeleteSessionAndNotifyInternal(reason, it, per_request_callback);
 }
 
-Session* SessionServiceImpl::GetSession(const SessionKey& session_key) const {
+const Session* SessionServiceImpl::GetSession(
+    const SessionKey& session_key) const {
   auto it = unpartitioned_sessions_.find(session_key);
   if (it != unpartitioned_sessions_.end()) {
     return it->second.get();
   }
   return nullptr;
+}
+
+Session* SessionServiceImpl::GetSession(const SessionKey& session_key) {
+  return const_cast<Session*>(std::as_const(*this).GetSession(session_key));
+}
+
+void SessionServiceImpl::AddSession(const SchemefulSite& site,
+                                    SessionParams params,
+                                    base::span<const uint8_t> wrapped_key,
+                                    base::OnceCallback<void(bool)> callback) {
+  key_service_->FromWrappedSigningKeySlowlyAsync(
+      wrapped_key, unexportable_keys::BackgroundTaskPriority::kBestEffort,
+      base::BindOnce(&SessionServiceImpl::OnAddSessionKeyRestored,
+                     weak_factory_.GetWeakPtr(), site, std::move(params),
+                     std::move(callback)));
+}
+
+const SessionService::SignedRefreshChallenge*
+SessionServiceImpl::GetLatestSignedRefreshChallenge(
+    const SessionKey& session_key) {
+  auto signed_challenge_it =
+      latest_signed_refresh_challenges_.find(session_key);
+  if (signed_challenge_it == latest_signed_refresh_challenges_.end()) {
+    return nullptr;
+  }
+  return &signed_challenge_it->second;
+}
+
+void SessionServiceImpl::SetLatestSignedRefreshChallenge(
+    SessionKey session_key,
+    SessionService::SignedRefreshChallenge signed_refresh_challenge) {
+  latest_signed_refresh_challenges_[std::move(session_key)] =
+      std::move(signed_refresh_challenge);
+}
+
+void SessionServiceImpl::OnAddSessionKeyRestored(
+    const SchemefulSite& site,
+    SessionParams params,
+    base::OnceCallback<void(bool)> callback,
+    unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>
+        key_or_error) {
+  if (!key_or_error.has_value()) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  params.key_id = *key_or_error;
+
+  base::expected<std::unique_ptr<net::device_bound_sessions::Session>,
+                 net::device_bound_sessions::SessionError>
+      session_or_error =
+          net::device_bound_sessions::Session::CreateIfValid(params);
+
+  if (!session_or_error.has_value()) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  AddSession(site, std::move(session_or_error.value()));
+  std::move(callback).Run(true);
 }
 
 void SessionServiceImpl::AddSession(const SchemefulSite& site,
@@ -425,8 +744,7 @@ void SessionServiceImpl::AddSession(const SchemefulSite& site,
     session_store_->SaveSession(site, *session);
   }
 
-  unpartitioned_sessions_.emplace(SessionKey{site, session->id()},
-                                  std::move(session));
+  unpartitioned_sessions_[SessionKey{site, session->id()}] = std::move(session);
 }
 
 void SessionServiceImpl::DeleteAllSessions(
@@ -534,90 +852,105 @@ void SessionServiceImpl::RemoveObserver(net::SchemefulSite site,
 SessionError::ErrorType SessionServiceImpl::OnRegistrationCompleteInternal(
     OnAccessCallback on_access_callback,
     RegistrationFetcher* fetcher,
-    base::expected<SessionParams, SessionError> params_or_error) {
+    RegistrationResult registration_result) {
   RemoveFetcher(fetcher);
 
-  if (!params_or_error.has_value()) {
+  if (registration_result.is_error()) {
     // We failed to create a new session, so there's nothing to clean
     // up.
-    return params_or_error.error().type;
+    return registration_result.error().type;
+  } else if (registration_result.is_no_session_config_change()) {
+    // No config changes is not allowed at registration.
+    return SessionError::kInvalidConfigJson;
   }
 
-  const SessionParams& params = *params_or_error;
-  const SchemefulSite site(url::Origin::Create(GURL(params.fetcher_url)));
-
-  auto session_or_error = Session::CreateIfValid(std::move(params));
-  if (!session_or_error.has_value()) {
-    // The attempt to create a valid session failed. Since this specific
-    // registration request did not add a session, no cleanup is needed.
-    return session_or_error.error().type;
-  }
-  CHECK(*session_or_error);
+  std::unique_ptr<Session> session = registration_result.TakeSession();
+  CHECK(session);
+  const SchemefulSite site(session->origin());
   NotifySessionAccess(on_access_callback, SessionAccess::AccessType::kCreation,
-                      SessionKey{site, (*session_or_error)->id()},
-                      **session_or_error);
-  AddSession(site, std::move(*session_or_error));
-  return SessionError::ErrorType::kSuccess;
+                      SessionKey{site, session->id()}, *session);
+  AddSession(site, std::move(session));
+  return SessionError::kSuccess;
 }
 
 SessionError::ErrorType SessionServiceImpl::OnRefreshRequestCompletionInternal(
     OnAccessCallback on_access_callback,
     const SessionKey& session_key,
     RegistrationFetcher* fetcher,
-    base::expected<SessionParams, SessionError> params_or_error) {
+    RegistrationResult registration_result) {
   RemoveFetcher(fetcher);
 
   // If refresh succeeded:
   // 1. update the session by adding a new session, replacing the old one
   // 2. restart the deferred requests.
-  //
-  // Note that we notified `on_access_callback` about `session_key.id` already,
-  // so we only need to notify the callback about other sessions.
-  if (params_or_error.has_value()) {
-    auto session_or_error = Session::CreateIfValid(*params_or_error);
-    if (!session_or_error.has_value()) {
-      // New parameters are invalid, terminate the session.
-      DeleteSessionAndNotify(DeletionReason::kInvalidSessionParams, session_key,
-                             on_access_callback);
-      UnblockDeferredRequests(session_key, RefreshResult::kFatalError);
-      return session_or_error.error().type;
-    }
-
-    std::unique_ptr<Session> new_session = std::move(*session_or_error);
+  if (registration_result.is_session()) {
+    std::unique_ptr<Session> new_session = registration_result.TakeSession();
     CHECK(new_session);
     CHECK_EQ(new_session->id(), session_key.id);
 
-    SchemefulSite new_site(
-        url::Origin::Create(GURL(params_or_error->fetcher_url)));
-    if (new_session->id() != session_key.id) {
-      NotifySessionAccess(
-          on_access_callback, SessionAccess::AccessType::kCreation,
-          SessionKey{new_site, new_session->id()}, *new_session);
-    }
+    Session* existing_session = GetSession(session_key);
+    CHECK(existing_session);
+    bool is_proactive_refresh_candidate =
+        IsProactiveRefreshCandidate(*existing_session, *new_session,
+                                    registration_result.maybe_stored_cookies());
+    std::optional<base::TimeDelta> minimum_cookie_lifetime =
+        existing_session
+            ->TakeLastProactiveRefreshOpportunityMinimumCookieLifetime();
+
+    SchemefulSite new_site(new_session->origin());
     AddSession(new_site, std::move(new_session));
     // The session has been refreshed, restart the request.
-    UnblockDeferredRequests(session_key, RefreshResult::kRefreshed);
-  } else if (const SessionError& error = params_or_error.error();
-             error.IsFatal()) {
-    DeleteSessionAndNotify(DeletionReason::kRefreshFatalError, session_key,
-                           on_access_callback);
+    UnblockDeferredRequests(session_key, RefreshResult::kRefreshed,
+                            is_proactive_refresh_candidate,
+                            std::move(minimum_cookie_lifetime));
+  } else if (registration_result.is_no_session_config_change()) {
+    Session* existing_session = GetSession(session_key);
+    CHECK(existing_session);
+    bool is_proactive_refresh_candidate =
+        IsProactiveRefreshCandidate(*existing_session, *existing_session,
+                                    registration_result.maybe_stored_cookies());
+
+    UnblockDeferredRequests(
+        session_key, RefreshResult::kRefreshed, is_proactive_refresh_candidate,
+        existing_session
+            ->TakeLastProactiveRefreshOpportunityMinimumCookieLifetime());
+  } else if (std::optional<DeletionReason> deletion_reason =
+                 registration_result.error().GetDeletionReason();
+             deletion_reason.has_value()) {
+    DeleteSessionAndNotify(*deletion_reason, session_key, on_access_callback);
     UnblockDeferredRequests(session_key, RefreshResult::kFatalError);
   } else {
+    RefreshResult refresh_result;
+    if (registration_result.error().IsServerError()) {
+      refresh_result = RefreshResult::kServerError;
+    } else if (registration_result.error().type ==
+               SessionError::kSigningQuotaExceeded) {
+      refresh_result = RefreshResult::kSigningQuotaExceeded;
+    } else {
+      refresh_result = RefreshResult::kUnreachable;
+    }
     // Transient error, unblock the request without cookies.
-    UnblockDeferredRequests(session_key, error.IsServerError()
-                                             ? RefreshResult::kServerError
-                                             : RefreshResult::kUnreachable);
+    UnblockDeferredRequests(session_key, refresh_result);
   }
 
-  return params_or_error.has_value() ? SessionError::ErrorType::kSuccess
-                                     : params_or_error.error().type;
+  refresh_last_result_.insert_or_assign(
+      session_key.site, SessionError(registration_result.is_error()
+                                         ? registration_result.error().type
+                                         : SessionError::kSuccess));
+
+  return registration_result.is_error() ? registration_result.error().type
+                                        : SessionError::kSuccess;
 }
 
 void SessionServiceImpl::OnSessionKeyRestored(
-    URLRequest* request,
+    base::WeakPtr<URLRequest> request,
     const SessionKey& session_key,
     OnAccessCallback on_access_callback,
     Session::KeyIdOrError key_id_or_error) {
+  if (!request) {
+    return;
+  }
+
   if (!key_id_or_error.has_value()) {
     UnblockDeferredRequests(session_key, RefreshResult::kFatalError);
     DeleteSessionAndNotify(DeletionReason::kFailedToUnwrapKey, session_key,
@@ -633,10 +966,12 @@ void SessionServiceImpl::OnSessionKeyRestored(
 
   session->set_unexportable_key_id(key_id_or_error);
 
-  RefreshSessionInternal(request, session_key, session, *key_id_or_error);
+  RefreshSessionInternal(RefreshTrigger::kMissingCookie, request.get(),
+                         session_key, session, *key_id_or_error);
 }
 
 void SessionServiceImpl::RefreshSessionInternal(
+    RefreshTrigger trigger,
     URLRequest* request,
     const SessionKey& session_key,
     Session* session,
@@ -646,27 +981,38 @@ void SessionServiceImpl::RefreshSessionInternal(
   request->net_log().AddEventReferencingSource(
       net::NetLogEventType::DBSC_REFRESH_REQUEST, net_log_source_for_refresh);
 
-  refresh_times_[session_key.site].push_back(base::TimeTicks::Now());
+  if (!features::kDeviceBoundSessionsOriginTrialFeedback.Get() ||
+      !base::FeatureList::IsEnabled(
+          features::kDeviceBoundSessionSigningQuotaAndCaching)) {
+    refresh_times_[session_key.site].push_back(base::TimeTicks::Now());
+  }
 
   auto registration_param =
       RegistrationRequestParam::CreateForRefresh(*session);
 
   auto callback = base::BindOnce(
       &SessionServiceImpl::OnRefreshRequestCompletion,
-      weak_factory_.GetWeakPtr(),
+      weak_factory_.GetWeakPtr(), trigger,
       request->device_bound_session_access_callback(), session_key);
   std::unique_ptr<RegistrationFetcher> fetcher =
       RegistrationFetcher::CreateFetcher(
-          registration_param, key_service_.get(), context_.get(),
+          registration_param, *this, key_service_.get(), context_.get(),
           request->isolation_info(), net_log_source_for_refresh,
           request->initiator());
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
   fetcher_raw->StartFetchWithExistingKey(registration_param, key_id,
                                          std::move(callback));
+  // `fetcher_raw` may be deleted.
 }
 
 bool SessionServiceImpl::RefreshQuotaExceeded(const SchemefulSite& site) {
+  if (features::kDeviceBoundSessionsOriginTrialFeedback.Get() &&
+      base::FeatureList::IsEnabled(
+          features::kDeviceBoundSessionSigningQuotaAndCaching)) {
+    return false;
+  }
+
   if (ignore_refresh_quota_) {
     return false;
   }
@@ -679,7 +1025,7 @@ bool SessionServiceImpl::RefreshQuotaExceeded(const SchemefulSite& site) {
   it->second.erase(std::remove_if(it->second.begin(), it->second.end(),
                                   [](base::TimeTicks time) {
                                     return base::TimeTicks::Now() - time >=
-                                           kRefreshQuotaInterval;
+                                           kSigningQuotaInterval;
                                   }),
                    it->second.end());
 
@@ -688,7 +1034,56 @@ bool SessionServiceImpl::RefreshQuotaExceeded(const SchemefulSite& site) {
     refresh_times_.erase(it);
   }
 
-  return refresh_count >= kRefreshQuota;
+  if (auto result_it = refresh_last_result_.find(site);
+      refresh_count >= kSigningQuota &&
+      result_it != refresh_last_result_.end()) {
+    base::UmaHistogramEnumeration(
+        "Net.DeviceBoundSessions.RefreshQuotaExceededLastResult",
+        result_it->second.type);
+  }
+
+  return refresh_count >= kSigningQuota;
+}
+
+bool SessionServiceImpl::SigningQuotaExceeded(const SchemefulSite& site) {
+  if (!features::kDeviceBoundSessionsOriginTrialFeedback.Get() ||
+      !base::FeatureList::IsEnabled(
+          features::kDeviceBoundSessionSigningQuotaAndCaching)) {
+    return false;
+  }
+
+  // TODO(crbug.com/457803903): Rename refresh quota feature to signing quota.
+  if (ignore_refresh_quota_) {
+    return false;
+  }
+
+  auto it = signing_times_.find(site);
+  if (it == signing_times_.end()) {
+    return false;
+  }
+
+  std::erase_if(it->second, [](base::TimeTicks time) {
+    return base::TimeTicks::Now() - time >= kSigningQuotaInterval;
+  });
+
+  size_t sign_count = it->second.size();
+  if (sign_count == 0) {
+    signing_times_.erase(it);
+  }
+
+  bool is_exceeded = sign_count >= kSigningQuota;
+  if (auto result_it = refresh_last_result_.find(site);
+      is_exceeded && result_it != refresh_last_result_.end()) {
+    base::UmaHistogramEnumeration(
+        "Net.DeviceBoundSessions.SigningQuotaExceededLastResult",
+        result_it->second.type);
+  }
+
+  return is_exceeded;
+}
+
+void SessionServiceImpl::AddSigningOccurrence(const SchemefulSite& site) {
+  signing_times_[site].push_back(base::TimeTicks::Now());
 }
 
 void SessionServiceImpl::RemoveFetcher(RegistrationFetcher* fetcher) {
@@ -700,6 +1095,77 @@ void SessionServiceImpl::RemoveFetcher(RegistrationFetcher* fetcher) {
     return;
   }
   registration_fetchers_.erase(it);
+}
+
+void SessionServiceImpl::MaybeStartProactiveRefresh(
+    SessionService::OnAccessCallback per_request_callback,
+    URLRequest* request,
+    const SessionKey& session_key,
+    base::TimeDelta minimum_cookie_lifetime) {
+  if (!base::FeatureList::IsEnabled(
+          features::kDeviceBoundSessionProactiveRefresh)) {
+    return;
+  }
+
+  if (minimum_cookie_lifetime >
+      features::kDeviceBoundSessionProactiveRefreshThreshold.Get()) {
+    return;
+  }
+
+  if (deferred_requests_.find(session_key) != deferred_requests_.end()) {
+    // It's not a proactive refresh if we're in the middle of a regular refresh.
+    LogProactiveRefreshAttempt(
+        ProactiveRefreshAttempt::kExistingDeferringRefresh);
+    return;
+  }
+
+  auto* session = GetSession(session_key);
+  CHECK(session);
+
+  if (RefreshQuotaExceeded(session_key.site)) {
+    LogProactiveRefreshAttempt(ProactiveRefreshAttempt::kSigningQuota);
+    return;
+  }
+
+  if (session->ShouldBackoff()) {
+    LogProactiveRefreshAttempt(ProactiveRefreshAttempt::kBackoff);
+    return;
+  }
+
+  if (session->attempted_proactive_refresh_since_last_success()) {
+    // We only do one proactive refresh attempt before a deferral. If we
+    // did not do this, every refresh due to missing cookies would be
+    // skipped due to the refresh quota. Instead, we allow the refresh
+    // due to missing cookies, which will communicate its reason for
+    // failure in the Secure-Session-Skipped header.
+    LogProactiveRefreshAttempt(
+        ProactiveRefreshAttempt::kPreviousFailedProactiveRefresh);
+    return;
+  }
+
+  if (!session->unexportable_key_id().has_value()) {
+    // TODO(crbug.com/358137054): If we're otherwise ready for a proactive
+    // refresh, we could start restoring the key. This is lower priority
+    // than regular proactive refresh, since some amount of startup
+    // latency is unavoidable with DBSC.
+    LogProactiveRefreshAttempt(ProactiveRefreshAttempt::kMissingKey);
+    return;
+  }
+
+  auto [_, inserted] = proactive_requests_.try_emplace(session_key);
+  if (!inserted) {
+    // Do not proactively refresh if we've already started one proactive
+    // refresh.
+    LogProactiveRefreshAttempt(
+        ProactiveRefreshAttempt::kExistingProactiveRefresh);
+    return;
+  }
+
+  NotifySessionAccess(per_request_callback, SessionAccess::AccessType::kUpdate,
+                      session_key, *session);
+  LogProactiveRefreshAttempt(ProactiveRefreshAttempt::kAttempted);
+  RefreshSessionInternal(RefreshTrigger::kProactive, request, session_key,
+                         session, *session->unexportable_key_id());
 }
 
 }  // namespace net::device_bound_sessions

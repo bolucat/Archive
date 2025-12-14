@@ -22,6 +22,7 @@
 #include <tuple>
 
 #include "perfetto/ext/base/flat_hash_map.h"
+#include "perfetto/ext/base/fnv_hash.h"
 #include "perfetto/ext/base/small_vector.h"
 #include "src/trace_processor/dataframe/dataframe.h"
 #include "src/trace_processor/importers/common/global_args_tracker.h"
@@ -188,6 +189,11 @@ class ArgsTracker {
     return AddArgsTo(context_->storage->mutable_windowmanager_table(), id);
   }
 
+  BoundInserter AddArgsTo(tables::WindowManagerWindowContainerTable::Id id) {
+    return AddArgsTo(
+        context_->storage->mutable_windowmanager_windowcontainer_table(), id);
+  }
+
   BoundInserter AddArgsTo(tables::WindowManagerShellTransitionsTable::Id id) {
     return AddArgsTo(
         context_->storage->mutable_window_manager_shell_transitions_table(),
@@ -228,10 +234,16 @@ class ArgsTracker {
         context_->storage->mutable_vulkan_memory_allocations_table(), id);
   }
 
-  BoundInserter AddArgsTo(UniquePid id) {
+  BoundInserter AddArgsToProcess(UniquePid id) {
     auto* table = context_->storage->mutable_process_table();
     return BoundInserter(this, &table->dataframe(),
                          tables::ProcessTable::ColumnIndex::arg_set_id, id);
+  }
+
+  BoundInserter AddArgsToThread(UniqueTid id) {
+    auto* table = context_->storage->mutable_thread_table();
+    return BoundInserter(this, &table->dataframe(),
+                         tables::ThreadTable::ColumnIndex::arg_set_id, id);
   }
 
   BoundInserter AddArgsTo(tables::ExperimentalProtoPathTable::Id id) {
@@ -241,6 +253,10 @@ class ArgsTracker {
 
   BoundInserter AddArgsTo(tables::CpuTable::Id id) {
     return AddArgsTo(context_->storage->mutable_cpu_table(), id);
+  }
+
+  BoundInserter AddArgsTo(tables::TraceImportLogsTable::Id id) {
+    return AddArgsTo(context_->storage->mutable_trace_import_logs_table(), id);
   }
 
   // Returns a CompactArgSet which contains the args inserted into this

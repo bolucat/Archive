@@ -86,13 +86,20 @@ base::MessagePumpType GetMessagePumpTypeForMainThreadType(
 std::unique_ptr<sequence_manager::SequenceManager>
 CreateSequenceManagerForMainThreadType(
     TaskEnvironment::MainThreadType main_thread_type,
-    sequence_manager::SequenceManager::PrioritySettings priority_settings) {
+    sequence_manager::SequenceManager::PrioritySettings priority_settings,
+    TaskEnvironment::ScopedExecutionFenceBehaviour
+        scoped_execution_fence_behaviour) {
   auto type = GetMessagePumpTypeForMainThreadType(main_thread_type);
   return sequence_manager::CreateSequenceManagerOnCurrentThreadWithPump(
       MessagePump::Create(type),
       base::sequence_manager::SequenceManager::Settings::Builder()
           .SetMessagePumpType(type)
           .SetPrioritySettings(std::move(priority_settings))
+          .SetIsMainThread(true)
+          .SetShouldBlockOnScopedFences(
+              scoped_execution_fence_behaviour ==
+              TaskEnvironment::ScopedExecutionFenceBehaviour::
+                  MAIN_THREAD_AND_THREAD_POOL)
           .Build());
 }
 
@@ -417,16 +424,19 @@ TaskEnvironment::TaskEnvironment(
     ThreadPoolExecutionMode thread_pool_execution_mode,
     ThreadingMode threading_mode,
     ThreadPoolCOMEnvironment thread_pool_com_environment,
+    ScopedExecutionFenceBehaviour scoped_execution_fence_behaviour,
     bool subclass_creates_default_taskrunner,
     trait_helpers::NotATraitTag)
     : main_thread_type_(main_thread_type),
       thread_pool_execution_mode_(thread_pool_execution_mode),
       threading_mode_(threading_mode),
       thread_pool_com_environment_(thread_pool_com_environment),
+      scoped_execution_fence_behaviour_(scoped_execution_fence_behaviour),
       subclass_creates_default_taskrunner_(subclass_creates_default_taskrunner),
-      sequence_manager_(
-          CreateSequenceManagerForMainThreadType(main_thread_type,
-                                                 std::move(priority_settings))),
+      sequence_manager_(CreateSequenceManagerForMainThreadType(
+          main_thread_type,
+          std::move(priority_settings),
+          scoped_execution_fence_behaviour)),
       mock_time_domain_(
           time_source != TimeSource::SYSTEM_TIME
               ? std::make_unique<TaskEnvironment::MockTimeDomain>(
@@ -497,9 +507,13 @@ TaskEnvironment::TestTaskTracker* TaskEnvironment::CreateThreadPool() {
   auto task_tracker = std::make_unique<TestTaskTracker>();
   TestTaskTracker* raw_task_tracker = task_tracker.get();
   // Disable background threads to avoid hangs when flushing background tasks.
+  // Also disable thread priority monitoring so that creating worker threads
+  // does not interfere with tests that are sensitive to creation of new
+  // histograms.
   auto thread_pool = std::make_unique<internal::ThreadPoolImpl>(
       std::string(), std::move(task_tracker),
-      /*use_background_threads=*/false);
+      /*use_background_threads=*/false,
+      /*monitor_worker_thread_priorities=*/false);
   ThreadPoolInstance::Set(std::move(thread_pool));
   DCHECK(!g_task_tracker);
   g_task_tracker = raw_task_tracker;

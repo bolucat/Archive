@@ -6,6 +6,7 @@
 
 #include <sys/types.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -677,6 +678,25 @@ void BalsaHeaders::RemoveAllHeadersWithPrefix(absl::string_view prefix) {
   }
 }
 
+void BalsaHeaders::RemoveHeadersIf(
+    std::function<bool(const absl::string_view, const absl::string_view)>
+        predicate) {
+  for (HeaderLines::size_type i = 0; i < header_lines_.size(); ++i) {
+    if (header_lines_[i].skip) {
+      continue;
+    }
+
+    HeaderLineDescription& line = header_lines_[i];
+    const absl::string_view key(
+        GetPtr(line.buffer_base_idx) + line.first_char_idx,
+        line.key_end_idx - line.first_char_idx);
+    const absl::string_view value = GetValueFromHeaderLineDescription(line);
+    if (predicate(key, value)) {
+      line.skip = true;
+    }
+  }
+}
+
 bool BalsaHeaders::HasHeadersWithPrefix(absl::string_view prefix) const {
   for (HeaderLines::size_type i = 0; i < header_lines_.size(); ++i) {
     if (header_lines_[i].skip) {
@@ -891,6 +911,43 @@ bool BalsaHeaders::ForEachHeader(
     }
   }
   return true;
+}
+
+// Folds header lines that are marked as having continuation lines (and then
+// unmarks them as having continuation lines). We can assume that any \r\n and
+// any \n is being continued since it wouldn't show up as one header line
+// otherwise. We therefore need to replace any \r\n and any \n with spaces, and
+// any subsequent spaces or tabs with spaces.
+//
+// See: https://tools.ietf.org/html/rfc7230#section-3.2.4
+void BalsaHeaders::FoldContinuationLines() {
+  const int header_lines_size = header_lines_.size();
+  for (int i = 0; i < header_lines_size; ++i) {
+    HeaderLineDescription& desc = header_lines_[i];
+    if (!desc.skip && desc.has_continuation_line) {
+      bool processing_continuation = false;
+      const char* begin = GetPtr(desc.buffer_base_idx) + desc.value_begin_idx;
+      const char* end = GetPtr(desc.buffer_base_idx) + desc.last_char_idx;
+      for (char* c = const_cast<char*>(begin); c < end; ++c) {
+        if (processing_continuation && (*c == '\t' || *c == ' ')) {
+          *c = ' ';
+          continue;
+        }
+        if (*c == '\n') {
+          // We can safely assume the next character is a space or a tab because
+          // we wouldn't have included \n in the header line otherwise.
+          *c = ' ';
+          if (c != begin && *(c - 1) == '\r') {
+            *(c - 1) = ' ';
+          }
+          processing_continuation = true;
+          continue;
+        }
+        processing_continuation = false;
+      }
+      desc.has_continuation_line = false;
+    }
+  }
 }
 
 void BalsaHeaders::DumpToPrefixedString(const char* spaces,

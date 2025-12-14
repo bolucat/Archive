@@ -293,8 +293,8 @@ static void ecp_nistz256_mod_inverse_sqr_mont(BN_ULONG r[P256_LIMBS],
 static void ecp_nistz256_windowed_mul(const EC_GROUP *group, P256_POINT *r,
                                       const EC_JACOBIAN *p,
                                       const EC_SCALAR *p_scalar) {
-  assert(p != NULL);
-  assert(p_scalar != NULL);
+  assert(p != nullptr);
+  assert(p_scalar != nullptr);
   assert(group->field.N.width == P256_LIMBS);
 
   static const size_t kWindowSize = 5;
@@ -464,7 +464,7 @@ static void ecp_nistz256_points_mul_public(const EC_GROUP *group,
                                            const EC_SCALAR *g_scalar,
                                            const EC_JACOBIAN *p_,
                                            const EC_SCALAR *p_scalar) {
-  assert(p_ != NULL && p_scalar != NULL && g_scalar != NULL);
+  assert(p_ != nullptr && p_scalar != nullptr && g_scalar != nullptr);
 
   alignas(32) P256_POINT p;
   uint8_t p_str[33];
@@ -536,11 +536,11 @@ static int ecp_nistz256_get_affine(const EC_GROUP *group,
   assert(group->field.N.width == P256_LIMBS);
   ecp_nistz256_mod_inverse_sqr_mont(z_inv2, point->Z.words);
 
-  if (x != NULL) {
+  if (x != nullptr) {
     ecp_nistz256_mul_mont(x->words, z_inv2, point->X.words);
   }
 
-  if (y != NULL) {
+  if (y != nullptr) {
     ecp_nistz256_sqr_mont(z_inv2, z_inv2);                            // z^-4
     ecp_nistz256_mul_mont(y->words, point->Y.words, point->Z.words);  // y * z
     ecp_nistz256_mul_mont(y->words, y->words, z_inv2);  // y * z^-3
@@ -651,9 +651,9 @@ static void ecp_nistz256_inv0_mod_ord(const EC_GROUP *group, EC_SCALAR *out,
                   {4, i_111},     {5, i_111},    {5, i_101},    {3, i_11},
                   {10, i_101111}, {2, i_11},     {5, i_11},     {5, i_11},
                   {3, i_1},       {7, i_10101},  {6, i_1111}};
-  for (size_t i = 0; i < OPENSSL_ARRAY_SIZE(kChain); i++) {
-    ecp_nistz256_ord_sqr_mont(out->words, out->words, kChain[i].p);
-    ecp_nistz256_ord_mul_mont(out->words, out->words, table[kChain[i].i]);
+  for (const auto &step : kChain) {
+    ecp_nistz256_ord_sqr_mont(out->words, out->words, step.p);
+    ecp_nistz256_ord_mul_mont(out->words, out->words, table[step.i]);
   }
 }
 

@@ -43,6 +43,7 @@ bool RequiresZlibSupport(TraceType type) {
     case kNinjaLogTraceType:
     case kSystraceTraceType:
     case kPerfDataTraceType:
+    case kPprofTraceType:
     case kInstrumentsXmlTraceType:
     case kUnknownTraceType:
     case kJsonTraceType:
@@ -55,6 +56,7 @@ bool RequiresZlibSupport(TraceType type) {
     case kArtMethodTraceType:
     case kArtHprofTraceType:
     case kPerfTextTraceType:
+    case kSimpleperfProtoTraceType:
     case kTarTraceType:
       return false;
   }
@@ -68,9 +70,10 @@ void TraceReaderRegistry::RegisterFactory(TraceType trace_type,
 }
 
 base::StatusOr<std::unique_ptr<ChunkedTraceReader>>
-TraceReaderRegistry::CreateTraceReader(TraceType type) {
+TraceReaderRegistry::CreateTraceReader(TraceType type,
+                                       TraceProcessorContext* context) {
   if (auto* it = factories_.Find(type); it) {
-    return (*it)(context_);
+    return (*it)(context);
   }
 
   if (RequiresZlibSupport(type) && !util::IsGzipSupported()) {

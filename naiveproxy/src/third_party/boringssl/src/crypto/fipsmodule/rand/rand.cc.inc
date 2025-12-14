@@ -71,8 +71,8 @@ struct rand_thread_state {
 #if defined(BORINGSSL_FIPS)
   // last_block contains the previous block from |get_seed_entropy|.
   uint8_t last_block[CRNGT_BLOCK_SIZE];
-  // next and prev form a NULL-terminated, double-linked list of all states in
-  // a process.
+  // next and prev form a nullptr-terminated, double-linked list of all states
+  // in a process.
   struct rand_thread_state *next, *prev;
   // clear_drbg_lock synchronizes between uses of |drbg| and
   // |rand_thread_state_clear_all| clearing it. This lock should be uncontended
@@ -94,7 +94,7 @@ static void rand_thread_state_clear_all(void) __attribute__((destructor));
 static void rand_thread_state_clear_all(void) {
   CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
   for (struct rand_thread_state *cur = *thread_states_list_bss_get();
-       cur != NULL; cur = cur->next) {
+       cur != nullptr; cur = cur->next) {
     CRYPTO_MUTEX_lock_write(&cur->clear_drbg_lock);
     CTR_DRBG_clear(&cur->drbg);
   }
@@ -111,23 +111,23 @@ static void rand_thread_state_free(void *state_in) {
   struct rand_thread_state *state =
       reinterpret_cast<rand_thread_state *>(state_in);
 
-  if (state_in == NULL) {
+  if (state_in == nullptr) {
     return;
   }
 
 #if defined(BORINGSSL_FIPS)
   CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
 
-  if (state->prev != NULL) {
+  if (state->prev != nullptr) {
     state->prev->next = state->next;
   } else if (*thread_states_list_bss_get() == state) {
-    // |state->prev| may be NULL either if it is the head of the list,
+    // |state->prev| may be nullptr either if it is the head of the list,
     // or if |state| is freed before it was added to the list at all.
     // Compare against the head of the list to distinguish these cases.
     *thread_states_list_bss_get() = state->next;
   }
 
-  if (state->next != NULL) {
+  if (state->next != nullptr) {
     state->next->prev = state->prev;
   }
 
@@ -187,8 +187,7 @@ bcm_status BCM_rand_bytes_hwrng(uint8_t *buf, const size_t len) {
 
 struct entropy_buffer {
   // bytes contains entropy suitable for seeding a DRBG.
-  uint8_t
-      bytes[CRNGT_BLOCK_SIZE + CTR_DRBG_ENTROPY_LEN * BORINGSSL_FIPS_OVERREAD];
+  uint8_t bytes[CRNGT_BLOCK_SIZE + CTR_DRBG_SEED_LEN * BORINGSSL_FIPS_OVERREAD];
   // bytes_valid indicates the number of bytes of |bytes| that contain valid
   // data.
   size_t bytes_valid;
@@ -250,11 +249,11 @@ static void get_seed_entropy(uint8_t *out_entropy, size_t out_entropy_len,
 // fill |additional_input| with entropy to supplement |seed|. It sets
 // |*out_additional_input_len| to the number of extra bytes.
 static void rand_get_seed(struct rand_thread_state *state,
-                          uint8_t seed[CTR_DRBG_ENTROPY_LEN],
-                          uint8_t additional_input[CTR_DRBG_ENTROPY_LEN],
+                          uint8_t seed[CTR_DRBG_SEED_LEN],
+                          uint8_t additional_input[CTR_DRBG_SEED_LEN],
                           size_t *out_additional_input_len) {
   uint8_t entropy_bytes[sizeof(state->last_block) +
-                        CTR_DRBG_ENTROPY_LEN * BORINGSSL_FIPS_OVERREAD];
+                        CTR_DRBG_SEED_LEN * BORINGSSL_FIPS_OVERREAD];
   uint8_t *entropy = entropy_bytes;
   size_t entropy_len = sizeof(entropy_bytes);
 
@@ -293,22 +292,23 @@ static void rand_get_seed(struct rand_thread_state *state,
   OPENSSL_memcpy(state->last_block, entropy + entropy_len - CRNGT_BLOCK_SIZE,
                  CRNGT_BLOCK_SIZE);
 
-  assert(entropy_len == BORINGSSL_FIPS_OVERREAD * CTR_DRBG_ENTROPY_LEN);
-  OPENSSL_memcpy(seed, entropy, CTR_DRBG_ENTROPY_LEN);
+  assert(entropy_len == BORINGSSL_FIPS_OVERREAD * CTR_DRBG_SEED_LEN);
+  OPENSSL_memcpy(seed, entropy, CTR_DRBG_SEED_LEN);
 
   for (size_t i = 1; i < BORINGSSL_FIPS_OVERREAD; i++) {
-    for (size_t j = 0; j < CTR_DRBG_ENTROPY_LEN; j++) {
-      seed[j] ^= entropy[CTR_DRBG_ENTROPY_LEN * i + j];
+    for (size_t j = 0; j < CTR_DRBG_SEED_LEN; j++) {
+      seed[j] ^= entropy[CTR_DRBG_SEED_LEN * i + j];
     }
   }
 
-  // If we used something other than system entropy then also
-  // opportunistically read from the system. This avoids solely relying on the
-  // hardware once the entropy pool has been initialized.
+  // If we used something other than system entropy then also read from the
+  // system. This avoids solely relying on the hardware.
+  // TODO(crbug.com/446280903): Once this change sticks, switch
+  // |get_seed_entropy| to draw from the OS instead of RDRAND.
   *out_additional_input_len = 0;
-  if (want_additional_input &&
-      CRYPTO_sysrand_if_available(additional_input, CTR_DRBG_ENTROPY_LEN)) {
-    *out_additional_input_len = CTR_DRBG_ENTROPY_LEN;
+  if (want_additional_input) {
+    CRYPTO_sysrand(additional_input, CTR_DRBG_SEED_LEN);
+    *out_additional_input_len = CTR_DRBG_SEED_LEN;
   }
 }
 
@@ -318,12 +318,12 @@ static void rand_get_seed(struct rand_thread_state *state,
 // fill |additional_input| with entropy to supplement |seed|. It sets
 // |*out_additional_input_len| to the number of extra bytes.
 static void rand_get_seed(struct rand_thread_state *state,
-                          uint8_t seed[CTR_DRBG_ENTROPY_LEN],
-                          uint8_t additional_input[CTR_DRBG_ENTROPY_LEN],
+                          uint8_t seed[CTR_DRBG_SEED_LEN],
+                          uint8_t additional_input[CTR_DRBG_SEED_LEN],
                           size_t *out_additional_input_len) {
   // If not in FIPS mode, we don't overread from the system entropy source and
   // we don't depend only on the hardware RDRAND.
-  CRYPTO_sysrand_for_seed(seed, CTR_DRBG_ENTROPY_LEN);
+  CRYPTO_sysrand_for_seed(seed, CTR_DRBG_SEED_LEN);
   *out_additional_input_len = 0;
 }
 
@@ -353,13 +353,7 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
     // promised not to fork.
     if (fork_generation != 0 || fork_unsafe_buffering) {
       OPENSSL_memset(additional_data, 0, sizeof(additional_data));
-    } else if (!have_rdrand()) {
-      // No alternative so block for OS entropy.
-      CRYPTO_sysrand(additional_data, sizeof(additional_data));
-    } else if (!CRYPTO_sysrand_if_available(additional_data,
-                                            sizeof(additional_data)) &&
-               !rdrand(additional_data, sizeof(additional_data))) {
-      // RDRAND failed: block for OS entropy.
+    } else {
       CRYPTO_sysrand(additional_data, sizeof(additional_data));
     }
   }
@@ -372,10 +366,10 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
   struct rand_thread_state *state = reinterpret_cast<rand_thread_state *>(
       CRYPTO_get_thread_local(OPENSSL_THREAD_LOCAL_RAND));
 
-  if (state == NULL) {
+  if (state == nullptr) {
     state = reinterpret_cast<rand_thread_state *>(
         OPENSSL_zalloc(sizeof(struct rand_thread_state)));
-    if (state == NULL ||
+    if (state == nullptr ||
         !CRYPTO_set_thread_local(OPENSSL_THREAD_LOCAL_RAND, state,
                                  rand_thread_state_free)) {
       // If the system is out of memory, use an ephemeral state on the
@@ -384,13 +378,13 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
     }
 
     state->last_block_valid = 0;
-    uint8_t seed[CTR_DRBG_ENTROPY_LEN];
-    uint8_t personalization[CTR_DRBG_ENTROPY_LEN] = {0};
+    uint8_t seed[CTR_DRBG_SEED_LEN];
+    uint8_t personalization[CTR_DRBG_SEED_LEN] = {0};
     size_t personalization_len = 0;
     rand_get_seed(state, seed, personalization, &personalization_len);
 
-    if (!CTR_DRBG_init(&state->drbg, seed, personalization,
-                       personalization_len)) {
+    if (!CTR_DRBG_init(&state->drbg, /*df=*/true, seed, 32u, seed + 32,
+                       personalization, personalization_len)) {
       abort();
     }
     state->calls = 0;
@@ -403,10 +397,10 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
       CRYPTO_MUTEX_lock_write(thread_states_list_lock_bss_get());
       struct rand_thread_state **states_list = thread_states_list_bss_get();
       state->next = *states_list;
-      if (state->next != NULL) {
+      if (state->next != nullptr) {
         state->next->prev = state;
       }
-      state->prev = NULL;
+      state->prev = nullptr;
       *states_list = state;
       CRYPTO_MUTEX_unlock_write(thread_states_list_lock_bss_get());
     }
@@ -422,8 +416,8 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
       // safety. The children must reseed to avoid working from the same PRNG
       // state.
       state->fork_unsafe_buffering != fork_unsafe_buffering) {
-    uint8_t seed[CTR_DRBG_ENTROPY_LEN];
-    uint8_t reseed_additional_data[CTR_DRBG_ENTROPY_LEN] = {0};
+    uint8_t seed[CTR_DRBG_SEED_LEN];
+    uint8_t reseed_additional_data[CTR_DRBG_SEED_LEN] = {0};
     size_t reseed_additional_data_len = 0;
     rand_get_seed(state, seed, reseed_additional_data,
                   &reseed_additional_data_len);
@@ -433,8 +427,9 @@ bcm_infallible BCM_rand_bytes_with_additional_data(
     // |rand_thread_state_clear_all|.
     CRYPTO_MUTEX_lock_read(&state->clear_drbg_lock);
 #endif
-    if (!CTR_DRBG_reseed(&state->drbg, seed, reseed_additional_data,
-                         reseed_additional_data_len)) {
+    if (!CTR_DRBG_reseed_ex(&state->drbg, seed, sizeof(seed),
+                            reseed_additional_data,
+                            reseed_additional_data_len)) {
       abort();
     }
     state->calls = 0;

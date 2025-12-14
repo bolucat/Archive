@@ -97,6 +97,16 @@
     "includes": [2200],
     "structures": [2220],
   },
+  "chrome/browser/actor/resources/internal/browser_resources.grd": {
+    "structures": [2230],
+    "messages": [2235],
+    "includes": [2250],
+  },
+  "chrome/browser/actor/resources/browser_resources.grd": {
+    "structures": [2230],
+    "messages": [2235],
+    "includes": [2250],
+  },
   "chrome/browser/dev_ui_browser_resources.grd": {
     "includes": [2240],
   },
@@ -232,10 +242,6 @@
     "META": {"sizes": {"includes": [5]}},
     "includes": [3000],
   },
-  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/assistant_optin/assistant_optin_resources.grd": {
-    "META": {"sizes": {"includes": [80]}},
-    "includes": [3040],
-  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/audio/resources.grd": {
     "META": {"sizes": {"includes": [30]}},
     "includes": [3060],
@@ -247,10 +253,6 @@
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/borealis_installer/resources.grd": {
     "META": {"sizes": {"includes": [20],}},
     "includes": [3100],
-  },
-  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/borealis_motd/resources.grd": {
-    "META": {"sizes": {"includes": [3],}},
-    "includes": [3110],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/chromeos/cloud_upload/resources.grd": {
     "META": {"sizes": {"includes": [50]}},
@@ -388,6 +390,10 @@
     "META": {"sizes": {"includes": [15]}},
     "includes": [3760],
   },
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/contextual_tasks/resources.grd": {
+    "META": {"sizes": {"includes": [10]}},
+    "includes": [3770],
+  },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/data_sharing/resources.grd": {
    "META": {"sizes": {"includes": [20]}},
     "includes": [3780],
@@ -447,6 +453,10 @@
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/glic/fre/resources.grd": {
     "META": {"sizes": {"includes": [10]}},
     "includes": [4020],
+  },
+    "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/glic/shared/resources.grd": {
+    "META": {"sizes": {"includes": [10]}},
+    "includes": [4030],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/history/resources.grd": {
     "META": {"sizes": {"includes": [50]}},
@@ -513,7 +523,7 @@
     "includes": [4380],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/new_tab_footer/resources.grd": {
-    "META": {"sizes": {"includes": [10]}},
+    "META": {"sizes": {"includes": [15]}},
     "includes": [4390],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/new_tab_page/resources.grd": {
@@ -569,7 +579,7 @@
     "includes": [4580],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/privacy_sandbox/internals/resources.grd": {
-   "META": {"sizes": {"includes": [80],}},
+   "META": {"sizes": {"includes": [100],}},
     "includes": [4600],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/privacy_sandbox/resources.grd": {
@@ -583,6 +593,10 @@
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/quota_internals/quota_internals_resources.grd": {
     "META": {"sizes": {"includes": [20]}},
     "includes": [4660],
+  },
+   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/reload_button/resources.grd": {
+    "META": {"sizes": {"includes": [10]}},
+    "includes": [4670],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/sandbox_internals/resources.grd": {
     "META": {"sizes": {"includes": [5],}},
@@ -601,7 +615,7 @@
     "includes": [4720],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/settings/resources.grd": {
-    "META": {"sizes": {"includes": [500],}},
+    "META": {"sizes": {"includes": [600],}},
     "includes": [4740],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/settings_shared/resources.grd": {
@@ -641,7 +655,7 @@
     "includes": [4860],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/side_panel/read_anything/resources.grd": {
-    "META": {"sizes": {"includes": [50],}},
+    "META": {"sizes": {"includes": [75],}},
     "includes": [4880],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/side_panel/reading_list/code_cache_resources.grd": {
@@ -748,12 +762,16 @@
     "includes": [5240],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/webui_browser/resources.grd": {
-    "META": {"sizes": {"includes": [5]}},
+    "META": {"sizes": {"includes": [40]}},
     "includes": [5250],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/webui_browser/internal/resources.grd": {
     "META": {"sizes": {"includes": [5]}},
     "includes": [5260],
+  },
+  "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/notifications_internals/resources.grd": {
+    "META": {"sizes": {"includes": [5]}},
+    "includes": [5270],
   },
   # END chrome/ WebUI resources section
 
@@ -795,6 +813,10 @@
     "META": {"sizes": {"includes": [45],}},
     "includes" : [5740],
   },
+  "<(SHARED_INTERMEDIATE_DIR)/chromeos/ash/experiences/guest_os/borealis/motd/resources/resources.grd": {
+    "META": {"sizes": {"includes": [3],}},
+    "includes": [5750],
+   },
   "chromeos/ash/resources/ash_resources.grd": {
     "includes": [5780],
   },
@@ -803,6 +825,25 @@
   },
   "chromeos/ash/resources/internal/ash_internal_strings.grd": {
     "messages": [5820],
+  },
+  # Both boca_receiver_app_bundle_resources.grd and
+  # boca_receiver_app_bundle_mock_resources.grd start with the same id because
+  # only one of them is built depending on if actual app is available.
+  "ash/webui/boca_receiver_app_ui/resources/prod/boca_receiver_app_bundle_resources.grd": {
+    "META": {"sizes": {"includes": [100],}},
+    "includes": [5822],
+  },
+  "ash/webui/boca_receiver_app_ui/resources/mock/boca_receiver_app_bundle_mock_resources.grd": {
+    "META": {"sizes": {"includes": [100],}},
+    "includes": [5822],
+  },
+  "ash/webui/boca_receiver_app_ui/resources/trusted/boca_receiver_trusted_resources.grd": {
+    "META": {"sizes": {"includes": [10],}},
+    "includes": [5825],
+  },
+  "<(SHARED_INTERMEDIATE_DIR)/ash/webui/boca_receiver_app_ui/resources/untrusted/resources.grd": {
+    "META": {"sizes": {"includes": [40],}},
+    "includes": [5830],
   },
   # Both boca_app_bundle_resources.grd and boca_app_bundle_mock_resources.grd
   # start with the same id because only one of them is built depending on if
@@ -1059,10 +1100,10 @@
   # plus_addresses_internal_strings.grd and plus_addresses_strings.grd must
   # share the same id because they define the same strings, but only one of them
   # is built depending on whether src_internal is available.
-  "components/plus_addresses/resources/internal/strings/plus_addresses_internal_strings.grd": {
+  "components/plus_addresses/core/browser/resources/internal/strings/plus_addresses_internal_strings.grd": {
     "messages": [7160],
   },
-  "components/plus_addresses/resources/strings/plus_addresses_strings.grd": {
+  "components/plus_addresses/core/browser/resources/strings/plus_addresses_strings.grd": {
     "messages": [7160],
   },
   # components/policy/resources/policy_templates.grd and
@@ -1087,16 +1128,17 @@
   "components/resources/dev_ui_components_resources.grd": {
     "includes": [7260],
   },
-  "components/search_engine_descriptions_strings.grd": {
-    "messages": [7280],
-  },
   "<(SHARED_INTERMEDIATE_DIR)/components/autofill/core/browser/autofill_and_password_manager_internals/resources.grd": {
     "META": {"sizes": {"includes": [5]}},
-    "includes": [7290],
+    "includes": [7270],
   },
   "<(SHARED_INTERMEDIATE_DIR)/chrome/browser/resources/autofill_ml_internals/resources.grd": {
-    "META": {"sizes": {"includes": [10]}},
-    "includes": [7295],
+    "META": {"sizes": {"includes": [20]}},
+    "includes": [7280],
+  },
+  "<(SHARED_INTERMEDIATE_DIR)/components/browser_apis/tab_strip/resources/resources.grd": {
+    "META": {"sizes": {"includes": [15]}},
+    "includes": [7290],
   },
   "<(SHARED_INTERMEDIATE_DIR)/components/commerce/core/internals/resources/resources.grd": {
     "META": {"sizes": {"includes": [30]}},
@@ -1526,9 +1568,6 @@
     "META": {"sizes": {"includes": [1100]}},
     "includes": [10000],
   },
-  "weblayer/weblayer_resources.grd": {
-    "includes": [10020],
-  },
 
   # This file is generated during the build.
   # .grd extension is required because it's checked before var interpolation.
@@ -1552,6 +1591,10 @@
 
   "third_party/search_engines_data/resources_internal/search_engines_scaled_resources.grd": {
     "structures": [10100],
+  },
+
+  "third_party/search_engines_data/resources_internal/search_engine_descriptions_strings.grd": {
+    "messages": [10120],
   },
 
   # END "everything else" section.

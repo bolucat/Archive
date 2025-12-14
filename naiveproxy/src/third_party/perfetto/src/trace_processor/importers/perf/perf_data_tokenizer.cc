@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "perfetto/base/build_config.h"
 #include "perfetto/base/flat_set.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
@@ -53,15 +54,17 @@
 #include "src/trace_processor/importers/perf/perf_event.h"
 #include "src/trace_processor/importers/perf/perf_event_attr.h"
 #include "src/trace_processor/importers/perf/perf_file.h"
-#include "src/trace_processor/importers/perf/perf_session.h"
+#include "src/trace_processor/importers/perf/perf_invocation.h"
 #include "src/trace_processor/importers/perf/perf_tracker.h"
 #include "src/trace_processor/importers/perf/reader.h"
 #include "src/trace_processor/importers/perf/record.h"
+#include "src/trace_processor/importers/perf/record_parser.h"
 #include "src/trace_processor/importers/perf/sample_id.h"
 #include "src/trace_processor/importers/perf/time_conv_record.h"
-#include "src/trace_processor/importers/proto/perf_sample_tracker.h"
-#include "src/trace_processor/sorter/trace_sorter.h"  // IWYU pragma: keep
+#include "src/trace_processor/sorter/trace_sorter.h"
+#include "src/trace_processor/storage/metadata.h"
 #include "src/trace_processor/storage/stats.h"
+#include "src/trace_processor/types/variadic.h"
 #include "src/trace_processor/util/build_id.h"
 #include "src/trace_processor/util/trace_blob_view_reader.h"
 
@@ -120,7 +123,11 @@ bool ReadTime(const Record& record, std::optional<uint64_t>& time) {
 }  // namespace
 
 PerfDataTokenizer::PerfDataTokenizer(TraceProcessorContext* ctx)
-    : context_(ctx), aux_manager_(ctx) {}
+    : context_(ctx),
+      perf_tracker_(ctx),
+      stream_(ctx->sorter->CreateStream(
+          std::make_unique<RecordParser>(context_, &perf_tracker_))),
+      aux_manager_(ctx, &perf_tracker_) {}
 
 PerfDataTokenizer::~PerfDataTokenizer() = default;
 
@@ -221,7 +228,7 @@ PerfDataTokenizer::ParseAttrs() {
   ASSIGN_OR_RETURN(AttrsSectionReader attr_reader,
                    AttrsSectionReader::Create(header_, std::move(*tbv)));
 
-  PerfSession::Builder builder(context_);
+  PerfInvocation::Builder builder(context_);
   while (attr_reader.CanReadNext()) {
     PerfFile::AttrsEntry entry;
     RETURN_IF_ERROR(attr_reader.ReadNext(entry));
@@ -241,10 +248,10 @@ PerfDataTokenizer::ParseAttrs() {
     builder.AddAttrAndIds(entry.attr, std::move(ids));
   }
 
-  ASSIGN_OR_RETURN(perf_session_, builder.Build());
-  if (perf_session_->HasPerfClock()) {
-    context_->clock_tracker->SetTraceTimeClock(
-        protos::pbzero::BUILTIN_CLOCK_PERF);
+  ASSIGN_OR_RETURN(perf_invocation_, builder.Build());
+  if (perf_invocation_->HasPerfClock()) {
+    RETURN_IF_ERROR(context_->clock_tracker->SetTraceTimeClock(
+        protos::pbzero::BUILTIN_CLOCK_PERF));
   }
   parsing_state_ = ParsingState::kSeekRecords;
   return ParsingResult::kSuccess;
@@ -312,7 +319,7 @@ base::Status PerfDataTokenizer::ProcessRecord(Record record) {
 
 base::StatusOr<PerfDataTokenizer::ParsingResult> PerfDataTokenizer::ParseRecord(
     Record& record) {
-  record.session = perf_session_;
+  record.session = perf_invocation_;
   std::optional<TraceBlobView> tbv =
       buffer_.SliceOff(buffer_.start_offset(), sizeof(record.header));
   if (!tbv) {
@@ -333,7 +340,7 @@ base::StatusOr<PerfDataTokenizer::ParsingResult> PerfDataTokenizer::ParseRecord(
   record.payload = std::move(*tbv);
 
   base::StatusOr<RefPtr<PerfEventAttr>> attr =
-      perf_session_->FindAttrForRecord(record.header, record.payload);
+      perf_invocation_->FindAttrForRecord(record.header, record.payload);
   if (!attr.ok()) {
     return base::ErrStatus("Unable to determine perf_event_attr for record. %s",
                            attr.status().c_message());
@@ -351,16 +358,20 @@ base::StatusOr<int64_t> PerfDataTokenizer::ExtractTraceTimestamp(
     return base::ErrStatus("Failed to read time");
   }
 
+  // TODO(449973773): `*time > 0` is a temporary hack to work around the fact
+  // that some perf record types which actually don't have a timestamp. They
+  // should have been procesed during tokenization time (e.g. MMAP/MMAP2/COMM)
+  // but were incorrectly written to be handled with at parsing time. So by
+  // setting trace_ts to `latest_timestamp_`, we don't try and convert a zero
+  // timestamp accidentally, leading to negative timestamps in some clocks.
   base::StatusOr<int64_t> trace_ts =
-      time.has_value()
+      time && *time > 0
           ? context_->clock_tracker->ToTraceTime(record.attr->clock_id(),
                                                  static_cast<int64_t>(*time))
-          : std::min(latest_timestamp_, context_->sorter->max_timestamp());
-
+          : latest_timestamp_;
   if (PERFETTO_LIKELY(trace_ts.ok())) {
     latest_timestamp_ = std::max(latest_timestamp_, *trace_ts);
   }
-
   return trace_ts;
 }
 void PerfDataTokenizer::MaybePushRecord(Record record) {
@@ -370,7 +381,7 @@ void PerfDataTokenizer::MaybePushRecord(Record record) {
         stats::perf_record_skipped, static_cast<int>(record.header.type));
     return;
   }
-  context_->sorter->PushPerfRecord(*trace_ts, std::move(record));
+  stream_->Push(*trace_ts, std::move(record));
 }
 
 base::StatusOr<PerfDataTokenizer::ParsingResult>
@@ -430,10 +441,19 @@ PerfDataTokenizer::ParseFeatures() {
 base::Status PerfDataTokenizer::ParseFeature(uint8_t feature_id,
                                              TraceBlobView data) {
   switch (feature_id) {
+    case feature::ID_OS_RELEASE: {
+      ASSIGN_OR_RETURN(std::string os_release,
+                       feature::ParseOsRelease(std::move(data)));
+      context_->metadata_tracker->SetMetadata(
+          metadata::system_release,
+          Variadic::String(context_->storage->InternString(os_release)));
+      return base::OkStatus();
+    }
+
     case feature::ID_CMD_LINE: {
       ASSIGN_OR_RETURN(std::vector<std::string> args,
                        feature::ParseCmdline(std::move(data)));
-      perf_session_->SetCmdline(args);
+      perf_invocation_->SetCmdline(args);
       return base::OkStatus();
     }
 
@@ -441,7 +461,7 @@ base::Status PerfDataTokenizer::ParseFeature(uint8_t feature_id,
       return feature::EventDescription::Parse(
           std::move(data), [&](feature::EventDescription desc) {
             for (auto id : desc.ids) {
-              perf_session_->SetEventName(id, std::move(desc.event_string));
+              perf_invocation_->SetEventName(id, desc.event_string);
             }
             return base::OkStatus();
           });
@@ -449,7 +469,7 @@ base::Status PerfDataTokenizer::ParseFeature(uint8_t feature_id,
     case feature::ID_BUILD_ID:
       return feature::BuildId::Parse(
           std::move(data), [&](feature::BuildId build_id) {
-            perf_session_->AddBuildId(
+            perf_invocation_->AddBuildId(
                 build_id.pid, std::move(build_id.filename),
                 BuildId::FromRaw(std::move(build_id.build_id)));
             return base::OkStatus();
@@ -464,21 +484,22 @@ base::Status PerfDataTokenizer::ParseFeature(uint8_t feature_id,
     }
 
     case feature::ID_SIMPLEPERF_META_INFO: {
-      perf_session_->SetIsSimpleperf();
+      perf_invocation_->SetIsSimpleperf();
       feature::SimpleperfMetaInfo meta_info;
       RETURN_IF_ERROR(feature::SimpleperfMetaInfo::Parse(data, meta_info));
       for (auto it = meta_info.event_type_info.GetIterator(); it; ++it) {
-        perf_session_->SetEventName(it.key().type, it.key().config, it.value());
+        perf_invocation_->SetEventName(it.key().type, it.key().config,
+                                       it.value());
       }
       break;
     }
     case feature::ID_SIMPLEPERF_FILE2: {
-      perf_session_->SetIsSimpleperf();
+      perf_invocation_->SetIsSimpleperf();
       RETURN_IF_ERROR(feature::ParseSimpleperfFile2(
           std::move(data), [&](TraceBlobView blob) {
             third_party::simpleperf::proto::pbzero::FileFeature::Decoder file(
                 blob.data(), blob.length());
-            PerfTracker::GetOrCreate(context_)->AddSimpleperfFile2(file);
+            perf_tracker_.AddSimpleperfFile2(file);
           }));
 
       break;
@@ -547,6 +568,7 @@ base::Status PerfDataTokenizer::NotifyEndOfFile() {
   if (parsing_state_ != ParsingState::kDone) {
     return base::ErrStatus("Premature end of perf file.");
   }
+  RETURN_IF_ERROR(perf_tracker_.NotifyEndOfFile());
   return base::OkStatus();
 }
 

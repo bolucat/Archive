@@ -14,6 +14,8 @@
 
 #include <openssl/bn.h>
 
+#include <iterator>
+
 #include <openssl/err.h>
 #include <openssl/mem.h>
 
@@ -193,9 +195,9 @@ static int BN_prime_checks_for_size(int bits) {
 // of excluding a candidate with trial division is larger.
 static size_t num_trial_division_primes(const BIGNUM *n) {
   if (n->width * BN_BITS2 > 1024) {
-    return OPENSSL_ARRAY_SIZE(kPrimes);
+    return std::size(kPrimes);
   }
-  return OPENSSL_ARRAY_SIZE(kPrimes) / 2;
+  return std::size(kPrimes) / 2;
 }
 
 // BN_PRIME_CHECKS_BLINDED is the iteration count for blinding the constant-time
@@ -315,7 +317,7 @@ int BN_generate_prime_ex(BIGNUM *ret, int bits, int safe, const BIGNUM *add,
 
 loop:
   // make a random number and set the top and bottom bits
-  if (add == NULL) {
+  if (add == nullptr) {
     if (!probable_prime(ret, bits)) {
       return 0;
     }
@@ -356,14 +358,14 @@ loop:
     // TODO(davidben): This doesn't quite work because an iteration count of 1
     // still runs the blinding mechanism.
     for (i = 0; i < checks; i++) {
-      j = BN_is_prime_fasttest_ex(ret, 1, ctx.get(), 0, NULL);
+      j = BN_is_prime_fasttest_ex(ret, 1, ctx.get(), 0, nullptr);
       if (j == -1) {
         return 0;
       } else if (j == 0) {
         goto loop;
       }
 
-      j = BN_is_prime_fasttest_ex(t, 1, ctx.get(), 0, NULL);
+      j = BN_is_prime_fasttest_ex(t, 1, ctx.get(), 0, nullptr);
       if (j == -1) {
         return 0;
       } else if (j == 0) {
@@ -410,10 +412,10 @@ int bn_miller_rabin_init(BN_MILLER_RABIN *miller_rabin, const BN_MONT_CTX *mont,
   miller_rabin->m = BN_CTX_get(ctx);
   miller_rabin->one_mont = BN_CTX_get(ctx);
   miller_rabin->w1_mont = BN_CTX_get(ctx);
-  if (miller_rabin->w1 == NULL ||        //
-      miller_rabin->m == NULL ||         //
-      miller_rabin->one_mont == NULL ||  //
-      miller_rabin->w1_mont == NULL) {
+  if (miller_rabin->w1 == nullptr ||        //
+      miller_rabin->m == nullptr ||         //
+      miller_rabin->one_mont == nullptr ||  //
+      miller_rabin->w1_mont == nullptr) {
     return 0;
   }
 
@@ -450,7 +452,7 @@ int bn_miller_rabin_iteration(const BN_MILLER_RABIN *miller_rabin,
   const BIGNUM *w = &mont->N;
   BIGNUM *z = BN_CTX_get(ctx);
   crypto_word_t is_possibly_prime;
-  if (z == NULL ||
+  if (z == nullptr ||
       !BN_mod_exp_mont_consttime(z, b, miller_rabin->m, w, ctx, mont) ||
       !BN_to_montgomery(z, z, mont, ctx)) {
     return 0;
@@ -864,7 +866,7 @@ static int probable_prime_dh_safe(BIGNUM *p, int bits, const BIGNUM *padd,
   BIGNUM *t1 = BN_CTX_get(ctx);
   BIGNUM *q = BN_CTX_get(ctx);
   BIGNUM *qadd = BN_CTX_get(ctx);
-  if (qadd == NULL) {
+  if (qadd == nullptr) {
     return 0;
   }
 
@@ -885,7 +887,7 @@ static int probable_prime_dh_safe(BIGNUM *p, int bits, const BIGNUM *padd,
     return 0;
   }
 
-  if (rem == NULL) {
+  if (rem == nullptr) {
     if (!BN_add_word(q, 1)) {
       return 0;
     }

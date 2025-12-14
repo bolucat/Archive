@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/files/file.h"
 
 // The only 32-bit platform that uses this file is Android. On Android APIs
@@ -27,6 +22,7 @@ static_assert(sizeof(base::stat_wrapper_t::st_size) >= 8);
 #include <optional>
 
 #include "base/check_op.h"
+#include "base/compiler_specific.h"
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/notreached.h"
@@ -57,32 +53,19 @@ static_assert(File::FROM_BEGIN == SEEK_SET && File::FROM_CURRENT == SEEK_CUR &&
 
 namespace {
 
-#if BUILDFLAG(IS_APPLE)
-// When enabled, `F_FULLFSYNC` is not used in `File::Flush`. Instead,
-// `F_BARRIERFSYNC` or `flush()` is used (depending on the
-// "MacEfficientFileFlushUseBarrier" param). See
-// https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html
-BASE_FEATURE(kMacEfficientFileFlush,
-             "MacEfficientFileFlush",
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-const FeatureParam<bool> kMacEfficientFileFlushUseBarrier{
-    &kMacEfficientFileFlush, "MacEfficientFileFlushUseBarrier", true};
-
-enum class MacFileFlushMechanism {
-  kFlush,
-  kFullFsync,
-  kBarrierFsync,
-};
-
-std::atomic<MacFileFlushMechanism> g_mac_file_flush_mechanism{
-    MacFileFlushMechanism::kFullFsync};
-#endif  // BUILDFLAG(IS_APPLE)
-
 #if BUILDFLAG(IS_ANDROID)
 #define OffsetType off64_t
+// In case __USE_FILE_OFFSET64 is not used, the `File` methods in this file need
+// to call lseek64(), pread64() and pwrite64() instead of lseek(), pread() and
+// pwrite();
+#define LSeekFunc lseek64
+#define PReadFunc pread64
+#define PWriteFunc pwrite64
 #else
 #define OffsetType off_t
+#define LSeekFunc lseek
+#define PReadFunc pread
+#define PWriteFunc pwrite
 #endif
 
 static_assert(sizeof(int64_t) == sizeof(OffsetType));
@@ -111,22 +94,22 @@ int CallFtruncate(PlatformFile file, int64_t length) {
 #endif
 }
 
-int CallFutimes(PlatformFile file, const struct timeval times[2]) {
+int CallFutimes(PlatformFile file, const std::array<struct timeval, 2> times) {
 #ifdef __USE_XOPEN2K8
   // futimens should be available, but futimes might not be
   // http://pubs.opengroup.org/onlinepubs/9699919799/
 
-  timespec ts_times[2];
+  std::array<timespec, 2> ts_times;
   ts_times[0].tv_sec = times[0].tv_sec;
   ts_times[0].tv_nsec = times[0].tv_usec * 1000;
   ts_times[1].tv_sec = times[1].tv_sec;
   ts_times[1].tv_nsec = times[1].tv_usec * 1000;
 
-  return futimens(file, ts_times);
+  return futimens(file, ts_times.data());
 #else
 #pragma clang diagnostic push  // Can be removed once Cronet's min-sdk is >= 26.
 #pragma clang diagnostic ignored "-Wunguarded-availability"
-  return futimes(file, times);
+  return futimes(file, times.data());
 #pragma clang diagnostic pop
 #endif
 }
@@ -292,14 +275,8 @@ int64_t File::Seek(Whence whence, int64_t offset) {
   DCHECK(IsValid());
 
   SCOPED_FILE_TRACE_WITH_SIZE("Seek", offset);
-
-#if BUILDFLAG(IS_ANDROID)
-  return lseek64(file_.get(), static_cast<off64_t>(offset),
-                 static_cast<int>(whence));
-#else
-  return lseek(file_.get(), static_cast<off_t>(offset),
-               static_cast<int>(whence));
-#endif
+  return LSeekFunc(file_.get(), static_cast<OffsetType>(offset),
+                   static_cast<int>(whence));
 }
 
 int File::Read(int64_t offset, char* data, int size) {
@@ -314,17 +291,9 @@ int File::Read(int64_t offset, char* data, int size) {
   int bytes_read = 0;
   long rv;
   do {
-#if BUILDFLAG(IS_ANDROID)
-    // In case __USE_FILE_OFFSET64 is not used, we need to call pread64()
-    // instead of pread().
-    rv = HANDLE_EINTR(pread64(file_.get(), data + bytes_read,
-                              static_cast<size_t>(size - bytes_read),
-                              static_cast<off64_t>(offset + bytes_read)));
-#else
-    rv = HANDLE_EINTR(pread(file_.get(), data + bytes_read,
-                            static_cast<size_t>(size - bytes_read),
-                            static_cast<off_t>(offset + bytes_read)));
-#endif
+    rv = HANDLE_EINTR(PReadFunc(file_.get(), data + bytes_read,
+                                static_cast<size_t>(size - bytes_read),
+                                static_cast<OffsetType>(offset + bytes_read)));
     if (rv <= 0) {
       break;
     }
@@ -401,17 +370,10 @@ int File::Write(int64_t offset, const char* data, int size) {
   int bytes_written = 0;
   long rv;
   do {
-#if BUILDFLAG(IS_ANDROID)
-    // In case __USE_FILE_OFFSET64 is not used, we need to call pwrite64()
-    // instead of pwrite().
-    rv = HANDLE_EINTR(pwrite64(file_.get(), data + bytes_written,
-                               static_cast<size_t>(size - bytes_written),
-                               static_cast<off64_t>(offset + bytes_written)));
-#else
-    rv = HANDLE_EINTR(pwrite(file_.get(), data + bytes_written,
-                             static_cast<size_t>(size - bytes_written),
-                             static_cast<off_t>(offset + bytes_written)));
-#endif
+    rv = HANDLE_EINTR(
+        PWriteFunc(file_.get(), data + bytes_written,
+                   static_cast<size_t>(size - bytes_written),
+                   static_cast<OffsetType>(offset + bytes_written)));
     if (rv <= 0) {
       break;
     }
@@ -485,7 +447,7 @@ bool File::SetTimes(Time last_access_time, Time last_modified_time) {
 
   SCOPED_FILE_TRACE("SetTimes");
 
-  timeval times[2];
+  std::array<timeval, 2> times;
   times[0] = last_access_time.ToTimeVal();
   times[1] = last_modified_time.ToTimeVal();
 
@@ -550,22 +512,6 @@ File File::Duplicate() const {
 
   return File(std::move(other_fd), async());
 }
-
-#if BUILDFLAG(IS_APPLE)
-void File::InitializeFeatures() {
-  if (FeatureList::IsEnabled(kMacEfficientFileFlush)) {
-    // "relaxed" because there is no dependency between these memory operations
-    // and other memory operations.
-    if (kMacEfficientFileFlushUseBarrier.Get()) {
-      g_mac_file_flush_mechanism.store(MacFileFlushMechanism::kBarrierFsync,
-                                       std::memory_order_relaxed);
-    } else {
-      g_mac_file_flush_mechanism.store(MacFileFlushMechanism::kFlush,
-                                       std::memory_order_relaxed);
-    }
-  }
-}
-#endif  // BUILDFLAG(IS_APPLE)
 
 // Static.
 File::Error File::OSErrorToFileError(int saved_errno) {
@@ -718,40 +664,25 @@ bool File::Flush() {
   // On macOS and iOS, fsync() is guaranteed to send the file's data to the
   // underlying storage device, but may return before the device actually writes
   // the data to the medium. When used by database systems, this may result in
-  // unexpected data loss. Depending on experiment state, this function may use
-  // F_BARRIERFSYNC or F_FULLFSYNC to provide stronger guarantees than fsync().
+  // unexpected data loss. This function uses F_BARRIERFSYNC to provide stronger
+  // guarantees than fsync(). The default behavior used to be `F_FULLFSYNC`.
+  // Changing it to F_BARRIERFSYNC for greatly reduced latency was extensively
+  // tried via experiment and showed no detectable sign of increased corruption
+  // in mechanisms that make use of this function. For similar discussions
+  // regarding rationale one can refer to the SQLite documentation where the
+  // default is to go directly to fsync. (See PRAGMA fullfsync)
   //
   // See documentation:
   // https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/fsync.2.html
   //
-  // "relaxed" because there is no dependency between this memory operation and
-  // other memory operations.
-  switch (g_mac_file_flush_mechanism.load(std::memory_order_relaxed)) {
-    case MacFileFlushMechanism::kBarrierFsync: {
-      if (!HANDLE_EINTR(fcntl(file_.get(), F_BARRIERFSYNC))) {
-        return true;
-      }
-      // Fall back to `fsync()` in case of failure.
-      break;
-    }
-    case MacFileFlushMechanism::kFullFsync: {
-      if (!HANDLE_EINTR(fcntl(file_.get(), F_FULLFSYNC))) {
-        return true;
-      }
-      // Fall back to `fsync()` in case of failure.
-      break;
-    }
-    case MacFileFlushMechanism::kFlush: {
-      // Fall back to `fsync()`.
-      break;
-    }
+  if (!HANDLE_EINTR(fcntl(file_.get(), F_BARRIERFSYNC))) {
+    return true;
   }
 
-  // `fsync()` if `F_BARRIERFSYNC` or `F_FULLFSYNC` failed, or if the mechanism
-  // is `kFlush`. Some file systems do not support `F_FULLFSYNC` /
+  // `fsync()` if `F_BARRIERFSYNC` failed. Some file systems do not support
   // `F_BARRIERFSYNC` but we cannot use the error code as a definitive indicator
-  // that it's the case, so we'll keep trying `F_FULLFSYNC` / `F_BARRIERFSYNC`
-  // for every call to this method when it's the case. See the CL description at
+  // that it's the case, so we'll keep trying `F_BARRIERFSYNC` for every call to
+  // this method when it's the case. See the CL description at
   // https://crrev.com/c/1400159 for details.
   return !HANDLE_EINTR(fsync(file_.get()));
 #else
@@ -773,18 +704,18 @@ int File::Stat(const FilePath& path, stat_wrapper_t* sb) {
   ScopedBlockingCall scoped_blocking_call(FROM_HERE, BlockingType::MAY_BLOCK);
 #if BUILDFLAG(IS_ANDROID)
   if (path.IsContentUri() || path.IsVirtualDocumentPath()) {
-    std::optional<FilePath> p = base::ResolveToContentUri(path);
-    if (!p) {
+    std::optional<FilePath> content_uri = base::ResolveToContentUri(path);
+    if (!content_uri) {
       errno = ENOENT;
       return -1;
     }
     // Attempt to open the file and call GetInfo(), otherwise call Java code
     // with the path which is required for dirs.
-    File file(*p, base::File::FLAG_OPEN | base::File::FLAG_READ);
+    File file(*content_uri, base::File::FLAG_OPEN | base::File::FLAG_READ);
     Info info;
     if ((file.IsValid() && file.GetInfo(&info)) ||
-        GetContentUriInfo(path, &info)) {
-      memset(sb, 0, sizeof(*sb));
+        GetContentUriInfo(*content_uri, &info)) {
+      UNSAFE_BUFFERS(memset(sb, 0, sizeof(*sb)));
       sb->st_mode = info.is_directory ? S_IFDIR : S_IFREG;
       sb->st_size = info.size;
       sb->st_mtime = info.last_modified.ToTimeT();

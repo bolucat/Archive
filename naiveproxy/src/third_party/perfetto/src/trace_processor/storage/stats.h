@@ -125,6 +125,9 @@ namespace perfetto::trace_processor::stats {
        "Implausibly large increment to value received from "                   \
        "SuspendControlService. Indicates a transient error in "                \
        "SuspendControlService."),                                              \
+  F(kernel_trackevent_format_error,       kSingle,  kError,    kAnalysis,      \
+       "Ftrace event payloads did not match the format file while being "      \
+       "parsed as kernel track events."),                                      \
   F(app_wakelock_parse_error,             kSingle,  kError,    kAnalysis,      \
        "Parsing packed repeated field. Should never happen."),                 \
   F(app_wakelock_unknown_id,              kSingle,  kError,    kAnalysis,      \
@@ -242,6 +245,12 @@ namespace perfetto::trace_processor::stats {
       "TrackEventRangeOfInterest packet, and track event dropping is "         \
       "enabled."),                                                             \
   F(track_event_tokenizer_errors,         kSingle,  kInfo,     kAnalysis, ""), \
+  F(track_hierarchy_missing_uuid,         kSingle,  kError,    kAnalysis,      \
+      "A track referenced a parent UUID which was not defined, breaking the "  \
+      "parent-child hierarchy of tracks. This is generally a bug in the trace "\
+      "producer which should be fixed. When this error is encountered, the "   \
+      "track and all of its associated events will be discarded, leading to "  \
+      "incomplete data."),                                                     \
   F(track_event_thread_invalid_end,       kSingle,  kError,    kTrace,         \
       "The end event for a thread track does not match a track event "         \
       "begin event. This can happen on mixed atrace/track_event traces "       \
@@ -256,6 +265,12 @@ namespace perfetto::trace_processor::stats {
   F(clock_sync_failure,                   kSingle,  kError,    kAnalysis, ""), \
   F(clock_sync_cache_miss,                kSingle,  kInfo,     kAnalysis, ""), \
   F(process_tracker_errors,               kSingle,  kError,    kAnalysis, ""), \
+  F(namespaced_thread_missing_process,    kSingle,  kError,    kAnalysis,      \
+      "A namespaced thread association was received but the corresponding "    \
+      "process association was not found. This can happen due to data losses " \
+      "during trace collection. The trace will be missing namespace "          \
+      "associations for some threads, which may affect analysis. To address "  \
+      "this issue, address the underlying data losses."),                      \
   F(json_tokenizer_failure,               kSingle,  kError,    kTrace,    ""), \
   F(json_parser_failure,                  kSingle,  kError,    kTrace,    ""), \
   F(json_display_time_unit,               kSingle,  kInfo,     kTrace,         \
@@ -336,7 +351,6 @@ namespace perfetto::trace_processor::stats {
       "config. This will cause a process to be completely absent from the "    \
       "trace, but does *not* imply data loss for processes that do have "      \
       "samples in this trace."),                                               \
-  F(perf_counter_skipped_because_no_cpu,  kSingle,  kError,    kAnalysis, ""), \
   F(perf_features_skipped,                kIndexed, kInfo,     kAnalysis, ""), \
   F(perf_samples_cpu_mode_unknown,        kSingle,  kError,    kAnalysis, ""), \
   F(perf_samples_skipped_dataloss,        kSingle,  kDataLoss, kTrace,         \
@@ -459,6 +473,9 @@ namespace perfetto::trace_processor::stats {
   F(winscope_protolog_view_config_collision,                                   \
                                           kSingle,  kInfo,     kAnalysis,      \
       "Got a viewer config collision!"),                                       \
+  F(winscope_protolog_param_mismatch,                                          \
+                                          kSingle,  kInfo,     kAnalysis,      \
+      "Message had mismatching parameters!"),                                  \
   F(winscope_viewcapture_parse_errors,                                         \
                                           kSingle,  kError,    kAnalysis,      \
       "ViewCapture packet has unknown fields, which results in some "          \
@@ -567,7 +584,20 @@ namespace perfetto::trace_processor::stats {
   F(perf_text_importer_sample_no_frames,        kSingle,  kError,  kTrace,     \
       "A perf sample was encountered that has no frames. This can happen "     \
       "if the kernel is unable to unwind the stack while sampling. Check "     \
-      "Linux kernel documentation for causes of this and potential fixes.")
+      "Linux kernel documentation for causes of this and potential fixes."),   \
+  F(simpleperf_missing_file_mapping,            kSingle,  kDataLoss, kTrace,   \
+      "One or more simpleperf samples were dropped because their callchain "   \
+      "entries referenced a file_id that has no corresponding File record in " \
+      "the simpleperf proto. This typically happens when the simpleperf data " \
+      "is incomplete or truncated, or due to a bug in simpleperf. Try "        \
+      "re-recording the profile and ensure the file is not truncated. If "     \
+      "this occurs consistently, please report it to the simpleperf team."),   \
+  F(slice_negative_duration,                    kSingle,  kError,  kAnalysis,   \
+      "Number of slices dropped due to negative duration. This usually "       \
+      "indicates incorrect timestamps in the trace data."),                    \
+  F(gpu_work_period_negative_duration,          kSingle,  kError,  kAnalysis,   \
+      "Number of GPU work period events with negative duration (end < start). "\
+      "Check the GPU driver for timestamp bugs.")
 // clang-format on
 
 enum Type {

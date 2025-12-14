@@ -8,6 +8,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,7 +45,8 @@ TlsClientHandshaker::TlsClientHandshaker(
       pre_shared_key_(crypto_config->pre_shared_key()),
       crypto_negotiated_params_(new QuicCryptoNegotiatedParameters),
       has_application_state_(has_application_state),
-      tls_connection_(crypto_config->ssl_ctx(), this, session->GetSSLConfig()) {
+      tls_connection_(crypto_config->ssl_ctx(), this, session->GetSSLConfig()),
+      ssl_compliance_policy_(crypto_config->ssl_compliance_policy()) {
   if (crypto_config->tls_signature_algorithms().has_value()) {
     SSL_set1_sigalgs_list(ssl(),
                           crypto_config->tls_signature_algorithms()->c_str());
@@ -62,6 +64,12 @@ TlsClientHandshaker::TlsClientHandshaker(
     SSL_set1_group_ids(ssl(), crypto_config->preferred_groups().data(),
                        crypto_config->preferred_groups().size());
   }
+#if BORINGSSL_API_VERSION >= 37
+  if (!crypto_config->client_key_shares().empty()) {
+    SSL_set1_client_key_shares(ssl(), crypto_config->client_key_shares().data(),
+                               crypto_config->client_key_shares().size());
+  }
+#endif
 
   // Make sure we use the right ALPS codepoint.
   SSL_set_alps_use_new_codepoint(ssl(),
@@ -89,10 +97,8 @@ bool TlsClientHandshaker::CryptoConnect() {
 
   // TODO(b/193650832) Add SetFromConfig to QUIC handshakers and remove reliance
   // on session pointer.
-#if BORINGSSL_API_VERSION >= 16
   // Ask BoringSSL to randomize the order of TLS extensions.
   SSL_set_permute_extensions(ssl(), true);
-#endif  // BORINGSSL_API_VERSION
 
   // Set the SNI to send, if any.
   SSL_set_connect_state(ssl());
@@ -154,21 +160,22 @@ bool TlsClientHandshaker::CryptoConnect() {
   // Configure TLS Trust Anchor IDs
   // (https://tlswg.org/tls-trust-anchor-ids/draft-ietf-tls-trust-anchor-ids.html),
   // if set.
-  if (GetQuicReloadableFlag(enable_tls_trust_anchor_ids)) {
-    QUIC_RELOADABLE_FLAG_COUNT_N(enable_tls_trust_anchor_ids, 2, 2);
-#if defined(BORINGSSL_API_VERSION) && BORINGSSL_API_VERSION >= 36
-    if (!tls_connection_.ssl_config().trust_anchor_ids.empty()) {
-      if (!SSL_set1_requested_trust_anchors(
-              ssl(),
-              reinterpret_cast<const uint8_t*>(
-                  tls_connection_.ssl_config().trust_anchor_ids.data()),
-              tls_connection_.ssl_config().trust_anchor_ids.size())) {
-        CloseConnection(QUIC_HANDSHAKE_FAILED,
-                        "Client failed to set TLS Trust Anchor IDs");
-        return false;
-      }
+  if (tls_connection_.ssl_config().trust_anchor_ids.has_value()) {
+    if (!SSL_set1_requested_trust_anchors(
+            ssl(),
+            reinterpret_cast<const uint8_t*>(
+                tls_connection_.ssl_config().trust_anchor_ids->data()),
+            tls_connection_.ssl_config().trust_anchor_ids->size())) {
+      CloseConnection(QUIC_HANDSHAKE_FAILED,
+                      "Client failed to set TLS Trust Anchor IDs");
+      return false;
     }
-#endif
+  }
+
+  // The compliance policy must be the last thing configured before the
+  // handshake in order to have defined behavior.
+  if (ssl_compliance_policy_.has_value()) {
+    SSL_set_compliance_policy(ssl(), ssl_compliance_policy_.value());
   }
 
   // Start the handshake.
@@ -409,6 +416,11 @@ bool TlsClientHandshaker::MatchedTrustAnchorIdForTesting() const {
   return matched_trust_anchor_id_;
 }
 
+std::optional<ssl_compliance_policy_t>
+TlsClientHandshaker::SslCompliancePolicyForTesting() const {
+  return ssl_compliance_policy_;
+}
+
 bool TlsClientHandshaker::encryption_established() const {
   return encryption_established_;
 }
@@ -527,9 +539,7 @@ QuicAsyncStatus TlsClientHandshaker::VerifyCertChain(
     const std::vector<std::string>& certs, std::string* error_details,
     std::unique_ptr<ProofVerifyDetails>* details, uint8_t* out_alert,
     std::unique_ptr<ProofVerifierCallback> callback) {
-#if defined(BORINGSSL_API_VERSION) && BORINGSSL_API_VERSION >= 36
   matched_trust_anchor_id_ = SSL_peer_matched_trust_anchor(ssl());
-#endif
 
   const uint8_t* ocsp_response_raw;
   size_t ocsp_response_len;

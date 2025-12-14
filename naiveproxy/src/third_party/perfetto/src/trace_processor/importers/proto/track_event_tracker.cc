@@ -149,6 +149,7 @@ TrackEventTracker::TrackEventTracker(TraceProcessorContext* context)
       default_descriptor_track_name_(
           context->storage->InternString("Default Track")),
       description_key_(context->storage->InternString("description")),
+      y_axis_share_key_(context->storage->InternString("y_axis_share_key")),
       context_(context) {}
 
 void TrackEventTracker::ReserveDescriptorTrack(
@@ -514,6 +515,7 @@ TrackEventTracker::InternDescriptorTrackImpl(
           if (!parent_resolved_track->is_root()) {
             set_parent_id(id);
           }
+          return id;
         }
         auto [type, key] = GetMergeKey(*reservation, translated_name);
         return context_->track_compressor->CreateTrackFactory(
@@ -616,6 +618,11 @@ void TrackEventTracker::AddTrackArgs(
           builtin_counter_type_key_,
           Variadic::String(reservation.counter_details->builtin_type_str));
     }
+    if (!reservation.counter_details->y_axis_share_key.is_null()) {
+      args.AddArg(
+          y_axis_share_key_,
+          Variadic::String(reservation.counter_details->y_axis_share_key));
+    }
   }
   if (packet_sequence_id &&
       sequences_with_first_packet_.find(*packet_sequence_id) !=
@@ -665,7 +672,7 @@ bool TrackEventTracker::IsTrackHierarchyValid(uint64_t uuid) {
     }
     auto* state_ptr = descriptor_tracks_state_.Find(current_uuid);
     if (!state_ptr) {
-      PERFETTO_ELOG("Missing uuid in hierarchy for track %" PRIu64, uuid);
+      context_->storage->IncrementStats(stats::track_hierarchy_missing_uuid);
       return false;
     }
     seen[i] = current_uuid;

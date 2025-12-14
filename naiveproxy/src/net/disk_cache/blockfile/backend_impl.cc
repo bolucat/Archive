@@ -65,7 +65,6 @@ const int kBaseTableLen = 64 * 1024;
 const int kTrimDelay = 10;
 
 BASE_FEATURE(kBlockfileCacheBackendDumpWithoutCrashing,
-             "BlockfileCacheBackendDumpWithoutCrashing",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE_PARAM(double,
@@ -1475,7 +1474,7 @@ void BackendImpl::AdjustMaxCacheSize(int table_len) {
   DCHECK(!table_len || data_->header.magic);
 
   // The user is not setting the size, let's figure it out.
-  int64_t available = base::SysInfo::AmountOfFreeDiskSpace(path_);
+  int64_t available = base::SysInfo::AmountOfFreeDiskSpace(path_).value_or(-1);
   if (available < 0) {
     max_size_ = kDefaultCacheSize;
     return;
@@ -2092,11 +2091,12 @@ int BackendImpl::MaxBuffersSize() {
   // then cache the result.
   static const int max_buffers_size = ([]() {
     constexpr uint64_t kMaxMaxBuffersSize = 30 * 1024 * 1024;
-    const uint64_t total_memory = base::SysInfo::AmountOfPhysicalMemory();
-    if (total_memory == 0u) {
+    const base::ByteCount total_memory =
+        base::SysInfo::AmountOfPhysicalMemory();
+    if (total_memory.is_zero()) {
       return int{kMaxMaxBuffersSize};
     }
-    const uint64_t two_percent = total_memory * 2 / 100;
+    const uint64_t two_percent = total_memory.InBytes() * 2 / 100;
     return static_cast<int>(std::min(two_percent, kMaxMaxBuffersSize));
   })();
 

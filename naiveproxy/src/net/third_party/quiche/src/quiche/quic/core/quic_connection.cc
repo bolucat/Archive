@@ -42,12 +42,12 @@
 #include "quiche/quic/core/frames/quic_blocked_frame.h"
 #include "quiche/quic/core/frames/quic_connection_close_frame.h"
 #include "quiche/quic/core/frames/quic_crypto_frame.h"
+#include "quiche/quic/core/frames/quic_datagram_frame.h"
 #include "quiche/quic/core/frames/quic_frame.h"
 #include "quiche/quic/core/frames/quic_goaway_frame.h"
 #include "quiche/quic/core/frames/quic_handshake_done_frame.h"
 #include "quiche/quic/core/frames/quic_immediate_ack_frame.h"
 #include "quiche/quic/core/frames/quic_max_streams_frame.h"
-#include "quiche/quic/core/frames/quic_message_frame.h"
 #include "quiche/quic/core/frames/quic_new_connection_id_frame.h"
 #include "quiche/quic/core/frames/quic_new_token_frame.h"
 #include "quiche/quic/core/frames/quic_padding_frame.h"
@@ -494,6 +494,7 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
       blackhole_detection_disabled_ = true;
     }
     if (config.HasClientSentConnectionOption(kNBHD, perspective_)) {
+      QUIC_CODE_COUNT(quic_no_blackhole_detection);
       blackhole_detection_disabled_ = true;
     }
   }
@@ -625,6 +626,15 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
     }
   }
 
+  if (perspective_ == Perspective::IS_SERVER && version().HasIetfQuicFrames() &&
+      config.HasClientSentConnectionOption(kCFLS, perspective_) &&
+      GetQuicReloadableFlag(
+          quic_allow_flow_label_blackhole_avoidance_on_server)) {
+    QUIC_RELOADABLE_FLAG_COUNT(
+        quic_allow_flow_label_blackhole_avoidance_on_server);
+    EnableBlackholeAvoidanceViaFlowLabel();
+  }
+
   if (config.HasMinAckDelayDraft10ToSend()) {
     if (config.GetMinAckDelayDraft10ToSendMs() <=
         config.GetMaxAckDelayToSendMs()) {  // MinAckDelay is valid.
@@ -638,6 +648,14 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
   }
 
   framer_.set_process_reset_stream_at(config.SupportsReliableStreamReset());
+
+  if (config.peer_reordering_threshold() != 1 &&
+      perspective_ == Perspective::IS_CLIENT && version().UsesTls() &&
+      !config.HasMinAckDelayDraft10ToSend()) {
+    QuicAckFrequencyFrame frame;
+    frame.reordering_threshold = config.peer_reordering_threshold();
+    uber_received_packet_manager_.OnAckFrequencyFrame(frame);
+  }
 }
 
 void QuicConnection::AddDispatcherSentPackets(
@@ -1672,10 +1690,18 @@ class ReversePathValidationContext : public QuicPathValidationContext {
                                const QuicSocketAddress& effective_peer_address,
                                QuicConnection* connection)
       : QuicPathValidationContext(self_address, peer_address,
-                                  effective_peer_address),
+                                  effective_peer_address, /*network=*/-1),
         connection_(connection) {}
 
   QuicPacketWriter* WriterToUse() override { return connection_->writer(); }
+
+  // Reverse path validation always re-uses the original writer. So this method
+  // will not be called and the return value here doesn't matter.
+  bool ShouldConnectionOwnWriter() const override {
+    QUIC_BUG(client_only_writer_interface_used_in_server_side)
+        << "Reverse path validation shouldn't call this interface.";
+    return false;
+  }
 
  private:
   QuicConnection* connection_;
@@ -2049,24 +2075,24 @@ bool QuicConnection::OnNewTokenFrame(const QuicNewTokenFrame& frame) {
   return true;
 }
 
-bool QuicConnection::OnMessageFrame(const QuicMessageFrame& frame) {
+bool QuicConnection::OnDatagramFrame(const QuicDatagramFrame& frame) {
   QUIC_BUG_IF(quic_bug_12714_16, !connected_)
-      << "Processing MESSAGE frame when connection is closed. Received packet "
+      << "Processing DATAGRAM frame when connection is closed. Received packet "
          "info: "
       << last_received_packet_info_;
 
-  // Since a message frame was received, this is not a connectivity probe.
+  // Since a datagram frame was received, this is not a connectivity probe.
   // A probe only contains a PING and full padding.
-  if (!UpdatePacketContent(MESSAGE_FRAME)) {
+  if (!UpdatePacketContent(DATAGRAM_FRAME)) {
     return false;
   }
 
   if (debug_visitor_ != nullptr) {
-    debug_visitor_->OnMessageFrame(frame);
+    debug_visitor_->OnDatagramFrame(frame);
   }
   MaybeUpdateAckTimeout();
-  visitor_->OnMessageReceived(
-      absl::string_view(frame.data, frame.message_length));
+  visitor_->OnDatagramReceived(
+      absl::string_view(frame.data, frame.datagram_length));
   return connected_;
 }
 
@@ -2403,10 +2429,6 @@ const QuicFrame QuicConnection::GetUpdatedAckFrame() {
   return uber_received_packet_manager_.GetUpdatedAckFrame(
       QuicUtils::GetPacketNumberSpace(encryption_level_),
       clock_->ApproximateNow());
-}
-
-QuicPacketNumber QuicConnection::GetLeastUnacked() const {
-  return sent_packet_manager_.GetLeastUnacked();
 }
 
 bool QuicConnection::HandleWriteBlocked() {
@@ -3178,14 +3200,20 @@ void QuicConnection::WriteQueuedPackets() {
       continue;
     }
     if (IsWriteError(result.status)) {
-      OnWriteError(result.error_code);
-      break;
+      if (perspective_ == Perspective::IS_CLIENT &&
+          visitor_->MaybeMitigateWriteError(result)) {
+        result.status = WRITE_STATUS_BLOCKED;
+      } else {
+        OnWriteError(result.error_code);
+        break;
+      }
     }
     if (result.status == WRITE_STATUS_OK ||
         result.status == WRITE_STATUS_BLOCKED_DATA_BUFFERED) {
       buffered_packets_.pop_front();
     }
     if (IsWriteBlockedStatus(result.status)) {
+      QUICHE_DCHECK(writer_->IsWriteBlocked());
       visitor_->OnWriteBlocked();
       break;
     }
@@ -3584,6 +3612,11 @@ bool QuicConnection::WritePacket(SerializedPacket* packet) {
       WRITE_STATUS_NUM_VALUES,
       "Status code returned by writer_->WritePacket() in QuicConnection.");
 
+  if (IsWriteError(result.status) && perspective_ == Perspective::IS_CLIENT &&
+      visitor_->MaybeMitigateWriteError(result)) {
+    QUIC_DLOG(INFO) << "Write error mitigated. Treat it as write blocked.";
+    result.status = WRITE_STATUS_BLOCKED;
+  }
   if (IsWriteBlockedStatus(result.status)) {
     // Ensure the writer is still write blocked, otherwise QUIC may continue
     // trying to write when it will not be able to.
@@ -5817,6 +5850,26 @@ void QuicConnection::PostProcessAfterAckFrame(bool acked_new_packet) {
     uber_received_packet_manager_.DontWaitForPacketsBefore(
         last_received_packet_info_.decrypted_level,
         largest_packet_peer_knows_is_acked);
+    if (uber_received_packet_manager_.IsAckFrameEmpty(
+            QuicUtils::GetPacketNumberSpace(
+                last_received_packet_info_.decrypted_level)) &&
+        GetQuicReloadableFlag(quic_fail_on_empty_ack)) {
+      QUIC_RELOADABLE_FLAG_COUNT(quic_fail_on_empty_ack);
+      // A packet N arrived from the peer, and was ACKed. Then a packet M < N
+      // arrived acknowledging the locally generated ACK. This implies that
+      // the packet numbers are not increasing. Or, M was sent with an
+      // "Optimistic ACK" for packets it hadn't received, and M was delayed in
+      // flight to arrive after N.
+      // Either case causes DontWaitForPacketsBefore to empty the ACK frame,
+      // which is a symptom of a protocol violation.
+      // Avoid sending an ACK in CONNECTION_CLOSE, which would be malformed.
+      uber_received_packet_manager_.ResetAckStates(
+          last_received_packet_info_.decrypted_level);
+      CloseConnection(IETF_QUIC_PROTOCOL_VIOLATION,
+                      "Opportunistic ACK received",
+                      ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+      return;
+    }
   }
   // Always reset the retransmission alarm when an ack comes in, since we now
   // have a better estimate of the current rtt than when it was set.
@@ -5867,25 +5920,25 @@ void QuicConnection::ResetAckStates() {
   uber_received_packet_manager_.ResetAckStates(encryption_level_);
 }
 
-MessageStatus QuicConnection::SendMessage(
-    QuicMessageId message_id, absl::Span<quiche::QuicheMemSlice> message,
+DatagramStatus QuicConnection::SendDatagram(
+    QuicDatagramId datagram_id, absl::Span<quiche::QuicheMemSlice> datagram,
     bool flush) {
-  if (MemSliceSpanTotalSize(message) > GetCurrentLargestMessagePayload()) {
-    return MESSAGE_STATUS_TOO_LARGE;
+  if (MemSliceSpanTotalSize(datagram) > GetCurrentLargestDatagramPayload()) {
+    return DATAGRAM_STATUS_TOO_LARGE;
   }
   if (!connected_ || (!flush && !CanWrite(HAS_RETRANSMITTABLE_DATA))) {
-    return MESSAGE_STATUS_BLOCKED;
+    return DATAGRAM_STATUS_BLOCKED;
   }
   ScopedPacketFlusher flusher(this);
-  return packet_creator_.AddMessageFrame(message_id, message);
+  return packet_creator_.AddDatagramFrame(datagram_id, datagram);
 }
 
-QuicPacketLength QuicConnection::GetCurrentLargestMessagePayload() const {
-  return packet_creator_.GetCurrentLargestMessagePayload();
+QuicPacketLength QuicConnection::GetCurrentLargestDatagramPayload() const {
+  return packet_creator_.GetCurrentLargestDatagramPayload();
 }
 
-QuicPacketLength QuicConnection::GetGuaranteedLargestMessagePayload() const {
-  return packet_creator_.GetGuaranteedLargestMessagePayload();
+QuicPacketLength QuicConnection::GetGuaranteedLargestDatagramPayload() const {
+  return packet_creator_.GetGuaranteedLargestDatagramPayload();
 }
 
 uint32_t QuicConnection::cipher_id() const {
@@ -6031,6 +6084,11 @@ void QuicConnection::SendAllPendingAcks() {
     }
     ResetAckStates();
   }
+  if (GetQuicReloadableFlag(quic_disconnect_early_exit) && !connected_) {
+    // FlushAckFrame can result in a closed connection. If so, avoid updating
+    // ack state that could trigger QUICHE_BUGs.
+    return;
+  }
 
   const QuicTime timeout =
       uber_received_packet_manager_.GetEarliestAckTimeout();
@@ -6158,10 +6216,16 @@ bool QuicConnection::FlushCoalescedPacket() {
         coalesced_packet_.peer_address(), writer_,
         coalesced_packet_.ecn_codepoint(), coalesced_packet_.flow_label());
     if (IsWriteError(result.status)) {
-      OnWriteError(result.error_code);
-      return false;
+      if (perspective_ == Perspective::IS_CLIENT &&
+          visitor_->MaybeMitigateWriteError(result)) {
+        result.status = WRITE_STATUS_BLOCKED;
+      } else {
+        OnWriteError(result.error_code);
+        return false;
+      }
     }
     if (IsWriteBlockedStatus(result.status)) {
+      QUICHE_DCHECK(writer_->IsWriteBlocked());
       visitor_->OnWriteBlocked();
       if (result.status != WRITE_STATUS_BLOCKED_DATA_BUFFERED) {
         QUIC_DVLOG(1) << ENDPOINT

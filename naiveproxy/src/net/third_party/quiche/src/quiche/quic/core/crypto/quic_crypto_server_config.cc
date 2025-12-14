@@ -31,6 +31,7 @@
 #include "quiche/quic/core/crypto/key_exchange.h"
 #include "quiche/quic/core/crypto/p256_key_exchange.h"
 #include "quiche/quic/core/crypto/proof_source.h"
+#include "quiche/quic/core/crypto/proof_verifier.h"
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/crypto/quic_hkdf.h"
@@ -273,13 +274,15 @@ void QuicCryptoServerConfig::ProcessClientHelloContext::Succeed(
 QuicCryptoServerConfig::QuicCryptoServerConfig(
     absl::string_view source_address_token_secret,
     QuicRandom* server_nonce_entropy, std::unique_ptr<ProofSource> proof_source,
-    std::unique_ptr<KeyExchangeSource> key_exchange_source)
+    std::unique_ptr<KeyExchangeSource> key_exchange_source,
+    std::unique_ptr<ProofVerifier> proof_verifier)
     : replay_protection_(true),
       chlo_multiplier_(kMultiplier),
       configs_lock_(),
       primary_config_(nullptr),
       next_config_promotion_time_(QuicWallTime::Zero()),
       proof_source_(std::move(proof_source)),
+      proof_verifier_(std::move(proof_verifier)),
       key_exchange_source_(std::move(key_exchange_source)),
       ssl_ctx_(TlsServerConnection::CreateSslCtx(proof_source_.get())),
       source_address_token_future_secs_(3600),
@@ -438,7 +441,7 @@ std::unique_ptr<CryptoHandshakeMessage> QuicCryptoServerConfig::AddConfig(
   }
 
   {
-    absl::WriterMutexLock locked(&configs_lock_);
+    absl::WriterMutexLock locked(configs_lock_);
     if (configs_.find(config->id) != configs_.end()) {
       QUIC_LOG(WARNING) << "Failed to add config because another with the same "
                            "server config id already exists: "
@@ -501,7 +504,7 @@ bool QuicCryptoServerConfig::SetConfigs(
 
   QUIC_LOG(INFO) << "Updating configs:";
 
-  absl::WriterMutexLock locked(&configs_lock_);
+  absl::WriterMutexLock locked(configs_lock_);
   ConfigMap new_configs;
 
   for (const quiche::QuicheReferenceCountedPointer<Config>& config :
@@ -552,7 +555,7 @@ void QuicCryptoServerConfig::SetSourceAddressTokenKeys(
 }
 
 std::vector<std::string> QuicCryptoServerConfig::GetConfigIds() const {
-  absl::ReaderMutexLock locked(&configs_lock_);
+  absl::ReaderMutexLock locked(configs_lock_);
   std::vector<std::string> scids;
   for (auto it = configs_.begin(); it != configs_.end(); ++it) {
     scids.push_back(it->first);
@@ -1123,21 +1126,21 @@ bool QuicCryptoServerConfig::GetCurrentConfigs(
     const QuicWallTime& now, absl::string_view requested_scid,
     quiche::QuicheReferenceCountedPointer<Config> old_primary_config,
     Configs* configs) const {
-  absl::ReaderMutexLock locked(&configs_lock_);
+  absl::ReaderMutexLock locked(configs_lock_);
 
   if (!primary_config_) {
     return false;
   }
 
   if (IsNextConfigReady(now)) {
-    configs_lock_.ReaderUnlock();
-    configs_lock_.WriterLock();
+    configs_lock_.unlock_shared();
+    configs_lock_.lock();
     SelectNewPrimaryConfig(now);
     QUICHE_DCHECK(primary_config_.get());
     QUICHE_DCHECK_EQ(configs_.find(primary_config_->id)->second.get(),
                      primary_config_.get());
-    configs_lock_.WriterUnlock();
-    configs_lock_.ReaderLock();
+    configs_lock_.unlock();
+    configs_lock_.lock_shared();
   }
 
   if (old_primary_config != nullptr) {
@@ -1359,7 +1362,7 @@ void QuicCryptoServerConfig::BuildServerConfigUpdateMessage(
   std::string serialized;
   std::string source_address_token;
   {
-    absl::ReaderMutexLock locked(&configs_lock_);
+    absl::ReaderMutexLock locked(configs_lock_);
     serialized = primary_config_->serialized;
     source_address_token = NewSourceAddressToken(
         *primary_config_->source_address_token_boxer,
@@ -1717,7 +1720,7 @@ void QuicCryptoServerConfig::set_enable_serving_sct(bool enable_serving_sct) {
 
 void QuicCryptoServerConfig::AcquirePrimaryConfigChangedCb(
     std::unique_ptr<PrimaryConfigChangedCallback> cb) {
-  absl::WriterMutexLock locked(&configs_lock_);
+  absl::WriterMutexLock locked(configs_lock_);
   primary_config_changed_cb_ = std::move(cb);
 }
 
@@ -1758,12 +1761,16 @@ std::string QuicCryptoServerConfig::NewSourceAddressToken(
 }
 
 int QuicCryptoServerConfig::NumberOfConfigs() const {
-  absl::ReaderMutexLock locked(&configs_lock_);
+  absl::ReaderMutexLock locked(configs_lock_);
   return configs_.size();
 }
 
 ProofSource* QuicCryptoServerConfig::proof_source() const {
   return proof_source_.get();
+}
+
+ProofVerifier* QuicCryptoServerConfig::proof_verifier() const {
+  return proof_verifier_.get();
 }
 
 SSL_CTX* QuicCryptoServerConfig::ssl_ctx() const { return ssl_ctx_.get(); }

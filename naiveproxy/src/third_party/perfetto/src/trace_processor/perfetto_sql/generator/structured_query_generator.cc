@@ -61,34 +61,51 @@ std::pair<SqlSource, SqlSource> GetPreambleAndSql(const std::string& sql) {
 
   SqliteTokenizer tokenizer(SqlSource::FromTraceProcessorImplementation(sql));
 
-  SqliteTokenizer::Token stmt_begin_tok = tokenizer.NextNonWhitespace();
-  while (stmt_begin_tok.token_type == TK_SEMI) {
-    stmt_begin_tok = tokenizer.NextNonWhitespace();
+  // Skip any leading semicolons.
+  SqliteTokenizer::Token first_tok = tokenizer.NextNonWhitespace();
+  while (first_tok.token_type == TK_SEMI) {
+    first_tok = tokenizer.NextNonWhitespace();
   }
-  SqliteTokenizer::Token preamble_start = stmt_begin_tok;
-  SqliteTokenizer::Token preamble_end = stmt_begin_tok;
 
-  // Loop over statements
+  // If there are no statements, return empty.
+  if (first_tok.IsTerminal()) {
+    return result;
+  }
+
+  SqliteTokenizer::Token last_statement_start = first_tok;
+  SqliteTokenizer::Token statement_end = first_tok;
+
+  // Find the start of the last statement.
   while (true) {
-    // Ignore all next semicolons.
-    if (stmt_begin_tok.token_type == TK_SEMI) {
-      stmt_begin_tok = tokenizer.NextNonWhitespace();
-      continue;
+    // Find the end of the current statement.
+    SqliteTokenizer::Token end = tokenizer.NextTerminal();
+
+    // If that was the end of the SQL, we're done.
+    if (end.str.empty()) {
+      statement_end = end;
+      break;
     }
 
-    // Exit if the next token is the end of the SQL.
-    if (stmt_begin_tok.IsTerminal()) {
-      return {tokenizer.Substr(preamble_start, preamble_end),
-              tokenizer.Substr(preamble_end, stmt_begin_tok)};
+    // Otherwise, find the start of the next statement.
+    SqliteTokenizer::Token next_start = tokenizer.NextNonWhitespace();
+    while (next_start.token_type == TK_SEMI) {
+      next_start = tokenizer.NextNonWhitespace();
     }
 
-    // Found next valid statement
+    // If there is no next statement, we're done.
+    if (next_start.IsTerminal()) {
+      statement_end = end;
+      break;
+    }
 
-    preamble_end = stmt_begin_tok;
-    stmt_begin_tok = tokenizer.NextTerminal();
+    // Otherwise, the next statement is now our candidate for the last
+    // statement.
+    last_statement_start = next_start;
   }
-}
 
+  return {tokenizer.Substr(first_tok, last_statement_start),
+          tokenizer.Substr(last_statement_start, statement_end)};
+}
 struct QueryState {
   QueryState(QueryType _type,
              protozero::ConstBytes _bytes,
@@ -160,15 +177,14 @@ class GeneratorImpl {
       RepeatedString group_by,
       RepeatedProto aggregates,
       RepeatedProto select_cols);
-  static base::StatusOr<std::string> SelectColumnsNoAggregates(
+  base::StatusOr<std::string> SelectColumnsNoAggregates(
       RepeatedProto select_columns);
 
   // Helpers.
   static base::StatusOr<std::string> OperatorToString(
       StructuredQuery::Filter::Operator op);
   static base::StatusOr<std::string> AggregateToString(
-      StructuredQuery::GroupBy::Aggregate::Op op,
-      protozero::ConstChars column_name);
+      const StructuredQuery::GroupBy::Aggregate::Decoder&);
 
   // Index of the current query we are processing in the `state_` vector.
   size_t state_index_ = 0;
@@ -211,6 +227,10 @@ base::StatusOr<std::string> GeneratorImpl::Generate(
 
 base::StatusOr<std::string> GeneratorImpl::GenerateImpl() {
   StructuredQuery::Decoder q(state_[state_index_].bytes);
+
+  for (auto it = q.referenced_modules(); it; ++it) {
+    referenced_modules_.Insert(it->as_std_string(), nullptr);
+  }
 
   // Warning: do *not* keep a reference to elements in `state_` across any of
   // these functions: `state_` can be modified by them.
@@ -278,14 +298,16 @@ base::StatusOr<std::string> GeneratorImpl::SqlSource(
     return base::ErrStatus("Sql field must be specified");
   }
 
-  std::string source_sql_str = sql.sql().ToStdString();
-  std::string final_sql_statement;
+  class SqlSource source_sql =
+      SqlSource::FromTraceProcessorImplementation(sql.sql().ToStdString());
+  class SqlSource final_sql_statement =
+      SqlSource::FromTraceProcessorImplementation("");
   if (sql.has_preamble()) {
     // If preambles are specified, we assume that the SQL is a single statement.
     preambles_.push_back(sql.preamble().ToStdString());
-    final_sql_statement = source_sql_str;
+    final_sql_statement = source_sql;
   } else {
-    auto [parsed_preamble, main_sql] = GetPreambleAndSql(source_sql_str);
+    auto [parsed_preamble, main_sql] = GetPreambleAndSql(source_sql.sql());
     if (!parsed_preamble.sql().empty()) {
       preambles_.push_back(parsed_preamble.sql());
     } else if (sql.has_preamble()) {
@@ -294,26 +316,42 @@ base::StatusOr<std::string> GeneratorImpl::SqlSource(
           "the `sql` field. This is not supported - plase don't use `preamble` "
           "and pass all the SQL you want to execute in the `sql` field.");
     }
-    final_sql_statement = main_sql.sql();
+    final_sql_statement = main_sql;
   }
 
-  if (final_sql_statement.empty()) {
+  if (final_sql_statement.sql().empty()) {
     return base::ErrStatus(
         "SQL source cannot be empty after processing preamble");
   }
 
-  if (sql.column_names()->size() == 0) {
-    return base::ErrStatus("Sql must specify columns");
+  SqlSource::Rewriter rewriter(final_sql_statement);
+  for (auto it = sql.dependencies(); it; ++it) {
+    StructuredQuery::Sql::Dependency::Decoder dependency(*it);
+    std::string alias = dependency.alias().ToStdString();
+    std::string inner_query_name = NestedSource(dependency.query());
+
+    SqliteTokenizer tokenizer(final_sql_statement);
+    for (auto token = tokenizer.Next(); !token.str.empty();
+         token = tokenizer.Next()) {
+      if (token.token_type == TK_VARIABLE && token.str.substr(1) == alias) {
+        tokenizer.RewriteToken(
+            rewriter, token,
+            SqlSource::FromTraceProcessorImplementation(inner_query_name));
+      }
+    }
   }
 
-  std::vector<std::string> cols;
-  for (auto it = sql.column_names(); it; ++it) {
-    cols.push_back(it->as_std_string());
+  std::string cols_str = "*";
+  if (sql.column_names()->size() != 0) {
+    std::vector<std::string> cols;
+    for (auto it = sql.column_names(); it; ++it) {
+      cols.push_back(it->as_std_string());
+    }
+    cols_str = base::Join(cols, ", ");
   }
-  std::string join_str = base::Join(cols, ", ");
 
-  std::string generated_sql =
-      "(SELECT " + join_str + " FROM (" + final_sql_statement + "))";
+  std::string generated_sql = "(SELECT " + cols_str + " FROM (" +
+                              std::move(rewriter).Build().sql() + "))";
   return generated_sql;
 }
 
@@ -493,8 +531,13 @@ base::StatusOr<std::string> GeneratorImpl::SelectColumnsAggregates(
   if (select_cols) {
     for (auto it = select_cols; it; ++it) {
       StructuredQuery::SelectColumn::Decoder select(*it);
-      std::string selected_col_name = select.column_name().ToStdString();
-      output.Insert(select.column_name().ToStdString(),
+      std::string selected_col_name;
+      if (select.has_column_name_or_expression()) {
+        selected_col_name = select.column_name_or_expression().ToStdString();
+      } else {
+        selected_col_name = select.column_name().ToStdString();
+      }
+      output.Insert(selected_col_name,
                     select.has_alias()
                         ? std::make_optional(select.alias().ToStdString())
                         : std::nullopt);
@@ -537,11 +580,7 @@ base::StatusOr<std::string> GeneratorImpl::SelectColumnsAggregates(
     if (!sql.empty()) {
       sql += ", ";
     }
-    ASSIGN_OR_RETURN(
-        std::string agg,
-        AggregateToString(static_cast<StructuredQuery::GroupBy::Aggregate::Op>(
-                              aggregate.op()),
-                          aggregate.column_name()));
+    ASSIGN_OR_RETURN(std::string agg, AggregateToString(aggregate));
     if (o->has_value()) {
       sql += agg + " AS " + o->value();
     } else {
@@ -562,11 +601,17 @@ base::StatusOr<std::string> GeneratorImpl::SelectColumnsNoAggregates(
     if (!sql.empty()) {
       sql += ", ";
     }
-    if (column.has_alias()) {
-      sql += column.column_name().ToStdString() + " AS " +
-             column.alias().ToStdString();
+    std::string col_expr;
+    if (column.has_column_name_or_expression()) {
+      col_expr = column.column_name_or_expression().ToStdString();
     } else {
-      sql += column.column_name().ToStdString();
+      col_expr = column.column_name().ToStdString();
+    }
+
+    if (column.has_alias()) {
+      sql += col_expr + " AS " + column.alias().ToStdString();
+    } else {
+      sql += col_expr;
     }
   }
   return sql;
@@ -600,9 +645,20 @@ base::StatusOr<std::string> GeneratorImpl::OperatorToString(
 }
 
 base::StatusOr<std::string> GeneratorImpl::AggregateToString(
-    StructuredQuery::GroupBy::Aggregate::Op op,
-    protozero::ConstChars raw_column_name) {
-  std::string column_name = raw_column_name.ToStdString();
+    const StructuredQuery::GroupBy::Aggregate::Decoder& aggregate) {
+  auto op =
+      static_cast<StructuredQuery::GroupBy::Aggregate::Op>(aggregate.op());
+
+  if (op == StructuredQuery::GroupBy::Aggregate::COUNT &&
+      !aggregate.has_column_name()) {
+    return std::string("COUNT(*)");
+  }
+
+  if (!aggregate.has_column_name()) {
+    return base::ErrStatus("Column name not specified for aggregation");
+  }
+  std::string column_name = aggregate.column_name().ToStdString();
+
   switch (op) {
     case StructuredQuery::GroupBy::Aggregate::COUNT:
       return "COUNT(" + column_name + ")";
@@ -616,6 +672,12 @@ base::StatusOr<std::string> GeneratorImpl::AggregateToString(
       return "AVG(" + column_name + ")";
     case StructuredQuery::GroupBy::Aggregate::MEDIAN:
       return "PERCENTILE(" + column_name + ", 50)";
+    case StructuredQuery::GroupBy::Aggregate::PERCENTILE:
+      if (!aggregate.has_percentile()) {
+        return base::ErrStatus("Percentile not specified for aggregation");
+      }
+      return "PERCENTILE(" + column_name + ", " +
+             std::to_string(aggregate.percentile()) + ")";
     case StructuredQuery::GroupBy::Aggregate::DURATION_WEIGHTED_MEAN:
       return "SUM(cast_double!(" + column_name +
              " * dur)) / cast_double!(SUM(dur))";

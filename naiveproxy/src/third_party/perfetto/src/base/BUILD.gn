@@ -50,6 +50,7 @@ perfetto_component("base") {
     "paged_memory.cc",
     "periodic_task.cc",
     "pipe.cc",
+    "rt_mutex.cc",
     "scoped_mmap.cc",
     "scoped_sched_boost.cc",
     "status.cc",
@@ -71,6 +72,7 @@ perfetto_component("base") {
 
   if (!is_nacl) {
     sources += [
+      "lock_free_task_runner.cc",
       "thread_task_runner.cc",
       "unix_task_runner.cc",
     ]

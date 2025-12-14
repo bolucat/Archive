@@ -22,6 +22,7 @@
 #include "net/log/net_log_capture_mode.h"
 #include "net/log/net_log_values.h"
 #include "third_party/abseil-cpp/absl/container/inlined_vector.h"
+#include "url/gurl.h"
 
 namespace net {
 
@@ -113,11 +114,21 @@ HttpRequestHeaders& HttpRequestHeaders::operator=(
 HttpRequestHeaders& HttpRequestHeaders::operator=(HttpRequestHeaders&& other) =
     default;
 
+std::optional<std::string_view> HttpRequestHeaders::GetHeaderView(
+    std::string_view key) const {
+  auto it = FindHeader(key);
+  if (it == headers_.end()) {
+    return std::nullopt;
+  }
+  return std::string_view(it->value);
+}
+
 std::optional<std::string> HttpRequestHeaders::GetHeader(
     std::string_view key) const {
   auto it = FindHeader(key);
-  if (it == headers_.end())
+  if (it == headers_.end()) {
     return std::nullopt;
+  }
   return it->value;
 }
 

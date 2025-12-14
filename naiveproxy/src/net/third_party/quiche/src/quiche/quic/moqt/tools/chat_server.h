@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -20,10 +21,11 @@
 #include "quiche/quic/moqt/moqt_known_track_publisher.h"
 #include "quiche/quic/moqt/moqt_live_relay_queue.h"
 #include "quiche/quic/moqt/moqt_messages.h"
-#include "quiche/quic/moqt/moqt_priority.h"
+#include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/quic/moqt/moqt_session.h"
-#include "quiche/quic/moqt/moqt_track.h"
+#include "quiche/quic/moqt/moqt_session_callbacks.h"
+#include "quiche/quic/moqt/moqt_session_interface.h"
 #include "quiche/quic/moqt/tools/moqt_server.h"
 
 namespace moqt {
@@ -35,20 +37,23 @@ class ChatServer {
              absl::string_view output_file);
   ~ChatServer();
 
-  class RemoteTrackVisitor : public SubscribeRemoteTrack::Visitor {
+  class RemoteTrackVisitor : public SubscribeVisitor {
    public:
     explicit RemoteTrackVisitor(ChatServer* server);
-    void OnReply(const moqt::FullTrackName& full_track_name,
-                 std::optional<Location> largest_id,
-                 std::optional<absl::string_view> reason_phrase) override;
+    void OnReply(
+        const moqt::FullTrackName& full_track_name,
+        std::variant<SubscribeOkData, MoqtRequestError> response) override;
     void OnCanAckObjects(MoqtObjectAckFunction) override {}
     void OnObjectFragment(const moqt::FullTrackName& full_track_name,
                           const PublishedObjectMetadata& metadata,
                           absl::string_view object,
                           bool end_of_message) override;
-    void OnSubscribeDone(FullTrackName /*full_track_name*/) override {}
+    void OnPublishDone(FullTrackName) override {}
     // TODO(martinduke): Implement this.
-    void OnMalformedTrack(const FullTrackName& full_track_name) override {}
+    void OnMalformedTrack(const FullTrackName&) override {}
+
+    void OnStreamFin(const FullTrackName&, DataStreamIndex) override {}
+    void OnStreamReset(const FullTrackName&, DataStreamIndex) override {}
 
    private:
     ChatServer* server_;
@@ -64,14 +69,14 @@ class ChatServer {
       it_ = it;
     }
 
-    void AnnounceIfSubscribed(TrackNamespace track_namespace) {
+    void PublishNamespaceIfSubscribed(TrackNamespace track_namespace) {
       for (const TrackNamespace& subscribed_namespace :
            subscribed_namespaces_) {
         if (track_namespace.InNamespace(subscribed_namespace)) {
-          session_->Announce(
+          session_->PublishNamespace(
               track_namespace,
               absl::bind_front(&ChatServer::ChatServerSessionHandler::
-                                   OnOutgoingAnnounceReply,
+                                   OnOutgoingPublishNamespaceReply,
                                this),
               VersionSpecificParameters());
           return;
@@ -79,24 +84,25 @@ class ChatServer {
       }
     }
 
-    void UnannounceIfSubscribed(TrackNamespace track_namespace) {
+    void PublishNamespaceDoneIfSubscribed(TrackNamespace track_namespace) {
       for (const TrackNamespace& subscribed_namespace :
            subscribed_namespaces_) {
         if (track_namespace.InNamespace(subscribed_namespace)) {
-          session_->Unannounce(track_namespace);
+          session_->PublishNamespaceDone(track_namespace);
           return;
         }
       }
     }
 
    private:
-    // Callback for incoming announces.
-    std::optional<MoqtAnnounceErrorReason> OnIncomingAnnounce(
-        const moqt::TrackNamespace& track_namespace,
-        std::optional<VersionSpecificParameters> parameters);
-    void OnOutgoingAnnounceReply(
+    // Callback for incoming publish_namespaces.
+    void OnIncomingPublishNamespace(
+        const TrackNamespace& track_namespace,
+        std::optional<VersionSpecificParameters> parameters,
+        MoqtResponseCallback callback);
+    void OnOutgoingPublishNamespaceReply(
         TrackNamespace track_namespace,
-        std::optional<MoqtAnnounceErrorReason> error_message);
+        std::optional<MoqtPublishNamespaceErrorReason> error_message);
 
     MoqtSession* session_;  // Not owned.
     // This design assumes that each server has exactly one username, although

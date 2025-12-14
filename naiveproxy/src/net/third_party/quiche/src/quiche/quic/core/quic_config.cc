@@ -13,21 +13,25 @@
 #include <string>
 #include <utility>
 
-#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/crypto_handshake_message.h"
 #include "quiche/quic/core/crypto/crypto_protocol.h"
+#include "quiche/quic/core/crypto/transport_parameters.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_error_codes.h"
 #include "quiche/quic/core/quic_socket_address_coder.h"
+#include "quiche/quic/core/quic_tag.h"
+#include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
-#include "quiche/quic/core/quic_utils.h"
+#include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
-#include "quiche/quic/platform/api/quic_flag_utils.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/common/platform/api/quiche_logging.h"
+#include "quiche/common/quiche_data_writer.h"
+#include "quiche/common/quiche_ip_address_family.h"
 
 namespace quic {
 
@@ -503,6 +507,14 @@ QuicConfig::GetReceivedGoogleHandshakeMessage() const {
   return received_google_handshake_message_;
 }
 
+void QuicConfig::SetDebuggingSniToSend(const std::string& debugging_sni) {
+  debugging_sni_to_send_ = debugging_sni;
+}
+
+const std::optional<std::string>& QuicConfig::GetReceivedDebuggingSni() const {
+  return received_debugging_sni_;
+}
+
 void QuicConfig::SetDiscardLengthToSend(int32_t discard_length) {
   discard_length_to_send_ = discard_length;
 }
@@ -555,15 +567,15 @@ bool QuicConfig::HasClientRequestedIndependentOption(
 
 const QuicTagVector& QuicConfig::ClientRequestedIndependentOptions(
     Perspective perspective) const {
-  static const QuicTagVector* no_options = new QuicTagVector;
+  static constexpr QuicTagVector no_options;
   if (perspective == Perspective::IS_SERVER) {
     return HasReceivedConnectionOptions() ? ReceivedConnectionOptions()
-                                          : *no_options;
+                                          : no_options;
   }
 
   return client_connection_options_.HasSendValues()
              ? client_connection_options_.GetSendValues()
-             : *no_options;
+             : no_options;
 }
 
 void QuicConfig::SetIdleNetworkTimeout(QuicTime::Delta idle_network_timeout) {
@@ -1288,6 +1300,9 @@ bool QuicConfig::FillTransportParameters(TransportParameters* params) const {
   if (google_handshake_message_to_send_.has_value()) {
     params->google_handshake_message = google_handshake_message_to_send_;
   }
+  if (debugging_sni_to_send_.has_value()) {
+    params->debugging_sni = debugging_sni_to_send_;
+  }
 
   params->discard_length = discard_length_to_send_;
 
@@ -1424,6 +1439,9 @@ QuicErrorCode QuicConfig::ProcessTransportParameters(
   }
   if (params.google_handshake_message.has_value()) {
     received_google_handshake_message_ = params.google_handshake_message;
+  }
+  if (params.debugging_sni.has_value()) {
+    received_debugging_sni_ = params.debugging_sni;
   }
 
   received_custom_transport_parameters_ = params.custom_parameters;
