@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.29
+
+* Add UDP over TCP support for naiveproxy outbound **1**
+* Fixes and improvements
+
+**1**:
+
+See [NaiveProxy outbound](/configuration/outbound/naive/#udp_over_tcp).
+
 #### 1.13.0-alpha.28
 
 * Add naiveproxy outbound **1**
