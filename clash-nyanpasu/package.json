@@ -5,8 +5,8 @@
   "license": "GPL-3.0",
   "type": "module",
   "scripts": {
-    "dev": "run-p -r web:devtools tauri:dev",
-    "dev:diff": "run-p -r web:devtools tauri:diff",
+    "dev": "run-p tauri:dev",
+    "dev:diff": "run-p tauri:diff",
     "build": "tauri build",
     "build:debug": "tauri build -f verge-dev deadlock-detection -d -c \"{ \\\"tauri\\\" : { \\\"updater\\\": { \\\"active\\\": false } }} \"",
     "build:nightly": "tauri build -f nightly -c ./backend/tauri/tauri.nightly.conf.json",
@@ -18,7 +18,6 @@
     "web:build": "pnpm --filter=@nyanpasu/nyanpasu build",
     "web:serve": "pnpm --filter=@nyanpasu/nyanpasu preview",
     "web:visualize": "pnpm --filter=@nyanpasu/nyanpasu bundle:visualize",
-    "web:devtools": "pnpm react-devtools",
     "lint": "run-s lint:*",
     "lint:prettier": "prettier --check .",
     "lint:eslint": "eslint --cache .",
@@ -36,7 +35,6 @@
     "fmt": "run-p fmt:*",
     "fmt:backend": "cargo fmt --manifest-path ./backend/Cargo.toml --all",
     "fmt:prettier": "prettier --write .",
-    "check": "tsx scripts/check.ts",
     "updater": "tsx scripts/updater.ts",
     "updater:nightly": "tsx scripts/updater-nightly.ts",
     "send-notify": "tsx scripts/telegram-notify.ts",
@@ -50,7 +48,8 @@
     "prepare": "husky",
     "prepare:nightly": "tsx scripts/prepare-nightly.ts",
     "prepare:release": "tsx scripts/prepare-release.ts",
-    "prepare:preview": "tsx scripts/prepare-preview.ts"
+    "prepare:preview": "tsx scripts/prepare-preview.ts",
+    "prepare:check": "tsx scripts/check.ts"
   },
   "dependencies": {
     "@prettier/plugin-oxc": "0.0.4",
@@ -97,7 +96,6 @@
     "prettier-plugin-ember-template-tag": "2.1.0",
     "prettier-plugin-tailwindcss": "0.7.1",
     "prettier-plugin-toml": "2.0.6",
-    "react-devtools": "7.0.1",
     "stylelint": "16.25.0",
     "stylelint-config-html": "1.1.0",
     "stylelint-config-recess-order": "7.4.0",

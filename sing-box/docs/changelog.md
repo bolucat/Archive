@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-alpha.30
+
+* Add OpenAI Codex Multiplexer service **1**
+* Fixes and improvements
+
+**1**:
+
+See [OCM](/configuration/service/ocm).
+
 #### 1.13.0-alpha.29
 
 * Add UDP over TCP support for naiveproxy outbound **1**
