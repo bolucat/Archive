@@ -10,8 +10,8 @@ import (
 	"os"
 
 	"github.com/metacubex/mihomo/component/ca"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 
+	"github.com/metacubex/tls"
 	"golang.org/x/crypto/cryptobyte"
 )
 
@@ -85,11 +85,11 @@ func GenECHConfig(publicName string) (configBase64 string, keyPem string, err er
 	return
 }
 
-func UnmarshalECHKeys(raw []byte) ([]tlsC.EncryptedClientHelloKey, error) {
-	var keys []tlsC.EncryptedClientHelloKey
+func UnmarshalECHKeys(raw []byte) ([]tls.EncryptedClientHelloKey, error) {
+	var keys []tls.EncryptedClientHelloKey
 	rawString := cryptobyte.String(raw)
 	for !rawString.Empty() {
-		var key tlsC.EncryptedClientHelloKey
+		var key tls.EncryptedClientHelloKey
 		if !rawString.ReadUint16LengthPrefixed((*cryptobyte.String)(&key.PrivateKey)) {
 			return nil, errors.New("error parsing private key")
 		}
@@ -104,7 +104,7 @@ func UnmarshalECHKeys(raw []byte) ([]tlsC.EncryptedClientHelloKey, error) {
 	return keys, nil
 }
 
-func LoadECHKey(key string, tlsConfig *tlsC.Config, path ca.Path) error {
+func LoadECHKey(key string, tlsConfig *tls.Config, path ca.Path) error {
 	if key == "" {
 		return nil
 	}
@@ -129,7 +129,7 @@ func LoadECHKey(key string, tlsConfig *tlsC.Config, path ca.Path) error {
 	return nil
 }
 
-func loadECHKey(echKey []byte, tlsConfig *tlsC.Config) error {
+func loadECHKey(echKey []byte, tlsConfig *tls.Config) error {
 	block, rest := pem.Decode(echKey)
 	if block == nil || block.Type != "ECH KEYS" || len(rest) > 0 {
 		return errors.New("invalid ECH keys pem")

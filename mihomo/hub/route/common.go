@@ -6,14 +6,15 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	N "github.com/metacubex/mihomo/common/net"
+
+	"github.com/metacubex/chi"
+	"github.com/metacubex/http"
 )
 
 // When name is composed of a partial escape string, Golang does not unescape it

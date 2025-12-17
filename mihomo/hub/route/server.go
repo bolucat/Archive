@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -17,16 +16,17 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/ech"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
 	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/tunnel/statistic"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/render"
-	"github.com/sagernet/cors"
+	"github.com/metacubex/chi"
+	"github.com/metacubex/chi/cors"
+	"github.com/metacubex/chi/middleware"
+	"github.com/metacubex/chi/render"
+	"github.com/metacubex/http"
+	"github.com/metacubex/tls"
 )
 
 var (
@@ -204,16 +204,16 @@ func startTLS(cfg *Config) {
 		}
 
 		log.Infoln("RESTful API tls listening at: %s", l.Addr().String())
-		tlsConfig := &tlsC.Config{Time: ntp.Now}
+		tlsConfig := &tls.Config{Time: ntp.Now}
 		tlsConfig.NextProtos = []string{"h2", "http/1.1"}
-		tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
-		tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(cfg.ClientAuthType)
+		tlsConfig.Certificates = []tls.Certificate{cert}
+		tlsConfig.ClientAuth = ca.ClientAuthTypeFromString(cfg.ClientAuthType)
 		if len(cfg.ClientAuthCert) > 0 {
-			if tlsConfig.ClientAuth == tlsC.NoClientCert {
-				tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+			if tlsConfig.ClientAuth == tls.NoClientCert {
+				tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 			}
 		}
-		if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+		if tlsConfig.ClientAuth == tls.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert {
 			pool, err := ca.LoadCertificates(cfg.ClientAuthCert, C.Path)
 			if err != nil {
 				log.Errorln("External controller tls listen error: %s", err)
@@ -233,7 +233,7 @@ func startTLS(cfg *Config) {
 			Handler: router(cfg.IsDebug, cfg.Secret, cfg.DohServer, cfg.Cors),
 		}
 		tlsServer = server
-		if err = server.Serve(tlsC.NewListenerForHttps(l, server, tlsConfig)); err != nil {
+		if err = server.Serve(tls.NewListener(l, tlsConfig)); err != nil {
 			log.Errorln("External controller tls serve error: %s", err)
 		}
 	}

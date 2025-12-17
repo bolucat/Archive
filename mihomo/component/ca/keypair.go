@@ -7,13 +7,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"os"
 	"time"
+
+	"github.com/metacubex/tls"
 )
 
 type Path interface {

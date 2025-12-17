@@ -5,14 +5,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -26,7 +24,9 @@ import (
 
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
+	"github.com/metacubex/http"
 	"github.com/metacubex/randv2"
+	"github.com/metacubex/tls"
 )
 
 type websocketConn struct {
@@ -357,7 +357,7 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 
 		if clientFingerprint, ok := tlsC.GetFingerprint(c.ClientFingerprint); ok {
 			tlsConfig := tlsC.UConfig(config)
-			err = c.ECHConfig.ClientHandle(ctx, tlsConfig)
+			err = c.ECHConfig.ClientHandleUTLS(ctx, tlsConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -370,17 +370,11 @@ func streamWebsocketConn(ctx context.Context, conn net.Conn, c *WebsocketConfig,
 				return nil, err
 			}
 			conn = tlsConn
-		} else if c.ECHConfig != nil {
-			tlsConfig := tlsC.UConfig(config)
-			err = c.ECHConfig.ClientHandle(ctx, tlsConfig)
+		} else {
+			err = c.ECHConfig.ClientHandle(ctx, config)
 			if err != nil {
 				return nil, err
 			}
-			tlsConn := tlsC.Client(conn, tlsConfig)
-
-			err = tlsConn.HandshakeContext(ctx)
-			conn = tlsConn
-		} else {
 			tlsConn := tls.Client(conn, config)
 			err = tlsConn.HandshakeContext(ctx)
 			if err != nil {

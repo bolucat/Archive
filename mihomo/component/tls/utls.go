@@ -1,13 +1,13 @@
 package tls
 
 import (
-	"crypto/tls"
 	"net"
 
 	"github.com/metacubex/mihomo/common/once"
 	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/log"
 
+	"github.com/metacubex/tls"
 	utls "github.com/metacubex/utls"
 	"github.com/mroth/weightedrand/v2"
 )

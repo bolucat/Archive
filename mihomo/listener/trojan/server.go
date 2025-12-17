@@ -4,13 +4,11 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"strings"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/ech"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/reality"
@@ -22,7 +20,9 @@ import (
 	"github.com/metacubex/mihomo/transport/trojan"
 	mihomoVMess "github.com/metacubex/mihomo/transport/vmess"
 
+	"github.com/metacubex/http"
 	"github.com/metacubex/smux"
+	"github.com/metacubex/tls"
 )
 
 type Listener struct {
@@ -71,7 +71,7 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 	}
 	sl = &Listener{false, config, nil, keys, pickCipher, h}
 
-	tlsConfig := &tlsC.Config{Time: ntp.Now}
+	tlsConfig := &tls.Config{Time: ntp.Now}
 	var realityBuilder *reality.Builder
 	var httpServer http.Server
 
@@ -80,7 +80,7 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
+		tlsConfig.Certificates = []tls.Certificate{cert}
 
 		if config.EchKey != "" {
 			err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
@@ -89,13 +89,13 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 			}
 		}
 	}
-	tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(config.ClientAuthType)
+	tlsConfig.ClientAuth = ca.ClientAuthTypeFromString(config.ClientAuthType)
 	if len(config.ClientAuthCert) > 0 {
-		if tlsConfig.ClientAuth == tlsC.NoClientCert {
-			tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+		if tlsConfig.ClientAuth == tls.NoClientCert {
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		}
 	}
-	if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+	if tlsConfig.ClientAuth == tls.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert {
 		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
 		if err != nil {
 			return nil, err
@@ -106,7 +106,7 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		if tlsConfig.Certificates != nil {
 			return nil, errors.New("certificate is unavailable in reality")
 		}
-		if tlsConfig.ClientAuth != tlsC.NoClientCert {
+		if tlsConfig.ClientAuth != tls.NoClientCert {
 			return nil, errors.New("client-auth is unavailable in reality")
 		}
 		realityBuilder, err = config.RealityConfig.Build(tunnel)
@@ -149,11 +149,7 @@ func New(config LC.TrojanServer, tunnel C.Tunnel, additions ...inbound.Addition)
 		if realityBuilder != nil {
 			l = realityBuilder.NewListener(l)
 		} else if len(tlsConfig.Certificates) > 0 {
-			if httpServer.Handler != nil {
-				l = tlsC.NewListenerForHttps(l, &httpServer, tlsConfig)
-			} else {
-				l = tlsC.NewListener(l, tlsConfig)
-			}
+			l = tls.NewListener(l, tlsConfig)
 		} else if !config.TrojanSSOption.Enabled {
 			return nil, errors.New("disallow using Trojan without both certificates/reality/ss config")
 		}

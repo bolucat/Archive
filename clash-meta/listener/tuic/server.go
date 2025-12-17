@@ -9,7 +9,6 @@ import (
 	"github.com/metacubex/mihomo/common/sockopt"
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/ech"
-	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/sing"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/metacubex/quic-go"
+	"github.com/metacubex/tls"
 	"golang.org/x/exp/slices"
 )
 
@@ -53,18 +53,18 @@ func New(config LC.TuicServer, tunnel C.Tunnel, additions ...inbound.Addition) (
 	if err != nil {
 		return nil, err
 	}
-	tlsConfig := &tlsC.Config{
+	tlsConfig := &tls.Config{
 		Time:       ntp.Now,
-		MinVersion: tlsC.VersionTLS13,
+		MinVersion: tls.VersionTLS13,
 	}
-	tlsConfig.Certificates = []tlsC.Certificate{tlsC.UCertificate(cert)}
-	tlsConfig.ClientAuth = tlsC.ClientAuthTypeFromString(config.ClientAuthType)
+	tlsConfig.Certificates = []tls.Certificate{cert}
+	tlsConfig.ClientAuth = ca.ClientAuthTypeFromString(config.ClientAuthType)
 	if len(config.ClientAuthCert) > 0 {
-		if tlsConfig.ClientAuth == tlsC.NoClientCert {
-			tlsConfig.ClientAuth = tlsC.RequireAndVerifyClientCert
+		if tlsConfig.ClientAuth == tls.NoClientCert {
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		}
 	}
-	if tlsConfig.ClientAuth == tlsC.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tlsC.RequireAndVerifyClientCert {
+	if tlsConfig.ClientAuth == tls.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert {
 		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
 		if err != nil {
 			return nil, err
