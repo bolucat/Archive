@@ -8,47 +8,48 @@ import SettingsRounded from '~icons/material-symbols/settings-rounded'
 import TerminalRounded from '~icons/material-symbols/terminal-rounded'
 import { ComponentProps } from 'react'
 import { Button, ButtonProps } from '@/components/ui/button'
+import { m } from '@/paraglide/messages'
 import { cn } from '@nyanpasu/ui'
 import { Link, useLocation } from '@tanstack/react-router'
 
 const ROUTES = [
   {
-    label: 'Dashboard',
+    label: m.navbar_label_dashboard(),
     href: '/experimental/dashboard',
     icon: DashboardRounded,
   },
   {
-    label: 'Proxies',
+    label: m.navbar_label_proxies(),
     href: '/experimental/proxies',
     icon: Public,
   },
   {
-    label: 'Profiles',
+    label: m.navbar_label_profiles(),
     href: '/experimental/profiles',
     icon: GridViewOutlineRounded,
   },
   {
-    label: 'Connections',
+    label: m.navbar_label_connections(),
     href: '/experimental/connections',
     icon: SettingsEthernetRounded,
   },
   {
-    label: 'Rules',
+    label: m.navbar_label_rules(),
     href: '/experimental/rules',
     icon: DesignServicesRounded,
   },
   {
-    label: 'Logs',
+    label: m.navbar_label_logs(),
     href: '/experimental/logs',
     icon: TerminalRounded,
   },
   {
-    label: 'Settings',
+    label: m.navbar_label_settings(),
     href: '/experimental/settings',
     icon: SettingsRounded,
   },
   {
-    label: 'Providers',
+    label: m.navbar_label_providers(),
     href: '/experimental/providers',
     icon: Apps,
   },
@@ -58,7 +59,7 @@ const NavbarButton = ({ className, ...props }: ButtonProps) => {
   return (
     <Button
       className={cn(
-        'hover:bg-primary-container dark:hover:bg-primary-container h-8 min-w-0 px-3',
+        'hover:bg-primary-container dark:hover:bg-primary-container min-w-0',
         'dark:data-[active=true]:bg-primary-container! data-[active=true]:bg-inverse-primary!',
         className,
       )}
@@ -73,8 +74,10 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
-        'dark:bg-on-primary bg-primary-container flex items-center gap-1 px-3',
+        'dark:bg-on-primary bg-primary-container flex items-center px-3',
         'h-16 sm:h-12',
+        'justify-between sm:justify-start',
+        'gap-2 lg:gap-1',
         className,
       )}
       data-slot="app-navbar"
@@ -83,16 +86,24 @@ export default function Navbar({ className, ...props }: ComponentProps<'div'>) {
       {ROUTES.map((route) => (
         <NavbarButton
           key={route.href}
-          data-active={location.pathname === route.href}
+          data-active={location.pathname.startsWith(route.href)}
           asChild
         >
           <Link
-            className="flex items-center justify-center gap-1"
+            className={cn(
+              'flex items-center justify-center gap-1',
+              'lg:w-fit lg:px-3',
+              'sm:h-8!',
+            )}
             to={route.href}
           >
-            <route.icon className="size-5" />
+            <span className="size-5" data-slot="navbar-button-icon">
+              <route.icon className="size-5" />
+            </span>
 
-            <span>{route.label}</span>
+            <span className="hidden lg:block" data-slot="navbar-button-label">
+              {route.label}
+            </span>
           </Link>
         </NavbarButton>
       ))}
