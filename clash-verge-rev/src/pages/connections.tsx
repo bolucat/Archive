@@ -28,7 +28,7 @@ import {
 import { ConnectionItem } from "@/components/connection/connection-item";
 import { ConnectionTable } from "@/components/connection/connection-table";
 import { useConnectionData } from "@/hooks/use-connection-data";
-import { useConnectionSetting } from "@/services/states";
+import { useConnectionSetting } from "@/hooks/use-connection-setting";
 import parseTraffic from "@/utils/parse-traffic";
 
 type OrderFunc = (list: IConnectionsItem[]) => IConnectionsItem[];
@@ -129,8 +129,9 @@ const ConnectionsPage = () => {
         height: "100%",
         display: "flex",
         flexDirection: "column",
-        overflow: "auto",
+        overflow: "hidden",
         borderRadius: "8px",
+        minHeight: 0,
       }}
       header={
         <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
@@ -243,6 +244,8 @@ const ConnectionsPage = () => {
           style={{
             flex: 1,
             borderRadius: "8px",
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
           }}
           data={filterConn}
           itemContent={(_, item) => (

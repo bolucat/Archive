@@ -30,7 +30,7 @@ import {
   useClashConfig,
   useSystemProxyAddress,
   useSystemProxyData,
-} from "@/hooks/app-data";
+} from "@/hooks/use-clash-data";
 import { useVerge } from "@/hooks/use-verge";
 import {
   getAutotemProxy,
@@ -39,7 +39,7 @@ import {
   getSystemProxy,
   patchVergeConfig,
 } from "@/services/cmds";
-import { showNotice } from "@/services/noticeService";
+import { showNotice } from "@/services/notice-service";
 import { debugLog } from "@/utils/debug";
 import getSystem from "@/utils/get-system";
 

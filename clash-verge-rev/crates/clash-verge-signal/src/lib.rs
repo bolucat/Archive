@@ -9,7 +9,7 @@ mod windows;
 
 pub(crate) static RUNTIME: OnceLock<Option<tokio::runtime::Runtime>> = OnceLock::new();
 
-pub fn register<F, Fut>(#[cfg(windows)] app_handle: &tauri::AppHandle, f: F)
+pub fn register<F, Fut>(f: F)
 where
     F: Fn() -> Fut + Send + Sync + 'static,
     Fut: Future + Send + 'static,
@@ -19,7 +19,7 @@ where
         Err(e) => {
             logging!(
                 info,
-                Type::System,
+                Type::SystemSignal,
                 "register shutdown signal failed, create tokio runtime error: {}",
                 e
             );
@@ -31,5 +31,5 @@ where
     unix::register(f);
 
     #[cfg(windows)]
-    windows::register(app_handle, f);
+    windows::register(f);
 }

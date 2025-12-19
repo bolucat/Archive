@@ -197,6 +197,17 @@ interface ILogItem {
   payload: string;
 }
 
+type LogLevel = import("tauri-plugin-mihomo-api").LogLevel;
+type LogFilter = "all" | "debug" | "info" | "warn" | "err";
+type LogOrder = "asc" | "desc";
+
+interface IClashLog {
+  enable: boolean;
+  logLevel: LogLevel;
+  logFilter: LogFilter;
+  logOrder: LogOrder;
+}
+
 interface IConnectionsItem {
   id: string;
   metadata: {
@@ -225,6 +236,10 @@ interface IConnections {
   downloadTotal: number;
   uploadTotal: number;
   connections: IConnectionsItem[];
+}
+
+interface IConnectionSetting {
+  layout: "table" | "list";
 }
 
 /**
@@ -891,3 +906,86 @@ interface IWebDavConfig {
   username: string;
   password: string;
 }
+
+// Traffic monitor types
+interface ITrafficDataPoint {
+  up: number;
+  down: number;
+  timestamp: number;
+  name: string;
+}
+
+interface ISamplingConfig {
+  rawDataMinutes: number;
+  compressedDataMinutes: number;
+  compressionRatio: number;
+}
+
+interface ISamplerStats {
+  rawBufferSize: number;
+  compressedBufferSize: number;
+  compressionQueueSize: number;
+  totalMemoryPoints: number;
+}
+
+interface ITrafficWorkerInitMessage {
+  type: "init";
+  config: ISamplingConfig & {
+    snapshotIntervalMs: number;
+    defaultRangeMinutes: number;
+  };
+}
+
+interface ITrafficWorkerAppendMessage {
+  type: "append";
+  payload: {
+    up: number;
+    down: number;
+    timestamp?: number;
+  };
+}
+
+interface ITrafficWorkerClearMessage {
+  type: "clear";
+}
+
+interface ITrafficWorkerSetRangeMessage {
+  type: "setRange";
+  minutes: number;
+}
+
+interface ITrafficWorkerRequestSnapshotMessage {
+  type: "requestSnapshot";
+}
+
+type TrafficWorkerRequestMessage =
+  | ITrafficWorkerInitMessage
+  | ITrafficWorkerAppendMessage
+  | ITrafficWorkerClearMessage
+  | ITrafficWorkerSetRangeMessage
+  | ITrafficWorkerRequestSnapshotMessage;
+
+interface ITrafficWorkerSnapshotMessage {
+  type: "snapshot";
+  dataPoints: ITrafficDataPoint[];
+  availableDataPoints: ITrafficDataPoint[];
+  samplerStats: ISamplerStats;
+  rangeMinutes: number;
+  lastTimestamp?: number;
+  reason:
+    | "init"
+    | "interval"
+    | "range-change"
+    | "request"
+    | "append-throttle"
+    | "clear";
+}
+
+interface ITrafficWorkerLogMessage {
+  type: "log";
+  message: string;
+}
+
+type TrafficWorkerResponseMessage =
+  | ITrafficWorkerSnapshotMessage
+  | ITrafficWorkerLogMessage;

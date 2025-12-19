@@ -16,7 +16,7 @@ import { BaseDialog, DialogRef, Switch } from "@/components/base";
 import { TooltipIcon } from "@/components/base/base-tooltip-icon";
 import { useClash } from "@/hooks/use-clash";
 import { enhanceProfiles } from "@/services/cmds";
-import { showNotice } from "@/services/noticeService";
+import { showNotice } from "@/services/notice-service";
 import getSystem from "@/utils/get-system";
 
 import { StackModeSwitch } from "./stack-mode-switch";
@@ -33,7 +33,7 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
     stack: "mixed",
     device: OS === "macos" ? "utun1024" : "Mihomo",
     autoRoute: true,
-    autoRedirect: OS === "linux",
+    autoRedirect: false,
     autoDetectInterface: true,
     dnsHijack: ["any:53"],
     strictRoute: false,
@@ -44,7 +44,7 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
     open: () => {
       setOpen(true);
       const nextAutoRoute = clash?.tun["auto-route"] ?? true;
-      const rawAutoRedirect = clash?.tun["auto-redirect"] ?? true;
+      const rawAutoRedirect = clash?.tun["auto-redirect"] ?? false;
       const computedAutoRedirect =
         OS === "linux" ? (nextAutoRoute ? rawAutoRedirect : false) : false;
       setValues({
@@ -118,7 +118,7 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
                 "auto-route": true,
                 ...(OS === "linux"
                   ? {
-                      "auto-redirect": true,
+                      "auto-redirect": false,
                     }
                   : {}),
                 "auto-detect-interface": true,
@@ -130,7 +130,7 @@ export function TunViewer({ ref }: { ref?: Ref<DialogRef> }) {
                 stack: "gvisor",
                 device: OS === "macos" ? "utun1024" : "Mihomo",
                 autoRoute: true,
-                autoRedirect: OS === "linux" ? true : false,
+                autoRedirect: false,
                 autoDetectInterface: true,
                 dnsHijack: ["any:53"],
                 strictRoute: false,

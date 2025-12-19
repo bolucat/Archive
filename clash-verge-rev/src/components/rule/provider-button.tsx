@@ -21,8 +21,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateRuleProvider } from "tauri-plugin-mihomo-api";
 
-import type { useRuleProvidersData, useRulesData } from "@/hooks/app-data";
-import { showNotice } from "@/services/noticeService";
+import type {
+  useRuleProvidersData,
+  useRulesData,
+} from "@/hooks/use-clash-data";
+import { showNotice } from "@/services/notice-service";
 
 // 辅助组件 - 类型框
 const TypeBox = styled(Box)<{ component?: React.ElementType }>(({ theme }) => ({

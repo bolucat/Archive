@@ -121,6 +121,7 @@ jobs:
 
           ### 稳定机场VPN推荐
           - [狗狗加速](https://verge.dginv.click/#/register?code=oaxsAGo6)
+
           Created at ${{ env.BUILDTIME }}.
           EOF
 
@@ -159,7 +160,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          targets: ${{ matrix.target }}
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
@@ -167,8 +171,13 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: "v1-rust"
+          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
         if: matrix.os == 'ubuntu-22.04'
@@ -188,7 +197,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -199,6 +208,13 @@ jobs:
         run: |
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
+
+      - name: Add Rust Target
+        run: |
+          # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
+          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target list --installed
+          echo "Rust target ${{ matrix.target }} installed."
 
       - name: Tauri build
         # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
@@ -243,7 +259,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          targets: ${{ matrix.target }}
 
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
@@ -251,13 +270,18 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: "v1-rust"
+          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -313,6 +337,13 @@ jobs:
             gcc-arm-linux-gnueabihf \
             g++-arm-linux-gnueabihf
 
+      - name: Add Rust Target
+        run: |
+          # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
+          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target list --installed
+          echo "Rust target ${{ matrix.target }} installed."
+
       - name: Build for Linux
         run: |
           export PKG_CONFIG_ALLOW_CROSS=1
@@ -345,8 +376,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: ${{ contains(github.ref_name, '-rc') }}
           files: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
-            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+            target/${{ matrix.target }}/release/bundle/rpm/*.rpm
 
   release-for-fixed-webview2:
     name: Release Build for Fixed WebView2
@@ -366,19 +397,30 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          targets: ${{ matrix.target }}
+
       - name: Add Rust Target
         run: rustup target add ${{ matrix.target }}
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          save-if: false
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+          prefix-key: "v1-rust"
+          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          workspaces: |
+            . -> target
+          cache-all-crates: true
+          cache-workspace-crates: true
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -392,14 +434,20 @@ jobs:
 
       - name: Download WebView2 Runtime
         run: |
-          invoke-webrequest -uri https://github.com/westinyang/WebView2RuntimeArchive/releases/download/109.0.1518.78/Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.${{ matrix.arch }}.cab -outfile Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.${{ matrix.arch }}.cab
-          Expand .\Microsoft.WebView2.FixedVersionRuntime.109.0.1518.78.${{ matrix.arch }}.cab -F:* ./src-tauri
+          invoke-webrequest -uri https://github.com/westinyang/WebView2RuntimeArchive/releases/download/133.0.3065.92/Microsoft.WebView2.FixedVersionRuntime.133.0.3065.92.${{ matrix.arch }}.cab -outfile Microsoft.WebView2.FixedVersionRuntime.133.0.3065.92.${{ matrix.arch }}.cab
+          Expand .\Microsoft.WebView2.FixedVersionRuntime.133.0.3065.92.${{ matrix.arch }}.cab -F:* ./src-tauri
           Remove-Item .\src-tauri\tauri.windows.conf.json
           Rename-Item .\src-tauri\webview2.${{ matrix.arch }}.json tauri.windows.conf.json
 
+      - name: Add Rust Target
+        run: |
+          # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
+          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target list --installed
+          echo "Rust target ${{ matrix.target }} installed."
+
       - name: Tauri build
         id: build
-        # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
         uses: tauri-apps/tauri-action@v0.6.0
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
@@ -438,7 +486,7 @@ jobs:
           body: "See release notes for detailed changelog."
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: ${{ contains(github.ref_name, '-rc') }}
-          files: src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*setup*
+          files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
 
       - name: Portable Bundle
         run: pnpm portable-fixed-webview2 ${{ matrix.target }}
@@ -457,7 +505,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -483,7 +531,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -545,7 +593,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.11.1"
+          node-version: "24.12.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -599,6 +647,7 @@ jobs:
 
           ### 稳定机场VPN推荐
           - [狗狗加速](https://verge.dginv.click/#/register?code=oaxsAGo6)
+
           Created at ${{ env.BUILDTIME }}.
           EOF
 

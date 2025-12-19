@@ -1,14 +1,14 @@
 [package]
 name = "clash-verge"
-version = "2.4.4"
+version = "2.4.4-rc.1"
 description = "clash verge"
 authors = ["zzzgydi", "Tunglies", "wonfen", "MystiPanda"]
 license = "GPL-3.0-only"
 repository = "https://github.com/clash-verge-rev/clash-verge-rev.git"
 default-run = "clash-verge"
 build = "build.rs"
-edition = { workspace = true }
-rust-version = { workspace = true }
+edition = "2024"
+rust-version = "1.91"
 
 [lib]
 name = "app_lib"
@@ -22,6 +22,7 @@ tauri-dev = ["clash-verge-logging/tauri-dev"]
 tokio-trace = ["console-subscriber"]
 clippy = ["tauri/test"]
 tracing = []
+tracing-full = []
 
 [package.metadata.bundle]
 identifier = "io.github.clash-verge-rev.clash-verge-rev"
@@ -93,7 +94,7 @@ tauri-plugin-devtools = { version = "2.0.1" }
 tauri-plugin-mihomo = { git = "https://github.com/clash-verge-rev/tauri-plugin-mihomo" }
 clash_verge_logger = { git = "https://github.com/clash-verge-rev/clash-verge-logger" }
 async-trait = "0.1.89"
-clash_verge_service_ipc = { version = "2.0.21", features = [
+clash_verge_service_ipc = { version = "2.0.26", features = [
   "client",
 ], git = "https://github.com/clash-verge-rev/clash-verge-service-ipc" }
 arc-swap = "1.7.1"

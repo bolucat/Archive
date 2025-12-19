@@ -28,19 +28,21 @@ pub mod window_script;
 
 static RESOLVE_DONE: AtomicBool = AtomicBool::new(false);
 
-pub async fn prioritize_initialization() -> Option<LoggerHandle> {
-    init_work_config().await;
-    init_resources().await;
+pub fn init_work_dir_and_logger() -> Option<LoggerHandle> {
+    AsyncHandler::block_on(async {
+        init_work_config().await;
+        init_resources().await;
 
-    #[cfg(not(feature = "tauri-dev"))]
-    {
-        logging!(info, Type::Setup, "Initializing logger");
-        init::init_logger().await.ok()
-    }
-    #[cfg(feature = "tauri-dev")]
-    {
-        None
-    }
+        #[cfg(not(feature = "tauri-dev"))]
+        {
+            logging!(info, Type::Setup, "Initializing logger");
+            init::init_logger().await.ok()
+        }
+        #[cfg(feature = "tauri-dev")]
+        {
+            None
+        }
+    })
 }
 
 pub fn resolve_setup_handle() {
@@ -56,15 +58,9 @@ pub fn resolve_setup_sync() {
 
 pub fn resolve_setup_async() {
     AsyncHandler::spawn(|| async {
-        logging!(
-            info,
-            Type::ClashVergeRev,
-            "Version: {}",
-            env!("CARGO_PKG_VERSION")
-        );
+        logging!(info, Type::ClashVergeRev, "Version: {}", env!("CARGO_PKG_VERSION"));
 
-        futures::join!(init_work_config(), init_resources(), init_startup_script());
-
+        init_startup_script().await;
         init_verge_config().await;
         Config::verify_config_initialization().await;
         init_window().await;
@@ -135,7 +131,9 @@ pub(super) async fn init_timer() {
 }
 
 pub(super) async fn init_hotkey() {
-    logging_error!(Type::Setup, Hotkey::global().init(false).await);
+    // if hotkey is not use by global, skip init it
+    let skip_register_hotkeys = !Config::verge().await.latest_arc().enable_global_hotkey.unwrap_or(true);
+    logging_error!(Type::Setup, Hotkey::global().init(skip_register_hotkeys).await);
 }
 
 pub(super) async fn init_auto_lightweight_boot() {
@@ -148,11 +146,7 @@ pub(super) async fn init_auto_backup() {
 
 pub fn init_signal() {
     logging!(info, Type::Setup, "Initializing signal handlers...");
-    clash_verge_signal::register(
-        #[cfg(windows)]
-        handle::Handle::app_handle(),
-        feat::quit,
-    );
+    clash_verge_signal::register(feat::quit);
 }
 
 pub async fn init_work_config() {
@@ -185,10 +179,7 @@ pub(super) async fn init_core_manager() {
 }
 
 pub(super) async fn init_system_proxy() {
-    logging_error!(
-        Type::Setup,
-        sysopt::Sysopt::global().update_sysproxy().await
-    );
+    logging_error!(Type::Setup, sysopt::Sysopt::global().update_sysproxy().await);
 }
 
 pub(super) async fn init_system_proxy_guard() {
@@ -200,11 +191,7 @@ pub(super) async fn refresh_tray_menu() {
 }
 
 pub(super) async fn init_window() {
-    let is_silent_start = Config::verge()
-        .await
-        .data_arc()
-        .enable_silent_start
-        .unwrap_or(false);
+    let is_silent_start = Config::verge().await.data_arc().enable_silent_start.unwrap_or(false);
     #[cfg(target_os = "macos")]
     if is_silent_start {
         use crate::core::handle::Handle;

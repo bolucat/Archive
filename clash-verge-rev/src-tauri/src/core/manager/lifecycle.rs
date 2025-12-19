@@ -2,10 +2,8 @@ use super::{CoreManager, RunningMode};
 use crate::cmd::StringifyErr as _;
 use crate::config::{Config, IVerge};
 use crate::core::handle::Handle;
-use crate::core::{
-    logger::CLASH_LOGGER,
-    service::{SERVICE_MANAGER, ServiceStatus},
-};
+use crate::core::manager::CLASH_LOGGER;
+use crate::core::service::{SERVICE_MANAGER, ServiceStatus};
 use anyhow::Result;
 use clash_verge_logging::{Type, logging};
 use scopeguard::defer;
@@ -44,11 +42,6 @@ impl CoreManager {
     pub async fn restart_core(&self) -> Result<()> {
         logging!(info, Type::Core, "Restarting core");
         self.stop_core().await?;
-
-        if SERVICE_MANAGER.lock().await.init().await.is_ok() {
-            let _ = SERVICE_MANAGER.lock().await.refresh().await;
-        }
-
         self.start_core().await
     }
 
@@ -85,10 +78,7 @@ impl CoreManager {
 
     fn after_core_process(&self) {
         let app_handle = Handle::app_handle();
-        tauri_plugin_clash_verge_sysinfo::set_app_core_mode(
-            app_handle,
-            self.get_running_mode().to_string(),
-        );
+        tauri_plugin_clash_verge_sysinfo::set_app_core_mode(app_handle, self.get_running_mode().to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -96,11 +86,7 @@ impl CoreManager {
         use crate::{config::Config, constants::timing};
         use backoff::{Error as BackoffError, ExponentialBackoff};
 
-        let needs_service = Config::verge()
-            .await
-            .latest_arc()
-            .enable_tun_mode
-            .unwrap_or(false);
+        let needs_service = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
 
         if !needs_service {
             return;
@@ -128,9 +114,7 @@ impl CoreManager {
             if matches!(manager.current(), ServiceStatus::Ready) {
                 Ok(())
             } else {
-                Err(BackoffError::transient(anyhow::anyhow!(
-                    "Service not ready"
-                )))
+                Err(BackoffError::transient(anyhow::anyhow!("Service not ready")))
             }
         };
 

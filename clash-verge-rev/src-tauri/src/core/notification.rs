@@ -9,7 +9,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tauri::{Emitter as _, WebviewWindow};
 
@@ -80,25 +80,22 @@ impl NotificationSystem {
 
         match result {
             Ok(handle) => self.worker_handle = Some(handle),
-            Err(e) => logging!(
-                error,
-                Type::System,
-                "Failed to start notification worker: {}",
-                e
-            ),
+            Err(e) => logging!(error, Type::System, "Failed to start notification worker: {}", e),
         }
     }
 
     fn worker_loop(rx: mpsc::Receiver<FrontendEvent>) {
+        let handle = Handle::global();
         loop {
-            let handle = Handle::global();
             if handle.is_exiting() {
                 break;
             }
-            match rx.recv_timeout(Duration::from_millis(1_000)) {
+            match rx.recv() {
                 Ok(event) => Self::process_event(handle, event),
-                Err(mpsc::RecvTimeoutError::Timeout) => (),
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(e) => {
+                    logging!(error, Type::System, "Notification System will exit, recv error: {}", e);
+                    break;
+                }
             }
         }
     }
@@ -148,31 +145,19 @@ impl NotificationSystem {
         }
     }
 
-    fn serialize_event(
-        &self,
-        event: FrontendEvent,
-    ) -> (&'static str, Result<serde_json::Value, serde_json::Error>) {
+    fn serialize_event(&self, event: FrontendEvent) -> (&'static str, Result<serde_json::Value, serde_json::Error>) {
         use serde_json::json;
 
         match event {
             FrontendEvent::RefreshClash => ("verge://refresh-clash-config", Ok(json!("yes"))),
             FrontendEvent::RefreshVerge => ("verge://refresh-verge-config", Ok(json!("yes"))),
-            FrontendEvent::NoticeMessage { status, message } => (
-                "verge://notice-message",
-                serde_json::to_value((status, message)),
-            ),
-            FrontendEvent::ProfileChanged { current_profile_id } => {
-                ("profile-changed", Ok(json!(current_profile_id)))
+            FrontendEvent::NoticeMessage { status, message } => {
+                ("verge://notice-message", serde_json::to_value((status, message)))
             }
-            FrontendEvent::TimerUpdated { profile_index } => {
-                ("verge://timer-updated", Ok(json!(profile_index)))
-            }
-            FrontendEvent::ProfileUpdateStarted { uid } => {
-                ("profile-update-started", Ok(json!({ "uid": uid })))
-            }
-            FrontendEvent::ProfileUpdateCompleted { uid } => {
-                ("profile-update-completed", Ok(json!({ "uid": uid })))
-            }
+            FrontendEvent::ProfileChanged { current_profile_id } => ("profile-changed", Ok(json!(current_profile_id))),
+            FrontendEvent::TimerUpdated { profile_index } => ("verge://timer-updated", Ok(json!(profile_index))),
+            FrontendEvent::ProfileUpdateStarted { uid } => ("profile-update-started", Ok(json!({ "uid": uid }))),
+            FrontendEvent::ProfileUpdateCompleted { uid } => ("profile-update-completed", Ok(json!({ "uid": uid }))),
         }
     }
 
@@ -182,12 +167,7 @@ impl NotificationSystem {
 
         let errors = self.stats.total_errors.load(Ordering::Relaxed);
         if errors > retry::EVENT_EMIT_THRESHOLD && !self.emergency_mode.load(Ordering::Acquire) {
-            logging!(
-                warn,
-                Type::Frontend,
-                "Entering emergency mode after {} errors",
-                errors
-            );
+            logging!(warn, Type::Frontend, "Entering emergency mode after {} errors", errors);
             self.emergency_mode.store(true, Ordering::Release);
         }
     }

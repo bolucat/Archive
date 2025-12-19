@@ -67,14 +67,16 @@ func NewWithConfig(config LC.AuthServer, tunnel C.Tunnel, additions ...inbound.A
 	var realityBuilder *reality.Builder
 
 	if config.Certificate != "" && config.PrivateKey != "" {
-		cert, err := ca.LoadTLSKeyPair(config.Certificate, config.PrivateKey, C.Path)
+		certLoader, err := ca.NewTLSKeyPairLoader(config.Certificate, config.PrivateKey)
 		if err != nil {
 			return nil, err
 		}
-		tlsConfig.Certificates = []tls.Certificate{cert}
+		tlsConfig.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return certLoader()
+		}
 
 		if config.EchKey != "" {
-			err = ech.LoadECHKey(config.EchKey, tlsConfig, C.Path)
+			err = ech.LoadECHKey(config.EchKey, tlsConfig)
 			if err != nil {
 				return nil, err
 			}
@@ -87,14 +89,14 @@ func NewWithConfig(config LC.AuthServer, tunnel C.Tunnel, additions ...inbound.A
 		}
 	}
 	if tlsConfig.ClientAuth == tls.VerifyClientCertIfGiven || tlsConfig.ClientAuth == tls.RequireAndVerifyClientCert {
-		pool, err := ca.LoadCertificates(config.ClientAuthCert, C.Path)
+		pool, err := ca.LoadCertificates(config.ClientAuthCert)
 		if err != nil {
 			return nil, err
 		}
 		tlsConfig.ClientCAs = pool
 	}
 	if config.RealityConfig.PrivateKey != "" {
-		if tlsConfig.Certificates != nil {
+		if tlsConfig.GetCertificate != nil {
 			return nil, errors.New("certificate is unavailable in reality")
 		}
 		if tlsConfig.ClientAuth != tls.NoClientCert {
@@ -108,7 +110,7 @@ func NewWithConfig(config LC.AuthServer, tunnel C.Tunnel, additions ...inbound.A
 
 	if realityBuilder != nil {
 		l = realityBuilder.NewListener(l)
-	} else if len(tlsConfig.Certificates) > 0 {
+	} else if tlsConfig.GetCertificate != nil {
 		l = tls.NewListener(l, tlsConfig)
 	}
 

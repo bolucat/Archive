@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
-import { useProxiesData } from "@/hooks/app-data";
+import { useProxiesData } from "@/hooks/use-clash-data";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
@@ -27,8 +27,8 @@ import { ScrollTopButton } from "../layout/scroll-top-button";
 
 import { ProxyChain } from "./proxy-chain";
 import {
-  ProxyGroupNavigator,
   DEFAULT_HOVER_DELAY,
+  ProxyGroupNavigator,
 } from "./proxy-group-navigator";
 import { ProxyRender } from "./proxy-render";
 import { useRenderList } from "./use-render-list";
@@ -51,8 +51,26 @@ const VirtuosoFooter = () => <div style={{ height: "8px" }} />;
 export const ProxyGroups = (props: Props) => {
   const { t } = useTranslation();
   const { mode, isChainMode = false, chainConfigData } = props;
-  const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>([]);
+  const [proxyChain, setProxyChain] = useState<ProxyChainItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("proxy-chain-items");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (proxyChain.length > 0) {
+      localStorage.setItem("proxy-chain-items", JSON.stringify(proxyChain));
+    } else {
+      localStorage.removeItem("proxy-chain-items");
+    }
+  }, [proxyChain]);
   const [ruleMenuAnchor, setRuleMenuAnchor] = useState<null | HTMLElement>(
     null,
   );
@@ -64,7 +82,13 @@ export const ProxyGroups = (props: Props) => {
   const { verge } = useVerge();
   const { proxies: proxiesData } = useProxiesData();
   const groups = proxiesData?.groups;
-  const availableGroups = useMemo(() => groups ?? [], [groups]);
+  const availableGroups = useMemo(() => {
+    if (!groups) return [];
+    // 在链式代理模式下，仅显示支持选择节点的 Selector 代理组
+    return isChainMode
+      ? groups.filter((g: any) => g.type === "Selector")
+      : groups;
+  }, [groups, isChainMode]);
 
   const defaultRuleGroup = useMemo(() => {
     if (isChainMode && mode === "rule" && availableGroups.length > 0) {
@@ -225,10 +249,11 @@ export const ProxyGroups = (props: Props) => {
     setSelectedGroup(groupName);
     handleGroupMenuClose();
 
-    // 在链式代理模式的规则模式下，切换代理组时清空链式代理配置
     if (isChainMode && mode === "rule") {
       updateProxyChainConfigInRuntime(null);
-      // 同时清空右侧链式代理配置
+      localStorage.removeItem("proxy-chain-group");
+      localStorage.removeItem("proxy-chain-exit-node");
+      localStorage.removeItem("proxy-chain-items");
       setProxyChain([]);
     }
   };
