@@ -1,6 +1,5 @@
 import { AnimatePresence } from 'framer-motion'
-import { isNumber } from 'lodash-es'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
@@ -9,39 +8,54 @@ import { m } from '@/paraglide/messages'
 import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useSetting } from '@nyanpasu/interface'
+import { useClashConfig, useSetting } from '@nyanpasu/interface'
 import {
   SettingsCard,
   SettingsCardAnimatedItem,
   SettingsCardContent,
 } from '../../_modules/settings-card'
 
+const DEFAULT_MIXED_PORT = 7890
+
 const formSchema = z.object({
-  proxyGuardInterval: z.number().min(1),
+  mixedPort: z.number().min(1).max(65535),
 })
 
-export default function ProxyGuardConfig() {
-  const proxyGuardInterval = useSetting('proxy_guard_interval')
+export default function MixedPortConfig() {
+  const mixedPort = useSetting('verge_mixed_port')
+
+  const clashConfig = useClashConfig()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      proxyGuardInterval: proxyGuardInterval.value || 1,
+      mixedPort: DEFAULT_MIXED_PORT,
     },
   })
 
+  // get current mixed port from clash config or verge setting
+  const currentMixedPort = useMemo(() => {
+    return (
+      clashConfig.query.data?.['mixed-port'] ||
+      mixedPort.value ||
+      DEFAULT_MIXED_PORT
+    )
+  }, [clashConfig.query.data, mixedPort.value])
+
+  // sync current mixed port to form
   useEffect(() => {
-    if (isNumber(proxyGuardInterval.value)) {
-      form.setValue('proxyGuardInterval', proxyGuardInterval.value)
-    }
-  }, [proxyGuardInterval.value, form])
+    form.setValue('mixedPort', currentMixedPort)
+  }, [currentMixedPort, form])
 
   const handleSubmit = form.handleSubmit(async (data) => {
     try {
-      await proxyGuardInterval.upsert(data.proxyGuardInterval)
+      await clashConfig.upsert.mutateAsync({
+        'mixed-port': data.mixedPort,
+      })
+      await mixedPort.upsert(data.mixedPort)
 
       form.reset({
-        proxyGuardInterval: data.proxyGuardInterval,
+        mixedPort: data.mixedPort,
       })
     } catch (error) {
       message(formatError(error), {
@@ -53,25 +67,21 @@ export default function ProxyGuardConfig() {
 
   const handleReset = useCallback(() => {
     form.reset({
-      proxyGuardInterval: proxyGuardInterval.value || 1,
+      mixedPort: currentMixedPort,
     })
-  }, [proxyGuardInterval.value, form])
+  }, [form, currentMixedPort])
 
   return (
-    <SettingsCard data-slot="proxy-guard-config-card">
+    <SettingsCard data-slot="mixed-port-config-card">
       <SettingsCardContent
         className="px-2"
-        data-slot="proxy-guard-config-card-content"
+        data-slot="mixed-port-config-card-content"
       >
-        {/* <div className="border-surface-variant flex w-24 items-center justify-between rounded-md border p-2">
-          <span>{proxyGuardInterval.value || 0}</span>
-          <span>{m.unit_seconds()}</span>
-        </div> */}
         <form className="flex flex-col gap-2" onSubmit={handleSubmit}>
           <Controller
-            name="proxyGuardInterval"
+            name="mixedPort"
             control={form.control}
-            render={({ field }) => {
+            render={({ field, fieldState }) => {
               const handleChange = (value: number | null) => {
                 field.onChange(value)
               }
@@ -80,15 +90,17 @@ export default function ProxyGuardConfig() {
                 <>
                   <NumericInput
                     variant="outlined"
-                    label={m.settings_system_proxy_proxy_guard_interval_label()}
-                    value={field.value || 0}
+                    label={m.settings_clash_settings_mixed_port_label()}
+                    value={field.value}
                     onChange={handleChange}
+                    allowNegative={false}
+                    decimalScale={0}
                   />
 
-                  <AnimatePresence initial={false}>
-                    {form.formState.errors.proxyGuardInterval && (
+                  <AnimatePresence>
+                    {fieldState.error && (
                       <SettingsCardAnimatedItem className="text-error">
-                        {form.formState.errors.proxyGuardInterval.message}
+                        {fieldState.error.message}
                       </SettingsCardAnimatedItem>
                     )}
                   </AnimatePresence>
