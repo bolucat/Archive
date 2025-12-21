@@ -28,6 +28,7 @@ type TrackerInfo struct {
 	DownloadTotal atomic.Int64 `json:"download"`
 	Start         time.Time    `json:"start"`
 	Chain         C.Chain      `json:"chains"`
+	ProviderChain C.Chain      `json:"providerChains"`
 	Rule          string       `json:"rule"`
 	RulePayload   string       `json:"rulePayload"`
 }
@@ -126,6 +127,7 @@ func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.R
 			Start:         time.Now(),
 			Metadata:      metadata,
 			Chain:         conn.Chains(),
+			ProviderChain: conn.ProviderChains(),
 			Rule:          "",
 			UploadTotal:   atomic.NewInt64(uploadTotal),
 			DownloadTotal: atomic.NewInt64(downloadTotal),
@@ -217,6 +219,7 @@ func NewUDPTracker(conn C.PacketConn, manager *Manager, metadata *C.Metadata, ru
 			Start:         time.Now(),
 			Metadata:      metadata,
 			Chain:         conn.Chains(),
+			ProviderChain: conn.ProviderChains(),
 			Rule:          "",
 			UploadTotal:   atomic.NewInt64(uploadTotal),
 			DownloadTotal: atomic.NewInt64(downloadTotal),

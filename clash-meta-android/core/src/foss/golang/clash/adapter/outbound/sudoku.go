@@ -2,68 +2,47 @@ package outbound
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/metacubex/mihomo/log"
-
-	"github.com/saba-futai/sudoku/apis"
-	"github.com/saba-futai/sudoku/pkg/crypto"
-	"github.com/saba-futai/sudoku/pkg/obfs/httpmask"
-	"github.com/saba-futai/sudoku/pkg/obfs/sudoku"
 
 	N "github.com/metacubex/mihomo/common/net"
-	"github.com/metacubex/mihomo/component/dialer"
-	"github.com/metacubex/mihomo/component/proxydialer"
 	C "github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/transport/sudoku"
 )
 
 type Sudoku struct {
 	*Base
 	option   *SudokuOption
-	table    *sudoku.Table
-	baseConf apis.ProtocolConfig
+	baseConf sudoku.ProtocolConfig
 }
 
 type SudokuOption struct {
 	BasicOption
-	Name       string `proxy:"name"`
-	Server     string `proxy:"server"`
-	Port       int    `proxy:"port"`
-	Key        string `proxy:"key"`
-	AEADMethod string `proxy:"aead-method,omitempty"`
-	PaddingMin *int   `proxy:"padding-min,omitempty"`
-	PaddingMax *int   `proxy:"padding-max,omitempty"`
-	TableType  string `proxy:"table-type,omitempty"` // "prefer_ascii" or "prefer_entropy"
-	HTTPMask   bool   `proxy:"http-mask,omitempty"`
+	Name               string   `proxy:"name"`
+	Server             string   `proxy:"server"`
+	Port               int      `proxy:"port"`
+	Key                string   `proxy:"key"`
+	AEADMethod         string   `proxy:"aead-method,omitempty"`
+	PaddingMin         *int     `proxy:"padding-min,omitempty"`
+	PaddingMax         *int     `proxy:"padding-max,omitempty"`
+	TableType          string   `proxy:"table-type,omitempty"` // "prefer_ascii" or "prefer_entropy"
+	EnablePureDownlink *bool    `proxy:"enable-pure-downlink,omitempty"`
+	HTTPMask           bool     `proxy:"http-mask,omitempty"`
+	HTTPMaskStrategy   string   `proxy:"http-mask-strategy,omitempty"` // "random" (default), "post", "websocket"
+	CustomTable        string   `proxy:"custom-table,omitempty"`       // optional custom byte layout, e.g. xpxvvpvv
+	CustomTables       []string `proxy:"custom-tables,omitempty"`      // optional table rotation patterns, overrides custom-table when non-empty
 }
 
 // DialContext implements C.ProxyAdapter
-func (s *Sudoku) DialContext(ctx context.Context, metadata *C.Metadata) (C.Conn, error) {
-	return s.DialContextWithDialer(ctx, dialer.NewDialer(s.DialOptions()...), metadata)
-}
-
-// DialContextWithDialer implements C.ProxyAdapter
-func (s *Sudoku) DialContextWithDialer(ctx context.Context, d C.Dialer, metadata *C.Metadata) (_ C.Conn, err error) {
-	if len(s.option.DialerProxy) > 0 {
-		d, err = proxydialer.NewByName(s.option.DialerProxy, d)
-		if err != nil {
-			return nil, err
-		}
-	}
-
+func (s *Sudoku) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
 	cfg, err := s.buildConfig(metadata)
 	if err != nil {
 		return nil, err
 	}
 
-	c, err := d.DialContext(ctx, "tcp", s.addr)
+	c, err := s.dialer.DialContext(ctx, "tcp", s.addr)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %w", s.addr, err)
 	}
@@ -77,9 +56,21 @@ func (s *Sudoku) DialContextWithDialer(ctx context.Context, d C.Dialer, metadata
 		defer done(&err)
 	}
 
-	c, err = s.streamConn(c, cfg)
+	c, err = sudoku.ClientHandshakeWithOptions(c, cfg, sudoku.ClientHandshakeOptions{
+		HTTPMaskStrategy: s.option.HTTPMaskStrategy,
+	})
 	if err != nil {
 		return nil, err
+	}
+
+	addrBuf, err := sudoku.EncodeAddress(cfg.TargetAddress)
+	if err != nil {
+		return nil, fmt.Errorf("encode target address failed: %w", err)
+	}
+
+	if _, err = c.Write(addrBuf); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("send target address failed: %w", err)
 	}
 
 	return NewConn(c, s), nil
@@ -87,17 +78,47 @@ func (s *Sudoku) DialContextWithDialer(ctx context.Context, d C.Dialer, metadata
 
 // ListenPacketContext implements C.ProxyAdapter
 func (s *Sudoku) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (C.PacketConn, error) {
-	return nil, C.ErrNotSupport
+	if err := s.ResolveUDP(ctx, metadata); err != nil {
+		return nil, err
+	}
+
+	cfg, err := s.buildConfig(metadata)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := s.dialer.DialContext(ctx, "tcp", s.addr)
+	if err != nil {
+		return nil, fmt.Errorf("%s connect error: %w", s.addr, err)
+	}
+
+	defer func() {
+		safeConnClose(c, err)
+	}()
+
+	if ctx.Done() != nil {
+		done := N.SetupContextForConn(ctx, c)
+		defer done(&err)
+	}
+
+	c, err = sudoku.ClientHandshakeWithOptions(c, cfg, sudoku.ClientHandshakeOptions{
+		HTTPMaskStrategy: s.option.HTTPMaskStrategy,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err = sudoku.WritePreface(c); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("send uot preface failed: %w", err)
+	}
+
+	return newPacketConn(N.NewThreadSafePacketConn(sudoku.NewUoTPacketConn(c)), s), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
 func (s *Sudoku) SupportUOT() bool {
-	return false // Sudoku protocol only supports TCP
-}
-
-// SupportWithDialer implements C.ProxyAdapter
-func (s *Sudoku) SupportWithDialer() C.NetWork {
-	return C.TCP
+	return true
 }
 
 // ProxyInfo implements C.ProxyAdapter
@@ -107,7 +128,7 @@ func (s *Sudoku) ProxyInfo() C.ProxyInfo {
 	return info
 }
 
-func (s *Sudoku) buildConfig(metadata *C.Metadata) (*apis.ProtocolConfig, error) {
+func (s *Sudoku) buildConfig(metadata *C.Metadata) (*sudoku.ProtocolConfig, error) {
 	if metadata == nil || metadata.DstPort == 0 || !metadata.Valid() {
 		return nil, fmt.Errorf("invalid metadata for sudoku outbound")
 	}
@@ -119,33 +140,6 @@ func (s *Sudoku) buildConfig(metadata *C.Metadata) (*apis.ProtocolConfig, error)
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-func (s *Sudoku) streamConn(rawConn net.Conn, cfg *apis.ProtocolConfig) (_ net.Conn, err error) {
-	if !cfg.DisableHTTPMask {
-		if err = httpmask.WriteRandomRequestHeader(rawConn, cfg.ServerAddress); err != nil {
-			return nil, fmt.Errorf("write http mask failed: %w", err)
-		}
-	}
-
-	obfsConn := sudoku.NewConn(rawConn, cfg.Table, cfg.PaddingMin, cfg.PaddingMax, false)
-	cConn, err := crypto.NewAEADConn(obfsConn, cfg.Key, cfg.AEADMethod)
-	if err != nil {
-		return nil, fmt.Errorf("setup crypto failed: %w", err)
-	}
-
-	handshake := buildSudokuHandshakePayload(cfg.Key)
-	if _, err = cConn.Write(handshake[:]); err != nil {
-		cConn.Close()
-		return nil, fmt.Errorf("send handshake failed: %w", err)
-	}
-
-	if err = writeTargetAddress(cConn, cfg.TargetAddress); err != nil {
-		cConn.Close()
-		return nil, fmt.Errorf("send target address failed: %w", err)
-	}
-
-	return cConn, nil
 }
 
 func NewSudoku(option SudokuOption) (*Sudoku, error) {
@@ -167,16 +161,7 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 		return nil, fmt.Errorf("table-type must be prefer_ascii or prefer_entropy")
 	}
 
-	seed := option.Key
-	if recoveredFromKey, err := crypto.RecoverPublicKey(option.Key); err == nil {
-		seed = crypto.EncodePoint(recoveredFromKey)
-	}
-
-	start := time.Now()
-	table := sudoku.NewTable(seed, tableType)
-	log.Infoln("[Sudoku] Tables initialized (%s) in %v", tableType, time.Since(start))
-
-	defaultConf := apis.DefaultConfig()
+	defaultConf := sudoku.DefaultConfig()
 	paddingMin := defaultConf.PaddingMin
 	paddingMax := defaultConf.PaddingMax
 	if option.PaddingMin != nil {
@@ -191,80 +176,50 @@ func NewSudoku(option SudokuOption) (*Sudoku, error) {
 	if option.PaddingMax == nil && option.PaddingMin != nil && paddingMax < paddingMin {
 		paddingMax = paddingMin
 	}
+	enablePureDownlink := defaultConf.EnablePureDownlink
+	if option.EnablePureDownlink != nil {
+		enablePureDownlink = *option.EnablePureDownlink
+	}
 
-	baseConf := apis.ProtocolConfig{
+	baseConf := sudoku.ProtocolConfig{
 		ServerAddress:           net.JoinHostPort(option.Server, strconv.Itoa(option.Port)),
 		Key:                     option.Key,
 		AEADMethod:              defaultConf.AEADMethod,
-		Table:                   table,
 		PaddingMin:              paddingMin,
 		PaddingMax:              paddingMax,
+		EnablePureDownlink:      enablePureDownlink,
 		HandshakeTimeoutSeconds: defaultConf.HandshakeTimeoutSeconds,
 		DisableHTTPMask:         !option.HTTPMask,
+	}
+	tables, err := sudoku.NewTablesWithCustomPatterns(sudoku.ClientAEADSeed(option.Key), tableType, option.CustomTable, option.CustomTables)
+	if err != nil {
+		return nil, fmt.Errorf("build table(s) failed: %w", err)
+	}
+	if len(tables) == 1 {
+		baseConf.Table = tables[0]
+	} else {
+		baseConf.Tables = tables
 	}
 	if option.AEADMethod != "" {
 		baseConf.AEADMethod = option.AEADMethod
 	}
 
-	return &Sudoku{
+	outbound := &Sudoku{
 		Base: &Base{
 			name:   option.Name,
 			addr:   baseConf.ServerAddress,
 			tp:     C.Sudoku,
-			udp:    false,
+			pdName: option.ProviderName,
+			udp:    true,
 			tfo:    option.TFO,
 			mpTcp:  option.MPTCP,
 			iface:  option.Interface,
 			rmark:  option.RoutingMark,
-			prefer: C.NewDNSPrefer(option.IPVersion),
+			prefer: option.IPVersion,
 		},
 		option:   &option,
-		table:    table,
 		baseConf: baseConf,
-	}, nil
-}
-
-func buildSudokuHandshakePayload(key string) [16]byte {
-	var payload [16]byte
-	binary.BigEndian.PutUint64(payload[:8], uint64(time.Now().Unix()))
-	hash := sha256.Sum256([]byte(key))
-	copy(payload[8:], hash[:8])
-	return payload
-}
-
-func writeTargetAddress(w io.Writer, rawAddr string) error {
-	host, portStr, err := net.SplitHostPort(rawAddr)
-	if err != nil {
-		return err
 	}
-
-	portInt, err := net.LookupPort("tcp", portStr)
-	if err != nil {
-		return err
-	}
-
-	var buf []byte
-	if ip := net.ParseIP(host); ip != nil {
-		if ip4 := ip.To4(); ip4 != nil {
-			buf = append(buf, 0x01) // IPv4
-			buf = append(buf, ip4...)
-		} else {
-			buf = append(buf, 0x04) // IPv6
-			buf = append(buf, ip...)
-		}
-	} else {
-		if len(host) > 255 {
-			return fmt.Errorf("domain too long")
-		}
-		buf = append(buf, 0x03) // domain
-		buf = append(buf, byte(len(host)))
-		buf = append(buf, host...)
-	}
-
-	var portBytes [2]byte
-	binary.BigEndian.PutUint16(portBytes[:], uint16(portInt))
-	buf = append(buf, portBytes[:]...)
-
-	_, err = w.Write(buf)
-	return err
+	outbound.dialer = option.NewDialer(outbound.DialOptions())
+	return outbound, nil
 }

@@ -1,4 +1,5 @@
-Subject: [PATCH] Revert "runtime: always use LoadLibraryEx to load system libraries"
+Subject: [PATCH] Fix os.RemoveAll not working on Windows7
+Revert "runtime: always use LoadLibraryEx to load system libraries"
 Revert "syscall: remove Windows 7 console handle workaround"
 Revert "net: remove sysSocket fallback for Windows 7"
 Revert "crypto/rand,runtime: switch RtlGenRandom for ProcessPrng"
@@ -655,3 +656,188 @@ diff --git a/src/syscall/dll_windows.go b/src/syscall/dll_windows.go
  	} else {
  		h, e = loadlibrary(namep)
  	}
+Index: src/os/removeall_at.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/os/removeall_at.go b/src/os/removeall_at.go
+--- a/src/os/removeall_at.go	(revision f56f1e23507e646c85243a71bde7b9629b2f970c)
++++ b/src/os/removeall_at.go	(revision 0a52622d2331ff975fb0442617ec19bc352bb2ed)
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build unix || wasip1 || windows
++//go:build unix || wasip1
+ 
+ package os
+ 
+@@ -175,3 +175,25 @@
+ 	}
+ 	return newDirFile(fd, name)
+ }
++
++func rootRemoveAll(r *Root, name string) error {
++	// Consistency with os.RemoveAll: Strip trailing /s from the name,
++	// so RemoveAll("not_a_directory/") succeeds.
++	for len(name) > 0 && IsPathSeparator(name[len(name)-1]) {
++		name = name[:len(name)-1]
++	}
++	if endsWithDot(name) {
++		// Consistency with os.RemoveAll: Return EINVAL when trying to remove .
++		return &PathError{Op: "RemoveAll", Path: name, Err: syscall.EINVAL}
++	}
++	_, err := doInRoot(r, name, nil, func(parent sysfdType, name string) (struct{}, error) {
++		return struct{}{}, removeAllFrom(parent, name)
++	})
++	if IsNotExist(err) {
++		return nil
++	}
++	if err != nil {
++		return &PathError{Op: "RemoveAll", Path: name, Err: underlyingError(err)}
++	}
++	return err
++}
+Index: src/os/removeall_noat.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/os/removeall_noat.go b/src/os/removeall_noat.go
+--- a/src/os/removeall_noat.go	(revision f56f1e23507e646c85243a71bde7b9629b2f970c)
++++ b/src/os/removeall_noat.go	(revision 0a52622d2331ff975fb0442617ec19bc352bb2ed)
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build (js && wasm) || plan9
++//go:build (js && wasm) || plan9 || windows
+ 
+ package os
+ 
+@@ -140,3 +140,22 @@
+ 	}
+ 	return err
+ }
++
++func rootRemoveAll(r *Root, name string) error {
++	if endsWithDot(name) {
++		// Consistency with os.RemoveAll: Return EINVAL when trying to remove .
++		return &PathError{Op: "RemoveAll", Path: name, Err: syscall.EINVAL}
++	}
++	if err := checkPathEscapesLstat(r, name); err != nil {
++		if err == syscall.ENOTDIR {
++			// Some intermediate path component is not a directory.
++			// RemoveAll treats this as success (since the target doesn't exist).
++			return nil
++		}
++		return &PathError{Op: "RemoveAll", Path: name, Err: err}
++	}
++	if err := RemoveAll(joinPath(r.root.name, name)); err != nil {
++		return &PathError{Op: "RemoveAll", Path: name, Err: underlyingError(err)}
++	}
++	return nil
++}
+Index: src/os/root_noopenat.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/os/root_noopenat.go b/src/os/root_noopenat.go
+--- a/src/os/root_noopenat.go	(revision f56f1e23507e646c85243a71bde7b9629b2f970c)
++++ b/src/os/root_noopenat.go	(revision 0a52622d2331ff975fb0442617ec19bc352bb2ed)
+@@ -11,7 +11,6 @@
+ 	"internal/filepathlite"
+ 	"internal/stringslite"
+ 	"sync/atomic"
+-	"syscall"
+ 	"time"
+ )
+ 
+@@ -185,25 +184,6 @@
+ 	}
+ 	return nil
+ }
+-
+-func rootRemoveAll(r *Root, name string) error {
+-	if endsWithDot(name) {
+-		// Consistency with os.RemoveAll: Return EINVAL when trying to remove .
+-		return &PathError{Op: "RemoveAll", Path: name, Err: syscall.EINVAL}
+-	}
+-	if err := checkPathEscapesLstat(r, name); err != nil {
+-		if err == syscall.ENOTDIR {
+-			// Some intermediate path component is not a directory.
+-			// RemoveAll treats this as success (since the target doesn't exist).
+-			return nil
+-		}
+-		return &PathError{Op: "RemoveAll", Path: name, Err: err}
+-	}
+-	if err := RemoveAll(joinPath(r.root.name, name)); err != nil {
+-		return &PathError{Op: "RemoveAll", Path: name, Err: underlyingError(err)}
+-	}
+-	return nil
+-}
+ 
+ func rootReadlink(r *Root, name string) (string, error) {
+ 	if err := checkPathEscapesLstat(r, name); err != nil {
+Index: src/os/root_openat.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/os/root_openat.go b/src/os/root_openat.go
+--- a/src/os/root_openat.go	(revision f56f1e23507e646c85243a71bde7b9629b2f970c)
++++ b/src/os/root_openat.go	(revision 0a52622d2331ff975fb0442617ec19bc352bb2ed)
+@@ -194,28 +194,6 @@
+ 	return nil
+ }
+ 
+-func rootRemoveAll(r *Root, name string) error {
+-	// Consistency with os.RemoveAll: Strip trailing /s from the name,
+-	// so RemoveAll("not_a_directory/") succeeds.
+-	for len(name) > 0 && IsPathSeparator(name[len(name)-1]) {
+-		name = name[:len(name)-1]
+-	}
+-	if endsWithDot(name) {
+-		// Consistency with os.RemoveAll: Return EINVAL when trying to remove .
+-		return &PathError{Op: "RemoveAll", Path: name, Err: syscall.EINVAL}
+-	}
+-	_, err := doInRoot(r, name, nil, func(parent sysfdType, name string) (struct{}, error) {
+-		return struct{}{}, removeAllFrom(parent, name)
+-	})
+-	if IsNotExist(err) {
+-		return nil
+-	}
+-	if err != nil {
+-		return &PathError{Op: "RemoveAll", Path: name, Err: underlyingError(err)}
+-	}
+-	return err
+-}
+-
+ func rootRename(r *Root, oldname, newname string) error {
+ 	_, err := doInRoot(r, oldname, nil, func(oldparent sysfdType, oldname string) (struct{}, error) {
+ 		_, err := doInRoot(r, newname, nil, func(newparent sysfdType, newname string) (struct{}, error) {
+Index: src/os/root_windows.go
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/src/os/root_windows.go b/src/os/root_windows.go
+--- a/src/os/root_windows.go	(revision f56f1e23507e646c85243a71bde7b9629b2f970c)
++++ b/src/os/root_windows.go	(revision 0a52622d2331ff975fb0442617ec19bc352bb2ed)
+@@ -402,3 +402,14 @@
+ 	}
+ 	return fi.Mode(), nil
+ }
++
++func checkPathEscapes(r *Root, name string) error {
++	if !filepathlite.IsLocal(name) {
++		return errPathEscapes
++	}
++	return nil
++}
++
++func checkPathEscapesLstat(r *Root, name string) error {
++	return checkPathEscapes(r, name)
++}

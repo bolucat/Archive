@@ -72,6 +72,10 @@ func (m *Manager) Now() (up int64, down int64) {
 	return m.uploadBlip.Load(), m.downloadBlip.Load()
 }
 
+func (m *Manager) Total() (up, down int64) {
+	return m.uploadTotal.Load(), m.downloadTotal.Load()
+}
+
 func (m *Manager) Memory() uint64 {
 	m.updateMemory()
 	return m.memory

@@ -239,6 +239,18 @@ func (lb *LoadBalance) MarshalJSON() ([]byte, error) {
 	})
 }
 
+func (lb *LoadBalance) Providers() []P.ProxyProvider {
+	return lb.providers
+}
+
+func (lb *LoadBalance) Proxies() []C.Proxy {
+	return lb.GetProxies(false)
+}
+
+func (lb *LoadBalance) Now() string {
+	return ""
+}
+
 func NewLoadBalance(option *GroupCommonOption, providers []P.ProxyProvider, strategy string) (lb *LoadBalance, err error) {
 	var strategyFn strategyFn
 	switch strategy {

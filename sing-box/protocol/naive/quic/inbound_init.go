@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-quic"
@@ -92,9 +93,8 @@ func init() {
 		}
 
 		quicListener, err := qtls.ListenEarly(udpConn, tlsConfig, &quic.Config{
-			MaxIncomingStreams:   1 << 60,
-			Allow0RTT:            true,
-			GetCongestionControl: congestionControl,
+			MaxIncomingStreams: 1 << 60,
+			Allow0RTT:          true,
 		})
 		if err != nil {
 			udpConn.Close()
@@ -103,6 +103,10 @@ func init() {
 
 		h3Server := &http3.Server{
 			Handler: handler,
+			ConnContext: func(ctx context.Context, conn *quic.Conn) context.Context {
+				conn.SetCongestionControl(congestionControl(conn))
+				return log.ContextWithNewID(ctx)
+			},
 		}
 
 		go func() {

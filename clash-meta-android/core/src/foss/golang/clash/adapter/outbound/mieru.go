@@ -8,9 +8,7 @@ import (
 	"strconv"
 	"sync"
 
-	CN "github.com/metacubex/mihomo/common/net"
-	"github.com/metacubex/mihomo/component/dialer"
-	"github.com/metacubex/mihomo/component/proxydialer"
+	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 
@@ -106,7 +104,7 @@ func (m *Mieru) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 	if err != nil {
 		return nil, fmt.Errorf("dial to %s failed: %w", metadata.UDPAddr(), err)
 	}
-	return newPacketConn(CN.NewThreadSafePacketConn(mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(c))), m), nil
+	return newPacketConn(N.NewThreadSafePacketConn(mierucommon.NewUDPAssociateWrapper(mierucommon.NewPacketOverStreamTunnel(c))), m), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
@@ -130,20 +128,12 @@ func (m *Mieru) ensureClientIsRunning() error {
 	}
 
 	// Create a dialer and add it to the client config, before starting the client.
-	var dialer C.Dialer = dialer.NewDialer(m.DialOptions()...)
-	var err error
-	if len(m.option.DialerProxy) > 0 {
-		dialer, err = proxydialer.NewByName(m.option.DialerProxy, dialer)
-		if err != nil {
-			return err
-		}
-	}
 	config, err := m.client.Load()
 	if err != nil {
 		return err
 	}
-	config.Dialer = dialer
-	config.PacketDialer = mieruPacketDialer{Dialer: dialer}
+	config.Dialer = m.dialer
+	config.PacketDialer = mieruPacketDialer{Dialer: m.dialer}
 	config.Resolver = mieruDNSResolver{prefer: m.prefer}
 	if err := m.client.Store(config); err != nil {
 		return err
@@ -177,16 +167,18 @@ func NewMieru(option MieruOption) (*Mieru, error) {
 		Base: &Base{
 			name:   option.Name,
 			addr:   addr,
-			iface:  option.Interface,
 			tp:     C.Mieru,
+			pdName: option.ProviderName,
 			udp:    option.UDP,
 			xudp:   false,
+			iface:  option.Interface,
 			rmark:  option.RoutingMark,
-			prefer: C.NewDNSPrefer(option.IPVersion),
+			prefer: option.IPVersion,
 		},
 		option: &option,
 		client: c,
 	}
+	outbound.dialer = option.NewDialer(outbound.DialOptions())
 	return outbound, nil
 }
 

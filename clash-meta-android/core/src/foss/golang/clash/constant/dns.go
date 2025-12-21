@@ -86,12 +86,17 @@ func (d DNSPrefer) String() string {
 	}
 }
 
-func NewDNSPrefer(prefer string) DNSPrefer {
-	if p, ok := dnsPreferMap[prefer]; ok {
-		return p
-	} else {
-		return DualStack
+func (d DNSPrefer) MarshalText() ([]byte, error) {
+	return []byte(d.String()), nil
+}
+
+func (d *DNSPrefer) UnmarshalText(data []byte) error {
+	p, exist := dnsPreferMap[strings.ToLower(string(data))]
+	if !exist {
+		p = DualStack
 	}
+	*d = p
+	return nil
 }
 
 // FilterModeMapping is a mapping for FilterMode enum
