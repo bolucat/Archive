@@ -128,6 +128,10 @@ func (g dnsFallbackFilter) MatchIp(ip netip.Addr) bool {
 		return false
 	}
 
+	if g.country == "lan" {
+		return !g.isLan(ip)
+	}
+
 	if geodata.GeodataMode() {
 		matcher, err := g.getIPMatcher()
 		if err != nil {
@@ -186,6 +190,11 @@ func (g *GEOIP) getIPMatcher() (router.IPMatcher, error) {
 }
 
 func (g *GEOIP) GetRecodeSize() int {
+	// skip pseudorule lan
+	if g.country == "lan" {
+		return 0
+	}
+
 	if matcher, err := g.GetIPMatcher(); err == nil {
 		return matcher.Count()
 	}
