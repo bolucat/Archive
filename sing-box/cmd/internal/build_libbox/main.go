@@ -121,6 +121,7 @@ func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 	args := []string{
 		"bind",
 		"-v",
+		"-o", config.OutputName,
 		"-target", bindTarget,
 		"-androidapi", strconv.Itoa(config.AndroidAPI),
 		"-javapkg=io.nekohasekai",
@@ -142,14 +143,6 @@ func buildAndroidVariant(config AndroidBuildConfig, bindTarget string) {
 	err := command.Run()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	const generatedName = "libbox.aar"
-	if config.OutputName != generatedName {
-		err = os.Rename(generatedName, config.OutputName)
-		if err != nil {
-			log.Fatal(E.Cause(err, "rename output"))
-		}
 	}
 
 	copyPath := filepath.Join("..", "sing-box-for-android", "app", "libs")
