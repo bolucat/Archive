@@ -16,7 +16,6 @@ import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.StreamSettingsBean
 import com.v2ray.ang.dto.V2rayConfig.RoutingBean.RulesBean
 import com.v2ray.ang.extension.isNotNullEmpty
-import com.v2ray.ang.fmt.CustomFmt
 import com.v2ray.ang.fmt.HttpFmt
 import com.v2ray.ang.fmt.ShadowsocksFmt
 import com.v2ray.ang.fmt.SocksFmt
@@ -178,7 +177,7 @@ object V2rayConfigManager {
                 if (subItem?.intelligentSelectionFilter.isNullOrEmpty() || config.remarks.isEmpty()) {
                     return@filter true
                 }
-                Regex(pattern = subItem?.intelligentSelectionFilter!!).containsMatchIn(input = config.remarks)
+                Regex(pattern = subItem.intelligentSelectionFilter.orEmpty()).containsMatchIn(input = config.remarks)
             }.toList()
 
         if (validConfigs.isEmpty()) {
@@ -1011,7 +1010,7 @@ object V2rayConfigManager {
 
             if (newHosts.containsKey(domain)) {
                 item.ensureSockopt().domainStrategy = "UseIP"
-                item.ensureSockopt().happyEyeballs = StreamSettingsBean.happyEyeballsBean(
+                item.ensureSockopt().happyEyeballs = StreamSettingsBean.HappyEyeballsBean(
                     prioritizeIPv6 = preferIpv6,
                     interleave = 2
                 )
@@ -1022,7 +1021,7 @@ object V2rayConfigManager {
             if (resolvedIps.isNullOrEmpty()) continue
 
             item.ensureSockopt().domainStrategy = "UseIP"
-            item.ensureSockopt().happyEyeballs = StreamSettingsBean.happyEyeballsBean(
+            item.ensureSockopt().happyEyeballs = StreamSettingsBean.HappyEyeballsBean(
                 prioritizeIPv6 = preferIpv6,
                 interleave = 2
             )
