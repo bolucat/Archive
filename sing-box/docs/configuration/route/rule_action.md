@@ -65,7 +65,8 @@ See `route-options` fields below.
 `bypass` bypasses sing-box at the kernel level for auto redirect connections in pre-match.
 
 For non-auto-redirect connections and already established connections,
-the behavior is the same as `route` if `outbound` is specified.
+if `outbound` is specified, the behavior is the same as `route`;
+otherwise, the rule will be skipped.
 
 #### outbound
 

@@ -78,11 +78,11 @@
             android:summary="1500"
             android:title="@string/title_pref_vpn_mtu" />
 
-        <CheckBoxPreference
-            android:defaultValue="true"
-            android:key="pref_use_hev_tunnel"
-            android:summary="@string/summary_pref_use_hev_tunnel"
-            android:title="@string/title_pref_use_hev_tunnel" />
+<!--        <CheckBoxPreference-->
+<!--            android:defaultValue="true"-->
+<!--            android:key="pref_use_hev_tunnel"-->
+<!--            android:summary="@string/summary_pref_use_hev_tunnel"-->
+<!--            android:title="@string/title_pref_use_hev_tunnel" />-->
 
         <ListPreference
             android:defaultValue="warn"
@@ -255,14 +255,6 @@
             android:key="pref_outbound_domain_resolve_method"
             android:summary="%s"
             android:title="@string/title_outbound_domain_resolve_method" />
-
-        <ListPreference
-            android:defaultValue="0"
-            android:entries="@array/intelligent_selection_method"
-            android:entryValues="@array/intelligent_selection_method_value"
-            android:key="pref_intelligent_selection_method"
-            android:summary="%s"
-            android:title="@string/title_intelligent_selection_method" />
 
     </PreferenceCategory>
 

@@ -299,7 +299,8 @@ func preHandleMetadata(metadata *C.Metadata) error {
 		if exist {
 			metadata.Host = host
 			metadata.DNSMode = C.DNSMapping
-			if resolver.FakeIPEnabled() {
+			if resolver.IsFakeIP(metadata.DstIP) {
+				// only clear dstIP if it is confirmed to be a fake IP
 				metadata.DstIP = netip.Addr{}
 				metadata.DNSMode = C.DNSFakeIP
 			} else if node, ok := resolver.DefaultHosts.Search(host, false); ok {

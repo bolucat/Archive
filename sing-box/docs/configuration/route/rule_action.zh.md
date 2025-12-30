@@ -60,7 +60,7 @@ icon: material/new-box
 
 `bypass` 在预匹配中为 auto redirect 连接在内核层面绕过 sing-box。
 
-对于非 auto redirect 连接和已建立的连接，如果指定了 `outbound`，行为与 `route` 相同。
+对于非 auto redirect 连接和已建立的连接，如果指定了 `outbound`，行为与 `route` 相同；否则规则将被跳过。
 
 #### outbound
 

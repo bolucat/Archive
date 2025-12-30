@@ -5,6 +5,7 @@ icon: material/alert-decagram
 #### 1.13.0-alpha.35
 
 * Add pre-match support for `auto_redirect` **1**
+* Fixes and improvements
 
 **1**:
 
