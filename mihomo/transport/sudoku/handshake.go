@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -23,12 +24,17 @@ type SessionType int
 const (
 	SessionTypeTCP SessionType = iota
 	SessionTypeUoT
+	SessionTypeMultiplex
 )
 
 type ServerSession struct {
 	Conn   net.Conn
 	Type   SessionType
 	Target string
+
+	// UserHash is a stable per-key identifier derived from the handshake payload.
+	// It is primarily useful for debugging / user attribution when table rotation is enabled.
+	UserHash string
 }
 
 type bufferedConn struct {
@@ -147,7 +153,14 @@ func buildServerObfsConn(raw net.Conn, cfg *ProtocolConfig, table *sudoku.Table,
 func buildHandshakePayload(key string) [16]byte {
 	var payload [16]byte
 	binary.BigEndian.PutUint64(payload[:8], uint64(time.Now().Unix()))
-	hash := sha256.Sum256([]byte(key))
+	// Hash the decoded HEX bytes of the key, not the HEX string itself.
+	// This ensures the user hash is computed on the actual key bytes.
+	keyBytes, err := hex.DecodeString(key)
+	if err != nil {
+		// Fallback: if key is not valid HEX (e.g., a UUID or plain string), hash the string bytes
+		keyBytes = []byte(key)
+	}
+	hash := sha256.Sum256(keyBytes)
 	copy(payload[8:], hash[:8])
 	return payload
 }
@@ -216,7 +229,7 @@ func ClientHandshakeWithOptions(rawConn net.Conn, cfg *ProtocolConfig, opt Clien
 
 	handshake := buildHandshakePayload(cfg.Key)
 	if len(cfg.tableCandidates()) > 1 {
-		handshake[15] = tableID
+		handshake[8] = tableID
 	}
 	if _, err := cConn.Write(handshake[:]); err != nil {
 		cConn.Close()
@@ -280,6 +293,7 @@ func ServerHandshake(rawConn net.Conn, cfg *ProtocolConfig) (*ServerSession, err
 		return nil, fmt.Errorf("timestamp skew detected")
 	}
 
+	userHash := userHashFromHandshake(handshakeBuf[:])
 	sConn.StopRecording()
 
 	modeBuf := []byte{0}
@@ -298,6 +312,11 @@ func ServerHandshake(rawConn net.Conn, cfg *ProtocolConfig) (*ServerSession, err
 		return nil, fmt.Errorf("read first byte failed: %w", err)
 	}
 
+	if firstByte[0] == MultiplexMagicByte {
+		rawConn.SetReadDeadline(time.Time{})
+		return &ServerSession{Conn: cConn, Type: SessionTypeMultiplex, UserHash: userHash}, nil
+	}
+
 	if firstByte[0] == UoTMagicByte {
 		version := make([]byte, 1)
 		if _, err := io.ReadFull(cConn, version); err != nil {
@@ -309,7 +328,7 @@ func ServerHandshake(rawConn net.Conn, cfg *ProtocolConfig) (*ServerSession, err
 			return nil, fmt.Errorf("unsupported uot version: %d", version[0])
 		}
 		rawConn.SetReadDeadline(time.Time{})
-		return &ServerSession{Conn: cConn, Type: SessionTypeUoT}, nil
+		return &ServerSession{Conn: cConn, Type: SessionTypeUoT, UserHash: userHash}, nil
 	}
 
 	prefixed := &preBufferedConn{Conn: cConn, buf: firstByte}
@@ -322,9 +341,10 @@ func ServerHandshake(rawConn net.Conn, cfg *ProtocolConfig) (*ServerSession, err
 	rawConn.SetReadDeadline(time.Time{})
 	log.Debugln("[Sudoku] incoming TCP session target: %s", target)
 	return &ServerSession{
-		Conn:   prefixed,
-		Type:   SessionTypeTCP,
-		Target: target,
+		Conn:     prefixed,
+		Type:     SessionTypeTCP,
+		Target:   target,
+		UserHash: userHash,
 	}, nil
 }
 
@@ -363,4 +383,12 @@ func randomByte() byte {
 		return b[0]
 	}
 	return byte(time.Now().UnixNano())
+}
+
+func userHashFromHandshake(handshakeBuf []byte) string {
+	if len(handshakeBuf) < 16 {
+		return ""
+	}
+	// handshake[8] may be a table ID when table rotation is enabled; use [9:16] as stable user hash bytes.
+	return hex.EncodeToString(handshakeBuf[9:16])
 }
