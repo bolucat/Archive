@@ -112,7 +112,9 @@ The [NodePassProject](https://github.com/NodePassProject) organization develops 
 
 ## 📄 License
 
-Project **NodePass** is licensed under the [BSD 3-Clause License](LICENSE).
+- Project **NodePass** is licensed under the [BSD 3-Clause License](LICENSE), which applies to the source code only.
+
+- The **NodePass** name, logo, and official project identity are not covered by the code license and may not be used without explicit authorization.
 
 ## ⚖️ Disclaimer
 
@@ -145,11 +147,6 @@ This project is provided "as is" without any warranties. Users assume all risks 
     </td>
     <td width="240" align="center">
       <a href="https://vps.town"><img src="https://cdn.yobc.de/assets/vpstown.png"></a>
-    </td>
-  </tr>
-  <tr>
-    <td width="240" align="center">
-      <a href="https://evolution-host.com/vps-hosting.php"><img src="https://cdn.yobc.de/assets/evohost.png"></a>
     </td>
   </tr>
 </table>

@@ -112,7 +112,9 @@ nodepass "master://:10101/api?log=debug&tls=1"
 
 ## 📄 许可协议
 
-**NodePass** 项目根据 [BSD 3-Clause 许可证](LICENSE)授权。
+- **NodePass** 项目根据 [BSD 3-Clause 许可证](LICENSE)授权，该许可仅适用于源代码本身。
+
+- **NodePass** 项目名称、Logo 及官方身份标识不包含在代码许可中，未经明确授权不得使用。
 
 ## ⚖️ 免责声明
 
@@ -147,13 +149,8 @@ nodepass "master://:10101/api?log=debug&tls=1"
       <a href="https://vps.town"><img src="https://cdn.yobc.de/assets/vpstown.png"></a>
     </td>
   </tr>
-  <tr>
-    <td width="240" align="center">
-      <a href="https://evolution-host.com/vps-hosting.php"><img src="https://cdn.yobc.de/assets/evohost.png"></a>
-    </td>
-  </tr>
 </table>
 
-## ⭐ Star趋势
+## ⭐ Star 趋势
 
 [![Stargazers over time](https://starchart.cc/yosebyte/nodepass.svg?variant=adaptive)](https://starchart.cc/yosebyte/nodepass)

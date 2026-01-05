@@ -14,9 +14,13 @@ on:
 env:
   TZ: Asia/Shanghai
   passwall2: ${{ github.repository }}
-  packages: xiaorouji/openwrt-passwall-packages
+  packages: Openwrt-Passwall/openwrt-passwall-packages
   package_names: "chinadns-ng geoview hysteria naiveproxy tcping tuic-client shadowsocks-rust shadowsocksr-libev simple-obfs sing-box v2ray-geodata v2ray-plugin xray-core"
   package_release: "chinadns-ng geoview hysteria naiveproxy tcping tuic-client shadowsocks-rust shadowsocksr-libev simple-obfs sing-box v2ray-geoip v2ray-geosite v2ray-plugin xray-core"
+
+permissions:
+  contents: write
+  actions: write
 
 jobs:
   job_check:
@@ -137,7 +141,7 @@ jobs:
               "feeds.conf.default"
 
           cat > feeds.tmp <<'EOF'
-          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
+          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
           src-git passwall2 https://github.com/${{ env.passwall2 }}.git;${{ github.ref_name }}
           EOF
           cat feeds.conf.default >> feeds.tmp
@@ -401,7 +405,7 @@ jobs:
               "feeds.conf.default"
 
           cat > feeds.tmp <<'EOF'
-          src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main
+          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
           src-git passwall2 https://github.com/${{ env.passwall2 }}.git;${{ github.ref_name }}
           EOF
           cat feeds.conf.default >> feeds.tmp

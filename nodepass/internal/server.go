@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NodePassProject/cert"
 	"github.com/NodePassProject/logs"
 	"github.com/NodePassProject/nph2"
 	"github.com/NodePassProject/npws"
@@ -37,6 +38,7 @@ func NewServer(parsedURL *url.URL, tlsCode string, tlsConfig *tls.Config, logger
 			logger:     logger,
 			signalChan: make(chan Signal, semaphoreLimit),
 			writeChan:  make(chan []byte, semaphoreLimit),
+			verifyChan: make(chan struct{}),
 			tcpBufferPool: &sync.Pool{
 				New: func() any {
 					buf := make([]byte, tcpDataBufSize)
@@ -213,10 +215,6 @@ func (s *Server) initTunnelPool() error {
 
 // tunnelHandshake 与客户端进行HTTP握手
 func (s *Server) tunnelHandshake() error {
-	if s.tlsCode == "1" || s.tlsCode == "2" {
-		s.verifyChan = make(chan struct{})
-	}
-
 	var clientIP string
 	done := make(chan struct{})
 
@@ -270,6 +268,17 @@ func (s *Server) tunnelHandshake() error {
 	case <-done:
 		server.Close()
 		s.clientIP = clientIP
+
+		if s.tlsCode == "1" {
+			if newTLSConfig, err := cert.NewTLSConfig(""); err == nil {
+				newTLSConfig.MinVersion = tls.VersionTLS13
+				s.tlsConfig = newTLSConfig
+				s.logger.Info("TLS code-1: RAM cert regenerated with TLS 1.3")
+			} else {
+				s.logger.Warn("Failed to regenerate RAM cert: %v", err)
+			}
+		}
+
 		s.tunnelListener, _ = net.ListenTCP("tcp", s.tunnelTCPAddr)
 		return nil
 	case <-s.ctx.Done():

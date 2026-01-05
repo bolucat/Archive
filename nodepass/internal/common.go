@@ -1030,8 +1030,8 @@ func (c *Common) setControlConn() error {
 		}
 	}()
 
-	if c.tlsCode == "1" || c.tlsCode == "2" {
-		c.logger.Info("TLS certificate fingerprint verifying...")
+	if c.tlsCode == "1" {
+		c.logger.Info("TLS code-1: RAM cert fingerprint verifying...")
 	}
 	return nil
 }
@@ -1107,11 +1107,11 @@ func (c *Common) healthCheck() error {
 	ticker := time.NewTicker(reportInterval)
 	defer ticker.Stop()
 
-	if c.tlsCode == "1" || c.tlsCode == "2" {
+	if c.tlsCode == "1" {
 		go func() {
 			select {
 			case <-c.ctx.Done():
-			case <-ticker.C:
+			case <-time.After(reportInterval):
 				c.incomingVerify()
 			}
 		}()
@@ -1203,7 +1203,7 @@ func (c *Common) incomingVerify() {
 		c.writeChan <- c.encode(signalData)
 	}
 
-	c.logger.Debug("TLS verify signal: cid %v -> %v", id, c.controlConn.RemoteAddr())
+	c.logger.Debug("TLS code-1: verify signal: cid %v -> %v", id, c.controlConn.RemoteAddr())
 }
 
 // commonLoop 共用处理循环
@@ -1211,7 +1211,7 @@ func (c *Common) commonLoop() {
 	for c.ctx.Err() == nil {
 		// 等待连接池准备就绪
 		if c.tunnelPool.Ready() {
-			if c.verifyChan != nil {
+			if c.tlsCode == "1" {
 				select {
 				case <-c.verifyChan:
 					// 证书验证完成
@@ -1475,7 +1475,7 @@ func (c *Common) commonOnce() error {
 			// 处理信号
 			switch signal.ActionType {
 			case "verify":
-				if c.tlsCode == "1" || c.tlsCode == "2" {
+				if c.tlsCode == "1" {
 					go c.outgoingVerify(signal)
 				}
 			case "tcp":
@@ -1594,12 +1594,10 @@ func (c *Common) outgoingVerify(signal Signal) {
 		return
 	}
 
-	c.logger.Info("TLS certificate fingerprint verified: %v", fingerPrint)
+	c.logger.Info("TLS code-1: RAM cert fingerprint verified: %v", fingerPrint)
 
 	// 通知验证完成
-	if c.verifyChan != nil {
-		c.verifyChan <- struct{}{}
-	}
+	c.verifyChan <- struct{}{}
 }
 
 // commonTCPOnce 共用处理单个TCP请求
