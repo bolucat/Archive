@@ -2,6 +2,21 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.0-beta.1
+
+* Add system interface support for Tailscale endpoint **1**
+* Fixes and improvements
+
+**1**:
+
+Tailscale endpoint can now create a system TUN interface to handle traffic directly.
+
+See [Tailscale endpoint](/configuration/endpoint/tailscale/#system_interface).
+
+#### 1.12.15
+
+* Fixes and improvements
+
 #### 1.13.0-alpha.36
 
 * Downgrade quic-go to v0.57.1
