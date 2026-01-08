@@ -24,9 +24,10 @@ type PlatformInterface interface {
 }
 
 type ConnectionOwner struct {
-	UserId      int32
-	UserName    string
-	ProcessPath string
+	UserId             int32
+	UserName           string
+	ProcessPath        string
+	AndroidPackageName string
 }
 
 type InterfaceUpdateListener interface {
