@@ -16,6 +16,14 @@
             {{ t("settings.singleClick") }}
           </p>
           <p>
+            <input
+              type="checkbox"
+              name="redirectAfterCopyMove"
+              v-model="redirectAfterCopyMove"
+            />
+            {{ t("settings.redirectAfterCopyMove") }}
+          </p>
+          <p>
             <input type="checkbox" name="dateFormat" v-model="dateFormat" />
             {{ t("settings.setDateFormat") }}
           </p>
@@ -44,7 +52,7 @@
       </form>
     </div>
 
-    <div class="column">
+    <div v-if="!noAuth" class="column">
       <form
         class="card"
         v-if="!authStore.user?.lockPassword"
@@ -96,11 +104,12 @@
 <script setup lang="ts">
 import { useAuthStore } from "@/stores/auth";
 import { useLayoutStore } from "@/stores/layout";
-import { users as api, settings } from "@/api";
+import { users as api } from "@/api";
 import AceEditorTheme from "@/components/settings/AceEditorTheme.vue";
 import Languages from "@/components/settings/Languages.vue";
 import { computed, inject, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { authMethod, noAuth } from "@/utils/constants";
 
 const layoutStore = useLayoutStore();
 const authStore = useAuthStore();
@@ -115,6 +124,7 @@ const currentPassword = ref<string>("");
 const isCurrentPasswordRequired = ref<boolean>(false);
 const hideDotfiles = ref<boolean>(false);
 const singleClick = ref<boolean>(false);
+const redirectAfterCopyMove = ref<boolean>(false);
 const dateFormat = ref<boolean>(false);
 const locale = ref<string>("");
 const aceEditorTheme = ref<string>("");
@@ -139,10 +149,10 @@ onMounted(async () => {
   locale.value = authStore.user.locale;
   hideDotfiles.value = authStore.user.hideDotfiles;
   singleClick.value = authStore.user.singleClick;
+  redirectAfterCopyMove.value = authStore.user.redirectAfterCopyMove;
   dateFormat.value = authStore.user.dateFormat;
   aceEditorTheme.value = authStore.user.aceEditorTheme;
   layoutStore.loading = false;
-  const { authMethod } = await settings.get();
   isCurrentPasswordRequired.value = authMethod == "json";
 
   return true;
@@ -187,6 +197,7 @@ const updateSettings = async (event: Event) => {
       locale: locale.value,
       hideDotfiles: hideDotfiles.value,
       singleClick: singleClick.value,
+      redirectAfterCopyMove: redirectAfterCopyMove.value,
       dateFormat: dateFormat.value,
       aceEditorTheme: aceEditorTheme.value,
     };
@@ -195,6 +206,7 @@ const updateSettings = async (event: Event) => {
       "locale",
       "hideDotfiles",
       "singleClick",
+      "redirectAfterCopyMove",
       "dateFormat",
       "aceEditorTheme",
     ]);
