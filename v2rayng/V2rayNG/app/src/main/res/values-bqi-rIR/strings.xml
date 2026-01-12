@@ -153,6 +153,11 @@
     <string name="title_pref_is_booted">منپیز خوتکار مجال ر ونی</string>
     <string name="summary_pref_is_booted">مجال ر وندن، خوساخوس و سرور پسند بیڌه منپیز ابۊ که گاشڌ نا مووفق بۊ.</string>
 
+    <string name="title_pref_auto_remove_invalid_after_test">Auto delete invalid config after testing</string>
+    <string name="summary_pref_auto_remove_invalid_after_test">Test results may not be accurate; deleted config cannot be recovered.</string>
+    <string name="title_pref_auto_sort_after_test">Auto sort after testing</string>
+    <string name="summary_pref_auto_sort_after_test">Test results may not be accurate;</string>
+
     <string name="title_mux_settings">سامووا Mux</string>
     <string name="title_pref_mux_enabled">ر وندن Mux</string>
     <string name="summary_pref_mux_enabled">زل تر، ٱما گاشڌ منپیز زی قت بۊ\nمخزن ترافیک TCP وا 8 منپیز پؽش فرز، بارت دؽوۉداری UDP وو QUIC ن ای لم سفارشی کۊنین.</string>
@@ -252,8 +257,8 @@
     <string name="title_language">زووݩ</string>
     <string name="title_ui_settings">سامووا رابت منتوری</string>
     <string name="title_pref_ui_mode_night">سامووا هالت رابت منتوری</string>
-    <string name="title_pref_use_hev_tunnel">فعال کردن ویژیی نۊ TUN</string>
-    <string name="summary_pref_use_hev_tunnel">ٱر ک فعال بۊ، TUN ایا hev-socks5-tunnel ن و کار اگره؛ ٱندی ز badvpn-tun2socks.</string>
+    <string name="title_pref_use_hev_tunnel">Enable Hev TUN Feature</string>
+    <string name="summary_pref_use_hev_tunnel">When enabled, TUN will use hev-socks5-tunnel; otherwise, it will use xray-core.</string>
     <string name="title_pref_hev_tunnel_loglevel">Hev Tun سئت گوزارشا</string>
     <string name="title_pref_hev_tunnel_rw_timeout">زمووݩ مندیر بیڌن خوندن/هؽل کردن Hev Tun (سانیه) (پؽش فرز tcp,udp 300،60)</string>
 

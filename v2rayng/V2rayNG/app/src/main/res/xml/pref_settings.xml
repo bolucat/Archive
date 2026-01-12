@@ -100,11 +100,11 @@
             android:summary="1500"
             android:title="@string/title_pref_vpn_mtu" />
 
-<!--        <CheckBoxPreference-->
-<!--            android:defaultValue="true"-->
-<!--            android:key="pref_use_hev_tunnel"-->
-<!--            android:summary="@string/summary_pref_use_hev_tunnel"-->
-<!--            android:title="@string/title_pref_use_hev_tunnel" />-->
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="pref_use_hev_tunnel_v2"
+            android:summary="@string/summary_pref_use_hev_tunnel"
+            android:title="@string/title_pref_use_hev_tunnel" />
 
         <ListPreference
             android:defaultValue="warn"
@@ -260,6 +260,18 @@
             android:key="pref_is_booted"
             android:summary="@string/summary_pref_is_booted"
             android:title="@string/title_pref_is_booted" />
+
+        <CheckBoxPreference
+            android:key="pref_auto_remove_invalid_after_test"
+            android:defaultValue="false"
+            android:summary="@string/summary_pref_auto_remove_invalid_after_test"
+            android:title="@string/title_pref_auto_remove_invalid_after_test" />
+
+        <CheckBoxPreference
+            android:key="pref_auto_sort_after_test"
+            android:defaultValue="false"
+            android:summary="@string/summary_pref_auto_sort_after_test"
+            android:title="@string/title_pref_auto_sort_after_test" />
 
         <EditTextPreference
             android:key="pref_delay_test_url"

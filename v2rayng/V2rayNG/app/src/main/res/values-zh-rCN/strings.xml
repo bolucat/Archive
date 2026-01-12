@@ -150,6 +150,11 @@
     <string name="title_pref_is_booted">开机时自动连接</string>
     <string name="summary_pref_is_booted">开机时自动连接选择的服务器，可能会不成功</string>
 
+    <string name="title_pref_auto_remove_invalid_after_test">测试后自动删除无效配置</string>
+    <string name="summary_pref_auto_remove_invalid_after_test">测试结果可能不准确；已删除的配置无法恢复。</string>
+    <string name="title_pref_auto_sort_after_test">测试后自动排序</string>
+    <string name="summary_pref_auto_sort_after_test">测试结果可能不准确；</string>
+
     <string name="title_mux_settings">Mux 多路复用 设置</string>
     <string name="title_pref_mux_enabled">启用 Mux 多路复用</string>
     <string name="summary_pref_mux_enabled">减低延时，但可能会断流，建议不要启用。\nTCP，UDP 及 QUIC 流量处理方式下方可选。</string>
@@ -249,8 +254,8 @@
     <string name="title_language">语言</string>
     <string name="title_ui_settings">用户界面设置</string>
     <string name="title_pref_ui_mode_night">界面颜色设置</string>
-    <string name="title_pref_use_hev_tunnel">启用新的 TUN 功能</string>
-    <string name="summary_pref_use_hev_tunnel">选择启用后 TUN 将使用 hev-socks5-tunnel 否则使用 badvpn-tun2socks</string>
+    <string name="title_pref_use_hev_tunnel">启用 Hev TUN 功能</string>
+    <string name="summary_pref_use_hev_tunnel">选择启用后 TUN 将使用 hev-socks5-tunnel 否则使用 xray-core</string>
     <string name="title_pref_hev_tunnel_loglevel">HevTun 日志级别</string>
     <string name="title_pref_hev_tunnel_rw_timeout">HevTun 读写超时(秒) (tcp,udp 默认 300,60)</string>
 

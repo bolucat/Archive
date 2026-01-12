@@ -379,6 +379,14 @@ object SettingsManager {
     }
 
     /**
+     * Check if HEV TUN is being used.
+     * @return True if HEV TUN is used, false otherwise.
+     */
+    fun isUsingHevTun(): Boolean {
+        return MmkvManager.decodeSettingsBool(AppConfig.PREF_USE_HEV_TUNNEL, true)
+    }
+
+    /**
      * Ensure default settings are present in MMKV.
      */
     fun ensureDefaultSettings() {
