@@ -14,9 +14,9 @@ require (
 
 require (
 	github.com/coder/websocket v1.8.14 // indirect
-	github.com/quic-go/quic-go v0.58.0 // indirect
-	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	github.com/quic-go/quic-go v0.59.0 // indirect
+	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 )

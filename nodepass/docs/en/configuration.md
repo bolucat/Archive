@@ -692,11 +692,46 @@ nodepass "client://127.0.0.1:1080/app1.local:8080,app2.local:8080?mode=1"
 
 ### Rotation Strategy
 
-NodePass employs a Round-Robin algorithm that combines failover and load balancing features:
+NodePass provides three load balancing strategies controlled by the `lbs` parameter:
 
+**Strategy 0 (Round-Robin):**
 - **Load Balancing**: After each successful connection establishment, automatically switches to the next target address for even traffic distribution
 - **Failover**: When a connection to an address fails, immediately tries the next address to ensure service availability
 - **Automatic Recovery**: Failed addresses are retried in subsequent rotation cycles and automatically resume receiving traffic after recovery
+
+**Strategy 1 (Optimal-Latency):**
+- **Intelligent Routing**: Periodically probes targets and automatically selects the one with the lowest latency for connections.
+- **Sticky Selection**: Once the optimal target is chosen, subsequent connections within the cycle preferentially use that target.
+- **Automatic Filtering**: Unhealthy targets are automatically excluded from routing and re-evaluated only after recovery.
+- **Failover**: If the optimal target fails, other targets are tried in order to ensure successful connections.
+
+**Strategy 2 (Primary-Backup):**
+- **Priority-Based**: Always attempts to connect to the first address (primary); only uses backups when primary fails
+- **Failover**: On primary failure, switches to the next available backup address
+- **Scheduled Fallback**: Automatically attempts to return to primary address at fixed intervals
+- **Intelligent Degradation**: On fallback failure, automatically uses the highest available priority address
+
+Example configurations:
+
+```bash
+# Round-robin (lbs=0, cycles through targets on each connection)
+nodepass "server://0.0.0.0:10101/backend1:8080,backend2:8080,backend3:8080?lbs=0"
+
+# Optimal-latency (lbs=1, automatically routes to fastest target)
+nodepass "server://0.0.0.0:10101/backend1:8080,backend2:8080,backend3:8080?lbs=1"
+
+# Primary-backup (lbs=2, primary priority and scheduled fallback)
+nodepass "server://0.0.0.0:10101/primary:8080,backup1:8080,backup2:8080?lbs=2"
+
+# Custom fallback interval of 2 minutes
+export NP_FALLBACK_INTERVAL=2m
+nodepass "server://0.0.0.0:10101/main.com:443,spare1.com:443,spare2.com:443?lbs=2"
+```
+
+Choose the appropriate strategy based on your needs:
+- **Use lbs=0** for even load distribution across all backends
+- **Use lbs=1** for intelligent routing to the lowest latency target
+- **Use lbs=2** for primary-backup scenarios with automatic failback
 
 ### Use Cases
 
@@ -743,6 +778,7 @@ NodePass allows flexible configuration via URL query parameters. The following t
 | `key` | Custom key path | N/A | File path | O | X | O |
 | `dns` | DNS cache TTL | `5m` | `30s`/`5m`/`1h` etc. | O | O | X |
 | `sni` | Server Name Indication | `none` | Hostname | X | O | X |
+| `lbs` | Load balancing strategy | `0` | `0`/`1`/`2` | O | O | X |
 | `min` | Minimum pool capacity | `64` | Positive integer | X | O | X |
 | `max` | Maximum pool capacity | `1024` | Positive integer | O | X | X |
 | `mode` | Run mode control | `0` | `0`/`1`/`2` | O | O | X |
@@ -787,6 +823,7 @@ NodePass behavior can be fine-tuned using environment variables. Below is the co
 | `NP_MIN_POOL_INTERVAL` | Minimum interval between connection creations | 100ms | `export NP_MIN_POOL_INTERVAL=200ms` |
 | `NP_MAX_POOL_INTERVAL` | Maximum interval between connection creations | 1s | `export NP_MAX_POOL_INTERVAL=3s` |
 | `NP_REPORT_INTERVAL` | Interval for health check reports | 5s | `export NP_REPORT_INTERVAL=10s` |
+| `NP_FALLBACK_INTERVAL` | Primary-backup fallback interval | 5m | `export NP_FALLBACK_INTERVAL=2m` |
 | `NP_SERVICE_COOLDOWN` | Cooldown period before restart attempts | 3s | `export NP_SERVICE_COOLDOWN=5s` |
 | `NP_SHUTDOWN_TIMEOUT` | Timeout for graceful shutdown | 5s | `export NP_SHUTDOWN_TIMEOUT=10s` |
 | `NP_RELOAD_INTERVAL` | Interval for cert reload/state backup | 1h | `export NP_RELOAD_INTERVAL=30m` |

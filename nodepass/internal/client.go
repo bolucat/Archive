@@ -58,8 +58,8 @@ func NewClient(parsedURL *url.URL, logger *logs.Logger) (*Client, error) {
 // Run 管理客户端生命周期
 func (c *Client) Run() {
 	logInfo := func(prefix string) {
-		c.logger.Info("%v: client://%v@%v/%v?dns=%v&sni=%v&min=%v&mode=%v&dial=%v&read=%v&rate=%v&slot=%v&proxy=%v&block=%v&notcp=%v&noudp=%v",
-			prefix, c.tunnelKey, c.tunnelTCPAddr, c.getTargetAddrsString(), c.dnsCacheTTL, c.serverName, c.minPoolCapacity,
+		c.logger.Info("%v: client://%v@%v/%v?dns=%v&sni=%v&lbs=%v&min=%v&mode=%v&dial=%v&read=%v&rate=%v&slot=%v&proxy=%v&block=%v&notcp=%v&noudp=%v",
+			prefix, c.tunnelKey, c.tunnelTCPAddr, c.getTargetAddrsString(), c.dnsCacheTTL, c.serverName, c.lbStrategy, c.minPoolCapacity,
 			c.runMode, c.dialerIP, c.readTimeout, c.rateLimit/125000, c.slotLimit,
 			c.proxyProtocol, c.blockProtocol, c.disableTCP, c.disableUDP)
 	}

@@ -90,6 +90,8 @@ Explore the complete documentation to learn more about NodePass:
 - [How It Works](/docs/en/how-it-works.md)
 - [Troubleshooting](/docs/en/troubleshooting.md)
 
+See also [DeepWiki](https://deepwiki.com/yosebyte/nodepass) for AI-powered documentation.
+
 ## 🌱 Ecosystem
 
 The [NodePassProject](https://github.com/NodePassProject) organization develops various frontend applications and auxiliary tools to enhance the NodePass experience:

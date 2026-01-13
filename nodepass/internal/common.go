@@ -52,6 +52,9 @@ type Common struct {
 	targetTCPAddrs   []*net.TCPAddr     // 目标TCP地址组
 	targetUDPAddrs   []*net.UDPAddr     // 目标UDP地址组
 	targetIdx        uint64             // 目标地址索引
+	lastFallback     uint64             // 上次回落时间
+	bestLatency      int32              // 最佳延迟毫秒
+	lbStrategy       string             // 负载均衡策略
 	targetListener   *net.TCPListener   // 目标监听器
 	tunnelListener   net.Listener       // 隧道监听器
 	controlConn      net.Conn           // 隧道控制连接
@@ -144,6 +147,7 @@ var (
 	minPoolInterval  = getEnvAsDuration("NP_MIN_POOL_INTERVAL", 100*time.Millisecond) // 最小池间隔
 	maxPoolInterval  = getEnvAsDuration("NP_MAX_POOL_INTERVAL", 1*time.Second)        // 最大池间隔
 	reportInterval   = getEnvAsDuration("NP_REPORT_INTERVAL", 5*time.Second)          // 报告间隔
+	fallbackInterval = getEnvAsDuration("NP_FALLBACK_INTERVAL", 5*time.Minute)        // 回落间隔
 	serviceCooldown  = getEnvAsDuration("NP_SERVICE_COOLDOWN", 3*time.Second)         // 服务冷却时间
 	shutdownTimeout  = getEnvAsDuration("NP_SHUTDOWN_TIMEOUT", 5*time.Second)         // 关闭超时
 	ReloadInterval   = getEnvAsDuration("NP_RELOAD_INTERVAL", 1*time.Hour)            // 重载间隔
@@ -156,6 +160,7 @@ const (
 	defaultMinPool       = 64                    // 默认最小池容量
 	defaultMaxPool       = 1024                  // 默认最大池容量
 	defaultServerName    = "none"                // 默认服务器名称
+	defaultLBStrategy    = "0"                   // 默认负载均衡策略
 	defaultRunMode       = "0"                   // 默认运行模式
 	defaultPoolType      = "0"                   // 默认连接池类型
 	defaultDialerIP      = "auto"                // 默认拨号本地IP
@@ -416,6 +421,49 @@ func (c *Common) nextTargetIdx() int {
 	return int((atomic.AddUint64(&c.targetIdx, 1) - 1) % uint64(len(c.targetTCPAddrs)))
 }
 
+// probeBestTarget 探测并更新最优目标
+func (c *Common) probeBestTarget() int {
+	count := len(c.targetTCPAddrs)
+	if count == 0 {
+		return 0
+	}
+
+	// 并发探测
+	type result struct{ idx, lat int }
+	results := make(chan result, count)
+	for i := range count {
+		go func(idx int) { results <- result{idx, c.tcpPing(idx)} }(i)
+	}
+
+	// 收集结果
+	bestIdx, bestLat := 0, 0
+	for range count {
+		if r := <-results; r.lat > 0 && (bestLat == 0 || r.lat < bestLat) {
+			bestIdx, bestLat = r.idx, r.lat
+		}
+	}
+
+	// 更新最优
+	if bestLat > 0 {
+		atomic.StoreUint64(&c.targetIdx, uint64(bestIdx))
+		atomic.StoreInt32(&c.bestLatency, int32(bestLat))
+	}
+	return bestLat
+}
+
+// tcpPing 探测目标延迟毫秒
+func (c *Common) tcpPing(idx int) int {
+	addr, _ := c.resolveTarget("tcp", idx)
+	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+		start := time.Now()
+		if conn, err := net.DialTimeout("tcp", tcpAddr.String(), reportInterval); err == nil {
+			conn.Close()
+			return int(time.Since(start).Milliseconds())
+		}
+	}
+	return 0
+}
+
 // dialWithRotation 轮询拨号到目标地址组
 func (c *Common) dialWithRotation(network string, timeout time.Duration) (net.Conn, error) {
 	addrCount := len(c.targetAddrs)
@@ -460,16 +508,38 @@ func (c *Common) dialWithRotation(network string, timeout time.Duration) (net.Co
 		return nil, fmt.Errorf("dialWithRotation: invalid target address")
 	}
 
-	// 多目标地址：负载均衡 + 故障转移
-	startIdx := c.nextTargetIdx()
+	// 多目标地址：组合策略
+	var startIdx int
+	switch c.lbStrategy {
+	case "1":
+		// 策略1：最优延迟
+		startIdx = int(atomic.LoadUint64(&c.targetIdx) % uint64(addrCount))
+	case "2":
+		// 策略2：主备回落
+		now := uint64(time.Now().UnixNano())
+		last := atomic.LoadUint64(&c.lastFallback)
+		if now-last > uint64(fallbackInterval) {
+			atomic.StoreUint64(&c.lastFallback, now)
+			atomic.StoreUint64(&c.targetIdx, 0)
+		}
+		startIdx = int(atomic.LoadUint64(&c.targetIdx) % uint64(addrCount))
+	default:
+		// 策略0：轮询转移
+		startIdx = c.nextTargetIdx()
+	}
+
 	var lastErr error
 	for i := range addrCount {
-		addr := getAddr((startIdx + i) % addrCount)
+		targetIdx := (startIdx + i) % addrCount
+		addr := getAddr(targetIdx)
 		if addr == "" {
 			continue
 		}
 		conn, err := tryDial(addr)
 		if err == nil {
+			if i > 0 && (c.lbStrategy == "1" || c.lbStrategy == "2") {
+				atomic.StoreUint64(&c.targetIdx, uint64(targetIdx))
+			}
 			return conn, nil
 		}
 		lastErr = err
@@ -596,6 +666,15 @@ func (c *Common) getServerName() {
 	}
 	if c.serverName == "" || net.ParseIP(c.serverName) != nil {
 		c.serverName = defaultServerName
+	}
+}
+
+// getLBStrategy 获取负载均衡策略
+func (c *Common) getLBStrategy() {
+	if lbStrategy := c.parsedURL.Query().Get("lbs"); lbStrategy != "" {
+		c.lbStrategy = lbStrategy
+	} else {
+		c.lbStrategy = defaultLBStrategy
 	}
 }
 
@@ -735,6 +814,7 @@ func (c *Common) initConfig() error {
 	c.getTunnelKey()
 	c.getPoolCapacity()
 	c.getServerName()
+	c.getLBStrategy()
 	c.getRunMode()
 	c.getPoolType()
 	c.getDialerIP()
@@ -1135,6 +1215,11 @@ func (c *Common) healthCheck() error {
 			}
 
 			c.logger.Debug("Tunnel pool flushed: %v active connections", c.tunnelPool.Active())
+		}
+
+		// 探测最优目标
+		if c.lbStrategy == "1" && len(c.targetTCPAddrs) > 1 {
+			c.probeBestTarget()
 		}
 
 		// 发送PING信号
@@ -1836,22 +1921,8 @@ func (c *Common) singleEventLoop() error {
 	defer ticker.Stop()
 
 	for c.ctx.Err() == nil {
-		ping := 0
-		now := time.Now()
-
-		// 尝试连接到目标地址检测延迟
-		idx := c.nextTargetIdx()
-		if addr, _ := c.resolveTarget("tcp", idx); addr != nil {
-			if tcpAddr, ok := addr.(*net.TCPAddr); ok {
-				if conn, err := net.DialTimeout("tcp", tcpAddr.String(), reportInterval); err == nil {
-					ping = int(time.Since(now).Milliseconds())
-					conn.Close()
-				}
-			}
-		}
-
 		// 发送检查点事件
-		c.logger.Event("CHECK_POINT|MODE=%v|PING=%vms|POOL=0|TCPS=%v|UDPS=%v|TCPRX=%v|TCPTX=%v|UDPRX=%v|UDPTX=%v", c.runMode, ping,
+		c.logger.Event("CHECK_POINT|MODE=%v|PING=%vms|POOL=0|TCPS=%v|UDPS=%v|TCPRX=%v|TCPTX=%v|UDPRX=%v|UDPTX=%v", c.runMode, c.probeBestTarget(),
 			atomic.LoadInt32(&c.tcpSlot), atomic.LoadInt32(&c.udpSlot),
 			atomic.LoadUint64(&c.tcpRX), atomic.LoadUint64(&c.tcpTX),
 			atomic.LoadUint64(&c.udpRX), atomic.LoadUint64(&c.udpTX))

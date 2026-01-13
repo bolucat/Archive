@@ -90,6 +90,8 @@ nodepass "master://:10101/api?log=debug&tls=1"
 - [工作原理](/docs/zh/how-it-works.md)
 - [故障排除](/docs/zh/troubleshooting.md)
 
+参阅 [DeepWiki](https://deepwiki.com/yosebyte/nodepass) 以获取 AI 驱动的文档。
+
 ## 🌱 生态系统
 
 [NodePassProject](https://github.com/NodePassProject) 组织开发了各种前端应用和辅助工具来增强 NodePass 体验：

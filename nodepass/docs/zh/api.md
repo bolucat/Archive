@@ -111,7 +111,7 @@ API Key 认证默认启用，首次启动自动生成并保存在 `nodepass.gob`
 
 - 服务端：`server://<bind_addr>:<bind_port>/<target_host>:<target_port>?<参数>`
 - 客户端：`client://<server_host>:<server_port>/<local_host>:<local_port>?<参数>`
-- 支持参数：`log`、`tls`、`crt`、`key`、`dns`、`min`、`max`、`mode`、`type`、`dial`、`read`、`rate`、`slot`、`proxy`、`notcp`、`noudp`
+- 支持参数：`log`、`tls`、`crt`、`key`、`dns`、`sni`、`lbs`、`min`、`max`、`mode`、`type`、`dial`、`read`、`rate`、`slot`、`proxy`、`notcp`、`noudp`
 
 ### URL 查询参数
 
@@ -119,6 +119,8 @@ API Key 认证默认启用，首次启动自动生成并保存在 `nodepass.gob`
 - `tls`：TLS加密模式（`0`、`1`、`2`）- 仅服务端/主控模式
 - `crt`/`key`：证书/密钥文件路径（当`tls=2`时）
 - `dns`：自定义DNS服务器（逗号分隔的IP地址，默认：`1.1.1.1,8.8.8.8`）- 仅服务端/客户端模式
+- `sni`：服务器名称指示（Server Name Indication），用于TLS握手时指定主机名（默认：`none`）- 仅客户端双端握手模式
+- `lbs`：负载均衡策略（`0`=轮询，`1`=粘性故障转移，默认：`0`）- 控制多目标配置时的目标地址选择方式
 - `min`/`max`：连接池容量（`min`由客户端设置，`max`由服务端设置并在握手时传递给客户端）
 - `mode`：运行模式控制（`0`、`1`、`2`）- 控制操作行为
   - 对于服务端：`0`=自动，`1`=反向模式，`2`=正向模式
@@ -1586,6 +1588,7 @@ client://<server_host>:<server_port>/<local_host>:<local_port>?<parameters>
 | `key` | 私钥路径 | 文件路径 | 无 | 仅服务端 |
 | `dns` | DNS缓存时间 | 时间长度 (如 `10m`, `30s`, `1h`) | `5m` | 两者 |
 | `sni` | 主机名指示 | 主机名 | `none` | 仅客户端双端握手模式 |
+| `lbs` | 负载均衡策略 | `0`(轮询转移), `1`(最优延迟), `2`(主备回落) | `0` | 两者 |
 | `min` | 最小连接池容量 | 整数 > 0 | `64` | 仅客户端双端握手模式 |
 | `max` | 最大连接池容量 | 整数 > 0 | `1024` | 双端握手模式 |
 | `mode` | 运行模式控制 | `0`(自动), `1`(强制模式1), `2`(强制模式2) | `0` | 两者 |

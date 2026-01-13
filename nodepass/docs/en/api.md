@@ -111,7 +111,7 @@ API Key authentication is enabled by default, automatically generated and saved 
 
 - Server: `server://<bind_addr>:<bind_port>/<target_host>:<target_port>?<parameters>`
 - Client: `client://<server_host>:<server_port>/<local_host>:<local_port>?<parameters>`
-- Supported parameters: `log`, `tls`, `crt`, `key`, `dns`, `min`, `max`, `mode`, `type`, `dial`, `read`, `rate`, `slot`, `proxy`, `notcp`, `noudp`
+- Supported parameters: `log`, `tls`, `crt`, `key`, `dns`, `sni`, `lbs`, `min`, `max`, `mode`, `type`, `dial`, `read`, `rate`, `slot`, `proxy`, `notcp`, `noudp`
 
 ### URL Query Parameters
 
@@ -119,6 +119,8 @@ API Key authentication is enabled by default, automatically generated and saved 
 - `tls`: TLS encryption mode (`0`, `1`, `2`) - Server/Master mode only
 - `crt`/`key`: Certificate/key file paths (when `tls=2`)
 - `dns`: Custom DNS servers (comma-separated IP addresses, default: `1.1.1.1,8.8.8.8`) - Server/Client mode only
+- `sni`: Server Name Indication, specifies hostname for TLS handshake (default: `none`) - Client dual-end handshake mode only
+- `lbs`: Load balancing strategy (`0`=round-robin, `1`=sticky failover, default: `0`) - Controls target address selection for multi-target configurations
 - `min`/`max`: Connection pool capacity (`min` set by client, `max` set by server and passed to client during handshake)
 - `mode`: Runtime mode control (`0`, `1`, `2`) - Controls operation behavior
   - For server: `0`=auto, `1`=reverse mode, `2`=forward mode
@@ -1586,6 +1588,7 @@ Examples:
 | `key` | Private key path | File path | None | Server only |
 | `dns` | DNS cache duration | Time duration (e.g., `5m`, `30s`, `1h`) | `5m` | Both |
 | `sni` | Server Name Indication | Hostname | `none` | Client dual-end handshake mode only |
+| `lbs` | Load balancing strategy | `0`(round-robin), `1`(optimal-latency), `2`(primary-backup) | `0` | Both | 
 | `min` | Minimum pool capacity | Integer > 0 | `64` | Client dual-end handshake mode only |
 | `max` | Maximum pool capacity | Integer > 0 | `1024` | Dual-end handshake mode |
 | `mode` | Runtime mode control | `0`(auto), `1`(force mode 1), `2`(force mode 2) | `0` | Both |
