@@ -55,7 +55,7 @@ perf_print(unsigned long c1l, unsigned long c1h,
 void
 perf_print_times(struct tms *start, struct tms *end, char *key)
 {
-  fprintf(f, "%s: %lu\n", key, end->tms_stime - start->tms_stime);
+  fprintf(f, "%s: %lld\n", key, (long long)(end->tms_stime - start->tms_stime));
   fflush(NULL);  
 }
 

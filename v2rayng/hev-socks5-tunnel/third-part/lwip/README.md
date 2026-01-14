@@ -1,6 +1,6 @@
 # LwIP
 
-[![status](https://github.com/heiher/lwip/actions/workflows/build.yaml/badge.svg?branch=master&event=push)](https://github.com/heiher/lwip)
+[![status](https://github.com/heiher/lwip/actions/workflows/build.yaml/badge.svg?branch=main&event=push)](https://github.com/heiher/lwip)
 
 This is a branch of liblwip with a simple build system.
 
@@ -131,5 +131,5 @@ make CROSS_PREFIX=x86_64-w64-mingw32-
 ## Upstream
 https://savannah.nongnu.org/projects/lwip
 
-[PROJECT_URL]: https://gitlab.com/hev/lwip/commits/master
-[PIPELINE_STATUS]: https://gitlab.com/hev/lwip/badges/master/pipeline.svg
+[PROJECT_URL]: https://gitlab.com/hev/lwip/commits/main
+[PIPELINE_STATUS]: https://gitlab.com/hev/lwip/badges/main/pipeline.svg

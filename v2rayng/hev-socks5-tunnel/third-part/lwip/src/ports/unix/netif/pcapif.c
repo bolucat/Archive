@@ -30,7 +30,7 @@
  *
  */
 
-#if !defined(_WIN32) && !defined(_WIN64) && !defined(__MSYS__)
+#if !defined(_WIN32) && !defined(_WIN64) && !defined(__MSYS__) && !defined(__FreeBSD__)
 
 #if !defined(linux) && !defined(__MACH__)  /* Apparently, this doesn't work under Linux and MacOS. */
 
@@ -208,4 +208,4 @@ pcapif_init(struct netif *netif)
 /*-----------------------------------------------------------------------------------*/
 #endif /* linux & macos */
 
-#endif /* !defined(_WIN32) && !defined(_WIN64) && !defined(__MSYS__) */
+#endif /* !defined(_WIN32) && !defined(_WIN64) && !defined(__MSYS__) && !defined(__FreeBSD__) */

@@ -145,6 +145,7 @@ bridgeif_fdb_get_dst_ports(void *fdb_ptr, struct eth_addr *dst_addr)
   return BR_FLOOD;
 }
 
+#if LWIP_TIMERS
 /**
  * @ingroup bridgeif_fdb
  * Aging implementation of our simple fdb
@@ -175,7 +176,6 @@ bridgeif_fdb_age_one_second(void *fdb_ptr)
   BRIDGEIF_READ_UNPROTECT(lev);
 }
 
-#if LWIP_TIMERS
 /** Timer callback for fdb aging, called once per second */
 static void
 bridgeif_age_tmr(void *arg)

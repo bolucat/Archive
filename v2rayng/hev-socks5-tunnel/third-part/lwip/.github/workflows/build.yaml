@@ -3,7 +3,7 @@ name: "Build"
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
   workflow_dispatch:
 
@@ -30,6 +30,12 @@ jobs:
             tool: i686-unknown-linux-musl
           - name: loong64
             tool: loongarch64-unknown-linux-musl
+          - name: m68k
+            tool: m68k-unknown-linux-musl
+          - name: microblazeel
+            tool: microblazeel-xilinx-linux-musl
+          - name: microblaze
+            tool: microblaze-xilinx-linux-musl
           - name: mips64el
             tool: mips64el-unknown-linux-musl
           - name: mips64
@@ -42,10 +48,24 @@ jobs:
             tool: mips-unknown-linux-musl
           - name: mips32sf
             tool: mips-unknown-linux-muslsf
+          - name: or1k
+            tool: or1k-unknown-linux-musl
+          - name: powerpc64le
+            tool: powerpc64le-unknown-linux-musl
+          - name: powerpc64
+            tool: powerpc64-unknown-linux-musl
+          - name: powerpcle
+            tool: powerpcle-unknown-linux-musl
+          - name: powerpc
+            tool: powerpc-unknown-linux-musl
           - name: riscv32
             tool: riscv32-unknown-linux-musl
           - name: riscv64
             tool: riscv64-unknown-linux-musl
+          - name: s390x
+            tool: s390x-ibm-linux-musl
+          - name: sh4
+            tool: sh4-multilib-linux-musl
           - name: x86_64
             tool: x86_64-unknown-linux-musl
     steps:
@@ -57,7 +77,7 @@ jobs:
       - name: Build ${{ matrix.name }}
         run: |
           sudo mkdir -p /opt/x-tools
-          wget https://github.com/cross-tools/musl-cross/releases/download/20250520/${{ matrix.tool }}.tar.xz
+          wget https://github.com/cross-tools/musl-cross/releases/download/20250929/${{ matrix.tool }}.tar.xz
           sudo tar xf ${{ matrix.tool }}.tar.xz -C /opt/x-tools
           make CROSS_PREFIX=/opt/x-tools/${{ matrix.tool }}/bin/${{ matrix.tool }}- CFLAGS=${{ matrix.env.CFLAGS }} ENABLE_STATIC=1 -j`nproc`
 
@@ -74,6 +94,24 @@ jobs:
         run: |
           make
 
+  freebsd:
+    name: FreeBSD
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Build
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: |
+            pkg install -y gmake gcc
+          run: |
+            gmake
+
   android:
     name: Android
     runs-on: ubuntu-latest
@@ -85,12 +123,12 @@ jobs:
           submodules: true
       - name: Prepare
         run: |
-          wget https://dl.google.com/android/repository/android-ndk-r27b-linux.zip
-          unzip android-ndk-r27b-linux.zip
+          wget https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+          unzip android-ndk-r27d-linux.zip
           ln -sf . jni
       - name: Build
         run: |
-          ./android-ndk-r27b/ndk-build
+          ./android-ndk-r27d/ndk-build
 
   llvm:
     name: LLVM
