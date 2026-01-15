@@ -581,7 +581,7 @@ nodepass "client://server:10103/127.0.0.1:8082?mode=2&log=event"
 
 如果您遇到本指南未涵盖的问题：
 
-- 查看[项目仓库](https://github.com/yosebyte/nodepass)中的已知问题
+- 查看[项目仓库](https://github.com/NodePassProject/nodepass)中的已知问题
 - 将日志级别增加到`debug`以获取更详细信息
 - 查看[工作原理](/docs/zh/how-it-works.md)部分以更好地理解内部机制
 - 考虑加入社区讨论，从其他用户处获取帮助

@@ -125,7 +125,7 @@ Security updates are released as:
 
 Subscribe to our release notifications:
 
-- [GitHub Releases](https://github.com/yosebyte/nodepass/releases)
+- [GitHub Releases](https://github.com/NodePassProject/nodepass/releases)
 - [Telegram Channel](https://t.me/NodePassChannel)
 
 ## Ecosystem Security
@@ -150,7 +150,7 @@ Our core dependencies are maintained by the NodePassProject organization:
 For security-related questions or concerns:
 
 - **Security Team**: team@mail.nodepass.eu
-- **General Issues**: [GitHub Issues](https://github.com/yosebyte/nodepass/issues)
+- **General Issues**: [GitHub Issues](https://github.com/NodePassProject/nodepass/issues)
 - **Community**: [Telegram Group](https://t.me/NodePassGroup)
 
 ## Attribution

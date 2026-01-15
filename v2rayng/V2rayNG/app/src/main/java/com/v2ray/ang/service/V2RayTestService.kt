@@ -7,10 +7,7 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.MSG_MEASURE_CONFIG
 import com.v2ray.ang.AppConfig.MSG_MEASURE_CONFIG_CANCEL
 import com.v2ray.ang.AppConfig.MSG_MEASURE_CONFIG_SUCCESS
-import com.v2ray.ang.dto.EConfigType
 import com.v2ray.ang.extension.serializable
-import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.handler.PluginServiceManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.V2RayNativeManager
 import com.v2ray.ang.handler.V2rayConfigManager
@@ -18,18 +15,18 @@ import com.v2ray.ang.util.MessageUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 class V2RayTestService : Service() {
     private val realTestJob = SupervisorJob()
-    private val realDispatcher = Dispatchers.IO.limitedParallelism(
-        Runtime.getRuntime().availableProcessors() * 3
-    )
+    private val cpu = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+    private val realDispatcher = Executors.newFixedThreadPool((cpu * 2)).asCoroutineDispatcher()
     private val realTestScope = CoroutineScope(
         realTestJob + realDispatcher + CoroutineName("RealTest")
     )
@@ -61,6 +58,7 @@ class V2RayTestService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         realTestJob.cancel()
+        realDispatcher.close()
     }
 
     /**
@@ -129,16 +127,10 @@ class V2RayTestService : Service() {
     private fun startRealPing(guid: String): Long {
         val retFailure = -1L
 
-        val config = MmkvManager.decodeServerConfig(guid) ?: return retFailure
-        if (config.configType == EConfigType.HYSTERIA2) {
-            val delay = PluginServiceManager.realPingHy2(this, config)
-            return delay
-        } else {
-            val configResult = V2rayConfigManager.getV2rayConfig4Speedtest(this, guid)
-            if (!configResult.status) {
-                return retFailure
-            }
-            return V2RayNativeManager.measureOutboundDelay(configResult.content, SettingsManager.getDelayTestUrl())
+        val configResult = V2rayConfigManager.getV2rayConfig4Speedtest(this, guid)
+        if (!configResult.status) {
+            return retFailure
         }
+        return V2RayNativeManager.measureOutboundDelay(configResult.content, SettingsManager.getDelayTestUrl())
     }
 }

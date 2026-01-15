@@ -14,7 +14,7 @@
 
 开始使用 NodePass 的最简单方法是为您的平台下载预编译的二进制文件。
 
-1. 访问 GitHub 上的[发布页面](https://github.com/yosebyte/nodepass/releases)
+1. 访问 GitHub 上的[发布页面](https://github.com/NodePassProject/nodepass/releases)
 2. 下载适合您操作系统的二进制文件(Windows、macOS、Linux)
 3. 如有必要，解压缩档案
 4. 使二进制文件可执行(Linux/macOS)：
@@ -30,7 +30,7 @@
 如果您的系统上已安装Go，可以使用`go install`命令：
 
 ```bash
-go install github.com/yosebyte/nodepass/cmd/nodepass@latest
+go install github.com/NodePassProject/nodepass/cmd/nodepass@latest
 ```
 
 此命令下载源代码，编译它，并将二进制文件安装到您的Go bin目录中(通常是`$GOPATH/bin`)。
@@ -41,7 +41,7 @@ go install github.com/yosebyte/nodepass/cmd/nodepass@latest
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yosebyte/nodepass.git
+git clone https://github.com/NodePassProject/nodepass.git
 
 # 导航到项目目录
 cd nodepass
@@ -59,18 +59,18 @@ NodePass在GitHub容器注册表中提供容器镜像，非常适合容器化环
 
 ```bash
 # 拉取容器镜像
-docker pull ghcr.io/yosebyte/nodepass:latest
+docker pull ghcr.io/NodePassProject/nodepass:latest
 
 # 服务器模式运行
 docker run -d --name nodepass-server -p 10101:10101 -p 8080:8080 \
-  ghcr.io/yosebyte/nodepass server://0.0.0.0:10101/0.0.0.0:8080
+  ghcr.io/NodePassProject/nodepass server://0.0.0.0:10101/0.0.0.0:8080
 
 # 客户端模式运行
 docker run -d --name nodepass-client \
   -e NP_MIN_POOL_INTERVAL=200ms \
   -e NP_SEMAPHORE_LIMIT=512 \
   -p 8080:8080 \
-  ghcr.io/yosebyte/nodepass "client://nodepass-server:10101/127.0.0.1:8080?min=32&max=512"
+  ghcr.io/NodePassProject/nodepass "client://nodepass-server:10101/127.0.0.1:8080?min=32&max=512"
 ```
 
 ### 方式5：使用管理脚本(仅限Linux)

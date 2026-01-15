@@ -582,7 +582,7 @@ docker network create nodepass-net
 docker run -d --name nodepass-server \
   --network nodepass-net \
   -p 10101:10101 \
-  ghcr.io/yosebyte/nodepass "server://0.0.0.0:10101/web-service:80?log=info&tls=1"
+  ghcr.io/NodePassProject/nodepass "server://0.0.0.0:10101/web-service:80?log=info&tls=1"
 
 # Deploy a web service as target
 docker run -d --name web-service \
@@ -592,7 +592,7 @@ docker run -d --name web-service \
 # Deploy NodePass client
 docker run -d --name nodepass-client \
   -p 8080:8080 \
-  ghcr.io/yosebyte/nodepass client://nodepass-server:10101/127.0.0.1:8080?log=info
+  ghcr.io/NodePassProject/nodepass client://nodepass-server:10101/127.0.0.1:8080?log=info
 
 # Access the web service via http://localhost:8080
 ```

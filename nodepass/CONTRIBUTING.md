@@ -54,7 +54,7 @@ git clone https://github.com/YOUR_USERNAME/nodepass.git
 cd nodepass
 
 # Add the upstream repository
-git remote add upstream https://github.com/yosebyte/nodepass.git
+git remote add upstream https://github.com/NodePassProject/nodepass.git
 ```
 
 ### 2. Install Dependencies

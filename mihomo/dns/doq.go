@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metacubex/mihomo/common/buf"
 	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -162,19 +163,25 @@ func (doq *dnsOverQUIC) exchangeQUIC(ctx context.Context, msg *D.Msg) (resp *D.M
 		return nil, err
 	}
 
-	var buf []byte
-	buf, err = msg.Pack()
+	buffer := buf.NewPacket()
+	buffer.Advance(2)
+	packed, err := msg.PackBuffer(buffer.FreeBytes())
 	if err != nil {
+		buffer.Release()
 		return nil, fmt.Errorf("failed to pack DNS message for DoQ: %w", err)
 	}
+	buffer.Truncate(len(packed))
+	binary.BigEndian.PutUint16(buffer.ExtendHeader(2), uint16(len(packed)))
 
 	var stream *quic.Stream
 	stream, err = doq.openStream(ctx, conn)
 	if err != nil {
+		buffer.Release()
 		return nil, err
 	}
 
-	_, err = stream.Write(AddPrefix(buf))
+	_, err = stream.Write(buffer.Bytes())
+	buffer.Release()
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to a QUIC stream: %w", err)
 	}
@@ -186,15 +193,6 @@ func (doq *dnsOverQUIC) exchangeQUIC(ctx context.Context, msg *D.Msg) (resp *D.M
 	_ = stream.Close()
 
 	return doq.readMsg(stream)
-}
-
-// AddPrefix adds a 2-byte prefix with the DNS message length.
-func AddPrefix(b []byte) (m []byte) {
-	m = make([]byte, 2+len(b))
-	binary.BigEndian.PutUint16(m, uint16(len(b)))
-	copy(m[2:], b)
-
-	return m
 }
 
 // shouldRetry checks what error we received and decides whether it is required

@@ -14,7 +14,7 @@ This guide provides detailed instructions for installing NodePass using differen
 
 The easiest way to get started with NodePass is to download a pre-built binary for your platform.
 
-1. Visit the [releases page](https://github.com/yosebyte/nodepass/releases) on GitHub
+1. Visit the [releases page](https://github.com/NodePassProject/nodepass/releases) on GitHub
 2. Download the appropriate binary for your operating system (Windows, macOS, Linux)
 3. Extract the archive if necessary
 4. Make the binary executable (Linux/macOS):
@@ -30,7 +30,7 @@ The easiest way to get started with NodePass is to download a pre-built binary f
 If you have Go installed on your system, you can use the `go install` command:
 
 ```bash
-go install github.com/yosebyte/nodepass/cmd/nodepass@latest
+go install github.com/NodePassProject/nodepass/cmd/nodepass@latest
 ```
 
 This command downloads the source code, compiles it, and installs the binary in your Go bin directory (usually `$GOPATH/bin`).
@@ -41,7 +41,7 @@ For the latest development version or to customize the build:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yosebyte/nodepass.git
+git clone https://github.com/NodePassProject/nodepass.git
 
 # Navigate to the project directory
 cd nodepass
@@ -59,18 +59,18 @@ NodePass is available as a container image on GitHub Container Registry, perfect
 
 ```bash
 # Pull the container image
-docker pull ghcr.io/yosebyte/nodepass:latest
+docker pull ghcr.io/NodePassProject/nodepass:latest
 
 # Run in server mode
 docker run -d --name nodepass-server -p 10101:10101 -p 8080:8080 \
-  ghcr.io/yosebyte/nodepass server://0.0.0.0:10101/0.0.0.0:8080
+  ghcr.io/NodePassProject/nodepass server://0.0.0.0:10101/0.0.0.0:8080
 
 # Run in client mode
 docker run -d --name nodepass-client \
   -e NP_MIN_POOL_INTERVAL=200ms \
   -e NP_SEMAPHORE_LIMIT=512 \
   -p 8080:8080 \
-  ghcr.io/yosebyte/nodepass "client://nodepass-server:10101/127.0.0.1:8080?min=32&max=512"
+  ghcr.io/NodePassProject/nodepass "client://nodepass-server:10101/127.0.0.1:8080?min=32&max=512"
 ```
 
 ### Option 5: Using Management Script (Linux Only)

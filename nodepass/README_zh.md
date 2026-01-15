@@ -1,16 +1,16 @@
 <div align="center">
-  <img src="https://cdn.yobc.de/assets/np-gopher.png" alt="nodepass" width="300">
+  <img src="https://nodepass.eu/assets/np-gopher.png" alt="nodepass" width="300">
 
 [![Mentioned in Awesome Go](https://awesome.re/mentioned-badge.svg)](https://github.com/avelino/awesome-go#networking)
-[![GitHub release](https://img.shields.io/github/v/release/yosebyte/nodepass)](https://github.com/yosebyte/nodepass/releases)
-[![GitHub downloads](https://img.shields.io/github/downloads/yosebyte/nodepass/total.svg)](https://github.com/yosebyte/nodepass/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/yosebyte/nodepass)](https://goreportcard.com/report/github.com/yosebyte/nodepass)
+[![GitHub release](https://img.shields.io/github/v/release/NodePassProject/nodepass)](https://github.com/NodePassProject/nodepass/releases)
+[![GitHub downloads](https://img.shields.io/github/downloads/NodePassProject/nodepass/total.svg)](https://github.com/NodePassProject/nodepass/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/NodePassProject/nodepass)](https://goreportcard.com/report/github.com/NodePassProject/nodepass)
 [![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
-[![Go Reference](https://pkg.go.dev/badge/github.com/yosebyte/nodepass.svg)](https://pkg.go.dev/github.com/yosebyte/nodepass)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/yosebyte/nodepass)
-![GitHub last commit](https://img.shields.io/github/last-commit/yosebyte/nodepass)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NodePassProject/nodepass.svg)](https://pkg.go.dev/github.com/NodePassProject/nodepass)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/NodePassProject/nodepass)
+![GitHub last commit](https://img.shields.io/github/last-commit/NodePassProject/nodepass)
 
-  <a href="https://apps.apple.com/cn/app/nodepass/id6747930492"><img src="https://cdn.yobc.de/assets/appstore.png" width="120"></a>
+  <a href="https://apps.apple.com/cn/app/nodepass/id6747930492"><img src="https://nodepass.eu/assets/appstore.png" width="120"></a>
 
 [English](README.md) | 简体中文
 </div>
@@ -58,8 +58,8 @@
 
 ### 📥 安装方法
 
-- **预编译二进制文件**: 从[发布页面](https://github.com/yosebyte/nodepass/releases)下载。
-- **容器镜像**: `docker pull ghcr.io/yosebyte/nodepass:latest`
+- **预编译二进制文件**: 从[发布页面](https://github.com/NodePassProject/nodepass/releases)下载。
+- **容器镜像**: `docker pull ghcr.io/NodePassProject/nodepass:latest`
 
 ### 🚀 基本用法
 
@@ -90,7 +90,7 @@ nodepass "master://:10101/api?log=debug&tls=1"
 - [工作原理](/docs/zh/how-it-works.md)
 - [故障排除](/docs/zh/troubleshooting.md)
 
-参阅 [DeepWiki](https://deepwiki.com/yosebyte/nodepass) 以获取 AI 驱动的文档。
+参阅 [DeepWiki](https://deepwiki.com/NodePassProject/nodepass) 以获取 AI 驱动的文档。
 
 ## 🌱 生态系统
 
@@ -137,22 +137,22 @@ nodepass "master://:10101/api?log=debug&tls=1"
 <table>
   <tr>
     <td width="240" align="center">
-      <a href="https://whmcs.as211392.com"><img src="https://cdn.yobc.de/assets/dreamcloud.png"></a>
+      <a href="https://whmcs.as211392.com"><img src="https://nodepass.eu/assets/dreamcloud.png"></a>
     </td>
     <td width="240" align="center">
-      <a href="https://t.me/xiao_bai_xue_zhang"><img src="https://cdn.yobc.de/assets/xuezhang.png"></a>
+      <a href="https://t.me/xiao_bai_xue_zhang"><img src="https://nodepass.eu/assets/xuezhang.png"></a>
     </td>
   </tr>
   <tr>
     <td width="240" align="center">
-      <a href="https://sharon.io"><img src="https://cdn.yobc.de/assets/sharon.png"></a>
+      <a href="https://sharon.io"><img src="https://nodepass.eu/assets/sharon.png"></a>
     </td>
     <td width="240" align="center">
-      <a href="https://vps.town"><img src="https://cdn.yobc.de/assets/vpstown.png"></a>
+      <a href="https://vps.town"><img src="https://nodepass.eu/assets/vpstown.png"></a>
     </td>
   </tr>
 </table>
 
 ## ⭐ Star 趋势
 
-[![Stargazers over time](https://starchart.cc/yosebyte/nodepass.svg?variant=adaptive)](https://starchart.cc/yosebyte/nodepass)
+[![Stargazers over time](https://starchart.cc/NodePassProject/nodepass.svg?variant=adaptive)](https://starchart.cc/NodePassProject/nodepass)

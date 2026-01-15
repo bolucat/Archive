@@ -10,7 +10,7 @@ import (
 
 	"github.com/NodePassProject/cert"
 	"github.com/NodePassProject/logs"
-	"github.com/yosebyte/nodepass/internal"
+	"github.com/NodePassProject/nodepass/internal"
 )
 
 // start 启动核心逻辑
