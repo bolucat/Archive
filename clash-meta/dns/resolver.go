@@ -31,18 +31,6 @@ type dnsCache interface {
 	Clear()
 }
 
-type nopCache struct{}
-
-var _ dnsCache = nopCache{}
-
-func (n nopCache) GetWithExpire(string) (*D.Msg, time.Time, bool) {
-	return nil, time.Time{}, false
-}
-
-func (n nopCache) SetWithExpire(string, *D.Msg, time.Time) {}
-
-func (n nopCache) Clear() {}
-
 type result struct {
 	Msg   *D.Msg
 	Error error
@@ -474,8 +462,6 @@ func (config Config) newCache() dnsCache {
 	switch config.CacheAlgorithm {
 	case "arc":
 		return arc.New(arc.WithSize[string, *D.Msg](config.CacheMaxSize))
-	case "disabled":
-		return nopCache{}
 	default:
 		return lru.New(lru.WithSize[string, *D.Msg](config.CacheMaxSize), lru.WithStale[string, *D.Msg](true))
 	}

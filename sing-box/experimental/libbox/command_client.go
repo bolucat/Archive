@@ -98,147 +98,135 @@ func streamClientAuthInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc 
 	return streamer(ctx, desc, cc, method, opts...)
 }
 
-func (c *CommandClient) grpcDial() (*grpc.ClientConn, error) {
-	var target string
-	if sCommandServerListenPort == 0 {
-		target = "unix://" + filepath.Join(sBasePath, "command.sock")
-	} else {
-		target = net.JoinHostPort("127.0.0.1", strconv.Itoa(int(sCommandServerListenPort)))
-	}
-	var (
-		conn *grpc.ClientConn
-		err  error
-	)
-	clientOptions := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(unaryClientAuthInterceptor),
-		grpc.WithStreamInterceptor(streamClientAuthInterceptor),
-	}
-	for i := 0; i < 10; i++ {
-		conn, err = grpc.NewClient(target, clientOptions...)
-		if err == nil {
-			return conn, nil
+const (
+	commandClientDialAttempts  = 10
+	commandClientDialBaseDelay = 100 * time.Millisecond
+	commandClientDialStepDelay = 50 * time.Millisecond
+)
+
+func commandClientDialDelay(attempt int) time.Duration {
+	return commandClientDialBaseDelay + time.Duration(attempt)*commandClientDialStepDelay
+}
+
+func dialTarget() (string, func(context.Context, string) (net.Conn, error)) {
+	if sXPCDialer != nil {
+		return "passthrough:///xpc", func(ctx context.Context, _ string) (net.Conn, error) {
+			fileDescriptor, err := sXPCDialer.DialXPC()
+			if err != nil {
+				return nil, err
+			}
+			return networkConnectionFromFileDescriptor(fileDescriptor)
 		}
-		time.Sleep(time.Duration(100+i*50) * time.Millisecond)
 	}
-	return nil, err
+	if sCommandServerListenPort == 0 {
+		return "unix://" + filepath.Join(sBasePath, "command.sock"), nil
+	}
+	return net.JoinHostPort("127.0.0.1", strconv.Itoa(int(sCommandServerListenPort))), nil
+}
+
+func networkConnectionFromFileDescriptor(fileDescriptor int32) (net.Conn, error) {
+	file := os.NewFile(uintptr(fileDescriptor), "xpc-command-socket")
+	if file == nil {
+		return nil, E.New("invalid file descriptor")
+	}
+	networkConnection, err := net.FileConn(file)
+	if err != nil {
+		file.Close()
+		return nil, E.Cause(err, "create connection from fd")
+	}
+	file.Close()
+	return networkConnection, nil
+}
+
+func (c *CommandClient) dialWithRetry(target string, contextDialer func(context.Context, string) (net.Conn, error), retryDial bool) (*grpc.ClientConn, daemon.StartedServiceClient, error) {
+	var connection *grpc.ClientConn
+	var client daemon.StartedServiceClient
+	var lastError error
+
+	for attempt := 0; attempt < commandClientDialAttempts; attempt++ {
+		if connection == nil {
+			options := []grpc.DialOption{
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithUnaryInterceptor(unaryClientAuthInterceptor),
+				grpc.WithStreamInterceptor(streamClientAuthInterceptor),
+			}
+			if contextDialer != nil {
+				options = append(options, grpc.WithContextDialer(contextDialer))
+			}
+			var err error
+			connection, err = grpc.NewClient(target, options...)
+			if err != nil {
+				lastError = err
+				if !retryDial {
+					return nil, nil, err
+				}
+				time.Sleep(commandClientDialDelay(attempt))
+				continue
+			}
+			client = daemon.NewStartedServiceClient(connection)
+		}
+		waitDuration := commandClientDialDelay(attempt)
+		ctx, cancel := context.WithTimeout(context.Background(), waitDuration)
+		_, err := client.GetStartedAt(ctx, &emptypb.Empty{}, grpc.WaitForReady(true))
+		cancel()
+		if err == nil {
+			return connection, client, nil
+		}
+		lastError = err
+	}
+
+	if connection != nil {
+		connection.Close()
+	}
+	return nil, nil, lastError
 }
 
 func (c *CommandClient) Connect() error {
 	c.clientMutex.Lock()
 	common.Close(common.PtrOrNil(c.grpcConn))
 
-	if sXPCDialer != nil {
-		fd, err := sXPCDialer.DialXPC()
-		if err != nil {
-			c.clientMutex.Unlock()
-			return err
-		}
-		file := os.NewFile(uintptr(fd), "xpc-command-socket")
-		if file == nil {
-			c.clientMutex.Unlock()
-			return E.New("invalid file descriptor")
-		}
-		netConn, err := net.FileConn(file)
-		if err != nil {
-			file.Close()
-			c.clientMutex.Unlock()
-			return E.Cause(err, "create connection from fd")
-		}
-		file.Close()
-
-		clientOptions := []grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-				return netConn, nil
-			}),
-			grpc.WithUnaryInterceptor(unaryClientAuthInterceptor),
-			grpc.WithStreamInterceptor(streamClientAuthInterceptor),
-		}
-
-		grpcConn, err := grpc.NewClient("passthrough:///xpc", clientOptions...)
-		if err != nil {
-			netConn.Close()
-			c.clientMutex.Unlock()
-			return err
-		}
-
-		c.grpcConn = grpcConn
-		c.grpcClient = daemon.NewStartedServiceClient(grpcConn)
-		c.ctx, c.cancel = context.WithCancel(context.Background())
+	target, contextDialer := dialTarget()
+	connection, client, err := c.dialWithRetry(target, contextDialer, true)
+	if err != nil {
 		c.clientMutex.Unlock()
-	} else {
-		conn, err := c.grpcDial()
-		if err != nil {
-			c.clientMutex.Unlock()
-			return err
-		}
-		c.grpcConn = conn
-		c.grpcClient = daemon.NewStartedServiceClient(conn)
-		c.ctx, c.cancel = context.WithCancel(context.Background())
-		c.clientMutex.Unlock()
+		return err
 	}
+	c.grpcConn = connection
+	c.grpcClient = client
+	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.clientMutex.Unlock()
 
 	c.handler.Connected()
-	for _, command := range c.options.commands {
-		switch command {
-		case CommandLog:
-			go c.handleLogStream()
-		case CommandStatus:
-			go c.handleStatusStream()
-		case CommandGroup:
-			go c.handleGroupStream()
-		case CommandClashMode:
-			go c.handleClashModeStream()
-		case CommandConnections:
-			go c.handleConnectionsStream()
-		default:
-			return E.New("unknown command: ", command)
-		}
-	}
-	return nil
+	return c.dispatchCommands()
 }
 
 func (c *CommandClient) ConnectWithFD(fd int32) error {
 	c.clientMutex.Lock()
 	common.Close(common.PtrOrNil(c.grpcConn))
 
-	file := os.NewFile(uintptr(fd), "xpc-command-socket")
-	if file == nil {
-		c.clientMutex.Unlock()
-		return E.New("invalid file descriptor")
-	}
-
-	netConn, err := net.FileConn(file)
+	networkConnection, err := networkConnectionFromFileDescriptor(fd)
 	if err != nil {
-		file.Close()
-		c.clientMutex.Unlock()
-		return E.Cause(err, "create connection from fd")
-	}
-	file.Close()
-
-	clientOptions := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-			return netConn, nil
-		}),
-		grpc.WithUnaryInterceptor(unaryClientAuthInterceptor),
-		grpc.WithStreamInterceptor(streamClientAuthInterceptor),
-	}
-
-	grpcConn, err := grpc.NewClient("passthrough:///xpc", clientOptions...)
-	if err != nil {
-		netConn.Close()
 		c.clientMutex.Unlock()
 		return err
 	}
-
-	c.grpcConn = grpcConn
-	c.grpcClient = daemon.NewStartedServiceClient(grpcConn)
+	connection, client, err := c.dialWithRetry("passthrough:///xpc", func(ctx context.Context, _ string) (net.Conn, error) {
+		return networkConnection, nil
+	}, false)
+	if err != nil {
+		networkConnection.Close()
+		c.clientMutex.Unlock()
+		return err
+	}
+	c.grpcConn = connection
+	c.grpcClient = client
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	c.clientMutex.Unlock()
 
 	c.handler.Connected()
+	return c.dispatchCommands()
+}
+
+func (c *CommandClient) dispatchCommands() error {
 	for _, command := range c.options.commands {
 		switch command {
 		case CommandLog:
@@ -282,51 +270,13 @@ func (c *CommandClient) getClientForCall() (daemon.StartedServiceClient, error) 
 		return c.grpcClient, nil
 	}
 
-	if sXPCDialer != nil {
-		fd, err := sXPCDialer.DialXPC()
-		if err != nil {
-			return nil, err
-		}
-		file := os.NewFile(uintptr(fd), "xpc-command-socket")
-		if file == nil {
-			return nil, E.New("invalid file descriptor")
-		}
-		netConn, err := net.FileConn(file)
-		if err != nil {
-			file.Close()
-			return nil, E.Cause(err, "create connection from fd")
-		}
-		file.Close()
-
-		clientOptions := []grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
-				return netConn, nil
-			}),
-			grpc.WithUnaryInterceptor(unaryClientAuthInterceptor),
-			grpc.WithStreamInterceptor(streamClientAuthInterceptor),
-		}
-
-		grpcConn, err := grpc.NewClient("passthrough:///xpc", clientOptions...)
-		if err != nil {
-			netConn.Close()
-			return nil, err
-		}
-
-		c.grpcConn = grpcConn
-		c.grpcClient = daemon.NewStartedServiceClient(grpcConn)
-		if c.ctx == nil {
-			c.ctx, c.cancel = context.WithCancel(context.Background())
-		}
-		return c.grpcClient, nil
-	}
-
-	conn, err := c.grpcDial()
+	target, contextDialer := dialTarget()
+	connection, client, err := c.dialWithRetry(target, contextDialer, true)
 	if err != nil {
 		return nil, err
 	}
-	c.grpcConn = conn
-	c.grpcClient = daemon.NewStartedServiceClient(conn)
+	c.grpcConn = connection
+	c.grpcClient = client
 	if c.ctx == nil {
 		c.ctx, c.cancel = context.WithCancel(context.Background())
 	}

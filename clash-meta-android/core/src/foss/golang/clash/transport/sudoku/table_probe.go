@@ -3,6 +3,7 @@ package sudoku
 import (
 	"bufio"
 	"bytes"
+	crand "crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -10,34 +11,24 @@ import (
 	"net"
 	"time"
 
-	"github.com/saba-futai/sudoku/apis"
-	"github.com/saba-futai/sudoku/pkg/crypto"
-	"github.com/saba-futai/sudoku/pkg/obfs/sudoku"
+	"github.com/metacubex/mihomo/transport/sudoku/crypto"
+	"github.com/metacubex/mihomo/transport/sudoku/obfs/sudoku"
 )
 
-func tableCandidates(cfg *apis.ProtocolConfig) []*sudoku.Table {
-	if cfg == nil {
-		return nil
-	}
-	if len(cfg.Tables) > 0 {
-		return cfg.Tables
-	}
-	if cfg.Table != nil {
-		return []*sudoku.Table{cfg.Table}
-	}
-	return nil
-}
-
-func pickClientTable(cfg *apis.ProtocolConfig) (*sudoku.Table, byte, error) {
-	candidates := tableCandidates(cfg)
+func pickClientTable(cfg *ProtocolConfig) (*sudoku.Table, error) {
+	candidates := cfg.tableCandidates()
 	if len(candidates) == 0 {
-		return nil, 0, fmt.Errorf("no table configured")
+		return nil, fmt.Errorf("no table configured")
 	}
 	if len(candidates) == 1 {
-		return candidates[0], 0, nil
+		return candidates[0], nil
 	}
-	idx := int(randomByte()) % len(candidates)
-	return candidates[idx], byte(idx), nil
+	var b [1]byte
+	if _, err := crand.Read(b[:]); err != nil {
+		return nil, fmt.Errorf("random table pick failed: %w", err)
+	}
+	idx := int(b[0]) % len(candidates)
+	return candidates[idx], nil
 }
 
 type readOnlyConn struct {
@@ -62,7 +53,7 @@ func drainBuffered(r *bufio.Reader) ([]byte, error) {
 	return out, err
 }
 
-func probeHandshakeBytes(probe []byte, cfg *apis.ProtocolConfig, table *sudoku.Table) error {
+func probeHandshakeBytes(probe []byte, cfg *ProtocolConfig, table *sudoku.Table) error {
 	rc := &readOnlyConn{Reader: bytes.NewReader(probe)}
 	_, obfsConn := buildServerObfsConn(rc, cfg, table, false)
 	cConn, err := crypto.NewAEADConn(obfsConn, cfg.Key, cfg.AEADMethod)
@@ -90,7 +81,7 @@ func probeHandshakeBytes(probe []byte, cfg *apis.ProtocolConfig, table *sudoku.T
 	return nil
 }
 
-func selectTableByProbe(r *bufio.Reader, cfg *apis.ProtocolConfig, tables []*sudoku.Table) (*sudoku.Table, []byte, error) {
+func selectTableByProbe(r *bufio.Reader, cfg *ProtocolConfig, tables []*sudoku.Table) (*sudoku.Table, []byte, error) {
 	const (
 		maxProbeBytes = 64 * 1024
 		readChunk     = 4 * 1024

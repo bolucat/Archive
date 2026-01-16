@@ -272,8 +272,20 @@ dns:
     - rule-set:fakeip-filter
     # fakeip-filter 为 geosite 中名为 fakeip-filter 的分类（需要自行保证该分类存在）
     - geosite:fakeip-filter
+
+    # 当 fake-ip-filter-mode: rule 时开启规则模式
+    # fake-ip 与路由 rules 匹配逻辑一致(自上而下)，语法也一致，支持GEOSITE、RuleSet、DOMAIN*、MATCH
+    - RULE-SET,reject-domain,fake-ip # 自定义 RuleSet behavior 必须为 domain/classical，当为 classical 时仅会生效域名类规则
+    - RULE-SET,proxy-domain,fake-ip
+    - GEOSITE,gfw,fake-ip
+    - DOMAIN,www.baidu.com,real-ip
+    - DOMAIN-SUFFIX,qq.com,real-ip
+    - DOMAIN-SUFFIX,jd.com,fake-ip
+    - MATCH,fake-ip # 最后 fake-ip or real-ip
+
   # 配置fake-ip-filter的匹配模式，默认为blacklist，即如果匹配成功不返回fake-ip
   # 可设置为whitelist，即只有匹配成功才返回fake-ip
+  # 也可配置为rule，规则模式语法见fake-ip-filter说明
   fake-ip-filter-mode: blacklist
   # 配置fakeip查询返回的TTL，非必要情况下请勿修改
   fake-ip-ttl: 1
@@ -546,12 +558,13 @@ proxies: # socks5
     plugin: kcptun
     plugin-opts:
       key: it's a secrect # pre-shared secret between client and server
-      crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
+      crypt: aes # aes, aes-128, aes-128-gcm, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
       mode: fast # profiles: fast3, fast2, fast, normal, manual
       conn: 1 # set num of UDP connections to server
       autoexpire: 0 # set auto expiration time(in seconds) for a single UDP connection, 0 to disable
       scavengettl: 600 # set how long an expired connection can live (in seconds)
       mtu: 1350 # set maximum transmission unit for UDP packets
+      ratelimit: 0 # set maximum outgoing speed (in bytes per second) for a single KCP connection, 0 to disable. Also known as packet pacing
       sndwnd: 128 # set send window size(num of packets)
       rcvwnd: 512 # set receive window size(num of packets)
       datashard: 10 # set reed-solomon erasure coding - datashard
@@ -565,6 +578,7 @@ proxies: # socks5
       sockbuf: 4194304 # per-socket buffer in bytes
       smuxver: 1 # specify smux version, available 1,2
       smuxbuf: 4194304 # the overall de-mux buffer in bytes
+      framesize: 8192 # smux max frame size
       streambuf: 2097152 # per stream receive buffer in bytes, smux v2+
       keepalive: 10 # seconds between heartbeats
 
@@ -655,6 +669,7 @@ proxies: # socks5
     # skip-cert-verify: true
     grpc-opts:
       grpc-service-name: "example"
+      # grpc-user-agent: "grpc-go/1.36.0"
     # ip-version: ipv4
 
   # vless
@@ -743,6 +758,8 @@ proxies: # socks5
     servername: testingcf.jsdelivr.net
     grpc-opts:
       grpc-service-name: "grpc"
+      # grpc-user-agent: "grpc-go/1.36.0"
+      
     reality-opts:
       public-key: CrrQSjAG_YkHLwvM2M-7XkKJilgL5upBKCp0od0tLhE
       short-id: 10f897e26c4b9478
@@ -811,6 +828,7 @@ proxies: # socks5
     udp: true
     grpc-opts:
       grpc-service-name: "example"
+      # grpc-user-agent: "grpc-go/1.36.0"
 
   - name: trojan-ws
     server: server
@@ -1041,7 +1059,7 @@ proxies: # socks5
   # sudoku
   - name: sudoku
     type: sudoku
-    server: serverip # 1.2.3.4
+    server: server_ip/domain # 1.2.3.4 or domain
     port: 443 
     key: "<client_key>" # 如果你使用sudoku生成的ED25519密钥对，请填写密钥对中的私钥，否则填入和服务端相同的uuid
     aead-method: chacha20-poly1305 # 可选值：chacha20-poly1305、aes-128-gcm、none 我们保证在none的情况下sudoku混淆层仍然确保安全
@@ -1051,7 +1069,11 @@ proxies: # socks5
     # custom-table: xpxvvpvv    # 可选，自定义字节布局，必须包含2个x、2个p、4个v，可随意组合。启用此处则需配置`table-type`为`prefer_entropy`
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），用于 xvp 模式轮换；非空时覆盖 custom-table
     http-mask: true # 是否启用http掩码
-    # http-mask-strategy: random # 可选：random（默认）、post、websocket；仅在 http-mask=true 时生效
+    # http-mask-mode: legacy # 可选：legacy（默认）、stream、poll、auto；stream/poll/auto 支持走 CDN/反代
+    # http-mask-tls: true # 可选：仅在 http-mask-mode 为 stream/poll/auto 时生效；true 强制 https；false 强制 http（不会根据端口自动推断）
+    # http-mask-host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 http-mask-mode 为 stream/poll/auto 时生效
+    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload
+    # http-mask-multiplex: off # 可选：off（默认）、auto（复用 h1.1 keep-alive / h2 连接，减少每次建链 RTT）、on（单条隧道内多路复用多个目标连接；仅在 http-mask-mode=stream/poll/auto 生效）
     enable-pure-downlink: false # 是否启用混淆下行，false的情况下能在保证数据安全的前提下极大提升下行速度，与服务端端保持相同(如果此处为false，则要求aead不可为none)
 
   # anytls
@@ -1354,7 +1376,7 @@ listeners:
     #   dC5jb20AAA==
     #   -----END ECH KEYS-----
 
-  - name: reidr-in-1
+  - name: redir-in-1
     type: redir
     port: 10811 # 支持使用ports格式，例如200,302 or 200,204,401-429,501-503
     listen: 0.0.0.0
@@ -1389,11 +1411,12 @@ listeners:
     # kcp-tun:
     #   enable: false
     #   key: it's a secrect # pre-shared secret between client and server
-    #   crypt: aes # aes, aes-128, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
+    #   crypt: aes # aes, aes-128, aes-128-gcm, aes-192, salsa20, blowfish, twofish, cast5, 3des, tea, xtea, xor, none, null
     #   mode: fast # profiles: fast3, fast2, fast, normal, manual
     #   conn: 1 # set num of UDP connections to server
     #   autoexpire: 0 # set auto expiration time(in seconds) for a single UDP connection, 0 to disable
     #   scavengettl: 600 # set how long an expired connection can live (in seconds)
+    #   ratelimit: 0 # set maximum outgoing speed (in bytes per second) for a single KCP connection, 0 to disable. Also known as packet pacing
     #   mtu: 1350 # set maximum transmission unit for UDP packets
     #   sndwnd: 128 # set send window size(num of packets)
     #   rcvwnd: 512 # set receive window size(num of packets)
@@ -1408,6 +1431,7 @@ listeners:
     #   sockbuf: 4194304 # per-socket buffer in bytes
     #   smuxver: 1 # specify smux version, available 1,2
     #   smuxbuf: 4194304 # the overall de-mux buffer in bytes
+    #   framesize: 8192 # smux max frame size
     #   streambuf: 2097152 # per stream receive buffer in bytes, smux v2+
     #   keepalive: 10 # seconds between heartbeats
 
@@ -1596,6 +1620,9 @@ listeners:
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），用于 xvp 模式轮换；非空时覆盖 custom-table
     handshake-timeout: 5   # optional
     enable-pure-downlink: false # 是否启用混淆下行，false的情况下能在保证数据安全的前提下极大提升下行速度，与客户端保持相同(如果此处为false，则要求aead不可为none)
+    disable-http-mask: false # 可选：禁用 http 掩码/隧道（默认为 false）
+    # http-mask-mode: legacy # 可选：legacy（默认）、stream、poll、auto；stream/poll/auto 支持走 CDN/反代
+    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload
 
 
 

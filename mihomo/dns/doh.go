@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/metacubex/mihomo/common/pool"
 	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/log"
@@ -202,16 +201,9 @@ func (doh *dnsOverHTTPS) closeClient(client *http.Client) (err error) {
 // exchangeHTTPS sends the DNS query to a DoH resolver using the specified
 // http.Client instance.
 func (doh *dnsOverHTTPS) exchangeHTTPS(ctx context.Context, client *http.Client, req *D.Msg) (resp *D.Msg, err error) {
-	var queryValue string
-	{
-		buffer := pool.Get(pool.UDPBufferSize)
-		buf, err := req.PackBuffer(buffer)
-		if err != nil {
-			_ = pool.Put(buffer)
-			return nil, fmt.Errorf("packing message: %w", err)
-		}
-		queryValue = base64.RawURLEncoding.EncodeToString(buf)
-		_ = pool.Put(buffer)
+	buf, err := req.Pack()
+	if err != nil {
+		return nil, fmt.Errorf("packing message: %w", err)
 	}
 
 	// It appears, that GET requests are more memory-efficient with Golang
@@ -223,7 +215,7 @@ func (doh *dnsOverHTTPS) exchangeHTTPS(ctx context.Context, client *http.Client,
 	}
 
 	requestUrl := *doh.url // don't modify origin url
-	requestUrl.RawQuery = "dns=" + queryValue
+	requestUrl.RawQuery = fmt.Sprintf("dns=%s", base64.RawURLEncoding.EncodeToString(buf))
 	httpReq, err := http.NewRequestWithContext(ctx, method, requestUrl.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating http request to %s: %w", doh.url, err)

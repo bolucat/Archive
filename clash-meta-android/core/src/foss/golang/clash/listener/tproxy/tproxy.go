@@ -1,10 +1,12 @@
 package tproxy
 
 import (
+	"context"
 	"net"
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/component/keepalive"
+	"github.com/metacubex/mihomo/component/mptcp"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/socks5"
 )
@@ -46,7 +48,11 @@ func New(addr string, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener
 			inbound.WithSpecialRules(""),
 		}
 	}
-	l, err := net.Listen("tcp", addr)
+	// Golang will then enable mptcp support for listeners by default when the major version of go.mod is 1.24 or higher.
+	// This can cause tproxy to malfunction on certain Linux kernel versions, so we force to disable mptcp for tproxy.
+	lc := net.ListenConfig{}
+	mptcp.SetNetListenConfig(&lc, false)
+	l, err := lc.Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return nil, err
 	}

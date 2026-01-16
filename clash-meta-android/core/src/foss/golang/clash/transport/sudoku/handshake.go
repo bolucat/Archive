@@ -2,38 +2,38 @@ package sudoku
 
 import (
 	"bufio"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"strings"
 	"time"
 
-	"github.com/saba-futai/sudoku/apis"
-	"github.com/saba-futai/sudoku/pkg/crypto"
-	"github.com/saba-futai/sudoku/pkg/obfs/httpmask"
-	"github.com/saba-futai/sudoku/pkg/obfs/sudoku"
+	"github.com/metacubex/mihomo/transport/sudoku/crypto"
+	"github.com/metacubex/mihomo/transport/sudoku/obfs/httpmask"
+	"github.com/metacubex/mihomo/transport/sudoku/obfs/sudoku"
 
 	"github.com/metacubex/mihomo/log"
 )
-
-type ProtocolConfig = apis.ProtocolConfig
-
-func DefaultConfig() *ProtocolConfig { return apis.DefaultConfig() }
 
 type SessionType int
 
 const (
 	SessionTypeTCP SessionType = iota
 	SessionTypeUoT
+	SessionTypeMultiplex
 )
 
 type ServerSession struct {
 	Conn   net.Conn
 	Type   SessionType
 	Target string
+
+	// UserHash is a stable per-key identifier derived from the handshake payload.
+	// It is primarily useful for debugging / user attribution when table rotation is enabled.
+	UserHash string
 }
 
 type bufferedConn struct {
@@ -105,14 +105,14 @@ const (
 	downlinkModePacked byte = 0x02
 )
 
-func downlinkMode(cfg *apis.ProtocolConfig) byte {
+func downlinkMode(cfg *ProtocolConfig) byte {
 	if cfg.EnablePureDownlink {
 		return downlinkModePure
 	}
 	return downlinkModePacked
 }
 
-func buildClientObfsConn(raw net.Conn, cfg *apis.ProtocolConfig, table *sudoku.Table) net.Conn {
+func buildClientObfsConn(raw net.Conn, cfg *ProtocolConfig, table *sudoku.Table) net.Conn {
 	baseReader := sudoku.NewConn(raw, table, cfg.PaddingMin, cfg.PaddingMax, false)
 	baseWriter := newSudokuObfsWriter(raw, table, cfg.PaddingMin, cfg.PaddingMax)
 	if cfg.EnablePureDownlink {
@@ -130,7 +130,7 @@ func buildClientObfsConn(raw net.Conn, cfg *apis.ProtocolConfig, table *sudoku.T
 	}
 }
 
-func buildServerObfsConn(raw net.Conn, cfg *apis.ProtocolConfig, table *sudoku.Table, record bool) (*sudoku.Conn, net.Conn) {
+func buildServerObfsConn(raw net.Conn, cfg *ProtocolConfig, table *sudoku.Table, record bool) (*sudoku.Conn, net.Conn) {
 	uplink := sudoku.NewConn(raw, table, cfg.PaddingMin, cfg.PaddingMax, record)
 	if cfg.EnablePureDownlink {
 		downlink := &directionalConn{
@@ -152,7 +152,17 @@ func buildServerObfsConn(raw net.Conn, cfg *apis.ProtocolConfig, table *sudoku.T
 func buildHandshakePayload(key string) [16]byte {
 	var payload [16]byte
 	binary.BigEndian.PutUint64(payload[:8], uint64(time.Now().Unix()))
-	hash := sha256.Sum256([]byte(key))
+
+	// Align with upstream: only decode hex bytes when this key is an ED25519 key material.
+	// For plain UUID/strings (even if they look like hex), hash the string bytes as-is.
+	src := []byte(key)
+	if _, err := crypto.RecoverPublicKey(key); err == nil {
+		if keyBytes, decErr := hex.DecodeString(key); decErr == nil && len(keyBytes) > 0 {
+			src = keyBytes
+		}
+	}
+
+	hash := sha256.Sum256(src)
 	copy(payload[8:], hash[:8])
 	return payload
 }
@@ -189,12 +199,12 @@ type ClientHandshakeOptions struct {
 }
 
 // ClientHandshake performs the client-side Sudoku handshake (without sending target address).
-func ClientHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (net.Conn, error) {
+func ClientHandshake(rawConn net.Conn, cfg *ProtocolConfig) (net.Conn, error) {
 	return ClientHandshakeWithOptions(rawConn, cfg, ClientHandshakeOptions{})
 }
 
 // ClientHandshakeWithOptions performs the client-side Sudoku handshake (without sending target address).
-func ClientHandshakeWithOptions(rawConn net.Conn, cfg *apis.ProtocolConfig, opt ClientHandshakeOptions) (net.Conn, error) {
+func ClientHandshakeWithOptions(rawConn net.Conn, cfg *ProtocolConfig, opt ClientHandshakeOptions) (net.Conn, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -203,12 +213,12 @@ func ClientHandshakeWithOptions(rawConn net.Conn, cfg *apis.ProtocolConfig, opt 
 	}
 
 	if !cfg.DisableHTTPMask {
-		if err := WriteHTTPMaskHeader(rawConn, cfg.ServerAddress, opt.HTTPMaskStrategy); err != nil {
+		if err := WriteHTTPMaskHeader(rawConn, cfg.ServerAddress, cfg.HTTPMaskPathRoot, opt.HTTPMaskStrategy); err != nil {
 			return nil, fmt.Errorf("write http mask failed: %w", err)
 		}
 	}
 
-	table, tableID, err := pickClientTable(cfg)
+	table, err := pickClientTable(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -220,9 +230,6 @@ func ClientHandshakeWithOptions(rawConn net.Conn, cfg *apis.ProtocolConfig, opt 
 	}
 
 	handshake := buildHandshakePayload(cfg.Key)
-	if len(tableCandidates(cfg)) > 1 {
-		handshake[15] = tableID
-	}
 	if _, err := cConn.Write(handshake[:]); err != nil {
 		cConn.Close()
 		return nil, fmt.Errorf("send handshake failed: %w", err)
@@ -236,7 +243,7 @@ func ClientHandshakeWithOptions(rawConn net.Conn, cfg *apis.ProtocolConfig, opt 
 }
 
 // ServerHandshake performs Sudoku server-side handshake and detects UoT preface.
-func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession, error) {
+func ServerHandshake(rawConn net.Conn, cfg *ProtocolConfig) (*ServerSession, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -260,7 +267,7 @@ func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession
 		}
 	}
 
-	selectedTable, preRead, err := selectTableByProbe(bufReader, cfg, tableCandidates(cfg))
+	selectedTable, preRead, err := selectTableByProbe(bufReader, cfg, cfg.tableCandidates())
 	if err != nil {
 		return nil, err
 	}
@@ -285,6 +292,7 @@ func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession
 		return nil, fmt.Errorf("timestamp skew detected")
 	}
 
+	userHash := userHashFromHandshake(handshakeBuf[:])
 	sConn.StopRecording()
 
 	modeBuf := []byte{0}
@@ -303,6 +311,11 @@ func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession
 		return nil, fmt.Errorf("read first byte failed: %w", err)
 	}
 
+	if firstByte[0] == MultiplexMagicByte {
+		rawConn.SetReadDeadline(time.Time{})
+		return &ServerSession{Conn: cConn, Type: SessionTypeMultiplex, UserHash: userHash}, nil
+	}
+
 	if firstByte[0] == UoTMagicByte {
 		version := make([]byte, 1)
 		if _, err := io.ReadFull(cConn, version); err != nil {
@@ -314,7 +327,7 @@ func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession
 			return nil, fmt.Errorf("unsupported uot version: %d", version[0])
 		}
 		rawConn.SetReadDeadline(time.Time{})
-		return &ServerSession{Conn: cConn, Type: SessionTypeUoT}, nil
+		return &ServerSession{Conn: cConn, Type: SessionTypeUoT, UserHash: userHash}, nil
 	}
 
 	prefixed := &preBufferedConn{Conn: cConn, buf: firstByte}
@@ -327,9 +340,10 @@ func ServerHandshake(rawConn net.Conn, cfg *apis.ProtocolConfig) (*ServerSession
 	rawConn.SetReadDeadline(time.Time{})
 	log.Debugln("[Sudoku] incoming TCP session target: %s", target)
 	return &ServerSession{
-		Conn:   prefixed,
-		Type:   SessionTypeTCP,
-		Target: target,
+		Conn:     prefixed,
+		Type:     SessionTypeTCP,
+		Target:   target,
+		UserHash: userHash,
 	}, nil
 }
 
@@ -361,11 +375,9 @@ func normalizeHTTPMaskStrategy(strategy string) string {
 	}
 }
 
-// randomByte returns a cryptographically random byte (with a math/rand fallback).
-func randomByte() byte {
-	var b [1]byte
-	if _, err := rand.Read(b[:]); err == nil {
-		return b[0]
+func userHashFromHandshake(handshakeBuf []byte) string {
+	if len(handshakeBuf) < 16 {
+		return ""
 	}
-	return byte(time.Now().UnixNano())
+	return hex.EncodeToString(handshakeBuf[8:16])
 }
