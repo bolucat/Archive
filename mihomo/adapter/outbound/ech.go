@@ -12,6 +12,8 @@ import (
 type ECHOptions struct {
 	Enable bool   `proxy:"enable,omitempty" obfs:"enable,omitempty"`
 	Config string `proxy:"config,omitempty" obfs:"config,omitempty"`
+
+	QueryServerName string `proxy:"query-server-name,omitempty" obfs:"query-server-name,omitempty"`
 }
 
 func (o ECHOptions) Parse() (*ech.Config, error) {
@@ -29,6 +31,9 @@ func (o ECHOptions) Parse() (*ech.Config, error) {
 		}
 	} else {
 		echConfig.GetEncryptedClientHelloConfigList = func(ctx context.Context, serverName string) ([]byte, error) {
+			if o.QueryServerName != "" { // overrides the domain name used for ECH HTTPS record queries
+				serverName = o.QueryServerName
+			}
 			return resolver.ResolveECHWithResolver(ctx, serverName, resolver.ProxyServerHostResolver)
 		}
 	}

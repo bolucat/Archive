@@ -1027,7 +1027,7 @@
     <value>پروتکل sing-box Mux</value>
   </data>
   <data name="TbRoutingRuleProcess" xml:space="preserve">
-    <value>نام کامل فرانید (حالت Tun)</value>
+    <value>Process (Tun mode)</value>
   </data>
   <data name="TbRoutingRuleIP" xml:space="preserve">
     <value>IP or IP CIDR</value>
@@ -1646,5 +1646,11 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
   </data>
   <data name="TbEchForceQuery" xml:space="preserve">
     <value>EchForceQuery</value>
+  </data>
+  <data name="TbFullCertTips" xml:space="preserve">
+    <value>Full certificate (chain), PEM format</value>
+  </data>
+  <data name="TbCertSha256Tips" xml:space="preserve">
+    <value>Certificate fingerprint (SHA-256)</value>
   </data>
 </root>

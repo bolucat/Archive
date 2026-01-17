@@ -27,11 +27,13 @@ const (
 type ConnectionEvent struct {
 	Type          ConnectionEventType
 	ID            uuid.UUID
-	Metadata      TrackerMetadata
+	Metadata      *TrackerMetadata
 	UplinkDelta   int64
 	DownlinkDelta int64
 	ClosedAt      time.Time
 }
+
+const closedConnectionsLimit = 1000
 
 type Manager struct {
 	uploadTotal   atomic.Int64
@@ -69,19 +71,21 @@ func (m *Manager) Leave(c Tracker) {
 	metadata := c.Metadata()
 	_, loaded := m.connections.LoadAndDelete(metadata.ID)
 	if loaded {
-		metadata.ClosedAt = time.Now()
+		closedAt := time.Now()
+		metadata.ClosedAt = closedAt
+		metadataCopy := *metadata
 		m.closedConnectionsAccess.Lock()
-		if m.closedConnections.Len() >= 1000 {
+		if m.closedConnections.Len() >= closedConnectionsLimit {
 			m.closedConnections.PopFront()
 		}
-		m.closedConnections.PushBack(metadata)
+		m.closedConnections.PushBack(metadataCopy)
 		m.closedConnectionsAccess.Unlock()
 		if m.eventSubscriber != nil {
 			m.eventSubscriber.Emit(ConnectionEvent{
 				Type:     ConnectionEventClosed,
 				ID:       metadata.ID,
-				Metadata: metadata,
-				ClosedAt: metadata.ClosedAt,
+				Metadata: &metadataCopy,
+				ClosedAt: closedAt,
 			})
 		}
 	}
@@ -103,8 +107,8 @@ func (m *Manager) ConnectionsLen() int {
 	return m.connections.Len()
 }
 
-func (m *Manager) Connections() []TrackerMetadata {
-	var connections []TrackerMetadata
+func (m *Manager) Connections() []*TrackerMetadata {
+	var connections []*TrackerMetadata
 	m.connections.Range(func(_ uuid.UUID, value Tracker) bool {
 		connections = append(connections, value.Metadata())
 		return true
@@ -112,10 +116,18 @@ func (m *Manager) Connections() []TrackerMetadata {
 	return connections
 }
 
-func (m *Manager) ClosedConnections() []TrackerMetadata {
+func (m *Manager) ClosedConnections() []*TrackerMetadata {
 	m.closedConnectionsAccess.Lock()
-	defer m.closedConnectionsAccess.Unlock()
-	return m.closedConnections.Array()
+	values := m.closedConnections.Array()
+	m.closedConnectionsAccess.Unlock()
+	if len(values) == 0 {
+		return nil
+	}
+	connections := make([]*TrackerMetadata, len(values))
+	for i := range values {
+		connections[i] = &values[i]
+	}
+	return connections
 }
 
 func (m *Manager) Connection(id uuid.UUID) Tracker {
@@ -163,7 +175,7 @@ func (s *Snapshot) MarshalJSON() ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"downloadTotal": s.Download,
 		"uploadTotal":   s.Upload,
-		"connections":   common.Map(s.Connections, func(t Tracker) TrackerMetadata { return t.Metadata() }),
+		"connections":   common.Map(s.Connections, func(t Tracker) *TrackerMetadata { return t.Metadata() }),
 		"memory":        s.Memory,
 	})
 }

@@ -253,6 +253,7 @@ public static class ConfigHandler
             item.Extra = profileItem.Extra;
             item.MuxEnabled = profileItem.MuxEnabled;
             item.Cert = profileItem.Cert;
+            item.CertSha = profileItem.CertSha;
             item.EchConfigList = profileItem.EchConfigList;
             item.EchForceQuery = profileItem.EchForceQuery;
         }
@@ -702,7 +703,7 @@ public static class ConfigHandler
     public static async Task<int> AddHysteria2Server(Config config, ProfileItem profileItem, bool toFile = true)
     {
         profileItem.ConfigType = EConfigType.Hysteria2;
-        profileItem.CoreType = ECoreType.sing_box;
+        //profileItem.CoreType = ECoreType.sing_box;
 
         profileItem.Address = profileItem.Address.TrimEx();
         profileItem.Id = profileItem.Id.TrimEx();
