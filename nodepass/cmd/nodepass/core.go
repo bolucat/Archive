@@ -8,12 +8,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/NodePassProject/cert"
 	"github.com/NodePassProject/logs"
 	"github.com/NodePassProject/nodepass/internal"
 )
 
-// start 启动核心逻辑
 func start(args []string) error {
 	if len(args) != 2 {
 		return fmt.Errorf("start: empty URL command")
@@ -35,7 +33,6 @@ func start(args []string) error {
 	return nil
 }
 
-// initLogger 初始化日志记录器
 func initLogger(level string) *logs.Logger {
 	logger := logs.NewLogger(logs.Info, true)
 	switch level {
@@ -58,7 +55,6 @@ func initLogger(level string) *logs.Logger {
 	return logger
 }
 
-// createCore 创建核心
 func createCore(parsedURL *url.URL, logger *logs.Logger) (interface{ Run() }, error) {
 	switch parsedURL.Scheme {
 	case "server":
@@ -74,10 +70,8 @@ func createCore(parsedURL *url.URL, logger *logs.Logger) (interface{ Run() }, er
 	}
 }
 
-// getTLSProtocol 获取TLS配置
 func getTLSProtocol(parsedURL *url.URL, logger *logs.Logger) (string, *tls.Config) {
-	// 生成基本TLS配置
-	tlsConfig, err := cert.NewTLSConfig(version)
+	tlsConfig, err := internal.NewTLSConfig()
 	if err != nil {
 		logger.Error("Generate TLS config failed: %v", err)
 		logger.Warn("TLS code-0: nil cert")
@@ -88,11 +82,9 @@ func getTLSProtocol(parsedURL *url.URL, logger *logs.Logger) (string, *tls.Confi
 
 	switch parsedURL.Query().Get("tls") {
 	case "1":
-		// 使用内存自签证书
 		logger.Info("TLS code-1: RAM cert with TLS 1.3")
 		return "1", tlsConfig
 	case "2":
-		// 使用自定义证书
 		crtFile, keyFile := parsedURL.Query().Get("crt"), parsedURL.Query().Get("key")
 		cert, err := tls.LoadX509KeyPair(crtFile, keyFile)
 		if err != nil {
@@ -101,13 +93,11 @@ func getTLSProtocol(parsedURL *url.URL, logger *logs.Logger) (string, *tls.Confi
 			return "1", tlsConfig
 		}
 
-		// 缓存证书并设置自动重载
 		cachedCert := cert
 		lastReload := time.Now()
 		tlsConfig = &tls.Config{
 			MinVersion: tls.VersionTLS13,
 			GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-				// 定期重载证书
 				if time.Since(lastReload) >= internal.ReloadInterval {
 					newCert, err := tls.LoadX509KeyPair(crtFile, keyFile)
 					if err != nil {
@@ -130,31 +120,22 @@ func getTLSProtocol(parsedURL *url.URL, logger *logs.Logger) (string, *tls.Confi
 		return "2", tlsConfig
 	default:
 		if poolType := parsedURL.Query().Get("type"); poolType == "1" || poolType == "3" {
-			// 流池类型不支持明文传输
 			logger.Info("TLS code-1: RAM cert with TLS 1.3 for stream pool")
 			return "1", tlsConfig
 		}
-		// 不使用加密
 		logger.Warn("TLS code-0: unencrypted")
 		return "0", nil
 	}
 }
 
-// exit 退出程序并显示帮助信息
 func exit(err error) {
+	errMsg := "none"
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v [%d]\n", err, os.Getpid())
+		errMsg = err.Error()
 	}
-	fmt.Printf(`
-╭─────────────────────────────────────╮
-│%*s │
-│%*s │
-├─────────────────────────────────────┤
-│ server://password@host/host?<query> │
-│ client://password@host/host?<query> │
-│ master://hostname:port/path?<query> │
-╰─────────────────────────────────────╯
+	fmt.Fprintf(os.Stderr,
+		"nodepass-%s %s/%s pid=%d error=%s\nvisit https://github.com/NodePassProject for more information\n",
+		version, runtime.GOOS, runtime.GOARCH, os.Getpid(), errMsg)
 
-`, 36, fmt.Sprintf("nodepass-%s", version), 36, fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH))
 	os.Exit(1)
 }

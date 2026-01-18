@@ -1,8 +1,8 @@
-// 内部包，实现客户端模式功能
 package internal
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,10 +22,8 @@ import (
 	"github.com/NodePassProject/quic"
 )
 
-// Client 实现客户端模式功能
 type Client struct{ Common }
 
-// NewClient 创建新的客户端实例
 func NewClient(parsedURL *url.URL, logger *logs.Logger) (*Client, error) {
 	client := &Client{
 		Common: Common{
@@ -55,7 +53,6 @@ func NewClient(parsedURL *url.URL, logger *logs.Logger) (*Client, error) {
 	return client, nil
 }
 
-// Run 管理客户端生命周期
 func (c *Client) Run() {
 	logInfo := func(prefix string) {
 		c.logger.Info("%v: client://%v@%v/%v?dns=%v&sni=%v&lbs=%v&min=%v&mode=%v&dial=%v&read=%v&rate=%v&slot=%v&proxy=%v&block=%v&notcp=%v&noudp=%v",
@@ -67,13 +64,10 @@ func (c *Client) Run() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	// 启动客户端服务并处理重启
 	go func() {
 		for ctx.Err() == nil {
-			// 启动客户端
 			if err := c.start(); err != nil && err != io.EOF {
 				c.logger.Error("Client error: %v", err)
-				// 重启客户端
 				c.stop()
 				select {
 				case <-ctx.Done():
@@ -85,11 +79,9 @@ func (c *Client) Run() {
 		}
 	}()
 
-	// 监听系统信号以优雅关闭
 	<-ctx.Done()
 	stop()
 
-	// 执行关闭过程
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := c.shutdown(shutdownCtx, c.stop); err != nil {
@@ -99,22 +91,19 @@ func (c *Client) Run() {
 	}
 }
 
-// start 启动客户端服务
 func (c *Client) start() error {
-	// 初始化上下文
 	c.initContext()
 
-	// 运行模式判断
 	switch c.runMode {
-	case "1": // 单端模式
+	case "1":
 		if err := c.initTunnelListener(); err == nil {
 			return c.singleStart()
 		} else {
 			return fmt.Errorf("start: initTunnelListener failed: %w", err)
 		}
-	case "2": // 双端模式
+	case "2":
 		return c.commonStart()
-	default: // 自动判断
+	default:
 		if err := c.initTunnelListener(); err == nil {
 			c.runMode = "1"
 			return c.singleStart()
@@ -125,7 +114,6 @@ func (c *Client) start() error {
 	}
 }
 
-// singleStart 启动单端转发模式
 func (c *Client) singleStart() error {
 	if err := c.singleControl(); err != nil {
 		return fmt.Errorf("singleStart: singleControl failed: %w", err)
@@ -133,27 +121,22 @@ func (c *Client) singleStart() error {
 	return nil
 }
 
-// commonStart 启动双端握手模式
 func (c *Client) commonStart() error {
-	// 发起隧道握手
 	c.logger.Info("Pending tunnel handshake...")
 	c.handshakeStart = time.Now()
 	if err := c.tunnelHandshake(); err != nil {
 		return fmt.Errorf("commonStart: tunnelHandshake failed: %w", err)
 	}
 
-	// 初始化连接池
 	if err := c.initTunnelPool(); err != nil {
 		return fmt.Errorf("commonStart: initTunnelPool failed: %w", err)
 	}
 
-	// 设置控制连接
 	c.logger.Info("Getting tunnel pool ready...")
 	if err := c.setControlConn(); err != nil {
 		return fmt.Errorf("commonStart: setControlConn failed: %w", err)
 	}
 
-	// 判断数据流向
 	if c.dataFlow == "+" {
 		if err := c.initTargetListener(); err != nil {
 			return fmt.Errorf("commonStart: initTargetListener failed: %w", err)
@@ -161,7 +144,6 @@ func (c *Client) commonStart() error {
 		go c.commonLoop()
 	}
 
-	// 启动共用控制
 	if err := c.commonControl(); err != nil {
 		return fmt.Errorf("commonStart: commonControl failed: %w", err)
 	}
@@ -169,7 +151,6 @@ func (c *Client) commonStart() error {
 	return nil
 }
 
-// initTunnelPool 初始化隧道连接池
 func (c *Client) initTunnelPool() error {
 	switch c.poolType {
 	case "0":
@@ -243,20 +224,19 @@ func (c *Client) initTunnelPool() error {
 	return nil
 }
 
-// tunnelHandshake 与隧道服务端进行握手
 func (c *Client) tunnelHandshake() error {
-	scheme := "http"
-	if c.serverPort == "443" {
-		scheme = "https"
-	}
-
-	// 构建请求
-	req, _ := http.NewRequest(http.MethodGet, scheme+"://"+c.tunnelAddr+"/", nil)
+	req, _ := http.NewRequest(http.MethodGet, "https://"+c.tunnelAddr+"/", nil)
 	req.Host = c.serverName
 	req.Header.Set("Authorization", "Bearer "+c.generateAuthToken())
 
-	// 发送请求
-	client := &http.Client{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("tunnelHandshake: %w", err)
@@ -267,7 +247,6 @@ func (c *Client) tunnelHandshake() error {
 		return fmt.Errorf("tunnelHandshake: status %d", resp.StatusCode)
 	}
 
-	// 解析配置
 	var config struct {
 		Flow string `json:"flow"`
 		Max  int    `json:"max"`
@@ -278,7 +257,6 @@ func (c *Client) tunnelHandshake() error {
 		return fmt.Errorf("tunnelHandshake: %w", err)
 	}
 
-	// 更新配置
 	c.dataFlow = config.Flow
 	c.maxPoolCapacity = config.Max
 	c.tlsCode = config.TLS

@@ -11,88 +11,62 @@
 ![GitHub last commit](https://img.shields.io/github/last-commit/NodePassProject/nodepass)
 
   <a href="https://apps.apple.com/us/app/nodepass/id6747930492"><img src="https://nodepass.eu/assets/appstore.png" width="120"></a>
-
-English | [简体中文](README_zh.md)
 </div>
 
 **NodePass** is an open-source, lightweight, enterprise-grade TCP/UDP network tunneling solution featuring an all-in-one architecture with separation of control and data channels, along with flexible and high-performance instance control. It supports zero-configuration deployment, intelligent connection pooling, tiered TLS encryption, and seamless protocol conversion. Designed for DevOps professionals and system administrators to effortlessly handle complex network scenarios.
 
-## 💎 Key Features
+## Key Features
 
-- **🌐 Universal Functionality**
+- **Universal Functionality**
   - Basic TCP/UDP tunneling and protocol conversion across diverse networks.
   - Compatible with port mapping, NAT traversal, and traffic relay.
   - Cross-platform, multi-architecture, single binary or container.
 
-- **🚀 Connection Pool**
+- **Connection Pool**
   - Supports TCP, QUIC, WebSocket, HTTP/2 pooling transport methods.
   - Eliminates handshake delays, boosts performance with 0-RTT support.
   - Auto-scaling with real-time capacity adjustment.
 
-- **🧬 Innovative Architecture**
+- **Innovative Architecture**
   - Integrated S/C/M architecture, flexible mode switching.
   - Full decoupling of control/data channels.
   - API-instance management, multi-instance collaboration.
 
-- **🔐 Multi-level Security**
+- **Multi-level Security**
   - Three TLS modes: plaintext, self-signed, strict validation.
   - Covers development to enterprise security needs.
   - Hot-reload certificates with zero downtime.
 
-- **⚙️ Minimal Configuration**
+- **Minimal Configuration**
   - No config files required, ready to use via CLI.
   - Optimized for CI/CD and containers.
   - Advanced parameters like timeouts and rate limits.
 
-- **📈 Performance**
+- **Performance**
   - Intelligent scheduling, auto-tuning, ultra-low resource usage.
   - Stable under high concurrency and heavy load.
   - Load balancing, health checks, self-healing and more.
 
-- **💡 Visualization**
+- **Visualization**
   - Rich cross-platform visual frontends.
   - One-click deployment scripts, easy management.
   - Real-time monitoring, API-instance management, traffic stats.
 
-## 📋 Quick Start
-
-### 📥 Installation
-
-- **Pre-built Binaries**: Download from [releases page](https://github.com/NodePassProject/nodepass/releases).
-- **Container Image**: `docker pull ghcr.io/NodePassProject/nodepass:latest`
-
-### 🚀 Basic Usage
-
-**Server Mode**
-```bash
-nodepass "server://:10101/127.0.0.1:8080?log=debug&tls=1"
-```
-
-**Client Mode**
-```bash
-nodepass "client://server:10101/127.0.0.1:8080?min=128"
-```
-
-**Master Mode (API)**
-```bash
-nodepass "master://:10101/api?log=debug&tls=1"
-```
-
-## 📚 Documentation
+## Documentation
 
 Explore the complete documentation to learn more about NodePass:
 
-- [Installation Guide](/docs/en/installation.md)
-- [Usage Instructions](/docs/en/usage.md)
-- [Configuration Options](/docs/en/configuration.md)
-- [API Reference](/docs/en/api.md)
-- [Examples](/docs/en/examples.md)
-- [How It Works](/docs/en/how-it-works.md)
-- [Troubleshooting](/docs/en/troubleshooting.md)
+- [Installation Guide](/docs/installation.md)
+- [Usage Instructions](/docs/usage.md)
+- [Configuration Options](/docs/configuration.md)
+- [API Reference](/docs/api.md)
+- [Examples](/docs/examples.md)
+- [How It Works](/docs/how-it-works.md)
+- [Troubleshooting](/docs/troubleshooting.md)
 
 See also [DeepWiki](https://deepwiki.com/NodePassProject/nodepass) for AI-powered documentation.
 
-## 🌱 Ecosystem
+## Ecosystem
 
 The [NodePassProject](https://github.com/NodePassProject) organization develops various frontend applications and auxiliary tools to enhance the NodePass experience:
 
@@ -106,33 +80,31 @@ The [NodePassProject](https://github.com/NodePassProject) organization develops 
 
 - **[nodepass-core](https://github.com/NodePassProject/nodepass-core)**: Development branch, featuring previews of new functionalities and performance optimizations, suitable for advanced users and developers.
 
-## 💬 Discussion
-
-- Follow our [Telegram Channel](https://t.me/NodePassChannel) for updates and community support.
-
-- Join our [Discord](https://discord.gg/2cnXcnDMGc) and [Telegram Group](https://t.me/NodePassGroup) to share experiences and ideas.
-
-## 📄 License
+## License
 
 - Project **NodePass** is licensed under the [BSD 3-Clause License](LICENSE), which applies to the source code only.
 
 - The **NodePass** name, logo, and official project identity are not covered by the code license and may not be used without explicit authorization.
 
-## ⚖️ Disclaimer
+## Disclaimer
 
 This project is provided "as is" without any warranties. Users assume all risks and must comply with local laws for legal use only. Developers are not liable for any direct, indirect, incidental, or consequential damages. Secondary development requires commitment to legal use and self-responsibility for legal compliance. Developers reserve the right to modify software features and this disclaimer at any time. Final interpretation rights belong to developers.
 
-## 🔗 Donation
+## Donation
 
 **Cryptocurrency:**
 
-- EVM-compatible Address: `0x2ea4Ea9425BEe897ED74fC5512bd13ABC7100000`
+- EVM: `0x2ea4Ea9425BEe897ED74fC5512bd13ABC7100000`
+
+- TRX: `TCqbhDHoBFKRVwibe4tb7xNjtgnmkJXGR6`
+
+- SOL: `BwZuvh13BQWhYSh31dEZiy8avqZwMFfdSwfawTiMv7Bw`
 
 **NFT collection:**
 
-- Support **NodePass** in a unique way by checking out our NFT collection on [OpenSea](https://opensea.io/collection/nodepass).
+- Support **NodePass** in a unique way by collecting our NFTs on [OpenSea](https://opensea.io/collection/nodepass).
 
-## 🤝 Sponsors
+## Sponsors
 
 <table>
   <tr>
@@ -153,6 +125,6 @@ This project is provided "as is" without any warranties. Users assume all risks 
   </tr>
 </table>
 
-## ⭐ Stargazers
+## Stargazers
 
 [![Stargazers over time](https://starchart.cc/NodePassProject/nodepass.svg?variant=adaptive)](https://starchart.cc/NodePassProject/nodepass)

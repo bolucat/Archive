@@ -1,4 +1,3 @@
-// 内部包，实现服务端模式功能
 package internal
 
 import (
@@ -17,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/NodePassProject/cert"
 	"github.com/NodePassProject/logs"
 	"github.com/NodePassProject/nph2"
 	"github.com/NodePassProject/npws"
@@ -25,10 +23,8 @@ import (
 	"github.com/NodePassProject/quic"
 )
 
-// Server 实现服务端模式功能
 type Server struct{ Common }
 
-// NewServer 创建新的服务端实例
 func NewServer(parsedURL *url.URL, tlsCode string, tlsConfig *tls.Config, logger *logs.Logger) (*Server, error) {
 	server := &Server{
 		Common: Common{
@@ -60,7 +56,6 @@ func NewServer(parsedURL *url.URL, tlsCode string, tlsConfig *tls.Config, logger
 	return server, nil
 }
 
-// Run 管理服务端生命周期
 func (s *Server) Run() {
 	logInfo := func(prefix string) {
 		s.logger.Info("%v: server://%v@%v/%v?dns=%v&lbs=%v&max=%v&mode=%v&type=%v&dial=%v&read=%v&rate=%v&slot=%v&proxy=%v&block=%v&notcp=%v&noudp=%v",
@@ -72,13 +67,10 @@ func (s *Server) Run() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 
-	// 启动服务端并处理重启
 	go func() {
 		for ctx.Err() == nil {
-			// 启动服务端
 			if err := s.start(); err != nil && err != io.EOF {
 				s.logger.Error("Server error: %v", err)
-				// 重启服务端
 				s.stop()
 				select {
 				case <-ctx.Done():
@@ -90,11 +82,9 @@ func (s *Server) Run() {
 		}
 	}()
 
-	// 监听系统信号以优雅关闭
 	<-ctx.Done()
 	stop()
 
-	// 执行关闭过程
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := s.shutdown(shutdownCtx, s.stop); err != nil {
@@ -104,31 +94,26 @@ func (s *Server) Run() {
 	}
 }
 
-// start 启动服务端
 func (s *Server) start() error {
-	// 初始化上下文
 	s.initContext()
 
-	// 初始化隧道监听器
 	if err := s.initTunnelListener(); err != nil {
 		return fmt.Errorf("start: initTunnelListener failed: %w", err)
 	}
 
-	// 关闭UDP监听器
 	if s.tunnelUDPConn != nil {
 		s.tunnelUDPConn.Close()
 	}
 
-	// 运行模式判断
 	switch s.runMode {
-	case "1": // 反向模式
+	case "1":
 		if err := s.initTargetListener(); err != nil {
 			return fmt.Errorf("start: initTargetListener failed: %w", err)
 		}
 		s.dataFlow = "-"
-	case "2": // 正向模式
+	case "2":
 		s.dataFlow = "+"
-	default: // 自动判断
+	default:
 		if err := s.initTargetListener(); err == nil {
 			s.runMode = "1"
 			s.dataFlow = "-"
@@ -138,37 +123,31 @@ func (s *Server) start() error {
 		}
 	}
 
-	// 接受隧道握手
 	s.logger.Info("Pending tunnel handshake...")
 	s.handshakeStart = time.Now()
 	if err := s.tunnelHandshake(); err != nil {
 		return fmt.Errorf("start: tunnelHandshake failed: %w", err)
 	}
 
-	// 初始化连接池
 	if err := s.initTunnelPool(); err != nil {
 		return fmt.Errorf("start: initTunnelPool failed: %w", err)
 	}
 
-	// 设置控制连接
 	s.logger.Info("Getting tunnel pool ready...")
 	if err := s.setControlConn(); err != nil {
 		return fmt.Errorf("start: setControlConn failed: %w", err)
 	}
 
-	// 判断数据流向
 	if s.dataFlow == "-" {
 		go s.commonLoop()
 	}
 
-	// 启动共用控制
 	if err := s.commonControl(); err != nil {
 		return fmt.Errorf("start: commonControl failed: %w", err)
 	}
 	return nil
 }
 
-// initTunnelPool 初始化隧道连接池
 func (s *Server) initTunnelPool() error {
 	switch s.poolType {
 	case "0":
@@ -213,40 +192,33 @@ func (s *Server) initTunnelPool() error {
 	return nil
 }
 
-// tunnelHandshake 与客户端进行HTTP握手
 func (s *Server) tunnelHandshake() error {
 	var clientIP string
 	done := make(chan struct{})
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Connection", "close")
-
-		// 验证请求
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// 验证路径
 		if r.URL.Path != "/" {
 			http.Error(w, "Not Found", http.StatusNotFound)
 			return
 		}
 
-		// 验证令牌
 		auth := r.Header.Get("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") || !s.verifyAuthToken(strings.TrimPrefix(auth, "Bearer ")) {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// 记录客户端地址
 		clientIP = r.RemoteAddr
 		if host, _, err := net.SplitHostPort(clientIP); err == nil {
 			clientIP = host
 		}
 
-		// 发送配置
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"flow": s.dataFlow,
@@ -261,16 +233,24 @@ func (s *Server) tunnelHandshake() error {
 		close(done)
 	})
 
-	server := &http.Server{Handler: handler}
-	go server.Serve(s.tunnelListener)
+	tlsConfig := s.tlsConfig
+	if tlsConfig == nil {
+		tlsConfig, _ = NewTLSConfig()
+	}
+
+	server := &http.Server{
+		Handler:   handler,
+		TLSConfig: tlsConfig,
+		ErrorLog:  s.logger.StdLogger(),
+	}
+	go server.ServeTLS(s.tunnelListener, "", "")
 
 	select {
 	case <-done:
 		server.Close()
 		s.clientIP = clientIP
-
 		if s.tlsCode == "1" {
-			if newTLSConfig, err := cert.NewTLSConfig(""); err == nil {
+			if newTLSConfig, err := NewTLSConfig(); err == nil {
 				newTLSConfig.MinVersion = tls.VersionTLS13
 				s.tlsConfig = newTLSConfig
 				s.logger.Info("TLS code-1: RAM cert regenerated with TLS 1.3")
