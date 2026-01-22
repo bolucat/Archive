@@ -67,12 +67,12 @@ hev_socks5_server_read_auth_method (HevSocks5Server *self)
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &auth, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res != 2) {
-        LOG_E ("%p socks5 server read auth method", self);
+        LOG_I ("%p socks5 server read auth method", self);
         return -1;
     }
 
     if (auth.ver != HEV_SOCKS5_VERSION_5) {
-        LOG_E ("%p socks5 server auth.ver %u", self, auth.ver);
+        LOG_I ("%p socks5 server auth.ver %u", self, auth.ver);
         return -1;
     }
 
@@ -80,7 +80,7 @@ hev_socks5_server_read_auth_method (HevSocks5Server *self)
                                    auth.method_len, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res != auth.method_len) {
-        LOG_E ("%p socks5 server read auth methods", self);
+        LOG_I ("%p socks5 server read auth methods", self);
         return -1;
     }
 
@@ -114,7 +114,7 @@ hev_socks5_server_write_auth_method (HevSocks5Server *self, int auth_method)
     res = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, &auth, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res <= 0) {
-        LOG_E ("%p socks5 server write auth method", self);
+        LOG_I ("%p socks5 server write auth method", self);
         return -1;
     }
 
@@ -136,50 +136,50 @@ hev_socks5_server_read_auth_user (HevSocks5Server *self)
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, head, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res != 2) {
-        LOG_E ("%p socks5 server read auth user.ver", self);
+        LOG_I ("%p socks5 server read auth user.ver", self);
         return -1;
     }
 
     if (head[0] != 1) {
-        LOG_E ("%p socks5 server auth user.ver %u", self, head[0]);
+        LOG_I ("%p socks5 server auth user.ver %u", self, head[0]);
         return -1;
     }
 
     nlen = head[1];
     if (nlen == 0) {
-        LOG_E ("%p socks5 server auth user.nlen %u", self, nlen);
+        LOG_I ("%p socks5 server auth user.nlen %u", self, nlen);
         return -1;
     }
 
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, name, nlen + 1,
                                    MSG_WAITALL, task_io_yielder, self);
     if (res != (nlen + 1)) {
-        LOG_E ("%p socks5 server read auth user.name", self);
+        LOG_I ("%p socks5 server read auth user.name", self);
         return -1;
     }
 
     plen = name[nlen];
     if (plen == 0) {
-        LOG_E ("%p socks5 server auth user.plen %u", self, plen);
+        LOG_I ("%p socks5 server auth user.plen %u", self, plen);
         return -1;
     }
 
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, pass, plen,
                                    MSG_WAITALL, task_io_yielder, self);
     if (res != plen) {
-        LOG_E ("%p socks5 server read auth user.pass", self);
+        LOG_I ("%p socks5 server read auth user.pass", self);
         return -1;
     }
 
     user = hev_socks5_authenticator_get (self->auth, (char *)name, nlen);
     if (!user) {
-        LOG_E ("%p socks5 server auth user: %s pass: %s", self, name, pass);
+        LOG_I ("%p socks5 server auth user: %s pass: %s", self, name, pass);
         return -1;
     }
 
     res = hev_socks5_user_check (user, (char *)pass, plen);
     if (res < 0) {
-        LOG_E ("%p socks5 server auth user: %s pass: %s", self, name, pass);
+        LOG_I ("%p socks5 server auth user: %s pass: %s", self, name, pass);
         return -1;
     }
 
@@ -204,7 +204,7 @@ hev_socks5_server_write_auth_user (HevSocks5Server *self, int auth_res)
     res = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, buf, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res <= 0) {
-        LOG_E ("%p socks5 server write auth user", self);
+        LOG_I ("%p socks5 server write auth user", self);
         return -1;
     }
 
@@ -252,13 +252,13 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &req, 5, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res != 5) {
-        LOG_E ("%p socks5 server read request", self);
+        LOG_I ("%p socks5 server read request", self);
         return -1;
     }
 
     if (req.ver != HEV_SOCKS5_VERSION_5) {
         *rep = HEV_SOCKS5_RES_REP_FAIL;
-        LOG_E ("%p socks5 server req.ver %u", self, req.ver);
+        LOG_I ("%p socks5 server req.ver %u", self, req.ver);
         return 0;
     }
 
@@ -274,7 +274,7 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
         break;
     default:
         *rep = HEV_SOCKS5_RES_REP_ADDR;
-        LOG_E ("%p socks5 server req.atype %u", self, req.addr.atype);
+        LOG_I ("%p socks5 server req.atype %u", self, req.addr.atype);
         return 0;
     }
 
@@ -282,7 +282,7 @@ hev_socks5_server_read_request (HevSocks5Server *self, int *cmd, int *rep,
                                    addrlen, MSG_WAITALL, task_io_yielder, self);
     if (res != addrlen) {
         *rep = HEV_SOCKS5_RES_REP_ADDR;
-        LOG_E ("%p socks5 server read addr", self);
+        LOG_I ("%p socks5 server read addr", self);
         return 0;
     }
 
@@ -339,7 +339,7 @@ hev_socks5_server_write_response (HevSocks5Server *self, int rep,
     ret = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, &res, 3 + ret,
                                    MSG_WAITALL, task_io_yielder, self);
     if (ret <= 0) {
-        LOG_E ("%p socks5 server write response", self);
+        LOG_I ("%p socks5 server write response", self);
         return -1;
     }
 
@@ -365,7 +365,7 @@ hev_socks5_server_connect (HevSocks5Server *self, struct sockaddr_in6 *addr)
     klass = HEV_OBJECT_GET_CLASS (self);
     res = klass->binder (HEV_SOCKS5 (self), fd, (struct sockaddr *)addr);
     if (res < 0) {
-        LOG_E ("%p socks5 server bind", self);
+        LOG_W ("%p socks5 server bind", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -377,7 +377,7 @@ hev_socks5_server_connect (HevSocks5Server *self, struct sockaddr_in6 *addr)
     res = hev_task_io_socket_connect (fd, (struct sockaddr *)addr,
                                       sizeof (*addr), task_io_yielder, self);
     if (res < 0) {
-        LOG_E ("%p socks5 server connect", self);
+        LOG_I ("%p socks5 server connect", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -420,7 +420,7 @@ hev_socks5_server_bind (HevSocks5Server *self, struct sockaddr_in6 *addr)
 
     res = setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof (one));
     if (res < 0) {
-        LOG_E ("%p socks5 server socket reuse", self);
+        LOG_W ("%p socks5 server socket reuse", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -428,7 +428,7 @@ hev_socks5_server_bind (HevSocks5Server *self, struct sockaddr_in6 *addr)
 
     res = sskptr->binder (self, fd, addr);
     if (res < 0) {
-        LOG_E ("%p socks5 server bind", self);
+        LOG_W ("%p socks5 server bind", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -451,20 +451,20 @@ hev_socks5_server_udp_bind (HevSocks5Server *self, int sock,
     alen = sizeof (struct sockaddr_in6);
     res = getsockname (HEV_SOCKS5 (self)->fd, (struct sockaddr *)src, &alen);
     if (res < 0) {
-        LOG_E ("%p socks5 server tcp socket name", self);
+        LOG_W ("%p socks5 server tcp socket name", self);
         return -1;
     }
 
     src->sin6_port = 0;
     res = bind (sock, (struct sockaddr *)src, alen);
     if (res < 0) {
-        LOG_E ("%p socks5 server socket bind", self);
+        LOG_W ("%p socks5 server socket bind", self);
         return -1;
     }
 
     res = getsockname (sock, (struct sockaddr *)src, &alen);
     if (res < 0) {
-        LOG_E ("%p socks5 server udp socket name", self);
+        LOG_W ("%p socks5 server udp socket name", self);
         return -1;
     }
 

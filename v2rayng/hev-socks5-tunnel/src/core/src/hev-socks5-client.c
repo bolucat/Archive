@@ -40,7 +40,7 @@ hev_socks5_client_write_auth_methods (HevSocks5Client *self)
     res = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, &auth, 3, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res <= 0) {
-        LOG_E ("%p socks5 client write auth methods", self);
+        LOG_I ("%p socks5 client write auth methods", self);
         return -1;
     }
 
@@ -77,7 +77,7 @@ hev_socks5_client_write_auth_creds (HevSocks5Client *self)
     res = hev_task_io_socket_sendmsg (HEV_SOCKS5 (self)->fd, &mh, MSG_WAITALL,
                                       task_io_yielder, self);
     if (res <= 0) {
-        LOG_E ("%p socks5 client write auth creds", self);
+        LOG_I ("%p socks5 client write auth creds", self);
         return -1;
     }
 
@@ -131,7 +131,7 @@ hev_socks5_client_write_request (HevSocks5Client *self)
         addrlen = 4 + addr->domain.len;
         break;
     default:
-        LOG_E ("%p socks5 client req.atype %u", self, addr->atype);
+        LOG_I ("%p socks5 client req.atype %u", self, addr->atype);
         return -1;
     }
 
@@ -143,7 +143,7 @@ hev_socks5_client_write_request (HevSocks5Client *self)
     ret = hev_task_io_socket_sendmsg (HEV_SOCKS5 (self)->fd, &mh, MSG_WAITALL,
                                       task_io_yielder, self);
     if (ret <= 0) {
-        LOG_E ("%p socks5 client write request", self);
+        LOG_I ("%p socks5 client write request", self);
         return -1;
     }
 
@@ -163,12 +163,12 @@ hev_socks5_client_read_auth_method (HevSocks5Client *self)
     res = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &auth, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (res != 2) {
-        LOG_E ("%p socks5 client read auth", self);
+        LOG_I ("%p socks5 client read auth", self);
         return -1;
     }
 
     if (auth.ver != HEV_SOCKS5_VERSION_5) {
-        LOG_E ("%p socks5 client auth.ver %u", self, auth.ver);
+        LOG_I ("%p socks5 client auth.ver %u", self, auth.ver);
         return -1;
     }
 
@@ -186,17 +186,17 @@ hev_socks5_client_read_auth_creds (HevSocks5Client *self)
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res, 2, MSG_WAITALL,
                                    task_io_yielder, self);
     if (ret != 2) {
-        LOG_E ("%p socks5 client read auth creds", self);
+        LOG_I ("%p socks5 client read auth creds", self);
         return -1;
     }
 
     if (res.ver != HEV_SOCKS5_AUTH_VERSION_1) {
-        LOG_E ("%p socks5 client auth.res.ver %u", self, res.ver);
+        LOG_I ("%p socks5 client auth.res.ver %u", self, res.ver);
         return -1;
     }
 
     if (res.rep != HEV_SOCKS5_RES_REP_SUCC) {
-        LOG_E ("%p socks5 client auth.res.rep %u", self, res.rep);
+        LOG_I ("%p socks5 client auth.res.rep %u", self, res.rep);
         return -1;
     }
 
@@ -218,17 +218,17 @@ hev_socks5_client_read_response (HevSocks5Client *self)
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res, 4, MSG_WAITALL,
                                    task_io_yielder, self);
     if (ret != 4) {
-        LOG_E ("%p socks5 client read response", self);
+        LOG_I ("%p socks5 client read response", self);
         return -1;
     }
 
     if (res.ver != HEV_SOCKS5_VERSION_5) {
-        LOG_E ("%p socks5 client res.ver %u", self, res.ver);
+        LOG_I ("%p socks5 client res.ver %u", self, res.ver);
         return -1;
     }
 
     if (res.rep != HEV_SOCKS5_RES_REP_SUCC) {
-        LOG_E ("%p socks5 client res.rep %u", self, res.rep);
+        LOG_I ("%p socks5 client res.rep %u", self, res.rep);
         return -1;
     }
 
@@ -240,21 +240,21 @@ hev_socks5_client_read_response (HevSocks5Client *self)
         addrlen = 18;
         break;
     default:
-        LOG_E ("%p socks5 client res.atype %u", self, res.addr.atype);
+        LOG_I ("%p socks5 client res.atype %u", self, res.addr.atype);
         return -1;
     }
 
     ret = hev_task_io_socket_recv (HEV_SOCKS5 (self)->fd, &res.addr.ipv4,
                                    addrlen, MSG_WAITALL, task_io_yielder, self);
     if (ret != addrlen) {
-        LOG_E ("%p socks5 client read addr", self);
+        LOG_I ("%p socks5 client read addr", self);
         return -1;
     }
 
     klass = HEV_OBJECT_GET_CLASS (self);
     ret = klass->set_upstream_addr (self, &res.addr);
     if (ret < 0) {
-        LOG_E ("%p socks5 client set upstream addr", self);
+        LOG_W ("%p socks5 client set upstream addr", self);
         return -1;
     }
 
@@ -279,7 +279,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
     res = hev_socks5_name_into_sockaddr6 (addr, port, &saddr, &addr_family);
     if (res < 0) {
-        LOG_E ("%p socks5 client resolve [%s]:%d", self, addr, port);
+        LOG_I ("%p socks5 client resolve [%s]:%d", self, addr, port);
         return -1;
     }
 
@@ -293,7 +293,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     klass = HEV_OBJECT_GET_CLASS (self);
     res = klass->binder (HEV_SOCKS5 (self), fd, sap);
     if (res < 0) {
-        LOG_E ("%p socks5 client bind", self);
+        LOG_W ("%p socks5 client bind", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -302,7 +302,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     res = hev_task_io_socket_connect (fd, sap, sizeof (saddr), task_io_yielder,
                                       self);
     if (res < 0) {
-        LOG_E ("%p socks5 client connect", self);
+        LOG_I ("%p socks5 client connect", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -339,7 +339,7 @@ hev_socks5_client_handshake_standard (HevSocks5Client *self)
         if (res < 0)
             return -1;
     } else if (res != HEV_SOCKS5_AUTH_METHOD_NONE) {
-        LOG_E ("%p socks5 client auth method %d", self, res);
+        LOG_I ("%p socks5 client auth method %d", self, res);
         return -1;
     }
 
@@ -382,7 +382,7 @@ hev_socks5_client_handshake_pipeline (HevSocks5Client *self)
         if (res < 0)
             return -1;
     } else if (res != HEV_SOCKS5_AUTH_METHOD_NONE) {
-        LOG_E ("%p socks5 client auth method %d", self, res);
+        LOG_I ("%p socks5 client auth method %d", self, res);
         return -1;
     }
 

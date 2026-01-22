@@ -95,11 +95,12 @@
 ## GUI Clients
 
 - OpenWrt
-  - [PassWall](https://github.com/xiaorouji/openwrt-passwall), [PassWall 2](https://github.com/xiaorouji/openwrt-passwall2)
+  - [PassWall](https://github.com/Openwrt-Passwall/openwrt-passwall), [PassWall 2](https://github.com/Openwrt-Passwall/openwrt-passwall2)
   - [ShadowSocksR Plus+](https://github.com/fw876/helloworld)
   - [luci-app-xray](https://github.com/yichya/luci-app-xray) ([openwrt-xray](https://github.com/yichya/openwrt-xray))
 - Asuswrt-Merlin
   - [XRAYUI](https://github.com/DanielLavrushin/asuswrt-merlin-xrayui)
+  - [fancyss](https://github.com/hq450/fancyss)
 - Windows
   - [v2rayN](https://github.com/2dust/v2rayN)
   - [Furious](https://github.com/LorenEteval/Furious)

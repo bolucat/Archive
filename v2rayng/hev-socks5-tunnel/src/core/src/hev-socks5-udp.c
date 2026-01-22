@@ -373,7 +373,7 @@ hev_socks5_udp_fwd_f (HevSocks5UDP *self, int fd, void *buf, unsigned int num,
             struct sockaddr *addr = dvec[0].msg_hdr.msg_name;
             ret = skptr->binder (HEV_SOCKS5 (self), fd, addr);
             if (ret < 0) {
-                LOG_E ("%p socks5 udp bind", self);
+                LOG_W ("%p socks5 udp bind", self);
                 return -1;
             }
             *bind = 1;

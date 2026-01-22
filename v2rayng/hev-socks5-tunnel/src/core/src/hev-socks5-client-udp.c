@@ -87,7 +87,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
     res = hev_socks5_addr_into_sockaddr6 (addr, &saddr, &addr_family);
     if (res < 0) {
-        LOG_E ("%p socks5 client udp addr", self);
+        LOG_W ("%p socks5 client udp addr", self);
         return -1;
     }
 
@@ -101,7 +101,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     klass = HEV_OBJECT_GET_CLASS (self);
     res = klass->binder (HEV_SOCKS5 (self), fd, sadp);
     if (res < 0) {
-        LOG_E ("%p socks5 client udp bind", self);
+        LOG_W ("%p socks5 client udp bind", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;
@@ -110,7 +110,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     res = hev_task_io_socket_connect (fd, sadp, sizeof (saddr), task_io_yielder,
                                       self);
     if (res < 0) {
-        LOG_E ("%p socks5 client udp connect", self);
+        LOG_I ("%p socks5 client udp connect", self);
         hev_task_del_fd (hev_task_self (), fd);
         close (fd);
         return -1;

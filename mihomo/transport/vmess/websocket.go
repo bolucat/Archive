@@ -42,7 +42,6 @@ type websocketWithEarlyDataConn struct {
 	net.Conn
 	wsWriter N.ExtendedWriter
 	underlay net.Conn
-	closed   bool
 	dialed   chan bool
 	cancel   context.CancelFunc
 	ctx      context.Context
@@ -204,7 +203,7 @@ func (wsedc *websocketWithEarlyDataConn) Dial(earlyData []byte) error {
 }
 
 func (wsedc *websocketWithEarlyDataConn) Write(b []byte) (int, error) {
-	if wsedc.closed {
+	if wsedc.ctx.Err() != nil {
 		return 0, io.ErrClosedPipe
 	}
 	if wsedc.Conn == nil {
@@ -218,7 +217,7 @@ func (wsedc *websocketWithEarlyDataConn) Write(b []byte) (int, error) {
 }
 
 func (wsedc *websocketWithEarlyDataConn) WriteBuffer(buffer *buf.Buffer) error {
-	if wsedc.closed {
+	if wsedc.ctx.Err() != nil {
 		return io.ErrClosedPipe
 	}
 	if wsedc.Conn == nil {
@@ -232,7 +231,7 @@ func (wsedc *websocketWithEarlyDataConn) WriteBuffer(buffer *buf.Buffer) error {
 }
 
 func (wsedc *websocketWithEarlyDataConn) Read(b []byte) (int, error) {
-	if wsedc.closed {
+	if wsedc.ctx.Err() != nil {
 		return 0, io.ErrClosedPipe
 	}
 	if wsedc.Conn == nil {
@@ -246,7 +245,6 @@ func (wsedc *websocketWithEarlyDataConn) Read(b []byte) (int, error) {
 }
 
 func (wsedc *websocketWithEarlyDataConn) Close() error {
-	wsedc.closed = true
 	wsedc.cancel()
 	if wsedc.Conn == nil { // is dialing or not dialed
 		return wsedc.underlay.Close()

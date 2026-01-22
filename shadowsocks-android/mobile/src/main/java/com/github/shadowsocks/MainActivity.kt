@@ -53,9 +53,7 @@ import com.github.shadowsocks.widget.ServiceButton
 import com.github.shadowsocks.widget.StatsBar
 import com.google.android.material.navigation.NavigationView
 import com.google.android.material.snackbar.Snackbar
-import com.google.firebase.analytics.ktx.analytics
-import com.google.firebase.analytics.logEvent
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.analytics.FirebaseAnalytics
 
 class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPreferenceDataStoreChangeListener,
         NavigationView.OnNavigationItemSelectedListener {
@@ -204,7 +202,7 @@ class MainActivity : AppCompatActivity(), ShadowsocksConnection.Callback, OnPref
                 }
                 R.id.globalSettings -> displayFragment(GlobalSettingsFragment())
                 R.id.about -> {
-                    Firebase.analytics.logEvent("about") { }
+                    FirebaseAnalytics.getInstance(this).logEvent("about", null)
                     displayFragment(AboutFragment())
                 }
                 R.id.faq -> {

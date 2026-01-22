@@ -1,5 +1,6 @@
 #
 # Copyright (c) 2022-2025 SMALLPROGRAM <https://github.com/smallprogram>
+# Copyright (C) 2026 Openwrt-Passwall Organization
 # Description: Auto compile
 #
 name: "Auto compile with openwrt sdk"
@@ -15,8 +16,6 @@ env:
   TZ: Asia/Shanghai
   passwall: ${{ github.repository }}
   packages: Openwrt-Passwall/openwrt-passwall-packages
-  package_names: "chinadns-ng dns2socks geoview hysteria ipt2socks microsocks naiveproxy tcping trojan-plus tuic-client shadowsocks-rust shadowsocksr-libev simple-obfs sing-box v2ray-geodata v2ray-plugin xray-core xray-plugin shadow-tls"
-  package_release: "chinadns-ng dns2socks geoview hysteria ipt2socks microsocks naiveproxy tcping trojan-plus tuic-client shadowsocks-rust shadowsocksr-libev simple-obfs sing-box v2ray-geoip v2ray-plugin v2ray-geosite xray-core xray-plugin shadow-tls"
 
 permissions:
   contents: write
@@ -67,10 +66,31 @@ jobs:
       - name: Prepare release
         if: steps.check_version.outputs.has_update == 'true'
         run: |
-          echo "## :mega:Update content" >> release.txt
-          echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)" >> release.txt
-          echo "### Passwall Info" >> release.txt
-          echo "**:minidisc: Passwall Version: ${{steps.check_version.outputs.latest_version}}**" >> release.txt
+          echo "## :mega: 获取其他软件包 / How to Get Other Packages" >>release.txt
+          echo "" >>release.txt
+          echo "### 方式 1：添加软件源 / Method 1: Add Software Source" >>release.txt
+          echo " * 请按照 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 仓库的说明，将其提供的软件源添加到设备中，然后直接使用包管理器安装。" >>release.txt
+          echo "  Follow the instructions in the [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) repository to add the provided software source to your device, then install directly using the package manager." >>release.txt
+          echo "" >>release.txt
+          echo "### 方式 2：手动下载并安装 / Method 2: Manual Download and Install" >>release.txt
+          echo "" >>release.txt
+          echo "* 从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 下载预构建的软件包。" >>release.txt
+          echo "  Download prebuilt packages from [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/)." >>release.txt
+          echo "" >>release.txt
+          echo "* 将文件上传到您的设备，使用 Shell 命令进行安装。" >>release.txt
+          echo "  Upload files to your device, install it with shell command." >>release.txt
+          echo "" >>release.txt
+          echo "ipk" >>release.txt
+          echo "\`\`\`" >>release.txt
+          echo "opkg install /path/to/package.ipk" >>release.txt
+          echo "\`\`\`" >>release.txt
+          echo "apk" >>release.txt
+          echo "\`\`\`" >>release.txt
+          echo "apk add /path/to/package.apk" >>release.txt
+          echo "\`\`\`" >>release.txt
+          echo "" >>release.txt
+          echo ":warning: 请将 /path/to/package 替换为实际下载的软件包路径。" >>release.txt
+          echo "- Replace /path/to/package with the actual path of the downloaded packages." >>release.txt
           touch release.txt
 
       - name: Generate new tag & release
@@ -94,13 +114,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
+          - url_sdk: https://archive.openwrt.org/releases/21.02.7/targets/x86/64/openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+            ver: "22.03-"
 
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
+          - url_sdk: https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            ver: "23.05-24.10"
+
+          - url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            ver: "25.12+"
     steps:
       - name: Install packages
         run: |
@@ -141,7 +162,7 @@ jobs:
               "feeds.conf.default"
 
           cat > feeds.tmp <<'EOF'
-          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
+          src-git passwall_packages https://github.com/${{ env.packages }}.git;main
           src-git passwall https://github.com/${{ env.passwall }}.git;${{ github.ref_name }}
           EOF
           cat feeds.conf.default >> feeds.tmp
@@ -149,27 +170,6 @@ jobs:
 
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-
-          #--------------------------------------begin_patches------------------------------------------
-          echo "Start applying the patch"
-
-          rm -rf temp_resp
-          git clone -b master --single-branch https://github.com/openwrt/packages.git temp_resp
-          echo "update golang version"
-          rm -rf feeds/packages/lang/golang
-          cp -r temp_resp/lang/golang feeds/packages/lang
-          echo "update rust version"
-          rm -rf feeds/packages/lang/rust
-          cp -r temp_resp/lang/rust feeds/packages/lang
-          rm -rf temp_resp
-          
-          echo "update patch-kernel.sh"
-          git clone -b main --single-branch https://github.com/openwrt/openwrt.git temp_resp
-          cp -f temp_resp/scripts/patch-kernel.sh scripts/
-          rm -rf temp_resp
-
-          echo "Patch application completed"
-          #--------------------------------------end_patches--------------------------------------------
 
       - name: Compile
         id: compile
@@ -187,6 +187,7 @@ jobs:
           mkdir upload
           mv bin/packages/*/passwall/luci-* upload/
           cd upload
+          for i in $(ls); do mv $i ${{ matrix.ver }}_$i; done
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
@@ -198,356 +199,3 @@ jobs:
         with:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           files: ${{ env.FIRMWARE }}/*
-
-
-  job_auto_compile:
-    if: ${{ needs.job_check.outputs.has_update == 'true' && needs.job_check.outputs.prerelease == 'false' }}
-    needs: job_check
-    runs-on: ubuntu-latest
-    name: build (${{ matrix.ver }}-${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: aarch64_generic
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/rockchip/armv8/openwrt-sdk-24.10.4-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: aarch64_cortex-a53
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/mvebu/cortexa53/openwrt-sdk-24.10.4-mvebu-cortexa53_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: aarch64_cortex-a72
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/mvebu/cortexa72/openwrt-sdk-24.10.4-mvebu-cortexa72_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a5_vfpv4
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/at91/sama5/openwrt-sdk-24.10.4-at91-sama5_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a7
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/mediatek/mt7629/openwrt-sdk-24.10.4-mediatek-mt7629_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a7_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/sunxi/cortexa7/openwrt-sdk-24.10.4-sunxi-cortexa7_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a8_vfpv3
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/sunxi/cortexa8/openwrt-sdk-24.10.4-sunxi-cortexa8_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a9
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/bcm53xx/generic/openwrt-sdk-24.10.4-bcm53xx-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a9_neon
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/zynq/generic/openwrt-sdk-24.10.4-zynq-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a9_vfpv3-d16
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/mvebu/cortexa9/openwrt-sdk-24.10.4-mvebu-cortexa9_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: arm_cortex-a15_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/ipq806x/generic/openwrt-sdk-24.10.4-ipq806x-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mips_24kc
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/ath79/generic/openwrt-sdk-24.10.4-ath79-generic_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mips_4kec
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/realtek/rtl838x/openwrt-sdk-24.10.4-realtek-rtl838x_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mips_mips32
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/bcm53xx/generic/openwrt-sdk-24.10.4-bcm53xx-generic_gcc-13.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mipsel_24kc
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/ramips/rt288x/openwrt-sdk-24.10.4-ramips-rt288x_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mipsel_74kc
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/ramips/rt3883/openwrt-sdk-24.10.4-ramips-rt3883_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: mipsel_mips32
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/bcm47xx/generic/openwrt-sdk-24.10.4-bcm47xx-generic_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-
-
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: aarch64_generic
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/rockchip/armv8/openwrt-sdk-rockchip-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: aarch64_cortex-a53
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/mvebu/cortexa53/openwrt-sdk-mvebu-cortexa53_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: aarch64_cortex-a72
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/mvebu/cortexa72/openwrt-sdk-mvebu-cortexa72_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a5_vfpv4
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/at91/sama5/openwrt-sdk-at91-sama5_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a7
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/mediatek/mt7629/openwrt-sdk-mediatek-mt7629_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a7_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/sunxi/cortexa7/openwrt-sdk-sunxi-cortexa7_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a8_vfpv3
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/sunxi/cortexa8/openwrt-sdk-sunxi-cortexa8_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a9
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/bcm53xx/generic/openwrt-sdk-bcm53xx-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a9_neon
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/zynq/generic/openwrt-sdk-zynq-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a9_vfpv3-d16
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/mvebu/cortexa9/openwrt-sdk-mvebu-cortexa9_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: arm_cortex-a15_neon-vfpv4
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/ipq806x/generic/openwrt-sdk-ipq806x-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mips_24kc
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/ath79/generic/openwrt-sdk-ath79-generic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mips_4kec
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/realtek/rtl838x/openwrt-sdk-realtek-rtl838x_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mips_mips32
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/bcm53xx/generic/openwrt-sdk-bcm53xx-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mipsel_24kc
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/ramips/rt288x/openwrt-sdk-ramips-rt288x_gcc-14.2.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mipsel_74kc
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/ramips/rt3883/openwrt-sdk-ramips-rt3883_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-          - platform: mipsel_mips32
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/bcm47xx/generic/openwrt-sdk-bcm47xx-generic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
-
-    steps:
-      - name: Initialization ${{ matrix.platform }} compile environment
-        run: |
-          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
-          echo "Install packages"
-          sudo -E apt-get -qq update
-          sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
-            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
-            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
-            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
-            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
-            python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
-            upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
-
-      - name: ${{ matrix.platform }} sdk download
-        run: |
-          wget ${{ matrix.url_sdk }}
-          file_name=$(echo ${{matrix.url_sdk}} | awk -F/ '{print $NF}')
-          mkdir sdk
-          if [[ $file_name == *.tar.xz ]]; then
-            tar -xJf $file_name -C ./sdk --strip-components=1
-          elif [[ $file_name == *.tar.zst ]]; then
-            tar --zstd -x -f $file_name -C ./sdk --strip-components=1
-          else
-            echo "Unsupported file format: $file_name"
-            exit 1
-          fi
-          cd sdk
-
-      - name: SSH connection to Actions
-        uses: mxschmitt/action-tmate@v3.13
-        if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-
-      - name: ${{ matrix.platform }} feeds configuration packages
-        run: |
-          cd sdk
-          
-          # Update feeds to github source
-          sed -i \
-              -e 's|git\.openwrt\.org/feed|github.com/openwrt|g' \
-              -e 's|git\.openwrt\.org/project|github.com/openwrt|g' \
-              -e 's|git\.openwrt\.org/openwrt|github.com/openwrt|g' \
-              "feeds.conf.default"
-
-          cat > feeds.tmp <<'EOF'
-          src-git passwall_packages https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git;main
-          src-git passwall https://github.com/${{ env.passwall }}.git;${{ github.ref_name }}
-          EOF
-          cat feeds.conf.default >> feeds.tmp
-          mv feeds.tmp feeds.conf.default
-
-
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-          #--------------------------------------begin_patches------------------------------------------
-          echo "Start applying the patch"
-
-
-          rm -rf temp_resp
-          git clone -b master --single-branch https://github.com/openwrt/packages.git temp_resp
-          echo "update golang version"
-          rm -rf feeds/packages/lang/golang
-          cp -r temp_resp/lang/golang feeds/packages/lang
-          echo "update rust version"
-          rm -rf feeds/packages/lang/rust
-          cp -r temp_resp/lang/rust feeds/packages/lang
-          rm -rf temp_resp
-
-          git clone -b main --single-branch https://github.com/openwrt/openwrt.git temp_resp
-          cp -f temp_resp/scripts/patch-kernel.sh scripts/
-          rm -rf temp_resp
-
-          echo "fixed rust host build error"
-          sed -i 's/--set=llvm\.download-ci-llvm=false/--set=llvm.download-ci-llvm=true/' feeds/packages/lang/rust/Makefile
-          grep -q -- '--ci false \\' feeds/packages/lang/rust/Makefile || sed -i '/x\.py \\/a \        --ci false \\' feeds/packages/lang/rust/Makefile
-
-
-          echo "Patch application completed"
-          #--------------------------------------end_patches--------------------------------------------
-
-          echo "CONFIG_ALL_NONSHARED=n" > .config
-          echo "CONFIG_ALL_KMODS=n" >> .config
-          echo "CONFIG_ALL=n" >> .config
-          echo "CONFIG_AUTOREMOVE=n" >> .config
-          echo "CONFIG_SIGNED_PACKAGES=n" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall=m" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_Iptables_Transparent_Proxy=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Libev_Client=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Libev_Server=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadow_TLS=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Trojan_Plus=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_tuic_client=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Geodata=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray_Plugin=y" >> .config
-
-          make defconfig
-
-
-      - name: ${{ matrix.platform }} compile
-        id: compile
-        run: |
-          cd sdk
-          for package in ${{ env.package_names }}; do
-              if [ -d "feeds/passwall_packages/$package" ]; then
-                  echo "-----------begin compile $package ---------------"
-                  sleep 10s
-                  make package/$package/compile -j$(nproc) V=s
-                  echo "-----------compiled $package ---------------"
-                  echo ""
-              fi
-          done
-
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Organize ${{ matrix.platform }} files
-        id: organize
-        if: steps.compile.outputs.status == 'success'
-        run: |
-          cd sdk
-
-          mkdir tmp_upload
-          shopt -s nullglob 
-          for src_dir in bin/packages/*/{packages,passwall_packages}; do
-              [[ -d "$src_dir" ]] || continue
-
-              echo "Scanning: $src_dir"
-
-              for prefix in ${{ env.package_release }}; do
-                  for file in "$src_dir"/"$prefix"*; do
-                      [[ -f "$file" ]] || continue
-
-                      filename=$(basename "$file")
-                      echo "  Found: $filename"
-                      cp -r "$file" "tmp_upload/"
-                  done
-              done
-          done
-
-          mkdir upload
-          zip -jr upload/passwall_packages_${{ matrix.ver }}_${{ matrix.platform }}.zip tmp_upload/*
-
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Generate release info
-        id: info
-        if: steps.compile.outputs.status == 'success'
-        run: |
-          cd sdk
-          echo "## :mega:Update content" >> release.txt
-          echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{needs.job_check.outputs.passwall_version}}/total?style=flat-square)" >> release.txt
-          echo "### Passwall Info" >> release.txt
-          echo "**:minidisc: Passwall Version: ${{needs.job_check.outputs.passwall_version}}**" >> release.txt
-
-          echo "### Packages Version" >> release.txt
-          echo "**package name**|**package version**" >> release.txt
-          echo "-|-" >> release.txt
-
-          pkgs=$(ls feeds/passwall_packages -I v2ray-geodata | grep -E "$(echo "${{ env.package_names }}" | sed 's/ /|/g')")
-          for pkg in $pkgs; do
-            version=$(awk -F ':=' '/PKG_VERSION:=/{print $2}' feeds/passwall_packages/$pkg/Makefile | sed 's/\r//g')
-            [ -z "${version}" ] && version=$(awk -F ':=' '/PKG_SOURCE_DATE:=/{print $2}' feeds/passwall_packages/$pkg/Makefile | sed 's/\r//g')
-            echo "**:ice_cube: $pkg**|**${version}**" >> release.txt
-          done
-          echo "**:ice_cube: v2ray-geoip**|**$(awk -F ':=' '/GEOIP_VER:=/{print $2}' feeds/passwall_packages/v2ray-geodata/Makefile)**" >> release.txt
-          echo "**:ice_cube: v2ray-geosite**|**$(awk -F ':=' '/GEOSITE_VER:=/{print $2}' feeds/passwall_packages/v2ray-geodata/Makefile)**" >> release.txt
-
-          touch release.txt
-          echo "status=success" >> $GITHUB_OUTPUT
-
-      - name: Upload firmware to release
-        uses: softprops/action-gh-release@v2
-        if: steps.info.outputs.status == 'success'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{needs.job_check.outputs.passwall_version}}
-          body_path: ${{ env.FIRMWARE }}/release.txt
-          files: ${{ env.FIRMWARE }}/upload/*

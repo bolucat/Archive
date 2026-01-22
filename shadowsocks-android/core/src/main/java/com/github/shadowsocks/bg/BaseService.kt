@@ -29,6 +29,7 @@ import android.os.IBinder
 import android.os.RemoteCallbackList
 import android.os.RemoteException
 import androidx.core.content.ContextCompat
+import androidx.core.os.bundleOf
 import com.github.shadowsocks.BootReceiver
 import com.github.shadowsocks.Core
 import com.github.shadowsocks.Core.app
@@ -43,10 +44,17 @@ import com.github.shadowsocks.utils.Action
 import com.github.shadowsocks.utils.broadcastReceiver
 import com.github.shadowsocks.utils.readableMessage
 import com.google.firebase.analytics.FirebaseAnalytics
-import com.google.firebase.analytics.ktx.analytics
-import com.google.firebase.analytics.logEvent
-import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -269,7 +277,8 @@ object BaseService {
             // channge the state
             data.changeState(State.Stopping)
             GlobalScope.launch(Dispatchers.Main.immediate) {
-                Firebase.analytics.logEvent("stop") { param(FirebaseAnalytics.Param.METHOD, tag) }
+                FirebaseAnalytics.getInstance(this@Interface as Service).logEvent("stop",
+                    bundleOf(FirebaseAnalytics.Param.METHOD to tag))
                 data.connectingJob?.cancelAndJoin() // ensure stop connecting first
                 this@Interface as Service
                 // we use a coroutineScope here to allow clean-up in parallel
@@ -344,7 +353,8 @@ object BaseService {
             }
 
             data.notification = createNotification(profile.formattedName)
-            Firebase.analytics.logEvent("start") { param(FirebaseAnalytics.Param.METHOD, tag) }
+            FirebaseAnalytics.getInstance(this).logEvent("start",
+                bundleOf(FirebaseAnalytics.Param.METHOD to tag))
 
             data.changeState(State.Connecting)
             data.connectingJob = GlobalScope.launch(Dispatchers.Main.immediate) {

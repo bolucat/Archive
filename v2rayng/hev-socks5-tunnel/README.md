@@ -124,9 +124,9 @@ socks5:
   # Mapped DNS port
 # port: 53
   # Mapped IP network base
-# network: 240.0.0.0
+# network: 100.64.0.0
   # Mapped IP network mask
-# netmask: 240.0.0.0
+# netmask: 255.192.0.0
   # Mapped DNS cache size
 # cache-size: 10000
 
@@ -164,6 +164,10 @@ socks5:
 ```bash
 # Set socks5.mark = 438
 bin/hev-socks5-tunnel conf/main.yml
+
+# Disable reverse path filter
+sudo sysctl -w net.ipv4.conf.all.rp_filter=0
+sudo sysctl -w net.ipv4.conf.tun0.rp_filter=0
 
 # Bypass upstream socks5 server
 sudo ip rule add fwmark 438 lookup main pref 10
