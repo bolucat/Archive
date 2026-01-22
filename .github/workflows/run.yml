@@ -94,8 +94,8 @@ jobs:
           ${GCRS} https://github.com/MatsuriDayo/NekoBoxForAndroid nekobox-android
           # Openwrt Projects
           ${GCRS} https://github.com/coolsnowwolf/lede lede
-          ${GCRS} https://github.com/xiaorouji/openwrt-passwall openwrt-passwall
-          ${GCRS} https://github.com/xiaorouji/openwrt-passwall2 openwrt-passwall2
+          ${GCRS} https://github.com/Openwrt-Passwall/openwrt-passwall openwrt-passwall
+          ${GCRS} https://github.com/Openwrt-Passwall/openwrt-passwall2 openwrt-passwall2
           ${GCRS} https://github.com/kenzok8/openwrt-packages openwrt-packages
           ${GCRS} https://github.com/kenzok8/small small
           ${GCRS} https://github.com/vernesong/OpenClash openclash
