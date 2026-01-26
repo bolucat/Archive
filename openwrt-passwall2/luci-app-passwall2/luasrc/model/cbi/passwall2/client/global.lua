@@ -217,10 +217,12 @@ if (has_singbox or has_xray) and #nodes_table > 0 then
 						for k1, v1 in pairs(balancing_list) do
 							o:value(v1.id, v1.remark)
 							o.group[#o.group+1] = (v1.group and v1.group ~= "") and v1.group or translate("default")
+							fakedns_tag:depends({ [node_option] = v1.id, [vid .. "-fakedns"] = "1" })
 						end
 						for k1, v1 in pairs(urltest_list) do
 							o:value(v1.id, v1.remark)
 							o.group[#o.group+1] = (v1.group and v1.group ~= "") and v1.group or translate("default")
+							fakedns_tag:depends({ [node_option] = v1.id, [vid .. "-fakedns"] = "1" })
 						end
 						for k1, v1 in pairs(iface_list) do
 							o:value(v1.id, v1.remark)
@@ -318,13 +320,13 @@ if (mods:find("REDIRECT") and mods:find("TPROXY")) or (mods:find("nft_redir") an
 	o.rmempty = false
 else
 	local html = string.format([[<div class="cbi-checkbox"><input class="cbi-input-checkbox" type="checkbox" disabled></div><div class="cbi-value-description"><font color="red">%s</font></div>]], translate("Missing components, transparent proxy is unavailable."))
-	o = s:taboption("Proxy", DummyValue, "localhost_proxy", translate("Localhost Proxy"))
+	o = s:taboption("Main", DummyValue, "localhost_proxy", translate("Localhost Proxy"))
 	o.rawhtml = true
 	function o.cfgvalue(self, section)
 		return html
 	end
 
-	o = s:taboption("Proxy", DummyValue, "client_proxy", translate("Client Proxy"))
+	o = s:taboption("Main", DummyValue, "client_proxy", translate("Client Proxy"))
 	o.rawhtml = true
 	function o.cfgvalue(self, section)
 		return html

@@ -265,7 +265,7 @@ func (s *Sudoku) dialAndHandshake(ctx context.Context, cfg *sudoku.ProtocolConfi
 	}
 
 	upgrade := func(raw net.Conn) (net.Conn, error) {
-		return sudoku.ClientHandshakeWithOptions(raw, &handshakeCfg, sudoku.ClientHandshakeOptions{})
+		return sudoku.ClientHandshake(raw, &handshakeCfg)
 	}
 
 	var (
@@ -303,7 +303,7 @@ func (s *Sudoku) dialAndHandshake(ctx context.Context, cfg *sudoku.ProtocolConfi
 	}
 
 	if !handshakeDone {
-		c, err = sudoku.ClientHandshakeWithOptions(c, &handshakeCfg, sudoku.ClientHandshakeOptions{})
+		c, err = sudoku.ClientHandshake(c, &handshakeCfg)
 		if err != nil {
 			return nil, err
 		}
