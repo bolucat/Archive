@@ -91,13 +91,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/releases/24.10.4/targets/x86/64/openwrt-sdk-24.10.4-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ver: "ipk"
-
-          - platform: x86_64
-            url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
-            ver: "apk"
+          - ver: "ipk"
+          - ver: "apk"
     steps:
       - name: Install packages
         run: |
@@ -117,8 +112,9 @@ jobs:
 
       - name: Initialization environment
         run: |
-          wget ${{ matrix.url_sdk }}
-          file_name=$(echo ${{ matrix.url_sdk }} | awk -F/ '{print $NF}')
+          url_sdk="https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+          wget $url_sdk
+          file_name=$(echo $url_sdk | awk -F/ '{print $NF}')
           mkdir sdk
           if [[ $file_name == *.tar.xz ]]; then
             tar -xJf $file_name -C ./sdk --strip-components=1
@@ -165,13 +161,14 @@ jobs:
           GO_VERSION_MAJOR_MINOR=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $1 "." $2}')
           GO_VERSION_PATCH=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $3}')
           go_latest_version_hash=$(cat /tmp/golang.json | jq -r '.[0].files[0].sha256')
-          sed -i -e "s/^GO_VERSION_MAJOR_MINOR:=.*/GO_VERSION_MAJOR_MINOR:=${GO_VERSION_MAJOR_MINOR}/" -e "s/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=${GO_VERSION_PATCH}/" -e "s/^PKG_HASH:=.*/PKG_HASH:=${go_latest_version_hash}/" "feeds/packages/lang/golang/golang/Makefile"
+          sed -i -e "s/^GO_VERSION_MAJOR_MINOR:=.*/GO_VERSION_MAJOR_MINOR:=${GO_VERSION_MAJOR_MINOR}/" -e "s/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=${GO_VERSION_PATCH}/" -e "s/^PKG_HASH:=.*/PKG_HASH:=${go_latest_version_hash}/" "feeds/packages/lang/golang/golang1.25/Makefile"
 
           #--------------------------------------Update Rust------------------------------------------
           echo "update rust version"
           rm -rf feeds/packages/lang/rust
           cp -r temp_resp/lang/rust feeds/packages/lang
 
+          #--------------------------------------Clean Temp------------------------------------------
           rm -rf temp_resp
 
           echo "update patch-kernel.sh"
@@ -186,6 +183,11 @@ jobs:
         id: compile
         run: |
           cd sdk
+          ver=${{ matrix.ver }}
+          if [ $ver == "ipk" ]; then
+            config_apk_line=$(grep -n "USE_APK" Config-build.in | awk -F ':' '{print $1}')
+            [ -n "$config_apk_line" ] && sed -n $(expr ${config_apk_line} + 2)p Config-build.in | grep "default y" >/dev/null ; [ $? == 0 ] && sed -i "$(expr ${config_apk_line} + 2)s/y/n/" Config-build.in
+          fi
           echo "CONFIG_ALL_NONSHARED=n" > .config
           echo "CONFIG_ALL_KMODS=n" >> .config
           echo "CONFIG_ALL=n" >> .config

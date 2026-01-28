@@ -32,7 +32,12 @@ open class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
         let launchedAsLogInItem =
             event?.eventID == kAEOpenApplication &&
             event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
-        if SharedPreferences.inDebug || !launchedAsLogInItem || !SharedPreferences.showMenuBarExtra.getBlocking() || !SharedPreferences.menuBarExtraInBackground.getBlocking() {
+        let shouldShowWindow = Variant.screenshotMode ||
+            SharedPreferences.inDebug ||
+            !launchedAsLogInItem ||
+            !SharedPreferences.showMenuBarExtra.getBlocking() ||
+            !SharedPreferences.menuBarExtraInBackground.getBlocking()
+        if shouldShowWindow {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         } else {
@@ -63,8 +68,6 @@ open class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotificat
             switch response.actionIdentifier {
             case "COPY_URL":
                 NSPasteboard.general.setString(url, forType: .URL)
-            case "OPEN_URL":
-                fallthrough
             default:
                 NSWorkspace.shared.open(URL(string: url)!)
             }

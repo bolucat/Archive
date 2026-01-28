@@ -17,4 +17,15 @@ public enum Variant {
     #endif
 
     public static var isBeta = LibboxVersion().contains("-")
+
+    #if os(iOS)
+        public static var debugNoIOS26 = false
+        public static var debugNoIOS18 = false
+    #endif
+
+    #if targetEnvironment(simulator)
+        public static let screenshotMode = true
+    #else
+        public static let screenshotMode = ProcessInfo.processInfo.arguments.contains("-FASTLANE_SNAPSHOT")
+    #endif
 }

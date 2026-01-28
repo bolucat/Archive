@@ -11,29 +11,49 @@ public func FormView(@ViewBuilder content: () -> some View) -> some View {
 }
 
 public func FormTextItem(_ name: LocalizedStringKey, _ value: String) -> some View {
-    HStack {
-        Text(name)
-        Spacer()
-        Text(value)
-            .multilineTextAlignment(.trailing)
-            .font(Font.system(.caption, design: .monospaced))
-        #if os(iOS) || os(macOS)
-            .textSelection(.enabled)
-        #endif
-    }
+    #if os(tvOS)
+        Button {} label: {
+            HStack {
+                Text(name)
+                Spacer()
+                Text(value)
+                    .multilineTextAlignment(.trailing)
+                    .font(Font.system(.caption, design: .monospaced))
+            }
+        }
+    #else
+        HStack {
+            Text(name)
+            Spacer()
+            Text(value)
+                .multilineTextAlignment(.trailing)
+                .font(Font.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    #endif
 }
 
 public func FormTextItem(_ name: LocalizedStringKey, _ systemImage: String, @ViewBuilder _ value: () -> some View) -> some View {
-    HStack {
-        Label(name, systemImage: systemImage)
-        Spacer()
-        value()
-            .multilineTextAlignment(.trailing)
-            .font(Font.system(.caption, design: .monospaced))
-        #if os(iOS) || os(macOS)
-            .textSelection(.enabled)
-        #endif
-    }
+    #if os(tvOS)
+        Button {} label: {
+            HStack {
+                Label(name, systemImage: systemImage)
+                Spacer()
+                value()
+                    .multilineTextAlignment(.trailing)
+                    .font(Font.system(.caption, design: .monospaced))
+            }
+        }
+    #else
+        HStack {
+            Label(name, systemImage: systemImage)
+            Spacer()
+            value()
+                .multilineTextAlignment(.trailing)
+                .font(Font.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    #endif
 }
 
 public func FormItem(_ title: String, @ViewBuilder content: () -> some View) -> some View {
@@ -128,9 +148,20 @@ public func FormNavigationLink(@ViewBuilder destination: () -> some View, @ViewB
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarLeading) {
                         BackButton()
-                            .tint(.accentColor)
                     }
                 }
         }, label: label)
     #endif
 }
+
+#if os(macOS)
+    public func FormNavigationLink(value: some Hashable, @ViewBuilder label: () -> some View) -> some View {
+        NavigationLink(value: value, label: label)
+    }
+
+    public extension View {
+        func formNavigationDestination<D: Hashable>(for data: D.Type, @ViewBuilder destination: @escaping (D) -> some View) -> some View {
+            navigationDestination(for: data, destination: destination)
+        }
+    }
+#endif

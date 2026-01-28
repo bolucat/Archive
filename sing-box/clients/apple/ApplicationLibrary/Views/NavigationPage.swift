@@ -13,14 +13,32 @@ public enum NavigationPage: Int, CaseIterable, Identifiable {
         case connections
     #endif
     case logs
-    case profiles
     case settings
 }
 
 public extension NavigationPage {
+    init?(snapshotValue: String) {
+        switch snapshotValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "dashboard":
+            self = .dashboard
+        case "logs":
+            self = .logs
+        case "settings":
+            self = .settings
+        #if os(macOS)
+            case "groups":
+                self = .groups
+            case "connections":
+                self = .connections
+        #endif
+        default:
+            return nil
+        }
+    }
+
     #if os(macOS)
         static var macosDefaultPages: [NavigationPage] {
-            [.logs, .profiles, .settings]
+            [.logs, .settings]
         }
     #endif
 
@@ -37,12 +55,10 @@ public extension NavigationPage {
             case .groups:
                 return String(localized: "Groups")
             case .connections:
-                return NSLocalizedString("Connections", comment: "")
+                return String(localized: "Connections")
         #endif
         case .logs:
             return String(localized: "Logs")
-        case .profiles:
-            return String(localized: "Profiles")
         case .settings:
             return String(localized: "Settings")
         }
@@ -59,9 +75,7 @@ public extension NavigationPage {
                 return "list.bullet.rectangle.portrait.fill"
         #endif
         case .logs:
-            return "doc.text.fill"
-        case .profiles:
-            return "list.bullet.rectangle.fill"
+            return "list.bullet.rectangle"
         case .settings:
             return "gear.circle.fill"
         }
@@ -69,7 +83,7 @@ public extension NavigationPage {
 
     @MainActor
     var contentView: some View {
-        viewBuilder {
+        Group {
             switch self {
             case .dashboard:
                 DashboardView()
@@ -81,8 +95,6 @@ public extension NavigationPage {
             #endif
             case .logs:
                 LogView()
-            case .profiles:
-                ProfileView()
             case .settings:
                 SettingView()
             }
@@ -94,6 +106,7 @@ public extension NavigationPage {
     }
 
     #if os(macOS)
+        @MainActor
         func visible(_ profile: ExtensionProfile?) -> Bool {
             switch self {
             case .groups, .connections:

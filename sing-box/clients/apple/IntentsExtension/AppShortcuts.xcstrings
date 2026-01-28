@@ -1,0 +1,56 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Start ${applicationName}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动 ${applicationName}"
+          }
+        }
+      }
+    },
+    "Stop ${applicationName}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止 ${applicationName}"
+          }
+        }
+      }
+    },
+    "Restart ${applicationName}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重启 ${applicationName}"
+          }
+        }
+      }
+    },
+    "Toggle ${applicationName}" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开关 ${applicationName}"
+          }
+        }
+      }
+    },
+    "Update ${applicationName} profile" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 ${applicationName} 配置"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

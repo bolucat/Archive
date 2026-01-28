@@ -2,9 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BasePackageIdentifier</key>
+	<string>$(BASE_PACKAGE_IDENTIFIER)</string>
+	<key>AppGroupIdentifier</key>
+	<string>$(APP_GROUP_IDENTIFIER)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>io.nekohasekai.sfavt.update_profiles</string>
+		<string>$(BASE_PACKAGE_IDENTIFIER).update_profiles</string>
 	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
@@ -19,9 +23,14 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>io.nekohasekai.sfavt.profile</string>
+				<string>$(BASE_PACKAGE_IDENTIFIER).profile</string>
 			</array>
 		</dict>
+	</array>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
@@ -38,8 +47,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>NSApplicationServices</key>
 	<dict>
 		<key>Advertises</key>
@@ -52,7 +59,7 @@
 	</dict>
 	<key>NSUbiquitousContainers</key>
 	<dict>
-		<key>iCloud.io.nekohasekai.sfavt</key>
+		<key>iCloud.$(BASE_PACKAGE_IDENTIFIER)</key>
 		<dict>
 			<key>NSUbiquitousContainerIsDocumentScopePublic</key>
 			<true/>
@@ -65,6 +72,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
@@ -80,7 +88,7 @@
 			<key>UTTypeIconFiles</key>
 			<array/>
 			<key>UTTypeIdentifier</key>
-			<string>io.nekohasekai.sfavt.profile</string>
+			<string>$(BASE_PACKAGE_IDENTIFIER).profile</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -106,7 +114,7 @@
 				<string>AppIcon.icns</string>
 			</array>
 			<key>UTTypeIdentifier</key>
-			<string>io.nekohasekai.sfavt.profile</string>
+			<string>$(BASE_PACKAGE_IDENTIFIER).profile</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -116,12 +124,9 @@
 			</dict>
 		</dict>
 	</array>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>en</string>
-		<string>zh_CN</string>
-	</array>
-	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>As a universal proxy platform, sing-box configures routing according to your configuration.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is required to scan QR codes for importing profiles.</string>
 </dict>
 </plist>

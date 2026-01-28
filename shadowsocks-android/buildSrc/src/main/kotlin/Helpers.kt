@@ -6,15 +6,17 @@ import org.gradle.kotlin.dsl.dependencies
 import org.gradle.kotlin.dsl.getByName
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
-import java.util.Locale
 
 private val Project.android get() = extensions.getByName<BaseExtension>("android")
 private val BaseExtension.lint get() = (this as CommonExtension<*, *, *, *, *, *>).lint
 
-private val flavorRegex = "(assemble|generate)\\w*(Release|Debug)".toRegex()
-val Project.currentFlavor get() = gradle.startParameter.taskRequests.toString().let { task ->
-    flavorRegex.find(task)?.groupValues?.get(2)?.lowercase(Locale.ROOT) ?: "debug".also {
-        println("Warning: No match found for $task")
+val Project.currentFlavor get() = gradle.startParameter.taskNames.let { tasks ->
+    when {
+        tasks.any { it.contains("Release", ignoreCase = true) } -> "release"
+        tasks.any { it.contains("Debug", ignoreCase = true) } -> "debug"
+        else -> "debug".also {
+            println("Warning: No match found for $tasks")
+        }
     }
 }
 

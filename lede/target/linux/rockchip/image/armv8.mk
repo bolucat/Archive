@@ -172,7 +172,7 @@ define Device/friendlyarm_nanopi-m5
   DEVICE_MODEL := NanoPi M5
   SOC := rk3576
   DEVICE_DTS := rk3576-nanopi-m5
-  UBOOT_DEVICE_NAME := generic-rk3576
+  UBOOT_DEVICE_NAME := nanopi-m5-rk3576
   DEVICE_PACKAGES := kmod-gpio-button-hotplug
   IMAGE/sysupgrade.img.gz := boot-common | boot-script | pine64-img | gzip | append-metadata
 endef
@@ -302,7 +302,7 @@ define Device/friendlyarm_nanopi-r76s
   DEVICE_MODEL := NanoPi R76S
   SOC := rk3576
   DEVICE_DTS := rk3576-nanopi-r76s
-  UBOOT_DEVICE_NAME := generic-rk3576
+  UBOOT_DEVICE_NAME := nanopi-m5-rk3576
   DEVICE_PACKAGES := kmod-gpio-button-hotplug kmod-r8125
   IMAGE/sysupgrade.img.gz := boot-common | boot-script | pine64-img | gzip | append-metadata
 endef

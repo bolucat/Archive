@@ -1,5 +1,6 @@
+import AppKit
 import ApplicationLibrary
-import Libbox
+import Foundation
 import Library
 import SwiftUI
 
@@ -7,110 +8,155 @@ import SwiftUI
 public struct MainView: View {
     @Environment(\.controlActiveState) private var controlActiveState
     @EnvironmentObject private var environments: ExtensionEnvironments
+    @StateObject private var viewModel: MainViewModel
+    @State private var showCardManagement = false
+    @State private var cardConfigurationVersion = 0
+    @State private var settingsNavigationPath = NavigationPath()
+    @State private var pendingSettingsPage: SettingsPage?
+    @State private var didConfigureScreenshotWindow = false
+    @State private var pendingScreenshotSelection: NavigationPage?
 
-    @State private var selection = NavigationPage.dashboard
-    @State private var importProfile: LibboxProfileContent?
-    @State private var importRemoteProfile: LibboxImportRemoteProfile?
-    @State private var alert: Alert?
+    private let profileEditor: (Binding<String>, Bool) -> AnyView = { text, isEditable in
+        AnyView(ProfileEditorWrapperView(text: text, isEditable: isEditable))
+    }
 
-    public init() {}
+    private let screenshotDefaultPixelHeight: CGFloat = 1000
+
+    public init() {
+        let initialSelection: NavigationPage = .dashboard
+        if Variant.screenshotMode,
+           let pageValue = ProcessInfo.processInfo.environment["SCREENSHOT_PAGE"],
+           let page = NavigationPage(snapshotValue: pageValue)
+        {
+            _pendingScreenshotSelection = State(initialValue: page)
+        } else {
+            _pendingScreenshotSelection = State(initialValue: nil)
+        }
+        _viewModel = StateObject(wrappedValue: MainViewModel(selection: initialSelection))
+    }
+
+    private func screenshotTargetHeight(baseHeight _: CGFloat, window: NSWindow) -> CGFloat {
+        let scale = max(window.backingScaleFactor, 1)
+        if let pixelOverride = ProcessInfo.processInfo.environment["SCREENSHOT_WINDOW_PIXEL_HEIGHT"] {
+            let trimmed = pixelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let height = Double(trimmed), height > 0 {
+                return CGFloat(height) / scale
+            }
+        }
+        if let override = ProcessInfo.processInfo.environment["SCREENSHOT_WINDOW_HEIGHT"] {
+            let trimmed = override.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let height = Double(trimmed), height > 0 {
+                return CGFloat(height)
+            }
+        }
+        return screenshotDefaultPixelHeight / scale
+    }
 
     public var body: some View {
         NavigationSplitView {
-            SidebarView()
+            SidebarView(selection: $viewModel.selection)
                 .navigationSplitViewColumnWidth(150)
         } detail: {
-            NavigationStack {
-                selection.contentView
-                    .navigationTitle(selection.title)
+            NavigationStack(path: $settingsNavigationPath) {
+                viewModel.selection.contentView
+                    .navigationTitle(viewModel.selection.title)
             }
+            .environment(\.cardConfigurationVersion, cardConfigurationVersion)
+            .environment(\.settingsNavigationPath, $settingsNavigationPath)
             .navigationSplitViewColumnWidth(650)
         }
-        .frame(minHeight: 500)
-        .onAppear {
-            environments.postReload()
-            #if !DEBUG
-                if Variant.useSystemExtension {
-                    Task {
-                        checkApplicationPath()
-                    }
+        .frame(minHeight: Variant.screenshotMode ? 0 : 500)
+        .background(WindowAccessor { window in
+            guard Variant.screenshotMode, !didConfigureScreenshotWindow, let window else { return }
+            didConfigureScreenshotWindow = true
+            DispatchQueue.main.async {
+                window.hasShadow = true
+                let baseSize = window.contentLayoutRect.size
+                let targetHeight = screenshotTargetHeight(baseHeight: baseSize.height, window: window)
+                let targetSize = NSSize(width: baseSize.width, height: targetHeight)
+                guard targetSize.width > 0, targetSize.height > 0 else { return }
+                window.contentMinSize = targetSize
+                window.contentMaxSize = targetSize
+                window.minSize = targetSize
+                window.maxSize = targetSize
+                window.setContentSize(targetSize)
+                if let pending = pendingScreenshotSelection, pending != viewModel.selection {
+                    viewModel.selection = pending
+                    pendingScreenshotSelection = nil
                 }
-            #endif
+            }
+        })
+        .onAppear {
+            viewModel.onAppear(environments: environments)
         }
-        .alertBinding($alert)
+        .alert($viewModel.alert)
+        .globalChecks()
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 StartStopButton()
             }
-        }
-        .onChangeCompat(of: controlActiveState) { newValue in
-            if newValue != .inactive {
-                environments.postReload()
+            if viewModel.selection == .dashboard {
+                ToolbarItem(placement: .automatic) {
+                    Menu {
+                        Button {
+                            showCardManagement = true
+                        } label: {
+                            Label("Dashboard Items", systemImage: "square.grid.2x2")
+                        }
+                    } label: {
+                        Label("Others", systemImage: "line.3.horizontal.circle")
+                    }
+                    .menuIndicator(.hidden)
+                }
             }
         }
-        .onChangeCompat(of: selection) { value in
-            if value == .logs {
-                environments.connectLog()
+        .onChangeCompat(of: controlActiveState) { newValue in
+            Task { @MainActor in
+                viewModel.onControlActiveStateChange(newValue, environments: environments)
+            }
+        }
+        .onChangeCompat(of: viewModel.selection) { value in
+            Task { @MainActor in
+                viewModel.onSelectionChange(value, environments: environments)
+                if value != .settings {
+                    settingsNavigationPath = NavigationPath()
+                    pendingSettingsPage = nil
+                    return
+                }
+                if let page = pendingSettingsPage {
+                    settingsNavigationPath = NavigationPath()
+                    settingsNavigationPath.append(page)
+                    pendingSettingsPage = nil
+                }
             }
         }
         .onReceive(environments.openSettings) {
-            selection = .settings
+            Task { @MainActor in viewModel.openSettings() }
         }
-        .environment(\.selection, $selection)
-        .environment(\.importProfile, $importProfile)
-        .environment(\.importRemoteProfile, $importRemoteProfile)
-        .handlesExternalEvents(preferring: [], allowing: ["*"])
-        .onOpenURL(perform: openURL)
-    }
-
-    private func openURL(url: URL) {
-        if url.host == "import-remote-profile" {
-            var error: NSError?
-            importRemoteProfile = LibboxParseRemoteProfileImportLink(url.absoluteString, &error)
-            if error != nil {
-                return
-            }
-            if selection != .profiles {
-                selection = .profiles
-            }
-        } else if url.pathExtension == "bpf" {
-            Task {
-                await importURLProfile(url)
-            }
-        } else {
-            alert = Alert(errorMessage: String(localized: "Handled unknown URL \(url.absoluteString)"))
-        }
-    }
-
-    private func importURLProfile(_ url: URL) async {
-        do {
-            _ = url.startAccessingSecurityScopedResource()
-            importProfile = try await .from(readURL(url))
-            url.stopAccessingSecurityScopedResource()
-        } catch {
-            alert = Alert(error)
-            return
-        }
-        if selection != .profiles {
-            selection = .profiles
-        }
-    }
-
-    private nonisolated func readURL(_ url: URL) async throws -> Data {
-        try Data(contentsOf: url)
-    }
-
-    private func checkApplicationPath() {
-        let directoryName = URL(filePath: Bundle.main.bundlePath).deletingLastPathComponent().pathComponents.first
-        if directoryName != "Applications" {
-            alert = Alert(
-                title: Text("Wrong application location"),
-                message: Text("This app needs to be placed under the Applications folder to work."),
-                dismissButton: .default(Text("Ok")) {
-                    NSWorkspace.shared.selectFile(Bundle.main.bundlePath, inFileViewerRootedAtPath: "")
-                    NSApp.terminate(nil)
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToSettingsPage)) { notification in
+            guard let page = notification.object as? SettingsPage else { return }
+            Task { @MainActor in
+                pendingSettingsPage = page
+                if viewModel.selection == .settings {
+                    settingsNavigationPath = NavigationPath()
+                    settingsNavigationPath.append(page)
+                    pendingSettingsPage = nil
+                } else {
+                    viewModel.selection = .settings
                 }
-            )
+            }
         }
+        .environment(\.selection, $viewModel.selection)
+        .environment(\.importProfile, $viewModel.importProfile)
+        .environment(\.importRemoteProfile, $viewModel.importRemoteProfile)
+        .environment(\.profileEditor, profileEditor)
+        .handlesExternalEvents(preferring: [], allowing: ["*"])
+        .onOpenURL(perform: viewModel.openURL)
+        .sheet(isPresented: $showCardManagement, onDismiss: {
+            cardConfigurationVersion += 1
+        }, content: {
+            CardManagementSheet()
+                .frame(minWidth: 400, minHeight: 400)
+        })
     }
 }

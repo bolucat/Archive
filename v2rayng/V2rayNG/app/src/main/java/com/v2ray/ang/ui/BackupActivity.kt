@@ -1,15 +1,9 @@
 package com.v2ray.ang.ui
 
-import android.Manifest
 import android.app.AlertDialog
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.tencent.mmkv.MMKV
@@ -20,7 +14,6 @@ import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityBackupBinding
 import com.v2ray.ang.databinding.DialogWebdavBinding
 import com.v2ray.ang.dto.WebDavConfig
-import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
@@ -41,43 +34,6 @@ class BackupActivity : BaseActivity() {
         resources.getStringArray(R.array.config_backup_options)
     }
 
-    private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                try {
-                    showFileChooser()
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Failed to show file chooser", e)
-                }
-            } else {
-                toast(R.string.toast_permission_denied)
-            }
-        }
-
-    private val createBackupFile =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-            if (uri != null) {
-                try {
-                    val ret = backupConfigurationToCache()
-                    if (ret.first) {
-                        // Copy the cached zip file to user-selected location
-                        contentResolver.openOutputStream(uri)?.use { output ->
-                            File(ret.second).inputStream().use { input ->
-                                input.copyTo(output)
-                            }
-                        }
-                        // Clean up cache file
-                        File(ret.second).delete()
-                        toastSuccess(R.string.toast_success)
-                    } else {
-                        toastError(R.string.toast_failure)
-                    }
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Failed to backup configuration", e)
-                    toastError(R.string.toast_failure)
-                }
-            }
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -172,42 +128,29 @@ class BackupActivity : BaseActivity() {
     }
 
     private fun showFileChooser() {
-        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "*/*"
-            addCategory(Intent.CATEGORY_OPENABLE)
-        }
-
-        try {
-            chooseFile.launch(Intent.createChooser(intent, getString(R.string.title_file_chooser)))
-        } catch (ex: ActivityNotFoundException) {
-            Log.e(AppConfig.TAG, "File chooser activity not found", ex)
-            toast(R.string.toast_require_file_manager)
-        }
-    }
-
-    private val chooseFile =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val uri = result.data?.data
-            if (result.resultCode == RESULT_OK && uri != null) {
-                try {
-                    val targetFile =
-                        File(this.cacheDir.absolutePath, "${System.currentTimeMillis()}.zip")
-                    contentResolver.openInputStream(uri).use { input ->
-                        targetFile.outputStream().use { fileOut ->
-                            input?.copyTo(fileOut)
-                        }
+        launchFileChooser { uri ->
+            if (uri == null) {
+                return@launchFileChooser
+            }
+            try {
+                val targetFile =
+                    File(this.cacheDir.absolutePath, "${System.currentTimeMillis()}.zip")
+                contentResolver.openInputStream(uri).use { input ->
+                    targetFile.outputStream().use { fileOut ->
+                        input?.copyTo(fileOut)
                     }
-                    if (restoreConfiguration(targetFile)) {
-                        toastSuccess(R.string.toast_success)
-                    } else {
-                        toastError(R.string.toast_failure)
-                    }
-                } catch (e: Exception) {
-                    Log.e(AppConfig.TAG, "Error during file restore", e)
+                }
+                if (restoreConfiguration(targetFile)) {
+                    toastSuccess(R.string.toast_success)
+                } else {
                     toastError(R.string.toast_failure)
                 }
+            } catch (e: Exception) {
+                Log.e(AppConfig.TAG, "Error during file restore", e)
+                toastError(R.string.toast_failure)
             }
         }
+    }
 
     private fun backupViaLocal() {
         val dateFormatted = SimpleDateFormat(
@@ -215,25 +158,34 @@ class BackupActivity : BaseActivity() {
             Locale.getDefault()
         ).format(System.currentTimeMillis())
         val defaultFileName = "${getString(R.string.app_name)}_${dateFormatted}.zip"
-        createBackupFile.launch(defaultFileName)
+
+        launchCreateDocument(defaultFileName) { uri ->
+            if (uri != null) {
+                try {
+                    val ret = backupConfigurationToCache()
+                    if (ret.first) {
+                        // Copy the cached zip file to user-selected location
+                        contentResolver.openOutputStream(uri)?.use { output ->
+                            File(ret.second).inputStream().use { input ->
+                                input.copyTo(output)
+                            }
+                        }
+                        // Clean up cache file
+                        File(ret.second).delete()
+                        toastSuccess(R.string.toast_success)
+                    } else {
+                        toastError(R.string.toast_failure)
+                    }
+                } catch (e: Exception) {
+                    Log.e(AppConfig.TAG, "Failed to backup configuration", e)
+                    toastError(R.string.toast_failure)
+                }
+            }
+        }
     }
 
     private fun restoreViaLocal() {
-        val permission =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                Manifest.permission.READ_MEDIA_IMAGES
-            } else {
-                Manifest.permission.READ_EXTERNAL_STORAGE
-            }
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
-            try {
-                showFileChooser()
-            } catch (e: Exception) {
-                Log.e(AppConfig.TAG, "Failed to show file chooser", e)
-            }
-        } else {
-            requestPermissionLauncher.launch(permission)
-        }
+        showFileChooser()
     }
 
     private fun backupViaWebDav() {

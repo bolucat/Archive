@@ -76,7 +76,10 @@ cargo {
 
 tasks.whenTaskAdded {
     when (name) {
-        "mergeDebugJniLibFolders", "mergeReleaseJniLibFolders" -> dependsOn("cargoBuild")
+        "mergeDebugJniLibFolders", "mergeReleaseJniLibFolders" -> {
+            dependsOn("cargoBuild")
+            inputs.dir(layout.buildDirectory.dir("rustJniLibs/android"))
+        }
     }
 }
 

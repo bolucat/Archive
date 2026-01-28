@@ -1,15 +1,14 @@
-import Libbox
 import Library
 import SwiftUI
 
 @MainActor
 public struct GroupView: View {
-    @State private var group: OutboundGroup
+    @EnvironmentObject private var listViewModel: GroupListViewModel
+    @Binding private var group: OutboundGroup
     @State private var geometryWidth: CGFloat = 300
-    @State private var alert: Alert?
 
-    public init(_ group: OutboundGroup) {
-        _group = State(initialValue: group)
+    public init(_ group: Binding<OutboundGroup>) {
+        _group = group
     }
 
     private var title: some View {
@@ -25,10 +24,7 @@ public struct GroupView: View {
                 .background(Color.gray.opacity(0.5))
                 .cornerRadius(4)
             Button {
-                group.isExpand = !group.isExpand
-                Task {
-                    await setGroupExpand()
-                }
+                listViewModel.toggleExpand(groupTag: group.tag)
             } label: {
                 if group.isExpand {
                     Image(systemName: "arrow.down.to.line")
@@ -40,9 +36,7 @@ public struct GroupView: View {
             .buttonStyle(.plain)
             #endif
             Button {
-                Task {
-                    await doURLTest()
-                }
+                listViewModel.performURLTest(group.tag)
             } label: {
                 Image(systemName: "bolt.fill")
             }
@@ -50,7 +44,6 @@ public struct GroupView: View {
             .buttonStyle(.plain)
             #endif
         }
-        .alertBinding($alert)
         .padding([.top, .bottom], 8)
         .animation(.easeInOut, value: group.isExpand)
     }
@@ -137,26 +130,6 @@ public struct GroupView: View {
         #else
             return standardCount < 1 ? 1 : standardCount
         #endif
-    }
-
-    private nonisolated func doURLTest() async {
-        do {
-            try await LibboxNewStandaloneCommandClient()!.urlTest(group.tag)
-        } catch {
-            await MainActor.run {
-                alert = Alert(error)
-            }
-        }
-    }
-
-    private nonisolated func setGroupExpand() async {
-        do {
-            try await LibboxNewStandaloneCommandClient()!.setGroupExpand(group.tag, isExpand: group.isExpand)
-        } catch {
-            await MainActor.run {
-                alert = Alert(error)
-            }
-        }
     }
 }
 

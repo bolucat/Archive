@@ -381,6 +381,15 @@ define U-Boot/generic-rk3576
     friendlyarm_nanopi-r76s
 endef
 
+define U-Boot/nanopi-m5-rk3576
+  $(U-Boot/rk3576/Default)
+  NAME:=NanoPi M5
+  BUILD_DEVICES:= \
+    friendlyarm_nanopi-m5 \
+    friendlyarm_nanopi-r76s
+  IDB_PRE_BUILD:=1
+endef
+
 define U-Boot/rock-4d-rk3576
   $(U-Boot/rk3576/Default)
   NAME:=ROCK 4D
@@ -503,6 +512,7 @@ UBOOT_TARGETS := \
   rock-3b-rk3568 \
   station-p2-rk3568 \
   generic-rk3576 \
+  nanopi-m5-rk3576 \
   rock-4d-rk3576 \
   sige5-rk3576 \
   generic-rk3588 \
@@ -538,26 +548,26 @@ UBOOT_TARGETS := \
 
 UBOOT_CONFIGURE_VARS += USE_PRIVATE_LIBGCC=yes
 
+UBOOT_CUSTOMIZE_CONFIG := \
+	--disable TOOLS_MKEFICAPSULE \
+	--set-str MKIMAGE_DTC_PATH $(PKG_BUILD_DIR)/scripts/dtc/dtc
+
 UBOOT_MAKE_FLAGS += \
   BL31=$(STAGING_DIR_IMAGE)/$(ATF) \
   PATH=$(STAGING_DIR_HOST)/bin:$(PATH) \
   $(if $(TPL),ROCKCHIP_TPL=$(STAGING_DIR_IMAGE)/$(TPL))
 
-define Build/Configure
-	$(call Build/Configure/U-Boot)
-
-	$(SED) 's#CONFIG_MKIMAGE_DTC_PATH=.*#CONFIG_MKIMAGE_DTC_PATH="$(PKG_BUILD_DIR)/scripts/dtc/dtc"#g' $(PKG_BUILD_DIR)/.config
-	echo '# CONFIG_TOOLS_MKEFICAPSULE is not set' >> $(PKG_BUILD_DIR)/.config
-	echo 'CONFIG_IDENT_STRING=" OpenWrt"' >> $(PKG_BUILD_DIR)/.config
-endef
-
 define Build/InstallDev
 	$(INSTALL_DIR) $(STAGING_DIR_IMAGE)
 ifneq ($(USE_RKBIN),)
-	$(STAGING_DIR_IMAGE)/loaderimage --pack --uboot $(PKG_BUILD_DIR)/u-boot-dtb.bin $(PKG_BUILD_DIR)/uboot.img 0x200000
+	$(STAGING_DIR_IMAGE)/loaderimage --pack --uboot $(PKG_BUILD_DIR)/u-boot-dtb.bin $(PKG_BUILD_DIR)/uboot.img 0x800000
 	$(CP) $(PKG_BUILD_DIR)/uboot.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-uboot.img
 else
+ifneq ($(IDB_PRE_BUILD),)
+	$(CP) ./files/$(BUILD_VARIANT)-idbloader.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-idbloader.img
+else
 	$(CP) $(PKG_BUILD_DIR)/idbloader.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-idbloader.img
+endif
 	$(CP) $(PKG_BUILD_DIR)/u-boot.itb $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-u-boot.itb
 endif
 endef

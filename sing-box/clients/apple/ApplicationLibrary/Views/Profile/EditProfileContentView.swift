@@ -1,154 +1,142 @@
-#if os(iOS) || os(macOS)
-    import Foundation
-    import Library
-    import SwiftUI
+import Foundation
+import Library
+import SwiftUI
 
-    @MainActor
-    public struct EditProfileContentView: View {
-        public struct Context: Codable, Hashable {
-            public let profileID: Int64
-            public let readOnly: Bool
-        }
+@MainActor
+public struct EditProfileContentView: View {
+    public struct Context: Codable, Hashable {
+        public let profileID: Int64
+        public let readOnly: Bool
+    }
 
-        private let profileID: Int64?
-        private let readOnly: Bool
+    private let readOnly: Bool
+    @StateObject private var viewModel: EditProfileContentViewModel
 
-        public init(_ context: Context?) {
-            profileID = context?.profileID
-            readOnly = context?.readOnly == true
-        }
+    public init(_ context: Context?) {
+        readOnly = context?.readOnly == true
+        _viewModel = StateObject(wrappedValue: EditProfileContentViewModel(profileID: context?.profileID))
+    }
 
-        @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.profileEditor) private var profileEditor
 
-        @State private var isLoading = true
-        @State private var profile: Profile!
-        @State private var profileContent = ""
-        @State private var isChanged = false
-        @State private var alert: Alert?
-
-        public var body: some View {
-            viewBuilder {
-                if isLoading {
-                    ProgressView().onAppear {
-                        Task {
-                            await loadContent()
-                        }
-                    }
-                } else {
-                    viewBuilder {
-                        if readOnly {
-                            TextEditor(text: .constant(profileContent))
-                        } else {
-                            TextEditor(text: $profileContent)
-                        }
-                    }
-                    .font(Font.system(.caption2, design: .monospaced))
-                    .autocorrectionDisabled(true)
-                    // https://stackoverflow.com/questions/66721935/swiftui-how-to-disable-the-smart-quotes-in-texteditor
-                    // https://stackoverflow.com/questions/74034171/textfield-with-autocorrectiondisabled-still-shows-predictive-text-bar
-                    .textContentType(.init(rawValue: ""))
-                    #if os(iOS)
-                        .keyboardType(.asciiCapable)
-                        .textInputAutocapitalization(.none)
-                        .background(Color(UIColor.secondarySystemGroupedBackground))
-                    #elseif os(macOS)
-                        .padding()
-                    #endif
-                        .onChangeCompat(of: profileContent) {
-                            isChanged = true
-                        }
-                }
-            }
-            .alertBinding($alert)
-            .navigationTitle(navigationTitle)
-            #if os(macOS)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigation) {
-                        if !readOnly {
-                            Button {
-                                Task {
-                                    await saveContent()
-                                }
-                            } label: {
-                                Label("Save", image: "save")
-                            }
-                            .disabled(!isChanged)
-                        } else {
-                            Button {
-                                NSPasteboard.general.setString(profileContent, forType: .fileContents)
-                            } label: {
-                                Label("Copy", systemImage: "clipboard.fill")
-                            }
-                        }
+    public var body: some View {
+        Group {
+            if viewModel.isLoading {
+                ProgressView().onAppear {
+                    Task {
+                        await viewModel.loadContent()
                     }
                 }
-            #elseif os(iOS)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        if !readOnly {
-                            Button("Save") {
-                                Task {
-                                    await saveContent()
-                                }
-                            }.disabled(!isChanged)
-                        } else {
-                            Button("Copy") {
-                                UIPasteboard.general.string = profileContent
-                            }
-                        }
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-            #endif
-        }
-
-        private var navigationTitle: String {
-            if readOnly {
-                return String(localized: "View Content")
             } else {
-                return String(localized: "Edit Content")
+                editorView
+                    .onChangeCompat(of: viewModel.profileContent) {
+                        viewModel.markAsChanged()
+                    }
             }
         }
+        .alert($viewModel.alert)
+        .navigationTitle(navigationTitle)
+        #if os(macOS)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigation) {
+                    if !readOnly {
+                        Button {
+                            Task {
+                                await viewModel.saveContent()
+                            }
+                        } label: {
+                            Label("Save", image: "save")
+                        }
+                        .disabled(!viewModel.isChanged)
+                    } else {
+                        Button {
+                            NSPasteboard.general.setString(viewModel.profileContent, forType: .fileContents)
+                        } label: {
+                            Label("Copy", systemImage: "clipboard.fill")
+                        }
+                    }
+                }
+            }
+        #elseif os(iOS)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !readOnly {
+                        Button("Save") {
+                            Task {
+                                await viewModel.saveContent()
+                            }
+                        }.disabled(!viewModel.isChanged)
+                    } else {
+                        Button("Copy") {
+                            UIPasteboard.general.string = viewModel.profileContent
+                        }
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+        #elseif os(tvOS)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if !readOnly {
+                        TVToolbarButton(title: String(localized: "Save"), isEnabled: viewModel.isChanged) {
+                            Task {
+                                await viewModel.saveContent()
+                            }
+                        }
+                    }
+                }
+            }
+        #endif
+    }
 
-        private func loadContent() async {
-            do {
-                try await loadContentBackground()
-            } catch {
-                alert = Alert(error)
-            }
-            isLoading = false
-        }
-
-        private nonisolated func loadContentBackground() async throws {
-            guard let profileID else {
-                throw NSError(domain: "Context destroyed", code: 0)
-            }
-            guard let profile = try await ProfileManager.get(profileID) else {
-                throw NSError(domain: "Profile missing", code: 0)
-            }
-            let profileContent = try profile.read()
-            await MainActor.run {
-                self.profile = profile
-                self.profileContent = profileContent
-            }
-        }
-
-        private func saveContent() async {
-            guard let profile else {
-                return
-            }
-            do {
-                try await saveContentBackground(profile)
-            } catch {
-                alert = Alert(error)
-                return
-            }
-            isChanged = false
-        }
-
-        private nonisolated func saveContentBackground(_ profile: Profile) async throws {
-            try await profile.write(profileContent)
+    private var navigationTitle: String {
+        if readOnly {
+            return String(localized: "View Content")
+        } else {
+            return String(localized: "Edit Content")
         }
     }
 
-#endif
+    @ViewBuilder
+    private var editorView: some View {
+        if let profileEditor {
+            profileEditor(
+                readOnly ? .constant(viewModel.profileContent) : $viewModel.profileContent,
+                !readOnly
+            )
+            #if os(macOS)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            #endif
+        } else {
+            defaultEditorView
+        }
+    }
+
+    @ViewBuilder
+    private var defaultEditorView: some View {
+        #if os(tvOS)
+            ScrollView {
+                TextField("", text: readOnly ? .constant(viewModel.profileContent) : $viewModel.profileContent, axis: .vertical)
+                    .lineLimit(1000)
+                    .font(Font.system(.caption2, design: .monospaced))
+                    .autocorrectionDisabled(true)
+                    .disabled(readOnly)
+            }
+        #else
+            Group {
+                if readOnly {
+                    TextEditor(text: .constant(viewModel.profileContent))
+                } else {
+                    TextEditor(text: $viewModel.profileContent)
+                }
+            }
+            .font(Font.system(.caption2, design: .monospaced))
+            .autocorrectionDisabled(true)
+            #if os(macOS)
+                .textContentType(.init(rawValue: ""))
+                .padding()
+            #endif
+        #endif
+    }
+}

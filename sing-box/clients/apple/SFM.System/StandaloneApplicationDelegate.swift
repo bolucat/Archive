@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Libbox
 import Library
 import MacLibrary
 
@@ -7,8 +8,11 @@ class StandaloneApplicationDelegate: ApplicationDelegate {
     func applicationWillFinishLaunching(_: Notification) {
         Variant.useSystemExtension = true
         Variant.isBeta = false
+        LibboxSetXPCDialer(CommandXPCDialer.shared)
+        UserServiceEndpointPublisher.shared.start()
         Task {
             await setupSystemExtension()
+            await HelperServiceManager.updateRootHelperIfNeeded()
         }
     }
 

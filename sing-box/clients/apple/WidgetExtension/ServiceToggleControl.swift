@@ -15,6 +15,7 @@ struct ServiceToggleControl: ControlWidget {
                 action: ToggleServiceIntent()
             ) { isOn in
                 Label(isOn ? "Running" : "Stopped", systemImage: "shippingbox.fill")
+                    .controlWidgetActionHint(isOn ? "Stop" : "Start")
             }
             .tint(.init(red: CGFloat(Double(69) / 255), green: CGFloat(Double(90) / 255), blue: CGFloat(Double(100) / 255)))
         }
@@ -33,7 +34,7 @@ extension ServiceToggleControl {
             guard let extensionProfile = try await (ExtensionProfile.load()) else {
                 return false
             }
-            return extensionProfile.status.isStarted
+            return await extensionProfile.status.isStarted
         }
     }
 }

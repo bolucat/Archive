@@ -9,11 +9,11 @@ import SwiftUI
 
 @MainActor
 public struct ProfileShareButton<Label>: View where Label: View {
-    private let alert: Binding<Alert?>
+    private let alert: Binding<AlertState?>
     private let profile: Profile
     private let label: () -> Label
 
-    public init(_ alert: Binding<Alert?>, _ profile: Profile, label: @escaping () -> Label) {
+    public init(_ alert: Binding<AlertState?>, _ profile: Profile, label: @escaping () -> Label) {
         self.alert = alert
         self.profile = profile
         self.label = label
@@ -44,13 +44,13 @@ public struct ShareButtonCompat<Label>: View where Label: View {
     private let label: () -> Label
     private let itemURL: () throws -> URL
 
-    @Binding private var alert: Alert?
+    @Binding private var alert: AlertState?
 
     #if os(macOS)
         @State private var sharePresented = false
     #endif
 
-    public init(_ alert: Binding<Alert?>, @ViewBuilder label: @escaping () -> Label, itemURL: @escaping () throws -> URL) {
+    public init(_ alert: Binding<AlertState?>, @ViewBuilder label: @escaping () -> Label, itemURL: @escaping () throws -> URL) {
         _alert = alert
         self.label = label
         self.itemURL = itemURL
@@ -58,6 +58,7 @@ public struct ShareButtonCompat<Label>: View where Label: View {
 
     public var body: some View {
         Button(action: shareItem, label: label)
+            .buttonStyle(.plain)
         #if os(macOS)
             .background(SharingServicePicker($sharePresented, $alert, itemURL))
         #endif
@@ -66,7 +67,7 @@ public struct ShareButtonCompat<Label>: View where Label: View {
     private func shareItem() {
         #if os(iOS)
             Task {
-                await shareItem0()
+                await shareItemAsync()
             }
         #elseif os(macOS)
             sharePresented = true
@@ -74,23 +75,33 @@ public struct ShareButtonCompat<Label>: View where Label: View {
     }
 
     #if os(iOS)
-        private nonisolated func shareItem0() async {
+        private nonisolated func shareItemAsync() async {
             do {
                 let shareItem = try await itemURL()
                 await MainActor.run {
-                    shareItem1(shareItem)
+                    presentShareController(shareItem)
                 }
             } catch {
                 await MainActor.run {
-                    alert = Alert(error)
+                    alert = AlertState(error: error)
                 }
             }
         }
 
-        private func shareItem1(_ item: URL) {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.keyWindow?.rootViewController?.present(UIActivityViewController(activityItems: [item], applicationActivities: nil), animated: true, completion: nil)
+        private func presentShareController(_ item: URL) {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootViewController = windowScene.keyWindow?.rootViewController
+            else {
+                return
             }
+            var topViewController = rootViewController
+            while let presented = topViewController.presentedViewController {
+                topViewController = presented
+            }
+            topViewController.present(
+                UIActivityViewController(activityItems: [item], applicationActivities: nil),
+                animated: true
+            )
         }
     #endif
 }
@@ -98,10 +109,10 @@ public struct ShareButtonCompat<Label>: View where Label: View {
 #if os(macOS)
     private struct SharingServicePicker: NSViewRepresentable {
         @Binding private var isPresented: Bool
-        @Binding private var alert: Alert?
+        @Binding private var alert: AlertState?
         private let item: () throws -> URL
 
-        init(_ isPresented: Binding<Bool>, _ alert: Binding<Alert?>, _ item: @escaping () throws -> URL) {
+        init(_ isPresented: Binding<Bool>, _ alert: Binding<AlertState?>, _ item: @escaping () throws -> URL) {
             _isPresented = isPresented
             _alert = alert
             self.item = item
@@ -121,7 +132,7 @@ public struct ShareButtonCompat<Label>: View where Label: View {
                         picker.show(relativeTo: .zero, of: nsView, preferredEdge: .minY)
                     }
                 } catch {
-                    alert = Alert(error)
+                    alert = AlertState(error: error)
                 }
             }
         }

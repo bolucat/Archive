@@ -7,52 +7,60 @@ import SwiftUI
 public struct NewProfileView: View {
     @EnvironmentObject private var environments: ExtensionEnvironments
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel: NewProfileViewModel
+    private var onSuccess: ((Profile) async -> Void)?
 
-    @State private var isSaving = false
-    @State private var profileName = ""
-    #if !os(tvOS)
-        @State private var profileType = ProfileType.local
-    #else
-        @State private var profileType = ProfileType.remote
-    #endif
-    @State private var fileImport = false
-    @State private var fileURL: URL!
-    @State private var remotePath = ""
-    @State private var autoUpdate = true
-    @State private var autoUpdateInterval: Int32 = 60
-    @State private var pickerPresented = false
-    @State private var alert: Alert?
-
-    public struct ImportRequest: Codable, Hashable {
+    public struct ImportRequest: Codable, Hashable, Identifiable {
+        public var id: String { url }
         public let name: String
         public let url: String
     }
 
-    public init(_ importRequest: ImportRequest? = nil) {
-        if let importRequest {
-            _profileName = .init(initialValue: importRequest.name)
-            _profileType = .init(initialValue: .remote)
-            _remotePath = .init(initialValue: importRequest.url)
+    public struct LocalImportRequest: Hashable, Identifiable {
+        public var id: String { fileURL.absoluteString }
+        public let name: String
+        public let fileURL: URL
+
+        public init(name: String, fileURL: URL) {
+            self.name = name
+            self.fileURL = fileURL
         }
     }
 
+    public init(
+        _ importRequest: ImportRequest? = nil,
+        localImportRequest: LocalImportRequest? = nil,
+        onSuccess: ((Profile) async -> Void)? = nil
+    ) {
+        _viewModel = StateObject(wrappedValue: NewProfileViewModel(importRequest: importRequest, localImportRequest: localImportRequest))
+        self.onSuccess = onSuccess
+    }
+
     public var body: some View {
+        #if os(macOS)
+            macOSBody
+        #else
+            iOSBody
+        #endif
+    }
+
+    private var formContent: some View {
         FormView {
             FormItem(String(localized: "Name")) {
-                TextField("Name", text: $profileName, prompt: Text("Required"))
+                TextField("Name", text: $viewModel.profileName, prompt: Text("Required"))
                     .multilineTextAlignment(.trailing)
             }
-            Picker(selection: $profileType) {
+            Picker(selection: $viewModel.profileType) {
+                Text("Local").tag(ProfileType.local)
                 #if !os(tvOS)
-                    Text("Local").tag(ProfileType.local)
                     Text("iCloud").tag(ProfileType.icloud)
                 #endif
                 Text("Remote").tag(ProfileType.remote)
             } label: {
                 Text("Type")
             }
-            if profileType == .local {
-                Picker(selection: $fileImport) {
+            if viewModel.profileType == .local {
+                Picker(selection: $viewModel.fileImport) {
                     Text("Create New").tag(false)
                     Text("Import").tag(true)
                 } label: {
@@ -61,202 +69,149 @@ public struct NewProfileView: View {
                 #if os(tvOS)
                 .disabled(true)
                 #endif
-                viewBuilder {
-                    if fileImport {
+                Group {
+                    if viewModel.fileImport {
                         HStack {
                             Text("File Path")
                             Spacer()
                             Spacer()
-                            if let fileURL {
+                            if let fileURL = viewModel.fileURL {
                                 Button(fileURL.fileName) {
-                                    pickerPresented = true
+                                    viewModel.pickerPresented = true
                                 }
                             } else {
                                 Button("Choose") {
-                                    pickerPresented = true
+                                    viewModel.pickerPresented = true
                                 }
                             }
                         }
                     }
                 }
-            } else if profileType == .icloud {
+            } else if viewModel.profileType == .icloud {
                 FormItem(String(localized: "Path")) {
-                    TextField("Path", text: $remotePath, prompt: Text("Required"))
+                    TextField("Path", text: $viewModel.remotePath, prompt: Text("Required"))
                         .multilineTextAlignment(.trailing)
-                    #if !os(macOS)
-                        .keyboardType(.asciiCapableNumberPad)
-                    #endif
                 }
-            } else if profileType == .remote {
+            } else if viewModel.profileType == .remote {
                 FormItem(String(localized: "URL")) {
-                    TextField("URL", text: $remotePath, prompt: Text("Required"))
+                    TextField("URL", text: $viewModel.remotePath, prompt: Text("Required"))
                         .multilineTextAlignment(.trailing)
                     #if !os(macOS)
                         .keyboardType(.URL)
                     #endif
                 }
-                Toggle("Auto Update", isOn: $autoUpdate)
+                Toggle("Auto Update", isOn: $viewModel.autoUpdate)
                 FormItem(String(localized: "Auto Update Interval")) {
-                    TextField("Auto Update Interval", text: $autoUpdateInterval.stringBinding(defaultValue: 60), prompt: Text("In Minutes"))
+                    TextField("Auto Update Interval", text: $viewModel.autoUpdateInterval.stringBinding(defaultValue: 60), prompt: Text("In Minutes"))
                         .multilineTextAlignment(.trailing)
                     #if !os(macOS)
                         .keyboardType(.numberPad)
                     #endif
                 }
             }
-            Section {
-                if !isSaving {
-                    FormButton {
-                        isSaving = true
-                        Task {
-                            await createProfile()
+            #if os(iOS) || os(tvOS)
+                Section {
+                    if !viewModel.isSaving {
+                        FormButton {
+                            viewModel.isSaving = true
+                            Task {
+                                await viewModel.createProfile(
+                                    environments: environments,
+                                    dismiss: dismiss,
+                                    onSuccess: onSuccess
+                                )
+                            }
+                        } label: {
+                            Label("Create", systemImage: "doc.fill.badge.plus")
                         }
-                    } label: {
-                        Label("Create", systemImage: "doc.fill.badge.plus")
+                    } else {
+                        ProgressView()
                     }
-                } else {
-                    ProgressView()
+                }
+            #endif
+        }
+    }
+
+    #if os(macOS)
+        private var macOSBody: some View {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(viewModel.isImport ? "Import Profile" : "New Profile")
+                    .font(.headline)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    .padding(.bottom, 12)
+
+                formContent
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if viewModel.isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Create") {
+                            viewModel.isSaving = true
+                            Task {
+                                await viewModel.createProfile(
+                                    environments: environments,
+                                    dismiss: dismiss,
+                                    onSuccess: onSuccess
+                                )
+                            }
+                        }
+                    }
                 }
             }
-        }
-        .navigationTitle("New Profile")
-        .alertBinding($alert)
-        #if os(iOS) || os(macOS)
+            .disabled(viewModel.isSaving)
+            .alert($viewModel.alert)
             .fileImporter(
-                isPresented: $pickerPresented,
+                isPresented: $viewModel.pickerPresented,
                 allowedContentTypes: [.json],
                 allowsMultipleSelection: false
             ) { result in
                 do {
                     let urls = try result.get()
                     if !urls.isEmpty {
-                        fileURL = urls[0]
+                        viewModel.fileURL = urls[0]
                     }
                 } catch {
-                    alert = Alert(error)
+                    viewModel.alert = AlertState(error: error)
                     return
                 }
             }
-        #endif
-    }
-
-    private func createProfile() async {
-        defer {
-            isSaving = false
         }
-        if profileName.isEmpty {
-            alert = Alert(errorMessage: String(localized: "Missing profile name"))
-            return
-        }
-        if remotePath.isEmpty {
-            if profileType == .icloud {
-                alert = Alert(errorMessage: String(localized: "Missing path"))
-                return
-            } else if profileType == .remote {
-                alert = Alert(errorMessage: String(localized: "Missing URL"))
-                return
-            }
-        }
-        do {
-            try await createProfileBackground()
-        } catch {
-            alert = Alert(error)
-            return
-        }
-        environments.profileUpdate.send()
-        dismiss()
-        #if os(macOS)
-            resetFields()
-        #endif
-    }
-
-    private func resetFields() {
-        profileName = ""
-        profileType = .local
-        fileImport = false
-        fileURL = nil
-        remotePath = ""
-    }
-
-    private nonisolated func createProfileBackground() async throws {
-        let nextProfileID = try await ProfileManager.nextID()
-
-        var savePath = ""
-        var remoteURL: String? = nil
-        var lastUpdated: Date? = nil
-
-        let profileName = await profileName
-        let profileType = await profileType
-        let fileImport = await fileImport
-        let fileURL = await fileURL
-        let remotePath = await remotePath
-        let autoUpdate = await autoUpdate
-        let autoUpdateInterval = await autoUpdateInterval
-
-        if profileType == .local {
-            let profileConfigDirectory = FilePath.sharedDirectory.appendingPathComponent("configs", isDirectory: true)
-            try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
-            let profileConfig = profileConfigDirectory.appendingPathComponent("config_\(nextProfileID).json")
-            if fileImport {
-                guard let fileURL else {
-                    throw NSError(domain: "Missing file", code: 0)
+    #else
+        private var iOSBody: some View {
+            formContent
+                .navigationTitle("New Profile")
+                .disabled(viewModel.isSaving)
+                .alert($viewModel.alert)
+                .onChangeCompat(of: viewModel.createSucceeded) { newValue in
+                    if newValue {
+                        dismiss()
+                    }
                 }
-                if !fileURL.startAccessingSecurityScopedResource() {
-                    throw NSError(domain: "Missing access to selected file", code: 0)
+            #if os(iOS)
+                .fileImporter(
+                    isPresented: $viewModel.pickerPresented,
+                    allowedContentTypes: [.json],
+                    allowsMultipleSelection: false
+                ) { result in
+                    do {
+                        let urls = try result.get()
+                        if !urls.isEmpty {
+                            viewModel.fileURL = urls[0]
+                        }
+                    } catch {
+                        viewModel.alert = AlertState(error: error)
+                        return
+                    }
                 }
-                defer {
-                    fileURL.stopAccessingSecurityScopedResource()
-                }
-                try String(contentsOf: fileURL).write(to: profileConfig, atomically: true, encoding: .utf8)
-            } else {
-                try "{}".write(to: profileConfig, atomically: true, encoding: .utf8)
-            }
-            savePath = profileConfig.relativePath
-        } else if profileType == .icloud {
-            if !FileManager.default.fileExists(atPath: FilePath.iCloudDirectory.path) {
-                try FileManager.default.createDirectory(at: FilePath.iCloudDirectory, withIntermediateDirectories: true)
-            }
-            let saveURL = FilePath.iCloudDirectory.appendingPathComponent(remotePath, isDirectory: false)
-            _ = saveURL.startAccessingSecurityScopedResource()
-            defer {
-                saveURL.stopAccessingSecurityScopedResource()
-            }
-            do {
-                _ = try String(contentsOf: saveURL)
-            } catch {
-                try "{}".write(to: saveURL, atomically: true, encoding: .utf8)
-            }
-            savePath = remotePath
-        } else if profileType == .remote {
-            let remoteContent = try HTTPClient().getString(remotePath)
-            var error: NSError?
-            LibboxCheckConfig(remoteContent, &error)
-            if let error {
-                throw error
-            }
-            let profileConfigDirectory = FilePath.sharedDirectory.appendingPathComponent("configs", isDirectory: true)
-            try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
-            let profileConfig = profileConfigDirectory.appendingPathComponent("config_\(nextProfileID).json")
-            try remoteContent.write(to: profileConfig, atomically: true, encoding: .utf8)
-            savePath = profileConfig.relativePath
-            remoteURL = remotePath
-            lastUpdated = .now
-        }
-        try await ProfileManager.create(Profile(
-            name: profileName,
-            type: profileType,
-            path: savePath,
-            remoteURL: remoteURL,
-            autoUpdate: autoUpdate,
-            autoUpdateInterval: autoUpdateInterval,
-            lastUpdated: lastUpdated
-        ))
-        if profileType == .remote {
-            #if os(iOS) || os(tvOS)
-                try UIProfileUpdateTask.configure()
-            #else
-                try await ProfileUpdateTask.configure()
             #endif
         }
-    }
+    #endif
 }

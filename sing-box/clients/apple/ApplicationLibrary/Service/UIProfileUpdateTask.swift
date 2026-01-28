@@ -7,7 +7,7 @@ import Library
 
 #if os(iOS) || os(tvOS)
     public class UIProfileUpdateTask: BGAppRefreshTask {
-        private static let taskSchedulerPermittedIdentifier = "\(FilePath.packageName).update_profiles"
+        private static let taskSchedulerPermittedIdentifier = AppConfiguration.backgroundTaskID
 
         private static var registered = false
         public static func configure() throws {
@@ -19,7 +19,7 @@ import Library
                     }
                 }
                 if !success {
-                    throw NSError(domain: "register task failed", code: 0)
+                    throw NSError(domain: "UIProfileUpdateTask", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Register task failed")])
                 }
                 registered = true
             }

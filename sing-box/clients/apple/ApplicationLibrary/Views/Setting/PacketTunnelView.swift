@@ -2,7 +2,9 @@ import Library
 import SwiftUI
 
 struct PacketTunnelView: View {
+    @EnvironmentObject private var environments: ExtensionEnvironments
     @State private var isLoading = true
+    @State private var alert: AlertState?
 
     @State private var ignoreMemoryLimit = false
 
@@ -14,10 +16,10 @@ struct PacketTunnelView: View {
 
     init() {}
     var body: some View {
-        viewBuilder {
+        Group {
             if isLoading {
                 ProgressView().onAppear {
-                    Task.detached {
+                    Task {
                         await loadSettings()
                     }
                 }
@@ -27,6 +29,7 @@ struct PacketTunnelView: View {
                     Do not enforce memory limits on sing-box. Will cause OOM on non-jailbroken iOS and tvOS devices.
                     """, $ignoreMemoryLimit) { newValue in
                         await SharedPreferences.ignoreMemoryLimit.set(newValue)
+                        await restartService()
                     }
 
                     #if !os(tvOS)
@@ -38,6 +41,7 @@ struct PacketTunnelView: View {
                         [Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/3131931-includeallnetworks)
                         """, $includeAllNetworks) { newValue in
                             await SharedPreferences.includeAllNetworks.set(newValue)
+                            await restartService()
                         }
 
                         FormToggle("excludeAPNs", """
@@ -46,14 +50,16 @@ struct PacketTunnelView: View {
                         [Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/4140516-excludeapns)
                         """, $excludeAPNs) { newValue in
                             await SharedPreferences.excludeAPNs.set(newValue)
+                            await restartService()
                         }
 
                         FormToggle("excludeCellularServices", """
-                        If this property is true, the system excludes cellular services — such as Wi-Fi Calling, MMS, SMS, and Visual Voicemail — but only when the **includeAllNetworks** property is also true. This property doesn’t impact services that use the cellular network only — such as VoLTE — which the system automatically excludes.
+                        If this property is true, the system excludes cellular services — such as Wi-Fi Calling, MMS, SMS, and Visual Voicemail — but only when the **includeAllNetworks** property is also true. This property doesn't impact services that use the cellular network only — such as VoLTE — which the system automatically excludes.
 
                         [Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/4140517-excludecellularservices)
                         """, $excludeCellularServices) { newValue in
                             await SharedPreferences.excludeCellularServices.set(newValue)
+                            await restartService()
                         }
 
                         FormToggle("excludeLocalNetworks", """
@@ -62,6 +68,7 @@ struct PacketTunnelView: View {
                         [Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/3143658-excludelocalnetworks)
                         """, $excludeLocalNetworks) { newValue in
                             await SharedPreferences.excludeLocalNetworks.set(newValue)
+                            await restartService()
                         }
 
                         FormToggle("enforceRoutes", """
@@ -72,6 +79,7 @@ struct PacketTunnelView: View {
                         [Apple Documentation](https://developer.apple.com/documentation/networkextension/nevpnprotocol/3689459-enforceroutes)
                         """, $enforceRoutes) { newValue in
                             await SharedPreferences.enforceRoutes.set(newValue)
+                            await restartService()
                         }
 
                     #endif
@@ -79,6 +87,7 @@ struct PacketTunnelView: View {
                     FormButton {
                         Task {
                             await SharedPreferences.resetPacketTunnel()
+                            await restartService()
                             isLoading = true
                         }
                     } label: {
@@ -89,11 +98,24 @@ struct PacketTunnelView: View {
             }
         }
         .navigationTitle("Packet Tunnel")
+        .alert($alert)
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
     }
 
+    private func restartService() async {
+        guard let profile = environments.extensionProfile, profile.status.isConnected else {
+            return
+        }
+        do {
+            try await profile.restart()
+        } catch {
+            alert = AlertState(error: error)
+        }
+    }
+
+    @MainActor
     private func loadSettings() async {
         ignoreMemoryLimit = await SharedPreferences.ignoreMemoryLimit.get()
         #if !os(tvOS)

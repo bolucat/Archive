@@ -1,6 +1,5 @@
 import AppIntents
 import Foundation
-import Libbox
 import Library
 
 struct StartServiceIntent: AppIntent {
@@ -16,9 +15,9 @@ struct StartServiceIntent: AppIntent {
     @Parameter(title: "Profile", optionsProvider: ProfileProvider())
     var profile: String
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let extensionProfile = try await (ExtensionProfile.load()) else {
-            throw NSError(domain: "NetworkExtension not installed", code: 0)
+            throw NSError(domain: "IntentsExtension", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "NetworkExtension not installed")])
         }
         let profileList = try await ProfileManager.list()
         let specifiedProfile = profileList.first { $0.name == profile }
@@ -30,21 +29,19 @@ struct StartServiceIntent: AppIntent {
                 profileChanged = true
             }
         } else if profile != "default" {
-            throw NSError(domain: "Specified profile not found: \(profile)", code: 0)
+            throw NSError(domain: "IntentsExtension", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Specified profile not found: \(profile)")])
         }
-        if extensionProfile.status == .connected {
+        if await extensionProfile.status == .connected {
             if !profileChanged {
-                return .result()
+                return .result(dialog: "Service is already running")
             }
-            try LibboxNewStandaloneCommandClient()!.serviceReload()
-        } else if extensionProfile.status.isConnected {
-            try await extensionProfile.stop()
-            try await Task.sleep(nanoseconds: UInt64(100 * Double(NSEC_PER_MSEC)))
-            try await extensionProfile.start()
+            try await extensionProfile.reloadService()
+        } else if await extensionProfile.status.isConnected {
+            try await extensionProfile.restart()
         } else {
             try await extensionProfile.start()
         }
-        return .result()
+        return .result(dialog: "Service started")
     }
 }
 
@@ -58,20 +55,18 @@ struct RestartServiceIntent: AppIntent {
         Summary("Restart sing-box service")
     }
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let extensionProfile = try await (ExtensionProfile.load()) else {
-            return .result()
+            return .result(dialog: "Service is not installed")
         }
-        if extensionProfile.status == .connected {
-            try LibboxNewStandaloneCommandClient()!.serviceReload()
-        } else if extensionProfile.status.isConnected {
-            try await extensionProfile.stop()
-            try await Task.sleep(nanoseconds: UInt64(100 * Double(NSEC_PER_MSEC)))
-            try await extensionProfile.start()
+        if await extensionProfile.status == .connected {
+            try await extensionProfile.reloadService()
+        } else if await extensionProfile.status.isConnected {
+            try await extensionProfile.restart()
         } else {
             try await extensionProfile.start()
         }
-        return .result()
+        return .result(dialog: "Service restarted")
     }
 }
 
@@ -85,12 +80,12 @@ struct StopServiceIntent: AppIntent {
         Summary("Stop sing-box service")
     }
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let extensionProfile = try await (ExtensionProfile.load()) else {
-            return .result()
+            return .result(dialog: "Service is not installed")
         }
         try await extensionProfile.stop()
-        return .result()
+        return .result(dialog: "Service stopped")
     }
 }
 
@@ -108,7 +103,7 @@ struct ToggleServiceIntent: AppIntent {
         guard let extensionProfile = try await (ExtensionProfile.load()) else {
             return .result(value: false)
         }
-        if extensionProfile.status.isConnected {
+        if await extensionProfile.status.isConnected {
             try await extensionProfile.stop()
             return .result(value: false)
 
@@ -133,7 +128,7 @@ struct GetServiceStatus: AppIntent {
         guard let extensionProfile = try await (ExtensionProfile.load()) else {
             return .result(value: false)
         }
-        return .result(value: extensionProfile.status.isConnected)
+        return await .result(value: extensionProfile.status.isConnected)
     }
 }
 
@@ -149,7 +144,7 @@ struct GetCurrentProfile: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
         guard let profile = try await ProfileManager.get(SharedPreferences.selectedProfileID.get()) else {
-            throw NSError(domain: "No profile selected", code: 0)
+            throw NSError(domain: "IntentsExtension", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "No profile selected")])
         }
         return .result(value: profile.name)
     }
@@ -169,15 +164,15 @@ struct UpdateProfileIntent: AppIntent {
     var profile: String
 
     init() {}
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let profile = try await ProfileManager.get(by: profile) else {
-            throw NSError(domain: "Specified profile not found: \(profile)", code: 0)
+            throw NSError(domain: "IntentsExtension", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Specified profile not found: \(profile)")])
         }
         if profile.type != .remote {
-            throw NSError(domain: "Specified profile is not a remote profile", code: 0)
+            throw NSError(domain: "IntentsExtension", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Specified profile is not a remote profile")])
         }
         try await profile.updateRemoteProfile()
-        return .result()
+        return .result(dialog: "Profile updated")
     }
 }
 
@@ -194,5 +189,40 @@ class ProfileProvider: DynamicOptionsProvider {
 class RemoteProfileProvider: DynamicOptionsProvider {
     func results() async throws -> [String] {
         try await ProfileManager.listRemote().map(\.name)
+    }
+}
+
+struct ServiceShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: StartServiceIntent(),
+            phrases: ["Start \(.applicationName)"],
+            shortTitle: "Start",
+            systemImageName: "power"
+        )
+        AppShortcut(
+            intent: StopServiceIntent(),
+            phrases: ["Stop \(.applicationName)"],
+            shortTitle: "Stop",
+            systemImageName: "stop.fill"
+        )
+        AppShortcut(
+            intent: RestartServiceIntent(),
+            phrases: ["Restart \(.applicationName)"],
+            shortTitle: "Restart",
+            systemImageName: "arrow.clockwise"
+        )
+        AppShortcut(
+            intent: ToggleServiceIntent(),
+            phrases: ["Toggle \(.applicationName)"],
+            shortTitle: "Toggle",
+            systemImageName: "arrow.triangle.2.circlepath"
+        )
+        AppShortcut(
+            intent: UpdateProfileIntent(),
+            phrases: ["Update \(.applicationName) profile"],
+            shortTitle: "Update Profile",
+            systemImageName: "arrow.down.circle"
+        )
     }
 }

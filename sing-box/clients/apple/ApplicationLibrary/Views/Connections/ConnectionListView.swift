@@ -1,161 +1,230 @@
-import Libbox
 import Library
 import SwiftUI
+#if canImport(UIKit) && !os(tvOS)
+    import UIKit
+#endif
 
 @MainActor
 public struct ConnectionListView: View {
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var isLoading = true
-    @StateObject private var commandClient = CommandClient(.connections)
-    @State private var connections: [Connection] = []
-    @State private var searchText = ""
-    @State private var alert: Alert?
+    @EnvironmentObject private var environments: ExtensionEnvironments
+    @StateObject private var viewModel = ConnectionListViewModel()
+    @StateObject private var commandClient = CommandClient([.connections])
 
     public init() {}
+
     public var body: some View {
         VStack {
-            if isLoading {
+            if viewModel.isLoading {
                 Text("Loading...")
             } else {
-                if connections.isEmpty {
+                if viewModel.connections.isEmpty {
                     Text("Empty connections")
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: [GridItem(.flexible())], alignment: .leading) {
-                            ForEach(connections.filter { it in
-                                searchText == "" || it.performSearch(searchText)
-                            }, id: \.hashValue) { it in
+                        LazyVStack {
+                            ForEach(viewModel.filteredConnections, id: \.id) { it in
                                 ConnectionView(it)
                             }
                         }
+                        .padding()
                     }
-                    .padding()
                 }
             }
         }
-        #if !os(tvOS)
+        #if os(iOS)
         .toolbar {
-            ToolbarItem {
-                Menu {
-                    Picker("State", selection: $commandClient.connectionStateFilter) {
-                        ForEach(ConnectionStateFilter.allCases) { state in
-                            Text(state.name)
-                        }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                ConnectionMenuButton(
+                    connectionStateFilter: $viewModel.connectionStateFilter,
+                    connectionSort: $viewModel.connectionSort,
+                    closeAllConnections: viewModel.closeAllConnections
+                )
+            }
+        }
+        #elseif os(macOS)
+        .applySearchable(text: $viewModel.searchText, isSearching: $viewModel.isSearching, shouldShow: viewModel.isSearching)
+        .toolbar {
+            ToolbarItemGroup {
+                if #available(macOS 14.0, *) {
+                    Button(action: viewModel.toggleSearch) {
+                        Label("Search", systemImage: "magnifyingglass")
                     }
-
-                    Picker("Sort By", selection: $commandClient.connectionSort) {
-                        ForEach(ConnectionSort.allCases, id: \.self) { sortBy in
-                            Text(sortBy.name)
-                        }
-                    }
-
-                    Button("Close All Connections", role: .destructive) {
-                        do {
-                            try LibboxNewStandaloneCommandClient()!.closeConnections()
-                        } catch {
-                            alert = Alert(error)
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: "line.3.horizontal.circle")
                 }
+                ConnectionMenuView(
+                    connectionStateFilter: $viewModel.connectionStateFilter,
+                    connectionSort: $viewModel.connectionSort,
+                    closeAllConnections: viewModel.closeAllConnections
+                )
             }
         }
         #endif
-        #if os(macOS)
-        .searchable(text: $searchText)
-        #endif
-        .alertBinding($alert)
+        .alert($viewModel.alert)
         .onAppear {
-            connect()
+            viewModel.connect()
+            commandClient.connect()
         }
         .onDisappear {
+            viewModel.disconnect()
             commandClient.disconnect()
         }
-        .onChangeCompat(of: scenePhase) { newValue in
-            if newValue == .active {
-                commandClient.connect()
-            } else {
-                commandClient.disconnect()
+        .onReceive(commandClient.$connections) { connections in
+            Task { @MainActor in
+                viewModel.setConnections(connections)
             }
         }
-        .onChangeCompat(of: commandClient.connectionStateFilter) { it in
+        .onChangeCompat(of: viewModel.connectionStateFilter) { filter in
+            commandClient.connectionStateFilter = filter
             commandClient.filterConnectionsNow()
-            Task {
-                await SharedPreferences.connectionStateFilter.set(it.rawValue)
-            }
         }
-        .onChangeCompat(of: commandClient.connectionSort) { it in
+        .onChangeCompat(of: viewModel.connectionSort) { sort in
+            commandClient.connectionSort = sort
             commandClient.filterConnectionsNow()
-            Task {
-                await SharedPreferences.connectionSort.set(it.rawValue)
-            }
         }
-        .onReceive(commandClient.$connections, perform: { connections in
-            if let connections {
-                self.connections = convertConnections(connections)
-                isLoading = false
-            }
-        })
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         #if os(iOS)
             .background(Color(uiColor: .systemGroupedBackground))
         #endif
     }
-
-    private var backgroundColor: Color {
-        #if os(iOS)
-            return Color(uiColor: .secondarySystemGroupedBackground)
-        #elseif os(macOS)
-            return Color(nsColor: .textBackgroundColor)
-        #elseif os(tvOS)
-            return Color(uiColor: .black)
-        #endif
-    }
-
-    private func connect() {
-        if ApplicationLibrary.inPreview {
-            isLoading = false
-        } else {
-            commandClient.connect()
-        }
-    }
-
-    private func convertConnections(_ goConnections: [LibboxConnection]) -> [Connection] {
-        var connections = [Connection]()
-        for goConnection in goConnections {
-            if goConnection.outboundType == "dns" {
-                continue
-            }
-            var closedAt: Date?
-            if goConnection.closedAt > 0 {
-                closedAt = Date(timeIntervalSince1970: Double(goConnection.closedAt) / 1000)
-            }
-            connections.append(Connection(
-                id: goConnection.id_,
-                inbound: goConnection.inbound,
-                inboundType: goConnection.inboundType,
-                ipVersion: goConnection.ipVersion,
-                network: goConnection.network,
-                source: goConnection.source,
-                destination: goConnection.destination,
-                domain: goConnection.domain,
-                displayDestination: goConnection.displayDestination(),
-                protocolName: goConnection.protocol,
-                user: goConnection.user,
-                fromOutbound: goConnection.fromOutbound,
-                createdAt: Date(timeIntervalSince1970: Double(goConnection.createdAt) / 1000),
-                closedAt: closedAt,
-                upload: goConnection.uplink,
-                download: goConnection.downlink,
-                uploadTotal: goConnection.uplinkTotal,
-                downloadTotal: goConnection.downlinkTotal,
-                rule: goConnection.rule,
-                outbound: goConnection.outbound,
-                outboundType: goConnection.outboundType,
-                chain: goConnection.chain()!.toArray()
-            ))
-        }
-        return connections
-    }
 }
+
+#if os(iOS)
+    private struct ConnectionMenuButton: UIViewRepresentable {
+        @Binding var connectionStateFilter: ConnectionStateFilter
+        @Binding var connectionSort: ConnectionSort
+        let closeAllConnections: () -> Void
+        @Environment(\.colorScheme) private var colorScheme
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator()
+        }
+
+        class Coordinator {
+            var lastStateFilter: ConnectionStateFilter?
+            var lastSort: ConnectionSort?
+            var lastColorScheme: ColorScheme?
+        }
+
+        func makeUIView(context: Context) -> UIButton {
+            let button = UIButton(type: .system)
+            let config = UIImage.SymbolConfiguration(scale: .large)
+            button.setImage(UIImage(systemName: "line.3.horizontal.circle", withConfiguration: config), for: .normal)
+            if #available(iOS 26.0, *) {
+                button.tintColor = colorScheme == .dark ? .white : .black
+            }
+            button.showsMenuAsPrimaryAction = true
+            button.menu = createMenu()
+            button.setContentHuggingPriority(.required, for: .horizontal)
+            button.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+            let coordinator = context.coordinator
+            coordinator.lastStateFilter = connectionStateFilter
+            coordinator.lastSort = connectionSort
+            coordinator.lastColorScheme = colorScheme
+            return button
+        }
+
+        func updateUIView(_ uiView: UIButton, context: Context) {
+            let coordinator = context.coordinator
+            let needsMenuUpdate = coordinator.lastStateFilter != connectionStateFilter ||
+                coordinator.lastSort != connectionSort
+
+            if needsMenuUpdate {
+                coordinator.lastStateFilter = connectionStateFilter
+                coordinator.lastSort = connectionSort
+                uiView.menu = createMenu()
+            }
+
+            if coordinator.lastColorScheme != colorScheme {
+                coordinator.lastColorScheme = colorScheme
+                if #available(iOS 26.0, *) {
+                    uiView.tintColor = colorScheme == .dark ? .white : .black
+                }
+            }
+        }
+
+        private func createMenu() -> UIMenu {
+            let stateActions = ConnectionStateFilter.allCases.map { state in
+                UIAction(
+                    title: state.name,
+                    state: connectionStateFilter == state ? .on : .off
+                ) { _ in
+                    connectionStateFilter = state
+                }
+            }
+
+            let stateMenu = UIMenu(
+                title: NSLocalizedString("State", comment: ""),
+                options: .singleSelection,
+                children: stateActions
+            )
+
+            let sortActions = ConnectionSort.allCases.map { sort in
+                UIAction(
+                    title: sort.name,
+                    state: connectionSort == sort ? .on : .off
+                ) { _ in
+                    connectionSort = sort
+                }
+            }
+
+            let sortMenu = UIMenu(
+                title: NSLocalizedString("Sort By", comment: ""),
+                options: .singleSelection,
+                children: sortActions
+            )
+
+            let closeAction = UIAction(
+                title: NSLocalizedString("Close All Connections", comment: ""),
+                image: UIImage(systemName: "xmark.circle"),
+                attributes: .destructive
+            ) { _ in
+                closeAllConnections()
+            }
+
+            return UIMenu(children: [stateMenu, sortMenu, closeAction])
+        }
+    }
+
+#elseif os(macOS)
+    private struct ConnectionMenuView: View {
+        @Binding var connectionStateFilter: ConnectionStateFilter
+        @Binding var connectionSort: ConnectionSort
+        let closeAllConnections: () -> Void
+
+        var body: some View {
+            Menu {
+                Picker("State", selection: $connectionStateFilter) {
+                    ForEach(ConnectionStateFilter.allCases) { state in
+                        Text(state.name)
+                    }
+                }
+
+                Picker("Sort By", selection: $connectionSort) {
+                    ForEach(ConnectionSort.allCases, id: \.self) { sortBy in
+                        Text(sortBy.name)
+                    }
+                }
+
+                Button("Close All Connections", role: .destructive) {
+                    closeAllConnections()
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+        }
+    }
+
+    private extension View {
+        func applySearchable(text: Binding<String>, isSearching: Binding<Bool>, shouldShow: Bool) -> some View {
+            if #available(macOS 14.0, *) {
+                if shouldShow {
+                    return AnyView(searchable(text: text, isPresented: isSearching))
+                } else {
+                    return AnyView(self)
+                }
+            } else {
+                return AnyView(searchable(text: text))
+            }
+        }
+    }
+#endif
