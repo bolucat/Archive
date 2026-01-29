@@ -6,8 +6,8 @@ import android.util.Log
 import com.google.gson.JsonArray
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ConfigResult
-import com.v2ray.ang.dto.EConfigType
-import com.v2ray.ang.dto.NetworkType
+import com.v2ray.ang.enums.EConfigType
+import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RulesetItem
 import com.v2ray.ang.dto.V2rayConfig
@@ -16,6 +16,7 @@ import com.v2ray.ang.dto.V2rayConfig.OutboundBean.OutSettingsBean
 import com.v2ray.ang.dto.V2rayConfig.OutboundBean.StreamSettingsBean
 import com.v2ray.ang.dto.V2rayConfig.RoutingBean.RulesBean
 import com.v2ray.ang.extension.isNotNullEmpty
+import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.fmt.HttpFmt
 import com.v2ray.ang.fmt.Hysteria2Fmt
 import com.v2ray.ang.fmt.ShadowsocksFmt
@@ -1296,28 +1297,21 @@ object V2rayConfigManager {
         } else {
             profileItem.sni
         }
-        val fingerprint = profileItem.fingerPrint
-        val alpns = profileItem.alpn
-        val echConfigList = profileItem.echConfigList
-        val echForceQuery = profileItem.echForceQuery
-        val publicKey = profileItem.publicKey
-        val shortId = profileItem.shortId
-        val spiderX = profileItem.spiderX
-        val mldsa65Verify = profileItem.mldsa65Verify
 
-        streamSettings.security = if (streamSecurity.isEmpty()) null else streamSecurity
+        streamSettings.security = streamSecurity.nullIfBlank()
         if (streamSettings.security == null) return
         val tlsSetting = StreamSettingsBean.TlsSettingsBean(
             allowInsecure = allowInsecure,
-            serverName = if (sni.isNullOrEmpty()) null else sni,
-            fingerprint = if (fingerprint.isNullOrEmpty()) null else fingerprint,
-            alpn = if (alpns.isNullOrEmpty()) null else alpns.split(",").map { it.trim() }.filter { it.isNotEmpty() },
-            echConfigList = if (echConfigList.isNullOrEmpty()) null else echConfigList,
-            echForceQuery = if (echForceQuery.isNullOrEmpty()) null else echForceQuery,
-            publicKey = if (publicKey.isNullOrEmpty()) null else publicKey,
-            shortId = if (shortId.isNullOrEmpty()) null else shortId,
-            spiderX = if (spiderX.isNullOrEmpty()) null else spiderX,
-            mldsa65Verify = if (mldsa65Verify.isNullOrEmpty()) null else mldsa65Verify,
+            serverName = sni.nullIfBlank(),
+            fingerprint = profileItem.fingerPrint.nullIfBlank(),
+            alpn =  profileItem.alpn?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }.takeIf { !it.isNullOrEmpty() },
+            echConfigList = profileItem.echConfigList.nullIfBlank(),
+            echForceQuery = profileItem.echForceQuery.nullIfBlank(),
+            pinnedPeerCertSha256 = profileItem.pinnedCA256.nullIfBlank(),
+            publicKey = profileItem.publicKey.nullIfBlank(),
+            shortId = profileItem.shortId.nullIfBlank(),
+            spiderX = profileItem.spiderX.nullIfBlank(),
+            mldsa65Verify = profileItem.mldsa65Verify.nullIfBlank(),
         )
         if (streamSettings.security == AppConfig.TLS) {
             streamSettings.tlsSettings = tlsSetting

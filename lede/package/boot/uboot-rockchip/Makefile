@@ -152,6 +152,13 @@ define U-Boot/rock-4se-rk3399
     radxa_rock-4se
 endef
 
+define U-Boot/rock-4c-plus-rk3399
+  $(U-Boot/rk3399/Default)
+  NAME:=ROCK 4C+
+  BUILD_DEVICES:= \
+    radxa_rock-4c-plus
+endef
+
 define U-Boot/rock-pi-4-rk3399
   $(U-Boot/rk3399/Default)
   NAME:=Rock Pi 4
@@ -381,15 +388,6 @@ define U-Boot/generic-rk3576
     friendlyarm_nanopi-r76s
 endef
 
-define U-Boot/nanopi-m5-rk3576
-  $(U-Boot/rk3576/Default)
-  NAME:=NanoPi M5
-  BUILD_DEVICES:= \
-    friendlyarm_nanopi-m5 \
-    friendlyarm_nanopi-r76s
-  IDB_PRE_BUILD:=1
-endef
-
 define U-Boot/rock-4d-rk3576
   $(U-Boot/rk3576/Default)
   NAME:=ROCK 4D
@@ -512,7 +510,6 @@ UBOOT_TARGETS := \
   rock-3b-rk3568 \
   station-p2-rk3568 \
   generic-rk3576 \
-  nanopi-m5-rk3576 \
   rock-4d-rk3576 \
   sige5-rk3576 \
   generic-rk3588 \
@@ -533,6 +530,7 @@ UBOOT_TARGETS := \
   nanopc-t4-rk3399 \
   nanopi-r4s-rk3399 \
   nanopi-r4se-rk3399 \
+  rock-4c-plus-rk3399 \
   rock-pi-4-rk3399 \
   rock-4se-rk3399 \
   rockpro64-rk3399 \
@@ -563,11 +561,7 @@ ifneq ($(USE_RKBIN),)
 	$(STAGING_DIR_IMAGE)/loaderimage --pack --uboot $(PKG_BUILD_DIR)/u-boot-dtb.bin $(PKG_BUILD_DIR)/uboot.img 0x800000
 	$(CP) $(PKG_BUILD_DIR)/uboot.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-uboot.img
 else
-ifneq ($(IDB_PRE_BUILD),)
-	$(CP) ./files/$(BUILD_VARIANT)-idbloader.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-idbloader.img
-else
 	$(CP) $(PKG_BUILD_DIR)/idbloader.img $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-idbloader.img
-endif
 	$(CP) $(PKG_BUILD_DIR)/u-boot.itb $(STAGING_DIR_IMAGE)/$(BUILD_VARIANT)-u-boot.itb
 endif
 endef

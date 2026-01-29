@@ -10,10 +10,10 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.EConfigType
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.extension.toast
-import com.v2ray.ang.service.ServiceControl
+import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.service.V2RayProxyOnlyService
 import com.v2ray.ang.service.V2RayVpnService
 import com.v2ray.ang.util.MessageUtil
@@ -151,6 +151,7 @@ object V2RayServiceManager {
         }
 
         try {
+            NotificationManager.showNotification(currentConfig)
             coreController.startLoop(result.content, tunFd)
         } catch (e: Exception) {
             Log.e(AppConfig.TAG, "Failed to start Core loop", e)
@@ -165,7 +166,7 @@ object V2RayServiceManager {
 
         try {
             MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_START_SUCCESS, "")
-            NotificationManager.showNotification(currentConfig)
+            //NotificationManager.showNotification(currentConfig)
             NotificationManager.startSpeedNotification(currentConfig)
 
         } catch (e: Exception) {

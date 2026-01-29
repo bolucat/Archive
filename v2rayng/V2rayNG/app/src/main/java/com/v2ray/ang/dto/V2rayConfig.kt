@@ -2,6 +2,7 @@ package com.v2ray.ang.dto
 
 import com.google.gson.annotations.SerializedName
 import com.v2ray.ang.AppConfig
+import com.v2ray.ang.enums.EConfigType
 
 data class V2rayConfig(
     var remarks: String? = null,
@@ -271,6 +272,7 @@ data class V2rayConfig(
                 val enableSessionResumption: Boolean? = null,
                 var echConfigList: String? = null,
                 var echForceQuery: String? = null,
+                var pinnedPeerCertSha256: String? = null,
                 // REALITY settings
                 val show: Boolean = false,
                 var publicKey: String? = null,

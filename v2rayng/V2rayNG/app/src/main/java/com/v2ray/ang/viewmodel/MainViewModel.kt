@@ -15,8 +15,8 @@ import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.GroupMapItem
-import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.ServersCache
+import com.v2ray.ang.dto.SubscriptionCache
 import com.v2ray.ang.extension.serializable
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
@@ -179,7 +179,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return AngConfigManager.updateConfigViaSubAll()
         } else {
             val subItem = MmkvManager.decodeSubscription(subscriptionId) ?: return 0
-            return AngConfigManager.updateConfigViaSub(Pair(subscriptionId, subItem))
+            return AngConfigManager.updateConfigViaSub(SubscriptionCache(subscriptionId, subItem))
         }
     }
 
@@ -273,7 +273,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun getSubscriptions(context: Context): List<GroupMapItem> {
         val subscriptions = MmkvManager.decodeSubscriptions()
         if (subscriptionId.isNotEmpty()
-            && !subscriptions.map { it.first }.contains(subscriptionId)
+            && !subscriptions.map { it.guid }.contains(subscriptionId)
         ) {
             subscriptionIdChanged("")
         }
@@ -285,8 +285,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 remarks = context.getString(R.string.filter_config_all)
             )
         )
-        subscriptions.forEach { (id, item) ->
-            groups.add(GroupMapItem(id = id, remarks = item.remarks))
+        subscriptions.forEach { sub ->
+            groups.add(GroupMapItem(id = sub.guid, remarks = sub.subscription.remarks))
         }
         return groups
     }
@@ -309,20 +309,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * @return The number of removed servers.
      */
     fun removeDuplicateServer(): Int {
-        val serversCacheCopy = mutableListOf<Pair<String, ProfileItem>>()
-        for (it in serversCache) {
-            val config = MmkvManager.decodeServerConfig(it.guid) ?: continue
-            serversCacheCopy.add(Pair(it.guid, config))
-        }
-
+        val serversCacheCopy = serversCache.toList().toMutableList()
         val deleteServer = mutableListOf<String>()
-        serversCacheCopy.forEachIndexed { index, it ->
-            val outbound = it.second
-            serversCacheCopy.forEachIndexed { index2, it2 ->
+        serversCacheCopy.forEachIndexed { index, sc ->
+            val profile = sc.profile
+            serversCacheCopy.forEachIndexed { index2, sc2 ->
                 if (index2 > index) {
-                    val outbound2 = it2.second
-                    if (outbound.equals(outbound2) && !deleteServer.contains(it2.first)) {
-                        deleteServer.add(it2.first)
+                    val profile2 = sc2.profile
+                    if (profile == profile2 && !deleteServer.contains(sc2.guid)) {
+                        deleteServer.add(sc2.guid)
                     }
                 }
             }

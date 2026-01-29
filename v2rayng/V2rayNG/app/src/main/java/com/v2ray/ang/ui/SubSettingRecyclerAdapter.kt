@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
+import com.v2ray.ang.contracts.BaseAdapterListener
 import com.v2ray.ang.databinding.ItemRecyclerSubSettingBinding
 import com.v2ray.ang.helper.ItemTouchHelperAdapter
 import com.v2ray.ang.helper.ItemTouchHelperViewHolder
@@ -21,8 +22,8 @@ class SubSettingRecyclerAdapter(
 
     override fun onBindViewHolder(holder: MainViewHolder, position: Int) {
         val subscriptions = viewModel.getAll()
-        val subId = subscriptions[position].first
-        val subItem = subscriptions[position].second
+        val subId = subscriptions[position].guid
+        val subItem = subscriptions[position].subscription
         holder.itemSubSettingBinding.tvName.text = subItem.remarks
         holder.itemSubSettingBinding.tvUrl.text = subItem.url
         holder.itemSubSettingBinding.chkEnable.isChecked = subItem.enabled

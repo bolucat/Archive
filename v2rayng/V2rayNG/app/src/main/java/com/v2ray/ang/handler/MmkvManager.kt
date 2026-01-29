@@ -3,10 +3,12 @@ package com.v2ray.ang.handler
 import com.tencent.mmkv.MMKV
 import com.v2ray.ang.AppConfig.PREF_IS_BOOTED
 import com.v2ray.ang.AppConfig.PREF_ROUTING_RULESET
+import com.v2ray.ang.dto.AssetUrlCache
 import com.v2ray.ang.dto.AssetUrlItem
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.RulesetItem
 import com.v2ray.ang.dto.ServerAffiliationInfo
+import com.v2ray.ang.dto.SubscriptionCache
 import com.v2ray.ang.dto.SubscriptionItem
 import com.v2ray.ang.dto.WebDavConfig
 import com.v2ray.ang.util.JsonUtil
@@ -309,15 +311,15 @@ object MmkvManager {
      *
      * @return The list of subscriptions.
      */
-    fun decodeSubscriptions(): List<Pair<String, SubscriptionItem>> {
+    fun decodeSubscriptions(): List<SubscriptionCache> {
         initSubsList()
 
-        val subscriptions = mutableListOf<Pair<String, SubscriptionItem>>()
+        val subscriptions = mutableListOf<SubscriptionCache>()
         decodeSubsList().forEach { key ->
             val json = subStorage.decodeString(key)
             if (!json.isNullOrBlank()) {
                 val item = JsonUtil.fromJson(json, SubscriptionItem::class.java)?: SubscriptionItem()
-                subscriptions.add(Pair(key, item))
+                subscriptions.add(SubscriptionCache(key, item))
             }
         }
         return subscriptions
@@ -397,16 +399,16 @@ object MmkvManager {
      *
      * @return The list of asset URLs.
      */
-    fun decodeAssetUrls(): List<Pair<String, AssetUrlItem>> {
-        val assetUrlItems = mutableListOf<Pair<String, AssetUrlItem>>()
+    fun decodeAssetUrls(): List<AssetUrlCache> {
+        val assetUrlItems = mutableListOf<AssetUrlCache>()
         assetStorage.allKeys()?.forEach { key ->
             val json = assetStorage.decodeString(key)
             if (!json.isNullOrBlank()) {
                 val item = JsonUtil.fromJson(json, AssetUrlItem::class.java)?: AssetUrlItem()
-                assetUrlItems.add(Pair(key, item))
+                assetUrlItems.add(AssetUrlCache(key, item))
             }
         }
-        return assetUrlItems.sortedBy { (_, value) -> value.addedTime }
+        return assetUrlItems.sortedBy { it.assetUrl.addedTime }
     }
 
     /**

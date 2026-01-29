@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.contracts.BaseAdapterListener
 import com.v2ray.ang.databinding.ActivityRoutingSettingBinding
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
@@ -20,14 +21,13 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.util.JsonUtil
-import com.v2ray.ang.dto.PermissionType
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.RoutingSettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class RoutingSettingActivity : BaseActivity() {
+class RoutingSettingActivity : HelperBaseActivity() {
     private val binding by lazy { ActivityRoutingSettingBinding.inflate(layoutInflater) }
     private val ownerActivity: RoutingSettingActivity
         get() = this

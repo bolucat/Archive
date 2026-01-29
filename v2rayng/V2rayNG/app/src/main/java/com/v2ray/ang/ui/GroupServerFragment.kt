@@ -13,9 +13,10 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.FragmentGroupServerBinding
 import com.v2ray.ang.databinding.ItemQrcodeBinding
-import com.v2ray.ang.dto.EConfigType
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
