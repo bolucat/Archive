@@ -128,7 +128,8 @@ jobs:
           ${GCRS} https://github.com/qier222/YesPlayMusic yesplaymusic
           ${GCRS} https://github.com/Codennnn/vue-color-avatar vue-color-avatar
           ${GCRS} https://github.com/DIGITALCRIMINALS/OnlyFans onlyfans
-          ## ${GCRS} https://git.suyu.dev/suyu/suyu suyu            
+          ## ${GCRS} https://git.suyu.dev/suyu/suyu suyu
+          ${GCRS} https://github.com/pskdje/bilibili-API-collect bb-api-collect
           # Clean Git Info
           rm -rf */.git
           # Update logs
@@ -167,7 +168,7 @@ jobs:
           sudo apt install -y aria2
           # using 7zip
           mkdir -p 7zip
-          wget "https://www.7-zip.org/a/7z2301-linux-x64.tar.xz" -O 7zip/7zip.tar.xz
+          wget "https://www.7-zip.org/a/7z2501-linux-x64.tar.xz" -O 7zip/7zip.tar.xz
           tar -xf 7zip/7zip.tar.xz -C 7zip/ && mv 7zip/7zz .
           rm -rf 7zip && chmod +x 7zz
           sudo mv 7zz /usr/bin
@@ -429,6 +430,7 @@ jobs:
           ryujinx
           ryujinx-release-channel
           suyu
+          bb-api-collect
           )
           for PROJECT in ${PROJECTS[@]}; do
             if [ "${PROJECT}" == "matsuri" ] || [ "${PROJECT}" == "nekobox-android" ]; then
