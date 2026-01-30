@@ -66,6 +66,7 @@ jobs:
       - name: Prepare release
         if: steps.check_version.outputs.has_update == 'true'
         run: |
+          echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)" >> release.txt
           echo "## :mega: 获取其他软件包 / How to Get Other Packages" >>release.txt
           echo "" >>release.txt
           echo "### 方式 1：添加软件源 / Method 1: Add Software Source" >>release.txt
