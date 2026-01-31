@@ -271,22 +271,22 @@ func (w *Masque) run(ctx context.Context) error {
 		for runCtx.Err() == nil {
 			_, err := w.tunDevice.Read(bufs, sizes, 0)
 			if err != nil {
-				log.Errorln("Error reading from TUN device: %v", err)
+				log.Errorln("[Masque](%s) error reading from TUN device: %v", w.name, err)
 				return
 			}
 			icmp, err := ipConn.WritePacket(buf[:sizes[0]])
 			if err != nil {
 				if errors.As(err, new(*connectip.CloseError)) {
-					log.Errorln("connection closed while writing to IP connection: %v", err)
+					log.Errorln("[Masque](%s) connection closed while writing to IP connection: %v", w.name, err)
 					return
 				}
-				log.Warnln("Error writing to IP connection: %v, continuing...", err)
+				log.Warnln("[Masque](%s) error writing to IP connection: %v, continuing...", w.name, err)
 				continue
 			}
 
 			if len(icmp) > 0 {
 				if _, err := w.tunDevice.Write([][]byte{icmp}, 0); err != nil {
-					log.Warnln("Error writing ICMP to TUN device: %v, continuing...", err)
+					log.Warnln("[Masque](%s) error writing ICMP to TUN device: %v, continuing...", w.name, err)
 				}
 			}
 		}
@@ -300,14 +300,14 @@ func (w *Masque) run(ctx context.Context) error {
 			n, err := ipConn.ReadPacket(buf)
 			if err != nil {
 				if errors.As(err, new(*connectip.CloseError)) {
-					log.Errorln("connection closed while writing to IP connection: %v", err)
+					log.Errorln("[Masque](%s) connection closed while writing to IP connection: %v", w.name, err)
 					return
 				}
-				log.Warnln("Error reading from IP connection: %v, continuing...", err)
+				log.Warnln("[Masque](%s) error reading from IP connection: %v, continuing...", w.name, err)
 				continue
 			}
 			if _, err := w.tunDevice.Write([][]byte{buf[:n]}, 0); err != nil {
-				log.Errorln("Error writing to TUN device: %v", err)
+				log.Errorln("[Masque](%s) error writing to TUN device: %v", w.name, err)
 				return
 			}
 		}
