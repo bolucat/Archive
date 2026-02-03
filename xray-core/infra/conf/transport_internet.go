@@ -26,6 +26,7 @@ import (
 	"github.com/xtls/xray-core/transport/internet/finalmask/mkcp/original"
 	"github.com/xtls/xray-core/transport/internet/finalmask/salamander"
 	"github.com/xtls/xray-core/transport/internet/finalmask/xdns"
+	"github.com/xtls/xray-core/transport/internet/finalmask/xicmp"
 	"github.com/xtls/xray-core/transport/internet/httpupgrade"
 	"github.com/xtls/xray-core/transport/internet/hysteria"
 	"github.com/xtls/xray-core/transport/internet/kcp"
@@ -314,6 +315,7 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 	switch c.UplinkDataPlacement {
 	case "":
 		c.UplinkDataPlacement = "body"
+	case "body":
 	case "cookie", "header":
 		if c.Mode != "packet-up" {
 			return nil, errors.New("UplinkDataPlacement can be " + c.UplinkDataPlacement + " only in packet-up mode")
@@ -334,7 +336,7 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 	switch c.SessionPlacement {
 	case "":
 		c.SessionPlacement = "path"
-	case "cookie", "header", "query":
+	case "path", "cookie", "header", "query":
 	default:
 		return nil, errors.New("unsupported session placement: " + c.SessionPlacement)
 	}
@@ -342,7 +344,7 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 	switch c.SeqPlacement {
 	case "":
 		c.SeqPlacement = "path"
-	case "cookie", "header", "query":
+	case "path", "cookie", "header", "query":
 		if c.SessionPlacement == "path" {
 			return nil, errors.New("SeqPlacement must be path when SessionPlacement is path")
 		}
@@ -1239,6 +1241,7 @@ var (
 		"mkcp-aes128gcm":   func() interface{} { return new(Aes128Gcm) },
 		"salamander":       func() interface{} { return new(Salamander) },
 		"xdns":             func() interface{} { return new(Xdns) },
+		"xicmp":            func() interface{} { return new(Xicmp) },
 	}, "type", "settings")
 )
 
@@ -1325,6 +1328,24 @@ func (c *Xdns) Build() (proto.Message, error) {
 	return &xdns.Config{
 		Domain: c.Domain,
 	}, nil
+}
+
+type Xicmp struct {
+	ListenIp string `json:"listenIp"`
+	Id       uint16 `json:"id"`
+}
+
+func (c *Xicmp) Build() (proto.Message, error) {
+	config := &xicmp.Config{
+		Ip: c.ListenIp,
+		Id: int32(c.Id),
+	}
+
+	if config.Ip == "" {
+		config.Ip = "0.0.0.0"
+	}
+
+	return config, nil
 }
 
 type Mask struct {
