@@ -1,6 +1,7 @@
 package ca
 
 import (
+	"crypto/x509"
 	"encoding/pem"
 	"testing"
 	"time"
@@ -10,90 +11,203 @@ import (
 )
 
 func TestFingerprintVerifierLeaf(t *testing.T) {
-	leafFingerprint := CalculateFingerprint(leafPEM.Bytes)
-	verifier, err := NewFingerprintVerifier(leafFingerprint, func() time.Time {
-		return time.Unix(1677615892, 0)
-	})
+	leafFingerprint := CalculateFingerprint(leafCert.Raw)
+	verifier, err := NewFingerprintVerifier(leafFingerprint, certTime)
 	require.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, "")
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, smimeIntermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, leafServerName)
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, wrongLeafServerName)
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafWithInvalidHashPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, "")
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, leafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, wrongLeafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, "")
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, "")
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, leafServerName)
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 }
 
 func TestFingerprintVerifierIntermediate(t *testing.T) {
-	intermediateFingerprint := CalculateFingerprint(intermediatePEM.Bytes)
-	verifier, err := NewFingerprintVerifier(intermediateFingerprint, func() time.Time {
-		return time.Unix(1677615892, 0)
-	})
+	intermediateFingerprint := CalculateFingerprint(intermediateCert.Raw)
+	verifier, err := NewFingerprintVerifier(intermediateFingerprint, certTime)
 	require.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, "")
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, smimeIntermediatePEM.Bytes, rootPEM.Bytes}, nil)
-	assert.Error(t, err)
-
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, leafServerName)
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafWithInvalidHashPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, "")
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, "")
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 }
 
 func TestFingerprintVerifierRoot(t *testing.T) {
-	rootFingerprint := CalculateFingerprint(rootPEM.Bytes)
-	verifier, err := NewFingerprintVerifier(rootFingerprint, func() time.Time {
-		return time.Unix(1677615892, 0)
-	})
+	rootFingerprint := CalculateFingerprint(rootCert.Raw)
+	verifier, err := NewFingerprintVerifier(rootFingerprint, certTime)
 	require.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, "")
 	assert.NoError(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, smimeIntermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, leafServerName)
+	assert.NoError(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, rootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 
-	err = verifier([][]byte{leafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, "")
 	assert.Error(t, err)
 
-	err = verifier([][]byte{leafWithInvalidHashPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, leafServerName)
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, rootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, smimeIntermediateCert, rootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 
-	err = verifier([][]byte{smimeLeafPEM.Bytes, intermediatePEM.Bytes, smimeRootPEM.Bytes}, nil)
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{leafWithInvalidHashCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, rootCert}, wrongLeafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, "")
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, leafServerName)
+	assert.Error(t, err)
+
+	err = verifier([]*x509.Certificate{smimeLeafCert, intermediateCert, smimeRootCert}, wrongLeafServerName)
 	assert.Error(t, err)
 }
 
 var rootPEM, _ = pem.Decode([]byte(gtsRoot))
+var rootCert, _ = x509.ParseCertificate(rootPEM.Bytes)
 var intermediatePEM, _ = pem.Decode([]byte(gtsIntermediate))
+var intermediateCert, _ = x509.ParseCertificate(intermediatePEM.Bytes)
 var leafPEM, _ = pem.Decode([]byte(googleLeaf))
+var leafCert, _ = x509.ParseCertificate(leafPEM.Bytes)
 var leafWithInvalidHashPEM, _ = pem.Decode([]byte(googleLeafWithInvalidHash))
+var leafWithInvalidHashCert, _ = x509.ParseCertificate(leafWithInvalidHashPEM.Bytes)
 var smimeRootPEM, _ = pem.Decode([]byte(smimeRoot))
+var smimeRootCert, _ = x509.ParseCertificate(smimeRootPEM.Bytes)
 var smimeIntermediatePEM, _ = pem.Decode([]byte(smimeIntermediate))
+var smimeIntermediateCert, _ = x509.ParseCertificate(smimeIntermediatePEM.Bytes)
 var smimeLeafPEM, _ = pem.Decode([]byte(smimeLeaf))
+var smimeLeafCert, _ = x509.ParseCertificate(smimeLeafPEM.Bytes)
+var certTime = func() time.Time { return time.Unix(1677615892, 0) }
+
+const leafServerName = "www.google.com"
+const wrongLeafServerName = "www.google.com.cn"
 
 const gtsIntermediate = `-----BEGIN CERTIFICATE-----
 MIIFljCCA36gAwIBAgINAgO8U1lrNMcY9QFQZjANBgkqhkiG9w0BAQsFADBHMQsw
