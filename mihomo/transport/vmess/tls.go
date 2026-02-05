@@ -44,21 +44,20 @@ func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn
 	}
 
 	if clientFingerprint, ok := tlsC.GetFingerprint(cfg.ClientFingerprint); ok {
-		if cfg.Reality == nil {
-			tlsConfig := tlsC.UConfig(tlsConfig)
-			err = cfg.ECH.ClientHandleUTLS(ctx, tlsConfig)
-			if err != nil {
-				return nil, err
-			}
-			tlsConn := tlsC.UClient(conn, tlsConfig, clientFingerprint)
-			err = tlsConn.HandshakeContext(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return tlsConn, nil
-		} else {
+		if cfg.Reality != nil {
 			return tlsC.GetRealityConn(ctx, conn, clientFingerprint, tlsConfig.ServerName, cfg.Reality)
 		}
+		tlsConfig := tlsC.UConfig(tlsConfig)
+		err = cfg.ECH.ClientHandleUTLS(ctx, tlsConfig)
+		if err != nil {
+			return nil, err
+		}
+		tlsConn := tlsC.UClient(conn, tlsConfig, clientFingerprint)
+		err = tlsConn.HandshakeContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return tlsConn, nil
 	}
 	if cfg.Reality != nil {
 		return nil, errors.New("REALITY is based on uTLS, please set a client-fingerprint")

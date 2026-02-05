@@ -202,12 +202,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 					downlinkCapacity = tonumber(node.mkcp_downlinkCapacity),
 					congestion = (node.mkcp_congestion == "1") and true or false,
 					readBufferSize = tonumber(node.mkcp_readBufferSize),
-					writeBufferSize = tonumber(node.mkcp_writeBufferSize),
-					seed = (node.mkcp_seed and node.mkcp_seed ~= "") and node.mkcp_seed or nil,
-					header = {
-						type = node.mkcp_guise,
-						domain = node.mkcp_domain
-					}
+					writeBufferSize = tonumber(node.mkcp_writeBufferSize)
 				} or nil,
 				wsSettings = (node.transport == "ws") and {
 					path = node.ws_path or "/",
@@ -288,7 +283,24 @@ function gen_outbound(flag, node, tag, proxy_table)
 					end)(),
 					disablePathMTUDiscovery = (node.hysteria2_disable_mtu_discovery) and true or false
 				} or nil,
-				finalmask = (node.transport == "hysteria" and node.hysteria2_obfs_type and node.hysteria2_obfs_type ~= "") and {
+				finalmask = (node.transport == "mkcp") and {
+					udp = (function()
+						local t = {}
+						if node.mkcp_guise and node.mkcp_guise ~= "none" then
+							local g = { type = node.mkcp_guise }
+							if node.mkcp_guise == "header-dns" and node.mkcp_domain and node.mkcp_domain ~= "" then
+								g.settings = { domain = node.mkcp_domain }
+							end
+							t[#t + 1] = g
+						end
+						local c = { type = (node.mkcp_seed and node.mkcp_seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
+						if node.mkcp_seed and node.mkcp_seed ~= "" then
+							c.settings = { password = node.mkcp_seed }
+						end
+						t[#t + 1] = c
+						return t
+					end)()
+				} or (node.transport == "hysteria" and node.hysteria2_obfs_type and node.hysteria2_obfs_type ~= "") and {
 					udp = {
 						{
 							type = node.hysteria2_obfs_type,
@@ -563,12 +575,7 @@ function gen_config_server(node)
 						downlinkCapacity = tonumber(node.mkcp_downlinkCapacity),
 						congestion = (node.mkcp_congestion == "1") and true or false,
 						readBufferSize = tonumber(node.mkcp_readBufferSize),
-						writeBufferSize = tonumber(node.mkcp_writeBufferSize),
-						seed = (node.mkcp_seed and node.mkcp_seed ~= "") and node.mkcp_seed or nil,
-						header = {
-							type = node.mkcp_guise,
-							domain = node.mkcp_domain
-						}
+						writeBufferSize = tonumber(node.mkcp_writeBufferSize)
 					} or nil,
 					wsSettings = (node.transport == "ws") and {
 						host = node.ws_host or nil,
@@ -586,6 +593,24 @@ function gen_config_server(node)
 						host = node.xhttp_host,
 						maxUploadSize = node.xhttp_maxuploadsize,
 						maxConcurrentUploads = node.xhttp_maxconcurrentuploads
+					} or nil,
+					finalmask = (node.transport == "mkcp") and {
+						udp = (function()
+							local t = {}
+							if node.mkcp_guise and node.mkcp_guise ~= "none" then
+								local g = { type = node.mkcp_guise }
+								if node.mkcp_guise == "header-dns" and node.mkcp_domain and node.mkcp_domain ~= "" then
+									g.settings = { domain = node.mkcp_domain }
+								end
+								t[#t + 1] = g
+							end
+							local c = { type = (node.mkcp_seed and node.mkcp_seed ~= "") and "mkcp-aes128gcm" or "mkcp-original" }
+							if node.mkcp_seed and node.mkcp_seed ~= "" then
+								c.settings = { password = node.mkcp_seed }
+							end
+							t[#t + 1] = c
+							return t
+						end)()
 					} or nil,
 					sockopt = {
 						acceptProxyProtocol = (node.acceptProxyProtocol and node.acceptProxyProtocol == "1") and true or false
@@ -735,7 +760,31 @@ function gen_config(var)
 			table.insert(inbounds, inbound)
 		end
 
-		local function gen_loopback(outbound_tag, loopback_dst)
+
+		function gen_socks_config_node(node_id, socks_id, remarks)
+			if node_id then
+				socks_id = node_id:sub(1 + #"Socks_")
+			end
+			local result
+			local socks_node = uci:get_all(appname, socks_id) or nil
+			if socks_node then
+				if not remarks then
+					remarks = "Socks_" .. socks_node.port
+				end
+				result = {
+					remarks = remarks,
+					type = "Xray",
+					protocol = "socks",
+					address = "127.0.0.1",
+					port = socks_node.port,
+					transport = "tcp",
+					stream_security = "none"
+				}
+			end
+			return result
+		end
+
+		function gen_loopback(outbound_tag, loopback_dst)
 			if not outbound_tag or outbound_tag == "" then return nil end
 			local inbound_tag = loopback_dst and "lo-to-" .. loopback_dst or outbound_tag .. "-lo"
 			table.insert(outbounds, {
@@ -746,7 +795,7 @@ function gen_config(var)
 			return inbound_tag
 		end
 
-		local function gen_balancer(_node, loopback_tag)
+		function gen_balancer(_node, loopback_tag)
 			local balancer_id = _node[".name"]
 			local balancer_tag = "balancer-" .. balancer_id
 			local loopback_dst = balancer_id -- route destination for the loopback outbound
@@ -775,26 +824,16 @@ function gen_config(var)
 				if is_new_blc_node then
 					local blc_node
 					if blc_node_id:find("Socks_") then
-						local socks_id = blc_node_id:sub(1 + #"Socks_")
-						local socks_node = uci:get_all(appname, socks_id) or nil
-						if socks_node then
-							blc_node = {
-								type = "Xray",
-								protocol = "socks",
-								address = "127.0.0.1",
-								port = socks_node.port,
-								transport = "tcp",
-								stream_security = "none",
-								remarks = "Socks_" .. socks_node.port
-							}
-						end
+						blc_node = gen_socks_config_node(blc_node_id)
 					else
 						blc_node = uci:get_all(appname, blc_node_id)
 					end
 					if blc_node then
 						local outbound = gen_outbound(flag, blc_node, blc_node_tag, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil, run_socks_instance = not no_run })
 						if outbound then
-							outbound.tag = outbound.tag .. ":" .. blc_node.remarks
+							if blc_node.remarks then
+								outbound.tag = outbound.tag .. ":" .. blc_node.remarks
+							end
 							table.insert(outbounds, outbound)
 							valid_nodes[#valid_nodes + 1] = outbound.tag
 						end
@@ -819,19 +858,7 @@ function gen_config(var)
 				if is_new_node then
 					local fallback_node
 					if fallback_node_id:find("Socks_") then
-						local socks_id = fallback_node_id:sub(1 + #"Socks_")
-						local socks_node = uci:get_all(appname, socks_id) or nil
-						if socks_node then
-							fallback_node = {
-								type = "Xray",
-								protocol = "socks",
-								address = "127.0.0.1",
-								port = socks_node.port,
-								transport = "tcp",
-								stream_security = "none",
-								remarks = "Socks_" .. socks_node.port
-							}
-						end
+						fallback_node = gen_socks_config_node(fallback_node_id)
 					else
 						fallback_node = uci:get_all(appname, fallback_node_id)
 					end
@@ -839,7 +866,9 @@ function gen_config(var)
 						if fallback_node.protocol ~= "_balancing" then
 							local outbound = gen_outbound(flag, fallback_node, fallback_node_id, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil, run_socks_instance = not no_run })
 							if outbound then
-								outbound.tag = outbound.tag .. ":" .. fallback_node.remarks
+								if fallback_node.remarks then
+									outbound.tag = outbound.tag .. ":" .. fallback_node.remarks
+								end
 								table.insert(outbounds, outbound)
 								fallback_node_tag = outbound.tag
 							end
@@ -897,7 +926,7 @@ function gen_config(var)
 			return balancer_tag
 		end
 
-		local function set_outbound_detour(node, outbound, outbounds_table, shunt_rule_name)
+		function set_outbound_detour(node, outbound, outbounds_table, shunt_rule_name)
 			if not node or not outbound or not outbounds_table then return nil end
 			local default_outTag = outbound.tag
 			local last_insert_outbound
@@ -968,23 +997,16 @@ function gen_config(var)
 				elseif _node_id == "_default" then
 					return "default", nil
 				elseif _node_id and _node_id:find("Socks_") then
-					local socks_id = _node_id:sub(1 + #"Socks_")
-					local socks_node = uci:get_all(appname, socks_id) or nil
 					local socks_tag
-					if socks_node then
-						local _node = {
-							type = "Xray",
-							protocol = "socks",
-							address = "127.0.0.1",
-							port = socks_node.port,
-							transport = "tcp",
-							stream_security = "none"
-						}
-						local outbound = gen_outbound(flag, _node, rule_name)
-						if outbound then
+					local socks_node = gen_socks_config_node(_node_id)
+					local outbound = gen_outbound(flag, socks_node, rule_name)
+					if outbound then
+						if rule_name == "default" then
+							table.insert(outbounds, 1, outbound)
+						else
 							table.insert(outbounds, outbound)
-							socks_tag = outbound.tag
 						end
+						socks_tag = outbound.tag
 					end
 					return socks_tag, nil
 				end

@@ -265,12 +265,13 @@ dependencies {
     "otherLegacyImplementation"("com.github.topjohnwu.libsu:service:$libsuVersion")
 
     // Compose dependencies - API 23+ (play/other)
-    val composeBom23 = platform("androidx.compose:compose-bom:2025.12.01")
+    val composeBom23 = platform("androidx.compose:compose-bom:2026.01.01")
     val activityVersion23 = "1.12.2"
     val lifecycleComposeVersion23 = "2.10.0"
 
     "playImplementation"(composeBom23)
     "playImplementation"("androidx.compose.material3:material3")
+    "playImplementation"("androidx.compose.material3.adaptive:adaptive")
     "playImplementation"("androidx.compose.ui:ui")
     "playImplementation"("androidx.compose.ui:ui-tooling-preview")
     "playImplementation"("androidx.compose.material:material-icons-extended")
@@ -281,6 +282,7 @@ dependencies {
 
     "otherImplementation"(composeBom23)
     "otherImplementation"("androidx.compose.material3:material3")
+    "otherImplementation"("androidx.compose.material3.adaptive:adaptive")
     "otherImplementation"("androidx.compose.ui:ui")
     "otherImplementation"("androidx.compose.ui:ui-tooling-preview")
     "otherImplementation"("androidx.compose.material:material-icons-extended")
@@ -296,6 +298,7 @@ dependencies {
 
     "otherLegacyImplementation"(composeBom21)
     "otherLegacyImplementation"("androidx.compose.material3:material3")
+    "otherLegacyImplementation"("androidx.compose.material3.adaptive:adaptive")
     "otherLegacyImplementation"("androidx.compose.ui:ui")
     "otherLegacyImplementation"("androidx.compose.ui:ui-tooling-preview")
     "otherLegacyImplementation"("androidx.compose.material:material-icons-extended")

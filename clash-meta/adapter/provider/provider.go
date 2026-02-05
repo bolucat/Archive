@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -340,7 +339,7 @@ func (cp *CompatibleProvider) Close() error {
 	return cp.compatibleProvider.Close()
 }
 
-func NewProxiesParser(pdName string, filter string, excludeFilter string, excludeType string, dialerProxy string, override OverrideSchema) (resource.Parser[[]C.Proxy], error) {
+func NewProxiesParser(pdName string, filter string, excludeFilter string, excludeType string, dialerProxy string, override overrideSchema) (resource.Parser[[]C.Proxy], error) {
 	var excludeTypeArray []string
 	if excludeType != "" {
 		excludeTypeArray = strings.Split(excludeType, "|")
@@ -429,33 +428,9 @@ func NewProxiesParser(pdName string, filter string, excludeFilter string, exclud
 					mapping["dialer-proxy"] = dialerProxy
 				}
 
-				val := reflect.ValueOf(override)
-				for i := 0; i < val.NumField(); i++ {
-					field := val.Field(i)
-					if field.IsNil() {
-						continue
-					}
-					fieldName := strings.Split(val.Type().Field(i).Tag.Get("provider"), ",")[0]
-					switch fieldName {
-					case "additional-prefix":
-						name := mapping["name"].(string)
-						mapping["name"] = *field.Interface().(*string) + name
-					case "additional-suffix":
-						name := mapping["name"].(string)
-						mapping["name"] = name + *field.Interface().(*string)
-					case "proxy-name":
-						// Iterate through all naming replacement rules and perform the replacements.
-						for _, expr := range override.ProxyName {
-							name := mapping["name"].(string)
-							newName, err := expr.Pattern.Replace(name, expr.Target, 0, -1)
-							if err != nil {
-								return nil, fmt.Errorf("proxy name replace error: %w", err)
-							}
-							mapping["name"] = newName
-						}
-					default:
-						mapping[fieldName] = field.Elem().Interface()
-					}
+				err := override.Apply(mapping)
+				if err != nil {
+					return nil, fmt.Errorf("proxy %d override error: %w", idx, err)
 				}
 
 				proxy, err := adapter.ParseProxy(mapping, adapter.WithProviderName(pdName))

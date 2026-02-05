@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
@@ -39,11 +39,15 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
+import io.nekohasekai.sfa.compat.rememberOverscrollEffectCompat
+import io.nekohasekai.sfa.compat.verticalScrollCompat
 import io.nekohasekai.sfa.compose.model.Connection
+import io.nekohasekai.sfa.compose.util.rememberSheetDismissFromContentOnlyIfGestureStartedAtTopModifier
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -55,17 +59,25 @@ fun ConnectionDetailsScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     showHeader: Boolean = true,
+    asSheet: Boolean = false,
 ) {
     val dateTimeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     var showMenu by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
-    val bounceBlockingConnection = rememberBounceBlockingNestedScrollConnection(scrollState)
+    val scrollModifier =
+        if (asSheet) {
+            rememberSheetDismissFromContentOnlyIfGestureStartedAtTopModifier {
+                scrollState.value == 0
+            }
+        } else {
+            Modifier.nestedScroll(rememberBounceBlockingNestedScrollConnection(scrollState))
+        }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .nestedScroll(bounceBlockingConnection)
-            .verticalScroll(scrollState),
+            .then(scrollModifier)
+            .verticalScrollCompat(scrollState, overscrollEffect = if (asSheet) null else rememberOverscrollEffectCompat()),
     ) {
         if (showHeader) {
             Row(
@@ -324,16 +336,21 @@ private fun DetailRow(label: String, value: String, monospace: Boolean = false, 
             text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 16.dp),
         )
-        Text(
-            text = value,
-            style = if (monospace) {
-                MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
-            } else {
-                MaterialTheme.typography.bodyMedium
-            },
-            color = valueColor,
-        )
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = value,
+                style = if (monospace) {
+                    MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace)
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
+                color = valueColor,
+                textAlign = TextAlign.End,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
