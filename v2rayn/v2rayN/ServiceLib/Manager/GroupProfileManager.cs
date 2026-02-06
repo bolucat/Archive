@@ -12,7 +12,7 @@ public class GroupProfileManager
         return await HasCycle(indexId, extraInfo, new HashSet<string>(), new HashSet<string>());
     }
 
-    public static async Task<bool> HasCycle(string? indexId, ProtocolExtraItem? extraInfo, HashSet<string> visited, HashSet<string> stack)
+    private static async Task<bool> HasCycle(string? indexId, ProtocolExtraItem? extraInfo, HashSet<string> visited, HashSet<string> stack)
     {
         if (indexId.IsNullOrEmpty() || extraInfo == null)
         {
@@ -81,14 +81,15 @@ public class GroupProfileManager
         {
             return new();
         }
-        var items = await GetSelectedChildProfileItems(protocolExtra);
-        var subItems = await GetSubChildProfileItems(protocolExtra);
-        items.AddRange(subItems);
+
+        var items = new List<ProfileItem>();
+        items.AddRange(await GetSubChildProfileItems(protocolExtra));
+        items.AddRange(await GetSelectedChildProfileItems(protocolExtra));
 
         return items;
     }
 
-    public static async Task<List<ProfileItem>> GetSelectedChildProfileItems(ProtocolExtraItem? extra)
+    private static async Task<List<ProfileItem>> GetSelectedChildProfileItems(ProtocolExtraItem? extra)
     {
         if (extra == null || extra.ChildItems.IsNullOrEmpty())
         {
@@ -105,10 +106,10 @@ public class GroupProfileManager
                 p.ConfigType != EConfigType.Custom
             )
             .ToList();
-        return childProfiles;
+        return childProfiles ?? new();
     }
 
-    public static async Task<List<ProfileItem>> GetSubChildProfileItems(ProtocolExtraItem? extra)
+    private static async Task<List<ProfileItem>> GetSubChildProfileItems(ProtocolExtraItem? extra)
     {
         if (extra == null || extra.SubChildItems.IsNullOrEmpty())
         {
