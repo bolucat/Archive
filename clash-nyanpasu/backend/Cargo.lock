@@ -326,9 +326,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.99"
+version = "1.0.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
+checksum = "5f0e0fee31ef5ed1ba1316088939cea399010ed7731dba877ed44aeb407a75ea"
 
 [[package]]
 name = "arbitrary"
@@ -4470,6 +4470,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "interprocess"
+version = "2.3.0"
+source = "git+https://github.com/libnyanpasu/interprocess.git?branch=fix/linux-32bit-build#33b6a835833ca7fe5276c7dd8a13bfbdac7a80a2"
+dependencies = [
+ "doctest-file",
+ "futures-core",
+ "libc",
+ "recvmsg",
+ "tokio",
+ "widestring 1.2.0",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "intrusive-collections"
 version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5627,8 +5641,8 @@ dependencies = [
 
 [[package]]
 name = "nyanpasu-ipc"
-version = "1.4.1"
-source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#8f2eada8c8625a6453bdb7a6e617455cf04d857d"
+version = "1.4.2"
+source = "git+https://github.com/libnyanpasu/nyanpasu-service.git#3742aaaebc475f90d8ed7774aa7b6c6ff263b90e"
 dependencies = [
  "anyhow",
  "axum",
@@ -5639,7 +5653,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "indexmap 2.12.1",
- "interprocess",
+ "interprocess 2.3.0 (git+https://github.com/libnyanpasu/interprocess.git?branch=fix/linux-32bit-build)",
  "nyanpasu-utils",
  "pin-project-lite",
  "serde",
@@ -8217,7 +8231,7 @@ dependencies = [
 [[package]]
 name = "serde_yaml_ng"
 version = "0.10.0"
-source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?branch=feat/specta#3078760ab9e9a3a9e18ebb4c5d3e577eb74c4a5c"
+source = "git+https://github.com/libnyanpasu/serde-yaml-ng.git?branch=feat/specta-update#363da138dc97f90ef0a356f971c2dc1d8fe04c9e"
 dependencies = [
  "indexmap 2.12.1",
  "itoa",
@@ -8378,11 +8392,10 @@ checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
 
 [[package]]
 name = "simd-json"
-version = "0.15.1"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c962f626b54771990066e5435ec8331d1462576cd2d1e62f24076ae014f92112"
+checksum = "90daf33666402178ddbb5d595e6d5e6d7d372da948e23ea26762f5a23e02a04e"
 dependencies = [
- "getrandom 0.3.3",
  "halfbrown",
  "ref-cast",
  "serde",
@@ -9136,7 +9149,7 @@ name = "tauri-plugin-deep-link"
 version = "0.1.2"
 dependencies = [
  "dirs 6.0.0",
- "interprocess",
+ "interprocess 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log",
  "objc2 0.6.3",
  "once_cell",

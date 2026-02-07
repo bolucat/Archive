@@ -109,7 +109,6 @@
     <string name="server_obfs_password">Obfs password</string>
     <string name="server_lab_port_hop">Port Hopping(will override the port)</string>
     <string name="server_lab_port_hop_interval">Port Hopping Interval</string>
-    <string name="server_lab_stream_pinsha256">pinSHA256</string>
     <string name="server_lab_bandwidth_down">Bandwidth down (Supported units: k/m/g/t)</string>
     <string name="server_lab_bandwidth_up">Bandwidth up (Supported units: k/m/g/t)</string>
     <string name="server_lab_xhttp_mode">XHTTP Mode</string>
@@ -244,6 +243,7 @@
     <string name="summary_pref_tg_group">Join Telegram Group</string>
     <string name="toast_tg_app_not_found">Telegram app not found</string>
     <string name="title_privacy_policy">Privacy policy</string>
+    <string name="title_qr_code">QR code</string>
     <string name="title_about">About</string>
     <string name="title_source_code">Source code</string>
     <string name="title_oss_license">Open Source licenses</string>
