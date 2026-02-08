@@ -45,3 +45,18 @@ jobs:
       - name: Stress test
         run: |
           python3 tests/stress_test.py --bin build/shared/bin/ --size 10
+
+      - name: ss-redir transparent proxy test (QEMU)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y qemu-system-x86
+          bash tests/test_redir_qemu.sh build/shared/bin/
+        timeout-minutes: 8
+
+      - name: Debian package build test
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y --no-install-recommends \
+            build-essential debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
+          bash tests/test_deb_build.sh
+        timeout-minutes: 10

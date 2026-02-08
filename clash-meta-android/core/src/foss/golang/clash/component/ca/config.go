@@ -98,9 +98,15 @@ func GetTLSConfig(opt Option) (tlsConfig *tls.Config, err error) {
 	}
 
 	if len(opt.Fingerprint) > 0 {
-		tlsConfig.VerifyPeerCertificate, err = NewFingerprintVerifier(opt.Fingerprint, tlsConfig.Time)
+		verifier, err := NewFingerprintVerifier(opt.Fingerprint, tlsConfig.Time)
 		if err != nil {
 			return nil, err
+		}
+		tlsConfig.VerifyConnection = func(state tls.ConnectionState) error {
+			// [ConnectionState.ServerName] can return the actual ServerName needed for verification,
+			// avoiding inconsistencies caused by [tlsConfig.ServerName] being modified after the [NewFingerprintVerifier] call.
+			// https://github.com/golang/go/issues/36736#issuecomment-587925536
+			return verifier(state.PeerCertificates, state.ServerName)
 		}
 		tlsConfig.InsecureSkipVerify = true
 	}
