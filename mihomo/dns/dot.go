@@ -23,6 +23,7 @@ type dnsOverTLS struct {
 	host           string
 	dialer         *dnsDialer
 	skipCertVerify bool
+	disableReuse   bool
 
 	access      sync.Mutex
 	connections deque.Deque[net.Conn] // LIFO
@@ -57,11 +58,13 @@ func (t *dnsOverTLS) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, err
 			var conn net.Conn
 			isOldConn := true
 
-			t.access.Lock()
-			if t.connections.Len() > 0 {
-				conn = t.connections.PopBack()
+			if !t.disableReuse {
+				t.access.Lock()
+				if t.connections.Len() > 0 {
+					conn = t.connections.PopBack()
+				}
+				t.access.Unlock()
 			}
-			t.access.Unlock()
 
 			if conn == nil {
 				conn, err = t.dialContext(ctx)
@@ -90,13 +93,17 @@ func (t *dnsOverTLS) ExchangeContext(ctx context.Context, m *D.Msg) (*D.Msg, err
 				return
 			}
 
-			t.access.Lock()
-			if t.connections.Len() >= maxOldDotConns {
-				oldConn := t.connections.PopFront()
-				go oldConn.Close() // close in a new goroutine, not blocking the current task
+			if !t.disableReuse {
+				t.access.Lock()
+				if t.connections.Len() >= maxOldDotConns {
+					oldConn := t.connections.PopFront()
+					go oldConn.Close() // close in a new goroutine, not blocking the current task
+				}
+				t.connections.PushBack(conn)
+				t.access.Unlock()
+			} else {
+				_ = conn.Close()
 			}
-			t.connections.PushBack(conn)
-			t.access.Unlock()
 			return
 		}
 	}()
@@ -134,12 +141,14 @@ func (t *dnsOverTLS) dialContext(ctx context.Context) (net.Conn, error) {
 }
 
 func (t *dnsOverTLS) ResetConnection() {
-	t.access.Lock()
-	for t.connections.Len() > 0 {
-		oldConn := t.connections.PopFront()
-		go oldConn.Close() // close in a new goroutine, not blocking the current task
+	if !t.disableReuse {
+		t.access.Lock()
+		for t.connections.Len() > 0 {
+			oldConn := t.connections.PopFront()
+			go oldConn.Close() // close in a new goroutine, not blocking the current task
+		}
+		t.access.Unlock()
 	}
-	t.access.Unlock()
 }
 
 func (t *dnsOverTLS) Close() error {
@@ -158,6 +167,9 @@ func newDoTClient(addr string, resolver *Resolver, params map[string]string, pro
 	c.connections.SetBaseCap(maxOldDotConns)
 	if params["skip-cert-verify"] == "true" {
 		c.skipCertVerify = true
+	}
+	if params["disable-reuse"] == "true" {
+		c.disableReuse = true
 	}
 	runtime.SetFinalizer(c, (*dnsOverTLS).Close)
 	return c

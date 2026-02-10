@@ -10,6 +10,9 @@ plugins {
 
 setupCore()
 
+val allAbis = mapOf("arm" to "armeabi-v7a", "arm64" to "arm64-v8a", "x86" to "x86", "x86_64" to "x86_64")
+val targetAbi = findProperty("TARGET_ABI")?.toString()
+
 android {
     namespace = "com.github.shadowsocks.core"
 
@@ -17,7 +20,8 @@ android {
         consumerProguardFiles("proguard-rules.pro")
 
         externalNativeBuild.ndkBuild {
-            abiFilters("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            val abis = if (targetAbi != null) listOf(allAbis.getValue(targetAbi)) else allAbis.values.toList()
+            abiFilters(*abis.toTypedArray())
             arguments("-j${Runtime.getRuntime().availableProcessors()}")
         }
 
@@ -39,7 +43,7 @@ android {
 cargo {
     module = "src/main/rust/shadowsocks-rust"
     libname = "sslocal"
-    targets = listOf("arm", "arm64", "x86", "x86_64")
+    targets = if (targetAbi != null) listOf(targetAbi) else listOf("arm", "arm64", "x86", "x86_64")
     profile = findProperty("CARGO_PROFILE")?.toString() ?: currentFlavor
     extraCargoBuildArguments = listOf("--bin", libname!!)
     featureSpec.noDefaultBut(arrayOf(

@@ -15,6 +15,8 @@ TMP_ROUTE_PATH=${TMP_PATH}/route
 TMP_SCRIPT_FUNC_PATH=${TMP_PATH}/script_func
 RULES_PATH=/usr/share/${CONFIG}/rules
 
+. /lib/functions/network.sh
+
 echolog() {
 	local d="$(date "+%Y-%m-%d %H:%M:%S")"
 	echo -e "$d: $*" >>$LOG_FILE
@@ -81,14 +83,15 @@ get_host_ip() {
 	local count=$3
 	[ -z "$count" ] && count=3
 	local isip=""
-	local ip=$host
+	local ip=""
 	if [ "$1" == "ipv6" ]; then
 		isip=$(echo $host | grep -E "([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4}")
 		if [ -n "$isip" ]; then
-			isip=$(echo $host | cut -d '[' -f2 | cut -d ']' -f1)
+			ip=$(echo "$host" | tr -d '[]')
 		fi
 	else
 		isip=$(echo $host | grep -E "([0-9]{1,3}[\.]){3}[0-9]{1,3}")
+		[ -n "$isip" ] && ip=$isip
 	fi
 	[ -z "$isip" ] && {
 		local t=4
@@ -96,7 +99,7 @@ get_host_ip() {
 		local vpsrip=$(resolveip -$t -t $count $host | awk 'NR==1{print}')
 		ip=$vpsrip
 	}
-	echo $ip
+	[ -n "$ip" ] && echo "$ip"
 }
 
 get_node_host_ip() {
@@ -242,11 +245,20 @@ check_port_exists() {
 }
 
 get_new_port() {
-	local default_start_port=2000
+	local default_start_port=2001
 	local min_port=1025
 	local max_port=49151
 	local port=$1
-	[ "$port" == "auto" ] && port=$default_start_port
+	local last_get_new_port_auto
+	if [ "$1" == "auto" ]; then
+		last_get_new_port_auto=$(get_cache_var "last_get_new_port_auto")
+		if [ -n "$last_get_new_port_auto" ]; then
+			port=$last_get_new_port_auto
+			port=$(expr $port + 1)
+		else
+			port=$default_start_port
+		fi
+	fi
 	[ "$port" -lt $min_port -o "$port" -gt $max_port ] && port=$default_start_port
 	local protocol=$(echo $2 | tr 'A-Z' 'a-z')
 	local result=$(check_port_exists $port $protocol)
@@ -261,6 +273,7 @@ get_new_port() {
 		fi
 		get_new_port $temp $protocol
 	else
+		[ "$1" == "auto" ] && set_cache_var "last_get_new_port_auto" "$port"
 		echo $port
 	fi
 }
@@ -354,7 +367,6 @@ add_ip2route() {
 	local remarks="${1}"
 	[ "$remarks" != "$ip" ] && remarks="${1}(${ip})"
 
-	. /lib/functions/network.sh
 	local gateway device
 	network_get_gateway gateway "$2"
 	network_get_device device "$2"

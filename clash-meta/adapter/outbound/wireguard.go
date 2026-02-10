@@ -77,8 +77,8 @@ type WireGuardOption struct {
 }
 
 type WireGuardPeerOption struct {
-	Server       string   `proxy:"server"`
-	Port         int      `proxy:"port"`
+	Server       string   `proxy:"server,omitempty"`
+	Port         int      `proxy:"port,omitempty"`
 	PublicKey    string   `proxy:"public-key,omitempty"`
 	PreSharedKey string   `proxy:"pre-shared-key,omitempty"`
 	Reserved     []uint8  `proxy:"reserved,omitempty"`
