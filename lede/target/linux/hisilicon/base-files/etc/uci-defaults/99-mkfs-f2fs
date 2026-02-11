@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ -b /dev/mmcblk0p13 ]; then
+    mkfs.f2fs -f /dev/mmcblk0p13
+fi
+
+exit 0

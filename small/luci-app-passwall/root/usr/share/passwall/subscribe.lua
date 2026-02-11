@@ -266,10 +266,6 @@ do
 				[".name"] = "default_node",
 				remarks = "默认"
 			})
-			table.insert(rules, {
-				[".name"] = "main_node",
-				remarks = "默认前置"
-			})
 
 			for k, e in pairs(rules) do
 				local _node_id = node[e[".name"]] or nil
@@ -494,7 +490,7 @@ local function processData(szType, content, add_mode, group)
 			result.address = hostInfo[#hostInfo-5]
 		end
 		result.port = hostInfo[#hostInfo-4]
-		result.protocol = hostInfo[#hostInfo-3]
+		result.ssr_protocol = hostInfo[#hostInfo-3]
 		result.method = hostInfo[#hostInfo-2]
 		result.obfs = hostInfo[#hostInfo-1]
 		result.password = base64Decode(hostInfo[#hostInfo])	

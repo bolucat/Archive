@@ -59,8 +59,8 @@ jobs:
           - { goos: linux, goarch: s390x, output: s390x, debian: s390x, rpm: s390x }
           - { goos: linux, goarch: ppc64le, output: ppc64le, debian: ppc64el, rpm: ppc64le }
 
-          # Go 1.25 with special patch can work on Windows 7
-          # https://github.com/MetaCubeX/go/commits/release-branch.go1.25/
+          # Go 1.26 with special patch can work on Windows 7
+          # https://github.com/MetaCubeX/go/commits/release-branch.go1.26/
           - { goos: windows, goarch: '386', output: '386' }
           - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-compatible } # old style file name will be removed in next released
           - { goos: windows, goarch: amd64, goamd64: v3, output: amd64 }
@@ -81,6 +81,13 @@ jobs:
           - { goos: android, goarch: amd64, ndk: x86_64-linux-android34, output: amd64 }
           - { goos: android, goarch: arm, ndk: armv7a-linux-androideabi34, output: armv7 }
           - { goos: android, goarch: arm64, ndk: aarch64-linux-android34, output: arm64-v8 }
+
+          # Go 1.25 with special patch can work on Windows 7
+          # https://github.com/MetaCubeX/go/commits/release-branch.go1.25/
+          - { goos: windows, goarch: '386', output: '386-go125', goversion: '1.25' }
+          - { goos: windows, goarch: amd64, goamd64: v1, output: amd64-v1-go125, goversion: '1.25' }
+          - { goos: windows, goarch: amd64, goamd64: v2, output: amd64-v2-go125, goversion: '1.25' }
+          - { goos: windows, goarch: amd64, goamd64: v3, output: amd64-v3-go125, goversion: '1.25' }
 
           # Go 1.24 with special patch can work on Windows 7
           # https://github.com/MetaCubeX/go/commits/release-branch.go1.24/
@@ -154,7 +161,7 @@ jobs:
       if: ${{ matrix.jobs.goversion == '' && matrix.jobs.abi != '1' }}
       uses: actions/setup-go@v6
       with:
-        go-version: '1.25'
+        go-version: '1.26'
         check-latest: true # Always check for the latest patch release
 
     - name: Set up Go
@@ -171,7 +178,23 @@ jobs:
         sudo tar zxf go1.24.0.linux-amd64-abi1.tar.gz -C /usr/local
         echo "/usr/local/go/bin" >> $GITHUB_PATH
 
-      # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
+      # this patch file only works on golang1.26.x
+      # that means after golang1.27 release it must be changed
+      # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.26/
+      # revert:
+      # 693def151adff1af707d82d28f55dba81ceb08e1: "crypto/rand,runtime: switch RtlGenRandom for ProcessPrng"
+      # 7c1157f9544922e96945196b47b95664b1e39108: "net: remove sysSocket fallback for Windows 7"
+      # 48042aa09c2f878c4faa576948b07fe625c4707a: "syscall: remove Windows 7 console handle workaround"
+      # a17d959debdb04cd550016a3501dd09d50cd62e7: "runtime: always use LoadLibraryEx to load system libraries"
+      # f0894a00f4b756d4b9b4078af2e686b359493583: "os: remove 5ms sleep on Windows in (*Process).Wait"
+      # sepical fix:
+      # - os.RemoveAll not working on Windows7
+    - name: Revert Golang1.26 commit for Windows7/8
+      if: ${{ matrix.jobs.goos == 'windows' && matrix.jobs.goversion == '' }}
+      run: |
+        cd $(go env GOROOT)
+        patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/go1.26.patch
+
       # this patch file only works on golang1.25.x
       # that means after golang1.26 release it must be changed
       # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.25/
@@ -184,12 +207,11 @@ jobs:
       # sepical fix:
       # - os.RemoveAll not working on Windows7
     - name: Revert Golang1.25 commit for Windows7/8
-      if: ${{ matrix.jobs.goos == 'windows' && matrix.jobs.goversion == '' }}
+      if: ${{ matrix.jobs.goos == 'windows' && matrix.jobs.goversion == '1.25' }}
       run: |
         cd $(go env GOROOT)
         patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/go1.25.patch
 
-      # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
       # this patch file only works on golang1.24.x
       # that means after golang1.25 release it must be changed
       # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.24/
@@ -204,7 +226,6 @@ jobs:
         cd $(go env GOROOT)
         patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/go1.24.patch
 
-      # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
       # this patch file only works on golang1.23.x
       # that means after golang1.24 release it must be changed
       # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.23/
@@ -219,7 +240,6 @@ jobs:
         cd $(go env GOROOT)
         patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/go1.23.patch
 
-      # modify from https://github.com/restic/restic/issues/4636#issuecomment-1896455557
       # this patch file only works on golang1.22.x
       # that means after golang1.23 release it must be changed
       # see: https://github.com/MetaCubeX/go/commits/release-branch.go1.22/
