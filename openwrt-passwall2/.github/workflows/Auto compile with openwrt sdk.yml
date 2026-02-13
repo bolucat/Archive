@@ -150,34 +150,27 @@ jobs:
           #--------------------------------------begin_patches------------------------------------------
           echo "Start applying the patch"
 
+
           rm -rf temp_resp
           git clone -b master --single-branch https://github.com/openwrt/packages.git temp_resp
-
-          #--------------------------------------Update Golang------------------------------------------
           echo "update golang version"
           rm -rf feeds/packages/lang/golang
           cp -r temp_resp/lang/golang feeds/packages/lang
-
-          #--------------------------------------Get latest Golang version------------------------------------------
-          wget https://go.dev/dl/?mode=json -O /tmp/golang.json
-          go_latest_version=$(cat /tmp/golang.json | jq -r '.[0].version')
-          GO_VERSION_MAJOR_MINOR=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $1 "." $2}')
-          GO_VERSION_PATCH=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $3}')
-          go_latest_version_hash=$(cat /tmp/golang.json | jq -r '.[0].files[0].sha256')
-          sed -i -e "s/^GO_VERSION_MAJOR_MINOR:=.*/GO_VERSION_MAJOR_MINOR:=${GO_VERSION_MAJOR_MINOR}/" -e "s/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=${GO_VERSION_PATCH}/" -e "s/^PKG_HASH:=.*/PKG_HASH:=${go_latest_version_hash}/" "feeds/packages/lang/golang/golang1.25/Makefile"
-
-          #--------------------------------------Update Rust------------------------------------------
           echo "update rust version"
           rm -rf feeds/packages/lang/rust
           cp -r temp_resp/lang/rust feeds/packages/lang
-
-          #--------------------------------------Clean Temp------------------------------------------
           rm -rf temp_resp
 
-          echo "update patch-kernel.sh"
           git clone -b main --single-branch https://github.com/openwrt/openwrt.git temp_resp
           cp -f temp_resp/scripts/patch-kernel.sh scripts/
           rm -rf temp_resp
+
+          echo "fixed rust host build error"
+          sed -i 's/--set=llvm\.download-ci-llvm=false/--set=llvm.download-ci-llvm=true/' feeds/packages/lang/rust/Makefile
+          grep -q -- '--ci false \\' feeds/packages/lang/rust/Makefile || sed -i '/x\.py \\/a \        --ci false \\' feeds/packages/lang/rust/Makefile
+
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
           echo "Patch application completed"
           #--------------------------------------end_patches--------------------------------------------
@@ -440,32 +433,17 @@ jobs:
           #--------------------------------------begin_patches------------------------------------------
           echo "Start applying the patch"
 
+
           rm -rf temp_resp
           git clone -b master --single-branch https://github.com/openwrt/packages.git temp_resp
-
-          #--------------------------------------Update Golang------------------------------------------
           echo "update golang version"
           rm -rf feeds/packages/lang/golang
           cp -r temp_resp/lang/golang feeds/packages/lang
-
-          #--------------------------------------Get latest Golang version------------------------------------------
-          wget https://go.dev/dl/?mode=json -O /tmp/golang.json
-          go_latest_version=$(cat /tmp/golang.json | jq -r '.[0].version')
-          GO_VERSION_MAJOR_MINOR=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $1 "." $2}')
-          GO_VERSION_PATCH=$(echo $go_latest_version | sed 's#go##' | awk -F '.' '{print $3}')
-          go_latest_version_hash=$(cat /tmp/golang.json | jq -r '.[0].files[0].sha256')
-          sed -i -e "s/^GO_VERSION_MAJOR_MINOR:=.*/GO_VERSION_MAJOR_MINOR:=${GO_VERSION_MAJOR_MINOR}/" -e "s/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=${GO_VERSION_PATCH}/" -e "s/^PKG_HASH:=.*/PKG_HASH:=${go_latest_version_hash}/" "feeds/packages/lang/golang/golang1.25/Makefile"
-          cat feeds/packages/lang/golang/golang1.25/Makefile
-
-          #--------------------------------------Update Rust------------------------------------------
           echo "update rust version"
           rm -rf feeds/packages/lang/rust
           cp -r temp_resp/lang/rust feeds/packages/lang
-
-          #--------------------------------------Clean Temp------------------------------------------
           rm -rf temp_resp
 
-          echo "update patch-kernel.sh"
           git clone -b main --single-branch https://github.com/openwrt/openwrt.git temp_resp
           cp -f temp_resp/scripts/patch-kernel.sh scripts/
           rm -rf temp_resp
@@ -474,6 +452,8 @@ jobs:
           sed -i 's/--set=llvm\.download-ci-llvm=false/--set=llvm.download-ci-llvm=true/' feeds/packages/lang/rust/Makefile
           grep -q -- '--ci false \\' feeds/packages/lang/rust/Makefile || sed -i '/x\.py \\/a \        --ci false \\' feeds/packages/lang/rust/Makefile
 
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
           echo "Patch application completed"
           #--------------------------------------end_patches--------------------------------------------

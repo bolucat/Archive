@@ -55,7 +55,6 @@ tools-y += m4
 tools-y += make-ext4fs
 tools-y += meson
 tools-y += missing-macros
-tools-y += mkbootargs
 tools-y += mkimage
 tools-y += mklibs
 tools-y += mtd-utils
