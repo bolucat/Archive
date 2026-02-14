@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	apicommon "github.com/enfein/mieru/v3/apis/common"
@@ -28,6 +29,7 @@ import (
 	"github.com/enfein/mieru/v3/pkg/common"
 	"github.com/enfein/mieru/v3/pkg/log"
 	"github.com/enfein/mieru/v3/pkg/protocol"
+	"github.com/enfein/mieru/v3/pkg/trafficpattern"
 )
 
 // This package should not depends on github.com/enfein/mieru/v3/pkg/appctl,
@@ -36,8 +38,8 @@ import (
 // mieruServer is the official implementation of mieru server APIs.
 type mieruServer struct {
 	initTask sync.Once
-	mu       sync.RWMutex
-	running  bool
+	mu       sync.Mutex
+	running  atomic.Bool
 
 	config *ServerConfig
 	mux    *protocol.Mux
@@ -89,6 +91,7 @@ func (ms *mieruServer) Start() error {
 	if ms.config.PacketListenerFactory != nil {
 		ms.mux.SetPacketListenerFactory(ms.config.PacketListenerFactory)
 	}
+	ms.mux.SetTrafficPattern(trafficpattern.NewConfig(ms.config.Config.TrafficPattern))
 	ms.mux.SetServerUsers(appctlcommon.UserListToMap(ms.config.Config.GetUsers()))
 	mtu := common.DefaultMTU
 	if ms.config.Config.GetMtu() != 0 {
@@ -102,7 +105,7 @@ func (ms *mieruServer) Start() error {
 	if err := ms.mux.Start(); err != nil {
 		return err
 	}
-	ms.running = true
+	ms.running.Store(true)
 	return nil
 }
 
@@ -110,7 +113,7 @@ func (ms *mieruServer) Stop() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	ms.running = false
+	ms.running.Store(false)
 	if ms.mux != nil {
 		ms.mux.Close()
 	}
@@ -118,9 +121,7 @@ func (ms *mieruServer) Stop() error {
 }
 
 func (ms *mieruServer) IsRunning() bool {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-	return ms.running
+	return ms.running.Load()
 }
 
 func (ms *mieruServer) Accept() (net.Conn, *model.Request, error) {
@@ -163,6 +164,9 @@ func validateServerConfig(config *appctlpb.ServerConfig) error {
 	}
 	if config.Egress != nil {
 		return fmt.Errorf("egress is not allowed")
+	}
+	if err := trafficpattern.Validate(config.TrafficPattern); err != nil {
+		return fmt.Errorf("invalid traffic pattern: %w", err)
 	}
 	return nil
 }
