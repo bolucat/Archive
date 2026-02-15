@@ -150,22 +150,24 @@ public struct CoreView: View {
         #if os(macOS)
             let helperUnavailable = Variant.useSystemExtension && HelperServiceManager.rootHelperStatus != .enabled
         #endif
-        let dataSize: String?
-        #if os(macOS)
-            if Variant.useSystemExtension {
-                if helperUnavailable {
-                    dataSize = nil
-                } else if let size = try? RootHelperClient.shared.getWorkingDirectorySize() {
-                    dataSize = LibboxFormatBytes(size)
+        let workingDirectory = FilePath.workingDirectory
+        let dataSize: String? = await BlockingIO.run {
+            #if os(macOS)
+                if Variant.useSystemExtension {
+                    if helperUnavailable {
+                        return nil
+                    }
+                    guard let size = try? RootHelperClient.shared.getWorkingDirectorySize() else {
+                        return nil
+                    }
+                    return LibboxFormatBytes(size)
                 } else {
-                    dataSize = nil
+                    return (try? workingDirectory.formattedSize()) ?? "Unknown"
                 }
-            } else {
-                dataSize = (try? FilePath.workingDirectory.formattedSize()) ?? "Unknown"
-            }
-        #else
-            dataSize = (try? FilePath.workingDirectory.formattedSize()) ?? "Unknown"
-        #endif
+            #else
+                return (try? workingDirectory.formattedSize()) ?? "Unknown"
+            #endif
+        }
         await MainActor.run {
             #if os(macOS)
                 self.helperUnavailable = helperUnavailable
@@ -202,20 +204,27 @@ public struct CoreView: View {
             try await environments.extensionProfile!.stop()
             await destroyWorkingDirectory()
         } catch {
-            alert = AlertState(error: error)
+            alert = AlertState(action: "stop service before destroying working directory", error: error)
         }
     }
 
     private func destroyWorkingDirectory() async {
         do {
+            let workingDirectory = FilePath.workingDirectory
             #if os(macOS)
                 if Variant.useSystemExtension {
-                    try RootHelperClient.shared.cleanWorkingDirectory()
+                    try await BlockingIO.run {
+                        try RootHelperClient.shared.cleanWorkingDirectory()
+                    }
                 } else {
-                    try clearWorkingDirectoryContents()
+                    try await BlockingIO.run {
+                        try Self.clearWorkingDirectoryContents(at: workingDirectory)
+                    }
                 }
             #else
-                try clearWorkingDirectoryContents()
+                try await BlockingIO.run {
+                    try Self.clearWorkingDirectoryContents(at: workingDirectory)
+                }
                 #if os(iOS)
                     if #available(iOS 16.0, *) {
                         await notifyFileProviderWorkingDirectoryChanged()
@@ -224,12 +233,11 @@ public struct CoreView: View {
             #endif
             isLoading = true
         } catch {
-            alert = AlertState(error: error)
+            alert = AlertState(action: "destroy working directory", error: error)
         }
     }
 
-    private func clearWorkingDirectoryContents() throws {
-        let url = FilePath.workingDirectory
+    private nonisolated static func clearWorkingDirectoryContents(at url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return
         }
@@ -273,7 +281,7 @@ public struct CoreView: View {
                 try await manager.signalEnumerator(for: .workingSet)
             } catch {
                 await MainActor.run {
-                    alert = AlertState(error: error)
+                    alert = AlertState(action: "notify Files app about working directory changes", error: error)
                 }
             }
         }
@@ -292,7 +300,7 @@ public struct CoreView: View {
                 }
             } catch {
                 await MainActor.run {
-                    alert = AlertState(error: error)
+                    alert = AlertState(action: "open working directory in Files", error: error)
                 }
             }
         }
@@ -301,11 +309,15 @@ public struct CoreView: View {
 
 private extension URL {
     func formattedSize() throws -> String? {
-        guard let urls = FileManager.default.enumerator(at: self, includingPropertiesForKeys: nil)?.allObjects as? [URL] else {
+        guard let enumerator = FileManager.default.enumerator(
+            at: self,
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey]
+        ) else {
             return nil
         }
-        let size = try urls.lazy.reduce(0) {
-            try ($1.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize ?? 0) + $0
+        var size = 0
+        while let url = enumerator.nextObject() as? URL {
+            size += try url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize ?? 0
         }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file

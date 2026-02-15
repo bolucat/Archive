@@ -25,8 +25,13 @@ public class LogDataModel: ObservableObject {
 
     private static let maxVisibleLogs = 1000
 
-    public var isEmpty: Bool { commandClient.logList.isEmpty }
-    public var isConnected: Bool { commandClient.isConnected }
+    public var isEmpty: Bool {
+        commandClient.logList.isEmpty
+    }
+
+    public var isConnected: Bool {
+        commandClient.isConnected
+    }
 
     private func updateVisibleLogs() {
         if filteredLogs.count <= Self.maxVisibleLogs {
@@ -130,7 +135,7 @@ public class LogDataModel: ObservableObject {
                 try text.write(to: fileURL, atomically: true, encoding: .utf8)
                 logFileURL = fileURL
             } catch {
-                viewModel?.alert = AlertState(error: error)
+                viewModel?.alert = AlertState(action: "prepare log file", error: error)
             }
         }
     #endif

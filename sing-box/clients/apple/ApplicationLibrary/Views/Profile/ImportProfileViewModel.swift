@@ -38,7 +38,7 @@
                 case let .failed(error):
                     DispatchQueue.main.async { [self] in
                         reset()
-                        alert = AlertState(error: error)
+                        alert = AlertState(action: "connect to import source", error: error)
                     }
                 default: break
                 }
@@ -47,7 +47,7 @@
             do {
                 try await loopMessages(environments: environments)
             } catch {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "import profile from device", error: error)
                 reset()
             }
         }
@@ -59,9 +59,12 @@
             var message: Data
             while true {
                 do {
-                    message = try socket.read()
+                    message = try await socket.read()
                 } catch {
                     throw NSError(domain: "ImportProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Read from connection: \(error.localizedDescription)")])
+                }
+                if message.isEmpty {
+                    continue
                 }
                 var error: NSError?
                 switch Int64(message[0]) {
@@ -112,12 +115,15 @@
             connection.stateUpdateHandler = nil
             let request = LibboxProfileContentRequest()
             request.profileID = profileID
-            do {
-                try socket.write(request.encode())
-                isImporting = true
-            } catch {
-                alert = AlertState(error: error)
-                reset()
+            isImporting = true
+            Task {
+                do {
+                    try await socket.write(request.encode())
+                } catch {
+                    isImporting = false
+                    alert = AlertState(action: "request profile content from device", error: error)
+                    reset()
+                }
             }
         }
 
@@ -133,17 +139,32 @@
             default:
                 break
             }
+            let profileName = content.name
+            let profileConfigContent = content.config
+            let remotePath = content.remotePath
+            let autoUpdate = content.autoUpdate
+            let autoUpdateInterval = content.autoUpdateInterval
             let nextProfileID = try await ProfileManager.nextID()
             let profileConfigDirectory = FilePath.sharedDirectory.appendingPathComponent("configs", isDirectory: true)
-            try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
             let profileConfig = profileConfigDirectory.appendingPathComponent("config_\(nextProfileID).json")
-            try content.config.write(to: profileConfig, atomically: true, encoding: .utf8)
+            try await BlockingIO.run {
+                try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
+                try profileConfigContent.write(to: profileConfig, atomically: true, encoding: .utf8)
+            }
             var lastUpdated: Date?
             if content.lastUpdated > 0 {
                 lastUpdated = dateFromTimestamp(content.lastUpdated)
             }
-            let uniqueProfileName = try await ProfileManager.uniqueName(content.name)
-            let profile = Profile(name: uniqueProfileName, type: type, path: profileConfig.relativePath, remoteURL: content.remotePath, autoUpdate: content.autoUpdate, lastUpdated: lastUpdated)
+            let uniqueProfileName = try await ProfileManager.uniqueName(profileName)
+            let profile = Profile(
+                name: uniqueProfileName,
+                type: type,
+                path: profileConfig.relativePath,
+                remoteURL: remotePath,
+                autoUpdate: autoUpdate,
+                autoUpdateInterval: autoUpdateInterval,
+                lastUpdated: lastUpdated
+            )
             try await ProfileManager.create(profile)
             await SharedPreferences.selectedProfileID.set(profile.mustID)
             await reset()

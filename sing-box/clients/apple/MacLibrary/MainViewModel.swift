@@ -45,7 +45,7 @@ public class MainViewModel: BaseViewModel {
             var error: NSError?
             importRemoteProfile = LibboxParseRemoteProfileImportLink(url.absoluteString, &error)
             if let error {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "parse remote profile import link", error: error)
             }
         } else if url.pathExtension == "bpf" {
             Task {
@@ -58,11 +58,11 @@ public class MainViewModel: BaseViewModel {
 
     private func importURLProfile(_ url: URL) async {
         do {
-            _ = url.startAccessingSecurityScopedResource()
-            importProfile = try await .from(readURL(url))
-            url.stopAccessingSecurityScopedResource()
+            importProfile = try await url.withSecurityScopedAccess {
+                try await .from(readURL(url))
+            }
         } catch {
-            alert = AlertState(error: error)
+            alert = AlertState(action: "import profile from URL", error: error)
         }
     }
 

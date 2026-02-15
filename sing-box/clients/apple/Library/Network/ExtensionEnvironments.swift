@@ -1,5 +1,10 @@
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
+    import UIKit
+#elseif canImport(AppKit)
+    import AppKit
+#endif
 
 public struct AlertState: Equatable {
     public var title: String
@@ -36,8 +41,44 @@ public struct AlertState: Equatable {
         }
     }
 
-    public init(error: Error, dismiss: (() -> Void)? = nil) {
-        self.init(errorMessage: error.localizedDescription, dismiss: dismiss)
+    private static func formatErrorMessage(action: String, error: Error) -> String {
+        let normalizedAction = action.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDescription = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let actionText = normalizedAction.isEmpty ? "complete operation" : normalizedAction
+        if normalizedDescription.isEmpty {
+            return "Failed to \(actionText)"
+        }
+        return "Failed to \(actionText)\n\(normalizedDescription)"
+    }
+
+    private static func copyErrorMessage(_ text: String) {
+        #if canImport(UIKit) && !os(tvOS)
+            UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        #endif
+    }
+
+    private static var supportsErrorCopy: Bool {
+        #if canImport(UIKit) && !os(tvOS)
+            true
+        #elseif canImport(AppKit)
+            true
+        #else
+            false
+        #endif
+    }
+
+    public init(action: String, error: Error, dismiss: (() -> Void)? = nil) {
+        let errorMessage = Self.formatErrorMessage(action: action, error: error)
+        self.init(errorMessage: errorMessage, dismiss: dismiss)
+        if Self.supportsErrorCopy {
+            primaryButton = .default(String(localized: "Copy")) {
+                Self.copyErrorMessage(errorMessage)
+            }
+            secondaryButton = .default(String(localized: "Ok"), action: dismiss)
+        }
     }
 
     public init(errorMessage: String, dismiss: (() -> Void)? = nil) {
@@ -79,7 +120,6 @@ public struct AlertState: Equatable {
 }
 
 public extension View {
-    @ViewBuilder
     func alert(_ binding: Binding<AlertState?>) -> some View {
         alert(
             binding.wrappedValue?.title ?? "",
@@ -119,7 +159,10 @@ public extension View {
 }
 
 public struct ImportRemoteProfileRequest: Hashable, Identifiable {
-    public var id: String { url }
+    public var id: String {
+        url
+    }
+
     public let name: String
     public let url: String
 

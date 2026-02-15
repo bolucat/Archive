@@ -78,6 +78,20 @@ public struct ProfileCard: View {
                     QRCodeSheet(profileName: profile.name, remoteURL: remoteURL)
                 }
             }
+            .sheet(
+                isPresented: $viewModel.showQRSShare,
+                onDismiss: {
+                    viewModel.qrsShareData = nil
+                    viewModel.qrsShareProfileName = nil
+                },
+                content: {
+                    if let data = viewModel.qrsShareData, let name = viewModel.qrsShareProfileName {
+                        QRSSheet(profileName: name, profileData: data)
+                    } else {
+                        ProgressView()
+                    }
+                }
+            )
         #else
             .sheet(isPresented: $viewModel.showNewProfile, onDismiss: {
                     environments.profileUpdate.send()
@@ -98,11 +112,20 @@ public struct ProfileCard: View {
                     }
                 }
             #endif
-                .sheet(isPresented: $viewModel.showQRSShare) {
-                    if let profile = selectedProfile, let data = try? profile.origin.toContent().encode() {
-                        QRSSheet(profileName: profile.name, profileData: data)
+                .sheet(
+                    isPresented: $viewModel.showQRSShare,
+                    onDismiss: {
+                        viewModel.qrsShareData = nil
+                        viewModel.qrsShareProfileName = nil
+                    },
+                    content: {
+                        if let data = viewModel.qrsShareData, let name = viewModel.qrsShareProfileName {
+                            QRSSheet(profileName: name, profileData: data)
+                        } else {
+                            ProgressView()
+                        }
                     }
-                }
+                )
                 .fileExporter(
                     isPresented: $viewModel.showExporter,
                     document: viewModel.exportDocument,
@@ -111,7 +134,7 @@ public struct ProfileCard: View {
                 ) { result in
                     viewModel.exportDocument = nil
                     if case let .failure(error) = result {
-                        viewModel.alert = AlertState(error: error)
+                        viewModel.alert = AlertState(action: "export profile", error: error)
                     }
                 }
         #endif
@@ -165,7 +188,6 @@ public struct ProfileCard: View {
         #endif
     }
 
-    @ViewBuilder
     private func actionButtonsRow(for profile: ProfilePreview) -> some View {
         HStack(spacing: actionButtonSpacing) {
             editButton(for: profile)
@@ -178,7 +200,6 @@ public struct ProfileCard: View {
         }
     }
 
-    @ViewBuilder
     private func editButton(for profile: ProfilePreview) -> some View {
         Button {
             viewModel.profileToEdit = profile.origin
@@ -190,7 +211,6 @@ public struct ProfileCard: View {
         .actionButtonStyle()
     }
 
-    @ViewBuilder
     private func updateButton(for profile: ProfilePreview) -> some View {
         Button {
             viewModel.isUpdating = true
@@ -253,12 +273,10 @@ public struct ProfileCard: View {
                     }
                 }
 
-                if let data = try? profile.origin.toContent().encode() {
-                    FormNavigationLink {
-                        QRSSheet(profileName: profile.name, profileData: data)
-                    } label: {
-                        Label("Share as QRS Code", systemImage: "qrcode")
-                    }
+                Button {
+                    prepareQRSShare(profile)
+                } label: {
+                    Label("Share as QRS Code", systemImage: "qrcode")
                 }
             } label: {
                 Image(systemName: "square.and.arrow.up")
@@ -301,7 +319,7 @@ public struct ProfileCard: View {
                 }
 
                 Button {
-                    viewModel.showQRSShare = true
+                    prepareQRSShare(profile)
                 } label: {
                     Label("Share as QRS Code", systemImage: "qrcode")
                 }
@@ -333,42 +351,52 @@ public struct ProfileCard: View {
 
     #if !os(tvOS)
         private func shareProfile(_ profile: ProfilePreview, type: ShareItemType) {
-            do {
-                let url: URL
-                switch type {
-                case .file:
-                    url = try profile.origin.toContent().generateShareFile()
-                case .json:
-                    url = try profile.origin.read().generateShareFile(name: "\(profile.name).json")
+            Task {
+                do {
+                    let url: URL
+                    switch type {
+                    case .file:
+                        url = try await profile.origin.generateShareFileAsync()
+                    case .json:
+                        url = try await profile.origin.generateJSONShareFileAsync(name: "\(profile.name).json")
+                    }
+                    #if os(iOS)
+                        presentShareController(url)
+                    #elseif os(macOS)
+                        let anchorView = viewModel.shareButtonView ?? NSApp.keyWindow?.contentView ?? NSView()
+                        NSSharingServicePicker(items: [url]).show(
+                            relativeTo: .zero,
+                            of: anchorView,
+                            preferredEdge: .minY
+                        )
+                    #endif
+                } catch {
+                    viewModel.alert = AlertState(action: "share profile", error: error)
                 }
-                #if os(iOS)
-                    presentShareController(url)
-                #elseif os(macOS)
-                    let anchorView = viewModel.shareButtonView ?? NSApp.keyWindow?.contentView ?? NSView()
-                    NSSharingServicePicker(items: [url]).show(
-                        relativeTo: .zero,
-                        of: anchorView,
-                        preferredEdge: .minY
-                    )
-                #endif
-            } catch {
-                viewModel.alert = AlertState(error: error)
             }
         }
 
         private func exportProfile(_ profile: ProfilePreview, type: ExportItemType) {
-            do {
-                switch type {
-                case .file:
-                    let doc = try ProfileExportDocument(content: profile.origin.toContent())
-                    viewModel.exportDocument = ProfileAnyExportDocument(profile: doc)
-                case .json:
-                    let doc = try ProfileJSONExportDocument(jsonContent: profile.origin.read(), name: profile.name)
-                    viewModel.exportDocument = ProfileAnyExportDocument(json: doc)
+            Task {
+                do {
+                    let document: ProfileAnyExportDocument
+                    switch type {
+                    case .file:
+                        let data = try await profile.origin.encodedContentDataAsync()
+                        document = ProfileAnyExportDocument(data: data, filename: "\(profile.name).bpf", contentType: .data)
+                    case .json:
+                        let content = try await profile.origin.readAsync()
+                        document = ProfileAnyExportDocument(data: Data(content.utf8), filename: "\(profile.name).json", contentType: .json)
+                    }
+                    await MainActor.run {
+                        viewModel.exportDocument = document
+                        viewModel.showExporter = true
+                    }
+                } catch {
+                    await MainActor.run {
+                        viewModel.alert = AlertState(action: "export profile", error: error)
+                    }
                 }
-                viewModel.showExporter = true
-            } catch {
-                viewModel.alert = AlertState(error: error)
             }
         }
 
@@ -391,7 +419,20 @@ public struct ProfileCard: View {
         #endif
     #endif
 
-    @ViewBuilder
+    private func prepareQRSShare(_ profile: ProfilePreview) {
+        viewModel.qrsShareProfileName = profile.name
+        viewModel.qrsShareData = nil
+        viewModel.showQRSShare = true
+        Task {
+            do {
+                viewModel.qrsShareData = try await profile.origin.encodedContentDataAsync()
+            } catch {
+                viewModel.alert = AlertState(action: "prepare QRS share", error: error)
+                viewModel.showQRSShare = false
+            }
+        }
+    }
+
     private func profileInfo(for profile: ProfilePreview) -> some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
@@ -474,6 +515,8 @@ extension ProfileCard {
         @Published var showProfilePicker = false
         @Published var showQRCode = false
         @Published var showQRSShare = false
+        @Published var qrsShareData: Data?
+        @Published var qrsShareProfileName: String?
         @Published var isUpdating = false
         @Published var alert: AlertState?
         @Published var profileToEdit: Profile?
@@ -493,7 +536,7 @@ extension ProfileCard {
                 try await profile.updateRemoteProfile()
                 environments.profileUpdate.send()
             } catch {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "update remote profile", error: error)
             }
         }
     }

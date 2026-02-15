@@ -193,18 +193,25 @@ public struct NewProfileMenuView: View {
 
     #if !os(tvOS)
         private func handleFileImport(_ result: Result<[URL], Error>) {
-            do {
-                let urls = try result.get()
-                guard let url = urls.first else { return }
+            Task { @MainActor in
+                do {
+                    let urls = try result.get()
+                    guard let url = urls.first else { return }
 
-                if url.pathExtension.lowercased() == "json" {
-                    let fileName = url.deletingPathExtension().lastPathComponent
-                    localImportRequest = NewProfileView.LocalImportRequest(name: fileName, fileURL: url)
-                } else {
-                    _ = url.startAccessingSecurityScopedResource()
-                    defer { url.stopAccessingSecurityScopedResource() }
+                    if url.pathExtension.lowercased() == "json" {
+                        let fileName = url.deletingPathExtension().lastPathComponent
+                        localImportRequest = NewProfileView.LocalImportRequest(name: fileName, fileURL: url)
+                        return
+                    }
 
-                    let content = try LibboxProfileContent.from(Data(contentsOf: url))
+                    let data = try await BlockingIO.run {
+                        try url.withRequiredSecurityScopedAccess(
+                            or: NSError(domain: "NewProfileMenuView", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
+                        ) {
+                            try Data(contentsOf: url)
+                        }
+                    }
+                    let content = try LibboxProfileContent.from(data)
 
                     alert = AlertState(
                         title: String(localized: "Import Profile"),
@@ -216,15 +223,15 @@ public struct NewProfileMenuView: View {
                                     environments.profileUpdate.send()
                                     dismiss()
                                 } catch {
-                                    alert = AlertState(error: error)
+                                    alert = AlertState(action: "import profile", error: error)
                                 }
                             }
                         },
                         secondaryButton: .cancel()
                     )
+                } catch {
+                    alert = AlertState(action: "read imported profile file", error: error)
                 }
-            } catch {
-                alert = AlertState(error: error)
             }
         }
     #endif
@@ -243,7 +250,7 @@ public struct NewProfileMenuView: View {
             var error: NSError?
             let remoteProfile = LibboxParseRemoteProfileImportLink(string, &error)
             if let error {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "parse QR code profile link", error: error)
                 return
             }
             guard let remoteProfile else {
@@ -267,14 +274,14 @@ public struct NewProfileMenuView: View {
                                 environments.profileUpdate.send()
                                 dismiss()
                             } catch {
-                                alert = AlertState(error: error)
+                                alert = AlertState(action: "import profile", error: error)
                             }
                         }
                     },
                     secondaryButton: .cancel()
                 )
             } catch {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "decode QRS profile data", error: error)
             }
         }
     #endif

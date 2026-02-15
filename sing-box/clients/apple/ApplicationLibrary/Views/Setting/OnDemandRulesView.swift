@@ -7,21 +7,23 @@ private enum OnDemandMode: String, CaseIterable, Identifiable {
     case alwaysOn
     case enabled
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var name: String {
         switch self {
-        case .disabled: "Disabled"
-        case .alwaysOn: "Always On"
-        case .enabled: "Enabled"
+        case .disabled: String(localized: "Disabled")
+        case .alwaysOn: String(localized: "Always On")
+        case .enabled: String(localized: "Enabled")
         }
     }
 
     var description: String {
         switch self {
-        case .disabled: "VPN will not connect automatically."
-        case .alwaysOn: "Automatically connect VPN on any network."
-        case .enabled: "Automatically connect or disconnect VPN based on rules."
+        case .disabled: String(localized: "VPN will not connect automatically.")
+        case .alwaysOn: String(localized: "Automatically connect VPN on any network.")
+        case .enabled: String(localized: "Automatically connect or disconnect VPN based on rules.")
         }
     }
 }
@@ -114,7 +116,6 @@ public struct OnDemandRulesView: View {
         }
     }
 
-    @ViewBuilder
     private var rulesSection: some View {
         Section {
             if rules.isEmpty {
@@ -263,7 +264,7 @@ public struct OnDemandRulesView: View {
                     await updateService()
                     isLoading = true
                 } catch {
-                    alert = AlertState(error: error)
+                    alert = AlertState(action: "reset on-demand rules", error: error)
                 }
             }
         } label: {
@@ -288,7 +289,7 @@ public struct OnDemandRulesView: View {
             let enabled = mode != .disabled
             try await profile.updateOnDemand(enabled: enabled, useDefaultRules: mode == .alwaysOn)
         } catch {
-            alert = AlertState(error: error)
+            alert = AlertState(action: "update on-demand rules", error: error)
         }
     }
 
@@ -463,7 +464,6 @@ private struct OnDemandRuleEditView: View {
         #endif
     }
 
-    @ViewBuilder
     private var connectionRulesSection: some View {
         Section {
             if rule.connectionRules.isEmpty {

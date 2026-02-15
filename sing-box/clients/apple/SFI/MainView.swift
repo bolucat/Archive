@@ -57,7 +57,6 @@ struct MainView: View {
         }
     }
 
-    @ViewBuilder
     private var baseTabView: some View {
         tabView(showsBottomAccessory: false)
     }
@@ -66,7 +65,6 @@ struct MainView: View {
         tabView(showsBottomAccessory: shouldShowBottomAccessory)
     }
 
-    @ViewBuilder
     private func tabView(showsBottomAccessory: Bool) -> some View {
         TabView(selection: $selection) {
             ForEach(NavigationPage.allCases, id: \.self) { page in
@@ -87,15 +85,26 @@ struct MainView: View {
                 .tabViewBottomAccessoryCompat(useSystemAccessory: false) {
                     bottomAccessoryContent
                 }
-            tabBarBackgroundIfAvailable(content)
+            if page == .logs {
+                tabBarBackgroundIfAvailable(
+                    content
+                        .navigationBarTitleDisplayMode(.inline)
+                )
+            } else {
+                tabBarBackgroundIfAvailable(content)
+            }
         } else {
             let content = page.contentView
                 .navigationTitle(page.title)
-            content
+            if page == .logs {
+                content
+                    .navigationBarTitleDisplayMode(.inline)
+            } else {
+                content
+            }
         }
     }
 
-    @ViewBuilder
     private func tabBarBackgroundIfAvailable(_ content: some View) -> some View {
         content
     }
@@ -218,15 +227,15 @@ struct MainView: View {
             var error: NSError?
             importRemoteProfile = LibboxParseRemoteProfileImportLink(url.absoluteString, &error)
             if let error {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "parse remote profile import link", error: error)
             }
         } else if url.pathExtension == "bpf" {
             do {
-                _ = url.startAccessingSecurityScopedResource()
-                importProfile = try .from(Data(contentsOf: url))
-                url.stopAccessingSecurityScopedResource()
+                importProfile = try url.withSecurityScopedAccess {
+                    try .from(Data(contentsOf: url))
+                }
             } catch {
-                alert = AlertState(error: error)
+                alert = AlertState(action: "import profile from URL", error: error)
             }
         } else {
             alert = AlertState(errorMessage: String(localized: "Handled unknown URL \(url.absoluteString)"))

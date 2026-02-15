@@ -1,7 +1,7 @@
+import Combine
 import Foundation
 import Libbox
 import os
-import Combine
 
 private let logger = Logger(category: "CommandClient")
 
@@ -77,12 +77,16 @@ public class CommandClient: ObservableObject {
     @Published public var isConnected: Bool
     // Coalesce traffic updates so SwiftUI re-renders once per status tick.
     @Published private var trafficSnapshot = TrafficSnapshot()
-    public var status: LibboxStatusMessage? { trafficSnapshot.status }
+    public var status: LibboxStatusMessage? {
+        trafficSnapshot.status
+    }
+
     public var statusPublisher: AnyPublisher<LibboxStatusMessage?, Never> {
         $trafficSnapshot
             .map(\.status)
             .eraseToAnyPublisher()
     }
+
     @Published public var groups: [LibboxOutboundGroup]?
     @Published public var logList: [LogEntry]
     @Published public var defaultLogLevel = 0
@@ -96,8 +100,13 @@ public class CommandClient: ObservableObject {
     @Published public var hasAnyConnection: Bool = false
     private var connectionsStore: LibboxConnections?
 
-    public var uplinkHistory: [CGFloat] { trafficSnapshot.uplinkHistory }
-    public var downlinkHistory: [CGFloat] { trafficSnapshot.downlinkHistory }
+    public var uplinkHistory: [CGFloat] {
+        trafficSnapshot.uplinkHistory
+    }
+
+    public var downlinkHistory: [CGFloat] {
+        trafficSnapshot.downlinkHistory
+    }
 
     // Batch processing for logs
     private var pendingLogs: [LogEntry] = []

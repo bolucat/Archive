@@ -72,7 +72,7 @@ public final class NewProfileViewModel: BaseViewModel {
         do {
             createdProfile = try await createProfileBackground()
         } catch {
-            alert = AlertState(error: error)
+            alert = AlertState(action: "create profile", error: error)
             return
         }
 
@@ -107,49 +107,52 @@ public final class NewProfileViewModel: BaseViewModel {
 
         if profileType == .local {
             let profileConfigDirectory = FilePath.sharedDirectory.appendingPathComponent("configs", isDirectory: true)
-            try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
             let profileConfig = profileConfigDirectory.appendingPathComponent("config_\(nextProfileID).json")
-            if fileImport {
-                guard let fileURL else {
-                    throw NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing file")])
+            try await BlockingIO.run {
+                try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
+                if fileImport {
+                    guard let fileURL else {
+                        throw NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing file")])
+                    }
+                    try fileURL.withRequiredSecurityScopedAccess(
+                        or: NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
+                    ) {
+                        try String(contentsOf: fileURL).write(to: profileConfig, atomically: true, encoding: .utf8)
+                    }
+                } else {
+                    try "{}".write(to: profileConfig, atomically: true, encoding: .utf8)
                 }
-                if !fileURL.startAccessingSecurityScopedResource() {
-                    throw NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
-                }
-                defer {
-                    fileURL.stopAccessingSecurityScopedResource()
-                }
-                try String(contentsOf: fileURL).write(to: profileConfig, atomically: true, encoding: .utf8)
-            } else {
-                try "{}".write(to: profileConfig, atomically: true, encoding: .utf8)
             }
             savePath = profileConfig.relativePath
         } else if profileType == .icloud {
-            if !FileManager.default.fileExists(atPath: FilePath.iCloudDirectory.path) {
-                try FileManager.default.createDirectory(at: FilePath.iCloudDirectory, withIntermediateDirectories: true)
-            }
-            let saveURL = FilePath.iCloudDirectory.appendingPathComponent(remotePath, isDirectory: false)
-            _ = saveURL.startAccessingSecurityScopedResource()
-            defer {
-                saveURL.stopAccessingSecurityScopedResource()
-            }
-            do {
-                _ = try String(contentsOf: saveURL)
-            } catch {
-                try "{}".write(to: saveURL, atomically: true, encoding: .utf8)
+            let iCloudDirectory = FilePath.iCloudDirectory
+            try await BlockingIO.run {
+                if !FileManager.default.fileExists(atPath: iCloudDirectory.path) {
+                    try FileManager.default.createDirectory(at: iCloudDirectory, withIntermediateDirectories: true)
+                }
+                let saveURL = iCloudDirectory.appendingPathComponent(remotePath, isDirectory: false)
+                do {
+                    _ = try String(contentsOf: saveURL)
+                } catch {
+                    try "{}".write(to: saveURL, atomically: true, encoding: .utf8)
+                }
             }
             savePath = remotePath
         } else if profileType == .remote {
-            let remoteContent = try HTTPClient().getString(remotePath)
-            var error: NSError?
-            LibboxCheckConfig(remoteContent, &error)
-            if let error {
-                throw error
+            let remoteContent = try await HTTPClient.getStringAsync(remotePath)
+            try await BlockingIO.run {
+                var error: NSError?
+                LibboxCheckConfig(remoteContent, &error)
+                if let error {
+                    throw error
+                }
             }
             let profileConfigDirectory = FilePath.sharedDirectory.appendingPathComponent("configs", isDirectory: true)
-            try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
             let profileConfig = profileConfigDirectory.appendingPathComponent("config_\(nextProfileID).json")
-            try remoteContent.write(to: profileConfig, atomically: true, encoding: .utf8)
+            try await BlockingIO.run {
+                try FileManager.default.createDirectory(at: profileConfigDirectory, withIntermediateDirectories: true)
+                try remoteContent.write(to: profileConfig, atomically: true, encoding: .utf8)
+            }
             savePath = profileConfig.relativePath
             remoteURL = remotePath
             lastUpdated = .now
