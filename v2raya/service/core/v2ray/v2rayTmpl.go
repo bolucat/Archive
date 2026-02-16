@@ -29,6 +29,7 @@ import (
 	"github.com/v2rayA/v2rayA/core/iptables"
 	"github.com/v2rayA/v2rayA/core/serverObj"
 	"github.com/v2rayA/v2rayA/core/specialMode"
+	"github.com/v2rayA/v2rayA/core/tun"
 	"github.com/v2rayA/v2rayA/core/v2ray/asset"
 	"github.com/v2rayA/v2rayA/core/v2ray/where"
 	"github.com/v2rayA/v2rayA/db/configure"
@@ -86,13 +87,17 @@ func (t *Template) ServePlugins() error {
 	var err error
 	for _, p := range t.Plugins {
 		wg.Add(1)
-		log.Trace("[v2ray] starting plugin on %s", p.ListenAddr())
+		nodeName := p.NodeName()
+		if nodeName == "" {
+			nodeName = "unknown"
+		}
+		log.Trace("[v2ray] starting plugin on %s (node: %s)", p.ListenAddr(), nodeName)
 		go func(p plugin.Server) {
 			if e := p.ListenAndServe(); e != nil {
-				log.Warn("[v2ray] plugin on %s exited with error: %v", p.ListenAddr(), e)
+				log.Warn("[v2ray] plugin on %s (node: %s) exited with error: %v", p.ListenAddr(), p.NodeName(), e)
 				err = e
 			} else {
-				log.Trace("[v2ray] plugin on %s stopped", p.ListenAddr())
+				log.Trace("[v2ray] plugin on %s (node: %s) stopped", p.ListenAddr(), p.NodeName())
 			}
 			wg.Done()
 		}(p)
@@ -421,6 +426,10 @@ func (t *Template) setDNSRouting(routing []coreObj.RoutingRule, supportUDP map[s
 	t.Routing.Rules = append(t.Routing.Rules,
 		coreObj.RoutingRule{Type: "field", InboundTag: []string{"dns"}, OutboundTag: "direct"},
 	)
+	// Always route TUN dokodemo DNS inbound to dns-out
+	t.Routing.Rules = append(t.Routing.Rules,
+		coreObj.RoutingRule{Type: "field", InboundTag: []string{"tun-dns-in"}, OutboundTag: "dns-out"},
+	)
 	setting := t.Setting
 	if setting.AntiPollution != configure.AntipollutionClosed {
 		dnsOut := coreObj.RoutingRule{ // hijack traffic to port 53
@@ -428,11 +437,13 @@ func (t *Template) setDNSRouting(routing []coreObj.RoutingRule, supportUDP map[s
 			Port:        "53",
 			OutboundTag: "dns-out",
 		}
+		inTags := []string{"tun-dns-in"}
 		if specialMode.ShouldLocalDnsListen() {
 			if couldListenLocalhost, _ := specialMode.CouldLocalDnsListen(); couldListenLocalhost {
-				dnsOut.InboundTag = []string{"dns-in"}
+				inTags = append(inTags, "dns-in")
 			}
 		}
+		dnsOut.InboundTag = inTags
 		t.Routing.Rules = append(t.Routing.Rules, dnsOut)
 	}
 	if !supportUDP[firstOutboundTag] {
@@ -833,8 +844,15 @@ func parseRoutingA(t *Template, routingInboundTags []string) error {
 }
 
 func (t *Template) setTransparentRouting() (err error) {
+	defaultOutbound, _ := t.FirstProxyOutboundName(nil)
 	switch t.Setting.Transparent {
 	case configure.TransparentProxy:
+		// Global transparent: route all transparent inbound to default outbound
+		t.Routing.Rules = append(t.Routing.Rules, coreObj.RoutingRule{
+			Type:        "field",
+			InboundTag:  []string{"transparent"},
+			OutboundTag: defaultOutbound,
+		})
 	case configure.TransparentWhitelist:
 		return t.AppendRoutingRuleByMode(configure.WhitelistMode, []string{"transparent"})
 	case configure.TransparentGfwlist:
@@ -1233,6 +1251,20 @@ func (t *Template) setInbound(setting *configure.Setting) error {
 				},
 				Tag: "transparent",
 			})
+			// Local dokodemo-door listener for DNS (used by TUN DNS forwarder)
+			// Note: Address and Port are not used when routed to dns-out.
+			// They are set to dummy values to indicate this is TUN-specific.
+			t.Inbounds = append(t.Inbounds, coreObj.Inbound{
+				Port:     tun.TunDNSListenPort,
+				Protocol: "dokodemo-door",
+				Listen:   "127.0.0.1",
+				Settings: &coreObj.InboundSettings{
+					Network: "tcp,udp",
+					Address: "v2raya.tun", // Dummy address, not actually used
+					Port:    53,
+				},
+				Tag: "tun-dns-in",
+			})
 		case configure.TransparentSystemProxy:
 			t.Inbounds = append(t.Inbounds, coreObj.Inbound{
 				Port:     52345,
@@ -1507,7 +1539,7 @@ func (t *Template) resolveOutbounds(
 				}
 				var s plugin.Server
 				if len(c.PluginChain) > 0 {
-					s, err = plugin.ServerFromChain(c.PluginChain)
+					s, err = plugin.ServerFromChain(c.PluginChain, sInfo.Info.GetName())
 					if err != nil {
 						return nil, nil, err
 					}
@@ -1560,7 +1592,7 @@ func (t *Template) resolveOutbounds(
 			}
 			var s plugin.Server
 			if len(c.PluginChain) > 0 {
-				s, err = plugin.ServerFromChain(c.PluginChain)
+				s, err = plugin.ServerFromChain(c.PluginChain, obj.GetName())
 				if err != nil {
 					return nil, nil, err
 				}
@@ -1769,16 +1801,30 @@ func NewTemplate(serverInfos []serverInfo, setting *configure.Setting) (t *Templ
 	t = &tmplJson
 	t.Setting = setting
 	// log
+	logLevel := setting.LogLevel
+	if logLevel == "" {
+		logLevel = conf.GetEnvironmentConfig().LogLevel
+	}
+	logLevel = strings.ToLower(logLevel)
 	t.Log = new(coreObj.Log)
-	if logLevel := log.ParseLevel(conf.GetEnvironmentConfig().LogLevel); logLevel >= log.ParseLevel("debug") {
-		t.Log.Loglevel = "info"
+	switch logLevel {
+	case "trace", "debug":
+		t.Log.Loglevel = "debug"
 		t.Log.Access = ""
 		t.Log.Error = ""
-	} else if logLevel >= log.ParseLevel("info") {
+	case "info":
 		t.Log.Loglevel = "info"
 		t.Log.Access = ""
 		t.Log.Error = "none"
-	} else {
+	case "warn", "warning":
+		t.Log.Loglevel = "warning"
+		t.Log.Access = "none"
+		t.Log.Error = ""
+	case "error":
+		t.Log.Loglevel = "error"
+		t.Log.Access = "none"
+		t.Log.Error = ""
+	default:
 		t.Log = nil
 	}
 	// resolve Outbounds
@@ -2030,7 +2076,7 @@ func (t *Template) InsertMappingOutbound(o serverObj.ServerObj, inboundPort stri
 		return err
 	}
 	if len(c.PluginChain) > 0 {
-		if server, err := plugin.ServerFromChain(c.PluginChain); err != nil {
+		if server, err := plugin.ServerFromChain(c.PluginChain, o.GetName()); err != nil {
 			return err
 		} else {
 			t.Plugins = append(t.Plugins, server)
