@@ -93,8 +93,8 @@ func (s *serverImpl) Close() error {
 func (s *serverImpl) handleClient(conn *quic.Conn) {
 	handler := newH3sHandler(s.config, conn)
 	h3s := http3.Server{
-		Handler:        handler,
-		StreamHijacker: handler.ProxyStreamHijacker,
+		Handler:          handler,
+		StreamDispatcher: handler.ProxyStreamHijacker,
 	}
 	err := h3s.ServeQUICConn(conn)
 	// If the client is authenticated, we need to log the disconnect event
@@ -205,7 +205,7 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *h3sHandler) ProxyStreamHijacker(ft http3.FrameType, id quic.ConnectionTracingID, stream *quic.Stream, err error) (bool, error) {
+func (h *h3sHandler) ProxyStreamHijacker(ft http3.FrameType, stream *quic.Stream, err error) (bool, error) {
 	if err != nil || !h.authenticated {
 		return false, nil
 	}

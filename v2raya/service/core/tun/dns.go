@@ -137,9 +137,12 @@ func (d *DNS) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metad
 
 func (d *DNS) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	d.fakeCache.Check()
+	log.Trace("[TUN-DNS] NewPacketConnection: %s -> %s (port %d)", metadata.Source, metadata.Destination, metadata.Destination.Port)
 	if !d.matchAddr(metadata.Destination) {
+		log.Trace("[TUN-DNS] Not a DNS packet (addr not matched), continuing to handler")
 		return continueHandler
 	}
+	log.Info("[TUN-DNS] Handling DNS packet: %s -> %s", metadata.Source, metadata.Destination)
 	var reader N.PacketReader = conn
 	var counters []N.CountFunc
 	var cachedPackets []*N.PacketBuffer
@@ -241,12 +244,15 @@ func (d *DNS) Exchange(ctx context.Context, msg *D.Msg) (*D.Msg, error) {
 	if len(msg.Question) != 1 {
 		return d.newResponse(msg, D.RcodeFormatError), nil
 	}
+	question := msg.Question[0]
+	domain := strings.TrimSuffix(question.Name, ".")
+	log.Info("[TUN-DNS] Exchange: Query for %s (type %d)", domain, question.Qtype)
+
 	mode := dnsDirect
 	if len(d.servers) == 0 {
 		mode = dnsForward
 	}
-	question := msg.Question[0]
-	domain := strings.TrimSuffix(question.Name, ".")
+	log.Info("[TUN-DNS] Mode: %d, servers count: %d", mode, len(d.servers))
 	if d.useFakeIP && !d.whitelist.Match(domain) {
 		switch question.Qtype {
 		case D.TypeA:
@@ -315,8 +321,27 @@ func (d *DNS) Exchange(ctx context.Context, msg *D.Msg) (*D.Msg, error) {
 
 			// First try UDP. For dokodemo-door (port 6053), this is a direct UDP connection.
 			// The dialer is SystemDialer in normal cases, connecting to the local dokodemo-door listener.
-			serverConn, err := dialer.ListenPacket(ctxDial, server)
-			if err == nil {
+			var serverConn net.PacketConn
+			var dialErr error
+
+			// For loopback destinations, explicitly bind to the corresponding loopback IP family
+			// to avoid dual-stack socket binding [::] which might be captured by TUN interface incorrectly on Windows
+			if dialer == d.dialer && server.Addr.IsLoopback() {
+				// Use TCP for reliable local DNS communication if UDP is unstable due to TUN routing
+				preferTCP = true
+			}
+
+			if dialer == d.dialer && server.Addr.IsLoopback() {
+				if server.Addr.Is4() {
+					serverConn, dialErr = net.ListenPacket("udp4", "127.0.0.1:0")
+				} else {
+					serverConn, dialErr = net.ListenPacket("udp6", "[::1]:0")
+				}
+			} else {
+				serverConn, dialErr = dialer.ListenPacket(ctxDial, server)
+			}
+
+			if dialErr == nil {
 				defer serverConn.Close()
 				serverConn.SetDeadline(time.Now().Add(DNSTimeout))
 				if _, err = serverConn.WriteTo(data, server.UDPAddr()); err == nil {
@@ -332,6 +357,8 @@ func (d *DNS) Exchange(ctx context.Context, msg *D.Msg) (*D.Msg, error) {
 						err = rErr
 					}
 				}
+			} else {
+				err = dialErr
 			}
 
 			// Fallback to TCP when UDP fails (e.g., packet too large or server requires TCP).
