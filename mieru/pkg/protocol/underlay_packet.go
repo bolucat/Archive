@@ -66,7 +66,16 @@ var _ Underlay = &PacketUnderlay{}
 // "block" is the block encryption algorithm to encrypt packets.
 //
 // This function is only used by proxy client.
-func NewPacketUnderlay(ctx context.Context, packetDialer apicommon.PacketDialer, resolver apicommon.DNSResolver, network, addr string, mtu int, block cipher.BlockCipher, trafficPattern *appctlpb.TrafficPattern) (*PacketUnderlay, error) {
+func NewPacketUnderlay(
+	ctx context.Context,
+	packetDialer apicommon.PacketDialer,
+	resolver apicommon.DNSResolver,
+	network string,
+	addr string,
+	mtu int,
+	block cipher.BlockCipher,
+	trafficPattern *appctlpb.TrafficPattern,
+) (*PacketUnderlay, error) {
 	switch network {
 	case "udp", "udp4", "udp6":
 	default:

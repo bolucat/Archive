@@ -269,6 +269,8 @@ const (
 	// Use a pre-defined subset of printable ASCII characters.
 	NonceType_NONCE_TYPE_PRINTABLE_SUBSET NonceType = 2
 	// Use a customized nonce prefix.
+	// If field customHexStrings is not set in NoncePattern,
+	// the behavior is the same as NONCE_TYPE_RANDOM.
 	NonceType_NONCE_TYPE_FIXED NonceType = 3
 )
 

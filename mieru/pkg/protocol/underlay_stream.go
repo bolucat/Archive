@@ -19,6 +19,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
+	mrand "math/rand"
 	"net"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/enfein/mieru/v3/pkg/cipher"
 	"github.com/enfein/mieru/v3/pkg/common"
 	"github.com/enfein/mieru/v3/pkg/log"
+	"github.com/enfein/mieru/v3/pkg/mathext"
 	"github.com/enfein/mieru/v3/pkg/metrics"
 	"github.com/enfein/mieru/v3/pkg/replay"
 	"github.com/enfein/mieru/v3/pkg/rng"
@@ -63,7 +66,17 @@ var _ Underlay = &StreamUnderlay{}
 // "block" is the block encryption algorithm to encrypt packets.
 //
 // This function is only used by proxy client.
-func NewStreamUnderlay(ctx context.Context, dialer apicommon.Dialer, resolver apicommon.DNSResolver, dnsConfig *apicommon.ClientDNSConfig, network, addr string, mtu int, block cipher.BlockCipher, trafficPattern *appctlpb.TrafficPattern) (*StreamUnderlay, error) {
+func NewStreamUnderlay(
+	ctx context.Context,
+	dialer apicommon.Dialer,
+	resolver apicommon.DNSResolver,
+	dnsConfig *apicommon.ClientDNSConfig,
+	network string,
+	addr string,
+	mtu int,
+	block cipher.BlockCipher,
+	trafficPattern *appctlpb.TrafficPattern,
+) (*StreamUnderlay, error) {
 	switch network {
 	case "tcp", "tcp4", "tcp6":
 	default:
@@ -561,8 +574,8 @@ func (t *StreamUnderlay) writeOneSegment(seg *segment) error {
 			dataToSend = append(dataToSend, encryptedPayload...)
 		}
 		dataToSend = append(dataToSend, padding...)
-		if _, err := t.conn.Write(dataToSend); err != nil {
-			return fmt.Errorf("Write() failed: %w", err)
+		if err := t.writeWithPossibleFragment(dataToSend); err != nil {
+			return err
 		}
 		t.outBytes.Add(int64(len(dataToSend)))
 		if t.isClient {
@@ -634,6 +647,36 @@ func (t *StreamUnderlay) maybeInitSendBlockCipher() error {
 		} else {
 			return fmt.Errorf("recv cipher is nil")
 		}
+	}
+	return nil
+}
+
+// writeWithPossibleFragment writes data to the stream network connection
+// with or without fragmentation depending on the traffic pattern.
+func (t *StreamUnderlay) writeWithPossibleFragment(dataToSend []byte) error {
+	if t.trafficPattern == nil || t.trafficPattern.GetTcpFragment() == nil || !t.trafficPattern.GetTcpFragment().GetEnable() {
+		if _, err := t.conn.Write(dataToSend); err != nil {
+			return fmt.Errorf("Write() failed: %w", err)
+		}
+		return nil
+	}
+
+	remaining := dataToSend
+	for len(remaining) > 0 {
+		minLenToSend := int(math.Sqrt(float64(len(dataToSend)))) + 1
+		maxLenToSend := mathext.Max(minLenToSend, len(dataToSend)/2)
+		lenToSend := mrand.Intn(maxLenToSend-minLenToSend+1) + minLenToSend
+		if lenToSend > len(remaining) {
+			lenToSend = len(remaining)
+		}
+		if _, err := t.conn.Write(remaining[:lenToSend]); err != nil {
+			return fmt.Errorf("Write() failed: %w", err)
+		}
+		if t.trafficPattern.GetTcpFragment().GetMaxSleepMs() > 0 {
+			sleepMs := mrand.Intn(int(t.trafficPattern.GetTcpFragment().GetMaxSleepMs()) + 1)
+			time.Sleep(time.Duration(sleepMs) * time.Millisecond)
+		}
+		remaining = remaining[lenToSend:]
 	}
 	return nil
 }

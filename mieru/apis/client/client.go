@@ -39,7 +39,6 @@ import (
 type mieruClient struct {
 	initTask sync.Once
 	mu       sync.Mutex
-	netMu    sync.Mutex
 	running  atomic.Bool
 
 	config *ClientConfig
@@ -116,8 +115,6 @@ func (mc *mieruClient) IsRunning() bool {
 }
 
 func (mc *mieruClient) DialContext(ctx context.Context, addr net.Addr) (net.Conn, error) {
-	mc.netMu.Lock()
-	defer mc.netMu.Unlock()
 	if !mc.running.Load() {
 		return nil, ErrClientIsNotRunning
 	}

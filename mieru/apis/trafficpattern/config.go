@@ -33,18 +33,21 @@ type Config struct {
 }
 
 // NewConfig creates a new traffic pattern configuration from a protobuf message.
-// It assumes the original protobuf message is valid.
-func NewConfig(original *appctlpb.TrafficPattern) *Config {
+// It returns an error if the protobuf message is invalid.
+func NewConfig(original *appctlpb.TrafficPattern) (*Config, error) {
 	if original == nil {
 		// Use an empty traffic pattern.
 		original = &appctlpb.TrafficPattern{}
+	}
+	if err := Validate(original); err != nil {
+		return nil, fmt.Errorf("TrafficPattern is invalid: %w", err)
 	}
 	c := &Config{
 		original:  original,
 		effective: proto.Clone(original).(*appctlpb.TrafficPattern),
 	}
 	c.generateImplicitTrafficPattern()
-	return c
+	return c, nil
 }
 
 // Original returns the original traffic pattern.
@@ -57,8 +60,8 @@ func (c *Config) Effective() *appctlpb.TrafficPattern {
 	return c.effective
 }
 
-// Encode returns the base64 encoded string of the traffic pattern
-// from the protobuf message binary.
+// Encode returns a base64 encoded string of the traffic pattern
+// from the protobuf message.
 func Encode(pattern *appctlpb.TrafficPattern) string {
 	b, err := proto.Marshal(pattern)
 	if err != nil {
@@ -120,9 +123,13 @@ func (c *Config) generateTCPFragment(seed int, unlockAll bool) {
 	}
 
 	if c.original.TcpFragment == nil || c.original.TcpFragment.MaxSleepMs == nil {
-		maxRange := 100
-		// Generate a random number in [1, 100]
-		f.MaxSleepMs = proto.Int32(int32(rng.FixedInt(maxRange, fmt.Sprintf("%d:tcpFragment.maxSleepMs", seed))) + 1)
+		if unlockAll {
+			maxRange := 100
+			// Generate a random number in [1, 100]
+			f.MaxSleepMs = proto.Int32(int32(rng.FixedInt(maxRange, fmt.Sprintf("%d:tcpFragment.maxSleepMs", seed))) + 1)
+		} else {
+			f.MaxSleepMs = proto.Int32(0)
+		}
 	}
 }
 
@@ -146,11 +153,7 @@ func (c *Config) generateNoncePattern(seed int, unlockAll bool) {
 	}
 
 	if c.original.Nonce == nil || c.original.Nonce.ApplyToAllUDPPacket == nil {
-		if unlockAll {
-			n.ApplyToAllUDPPacket = proto.Bool(rng.FixedInt(2, fmt.Sprintf("%d:nonce.applyToAllUDPPacket", seed)) == 1)
-		} else {
-			n.ApplyToAllUDPPacket = proto.Bool(false)
-		}
+		n.ApplyToAllUDPPacket = proto.Bool(rng.FixedInt(2, fmt.Sprintf("%d:nonce.applyToAllUDPPacket", seed)) == 1)
 	}
 
 	if c.original.Nonce == nil || c.original.Nonce.MinLen == nil {

@@ -22,12 +22,12 @@ import (
 
 	apicommon "github.com/enfein/mieru/v3/apis/common"
 	"github.com/enfein/mieru/v3/apis/model"
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	pb "github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"github.com/enfein/mieru/v3/pkg/cipher"
 	"github.com/enfein/mieru/v3/pkg/common"
 	"github.com/enfein/mieru/v3/pkg/protocol"
 	"github.com/enfein/mieru/v3/pkg/stderror"
-	"github.com/enfein/mieru/v3/pkg/trafficpattern"
 )
 
 // ValidateClientConfigSingleProfile validates a single client config profile.
@@ -111,7 +111,11 @@ func NewClientMuxFromProfile(activeProfile *pb.ClientProfile, dialer apicommon.D
 		mux.SetClientDNSConfig(dnsConfig)
 	}
 
-	mux.SetTrafficPattern(trafficpattern.NewConfig(activeProfile.TrafficPattern))
+	trafficPattern, err := trafficpattern.NewConfig(activeProfile.TrafficPattern)
+	if err != nil {
+		return nil, err
+	}
+	mux.SetTrafficPattern(trafficPattern)
 
 	// Set user name and password.
 	user := activeProfile.GetUser()

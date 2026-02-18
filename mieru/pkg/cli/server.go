@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/appctl"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlcommon"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlgrpc"
@@ -39,7 +40,6 @@ import (
 	"github.com/enfein/mieru/v3/pkg/protocol"
 	"github.com/enfein/mieru/v3/pkg/socks5"
 	"github.com/enfein/mieru/v3/pkg/stderror"
-	"github.com/enfein/mieru/v3/pkg/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/version/updater"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -110,6 +110,20 @@ func RegisterServerCommands() {
 			return unexpectedArgsError(s, 3)
 		},
 		serverDescribeConfigFunc,
+	)
+	RegisterCallback(
+		[]string{"", "describe", "effective-traffic-pattern"},
+		func(s []string) error {
+			return unexpectedArgsError(s, 3)
+		},
+		serverDescribeEffectiveTrafficPatternFunc,
+	)
+	RegisterCallback(
+		[]string{"", "export", "traffic-pattern"},
+		func(s []string) error {
+			return unexpectedArgsError(s, 3)
+		},
+		serverExportTrafficPatternFunc,
 	)
 	RegisterCallback(
 		[]string{"", "delete", "user"},
@@ -251,6 +265,14 @@ var serverHelpFunc = func(s []string) error {
 			{
 				cmd:  "describe config",
 				help: []string{"Show current server configuration."},
+			},
+			{
+				cmd:  "describe effective-traffic-pattern",
+				help: []string{"Show effective traffic pattern."},
+			},
+			{
+				cmd:  "export traffic-pattern",
+				help: []string{"Export traffic pattern as an encoded base64 string."},
 			},
 			{
 				cmd:  "delete user <USER_NAME>",
@@ -447,8 +469,12 @@ var serverRunFunc = func(s []string) error {
 	if err = appctl.ValidateFullServerConfig(config); err == nil {
 		appctl.SetAppStatus(appctlpb.AppStatus_STARTING)
 
+		trafficPattern, err := trafficpattern.NewConfig(config.TrafficPattern)
+		if err != nil {
+			return err
+		}
 		mux := protocol.NewMux(false).
-			SetTrafficPattern(trafficpattern.NewConfig(config.TrafficPattern)).
+			SetTrafficPattern(trafficPattern).
 			SetServerUsers(appctlcommon.UserListToMap(config.GetUsers()))
 		appctl.SetServerMuxRef(mux)
 		mtu := common.DefaultMTU
@@ -674,6 +700,66 @@ var serverDescribeConfigFunc = func(s []string) error {
 		return fmt.Errorf("common.MarshalJSON() failed: %w", err)
 	}
 	log.Infof("%s", string(jsonBytes))
+	return nil
+}
+
+var serverDescribeEffectiveTrafficPatternFunc = func(s []string) error {
+	appStatus, err := appctl.GetServerStatusWithRPC(context.Background())
+	if err != nil {
+		if stderror.IsConnRefused(err) {
+			return fmt.Errorf(stderror.ServerNotRunningWithCommand)
+		}
+		return fmt.Errorf(stderror.GetServerStatusFailedErr, err)
+	}
+	if err := appctl.IsServerDaemonRunning(appStatus); err != nil {
+		return fmt.Errorf(stderror.ServerNotRunningErr, err)
+	}
+
+	client, err := appctl.NewServerManagementRPCClient()
+	if err != nil {
+		return fmt.Errorf(stderror.CreateServerManagementRPCClientFailedErr, err)
+	}
+	timedctx, cancelFunc := context.WithTimeout(context.Background(), appctl.RPCTimeout)
+	defer cancelFunc()
+	config, err := client.GetConfig(timedctx, &emptypb.Empty{})
+	if err != nil {
+		return fmt.Errorf(stderror.GetServerConfigFailedErr, err)
+	}
+	tp, err := trafficpattern.NewConfig(config.GetTrafficPattern())
+	if err != nil {
+		return err
+	}
+	jsonBytes, err := common.MarshalJSON(tp.Effective())
+	if err != nil {
+		return fmt.Errorf("common.MarshalJSON() failed: %w", err)
+	}
+	log.Infof("%s", string(jsonBytes))
+	return nil
+}
+
+var serverExportTrafficPatternFunc = func(s []string) error {
+	appStatus, err := appctl.GetServerStatusWithRPC(context.Background())
+	if err != nil {
+		if stderror.IsConnRefused(err) {
+			return fmt.Errorf(stderror.ServerNotRunningWithCommand)
+		}
+		return fmt.Errorf(stderror.GetServerStatusFailedErr, err)
+	}
+	if err := appctl.IsServerDaemonRunning(appStatus); err != nil {
+		return fmt.Errorf(stderror.ServerNotRunningErr, err)
+	}
+
+	client, err := appctl.NewServerManagementRPCClient()
+	if err != nil {
+		return fmt.Errorf(stderror.CreateServerManagementRPCClientFailedErr, err)
+	}
+	timedctx, cancelFunc := context.WithTimeout(context.Background(), appctl.RPCTimeout)
+	defer cancelFunc()
+	config, err := client.GetConfig(timedctx, &emptypb.Empty{})
+	if err != nil {
+		return fmt.Errorf(stderror.GetServerConfigFailedErr, err)
+	}
+	log.Infof("%s", trafficpattern.Encode(config.GetTrafficPattern()))
 	return nil
 }
 

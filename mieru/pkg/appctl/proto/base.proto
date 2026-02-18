@@ -194,5 +194,7 @@ enum NonceType {
     NONCE_TYPE_PRINTABLE_SUBSET = 2;
 
     // Use a customized nonce prefix.
+    // If field customHexStrings is not set in NoncePattern,
+    // the behavior is the same as NONCE_TYPE_RANDOM.
     NONCE_TYPE_FIXED = 3;
 }

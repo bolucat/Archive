@@ -36,7 +36,7 @@ var jsonUnmarshalOption = protojson.UnmarshalOptions{
 	DiscardUnknown: false,
 }
 
-// Marshal returns a JSON representation of protobuf.
+// Marshal returns a JSON representation of protobuf with pretty format.
 func MarshalJSON(m protoreflect.ProtoMessage) ([]byte, error) {
 	b, err := jsonMarshalOption.Marshal(m)
 	if err != nil {

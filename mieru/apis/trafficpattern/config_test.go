@@ -40,7 +40,7 @@ func TestExplicitValuesPreserved(t *testing.T) {
 		},
 	}
 
-	cfg := NewConfig(origin)
+	cfg, _ := NewConfig(origin)
 
 	if cfg.effective.GetSeed() != 12345 {
 		t.Errorf("expected seed 12345, got %d", cfg.effective.GetSeed())
@@ -71,7 +71,7 @@ func TestExplicitValuesPreserved(t *testing.T) {
 func TestImplicitValuesGenerated(t *testing.T) {
 	origin := &appctlpb.TrafficPattern{}
 
-	cfg := NewConfig(origin)
+	cfg, _ := NewConfig(origin)
 
 	// TCPFragment should be initialized
 	if cfg.effective.TcpFragment == nil {
@@ -112,7 +112,7 @@ func TestPartialTCPFragmentPreserved(t *testing.T) {
 		},
 	}
 
-	cfg := NewConfig(origin)
+	cfg, _ := NewConfig(origin)
 
 	// Enable should be preserved
 	if cfg.effective.TcpFragment.GetEnable() != true {
@@ -135,7 +135,7 @@ func TestPartialNoncePatternPreserved(t *testing.T) {
 		},
 	}
 
-	cfg := NewConfig(origin)
+	cfg, _ := NewConfig(origin)
 
 	// Type should be preserved
 	if cfg.effective.Nonce.GetType() != appctlpb.NonceType_NONCE_TYPE_PRINTABLE_SUBSET {
@@ -157,8 +157,8 @@ func TestPartialNoncePatternPreserved(t *testing.T) {
 func TestDeterministicGeneration(t *testing.T) {
 	origin := &appctlpb.TrafficPattern{}
 
-	cfg1 := NewConfig(origin)
-	cfg2 := NewConfig(origin)
+	cfg1, _ := NewConfig(origin)
+	cfg2, _ := NewConfig(origin)
 
 	if cfg1.effective.TcpFragment.GetEnable() != cfg2.effective.TcpFragment.GetEnable() {
 		t.Error("tcpFragment.enable should be deterministic")
@@ -193,7 +193,7 @@ func TestMinLenMaxLen(t *testing.T) {
 				UnlockAll: proto.Bool(unlockAll),
 			}
 
-			cfg := NewConfig(origin)
+			cfg, _ := NewConfig(origin)
 
 			minLen := cfg.effective.Nonce.GetMinLen()
 			maxLen := cfg.effective.Nonce.GetMaxLen()
@@ -265,7 +265,7 @@ func TestEncodeDecode(t *testing.T) {
 	}
 }
 
-func TestValidateTrafficPattern(t *testing.T) {
+func TestValidate(t *testing.T) {
 	cases := []struct {
 		name          string
 		pattern       *appctlpb.TrafficPattern

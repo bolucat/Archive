@@ -28,6 +28,7 @@ import (
 	"time"
 
 	apicommon "github.com/enfein/mieru/v3/apis/common"
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"github.com/enfein/mieru/v3/pkg/cipher"
 	"github.com/enfein/mieru/v3/pkg/common"
@@ -35,7 +36,6 @@ import (
 	"github.com/enfein/mieru/v3/pkg/mathext"
 	"github.com/enfein/mieru/v3/pkg/sockopts"
 	"github.com/enfein/mieru/v3/pkg/stderror"
-	"github.com/enfein/mieru/v3/pkg/trafficpattern"
 )
 
 const (
@@ -352,14 +352,12 @@ func (m *Mux) DialContext(ctx context.Context) (net.Conn, error) {
 		}
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.used = true
 	var err error
-
-	// Try to find a underlay for the session.
+	m.mu.Lock()
+	m.used = true
 	m.cleanUnderlay(true)
-	underlay := m.maybePickExistingUnderlay()
+	underlay := m.maybePickExistingUnderlay() // try to find a underlay for the session
+	m.mu.Unlock()
 	if underlay == nil {
 		underlay, err = m.newUnderlay(ctx)
 		if err != nil {
@@ -395,11 +393,9 @@ func (m *Mux) DialContext(ctx context.Context) (net.Conn, error) {
 
 func (m *Mux) ExportSessionInfoList() *appctlpb.SessionInfoList {
 	items := make([]*appctlpb.SessionInfo, 0)
-	m.mu.Lock()
 	for _, underlay := range m.underlays {
 		items = append(items, underlay.SessionInfos()...)
 	}
-	m.mu.Unlock()
 	return &appctlpb.SessionInfoList{Items: items}
 }
 
@@ -640,15 +636,19 @@ func (m *Mux) serverWrapTCPConn(rawConn net.Conn, mtu int, users map[string]*app
 }
 
 // newUnderlay returns a new underlay.
-// This method MUST be called only when holding the mu lock.
+// This method MUST be called when NOT holding the mu lock.
 func (m *Mux) newUnderlay(ctx context.Context) (Underlay, error) {
 	var underlay Underlay
+	var trafficPattern *appctlpb.TrafficPattern
+
+	m.mu.Lock()
 	i := mrand.Intn(len(m.endpoints))
 	p := m.endpoints[i]
-	var trafficPattern *appctlpb.TrafficPattern
 	if m.trafficPattern != nil {
 		trafficPattern = m.trafficPattern.Effective()
 	}
+	m.mu.Unlock()
+
 	switch p.TransportProtocol() {
 	case common.StreamTransport:
 		block, err := cipher.BlockCipherFromPassword(m.password, false)
@@ -683,7 +683,10 @@ func (m *Mux) newUnderlay(ctx context.Context) (Underlay, error) {
 	default:
 		return nil, fmt.Errorf("unsupport transport protocol %v", p.TransportProtocol())
 	}
+
+	m.mu.Lock()
 	m.underlays = append(m.underlays, underlay)
+	m.mu.Unlock()
 	UnderlayActiveOpens.Add(1)
 	currEst := UnderlayCurrEstablished.Add(1)
 	maxConn := UnderlayMaxConn.Load()

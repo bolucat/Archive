@@ -10,6 +10,7 @@ import (
 
 	"github.com/apernet/quic-go"
 	"github.com/apernet/quic-go/http3"
+	"github.com/apernet/quic-go/quicvarint"
 
 	"github.com/apernet/hysteria/core/v2/internal/congestion"
 	"github.com/apernet/hysteria/core/v2/internal/protocol"
@@ -210,11 +211,15 @@ func (h *h3sHandler) ProxyStreamHijacker(ft http3.FrameType, stream *quic.Stream
 		return false, nil
 	}
 
-	// Wraps the stream with QStream, which handles Close() properly
-	qStream := &utils.QStream{Stream: stream}
-
 	switch ft {
 	case protocol.FrameTypeTCPRequest:
+		// StreamDispatcher only peeks the frame type. Consume it so ReadTCPRequest
+		// starts at address length, matching pre-upgrade StreamHijacker behavior.
+		if _, err := quicvarint.Read(quicvarint.NewReader(stream)); err != nil {
+			return false, err
+		}
+		// Wraps the stream with QStream, which handles Close() properly
+		qStream := &utils.QStream{Stream: stream}
 		go h.handleTCPRequest(qStream)
 		return true, nil
 	default:

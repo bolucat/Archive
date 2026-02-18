@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlcommon"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlgrpc"
 	pb "github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
@@ -36,7 +37,6 @@ import (
 	"github.com/enfein/mieru/v3/pkg/protocol"
 	"github.com/enfein/mieru/v3/pkg/socks5"
 	"github.com/enfein/mieru/v3/pkg/stderror"
-	"github.com/enfein/mieru/v3/pkg/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/version"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -117,8 +117,12 @@ func (s *serverManagementService) Start(ctx context.Context, req *emptypb.Empty)
 
 	SetAppStatus(pb.AppStatus_STARTING)
 
+	trafficPattern, err := trafficpattern.NewConfig(config.TrafficPattern)
+	if err != nil {
+		return &emptypb.Empty{}, err
+	}
 	mux := protocol.NewMux(false).
-		SetTrafficPattern(trafficpattern.NewConfig(config.TrafficPattern)).
+		SetTrafficPattern(trafficPattern).
 		SetServerUsers(appctlcommon.UserListToMap(config.GetUsers()))
 	mtu := common.DefaultMTU
 	if config.GetMtu() != 0 {

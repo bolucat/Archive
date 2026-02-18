@@ -32,6 +32,7 @@ import (
 
 	apicommon "github.com/enfein/mieru/v3/apis/common"
 	"github.com/enfein/mieru/v3/apis/constant"
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/appctl"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlcommon"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlgrpc"
@@ -120,6 +121,20 @@ func RegisterClientCommands() {
 			return unexpectedArgsError(s, 3)
 		},
 		clientDescribeConfigFunc,
+	)
+	RegisterCallback(
+		[]string{"", "describe", "effective-traffic-pattern"},
+		func(s []string) error {
+			return unexpectedArgsError(s, 3)
+		},
+		clientDescribeEffectiveTrafficPatternFunc,
+	)
+	RegisterCallback(
+		[]string{"", "export", "traffic-pattern"},
+		func(s []string) error {
+			return unexpectedArgsError(s, 3)
+		},
+		clientExportTrafficPatternFunc,
 	)
 	RegisterCallback(
 		[]string{"", "import", "config"},
@@ -291,6 +306,10 @@ var clientHelpFunc = func(s []string) error {
 				help: []string{"Show current client configuration."},
 			},
 			{
+				cmd:  "describe effective-traffic-pattern",
+				help: []string{"Show effective traffic pattern."},
+			},
+			{
 				cmd: "import config <URL>",
 				help: []string{
 					"Import client configuration from a URL.",
@@ -305,6 +324,10 @@ var clientHelpFunc = func(s []string) error {
 			{
 				cmd:  "export config",
 				help: []string{"Export client configuration as a URL."},
+			},
+			{
+				cmd:  "export traffic-pattern",
+				help: []string{"Export traffic pattern as an encoded base64 string."},
 			},
 			{
 				cmd:  "delete profile <PROFILE_NAME>",
@@ -737,6 +760,30 @@ var clientDescribeConfigFunc = func(s []string) error {
 	return nil
 }
 
+var clientDescribeEffectiveTrafficPatternFunc = func(s []string) error {
+	config, err := appctl.LoadClientConfig()
+	if err != nil {
+		if err == stderror.ErrFileNotExist {
+			return fmt.Errorf(stderror.ClientConfigNotExist)
+		}
+		return fmt.Errorf(stderror.GetClientConfigFailedErr, err)
+	}
+	activeProfile, err := appctl.GetActiveProfileFromConfig(config, config.GetActiveProfile())
+	if err != nil {
+		return fmt.Errorf(stderror.ClientGetActiveProfileFailedErr, err)
+	}
+	tp, err := trafficpattern.NewConfig(activeProfile.GetTrafficPattern())
+	if err != nil {
+		return err
+	}
+	jsonBytes, err := common.MarshalJSON(tp.Effective())
+	if err != nil {
+		return fmt.Errorf("common.MarshalJSON() failed: %w", err)
+	}
+	log.Infof("%s", string(jsonBytes))
+	return nil
+}
+
 var clientImportConfigFunc = func(s []string) error {
 	if _, err := appctl.LoadClientConfig(); err == stderror.ErrFileNotExist {
 		if err = appctl.StoreClientConfig(&appctlpb.ClientConfig{}); err != nil {
@@ -782,6 +829,22 @@ var clientExportConfigFunc = func(s []string) error {
 		return fmt.Errorf(stderror.GetClientConfigFailedErr, err)
 	}
 	log.Infof("%s", out)
+	return nil
+}
+
+var clientExportTrafficPatternFunc = func(s []string) error {
+	config, err := appctl.LoadClientConfig()
+	if err != nil {
+		if err == stderror.ErrFileNotExist {
+			return fmt.Errorf(stderror.ClientConfigNotExist)
+		}
+		return fmt.Errorf(stderror.GetClientConfigFailedErr, err)
+	}
+	activeProfile, err := appctl.GetActiveProfileFromConfig(config, config.GetActiveProfile())
+	if err != nil {
+		return fmt.Errorf(stderror.ClientGetActiveProfileFailedErr, err)
+	}
+	log.Infof("%s", trafficpattern.Encode(activeProfile.GetTrafficPattern()))
 	return nil
 }
 

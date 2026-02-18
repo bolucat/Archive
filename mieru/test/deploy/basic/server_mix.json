@@ -25,5 +25,12 @@
         }
     ],
     "loggingLevel": "DEBUG",
-    "mtu": 1400
+    "mtu": 1400,
+    "trafficPattern": {
+        "unlockAll": true,
+        "tcpFragment":  {
+            "enable":  true,
+            "maxSleepMs":  10
+        }
+    }
 }

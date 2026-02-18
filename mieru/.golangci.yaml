@@ -2,15 +2,63 @@ version: "2"
 linters:
   default: none
   enable:
+    - depguard
     - govet
     - misspell
   settings:
+    depguard:
+      rules:
+        apis-common:
+          files:
+            - "**/apis/common/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/enfein/mieru/v3/apis/constant
+            - github.com/enfein/mieru/v3/apis/model
+        apis-constant:
+          files:
+            - "**/apis/constant/**"
+          allow:
+            - $gostd
+        apis-model:
+          files:
+            - "**/apis/model/**"
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - github.com/enfein/mieru/v3/apis/constant
+        pkg-appctl-appctlcommon:
+          files:
+            - "**/pkg/appctl/appctlcommon/**"
+          deny:
+            - pkg: google.golang.org/grpc
+              desc: "pkg/appctl/appctlcommon should not depend on grpc"
+        pkg-deque:
+          files:
+            - "**/pkg/deque/**"
+          allow:
+            - $gostd
+        pkg-log:
+          files:
+            - "**/pkg/log/**"
+          allow:
+            - $gostd
+        pkg-mathext:
+          files:
+            - "**/pkg/mathext/**"
+          allow:
+            - $gostd
+        pkg-stderror:
+          files:
+            - "**/pkg/stderror/**"
+          allow:
+            - $gostd
     misspell:
       locale: US
   exclusions:
     generated: lax
     presets:
-      - comments
       - common-false-positives
       - legacy
       - std-error-handling
