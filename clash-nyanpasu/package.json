@@ -56,8 +56,8 @@
     "lodash-es": "4.17.23"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.1",
-    "@commitlint/config-conventional": "20.4.1",
+    "@commitlint/cli": "20.4.2",
+    "@commitlint/config-conventional": "20.4.2",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.10.0",
     "@types/fs-extra": "11.0.4",
@@ -68,7 +68,7 @@
     "cross-env": "10.1.0",
     "dedent": "1.7.1",
     "globals": "17.3.0",
-    "knip": "5.84.0",
+    "knip": "5.84.1",
     "lint-staged": "16.2.7",
     "npm-run-all2": "8.0.4",
     "oxlint": "1.48.0",
@@ -87,7 +87,7 @@
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
     "stylelint-order": "7.0.1",
     "stylelint-scss": "7.0.0",
-    "tailwindcss": "4.1.18",
+    "tailwindcss": "4.2.0",
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   },
