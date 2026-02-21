@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"filippo.io/edwards25519"
+	"github.com/metacubex/edwards25519"
 )
 
 // KeyPair holds the scalar private key and point public key

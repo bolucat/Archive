@@ -3,7 +3,6 @@ module github.com/metacubex/mihomo
 go 1.20
 
 require (
-	filippo.io/edwards25519 v1.1.0
 	github.com/bahlo/generic-list-go v0.2.0
 	github.com/coreos/go-iptables v0.8.0
 	github.com/dlclark/regexp2 v1.11.5
@@ -19,6 +18,7 @@ require (
 	github.com/metacubex/chi v0.1.0
 	github.com/metacubex/connect-ip-go v0.0.0-20260128031117-1cad62060727
 	github.com/metacubex/cpu v0.1.0
+	github.com/metacubex/edwards25519 v1.2.0
 	github.com/metacubex/fswatch v0.1.1
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/http v0.1.0
