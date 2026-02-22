@@ -19,7 +19,7 @@ var shareCmd = &cobra.Command{
 	Use:   "share",
 	Short: "Generate share URI",
 	Long:  "Generate a hysteria2:// URI from a client config for sharing",
-	Run:   runShare,
+	Run:   runShareCmd,
 }
 
 func init() {
@@ -32,12 +32,16 @@ func initShareFlags() {
 	shareCmd.Flags().BoolVar(&withQR, "qr", false, "show URI as QR code")
 }
 
-func runShare(cmd *cobra.Command, args []string) {
-	if err := viper.ReadInConfig(); err != nil {
+func runShareCmd(cmd *cobra.Command, args []string) {
+	runShare(defaultViper)
+}
+
+func runShare(v *viper.Viper) {
+	if err := v.ReadInConfig(); err != nil {
 		logger.Fatal("failed to read client config", zap.Error(err))
 	}
 	var config clientConfig
-	if err := viper.Unmarshal(&config); err != nil {
+	if err := v.Unmarshal(&config); err != nil {
 		logger.Fatal("failed to parse client config", zap.Error(err))
 	}
 	if _, err := config.Config(); err != nil {

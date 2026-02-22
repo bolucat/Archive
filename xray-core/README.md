@@ -107,11 +107,13 @@
   - [Furious](https://github.com/LorenEteval/Furious)
   - [Invisible Man - Xray](https://github.com/InvisibleManVPN/InvisibleMan-XRayClient)
   - [AnyPortal](https://github.com/AnyPortal/AnyPortal)
+  - [GenyConnect](https://github.com/genyleap/GenyConnect)
 - Android
   - [v2rayNG](https://github.com/2dust/v2rayNG)
   - [X-flutter](https://github.com/XTLS/X-flutter)
   - [SaeedDev94/Xray](https://github.com/SaeedDev94/Xray)
   - [SimpleXray](https://github.com/lhear/SimpleXray)
+  - [XrayFA](https://github.com/Q7DF1/XrayFA)
   - [AnyPortal](https://github.com/AnyPortal/AnyPortal)
   - [NetProxy-Magisk](https://github.com/Fanju6/NetProxy-Magisk)
 - iOS & macOS arm64 & tvOS
@@ -127,6 +129,7 @@
   - [GoXRay](https://github.com/goxray/desktop)
   - [AnyPortal](https://github.com/AnyPortal/AnyPortal)
   - [v2rayN](https://github.com/2dust/v2rayN)
+  - [GenyConnect](https://github.com/genyleap/GenyConnect)
 - Linux
   - [v2rayA](https://github.com/v2rayA/v2rayA)
   - [Furious](https://github.com/LorenEteval/Furious)
@@ -134,6 +137,7 @@
   - [GoXRay](https://github.com/goxray/desktop)
   - [AnyPortal](https://github.com/AnyPortal/AnyPortal)
   - [v2rayN](https://github.com/2dust/v2rayN)
+  - [GenyConnect](https://github.com/genyleap/GenyConnect)
 
 ## Others that support VLESS, XTLS, REALITY, XUDP, PLUX...
 
