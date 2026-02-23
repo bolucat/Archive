@@ -135,6 +135,8 @@ func UEncryptedClientHelloKey(it tls.EncryptedClientHelloKey) utls.EncryptedClie
 	}
 }
 
+type ConnectionState = utls.ConnectionState
+
 type Config = utls.Config
 
 var tlsCertificateRequestInfoCtxOffset = utils.MustOK(reflect.TypeOf((*tls.CertificateRequestInfo)(nil)).Elem().FieldByName("ctx")).Offset

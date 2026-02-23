@@ -16,8 +16,8 @@ import com.v2ray.ang.R
 import com.v2ray.ang.contracts.MainAdapterListener
 import com.v2ray.ang.databinding.FragmentGroupServerBinding
 import com.v2ray.ang.databinding.ItemQrcodeBinding
-import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.dto.ProfileItem
+import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
@@ -164,6 +164,7 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>() {
         val intent = Intent().putExtra("guid", guid)
             .putExtra("isRunning", mainViewModel.isRunning.value)
             .putExtra("createConfigType", profile.configType.value)
+            .putExtra("subscriptionId", subId)
         when (profile.configType) {
             EConfigType.CUSTOM -> {
                 ownerActivity.startActivity(intent.setClass(ownerActivity, ServerCustomConfigActivity::class.java))

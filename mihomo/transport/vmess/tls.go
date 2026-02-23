@@ -24,10 +24,6 @@ type TLSConfig struct {
 	Reality           *tlsC.RealityConfig
 }
 
-type ECHConfig struct {
-	Enable bool
-}
-
 func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn, error) {
 	tlsConfig, err := ca.GetTLSConfig(ca.Option{
 		TLSConfig: &tls.Config{
