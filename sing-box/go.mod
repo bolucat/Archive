@@ -3,7 +3,7 @@ module github.com/sagernet/sing-box
 go 1.24.7
 
 require (
-	github.com/anthropics/anthropic-sdk-go v1.19.0
+	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/anytls/sing-anytls v0.0.11
 	github.com/caddyserver/certmagic v0.25.0
 	github.com/coder/websocket v1.8.14
@@ -22,7 +22,7 @@ require (
 	github.com/metacubex/utls v1.8.4
 	github.com/mholt/acmez/v3 v3.1.4
 	github.com/miekg/dns v1.1.69
-	github.com/openai/openai-go/v3 v3.15.0
+	github.com/openai/openai-go/v3 v3.23.0
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/sagernet/asc-go v0.0.0-20241217030726-d563060fe4e1
 	github.com/sagernet/bbolt v0.0.0-20231014093535-ea5cb2fe9f0a
@@ -43,7 +43,7 @@ require (
 	github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1
 	github.com/sagernet/tailscale v1.92.4-sing-box-1.13-mod.6
-	github.com/sagernet/wireguard-go v0.0.2-beta.1.0.20250917110311-16510ac47288
+	github.com/sagernet/wireguard-go v0.0.2-beta.1.0.20260224074747-506b7631853c
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1

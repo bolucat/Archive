@@ -2,7 +2,7 @@
 
 A cross-platform programmable network tool.
 
-**Sponsor**: [Shiliew - A network app designed for those who value their time](https://www.txthinking.com/shiliew.html)
+**Sponsor**: [Shiliew - Focuses on providing stable network services](https://www.txthinking.com/shiliew.html)
 
 ## Server
 
@@ -25,11 +25,9 @@ brook server -l :9999 -p hello
 - [macOS](https://apps.apple.com/us/app/brook-network-tool/id1216002642)
 	- [About App Mode on macOS](https://www.txthinking.com/talks/articles/macos-app-mode-en.article)
 - [Windows](https://github.com/txthinking/brook/releases/latest/download/Brook.msix)
-	- [How to install Brook on Windows](https://www.txthinking.com/talks/articles/msix-brook-en.article)
 - [Linux](https://github.com/txthinking/brook/releases/latest/download/Brook.bin)
 	- [How to install Brook on Linux](https://www.txthinking.com/talks/articles/linux-app-brook-en.article)
 - [OpenWrt](https://www.txthinking.com/talks/articles/brook-openwrt-one-en.article)
-	- [How to install Brook on OpenWrt](https://www.txthinking.com/talks/articles/brook-openwrt-en.article)
 
 > You may want to use `brook link` to customize some parameters
 

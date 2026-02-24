@@ -51,6 +51,7 @@ object AppConfig {
     const val PREF_CONFIRM_REMOVE = "pref_confirm_remove"
     const val PREF_START_SCAN_IMMEDIATE = "pref_start_scan_immediate"
     const val PREF_DOUBLE_COLUMN_DISPLAY = "pref_double_column_display"
+    const val PREF_GROUP_ALL_DISPLAY = "pref_group_all_display"
     const val PREF_LANGUAGE = "pref_language"
     const val PREF_UI_MODE_NIGHT = "pref_ui_mode_night"
     const val PREF_PREFER_IPV6 = "pref_prefer_ipv6"
@@ -76,7 +77,6 @@ object AppConfig {
 
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"
-    const val CACHE_KEYWORD_FILTER = "cache_keyword_filter"
 
     /** Protocol identifiers. */
     const val PROTOCOL_FREEDOM = "freedom"
