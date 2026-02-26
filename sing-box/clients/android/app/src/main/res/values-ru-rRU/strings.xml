@@ -68,7 +68,7 @@
     <!-- Dashboard -->
     <string name="dashboard_items">Элементы главной страницы</string>
     <string name="memory">Память</string>
-    <string name="goroutines">Подпрограммы</string>
+    <string name="goroutines">Горутины</string>
     <string name="upload">Отправка</string>
     <string name="download">Получение</string>
     <string name="connections_in">Входящие</string>
@@ -199,8 +199,6 @@
     <string name="sponsor">Поддержать</string>
     <string name="working_directory">Рабочая директория</string>
     <string name="disable_deprecated_warnings">Отключить предупреждения об устаревании</string>
-    <string name="ignore_memory_limit">Игнорировать ограничение памяти</string>
-    <string name="ignore_memory_limit_description">Не применять ограничения по памяти для sing-box.</string>
     <string name="notification_settings">Уведомления</string>
     <string name="enable_notification">Включить уведомления</string>
     <string name="dynamic_notification">Отображать скорость в реальном времени в уведомлении</string>

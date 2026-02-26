@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,6 +77,35 @@ func isHopByHopHeader(header string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+const (
+	weeklyWindowSeconds = 604800
+	weeklyWindowMinutes = weeklyWindowSeconds / 60
+)
+
+func parseInt64Header(headers http.Header, headerName string) (int64, bool) {
+	headerValue := strings.TrimSpace(headers.Get(headerName))
+	if headerValue == "" {
+		return 0, false
+	}
+	parsedValue, parseError := strconv.ParseInt(headerValue, 10, 64)
+	if parseError != nil {
+		return 0, false
+	}
+	return parsedValue, true
+}
+
+func extractWeeklyCycleHint(headers http.Header) *WeeklyCycleHint {
+	resetAtUnix, hasResetAt := parseInt64Header(headers, "anthropic-ratelimit-unified-7d-reset")
+	if !hasResetAt || resetAtUnix <= 0 {
+		return nil
+	}
+
+	return &WeeklyCycleHint{
+		WindowMinutes: weeklyWindowMinutes,
+		ResetAt:       time.Unix(resetAtUnix, 0).UTC(),
 	}
 }
 
@@ -392,6 +422,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handleResponseWithTracking(writer http.ResponseWriter, response *http.Response, requestModel string, anthropicBetaHeader string, messagesCount int, username string) {
+	weeklyCycleHint := extractWeeklyCycleHint(response.Header)
 	mediaType, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	isStreaming := err == nil && mediaType == "text/event-stream"
 
@@ -417,7 +448,7 @@ func (s *Service) handleResponseWithTracking(writer http.ResponseWriter, respons
 		if usage.InputTokens > 0 || usage.OutputTokens > 0 {
 			if responseModel != "" {
 				contextWindow := detectContextWindow(anthropicBetaHeader, usage.InputTokens)
-				s.usageTracker.AddUsage(
+				s.usageTracker.AddUsageWithCycleHint(
 					responseModel,
 					contextWindow,
 					messagesCount,
@@ -428,6 +459,8 @@ func (s *Service) handleResponseWithTracking(writer http.ResponseWriter, respons
 					usage.CacheCreation.Ephemeral5mInputTokens,
 					usage.CacheCreation.Ephemeral1hInputTokens,
 					username,
+					time.Now(),
+					weeklyCycleHint,
 				)
 			}
 		}
@@ -515,7 +548,7 @@ func (s *Service) handleResponseWithTracking(writer http.ResponseWriter, respons
 			if accumulatedUsage.InputTokens > 0 || accumulatedUsage.OutputTokens > 0 {
 				if responseModel != "" {
 					contextWindow := detectContextWindow(anthropicBetaHeader, accumulatedUsage.InputTokens)
-					s.usageTracker.AddUsage(
+					s.usageTracker.AddUsageWithCycleHint(
 						responseModel,
 						contextWindow,
 						messagesCount,
@@ -526,6 +559,8 @@ func (s *Service) handleResponseWithTracking(writer http.ResponseWriter, respons
 						accumulatedUsage.CacheCreation.Ephemeral5mInputTokens,
 						accumulatedUsage.CacheCreation.Ephemeral1hInputTokens,
 						username,
+						time.Now(),
+						weeklyCycleHint,
 					)
 				}
 			}

@@ -2,6 +2,7 @@ package ocm
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"regexp"
@@ -43,10 +44,11 @@ func (u *UsageStats) UnmarshalJSON(data []byte) error {
 }
 
 type CostCombination struct {
-	Model       string                `json:"model"`
-	ServiceTier string                `json:"service_tier,omitempty"`
-	Total       UsageStats            `json:"total"`
-	ByUser      map[string]UsageStats `json:"by_user"`
+	Model         string                `json:"model"`
+	ServiceTier   string                `json:"service_tier,omitempty"`
+	WeekStartUnix int64                 `json:"week_start_unix,omitempty"`
+	Total         UsageStats            `json:"total"`
+	ByUser        map[string]UsageStats `json:"by_user"`
 }
 
 type AggregatedUsage struct {
@@ -70,21 +72,28 @@ type UsageStatsJSON struct {
 }
 
 type CostCombinationJSON struct {
-	Model       string                    `json:"model"`
-	ServiceTier string                    `json:"service_tier,omitempty"`
-	Total       UsageStatsJSON            `json:"total"`
-	ByUser      map[string]UsageStatsJSON `json:"by_user"`
+	Model         string                    `json:"model"`
+	ServiceTier   string                    `json:"service_tier,omitempty"`
+	WeekStartUnix int64                     `json:"week_start_unix,omitempty"`
+	Total         UsageStatsJSON            `json:"total"`
+	ByUser        map[string]UsageStatsJSON `json:"by_user"`
 }
 
 type CostsSummaryJSON struct {
 	TotalUSD float64            `json:"total_usd"`
 	ByUser   map[string]float64 `json:"by_user"`
+	ByWeek   map[string]float64 `json:"by_week,omitempty"`
 }
 
 type AggregatedUsageJSON struct {
 	LastUpdated  time.Time             `json:"last_updated"`
 	Costs        CostsSummaryJSON      `json:"costs"`
 	Combinations []CostCombinationJSON `json:"combinations"`
+}
+
+type WeeklyCycleHint struct {
+	WindowMinutes int64
+	ResetAt       time.Time
 }
 
 type ModelPricing struct {
@@ -373,6 +382,10 @@ var (
 
 	standardModelFamilies = []modelFamily{
 		{
+			pattern: regexp.MustCompile(`^gpt-5\.3-codex(?:$|-)`),
+			pricing: gpt52CodexPricing,
+		},
+		{
 			pattern: regexp.MustCompile(`^gpt-5\.2-codex(?:$|-)`),
 			pricing: gpt52CodexPricing,
 		},
@@ -387,6 +400,10 @@ var (
 		{
 			pattern: regexp.MustCompile(`^gpt-5\.1-codex(?:$|-)`),
 			pricing: gpt51CodexPricing,
+		},
+		{
+			pattern: regexp.MustCompile(`^gpt-5-codex-mini(?:$|-)`),
+			pricing: gpt51CodexMiniPricing,
 		},
 		{
 			pattern: regexp.MustCompile(`^gpt-5-codex(?:$|-)`),
@@ -539,6 +556,10 @@ var (
 
 	priorityModelFamilies = []modelFamily{
 		{
+			pattern: regexp.MustCompile(`^gpt-5\.3-codex(?:$|-)`),
+			pricing: gpt52CodexPriorityPricing,
+		},
+		{
 			pattern: regexp.MustCompile(`^gpt-5\.2-codex(?:$|-)`),
 			pricing: gpt52CodexPriorityPricing,
 		},
@@ -549,6 +570,10 @@ var (
 		{
 			pattern: regexp.MustCompile(`^gpt-5\.1-codex(?:$|-)`),
 			pricing: gpt51CodexPriorityPricing,
+		},
+		{
+			pattern: regexp.MustCompile(`^gpt-5-codex-mini(?:$|-)`),
+			pricing: gpt5MiniPriorityPricing,
 		},
 		{
 			pattern: regexp.MustCompile(`^gpt-5-codex(?:$|-)`),
@@ -677,7 +702,7 @@ func normalizeGPT5Model(model string) string {
 	case strings.Contains(model, "-codex-max"):
 		return "gpt-5.1-codex-max"
 	case strings.Contains(model, "-codex"):
-		return "gpt-5.2-codex"
+		return "gpt-5.3-codex"
 	case strings.Contains(model, "-chat-latest"):
 		return "gpt-5.2-chat-latest"
 	case strings.Contains(model, "-pro"):
@@ -706,42 +731,89 @@ func calculateCost(stats UsageStats, model string, serviceTier string) float64 {
 	return math.Round(cost*100) / 100
 }
 
-func (u *AggregatedUsage) ToJSON() *AggregatedUsageJSON {
-	u.mutex.Lock()
-	defer u.mutex.Unlock()
+func roundCost(cost float64) float64 {
+	return math.Round(cost*100) / 100
+}
 
-	result := &AggregatedUsageJSON{
-		LastUpdated:  u.LastUpdated,
-		Combinations: make([]CostCombinationJSON, len(u.Combinations)),
-		Costs: CostsSummaryJSON{
-			TotalUSD: 0,
-			ByUser:   make(map[string]float64),
-		},
+func normalizeCombinations(combinations []CostCombination) {
+	for index := range combinations {
+		combinations[index].ServiceTier = normalizeServiceTier(combinations[index].ServiceTier)
+		if combinations[index].ByUser == nil {
+			combinations[index].ByUser = make(map[string]UsageStats)
+		}
+	}
+}
+
+func addUsageToCombinations(combinations *[]CostCombination, model string, serviceTier string, weekStartUnix int64, user string, inputTokens, outputTokens, cachedTokens int64) {
+	var matchedCombination *CostCombination
+	for index := range *combinations {
+		combination := &(*combinations)[index]
+		combinationServiceTier := normalizeServiceTier(combination.ServiceTier)
+		if combination.ServiceTier != combinationServiceTier {
+			combination.ServiceTier = combinationServiceTier
+		}
+		if combination.Model == model && combinationServiceTier == serviceTier && combination.WeekStartUnix == weekStartUnix {
+			matchedCombination = combination
+			break
+		}
 	}
 
-	for i, combo := range u.Combinations {
-		totalCost := calculateCost(combo.Total, combo.Model, combo.ServiceTier)
+	if matchedCombination == nil {
+		newCombination := CostCombination{
+			Model:         model,
+			ServiceTier:   serviceTier,
+			WeekStartUnix: weekStartUnix,
+			Total:         UsageStats{},
+			ByUser:        make(map[string]UsageStats),
+		}
+		*combinations = append(*combinations, newCombination)
+		matchedCombination = &(*combinations)[len(*combinations)-1]
+	}
 
-		result.Costs.TotalUSD += totalCost
+	matchedCombination.Total.RequestCount++
+	matchedCombination.Total.InputTokens += inputTokens
+	matchedCombination.Total.OutputTokens += outputTokens
+	matchedCombination.Total.CachedTokens += cachedTokens
 
-		comboJSON := CostCombinationJSON{
-			Model:       combo.Model,
-			ServiceTier: combo.ServiceTier,
+	if user != "" {
+		userStats := matchedCombination.ByUser[user]
+		userStats.RequestCount++
+		userStats.InputTokens += inputTokens
+		userStats.OutputTokens += outputTokens
+		userStats.CachedTokens += cachedTokens
+		matchedCombination.ByUser[user] = userStats
+	}
+}
+
+func buildCombinationJSON(combinations []CostCombination, aggregateUserCosts map[string]float64) ([]CostCombinationJSON, float64) {
+	result := make([]CostCombinationJSON, len(combinations))
+	var totalCost float64
+
+	for index, combination := range combinations {
+		combinationTotalCost := calculateCost(combination.Total, combination.Model, combination.ServiceTier)
+		totalCost += combinationTotalCost
+
+		combinationJSON := CostCombinationJSON{
+			Model:         combination.Model,
+			ServiceTier:   combination.ServiceTier,
+			WeekStartUnix: combination.WeekStartUnix,
 			Total: UsageStatsJSON{
-				RequestCount: combo.Total.RequestCount,
-				InputTokens:  combo.Total.InputTokens,
-				OutputTokens: combo.Total.OutputTokens,
-				CachedTokens: combo.Total.CachedTokens,
-				CostUSD:      totalCost,
+				RequestCount: combination.Total.RequestCount,
+				InputTokens:  combination.Total.InputTokens,
+				OutputTokens: combination.Total.OutputTokens,
+				CachedTokens: combination.Total.CachedTokens,
+				CostUSD:      combinationTotalCost,
 			},
 			ByUser: make(map[string]UsageStatsJSON),
 		}
 
-		for user, userStats := range combo.ByUser {
-			userCost := calculateCost(userStats, combo.Model, combo.ServiceTier)
-			result.Costs.ByUser[user] += userCost
+		for user, userStats := range combination.ByUser {
+			userCost := calculateCost(userStats, combination.Model, combination.ServiceTier)
+			if aggregateUserCosts != nil {
+				aggregateUserCosts[user] += userCost
+			}
 
-			comboJSON.ByUser[user] = UsageStatsJSON{
+			combinationJSON.ByUser[user] = UsageStatsJSON{
 				RequestCount: userStats.RequestCount,
 				InputTokens:  userStats.InputTokens,
 				OutputTokens: userStats.OutputTokens,
@@ -750,12 +822,80 @@ func (u *AggregatedUsage) ToJSON() *AggregatedUsageJSON {
 			}
 		}
 
-		result.Combinations[i] = comboJSON
+		result[index] = combinationJSON
 	}
 
-	result.Costs.TotalUSD = math.Round(result.Costs.TotalUSD*100) / 100
+	return result, roundCost(totalCost)
+}
+
+func formatUTCOffsetLabel(timestamp time.Time) string {
+	_, offsetSeconds := timestamp.Zone()
+	sign := "+"
+	if offsetSeconds < 0 {
+		sign = "-"
+		offsetSeconds = -offsetSeconds
+	}
+	offsetHours := offsetSeconds / 3600
+	offsetMinutes := (offsetSeconds % 3600) / 60
+	if offsetMinutes == 0 {
+		return fmt.Sprintf("UTC%s%d", sign, offsetHours)
+	}
+	return fmt.Sprintf("UTC%s%d:%02d", sign, offsetHours, offsetMinutes)
+}
+
+func formatWeekStartKey(cycleStartAt time.Time) string {
+	localCycleStart := cycleStartAt.In(time.Local)
+	return fmt.Sprintf("%s %s", localCycleStart.Format("2006-01-02 15:04:05"), formatUTCOffsetLabel(localCycleStart))
+}
+
+func buildByWeekCost(combinations []CostCombination) map[string]float64 {
+	byWeek := make(map[string]float64)
+	for _, combination := range combinations {
+		if combination.WeekStartUnix <= 0 {
+			continue
+		}
+		weekStartAt := time.Unix(combination.WeekStartUnix, 0).UTC()
+		weekKey := formatWeekStartKey(weekStartAt)
+		byWeek[weekKey] += calculateCost(combination.Total, combination.Model, combination.ServiceTier)
+	}
+	for weekKey, weekCost := range byWeek {
+		byWeek[weekKey] = roundCost(weekCost)
+	}
+	return byWeek
+}
+
+func deriveWeekStartUnix(cycleHint *WeeklyCycleHint) int64 {
+	if cycleHint == nil || cycleHint.WindowMinutes <= 0 || cycleHint.ResetAt.IsZero() {
+		return 0
+	}
+	windowDuration := time.Duration(cycleHint.WindowMinutes) * time.Minute
+	return cycleHint.ResetAt.UTC().Add(-windowDuration).Unix()
+}
+
+func (u *AggregatedUsage) ToJSON() *AggregatedUsageJSON {
+	u.mutex.Lock()
+	defer u.mutex.Unlock()
+
+	result := &AggregatedUsageJSON{
+		LastUpdated: u.LastUpdated,
+		Costs: CostsSummaryJSON{
+			TotalUSD: 0,
+			ByUser:   make(map[string]float64),
+			ByWeek:   make(map[string]float64),
+		},
+	}
+
+	globalCombinationsJSON, totalCost := buildCombinationJSON(u.Combinations, result.Costs.ByUser)
+	result.Combinations = globalCombinationsJSON
+	result.Costs.TotalUSD = totalCost
+	result.Costs.ByWeek = buildByWeekCost(u.Combinations)
+
+	if len(result.Costs.ByWeek) == 0 {
+		result.Costs.ByWeek = nil
+	}
+
 	for user, cost := range result.Costs.ByUser {
-		result.Costs.ByUser[user] = math.Round(cost*100) / 100
+		result.Costs.ByUser[user] = roundCost(cost)
 	}
 
 	return result
@@ -764,6 +904,9 @@ func (u *AggregatedUsage) ToJSON() *AggregatedUsageJSON {
 func (u *AggregatedUsage) Load() error {
 	u.mutex.Lock()
 	defer u.mutex.Unlock()
+
+	u.LastUpdated = time.Time{}
+	u.Combinations = nil
 
 	data, err := os.ReadFile(u.filePath)
 	if err != nil {
@@ -785,13 +928,7 @@ func (u *AggregatedUsage) Load() error {
 
 	u.LastUpdated = temp.LastUpdated
 	u.Combinations = temp.Combinations
-
-	for i := range u.Combinations {
-		u.Combinations[i].ServiceTier = normalizeServiceTier(u.Combinations[i].ServiceTier)
-		if u.Combinations[i].ByUser == nil {
-			u.Combinations[i].ByUser = make(map[string]UsageStats)
-		}
-	}
+	normalizeCombinations(u.Combinations)
 
 	return nil
 }
@@ -820,53 +957,26 @@ func (u *AggregatedUsage) Save() error {
 }
 
 func (u *AggregatedUsage) AddUsage(model string, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string) error {
+	return u.AddUsageWithCycleHint(model, inputTokens, outputTokens, cachedTokens, serviceTier, user, time.Now(), nil)
+}
+
+func (u *AggregatedUsage) AddUsageWithCycleHint(model string, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string, observedAt time.Time, cycleHint *WeeklyCycleHint) error {
 	if model == "" {
 		return E.New("model cannot be empty")
 	}
 
 	normalizedServiceTier := normalizeServiceTier(serviceTier)
+	if observedAt.IsZero() {
+		observedAt = time.Now()
+	}
 
 	u.mutex.Lock()
 	defer u.mutex.Unlock()
 
-	u.LastUpdated = time.Now()
+	u.LastUpdated = observedAt
+	weekStartUnix := deriveWeekStartUnix(cycleHint)
 
-	var combo *CostCombination
-	for i := range u.Combinations {
-		comboServiceTier := normalizeServiceTier(u.Combinations[i].ServiceTier)
-		if u.Combinations[i].ServiceTier != comboServiceTier {
-			u.Combinations[i].ServiceTier = comboServiceTier
-		}
-		if u.Combinations[i].Model == model && comboServiceTier == normalizedServiceTier {
-			combo = &u.Combinations[i]
-			break
-		}
-	}
-
-	if combo == nil {
-		newCombo := CostCombination{
-			Model:       model,
-			ServiceTier: normalizedServiceTier,
-			Total:       UsageStats{},
-			ByUser:      make(map[string]UsageStats),
-		}
-		u.Combinations = append(u.Combinations, newCombo)
-		combo = &u.Combinations[len(u.Combinations)-1]
-	}
-
-	combo.Total.RequestCount++
-	combo.Total.InputTokens += inputTokens
-	combo.Total.OutputTokens += outputTokens
-	combo.Total.CachedTokens += cachedTokens
-
-	if user != "" {
-		userStats := combo.ByUser[user]
-		userStats.RequestCount++
-		userStats.InputTokens += inputTokens
-		userStats.OutputTokens += outputTokens
-		userStats.CachedTokens += cachedTokens
-		combo.ByUser[user] = userStats
-	}
+	addUsageToCombinations(&u.Combinations, model, normalizedServiceTier, weekStartUnix, user, inputTokens, outputTokens, cachedTokens)
 
 	go u.scheduleSave()
 
