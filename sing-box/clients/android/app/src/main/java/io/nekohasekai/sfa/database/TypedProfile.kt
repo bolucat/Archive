@@ -11,14 +11,15 @@ import io.nekohasekai.sfa.ktx.unmarshall
 import java.util.Date
 
 class TypedProfile() : Parcelable {
-    enum class Type {
-        Local,
-        Remote,
-        ;
 
-        fun getString(context: Context): String = when (this) {
-            Local -> context.getString(R.string.profile_type_local)
-            Remote -> context.getString(R.string.profile_type_remote)
+    enum class Type {
+        Local, Remote;
+
+        fun getString(context: Context): String {
+            return when (this) {
+                Local -> context.getString(R.string.profile_type_local)
+                Remote -> context.getString(R.string.profile_type_remote)
+            }
         }
 
         companion object {
@@ -62,19 +63,29 @@ class TypedProfile() : Parcelable {
         writer.writeInt(autoUpdateInterval)
     }
 
-    override fun describeContents(): Int = 0
+    override fun describeContents(): Int {
+        return 0
+    }
 
     companion object CREATOR : Parcelable.Creator<TypedProfile> {
-        override fun createFromParcel(parcel: Parcel): TypedProfile = TypedProfile(parcel)
+        override fun createFromParcel(parcel: Parcel): TypedProfile {
+            return TypedProfile(parcel)
+        }
 
-        override fun newArray(size: Int): Array<TypedProfile?> = arrayOfNulls(size)
+        override fun newArray(size: Int): Array<TypedProfile?> {
+            return arrayOfNulls(size)
+        }
     }
 
     class Convertor {
+
         @TypeConverter
         fun marshall(profile: TypedProfile) = profile.marshall()
 
         @TypeConverter
-        fun unmarshall(content: ByteArray) = content.unmarshall(::TypedProfile)
+        fun unmarshall(content: ByteArray) =
+            content.unmarshall(::TypedProfile)
+
     }
+
 }

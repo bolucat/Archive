@@ -158,7 +158,7 @@ message NoncePattern {
     optional NonceType type = 1;
 
     // If the pattern applies to each UDP packet,
-    // or only applies to UDP packets used to manage a session.
+    // or only applies to the first UDP packet.
     optional bool applyToAllUDPPacket = 2;
 
     // Minimum number of bytes to manipulate.

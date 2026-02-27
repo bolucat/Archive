@@ -12,12 +12,13 @@ import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.mlkit.common.MlKitException
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.compose.screen.qrscan.QRCodeCropArea
-import io.nekohasekai.sfa.update.UpdateInfo
-import io.nekohasekai.sfa.update.UpdateState
 
 object Vendor : VendorInterface {
+
     private const val TAG = "Vendor"
+    override fun checkUpdateAvailable(): Boolean {
+        return true
+    }
 
     override fun checkUpdate(activity: Activity, byUser: Boolean) {
         val appUpdateManager = AppUpdateManagerFactory.create(activity)
@@ -26,7 +27,6 @@ object Vendor : VendorInterface {
             when (appUpdateInfo.updateAvailability()) {
                 UpdateAvailability.UPDATE_NOT_AVAILABLE -> {
                     Log.d(TAG, "checkUpdate: not available")
-                    UpdateState.clear()
                     if (byUser) activity.showNoUpdatesDialog()
                 }
 
@@ -41,18 +41,17 @@ object Vendor : VendorInterface {
 
                 UpdateAvailability.UPDATE_AVAILABLE -> {
                     Log.d(TAG, "checkUpdate: available")
-                    UpdateState.hasUpdate.value = true
                     if (appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) {
                         appUpdateManager.startUpdateFlow(
                             appUpdateInfo,
                             activity,
-                            AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build(),
+                            AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build()
                         )
                     } else if (appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
                         appUpdateManager.startUpdateFlow(
                             appUpdateInfo,
                             activity,
-                            AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build(),
+                            AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE).build()
                         )
                     }
                 }
@@ -79,11 +78,10 @@ object Vendor : VendorInterface {
 
     override fun createQRCodeAnalyzer(
         onSuccess: (String) -> Unit,
-        onFailure: (Exception) -> Unit,
-        onCropArea: ((QRCodeCropArea?) -> Unit)?,
+        onFailure: (Exception) -> Unit
     ): ImageAnalysis.Analyzer? {
         try {
-            return MLKitQRCodeAnalyzer(onSuccess, onFailure, onCropArea)
+            return MLKitQRCodeAnalyzer(onSuccess, onFailure)
         } catch (exception: Exception) {
             if (exception !is MlKitException || exception.errorCode != MlKitException.UNAVAILABLE) {
                 Log.e(TAG, "failed to create MLKitQRCodeAnalyzer", exception)
@@ -92,7 +90,4 @@ object Vendor : VendorInterface {
         }
     }
 
-    override fun supportsTrackSelection(): Boolean = false
-
-    override fun checkUpdateAsync(): UpdateInfo? = null
 }

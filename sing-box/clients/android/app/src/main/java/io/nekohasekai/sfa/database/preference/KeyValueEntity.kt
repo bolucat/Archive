@@ -22,16 +22,20 @@ class KeyValueEntity() : Parcelable {
         const val TYPE_STRING_SET = 5
 
         @JvmField
-        val CREATOR =
-            object : Parcelable.Creator<KeyValueEntity> {
-                override fun createFromParcel(parcel: Parcel): KeyValueEntity = KeyValueEntity(parcel)
-
-                override fun newArray(size: Int): Array<KeyValueEntity?> = arrayOfNulls(size)
+        val CREATOR = object : Parcelable.Creator<KeyValueEntity> {
+            override fun createFromParcel(parcel: Parcel): KeyValueEntity {
+                return KeyValueEntity(parcel)
             }
+
+            override fun newArray(size: Int): Array<KeyValueEntity?> {
+                return arrayOfNulls(size)
+            }
+        }
     }
 
     @androidx.room.Dao
     interface Dao {
+
         @Query("SELECT * FROM KeyValueEntity")
         fun all(): List<KeyValueEntity>
 
@@ -67,19 +71,16 @@ class KeyValueEntity() : Parcelable {
     val string: String?
         get() = if (valueType == TYPE_STRING) String(value) else null
     val stringSet: Set<String>?
-        get() =
-            if (valueType == TYPE_STRING_SET) {
-                val buffer = ByteBuffer.wrap(value)
-                val result = HashSet<String>()
-                while (buffer.hasRemaining()) {
-                    val chArr = ByteArray(buffer.int)
-                    buffer.get(chArr)
-                    result.add(String(chArr))
-                }
-                result
-            } else {
-                null
+        get() = if (valueType == TYPE_STRING_SET) {
+            val buffer = ByteBuffer.wrap(value)
+            val result = HashSet<String>()
+            while (buffer.hasRemaining()) {
+                val chArr = ByteArray(buffer.int)
+                buffer.get(chArr)
+                result.add(String(chArr))
             }
+            result
+        } else null
 
     @Ignore
     constructor(key: String) : this() {
@@ -125,14 +126,16 @@ class KeyValueEntity() : Parcelable {
     }
 
     @Suppress("IMPLICIT_CAST_TO_ANY")
-    override fun toString(): String = when (valueType) {
-        TYPE_BOOLEAN -> boolean
-        TYPE_FLOAT -> float
-        TYPE_LONG -> long
-        TYPE_STRING -> string
-        TYPE_STRING_SET -> stringSet
-        else -> null
-    }?.toString() ?: "null"
+    override fun toString(): String {
+        return when (valueType) {
+            TYPE_BOOLEAN -> boolean
+            TYPE_FLOAT -> float
+            TYPE_LONG -> long
+            TYPE_STRING -> string
+            TYPE_STRING_SET -> stringSet
+            else -> null
+        }?.toString() ?: "null"
+    }
 
     constructor(parcel: Parcel) : this() {
         key = parcel.readString()!!
@@ -146,5 +149,8 @@ class KeyValueEntity() : Parcelable {
         parcel.writeByteArray(value)
     }
 
-    override fun describeContents(): Int = 0
+    override fun describeContents(): Int {
+        return 0
+    }
+
 }

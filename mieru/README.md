@@ -48,6 +48,7 @@ The mieru proxy software suite consists of two parts, a client software called m
 1. [Client Installation & Configuration](./docs/client-install.md)
 1. [Client Installation & Configuration - OpenWrt](./docs/client-install-openwrt.md)
 1. [Use mieru in Clash Verge Rev](./docs/third-party/clash-verge-rev.md)
+1. [Traffic Pattern](./docs/traffic-pattern.md)
 1. [Maintenance & Troubleshooting](./docs/operation.md)
 1. [Security Guide](./docs/security.md)
 1. [Compilation](./docs/compile.md)

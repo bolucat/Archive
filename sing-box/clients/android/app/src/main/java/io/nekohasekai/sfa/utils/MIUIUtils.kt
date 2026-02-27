@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Process
 
 object MIUIUtils {
+
     val isMIUI by lazy {
         !getSystemProperty("ro.miui.ui.version.name").isNullOrBlank()
     }
@@ -26,4 +27,5 @@ object MIUIUtils {
         intent.putExtra("extra_pkgname", context.packageName)
         context.startActivity(intent)
     }
+
 }

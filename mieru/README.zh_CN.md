@@ -46,6 +46,7 @@ mieru 代理软件由称为 mieru【見える】的客户端软件和称为 mita
 1. [客户端安装与配置](./docs/client-install.zh_CN.md)
 1. [客户端安装与配置 - OpenWrt](./docs/client-install-openwrt.zh_CN.md)
 1. [在 Clash Verge Rev 中使用 mieru](./docs/third-party/clash-verge-rev.zh_CN.md)
+1. [流量模式](./docs/traffic-pattern.zh_CN.md)
 1. [运营维护与故障排查](./docs/operation.zh_CN.md)
 1. [翻墙安全指南](./docs/security.zh_CN.md)
 1. [编译](./docs/compile.zh_CN.md)

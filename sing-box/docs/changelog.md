@@ -2,7 +2,11 @@
 icon: material/alert-decagram
 ---
 
-#### 1.13.0
+#### 1.13.0-rc.7
+
+* Fixes and improvements
+
+Important changes since 1.12:
 
 * Add NaiveProxy outbound **1**
 * Add pre-match support for `auto_redirect` **2**
@@ -165,6 +169,10 @@ This update fixes missing padding extension for Chrome 120+ fingerprints.
 Also, documentation has been updated with a warning about uTLS fingerprinting vulnerabilities.
 uTLS is not recommended for censorship circumvention due to fundamental architectural limitations;
 use NaiveProxy instead for TLS fingerprint resistance.
+
+#### 1.12.23
+
+* Fixes and improvements
 
 #### 1.13.0-rc.5
 

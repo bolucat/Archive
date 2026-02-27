@@ -792,7 +792,7 @@ type NoncePattern struct {
 	// Strategy to manipulate nonce.
 	Type *NonceType `protobuf:"varint,1,opt,name=type,proto3,enum=mieru.appctl.NonceType,oneof" json:"type,omitempty"`
 	// If the pattern applies to each UDP packet,
-	// or only applies to UDP packets used to manage a session.
+	// or only applies to the first UDP packet.
 	ApplyToAllUDPPacket *bool `protobuf:"varint,2,opt,name=applyToAllUDPPacket,proto3,oneof" json:"applyToAllUDPPacket,omitempty"`
 	// Minimum number of bytes to manipulate.
 	// It is ignored when NonceType is NONCE_TYPE_RANDOM or NONCE_TYPE_FIXED.

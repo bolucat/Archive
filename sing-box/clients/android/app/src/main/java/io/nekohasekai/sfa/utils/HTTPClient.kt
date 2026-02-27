@@ -7,6 +7,7 @@ import java.io.Closeable
 import java.util.Locale
 
 class HTTPClient : Closeable {
+
     companion object {
         val userAgent by lazy {
             var userAgent = "SFA/"
@@ -39,4 +40,6 @@ class HTTPClient : Closeable {
     override fun close() {
         client.close()
     }
+
+
 }

@@ -1,0 +1,202 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "kotlin-parcelize"
+    id "com.google.devtools.ksp"
+    id "org.jetbrains.kotlin.plugin.compose"
+    id "com.github.triplet.play"
+}
+
+android {
+    namespace "io.nekohasekai.sfa"
+    compileSdk 36
+
+    ndkVersion "28.0.13004108"
+
+    def ndkPathFromEnv = System.getenv("ANDROID_NDK_HOME")
+    if (ndkPathFromEnv != null) {
+        ndkPath ndkPathFromEnv
+    }
+
+    ksp {
+        arg("room.incremental", "true")
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+
+    defaultConfig {
+        applicationId "io.nekohasekai.sfa"
+        minSdk 21
+        targetSdk 35
+        versionCode getVersionProps("VERSION_CODE").toInteger()
+        versionName getVersionProps("VERSION_NAME")
+        setProperty("archivesBaseName", "SFA-" + versionName)
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword getProps("KEYSTORE_PASS")
+            keyAlias getProps("ALIAS_NAME")
+            keyPassword getProps("ALIAS_PASS")
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (getProps("KEYSTORE_PASS") != "") {
+                signingConfig signingConfigs.release
+            }
+        }
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            signingConfig signingConfigs.release
+            vcsInfo.include false
+        }
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+    }
+
+    flavorDimensions "vendor"
+    productFlavors {
+        play {
+        }
+        other {
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            universalApk true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildFeatures {
+        viewBinding true
+        aidl true
+        compose true
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach {
+            outputFileName = (outputFileName as String).replace("-release", "")
+            outputFileName = (outputFileName as String).replace("-play", "")
+            outputFileName = (outputFileName as String).replace("-other", "-foss")
+        }
+    }
+}
+
+dependencies {
+    implementation(fileTree("libs"))
+
+    implementation "androidx.core:core-ktx:1.16.0"
+    implementation "androidx.appcompat:appcompat:1.7.1"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation "androidx.constraintlayout:constraintlayout:2.2.1"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.9.2"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.2"
+    implementation "androidx.navigation:navigation-fragment-ktx:2.9.3"
+    implementation "androidx.navigation:navigation-ui-ktx:2.9.3"
+    implementation "com.google.zxing:core:3.5.3"
+    implementation "androidx.room:room-runtime:2.7.2"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:1.3.0"
+    implementation "androidx.preference:preference-ktx:1.2.1"
+    implementation "androidx.camera:camera-view:1.4.2"
+    implementation "androidx.camera:camera-lifecycle:1.4.2"
+    implementation "androidx.camera:camera-camera2:1.4.2"
+    ksp "androidx.room:room-compiler:2.7.2"
+    implementation "androidx.work:work-runtime-ktx:2.10.3"
+    implementation "androidx.browser:browser:1.9.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+
+    // DO NOT UPDATE (minSdkVersion updated)
+    implementation "com.blacksquircle.ui:editorkit:2.2.0"
+    implementation "com.blacksquircle.ui:language-json:2.2.0"
+
+    implementation("com.android.tools.smali:smali-dexlib2:3.0.9") {
+        exclude group: "com.google.guava", module: "guava"
+    }
+    implementation "com.google.guava:guava:33.4.8-android"
+    playImplementation "com.google.android.play:app-update-ktx:2.1.0"
+    playImplementation "com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1"
+
+    def composeBom = platform('androidx.compose:compose-bom:2025.07.00')
+    implementation composeBom
+    androidTestImplementation composeBom
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'me.zhanghai.compose.preference:library:1.1.1'
+    implementation "androidx.navigation:navigation-compose:2.9.3"
+}
+
+def playCredentialsJSON = rootProject.file("service-account-credentials.json")
+if (playCredentialsJSON.exists()) {
+    play {
+        serviceAccountCredentials = playCredentialsJSON
+        defaultToAppBundles = true
+        def version = getVersionProps("VERSION_NAME")
+        if (version.contains("alpha") || version.contains("beta") || version.contains("rc")) {
+            track = "beta"
+        } else {
+            track = "production"
+        }
+    }
+}
+
+tasks.withType(KotlinCompile.class).configureEach {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
+
+def getProps(String propName) {
+    def propsInEnv = System.getenv("LOCAL_PROPERTIES")
+    if (propsInEnv != null) {
+        def props = new Properties()
+        props.load(new ByteArrayInputStream(Base64.decoder.decode(propsInEnv)))
+        String value = props[propName]
+        if (value != null) {
+            return value
+        }
+    }
+    def propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) {
+        def props = new Properties()
+        props.load(new FileInputStream(propsFile))
+        String value = props[propName]
+        if (value != null) {
+            return value
+        }
+    }
+    return ""
+}
+
+def getVersionProps(String propName) {
+    def propsFile = rootProject.file("version.properties")
+    if (propsFile.exists()) {
+        def props = new Properties()
+        props.load(new FileInputStream(propsFile))
+        String value = props[propName]
+        if (value != null) {
+            return value
+        }
+    }
+    return ""
+}

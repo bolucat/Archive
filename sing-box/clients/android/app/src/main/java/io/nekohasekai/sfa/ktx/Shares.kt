@@ -2,14 +2,21 @@ package io.nekohasekai.sfa.ktx
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
 import androidx.core.content.FileProvider
+import androidx.fragment.app.FragmentActivity
+import com.google.android.material.R
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.ProfileContent
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.ui.shared.QRCodeDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import androidx.appcompat.R as AppCompatR
 
 suspend fun Context.shareProfile(profile: Profile) {
     val content = ProfileContent()
@@ -39,25 +46,32 @@ suspend fun Context.shareProfile(profile: Profile) {
                 Intent(Intent.ACTION_SEND).setType("application/octet-stream")
                     .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     .putExtra(Intent.EXTRA_STREAM, uri),
-                getString(AppCompatR.string.abc_shareactionprovider_share_with),
-            ),
+                getString(R.string.abc_shareactionprovider_share_with)
+            )
         )
     }
 }
 
-suspend fun Context.shareProfileAsJson(profile: Profile) {
-    val configDirectory = File(cacheDir, "share").also { it.mkdirs() }
-    val jsonFile = File(configDirectory, "${profile.name}.json")
-    jsonFile.writeText(File(profile.typed.path).readText())
-    val uri = FileProvider.getUriForFile(this, "$packageName.cache", jsonFile)
-    withContext(Dispatchers.Main) {
-        startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND).setType("application/json")
-                    .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    .putExtra(Intent.EXTRA_STREAM, uri),
-                getString(AppCompatR.string.abc_shareactionprovider_share_with),
-            ),
-        )
+fun FragmentActivity.shareProfileURL(profile: Profile) {
+    val link = Libbox.generateRemoteProfileImportLink(
+        profile.name,
+        profile.typed.remoteURL
+    )
+    val imageSize = dp2px(256)
+    val color = getAttrColor(com.google.android.material.R.attr.colorPrimary)
+    val image = QRCodeWriter().encode(link, BarcodeFormat.QR_CODE, imageSize, imageSize, null)
+    val imageWidth = image.width
+    val imageHeight = image.height
+    val imageArray = IntArray(imageWidth * imageHeight)
+    for (y in 0 until imageHeight) {
+        val offset = y * imageWidth
+        for (x in 0 until imageWidth) {
+            imageArray[offset + x] = if (image.get(x, y)) color else Color.TRANSPARENT
+
+        }
     }
+    val bitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ARGB_8888)
+    bitmap.setPixels(imageArray, 0, imageSize, 0, 0, imageWidth, imageHeight)
+    val dialog = QRCodeDialog(bitmap)
+    dialog.show(supportFragmentManager, "share-profile-url")
 }

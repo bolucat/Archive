@@ -1,9 +1,7 @@
 package io.nekohasekai.sfa.database
 
-import android.os.Build
 import androidx.room.Room
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.bg.ProxyService
 import io.nekohasekai.sfa.bg.VPNService
 import io.nekohasekai.sfa.constant.Path
@@ -23,13 +21,14 @@ import org.json.JSONObject
 import java.io.File
 
 object Settings {
+
     @OptIn(DelicateCoroutinesApi::class)
     private val instance by lazy {
         Application.application.getDatabasePath(Path.SETTINGS_DATABASE_PATH).parentFile?.mkdirs()
         Room.databaseBuilder(
             Application.application,
             KeyValueDatabase::class.java,
-            Path.SETTINGS_DATABASE_PATH,
+            Path.SETTINGS_DATABASE_PATH
         ).allowMainThreadQueries()
             .fallbackToDestructiveMigration()
             .enableMultiInstanceInvalidation()
@@ -41,77 +40,27 @@ object Settings {
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)
 
-    var checkUpdateEnabled by dataStore.boolean(SettingsKey.CHECK_UPDATE_ENABLED) { false }
-    var updateCheckPrompted by dataStore.boolean(SettingsKey.UPDATE_CHECK_PROMPTED) { false }
-    var updateTrack by dataStore.string(SettingsKey.UPDATE_TRACK) {
-        val versionName = BuildConfig.VERSION_NAME.lowercase()
-        if (versionName.contains("-alpha") ||
-            versionName.contains("-beta") ||
-            versionName.contains("-rc")
-        ) {
-            "beta"
-        } else {
-            "stable"
-        }
-    }
-    var silentInstallEnabled by dataStore.boolean(SettingsKey.SILENT_INSTALL_ENABLED) { false }
-    var silentInstallMethod by dataStore.string(SettingsKey.SILENT_INSTALL_METHOD) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            "PACKAGE_INSTALLER"
-        } else {
-            "SHIZUKU"
-        }
-    }
-    var autoUpdateEnabled by dataStore.boolean(SettingsKey.AUTO_UPDATE_ENABLED) { false }
+    var checkUpdateEnabled by dataStore.boolean(SettingsKey.CHECK_UPDATE_ENABLED) { true }
+    var disableMemoryLimit by dataStore.boolean(SettingsKey.DISABLE_MEMORY_LIMIT)
     var dynamicNotification by dataStore.boolean(SettingsKey.DYNAMIC_NOTIFICATION) { true }
-    var disableDeprecatedWarnings by dataStore.boolean(SettingsKey.DISABLE_DEPRECATED_WARNINGS) { false }
+
 
     const val PER_APP_PROXY_DISABLED = 0
     const val PER_APP_PROXY_EXCLUDE = 1
     const val PER_APP_PROXY_INCLUDE = 2
 
-    var autoRedirect by dataStore.boolean(SettingsKey.AUTO_REDIRECT) { false }
     var perAppProxyEnabled by dataStore.boolean(SettingsKey.PER_APP_PROXY_ENABLED) { false }
     var perAppProxyMode by dataStore.int(SettingsKey.PER_APP_PROXY_MODE) { PER_APP_PROXY_EXCLUDE }
     var perAppProxyList by dataStore.stringSet(SettingsKey.PER_APP_PROXY_LIST) { emptySet() }
-    var perAppProxyManagedMode by dataStore.boolean(SettingsKey.PER_APP_PROXY_MANAGED_MODE) { false }
-    var perAppProxyManagedList by dataStore.stringSet(SettingsKey.PER_APP_PROXY_MANAGED_LIST) { emptySet() }
-
-    const val PACKAGE_QUERY_MODE_SHIZUKU = "SHIZUKU"
-    const val PACKAGE_QUERY_MODE_ROOT = "ROOT"
-    var perAppProxyPackageQueryMode by dataStore.string(SettingsKey.PER_APP_PROXY_PACKAGE_QUERY_MODE) { PACKAGE_QUERY_MODE_SHIZUKU }
-
-    fun getEffectivePerAppProxyMode(): Int = if (perAppProxyManagedMode) {
-        PER_APP_PROXY_EXCLUDE
-    } else {
-        perAppProxyMode
-    }
-
-    fun getEffectivePerAppProxyList(): Set<String> = if (perAppProxyManagedMode) {
-        perAppProxyManagedList
-    } else {
-        perAppProxyList
-    }
+    var perAppProxyUpdateOnChange by dataStore.int(SettingsKey.PER_APP_PROXY_UPDATE_ON_CHANGE) { PER_APP_PROXY_DISABLED }
 
     var systemProxyEnabled by dataStore.boolean(SettingsKey.SYSTEM_PROXY_ENABLED) { true }
 
-    var privilegeSettingsEnabled by dataStore.boolean(SettingsKey.PRIVILEGE_SETTINGS_ENABLED) { false }
-    var privilegeSettingsList by dataStore.stringSet(SettingsKey.PRIVILEGE_SETTINGS_LIST) { emptySet() }
-    var privilegeSettingsInterfaceRenameEnabled by dataStore.boolean(
-        SettingsKey.PRIVILEGE_SETTINGS_INTERFACE_RENAME_ENABLED,
-    ) { false }
-    var privilegeSettingsInterfacePrefix by dataStore.string(SettingsKey.PRIVILEGE_SETTINGS_INTERFACE_PREFIX) { "wlan" }
-
-    var dashboardItemOrder by dataStore.string(SettingsKey.DASHBOARD_ITEM_ORDER) { "" }
-    var dashboardDisabledItems by dataStore.stringSet(SettingsKey.DASHBOARD_DISABLED_ITEMS) { emptySet() }
-
-    var cachedUpdateInfo by dataStore.string(SettingsKey.CACHED_UPDATE_INFO) { "" }
-    var cachedApkPath by dataStore.string(SettingsKey.CACHED_APK_PATH) { "" }
-    var lastShownUpdateVersion by dataStore.int(SettingsKey.LAST_SHOWN_UPDATE_VERSION) { 0 }
-
-    fun serviceClass(): Class<*> = when (serviceMode) {
-        ServiceMode.VPN -> VPNService::class.java
-        else -> ProxyService::class.java
+    fun serviceClass(): Class<*> {
+        return when (serviceMode) {
+            ServiceMode.VPN -> VPNService::class.java
+            else -> ProxyService::class.java
+        }
     }
 
     suspend fun rebuildServiceMode(): Boolean {
@@ -143,4 +92,5 @@ object Settings {
         }
         return false
     }
+
 }

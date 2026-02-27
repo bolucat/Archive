@@ -13,29 +13,27 @@ import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
 import android.os.PowerManager
-import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
 import go.Seq
+import io.nekohasekai.libbox.BoxService
 import io.nekohasekai.libbox.CommandServer
 import io.nekohasekai.libbox.CommandServerHandler
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.Notification
-import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
-import io.nekohasekai.sfa.vendor.Vendor
+import io.nekohasekai.sfa.ui.MainActivity
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -44,26 +42,26 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
+class BoxService(
+    private val service: Service, private val platformInterface: PlatformInterface
+) : CommandServerHandler {
+
     companion object {
-        private const val PROFILE_UPDATE_INTERVAL = 15L * 60 * 1000 // 15 minutes in milliseconds
-        private const val TAG = "BoxService"
 
         fun start() {
-            val intent =
-                runBlocking {
-                    withContext(Dispatchers.IO) {
-                        Intent(Application.application, Settings.serviceClass())
-                    }
+            val intent = runBlocking {
+                withContext(Dispatchers.IO) {
+                    Intent(Application.application, Settings.serviceClass())
                 }
+            }
             ContextCompat.startForegroundService(Application.application, intent)
         }
 
         fun stop() {
             Application.application.sendBroadcast(
                 Intent(Action.SERVICE_CLOSE).setPackage(
-                    Application.application.packageName,
-                ),
+                    Application.application.packageName
+                )
             )
         }
     }
@@ -73,34 +71,33 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private val status = MutableLiveData(Status.Stopped)
     private val binder = ServiceBinder(status)
     private val notification = ServiceNotification(status, service)
-    private lateinit var commandServer: CommandServer
-
+    private var boxService: BoxService? = null
+    private var commandServer: CommandServer? = null
     private var receiverRegistered = false
-    private val receiver =
-        object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                when (intent.action) {
-                    Action.SERVICE_CLOSE -> {
-                        stopService()
-                    }
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Action.SERVICE_CLOSE -> {
+                    stopService()
+                }
 
-                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            serviceUpdateIdleMode()
-                        }
+
+                PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        serviceUpdateIdleMode()
                     }
                 }
             }
         }
+    }
 
     private fun startCommandServer() {
-        val commandServer = CommandServer(this, platformInterface)
+        val commandServer = CommandServer(this, 300)
         commandServer.start()
         this.commandServer = commandServer
     }
 
     private var lastProfileName = ""
-
     private suspend fun startService() {
         try {
             withContext(Dispatchers.Main) {
@@ -131,43 +128,32 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             }
 
             DefaultNetworkMonitor.start()
+            Libbox.setMemoryLimit(!Settings.disableMemoryLimit)
 
-            try {
-                commandServer.startOrReloadService(
-                    content,
-                    OverrideOptions().apply {
-                        autoRedirect = Settings.autoRedirect
-                        if (Vendor.isPerAppProxyAvailable() && Settings.perAppProxyEnabled) {
-                            val appList = Settings.getEffectivePerAppProxyList()
-                            if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                                includePackage =
-                                    PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                            } else {
-                                excludePackage =
-                                    PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                            }
-                        }
-                    },
-                )
+            val newService = try {
+                Libbox.newService(content, platformInterface)
             } catch (e: Exception) {
                 stopAndAlert(Alert.CreateService, e.message)
                 return
             }
 
-            if (commandServer.needWIFIState()) {
-                val wifiPermission =
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                        android.Manifest.permission.ACCESS_FINE_LOCATION
-                    } else {
-                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                    }
+            newService.start()
+
+            if (newService.needWIFIState()) {
+                val wifiPermission = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                    android.Manifest.permission.ACCESS_FINE_LOCATION
+                } else {
+                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                }
                 if (!service.hasPermission(wifiPermission)) {
-                    closeService()
+                    newService.close()
                     stopAndAlert(Alert.RequestLocationPermission)
                     return
                 }
             }
 
+            boxService = newService
+            commandServer?.setService(boxService)
             status.postValue(Status.Started)
             withContext(Dispatchers.Main) {
                 notification.show(lastProfileName, R.string.status_started)
@@ -179,7 +165,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    override fun serviceStop() {
+    override fun serviceReload() {
         notification.close()
         status.postValue(Status.Starting)
         val pfd = fileDescriptor
@@ -187,70 +173,27 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             pfd.close()
             fileDescriptor = null
         }
-        closeService()
-    }
-
-    override fun serviceReload() {
-        runBlocking {
-            serviceReload0()
-        }
-    }
-
-    suspend fun serviceReload0() {
-        val selectedProfileId = Settings.selectedProfile
-        if (selectedProfileId == -1L) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
-
-        val profile = ProfileManager.get(selectedProfileId)
-        if (profile == null) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
-
-        val content = File(profile.typed.path).readText()
-        if (content.isBlank()) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
-        lastProfileName = profile.name
-        try {
-            commandServer.startOrReloadService(
-                content,
-                OverrideOptions().apply {
-                    autoRedirect = Settings.autoRedirect
-                    if (Vendor.isPerAppProxyAvailable() && Settings.perAppProxyEnabled) {
-                        val appList = Settings.getEffectivePerAppProxyList()
-                        if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                            includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                        } else {
-                            excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                        }
-                    }
-                },
-            )
-        } catch (e: Exception) {
-            stopAndAlert(Alert.CreateService, e.message)
-            return
-        }
-
-        if (commandServer.needWIFIState()) {
-            val wifiPermission =
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                    android.Manifest.permission.ACCESS_FINE_LOCATION
-                } else {
-                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                }
-            if (!service.hasPermission(wifiPermission)) {
-                closeService()
-                stopAndAlert(Alert.RequestLocationPermission)
-                return
+        boxService?.apply {
+            runCatching {
+                close()
+            }.onFailure {
+                writeLog("service: error when closing: $it")
             }
+            Seq.destroyRef(refnum)
+        }
+        commandServer?.setService(null)
+        commandServer?.resetLog()
+        boxService = null
+        runBlocking {
+            startService()
         }
     }
 
-    override fun getSystemProxyStatus(): SystemProxyStatus? {
+    override fun postServiceClose() {
+        // Not used on Android
+    }
+
+    override fun getSystemProxyStatus(): SystemProxyStatus {
         val status = SystemProxyStatus()
         if (service is VPNService) {
             status.available = service.systemProxyAvailable
@@ -266,9 +209,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     @RequiresApi(Build.VERSION_CODES.M)
     private fun serviceUpdateIdleMode() {
         if (Application.powerManager.isDeviceIdleMode) {
-            commandServer.pause()
+            boxService?.pause()
         } else {
-            commandServer.wake()
+            boxService?.wake()
         }
     }
 
@@ -287,25 +230,28 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 pfd.close()
                 fileDescriptor = null
             }
-            DefaultNetworkMonitor.stop()
-            closeService()
-            commandServer.apply {
-                close()
-//                Seq.destroyRef(refnum)
+            boxService?.apply {
+                runCatching {
+                    close()
+                }.onFailure {
+                    writeLog("service: error when closing: $it")
+                }
+                Seq.destroyRef(refnum)
             }
+            commandServer?.setService(null)
+            boxService = null
+            DefaultNetworkMonitor.stop()
+
+            commandServer?.apply {
+                close()
+                Seq.destroyRef(refnum)
+            }
+            commandServer = null
             Settings.startedByUser = false
             withContext(Dispatchers.Main) {
                 status.value = Status.Stopped
                 service.stopSelf()
             }
-        }
-    }
-
-    private fun closeService() {
-        runCatching {
-            commandServer.closeService()
-        }.onFailure {
-            commandServer.setError("android: close service: ${it.message}")
         }
     }
 
@@ -331,17 +277,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         status.value = Status.Starting
 
         if (!receiverRegistered) {
-            ContextCompat.registerReceiver(
-                service,
-                receiver,
-                IntentFilter().apply {
-                    addAction(Action.SERVICE_CLOSE)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
-                    }
-                },
-                ContextCompat.RECEIVER_NOT_EXPORTED,
-            )
+            ContextCompat.registerReceiver(service, receiver, IntentFilter().apply {
+                addAction(Action.SERVICE_CLOSE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+                }
+            }, ContextCompat.RECEIVER_NOT_EXPORTED)
             receiverRegistered = true
         }
 
@@ -358,7 +299,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         return Service.START_NOT_STICKY
     }
 
-    internal fun onBind(): IBinder = binder
+    internal fun onBind(): IBinder {
+        return binder
+    }
 
     internal fun onDestroy() {
         binder.close()
@@ -368,13 +311,20 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         stopService()
     }
 
+    internal fun writeLog(message: String) {
+        commandServer?.writeMessage(message)
+    }
+
     internal fun sendNotification(notification: Notification) {
         val builder =
             NotificationCompat.Builder(service, notification.identifier).setShowWhen(false)
-                .setContentTitle(notification.title).setContentText(notification.body)
-                .setOnlyAlertOnce(true).setSmallIcon(R.drawable.ic_menu)
+                .setContentTitle(notification.title)
+                .setContentText(notification.body)
+                .setOnlyAlertOnce(true)
+                .setSmallIcon(R.drawable.ic_menu)
                 .setCategory(NotificationCompat.CATEGORY_EVENT)
-                .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
         if (!notification.subtitle.isNullOrBlank()) {
             builder.setContentInfo(notification.subtitle)
         }
@@ -384,14 +334,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                     service,
                     0,
                     Intent(
-                        service,
-                        MainActivity::class.java,
+                        service, MainActivity::class.java
                     ).apply {
                         setAction(Action.OPEN_URL).setData(Uri.parse(notification.openURL))
                         setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                     },
                     ServiceNotification.flags,
-                ),
+                )
             )
         }
         GlobalScope.launch(Dispatchers.Main) {
@@ -400,15 +349,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                     NotificationChannel(
                         notification.identifier,
                         notification.typeName,
-                        NotificationManager.IMPORTANCE_HIGH,
-                    ),
+                        NotificationManager.IMPORTANCE_HIGH
+                    )
                 )
             }
             Application.notification.notify(notification.typeID, builder.build())
         }
-    }
-
-    override fun writeDebugMessage(message: String?) {
-        Log.d("sing-box", message!!)
     }
 }
