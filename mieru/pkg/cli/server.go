@@ -126,6 +126,18 @@ func RegisterServerCommands() {
 		serverExportTrafficPatternFunc,
 	)
 	RegisterCallback(
+		[]string{"", "explain", "traffic-pattern"},
+		func(s []string) error {
+			if len(s) < 4 {
+				return fmt.Errorf("usage: mita explain traffic-pattern <STRING>. No string is provided")
+			} else if len(s) > 4 {
+				return fmt.Errorf("usage: mita explain traffic-pattern <STRING>. More than 1 string is provided")
+			}
+			return nil
+		},
+		explainTrafficPatternFunc,
+	)
+	RegisterCallback(
 		[]string{"", "delete", "user"},
 		func(s []string) error {
 			if len(s) < 4 {
@@ -273,6 +285,10 @@ var serverHelpFunc = func(s []string) error {
 			{
 				cmd:  "export traffic-pattern",
 				help: []string{"Export traffic pattern as an encoded base64 string."},
+			},
+			{
+				cmd:  "explain traffic-pattern <STRING>",
+				help: []string{"Decode and explain a traffic pattern from an encoded base64 string."},
 			},
 			{
 				cmd:  "delete user <USER_NAME>",

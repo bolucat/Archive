@@ -18,12 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-class ServiceConnection(
-    private val context: Context,
-    callback: Callback,
-    private val register: Boolean = true,
-) : ServiceConnection {
-
+class ServiceConnection(private val context: Context, callback: Callback, private val register: Boolean = true) : ServiceConnection {
     companion object {
         private const val TAG = "ServiceConnection"
     }
@@ -34,11 +29,12 @@ class ServiceConnection(
     val status get() = service?.status?.let { Status.values()[it] } ?: Status.Stopped
 
     fun connect() {
-        val intent = runBlocking {
-            withContext(Dispatchers.IO) {
-                Intent(context, Settings.serviceClass()).setAction(Action.SERVICE)
+        val intent =
+            runBlocking {
+                withContext(Dispatchers.IO) {
+                    Intent(context, Settings.serviceClass()).setAction(Action.SERVICE)
+                }
             }
-        }
         context.bindService(intent, this, AppCompatActivity.BIND_AUTO_CREATE)
         Log.d(TAG, "request connect")
     }
@@ -56,11 +52,12 @@ class ServiceConnection(
             context.unbindService(this)
         } catch (_: IllegalArgumentException) {
         }
-        val intent = runBlocking {
-            withContext(Dispatchers.IO) {
-                Intent(context, Settings.serviceClass()).setAction(Action.SERVICE)
+        val intent =
+            runBlocking {
+                withContext(Dispatchers.IO) {
+                    Intent(context, Settings.serviceClass()).setAction(Action.SERVICE)
+                }
             }
-        }
         context.bindService(intent, this, AppCompatActivity.BIND_AUTO_CREATE)
         Log.d(TAG, "request reconnect")
     }
@@ -93,7 +90,9 @@ class ServiceConnection(
 
     interface Callback {
         fun onServiceStatusChanged(status: Status)
-        fun onServiceAlert(type: Alert, message: String?) {}
+
+        fun onServiceAlert(type: Alert, message: String?) {
+        }
     }
 
     class ServiceCallback(private val callback: Callback) : IServiceCallback.Stub() {

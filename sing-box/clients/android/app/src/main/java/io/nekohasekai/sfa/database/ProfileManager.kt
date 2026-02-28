@@ -9,7 +9,6 @@ import kotlinx.coroutines.launch
 
 @Suppress("RedundantSuspendModifier")
 object ProfileManager {
-
     private val callbacks = mutableListOf<() -> Unit>()
 
     fun registerCallback(callback: () -> Unit) {
@@ -27,29 +26,26 @@ object ProfileManager {
             .databaseBuilder(
                 Application.application,
                 ProfileDatabase::class.java,
-                Path.PROFILES_DATABASE_PATH
+                Path.PROFILES_DATABASE_PATH,
             )
-            .fallbackToDestructiveMigration()
+            .addMigrations(ProfileDatabase.MIGRATION_1_2)
+            .fallbackToDestructiveMigrationOnDowngrade()
             .enableMultiInstanceInvalidation()
             .setQueryExecutor { GlobalScope.launch { it.run() } }
             .build()
     }
 
-    suspend fun nextOrder(): Long {
-        return instance.profileDao().nextOrder() ?: 0
-    }
+    suspend fun nextOrder(): Long = instance.profileDao().nextOrder() ?: 0
 
-    suspend fun nextFileID(): Long {
-        return instance.profileDao().nextFileID() ?: 1
-    }
+    suspend fun nextFileID(): Long = instance.profileDao().nextFileID() ?: 1
 
+    suspend fun get(id: Long): Profile? = instance.profileDao().get(id)
 
-    suspend fun get(id: Long): Profile? {
-        return instance.profileDao().get(id)
-    }
-
-    suspend fun create(profile: Profile): Profile {
+    suspend fun create(profile: Profile, andSelect: Boolean = false): Profile {
         profile.id = instance.profileDao().insert(profile)
+        if (andSelect) {
+            Settings.selectedProfile = profile.id
+        }
         for (callback in callbacks.toList()) {
             callback()
         }
@@ -96,8 +92,5 @@ object ProfileManager {
         }
     }
 
-    suspend fun list(): List<Profile> {
-        return instance.profileDao().list()
-    }
-
+    suspend fun list(): List<Profile> = instance.profileDao().list()
 }

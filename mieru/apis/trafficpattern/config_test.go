@@ -265,6 +265,16 @@ func TestEncodeDecode(t *testing.T) {
 	}
 }
 
+func TestDecodeEmptyString(t *testing.T) {
+	trafficPattern, err := Decode("")
+	if err != nil {
+		t.Fatalf("Failed to decode empty string: %v", err)
+	}
+	if trafficPattern == nil {
+		t.Errorf("Returned nil traffic pattern")
+	}
+}
+
 func TestValidate(t *testing.T) {
 	cases := []struct {
 		name          string

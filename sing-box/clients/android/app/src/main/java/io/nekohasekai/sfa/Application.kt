@@ -16,6 +16,11 @@ import io.nekohasekai.libbox.SetupOptions
 import io.nekohasekai.sfa.bg.AppChangeReceiver
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Bugs
+import io.nekohasekai.sfa.utils.AppLifecycleObserver
+import io.nekohasekai.sfa.utils.HookModuleUpdateNotifier
+import io.nekohasekai.sfa.utils.HookStatusClient
+import io.nekohasekai.sfa.utils.PrivilegeSettingsClient
+import io.nekohasekai.sfa.vendor.Vendor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -24,7 +29,6 @@ import java.util.Locale
 import io.nekohasekai.sfa.Application as BoxApplication
 
 class Application : Application() {
-
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
         application = this
@@ -32,21 +36,30 @@ class Application : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppLifecycleObserver.register(this)
 
-        Seq.setContext(this)
+//        Seq.setContext(this)
         Libbox.setLocale(Locale.getDefault().toLanguageTag().replace("-", "_"))
+        HookStatusClient.register(this)
+        PrivilegeSettingsClient.register(this)
 
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
             initialize()
             UpdateProfileWork.reconfigureUpdater()
+            HookModuleUpdateNotifier.sync(this@Application)
         }
 
-        registerReceiver(AppChangeReceiver(), IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED)
-            addDataScheme("package")
-        })
-
+        if (Vendor.isPerAppProxyAvailable()) {
+            registerReceiver(
+                AppChangeReceiver(),
+                IntentFilter().apply {
+                    addAction(Intent.ACTION_PACKAGE_ADDED)
+                    addAction(Intent.ACTION_PACKAGE_REPLACED)
+                    addDataScheme("package")
+                },
+            )
+        }
     }
 
     private fun initialize() {
@@ -56,12 +69,16 @@ class Application : Application() {
         workingDir.mkdirs()
         val tempDir = cacheDir
         tempDir.mkdirs()
-        Libbox.setup(SetupOptions().also {
-            it.basePath = baseDir.path
-            it.workingPath = workingDir.path
-            it.tempPath = tempDir.path
-            it.fixAndroidStack = Bugs.fixAndroidStack
-        })
+        Libbox.setup(
+            SetupOptions().also {
+                it.basePath = baseDir.path
+                it.workingPath = workingDir.path
+                it.tempPath = tempDir.path
+                it.fixAndroidStack = Bugs.fixAndroidStack
+                it.logMaxLines = 3000
+                it.debug = BuildConfig.DEBUG
+            },
+        )
         Libbox.redirectStderr(File(workingDir, "stderr.log").path)
     }
 
@@ -75,5 +92,4 @@ class Application : Application() {
         val wifiManager by lazy { application.getSystemService<WifiManager>()!! }
         val clipboard by lazy { application.getSystemService<ClipboardManager>()!! }
     }
-
 }

@@ -137,6 +137,18 @@ func RegisterClientCommands() {
 		clientExportTrafficPatternFunc,
 	)
 	RegisterCallback(
+		[]string{"", "explain", "traffic-pattern"},
+		func(s []string) error {
+			if len(s) < 4 {
+				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. No string is provided")
+			} else if len(s) > 4 {
+				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. More than 1 string is provided")
+			}
+			return nil
+		},
+		explainTrafficPatternFunc,
+	)
+	RegisterCallback(
 		[]string{"", "import", "config"},
 		func(s []string) error {
 			if len(s) < 4 {
@@ -328,6 +340,10 @@ var clientHelpFunc = func(s []string) error {
 			{
 				cmd:  "export traffic-pattern",
 				help: []string{"Export traffic pattern as an encoded base64 string."},
+			},
+			{
+				cmd:  "explain traffic-pattern <STRING>",
+				help: []string{"Decode and explain a traffic pattern from an encoded base64 string."},
 			},
 			{
 				cmd:  "delete profile <PROFILE_NAME>",

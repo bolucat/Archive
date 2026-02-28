@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class BootReceiver : BroadcastReceiver() {
-
     @OptIn(DelicateCoroutinesApi::class)
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
@@ -28,5 +27,4 @@ class BootReceiver : BroadcastReceiver() {
             }
         }
     }
-
 }

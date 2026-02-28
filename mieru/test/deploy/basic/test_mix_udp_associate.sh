@@ -38,8 +38,10 @@ echo "mieru server config:"
 ./mita describe config
 echo "mieru server effective traffic pattern:"
 ./mita describe effective-traffic-pattern
+encoded_server_traffic_pattern=$(./mita export traffic-pattern)
 echo "mieru server encoded traffic pattern:"
-./mita export traffic-pattern
+echo ${encoded_server_traffic_pattern}
+./mita explain traffic-pattern $(echo ${encoded_server_traffic_pattern})
 sleep 1
 
 # Start mieru server proxy.
@@ -76,8 +78,10 @@ echo "mieru client config after import:"
 ./mieru describe config
 echo "mieru client effective traffic pattern:"
 ./mieru describe effective-traffic-pattern
+encoded_client_traffic_pattern=$(./mieru export traffic-pattern)
 echo "mieru client encoded traffic pattern:"
-./mieru export traffic-pattern
+echo ${encoded_client_traffic_pattern}
+./mieru explain traffic-pattern $(echo ${encoded_client_traffic_pattern})
 sleep 1
 
 # Start mieru client.

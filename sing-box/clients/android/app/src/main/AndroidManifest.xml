@@ -21,6 +21,10 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- For saving images to gallery on older Android versions -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
@@ -29,6 +33,7 @@
         android:name=".Application"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:description="@string/xposed_description"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -36,30 +41,23 @@
         android:theme="@style/AppTheme"
         tools:targetApi="31">
 
-        <meta-data
-            android:name="android.app.shortcuts"
-            android:resource="@xml/shortcuts" />
-
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".compose.MainActivity"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:launchMode="singleTask">
-
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
-
-            <meta-data
-                android:name="firebase_crashlytics_collection_enabled"
-                android:value="false" />
-
+            android:launchMode="singleTask"
+            android:theme="@style/AppTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
 
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -93,50 +91,24 @@
                 <data android:pathPattern="/.*\\.bpf" />
             </intent-filter>
 
+            <intent-filter android:priority="998">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.OPENABLE" />
+
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
 
         </activity>
-
-        <activity
-            android:name=".ui.ShortcutActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:label="@string/quick_toggle"
-            android:launchMode="singleTask"
-            android:taskAffinity=""
-            android:theme="@style/AppTheme.Translucent">
-            <intent-filter>
-                <action android:name="android.intent.action.CREATE_SHORTCUT" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profile.NewProfileActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profile.EditProfileActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profile.EditProfileContentActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profileoverride.ProfileOverrideActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profileoverride.PerAppProxyActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.debug.DebugActivity"
-            android:exported="false" />
-        <activity
-            android:name="io.nekohasekai.sfa.ui.debug.VPNScanActivity"
-            android:exported="false" />
-
-        <activity
-            android:name="io.nekohasekai.sfa.ui.profile.QRScanActivity"
-            android:exported="false" />
-
         <service
             android:name=".bg.TileService"
             android:directBootAware="true"
@@ -181,6 +153,11 @@
         </receiver>
 
         <provider
+            android:name="io.github.libxposed.service.XposedProvider"
+            android:authorities="${applicationId}.XposedService"
+            android:exported="true" />
+
+        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.cache"
             android:exported="false"
@@ -188,6 +165,17 @@
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/cache_paths" />
+        </provider>
+
+        <provider
+            android:name=".WorkingDirectoryProvider"
+            android:authorities="${applicationId}.workingdir"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
         </provider>
 
     </application>

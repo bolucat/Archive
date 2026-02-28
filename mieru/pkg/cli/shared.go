@@ -21,7 +21,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/enfein/mieru/v3/apis/trafficpattern"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
+	"github.com/enfein/mieru/v3/pkg/common"
 	"github.com/enfein/mieru/v3/pkg/log"
 	"github.com/enfein/mieru/v3/pkg/mathext"
 	"github.com/enfein/mieru/v3/pkg/version"
@@ -38,6 +40,19 @@ var describeBuildFunc = func(_ []string) error {
 		return fmt.Errorf("build info is unavailable")
 	}
 	log.Infof(info.String())
+	return nil
+}
+
+var explainTrafficPatternFunc = func(s []string) error {
+	pattern, err := trafficpattern.Decode(s[3])
+	if err != nil {
+		return err
+	}
+	jsonBytes, err := common.MarshalJSON(pattern)
+	if err != nil {
+		return fmt.Errorf("common.MarshalJSON() failed: %w", err)
+	}
+	log.Infof("%s", string(jsonBytes))
 	return nil
 }
 
