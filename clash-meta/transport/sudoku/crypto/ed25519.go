@@ -80,8 +80,8 @@ func RecoverPublicKey(keyHex string) (*edwards25519.Point, error) {
 			return nil, fmt.Errorf("invalid scalar: %w", err)
 		}
 		return new(edwards25519.Point).ScalarBaseMult(x), nil
-
-	} else if len(keyBytes) == 64 {
+	}
+	if len(keyBytes) == 64 {
 		// Split Key r || k
 		rBytes := keyBytes[:32]
 		kBytes := keyBytes[32:]

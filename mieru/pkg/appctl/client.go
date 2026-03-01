@@ -337,26 +337,35 @@ func ApplyJSONClientConfig(path string) error {
 	return applyClientConfig(c)
 }
 
-// ApplyURLClientConfig applies user provided client config URL.
-func ApplyURLClientConfig(u string) error {
+// ParseURLClientConfig parses a client config URL and returns the config
+// without applying it.
+func ParseURLClientConfig(u string) (*pb.ClientConfig, error) {
 	if strings.HasPrefix(u, "mieru://") {
 		c, err := URLToClientConfig(u)
 		if err != nil {
-			return fmt.Errorf("URLToClientConfig() failed: %w", err)
+			return nil, fmt.Errorf("URLToClientConfig() failed: %w", err)
 		}
-		return applyClientConfig(c)
+		return c, nil
 	} else if strings.HasPrefix(u, "mierus://") {
 		p, err := URLToClientProfile(u)
 		if err != nil {
-			return fmt.Errorf("URLToClientProfile() failed: %w", err)
+			return nil, fmt.Errorf("URLToClientProfile() failed: %w", err)
 		}
-		c := &pb.ClientConfig{
+		return &pb.ClientConfig{
 			Profiles: []*pb.ClientProfile{p},
-		}
-		return applyClientConfig(c)
+		}, nil
 	} else {
-		return fmt.Errorf("unrecognized URL scheme. URL must begin with mieru:// or mierus://")
+		return nil, fmt.Errorf("unrecognized URL scheme. URL must begin with mieru:// or mierus://")
 	}
+}
+
+// ApplyURLClientConfig applies user provided client config URL.
+func ApplyURLClientConfig(u string) error {
+	c, err := ParseURLClientConfig(u)
+	if err != nil {
+		return err
+	}
+	return applyClientConfig(c)
 }
 
 // DeleteClientConfigProfile deletes a profile stored in client config.

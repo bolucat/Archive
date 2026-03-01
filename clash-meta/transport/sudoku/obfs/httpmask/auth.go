@@ -6,9 +6,10 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
-	"github.com/metacubex/http"
 	"strings"
 	"time"
+
+	"github.com/metacubex/http"
 )
 
 const (

@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/metacubex/mihomo/component/ca"
@@ -32,6 +33,7 @@ const (
 	TunnelModeStream TunnelMode = "stream"
 	TunnelModePoll   TunnelMode = "poll"
 	TunnelModeAuto   TunnelMode = "auto"
+	TunnelModeWS     TunnelMode = "ws"
 )
 
 func normalizeTunnelMode(mode string) TunnelMode {
@@ -44,6 +46,8 @@ func normalizeTunnelMode(mode string) TunnelMode {
 		return TunnelModePoll
 	case string(TunnelModeAuto):
 		return TunnelModeAuto
+	case string(TunnelModeWS):
+		return TunnelModeWS
 	default:
 		// Be conservative: unknown => legacy
 		return TunnelModeLegacy
@@ -88,7 +92,6 @@ type TunnelClientOptions struct {
 }
 
 type TunnelClient struct {
-	client    *http.Client
 	transport *http.Transport
 	target    httpClientTarget
 }
@@ -105,7 +108,6 @@ func NewTunnelClient(serverAddress string, opts TunnelClientOptions) (*TunnelCli
 	}
 
 	return &TunnelClient{
-		client:    &http.Client{Transport: transport},
 		transport: transport,
 		target:    target,
 	}, nil
@@ -119,7 +121,7 @@ func (c *TunnelClient) CloseIdleConnections() {
 }
 
 func (c *TunnelClient) DialTunnel(ctx context.Context, opts TunnelDialOptions) (net.Conn, error) {
-	if c == nil || c.client == nil {
+	if c == nil || c.transport == nil {
 		return nil, fmt.Errorf("nil tunnel client")
 	}
 	tm := normalizeTunnelMode(opts.Mode)
@@ -127,25 +129,31 @@ func (c *TunnelClient) DialTunnel(ctx context.Context, opts TunnelDialOptions) (
 		return nil, fmt.Errorf("legacy mode does not use http tunnel")
 	}
 
+	// Create a per-dial client while sharing the underlying Transport for connection reuse.
+	// This matches upstream behavior and avoids potential client-level concurrency pitfalls.
+	client := &http.Client{Transport: c.transport}
+
 	switch tm {
 	case TunnelModeStream:
-		return dialStreamWithClient(ctx, c.client, c.target, opts)
+		return dialStreamWithClient(ctx, client, c.target, opts)
 	case TunnelModePoll:
-		return dialPollWithClient(ctx, c.client, c.target, opts)
+		return dialPollWithClient(ctx, client, c.target, opts)
+	case TunnelModeWS:
+		return nil, fmt.Errorf("ws mode does not support TunnelClient reuse")
 	case TunnelModeAuto:
 		streamCtx, cancelX := context.WithTimeout(ctx, 3*time.Second)
-		c1, errX := dialStreamWithClient(streamCtx, c.client, c.target, opts)
+		c1, errX := dialStreamWithClient(streamCtx, client, c.target, opts)
 		cancelX()
 		if errX == nil {
 			return c1, nil
 		}
-		c2, errP := dialPollWithClient(ctx, c.client, c.target, opts)
+		c2, errP := dialPollWithClient(ctx, client, c.target, opts)
 		if errP == nil {
 			return c2, nil
 		}
 		return nil, fmt.Errorf("auto tunnel failed: stream: %v; poll: %w", errX, errP)
 	default:
-		return dialStreamWithClient(ctx, c.client, c.target, opts)
+		return dialStreamWithClient(ctx, client, c.target, opts)
 	}
 }
 
@@ -166,6 +174,8 @@ func DialTunnel(ctx context.Context, serverAddress string, opts TunnelDialOption
 		return dialStreamFn(ctx, serverAddress, opts)
 	case TunnelModePoll:
 		return dialPollFn(ctx, serverAddress, opts)
+	case TunnelModeWS:
+		return dialWS(ctx, serverAddress, opts)
 	case TunnelModeAuto:
 		// "stream" can hang on some CDNs that buffer uploads until request body completes.
 		// Keep it on a short leash so we can fall back to poll within the caller's deadline.
@@ -306,6 +316,36 @@ type sessionDialInfo struct {
 	auth       *tunnelAuth
 }
 
+type httpStatusError struct {
+	code   int
+	status string
+}
+
+func (e *httpStatusError) Error() string {
+	if e == nil {
+		return "bad status"
+	}
+	if e.status != "" {
+		return "bad status: " + e.status
+	}
+	return "bad status"
+}
+
+func isRetryableStatusCode(code int) bool {
+	return code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500
+}
+
+type idleConnCloser interface{ CloseIdleConnections() }
+
+func closeIdleConnections(client *http.Client) {
+	if client == nil || client.Transport == nil {
+		return
+	}
+	if c, ok := client.Transport.(idleConnCloser); ok {
+		c.CloseIdleConnections()
+	}
+}
+
 func dialSessionWithClient(ctx context.Context, client *http.Client, target httpClientTarget, mode TunnelMode, opts TunnelDialOptions) (*sessionDialInfo, error) {
 	if client == nil {
 		return nil, fmt.Errorf("nil http client")
@@ -313,25 +353,61 @@ func dialSessionWithClient(ctx context.Context, client *http.Client, target http
 
 	auth := newTunnelAuth(opts.AuthKey, 0)
 	authorizeURL := (&url.URL{Scheme: target.scheme, Host: target.urlHost, Path: joinPathRoot(opts.PathRoot, "/session")}).String()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, authorizeURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Host = target.headerHost
-	applyTunnelHeaders(req.Header, target.headerHost, mode)
-	applyTunnelAuth(req, auth, mode, http.MethodGet, "/session")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
-	_ = resp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s authorize bad status: %s (%s)", mode, resp.Status, strings.TrimSpace(string(bodyBytes)))
+	var bodyBytes []byte
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, authorizeURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Host = target.headerHost
+		applyTunnelHeaders(req.Header, target.headerHost, mode)
+		applyTunnelAuth(req, auth, mode, http.MethodGet, "/session")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			// Transient failure on reused keep-alive conns (multiplex=auto). Retry a few times.
+			if attempt < 2 && (isDialError(err) || isRetryableRequestError(err)) {
+				closeIdleConnections(client)
+				select {
+				case <-time.After(25 * time.Millisecond):
+					continue
+				case <-ctx.Done():
+					return nil, err
+				}
+			}
+			return nil, err
+		}
+
+		bodyBytes, err = io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+		_ = resp.Body.Close()
+		if err != nil {
+			if attempt < 2 && isRetryableRequestError(err) {
+				closeIdleConnections(client)
+				select {
+				case <-time.After(25 * time.Millisecond):
+					continue
+				case <-ctx.Done():
+					return nil, err
+				}
+			}
+			return nil, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			// Retry some transient proxy/CDN errors.
+			if attempt < 2 && resp.StatusCode >= 500 {
+				closeIdleConnections(client)
+				select {
+				case <-time.After(25 * time.Millisecond):
+					continue
+				case <-ctx.Done():
+					return nil, fmt.Errorf("%s authorize bad status: %s (%s)", mode, resp.Status, strings.TrimSpace(string(bodyBytes)))
+				}
+			}
+			return nil, fmt.Errorf("%s authorize bad status: %s (%s)", mode, resp.Status, strings.TrimSpace(string(bodyBytes)))
+		}
+		break
 	}
 
 	token, err := parseTunnelToken(bodyBytes)
@@ -544,15 +620,16 @@ type streamSplitConn struct {
 	auth       *tunnelAuth
 }
 
-func (c *streamSplitConn) Close() error {
-	_ = c.closeWithError(io.ErrClosedPipe)
-
+func (c *streamSplitConn) closeWithError(err error) error {
+	_ = c.queuedConn.closeWithError(err)
 	if c.cancel != nil {
 		c.cancel()
 	}
 	bestEffortCloseSession(c.client, c.closeURL, c.headerHost, TunnelModeStream, c.auth)
 	return nil
 }
+
+func (c *streamSplitConn) Close() error { return c.closeWithError(io.ErrClosedPipe) }
 
 func newStreamSplitConnFromInfo(info *sessionDialInfo) *streamSplitConn {
 	if info == nil {
@@ -659,7 +736,7 @@ func (c *streamSplitConn) pullLoop() {
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.pullURL, nil)
 		if err != nil {
 			cancel()
-			_ = c.Close()
+			_ = c.closeWithError(fmt.Errorf("stream pull build request failed: %w", err))
 			return
 		}
 		req.Host = c.headerHost
@@ -669,8 +746,9 @@ func (c *streamSplitConn) pullLoop() {
 		resp, err := c.client.Do(req)
 		if err != nil {
 			cancel()
-			if isDialError(err) && dialRetry < maxDialRetry {
+			if (isDialError(err) || isRetryableRequestError(err)) && dialRetry < maxDialRetry {
 				dialRetry++
+				closeIdleConnections(c.client)
 				select {
 				case <-time.After(backoff):
 				case <-c.closed:
@@ -682,16 +760,33 @@ func (c *streamSplitConn) pullLoop() {
 				}
 				continue
 			}
-			_ = c.Close()
+			_ = c.closeWithError(fmt.Errorf("stream pull request failed: %w", err))
 			return
 		}
 		dialRetry = 0
 		backoff = minBackoff
 
 		if resp.StatusCode != http.StatusOK {
+			if isRetryableStatusCode(resp.StatusCode) && dialRetry < maxDialRetry {
+				dialRetry++
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4*1024))
+				_ = resp.Body.Close()
+				cancel()
+				closeIdleConnections(c.client)
+				select {
+				case <-time.After(backoff):
+				case <-c.closed:
+					return
+				}
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
 			_ = resp.Body.Close()
 			cancel()
-			_ = c.Close()
+			_ = c.closeWithError(fmt.Errorf("stream pull bad status: %s", resp.Status))
 			return
 		}
 
@@ -717,7 +812,12 @@ func (c *streamSplitConn) pullLoop() {
 					// Long-poll ended; retry.
 					break
 				}
-				_ = c.Close()
+				// Some environments may sporadically reset the HTTP connection under load; treat
+				// it as an ended long-poll and retry instead of tearing down the whole tunnel.
+				if errors.Is(rerr, io.ErrUnexpectedEOF) || isRetryableRequestError(rerr) {
+					break
+				}
+				_ = c.closeWithError(fmt.Errorf("stream pull read failed: %w", rerr))
 				return
 			}
 		}
@@ -735,8 +835,13 @@ func (c *streamSplitConn) pullLoop() {
 
 func (c *streamSplitConn) pushLoop() {
 	const (
-		maxBatchBytes  = 256 * 1024
-		flushInterval  = 5 * time.Millisecond
+		// Batching is critical for stability under high concurrency: every flush is a new TCP
+		// connection in HTTP/1.1, and too many tiny uploads can overwhelm the accept backlog,
+		// causing sporadic RSTs (connection reset by peer).
+		//
+		// Keep this below the server-side maxUploadBytes limit in streamPush().
+		maxBatchBytes  = 512 * 1024
+		flushInterval  = 25 * time.Millisecond
 		requestTimeout = 20 * time.Second
 		maxDialRetry   = 12
 		minBackoff     = 10 * time.Millisecond
@@ -754,11 +859,17 @@ func (c *streamSplitConn) pushLoop() {
 			return nil
 		}
 
+		payload := buf.Bytes()
 		reqCtx, cancel := context.WithTimeout(c.ctx, requestTimeout)
-		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.pushURL, bytes.NewReader(buf.Bytes()))
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.pushURL, bytes.NewReader(payload))
 		if err != nil {
 			cancel()
 			return err
+		}
+		// Be explicit: some http client forks won't auto-populate GetBody, which makes POST retries on stale
+		// keep-alive connections flaky under multiplex=auto.
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
 		}
 		req.Host = c.headerHost
 		applyTunnelHeaders(req.Header, c.headerHost, TunnelModeStream)
@@ -774,7 +885,7 @@ func (c *streamSplitConn) pushLoop() {
 		_ = resp.Body.Close()
 		cancel()
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("bad status: %s", resp.Status)
+			return &httpStatusError{code: resp.StatusCode, status: resp.Status}
 		}
 
 		buf.Reset()
@@ -787,8 +898,22 @@ func (c *streamSplitConn) pushLoop() {
 		for {
 			if err := flush(); err == nil {
 				return nil
-			} else if isDialError(err) && dialRetry < maxDialRetry {
+			} else if se := (*httpStatusError)(nil); errors.As(err, &se) && isRetryableStatusCode(se.code) && dialRetry < maxDialRetry {
 				dialRetry++
+				closeIdleConnections(c.client)
+				select {
+				case <-time.After(backoff):
+				case <-c.closed:
+					return io.ErrClosedPipe
+				}
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			} else if (isDialError(err) || isRetryableRequestError(err)) && dialRetry < maxDialRetry {
+				dialRetry++
+				closeIdleConnections(c.client)
 				select {
 				case <-time.After(backoff):
 				case <-c.closed:
@@ -829,7 +954,7 @@ func (c *streamSplitConn) pushLoop() {
 			}
 			if buf.Len()+len(b) > maxBatchBytes {
 				if err := flushWithRetry(); err != nil {
-					_ = c.Close()
+					_ = c.closeWithError(fmt.Errorf("stream push flush failed: %w", err))
 					return
 				}
 				resetTimer()
@@ -837,14 +962,14 @@ func (c *streamSplitConn) pushLoop() {
 			_, _ = buf.Write(b)
 			if buf.Len() >= maxBatchBytes {
 				if err := flushWithRetry(); err != nil {
-					_ = c.Close()
+					_ = c.closeWithError(fmt.Errorf("stream push flush failed: %w", err))
 					return
 				}
 				resetTimer()
 			}
 		case <-timer.C:
 			if err := flushWithRetry(); err != nil {
-				_ = c.Close()
+				_ = c.closeWithError(fmt.Errorf("stream push flush failed: %w", err))
 				return
 			}
 			resetTimer()
@@ -858,7 +983,7 @@ func (c *streamSplitConn) pushLoop() {
 					}
 					if buf.Len()+len(b) > maxBatchBytes {
 						if err := flushWithRetry(); err != nil {
-							_ = c.Close()
+							_ = c.closeWithError(fmt.Errorf("stream push flush failed: %w", err))
 							return
 						}
 					}
@@ -901,6 +1026,43 @@ func isDialError(err error) bool {
 		if opErr.Op == "dial" || opErr.Op == "connect" {
 			return true
 		}
+	}
+	return false
+}
+
+func isRetryableRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	// net/http may return this when reusing a keep-alive conn that the peer already closed.
+	// Treat it as retryable: callers already implement bounded backoff retries.
+	if strings.Contains(strings.ToLower(err.Error()), "server closed idle connection") {
+		return true
+	}
+
+	// Unwrap common wrappers.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return isRetryableRequestError(urlErr.Err)
+	}
+
+	// Connection-level transient failures.
+	if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
+	if errors.Is(err, io.ErrClosedPipe) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return netErr.Timeout() || netErr.Temporary()
 	}
 	return false
 }
@@ -1012,8 +1174,10 @@ func (c *pollConn) pullLoop() {
 		default:
 		}
 
-		req, err := http.NewRequestWithContext(c.ctx, http.MethodGet, c.pullURL, nil)
+		reqCtx, cancel := context.WithTimeout(c.ctx, 30*time.Second)
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.pullURL, nil)
 		if err != nil {
+			cancel()
 			_ = c.Close()
 			return
 		}
@@ -1023,8 +1187,10 @@ func (c *pollConn) pullLoop() {
 
 		resp, err := c.client.Do(req)
 		if err != nil {
-			if isDialError(err) && dialRetry < maxDialRetry {
+			cancel()
+			if (isDialError(err) || isRetryableRequestError(err)) && dialRetry < maxDialRetry {
 				dialRetry++
+				closeIdleConnections(c.client)
 				select {
 				case <-time.After(backoff):
 				case <-c.closed:
@@ -1043,7 +1209,25 @@ func (c *pollConn) pullLoop() {
 		backoff = minBackoff
 
 		if resp.StatusCode != http.StatusOK {
+			if isRetryableStatusCode(resp.StatusCode) && dialRetry < maxDialRetry {
+				dialRetry++
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4*1024))
+				_ = resp.Body.Close()
+				cancel()
+				closeIdleConnections(c.client)
+				select {
+				case <-time.After(backoff):
+				case <-c.closed:
+					return
+				}
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			}
 			_ = resp.Body.Close()
+			cancel()
 			_ = c.closeWithError(fmt.Errorf("poll pull bad status: %s", resp.Status))
 			return
 		}
@@ -1068,7 +1252,12 @@ func (c *pollConn) pullLoop() {
 			}
 		}
 		_ = resp.Body.Close()
+		cancel()
 		if err := scanner.Err(); err != nil {
+			// Treat transient stream breaks (RST/EOF) as an ended long-poll and retry.
+			if errors.Is(err, io.ErrUnexpectedEOF) || isRetryableRequestError(err) {
+				continue
+			}
 			_ = c.closeWithError(fmt.Errorf("poll pull scan failed: %w", err))
 			return
 		}
@@ -1077,8 +1266,8 @@ func (c *pollConn) pullLoop() {
 
 func (c *pollConn) pushLoop() {
 	const (
-		maxBatchBytes   = 64 * 1024
-		flushInterval   = 5 * time.Millisecond
+		maxBatchBytes   = 512 * 1024
+		flushInterval   = 50 * time.Millisecond
 		maxLineRawBytes = 16 * 1024
 		maxDialRetry    = 12
 		minBackoff      = 10 * time.Millisecond
@@ -1097,11 +1286,15 @@ func (c *pollConn) pushLoop() {
 			return nil
 		}
 
+		payload := buf.Bytes()
 		reqCtx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
-		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.pushURL, bytes.NewReader(buf.Bytes()))
+		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.pushURL, bytes.NewReader(payload))
 		if err != nil {
 			cancel()
 			return err
+		}
+		req.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
 		}
 		req.Host = c.headerHost
 		applyTunnelHeaders(req.Header, c.headerHost, TunnelModePoll)
@@ -1117,7 +1310,7 @@ func (c *pollConn) pushLoop() {
 		_ = resp.Body.Close()
 		cancel()
 		if resp.StatusCode != http.StatusOK {
-			return fmt.Errorf("bad status: %s", resp.Status)
+			return &httpStatusError{code: resp.StatusCode, status: resp.Status}
 		}
 
 		buf.Reset()
@@ -1131,8 +1324,22 @@ func (c *pollConn) pushLoop() {
 		for {
 			if err := flush(); err == nil {
 				return nil
-			} else if isDialError(err) && dialRetry < maxDialRetry {
+			} else if se := (*httpStatusError)(nil); errors.As(err, &se) && isRetryableStatusCode(se.code) && dialRetry < maxDialRetry {
 				dialRetry++
+				closeIdleConnections(c.client)
+				select {
+				case <-time.After(backoff):
+				case <-c.closed:
+					return c.closedErr()
+				}
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+				continue
+			} else if (isDialError(err) || isRetryableRequestError(err)) && dialRetry < maxDialRetry {
+				dialRetry++
+				closeIdleConnections(c.client)
 				select {
 				case <-time.After(backoff):
 				case <-c.closed:
@@ -1482,6 +1689,16 @@ func (s *TunnelServer) HandleConn(rawConn net.Conn) (HandleResult, net.Conn, err
 			return HandleDone, nil, nil
 		}
 		return s.handlePoll(rawConn, req, headerBytes, buffered)
+	case TunnelModeWS:
+		if s.mode != TunnelModeWS && s.mode != TunnelModeAuto {
+			if s.passThroughOnReject {
+				return reject()
+			}
+			_ = writeSimpleHTTPResponse(rawConn, http.StatusNotFound, "not found")
+			_ = rawConn.Close()
+			return HandleDone, nil, nil
+		}
+		return s.handleWS(rawConn, req, headerBytes, buffered)
 	default:
 		if s.passThroughOnReject {
 			return reject()

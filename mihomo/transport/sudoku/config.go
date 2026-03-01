@@ -50,6 +50,7 @@ type ProtocolConfig struct {
 	//   - "stream": real HTTP tunnel (split-stream), CDN-compatible
 	//   - "poll": plain HTTP tunnel (authorize/push/pull), strong restricted-network pass-through
 	//   - "auto": try stream then fall back to poll
+	//   - "ws": WebSocket tunnel (GET upgrade), CDN-friendly
 	HTTPMaskMode string
 
 	// HTTPMaskTLSEnabled enables HTTPS for HTTP tunnel modes (client-side).
@@ -109,9 +110,9 @@ func (c *ProtocolConfig) Validate() error {
 	}
 
 	switch strings.ToLower(strings.TrimSpace(c.HTTPMaskMode)) {
-	case "", "legacy", "stream", "poll", "auto":
+	case "", "legacy", "stream", "poll", "auto", "ws":
 	default:
-		return fmt.Errorf("invalid http-mask-mode: %s, must be one of: legacy, stream, poll, auto", c.HTTPMaskMode)
+		return fmt.Errorf("invalid http-mask-mode: %s, must be one of: legacy, stream, poll, auto, ws", c.HTTPMaskMode)
 	}
 
 	if v := strings.TrimSpace(c.HTTPMaskPathRoot); v != "" {
@@ -163,6 +164,44 @@ func DefaultConfig() *ProtocolConfig {
 		HandshakeTimeoutSeconds: 5,
 		HTTPMaskMode:            "legacy",
 		HTTPMaskMultiplex:       "off",
+	}
+}
+
+func DerefInt(v *int, def int) int {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+func DerefBool(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+// ResolvePadding applies defaults and keeps min/max consistent when only one side is provided.
+func ResolvePadding(min, max *int, defMin, defMax int) (int, int) {
+	paddingMin := DerefInt(min, defMin)
+	paddingMax := DerefInt(max, defMax)
+	switch {
+	case min == nil && max != nil && paddingMax < paddingMin:
+		paddingMin = paddingMax
+	case max == nil && min != nil && paddingMax < paddingMin:
+		paddingMax = paddingMin
+	}
+	return paddingMin, paddingMax
+}
+
+func NormalizeTableType(tableType string) (string, error) {
+	switch t := strings.ToLower(strings.TrimSpace(tableType)); t {
+	case "", "prefer_ascii":
+		return "prefer_ascii", nil
+	case "prefer_entropy":
+		return "prefer_entropy", nil
+	default:
+		return "", fmt.Errorf("table-type must be prefer_ascii or prefer_entropy")
 	}
 }
 

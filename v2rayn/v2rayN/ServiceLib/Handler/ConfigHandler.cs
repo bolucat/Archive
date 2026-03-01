@@ -1165,46 +1165,28 @@ public static class ConfigHandler
 
     /// <summary>
     /// Create a group server that combines multiple servers for load balancing
-    /// Generates a configuration file that references multiple servers
+    /// Generates a PolicyGroup profile with references to the sub-items
     /// </summary>
     /// <param name="config">Current configuration</param>
-    /// <param name="selecteds">Selected servers to combine</param>
-    /// <param name="coreType">Core type to use (Xray or sing_box)</param>
-    /// <param name="multipleLoad">Load balancing algorithm</param>
+    /// <param name="subItem">Sub-item for grouping</param>
     /// <returns>Result object with success state and data</returns>
-    public static async Task<RetResult> AddGroupServer4Multiple(Config config, List<ProfileItem> selecteds, ECoreType coreType, EMultipleLoad multipleLoad, string? subId)
+    public static async Task<RetResult> AddGroupAllServer(Config config, SubItem? subItem)
     {
         var result = new RetResult();
 
-        var indexId = Utils.GetGuid(false);
-        var childProfileIndexId = Utils.List2String(selecteds.Select(p => p.IndexId).ToList());
+        var subId = subItem?.Id;
+        if (subId.IsNullOrEmpty())
+        {
+            result.Success = false;
+            return result;
+        }
 
-        var remark = subId.IsNullOrEmpty() ? string.Empty : $"{(await AppManager.Instance.GetSubItem(subId))?.Remarks} ";
-        if (coreType == ECoreType.Xray)
-        {
-            remark += multipleLoad switch
-            {
-                EMultipleLoad.LeastPing => ResUI.menuGenGroupMultipleServerXrayLeastPing,
-                EMultipleLoad.Fallback => ResUI.menuGenGroupMultipleServerXrayFallback,
-                EMultipleLoad.Random => ResUI.menuGenGroupMultipleServerXrayRandom,
-                EMultipleLoad.RoundRobin => ResUI.menuGenGroupMultipleServerXrayRoundRobin,
-                EMultipleLoad.LeastLoad => ResUI.menuGenGroupMultipleServerXrayLeastLoad,
-                _ => ResUI.menuGenGroupMultipleServerXrayRoundRobin,
-            };
-        }
-        else if (coreType == ECoreType.sing_box)
-        {
-            remark += multipleLoad switch
-            {
-                EMultipleLoad.LeastPing => ResUI.menuGenGroupMultipleServerSingBoxLeastPing,
-                EMultipleLoad.Fallback => ResUI.menuGenGroupMultipleServerSingBoxFallback,
-                _ => ResUI.menuGenGroupMultipleServerSingBoxLeastPing,
-            };
-        }
+        var indexId = Utils.GetGuid(false);
+        var remark = $"{subItem.Remarks} - {ResUI.TbConfigTypePolicyGroup}";
         var profile = new ProfileItem
         {
             IndexId = indexId,
-            CoreType = coreType,
+            CoreType = ECoreType.Xray,
             ConfigType = EConfigType.PolicyGroup,
             Remarks = remark,
             IsSub = false
@@ -1215,13 +1197,101 @@ public static class ConfigHandler
         }
         var extraItem = new ProtocolExtraItem
         {
-            ChildItems = childProfileIndexId,
-            MultipleLoad = multipleLoad,
+            MultipleLoad = EMultipleLoad.LeastPing,
+            GroupType = profile.ConfigType.ToString(),
+            SubChildItems = subId,
+            Filter = Global.PolicyGroupDefaultAllFilter,
         };
         profile.SetProtocolExtra(extraItem);
         var ret = await AddServerCommon(config, profile, true);
         result.Success = ret == 0;
         result.Data = indexId;
+        return result;
+    }
+
+    private static string CombineWithDefaultAllFilter(string regionPattern)
+    {
+        return $"^(?!.*(?:{Global.PolicyGroupExcludeKeywords})).*(?:{regionPattern}).*$";
+    }
+
+    private static readonly Dictionary<string, string> PolicyGroupRegionFilters = new()
+    {
+        { "JP", "日本|\\b[Jj][Pp]\\b|🇯🇵|[Jj]apan" },
+        { "US", "美国|\\b[Uu][Ss]\\b|🇺🇸|[Uu]nited [Ss]tates|\\b[Uu][Ss][Aa]\\b" },
+        { "HK", "香港|\\b[Hh][Kk]\\b|🇭🇰|[Hh]ong ?[Kk]ong" },
+        { "TW", "台湾|台灣|\\b[Tt][Ww]\\b|🇹🇼|[Tt]aiwan" },
+        { "KR", "韩国|\\b[Kk][Rr]\\b|🇰🇷|[Kk]orea" },
+        { "SG", "新加坡|\\b[Ss][Gg]\\b|🇸🇬|[Ss]ingapore" },
+        { "DE", "德国|\\b[Dd][Ee]\\b|🇩🇪|[Gg]ermany" },
+        { "FR", "法国|\\b[Ff][Rr]\\b|🇫🇷|[Ff]rance" },
+        { "GB", "英国|\\b[Gg][Bb]\\b|🇬🇧|[Uu]nited [Kk]ingdom|[Bb]ritain" },
+        { "CA", "加拿大|🇨🇦|[Cc]anada" },
+        { "AU", "澳大利亚|\\b[Aa][Uu]\\b|🇦🇺|[Aa]ustralia" },
+        { "RU", "俄罗斯|\\b[Rr][Uu]\\b|🇷🇺|[Rr]ussia" },
+        { "BR", "巴西|\\b[Bb][Rr]\\b|🇧🇷|[Bb]razil" },
+        { "IN", "印度|🇮🇳|[Ii]ndia" },
+        { "VN", "越南|\\b[Vv][Nn]\\b|🇻🇳|[Vv]ietnam" },
+        { "ID", "印度尼西亚|\\b[Ii][Dd]\\b|🇮🇩|[Ii]ndonesia" },
+        { "MX", "墨西哥|\\b[Mm][Xx]\\b|🇲🇽|[Mm]exico" }
+    };
+
+    public static async Task<RetResult> AddGroupRegionServer(Config config, SubItem? subItem)
+    {
+        var result = new RetResult();
+        var subId = subItem?.Id;
+        if (subId.IsNullOrEmpty())
+        {
+            result.Success = false;
+            return result;
+        }
+        var childProfiles = await AppManager.Instance.ProfileItems(subId);
+        List<string> indexIdList = [];
+
+        foreach (var regionFilter in PolicyGroupRegionFilters)
+        {
+            var indexId = Utils.GetGuid(false);
+            var remark = $"{subItem.Remarks} - {ResUI.TbConfigTypePolicyGroup} - {regionFilter.Key}";
+            var profile = new ProfileItem
+            {
+                IndexId = indexId,
+                CoreType = ECoreType.Xray,
+                ConfigType = EConfigType.PolicyGroup,
+                Remarks = remark,
+                IsSub = false
+            };
+            if (!subId.IsNullOrEmpty())
+            {
+                profile.Subid = subId;
+            }
+            var extraItem = new ProtocolExtraItem
+            {
+                MultipleLoad = EMultipleLoad.LeastPing,
+                GroupType = profile.ConfigType.ToString(),
+                SubChildItems = subId,
+                Filter = CombineWithDefaultAllFilter(regionFilter.Value),
+            };
+            profile.SetProtocolExtra(extraItem);
+
+            var matchedChildProfiles = childProfiles?.Where(p =>
+                    p != null &&
+                    p.IsValid() &&
+                    !p.ConfigType.IsComplexType() &&
+                    (extraItem.Filter.IsNullOrEmpty() || Regex.IsMatch(p.Remarks, extraItem.Filter))
+                )
+                .ToList() ?? [];
+            if (matchedChildProfiles.Count == 0)
+            {
+                continue;
+            }
+
+            var ret = await AddServerCommon(config, profile, true);
+            if (ret == 0)
+            {
+                indexIdList.Add(indexId);
+            }
+        }
+        result.Success = indexIdList.Count > 0;
+        result.Data = indexIdList;
         return result;
     }
 
@@ -1249,47 +1319,6 @@ public static class ConfigHandler
             Port = node.PreSocksPort.Value,
         };
         return itemSocks;
-    }
-
-    public static CoreConfigContext? GetPreSocksCoreConfigContext(CoreConfigContext nodeContext)
-    {
-        var config = nodeContext.AppConfig;
-        var node = nodeContext.Node;
-        var coreType = AppManager.Instance.GetCoreType(node, node.ConfigType);
-
-        var preSocksItem = GetPreSocksItem(config, node, coreType);
-        if (preSocksItem != null)
-        {
-            return nodeContext with { Node = preSocksItem, };
-        }
-
-        if ((!nodeContext.IsTunEnabled)
-            || coreType != ECoreType.Xray
-            || node.ConfigType == EConfigType.Custom)
-        {
-            return null;
-        }
-        var tunProtectSsPort = Utils.GetFreePort();
-        var proxyRelaySsPort = Utils.GetFreePort();
-        var preItem = new ProfileItem()
-        {
-            CoreType = ECoreType.sing_box,
-            ConfigType = EConfigType.Shadowsocks,
-            Address = Global.Loopback,
-            Port = proxyRelaySsPort,
-            Password = Global.None,
-        };
-        preItem.SetProtocolExtra(preItem.GetProtocolExtra() with
-        {
-            SsMethod = Global.None,
-        });
-        var preContext = nodeContext with
-        {
-            Node = preItem,
-            TunProtectSsPort = tunProtectSsPort,
-            ProxyRelaySsPort = proxyRelaySsPort,
-        };
-        return preContext;
     }
 
     /// <summary>

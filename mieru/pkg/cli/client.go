@@ -130,25 +130,6 @@ func RegisterClientCommands() {
 		clientDescribeEffectiveTrafficPatternFunc,
 	)
 	RegisterCallback(
-		[]string{"", "export", "traffic-pattern"},
-		func(s []string) error {
-			return unexpectedArgsError(s, 3)
-		},
-		clientExportTrafficPatternFunc,
-	)
-	RegisterCallback(
-		[]string{"", "explain", "traffic-pattern"},
-		func(s []string) error {
-			if len(s) < 4 {
-				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. No string is provided")
-			} else if len(s) > 4 {
-				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. More than 1 string is provided")
-			}
-			return nil
-		},
-		explainTrafficPatternFunc,
-	)
-	RegisterCallback(
 		[]string{"", "import", "config"},
 		func(s []string) error {
 			if len(s) < 4 {
@@ -173,6 +154,37 @@ func RegisterClientCommands() {
 			return unexpectedArgsError(s, 3)
 		},
 		clientExportConfigFunc,
+	)
+	RegisterCallback(
+		[]string{"", "export", "traffic-pattern"},
+		func(s []string) error {
+			return unexpectedArgsError(s, 3)
+		},
+		clientExportTrafficPatternFunc,
+	)
+	RegisterCallback(
+		[]string{"", "explain", "config"},
+		func(s []string) error {
+			if len(s) < 4 {
+				return fmt.Errorf("usage: mieru explain config <URL>. No URL is provided")
+			} else if len(s) > 4 {
+				return fmt.Errorf("usage: mieru explain config <URL>. More than 1 string is provided")
+			}
+			return nil
+		},
+		clientExplainConfigFunc,
+	)
+	RegisterCallback(
+		[]string{"", "explain", "traffic-pattern"},
+		func(s []string) error {
+			if len(s) < 4 {
+				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. No string is provided")
+			} else if len(s) > 4 {
+				return fmt.Errorf("usage: mieru explain traffic-pattern <STRING>. More than 1 string is provided")
+			}
+			return nil
+		},
+		explainTrafficPatternFunc,
 	)
 	RegisterCallback(
 		[]string{"", "delete", "profile"},
@@ -340,6 +352,15 @@ var clientHelpFunc = func(s []string) error {
 			{
 				cmd:  "export traffic-pattern",
 				help: []string{"Export traffic pattern as an encoded base64 string."},
+			},
+			{
+				cmd: "explain config <URL>",
+				help: []string{
+					"Decode and explain a client configuration from a mieru:// URL,",
+					"or a client profile from a mierus:// URL.",
+					"It doesn't import client configuration from this URL.",
+					"Please use quotation marks to wrap the URL, so it can be parsed correctly.",
+				},
 			},
 			{
 				cmd:  "explain traffic-pattern <STRING>",
@@ -861,6 +882,19 @@ var clientExportTrafficPatternFunc = func(s []string) error {
 		return fmt.Errorf(stderror.ClientGetActiveProfileFailedErr, err)
 	}
 	log.Infof("%s", trafficpattern.Encode(activeProfile.GetTrafficPattern()))
+	return nil
+}
+
+var clientExplainConfigFunc = func(s []string) error {
+	c, err := appctl.ParseURLClientConfig(s[3])
+	if err != nil {
+		return err
+	}
+	jsonBytes, err := common.MarshalJSON(c)
+	if err != nil {
+		return fmt.Errorf("common.MarshalJSON() failed: %w", err)
+	}
+	log.Infof("%s", string(jsonBytes))
 	return nil
 }
 
