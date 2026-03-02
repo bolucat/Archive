@@ -231,6 +231,7 @@ public static class ConfigHandler
             item.Address = profileItem.Address;
             item.Port = profileItem.Port;
 
+            item.Username = profileItem.Username;
             item.Password = profileItem.Password;
 
             item.Network = profileItem.Network;
