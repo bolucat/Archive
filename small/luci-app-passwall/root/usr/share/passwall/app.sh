@@ -169,15 +169,14 @@ run_singbox() {
 			local _dns=$(get_first_dns remote_dns_${_proto}_server 53 | sed 's/#/:/g')
 			local _dns_address=$(echo ${_dns} | awk -F ':' '{print $1}')
 			local _dns_port=$(echo ${_dns} | awk -F ':' '{print $2}')
-			json_add_string "remote_dns_server" "${_dns_address}"
+			json_add_string "remote_dns_${_proto}_server" "${_dns_address}"
 			json_add_string "remote_dns_port" "${_dns_port}"
-			json_add_string "remote_dns_${_proto}_server" "${_proto}://${_dns}"
 		;;
 		doh)
 			local _doh_url _doh_host _doh_port _doh_bootstrap
 			parse_doh "$remote_dns_doh" _doh_url _doh_host _doh_port _doh_bootstrap
-			[ -n "$_doh_bootstrap" ] && json_add_string "remote_dns_server" "${_doh_bootstrap}"
-			json_add_string "remote_dns_port" "${_doh_port}"
+			[ -n "$_doh_bootstrap" ] && json_add_string "remote_dns_doh_ip" "${_doh_bootstrap}"
+			json_add_string "remote_dns_doh_port" "${_doh_port}"
 			json_add_string "remote_dns_doh_url" "${_doh_url}"
 			json_add_string "remote_dns_doh_host" "${_doh_host}"
 		;;
@@ -1883,6 +1882,20 @@ start() {
 	
 	start_crontab
 	echolog "运行完成！\n"
+
+	[ "$ENABLED" = 1 ] && [ "$1" = "boot" ] && {
+		local cfgids item
+		for item in $(uci show ${CONFIG} | grep "=subscribe_list" | cut -d '.' -sf 2 | cut -d '=' -sf 1); do
+			if [ "$(config_n_get "$item" boot_update 0)" = "1" ]; then
+				local cfgid=$(uci show ${CONFIG}.$item | head -n 1 | cut -d '.' -sf 2 | cut -d '=' -sf 1)
+				cfgids="${cfgids:+$cfgids,}$cfgid"
+			fi
+		done
+		[ -n "$cfgids" ] && {
+			sleep 5
+			lua $APP_PATH/subscribe.lua start $cfgids cron > /dev/null 2>&1 &
+		}
+	}
 }
 
 stop() {
@@ -2054,7 +2067,7 @@ socks_node_switch)
 	socks_node_switch $@
 	;;
 start)
-	start
+	start $@
 	;;
 stop)
 	stop
