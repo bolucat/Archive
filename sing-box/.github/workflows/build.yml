@@ -47,7 +47,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.25.8
       - name: Check input version
         if: github.event_name == 'workflow_dispatch'
         run: |-
@@ -124,7 +124,7 @@ jobs:
         if: ${{ ! (matrix.legacy_win7 || matrix.legacy_go124) }}
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.25.8
       - name: Setup Go 1.24
         if: matrix.legacy_go124
         uses: actions/setup-go@v5
@@ -137,9 +137,11 @@ jobs:
         with:
           path: |
             ~/go/go_win7
-          key: go_win7_1255
+          key: go_win7_1258
       - name: Setup Go for Windows 7
         if: matrix.legacy_win7 && steps.cache-go-for-windows7.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |-
           .github/setup_go_for_windows7.sh
       - name: Setup Go for Windows 7
@@ -399,6 +401,21 @@ jobs:
             .github/deb2ipk.sh "$architecture" "dist/openwrt.deb" "dist/sing-box_${{ needs.calculate_version.outputs.version }}_openwrt_${architecture}.ipk"
           done
           rm "dist/openwrt.deb"
+      - name: Install apk-tools
+        if: matrix.openwrt != ''
+        run: |-
+          docker run --rm -v /usr/local/bin:/mnt alpine:edge sh -c "apk add --no-cache apk-tools-static && cp /sbin/apk.static /mnt/apk && chmod +x /mnt/apk"
+      - name: Package OpenWrt APK
+        if: matrix.openwrt != ''
+        run: |-
+          set -xeuo pipefail
+          for architecture in ${{ matrix.openwrt }}; do
+            .github/build_openwrt_apk.sh \
+              "$architecture" \
+              "${{ needs.calculate_version.outputs.version }}" \
+              "dist/sing-box" \
+              "dist/sing-box_${{ needs.calculate_version.outputs.version }}_openwrt_${architecture}.apk"
+          done
       - name: Archive
         run: |
           set -xeuo pipefail
@@ -605,7 +622,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.25.8
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -695,7 +712,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.25.8
       - name: Setup Android NDK
         id: setup-ndk
         uses: nttld/setup-ndk@v1
@@ -794,7 +811,7 @@ jobs:
         if: matrix.if
         uses: actions/setup-go@v5
         with:
-          go-version: ~1.25.7
+          go-version: ~1.25.8
       - name: Set tag
         if: matrix.if
         run: |-
